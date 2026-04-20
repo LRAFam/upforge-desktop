@@ -18,6 +18,7 @@
       </div>
       <span v-if="status.recording" class="font-medium">Recording {{ status.currentGame }}...</span>
       <span v-else-if="status.currentGame">{{ status.currentGame }} detected</span>
+      <span v-else-if="platform !== 'win32'" class="text-gray-500">Game detection requires Windows — use simulate below</span>
       <span v-else>Waiting for Valorant to launch</span>
     </div>
 
@@ -98,8 +99,8 @@
       </button>
     </div>
 
-    <!-- Dev tools (collapsed by default) -->
-    <div v-if="isDev" class="mt-2 border border-dashed border-yellow-500/20 rounded-xl overflow-hidden">
+    <!-- Dev tools (show in dev mode, or always on Mac since game detection is Windows-only) -->
+    <div v-if="isDev || platform !== 'win32'" class="mt-2 border border-dashed border-yellow-500/20 rounded-xl overflow-hidden">
       <button
         class="w-full flex items-center justify-between px-3 py-2 text-[10px] text-yellow-600/60 hover:text-yellow-500/70 transition-colors"
         @click="devOpen = !devOpen"
@@ -146,6 +147,7 @@ const status = ref<{ recording: boolean; currentGame: string | null }>({ recordi
 const analyses = ref<Analysis[]>([])
 const loading = ref(true)
 const isDev = ref(false)
+const platform = ref('')
 const devOpen = ref(false)
 const simulating = ref(false)
 const simStatus = ref('')
@@ -155,6 +157,7 @@ let pollInterval: ReturnType<typeof setInterval>
 onMounted(async () => {
   const s = await window.api.app.getStatus()
   isDev.value = s.isDev
+  platform.value = s.platform ?? ''
   if (!s.authenticated) {
     router.push(s.firstRun ? '/welcome' : '/login')
     return

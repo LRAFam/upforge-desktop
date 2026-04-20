@@ -48,8 +48,8 @@ export class GameDetector extends EventEmitter {
   }
 
   private async _poll(): Promise<void> {
-    // On Mac in dev, skip real process detection (Valorant won't be running)
-    if (!IS_WIN && is.dev) return
+    // Game detection only works on Windows — Valorant/CS2 don't run on Mac/Linux
+    if (!IS_WIN) return
 
     try {
       const { default: psList } = await import('ps-list')
