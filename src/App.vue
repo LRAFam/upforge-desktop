@@ -90,7 +90,7 @@ const route = useRoute()
 const isMac = navigator.platform.toUpperCase().includes('MAC')
 const status = ref({ recording: false, currentGame: null as string | null })
 const isDev = ref(false)
-const appVersion = ref('')
+const appVersion = ref(__APP_VERSION__)
 const simStatus = ref('')
 
 const showNav = computed(() =>
@@ -103,13 +103,19 @@ const navLinks = [
 ]
 
 onMounted(async () => {
-  const s = await window.api.app.getStatus()
-  status.value = s
-  isDev.value = (s as Record<string, unknown>).isDev as boolean
-  appVersion.value = s.version ?? ''
-  setInterval(async () => {
+  try {
     const s = await window.api.app.getStatus()
     status.value = s
+    isDev.value = (s as Record<string, unknown>).isDev as boolean
+    if (s.version) appVersion.value = s.version
+  } catch {
+    // IPC failed — appVersion stays as compile-time constant
+  }
+  setInterval(async () => {
+    try {
+      const s = await window.api.app.getStatus()
+      status.value = s
+    } catch { /* ignore */ }
   }, 5000)
 })
 

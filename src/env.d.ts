@@ -1,5 +1,7 @@
 /// <reference types="vite/client" />
 
+declare const __APP_VERSION__: string
+
 export interface AppSettings {
   recordingQuality: '720p' | '1080p'
   recordingBitrate: number

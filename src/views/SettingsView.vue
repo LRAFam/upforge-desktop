@@ -196,7 +196,7 @@ type UserWithUsage = {
 
 const router = useRouter()
 const user = ref<UserWithUsage | null>(null)
-const appVersion = ref('0.1.0')
+const appVersion = ref(__APP_VERSION__)
 const isDev = ref(false)
 const checkingForUpdates = ref(false)
 const updateMessage = ref('')
@@ -297,14 +297,23 @@ function openHelp(): void {
 }
 
 onMounted(async () => {
-  const [s, savedSettings] = await Promise.all([
-    window.api.app.getStatus(),
-    window.api.settings.get()
-  ])
-  user.value = s.user as UserWithUsage | null
-  appVersion.value = s.version ?? '0.1.0'
-  isDev.value = s.isDev
-  Object.assign(settings, savedSettings)
+  try {
+    const [s, savedSettings] = await Promise.all([
+      window.api.app.getStatus(),
+      window.api.settings.get()
+    ])
+    user.value = s.user as UserWithUsage | null
+    if (s.version) appVersion.value = s.version
+    isDev.value = s.isDev
+    Object.assign(settings, savedSettings)
+  } catch (err) {
+    console.error('[Settings] Failed to load status:', err)
+    // Try loading settings alone as fallback
+    try {
+      const savedSettings = await window.api.settings.get()
+      Object.assign(settings, savedSettings)
+    } catch { /* ignore */ }
+  }
 })
 </script>
 

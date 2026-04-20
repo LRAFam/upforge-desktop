@@ -2,6 +2,9 @@ import { resolve } from 'path'
 import { defineConfig, externalizeDepsPlugin } from 'electron-vite'
 import vue from '@vitejs/plugin-vue'
 import tailwindcss from '@tailwindcss/vite'
+import { readFileSync } from 'fs'
+
+const pkg = JSON.parse(readFileSync(resolve('package.json'), 'utf-8'))
 
 export default defineConfig({
   main: {
@@ -32,6 +35,9 @@ export default defineConfig({
         '@renderer': resolve('src')
       }
     },
-    plugins: [vue(), tailwindcss()]
+    plugins: [vue(), tailwindcss()],
+    define: {
+      __APP_VERSION__: JSON.stringify(pkg.version)
+    }
   }
 })
