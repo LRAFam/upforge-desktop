@@ -95,13 +95,18 @@ const error = ref('')
 async function handleLogin() {
   loading.value = true
   error.value = ''
-  const result = await window.api.auth.login(email.value, password.value)
-  if (result.ok) {
-    router.push('/dashboard')
-  } else {
-    error.value = (result as { error?: string }).error || 'Login failed. Check your credentials.'
+  try {
+    const result = await window.api.auth.login(email.value, password.value)
+    if (result.ok) {
+      router.push('/dashboard')
+    } else {
+      error.value = (result as { error?: string }).error || 'Login failed. Check your credentials.'
+    }
+  } catch {
+    error.value = 'An unexpected error occurred. Please try again.'
+  } finally {
+    loading.value = false
   }
-  loading.value = false
 }
 
 function openSignup() {

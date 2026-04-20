@@ -125,7 +125,7 @@ export class AuthManager {
   async fetchUser(): Promise<AuthUser | null> {
     try {
       const res = await this._api.get('/api/user')
-      this._user = res.data
+      this._user = res.data?.user ?? res.data
       return this._user
     } catch {
       this._token = null
