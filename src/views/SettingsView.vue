@@ -131,6 +131,21 @@
       </div>
     </section>
 
+    <!-- Shortcut -->
+    <section>
+      <h3 class="text-[10px] font-semibold text-gray-600 uppercase tracking-widest mb-2 px-0.5">Shortcut</h3>
+      <div class="flex items-center justify-between px-3 py-2.5 bg-white/[0.02] border border-white/[0.05] rounded-xl">
+        <span class="text-xs text-gray-400">Open / focus window</span>
+        <div class="flex items-center gap-1">
+          <kbd class="px-1.5 py-0.5 text-[10px] bg-white/[0.06] border border-white/[0.1] rounded text-gray-400">Ctrl</kbd>
+          <span class="text-[10px] text-gray-600">+</span>
+          <kbd class="px-1.5 py-0.5 text-[10px] bg-white/[0.06] border border-white/[0.1] rounded text-gray-400">Shift</kbd>
+          <span class="text-[10px] text-gray-600">+</span>
+          <kbd class="px-1.5 py-0.5 text-[10px] bg-white/[0.06] border border-white/[0.1] rounded text-gray-400">U</kbd>
+        </div>
+      </div>
+    </section>
+
     <!-- Footer -->
     <div class="pt-1 space-y-2">
       <div class="flex items-center justify-between px-0.5">

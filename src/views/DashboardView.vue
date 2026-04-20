@@ -56,14 +56,14 @@
     </div>
 
     <!-- Empty state -->
-    <div v-else-if="analyses.length === 0" class="py-8 text-center space-y-2">
-      <div class="w-10 h-10 mx-auto rounded-full bg-white/[0.03] border border-white/[0.06] flex items-center justify-center">
+    <div v-else-if="analyses.length === 0" class="flex flex-col items-center justify-center py-8 text-center">
+      <div class="w-10 h-10 rounded-xl bg-white/[0.03] border border-white/[0.05] flex items-center justify-center mb-3">
         <svg class="w-5 h-5 text-gray-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M15 10l4.553-2.069A1 1 0 0121 8.87v6.26a1 1 0 01-1.447.894L15 14M3 8a2 2 0 012-2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V8z"/>
         </svg>
       </div>
       <p class="text-xs text-gray-600">No analyses yet</p>
-      <p class="text-[11px] text-gray-700">Launch Valorant to start recording</p>
+      <p class="text-[10px] text-gray-700 mt-0.5">Play Valorant and your sessions will appear here</p>
     </div>
 
     <!-- Analysis list -->

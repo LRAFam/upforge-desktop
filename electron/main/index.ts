@@ -7,7 +7,8 @@ import {
   ipcMain,
   shell,
   screen,
-  Notification
+  Notification,
+  globalShortcut
 } from 'electron'
 import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
@@ -107,12 +108,7 @@ function createTray(): void {
   const updateTrayMenu = (): void => {
     const menu = Menu.buildFromTemplate([
       {
-        label: 'UpForge',
-        enabled: false
-      },
-      { type: 'separator' },
-      {
-        label: 'Open Dashboard',
+        label: 'Open UpForge',
         click: () => {
           if (!mainWindow) {
             mainWindow = createMainWindow()
@@ -122,6 +118,7 @@ function createTray(): void {
           }
         }
       },
+      { type: 'separator' },
       {
         label: 'Open in Browser',
         click: () => shell.openExternal('https://upforge.gg/dashboard')
@@ -305,6 +302,14 @@ app.whenReady().then(async () => {
 
   // Start auto-updater in production
   setupAutoUpdater()
+
+  // Register global shortcut to show/focus window
+  globalShortcut.register('CommandOrControl+Shift+U', () => {
+    if (mainWindow) {
+      mainWindow.show()
+      mainWindow.focus()
+    }
+  })
 })
 
 // Re-show window when clicking dock icon on Mac
@@ -324,4 +329,5 @@ app.on('window-all-closed', () => {
 app.on('before-quit', () => {
   gameDetector.stop()
   recorder.forceStop()
+  globalShortcut.unregisterAll()
 })

@@ -12,6 +12,7 @@
           </svg>
         </div>
         <span class="text-xs font-semibold tracking-wide">UpForge</span>
+        <span v-if="appVersion" class="text-[10px] text-gray-600 font-normal ml-0.5">v{{ appVersion }}</span>
         <span v-if="status.recording" class="flex items-center gap-1 ml-1">
           <span class="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" />
           <span class="text-[10px] text-red-400 font-medium">REC</span>
@@ -48,11 +49,11 @@
         v-for="link in navLinks"
         :key="link.to"
         :to="link.to"
-        class="px-3 py-1.5 text-xs font-medium rounded-md transition-all duration-150"
+        class="px-3 py-1.5 text-xs font-medium transition-all duration-150"
         :class="
           $route.path === link.to
-            ? 'text-white bg-white/[0.08]'
-            : 'text-gray-500 hover:text-gray-300 hover:bg-white/[0.04]'
+            ? 'text-white relative after:absolute after:bottom-0 after:left-0 after:right-0 after:h-px after:bg-gradient-to-r after:from-red-500 after:to-orange-500'
+            : 'text-gray-500 hover:text-gray-300'
         "
       >
         {{ link.label }}
@@ -89,6 +90,7 @@ const route = useRoute()
 const isMac = navigator.platform.toUpperCase().includes('MAC')
 const status = ref({ recording: false, currentGame: null as string | null })
 const isDev = ref(false)
+const appVersion = ref('')
 const simStatus = ref('')
 
 const showNav = computed(() =>
@@ -104,6 +106,7 @@ onMounted(async () => {
   const s = await window.api.app.getStatus()
   status.value = s
   isDev.value = (s as Record<string, unknown>).isDev as boolean
+  appVersion.value = s.version ?? ''
   setInterval(async () => {
     const s = await window.api.app.getStatus()
     status.value = s

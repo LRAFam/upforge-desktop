@@ -75,6 +75,9 @@
           Sign up free ↗
         </button>
       </p>
+      <p class="text-center text-[11px] text-gray-700 mt-1">
+        <button class="hover:text-gray-500 transition-colors" @click="openForgotPassword">Forgot password?</button>
+      </p>
     </div>
   </div>
 </template>
@@ -103,5 +106,9 @@ async function handleLogin() {
 
 function openSignup() {
   window.open('https://upforge.gg/register', '_blank')
+}
+
+function openForgotPassword() {
+  window.open('https://upforge.gg/forgot-password', '_blank')
 }
 </script>
