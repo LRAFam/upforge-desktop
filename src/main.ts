@@ -1,0 +1,29 @@
+import { createApp } from 'vue'
+import { createPinia } from 'pinia'
+import { createRouter, createWebHashHistory } from 'vue-router'
+import App from './App.vue'
+import './assets/main.css'
+
+// Views
+import LoginView from './views/LoginView.vue'
+import DashboardView from './views/DashboardView.vue'
+import PostGameView from './views/PostGameView.vue'
+import SettingsView from './views/SettingsView.vue'
+
+const router = createRouter({
+  history: createWebHashHistory(),
+  routes: [
+    { path: '/', redirect: '/dashboard' },
+    { path: '/login', component: LoginView },
+    { path: '/dashboard', component: DashboardView },
+    { path: '/post-game', component: PostGameView },
+    { path: '/settings', component: SettingsView }
+  ]
+})
+
+const pinia = createPinia()
+const app = createApp(App)
+
+app.use(pinia)
+app.use(router)
+app.mount('#app')
