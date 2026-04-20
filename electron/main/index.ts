@@ -6,6 +6,7 @@ import {
   nativeImage,
   ipcMain,
   shell,
+  screen,
   Notification
 } from 'electron'
 import { join } from 'path'
@@ -84,7 +85,6 @@ function createPostGameWindow(): BrowserWindow {
   })
 
   // Position bottom-right corner
-  const { screen } = require('electron')
   const display = screen.getPrimaryDisplay()
   const { width, height } = display.workAreaSize
   win.setPosition(width - 400, height - 280)
@@ -143,6 +143,18 @@ function createTray(): void {
 
   tray.setToolTip('UpForge — Valorant AI Coaching')
   updateTrayMenu()
+
+  // Single click toggles window (Mac: click fires before context menu on some versions)
+  tray.on('click', () => {
+    if (!mainWindow) {
+      mainWindow = createMainWindow()
+    } else if (mainWindow.isVisible()) {
+      mainWindow.hide()
+    } else {
+      mainWindow.show()
+      mainWindow.focus()
+    }
+  })
 
   tray.on('double-click', () => {
     if (!mainWindow) {
@@ -233,6 +245,9 @@ app.whenReady().then(async () => {
 
   uploadManager = new UploadManager(authManager)
 
+  // Create main window immediately so app is usable on launch
+  mainWindow = createMainWindow()
+
   createTray()
   setupGameDetection()
   setupIpcHandlers(ipcMain, authManager, recorder, gameDetector)
@@ -240,6 +255,16 @@ app.whenReady().then(async () => {
   // Start auto-updater in production
   if (!is.dev) {
     autoUpdater.checkForUpdatesAndNotify()
+  }
+})
+
+// Re-show window when clicking dock icon on Mac
+app.on('activate', () => {
+  if (!mainWindow) {
+    mainWindow = createMainWindow()
+  } else {
+    mainWindow.show()
+    mainWindow.focus()
   }
 })
 
