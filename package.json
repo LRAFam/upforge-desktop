@@ -1,6 +1,6 @@
 {
   "name": "upforge-desktop",
-  "version": "1.0.6",
+  "version": "1.0.7",
   "description": "UpForge Desktop — Automatic Valorant gameplay recording and AI coaching",
   "main": "./out/main/index.js",
   "author": "UpForge",
@@ -21,7 +21,6 @@
     "electron-log": "^5.4.3",
     "electron-updater": "^6.1.7",
     "form-data": "^4.0.0",
-    "keytar": "^7.9.0",
     "pinia": "^2.1.7",
     "ps-list": "^8.1.1",
     "vue": "^3.4.0",

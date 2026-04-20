@@ -1,9 +1,39 @@
 import axios, { AxiosInstance } from 'axios'
-import keytar from 'keytar'
+import { app, safeStorage } from 'electron'
+import { readFileSync, writeFileSync, unlinkSync } from 'fs'
+import { join } from 'path'
 
-const SERVICE_NAME = 'UpForge'
-const ACCOUNT_NAME = 'auth_token'
 const API_BASE = 'https://api.upforge.gg'
+
+function tokenPath(): string {
+  return join(app.getPath('userData'), 'auth.enc')
+}
+
+function saveToken(token: string): void {
+  if (safeStorage.isEncryptionAvailable()) {
+    const encrypted = safeStorage.encryptString(token)
+    writeFileSync(tokenPath(), encrypted)
+  } else {
+    // Fallback: store plaintext (better than nothing, rare edge case)
+    writeFileSync(tokenPath(), Buffer.from(token, 'utf8'))
+  }
+}
+
+function loadToken(): string | null {
+  try {
+    const data = readFileSync(tokenPath())
+    if (safeStorage.isEncryptionAvailable()) {
+      return safeStorage.decryptString(data)
+    }
+    return data.toString('utf8')
+  } catch {
+    return null
+  }
+}
+
+function clearToken(): void {
+  try { unlinkSync(tokenPath()) } catch { /* already gone */ }
+}
 
 export interface AuthUser {
   id: number
@@ -80,7 +110,7 @@ export class AuthManager {
 
   async loadStoredToken(): Promise<boolean> {
     try {
-      const token = await keytar.getPassword(SERVICE_NAME, ACCOUNT_NAME)
+      const token = loadToken()
       if (!token) return false
 
       this._token = token
@@ -102,7 +132,7 @@ export class AuthManager {
       this._user = user
       this._api.defaults.headers.common['Authorization'] = `Bearer ${token}`
 
-      await keytar.setPassword(SERVICE_NAME, ACCOUNT_NAME, token)
+      await saveToken(token)
       return { ok: true }
     } catch (err: unknown) {
       const message = (err as { response?: { data?: { message?: string } } })
@@ -119,7 +149,7 @@ export class AuthManager {
     this._token = null
     this._user = null
     delete this._api.defaults.headers.common['Authorization']
-    await keytar.deletePassword(SERVICE_NAME, ACCOUNT_NAME)
+    clearToken()
   }
 
   async fetchUser(): Promise<AuthUser | null> {
