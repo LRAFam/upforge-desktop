@@ -32,7 +32,7 @@ export function setupAutoUpdater(onUpdateAvailable?: () => void): void {
   })
 
   autoUpdater.on('error', (err) => {
-    log.error('Auto-updater error:', err)
+    log.error('Auto-updater error:', err.message || err)
   })
 
   // Check on startup, then every 4 hours

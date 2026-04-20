@@ -1,6 +1,7 @@
 import { IpcMain, BrowserWindow, app, dialog } from 'electron'
 import { is } from '@electron-toolkit/utils'
 import { autoUpdater } from 'electron-updater'
+import log from 'electron-log'
 import { AuthManager } from './auth-manager'
 import { Recorder } from './recorder'
 import { GameDetector } from './game-detector'
@@ -84,10 +85,23 @@ export function setupIpcHandlers(
     if (is.dev) return { status: 'dev', message: 'Updates disabled in dev mode' }
     try {
       const result = await autoUpdater.checkForUpdates()
-      if (!result) return { status: 'up-to-date', message: 'You are on the latest version' }
-      return { status: 'checking', message: 'Checking for updates...' }
+      if (!result) return { status: 'up-to-date', message: 'You\'re on the latest version' }
+      const newVersion = result.updateInfo?.version
+      if (newVersion && newVersion !== app.getVersion()) {
+        return { status: 'available', message: `v${newVersion} is downloading...` }
+      }
+      return { status: 'up-to-date', message: 'You\'re on the latest version' }
     } catch (err) {
-      return { status: 'error', message: 'Could not check for updates' }
+      const msg = err instanceof Error ? err.message : String(err)
+      log.error('[Updater] checkForUpdates failed:', msg)
+      // Provide human-friendly message for common failure modes
+      if (msg.includes('404') || msg.includes('not found')) {
+        return { status: 'error', message: 'No update metadata found — release may still be building' }
+      }
+      if (msg.includes('ENOTFOUND') || msg.includes('ECONNREFUSED') || msg.includes('network')) {
+        return { status: 'error', message: 'No internet connection' }
+      }
+      return { status: 'error', message: `Update check failed: ${msg}` }
     }
   })
 
