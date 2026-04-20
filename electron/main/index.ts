@@ -11,7 +11,7 @@ import {
 } from 'electron'
 import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
-import { autoUpdater } from 'electron-updater'
+import { setupAutoUpdater } from './updater'
 import { GameDetector } from './game-detector'
 import { Recorder } from './recorder'
 import { RiotLocalApi } from './riot-local-api'
@@ -304,9 +304,7 @@ app.whenReady().then(async () => {
   })
 
   // Start auto-updater in production
-  if (!is.dev) {
-    autoUpdater.checkForUpdatesAndNotify()
-  }
+  setupAutoUpdater()
 })
 
 // Re-show window when clicking dock icon on Mac

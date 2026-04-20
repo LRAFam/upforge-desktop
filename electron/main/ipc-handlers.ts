@@ -66,6 +66,14 @@ export function setupIpcHandlers(
     return { ok: true }
   })
 
+  // Updater
+  ipcMain.handle('updater:check', () => {
+    if (!is.dev) {
+      const { autoUpdater } = require('electron-updater')
+      autoUpdater.checkForUpdatesAndNotify()
+    }
+  })
+
   // Window controls (for frameless window)
   ipcMain.handle('window:minimize', (e) => {
     const win = BrowserWindow.fromWebContents(e.sender)

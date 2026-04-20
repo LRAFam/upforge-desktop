@@ -28,6 +28,9 @@ const api = {
     close: () => ipcRenderer.invoke('window:close'),
     openPostGame: () => ipcRenderer.invoke('window:open-post-game')
   },
+  updater: {
+    check: () => ipcRenderer.invoke('updater:check')
+  },
   on: (channel: string, callback: (...args: unknown[]) => void) => {
     const allowed = [
       'post-game:upload-start',

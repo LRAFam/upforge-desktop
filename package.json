@@ -18,6 +18,7 @@
     "@electron-toolkit/preload": "^3.0.0",
     "@electron-toolkit/utils": "^3.0.0",
     "axios": "^1.6.0",
+    "electron-log": "^5.4.3",
     "electron-updater": "^6.1.7",
     "form-data": "^4.0.0",
     "keytar": "^7.9.0",
@@ -57,10 +58,15 @@
       "icon": "resources/icon.ico",
       "requestedExecutionLevel": "asInvoker"
     },
+    "mac": {
+      "target": ["dmg"],
+      "icon": "resources/icon.png",
+      "category": "public.app-category.games"
+    },
     "nsis": {
-      "oneClick": true,
+      "oneClick": false,
       "perMachine": false,
-      "allowToChangeInstallationDirectory": false,
+      "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": false,
       "createStartMenuShortcut": true,
       "runAfterFinish": true

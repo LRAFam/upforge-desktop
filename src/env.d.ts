@@ -49,6 +49,9 @@ declare global {
         close: () => Promise<void>
         openPostGame?: () => Promise<void>
       }
+      updater: {
+        check: () => Promise<void>
+      }
       on: (channel: string, callback: (...args: unknown[]) => void) => void
       off: (channel: string, callback: (...args: unknown[]) => void) => void
     }

@@ -136,6 +136,12 @@
       <div class="flex items-center justify-between px-0.5">
         <p class="text-[10px] text-gray-700">UpForge Desktop v{{ appVersion }}</p>
         <div class="flex items-center gap-3">
+          <button
+            v-if="!isDev"
+            class="text-[10px] text-gray-600 hover:text-gray-400 transition-colors"
+            :disabled="checkingForUpdates"
+            @click="checkForUpdates"
+          >{{ checkingForUpdates ? 'Checking...' : 'Check for updates' }}</button>
           <button class="text-[10px] text-gray-600 hover:text-gray-400 transition-colors" @click="openHelp">Get help</button>
           <button class="text-[10px] text-gray-600 hover:text-gray-400 transition-colors" @click="openSite">upforge.gg</button>
         </div>
@@ -173,6 +179,8 @@ type UserWithUsage = {
 const router = useRouter()
 const user = ref<UserWithUsage | null>(null)
 const appVersion = ref('0.1.0')
+const isDev = ref(false)
+const checkingForUpdates = ref(false)
 const savedVisible = ref(false)
 let saveTimer: ReturnType<typeof setTimeout> | null = null
 let toastTimer: ReturnType<typeof setTimeout> | null = null
@@ -242,6 +250,15 @@ async function handleLogout(): Promise<void> {
   router.push('/login')
 }
 
+async function checkForUpdates(): Promise<void> {
+  checkingForUpdates.value = true
+  try {
+    await window.api.updater.check()
+  } finally {
+    setTimeout(() => { checkingForUpdates.value = false }, 2000)
+  }
+}
+
 function openBilling(): void {
   window.open('https://upforge.gg/billing', '_blank')
 }
@@ -261,6 +278,7 @@ onMounted(async () => {
   ])
   user.value = s.user as UserWithUsage | null
   appVersion.value = s.version ?? '0.1.0'
+  isDev.value = s.isDev
   Object.assign(settings, savedSettings)
 })
 </script>
