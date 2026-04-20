@@ -24,6 +24,8 @@ import { setupIpcHandlers } from './ipc-handlers'
 let tray: Tray | null = null
 let mainWindow: BrowserWindow | null = null
 let postGameWindow: BrowserWindow | null = null
+let isQuitting = false
+let trayRefreshInterval: ReturnType<typeof setInterval> | null = null
 
 const gameDetector = new GameDetector()
 const recorder = new Recorder()
@@ -52,9 +54,11 @@ function createMainWindow(): BrowserWindow {
 
   win.on('ready-to-show', () => win.show())
   win.on('close', (e) => {
-    // Minimise to tray instead of closing
-    e.preventDefault()
-    win.hide()
+    // Minimise to tray instead of closing — unless app is actually quitting
+    if (!isQuitting) {
+      e.preventDefault()
+      win.hide()
+    }
   })
 
   win.webContents.setWindowOpenHandler(({ url }) => {
@@ -165,7 +169,7 @@ function createTray(): void {
   })
 
   // Refresh tray menu periodically to reflect recording state
-  setInterval(updateTrayMenu, 5000)
+  trayRefreshInterval = setInterval(updateTrayMenu, 5000)
 }
 
 function setupGameDetection(): void {
@@ -327,6 +331,10 @@ app.on('window-all-closed', () => {
 })
 
 app.on('before-quit', () => {
+  isQuitting = true
+  if (trayRefreshInterval) clearInterval(trayRefreshInterval)
+  tray?.destroy()
+  tray = null
   gameDetector.stop()
   recorder.forceStop()
   globalShortcut.unregisterAll()

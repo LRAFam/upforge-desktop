@@ -72,7 +72,8 @@
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": false,
       "createStartMenuShortcut": true,
-      "runAfterFinish": true
+      "runAfterFinish": true,
+      "include": "build/installer.nsh"
     },
     "publish": {
       "provider": "github",
