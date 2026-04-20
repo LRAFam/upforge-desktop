@@ -12,7 +12,10 @@
             </div>
             <div class="min-w-0">
               <p class="text-xs font-medium truncate">{{ user.name }}</p>
-              <p class="text-[11px] text-gray-500 truncate">{{ user.email }}</p>
+              <p class="text-[10px] text-gray-500 truncate mt-px">
+                <span v-if="user.riot_name">{{ user.riot_name }}#{{ user.riot_tag }}</span>
+                <span v-else>{{ user.email }}</span>
+              </p>
             </div>
           </div>
           <div class="flex items-center gap-2 flex-shrink-0 ml-2">
@@ -33,7 +36,7 @@
           >Sign out</button>
         </div>
       </div>
-      <div v-else class="h-16 bg-white/[0.02] border border-white/[0.05] rounded-xl animate-pulse" />
+      <div v-else class="h-[72px] bg-white/[0.02] border border-white/[0.05] rounded-xl animate-pulse" />
     </section>
 
     <!-- Usage / quota -->
@@ -115,14 +118,14 @@
           </div>
           <button
             :class="[
-              'relative w-8 h-[18px] rounded-full transition-colors flex-shrink-0 ml-4',
+              'relative w-8 h-[18px] rounded-full transition-colors flex-shrink-0 ml-4 overflow-hidden',
               settings[toggle.key] ? 'bg-red-500' : 'bg-white/[0.1]'
             ]"
             @click="toggle.key === 'launchOnStartup' ? toggleLaunchOnStartup() : toggleKey(toggle.key)"
           >
             <span
               :class="[
-                'absolute top-[2px] w-[14px] h-[14px] bg-white rounded-full shadow transition-transform',
+                'absolute top-[2px] left-0 w-[14px] h-[14px] bg-white rounded-full shadow transition-transform',
                 settings[toggle.key] ? 'translate-x-[18px]' : 'translate-x-[2px]'
               ]"
             />
@@ -302,18 +305,34 @@ onMounted(async () => {
       window.api.app.getStatus(),
       window.api.settings.get()
     ])
-    user.value = s.user as UserWithUsage | null
-    if (s.version) appVersion.value = s.version
     isDev.value = s.isDev
+    if (s.version) appVersion.value = s.version
     Object.assign(settings, savedSettings)
+    // Use getStatus user as base
+    if (s.user) user.value = s.user as UserWithUsage | null
   } catch (err) {
     console.error('[Settings] Failed to load status:', err)
-    // Try loading settings alone as fallback
     try {
       const savedSettings = await window.api.settings.get()
       Object.assign(settings, savedSettings)
     } catch { /* ignore */ }
   }
+
+  // Also load richer profile data (includes usage stats) independently
+  try {
+    const prof = await window.api.profile.get()
+    if (prof?.user) {
+      user.value = {
+        name: prof.user.name,
+        email: prof.user.email,
+        tier: prof.user.tier,
+        riot_name: prof.user.riot_name,
+        riot_tag: prof.user.riot_tag,
+        analyses_used: prof.user.analysis_stats?.total ?? 0,
+        analyses_limit: prof.user.analysis_stats?.limit ?? null
+      }
+    }
+  } catch { /* profile load failure is non-critical */ }
 })
 </script>
 

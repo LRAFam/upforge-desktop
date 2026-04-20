@@ -284,6 +284,9 @@ app.whenReady().then(async () => {
   uploadManager = new UploadManager(authManager)
   settingsManager = new SettingsManager()
 
+  // Restore auth session from keychain before creating window
+  await authManager.loadStoredToken()
+
   // Create main window immediately so app is usable on launch
   mainWindow = createMainWindow()
 
