@@ -12,6 +12,12 @@ const api = {
   app: {
     getStatus: () => ipcRenderer.invoke('app:get-status')
   },
+  profile: {
+    get: () => ipcRenderer.invoke('profile:get')
+  },
+  analyses: {
+    get: (limit?: number) => ipcRenderer.invoke('analyses:get', { limit })
+  },
   settings: {
     get: () => ipcRenderer.invoke('settings:get'),
     save: (partial: Record<string, unknown>) => ipcRenderer.invoke('settings:save', partial)

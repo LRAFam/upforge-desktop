@@ -1,6 +1,8 @@
 /// <reference types="vite/client" />
 
-declare const __APP_VERSION__: string
+declare global {
+  const __APP_VERSION__: string
+}
 
 export interface AppSettings {
   recordingQuality: '720p' | '1080p'
@@ -9,6 +11,57 @@ export interface AppSettings {
   launchOnStartup: boolean
   autoDelete: boolean
   firstRun: boolean
+}
+
+export interface ValorantStats {
+  player_name: string | null
+  player_tag: string | null
+  current_rank: string | null
+  peak_rank: string | null
+  rr: number | null
+  kd_ratio: number | null
+  win_rate: number | null
+  avg_combat_score: number | null
+  headshot_percentage: number | null
+  most_played_agent: string | null
+  most_played_map: string | null
+  player_card_id: string | null
+  last_updated: string | null
+}
+
+export interface ProfileData {
+  user: {
+    id: number
+    name: string
+    email: string
+    tier: string
+    riot_name: string | null
+    riot_tag: string | null
+    riot_region: string | null
+    discord_username: string | null
+    analysis_stats: { total: number; limit: number | null }
+  }
+  latest_stats: ValorantStats | null
+}
+
+export interface AnalysisItem {
+  id: number
+  job_id: string | null
+  status: string
+  map: string | null
+  agent: string | null
+  game_mode: string | null
+  won: boolean | null
+  kills: number | null
+  deaths: number | null
+  assists: number | null
+  kda: number | null
+  combat_score: number | null
+  rounds_won: number | null
+  rounds_lost: number | null
+  hs_pct: number | null
+  rank: string | null
+  created_at: string
 }
 
 declare global {
@@ -37,6 +90,12 @@ declare global {
             riot_tag: string | null
           } | null
         }>
+      }
+      profile: {
+        get: () => Promise<ProfileData | null>
+      }
+      analyses: {
+        get: (limit?: number) => Promise<AnalysisItem[]>
       }
       settings: {
         get: () => Promise<AppSettings>

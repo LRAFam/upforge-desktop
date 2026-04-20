@@ -46,6 +46,16 @@ export function setupIpcHandlers(
     }
   })
 
+  // Profile — full profile + Valorant stats
+  ipcMain.handle('profile:get', async () => {
+    return auth.fetchProfile()
+  })
+
+  // Analyses — recent VOD analyses list
+  ipcMain.handle('analyses:get', async (_e, { limit } = {}) => {
+    return auth.fetchAnalyses(limit ?? 10)
+  })
+
   // Settings
   ipcMain.handle('settings:get', () => {
     return settingsManager.get()

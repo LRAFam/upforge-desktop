@@ -134,20 +134,22 @@ const topIssue = computed(() => {
 })
 
 onMounted(() => {
-  window.api.on('post-game:upload-start', (data: { game: string; map: string | null; agent: string | null }) => {
+  window.api.on('post-game:upload-start', ((...args: unknown[]) => {
+    const data = args[0] as { game: string; map: string | null; agent: string | null }
     gameInfo.value = { map: data.map, agent: data.agent }
     state.value = 'uploading'
-  })
-  window.api.on('post-game:upload-progress', (pct: number) => { uploadProgress.value = pct })
+  }) as (...args: unknown[]) => void)
+  window.api.on('post-game:upload-progress', ((...args: unknown[]) => { uploadProgress.value = args[0] as number }) as (...args: unknown[]) => void)
   window.api.on('post-game:upload-complete', () => { state.value = 'analysing' })
-  window.api.on('post-game:analysis-ready', (r: { overall_score: number; analysis_id: number }) => {
+  window.api.on('post-game:analysis-ready', ((...args: unknown[]) => {
+    const r = args[0] as { overall_score: number; analysis_id: number }
     result.value = r
     state.value = 'ready'
-  })
-  window.api.on('post-game:upload-error', (err: string) => {
-    errorMessage.value = err
+  }) as (...args: unknown[]) => void)
+  window.api.on('post-game:upload-error', ((...args: unknown[]) => {
+    errorMessage.value = args[0] as string
     state.value = 'error'
-  })
+  }) as (...args: unknown[]) => void)
 
   // Dev preview: show a mock ready state
   if (window.location.hash.includes('post-game-preview')) {

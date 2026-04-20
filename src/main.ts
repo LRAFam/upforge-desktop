@@ -11,6 +11,8 @@ import PostGameView from './views/PostGameView.vue'
 import SettingsView from './views/SettingsView.vue'
 import WelcomeView from './views/WelcomeView.vue'
 
+const PUBLIC_ROUTES = ['/login', '/welcome']
+
 const router = createRouter({
   history: createWebHashHistory(),
   routes: [
@@ -22,6 +24,19 @@ const router = createRouter({
     { path: '/post-game-preview', component: PostGameView },
     { path: '/settings', component: SettingsView }
   ]
+})
+
+router.beforeEach(async (to) => {
+  if (PUBLIC_ROUTES.includes(to.path)) return true
+  try {
+    const s = await window.api.app.getStatus()
+    if (!s.authenticated) {
+      return s.firstRun ? '/welcome' : '/login'
+    }
+  } catch {
+    return '/login'
+  }
+  return true
 })
 
 const pinia = createPinia()

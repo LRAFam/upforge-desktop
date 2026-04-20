@@ -18,40 +18,85 @@
       </div>
       <span v-if="status.recording" class="font-medium">Recording {{ status.currentGame }}...</span>
       <span v-else-if="status.currentGame">{{ status.currentGame }} detected</span>
-      <span v-else-if="platform !== 'win32'" class="text-gray-500">Game detection requires Windows — use simulate below</span>
+      <span v-else-if="platform !== 'win32'" class="text-gray-500">Game detection requires Windows</span>
       <span v-else>Waiting for Valorant to launch</span>
     </div>
 
-    <!-- User strip -->
-    <div v-if="user" class="flex items-center justify-between px-1">
-      <div class="flex items-center gap-2.5 min-w-0">
-        <div class="w-7 h-7 rounded-lg bg-gradient-to-br from-red-500/30 to-orange-600/30 border border-white/[0.08] flex items-center justify-center flex-shrink-0">
-          <span class="text-[11px] font-bold text-red-400">{{ user.name?.charAt(0).toUpperCase() }}</span>
+    <!-- Profile card -->
+    <div v-if="profile" class="bg-white/[0.02] border border-white/[0.05] rounded-xl overflow-hidden">
+      <div class="flex items-center gap-3 px-3 pt-3 pb-2.5">
+        <div class="relative flex-shrink-0">
+          <img
+            v-if="playerCardUrl"
+            :src="playerCardUrl"
+            class="w-9 h-9 rounded-lg object-cover"
+            @error="playerCardUrl = ''"
+          />
+          <div
+            v-else
+            class="w-9 h-9 rounded-lg bg-gradient-to-br from-red-500/30 to-orange-600/30 border border-white/[0.08] flex items-center justify-center"
+          >
+            <span class="text-sm font-bold text-red-400">{{ profile.user.name?.charAt(0).toUpperCase() }}</span>
+          </div>
+          <div
+            v-if="profile.user.tier && profile.user.tier !== 'free'"
+            :class="['absolute -bottom-1 -right-1 px-1 py-px rounded text-[8px] font-bold uppercase', tierBadgeClass(profile.user.tier)]"
+          >{{ profile.user.tier.charAt(0) }}</div>
         </div>
-        <div class="min-w-0">
-          <p class="text-xs font-medium leading-tight truncate">{{ user.name }}</p>
-          <p class="text-[10px] text-gray-500 leading-tight truncate">
-            {{ user.riot_name ? `${user.riot_name}#${user.riot_tag}` : 'No Riot ID linked' }}
-            <span class="text-gray-600">&nbsp;&middot;&nbsp;</span>
-            <span class="capitalize">{{ user.tier }}</span>
+
+        <div class="flex-1 min-w-0">
+          <p class="text-xs font-semibold leading-tight truncate">{{ profile.user.name }}</p>
+          <p class="text-[10px] text-gray-500 leading-tight truncate mt-px">
+            <span v-if="profile.user.riot_name">{{ profile.user.riot_name }}#{{ profile.user.riot_tag }}</span>
+            <span v-else class="text-gray-600">No Riot ID linked</span>
           </p>
         </div>
+
+        <div v-if="profile.latest_stats?.current_rank" class="flex-shrink-0 text-right">
+          <span :class="['text-[11px] font-bold', rankColor(profile.latest_stats.current_rank)]">
+            {{ profile.latest_stats.current_rank }}
+          </span>
+          <p v-if="profile.latest_stats.rr != null" class="text-[9px] text-gray-600 mt-px">{{ profile.latest_stats.rr }} RR</p>
+        </div>
+        <button class="text-gray-700 hover:text-gray-400 transition-colors flex-shrink-0" @click="openBrowser">
+          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/>
+          </svg>
+        </button>
       </div>
-      <button class="text-[11px] text-gray-600 hover:text-gray-300 transition-colors flex-shrink-0 ml-2" @click="openBrowser">
-        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/>
-        </svg>
-      </button>
+
+      <div v-if="profile.latest_stats" class="grid grid-cols-4 divide-x divide-white/[0.04] border-t border-white/[0.04]">
+        <div class="flex flex-col items-center py-2">
+          <span class="text-[11px] font-bold">{{ profile.latest_stats.kd_ratio?.toFixed(2) ?? '—' }}</span>
+          <span class="text-[9px] text-gray-600 mt-px">K/D</span>
+        </div>
+        <div class="flex flex-col items-center py-2">
+          <span class="text-[11px] font-bold">{{ profile.latest_stats.win_rate != null ? Math.round(profile.latest_stats.win_rate) + '%' : '—' }}</span>
+          <span class="text-[9px] text-gray-600 mt-px">Win</span>
+        </div>
+        <div class="flex flex-col items-center py-2">
+          <span class="text-[11px] font-bold">{{ profile.latest_stats.avg_combat_score ?? '—' }}</span>
+          <span class="text-[9px] text-gray-600 mt-px">ACS</span>
+        </div>
+        <div class="flex flex-col items-center py-2">
+          <span class="text-[11px] font-bold">{{ profile.latest_stats.headshot_percentage != null ? Math.round(profile.latest_stats.headshot_percentage) + '%' : '—' }}</span>
+          <span class="text-[9px] text-gray-600 mt-px">HS%</span>
+        </div>
+      </div>
+      <div v-else class="px-3 pb-2.5 pt-1">
+        <p class="text-[10px] text-gray-600">No Valorant stats yet — link your Riot ID on upforge.gg</p>
+      </div>
     </div>
+    <div v-else-if="profileLoading" class="h-[88px] bg-white/[0.02] rounded-xl animate-pulse border border-white/[0.04]" />
 
     <!-- Section header -->
-    <div class="flex items-center justify-between px-0.5 pt-1">
+    <div class="flex items-center justify-between px-0.5 pt-0.5">
       <h2 class="text-[10px] font-semibold text-gray-600 uppercase tracking-widest">Recent Analyses</h2>
       <button v-if="analyses.length > 0" class="text-[10px] text-gray-600 hover:text-gray-400 transition-colors" @click="openBrowser">View all</button>
     </div>
 
     <!-- Loading skeleton -->
-    <div v-if="loading" class="space-y-2">
+    <div v-if="analysesLoading" class="space-y-2">
       <div v-for="i in 3" :key="i" class="h-[52px] bg-white/[0.02] rounded-xl animate-pulse border border-white/[0.04]" />
     </div>
 
@@ -63,7 +108,7 @@
         </svg>
       </div>
       <p class="text-xs text-gray-600">No analyses yet</p>
-      <p class="text-[10px] text-gray-700 mt-0.5">Play Valorant and your sessions will appear here</p>
+      <p class="text-[10px] text-gray-700 mt-0.5">Play Valorant to get started</p>
     </div>
 
     <!-- Analysis list -->
@@ -74,8 +119,8 @@
         class="w-full flex items-center gap-3 px-3 py-2.5 bg-white/[0.02] hover:bg-white/[0.04] border border-white/[0.05] hover:border-white/[0.08] rounded-xl transition-all text-left"
         @click="openAnalysis(a.id)"
       >
-        <div :class="['w-8 h-8 rounded-lg flex-shrink-0 flex items-center justify-center', a.source === 'desktop' ? 'bg-red-500/[0.12]' : 'bg-white/[0.04]']">
-          <svg v-if="a.source === 'desktop'" class="w-4 h-4 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <div :class="['w-8 h-8 rounded-lg flex-shrink-0 flex items-center justify-center', a.job_id ? 'bg-red-500/[0.12]' : 'bg-white/[0.04]']">
+          <svg v-if="a.job_id" class="w-4 h-4 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <circle cx="12" cy="12" r="8" stroke-width="1.5"/>
             <circle cx="12" cy="12" r="3" fill="currentColor" stroke="none"/>
           </svg>
@@ -90,16 +135,23 @@
             <span class="text-gray-600">&middot;</span>
             {{ a.map || 'Unknown' }}
           </p>
-          <p class="text-[10px] text-gray-600 mt-0.5">{{ formatDate(a.created_at) }}</p>
+          <p class="text-[10px] text-gray-600 mt-0.5 flex items-center gap-1.5">
+            <span>{{ formatDate(a.created_at) }}</span>
+            <span v-if="a.won != null" :class="a.won ? 'text-green-500/70' : 'text-red-500/60'">{{ a.won ? 'W' : 'L' }}</span>
+            <span v-if="a.kda != null">{{ a.kda.toFixed(2) }} K/D</span>
+          </p>
         </div>
-        <div class="flex-shrink-0">
-          <span v-if="a.overall_score" class="text-[11px] font-bold tabular-nums" :class="scoreClass(a.overall_score)">{{ a.overall_score }}</span>
-          <span v-else-if="a.status === 'processing'" class="text-[10px] text-orange-400/80 animate-pulse">...</span>
+        <div v-if="a.combat_score" class="flex-shrink-0 text-right">
+          <span class="text-[11px] font-bold text-gray-400 tabular-nums">{{ a.combat_score }}</span>
+          <span class="block text-[9px] text-gray-700">ACS</span>
         </div>
+        <svg v-else class="w-3.5 h-3.5 text-gray-700 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
+        </svg>
       </button>
     </div>
 
-    <!-- Dev tools (show in dev mode, or always on Mac since game detection is Windows-only) -->
+    <!-- Dev tools -->
     <div v-if="isDev || platform !== 'win32'" class="mt-2 border border-dashed border-yellow-500/20 rounded-xl overflow-hidden">
       <button
         class="w-full flex items-center justify-between px-3 py-2 text-[10px] text-yellow-600/60 hover:text-yellow-500/70 transition-colors"
@@ -132,20 +184,16 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
+import type { ProfileData, AnalysisItem } from '../env.d.ts'
 
 const router = useRouter()
 
-interface Analysis {
-  id: number; agent: string | null; map: string | null
-  overall_score: number | null; status: string; source: 'web' | 'desktop'; created_at: string
-}
-
-type AppUser = { name: string; email: string; tier: string; riot_name: string | null; riot_tag: string | null } | null
-
-const user = ref<AppUser>(null)
+const profile = ref<ProfileData | null>(null)
+const profileLoading = ref(true)
+const playerCardUrl = ref('')
+const analyses = ref<AnalysisItem[]>([])
+const analysesLoading = ref(true)
 const status = ref<{ recording: boolean; currentGame: string | null }>({ recording: false, currentGame: null })
-const analyses = ref<Analysis[]>([])
-const loading = ref(true)
 const isDev = ref(false)
 const platform = ref('')
 const devOpen = ref(false)
@@ -155,37 +203,63 @@ const simStatus = ref('')
 let pollInterval: ReturnType<typeof setInterval>
 
 onMounted(async () => {
-  const s = await window.api.app.getStatus()
-  isDev.value = s.isDev
-  platform.value = s.platform ?? ''
-  if (!s.authenticated) {
-    router.push(s.firstRun ? '/welcome' : '/login')
+  try {
+    const s = await window.api.app.getStatus()
+    isDev.value = s.isDev
+    platform.value = s.platform ?? ''
+    if (!s.authenticated) {
+      router.push(s.firstRun ? '/welcome' : '/login')
+      return
+    }
+    status.value = { recording: s.recording, currentGame: s.currentGame }
+  } catch {
+    router.push('/login')
     return
   }
-  user.value = s.user
-  status.value = { recording: s.recording, currentGame: s.currentGame }
-  await loadAnalyses()
+
+  const [prof, recent] = await Promise.all([
+    window.api.profile.get().catch(() => null),
+    window.api.analyses.get(10).catch(() => [] as AnalysisItem[])
+  ])
+
+  profile.value = prof
+  profileLoading.value = false
+
+  if (prof?.latest_stats?.player_card_id) {
+    playerCardUrl.value = `https://media.valorant-api.com/playercards/${prof.latest_stats.player_card_id}/smallart.png`
+  }
+
+  analyses.value = recent
+  analysesLoading.value = false
+
   pollInterval = setInterval(async () => {
-    const s = await window.api.app.getStatus()
-    status.value = { recording: s.recording, currentGame: s.currentGame }
+    try {
+      const s = await window.api.app.getStatus()
+      status.value = { recording: s.recording, currentGame: s.currentGame }
+    } catch { /* ignore */ }
   }, 5000)
+
   window.api.on('dashboard:refresh', loadAnalyses)
 })
 
 onUnmounted(() => clearInterval(pollInterval))
 
 async function loadAnalyses() {
-  loading.value = true
-  try { analyses.value = [] }
-  catch { analyses.value = [] }
-  finally { loading.value = false }
+  analysesLoading.value = true
+  try {
+    analyses.value = await window.api.analyses.get(10)
+  } catch {
+    analyses.value = []
+  } finally {
+    analysesLoading.value = false
+  }
 }
 
-async function simulateGame(game: string, durationMs: number) {
+function simulateGame(game: string, durationMs: number) {
   simulating.value = true
   simStatus.value = `Simulating ${game} for ${durationMs / 1000}s...`
-  await window.api.dev.simulateGame(game, durationMs)
-  setTimeout(() => { simulating.value = false; simStatus.value = 'Done - post-game flow triggered' }, durationMs + 500)
+  window.api.dev.simulateGame(game, durationMs)
+  setTimeout(() => { simulating.value = false; simStatus.value = 'Done' }, durationMs + 500)
 }
 
 function openAnalysis(id: number) { window.open(`https://upforge.gg/results/${id}`, '_blank') }
@@ -194,7 +268,26 @@ function openBrowser() { window.open('https://upforge.gg/dashboard', '_blank') }
 function formatDate(d: string): string {
   return new Date(d).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
 }
-function scoreClass(s: number): string {
-  return s >= 80 ? 'text-green-400' : s >= 60 ? 'text-yellow-400' : 'text-red-400'
+
+function tierBadgeClass(tier: string): string {
+  switch (tier?.toLowerCase()) {
+    case 'pro': return 'bg-purple-500/20 text-purple-400'
+    case 'elite': return 'bg-yellow-500/20 text-yellow-400'
+    case 'premium': return 'bg-red-500/20 text-red-400'
+    default: return 'bg-white/10 text-gray-400'
+  }
+}
+
+function rankColor(rank: string): string {
+  const r = rank?.toLowerCase() ?? ''
+  if (r.includes('radiant')) return 'text-yellow-300'
+  if (r.includes('immortal')) return 'text-red-400'
+  if (r.includes('ascendant')) return 'text-emerald-400'
+  if (r.includes('diamond')) return 'text-blue-400'
+  if (r.includes('platinum')) return 'text-cyan-400'
+  if (r.includes('gold')) return 'text-yellow-400'
+  if (r.includes('silver')) return 'text-slate-300'
+  if (r.includes('bronze')) return 'text-amber-600'
+  return 'text-gray-500'
 }
 </script>

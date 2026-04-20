@@ -23,7 +23,7 @@
       <div v-if="!isMac" class="flex items-center -webkit-no-drag">
         <button
           class="w-10 h-10 flex items-center justify-center text-gray-500 hover:text-white hover:bg-white/[0.06] transition-colors"
-          @click="window.api.window.minimize()"
+          @click="minimizeWindow()"
         >
           <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-width="2.5" d="M5 12h14"/>
@@ -31,7 +31,7 @@
         </button>
         <button
           class="w-10 h-10 flex items-center justify-center text-gray-500 hover:text-white hover:bg-red-500/80 transition-colors"
-          @click="window.api.window.close()"
+          @click="closeWindow()"
         >
           <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-width="2.5" d="M6 18L18 6M6 6l12 12"/>
@@ -128,5 +128,13 @@ async function simulateGame() {
 
 function openPostGame() {
   window.api.window.openPostGame?.()
+}
+
+function closeWindow() {
+  window.api.window.close()
+}
+
+function minimizeWindow() {
+  window.api.window.minimize()
 }
 </script>

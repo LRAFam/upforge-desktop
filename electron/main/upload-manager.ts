@@ -35,8 +35,8 @@ export class UploadManager {
 
     const form = new FormData()
     const stream = fs.createReadStream(opts.videoPath)
-    stream.on('data', (chunk: Buffer) => {
-      uploaded += chunk.length
+    stream.on('data', (chunk: Buffer | string) => {
+      uploaded += typeof chunk === 'string' ? chunk.length : chunk.length
       const pct = Math.round((uploaded / totalBytes) * 100)
       opts.onProgress(Math.min(pct, 99))
     })
