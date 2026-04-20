@@ -4,7 +4,10 @@ import { app } from 'electron'
 import { existsSync, mkdirSync, unlinkSync } from 'fs'
 import { is } from '@electron-toolkit/utils'
 
-type HWEncoder = 'nvenc' | 'amf' | 'qsv' | 'software'
+type HWEncoder = 'videotoolbox' | 'nvenc' | 'amf' | 'qsv' | 'software'
+
+const IS_MAC = process.platform === 'darwin'
+const IS_WIN = process.platform === 'win32'
 
 export class Recorder {
   private _process: ChildProcess | null = null
@@ -31,7 +34,7 @@ export class Recorder {
     const ffmpegPath = this._ffmpegPath()
     const args = this._buildArgs(encoder, this._outputPath)
 
-    console.log(`[Recorder] Starting with encoder: ${encoder}`)
+    console.log(`[Recorder] Platform: ${process.platform}, encoder: ${encoder}`)
     console.log(`[Recorder] Output: ${this._outputPath}`)
 
     this._process = spawn(ffmpegPath, args, { stdio: 'pipe' })
@@ -98,6 +101,12 @@ export class Recorder {
   private async _detectEncoder(): Promise<HWEncoder> {
     const ffmpegPath = this._ffmpegPath()
 
+    if (IS_MAC) {
+      const works = await this._testEncoder(ffmpegPath, 'h264_videotoolbox')
+      return works ? 'videotoolbox' : 'software'
+    }
+
+    // Windows: try hardware encoders in priority order
     const encoders: Array<{ name: HWEncoder; codec: string }> = [
       { name: 'nvenc', codec: 'h264_nvenc' },
       { name: 'amf', codec: 'h264_amf' },
@@ -132,6 +141,7 @@ export class Recorder {
 
   private _buildArgs(encoder: HWEncoder, outputPath: string): string[] {
     const codecMap: Record<HWEncoder, string> = {
+      videotoolbox: 'h264_videotoolbox',
       nvenc: 'h264_nvenc',
       amf: 'h264_amf',
       qsv: 'h264_qsv',
@@ -141,10 +151,28 @@ export class Recorder {
     const codec = codecMap[encoder]
     const qualityArgs = encoder === 'software'
       ? ['-crf', '28', '-preset', 'veryfast']
-      : ['-b:v', '4M', '-maxrate', '6M', '-bufsize', '8M']
+      : encoder === 'videotoolbox'
+        ? ['-b:v', '4M']
+        : ['-b:v', '4M', '-maxrate', '6M', '-bufsize', '8M']
 
+    if (IS_MAC) {
+      return [
+        '-f', 'avfoundation',
+        '-framerate', '30',
+        '-i', '1:0',          // screen 1, default audio
+        '-vf', 'scale=1280:720',
+        '-vcodec', codec,
+        ...qualityArgs,
+        '-acodec', 'aac',
+        '-b:a', '128k',
+        '-movflags', '+faststart',
+        outputPath
+      ]
+    }
+
+    // Windows
     return [
-      '-f', 'gdigrab',        // Windows desktop capture
+      '-f', 'gdigrab',
       '-framerate', '30',
       '-i', 'desktop',
       '-vf', 'scale=1280:720',
@@ -152,7 +180,6 @@ export class Recorder {
       ...qualityArgs,
       '-acodec', 'aac',
       '-b:a', '128k',
-      '-f', 'gdigrab',        // capture system audio (VB-Audio or similar)
       '-movflags', '+faststart',
       outputPath
     ]
@@ -160,10 +187,11 @@ export class Recorder {
 
   private _ffmpegPath(): string {
     if (is.dev) {
-      // In dev, expect ffmpeg in PATH
-      return 'ffmpeg'
+      // In dev, expect ffmpeg in PATH on both Mac and Windows
+      return IS_WIN ? 'ffmpeg.exe' : 'ffmpeg'
     }
-    // In production, use bundled ffmpeg from extraResources
-    return join(process.resourcesPath, 'ffmpeg', 'ffmpeg.exe')
+    // In production, use bundled ffmpeg
+    const binary = IS_WIN ? 'ffmpeg.exe' : 'ffmpeg'
+    return join(process.resourcesPath, 'ffmpeg', binary)
   }
 }

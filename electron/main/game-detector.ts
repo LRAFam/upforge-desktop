@@ -1,6 +1,9 @@
 import { EventEmitter } from 'events'
-import psList from 'ps-list'
+import { is } from '@electron-toolkit/utils'
 
+const IS_WIN = process.platform === 'win32'
+
+// On Windows: real process names. On Mac: not applicable (dev only).
 const GAME_PROCESSES: Record<string, string> = {
   valorant: 'VALORANT-Win64-Shipping.exe',
   cs2: 'cs2.exe'
@@ -32,8 +35,24 @@ export class GameDetector extends EventEmitter {
     return this._activeGame
   }
 
+  /** Dev-only: simulate a game session for testing on Mac */
+  simulateGame(game = 'valorant', durationMs = 10000): void {
+    if (!is.dev) return
+    console.log(`[GameDetector] ⚡ Simulating ${game} session for ${durationMs}ms`)
+    this._activeGame = game
+    this.emit('game-started', game)
+    setTimeout(() => {
+      this._activeGame = null
+      this.emit('game-stopped', game)
+    }, durationMs)
+  }
+
   private async _poll(): Promise<void> {
+    // On Mac in dev, skip real process detection (Valorant won't be running)
+    if (!IS_WIN && is.dev) return
+
     try {
+      const { default: psList } = await import('ps-list')
       const processes = await psList()
       const processNames = new Set(processes.map((p) => p.name))
 

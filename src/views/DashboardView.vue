@@ -96,6 +96,28 @@
         </button>
       </div>
     </div>
+
+    <!-- Dev tools (only shown in dev mode on Mac) -->
+    <div v-if="isDev" class="border border-dashed border-yellow-500/30 rounded-xl p-3 space-y-2">
+      <p class="text-xs font-medium text-yellow-500/70 uppercase tracking-wider">⚡ Dev Tools</p>
+      <p class="text-xs text-gray-500">Simulate game detection (Mac dev only)</p>
+      <div class="flex gap-2">
+        <button
+          class="flex-1 px-3 py-1.5 rounded-lg text-xs font-medium bg-yellow-500/10 text-yellow-400 hover:bg-yellow-500/20 transition-colors"
+          :disabled="simulating"
+          @click="simulateGame('valorant', 8000)"
+        >
+          {{ simulating ? 'Simulating...' : 'Simulate Valorant (8s)' }}
+        </button>
+        <button
+          class="px-3 py-1.5 rounded-lg text-xs font-medium bg-white/[0.05] text-gray-400 hover:bg-white/[0.08] transition-colors"
+          @click="openPostGame"
+        >
+          Post-game UI
+        </button>
+      </div>
+      <p v-if="simStatus" class="text-xs text-yellow-400/70">{{ simStatus }}</p>
+    </div>
   </div>
 </template>
 
@@ -119,6 +141,7 @@ interface AppStatus {
   recording: boolean
   currentGame: string | null
   authenticated: boolean
+  isDev: boolean
   user: { name: string; tier: string; riot_name: string | null; riot_tag: string | null } | null
 }
 
@@ -126,11 +149,14 @@ const user = ref<AppStatus['user']>(null)
 const status = ref<Pick<AppStatus, 'recording' | 'currentGame'>>({ recording: false, currentGame: null })
 const analyses = ref<Analysis[]>([])
 const loading = ref(true)
+const isDev = ref(false)
+const simulating = ref(false)
+const simStatus = ref('')
 
 let refreshInterval: ReturnType<typeof setInterval>
 
 onMounted(async () => {
-  const s = await window.api.app.getStatus()
+  const s = await window.api.app.getStatus() as AppStatus
 
   if (!s.authenticated) {
     router.push('/login')
@@ -139,16 +165,20 @@ onMounted(async () => {
 
   user.value = s.user
   status.value = { recording: s.recording, currentGame: s.currentGame }
+  isDev.value = s.isDev
 
   await loadAnalyses()
 
   refreshInterval = setInterval(async () => {
-    const s = await window.api.app.getStatus()
+    const s = await window.api.app.getStatus() as AppStatus
     status.value = { recording: s.recording, currentGame: s.currentGame }
   }, 5000)
 
-  // Refresh analyses list when main process signals a new one is ready
   window.api.on('dashboard:refresh', loadAnalyses)
+
+  window.api.on('post-game:upload-start', () => {
+    simStatus.value = 'Upload started...'
+  })
 })
 
 onUnmounted(() => {
@@ -158,24 +188,28 @@ onUnmounted(() => {
 async function loadAnalyses() {
   loading.value = true
   try {
-    const user = await window.api.auth.getUser()
-    if (!user) return
-
-    // Fetch via the web API — uses stored token automatically
-    const res = await fetch(`https://api.upforge.gg/api/analysis?limit=10`, {
-      headers: {
-        Authorization: `Bearer ${(window as unknown as { api: { auth: { getUser: () => Promise<{ token: string }> } } }).api.auth.getUser}`,
-        Accept: 'application/json'
-      }
-    })
-    // We use the axios instance from main via IPC — simpler approach here
-    const data = await res.json()
-    analyses.value = data?.data || []
+    // TODO: replace with IPC-based fetch using authManager.getApi() once API endpoint exists
+    analyses.value = []
   } catch {
     analyses.value = []
   } finally {
     loading.value = false
   }
+}
+
+async function simulateGame(game: string, durationMs: number) {
+  simulating.value = true
+  simStatus.value = `Simulating ${game} session for ${durationMs / 1000}s...`
+  await window.api.dev.simulateGame(game, durationMs)
+  setTimeout(() => {
+    simulating.value = false
+    simStatus.value = 'Session ended — post-game flow should trigger'
+  }, durationMs + 500)
+}
+
+function openPostGame() {
+  // Navigate to post-game route so you can preview the UI directly
+  router.push('/post-game-preview')
 }
 
 function openAnalysis(id: number) {

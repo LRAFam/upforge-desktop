@@ -12,6 +12,10 @@ const api = {
   app: {
     getStatus: () => ipcRenderer.invoke('app:get-status')
   },
+  dev: {
+    simulateGame: (game?: string, durationMs?: number) =>
+      ipcRenderer.invoke('dev:simulate-game', { game, durationMs })
+  },
   window: {
     minimize: () => ipcRenderer.invoke('window:minimize'),
     close: () => ipcRenderer.invoke('window:close')

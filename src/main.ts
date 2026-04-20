@@ -17,6 +17,7 @@ const router = createRouter({
     { path: '/login', component: LoginView },
     { path: '/dashboard', component: DashboardView },
     { path: '/post-game', component: PostGameView },
+    { path: '/post-game-preview', component: PostGameView },
     { path: '/settings', component: SettingsView }
   ]
 })

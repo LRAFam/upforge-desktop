@@ -1,4 +1,5 @@
-import { IpcMain } from 'electron'
+import { IpcMain, BrowserWindow } from 'electron'
+import { is } from '@electron-toolkit/utils'
 import { AuthManager } from './auth-manager'
 import { Recorder } from './recorder'
 import { GameDetector } from './game-detector'
@@ -32,18 +33,27 @@ export function setupIpcHandlers(
       recording: recorder.isRecording(),
       currentGame: gameDetector.currentGame(),
       authenticated: auth.isAuthenticated(),
-      user: auth.getUser()
+      user: auth.getUser(),
+      platform: process.platform,
+      isDev: is.dev
     }
+  })
+
+  // Dev-only: simulate game session on Mac for testing
+  ipcMain.handle('dev:simulate-game', (_e, { game, durationMs } = {}) => {
+    if (!is.dev) return { error: 'Dev only' }
+    gameDetector.simulateGame(game ?? 'valorant', durationMs ?? 10000)
+    return { ok: true }
   })
 
   // Window controls (for frameless window)
   ipcMain.handle('window:minimize', (e) => {
-    const win = require('electron').BrowserWindow.fromWebContents(e.sender)
+    const win = BrowserWindow.fromWebContents(e.sender)
     win?.minimize()
   })
 
   ipcMain.handle('window:close', (e) => {
-    const win = require('electron').BrowserWindow.fromWebContents(e.sender)
+    const win = BrowserWindow.fromWebContents(e.sender)
     win?.hide()
   })
 }
