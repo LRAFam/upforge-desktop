@@ -73,6 +73,7 @@ export class AuthManager {
   constructor() {
     this._api = axios.create({
       baseURL: API_BASE,
+      timeout: 15000,
       headers: { 'Accept': 'application/json', 'Content-Type': 'application/json' }
     })
   }
@@ -94,7 +95,7 @@ export class AuthManager {
 
   async login(email: string, password: string): Promise<{ ok: boolean; error?: string }> {
     try {
-      const res = await this._api.post('/api/auth/login', { email, password })
+      const res = await this._api.post('/api/login', { email, password })
       const { token, user } = res.data
 
       this._token = token
@@ -112,7 +113,7 @@ export class AuthManager {
 
   async logout(): Promise<void> {
     try {
-      await this._api.post('/api/auth/logout')
+      await this._api.post('/api/logout')
     } catch { /* ignore */ }
 
     this._token = null
@@ -123,7 +124,7 @@ export class AuthManager {
 
   async fetchUser(): Promise<AuthUser | null> {
     try {
-      const res = await this._api.get('/api/auth/user')
+      const res = await this._api.get('/api/user')
       this._user = res.data
       return this._user
     } catch {
