@@ -32,6 +32,7 @@ export function setupIpcHandlers(
 
   // App state
   ipcMain.handle('app:get-status', () => {
+    const settings = settingsManager.get()
     return {
       recording: recorder.isRecording(),
       currentGame: gameDetector.currentGame(),
@@ -39,7 +40,8 @@ export function setupIpcHandlers(
       user: auth.getUser(),
       platform: process.platform,
       isDev: is.dev,
-      version: app.getVersion()
+      version: app.getVersion(),
+      firstRun: settings.firstRun
     }
   })
 

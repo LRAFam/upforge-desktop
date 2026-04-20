@@ -190,7 +190,8 @@ const settings = reactive<AppSettings>({
   recordingBitrate: 6,
   savePath: '',
   launchOnStartup: false,
-  autoDelete: true
+  autoDelete: true,
+  firstRun: false
 })
 
 const toggles: Array<{ key: keyof Pick<AppSettings, 'launchOnStartup' | 'autoDelete'>; label: string; hint: string | null }> = [

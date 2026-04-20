@@ -6,6 +6,7 @@ export interface AppSettings {
   savePath: string
   launchOnStartup: boolean
   autoDelete: boolean
+  firstRun: boolean
 }
 
 declare global {
@@ -23,6 +24,7 @@ declare global {
           currentGame: string | null
           authenticated: boolean
           isDev: boolean
+          firstRun: boolean
           platform: string
           version: string
           user: {

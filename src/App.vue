@@ -92,7 +92,7 @@ const isDev = ref(false)
 const simStatus = ref('')
 
 const showNav = computed(() =>
-  !route.path.startsWith('/post-game') && route.path !== '/login'
+  !route.path.startsWith('/post-game') && route.path !== '/login' && route.path !== '/welcome'
 )
 
 const navLinks = [

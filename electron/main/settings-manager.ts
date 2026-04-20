@@ -8,6 +8,7 @@ export interface AppSettings {
   savePath: string
   launchOnStartup: boolean
   autoDelete: boolean // delete recording after successful upload
+  firstRun: boolean
 }
 
 const DEFAULTS: AppSettings = {
@@ -15,7 +16,8 @@ const DEFAULTS: AppSettings = {
   recordingBitrate: 6,
   savePath: '',
   launchOnStartup: false,
-  autoDelete: true
+  autoDelete: true,
+  firstRun: true
 }
 
 export class SettingsManager {

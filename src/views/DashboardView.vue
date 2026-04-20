@@ -138,13 +138,11 @@ interface Analysis {
   id: number; agent: string | null; map: string | null
   overall_score: number | null; status: string; source: 'web' | 'desktop'; created_at: string
 }
-interface AppStatus {
-  recording: boolean; currentGame: string | null; authenticated: boolean; isDev: boolean
-  user: { name: string; tier: string; riot_name: string | null; riot_tag: string | null } | null
-}
 
-const user = ref<AppStatus['user']>(null)
-const status = ref<Pick<AppStatus, 'recording' | 'currentGame'>>({ recording: false, currentGame: null })
+type AppUser = { name: string; email: string; tier: string; riot_name: string | null; riot_tag: string | null } | null
+
+const user = ref<AppUser>(null)
+const status = ref<{ recording: boolean; currentGame: string | null }>({ recording: false, currentGame: null })
 const analyses = ref<Analysis[]>([])
 const loading = ref(true)
 const isDev = ref(false)
@@ -155,14 +153,17 @@ const simStatus = ref('')
 let pollInterval: ReturnType<typeof setInterval>
 
 onMounted(async () => {
-  const s = await window.api.app.getStatus() as AppStatus
+  const s = await window.api.app.getStatus()
   isDev.value = s.isDev
-  if (!s.authenticated) { router.push('/login'); return }
+  if (!s.authenticated) {
+    router.push(s.firstRun ? '/welcome' : '/login')
+    return
+  }
   user.value = s.user
   status.value = { recording: s.recording, currentGame: s.currentGame }
   await loadAnalyses()
   pollInterval = setInterval(async () => {
-    const s = await window.api.app.getStatus() as AppStatus
+    const s = await window.api.app.getStatus()
     status.value = { recording: s.recording, currentGame: s.currentGame }
   }, 5000)
   window.api.on('dashboard:refresh', loadAnalyses)

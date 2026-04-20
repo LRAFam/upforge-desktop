@@ -9,11 +9,13 @@ import LoginView from './views/LoginView.vue'
 import DashboardView from './views/DashboardView.vue'
 import PostGameView from './views/PostGameView.vue'
 import SettingsView from './views/SettingsView.vue'
+import WelcomeView from './views/WelcomeView.vue'
 
 const router = createRouter({
   history: createWebHashHistory(),
   routes: [
     { path: '/', redirect: '/dashboard' },
+    { path: '/welcome', component: WelcomeView },
     { path: '/login', component: LoginView },
     { path: '/dashboard', component: DashboardView },
     { path: '/post-game', component: PostGameView },
