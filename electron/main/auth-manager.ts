@@ -41,7 +41,7 @@ export class AuthManager {
     }
   }
 
-  async login(email: string, password: string): Promise<{ success: boolean; error?: string }> {
+  async login(email: string, password: string): Promise<{ ok: boolean; error?: string }> {
     try {
       const res = await this._api.post('/api/auth/login', { email, password })
       const { token, user } = res.data
@@ -51,11 +51,11 @@ export class AuthManager {
       this._api.defaults.headers.common['Authorization'] = `Bearer ${token}`
 
       await keytar.setPassword(SERVICE_NAME, ACCOUNT_NAME, token)
-      return { success: true }
+      return { ok: true }
     } catch (err: unknown) {
       const message = (err as { response?: { data?: { message?: string } } })
         ?.response?.data?.message || 'Login failed'
-      return { success: false, error: message }
+      return { ok: false, error: message }
     }
   }
 
