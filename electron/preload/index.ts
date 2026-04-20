@@ -12,6 +12,13 @@ const api = {
   app: {
     getStatus: () => ipcRenderer.invoke('app:get-status')
   },
+  settings: {
+    get: () => ipcRenderer.invoke('settings:get'),
+    save: (partial: Record<string, unknown>) => ipcRenderer.invoke('settings:save', partial)
+  },
+  dialog: {
+    openDirectory: () => ipcRenderer.invoke('dialog:open-directory')
+  },
   dev: {
     simulateGame: (game?: string, durationMs?: number) =>
       ipcRenderer.invoke('dev:simulate-game', { game, durationMs })

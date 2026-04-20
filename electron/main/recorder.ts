@@ -6,6 +6,12 @@ import { is } from '@electron-toolkit/utils'
 
 type HWEncoder = 'videotoolbox' | 'nvenc' | 'amf' | 'qsv' | 'software'
 
+export interface RecorderConfig {
+  quality: '720p' | '1080p'
+  bitrate: number // Mbps
+  savePath: string
+}
+
 const IS_MAC = process.platform === 'darwin'
 const IS_WIN = process.platform === 'win32'
 
@@ -22,13 +28,13 @@ export class Recorder {
     return this._outputPath
   }
 
-  async start(game: string): Promise<void> {
+  async start(game: string, config?: RecorderConfig): Promise<void> {
     if (this._recording) {
       console.warn('[Recorder] Already recording, ignoring start()')
       return
     }
 
-    const dir = join(app.getPath('userData'), 'recordings')
+    const dir = config?.savePath ?? join(app.getPath('userData'), 'recordings')
     if (!existsSync(dir)) mkdirSync(dir, { recursive: true })
 
     const timestamp = Date.now()
@@ -36,7 +42,7 @@ export class Recorder {
 
     const encoder = await this._detectEncoder()
     const ffmpegPath = this._ffmpegPath()
-    const args = this._buildArgs(encoder, this._outputPath)
+    const args = this._buildArgs(encoder, this._outputPath, config)
 
     console.log(`[Recorder] Platform: ${process.platform}, encoder: ${encoder}`)
     console.log(`[Recorder] Output: ${this._outputPath}`)
@@ -143,7 +149,7 @@ export class Recorder {
     })
   }
 
-  private _buildArgs(encoder: HWEncoder, outputPath: string): string[] {
+  private _buildArgs(encoder: HWEncoder, outputPath: string, config?: RecorderConfig): string[] {
     const codecMap: Record<HWEncoder, string> = {
       videotoolbox: 'h264_videotoolbox',
       nvenc: 'h264_nvenc',
@@ -153,18 +159,24 @@ export class Recorder {
     }
 
     const codec = codecMap[encoder]
+    const bitrate = config?.bitrate ?? 4
+    const bitrateStr = `${bitrate}M`
+    const maxrateStr = `${Math.round(bitrate * 1.5)}M`
+    const bufsizeStr = `${bitrate * 2}M`
+    const scale = config?.quality === '1080p' ? '1920:1080' : '1280:720'
+
     const qualityArgs = encoder === 'software'
       ? ['-crf', '28', '-preset', 'veryfast']
       : encoder === 'videotoolbox'
-        ? ['-b:v', '4M']
-        : ['-b:v', '4M', '-maxrate', '6M', '-bufsize', '8M']
+        ? ['-b:v', bitrateStr]
+        : ['-b:v', bitrateStr, '-maxrate', maxrateStr, '-bufsize', bufsizeStr]
 
     if (IS_MAC) {
       return [
         '-f', 'avfoundation',
         '-framerate', '30',
-        '-i', '1:0',          // screen 1, default audio
-        '-vf', 'scale=1280:720',
+        '-i', '1:0',
+        '-vf', `scale=${scale}`,
         '-vcodec', codec,
         ...qualityArgs,
         '-acodec', 'aac',
@@ -179,7 +191,7 @@ export class Recorder {
       '-f', 'gdigrab',
       '-framerate', '30',
       '-i', 'desktop',
-      '-vf', 'scale=1280:720',
+      '-vf', `scale=${scale}`,
       '-vcodec', codec,
       ...qualityArgs,
       '-acodec', 'aac',

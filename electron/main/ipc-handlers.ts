@@ -1,14 +1,16 @@
-import { IpcMain, BrowserWindow } from 'electron'
+import { IpcMain, BrowserWindow, app, dialog } from 'electron'
 import { is } from '@electron-toolkit/utils'
 import { AuthManager } from './auth-manager'
 import { Recorder } from './recorder'
 import { GameDetector } from './game-detector'
+import { SettingsManager } from './settings-manager'
 
 export function setupIpcHandlers(
   ipcMain: IpcMain,
   auth: AuthManager,
   recorder: Recorder,
   gameDetector: GameDetector,
+  settingsManager: SettingsManager,
   openPostGameFn?: () => void
 ): void {
   // Auth
@@ -36,14 +38,31 @@ export function setupIpcHandlers(
       authenticated: auth.isAuthenticated(),
       user: auth.getUser(),
       platform: process.platform,
-      isDev: is.dev
+      isDev: is.dev,
+      version: app.getVersion()
     }
   })
 
+  // Settings
+  ipcMain.handle('settings:get', () => {
+    return settingsManager.get()
+  })
+
+  ipcMain.handle('settings:save', (_e, partial: Record<string, unknown>) => {
+    return settingsManager.save(partial)
+  })
+
+  // Dialog
+  ipcMain.handle('dialog:open-directory', async (e) => {
+    const win = BrowserWindow.fromWebContents(e.sender)
+    const result = await dialog.showOpenDialog(win!, { properties: ['openDirectory'] })
+    return result.canceled ? null : result.filePaths[0]
+  })
+
   // Dev-only: simulate game session on Mac for testing
-  ipcMain.handle('dev:simulate-game', (_e, { game, durationMs } = {}) => {
+  ipcMain.handle('dev:simulate-game', (_e, { game: gameName, durationMs } = {}) => {
     if (!is.dev) return { error: 'Dev only' }
-    gameDetector.simulateGame(game ?? 'valorant', durationMs ?? 10000)
+    gameDetector.simulateGame(gameName ?? 'valorant', durationMs ?? 10000)
     return { ok: true }
   })
 

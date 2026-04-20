@@ -17,6 +17,7 @@ import { Recorder } from './recorder'
 import { RiotLocalApi } from './riot-local-api'
 import { UploadManager } from './upload-manager'
 import { AuthManager } from './auth-manager'
+import { SettingsManager } from './settings-manager'
 import { setupIpcHandlers } from './ipc-handlers'
 
 let tray: Tray | null = null
@@ -28,6 +29,7 @@ const recorder = new Recorder()
 const riotLocalApi = new RiotLocalApi()
 const authManager = new AuthManager()
 let uploadManager: UploadManager
+let settingsManager: SettingsManager
 
 function createMainWindow(): BrowserWindow {
   const win = new BrowserWindow({
@@ -174,8 +176,12 @@ function setupGameDetection(): void {
     console.log(`[GameDetector] ${game} started`)
     tray?.setToolTip('UpForge — Recording...')
 
-    // Start recording
-    await recorder.start(game)
+    const config = settingsManager?.get()
+    await recorder.start(game, config ? {
+      quality: config.recordingQuality,
+      bitrate: config.recordingBitrate,
+      savePath: config.savePath
+    } : undefined)
 
     // Start polling Riot Local API
     riotLocalApi.start(game)
@@ -220,6 +226,11 @@ function setupGameDetection(): void {
 
         postGameWindow?.webContents.send('post-game:upload-complete', { jobId: result.job_id })
         tray?.setToolTip('UpForge — Analysing...')
+
+        // Auto-delete recording after upload if configured
+        if (settingsManager?.get().autoDelete) {
+          recorder.deleteRecording(videoPath)
+        }
 
         // Poll for analysis result (up to 10 minutes)
         const startTime = Date.now()
@@ -270,13 +281,14 @@ app.whenReady().then(async () => {
   })
 
   uploadManager = new UploadManager(authManager)
+  settingsManager = new SettingsManager()
 
   // Create main window immediately so app is usable on launch
   mainWindow = createMainWindow()
 
   createTray()
   setupGameDetection()
-  setupIpcHandlers(ipcMain, authManager, recorder, gameDetector, () => {
+  setupIpcHandlers(ipcMain, authManager, recorder, gameDetector, settingsManager, () => {
     postGameWindow = createPostGameWindow()
     postGameWindow.webContents.once('did-finish-load', () => {
       postGameWindow?.webContents.send('post-game:upload-start', { game: 'valorant', map: 'Bind', agent: 'Jett' })
