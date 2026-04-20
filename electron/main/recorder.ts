@@ -18,6 +18,10 @@ export class Recorder {
     return this._recording
   }
 
+  getLastRecordingPath(): string | null {
+    return this._outputPath
+  }
+
   async start(game: string): Promise<void> {
     if (this._recording) {
       console.warn('[Recorder] Already recording, ignoring start()')

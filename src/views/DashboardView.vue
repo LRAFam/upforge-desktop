@@ -156,10 +156,10 @@ let pollInterval: ReturnType<typeof setInterval>
 
 onMounted(async () => {
   const s = await window.api.app.getStatus() as AppStatus
+  isDev.value = s.isDev
   if (!s.authenticated) { router.push('/login'); return }
   user.value = s.user
   status.value = { recording: s.recording, currentGame: s.currentGame }
-  isDev.value = s.isDev
   await loadAnalyses()
   pollInterval = setInterval(async () => {
     const s = await window.api.app.getStatus() as AppStatus

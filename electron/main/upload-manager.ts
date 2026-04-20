@@ -1,106 +1,121 @@
-import { createReadStream, statSync } from 'fs'
+import fs from 'fs'
+import path from 'path'
 import FormData from 'form-data'
+import http from 'http'
+import https from 'https'
 import { AuthManager } from './auth-manager'
+import { MatchTimeline } from './riot-local-api'
 
-interface UploadOptions {
-  game: string
+export interface UploadOptions {
   videoPath: string
-  timeline: Record<string, unknown> | null
+  riotName: string
+  riotTag: string
+  game: string
+  map: string | null
+  agent: string | null
+  timeline: MatchTimeline | null
   onProgress: (pct: number) => void
-  onComplete: (jobId: string) => void
-  onError: (err: string) => void
 }
 
-const POLL_INTERVAL_MS = 10000
-const MAX_POLL_ATTEMPTS = 60 // 10 minutes
+export interface UploadResult {
+  job_id: string
+}
 
 export class UploadManager {
   constructor(private auth: AuthManager) {}
 
-  async upload(opts: UploadOptions): Promise<void> {
-    const { game, videoPath, timeline, onProgress, onComplete, onError } = opts
+  async upload(opts: UploadOptions): Promise<UploadResult> {
+    const apiUrl = process.env['VITE_API_URL'] || 'https://api.upforge.gg'
+    const token = this.auth.getToken()
+    if (!token) throw new Error('Not authenticated')
 
-    try {
-      const api = this.auth.getApi()
-      const user = this.auth.getUser()
+    const stat = fs.statSync(opts.videoPath)
+    const totalBytes = stat.size
+    let uploaded = 0
 
-      const form = new FormData()
-      const fileSize = statSync(videoPath).size
+    const form = new FormData()
+    const stream = fs.createReadStream(opts.videoPath)
+    stream.on('data', (chunk: Buffer) => {
+      uploaded += chunk.length
+      const pct = Math.round((uploaded / totalBytes) * 100)
+      opts.onProgress(Math.min(pct, 99))
+    })
 
-      const stream = createReadStream(videoPath)
-      let uploaded = 0
+    form.append('video', stream, {
+      filename: path.basename(opts.videoPath),
+      contentType: 'video/mp4',
+      knownLength: totalBytes
+    })
+    form.append('riot_name', opts.riotName)
+    form.append('riot_tag', opts.riotTag)
+    form.append('game', opts.game)
+    if (opts.map) form.append('map', opts.map)
+    if (opts.agent) form.append('agent', opts.agent)
+    if (opts.timeline) form.append('match_timeline', JSON.stringify(opts.timeline))
 
-      stream.on('data', (chunk: Buffer | string) => {
-        uploaded += typeof chunk === 'string' ? chunk.length : chunk.length
-        onProgress(Math.round((uploaded / fileSize) * 100))
-      })
-
-      form.append('video', stream, {
-        filename: `${game}_recording.mp4`,
-        contentType: 'video/mp4',
-        knownLength: fileSize
-      })
-
-      form.append('game', game)
-
-      if (timeline) {
-        form.append('match_timeline', JSON.stringify(timeline))
+    return new Promise((resolve, reject) => {
+      const url = new URL(`${apiUrl}/api/desktop-submissions`)
+      const options = {
+        method: 'POST',
+        hostname: url.hostname,
+        port: url.port || (url.protocol === 'https:' ? 443 : 80),
+        path: url.pathname,
+        headers: {
+          ...form.getHeaders(),
+          'Authorization': `Bearer ${token}`,
+          'Accept': 'application/json'
+        }
       }
 
-      if (user?.riot_name) form.append('riot_name', user.riot_name)
-      if (user?.riot_tag) form.append('riot_tag', user.riot_tag)
-
-      const res = await api.post('/api/desktop-submissions', form, {
-        headers: { ...form.getHeaders() },
-        maxBodyLength: Infinity,
-        maxContentLength: Infinity
+      const proto = url.protocol === 'https:' ? https : http
+      const req = proto.request(options, (res) => {
+        let body = ''
+        res.on('data', (chunk) => body += chunk)
+        res.on('end', () => {
+          opts.onProgress(100)
+          try {
+            const data = JSON.parse(body)
+            if (res.statusCode && res.statusCode >= 400) {
+              reject(new Error(data.message || `Upload failed: ${res.statusCode}`))
+            } else {
+              resolve({ job_id: data.job_id })
+            }
+          } catch {
+            reject(new Error('Invalid response from server'))
+          }
+        })
       })
 
-      const jobId = res.data?.job_id
-      if (!jobId) throw new Error('No job_id returned from server')
-
-      onProgress(100)
-      onComplete(jobId)
-    } catch (err: unknown) {
-      const message = (err as Error).message || 'Upload failed'
-      onError(message)
-    }
+      req.on('error', reject)
+      form.pipe(req)
+    })
   }
 
-  pollJobStatus(
-    jobId: string,
-    onReady: (result: Record<string, unknown>) => void
-  ): void {
-    let attempts = 0
-    const api = this.auth.getApi()
+  async pollStatus(jobId: string): Promise<{ status: string; result?: Record<string, unknown> }> {
+    const apiUrl = process.env['VITE_API_URL'] || 'https://api.upforge.gg'
+    const token = this.auth.getToken()
+    if (!token) throw new Error('Not authenticated')
 
-    const poll = async (): Promise<void> => {
-      attempts++
-      if (attempts > MAX_POLL_ATTEMPTS) {
-        console.warn('[UploadManager] Poll timed out for job:', jobId)
-        return
-      }
-
-      try {
-        const res = await api.get(`/api/desktop-submissions/${jobId}/status`)
-        const { status, result } = res.data
-
-        if (status === 'completed' && result) {
-          onReady(result)
-          return
+    return new Promise((resolve, reject) => {
+      const url = new URL(`${apiUrl}/api/desktop-submissions/${jobId}/status`)
+      const proto = url.protocol === 'https:' ? https : http
+      const options = {
+        hostname: url.hostname,
+        port: url.port || (url.protocol === 'https:' ? 443 : 80),
+        path: url.pathname,
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Accept': 'application/json'
         }
-
-        if (status === 'failed') {
-          console.error('[UploadManager] Job failed:', jobId)
-          return
-        }
-      } catch (err) {
-        console.error('[UploadManager] Poll error:', err)
       }
-
-      setTimeout(poll, POLL_INTERVAL_MS)
-    }
-
-    setTimeout(poll, POLL_INTERVAL_MS)
+      proto.get(options, (res) => {
+        let body = ''
+        res.on('data', (chunk) => body += chunk)
+        res.on('end', () => {
+          try { resolve(JSON.parse(body)) }
+          catch { reject(new Error('Invalid JSON')) }
+        })
+      }).on('error', reject)
+    })
   }
 }

@@ -14,7 +14,7 @@ import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import { autoUpdater } from 'electron-updater'
 import { GameDetector } from './game-detector'
 import { Recorder } from './recorder'
-import { RiotLocalAPI } from './riot-local-api'
+import { RiotLocalApi } from './riot-local-api'
 import { UploadManager } from './upload-manager'
 import { AuthManager } from './auth-manager'
 import { setupIpcHandlers } from './ipc-handlers'
@@ -25,7 +25,7 @@ let postGameWindow: BrowserWindow | null = null
 
 const gameDetector = new GameDetector()
 const recorder = new Recorder()
-const riotLocalAPI = new RiotLocalAPI()
+const riotLocalApi = new RiotLocalApi()
 const authManager = new AuthManager()
 let uploadManager: UploadManager
 
@@ -177,60 +177,86 @@ function setupGameDetection(): void {
     // Start recording
     await recorder.start(game)
 
-    // Start polling Riot Local API (Valorant only for now)
-    if (game === 'valorant') {
-      riotLocalAPI.start()
-    }
+    // Start polling Riot Local API
+    riotLocalApi.start(game)
   })
 
   gameDetector.on('game-stopped', async (game: string) => {
     console.log(`[GameDetector] ${game} stopped`)
     tray?.setToolTip('UpForge — Uploading...')
 
-    // Stop recording and local API polling
-    const videoPath = await recorder.stop()
-    const timeline = riotLocalAPI.stop()
+    // Stop Riot API polling, get timeline
+    const timeline = riotLocalApi.stop()
 
-    // Show post-game window
+    // Stop recording
+    await recorder.stop()
+
+    // Open post-game window
     postGameWindow = createPostGameWindow()
-    postGameWindow.webContents.once('did-finish-load', () => {
-      postGameWindow?.webContents.send('post-game:upload-start', {
-        game,
-        map: timeline?.gameData?.map || null,
-        agent: timeline?.activePlayer?.championName || null
-      })
+    postGameWindow.webContents.once('did-finish-load', async () => {
+      try {
+        const user = authManager.getUser()
+        const map = timeline?.map ?? null
+        const agent = timeline?.agent ?? null
+
+        postGameWindow?.webContents.send('post-game:upload-start', { game, map, agent })
+
+        const videoPath = recorder.getLastRecordingPath()
+        if (!videoPath) throw new Error('No recording available')
+
+        // Upload with progress
+        const result = await uploadManager.upload({
+          videoPath,
+          riotName: user?.riot_name ?? '',
+          riotTag: user?.riot_tag ?? '',
+          game,
+          map,
+          agent,
+          timeline,
+          onProgress: (pct) => {
+            postGameWindow?.webContents.send('post-game:upload-progress', pct)
+          }
+        })
+
+        postGameWindow?.webContents.send('post-game:upload-complete', { jobId: result.job_id })
+        tray?.setToolTip('UpForge — Analysing...')
+
+        // Poll for analysis result (up to 10 minutes)
+        const startTime = Date.now()
+        const pollTimer = setInterval(async () => {
+          try {
+            const status = await uploadManager.pollStatus(result.job_id)
+            if (status.status === 'completed' && status.result) {
+              clearInterval(pollTimer)
+              postGameWindow?.webContents.send('post-game:analysis-ready', {
+                overall_score: (status.result as Record<string, unknown>).overall_score,
+                analysis_id: (status.result as Record<string, unknown>).analysis_id,
+                top_issue: (status.result as Record<string, unknown>).top_issue
+              })
+              mainWindow?.webContents.send('dashboard:refresh')
+              tray?.setToolTip('UpForge — Valorant AI Coaching')
+              new Notification({
+                title: 'UpForge — Analysis Ready',
+                body: `Your ${game} coaching analysis is ready to view.`
+              }).show()
+            } else if (status.status === 'failed') {
+              clearInterval(pollTimer)
+              postGameWindow?.webContents.send('post-game:upload-error', 'Analysis failed. Please try again.')
+              tray?.setToolTip('UpForge — Valorant AI Coaching')
+            } else if (Date.now() - startTime > 600_000) {
+              clearInterval(pollTimer)
+              postGameWindow?.webContents.send('post-game:upload-error', 'Analysis timed out.')
+              tray?.setToolTip('UpForge — Valorant AI Coaching')
+            }
+          } catch { /* ignore poll errors */ }
+        }, 15_000)
+
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : 'Upload failed'
+        postGameWindow?.webContents.send('post-game:upload-error', msg)
+        tray?.setToolTip('UpForge — Valorant AI Coaching')
+      }
     })
-
-    // Trigger upload
-    if (videoPath) {
-      await uploadManager.upload({
-        game,
-        videoPath,
-        timeline,
-        onProgress: (pct: number) => {
-          postGameWindow?.webContents.send('post-game:upload-progress', pct)
-        },
-        onComplete: (jobId: string) => {
-          postGameWindow?.webContents.send('post-game:upload-complete', { jobId })
-          tray?.setToolTip('UpForge — Analysing...')
-          // Poll for analysis completion
-          uploadManager.pollJobStatus(jobId, (result) => {
-            postGameWindow?.webContents.send('post-game:analysis-ready', result)
-            mainWindow?.webContents.send('dashboard:refresh')
-            tray?.setToolTip('UpForge — Valorant AI Coaching')
-
-            new Notification({
-              title: 'UpForge — Analysis Ready',
-              body: `Your ${game} coaching analysis is ready to view.`
-            }).show()
-          })
-        },
-        onError: (err: string) => {
-          postGameWindow?.webContents.send('post-game:upload-error', err)
-          tray?.setToolTip('UpForge — Valorant AI Coaching')
-        }
-      })
-    }
   })
 
   gameDetector.start()
@@ -250,7 +276,20 @@ app.whenReady().then(async () => {
 
   createTray()
   setupGameDetection()
-  setupIpcHandlers(ipcMain, authManager, recorder, gameDetector)
+  setupIpcHandlers(ipcMain, authManager, recorder, gameDetector, () => {
+    postGameWindow = createPostGameWindow()
+    postGameWindow.webContents.once('did-finish-load', () => {
+      postGameWindow?.webContents.send('post-game:upload-start', { game: 'valorant', map: 'Bind', agent: 'Jett' })
+      setTimeout(() => postGameWindow?.webContents.send('post-game:upload-progress', 45), 800)
+      setTimeout(() => postGameWindow?.webContents.send('post-game:upload-progress', 100), 1600)
+      setTimeout(() => postGameWindow?.webContents.send('post-game:upload-complete', {}), 2000)
+      setTimeout(() => postGameWindow?.webContents.send('post-game:analysis-ready', {
+        overall_score: 72,
+        analysis_id: 999,
+        top_issue: 'Positioning during post-plant — you were caught in the open on 4 of 6 clutch attempts.'
+      }), 5500)
+    })
+  })
 
   // Start auto-updater in production
   if (!is.dev) {

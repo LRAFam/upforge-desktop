@@ -8,7 +8,8 @@ export function setupIpcHandlers(
   ipcMain: IpcMain,
   auth: AuthManager,
   recorder: Recorder,
-  gameDetector: GameDetector
+  gameDetector: GameDetector,
+  openPostGameFn?: () => void
 ): void {
   // Auth
   ipcMain.handle('auth:login', async (_e, { email, password }) => {
@@ -55,5 +56,9 @@ export function setupIpcHandlers(
   ipcMain.handle('window:close', (e) => {
     const win = BrowserWindow.fromWebContents(e.sender)
     win?.hide()
+  })
+
+  ipcMain.handle('window:open-post-game', () => {
+    if (openPostGameFn) openPostGameFn()
   })
 }

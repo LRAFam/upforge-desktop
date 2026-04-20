@@ -63,6 +63,20 @@
     <main class="flex-1 overflow-y-auto mt-1">
       <RouterView />
     </main>
+
+    <!-- Dev toolbar (dev mode only, always visible) -->
+    <div v-if="isDev" class="flex items-center gap-2 px-3 py-1.5 border-t border-yellow-500/20 bg-yellow-500/[0.03] flex-shrink-0">
+      <span class="text-[10px] text-yellow-500/60 font-mono uppercase tracking-wider">Dev</span>
+      <button
+        class="px-2 py-0.5 text-[10px] text-yellow-400/80 hover:text-yellow-300 bg-yellow-500/10 hover:bg-yellow-500/20 rounded border border-yellow-500/20 transition-colors"
+        @click="simulateGame"
+      >Simulate Valorant</button>
+      <button
+        class="px-2 py-0.5 text-[10px] text-yellow-400/80 hover:text-yellow-300 bg-yellow-500/10 hover:bg-yellow-500/20 rounded border border-yellow-500/20 transition-colors"
+        @click="openPostGame"
+      >Post-game UI</button>
+      <span v-if="simStatus" class="text-[10px] text-yellow-500/50 ml-1">{{ simStatus }}</span>
+    </div>
   </div>
 </template>
 
@@ -74,6 +88,8 @@ const route = useRoute()
 
 const isMac = navigator.platform.toUpperCase().includes('MAC')
 const status = ref({ recording: false, currentGame: null as string | null })
+const isDev = ref(false)
+const simStatus = ref('')
 
 const showNav = computed(() =>
   !route.path.startsWith('/post-game') && route.path !== '/login'
@@ -87,9 +103,21 @@ const navLinks = [
 onMounted(async () => {
   const s = await window.api.app.getStatus()
   status.value = s
+  isDev.value = (s as Record<string, unknown>).isDev as boolean
   setInterval(async () => {
     const s = await window.api.app.getStatus()
     status.value = s
   }, 5000)
 })
+
+async function simulateGame() {
+  simStatus.value = 'Simulating...'
+  await window.api.dev.simulateGame('valorant', 8000)
+  simStatus.value = 'Done'
+  setTimeout(() => simStatus.value = '', 3000)
+}
+
+function openPostGame() {
+  window.api.window.openPostGame?.()
+}
 </script>

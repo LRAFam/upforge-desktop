@@ -18,7 +18,8 @@ const api = {
   },
   window: {
     minimize: () => ipcRenderer.invoke('window:minimize'),
-    close: () => ipcRenderer.invoke('window:close')
+    close: () => ipcRenderer.invoke('window:close'),
+    openPostGame: () => ipcRenderer.invoke('window:open-post-game')
   },
   on: (channel: string, callback: (...args: unknown[]) => void) => {
     const allowed = [

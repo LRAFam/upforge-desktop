@@ -1,84 +1,96 @@
-import axios from 'axios'
+import https from 'https'
 
-interface GameEvent {
+export interface GameEvent {
   EventID: number
   EventName: string
   EventTime: number
 }
 
-interface RiotSnapshot {
-  activePlayer: Record<string, unknown> | null
-  gameData: Record<string, unknown> | null
+export interface MatchTimeline {
+  game: string
+  map: string | null
+  agent: string | null
   events: GameEvent[]
-  capturedAt: number
+  startTime: number
+  endTime: number | null
 }
 
-export class RiotLocalAPI {
-  private _polling = false
-  private _interval: NodeJS.Timeout | null = null
-  private _events: GameEvent[] = []
-  private _lastSnapshot: RiotSnapshot | null = null
-  private _seenEventIds = new Set<number>()
+export class RiotLocalApi {
+  private pollInterval: ReturnType<typeof setInterval> | null = null
+  private timeline: MatchTimeline | null = null
+  private agent = new https.Agent({ rejectUnauthorized: false })
 
-  private readonly BASE_URL = 'https://127.0.0.1:2999'
-  private readonly POLL_INTERVAL_MS = 5000
-
-  start(): void {
-    if (this._polling) return
-    this._polling = true
-    this._events = []
-    this._seenEventIds = new Set()
-    this._lastSnapshot = null
-
-    this._interval = setInterval(() => this._poll(), this.POLL_INTERVAL_MS)
-    console.log('[RiotLocalAPI] Started polling localhost:2999')
-  }
-
-  stop(): RiotSnapshot | null {
-    this._polling = false
-    if (this._interval) {
-      clearInterval(this._interval)
-      this._interval = null
+  start(game: string): void {
+    this.timeline = {
+      game,
+      map: null,
+      agent: null,
+      events: [],
+      startTime: Date.now(),
+      endTime: null
     }
-    console.log(`[RiotLocalAPI] Stopped. Captured ${this._events.length} events.`)
-    return this._lastSnapshot
+    this._pollGameData()
+    this.pollInterval = setInterval(() => this._pollGameData(), 10_000)
+    console.log(`[RiotLocalApi] Started polling for ${game}`)
   }
 
-  private async _poll(): Promise<void> {
+  stop(): MatchTimeline | null {
+    if (this.pollInterval) {
+      clearInterval(this.pollInterval)
+      this.pollInterval = null
+    }
+    if (this.timeline) {
+      this.timeline.endTime = Date.now()
+    }
+    const result = this.timeline
+    this.timeline = null
+    console.log(`[RiotLocalApi] Stopped. Captured ${result?.events.length ?? 0} events.`)
+    return result
+  }
+
+  private async _pollGameData(): Promise<void> {
     try {
-      const client = axios.create({
-        baseURL: this.BASE_URL,
-        timeout: 3000,
-        // Riot Local API uses a self-signed cert
-        httpsAgent: new (require('https').Agent)({ rejectUnauthorized: false })
-      })
+      const data = await this._fetch('https://127.0.0.1:2999/liveclientdata/allgamedata')
+      if (!this.timeline) return
 
-      const [allDataRes, eventsRes] = await Promise.allSettled([
-        client.get('/liveclientdata/allgamedata'),
-        client.get('/liveclientdata/eventdata')
-      ])
+      // Extract map and agent on first poll
+      if (!this.timeline.map && data.gameData?.mapName) {
+        this.timeline.map = data.gameData.mapName as string
+      }
+      if (!this.timeline.agent && data.activePlayer?.championName) {
+        this.timeline.agent = data.activePlayer.championName as string
+      }
 
-      const allData = allDataRes.status === 'fulfilled' ? allDataRes.value.data : null
-      const eventsData = eventsRes.status === 'fulfilled' ? eventsRes.value.data : null
-
-      // Collect new events (deduplicated by EventID)
-      if (eventsData?.Events) {
-        for (const event of eventsData.Events as GameEvent[]) {
-          if (!this._seenEventIds.has(event.EventID)) {
-            this._seenEventIds.add(event.EventID)
-            this._events.push(event)
+      // Collect new events
+      if (Array.isArray(data.events?.Events)) {
+        const existingIds = new Set(this.timeline.events.map((e: GameEvent) => e.EventID))
+        for (const event of data.events.Events) {
+          if (!existingIds.has(event.EventID)) {
+            this.timeline.events.push({
+              EventID: event.EventID,
+              EventName: event.EventName,
+              EventTime: event.EventTime
+            })
           }
         }
       }
-
-      this._lastSnapshot = {
-        activePlayer: allData?.activePlayer || null,
-        gameData: allData?.gameData || null,
-        events: [...this._events],
-        capturedAt: Date.now()
-      }
     } catch {
-      // Riot Local API not available — game may not be fully loaded yet
+      // Game not running yet or between rounds — silently ignore
     }
+  }
+
+  private _fetch(url: string): Promise<Record<string, unknown> & { gameData?: Record<string, unknown>; activePlayer?: Record<string, unknown>; events?: { Events: GameEvent[] } }> {
+    return new Promise((resolve, reject) => {
+      const req = https.get(url, { agent: this.agent }, (res) => {
+        let body = ''
+        res.on('data', (chunk) => body += chunk)
+        res.on('end', () => {
+          try { resolve(JSON.parse(body)) }
+          catch { reject(new Error('Invalid JSON')) }
+        })
+      })
+      req.on('error', reject)
+      req.setTimeout(5000, () => { req.destroy(); reject(new Error('Timeout')) })
+    })
   }
 }
