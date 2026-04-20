@@ -47,9 +47,9 @@ function createMainWindow(): BrowserWindow {
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
       contextIsolation: true,
-      nodeIntegration: false
+      nodeIntegration: false,
+      sandbox: false
     },
-    icon: join(__dirname, '../../resources/icon.png')
   })
 
   win.on('ready-to-show', () => win.show())
@@ -87,7 +87,8 @@ function createPostGameWindow(): BrowserWindow {
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
       contextIsolation: true,
-      nodeIntegration: false
+      nodeIntegration: false,
+      sandbox: false
     }
   })
 
