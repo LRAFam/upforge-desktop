@@ -17,7 +17,15 @@ export function setupIpcHandlers(
 ): void {
   // Auth
   ipcMain.handle('auth:login', async (_e, { email, password }) => {
-    return auth.login(email, password)
+    log.info('[IPC] auth:login invoked')
+    try {
+      const result = await auth.login(email, password)
+      log.info('[IPC] auth:login result:', result.ok, result.error)
+      return result
+    } catch (err) {
+      log.error('[IPC] auth:login handler threw:', err)
+      throw err
+    }
   })
 
   ipcMain.handle('auth:logout', async () => {

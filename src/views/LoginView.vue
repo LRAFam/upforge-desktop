@@ -102,8 +102,9 @@ async function handleLogin() {
     } else {
       error.value = (result as { error?: string }).error || 'Login failed. Check your credentials.'
     }
-  } catch {
-    error.value = 'An unexpected error occurred. Please try again.'
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err)
+    error.value = `Error: ${msg}`
   } finally {
     loading.value = false
   }

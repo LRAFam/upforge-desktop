@@ -2,6 +2,7 @@ import axios, { AxiosInstance } from 'axios'
 import { app, safeStorage } from 'electron'
 import { readFileSync, writeFileSync, unlinkSync } from 'fs'
 import { join } from 'path'
+import log from 'electron-log'
 
 const API_BASE = 'https://api.upforge.gg'
 
@@ -124,19 +125,33 @@ export class AuthManager {
   }
 
   async login(email: string, password: string): Promise<{ ok: boolean; error?: string }> {
+    log.info('[Auth] login() called for:', email)
     try {
+      log.info('[Auth] posting to /api/login')
       const res = await this._api.post('/api/login', { email, password })
+      log.info('[Auth] /api/login response status:', res.status)
       const { token, user } = res.data
+
+      if (!token) {
+        log.warn('[Auth] No token in response:', JSON.stringify(res.data))
+        return { ok: false, error: 'Server did not return a token' }
+      }
 
       this._token = token
       this._user = user
       this._api.defaults.headers.common['Authorization'] = `Bearer ${token}`
 
-      await saveToken(token)
+      saveToken(token)
+      log.info('[Auth] login succeeded for user:', user?.name)
       return { ok: true }
     } catch (err: unknown) {
-      const message = (err as { response?: { data?: { message?: string } } })
-        ?.response?.data?.message || 'Login failed'
+      const axiosErr = err as { code?: string; message?: string; response?: { status?: number; data?: { message?: string } } }
+      log.error('[Auth] login error:', axiosErr.code, axiosErr.message, axiosErr.response?.status, JSON.stringify(axiosErr.response?.data))
+      const message = axiosErr.response?.data?.message
+        || (axiosErr.code === 'ECONNABORTED' ? 'Request timed out — check your internet connection' : null)
+        || (axiosErr.code === 'ENOTFOUND' ? 'Cannot reach UpForge servers — check your internet connection' : null)
+        || axiosErr.message
+        || 'Login failed'
       return { ok: false, error: message }
     }
   }
