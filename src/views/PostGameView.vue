@@ -1,109 +1,118 @@
 <template>
-  <div class="flex flex-col items-center justify-center h-full px-6 py-6">
-    <!-- Uploading state -->
-    <div v-if="state === 'uploading'" class="w-full space-y-5 text-center">
-      <div class="w-12 h-12 mx-auto bg-red-500/20 rounded-full flex items-center justify-center">
-        <svg class="w-6 h-6 text-red-400 animate-spin" fill="none" viewBox="0 0 24 24">
-          <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" />
-          <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-        </svg>
-      </div>
-      <div>
-        <p class="text-sm font-semibold">Uploading your game</p>
-        <p class="text-xs text-gray-500 mt-1">
-          {{ gameInfo.map || 'Unknown Map' }} &middot; {{ gameInfo.agent || 'Unknown Agent' }}
-        </p>
-      </div>
-      <div class="w-full bg-white/[0.06] rounded-full h-1.5">
-        <div
-          class="bg-gradient-to-r from-red-500 to-orange-500 h-1.5 rounded-full transition-all duration-300"
-          :style="{ width: `${uploadProgress}%` }"
-        />
-      </div>
-      <p class="text-xs text-gray-500">{{ uploadProgress }}%</p>
+  <div class="flex flex-col h-full bg-[#0c0c0c] relative overflow-hidden">
+    <!-- Subtle glow bg -->
+    <div class="absolute inset-0 pointer-events-none">
+      <div
+        :class="['absolute top-0 left-1/2 -translate-x-1/2 w-48 h-24 rounded-full blur-3xl transition-all duration-700 opacity-60',
+          state === 'ready' ? 'bg-green-500/10' : state === 'error' ? 'bg-red-500/10' : 'bg-red-500/[0.07]']"
+      />
     </div>
 
-    <!-- Analysing state -->
-    <div v-else-if="state === 'analysing'" class="w-full space-y-5 text-center">
-      <div class="w-12 h-12 mx-auto bg-orange-500/20 rounded-full flex items-center justify-center">
-        <svg class="w-6 h-6 text-orange-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-            d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
-        </svg>
-      </div>
-      <div>
-        <p class="text-sm font-semibold">AI Coaching Analysis</p>
-        <p class="text-xs text-gray-500 mt-1">Analysing your gameplay... ~3 mins</p>
-      </div>
-      <div class="flex items-center justify-center gap-1.5">
-        <span v-for="i in 3" :key="i"
-          class="w-1.5 h-1.5 rounded-full bg-orange-500 animate-bounce"
-          :style="{ animationDelay: `${i * 0.15}s` }" />
-      </div>
-    </div>
+    <div class="flex-1 flex flex-col items-center justify-center px-5 py-4 relative z-10">
 
-    <!-- Results ready state -->
-    <div v-else-if="state === 'ready'" class="w-full space-y-4">
-      <div class="flex items-center gap-3">
-        <div class="w-10 h-10 bg-green-500/20 rounded-full flex items-center justify-center flex-shrink-0">
-          <svg class="w-5 h-5 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+      <!-- Uploading -->
+      <div v-if="state === 'uploading'" class="w-full space-y-4 text-center">
+        <div class="w-11 h-11 mx-auto rounded-full bg-red-500/10 border border-red-500/20 flex items-center justify-center">
+          <svg class="w-5 h-5 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/>
           </svg>
         </div>
         <div>
-          <p class="text-sm font-semibold">Analysis Ready</p>
-          <p class="text-xs text-gray-500">{{ gameInfo.map }} &middot; {{ gameInfo.agent }}</p>
+          <p class="text-sm font-semibold">Uploading replay</p>
+          <p class="text-[11px] text-gray-500 mt-0.5">
+            {{ gameInfo.agent || 'Valorant' }}<span v-if="gameInfo.map"> &middot; {{ gameInfo.map }}</span>
+          </p>
+        </div>
+        <div class="w-full space-y-1.5">
+          <div class="w-full h-1 bg-white/[0.06] rounded-full overflow-hidden">
+            <div
+              class="h-full bg-gradient-to-r from-red-500 to-orange-500 rounded-full transition-all duration-300"
+              :style="{ width: `${uploadProgress}%` }"
+            />
+          </div>
+          <p class="text-[10px] text-gray-600 text-right">{{ uploadProgress }}%</p>
         </div>
       </div>
 
-      <!-- Score -->
-      <div v-if="result?.overall_score" class="px-4 py-3 bg-white/[0.03] border border-white/[0.06] rounded-xl">
-        <div class="flex items-center justify-between mb-1">
-          <span class="text-xs text-gray-400">Overall Score</span>
-          <span
-            class="text-lg font-bold"
-            :class="scoreClass(result.overall_score)"
-          >{{ result.overall_score }}/100</span>
+      <!-- Analysing -->
+      <div v-else-if="state === 'analysing'" class="w-full space-y-4 text-center">
+        <div class="w-11 h-11 mx-auto rounded-full bg-orange-500/10 border border-orange-500/20 flex items-center justify-center">
+          <svg class="w-5 h-5 text-orange-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"/>
+          </svg>
         </div>
-        <div class="w-full bg-white/[0.06] rounded-full h-1">
-          <div
-            class="h-1 rounded-full transition-all duration-700"
-            :class="scoreBarClass(result.overall_score)"
-            :style="{ width: `${result.overall_score}%` }"
-          />
+        <div>
+          <p class="text-sm font-semibold">Analysing gameplay</p>
+          <p class="text-[11px] text-gray-500 mt-0.5">AI is reviewing your session &middot; ~3 min</p>
+        </div>
+        <div class="flex items-center justify-center gap-1.5">
+          <span v-for="i in 3" :key="i" class="w-1.5 h-1.5 rounded-full bg-orange-500/60 animate-bounce" :style="{ animationDelay: `${(i - 1) * 0.18}s` }" />
         </div>
       </div>
 
-      <!-- Top issue -->
-      <div v-if="topIssue" class="px-3 py-2.5 bg-red-500/10 border border-red-500/20 rounded-xl">
-        <p class="text-xs text-red-400 font-medium">Top Issue</p>
-        <p class="text-xs text-gray-300 mt-0.5">{{ topIssue }}</p>
+      <!-- Ready -->
+      <div v-else-if="state === 'ready'" class="w-full space-y-3">
+        <div class="flex items-center gap-3">
+          <div class="w-9 h-9 rounded-full bg-green-500/10 border border-green-500/20 flex items-center justify-center flex-shrink-0">
+            <svg class="w-4.5 h-4.5 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+            </svg>
+          </div>
+          <div>
+            <p class="text-sm font-semibold">Analysis ready</p>
+            <p class="text-[11px] text-gray-500">
+              {{ gameInfo.agent || 'Valorant' }}<span v-if="gameInfo.map"> &middot; {{ gameInfo.map }}</span>
+            </p>
+          </div>
+        </div>
+
+        <!-- Score bar -->
+        <div v-if="result?.overall_score" class="px-3 py-2.5 bg-white/[0.02] border border-white/[0.06] rounded-xl">
+          <div class="flex items-baseline justify-between mb-1.5">
+            <span class="text-[10px] text-gray-500 uppercase tracking-wider">Overall Score</span>
+            <span class="text-xl font-bold tabular-nums" :class="scoreClass(result.overall_score)">
+              {{ result.overall_score }}<span class="text-xs text-gray-600 font-normal">/100</span>
+            </span>
+          </div>
+          <div class="w-full h-1 bg-white/[0.06] rounded-full overflow-hidden">
+            <div class="h-full rounded-full transition-all duration-1000" :class="scoreBarClass(result.overall_score)" :style="{ width: `${result.overall_score}%` }" />
+          </div>
+        </div>
+
+        <!-- Top issue -->
+        <div v-if="topIssue" class="flex items-start gap-2 px-3 py-2 bg-red-500/[0.07] border border-red-500/15 rounded-xl">
+          <svg class="w-3.5 h-3.5 text-red-400 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
+          </svg>
+          <p class="text-[11px] text-gray-300 leading-relaxed">{{ topIssue }}</p>
+        </div>
+
+        <div class="flex gap-2 pt-1">
+          <button
+            class="flex-1 py-2 text-xs font-semibold bg-gradient-to-r from-red-500 to-orange-600 hover:from-red-600 hover:to-orange-700 text-white rounded-lg transition-all shadow-sm shadow-red-500/20"
+            @click="viewFullAnalysis"
+          >View Full Analysis</button>
+          <button
+            class="px-3 py-2 text-[11px] text-gray-500 hover:text-gray-300 bg-white/[0.03] hover:bg-white/[0.06] border border-white/[0.06] rounded-lg transition-colors"
+            @click="dismiss"
+          >Dismiss</button>
+        </div>
       </div>
 
-      <div class="flex gap-2">
-        <button
-          class="flex-1 py-2 text-xs font-semibold bg-gradient-to-r from-red-500 to-orange-600 hover:from-red-600 hover:to-orange-700 text-white rounded-lg transition-colors"
-          @click="viewFullAnalysis"
-        >
-          View Full Analysis
-        </button>
-        <button
-          class="px-3 py-2 text-xs text-gray-400 hover:text-gray-300 bg-white/[0.04] hover:bg-white/[0.06] rounded-lg transition-colors"
-          @click="dismiss"
-        >
-          Dismiss
-        </button>
+      <!-- Error -->
+      <div v-else-if="state === 'error'" class="w-full space-y-3 text-center">
+        <div class="w-11 h-11 mx-auto rounded-full bg-red-500/10 border border-red-500/20 flex items-center justify-center">
+          <svg class="w-5 h-5 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+          </svg>
+        </div>
+        <div>
+          <p class="text-sm font-semibold text-red-400">Upload failed</p>
+          <p class="text-[11px] text-gray-500 mt-1">{{ errorMessage }}</p>
+        </div>
+        <button class="text-[11px] text-gray-500 hover:text-gray-300 underline transition-colors" @click="dismiss">Dismiss</button>
       </div>
-    </div>
 
-    <!-- Error state -->
-    <div v-else-if="state === 'error'" class="w-full space-y-4 text-center">
-      <p class="text-sm font-medium text-red-400">Upload Failed</p>
-      <p class="text-xs text-gray-500">{{ errorMessage }}</p>
-      <button
-        class="text-xs text-gray-400 hover:text-gray-300 underline"
-        @click="dismiss"
-      >Dismiss</button>
     </div>
   </div>
 </template>
@@ -121,7 +130,6 @@ const errorMessage = ref('')
 
 const topIssue = computed(() => {
   if (!result.value) return null
-  // Surface from result if available
   return (result.value as Record<string, unknown>).top_issue as string | null
 })
 
@@ -130,24 +138,35 @@ onMounted(() => {
     gameInfo.value = { map: data.map, agent: data.agent }
     state.value = 'uploading'
   })
-
-  window.api.on('post-game:upload-progress', (pct: number) => {
-    uploadProgress.value = pct
-  })
-
-  window.api.on('post-game:upload-complete', () => {
-    state.value = 'analysing'
-  })
-
+  window.api.on('post-game:upload-progress', (pct: number) => { uploadProgress.value = pct })
+  window.api.on('post-game:upload-complete', () => { state.value = 'analysing' })
   window.api.on('post-game:analysis-ready', (r: { overall_score: number; analysis_id: number }) => {
     result.value = r
     state.value = 'ready'
   })
-
   window.api.on('post-game:upload-error', (err: string) => {
     errorMessage.value = err
     state.value = 'error'
   })
+
+  // Dev preview: show a mock ready state
+  if (window.location.hash.includes('post-game-preview')) {
+    setTimeout(() => {
+      gameInfo.value = { map: 'Bind', agent: 'Jett' }
+      state.value = 'uploading'
+      let p = 0
+      const iv = setInterval(() => {
+        p += 12
+        uploadProgress.value = Math.min(p, 100)
+        if (p >= 100) { clearInterval(iv); setTimeout(() => { state.value = 'analysing' }, 600) }
+      }, 200)
+      setTimeout(() => {
+        result.value = { overall_score: 72, analysis_id: 999 }
+        ;(result.value as Record<string, unknown>).top_issue = 'Positioning during post-plant — you were caught in the open on 4 of 6 clutch attempts.'
+        state.value = 'ready'
+      }, 5000)
+    }, 300)
+  }
 })
 
 function viewFullAnalysis() {
@@ -157,19 +176,12 @@ function viewFullAnalysis() {
   dismiss()
 }
 
-function dismiss() {
-  window.close()
-}
+function dismiss() { window.close() }
 
 function scoreClass(score: number): string {
-  if (score >= 80) return 'text-green-400'
-  if (score >= 60) return 'text-yellow-400'
-  return 'text-red-400'
+  return score >= 80 ? 'text-green-400' : score >= 60 ? 'text-yellow-400' : 'text-red-400'
 }
-
 function scoreBarClass(score: number): string {
-  if (score >= 80) return 'bg-green-500'
-  if (score >= 60) return 'bg-yellow-500'
-  return 'bg-red-500'
+  return score >= 80 ? 'bg-green-500' : score >= 60 ? 'bg-yellow-500' : 'bg-red-500'
 }
 </script>

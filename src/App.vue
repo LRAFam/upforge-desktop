@@ -1,60 +1,66 @@
 <template>
-  <div class="h-screen bg-[#0a0a0a] text-white flex flex-col overflow-hidden">
-    <!-- Custom title bar -->
+  <div class="h-screen bg-[#0a0a0a] text-white flex flex-col overflow-hidden select-none">
+    <!-- Title bar -->
     <div
-      class="drag-region flex items-center justify-between px-4 py-3 border-b border-white/[0.06] flex-shrink-0"
-      :style="isMac ? 'padding-left: 80px' : ''"
+      class="drag-region flex items-center justify-between flex-shrink-0 px-3 border-b border-white/[0.05]"
+      :style="isMac ? 'height:40px; padding-left:80px' : 'height:40px'"
     >
       <div class="flex items-center gap-2">
-        <div class="w-6 h-6 bg-gradient-to-br from-red-500 to-orange-600 rounded-md" />
-        <span class="text-sm font-semibold">UpForge</span>
-        <span v-if="status.recording" class="flex items-center gap-1 text-xs text-red-400 font-medium">
-          <span class="w-1.5 h-1.5 rounded-full bg-red-400 animate-pulse" />
-          Recording
+        <div class="w-5 h-5 bg-gradient-to-br from-red-500 to-orange-600 rounded flex items-center justify-center flex-shrink-0">
+          <svg class="w-3 h-3 text-white" fill="currentColor" viewBox="0 0 24 24">
+            <path d="M13 3L4 14h7v7l9-11h-7z"/>
+          </svg>
+        </div>
+        <span class="text-xs font-semibold tracking-wide">UpForge</span>
+        <span v-if="status.recording" class="flex items-center gap-1 ml-1">
+          <span class="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" />
+          <span class="text-[10px] text-red-400 font-medium">REC</span>
         </span>
       </div>
-      <div v-if="!isMac" class="flex items-center gap-1">
+
+      <!-- Windows-only window controls -->
+      <div v-if="!isMac" class="flex items-center -webkit-no-drag">
         <button
-          class="w-7 h-7 flex items-center justify-center rounded hover:bg-white/[0.06] transition-colors text-gray-400 hover:text-white"
+          class="w-10 h-10 flex items-center justify-center text-gray-500 hover:text-white hover:bg-white/[0.06] transition-colors"
           @click="window.api.window.minimize()"
         >
-          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 12H4" />
+          <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-width="2.5" d="M5 12h14"/>
           </svg>
         </button>
         <button
-          class="w-7 h-7 flex items-center justify-center rounded hover:bg-white/[0.06] transition-colors text-gray-400 hover:text-white"
+          class="w-10 h-10 flex items-center justify-center text-gray-500 hover:text-white hover:bg-red-500/80 transition-colors"
           @click="window.api.window.close()"
         >
-          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+          <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-width="2.5" d="M6 18L18 6M6 6l12 12"/>
           </svg>
         </button>
       </div>
     </div>
 
-    <!-- Navigation (hidden on post-game route) -->
+    <!-- Navigation (hidden on post-game / login) -->
     <nav
       v-if="showNav"
-      class="flex items-center gap-1 px-4 pt-3 pb-0 flex-shrink-0"
+      class="flex items-center gap-0.5 px-3 pt-2 pb-0 flex-shrink-0"
     >
       <RouterLink
         v-for="link in navLinks"
         :key="link.to"
         :to="link.to"
-        class="px-3 py-1.5 text-xs font-medium rounded-lg transition-colors"
+        class="px-3 py-1.5 text-xs font-medium rounded-md transition-all duration-150"
         :class="
           $route.path === link.to
-            ? 'bg-white/[0.08] text-white'
-            : 'text-gray-400 hover:text-white hover:bg-white/[0.04]'
+            ? 'text-white bg-white/[0.08]'
+            : 'text-gray-500 hover:text-gray-300 hover:bg-white/[0.04]'
         "
       >
         {{ link.label }}
       </RouterLink>
     </nav>
 
-    <!-- Main content -->
-    <main class="flex-1 overflow-y-auto">
+    <!-- Content -->
+    <main class="flex-1 overflow-y-auto mt-1">
       <RouterView />
     </main>
   </div>
@@ -67,10 +73,11 @@ import { useRoute } from 'vue-router'
 const route = useRoute()
 
 const isMac = navigator.platform.toUpperCase().includes('MAC')
-
 const status = ref({ recording: false, currentGame: null as string | null })
 
-const showNav = computed(() => route.path !== '/post-game' && route.path !== '/login')
+const showNav = computed(() =>
+  !route.path.startsWith('/post-game') && route.path !== '/login'
+)
 
 const navLinks = [
   { to: '/dashboard', label: 'Dashboard' },
@@ -80,8 +87,6 @@ const navLinks = [
 onMounted(async () => {
   const s = await window.api.app.getStatus()
   status.value = s
-
-  // Refresh recording state every 5s
   setInterval(async () => {
     const s = await window.api.app.getStatus()
     status.value = s
