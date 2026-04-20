@@ -146,6 +146,9 @@
           <button class="text-[10px] text-gray-600 hover:text-gray-400 transition-colors" @click="openSite">upforge.gg</button>
         </div>
       </div>
+      <Transition name="fade">
+        <p v-if="updateMessage" class="text-[10px] text-gray-500 px-0.5">{{ updateMessage }}</p>
+      </Transition>
     </div>
 
     <!-- Saved toast -->
@@ -181,6 +184,7 @@ const user = ref<UserWithUsage | null>(null)
 const appVersion = ref('0.1.0')
 const isDev = ref(false)
 const checkingForUpdates = ref(false)
+const updateMessage = ref('')
 const savedVisible = ref(false)
 let saveTimer: ReturnType<typeof setTimeout> | null = null
 let toastTimer: ReturnType<typeof setTimeout> | null = null
@@ -253,10 +257,15 @@ async function handleLogout(): Promise<void> {
 
 async function checkForUpdates(): Promise<void> {
   checkingForUpdates.value = true
+  updateMessage.value = ''
   try {
-    await window.api.updater.check()
+    const result = await window.api.updater.check() as { status: string; message: string } | undefined
+    updateMessage.value = result?.message ?? 'Check complete'
+  } catch {
+    updateMessage.value = 'Could not check for updates'
   } finally {
-    setTimeout(() => { checkingForUpdates.value = false }, 2000)
+    checkingForUpdates.value = false
+    setTimeout(() => { updateMessage.value = '' }, 4000)
   }
 }
 

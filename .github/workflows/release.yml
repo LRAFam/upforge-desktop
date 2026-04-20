@@ -5,6 +5,8 @@ on:
   push:
     branches:
       - main
+    tags:
+      - 'v*'
 
 jobs:
   build-win:
@@ -25,10 +27,18 @@ jobs:
         env:
           npm_config_msvs_version: "2022"
 
-      - name: Build Windows installer
+      - name: Build & publish Windows release (on tag)
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: npm run build && npx electron-builder --win --publish always
+        env:
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}
+
+      - name: Build Windows installer (dev artifact)
+        if: "!startsWith(github.ref, 'refs/tags/v')"
         run: npm run build && npx electron-builder --win --publish never
 
-      - name: Upload Windows installer
+      - name: Upload Windows artifact
+        if: "!startsWith(github.ref, 'refs/tags/v')"
         uses: actions/upload-artifact@v4
         with:
           name: UpForge-Windows
@@ -48,10 +58,18 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Build Mac installer
+      - name: Build & publish Mac release (on tag)
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: npm run build && npx electron-builder --mac --publish always
+        env:
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}
+
+      - name: Build Mac installer (dev artifact)
+        if: "!startsWith(github.ref, 'refs/tags/v')"
         run: npm run build && npx electron-builder --mac --publish never
 
-      - name: Upload Mac installer
+      - name: Upload Mac artifact
+        if: "!startsWith(github.ref, 'refs/tags/v')"
         uses: actions/upload-artifact@v4
         with:
           name: UpForge-Mac

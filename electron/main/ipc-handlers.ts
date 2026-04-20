@@ -1,5 +1,6 @@
 import { IpcMain, BrowserWindow, app, dialog } from 'electron'
 import { is } from '@electron-toolkit/utils'
+import { autoUpdater } from 'electron-updater'
 import { AuthManager } from './auth-manager'
 import { Recorder } from './recorder'
 import { GameDetector } from './game-detector'
@@ -69,10 +70,14 @@ export function setupIpcHandlers(
   })
 
   // Updater
-  ipcMain.handle('updater:check', () => {
-    if (!is.dev) {
-      const { autoUpdater } = require('electron-updater')
-      autoUpdater.checkForUpdatesAndNotify()
+  ipcMain.handle('updater:check', async () => {
+    if (is.dev) return { status: 'dev', message: 'Updates disabled in dev mode' }
+    try {
+      const result = await autoUpdater.checkForUpdates()
+      if (!result) return { status: 'up-to-date', message: 'You are on the latest version' }
+      return { status: 'checking', message: 'Checking for updates...' }
+    } catch (err) {
+      return { status: 'error', message: 'Could not check for updates' }
     }
   })
 
