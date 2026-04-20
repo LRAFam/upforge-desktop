@@ -3,6 +3,7 @@
     <!-- Custom title bar -->
     <div
       class="drag-region flex items-center justify-between px-4 py-3 border-b border-white/[0.06] flex-shrink-0"
+      :style="isMac ? 'padding-left: 80px' : ''"
     >
       <div class="flex items-center gap-2">
         <div class="w-6 h-6 bg-gradient-to-br from-red-500 to-orange-600 rounded-md" />
@@ -12,7 +13,7 @@
           Recording
         </span>
       </div>
-      <div class="flex items-center gap-1">
+      <div v-if="!isMac" class="flex items-center gap-1">
         <button
           class="w-7 h-7 flex items-center justify-center rounded hover:bg-white/[0.06] transition-colors text-gray-400 hover:text-white"
           @click="window.api.window.minimize()"
@@ -64,6 +65,8 @@ import { ref, computed, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
 
 const route = useRoute()
+
+const isMac = navigator.platform.toUpperCase().includes('MAC')
 
 const status = ref({ recording: false, currentGame: null as string | null })
 
