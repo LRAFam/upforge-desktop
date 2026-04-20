@@ -1,12 +1,14 @@
 import { EventEmitter } from 'events'
-import { is } from '@electron-toolkit/utils'
+import { exec } from 'child_process'
+import { promisify } from 'util'
 
+const execAsync = promisify(exec)
 const IS_WIN = process.platform === 'win32'
 
-// On Windows: real process names. On Mac: not applicable (dev only).
-const GAME_PROCESSES: Record<string, string> = {
-  valorant: 'VALORANT-Win64-Shipping.exe',
-  cs2: 'cs2.exe'
+// Process names to watch per game (Windows only)
+const GAME_PROCESSES: Record<string, string[]> = {
+  valorant: ['VALORANT.exe', 'VALORANT-Win64-Shipping.exe'],
+  cs2: ['cs2.exe']
 }
 
 const POLL_INTERVAL_MS = 5000
@@ -35,9 +37,8 @@ export class GameDetector extends EventEmitter {
     return this._activeGame
   }
 
-  /** Dev-only: simulate a game session for testing on Mac */
+  /** Simulate a game session for testing on non-Windows platforms */
   simulateGame(game = 'valorant', durationMs = 10000): void {
-    if (!is.dev) return
     console.log(`[GameDetector] ⚡ Simulating ${game} session for ${durationMs}ms`)
     this._activeGame = game
     this.emit('game-started', game)
@@ -52,23 +53,34 @@ export class GameDetector extends EventEmitter {
     if (!IS_WIN) return
 
     try {
-      const { default: psList } = await import('ps-list')
-      const processes = await psList()
-      const processNames = new Set(processes.map((p) => p.name))
+      const runningNames = await this._getRunningProcessNames()
 
-      for (const [game, processName] of Object.entries(GAME_PROCESSES)) {
-        const running = processNames.has(processName)
+      for (const [game, processNames] of Object.entries(GAME_PROCESSES)) {
+        const running = processNames.some((name) => runningNames.has(name.toLowerCase()))
 
         if (running && this._activeGame !== game) {
           this._activeGame = game
           this.emit('game-started', game)
+          console.log(`[GameDetector] ${game} started`)
         } else if (!running && this._activeGame === game) {
           this._activeGame = null
           this.emit('game-stopped', game)
+          console.log(`[GameDetector] ${game} stopped`)
         }
       }
     } catch (err) {
       console.error('[GameDetector] Poll error:', err)
     }
+  }
+
+  /** Use Windows tasklist (built-in) to get running process names */
+  private async _getRunningProcessNames(): Promise<Set<string>> {
+    const { stdout } = await execAsync('tasklist /fo csv /nh', { windowsHide: true })
+    const names = new Set<string>()
+    for (const line of stdout.split('\n')) {
+      const match = line.match(/^"([^"]+)"/)
+      if (match) names.add(match[1].toLowerCase())
+    }
+    return names
   }
 }

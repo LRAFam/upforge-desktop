@@ -61,9 +61,9 @@ export function setupIpcHandlers(
     return result.canceled ? null : result.filePaths[0]
   })
 
-  // Dev-only: simulate game session on Mac for testing
+  // Simulate game session — available on non-Windows for testing
   ipcMain.handle('dev:simulate-game', (_e, { game: gameName, durationMs } = {}) => {
-    if (!is.dev) return { error: 'Dev only' }
+    if (process.platform === 'win32' && !is.dev) return { error: 'Simulate not available on Windows production' }
     gameDetector.simulateGame(gameName ?? 'valorant', durationMs ?? 10000)
     return { ok: true }
   })
