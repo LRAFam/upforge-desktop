@@ -14,6 +14,11 @@
         </span>
       </div>
 
+      <!-- User identity (center when not recording) -->
+      <div v-if="riotId && !isMac" class="absolute left-1/2 -translate-x-1/2 flex items-center gap-1 pointer-events-none">
+        <span class="text-[10px] text-gray-500 font-medium">{{ riotId }}</span>
+      </div>
+
       <!-- Windows-only window controls -->
       <div v-if="!isMac" class="flex items-center -webkit-no-drag">
         <button
@@ -87,6 +92,7 @@ const status = ref({ recording: false, currentGame: null as string | null })
 const isDev = ref(false)
 const appVersion = ref(__APP_VERSION__)
 const simStatus = ref('')
+const riotId = ref<string | null>(null)
 
 const showNav = computed(() =>
   !route.path.startsWith('/post-game') && route.path !== '/login' && route.path !== '/welcome'
@@ -103,6 +109,7 @@ onMounted(async () => {
     status.value = s
     isDev.value = (s as Record<string, unknown>).isDev as boolean
     if (s.version) appVersion.value = s.version
+    if (s.user?.riot_name) riotId.value = `${s.user.riot_name}#${s.user.riot_tag}`
   } catch {
     // IPC failed — appVersion stays as compile-time constant
   }
@@ -110,6 +117,7 @@ onMounted(async () => {
     try {
       const s = await window.api.app.getStatus()
       status.value = s
+      if (s.user?.riot_name) riotId.value = `${s.user.riot_name}#${s.user.riot_tag}`
     } catch { /* ignore */ }
   }, 5000)
 })

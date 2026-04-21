@@ -58,6 +58,11 @@
           </span>
           <p v-if="profile.latest_stats.rr != null" class="text-[9px] text-gray-600 mt-px">{{ profile.latest_stats.rr }} RR</p>
         </div>
+        <button class="text-gray-700 hover:text-gray-400 transition-colors flex-shrink-0" @click="refreshProfile">
+          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+          </svg>
+        </button>
         <button class="text-gray-700 hover:text-gray-400 transition-colors flex-shrink-0" @click="openBrowser">
           <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/>
@@ -294,6 +299,20 @@ async function loadAnalyses() {
   } finally {
     analysesLoading.value = false
   }
+}
+
+async function refreshProfile() {
+  profileLoading.value = true
+  try {
+    const prof = await window.api.profile.get()
+    profile.value = prof
+    if (prof?.latest_stats?.player_card_id) {
+      playerCardUrl.value = `https://media.valorant-api.com/playercards/${prof.latest_stats.player_card_id}/smallart.png`
+    }
+  } catch { /* ignore */ } finally {
+    profileLoading.value = false
+  }
+  loadAnalyses()
 }
 
 async function loadPendingRecordings() {

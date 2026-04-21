@@ -129,6 +129,20 @@
             >Change</button>
           </div>
         </div>
+
+        <!-- Storage usage -->
+        <div class="flex items-center justify-between">
+          <div>
+            <p class="text-[11px] text-gray-500">Storage used</p>
+            <p class="text-[10px] text-gray-700 mt-0.5">
+              {{ storageCount === 0 ? 'No recordings saved' : `${storageCount} file${storageCount === 1 ? '' : 's'} · ${formatBytes(storageBytes)}` }}
+            </p>
+          </div>
+          <button
+            class="px-2.5 py-1.5 text-[11px] text-gray-400 hover:text-white bg-white/[0.04] hover:bg-white/[0.08] border border-white/[0.07] rounded-lg transition-colors flex-shrink-0"
+            @click="openRecordingsFolder"
+          >Open folder</button>
+        </div>
       </div>
     </section>
 
@@ -233,6 +247,8 @@ const isDev = ref(false)
 const checkingForUpdates = ref(false)
 const updateMessage = ref('')
 const savedVisible = ref(false)
+const storageBytes = ref(0)
+const storageCount = ref(0)
 let saveTimer: ReturnType<typeof setTimeout> | null = null
 let toastTimer: ReturnType<typeof setTimeout> | null = null
 
@@ -350,6 +366,25 @@ function openHelp(): void {
   window.open('https://upforge.gg/help', '_blank')
 }
 
+function formatBytes(bytes: number): string {
+  if (bytes === 0) return '0 B'
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`
+  if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+  return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`
+}
+
+async function loadStorageUsage(): Promise<void> {
+  try {
+    const usage = await window.api.storage.getUsage()
+    storageBytes.value = usage.bytes
+    storageCount.value = usage.count
+  } catch { /* ignore */ }
+}
+
+function openRecordingsFolder(): void {
+  window.api.storage.openFolder()
+}
+
 onMounted(async () => {
   try {
     const [s, savedSettings] = await Promise.all([
@@ -361,6 +396,7 @@ onMounted(async () => {
     Object.assign(settings, savedSettings)
     // Use getStatus user as base
     if (s.user) user.value = s.user as UserWithUsage | null
+    loadStorageUsage()
   } catch (err) {
     console.error('[Settings] Failed to load status:', err)
     try {

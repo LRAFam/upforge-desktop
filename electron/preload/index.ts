@@ -41,6 +41,10 @@ const api = {
   updater: {
     check: () => ipcRenderer.invoke('updater:check')
   },
+  storage: {
+    getUsage: () => ipcRenderer.invoke('storage:get-usage'),
+    openFolder: () => ipcRenderer.invoke('storage:open-folder')
+  },
   on: (channel: string, callback: (...args: unknown[]) => void) => {
     const allowed = [
       'post-game:upload-start',

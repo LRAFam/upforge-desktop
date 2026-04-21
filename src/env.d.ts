@@ -135,6 +135,10 @@ declare global {
       updater: {
         check: () => Promise<void>
       }
+      storage: {
+        getUsage: () => Promise<{ bytes: number; count: number }>
+        openFolder: () => Promise<void>
+      }
       on: (channel: string, callback: (...args: unknown[]) => void) => void
       off: (channel: string, callback: (...args: unknown[]) => void) => void
     }

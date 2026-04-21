@@ -339,9 +339,13 @@ async function doUploadAndAnalyse(
           })
           mainWindow?.webContents.send('dashboard:refresh')
           tray?.setToolTip('UpForge — Valorant AI Coaching')
+          const score = (status.result as Record<string, unknown>).overall_score as number | undefined
+          const notifAgent = agent ?? 'Valorant'
+          const notifMap = map ? ` on ${map}` : ''
+          const notifScore = score != null ? ` — Score: ${score}/100` : ''
           new Notification({
             title: 'UpForge — Analysis Ready',
-            body: `Your ${game} coaching analysis is ready to view.`
+            body: `${notifAgent}${notifMap}${notifScore}`
           }).show()
         } else if (status.status === 'failed') {
           clearInterval(pollTimer)

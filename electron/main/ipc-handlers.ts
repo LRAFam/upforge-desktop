@@ -1,4 +1,6 @@
-import { IpcMain, BrowserWindow, app, dialog } from 'electron'
+import { IpcMain, BrowserWindow, app, dialog, shell } from 'electron'
+import fs from 'fs'
+import path from 'path'
 import { is } from '@electron-toolkit/utils'
 import { autoUpdater } from 'electron-updater'
 import log from 'electron-log'
@@ -71,7 +73,37 @@ export function setupIpcHandlers(
   })
 
   ipcMain.handle('settings:save', (_e, partial: Record<string, unknown>) => {
-    return settingsManager.save(partial)
+    const prev = settingsManager.get()
+    const result = settingsManager.save(partial)
+    // Sync launchOnStartup with OS login items when it changes
+    if ('launchOnStartup' in partial && partial.launchOnStartup !== prev.launchOnStartup) {
+      app.setLoginItemSettings({ openAtLogin: !!partial.launchOnStartup })
+    }
+    return result
+  })
+
+  // Storage usage — sum size of all files in the recordings folder
+  ipcMain.handle('storage:get-usage', async () => {
+    const settings = settingsManager.get()
+    const dir = settings.savePath
+    let bytes = 0
+    let count = 0
+    try {
+      const entries = fs.readdirSync(dir)
+      for (const entry of entries) {
+        try {
+          const stat = fs.statSync(path.join(dir, entry))
+          if (stat.isFile()) { bytes += stat.size; count++ }
+        } catch { /* ignore unreadable entries */ }
+      }
+    } catch { /* dir may not exist yet */ }
+    return { bytes, count }
+  })
+
+  // Open the recordings folder in Explorer / Finder
+  ipcMain.handle('storage:open-folder', () => {
+    const settings = settingsManager.get()
+    shell.openPath(settings.savePath)
   })
 
   // Dialog
