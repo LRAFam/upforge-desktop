@@ -18,6 +18,7 @@ export interface MatchTimeline {
 export class RiotLocalApi {
   private pollInterval: ReturnType<typeof setInterval> | null = null
   private timeline: MatchTimeline | null = null
+  private lastGameMode: string | null = null
   private agent = new https.Agent({ rejectUnauthorized: false })
 
   start(game: string): void {
@@ -57,10 +58,17 @@ export class RiotLocalApi {
     try {
       const data = await this._fetch('https://127.0.0.1:2999/liveclientdata/allgamedata')
       const mode = (data.gameData as Record<string, unknown> | undefined)?.gameMode
-      return typeof mode === 'string' ? mode.toUpperCase() : null
+      const result = typeof mode === 'string' ? mode.toUpperCase() : null
+      if (result) this.lastGameMode = result
+      return result
     } catch {
       return null
     }
+  }
+
+  /** Returns the last known game mode — useful after stop() is called */
+  getLastGameMode(): string | null {
+    return this.lastGameMode
   }
 
   private async _pollGameData(): Promise<void> {
@@ -68,12 +76,15 @@ export class RiotLocalApi {
       const data = await this._fetch('https://127.0.0.1:2999/liveclientdata/allgamedata')
       if (!this.timeline) return
 
-      // Extract map and agent on first poll
+      // Extract map, agent, and game mode on first poll
       if (!this.timeline.map && data.gameData?.mapName) {
         this.timeline.map = data.gameData.mapName as string
       }
       if (!this.timeline.agent && data.activePlayer?.championName) {
         this.timeline.agent = data.activePlayer.championName as string
+      }
+      if (data.gameData?.gameMode) {
+        this.lastGameMode = (data.gameData.gameMode as string).toUpperCase()
       }
 
       // Collect new events

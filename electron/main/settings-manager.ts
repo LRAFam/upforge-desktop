@@ -8,7 +8,9 @@ export interface AppSettings {
   savePath: string
   launchOnStartup: boolean
   autoDelete: boolean // delete recording after successful upload
-  recordingMode: 'competitive' | 'all' // which queue types to record
+  /** Game modes to record. Empty array means record all. */
+  recordedModes: string[]
+  autoAnalyse: boolean // automatically upload & analyse after game ends
   firstRun: boolean
 }
 
@@ -18,7 +20,8 @@ const DEFAULTS: AppSettings = {
   savePath: '',
   launchOnStartup: false,
   autoDelete: true,
-  recordingMode: 'competitive',
+  recordedModes: ['COMPETITIVE', 'PREMIER'],
+  autoAnalyse: true,
   firstRun: true
 }
 
@@ -36,7 +39,14 @@ export class SettingsManager {
   private load(): AppSettings {
     try {
       const raw = fs.readFileSync(this.filePath, 'utf-8')
-      return { ...DEFAULTS, ...JSON.parse(raw) }
+      const parsed = JSON.parse(raw)
+      // Migrate from old recordingMode field
+      if (parsed.recordingMode !== undefined && parsed.recordedModes === undefined) {
+        const ALL_MODES = ['COMPETITIVE', 'PREMIER', 'CLASSIC', 'DEATHMATCH', 'SPIKERUSH', 'SWIFTPLAY']
+        parsed.recordedModes = parsed.recordingMode === 'all' ? ALL_MODES : ['COMPETITIVE', 'PREMIER']
+        delete parsed.recordingMode
+      }
+      return { ...DEFAULTS, ...parsed }
     } catch {
       return { ...DEFAULTS }
     }

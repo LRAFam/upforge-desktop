@@ -89,6 +89,41 @@
     </div>
     <div v-else-if="profileLoading" class="h-[88px] bg-white/[0.02] rounded-xl animate-pulse border border-white/[0.04]" />
 
+    <!-- Pending recordings -->
+    <div v-if="pendingRecordings.length > 0" class="space-y-1.5">
+      <div class="flex items-center justify-between px-0.5">
+        <h2 class="text-[10px] font-semibold text-gray-600 uppercase tracking-widest">Pending Analysis</h2>
+      </div>
+      <div
+        v-for="rec in pendingRecordings"
+        :key="rec.id"
+        class="flex items-center gap-3 px-3 py-2.5 bg-blue-500/[0.04] border border-blue-500/[0.12] rounded-xl"
+      >
+        <div class="w-8 h-8 rounded-lg flex-shrink-0 flex items-center justify-center bg-blue-500/[0.1]">
+          <svg class="w-4 h-4 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M15 10l4.553-2.069A1 1 0 0121 8.882v6.236a1 1 0 01-1.447.894L15 14M3 8a2 2 0 012-2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V8z"/>
+          </svg>
+        </div>
+        <div class="flex-1 min-w-0">
+          <p class="text-xs font-medium text-gray-200 truncate">
+            {{ rec.agent || 'Unknown' }}<span v-if="rec.map" class="text-gray-600"> &middot; {{ rec.map }}</span>
+          </p>
+          <p class="text-[10px] text-gray-600 mt-0.5">{{ formatDate(new Date(rec.recordedAt).toISOString()) }} &middot; {{ formatMode(rec.gameMode) }}</p>
+        </div>
+        <div class="flex items-center gap-1.5 flex-shrink-0">
+          <button
+            :disabled="analysingIds.has(rec.id)"
+            class="px-2.5 py-1 text-[10px] font-medium text-white bg-red-500 hover:bg-red-600 disabled:opacity-50 rounded-lg transition-colors"
+            @click="analyseRecording(rec.id)"
+          >{{ analysingIds.has(rec.id) ? '...' : 'Analyse' }}</button>
+          <button
+            class="px-2 py-1 text-[10px] text-gray-600 hover:text-gray-400 transition-colors"
+            @click="dismissRecording(rec.id)"
+          >✕</button>
+        </div>
+      </div>
+    </div>
+
     <!-- Section header -->
     <div class="flex items-center justify-between px-0.5 pt-0.5">
       <h2 class="text-[10px] font-semibold text-gray-600 uppercase tracking-widest">Recent Analyses</h2>
@@ -184,7 +219,7 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
-import type { ProfileData, AnalysisItem } from '../env.d.ts'
+import type { ProfileData, AnalysisItem, PendingRecording } from '../env.d.ts'
 
 const router = useRouter()
 
@@ -193,6 +228,8 @@ const profileLoading = ref(true)
 const playerCardUrl = ref('')
 const analyses = ref<AnalysisItem[]>([])
 const analysesLoading = ref(true)
+const pendingRecordings = ref<PendingRecording[]>([])
+const analysingIds = ref(new Set<string>())
 const status = ref<{ recording: boolean; currentGame: string | null }>({ recording: false, currentGame: null })
 const isDev = ref(false)
 const platform = ref('')
@@ -232,6 +269,9 @@ onMounted(async () => {
   analyses.value = recent
   analysesLoading.value = false
 
+  // Load pending (unanalysed) recordings
+  pendingRecordings.value = await window.api.recordings.get().catch(() => [])
+
   pollInterval = setInterval(async () => {
     try {
       const s = await window.api.app.getStatus()
@@ -240,6 +280,7 @@ onMounted(async () => {
   }, 5000)
 
   window.api.on('dashboard:refresh', loadAnalyses)
+  window.api.on('recordings:updated', loadPendingRecordings)
 })
 
 onUnmounted(() => clearInterval(pollInterval))
@@ -253,6 +294,37 @@ async function loadAnalyses() {
   } finally {
     analysesLoading.value = false
   }
+}
+
+async function loadPendingRecordings() {
+  pendingRecordings.value = await window.api.recordings.get().catch(() => [])
+}
+
+async function analyseRecording(id: string) {
+  if (analysingIds.value.has(id)) return
+  analysingIds.value.add(id)
+  analysingIds.value = new Set(analysingIds.value) // trigger reactivity
+  try {
+    await window.api.recordings.analyse(id)
+    // Remove from pending list — will come back as an analysis via dashboard:refresh
+    pendingRecordings.value = pendingRecordings.value.filter(r => r.id !== id)
+  } catch {
+    analysingIds.value.delete(id)
+    analysingIds.value = new Set(analysingIds.value)
+  }
+}
+
+async function dismissRecording(id: string) {
+  await window.api.recordings.dismiss(id).catch(() => {})
+  pendingRecordings.value = pendingRecordings.value.filter(r => r.id !== id)
+}
+
+function formatMode(mode: string): string {
+  const map: Record<string, string> = {
+    COMPETITIVE: 'Competitive', PREMIER: 'Premier', CLASSIC: 'Unrated',
+    DEATHMATCH: 'Deathmatch', SPIKERUSH: 'Spike Rush', SWIFTPLAY: 'Swift Play'
+  }
+  return map[mode] ?? mode
 }
 
 function simulateGame(game: string, durationMs: number) {

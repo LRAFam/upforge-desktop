@@ -63,16 +63,33 @@
       <h3 class="text-[10px] font-semibold text-gray-600 uppercase tracking-widest mb-2 px-0.5">Recording</h3>
       <div class="px-3 py-2.5 bg-white/[0.02] border border-white/[0.05] rounded-xl space-y-3">
         <div>
-          <label class="block text-[11px] text-gray-500 mb-1">Record games</label>
-          <select
-            v-model="settings.recordingMode"
-            class="w-full px-2.5 py-1.5 bg-white/[0.04] border border-white/[0.07] rounded-lg text-xs text-white focus:outline-none focus:border-red-500/30 transition-colors"
-            @change="debouncedSave"
-          >
-            <option value="competitive">Competitive only — Ranked &amp; Premier</option>
-            <option value="all">All games — Record every mode</option>
-          </select>
-          <p class="text-[10px] text-gray-600 mt-1">Unranked, Deathmatch and custom games are skipped in competitive-only mode.</p>
+          <label class="block text-[11px] text-gray-500 mb-1.5">Record game modes</label>
+          <div class="space-y-1.5">
+            <label
+              v-for="mode in GAME_MODES"
+              :key="mode.value"
+              class="flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg hover:bg-white/[0.03] cursor-pointer transition-colors"
+            >
+              <div
+                :class="[
+                  'w-4 h-4 rounded border flex items-center justify-center flex-shrink-0 transition-colors',
+                  settings.recordedModes.includes(mode.value)
+                    ? 'bg-red-500 border-red-500'
+                    : 'bg-transparent border-white/[0.15]'
+                ]"
+                @click="toggleMode(mode.value)"
+              >
+                <svg v-if="settings.recordedModes.includes(mode.value)" class="w-2.5 h-2.5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"/>
+                </svg>
+              </div>
+              <div>
+                <span class="text-xs text-gray-300">{{ mode.label }}</span>
+                <span class="text-[10px] text-gray-600 ml-1.5">{{ mode.hint }}</span>
+              </div>
+            </label>
+          </div>
+          <p class="text-[10px] text-gray-700 mt-1.5 px-0.5">Games in unselected modes will not be recorded.</p>
         </div>
         <div>
           <label class="block text-[11px] text-gray-500 mb-1">Quality</label>
@@ -225,13 +242,24 @@ const settings = reactive<AppSettings>({
   savePath: '',
   launchOnStartup: false,
   autoDelete: true,
-  recordingMode: 'competitive',
+  recordedModes: ['COMPETITIVE', 'PREMIER'],
+  autoAnalyse: true,
   firstRun: false
 })
 
-const toggles: Array<{ key: keyof Pick<AppSettings, 'launchOnStartup' | 'autoDelete'>; label: string; hint: string | null }> = [
+const GAME_MODES = [
+  { value: 'COMPETITIVE', label: 'Competitive', hint: 'Ranked' },
+  { value: 'PREMIER', label: 'Premier', hint: 'Team queue' },
+  { value: 'CLASSIC', label: 'Unrated', hint: 'Casual 5v5' },
+  { value: 'SPIKERUSH', label: 'Spike Rush', hint: '' },
+  { value: 'SWIFTPLAY', label: 'Swift Play', hint: '' },
+  { value: 'DEATHMATCH', label: 'Deathmatch', hint: '' }
+]
+
+const toggles: Array<{ key: keyof Pick<AppSettings, 'launchOnStartup' | 'autoDelete' | 'autoAnalyse'>; label: string; hint: string | null }> = [
   { key: 'launchOnStartup', label: 'Launch on startup', hint: null },
-  { key: 'autoDelete', label: 'Auto-delete after upload', hint: 'Frees disk space once recording is uploaded' }
+  { key: 'autoDelete', label: 'Auto-delete after upload', hint: 'Frees disk space once recording is uploaded' },
+  { key: 'autoAnalyse', label: 'Auto-analyse after game', hint: 'Automatically upload and analyse once a game ends' }
 ]
 
 const usagePercent = computed(() => {
@@ -263,8 +291,18 @@ function debouncedSave(): void {
   }, 500)
 }
 
-function toggleKey(key: keyof Pick<AppSettings, 'launchOnStartup' | 'autoDelete'>): void {
+function toggleKey(key: keyof Pick<AppSettings, 'launchOnStartup' | 'autoDelete' | 'autoAnalyse'>): void {
   settings[key] = !settings[key]
+  debouncedSave()
+}
+
+function toggleMode(value: string): void {
+  const idx = settings.recordedModes.indexOf(value)
+  if (idx === -1) {
+    settings.recordedModes.push(value)
+  } else {
+    settings.recordedModes.splice(idx, 1)
+  }
   debouncedSave()
 }
 

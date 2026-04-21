@@ -10,8 +10,22 @@ export interface AppSettings {
   savePath: string
   launchOnStartup: boolean
   autoDelete: boolean
-  recordingMode: 'competitive' | 'all'
+  /** Game modes to record. Empty array means record all. */
+  recordedModes: string[]
+  autoAnalyse: boolean
   firstRun: boolean
+}
+
+export interface PendingRecording {
+  id: string
+  path: string
+  game: string
+  map: string | null
+  agent: string | null
+  gameMode: string
+  recordedAt: number
+  analysed: boolean
+  jobId?: string
 }
 
 export interface ValorantStats {
@@ -97,6 +111,11 @@ declare global {
       }
       analyses: {
         get: (limit?: number) => Promise<AnalysisItem[]>
+      }
+      recordings: {
+        get: () => Promise<PendingRecording[]>
+        analyse: (id: string) => Promise<{ ok?: boolean; error?: string }>
+        dismiss: (id: string) => Promise<void>
       }
       settings: {
         get: () => Promise<AppSettings>

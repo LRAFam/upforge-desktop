@@ -4,7 +4,7 @@
     <div class="absolute inset-0 pointer-events-none">
       <div
         :class="['absolute top-0 left-1/2 -translate-x-1/2 w-48 h-24 rounded-full blur-3xl transition-all duration-700 opacity-60',
-          state === 'ready' ? 'bg-green-500/10' : state === 'error' ? 'bg-red-500/10' : 'bg-red-500/[0.07]']"
+          state === 'ready' ? 'bg-green-500/10' : state === 'pending' ? 'bg-blue-500/10' : state === 'error' ? 'bg-red-500/10' : 'bg-red-500/[0.07]']"
       />
     </div>
 
@@ -99,6 +99,33 @@
         </div>
       </div>
 
+      <!-- Pending (auto-analyse off) -->
+      <div v-else-if="state === 'pending'" class="w-full space-y-3 text-center">
+        <div class="w-11 h-11 mx-auto rounded-full bg-blue-500/10 border border-blue-500/20 flex items-center justify-center">
+          <svg class="w-5 h-5 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M15 10l4.553-2.069A1 1 0 0121 8.882v6.236a1 1 0 01-1.447.894L15 14M3 8a2 2 0 012-2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V8z"/>
+          </svg>
+        </div>
+        <div>
+          <p class="text-sm font-semibold">Game recorded</p>
+          <p class="text-[11px] text-gray-500 mt-0.5">
+            {{ gameInfo.agent || 'Valorant' }}<span v-if="gameInfo.map"> &middot; {{ gameInfo.map }}</span>
+          </p>
+          <p class="text-[10px] text-gray-600 mt-1.5">Auto-analyse is off — analyse now or view later from the dashboard.</p>
+        </div>
+        <div class="flex gap-2 pt-1">
+          <button
+            :disabled="analysing"
+            class="flex-1 py-2 text-xs font-semibold bg-gradient-to-r from-red-500 to-orange-600 hover:from-red-600 hover:to-orange-700 disabled:opacity-50 text-white rounded-lg transition-all shadow-sm shadow-red-500/20"
+            @click="analyseNow"
+          >{{ analysing ? 'Starting...' : 'Analyse Now' }}</button>
+          <button
+            class="px-3 py-2 text-[11px] text-gray-500 hover:text-gray-300 bg-white/[0.03] hover:bg-white/[0.06] border border-white/[0.06] rounded-lg transition-colors"
+            @click="dismissPending"
+          >Later</button>
+        </div>
+      </div>
+
       <!-- Error -->
       <div v-else-if="state === 'error'" class="w-full space-y-3 text-center">
         <div class="w-11 h-11 mx-auto rounded-full bg-red-500/10 border border-red-500/20 flex items-center justify-center">
@@ -120,13 +147,15 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 
-type State = 'uploading' | 'analysing' | 'ready' | 'error'
+type State = 'uploading' | 'analysing' | 'ready' | 'error' | 'pending'
 
 const state = ref<State>('uploading')
 const uploadProgress = ref(0)
 const gameInfo = ref<{ map: string | null; agent: string | null }>({ map: null, agent: null })
 const result = ref<{ overall_score: number; analysis_id: number } | null>(null)
 const errorMessage = ref('')
+const pendingRecordingId = ref<string | null>(null)
+const analysing = ref(false)
 
 const topIssue = computed(() => {
   if (!result.value) return null
@@ -145,6 +174,12 @@ onMounted(() => {
     const r = args[0] as { overall_score: number; analysis_id: number }
     result.value = r
     state.value = 'ready'
+  }) as (...args: unknown[]) => void)
+  window.api.on('post-game:pending', ((...args: unknown[]) => {
+    const data = args[0] as { recordingId: string; game: string; map: string | null; agent: string | null }
+    pendingRecordingId.value = data.recordingId
+    gameInfo.value = { map: data.map, agent: data.agent }
+    state.value = 'pending'
   }) as (...args: unknown[]) => void)
   window.api.on('post-game:upload-error', ((...args: unknown[]) => {
     errorMessage.value = args[0] as string
@@ -170,6 +205,27 @@ onMounted(() => {
     }, 300)
   }
 })
+
+async function analyseNow() {
+  if (!pendingRecordingId.value || analysing.value) return
+  analysing.value = true
+  try {
+    await window.api.recordings.analyse(pendingRecordingId.value)
+    // The analysis events (upload-start, progress, etc.) will be received via IPC
+  } catch {
+    state.value = 'error'
+    errorMessage.value = 'Could not start analysis. Please try from the dashboard.'
+  } finally {
+    analysing.value = false
+  }
+}
+
+async function dismissPending() {
+  if (pendingRecordingId.value) {
+    // Don't remove from store — user can still analyse later from the dashboard
+  }
+  window.close()
+}
 
 function viewFullAnalysis() {
   if (result.value?.analysis_id) {

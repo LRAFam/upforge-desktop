@@ -17,6 +17,11 @@ const api = {
   analyses: {
     get: (limit?: number) => ipcRenderer.invoke('analyses:get', { limit })
   },
+  recordings: {
+    get: () => ipcRenderer.invoke('recordings:get'),
+    analyse: (id: string) => ipcRenderer.invoke('recordings:analyse', { id }),
+    dismiss: (id: string) => ipcRenderer.invoke('recordings:dismiss', { id })
+  },
   settings: {
     get: () => ipcRenderer.invoke('settings:get'),
     save: (partial: Record<string, unknown>) => ipcRenderer.invoke('settings:save', partial)
@@ -43,7 +48,9 @@ const api = {
       'post-game:upload-complete',
       'post-game:analysis-ready',
       'post-game:upload-error',
-      'dashboard:refresh'
+      'post-game:pending',
+      'dashboard:refresh',
+      'recordings:updated'
     ]
     if (allowed.includes(channel)) {
       ipcRenderer.on(channel, (_e, ...args) => callback(...args))
