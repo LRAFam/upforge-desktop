@@ -46,7 +46,7 @@
         <div class="flex items-center justify-between text-[11px]">
           <span class="text-gray-400">Analyses this month</span>
           <span class="text-gray-300 font-medium tabular-nums">
-            {{ (user as UserWithUsage).analyses_used }} / {{ (user as UserWithUsage).analyses_limit ?? '∞' }}
+            {{ (user as UserWithUsage).analyses_used }} / {{ (user as UserWithUsage).analyses_limit }}
           </span>
         </div>
         <div v-if="(user as UserWithUsage).analyses_limit" class="h-1 bg-white/[0.06] rounded-full overflow-hidden">
@@ -237,7 +237,7 @@ type UserWithUsage = {
   riot_name: string | null
   riot_tag: string | null
   analyses_used?: number
-  analyses_limit?: number | null
+  analyses_limit?: number
 }
 
 const router = useRouter()
@@ -416,7 +416,7 @@ onMounted(async () => {
         riot_name: prof.user.riot_name,
         riot_tag: prof.user.riot_tag,
         analyses_used: prof.user.analysis_stats?.total ?? 0,
-        analyses_limit: prof.user.analysis_stats?.limit ?? null
+        analyses_limit: prof.user.analysis_stats?.limit ?? 1
       }
     }
   } catch { /* profile load failure is non-critical */ }

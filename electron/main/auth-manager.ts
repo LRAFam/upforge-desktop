@@ -71,7 +71,7 @@ export interface ProfileData {
     riot_tag: string | null
     riot_region: string | null
     discord_username: string | null
-    analysis_stats: { total: number; limit: number | null }
+    analysis_stats: { total: number; limit: number }
   }
   latest_stats: ValorantStats | null
 }
@@ -184,8 +184,16 @@ export class AuthManager {
       const res = await this._api.get('/api/profile')
       const p = res.data?.profile
       if (!p) return null
+      const stats = p.user?.analysis_stats ?? {}
       return {
-        user: p.user,
+        user: {
+          ...p.user,
+          analysis_stats: {
+            // API field names: free_analyses_used + monthly_free_analyses
+            total: stats.free_analyses_used ?? 0,
+            limit: stats.monthly_free_analyses ?? 1,
+          }
+        },
         latest_stats: p.latest_stats ?? null,
       }
     } catch {

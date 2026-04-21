@@ -54,7 +54,7 @@ export interface ProfileData {
     riot_tag: string | null
     riot_region: string | null
     discord_username: string | null
-    analysis_stats: { total: number; limit: number | null }
+    analysis_stats: { total: number; limit: number }
   }
   latest_stats: ValorantStats | null
 }
