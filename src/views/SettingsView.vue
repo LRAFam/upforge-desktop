@@ -63,6 +63,18 @@
       <h3 class="text-[10px] font-semibold text-gray-600 uppercase tracking-widest mb-2 px-0.5">Recording</h3>
       <div class="px-3 py-2.5 bg-white/[0.02] border border-white/[0.05] rounded-xl space-y-3">
         <div>
+          <label class="block text-[11px] text-gray-500 mb-1">Record games</label>
+          <select
+            v-model="settings.recordingMode"
+            class="w-full px-2.5 py-1.5 bg-white/[0.04] border border-white/[0.07] rounded-lg text-xs text-white focus:outline-none focus:border-red-500/30 transition-colors"
+            @change="debouncedSave"
+          >
+            <option value="competitive">Competitive only — Ranked &amp; Premier</option>
+            <option value="all">All games — Record every mode</option>
+          </select>
+          <p class="text-[10px] text-gray-600 mt-1">Unranked, Deathmatch and custom games are skipped in competitive-only mode.</p>
+        </div>
+        <div>
           <label class="block text-[11px] text-gray-500 mb-1">Quality</label>
           <select
             v-model="settings.recordingQuality"
@@ -213,6 +225,7 @@ const settings = reactive<AppSettings>({
   savePath: '',
   launchOnStartup: false,
   autoDelete: true,
+  recordingMode: 'competitive',
   firstRun: false
 })
 

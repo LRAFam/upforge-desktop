@@ -6,12 +6,7 @@
       :style="isMac ? 'height:40px; padding-left:80px' : 'height:40px'"
     >
       <div class="flex items-center gap-2">
-        <div class="w-5 h-5 bg-gradient-to-br from-red-500 to-orange-600 rounded flex items-center justify-center flex-shrink-0">
-          <svg class="w-3 h-3 text-white" fill="currentColor" viewBox="0 0 24 24">
-            <path d="M13 3L4 14h7v7l9-11h-7z"/>
-          </svg>
-        </div>
-        <span class="text-xs font-semibold tracking-wide">UpForge</span>
+        <img src="./assets/upforge-logo.png" alt="UpForge" class="h-4 w-auto object-contain flex-shrink-0" />
         <span v-if="appVersion" class="text-[10px] text-gray-600 font-normal ml-0.5">v{{ appVersion }}</span>
         <span v-if="status.recording" class="flex items-center gap-1 ml-1">
           <span class="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" />

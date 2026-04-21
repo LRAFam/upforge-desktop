@@ -8,6 +8,7 @@ export interface AppSettings {
   savePath: string
   launchOnStartup: boolean
   autoDelete: boolean // delete recording after successful upload
+  recordingMode: 'competitive' | 'all' // which queue types to record
   firstRun: boolean
 }
 
@@ -17,6 +18,7 @@ const DEFAULTS: AppSettings = {
   savePath: '',
   launchOnStartup: false,
   autoDelete: true,
+  recordingMode: 'competitive',
   firstRun: true
 }
 

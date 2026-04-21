@@ -48,6 +48,21 @@ export class RiotLocalApi {
     return result
   }
 
+  /**
+   * Probe the Riot Live Client API and return the gameMode string (e.g. "CLASSIC", "COMPETITIVE",
+   * "DEATHMATCH", "SPIKERUSH", "SNOWBALL", "SWIFTPLAY").
+   * Returns null when the game is not yet in a loadable state.
+   */
+  async getGameMode(): Promise<string | null> {
+    try {
+      const data = await this._fetch('https://127.0.0.1:2999/liveclientdata/allgamedata')
+      const mode = (data.gameData as Record<string, unknown> | undefined)?.gameMode
+      return typeof mode === 'string' ? mode.toUpperCase() : null
+    } catch {
+      return null
+    }
+  }
+
   private async _pollGameData(): Promise<void> {
     try {
       const data = await this._fetch('https://127.0.0.1:2999/liveclientdata/allgamedata')

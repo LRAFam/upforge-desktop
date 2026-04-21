@@ -10,6 +10,7 @@ export interface AppSettings {
   savePath: string
   launchOnStartup: boolean
   autoDelete: boolean
+  recordingMode: 'competitive' | 'all'
   firstRun: boolean
 }
 

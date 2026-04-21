@@ -19,10 +19,8 @@
       <!-- Step 1: Welcome -->
       <Transition name="step" mode="out-in">
         <div v-if="step === 1" key="1" class="w-full max-w-[280px] text-center space-y-5">
-          <div class="w-14 h-14 mx-auto bg-gradient-to-br from-red-500 to-orange-600 rounded-2xl flex items-center justify-center shadow-xl shadow-red-500/25">
-            <svg class="w-7 h-7 text-white" fill="currentColor" viewBox="0 0 24 24">
-              <path d="M13 3L4 14h7v7l9-11h-7z"/>
-            </svg>
+          <div class="flex items-center justify-center">
+            <img src="../assets/upforge-logo.png" alt="UpForge" class="h-10 w-auto object-contain" />
           </div>
           <div>
             <h1 class="text-lg font-bold tracking-tight">Welcome to UpForge</h1>
@@ -33,7 +31,9 @@
           <div class="space-y-2 text-left">
             <div v-for="feature in features" :key="feature.text" class="flex items-start gap-2.5 px-3 py-2 bg-white/[0.02] rounded-lg border border-white/[0.05]">
               <div class="w-6 h-6 rounded-md flex items-center justify-center flex-shrink-0 mt-0.5" :class="feature.bg">
-                <span class="text-xs">{{ feature.icon }}</span>
+                <svg class="w-3.5 h-3.5" :class="feature.iconColor" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" :d="feature.iconPath" />
+                </svg>
               </div>
               <div>
                 <p class="text-[11px] font-medium text-gray-200">{{ feature.title }}</p>
@@ -175,9 +175,30 @@ const loginError = ref('')
 const savePath = ref('')
 
 const features = [
-  { icon: '🎮', bg: 'bg-red-500/10', title: 'Auto-detect games', text: 'Detects Valorant launch and starts recording instantly' },
-  { icon: '🤖', bg: 'bg-purple-500/10', title: 'AI analysis after every game', text: 'Coaching report delivered minutes after the match ends' },
-  { icon: '📊', bg: 'bg-cyan-500/10', title: 'Timeline-aware insights', text: 'Kill/death events guide smarter frame selection' }
+  {
+    bg: 'bg-red-500/10',
+    iconColor: 'text-red-400',
+    // Video camera / record icon
+    iconPath: 'M15 10l4.553-2.277A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M4 8h11a1 1 0 011 1v6a1 1 0 01-1 1H4a1 1 0 01-1-1V9a1 1 0 011-1z',
+    title: 'Auto-detect games',
+    text: 'Detects Valorant launch and starts recording competitive matches'
+  },
+  {
+    bg: 'bg-purple-500/10',
+    iconColor: 'text-purple-400',
+    // Sparkles / AI icon
+    iconPath: 'M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z',
+    title: 'AI coaching after every game',
+    text: 'Detailed coaching report delivered minutes after the match ends'
+  },
+  {
+    bg: 'bg-cyan-500/10',
+    iconColor: 'text-cyan-400',
+    // Chart / analytics icon
+    iconPath: 'M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z',
+    title: 'Timeline-aware insights',
+    text: 'Kill/death events guide smarter frame selection for analysis'
+  }
 ]
 
 onMounted(async () => {

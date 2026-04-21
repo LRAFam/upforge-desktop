@@ -174,19 +174,49 @@ function createTray(): void {
 }
 
 function setupGameDetection(): void {
+  // Queue types that count as "competitive" for recording purposes.
+  const COMPETITIVE_MODES = new Set(['COMPETITIVE', 'PREMIER'])
+
   gameDetector.on('game-started', async (game: string) => {
     console.log(`[GameDetector] ${game} started`)
-    tray?.setToolTip('UpForge — Recording...')
 
     const config = settingsManager?.get()
-    await recorder.start(game, config ? {
+    const recorderConfig = config ? {
       quality: config.recordingQuality,
       bitrate: config.recordingBitrate,
       savePath: config.savePath
-    } : undefined)
+    } : undefined
 
-    // Start polling Riot Local API
+    // Start Riot Local API polling immediately so timeline is captured from the start
     riotLocalApi.start(game)
+
+    // When competitive-only mode is on, probe the game mode before recording.
+    // We retry for up to ~30 seconds since the game client takes time to expose live data.
+    if (config?.recordingMode === 'competitive') {
+      let gameMode: string | null = null
+      for (let attempt = 0; attempt < 6; attempt++) {
+        await new Promise((r) => setTimeout(r, attempt === 0 ? 5000 : 5000))
+        gameMode = await riotLocalApi.getGameMode()
+        if (gameMode) break
+        console.log(`[GameDetector] Game mode not available yet (attempt ${attempt + 1}/6)`)
+      }
+
+      if (gameMode && !COMPETITIVE_MODES.has(gameMode)) {
+        console.log(`[GameDetector] Skipping recording — mode is ${gameMode} (competitive-only setting)`)
+        tray?.setToolTip('UpForge — Valorant AI Coaching')
+        return
+      }
+
+      // If we still couldn't read the mode after 30s, record anyway to avoid missing it
+      if (!gameMode) {
+        console.log('[GameDetector] Could not determine game mode — recording anyway as fallback')
+      } else {
+        console.log(`[GameDetector] Game mode: ${gameMode} — starting recording`)
+      }
+    }
+
+    tray?.setToolTip('UpForge — Recording...')
+    await recorder.start(game, recorderConfig)
   })
 
   gameDetector.on('game-stopped', async (game: string) => {
@@ -211,6 +241,9 @@ function setupGameDetection(): void {
 
         const videoPath = recorder.getLastRecordingPath()
         if (!videoPath) throw new Error('No recording available')
+        if (!require('fs').existsSync(videoPath)) {
+          throw new Error('Recording file was not created — ffmpeg may have failed to start. Check that ffmpeg is accessible and try again.')
+        }
 
         // Upload with progress
         const result = await uploadManager.upload({

@@ -29,6 +29,9 @@ export class UploadManager {
     const token = this.auth.getToken()
     if (!token) throw new Error('Not authenticated')
 
+    if (!fs.existsSync(opts.videoPath)) {
+      throw new Error(`Recording file not found: ${opts.videoPath}. The recording may have failed to start or was deleted before upload.`)
+    }
     const stat = fs.statSync(opts.videoPath)
     const totalBytes = stat.size
     let uploaded = 0
