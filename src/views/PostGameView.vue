@@ -48,6 +48,15 @@
         <div class="flex items-center justify-center gap-1.5">
           <span v-for="i in 3" :key="i" class="w-1.5 h-1.5 rounded-full bg-orange-500/60 animate-bounce" :style="{ animationDelay: `${(i - 1) * 0.18}s` }" />
         </div>
+        <div v-if="analysisStuck" class="flex items-start gap-2 px-3 py-2.5 bg-white/[0.03] border border-white/[0.06] rounded-xl text-left">
+          <svg class="w-3.5 h-3.5 text-gray-500 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+          </svg>
+          <div>
+            <p class="text-[11px] text-gray-400">Taking longer than usual</p>
+            <p class="text-[10px] text-gray-600 mt-0.5">Your analysis is still running in the background. You can check results on the dashboard.</p>
+          </div>
+        </div>
       </div>
 
       <!-- Ready -->
@@ -151,7 +160,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 
 type State = 'uploading' | 'analysing' | 'ready' | 'error' | 'pending'
 
@@ -162,6 +171,18 @@ const result = ref<{ overall_score: number; analysis_id: number } | null>(null)
 const errorMessage = ref('')
 const pendingRecordingId = ref<string | null>(null)
 const analysing = ref(false)
+const analysisStuck = ref(false)
+let stuckTimer: ReturnType<typeof setTimeout> | null = null
+
+function startStuckTimer() {
+  if (stuckTimer) clearTimeout(stuckTimer)
+  stuckTimer = setTimeout(() => { analysisStuck.value = true }, 5 * 60 * 1000)
+}
+
+function clearStuckTimer() {
+  if (stuckTimer) { clearTimeout(stuckTimer); stuckTimer = null }
+  analysisStuck.value = false
+}
 
 const topIssue = computed(() => {
   if (!result.value) return null
@@ -175,8 +196,9 @@ onMounted(() => {
     state.value = 'uploading'
   }) as (...args: unknown[]) => void)
   window.api.on('post-game:upload-progress', ((...args: unknown[]) => { uploadProgress.value = args[0] as number }) as (...args: unknown[]) => void)
-  window.api.on('post-game:upload-complete', () => { state.value = 'analysing' })
+  window.api.on('post-game:upload-complete', () => { state.value = 'analysing'; startStuckTimer() })
   window.api.on('post-game:analysis-ready', ((...args: unknown[]) => {
+    clearStuckTimer()
     const r = args[0] as { overall_score: number; analysis_id: number }
     result.value = r
     state.value = 'ready'
@@ -211,6 +233,8 @@ onMounted(() => {
     }, 300)
   }
 })
+
+onUnmounted(() => clearStuckTimer())
 
 async function analyseNow() {
   if (!pendingRecordingId.value || analysing.value) return
