@@ -16,7 +16,7 @@
         <div :class="['w-2 h-2 rounded-full', status.recording ? 'bg-red-500' : status.currentGame ? 'bg-orange-500' : 'bg-gray-700']" />
         <div v-if="status.recording" class="absolute inset-0 w-2 h-2 rounded-full bg-red-500 animate-ping opacity-75" />
       </div>
-      <span v-if="status.recording" class="font-medium">Recording {{ status.currentGame }}...</span>
+      <span v-if="status.recording" class="font-medium">Recording {{ status.currentGame }}<template v-if="recordingElapsed"> · {{ recordingElapsed }}</template>...</span>
       <span v-else-if="status.currentGame">{{ status.currentGame }} detected</span>
       <span v-else-if="platform && platform !== 'win32'" class="text-gray-500">Game detection requires Windows</span>
       <span v-else>Waiting for Valorant to launch</span>
@@ -181,7 +181,11 @@
             <span v-if="a.kda != null">{{ a.kda.toFixed(2) }} K/D</span>
           </p>
         </div>
-        <div v-if="a.combat_score" class="flex-shrink-0 text-right">
+        <div v-if="a.overall_score != null" class="flex-shrink-0 text-right">
+          <span class="text-[11px] font-bold tabular-nums" :class="a.overall_score >= 80 ? 'text-green-400' : a.overall_score >= 60 ? 'text-yellow-400' : 'text-red-400'">{{ a.overall_score }}</span>
+          <span class="block text-[9px] text-gray-700">/100</span>
+        </div>
+        <div v-else-if="a.combat_score" class="flex-shrink-0 text-right">
           <span class="text-[11px] font-bold text-gray-400 tabular-nums">{{ a.combat_score }}</span>
           <span class="block text-[9px] text-gray-700">ACS</span>
         </div>
@@ -241,8 +245,19 @@ const platform = ref('')
 const devOpen = ref(false)
 const simulating = ref(false)
 const simStatus = ref('')
+const recordingStartedAt = ref<number | null>(null)
+const recordingElapsed = ref('')
 
 let pollInterval: ReturnType<typeof setInterval>
+let durationInterval: ReturnType<typeof setInterval>
+
+function updateRecordingElapsed() {
+  if (!recordingStartedAt.value) { recordingElapsed.value = ''; return }
+  const secs = Math.floor((Date.now() - recordingStartedAt.value) / 1000)
+  const m = Math.floor(secs / 60).toString().padStart(2, '0')
+  const s = (secs % 60).toString().padStart(2, '0')
+  recordingElapsed.value = `${m}:${s}`
+}
 
 onMounted(async () => {
   try {
@@ -254,6 +269,7 @@ onMounted(async () => {
       return
     }
     status.value = { recording: s.recording, currentGame: s.currentGame }
+    if (s.recording) { recordingStartedAt.value = Date.now() }
   } catch {
     router.push('/login')
     return
@@ -280,15 +296,25 @@ onMounted(async () => {
   pollInterval = setInterval(async () => {
     try {
       const s = await window.api.app.getStatus()
+      const wasRecording = status.value.recording
       status.value = { recording: s.recording, currentGame: s.currentGame }
+      if (s.recording && !wasRecording) recordingStartedAt.value = Date.now()
+      if (!s.recording) recordingStartedAt.value = null
     } catch { /* ignore */ }
   }, 5000)
+
+  durationInterval = setInterval(updateRecordingElapsed, 1000)
 
   window.api.on('dashboard:refresh', loadAnalyses)
   window.api.on('recordings:updated', loadPendingRecordings)
 })
 
-onUnmounted(() => clearInterval(pollInterval))
+onUnmounted(() => {
+  clearInterval(pollInterval)
+  clearInterval(durationInterval)
+  recordingStartedAt.value = null
+  recordingElapsed.value = ''
+})
 
 async function loadAnalyses() {
   analysesLoading.value = true

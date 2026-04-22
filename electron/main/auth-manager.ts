@@ -89,6 +89,7 @@ export interface AnalysisItem {
   assists: number | null
   kda: number | null
   combat_score: number | null
+  overall_score: number | null
   rounds_won: number | null
   rounds_lost: number | null
   hs_pct: number | null

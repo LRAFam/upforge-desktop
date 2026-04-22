@@ -137,7 +137,13 @@
           <p class="text-sm font-semibold text-red-400">Upload failed</p>
           <p class="text-[11px] text-gray-500 mt-1">{{ errorMessage }}</p>
         </div>
-        <button class="text-[11px] text-gray-500 hover:text-gray-300 underline transition-colors" @click="dismiss">Dismiss</button>
+        <div class="flex gap-2 pt-1">
+          <button
+            class="flex-1 py-2 text-xs font-semibold bg-gradient-to-r from-red-500 to-orange-600 hover:from-red-600 hover:to-orange-700 text-white rounded-lg transition-all shadow-sm shadow-red-500/20"
+            @click="retryUpload"
+          >Retry</button>
+          <button class="px-3 py-2 text-[11px] text-gray-500 hover:text-gray-300 bg-white/[0.03] hover:bg-white/[0.06] border border-white/[0.06] rounded-lg transition-colors" @click="dismiss">Dismiss</button>
+        </div>
       </div>
 
     </div>
@@ -225,6 +231,21 @@ async function dismissPending() {
     // Don't remove from store — user can still analyse later from the dashboard
   }
   window.close()
+}
+
+function retryUpload() {
+  // Reset to uploading state — the main process will re-emit the upload events
+  // if there's still a pending recording; otherwise prompt the user to use the dashboard
+  if (pendingRecordingId.value) {
+    state.value = 'uploading'
+    uploadProgress.value = 0
+    window.api.recordings.analyse(pendingRecordingId.value).catch(() => {
+      state.value = 'error'
+      errorMessage.value = 'Retry failed. Try analysing from the dashboard.'
+    })
+  } else {
+    errorMessage.value = 'Recording no longer available. Open the dashboard to retry.'
+  }
 }
 
 function viewFullAnalysis() {

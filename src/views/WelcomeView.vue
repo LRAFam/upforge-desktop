@@ -103,10 +103,13 @@
             </button>
           </form>
 
-          <p class="text-center text-[11px] text-gray-600 mt-4">
-            No account?
-            <button class="text-red-400 hover:text-red-300 transition-colors" @click="openSignup">Sign up free ↗</button>
-          </p>
+          <div class="flex items-center justify-between mt-4">
+            <p class="text-[11px] text-gray-600">
+              No account?
+              <button class="text-red-400 hover:text-red-300 transition-colors" @click="openSignup">Sign up free ↗</button>
+            </p>
+            <button class="text-[11px] text-gray-600 hover:text-gray-400 transition-colors" @click="openForgotPassword">Forgot password?</button>
+          </div>
           <button class="w-full mt-3 text-[11px] text-gray-700 hover:text-gray-500 transition-colors text-center" @click="step = 1">← Back</button>
         </div>
       </Transition>
@@ -233,6 +236,9 @@ async function finishOnboarding() {
 
 function openSignup() {
   window.open('https://upforge.gg/register', '_blank')
+}
+function openForgotPassword() {
+  window.open('https://upforge.gg/forgot-password', '_blank')
 }
 </script>
 
