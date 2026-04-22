@@ -88,8 +88,24 @@
           <span class="text-[9px] text-gray-600 mt-px">HS%</span>
         </div>
       </div>
-      <div v-else class="px-3 pb-2.5 pt-1">
+      <div v-else class="px-3 pb-2 pt-1">
         <p class="text-[10px] text-gray-600">No Valorant stats yet — link your Riot ID on upforge.gg</p>
+      </div>
+      <!-- Quota row -->
+      <div v-if="profile.user.analysis_stats" class="px-3 py-2 border-t border-white/[0.04] flex items-center justify-between gap-2">
+        <span class="text-[10px] text-gray-600">Analyses left</span>
+        <div class="flex items-center gap-2">
+          <div class="h-1 w-16 bg-white/[0.06] rounded-full overflow-hidden">
+            <div
+              class="h-full rounded-full transition-all"
+              :class="quotaPercent >= 80 ? 'bg-red-500' : quotaPercent >= 50 ? 'bg-yellow-500' : 'bg-green-500'"
+              :style="{ width: quotaPercent + '%' }"
+            />
+          </div>
+          <span class="text-[10px] font-medium tabular-nums" :class="profile.user.analysis_stats.free_analyses_remaining === 0 ? 'text-red-400' : 'text-gray-300'">
+            {{ profile.user.analysis_stats.free_analyses_remaining }}/{{ profile.user.analysis_stats.monthly_free_analyses }}
+          </span>
+        </div>
       </div>
     </div>
     <div v-else-if="profileLoading" class="h-[88px] bg-white/[0.02] rounded-xl animate-pulse border border-white/[0.04]" />
@@ -230,7 +246,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import type { ProfileData, AnalysisItem, PendingRecording } from '../env.d.ts'
 
@@ -251,6 +267,12 @@ const simulating = ref(false)
 const simStatus = ref('')
 const recordingStartedAt = ref<number | null>(null)
 const recordingElapsed = ref('')
+
+const quotaPercent = computed(() => {
+  const stats = profile.value?.user?.analysis_stats
+  if (!stats || !stats.monthly_free_analyses) return 0
+  return Math.min(100, Math.round((stats.free_analyses_used / stats.monthly_free_analyses) * 100))
+})
 
 let pollInterval: ReturnType<typeof setInterval>
 let durationInterval: ReturnType<typeof setInterval>

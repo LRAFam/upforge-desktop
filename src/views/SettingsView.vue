@@ -416,8 +416,8 @@ onMounted(async () => {
         tier: prof.user.tier,
         riot_name: prof.user.riot_name,
         riot_tag: prof.user.riot_tag,
-        analyses_used: prof.user.analysis_stats?.total ?? 0,
-        analyses_limit: prof.user.analysis_stats?.limit ?? 1
+        analyses_used: prof.user.analysis_stats?.free_analyses_used ?? 0,
+        analyses_limit: prof.user.analysis_stats?.monthly_free_analyses ?? 1
       }
     }
   } catch { /* profile load failure is non-critical */ }
