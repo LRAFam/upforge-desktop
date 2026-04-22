@@ -46,6 +46,10 @@ export class SettingsManager {
         parsed.recordedModes = parsed.recordingMode === 'all' ? ALL_MODES : ['COMPETITIVE', 'PREMIER']
         delete parsed.recordingMode
       }
+      // Guard against null/non-array recordedModes from corrupted saves
+      if (!Array.isArray(parsed.recordedModes)) {
+        delete parsed.recordedModes
+      }
       return { ...DEFAULTS, ...parsed }
     } catch {
       return { ...DEFAULTS }

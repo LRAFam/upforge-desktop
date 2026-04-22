@@ -122,9 +122,13 @@
             @click="analyseRecording(rec.id)"
           >{{ analysingIds.has(rec.id) ? '...' : 'Analyse' }}</button>
           <button
-            class="px-2 py-1 text-[10px] text-gray-600 hover:text-gray-400 transition-colors"
+            class="p-1.5 text-gray-600 hover:text-gray-400 transition-colors rounded-lg hover:bg-white/[0.04]"
             @click="dismissRecording(rec.id)"
-          >✕</button>
+          >
+            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+            </svg>
+          </button>
         </div>
       </div>
     </div>

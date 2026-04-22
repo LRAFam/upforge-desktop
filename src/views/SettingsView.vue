@@ -226,7 +226,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, onMounted } from 'vue'
+import { ref, reactive, computed, onMounted, toRaw } from 'vue'
 import { useRouter } from 'vue-router'
 import type { AppSettings } from '../env.d.ts'
 
@@ -302,7 +302,8 @@ function showSaved(): void {
 function debouncedSave(): void {
   if (saveTimer) clearTimeout(saveTimer)
   saveTimer = setTimeout(async () => {
-    await window.api.settings.save({ ...settings })
+    // toRaw strips Vue Proxy wrappers so arrays/objects serialize cleanly over IPC
+    await window.api.settings.save(JSON.parse(JSON.stringify(toRaw(settings))))
     showSaved()
   }, 500)
 }
