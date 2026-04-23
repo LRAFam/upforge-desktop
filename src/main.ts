@@ -10,13 +10,15 @@ import DashboardView from './views/DashboardView.vue'
 import PostGameView from './views/PostGameView.vue'
 import SettingsView from './views/SettingsView.vue'
 import WelcomeView from './views/WelcomeView.vue'
+import SplashView from './views/SplashView.vue'
 
-const PUBLIC_ROUTES = ['/login', '/welcome']
+const PUBLIC_ROUTES = ['/login', '/welcome', '/splash']
 
 const router = createRouter({
   history: createWebHashHistory(),
   routes: [
     { path: '/', redirect: '/dashboard' },
+    { path: '/splash', component: SplashView },
     { path: '/welcome', component: WelcomeView },
     { path: '/login', component: LoginView },
     { path: '/dashboard', component: DashboardView },

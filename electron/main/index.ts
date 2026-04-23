@@ -523,6 +523,32 @@ async function doUploadAndAnalyse(
   }
 }
 
+function createSplashWindow(): BrowserWindow {
+  const win = new BrowserWindow({
+    width: 380,
+    height: 220,
+    resizable: false,
+    frame: false,
+    center: true,
+    skipTaskbar: false,
+    backgroundColor: '#0a0a0a',
+    webPreferences: {
+      preload: join(__dirname, '../preload/index.js'),
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: false
+    }
+  })
+
+  if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
+    win.loadURL(`${process.env['ELECTRON_RENDERER_URL']}#/splash`)
+  } else {
+    win.loadFile(join(__dirname, '../renderer/index.html'), { hash: 'splash' })
+  }
+
+  return win
+}
+
 app.whenReady().then(async () => {
   electronApp.setAppUserModelId('gg.upforge.desktop')
 
@@ -537,11 +563,23 @@ app.whenReady().then(async () => {
   // Restore auth session from keychain before creating window
   await authManager.loadStoredToken()
 
-  // Create main window immediately so app is usable on launch
-  mainWindow = createMainWindow()
+  // Show splash launcher while we check for updates
+  const splashWindow = createSplashWindow()
 
   createTray()
-  setupGameDetection()
+
+  // Called when updater confirms no update pending (or errors out).
+  // Close splash and open the main window.
+  const launchMainApp = () => {
+    mainWindow = createMainWindow()
+    setupGameDetection()
+    // Small delay so main window is loaded before splash closes
+    setTimeout(() => {
+      if (!splashWindow.isDestroyed()) splashWindow.close()
+    }, 400)
+  }
+
+  setupAutoUpdater(splashWindow, launchMainApp)
 
   // Verify ffmpeg is accessible and log a warning if not — better to know early
   recorder.preflight().then((result) => {
