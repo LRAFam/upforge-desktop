@@ -1,0 +1,48 @@
+name: Auto Tag Release
+
+# Triggered on every push to main.
+# Reads package.json version — if that tag doesn't exist yet, creates it.
+# The new tag then triggers the Build Installers workflow to publish the release.
+# Workflow: bump version in package.json → push → tag auto-created → release builds.
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  auto-tag:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # need full history to check existing tags
+
+      - name: Read version from package.json
+        id: pkg
+        run: echo "version=v$(node -p "require('./package.json').version")" >> $GITHUB_OUTPUT
+
+      - name: Check if tag already exists
+        id: tag_check
+        run: |
+          if git ls-remote --tags origin "${{ steps.pkg.outputs.version }}" | grep -q "${{ steps.pkg.outputs.version }}"; then
+            echo "exists=true" >> $GITHUB_OUTPUT
+          else
+            echo "exists=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Create and push tag
+        if: steps.tag_check.outputs.exists == 'false'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag "${{ steps.pkg.outputs.version }}"
+          git push origin "${{ steps.pkg.outputs.version }}"
+          echo "✅ Created tag ${{ steps.pkg.outputs.version }}"
+
+      - name: Skip (tag already exists)
+        if: steps.tag_check.outputs.exists == 'true'
+        run: echo "⏭️  Tag ${{ steps.pkg.outputs.version }} already exists — no new release needed"
