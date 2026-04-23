@@ -44,6 +44,8 @@ let recordingsStore: RecordingsStore
 // Set by setupGameDetection — cancel pending match-wait when game quits from lobby
 let cancelMatchWait: (() => void) | null = null
 let waitingForMatch = false
+// Prevents double-handling when onMatchEnded + game-stopped both fire for same match
+let matchHandled = false
 
 // Activity log — recent events shown on dashboard for user visibility
 const MAX_LOG_ENTRIES = 30
@@ -199,6 +201,87 @@ function setupGameDetection(): void {
   // All known Valorant game modes returned by the Riot Local Client API
   const ALL_MODES = new Set(['COMPETITIVE', 'PREMIER', 'CLASSIC', 'DEATHMATCH', 'SPIKERUSH', 'SWIFTPLAY', 'SNOWBALL'])
 
+  /**
+   * Stop recording, collect the match timeline (with Riot MatchDetails), and
+   * trigger the post-game upload window. Called from both onMatchEnded and
+   * game-stopped — protected by the module-level matchHandled flag.
+   */
+  async function handleMatchEnd(game: string): Promise<void> {
+    const timeline = await riotLocalApi.stop()
+    const recordingDuration = recorder.getRecordingDuration()
+    await recorder.stop()
+
+    const videoPath = recorder.getLastRecordingPath()
+    const fileSize = recorder.getLastRecordingSize()
+    const user = authManager.getUser()
+    const map = timeline?.map ?? null
+    const agent = timeline?.agent ?? null
+    const gameMode = riotLocalApi.getLastGameMode() ?? 'UNKNOWN'
+    const config = settingsManager?.get()
+    const autoAnalyse = config?.autoAnalyse !== false
+
+    tray?.setToolTip('UpForge — Valorant AI Coaching')
+
+    const MIN_DURATION_SECONDS = 120
+    const MIN_FILE_SIZE_BYTES = 1024 * 1024
+
+    if (recordingDuration > 0 && recordingDuration < MIN_DURATION_SECONDS) {
+      console.log(`[GameDetector] Recording too short (${recordingDuration}s) — ignoring`)
+      logActivity(`Recording too short (${recordingDuration}s) — discarded`)
+      if (videoPath && require('fs').existsSync(videoPath)) {
+        try { require('fs').unlinkSync(videoPath) } catch { /* ignore */ }
+      }
+      return
+    }
+
+    postGameWindow = createPostGameWindow()
+    postGameWindow.on('closed', () => { postGameWindow = null })
+
+    postGameWindow.webContents.once('did-finish-load', async () => {
+      if (!videoPath || !require('fs').existsSync(videoPath)) {
+        const ffmpegError = recorder.getLastError()
+        const errorMsg = ffmpegError
+          ? `Recording failed: ${ffmpegError}`
+          : 'Recording file was not created — ffmpeg may have failed to start. Check that ffmpeg is installed (dev) or the app was not corrupted (production).'
+        postGameWindow?.webContents.send('post-game:upload-error', errorMsg)
+        return
+      }
+
+      if (fileSize < MIN_FILE_SIZE_BYTES) {
+        const sizeMB = (fileSize / (1024 * 1024)).toFixed(2)
+        const errorMsg = `Recording appears corrupt or empty (${sizeMB} MB). Please check your ffmpeg setup.`
+        console.error(`[GameDetector] ${errorMsg}`)
+        postGameWindow?.webContents.send('post-game:upload-error', errorMsg)
+        return
+      }
+
+      if (!autoAnalyse) {
+        const recording = recordingsStore.add({
+          path: videoPath,
+          riotName: user?.riot_name ?? '',
+          riotTag: user?.riot_tag ?? '',
+          game,
+          map,
+          agent,
+          gameMode,
+          timeline
+        })
+        postGameWindow?.webContents.send('post-game:pending', {
+          recordingId: recording.id,
+          game,
+          map,
+          agent
+        })
+        mainWindow?.webContents.send('recordings:updated')
+        return
+      }
+
+      tray?.setToolTip('UpForge — Uploading...')
+      await doUploadAndAnalyse(null, videoPath, user?.riot_name ?? '', user?.riot_tag ?? '',
+        game, map, agent, timeline, postGameWindow!)
+    })
+  }
+
   gameDetector.on('game-started', async (game: string) => {
     console.log(`[GameDetector] ${game} started`)
     logActivity(`${game === 'cs2' ? 'CS2' : 'Valorant'} detected — waiting for match`)
@@ -244,17 +327,50 @@ function setupGameDetection(): void {
     const filterByMode = recordedModes.length > 0 &&
       !([...ALL_MODES].every(m => recordedModes.includes(m)))
 
-    const LOADING_DELAY_MS = 90_000
-    logActivity('Valorant match loading — recording starts in 90s')
+    // ── Presence-based match detection ────────────────────────────────────
+    // Try to use the Riot Local API to detect when the match actually goes
+    // INGAME, so we avoid the old blind 90s wait.  Falls back to a 90s wait
+    // if the lockfile / auth is not available (rare on modern installs).
+    // ──────────────────────────────────────────────────────────────────────
+    let matchStartTime: number | null = null
+    let modeConfident = false
+    const authOk = game === 'valorant' && await riotLocalApi.initAuth()
 
-    const deadline = Date.now() + LOADING_DELAY_MS
-    while (Date.now() < deadline) {
-      await new Promise((r) => setTimeout(r, 5000))
-      if (cancelled) break
-      const stillRunning = await gameDetector.isMatchProcessRunning()
-      if (!stillRunning) {
-        cancelled = true
-        break
+    if (authOk) {
+      logActivity('Riot Client API ready — waiting for INGAME presence')
+      // Wait up to 25 minutes for INGAME (handles long Agent Select)
+      const PRESENCE_TIMEOUT_MS = 25 * 60 * 1000
+      const deadline = Date.now() + PRESENCE_TIMEOUT_MS
+      while (Date.now() < deadline && !cancelled) {
+        await new Promise((r) => setTimeout(r, 3000))
+        if (cancelled) break
+        const stillRunning = await gameDetector.isMatchProcessRunning()
+        if (!stillRunning) { cancelled = true; break }
+        try {
+          const state = await riotLocalApi.getSessionState()
+          if (state?.sessionLoopState === 'INGAME') {
+            matchStartTime = Date.now()
+            if (state.queueId) {
+              gameMode = state.queueId.toUpperCase().replace(/\b(unrated)\b/i, 'CLASSIC')
+              // Use the exported normalizer for an accurate label
+              const { normalizeQueueId } = await import('./riot-local-api')
+              gameMode = normalizeQueueId(state.queueId)
+              modeConfident = true
+            }
+            break
+          }
+        } catch { /* presence endpoint not yet up — keep waiting */ }
+      }
+    } else {
+      // Fallback: wait 90 s for the loading screen
+      const LOADING_DELAY_MS = 90_000
+      logActivity('Riot Client API unavailable — recording starts in 90s')
+      const deadline = Date.now() + LOADING_DELAY_MS
+      while (Date.now() < deadline && !cancelled) {
+        await new Promise((r) => setTimeout(r, 5000))
+        if (cancelled) break
+        const stillRunning = await gameDetector.isMatchProcessRunning()
+        if (!stillRunning) { cancelled = true; break }
       }
     }
 
@@ -269,14 +385,10 @@ function setupGameDetection(): void {
       return
     }
 
-    // Best-effort mode detection: try Live Client API first (may respond mid-match),
-    // fall back to log file parsing, then assume COMPETITIVE if both fail.
-    // Only apply mode filtering when we are confident about the mode.
-    gameMode = await riotLocalApi.getGameMode()
-    let modeConfident = gameMode !== null
-    if (!gameMode) {
-      gameMode = await riotLocalApi.getGameModeFromLog()
-      modeConfident = gameMode !== null
+    // If presence didn't give us a mode, try the log file as last resort
+    if (!modeConfident) {
+      const logMode = await riotLocalApi.getGameModeFromLog()
+      if (logMode) { gameMode = logMode; modeConfident = true }
     }
 
     if (filterByMode && modeConfident && gameMode && !recordedModes.includes(gameMode)) {
@@ -286,15 +398,25 @@ function setupGameDetection(): void {
       return
     }
 
-    // Default mode label for display when detection was not possible
     if (!gameMode) gameMode = 'COMPETITIVE'
     matchActive = true
+    matchHandled = false
 
     logActivity(`Match detected (${gameMode}${modeConfident ? '' : '?'}) — starting recording`)
-    console.log(`[GameDetector] Match confirmed! gameMode=${gameMode} confident=${modeConfident}`)
+    console.log(`[GameDetector] Match confirmed! gameMode=${gameMode} confident=${modeConfident} matchStartTime=${matchStartTime}`)
 
-    // Start Riot Local API timeline tracking from match start
-    riotLocalApi.start(game)
+    // Wire up onMatchEnded — fires when presence transitions INGAME → MENUS.
+    // This is the primary way we know the match ended (before the process dies).
+    riotLocalApi.onMatchEnded = async () => {
+      if (matchHandled) return
+      matchHandled = true
+      console.log('[RiotLocalApi] onMatchEnded fired — stopping recording')
+      logActivity('Match ended (presence) — stopping recording')
+      await handleMatchEnd(game)
+    }
+
+    // Start tracking + recording
+    riotLocalApi.start(game, matchStartTime ?? undefined)
 
     tray?.setToolTip('UpForge — Recording...')
     await recorder.start(game, recorderConfig)
@@ -319,7 +441,7 @@ function setupGameDetection(): void {
   gameDetector.on('game-stopped', async (game: string) => {
     console.log(`[GameDetector] ${game} stopped`)
 
-    // If we were still waiting for a match (player quit from lobby), cancel and clean up
+    // Game quit while still in lobby (before match started)
     if (cancelMatchWait) {
       cancelMatchWait()
       cancelMatchWait = null
@@ -331,85 +453,17 @@ function setupGameDetection(): void {
       return
     }
 
-    const timeline = await riotLocalApi.stop()
-    const recordingDuration = recorder.getRecordingDuration()
-    await recorder.stop()
-
-    const videoPath = recorder.getLastRecordingPath()
-    const fileSize = recorder.getLastRecordingSize()
-    const user = authManager.getUser()
-    const map = timeline?.map ?? null
-    const agent = timeline?.agent ?? null
-    const gameMode = riotLocalApi.getLastGameMode() ?? 'UNKNOWN'
-    const config = settingsManager?.get()
-    const autoAnalyse = config?.autoAnalyse !== false
-
-    const MIN_DURATION_SECONDS = 120  // 2 minutes — ignore crash/test launches
-    const MIN_FILE_SIZE_BYTES = 1024 * 1024  // 1 MB
-
-    if (recordingDuration > 0 && recordingDuration < MIN_DURATION_SECONDS) {
-      console.log(`[GameDetector] Recording too short (${recordingDuration}s) — ignoring`)
-      logActivity(`Recording too short (${recordingDuration}s) — discarded`)
-      // Clean up the tiny file
-      if (videoPath && require('fs').existsSync(videoPath)) {
-        try { require('fs').unlinkSync(videoPath) } catch { /* ignore */ }
-      }
-      tray?.setToolTip('UpForge — Valorant AI Coaching')
+    // Presence already fired onMatchEnded and the match was handled — nothing to do
+    if (matchHandled) {
+      console.log('[GameDetector] Match already handled by onMatchEnded — skipping game-stopped')
+      riotLocalApi.onMatchEnded = null
       return
     }
 
-    // Always open the post-game window
-    postGameWindow = createPostGameWindow()
-    postGameWindow.on('closed', () => { postGameWindow = null })
-
-    postGameWindow.webContents.once('did-finish-load', async () => {
-      if (!videoPath || !require('fs').existsSync(videoPath)) {
-        const ffmpegError = recorder.getLastError()
-        const errorMsg = ffmpegError
-          ? `Recording failed: ${ffmpegError}`
-          : 'Recording file was not created — ffmpeg may have failed to start. Check that ffmpeg is installed (dev) or the app was not corrupted (production).'
-        postGameWindow?.webContents.send('post-game:upload-error', errorMsg)
-        tray?.setToolTip('UpForge — Valorant AI Coaching')
-        return
-      }
-
-      if (fileSize < MIN_FILE_SIZE_BYTES) {
-        const sizeMB = (fileSize / (1024 * 1024)).toFixed(2)
-        const errorMsg = `Recording appears corrupt or empty (${sizeMB} MB). Please check your ffmpeg setup.`
-        console.error(`[GameDetector] ${errorMsg}`)
-        postGameWindow?.webContents.send('post-game:upload-error', errorMsg)
-        tray?.setToolTip('UpForge — Valorant AI Coaching')
-        return
-      }
-
-      if (!autoAnalyse) {
-        // Save recording for later and show pending prompt
-        tray?.setToolTip('UpForge — Valorant AI Coaching')
-        const recording = recordingsStore.add({
-          path: videoPath,
-          riotName: user?.riot_name ?? '',
-          riotTag: user?.riot_tag ?? '',
-          game,
-          map,
-          agent,
-          gameMode,
-          timeline
-        })
-        postGameWindow?.webContents.send('post-game:pending', {
-          recordingId: recording.id,
-          game,
-          map,
-          agent
-        })
-        mainWindow?.webContents.send('recordings:updated')
-        return
-      }
-
-      // Auto-analyse: start upload immediately
-      tray?.setToolTip('UpForge — Uploading...')
-      await doUploadAndAnalyse(null, videoPath, user?.riot_name ?? '', user?.riot_tag ?? '',
-        game, map, agent, timeline, postGameWindow!)
-    })
+    // Process died without a clean presence transition (crash, force-quit, etc.)
+    matchHandled = true
+    logActivity('Game process ended — stopping recording')
+    await handleMatchEnd(game)
   })
 
   gameDetector.start()

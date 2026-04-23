@@ -1,5 +1,5 @@
 import https from 'https'
-import net from 'net'
+import tls from 'tls'
 import fs from 'fs'
 import path from 'path'
 
@@ -9,12 +9,23 @@ export interface GameEvent {
   EventTime: number
 }
 
-/** A kill/death event with full participant info from the Riot Live Client API */
+/** A kill/death event — now populated from Riot MatchDetails API post-match */
 export interface KillEvent extends GameEvent {
   EventName: 'ChampionKill'
   killerName: string
   victimName: string
   assistants: string[]
+  /** Milliseconds since game start — from Riot MatchDetails timeSinceGameStartMillis */
+  timeSinceGameStartMillis?: number
+  /** Offset from recording start in ms — use this to seek video to the kill */
+  videoOffsetMs?: number
+  /** Weapon/damage type (e.g. "Weapon", "Ability", "Bomb") */
+  weapon?: string
+  /** Raw PUUIDs for backend resolution */
+  killerPuuid?: string
+  victimPuuid?: string
+  /** Which round this kill occurred in (0-indexed) */
+  round?: number
 }
 
 /** Spike planted event — includes site (A/B/C) and who planted */
@@ -128,36 +139,78 @@ export interface FinalPlayerStats {
   level: number
 }
 
+/** Round score snapshot captured from presence polling */
+export interface RoundScore {
+  allyScore: number
+  enemyScore: number
+  /** Epoch ms when this score was detected */
+  detectedAt: number
+}
+
+/** Lockfile credentials from Riot Client */
+export interface LockfileData {
+  port: number
+  password: string
+}
+
+/** Presence-derived session state */
+export interface SessionState {
+  sessionLoopState: 'MENUS' | 'PREGAME' | 'INGAME' | string
+  queueId: string | null
+  matchMap: string | null
+  allyScore: number
+  enemyScore: number
+}
+
 /** Full enriched match data — superset of MatchTimeline */
 export interface MatchData {
   game: string
+
+  // Identity (NEW)
+  /** Riot match UUID — from WebSocket ares-match-details event */
+  matchId: string | null
+  /** Player's PUUID */
+  puuid: string | null
+  /** Region for Riot PvP API (e.g. 'eu', 'na', 'ap') */
+  region: string | null
+  /** Raw Riot queue ID (e.g. 'competitive', 'swiftplay') */
+  queueId: string | null
+
+  // Match context
   map: string | null
   agent: string | null
+  /** Normalised queue string (e.g. 'COMPETITIVE', 'SWIFTPLAY') */
   gameMode: string | null
-  /** The local player's Riot ID (gameName#tagLine) — used to identify kills/deaths */
+  /** Player's Riot display name (gameName) */
   playerName: string | null
-  /** All timestamped events (lightweight, for frame selection) */
+  /** Player's Riot tag (tagLine) */
+  playerTag: string | null
+
+  // Timing (critical for video frame mapping — NEW)
+  /** Epoch ms when presence transitioned to INGAME (= real match start) */
+  matchStartTime: number | null
+  /** Epoch ms when recorder.start() was called */
+  recordingStartTime: number
+
+  // Round score progression from presence polling (NEW)
+  roundScores: RoundScore[]
+
+  // Events (populated from Riot MatchDetails API post-match)
   events: GameEvent[]
-  /** Kill events with full participant details */
   killEvents: KillEvent[]
-  /** Kill events where the local player is the killer */
   playerKills: KillEvent[]
-  /** Kill events where the local player is the victim */
   playerDeaths: KillEvent[]
-  /** Spike plant events */
   spikePlants: SpikePlantedEvent[]
-  /** Spike defuse events */
   spikeDefuses: SpikeDefusedEvent[]
-  /** Spike detonation events */
   spikeDetonations: SpikeDetonatedEvent[]
-  /** First blood events (one per round) */
   firstBloods: FirstBloodEvent[]
-  /** Round-by-round summaries */
   roundSummaries: RoundSummary[]
-  /** Final player stats snapshot taken when match ends */
   finalStats: FinalPlayerStats | null
-  /** Stats for every player on both teams — captured at match end */
   teamSnapshot: TeamPlayerSnapshot[]
+
+  /** Raw Riot MatchDetails API response — full fidelity data for AI coaching */
+  matchDetails: Record<string, unknown> | null
+
   startTime: number
   endTime: number | null
 }
@@ -173,26 +226,350 @@ export interface MatchTimeline {
 }
 
 export class RiotLocalApi {
-  private pollInterval: ReturnType<typeof setInterval> | null = null
+  private tlsAgent = new https.Agent({ rejectUnauthorized: false })
+  private lockfileData: LockfileData | null = null
+  private ownPuuid: string | null = null
+  private accessToken: string | null = null
+  private entitlementsToken: string | null = null
+  private region: string | null = null
+  private playerName: string | null = null
+  private playerTag: string | null = null
   private matchData: MatchData | null = null
+  private presencePollInterval: ReturnType<typeof setInterval> | null = null
+  private wsSocket: tls.TLSSocket | null = null
+  private lastSessionLoopState: string = 'MENUS'
+  private matchEnded = false
+  private currentMatchId: string | null = null
   private lastGameMode: string | null = null
-  private agent = new https.Agent({ rejectUnauthorized: false })
-  private roundNumber = 0
-  /** Tracks the current spike state within a round — reset when a new round starts */
-  private currentRoundSpike: { planted: boolean; site: string | null; planter: string | null; defused: boolean; defuser: string | null; detonated: boolean } = { planted: false, site: null, planter: null, defused: false, defuser: null, detonated: false }
-  /** Tracks first blood in current round */
-  private currentRoundFirstBlood: { killerName: string; victimName: string } | null = null
-  /** Latest cached activePlayer gold and abilities */
-  private latestGold: number | null = null
-  private latestAbilities: PlayerAbilities | null = null
 
-  start(game: string): void {
+  /**
+   * Fired when presence transitions INGAME -> MENUS (match ended).
+   * Set this before calling start() to stop recording promptly.
+   */
+  public onMatchEnded: (() => void) | null = null
+
+  // ──────────────────────────────────────────────────────────────────────
+  // LOCKFILE
+  // ──────────────────────────────────────────────────────────────────────
+
+  readLockfile(): LockfileData | null {
+    if (process.platform !== 'win32') return null
+    const localAppData = process.env.LOCALAPPDATA
+    if (!localAppData) return null
+    const lockfilePath = path.join(localAppData, 'Riot Games', 'Riot Client', 'Config', 'lockfile')
+    try {
+      const content = fs.readFileSync(lockfilePath, 'utf8').trim()
+      const parts = content.split(':')
+      if (parts.length < 5) return null
+      const port = parseInt(parts[2], 10)
+      if (isNaN(port)) return null
+      this.lockfileData = { port, password: parts[3] }
+      return this.lockfileData
+    } catch {
+      return null
+    }
+  }
+
+  // ──────────────────────────────────────────────────────────────────────
+  // HTTP CLIENT (Riot Client Local API)
+  // ──────────────────────────────────────────────────────────────────────
+
+  private _fetchLocal<T>(apiPath: string): Promise<T> {
+    const lf = this.lockfileData
+    if (!lf) return Promise.reject(new Error('Lockfile not available'))
+    const auth = Buffer.from(`riot:${lf.password}`).toString('base64')
+    return new Promise((resolve, reject) => {
+      const req = https.get(
+        { hostname: '127.0.0.1', port: lf.port, path: apiPath,
+          headers: { Authorization: `Basic ${auth}` }, agent: this.tlsAgent },
+        (res) => {
+          let body = ''
+          res.on('data', (chunk) => (body += chunk))
+          res.on('end', () => {
+            if (res.statusCode !== 200) { reject(new Error(`HTTP ${res.statusCode} for ${apiPath}`)); return }
+            try { resolve(JSON.parse(body) as T) } catch { reject(new Error('Invalid JSON')) }
+          })
+        }
+      )
+      req.on('error', reject)
+      req.setTimeout(5000, () => { req.destroy(); reject(new Error('Timeout')) })
+    })
+  }
+
+  // ──────────────────────────────────────────────────────────────────────
+  // AUTHENTICATION & IDENTITY
+  // ──────────────────────────────────────────────────────────────────────
+
+  /**
+   * Read the lockfile and fetch auth tokens + player identity from the Riot Client.
+   * Call once when the game process starts. Returns true if successful.
+   */
+  async initAuth(): Promise<boolean> {
+    const lf = this.readLockfile()
+    if (!lf) {
+      console.log('[RiotLocalApi] Lockfile not found')
+      return false
+    }
+    try {
+      const ent = await this._fetchLocal<{ subject: string; accessToken: string; token: string }>(
+        '/entitlements/v1/token'
+      )
+      this.ownPuuid = ent.subject
+      this.accessToken = ent.accessToken
+      this.entitlementsToken = ent.token
+    } catch (err) {
+      console.log('[RiotLocalApi] Failed to fetch entitlements token:', err)
+      return false
+    }
+
+    // Player name + region from chat session
+    try {
+      const sess = await this._fetchLocal<{
+        game_name: string; game_tag: string; region: string; puuid: string
+      }>('/chat/v1/session')
+      if (sess.game_name) this.playerName = sess.game_name
+      if (sess.game_tag) this.playerTag = sess.game_tag
+      if (sess.region) this.region = _normalizeRegion(sess.region)
+    } catch {
+      // Fallback: extract region from Valorant launch args
+      try {
+        const ext = await this._fetchLocal<
+          Record<string, { launchConfiguration?: { arguments?: string[] } }>
+        >('/product-session/v1/external-sessions')
+        for (const v of Object.values(ext)) {
+          for (const arg of v?.launchConfiguration?.arguments ?? []) {
+            const m = arg.match(/^-ares-deployment=(.+)$/)
+            if (m) { this.region = m[1]; break }
+          }
+          if (this.region) break
+        }
+      } catch { /* ignore */ }
+    }
+
+    console.log(
+      `[RiotLocalApi] Auth ready — puuid=${this.ownPuuid?.slice(0, 8)}... ` +
+      `region=${this.region} player=${this.playerName}#${this.playerTag}`
+    )
+    return true
+  }
+
+  private async _refreshTokens(): Promise<void> {
+    if (!this.lockfileData) return
+    try {
+      const ent = await this._fetchLocal<{ subject: string; accessToken: string; token: string }>(
+        '/entitlements/v1/token'
+      )
+      this.accessToken = ent.accessToken
+      this.entitlementsToken = ent.token
+    } catch { /* use cached tokens */ }
+  }
+
+  // ──────────────────────────────────────────────────────────────────────
+  // PRESENCE / SESSION STATE
+  // ──────────────────────────────────────────────────────────────────────
+
+  /**
+   * Poll /chat/v4/presences and return own Valorant session state.
+   * The `private` field is base64-encoded JSON containing matchPresenceData.
+   */
+  async getSessionState(): Promise<SessionState | null> {
+    if (!this.lockfileData || !this.ownPuuid) return null
+    try {
+      const data = await this._fetchLocal<{
+        presences: Array<{ puuid: string; product: string; private: string }>
+      }>('/chat/v4/presences')
+      const own = data.presences?.find((p) => p.puuid === this.ownPuuid && p.product === 'valorant')
+      if (!own?.private) return null
+      const decoded = JSON.parse(Buffer.from(own.private, 'base64').toString()) as Record<string, unknown>
+      const mpd = (decoded.matchPresenceData ?? {}) as Record<string, unknown>
+      return {
+        sessionLoopState: (mpd.sessionLoopState ?? decoded.sessionLoopState ?? 'MENUS') as string,
+        queueId: (mpd.queueId ?? decoded.queueId ?? null) as string | null,
+        matchMap: (mpd.matchMap ?? decoded.matchMap ?? null) as string | null,
+        allyScore: (decoded.partyOwnerMatchScoreAllyTeam ?? 0) as number,
+        enemyScore: (decoded.partyOwnerMatchScoreEnemyTeam ?? 0) as number,
+      }
+    } catch {
+      return null
+    }
+  }
+
+  // ──────────────────────────────────────────────────────────────────────
+  // WEBSOCKET (match-end signal + matchId detection)
+  // ──────────────────────────────────────────────────────────────────────
+
+  private _connectWebSocket(): void {
+    if (!this.lockfileData) return
+    const { port, password } = this.lockfileData
+    const authHeader = `Basic ${Buffer.from(`riot:${password}`).toString('base64')}`
+    const wsKey = Buffer.from(Math.random().toString(36)).toString('base64')
+
+    const socket = tls.connect(
+      { host: '127.0.0.1', port, rejectUnauthorized: false },
+      () => {
+        socket.write(
+          [`GET / HTTP/1.1`, `Host: 127.0.0.1:${port}`, `Upgrade: websocket`,
+           `Connection: Upgrade`, `Sec-WebSocket-Key: ${wsKey}`, `Sec-WebSocket-Version: 13`,
+           `Authorization: ${authHeader}`, ``, ``].join('\r\n')
+        )
+      }
+    )
+
+    this.wsSocket = socket
+    let wsBuffer = Buffer.alloc(0)
+    let handshakeDone = false
+
+    socket.on('data', (chunk: Buffer) => {
+      wsBuffer = Buffer.concat([wsBuffer, chunk])
+      if (!handshakeDone) {
+        const headerEnd = wsBuffer.indexOf('\r\n\r\n')
+        if (headerEnd === -1) return
+        handshakeDone = true
+        this._wsSend(socket, JSON.stringify([5, 'OnJsonApiEvent']))
+        wsBuffer = wsBuffer.slice(headerEnd + 4)
+      }
+      // Parse RFC 6455 frames (server->client, no masking)
+      while (wsBuffer.length >= 2) {
+        const b1 = wsBuffer[0]
+        const b2 = wsBuffer[1]
+        const opcode = b1 & 0x0f
+        if (opcode === 8) break // close
+        let payloadLen = b2 & 0x7f
+        let offset = 2
+        if (payloadLen === 126) {
+          if (wsBuffer.length < 4) break
+          payloadLen = wsBuffer.readUInt16BE(2); offset = 4
+        } else if (payloadLen === 127) {
+          if (wsBuffer.length < 10) break
+          payloadLen = Number(wsBuffer.readBigUInt64BE(2)); offset = 10
+        }
+        if (wsBuffer.length < offset + payloadLen) break
+        const payload = wsBuffer.slice(offset, offset + payloadLen).toString('utf8')
+        wsBuffer = wsBuffer.slice(offset + payloadLen)
+        if (!payload) continue
+        try {
+          const msg = JSON.parse(payload) as unknown[]
+          if (Array.isArray(msg) && msg[0] === 8) this._handleWsEvent(msg[2] as Record<string, unknown>)
+        } catch { /* ignore malformed frames */ }
+      }
+    })
+
+    socket.on('error', (err: Error) => console.log('[RiotLocalApi] WS error:', err.message))
+    socket.on('close', () => {
+      console.log('[RiotLocalApi] WS closed')
+      if (this.matchData && !this.matchEnded) setTimeout(() => this._connectWebSocket(), 5000)
+    })
+  }
+
+  /** Send masked WebSocket frame (RFC 6455 — client->server frames must be masked) */
+  private _wsSend(socket: tls.TLSSocket, payload: string): void {
+    const data = Buffer.from(payload, 'utf8')
+    const mask = Buffer.from([
+      Math.floor(Math.random() * 256), Math.floor(Math.random() * 256),
+      Math.floor(Math.random() * 256), Math.floor(Math.random() * 256),
+    ])
+    const masked = Buffer.alloc(data.length)
+    for (let i = 0; i < data.length; i++) masked[i] = data[i] ^ mask[i % 4]
+    let header: Buffer
+    if (data.length < 126) {
+      header = Buffer.from([0x81, 0x80 | data.length, ...mask])
+    } else if (data.length < 65536) {
+      header = Buffer.from([0x81, 0x80 | 126, data.length >> 8, data.length & 0xff, ...mask])
+    } else { return }
+    socket.write(Buffer.concat([header, masked]))
+  }
+
+  private _handleWsEvent(event: Record<string, unknown>): void {
+    if (!event) return
+    const uri = (event.uri as string) ?? ''
+    const data = (event.data as Record<string, unknown>) ?? {}
+    // Match end: ares-match-details event fires with matchId as payload
+    if (uri.includes('ares-match-details/match-details/v1/matches')) {
+      const matchId = data.payload as string
+      if (matchId && matchId.length > 10) {
+        console.log(`[RiotLocalApi] Match ID from WS: ${matchId}`)
+        this.currentMatchId = matchId
+        if (this.matchData) this.matchData.matchId = matchId
+      }
+    }
+    // Extract matchId from core-game URI during match (backup)
+    if (uri.includes('/core-game/v1/matches/') && !this.currentMatchId) {
+      const m = uri.match(/core-game\/v1\/matches\/([0-9a-f-]{36})/)
+      if (m) {
+        this.currentMatchId = m[1]
+        if (this.matchData) this.matchData.matchId = m[1]
+        console.log(`[RiotLocalApi] Match ID from WS URI: ${m[1]}`)
+      }
+    }
+  }
+
+  // ──────────────────────────────────────────────────────────────────────
+  // PRESENCE POLLING (during match)
+  // ──────────────────────────────────────────────────────────────────────
+
+  private async _pollPresence(): Promise<void> {
+    if (!this.matchData || this.matchEnded) return
+    const state = await this.getSessionState()
+    if (!state) return
+    const { sessionLoopState, queueId, matchMap, allyScore, enemyScore } = state
+
+    if (!this.matchData.map && matchMap && matchMap.length > 1) {
+      const parts = matchMap.split('/').filter(Boolean)
+      this.matchData.map = parts.pop() ?? matchMap
+      console.log(`[RiotLocalApi] Map: ${this.matchData.map}`)
+    }
+    if (!this.matchData.queueId && queueId) {
+      this.matchData.queueId = queueId
+      const normalized = _normalizeQueueId(queueId)
+      this.matchData.gameMode = normalized
+      this.lastGameMode = normalized
+      console.log(`[RiotLocalApi] Queue: ${queueId} -> ${normalized}`)
+    }
+
+    const last = this.matchData.roundScores[this.matchData.roundScores.length - 1]
+    if (!last || last.allyScore !== allyScore || last.enemyScore !== enemyScore) {
+      this.matchData.roundScores.push({ allyScore, enemyScore, detectedAt: Date.now() })
+      if (sessionLoopState === 'INGAME' && (allyScore > 0 || enemyScore > 0))
+        console.log(`[RiotLocalApi] Score: ${allyScore}-${enemyScore}`)
+    }
+
+    if (this.lastSessionLoopState === 'INGAME' && sessionLoopState === 'MENUS') {
+      console.log('[RiotLocalApi] Match ended — presence returned to MENUS')
+      this.matchEnded = true
+      this.lastSessionLoopState = sessionLoopState
+      this.onMatchEnded?.()
+      return
+    }
+    this.lastSessionLoopState = sessionLoopState
+  }
+
+  // ──────────────────────────────────────────────────────────────────────
+  // MATCH LIFECYCLE
+  // ──────────────────────────────────────────────────────────────────────
+
+  /**
+   * Start tracking a match.
+   * @param game           'valorant' or 'cs2'
+   * @param matchStartTime  Epoch ms when presence transitioned to INGAME
+   */
+  start(game: string, matchStartTime?: number): void {
+    this.matchEnded = false
+    this.currentMatchId = null
+    this.lastSessionLoopState = 'INGAME'
     this.matchData = {
       game,
+      matchId: null,
+      puuid: this.ownPuuid,
+      region: this.region,
+      queueId: null,
       map: null,
       agent: null,
       gameMode: null,
-      playerName: null,
+      playerName: this.playerName,
+      playerTag: this.playerTag,
+      matchStartTime: matchStartTime ?? null,
+      recordingStartTime: Date.now(),
+      roundScores: [],
       events: [],
       killEvents: [],
       playerKills: [],
@@ -204,98 +581,256 @@ export class RiotLocalApi {
       roundSummaries: [],
       finalStats: null,
       teamSnapshot: [],
+      matchDetails: null,
       startTime: Date.now(),
-      endTime: null
+      endTime: null,
     }
-    this.roundNumber = 0
-    this.currentRoundSpike = { planted: false, site: null, planter: null, defused: false, defuser: null, detonated: false }
-    this.currentRoundFirstBlood = null
-    this.latestGold = null
-    this.latestAbilities = null
-    this._pollGameData()
-    this.pollInterval = setInterval(() => this._pollGameData(), 10_000)
-    console.log(`[RiotLocalApi] Started polling for ${game}`)
-  }
-
-  async stop(): Promise<MatchData | null> {
-    if (this.pollInterval) {
-      clearInterval(this.pollInterval)
-      this.pollInterval = null
-    }
-    if (this.matchData) {
-      // Do a final poll to capture end-of-match stats
-      await this._pollGameData()
-      this.matchData.endTime = Date.now()
-    }
-    const result = this.matchData
-    this.matchData = null
-    console.log(`[RiotLocalApi] Stopped. Captured ${result?.events.length ?? 0} events, ${result?.killEvents.length ?? 0} kills, ${result?.roundSummaries.length ?? 0} rounds, ${result?.spikePlants.length ?? 0} spike plants, ${result?.teamSnapshot.length ?? 0} players.`)
-    return result
+    this._connectWebSocket()
+    this.presencePollInterval = setInterval(() => this._pollPresence(), 3000)
+    console.log(`[RiotLocalApi] Match tracking started (game=${game} matchStartTime=${matchStartTime})`)
   }
 
   /**
-   * Returns true if Valorant's Live Client Data server is listening on port 2999.
-   * Uses a raw TCP connect — no SSL issues, no cert problems.
-   * Port 2999 is ONLY open when a match is actively in progress.
+   * Stop tracking and return enriched MatchData.
+   * Fetches Riot MatchDetails API post-match if matchId + region are available.
    */
-  async isMatchActive(): Promise<boolean> {
+  async stop(): Promise<MatchData | null> {
+    if (this.presencePollInterval) { clearInterval(this.presencePollInterval); this.presencePollInterval = null }
+    if (this.wsSocket) { this.wsSocket.destroy(); this.wsSocket = null }
+    if (!this.matchData) return null
+    this.matchData.endTime = Date.now()
+    if (!this.matchData.matchId && this.currentMatchId) this.matchData.matchId = this.currentMatchId
+
+    if (this.matchData.matchId && this.region) {
+      console.log(`[RiotLocalApi] Fetching MatchDetails for ${this.matchData.matchId}`)
+      await this._refreshTokens()
+      const details = await this._fetchMatchDetails(this.matchData.matchId)
+      if (details) {
+        this.matchData.matchDetails = details
+        this._populateFromMatchDetails(details)
+      } else {
+        console.log('[RiotLocalApi] MatchDetails fetch failed — using presence data only')
+      }
+    } else {
+      console.log(`[RiotLocalApi] Skipping MatchDetails — matchId=${this.matchData.matchId} region=${this.region}`)
+    }
+
+    const result = this.matchData
+    this.matchData = null
+    console.log(
+      `[RiotLocalApi] Stop complete — kills=${result.killEvents.length} ` +
+      `rounds=${result.roundSummaries.length} matchId=${result.matchId}`
+    )
+    return result
+  }
+
+  // ──────────────────────────────────────────────────────────────────────
+  // POST-MATCH: RIOT MATCH DETAILS API
+  // ──────────────────────────────────────────────────────────────────────
+
+  private async _fetchMatchDetails(matchId: string): Promise<Record<string, unknown> | null> {
+    if (!this.region || !this.accessToken || !this.entitlementsToken) return null
     return new Promise((resolve) => {
-      const socket = new net.Socket()
-      socket.setTimeout(2000)
-      socket.on('connect', () => { socket.destroy(); resolve(true) })
-      socket.on('error', () => resolve(false))
-      socket.on('timeout', () => { socket.destroy(); resolve(false) })
-      socket.connect(2999, '127.0.0.1')
+      const req = https.get(
+        {
+          hostname: `pd.${this.region}.a.pvp.net`,
+          port: 443,
+          path: `/match-details/v1/matches/${matchId}`,
+          headers: {
+            Authorization: `Bearer ${this.accessToken}`,
+            'X-Riot-Entitlements-JWT': this.entitlementsToken!,
+            // Standard Valorant client platform header (required by Riot PvP API)
+            'X-Riot-ClientPlatform':
+              'ew0KCSJwbGF0Zm9ybVR5cGUiOiAiUEMiLA0KCSJwbGF0Zm9ybU9TIjogIldpbmRvd3MiLA0KCSJwbGF0Zm9ybU9TVmVyc2lvbiI6ICIxMC4wLjE5MDQyLjEuMjU2LjY0Yml0IiwNCgkicGxhdGZvcm1DaGlwc2V0IjogIlVua25vd24iDQp9',
+          },
+        },
+        (res) => {
+          let body = ''
+          res.on('data', (chunk) => (body += chunk))
+          res.on('end', () => {
+            if (res.statusCode !== 200) {
+              console.log(`[RiotLocalApi] MatchDetails HTTP ${res.statusCode}`)
+              resolve(null); return
+            }
+            try { resolve(JSON.parse(body) as Record<string, unknown>) } catch { resolve(null) }
+          })
+        }
+      )
+      req.on('error', (err: Error) => { console.log(`[RiotLocalApi] MatchDetails error: ${err.message}`); resolve(null) })
+      req.setTimeout(15000, () => { req.destroy(); resolve(null) })
     })
   }
 
   /**
-   * Probe the Riot Live Client API and return the gameMode string (e.g. "CLASSIC", "COMPETITIVE",
-   * "DEATHMATCH", "SPIKERUSH", "SNOWBALL", "SWIFTPLAY").
-   * Returns null when the game is not yet in a loadable state.
+   * Populate MatchData from Riot MatchDetails.
+   * Every kill gets a precise videoOffsetMs for seeking the recording to that exact moment.
    */
-  async getGameMode(): Promise<string | null> {
-    try {
-      const data = await this._fetch('https://127.0.0.1:2999/liveclientdata/allgamedata')
-      const mode = (data.gameData as Record<string, unknown> | undefined)?.gameMode
-      const result = typeof mode === 'string' ? mode.toUpperCase() : null
-      if (result) this.lastGameMode = result
-      return result
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err)
-      // Only log once per distinct error to avoid log spam during the match-wait loop
-      if (msg !== this._lastGetGameModeError) {
-        console.log(`[RiotLocalApi] getGameMode() failed: ${msg}`)
-        this._lastGetGameModeError = msg
+  private _populateFromMatchDetails(details: Record<string, unknown>): void {
+    if (!this.matchData) return
+    const matchInfo = details.matchInfo as Record<string, unknown> | undefined
+    const players = details.players as Array<Record<string, unknown>> | undefined
+    const roundResults = details.roundResults as Array<Record<string, unknown>> | undefined
+    const allKills = details.kills as Array<Record<string, unknown>> | undefined
+
+    if (matchInfo?.mapId) {
+      const mapId = matchInfo.mapId as string
+      this.matchData.map = mapId.split('/').filter(Boolean).pop() ?? mapId
+    }
+    if (matchInfo?.queueID && !this.matchData.queueId) {
+      const queueId = matchInfo.queueID as string
+      this.matchData.queueId = queueId
+      this.matchData.gameMode = _normalizeQueueId(queueId)
+      this.lastGameMode = this.matchData.gameMode
+    }
+
+    const ownPlayer = players?.find((p) => p.subject === this.ownPuuid)
+    if (ownPlayer) {
+      this.matchData.agent = (ownPlayer.characterId as string) ?? this.matchData.agent
+      const gameName = (ownPlayer.gameName as string) ?? null
+      const tagLine = (ownPlayer.tagLine as string) ?? null
+      if (gameName) this.matchData.playerName = gameName
+      if (tagLine) this.matchData.playerTag = tagLine
+      const stats = ownPlayer.stats as Record<string, number> | undefined
+      if (stats) {
+        this.matchData.finalStats = {
+          kills: stats.kills ?? 0, deaths: stats.deaths ?? 0, assists: stats.assists ?? 0,
+          score: stats.score ?? 0, summonerName: gameName, agent: this.matchData.agent,
+          team: (ownPlayer.teamId as string) ?? null, level: 0,
+        }
       }
-      return null
+    }
+
+    if (players && players.length > 0) {
+      this.matchData.teamSnapshot = players.map((p) => {
+        const stats = p.stats as Record<string, number> | undefined
+        return {
+          summonerName: (p.gameName as string) ?? (p.subject as string),
+          agent: (p.characterId as string) ?? null,
+          team: (p.teamId as string) ?? 'Unknown',
+          kills: stats?.kills ?? 0, deaths: stats?.deaths ?? 0,
+          assists: stats?.assists ?? 0, score: stats?.score ?? 0, level: 0,
+        }
+      })
+    }
+
+    // Kill events — video offset math:
+    // videoOffsetMs = (matchStartTime - recordingStartTime) + timeSinceGameStartMillis
+    const matchStartTime = this.matchData.matchStartTime
+    const recordingStartTime = this.matchData.recordingStartTime
+    const recordingOffset = matchStartTime != null ? matchStartTime - recordingStartTime : 0
+
+    if (allKills && allKills.length > 0) {
+      let eventId = 1
+      for (const k of allKills) {
+        const tsgm = (k.timeSinceGameStartMillis as number) ?? 0
+        const videoOffsetMs = recordingOffset + tsgm
+        const killerPuuid = k.killer as string
+        const victimPuuid = k.victim as string
+        const kPlayer = players?.find((p) => p.subject === killerPuuid)
+        const vPlayer = players?.find((p) => p.subject === victimPuuid)
+        const ev: KillEvent = {
+          EventID: eventId++,
+          EventName: 'ChampionKill',
+          EventTime: tsgm / 1000,
+          killerName: (kPlayer?.gameName as string) ?? killerPuuid?.slice(0, 8) ?? '',
+          victimName: (vPlayer?.gameName as string) ?? victimPuuid?.slice(0, 8) ?? '',
+          assistants: (k.assistants as string[]) ?? [],
+          timeSinceGameStartMillis: tsgm,
+          videoOffsetMs,
+          weapon: ((k.finishingDamage as Record<string, unknown>)?.damageType as string) ?? 'Unknown',
+          killerPuuid,
+          victimPuuid,
+          round: (k.round as number) ?? 0,
+        }
+        this.matchData.killEvents.push(ev)
+        this.matchData.events.push(ev)
+        if (killerPuuid === this.ownPuuid) this.matchData.playerKills.push(ev)
+        if (victimPuuid === this.ownPuuid) this.matchData.playerDeaths.push(ev)
+      }
+    }
+
+    if (roundResults && roundResults.length > 0) {
+      for (const round of roundResults) {
+        const roundNum = (round.roundNum as number) ?? 0
+        const winningTeam = (round.winningTeam as string) ?? null
+        const resultCode = (round.roundResultCode as string) ?? (round.roundResult as string) ?? null
+        const bombPlanter = (round.bombPlanter as string) ?? null
+        const bombDefuser = (round.bombDefuser as string) ?? null
+        const plantSite = (round.plantSite as string) ?? null
+        const prs = (round.playerStats as Array<Record<string, unknown>> | undefined)
+          ?.find((ps) => ps.subject === this.ownPuuid)
+        const economy = prs?.economy as Record<string, unknown> | undefined
+        this.matchData.roundSummaries.push({
+          roundNumber: roundNum + 1,
+          winningTeam,
+          ceremony: resultCode,
+          endTime: (round.defuseRoundMsec as number) || (round.plantRoundMsec as number) || 0,
+          playerStats: prs ? {
+            kills: (prs.kills as unknown[])?.length ?? 0,
+            deaths: 0,
+            assists: (prs.assists as unknown[])?.length ?? 0,
+            score: (prs.score as number) ?? 0,
+          } : null,
+          spikePlanted: !!bombPlanter, spikeSite: plantSite, spikePlanter: bombPlanter,
+          spikeDefused: !!bombDefuser, spikeDefuser: bombDefuser,
+          spikeDetonated: resultCode === 'BombDetonated',
+          playerGold: (economy?.remaining as number) ?? null, playerAbilities: null,
+          playerGotFirstBlood: false, playerWasFirstBlood: false,
+        })
+        if (bombPlanter) this.matchData.spikePlants.push({
+          EventID: roundNum * 100 + 10, EventName: 'SpikePlanted',
+          EventTime: (round.plantRoundMsec as number) ?? 0, planter: bombPlanter, site: plantSite ?? '',
+        })
+        if (bombDefuser) this.matchData.spikeDefuses.push({
+          EventID: roundNum * 100 + 20, EventName: 'SpikeDefused',
+          EventTime: (round.defuseRoundMsec as number) ?? 0, defuser: bombDefuser,
+        })
+        if (resultCode === 'BombDetonated') this.matchData.spikeDetonations.push({
+          EventID: roundNum * 100 + 30, EventName: 'SpikeDetonated',
+          EventTime: (round.defuseRoundMsec as number) ?? 0,
+        })
+      }
     }
   }
 
-  private _lastGetGameModeError: string | null = null
+  // ──────────────────────────────────────────────────────────────────────
+  // BACKWARD COMPATIBILITY & FALLBACKS
+  // ──────────────────────────────────────────────────────────────────────
+
+  getLastGameMode(): string | null { return this.lastGameMode }
+
+  async isMatchActive(): Promise<boolean> {
+    const state = await this.getSessionState()
+    return state?.sessionLoopState === 'INGAME'
+  }
+
+  async getGameMode(): Promise<string | null> {
+    const state = await this.getSessionState()
+    if (state?.queueId) {
+      const mode = _normalizeQueueId(state.queueId)
+      this.lastGameMode = mode
+      return mode
+    }
+    return null
+  }
 
   /**
    * Best-effort: read the Valorant log file and infer game mode from queue-related strings.
-   * The Live Client API (port 2999) was deprecated/removed around 2024. This log-file
-   * fallback keeps mode detection working without it. Returns null if mode cannot be determined.
+   * Fallback when lockfile API is unavailable.
    */
   async getGameModeFromLog(): Promise<string | null> {
     if (process.platform !== 'win32') return null
     const localAppData = process.env.LOCALAPPDATA
     if (!localAppData) return null
-
     const logPath = path.join(localAppData, 'VALORANT', 'Saved', 'Logs', 'VALORANT.log')
     try {
       const stat = fs.statSync(logPath)
-      // Only read last 100 KB — mode info is written early in the session
       const readSize = Math.min(100_000, stat.size)
       const fd = fs.openSync(logPath, 'r')
       const buf = Buffer.alloc(readSize)
       fs.readSync(fd, buf, 0, readSize, stat.size - readSize)
       fs.closeSync(fd)
       const text = buf.toString('utf8').toLowerCase()
-
-      // Check for queue identifiers — ordered most-specific first
       if (text.includes('premier')) return 'PREMIER'
       if (text.includes('competitive')) return 'COMPETITIVE'
       if (text.includes('deathmatch')) return 'DEATHMATCH'
@@ -307,281 +842,26 @@ export class RiotLocalApi {
       return null
     }
   }
+}
 
-  /** Returns the last known game mode — useful after stop() is called */
-  getLastGameMode(): string | null {
-    return this.lastGameMode
+// ─────────────────────────────────────────────────────────────────────────────
+// HELPERS
+// ─────────────────────────────────────────────────────────────────────────────
+
+function _normalizeRegion(region: string): string {
+  return region.replace(/\d+$/, '').toLowerCase()
+}
+
+export function normalizeQueueId(queueId: string): string {
+  return _normalizeQueueId(queueId)
+}
+
+function _normalizeQueueId(queueId: string): string {
+  const map: Record<string, string> = {
+    competitive: 'COMPETITIVE', unrated: 'CLASSIC', deathmatch: 'DEATHMATCH',
+    spikerush: 'SPIKERUSH', swiftplay: 'SWIFTPLAY', snowball: 'SNOWBALL',
+    premier: 'PREMIER', custom: 'CUSTOM', ggteam: 'ESCALATION',
+    onefa: 'REPLICATION', hurm: 'TEAMDEATHMATCH', newmap: 'NEWMAP',
   }
-
-  private async _pollGameData(): Promise<void> {
-    try {
-      const data = await this._fetch('https://127.0.0.1:2999/liveclientdata/allgamedata')
-      if (!this.matchData) return
-
-      const gameData = data.gameData as Record<string, unknown> | undefined
-      const activePlayer = data.activePlayer as Record<string, unknown> | undefined
-      const allPlayers = data.allPlayers as Array<Record<string, unknown>> | undefined
-
-      // Extract map, agent, game mode and player identity on first poll
-      if (!this.matchData.map && gameData?.mapName) {
-        // mapName may be a full internal path like "/Game/Maps/Ascent/Ascent" — extract last segment
-        const raw = gameData.mapName as string
-        this.matchData.map = raw.includes('/') ? raw.split('/').filter(Boolean).pop() ?? raw : raw
-      }
-      if (!this.matchData.agent && activePlayer?.championName) {
-        this.matchData.agent = activePlayer.championName as string
-      }
-      if (gameData?.gameMode) {
-        const mode = (gameData.gameMode as string).toUpperCase()
-        this.matchData.gameMode = mode
-        this.lastGameMode = mode
-      }
-      // Capture the local player's Riot ID — used to identify their kills/deaths
-      if (!this.matchData.playerName && activePlayer?.summonerName) {
-        this.matchData.playerName = activePlayer.summonerName as string
-        console.log(`[RiotLocalApi] Player identified: ${this.matchData.playerName}`)
-      }
-
-      // Cache current gold and abilities from activePlayer (overwritten each poll)
-      if (activePlayer) {
-        const gold = activePlayer.currentGold
-        if (typeof gold === 'number') this.latestGold = gold
-
-        const rawAbilities = activePlayer.abilities as Record<string, Record<string, unknown>> | undefined
-        if (rawAbilities) {
-          this.latestAbilities = this._parseAbilities(rawAbilities)
-        }
-      }
-
-      // Process new events
-      if (Array.isArray(data.events?.Events)) {
-        const existingIds = new Set(this.matchData.events.map((e) => e.EventID))
-
-        for (const rawEvent of data.events.Events) {
-          const eventId = rawEvent.EventID as number
-          const eventName = rawEvent.EventName as string
-          const eventTime = rawEvent.EventTime as number
-
-          if (existingIds.has(eventId)) continue
-          existingIds.add(eventId)
-
-          const base: GameEvent = { EventID: eventId, EventName: eventName, EventTime: eventTime }
-          this.matchData.events.push(base)
-
-          if (eventName === 'ChampionKill') {
-            const kill: KillEvent = {
-              ...base,
-              EventName: 'ChampionKill',
-              killerName: (rawEvent.KillerName as string) ?? '',
-              victimName: (rawEvent.VictimName as string) ?? '',
-              assistants: Array.isArray(rawEvent.Assistants) ? rawEvent.Assistants as string[] : []
-            }
-            this.matchData.killEvents.push(kill)
-
-            const playerName = this.matchData.playerName?.toLowerCase()
-            if (playerName) {
-              if (kill.killerName.toLowerCase() === playerName) {
-                this.matchData.playerKills.push(kill)
-              } else if (kill.victimName.toLowerCase() === playerName) {
-                this.matchData.playerDeaths.push(kill)
-              }
-            }
-          }
-
-          if (eventName === 'FirstBlood') {
-            const fb: FirstBloodEvent = {
-              ...base,
-              EventName: 'FirstBlood',
-              killerName: (rawEvent.KillerName as string) ?? '',
-              victimName: (rawEvent.VictimName as string) ?? ''
-            }
-            this.matchData.firstBloods.push(fb)
-            this.currentRoundFirstBlood = { killerName: fb.killerName, victimName: fb.victimName }
-          }
-
-          if (eventName === 'SpikePlanted') {
-            const plant: SpikePlantedEvent = {
-              ...base,
-              EventName: 'SpikePlanted',
-              planter: (rawEvent.BombPlanter as string) ?? '',
-              site: (rawEvent.PlantSite as string) ?? ''
-            }
-            this.matchData.spikePlants.push(plant)
-            this.currentRoundSpike.planted = true
-            this.currentRoundSpike.site = plant.site
-            this.currentRoundSpike.planter = plant.planter
-          }
-
-          if (eventName === 'SpikeDefused') {
-            const defuse: SpikeDefusedEvent = {
-              ...base,
-              EventName: 'SpikeDefused',
-              defuser: (rawEvent.BombDefuser as string) ?? ''
-            }
-            this.matchData.spikeDefuses.push(defuse)
-            this.currentRoundSpike.defused = true
-            this.currentRoundSpike.defuser = defuse.defuser
-          }
-
-          if (eventName === 'SpikeDetonated') {
-            const detonate: SpikeDetonatedEvent = { ...base, EventName: 'SpikeDetonated' }
-            this.matchData.spikeDetonations.push(detonate)
-            this.currentRoundSpike.detonated = true
-          }
-
-          // Track round completions — capture full snapshot at each round end
-          if (eventName === 'RoundEnded' || eventName === 'RoundDecided') {
-            this.roundNumber++
-            const playerStats = this._extractPlayerStats(allPlayers, this.matchData.playerName)
-            const playerName = this.matchData.playerName?.toLowerCase() ?? ''
-
-            const playerGotFirstBlood = !!this.currentRoundFirstBlood &&
-              this.currentRoundFirstBlood.killerName.toLowerCase() === playerName
-            const playerWasFirstBlood = !!this.currentRoundFirstBlood &&
-              this.currentRoundFirstBlood.victimName.toLowerCase() === playerName
-
-            this.matchData.roundSummaries.push({
-              roundNumber: this.roundNumber,
-              winningTeam: (rawEvent.WinningTeam as string) ?? null,
-              ceremony: (rawEvent.Ceremony as string) ?? (rawEvent.RoundResult as string) ?? null,
-              endTime: eventTime,
-              playerStats,
-              spikePlanted: this.currentRoundSpike.planted,
-              spikeSite: this.currentRoundSpike.site,
-              spikePlanter: this.currentRoundSpike.planter,
-              spikeDefused: this.currentRoundSpike.defused,
-              spikeDefuser: this.currentRoundSpike.defuser,
-              spikeDetonated: this.currentRoundSpike.detonated,
-              playerGold: this.latestGold,
-              playerAbilities: this.latestAbilities,
-              playerGotFirstBlood,
-              playerWasFirstBlood
-            })
-
-            // Reset round-scoped trackers
-            this.currentRoundSpike = { planted: false, site: null, planter: null, defused: false, defuser: null, detonated: false }
-            this.currentRoundFirstBlood = null
-          }
-        }
-      }
-
-      // Continuously update final stats from allPlayers (overwritten each poll)
-      const finalStats = this._extractPlayerStats(allPlayers, this.matchData.playerName)
-      if (finalStats) {
-        this.matchData.finalStats = {
-          ...finalStats,
-          summonerName: this.matchData.playerName,
-          agent: this.matchData.agent,
-          team: this._getPlayerTeam(allPlayers, this.matchData.playerName),
-          level: this._getPlayerLevel(allPlayers, this.matchData.playerName)
-        }
-      }
-
-      // Merge team snapshot so disconnected players are preserved
-      if (allPlayers && allPlayers.length > 0) {
-        const existing = new Map(this.matchData.teamSnapshot.map((p) => [p.summonerName, p]))
-        for (const p of allPlayers) {
-          const scores = p.scores as Record<string, number> | undefined
-          const name = (p.summonerName as string) ?? (p.riotId as string) ?? 'Unknown'
-          existing.set(name, {
-            summonerName: name,
-            agent: (p.championName as string) ?? null,
-            team: (p.team as string) ?? 'Unknown',
-            kills: scores?.kills ?? 0,
-            deaths: scores?.deaths ?? 0,
-            assists: scores?.assists ?? 0,
-            score: scores?.combatScore ?? scores?.creepScore ?? 0,
-            level: (p.level as number) ?? 0
-          })
-        }
-        this.matchData.teamSnapshot = [...existing.values()]
-      }
-    } catch {
-      // Game not running yet or between rounds — silently ignore
-    }
-  }
-
-  private _parseAbilities(raw: Record<string, Record<string, unknown>>): PlayerAbilities {
-    const parseSlot = (slot: Record<string, unknown> | undefined): AbilityState | null => {
-      if (!slot) return null
-      return {
-        displayName: (slot.displayName as string) ?? (slot.id as string) ?? 'Unknown',
-        charges: typeof slot.charges === 'number' ? (slot.charges as number) : null,
-        currentPoints: typeof slot.currentPoints === 'number' ? (slot.currentPoints as number) : null,
-        maxPoints: typeof slot.maxPoints === 'number' ? (slot.maxPoints as number) : null
-      }
-    }
-    return {
-      ability1: parseSlot(raw.Ability1),
-      ability2: parseSlot(raw.Ability2),
-      grenade: parseSlot(raw.Grenade),
-      signature: parseSlot(raw.Signature),
-      ultimate: parseSlot(raw.Ultimate)
-    }
-  }
-
-  private _extractPlayerStats(
-    allPlayers: Array<Record<string, unknown>> | undefined,
-    playerName: string | null
-  ): RoundPlayerStats | null {
-    if (!allPlayers || !playerName) return null
-    const nameLower = playerName.toLowerCase()
-    const player = allPlayers.find((p) => {
-      const name = ((p.summonerName as string) ?? '').toLowerCase()
-      return name === nameLower
-    })
-    if (!player) return null
-    const scores = player.scores as Record<string, number> | undefined
-    if (!scores) return null
-    return {
-      kills: scores.kills ?? 0,
-      deaths: scores.deaths ?? 0,
-      assists: scores.assists ?? 0,
-      score: scores.combatScore ?? scores.creepScore ?? 0
-    }
-  }
-
-  private _getPlayerTeam(
-    allPlayers: Array<Record<string, unknown>> | undefined,
-    playerName: string | null
-  ): string | null {
-    if (!allPlayers || !playerName) return null
-    const nameLower = playerName.toLowerCase()
-    const player = allPlayers.find((p) => ((p.summonerName as string) ?? '').toLowerCase() === nameLower)
-    return (player?.team as string) ?? null
-  }
-
-  private _getPlayerLevel(
-    allPlayers: Array<Record<string, unknown>> | undefined,
-    playerName: string | null
-  ): number {
-    if (!allPlayers || !playerName) return 0
-    const nameLower = playerName.toLowerCase()
-    const player = allPlayers.find((p) => ((p.summonerName as string) ?? '').toLowerCase() === nameLower)
-    return (player?.level as number) ?? 0
-  }
-
-  private _fetch(url: string): Promise<Record<string, unknown> & {
-    gameData?: Record<string, unknown>
-    activePlayer?: Record<string, unknown>
-    allPlayers?: Array<Record<string, unknown>>
-    events?: { Events: Array<Record<string, unknown>> }
-  }> {
-    return new Promise((resolve, reject) => {
-      const req = https.get(url, { agent: this.agent }, (res) => {
-        let body = ''
-        res.on('data', (chunk) => body += chunk)
-        res.on('end', () => {
-          if (res.statusCode !== 200) {
-            reject(new Error(`HTTP ${res.statusCode}`))
-            return
-          }
-          try { resolve(JSON.parse(body)) }
-          catch { reject(new Error('Invalid JSON')) }
-        })
-      })
-      req.on('error', reject)
-      req.setTimeout(5000, () => { req.destroy(); reject(new Error('Timeout')) })
-    })
-  }
+  return map[queueId.toLowerCase()] ?? queueId.toUpperCase()
 }
