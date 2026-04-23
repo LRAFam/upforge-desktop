@@ -4,7 +4,7 @@ import FormData from 'form-data'
 import http from 'http'
 import https from 'https'
 import { AuthManager } from './auth-manager'
-import { MatchTimeline } from './riot-local-api'
+import { MatchData } from './riot-local-api'
 
 export interface UploadOptions {
   videoPath: string
@@ -13,7 +13,7 @@ export interface UploadOptions {
   game: string
   map: string | null
   agent: string | null
-  timeline: MatchTimeline | null
+  timeline: MatchData | null
   onProgress: (pct: number) => void
 }
 
@@ -54,7 +54,12 @@ export class UploadManager {
     form.append('game', opts.game)
     if (opts.map) form.append('map', opts.map)
     if (opts.agent) form.append('agent', opts.agent)
-    if (opts.timeline) form.append('match_timeline', JSON.stringify(opts.timeline))
+    if (opts.timeline) {
+      // Send the full enriched match data — includes kill events, round summaries, player stats
+      form.append('match_data', JSON.stringify(opts.timeline))
+      // Also send legacy match_timeline for backwards compatibility
+      form.append('match_timeline', JSON.stringify(opts.timeline))
+    }
 
     return new Promise((resolve, reject) => {
       const url = new URL(`${apiUrl}/api/desktop-submissions`)

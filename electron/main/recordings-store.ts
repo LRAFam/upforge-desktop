@@ -2,7 +2,7 @@ import { app } from 'electron'
 import fs from 'fs'
 import path from 'path'
 import { randomUUID } from 'crypto'
-import type { MatchTimeline } from './riot-local-api'
+import type { MatchData } from './riot-local-api'
 
 export interface PendingRecording {
   id: string
@@ -13,7 +13,7 @@ export interface PendingRecording {
   map: string | null
   agent: string | null
   gameMode: string
-  timeline: MatchTimeline | null
+  timeline: MatchData | null
   recordedAt: number
   analysed: boolean
   jobId?: string

@@ -21,7 +21,7 @@ import { AuthManager } from './auth-manager'
 import { SettingsManager } from './settings-manager'
 import { setupIpcHandlers } from './ipc-handlers'
 import { RecordingsStore } from './recordings-store'
-import type { MatchTimeline } from './riot-local-api'
+import type { MatchData } from './riot-local-api'
 
 let tray: Tray | null = null
 let mainWindow: BrowserWindow | null = null
@@ -338,7 +338,7 @@ function setupGameDetection(): void {
       return
     }
 
-    const timeline = riotLocalApi.stop()
+    const timeline = await riotLocalApi.stop()
     const recordingDuration = recorder.getRecordingDuration()
     await recorder.stop()
 
@@ -430,7 +430,7 @@ async function doUploadAndAnalyse(
   game: string,
   map: string | null,
   agent: string | null,
-  timeline: MatchTimeline | null,
+  timeline: MatchData | null,
   targetWindow: BrowserWindow
 ): Promise<void> {
   try {
