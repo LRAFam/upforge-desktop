@@ -1,0 +1,72 @@
+{
+  "lockfile": {
+    "name": "Riot Client",
+    "pid": "6648",
+    "port": 50236,
+    "password": "***",
+    "protocol": "https"
+  },
+  "endpoints": {
+    "/entitlements/v1/token": {
+      "status": 404,
+      "body": {
+        "errorCode": "RESOURCE_NOT_FOUND",
+        "httpStatus": 404,
+        "message": "Invalid URI format"
+      }
+    },
+    "/chat/v4/presences": {
+      "status": 404,
+      "body": {
+        "errorCode": "RESOURCE_NOT_FOUND",
+        "httpStatus": 404,
+        "message": "Invalid URI format"
+      }
+    },
+    "/product-session/v1/external-sessions": {
+      "status": 404,
+      "body": {
+        "errorCode": "RESOURCE_NOT_FOUND",
+        "httpStatus": 404,
+        "message": "Invalid URI format"
+      }
+    },
+    "/chat/v1/session": {
+      "status": 404,
+      "body": {
+        "errorCode": "RESOURCE_NOT_FOUND",
+        "httpStatus": 404,
+        "message": "Invalid URI format"
+      }
+    },
+    "/help": {
+      "status": 200,
+      "body": {
+        "events": {},
+        "functions": {
+          "Exit": "Closes the connection.",
+          "GetRiotclientappV1IsXbgpRunning": "get if xbgp com server is running",
+          "Help": "Returns information on available functions and types",
+          "PostRiotclientappV1NewArgs": "Adds new command line arguments for Riot Client.",
+          "Subscribe": "Subscribes to a given event",
+          "Unsubscribe": "Unsubscribes from a given event",
+          "WebSocketFormat": "Controls the console output format"
+        },
+        "types": {
+          "BindingFullApiHelp": "Describes the exposed native API.",
+          "BindingFullArgumentHelp": "Describes a function parameter.",
+          "BindingFullEnumValueHelp": "Describes an enumerator.",
+          "BindingFullEventHelp": "Describes an event.",
+          "BindingFullFieldHelp": "Describes a member of a struct.",
+          "BindingFullFunctionHelp": "Describes a function.",
+          "BindingFullTypeHelp": "Describes a struct or enum type.",
+          "BindingFullTypeIdentifier": "Describes the type of a value.",
+          "BindingHelpFormat": "Help format for binding functions and types.",
+          "RemotingHelpFormat": "Help format for remoting functions and types.",
+          "RemotingPrivilege": "Well-known privilege levels for bindable functions.",
+          "RemotingSerializedFormat": "Serialization format for remoting requests and results."
+        }
+      }
+    }
+  }
+}

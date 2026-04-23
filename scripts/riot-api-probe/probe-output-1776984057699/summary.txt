@@ -1,0 +1,10 @@
+Probe run: 2026-04-23T22:40:57.699Z
+Total events captured: 0
+
+Event counts (most frequent first):
+
+
+Output files:
+  C:\Users\Adam\Documents\GitHub\upforge-desktop\scripts\riot-api-probe\probe-output-1776984057699\snapshot.json
+  C:\Users\Adam\Documents\GitHub\upforge-desktop\scripts\riot-api-probe\probe-output-1776984057699\events.jsonl
+  C:\Users\Adam\Documents\GitHub\upforge-desktop\scripts\riot-api-probe\probe-output-1776984057699\shootergame.log
