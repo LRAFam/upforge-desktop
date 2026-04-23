@@ -58,7 +58,8 @@ const api = {
       'post-game:pending',
       'dashboard:refresh',
       'recordings:updated',
-      'app:ffmpeg-status'
+      'app:ffmpeg-status',
+      'recording:status-changed'
     ]
     if (allowed.includes(channel)) {
       ipcRenderer.on(channel, (_e, ...args) => callback(...args))

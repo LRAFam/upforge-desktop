@@ -32,6 +32,10 @@ let ffmpegOk = true // updated after preflight; exposed via app:get-status
 
 const gameDetector = new GameDetector()
 const recorder = new Recorder()
+recorder.onStatusChange = (recording, error) => {
+  // Push state immediately to dashboard so UI doesn't wait for the 5s poll
+  mainWindow?.webContents.send('recording:status-changed', { recording, error: error ?? null })
+}
 const riotLocalApi = new RiotLocalApi()
 const authManager = new AuthManager()
 let uploadManager: UploadManager

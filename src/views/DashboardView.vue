@@ -401,6 +401,16 @@ onMounted(async () => {
     const data = args[0] as { ok: boolean }
     status.value = { ...status.value, ffmpegOk: data.ok }
   }) as (...args: unknown[]) => void)
+  window.api.on('recording:status-changed', ((...args: unknown[]) => {
+    const data = args[0] as { recording: boolean; error: string | null }
+    const wasRecording = status.value.recording
+    status.value = { ...status.value, recording: data.recording }
+    if (data.recording && !wasRecording) recordingStartedAt.value = Date.now()
+    if (!data.recording) { recordingStartedAt.value = null; stopping.value = false }
+    if (!data.recording && data.error) {
+      console.error('[Dashboard] Recording stopped with error:', data.error)
+    }
+  }) as (...args: unknown[]) => void)
 })
 
 onUnmounted(() => {

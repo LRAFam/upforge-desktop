@@ -16,10 +16,6 @@ const IS_MAC = process.platform === 'darwin'
 const IS_WIN = process.platform === 'win32'
 
 // Window titles for each supported game (used for window-specific capture on Windows)
-const GAME_WINDOW_TITLES: Record<string, string> = {
-  valorant: 'VALORANT',
-  cs2: 'Counter-Strike 2'
-}
 
 export class Recorder {
   private _process: ChildProcess | null = null
@@ -27,6 +23,7 @@ export class Recorder {
   private _recording = false
   private _lastError: string | null = null
   private _stderrBuffer = ''
+  onStatusChange?: (recording: boolean, error?: string) => void
 
   isRecording(): boolean {
     return this._recording
@@ -78,8 +75,7 @@ export class Recorder {
 
     const encoder = await this._detectEncoder()
     const ffmpegPath = this._ffmpegPath()
-    const windowTitle = GAME_WINDOW_TITLES[game.toLowerCase()] ?? null
-    const args = this._buildArgs(encoder, this._outputPath, config, windowTitle)
+    const args = this._buildArgs(encoder, this._outputPath, config)
 
     console.log(`[Recorder] Platform: ${process.platform}, encoder: ${encoder}`)
     console.log(`[Recorder] ffmpeg path: ${ffmpegPath}`)
@@ -88,6 +84,7 @@ export class Recorder {
 
     this._process = spawn(ffmpegPath, args, { stdio: 'pipe' })
     this._recording = true
+    this.onStatusChange?.(true)
 
     // Capture stderr so we can surface real ffmpeg error messages
     this._process.stderr?.on('data', (data: Buffer) => {
@@ -102,6 +99,7 @@ export class Recorder {
       console.error('[Recorder] ffmpeg process error:', err.message)
       this._lastError = err.message
       this._recording = false
+      this.onStatusChange?.(false, err.message)
     })
 
     this._process.on('exit', (code) => {
@@ -112,6 +110,9 @@ export class Recorder {
         const lines = this._stderrBuffer.trim().split('\n').filter(Boolean)
         this._lastError = lines.at(-1) ?? `ffmpeg exited with code ${code}`
         console.error('[Recorder] ffmpeg last stderr line:', this._lastError)
+        this.onStatusChange?.(false, this._lastError)
+      } else {
+        this.onStatusChange?.(false)
       }
     })
   }
@@ -204,7 +205,7 @@ export class Recorder {
     })
   }
 
-  private _buildArgs(encoder: HWEncoder, outputPath: string, config?: RecorderConfig, gameWindowTitle?: string | null): string[] {
+  private _buildArgs(encoder: HWEncoder, outputPath: string, config?: RecorderConfig): string[] {
     const codecMap: Record<HWEncoder, string> = {
       videotoolbox: 'h264_videotoolbox',
       nvenc: 'h264_nvenc',
@@ -241,13 +242,12 @@ export class Recorder {
       ]
     }
 
-    // Windows: capture the game window by title for privacy; fall back to desktop
-    // gdigrab supports window capture via "title=<WindowTitle>"
-    const windowInput = (IS_WIN && gameWindowTitle) ? `title=${gameWindowTitle}` : 'desktop'
+    // Windows: use desktop capture — window title matching is unreliable since
+    // the game window may not exist yet when ffmpeg spawns (process detected before window opens)
     return [
       '-f', 'gdigrab',
       '-framerate', '30',
-      '-i', windowInput,
+      '-i', 'desktop',
       '-vf', `scale=${scale}`,
       '-vcodec', codec,
       ...qualityArgs,
