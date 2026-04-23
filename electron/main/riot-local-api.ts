@@ -280,7 +280,9 @@ export class RiotLocalApi {
 
       // Extract map, agent, game mode and player identity on first poll
       if (!this.matchData.map && gameData?.mapName) {
-        this.matchData.map = gameData.mapName as string
+        // mapName may be a full internal path like "/Game/Maps/Ascent/Ascent" — extract last segment
+        const raw = gameData.mapName as string
+        this.matchData.map = raw.includes('/') ? raw.split('/').filter(Boolean).pop() ?? raw : raw
       }
       if (!this.matchData.agent && activePlayer?.championName) {
         this.matchData.agent = activePlayer.championName as string
@@ -444,7 +446,7 @@ export class RiotLocalApi {
             kills: scores?.kills ?? 0,
             deaths: scores?.deaths ?? 0,
             assists: scores?.assists ?? 0,
-            score: scores?.creepScore ?? scores?.wardScore ?? 0,
+            score: scores?.combatScore ?? scores?.creepScore ?? 0,
             level: (p.level as number) ?? 0
           }
         })
@@ -490,7 +492,7 @@ export class RiotLocalApi {
       kills: scores.kills ?? 0,
       deaths: scores.deaths ?? 0,
       assists: scores.assists ?? 0,
-      score: scores.creepScore ?? scores.wardScore ?? 0
+      score: scores.combatScore ?? scores.creepScore ?? 0
     }
   }
 

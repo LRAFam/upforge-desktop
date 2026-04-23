@@ -247,6 +247,9 @@ function setupGameDetection(): void {
     // Probe immediately on first attempt — no initial wait.
     // PRIMARY: VALORANT-Win64-Shipping.exe only runs during an actual match (not lobby/queue).
     // SECONDARY: TCP port 2999 (Riot Live Client Data API) as a fallback.
+    // IMPORTANT: Both signals can fire during loading screen / practice range before round 1.
+    // We require gameMode to be confirmed by the Live Client Data API before starting — this
+    // ensures we only record real in-progress matches, not lobby/queue/loading states.
     for (let attempt = 0; attempt < 120; attempt++) {
       if (attempt > 0) await new Promise((r) => setTimeout(r, 5000))
       if (cancelled) {
@@ -258,19 +261,29 @@ function setupGameDetection(): void {
 
       const processMatch = await gameDetector.isMatchProcessRunning()
       const portMatch = await riotLocalApi.isMatchActive()
-      matchActive = processMatch || portMatch
+      const signalDetected = processMatch || portMatch
 
-      if (matchActive) {
-        // Try up to 3 times to get game mode — the API may need a moment to respond
-        // even when the process is already running
-        for (let modeAttempt = 0; modeAttempt < 3 && !gameMode; modeAttempt++) {
+      if (signalDetected) {
+        // Port/process is up — now confirm with Live Client API (gameMode = match is truly live)
+        // Retry up to 8 times × 3s = 24s to allow loading screens to finish
+        for (let modeAttempt = 0; modeAttempt < 8 && !gameMode; modeAttempt++) {
           if (modeAttempt > 0) await new Promise((r) => setTimeout(r, 3000))
           gameMode = await riotLocalApi.getGameMode()
         }
-        console.log(`[GameDetector] Match detected! process=${processMatch} port=${portMatch} gameMode=${gameMode ?? 'unknown'}`)
-        logActivity(`Match found (${gameMode ?? 'unknown mode'}) — starting recording`)
-        break
+
+        if (gameMode) {
+          matchActive = true
+          console.log(`[GameDetector] Match confirmed! process=${processMatch} port=${portMatch} gameMode=${gameMode}`)
+          logActivity(`Match found (${gameMode}) — starting recording`)
+          break
+        }
+
+        // Signal present but gameMode unavailable — still loading or practice range
+        // Keep polling the outer loop rather than recording an unknown match
+        console.log(`[GameDetector] Process/port signal present but Live Client API has no gameMode yet — waiting... (attempt ${attempt + 1}/120)`)
+        continue
       }
+
       console.log(`[GameDetector] Waiting for match... (attempt ${attempt + 1}/120, process=${processMatch} port=${portMatch})`)
     }
 
@@ -280,25 +293,22 @@ function setupGameDetection(): void {
 
     if (cancelled) return
 
-    if (!matchActive) {
-      console.log('[GameDetector] No Riot API response after 10 minutes — skipping recording')
-      logActivity('No match detected after 10 minutes — skipped recording')
+    if (!matchActive || !gameMode) {
+      const reason = !matchActive ? 'No Riot API response after 10 minutes' : 'Could not confirm game mode'
+      console.log(`[GameDetector] ${reason} — skipping recording`)
+      logActivity(`${reason} — skipped recording`)
       tray?.setToolTip('UpForge — Valorant AI Coaching')
       return
     }
 
-    if (filterByMode && gameMode && !recordedModes.includes(gameMode)) {
+    if (filterByMode && !recordedModes.includes(gameMode)) {
       console.log(`[GameDetector] Skipping recording — mode is ${gameMode} (not in recordedModes)`)
       logActivity(`Mode ${gameMode} not in recorded modes — skipped`)
       tray?.setToolTip('UpForge — Valorant AI Coaching')
       return
     }
 
-    if (filterByMode && !gameMode) {
-      console.log('[GameDetector] Could not determine game mode — recording anyway as fallback')
-    }
-
-    console.log(`[GameDetector] Match detected (${gameMode ?? 'unknown mode'}) — starting recording`)
+    console.log(`[GameDetector] Match confirmed (${gameMode}) — starting recording`)
 
     // Start Riot Local API timeline tracking from match start
     riotLocalApi.start(game)
