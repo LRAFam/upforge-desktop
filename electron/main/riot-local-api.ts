@@ -50,6 +50,19 @@ export class RiotLocalApi {
   }
 
   /**
+   * Returns true if the Riot Live Client API is responding — this is the reliable match-start
+   * signal. The API only responds once the game has loaded in (after loading screen).
+   */
+  async isMatchActive(): Promise<boolean> {
+    try {
+      await this._fetch('https://127.0.0.1:2999/liveclientdata/allgamedata')
+      return true
+    } catch {
+      return false
+    }
+  }
+
+  /**
    * Probe the Riot Live Client API and return the gameMode string (e.g. "CLASSIC", "COMPETITIVE",
    * "DEATHMATCH", "SPIKERUSH", "SNOWBALL", "SWIFTPLAY").
    * Returns null when the game is not yet in a loadable state.

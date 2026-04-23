@@ -219,8 +219,9 @@ function setupGameDetection(): void {
     mainWindow?.webContents.send('recording:waiting-for-match', { waiting: true })
 
     // Wait for Riot Local API to respond — this only happens once a match loads.
-    // The API returns data as soon as the agent select / loading screen begins.
-    // Poll every 5 seconds, cancel if Valorant quits before a match starts.
+    // Use isMatchActive() as the trigger (API responds = match in progress).
+    // getGameMode() is unreliable as the sole trigger since gameMode field may vary.
+    let matchActive = false
     let gameMode: string | null = null
     let cancelled = false
     cancelMatchWait = () => { cancelled = true }
@@ -239,8 +240,13 @@ function setupGameDetection(): void {
         cancelMatchWait = null
         return
       }
-      gameMode = await riotLocalApi.getGameMode()
-      if (gameMode) break
+      matchActive = await riotLocalApi.isMatchActive()
+      if (matchActive) {
+        // API is alive — also grab gameMode now for mode filtering
+        gameMode = await riotLocalApi.getGameMode()
+        console.log(`[GameDetector] Match detected! gameMode=${gameMode ?? 'unknown'}`)
+        break
+      }
       console.log(`[GameDetector] Waiting for match... (attempt ${attempt + 1}/120)`)
     }
 
@@ -250,19 +256,23 @@ function setupGameDetection(): void {
 
     if (cancelled) return
 
-    if (!gameMode) {
+    if (!matchActive) {
       console.log('[GameDetector] No Riot API response after 10 minutes — skipping recording')
       tray?.setToolTip('UpForge — Valorant AI Coaching')
       return
     }
 
-    if (filterByMode && !recordedModes.includes(gameMode)) {
+    if (filterByMode && gameMode && !recordedModes.includes(gameMode)) {
       console.log(`[GameDetector] Skipping recording — mode is ${gameMode} (not in recordedModes)`)
       tray?.setToolTip('UpForge — Valorant AI Coaching')
       return
     }
 
-    console.log(`[GameDetector] Match detected (${gameMode}) — starting recording`)
+    if (filterByMode && !gameMode) {
+      console.log('[GameDetector] Could not determine game mode — recording anyway as fallback')
+    }
+
+    console.log(`[GameDetector] Match detected (${gameMode ?? 'unknown mode'}) — starting recording`)
 
     // Start Riot Local API timeline tracking from match start
     riotLocalApi.start(game)
