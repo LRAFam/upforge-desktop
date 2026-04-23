@@ -223,6 +223,22 @@ function setupGameDetection(): void {
 
     tray?.setToolTip('UpForge — Recording...')
     await recorder.start(game, recorderConfig)
+
+    // Notify the user that recording has started with their identity
+    const user = authManager.getUser()
+    const userLabel = (user?.riot_name && user?.riot_tag)
+      ? `${user.riot_name}#${user.riot_tag}`
+      : user?.name ?? 'your account'
+    const gameLabel = game === 'cs2' ? 'CS2' : 'Valorant'
+    tray?.setToolTip(`UpForge — Recording ${gameLabel} (${userLabel})`)
+
+    if (Notification.isSupported()) {
+      new Notification({
+        title: `UpForge is recording`,
+        body: `${gameLabel} session started for ${userLabel}`,
+        silent: true
+      }).show()
+    }
   })
 
   gameDetector.on('game-stopped', async (game: string) => {
@@ -244,8 +260,11 @@ function setupGameDetection(): void {
 
     postGameWindow.webContents.once('did-finish-load', async () => {
       if (!videoPath || !require('fs').existsSync(videoPath)) {
-        postGameWindow?.webContents.send('post-game:upload-error',
-          'Recording file was not created — ffmpeg may have failed to start.')
+        const ffmpegError = recorder.getLastError()
+        const errorMsg = ffmpegError
+          ? `Recording failed: ${ffmpegError}`
+          : 'Recording file was not created — ffmpeg may have failed to start. Check that ffmpeg is installed (dev) or the app was not corrupted (production).'
+        postGameWindow?.webContents.send('post-game:upload-error', errorMsg)
         tray?.setToolTip('UpForge — Valorant AI Coaching')
         return
       }
@@ -384,6 +403,21 @@ app.whenReady().then(async () => {
 
   createTray()
   setupGameDetection()
+
+  // Verify ffmpeg is accessible and log a warning if not — better to know early
+  recorder.preflight().then((result) => {
+    if (!result.ok) {
+      console.error('[App] ffmpeg preflight FAILED:', result.error)
+      if (Notification.isSupported()) {
+        new Notification({
+          title: 'UpForge — Recording Unavailable',
+          body: `ffmpeg not found: ${result.error ?? 'unknown error'}. Recording will not work.`
+        }).show()
+      }
+    } else {
+      console.log('[App] ffmpeg preflight OK')
+    }
+  })
   setupIpcHandlers(ipcMain, authManager, recorder, gameDetector, settingsManager, () => {
     postGameWindow = createPostGameWindow()
     postGameWindow.webContents.once('did-finish-load', () => {

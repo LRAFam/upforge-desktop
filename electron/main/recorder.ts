@@ -15,10 +15,18 @@ export interface RecorderConfig {
 const IS_MAC = process.platform === 'darwin'
 const IS_WIN = process.platform === 'win32'
 
+// Window titles for each supported game (used for window-specific capture on Windows)
+const GAME_WINDOW_TITLES: Record<string, string> = {
+  valorant: 'VALORANT',
+  cs2: 'Counter-Strike 2'
+}
+
 export class Recorder {
   private _process: ChildProcess | null = null
   private _outputPath: string | null = null
   private _recording = false
+  private _lastError: string | null = null
+  private _stderrBuffer = ''
 
   isRecording(): boolean {
     return this._recording
@@ -28,11 +36,39 @@ export class Recorder {
     return this._outputPath
   }
 
+  getLastError(): string | null {
+    return this._lastError
+  }
+
+  /** Check that the ffmpeg binary exists and can run. Call before starting detection. */
+  async preflight(): Promise<{ ok: boolean; error?: string }> {
+    const ffmpegPath = this._ffmpegPath()
+
+    // For absolute paths, check the file exists first
+    if (ffmpegPath.includes('/') || ffmpegPath.includes('\\')) {
+      if (!existsSync(ffmpegPath)) {
+        return { ok: false, error: `ffmpeg binary not found at: ${ffmpegPath}` }
+      }
+    }
+
+    return new Promise((resolve) => {
+      const proc = spawn(ffmpegPath, ['-version'], { stdio: 'pipe' })
+      let stderr = ''
+      proc.stderr?.on('data', (d) => { stderr += d.toString() })
+      proc.on('exit', (code) => resolve(code === 0 ? { ok: true } : { ok: false, error: `ffmpeg exited with code ${code}: ${stderr.slice(0, 200)}` }))
+      proc.on('error', (err) => resolve({ ok: false, error: err.message }))
+      setTimeout(() => { proc.kill(); resolve({ ok: false, error: 'ffmpeg version check timed out' }) }, 5000)
+    })
+  }
+
   async start(game: string, config?: RecorderConfig): Promise<void> {
     if (this._recording) {
       console.warn('[Recorder] Already recording, ignoring start()')
       return
     }
+
+    this._lastError = null
+    this._stderrBuffer = ''
 
     const dir = config?.savePath ?? join(app.getPath('userData'), 'recordings')
     if (!existsSync(dir)) mkdirSync(dir, { recursive: true })
@@ -42,22 +78,41 @@ export class Recorder {
 
     const encoder = await this._detectEncoder()
     const ffmpegPath = this._ffmpegPath()
-    const args = this._buildArgs(encoder, this._outputPath, config)
+    const windowTitle = GAME_WINDOW_TITLES[game.toLowerCase()] ?? null
+    const args = this._buildArgs(encoder, this._outputPath, config, windowTitle)
 
     console.log(`[Recorder] Platform: ${process.platform}, encoder: ${encoder}`)
+    console.log(`[Recorder] ffmpeg path: ${ffmpegPath}`)
     console.log(`[Recorder] Output: ${this._outputPath}`)
+    console.log(`[Recorder] Args: ${args.join(' ')}`)
 
     this._process = spawn(ffmpegPath, args, { stdio: 'pipe' })
     this._recording = true
 
+    // Capture stderr so we can surface real ffmpeg error messages
+    this._process.stderr?.on('data', (data: Buffer) => {
+      this._stderrBuffer += data.toString()
+      // Keep only the last 2KB to avoid memory growth during long recordings
+      if (this._stderrBuffer.length > 2048) {
+        this._stderrBuffer = this._stderrBuffer.slice(-2048)
+      }
+    })
+
     this._process.on('error', (err) => {
-      console.error('[Recorder] ffmpeg error:', err)
+      console.error('[Recorder] ffmpeg process error:', err.message)
+      this._lastError = err.message
       this._recording = false
     })
 
     this._process.on('exit', (code) => {
       console.log(`[Recorder] ffmpeg exited with code ${code}`)
       this._recording = false
+      if (code !== 0 && code !== null) {
+        // Extract last meaningful line from stderr as the error reason
+        const lines = this._stderrBuffer.trim().split('\n').filter(Boolean)
+        this._lastError = lines.at(-1) ?? `ffmpeg exited with code ${code}`
+        console.error('[Recorder] ffmpeg last stderr line:', this._lastError)
+      }
     })
   }
 
@@ -149,7 +204,7 @@ export class Recorder {
     })
   }
 
-  private _buildArgs(encoder: HWEncoder, outputPath: string, config?: RecorderConfig): string[] {
+  private _buildArgs(encoder: HWEncoder, outputPath: string, config?: RecorderConfig, gameWindowTitle?: string | null): string[] {
     const codecMap: Record<HWEncoder, string> = {
       videotoolbox: 'h264_videotoolbox',
       nvenc: 'h264_nvenc',
@@ -186,11 +241,13 @@ export class Recorder {
       ]
     }
 
-    // Windows
+    // Windows: capture the game window by title for privacy; fall back to desktop
+    // gdigrab supports window capture via "title=<WindowTitle>"
+    const windowInput = (IS_WIN && gameWindowTitle) ? `title=${gameWindowTitle}` : 'desktop'
     return [
       '-f', 'gdigrab',
       '-framerate', '30',
-      '-i', 'desktop',
+      '-i', windowInput,
       '-vf', `scale=${scale}`,
       '-vcodec', codec,
       ...qualityArgs,
