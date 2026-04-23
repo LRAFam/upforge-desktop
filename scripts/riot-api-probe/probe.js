@@ -251,21 +251,26 @@ async function main() {
   }
 
   function wsSend(socket, msg, opcode = 1) {
-    const payload = Buffer.from(msg, 'utf8');
+    const payload = Buffer.from(typeof msg === 'string' ? msg : '', 'utf8');
     const len = payload.length;
+    // RFC 6455: client→server frames MUST be masked
+    const maskKey = crypto.randomBytes(4);
+    const masked = Buffer.from(payload);
+    for (let i = 0; i < masked.length; i++) masked[i] ^= maskKey[i % 4];
+
     let header;
     if (len < 126) {
-      header = Buffer.from([0x80 | opcode, len]);
+      header = Buffer.from([0x80 | opcode, 0x80 | len]);
     } else if (len < 65536) {
       header = Buffer.alloc(4);
-      header[0] = 0x80 | opcode; header[1] = 126;
+      header[0] = 0x80 | opcode; header[1] = 0x80 | 126;
       header.writeUInt16BE(len, 2);
     } else {
       header = Buffer.alloc(10);
-      header[0] = 0x80 | opcode; header[1] = 127;
+      header[0] = 0x80 | opcode; header[1] = 0x80 | 127;
       header.writeBigUInt64BE(BigInt(len), 2);
     }
-    socket.write(Buffer.concat([header, payload]));
+    socket.write(Buffer.concat([header, maskKey, masked]));
   }
 
   let wsSender = null;
@@ -325,7 +330,35 @@ async function main() {
     () => console.log('\n🔌  WebSocket closed')
   );
 
-  // ── 5. ShooterGame.log tail ───────────────────────────────────────────────
+  // ── 5. Presence poller (backup if WebSocket fails) ────────────────────────
+  let lastPresenceState = null;
+  const presencePoller = setInterval(async () => {
+    try {
+      const r = await localFetch(lock.port, lock.password, '/chat/v4/presences');
+      const ownPuuid = snapshot.endpoints['/entitlements/v1/token']?.body?.subject;
+      const presences = r.body?.presences ?? [];
+      const own = presences.find(p => p.puuid === ownPuuid && p.product === 'valorant');
+      if (!own?.private) return;
+      let presence;
+      try { presence = JSON.parse(Buffer.from(own.private, 'base64').toString('utf8')); } catch { return; }
+      const state = JSON.stringify({
+        sessionLoopState: presence?.matchPresenceData?.sessionLoopState ?? presence?.sessionLoopState,
+        queueId: presence?.matchPresenceData?.queueId ?? presence?.queueId,
+        matchMap: presence?.matchPresenceData?.matchMap ?? presence?.matchMap,
+        scoreAlly: presence?.partyOwnerMatchScoreAllyTeam,
+        scoreEnemy: presence?.partyOwnerMatchScoreEnemyTeam,
+      });
+      if (state !== lastPresenceState) {
+        lastPresenceState = state;
+        const record = { t: ts(), event: 'PRESENCE_POLL', data: presence };
+        eventsStream.write(JSON.stringify(record) + '\n');
+        const parsed = JSON.parse(state);
+        console.log(`  🔄  PRESENCE CHANGED: state=${parsed.sessionLoopState} queue=${parsed.queueId} map=${parsed.matchMap} score=${parsed.scoreAlly}-${parsed.scoreEnemy}`);
+      }
+    } catch {}
+  }, 2000);
+
+  // ── 6. ShooterGame.log tail ───────────────────────────────────────────────
   let logWatcher = null;
   try {
     if (fs.existsSync(SHOOTER_LOG_PATH)) {
@@ -363,9 +396,10 @@ async function main() {
     console.log(`⚠️   Could not watch ShooterGame.log: ${e.message}`);
   }
 
-  // ── 6. Shutdown handler ───────────────────────────────────────────────────
+  // ── 7. Shutdown handler ───────────────────────────────────────────────────
   async function shutdown() {
     console.log('\n\n🛑  Stopping probe…');
+    clearInterval(presencePoller);
     if (logWatcher) logWatcher.close();
     eventsStream.end();
     logMirrorStream.end();
