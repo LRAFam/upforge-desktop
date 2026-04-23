@@ -1,4 +1,5 @@
 import https from 'https'
+import net from 'net'
 
 export interface GameEvent {
   EventID: number
@@ -50,16 +51,19 @@ export class RiotLocalApi {
   }
 
   /**
-   * Returns true if the Riot Live Client API is responding — this is the reliable match-start
-   * signal. The API only responds once the game has loaded in (after loading screen).
+   * Returns true if Valorant's Live Client Data server is listening on port 2999.
+   * Uses a raw TCP connect — no SSL issues, no cert problems.
+   * Port 2999 is ONLY open when a match is actively in progress.
    */
   async isMatchActive(): Promise<boolean> {
-    try {
-      await this._fetch('https://127.0.0.1:2999/liveclientdata/allgamedata')
-      return true
-    } catch {
-      return false
-    }
+    return new Promise((resolve) => {
+      const socket = new net.Socket()
+      socket.setTimeout(2000)
+      socket.on('connect', () => { socket.destroy(); resolve(true) })
+      socket.on('error', () => resolve(false))
+      socket.on('timeout', () => { socket.destroy(); resolve(false) })
+      socket.connect(2999, '127.0.0.1')
+    })
   }
 
   /**
@@ -124,6 +128,10 @@ export class RiotLocalApi {
         let body = ''
         res.on('data', (chunk) => body += chunk)
         res.on('end', () => {
+          if (res.statusCode !== 200) {
+            reject(new Error(`HTTP ${res.statusCode}`))
+            return
+          }
           try { resolve(JSON.parse(body)) }
           catch { reject(new Error('Invalid JSON')) }
         })

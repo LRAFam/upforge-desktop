@@ -231,9 +231,10 @@ function setupGameDetection(): void {
     const filterByMode = recordedModes.length > 0 &&
       !([...ALL_MODES].every(m => recordedModes.includes(m)))
 
-    // Poll up to 120 attempts × 5s = 10 minutes (covers long queue wait times)
+    // Poll up to 120 attempts × 5s = 10 minutes (covers long queue wait times).
+    // Probe immediately on first attempt — no initial wait.
     for (let attempt = 0; attempt < 120; attempt++) {
-      await new Promise((r) => setTimeout(r, 5000))
+      if (attempt > 0) await new Promise((r) => setTimeout(r, 5000))
       if (cancelled) {
         console.log('[GameDetector] Match wait cancelled — game quit before match started')
         waitingForMatch = false
@@ -242,12 +243,11 @@ function setupGameDetection(): void {
       }
       matchActive = await riotLocalApi.isMatchActive()
       if (matchActive) {
-        // API is alive — also grab gameMode now for mode filtering
         gameMode = await riotLocalApi.getGameMode()
-        console.log(`[GameDetector] Match detected! gameMode=${gameMode ?? 'unknown'}`)
+        console.log(`[GameDetector] Match detected (TCP port 2999 open)! gameMode=${gameMode ?? 'unknown'}`)
         break
       }
-      console.log(`[GameDetector] Waiting for match... (attempt ${attempt + 1}/120)`)
+      console.log(`[GameDetector] Waiting for match... (attempt ${attempt + 1}/120, port 2999 not open)`)
     }
 
     waitingForMatch = false
