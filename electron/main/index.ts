@@ -227,12 +227,13 @@ function setupGameDetection(): void {
       }
     }
 
-    tray?.setToolTip('UpForge — Waiting for match...')
+    tray?.setToolTip('UpForge — Match loading...')
     mainWindow?.webContents.send('recording:waiting-for-match', { waiting: true })
 
-    // Wait for Riot Local API to respond — this only happens once a match loads.
-    // Use isMatchActive() as the trigger (API responds = match in progress).
-    // getGameMode() is unreliable as the sole trigger since gameMode field may vary.
+    // VALORANT-Win64-Shipping.exe is the in-game process — its presence confirms a map
+    // is loading or actively in progress. The Riot Live Client Data API (port 2999) was
+    // deprecated; we no longer gate recording on it.
+    // Wait 90 seconds for the loading screen to pass, cancelling early if the process dies.
     let matchActive = false
     let gameMode: string | null = null
     let cancelled = false
@@ -243,64 +244,54 @@ function setupGameDetection(): void {
     const filterByMode = recordedModes.length > 0 &&
       !([...ALL_MODES].every(m => recordedModes.includes(m)))
 
-    // Poll up to 120 attempts × 5s = 10 minutes (covers long queue wait times).
-    // Probe immediately on first attempt — no initial wait.
-    // STRATEGY: Always probe the Live Client Data API directly (getGameMode).
-    // The process name and port checks are supplementary signals — useful for logging
-    // but NOT required, since process names vary by install and port may not be reachable
-    // from the Electron context on all systems.
-    // Only gameMode being non-null (from the Live Client API) guarantees a real active match.
-    for (let attempt = 0; attempt < 120; attempt++) {
-      if (attempt > 0) await new Promise((r) => setTimeout(r, 5000))
-      if (cancelled) {
-        console.log('[GameDetector] Match wait cancelled — game quit before match started')
-        waitingForMatch = false
-        cancelMatchWait = null
-        return
-      }
+    const LOADING_DELAY_MS = 90_000
+    logActivity('Valorant match loading — recording starts in 90s')
 
-      const processMatch = await gameDetector.isMatchProcessRunning()
-      const portMatch = await riotLocalApi.isMatchActive()
-
-      // Always probe the Live Client Data API directly — this is the only reliable signal
-      gameMode = await riotLocalApi.getGameMode()
-
-      if (gameMode) {
-        matchActive = true
-        logActivity(`Match detected (${gameMode}) — starting recording`)
-        console.log(`[GameDetector] Match confirmed! process=${processMatch} port=${portMatch} gameMode=${gameMode}`)
+    const deadline = Date.now() + LOADING_DELAY_MS
+    while (Date.now() < deadline) {
+      await new Promise((r) => setTimeout(r, 5000))
+      if (cancelled) break
+      const stillRunning = await gameDetector.isMatchProcessRunning()
+      if (!stillRunning) {
+        cancelled = true
         break
       }
-
-      // Verbose activity log every 6 attempts (30s) so the user can see what's happening
-      if (attempt % 6 === 0) {
-        logActivity(`Waiting for match… (process=${processMatch} port=${portMatch} api=no response)`)
-      }
-      console.log(`[GameDetector] Waiting for match... attempt ${attempt + 1}/120 process=${processMatch} port=${portMatch} gameMode=null`)
     }
 
     waitingForMatch = false
     cancelMatchWait = null
     mainWindow?.webContents.send('recording:waiting-for-match', { waiting: false })
 
-    if (cancelled) return
-
-    if (!matchActive || !gameMode) {
-      const reason = !matchActive ? 'No Riot API response after 10 minutes' : 'Could not confirm game mode'
-      console.log(`[GameDetector] ${reason} — skipping recording`)
-      logActivity(`${reason} — skipped recording`)
+    if (cancelled) {
+      logActivity('Match cancelled (game quit during loading)')
+      console.log('[GameDetector] Game quit during loading — no recording')
       tray?.setToolTip('UpForge — Valorant AI Coaching')
       return
     }
 
-    if (filterByMode && !recordedModes.includes(gameMode)) {
+    // Best-effort mode detection: try Live Client API first (may respond mid-match),
+    // fall back to log file parsing, then assume COMPETITIVE if both fail.
+    // Only apply mode filtering when we are confident about the mode.
+    gameMode = await riotLocalApi.getGameMode()
+    let modeConfident = gameMode !== null
+    if (!gameMode) {
+      gameMode = await riotLocalApi.getGameModeFromLog()
+      modeConfident = gameMode !== null
+    }
+
+    if (filterByMode && modeConfident && gameMode && !recordedModes.includes(gameMode)) {
       console.log(`[GameDetector] Skipping recording — mode is ${gameMode} (not in recordedModes)`)
       logActivity(`Mode ${gameMode} not in recorded modes — skipped`)
       tray?.setToolTip('UpForge — Valorant AI Coaching')
       return
     }
 
-    console.log(`[GameDetector] Match confirmed (${gameMode}) — starting recording`)
+    // Default mode label for display when detection was not possible
+    if (!gameMode) gameMode = 'COMPETITIVE'
+    matchActive = true
+
+    logActivity(`Match detected (${gameMode}${modeConfident ? '' : '?'}) — starting recording`)
+    console.log(`[GameDetector] Match confirmed! gameMode=${gameMode} confident=${modeConfident}`)
 
     // Start Riot Local API timeline tracking from match start
     riotLocalApi.start(game)
@@ -608,7 +599,7 @@ app.whenReady().then(async () => {
   // Debug: test Riot Live Client API connection — returns raw response or error details
   ipcMain.handle('debug:test-riot-api', async () => {
     const net = await import('net')
-    // TCP check
+    // TCP check on port 2999 (deprecated Live Client API — expected closed in 2026)
     const portOpen = await new Promise<boolean>((resolve) => {
       const socket = new net.Socket()
       socket.setTimeout(2000)
@@ -617,10 +608,10 @@ app.whenReady().then(async () => {
       socket.on('timeout', () => { socket.destroy(); resolve(false) })
       socket.connect(2999, '127.0.0.1')
     })
-    // API check
     const gameMode = await riotLocalApi.getGameMode()
+    const logGameMode = await riotLocalApi.getGameModeFromLog()
     const processRunning = await gameDetector.isMatchProcessRunning()
-    return { portOpen, gameMode, processRunning }
+    return { portOpen, gameMode, logGameMode, processRunning }
   })
 
 

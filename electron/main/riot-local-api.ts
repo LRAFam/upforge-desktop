@@ -1,5 +1,7 @@
 import https from 'https'
 import net from 'net'
+import fs from 'fs'
+import path from 'path'
 
 export interface GameEvent {
   EventID: number
@@ -271,6 +273,40 @@ export class RiotLocalApi {
   }
 
   private _lastGetGameModeError: string | null = null
+
+  /**
+   * Best-effort: read the Valorant log file and infer game mode from queue-related strings.
+   * The Live Client API (port 2999) was deprecated/removed around 2024. This log-file
+   * fallback keeps mode detection working without it. Returns null if mode cannot be determined.
+   */
+  async getGameModeFromLog(): Promise<string | null> {
+    if (process.platform !== 'win32') return null
+    const localAppData = process.env.LOCALAPPDATA
+    if (!localAppData) return null
+
+    const logPath = path.join(localAppData, 'VALORANT', 'Saved', 'Logs', 'VALORANT.log')
+    try {
+      const stat = fs.statSync(logPath)
+      // Only read last 100 KB — mode info is written early in the session
+      const readSize = Math.min(100_000, stat.size)
+      const fd = fs.openSync(logPath, 'r')
+      const buf = Buffer.alloc(readSize)
+      fs.readSync(fd, buf, 0, readSize, stat.size - readSize)
+      fs.closeSync(fd)
+      const text = buf.toString('utf8').toLowerCase()
+
+      // Check for queue identifiers — ordered most-specific first
+      if (text.includes('premier')) return 'PREMIER'
+      if (text.includes('competitive')) return 'COMPETITIVE'
+      if (text.includes('deathmatch')) return 'DEATHMATCH'
+      if (text.includes('spikerush') || text.includes('spike rush')) return 'SPIKERUSH'
+      if (text.includes('swiftplay') || text.includes('swift play')) return 'SWIFTPLAY'
+      if (text.includes('unrated')) return 'CLASSIC'
+      return null
+    } catch {
+      return null
+    }
+  }
 
   /** Returns the last known game mode — useful after stop() is called */
   getLastGameMode(): string | null {

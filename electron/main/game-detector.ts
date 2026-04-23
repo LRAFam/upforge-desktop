@@ -5,9 +5,13 @@ import { promisify } from 'util'
 const execAsync = promisify(exec)
 const IS_WIN = process.platform === 'win32'
 
-// Process names to watch per game (Windows only)
+// Process names to watch per game (Windows only).
+// For Valorant we ONLY watch VALORANT-Win64-Shipping.exe — the in-game process.
+// VALORANT.exe is the launcher/lobby and runs even while the player is in the main menu;
+// using it as the trigger would fire game-started in the lobby before a match begins.
+// VALORANT-Win64-Shipping.exe is loaded only when a map is actually loading/playing.
 const GAME_PROCESSES: Record<string, string[]> = {
-  valorant: ['VALORANT.exe', 'VALORANT-Win64-Shipping.exe'],
+  valorant: ['VALORANT-Win64-Shipping.exe'],
   cs2: ['cs2.exe']
 }
 
