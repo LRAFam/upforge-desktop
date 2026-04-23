@@ -15,6 +15,50 @@ export interface KillEvent extends GameEvent {
   assistants: string[]
 }
 
+/** Spike planted event — includes site (A/B/C) and who planted */
+export interface SpikePlantedEvent extends GameEvent {
+  EventName: 'SpikePlanted'
+  planter: string
+  site: string
+}
+
+/** Spike defused event — who defused */
+export interface SpikeDefusedEvent extends GameEvent {
+  EventName: 'SpikeDefused'
+  defuser: string
+}
+
+/** Spike detonated event */
+export interface SpikeDetonatedEvent extends GameEvent {
+  EventName: 'SpikeDetonated'
+}
+
+/** First blood event */
+export interface FirstBloodEvent extends GameEvent {
+  EventName: 'FirstBlood'
+  killerName: string
+  victimName: string
+}
+
+/** Ability state for a single ability slot */
+export interface AbilityState {
+  displayName: string
+  charges: number | null
+  /** For ultimates: current ult points */
+  currentPoints?: number | null
+  /** For ultimates: points needed to charge ult */
+  maxPoints?: number | null
+}
+
+/** Snapshot of all abilities at a given moment */
+export interface PlayerAbilities {
+  ability1: AbilityState | null
+  ability2: AbilityState | null
+  grenade: AbilityState | null
+  signature: AbilityState | null
+  ultimate: AbilityState | null
+}
+
 /** Snapshot of the local player's stats at a specific round boundary */
 export interface RoundPlayerStats {
   kills: number
@@ -33,6 +77,39 @@ export interface RoundSummary {
   endTime: number
   /** Player's cumulative stats at the end of this round */
   playerStats: RoundPlayerStats | null
+  /** Was the spike planted this round? */
+  spikePlanted: boolean
+  /** Which site was the spike planted on */
+  spikeSite: string | null
+  /** Who planted the spike */
+  spikePlanter: string | null
+  /** Was the spike defused? */
+  spikeDefused: boolean
+  /** Who defused the spike */
+  spikeDefuser: string | null
+  /** Did the spike detonate? */
+  spikeDetonated: boolean
+  /** Player's economy (credits) at round end */
+  playerGold: number | null
+  /** Player's ability states captured at round end */
+  playerAbilities: PlayerAbilities | null
+  /** Did the player get first blood this round? */
+  playerGotFirstBlood: boolean
+  /** Was the player the first blood victim? */
+  playerWasFirstBlood: boolean
+}
+
+/** Per-player stats snapshot for the full team — captured at match end */
+export interface TeamPlayerSnapshot {
+  summonerName: string
+  agent: string | null
+  team: string
+  kills: number
+  deaths: number
+  assists: number
+  /** Combat score */
+  score: number
+  level: number
 }
 
 /** Final match stats for the local player, captured at match end */
@@ -65,10 +142,20 @@ export interface MatchData {
   playerKills: KillEvent[]
   /** Kill events where the local player is the victim */
   playerDeaths: KillEvent[]
+  /** Spike plant events */
+  spikePlants: SpikePlantedEvent[]
+  /** Spike defuse events */
+  spikeDefuses: SpikeDefusedEvent[]
+  /** Spike detonation events */
+  spikeDetonations: SpikeDetonatedEvent[]
+  /** First blood events (one per round) */
+  firstBloods: FirstBloodEvent[]
   /** Round-by-round summaries */
   roundSummaries: RoundSummary[]
   /** Final player stats snapshot taken when match ends */
   finalStats: FinalPlayerStats | null
+  /** Stats for every player on both teams — captured at match end */
+  teamSnapshot: TeamPlayerSnapshot[]
   startTime: number
   endTime: number | null
 }
@@ -89,6 +176,13 @@ export class RiotLocalApi {
   private lastGameMode: string | null = null
   private agent = new https.Agent({ rejectUnauthorized: false })
   private roundNumber = 0
+  /** Tracks the current spike state within a round — reset when a new round starts */
+  private currentRoundSpike: { planted: boolean; site: string | null; planter: string | null; defused: boolean; defuser: string | null; detonated: boolean } = { planted: false, site: null, planter: null, defused: false, defuser: null, detonated: false }
+  /** Tracks first blood in current round */
+  private currentRoundFirstBlood: { killerName: string; victimName: string } | null = null
+  /** Latest cached activePlayer gold and abilities */
+  private latestGold: number | null = null
+  private latestAbilities: PlayerAbilities | null = null
 
   start(game: string): void {
     this.matchData = {
@@ -101,12 +195,21 @@ export class RiotLocalApi {
       killEvents: [],
       playerKills: [],
       playerDeaths: [],
+      spikePlants: [],
+      spikeDefuses: [],
+      spikeDetonations: [],
+      firstBloods: [],
       roundSummaries: [],
       finalStats: null,
+      teamSnapshot: [],
       startTime: Date.now(),
       endTime: null
     }
     this.roundNumber = 0
+    this.currentRoundSpike = { planted: false, site: null, planter: null, defused: false, defuser: null, detonated: false }
+    this.currentRoundFirstBlood = null
+    this.latestGold = null
+    this.latestAbilities = null
     this._pollGameData()
     this.pollInterval = setInterval(() => this._pollGameData(), 10_000)
     console.log(`[RiotLocalApi] Started polling for ${game}`)
@@ -124,7 +227,7 @@ export class RiotLocalApi {
     }
     const result = this.matchData
     this.matchData = null
-    console.log(`[RiotLocalApi] Stopped. Captured ${result?.events.length ?? 0} events, ${result?.killEvents.length ?? 0} kills, ${result?.roundSummaries.length ?? 0} rounds.`)
+    console.log(`[RiotLocalApi] Stopped. Captured ${result?.events.length ?? 0} events, ${result?.killEvents.length ?? 0} kills, ${result?.roundSummaries.length ?? 0} rounds, ${result?.spikePlants.length ?? 0} spike plants, ${result?.teamSnapshot.length ?? 0} players.`)
     return result
   }
 
@@ -193,6 +296,17 @@ export class RiotLocalApi {
         console.log(`[RiotLocalApi] Player identified: ${this.matchData.playerName}`)
       }
 
+      // Cache current gold and abilities from activePlayer (overwritten each poll)
+      if (activePlayer) {
+        const gold = activePlayer.currentGold
+        if (typeof gold === 'number') this.latestGold = gold
+
+        const rawAbilities = activePlayer.abilities as Record<string, Record<string, unknown>> | undefined
+        if (rawAbilities) {
+          this.latestAbilities = this._parseAbilities(rawAbilities)
+        }
+      }
+
       // Process new events
       if (Array.isArray(data.events?.Events)) {
         const existingIds = new Set(this.matchData.events.map((e) => e.EventID))
@@ -228,17 +342,81 @@ export class RiotLocalApi {
             }
           }
 
-          // Track round completions — capture player stats snapshot at each round end
+          if (eventName === 'FirstBlood') {
+            const fb: FirstBloodEvent = {
+              ...base,
+              EventName: 'FirstBlood',
+              killerName: (rawEvent.KillerName as string) ?? '',
+              victimName: (rawEvent.VictimName as string) ?? ''
+            }
+            this.matchData.firstBloods.push(fb)
+            this.currentRoundFirstBlood = { killerName: fb.killerName, victimName: fb.victimName }
+          }
+
+          if (eventName === 'SpikePlanted') {
+            const plant: SpikePlantedEvent = {
+              ...base,
+              EventName: 'SpikePlanted',
+              planter: (rawEvent.BombPlanter as string) ?? '',
+              site: (rawEvent.PlantSite as string) ?? ''
+            }
+            this.matchData.spikePlants.push(plant)
+            this.currentRoundSpike.planted = true
+            this.currentRoundSpike.site = plant.site
+            this.currentRoundSpike.planter = plant.planter
+          }
+
+          if (eventName === 'SpikeDefused') {
+            const defuse: SpikeDefusedEvent = {
+              ...base,
+              EventName: 'SpikeDefused',
+              defuser: (rawEvent.BombDefuser as string) ?? ''
+            }
+            this.matchData.spikeDefuses.push(defuse)
+            this.currentRoundSpike.defused = true
+            this.currentRoundSpike.defuser = defuse.defuser
+          }
+
+          if (eventName === 'SpikeDetonated') {
+            const detonate: SpikeDetonatedEvent = { ...base, EventName: 'SpikeDetonated' }
+            this.matchData.spikeDetonations.push(detonate)
+            this.currentRoundSpike.detonated = true
+          }
+
+          // Track round completions — capture full snapshot at each round end
           if (eventName === 'RoundEnded' || eventName === 'RoundDecided') {
             this.roundNumber++
             const playerStats = this._extractPlayerStats(allPlayers, this.matchData.playerName)
+            const playerName = this.matchData.playerName?.toLowerCase() ?? ''
+
+            const playerGotFirstBlood = !!this.currentRoundFirstBlood &&
+              (this.currentRoundFirstBlood.killerName.toLowerCase().includes(playerName) ||
+               this.currentRoundFirstBlood.killerName.toLowerCase() === playerName)
+            const playerWasFirstBlood = !!this.currentRoundFirstBlood &&
+              (this.currentRoundFirstBlood.victimName.toLowerCase().includes(playerName) ||
+               this.currentRoundFirstBlood.victimName.toLowerCase() === playerName)
+
             this.matchData.roundSummaries.push({
               roundNumber: this.roundNumber,
               winningTeam: (rawEvent.WinningTeam as string) ?? null,
               ceremony: (rawEvent.Ceremony as string) ?? (rawEvent.RoundResult as string) ?? null,
               endTime: eventTime,
-              playerStats
+              playerStats,
+              spikePlanted: this.currentRoundSpike.planted,
+              spikeSite: this.currentRoundSpike.site,
+              spikePlanter: this.currentRoundSpike.planter,
+              spikeDefused: this.currentRoundSpike.defused,
+              spikeDefuser: this.currentRoundSpike.defuser,
+              spikeDetonated: this.currentRoundSpike.detonated,
+              playerGold: this.latestGold,
+              playerAbilities: this.latestAbilities,
+              playerGotFirstBlood,
+              playerWasFirstBlood
             })
+
+            // Reset round-scoped trackers
+            this.currentRoundSpike = { planted: false, site: null, planter: null, defused: false, defuser: null, detonated: false }
+            this.currentRoundFirstBlood = null
           }
         }
       }
@@ -254,8 +432,44 @@ export class RiotLocalApi {
           level: this._getPlayerLevel(allPlayers, this.matchData.playerName)
         }
       }
+
+      // Update team snapshot (all players) on every poll — overwrite for freshness
+      if (allPlayers && allPlayers.length > 0) {
+        this.matchData.teamSnapshot = allPlayers.map((p) => {
+          const scores = p.scores as Record<string, number> | undefined
+          return {
+            summonerName: (p.summonerName as string) ?? (p.riotId as string) ?? 'Unknown',
+            agent: (p.championName as string) ?? null,
+            team: (p.team as string) ?? 'Unknown',
+            kills: scores?.kills ?? 0,
+            deaths: scores?.deaths ?? 0,
+            assists: scores?.assists ?? 0,
+            score: scores?.creepScore ?? scores?.wardScore ?? 0,
+            level: (p.level as number) ?? 0
+          }
+        })
+      }
     } catch {
       // Game not running yet or between rounds — silently ignore
+    }
+  }
+
+  private _parseAbilities(raw: Record<string, Record<string, unknown>>): PlayerAbilities {
+    const parseSlot = (slot: Record<string, unknown> | undefined): AbilityState | null => {
+      if (!slot) return null
+      return {
+        displayName: (slot.displayName as string) ?? (slot.id as string) ?? 'Unknown',
+        charges: typeof slot.charges === 'number' ? (slot.charges as number) : null,
+        currentPoints: typeof slot.currentPoints === 'number' ? (slot.currentPoints as number) : null,
+        maxPoints: typeof slot.maxPoints === 'number' ? (slot.maxPoints as number) : null
+      }
+    }
+    return {
+      ability1: parseSlot(raw.Ability1),
+      ability2: parseSlot(raw.Ability2),
+      grenade: parseSlot(raw.Grenade),
+      signature: parseSlot(raw.Signature),
+      ultimate: parseSlot(raw.Ultimate)
     }
   }
 
