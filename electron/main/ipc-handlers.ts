@@ -92,6 +92,10 @@ export function setupIpcHandlers(
     return result
   })
 
+  ipcMain.handle('settings:mark-first-run-done', () => {
+    return settingsManager.save({ firstRun: false })
+  })
+
   // Storage usage — sum size of all files in the recordings folder
   ipcMain.handle('storage:get-usage', async () => {
     const settings = settingsManager.get()

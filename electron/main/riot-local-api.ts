@@ -336,9 +336,9 @@ export class RiotLocalApi {
 
             const playerName = this.matchData.playerName?.toLowerCase()
             if (playerName) {
-              if (kill.killerName.toLowerCase().includes(playerName) || kill.killerName.toLowerCase() === playerName) {
+              if (kill.killerName.toLowerCase() === playerName) {
                 this.matchData.playerKills.push(kill)
-              } else if (kill.victimName.toLowerCase().includes(playerName) || kill.victimName.toLowerCase() === playerName) {
+              } else if (kill.victimName.toLowerCase() === playerName) {
                 this.matchData.playerDeaths.push(kill)
               }
             }
@@ -392,11 +392,9 @@ export class RiotLocalApi {
             const playerName = this.matchData.playerName?.toLowerCase() ?? ''
 
             const playerGotFirstBlood = !!this.currentRoundFirstBlood &&
-              (this.currentRoundFirstBlood.killerName.toLowerCase().includes(playerName) ||
-               this.currentRoundFirstBlood.killerName.toLowerCase() === playerName)
+              this.currentRoundFirstBlood.killerName.toLowerCase() === playerName
             const playerWasFirstBlood = !!this.currentRoundFirstBlood &&
-              (this.currentRoundFirstBlood.victimName.toLowerCase().includes(playerName) ||
-               this.currentRoundFirstBlood.victimName.toLowerCase() === playerName)
+              this.currentRoundFirstBlood.victimName.toLowerCase() === playerName
 
             this.matchData.roundSummaries.push({
               roundNumber: this.roundNumber,
@@ -435,12 +433,14 @@ export class RiotLocalApi {
         }
       }
 
-      // Update team snapshot (all players) on every poll — overwrite for freshness
+      // Merge team snapshot so disconnected players are preserved
       if (allPlayers && allPlayers.length > 0) {
-        this.matchData.teamSnapshot = allPlayers.map((p) => {
+        const existing = new Map(this.matchData.teamSnapshot.map((p) => [p.summonerName, p]))
+        for (const p of allPlayers) {
           const scores = p.scores as Record<string, number> | undefined
-          return {
-            summonerName: (p.summonerName as string) ?? (p.riotId as string) ?? 'Unknown',
+          const name = (p.summonerName as string) ?? (p.riotId as string) ?? 'Unknown'
+          existing.set(name, {
+            summonerName: name,
             agent: (p.championName as string) ?? null,
             team: (p.team as string) ?? 'Unknown',
             kills: scores?.kills ?? 0,
@@ -448,8 +448,9 @@ export class RiotLocalApi {
             assists: scores?.assists ?? 0,
             score: scores?.combatScore ?? scores?.creepScore ?? 0,
             level: (p.level as number) ?? 0
-          }
-        })
+          })
+        }
+        this.matchData.teamSnapshot = [...existing.values()]
       }
     } catch {
       // Game not running yet or between rounds — silently ignore
@@ -483,7 +484,7 @@ export class RiotLocalApi {
     const nameLower = playerName.toLowerCase()
     const player = allPlayers.find((p) => {
       const name = ((p.summonerName as string) ?? '').toLowerCase()
-      return name === nameLower || name.includes(nameLower)
+      return name === nameLower
     })
     if (!player) return null
     const scores = player.scores as Record<string, number> | undefined
@@ -502,7 +503,7 @@ export class RiotLocalApi {
   ): string | null {
     if (!allPlayers || !playerName) return null
     const nameLower = playerName.toLowerCase()
-    const player = allPlayers.find((p) => ((p.summonerName as string) ?? '').toLowerCase().includes(nameLower))
+    const player = allPlayers.find((p) => ((p.summonerName as string) ?? '').toLowerCase() === nameLower)
     return (player?.team as string) ?? null
   }
 
@@ -512,7 +513,7 @@ export class RiotLocalApi {
   ): number {
     if (!allPlayers || !playerName) return 0
     const nameLower = playerName.toLowerCase()
-    const player = allPlayers.find((p) => ((p.summonerName as string) ?? '').toLowerCase().includes(nameLower))
+    const player = allPlayers.find((p) => ((p.summonerName as string) ?? '').toLowerCase() === nameLower)
     return (player?.level as number) ?? 0
   }
 

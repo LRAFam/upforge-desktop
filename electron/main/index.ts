@@ -377,6 +377,7 @@ function setupGameDetection(): void {
 
     // Always open the post-game window
     postGameWindow = createPostGameWindow()
+    postGameWindow.on('closed', () => { postGameWindow = null })
 
     postGameWindow.webContents.once('did-finish-load', async () => {
       if (!videoPath || !require('fs').existsSync(videoPath)) {
@@ -443,8 +444,11 @@ async function doUploadAndAnalyse(
   timeline: MatchData | null,
   targetWindow: BrowserWindow
 ): Promise<void> {
+  const send = (channel: string, payload?: unknown) => {
+    if (!targetWindow.isDestroyed()) targetWindow.webContents.send(channel, payload)
+  }
   try {
-    targetWindow.webContents.send('post-game:upload-start', { game, map, agent })
+    send('post-game:upload-start', { game, map, agent })
     logActivity(`Uploading recording${map ? ` (${map}${agent ? ` · ${agent}` : ''})` : ''}`)
 
     const result = await uploadManager.upload({
@@ -456,11 +460,11 @@ async function doUploadAndAnalyse(
       agent,
       timeline,
       onProgress: (pct) => {
-        targetWindow.webContents.send('post-game:upload-progress', pct)
+        send('post-game:upload-progress', pct)
       }
     })
 
-    targetWindow.webContents.send('post-game:upload-complete', { jobId: result.job_id })
+    send('post-game:upload-complete', { jobId: result.job_id })
     logActivity('Upload complete — AI analysis running')
     tray?.setToolTip('UpForge — Analysing...')
 
@@ -484,7 +488,7 @@ async function doUploadAndAnalyse(
           clearInterval(pollTimer)
           const score = (status.result as Record<string, unknown>).overall_score as number | undefined
           logActivity(`Analysis ready${score != null ? ` — Score: ${score}/100` : ''}`)
-          targetWindow.webContents.send('post-game:analysis-ready', {
+          send('post-game:analysis-ready', {
             overall_score: (status.result as Record<string, unknown>).overall_score,
             analysis_id: (status.result as Record<string, unknown>).analysis_id,
             top_issue: (status.result as Record<string, unknown>).top_issue
@@ -501,12 +505,12 @@ async function doUploadAndAnalyse(
         } else if (status.status === 'failed') {
           clearInterval(pollTimer)
           logActivity('Analysis failed')
-          targetWindow.webContents.send('post-game:upload-error', 'Analysis failed. Please try again.')
+          send('post-game:upload-error', 'Analysis failed. Please try again.')
           tray?.setToolTip('UpForge — Valorant AI Coaching')
         } else if (Date.now() - startTime > 600_000) {
           clearInterval(pollTimer)
           logActivity('Analysis timed out')
-          targetWindow.webContents.send('post-game:upload-error', 'Analysis timed out.')
+          send('post-game:upload-error', 'Analysis timed out.')
           tray?.setToolTip('UpForge — Valorant AI Coaching')
         }
       } catch { /* ignore poll errors */ }
@@ -514,7 +518,7 @@ async function doUploadAndAnalyse(
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : 'Upload failed'
     logActivity(`Upload failed: ${msg}`)
-    targetWindow.webContents.send('post-game:upload-error', msg)
+    send('post-game:upload-error', msg)
     tray?.setToolTip('UpForge — Valorant AI Coaching')
   }
 }
