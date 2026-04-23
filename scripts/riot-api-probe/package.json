@@ -7,7 +7,5 @@
     "probe": "node probe.js",
     "help": "node probe.js --help"
   },
-  "dependencies": {
-    "ws": "^8.18.0"
-  }
+  "dependencies": {}
 }

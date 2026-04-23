@@ -1,6 +1,8 @@
 /**
  * UpForge — Riot API Probe
  *
+ * ZERO DEPENDENCIES — uses only Node.js built-ins (no npm install needed).
+ *
  * PURPOSE:
  *   Run this script while Valorant is open (ideally during a live match).
  *   It captures:
@@ -14,9 +16,7 @@
  *     shootergame.log     — real-time tail of the Valorant log file
  *     summary.txt         — written when you press Ctrl+C
  *
- * SETUP:
- *   cd upforge-desktop/scripts/riot-api-probe
- *   npm install
+ * USAGE (no npm install required):
  *   node probe.js
  *
  * REQUIREMENTS:
@@ -24,10 +24,11 @@
  *   - Valorant should be open; ideally play a full round during capture
  */
 
-const fs   = require('fs');
-const path = require('path');
+const fs    = require('fs');
+const path  = require('path');
 const https = require('https');
-const WebSocket = require('ws');
+const tls   = require('tls');
+const crypto = require('crypto');
 
 // ─── Config ──────────────────────────────────────────────────────────────────
 
@@ -153,75 +154,176 @@ async function main() {
   fs.writeFileSync(snapshotPath, JSON.stringify(snapshot, null, 2));
   console.log(`\n✅  Snapshot saved → ${snapshotPath}`);
 
-  // ── 4. WebSocket – subscribe to ALL events ────────────────────────────────
+  // ── 4. WebSocket – subscribe to ALL events (built-in TLS, no ws package) ──
   const helpEvents = Object.keys(snapshot.endpoints['/help']?.body?.events ?? {});
   console.log(`\n🔌  Connecting to WebSocket (${helpEvents.length} events to subscribe)…`);
-
-  const wsUrl = `wss://riot:${lock.password}@127.0.0.1:${lock.port}`;
-  const ws = new WebSocket(wsUrl, { rejectUnauthorized: false });
 
   const eventCounts = {};
   let totalEvents   = 0;
 
-  ws.on('open', () => {
-    console.log('✅  WebSocket connected — subscribing to all events…');
-    // Subscribe to every named event (more detail than blanket OnJsonApiEvent)
-    for (const name of helpEvents) {
-      if (name !== 'OnJsonApiEvent') {
-        ws.send(JSON.stringify([5, name]));
+  // Minimal WebSocket client using Node built-in tls module (RFC 6455)
+  function connectWebSocket(port, password, onMessage, onClose) {
+    const key = crypto.randomBytes(16).toString('base64');
+    const auth = Buffer.from(`riot:${password}`).toString('base64');
+
+    const socket = tls.connect({ host: '127.0.0.1', port, rejectUnauthorized: false }, () => {
+      // Send HTTP upgrade request
+      const upgrade = [
+        'GET / HTTP/1.1',
+        `Host: 127.0.0.1:${port}`,
+        'Upgrade: websocket',
+        'Connection: Upgrade',
+        `Sec-WebSocket-Key: ${key}`,
+        'Sec-WebSocket-Version: 13',
+        `Authorization: Basic ${auth}`,
+        '',
+        ''
+      ].join('\r\n');
+      socket.write(upgrade);
+    });
+
+    let upgraded = false;
+    let buffer   = Buffer.alloc(0);
+
+    socket.on('data', (chunk) => {
+      buffer = Buffer.concat([buffer, chunk]);
+
+      if (!upgraded) {
+        const head = buffer.toString('utf8');
+        if (head.includes('\r\n\r\n')) {
+          upgraded = true;
+          const headerEnd = buffer.indexOf('\r\n\r\n') + 4;
+          buffer = buffer.slice(headerEnd);
+          onMessage({ type: 'open', send: (msg) => wsSend(socket, msg) });
+        }
+        return;
       }
+
+      // Parse WebSocket frames
+      while (buffer.length >= 2) {
+        const b0 = buffer[0];
+        const b1 = buffer[1];
+        const opcode  = b0 & 0x0f;
+        const masked  = (b1 & 0x80) !== 0;
+        let payloadLen = b1 & 0x7f;
+        let offset = 2;
+
+        if (payloadLen === 126) {
+          if (buffer.length < 4) break;
+          payloadLen = buffer.readUInt16BE(2);
+          offset = 4;
+        } else if (payloadLen === 127) {
+          if (buffer.length < 10) break;
+          payloadLen = Number(buffer.readBigUInt64BE(2));
+          offset = 10;
+        }
+
+        const maskLen = masked ? 4 : 0;
+        const totalLen = offset + maskLen + payloadLen;
+        if (buffer.length < totalLen) break;
+
+        const maskBytes = masked ? buffer.slice(offset, offset + 4) : null;
+        let payload = buffer.slice(offset + maskLen, totalLen);
+
+        if (masked && maskBytes) {
+          payload = Buffer.from(payload);
+          for (let i = 0; i < payload.length; i++) {
+            payload[i] ^= maskBytes[i % 4];
+          }
+        }
+
+        buffer = buffer.slice(totalLen);
+
+        if (opcode === 1) { // text frame
+          onMessage({ type: 'message', data: payload.toString('utf8') });
+        } else if (opcode === 8) { // close
+          onClose();
+        } else if (opcode === 9) { // ping → pong
+          wsSend(socket, '', 10);
+        }
+      }
+    });
+
+    socket.on('error', (e) => console.error('WebSocket error:', e.message));
+    socket.on('close', onClose);
+
+    return socket;
+  }
+
+  function wsSend(socket, msg, opcode = 1) {
+    const payload = Buffer.from(msg, 'utf8');
+    const len = payload.length;
+    let header;
+    if (len < 126) {
+      header = Buffer.from([0x80 | opcode, len]);
+    } else if (len < 65536) {
+      header = Buffer.alloc(4);
+      header[0] = 0x80 | opcode; header[1] = 126;
+      header.writeUInt16BE(len, 2);
+    } else {
+      header = Buffer.alloc(10);
+      header[0] = 0x80 | opcode; header[1] = 127;
+      header.writeBigUInt64BE(BigInt(len), 2);
     }
-    // Also subscribe to the catch-all
-    ws.send(JSON.stringify([5, 'OnJsonApiEvent']));
-    console.log('⏳  Waiting for events. Play a Valorant match now. Press Ctrl+C when done.\n');
-  });
+    socket.write(Buffer.concat([header, payload]));
+  }
 
-  ws.on('message', (raw) => {
-    const line = raw.toString();
-    try {
-      const parsed = JSON.parse(line);
-      // WAMP opcode 8 = event
-      if (parsed[0] === 8) {
-        const eventName = parsed[1];
-        const payload   = parsed[2] ?? {};
-        const uri       = payload.uri ?? '';
-        const eventType = payload.eventType ?? '';
-        const data      = payload.data;
+  let wsSender = null;
 
-        totalEvents++;
-        eventCounts[eventName] = (eventCounts[eventName] ?? 0) + 1;
+  connectWebSocket(
+    lock.port, lock.password,
+    (msg) => {
+      if (msg.type === 'open') {
+        wsSender = msg.send;
+        console.log('✅  WebSocket connected — subscribing to all events…');
+        for (const name of helpEvents) {
+          if (name !== 'OnJsonApiEvent') msg.send(JSON.stringify([5, name]));
+        }
+        msg.send(JSON.stringify([5, 'OnJsonApiEvent']));
+        console.log('⏳  Waiting for events. Play a Valorant match now. Press Ctrl+C when done.\n');
+        return;
+      }
 
-        const record = { t: ts(), event: eventName, uri, eventType, data };
-        eventsStream.write(JSON.stringify(record) + '\n');
+      const line = msg.data;
+      try {
+        const parsed = JSON.parse(line);
+        if (parsed[0] === 8) {
+          const eventName = parsed[1];
+          const payload   = parsed[2] ?? {};
+          const uri       = payload.uri ?? '';
+          const eventType = payload.eventType ?? '';
+          const data      = payload.data;
 
-        // Print interesting events to console
-        const interesting = [
-          'presences', 'session', 'core-game', 'pregame',
-          'kill', 'round', 'spike', 'bomb', 'match',
-          'messaging-service', 'riot-messaging',
-        ];
-        if (interesting.some(k => (eventName + uri).toLowerCase().includes(k))) {
-          console.log(`  📨  ${eventName}  ${uri}  (${eventType})`);
-          if (data && typeof data === 'object') {
-            // Try to decode base64 private fields
-            if (data.private) {
-              try {
-                const dec = JSON.parse(Buffer.from(data.private, 'base64').toString());
-                console.log(`       presence: state=${dec.sessionLoopState} queue=${dec.queueId} score=${dec.partyOwnerMatchScoreAllyTeam}-${dec.partyOwnerMatchScoreEnemyTeam}`);
-              } catch {}
-            } else {
-              // Print first 200 chars of data
-              const preview = JSON.stringify(data).slice(0, 200);
-              console.log(`       data: ${preview}${preview.length >= 200 ? '…' : ''}`);
+          totalEvents++;
+          eventCounts[eventName] = (eventCounts[eventName] ?? 0) + 1;
+
+          const record = { t: ts(), event: eventName, uri, eventType, data };
+          eventsStream.write(JSON.stringify(record) + '\n');
+
+          const interesting = [
+            'presences', 'session', 'core-game', 'pregame',
+            'kill', 'round', 'spike', 'bomb', 'match',
+            'messaging-service', 'riot-messaging',
+          ];
+          if (interesting.some(k => (eventName + uri).toLowerCase().includes(k))) {
+            console.log(`  📨  ${eventName}  ${uri}  (${eventType})`);
+            if (data && typeof data === 'object') {
+              if (data.private) {
+                try {
+                  const dec = JSON.parse(Buffer.from(data.private, 'base64').toString());
+                  console.log(`       presence: state=${dec.sessionLoopState} queue=${dec.queueId} score=${dec.partyOwnerMatchScoreAllyTeam}-${dec.partyOwnerMatchScoreEnemyTeam}`);
+                } catch {}
+              } else {
+                const preview = JSON.stringify(data).slice(0, 200);
+                console.log(`       data: ${preview}${preview.length >= 200 ? '...' : ''}`);
+              }
             }
           }
         }
-      }
-    } catch {}
-  });
-
-  ws.on('error', (e) => console.error('WebSocket error:', e.message));
-  ws.on('close', () => console.log('\n🔌  WebSocket closed'));
+      } catch {}
+    },
+    () => console.log('\n🔌  WebSocket closed')
+  );
 
   // ── 5. ShooterGame.log tail ───────────────────────────────────────────────
   let logWatcher = null;
@@ -265,7 +367,6 @@ async function main() {
   async function shutdown() {
     console.log('\n\n🛑  Stopping probe…');
     if (logWatcher) logWatcher.close();
-    ws.close();
     eventsStream.end();
     logMirrorStream.end();
 

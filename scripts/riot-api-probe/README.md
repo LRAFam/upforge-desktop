@@ -3,12 +3,9 @@
 **Run this before we write any real-time event code.**  
 It captures everything the Riot Client exposes during a Valorant match so we know exactly what's available.
 
-## Setup (one time)
+## Setup
 
-```
-cd upforge-desktop/scripts/riot-api-probe
-npm install
-```
+No npm install needed — uses only Node.js built-ins.
 
 ## How to run
 
