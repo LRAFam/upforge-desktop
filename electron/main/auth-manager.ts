@@ -129,7 +129,7 @@ export class AuthManager {
     log.info('[Auth] login() called for:', email)
     try {
       log.info('[Auth] posting to /api/login')
-      const res = await this._api.post('/api/login', { email, password })
+      const res = await this._api.post('/api/login', { email, password, device_name: 'desktop' })
       log.info('[Auth] /api/login response status:', res.status)
       const { token, user } = res.data
 
