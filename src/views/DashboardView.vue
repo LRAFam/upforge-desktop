@@ -1,6 +1,16 @@
 <template>
   <div class="px-3 py-3 space-y-3">
 
+    <!-- System warning banner (low disk space, etc.) -->
+    <div
+      v-if="warning"
+      class="flex items-center gap-2 px-3 py-2 rounded-lg bg-orange-500/10 border border-orange-500/25 text-orange-300 text-xs"
+    >
+      <span class="text-orange-400">⚠</span>
+      <span>{{ warning }}</span>
+      <button class="ml-auto text-white/40 hover:text-white/70 leading-none" @click="warning = null">✕</button>
+    </div>
+
     <!-- Status card -->
     <div
       :class="[
@@ -324,6 +334,7 @@ const simStatus = ref('')
 const recordingStartedAt = ref<number | null>(null)
 const recordingElapsed = ref('')
 const stopping = ref(false)
+const warning = ref<string | null>(null)
 
 const quotaPercent = computed(() => {
   const stats = profile.value?.user?.analysis_stats
@@ -410,6 +421,11 @@ onMounted(async () => {
     if (!data.recording && data.error) {
       console.error('[Dashboard] Recording stopped with error:', data.error)
     }
+  }) as (...args: unknown[]) => void)
+  window.api.on('app:warning', ((...args: unknown[]) => {
+    const data = args[0] as { message: string }
+    warning.value = data.message
+    setTimeout(() => { warning.value = null }, 12000)
   }) as (...args: unknown[]) => void)
 })
 

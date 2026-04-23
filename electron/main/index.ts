@@ -195,6 +195,23 @@ function setupGameDetection(): void {
       savePath: config.savePath
     } : undefined
 
+    // Check disk space before starting — warn if < 2 GB free
+    const savePath = config?.savePath ?? app.getPath('userData')
+    const freeBytes = await recorder.getFreeDiskSpace(savePath)
+    const TWO_GB = 2 * 1024 * 1024 * 1024
+    if (freeBytes < TWO_GB) {
+      const freeGB = (freeBytes / (1024 ** 3)).toFixed(1)
+      console.warn(`[Recorder] Low disk space: ${freeGB} GB free`)
+      mainWindow?.webContents.send('app:warning', { message: `Low disk space (${freeGB} GB free) — recording may be cut short` })
+      if (Notification.isSupported()) {
+        new Notification({
+          title: 'UpForge — Low Disk Space',
+          body: `Only ${freeGB} GB free. Recording may be cut short.`,
+          silent: true
+        }).show()
+      }
+    }
+
     // Start Riot Local API polling immediately so timeline is captured from the start
     riotLocalApi.start(game)
 
@@ -204,13 +221,15 @@ function setupGameDetection(): void {
       !([...ALL_MODES].every(m => recordedModes.includes(m)))
 
     if (filterByMode) {
-      // Probe game mode — retry for up to 30 seconds since Riot local API takes time to start
-      let gameMode: string | null = null
-      for (let attempt = 0; attempt < 6; attempt++) {
-        await new Promise((r) => setTimeout(r, 5000))
-        gameMode = await riotLocalApi.getGameMode()
-        if (gameMode) break
-        console.log(`[GameDetector] Game mode not available yet (attempt ${attempt + 1}/6)`)
+      // Probe game mode — first attempt immediately, then retry every 5s for up to 30s
+      let gameMode: string | null = await riotLocalApi.getGameMode()
+      if (!gameMode) {
+        for (let attempt = 0; attempt < 6; attempt++) {
+          await new Promise((r) => setTimeout(r, 5000))
+          gameMode = await riotLocalApi.getGameMode()
+          if (gameMode) break
+          console.log(`[GameDetector] Game mode not available yet (attempt ${attempt + 1}/6)`)
+        }
       }
 
       if (gameMode && !recordedModes.includes(gameMode)) {
@@ -250,15 +269,30 @@ function setupGameDetection(): void {
     console.log(`[GameDetector] ${game} stopped`)
 
     const timeline = riotLocalApi.stop()
+    const recordingDuration = recorder.getRecordingDuration()
     await recorder.stop()
 
     const videoPath = recorder.getLastRecordingPath()
+    const fileSize = recorder.getLastRecordingSize()
     const user = authManager.getUser()
     const map = timeline?.map ?? null
     const agent = timeline?.agent ?? null
     const gameMode = riotLocalApi.getLastGameMode() ?? 'UNKNOWN'
     const config = settingsManager?.get()
     const autoAnalyse = config?.autoAnalyse !== false
+
+    const MIN_DURATION_SECONDS = 120  // 2 minutes — ignore crash/test launches
+    const MIN_FILE_SIZE_BYTES = 1024 * 1024  // 1 MB
+
+    if (recordingDuration > 0 && recordingDuration < MIN_DURATION_SECONDS) {
+      console.log(`[GameDetector] Recording too short (${recordingDuration}s) — ignoring`)
+      // Clean up the tiny file
+      if (videoPath && require('fs').existsSync(videoPath)) {
+        try { require('fs').unlinkSync(videoPath) } catch { /* ignore */ }
+      }
+      tray?.setToolTip('UpForge — Valorant AI Coaching')
+      return
+    }
 
     // Always open the post-game window
     postGameWindow = createPostGameWindow()
@@ -269,6 +303,15 @@ function setupGameDetection(): void {
         const errorMsg = ffmpegError
           ? `Recording failed: ${ffmpegError}`
           : 'Recording file was not created — ffmpeg may have failed to start. Check that ffmpeg is installed (dev) or the app was not corrupted (production).'
+        postGameWindow?.webContents.send('post-game:upload-error', errorMsg)
+        tray?.setToolTip('UpForge — Valorant AI Coaching')
+        return
+      }
+
+      if (fileSize < MIN_FILE_SIZE_BYTES) {
+        const sizeMB = (fileSize / (1024 * 1024)).toFixed(2)
+        const errorMsg = `Recording appears corrupt or empty (${sizeMB} MB). Please check your ffmpeg setup.`
+        console.error(`[GameDetector] ${errorMsg}`)
         postGameWindow?.webContents.send('post-game:upload-error', errorMsg)
         tray?.setToolTip('UpForge — Valorant AI Coaching')
         return

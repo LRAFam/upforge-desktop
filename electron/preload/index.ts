@@ -59,7 +59,8 @@ const api = {
       'dashboard:refresh',
       'recordings:updated',
       'app:ffmpeg-status',
-      'recording:status-changed'
+      'recording:status-changed',
+      'app:warning'
     ]
     if (allowed.includes(channel)) {
       ipcRenderer.on(channel, (_e, ...args) => callback(...args))
