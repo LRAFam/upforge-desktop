@@ -1,0 +1,13 @@
+{
+  "name": "riot-api-probe",
+  "version": "1.0.0",
+  "description": "One-shot probe: discover every real-time event the Riot Client exposes",
+  "main": "probe.js",
+  "scripts": {
+    "probe": "node probe.js",
+    "help": "node probe.js --help"
+  },
+  "dependencies": {
+    "ws": "^8.18.0"
+  }
+}
