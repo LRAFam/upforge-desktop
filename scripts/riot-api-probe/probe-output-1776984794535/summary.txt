@@ -1,0 +1,11 @@
+Probe run: 2026-04-23T22:53:14.535Z
+Total events captured: 240
+
+Event counts (most frequent first):
+    235x  OnJsonApiEvent
+      5x  OnJsonApiEvent_patch-proxy_v2_patch-states
+
+Output files:
+  C:\Users\Adam\Documents\GitHub\upforge-desktop\scripts\riot-api-probe\probe-output-1776984794535\snapshot.json
+  C:\Users\Adam\Documents\GitHub\upforge-desktop\scripts\riot-api-probe\probe-output-1776984794535\events.jsonl
+  C:\Users\Adam\Documents\GitHub\upforge-desktop\scripts\riot-api-probe\probe-output-1776984794535\shootergame.log
