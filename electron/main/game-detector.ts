@@ -37,6 +37,21 @@ export class GameDetector extends EventEmitter {
     return this._activeGame
   }
 
+  /**
+   * Returns true if the Valorant *game* process is running (not just the launcher).
+   * VALORANT-Win64-Shipping.exe only appears during actual match loading/play.
+   * VALORANT.exe is the launcher — it runs from client open, not just during matches.
+   */
+  async isMatchProcessRunning(): Promise<boolean> {
+    if (!IS_WIN) return false
+    try {
+      const names = await this._getRunningProcessNames()
+      return names.has('valorant-win64-shipping.exe')
+    } catch {
+      return false
+    }
+  }
+
   /** Simulate a game session for testing on non-Windows platforms */
   simulateGame(game = 'valorant', durationMs = 10000): void {
     console.log(`[GameDetector] ⚡ Simulating ${game} session for ${durationMs}ms`)

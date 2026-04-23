@@ -245,6 +245,8 @@ function setupGameDetection(): void {
 
     // Poll up to 120 attempts × 5s = 10 minutes (covers long queue wait times).
     // Probe immediately on first attempt — no initial wait.
+    // PRIMARY: VALORANT-Win64-Shipping.exe only runs during an actual match (not lobby/queue).
+    // SECONDARY: TCP port 2999 (Riot Live Client Data API) as a fallback.
     for (let attempt = 0; attempt < 120; attempt++) {
       if (attempt > 0) await new Promise((r) => setTimeout(r, 5000))
       if (cancelled) {
@@ -253,14 +255,23 @@ function setupGameDetection(): void {
         cancelMatchWait = null
         return
       }
-      matchActive = await riotLocalApi.isMatchActive()
+
+      const processMatch = await gameDetector.isMatchProcessRunning()
+      const portMatch = await riotLocalApi.isMatchActive()
+      matchActive = processMatch || portMatch
+
       if (matchActive) {
-        gameMode = await riotLocalApi.getGameMode()
-        console.log(`[GameDetector] Match detected (TCP port 2999 open)! gameMode=${gameMode ?? 'unknown'}`)
+        // Try up to 3 times to get game mode — the API may need a moment to respond
+        // even when the process is already running
+        for (let modeAttempt = 0; modeAttempt < 3 && !gameMode; modeAttempt++) {
+          if (modeAttempt > 0) await new Promise((r) => setTimeout(r, 3000))
+          gameMode = await riotLocalApi.getGameMode()
+        }
+        console.log(`[GameDetector] Match detected! process=${processMatch} port=${portMatch} gameMode=${gameMode ?? 'unknown'}`)
         logActivity(`Match found (${gameMode ?? 'unknown mode'}) — starting recording`)
         break
       }
-      console.log(`[GameDetector] Waiting for match... (attempt ${attempt + 1}/120, port 2999 not open)`)
+      console.log(`[GameDetector] Waiting for match... (attempt ${attempt + 1}/120, process=${processMatch} port=${portMatch})`)
     }
 
     waitingForMatch = false
