@@ -17,7 +17,8 @@ export function setupIpcHandlers(
   settingsManager: SettingsManager,
   openPostGameFn?: () => void,
   getFFmpegOk?: () => boolean,
-  getWaitingForMatch?: () => boolean
+  getWaitingForMatch?: () => boolean,
+  getActivityLog?: () => { time: number; message: string }[]
 ): void {
   // Auth
   ipcMain.handle('auth:login', async (_e, { email, password }) => {
@@ -60,6 +61,10 @@ export function setupIpcHandlers(
       ffmpegOk: getFFmpegOk ? getFFmpegOk() : true,
       recordedModes: settings.recordedModes
     }
+  })
+
+  ipcMain.handle('app:get-activity-log', () => {
+    return getActivityLog ? getActivityLog() : []
   })
 
   // Profile — full profile + Valorant stats

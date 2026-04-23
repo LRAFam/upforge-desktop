@@ -9,7 +9,8 @@ const api = {
     loadStored: () => ipcRenderer.invoke('auth:load-stored')
   },
   app: {
-    getStatus: () => ipcRenderer.invoke('app:get-status')
+    getStatus: () => ipcRenderer.invoke('app:get-status'),
+    getActivityLog: () => ipcRenderer.invoke('app:get-activity-log')
   },
   profile: {
     get: () => ipcRenderer.invoke('profile:get')
@@ -61,7 +62,8 @@ const api = {
       'app:ffmpeg-status',
       'recording:status-changed',
       'recording:waiting-for-match',
-      'app:warning'
+      'app:warning',
+      'app:activity-log'
     ]
     if (allowed.includes(channel)) {
       ipcRenderer.on(channel, (_e, ...args) => callback(...args))

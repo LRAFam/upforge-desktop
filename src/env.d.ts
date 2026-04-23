@@ -115,6 +115,7 @@ declare global {
             riot_tag: string | null
           } | null
         }>
+        getActivityLog: () => Promise<{ time: number; message: string }[]>
       }
       profile: {
         get: () => Promise<ProfileData | null>

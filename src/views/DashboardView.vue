@@ -94,6 +94,28 @@
       </div>
     </div>
 
+    <!-- Activity log — compact event history -->
+    <div v-if="activityLog.length" class="bg-white/[0.02] border border-white/[0.05] rounded-xl overflow-hidden">
+      <div class="flex items-center justify-between px-3 py-2 border-b border-white/[0.04]">
+        <span class="text-[10px] font-medium text-gray-500 uppercase tracking-wider">Recent Activity</span>
+        <button class="text-gray-700 hover:text-gray-500 transition-colors" @click="clearLog">
+          <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+          </svg>
+        </button>
+      </div>
+      <div class="px-3 py-2 space-y-1.5 max-h-28 overflow-y-auto">
+        <div
+          v-for="entry in [...activityLog].reverse().slice(0, 8)"
+          :key="entry.time"
+          class="flex items-start gap-2"
+        >
+          <span class="text-[9px] text-gray-700 tabular-nums flex-shrink-0 mt-px pt-[1px]">{{ formatLogTime(entry.time) }}</span>
+          <span class="text-[10px] text-gray-400 leading-snug">{{ entry.message }}</span>
+        </div>
+      </div>
+    </div>
+
     <!-- Profile card -->
     <div v-if="profile" class="bg-white/[0.02] border border-white/[0.05] rounded-xl overflow-hidden">
       <div class="flex items-center gap-3 px-3 pt-3 pb-2.5">
@@ -341,6 +363,7 @@ const recordingStartedAt = ref<number | null>(null)
 const recordingElapsed = ref('')
 const stopping = ref(false)
 const warning = ref<string | null>(null)
+const activityLog = ref<{ time: number; message: string }[]>([])
 
 const quotaPercent = computed(() => {
   const stats = profile.value?.user?.analysis_stats
@@ -364,6 +387,14 @@ function updateRecordingElapsed() {
   const m = Math.floor(secs / 60).toString().padStart(2, '0')
   const s = (secs % 60).toString().padStart(2, '0')
   recordingElapsed.value = `${m}:${s}`
+}
+
+function formatLogTime(ts: number): string {
+  return new Date(ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+}
+
+function clearLog() {
+  activityLog.value = []
 }
 
 onMounted(async () => {
@@ -400,6 +431,9 @@ onMounted(async () => {
   // Load pending (unanalysed) recordings
   pendingRecordings.value = await window.api.recordings.get().catch(() => [])
 
+  // Load activity log history
+  activityLog.value = await window.api.app.getActivityLog().catch(() => [])
+
   pollInterval = setInterval(async () => {
     try {
       const s = await window.api.app.getStatus()
@@ -414,6 +448,9 @@ onMounted(async () => {
 
   window.api.on('dashboard:refresh', loadAnalyses)
   window.api.on('recordings:updated', loadPendingRecordings)
+  window.api.on('app:activity-log', ((...args: unknown[]) => {
+    activityLog.value = args[0] as { time: number; message: string }[]
+  }) as (...args: unknown[]) => void)
   window.api.on('app:ffmpeg-status', ((...args: unknown[]) => {
     const data = args[0] as { ok: boolean }
     status.value = { ...status.value, ffmpegOk: data.ok }

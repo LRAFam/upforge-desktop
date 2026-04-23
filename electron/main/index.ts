@@ -45,6 +45,17 @@ let recordingsStore: RecordingsStore
 let cancelMatchWait: (() => void) | null = null
 let waitingForMatch = false
 
+// Activity log — recent events shown on dashboard for user visibility
+const MAX_LOG_ENTRIES = 30
+const activityLog: { time: number; message: string }[] = []
+
+function logActivity(message: string): void {
+  const entry = { time: Date.now(), message }
+  activityLog.push(entry)
+  if (activityLog.length > MAX_LOG_ENTRIES) activityLog.shift()
+  mainWindow?.webContents.send('app:activity-log', activityLog.slice())
+}
+
 function createMainWindow(): BrowserWindow {
   const win = new BrowserWindow({
     width: 860,
@@ -190,6 +201,7 @@ function setupGameDetection(): void {
 
   gameDetector.on('game-started', async (game: string) => {
     console.log(`[GameDetector] ${game} started`)
+    logActivity(`${game === 'cs2' ? 'CS2' : 'Valorant'} detected — waiting for match`)
 
     const config = settingsManager?.get()
     const recorderConfig = config ? {
@@ -245,6 +257,7 @@ function setupGameDetection(): void {
       if (matchActive) {
         gameMode = await riotLocalApi.getGameMode()
         console.log(`[GameDetector] Match detected (TCP port 2999 open)! gameMode=${gameMode ?? 'unknown'}`)
+        logActivity(`Match found (${gameMode ?? 'unknown mode'}) — starting recording`)
         break
       }
       console.log(`[GameDetector] Waiting for match... (attempt ${attempt + 1}/120, port 2999 not open)`)
@@ -258,12 +271,14 @@ function setupGameDetection(): void {
 
     if (!matchActive) {
       console.log('[GameDetector] No Riot API response after 10 minutes — skipping recording')
+      logActivity('No match detected after 10 minutes — skipped recording')
       tray?.setToolTip('UpForge — Valorant AI Coaching')
       return
     }
 
     if (filterByMode && gameMode && !recordedModes.includes(gameMode)) {
       console.log(`[GameDetector] Skipping recording — mode is ${gameMode} (not in recordedModes)`)
+      logActivity(`Mode ${gameMode} not in recorded modes — skipped`)
       tray?.setToolTip('UpForge — Valorant AI Coaching')
       return
     }
@@ -279,6 +294,7 @@ function setupGameDetection(): void {
 
     tray?.setToolTip('UpForge — Recording...')
     await recorder.start(game, recorderConfig)
+    logActivity(`Recording started (${gameMode ?? 'unknown mode'})`)
 
     const user = authManager.getUser()
     const userLabel = (user?.riot_name && user?.riot_tag)
@@ -307,6 +323,7 @@ function setupGameDetection(): void {
       mainWindow?.webContents.send('recording:waiting-for-match', { waiting: false })
       tray?.setToolTip('UpForge — Valorant AI Coaching')
       console.log('[GameDetector] Game quit before match — no recording to save')
+      logActivity('Game quit before match started — nothing recorded')
       return
     }
 
@@ -328,6 +345,7 @@ function setupGameDetection(): void {
 
     if (recordingDuration > 0 && recordingDuration < MIN_DURATION_SECONDS) {
       console.log(`[GameDetector] Recording too short (${recordingDuration}s) — ignoring`)
+      logActivity(`Recording too short (${recordingDuration}s) — discarded`)
       // Clean up the tiny file
       if (videoPath && require('fs').existsSync(videoPath)) {
         try { require('fs').unlinkSync(videoPath) } catch { /* ignore */ }
@@ -406,6 +424,7 @@ async function doUploadAndAnalyse(
 ): Promise<void> {
   try {
     targetWindow.webContents.send('post-game:upload-start', { game, map, agent })
+    logActivity(`Uploading recording${map ? ` (${map}${agent ? ` · ${agent}` : ''})` : ''}`)
 
     const result = await uploadManager.upload({
       videoPath,
@@ -421,6 +440,7 @@ async function doUploadAndAnalyse(
     })
 
     targetWindow.webContents.send('post-game:upload-complete', { jobId: result.job_id })
+    logActivity('Upload complete — AI analysis running')
     tray?.setToolTip('UpForge — Analysing...')
 
     // Mark as analysed in store (if this was a saved recording)
@@ -441,6 +461,8 @@ async function doUploadAndAnalyse(
         const status = await uploadManager.pollStatus(result.job_id)
         if (status.status === 'completed' && status.result) {
           clearInterval(pollTimer)
+          const score = (status.result as Record<string, unknown>).overall_score as number | undefined
+          logActivity(`Analysis ready${score != null ? ` — Score: ${score}/100` : ''}`)
           targetWindow.webContents.send('post-game:analysis-ready', {
             overall_score: (status.result as Record<string, unknown>).overall_score,
             analysis_id: (status.result as Record<string, unknown>).analysis_id,
@@ -448,7 +470,6 @@ async function doUploadAndAnalyse(
           })
           mainWindow?.webContents.send('dashboard:refresh')
           tray?.setToolTip('UpForge — Valorant AI Coaching')
-          const score = (status.result as Record<string, unknown>).overall_score as number | undefined
           const notifAgent = agent ?? 'Valorant'
           const notifMap = map ? ` on ${map}` : ''
           const notifScore = score != null ? ` — Score: ${score}/100` : ''
@@ -458,10 +479,12 @@ async function doUploadAndAnalyse(
           }).show()
         } else if (status.status === 'failed') {
           clearInterval(pollTimer)
+          logActivity('Analysis failed')
           targetWindow.webContents.send('post-game:upload-error', 'Analysis failed. Please try again.')
           tray?.setToolTip('UpForge — Valorant AI Coaching')
         } else if (Date.now() - startTime > 600_000) {
           clearInterval(pollTimer)
+          logActivity('Analysis timed out')
           targetWindow.webContents.send('post-game:upload-error', 'Analysis timed out.')
           tray?.setToolTip('UpForge — Valorant AI Coaching')
         }
@@ -469,6 +492,7 @@ async function doUploadAndAnalyse(
     }, 15_000)
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : 'Upload failed'
+    logActivity(`Upload failed: ${msg}`)
     targetWindow.webContents.send('post-game:upload-error', msg)
     tray?.setToolTip('UpForge — Valorant AI Coaching')
   }
@@ -524,7 +548,7 @@ app.whenReady().then(async () => {
         top_issue: 'Positioning during post-plant — you were caught in the open on 4 of 6 clutch attempts.'
       }), 5500)
     })
-  }, () => ffmpegOk, () => waitingForMatch)
+  }, () => ffmpegOk, () => waitingForMatch, () => activityLog.slice())
 
   // Recordings: get pending, trigger analysis, or dismiss
   ipcMain.handle('recordings:get', () => recordingsStore.getPending())
