@@ -22,6 +22,18 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Download ffmpeg for Windows
+        shell: pwsh
+        run: |
+          $url = "https://github.com/GyanD/codexffmpeg/releases/download/7.1.1/ffmpeg-7.1.1-essentials_build.zip"
+          $zip = "$env:TEMP\ffmpeg.zip"
+          Invoke-WebRequest -Uri $url -OutFile $zip
+          Expand-Archive -Path $zip -DestinationPath "$env:TEMP\ffmpeg-extract" -Force
+          $ffmpegExe = Get-ChildItem -Path "$env:TEMP\ffmpeg-extract" -Filter "ffmpeg.exe" -Recurse | Select-Object -First 1
+          New-Item -ItemType Directory -Force -Path "resources\ffmpeg"
+          Copy-Item $ffmpegExe.FullName -Destination "resources\ffmpeg\ffmpeg.exe"
+          Write-Host "ffmpeg bundled: $(Get-Item resources\ffmpeg\ffmpeg.exe | Select-Object -ExpandProperty Length) bytes"
+
       - name: Rebuild native modules for Electron
         run: npx electron-rebuild -f -w keytar
         env:
@@ -57,6 +69,13 @@ jobs:
 
       - name: Install dependencies
         run: npm ci
+
+      - name: Download ffmpeg for macOS
+        run: |
+          brew install ffmpeg
+          mkdir -p resources/ffmpeg
+          cp "$(which ffmpeg)" resources/ffmpeg/ffmpeg
+          echo "ffmpeg bundled: $(wc -c < resources/ffmpeg/ffmpeg) bytes"
 
       - name: Build & publish Mac release (on tag)
         if: startsWith(github.ref, 'refs/tags/v')
