@@ -66,7 +66,13 @@ const api = {
       'recording:status-changed',
       'recording:waiting-for-match',
       'app:warning',
-      'app:activity-log'
+      'app:activity-log',
+      'updater:checking',
+      'updater:available',
+      'updater:progress',
+      'updater:downloaded',
+      'updater:not-available',
+      'updater:error'
     ]
     if (allowed.includes(channel)) {
       ipcRenderer.on(channel, (_e, ...args) => callback(...args))

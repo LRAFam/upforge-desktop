@@ -13,6 +13,15 @@ export function setupAutoUpdater(splashWindow: BrowserWindow | null, onReady: ()
     return
   }
 
+  // Guard: onReady must only ever fire once, even if multiple updater events arrive
+  // (both update-not-available and error can fire in sequence on some configurations)
+  let readyCalled = false
+  const safeOnReady = () => {
+    if (readyCalled) return
+    readyCalled = true
+    onReady()
+  }
+
   const send = (channel: string, payload?: unknown) => {
     if (splashWindow && !splashWindow.isDestroyed()) {
       splashWindow.webContents.send(channel, payload)
@@ -27,7 +36,6 @@ export function setupAutoUpdater(splashWindow: BrowserWindow | null, onReady: ()
   autoUpdater.on('update-available', (info) => {
     log.info('[Updater] Update available:', info.version)
     send('updater:available', info)
-    // Start download now that we know one is available
     autoUpdater.downloadUpdate()
   })
 
@@ -39,8 +47,7 @@ export function setupAutoUpdater(splashWindow: BrowserWindow | null, onReady: ()
   autoUpdater.on('update-downloaded', (info) => {
     log.info('[Updater] Download complete:', info.version)
     send('updater:downloaded', info)
-    // Give the splash screen a moment to show the "installing" state, then
-    // force-destroy all windows so Electron releases all file handles before
+    // Force-destroy all windows so Electron releases all file handles before
     // the NSIS installer tries to delete the old install directory.
     setTimeout(() => {
       BrowserWindow.getAllWindows().forEach((win) => {
@@ -53,14 +60,13 @@ export function setupAutoUpdater(splashWindow: BrowserWindow | null, onReady: ()
   autoUpdater.on('update-not-available', () => {
     log.info('[Updater] Up to date')
     send('updater:not-available')
-    onReady()
+    safeOnReady()
   })
 
   autoUpdater.on('error', (err) => {
     log.error('[Updater] Error:', err.message || err)
     send('updater:error', err.message)
-    // Don't block startup on updater errors
-    onReady()
+    safeOnReady()
   })
 
   autoUpdater.checkForUpdates()

@@ -517,8 +517,8 @@ async function doUploadAndAnalyse(
 
 function createSplashWindow(): BrowserWindow {
   const win = new BrowserWindow({
-    width: 380,
-    height: 220,
+    width: 500,
+    height: 320,
     resizable: false,
     frame: false,
     center: true,
