@@ -1,12 +1,20 @@
 ; Kill any running UpForge instance and handle missing uninstaller gracefully.
-; Error code 2 (ERROR_FILE_NOT_FOUND) occurs when the previous version's
-; uninstall.exe cannot be found — this pre-emptively cleans the registry so
-; the installer can proceed fresh instead of showing an error dialog.
+; Electron spawns several helper processes that must all be terminated before
+; NSIS can delete the old install directory. We kill by image name for each one.
+
+!macro _KillUpForge
+  ExecWait 'taskkill /F /IM "UpForge.exe" /T' $0
+  ExecWait 'taskkill /F /IM "UpForge Helper.exe" /T' $0
+  ExecWait 'taskkill /F /IM "UpForge Helper (GPU).exe" /T' $0
+  ExecWait 'taskkill /F /IM "UpForge Helper (Renderer).exe" /T' $0
+  ExecWait 'taskkill /F /IM "UpForge Helper (Plugin).exe" /T' $0
+  ExecWait 'taskkill /F /IM "ffmpeg.exe" /T' $0
+  ClearErrors
+  Sleep 2000
+!macroend
 
 !macro customInit
-  ExecWait 'taskkill /F /IM "UpForge.exe" /T' $0
-  ClearErrors
-  Sleep 800
+  !insertmacro _KillUpForge
 
   ; Check if a previous installation is registered but uninstaller is missing.
   ; If so, clean the registry so the installer doesn't try to run a ghost uninstaller.
@@ -21,13 +29,9 @@
 !macroend
 
 !macro customInstall
-  ExecWait 'taskkill /F /IM "UpForge.exe" /T' $0
-  ClearErrors
-  Sleep 1000
+  !insertmacro _KillUpForge
 !macroend
 
 !macro customUninstall
-  ExecWait 'taskkill /F /IM "UpForge.exe" /T' $0
-  ClearErrors
-  Sleep 1000
+  !insertmacro _KillUpForge
 !macroend

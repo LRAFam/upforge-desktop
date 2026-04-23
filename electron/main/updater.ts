@@ -39,10 +39,13 @@ export function setupAutoUpdater(splashWindow: BrowserWindow | null, onReady: ()
   autoUpdater.on('update-downloaded', (info) => {
     log.info('[Updater] Download complete:', info.version)
     send('updater:downloaded', info)
-    // Install silently and relaunch — no user interaction needed
-    // isSilent=true suppresses the installer UI on Windows
-    // isForceRunAfter=true relaunches the app after install
+    // Give the splash screen a moment to show the "installing" state, then
+    // force-destroy all windows so Electron releases all file handles before
+    // the NSIS installer tries to delete the old install directory.
     setTimeout(() => {
+      BrowserWindow.getAllWindows().forEach((win) => {
+        try { win.destroy() } catch { /* ignore */ }
+      })
       autoUpdater.quitAndInstall(true, true)
     }, 1500)
   })
