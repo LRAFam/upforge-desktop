@@ -1,6 +1,6 @@
 {
   "name": "upforge-desktop",
-  "version": "1.0.29",
+  "version": "1.0.30",
   "description": "UpForge Desktop — Automatic Valorant gameplay recording and AI coaching",
   "main": "./out/main/index.js",
   "author": "UpForge",
@@ -73,7 +73,7 @@
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": false,
       "createStartMenuShortcut": true,
-      "runAfterFinish": true,
+      "runAfterFinish": false,
       "include": "build/installer.nsh",
       "allowElevation": true
     },

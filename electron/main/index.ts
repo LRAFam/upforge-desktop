@@ -571,7 +571,7 @@ app.whenReady().then(async () => {
     }, 400)
   }
 
-  setupAutoUpdater(splashWindow, launchMainApp)
+  setupAutoUpdater(splashWindow, launchMainApp, () => { isQuitting = true })
 
   // Verify ffmpeg is accessible and log a warning if not — better to know early
   recorder.preflight().then((result) => {

@@ -6,7 +6,11 @@ autoUpdater.logger = log
 autoUpdater.autoDownload = false  // we control the download explicitly
 autoUpdater.autoInstallOnAppQuit = false
 
-export function setupAutoUpdater(splashWindow: BrowserWindow | null, onReady: () => void): void {
+export function setupAutoUpdater(
+  splashWindow: BrowserWindow | null,
+  onReady: () => void,
+  beforeQuit?: () => void
+): void {
   // Only run in production
   if (!app.isPackaged) {
     onReady()
@@ -47,9 +51,13 @@ export function setupAutoUpdater(splashWindow: BrowserWindow | null, onReady: ()
   autoUpdater.on('update-downloaded', (info) => {
     log.info('[Updater] Download complete:', info.version)
     send('updater:downloaded', info)
-    // Force-destroy all windows so Electron releases all file handles before
-    // the NSIS installer tries to delete the old install directory.
     setTimeout(() => {
+      // Signal the main process to allow windows to close (disables tray minimise-on-close).
+      // This must happen BEFORE windows are destroyed so that if NSIS sends WM_CLOSE
+      // to any lingering window it is honoured rather than swallowed.
+      beforeQuit?.()
+      // Destroy all open windows so Electron releases file handles before
+      // the NSIS installer tries to overwrite the old install directory.
       BrowserWindow.getAllWindows().forEach((win) => {
         try { win.destroy() } catch { /* ignore */ }
       })
