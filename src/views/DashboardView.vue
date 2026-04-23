@@ -4,22 +4,78 @@
     <!-- Status card -->
     <div
       :class="[
-        'flex items-center gap-3 px-3 py-2.5 rounded-xl border text-xs transition-all',
-        status.recording
-          ? 'bg-red-500/[0.08] border-red-500/20 text-red-300'
-          : status.currentGame
-            ? 'bg-orange-500/[0.08] border-orange-500/20 text-orange-300'
-            : 'bg-white/[0.02] border-white/[0.05] text-gray-500'
+        'rounded-xl border transition-all overflow-hidden',
+        !status.ffmpegOk
+          ? 'bg-yellow-500/[0.07] border-yellow-500/25'
+          : status.recording
+            ? 'bg-red-500/[0.08] border-red-500/25'
+            : status.currentGame
+              ? 'bg-orange-500/[0.07] border-orange-500/20'
+              : 'bg-white/[0.02] border-white/[0.05]'
       ]"
     >
-      <div class="relative flex-shrink-0">
-        <div :class="['w-2 h-2 rounded-full', status.recording ? 'bg-red-500' : status.currentGame ? 'bg-orange-500' : 'bg-gray-700']" />
-        <div v-if="status.recording" class="absolute inset-0 w-2 h-2 rounded-full bg-red-500 animate-ping opacity-75" />
+      <!-- Main row -->
+      <div class="flex items-center gap-3 px-3 py-2.5">
+        <!-- Indicator -->
+        <div class="relative flex-shrink-0">
+          <div :class="[
+            'w-2.5 h-2.5 rounded-full',
+            !status.ffmpegOk ? 'bg-yellow-400' :
+            status.recording ? 'bg-red-500' :
+            status.currentGame ? 'bg-orange-400' : 'bg-gray-700'
+          ]" />
+          <div v-if="status.recording" class="absolute inset-0 w-2.5 h-2.5 rounded-full bg-red-500 animate-ping opacity-70" />
+        </div>
+
+        <!-- Label -->
+        <div class="flex-1 min-w-0">
+          <!-- ffmpeg missing -->
+          <template v-if="!status.ffmpegOk">
+            <p class="text-xs font-semibold text-yellow-400">Recording unavailable</p>
+            <p class="text-[10px] text-yellow-600 mt-0.5">Reinstall the app to restore recording</p>
+          </template>
+          <!-- Active recording -->
+          <template v-else-if="status.recording">
+            <div class="flex items-center gap-2">
+              <span class="text-[10px] font-bold tracking-widest uppercase text-red-400">REC</span>
+              <span class="text-xs font-semibold capitalize">{{ status.currentGame || 'Valorant' }}</span>
+              <span v-if="recordingElapsed" class="text-[11px] font-mono tabular-nums text-red-400/80">{{ recordingElapsed }}</span>
+            </div>
+            <p class="text-[10px] text-gray-500 mt-0.5">{{ recordingModeLabel }}</p>
+          </template>
+          <!-- Game detected, not yet recording -->
+          <template v-else-if="status.currentGame">
+            <p class="text-xs font-semibold text-orange-300">{{ status.currentGame }} detected</p>
+            <p class="text-[10px] text-orange-500/70 mt-0.5">Starting recording…</p>
+          </template>
+          <!-- Mac / no detection -->
+          <template v-else-if="platform && platform !== 'win32'">
+            <p class="text-xs text-gray-500">macOS — preview mode</p>
+            <p class="text-[10px] text-gray-700 mt-0.5">Automatic recording requires Windows</p>
+          </template>
+          <!-- Idle -->
+          <template v-else>
+            <p class="text-xs text-gray-400">Watching for Valorant</p>
+            <p v-if="status.recordedModes && status.recordedModes.length" class="text-[10px] text-gray-600 mt-0.5">
+              Recording: {{ status.recordedModes.map(formatMode).join(' · ') }}
+            </p>
+            <p v-else class="text-[10px] text-gray-700 mt-0.5">No game modes selected — check Settings</p>
+          </template>
+        </div>
+
+        <!-- Stop button (only while recording) -->
+        <button
+          v-if="status.recording"
+          :disabled="stopping"
+          class="flex-shrink-0 flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-medium bg-red-500/[0.12] hover:bg-red-500/[0.2] border border-red-500/20 text-red-400 transition-all disabled:opacity-50"
+          @click="stopRecording"
+        >
+          <svg class="w-3 h-3" fill="currentColor" viewBox="0 0 24 24">
+            <rect x="6" y="6" width="12" height="12" rx="1"/>
+          </svg>
+          {{ stopping ? 'Stopping…' : 'Stop' }}
+        </button>
       </div>
-      <span v-if="status.recording" class="font-medium">Recording {{ status.currentGame }}<template v-if="recordingElapsed"> · {{ recordingElapsed }}</template>...</span>
-      <span v-else-if="status.currentGame">{{ status.currentGame }} detected</span>
-      <span v-else-if="platform && platform !== 'win32'" class="text-gray-500">Game detection requires Windows</span>
-      <span v-else>Waiting for Valorant to launch</span>
     </div>
 
     <!-- Profile card -->
@@ -259,7 +315,7 @@ const analyses = ref<AnalysisItem[]>([])
 const analysesLoading = ref(true)
 const pendingRecordings = ref<PendingRecording[]>([])
 const analysingIds = ref(new Set<string>())
-const status = ref<{ recording: boolean; currentGame: string | null }>({ recording: false, currentGame: null })
+const status = ref<{ recording: boolean; currentGame: string | null; ffmpegOk: boolean; recordedModes: string[] }>({ recording: false, currentGame: null, ffmpegOk: true, recordedModes: [] })
 const isDev = ref(false)
 const platform = ref('')
 const devOpen = ref(false)
@@ -267,11 +323,19 @@ const simulating = ref(false)
 const simStatus = ref('')
 const recordingStartedAt = ref<number | null>(null)
 const recordingElapsed = ref('')
+const stopping = ref(false)
 
 const quotaPercent = computed(() => {
   const stats = profile.value?.user?.analysis_stats
   if (!stats || !stats.monthly_free_analyses) return 0
   return Math.min(100, Math.round((stats.free_analyses_used / stats.monthly_free_analyses) * 100))
+})
+
+const recordingModeLabel = computed(() => {
+  const modes = status.value.recordedModes
+  if (!modes || !modes.length) return 'Recording…'
+  const current = modes.map(formatMode).join(' · ')
+  return `Recording ${current} matches`
 })
 
 let pollInterval: ReturnType<typeof setInterval>
@@ -294,7 +358,7 @@ onMounted(async () => {
       router.push(s.firstRun ? '/welcome' : '/login')
       return
     }
-    status.value = { recording: s.recording, currentGame: s.currentGame }
+    status.value = { recording: s.recording, currentGame: s.currentGame, ffmpegOk: s.ffmpegOk !== false, recordedModes: s.recordedModes ?? [] }
     if (s.recording) { recordingStartedAt.value = Date.now() }
   } catch {
     router.push('/login')
@@ -323,9 +387,9 @@ onMounted(async () => {
     try {
       const s = await window.api.app.getStatus()
       const wasRecording = status.value.recording
-      status.value = { recording: s.recording, currentGame: s.currentGame }
+      status.value = { recording: s.recording, currentGame: s.currentGame, ffmpegOk: s.ffmpegOk !== false, recordedModes: s.recordedModes ?? [] }
       if (s.recording && !wasRecording) recordingStartedAt.value = Date.now()
-      if (!s.recording) recordingStartedAt.value = null
+      if (!s.recording) { recordingStartedAt.value = null; stopping.value = false }
     } catch { /* ignore */ }
   }, 5000)
 
@@ -333,6 +397,10 @@ onMounted(async () => {
 
   window.api.on('dashboard:refresh', loadAnalyses)
   window.api.on('recordings:updated', loadPendingRecordings)
+  window.api.on('app:ffmpeg-status', ((...args: unknown[]) => {
+    const data = args[0] as { ok: boolean }
+    status.value = { ...status.value, ffmpegOk: data.ok }
+  }) as (...args: unknown[]) => void)
 })
 
 onUnmounted(() => {
@@ -396,6 +464,19 @@ function formatMode(mode: string): string {
     DEATHMATCH: 'Deathmatch', SPIKERUSH: 'Spike Rush', SWIFTPLAY: 'Swift Play'
   }
   return map[mode] ?? mode
+}
+
+async function stopRecording() {
+  if (stopping.value) return
+  stopping.value = true
+  try {
+    await window.api.recorder.stop()
+    // Optimistically update state — the poll interval will confirm within 5s
+    status.value = { ...status.value, recording: false }
+    recordingStartedAt.value = null
+  } catch {
+    stopping.value = false
+  }
 }
 
 function simulateGame(game: string, durationMs: number) {

@@ -15,7 +15,8 @@ export function setupIpcHandlers(
   recorder: Recorder,
   gameDetector: GameDetector,
   settingsManager: SettingsManager,
-  openPostGameFn?: () => void
+  openPostGameFn?: () => void,
+  getFFmpegOk?: () => boolean
 ): void {
   // Auth
   ipcMain.handle('auth:login', async (_e, { email, password }) => {
@@ -53,7 +54,9 @@ export function setupIpcHandlers(
       platform: process.platform,
       isDev: is.dev,
       version: app.getVersion(),
-      firstRun: settings.firstRun
+      firstRun: settings.firstRun,
+      ffmpegOk: getFFmpegOk ? getFFmpegOk() : true,
+      recordedModes: settings.recordedModes
     }
   })
 
@@ -142,6 +145,18 @@ export function setupIpcHandlers(
         return { status: 'error', message: 'No internet connection' }
       }
       return { status: 'error', message: `Update check failed: ${msg}` }
+    }
+  })
+
+  // Manual recording stop — lets the user stop a session from the UI
+  ipcMain.handle('recorder:stop', async () => {
+    if (!recorder.isRecording()) return { ok: false, reason: 'not_recording' }
+    try {
+      await recorder.stop()
+      return { ok: true }
+    } catch (err) {
+      log.error('[IPC] recorder:stop error:', err)
+      return { ok: false, reason: String(err) }
     }
   })
 

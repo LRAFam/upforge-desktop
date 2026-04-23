@@ -38,6 +38,9 @@ const api = {
     close: () => ipcRenderer.invoke('window:close'),
     openPostGame: () => ipcRenderer.invoke('window:open-post-game')
   },
+  recorder: {
+    stop: () => ipcRenderer.invoke('recorder:stop')
+  },
   updater: {
     check: () => ipcRenderer.invoke('updater:check')
   },
@@ -54,7 +57,8 @@ const api = {
       'post-game:upload-error',
       'post-game:pending',
       'dashboard:refresh',
-      'recordings:updated'
+      'recordings:updated',
+      'app:ffmpeg-status'
     ]
     if (allowed.includes(channel)) {
       ipcRenderer.on(channel, (_e, ...args) => callback(...args))

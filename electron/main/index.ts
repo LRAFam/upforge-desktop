@@ -28,6 +28,7 @@ let mainWindow: BrowserWindow | null = null
 let postGameWindow: BrowserWindow | null = null
 let isQuitting = false
 let trayRefreshInterval: ReturnType<typeof setInterval> | null = null
+let ffmpegOk = true // updated after preflight; exposed via app:get-status
 
 const gameDetector = new GameDetector()
 const recorder = new Recorder()
@@ -406,6 +407,7 @@ app.whenReady().then(async () => {
 
   // Verify ffmpeg is accessible and log a warning if not — better to know early
   recorder.preflight().then((result) => {
+    ffmpegOk = result.ok
     if (!result.ok) {
       console.error('[App] ffmpeg preflight FAILED:', result.error)
       if (Notification.isSupported()) {
@@ -414,6 +416,8 @@ app.whenReady().then(async () => {
           body: `ffmpeg not found: ${result.error ?? 'unknown error'}. Recording will not work.`
         }).show()
       }
+      // Push the warning to the dashboard if it's already open
+      mainWindow?.webContents.send('app:ffmpeg-status', { ok: false })
     } else {
       console.log('[App] ffmpeg preflight OK')
     }
@@ -431,7 +435,7 @@ app.whenReady().then(async () => {
         top_issue: 'Positioning during post-plant — you were caught in the open on 4 of 6 clutch attempts.'
       }), 5500)
     })
-  })
+  }, () => ffmpegOk)
 
   // Recordings: get pending, trigger analysis, or dismiss
   ipcMain.handle('recordings:get', () => recordingsStore.getPending())

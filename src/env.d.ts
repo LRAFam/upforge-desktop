@@ -104,6 +104,8 @@ declare global {
           firstRun: boolean
           platform: string
           version: string
+          ffmpegOk: boolean
+          recordedModes: string[]
           user: {
             name: string
             email: string
@@ -138,6 +140,9 @@ declare global {
         minimize: () => Promise<void>
         close: () => Promise<void>
         openPostGame?: () => Promise<void>
+      }
+      recorder: {
+        stop: () => Promise<{ ok: boolean; reason?: string }>
       }
       updater: {
         check: () => Promise<void>

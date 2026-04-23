@@ -192,6 +192,22 @@
       </div>
     </section>
 
+    <!-- System -->
+    <section>
+      <h3 class="text-[10px] font-semibold text-gray-600 uppercase tracking-widest mb-2 px-0.5">System</h3>
+      <div class="px-3 py-2.5 bg-white/[0.02] border border-white/[0.05] rounded-xl space-y-2.5">
+        <!-- ffmpeg status -->
+        <div class="flex items-center justify-between">
+          <div>
+            <p class="text-[11px] text-gray-400">Recording engine (ffmpeg)</p>
+            <p v-if="ffmpegOk" class="text-[10px] text-green-500/70 mt-0.5">Ready</p>
+            <p v-else class="text-[10px] text-yellow-500/70 mt-0.5">Not found — reinstall the app</p>
+          </div>
+          <div :class="['w-2 h-2 rounded-full flex-shrink-0', ffmpegOk ? 'bg-green-500' : 'bg-yellow-400']" />
+        </div>
+      </div>
+    </section>
+
     <!-- Footer -->
     <div class="pt-1 space-y-2">
       <div class="flex items-center justify-between px-0.5">
@@ -249,6 +265,7 @@ const updateMessage = ref('')
 const savedVisible = ref(false)
 const storageBytes = ref(0)
 const storageCount = ref(0)
+const ffmpegOk = ref(true)
 let saveTimer: ReturnType<typeof setTimeout> | null = null
 let toastTimer: ReturnType<typeof setTimeout> | null = null
 
@@ -394,6 +411,7 @@ onMounted(async () => {
     ])
     isDev.value = s.isDev
     if (s.version) appVersion.value = s.version
+    if (s.ffmpegOk !== undefined) ffmpegOk.value = s.ffmpegOk !== false
     Object.assign(settings, savedSettings)
     // Use getStatus user as base
     if (s.user) user.value = s.user as UserWithUsage | null
