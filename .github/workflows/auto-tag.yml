@@ -42,10 +42,18 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git tag "${{ steps.pkg.outputs.version }}"
-          # Use GH_TOKEN (PAT) instead of GITHUB_TOKEN so the tag push
-          # triggers the Build Installers workflow (GITHUB_TOKEN pushes don't).
           git push "https://x-access-token:${GH_TOKEN}@github.com/${{ github.repository }}.git" "${{ steps.pkg.outputs.version }}"
           echo "✅ Created tag ${{ steps.pkg.outputs.version }}"
+
+      - name: Dispatch release build for new tag
+        if: steps.tag_check.outputs.exists == 'false'
+        env:
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}
+        run: |
+          # GitHub Actions won't fire workflow triggers from Actions-created tags,
+          # even with a PAT. Explicitly dispatch the release build instead.
+          gh workflow run "release.yml" --ref "${{ steps.pkg.outputs.version }}"
+          echo "🚀 Dispatched Build Installers for ${{ steps.pkg.outputs.version }}"
 
       - name: Skip (tag already exists)
         if: steps.tag_check.outputs.exists == 'true'
