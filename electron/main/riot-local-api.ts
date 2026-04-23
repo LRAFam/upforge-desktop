@@ -259,10 +259,18 @@ export class RiotLocalApi {
       const result = typeof mode === 'string' ? mode.toUpperCase() : null
       if (result) this.lastGameMode = result
       return result
-    } catch {
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      // Only log once per distinct error to avoid log spam during the match-wait loop
+      if (msg !== this._lastGetGameModeError) {
+        console.log(`[RiotLocalApi] getGameMode() failed: ${msg}`)
+        this._lastGetGameModeError = msg
+      }
       return null
     }
   }
+
+  private _lastGetGameModeError: string | null = null
 
   /** Returns the last known game mode — useful after stop() is called */
   getLastGameMode(): string | null {

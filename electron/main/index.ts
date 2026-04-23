@@ -245,11 +245,11 @@ function setupGameDetection(): void {
 
     // Poll up to 120 attempts × 5s = 10 minutes (covers long queue wait times).
     // Probe immediately on first attempt — no initial wait.
-    // PRIMARY: VALORANT-Win64-Shipping.exe only runs during an actual match (not lobby/queue).
-    // SECONDARY: TCP port 2999 (Riot Live Client Data API) as a fallback.
-    // IMPORTANT: Both signals can fire during loading screen / practice range before round 1.
-    // We require gameMode to be confirmed by the Live Client Data API before starting — this
-    // ensures we only record real in-progress matches, not lobby/queue/loading states.
+    // STRATEGY: Always probe the Live Client Data API directly (getGameMode).
+    // The process name and port checks are supplementary signals — useful for logging
+    // but NOT required, since process names vary by install and port may not be reachable
+    // from the Electron context on all systems.
+    // Only gameMode being non-null (from the Live Client API) guarantees a real active match.
     for (let attempt = 0; attempt < 120; attempt++) {
       if (attempt > 0) await new Promise((r) => setTimeout(r, 5000))
       if (cancelled) {
@@ -261,30 +261,22 @@ function setupGameDetection(): void {
 
       const processMatch = await gameDetector.isMatchProcessRunning()
       const portMatch = await riotLocalApi.isMatchActive()
-      const signalDetected = processMatch || portMatch
 
-      if (signalDetected) {
-        // Port/process is up — now confirm with Live Client API (gameMode = match is truly live)
-        // Retry up to 8 times × 3s = 24s to allow loading screens to finish
-        for (let modeAttempt = 0; modeAttempt < 8 && !gameMode; modeAttempt++) {
-          if (modeAttempt > 0) await new Promise((r) => setTimeout(r, 3000))
-          gameMode = await riotLocalApi.getGameMode()
-        }
+      // Always probe the Live Client Data API directly — this is the only reliable signal
+      gameMode = await riotLocalApi.getGameMode()
 
-        if (gameMode) {
-          matchActive = true
-          console.log(`[GameDetector] Match confirmed! process=${processMatch} port=${portMatch} gameMode=${gameMode}`)
-          logActivity(`Match found (${gameMode}) — starting recording`)
-          break
-        }
-
-        // Signal present but gameMode unavailable — still loading or practice range
-        // Keep polling the outer loop rather than recording an unknown match
-        console.log(`[GameDetector] Process/port signal present but Live Client API has no gameMode yet — waiting... (attempt ${attempt + 1}/120)`)
-        continue
+      if (gameMode) {
+        matchActive = true
+        logActivity(`Match detected (${gameMode}) — starting recording`)
+        console.log(`[GameDetector] Match confirmed! process=${processMatch} port=${portMatch} gameMode=${gameMode}`)
+        break
       }
 
-      console.log(`[GameDetector] Waiting for match... (attempt ${attempt + 1}/120, process=${processMatch} port=${portMatch})`)
+      // Verbose activity log every 6 attempts (30s) so the user can see what's happening
+      if (attempt % 6 === 0) {
+        logActivity(`Waiting for match… (process=${processMatch} port=${portMatch} api=no response)`)
+      }
+      console.log(`[GameDetector] Waiting for match... attempt ${attempt + 1}/120 process=${processMatch} port=${portMatch} gameMode=null`)
     }
 
     waitingForMatch = false
@@ -613,7 +605,25 @@ app.whenReady().then(async () => {
     })
   }, () => ffmpegOk, () => waitingForMatch, () => activityLog.slice())
 
-  // Recordings: get pending, trigger analysis, or dismiss
+  // Debug: test Riot Live Client API connection — returns raw response or error details
+  ipcMain.handle('debug:test-riot-api', async () => {
+    const net = await import('net')
+    // TCP check
+    const portOpen = await new Promise<boolean>((resolve) => {
+      const socket = new net.Socket()
+      socket.setTimeout(2000)
+      socket.on('connect', () => { socket.destroy(); resolve(true) })
+      socket.on('error', () => resolve(false))
+      socket.on('timeout', () => { socket.destroy(); resolve(false) })
+      socket.connect(2999, '127.0.0.1')
+    })
+    // API check
+    const gameMode = await riotLocalApi.getGameMode()
+    const processRunning = await gameDetector.isMatchProcessRunning()
+    return { portOpen, gameMode, processRunning }
+  })
+
+
   ipcMain.handle('recordings:get', () => recordingsStore.getPending())
 
   ipcMain.handle('recordings:analyse', async (_e, { id }: { id: string }) => {
@@ -653,9 +663,6 @@ app.whenReady().then(async () => {
     recordingsStore.remove(id)
     mainWindow?.webContents.send('recordings:updated')
   })
-
-  // Start auto-updater in production
-  setupAutoUpdater()
 
   // Register global shortcut to show/focus window
   globalShortcut.register('CommandOrControl+Shift+U', () => {

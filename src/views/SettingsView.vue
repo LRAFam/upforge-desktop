@@ -205,6 +205,22 @@
           </div>
           <div :class="['w-2 h-2 rounded-full flex-shrink-0', ffmpegOk ? 'bg-green-500' : 'bg-yellow-400']" />
         </div>
+
+        <!-- Riot API connection test -->
+        <div class="flex items-start justify-between">
+          <div class="flex-1 min-w-0 pr-3">
+            <p class="text-[11px] text-gray-400">Riot Live Client API</p>
+            <p v-if="riotApiResult === null" class="text-[10px] text-gray-600 mt-0.5">Start a match then test</p>
+            <p v-else-if="riotApiResult.gameMode" class="text-[10px] text-green-500/70 mt-0.5 truncate">✓ Connected · {{ riotApiResult.gameMode }}</p>
+            <p v-else-if="riotApiResult.portOpen" class="text-[10px] text-yellow-500/70 mt-0.5">Port open, API not responding — still loading?</p>
+            <p v-else class="text-[10px] text-gray-600 mt-0.5">Not detected · port={{ riotApiResult.portOpen }} process={{ riotApiResult.processRunning }}</p>
+          </div>
+          <button
+            class="text-[10px] text-gray-600 hover:text-gray-400 transition-colors flex-shrink-0 mt-0.5"
+            :disabled="testingRiotApi"
+            @click="testRiotApi"
+          >{{ testingRiotApi ? 'Testing…' : 'Test' }}</button>
+        </div>
       </div>
     </section>
 
@@ -266,6 +282,8 @@ const savedVisible = ref(false)
 const storageBytes = ref(0)
 const storageCount = ref(0)
 const ffmpegOk = ref(true)
+const testingRiotApi = ref(false)
+const riotApiResult = ref<{ portOpen: boolean; gameMode: string | null; processRunning: boolean } | null>(null)
 let saveTimer: ReturnType<typeof setTimeout> | null = null
 let toastTimer: ReturnType<typeof setTimeout> | null = null
 
@@ -369,6 +387,18 @@ async function checkForUpdates(): Promise<void> {
   } finally {
     checkingForUpdates.value = false
     setTimeout(() => { updateMessage.value = '' }, 4000)
+  }
+}
+
+async function testRiotApi(): Promise<void> {
+  testingRiotApi.value = true
+  try {
+    const result = await window.api.debug.testRiotApi() as { portOpen: boolean; gameMode: string | null; processRunning: boolean }
+    riotApiResult.value = result
+  } catch {
+    riotApiResult.value = { portOpen: false, gameMode: null, processRunning: false }
+  } finally {
+    testingRiotApi.value = false
   }
 }
 

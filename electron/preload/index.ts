@@ -45,6 +45,9 @@ const api = {
   updater: {
     check: () => ipcRenderer.invoke('updater:check')
   },
+  debug: {
+    testRiotApi: () => ipcRenderer.invoke('debug:test-riot-api')
+  },
   storage: {
     getUsage: () => ipcRenderer.invoke('storage:get-usage'),
     openFolder: () => ipcRenderer.invoke('storage:open-folder')

@@ -149,6 +149,9 @@ declare global {
       updater: {
         check: () => Promise<void>
       }
+      debug: {
+        testRiotApi: () => Promise<{ portOpen: boolean; gameMode: string | null; processRunning: boolean }>
+      }
       storage: {
         getUsage: () => Promise<{ bytes: number; count: number }>
         openFolder: () => Promise<void>
