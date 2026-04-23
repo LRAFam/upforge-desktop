@@ -35,6 +35,7 @@
             status.currentGame ? 'bg-orange-400' : 'bg-gray-700'
           ]" />
           <div v-if="status.recording" class="absolute inset-0 w-2.5 h-2.5 rounded-full bg-red-500 animate-ping opacity-70" />
+          <div v-else-if="status.waitingForMatch" class="absolute inset-0 w-2.5 h-2.5 rounded-full bg-orange-400 animate-ping opacity-50" />
         </div>
 
         <!-- Label -->
@@ -53,10 +54,15 @@
             </div>
             <p class="text-[10px] text-gray-500 mt-0.5">{{ recordingModeLabel }}</p>
           </template>
-          <!-- Game detected, not yet recording -->
+          <!-- Game running, waiting for a match to load -->
+          <template v-else-if="status.waitingForMatch">
+            <p class="text-xs font-semibold text-orange-300">{{ status.currentGame || 'Valorant' }} running</p>
+            <p class="text-[10px] text-orange-500/70 mt-0.5">Waiting for a match to start…</p>
+          </template>
+          <!-- Game detected (fallback — shouldn't usually be seen) -->
           <template v-else-if="status.currentGame">
             <p class="text-xs font-semibold text-orange-300">{{ status.currentGame }} detected</p>
-            <p class="text-[10px] text-orange-500/70 mt-0.5">Starting recording…</p>
+            <p class="text-[10px] text-orange-500/70 mt-0.5">Waiting for match…</p>
           </template>
           <!-- Mac / no detection -->
           <template v-else-if="platform && platform !== 'win32'">
@@ -325,7 +331,7 @@ const analyses = ref<AnalysisItem[]>([])
 const analysesLoading = ref(true)
 const pendingRecordings = ref<PendingRecording[]>([])
 const analysingIds = ref(new Set<string>())
-const status = ref<{ recording: boolean; currentGame: string | null; ffmpegOk: boolean; recordedModes: string[] }>({ recording: false, currentGame: null, ffmpegOk: true, recordedModes: [] })
+const status = ref<{ recording: boolean; currentGame: string | null; waitingForMatch: boolean; ffmpegOk: boolean; recordedModes: string[] }>({ recording: false, currentGame: null, waitingForMatch: false, ffmpegOk: true, recordedModes: [] })
 const isDev = ref(false)
 const platform = ref('')
 const devOpen = ref(false)
@@ -369,7 +375,7 @@ onMounted(async () => {
       router.push(s.firstRun ? '/welcome' : '/login')
       return
     }
-    status.value = { recording: s.recording, currentGame: s.currentGame, ffmpegOk: s.ffmpegOk !== false, recordedModes: s.recordedModes ?? [] }
+    status.value = { recording: s.recording, currentGame: s.currentGame, waitingForMatch: s.waitingForMatch ?? false, ffmpegOk: s.ffmpegOk !== false, recordedModes: s.recordedModes ?? [] }
     if (s.recording) { recordingStartedAt.value = Date.now() }
   } catch {
     router.push('/login')
@@ -398,7 +404,7 @@ onMounted(async () => {
     try {
       const s = await window.api.app.getStatus()
       const wasRecording = status.value.recording
-      status.value = { recording: s.recording, currentGame: s.currentGame, ffmpegOk: s.ffmpegOk !== false, recordedModes: s.recordedModes ?? [] }
+      status.value = { recording: s.recording, currentGame: s.currentGame, waitingForMatch: s.waitingForMatch ?? false, ffmpegOk: s.ffmpegOk !== false, recordedModes: s.recordedModes ?? [] }
       if (s.recording && !wasRecording) recordingStartedAt.value = Date.now()
       if (!s.recording) { recordingStartedAt.value = null; stopping.value = false }
     } catch { /* ignore */ }
@@ -426,6 +432,10 @@ onMounted(async () => {
     const data = args[0] as { message: string }
     warning.value = data.message
     setTimeout(() => { warning.value = null }, 12000)
+  }) as (...args: unknown[]) => void)
+  window.api.on('recording:waiting-for-match', ((...args: unknown[]) => {
+    const data = args[0] as { waiting: boolean }
+    status.value = { ...status.value, waitingForMatch: data.waiting }
   }) as (...args: unknown[]) => void)
 })
 

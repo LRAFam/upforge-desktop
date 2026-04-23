@@ -60,6 +60,7 @@ const api = {
       'recordings:updated',
       'app:ffmpeg-status',
       'recording:status-changed',
+      'recording:waiting-for-match',
       'app:warning'
     ]
     if (allowed.includes(channel)) {

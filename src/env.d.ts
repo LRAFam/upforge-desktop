@@ -99,6 +99,7 @@ declare global {
         getStatus: () => Promise<{
           recording: boolean
           currentGame: string | null
+          waitingForMatch: boolean
           authenticated: boolean
           isDev: boolean
           firstRun: boolean

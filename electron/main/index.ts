@@ -33,7 +33,6 @@ let ffmpegOk = true // updated after preflight; exposed via app:get-status
 const gameDetector = new GameDetector()
 const recorder = new Recorder()
 recorder.onStatusChange = (recording, error) => {
-  // Push state immediately to dashboard so UI doesn't wait for the 5s poll
   mainWindow?.webContents.send('recording:status-changed', { recording, error: error ?? null })
 }
 const riotLocalApi = new RiotLocalApi()
@@ -41,6 +40,10 @@ const authManager = new AuthManager()
 let uploadManager: UploadManager
 let settingsManager: SettingsManager
 let recordingsStore: RecordingsStore
+
+// Set by setupGameDetection — cancel pending match-wait when game quits from lobby
+let cancelMatchWait: (() => void) | null = null
+let waitingForMatch = false
 
 function createMainWindow(): BrowserWindow {
   const win = new BrowserWindow({
@@ -195,7 +198,7 @@ function setupGameDetection(): void {
       savePath: config.savePath
     } : undefined
 
-    // Check disk space before starting — warn if < 2 GB free
+    // Check disk space now so the warning shows while in lobby
     const savePath = config?.savePath ?? app.getPath('userData')
     const freeBytes = await recorder.getFreeDiskSpace(savePath)
     const TWO_GB = 2 * 1024 * 1024 * 1024
@@ -212,43 +215,61 @@ function setupGameDetection(): void {
       }
     }
 
-    // Start Riot Local API polling immediately so timeline is captured from the start
-    riotLocalApi.start(game)
+    tray?.setToolTip('UpForge — Waiting for match...')
+    mainWindow?.webContents.send('recording:waiting-for-match', { waiting: true })
 
-    // Determine which modes to record. Empty array or matching all = record everything.
+    // Wait for Riot Local API to respond — this only happens once a match loads.
+    // The API returns data as soon as the agent select / loading screen begins.
+    // Poll every 5 seconds, cancel if Valorant quits before a match starts.
+    let gameMode: string | null = null
+    let cancelled = false
+    cancelMatchWait = () => { cancelled = true }
+    waitingForMatch = true
+
     const recordedModes = config?.recordedModes ?? ['COMPETITIVE', 'PREMIER']
     const filterByMode = recordedModes.length > 0 &&
       !([...ALL_MODES].every(m => recordedModes.includes(m)))
 
-    if (filterByMode) {
-      // Probe game mode — first attempt immediately, then retry every 5s for up to 30s
-      let gameMode: string | null = await riotLocalApi.getGameMode()
-      if (!gameMode) {
-        for (let attempt = 0; attempt < 6; attempt++) {
-          await new Promise((r) => setTimeout(r, 5000))
-          gameMode = await riotLocalApi.getGameMode()
-          if (gameMode) break
-          console.log(`[GameDetector] Game mode not available yet (attempt ${attempt + 1}/6)`)
-        }
-      }
-
-      if (gameMode && !recordedModes.includes(gameMode)) {
-        console.log(`[GameDetector] Skipping recording — mode is ${gameMode} (not in recordedModes)`)
-        tray?.setToolTip('UpForge — Valorant AI Coaching')
+    // Poll up to 120 attempts × 5s = 10 minutes (covers long queue wait times)
+    for (let attempt = 0; attempt < 120; attempt++) {
+      await new Promise((r) => setTimeout(r, 5000))
+      if (cancelled) {
+        console.log('[GameDetector] Match wait cancelled — game quit before match started')
+        waitingForMatch = false
+        cancelMatchWait = null
         return
       }
-
-      if (!gameMode) {
-        console.log('[GameDetector] Could not determine game mode — recording anyway as fallback')
-      } else {
-        console.log(`[GameDetector] Game mode: ${gameMode} — starting recording`)
-      }
+      gameMode = await riotLocalApi.getGameMode()
+      if (gameMode) break
+      console.log(`[GameDetector] Waiting for match... (attempt ${attempt + 1}/120)`)
     }
+
+    waitingForMatch = false
+    cancelMatchWait = null
+    mainWindow?.webContents.send('recording:waiting-for-match', { waiting: false })
+
+    if (cancelled) return
+
+    if (!gameMode) {
+      console.log('[GameDetector] No Riot API response after 10 minutes — skipping recording')
+      tray?.setToolTip('UpForge — Valorant AI Coaching')
+      return
+    }
+
+    if (filterByMode && !recordedModes.includes(gameMode)) {
+      console.log(`[GameDetector] Skipping recording — mode is ${gameMode} (not in recordedModes)`)
+      tray?.setToolTip('UpForge — Valorant AI Coaching')
+      return
+    }
+
+    console.log(`[GameDetector] Match detected (${gameMode}) — starting recording`)
+
+    // Start Riot Local API timeline tracking from match start
+    riotLocalApi.start(game)
 
     tray?.setToolTip('UpForge — Recording...')
     await recorder.start(game, recorderConfig)
 
-    // Notify the user that recording has started with their identity
     const user = authManager.getUser()
     const userLabel = (user?.riot_name && user?.riot_tag)
       ? `${user.riot_name}#${user.riot_tag}`
@@ -259,7 +280,7 @@ function setupGameDetection(): void {
     if (Notification.isSupported()) {
       new Notification({
         title: `UpForge is recording`,
-        body: `${gameLabel} session started for ${userLabel}`,
+        body: `${gameLabel} match started for ${userLabel}`,
         silent: true
       }).show()
     }
@@ -267,6 +288,17 @@ function setupGameDetection(): void {
 
   gameDetector.on('game-stopped', async (game: string) => {
     console.log(`[GameDetector] ${game} stopped`)
+
+    // If we were still waiting for a match (player quit from lobby), cancel and clean up
+    if (cancelMatchWait) {
+      cancelMatchWait()
+      cancelMatchWait = null
+      waitingForMatch = false
+      mainWindow?.webContents.send('recording:waiting-for-match', { waiting: false })
+      tray?.setToolTip('UpForge — Valorant AI Coaching')
+      console.log('[GameDetector] Game quit before match — no recording to save')
+      return
+    }
 
     const timeline = riotLocalApi.stop()
     const recordingDuration = recorder.getRecordingDuration()
@@ -482,7 +514,7 @@ app.whenReady().then(async () => {
         top_issue: 'Positioning during post-plant — you were caught in the open on 4 of 6 clutch attempts.'
       }), 5500)
     })
-  }, () => ffmpegOk)
+  }, () => ffmpegOk, () => waitingForMatch)
 
   // Recordings: get pending, trigger analysis, or dismiss
   ipcMain.handle('recordings:get', () => recordingsStore.getPending())

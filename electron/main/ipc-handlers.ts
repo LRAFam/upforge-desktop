@@ -16,7 +16,8 @@ export function setupIpcHandlers(
   gameDetector: GameDetector,
   settingsManager: SettingsManager,
   openPostGameFn?: () => void,
-  getFFmpegOk?: () => boolean
+  getFFmpegOk?: () => boolean,
+  getWaitingForMatch?: () => boolean
 ): void {
   // Auth
   ipcMain.handle('auth:login', async (_e, { email, password }) => {
@@ -49,6 +50,7 @@ export function setupIpcHandlers(
     return {
       recording: recorder.isRecording(),
       currentGame: gameDetector.currentGame(),
+      waitingForMatch: getWaitingForMatch ? getWaitingForMatch() : false,
       authenticated: auth.isAuthenticated(),
       user: auth.getUser(),
       platform: process.platform,
