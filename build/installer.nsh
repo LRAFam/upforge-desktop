@@ -48,15 +48,26 @@
 !macro customInit
   !insertmacro _KillUpForge
 
-  ; If a previous install is registered but the uninstaller binary is gone,
-  ; remove the stale registry key so the installer won't try to run a ghost uninstaller.
-  ReadRegStr $R0 HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\gg.upforge.desktop" "UninstallString"
+  ; Read the old InstallLocation from the registry.
+  ; If found, forcefully remove the entire directory so every install starts
+  ; from a clean slate — prevents corrupted uninstaller / file-in-use errors
+  ; that arise when NSIS overwrites an existing (possibly partial) installation.
+  ReadRegStr $R0 HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\gg.upforge.desktop" "InstallLocation"
   ${If} $R0 != ""
-    ${IfNot} ${FileExists} $R0
-      DeleteRegKey HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\gg.upforge.desktop"
-      ClearErrors
+    ; Strip any trailing backslash before passing to RMDir
+    StrCpy $R1 $R0 1 -1
+    ${If} $R1 == "\"
+      StrLen $R2 $R0
+      IntOp $R2 $R2 - 1
+      StrCpy $R0 $R0 $R2
     ${EndIf}
+    RMDir /r "$R0"
   ${EndIf}
+
+  ; Always remove stale registry uninstall entry — prevents the installer from
+  ; trying to invoke a ghost or corrupted uninstaller binary.
+  DeleteRegKey HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\gg.upforge.desktop"
+  ClearErrors
 !macroend
 
 !macro customInstall
