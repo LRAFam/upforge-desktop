@@ -28,7 +28,6 @@ const AGENT_UUID_TO_NAME: Record<string, string> = {
   '41fb69c1-4189-7b37-f117-bcaf1e96f1bf': 'Astra',
   '569fdd95-4d10-43ab-ca70-79becc718b46': 'Sage',
   'f94c3b30-42be-e959-889c-5aa313dba261': 'Phoenix',
-  '707eab51-4836-f488-046a-cda6bf494859': 'Viper',
   'bb2a4828-46eb-8cd1-e765-15848195d751': 'Jett',
   '0e38b510-41a8-5780-5e8f-568b2a4f2d6c': 'Iso',
   'dade69b4-4f5a-8528-247b-219e5a1facd6': 'Raze',
