@@ -37,6 +37,14 @@
   Sleep 4000
 !macroend
 
+; customCheckAppRunning completely replaces the built-in process-check in
+; allowOnlyOneInstallerInstance.nsh (the one that shows the
+; "cannot be closed, please close manually and click Retry" dialog).
+; We kill silently — no dialog is ever shown to the user.
+!macro customCheckAppRunning
+  !insertmacro _KillUpForge
+!macroend
+
 !macro customInit
   !insertmacro _KillUpForge
 
