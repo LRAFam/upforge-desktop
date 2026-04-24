@@ -223,8 +223,9 @@
         :key="rec.id"
         class="flex items-center gap-3 px-3 py-2.5 bg-blue-500/[0.04] border border-blue-500/[0.12] rounded-xl"
       >
-        <div class="w-8 h-8 rounded-lg flex-shrink-0 flex items-center justify-center bg-blue-500/[0.1]">
-          <svg class="w-4 h-4 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <div class="w-8 h-8 rounded-lg flex-shrink-0 overflow-hidden flex items-center justify-center bg-blue-500/[0.1]">
+          <img v-if="rec.agent && getAgentImage(rec.agent)" :src="getAgentImage(rec.agent)" class="w-7 h-7 object-contain" />
+          <svg v-else class="w-4 h-4 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M15 10l4.553-2.069A1 1 0 0121 8.882v6.236a1 1 0 01-1.447.894L15 14M3 8a2 2 0 012-2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V8z"/>
           </svg>
         </div>
@@ -282,15 +283,18 @@
         class="w-full flex items-center gap-3 px-3 py-2.5 bg-white/[0.02] hover:bg-white/[0.04] border border-white/[0.05] hover:border-white/[0.08] rounded-xl transition-all text-left"
         @click="openAnalysis(a.id)"
       >
-        <div :class="['w-8 h-8 rounded-lg flex-shrink-0 flex items-center justify-center', a.job_id ? 'bg-red-500/[0.12]' : 'bg-white/[0.04]']">
-          <svg v-if="a.job_id" class="w-4 h-4 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <circle cx="12" cy="12" r="8" stroke-width="1.5"/>
-            <circle cx="12" cy="12" r="3" fill="currentColor" stroke="none"/>
-          </svg>
-          <svg v-else class="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"/>
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
-          </svg>
+        <div :class="['w-8 h-8 rounded-lg flex-shrink-0 overflow-hidden flex items-center justify-center', a.job_id ? 'bg-red-500/[0.12]' : 'bg-white/[0.04]']">
+          <img v-if="a.agent && getAgentImage(a.agent)" :src="getAgentImage(a.agent)" class="w-7 h-7 object-contain" :style="{ opacity: a.job_id ? 1 : 0.65 }" />
+          <template v-else>
+            <svg v-if="a.job_id" class="w-4 h-4 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <circle cx="12" cy="12" r="8" stroke-width="1.5"/>
+              <circle cx="12" cy="12" r="3" fill="currentColor" stroke="none"/>
+            </svg>
+            <svg v-else class="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"/>
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+            </svg>
+          </template>
         </div>
         <div class="flex-1 min-w-0">
           <p class="text-xs font-medium text-gray-200 truncate">
@@ -352,6 +356,7 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import type { ProfileData, AnalysisItem, PendingRecording } from '../env.d.ts'
+import { getAgentImage } from '../lib/valorant'
 
 const router = useRouter()
 

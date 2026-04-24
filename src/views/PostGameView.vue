@@ -1,10 +1,10 @@
 <template>
   <div class="flex flex-col h-full bg-[#0c0c0c] relative overflow-hidden">
-    <!-- Subtle glow bg -->
+    <!-- Subtle glow bg — uses agent accent colour when available -->
     <div class="absolute inset-0 pointer-events-none">
       <div
-        :class="['absolute top-0 left-1/2 -translate-x-1/2 w-48 h-24 rounded-full blur-3xl transition-all duration-700 opacity-60',
-          state === 'ready' ? 'bg-green-500/10' : state === 'pending' ? 'bg-blue-500/10' : state === 'error' ? 'bg-red-500/10' : 'bg-red-500/[0.07]']"
+        class="absolute top-0 left-1/2 -translate-x-1/2 w-48 h-24 rounded-full blur-3xl transition-all duration-700 opacity-60"
+        :style="glowBgStyle"
       />
     </div>
 
@@ -12,8 +12,13 @@
 
       <!-- Uploading -->
       <div v-if="state === 'uploading'" class="w-full space-y-4 text-center">
-        <div class="w-11 h-11 mx-auto rounded-full bg-red-500/10 border border-red-500/20 flex items-center justify-center">
-          <svg class="w-5 h-5 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <div
+          class="w-11 h-11 mx-auto rounded-full overflow-hidden flex items-center justify-center transition-all"
+          :class="agentImageUrl ? '' : 'bg-red-500/10 border border-red-500/20'"
+          :style="agentImageUrl ? { border: `1px solid ${agentAccentColor}50`, background: agentAccentColor + '20' } : {}"
+        >
+          <img v-if="agentImageUrl" :src="agentImageUrl" class="w-9 h-9 object-contain" />
+          <svg v-else class="w-5 h-5 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/>
           </svg>
         </div>
@@ -36,8 +41,13 @@
 
       <!-- Analysing -->
       <div v-else-if="state === 'analysing'" class="w-full space-y-4 text-center">
-        <div class="w-11 h-11 mx-auto rounded-full bg-orange-500/10 border border-orange-500/20 flex items-center justify-center">
-          <svg class="w-5 h-5 text-orange-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <div
+          class="w-11 h-11 mx-auto rounded-full overflow-hidden flex items-center justify-center transition-all"
+          :class="agentImageUrl ? '' : 'bg-orange-500/10 border border-orange-500/20'"
+          :style="agentImageUrl ? { border: `1px solid ${agentAccentColor}50`, background: agentAccentColor + '20' } : {}"
+        >
+          <img v-if="agentImageUrl" :src="agentImageUrl" class="w-9 h-9 object-contain" />
+          <svg v-else class="w-5 h-5 text-orange-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"/>
           </svg>
         </div>
@@ -62,8 +72,13 @@
       <!-- Ready -->
       <div v-else-if="state === 'ready'" class="w-full space-y-3">
         <div class="flex items-center gap-3">
-          <div class="w-9 h-9 rounded-full bg-green-500/10 border border-green-500/20 flex items-center justify-center flex-shrink-0">
-            <svg class="w-5 h-5 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <div
+            class="w-9 h-9 rounded-full overflow-hidden flex items-center justify-center flex-shrink-0 transition-all"
+            :class="agentImageUrl ? '' : 'bg-green-500/10 border border-green-500/20'"
+            :style="agentImageUrl ? { border: `1px solid ${agentAccentColor}50`, background: agentAccentColor + '20' } : {}"
+          >
+            <img v-if="agentImageUrl" :src="agentImageUrl" class="w-8 h-8 object-contain" />
+            <svg v-else class="w-5 h-5 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
             </svg>
           </div>
@@ -110,8 +125,13 @@
 
       <!-- Pending (auto-analyse off) -->
       <div v-else-if="state === 'pending'" class="w-full space-y-3 text-center">
-        <div class="w-11 h-11 mx-auto rounded-full bg-blue-500/10 border border-blue-500/20 flex items-center justify-center">
-          <svg class="w-5 h-5 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <div
+          class="w-11 h-11 mx-auto rounded-full overflow-hidden flex items-center justify-center transition-all"
+          :class="agentImageUrl ? '' : 'bg-blue-500/10 border border-blue-500/20'"
+          :style="agentImageUrl ? { border: `1px solid ${agentAccentColor}50`, background: agentAccentColor + '20' } : {}"
+        >
+          <img v-if="agentImageUrl" :src="agentImageUrl" class="w-9 h-9 object-contain" />
+          <svg v-else class="w-5 h-5 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M15 10l4.553-2.069A1 1 0 0121 8.882v6.236a1 1 0 01-1.447.894L15 14M3 8a2 2 0 012-2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V8z"/>
           </svg>
         </div>
@@ -161,6 +181,7 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { getAgentImage, getAgentColor } from '../lib/valorant'
 
 type State = 'uploading' | 'analysing' | 'ready' | 'error' | 'pending'
 
@@ -187,6 +208,22 @@ function clearStuckTimer() {
 const topIssue = computed(() => {
   if (!result.value) return null
   return (result.value as Record<string, unknown>).top_issue as string | null
+})
+
+const agentImageUrl = computed(() => gameInfo.value.agent ? getAgentImage(gameInfo.value.agent) : '')
+const agentAccentColor = computed(() => gameInfo.value.agent ? getAgentColor(gameInfo.value.agent) : '')
+const glowBgStyle = computed(() => {
+  if (agentAccentColor.value) {
+    return { background: `radial-gradient(ellipse, ${agentAccentColor.value}25 0%, transparent 70%)` }
+  }
+  const fallbacks: Record<string, string> = {
+    ready: 'rgba(34,197,94,0.10)',
+    pending: 'rgba(59,130,246,0.10)',
+    error: 'rgba(239,68,68,0.10)',
+    uploading: 'rgba(239,68,68,0.07)',
+    analysing: 'rgba(239,68,68,0.07)',
+  }
+  return { background: fallbacks[state.value] ?? 'transparent' }
 })
 
 onMounted(() => {

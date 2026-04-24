@@ -34,6 +34,9 @@ const AGENT_UUID_TO_NAME: Record<string, string> = {
   'e370fa57-4757-3604-3648-499e1f642d3f': 'Omen',
   '1180a69f-4def-1bc1-6071-d8b28b1c47bd': 'Waylay',
   'cc8b64c8-4b25-4ff9-6e7f-37b4da43d235': 'Tejo',
+  '7c8a4701-4de6-9355-b254-e09bc2a34b72': 'Miks',
+  'efba5359-4016-a1e5-7626-b1ae76895940': 'Vyse',
+  '92eeef5d-43b5-1d4a-8d03-b3927a09034b': 'Veto',
 }
 
 /** Resolve a Riot characterId UUID to a display name, returning the UUID unchanged if unknown. */
