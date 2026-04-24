@@ -202,7 +202,7 @@
             <div
               class="h-full rounded-full transition-all"
               :class="quotaPercent >= 80 ? 'bg-red-500' : quotaPercent >= 50 ? 'bg-yellow-500' : 'bg-green-500'"
-              :style="{ width: quotaPercent + '%' }"
+              :style="{ width: (100 - quotaPercent) + '%' }"
             />
           </div>
           <span class="text-[10px] font-medium tabular-nums" :class="(profile.user.analysis_stats.limit - profile.user.analysis_stats.total) <= 0 ? 'text-red-400' : 'text-gray-300'">
@@ -455,7 +455,7 @@ onMounted(async () => {
 
   durationInterval = setInterval(updateRecordingElapsed, 1000)
 
-  window.api.on('dashboard:refresh', loadAnalyses)
+  window.api.on('dashboard:refresh', refreshProfile)
   window.api.on('recordings:updated', loadPendingRecordings)
   window.api.on('app:activity-log', ((...args: unknown[]) => {
     activityLog.value = args[0] as { time: number; message: string }[]
