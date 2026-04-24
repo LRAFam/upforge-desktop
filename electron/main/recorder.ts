@@ -16,7 +16,11 @@ export interface RecorderConfig {
 const IS_MAC = process.platform === 'darwin'
 const IS_WIN = process.platform === 'win32'
 
-// Window titles for each supported game (used for window-specific capture on Windows)
+// Window titles for each supported game (used for window-specific capture on Windows).
+// gdigrab's -i title= matches the foreground window title exactly.
+const GAME_WINDOW_TITLES: Record<string, string> = {
+  valorant: 'VALORANT',
+}
 
 export class Recorder {
   private _process: ChildProcess | null = null
@@ -99,7 +103,7 @@ export class Recorder {
 
     const encoder = await this._detectEncoder()
     const ffmpegPath = this._ffmpegPath()
-    const args = this._buildArgs(encoder, this._outputPath, config)
+    const args = this._buildArgs(encoder, this._outputPath, game, config)
 
     console.log(`[Recorder] Platform: ${process.platform}, encoder: ${encoder}`)
     console.log(`[Recorder] ffmpeg path: ${ffmpegPath}`)
@@ -230,7 +234,7 @@ export class Recorder {
     })
   }
 
-  private _buildArgs(encoder: HWEncoder, outputPath: string, config?: RecorderConfig): string[] {
+  private _buildArgs(encoder: HWEncoder, outputPath: string, game: string, config?: RecorderConfig): string[] {
     const codecMap: Record<HWEncoder, string> = {
       videotoolbox: 'h264_videotoolbox',
       nvenc: 'h264_nvenc',
@@ -267,13 +271,16 @@ export class Recorder {
       ]
     }
 
-    // Windows: use desktop capture for video + WASAPI loopback for system audio.
-    // WASAPI loopback captures "what you hear" (game audio, voice chat) without
-    // needing a specific device name — works on Windows 7+ out of the box.
+    // Windows: capture the game window by title so only the game is recorded.
+    // WASAPI loopback captures all system audio (game sounds + voice chat).
+    // Fall back to full desktop if no window title is registered for this game.
+    const windowTitle = GAME_WINDOW_TITLES[game.toLowerCase()]
+    const captureInput = windowTitle ? `title=${windowTitle}` : 'desktop'
+    console.log(`[Recorder] Windows capture input: ${captureInput}`)
     return [
       '-f', 'gdigrab',
       '-framerate', '30',
-      '-i', 'desktop',
+      '-i', captureInput,
       '-f', 'wasapi',
       '-i', 'loopback',
       '-map', '0:v',
