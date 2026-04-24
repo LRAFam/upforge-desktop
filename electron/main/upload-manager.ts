@@ -81,20 +81,35 @@ export class UploadManager {
         res.on('data', (chunk) => body += chunk)
         res.on('end', () => {
           opts.onProgress(100)
+          const status = res.statusCode ?? 0
+          // Handle nginx-level rejections before Laravel even runs (e.g. 413 body too large)
+          if (status === 413) {
+            reject(new Error('Upload rejected: file too large for server (413). Contact support.'))
+            return
+          }
           try {
             const data = JSON.parse(body)
-            if (res.statusCode && res.statusCode >= 400) {
-              reject(new Error(data.message || `Upload failed: ${res.statusCode}`))
+            if (status >= 400) {
+              reject(new Error(data.message || `Upload failed (${status})`))
+            } else if (!data.job_id) {
+              reject(new Error(`Upload failed (${status}): server did not return a job ID`))
             } else {
               resolve({ job_id: data.job_id })
             }
           } catch {
-            reject(new Error('Invalid response from server'))
+            // Server returned non-JSON — log context to help diagnose
+            const preview = body.slice(0, 200).replace(/\n/g, ' ').trim()
+            console.error(`[UploadManager] Non-JSON response HTTP ${status}: ${preview}`)
+            reject(new Error(`Upload failed (HTTP ${status}) — unexpected server response. Check API logs.`))
           }
         })
       })
 
       req.on('error', reject)
+      // 10-minute hard timeout for the upload itself (large files over slow connections)
+      req.setTimeout(10 * 60 * 1000, () => {
+        req.destroy(new Error('Upload timed out after 10 minutes'))
+      })
       form.pipe(req)
     })
   }
