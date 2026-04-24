@@ -529,6 +529,15 @@ async function loadPendingRecordings() {
 
 async function analyseRecording(id: string) {
   if (analysingIds.value.has(id)) return
+
+  // Quota gate — prevent upload if user has no analyses remaining
+  const stats = profile.value?.user?.analysis_stats
+  if (stats && (stats.limit - stats.total) <= 0) {
+    warning.value = 'No analyses remaining this month. Upgrade your plan at upforge.gg to get more.'
+    setTimeout(() => { warning.value = null }, 10000)
+    return
+  }
+
   analysingIds.value.add(id)
   analysingIds.value = new Set(analysingIds.value) // trigger reactivity
   try {
