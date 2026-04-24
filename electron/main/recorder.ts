@@ -176,6 +176,7 @@ export class Recorder {
     if (earlyExited) {
       const reason = earlyError ?? 'ffmpeg failed to start'
       console.error(`[Recorder] ffmpeg failed within startup window: ${reason}`)
+      console.error(`[Recorder] Full stderr:\n${this._stderrBuffer.slice(-1000)}`)
 
       // On Windows, if window-title capture failed, retry once with full desktop
       if (IS_WIN && !useDesktopFallback && GAME_WINDOW_TITLES[game.toLowerCase()]) {
@@ -185,12 +186,14 @@ export class Recorder {
         return this._spawnAndConfirm(game, config, encoder, true, noAudio)
       }
 
-      // If audio capture failed, retry without audio (WASAPI unavailable / invalid device)
+      // If audio capture failed, retry without audio (WASAPI unavailable / invalid device).
+      // Check the FULL stderr buffer — the last line is often just "Conversion failed!"
+      // while the real audio error is buried earlier.
       if (!noAudio) {
-        const reasonLower = reason.toLowerCase()
-        const audioFailed = reasonLower.includes('wasapi') || reasonLower.includes('loopback') ||
-          reasonLower.includes('invalid argument') || reasonLower.includes('audio') ||
-          reasonLower.includes('avfoundation') && reasonLower.includes('0')
+        const bufferLower = this._stderrBuffer.toLowerCase()
+        const audioFailed = bufferLower.includes('wasapi') || bufferLower.includes('loopback') ||
+          bufferLower.includes('invalid argument') || bufferLower.includes('coinitialization') ||
+          (IS_MAC && bufferLower.includes('avfoundation') && bufferLower.includes(':0'))
         if (audioFailed) {
           console.warn('[Recorder] Audio capture failed — retrying without audio:', reason)
           this._stderrBuffer = ''
