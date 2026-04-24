@@ -267,12 +267,17 @@ export class Recorder {
       ]
     }
 
-    // Windows: use desktop capture — window title matching is unreliable since
-    // the game window may not exist yet when ffmpeg spawns (process detected before window opens)
+    // Windows: use desktop capture for video + WASAPI loopback for system audio.
+    // WASAPI loopback captures "what you hear" (game audio, voice chat) without
+    // needing a specific device name — works on Windows 7+ out of the box.
     return [
       '-f', 'gdigrab',
       '-framerate', '30',
       '-i', 'desktop',
+      '-f', 'wasapi',
+      '-i', 'loopback',
+      '-map', '0:v',
+      '-map', '1:a',
       '-vf', `scale=${scale}`,
       '-vcodec', codec,
       ...qualityArgs,
