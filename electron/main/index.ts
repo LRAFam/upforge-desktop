@@ -430,13 +430,15 @@ function setupGameDetection(): void {
     // Start tracking + recording
     riotLocalApi.start(game, matchStartTime ?? undefined)
 
-    tray?.setToolTip('UpForge — Recording...')
+    tray?.setToolTip('UpForge — Starting recorder...')
+    mainWindow?.webContents.send('recording:starting', { starting: true })
     try {
       await recorder.start(game, recorderConfig)
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
       console.error('[Main] Failed to start recording:', msg)
       logActivity(`Recording failed to start: ${msg}`)
+      mainWindow?.webContents.send('recording:starting', { starting: false })
       tray?.setToolTip('UpForge — Active')
       return
     }

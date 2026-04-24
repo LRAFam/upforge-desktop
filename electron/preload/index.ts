@@ -65,6 +65,7 @@ const api = {
       'app:ffmpeg-status',
       'recording:status-changed',
       'recording:waiting-for-match',
+      'recording:starting',
       'app:warning',
       'app:activity-log',
       'updater:checking',

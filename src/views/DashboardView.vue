@@ -19,9 +19,11 @@
           ? 'bg-yellow-500/[0.07] border-yellow-500/25'
           : status.recording
             ? 'bg-red-500/[0.08] border-red-500/25'
-            : status.currentGame
-              ? 'bg-orange-500/[0.07] border-orange-500/20'
-              : 'bg-white/[0.02] border-white/[0.05]'
+            : status.recordingStarting
+              ? 'bg-yellow-500/[0.07] border-yellow-500/20'
+              : status.currentGame
+                ? 'bg-orange-500/[0.07] border-orange-500/20'
+                : 'bg-white/[0.02] border-white/[0.05]'
       ]"
     >
       <!-- Main row -->
@@ -32,9 +34,11 @@
             'w-2.5 h-2.5 rounded-full',
             !status.ffmpegOk ? 'bg-yellow-400' :
             status.recording ? 'bg-red-500' :
+            status.recordingStarting ? 'bg-yellow-400' :
             status.currentGame ? 'bg-orange-400' : 'bg-gray-700'
           ]" />
           <div v-if="status.recording" class="absolute inset-0 w-2.5 h-2.5 rounded-full bg-red-500 animate-ping opacity-70" />
+          <div v-else-if="status.recordingStarting" class="absolute inset-0 w-2.5 h-2.5 rounded-full bg-yellow-400 animate-ping opacity-50" />
           <div v-else-if="status.waitingForMatch" class="absolute inset-0 w-2.5 h-2.5 rounded-full bg-orange-400 animate-ping opacity-50" />
         </div>
 
@@ -53,6 +57,11 @@
               <span v-if="recordingElapsed" class="text-[11px] font-mono tabular-nums text-red-400/80">{{ recordingElapsed }}</span>
             </div>
             <p class="text-[10px] text-gray-500 mt-0.5">{{ recordingModeLabel }}</p>
+          </template>
+          <!-- Starting recorder (2s confirmation window) -->
+          <template v-else-if="status.recordingStarting">
+            <p class="text-xs font-semibold text-yellow-300">Starting recorder…</p>
+            <p class="text-[10px] text-yellow-600/70 mt-0.5">Confirming ffmpeg started</p>
           </template>
           <!-- Game running, waiting for a match to load -->
           <template v-else-if="status.waitingForMatch">
@@ -353,7 +362,7 @@ const analyses = ref<AnalysisItem[]>([])
 const analysesLoading = ref(true)
 const pendingRecordings = ref<PendingRecording[]>([])
 const analysingIds = ref(new Set<string>())
-const status = ref<{ recording: boolean; currentGame: string | null; waitingForMatch: boolean; ffmpegOk: boolean; recordedModes: string[] }>({ recording: false, currentGame: null, waitingForMatch: false, ffmpegOk: true, recordedModes: [] })
+const status = ref<{ recording: boolean; recordingStarting: boolean; currentGame: string | null; waitingForMatch: boolean; ffmpegOk: boolean; recordedModes: string[] }>({ recording: false, recordingStarting: false, currentGame: null, waitingForMatch: false, ffmpegOk: true, recordedModes: [] })
 const isDev = ref(false)
 const platform = ref('')
 const devOpen = ref(false)
@@ -406,7 +415,7 @@ onMounted(async () => {
       router.push(s.firstRun ? '/welcome' : '/login')
       return
     }
-    status.value = { recording: s.recording, currentGame: s.currentGame, waitingForMatch: s.waitingForMatch ?? false, ffmpegOk: s.ffmpegOk !== false, recordedModes: s.recordedModes ?? [] }
+    status.value = { recording: s.recording, recordingStarting: false, currentGame: s.currentGame, waitingForMatch: s.waitingForMatch ?? false, ffmpegOk: s.ffmpegOk !== false, recordedModes: s.recordedModes ?? [] }
     if (s.recording) { recordingStartedAt.value = Date.now() }
   } catch {
     router.push('/login')
@@ -438,7 +447,7 @@ onMounted(async () => {
     try {
       const s = await window.api.app.getStatus()
       const wasRecording = status.value.recording
-      status.value = { recording: s.recording, currentGame: s.currentGame, waitingForMatch: s.waitingForMatch ?? false, ffmpegOk: s.ffmpegOk !== false, recordedModes: s.recordedModes ?? [] }
+      status.value = { recording: s.recording, recordingStarting: status.value.recordingStarting, currentGame: s.currentGame, waitingForMatch: s.waitingForMatch ?? false, ffmpegOk: s.ffmpegOk !== false, recordedModes: s.recordedModes ?? [] }
       if (s.recording && !wasRecording) recordingStartedAt.value = Date.now()
       if (!s.recording) { recordingStartedAt.value = null; stopping.value = false }
     } catch { /* ignore */ }
@@ -458,12 +467,16 @@ onMounted(async () => {
   window.api.on('recording:status-changed', ((...args: unknown[]) => {
     const data = args[0] as { recording: boolean; error: string | null }
     const wasRecording = status.value.recording
-    status.value = { ...status.value, recording: data.recording }
+    status.value = { ...status.value, recording: data.recording, recordingStarting: false }
     if (data.recording && !wasRecording) recordingStartedAt.value = Date.now()
     if (!data.recording) { recordingStartedAt.value = null; stopping.value = false }
     if (!data.recording && data.error) {
       console.error('[Dashboard] Recording stopped with error:', data.error)
     }
+  }) as (...args: unknown[]) => void)
+  window.api.on('recording:starting', ((...args: unknown[]) => {
+    const data = args[0] as { starting: boolean }
+    status.value = { ...status.value, recordingStarting: data.starting }
   }) as (...args: unknown[]) => void)
   window.api.on('app:warning', ((...args: unknown[]) => {
     const data = args[0] as { message: string }
