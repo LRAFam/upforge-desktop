@@ -223,8 +223,10 @@
         :key="rec.id"
         class="flex items-center gap-3 px-3 py-2.5 bg-blue-500/[0.04] border border-blue-500/[0.12] rounded-xl"
       >
-        <div class="w-8 h-8 rounded-lg flex-shrink-0 overflow-hidden flex items-center justify-center bg-blue-500/[0.1]">
-          <img v-if="rec.agent && getAgentImage(rec.agent)" :src="getAgentImage(rec.agent)" class="w-7 h-7 object-contain" />
+        <div class="w-8 h-8 rounded-lg flex-shrink-0 overflow-hidden flex items-center justify-center bg-blue-500/[0.1] relative">
+          <!-- Map minimap background -->
+          <img v-if="rec.map && getMapMinimap(rec.map)" :src="getMapMinimap(rec.map)" class="absolute inset-0 w-full h-full object-cover opacity-20" />
+          <img v-if="rec.agent && getAgentImage(rec.agent)" :src="getAgentImage(rec.agent)" class="relative w-7 h-7 object-contain" />
           <svg v-else class="w-4 h-4 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M15 10l4.553-2.069A1 1 0 0121 8.882v6.236a1 1 0 01-1.447.894L15 14M3 8a2 2 0 012-2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V8z"/>
           </svg>
@@ -283,8 +285,10 @@
         class="w-full flex items-center gap-3 px-3 py-2.5 bg-white/[0.02] hover:bg-white/[0.04] border border-white/[0.05] hover:border-white/[0.08] rounded-xl transition-all text-left"
         @click="openAnalysis(a.id)"
       >
-        <div :class="['w-8 h-8 rounded-lg flex-shrink-0 overflow-hidden flex items-center justify-center', a.job_id ? 'bg-red-500/[0.12]' : 'bg-white/[0.04]']">
-          <img v-if="a.agent && getAgentImage(a.agent)" :src="getAgentImage(a.agent)" class="w-7 h-7 object-contain" :style="{ opacity: a.job_id ? 1 : 0.65 }" />
+        <div :class="['w-8 h-8 rounded-lg flex-shrink-0 overflow-hidden flex items-center justify-center relative', a.job_id ? 'bg-red-500/[0.12]' : 'bg-white/[0.04]']">
+          <!-- Map minimap background -->
+          <img v-if="a.map && getMapMinimap(a.map)" :src="getMapMinimap(a.map)" class="absolute inset-0 w-full h-full object-cover opacity-20" />
+          <img v-if="a.agent && getAgentImage(a.agent)" :src="getAgentImage(a.agent)" class="relative w-7 h-7 object-contain" :style="{ opacity: a.job_id ? 1 : 0.65 }" />
           <template v-else>
             <svg v-if="a.job_id" class="w-4 h-4 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <circle cx="12" cy="12" r="8" stroke-width="1.5"/>
@@ -356,7 +360,7 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import type { ProfileData, AnalysisItem, PendingRecording } from '../env.d.ts'
-import { getAgentImage } from '../lib/valorant'
+import { getAgentImage, getMapMinimap } from '../lib/valorant'
 
 const router = useRouter()
 
