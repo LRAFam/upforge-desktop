@@ -11,6 +11,7 @@ import {
   globalShortcut
 } from 'electron'
 import { join } from 'path'
+import fs from 'fs'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import { setupAutoUpdater } from './updater'
 import { GameDetector } from './game-detector'
@@ -228,22 +229,40 @@ function setupGameDetection(): void {
     if (recordingDuration > 0 && recordingDuration < MIN_DURATION_SECONDS) {
       console.log(`[GameDetector] Recording too short (${recordingDuration}s) — ignoring`)
       logActivity(`Recording too short (${recordingDuration}s) — discarded`)
-      if (videoPath && require('fs').existsSync(videoPath)) {
-        try { require('fs').unlinkSync(videoPath) } catch { /* ignore */ }
+      if (videoPath && fs.existsSync(videoPath)) {
+        try { fs.unlinkSync(videoPath) } catch { /* ignore */ }
       }
       return
     }
 
-    postGameWindow = createPostGameWindow()
-    postGameWindow.on('closed', () => { postGameWindow = null })
+    // If recording never started (recorder.start() threw earlier in this match),
+    // skip the post-game window — it would just show a confusing error.
+    if (recordingDuration === 0) {
+      const lastErr = recorder.getLastError()
+      logActivity(lastErr ? `Match ended — no recording was made (${lastErr})` : 'Match ended — no active recording')
+      return
+    }
 
-    postGameWindow.webContents.once('did-finish-load', async () => {
-      if (!videoPath || !require('fs').existsSync(videoPath)) {
+    // Close any existing post-game window first (consecutive match scenario —
+    // match 2 can end before match 1's window is dismissed).
+    postGameWindow?.close()
+    const thisPostGameWindow = createPostGameWindow()
+    postGameWindow = thisPostGameWindow
+    thisPostGameWindow.on('closed', () => {
+      if (postGameWindow === thisPostGameWindow) postGameWindow = null
+    })
+
+    thisPostGameWindow.webContents.once('did-finish-load', async () => {
+      const sendToWindow = (channel: string, payload?: unknown) => {
+        if (!thisPostGameWindow.isDestroyed()) thisPostGameWindow.webContents.send(channel, payload)
+      }
+
+      if (!videoPath || !fs.existsSync(videoPath)) {
         const ffmpegError = recorder.getLastError()
         const errorMsg = ffmpegError
           ? `Recording failed: ${ffmpegError}`
           : 'Recording file was not created — ffmpeg may have failed to start. Check that ffmpeg is installed (dev) or the app was not corrupted (production).'
-        postGameWindow?.webContents.send('post-game:upload-error', errorMsg)
+        sendToWindow('post-game:upload-error', errorMsg)
         return
       }
 
@@ -251,7 +270,7 @@ function setupGameDetection(): void {
         const sizeMB = (fileSize / (1024 * 1024)).toFixed(2)
         const errorMsg = `Recording appears corrupt or empty (${sizeMB} MB). Please check your ffmpeg setup.`
         console.error(`[GameDetector] ${errorMsg}`)
-        postGameWindow?.webContents.send('post-game:upload-error', errorMsg)
+        sendToWindow('post-game:upload-error', errorMsg)
         return
       }
 
@@ -266,7 +285,7 @@ function setupGameDetection(): void {
           gameMode,
           timeline
         })
-        postGameWindow?.webContents.send('post-game:pending', {
+        sendToWindow('post-game:pending', {
           recordingId: recording.id,
           game,
           map,
@@ -278,7 +297,7 @@ function setupGameDetection(): void {
 
       tray?.setToolTip('UpForge — Uploading...')
       await doUploadAndAnalyse(null, videoPath, user?.riot_name ?? '', user?.riot_tag ?? '',
-        game, map, agent, timeline, postGameWindow!)
+        game, map, agent, timeline, thisPostGameWindow)
     })
   }
 
@@ -442,7 +461,14 @@ function setupGameDetection(): void {
       tray?.setToolTip('UpForge — Active')
       return
     }
-    logActivity(`Recording started (${gameMode ?? 'unknown mode'})`)
+    logActivity(`Recording started (${gameMode ?? 'unknown mode'}${recorder.wasNoAudio() ? ' — no audio' : ''})`)
+
+    if (recorder.wasNoAudio()) {
+      console.warn('[Main] Recording started without audio (WASAPI/avfoundation fallback)')
+      mainWindow?.webContents.send('app:warning', {
+        message: 'Recording started without audio — your system audio device was unavailable'
+      })
+    }
 
     const user = authManager.getUser()
     const userLabel = (user?.riot_name && user?.riot_tag)
@@ -540,9 +566,11 @@ async function doUploadAndAnalyse(
 
     // Poll for analysis result (up to 10 minutes)
     const startTime = Date.now()
+    let pollFailCount = 0
     const pollTimer = setInterval(async () => {
       try {
         const status = await uploadManager.pollStatus(result.job_id)
+        pollFailCount = 0
         if (status.status === 'completed' && status.result) {
           clearInterval(pollTimer)
           const score = (status.result as Record<string, unknown>).overall_score as number | undefined
@@ -572,7 +600,16 @@ async function doUploadAndAnalyse(
           send('post-game:upload-error', 'Analysis timed out.')
           tray?.setToolTip('UpForge — Valorant AI Coaching')
         }
-      } catch { /* ignore poll errors */ }
+      } catch (pollErr) {
+        pollFailCount++
+        console.warn(`[Upload] Poll error (${pollFailCount}):`, pollErr)
+        if (pollFailCount >= 5) {
+          clearInterval(pollTimer)
+          logActivity('Analysis polling failed — lost connection to server')
+          send('post-game:upload-error', 'Lost connection while waiting for analysis. Check your internet connection.')
+          tray?.setToolTip('UpForge — Valorant AI Coaching')
+        }
+      }
     }, 15_000)
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : 'Upload failed'

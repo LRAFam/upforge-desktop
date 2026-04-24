@@ -29,6 +29,8 @@ export class Recorder {
   private _lastError: string | null = null
   private _stderrBuffer = ''
   private _startedAt: number | null = null
+  private _cachedEncoder: HWEncoder | null = null
+  private _recordedWithoutAudio = false
   onStatusChange?: (recording: boolean, error?: string) => void
 
   isRecording(): boolean {
@@ -41,6 +43,11 @@ export class Recorder {
 
   getLastError(): string | null {
     return this._lastError
+  }
+
+  /** Returns true if the current/last recording was started without audio (fallback). */
+  wasNoAudio(): boolean {
+    return this._recordedWithoutAudio
   }
 
   /** Returns recording duration in seconds (0 if not started). */
@@ -94,6 +101,7 @@ export class Recorder {
 
     this._lastError = null
     this._stderrBuffer = ''
+    this._recordedWithoutAudio = false
 
     const dir = config?.savePath ?? join(app.getPath('userData'), 'recordings')
     if (!existsSync(dir)) mkdirSync(dir, { recursive: true })
@@ -209,6 +217,7 @@ export class Recorder {
     // ffmpeg is still alive after startup window — recording confirmed
     this._recording = true
     this._startedAt = Date.now()
+    if (noAudio) this._recordedWithoutAudio = true
     this.onStatusChange?.(true)
   }
 
@@ -260,11 +269,17 @@ export class Recorder {
   }
 
   private async _detectEncoder(): Promise<HWEncoder> {
+    if (this._cachedEncoder) {
+      console.log(`[Recorder] Using cached encoder: ${this._cachedEncoder}`)
+      return this._cachedEncoder
+    }
+
     const ffmpegPath = this._ffmpegPath()
 
     if (IS_MAC) {
       const works = await this._testEncoder(ffmpegPath, 'h264_videotoolbox')
-      return works ? 'videotoolbox' : 'software'
+      this._cachedEncoder = works ? 'videotoolbox' : 'software'
+      return this._cachedEncoder
     }
 
     // Windows: try hardware encoders in priority order
@@ -278,11 +293,13 @@ export class Recorder {
       const works = await this._testEncoder(ffmpegPath, codec)
       if (works) {
         console.log(`[Recorder] Hardware encoder available: ${name}`)
+        this._cachedEncoder = name
         return name
       }
     }
 
     console.log('[Recorder] No hardware encoder found, falling back to software')
+    this._cachedEncoder = 'software'
     return 'software'
   }
 

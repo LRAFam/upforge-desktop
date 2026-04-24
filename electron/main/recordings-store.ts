@@ -34,7 +34,9 @@ export class RecordingsStore {
   private load(): PendingRecording[] {
     try {
       const raw = fs.readFileSync(this.filePath, 'utf-8')
-      return JSON.parse(raw)
+      const all: PendingRecording[] = JSON.parse(raw)
+      // Prune entries whose video file no longer exists to keep the store clean
+      return all.filter(r => r.analysed || fs.existsSync(r.path))
     } catch {
       return []
     }

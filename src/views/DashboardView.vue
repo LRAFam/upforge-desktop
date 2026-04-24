@@ -205,8 +205,8 @@
               :style="{ width: quotaPercent + '%' }"
             />
           </div>
-          <span class="text-[10px] font-medium tabular-nums" :class="profile.user.analysis_stats.free_analyses_remaining === 0 ? 'text-red-400' : 'text-gray-300'">
-            {{ profile.user.analysis_stats.free_analyses_remaining }}/{{ profile.user.analysis_stats.monthly_free_analyses }}
+          <span class="text-[10px] font-medium tabular-nums" :class="(profile.user.analysis_stats.limit - profile.user.analysis_stats.total) <= 0 ? 'text-red-400' : 'text-gray-300'">
+            {{ profile.user.analysis_stats.limit - profile.user.analysis_stats.total }}/{{ profile.user.analysis_stats.limit }}
           </span>
         </div>
       </div>
@@ -376,8 +376,8 @@ const activityLog = ref<{ time: number; message: string }[]>([])
 
 const quotaPercent = computed(() => {
   const stats = profile.value?.user?.analysis_stats
-  if (!stats || !stats.monthly_free_analyses) return 0
-  return Math.min(100, Math.round((stats.free_analyses_used / stats.monthly_free_analyses) * 100))
+  if (!stats || !stats.limit) return 0
+  return Math.min(100, Math.round((stats.total / stats.limit) * 100))
 })
 
 const recordingModeLabel = computed(() => {
@@ -472,6 +472,8 @@ onMounted(async () => {
     if (!data.recording) { recordingStartedAt.value = null; stopping.value = false }
     if (!data.recording && data.error) {
       console.error('[Dashboard] Recording stopped with error:', data.error)
+      warning.value = `Recording stopped: ${data.error}`
+      setTimeout(() => { warning.value = null }, 15000)
     }
   }) as (...args: unknown[]) => void)
   window.api.on('recording:starting', ((...args: unknown[]) => {
@@ -547,7 +549,8 @@ async function dismissRecording(id: string) {
 function formatMode(mode: string): string {
   const map: Record<string, string> = {
     COMPETITIVE: 'Competitive', PREMIER: 'Premier', CLASSIC: 'Unrated',
-    DEATHMATCH: 'Deathmatch', SPIKERUSH: 'Spike Rush', SWIFTPLAY: 'Swift Play'
+    DEATHMATCH: 'Deathmatch', TEAMDEATHMATCH: 'Team Deathmatch',
+    SPIKERUSH: 'Spike Rush', SWIFTPLAY: 'Swift Play', SNOWBALL: 'Snowball Fight'
   }
   return map[mode] ?? mode
 }

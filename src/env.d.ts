@@ -55,11 +55,8 @@ export interface ProfileData {
     riot_region: string | null
     discord_username: string | null
     analysis_stats: {
-      monthly_free_analyses: number
-      free_analyses_used: number
-      free_analyses_remaining: number
-      reset_at: string | null
-      tier: string
+      total: number
+      limit: number
     }
   }
   latest_stats: ValorantStats | null
