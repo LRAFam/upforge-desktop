@@ -199,7 +199,7 @@ function createTray(): void {
 
 function setupGameDetection(): void {
   // All known Valorant game modes returned by the Riot Local Client API
-  const ALL_MODES = new Set(['COMPETITIVE', 'PREMIER', 'CLASSIC', 'DEATHMATCH', 'SPIKERUSH', 'SWIFTPLAY', 'SNOWBALL'])
+  const ALL_MODES = new Set(['COMPETITIVE', 'PREMIER', 'CLASSIC', 'DEATHMATCH', 'TEAMDEATHMATCH', 'SPIKERUSH', 'SWIFTPLAY', 'SNOWBALL'])
 
   /**
    * Stop recording, collect the match timeline (with Riot MatchDetails), and

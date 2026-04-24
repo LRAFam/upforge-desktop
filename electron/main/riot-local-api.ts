@@ -833,6 +833,7 @@ export class RiotLocalApi {
       const text = buf.toString('utf8').toLowerCase()
       if (text.includes('premier')) return 'PREMIER'
       if (text.includes('competitive')) return 'COMPETITIVE'
+      if (text.includes('teamdeathmatch') || text.includes('hurm')) return 'TEAMDEATHMATCH'
       if (text.includes('deathmatch')) return 'DEATHMATCH'
       if (text.includes('spikerush') || text.includes('spike rush')) return 'SPIKERUSH'
       if (text.includes('swiftplay') || text.includes('swift play')) return 'SWIFTPLAY'

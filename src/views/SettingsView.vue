@@ -305,7 +305,8 @@ const GAME_MODES = [
   { value: 'CLASSIC', label: 'Unrated', hint: 'Casual 5v5' },
   { value: 'SPIKERUSH', label: 'Spike Rush', hint: '' },
   { value: 'SWIFTPLAY', label: 'Swift Play', hint: '' },
-  { value: 'DEATHMATCH', label: 'Deathmatch', hint: 'Warm-up & practice' }
+  { value: 'DEATHMATCH', label: 'Deathmatch', hint: 'Warm-up & practice' },
+  { value: 'TEAMDEATHMATCH', label: 'Team Deathmatch', hint: 'HURM mode' }
 ]
 
 const toggles: Array<{ key: keyof Pick<AppSettings, 'launchOnStartup' | 'autoDelete' | 'autoAnalyse'>; label: string; hint: string | null }> = [
