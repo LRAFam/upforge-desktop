@@ -206,7 +206,7 @@
             />
           </div>
           <span class="text-[10px] font-medium tabular-nums" :class="(profile.user.analysis_stats.limit - profile.user.analysis_stats.total) <= 0 ? 'text-red-400' : 'text-gray-300'">
-            {{ profile.user.analysis_stats.limit - profile.user.analysis_stats.total }}/{{ profile.user.analysis_stats.limit }}
+            {{ Math.max(0, profile.user.analysis_stats.limit - profile.user.analysis_stats.total) }}/{{ profile.user.analysis_stats.limit }}
           </span>
         </div>
       </div>
