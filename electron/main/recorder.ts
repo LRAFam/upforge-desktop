@@ -105,7 +105,7 @@ export class Recorder {
     console.log(`[Recorder] Platform: ${process.platform}, encoder: ${encoder}`)
     console.log(`[Recorder] Output: ${this._outputPath}`)
 
-    await this._spawnAndConfirm(game, config, encoder, false)
+    await this._spawnAndConfirm(game, config, encoder, false, false)
   }
 
   /**
@@ -118,11 +118,12 @@ export class Recorder {
     game: string,
     config: RecorderConfig | undefined,
     encoder: HWEncoder,
-    useDesktopFallback: boolean
+    useDesktopFallback: boolean,
+    noAudio: boolean = false
   ): Promise<void> {
     const STARTUP_TIMEOUT_MS = 2000
     const ffmpegPath = this._ffmpegPath()
-    const args = this._buildArgs(encoder, this._outputPath!, game, config, useDesktopFallback)
+    const args = this._buildArgs(encoder, this._outputPath!, game, config, useDesktopFallback, noAudio)
 
     console.log(`[Recorder] ffmpeg path: ${ffmpegPath}`)
     console.log(`[Recorder] Args: ${args.join(' ')}`)
@@ -181,7 +182,21 @@ export class Recorder {
         console.warn('[Recorder] Window capture failed — retrying with full desktop capture')
         this._stderrBuffer = ''
         this._process = null
-        return this._spawnAndConfirm(game, config, encoder, true)
+        return this._spawnAndConfirm(game, config, encoder, true, noAudio)
+      }
+
+      // If audio capture failed, retry without audio (WASAPI unavailable / invalid device)
+      if (!noAudio) {
+        const reasonLower = reason.toLowerCase()
+        const audioFailed = reasonLower.includes('wasapi') || reasonLower.includes('loopback') ||
+          reasonLower.includes('invalid argument') || reasonLower.includes('audio') ||
+          reasonLower.includes('avfoundation') && reasonLower.includes('0')
+        if (audioFailed) {
+          console.warn('[Recorder] Audio capture failed — retrying without audio:', reason)
+          this._stderrBuffer = ''
+          this._process = null
+          return this._spawnAndConfirm(game, config, encoder, useDesktopFallback, true)
+        }
       }
 
       this._lastError = reason
@@ -282,7 +297,7 @@ export class Recorder {
     })
   }
 
-  private _buildArgs(encoder: HWEncoder, outputPath: string, game: string, config?: RecorderConfig, useDesktopFallback = false): string[] {
+  private _buildArgs(encoder: HWEncoder, outputPath: string, game: string, config?: RecorderConfig, useDesktopFallback = false, noAudio = false): string[] {
     const codecMap: Record<HWEncoder, string> = {
       videotoolbox: 'h264_videotoolbox',
       nvenc: 'h264_nvenc',
@@ -305,15 +320,17 @@ export class Recorder {
         : ['-b:v', bitrateStr, '-maxrate', maxrateStr, '-bufsize', bufsizeStr]
 
     if (IS_MAC) {
+      // noAudio: capture video device only (no audio index after colon)
+      const input = noAudio ? '1' : '1:0'
+      if (noAudio) console.log('[Recorder] Mac: recording without audio (avfoundation device 1)')
       return [
         '-f', 'avfoundation',
         '-framerate', '30',
-        '-i', '1:0',
+        '-i', input,
         '-vf', `scale=${scale}`,
         '-vcodec', codec,
         ...qualityArgs,
-        '-acodec', 'aac',
-        '-b:a', '128k',
+        ...(noAudio ? [] : ['-acodec', 'aac', '-b:a', '128k']),
         '-movflags', '+faststart',
         outputPath
       ]
@@ -324,7 +341,21 @@ export class Recorder {
     // useDesktopFallback is set when window-title capture failed at startup.
     const windowTitle = !useDesktopFallback ? GAME_WINDOW_TITLES[game.toLowerCase()] : undefined
     const captureInput = windowTitle ? `title=${windowTitle}` : 'desktop'
-    console.log(`[Recorder] Windows capture input: ${captureInput}`)
+    console.log(`[Recorder] Windows capture input: ${captureInput}${noAudio ? ' (no audio)' : ''}`)
+
+    if (noAudio) {
+      return [
+        '-f', 'gdigrab',
+        '-framerate', '30',
+        '-i', captureInput,
+        '-vf', `scale=${scale}`,
+        '-vcodec', codec,
+        ...qualityArgs,
+        '-movflags', '+faststart',
+        outputPath
+      ]
+    }
+
     return [
       '-f', 'gdigrab',
       '-framerate', '30',
