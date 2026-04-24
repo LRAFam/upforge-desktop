@@ -35,6 +35,20 @@ const gameDetector = new GameDetector()
 const recorder = new Recorder()
 recorder.onStatusChange = (recording, error) => {
   mainWindow?.webContents.send('recording:status-changed', { recording, error: error ?? null })
+  // If recording stopped unexpectedly due to an error, show a system notification
+  // so the user knows even if UpForge is in the background during a game
+  if (!recording && error) {
+    console.warn('[Main] Recording stopped with error:', error)
+    tray?.setToolTip('UpForge — Recording stopped!')
+    if (Notification.isSupported()) {
+      new Notification({
+        title: 'UpForge — Recording Stopped',
+        body: 'Recording stopped unexpectedly. Open UpForge to see details.',
+        silent: false
+      }).show()
+    }
+    setTimeout(() => tray?.setToolTip('UpForge — Valorant AI Coaching'), 10_000)
+  }
 }
 const riotLocalApi = new RiotLocalApi()
 const authManager = new AuthManager()
@@ -458,7 +472,16 @@ function setupGameDetection(): void {
       console.error('[Main] Failed to start recording:', msg)
       logActivity(`Recording failed to start: ${msg}`)
       mainWindow?.webContents.send('recording:starting', { starting: false })
-      tray?.setToolTip('UpForge — Active')
+      tray?.setToolTip('UpForge — Recording failed!')
+      if (Notification.isSupported()) {
+        new Notification({
+          title: 'UpForge — Recording Failed',
+          body: 'Could not start recording. Open UpForge to see details.',
+          silent: false
+        }).show()
+      }
+      // Reset tray tooltip after 10 seconds so it doesn't stay on "failed"
+      setTimeout(() => tray?.setToolTip('UpForge — Valorant AI Coaching'), 10_000)
       return
     }
     logActivity(`Recording started (${gameMode ?? 'unknown mode'}${recorder.wasNoAudio() ? ' — no audio' : ''})`)
