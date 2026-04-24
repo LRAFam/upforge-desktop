@@ -413,6 +413,18 @@ function setupGameDetection(): void {
       console.log('[RiotLocalApi] onMatchEnded fired — stopping recording')
       logActivity('Match ended (presence) — stopping recording')
       await handleMatchEnd(game)
+
+      // VALORANT-Win64-Shipping.exe often stays alive between consecutive matches
+      // (the user returns to lobby and queues again without relaunching the client).
+      // In that case game-stopped never fires and game-started never re-fires, so
+      // nothing would detect the next match. Re-enter the full detection loop if
+      // the process is still running. This also covers back-to-back Deathmatch sessions.
+      await new Promise((r) => setTimeout(r, 5000)) // let the post-game lobby settle
+      if (await gameDetector.isMatchProcessRunning()) {
+        console.log('[GameDetector] Game still running after match — watching for next match')
+        logActivity('Watching for next match...')
+        gameDetector.emit('game-started', game)
+      }
     }
 
     // Start tracking + recording
