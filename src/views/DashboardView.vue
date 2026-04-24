@@ -232,7 +232,7 @@
           <p class="text-xs font-medium text-gray-200 truncate">
             {{ rec.agent || 'Unknown' }}<span v-if="rec.map" class="text-gray-600"> &middot; {{ rec.map }}</span>
           </p>
-          <p class="text-[10px] text-gray-600 mt-0.5">{{ formatDate(new Date(rec.recordedAt).toISOString()) }} &middot; {{ formatMode(rec.gameMode) }}</p>
+          <p class="text-[10px] text-gray-600 mt-0.5">{{ formatDate(new Date(rec.recordedAt).toISOString()) }} &middot; {{ formatMode(rec.gameMode) }}<span v-if="rec.fileSizeBytes"> &middot; {{ formatFileSize(rec.fileSizeBytes) }}</span></p>
         </div>
         <div class="flex items-center gap-1.5 flex-shrink-0">
           <button
@@ -589,6 +589,12 @@ function openBrowser() { window.open('https://upforge.gg/dashboard', '_blank') }
 
 function formatDate(d: string): string {
   return new Date(d).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
+}
+
+function formatFileSize(bytes: number): string {
+  if (bytes >= 1024 * 1024 * 1024) return (bytes / (1024 * 1024 * 1024)).toFixed(1) + ' GB'
+  if (bytes >= 1024 * 1024) return Math.round(bytes / (1024 * 1024)) + ' MB'
+  return Math.round(bytes / 1024) + ' KB'
 }
 
 function tierBadgeClass(tier: string): string {

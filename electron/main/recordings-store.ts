@@ -17,6 +17,7 @@ export interface PendingRecording {
   recordedAt: number
   analysed: boolean
   jobId?: string
+  fileSizeBytes?: number
 }
 
 export type NewRecording = Omit<PendingRecording, 'id' | 'recordedAt' | 'analysed'>
@@ -36,7 +37,13 @@ export class RecordingsStore {
       const raw = fs.readFileSync(this.filePath, 'utf-8')
       const all: PendingRecording[] = JSON.parse(raw)
       // Prune entries whose video file no longer exists to keep the store clean
-      return all.filter(r => r.analysed || fs.existsSync(r.path))
+      const pruned = all.filter(r => r.analysed || fs.existsSync(r.path))
+      // Persist the pruned list so stale entries are removed from disk too
+      if (pruned.length !== all.length) {
+        fs.mkdirSync(path.dirname(this.filePath), { recursive: true })
+        fs.writeFileSync(this.filePath, JSON.stringify(pruned, null, 2))
+      }
+      return pruned
     } catch {
       return []
     }
@@ -48,11 +55,17 @@ export class RecordingsStore {
   }
 
   add(data: NewRecording): PendingRecording {
+    let fileSizeBytes: number | undefined
+    try {
+      fileSizeBytes = fs.statSync(data.path).size
+    } catch { /* file might not be readable yet */ }
+
     const recording: PendingRecording = {
       ...data,
       id: randomUUID(),
       recordedAt: Date.now(),
-      analysed: false
+      analysed: false,
+      fileSizeBytes
     }
     this.recordings.unshift(recording)
     // Keep last 50 recordings

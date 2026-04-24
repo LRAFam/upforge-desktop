@@ -26,6 +26,7 @@ export interface PendingRecording {
   recordedAt: number
   analysed: boolean
   jobId?: string
+  fileSizeBytes?: number
 }
 
 export interface ValorantStats {

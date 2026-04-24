@@ -150,7 +150,14 @@ function createTray(): void {
   tray = new Tray(icon.resize({ width: 16, height: 16 }))
 
   const updateTrayMenu = (): void => {
-    const menu = Menu.buildFromTemplate([
+    const pendingCount = recordingsStore?.getPending().length ?? 0
+    const pendingLabel = pendingCount === 1
+      ? '1 recording pending analysis'
+      : pendingCount > 1
+        ? `${pendingCount} recordings pending analysis`
+        : null
+
+    const menuTemplate: Electron.MenuItemConstructorOptions[] = [
       {
         label: 'Open UpForge',
         click: () => {
@@ -172,6 +179,23 @@ function createTray(): void {
         label: 'Recording: ' + (recorder.isRecording() ? '● Active' : '○ Idle'),
         enabled: false
       },
+    ]
+
+    if (pendingLabel) {
+      menuTemplate.push({
+        label: pendingLabel,
+        click: () => {
+          if (!mainWindow) {
+            mainWindow = createMainWindow()
+          } else {
+            mainWindow.show()
+            mainWindow.focus()
+          }
+        }
+      })
+    }
+
+    menuTemplate.push(
       { type: 'separator' },
       {
         label: 'Quit UpForge',
@@ -179,8 +203,9 @@ function createTray(): void {
           app.quit()
         }
       }
-    ])
+    )
 
+    const menu = Menu.buildFromTemplate(menuTemplate)
     tray!.setContextMenu(menu)
   }
 

@@ -318,7 +318,7 @@ const toggles: Array<{ key: keyof Pick<AppSettings, 'launchOnStartup' | 'autoDel
 const usagePercent = computed(() => {
   const u = user.value as UserWithUsage | null
   if (!u?.analyses_used || !u?.analyses_limit) return 0
-  return Math.min(100, Math.round((u.analyses_used / u.analyses_limit) * 100))
+  return Math.min(100, Math.round((Math.max(0, u.analyses_used) / u.analyses_limit) * 100))
 })
 
 function tierClass(tier: string): string {
