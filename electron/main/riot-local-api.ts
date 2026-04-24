@@ -3,6 +3,82 @@ import tls from 'tls'
 import fs from 'fs'
 import path from 'path'
 
+/**
+ * Maps Riot's internal agent UUIDs (characterId) to display names.
+ * Source: valorant-api.com — update when new agents are released.
+ */
+const AGENT_UUID_TO_NAME: Record<string, string> = {
+  '5f8d3a7f-467b-97f3-062c-0a0fad1b84d5': 'Brimstone',
+  '707eab51-4836-f488-046a-cda6bf494859': 'Viper',
+  '22697a3d-45bf-be07-69e9-f3e05cb36c1b': 'Chamber',
+  '601dbbe7-43ce-be57-2a40-4abd24953ffd': 'KAY/O',
+  '6f2a04ca-43e0-be17-7f36-b3908627744d': 'Skye',
+  '117ed9e3-49f3-6512-3ccf-0cada7e3823b': 'Cypher',
+  '320b2a48-4d9b-a075-30f1-1f93a9b638fa': 'Sova',
+  '1e58de9c-4950-5125-93e9-a0aee9f98746': 'Killjoy',
+  '95b78ed7-4637-86d9-7e41-71ba8c293152': 'Harbor',
+  '7f94d92c-4234-0a36-9646-3a87eb8b5c89': 'Yoru',
+  'a3bfb853-43b2-7238-a4f1-ad90e9e46bcc': 'Reyna',
+  '9f0d8ba9-4140-b941-57d3-a7ad57c6b417': 'Breach',
+  'add6443a-41bd-e414-f6ad-e58d267f4e95': 'Deadlock',
+  '1dbf2edd-4729-0984-3115-daa5eed44993': 'Clove',
+  'efba5359-4016-a1e5-7626-b1ae1d5c8209': 'Gekko',
+  '5295c2c1-4d88-b2c2-0948-c991c95f8fd5': 'Fade',
+  '8e253930-4c05-31dd-1b6c-968525494517': 'Neon',
+  '41fb69c1-4189-7b37-f117-bcaf1e96f1bf': 'Astra',
+  '569fdd95-4d10-43ab-ca70-79becc718b46': 'Sage',
+  'f94c3b30-42be-e959-889c-5aa313dba261': 'Phoenix',
+  '707eab51-4836-f488-046a-cda6bf494859': 'Viper',
+  'bb2a4828-46eb-8cd1-e765-15848195d751': 'Jett',
+  '0e38b510-41a8-5780-5e8f-568b2a4f2d6c': 'Iso',
+  'dade69b4-4f5a-8528-247b-219e5a1facd6': 'Raze',
+  'e370fa57-4757-3604-3648-499e1f642d3f': 'Omen',
+  '1180a69f-4def-1bc1-6071-d8b28b1c47bd': 'Waylay',
+  'cc8b64c8-4b25-4ff9-6e7f-37b4da43d235': 'Tejo',
+}
+
+/** Resolve a Riot characterId UUID to a display name, returning the UUID unchanged if unknown. */
+export function resolveAgentName(characterId: string | null | undefined): string | null {
+  if (!characterId) return null
+  return AGENT_UUID_TO_NAME[characterId.toLowerCase()] ?? characterId
+}
+
+/**
+ * Maps Riot's internal map codenames (the last segment of a mapId path) to display names.
+ * Source: valorant-api.com — update when new maps are released.
+ *
+ * Riot returns paths like "/Game/Maps/Duality/Duality" — we take the last segment ("Duality")
+ * and resolve it here. Also handles the full path and partial matches.
+ */
+const MAP_CODENAME_TO_NAME: Record<string, string> = {
+  // Current maps
+  ascent: 'Ascent',
+  duality: 'Bind',
+  triad: 'Haven',
+  bonsai: 'Split',
+  port: 'Icebox',
+  foxtrot: 'Breeze',
+  canyon: 'Fracture',
+  pitt: 'Pearl',
+  jam: 'Lotus',
+  juliett: 'Sunset',
+  infinity: 'Abyss',
+  // TDM / special modes
+  hurm_alley: 'Team Deathmatch',
+  hurm_bowl: 'Team Deathmatch',
+  hurm_district: 'Team Deathmatch',
+  hurm_kasbah: 'Team Deathmatch',
+  // Range
+  range: 'The Range',
+}
+
+/** Resolve a Riot map ID (full path or last segment) to a display name. */
+export function resolveMapName(mapId: string | null | undefined): string | null {
+  if (!mapId) return null
+  const segment = mapId.split('/').filter(Boolean).pop() ?? mapId
+  return MAP_CODENAME_TO_NAME[segment.toLowerCase()] ?? segment
+}
+
 export interface GameEvent {
   EventID: number
   EventName: string
@@ -514,8 +590,7 @@ export class RiotLocalApi {
     const { sessionLoopState, queueId, matchMap, allyScore, enemyScore } = state
 
     if (!this.matchData.map && matchMap && matchMap.length > 1) {
-      const parts = matchMap.split('/').filter(Boolean)
-      this.matchData.map = parts.pop() ?? matchMap
+      this.matchData.map = resolveMapName(matchMap)
       console.log(`[RiotLocalApi] Map: ${this.matchData.map}`)
     }
     if (!this.matchData.queueId && queueId) {
@@ -673,8 +748,7 @@ export class RiotLocalApi {
     const allKills = details.kills as Array<Record<string, unknown>> | undefined
 
     if (matchInfo?.mapId) {
-      const mapId = matchInfo.mapId as string
-      this.matchData.map = mapId.split('/').filter(Boolean).pop() ?? mapId
+      this.matchData.map = resolveMapName(matchInfo.mapId as string)
     }
     if (matchInfo?.queueID && !this.matchData.queueId) {
       const queueId = matchInfo.queueID as string
@@ -685,7 +759,7 @@ export class RiotLocalApi {
 
     const ownPlayer = players?.find((p) => p.subject === this.ownPuuid)
     if (ownPlayer) {
-      this.matchData.agent = (ownPlayer.characterId as string) ?? this.matchData.agent
+      this.matchData.agent = resolveAgentName(ownPlayer.characterId as string) ?? this.matchData.agent
       const gameName = (ownPlayer.gameName as string) ?? null
       const tagLine = (ownPlayer.tagLine as string) ?? null
       if (gameName) this.matchData.playerName = gameName
@@ -705,7 +779,7 @@ export class RiotLocalApi {
         const stats = p.stats as Record<string, number> | undefined
         return {
           summonerName: (p.gameName as string) ?? (p.subject as string),
-          agent: (p.characterId as string) ?? null,
+          agent: resolveAgentName(p.characterId as string) ?? null,
           team: (p.teamId as string) ?? 'Unknown',
           kills: stats?.kills ?? 0, deaths: stats?.deaths ?? 0,
           assists: stats?.assists ?? 0, score: stats?.score ?? 0, level: 0,

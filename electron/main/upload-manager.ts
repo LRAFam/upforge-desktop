@@ -46,7 +46,8 @@ export class UploadManager {
       game:       opts.game,
       map:        opts.map,
       agent:      opts.agent,
-      match_data: opts.timeline ? JSON.stringify(opts.timeline) : undefined,
+      // Send as a plain object — Laravel validates as nullable|array
+      match_data: opts.timeline ?? undefined,
     })
     const { job_id, upload_url } = await this._apiPost(
       `${apiUrl}/api/desktop-submissions/presign`,
@@ -58,9 +59,16 @@ export class UploadManager {
     await this._putToS3(upload_url, opts.videoPath, totalBytes, opts.onProgress)
 
     // ── Step 3: confirm and queue analysis ────────────────────────────────
+    // Re-send match context at complete() time so it can override/supplement
+    // presign-time data (e.g. if Riot MatchDetails arrived late).
     await this._apiPost(
       `${apiUrl}/api/desktop-submissions/complete`,
-      JSON.stringify({ job_id }),
+      JSON.stringify({
+        job_id,
+        agent:      opts.agent ?? undefined,
+        map:        opts.map ?? undefined,
+        match_data: opts.timeline ?? undefined,
+      }),
       token
     )
     opts.onProgress(100)
