@@ -431,7 +431,15 @@ function setupGameDetection(): void {
     riotLocalApi.start(game, matchStartTime ?? undefined)
 
     tray?.setToolTip('UpForge — Recording...')
-    await recorder.start(game, recorderConfig)
+    try {
+      await recorder.start(game, recorderConfig)
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      console.error('[Main] Failed to start recording:', msg)
+      logActivity(`Recording failed to start: ${msg}`)
+      tray?.setToolTip('UpForge — Active')
+      return
+    }
     logActivity(`Recording started (${gameMode ?? 'unknown mode'})`)
 
     const user = authManager.getUser()

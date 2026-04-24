@@ -102,48 +102,96 @@ export class Recorder {
     this._outputPath = join(dir, `${game}_${timestamp}.mp4`)
 
     const encoder = await this._detectEncoder()
-    const ffmpegPath = this._ffmpegPath()
-    const args = this._buildArgs(encoder, this._outputPath, game, config)
-
     console.log(`[Recorder] Platform: ${process.platform}, encoder: ${encoder}`)
-    console.log(`[Recorder] ffmpeg path: ${ffmpegPath}`)
     console.log(`[Recorder] Output: ${this._outputPath}`)
+
+    await this._spawnAndConfirm(game, config, encoder, false)
+  }
+
+  /**
+   * Spawns ffmpeg and waits up to 2s to confirm it is actually running before
+   * declaring recording started. If ffmpeg dies within that window (e.g. window
+   * title not found, WASAPI unavailable) we catch the real error and on Windows
+   * retry once with full desktop capture as a fallback.
+   */
+  private async _spawnAndConfirm(
+    game: string,
+    config: RecorderConfig | undefined,
+    encoder: HWEncoder,
+    useDesktopFallback: boolean
+  ): Promise<void> {
+    const STARTUP_TIMEOUT_MS = 2000
+    const ffmpegPath = this._ffmpegPath()
+    const args = this._buildArgs(encoder, this._outputPath!, game, config, useDesktopFallback)
+
+    console.log(`[Recorder] ffmpeg path: ${ffmpegPath}`)
     console.log(`[Recorder] Args: ${args.join(' ')}`)
 
-    this._process = spawn(ffmpegPath, args, { stdio: 'pipe' })
-    this._recording = true
-    this._startedAt = Date.now()
-    this.onStatusChange?.(true)
+    let earlyExited = false
+    let earlyError: string | null = null
 
-    // Capture stderr so we can surface real ffmpeg error messages
+    this._process = spawn(ffmpegPath, args, { stdio: 'pipe' })
+
     this._process.stderr?.on('data', (data: Buffer) => {
       this._stderrBuffer += data.toString()
-      // Keep only the last 2KB to avoid memory growth during long recordings
       if (this._stderrBuffer.length > 2048) {
         this._stderrBuffer = this._stderrBuffer.slice(-2048)
       }
     })
 
     this._process.on('error', (err) => {
-      console.error('[Recorder] ffmpeg process error:', err.message)
-      this._lastError = err.message
-      this._recording = false
-      this.onStatusChange?.(false, err.message)
+      if (!earlyExited) earlyError = err.message
+      earlyExited = true
+      if (this._recording) {
+        this._lastError = err.message
+        this._recording = false
+        this.onStatusChange?.(false, err.message)
+      }
     })
 
     this._process.on('exit', (code) => {
       console.log(`[Recorder] ffmpeg exited with code ${code}`)
-      this._recording = false
-      if (code !== 0 && code !== null) {
-        // Extract last meaningful line from stderr as the error reason
+      if (!earlyExited && code !== 0 && code !== null) {
         const lines = this._stderrBuffer.trim().split('\n').filter(Boolean)
-        this._lastError = lines.at(-1) ?? `ffmpeg exited with code ${code}`
-        console.error('[Recorder] ffmpeg last stderr line:', this._lastError)
-        this.onStatusChange?.(false, this._lastError)
-      } else {
-        this.onStatusChange?.(false)
+        earlyError = lines.at(-1) ?? `ffmpeg exited with code ${code}`
+      }
+      earlyExited = true
+      if (this._recording) {
+        this._recording = false
+        if (code !== 0 && code !== null) {
+          const lines = this._stderrBuffer.trim().split('\n').filter(Boolean)
+          this._lastError = lines.at(-1) ?? `ffmpeg exited with code ${code}`
+          console.error('[Recorder] ffmpeg last stderr line:', this._lastError)
+          this.onStatusChange?.(false, this._lastError)
+        } else {
+          this.onStatusChange?.(false)
+        }
       }
     })
+
+    // Wait for startup confirmation window
+    await new Promise<void>(resolve => setTimeout(resolve, STARTUP_TIMEOUT_MS))
+
+    if (earlyExited) {
+      const reason = earlyError ?? 'ffmpeg failed to start'
+      console.error(`[Recorder] ffmpeg failed within startup window: ${reason}`)
+
+      // On Windows, if window-title capture failed, retry once with full desktop
+      if (IS_WIN && !useDesktopFallback && GAME_WINDOW_TITLES[game.toLowerCase()]) {
+        console.warn('[Recorder] Window capture failed — retrying with full desktop capture')
+        this._stderrBuffer = ''
+        this._process = null
+        return this._spawnAndConfirm(game, config, encoder, true)
+      }
+
+      this._lastError = reason
+      throw new Error(reason)
+    }
+
+    // ffmpeg is still alive after startup window — recording confirmed
+    this._recording = true
+    this._startedAt = Date.now()
+    this.onStatusChange?.(true)
   }
 
   async stop(): Promise<string | null> {
@@ -234,7 +282,7 @@ export class Recorder {
     })
   }
 
-  private _buildArgs(encoder: HWEncoder, outputPath: string, game: string, config?: RecorderConfig): string[] {
+  private _buildArgs(encoder: HWEncoder, outputPath: string, game: string, config?: RecorderConfig, useDesktopFallback = false): string[] {
     const codecMap: Record<HWEncoder, string> = {
       videotoolbox: 'h264_videotoolbox',
       nvenc: 'h264_nvenc',
@@ -273,8 +321,8 @@ export class Recorder {
 
     // Windows: capture the game window by title so only the game is recorded.
     // WASAPI loopback captures all system audio (game sounds + voice chat).
-    // Fall back to full desktop if no window title is registered for this game.
-    const windowTitle = GAME_WINDOW_TITLES[game.toLowerCase()]
+    // useDesktopFallback is set when window-title capture failed at startup.
+    const windowTitle = !useDesktopFallback ? GAME_WINDOW_TITLES[game.toLowerCase()] : undefined
     const captureInput = windowTitle ? `title=${windowTitle}` : 'desktop'
     console.log(`[Recorder] Windows capture input: ${captureInput}`)
     return [
