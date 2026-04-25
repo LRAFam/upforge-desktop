@@ -784,6 +784,11 @@ export class RiotLocalApi {
     console.log(`[RiotLocalApi] Match tracking started (game=${game} matchStartTime=${matchStartTime})`)
   }
 
+  /** Update the recording start time once the recorder has actually begun capturing. */
+  setRecordingStartTime(ts: number): void {
+    if (this.matchData) this.matchData.recordingStartTime = ts
+  }
+
   /**
    * Stop tracking and return enriched MatchData.
    * Fetches Riot MatchDetails API post-match if matchId + region are available.
@@ -972,7 +977,10 @@ export class RiotLocalApi {
     if (allKills && allKills.length > 0) {
       let eventId = 1
       for (const k of allKills) {
-        const tsgm = (k.timeSinceGameStartMillis as number) ?? 0
+        // `timeSinceGameStartMillis` is populated for competitive/unrated.
+        // For TDM/hurm Riot returns 0; use `gameTime` (also ms since game start) as fallback.
+        const rawTsgm = k.timeSinceGameStartMillis as number | undefined
+        const tsgm = (rawTsgm != null && rawTsgm > 0) ? rawTsgm : ((k.gameTime as number) ?? 0)
         const videoOffsetMs = recordingOffset + tsgm
         const killerPuuid = k.killer as string
         const victimPuuid = k.victim as string

@@ -511,12 +511,16 @@ function setupGameDetection(): void {
     }
 
     // Start tracking + recording
+    // Pass matchStartTime so the API can compute videoOffsetMs once we have recording start.
     riotLocalApi.start(game, matchStartTime ?? undefined)
 
     tray?.setToolTip('UpForge — Starting recorder...')
     mainWindow?.webContents.send('recording:starting', { starting: true })
     try {
       await recorder.start(game, recorderConfig)
+      // Update recordingStartTime to the moment the recorder actually began capturing.
+      // This makes videoOffsetMs accurate: offset = (matchStart - recordingStart) + timeSinceGameStart.
+      riotLocalApi.setRecordingStartTime(Date.now())
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
       console.error('[Main] Failed to start recording:', msg)
