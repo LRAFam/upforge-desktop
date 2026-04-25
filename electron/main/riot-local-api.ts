@@ -326,6 +326,8 @@ export class RiotLocalApi {
   private lastGameMode: string | null = null
   /** Counts how many times core-game agent fetch has been attempted this match. */
   private agentFetchAttempts = 0
+  /** Max retries for agent fetch — covers ~3 mins of polling (every 3 s) during loading + early game. */
+  private readonly MAX_AGENT_FETCH_ATTEMPTS = 60
 
   /**
    * Fired when presence transitions INGAME -> MENUS (match ended).
@@ -626,8 +628,8 @@ export class RiotLocalApi {
       console.log(`[RiotLocalApi] Queue: ${queueId} -> ${normalized}`)
     }
 
-    // If agent still unknown, try core-game REST API (retry up to 8 times, one attempt per poll)
-    if (!this.matchData.agent && this.agentFetchAttempts < 8 && this.ownPuuid) {
+    // If agent still unknown, try core-game REST API — retry until match ends
+    if (!this.matchData.agent && this.agentFetchAttempts < this.MAX_AGENT_FETCH_ATTEMPTS && this.ownPuuid) {
       this.agentFetchAttempts++
       this._fetchAgentFromCoreGame().catch(() => { /* swallow — not fatal */ })
     }
@@ -665,6 +667,12 @@ export class RiotLocalApi {
         // Fall back to pre-game endpoint (agent select / loading screen phase)
         await this._fetchAgentFromPreGame()
         return
+      }
+      // Capture matchId while we have it — enables post-match MatchDetails fetch
+      if (!this.matchData.matchId && player.MatchID) {
+        this.matchData.matchId = player.MatchID
+        this.currentMatchId = player.MatchID
+        console.log(`[RiotLocalApi] Match ID from core-game REST: ${player.MatchID}`)
       }
       const match = await this._fetchLocal<{
         Players?: Array<{ Subject?: string; CharacterID?: string }>
@@ -750,6 +758,8 @@ export class RiotLocalApi {
     }
     this._connectWebSocket()
     this.presencePollInterval = setInterval(() => this._pollPresence(), 3000)
+    // Attempt agent fetch immediately (game is already INGAME by the time start() is called)
+    setTimeout(() => this._fetchAgentFromCoreGame().catch(() => {}), 500)
     console.log(`[RiotLocalApi] Match tracking started (game=${game} matchStartTime=${matchStartTime})`)
   }
 
