@@ -908,7 +908,9 @@ export class RiotLocalApi {
       }
     }
 
-    if (roundResults && roundResults.length > 0) {
+    // TDM has no rounds, no economy, no spike — skip spike/round data entirely
+    const isTDM = this.matchData.gameMode === 'TEAMDEATHMATCH'
+    if (!isTDM && roundResults && roundResults.length > 0) {
       for (const round of roundResults) {
         const roundNum = (round.roundNum as number) ?? 0
         const winningTeam = (round.winningTeam as string) ?? null
