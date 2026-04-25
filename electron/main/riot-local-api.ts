@@ -775,9 +775,25 @@ export class RiotLocalApi {
     this.matchData.endTime = Date.now()
     if (!this.matchData.matchId && this.currentMatchId) this.matchData.matchId = this.currentMatchId
 
+    console.log(
+      `[RiotLocalApi] Stop — matchId=${this.matchData.matchId} region=${this.region} ` +
+      `agent=${this.matchData.agent} agentAttempts=${this.agentFetchAttempts}`
+    )
+
+    await this._refreshTokens()
+
+    // If we still don't have a matchId, look it up via match history
+    if (!this.matchData.matchId && this.region && this.ownPuuid) {
+      console.log('[RiotLocalApi] No matchId captured — trying match history fallback')
+      const latestId = await this._fetchLatestMatchId()
+      if (latestId) {
+        this.matchData.matchId = latestId
+        console.log(`[RiotLocalApi] matchId from history: ${latestId}`)
+      }
+    }
+
     if (this.matchData.matchId && this.region) {
       console.log(`[RiotLocalApi] Fetching MatchDetails for ${this.matchData.matchId}`)
-      await this._refreshTokens()
       const details = await this._fetchMatchDetails(this.matchData.matchId)
       if (details) {
         this.matchData.matchDetails = details
@@ -793,7 +809,7 @@ export class RiotLocalApi {
     this.matchData = null
     console.log(
       `[RiotLocalApi] Stop complete — kills=${result.killEvents.length} ` +
-      `rounds=${result.roundSummaries.length} matchId=${result.matchId}`
+      `rounds=${result.roundSummaries.length} matchId=${result.matchId} agent=${result.agent}`
     )
     return result
   }
@@ -831,6 +847,44 @@ export class RiotLocalApi {
         }
       )
       req.on('error', (err: Error) => { console.log(`[RiotLocalApi] MatchDetails error: ${err.message}`); resolve(null) })
+      req.setTimeout(15000, () => { req.destroy(); resolve(null) })
+    })
+  }
+
+  /** Fetch the most recent matchId from the Riot match-history API as a fallback. */
+  private async _fetchLatestMatchId(): Promise<string | null> {
+    if (!this.region || !this.ownPuuid || !this.accessToken || !this.entitlementsToken) return null
+    return new Promise((resolve) => {
+      const req = https.get(
+        {
+          hostname: `pd.${this.region}.a.pvp.net`,
+          port: 443,
+          path: `/match-history/v1/history/${this.ownPuuid}?startIndex=0&endIndex=1`,
+          headers: {
+            Authorization: `Bearer ${this.accessToken}`,
+            'X-Riot-Entitlements-JWT': this.entitlementsToken!,
+            'X-Riot-ClientPlatform':
+              'ew0KCSJwbGF0Zm9ybVR5cGUiOiAiUEMiLA0KCSJwbGF0Zm9ybU9TIjogIldpbmRvd3MiLA0KCSJwbGF0Zm9ybU9TVmVyc2lvbiI6ICIxMC4wLjE5MDQyLjEuMjU2LjY0Yml0IiwNCgkicGxhdGZvcm1DaGlwc2V0IjogIlVua25vd24iDQp9',
+          },
+        },
+        (res) => {
+          let body = ''
+          res.on('data', (chunk: Buffer) => (body += chunk))
+          res.on('end', () => {
+            if (res.statusCode !== 200) {
+              console.log(`[RiotLocalApi] MatchHistory HTTP ${res.statusCode}: ${body.slice(0, 200)}`)
+              resolve(null); return
+            }
+            try {
+              const parsed = JSON.parse(body) as { History?: Array<{ MatchID: string }> }
+              const matchId = parsed.History?.[0]?.MatchID ?? null
+              console.log(`[RiotLocalApi] MatchHistory returned matchId=${matchId}`)
+              resolve(matchId)
+            } catch { resolve(null) }
+          })
+        }
+      )
+      req.on('error', (err: Error) => { console.log(`[RiotLocalApi] MatchHistory error: ${err.message}`); resolve(null) })
       req.setTimeout(15000, () => { req.destroy(); resolve(null) })
     })
   }
