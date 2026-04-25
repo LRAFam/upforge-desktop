@@ -443,6 +443,23 @@ function setupGameDetection(): void {
       return
     }
 
+    // If presence API was available but INGAME was never seen, the player is idle
+    // in the lobby (or queued and cancelled). Do NOT start recording — this is what
+    // causes "hallucinated" matches when the app is left idle for 25+ minutes.
+    if (authOk && matchStartTime === null) {
+      logActivity('Presence timeout — no match started, returning to idle')
+      console.log('[GameDetector] Presence loop timed out without INGAME — not recording')
+      tray?.setToolTip('UpForge — Valorant AI Coaching')
+      // Re-arm: if the game process is still alive, re-enter the detection loop
+      // so we catch the next match the player queues into.
+      await new Promise((r) => setTimeout(r, 5000))
+      if (await gameDetector.isMatchProcessRunning()) {
+        console.log('[GameDetector] Game still running after presence timeout — re-arming detection')
+        gameDetector.emit('game-started', game)
+      }
+      return
+    }
+
     // If presence didn't give us a mode, try the log file as last resort
     if (!modeConfident) {
       const logMode = await riotLocalApi.getGameModeFromLog()
