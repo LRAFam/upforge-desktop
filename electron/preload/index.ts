@@ -52,7 +52,7 @@ const api = {
     getUsage: () => ipcRenderer.invoke('storage:get-usage'),
     openFolder: () => ipcRenderer.invoke('storage:open-folder')
   },
-  on: (channel: string, callback: (...args: unknown[]) => void) => {
+  on: (channel: string, callback: (...args: unknown[]) => void): (() => void) => {
     const allowed = [
       'post-game:upload-start',
       'post-game:upload-progress',
@@ -76,11 +76,11 @@ const api = {
       'updater:error'
     ]
     if (allowed.includes(channel)) {
-      ipcRenderer.on(channel, (_e, ...args) => callback(...args))
+      const handler = (_e: Electron.IpcRendererEvent, ...args: unknown[]) => callback(...args)
+      ipcRenderer.on(channel, handler)
+      return () => ipcRenderer.removeListener(channel, handler)
     }
-  },
-  off: (channel: string, callback: (...args: unknown[]) => void) => {
-    ipcRenderer.removeListener(channel, callback)
+    return () => {}
   }
 }
 

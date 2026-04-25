@@ -235,7 +235,7 @@
           <p class="text-xs font-medium text-gray-200 truncate">
             {{ rec.agent || 'Unknown' }}<span v-if="rec.map" class="text-gray-600"> &middot; {{ rec.map }}</span>
           </p>
-          <p class="text-[10px] text-gray-600 mt-0.5">{{ formatDate(new Date(rec.recordedAt).toISOString()) }} &middot; {{ formatMode(rec.gameMode) }}<span v-if="rec.fileSizeBytes"> &middot; {{ formatFileSize(rec.fileSizeBytes) }}</span></p>
+          <p class="text-[10px] text-gray-600 mt-0.5">{{ formatRelativeTime(rec.recordedAt) }} &middot; {{ formatMode(rec.gameMode) }}<span v-if="rec.fileSizeBytes"> &middot; {{ formatFileSize(rec.fileSizeBytes) }}</span></p>
         </div>
         <div class="flex items-center gap-1.5 flex-shrink-0">
           <button
@@ -464,16 +464,17 @@ onMounted(async () => {
 
   durationInterval = setInterval(updateRecordingElapsed, 1000)
 
-  window.api.on('dashboard:refresh', refreshProfile)
-  window.api.on('recordings:updated', loadPendingRecordings)
-  window.api.on('app:activity-log', ((...args: unknown[]) => {
+  const ipcCleanup: (() => void)[] = []
+  ipcCleanup.push(window.api.on('dashboard:refresh', refreshProfile))
+  ipcCleanup.push(window.api.on('recordings:updated', loadPendingRecordings))
+  ipcCleanup.push(window.api.on('app:activity-log', (...args: unknown[]) => {
     activityLog.value = args[0] as { time: number; message: string }[]
-  }) as (...args: unknown[]) => void)
-  window.api.on('app:ffmpeg-status', ((...args: unknown[]) => {
+  }))
+  ipcCleanup.push(window.api.on('app:ffmpeg-status', (...args: unknown[]) => {
     const data = args[0] as { ok: boolean }
     status.value = { ...status.value, ffmpegOk: data.ok }
-  }) as (...args: unknown[]) => void)
-  window.api.on('recording:status-changed', ((...args: unknown[]) => {
+  }))
+  ipcCleanup.push(window.api.on('recording:status-changed', (...args: unknown[]) => {
     const data = args[0] as { recording: boolean; error: string | null }
     const wasRecording = status.value.recording
     status.value = { ...status.value, recording: data.recording, recordingStarting: false }
@@ -484,20 +485,21 @@ onMounted(async () => {
       warning.value = `Recording stopped: ${data.error}`
       setTimeout(() => { warning.value = null }, 15000)
     }
-  }) as (...args: unknown[]) => void)
-  window.api.on('recording:starting', ((...args: unknown[]) => {
+  }))
+  ipcCleanup.push(window.api.on('recording:starting', (...args: unknown[]) => {
     const data = args[0] as { starting: boolean }
     status.value = { ...status.value, recordingStarting: data.starting }
-  }) as (...args: unknown[]) => void)
-  window.api.on('app:warning', ((...args: unknown[]) => {
+  }))
+  ipcCleanup.push(window.api.on('app:warning', (...args: unknown[]) => {
     const data = args[0] as { message: string }
     warning.value = data.message
     setTimeout(() => { warning.value = null }, 12000)
-  }) as (...args: unknown[]) => void)
-  window.api.on('recording:waiting-for-match', ((...args: unknown[]) => {
+  }))
+  ipcCleanup.push(window.api.on('recording:waiting-for-match', (...args: unknown[]) => {
     const data = args[0] as { waiting: boolean }
     status.value = { ...status.value, waitingForMatch: data.waiting }
-  }) as (...args: unknown[]) => void)
+  }))
+  ;(window as Window & { _dashboardIpcCleanup?: (() => void)[] })._dashboardIpcCleanup = ipcCleanup
 })
 
 onUnmounted(() => {
@@ -505,6 +507,9 @@ onUnmounted(() => {
   clearInterval(durationInterval)
   recordingStartedAt.value = null
   recordingElapsed.value = ''
+  const cleanup = (window as Window & { _dashboardIpcCleanup?: (() => void)[] })._dashboardIpcCleanup
+  cleanup?.forEach(fn => fn())
+  delete (window as Window & { _dashboardIpcCleanup?: (() => void)[] })._dashboardIpcCleanup
 })
 
 async function loadAnalyses() {
@@ -542,8 +547,8 @@ async function analyseRecording(id: string) {
   // Quota gate — prevent upload if user has no analyses remaining
   const stats = profile.value?.user?.analysis_stats
   if (stats && (stats.limit - stats.total) <= 0) {
-    warning.value = 'No analyses remaining this month. Upgrade your plan at upforge.gg to get more.'
-    setTimeout(() => { warning.value = null }, 10000)
+    warning.value = 'No analyses remaining this month. Upgrade at upforge.gg to get more.'
+    // Sticky — user must dismiss manually
     return
   }
 
@@ -593,11 +598,20 @@ function simulateGame(game: string, durationMs: number) {
   setTimeout(() => { simulating.value = false; simStatus.value = 'Done' }, durationMs + 500)
 }
 
-function openAnalysis(id: number) { window.open(`https://upforge.gg/results/${id}`, '_blank') }
-function openBrowser() { window.open('https://upforge.gg/dashboard', '_blank') }
+function openAnalysis(id: number) { window.open(`https://upforge.gg/valorant/results/${id}`, '_blank') }
+function openBrowser() { window.open('https://upforge.gg/valorant/history', '_blank') }
 
 function formatDate(d: string): string {
   return new Date(d).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
+}
+
+function formatRelativeTime(d: string): string {
+  const diff = Date.now() - new Date(d).getTime()
+  if (diff < 60_000) return 'Just now'
+  if (diff < 3_600_000) return `${Math.floor(diff / 60_000)}m ago`
+  if (diff < 86_400_000) return `${Math.floor(diff / 3_600_000)}h ago`
+  if (diff < 604_800_000) return `${Math.floor(diff / 86_400_000)}d ago`
+  return new Date(d).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })
 }
 
 function formatFileSize(bytes: number): string {

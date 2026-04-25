@@ -65,11 +65,15 @@ const MAP_CODENAME_TO_NAME: Record<string, string> = {
   jam: 'Lotus',
   juliett: 'Sunset',
   infinity: 'Abyss',
+  rook: 'Corrode',
   // TDM / special modes
   hurm_alley: 'Team Deathmatch',
   hurm_bowl: 'Team Deathmatch',
   hurm_district: 'Team Deathmatch',
   hurm_kasbah: 'Team Deathmatch',
+  hurm_helix: 'Team Deathmatch',
+  hurm_hightide: 'Team Deathmatch',
+  hurm_yard: 'Team Deathmatch',
   // Range
   range: 'The Range',
 }

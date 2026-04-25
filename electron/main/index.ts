@@ -612,15 +612,22 @@ async function doUploadAndAnalyse(
       recorder.deleteRecording(videoPath)
     }
 
-    // Poll for analysis result (up to 10 minutes)
+    // Poll for analysis result (up to 10 minutes) with exponential backoff
     const startTime = Date.now()
     let pollFailCount = 0
-    const pollTimer = setInterval(async () => {
+    let pollDelay = 5_000
+    let pollTimer: ReturnType<typeof setTimeout> | null = null
+
+    const schedulePoll = () => {
+      pollTimer = setTimeout(pollOnce, pollDelay)
+      pollDelay = Math.min(Math.round(pollDelay * 1.5), 30_000)
+    }
+
+    const pollOnce = async () => {
       try {
         const status = await uploadManager.pollStatus(result.job_id)
         pollFailCount = 0
         if (status.status === 'completed' && status.result) {
-          clearInterval(pollTimer)
           const score = (status.result as Record<string, unknown>).overall_score as number | undefined
           logActivity(`Analysis ready${score != null ? ` — Score: ${score}/100` : ''}`)
           send('post-game:analysis-ready', {
@@ -638,27 +645,30 @@ async function doUploadAndAnalyse(
             body: `${notifAgent}${notifMap}${notifScore}`
           }).show()
         } else if (status.status === 'failed') {
-          clearInterval(pollTimer)
           logActivity('Analysis failed')
           send('post-game:upload-error', 'Analysis failed. Please try again.')
           tray?.setToolTip('UpForge — Valorant AI Coaching')
         } else if (Date.now() - startTime > 600_000) {
-          clearInterval(pollTimer)
           logActivity('Analysis timed out')
           send('post-game:upload-error', 'Analysis timed out.')
           tray?.setToolTip('UpForge — Valorant AI Coaching')
+        } else {
+          schedulePoll()
         }
       } catch (pollErr) {
         pollFailCount++
         console.warn(`[Upload] Poll error (${pollFailCount}):`, pollErr)
         if (pollFailCount >= 5) {
-          clearInterval(pollTimer)
           logActivity('Analysis polling failed — lost connection to server')
           send('post-game:upload-error', 'Lost connection while waiting for analysis. Check your internet connection.')
           tray?.setToolTip('UpForge — Valorant AI Coaching')
+        } else {
+          schedulePoll()
         }
       }
-    }, 15_000)
+    }
+
+    schedulePoll()
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : 'Upload failed'
     logActivity(`Upload failed: ${msg}`)

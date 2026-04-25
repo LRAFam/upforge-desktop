@@ -62,9 +62,13 @@
           <svg class="w-3.5 h-3.5 text-gray-500 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
           </svg>
-          <div>
+          <div class="flex-1 min-w-0">
             <p class="text-[11px] text-gray-400">Taking longer than usual</p>
-            <p class="text-[10px] text-gray-600 mt-0.5">Your analysis is still running in the background. You can check results on the dashboard.</p>
+            <p class="text-[10px] text-gray-600 mt-0.5">Your analysis is still running in the background. Check results on the dashboard.</p>
+            <button
+              class="mt-2 px-2.5 py-1 text-[10px] font-medium text-gray-300 bg-white/[0.06] hover:bg-white/[0.1] border border-white/[0.08] rounded-lg transition-colors"
+              @click="dismiss"
+            >Close &amp; check dashboard</button>
           </div>
         </div>
       </div>
@@ -227,29 +231,31 @@ const glowBgStyle = computed(() => {
 })
 
 onMounted(() => {
-  window.api.on('post-game:upload-start', ((...args: unknown[]) => {
+  const ipcCleanup: (() => void)[] = []
+  ipcCleanup.push(window.api.on('post-game:upload-start', (...args: unknown[]) => {
     const data = args[0] as { game: string; map: string | null; agent: string | null }
     gameInfo.value = { map: data.map, agent: data.agent }
     state.value = 'uploading'
-  }) as (...args: unknown[]) => void)
-  window.api.on('post-game:upload-progress', ((...args: unknown[]) => { uploadProgress.value = args[0] as number }) as (...args: unknown[]) => void)
-  window.api.on('post-game:upload-complete', () => { state.value = 'analysing'; startStuckTimer() })
-  window.api.on('post-game:analysis-ready', ((...args: unknown[]) => {
+  }))
+  ipcCleanup.push(window.api.on('post-game:upload-progress', (...args: unknown[]) => { uploadProgress.value = args[0] as number }))
+  ipcCleanup.push(window.api.on('post-game:upload-complete', () => { state.value = 'analysing'; startStuckTimer() }))
+  ipcCleanup.push(window.api.on('post-game:analysis-ready', (...args: unknown[]) => {
     clearStuckTimer()
     const r = args[0] as { overall_score: number; analysis_id: number }
     result.value = r
     state.value = 'ready'
-  }) as (...args: unknown[]) => void)
-  window.api.on('post-game:pending', ((...args: unknown[]) => {
+  }))
+  ipcCleanup.push(window.api.on('post-game:pending', (...args: unknown[]) => {
     const data = args[0] as { recordingId: string; game: string; map: string | null; agent: string | null }
     pendingRecordingId.value = data.recordingId
     gameInfo.value = { map: data.map, agent: data.agent }
     state.value = 'pending'
-  }) as (...args: unknown[]) => void)
-  window.api.on('post-game:upload-error', ((...args: unknown[]) => {
+  }))
+  ipcCleanup.push(window.api.on('post-game:upload-error', (...args: unknown[]) => {
     errorMessage.value = args[0] as string
     state.value = 'error'
-  }) as (...args: unknown[]) => void)
+  }))
+  ;(window as Window & { _postGameIpcCleanup?: (() => void)[] })._postGameIpcCleanup = ipcCleanup
 
   // Dev preview: show a mock ready state
   if (window.location.hash.includes('post-game-preview')) {
@@ -271,7 +277,12 @@ onMounted(() => {
   }
 })
 
-onUnmounted(() => clearStuckTimer())
+onUnmounted(() => {
+  clearStuckTimer()
+  const cleanup = (window as Window & { _postGameIpcCleanup?: (() => void)[] })._postGameIpcCleanup
+  cleanup?.forEach(fn => fn())
+  delete (window as Window & { _postGameIpcCleanup?: (() => void)[] })._postGameIpcCleanup
+})
 
 async function analyseNow() {
   if (!pendingRecordingId.value || analysing.value) return
@@ -311,7 +322,7 @@ function retryUpload() {
 
 function viewFullAnalysis() {
   if (result.value?.analysis_id) {
-    window.open(`https://upforge.gg/results/${result.value.analysis_id}`, '_blank')
+    window.open(`https://upforge.gg/valorant/results/${result.value.analysis_id}`, '_blank')
   }
   dismiss()
 }
