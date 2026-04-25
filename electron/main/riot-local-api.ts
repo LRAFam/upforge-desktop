@@ -66,14 +66,14 @@ const MAP_CODENAME_TO_NAME: Record<string, string> = {
   juliett: 'Sunset',
   infinity: 'Abyss',
   rook: 'Corrode',
-  // TDM / special modes
-  hurm_alley: 'Team Deathmatch',
-  hurm_bowl: 'Team Deathmatch',
-  hurm_district: 'Team Deathmatch',
-  hurm_kasbah: 'Team Deathmatch',
-  hurm_helix: 'Team Deathmatch',
-  hurm_hightide: 'Team Deathmatch',
-  hurm_yard: 'Team Deathmatch',
+  // TDM / special modes — each has its own map name
+  hurm_alley: 'Drift',
+  hurm_bowl: 'Glitch',
+  hurm_district: 'District',
+  hurm_kasbah: 'Kasbah',
+  hurm_helix: 'Helix',
+  hurm_hightide: 'Hightide',
+  hurm_yard: 'Yard',
   // Range
   range: 'The Range',
 }
