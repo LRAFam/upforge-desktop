@@ -83,6 +83,7 @@ function createMainWindow(): BrowserWindow {
     frame: false,
     titleBarStyle: 'hidden',
     backgroundColor: '#0a0a0a',
+    icon: join(__dirname, '../../resources/icon.ico'),
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
       contextIsolation: true,
@@ -123,6 +124,7 @@ function createPostGameWindow(): BrowserWindow {
     alwaysOnTop: true,
     skipTaskbar: true,
     backgroundColor: '#0a0a0a',
+    icon: join(__dirname, '../../resources/icon.ico'),
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
       contextIsolation: true,
