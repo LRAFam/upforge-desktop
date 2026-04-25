@@ -323,6 +323,7 @@ export class RiotLocalApi {
   private matchEnded = false
   private currentMatchId: string | null = null
   private lastGameMode: string | null = null
+  private agentFetchAttempted = false
 
   /**
    * Fired when presence transitions INGAME -> MENUS (match ended).
@@ -575,12 +576,26 @@ export class RiotLocalApi {
       }
     }
     // Extract matchId from core-game URI during match (backup)
-    if (uri.includes('/core-game/v1/matches/') && !this.currentMatchId) {
-      const m = uri.match(/core-game\/v1\/matches\/([0-9a-f-]{36})/)
-      if (m) {
-        this.currentMatchId = m[1]
-        if (this.matchData) this.matchData.matchId = m[1]
-        console.log(`[RiotLocalApi] Match ID from WS URI: ${m[1]}`)
+    if (uri.includes('/core-game/v1/matches/')) {
+      if (!this.currentMatchId) {
+        const m = uri.match(/core-game\/v1\/matches\/([0-9a-f-]{36})/i)
+        if (m) {
+          this.currentMatchId = m[1]
+          if (this.matchData) this.matchData.matchId = m[1]
+          console.log(`[RiotLocalApi] Match ID from WS URI: ${m[1]}`)
+        }
+      }
+      // Extract agent from the WS payload if not yet captured
+      if (this.matchData && !this.matchData.agent) {
+        const players = data.Players as Array<{ Subject?: string; CharacterID?: string }> | undefined
+        const own = players?.find(p => p.Subject?.toLowerCase() === this.ownPuuid?.toLowerCase())
+        if (own?.CharacterID) {
+          const agentName = resolveAgentName(own.CharacterID)
+          if (agentName) {
+            this.matchData.agent = agentName
+            console.log(`[RiotLocalApi] Agent from WS core-game event: ${agentName}`)
+          }
+        }
       }
     }
   }
@@ -607,6 +622,12 @@ export class RiotLocalApi {
       console.log(`[RiotLocalApi] Queue: ${queueId} -> ${normalized}`)
     }
 
+    // If agent still unknown, try core-game REST API (once per match)
+    if (!this.matchData.agent && !this.agentFetchAttempted && this.ownPuuid) {
+      this.agentFetchAttempted = true
+      this._fetchAgentFromCoreGame().catch(() => { /* swallow — not fatal */ })
+    }
+
     const last = this.matchData.roundScores[this.matchData.roundScores.length - 1]
     if (!last || last.allyScore !== allyScore || last.enemyScore !== enemyScore) {
       this.matchData.roundScores.push({ allyScore, enemyScore, detectedAt: Date.now() })
@@ -628,6 +649,32 @@ export class RiotLocalApi {
   // MATCH LIFECYCLE
   // ──────────────────────────────────────────────────────────────────────
 
+  /** Fetch agent from the local core-game API during a live match. */
+  private async _fetchAgentFromCoreGame(): Promise<void> {
+    if (!this.matchData || !this.ownPuuid) return
+    try {
+      const player = await this._fetchLocal<{ Subject: string; MatchID: string }>(
+        `/core-game/v1/players/${this.ownPuuid}`
+      )
+      if (!player?.MatchID) return
+      const match = await this._fetchLocal<{
+        Players?: Array<{ Subject?: string; CharacterID?: string }>
+      }>(`/core-game/v1/matches/${player.MatchID}`)
+      const own = match?.Players?.find(
+        (p) => p.Subject?.toLowerCase() === this.ownPuuid?.toLowerCase()
+      )
+      if (own?.CharacterID && this.matchData) {
+        const agentName = resolveAgentName(own.CharacterID)
+        if (agentName) {
+          this.matchData.agent = agentName
+          console.log(`[RiotLocalApi] Agent from core-game REST: ${agentName}`)
+        }
+      }
+    } catch (err) {
+      console.log('[RiotLocalApi] core-game agent fetch failed:', (err as Error).message)
+    }
+  }
+
   /**
    * Start tracking a match.
    * @param game           'valorant' or 'cs2'
@@ -636,6 +683,7 @@ export class RiotLocalApi {
   start(game: string, matchStartTime?: number): void {
     this.matchEnded = false
     this.currentMatchId = null
+    this.agentFetchAttempted = false
     this.lastSessionLoopState = 'INGAME'
     this.matchData = {
       game,
@@ -763,7 +811,7 @@ export class RiotLocalApi {
       this.lastGameMode = this.matchData.gameMode
     }
 
-    const ownPlayer = players?.find((p) => p.subject === this.ownPuuid)
+    const ownPlayer = players?.find((p) => (p.subject as string)?.toLowerCase() === this.ownPuuid?.toLowerCase())
     if (ownPlayer) {
       this.matchData.agent = resolveAgentName(ownPlayer.characterId as string) ?? this.matchData.agent
       const gameName = (ownPlayer.gameName as string) ?? null
