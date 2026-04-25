@@ -143,7 +143,7 @@
           </div>
           <div
             v-if="profile.user.tier && profile.user.tier !== 'free'"
-            :class="['absolute -bottom-1 -right-1 px-1 py-px rounded text-[8px] font-bold uppercase', tierBadgeClass(profile.user.tier)]"
+            :class="['absolute -bottom-1 -right-1 px-1 py-px rounded text-[8px] font-bold uppercase', getTierBadgeClass(profile.user.tier)]"
           >{{ profile.user.tier.charAt(0) }}</div>
         </div>
 
@@ -156,7 +156,7 @@
         </div>
 
         <div v-if="profile.latest_stats?.current_rank" class="flex-shrink-0 text-right">
-          <span :class="['text-[11px] font-bold', rankColor(profile.latest_stats.current_rank)]">
+          <span class="text-[11px] font-bold" :style="{ color: getRankHexColor(profile.latest_stats.current_rank) }">
             {{ profile.latest_stats.current_rank }}
           </span>
           <p v-if="profile.latest_stats.rr != null" class="text-[9px] text-gray-600 mt-px">{{ profile.latest_stats.rr }} RR</p>
@@ -223,7 +223,10 @@
         :key="rec.id"
         class="flex items-center gap-3 px-3 py-2.5 bg-blue-500/[0.04] border border-blue-500/[0.12] rounded-xl"
       >
-        <div class="w-8 h-8 rounded-lg flex-shrink-0 overflow-hidden flex items-center justify-center bg-blue-500/[0.1] relative">
+        <div
+          class="w-8 h-8 rounded-lg flex-shrink-0 overflow-hidden flex items-center justify-center relative"
+          :style="rec.agent ? { backgroundColor: getAgentColor(rec.agent) + '22' } : { backgroundColor: 'rgba(59,130,246,0.1)' }"
+        >
           <!-- Map minimap background -->
           <img v-if="rec.map && getMapMinimap(rec.map)" :src="getMapMinimap(rec.map)" class="absolute inset-0 w-full h-full object-cover opacity-20" />
           <img v-if="rec.agent && getAgentImage(rec.agent)" :src="getAgentImage(rec.agent)" class="relative w-7 h-7 object-contain" />
@@ -232,9 +235,16 @@
           </svg>
         </div>
         <div class="flex-1 min-w-0">
-          <p class="text-xs font-medium text-gray-200 truncate">
-            {{ rec.agent || 'Unknown' }}<span v-if="rec.map" class="text-gray-600"> &middot; {{ rec.map }}</span>
-          </p>
+          <div class="flex items-center gap-1.5">
+            <p class="text-xs font-medium text-gray-200 truncate">
+              {{ rec.agent || 'Unknown' }}<span v-if="rec.map" class="text-gray-600"> &middot; {{ rec.map }}</span>
+            </p>
+            <span
+              v-if="rec.agent"
+              class="flex-shrink-0 text-[8px] font-semibold px-1 py-px rounded"
+              :style="{ color: getRoleColor(getAgentRole(rec.agent)), backgroundColor: getRoleColor(getAgentRole(rec.agent)) + '20' }"
+            >{{ getAgentRole(rec.agent) }}</span>
+          </div>
           <p class="text-[10px] text-gray-600 mt-0.5">{{ formatRelativeTime(rec.recordedAt) }} &middot; {{ formatMode(rec.gameMode) }}<span v-if="rec.fileSizeBytes"> &middot; {{ formatFileSize(rec.fileSizeBytes) }}</span></p>
         </div>
         <div class="flex items-center gap-1.5 flex-shrink-0">
@@ -285,10 +295,13 @@
         class="w-full flex items-center gap-3 px-3 py-2.5 bg-white/[0.02] hover:bg-white/[0.04] border border-white/[0.05] hover:border-white/[0.08] rounded-xl transition-all text-left"
         @click="openAnalysis(a.id)"
       >
-        <div :class="['w-8 h-8 rounded-lg flex-shrink-0 overflow-hidden flex items-center justify-center relative', a.job_id ? 'bg-red-500/[0.12]' : 'bg-white/[0.04]']">
+        <div
+          class="w-8 h-8 rounded-lg flex-shrink-0 overflow-hidden flex items-center justify-center relative"
+          :style="a.agent ? { backgroundColor: getAgentColor(a.agent) + '22' } : {}"
+        >
           <!-- Map minimap background -->
           <img v-if="a.map && getMapMinimap(a.map)" :src="getMapMinimap(a.map)" class="absolute inset-0 w-full h-full object-cover opacity-20" />
-          <img v-if="a.agent && getAgentImage(a.agent)" :src="getAgentImage(a.agent)" class="relative w-7 h-7 object-contain" :style="{ opacity: a.job_id ? 1 : 0.65 }" />
+          <img v-if="a.agent && getAgentImage(a.agent)" :src="getAgentImage(a.agent)" class="relative w-7 h-7 object-contain" />
           <template v-else>
             <svg v-if="a.job_id" class="w-4 h-4 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <circle cx="12" cy="12" r="8" stroke-width="1.5"/>
@@ -301,11 +314,18 @@
           </template>
         </div>
         <div class="flex-1 min-w-0">
-          <p class="text-xs font-medium text-gray-200 truncate">
-            {{ a.agent || 'Unknown' }}
-            <span class="text-gray-600">&middot;</span>
-            {{ a.map || 'Unknown' }}
-          </p>
+          <div class="flex items-center gap-1.5">
+            <p class="text-xs font-medium text-gray-200 truncate">
+              {{ a.agent || 'Unknown' }}
+              <span class="text-gray-600">&middot;</span>
+              {{ a.map || 'Unknown' }}
+            </p>
+            <span
+              v-if="a.agent"
+              class="flex-shrink-0 text-[8px] font-semibold px-1 py-px rounded"
+              :style="{ color: getRoleColor(getAgentRole(a.agent)), backgroundColor: getRoleColor(getAgentRole(a.agent)) + '20' }"
+            >{{ getAgentRole(a.agent) }}</span>
+          </div>
           <p class="text-[10px] text-gray-600 mt-0.5 flex items-center gap-1.5">
             <span>{{ formatDate(a.created_at) }}</span>
             <span v-if="a.won != null" :class="a.won ? 'text-green-500/70' : 'text-red-500/60'">{{ a.won ? 'W' : 'L' }}</span>
@@ -360,7 +380,7 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import type { ProfileData, AnalysisItem, PendingRecording } from '../env.d.ts'
-import { getAgentImage, getMapMinimap } from '../lib/valorant'
+import { getAgentImage, getAgentRole, getAgentColor, getMapMinimap, getRankHexColor, getRoleColor, getTierBadgeClass, formatGameMode } from '../lib/valorant'
 
 const router = useRouter()
 
@@ -569,14 +589,8 @@ async function dismissRecording(id: string) {
   pendingRecordings.value = pendingRecordings.value.filter(r => r.id !== id)
 }
 
-function formatMode(mode: string): string {
-  const map: Record<string, string> = {
-    COMPETITIVE: 'Competitive', PREMIER: 'Premier', CLASSIC: 'Unrated',
-    DEATHMATCH: 'Deathmatch', TEAMDEATHMATCH: 'Team Deathmatch',
-    SPIKERUSH: 'Spike Rush', SWIFTPLAY: 'Swift Play', SNOWBALL: 'Snowball Fight'
-  }
-  return map[mode] ?? mode
-}
+// formatMode is an alias of the shared formatGameMode from valorant.ts
+const formatMode = formatGameMode
 
 async function stopRecording() {
   if (stopping.value) return
@@ -618,27 +632,5 @@ function formatFileSize(bytes: number): string {
   if (bytes >= 1024 * 1024 * 1024) return (bytes / (1024 * 1024 * 1024)).toFixed(1) + ' GB'
   if (bytes >= 1024 * 1024) return Math.round(bytes / (1024 * 1024)) + ' MB'
   return Math.round(bytes / 1024) + ' KB'
-}
-
-function tierBadgeClass(tier: string): string {
-  switch (tier?.toLowerCase()) {
-    case 'pro': return 'bg-purple-500/20 text-purple-400'
-    case 'elite': return 'bg-yellow-500/20 text-yellow-400'
-    case 'premium': return 'bg-red-500/20 text-red-400'
-    default: return 'bg-white/10 text-gray-400'
-  }
-}
-
-function rankColor(rank: string): string {
-  const r = rank?.toLowerCase() ?? ''
-  if (r.includes('radiant')) return 'text-yellow-300'
-  if (r.includes('immortal')) return 'text-red-400'
-  if (r.includes('ascendant')) return 'text-emerald-400'
-  if (r.includes('diamond')) return 'text-blue-400'
-  if (r.includes('platinum')) return 'text-cyan-400'
-  if (r.includes('gold')) return 'text-yellow-400'
-  if (r.includes('silver')) return 'text-slate-300'
-  if (r.includes('bronze')) return 'text-amber-600'
-  return 'text-gray-500'
 }
 </script>

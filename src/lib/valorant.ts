@@ -193,3 +193,58 @@ export function getRankHexColor(rank: string | null | undefined): string {
   if (lower.includes('iron')) return '#6b7280'
   return '#6b7280'
 }
+
+// ── Role colours ──────────────────────────────────────────────────────────────
+
+const ROLE_COLORS: Record<string, string> = {
+  Duelist: '#f87171',
+  Sentinel: '#fbbf24',
+  Controller: '#a78bfa',
+  Initiator: '#60a5fa',
+  Agent: '#9ca3af',
+}
+
+/** Returns the hex colour for a role label. */
+export function getRoleColor(role: string): string {
+  return ROLE_COLORS[role] ?? '#9ca3af'
+}
+
+// ── Tier helpers ──────────────────────────────────────────────────────────────
+
+/** Returns Tailwind classes for a subscription tier badge. */
+export function getTierClass(tier: string | null | undefined): string {
+  switch (tier?.toLowerCase()) {
+    case 'pro':     return 'border-purple-500/30 text-purple-400 bg-purple-500/[0.08]'
+    case 'elite':   return 'border-yellow-500/30 text-yellow-500 bg-yellow-500/[0.08]'
+    case 'premium': return 'border-red-500/30 text-red-400 bg-red-500/[0.08]'
+    default:        return 'border-white/[0.08] text-gray-500 bg-white/[0.03]'
+  }
+}
+
+/** Returns Tailwind classes for a small tier badge (mini version). */
+export function getTierBadgeClass(tier: string | null | undefined): string {
+  switch (tier?.toLowerCase()) {
+    case 'pro':     return 'bg-purple-500/20 text-purple-400'
+    case 'elite':   return 'bg-yellow-500/20 text-yellow-400'
+    case 'premium': return 'bg-red-500/20 text-red-400'
+    default:        return 'bg-white/10 text-gray-400'
+  }
+}
+
+// ── Mode label ────────────────────────────────────────────────────────────────
+
+const MODE_LABELS: Record<string, string> = {
+  COMPETITIVE: 'Competitive',
+  PREMIER: 'Premier',
+  CLASSIC: 'Unrated',
+  DEATHMATCH: 'Deathmatch',
+  TEAMDEATHMATCH: 'Team Deathmatch',
+  SPIKERUSH: 'Spike Rush',
+  SWIFTPLAY: 'Swift Play',
+  SNOWBALL: 'Snowball Fight',
+}
+
+/** Returns a human-readable label for a Valorant queue/mode ID. */
+export function formatGameMode(mode: string): string {
+  return MODE_LABELS[mode] ?? mode
+}

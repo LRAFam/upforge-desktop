@@ -12,16 +12,16 @@
             </div>
             <div class="min-w-0">
               <p class="text-xs font-medium truncate">{{ user.name }}</p>
-              <p class="text-[10px] text-gray-500 truncate mt-px">
-                <span v-if="user.riot_name">{{ user.riot_name }}#{{ user.riot_tag }}</span>
-                <span v-else>{{ user.email }}</span>
+              <p class="text-[10px] truncate mt-px">
+                <span v-if="user.riot_name" class="text-red-400/70">{{ user.riot_name }}#{{ user.riot_tag }}</span>
+                <span v-else class="text-gray-600 italic">No Riot ID linked</span>
               </p>
             </div>
           </div>
           <div class="flex items-center gap-2 flex-shrink-0 ml-2">
             <span
               class="text-[10px] px-2 py-0.5 rounded-full border capitalize"
-              :class="tierClass(user.tier)"
+              :class="getTierClass(user.tier)"
             >{{ user.tier || 'free' }}</span>
           </div>
         </div>
@@ -64,30 +64,33 @@
       <div class="px-3 py-2.5 bg-white/[0.02] border border-white/[0.05] rounded-xl space-y-3">
         <div>
           <label class="block text-[11px] text-gray-500 mb-1.5">Record game modes</label>
-          <div class="space-y-1.5">
-            <label
+          <div class="grid grid-cols-2 gap-1">
+            <button
               v-for="mode in GAME_MODES"
               :key="mode.value"
-              class="flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg hover:bg-white/[0.03] cursor-pointer transition-colors"
+              :class="[
+                'flex items-center gap-2 px-2.5 py-1.5 rounded-lg border transition-all text-left',
+                settings.recordedModes.includes(mode.value)
+                  ? 'bg-red-500/[0.1] border-red-500/25 text-gray-200'
+                  : 'bg-transparent border-white/[0.06] text-gray-600 hover:border-white/[0.1] hover:text-gray-400'
+              ]"
+              @click="toggleMode(mode.value)"
             >
               <div
                 :class="[
-                  'w-4 h-4 rounded border flex items-center justify-center flex-shrink-0 transition-colors',
-                  settings.recordedModes.includes(mode.value)
-                    ? 'bg-red-500 border-red-500'
-                    : 'bg-transparent border-white/[0.15]'
+                  'w-3.5 h-3.5 rounded-sm border flex items-center justify-center flex-shrink-0 transition-colors',
+                  settings.recordedModes.includes(mode.value) ? 'bg-red-500 border-red-500' : 'bg-transparent border-white/[0.2]'
                 ]"
-                @click="toggleMode(mode.value)"
               >
-                <svg v-if="settings.recordedModes.includes(mode.value)" class="w-2.5 h-2.5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"/>
+                <svg v-if="settings.recordedModes.includes(mode.value)" class="w-2 h-2 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="3.5" d="M5 13l4 4L19 7"/>
                 </svg>
               </div>
-              <div>
-                <span class="text-xs text-gray-300">{{ mode.label }}</span>
-                <span class="text-[10px] text-gray-600 ml-1.5">{{ mode.hint }}</span>
+              <div class="min-w-0">
+                <span class="text-[11px] font-medium leading-none block truncate">{{ mode.label }}</span>
+                <span v-if="mode.hint" class="text-[9px] text-gray-700 leading-none block mt-0.5">{{ mode.hint }}</span>
               </div>
-            </label>
+            </button>
           </div>
           <p class="text-[10px] text-gray-700 mt-1.5 px-0.5">Games in unselected modes will not be recorded.</p>
         </div>
@@ -262,6 +265,7 @@
 import { ref, reactive, computed, onMounted, toRaw } from 'vue'
 import { useRouter } from 'vue-router'
 import type { AppSettings } from '../env.d.ts'
+import { getTierClass, getTierBadgeClass, formatGameMode } from '../lib/valorant'
 
 type UserWithUsage = {
   name: string
@@ -321,14 +325,7 @@ const usagePercent = computed(() => {
   return Math.min(100, Math.round((Math.max(0, u.analyses_used) / u.analyses_limit) * 100))
 })
 
-function tierClass(tier: string): string {
-  switch (tier?.toLowerCase()) {
-    case 'pro': return 'border-purple-500/30 text-purple-400 bg-purple-500/[0.08]'
-    case 'elite': return 'border-yellow-500/30 text-yellow-500 bg-yellow-500/[0.08]'
-    case 'premium': return 'border-red-500/30 text-red-400 bg-red-500/[0.08]'
-    default: return 'border-white/[0.08] text-gray-500 bg-white/[0.03]'
-  }
-}
+// tierClass and formatMode are imported from valorant.ts (shared helpers)
 
 function showSaved(): void {
   savedVisible.value = true
