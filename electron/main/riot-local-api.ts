@@ -316,6 +316,8 @@ export class RiotLocalApi {
   private region: string | null = null
   private playerName: string | null = null
   private playerTag: string | null = null
+  /** Current Riot client version — fetched from valorant-api.com at init, used in PVP API headers. */
+  private clientVersion = 'release-09.08-shipping-15-2656652'
   private matchData: MatchData | null = null
   private presencePollInterval: ReturnType<typeof setInterval> | null = null
   private wsSocket: tls.TLSSocket | null = null
@@ -437,6 +439,8 @@ export class RiotLocalApi {
       `[RiotLocalApi] Auth ready — puuid=${this.ownPuuid?.slice(0, 8)}... ` +
       `region=${this.region} player=${this.playerName}#${this.playerTag}`
     )
+    // Fetch current client version for Riot PVP API headers (non-blocking)
+    this._fetchClientVersion().catch(() => {})
     return true
   }
 
@@ -449,6 +453,18 @@ export class RiotLocalApi {
       this.accessToken = ent.accessToken
       this.entitlementsToken = ent.token
     } catch { /* use cached tokens */ }
+  }
+
+  /** Fetch the current Riot client version from valorant-api.com (non-blocking). */
+  private async _fetchClientVersion(): Promise<void> {
+    try {
+      const res = await fetch('https://valorant-api.com/v1/version')
+      const data = await res.json() as { data?: { riotClientVersion?: string } }
+      if (data?.data?.riotClientVersion) {
+        this.clientVersion = data.data.riotClientVersion
+        console.log(`[RiotLocalApi] Client version: ${this.clientVersion}`)
+      }
+    } catch { /* keep fallback version */ }
   }
 
   // ──────────────────────────────────────────────────────────────────────
@@ -687,8 +703,12 @@ export class RiotLocalApi {
           console.log(`[RiotLocalApi] Agent from core-game REST: ${agentName}`)
         }
       }
-    } catch {
+    } catch (err) {
       // Core-game not yet available — try pre-game instead
+      console.log(
+        `[RiotLocalApi] Core-game attempt ${this.agentFetchAttempts} failed: ` +
+        `${err instanceof Error ? err.message : String(err)}`
+      )
       try { await this._fetchAgentFromPreGame() } catch { /* ignore */ }
     }
   }
@@ -832,6 +852,7 @@ export class RiotLocalApi {
             // Standard Valorant client platform header (required by Riot PvP API)
             'X-Riot-ClientPlatform':
               'ew0KCSJwbGF0Zm9ybVR5cGUiOiAiUEMiLA0KCSJwbGF0Zm9ybU9TIjogIldpbmRvd3MiLA0KCSJwbGF0Zm9ybU9TVmVyc2lvbiI6ICIxMC4wLjE5MDQyLjEuMjU2LjY0Yml0IiwNCgkicGxhdGZvcm1DaGlwc2V0IjogIlVua25vd24iDQp9',
+            'X-Riot-ClientVersion': this.clientVersion,
           },
         },
         (res) => {
@@ -865,6 +886,7 @@ export class RiotLocalApi {
             'X-Riot-Entitlements-JWT': this.entitlementsToken!,
             'X-Riot-ClientPlatform':
               'ew0KCSJwbGF0Zm9ybVR5cGUiOiAiUEMiLA0KCSJwbGF0Zm9ybU9TIjogIldpbmRvd3MiLA0KCSJwbGF0Zm9ybU9TVmVyc2lvbiI6ICIxMC4wLjE5MDQyLjEuMjU2LjY0Yml0IiwNCgkicGxhdGZvcm1DaGlwc2V0IjogIlVua25vd24iDQp9',
+            'X-Riot-ClientVersion': this.clientVersion,
           },
         },
         (res) => {
@@ -1080,7 +1102,11 @@ export class RiotLocalApi {
 // ─────────────────────────────────────────────────────────────────────────────
 
 function _normalizeRegion(region: string): string {
-  return region.replace(/\d+$/, '').toLowerCase()
+  const r = region.replace(/\d+$/, '').toLowerCase()
+  // Map EU shards (euw, eun) to 'eu'; Korean shard 'kr' to 'ko' (Riot PVP API naming)
+  if (r.startsWith('eu')) return 'eu'
+  if (r === 'kr') return 'ko'
+  return r
 }
 
 export function normalizeQueueId(queueId: string): string {
