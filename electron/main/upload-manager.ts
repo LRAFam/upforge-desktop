@@ -1,6 +1,8 @@
 import fs from 'fs'
 import http from 'http'
 import https from 'https'
+import path from 'path'
+import { app } from 'electron'
 import { AuthManager } from './auth-manager'
 import { MatchData } from './riot-local-api'
 
@@ -19,8 +21,45 @@ export interface UploadResult {
   job_id: string
 }
 
+/** Path where an in-progress job_id is persisted so it survives crashes. */
+function pendingJobPath(): string {
+  return path.join(app.getPath('userData'), 'pending-job.json')
+}
+
+/** Persist a job_id to disk immediately after presign, so polling can resume on restart. */
+export function savePendingJob(jobId: string): void {
+  try {
+    fs.writeFileSync(pendingJobPath(), JSON.stringify({ job_id: jobId, savedAt: Date.now() }), 'utf-8')
+  } catch { /* non-critical */ }
+}
+
+/** Clear the persisted job_id once the job is finished (completed, failed, or timed out). */
+export function clearPendingJob(): void {
+  try {
+    if (fs.existsSync(pendingJobPath())) fs.unlinkSync(pendingJobPath())
+  } catch { /* non-critical */ }
+}
+
+/** Read any orphaned job_id saved from a previous session. Returns null if none. */
+export function readPendingJob(): { job_id: string; savedAt: number } | null {
+  try {
+    const raw = fs.readFileSync(pendingJobPath(), 'utf-8')
+    const parsed = JSON.parse(raw)
+    if (parsed?.job_id) return parsed
+  } catch { /* no file or corrupt */ }
+  return null
+}
+
 export class UploadManager {
+  private _s3Request: ReturnType<typeof http.request> | null = null
+
   constructor(private auth: AuthManager) {}
+
+  /** Abort any in-progress S3 upload immediately. */
+  abort(): void {
+    this._s3Request?.destroy(new Error('Upload aborted'))
+    this._s3Request = null
+  }
 
   /**
    * Upload a recording using the two-step direct-S3 flow:
@@ -54,6 +93,10 @@ export class UploadManager {
       presignBody,
       token
     )
+
+    // Persist job_id immediately — if the app crashes during upload or
+    // analysis, the user can resume polling from the next launch.
+    savePendingJob(job_id)
 
     // ── Step 2: stream file directly to S3 ────────────────────────────────
     await this._putToS3(upload_url, opts.videoPath, totalBytes, opts.onProgress)
@@ -138,6 +181,7 @@ export class UploadManager {
         let body = ''
         res.on('data', (c) => body += c)
         res.on('end', () => {
+          this._s3Request = null
           const status = res.statusCode ?? 0
           if (status >= 200 && status < 300) resolve()
           else reject(new Error(`S3 upload failed (HTTP ${status}): ${body.slice(0, 200)}`))
@@ -147,6 +191,8 @@ export class UploadManager {
       req.on('error', reject)
       // 30-minute hard cap — large files over slow connections
       req.setTimeout(30 * 60 * 1000, () => req.destroy(new Error('S3 upload timed out after 30 minutes')))
+
+      this._s3Request = req
 
       let uploaded = 0
       const stream = fs.createReadStream(filePath)

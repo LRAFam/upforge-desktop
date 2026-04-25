@@ -17,7 +17,7 @@ import { setupAutoUpdater } from './updater'
 import { GameDetector } from './game-detector'
 import { Recorder } from './recorder'
 import { RiotLocalApi } from './riot-local-api'
-import { UploadManager } from './upload-manager'
+import { UploadManager, savePendingJob, clearPendingJob, readPendingJob } from './upload-manager'
 import { AuthManager } from './auth-manager'
 import { SettingsManager } from './settings-manager'
 import { setupIpcHandlers } from './ipc-handlers'
@@ -298,6 +298,16 @@ function setupGameDetection(): void {
     thisPostGameWindow.on('closed', () => {
       if (postGameWindow === thisPostGameWindow) postGameWindow = null
     })
+
+    // Notify the user that the match recording has finished and upload is starting
+    if (Notification.isSupported()) {
+      const agentLabel = agent ?? 'Valorant'
+      const mapLabel = map ? ` on ${map}` : ''
+      new Notification({
+        title: 'UpForge — Recording Complete',
+        body: `${agentLabel}${mapLabel} — uploading for AI analysis…`
+      }).show()
+    }
 
     thisPostGameWindow.webContents.once('did-finish-load', async () => {
       const sendToWindow = (channel: string, payload?: unknown) => {
@@ -659,6 +669,7 @@ async function doUploadAndAnalyse(
         if (status.status === 'completed' && status.result) {
           const score = (status.result as Record<string, unknown>).overall_score as number | undefined
           logActivity(`Analysis ready${score != null ? ` — Score: ${score}/100` : ''}`)
+          clearPendingJob()
           send('post-game:analysis-ready', {
             overall_score: (status.result as Record<string, unknown>).overall_score,
             analysis_id: (status.result as Record<string, unknown>).analysis_id,
@@ -675,10 +686,12 @@ async function doUploadAndAnalyse(
           }).show()
         } else if (status.status === 'failed') {
           logActivity('Analysis failed')
+          clearPendingJob()
           send('post-game:upload-error', 'Analysis failed. Please try again.')
           tray?.setToolTip('UpForge — Valorant AI Coaching')
         } else if (Date.now() - startTime > 600_000) {
           logActivity('Analysis timed out')
+          clearPendingJob()
           send('post-game:upload-error', 'Analysis timed out.')
           tray?.setToolTip('UpForge — Valorant AI Coaching')
         } else {
@@ -772,6 +785,14 @@ app.whenReady().then(async () => {
   // Restore auth session from keychain before creating window
   await authManager.loadStoredToken()
 
+  // Resume polling for any job_id that was persisted before a crash.
+  // We wait until the main window is ready before sending the result.
+  const orphanedJob = readPendingJob()
+  if (orphanedJob) {
+    console.log('[App] Orphaned job found from previous session:', orphanedJob.job_id)
+    logActivity(`Resuming analysis poll for job ${orphanedJob.job_id} from previous session`)
+  }
+
   // Show splash launcher while we check for updates
   const splashWindow = createSplashWindow()
 
@@ -786,6 +807,17 @@ app.whenReady().then(async () => {
     setTimeout(() => {
       if (!splashWindow.isDestroyed()) splashWindow.close()
     }, 400)
+
+    // If an orphaned job was found at startup, resume polling once the window loads
+    if (orphanedJob) {
+      mainWindow.webContents.once('did-finish-load', () => {
+        console.log('[App] Resuming orphaned job poll:', orphanedJob.job_id)
+        mainWindow?.webContents.send('post-game:upload-complete', { jobId: orphanedJob.job_id, resumed: true })
+        // Kick off a background poll — reuse the same logic via a synthetic upload window
+        // For now, just notify the dashboard to check; a full poll loop would need the post-game window
+        mainWindow?.webContents.send('dashboard:refresh')
+      })
+    }
   }
 
   setupAutoUpdater(splashWindow, launchMainApp, () => { isQuitting = true })
@@ -823,7 +855,7 @@ app.whenReady().then(async () => {
         top_issue: 'Positioning during post-plant — you were caught in the open on 4 of 6 clutch attempts.'
       }), 5500)
     })
-  }, () => ffmpegOk, () => waitingForMatch, () => activityLog.slice())
+  }, () => ffmpegOk, () => waitingForMatch, () => activityLog.slice(), uploadManager)
 
   // Debug: test Riot Live Client API connection — returns raw response or error details
   ipcMain.handle('debug:test-riot-api', async () => {

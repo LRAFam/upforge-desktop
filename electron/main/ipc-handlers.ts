@@ -8,6 +8,7 @@ import { AuthManager } from './auth-manager'
 import { Recorder } from './recorder'
 import { GameDetector } from './game-detector'
 import { SettingsManager } from './settings-manager'
+import { UploadManager } from './upload-manager'
 
 export function setupIpcHandlers(
   ipcMain: IpcMain,
@@ -18,7 +19,8 @@ export function setupIpcHandlers(
   openPostGameFn?: () => void,
   getFFmpegOk?: () => boolean,
   getWaitingForMatch?: () => boolean,
-  getActivityLog?: () => { time: number; message: string }[]
+  getActivityLog?: () => { time: number; message: string }[],
+  uploadManager?: UploadManager
 ): void {
   // Auth
   ipcMain.handle('auth:login', async (_e, { email, password }) => {
@@ -34,6 +36,12 @@ export function setupIpcHandlers(
   })
 
   ipcMain.handle('auth:logout', async () => {
+    // Stop any active recording before clearing credentials
+    if (recorder.isRecording()) {
+      try { await recorder.stop() } catch { /* ignore */ }
+    }
+    // Abort any in-progress S3 upload
+    uploadManager?.abort()
     return auth.logout()
   })
 
