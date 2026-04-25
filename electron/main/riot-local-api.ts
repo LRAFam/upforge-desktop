@@ -323,7 +323,8 @@ export class RiotLocalApi {
   private matchEnded = false
   private currentMatchId: string | null = null
   private lastGameMode: string | null = null
-  private agentFetchAttempted = false
+  /** Counts how many times core-game agent fetch has been attempted this match. */
+  private agentFetchAttempts = 0
 
   /**
    * Fired when presence transitions INGAME -> MENUS (match ended).
@@ -622,9 +623,9 @@ export class RiotLocalApi {
       console.log(`[RiotLocalApi] Queue: ${queueId} -> ${normalized}`)
     }
 
-    // If agent still unknown, try core-game REST API (once per match)
-    if (!this.matchData.agent && !this.agentFetchAttempted && this.ownPuuid) {
-      this.agentFetchAttempted = true
+    // If agent still unknown, try core-game REST API (retry up to 8 times, one attempt per poll)
+    if (!this.matchData.agent && this.agentFetchAttempts < 8 && this.ownPuuid) {
+      this.agentFetchAttempts++
       this._fetchAgentFromCoreGame().catch(() => { /* swallow — not fatal */ })
     }
 
@@ -649,14 +650,19 @@ export class RiotLocalApi {
   // MATCH LIFECYCLE
   // ──────────────────────────────────────────────────────────────────────
 
-  /** Fetch agent from the local core-game API during a live match. */
+  /** Fetch agent from the local core-game (or pre-game) API during a live/loading match. */
   private async _fetchAgentFromCoreGame(): Promise<void> {
     if (!this.matchData || !this.ownPuuid) return
     try {
+      // Core-game endpoint is available once the game has fully loaded into the match
       const player = await this._fetchLocal<{ Subject: string; MatchID: string }>(
         `/core-game/v1/players/${this.ownPuuid}`
       )
-      if (!player?.MatchID) return
+      if (!player?.MatchID) {
+        // Fall back to pre-game endpoint (agent select / loading screen phase)
+        await this._fetchAgentFromPreGame()
+        return
+      }
       const match = await this._fetchLocal<{
         Players?: Array<{ Subject?: string; CharacterID?: string }>
       }>(`/core-game/v1/matches/${player.MatchID}`)
@@ -670,9 +676,34 @@ export class RiotLocalApi {
           console.log(`[RiotLocalApi] Agent from core-game REST: ${agentName}`)
         }
       }
-    } catch (err) {
-      console.log('[RiotLocalApi] core-game agent fetch failed:', (err as Error).message)
+    } catch {
+      // Core-game not yet available — try pre-game instead
+      try { await this._fetchAgentFromPreGame() } catch { /* ignore */ }
     }
+  }
+
+  /** Try pre-game API for agent during agent select / loading screen. */
+  private async _fetchAgentFromPreGame(): Promise<void> {
+    if (!this.matchData || !this.ownPuuid) return
+    try {
+      const player = await this._fetchLocal<{ Subject: string; MatchID: string }>(
+        `/pregame/v1/players/${this.ownPuuid}`
+      )
+      if (!player?.MatchID) return
+      const match = await this._fetchLocal<{
+        AllyTeam?: { Players?: Array<{ Subject?: string; CharacterID?: string }> }
+      }>(`/pregame/v1/matches/${player.MatchID}`)
+      const own = match?.AllyTeam?.Players?.find(
+        (p) => p.Subject?.toLowerCase() === this.ownPuuid?.toLowerCase()
+      )
+      if (own?.CharacterID && this.matchData) {
+        const agentName = resolveAgentName(own.CharacterID)
+        if (agentName) {
+          this.matchData.agent = agentName
+          console.log(`[RiotLocalApi] Agent from pre-game REST: ${agentName}`)
+        }
+      }
+    } catch { /* pre-game not available */ }
   }
 
   /**
@@ -683,7 +714,7 @@ export class RiotLocalApi {
   start(game: string, matchStartTime?: number): void {
     this.matchEnded = false
     this.currentMatchId = null
-    this.agentFetchAttempted = false
+    this.agentFetchAttempts = 0
     this.lastSessionLoopState = 'INGAME'
     this.matchData = {
       game,
