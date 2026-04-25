@@ -24,6 +24,12 @@ import { setupIpcHandlers } from './ipc-handlers'
 import { RecordingsStore } from './recordings-store'
 import type { MatchData } from './riot-local-api'
 
+// Catch any floating promise rejections in the main process before they
+// crash Electron silently. Log them so they show up in support logs.
+process.on('unhandledRejection', (reason) => {
+  console.error('[Main] Unhandled promise rejection:', reason)
+})
+
 let tray: Tray | null = null
 let mainWindow: BrowserWindow | null = null
 let postGameWindow: BrowserWindow | null = null
@@ -796,6 +802,9 @@ app.whenReady().then(async () => {
     } else {
       console.log('[App] ffmpeg preflight OK')
     }
+  }).catch((err) => {
+    console.error('[App] ffmpeg preflight threw unexpectedly:', err)
+    ffmpegOk = false
   })
   setupIpcHandlers(ipcMain, authManager, recorder, gameDetector, settingsManager, () => {
     postGameWindow = createPostGameWindow()

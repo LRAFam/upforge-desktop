@@ -126,7 +126,7 @@ export class AuthManager {
   }
 
   async login(email: string, password: string): Promise<{ ok: boolean; error?: string }> {
-    log.info('[Auth] login() called for:', email)
+    log.info('[Auth] login() called')
     try {
       log.info('[Auth] posting to /api/login')
       const res = await this._api.post('/api/login', { email, password, device_name: 'desktop' })
@@ -134,7 +134,7 @@ export class AuthManager {
       const { token, user } = res.data
 
       if (!token) {
-        log.warn('[Auth] No token in response:', JSON.stringify(res.data))
+        log.warn('[Auth] No token in response — server returned empty token')
         return { ok: false, error: 'Server did not return a token' }
       }
 

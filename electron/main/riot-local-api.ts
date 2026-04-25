@@ -319,6 +319,7 @@ export class RiotLocalApi {
   private matchData: MatchData | null = null
   private presencePollInterval: ReturnType<typeof setInterval> | null = null
   private wsSocket: tls.TLSSocket | null = null
+  private wsReconnectTimer: ReturnType<typeof setTimeout> | null = null
   private lastSessionLoopState: string = 'MENUS'
   private matchEnded = false
   private currentMatchId: string | null = null
@@ -541,7 +542,9 @@ export class RiotLocalApi {
     socket.on('error', (err: Error) => console.log('[RiotLocalApi] WS error:', err.message))
     socket.on('close', () => {
       console.log('[RiotLocalApi] WS closed')
-      if (this.matchData && !this.matchEnded) setTimeout(() => this._connectWebSocket(), 5000)
+      if (this.matchData && !this.matchEnded) {
+        this.wsReconnectTimer = setTimeout(() => this._connectWebSocket(), 5000)
+      }
     })
   }
 
@@ -756,6 +759,7 @@ export class RiotLocalApi {
    */
   async stop(): Promise<MatchData | null> {
     if (this.presencePollInterval) { clearInterval(this.presencePollInterval); this.presencePollInterval = null }
+    if (this.wsReconnectTimer) { clearTimeout(this.wsReconnectTimer); this.wsReconnectTimer = null }
     if (this.wsSocket) { this.wsSocket.destroy(); this.wsSocket = null }
     if (!this.matchData) return null
     this.matchData.endTime = Date.now()
