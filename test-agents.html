@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Agent UUID Mapping Test</title>
+  <style>
+    body { font-family: sans-serif; background: #0f1117; color: #fff; padding: 20px; }
+    h1 { color: #ff4655; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 16px; }
+    .card { background: #1a1d2e; border-radius: 8px; padding: 12px; text-align: center; border: 1px solid #333; }
+    .card img { width: 100px; height: 100px; object-fit: contain; }
+    .name { font-weight: bold; font-size: 14px; margin: 6px 0 2px; color: #fff; }
+    .uuid { font-size: 9px; color: #888; word-break: break-all; }
+    .match { color: #00ff99; font-size: 11px; margin-top: 4px; }
+    .mismatch { color: #ff4444; font-size: 11px; margin-top: 4px; }
+    .unknown { color: #ffaa00; font-size: 11px; margin-top: 4px; }
+  </style>
+</head>
+<body>
+  <h1>Agent UUID Mapping Verification</h1>
+  <p style="color:#aaa">Green = UUID matches our map · Red = name mismatch · Orange = not in our map</p>
+  <div class="grid" id="grid">Loading...</div>
+
+  <script>
+    // Current mappings in riot-local-api.ts
+    const OUR_MAP = {
+      '5f8d3a7f-467b-97f3-062c-0a0fad1b84d5': 'Brimstone',
+      '707eab51-4836-f488-046a-cda6bf494859': 'Viper',
+      '22697a3d-45bf-be07-69e9-f3e05cb36c1b': 'Chamber',
+      '601dbbe7-43ce-be57-2a40-4abd24953ffd': 'KAY/O',
+      '6f2a04ca-43e0-be17-7f36-b3908627744d': 'Skye',
+      '117ed9e3-49f3-6512-3ccf-0cada7e3823b': 'Cypher',
+      '320b2a48-4d9b-a075-30f1-1f93a9b638fa': 'Sova',
+      '1e58de9c-4950-5125-93e9-a0aee9f98746': 'Killjoy',
+      '95b78ed7-4637-86d9-7e41-71ba8c293152': 'Harbor',
+      '7f94d92c-4234-0a36-9646-3a87eb8b5c89': 'Yoru',
+      'a3bfb853-43b2-7238-a4f1-ad90e9e46bcc': 'Reyna',
+      '9f0d8ba9-4140-b941-57d3-a7ad57c6b417': 'Breach',
+      'add6443a-41bd-e414-f6ad-e58d267f4e95': 'Deadlock',
+      '1dbf2edd-4729-0984-3115-daa5eed44993': 'Clove',
+      'efba5359-4016-a1e5-7626-b1ae1d5c8209': 'Gekko',
+      '5295c2c1-4d88-b2c2-0948-c991c95f8fd5': 'Fade',
+      '8e253930-4c05-31dd-1b6c-968525494517': 'Neon',
+      '41fb69c1-4189-7b37-f117-bcaf1e96f1bf': 'Astra',
+      '569fdd95-4d10-43ab-ca70-79becc718b46': 'Sage',
+      'f94c3b30-42be-e959-889c-5aa313dba261': 'Phoenix',
+      'bb2a4828-46eb-8cd1-e765-15848195d751': 'Jett',
+      '0e38b510-41a8-5780-5e8f-568b2a4f2d6c': 'Iso',
+      'dade69b4-4f5a-8528-247b-219e5a1facd6': 'Raze',
+      'e370fa57-4757-3604-3648-499e1f642d3f': 'Omen',
+      '1180a69f-4def-1bc1-6071-d8b28b1c47bd': 'Waylay',
+      'cc8b64c8-4b25-4ff9-6e7f-37b4da43d235': 'Tejo',
+      '7c8a4701-4de6-9355-b254-e09bc2a34b72': 'Miks',
+      'efba5359-4016-a1e5-7626-b1ae76895940': 'Vyse',
+      '92eeef5d-43b5-1d4a-8d03-b3927a09034b': 'Veto',
+    }
+
+    fetch('https://valorant-api.com/v1/agents?isPlayableCharacter=true')
+      .then(r => r.json())
+      .then(data => {
+        const grid = document.getElementById('grid')
+        grid.innerHTML = ''
+        const agents = data.data.sort((a, b) => a.displayName.localeCompare(b.displayName))
+        for (const agent of agents) {
+          const uuid = agent.uuid
+          const apiName = agent.displayName
+          const ourName = OUR_MAP[uuid]
+          let status = ''
+          if (!ourName) {
+            status = `<div class="unknown">⚠ NOT IN OUR MAP</div>`
+          } else if (ourName === apiName) {
+            status = `<div class="match">✓ ${ourName}</div>`
+          } else {
+            status = `<div class="mismatch">✗ We say: ${ourName}</div>`
+          }
+          grid.innerHTML += `
+            <div class="card">
+              <img src="${agent.displayIconSmall}" alt="${apiName}">
+              <div class="name">${apiName}</div>
+              <div class="uuid">${uuid}</div>
+              ${status}
+            </div>`
+        }
+      })
+  </script>
+</body>
+</html>
