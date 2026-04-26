@@ -15,7 +15,10 @@ const GAME_PROCESSES: Record<string, string[]> = {
   cs2: ['cs2.exe']
 }
 
-const POLL_INTERVAL_MS = 5000
+// Poll interval when no game is running (check for game start)
+const POLL_IDLE_MS = 5000
+// Poll interval while a game is active (check for game stop) — less frequent to reduce in-game overhead
+const POLL_ACTIVE_MS = 10000
 
 export class GameDetector extends EventEmitter {
   private _polling = false
@@ -25,8 +28,8 @@ export class GameDetector extends EventEmitter {
   start(): void {
     if (this._polling) return
     this._polling = true
-    this._interval = setInterval(() => this._poll(), POLL_INTERVAL_MS)
-    console.log('[GameDetector] Started polling every', POLL_INTERVAL_MS, 'ms')
+    this._scheduleNext()
+    console.log('[GameDetector] Started polling (idle: %dms, active: %dms)', POLL_IDLE_MS, POLL_ACTIVE_MS)
   }
 
   stop(): void {
@@ -49,11 +52,19 @@ export class GameDetector extends EventEmitter {
   async isMatchProcessRunning(): Promise<boolean> {
     if (!IS_WIN) return false
     try {
-      const names = await this._getRunningProcessNames()
-      return names.has('valorant-win64-shipping.exe')
+      return await this._isProcessRunning('VALORANT-Win64-Shipping.exe')
     } catch {
       return false
     }
+  }
+
+  private _scheduleNext(): void {
+    if (!this._polling) return
+    const delay = this._activeGame ? POLL_ACTIVE_MS : POLL_IDLE_MS
+    this._interval = setTimeout(async () => {
+      await this._poll()
+      this._scheduleNext()
+    }, delay)
   }
 
   /** Simulate a game session for testing on non-Windows platforms */
@@ -72,10 +83,14 @@ export class GameDetector extends EventEmitter {
     if (!IS_WIN) return
 
     try {
-      const runningNames = await this._getRunningProcessNames()
-
       for (const [game, processNames] of Object.entries(GAME_PROCESSES)) {
-        const running = processNames.some((name) => runningNames.has(name.toLowerCase()))
+        // Only check one game: if a game is active, check if it's still running;
+        // if idle, check if any game has started.
+        if (this._activeGame && this._activeGame !== game) continue
+
+        const running = (
+          await Promise.all(processNames.map((n) => this._isProcessRunning(n)))
+        ).some(Boolean)
 
         if (running && this._activeGame !== game) {
           this._activeGame = game
@@ -92,14 +107,19 @@ export class GameDetector extends EventEmitter {
     }
   }
 
-  /** Use Windows tasklist (built-in) to get running process names */
-  private async _getRunningProcessNames(): Promise<Set<string>> {
-    const { stdout } = await execAsync('tasklist /fo csv /nh', { windowsHide: true })
-    const names = new Set<string>()
-    for (const line of stdout.split('\n')) {
-      const match = line.match(/^"([^"]+)"/)
-      if (match) names.add(match[1].toLowerCase())
+  /**
+   * Check if a single named process is running using a filtered tasklist query.
+   * Much cheaper than listing all processes — Windows only returns the matched rows.
+   */
+  private async _isProcessRunning(processName: string): Promise<boolean> {
+    try {
+      const { stdout } = await execAsync(
+        `tasklist /fi "IMAGENAME eq ${processName}" /fo csv /nh`,
+        { windowsHide: true, timeout: 4000 }
+      )
+      return stdout.toLowerCase().includes(processName.toLowerCase())
+    } catch {
+      return false
     }
-    return names
   }
 }

@@ -141,6 +141,12 @@ export class Recorder {
 
     this._process = spawn(ffmpegPath, args, { stdio: 'pipe' })
 
+    // Lower ffmpeg priority on Windows so it doesn't compete with Valorant for CPU.
+    // We do this asynchronously after spawn — no need to wait.
+    if (IS_WIN && this._process.pid) {
+      this._lowerProcessPriority(this._process.pid)
+    }
+
     this._process.stderr?.on('data', (data: Buffer) => {
       this._stderrBuffer += data.toString()
       if (this._stderrBuffer.length > 2048) {
@@ -333,8 +339,9 @@ export class Recorder {
     const bufsizeStr = `${bitrate * 2}M`
     const scale = config?.quality === '1080p' ? '1920:1080' : '1280:720'
 
+    // software: ultrafast preset to minimise CPU usage (quality traded for performance)
     const qualityArgs = encoder === 'software'
-      ? ['-crf', '28', '-preset', 'veryfast']
+      ? ['-crf', '28', '-preset', 'ultrafast']
       : encoder === 'videotoolbox'
         ? ['-b:v', bitrateStr]
         : ['-b:v', bitrateStr, '-maxrate', maxrateStr, '-bufsize', bufsizeStr]
@@ -363,11 +370,19 @@ export class Recorder {
     const captureInput = windowTitle ? `title=${windowTitle}` : 'desktop'
     console.log(`[Recorder] Windows capture input: ${captureInput}${noAudio ? ' (no audio)' : ''}`)
 
+    // -draw_mouse 0: skip cursor rendering, minor CPU saving
+    // -thread_queue_size: reduce input buffering stalls between gdigrab and WASAPI
+    const captureArgs = [
+      '-f', 'gdigrab',
+      '-framerate', '30',
+      '-draw_mouse', '0',
+      '-thread_queue_size', '512',
+      '-i', captureInput,
+    ]
+
     if (noAudio) {
       return [
-        '-f', 'gdigrab',
-        '-framerate', '30',
-        '-i', captureInput,
+        ...captureArgs,
         '-vf', `scale=${scale}`,
         '-vcodec', codec,
         ...qualityArgs,
@@ -377,10 +392,9 @@ export class Recorder {
     }
 
     return [
-      '-f', 'gdigrab',
-      '-framerate', '30',
-      '-i', captureInput,
+      ...captureArgs,
       '-f', 'wasapi',
+      '-thread_queue_size', '512',
       '-i', 'loopback',
       '-map', '0:v',
       '-map', '1:a',
@@ -392,6 +406,20 @@ export class Recorder {
       '-movflags', '+faststart',
       outputPath
     ]
+  }
+
+  /** Lower the priority of a Windows process to BelowNormal so it doesn't compete with the game. */
+  private _lowerProcessPriority(pid: number): void {
+    // PowerShell: set process priority to BelowNormal (value 16384)
+    const { exec } = require('child_process')
+    exec(
+      `powershell -NoProfile -NonInteractive -Command "(Get-Process -Id ${pid}).PriorityClass = 'BelowNormal'"`,
+      { windowsHide: true },
+      (err: Error | null) => {
+        if (err) console.warn('[Recorder] Could not lower ffmpeg priority:', err.message)
+        else console.log(`[Recorder] ffmpeg (pid ${pid}) set to BelowNormal priority`)
+      }
+    )
   }
 
   private _ffmpegPath(): string {
