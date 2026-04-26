@@ -27,9 +27,13 @@ function pendingJobPath(): string {
 }
 
 /** Persist a job_id to disk immediately after presign, so polling can resume on restart. */
-export function savePendingJob(jobId: string): void {
+export function savePendingJob(jobId: string, context?: { agent?: string | null; map?: string | null; game?: string }): void {
   try {
-    fs.writeFileSync(pendingJobPath(), JSON.stringify({ job_id: jobId, savedAt: Date.now() }), 'utf-8')
+    fs.writeFileSync(
+      pendingJobPath(),
+      JSON.stringify({ job_id: jobId, savedAt: Date.now(), ...context }),
+      'utf-8'
+    )
   } catch { /* non-critical */ }
 }
 
@@ -41,7 +45,7 @@ export function clearPendingJob(): void {
 }
 
 /** Read any orphaned job_id saved from a previous session. Returns null if none. */
-export function readPendingJob(): { job_id: string; savedAt: number } | null {
+export function readPendingJob(): { job_id: string; savedAt: number; agent?: string; map?: string; game?: string } | null {
   try {
     const raw = fs.readFileSync(pendingJobPath(), 'utf-8')
     const parsed = JSON.parse(raw)
@@ -96,7 +100,7 @@ export class UploadManager {
 
     // Persist job_id immediately — if the app crashes during upload or
     // analysis, the user can resume polling from the next launch.
-    savePendingJob(job_id)
+    savePendingJob(job_id, { agent: opts.agent ?? undefined, map: opts.map ?? undefined, game: opts.game })
 
     // ── Step 2: stream file directly to S3 ────────────────────────────────
     await this._putToS3(upload_url, opts.videoPath, totalBytes, opts.onProgress)

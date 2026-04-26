@@ -604,6 +604,80 @@ function setupGameDetection(): void {
   gameDetector.start()
 }
 
+/**
+ * Resume polling for a job that was in-flight when the app last crashed.
+ * Runs the same exponential-backoff loop as doUploadAndAnalyse, but sends
+ * results to the main window (no post-game window needed).
+ */
+async function resumePollForJob(
+  jobId: string,
+  context: { agent?: string; map?: string; game?: string }
+): Promise<void> {
+  const { agent = null, map = null } = context
+  logActivity(`Resuming analysis poll for job ${jobId}`)
+  tray?.setToolTip('UpForge — Analysing (resumed)…')
+
+  const startTime = Date.now()
+  let pollFailCount = 0
+  let pollDelay = 5_000
+
+  const schedulePoll = () => {
+    setTimeout(pollOnce, pollDelay)
+    pollDelay = Math.min(Math.round(pollDelay * 1.5), 30_000)
+  }
+
+  const pollOnce = async () => {
+    try {
+      const status = await uploadManager.pollStatus(jobId)
+      pollFailCount = 0
+      if (status.status === 'completed' && status.result) {
+        const score = (status.result as Record<string, unknown>).overall_score as number | undefined
+        logActivity(`Resumed analysis ready${score != null ? ` — Score: ${score}/100` : ''}`)
+        clearPendingJob()
+        mainWindow?.webContents.send('dashboard:refresh')
+        tray?.setToolTip('UpForge — Valorant AI Coaching')
+        if (Notification.isSupported()) {
+          const notifAgent = agent ?? 'Valorant'
+          const notifMap = map ? ` on ${map}` : ''
+          const notifScore = score != null ? ` — Score: ${score}/100` : ''
+          new Notification({
+            title: 'UpForge — Analysis Ready',
+            body: `${notifAgent}${notifMap}${notifScore}`
+          }).show()
+        }
+      } else if (status.status === 'failed') {
+        logActivity('Resumed analysis failed — retry from the dashboard')
+        clearPendingJob()
+        tray?.setToolTip('UpForge — Valorant AI Coaching')
+        if (Notification.isSupported()) {
+          new Notification({
+            title: 'UpForge — Analysis Failed',
+            body: 'Your previous analysis failed. You can retry it from the dashboard.'
+          }).show()
+        }
+        mainWindow?.webContents.send('dashboard:refresh')
+      } else if (Date.now() - startTime > 600_000) {
+        logActivity('Resumed analysis poll timed out after 10 minutes')
+        clearPendingJob()
+        tray?.setToolTip('UpForge — Valorant AI Coaching')
+      } else {
+        schedulePoll()
+      }
+    } catch (pollErr) {
+      pollFailCount++
+      if (pollFailCount >= 5) {
+        logActivity('Resumed poll — lost connection to server')
+        clearPendingJob()
+        tray?.setToolTip('UpForge — Valorant AI Coaching')
+      } else {
+        schedulePoll()
+      }
+    }
+  }
+
+  schedulePoll()
+}
+
 /** Upload a recording and poll for the analysis result, sending IPC events to `targetWindow`. */
 async function doUploadAndAnalyse(
   recordingId: string | null,
@@ -790,7 +864,6 @@ app.whenReady().then(async () => {
   const orphanedJob = readPendingJob()
   if (orphanedJob) {
     console.log('[App] Orphaned job found from previous session:', orphanedJob.job_id)
-    logActivity(`Resuming analysis poll for job ${orphanedJob.job_id} from previous session`)
   }
 
   // Show splash launcher while we check for updates
@@ -808,14 +881,14 @@ app.whenReady().then(async () => {
       if (!splashWindow.isDestroyed()) splashWindow.close()
     }, 400)
 
-    // If an orphaned job was found at startup, resume polling once the window loads
+    // If an orphaned job was found at startup, resume the full poll loop once the window loads
     if (orphanedJob) {
       mainWindow.webContents.once('did-finish-load', () => {
-        console.log('[App] Resuming orphaned job poll:', orphanedJob.job_id)
-        mainWindow?.webContents.send('post-game:upload-complete', { jobId: orphanedJob.job_id, resumed: true })
-        // Kick off a background poll — reuse the same logic via a synthetic upload window
-        // For now, just notify the dashboard to check; a full poll loop would need the post-game window
-        mainWindow?.webContents.send('dashboard:refresh')
+        resumePollForJob(orphanedJob.job_id, {
+          agent: orphanedJob.agent,
+          map: orphanedJob.map,
+          game: orphanedJob.game,
+        })
       })
     }
   }
