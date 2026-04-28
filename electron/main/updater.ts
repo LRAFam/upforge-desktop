@@ -44,8 +44,9 @@ export function setupAutoUpdater(
   })
 
   autoUpdater.on('download-progress', (progress) => {
-    log.info(`[Updater] Downloading: ${Math.round(progress.percent)}%`)
-    send('updater:progress', progress.percent)
+    const pct = Number.isFinite(progress.percent) ? progress.percent : 0
+    log.info(`[Updater] Downloading: ${Math.round(pct)}%`)
+    send('updater:progress', pct)
   })
 
   autoUpdater.on('update-downloaded', (info) => {

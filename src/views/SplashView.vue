@@ -60,8 +60,10 @@ onMounted(async () => {
   })
 
   on('updater:progress', (_e: unknown, pct: unknown) => {
-    progress.value = Math.round(pct as number)
-    statusText.value = `Downloading update… ${progress.value}%`
+    const n = Math.round(Number(pct))
+    progress.value = Number.isFinite(n) ? n : 0
+    const display = progress.value > 0 ? `${progress.value}%` : '…'
+    statusText.value = `Downloading update… ${display}`
   })
 
   on('updater:downloaded', () => {
