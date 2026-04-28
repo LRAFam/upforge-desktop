@@ -111,13 +111,13 @@ export function setupIpcHandlers(
     let bytes = 0
     let count = 0
     try {
-      const entries = fs.readdirSync(dir)
-      for (const entry of entries) {
+      const entries = await fs.promises.readdir(dir)
+      await Promise.all(entries.map(async (entry) => {
         try {
-          const stat = fs.statSync(path.join(dir, entry))
+          const stat = await fs.promises.stat(path.join(dir, entry))
           if (stat.isFile()) { bytes += stat.size; count++ }
         } catch { /* ignore unreadable entries */ }
-      }
+      }))
     } catch { /* dir may not exist yet */ }
     return { bytes, count }
   })

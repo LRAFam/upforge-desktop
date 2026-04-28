@@ -30,6 +30,7 @@ export class Recorder {
   private _stderrBuffer = ''
   private _startedAt: number | null = null
   private _cachedEncoder: HWEncoder | null = null
+  private _cachedUseDdagrab: boolean | null = null
   private _recordedWithoutAudio = false
   onStatusChange?: (recording: boolean, error?: string) => void
 
@@ -113,25 +114,30 @@ export class Recorder {
     console.log(`[Recorder] Platform: ${process.platform}, encoder: ${encoder}`)
     console.log(`[Recorder] Output: ${this._outputPath}`)
 
-    await this._spawnAndConfirm(game, config, encoder, false, false)
+    // Prefer ddagrab on Windows — GPU-accelerated Desktop Duplication API reduces CPU load
+    // compared to gdigrab (GDI-based), which is important when Valorant, Discord, and
+    // Medal.tv are all running simultaneously.
+    const useDdagrab = IS_WIN && this._cachedUseDdagrab === true
+    await this._spawnAndConfirm(game, config, encoder, false, false, useDdagrab)
   }
 
   /**
    * Spawns ffmpeg and waits up to 2s to confirm it is actually running before
-   * declaring recording started. If ffmpeg dies within that window (e.g. window
-   * title not found, WASAPI unavailable) we catch the real error and on Windows
-   * retry once with full desktop capture as a fallback.
+   * declaring recording started. If ffmpeg dies within that window (e.g. ddagrab
+   * unavailable, window title not found, WASAPI unavailable) we catch the real
+   * error and retry with progressively simpler capture strategies.
    */
   private async _spawnAndConfirm(
     game: string,
     config: RecorderConfig | undefined,
     encoder: HWEncoder,
     useDesktopFallback: boolean,
-    noAudio: boolean = false
+    noAudio: boolean = false,
+    useDdagrab: boolean = false
   ): Promise<void> {
     const STARTUP_TIMEOUT_MS = 2000
     const ffmpegPath = this._ffmpegPath()
-    const args = this._buildArgs(encoder, this._outputPath!, game, config, useDesktopFallback, noAudio)
+    const args = this._buildArgs(encoder, this._outputPath!, game, config, useDesktopFallback, noAudio, useDdagrab)
 
     console.log(`[Recorder] ffmpeg path: ${ffmpegPath}`)
     console.log(`[Recorder] Args: ${args.join(' ')}`)
@@ -192,12 +198,22 @@ export class Recorder {
       console.error(`[Recorder] ffmpeg failed within startup window: ${reason}`)
       console.error(`[Recorder] Full stderr:\n${this._stderrBuffer.slice(-1000)}`)
 
+      // If ddagrab failed (DDA unavailable — Windows 7, driver issue, etc.),
+      // fall back to gdigrab immediately. Cache the result so we don't retry each recording.
+      if (useDdagrab) {
+        console.warn('[Recorder] ddagrab failed — falling back to gdigrab:', reason)
+        this._cachedUseDdagrab = false
+        this._stderrBuffer = ''
+        this._process = null
+        return this._spawnAndConfirm(game, config, encoder, useDesktopFallback, noAudio, false)
+      }
+
       // On Windows, if window-title capture failed, retry once with full desktop
       if (IS_WIN && !useDesktopFallback && GAME_WINDOW_TITLES[game.toLowerCase()]) {
         console.warn('[Recorder] Window capture failed — retrying with full desktop capture')
         this._stderrBuffer = ''
         this._process = null
-        return this._spawnAndConfirm(game, config, encoder, true, noAudio)
+        return this._spawnAndConfirm(game, config, encoder, true, noAudio, false)
       }
 
       // If audio capture failed, retry without audio (WASAPI unavailable / invalid device).
@@ -212,7 +228,7 @@ export class Recorder {
           console.warn('[Recorder] Audio capture failed — retrying without audio:', reason)
           this._stderrBuffer = ''
           this._process = null
-          return this._spawnAndConfirm(game, config, encoder, useDesktopFallback, true)
+          return this._spawnAndConfirm(game, config, encoder, useDesktopFallback, true, useDdagrab)
         }
       }
 
@@ -288,25 +304,54 @@ export class Recorder {
       return this._cachedEncoder
     }
 
-    // Windows: try hardware encoders in priority order
+    // Windows: test ddagrab availability and hardware encoders in parallel to reduce startup time.
+    // ddagrab uses the Desktop Duplication API (DirectX11/DXGI) — GPU-accelerated screen capture
+    // with near-zero CPU overhead. Much lighter than gdigrab which copies the framebuffer via GDI.
+    const [ddagrabWorks, nvencWorks, amfWorks, qsvWorks] = await Promise.all([
+      this._testDdagrab(ffmpegPath),
+      this._testEncoder(ffmpegPath, 'h264_nvenc'),
+      this._testEncoder(ffmpegPath, 'h264_amf'),
+      this._testEncoder(ffmpegPath, 'h264_qsv'),
+    ])
+
+    this._cachedUseDdagrab = ddagrabWorks
+    console.log(`[Recorder] ddagrab (Desktop Duplication API) available: ${ddagrabWorks}`)
+
+    const encoderResults = [nvencWorks, amfWorks, qsvWorks]
     const encoders: Array<{ name: HWEncoder; codec: string }> = [
       { name: 'nvenc', codec: 'h264_nvenc' },
       { name: 'amf', codec: 'h264_amf' },
       { name: 'qsv', codec: 'h264_qsv' }
     ]
 
-    for (const { name, codec } of encoders) {
-      const works = await this._testEncoder(ffmpegPath, codec)
-      if (works) {
-        console.log(`[Recorder] Hardware encoder available: ${name}`)
-        this._cachedEncoder = name
-        return name
+    for (let i = 0; i < encoders.length; i++) {
+      if (encoderResults[i]) {
+        console.log(`[Recorder] Hardware encoder available: ${encoders[i].name}`)
+        this._cachedEncoder = encoders[i].name
+        return encoders[i].name
       }
     }
 
     console.log('[Recorder] No hardware encoder found, falling back to software')
     this._cachedEncoder = 'software'
     return 'software'
+  }
+
+  private _testDdagrab(ffmpegPath: string): Promise<boolean> {
+    if (!IS_WIN) return Promise.resolve(false)
+    return new Promise((resolve) => {
+      // Capture a single frame via Desktop Duplication API to confirm DDA is available.
+      // Requires Windows 8+ and a D3D11-capable GPU (all modern gaming hardware).
+      const proc = spawn(ffmpegPath, [
+        '-filter_complex', 'ddagrab=output_idx=0,hwdownload,format=bgr0',
+        '-frames:v', '1',
+        '-f', 'null', '-'
+      ], { stdio: 'pipe' })
+
+      proc.on('exit', (code) => resolve(code === 0))
+      proc.on('error', () => resolve(false))
+      setTimeout(() => { proc.kill(); resolve(false) }, 5000)
+    })
   }
 
   private _testEncoder(ffmpegPath: string, codec: string): Promise<boolean> {
@@ -323,7 +368,7 @@ export class Recorder {
     })
   }
 
-  private _buildArgs(encoder: HWEncoder, outputPath: string, game: string, config?: RecorderConfig, useDesktopFallback = false, noAudio = false): string[] {
+  private _buildArgs(encoder: HWEncoder, outputPath: string, game: string, config?: RecorderConfig, useDesktopFallback = false, noAudio = false, useDdagrab = false): string[] {
     const codecMap: Record<HWEncoder, string> = {
       videotoolbox: 'h264_videotoolbox',
       nvenc: 'h264_nvenc',
@@ -363,9 +408,43 @@ export class Recorder {
       ]
     }
 
-    // Windows: capture the game window by title so only the game is recorded.
-    // WASAPI loopback captures all system audio (game sounds + voice chat).
-    // useDesktopFallback is set when window-title capture failed at startup.
+    // Windows: ddagrab path — Desktop Duplication API (GPU-accelerated, near-zero CPU overhead).
+    // Preferred over gdigrab because DDA captures frames in GPU memory, avoiding the GDI
+    // framebuffer copy that causes CPU spikes while playing games.
+    if (useDdagrab) {
+      // scale is applied inside the filter_complex — can't mix -filter_complex with -vf
+      const ddagrabFilter = `ddagrab=output_idx=0,hwdownload,format=bgr0,scale=${scale}[v]`
+      console.log(`[Recorder] Windows ddagrab (DDA) capture${noAudio ? ' (no audio)' : ''}`)
+
+      if (noAudio) {
+        return [
+          '-filter_complex', ddagrabFilter,
+          '-map', '[v]',
+          '-vcodec', codec,
+          ...qualityArgs,
+          '-movflags', '+faststart',
+          outputPath
+        ]
+      }
+
+      return [
+        '-f', 'wasapi',
+        '-thread_queue_size', '512',
+        '-i', 'loopback',
+        '-filter_complex', ddagrabFilter,
+        '-map', '0:a',
+        '-map', '[v]',
+        '-vcodec', codec,
+        ...qualityArgs,
+        '-acodec', 'aac',
+        '-b:a', '128k',
+        '-movflags', '+faststart',
+        outputPath
+      ]
+    }
+
+    // Windows: gdigrab fallback — used when ddagrab is unavailable (Windows 7 or no D3D11).
+    // gdigrab copies the framebuffer via GDI which is CPU-bound and can impact game FPS.
     const windowTitle = !useDesktopFallback ? GAME_WINDOW_TITLES[game.toLowerCase()] : undefined
     const captureInput = windowTitle ? `title=${windowTitle}` : 'desktop'
     console.log(`[Recorder] Windows capture input: ${captureInput}${noAudio ? ' (no audio)' : ''}`)

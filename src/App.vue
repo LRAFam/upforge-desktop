@@ -82,7 +82,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRoute } from 'vue-router'
 
 const route = useRoute()
@@ -103,6 +103,8 @@ const navLinks = [
   { to: '/settings', label: 'Settings' }
 ]
 
+let statusInterval: ReturnType<typeof setInterval> | null = null
+
 onMounted(async () => {
   try {
     const s = await window.api.app.getStatus()
@@ -113,13 +115,18 @@ onMounted(async () => {
   } catch {
     // IPC failed — appVersion stays as compile-time constant
   }
-  setInterval(async () => {
+  statusInterval = setInterval(async () => {
+    if (document.hidden) return // skip while game is running fullscreen
     try {
       const s = await window.api.app.getStatus()
       status.value = s
       if (s.user?.riot_name) riotId.value = `${s.user.riot_name}#${s.user.riot_tag}`
     } catch { /* ignore */ }
   }, 5000)
+})
+
+onUnmounted(() => {
+  if (statusInterval) clearInterval(statusInterval)
 })
 
 async function simulateGame() {

@@ -35,12 +35,14 @@ let mainWindow: BrowserWindow | null = null
 let postGameWindow: BrowserWindow | null = null
 let isQuitting = false
 let trayRefreshInterval: ReturnType<typeof setInterval> | null = null
+let updateTrayMenuFn: (() => void) | null = null
 let ffmpegOk = true // updated after preflight; exposed via app:get-status
 
 const gameDetector = new GameDetector()
 const recorder = new Recorder()
 recorder.onStatusChange = (recording, error) => {
   mainWindow?.webContents.send('recording:status-changed', { recording, error: error ?? null })
+  updateTrayMenuFn?.() // keep tray in sync without waiting for the 30s interval
   // If recording stopped unexpectedly due to an error, show a system notification
   // so the user knows even if UpForge is in the background during a game
   if (!recording && error) {
@@ -241,8 +243,10 @@ function createTray(): void {
     }
   })
 
-  // Refresh tray menu periodically to reflect recording state
-  trayRefreshInterval = setInterval(updateTrayMenu, 5000)
+  // Refresh tray menu on recording state changes (event-driven) and fall back to
+  // a low-frequency interval only to catch changes in pending-recording counts.
+  updateTrayMenuFn = updateTrayMenu
+  trayRefreshInterval = setInterval(updateTrayMenu, 30_000)
 }
 
 function setupGameDetection(): void {

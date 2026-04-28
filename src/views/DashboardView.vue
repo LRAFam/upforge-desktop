@@ -473,6 +473,7 @@ onMounted(async () => {
   activityLog.value = await window.api.app.getActivityLog().catch(() => [])
 
   pollInterval = setInterval(async () => {
+    if (document.hidden) return // skip while Valorant is fullscreen
     try {
       const s = await window.api.app.getStatus()
       const wasRecording = status.value.recording
