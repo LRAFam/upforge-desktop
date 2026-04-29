@@ -42,7 +42,8 @@ const AGENT_CDN_UUIDS: Record<string, string> = {
 /**
  * Returns a CDN display-icon URL for the given agent name.
  */
-export function getAgentImage(agentName: string): string {
+export function getAgentImage(agentName: string | null | undefined): string {
+  if (!agentName) return ''
   const key = agentName.toLowerCase().replace(/[/\s]/g, '')
   const uuid = AGENT_CDN_UUIDS[key]
   if (uuid) return `https://media.valorant-api.com/agents/${uuid}/displayicon.png`
@@ -85,7 +86,8 @@ const AGENT_ROLES: Record<string, string> = {
 }
 
 /** Returns the role string for a given agent name. */
-export function getAgentRole(agentName: string): string {
+export function getAgentRole(agentName: string | null | undefined): string {
+  if (!agentName) return 'Agent'
   const key = agentName.toLowerCase().replace(/[/\s]/g, '')
   return AGENT_ROLES[key] ?? 'Agent'
 }
@@ -125,7 +127,8 @@ const AGENT_COLORS: Record<string, string> = {
 }
 
 /** Returns a hex accent colour for a given agent name (for glows, borders, etc.). */
-export function getAgentColor(agentName: string): string {
+export function getAgentColor(agentName: string | null | undefined): string {
+  if (!agentName) return '#6366f1'
   const key = agentName.toLowerCase().replace(/[/\s]/g, '')
   return AGENT_COLORS[key] ?? '#6366f1'
 }
@@ -165,13 +168,15 @@ const MAP_MINIMAP_URLS: Record<string, string> = {
 }
 
 /** Returns the full-art splash URL for a Valorant map. */
-export function getMapImage(mapName: string): string {
+export function getMapImage(mapName: string | null | undefined): string {
+  if (!mapName) return ''
   const key = mapName.toLowerCase().replace(/\s/g, '')
   return MAP_SPLASH_URLS[key] ?? ''
 }
 
 /** Returns the minimap / display-icon URL for a Valorant map. */
-export function getMapMinimap(mapName: string): string {
+export function getMapMinimap(mapName: string | null | undefined): string {
+  if (!mapName) return ''
   const key = mapName.toLowerCase().replace(/\s/g, '')
   return MAP_MINIMAP_URLS[key] ?? ''
 }

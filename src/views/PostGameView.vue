@@ -25,7 +25,7 @@
         <div>
           <p class="text-sm font-semibold">Uploading replay</p>
           <p class="text-[11px] text-gray-500 mt-0.5">
-            {{ gameInfo.agent || 'Valorant' }}<span v-if="gameInfo.map"> &middot; {{ gameInfo.map }}</span>
+            {{ gameInfo.agent || gameLabel }}<span v-if="gameInfo.map"> &middot; {{ gameInfo.map }}</span>
           </p>
         </div>
         <div class="w-full space-y-1.5">
@@ -89,7 +89,7 @@
           <div>
             <p class="text-sm font-semibold">Analysis ready</p>
             <p class="text-[11px] text-gray-500">
-              {{ gameInfo.agent || 'Valorant' }}<span v-if="gameInfo.map"> &middot; {{ gameInfo.map }}</span>
+              {{ gameInfo.agent || gameLabel }}<span v-if="gameInfo.map"> &middot; {{ gameInfo.map }}</span>
             </p>
           </div>
         </div>
@@ -142,7 +142,7 @@
         <div>
           <p class="text-sm font-semibold">Game recorded</p>
           <p class="text-[11px] text-gray-500 mt-0.5">
-            {{ gameInfo.agent || 'Valorant' }}<span v-if="gameInfo.map"> &middot; {{ gameInfo.map }}</span>
+            {{ gameInfo.agent || gameLabel }}<span v-if="gameInfo.map"> &middot; {{ gameInfo.map }}</span>
           </p>
           <p class="text-[10px] text-gray-600 mt-1.5">Auto-analyse is off — analyse now or view later from the dashboard.</p>
         </div>
@@ -191,7 +191,7 @@ type State = 'uploading' | 'analysing' | 'ready' | 'error' | 'pending'
 
 const state = ref<State>('uploading')
 const uploadProgress = ref(0)
-const gameInfo = ref<{ map: string | null; agent: string | null }>({ map: null, agent: null })
+const gameInfo = ref<{ game: string; map: string | null; agent: string | null }>({ game: 'valorant', map: null, agent: null })
 const result = ref<{ overall_score: number; analysis_id: number } | null>(null)
 const errorMessage = ref('')
 const pendingRecordingId = ref<string | null>(null)
@@ -208,6 +208,8 @@ function clearStuckTimer() {
   if (stuckTimer) { clearTimeout(stuckTimer); stuckTimer = null }
   analysisStuck.value = false
 }
+
+const gameLabel = computed(() => gameInfo.value.game === 'cs2' ? 'CS2' : 'Valorant')
 
 const topIssue = computed(() => {
   if (!result.value) return null
@@ -234,8 +236,7 @@ onMounted(() => {
   const ipcCleanup: (() => void)[] = []
   ipcCleanup.push(window.api.on('post-game:upload-start', (...args: unknown[]) => {
     const data = args[0] as { game: string; map: string | null; agent: string | null }
-    gameInfo.value = { map: data.map, agent: data.agent }
-    state.value = 'uploading'
+    gameInfo.value = { game: data.game, map: data.map, agent: data.agent }
   }))
   ipcCleanup.push(window.api.on('post-game:upload-progress', (...args: unknown[]) => { uploadProgress.value = args[0] as number }))
   ipcCleanup.push(window.api.on('post-game:upload-complete', () => { state.value = 'analysing'; startStuckTimer() }))
@@ -248,8 +249,7 @@ onMounted(() => {
   ipcCleanup.push(window.api.on('post-game:pending', (...args: unknown[]) => {
     const data = args[0] as { recordingId: string; game: string; map: string | null; agent: string | null }
     pendingRecordingId.value = data.recordingId
-    gameInfo.value = { map: data.map, agent: data.agent }
-    state.value = 'pending'
+    gameInfo.value = { game: data.game, map: data.map, agent: data.agent }
   }))
   ipcCleanup.push(window.api.on('post-game:upload-error', (...args: unknown[]) => {
     errorMessage.value = args[0] as string
@@ -260,7 +260,7 @@ onMounted(() => {
   // Dev preview: show a mock ready state
   if (window.location.hash.includes('post-game-preview')) {
     setTimeout(() => {
-      gameInfo.value = { map: 'Bind', agent: 'Jett' }
+      gameInfo.value = { game: 'valorant', map: 'Bind', agent: 'Jett' }
       state.value = 'uploading'
       let p = 0
       const iv = setInterval(() => {

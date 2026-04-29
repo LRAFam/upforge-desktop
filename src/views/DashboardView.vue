@@ -8,7 +8,8 @@
     >
       <span class="text-orange-400">⚠</span>
       <span>{{ warning }}</span>
-      <button class="ml-auto text-white/40 hover:text-white/70 leading-none" @click="warning = null">✕</button>
+      <button v-if="upgradeNeeded" class="ml-auto text-orange-300 hover:text-orange-100 font-semibold text-[11px] flex-shrink-0 transition-colors" @click="openUpgrade">Upgrade →</button>
+      <button class="text-white/40 hover:text-white/70 leading-none" :class="{ 'ml-auto': !upgradeNeeded }" @click="warning = null; upgradeNeeded = false">✕</button>
     </div>
 
     <!-- Status card -->
@@ -80,7 +81,7 @@
           </template>
           <!-- Idle -->
           <template v-else>
-            <p class="text-xs text-gray-400">Watching for Valorant</p>
+            <p class="text-xs text-gray-400">Watching for Valorant & CS2</p>
             <p v-if="status.recordedModes && status.recordedModes.length" class="text-[10px] text-gray-600 mt-0.5">
               Recording: {{ status.recordedModes.map(formatMode).join(' · ') }}
             </p>
@@ -151,7 +152,7 @@
           <p class="text-xs font-semibold leading-tight truncate">{{ profile.user.name }}</p>
           <p class="text-[10px] text-gray-500 leading-tight truncate mt-px">
             <span v-if="profile.user.riot_name">{{ profile.user.riot_name }}#{{ profile.user.riot_tag }}</span>
-            <span v-else class="text-gray-600">No Riot ID linked</span>
+            <button v-else class="text-red-400/70 hover:text-red-400 transition-colors" @click="openRiotSettings">Link Riot ID</button>
           </p>
         </div>
 
@@ -192,7 +193,7 @@
         </div>
       </div>
       <div v-else class="px-3 pb-2 pt-1">
-        <p class="text-[10px] text-gray-600">No Valorant stats yet — link your Riot ID on upforge.gg</p>
+        <button class="text-[10px] text-gray-600 hover:text-gray-400 transition-colors text-left" @click="openRiotSettings">No Valorant stats yet — click to link your Riot ID</button>
       </div>
       <!-- Quota row -->
       <div v-if="profile.user.analysis_stats" class="px-3 py-2 border-t border-white/[0.04] flex items-center justify-between gap-2">
@@ -284,7 +285,7 @@
         </svg>
       </div>
       <p class="text-xs text-gray-600">No analyses yet</p>
-      <p class="text-[10px] text-gray-700 mt-0.5">Play Valorant to get started</p>
+      <p class="text-[10px] text-gray-700 mt-0.5">Play Valorant or CS2 to get started</p>
     </div>
 
     <!-- Analysis list -->
@@ -401,6 +402,7 @@ const recordingStartedAt = ref<number | null>(null)
 const recordingElapsed = ref('')
 const stopping = ref(false)
 const warning = ref<string | null>(null)
+const upgradeNeeded = ref(false)
 const activityLog = ref<{ time: number; message: string }[]>([])
 
 const quotaPercent = computed(() => {
@@ -568,8 +570,9 @@ async function analyseRecording(id: string) {
   // Quota gate — prevent upload if user has no analyses remaining
   const stats = profile.value?.user?.analysis_stats
   if (stats && (stats.limit - stats.total) <= 0) {
-    warning.value = 'No analyses remaining this month. Upgrade at upforge.gg to get more.'
-    // Sticky — user must dismiss manually
+    warning.value = 'No analyses remaining this month.'
+    upgradeNeeded.value = true
+    // Sticky — user must dismiss manually, and they can upgrade
     return
   }
 
@@ -615,6 +618,8 @@ function simulateGame(game: string, durationMs: number) {
 
 function openAnalysis(id: number) { window.open(`https://upforge.gg/valorant/results/${id}`, '_blank') }
 function openBrowser() { window.open('https://upforge.gg/valorant/history', '_blank') }
+function openRiotSettings() { window.open('https://upforge.gg/settings/profile', '_blank') }
+function openUpgrade() { window.open('https://upforge.gg/upgrade', '_blank') }
 
 function formatDate(d: string): string {
   return new Date(d).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
