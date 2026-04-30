@@ -188,8 +188,13 @@
           <span class="text-[9px] text-gray-600 mt-px">ACS</span>
         </div>
         <div class="flex flex-col items-center py-2">
-          <span class="text-[11px] font-bold">{{ profile.latest_stats.headshot_percentage != null ? Math.round(profile.latest_stats.headshot_percentage) + '%' : '—' }}</span>
-          <span class="text-[9px] text-gray-600 mt-px">HS%</span>
+          <span
+            v-if="currentStreak !== 0"
+            class="text-[11px] font-bold"
+            :class="currentStreak > 0 ? 'text-green-400' : 'text-red-400'"
+          >{{ currentStreak > 0 ? '+' : '' }}{{ currentStreak }}</span>
+          <span v-else class="text-[11px] font-bold text-gray-600">—</span>
+          <span class="text-[9px] text-gray-600 mt-px">Streak</span>
         </div>
       </div>
       <div v-else class="px-3 pb-2 pt-1">
@@ -268,7 +273,16 @@
 
     <!-- Section header -->
     <div class="flex items-center justify-between px-0.5 pt-0.5">
-      <h2 class="text-[10px] font-semibold text-gray-600 uppercase tracking-widest">Recent Analyses</h2>
+      <div class="flex items-center gap-2">
+        <h2 class="text-[10px] font-semibold text-gray-600 uppercase tracking-widest">Recent Analyses</h2>
+        <span v-if="scoreTrend !== null" class="flex items-center gap-0.5 text-[9px] font-semibold" :class="scoreTrend >= 0 ? 'text-green-500' : 'text-red-500'">
+          <svg class="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" :d="scoreTrend >= 0 ? 'M5 15l7-7 7 7' : 'M19 9l-7 7-7-7'"/>
+          </svg>
+          {{ Math.abs(scoreTrend) }}
+        </span>
+        <span v-if="avgScore !== null" class="text-[9px] text-gray-700">avg {{ avgScore }}</span>
+      </div>
       <button v-if="analyses.length > 0" class="text-[10px] text-gray-600 hover:text-gray-400 transition-colors" @click="openBrowser">View all</button>
     </div>
 
@@ -333,9 +347,9 @@
             <span v-if="a.kda != null">{{ a.kda.toFixed(2) }} K/D</span>
           </p>
         </div>
-        <div v-if="a.overall_score != null" class="flex-shrink-0 text-right">
+        <div v-if="a.overall_score != null" class="flex-shrink-0 flex flex-col items-end gap-0.5">
           <span class="text-[11px] font-bold tabular-nums" :class="a.overall_score >= 80 ? 'text-green-400' : a.overall_score >= 60 ? 'text-yellow-400' : 'text-red-400'">{{ a.overall_score }}</span>
-          <span class="block text-[9px] text-gray-700">/100</span>
+          <span class="text-[8px] font-bold px-1 py-px rounded" :class="scoreGradeBadgeClass(a.overall_score)">{{ scoreGrade(a.overall_score) }}</span>
         </div>
         <div v-else-if="a.combat_score" class="flex-shrink-0 text-right">
           <span class="text-[11px] font-bold text-gray-400 tabular-nums">{{ a.combat_score }}</span>
@@ -410,6 +424,51 @@ const quotaPercent = computed(() => {
   if (!stats || !stats.limit) return 0
   return Math.min(100, Math.round((stats.total / stats.limit) * 100))
 })
+
+const avgScore = computed<number | null>(() => {
+  const scored = analyses.value.filter(a => a.overall_score != null)
+  if (!scored.length) return null
+  return Math.round(scored.reduce((sum, a) => sum + (a.overall_score ?? 0), 0) / scored.length)
+})
+
+const scoreTrend = computed<number | null>(() => {
+  const scored = analyses.value.filter(a => a.overall_score != null)
+  if (scored.length < 2) return null
+  const recent = scored.slice(0, Math.ceil(scored.length / 2))
+  const older = scored.slice(Math.ceil(scored.length / 2))
+  const recentAvg = recent.reduce((s, a) => s + (a.overall_score ?? 0), 0) / recent.length
+  const olderAvg = older.reduce((s, a) => s + (a.overall_score ?? 0), 0) / older.length
+  const diff = Math.round(recentAvg - olderAvg)
+  return diff === 0 ? null : diff
+})
+
+const currentStreak = computed<number>(() => {
+  const withResult = analyses.value.filter(a => a.won != null)
+  if (!withResult.length) return 0
+  const first = withResult[0].won
+  let streak = 0
+  for (const a of withResult) {
+    if (a.won === first) streak++
+    else break
+  }
+  return first ? streak : -streak
+})
+
+function scoreGrade(score: number): string {
+  if (score >= 90) return 'S'
+  if (score >= 75) return 'A'
+  if (score >= 60) return 'B'
+  if (score >= 45) return 'C'
+  return 'D'
+}
+
+function scoreGradeBadgeClass(score: number): string {
+  if (score >= 90) return 'bg-yellow-500/20 text-yellow-300'
+  if (score >= 75) return 'bg-green-500/20 text-green-300'
+  if (score >= 60) return 'bg-blue-500/20 text-blue-300'
+  if (score >= 45) return 'bg-orange-500/20 text-orange-300'
+  return 'bg-red-500/20 text-red-300'
+}
 
 const recordingModeLabel = computed(() => {
   const modes = status.value.recordedModes

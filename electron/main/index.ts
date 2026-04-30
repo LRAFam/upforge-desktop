@@ -751,7 +751,8 @@ async function doUploadAndAnalyse(
           send('post-game:analysis-ready', {
             overall_score: (status.result as Record<string, unknown>).overall_score,
             analysis_id: (status.result as Record<string, unknown>).analysis_id,
-            top_issue: (status.result as Record<string, unknown>).top_issue
+            top_issue: (status.result as Record<string, unknown>).top_issue,
+            priority_improvements: (status.result as Record<string, unknown>).priority_improvements
           })
           mainWindow?.webContents.send('dashboard:refresh')
           tray?.setToolTip('UpForge — Valorant AI Coaching')
@@ -929,7 +930,12 @@ app.whenReady().then(async () => {
       setTimeout(() => postGameWindow?.webContents.send('post-game:analysis-ready', {
         overall_score: 72,
         analysis_id: 999,
-        top_issue: 'Positioning during post-plant — you were caught in the open on 4 of 6 clutch attempts.'
+        top_issue: 'Positioning during post-plant — you were caught in the open on 4 of 6 clutch attempts.',
+        priority_improvements: [
+          'Positioning during post-plant — caught in the open on 4 of 6 clutch attempts.',
+          'Crosshair placement — pre-aiming head height on B site entries.',
+          'Economy — force-buying after pistol loss reduced overall round win rate.'
+        ]
       }), 5500)
     })
   }, () => ffmpegOk, () => waitingForMatch, () => activityLog.slice(), uploadManager)
