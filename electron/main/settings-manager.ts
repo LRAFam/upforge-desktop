@@ -12,6 +12,8 @@ export interface AppSettings {
   recordedModes: string[]
   autoAnalyse: boolean // automatically upload & analyse after game ends
   firstRun: boolean
+  /** Last completed analysis insight — persisted for dashboard display */
+  lastInsight?: { text: string; score: number; agent: string | null; analysisId: number | null; date: string } | null
 }
 
 const DEFAULTS: AppSettings = {

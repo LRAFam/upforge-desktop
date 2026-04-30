@@ -746,8 +746,17 @@ async function doUploadAndAnalyse(
         pollFailCount = 0
         if (status.status === 'completed' && status.result) {
           const score = (status.result as Record<string, unknown>).overall_score as number | undefined
+          const analysisId = (status.result as Record<string, unknown>).analysis_id as number | undefined
+          const improvements = (status.result as Record<string, unknown>).priority_improvements as string[] | undefined
+          const topIssue = (status.result as Record<string, unknown>).top_issue as string | undefined
+          const insightText = (improvements && improvements.length > 0) ? improvements[0] : (topIssue ?? null)
           logActivity(`Analysis ready${score != null ? ` — Score: ${score}/100` : ''}`)
           clearPendingJob()
+          if (insightText) {
+            const insight = { text: insightText, score: score ?? 0, agent: agent ?? null, analysisId: analysisId ?? null, date: new Date().toISOString() }
+            settingsManager.save({ lastInsight: insight })
+            mainWindow?.webContents.send('dashboard:last-insight', insight)
+          }
           send('post-game:analysis-ready', {
             overall_score: (status.result as Record<string, unknown>).overall_score,
             analysis_id: (status.result as Record<string, unknown>).analysis_id,

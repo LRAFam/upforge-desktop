@@ -61,6 +61,7 @@ const api = {
       'post-game:upload-error',
       'post-game:pending',
       'dashboard:refresh',
+      'dashboard:last-insight',
       'recordings:updated',
       'app:ffmpeg-status',
       'recording:status-changed',

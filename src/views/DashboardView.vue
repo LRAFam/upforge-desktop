@@ -271,6 +271,33 @@
       </div>
     </div>
 
+    <!-- Last insight card -->
+    <div
+      v-if="lastInsight"
+      class="bg-white/[0.02] border border-white/[0.05] rounded-xl overflow-hidden"
+    >
+      <div class="flex items-start gap-2.5 px-3 py-2.5">
+        <div
+          class="w-7 h-7 rounded-lg flex-shrink-0 overflow-hidden flex items-center justify-center"
+          :style="lastInsight.agent ? { backgroundColor: getAgentColor(lastInsight.agent) + '22' } : { backgroundColor: 'rgba(239,68,68,0.1)' }"
+        >
+          <img v-if="lastInsight.agent && getAgentImage(lastInsight.agent)" :src="getAgentImage(lastInsight.agent)" class="w-full h-full object-cover object-top" />
+          <svg v-else class="w-3.5 h-3.5 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636-.707.707M21 12h-1M4 12H3m3.343-5.657-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"/>
+          </svg>
+        </div>
+        <div class="flex-1 min-w-0">
+          <p class="text-[9px] font-semibold uppercase tracking-wider text-gray-600 mb-0.5">Focus from last session</p>
+          <p class="text-[11px] text-gray-300 leading-snug line-clamp-2">{{ lastInsight.text }}</p>
+        </div>
+        <button
+          v-if="lastInsight.analysisId"
+          class="flex-shrink-0 text-[10px] text-gray-600 hover:text-gray-300 transition-colors mt-0.5"
+          @click="openAnalysis(lastInsight!.analysisId!)"
+        >↗</button>
+      </div>
+    </div>
+
     <!-- Section header -->
     <div class="flex items-center justify-between px-0.5 pt-0.5">
       <div class="flex items-center gap-2">
@@ -418,6 +445,7 @@ const stopping = ref(false)
 const warning = ref<string | null>(null)
 const upgradeNeeded = ref(false)
 const activityLog = ref<{ time: number; message: string }[]>([])
+const lastInsight = ref<{ text: string; score: number; agent: string | null; analysisId: number | null; date: string } | null>(null)
 
 const quotaPercent = computed(() => {
   const stats = profile.value?.user?.analysis_stats
@@ -533,6 +561,10 @@ onMounted(async () => {
   // Load activity log history
   activityLog.value = await window.api.app.getActivityLog().catch(() => [])
 
+  // Load last insight from persisted settings
+  const savedSettings = await window.api.settings.get().catch(() => null) as ({ lastInsight?: typeof lastInsight.value } | null)
+  if (savedSettings?.lastInsight) lastInsight.value = savedSettings.lastInsight
+
   pollInterval = setInterval(async () => {
     if (document.hidden) return // skip while Valorant is fullscreen
     try {
@@ -548,6 +580,9 @@ onMounted(async () => {
 
   const ipcCleanup: (() => void)[] = []
   ipcCleanup.push(window.api.on('dashboard:refresh', refreshProfile))
+  ipcCleanup.push(window.api.on('dashboard:last-insight', (...args: unknown[]) => {
+    lastInsight.value = args[0] as typeof lastInsight.value
+  }))
   ipcCleanup.push(window.api.on('recordings:updated', loadPendingRecordings))
   ipcCleanup.push(window.api.on('app:activity-log', (...args: unknown[]) => {
     activityLog.value = args[0] as { time: number; message: string }[]

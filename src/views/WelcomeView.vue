@@ -197,26 +197,23 @@ const features = [
   {
     bg: 'bg-red-500/10',
     iconColor: 'text-red-400',
-    // Video camera / record icon
     iconPath: 'M15 10l4.553-2.277A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M4 8h11a1 1 0 011 1v6a1 1 0 01-1 1H4a1 1 0 01-1-1V9a1 1 0 011-1z',
-    title: 'Auto-detect games',
-    text: 'Detects Valorant launch and starts recording competitive matches'
+    title: 'Records every competitive match',
+    text: 'Detects Valorant automatically — no buttons, no setup, just play'
   },
   {
     bg: 'bg-purple-500/10',
     iconColor: 'text-purple-400',
-    // Sparkles / AI icon
     iconPath: 'M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z',
     title: 'AI coaching after every game',
-    text: 'Detailed coaching report delivered minutes after the match ends'
+    text: 'Your top 3 improvements delivered in your tray within minutes'
   },
   {
     bg: 'bg-cyan-500/10',
     iconColor: 'text-cyan-400',
-    // Chart / analytics icon
-    iconPath: 'M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z',
-    title: 'Timeline-aware insights',
-    text: 'Kill/death events guide smarter frame selection for analysis'
+    iconPath: 'M13 7h8m0 0v8m0-8l-8 8-4-4-6 6',
+    title: 'Track your progress over time',
+    text: 'See your score trend, win streak, and improvement history at a glance'
   }
 ]
 

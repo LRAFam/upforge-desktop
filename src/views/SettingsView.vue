@@ -56,6 +56,20 @@
           />
         </div>
       </div>
+      <!-- Upgrade nudge when near/at limit -->
+      <div
+        v-if="usagePercent >= 80 && (user as UserWithUsage).analyses_limit && (user as UserWithUsage).analyses_limit! <= 5"
+        class="mt-2 px-3 py-2.5 bg-purple-500/[0.07] border border-purple-500/20 rounded-xl"
+      >
+        <p class="text-[11px] text-purple-300 font-medium">
+          {{ usagePercent >= 100 ? 'You\'ve used all your analyses this month.' : 'Running low on analyses.' }}
+        </p>
+        <p class="text-[10px] text-purple-400/60 mt-0.5 mb-2">Upgrade for more analyses and full history access.</p>
+        <button
+          class="w-full py-1.5 bg-gradient-to-r from-purple-600 to-purple-700 hover:from-purple-500 hover:to-purple-600 text-white text-[11px] font-semibold rounded-lg transition-all shadow-sm shadow-purple-900/30"
+          @click="openUpgrade"
+        >Upgrade Plan →</button>
+      </div>
     </section>
 
     <!-- Recording settings -->
@@ -403,6 +417,10 @@ async function testRiotApi(): Promise<void> {
 
 function openBilling(): void {
   window.open('https://upforge.gg/billing', '_blank')
+}
+
+function openUpgrade(): void {
+  window.open('https://upforge.gg/upgrade', '_blank')
 }
 
 function openSite(): void {
