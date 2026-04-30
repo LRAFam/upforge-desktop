@@ -53,7 +53,12 @@
         </div>
         <div>
           <p class="text-sm font-semibold">Analysing gameplay</p>
-          <p class="text-[11px] text-gray-500 mt-0.5">AI is reviewing your session &middot; ~3 min</p>
+          <p class="text-[11px] text-gray-500 mt-0.5">~3 min · AI is reviewing your frames</p>
+        </div>
+        <!-- Rotating coaching tip -->
+        <div class="px-3 py-2.5 bg-white/[0.02] border border-white/[0.05] rounded-xl text-left">
+          <p class="text-[9px] font-semibold uppercase tracking-wider text-gray-600 mb-1">Did you know?</p>
+          <p class="text-[11px] text-gray-400 leading-relaxed">{{ currentTip }}</p>
         </div>
         <div class="flex items-center justify-center gap-1.5">
           <span v-for="i in 3" :key="i" class="w-1.5 h-1.5 rounded-full bg-orange-500/60 animate-bounce" :style="{ animationDelay: `${(i - 1) * 0.18}s` }" />
@@ -75,40 +80,61 @@
 
       <!-- Ready -->
       <div v-else-if="state === 'ready'" class="w-full space-y-3">
-        <div class="flex items-center gap-3">
+
+        <!-- Agent hero + score -->
+        <div class="flex items-center gap-4">
           <div
-            class="w-9 h-9 rounded-full overflow-hidden flex items-center justify-center flex-shrink-0 transition-all"
+            class="relative w-16 h-16 rounded-2xl overflow-hidden flex-shrink-0 transition-all"
             :class="agentImageUrl ? '' : 'bg-green-500/10 border border-green-500/20'"
-            :style="agentImageUrl ? { border: `1px solid ${agentAccentColor}50`, background: agentAccentColor + '20' } : {}"
+            :style="agentImageUrl ? { border: `2px solid ${agentAccentColor}60`, background: agentAccentColor + '20', boxShadow: `0 0 20px ${agentAccentColor}30` } : {}"
           >
-            <img v-if="agentImageUrl" :src="agentImageUrl" class="w-8 h-8 object-contain" />
-            <svg v-else class="w-5 h-5 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <img v-if="agentImageUrl" :src="agentImageUrl" class="w-full h-full object-cover object-top" />
+            <svg v-else class="w-8 h-8 text-green-400 absolute inset-0 m-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
             </svg>
           </div>
-          <div>
-            <p class="text-sm font-semibold">Analysis ready</p>
-            <p class="text-[11px] text-gray-500">
-              {{ gameInfo.agent || gameLabel }}<span v-if="gameInfo.map"> &middot; {{ gameInfo.map }}</span>
+          <div class="flex-1 min-w-0">
+            <div class="flex items-center gap-2 mb-0.5">
+              <span class="text-[10px] font-semibold uppercase tracking-wider text-gray-500">Analysis ready</span>
+              <span
+                v-if="result?.overall_score"
+                class="text-[10px] font-bold px-1.5 py-0.5 rounded-full"
+                :class="scoreGradeBadgeClass(result.overall_score)"
+              >{{ scoreGrade(result.overall_score) }}</span>
+            </div>
+            <p class="text-sm font-bold text-white leading-tight">
+              {{ gameInfo.agent || gameLabel }}<span v-if="gameInfo.map" class="text-gray-500 font-normal"> · {{ gameInfo.map }}</span>
             </p>
+          </div>
+          <div v-if="result?.overall_score" class="text-right flex-shrink-0">
+            <span class="text-3xl font-black tabular-nums" :class="scoreClass(result.overall_score)">{{ result.overall_score }}</span>
+            <span class="text-xs text-gray-600 font-normal">/100</span>
           </div>
         </div>
 
         <!-- Score bar -->
-        <div v-if="result?.overall_score" class="px-3 py-2.5 bg-white/[0.02] border border-white/[0.06] rounded-xl">
-          <div class="flex items-baseline justify-between mb-1.5">
-            <span class="text-[10px] text-gray-500 uppercase tracking-wider">Overall Score</span>
-            <span class="text-xl font-bold tabular-nums" :class="scoreClass(result.overall_score)">
-              {{ result.overall_score }}<span class="text-xs text-gray-600 font-normal">/100</span>
-            </span>
-          </div>
-          <div class="w-full h-1 bg-white/[0.06] rounded-full overflow-hidden">
-            <div class="h-full rounded-full transition-all duration-1000" :class="scoreBarClass(result.overall_score)" :style="{ width: `${result.overall_score}%` }" />
-          </div>
+        <div v-if="result?.overall_score" class="w-full h-1.5 bg-white/[0.06] rounded-full overflow-hidden">
+          <div
+            class="h-full rounded-full transition-all duration-1000"
+            :class="scoreBarClass(result.overall_score)"
+            :style="{ width: `${result.overall_score}%` }"
+          />
         </div>
 
-        <!-- Top issue -->
-        <div v-if="topIssue" class="flex items-start gap-2 px-3 py-2 bg-red-500/[0.07] border border-red-500/15 rounded-xl">
+        <!-- Improvements list -->
+        <div v-if="improvements.length" class="space-y-1.5">
+          <p class="text-[10px] font-semibold uppercase tracking-wider text-gray-600">Focus on</p>
+          <div
+            v-for="(imp, i) in improvements"
+            :key="i"
+            class="flex items-start gap-2 px-3 py-2 bg-white/[0.03] border border-white/[0.06] rounded-xl"
+          >
+            <span class="text-[10px] font-bold w-4 flex-shrink-0 mt-0.5" :class="i === 0 ? 'text-red-400' : 'text-gray-600'">{{ i + 1 }}</span>
+            <p class="text-[11px] text-gray-300 leading-relaxed">{{ imp }}</p>
+          </div>
+        </div>
+        <!-- Fallback: top issue only -->
+        <div v-else-if="topIssue" class="flex items-start gap-2 px-3 py-2 bg-red-500/[0.07] border border-red-500/15 rounded-xl">
           <svg class="w-3.5 h-3.5 text-red-400 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
           </svg>
@@ -117,11 +143,12 @@
 
         <div class="flex gap-2 pt-1">
           <button
-            class="flex-1 py-2 text-xs font-semibold bg-gradient-to-r from-red-500 to-orange-600 hover:from-red-600 hover:to-orange-700 text-white rounded-lg transition-all shadow-sm shadow-red-500/20"
+            class="flex-1 py-2.5 text-xs font-bold rounded-xl transition-all shadow-lg"
+            :style="{ background: `linear-gradient(135deg, ${agentAccentColor || '#dc2626'}, ${agentAccentColor ? agentAccentColor + 'cc' : '#ea580c'})`, boxShadow: `0 4px 14px ${agentAccentColor || '#dc2626'}40` }"
             @click="viewFullAnalysis"
-          >View Full Analysis</button>
+          >View Full Analysis →</button>
           <button
-            class="px-3 py-2 text-[11px] text-gray-500 hover:text-gray-300 bg-white/[0.03] hover:bg-white/[0.06] border border-white/[0.06] rounded-lg transition-colors"
+            class="px-3 py-2.5 text-[11px] text-gray-500 hover:text-gray-300 bg-white/[0.03] hover:bg-white/[0.06] border border-white/[0.06] rounded-xl transition-colors"
             @click="dismiss"
           >Dismiss</button>
         </div>
@@ -189,6 +216,16 @@ import { getAgentImage, getAgentColor } from '../lib/valorant'
 
 type State = 'uploading' | 'analysing' | 'ready' | 'error' | 'pending'
 
+const COACHING_TIPS = [
+  'Players who review their gameplay weekly improve 2x faster than those who don\'t.',
+  'Crosshair placement accounts for up to 40% of your ability to win gunfights.',
+  'Economy management separates Gold from Diamond more than aim does.',
+  'The #1 mistake at every rank: pushing aggressively without information.',
+  'Positioning decisions happen before the fight starts — map awareness wins rounds.',
+  'Pro players spend more time watching replays than playing ranked.',
+  'A consistent warm-up routine can reduce your reaction time by 15–20ms.',
+]
+
 const state = ref<State>('uploading')
 const uploadProgress = ref(0)
 const gameInfo = ref<{ game: string; map: string | null; agent: string | null }>({ game: 'valorant', map: null, agent: null })
@@ -197,15 +234,23 @@ const errorMessage = ref('')
 const pendingRecordingId = ref<string | null>(null)
 const analysing = ref(false)
 const analysisStuck = ref(false)
+const tipIndex = ref(Math.floor(Math.random() * COACHING_TIPS.length))
 let stuckTimer: ReturnType<typeof setTimeout> | null = null
+let tipTimer: ReturnType<typeof setInterval> | null = null
+
+const currentTip = computed(() => COACHING_TIPS[tipIndex.value])
 
 function startStuckTimer() {
   if (stuckTimer) clearTimeout(stuckTimer)
   stuckTimer = setTimeout(() => { analysisStuck.value = true }, 5 * 60 * 1000)
+  tipTimer = setInterval(() => {
+    tipIndex.value = (tipIndex.value + 1) % COACHING_TIPS.length
+  }, 15000)
 }
 
 function clearStuckTimer() {
   if (stuckTimer) { clearTimeout(stuckTimer); stuckTimer = null }
+  if (tipTimer) { clearInterval(tipTimer); tipTimer = null }
   analysisStuck.value = false
 }
 
@@ -215,6 +260,29 @@ const topIssue = computed(() => {
   if (!result.value) return null
   return (result.value as Record<string, unknown>).top_issue as string | null
 })
+
+const improvements = computed<string[]>(() => {
+  if (!result.value) return []
+  const raw = (result.value as Record<string, unknown>).priority_improvements
+  if (Array.isArray(raw)) return (raw as string[]).slice(0, 3)
+  return []
+})
+
+function scoreGrade(score: number): string {
+  if (score >= 90) return 'S'
+  if (score >= 75) return 'A'
+  if (score >= 60) return 'B'
+  if (score >= 45) return 'C'
+  return 'D'
+}
+
+function scoreGradeBadgeClass(score: number): string {
+  if (score >= 90) return 'bg-yellow-500/20 text-yellow-300 border border-yellow-500/30'
+  if (score >= 75) return 'bg-green-500/20 text-green-300 border border-green-500/30'
+  if (score >= 60) return 'bg-blue-500/20 text-blue-300 border border-blue-500/30'
+  if (score >= 45) return 'bg-orange-500/20 text-orange-300 border border-orange-500/30'
+  return 'bg-red-500/20 text-red-300 border border-red-500/30'
+}
 
 const agentImageUrl = computed(() => gameInfo.value.agent ? getAgentImage(gameInfo.value.agent) : '')
 const agentAccentColor = computed(() => gameInfo.value.agent ? getAgentColor(gameInfo.value.agent) : '')
