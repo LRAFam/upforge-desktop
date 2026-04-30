@@ -804,9 +804,9 @@ async function doUploadAndAnalyse(
     logActivity(`Upload failed: ${msg}`)
     tray?.setToolTip('UpForge — Valorant AI Coaching')
 
-    // If this was the auto-analyse path (no recordingId yet) and the file still
-    // exists, save it to the pending store and switch the post-game window to
-    // 'pending' state so the user can retry with one click (or later from dashboard).
+    // Try to ensure the recording is saved to the pending store so the user can retry.
+    // If this is the first attempt (no recordingId yet) and the file still exists, save now.
+    let effectiveRecordingId = recordingId
     if (!recordingId && fs.existsSync(videoPath)) {
       try {
         const user = authManager.getUser()
@@ -820,16 +820,20 @@ async function doUploadAndAnalyse(
           gameMode: riotLocalApi.getLastGameMode() ?? 'UNKNOWN',
           timeline
         })
-        send('post-game:pending', { recordingId: saved.id, game, map, agent })
+        effectiveRecordingId = saved.id
         mainWindow?.webContents.send('recordings:updated')
-        logActivity('Recording saved — retry from the post-game window or dashboard')
-        return
+        logActivity('Recording saved — can retry from the post-game window or dashboard')
       } catch {
-        // Store save failed — fall through to show the error
+        // Store save failed — fall through with no recordingId
       }
     }
 
-    send('post-game:upload-error', msg)
+    // Send the error with the recordingId (if we have one) so the renderer can offer retry.
+    // The payload is either a plain string (legacy, for analysis polling errors) or an object.
+    send('post-game:upload-error', effectiveRecordingId
+      ? { message: msg, recordingId: effectiveRecordingId }
+      : msg
+    )
   }
 }
 

@@ -199,7 +199,8 @@
         </div>
         <div class="flex gap-2 pt-1">
           <button
-            class="flex-1 py-2 text-xs font-semibold bg-gradient-to-r from-red-500 to-orange-600 hover:from-red-600 hover:to-orange-700 text-white rounded-lg transition-all shadow-sm shadow-red-500/20"
+            :disabled="!pendingRecordingId"
+            class="flex-1 py-2 text-xs font-semibold bg-gradient-to-r from-red-500 to-orange-600 hover:from-red-600 hover:to-orange-700 text-white rounded-lg transition-all shadow-sm shadow-red-500/20 disabled:opacity-40 disabled:cursor-not-allowed"
             @click="retryUpload"
           >Retry</button>
           <button class="px-3 py-2 text-[11px] text-gray-500 hover:text-gray-300 bg-white/[0.03] hover:bg-white/[0.06] border border-white/[0.06] rounded-lg transition-colors" @click="dismiss">Dismiss</button>
@@ -318,9 +319,16 @@ onMounted(() => {
     const data = args[0] as { recordingId: string; game: string; map: string | null; agent: string | null }
     pendingRecordingId.value = data.recordingId
     gameInfo.value = { game: data.game, map: data.map, agent: data.agent }
+    state.value = 'pending'
   }))
   ipcCleanup.push(window.api.on('post-game:upload-error', (...args: unknown[]) => {
-    errorMessage.value = args[0] as string
+    const payload = args[0] as string | { message: string; recordingId?: string }
+    if (typeof payload === 'string') {
+      errorMessage.value = payload
+    } else {
+      errorMessage.value = payload.message
+      if (payload.recordingId) pendingRecordingId.value = payload.recordingId
+    }
     state.value = 'error'
   }))
   ;(window as Window & { _postGameIpcCleanup?: (() => void)[] })._postGameIpcCleanup = ipcCleanup
