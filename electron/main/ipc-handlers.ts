@@ -1,5 +1,7 @@
 import { IpcMain, BrowserWindow, app, dialog, shell } from 'electron'
 import fs from 'fs'
+import https from 'https'
+import http from 'http'
 import path from 'path'
 import { is } from '@electron-toolkit/utils'
 import { autoUpdater } from 'electron-updater'
@@ -9,6 +11,301 @@ import { Recorder } from './recorder'
 import { GameDetector } from './game-detector'
 import { SettingsManager } from './settings-manager'
 import { UploadManager } from './upload-manager'
+import { ClipStore, ClipRecord } from './clip-store'
+import { ClipExtractor } from './clip-extractor'
+import { HotkeyManager } from './hotkey-manager'
+import { toggleOverlay, isOverlayVisible } from './overlay-window'
+
+export function setupClipHandlers(
+  ipcMain: IpcMain,
+  clipStore: ClipStore,
+  clipExtractor: ClipExtractor,
+  auth: AuthManager,
+  hotkeyManager: HotkeyManager
+): void {
+  const apiBase = process.env['VITE_API_URL'] || 'https://api.upforge.gg'
+
+  ipcMain.handle('clips:get', () => clipStore.getAll())
+
+  ipcMain.handle('clips:get-thumbnail', (_e, { id }: { id: string }) => {
+    const clip = clipStore.getById(id)
+    if (!clip?.thumbPath || !fs.existsSync(clip.thumbPath)) return null
+    try {
+      const data = fs.readFileSync(clip.thumbPath)
+      return `data:image/jpeg;base64,${data.toString('base64')}`
+    } catch {
+      return null
+    }
+  })
+
+  ipcMain.handle('clips:delete', (_e, { id }: { id: string }) => {
+    const clip = clipStore.remove(id)
+    if (!clip) return { ok: false, error: 'Not found' }
+    // Clean up files from disk
+    for (const p of [clip.path, clip.thumbPath]) {
+      if (p && fs.existsSync(p)) {
+        try { fs.unlinkSync(p) } catch { /* ignore */ }
+      }
+    }
+    return { ok: true }
+  })
+
+  ipcMain.handle('clips:update-title', (_e, { id, title }: { id: string; title: string }) => {
+    clipStore.update(id, { title })
+    return { ok: true }
+  })
+
+  ipcMain.handle('clips:open-folder', () => {
+    shell.openPath(ClipExtractor.clipsDir())
+  })
+
+  ipcMain.handle('clips:get-hotkeys', () => hotkeyManager.getBindings())
+
+  ipcMain.handle('clips:set-hotkey', (_e, { action, accelerator }: { action: string; accelerator: string }) => {
+    const ok = hotkeyManager.update(action as 'save-clip' | 'toggle-overlay', accelerator)
+    return { ok }
+  })
+
+  ipcMain.handle('clips:upload', async (_e, { id }: { id: string }) => {
+    const clip = clipStore.getById(id)
+    if (!clip) return { ok: false, error: 'Clip not found' }
+    if (!fs.existsSync(clip.path)) return { ok: false, error: 'Clip file missing' }
+
+    const token = auth.getToken()
+    if (!token) return { ok: false, error: 'Not authenticated' }
+
+    clipStore.update(id, { uploadStatus: 'uploading' })
+
+    try {
+      const fileData = fs.readFileSync(clip.path)
+      const boundary = `UpForgeBoundary${Date.now()}`
+      const fileName = path.basename(clip.path)
+
+      // Build multipart/form-data body
+      const parts: Buffer[] = []
+      const addField = (name: string, value: string) => {
+        parts.push(Buffer.from(
+          `--${boundary}\r\nContent-Disposition: form-data; name="${name}"\r\n\r\n${value}\r\n`
+        ))
+      }
+      addField('trigger', clip.trigger)
+      if (clip.map) addField('map', clip.map)
+      if (clip.agent) addField('agent', clip.agent)
+      addField('duration_seconds', String(clip.durationSeconds))
+      if (clip.round != null) addField('round', String(clip.round))
+      if (clip.analysisJobId) addField('analysis_id', clip.analysisJobId)
+
+      parts.push(Buffer.from(
+        `--${boundary}\r\nContent-Disposition: form-data; name="clip"; filename="${fileName}"\r\nContent-Type: video/mp4\r\n\r\n`
+      ))
+      parts.push(fileData)
+      parts.push(Buffer.from(`\r\n--${boundary}--\r\n`))
+
+      const body = Buffer.concat(parts)
+      const url = new URL(`${apiBase}/api/clips`)
+      const proto = url.protocol === 'https:' ? https : http
+
+      const apiClipId = await new Promise<number>((resolve, reject) => {
+        const req = proto.request({
+          method: 'POST',
+          hostname: url.hostname,
+          port: url.port || (url.protocol === 'https:' ? 443 : 80),
+          path: url.pathname,
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': `multipart/form-data; boundary=${boundary}`,
+            'Content-Length': body.length,
+            'Accept': 'application/json',
+          },
+        }, (res) => {
+          let data = ''
+          res.on('data', (c: Buffer) => { data += c.toString() })
+          res.on('end', () => {
+            try {
+              const json = JSON.parse(data)
+              if ((res.statusCode ?? 0) >= 400) reject(new Error(json.message || `Upload failed (${res.statusCode})`))
+              else resolve(json.id ?? json.clip?.id)
+            } catch {
+              reject(new Error(`Invalid server response (HTTP ${res.statusCode})`))
+            }
+          })
+        })
+        req.on('error', reject)
+        req.setTimeout(120_000, () => req.destroy(new Error('Upload timed out')))
+        req.write(body)
+        req.end()
+      })
+
+      clipStore.update(id, { uploadStatus: 'uploaded', apiClipId })
+      return { ok: true, apiClipId }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      clipStore.update(id, { uploadStatus: 'failed' })
+      log.error('[ClipUpload] Failed:', msg)
+      return { ok: false, error: msg }
+    }
+  })
+
+  ipcMain.handle('clips:request-analysis', async (_e, { id }: { id: string }) => {
+    const clip = clipStore.getById(id)
+    if (!clip) return { ok: false, error: 'Clip not found' }
+
+    const token = auth.getToken()
+    if (!token) return { ok: false, error: 'Not authenticated' }
+
+    // Must be uploaded first
+    if (!clip.apiClipId) {
+      return { ok: false, error: 'Upload the clip before requesting analysis' }
+    }
+
+    clipStore.update(id, { analysisStatus: 'queued' })
+
+    try {
+      await _apiPost(apiBase, `/api/clips/${clip.apiClipId}/analyse`, '{}', token)
+      clipStore.update(id, { analysisStatus: 'queued' })
+
+      // Poll for analysis result (max 3 minutes for short clips)
+      _pollClipAnalysis(id, clip.apiClipId, token, clipStore, apiBase)
+
+      return { ok: true }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      clipStore.update(id, { analysisStatus: 'failed' })
+      return { ok: false, error: msg }
+    }
+  })
+
+  ipcMain.handle('clips:share', async (_e, { id }: { id: string }) => {
+    const clip = clipStore.getById(id)
+    if (!clip?.apiClipId) return { ok: false, error: 'Upload clip first' }
+
+    const token = auth.getToken()
+    if (!token) return { ok: false, error: 'Not authenticated' }
+
+    try {
+      const res = await _apiPost(apiBase, `/api/clips/${clip.apiClipId}/share`, '{}', token) as Record<string, string>
+      const shareToken = res.share_token
+      const shareUrl = res.share_url
+      if (shareToken) clipStore.update(id, { shareToken })
+      return { ok: true, shareUrl, shareToken }
+    } catch (err) {
+      return { ok: false, error: err instanceof Error ? err.message : String(err) }
+    }
+  })
+
+  ipcMain.handle('clips:publish', async (_e, { id, caption }: { id: string; caption?: string }) => {
+    const clip = clipStore.getById(id)
+    if (!clip?.apiClipId) return { ok: false, error: 'Upload clip first' }
+
+    const token = auth.getToken()
+    if (!token) return { ok: false, error: 'Not authenticated' }
+
+    try {
+      await _apiPost(apiBase, `/api/clips/${clip.apiClipId}/publish`,
+        JSON.stringify({ caption: caption ?? null }), token)
+      clipStore.update(id, { published: true })
+      return { ok: true }
+    } catch (err) {
+      return { ok: false, error: err instanceof Error ? err.message : String(err) }
+    }
+  })
+
+  ipcMain.handle('overlay:toggle', () => {
+    toggleOverlay()
+    return { visible: isOverlayVisible() }
+  })
+}
+
+/** POST JSON to an API endpoint with Bearer auth. */
+function _apiPost(base: string, pathname: string, body: string, token: string): Promise<unknown> {
+  return new Promise((resolve, reject) => {
+    const url = new URL(`${base}${pathname}`)
+    const proto = url.protocol === 'https:' ? https : http
+    const req = proto.request({
+      method: 'POST',
+      hostname: url.hostname,
+      port: url.port || (url.protocol === 'https:' ? 443 : 80),
+      path: url.pathname + url.search,
+      headers: {
+        'Content-Type': 'application/json',
+        'Content-Length': Buffer.byteLength(body),
+        'Authorization': `Bearer ${token}`,
+        'Accept': 'application/json',
+      },
+    }, (res) => {
+      let data = ''
+      res.on('data', (c: Buffer) => { data += c.toString() })
+      res.on('end', () => {
+        try {
+          const json = JSON.parse(data)
+          if ((res.statusCode ?? 0) >= 400) reject(new Error(json.message || `Request failed (${res.statusCode})`))
+          else resolve(json)
+        } catch {
+          reject(new Error(`Invalid response (HTTP ${res.statusCode})`))
+        }
+      })
+    })
+    req.on('error', reject)
+    req.setTimeout(30_000, () => req.destroy(new Error('Request timed out')))
+    req.write(body)
+    req.end()
+  })
+}
+
+/** Poll the API for clip analysis completion, updating the local store when done. */
+function _pollClipAnalysis(
+  localClipId: string,
+  apiClipId: number,
+  token: string,
+  clipStore: ClipStore,
+  apiBase: string,
+  attempt = 0
+): void {
+  const delay = Math.min(5000 * Math.pow(1.4, attempt), 30_000)
+  setTimeout(async () => {
+    if (attempt > 30) {
+      clipStore.update(localClipId, { analysisStatus: 'failed' })
+      return
+    }
+    try {
+      const url = new URL(`${apiBase}/api/clips/${apiClipId}/analysis`)
+      const proto = url.protocol === 'https:' ? https : http
+      const result = await new Promise<Record<string, unknown>>((resolve, reject) => {
+        proto.get({
+          hostname: url.hostname,
+          port: url.port || (url.protocol === 'https:' ? 443 : 80),
+          path: url.pathname,
+          headers: { 'Authorization': `Bearer ${token}`, 'Accept': 'application/json' },
+        }, (res) => {
+          let data = ''
+          res.on('data', (c: Buffer) => { data += c.toString() })
+          res.on('end', () => {
+            try { resolve(JSON.parse(data) as Record<string, unknown>) }
+            catch { reject(new Error('Invalid JSON')) }
+          })
+        }).on('error', reject)
+      })
+
+      const status = result.status as string
+      if (status === 'completed') {
+        clipStore.update(localClipId, {
+          analysisStatus: 'completed',
+          verdict: result.verdict as string ?? null,
+          suggestion: result.suggestion as string ?? null,
+          coachingTags: (result.coaching_tags as string[]) ?? [],
+          overallScore: result.overall_score as number ?? null,
+        })
+      } else if (status === 'failed') {
+        clipStore.update(localClipId, { analysisStatus: 'failed' })
+      } else {
+        clipStore.update(localClipId, { analysisStatus: 'processing' })
+        _pollClipAnalysis(localClipId, apiClipId, token, clipStore, apiBase, attempt + 1)
+      }
+    } catch {
+      _pollClipAnalysis(localClipId, apiClipId, token, clipStore, apiBase, attempt + 1)
+    }
+  }, delay)
+}
 
 export function setupIpcHandlers(
   ipcMain: IpcMain,

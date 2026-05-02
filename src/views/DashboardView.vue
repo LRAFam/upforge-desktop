@@ -251,7 +251,7 @@
               :style="{ color: getRoleColor(getAgentRole(rec.agent)), backgroundColor: getRoleColor(getAgentRole(rec.agent)) + '20' }"
             >{{ getAgentRole(rec.agent) }}</span>
           </div>
-          <p class="text-[10px] text-gray-600 mt-0.5">{{ formatRelativeTime(rec.recordedAt) }} &middot; {{ formatMode(rec.gameMode) }}<span v-if="rec.fileSizeBytes"> &middot; {{ formatFileSize(rec.fileSizeBytes) }}</span></p>
+          <p class="text-[10px] text-gray-600 mt-0.5">{{ formatRelativeTime(new Date(rec.recordedAt).toISOString()) }} &middot; {{ formatMode(rec.gameMode) }}<span v-if="rec.fileSizeBytes"> &middot; {{ formatFileSize(rec.fileSizeBytes) }}</span></p>
         </div>
         <div class="flex items-center gap-1.5 flex-shrink-0">
           <button

@@ -20,9 +20,14 @@ import { RiotLocalApi } from './riot-local-api'
 import { UploadManager, savePendingJob, clearPendingJob, readPendingJob } from './upload-manager'
 import { AuthManager } from './auth-manager'
 import { SettingsManager } from './settings-manager'
-import { setupIpcHandlers } from './ipc-handlers'
+import { setupIpcHandlers, setupClipHandlers } from './ipc-handlers'
 import { RecordingsStore } from './recordings-store'
+import { ClipExtractor } from './clip-extractor'
+import { ClipStore } from './clip-store'
+import { HotkeyManager } from './hotkey-manager'
+import { createOverlayWindow, toggleOverlay, destroyOverlay } from './overlay-window'
 import type { MatchData } from './riot-local-api'
+import log from 'electron-log'
 
 // Catch any floating promise rejections in the main process before they
 // crash Electron silently. Log them so they show up in support logs.
@@ -40,6 +45,9 @@ let ffmpegOk = true // updated after preflight; exposed via app:get-status
 
 const gameDetector = new GameDetector()
 const recorder = new Recorder()
+const clipExtractor = new ClipExtractor()
+const clipStore = new ClipStore()
+const hotkeyManager = new HotkeyManager()
 recorder.onStatusChange = (recording, error) => {
   mainWindow?.webContents.send('recording:status-changed', { recording, error: error ?? null })
   updateTrayMenuFn?.() // keep tray in sync without waiting for the 30s interval
@@ -74,11 +82,150 @@ let matchHandled = false
 const MAX_LOG_ENTRIES = 30
 const activityLog: { time: number; message: string }[] = []
 
+// Hotkey bookmarks — timestamps (ms) relative to recording start pressed during a match
+const hotkeyBookmarks: number[] = []
+// Recording start time — set when recorder.start() succeeds
+let currentRecordingStartTime: number | null = null
+
 function logActivity(message: string): void {
   const entry = { time: Date.now(), message }
   activityLog.push(entry)
   if (activityLog.length > MAX_LOG_ENTRIES) activityLog.shift()
   mainWindow?.webContents.send('app:activity-log', activityLog.slice())
+}
+
+/**
+ * Extract highlight clips from a completed match recording.
+ * Called post-match once the recording file is finalised.
+ */
+async function extractMatchClips(
+  videoPath: string,
+  timeline: MatchData | null,
+  analysisJobId: string | null
+): Promise<void> {
+  if (!fs.existsSync(videoPath)) return
+
+  const recordingStart = currentRecordingStartTime ?? 0
+  const map = timeline?.map ?? null
+  const agent = timeline?.agent ?? null
+  const extractedClipIds: string[] = []
+
+  // ── Hotkey bookmarks → 30s manual clips ─────────────────────────────
+  for (const bookmarkedAt of hotkeyBookmarks) {
+    const offsetMs = bookmarkedAt - recordingStart
+    const startMs = Math.max(0, offsetMs - 25_000)
+    try {
+      const tempRecord = clipStore.add({
+        path: '',
+        thumbPath: null,
+        trigger: 'hotkey',
+        map, agent,
+        durationSeconds: 30,
+        round: null,
+        analysisJobId,
+      })
+      const clipPath = ClipExtractor.clipPath(tempRecord.id)
+      const thumbPath = ClipExtractor.thumbPath(tempRecord.id)
+      await clipExtractor.extract({ sourcePath: videoPath, startOffsetMs: startMs, durationMs: 30_000, outputPath: clipPath })
+      await clipExtractor.thumbnail({ sourcePath: videoPath, offsetMs: offsetMs, outputPath: thumbPath })
+      clipStore.update(tempRecord.id, { path: clipPath, thumbPath })
+      extractedClipIds.push(tempRecord.id)
+      logActivity(`Saved hotkey clip (${map ?? 'unknown map'})`)
+    } catch (err) {
+      log.warn('[ClipExtract] Hotkey clip failed:', err)
+    }
+  }
+
+  // ── Kill clips from timeline ─────────────────────────────────────────
+  if (timeline?.playerKills && timeline.playerKills.length > 0) {
+    // Detect ace rounds (5+ kills by the player in the same round)
+    const killsByRound = new Map<number, typeof timeline.playerKills>()
+    for (const kill of timeline.playerKills) {
+      const r = kill.round ?? -1
+      if (!killsByRound.has(r)) killsByRound.set(r, [])
+      killsByRound.get(r)!.push(kill)
+    }
+
+    const aceRounds = new Set<number>()
+    for (const [round, kills] of killsByRound.entries()) {
+      if (kills.length >= 5) aceRounds.add(round)
+    }
+
+    // Extract top kills (up to 6) — skip rounds already covered by ace clips
+    const topKills = timeline.playerKills
+      .filter(k => !aceRounds.has(k.round ?? -1) && k.videoOffsetMs != null)
+      .slice(0, 6)
+
+    for (const kill of topKills) {
+      const offsetMs = kill.videoOffsetMs!
+      const startMs = Math.max(0, offsetMs - 8_000)
+      try {
+        const tempRecord = clipStore.add({
+          path: '',
+          thumbPath: null,
+          trigger: 'kill',
+          map, agent,
+          durationSeconds: 13,
+          round: kill.round ?? null,
+          analysisJobId,
+        })
+        const clipPath = ClipExtractor.clipPath(tempRecord.id)
+        const thumbPath = ClipExtractor.thumbPath(tempRecord.id)
+        await clipExtractor.extract({ sourcePath: videoPath, startOffsetMs: startMs, durationMs: 13_000, outputPath: clipPath })
+        await clipExtractor.thumbnail({ sourcePath: videoPath, offsetMs: offsetMs, outputPath: thumbPath })
+        clipStore.update(tempRecord.id, { path: clipPath, thumbPath })
+        extractedClipIds.push(tempRecord.id)
+      } catch (err) {
+        log.warn('[ClipExtract] Kill clip failed:', err)
+      }
+    }
+
+    // Extract ace clips
+    for (const round of aceRounds) {
+      const kills = killsByRound.get(round)!.filter(k => k.videoOffsetMs != null)
+      if (kills.length === 0) continue
+      const first = kills.reduce((a, b) => a.videoOffsetMs! < b.videoOffsetMs! ? a : b)
+      const last = kills.reduce((a, b) => a.videoOffsetMs! > b.videoOffsetMs! ? a : b)
+      const startMs = Math.max(0, first.videoOffsetMs! - 5_000)
+      const durationMs = Math.min(last.videoOffsetMs! - first.videoOffsetMs! + 10_000, 120_000)
+      try {
+        const tempRecord = clipStore.add({
+          path: '',
+          thumbPath: null,
+          trigger: 'ace',
+          map, agent,
+          durationSeconds: durationMs / 1000,
+          round,
+          analysisJobId,
+        })
+        const clipPath = ClipExtractor.clipPath(tempRecord.id)
+        const thumbPath = ClipExtractor.thumbPath(tempRecord.id)
+        await clipExtractor.extract({ sourcePath: videoPath, startOffsetMs: startMs, durationMs, outputPath: clipPath })
+        await clipExtractor.thumbnail({ sourcePath: videoPath, offsetMs: first.videoOffsetMs!, outputPath: thumbPath })
+        clipStore.update(tempRecord.id, { path: clipPath, thumbPath })
+        extractedClipIds.push(tempRecord.id)
+        logActivity(`Ace clip saved — Round ${round + 1} (${map ?? 'unknown'})`)
+      } catch (err) {
+        log.warn('[ClipExtract] Ace clip failed:', err)
+      }
+    }
+  }
+
+  if (extractedClipIds.length > 0) {
+    logActivity(`${extractedClipIds.length} clip${extractedClipIds.length === 1 ? '' : 's'} saved from match`)
+    mainWindow?.webContents.send('clips:new', extractedClipIds)
+    if (Notification.isSupported()) {
+      new Notification({
+        title: 'UpForge — Clips Ready',
+        body: `${extractedClipIds.length} highlight clip${extractedClipIds.length === 1 ? '' : 's'} saved`,
+        silent: true,
+      }).show()
+    }
+  }
+
+  // Reset bookmarks for next match
+  hotkeyBookmarks.length = 0
+  currentRecordingStartTime = null
 }
 
 function createMainWindow(): BrowserWindow {
@@ -357,8 +504,14 @@ function setupGameDetection(): void {
       }
 
       tray?.setToolTip('UpForge — Uploading...')
-      await doUploadAndAnalyse(null, videoPath, user?.riot_name ?? '', user?.riot_tag ?? '',
+      const uploadResult = await doUploadAndAnalyse(null, videoPath, user?.riot_name ?? '', user?.riot_tag ?? '',
         game, map, agent, timeline, thisPostGameWindow)
+
+      // Extract highlight clips from the recording in the background (non-blocking)
+      const jobId = uploadResult ?? null
+      extractMatchClips(videoPath, timeline, jobId).catch(err =>
+        log.warn('[ClipExtract] Background extraction error:', err)
+      )
     })
   }
 
@@ -534,7 +687,10 @@ function setupGameDetection(): void {
       await recorder.start(game, recorderConfig)
       // Update recordingStartTime to the moment the recorder actually began capturing.
       // This makes videoOffsetMs accurate: offset = (matchStart - recordingStart) + timeSinceGameStart.
-      riotLocalApi.setRecordingStartTime(Date.now())
+      const recStartTime = Date.now()
+      riotLocalApi.setRecordingStartTime(recStartTime)
+      currentRecordingStartTime = recStartTime
+      hotkeyBookmarks.length = 0 // clear any stale bookmarks from previous match
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
       console.error('[Main] Failed to start recording:', msg)
@@ -693,7 +849,7 @@ async function doUploadAndAnalyse(
   agent: string | null,
   timeline: MatchData | null,
   targetWindow: BrowserWindow
-): Promise<void> {
+): Promise<string | null> {
   const send = (channel: string, payload?: unknown) => {
     if (!targetWindow.isDestroyed()) targetWindow.webContents.send(channel, payload)
   }
@@ -799,6 +955,7 @@ async function doUploadAndAnalyse(
     }
 
     schedulePoll()
+    return result.job_id
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : 'Upload failed'
     logActivity(`Upload failed: ${msg}`)
@@ -834,6 +991,7 @@ async function doUploadAndAnalyse(
       ? { message: msg, recordingId: effectiveRecordingId }
       : msg
     )
+    return null
   }
 }
 
@@ -953,6 +1111,23 @@ app.whenReady().then(async () => {
     })
   }, () => ffmpegOk, () => waitingForMatch, () => activityLog.slice(), uploadManager)
 
+  setupClipHandlers(ipcMain, clipStore, clipExtractor, authManager, hotkeyManager)
+
+  // Register global hotkeys
+  hotkeyManager.on('save-clip', () => {
+    if (recorder.isRecording() && currentRecordingStartTime !== null) {
+      hotkeyBookmarks.push(Date.now())
+      logActivity('Clip moment bookmarked (F9)')
+      if (Notification.isSupported()) {
+        new Notification({ title: 'UpForge', body: 'Clip moment bookmarked!', silent: true }).show()
+      }
+    }
+  })
+  hotkeyManager.on('toggle-overlay', () => toggleOverlay())
+  hotkeyManager.registerAll()
+
+  createOverlayWindow()
+
   // Debug: test Riot Live Client API connection — returns raw response or error details
   ipcMain.handle('debug:test-riot-api', async () => {
     const net = await import('net')
@@ -1042,5 +1217,7 @@ app.on('before-quit', () => {
   tray = null
   gameDetector.stop()
   recorder.forceStop()
+  hotkeyManager.unregisterAll()
   globalShortcut.unregisterAll()
+  destroyOverlay()
 })

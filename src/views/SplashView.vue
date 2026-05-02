@@ -34,11 +34,11 @@ const statusText = ref('Checking for updates…')
 const progress = ref(0)
 const showProgress = ref(false)
 
-const handlers: Array<{ channel: string; fn: (...args: unknown[]) => void }> = []
+const handlers: Array<() => void> = []
 
 function on(channel: string, fn: (...args: unknown[]) => void) {
-  window.api.on(channel, fn)
-  handlers.push({ channel, fn })
+  const off = window.api.on(channel, fn)
+  handlers.push(off)
 }
 
 onMounted(async () => {
@@ -83,9 +83,7 @@ onMounted(async () => {
 })
 
 onUnmounted(() => {
-  for (const { channel, fn } of handlers) {
-    window.api.off(channel, fn)
-  }
+  for (const off of handlers) off()
 })
 </script>
 

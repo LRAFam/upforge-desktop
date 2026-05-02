@@ -52,6 +52,22 @@ const api = {
     getUsage: () => ipcRenderer.invoke('storage:get-usage'),
     openFolder: () => ipcRenderer.invoke('storage:open-folder')
   },
+  clips: {
+    get: () => ipcRenderer.invoke('clips:get'),
+    getThumbnail: (id: string) => ipcRenderer.invoke('clips:get-thumbnail', { id }),
+    delete: (id: string) => ipcRenderer.invoke('clips:delete', { id }),
+    updateTitle: (id: string, title: string) => ipcRenderer.invoke('clips:update-title', { id, title }),
+    openFolder: (id: string) => ipcRenderer.invoke('clips:open-folder', { id }),
+    getHotkeys: () => ipcRenderer.invoke('clips:get-hotkeys'),
+    setHotkey: (action: string, accelerator: string) => ipcRenderer.invoke('clips:set-hotkey', { action, accelerator }),
+    upload: (id: string) => ipcRenderer.invoke('clips:upload', { id }),
+    requestAnalysis: (id: string) => ipcRenderer.invoke('clips:request-analysis', { id }),
+    share: (id: string) => ipcRenderer.invoke('clips:share', { id }),
+    publish: (id: string, caption?: string) => ipcRenderer.invoke('clips:publish', { id, caption })
+  },
+  overlay: {
+    toggle: () => ipcRenderer.invoke('overlay:toggle')
+  },
   on: (channel: string, callback: (...args: unknown[]) => void): (() => void) => {
     const allowed = [
       'post-game:upload-start',
@@ -74,7 +90,8 @@ const api = {
       'updater:progress',
       'updater:downloaded',
       'updater:not-available',
-      'updater:error'
+      'updater:error',
+      'clips:new'
     ]
     if (allowed.includes(channel)) {
       const handler = (_e: Electron.IpcRendererEvent, ...args: unknown[]) => callback(...args)

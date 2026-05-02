@@ -11,8 +11,10 @@ import PostGameView from './views/PostGameView.vue'
 import SettingsView from './views/SettingsView.vue'
 import WelcomeView from './views/WelcomeView.vue'
 import SplashView from './views/SplashView.vue'
+import ClipsView from './views/ClipsView.vue'
+import OverlayView from './views/OverlayView.vue'
 
-const PUBLIC_ROUTES = ['/login', '/welcome', '/splash']
+const PUBLIC_ROUTES = ['/login', '/welcome', '/splash', '/overlay']
 
 const router = createRouter({
   history: createWebHashHistory(),
@@ -24,7 +26,9 @@ const router = createRouter({
     { path: '/dashboard', component: DashboardView },
     { path: '/post-game', component: PostGameView },
     { path: '/post-game-preview', component: PostGameView },
-    { path: '/settings', component: SettingsView }
+    { path: '/settings', component: SettingsView },
+    { path: '/clips', component: ClipsView },
+    { path: '/overlay', component: OverlayView }
   ]
 })
 

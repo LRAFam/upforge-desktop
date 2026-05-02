@@ -63,6 +63,28 @@ export interface ProfileData {
   latest_stats: ValorantStats | null
 }
 
+export interface ClipRecord {
+  id: string
+  title: string
+  videoPath: string
+  thumbnailPath: string | null
+  trigger: 'manual' | 'kill' | 'ace' | 'clutch'
+  map: string | null
+  agent: string | null
+  durationSeconds: number
+  round: number | null
+  createdAt: number
+  analysisJobId: string | null
+  uploadedAt: number | null
+  apiClipId: number | null
+  shareToken: string | null
+  publishedAt: number | null
+  analysisStatus: 'none' | 'pending' | 'completed' | 'failed'
+  analysisVerdict: string | null
+  analysisSuggestion: string | null
+  analysisScore: number | null
+}
+
 export interface AnalysisItem {
   id: number
   job_id: string | null
@@ -153,6 +175,22 @@ declare global {
       storage: {
         getUsage: () => Promise<{ bytes: number; count: number }>
         openFolder: () => Promise<void>
+      }
+      clips: {
+        get: () => Promise<ClipRecord[]>
+        getThumbnail: (id: string) => Promise<string | null>
+        delete: (id: string) => Promise<{ ok: boolean }>
+        updateTitle: (id: string, title: string) => Promise<{ ok: boolean }>
+        openFolder: (id: string) => Promise<void>
+        getHotkeys: () => Promise<Record<string, string>>
+        setHotkey: (action: string, accelerator: string) => Promise<{ ok: boolean }>
+        upload: (id: string) => Promise<{ ok: boolean; apiClipId?: number; error?: string }>
+        requestAnalysis: (id: string) => Promise<{ ok: boolean; error?: string }>
+        share: (id: string) => Promise<{ ok: boolean; shareToken?: string; error?: string }>
+        publish: (id: string, caption?: string) => Promise<{ ok: boolean; error?: string }>
+      }
+      overlay: {
+        toggle: () => Promise<void>
       }
       on: (channel: string, callback: (...args: unknown[]) => void) => (() => void)
     }
