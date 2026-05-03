@@ -232,7 +232,7 @@ export class AuthManager {
   async sendPresence(recording: boolean, game: string | null): Promise<void> {
     if (!this._token) return
     try {
-      await this._api.post('/api/teams/presence', { recording, game })
+      await this._api.post('/api/teams/presence', { is_recording: recording, game })
     } catch { /* ignore */ }
   }
 
