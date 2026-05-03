@@ -16,12 +16,25 @@ export class HotkeyManager {
     this.callbacks.set(action, callback)
   }
 
-  /** Register all hotkeys using current (or default) bindings */
-  registerAll(overrides: Partial<Record<HotkeyAction, string>> = {}): void {
+  /** Register all hotkeys using current (or default) bindings. Returns map of action → success. */
+  registerAll(overrides: Partial<Record<HotkeyAction, string>> = {}): Record<HotkeyAction, boolean> {
+    const results = {} as Record<HotkeyAction, boolean>
     for (const [action, defaultKey] of Object.entries(DEFAULT_HOTKEYS) as [HotkeyAction, string][]) {
       const key = overrides[action] ?? defaultKey
-      this._register(action, key)
+      results[action] = this._register(action, key)
     }
+    const failed = (Object.entries(results) as [HotkeyAction, boolean][]).filter(([, ok]) => !ok).map(([a]) => a)
+    if (failed.length > 0) {
+      log.error(`[HotkeyManager] Failed to register hotkeys: ${failed.join(', ')} — they may be claimed by another app`)
+    } else {
+      log.info('[HotkeyManager] All hotkeys registered successfully')
+    }
+    return results
+  }
+
+  /** Returns true if the given action's hotkey is currently registered */
+  isRegistered(action: HotkeyAction): boolean {
+    return this.registered.has(action)
   }
 
   /** Update a single hotkey binding (unregisters old, registers new) */

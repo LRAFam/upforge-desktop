@@ -1260,13 +1260,30 @@ app.whenReady().then(async () => {
     if (recorder.isRecording() && currentRecordingStartTime !== null) {
       hotkeyBookmarks.push(Date.now())
       logActivity('Clip moment bookmarked (F9)')
+      log.info('[Hotkey] F9 clip bookmarked, total bookmarks:', hotkeyBookmarks.length)
       if (Notification.isSupported()) {
         new Notification({ title: 'UpForge', body: 'Clip moment bookmarked!', silent: true }).show()
+      }
+    } else {
+      // F9 was pressed but we're not recording — give the user visible feedback
+      log.warn('[Hotkey] F9 pressed but recorder is not active (recording=%s, startTime=%s)',
+        recorder.isRecording(), currentRecordingStartTime)
+      logActivity('F9 pressed — not recording (start a Valorant match first)')
+      if (Notification.isSupported()) {
+        new Notification({
+          title: 'UpForge — Not Recording',
+          body: 'UpForge is not recording. Start a Valorant match to enable clip bookmarking.',
+          silent: true
+        }).show()
       }
     }
   })
   hotkeyManager.on('toggle-overlay', () => toggleOverlay())
-  hotkeyManager.registerAll()
+  const hotkeyResults = hotkeyManager.registerAll()
+  if (!hotkeyResults['save-clip']) {
+    log.error('[Main] F9 (save-clip) hotkey failed to register — clips cannot be bookmarked via keyboard')
+    logActivity('WARNING: F9 hotkey failed to register (may be in use by another app)')
+  }
 
   createOverlayWindow()
 

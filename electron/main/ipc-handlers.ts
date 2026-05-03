@@ -64,6 +64,11 @@ export function setupClipHandlers(
 
   ipcMain.handle('clips:get-hotkeys', () => hotkeyManager.getBindings())
 
+  ipcMain.handle('clips:get-hotkey-status', () => ({
+    saveClipRegistered: hotkeyManager.isRegistered('save-clip'),
+    toggleOverlayRegistered: hotkeyManager.isRegistered('toggle-overlay'),
+  }))
+
   ipcMain.handle('clips:set-hotkey', (_e, { action, accelerator }: { action: string; accelerator: string }) => {
     const ok = hotkeyManager.update(action as 'save-clip' | 'toggle-overlay', accelerator)
     return { ok }
