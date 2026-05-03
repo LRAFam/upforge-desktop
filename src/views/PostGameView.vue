@@ -152,6 +152,23 @@
             @click="dismiss"
           >Dismiss</button>
         </div>
+
+        <!-- Session clips row -->
+        <button
+          v-if="sessionClipCount > 0"
+          class="w-full flex items-center gap-2 px-3 py-2 bg-white/[0.03] hover:bg-white/[0.05] border border-white/[0.06] rounded-xl transition-colors text-left"
+          @click="openClips"
+        >
+          <svg class="w-3.5 h-3.5 text-red-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.069A1 1 0 0121 8.882v6.236a1 1 0 01-1.447.894L15 14M3 8a2 2 0 012-2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V8z"/>
+          </svg>
+          <span class="text-[11px] text-gray-400 flex-1">
+            <span class="text-white font-semibold">{{ sessionClipCount }} clip{{ sessionClipCount !== 1 ? 's' : '' }}</span> saved from this match
+          </span>
+          <svg class="w-3 h-3 text-gray-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
+          </svg>
+        </button>
       </div>
 
       <!-- Pending (auto-analyse off) -->
@@ -236,6 +253,8 @@ const pendingRecordingId = ref<string | null>(null)
 const analysing = ref(false)
 const analysisStuck = ref(false)
 const tipIndex = ref(Math.floor(Math.random() * COACHING_TIPS.length))
+const sessionClipCount = ref(0)
+let sessionStart = 0
 let stuckTimer: ReturnType<typeof setTimeout> | null = null
 let tipTimer: ReturnType<typeof setInterval> | null = null
 
@@ -311,9 +330,11 @@ onMounted(() => {
   ipcCleanup.push(window.api.on('post-game:upload-complete', () => { state.value = 'analysing'; startStuckTimer() }))
   ipcCleanup.push(window.api.on('post-game:analysis-ready', (...args: unknown[]) => {
     clearStuckTimer()
-    const r = args[0] as { overall_score: number; analysis_id: number }
+    const r = args[0] as { overall_score: number; analysis_id: number; session_start?: number }
     result.value = r
+    sessionStart = r.session_start ?? (Date.now() - 2 * 60 * 60 * 1000)
     state.value = 'ready'
+    loadSessionClips()
   }))
   ipcCleanup.push(window.api.on('post-game:pending', (...args: unknown[]) => {
     const data = args[0] as { recordingId: string; game: string; map: string | null; agent: string | null }
@@ -394,6 +415,20 @@ function retryUpload() {
   } else {
     errorMessage.value = 'Recording no longer available. Open the dashboard to retry.'
   }
+}
+
+async function loadSessionClips() {
+  try {
+    const clips = await window.api.clips.get()
+    sessionClipCount.value = clips.filter((c) => c.savedAt >= sessionStart).length
+  } catch {
+    sessionClipCount.value = 0
+  }
+}
+
+async function openClips() {
+  await window.api.app.showClips().catch(() => {})
+  window.close()
 }
 
 function viewFullAnalysis() {

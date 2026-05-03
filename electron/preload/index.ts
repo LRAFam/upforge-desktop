@@ -10,7 +10,8 @@ const api = {
   },
   app: {
     getStatus: () => ipcRenderer.invoke('app:get-status'),
-    getActivityLog: () => ipcRenderer.invoke('app:get-activity-log')
+    getActivityLog: () => ipcRenderer.invoke('app:get-activity-log'),
+    showClips: () => ipcRenderer.invoke('app:show-clips')
   },
   profile: {
     get: () => ipcRenderer.invoke('profile:get')
@@ -100,6 +101,7 @@ const api = {
       'updater:error',
       'clips:new',
       'overlay:clip-bookmarked',
+      'app:navigate',
     ]
     if (allowed.includes(channel)) {
       const handler = (_e: Electron.IpcRendererEvent, ...args: unknown[]) => callback(...args)

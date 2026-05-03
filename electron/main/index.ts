@@ -493,7 +493,7 @@ function createMainWindow(): BrowserWindow {
 function createPostGameWindow(): BrowserWindow {
   const win = new BrowserWindow({
     width: 380,
-    height: 260,
+    height: 300,
     resizable: false,
     frame: false,
     alwaysOnTop: true,
@@ -511,7 +511,7 @@ function createPostGameWindow(): BrowserWindow {
   // Position bottom-right corner
   const display = screen.getPrimaryDisplay()
   const { width, height } = display.workAreaSize
-  win.setPosition(width - 400, height - 280)
+  win.setPosition(width - 400, height - 320)
 
   if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
     win.loadURL(`${process.env['ELECTRON_RENDERER_URL']}#/post-game`)
@@ -628,6 +628,7 @@ function setupGameDetection(): void {
   async function handleMatchEnd(game: string): Promise<void> {
     const timeline = await riotLocalApi.stop()
     const recordingDuration = recorder.getRecordingDuration()
+    const matchSessionStart = currentRecordingStartTime ?? (Date.now() - recordingDuration * 1000)
     await recorder.stop()
 
     const videoPath = recorder.getLastRecordingPath()
@@ -725,7 +726,7 @@ function setupGameDetection(): void {
 
       tray?.setToolTip('UpForge — Uploading...')
       const uploadResult = await doUploadAndAnalyse(null, videoPath, user?.riot_name ?? '', user?.riot_tag ?? '',
-        game, map, agent, timeline, thisPostGameWindow)
+        game, map, agent, timeline, thisPostGameWindow, matchSessionStart)
 
       // Extract highlight clips from the recording in the background (non-blocking)
       const jobId = uploadResult ?? null
@@ -1095,7 +1096,8 @@ async function doUploadAndAnalyse(
   map: string | null,
   agent: string | null,
   timeline: MatchData | null,
-  targetWindow: BrowserWindow
+  targetWindow: BrowserWindow,
+  sessionStart = 0
 ): Promise<string | null> {
   const send = (channel: string, payload?: unknown) => {
     if (!targetWindow.isDestroyed()) targetWindow.webContents.send(channel, payload)
@@ -1164,7 +1166,8 @@ async function doUploadAndAnalyse(
             overall_score: (status.result as Record<string, unknown>).overall_score,
             analysis_id: (status.result as Record<string, unknown>).analysis_id,
             top_issue: (status.result as Record<string, unknown>).top_issue,
-            priority_improvements: (status.result as Record<string, unknown>).priority_improvements
+            priority_improvements: (status.result as Record<string, unknown>).priority_improvements,
+            session_start: sessionStart
           })
           mainWindow?.webContents.send('dashboard:refresh')
           tray?.setToolTip('UpForge — Valorant AI Coaching')
@@ -1352,6 +1355,7 @@ app.whenReady().then(async () => {
       setTimeout(() => postGameWindow?.webContents.send('post-game:analysis-ready', {
         overall_score: 72,
         analysis_id: 999,
+        session_start: Date.now() - 60 * 60 * 1000,
         top_issue: 'Positioning during post-plant — you were caught in the open on 4 of 6 clutch attempts.',
         priority_improvements: [
           'Positioning during post-plant — caught in the open on 4 of 6 clutch attempts.',
@@ -1360,7 +1364,14 @@ app.whenReady().then(async () => {
         ]
       }), 5500)
     })
-  }, () => ffmpegOk, () => waitingForMatch, () => activityLog.slice(), uploadManager)
+  }, () => ffmpegOk, () => waitingForMatch, () => activityLog.slice(), uploadManager, () => {
+    // Show main window and navigate to clips tab
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.show()
+      mainWindow.focus()
+      mainWindow.webContents.send('app:navigate', '/clips')
+    }
+  })
 
   setupClipHandlers(ipcMain, clipStore, clipExtractor, authManager, hotkeyManager)
 

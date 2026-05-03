@@ -140,6 +140,7 @@ declare global {
           } | null
         }>
         getActivityLog: () => Promise<{ time: number; message: string }[]>
+        showClips: () => Promise<{ ok: boolean }>
       }
       profile: {
         get: () => Promise<ProfileData | null>

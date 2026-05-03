@@ -362,7 +362,8 @@ export function setupIpcHandlers(
   getFFmpegOk?: () => boolean,
   getWaitingForMatch?: () => boolean,
   getActivityLog?: () => { time: number; message: string }[],
-  uploadManager?: UploadManager
+  uploadManager?: UploadManager,
+  showClipsFn?: () => void
 ): void {
   // Auth
   ipcMain.handle('auth:login', async (_e, { email, password }) => {
@@ -418,6 +419,11 @@ export function setupIpcHandlers(
 
   ipcMain.handle('app:get-activity-log', () => {
     return getActivityLog ? getActivityLog() : []
+  })
+
+  ipcMain.handle('app:show-clips', () => {
+    showClipsFn?.()
+    return { ok: true }
   })
 
   // Profile — full profile + Valorant stats

@@ -83,9 +83,10 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 
 const route = useRoute()
+const router = useRouter()
 
 const isMac = navigator.platform.toUpperCase().includes('MAC')
 const status = ref({ recording: false, currentGame: null as string | null })
@@ -125,10 +126,20 @@ onMounted(async () => {
       if (s.user?.riot_name) riotId.value = `${s.user.riot_name}#${s.user.riot_tag}`
     } catch { /* ignore */ }
   }, 5000)
+
+  // Navigate to a tab when the main process requests it (e.g. from post-game "View Clips" button)
+  const navCleanup = window.api.on('app:navigate', (...args: unknown[]) => {
+    const path = args[0] as string
+    if (path) router.push(path).catch(() => {})
+  })
+  ;(window as Window & { _appNavCleanup?: () => void })._appNavCleanup = navCleanup
 })
 
 onUnmounted(() => {
   if (statusInterval) clearInterval(statusInterval)
+  const cleanup = (window as Window & { _appNavCleanup?: () => void })._appNavCleanup
+  cleanup?.()
+  delete (window as Window & { _appNavCleanup?: () => void })._appNavCleanup
 })
 
 async function simulateGame() {
