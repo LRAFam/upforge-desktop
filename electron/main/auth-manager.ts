@@ -214,7 +214,7 @@ export class AuthManager {
   async fetchSquad(): Promise<{ team: unknown; activity: unknown[]; presence: Record<number, { online: boolean; is_recording: boolean }> } | null> {
     try {
       const [teamRes, activityRes, presenceRes] = await Promise.all([
-        this._api.get('/api/teams/my').catch(() => null),
+        this._api.get('/api/teams/my-team').catch(() => null),
         this._api.get('/api/teams/activity?limit=20').catch(() => null),
         this._api.get('/api/teams/presence').catch(() => null),
       ])
