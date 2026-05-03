@@ -201,6 +201,7 @@ declare global {
           team: { name: string; members: { id: number; name: string; riot_name?: string; riot_tag?: string }[] } | null
           activity: { id: number; user_id: number; map?: string; agent?: string; result?: string }[]
           presence: Record<number, { online: boolean; is_recording: boolean }>
+          error?: string
         } | null>
         sendPresence: (recording: boolean, game: string | null) => Promise<{ ok: boolean }>
       }

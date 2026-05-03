@@ -211,21 +211,27 @@ export class AuthManager {
     }
   }
 
-  async fetchSquad(): Promise<{ team: unknown; activity: unknown[]; presence: Record<number, { online: boolean; is_recording: boolean }> } | null> {
+  async fetchSquad(): Promise<{ team: unknown; activity: unknown[]; presence: Record<number, { online: boolean; is_recording: boolean }>; error?: string } | null> {
     try {
-      const [teamRes, activityRes, presenceRes] = await Promise.all([
-        this._api.get('/api/teams/my-team').catch(() => null),
+      // Fetch my-team first to detect auth errors vs no-team
+      const teamRes = await this._api.get('/api/teams/my-team')
+      if (!teamRes?.data?.team) return null
+
+      // Fetch activity and presence in parallel (non-critical, swallow errors)
+      const [activityRes, presenceRes] = await Promise.all([
         this._api.get('/api/teams/activity?limit=20').catch(() => null),
         this._api.get('/api/teams/presence').catch(() => null),
       ])
-      if (!teamRes?.data?.team) return null
+
       return {
         team: teamRes.data.team,
         activity: activityRes?.data?.activity ?? [],
         presence: presenceRes?.data?.presence ?? {},
       }
-    } catch {
-      return null
+    } catch (err: unknown) {
+      const status = (err as { response?: { status?: number } })?.response?.status
+      if (status === 401 || status === 403) throw err
+      return { team: null, activity: [], presence: {}, error: 'Failed to load squad data' }
     }
   }
 

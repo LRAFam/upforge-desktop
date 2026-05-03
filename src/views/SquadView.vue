@@ -6,6 +6,38 @@
       <div class="w-7 h-7 border-3 border-red-500 border-t-transparent rounded-full animate-spin" />
     </div>
 
+    <!-- Error loading squad -->
+    <template v-else-if="squadError">
+      <div class="rounded-xl border border-white/[0.06] bg-white/[0.02] px-5 py-10 flex flex-col items-center text-center gap-4">
+        <div class="w-14 h-14 rounded-2xl bg-yellow-500/10 border border-yellow-500/20 flex items-center justify-center">
+          <svg class="w-7 h-7 text-yellow-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+          </svg>
+        </div>
+        <div>
+          <h2 class="text-white font-bold text-base">Couldn't Load Squad</h2>
+          <p class="text-gray-500 text-xs mt-1 max-w-[240px]">{{ squadError }}</p>
+        </div>
+        <div class="flex items-center gap-2">
+          <button
+            class="flex items-center gap-1.5 px-4 py-2 bg-white/[0.04] border border-white/[0.08] text-gray-300 text-xs font-semibold rounded-lg hover:bg-white/[0.08] transition-colors"
+            @click="load"
+          >
+            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+            </svg>
+            Retry
+          </button>
+          <button
+            class="flex items-center gap-1.5 px-4 py-2 bg-red-500/10 border border-red-500/25 text-red-400 text-xs font-semibold rounded-lg hover:bg-red-500/20 transition-colors"
+            @click="openWebTeam"
+          >
+            Open on Website
+          </button>
+        </div>
+      </div>
+    </template>
+
     <!-- No squad -->
     <template v-else-if="!team">
       <div class="rounded-xl border border-white/[0.06] bg-white/[0.02] overflow-hidden relative">
@@ -163,6 +195,7 @@ interface ActivityItem {
 
 const team = ref<Team | null>(null)
 const loading = ref(true)
+const squadError = ref<string | null>(null)
 const presence = ref<Record<number, PresenceEntry>>({})
 const activity = ref<ActivityItem[]>([])
 
@@ -190,14 +223,19 @@ function getMemberName(userId: number) {
 
 async function load() {
   loading.value = true
+  squadError.value = null
   try {
     const result = await window.api.squad.getTeam()
-    team.value = result?.team ?? null
-    activity.value = result?.activity ?? []
-    if (result?.presence) {
-      presence.value = result.presence
+    if (result?.error && !result.team) {
+      squadError.value = result.error
+      team.value = null
+    } else {
+      team.value = (result?.team as Team) ?? null
+      activity.value = (result?.activity as ActivityItem[]) ?? []
+      if (result?.presence) presence.value = result.presence as Record<number, PresenceEntry>
     }
   } catch {
+    squadError.value = 'Failed to connect to UpForge servers'
     team.value = null
   } finally {
     loading.value = false

@@ -438,7 +438,11 @@ export function setupIpcHandlers(
 
   // Squad / Team
   ipcMain.handle('squad:get-team', async () => {
-    return auth.fetchSquad()
+    try {
+      return auth.fetchSquad()
+    } catch {
+      return { team: null, activity: [], presence: {}, error: 'Authentication error — please re-login' }
+    }
   })
 
   ipcMain.handle('squad:send-presence', async (_e, { recording, game }: { recording: boolean; game: string | null }) => {

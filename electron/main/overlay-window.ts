@@ -10,9 +10,9 @@ export function createOverlayWindow(): BrowserWindow {
   const { width } = display.workAreaSize
 
   const win = new BrowserWindow({
-    width: 300,
-    height: 260,
-    x: width - 320,
+    width: 320,
+    height: 280,
+    x: width - 340,
     y: 20,
     transparent: true,
     frame: false,
@@ -29,7 +29,10 @@ export function createOverlayWindow(): BrowserWindow {
     },
   })
 
-  // Allow clicks to pass through to the game underneath
+  // Use screen-saver level so overlay renders above full-screen games
+  win.setAlwaysOnTop(true, 'screen-saver', 1)
+
+  // Allow clicks to pass through to the game underneath by default
   win.setIgnoreMouseEvents(true, { forward: true })
 
   if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
