@@ -189,6 +189,14 @@ declare global {
         share: (id: string) => Promise<{ ok: boolean; shareToken?: string; error?: string }>
         publish: (id: string, caption?: string) => Promise<{ ok: boolean; error?: string }>
       }
+      squad: {
+        getTeam: () => Promise<{
+          team: { name: string; members: { id: number; name: string; riot_name?: string; riot_tag?: string }[] } | null
+          activity: { id: number; user_id: number; map?: string; agent?: string; result?: string }[]
+          presence: Record<number, { online: boolean; is_recording: boolean }>
+        } | null>
+        sendPresence: (recording: boolean, game: string | null) => Promise<{ ok: boolean }>
+      }
       overlay: {
         toggle: () => Promise<void>
       }

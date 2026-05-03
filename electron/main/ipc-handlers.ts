@@ -382,6 +382,16 @@ export function setupIpcHandlers(
     return auth.fetchAnalyses(limit ?? 10)
   })
 
+  // Squad / Team
+  ipcMain.handle('squad:get-team', async () => {
+    return auth.fetchSquad()
+  })
+
+  ipcMain.handle('squad:send-presence', async (_e, { recording, game }: { recording: boolean; game: string | null }) => {
+    await auth.sendPresence(recording, game)
+    return { ok: true }
+  })
+
   // Settings
   ipcMain.handle('settings:get', () => {
     return settingsManager.get()

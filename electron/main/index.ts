@@ -1113,6 +1113,13 @@ app.whenReady().then(async () => {
 
   setupClipHandlers(ipcMain, clipStore, clipExtractor, authManager, hotkeyManager)
 
+  // Presence heartbeat — update squad presence every 60s when authenticated
+  setInterval(() => {
+    if (!authManager.isAuthenticated()) return
+    authManager.sendPresence(recorder.isRecording(), gameDetector.currentGame())
+      .catch(() => { /* ignore */ })
+  }, 60000)
+
   // Register global hotkeys
   hotkeyManager.on('save-clip', () => {
     if (recorder.isRecording() && currentRecordingStartTime !== null) {

@@ -211,6 +211,31 @@ export class AuthManager {
     }
   }
 
+  async fetchSquad(): Promise<{ team: unknown; activity: unknown[]; presence: Record<number, { online: boolean; is_recording: boolean }> } | null> {
+    try {
+      const [teamRes, activityRes, presenceRes] = await Promise.all([
+        this._api.get('/api/teams/my').catch(() => null),
+        this._api.get('/api/teams/activity?limit=20').catch(() => null),
+        this._api.get('/api/teams/presence').catch(() => null),
+      ])
+      if (!teamRes?.data?.team) return null
+      return {
+        team: teamRes.data.team,
+        activity: activityRes?.data?.activity ?? [],
+        presence: presenceRes?.data?.presence ?? {},
+      }
+    } catch {
+      return null
+    }
+  }
+
+  async sendPresence(recording: boolean, game: string | null): Promise<void> {
+    if (!this._token) return
+    try {
+      await this._api.post('/api/teams/presence', { recording, game })
+    } catch { /* ignore */ }
+  }
+
   getToken(): string | null {
     return this._token
   }

@@ -65,6 +65,10 @@ const api = {
     share: (id: string) => ipcRenderer.invoke('clips:share', { id }),
     publish: (id: string, caption?: string) => ipcRenderer.invoke('clips:publish', { id, caption })
   },
+  squad: {
+    getTeam: () => ipcRenderer.invoke('squad:get-team'),
+    sendPresence: (recording: boolean, game: string | null) => ipcRenderer.invoke('squad:send-presence', { recording, game })
+  },
   overlay: {
     toggle: () => ipcRenderer.invoke('overlay:toggle')
   },
