@@ -3,7 +3,7 @@ import fs from 'fs'
 import path from 'path'
 import { randomUUID } from 'crypto'
 
-export type ClipTrigger = 'manual' | 'kill' | 'ace' | 'clutch' | 'hotkey'
+export type ClipTrigger = 'manual' | 'kill' | 'ace' | 'multikill' | 'clutch' | 'hotkey'
 export type ClipUploadStatus = 'local' | 'uploading' | 'uploaded' | 'failed'
 export type ClipAnalysisStatus = 'none' | 'queued' | 'processing' | 'completed' | 'failed'
 
@@ -21,6 +21,8 @@ export interface ClipRecord {
   durationSeconds: number
   /** Which round the key moment occurred in */
   round: number | null
+  /** For multi-kill and clutch clips: number of kills in the round (3=3k, 4=4k, 5=ace etc.) */
+  killCount: number | null
   /** Title set by user */
   title: string | null
   savedAt: number
@@ -45,7 +47,7 @@ export interface ClipRecord {
 }
 
 export type NewClip = Pick<ClipRecord,
-  'path' | 'thumbPath' | 'trigger' | 'map' | 'agent' | 'durationSeconds' | 'round' | 'analysisJobId'
+  'path' | 'thumbPath' | 'trigger' | 'map' | 'agent' | 'durationSeconds' | 'round' | 'analysisJobId' | 'killCount'
 >
 
 export class ClipStore {
@@ -87,9 +89,9 @@ export class ClipStore {
       title: null,
       savedAt: Date.now(),
       analysisJobId: data.analysisJobId,
+      killCount: data.killCount ?? null,
       uploadStatus: 'local',
       apiClipId: null,
-      shareToken: null,
       analysisStatus: 'none',
       verdict: null,
       suggestion: null,

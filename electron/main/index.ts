@@ -95,6 +95,84 @@ function logActivity(message: string): void {
 }
 
 /**
+ * Detect rounds where the local player was the last alive on their team and won (clutch).
+ * Returns the set of round numbers (0-indexed) where a clutch occurred.
+ */
+function detectClutchRounds(timeline: MatchData): Set<number> {
+  const clutchRounds = new Set<number>()
+  if (!timeline.matchDetails || !timeline.puuid) return clutchRounds
+
+  const details = timeline.matchDetails
+  const players = details.players as Array<Record<string, unknown>> | undefined
+  const roundResults = details.roundResults as Array<Record<string, unknown>> | undefined
+  const allKills = details.kills as Array<Record<string, unknown>> | undefined
+
+  if (!players || !roundResults || !allKills) return clutchRounds
+
+  const ownPuuid = timeline.puuid
+
+  // Build team map: puuid -> teamId
+  const teamMap = new Map<string, string>()
+  for (const p of players) {
+    if (p.subject && p.teamId) teamMap.set(p.subject as string, p.teamId as string)
+  }
+  const ownTeam = teamMap.get(ownPuuid)
+  if (!ownTeam) return clutchRounds
+
+  const allyPuuids = new Set(
+    [...teamMap.entries()].filter(([p, t]) => t === ownTeam && p !== ownPuuid).map(([p]) => p)
+  )
+  const enemyPuuids = new Set(
+    [...teamMap.entries()].filter(([_, t]) => t !== ownTeam).map(([p]) => p)
+  )
+
+  // Group all kills (every player) by round
+  const allKillsByRound = new Map<number, Array<Record<string, unknown>>>()
+  for (const kill of allKills) {
+    const r = (kill.round as number) ?? 0
+    if (!allKillsByRound.has(r)) allKillsByRound.set(r, [])
+    allKillsByRound.get(r)!.push(kill)
+  }
+
+  for (const [roundNum, kills] of allKillsByRound.entries()) {
+    const sorted = [...kills].sort((a, b) =>
+      ((a.timeSinceGameStartMillis as number) ?? 0) - ((b.timeSinceGameStartMillis as number) ?? 0)
+    )
+
+    const liveAllies = new Set(allyPuuids)
+    const liveEnemies = new Set(enemyPuuids)
+    let playerAlive = true
+    let clutchDetected = false
+
+    for (const kill of sorted) {
+      const victim = kill.victim as string
+      if (victim === ownPuuid) { playerAlive = false; break }
+      if (liveAllies.has(victim)) liveAllies.delete(victim)
+      if (liveEnemies.has(victim)) liveEnemies.delete(victim)
+
+      // Player becomes last alive on their team with enemies remaining
+      if (!clutchDetected && liveAllies.size === 0 && liveEnemies.size >= 1) {
+        clutchDetected = true
+      }
+    }
+
+    if (!clutchDetected || !playerAlive) continue
+
+    // Player must have killed at least one enemy after being last alive
+    const clutchKills = timeline.playerKills.filter(k => (k.round ?? -1) === roundNum)
+    if (clutchKills.length === 0) continue
+
+    // Round must have been won by player's team
+    const roundResult = roundResults[roundNum] as Record<string, unknown> | undefined
+    if ((roundResult?.winningTeam as string) === ownTeam) {
+      clutchRounds.add(roundNum)
+    }
+  }
+
+  return clutchRounds
+}
+
+/**
  * Extract highlight clips from a completed match recording.
  * Called post-match once the recording file is finalised.
  */
@@ -122,6 +200,7 @@ async function extractMatchClips(
         map, agent,
         durationSeconds: 30,
         round: null,
+        killCount: null,
         analysisJobId,
       })
       const clipPath = ClipExtractor.clipPath(tempRecord.id)
@@ -138,7 +217,7 @@ async function extractMatchClips(
 
   // ── Kill clips from timeline ─────────────────────────────────────────
   if (timeline?.playerKills && timeline.playerKills.length > 0) {
-    // Detect ace rounds (5+ kills by the player in the same round)
+    // Group player kills by round
     const killsByRound = new Map<number, typeof timeline.playerKills>()
     for (const kill of timeline.playerKills) {
       const r = kill.round ?? -1
@@ -146,14 +225,30 @@ async function extractMatchClips(
       killsByRound.get(r)!.push(kill)
     }
 
-    const aceRounds = new Set<number>()
+    // Detect clutch rounds first (highest priority)
+    const clutchRounds = detectClutchRounds(timeline)
+
+    // Categorize non-clutch rounds: ace (5+), 4k, 3k → combined clips
+    const combinedRounds = new Map<number, {
+      kills: typeof timeline.playerKills
+      trigger: 'ace' | 'multikill'
+      killCount: number
+    }>()
     for (const [round, kills] of killsByRound.entries()) {
-      if (kills.length >= 5) aceRounds.add(round)
+      if (clutchRounds.has(round)) continue // clutch takes priority
+      if (kills.length >= 5) {
+        combinedRounds.set(round, { kills, trigger: 'ace', killCount: kills.length })
+      } else if (kills.length >= 3) {
+        combinedRounds.set(round, { kills, trigger: 'multikill', killCount: kills.length })
+      }
     }
 
-    // Extract top kills (up to 6) — skip rounds already covered by ace clips
+    // Individual kill clips — skip clutch and combined rounds (up to 6 clips)
     const topKills = timeline.playerKills
-      .filter(k => !aceRounds.has(k.round ?? -1) && k.videoOffsetMs != null)
+      .filter(k => {
+        const r = k.round ?? -1
+        return !clutchRounds.has(r) && !combinedRounds.has(r) && k.videoOffsetMs != null
+      })
       .slice(0, 6)
 
     for (const kill of topKills) {
@@ -167,6 +262,7 @@ async function extractMatchClips(
           map, agent,
           durationSeconds: 13,
           round: kill.round ?? null,
+          killCount: null,
           analysisJobId,
         })
         const clipPath = ClipExtractor.clipPath(tempRecord.id)
@@ -180,22 +276,23 @@ async function extractMatchClips(
       }
     }
 
-    // Extract ace clips
-    for (const round of aceRounds) {
-      const kills = killsByRound.get(round)!.filter(k => k.videoOffsetMs != null)
-      if (kills.length === 0) continue
-      const first = kills.reduce((a, b) => a.videoOffsetMs! < b.videoOffsetMs! ? a : b)
-      const last = kills.reduce((a, b) => a.videoOffsetMs! > b.videoOffsetMs! ? a : b)
+    // Combined clips: ace (5k+), 4k, 3k
+    for (const [round, { kills: roundKills, trigger, killCount }] of combinedRounds.entries()) {
+      const validKills = roundKills.filter(k => k.videoOffsetMs != null)
+      if (validKills.length === 0) continue
+      const first = validKills.reduce((a, b) => a.videoOffsetMs! < b.videoOffsetMs! ? a : b)
+      const last = validKills.reduce((a, b) => a.videoOffsetMs! > b.videoOffsetMs! ? a : b)
       const startMs = Math.max(0, first.videoOffsetMs! - 5_000)
-      const durationMs = Math.min(last.videoOffsetMs! - first.videoOffsetMs! + 10_000, 120_000)
+      const durationMs = Math.min(last.videoOffsetMs! - first.videoOffsetMs! + 12_000, 120_000)
       try {
         const tempRecord = clipStore.add({
           path: '',
           thumbPath: null,
-          trigger: 'ace',
+          trigger,
           map, agent,
           durationSeconds: durationMs / 1000,
           round,
+          killCount,
           analysisJobId,
         })
         const clipPath = ClipExtractor.clipPath(tempRecord.id)
@@ -204,9 +301,41 @@ async function extractMatchClips(
         await clipExtractor.thumbnail({ sourcePath: videoPath, offsetMs: first.videoOffsetMs!, outputPath: thumbPath })
         clipStore.update(tempRecord.id, { path: clipPath, thumbPath })
         extractedClipIds.push(tempRecord.id)
-        logActivity(`Ace clip saved — Round ${round + 1} (${map ?? 'unknown'})`)
+        const label = trigger === 'ace' ? 'Ace' : `${killCount}K`
+        logActivity(`${label} clip saved — Round ${round + 1} (${map ?? 'unknown'})`)
       } catch (err) {
-        log.warn('[ClipExtract] Ace clip failed:', err)
+        log.warn(`[ClipExtract] ${trigger} clip failed:`, err)
+      }
+    }
+
+    // Clutch clips — 15s buffer before first kill to capture setup
+    for (const round of clutchRounds) {
+      const clutchKills = timeline.playerKills.filter(k => (k.round ?? -1) === round && k.videoOffsetMs != null)
+      if (clutchKills.length === 0) continue
+      const first = clutchKills.reduce((a, b) => a.videoOffsetMs! < b.videoOffsetMs! ? a : b)
+      const last = clutchKills.reduce((a, b) => a.videoOffsetMs! > b.videoOffsetMs! ? a : b)
+      const startMs = Math.max(0, first.videoOffsetMs! - 15_000)
+      const durationMs = Math.min(last.videoOffsetMs! - first.videoOffsetMs! + 12_000, 120_000)
+      try {
+        const tempRecord = clipStore.add({
+          path: '',
+          thumbPath: null,
+          trigger: 'clutch',
+          map, agent,
+          durationSeconds: durationMs / 1000,
+          round,
+          killCount: clutchKills.length,
+          analysisJobId,
+        })
+        const clipPath = ClipExtractor.clipPath(tempRecord.id)
+        const thumbPath = ClipExtractor.thumbPath(tempRecord.id)
+        await clipExtractor.extract({ sourcePath: videoPath, startOffsetMs: startMs, durationMs, outputPath: clipPath })
+        await clipExtractor.thumbnail({ sourcePath: videoPath, offsetMs: first.videoOffsetMs!, outputPath: thumbPath })
+        clipStore.update(tempRecord.id, { path: clipPath, thumbPath })
+        extractedClipIds.push(tempRecord.id)
+        logActivity(`Clutch clip saved — Round ${round + 1} (${map ?? 'unknown'})`)
+      } catch (err) {
+        log.warn('[ClipExtract] Clutch clip failed:', err)
       }
     }
   }
