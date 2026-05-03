@@ -92,13 +92,13 @@
               <span v-if="clip.map" class="text-[10px] text-gray-500">{{ clip.map }}</span>
               <span v-if="clip.agent" class="text-[10px] text-gray-600">·</span>
               <span v-if="clip.agent" class="text-[10px] text-gray-500">{{ clip.agent }}</span>
-              <span class="ml-auto text-[10px] text-gray-600">{{ timeAgo(clip.createdAt) }}</span>
+              <span class="ml-auto text-[10px] text-gray-600">{{ timeAgo(clip.savedAt) }}</span>
             </div>
             <!-- AI coaching tip -->
-            <div v-if="clip.analysisSuggestion" class="mt-2 p-1.5 bg-orange-500/10 border border-orange-500/20 rounded text-[10px] text-orange-300/80">
-              💡 {{ clip.analysisSuggestion }}
+            <div v-if="clip.suggestion" class="mt-2 p-1.5 bg-orange-500/10 border border-orange-500/20 rounded text-[10px] text-orange-300/80">
+              💡 {{ clip.suggestion }}
             </div>
-            <div v-else-if="clip.analysisStatus === 'pending'" class="mt-2 flex items-center gap-1 text-[10px] text-gray-600">
+            <div v-else-if="clip.analysisStatus === 'queued' || clip.analysisStatus === 'processing'" class="mt-2 flex items-center gap-1 text-[10px] text-gray-600">
               <span class="w-1 h-1 rounded-full bg-gray-600 animate-pulse" />
               Analysing...
             </div>
@@ -142,7 +142,7 @@
         <p class="text-sm font-medium text-white">{{ playingClip.title || defaultTitle(playingClip) }}</p>
         <div class="flex items-center gap-2">
           <button
-            v-if="playingClip.uploadedAt"
+            v-if="playingClip.uploadStatus === 'uploaded'"
             class="px-3 py-1 text-[11px] bg-white/10 hover:bg-white/20 text-gray-300 rounded transition-colors"
             @click="shareClip(playingClip)"
           >
@@ -167,10 +167,10 @@
         class="flex-1 w-full object-contain"
         controls
         autoplay
-        :src="`file://${playingClip.videoPath}`"
+        :src="`file://${playingClip.path}`"
       />
-      <div v-if="playingClip.analysisSuggestion" class="px-4 py-2 bg-orange-500/10 border-t border-orange-500/20 flex-shrink-0">
-        <p class="text-[11px] text-orange-300/80">💡 <strong>AI Coaching:</strong> {{ playingClip.analysisSuggestion }}</p>
+      <div v-if="playingClip.suggestion" class="px-4 py-2 bg-orange-500/10 border-t border-orange-500/20 flex-shrink-0">
+        <p class="text-[11px] text-orange-300/80">💡 <strong>AI Coaching:</strong> {{ playingClip.suggestion }}</p>
       </div>
     </div>
   </div>
@@ -190,6 +190,8 @@ const filters = [
   { label: 'All', value: 'all' },
   { label: 'Manual', value: 'manual' },
   { label: 'Kills', value: 'kill' },
+  { label: 'Multi', value: 'multikill' },
+  { label: 'Clutch', value: 'clutch' },
   { label: 'Aces', value: 'ace' }
 ]
 
@@ -202,10 +204,9 @@ const removeListener = ref<(() => void) | null>(null)
 
 onMounted(async () => {
   await loadClips()
-  removeListener.value = window.api.on('clips:new', (clip: unknown) => {
-    const c = clip as ClipRecord
-    clips.value.unshift(c)
-    loadThumbnail(c.id)
+  removeListener.value = window.api.on('clips:new', async (_ids: unknown) => {
+    // clips:new sends an array of newly extracted clip IDs — reload everything
+    await loadClips()
   })
 })
 
@@ -255,11 +256,11 @@ async function uploadClip(clip: ClipRecord) {
   if (result.ok) {
     const idx = clips.value.findIndex(c => c.id === clip.id)
     if (idx !== -1) {
-      clips.value[idx] = { ...clips.value[idx], uploadedAt: Date.now(), apiClipId: result.apiClipId ?? null }
+      clips.value[idx] = { ...clips.value[idx], uploadStatus: 'uploaded', apiClipId: result.apiClipId ?? null }
     }
     await window.api.clips.requestAnalysis(clip.id)
     const idx2 = clips.value.findIndex(c => c.id === clip.id)
-    if (idx2 !== -1) clips.value[idx2] = { ...clips.value[idx2], analysisStatus: 'pending' }
+    if (idx2 !== -1) clips.value[idx2] = { ...clips.value[idx2], analysisStatus: 'queued' }
   }
 }
 
@@ -280,18 +281,23 @@ function formatDuration(secs: number): string {
 function defaultTitle(clip: ClipRecord): string {
   const parts: string[] = []
   if (clip.trigger === 'ace') parts.push('ACE')
+  else if (clip.trigger === 'multikill') parts.push(`${clip.killCount ?? 'Multi'}-K Clip`)
+  else if (clip.trigger === 'clutch') parts.push('Clutch')
   else if (clip.trigger === 'kill') parts.push('Kill Clip')
-  else if (clip.trigger === 'manual') parts.push('Clip')
+  else if (clip.trigger === 'hotkey') parts.push('Bookmarked Clip')
+  else parts.push('Clip')
   if (clip.agent) parts.push(`— ${clip.agent}`)
   if (clip.map) parts.push(`on ${clip.map}`)
-  return parts.join(' ') || 'Clip'
+  return parts.join(' ')
 }
 
 function triggerClass(trigger: string): string {
   switch (trigger) {
     case 'ace': return 'bg-yellow-500/80 text-black'
+    case 'multikill': return 'bg-orange-500/80 text-white'
     case 'kill': return 'bg-red-500/80 text-white'
     case 'clutch': return 'bg-purple-500/80 text-white'
+    case 'hotkey': return 'bg-blue-500/80 text-white'
     default: return 'bg-gray-700/80 text-gray-300'
   }
 }

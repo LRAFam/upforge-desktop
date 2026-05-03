@@ -65,24 +65,28 @@ export interface ProfileData {
 
 export interface ClipRecord {
   id: string
-  title: string
-  videoPath: string
-  thumbnailPath: string | null
-  trigger: 'manual' | 'kill' | 'ace' | 'clutch'
+  /** Path to the extracted clip MP4 on disk */
+  path: string
+  /** Path to thumbnail JPG on disk, if generated */
+  thumbPath: string | null
+  trigger: 'manual' | 'kill' | 'ace' | 'multikill' | 'clutch' | 'hotkey'
   map: string | null
   agent: string | null
   durationSeconds: number
   round: number | null
-  createdAt: number
+  killCount: number | null
+  title: string | null
+  savedAt: number
   analysisJobId: string | null
-  uploadedAt: number | null
+  uploadStatus: 'local' | 'uploading' | 'uploaded' | 'failed'
   apiClipId: number | null
   shareToken: string | null
-  publishedAt: number | null
-  analysisStatus: 'none' | 'pending' | 'completed' | 'failed'
-  analysisVerdict: string | null
-  analysisSuggestion: string | null
-  analysisScore: number | null
+  analysisStatus: 'none' | 'queued' | 'processing' | 'completed' | 'failed'
+  verdict: string | null
+  suggestion: string | null
+  coachingTags: string[]
+  overallScore: number | null
+  published: boolean
 }
 
 export interface AnalysisItem {
