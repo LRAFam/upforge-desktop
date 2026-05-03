@@ -1162,7 +1162,11 @@ app.whenReady().then(async () => {
   recordingsStore = new RecordingsStore()
 
   // Restore auth session from keychain before creating window
-  await authManager.loadStoredToken()
+  try {
+    await authManager.loadStoredToken()
+  } catch (err) {
+    log.warn('[App] Failed to restore auth token — starting unauthenticated:', err)
+  }
 
   // Resume polling for any job_id that was persisted before a crash.
   // We wait until the main window is ready before sending the result.
@@ -1243,11 +1247,13 @@ app.whenReady().then(async () => {
   setupClipHandlers(ipcMain, clipStore, clipExtractor, authManager, hotkeyManager)
 
   // Presence heartbeat — update squad presence every 60s when authenticated
-  setInterval(() => {
+  const presenceInterval = setInterval(() => {
     if (!authManager.isAuthenticated()) return
     authManager.sendPresence(recorder.isRecording(), gameDetector.currentGame())
       .catch(() => { /* ignore */ })
   }, 60000)
+
+  app.on('before-quit', () => clearInterval(presenceInterval))
 
   // Register global hotkeys
   hotkeyManager.on('save-clip', () => {

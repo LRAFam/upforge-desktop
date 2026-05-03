@@ -16,6 +16,9 @@ import { ClipExtractor } from './clip-extractor'
 import { HotkeyManager } from './hotkey-manager'
 import { toggleOverlay, isOverlayVisible } from './overlay-window'
 
+// Track all active polling timers so they can be cancelled on logout / app quit
+const _activePollingTimers = new Set<ReturnType<typeof setTimeout>>()
+
 export function setupClipHandlers(
   ipcMain: IpcMain,
   clipStore: ClipStore,
@@ -262,7 +265,8 @@ function _pollClipAnalysis(
   attempt = 0
 ): void {
   const delay = Math.min(5000 * Math.pow(1.4, attempt), 30_000)
-  setTimeout(async () => {
+  const timer = setTimeout(async () => {
+    _activePollingTimers.delete(timer)
     if (attempt > 30) {
       clipStore.update(localClipId, { analysisStatus: 'failed' })
       return
@@ -305,6 +309,7 @@ function _pollClipAnalysis(
       _pollClipAnalysis(localClipId, apiClipId, token, clipStore, apiBase, attempt + 1)
     }
   }, delay)
+  _activePollingTimers.add(timer)
 }
 
 export function setupIpcHandlers(
@@ -339,6 +344,9 @@ export function setupIpcHandlers(
     }
     // Abort any in-progress S3 upload
     uploadManager?.abort()
+    // Cancel any pending clip analysis polling timers
+    for (const timer of _activePollingTimers) clearTimeout(timer)
+    _activePollingTimers.clear()
     return auth.logout()
   })
 
