@@ -59,6 +59,7 @@ const api = {
     updateTitle: (id: string, title: string) => ipcRenderer.invoke('clips:update-title', { id, title }),
     openFolder: (id: string) => ipcRenderer.invoke('clips:open-folder', { id }),
     getHotkeys: () => ipcRenderer.invoke('clips:get-hotkeys'),
+    getHotkeyStatus: () => ipcRenderer.invoke('clips:get-hotkey-status'),
     setHotkey: (action: string, accelerator: string) => ipcRenderer.invoke('clips:set-hotkey', { action, accelerator }),
     upload: (id: string) => ipcRenderer.invoke('clips:upload', { id }),
     requestAnalysis: (id: string) => ipcRenderer.invoke('clips:request-analysis', { id }),

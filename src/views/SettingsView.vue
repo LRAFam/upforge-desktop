@@ -194,19 +194,70 @@
       </div>
     </section>
 
-    <!-- Shortcut -->
+    <!-- Shortcuts -->
     <section>
-      <h3 class="text-[10px] font-semibold text-gray-600 uppercase tracking-widest mb-2 px-0.5">Shortcut</h3>
-      <div class="flex items-center justify-between px-3 py-2.5 bg-white/[0.02] border border-white/[0.05] rounded-xl">
-        <span class="text-xs text-gray-400">Open / focus window</span>
-        <div class="flex items-center gap-1">
-          <kbd class="px-1.5 py-0.5 text-[10px] bg-white/[0.06] border border-white/[0.1] rounded text-gray-400">Ctrl</kbd>
-          <span class="text-[10px] text-gray-600">+</span>
-          <kbd class="px-1.5 py-0.5 text-[10px] bg-white/[0.06] border border-white/[0.1] rounded text-gray-400">Shift</kbd>
-          <span class="text-[10px] text-gray-600">+</span>
-          <kbd class="px-1.5 py-0.5 text-[10px] bg-white/[0.06] border border-white/[0.1] rounded text-gray-400">U</kbd>
+      <h3 class="text-[10px] font-semibold text-gray-600 uppercase tracking-widest mb-2 px-0.5">Shortcuts</h3>
+      <div class="bg-white/[0.02] border border-white/[0.05] rounded-xl overflow-hidden divide-y divide-white/[0.04]">
+
+        <!-- Static: open window -->
+        <div class="flex items-center justify-between px-3 py-2.5">
+          <div>
+            <p class="text-xs text-gray-300">Open / focus window</p>
+            <p class="text-[10px] text-gray-600 mt-0.5">Cannot be changed</p>
+          </div>
+          <div class="flex items-center gap-1">
+            <kbd class="px-1.5 py-0.5 text-[10px] bg-white/[0.06] border border-white/[0.1] rounded text-gray-400">Ctrl</kbd>
+            <span class="text-[10px] text-gray-600">+</span>
+            <kbd class="px-1.5 py-0.5 text-[10px] bg-white/[0.06] border border-white/[0.1] rounded text-gray-400">Shift</kbd>
+            <span class="text-[10px] text-gray-600">+</span>
+            <kbd class="px-1.5 py-0.5 text-[10px] bg-white/[0.06] border border-white/[0.1] rounded text-gray-400">U</kbd>
+          </div>
         </div>
+
+        <!-- Configurable: save clip -->
+        <div class="flex items-center justify-between px-3 py-2.5">
+          <div>
+            <p class="text-xs text-gray-300">Bookmark clip moment</p>
+            <p class="text-[10px] mt-0.5" :class="hotkeyStatus['save-clip'] === false ? 'text-yellow-500/70' : 'text-gray-600'">
+              {{ hotkeyStatus['save-clip'] === false ? '⚠ Failed to register — key may be in use' : 'Press during a match to save a clip' }}
+            </p>
+          </div>
+          <button
+            :class="[
+              'min-w-[56px] px-2 py-1 rounded-lg border text-[11px] font-mono transition-all',
+              rebinding === 'save-clip'
+                ? 'bg-red-500/15 border-red-500/40 text-red-300 animate-pulse'
+                : 'bg-white/[0.04] border-white/[0.08] text-gray-300 hover:border-white/[0.15] hover:text-white'
+            ]"
+            @click="startRebind('save-clip')"
+          >
+            {{ rebinding === 'save-clip' ? 'Press a key…' : formatKey(hotkeys['save-clip'] ?? 'F9') }}
+          </button>
+        </div>
+
+        <!-- Configurable: toggle overlay -->
+        <div class="flex items-center justify-between px-3 py-2.5">
+          <div>
+            <p class="text-xs text-gray-300">Toggle overlay</p>
+            <p class="text-[10px] mt-0.5" :class="hotkeyStatus['toggle-overlay'] === false ? 'text-yellow-500/70' : 'text-gray-600'">
+              {{ hotkeyStatus['toggle-overlay'] === false ? '⚠ Failed to register — key may be in use' : 'Show/hide the in-game overlay' }}
+            </p>
+          </div>
+          <button
+            :class="[
+              'min-w-[56px] px-2 py-1 rounded-lg border text-[11px] font-mono transition-all',
+              rebinding === 'toggle-overlay'
+                ? 'bg-red-500/15 border-red-500/40 text-red-300 animate-pulse'
+                : 'bg-white/[0.04] border-white/[0.08] text-gray-300 hover:border-white/[0.15] hover:text-white'
+            ]"
+            @click="startRebind('toggle-overlay')"
+          >
+            {{ rebinding === 'toggle-overlay' ? 'Press a key…' : formatKey(hotkeys['toggle-overlay'] ?? 'F10') }}
+          </button>
+        </div>
+
       </div>
+      <p v-if="rebinding" class="text-[10px] text-gray-600 mt-1.5 px-0.5">Press Escape to cancel · changes apply immediately</p>
     </section>
 
     <!-- System -->
@@ -276,7 +327,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, onMounted, toRaw } from 'vue'
+import { ref, reactive, computed, onMounted, onUnmounted, toRaw } from 'vue'
 import { useRouter } from 'vue-router'
 import type { AppSettings } from '../env.d.ts'
 import { getTierClass, getTierBadgeClass, formatGameMode } from '../lib/valorant'
@@ -305,6 +356,62 @@ const testingRiotApi = ref(false)
 const riotApiResult = ref<{ portOpen: boolean; gameMode: string | null; logGameMode: string | null; processRunning: boolean } | null>(null)
 let saveTimer: ReturnType<typeof setTimeout> | null = null
 let toastTimer: ReturnType<typeof setTimeout> | null = null
+
+// ── Hotkeys ──────────────────────────────────────────────────────────────────
+type HotkeyAction = 'save-clip' | 'toggle-overlay'
+const hotkeys = reactive<Record<HotkeyAction, string>>({ 'save-clip': 'F9', 'toggle-overlay': 'F10' })
+const hotkeyStatus = reactive<Record<HotkeyAction, boolean | null>>({ 'save-clip': null, 'toggle-overlay': null })
+const rebinding = ref<HotkeyAction | null>(null)
+
+function formatKey(accelerator: string): string {
+  return accelerator.replace('CommandOrControl', 'Ctrl').replace('Control', 'Ctrl')
+}
+
+function electronAccelerator(e: KeyboardEvent): string | null {
+  const mods: string[] = []
+  if (e.ctrlKey || e.metaKey) mods.push('CommandOrControl')
+  if (e.altKey) mods.push('Alt')
+  if (e.shiftKey) mods.push('Shift')
+  const key = e.key
+  // Reject modifier-only presses
+  if (['Control', 'Shift', 'Alt', 'Meta', 'Escape'].includes(key)) return null
+  // Allow bare function keys; otherwise require at least one modifier
+  const isFKey = /^F\d+$/.test(key)
+  if (!isFKey && mods.length === 0) return null
+  const keyName = key.length === 1 ? key.toUpperCase() : key
+  return [...mods, keyName].join('+')
+}
+
+function startRebind(action: HotkeyAction): void {
+  rebinding.value = action
+}
+
+async function handleKeydown(e: KeyboardEvent): Promise<void> {
+  if (!rebinding.value) return
+  e.preventDefault()
+  if (e.key === 'Escape') { rebinding.value = null; return }
+  const acc = electronAccelerator(e)
+  if (!acc) return
+  const action = rebinding.value
+  rebinding.value = null
+  const result = await window.api.clips.setHotkey(action, acc) as { ok: boolean }
+  if (result.ok) {
+    hotkeys[action] = acc
+    // Re-fetch status to update registration indicator
+    loadHotkeyStatus()
+    showSaved()
+  }
+}
+
+async function loadHotkeyStatus(): Promise<void> {
+  try {
+    const bindings = await window.api.clips.getHotkeys() as Record<HotkeyAction, string>
+    Object.assign(hotkeys, bindings)
+    const status = await window.api.clips.getHotkeyStatus() as { saveClipRegistered: boolean; toggleOverlayRegistered: boolean }
+    hotkeyStatus['save-clip'] = status.saveClipRegistered
+    hotkeyStatus['toggle-overlay'] = status.toggleOverlayRegistered
+  } catch { /* non-critical */ }
+}
 
 const settings = reactive<AppSettings>({
   recordingQuality: '1080p',
@@ -450,7 +557,12 @@ function openRecordingsFolder(): void {
   window.api.storage.openFolder()
 }
 
+onUnmounted(() => {
+  window.removeEventListener('keydown', handleKeydown)
+})
+
 onMounted(async () => {
+  window.addEventListener('keydown', handleKeydown)
   try {
     const [s, savedSettings] = await Promise.all([
       window.api.app.getStatus(),
@@ -463,6 +575,7 @@ onMounted(async () => {
     // Use getStatus user as base
     if (s.user) user.value = s.user as UserWithUsage | null
     loadStorageUsage()
+    loadHotkeyStatus()
   } catch (err) {
     console.error('[Settings] Failed to load status:', err)
     try {
