@@ -98,6 +98,7 @@ export class ClipStore {
       coachingTags: [],
       overallScore: null,
       published: false,
+      shareToken: null,
     }
     this.clips.unshift(clip)
     // Keep last 200 clips in the store

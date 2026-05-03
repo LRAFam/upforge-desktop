@@ -183,11 +183,13 @@ declare global {
         updateTitle: (id: string, title: string) => Promise<{ ok: boolean }>
         openFolder: (id: string) => Promise<void>
         getHotkeys: () => Promise<Record<string, string>>
+        getHotkeyStatus: () => Promise<{ saveClipRegistered: boolean; toggleOverlayRegistered: boolean }>
         setHotkey: (action: string, accelerator: string) => Promise<{ ok: boolean }>
         upload: (id: string) => Promise<{ ok: boolean; apiClipId?: number; error?: string }>
         requestAnalysis: (id: string) => Promise<{ ok: boolean; error?: string }>
         share: (id: string) => Promise<{ ok: boolean; shareToken?: string; error?: string }>
         publish: (id: string, caption?: string) => Promise<{ ok: boolean; error?: string }>
+        saveBookmark: () => Promise<{ ok: boolean; bookmarkCount?: number; reason?: string }>
       }
       squad: {
         getTeam: () => Promise<{
@@ -199,6 +201,7 @@ declare global {
       }
       overlay: {
         toggle: () => Promise<void>
+        setInteractive: (interactive: boolean) => void
       }
       on: (channel: string, callback: (...args: unknown[]) => void) => (() => void)
     }

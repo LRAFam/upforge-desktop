@@ -10,9 +10,9 @@ export function createOverlayWindow(): BrowserWindow {
   const { width } = display.workAreaSize
 
   const win = new BrowserWindow({
-    width: 220,
-    height: 140,
-    x: width - 240,
+    width: 300,
+    height: 260,
+    x: width - 320,
     y: 20,
     transparent: true,
     frame: false,
@@ -74,4 +74,13 @@ export function sendOverlayData(channel: string, data: unknown): void {
 
 export function isOverlayVisible(): boolean {
   return isVisible
+}
+
+export function setOverlayInteractive(interactive: boolean): void {
+  if (!overlayWindow || overlayWindow.isDestroyed()) return
+  if (interactive) {
+    overlayWindow.setIgnoreMouseEvents(false)
+  } else {
+    overlayWindow.setIgnoreMouseEvents(true, { forward: true })
+  }
 }

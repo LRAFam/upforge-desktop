@@ -64,14 +64,16 @@ const api = {
     upload: (id: string) => ipcRenderer.invoke('clips:upload', { id }),
     requestAnalysis: (id: string) => ipcRenderer.invoke('clips:request-analysis', { id }),
     share: (id: string) => ipcRenderer.invoke('clips:share', { id }),
-    publish: (id: string, caption?: string) => ipcRenderer.invoke('clips:publish', { id, caption })
+    publish: (id: string, caption?: string) => ipcRenderer.invoke('clips:publish', { id, caption }),
+    saveBookmark: () => ipcRenderer.invoke('clips:save-bookmark'),
   },
   squad: {
     getTeam: () => ipcRenderer.invoke('squad:get-team'),
     sendPresence: (recording: boolean, game: string | null) => ipcRenderer.invoke('squad:send-presence', { recording, game })
   },
   overlay: {
-    toggle: () => ipcRenderer.invoke('overlay:toggle')
+    toggle: () => ipcRenderer.invoke('overlay:toggle'),
+    setInteractive: (interactive: boolean) => ipcRenderer.send('overlay:set-interactive', interactive),
   },
   on: (channel: string, callback: (...args: unknown[]) => void): (() => void) => {
     const allowed = [
@@ -96,7 +98,8 @@ const api = {
       'updater:downloaded',
       'updater:not-available',
       'updater:error',
-      'clips:new'
+      'clips:new',
+      'overlay:clip-bookmarked',
     ]
     if (allowed.includes(channel)) {
       const handler = (_e: Electron.IpcRendererEvent, ...args: unknown[]) => callback(...args)

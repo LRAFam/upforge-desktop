@@ -1104,6 +1104,29 @@ export class RiotLocalApi {
       return null
     }
   }
+
+  // ──────────────────────────────────────────────────────────────────────
+  // LATE POST-MATCH HELPERS
+  // ──────────────────────────────────────────────────────────────────────
+
+  /**
+   * One-shot match details fetch using stored tokens. Riot takes 1-3 minutes
+   * to process match data after a game ends — callers should delay 60-120s before calling.
+   */
+  async fetchMatchDetailsLate(matchId: string): Promise<Record<string, unknown> | null> {
+    try { await this._refreshTokens() } catch { /* best-effort token refresh */ }
+    return this._fetchMatchDetails(matchId)
+  }
+
+  /**
+   * Populate an existing MatchData's kills/rounds from a late-fetched MatchDetails response.
+   * Used to backfill kill events after Riot has finished processing the match.
+   */
+  populateMatchDataFromDetails(matchData: MatchData, details: Record<string, unknown>): void {
+    const prev = this.matchData
+    this.matchData = matchData
+    try { this._populateFromMatchDetails(details) } finally { this.matchData = prev }
+  }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

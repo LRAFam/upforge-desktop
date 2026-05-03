@@ -1,6 +1,6 @@
 {
   "name": "upforge-desktop",
-  "version": "1.2.4",
+  "version": "1.2.5",
   "description": "UpForge Desktop — Automatic Valorant gameplay recording and AI coaching",
   "main": "./out/main/index.js",
   "author": "UpForge",

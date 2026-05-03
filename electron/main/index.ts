@@ -25,7 +25,7 @@ import { RecordingsStore } from './recordings-store'
 import { ClipExtractor } from './clip-extractor'
 import { ClipStore } from './clip-store'
 import { HotkeyManager } from './hotkey-manager'
-import { createOverlayWindow, toggleOverlay, destroyOverlay } from './overlay-window'
+import { createOverlayWindow, toggleOverlay, destroyOverlay, sendOverlayData } from './overlay-window'
 import type { MatchData } from './riot-local-api'
 import log from 'electron-log'
 
@@ -170,6 +170,97 @@ function detectClutchRounds(timeline: MatchData): Set<number> {
   }
 
   return clutchRounds
+}
+
+/**
+ * Extract only kill-based clips (3K/4K/ace/clutch) from a match recording.
+ * Used by the late-retry path when match details weren't available at match end.
+ */
+async function extractKillClipsOnly(
+  videoPath: string,
+  timeline: MatchData,
+  analysisJobId: string | null
+): Promise<void> {
+  if (!fs.existsSync(videoPath)) return
+  if (!timeline.playerKills || timeline.playerKills.length === 0) return
+
+  const map = timeline.map ?? null
+  const agent = timeline.agent ?? null
+  const extractedClipIds: string[] = []
+
+  // Group kills by round
+  const killsByRound = new Map<number, typeof timeline.playerKills>()
+  for (const kill of timeline.playerKills) {
+    const r = kill.round ?? -1
+    if (!killsByRound.has(r)) killsByRound.set(r, [])
+    killsByRound.get(r)!.push(kill)
+  }
+
+  const clutchRounds = detectClutchRounds(timeline)
+
+  const combinedRounds = new Map<number, { kills: typeof timeline.playerKills; trigger: 'ace' | 'multikill'; killCount: number }>()
+  for (const [round, kills] of killsByRound.entries()) {
+    if (clutchRounds.has(round)) continue
+    if (kills.length >= 5) combinedRounds.set(round, { kills, trigger: 'ace', killCount: kills.length })
+    else if (kills.length >= 3) combinedRounds.set(round, { kills, trigger: 'multikill', killCount: kills.length })
+  }
+
+  // Combined clips (3k / 4k / ace)
+  for (const [round, { kills: roundKills, trigger, killCount }] of combinedRounds.entries()) {
+    const validKills = roundKills.filter(k => k.videoOffsetMs != null)
+    if (validKills.length === 0) continue
+    const first = validKills.reduce((a, b) => a.videoOffsetMs! < b.videoOffsetMs! ? a : b)
+    const last = validKills.reduce((a, b) => a.videoOffsetMs! > b.videoOffsetMs! ? a : b)
+    const startMs = Math.max(0, first.videoOffsetMs! - 5_000)
+    const durationMs = Math.min(last.videoOffsetMs! - first.videoOffsetMs! + 12_000, 120_000)
+    try {
+      const tempRecord = clipStore.add({ path: '', thumbPath: null, trigger, map, agent, durationSeconds: durationMs / 1000, round, killCount, analysisJobId })
+      const clipPath = ClipExtractor.clipPath(tempRecord.id)
+      const thumbPath = ClipExtractor.thumbPath(tempRecord.id)
+      await clipExtractor.extract({ sourcePath: videoPath, startOffsetMs: startMs, durationMs, outputPath: clipPath })
+      await clipExtractor.thumbnail({ sourcePath: videoPath, offsetMs: first.videoOffsetMs!, outputPath: thumbPath })
+      clipStore.update(tempRecord.id, { path: clipPath, thumbPath })
+      extractedClipIds.push(tempRecord.id)
+      const label = trigger === 'ace' ? 'Ace' : `${killCount}K`
+      logActivity(`${label} clip saved (late extract) — Round ${round + 1} (${map ?? 'unknown'})`)
+    } catch (err) {
+      log.warn(`[LateClipExtract] ${trigger} clip failed:`, err)
+    }
+  }
+
+  // Clutch clips
+  for (const round of clutchRounds) {
+    const clutchKills = timeline.playerKills.filter(k => (k.round ?? -1) === round && k.videoOffsetMs != null)
+    if (clutchKills.length === 0) continue
+    const first = clutchKills.reduce((a, b) => a.videoOffsetMs! < b.videoOffsetMs! ? a : b)
+    const last = clutchKills.reduce((a, b) => a.videoOffsetMs! > b.videoOffsetMs! ? a : b)
+    const startMs = Math.max(0, first.videoOffsetMs! - 15_000)
+    const durationMs = Math.min(last.videoOffsetMs! - first.videoOffsetMs! + 12_000, 120_000)
+    try {
+      const tempRecord = clipStore.add({ path: '', thumbPath: null, trigger: 'clutch', map, agent, durationSeconds: durationMs / 1000, round, killCount: clutchKills.length, analysisJobId })
+      const clipPath = ClipExtractor.clipPath(tempRecord.id)
+      const thumbPath = ClipExtractor.thumbPath(tempRecord.id)
+      await clipExtractor.extract({ sourcePath: videoPath, startOffsetMs: startMs, durationMs, outputPath: clipPath })
+      await clipExtractor.thumbnail({ sourcePath: videoPath, offsetMs: first.videoOffsetMs!, outputPath: thumbPath })
+      clipStore.update(tempRecord.id, { path: clipPath, thumbPath })
+      extractedClipIds.push(tempRecord.id)
+      logActivity(`Clutch clip saved (late extract) — Round ${round + 1} (${map ?? 'unknown'})`)
+    } catch (err) {
+      log.warn('[LateClipExtract] Clutch clip failed:', err)
+    }
+  }
+
+  if (extractedClipIds.length > 0) {
+    logActivity(`${extractedClipIds.length} late-extracted clip${extractedClipIds.length === 1 ? '' : 's'} saved`)
+    mainWindow?.webContents.send('clips:new', extractedClipIds)
+    if (Notification.isSupported()) {
+      new Notification({
+        title: 'UpForge — Clips Ready',
+        body: `${extractedClipIds.length} highlight clip${extractedClipIds.length === 1 ? '' : 's'} saved from your match!`,
+        silent: true,
+      }).show()
+    }
+  }
 }
 
 /**
@@ -641,6 +732,33 @@ function setupGameDetection(): void {
       extractMatchClips(videoPath, timeline, jobId).catch(err =>
         log.warn('[ClipExtract] Background extraction error:', err)
       )
+
+      // If Riot hasn't processed the match yet (no kills in timeline), retry match details
+      // after a delay — Riot typically takes 1-3 minutes to publish match data.
+      const matchId = timeline?.matchId
+      const hasKills = (timeline?.playerKills?.length ?? 0) > 0
+      if (!hasKills && matchId) {
+        log.info('[HandleMatchEnd] No kills in timeline — scheduling late match details retry in 90s')
+        setTimeout(async () => {
+          try {
+            log.info('[LateClipExtract] Fetching match details for', matchId)
+            const details = await riotLocalApi.fetchMatchDetailsLate(matchId)
+            if (!details) {
+              log.warn('[LateClipExtract] Match details still unavailable after delay')
+              return
+            }
+            if (timeline) riotLocalApi.populateMatchDataFromDetails(timeline, details)
+            if ((timeline?.playerKills?.length ?? 0) === 0) {
+              log.warn('[LateClipExtract] Match details fetched but no kills found for this player')
+              return
+            }
+            log.info(`[LateClipExtract] Got ${timeline!.playerKills.length} kills — extracting clips`)
+            await extractKillClipsOnly(videoPath, timeline!, jobId)
+          } catch (err) {
+            log.warn('[LateClipExtract] Error:', err)
+          }
+        }, 90_000)
+      }
     })
   }
 
@@ -1246,6 +1364,18 @@ app.whenReady().then(async () => {
 
   setupClipHandlers(ipcMain, clipStore, clipExtractor, authManager, hotkeyManager)
 
+  // Overlay clip button — same as pressing F9
+  ipcMain.handle('clips:save-bookmark', () => {
+    if (recorder.isRecording() && currentRecordingStartTime !== null) {
+      hotkeyBookmarks.push(Date.now())
+      logActivity('Clip moment bookmarked (overlay button)')
+      log.info('[Overlay] Clip bookmarked via button, total:', hotkeyBookmarks.length)
+      sendOverlayData('overlay:clip-bookmarked', { bookmarkCount: hotkeyBookmarks.length })
+      return { ok: true, bookmarkCount: hotkeyBookmarks.length }
+    }
+    return { ok: false, reason: 'not-recording' }
+  })
+
   // Presence heartbeat — update squad presence every 60s when authenticated
   const presenceInterval = setInterval(() => {
     if (!authManager.isAuthenticated()) return
@@ -1261,8 +1391,10 @@ app.whenReady().then(async () => {
       hotkeyBookmarks.push(Date.now())
       logActivity('Clip moment bookmarked (F9)')
       log.info('[Hotkey] F9 clip bookmarked, total bookmarks:', hotkeyBookmarks.length)
+      // Notify both system and overlay
+      sendOverlayData('overlay:clip-bookmarked', { bookmarkCount: hotkeyBookmarks.length })
       if (Notification.isSupported()) {
-        new Notification({ title: 'UpForge', body: 'Clip moment bookmarked!', silent: true }).show()
+        new Notification({ title: 'UpForge', body: 'Clip moment bookmarked — saves after match ends', silent: true }).show()
       }
     } else {
       // F9 was pressed but we're not recording — give the user visible feedback

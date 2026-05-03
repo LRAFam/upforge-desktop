@@ -14,7 +14,7 @@ import { UploadManager } from './upload-manager'
 import { ClipStore, ClipRecord } from './clip-store'
 import { ClipExtractor } from './clip-extractor'
 import { HotkeyManager } from './hotkey-manager'
-import { toggleOverlay, isOverlayVisible } from './overlay-window'
+import { toggleOverlay, isOverlayVisible, setOverlayInteractive } from './overlay-window'
 
 // Track all active polling timers so they can be cancelled on logout / app quit
 const _activePollingTimers = new Set<ReturnType<typeof setTimeout>>()
@@ -221,6 +221,11 @@ export function setupClipHandlers(
   ipcMain.handle('overlay:toggle', () => {
     toggleOverlay()
     return { visible: isOverlayVisible() }
+  })
+
+  // Renderer requests mouse interactivity on the overlay (for clip button hover)
+  ipcMain.on('overlay:set-interactive', (_e, interactive: boolean) => {
+    setOverlayInteractive(interactive)
   })
 }
 
