@@ -19,6 +19,18 @@ import { toggleOverlay, isOverlayVisible, setOverlayInteractive } from './overla
 // Track all active polling timers so they can be cancelled on logout / app quit
 const _activePollingTimers = new Set<ReturnType<typeof setTimeout>>()
 
+/** Thrown by _apiPost when the server returns 402 (payment required / limit reached) */
+class UpgradeRequiredError extends Error {
+  readonly errorCode: string
+  readonly upgradeUrl: string
+  constructor(message: string, errorCode: string, upgradeUrl = 'https://upforge.gg/pricing') {
+    super(message)
+    this.name = 'UpgradeRequiredError'
+    this.errorCode = errorCode
+    this.upgradeUrl = upgradeUrl
+  }
+}
+
 export function setupClipHandlers(
   ipcMain: IpcMain,
   clipStore: ClipStore,
@@ -131,7 +143,12 @@ export function setupClipHandlers(
           res.on('end', () => {
             try {
               const json = JSON.parse(data)
-              if ((res.statusCode ?? 0) >= 400) reject(new Error(json.message || `Upload failed (${res.statusCode})`))
+              if (res.statusCode === 402) reject(new UpgradeRequiredError(
+                json.message || 'Upgrade required',
+                json.error || 'upgrade_required',
+                json.upgrade_url || 'https://upforge.gg/pricing'
+              ))
+              else if ((res.statusCode ?? 0) >= 400) reject(new Error(json.message || `Upload failed (${res.statusCode})`))
               else resolve(json.id ?? json.clip?.id)
             } catch {
               reject(new Error(`Invalid server response (HTTP ${res.statusCode})`))
@@ -147,6 +164,10 @@ export function setupClipHandlers(
       clipStore.update(id, { uploadStatus: 'uploaded', apiClipId })
       return { ok: true, apiClipId }
     } catch (err) {
+      if (err instanceof UpgradeRequiredError) {
+        clipStore.update(id, { uploadStatus: 'local' })
+        return { ok: false, needsUpgrade: true, message: err.message, upgradeUrl: err.upgradeUrl }
+      }
       const msg = err instanceof Error ? err.message : String(err)
       clipStore.update(id, { uploadStatus: 'failed' })
       log.error('[ClipUpload] Failed:', msg)
@@ -177,6 +198,10 @@ export function setupClipHandlers(
 
       return { ok: true }
     } catch (err) {
+      if (err instanceof UpgradeRequiredError) {
+        clipStore.update(id, { analysisStatus: 'none' })
+        return { ok: false, needsUpgrade: true, message: err.message, upgradeUrl: err.upgradeUrl }
+      }
       const msg = err instanceof Error ? err.message : String(err)
       clipStore.update(id, { analysisStatus: 'failed' })
       return { ok: false, error: msg }
@@ -251,6 +276,11 @@ function _apiPost(base: string, pathname: string, body: string, token: string): 
       res.on('end', () => {
         try {
           const json = JSON.parse(data)
+          if (res.statusCode === 402) throw new UpgradeRequiredError(
+            json.message || 'Upgrade required',
+            json.error || 'upgrade_required',
+            json.upgrade_url || 'https://upforge.gg/pricing'
+          )
           if ((res.statusCode ?? 0) >= 400) reject(new Error(json.message || `Request failed (${res.statusCode})`))
           else resolve(json)
         } catch {

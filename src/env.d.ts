@@ -189,8 +189,8 @@ declare global {
         getHotkeys: () => Promise<Record<string, string>>
         getHotkeyStatus: () => Promise<{ saveClipRegistered: boolean; toggleOverlayRegistered: boolean }>
         setHotkey: (action: string, accelerator: string) => Promise<{ ok: boolean }>
-        upload: (id: string) => Promise<{ ok: boolean; apiClipId?: number; error?: string }>
-        requestAnalysis: (id: string) => Promise<{ ok: boolean; error?: string }>
+        upload: (id: string) => Promise<{ ok: boolean; apiClipId?: number; error?: string; needsUpgrade?: boolean; message?: string; upgradeUrl?: string }>
+        requestAnalysis: (id: string) => Promise<{ ok: boolean; error?: string; needsUpgrade?: boolean; message?: string; upgradeUrl?: string }>
         share: (id: string) => Promise<{ ok: boolean; shareToken?: string; error?: string }>
         publish: (id: string, caption?: string) => Promise<{ ok: boolean; error?: string }>
         saveBookmark: () => Promise<{ ok: boolean; bookmarkCount?: number; reason?: string }>

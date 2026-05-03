@@ -173,6 +173,37 @@
         <p class="text-[11px] text-orange-300/80">💡 <strong>AI Coaching:</strong> {{ playingClip.suggestion }}</p>
       </div>
     </div>
+
+    <!-- Upgrade modal -->
+    <div
+      v-if="upgradeModal.show"
+      class="fixed inset-0 z-[60] flex items-center justify-center bg-black/80 backdrop-blur-sm"
+      @click.self="upgradeModal.show = false"
+    >
+      <div class="w-80 bg-[#1a1a2e] border border-white/10 rounded-2xl p-6 text-center shadow-2xl">
+        <div class="w-12 h-12 rounded-full bg-gradient-to-br from-red-500 to-orange-500 flex items-center justify-center mx-auto mb-4">
+          <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
+          </svg>
+        </div>
+        <h3 class="text-sm font-bold text-white mb-1">Upgrade Required</h3>
+        <p class="text-[12px] text-gray-400 mb-5 leading-relaxed">{{ upgradeModal.message }}</p>
+        <div class="flex flex-col gap-2">
+          <button
+            class="w-full py-2 rounded-lg bg-gradient-to-r from-red-500 to-orange-500 text-white text-[12px] font-bold hover:opacity-90 transition-opacity"
+            @click="openUpgrade"
+          >
+            View Plans
+          </button>
+          <button
+            class="w-full py-2 rounded-lg text-gray-500 text-[12px] hover:text-gray-300 transition-colors"
+            @click="upgradeModal.show = false"
+          >
+            Maybe later
+          </button>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -185,6 +216,7 @@ const thumbnails = ref<Record<string, string>>({})
 const activeFilter = ref<string>('all')
 const playingClip = ref<ClipRecord | null>(null)
 const videoEl = ref<HTMLVideoElement | null>(null)
+const upgradeModal = ref({ show: false, message: '' })
 
 const filters = [
   { label: 'All', value: 'all' },
@@ -253,15 +285,28 @@ async function deleteClip(id: string) {
 
 async function uploadClip(clip: ClipRecord) {
   const result = await window.api.clips.upload(clip.id)
+  if (result.needsUpgrade) {
+    upgradeModal.value = { show: true, message: result.message ?? 'Upgrade to upload more clips.' }
+    return
+  }
   if (result.ok) {
     const idx = clips.value.findIndex(c => c.id === clip.id)
     if (idx !== -1) {
       clips.value[idx] = { ...clips.value[idx], uploadStatus: 'uploaded', apiClipId: result.apiClipId ?? null }
     }
-    await window.api.clips.requestAnalysis(clip.id)
+    const analysisResult = await window.api.clips.requestAnalysis(clip.id)
+    if (analysisResult.needsUpgrade) {
+      upgradeModal.value = { show: true, message: analysisResult.message ?? 'Upgrade to get AI coaching on clips.' }
+      return
+    }
     const idx2 = clips.value.findIndex(c => c.id === clip.id)
     if (idx2 !== -1) clips.value[idx2] = { ...clips.value[idx2], analysisStatus: 'queued' }
   }
+}
+
+function openUpgrade() {
+  upgradeModal.value.show = false
+  window.open('https://upforge.gg/pricing', '_blank')
 }
 
 async function shareClip(clip: ClipRecord) {
