@@ -309,6 +309,9 @@ function _pollClipAnalysis(
     _activePollingTimers.delete(timer)
     if (attempt > 30) {
       clipStore.update(localClipId, { analysisStatus: 'failed' })
+      BrowserWindow.getAllWindows().forEach(w => {
+        if (!w.isDestroyed()) w.webContents.send('analysis:timeout', localClipId)
+      })
       return
     }
     try {
@@ -429,6 +432,10 @@ export function setupIpcHandlers(
   // Profile — full profile + Valorant stats
   ipcMain.handle('profile:get', async () => {
     return auth.fetchProfile()
+  })
+
+  ipcMain.handle('stats:rr-history', async () => {
+    return auth.fetchRRHistory()
   })
 
   // Analyses — recent VOD analyses list

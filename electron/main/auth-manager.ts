@@ -202,6 +202,15 @@ export class AuthManager {
     }
   }
 
+  async fetchRRHistory(): Promise<Array<{ id: number; date: string; rank: string | null; rr: number; elo: number }>> {
+    try {
+      const res = await this._api.get('/api/stats/rr-history?range=30d')
+      return res.data?.data ?? []
+    } catch {
+      return []
+    }
+  }
+
   async fetchAnalyses(limit = 10): Promise<AnalysisItem[]> {
     try {
       const res = await this._api.get(`/api/analysis/recent?limit=${limit}`)

@@ -72,6 +72,9 @@ const api = {
     getTeam: () => ipcRenderer.invoke('squad:get-team'),
     sendPresence: (recording: boolean, game: string | null) => ipcRenderer.invoke('squad:send-presence', { recording, game })
   },
+  stats: {
+    rrHistory: () => ipcRenderer.invoke('stats:rr-history')
+  },
   overlay: {
     toggle: () => ipcRenderer.invoke('overlay:toggle'),
     setInteractive: (interactive: boolean) => ipcRenderer.send('overlay:set-interactive', interactive),
@@ -102,6 +105,7 @@ const api = {
       'clips:new',
       'overlay:clip-bookmarked',
       'app:navigate',
+      'analysis:timeout',
     ]
     if (allowed.includes(channel)) {
       const handler = (_e: Electron.IpcRendererEvent, ...args: unknown[]) => callback(...args)

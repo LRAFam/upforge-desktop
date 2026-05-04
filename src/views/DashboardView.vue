@@ -174,29 +174,49 @@
         </button>
       </div>
 
-      <div v-if="profile.latest_stats" class="grid grid-cols-4 divide-x divide-white/[0.04] border-t border-white/[0.04]">
-        <div class="flex flex-col items-center py-2">
-          <span class="text-[11px] font-bold">{{ profile.latest_stats.kd_ratio?.toFixed(2) ?? '—' }}</span>
-          <span class="text-[9px] text-gray-600 mt-px">K/D</span>
+      <template v-if="profile.latest_stats">
+        <div class="grid grid-cols-4 divide-x divide-white/[0.04] border-t border-white/[0.04]">
+          <div class="flex flex-col items-center py-2">
+            <span class="text-[11px] font-bold">{{ profile.latest_stats.kd_ratio?.toFixed(2) ?? '—' }}</span>
+            <span class="text-[9px] text-gray-600 mt-px">K/D</span>
+          </div>
+          <div class="flex flex-col items-center py-2">
+            <span class="text-[11px] font-bold">{{ profile.latest_stats.win_rate != null ? Math.round(profile.latest_stats.win_rate) + '%' : '—' }}</span>
+            <span class="text-[9px] text-gray-600 mt-px">Win</span>
+          </div>
+          <div class="flex flex-col items-center py-2">
+            <span class="text-[11px] font-bold">{{ profile.latest_stats.avg_combat_score ?? '—' }}</span>
+            <span class="text-[9px] text-gray-600 mt-px">ACS</span>
+          </div>
+          <div class="flex flex-col items-center py-2">
+            <span
+              v-if="currentStreak !== 0"
+              class="text-[11px] font-bold"
+              :class="currentStreak > 0 ? 'text-green-400' : 'text-red-400'"
+            >{{ currentStreak > 0 ? '+' : '' }}{{ currentStreak }}</span>
+            <span v-else class="text-[11px] font-bold text-gray-600">—</span>
+            <span class="text-[9px] text-gray-600 mt-px">Streak</span>
+          </div>
         </div>
-        <div class="flex flex-col items-center py-2">
-          <span class="text-[11px] font-bold">{{ profile.latest_stats.win_rate != null ? Math.round(profile.latest_stats.win_rate) + '%' : '—' }}</span>
-          <span class="text-[9px] text-gray-600 mt-px">Win</span>
+        <!-- RR Sparkline -->
+        <div v-if="rrSparkline" class="px-3 py-1.5 border-t border-white/[0.04] flex items-center gap-2">
+          <span class="text-[9px] text-gray-600 shrink-0">RR trend</span>
+          <svg :viewBox="`0 0 ${rrSparkline.W} ${rrSparkline.H}`" class="flex-1 h-5" preserveAspectRatio="none">
+            <polyline
+              :points="rrSparkline.points"
+              fill="none"
+              :stroke="rrSparkline.trending ? '#22c55e' : '#ef4444'"
+              stroke-width="1.5"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              opacity="0.8"
+            />
+          </svg>
+          <span class="text-[9px] shrink-0" :class="rrSparkline.trending ? 'text-green-500' : 'text-red-400'">
+            {{ rrSparkline.trending ? '↑' : '↓' }}
+          </span>
         </div>
-        <div class="flex flex-col items-center py-2">
-          <span class="text-[11px] font-bold">{{ profile.latest_stats.avg_combat_score ?? '—' }}</span>
-          <span class="text-[9px] text-gray-600 mt-px">ACS</span>
-        </div>
-        <div class="flex flex-col items-center py-2">
-          <span
-            v-if="currentStreak !== 0"
-            class="text-[11px] font-bold"
-            :class="currentStreak > 0 ? 'text-green-400' : 'text-red-400'"
-          >{{ currentStreak > 0 ? '+' : '' }}{{ currentStreak }}</span>
-          <span v-else class="text-[11px] font-bold text-gray-600">—</span>
-          <span class="text-[9px] text-gray-600 mt-px">Streak</span>
-        </div>
-      </div>
+      </template>
       <div v-else class="px-3 pb-2 pt-1">
         <button class="text-[10px] text-gray-600 hover:text-gray-400 transition-colors text-left" @click="openRiotSettings">No Valorant stats yet — click to link your Riot ID</button>
       </div>
@@ -443,6 +463,26 @@ const recordingStartedAt = ref<number | null>(null)
 const recordingElapsed = ref('')
 const stopping = ref(false)
 const warning = ref<string | null>(null)
+const rrHistory = ref<Array<{ id: number; date: string; rank: string | null; rr: number; elo: number }>>([])
+
+const rrSparkline = computed(() => {
+  const data = rrHistory.value
+  if (data.length < 2) return null
+  const eloValues = data.map(d => d.elo)
+  const minElo = Math.min(...eloValues)
+  const maxElo = Math.max(...eloValues)
+  const range = maxElo - minElo || 1
+  const W = 120, H = 24, pad = 2
+  const points = eloValues.map((elo, i) => {
+    const x = pad + (i / (eloValues.length - 1)) * (W - pad * 2)
+    const y = H - pad - ((elo - minElo) / range) * (H - pad * 2)
+    return `${x.toFixed(1)},${y.toFixed(1)}`
+  })
+  const lastElo = eloValues[eloValues.length - 1]
+  const firstElo = eloValues[0]
+  const trending = lastElo >= firstElo
+  return { points: points.join(' '), trending, W, H }
+})
 const upgradeNeeded = ref(false)
 const activityLog = ref<{ time: number; message: string }[]>([])
 const lastInsight = ref<{ text: string; score: number; agent: string | null; analysisId: number | null; date: string } | null>(null)
@@ -555,6 +595,9 @@ onMounted(async () => {
   analyses.value = recent
   analysesLoading.value = false
 
+  // Load RR history for sparkline
+  rrHistory.value = await window.api.stats.rrHistory().catch(() => [])
+
   // Load pending (unanalysed) recordings
   pendingRecordings.value = await window.api.recordings.get().catch(() => [])
 
@@ -610,6 +653,10 @@ onMounted(async () => {
   ipcCleanup.push(window.api.on('app:warning', (...args: unknown[]) => {
     const data = args[0] as { message: string }
     warning.value = data.message
+    setTimeout(() => { warning.value = null }, 12000)
+  }))
+  ipcCleanup.push(window.api.on('analysis:timeout', () => {
+    warning.value = 'Clip analysis timed out — please try re-submitting from the Clips tab.'
     setTimeout(() => { warning.value = null }, 12000)
   }))
   ipcCleanup.push(window.api.on('recording:waiting-for-match', (...args: unknown[]) => {

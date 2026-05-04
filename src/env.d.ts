@@ -205,6 +205,9 @@ declare global {
         } | null>
         sendPresence: (recording: boolean, game: string | null) => Promise<{ ok: boolean }>
       }
+      stats: {
+        rrHistory: () => Promise<Array<{ id: number; date: string; rank: string | null; rr: number; elo: number }>>
+      }
       overlay: {
         toggle: () => Promise<void>
         setInteractive: (interactive: boolean) => void
