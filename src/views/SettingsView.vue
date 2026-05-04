@@ -120,6 +120,20 @@
           </select>
         </div>
         <div>
+          <label class="block text-[11px] text-gray-500 mb-1">Capture monitor</label>
+          <select
+            v-model="settings.captureMonitor"
+            class="w-full px-2.5 py-1.5 bg-white/[0.04] border border-white/[0.07] rounded-lg text-xs text-white focus:outline-none focus:border-red-500/30 transition-colors"
+            @change="debouncedSave"
+          >
+            <option value="auto">Auto-detect (recommended)</option>
+            <option :value="0">Monitor 1 (primary)</option>
+            <option :value="1">Monitor 2</option>
+            <option :value="2">Monitor 3</option>
+          </select>
+          <p class="text-[10px] text-gray-700 mt-1 px-0.5">Only needed if auto-detect captures the wrong screen.</p>
+        </div>
+        <div>
           <label class="block text-[11px] text-gray-500 mb-1">Bitrate</label>
           <select
             v-model.number="settings.recordingBitrate"
@@ -421,7 +435,8 @@ const settings = reactive<AppSettings>({
   autoDelete: true,
   recordedModes: ['COMPETITIVE', 'PREMIER'],
   autoAnalyse: true,
-  firstRun: false
+  firstRun: false,
+  captureMonitor: 'auto',
 })
 
 const GAME_MODES = [

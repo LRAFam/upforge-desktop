@@ -771,7 +771,8 @@ function setupGameDetection(): void {
     const recorderConfig = config ? {
       quality: config.recordingQuality,
       bitrate: config.recordingBitrate,
-      savePath: config.savePath
+      savePath: config.savePath,
+      captureMonitor: config.captureMonitor,
     } : undefined
 
     // Check disk space now so the warning shows while in lobby

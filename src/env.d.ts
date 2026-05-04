@@ -14,6 +14,8 @@ export interface AppSettings {
   recordedModes: string[]
   autoAnalyse: boolean
   firstRun: boolean
+  /** Which monitor to capture. 'auto' detects from game window; numbers are 0-based display index. */
+  captureMonitor: 'auto' | number
 }
 
 export interface PendingRecording {

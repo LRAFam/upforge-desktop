@@ -12,6 +12,8 @@ export interface AppSettings {
   recordedModes: string[]
   autoAnalyse: boolean // automatically upload & analyse after game ends
   firstRun: boolean
+  /** Which monitor to capture. 'auto' detects from the game window; numbers are 0-based display index. */
+  captureMonitor: 'auto' | number
   /** Last completed analysis insight — persisted for dashboard display */
   lastInsight?: { text: string; score: number; agent: string | null; analysisId: number | null; date: string } | null
 }
@@ -24,7 +26,8 @@ const DEFAULTS: AppSettings = {
   autoDelete: true,
   recordedModes: ['COMPETITIVE', 'PREMIER'],
   autoAnalyse: true,
-  firstRun: true
+  firstRun: true,
+  captureMonitor: 'auto',
 }
 
 export class SettingsManager {

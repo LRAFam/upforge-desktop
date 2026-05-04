@@ -11,6 +11,7 @@ export interface RecorderConfig {
   quality: '720p' | '1080p'
   bitrate: number // Mbps
   savePath: string
+  captureMonitor?: 'auto' | number // which monitor to capture; 'auto' = detect from Valorant window
 }
 
 const IS_MAC = process.platform === 'darwin'
@@ -20,6 +21,15 @@ const IS_WIN = process.platform === 'win32'
 // gdigrab's -i title= matches the foreground window title exactly.
 const GAME_WINDOW_TITLES: Record<string, string> = {
   valorant: 'VALORANT',
+}
+
+// Window position info for targeted capture — avoids recording full virtual desktop on multi-monitor setups.
+interface WindowInfo {
+  x: number
+  y: number
+  width: number
+  height: number
+  monitorIndex: number // 0-based DXGI output index for ddagrab / AllScreens index for gdigrab
 }
 
 export class Recorder {
@@ -114,11 +124,27 @@ export class Recorder {
     console.log(`[Recorder] Platform: ${process.platform}, encoder: ${encoder}`)
     console.log(`[Recorder] Output: ${this._outputPath}`)
 
-    // Prefer ddagrab on Windows — GPU-accelerated Desktop Duplication API reduces CPU load
-    // compared to gdigrab (GDI-based), which is important when Valorant, Discord, and
-    // Medal.tv are all running simultaneously.
+    // Detect which monitor the game is running on so we only capture that screen.
+    // This prevents the dual-monitor "full virtual desktop" capture when falling back from window title.
+    let windowInfo: WindowInfo | null = null
+    if (IS_WIN) {
+      const monitorOverride = config?.captureMonitor
+      if (typeof monitorOverride === 'number') {
+        // Manual override: user has selected a specific monitor in settings
+        windowInfo = null // use override index in _buildArgs directly
+        console.log(`[Recorder] Monitor override: output_idx=${monitorOverride}`)
+      } else {
+        windowInfo = await this._getValorantWindowInfo()
+        if (windowInfo) {
+          console.log(`[Recorder] Valorant window: ${windowInfo.x},${windowInfo.y} ${windowInfo.width}x${windowInfo.height} monitor=${windowInfo.monitorIndex}`)
+        } else {
+          console.warn('[Recorder] Could not detect Valorant window — will use primary monitor')
+        }
+      }
+    }
+
     const useDdagrab = IS_WIN && this._cachedUseDdagrab === true
-    await this._spawnAndConfirm(game, config, encoder, false, false, useDdagrab)
+    await this._spawnAndConfirm(game, config, encoder, false, false, useDdagrab, windowInfo)
   }
 
   /**
@@ -133,11 +159,12 @@ export class Recorder {
     encoder: HWEncoder,
     useDesktopFallback: boolean,
     noAudio: boolean = false,
-    useDdagrab: boolean = false
+    useDdagrab: boolean = false,
+    windowInfo: WindowInfo | null = null
   ): Promise<void> {
     const STARTUP_TIMEOUT_MS = 2000
     const ffmpegPath = this._ffmpegPath()
-    const args = this._buildArgs(encoder, this._outputPath!, game, config, useDesktopFallback, noAudio, useDdagrab)
+    const args = this._buildArgs(encoder, this._outputPath!, game, config, useDesktopFallback, noAudio, useDdagrab, windowInfo)
 
     console.log(`[Recorder] ffmpeg path: ${ffmpegPath}`)
     console.log(`[Recorder] Args: ${args.join(' ')}`)
@@ -205,15 +232,17 @@ export class Recorder {
         this._cachedUseDdagrab = false
         this._stderrBuffer = ''
         this._process = null
-        return this._spawnAndConfirm(game, config, encoder, useDesktopFallback, noAudio, false)
+        return this._spawnAndConfirm(game, config, encoder, useDesktopFallback, noAudio, false, windowInfo)
       }
 
-      // On Windows, if window-title capture failed, retry once with full desktop
+      // On Windows, if window-title capture failed, retry with targeted desktop crop.
+      // If we have window position info, we crop to just the game window instead of
+      // capturing the entire virtual desktop (which includes all monitors).
       if (IS_WIN && !useDesktopFallback && GAME_WINDOW_TITLES[game.toLowerCase()]) {
-        console.warn('[Recorder] Window capture failed — retrying with full desktop capture')
+        console.warn('[Recorder] Window capture failed — retrying with desktop crop capture')
         this._stderrBuffer = ''
         this._process = null
-        return this._spawnAndConfirm(game, config, encoder, true, noAudio, false)
+        return this._spawnAndConfirm(game, config, encoder, true, noAudio, false, windowInfo)
       }
 
       // If audio capture failed, retry without audio (WASAPI unavailable / invalid device).
@@ -228,7 +257,7 @@ export class Recorder {
           console.warn('[Recorder] Audio capture failed — retrying without audio:', reason)
           this._stderrBuffer = ''
           this._process = null
-          return this._spawnAndConfirm(game, config, encoder, useDesktopFallback, true, useDdagrab)
+          return this._spawnAndConfirm(game, config, encoder, useDesktopFallback, true, useDdagrab, windowInfo)
         }
       }
 
@@ -368,7 +397,7 @@ export class Recorder {
     })
   }
 
-  private _buildArgs(encoder: HWEncoder, outputPath: string, game: string, config?: RecorderConfig, useDesktopFallback = false, noAudio = false, useDdagrab = false): string[] {
+  private _buildArgs(encoder: HWEncoder, outputPath: string, game: string, config?: RecorderConfig, useDesktopFallback = false, noAudio = false, useDdagrab = false, windowInfo: WindowInfo | null = null): string[] {
     const codecMap: Record<HWEncoder, string> = {
       videotoolbox: 'h264_videotoolbox',
       nvenc: 'h264_nvenc',
@@ -412,9 +441,16 @@ export class Recorder {
     // Preferred over gdigrab because DDA captures frames in GPU memory, avoiding the GDI
     // framebuffer copy that causes CPU spikes while playing games.
     if (useDdagrab) {
+      // Use detected monitor index so we capture the screen Valorant is actually on.
+      // Manual override from settings takes priority over auto-detection.
+      const monitorOverride = config?.captureMonitor
+      const outputIdx = typeof monitorOverride === 'number'
+        ? monitorOverride
+        : (windowInfo?.monitorIndex ?? 0)
+      console.log(`[Recorder] Windows ddagrab (DDA) capture output_idx=${outputIdx}${noAudio ? ' (no audio)' : ''}`)
+
       // scale is applied inside the filter_complex — can't mix -filter_complex with -vf
-      const ddagrabFilter = `ddagrab=output_idx=0,hwdownload,format=bgr0,scale=${scale}[v]`
-      console.log(`[Recorder] Windows ddagrab (DDA) capture${noAudio ? ' (no audio)' : ''}`)
+      const ddagrabFilter = `ddagrab=output_idx=${outputIdx},hwdownload,format=bgr0,scale=${scale}[v]`
 
       if (noAudio) {
         return [
@@ -446,16 +482,44 @@ export class Recorder {
     // Windows: gdigrab fallback — used when ddagrab is unavailable (Windows 7 or no D3D11).
     // gdigrab copies the framebuffer via GDI which is CPU-bound and can impact game FPS.
     const windowTitle = !useDesktopFallback ? GAME_WINDOW_TITLES[game.toLowerCase()] : undefined
-    const captureInput = windowTitle ? `title=${windowTitle}` : 'desktop'
+
+    // When falling back from window-title capture, use the detected window bounds to crop
+    // the desktop capture to just the game screen. This prevents recording both monitors
+    // side-by-side on dual-monitor setups. If no window info is available, fall back to
+    // full desktop as a last resort.
+    const monitorOverride = config?.captureMonitor
+    const effectiveWindowInfo = typeof monitorOverride === 'number' ? null : windowInfo
+
+    let captureInput: string
+    let cropArgs: string[] = []
+
+    if (windowTitle) {
+      captureInput = `title=${windowTitle}`
+    } else if (effectiveWindowInfo && effectiveWindowInfo.width > 400 && effectiveWindowInfo.height > 300) {
+      // Crop gdigrab to just the game window area — avoids multi-monitor bleed
+      captureInput = 'desktop'
+      cropArgs = [
+        '-offset_x', String(Math.max(0, effectiveWindowInfo.x)),
+        '-offset_y', String(Math.max(0, effectiveWindowInfo.y)),
+        '-video_size', `${effectiveWindowInfo.width}x${effectiveWindowInfo.height}`,
+      ]
+      console.log(`[Recorder] gdigrab desktop crop: ${effectiveWindowInfo.width}x${effectiveWindowInfo.height} at ${effectiveWindowInfo.x},${effectiveWindowInfo.y}`)
+    } else {
+      captureInput = 'desktop'
+      console.warn('[Recorder] gdigrab full desktop capture (no window bounds available) — may capture multiple monitors')
+    }
+
     console.log(`[Recorder] Windows capture input: ${captureInput}${noAudio ? ' (no audio)' : ''}`)
 
     // -draw_mouse 0: skip cursor rendering, minor CPU saving
     // -thread_queue_size: reduce input buffering stalls between gdigrab and WASAPI
+    // cropArgs must come BEFORE -i desktop for gdigrab to respect them
     const captureArgs = [
       '-f', 'gdigrab',
       '-framerate', '30',
       '-draw_mouse', '0',
       '-thread_queue_size', '512',
+      ...cropArgs,
       '-i', captureInput,
     ]
 
@@ -485,6 +549,62 @@ export class Recorder {
       '-movflags', '+faststart',
       outputPath
     ]
+  }
+
+
+  /**
+   * Detect which monitor Valorant is running on by querying the process window bounds via PowerShell.
+   * Returns position, size, and monitor index (0-based) for use with ddagrab output_idx and gdigrab cropping.
+   * Returns null if detection fails (game not running yet, permission error, etc.).
+   */
+  private _getValorantWindowInfo(): Promise<WindowInfo | null> {
+    if (!IS_WIN) return Promise.resolve(null)
+    const { exec } = require('child_process')
+
+    // PowerShell script: find VALORANT process → get window rect → determine which Screen it's on
+    const script = [
+      'Add-Type -AssemblyName System.Windows.Forms;',
+      'Add-Type -TypeDefinition \'using System; using System.Runtime.InteropServices;',
+      'public class W32 {',
+      '  [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr h, out RECT r);',
+      '  public struct RECT { public int L, T, R, B; }',
+      '}\';',
+      '$proc = Get-Process -Name "VALORANT-Win64-Shipping" -ErrorAction SilentlyContinue;',
+      'if (!$proc) { $proc = Get-Process -Name "VALORANT" -ErrorAction SilentlyContinue };',
+      'if (!$proc -or $proc.MainWindowHandle -eq 0) { Write-Output "null"; exit 0 };',
+      '$r = New-Object W32+RECT;',
+      '[W32]::GetWindowRect($proc.MainWindowHandle, [ref]$r) | Out-Null;',
+      '$w = $r.R - $r.L; $h = $r.B - $r.T;',
+      'if ($w -lt 400 -or $h -lt 300) { Write-Output "null"; exit 0 };',
+      '$cx = $r.L + $w / 2; $cy = $r.T + $h / 2;',
+      '$screens = [System.Windows.Forms.Screen]::AllScreens;',
+      '$idx = 0;',
+      'for ($i = 0; $i -lt $screens.Length; $i++) {',
+      '  $b = $screens[$i].Bounds;',
+      '  if ($cx -ge $b.X -and $cx -lt ($b.X + $b.Width) -and $cy -ge $b.Y -and $cy -lt ($b.Y + $b.Height)) { $idx = $i; break }',
+      '};',
+      'Write-Output "$($r.L),$($r.T),$w,$h,$idx"',
+    ].join(' ')
+
+    return new Promise((resolve) => {
+      exec(
+        `powershell -NoProfile -NonInteractive -Command "${script}"`,
+        { windowsHide: true, timeout: 5000 },
+        (err: Error | null, stdout: string) => {
+          if (err || stdout.trim() === 'null' || !stdout.trim()) {
+            resolve(null)
+            return
+          }
+          const parts = stdout.trim().split(',').map(Number)
+          if (parts.length === 5 && parts.every(n => !isNaN(n) && isFinite(n))) {
+            const [x, y, width, height, monitorIndex] = parts
+            resolve({ x, y, width, height, monitorIndex })
+          } else {
+            resolve(null)
+          }
+        }
+      )
+    })
   }
 
   /** Lower the priority of a Windows process to BelowNormal so it doesn't compete with the game. */
