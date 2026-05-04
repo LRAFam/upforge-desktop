@@ -25,10 +25,24 @@
         </div>
       </div>
 
-      <!-- Round -->
+      <!-- Round + score -->
       <div class="flex items-center justify-between pt-2.5 border-t border-white/10 mb-3">
         <span class="text-[13px] text-gray-400">Round</span>
-        <span class="text-[15px] font-mono font-bold text-white">{{ data.round ?? '—' }}</span>
+        <div class="flex items-center gap-2">
+          <span v-if="data.allyScore != null && data.enemyScore != null" class="text-[11px] font-mono text-gray-500">
+            {{ data.allyScore }}–{{ data.enemyScore }}
+          </span>
+          <span class="text-[15px] font-mono font-bold text-white">{{ data.round ?? '—' }}</span>
+        </div>
+      </div>
+
+      <!-- Economy type -->
+      <div v-if="data.yourCredits != null" class="flex items-center justify-between mb-3 -mt-1">
+        <span class="text-[11px] text-gray-500">Economy</span>
+        <span
+          class="text-[10px] font-bold px-2 py-0.5 rounded-full"
+          :class="economyBadgeClass"
+        >{{ economyLabel }}</span>
       </div>
 
       <!-- Clip button — interactive via hover trick -->
@@ -68,13 +82,33 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
+
+const economyLabel = computed(() => {
+  const c = data.value.yourCredits
+  if (c == null) return ''
+  if (c < 900) return 'ECO'
+  if (c < 1900) return 'HALF'
+  if (c < 3900) return 'FULL'
+  return 'BONUS'
+})
+
+const economyBadgeClass = computed(() => {
+  const c = data.value.yourCredits
+  if (c == null) return ''
+  if (c < 900) return 'bg-red-500/15 text-red-400'
+  if (c < 1900) return 'bg-yellow-500/15 text-yellow-400'
+  if (c < 3900) return 'bg-green-500/15 text-green-400'
+  return 'bg-blue-500/15 text-blue-400'
+})
 
 const data = ref<{
   yourCredits: number | null
   enemyEstimate: number | null
   round: number | null
-}>({ yourCredits: null, enemyEstimate: null, round: null })
+  allyScore: number | null
+  enemyScore: number | null
+}>({ yourCredits: null, enemyEstimate: null, round: null, allyScore: null, enemyScore: null })
 
 const isRecording = ref(false)
 const showToast = ref(false)
@@ -118,8 +152,21 @@ function showToastMsg(msg: string, type: 'success' | 'warning') {
 onMounted(async () => {
   removeListeners.push(
     window.api.on('overlay:data', (payload: unknown) => {
-      const p = payload as { yourCredits: number | null; enemyEstimate: number | null; round: number | null; recording?: boolean }
-      data.value = p
+      const p = payload as {
+        yourCredits: number | null
+        enemyEstimate: number | null
+        round: number | null
+        allyScore?: number | null
+        enemyScore?: number | null
+        recording?: boolean
+      }
+      data.value = {
+        yourCredits: p.yourCredits,
+        enemyEstimate: p.enemyEstimate,
+        round: p.round,
+        allyScore: p.allyScore ?? null,
+        enemyScore: p.enemyScore ?? null,
+      }
       if (p.recording !== undefined) isRecording.value = p.recording
     })
   )

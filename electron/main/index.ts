@@ -77,6 +77,8 @@ let cancelMatchWait: (() => void) | null = null
 let waitingForMatch = false
 // Prevents double-handling when onMatchEnded + game-stopped both fire for same match
 let matchHandled = false
+// Overlay polling timer — cleared when match ends or game stops
+let overlayPollTimer: ReturnType<typeof setInterval> | null = null
 
 // Activity log — recent events shown on dashboard for user visibility
 const MAX_LOG_ENTRIES = 30
@@ -959,8 +961,33 @@ function setupGameDetection(): void {
     }
     logActivity(`Recording started (${gameMode ?? 'unknown mode'}${recorder.wasNoAudio() ? ' — no audio' : ''})`)
 
+    // Start polling session state to feed the live overlay with round data
+    overlayPollTimer = setInterval(async () => {
+      try {
+        const state = await riotLocalApi.getSessionState()
+        if (state?.sessionLoopState === 'INGAME') {
+          const round = (state.allyScore ?? 0) + (state.enemyScore ?? 0) + 1
+          sendOverlayData('overlay:data', {
+            round,
+            allyScore: state.allyScore ?? 0,
+            enemyScore: state.enemyScore ?? 0,
+            yourCredits: null,
+            enemyEstimate: null,
+            recording: true,
+          })
+        }
+      } catch { /* ignore — session endpoint may be unavailable */ }
+    }, 5_000)
+
+    // Stop overlay polling when the match ends
+    const origOnMatchEnded = riotLocalApi.onMatchEnded
+    riotLocalApi.onMatchEnded = async () => {
+      if (overlayPollTimer) { clearInterval(overlayPollTimer); overlayPollTimer = null }
+      sendOverlayData('overlay:data', { round: null, allyScore: null, enemyScore: null, yourCredits: null, enemyEstimate: null, recording: false })
+      if (origOnMatchEnded) await origOnMatchEnded()
+    }
+
     if (recorder.wasNoAudio()) {
-      console.warn('[Main] Recording started without audio (WASAPI/avfoundation fallback)')
       mainWindow?.webContents.send('app:warning', {
         message: 'Recording started without audio — your system audio device was unavailable'
       })
@@ -1006,6 +1033,8 @@ function setupGameDetection(): void {
 
     // Process died without a clean presence transition (crash, force-quit, etc.)
     matchHandled = true
+    if (overlayPollTimer) { clearInterval(overlayPollTimer); overlayPollTimer = null }
+    sendOverlayData('overlay:data', { round: null, allyScore: null, enemyScore: null, yourCredits: null, enemyEstimate: null, recording: false })
     logActivity('Game process ended — stopping recording')
     await handleMatchEnd(game)
   })
@@ -1163,12 +1192,26 @@ async function doUploadAndAnalyse(
             settingsManager.save({ lastInsight: insight })
             mainWindow?.webContents.send('dashboard:last-insight', insight)
           }
+          // Derive match result from round scores (last entry = final score)
+          const lastScore = timeline?.roundScores?.length
+            ? timeline.roundScores[timeline.roundScores.length - 1]
+            : null
+          const matchResult: 'win' | 'loss' | null = lastScore
+            ? (lastScore.allyScore > lastScore.enemyScore ? 'win' : 'loss')
+            : null
+
           send('post-game:analysis-ready', {
             overall_score: (status.result as Record<string, unknown>).overall_score,
             analysis_id: (status.result as Record<string, unknown>).analysis_id,
             top_issue: (status.result as Record<string, unknown>).top_issue,
             priority_improvements: (status.result as Record<string, unknown>).priority_improvements,
-            session_start: sessionStart
+            session_start: sessionStart,
+            kills: timeline?.finalStats?.kills ?? null,
+            deaths: timeline?.finalStats?.deaths ?? null,
+            assists: timeline?.finalStats?.assists ?? null,
+            match_result: matchResult,
+            ally_score: lastScore?.allyScore ?? null,
+            enemy_score: lastScore?.enemyScore ?? null,
           })
           mainWindow?.webContents.send('dashboard:refresh')
           tray?.setToolTip('UpForge — Valorant AI Coaching')

@@ -198,23 +198,49 @@
             <span class="text-[9px] text-gray-600 mt-px">Streak</span>
           </div>
         </div>
-        <!-- RR Sparkline -->
-        <div v-if="rrSparkline" class="px-3 py-1.5 border-t border-white/[0.04] flex items-center gap-2">
-          <span class="text-[9px] text-gray-600 shrink-0">RR trend</span>
-          <svg :viewBox="`0 0 ${rrSparkline.W} ${rrSparkline.H}`" class="flex-1 h-5" preserveAspectRatio="none">
-            <polyline
-              :points="rrSparkline.points"
-              fill="none"
-              :stroke="rrSparkline.trending ? '#22c55e' : '#ef4444'"
-              stroke-width="1.5"
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              opacity="0.8"
-            />
-          </svg>
-          <span class="text-[9px] shrink-0" :class="rrSparkline.trending ? 'text-green-500' : 'text-red-400'">
-            {{ rrSparkline.trending ? '↑' : '↓' }}
-          </span>
+        <!-- RR Sparkline + history toggle -->
+        <div v-if="rrSparkline" class="border-t border-white/[0.04]">
+          <button
+            class="w-full px-3 py-1.5 flex items-center gap-2 hover:bg-white/[0.02] transition-colors"
+            @click="showRankHistory = !showRankHistory"
+          >
+            <span class="text-[9px] text-gray-600 shrink-0">RR trend</span>
+            <svg :viewBox="`0 0 ${rrSparkline.W} ${rrSparkline.H}`" class="flex-1 h-5" preserveAspectRatio="none">
+              <polyline
+                :points="rrSparkline.points"
+                fill="none"
+                :stroke="rrSparkline.trending ? '#22c55e' : '#ef4444'"
+                stroke-width="1.5"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                opacity="0.8"
+              />
+            </svg>
+            <span class="text-[9px] shrink-0" :class="rrSparkline.trending ? 'text-green-500' : 'text-red-400'">
+              {{ rrSparkline.trending ? '↑' : '↓' }}
+            </span>
+            <svg class="w-3 h-3 text-gray-600 shrink-0 transition-transform" :class="showRankHistory ? 'rotate-180' : ''" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+            </svg>
+          </button>
+          <!-- History list -->
+          <div v-if="showRankHistory && rrHistory.length" class="border-t border-white/[0.04] divide-y divide-white/[0.03] max-h-40 overflow-y-auto">
+            <div
+              v-for="(entry, i) in rrHistory.slice().reverse().slice(0, 10)"
+              :key="entry.id"
+              class="px-3 py-1.5 flex items-center gap-2"
+            >
+              <span class="text-[9px] text-gray-600 shrink-0 w-16 truncate">{{ formatEntryDate(entry.date) }}</span>
+              <span class="text-[10px] font-semibold flex-1 truncate" :style="{ color: getRankHexColor(entry.rank ?? '') }">{{ entry.rank ?? '—' }}</span>
+              <span class="text-[10px] font-mono tabular-nums" :class="entry.rr >= 50 ? 'text-white' : 'text-gray-400'">{{ entry.rr }} RR</span>
+              <span
+                v-if="i < rrHistory.length - 1"
+                class="text-[9px] font-bold tabular-nums shrink-0 w-10 text-right"
+                :class="rrDelta(i) > 0 ? 'text-green-400' : rrDelta(i) < 0 ? 'text-red-400' : 'text-gray-600'"
+              >{{ rrDelta(i) > 0 ? '+' : '' }}{{ rrDelta(i) !== 0 ? rrDelta(i) : '—' }}</span>
+              <span v-else class="w-10" />
+            </div>
+          </div>
         </div>
       </template>
       <div v-else class="px-3 pb-2 pt-1">
@@ -462,6 +488,7 @@ const simStatus = ref('')
 const recordingStartedAt = ref<number | null>(null)
 const recordingElapsed = ref('')
 const stopping = ref(false)
+const showRankHistory = ref(false)
 const warning = ref<string | null>(null)
 const rrHistory = ref<Array<{ id: number; date: string; rank: string | null; rr: number; elo: number }>>([])
 
@@ -536,6 +563,21 @@ function scoreGradeBadgeClass(score: number): string {
   if (score >= 60) return 'bg-blue-500/20 text-blue-300'
   if (score >= 45) return 'bg-orange-500/20 text-orange-300'
   return 'bg-red-500/20 text-red-300'
+}
+
+function formatEntryDate(dateStr: string): string {
+  try {
+    const d = new Date(dateStr)
+    return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
+  } catch {
+    return dateStr.slice(0, 10)
+  }
+}
+
+function rrDelta(reversedIndex: number): number {
+  const reversed = rrHistory.value.slice().reverse()
+  if (reversedIndex >= reversed.length - 1) return 0
+  return reversed[reversedIndex].elo - reversed[reversedIndex + 1].elo
 }
 
 const recordingModeLabel = computed(() => {

@@ -121,6 +121,27 @@
           />
         </div>
 
+        <!-- Match stats row: K/D/A + result -->
+        <div v-if="result?.kills != null || result?.match_result" class="flex items-center gap-2 px-3 py-2 bg-white/[0.03] border border-white/[0.06] rounded-xl">
+          <span
+            v-if="result?.match_result"
+            class="text-[10px] font-bold px-2 py-0.5 rounded-full flex-shrink-0"
+            :class="result.match_result === 'win' ? 'bg-green-500/15 text-green-400 border border-green-500/25' : 'bg-red-500/15 text-red-400 border border-red-500/25'"
+          >{{ result.match_result === 'win' ? 'WIN' : 'LOSS' }}</span>
+          <span
+            v-if="result?.ally_score != null && result?.enemy_score != null"
+            class="text-[10px] font-mono text-gray-500 flex-shrink-0"
+          >{{ result.ally_score }}–{{ result.enemy_score }}</span>
+          <div v-if="result?.kills != null" class="flex items-center gap-2 ml-auto">
+            <span class="text-[11px] font-bold text-white tabular-nums">{{ result.kills }}</span>
+            <span class="text-[10px] text-gray-600">/</span>
+            <span class="text-[11px] font-bold text-red-400 tabular-nums">{{ result.deaths ?? '?' }}</span>
+            <span class="text-[10px] text-gray-600">/</span>
+            <span class="text-[11px] font-bold text-gray-400 tabular-nums">{{ result.assists ?? '?' }}</span>
+            <span class="text-[9px] text-gray-600">K/D/A</span>
+          </div>
+        </div>
+
         <!-- Improvements list -->
         <div v-if="improvements.length" class="space-y-1.5">
           <p class="text-[10px] font-semibold uppercase tracking-wider text-gray-600">Focus on</p>
@@ -247,7 +268,16 @@ const COACHING_TIPS = [
 const state = ref<State>('uploading')
 const uploadProgress = ref(0)
 const gameInfo = ref<{ game: string; map: string | null; agent: string | null }>({ game: 'valorant', map: null, agent: null })
-const result = ref<{ overall_score: number; analysis_id: number } | null>(null)
+const result = ref<{
+  overall_score: number
+  analysis_id: number
+  kills?: number | null
+  deaths?: number | null
+  assists?: number | null
+  match_result?: 'win' | 'loss' | null
+  ally_score?: number | null
+  enemy_score?: number | null
+} | null>(null)
 const errorMessage = ref('')
 const pendingRecordingId = ref<string | null>(null)
 const analysing = ref(false)
@@ -330,9 +360,9 @@ onMounted(() => {
   ipcCleanup.push(window.api.on('post-game:upload-complete', () => { state.value = 'analysing'; startStuckTimer() }))
   ipcCleanup.push(window.api.on('post-game:analysis-ready', (...args: unknown[]) => {
     clearStuckTimer()
-    const r = args[0] as { overall_score: number; analysis_id: number; session_start?: number }
+    const r = args[0] as typeof result.value & { session_start?: number }
     result.value = r
-    sessionStart = r.session_start ?? (Date.now() - 2 * 60 * 60 * 1000)
+    sessionStart = r?.session_start ?? (Date.now() - 2 * 60 * 60 * 1000)
     state.value = 'ready'
     loadSessionClips()
   }))
