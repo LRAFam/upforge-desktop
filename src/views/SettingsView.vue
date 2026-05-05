@@ -235,6 +235,12 @@
             <p class="text-[10px] mt-0.5" :class="hotkeyStatus['save-clip'] === false ? 'text-yellow-500/70' : 'text-gray-600'">
               {{ hotkeyStatus['save-clip'] === false ? '⚠ Failed to register — key may be in use' : 'Press during a match to save a clip' }}
             </p>
+            <button
+              v-if="hotkeyStatus['save-clip'] === false"
+              class="mt-1.5 text-[10px] text-yellow-400/80 hover:text-yellow-300 underline underline-offset-2 transition-colors"
+              :disabled="conflictScanning"
+              @click="findConflict"
+            >{{ conflictScanning ? 'Scanning…' : 'Find conflicting app →' }}</button>
           </div>
           <button
             :class="[
@@ -272,6 +278,21 @@
 
       </div>
       <p v-if="rebinding" class="text-[10px] text-gray-600 mt-1.5 px-0.5">Press Escape to cancel · changes apply immediately</p>
+
+      <!-- Conflict finder results -->
+      <div v-if="conflictResults !== null" class="mt-2 px-3 py-2.5 bg-yellow-500/5 border border-yellow-500/20 rounded-xl space-y-2">
+        <template v-if="conflictResults.found.length > 0">
+          <p class="text-[10px] font-semibold text-yellow-400/90 uppercase tracking-widest">Possible conflicts detected</p>
+          <div v-for="c in conflictResults.found" :key="c.exe" class="space-y-0.5">
+            <p class="text-xs text-gray-200">{{ c.name }}</p>
+            <p class="text-[10px] text-gray-500">{{ c.fix }}</p>
+          </div>
+        </template>
+        <template v-else>
+          <p class="text-[10px] text-gray-400">No known conflicting apps detected. Try rebinding to a different key (click the key button above).</p>
+        </template>
+        <button class="text-[10px] text-gray-600 hover:text-gray-400 underline underline-offset-2 transition-colors" @click="conflictResults = null">Dismiss</button>
+      </div>
     </section>
 
     <!-- System -->
@@ -376,6 +397,19 @@ type HotkeyAction = 'save-clip' | 'toggle-overlay'
 const hotkeys = reactive<Record<HotkeyAction, string>>({ 'save-clip': 'F9', 'toggle-overlay': 'F10' })
 const hotkeyStatus = reactive<Record<HotkeyAction, boolean | null>>({ 'save-clip': null, 'toggle-overlay': null })
 const rebinding = ref<HotkeyAction | null>(null)
+const conflictScanning = ref(false)
+const conflictResults = ref<{ found: Array<{ exe: string; name: string; fix: string }> } | null>(null)
+
+async function findConflict(): Promise<void> {
+  conflictScanning.value = true
+  conflictResults.value = null
+  try {
+    const result = await window.api.debug.findHotkeyConflict() as { supported: boolean; found: Array<{ exe: string; name: string; fix: string }> }
+    conflictResults.value = result
+  } finally {
+    conflictScanning.value = false
+  }
+}
 
 function formatKey(accelerator: string): string {
   return accelerator.replace('CommandOrControl', 'Ctrl').replace('Control', 'Ctrl')

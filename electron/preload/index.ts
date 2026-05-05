@@ -47,7 +47,8 @@ const api = {
     check: () => ipcRenderer.invoke('updater:check')
   },
   debug: {
-    testRiotApi: () => ipcRenderer.invoke('debug:test-riot-api')
+    testRiotApi: () => ipcRenderer.invoke('debug:test-riot-api'),
+    findHotkeyConflict: () => ipcRenderer.invoke('debug:find-hotkey-conflict'),
   },
   storage: {
     getUsage: () => ipcRenderer.invoke('storage:get-usage'),

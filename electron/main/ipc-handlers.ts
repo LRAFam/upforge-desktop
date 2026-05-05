@@ -253,6 +253,58 @@ export function setupClipHandlers(
   ipcMain.on('overlay:set-interactive', (_e, interactive: boolean) => {
     setOverlayInteractive(interactive)
   })
+
+  // Scan running processes for known apps that steal global hotkeys
+  ipcMain.handle('debug:find-hotkey-conflict', async () => {
+    if (process.platform !== 'win32') {
+      return { supported: false, found: [] }
+    }
+    // Known process names that commonly register global F-key hotkeys
+    const KNOWN_CULPRITS: Array<{ exe: string; name: string; fix: string }> = [
+      { exe: 'Discord.exe',            name: 'Discord',               fix: 'Settings → Keybinds — remove any F9 binding' },
+      { exe: 'DiscordPTB.exe',         name: 'Discord PTB',           fix: 'Settings → Keybinds — remove any F9 binding' },
+      { exe: 'DiscordCanary.exe',      name: 'Discord Canary',        fix: 'Settings → Keybinds — remove any F9 binding' },
+      { exe: 'obs64.exe',              name: 'OBS Studio',            fix: 'Settings → Hotkeys — clear any F9 hotkey' },
+      { exe: 'obs32.exe',              name: 'OBS Studio (32-bit)',   fix: 'Settings → Hotkeys — clear any F9 hotkey' },
+      { exe: 'NVIDIA Share.exe',       name: 'NVIDIA GeForce Experience (Share/ShadowPlay)', fix: 'GeForce Experience → Settings → Overlay — disable or rebind hotkeys' },
+      { exe: 'nvcontainer.exe',        name: 'NVIDIA Container',      fix: 'GeForce Experience → Settings — disable in-game overlay' },
+      { exe: 'LGHUB.exe',              name: 'Logitech G HUB',        fix: 'G HUB → Assignments — remove any F9 macro binding' },
+      { exe: 'LCore.exe',              name: 'Logitech Gaming Software', fix: 'LGS → Assignments — remove any F9 macro binding' },
+      { exe: 'RzSynapse.exe',          name: 'Razer Synapse',         fix: 'Synapse → Keyboard macros — remove any F9 binding' },
+      { exe: 'Razer Synapse 3.exe',    name: 'Razer Synapse 3',       fix: 'Synapse → Keyboard macros — remove any F9 binding' },
+      { exe: 'SteelSeriesGG.exe',      name: 'SteelSeries GG',        fix: 'SteelSeries GG → Engine — remove any F9 macro' },
+      { exe: 'iCUE.exe',               name: 'Corsair iCUE',          fix: 'iCUE → Profiles — remove any F9 action' },
+      { exe: 'NGENUITY.exe',           name: 'HyperX NGenuity',       fix: 'NGenuity → Macros — remove any F9 binding' },
+      { exe: 'StreamDeck.exe',         name: 'Elgato Stream Deck',    fix: 'Stream Deck software — remove any F9 action' },
+      { exe: 'AutoHotkey.exe',         name: 'AutoHotkey',            fix: 'Close or edit your AutoHotkey script — check for F9 hotkey' },
+      { exe: 'AutoHotkey64.exe',       name: 'AutoHotkey (64-bit)',   fix: 'Close or edit your AutoHotkey script — check for F9 hotkey' },
+      { exe: 'XboxGameBarWidgets.exe', name: 'Xbox Game Bar',         fix: 'Windows Settings → Gaming → Xbox Game Bar — disable or rebind' },
+      { exe: 'GameBar.exe',            name: 'Xbox Game Bar',         fix: 'Windows Settings → Gaming → Xbox Game Bar — disable or rebind' },
+      { exe: 'MSIAfterburner.exe',     name: 'MSI Afterburner',       fix: 'Afterburner → Settings → On-Screen Display — rebind hotkeys' },
+      { exe: 'RTSS.exe',               name: 'RivaTuner Statistics Server', fix: 'RTSS → Setup — rebind hotkeys' },
+      { exe: 'voicemeeter.exe',        name: 'VoiceMeeter',           fix: 'VoiceMeeter → Menu → System Settings — remove any F9 binding' },
+      { exe: 'voicemeeterpro.exe',     name: 'VoiceMeeter Potato',    fix: 'VoiceMeeter → System Settings — remove any F9 binding' },
+      { exe: 'EpicGamesLauncher.exe',  name: 'Epic Games Launcher',   fix: 'Epic Settings → In-Game Overlay — disable or rebind' },
+      { exe: 'PlayNitroSense.exe',     name: 'NitroSense',            fix: 'NitroSense Settings — rebind or disable hotkeys' },
+    ]
+
+    try {
+      // Run tasklist and capture output
+      const { execSync } = await import('child_process')
+      const output = execSync('tasklist /FO CSV /NH', { timeout: 5000, encoding: 'utf8' })
+      const runningExes = new Set(
+        output.split('\n')
+          .map(line => line.trim().replace(/^"/, '').split('"')[0].toLowerCase())
+          .filter(Boolean)
+      )
+      const found = KNOWN_CULPRITS.filter(c => runningExes.has(c.exe.toLowerCase()))
+      log.info('[HotkeyDiag] Running processes checked, conflicts found:', found.map(f => f.name))
+      return { supported: true, found }
+    } catch (err) {
+      log.warn('[HotkeyDiag] tasklist failed:', err)
+      return { supported: true, found: [], error: 'Could not scan processes' }
+    }
+  })
 }
 
 /** POST JSON to an API endpoint with Bearer auth. */
