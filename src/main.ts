@@ -15,6 +15,7 @@ import ClipsView from './views/ClipsView.vue'
 import OverlayView from './views/OverlayView.vue'
 import SquadView from './views/SquadView.vue'
 import PerformanceView from './views/PerformanceView.vue'
+import VODReviewView from './views/VODReviewView.vue'
 
 const PUBLIC_ROUTES = ['/login', '/welcome', '/splash', '/overlay']
 
@@ -32,7 +33,8 @@ const router = createRouter({
     { path: '/clips', component: ClipsView },
     { path: '/overlay', component: OverlayView },
     { path: '/squad', component: SquadView },
-    { path: '/performance', component: PerformanceView }
+    { path: '/performance', component: PerformanceView },
+    { path: '/vod-review', component: VODReviewView }
   ]
 })
 

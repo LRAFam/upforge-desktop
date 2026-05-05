@@ -314,6 +314,11 @@
         </div>
         <div class="flex items-center gap-1.5 flex-shrink-0">
           <button
+            v-if="rec.timeline?.playerKills?.length"
+            class="px-2.5 py-1 text-[10px] font-medium text-gray-300 bg-white/[0.06] hover:bg-white/[0.1] border border-white/[0.08] rounded-lg transition-colors"
+            @click="$router.push({ path: '/vod-review', query: { id: rec.id } })"
+          >Review</button>
+          <button
             :disabled="analysingIds.has(rec.id)"
             class="px-2.5 py-1 text-[10px] font-medium text-white bg-red-500 hover:bg-red-600 disabled:opacity-50 rounded-lg transition-colors"
             @click="analyseRecording(rec.id)"

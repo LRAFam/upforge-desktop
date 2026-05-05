@@ -1588,6 +1588,26 @@ app.whenReady().then(async () => {
     mainWindow?.webContents.send('recordings:updated')
   })
 
+  ipcMain.handle('recordings:get-timeline', (_e, { id }: { id: string }) => {
+    const recording = recordingsStore.getById(id)
+    if (!recording) return null
+    const tl = recording.timeline
+    return {
+      id: recording.id,
+      videoPath: recording.path,
+      map: recording.map,
+      agent: recording.agent,
+      game: recording.game,
+      gameMode: recording.gameMode,
+      recordedAt: recording.recordedAt,
+      kills: tl?.playerKills ?? [],
+      deaths: tl?.playerDeaths ?? [],
+      roundSummaries: tl?.roundSummaries ?? [],
+      finalStats: tl?.finalStats ?? null,
+      teamSnapshot: tl?.teamSnapshot ?? [],
+    }
+  })
+
   // Register global shortcut to show/focus window
   globalShortcut.register('CommandOrControl+Shift+U', () => {
     if (mainWindow) {

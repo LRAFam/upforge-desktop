@@ -31,10 +31,28 @@ export interface PendingRecording {
   analysed: boolean
   jobId?: string
   fileSizeBytes?: number
+  timeline?: {
+    playerKills?: Array<{ killerName: string; victimName: string; weapon?: string; videoOffsetMs?: number; round?: number }>
+    playerDeaths?: Array<{ killerName: string; victimName: string; weapon?: string; videoOffsetMs?: number; round?: number }>
+  } | null
+}
+
+export interface RecordingTimeline {
+  id: string
+  videoPath: string
+  map: string | null
+  agent: string | null
+  game: string
+  gameMode: string
+  recordedAt: number
+  kills: Array<{ killerName: string; victimName: string; weapon?: string; videoOffsetMs?: number; round?: number }>
+  deaths: Array<{ killerName: string; victimName: string; weapon?: string; videoOffsetMs?: number; round?: number }>
+  roundSummaries: Array<{ roundNumber: number; winningTeam: string | null; spikePlanted: boolean; spikeDefused: boolean }>
+  finalStats: { kills: number; deaths: number; assists: number; won?: boolean } | null
+  teamSnapshot: unknown[]
 }
 
 export interface ValorantStats {
-  player_name: string | null
   player_tag: string | null
   current_rank: string | null
   peak_rank: string | null
@@ -156,6 +174,7 @@ declare global {
         get: () => Promise<PendingRecording[]>
         analyse: (id: string) => Promise<{ ok?: boolean; error?: string }>
         dismiss: (id: string) => Promise<void>
+        getTimeline: (id: string) => Promise<RecordingTimeline | null>
       }
       settings: {
         get: () => Promise<AppSettings>
@@ -180,6 +199,11 @@ declare global {
       }
       debug: {
         testRiotApi: () => Promise<{ portOpen: boolean; gameMode: string | null; processRunning: boolean }>
+        findHotkeyConflict: () => Promise<{ supported: boolean; found: Array<{ exe: string; name: string; fix: string }> }>
+      }
+      screenshots: {
+        capture: () => Promise<string | null>
+        save: (dataUrl: string) => Promise<{ ok: boolean; path?: string }>
       }
       storage: {
         getUsage: () => Promise<{ bytes: number; count: number }>

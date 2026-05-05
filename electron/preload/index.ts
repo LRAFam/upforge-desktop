@@ -22,7 +22,8 @@ const api = {
   recordings: {
     get: () => ipcRenderer.invoke('recordings:get'),
     analyse: (id: string) => ipcRenderer.invoke('recordings:analyse', { id }),
-    dismiss: (id: string) => ipcRenderer.invoke('recordings:dismiss', { id })
+    dismiss: (id: string) => ipcRenderer.invoke('recordings:dismiss', { id }),
+    getTimeline: (id: string) => ipcRenderer.invoke('recordings:get-timeline', { id })
   },
   settings: {
     get: () => ipcRenderer.invoke('settings:get'),
