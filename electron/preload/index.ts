@@ -1,4 +1,4 @@
-import { contextBridge, ipcRenderer } from 'electron'
+import { contextBridge, ipcRenderer, desktopCapturer } from 'electron'
 
 const api = {
   auth: {
@@ -80,6 +80,19 @@ const api = {
     toggle: () => ipcRenderer.invoke('overlay:toggle'),
     setInteractive: (interactive: boolean) => ipcRenderer.send('overlay:set-interactive', interactive),
   },
+  screenshots: {
+    capture: async (): Promise<string | null> => {
+      try {
+        const sources = await desktopCapturer.getSources({
+          types: ['screen'],
+          thumbnailSize: { width: 3840, height: 2160 },
+        })
+        if (!sources.length) return null
+        return sources[0].thumbnail.toDataURL()
+      } catch { return null }
+    },
+    save: (dataUrl: string) => ipcRenderer.invoke('screenshots:save', { dataUrl }),
+  },
   performance: {
     getStatus: () => ipcRenderer.invoke('performance:get-status'),
     boost: () => ipcRenderer.invoke('performance:boost'),
@@ -116,6 +129,8 @@ const api = {
       'overlay:data',
       'overlay:clip-bookmarked',
       'overlay:clip-not-recording',
+      'overlay:screenshot',
+      'overlay:screenshot-saved',
       'app:navigate',
       'analysis:timeout',
     ]

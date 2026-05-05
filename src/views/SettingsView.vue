@@ -289,6 +289,27 @@
           </button>
         </div>
 
+        <!-- Configurable: screenshot -->
+        <div class="flex items-center justify-between px-3 py-2.5">
+          <div>
+            <p class="text-xs text-gray-300">Take screenshot</p>
+            <p class="text-[10px] mt-0.5" :class="hotkeyStatus['take-screenshot'] === false ? 'text-yellow-500/70' : 'text-gray-600'">
+              {{ hotkeyStatus['take-screenshot'] === false ? '⚠ Failed to register — key may be in use' : 'Save a screenshot during a match' }}
+            </p>
+          </div>
+          <button
+            :class="[
+              'min-w-[56px] px-2 py-1 rounded-lg border text-[11px] font-mono transition-all',
+              rebinding === 'take-screenshot'
+                ? 'bg-red-500/15 border-red-500/40 text-red-300 animate-pulse'
+                : 'bg-white/[0.04] border-white/[0.08] text-gray-300 hover:border-white/[0.15] hover:text-white'
+            ]"
+            @click="startRebind('take-screenshot')"
+          >
+            {{ rebinding === 'take-screenshot' ? 'Press a key…' : formatKey(hotkeys['take-screenshot'] ?? 'F8') }}
+          </button>
+        </div>
+
       </div>
       <p v-if="rebinding" class="text-[10px] text-gray-600 mt-1.5 px-0.5">Press Escape to cancel · changes apply immediately</p>
 
@@ -422,9 +443,9 @@ let saveTimer: ReturnType<typeof setTimeout> | null = null
 let toastTimer: ReturnType<typeof setTimeout> | null = null
 
 // ── Hotkeys ──────────────────────────────────────────────────────────────────
-type HotkeyAction = 'save-clip' | 'toggle-overlay'
-const hotkeys = reactive<Record<HotkeyAction, string>>({ 'save-clip': 'F9', 'toggle-overlay': 'F10' })
-const hotkeyStatus = reactive<Record<HotkeyAction, boolean | null>>({ 'save-clip': null, 'toggle-overlay': null })
+type HotkeyAction = 'save-clip' | 'toggle-overlay' | 'take-screenshot'
+const hotkeys = reactive<Record<HotkeyAction, string>>({ 'save-clip': 'F9', 'toggle-overlay': 'F10', 'take-screenshot': 'F8' })
+const hotkeyStatus = reactive<Record<HotkeyAction, boolean | null>>({ 'save-clip': null, 'toggle-overlay': null, 'take-screenshot': null })
 const rebinding = ref<HotkeyAction | null>(null)
 const conflictScanning = ref(false)
 const conflictResults = ref<{ found: Array<{ exe: string; name: string; fix: string }> } | null>(null)
@@ -484,9 +505,10 @@ async function loadHotkeyStatus(): Promise<void> {
   try {
     const bindings = await window.api.clips.getHotkeys() as Record<HotkeyAction, string>
     Object.assign(hotkeys, bindings)
-    const status = await window.api.clips.getHotkeyStatus() as { saveClipRegistered: boolean; toggleOverlayRegistered: boolean }
+    const status = await window.api.clips.getHotkeyStatus() as { saveClipRegistered: boolean; toggleOverlayRegistered: boolean; screenshotRegistered: boolean }
     hotkeyStatus['save-clip'] = status.saveClipRegistered
     hotkeyStatus['toggle-overlay'] = status.toggleOverlayRegistered
+    hotkeyStatus['take-screenshot'] = status.screenshotRegistered
   } catch { /* non-critical */ }
 }
 

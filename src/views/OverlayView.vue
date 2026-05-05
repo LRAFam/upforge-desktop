@@ -1,5 +1,51 @@
 <template>
   <div class="p-2 select-none" @mousemove="handleMouseMove" @mouseleave="handleMouseLeave">
+    <!-- Hotkey cheatsheet — shown when recording starts, auto-dismisses -->
+    <Transition name="cheatsheet-slide">
+      <div v-if="showCheatsheet" class="mb-2 w-[288px]">
+        <div class="relative rounded-xl overflow-hidden bg-[#0c0c0c]/95 border border-white/[0.09] shadow-[0_8px_32px_rgba(0,0,0,0.7)]">
+          <!-- top accent -->
+          <div class="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-red-500/60 to-transparent" />
+          <div class="px-3 pt-2.5 pb-2">
+            <!-- Header -->
+            <div class="flex items-center justify-between mb-2">
+              <div class="flex items-center gap-1.5">
+                <div class="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" />
+                <span class="text-[10px] font-bold text-red-400 tracking-wider uppercase">Recording Started</span>
+              </div>
+              <button class="text-gray-700 hover:text-gray-500 transition-colors pointer-events-auto" @click="showCheatsheet = false">
+                <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                </svg>
+              </button>
+            </div>
+            <!-- Hotkey rows -->
+            <div class="space-y-1.5">
+              <div class="flex items-center gap-2.5">
+                <kbd class="min-w-[28px] text-center text-[9px] font-bold bg-white/[0.07] border border-white/[0.12] rounded-md px-1.5 py-1 text-gray-300 shadow-sm">{{ hotkey }}</kbd>
+                <span class="text-[11px] text-gray-300 font-medium">Save clip moment</span>
+              </div>
+              <div class="flex items-center gap-2.5">
+                <kbd class="min-w-[28px] text-center text-[9px] font-bold bg-white/[0.07] border border-white/[0.12] rounded-md px-1.5 py-1 text-gray-300 shadow-sm">{{ screenshotHotkey }}</kbd>
+                <span class="text-[11px] text-gray-300 font-medium">Take screenshot</span>
+              </div>
+              <div class="flex items-center gap-2.5">
+                <kbd class="min-w-[28px] text-center text-[9px] font-bold bg-white/[0.07] border border-white/[0.12] rounded-md px-1.5 py-1 text-gray-300 shadow-sm">F10</kbd>
+                <span class="text-[11px] text-gray-300 font-medium">Toggle this overlay</span>
+              </div>
+            </div>
+            <!-- Countdown bar -->
+            <div class="mt-2 h-[2px] bg-white/[0.06] rounded-full overflow-hidden">
+              <div
+                class="h-full bg-red-500/50 rounded-full"
+                :style="{ width: cheatsheetProgress + '%', transition: cheatsheetRunning ? `width ${CHEATSHEET_DURATION}ms linear` : 'none' }"
+              />
+            </div>
+          </div>
+        </div>
+      </div>
+    </Transition>
+
     <!-- Main panel -->
     <div class="relative w-[288px] rounded-2xl overflow-hidden shadow-[0_12px_48px_rgba(0,0,0,0.8)]">
       <!-- Background layers -->
@@ -142,9 +188,10 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue'
+import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue'
 
 const TOAST_DURATION = 3000
+const CHEATSHEET_DURATION = 7000
 
 const economyLabel = computed(() => {
   const c = data.value.yourCredits
@@ -179,9 +226,38 @@ const toastType = ref<'success' | 'warning'>('success')
 const toastProgress = ref(100)
 const toastRunning = ref(false)
 const hotkey = ref('F9')
+const screenshotHotkey = ref('F8')
 const clipBtnRef = ref<HTMLButtonElement | null>(null)
 let toastTimer: ReturnType<typeof setTimeout> | null = null
 const removeListeners: Array<() => void> = []
+
+// Hotkey cheatsheet (shown when recording starts)
+const showCheatsheet = ref(false)
+const cheatsheetProgress = ref(100)
+const cheatsheetRunning = ref(false)
+let cheatsheetTimer: ReturnType<typeof setTimeout> | null = null
+
+watch(isRecording, (newVal, oldVal) => {
+  if (newVal && !oldVal) {
+    // Recording just started — show cheatsheet
+    showCheatsheet.value = true
+    cheatsheetProgress.value = 100
+    cheatsheetRunning.value = false
+    if (cheatsheetTimer) clearTimeout(cheatsheetTimer)
+    nextTick(() => {
+      cheatsheetRunning.value = true
+      cheatsheetProgress.value = 0
+    })
+    cheatsheetTimer = setTimeout(() => {
+      showCheatsheet.value = false
+      cheatsheetRunning.value = false
+    }, CHEATSHEET_DURATION)
+  } else if (!newVal) {
+    // Recording stopped — hide cheatsheet
+    if (cheatsheetTimer) { clearTimeout(cheatsheetTimer); cheatsheetTimer = null }
+    showCheatsheet.value = false
+  }
+})
 
 function handleMouseMove(e: MouseEvent) {
   if (!clipBtnRef.value) return
@@ -199,9 +275,9 @@ async function saveClip() {
   window.api.overlay.setInteractive(false)
   const result = await window.api.clips.saveBookmark()
   if (result?.ok) {
-    showToastMsg('✓ Clip bookmarked! Saves after match', 'success')
+    // Toast handled via overlay:clip-bookmarked IPC from main
   } else {
-    showToastMsg('⚠ Not in an active match', 'warning')
+    showToastMsg('Not in an active match', 'warning')
   }
 }
 
@@ -249,31 +325,66 @@ onMounted(async () => {
   )
   removeListeners.push(
     window.api.on('overlay:clip-bookmarked', (payload: unknown) => {
-      const p = payload as { bookmarkCount?: number }
+      const p = payload as { bookmarkCount?: number; elapsedSec?: number }
       const count = p?.bookmarkCount ?? 1
-      showToastMsg(`✓ Clip #${count} saved! Exports after match`, 'success')
+      const elapsed = p?.elapsedSec
+      const timeLabel = elapsed != null ? ` · ${elapsed < 60 ? elapsed + 's' : Math.floor(elapsed / 60) + 'm ' + (elapsed % 60) + 's'} in` : ''
+      showToastMsg(`Clip #${count} saved${timeLabel}`, 'success')
     })
   )
   removeListeners.push(
     window.api.on('overlay:clip-not-recording', () => {
-      showToastMsg('⚠ Not in an active match', 'warning')
+      showToastMsg('Not in an active match', 'warning')
+    })
+  )
+  removeListeners.push(
+    window.api.on('overlay:screenshot', async () => {
+      try {
+        const dataUrl = await window.api.screenshots.capture()
+        if (!dataUrl) { showToastMsg('Screenshot failed', 'warning'); return }
+        const result = await window.api.screenshots.save(dataUrl) as { ok: boolean; filename?: string }
+        if (result.ok) {
+          showToastMsg('Screenshot saved', 'success')
+        } else {
+          showToastMsg('Screenshot failed', 'warning')
+        }
+      } catch {
+        showToastMsg('Screenshot failed', 'warning')
+      }
     })
   )
   try {
     const bindings = await window.api.clips.getHotkeys()
     const saveClipBinding = bindings?.['save-clip']
     if (saveClipBinding) hotkey.value = saveClipBinding
-  } catch { /* use default F9 */ }
+    const screenshotBinding = bindings?.['take-screenshot']
+    if (screenshotBinding) screenshotHotkey.value = screenshotBinding
+  } catch { /* use defaults */ }
 })
 
 onUnmounted(() => {
   removeListeners.forEach(fn => fn())
   if (toastTimer) clearTimeout(toastTimer)
+  if (cheatsheetTimer) clearTimeout(cheatsheetTimer)
   window.api.overlay.setInteractive(false)
 })
 </script>
 
 <style scoped>
+.cheatsheet-slide-enter-active {
+  transition: opacity 0.25s ease, transform 0.35s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+.cheatsheet-slide-leave-active {
+  transition: opacity 0.2s ease, transform 0.2s ease;
+}
+.cheatsheet-slide-enter-from {
+  opacity: 0;
+  transform: translateY(-10px) scale(0.96);
+}
+.cheatsheet-slide-leave-to {
+  opacity: 0;
+  transform: translateY(-6px);
+}
 .toast-slide-enter-active {
   transition: opacity 0.2s ease, transform 0.35s cubic-bezier(0.34, 1.56, 0.64, 1);
 }

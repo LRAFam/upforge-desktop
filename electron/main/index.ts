@@ -1445,7 +1445,8 @@ app.whenReady().then(async () => {
       hotkeyBookmarks.push(Date.now())
       logActivity('Clip moment bookmarked (overlay button)')
       log.info('[Overlay] Clip bookmarked via button, total:', hotkeyBookmarks.length)
-      sendOverlayData('overlay:clip-bookmarked', { bookmarkCount: hotkeyBookmarks.length })
+      const elapsedSec = Math.round((Date.now() - currentRecordingStartTime) / 1000)
+      sendOverlayData('overlay:clip-bookmarked', { bookmarkCount: hotkeyBookmarks.length, elapsedSec })
       return { ok: true, bookmarkCount: hotkeyBookmarks.length }
     }
     return { ok: false, reason: 'not-recording' }
@@ -1466,7 +1467,8 @@ app.whenReady().then(async () => {
       hotkeyBookmarks.push(Date.now())
       logActivity('Clip moment bookmarked (F9)')
       log.info('[Hotkey] F9 clip bookmarked, total bookmarks:', hotkeyBookmarks.length)
-      sendOverlayData('overlay:clip-bookmarked', { bookmarkCount: hotkeyBookmarks.length })
+      const elapsedSec = Math.round((Date.now() - currentRecordingStartTime) / 1000)
+      sendOverlayData('overlay:clip-bookmarked', { bookmarkCount: hotkeyBookmarks.length, elapsedSec })
       // Auto-show overlay so user sees the toast even if they didn't press F10
       // If overlay is already visible (user opened it themselves), don't auto-hide it
       if (!isOverlayVisible()) {
@@ -1489,6 +1491,17 @@ app.whenReady().then(async () => {
         showOverlay()
         overlayAutoHideTimer = setTimeout(() => { hideOverlay(); overlayAutoHideTimer = null }, 3000)
       }
+    }
+  })
+  hotkeyManager.on('take-screenshot', () => {
+    log.info('[Hotkey] F8 screenshot requested')
+    logActivity('Screenshot saved (F8)')
+    sendOverlayData('overlay:screenshot', {})
+    // Auto-show overlay briefly so user sees the confirmation toast
+    if (!isOverlayVisible()) {
+      if (overlayAutoHideTimer) clearTimeout(overlayAutoHideTimer)
+      showOverlay()
+      overlayAutoHideTimer = setTimeout(() => { hideOverlay(); overlayAutoHideTimer = null }, 3000)
     }
   })
   hotkeyManager.on('toggle-overlay', () => {

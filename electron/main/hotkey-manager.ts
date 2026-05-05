@@ -1,11 +1,12 @@
 import { globalShortcut, BrowserWindow } from 'electron'
 import log from 'electron-log'
 
-export type HotkeyAction = 'save-clip' | 'toggle-overlay'
+export type HotkeyAction = 'save-clip' | 'toggle-overlay' | 'take-screenshot'
 
 const DEFAULT_HOTKEYS: Record<HotkeyAction, string> = {
   'save-clip': 'F9',
   'toggle-overlay': 'F10',
+  'take-screenshot': 'F8',
 }
 
 export class HotkeyManager {
@@ -56,6 +57,7 @@ export class HotkeyManager {
     return {
       'save-clip': this.registered.get('save-clip') ?? DEFAULT_HOTKEYS['save-clip'],
       'toggle-overlay': this.registered.get('toggle-overlay') ?? DEFAULT_HOTKEYS['toggle-overlay'],
+      'take-screenshot': this.registered.get('take-screenshot') ?? DEFAULT_HOTKEYS['take-screenshot'],
     }
   }
 

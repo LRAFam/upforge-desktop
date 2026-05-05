@@ -80,10 +80,11 @@ export function setupClipHandlers(
   ipcMain.handle('clips:get-hotkey-status', () => ({
     saveClipRegistered: hotkeyManager.isRegistered('save-clip'),
     toggleOverlayRegistered: hotkeyManager.isRegistered('toggle-overlay'),
+    screenshotRegistered: hotkeyManager.isRegistered('take-screenshot'),
   }))
 
   ipcMain.handle('clips:set-hotkey', (_e, { action, accelerator }: { action: string; accelerator: string }) => {
-    const ok = hotkeyManager.update(action as 'save-clip' | 'toggle-overlay', accelerator)
+    const ok = hotkeyManager.update(action as 'save-clip' | 'toggle-overlay' | 'take-screenshot', accelerator)
     return { ok }
   })
 
@@ -654,5 +655,22 @@ export function setupIpcHandlers(
   ipcMain.handle('performance:set-pregame-kill-list', async (_e, list: string[]) => {
     settingsManager.save({ pregameKillList: list })
     return list
+  })
+
+  ipcMain.handle('screenshots:save', (_e, { dataUrl }: { dataUrl: string }) => {
+    try {
+      const screenshotsDir = path.join(app.getPath('userData'), 'screenshots')
+      if (!fs.existsSync(screenshotsDir)) fs.mkdirSync(screenshotsDir, { recursive: true })
+      const timestamp = new Date().toISOString().replace(/[:.]/g, '-').replace('T', '_').slice(0, 19)
+      const filename = `screenshot_${timestamp}.png`
+      const filepath = path.join(screenshotsDir, filename)
+      const base64 = dataUrl.replace(/^data:image\/png;base64,/, '')
+      fs.writeFileSync(filepath, Buffer.from(base64, 'base64'))
+      log.info('[Screenshots] Saved:', filepath)
+      return { ok: true, filename, path: filepath }
+    } catch (err) {
+      log.error('[Screenshots] Failed to save:', err)
+      return { ok: false, error: String(err) }
+    }
   })
 }
