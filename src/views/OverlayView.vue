@@ -150,6 +150,12 @@ function showToastMsg(msg: string, type: 'success' | 'warning') {
 }
 
 onMounted(async () => {
+  // Get initial recording state so overlay shows correct status before first event
+  try {
+    const s = await window.api.app.getStatus()
+    isRecording.value = s.recording ?? false
+  } catch { /* ignore */ }
+
   removeListeners.push(
     window.api.on('overlay:data', (payload: unknown) => {
       const p = payload as {

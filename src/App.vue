@@ -2,6 +2,7 @@
   <div class="h-screen bg-[#0a0a0a] text-white flex flex-col overflow-hidden select-none">
     <!-- Title bar -->
     <div
+      v-if="showTitleBar"
       class="drag-region flex items-center justify-between flex-shrink-0 px-3 border-b border-white/[0.05]"
       :style="isMac ? 'height:40px; padding-left:80px' : 'height:40px'"
     >
@@ -95,8 +96,16 @@ const appVersion = ref(__APP_VERSION__)
 const simStatus = ref('')
 const riotId = ref<string | null>(null)
 
+const showTitleBar = computed(() =>
+  route.path !== '/overlay' && route.path !== '/splash'
+)
+
 const showNav = computed(() =>
-  !route.path.startsWith('/post-game') && route.path !== '/login' && route.path !== '/welcome'
+  !route.path.startsWith('/post-game') &&
+  route.path !== '/login' &&
+  route.path !== '/welcome' &&
+  route.path !== '/splash' &&
+  route.path !== '/overlay'
 )
 
 const navLinks = [

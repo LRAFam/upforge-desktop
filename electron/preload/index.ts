@@ -112,7 +112,9 @@ const api = {
       'updater:not-available',
       'updater:error',
       'clips:new',
+      'overlay:data',
       'overlay:clip-bookmarked',
+      'overlay:clip-not-recording',
       'app:navigate',
       'analysis:timeout',
     ]

@@ -25,7 +25,7 @@ import { RecordingsStore } from './recordings-store'
 import { ClipExtractor } from './clip-extractor'
 import { ClipStore } from './clip-store'
 import { HotkeyManager } from './hotkey-manager'
-import { createOverlayWindow, toggleOverlay, destroyOverlay, sendOverlayData } from './overlay-window'
+import { createOverlayWindow, toggleOverlay, destroyOverlay, sendOverlayData, isOverlayVisible } from './overlay-window'
 import { PerformanceManager } from './performance-manager'
 import type { MatchData } from './riot-local-api'
 import log from 'electron-log'
@@ -1476,7 +1476,21 @@ app.whenReady().then(async () => {
       }
     }
   })
-  hotkeyManager.on('toggle-overlay', () => toggleOverlay())
+  hotkeyManager.on('toggle-overlay', () => {
+    toggleOverlay()
+    // When overlay becomes visible, push current recording state immediately
+    // so the user sees the correct status without waiting for the next poll cycle
+    if (isOverlayVisible()) {
+      sendOverlayData('overlay:data', {
+        round: null,
+        allyScore: null,
+        enemyScore: null,
+        yourCredits: null,
+        enemyEstimate: null,
+        recording: recorder.isRecording(),
+      })
+    }
+  })
   const hotkeyResults = hotkeyManager.registerAll()
   if (!hotkeyResults['save-clip']) {
     log.error('[Main] F9 (save-clip) hotkey failed to register — clips cannot be bookmarked via keyboard')
