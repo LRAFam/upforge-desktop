@@ -584,4 +584,9 @@ export function setupIpcHandlers(
     if (!performanceManager) return []
     return performanceManager.restore()
   })
+
+  ipcMain.handle('performance:diagnostics', async () => {
+    if (!performanceManager) return null
+    return performanceManager.getDiagnostics()
+  })
 }

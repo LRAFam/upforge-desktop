@@ -218,6 +218,21 @@ declare global {
         getStatus: () => Promise<{ boosted: boolean; powerPlan: string; platform: string }>
         boost: () => Promise<Array<{ name: string; success: boolean; message: string }>>
         restore: () => Promise<Array<{ name: string; success: boolean; message: string }>>
+        diagnostics: () => Promise<{
+          gpuName: string
+          gpuUsagePct: number
+          gpuTempC: number
+          cpuUsagePct: number
+          cpuSpeedMhz: number
+          cpuMaxMhz: number
+          ramUsedMb: number
+          ramTotalMb: number
+          ramSpeedMhz: number
+          topProcesses: { name: string; cpuPct: number }[]
+          xmpEnabled: boolean | null
+          bottleneck: 'cpu' | 'gpu' | 'none' | 'unknown'
+          warnings: string[]
+        } | null>
       }
       on: (channel: string, callback: (...args: unknown[]) => void) => (() => void)
     }

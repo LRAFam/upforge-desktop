@@ -133,6 +133,121 @@
         </div>
       </div>
 
+      <!-- Diagnostics panel -->
+      <div v-if="diagnostics" class="space-y-1.5">
+        <div class="flex items-center justify-between px-0.5">
+          <p class="text-[10px] text-gray-600 uppercase tracking-wider font-semibold">System Diagnostics</p>
+          <button
+            class="text-[10px] text-gray-600 hover:text-gray-400 transition-colors"
+            @click="diagnostics = null"
+          >dismiss</button>
+        </div>
+
+        <!-- Bottleneck badge -->
+        <div
+          v-if="diagnostics.bottleneck !== 'unknown'"
+          :class="[
+            'flex items-center gap-2 px-3 py-2 rounded-lg border text-xs font-semibold',
+            diagnostics.bottleneck === 'cpu'
+              ? 'bg-orange-500/[0.08] border-orange-500/25 text-orange-300'
+              : diagnostics.bottleneck === 'gpu'
+              ? 'bg-yellow-500/[0.08] border-yellow-500/25 text-yellow-300'
+              : 'bg-green-500/[0.07] border-green-500/20 text-green-300'
+          ]"
+        >
+          <svg class="w-3.5 h-3.5 flex-shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
+          </svg>
+          <span>
+            {{ diagnostics.bottleneck === 'cpu' ? 'CPU Bottleneck — CPU is limiting your FPS' :
+               diagnostics.bottleneck === 'gpu' ? 'GPU Bottleneck — GPU is the limiting factor' :
+               'Balanced — No clear bottleneck detected' }}
+          </span>
+        </div>
+
+        <!-- Stat grid -->
+        <div class="grid grid-cols-2 gap-1">
+          <!-- GPU -->
+          <div class="px-3 py-2 rounded-lg bg-white/[0.02] border border-white/[0.05] space-y-0.5">
+            <p class="text-[10px] text-gray-600 font-medium uppercase tracking-wide">GPU</p>
+            <p class="text-xs text-gray-300 font-semibold truncate">{{ diagnostics.gpuName || '—' }}</p>
+            <p class="text-[10px] text-gray-500">
+              <span :class="diagnostics.gpuUsagePct > 85 ? 'text-yellow-400' : 'text-gray-400'">{{ diagnostics.gpuUsagePct }}%</span>
+              usage · {{ diagnostics.gpuTempC > 0 ? diagnostics.gpuTempC + '°C' : '—' }}
+            </p>
+          </div>
+          <!-- CPU -->
+          <div class="px-3 py-2 rounded-lg bg-white/[0.02] border border-white/[0.05] space-y-0.5">
+            <p class="text-[10px] text-gray-600 font-medium uppercase tracking-wide">CPU</p>
+            <p class="text-xs font-semibold" :class="diagnostics.cpuUsagePct > 80 ? 'text-orange-400' : 'text-gray-300'">{{ diagnostics.cpuUsagePct }}%</p>
+            <p class="text-[10px] text-gray-500">{{ diagnostics.cpuSpeedMhz }} / {{ diagnostics.cpuMaxMhz }} MHz</p>
+          </div>
+          <!-- RAM -->
+          <div class="px-3 py-2 rounded-lg bg-white/[0.02] border border-white/[0.05] space-y-0.5 col-span-2">
+            <p class="text-[10px] text-gray-600 font-medium uppercase tracking-wide">RAM</p>
+            <div class="flex items-center gap-3">
+              <p class="text-xs text-gray-300 font-semibold">{{ diagnostics.ramUsedMb }} / {{ diagnostics.ramTotalMb }} MB</p>
+              <p class="text-[10px]" :class="!diagnostics.xmpEnabled ? 'text-orange-400' : 'text-gray-500'">
+                {{ diagnostics.ramSpeedMhz }} MHz{{ !diagnostics.xmpEnabled ? ' — XMP may be off' : '' }}
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Warnings -->
+        <div v-if="diagnostics.warnings.length" class="space-y-1">
+          <div
+            v-for="(w, i) in diagnostics.warnings"
+            :key="i"
+            class="flex items-start gap-2 px-3 py-2 rounded-lg bg-orange-500/[0.06] border border-orange-500/20 text-[10px] text-orange-400/90"
+          >
+            <svg class="w-3 h-3 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M11.25 11.25l.041-.02a.75.75 0 011.063.852l-.708 2.836a.75.75 0 001.063.853l.041-.021M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9-3.75h.008v.008H12V8.25z" />
+            </svg>
+            <span>{{ w }}</span>
+          </div>
+        </div>
+
+        <!-- Top processes -->
+        <div v-if="diagnostics.topProcesses.length" class="space-y-1">
+          <p class="text-[10px] text-gray-600 uppercase tracking-wider font-semibold px-0.5">Top CPU Processes</p>
+          <div class="space-y-0.5">
+            <div
+              v-for="proc in diagnostics.topProcesses.slice(0, 5)"
+              :key="proc.name"
+              class="flex items-center justify-between px-3 py-1.5 rounded-lg bg-white/[0.02] border border-white/[0.04]"
+            >
+              <p class="text-[10px] text-gray-400 truncate max-w-[70%]">{{ proc.name }}</p>
+              <p class="text-[10px] font-semibold" :class="proc.cpuPct > 10 ? 'text-orange-400' : 'text-gray-500'">{{ proc.cpuPct.toFixed(1) }}%</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Diagnostics button -->
+      <button
+        v-if="!diagnostics"
+        :disabled="diagLoading"
+        class="w-full py-2 rounded-xl text-xs font-medium transition-all
+               bg-white/[0.04] hover:bg-white/[0.07] border border-white/[0.07] hover:border-white/[0.15]
+               text-gray-400 hover:text-gray-200 disabled:opacity-50 disabled:cursor-not-allowed"
+        @click="runDiagnostics"
+      >
+        <span v-if="diagLoading" class="flex items-center justify-center gap-2">
+          <svg class="w-3 h-3 animate-spin" fill="none" viewBox="0 0 24 24">
+            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
+          </svg>
+          Analysing…
+        </span>
+        <span v-else class="flex items-center justify-center gap-2">
+          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 3v11.25A2.25 2.25 0 006 16.5h2.25M3.75 3h-1.5m1.5 0h16.5m0 0h1.5m-1.5 0v11.25A2.25 2.25 0 0118 16.5h-2.25m-7.5 0h7.5m-7.5 0l-1 3m8.5-3l1 3m0 0l.5 1.5m-.5-1.5h-9.5m0 0l-.5 1.5M9 11.25v1.5M12 9v3.75m3-6v6" />
+          </svg>
+          Run Diagnostics
+        </span>
+      </button>
+
       <!-- Admin tip (always show) -->
       <p class="text-[10px] text-gray-700 text-center px-2">
         For maximum effect, run UpForge as administrator
@@ -157,11 +272,29 @@ interface PerformanceStatus {
   platform: string
 }
 
+interface DiagnosticsReport {
+  gpuName: string
+  gpuUsagePct: number
+  gpuTempC: number
+  cpuUsagePct: number
+  cpuSpeedMhz: number
+  cpuMaxMhz: number
+  ramUsedMb: number
+  ramTotalMb: number
+  ramSpeedMhz: number
+  topProcesses: { name: string; cpuPct: number }[]
+  xmpEnabled: boolean | null
+  bottleneck: 'cpu' | 'gpu' | 'none' | 'unknown'
+  warnings: string[]
+}
+
 const loading = ref(false)
 const boosted = ref(false)
 const powerPlan = ref('')
 const platform = ref('')
 const results = ref<OptimizationResult[]>([])
+const diagnostics = ref<DiagnosticsReport | null>(null)
+const diagLoading = ref(false)
 
 // Heroicons outline paths (24px viewBox, stroke-based)
 const previewItems = [
@@ -254,6 +387,17 @@ async function restore() {
     results.value = [{ name: 'Restore', success: false, message: String(err) }]
   } finally {
     loading.value = false
+  }
+}
+
+async function runDiagnostics() {
+  diagLoading.value = true
+  try {
+    diagnostics.value = await window.api.performance.diagnostics() as DiagnosticsReport | null
+  } catch {
+    diagnostics.value = null
+  } finally {
+    diagLoading.value = false
   }
 }
 

@@ -16,6 +16,22 @@ export interface PerformanceStatus {
   platform: string
 }
 
+export interface DiagnosticsReport {
+  gpuName: string
+  gpuUsagePct: number
+  gpuTempC: number
+  cpuUsagePct: number
+  cpuSpeedMhz: number
+  cpuMaxMhz: number
+  ramUsedMb: number
+  ramTotalMb: number
+  ramSpeedMhz: number
+  topProcesses: { name: string; cpuPct: number }[]
+  xmpEnabled: boolean | null
+  bottleneck: 'cpu' | 'gpu' | 'none' | 'unknown'
+  warnings: string[]
+}
+
 // High Performance power plan GUID (built-in on all Windows versions)
 const HIGH_PERF_GUID = '8c5e7fda-e8bf-4a96-9a85-a6e23a8c635c'
 const BALANCED_GUID = '381b4222-f694-41f0-9685-ff5bb260df2e'
@@ -391,6 +407,231 @@ async function freeBackgroundMemory(): Promise<OptimizationResult> {
   }
 }
 
+/**
+ * Force the active High Performance power plan to never downclock the CPU.
+ * Sets minimum processor state to 100% and disables core parking so all
+ * cores are available at full speed — the key fix for CPU-bottlenecked games.
+ */
+async function forceCpuMaxClocks(): Promise<OptimizationResult> {
+  const script = `
+    # Minimum processor state: 100% (no downclocking)
+    powercfg /setacvalue SCHEME_CURRENT SUB_PROCESSOR PROCTHROTTLEMIN 100 2>&1 | Out-Null
+    # Disable core parking (keep all cores active)
+    powercfg /setacvalue SCHEME_CURRENT SUB_PROCESSOR CPMINCORES 100 2>&1 | Out-Null
+    # Apply changes to active scheme
+    powercfg /setactive SCHEME_CURRENT 2>&1 | Out-Null
+    Write-Output 'done'
+  `
+  try {
+    const result = await runPowerShell(script)
+    if (result.includes('done')) {
+      return { name: 'CPU Clocks', success: true, message: 'CPU minimum state 100% — all cores at full speed' }
+    }
+    return { name: 'CPU Clocks', success: false, message: 'Script did not complete' }
+  } catch (err) {
+    log.warn('[Perf] CPU max clocks failed:', err)
+    return { name: 'CPU Clocks', success: false, message: 'Requires administrator privileges' }
+  }
+}
+
+async function restoreCpuClocks(): Promise<OptimizationResult> {
+  const script = `
+    powercfg /setacvalue SCHEME_CURRENT SUB_PROCESSOR PROCTHROTTLEMIN 5 2>&1 | Out-Null
+    powercfg /setacvalue SCHEME_CURRENT SUB_PROCESSOR CPMINCORES 0 2>&1 | Out-Null
+    powercfg /setactive SCHEME_CURRENT 2>&1 | Out-Null
+    Write-Output 'done'
+  `
+  try {
+    await runPowerShell(script)
+    return { name: 'CPU Clocks', success: true, message: 'CPU clock policy restored' }
+  } catch {
+    return { name: 'CPU Clocks', success: false, message: 'Could not restore CPU clock policy' }
+  }
+}
+
+/**
+ * Kill or lower priority of known CPU-heavy background processes that
+ * compete with games for single-core performance on Ryzen CPUs.
+ */
+async function throttleBackgroundProcesses(): Promise<OptimizationResult> {
+  const knownHogs = [
+    'SearchIndexer', 'MsMpEng', 'SgrmBroker', 'WmiPrvSE',
+    'BackgroundTransferHost', 'OneDrive', 'GoogleDriveFS',
+    'Dropbox', 'Teams', 'slack', 'discord',
+  ]
+  const nameList = knownHogs.map((n) => `'${n}'`).join(',')
+  const script = `
+    $names = @(${nameList})
+    $throttled = @()
+    foreach ($name in $names) {
+      $procs = Get-Process -Name $name -ErrorAction SilentlyContinue
+      foreach ($p in $procs) {
+        try {
+          $p.PriorityClass = 'BelowNormal'
+          $throttled += $name
+        } catch {}
+      }
+    }
+    if ($throttled.Count -gt 0) { Write-Output "throttled:$($throttled -join ',')" }
+    else { Write-Output 'none' }
+  `
+  try {
+    const result = await runPowerShell(script)
+    if (result.startsWith('throttled:')) {
+      const procs = result.replace('throttled:', '')
+      return { name: 'Background CPU', success: true, message: `Deprioritised: ${procs}` }
+    }
+    return { name: 'Background CPU', success: true, message: 'No CPU-heavy background apps found' }
+  } catch (err) {
+    log.warn('[Perf] Background throttle failed:', err)
+    return { name: 'Background CPU', success: false, message: 'Could not adjust background processes' }
+  }
+}
+
+/**
+ * Collect live system diagnostics to surface the actual bottleneck.
+ */
+async function runDiagnostics(): Promise<DiagnosticsReport> {
+  const script = `
+    $report = @{}
+
+    # GPU info via WMI
+    try {
+      $gpu = Get-CimInstance Win32_VideoController | Select-Object -First 1
+      $report.gpuName = $gpu.Name
+    } catch { $report.gpuName = 'Unknown' }
+
+    # GPU usage + temp via nvidia-smi if available
+    $report.gpuUsagePct = -1
+    $report.gpuTempC = -1
+    $nvSmi = $null
+    foreach ($p in @('C:\\Windows\\System32\\nvidia-smi.exe','C:\\Program Files\\NVIDIA Corporation\\NVSMI\\nvidia-smi.exe')) {
+      if (Test-Path $p) { $nvSmi = $p; break }
+    }
+    if (-not $nvSmi) { try { $nvSmi = (Get-Command nvidia-smi -ErrorAction Stop).Source } catch {} }
+    if ($nvSmi) {
+      try {
+        $nvOut = & $nvSmi --query-gpu=utilization.gpu,temperature.gpu --format=csv,noheader,nounits 2>&1
+        $parts = $nvOut -split ','
+        if ($parts.Count -ge 2) {
+          $report.gpuUsagePct = [int]($parts[0].Trim())
+          $report.gpuTempC    = [int]($parts[1].Trim())
+        }
+      } catch {}
+    }
+
+    # CPU usage (2-sample average for accuracy)
+    try {
+      $c1 = (Get-CimInstance Win32_Processor | Measure-Object -Property LoadPercentage -Average).Average
+      Start-Sleep -Milliseconds 500
+      $c2 = (Get-CimInstance Win32_Processor | Measure-Object -Property LoadPercentage -Average).Average
+      $report.cpuUsagePct = [int](($c1 + $c2) / 2)
+    } catch { $report.cpuUsagePct = -1 }
+
+    # CPU speed
+    try {
+      $cpu = Get-CimInstance Win32_Processor | Select-Object -First 1
+      $report.cpuSpeedMhz = $cpu.CurrentClockSpeed
+      $report.cpuMaxMhz   = $cpu.MaxClockSpeed
+    } catch { $report.cpuSpeedMhz = -1; $report.cpuMaxMhz = -1 }
+
+    # RAM
+    try {
+      $os = Get-CimInstance Win32_OperatingSystem
+      $report.ramTotalMb = [int]($os.TotalVisibleMemorySize / 1024)
+      $report.ramUsedMb  = [int](($os.TotalVisibleMemorySize - $os.FreePhysicalMemory) / 1024)
+    } catch { $report.ramTotalMb = -1; $report.ramUsedMb = -1 }
+
+    # RAM speed (XMP indicator)
+    try {
+      $ramSpeed = (Get-CimInstance Win32_PhysicalMemory | Select-Object -First 1).Speed
+      $report.ramSpeedMhz = [int]$ramSpeed
+    } catch { $report.ramSpeedMhz = -1 }
+
+    # Top CPU processes
+    try {
+      $top = Get-Process | Sort-Object CPU -Descending | Select-Object -First 5 Name,@{N='CpuMs';E={[int]$_.CPU}}
+      $report.topProcs = ($top | ForEach-Object { "$($_.Name):$($_.CpuMs)" }) -join '|'
+    } catch { $report.topProcs = '' }
+
+    $json = $report | ConvertTo-Json -Compress
+    Write-Output $json
+  `
+  const blank: DiagnosticsReport = {
+    gpuName: 'Unknown', gpuUsagePct: -1, gpuTempC: -1,
+    cpuUsagePct: -1, cpuSpeedMhz: -1, cpuMaxMhz: -1,
+    ramUsedMb: -1, ramTotalMb: -1, ramSpeedMhz: -1,
+    topProcesses: [], xmpEnabled: null,
+    bottleneck: 'unknown', warnings: [],
+  }
+
+  try {
+    const raw = await runPowerShell(script)
+    const data = JSON.parse(raw) as Record<string, unknown>
+
+    const report: DiagnosticsReport = {
+      gpuName: String(data.gpuName ?? 'Unknown'),
+      gpuUsagePct: Number(data.gpuUsagePct ?? -1),
+      gpuTempC: Number(data.gpuTempC ?? -1),
+      cpuUsagePct: Number(data.cpuUsagePct ?? -1),
+      cpuSpeedMhz: Number(data.cpuSpeedMhz ?? -1),
+      cpuMaxMhz: Number(data.cpuMaxMhz ?? -1),
+      ramUsedMb: Number(data.ramUsedMb ?? -1),
+      ramTotalMb: Number(data.ramTotalMb ?? -1),
+      ramSpeedMhz: Number(data.ramSpeedMhz ?? -1),
+      topProcesses: [],
+      xmpEnabled: null,
+      bottleneck: 'unknown',
+      warnings: [],
+    }
+
+    // Parse top processes
+    if (data.topProcs && typeof data.topProcs === 'string') {
+      report.topProcesses = (data.topProcs as string)
+        .split('|')
+        .filter(Boolean)
+        .map((entry) => {
+          const [name, cpuStr] = entry.split(':')
+          return { name: name ?? entry, cpuPct: Number(cpuStr ?? 0) }
+        })
+    }
+
+    // XMP heuristic: DDR4 stock is 2133/2400, DDR5 stock is 4800
+    // If RAM is running above these speeds, XMP is likely enabled
+    const spd = report.ramSpeedMhz
+    if (spd > 0) {
+      report.xmpEnabled = spd > 2666
+    }
+
+    // Determine bottleneck
+    if (report.gpuUsagePct >= 0 && report.cpuUsagePct >= 0) {
+      if (report.cpuUsagePct > 80 && report.gpuUsagePct < 60) {
+        report.bottleneck = 'cpu'
+      } else if (report.gpuUsagePct > 85) {
+        report.bottleneck = 'gpu'
+      } else {
+        report.bottleneck = 'none'
+      }
+    }
+
+    // Build warnings
+    if (report.bottleneck === 'cpu') {
+      report.warnings.push('CPU bottleneck detected — your CPU cannot feed frames to the GPU fast enough')
+    }
+    if (report.xmpEnabled === false) {
+      report.warnings.push(`RAM running at ${spd} MHz — XMP/EXPO likely disabled in BIOS. Enable it for a significant FPS boost on Ryzen`)
+    }
+    if (report.cpuSpeedMhz > 0 && report.cpuMaxMhz > 0 && report.cpuSpeedMhz < report.cpuMaxMhz * 0.7) {
+      report.warnings.push(`CPU running at ${report.cpuSpeedMhz} MHz (max ${report.cpuMaxMhz} MHz) — power plan may not be fully applied`)
+    }
+
+    return report
+  } catch (err) {
+    log.warn('[Perf] Diagnostics failed:', err)
+    return blank
+  }
+}
+
 export class PerformanceManager {
   private _boosted = false
 
@@ -403,6 +644,7 @@ export class PerformanceManager {
 
     const results = await Promise.all([
       setHighPerformancePowerPlan(),
+      forceCpuMaxClocks(),
       flushDns(),
       disableNagle(),
       cleanTempFiles(),
@@ -411,6 +653,7 @@ export class PerformanceManager {
       setMultimediaGameProfile(),
       setNvidiaMaxPerformance(),
       freeBackgroundMemory(),
+      throttleBackgroundProcesses(),
     ])
 
     const anySuccess = results.some((r) => r.success)
@@ -429,6 +672,7 @@ export class PerformanceManager {
 
     const results = await Promise.all([
       restoreBalancedPowerPlan(),
+      restoreCpuClocks(),
       restoreNagle(),
       restoreGameDvr(),
       restoreMultimediaProfile(),
@@ -450,5 +694,9 @@ export class PerformanceManager {
 
   isBoosted(): boolean {
     return this._boosted
+  }
+
+  async getDiagnostics(): Promise<DiagnosticsReport> {
+    return runDiagnostics()
   }
 }

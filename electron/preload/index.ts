@@ -83,6 +83,7 @@ const api = {
     getStatus: () => ipcRenderer.invoke('performance:get-status'),
     boost: () => ipcRenderer.invoke('performance:boost'),
     restore: () => ipcRenderer.invoke('performance:restore'),
+    diagnostics: () => ipcRenderer.invoke('performance:diagnostics'),
   },
   on: (channel: string, callback: (...args: unknown[]) => void): (() => void) => {
     const allowed = [
