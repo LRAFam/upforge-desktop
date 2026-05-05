@@ -34,7 +34,7 @@
 
   ClearErrors
   ; Give the OS time to release all file handles before we touch the install dir.
-  Sleep 4000
+  Sleep 2000
 !macroend
 
 ; customCheckAppRunning completely replaces the built-in process-check in
@@ -46,28 +46,55 @@
 !macroend
 
 !macro customInit
+  ; Kill all processes first so file handles are released.
+  ; IMPORTANT: Do NOT delete the install directory or registry key here.
+  ; If we remove the directory before NSIS calls the old uninstaller, NSIS
+  ; cannot find the uninstaller binary and shows "Failed to uninstall old
+  ; application files.: 2" (ERROR_FILE_NOT_FOUND). Instead we let NSIS call
+  ; the old uninstaller normally — it works because all processes are killed.
   !insertmacro _KillUpForge
 
-  ; Read the old InstallLocation from the registry.
-  ; If found, forcefully remove the entire directory so every install starts
-  ; from a clean slate — prevents corrupted uninstaller / file-in-use errors
-  ; that arise when NSIS overwrites an existing (possibly partial) installation.
-  ReadRegStr $R0 HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\gg.upforge.desktop" "InstallLocation"
+  ; Only do manual cleanup when the old uninstaller binary is genuinely missing
+  ; (e.g. partial/corrupted install). This prevents the "Failed to uninstall"
+  ; dialog in those rare cases without breaking the normal upgrade path.
+  ReadRegStr $R0 HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\gg.upforge.desktop" "UninstallString"
   ${If} $R0 != ""
-    ; Strip any trailing backslash before passing to RMDir
-    StrCpy $R1 $R0 1 -1
-    ${If} $R1 == "\"
-      StrLen $R2 $R0
-      IntOp $R2 $R2 - 1
-      StrCpy $R0 $R0 $R2
+    ; NSIS stores the UninstallString as: "C:\...\Uninstall UpForge.exe" — strip quotes
+    StrCpy $R1 $R0 1 0
+    ${If} $R1 == '"'
+      StrCpy $R0 $R0 "" 1           ; strip leading quote
+      StrCpy $R2 $R0 1 -1
+      ${If} $R2 == '"'
+        StrLen $R3 $R0
+        IntOp $R3 $R3 - 1
+        StrCpy $R0 $R0 $R3          ; strip trailing quote
+      ${EndIf}
     ${EndIf}
-    RMDir /r "$R0"
+    ; If the uninstaller binary exists on disk, leave everything alone —
+    ; NSIS will call it automatically and uninstall cleanly.
+    IfFileExists "$R0" customInit_done customInit_cleanup
+  ${Else}
+    ; No registry entry — fresh install, nothing to clean up.
+    Goto customInit_done
   ${EndIf}
 
-  ; Always remove stale registry uninstall entry — prevents the installer from
-  ; trying to invoke a ghost or corrupted uninstaller binary.
-  DeleteRegKey HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\gg.upforge.desktop"
-  ClearErrors
+  customInit_cleanup:
+    ; Uninstaller binary is missing. Clean up manually to avoid the error dialog.
+    ReadRegStr $R0 HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\gg.upforge.desktop" "InstallLocation"
+    ${If} $R0 != ""
+      StrCpy $R1 $R0 1 -1
+      ${If} $R1 == "\"
+        StrLen $R2 $R0
+        IntOp $R2 $R2 - 1
+        StrCpy $R0 $R0 $R2
+      ${EndIf}
+      RMDir /r "$R0"
+    ${EndIf}
+    DeleteRegKey HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\gg.upforge.desktop"
+    ClearErrors
+
+  customInit_done:
+    ClearErrors
 !macroend
 
 !macro customInstall
