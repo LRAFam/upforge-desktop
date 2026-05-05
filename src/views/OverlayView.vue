@@ -177,8 +177,10 @@ onMounted(async () => {
     })
   )
   removeListeners.push(
-    window.api.on('overlay:clip-bookmarked', () => {
-      showToastMsg('✓ Clip bookmarked! Saves after match', 'success')
+    window.api.on('overlay:clip-bookmarked', (payload: unknown) => {
+      const p = payload as { bookmarkCount?: number }
+      const count = p?.bookmarkCount ?? 1
+      showToastMsg(`✓ Clip #${count} saved! Exports after match`, 'success')
     })
   )
   removeListeners.push(

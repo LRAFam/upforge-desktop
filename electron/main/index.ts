@@ -25,7 +25,7 @@ import { RecordingsStore } from './recordings-store'
 import { ClipExtractor } from './clip-extractor'
 import { ClipStore } from './clip-store'
 import { HotkeyManager } from './hotkey-manager'
-import { createOverlayWindow, toggleOverlay, destroyOverlay, sendOverlayData, isOverlayVisible } from './overlay-window'
+import { createOverlayWindow, toggleOverlay, destroyOverlay, sendOverlayData, isOverlayVisible, showOverlay, hideOverlay } from './overlay-window'
 import { PerformanceManager } from './performance-manager'
 import type { MatchData } from './riot-local-api'
 import log from 'electron-log'
@@ -90,6 +90,8 @@ const activityLog: { time: number; message: string }[] = []
 const hotkeyBookmarks: number[] = []
 // Recording start time — set when recorder.start() succeeds
 let currentRecordingStartTime: number | null = null
+// Auto-hide timer for overlay flash feedback (clip bookmarked while overlay is hidden)
+let overlayAutoHideTimer: ReturnType<typeof setTimeout> | null = null
 
 function logActivity(message: string): void {
   const entry = { time: Date.now(), message }
@@ -725,6 +727,12 @@ function setupGameDetection(): void {
           agent
         })
         mainWindow?.webContents.send('recordings:updated')
+        // Still extract hotkey clips — user explicitly bookmarked them, don't discard
+        if (hotkeyBookmarks.length > 0) {
+          extractMatchClips(videoPath, timeline, null).catch(err =>
+            log.warn('[ClipExtract] Hotkey clip extraction (no-analyse) error:', err)
+          )
+        }
         return
       }
 
@@ -952,6 +960,8 @@ function setupGameDetection(): void {
       riotLocalApi.setRecordingStartTime(recStartTime)
       currentRecordingStartTime = recStartTime
       hotkeyBookmarks.length = 0 // clear any stale bookmarks from previous match
+      // Push recording=true to the overlay immediately — don't wait for the poll cycle
+      sendOverlayData('overlay:data', { round: null, allyScore: null, enemyScore: null, yourCredits: null, enemyEstimate: null, recording: true })
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
       console.error('[Main] Failed to start recording:', msg)
@@ -1456,10 +1466,17 @@ app.whenReady().then(async () => {
       hotkeyBookmarks.push(Date.now())
       logActivity('Clip moment bookmarked (F9)')
       log.info('[Hotkey] F9 clip bookmarked, total bookmarks:', hotkeyBookmarks.length)
-      // Notify both system and overlay
       sendOverlayData('overlay:clip-bookmarked', { bookmarkCount: hotkeyBookmarks.length })
-      if (Notification.isSupported()) {
-        new Notification({ title: 'UpForge', body: 'Clip moment bookmarked — saves after match ends', silent: true }).show()
+      // Auto-show overlay so user sees the toast even if they didn't press F10
+      // If overlay is already visible (user opened it themselves), don't auto-hide it
+      if (!isOverlayVisible()) {
+        if (overlayAutoHideTimer) clearTimeout(overlayAutoHideTimer)
+        showOverlay()
+        overlayAutoHideTimer = setTimeout(() => {
+          // Only auto-hide if the user didn't manually show it (it would still be visible via F10)
+          hideOverlay()
+          overlayAutoHideTimer = null
+        }, 3000)
       }
     } else {
       // F9 was pressed but we're not recording — give the user visible feedback in overlay + notification
@@ -1467,16 +1484,16 @@ app.whenReady().then(async () => {
         recorder.isRecording(), currentRecordingStartTime)
       logActivity('F9 pressed — not recording (start a Valorant match first)')
       sendOverlayData('overlay:clip-not-recording', {})
-      if (Notification.isSupported()) {
-        new Notification({
-          title: 'UpForge — Not Recording',
-          body: 'UpForge is not recording. Start a Valorant match to enable clip bookmarking.',
-          silent: true
-        }).show()
+      if (!isOverlayVisible()) {
+        if (overlayAutoHideTimer) clearTimeout(overlayAutoHideTimer)
+        showOverlay()
+        overlayAutoHideTimer = setTimeout(() => { hideOverlay(); overlayAutoHideTimer = null }, 3000)
       }
     }
   })
   hotkeyManager.on('toggle-overlay', () => {
+    // If the auto-hide timer is running (from an F9 flash), cancel it — user is taking manual control
+    if (overlayAutoHideTimer) { clearTimeout(overlayAutoHideTimer); overlayAutoHideTimer = null }
     toggleOverlay()
     // When overlay becomes visible, push current recording state immediately
     // so the user sees the correct status without waiting for the next poll cycle
