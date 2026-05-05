@@ -26,6 +26,20 @@
       </button>
     </div>
 
+    <!-- Upload error banner -->
+    <div
+      v-if="uploadError"
+      class="flex items-center gap-2 px-3 py-2 bg-red-500/10 border border-red-500/30 rounded-lg flex-shrink-0"
+    >
+      <svg class="w-3.5 h-3.5 text-red-400 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+        <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clip-rule="evenodd"/>
+      </svg>
+      <p class="text-[11px] text-red-400 flex-1">{{ uploadError }}</p>
+      <button class="text-red-400/60 hover:text-red-400 transition-colors" @click="uploadError = null">
+        <svg class="w-3 h-3" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd"/></svg>
+      </button>
+    </div>
+
     <!-- Empty state -->
     <div v-if="filteredClips.length === 0" class="flex-1 flex flex-col items-center justify-center gap-3 text-center">
       <div class="w-14 h-14 rounded-full bg-white/[0.04] flex items-center justify-center">
@@ -110,12 +124,20 @@
             @click.stop
           >
             <button
-              class="w-6 h-6 rounded bg-black/60 backdrop-blur-sm flex items-center justify-center hover:bg-black/80 transition-colors"
+              :class="[
+                'w-6 h-6 rounded bg-black/60 backdrop-blur-sm flex items-center justify-center transition-colors',
+                uploadingClipId === clip.id ? 'opacity-50 cursor-wait' : 'hover:bg-black/80'
+              ]"
+              :disabled="!!uploadingClipId"
               title="Upload & Analyse"
               @click="uploadClip(clip)"
             >
-              <svg class="w-3 h-3 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg v-if="uploadingClipId !== clip.id" class="w-3 h-3 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/>
+              </svg>
+              <svg v-else class="w-3 h-3 text-gray-400 animate-spin" fill="none" viewBox="0 0 24 24">
+                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
               </svg>
             </button>
             <button
@@ -150,10 +172,16 @@
           </button>
           <button
             v-else
-            class="px-3 py-1 text-[11px] bg-red-500/20 hover:bg-red-500/30 text-red-400 border border-red-500/30 rounded transition-colors"
+            :disabled="!!uploadingClipId"
+            :class="[
+              'px-3 py-1 text-[11px] border rounded transition-colors',
+              uploadingClipId === playingClip.id
+                ? 'bg-red-500/10 border-red-500/20 text-red-500/60 cursor-wait'
+                : 'bg-red-500/20 hover:bg-red-500/30 text-red-400 border-red-500/30'
+            ]"
             @click="uploadClip(playingClip)"
           >
-            Upload & Analyse
+            {{ uploadingClipId === playingClip.id ? 'Uploading…' : 'Upload & Analyse' }}
           </button>
           <button class="text-gray-500 hover:text-white transition-colors" @click="closePlayer">
             <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -217,6 +245,8 @@ const activeFilter = ref<string>('all')
 const playingClip = ref<ClipRecord | null>(null)
 const videoEl = ref<HTMLVideoElement | null>(null)
 const upgradeModal = ref({ show: false, message: '' })
+const uploadingClipId = ref<string | null>(null)
+const uploadError = ref<string | null>(null)
 
 const filters = [
   { label: 'All', value: 'all' },
@@ -284,12 +314,19 @@ async function deleteClip(id: string) {
 }
 
 async function uploadClip(clip: ClipRecord) {
-  const result = await window.api.clips.upload(clip.id)
-  if (result.needsUpgrade) {
-    upgradeModal.value = { show: true, message: result.message ?? 'Upgrade to upload more clips.' }
-    return
-  }
-  if (result.ok) {
+  if (uploadingClipId.value) return
+  uploadError.value = null
+  uploadingClipId.value = clip.id
+  try {
+    const result = await window.api.clips.upload(clip.id)
+    if (result.needsUpgrade) {
+      upgradeModal.value = { show: true, message: result.message ?? 'Upgrade to upload more clips.' }
+      return
+    }
+    if (!result.ok) {
+      uploadError.value = result.error ?? 'Upload failed. Check your internet connection.'
+      return
+    }
     const idx = clips.value.findIndex(c => c.id === clip.id)
     if (idx !== -1) {
       clips.value[idx] = { ...clips.value[idx], uploadStatus: 'uploaded', apiClipId: result.apiClipId ?? null }
@@ -299,8 +336,14 @@ async function uploadClip(clip: ClipRecord) {
       upgradeModal.value = { show: true, message: analysisResult.message ?? 'Upgrade to get AI coaching on clips.' }
       return
     }
+    if (!analysisResult.ok) {
+      uploadError.value = analysisResult.error ?? 'Clip uploaded but analysis request failed.'
+      return
+    }
     const idx2 = clips.value.findIndex(c => c.id === clip.id)
     if (idx2 !== -1) clips.value[idx2] = { ...clips.value[idx2], analysisStatus: 'queued' }
+  } finally {
+    uploadingClipId.value = null
   }
 }
 
