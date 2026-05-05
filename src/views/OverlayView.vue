@@ -175,6 +175,11 @@ onMounted(async () => {
       showToastMsg('✓ Clip bookmarked! Saves after match', 'success')
     })
   )
+  removeListeners.push(
+    window.api.on('overlay:clip-not-recording', () => {
+      showToastMsg('⚠ Not in an active match', 'warning')
+    })
+  )
   try {
     const bindings = await window.api.clips.getHotkeys()
     const saveClipBinding = bindings?.['save-clip']

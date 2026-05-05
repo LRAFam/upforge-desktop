@@ -808,6 +808,26 @@ export class RiotLocalApi {
 
     await this._refreshTokens()
 
+    // If auth was never initialized (lockfile missing at game-start), try once more now —
+    // the Riot Client is still running in post-game lobby.
+    if (!this.accessToken || !this.entitlementsToken) {
+      console.log('[RiotLocalApi] stop() — no tokens, attempting late initAuth')
+      await this.initAuth()
+    }
+
+    // If region is still unknown, try fetching it from the chat session one more time.
+    // This handles the case where region wasn't available during initAuth() but is now
+    // (e.g. Riot Client connection was slow at game start).
+    if (!this.region && this.lockfileData) {
+      try {
+        const sess = await this._fetchLocal<{ region: string }>('/chat/v1/session')
+        if (sess.region) {
+          this.region = _normalizeRegion(sess.region)
+          console.log(`[RiotLocalApi] Region recovered at match-end: ${this.region}`)
+        }
+      } catch { /* ignore — proceed without region */ }
+    }
+
     // If we still don't have a matchId, look it up via match history
     if (!this.matchData.matchId && this.region && this.ownPuuid) {
       console.log('[RiotLocalApi] No matchId captured — trying match history fallback')
@@ -828,7 +848,10 @@ export class RiotLocalApi {
         console.log('[RiotLocalApi] MatchDetails fetch failed — using presence data only')
       }
     } else {
-      console.log(`[RiotLocalApi] Skipping MatchDetails — matchId=${this.matchData.matchId} region=${this.region}`)
+      console.log(
+        `[RiotLocalApi] Skipping MatchDetails — matchId=${this.matchData.matchId} region=${this.region} ` +
+        `accessToken=${!!this.accessToken} entitlementsToken=${!!this.entitlementsToken} — clips will NOT be extracted`
+      )
     }
 
     const result = this.matchData
@@ -1114,7 +1137,28 @@ export class RiotLocalApi {
    * to process match data after a game ends — callers should delay 60-120s before calling.
    */
   async fetchMatchDetailsLate(matchId: string): Promise<Record<string, unknown> | null> {
-    try { await this._refreshTokens() } catch { /* best-effort token refresh */ }
+    // If auth was never initialized (e.g. lockfile wasn't available at game start),
+    // try once more now — the Riot Client is still running post-match.
+    if (!this.accessToken || !this.entitlementsToken) {
+      console.log('[RiotLocalApi] fetchMatchDetailsLate — no tokens, attempting initAuth')
+      await this.initAuth()
+    } else {
+      try { await this._refreshTokens() } catch { /* best-effort token refresh */ }
+    }
+    // Recover region if not yet set
+    if (!this.region && this.lockfileData) {
+      try {
+        const sess = await this._fetchLocal<{ region: string }>('/chat/v1/session')
+        if (sess.region) {
+          this.region = _normalizeRegion(sess.region)
+          console.log(`[RiotLocalApi] Region recovered for late fetch: ${this.region}`)
+        }
+      } catch { /* ignore */ }
+    }
+    if (!this.region || !this.accessToken || !this.entitlementsToken) {
+      console.log(`[RiotLocalApi] fetchMatchDetailsLate — still no auth after retry (region=${this.region} token=${!!this.accessToken}) — clips cannot be extracted`)
+      return null
+    }
     return this._fetchMatchDetails(matchId)
   }
 

@@ -1452,10 +1452,11 @@ app.whenReady().then(async () => {
         new Notification({ title: 'UpForge', body: 'Clip moment bookmarked — saves after match ends', silent: true }).show()
       }
     } else {
-      // F9 was pressed but we're not recording — give the user visible feedback
+      // F9 was pressed but we're not recording — give the user visible feedback in overlay + notification
       log.warn('[Hotkey] F9 pressed but recorder is not active (recording=%s, startTime=%s)',
         recorder.isRecording(), currentRecordingStartTime)
       logActivity('F9 pressed — not recording (start a Valorant match first)')
+      sendOverlayData('overlay:clip-not-recording', {})
       if (Notification.isSupported()) {
         new Notification({
           title: 'UpForge — Not Recording',
