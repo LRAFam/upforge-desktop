@@ -84,6 +84,9 @@ const api = {
     boost: () => ipcRenderer.invoke('performance:boost'),
     restore: () => ipcRenderer.invoke('performance:restore'),
     diagnostics: () => ipcRenderer.invoke('performance:diagnostics'),
+    killProcess: (name: string) => ipcRenderer.invoke('performance:kill-process', name),
+    getPregameKillList: () => ipcRenderer.invoke('performance:get-pregame-kill-list'),
+    setPregameKillList: (list: string[]) => ipcRenderer.invoke('performance:set-pregame-kill-list', list),
   },
   on: (channel: string, callback: (...args: unknown[]) => void): (() => void) => {
     const allowed = [

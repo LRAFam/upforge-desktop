@@ -16,6 +16,8 @@ export interface AppSettings {
   firstRun: boolean
   /** Which monitor to capture. 'auto' detects from game window; numbers are 0-based display index. */
   captureMonitor: 'auto' | number
+  /** Process names to auto-kill when a game is detected starting */
+  pregameKillList: string[]
 }
 
 export interface PendingRecording {
@@ -233,6 +235,9 @@ declare global {
           bottleneck: 'cpu' | 'gpu' | 'none' | 'unknown'
           warnings: string[]
         } | null>
+        killProcess: (name: string) => Promise<{ name: string; success: boolean; message: string }>
+        getPregameKillList: () => Promise<string[]>
+        setPregameKillList: (list: string[]) => Promise<string[]>
       }
       on: (channel: string, callback: (...args: unknown[]) => void) => (() => void)
     }

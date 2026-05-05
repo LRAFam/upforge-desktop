@@ -408,6 +408,85 @@ async function freeBackgroundMemory(): Promise<OptimizationResult> {
 }
 
 /**
+ * Enable Hardware-Accelerated GPU Scheduling (HAGS).
+ * Sets HwSchMode=2 in the graphics drivers registry key.
+ * Takes effect after a reboot — returns a reboot-required message on success.
+ */
+async function enableHAGS(): Promise<OptimizationResult> {
+  const script = `
+    $path = 'HKLM:\\SYSTEM\\CurrentControlSet\\Control\\GraphicsDrivers'
+    try {
+      $current = (Get-ItemProperty -Path $path -Name HwSchMode -ErrorAction SilentlyContinue).HwSchMode
+      if ($current -eq 2) { Write-Output 'already' }
+      else {
+        Set-ItemProperty -Path $path -Name HwSchMode -Value 2 -Type DWord -Force
+        Write-Output 'enabled'
+      }
+    } catch { Write-Output "error:$($_.Exception.Message)" }
+  `
+  try {
+    const result = await runPowerShell(script)
+    if (result === 'already') {
+      return { name: 'HAGS', success: true, message: 'Hardware-Accelerated GPU Scheduling already enabled' }
+    }
+    if (result === 'enabled') {
+      return { name: 'HAGS', success: true, message: 'Enabled — reboot required to take effect' }
+    }
+    return { name: 'HAGS', success: false, message: 'Could not set HAGS registry key' }
+  } catch (err) {
+    log.warn('[Perf] HAGS enable failed:', err)
+    return { name: 'HAGS', success: false, message: 'Requires administrator privileges' }
+  }
+}
+
+async function restoreHAGS(): Promise<OptimizationResult> {
+  const script = `
+    $path = 'HKLM:\\SYSTEM\\CurrentControlSet\\Control\\GraphicsDrivers'
+    try {
+      Set-ItemProperty -Path $path -Name HwSchMode -Value 1 -Type DWord -Force
+      Write-Output 'done'
+    } catch { Write-Output "error:$($_.Exception.Message)" }
+  `
+  try {
+    await runPowerShell(script)
+    return { name: 'HAGS', success: true, message: 'HAGS disabled — reboot required' }
+  } catch {
+    return { name: 'HAGS', success: false, message: 'Could not restore HAGS setting' }
+  }
+}
+
+/**
+ * Kill a specific process by name using taskkill.
+ * Only kills non-system processes — rejects attempts to kill critical OS processes.
+ */
+const PROTECTED_PROCESSES = new Set([
+  'svchost', 'lsass', 'csrss', 'winlogon', 'wininit', 'services',
+  'explorer', 'smss', 'system', 'registry', 'ntoskrnl',
+])
+
+async function killProcessByName(name: string): Promise<OptimizationResult> {
+  const baseName = name.toLowerCase().replace(/\.exe$/i, '')
+  if (PROTECTED_PROCESSES.has(baseName)) {
+    return { name: `Kill ${name}`, success: false, message: 'Cannot kill protected system process' }
+  }
+  const script = `
+    $result = taskkill /F /IM "${name}" 2>&1
+    if ($LASTEXITCODE -eq 0) { Write-Output 'killed' }
+    else { Write-Output "notfound" }
+  `
+  try {
+    const result = await runPowerShell(script)
+    if (result.includes('killed')) {
+      return { name: `Kill ${name}`, success: true, message: `${name} terminated` }
+    }
+    return { name: `Kill ${name}`, success: false, message: `${name} not found or already closed` }
+  } catch (err) {
+    log.warn('[Perf] Kill process failed:', err)
+    return { name: `Kill ${name}`, success: false, message: `Could not kill ${name}` }
+  }
+}
+
+/**
  * Force the active High Performance power plan to never downclock the CPU.
  * Sets minimum processor state to 100% and disables core parking so all
  * cores are available at full speed — the key fix for CPU-bottlenecked games.
@@ -654,6 +733,7 @@ export class PerformanceManager {
       setNvidiaMaxPerformance(),
       freeBackgroundMemory(),
       throttleBackgroundProcesses(),
+      enableHAGS(),
     ])
 
     const anySuccess = results.some((r) => r.success)
@@ -676,6 +756,7 @@ export class PerformanceManager {
       restoreNagle(),
       restoreGameDvr(),
       restoreMultimediaProfile(),
+      restoreHAGS(),
     ])
 
     this._boosted = false
@@ -690,6 +771,10 @@ export class PerformanceManager {
       powerPlan,
       platform: process.platform,
     }
+  }
+
+  async killProcess(name: string): Promise<OptimizationResult> {
+    return killProcessByName(name)
   }
 
   isBoosted(): boolean {

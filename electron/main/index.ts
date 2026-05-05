@@ -772,6 +772,14 @@ function setupGameDetection(): void {
     logActivity(`${game === 'cs2' ? 'CS2' : 'Valorant'} detected — waiting for match`)
 
     const config = settingsManager?.get()
+
+    // Auto-kill user-configured background apps before the game starts
+    if (config?.pregameKillList?.length && performanceManager) {
+      for (const procName of config.pregameKillList) {
+        performanceManager.killProcess(procName).catch(() => {})
+      }
+    }
+
     const recorderConfig = config ? {
       quality: config.recordingQuality,
       bitrate: config.recordingBitrate,

@@ -16,6 +16,8 @@ export interface AppSettings {
   captureMonitor: 'auto' | number
   /** Last completed analysis insight — persisted for dashboard display */
   lastInsight?: { text: string; score: number; agent: string | null; analysisId: number | null; date: string } | null
+  /** Process names to auto-kill when a game is detected starting */
+  pregameKillList: string[]
 }
 
 const DEFAULTS: AppSettings = {
@@ -28,6 +30,7 @@ const DEFAULTS: AppSettings = {
   autoAnalyse: true,
   firstRun: true,
   captureMonitor: 'auto',
+  pregameKillList: [],
 }
 
 export class SettingsManager {

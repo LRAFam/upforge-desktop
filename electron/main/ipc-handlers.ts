@@ -589,4 +589,18 @@ export function setupIpcHandlers(
     if (!performanceManager) return null
     return performanceManager.getDiagnostics()
   })
+
+  ipcMain.handle('performance:kill-process', async (_e, name: string) => {
+    if (!performanceManager) return { name: `Kill ${name}`, success: false, message: 'Not available' }
+    return performanceManager.killProcess(name)
+  })
+
+  ipcMain.handle('performance:get-pregame-kill-list', async () => {
+    return settingsManager.get().pregameKillList ?? []
+  })
+
+  ipcMain.handle('performance:set-pregame-kill-list', async (_e, list: string[]) => {
+    settingsManager.save({ pregameKillList: list })
+    return list
+  })
 }

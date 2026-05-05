@@ -131,6 +131,17 @@
           </svg>
           <span>Some optimisations require administrator privileges. Try running UpForge as administrator for full boost.</span>
         </div>
+
+        <!-- HAGS reboot notice -->
+        <div
+          v-if="hagsNeedsReboot"
+          class="flex items-start gap-2 px-3 py-2 rounded-lg bg-blue-500/[0.07] border border-blue-500/20 text-[10px] text-blue-300/90"
+        >
+          <svg class="w-3 h-3 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99" />
+          </svg>
+          <span>Hardware-Accelerated GPU Scheduling enabled — reboot your PC to activate it. This can give a significant FPS boost in Valorant.</span>
+        </div>
       </div>
 
       <!-- Diagnostics panel -->
@@ -215,10 +226,18 @@
             <div
               v-for="proc in diagnostics.topProcesses.slice(0, 5)"
               :key="proc.name"
-              class="flex items-center justify-between px-3 py-1.5 rounded-lg bg-white/[0.02] border border-white/[0.04]"
+              class="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-white/[0.02] border border-white/[0.04]"
             >
-              <p class="text-[10px] text-gray-400 truncate max-w-[70%]">{{ proc.name }}</p>
-              <p class="text-[10px] font-semibold" :class="proc.cpuPct > 10 ? 'text-orange-400' : 'text-gray-500'">{{ proc.cpuPct.toFixed(1) }}%</p>
+              <p class="text-[10px] text-gray-400 truncate flex-1">{{ proc.name }}</p>
+              <p class="text-[10px] font-semibold flex-shrink-0" :class="proc.cpuPct > 10 ? 'text-orange-400' : 'text-gray-500'">{{ proc.cpuPct.toFixed(1) }}%</p>
+              <button
+                class="text-[10px] px-1.5 py-0.5 rounded border border-red-500/30 text-red-400/80 hover:text-red-300 hover:border-red-400/50 transition-colors flex-shrink-0 disabled:opacity-40"
+                :disabled="killingProcesses.has(proc.name)"
+                @click="killProcess(proc.name)"
+              >
+                <span v-if="killingProcesses.has(proc.name)">killing…</span>
+                <span v-else>Kill</span>
+              </button>
             </div>
           </div>
         </div>
@@ -247,6 +266,48 @@
           Run Diagnostics
         </span>
       </button>
+
+      <!-- Pre-game auto-close list -->
+      <div class="space-y-1.5">
+        <p class="text-[10px] text-gray-600 uppercase tracking-wider font-semibold px-0.5">Auto-Close Before Game</p>
+        <p class="text-[10px] text-gray-700 px-0.5">Apps added here are closed automatically when a game is detected starting.</p>
+
+        <!-- Existing entries -->
+        <div v-if="pregameKillList.length" class="space-y-0.5">
+          <div
+            v-for="(proc, i) in pregameKillList"
+            :key="proc"
+            class="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-white/[0.02] border border-white/[0.04]"
+          >
+            <p class="text-[10px] text-gray-400 flex-1 truncate">{{ proc }}</p>
+            <button
+              class="text-[10px] text-gray-600 hover:text-red-400 transition-colors flex-shrink-0"
+              @click="removeFromKillList(i)"
+            >
+              <svg class="w-3 h-3" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+        </div>
+
+        <!-- Add input -->
+        <div class="flex gap-1.5">
+          <input
+            v-model="newKillEntry"
+            type="text"
+            placeholder="e.g. Discord.exe"
+            class="flex-1 px-2.5 py-1.5 rounded-lg bg-white/[0.04] border border-white/[0.08] text-xs text-gray-300
+                   placeholder:text-gray-700 focus:outline-none focus:border-white/20"
+            @keydown.enter="addToKillList"
+          />
+          <button
+            class="px-3 py-1.5 rounded-lg bg-white/[0.05] hover:bg-white/[0.09] border border-white/[0.08]
+                   text-xs text-gray-400 hover:text-gray-200 transition-colors flex-shrink-0"
+            @click="addToKillList"
+          >Add</button>
+        </div>
+      </div>
 
       <!-- Admin tip (always show) -->
       <p class="text-[10px] text-gray-700 text-center px-2">
@@ -295,6 +356,13 @@ const platform = ref('')
 const results = ref<OptimizationResult[]>([])
 const diagnostics = ref<DiagnosticsReport | null>(null)
 const diagLoading = ref(false)
+const killingProcesses = ref(new Set<string>())
+const pregameKillList = ref<string[]>([])
+const newKillEntry = ref('')
+
+const hagsNeedsReboot = computed(() =>
+  results.value.some((r) => r.name === 'HAGS' && r.success && r.message.includes('reboot'))
+)
 
 // Heroicons outline paths (24px viewBox, stroke-based)
 const previewItems = [
@@ -342,6 +410,11 @@ const previewItems = [
     name: 'Process Priority',
     description: 'Elevate game process to High priority for stable FPS',
     iconPath: 'M4.5 10.5L12 3m0 0l7.5 7.5M12 3v18',
+  },
+  {
+    name: 'HAGS',
+    description: 'Enable Hardware-Accelerated GPU Scheduling for lower latency & higher FPS',
+    iconPath: 'M8.25 3v1.5M4.5 8.25H3m18 0h-1.5M4.5 12H3m18 0h-1.5m-15 3.75H3m18 0h-1.5M8.25 19.5V21M12 3v1.5m0 15V21m3.75-18v1.5m0 15V21m-9-1.5h10.5a2.25 2.25 0 002.25-2.25V6.75a2.25 2.25 0 00-2.25-2.25H6.75A2.25 2.25 0 004.5 6.75v10.5a2.25 2.25 0 002.25 2.25zm.75-12h9v9h-9v-9z',
   },
 ]
 
@@ -401,6 +474,50 @@ async function runDiagnostics() {
   }
 }
 
-onMounted(loadStatus)
+async function killProcess(name: string) {
+  killingProcesses.value = new Set([...killingProcesses.value, name])
+  try {
+    await window.api.performance.killProcess(name)
+    // Remove killed process from the list
+    if (diagnostics.value) {
+      diagnostics.value = {
+        ...diagnostics.value,
+        topProcesses: diagnostics.value.topProcesses.filter((p) => p.name !== name),
+      }
+    }
+  } finally {
+    const next = new Set(killingProcesses.value)
+    next.delete(name)
+    killingProcesses.value = next
+  }
+}
+
+async function loadPregameKillList() {
+  try {
+    pregameKillList.value = await window.api.performance.getPregameKillList()
+  } catch {
+    pregameKillList.value = []
+  }
+}
+
+async function addToKillList() {
+  const entry = newKillEntry.value.trim()
+  if (!entry || pregameKillList.value.includes(entry)) return
+  const updated = [...pregameKillList.value, entry]
+  await window.api.performance.setPregameKillList(updated)
+  pregameKillList.value = updated
+  newKillEntry.value = ''
+}
+
+async function removeFromKillList(index: number) {
+  const updated = pregameKillList.value.filter((_, i) => i !== index)
+  await window.api.performance.setPregameKillList(updated)
+  pregameKillList.value = updated
+}
+
+onMounted(async () => {
+  await loadStatus()
+  await loadPregameKillList()
+})
 </script>
 

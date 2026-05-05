@@ -437,6 +437,7 @@ const settings = reactive<AppSettings>({
   autoAnalyse: true,
   firstRun: false,
   captureMonitor: 'auto',
+  pregameKillList: [],
 })
 
 const GAME_MODES = [
