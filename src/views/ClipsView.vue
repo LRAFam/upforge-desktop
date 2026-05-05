@@ -157,34 +157,48 @@
     <!-- Video player modal -->
     <div
       v-if="playingClip"
-      class="fixed inset-0 z-50 bg-black/90 flex flex-col"
+      class="fixed inset-0 z-50 bg-black/95 backdrop-blur-sm flex flex-col"
       @click.self="closePlayer"
     >
-      <div class="flex items-center justify-between px-4 py-2 flex-shrink-0">
-        <p class="text-sm font-medium text-white">{{ playingClip.title || defaultTitle(playingClip) }}</p>
-        <div class="flex items-center gap-2">
+      <!-- Modal header -->
+      <div class="flex items-center justify-between px-4 py-3 flex-shrink-0 bg-white/[0.03] border-b border-white/[0.07]">
+        <div class="flex-1 min-w-0 pr-3">
+          <p class="text-xs font-semibold text-white truncate">{{ playingClip.title || defaultTitle(playingClip) }}</p>
+          <p v-if="playingClip.trigger" class="text-[10px] text-gray-600 mt-0.5 capitalize">{{ playingClip.trigger }} clip</p>
+        </div>
+        <div class="flex items-center gap-2 flex-shrink-0">
           <button
             v-if="playingClip.uploadStatus === 'uploaded'"
-            class="px-3 py-1 text-[11px] bg-white/10 hover:bg-white/20 text-gray-300 rounded transition-colors"
+            class="flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-medium bg-white/[0.06] hover:bg-white/[0.10] text-gray-300 border border-white/[0.10] rounded-lg transition-colors"
             @click="shareClip(playingClip)"
           >
+            <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z"/>
+            </svg>
             Share
           </button>
           <button
             v-else
             :disabled="!!uploadingClipId"
             :class="[
-              'px-3 py-1 text-[11px] border rounded transition-colors',
+              'flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-medium border rounded-lg transition-colors',
               uploadingClipId === playingClip.id
-                ? 'bg-red-500/10 border-red-500/20 text-red-500/60 cursor-wait'
-                : 'bg-red-500/20 hover:bg-red-500/30 text-red-400 border-red-500/30'
+                ? 'bg-red-500/10 border-red-500/20 text-red-400/60 cursor-wait'
+                : 'bg-red-500/15 hover:bg-red-500/25 text-red-400 border-red-500/25 hover:border-red-500/40'
             ]"
             @click="uploadClip(playingClip)"
           >
+            <svg v-if="uploadingClipId !== playingClip.id" class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/>
+            </svg>
+            <svg v-else class="w-3 h-3 animate-spin" fill="none" viewBox="0 0 24 24">
+              <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+              <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
+            </svg>
             {{ uploadingClipId === playingClip.id ? 'Uploading…' : 'Upload & Analyse' }}
           </button>
-          <button class="text-gray-500 hover:text-white transition-colors" @click="closePlayer">
-            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <button class="w-8 h-8 flex items-center justify-center rounded-lg text-gray-600 hover:text-white hover:bg-white/[0.07] transition-colors" @click="closePlayer">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
             </svg>
           </button>
@@ -197,41 +211,60 @@
         autoplay
         :src="`file://${playingClip.path}`"
       />
-      <div v-if="playingClip.suggestion" class="px-4 py-2 bg-orange-500/10 border-t border-orange-500/20 flex-shrink-0">
-        <p class="text-[11px] text-orange-300/80">💡 <strong>AI Coaching:</strong> {{ playingClip.suggestion }}</p>
+      <div v-if="playingClip.suggestion" class="px-4 py-3 bg-gradient-to-r from-orange-500/[0.08] to-transparent border-t border-orange-500/15 flex-shrink-0 flex items-start gap-2.5">
+        <div class="w-5 h-5 rounded-full bg-orange-500/20 flex items-center justify-center flex-shrink-0 mt-px">
+          <svg class="w-2.5 h-2.5 text-orange-400" fill="currentColor" viewBox="0 0 20 20">
+            <path fill-rule="evenodd" d="M11.3 1.046A1 1 0 0112 2v5h4a1 1 0 01.82 1.573l-7 10A1 1 0 018 18v-5H4a1 1 0 01-.82-1.573l7-10a1 1 0 011.12-.38z" clip-rule="evenodd"/>
+          </svg>
+        </div>
+        <p class="text-[11px] text-orange-300/90 leading-relaxed flex-1"><span class="font-semibold text-orange-300">AI Coaching:</span> {{ playingClip.suggestion }}</p>
       </div>
     </div>
 
     <!-- Upgrade modal -->
-    <div
-      v-if="upgradeModal.show"
-      class="fixed inset-0 z-[60] flex items-center justify-center bg-black/80 backdrop-blur-sm"
-      @click.self="upgradeModal.show = false"
-    >
-      <div class="w-80 bg-[#1a1a2e] border border-white/10 rounded-2xl p-6 text-center shadow-2xl">
-        <div class="w-12 h-12 rounded-full bg-gradient-to-br from-red-500 to-orange-500 flex items-center justify-center mx-auto mb-4">
-          <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
-          </svg>
-        </div>
-        <h3 class="text-sm font-bold text-white mb-1">Upgrade Required</h3>
-        <p class="text-[12px] text-gray-400 mb-5 leading-relaxed">{{ upgradeModal.message }}</p>
-        <div class="flex flex-col gap-2">
-          <button
-            class="w-full py-2 rounded-lg bg-gradient-to-r from-red-500 to-orange-500 text-white text-[12px] font-bold hover:opacity-90 transition-opacity"
-            @click="openUpgrade"
-          >
-            View Plans
-          </button>
-          <button
-            class="w-full py-2 rounded-lg text-gray-500 text-[12px] hover:text-gray-300 transition-colors"
-            @click="upgradeModal.show = false"
-          >
-            Maybe later
-          </button>
+    <Transition name="modal-pop">
+      <div
+        v-if="upgradeModal.show"
+        class="fixed inset-0 z-[60] flex items-center justify-center bg-black/70 backdrop-blur-md"
+        @click.self="upgradeModal.show = false"
+      >
+        <div class="relative w-[300px] bg-[#111116] border border-white/[0.10] rounded-2xl p-6 text-center shadow-[0_24px_64px_rgba(0,0,0,0.8)] overflow-hidden">
+          <!-- Ambient glow -->
+          <div class="absolute top-0 left-1/2 -translate-x-1/2 w-48 h-24 bg-gradient-to-b from-red-500/20 to-transparent blur-2xl pointer-events-none" />
+          <div class="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-red-500/40 to-transparent" />
+
+          <div class="relative">
+            <!-- Icon -->
+            <div class="relative w-14 h-14 mx-auto mb-4">
+              <div class="absolute inset-0 rounded-full bg-gradient-to-br from-red-500/30 to-orange-500/30 blur-xl" />
+              <div class="relative w-14 h-14 rounded-full bg-gradient-to-br from-red-500 to-orange-500 flex items-center justify-center shadow-lg shadow-red-500/25">
+                <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
+                </svg>
+              </div>
+            </div>
+
+            <h3 class="text-sm font-bold text-white mb-1.5">Upgrade Required</h3>
+            <p class="text-[12px] text-gray-500 mb-5 leading-relaxed">{{ upgradeModal.message }}</p>
+
+            <div class="flex flex-col gap-2">
+              <button
+                class="w-full py-2.5 rounded-xl bg-gradient-to-r from-red-500 to-orange-500 hover:from-red-400 hover:to-orange-400 text-white text-[12px] font-bold transition-all shadow-lg shadow-red-500/20 hover:shadow-red-500/30"
+                @click="openUpgrade"
+              >
+                View Plans →
+              </button>
+              <button
+                class="w-full py-2 rounded-xl text-gray-600 hover:text-gray-400 text-[12px] transition-colors"
+                @click="upgradeModal.show = false"
+              >
+                Maybe later
+              </button>
+            </div>
+          </div>
         </div>
       </div>
-    </div>
+    </Transition>
   </div>
 </template>
 
@@ -400,3 +433,17 @@ function timeAgo(ts: number): string {
   return `${Math.floor(hrs / 24)}d ago`
 }
 </script>
+
+<style scoped>
+.modal-pop-enter-active {
+  transition: opacity 0.2s ease, transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+.modal-pop-leave-active {
+  transition: opacity 0.15s ease, transform 0.15s ease;
+}
+.modal-pop-enter-from,
+.modal-pop-leave-to {
+  opacity: 0;
+  transform: scale(0.92) translateY(8px);
+}
+</style>

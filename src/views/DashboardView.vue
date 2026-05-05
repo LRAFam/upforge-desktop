@@ -2,15 +2,26 @@
   <div class="px-3 py-3 space-y-3">
 
     <!-- System warning banner (low disk space, etc.) -->
-    <div
-      v-if="warning"
-      class="flex items-center gap-2 px-3 py-2 rounded-lg bg-orange-500/10 border border-orange-500/25 text-orange-300 text-xs"
-    >
-      <span class="text-orange-400">⚠</span>
-      <span>{{ warning }}</span>
-      <button v-if="upgradeNeeded" class="ml-auto text-orange-300 hover:text-orange-100 font-semibold text-[11px] flex-shrink-0 transition-colors" @click="openUpgrade">Upgrade →</button>
-      <button class="text-white/40 hover:text-white/70 leading-none" :class="{ 'ml-auto': !upgradeNeeded }" @click="warning = null; upgradeNeeded = false">✕</button>
-    </div>
+    <Transition name="banner-slide">
+      <div
+        v-if="warning"
+        class="relative flex items-center gap-3 pl-4 pr-3 py-2.5 rounded-xl bg-orange-500/[0.07] border border-orange-500/20 overflow-hidden"
+      >
+        <!-- Left accent -->
+        <div class="absolute left-0 top-0 bottom-0 w-[3px] bg-gradient-to-b from-orange-400 to-orange-600 rounded-l-xl" />
+        <!-- Icon -->
+        <div class="w-6 h-6 rounded-full bg-orange-500/15 flex items-center justify-center flex-shrink-0">
+          <svg class="w-3 h-3 text-orange-400" fill="currentColor" viewBox="0 0 20 20">
+            <path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd"/>
+          </svg>
+        </div>
+        <span class="text-[11px] text-orange-300/90 flex-1 leading-snug">{{ warning }}</span>
+        <button v-if="upgradeNeeded" class="flex-shrink-0 text-[11px] font-semibold text-orange-300 hover:text-orange-100 transition-colors border border-orange-500/30 rounded-lg px-2 py-1" @click="openUpgrade">Upgrade →</button>
+        <button class="w-6 h-6 flex items-center justify-center text-orange-500/50 hover:text-orange-300/70 transition-colors rounded flex-shrink-0" :class="{ 'ml-auto': !upgradeNeeded }" @click="warning = null; upgradeNeeded = false">
+          <svg class="w-3 h-3" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd"/></svg>
+        </button>
+      </div>
+    </Transition>
 
     <!-- Status card -->
     <div
@@ -107,20 +118,22 @@
     <!-- Activity log — compact event history -->
     <div v-if="activityLog.length" class="bg-white/[0.02] border border-white/[0.05] rounded-xl overflow-hidden">
       <div class="flex items-center justify-between px-3 py-2 border-b border-white/[0.04]">
-        <span class="text-[10px] font-medium text-gray-500 uppercase tracking-wider">Recent Activity</span>
-        <button class="text-gray-700 hover:text-gray-500 transition-colors" @click="clearLog">
+        <span class="text-[10px] font-semibold text-gray-600 uppercase tracking-wider">Recent Activity</span>
+        <button class="w-5 h-5 flex items-center justify-center text-gray-700 hover:text-gray-400 transition-colors rounded" @click="clearLog">
           <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
           </svg>
         </button>
       </div>
-      <div class="px-3 py-2 space-y-1.5 max-h-28 overflow-y-auto">
+      <div class="py-1.5 max-h-32 overflow-y-auto">
         <div
           v-for="entry in [...activityLog].reverse().slice(0, 8)"
           :key="entry.time"
-          class="flex items-start gap-2"
+          class="flex items-center gap-2.5 px-3 py-1"
         >
-          <span class="text-[9px] text-gray-700 tabular-nums flex-shrink-0 mt-px pt-[1px]">{{ formatLogTime(entry.time) }}</span>
+          <!-- Type dot inferred from message keywords -->
+          <div :class="['w-1.5 h-1.5 rounded-full flex-shrink-0', logEntryColor(entry.message)]" />
+          <span class="text-[9px] text-gray-700 tabular-nums flex-shrink-0 font-mono">{{ formatLogTime(entry.time) }}</span>
           <span class="text-[10px] text-gray-400 leading-snug">{{ entry.message }}</span>
         </div>
       </div>
@@ -602,6 +615,17 @@ function formatLogTime(ts: number): string {
   return new Date(ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
 }
 
+function logEntryColor(message: string): string {
+  const m = message.toLowerCase()
+  if (m.includes('error') || m.includes('fail') || m.includes('crash')) return 'bg-red-500'
+  if (m.includes('warn') || m.includes('low') || m.includes('retry')) return 'bg-yellow-500'
+  if (m.includes('record') || m.includes('start')) return 'bg-red-400'
+  if (m.includes('stop') || m.includes('finish') || m.includes('complet')) return 'bg-green-500'
+  if (m.includes('upload') || m.includes('analys')) return 'bg-blue-400'
+  if (m.includes('clip') || m.includes('bookmark')) return 'bg-purple-400'
+  return 'bg-gray-600'
+}
+
 function clearLog() {
   activityLog.value = []
 }
@@ -823,3 +847,20 @@ function formatFileSize(bytes: number): string {
   return Math.round(bytes / 1024) + ' KB'
 }
 </script>
+
+<style scoped>
+.banner-slide-enter-active {
+  transition: opacity 0.25s ease, transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+.banner-slide-leave-active {
+  transition: opacity 0.2s ease, transform 0.2s ease;
+}
+.banner-slide-enter-from {
+  opacity: 0;
+  transform: translateY(-6px) scale(0.98);
+}
+.banner-slide-leave-to {
+  opacity: 0;
+  transform: translateY(-4px);
+}
+</style>

@@ -232,15 +232,28 @@
         <div class="flex items-center justify-between px-3 py-2.5">
           <div>
             <p class="text-xs text-gray-300">Bookmark clip moment</p>
-            <p class="text-[10px] mt-0.5" :class="hotkeyStatus['save-clip'] === false ? 'text-yellow-500/70' : 'text-gray-600'">
-              {{ hotkeyStatus['save-clip'] === false ? '⚠ Failed to register — key may be in use' : 'Press during a match to save a clip' }}
-            </p>
+            <div v-if="hotkeyStatus['save-clip'] === false" class="flex items-center gap-1.5 mt-0.5">
+              <svg class="w-3 h-3 text-yellow-400 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                <path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd"/>
+              </svg>
+              <p class="text-[10px] text-yellow-500/80">Failed to register — key may be in use</p>
+            </div>
+            <p v-else class="text-[10px] text-gray-600 mt-0.5">Press during a match to save a clip</p>
             <button
               v-if="hotkeyStatus['save-clip'] === false"
-              class="mt-1.5 text-[10px] text-yellow-400/80 hover:text-yellow-300 underline underline-offset-2 transition-colors"
+              class="mt-1.5 inline-flex items-center gap-1 text-[10px] text-yellow-400/80 hover:text-yellow-300 transition-colors"
               :disabled="conflictScanning"
               @click="findConflict"
-            >{{ conflictScanning ? 'Scanning…' : 'Find conflicting app →' }}</button>
+            >
+              <svg v-if="!conflictScanning" class="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
+              </svg>
+              <svg v-else class="w-2.5 h-2.5 animate-spin" fill="none" viewBox="0 0 24 24">
+                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
+              </svg>
+              {{ conflictScanning ? 'Scanning…' : 'Find conflicting app' }}
+            </button>
           </div>
           <button
             :class="[
@@ -280,19 +293,35 @@
       <p v-if="rebinding" class="text-[10px] text-gray-600 mt-1.5 px-0.5">Press Escape to cancel · changes apply immediately</p>
 
       <!-- Conflict finder results -->
-      <div v-if="conflictResults !== null" class="mt-2 px-3 py-2.5 bg-yellow-500/5 border border-yellow-500/20 rounded-xl space-y-2">
-        <template v-if="conflictResults.found.length > 0">
-          <p class="text-[10px] font-semibold text-yellow-400/90 uppercase tracking-widest">Possible conflicts detected</p>
-          <div v-for="c in conflictResults.found" :key="c.exe" class="space-y-0.5">
-            <p class="text-xs text-gray-200">{{ c.name }}</p>
-            <p class="text-[10px] text-gray-500">{{ c.fix }}</p>
+      <Transition name="result-slide">
+        <div v-if="conflictResults !== null" class="mt-2 rounded-xl border overflow-hidden" :class="conflictResults.found.length > 0 ? 'bg-yellow-500/[0.04] border-yellow-500/20' : 'bg-white/[0.02] border-white/[0.06]'">
+          <div class="px-3 py-2.5 space-y-2">
+            <template v-if="conflictResults.found.length > 0">
+              <div class="flex items-center gap-2">
+                <svg class="w-3.5 h-3.5 text-yellow-400 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                  <path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd"/>
+                </svg>
+                <p class="text-[10px] font-semibold text-yellow-400/90 uppercase tracking-widest">Conflicts detected</p>
+              </div>
+              <div v-for="c in conflictResults.found" :key="c.exe" class="pl-2 border-l border-yellow-500/20 space-y-0.5">
+                <p class="text-xs text-gray-200 font-medium">{{ c.name }}</p>
+                <p class="text-[10px] text-gray-500 leading-snug">{{ c.fix }}</p>
+              </div>
+            </template>
+            <template v-else>
+              <div class="flex items-center gap-2">
+                <svg class="w-3.5 h-3.5 text-green-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"/>
+                </svg>
+                <p class="text-[10px] text-gray-400">No known conflicts found. Try rebinding to a different key.</p>
+              </div>
+            </template>
           </div>
-        </template>
-        <template v-else>
-          <p class="text-[10px] text-gray-400">No known conflicting apps detected. Try rebinding to a different key (click the key button above).</p>
-        </template>
-        <button class="text-[10px] text-gray-600 hover:text-gray-400 underline underline-offset-2 transition-colors" @click="conflictResults = null">Dismiss</button>
-      </div>
+          <div class="px-3 py-1.5 border-t border-white/[0.04]">
+            <button class="text-[10px] text-gray-600 hover:text-gray-400 transition-colors" @click="conflictResults = null">Dismiss</button>
+          </div>
+        </div>
+      </Transition>
     </section>
 
     <!-- System -->
@@ -660,5 +689,19 @@ onMounted(async () => {
 .fade-enter-from,
 .fade-leave-to {
   opacity: 0;
+}
+.result-slide-enter-active {
+  transition: opacity 0.2s ease, transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+.result-slide-leave-active {
+  transition: opacity 0.15s ease, transform 0.15s ease;
+}
+.result-slide-enter-from {
+  opacity: 0;
+  transform: translateY(-6px) scale(0.97);
+}
+.result-slide-leave-to {
+  opacity: 0;
+  transform: translateY(-4px);
 }
 </style>
