@@ -26,6 +26,7 @@ import { ClipExtractor } from './clip-extractor'
 import { ClipStore } from './clip-store'
 import { HotkeyManager } from './hotkey-manager'
 import { createOverlayWindow, toggleOverlay, destroyOverlay, sendOverlayData } from './overlay-window'
+import { PerformanceManager } from './performance-manager'
 import type { MatchData } from './riot-local-api'
 import log from 'electron-log'
 
@@ -68,6 +69,7 @@ recorder.onStatusChange = (recording, error) => {
 }
 const riotLocalApi = new RiotLocalApi()
 const authManager = new AuthManager()
+const performanceManager = new PerformanceManager()
 let uploadManager: UploadManager
 let settingsManager: SettingsManager
 let recordingsStore: RecordingsStore
@@ -1415,7 +1417,7 @@ app.whenReady().then(async () => {
       mainWindow.focus()
       mainWindow.webContents.send('app:navigate', '/clips')
     }
-  })
+  }, performanceManager)
 
   setupClipHandlers(ipcMain, clipStore, clipExtractor, authManager, hotkeyManager)
 

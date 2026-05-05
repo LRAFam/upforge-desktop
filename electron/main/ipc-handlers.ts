@@ -15,6 +15,7 @@ import { ClipStore, ClipRecord } from './clip-store'
 import { ClipExtractor } from './clip-extractor'
 import { HotkeyManager } from './hotkey-manager'
 import { toggleOverlay, isOverlayVisible, setOverlayInteractive } from './overlay-window'
+import { PerformanceManager } from './performance-manager'
 
 // Track all active polling timers so they can be cancelled on logout / app quit
 const _activePollingTimers = new Set<ReturnType<typeof setTimeout>>()
@@ -366,7 +367,8 @@ export function setupIpcHandlers(
   getWaitingForMatch?: () => boolean,
   getActivityLog?: () => { time: number; message: string }[],
   uploadManager?: UploadManager,
-  showClipsFn?: () => void
+  showClipsFn?: () => void,
+  performanceManager?: PerformanceManager
 ): void {
   // Auth
   ipcMain.handle('auth:login', async (_e, { email, password }) => {
@@ -564,5 +566,22 @@ export function setupIpcHandlers(
 
   ipcMain.handle('window:open-post-game', () => {
     if (openPostGameFn) openPostGameFn()
+  })
+
+  // Performance boost
+  ipcMain.handle('performance:get-status', async () => {
+    if (!performanceManager) return { boosted: false, powerPlan: 'Unknown', platform: process.platform }
+    return performanceManager.getStatus()
+  })
+
+  ipcMain.handle('performance:boost', async () => {
+    if (!performanceManager) return []
+    const currentGame = gameDetector.currentGame() ?? undefined
+    return performanceManager.boost(currentGame)
+  })
+
+  ipcMain.handle('performance:restore', async () => {
+    if (!performanceManager) return []
+    return performanceManager.restore()
   })
 }

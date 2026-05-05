@@ -103,6 +103,7 @@ const navLinks = [
   { to: '/dashboard', label: 'Dashboard' },
   { to: '/clips', label: 'Clips' },
   { to: '/squad', label: 'Squad' },
+  { to: '/performance', label: 'Performance' },
   { to: '/settings', label: 'Settings' }
 ]
 

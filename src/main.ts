@@ -14,6 +14,7 @@ import SplashView from './views/SplashView.vue'
 import ClipsView from './views/ClipsView.vue'
 import OverlayView from './views/OverlayView.vue'
 import SquadView from './views/SquadView.vue'
+import PerformanceView from './views/PerformanceView.vue'
 
 const PUBLIC_ROUTES = ['/login', '/welcome', '/splash', '/overlay']
 
@@ -30,7 +31,8 @@ const router = createRouter({
     { path: '/settings', component: SettingsView },
     { path: '/clips', component: ClipsView },
     { path: '/overlay', component: OverlayView },
-    { path: '/squad', component: SquadView }
+    { path: '/squad', component: SquadView },
+    { path: '/performance', component: PerformanceView }
   ]
 })
 

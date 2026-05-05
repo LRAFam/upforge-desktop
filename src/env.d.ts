@@ -214,6 +214,11 @@ declare global {
         toggle: () => Promise<void>
         setInteractive: (interactive: boolean) => void
       }
+      performance: {
+        getStatus: () => Promise<{ boosted: boolean; powerPlan: string; platform: string }>
+        boost: () => Promise<Array<{ name: string; success: boolean; message: string }>>
+        restore: () => Promise<Array<{ name: string; success: boolean; message: string }>>
+      }
       on: (channel: string, callback: (...args: unknown[]) => void) => (() => void)
     }
   }

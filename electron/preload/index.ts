@@ -79,6 +79,11 @@ const api = {
     toggle: () => ipcRenderer.invoke('overlay:toggle'),
     setInteractive: (interactive: boolean) => ipcRenderer.send('overlay:set-interactive', interactive),
   },
+  performance: {
+    getStatus: () => ipcRenderer.invoke('performance:get-status'),
+    boost: () => ipcRenderer.invoke('performance:boost'),
+    restore: () => ipcRenderer.invoke('performance:restore'),
+  },
   on: (channel: string, callback: (...args: unknown[]) => void): (() => void) => {
     const allowed = [
       'post-game:upload-start',
