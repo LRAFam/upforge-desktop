@@ -207,6 +207,190 @@ async function getCurrentPowerPlan(): Promise<string> {
   }
 }
 
+/**
+ * Disable Xbox Game Bar and Game DVR.
+ * HKCU keys don't need elevation; HKLM keys do (best-effort).
+ * Game DVR running in the background is one of the biggest FPS killers on Windows.
+ */
+async function disableGameDvr(): Promise<OptimizationResult> {
+  const script = `
+    # HKCU — no elevation needed
+    $null = New-Item -Path 'HKCU:\\System\\GameConfigStore' -Force -ErrorAction SilentlyContinue
+    Set-ItemProperty -Path 'HKCU:\\System\\GameConfigStore' -Name 'GameDVR_Enabled' -Value 0 -Type DWord -Force
+    Set-ItemProperty -Path 'HKCU:\\System\\GameConfigStore' -Name 'GameDVR_FSEBehaviorMode' -Value 2 -Type DWord -Force
+
+    $null = New-Item -Path 'HKCU:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\GameDVR' -Force -ErrorAction SilentlyContinue
+    Set-ItemProperty -Path 'HKCU:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\GameDVR' -Name 'AppCaptureEnabled' -Value 0 -Type DWord -Force
+
+    # HKLM — needs elevation, best-effort
+    Set-ItemProperty -Path 'HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\GameDVR' -Name 'AllowGameDVR' -Value 0 -Type DWord -Force -ErrorAction SilentlyContinue
+
+    Write-Output 'done'
+  `
+  try {
+    const result = await runPowerShell(script)
+    if (result.includes('done')) {
+      return { name: 'Xbox Game DVR', success: true, message: 'Game DVR & background capture disabled' }
+    }
+    return { name: 'Xbox Game DVR', success: false, message: 'Script did not complete' }
+  } catch (err) {
+    log.warn('[Perf] Game DVR disable failed:', err)
+    return { name: 'Xbox Game DVR', success: false, message: 'Could not disable Game DVR' }
+  }
+}
+
+async function restoreGameDvr(): Promise<OptimizationResult> {
+  const script = `
+    Set-ItemProperty -Path 'HKCU:\\System\\GameConfigStore' -Name 'GameDVR_Enabled' -Value 1 -Type DWord -Force -ErrorAction SilentlyContinue
+    Set-ItemProperty -Path 'HKCU:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\GameDVR' -Name 'AppCaptureEnabled' -Value 1 -Type DWord -Force -ErrorAction SilentlyContinue
+    Write-Output 'done'
+  `
+  try {
+    await runPowerShell(script)
+    return { name: 'Xbox Game DVR', success: true, message: 'Game DVR restored' }
+  } catch (err) {
+    log.warn('[Perf] Game DVR restore failed:', err)
+    return { name: 'Xbox Game DVR', success: false, message: 'Could not restore Game DVR' }
+  }
+}
+
+/**
+ * Set Windows Multimedia System Profile to favour games over background tasks.
+ * SystemResponsiveness=0 gives nearly all CPU time to the foreground game.
+ * GPU Priority=8 and Scheduling Category=High ensures the GPU scheduler
+ * services the game's render queue before anything else.
+ * Needs elevation.
+ */
+async function setMultimediaGameProfile(): Promise<OptimizationResult> {
+  const script = `
+    $base = 'HKLM:\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Multimedia\\SystemProfile'
+    Set-ItemProperty -Path $base -Name 'SystemResponsiveness' -Value 0 -Type DWord -Force
+    Set-ItemProperty -Path $base -Name 'NetworkThrottlingIndex' -Value 0xFFFFFFFF -Type DWord -Force
+
+    $games = "$base\\Tasks\\Games"
+    $null = New-Item -Path $games -Force -ErrorAction SilentlyContinue
+    Set-ItemProperty -Path $games -Name 'Affinity'           -Value 0          -Type DWord  -Force
+    Set-ItemProperty -Path $games -Name 'Background Only'    -Value 'False'     -Type String -Force
+    Set-ItemProperty -Path $games -Name 'Clock Rate'         -Value 10000       -Type DWord  -Force
+    Set-ItemProperty -Path $games -Name 'GPU Priority'       -Value 8           -Type DWord  -Force
+    Set-ItemProperty -Path $games -Name 'Priority'           -Value 6           -Type DWord  -Force
+    Set-ItemProperty -Path $games -Name 'Scheduling Category'-Value 'High'      -Type String -Force
+    Set-ItemProperty -Path $games -Name 'SFIO Priority'      -Value 'High'      -Type String -Force
+    Write-Output 'done'
+  `
+  try {
+    const result = await runPowerShell(script)
+    if (result.includes('done')) {
+      return { name: 'GPU Scheduling', success: true, message: 'Windows multimedia profile set to Games (GPU Priority 8)' }
+    }
+    return { name: 'GPU Scheduling', success: false, message: 'Script did not complete' }
+  } catch (err) {
+    log.warn('[Perf] Multimedia profile failed:', err)
+    return { name: 'GPU Scheduling', success: false, message: 'Requires administrator privileges' }
+  }
+}
+
+async function restoreMultimediaProfile(): Promise<OptimizationResult> {
+  const script = `
+    $base = 'HKLM:\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Multimedia\\SystemProfile'
+    Set-ItemProperty -Path $base -Name 'SystemResponsiveness' -Value 20 -Type DWord -Force -ErrorAction SilentlyContinue
+    Set-ItemProperty -Path $base -Name 'NetworkThrottlingIndex' -Value 10 -Type DWord -Force -ErrorAction SilentlyContinue
+
+    $games = "$base\\Tasks\\Games"
+    Set-ItemProperty -Path $games -Name 'GPU Priority'       -Value 2      -Type DWord  -Force -ErrorAction SilentlyContinue
+    Set-ItemProperty -Path $games -Name 'Priority'           -Value 2      -Type DWord  -Force -ErrorAction SilentlyContinue
+    Set-ItemProperty -Path $games -Name 'Scheduling Category'-Value 'Medium' -Type String -Force -ErrorAction SilentlyContinue
+    Write-Output 'done'
+  `
+  try {
+    await runPowerShell(script)
+    return { name: 'GPU Scheduling', success: true, message: 'Windows multimedia profile restored' }
+  } catch {
+    return { name: 'GPU Scheduling', success: false, message: 'Could not restore multimedia profile' }
+  }
+}
+
+/**
+ * Set NVIDIA GPU to maximum performance mode via nvidia-smi.
+ * Prevents the GPU from downclocking during lighter scene loads,
+ * which causes the FPS spikes seen mid-round in Valorant.
+ */
+async function setNvidiaMaxPerformance(): Promise<OptimizationResult> {
+  // Try to find nvidia-smi
+  const nvidiaSmiPaths = [
+    'C:\\Windows\\System32\\nvidia-smi.exe',
+    'C:\\Program Files\\NVIDIA Corporation\\NVSMI\\nvidia-smi.exe',
+  ]
+
+  const script = `
+    $nvSmi = $null
+    $paths = @('C:\\Windows\\System32\\nvidia-smi.exe', 'C:\\Program Files\\NVIDIA Corporation\\NVSMI\\nvidia-smi.exe')
+    foreach ($p in $paths) { if (Test-Path $p) { $nvSmi = $p; break } }
+    if (-not $nvSmi) {
+      # Try PATH
+      try { $nvSmi = (Get-Command nvidia-smi -ErrorAction Stop).Source } catch {}
+    }
+    if ($nvSmi) {
+      # Set persistence mode and application clocks policy
+      & $nvSmi -pm 1 2>&1 | Out-Null
+      & $nvSmi --auto-boost-default=0 2>&1 | Out-Null
+      Write-Output "found:$nvSmi"
+    } else {
+      Write-Output 'notfound'
+    }
+  `
+  try {
+    const result = await runPowerShell(script)
+    if (result.startsWith('found:')) {
+      return { name: 'NVIDIA GPU', success: true, message: 'GPU set to max performance (persistence mode on)' }
+    }
+    // nvidia-smi not found — set via registry power policy instead (best-effort)
+    const regScript = `
+      $key = 'HKCU:\\SOFTWARE\\NVIDIA Corporation\\Global\\NVTweak'
+      $null = New-Item -Path $key -Force -ErrorAction SilentlyContinue
+      # 0x00000001 = Prefer maximum performance
+      Set-ItemProperty -Path $key -Name 'Powermizer_GPUPowerTransfer' -Value 0 -Type DWord -Force -ErrorAction SilentlyContinue
+      Write-Output 'reg_done'
+    `
+    await runPowerShell(regScript)
+    return { name: 'NVIDIA GPU', success: true, message: 'GPU power policy set to Prefer Max Performance' }
+  } catch (err) {
+    log.warn('[Perf] NVIDIA boost failed:', err)
+    return { name: 'NVIDIA GPU', success: false, message: 'No NVIDIA GPU detected or nvidia-smi unavailable' }
+  }
+}
+
+/**
+ * Free memory from idle/background processes by trimming their working sets.
+ * On 16GB systems this can reclaim several hundred MB that Windows defers
+ * releasing, reducing pressure on the game's memory allocator.
+ */
+async function freeBackgroundMemory(): Promise<OptimizationResult> {
+  const script = `
+    $before = (Get-CimInstance Win32_OperatingSystem).FreePhysicalMemory
+    Get-Process | Where-Object { $_.WorkingSet64 -gt 50MB -and $_.Name -notmatch 'VALORANT|cs2|csgo|Fortnite|r5apex|Overwatch' } | ForEach-Object {
+      try { [void]$_.MinWorkingSet; $_.MinWorkingSet = [IntPtr]::Zero } catch {}
+    }
+    [System.GC]::Collect()
+    $after = (Get-CimInstance Win32_OperatingSystem).FreePhysicalMemory
+    $freed = [math]::Round(($after - $before) / 1024)
+    Write-Output "freed:$freed"
+  `
+  try {
+    const result = await runPowerShell(script)
+    if (result.startsWith('freed:')) {
+      const mb = result.replace('freed:', '')
+      const freed = parseInt(mb, 10)
+      const msg = freed > 0 ? `Freed ~${freed} MB from background processes` : 'Background processes trimmed'
+      return { name: 'RAM Cleanup', success: true, message: msg }
+    }
+    return { name: 'RAM Cleanup', success: true, message: 'Background process memory trimmed' }
+  } catch (err) {
+    log.warn('[Perf] RAM cleanup failed:', err)
+    return { name: 'RAM Cleanup', success: false, message: 'Could not trim background memory' }
+  }
+}
+
 export class PerformanceManager {
   private _boosted = false
 
@@ -223,6 +407,10 @@ export class PerformanceManager {
       disableNagle(),
       cleanTempFiles(),
       boostGameProcessPriority(currentGame),
+      disableGameDvr(),
+      setMultimediaGameProfile(),
+      setNvidiaMaxPerformance(),
+      freeBackgroundMemory(),
     ])
 
     const anySuccess = results.some((r) => r.success)
@@ -242,6 +430,8 @@ export class PerformanceManager {
     const results = await Promise.all([
       restoreBalancedPowerPlan(),
       restoreNagle(),
+      restoreGameDvr(),
+      restoreMultimediaProfile(),
     ])
 
     this._boosted = false

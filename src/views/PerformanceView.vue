@@ -150,10 +150,14 @@ const results = ref<OptimizationResult[]>([])
 
 const previewItems = [
   { icon: '⚡', name: 'Power Plan', description: 'Switch to High Performance for maximum CPU & GPU throughput' },
+  { icon: '🎮', name: 'Xbox Game DVR', description: 'Disable background Game Bar capture — a major FPS killer in Valorant' },
+  { icon: '🖥️', name: 'GPU Scheduling', description: 'Set GPU Priority 8 & SystemResponsiveness=0 so Windows favours your game' },
+  { icon: '🟢', name: 'NVIDIA GPU', description: 'Force GPU to max performance mode, preventing mid-round clock drops' },
+  { icon: '🧹', name: 'RAM Cleanup', description: 'Trim idle background processes to free memory for the game' },
   { icon: '🌐', name: 'Network Latency', description: 'Disable Nagle algorithm to reduce ping spikes' },
   { icon: '🔄', name: 'DNS Cache', description: 'Flush DNS to ensure fastest server connections' },
-  { icon: '🗑️', name: 'Temp Files', description: 'Clean stale temp files to free disk & reduce I/O load' },
-  { icon: '🎮', name: 'Process Priority', description: 'Elevate game process to High priority for stable FPS' },
+  { icon: '🗑️', name: 'Temp Files', description: 'Clean stale temp files to reduce I/O load' },
+  { icon: '⬆️', name: 'Process Priority', description: 'Elevate game process to High priority for stable FPS' },
 ]
 
 const hasAdminFailures = computed(() =>
