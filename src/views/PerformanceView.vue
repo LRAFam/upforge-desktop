@@ -6,7 +6,9 @@
       v-if="platform && platform !== 'win32'"
       class="flex items-center gap-2 px-3 py-2.5 rounded-lg bg-white/[0.03] border border-white/[0.07] text-gray-400 text-xs"
     >
-      <span class="text-base">🖥️</span>
+      <svg class="w-3.5 h-3.5 flex-shrink-0 text-gray-500" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M9 17.25v1.007a3 3 0 01-.879 2.122L7.5 21h9l-.621-.621A3 3 0 0115 18.257V17.25m6-12V15a2.25 2.25 0 01-2.25 2.25H5.25A2.25 2.25 0 013 15V5.25m18 0A2.25 2.25 0 0018.75 3H5.25A2.25 2.25 0 003 5.25m18 0H3" />
+      </svg>
       <span>Performance boost is only available on Windows.</span>
     </div>
 
@@ -61,7 +63,12 @@
           </svg>
           Optimising…
         </span>
-        <span v-else>⚡ Boost Performance</span>
+        <span v-else class="flex items-center justify-center gap-2">
+          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 13.5l10.5-11.25L12 10.5h8.25L9.75 21.75 12 13.5H3.75z" />
+          </svg>
+          Boost Performance
+        </span>
       </button>
 
       <!-- What this does (pre-boost) -->
@@ -73,7 +80,9 @@
             :key="item.name"
             class="flex items-center gap-2.5 px-3 py-2 rounded-lg bg-white/[0.02] border border-white/[0.04]"
           >
-            <span class="text-base flex-shrink-0">{{ item.icon }}</span>
+            <svg class="w-3.5 h-3.5 flex-shrink-0 text-gray-500" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" :d="item.iconPath" />
+            </svg>
             <div class="min-w-0">
               <p class="text-xs font-medium text-gray-300">{{ item.name }}</p>
               <p class="text-[10px] text-gray-600">{{ item.description }}</p>
@@ -96,9 +105,13 @@
                 : 'bg-white/[0.02] border-white/[0.05]'
             ]"
           >
-            <span class="text-sm flex-shrink-0">
-              {{ result.success ? '✅' : '⚠️' }}
-            </span>
+            <!-- Success: check circle / Failure: warning triangle -->
+            <svg v-if="result.success" class="w-3.5 h-3.5 flex-shrink-0 text-green-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            <svg v-else class="w-3.5 h-3.5 flex-shrink-0 text-orange-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
+            </svg>
             <div class="min-w-0 flex-1">
               <p class="text-xs font-medium text-gray-300">{{ result.name }}</p>
               <p :class="['text-[10px]', result.success ? 'text-gray-500' : 'text-orange-500/80']">
@@ -113,7 +126,9 @@
           v-if="hasAdminFailures"
           class="flex items-start gap-2 px-3 py-2 rounded-lg bg-orange-500/[0.06] border border-orange-500/20 text-[10px] text-orange-400/80 mt-1"
         >
-          <span class="flex-shrink-0 mt-0.5">ℹ️</span>
+          <svg class="w-3 h-3 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M11.25 11.25l.041-.02a.75.75 0 011.063.852l-.708 2.836a.75.75 0 001.063.853l.041-.021M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9-3.75h.008v.008H12V8.25z" />
+          </svg>
           <span>Some optimisations require administrator privileges. Try running UpForge as administrator for full boost.</span>
         </div>
       </div>
@@ -148,16 +163,53 @@ const powerPlan = ref('')
 const platform = ref('')
 const results = ref<OptimizationResult[]>([])
 
+// Heroicons outline paths (24px viewBox, stroke-based)
 const previewItems = [
-  { icon: '⚡', name: 'Power Plan', description: 'Switch to High Performance for maximum CPU & GPU throughput' },
-  { icon: '🎮', name: 'Xbox Game DVR', description: 'Disable background Game Bar capture — a major FPS killer in Valorant' },
-  { icon: '🖥️', name: 'GPU Scheduling', description: 'Set GPU Priority 8 & SystemResponsiveness=0 so Windows favours your game' },
-  { icon: '🟢', name: 'NVIDIA GPU', description: 'Force GPU to max performance mode, preventing mid-round clock drops' },
-  { icon: '🧹', name: 'RAM Cleanup', description: 'Trim idle background processes to free memory for the game' },
-  { icon: '🌐', name: 'Network Latency', description: 'Disable Nagle algorithm to reduce ping spikes' },
-  { icon: '🔄', name: 'DNS Cache', description: 'Flush DNS to ensure fastest server connections' },
-  { icon: '🗑️', name: 'Temp Files', description: 'Clean stale temp files to reduce I/O load' },
-  { icon: '⬆️', name: 'Process Priority', description: 'Elevate game process to High priority for stable FPS' },
+  {
+    name: 'Power Plan',
+    description: 'Switch to High Performance for maximum CPU & GPU throughput',
+    iconPath: 'M3.75 13.5l10.5-11.25L12 10.5h8.25L9.75 21.75 12 13.5H3.75z',
+  },
+  {
+    name: 'Xbox Game DVR',
+    description: 'Disable background Game Bar capture — a major FPS killer in Valorant',
+    iconPath: 'M15.75 10.5l4.72-4.72a.75.75 0 011.28.53v11.38a.75.75 0 01-1.28.53l-4.72-4.72M4.5 18.75h9a2.25 2.25 0 002.25-2.25v-9a2.25 2.25 0 00-2.25-2.25h-9A2.25 2.25 0 002.25 7.5v9a2.25 2.25 0 002.25 2.25z',
+  },
+  {
+    name: 'GPU Scheduling',
+    description: 'Set GPU Priority 8 & SystemResponsiveness=0 so Windows favours your game',
+    iconPath: 'M8.25 3v1.5M4.5 8.25H3m18 0h-1.5M4.5 12H3m18 0h-1.5m-15 3.75H3m18 0h-1.5M8.25 19.5V21M12 3v1.5m0 15V21m3.75-18v1.5m0 15V21m-9-1.5h10.5a2.25 2.25 0 002.25-2.25V6.75a2.25 2.25 0 00-2.25-2.25H6.75A2.25 2.25 0 004.5 6.75v10.5a2.25 2.25 0 002.25 2.25zm.75-12h9v9h-9v-9z',
+  },
+  {
+    name: 'NVIDIA GPU',
+    description: 'Force GPU to max performance mode, preventing mid-round clock drops',
+    iconPath: 'M9 17.25v1.007a3 3 0 01-.879 2.122L7.5 21h9l-.621-.621A3 3 0 0115 18.257V17.25m6-12V15a2.25 2.25 0 01-2.25 2.25H5.25A2.25 2.25 0 013 15V5.25m18 0A2.25 2.25 0 0018.75 3H5.25A2.25 2.25 0 003 5.25m18 0H3',
+  },
+  {
+    name: 'RAM Cleanup',
+    description: 'Trim idle background processes to free memory for the game',
+    iconPath: 'M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0',
+  },
+  {
+    name: 'Network Latency',
+    description: 'Disable Nagle algorithm to reduce ping spikes',
+    iconPath: 'M8.288 15.038a5.25 5.25 0 017.424 0M5.106 11.856c3.807-3.808 9.98-3.808 13.788 0M1.924 8.674c5.565-5.565 14.587-5.565 20.152 0M12.53 18.22l-.53.53-.53-.53a.75.75 0 011.06 0z',
+  },
+  {
+    name: 'DNS Cache',
+    description: 'Flush DNS to ensure fastest server connections',
+    iconPath: 'M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99',
+  },
+  {
+    name: 'Temp Files',
+    description: 'Clean stale temp files to reduce I/O load',
+    iconPath: 'M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0',
+  },
+  {
+    name: 'Process Priority',
+    description: 'Elevate game process to High priority for stable FPS',
+    iconPath: 'M4.5 10.5L12 3m0 0l7.5 7.5M12 3v18',
+  },
 ]
 
 const hasAdminFailures = computed(() =>
@@ -171,7 +223,6 @@ async function loadStatus() {
     powerPlan.value = status.powerPlan
     platform.value = status.platform
   } catch {
-    // IPC unavailable (macOS dev, etc.)
     platform.value = navigator.platform.toUpperCase().includes('MAC') ? 'darwin' : 'win32'
   }
 }
@@ -208,3 +259,4 @@ async function restore() {
 
 onMounted(loadStatus)
 </script>
+
