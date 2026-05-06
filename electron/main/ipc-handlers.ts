@@ -99,69 +99,58 @@ export function setupClipHandlers(
     clipStore.update(id, { uploadStatus: 'uploading' })
 
     try {
-      const fileData = fs.readFileSync(clip.path)
-      const boundary = `UpForgeBoundary${Date.now()}`
-      const fileName = path.basename(clip.path)
+      // Step 1: Get a presigned S3 URL (tiny JSON request — no nginx body limit)
+      const presignPayload = JSON.stringify({
+        trigger:          clip.trigger,
+        map:              clip.map ?? undefined,
+        agent:            clip.agent ?? undefined,
+        duration_seconds: clip.durationSeconds,
+        round:            clip.round ?? undefined,
+        analysis_id:      clip.analysisJobId ?? undefined,
+      })
+      const { upload_url: uploadUrl, clip_uuid: clipUuid } = await _apiPost(
+        apiBase, '/api/clips/presign', presignPayload, token
+      ) as { upload_url: string; clip_uuid: string }
 
-      // Build multipart/form-data body
-      const parts: Buffer[] = []
-      const addField = (name: string, value: string) => {
-        parts.push(Buffer.from(
-          `--${boundary}\r\nContent-Disposition: form-data; name="${name}"\r\n\r\n${value}\r\n`
-        ))
-      }
-      addField('trigger', clip.trigger)
-      if (clip.map) addField('map', clip.map)
-      if (clip.agent) addField('agent', clip.agent)
-      addField('duration_seconds', String(clip.durationSeconds))
-      if (clip.round != null) addField('round', String(clip.round))
-      if (clip.analysisJobId) addField('analysis_id', clip.analysisJobId)
-
-      parts.push(Buffer.from(
-        `--${boundary}\r\nContent-Disposition: form-data; name="clip"; filename="${fileName}"\r\nContent-Type: video/mp4\r\n\r\n`
-      ))
-      parts.push(fileData)
-      parts.push(Buffer.from(`\r\n--${boundary}--\r\n`))
-
-      const body = Buffer.concat(parts)
-      const url = new URL(`${apiBase}/api/clips`)
-      const proto = url.protocol === 'https:' ? https : http
-
-      const apiClipId = await new Promise<number>((resolve, reject) => {
-        const req = proto.request({
-          method: 'POST',
-          hostname: url.hostname,
-          port: url.port || (url.protocol === 'https:' ? 443 : 80),
-          path: url.pathname,
+      // Step 2: Stream the file directly to S3 (bypasses nginx — no body size limit)
+      const fileSize = fs.statSync(clip.path).size
+      const s3Url = new URL(uploadUrl)
+      const s3Proto = s3Url.protocol === 'https:' ? https : http
+      await new Promise<void>((resolve, reject) => {
+        const req = s3Proto.request({
+          method:   'PUT',
+          hostname: s3Url.hostname,
+          port:     s3Url.port || (s3Url.protocol === 'https:' ? 443 : 80),
+          path:     s3Url.pathname + s3Url.search,
           headers: {
-            'Authorization': `Bearer ${token}`,
-            'Content-Type': `multipart/form-data; boundary=${boundary}`,
-            'Content-Length': body.length,
-            'Accept': 'application/json',
+            'Content-Type':   'video/mp4',
+            'Content-Length': fileSize,
           },
         }, (res) => {
-          let data = ''
-          res.on('data', (c: Buffer) => { data += c.toString() })
+          res.resume()
           res.on('end', () => {
-            try {
-              const json = JSON.parse(data)
-              if (res.statusCode === 402) reject(new UpgradeRequiredError(
-                json.message || 'Upgrade required',
-                json.error || 'upgrade_required',
-                json.upgrade_url || 'https://upforge.gg/pricing'
-              ))
-              else if ((res.statusCode ?? 0) >= 400) reject(new Error(json.message || `Upload failed (${res.statusCode})`))
-              else resolve(json.id ?? json.clip?.id)
-            } catch {
-              reject(new Error(`Invalid server response (HTTP ${res.statusCode})`))
-            }
+            if ((res.statusCode ?? 0) >= 400) reject(new Error(`S3 upload failed (${res.statusCode})`))
+            else resolve()
           })
         })
         req.on('error', reject)
-        req.setTimeout(120_000, () => req.destroy(new Error('Upload timed out')))
-        req.write(body)
-        req.end()
+        req.setTimeout(300_000, () => req.destroy(new Error('S3 upload timed out')))
+        fs.createReadStream(clip.path).pipe(req)
       })
+
+      // Step 3: Tell the API the upload is complete → creates the Clip record
+      const completePayload = JSON.stringify({
+        clip_uuid:        clipUuid,
+        trigger:          clip.trigger,
+        map:              clip.map ?? undefined,
+        agent:            clip.agent ?? undefined,
+        duration_seconds: clip.durationSeconds,
+        round:            clip.round ?? undefined,
+        analysis_id:      clip.analysisJobId ?? undefined,
+      })
+      const { id: apiClipId } = await _apiPost(
+        apiBase, '/api/clips/complete', completePayload, token
+      ) as { id: number }
 
       clipStore.update(id, { uploadStatus: 'uploaded', apiClipId })
       return { ok: true, apiClipId }
