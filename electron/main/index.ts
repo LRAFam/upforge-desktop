@@ -188,8 +188,15 @@ async function extractKillClipsOnly(
   timeline: MatchData,
   analysisJobId: string | null
 ): Promise<void> {
-  if (!fs.existsSync(videoPath)) return
-  if (!timeline.playerKills || timeline.playerKills.length === 0) return
+  if (!fs.existsSync(videoPath)) {
+    log.warn('[LateClipExtract] Source video not found — skipping:', videoPath)
+    logActivity('Late clip extraction skipped — recording file not found')
+    return
+  }
+  if (!timeline.playerKills || timeline.playerKills.length === 0) {
+    log.warn('[LateClipExtract] No player kills in timeline — nothing to clip')
+    return
+  }
 
   const map = timeline.map ?? null
   const agent = timeline.agent ?? null
@@ -279,7 +286,11 @@ async function extractMatchClips(
   timeline: MatchData | null,
   analysisJobId: string | null
 ): Promise<void> {
-  if (!fs.existsSync(videoPath)) return
+  if (!fs.existsSync(videoPath)) {
+    log.warn('[ClipExtract] Source video not found — skipping clip extraction:', videoPath)
+    logActivity('Clip extraction skipped — recording file not found')
+    return
+  }
 
   const recordingStart = currentRecordingStartTime ?? 0
   const map = timeline?.map ?? null
@@ -448,6 +459,17 @@ async function extractMatchClips(
         silent: true,
       }).show()
     }
+  } else {
+    const killCount = timeline?.playerKills?.length ?? 0
+    const hotkeyCount = hotkeyBookmarks.length
+    if (killCount === 0 && hotkeyCount === 0) {
+      logActivity('No clips extracted — no kills in timeline (MatchDetails may not be ready yet) and no hotkey bookmarks')
+    } else if (killCount === 0) {
+      logActivity('No kill clips extracted — no kills in timeline; hotkey clips may have been saved')
+    } else {
+      logActivity('No clips extracted — all kills lacked video timestamps')
+    }
+    log.info(`[ClipExtract] 0 clips produced — kills=${killCount} hotkeys=${hotkeyCount} timeline=${!!timeline}`)
   }
 
   // Reset bookmarks for next match
@@ -646,6 +668,11 @@ function setupGameDetection(): void {
     const gameMode = riotLocalApi.getLastGameMode() ?? 'UNKNOWN'
     const config = settingsManager?.get()
     const autoAnalyse = config?.autoAnalyse !== false
+
+    log.info(
+      `[HandleMatchEnd] duration=${recordingDuration}s videoPath=${videoPath} fileSize=${fileSize} ` +
+      `kills=${timeline?.playerKills?.length ?? 0} matchId=${timeline?.matchId ?? 'none'}`
+    )
 
     tray?.setToolTip('UpForge — Valorant AI Coaching')
 

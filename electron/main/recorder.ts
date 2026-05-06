@@ -113,6 +113,7 @@ export class Recorder {
     this._lastError = null
     this._stderrBuffer = ''
     this._recordedWithoutAudio = false
+    this._startedAt = null // reset so getRecordingDuration() returns 0 if this start fails
 
     const dir = config?.savePath ?? join(app.getPath('userData'), 'recordings')
     if (!existsSync(dir)) mkdirSync(dir, { recursive: true })
@@ -274,27 +275,50 @@ export class Recorder {
 
   async stop(): Promise<string | null> {
     if (!this._process || !this._recording) {
-      return null
+      // ffmpeg may have crashed mid-recording — log so it's visible in the app log
+      if (this._startedAt !== null && !this._recording) {
+        console.warn('[Recorder] stop() called but ffmpeg already exited — recording may be incomplete or missing')
+      }
+      this._startedAt = null // ensure stale start time doesn't affect the next match
+      return this._outputPath
     }
 
     return new Promise((resolve) => {
       const outputPath = this._outputPath
+      let resolved = false
+
+      const doResolve = () => {
+        if (!resolved) {
+          resolved = true
+          resolve(outputPath)
+        }
+      }
 
       this._process!.once('exit', () => {
         this._recording = false
         this._process = null
-        resolve(outputPath)
+        this._startedAt = null
+        doResolve()
       })
 
-      // Send 'q' to ffmpeg stdin for graceful stop (finishes writing MP4)
+      // Send 'q' to ffmpeg stdin for graceful stop (finishes writing MP4 moov atom)
       this._process!.stdin?.write('q')
       this._process!.stdin?.end()
 
-      // Force kill after 10s if graceful stop doesn't work
+      // If graceful stop takes >10s, send SIGTERM then wait up to 5s more before giving up.
+      // We MUST NOT resolve before the process exits — the moov atom is written on exit.
       setTimeout(() => {
         if (this._process) {
+          console.warn('[Recorder] Graceful stop timed out — sending SIGTERM')
           this._process.kill('SIGTERM')
-          resolve(outputPath)
+          // Give 5s after SIGTERM for ffmpeg to finish flushing, then SIGKILL
+          setTimeout(() => {
+            if (this._process) {
+              console.warn('[Recorder] SIGTERM timed out — force killing with SIGKILL')
+              this._process.kill('SIGKILL')
+            }
+            doResolve() // last resort — file may be incomplete
+          }, 5000)
         }
       }, 10000)
     })
