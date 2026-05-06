@@ -1277,11 +1277,15 @@ async function doUploadAndAnalyse(
     tray?.setToolTip('UpForge — Valorant AI Coaching')
 
     // Quota exceeded — send upgrade prompt (no retry makes sense here)
-    if (err instanceof UpgradeRequiredError) {
+    const isUpgradeError = err instanceof UpgradeRequiredError
+      || (err instanceof Error && err.name === 'UpgradeRequiredError')
+      || (err instanceof Error && /analysis.limit.reached|upgrade.required/i.test(err.message))
+    if (isUpgradeError) {
+      const upgradeErr = err as UpgradeRequiredError
       send('post-game:upload-error', {
         message: msg,
         needsUpgrade: true,
-        upgradeUrl: err.upgradeUrl,
+        upgradeUrl: (upgradeErr.upgradeUrl) || 'https://upforge.gg/pricing',
       })
       return null
     }

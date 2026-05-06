@@ -157,7 +157,8 @@ export class UploadManager {
           } catch {
             const preview = data.slice(0, 200).replace(/\n/g, ' ').trim()
             console.error(`[UploadManager] Non-JSON HTTP ${status}: ${preview}`)
-            reject(new Error(`Unexpected server response (HTTP ${status})`))
+            if (status === 402) reject(new UpgradeRequiredError('Analysis limit reached. Upgrade to continue.'))
+            else reject(new Error(`Unexpected server response (HTTP ${status})`))
           }
         })
       })
