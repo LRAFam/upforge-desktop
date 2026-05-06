@@ -5,6 +5,7 @@ import path from 'path'
 import { app } from 'electron'
 import { AuthManager } from './auth-manager'
 import { MatchData } from './riot-local-api'
+import { UpgradeRequiredError } from './errors'
 
 export interface UploadOptions {
   videoPath: string
@@ -146,7 +147,12 @@ export class UploadManager {
           const status = res.statusCode ?? 0
           try {
             const json = JSON.parse(data)
-            if (status >= 400) reject(new Error(json.message || `Request failed (${status})`))
+            if (status === 402) reject(new UpgradeRequiredError(
+              json.message || 'Analysis limit reached. Upgrade to continue.',
+              json.error || 'analysis_limit_reached',
+              json.upgrade_url || 'https://upforge.gg/pricing',
+            ))
+            else if (status >= 400) reject(new Error(json.message || `Request failed (${status})`))
             else resolve(json)
           } catch {
             const preview = data.slice(0, 200).replace(/\n/g, ' ').trim()

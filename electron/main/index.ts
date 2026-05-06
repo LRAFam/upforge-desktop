@@ -21,6 +21,7 @@ import { UploadManager, savePendingJob, clearPendingJob, readPendingJob } from '
 import { AuthManager } from './auth-manager'
 import { SettingsManager } from './settings-manager'
 import { setupIpcHandlers, setupClipHandlers } from './ipc-handlers'
+import { UpgradeRequiredError } from './errors'
 import { RecordingsStore } from './recordings-store'
 import { ClipExtractor } from './clip-extractor'
 import { ClipStore } from './clip-store'
@@ -1274,6 +1275,16 @@ async function doUploadAndAnalyse(
     const msg = err instanceof Error ? err.message : 'Upload failed'
     logActivity(`Upload failed: ${msg}`)
     tray?.setToolTip('UpForge — Valorant AI Coaching')
+
+    // Quota exceeded — send upgrade prompt (no retry makes sense here)
+    if (err instanceof UpgradeRequiredError) {
+      send('post-game:upload-error', {
+        message: msg,
+        needsUpgrade: true,
+        upgradeUrl: err.upgradeUrl,
+      })
+      return null
+    }
 
     // Try to ensure the recording is saved to the pending store so the user can retry.
     // If this is the first attempt (no recordingId yet) and the file still exists, save now.

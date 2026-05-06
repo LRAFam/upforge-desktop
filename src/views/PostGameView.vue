@@ -226,23 +226,46 @@
 
       <!-- Error -->
       <div v-else-if="state === 'error'" class="w-full space-y-3 text-center">
-        <div class="w-11 h-11 mx-auto rounded-full bg-red-500/10 border border-red-500/20 flex items-center justify-center">
-          <svg class="w-5 h-5 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
-          </svg>
-        </div>
-        <div>
-          <p class="text-sm font-semibold text-red-400">Upload failed</p>
-          <p class="text-[11px] text-gray-500 mt-1">{{ errorMessage }}</p>
-        </div>
-        <div class="flex gap-2 pt-1">
-          <button
-            :disabled="!pendingRecordingId"
-            class="flex-1 py-2 text-xs font-semibold bg-gradient-to-r from-red-500 to-orange-600 hover:from-red-600 hover:to-orange-700 text-white rounded-lg transition-all shadow-sm shadow-red-500/20 disabled:opacity-40 disabled:cursor-not-allowed"
-            @click="retryUpload"
-          >Retry</button>
-          <button class="px-3 py-2 text-[11px] text-gray-500 hover:text-gray-300 bg-white/[0.03] hover:bg-white/[0.06] border border-white/[0.06] rounded-lg transition-colors" @click="dismiss">Dismiss</button>
-        </div>
+        <!-- Quota exceeded -->
+        <template v-if="needsUpgrade">
+          <div class="w-11 h-11 mx-auto rounded-full bg-amber-500/10 border border-amber-500/20 flex items-center justify-center">
+            <svg class="w-5 h-5 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M13 10V3L4 14h7v7l9-11h-7z"/>
+            </svg>
+          </div>
+          <div>
+            <p class="text-sm font-semibold text-amber-400">Analysis limit reached</p>
+            <p class="text-[11px] text-gray-500 mt-1">{{ errorMessage }}</p>
+          </div>
+          <div class="flex gap-2 pt-1">
+            <button
+              class="flex-1 py-2 text-xs font-semibold bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white rounded-lg transition-all shadow-sm shadow-amber-500/20"
+              @click="openUpgrade"
+            >Upgrade Plan</button>
+            <button class="px-3 py-2 text-[11px] text-gray-500 hover:text-gray-300 bg-white/[0.03] hover:bg-white/[0.06] border border-white/[0.06] rounded-lg transition-colors" @click="dismiss">Dismiss</button>
+          </div>
+        </template>
+
+        <!-- Generic upload error -->
+        <template v-else>
+          <div class="w-11 h-11 mx-auto rounded-full bg-red-500/10 border border-red-500/20 flex items-center justify-center">
+            <svg class="w-5 h-5 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+            </svg>
+          </div>
+          <div>
+            <p class="text-sm font-semibold text-red-400">Upload failed</p>
+            <p class="text-[11px] text-gray-500 mt-1">{{ errorMessage }}</p>
+          </div>
+          <div class="flex gap-2 pt-1">
+            <button
+              :disabled="!pendingRecordingId"
+              class="flex-1 py-2 text-xs font-semibold bg-gradient-to-r from-red-500 to-orange-600 hover:from-red-600 hover:to-orange-700 text-white rounded-lg transition-all shadow-sm shadow-red-500/20 disabled:opacity-40 disabled:cursor-not-allowed"
+              @click="retryUpload"
+            >Retry</button>
+            <button class="px-3 py-2 text-[11px] text-gray-500 hover:text-gray-300 bg-white/[0.03] hover:bg-white/[0.06] border border-white/[0.06] rounded-lg transition-colors" @click="dismiss">Dismiss</button>
+          </div>
+        </template>
       </div>
 
     </div>
@@ -279,6 +302,8 @@ const result = ref<{
   enemy_score?: number | null
 } | null>(null)
 const errorMessage = ref('')
+const needsUpgrade = ref(false)
+const upgradeUrl = ref('https://upforge.gg/pricing')
 const pendingRecordingId = ref<string | null>(null)
 const analysing = ref(false)
 const analysisStuck = ref(false)
@@ -373,12 +398,17 @@ onMounted(() => {
     state.value = 'pending'
   }))
   ipcCleanup.push(window.api.on('post-game:upload-error', (...args: unknown[]) => {
-    const payload = args[0] as string | { message: string; recordingId?: string }
+    const payload = args[0] as string | { message: string; recordingId?: string; needsUpgrade?: boolean; upgradeUrl?: string }
+    needsUpgrade.value = false
     if (typeof payload === 'string') {
       errorMessage.value = payload
     } else {
       errorMessage.value = payload.message
       if (payload.recordingId) pendingRecordingId.value = payload.recordingId
+      if (payload.needsUpgrade) {
+        needsUpgrade.value = true
+        upgradeUrl.value = payload.upgradeUrl || 'https://upforge.gg/pricing'
+      }
     }
     state.value = 'error'
   }))
@@ -469,6 +499,7 @@ function viewFullAnalysis() {
 }
 
 function dismiss() { window.close() }
+function openUpgrade() { window.open(upgradeUrl.value, '_blank') }
 
 function scoreClass(score: number): string {
   return score >= 80 ? 'text-green-400' : score >= 60 ? 'text-yellow-400' : 'text-red-400'

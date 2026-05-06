@@ -16,21 +16,10 @@ import { ClipExtractor } from './clip-extractor'
 import { HotkeyManager } from './hotkey-manager'
 import { toggleOverlay, isOverlayVisible, setOverlayInteractive } from './overlay-window'
 import { PerformanceManager } from './performance-manager'
+import { UpgradeRequiredError } from './errors'
 
 // Track all active polling timers so they can be cancelled on logout / app quit
 const _activePollingTimers = new Set<ReturnType<typeof setTimeout>>()
-
-/** Thrown by _apiPost when the server returns 402 (payment required / limit reached) */
-class UpgradeRequiredError extends Error {
-  readonly errorCode: string
-  readonly upgradeUrl: string
-  constructor(message: string, errorCode: string, upgradeUrl = 'https://upforge.gg/pricing') {
-    super(message)
-    this.name = 'UpgradeRequiredError'
-    this.errorCode = errorCode
-    this.upgradeUrl = upgradeUrl
-  }
-}
 
 export function setupClipHandlers(
   ipcMain: IpcMain,
