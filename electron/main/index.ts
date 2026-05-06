@@ -479,10 +479,10 @@ async function extractMatchClips(
 
 function createMainWindow(): BrowserWindow {
   const win = new BrowserWindow({
-    width: 860,
-    height: 580,
-    minWidth: 700,
-    minHeight: 480,
+    width: 980,
+    height: 660,
+    minWidth: 860,
+    minHeight: 580,
     show: false,
     frame: false,
     titleBarStyle: 'hidden',
@@ -1353,8 +1353,8 @@ async function doUploadAndAnalyse(
 
 function createSplashWindow(): BrowserWindow {
   const win = new BrowserWindow({
-    width: 560,
-    height: 360,
+    width: 680,
+    height: 440,
     resizable: false,
     frame: false,
     center: true,
