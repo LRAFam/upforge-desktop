@@ -486,7 +486,7 @@ function createMainWindow(): BrowserWindow {
     show: false,
     frame: false,
     titleBarStyle: 'hidden',
-    backgroundColor: '#0a0a0a',
+    backgroundColor: '#0a0f1c',
     icon: join(__dirname, '../../resources/icon.ico'),
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
@@ -527,7 +527,7 @@ function createPostGameWindow(): BrowserWindow {
     frame: false,
     alwaysOnTop: true,
     skipTaskbar: true,
-    backgroundColor: '#0a0a0a',
+    backgroundColor: '#0a0f1c',
     icon: join(__dirname, '../../resources/icon.ico'),
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
@@ -1359,7 +1359,7 @@ function createSplashWindow(): BrowserWindow {
     frame: false,
     center: true,
     skipTaskbar: false,
-    backgroundColor: '#0a0a0a',
+    backgroundColor: '#0a0f1c',
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
       contextIsolation: true,
