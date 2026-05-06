@@ -86,6 +86,23 @@ export function resolveMapName(mapId: string | null | undefined): string | null 
   return MAP_CODENAME_TO_NAME[segment.toLowerCase()] ?? segment
 }
 
+/** Convert a Riot competitive tier number to a human-readable rank string. */
+export function resolveTierName(tier: number): string {
+  const TIER_NAMES = [
+    'Unranked', 'Unranked', 'Unranked',
+    'Iron 1', 'Iron 2', 'Iron 3',
+    'Bronze 1', 'Bronze 2', 'Bronze 3',
+    'Silver 1', 'Silver 2', 'Silver 3',
+    'Gold 1', 'Gold 2', 'Gold 3',
+    'Platinum 1', 'Platinum 2', 'Platinum 3',
+    'Diamond 1', 'Diamond 2', 'Diamond 3',
+    'Ascendant 1', 'Ascendant 2', 'Ascendant 3',
+    'Immortal 1', 'Immortal 2', 'Immortal 3',
+    'Radiant',
+  ]
+  return TIER_NAMES[tier] ?? 'Unranked'
+}
+
 export interface GameEvent {
   EventID: number
   EventName: string
@@ -206,6 +223,19 @@ export interface TeamPlayerSnapshot {
   /** Combat score */
   score: number
   level: number
+  /** Player's PUUID — used for "you" identification in renderer */
+  puuid: string | null
+  /** Valorant competitive tier number (0 = Unranked … 27 = Radiant) */
+  competitiveTier: number
+  /** Human-readable rank string e.g. "Gold 2", "Immortal 1", "Radiant" */
+  competitiveTierName: string
+  /** Ability cast counts from match details */
+  abilityCasts: {
+    grenade: number   // C slot
+    ability1: number  // Q slot
+    ability2: number  // E slot (signature)
+    ultimate: number  // X slot
+  } | null
 }
 
 /** Final match stats for the local player, captured at match end */
@@ -979,14 +1009,37 @@ export class RiotLocalApi {
     }
 
     if (players && players.length > 0) {
+      // Build a PUUID → player map for agent name + tier lookups
+      const puuidMap = new Map<string, Record<string, unknown>>()
+      for (const p of players) {
+        if (p.subject) puuidMap.set(p.subject as string, p)
+      }
+
       this.matchData.teamSnapshot = players.map((p) => {
-        const stats = p.stats as Record<string, number> | undefined
+        const stats = p.stats as Record<string, unknown> | undefined
+        const casts = (stats?.abilityCasts) as Record<string, number> | undefined
+        const agentName = resolveAgentName(p.characterId as string) ?? null
+        const gameName = (p.gameName as string) || null
+        const tier = (p.competitiveTier as number) ?? 0
         return {
-          summonerName: (p.gameName as string) ?? (p.subject as string),
-          agent: resolveAgentName(p.characterId as string) ?? null,
+          // Use gameName if available; fall back to agent name, then a short PUUID label
+          summonerName: gameName ?? agentName ?? `Player ${((p.subject as string) ?? '').slice(0, 6)}`,
+          agent: agentName,
           team: (p.teamId as string) ?? 'Unknown',
-          kills: stats?.kills ?? 0, deaths: stats?.deaths ?? 0,
-          assists: stats?.assists ?? 0, score: stats?.score ?? 0, level: 0,
+          kills: (stats?.kills as number) ?? 0,
+          deaths: (stats?.deaths as number) ?? 0,
+          assists: (stats?.assists as number) ?? 0,
+          score: (stats?.score as number) ?? 0,
+          level: 0,
+          puuid: (p.subject as string) ?? null,
+          competitiveTier: tier,
+          competitiveTierName: resolveTierName(tier),
+          abilityCasts: casts ? {
+            grenade: casts.grenadeCasts ?? 0,
+            ability1: casts.ability1Casts ?? 0,
+            ability2: casts.ability2Casts ?? 0,
+            ultimate: casts.ultimateCasts ?? 0,
+          } : null,
         }
       })
     }
@@ -996,6 +1049,20 @@ export class RiotLocalApi {
     const matchStartTime = this.matchData.matchStartTime
     const recordingStartTime = this.matchData.recordingStartTime
     const recordingOffset = matchStartTime != null ? matchStartTime - recordingStartTime : 0
+
+    // Build a fast PUUID → agent name map for resolving event labels
+    const puuidToAgent = new Map<string, string>()
+    for (const p of (players ?? [])) {
+      const agent = resolveAgentName(p.characterId as string)
+      if (p.subject && agent) puuidToAgent.set(p.subject as string, agent)
+    }
+
+    const _resolveName = (puuid: string | undefined): string => {
+      if (!puuid) return 'Unknown'
+      if (puuid === this.ownPuuid) return 'You'
+      const agent = puuidToAgent.get(puuid)
+      return agent ?? puuid.slice(0, 6)
+    }
 
     if (allKills && allKills.length > 0) {
       let eventId = 1
@@ -1007,14 +1074,12 @@ export class RiotLocalApi {
         const videoOffsetMs = recordingOffset + tsgm
         const killerPuuid = k.killer as string
         const victimPuuid = k.victim as string
-        const kPlayer = players?.find((p) => p.subject === killerPuuid)
-        const vPlayer = players?.find((p) => p.subject === victimPuuid)
         const ev: KillEvent = {
           EventID: eventId++,
           EventName: 'ChampionKill',
           EventTime: tsgm / 1000,
-          killerName: (kPlayer?.gameName as string) ?? killerPuuid?.slice(0, 8) ?? '',
-          victimName: (vPlayer?.gameName as string) ?? victimPuuid?.slice(0, 8) ?? '',
+          killerName: _resolveName(killerPuuid),
+          victimName: _resolveName(victimPuuid),
           assistants: (k.assistants as string[]) ?? [],
           timeSinceGameStartMillis: tsgm,
           videoOffsetMs,

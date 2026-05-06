@@ -277,8 +277,19 @@
               {{ formatSeconds(currentTime) }} / {{ formatSeconds(duration) }}
             </span>
 
+            <!-- Scoreboard toggle -->
+            <button
+              class="flex items-center gap-1 text-[9px] text-gray-600 hover:text-gray-400 transition-colors"
+              @click="showScoreboard = !showScoreboard"
+            >
+              <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>
+              </svg>
+              Score
+            </button>
+
             <!-- Legend -->
-            <div class="flex items-center gap-2 ml-2">
+            <div class="flex items-center gap-2 ml-1">
               <div class="flex items-center gap-1">
                 <div class="w-2 h-2 rounded-full bg-green-500" />
                 <span class="text-[9px] text-gray-600">Kill</span>
@@ -289,6 +300,71 @@
               </div>
             </div>
           </div>
+        </div>
+
+        <!-- Team scoreboard (collapsible) -->
+        <div
+          v-if="showScoreboard && sortedTeamSnapshot.length"
+          class="flex-shrink-0 bg-[#0a0a0a] border-t border-white/[0.06] max-h-52 overflow-y-auto scrollbar-hide"
+        >
+          <!-- Column headers -->
+          <div class="grid grid-cols-[1fr_auto_auto_auto] gap-x-2 px-3 py-1.5 border-b border-white/[0.04] sticky top-0 bg-[#0a0a0a]">
+            <span class="text-[8px] font-semibold text-gray-600 uppercase tracking-wider">Player</span>
+            <span class="text-[8px] font-semibold text-gray-600 uppercase tracking-wider text-right">K/D/A</span>
+            <span class="text-[8px] font-semibold text-gray-600 uppercase tracking-wider text-right">ACS</span>
+            <span class="text-[8px] font-semibold text-gray-600 uppercase tracking-wider text-right">Abilities</span>
+          </div>
+
+          <!-- Ally team -->
+          <template v-for="(group, gi) in scoreboardGroups" :key="gi">
+            <div class="px-3 py-1 bg-white/[0.01]">
+              <span class="text-[8px] font-semibold uppercase tracking-wider" :class="group.isAlly ? 'text-blue-500/70' : 'text-red-500/70'">
+                {{ group.isAlly ? 'Allies' : 'Enemies' }}
+              </span>
+            </div>
+            <div
+              v-for="p in group.players"
+              :key="p.puuid ?? p.summonerName"
+              class="grid grid-cols-[1fr_auto_auto_auto] gap-x-2 items-center px-3 py-1.5 hover:bg-white/[0.03] transition-colors"
+              :class="{ 'bg-white/[0.025]': p.puuid === ownPuuid }"
+            >
+              <!-- Player name + agent + rank -->
+              <div class="flex items-center gap-1.5 min-w-0">
+                <img
+                  v-if="p.agent && getAgentImage(p.agent)"
+                  :src="getAgentImage(p.agent)"
+                  class="w-4 h-4 object-contain flex-shrink-0 opacity-80"
+                />
+                <div class="min-w-0">
+                  <p class="text-[10px] font-semibold truncate" :class="p.puuid === ownPuuid ? 'text-white' : 'text-gray-300'">
+                    {{ p.puuid === ownPuuid ? 'You' : p.summonerName }}
+                    <span v-if="p.puuid === ownPuuid" class="text-[8px] text-gray-600 font-normal ml-0.5">← you</span>
+                  </p>
+                  <p v-if="p.competitiveTier > 0" class="text-[8px] tabular-nums" :style="{ color: getRankColor(p.competitiveTierName) }">
+                    {{ p.competitiveTierName }}
+                  </p>
+                </div>
+              </div>
+              <!-- K/D/A -->
+              <div class="text-[10px] tabular-nums text-right">
+                <span class="text-green-400 font-semibold">{{ p.kills }}</span>
+                <span class="text-gray-600">/</span>
+                <span class="text-red-400 font-semibold">{{ p.deaths }}</span>
+                <span class="text-gray-600">/</span>
+                <span class="text-gray-400">{{ p.assists }}</span>
+              </div>
+              <!-- ACS (combat score) -->
+              <div class="text-[10px] tabular-nums text-right text-gray-400 font-mono">{{ p.score }}</div>
+              <!-- Ability casts (C/Q/E/X) -->
+              <div v-if="p.abilityCasts" class="text-[8px] tabular-nums text-right text-gray-600 font-mono space-x-0.5">
+                <span title="C slot">{{ p.abilityCasts.grenade }}C</span>
+                <span title="Q slot">{{ p.abilityCasts.ability1 }}Q</span>
+                <span title="E slot">{{ p.abilityCasts.ability2 }}E</span>
+                <span title="X (ult)">{{ p.abilityCasts.ultimate }}X</span>
+              </div>
+              <div v-else class="text-[8px] text-gray-700 text-right">—</div>
+            </div>
+          </template>
         </div>
       </div>
     </div>
@@ -335,6 +411,21 @@ interface FinalStats {
   won?: boolean
 }
 
+interface TeamPlayerSnapshot {
+  summonerName: string
+  agent: string | null
+  team: string
+  kills: number
+  deaths: number
+  assists: number
+  score: number
+  level: number
+  puuid: string | null
+  competitiveTier: number
+  competitiveTierName: string
+  abilityCasts: { grenade: number; ability1: number; ability2: number; ultimate: number } | null
+}
+
 interface RecordingTimeline {
   id: string
   videoPath: string
@@ -347,7 +438,7 @@ interface RecordingTimeline {
   deaths: KillEvent[]
   roundSummaries: RoundSummary[]
   finalStats: FinalStats | null
-  teamSnapshot: unknown[]
+  teamSnapshot: TeamPlayerSnapshot[]
 }
 
 const route = useRoute()
@@ -361,6 +452,8 @@ const duration = ref(0)
 const hoverTime = ref<number | null>(null)
 const playbackSpeed = ref(1)
 const activeEventNotif = ref<TimelineEvent | null>(null)
+const showScoreboard = ref(false)
+const ownPuuid = ref<string | null>(null)
 let notifTimer: ReturnType<typeof setTimeout> | null = null
 
 const AGENT_IMAGES: Record<string, string> = {
@@ -421,6 +514,46 @@ function getWeaponIcon(weapon: string): string | undefined {
   const icon = WEAPON_ICONS[weapon] ?? WEAPON_ICONS[weapon.charAt(0).toUpperCase() + weapon.slice(1).toLowerCase()]
   return icon ?? undefined
 }
+
+function getAgentImage(agentName: string | null): string {
+  if (!agentName) return ''
+  return AGENT_IMAGES[agentName] ?? ''
+}
+
+function getRankColor(tierName: string): string {
+  const lower = tierName.toLowerCase()
+  if (lower.includes('radiant')) return '#fde68a'
+  if (lower.includes('immortal')) return '#f87171'
+  if (lower.includes('ascendant')) return '#34d399'
+  if (lower.includes('diamond')) return '#60a5fa'
+  if (lower.includes('platinum')) return '#22d3ee'
+  if (lower.includes('gold')) return '#fbbf24'
+  if (lower.includes('silver')) return '#d1d5db'
+  if (lower.includes('bronze')) return '#fb923c'
+  if (lower.includes('iron')) return '#9ca3af'
+  return '#6b7280'
+}
+
+const sortedTeamSnapshot = computed(() => {
+  if (!timeline.value?.teamSnapshot?.length) return []
+  return [...timeline.value.teamSnapshot].sort((a, b) => b.score - a.score)
+})
+
+const scoreboardGroups = computed(() => {
+  if (!sortedTeamSnapshot.value.length) return []
+  const mePlayer = sortedTeamSnapshot.value.find(p => p.puuid === ownPuuid.value)
+  const allyTeamId = mePlayer?.team ?? null
+  const allies = allyTeamId
+    ? sortedTeamSnapshot.value.filter(p => p.team === allyTeamId)
+    : sortedTeamSnapshot.value.slice(0, Math.ceil(sortedTeamSnapshot.value.length / 2))
+  const enemies = allyTeamId
+    ? sortedTeamSnapshot.value.filter(p => p.team !== allyTeamId)
+    : sortedTeamSnapshot.value.slice(Math.ceil(sortedTeamSnapshot.value.length / 2))
+  return [
+    { isAlly: true, players: allies },
+    { isAlly: false, players: enemies },
+  ].filter(g => g.players.length > 0)
+})
 
 const agentImageUrl = computed(() => {
   if (!timeline.value?.agent) return null
@@ -588,6 +721,16 @@ onMounted(async () => {
   const id = route.query.id as string
   if (id) {
     timeline.value = await window.api.recordings.getTimeline(id)
+    // Derive ownPuuid from kill/death events where name === 'You'
+    if (timeline.value) {
+      const ownKill = timeline.value.kills?.find((k: any) => k.killerName === 'You')
+      if (ownKill?.killerPuuid) {
+        ownPuuid.value = ownKill.killerPuuid
+      } else {
+        const ownDeath = timeline.value.deaths?.find((d: any) => d.victimName === 'You')
+        if (ownDeath?.victimPuuid) ownPuuid.value = ownDeath.victimPuuid
+      }
+    }
   }
 })
 

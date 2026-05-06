@@ -45,11 +45,24 @@ export interface RecordingTimeline {
   game: string
   gameMode: string
   recordedAt: number
-  kills: Array<{ killerName: string; victimName: string; weapon?: string; videoOffsetMs?: number; round?: number }>
-  deaths: Array<{ killerName: string; victimName: string; weapon?: string; videoOffsetMs?: number; round?: number }>
+  kills: Array<{ killerName: string; victimName: string; weapon?: string; videoOffsetMs?: number; round?: number; killerPuuid?: string; victimPuuid?: string }>
+  deaths: Array<{ killerName: string; victimName: string; weapon?: string; videoOffsetMs?: number; round?: number; killerPuuid?: string; victimPuuid?: string }>
   roundSummaries: Array<{ roundNumber: number; winningTeam: string | null; spikePlanted: boolean; spikeDefused: boolean }>
   finalStats: { kills: number; deaths: number; assists: number; won?: boolean } | null
-  teamSnapshot: unknown[]
+  teamSnapshot: Array<{
+    summonerName: string
+    agent: string | null
+    team: string
+    kills: number
+    deaths: number
+    assists: number
+    score: number
+    level: number
+    puuid: string | null
+    competitiveTier: number
+    competitiveTierName: string
+    abilityCasts: { grenade: number; ability1: number; ability2: number; ultimate: number } | null
+  }>
 }
 
 export interface ValorantStats {
