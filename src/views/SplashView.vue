@@ -1,5 +1,7 @@
 <template>
   <div class="splash-root">
+    <!-- Hero image background -->
+    <img src="../assets/hero-agents.webp" alt="" class="hero-img" />
     <!-- Ambient background layers -->
     <div class="bg-mesh" />
     <div class="orb orb-1" />
@@ -137,6 +139,19 @@ onUnmounted(() => {
   user-select: none;
   -webkit-app-region: drag;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+}
+
+/* ── Hero image ── */
+.hero-img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center top;
+  opacity: 0.18;
+  z-index: 0;
+  pointer-events: none;
 }
 
 /* ── Background ── */

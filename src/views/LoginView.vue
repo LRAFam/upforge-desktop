@@ -1,16 +1,20 @@
 <template>
   <div class="login-root">
-    <!-- Left brand panel -->
+    <!-- Left brand panel — hero image background -->
     <div class="brand-panel">
-      <div class="brand-bg" />
+      <!-- Hero image -->
+      <img src="../assets/hero-agents.webp" alt="" class="hero-img" />
+      <!-- Gradient overlays -->
+      <div class="hero-overlay-top" />
+      <div class="hero-overlay-bottom" />
+      <div class="hero-overlay-right" />
+      <!-- Grid texture -->
       <div class="grid-bg" />
-      <div class="orb orb-1" />
-      <div class="orb orb-2" />
 
       <div class="brand-content">
-        <!-- Logo -->
+        <!-- Logo lockup -->
         <div class="brand-header">
-          <div class="brand-logo">
+          <div class="brand-logo-ring">
             <img src="../assets/upforge-logo.png" alt="UpForge" class="brand-logo-img" />
           </div>
           <div>
@@ -21,37 +25,37 @@
           </div>
         </div>
 
-        <!-- Game cards -->
+        <!-- Spacer pushes game cards down -->
+        <div class="brand-spacer" />
+
+        <!-- Game cards with real imagery -->
         <div class="section-label">Supported Games</div>
         <div class="game-cards">
           <div class="game-card game-valorant">
-            <div class="game-card-bg game-card-bg-valorant" />
-            <div class="game-card-inner">
-              <div class="game-info">
-                <span class="game-name">Valorant</span>
-                <span class="game-badge game-badge-live">
-                  <span class="badge-dot badge-dot-live" />Live
-                </span>
-              </div>
-              <p class="game-desc">Kill analysis · Rank coaching · VOD review</p>
+            <img src="../assets/games/valorant.jpg" alt="Valorant" class="game-img" />
+            <div class="game-gradient" />
+            <div class="game-card-body">
+              <span class="game-name">Valorant</span>
+              <span class="game-badge game-badge-live">
+                <span class="badge-dot badge-dot-live" />Live
+              </span>
             </div>
           </div>
+
           <div class="game-card game-deadlock">
-            <div class="game-card-bg game-card-bg-deadlock" />
-            <div class="game-card-inner">
-              <div class="game-info">
-                <span class="game-name">Deadlock</span>
-                <span class="game-badge game-badge-soon">
-                  <span class="badge-dot badge-dot-soon" />Coming Soon
-                </span>
-              </div>
-              <p class="game-desc">Match recording · Hero coaching · Stats</p>
+            <img src="../assets/games/deadlock.jpg" alt="Deadlock" class="game-img" />
+            <div class="game-gradient" />
+            <div class="game-card-body">
+              <span class="game-name">Deadlock</span>
+              <span class="game-badge game-badge-soon">
+                <span class="badge-dot badge-dot-soon" />Coming Soon
+              </span>
             </div>
           </div>
         </div>
 
         <!-- Shortcuts -->
-        <div class="section-label">Keyboard Shortcuts</div>
+        <div class="section-label" style="margin-top:12px">Shortcuts</div>
         <div class="shortcuts">
           <div v-for="s in shortcuts" :key="s.key" class="shortcut">
             <kbd class="key">{{ s.key }}</kbd>
@@ -191,86 +195,89 @@ function openForgotPassword() { window.open('https://upforge.gg/forgot-password'
   position: relative;
   width: 50%;
   flex-shrink: 0;
-  background: #0a0f1c;
-  border-right: 1px solid rgba(255,255,255,0.06);
+  background: #080c14;
+  overflow: hidden;
   display: flex;
   flex-direction: column;
-  overflow: hidden;
 }
 
-.brand-bg {
+/* Hero image — full bleed, positioned top-right like website */
+.hero-img {
   position: absolute;
   inset: 0;
-  background:
-    radial-gradient(ellipse 90% 60% at 20% 10%, rgba(239,68,68,0.1) 0%, transparent 55%),
-    radial-gradient(ellipse 70% 50% at 90% 90%, rgba(20,184,166,0.06) 0%, transparent 55%);
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center 20%;
+  opacity: 0.45;
 }
 
-/* Grid pattern matching the website */
+/* Gradient overlays matching homepage */
+.hero-overlay-top {
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 50%;
+  background: linear-gradient(180deg, rgba(8,12,20,0.85) 0%, transparent 100%);
+  z-index: 1;
+}
+.hero-overlay-bottom {
+  position: absolute;
+  bottom: 0; left: 0; right: 0;
+  height: 60%;
+  background: linear-gradient(0deg, rgba(8,12,20,0.95) 0%, rgba(8,12,20,0.7) 50%, transparent 100%);
+  z-index: 1;
+}
+.hero-overlay-right {
+  position: absolute;
+  top: 0; right: 0; bottom: 0;
+  width: 40%;
+  background: linear-gradient(270deg, rgba(8,12,20,0.9) 0%, transparent 100%);
+  z-index: 1;
+}
+
+/* Subtle grid */
 .grid-bg {
   position: absolute;
   inset: 0;
-  opacity: 0.15;
+  z-index: 2;
+  opacity: 0.12;
   background-image:
-    linear-gradient(rgba(255,255,255,0.06) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(255,255,255,0.06) 1px, transparent 1px);
+    linear-gradient(rgba(255,255,255,0.07) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255,255,255,0.07) 1px, transparent 1px);
   background-size: 32px 32px;
 }
 
-.orb {
-  position: absolute;
-  border-radius: 50%;
-  pointer-events: none;
-}
-.orb-1 {
-  width: 360px; height: 360px;
-  background: radial-gradient(circle, rgba(239,68,68,0.12) 0%, transparent 65%);
-  top: -100px; left: -80px;
-  animation: orb1 14s ease-in-out infinite alternate;
-}
-.orb-2 {
-  width: 260px; height: 260px;
-  background: radial-gradient(circle, rgba(20,184,166,0.09) 0%, transparent 65%);
-  bottom: -80px; right: -50px;
-  animation: orb2 18s ease-in-out infinite alternate;
-}
-@keyframes orb1 { from { transform: scale(1) translate(0,0); } to { transform: scale(1.1) translate(25px,20px); } }
-@keyframes orb2 { from { transform: scale(1); } to { transform: scale(1.07) translate(-20px,-15px); } }
-
+/* Content sits above overlays */
 .brand-content {
   position: relative;
-  z-index: 1;
+  z-index: 3;
   flex: 1;
   display: flex;
   flex-direction: column;
-  padding: 24px 24px 16px;
-  gap: 16px;
-  overflow: hidden;
+  padding: 22px 22px 14px;
 }
 
 /* ── Header ── */
 .brand-header {
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding-bottom: 16px;
-  border-bottom: 1px solid rgba(255,255,255,0.05);
+  gap: 11px;
 }
-.brand-logo {
-  width: 40px; height: 40px;
-  border-radius: 11px;
-  background: linear-gradient(135deg, rgba(239,68,68,0.2), rgba(249,115,22,0.12));
-  border: 1px solid rgba(239,68,68,0.25);
+.brand-logo-ring {
+  width: 38px; height: 38px;
+  border-radius: 10px;
+  background: linear-gradient(135deg, rgba(239,68,68,0.25), rgba(249,115,22,0.15));
+  border: 1px solid rgba(239,68,68,0.35);
   display: flex; align-items: center; justify-content: center;
   flex-shrink: 0;
-  box-shadow: 0 0 20px rgba(239,68,68,0.12);
+  box-shadow: 0 0 18px rgba(239,68,68,0.2), inset 0 1px 0 rgba(255,255,255,0.08);
 }
 .brand-logo-img {
-  height: 22px; width: auto;
-  filter: drop-shadow(0 0 8px rgba(239,68,68,0.5));
+  height: 21px; width: auto;
+  filter: drop-shadow(0 0 8px rgba(239,68,68,0.6));
 }
 .brand-wordmark {
-  font-size: 17px;
+  font-size: 16px;
   font-weight: 800;
   letter-spacing: -0.02em;
   line-height: 1;
@@ -279,157 +286,146 @@ function openForgotPassword() { window.open('https://upforge.gg/forgot-password'
 .brand-up    { color: #fff; }
 .brand-forge { color: #ef4444; }
 .brand-sub {
-  font-size: 10px;
-  color: rgba(107,114,128,0.7);
-  letter-spacing: 0.06em;
+  font-size: 9.5px;
+  color: rgba(156,163,175,0.55);
+  letter-spacing: 0.07em;
   text-transform: uppercase;
 }
+
+.brand-spacer { flex: 1; }
 
 /* ── Section label ── */
 .section-label {
   font-size: 9px;
   font-weight: 700;
-  letter-spacing: 0.12em;
+  letter-spacing: 0.14em;
   text-transform: uppercase;
-  color: rgba(107,114,128,0.6);
+  color: rgba(107,114,128,0.7);
+  margin-bottom: 8px;
 }
 
-/* ── Game cards ── */
+/* ── Game cards with real images ── */
 .game-cards {
   display: flex;
-  flex-direction: column;
   gap: 8px;
+  margin-bottom: 0;
 }
 
 .game-card {
+  flex: 1;
   position: relative;
   border-radius: 10px;
   overflow: hidden;
-  border: 1px solid rgba(255,255,255,0.07);
-  transition: border-color 0.2s;
+  border: 1px solid rgba(255,255,255,0.08);
+  transition: border-color 0.25s, transform 0.2s;
+  cursor: default;
 }
-.game-card:hover { border-color: rgba(255,255,255,0.14); }
+.game-card:hover { transform: translateY(-1px); }
 
-.game-valorant { border-color: rgba(239,68,68,0.2); }
-.game-valorant:hover { border-color: rgba(239,68,68,0.4); }
+.game-valorant { border-color: rgba(239,68,68,0.25); }
+.game-valorant:hover { border-color: rgba(239,68,68,0.5); }
 .game-deadlock { border-color: rgba(20,184,166,0.2); }
-.game-deadlock:hover { border-color: rgba(20,184,166,0.4); }
+.game-deadlock:hover { border-color: rgba(20,184,166,0.45); }
 
-.game-card-bg {
+.game-img {
+  width: 100%;
+  height: 72px;
+  object-fit: cover;
+  object-position: center;
+  display: block;
+  transition: transform 0.3s;
+}
+.game-card:hover .game-img { transform: scale(1.04); }
+
+.game-gradient {
   position: absolute;
   inset: 0;
-}
-.game-card-bg-valorant {
-  background: linear-gradient(135deg, rgba(239,68,68,0.12) 0%, rgba(249,115,22,0.06) 60%, transparent 100%);
-}
-.game-card-bg-deadlock {
-  background: linear-gradient(135deg, rgba(20,184,166,0.1) 0%, rgba(6,182,212,0.05) 60%, transparent 100%);
+  background: linear-gradient(0deg, rgba(8,12,20,0.85) 0%, rgba(8,12,20,0.2) 55%, transparent 100%);
 }
 
-.game-card-inner {
-  position: relative;
-  z-index: 1;
-  padding: 10px 12px;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.game-info {
+.game-card-body {
+  position: absolute;
+  bottom: 0; left: 0; right: 0;
+  padding: 7px 9px;
   display: flex;
   align-items: center;
   justify-content: space-between;
 }
 .game-name {
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 700;
   color: #fff;
   letter-spacing: -0.01em;
-}
-.game-desc {
-  font-size: 10px;
-  color: rgba(107,114,128,0.7);
-  margin: 0;
 }
 
 .game-badge {
   display: flex;
   align-items: center;
-  gap: 5px;
-  font-size: 9px;
+  gap: 4px;
+  font-size: 8px;
   font-weight: 700;
   letter-spacing: 0.06em;
   text-transform: uppercase;
-  padding: 2px 7px;
+  padding: 2px 6px;
   border-radius: 99px;
 }
 .game-badge-live {
-  background: rgba(16,185,129,0.1);
-  border: 1px solid rgba(16,185,129,0.2);
+  background: rgba(16,185,129,0.15);
+  border: 1px solid rgba(16,185,129,0.25);
   color: #34d399;
 }
 .game-badge-soon {
-  background: rgba(20,184,166,0.1);
-  border: 1px solid rgba(20,184,166,0.2);
+  background: rgba(20,184,166,0.12);
+  border: 1px solid rgba(20,184,166,0.22);
   color: #2dd4bf;
 }
-.badge-dot {
-  width: 5px; height: 5px;
-  border-radius: 50%;
-}
-.badge-dot-live {
-  background: #34d399;
-  box-shadow: 0 0 4px rgba(52,211,153,0.6);
-}
-.badge-dot-soon {
-  background: #2dd4bf;
-  animation: pulse 2s infinite;
-}
-@keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }
+.badge-dot { width: 4px; height: 4px; border-radius: 50%; flex-shrink: 0; }
+.badge-dot-live { background: #34d399; box-shadow: 0 0 4px rgba(52,211,153,0.7); }
+.badge-dot-soon { background: #2dd4bf; animation: blink 2s infinite; }
+@keyframes blink { 0%,100% { opacity:1; } 50% { opacity:0.35; } }
 
 /* ── Shortcuts ── */
 .shortcuts {
   display: flex;
-  flex-direction: column;
-  gap: 7px;
+  gap: 8px;
+  flex-wrap: wrap;
 }
 .shortcut {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 6px;
 }
 .key {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-width: 32px;
-  height: 22px;
+  min-width: 30px;
+  height: 20px;
   padding: 0 6px;
-  background: rgba(255,255,255,0.05);
-  border: 1px solid rgba(255,255,255,0.1);
-  border-bottom: 2px solid rgba(255,255,255,0.15);
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.12);
+  border-bottom: 2px solid rgba(255,255,255,0.18);
   border-radius: 5px;
-  font-size: 10px;
+  font-size: 9px;
   font-weight: 700;
   color: rgba(209,213,219,0.9);
   font-family: 'SF Mono', 'Fira Code', monospace;
   letter-spacing: 0.02em;
-  flex-shrink: 0;
 }
 .shortcut-label {
-  font-size: 11px;
-  color: rgba(107,114,128,0.8);
+  font-size: 10px;
+  color: rgba(107,114,128,0.75);
 }
 
 /* ── Footer ── */
 .brand-footer {
   position: relative;
-  z-index: 1;
-  padding: 12px 24px;
-  border-top: 1px solid rgba(255,255,255,0.04);
+  z-index: 3;
+  padding: 10px 22px;
+  border-top: 1px solid rgba(255,255,255,0.05);
 }
 .footer-url {
-  font-size: 10px;
+  font-size: 9.5px;
   color: rgba(75,85,99,0.5);
   letter-spacing: 0.04em;
 }
@@ -442,6 +438,7 @@ function openForgotPassword() { window.open('https://upforge.gg/forgot-password'
   align-items: center;
   justify-content: center;
   padding: 32px 28px;
+  border-left: 1px solid rgba(255,255,255,0.05);
 }
 
 .form-inner {
@@ -505,10 +502,8 @@ function openForgotPassword() { window.open('https://upforge.gg/forgot-password'
 .pw-toggle {
   position: absolute; right: 10px;
   background: none; border: none; padding: 0;
-  cursor: pointer;
-  color: rgba(107,114,128,0.4);
-  transition: color 0.15s;
-  display: flex; align-items: center;
+  cursor: pointer; color: rgba(107,114,128,0.4);
+  transition: color 0.15s; display: flex; align-items: center;
 }
 .pw-toggle:hover { color: rgba(156,163,175,0.7); }
 .pw-icon { width: 13px; height: 13px; }
@@ -519,8 +514,7 @@ function openForgotPassword() { window.open('https://upforge.gg/forgot-password'
   background: rgba(239,68,68,0.08);
   border: 1px solid rgba(239,68,68,0.2);
   border-radius: 7px;
-  font-size: 11px;
-  color: #f87171;
+  font-size: 11px; color: #f87171;
 }
 .error-icon { width: 13px; height: 13px; flex-shrink: 0; }
 .err-fade-enter-active, .err-fade-leave-active { transition: opacity 0.2s, transform 0.2s; }
@@ -531,37 +525,28 @@ function openForgotPassword() { window.open('https://upforge.gg/forgot-password'
   width: 100%;
   padding: 10px 16px;
   background: linear-gradient(135deg, #ef4444 0%, #f97316 100%);
-  border: none;
-  border-radius: 8px;
-  color: #fff;
-  font-size: 13px;
-  font-weight: 600;
+  border: none; border-radius: 8px;
+  color: #fff; font-size: 13px; font-weight: 600;
   cursor: pointer;
   transition: opacity 0.15s, transform 0.15s, box-shadow 0.15s;
   box-shadow: 0 4px 16px rgba(239,68,68,0.22);
-  font-family: inherit;
-  margin-top: 2px;
+  font-family: inherit; margin-top: 2px;
 }
 .submit-btn:hover:not(:disabled) {
-  opacity: 0.92;
-  transform: translateY(-1px);
+  opacity: 0.92; transform: translateY(-1px);
   box-shadow: 0 6px 20px rgba(239,68,68,0.32);
 }
 .submit-btn:active:not(:disabled) { transform: translateY(0); }
 .submit-btn:disabled { opacity: 0.4; cursor: not-allowed; }
 
-.btn-inner {
-  display: flex; align-items: center;
-  justify-content: center; gap: 6px;
-}
+.btn-inner { display: flex; align-items: center; justify-content: center; gap: 6px; }
 .btn-arrow { width: 13px; height: 13px; }
 .spinner { width: 13px; height: 13px; animation: spin 0.8s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
 
 .form-links {
   display: flex; align-items: center;
-  justify-content: center; gap: 8px;
-  margin-top: 14px;
+  justify-content: center; gap: 8px; margin-top: 14px;
 }
 .link-btn {
   background: none; border: none; padding: 0;
