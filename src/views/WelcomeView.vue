@@ -30,7 +30,7 @@
         </div>
 
         <!-- Spacer -->
-        <div style="flex:1;min-height:8px;max-height:32px" />
+        <div style="flex:1" />
 
         <!-- Supported games -->
         <p class="lp-section-label">Supported Games</p>
@@ -341,7 +341,7 @@ function openForgotPassword() {
 /* ═══════════════ LEFT PANEL ═══════════════ */
 .left-panel {
   position: relative;
-  width: 320px;
+  width: 280px;
   flex-shrink: 0;
   background: #0a0f1c;
   border-right: 1px solid rgba(255,255,255,0.05);
@@ -406,16 +406,17 @@ function openForgotPassword() {
 .lp-content {
   position: relative; z-index: 2;
   display: flex; flex-direction: column;
-  flex: 1; padding: 22px 20px 20px;
-  gap: 12px;
+  justify-content: space-between;
+  flex: 1; padding: 22px 18px 20px;
+  gap: 0;
 }
 
 /* Brand lockup */
 .lp-brand {
-  display: flex; align-items: center; gap: 12px;
+  display: flex; align-items: center; gap: 10px;
 }
 .lp-logo-ring {
-  width: 44px; height: 44px; border-radius: 12px;
+  width: 38px; height: 38px; border-radius: 10px;
   background: linear-gradient(135deg, rgba(239,68,68,0.15), rgba(249,115,22,0.1));
   border: 1px solid rgba(239,68,68,0.2);
   display: flex; align-items: center; justify-content: center;
@@ -423,26 +424,26 @@ function openForgotPassword() {
   flex-shrink: 0;
 }
 .lp-logo-img {
-  height: 26px; width: auto;
+  height: 22px; width: auto;
   filter: drop-shadow(0 0 8px rgba(239,68,68,0.4));
 }
-.lp-wordmark { font-size: 16px; font-weight: 800; letter-spacing: -0.01em; line-height: 1; }
+.lp-wordmark { font-size: 14px; font-weight: 800; letter-spacing: -0.01em; line-height: 1; }
 .lp-up    { color: #fff; }
 .lp-forge { color: #ef4444; }
-.lp-tagline { font-size: 10px; color: rgba(107,114,128,0.8); margin-top: 2px; letter-spacing: 0.04em; }
+.lp-tagline { font-size: 9px; color: rgba(107,114,128,0.8); margin-top: 2px; letter-spacing: 0.04em; }
 
 /* Headline */
-.lp-headline-block { margin-top: 4px; }
+.lp-headline-block { }
 .lp-headline {
-  font-size: 20px; font-weight: 700; line-height: 1.2;
-  letter-spacing: -0.02em; color: #f9fafb; margin: 0 0 6px;
+  font-size: 18px; font-weight: 700; line-height: 1.2;
+  letter-spacing: -0.02em; color: #f9fafb; margin: 0 0 5px;
 }
 .lp-headline em {
   font-style: normal;
   background: linear-gradient(135deg, #ef4444 0%, #f97316 60%, #fbbf24 100%);
   -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
 }
-.lp-sub { font-size: 11px; color: rgba(107,114,128,0.8); line-height: 1.6; margin: 0; }
+.lp-sub { font-size: 10.5px; color: rgba(107,114,128,0.8); line-height: 1.5; margin: 0; }
 
 .lp-spacer { flex: 1; }
 
@@ -450,8 +451,9 @@ function openForgotPassword() {
 .lp-section-label {
   font-size: 9px; font-weight: 700; letter-spacing: 0.1em;
   text-transform: uppercase; color: rgba(75,85,99,0.8);
+  margin-bottom: 6px;
 }
-.lp-game-cards { display: flex; gap: 8px; }
+.lp-game-cards { display: flex; gap: 6px; }
 .lp-game-card {
   position: relative; flex: 1; height: 68px; border-radius: 9px;
   overflow: hidden; cursor: default;
