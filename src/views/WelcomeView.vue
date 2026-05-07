@@ -30,7 +30,7 @@
         </div>
 
         <!-- Spacer -->
-        <div class="lp-spacer" />
+        <div style="flex:1;min-height:8px;max-height:32px" />
 
         <!-- Supported games -->
         <p class="lp-section-label">Supported Games</p>
@@ -48,7 +48,15 @@
             <div class="lp-game-gradient" />
             <div class="lp-game-body">
               <span class="lp-game-name">Deadlock</span>
-              <span class="lp-badge lp-badge-soon">Coming Soon</span>
+              <span class="lp-badge lp-badge-soon">Soon</span>
+            </div>
+          </div>
+          <div class="lp-game-card lp-game-cs2">
+            <img src="../assets/games/cs2.jpg" alt="CS2" class="lp-game-img" />
+            <div class="lp-game-gradient" />
+            <div class="lp-game-body">
+              <span class="lp-game-name">CS2</span>
+              <span class="lp-badge lp-badge-soon">Soon</span>
             </div>
           </div>
         </div>
@@ -426,8 +434,8 @@ function openForgotPassword() {
 /* Headline */
 .lp-headline-block { margin-top: 4px; }
 .lp-headline {
-  font-size: 22px; font-weight: 700; line-height: 1.2;
-  letter-spacing: -0.02em; color: #f9fafb; margin: 0 0 8px;
+  font-size: 20px; font-weight: 700; line-height: 1.2;
+  letter-spacing: -0.02em; color: #f9fafb; margin: 0 0 6px;
 }
 .lp-headline em {
   font-style: normal;
@@ -445,7 +453,7 @@ function openForgotPassword() {
 }
 .lp-game-cards { display: flex; gap: 8px; }
 .lp-game-card {
-  position: relative; flex: 1; height: 76px; border-radius: 9px;
+  position: relative; flex: 1; height: 68px; border-radius: 9px;
   overflow: hidden; cursor: default;
   border: 1px solid rgba(255,255,255,0.07);
   transition: transform 0.2s ease, border-color 0.2s;
@@ -453,6 +461,7 @@ function openForgotPassword() {
 .lp-game-card:hover { transform: translateY(-2px); }
 .lp-game-valorant { border-color: rgba(239,68,68,0.25); }
 .lp-game-deadlock  { border-color: rgba(20,184,166,0.2); }
+.lp-game-cs2       { border-color: rgba(249,115,22,0.2); }
 .lp-game-img {
   position: absolute; inset: 0;
   width: 100%; height: 100%;
