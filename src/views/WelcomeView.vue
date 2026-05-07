@@ -3,6 +3,12 @@
 
     <!-- ─────────────── LEFT PANEL — Brand hero ─────────────── -->
     <div class="left-panel">
+      <!-- Hero background image -->
+      <img src="../assets/hero-agents.webp" alt="" class="lp-hero-img" />
+      <!-- Gradient overlays -->
+      <div class="lp-overlay-top" />
+      <div class="lp-overlay-bottom" />
+      <div class="lp-overlay-right" />
       <!-- Background orbs -->
       <div class="lp-orb lp-orb-1" />
       <div class="lp-orb lp-orb-2" />
@@ -304,12 +310,51 @@ function openForgotPassword() {
   position: relative;
   width: 340px;
   flex-shrink: 0;
-  background: #0c0c0c;
+  background: #0a0f1c;
   border-right: 1px solid rgba(255,255,255,0.05);
   display: flex;
   flex-direction: column;
   overflow: hidden;
   -webkit-app-region: drag;
+}
+
+.lp-hero-img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center top;
+  opacity: 0.35;
+  z-index: 0;
+  pointer-events: none;
+}
+
+.lp-overlay-top {
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 200px;
+  background: linear-gradient(180deg, #0a0f1c 0%, transparent 100%);
+  z-index: 1;
+  pointer-events: none;
+}
+
+.lp-overlay-bottom {
+  position: absolute;
+  bottom: 0; left: 0; right: 0;
+  height: 200px;
+  background: linear-gradient(0deg, #0a0f1c 0%, transparent 100%);
+  z-index: 1;
+  pointer-events: none;
+}
+
+.lp-overlay-right {
+  position: absolute;
+  top: 0; right: 0; bottom: 0;
+  width: 80px;
+  background: linear-gradient(270deg, #0a0f1c 0%, transparent 100%);
+  z-index: 1;
+  pointer-events: none;
 }
 
 .lp-top-bar {
@@ -318,7 +363,7 @@ function openForgotPassword() {
   height: 2px;
   background: linear-gradient(90deg, #ef4444, #f97316, transparent);
   opacity: 0.8;
-  z-index: 2;
+  z-index: 3;
 }
 
 .lp-orb {
@@ -360,7 +405,7 @@ function openForgotPassword() {
 
 .lp-content {
   position: relative;
-  z-index: 1;
+  z-index: 2;
   display: flex;
   flex-direction: column;
   justify-content: center;
