@@ -48,7 +48,7 @@
             <div class="lp-game-gradient" />
             <div class="lp-game-body">
               <span class="lp-game-name">Deadlock</span>
-              <span class="lp-badge lp-badge-soon">Soon</span>
+              <span class="lp-badge lp-badge-waitlist">Waitlist</span>
             </div>
           </div>
           <div class="lp-game-card lp-game-cs2">
@@ -56,7 +56,7 @@
             <div class="lp-game-gradient" />
             <div class="lp-game-body">
               <span class="lp-game-name">CS2</span>
-              <span class="lp-badge lp-badge-soon">Soon</span>
+              <span class="lp-badge lp-badge-live"><span class="lp-badge-dot" />Live</span>
             </div>
           </div>
         </div>
@@ -341,8 +341,7 @@ function openForgotPassword() {
 /* ═══════════════ LEFT PANEL ═══════════════ */
 .left-panel {
   position: relative;
-  width: 280px;
-  flex-shrink: 0;
+  flex: 1;
   background: #0a0f1c;
   border-right: 1px solid rgba(255,255,255,0.05);
   display: flex;
@@ -453,13 +452,15 @@ function openForgotPassword() {
   text-transform: uppercase; color: rgba(75,85,99,0.8);
   margin-bottom: 6px;
 }
-.lp-game-cards { display: flex; gap: 6px; }
+.lp-game-cards { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; }
 .lp-game-card {
-  position: relative; flex: 1; height: 68px; border-radius: 9px;
+  position: relative; height: 64px; border-radius: 9px;
   overflow: hidden; cursor: default;
   border: 1px solid rgba(255,255,255,0.07);
   transition: transform 0.2s ease, border-color 0.2s;
 }
+/* Valorant spans full width */
+.lp-game-valorant { grid-column: 1 / -1; }
 .lp-game-card:hover { transform: translateY(-2px); }
 .lp-game-valorant { border-color: rgba(239,68,68,0.25); }
 .lp-game-deadlock  { border-color: rgba(20,184,166,0.2); }
@@ -488,9 +489,9 @@ function openForgotPassword() {
   background: rgba(16,185,129,0.2); color: #10b981;
   border: 1px solid rgba(16,185,129,0.3);
 }
-.lp-badge-soon {
-  background: rgba(107,114,128,0.2); color: #9ca3af;
-  border: 1px solid rgba(107,114,128,0.2);
+.lp-badge-waitlist {
+  background: rgba(249,115,22,0.15); color: #fb923c;
+  border: 1px solid rgba(249,115,22,0.25);
 }
 .lp-badge-dot {
   width: 4px; height: 4px; border-radius: 50%;

@@ -31,6 +31,14 @@ import { PerformanceManager } from './performance-manager'
 import type { MatchData } from './riot-local-api'
 import log from 'electron-log'
 
+// Disable GPU acceleration in dev to prevent GPU process crashes on macOS
+if (!app.isPackaged) {
+  app.disableHardwareAcceleration()
+  app.commandLine.appendSwitch('no-sandbox')
+  app.commandLine.appendSwitch('disable-features', 'OutOfProcessSystemDnsResolution')
+  app.commandLine.appendSwitch('disable-renderer-backgrounding')
+}
+
 // Catch any floating promise rejections in the main process before they
 // crash Electron silently. Log them so they show up in support logs.
 process.on('unhandledRejection', (reason) => {
@@ -497,6 +505,25 @@ function createMainWindow(): BrowserWindow {
   })
 
   win.on('ready-to-show', () => win.show())
+
+  win.webContents.on('render-process-gone', (_event, details) => {
+    console.error('[Main] Renderer process gone:', details.reason)
+    if (details.reason !== 'clean-exit') {
+      setTimeout(() => {
+        try {
+          if (!win.isDestroyed()) {
+            if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
+              win.loadURL(process.env['ELECTRON_RENDERER_URL'])
+            } else {
+              win.loadFile(join(__dirname, '../renderer/index.html'))
+            }
+          }
+        } catch (e) {
+          console.error('[Main] Failed to reload renderer:', e)
+        }
+      }, 1000)
+    }
+  })
   win.on('close', (e) => {
     // Minimise to tray instead of closing — unless app is actually quitting
     if (!isQuitting) {
@@ -1671,6 +1698,11 @@ app.on('activate', () => {
 
 app.on('window-all-closed', () => {
   // Don't quit when all windows close — keep running in tray
+})
+
+// Prevent the network-service utility process crash from killing the whole app
+app.on('child-process-gone', (_event, details) => {
+  log.warn('[Main] Child process gone:', details.type, details.reason)
 })
 
 app.on('before-quit', () => {
