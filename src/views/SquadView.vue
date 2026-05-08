@@ -83,11 +83,11 @@
           </div>
           <div class="min-w-0">
             <p class="text-white text-sm font-bold truncate">{{ team.name }}</p>
-            <p class="text-gray-600 text-[10px]">{{ onlineMembers }} / {{ team.members.length }} online</p>
+            <p class="text-gray-600 text-xs">{{ onlineMembers }} / {{ team.members.length }} online</p>
           </div>
         </div>
         <button
-          class="flex-shrink-0 flex items-center gap-1 px-2.5 py-1.5 text-[10px] font-semibold text-gray-400 hover:text-white border border-white/[0.06] hover:border-white/[0.12] rounded-lg transition-colors"
+          class="flex-shrink-0 flex items-center gap-1 px-2.5 py-1.5 text-xs font-semibold text-gray-400 hover:text-white border border-white/[0.06] hover:border-white/[0.12] rounded-lg transition-colors"
           @click="openWebTeam"
         >
           <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -123,7 +123,7 @@
           <!-- Info -->
           <div class="flex-1 min-w-0">
             <p class="text-white text-xs font-semibold truncate">{{ member.name }}</p>
-            <p class="text-[10px] truncate" :class="getPresence(member.id).is_recording ? 'text-red-400' : getPresence(member.id).online ? 'text-green-500' : 'text-gray-600'">
+            <p class="text-xs truncate" :class="getPresence(member.id).is_recording ? 'text-red-400' : getPresence(member.id).online ? 'text-green-500' : 'text-gray-600'">
               {{ getPresence(member.id).is_recording ? 'Recording' : getPresence(member.id).online ? 'Online' : 'Offline' }}
             </p>
           </div>
@@ -134,7 +134,7 @@
       <div v-if="activity.length > 0" class="rounded-xl border border-white/[0.06] bg-white/[0.02] overflow-hidden">
         <div class="px-4 py-2.5 border-b border-white/[0.06] flex items-center justify-between">
           <p class="text-xs font-bold text-white">Recent Activity</p>
-          <button class="text-[10px] text-gray-500 hover:text-red-400 transition-colors" @click="openWebTeam">View all →</button>
+          <button class="text-xs text-gray-500 hover:text-red-400 transition-colors" @click="openWebTeam">View all →</button>
         </div>
         <div class="divide-y divide-white/[0.04]">
           <div
@@ -143,15 +143,15 @@
             class="px-4 py-2.5 flex items-center gap-2.5"
           >
             <div
-              class="w-6 h-6 rounded-lg flex items-center justify-center text-[10px] font-bold flex-shrink-0"
+              class="w-6 h-6 rounded-lg flex items-center justify-center text-xs font-bold flex-shrink-0"
               :style="{ background: memberColor(getMemberIdx(item.user_id)) + '22', color: memberColor(getMemberIdx(item.user_id)) }"
             >{{ initials(getMemberName(item.user_id)) }}</div>
             <div class="flex-1 min-w-0">
-              <p class="text-white text-[11px] font-semibold truncate">{{ getMemberName(item.user_id) }}</p>
-              <p class="text-gray-600 text-[10px] truncate">{{ item.map }} · {{ item.agent }}</p>
+              <p class="text-white text-xs font-semibold truncate">{{ getMemberName(item.user_id) }}</p>
+              <p class="text-gray-600 text-xs truncate">{{ item.map }} · {{ item.agent }}</p>
             </div>
             <span
-              class="flex-shrink-0 px-1.5 py-0.5 text-[9px] font-bold rounded"
+              class="flex-shrink-0 px-1.5 py-0.5 text-xs font-bold rounded"
               :class="item.result === 'win' ? 'bg-green-500/15 text-green-400' : item.result === 'loss' ? 'bg-red-500/15 text-red-400' : 'bg-gray-500/15 text-gray-400'"
             >{{ item.result?.toUpperCase() ?? 'N/A' }}</span>
           </div>

@@ -24,7 +24,7 @@
         </div>
         <div>
           <p class="text-sm font-semibold">Uploading replay</p>
-          <p class="text-[11px] text-gray-500 mt-0.5">
+          <p class="text-xs text-gray-500 mt-0.5">
             {{ gameInfo.agent || gameLabel }}<span v-if="gameInfo.map"> &middot; {{ gameInfo.map }}</span>
           </p>
         </div>
@@ -36,9 +36,9 @@
             />
           </div>
           <div class="flex items-center justify-between">
-            <span v-if="uploadEta" class="text-[10px] text-gray-600">{{ uploadEta }}</span>
-            <span v-else class="text-[10px] text-gray-600">&nbsp;</span>
-            <p class="text-[10px] text-gray-600">{{ uploadProgress }}%</p>
+            <span v-if="uploadEta" class="text-xs text-gray-600">{{ uploadEta }}</span>
+            <span v-else class="text-xs text-gray-600">&nbsp;</span>
+            <p class="text-xs text-gray-600">{{ uploadProgress }}%</p>
           </div>
         </div>
       </div>
@@ -57,25 +57,56 @@
         </div>
         <div>
           <p class="text-sm font-semibold">Analysing gameplay</p>
-          <p class="text-[11px] text-gray-500 mt-0.5">~3 min · AI is reviewing your frames</p>
+          <p class="text-xs text-gray-500 mt-0.5">
+            {{ analysisElapsedSecs > 0 ? `Analysing… ${analysisElapsedDisplay}` : 'Uploading to AI…' }}
+          </p>
+        </div>
+        <!-- Multi-stage progress indicator -->
+        <div class="flex items-center gap-0 w-full px-2">
+          <template v-for="(stage, i) in ANALYSIS_STAGES" :key="stage">
+            <div class="flex items-center gap-1 flex-shrink-0">
+              <div
+                class="w-1.5 h-1.5 rounded-full transition-colors duration-700"
+                :class="i <= analysisStageIndex ? 'bg-orange-500' : 'bg-white/10'"
+              />
+              <span class="text-xs transition-colors duration-700" :class="i <= analysisStageIndex ? 'text-orange-400' : 'text-gray-700'">{{ stage }}</span>
+            </div>
+            <div
+              v-if="i < ANALYSIS_STAGES.length - 1"
+              class="flex-1 h-px mx-1 transition-colors duration-700"
+              :class="i < analysisStageIndex ? 'bg-orange-500/50' : 'bg-white/[0.06]'"
+            />
+          </template>
         </div>
         <!-- Rotating coaching tip -->
         <div class="px-3 py-2.5 bg-white/[0.02] border border-white/[0.05] rounded-xl text-left">
-          <p class="text-[9px] font-semibold uppercase tracking-wider text-gray-600 mb-1">Did you know?</p>
-          <p class="text-[11px] text-gray-400 leading-relaxed">{{ currentTip }}</p>
+          <p class="text-xs font-semibold uppercase tracking-wider text-gray-600 mb-1">Did you know?</p>
+          <p class="text-xs text-gray-400 leading-relaxed">{{ currentTip }}</p>
         </div>
-        <div class="flex items-center justify-center gap-1.5">
-          <span v-for="i in 3" :key="i" class="w-1.5 h-1.5 rounded-full bg-orange-500/60 animate-bounce" :style="{ animationDelay: `${(i - 1) * 0.18}s` }" />
+        <!-- Progress ring + bouncing dots -->
+        <div class="flex items-center justify-center gap-3">
+          <svg class="w-6 h-6 -rotate-90" viewBox="0 0 24 24">
+            <circle cx="12" cy="12" r="9" fill="none" stroke="rgba(255,255,255,0.06)" stroke-width="2.5"/>
+            <circle
+              cx="12" cy="12" r="9" fill="none" stroke="rgb(249,115,22)" stroke-width="2.5"
+              stroke-linecap="round"
+              :stroke-dasharray="`${Math.min(analysisElapsedSecs / 180 * 56.5, 56.5)} 56.5`"
+              style="transition: stroke-dasharray 1s linear;"
+            />
+          </svg>
+          <div class="flex items-center gap-1.5">
+            <span v-for="i in 3" :key="i" class="w-1.5 h-1.5 rounded-full bg-orange-500/60 animate-bounce" :style="{ animationDelay: `${(i - 1) * 0.18}s` }" />
+          </div>
         </div>
         <div v-if="analysisStuck" class="flex items-start gap-2 px-3 py-2.5 bg-white/[0.03] border border-white/[0.06] rounded-xl text-left">
           <svg class="w-3.5 h-3.5 text-gray-500 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
           </svg>
           <div class="flex-1 min-w-0">
-            <p class="text-[11px] text-gray-400">Taking longer than usual</p>
-            <p class="text-[10px] text-gray-600 mt-0.5">Your analysis is still running in the background. Check results on the dashboard.</p>
+            <p class="text-xs text-gray-400">This is taking a while — complex matches can take up to 10 minutes</p>
+            <p class="text-xs text-gray-600 mt-0.5">Your analysis is still running in the background. Grab a coffee and check back on the dashboard.</p>
             <button
-              class="mt-2 px-2.5 py-1 text-[10px] font-medium text-gray-300 bg-white/[0.06] hover:bg-white/[0.1] border border-white/[0.08] rounded-lg transition-colors"
+              class="mt-2 px-2.5 py-1 text-xs font-medium text-gray-300 bg-white/[0.06] hover:bg-white/[0.1] border border-white/[0.08] rounded-lg transition-colors"
               @click="dismiss"
             >Close &amp; check dashboard</button>
           </div>
@@ -85,10 +116,10 @@
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
           </svg>
           <div class="flex-1 min-w-0">
-            <p class="text-[11px] text-amber-300 font-medium">Analysis is taking too long</p>
-            <p class="text-[10px] text-gray-500 mt-0.5">This usually means the AI service is under heavy load. Check the dashboard later for your results.</p>
+            <p class="text-xs text-amber-300 font-medium">Analysis is taking too long</p>
+            <p class="text-xs text-gray-500 mt-0.5">This usually means the AI service is under heavy load. Check the dashboard later for your results.</p>
             <button
-              class="mt-2 px-2.5 py-1 text-[10px] font-medium text-gray-300 bg-white/[0.06] hover:bg-white/[0.1] border border-white/[0.08] rounded-lg transition-colors"
+              class="mt-2 px-2.5 py-1 text-xs font-medium text-gray-300 bg-white/[0.06] hover:bg-white/[0.1] border border-white/[0.08] rounded-lg transition-colors"
               @click="dismiss"
             >Close</button>
           </div>
@@ -96,12 +127,22 @@
       </div>
 
       <!-- Ready -->
-      <div v-else-if="state === 'ready'" class="w-full space-y-3">
+      <div v-else-if="state === 'ready'" class="w-full space-y-3 transition-all duration-500 ready-state-in">
+
+        <!-- ✓ Analysis Complete badge -->
+        <div class="flex justify-center">
+          <div class="flex items-center gap-1.5 px-3 py-1 bg-green-500/10 border border-green-500/20 rounded-full complete-badge-in">
+            <svg class="w-3 h-3 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"/>
+            </svg>
+            <span class="text-xs font-semibold text-green-400">Analysis Complete</span>
+          </div>
+        </div>
 
         <!-- Agent hero + score -->
         <div class="flex items-center gap-4">
           <div
-            class="relative w-16 h-16 rounded-2xl overflow-hidden flex-shrink-0 transition-all"
+            class="relative w-16 h-16 rounded-2xl overflow-hidden flex-shrink-0 hero-animate-in"
             :class="agentImageUrl ? '' : 'bg-green-500/10 border border-green-500/20'"
             :style="agentImageUrl ? { border: `2px solid ${agentAccentColor}60`, background: agentAccentColor + '20', boxShadow: `0 0 20px ${agentAccentColor}30` } : {}"
           >
@@ -112,10 +153,10 @@
           </div>
           <div class="flex-1 min-w-0">
             <div class="flex items-center gap-2 mb-0.5">
-              <span class="text-[10px] font-semibold uppercase tracking-wider text-gray-500">Analysis ready</span>
+              <span class="text-xs font-semibold uppercase tracking-wider text-gray-500">Analysis ready</span>
               <span
                 v-if="result?.overall_score"
-                class="text-[10px] font-bold px-1.5 py-0.5 rounded-full"
+                class="text-xs font-bold px-1.5 py-0.5 rounded-full score-grade-in"
                 :class="scoreGradeBadgeClass(result.overall_score)"
               >{{ scoreGrade(result.overall_score) }}</span>
             </div>
@@ -124,7 +165,7 @@
             </p>
           </div>
           <div v-if="result?.overall_score" class="text-right flex-shrink-0">
-            <span class="text-3xl font-black tabular-nums" :class="scoreClass(result.overall_score)">{{ result.overall_score }}</span>
+            <span class="text-3xl font-black tabular-nums score-reveal" :class="scoreClass(result.overall_score)">{{ result.overall_score }}</span>
             <span class="text-xs text-gray-600 font-normal">/100</span>
           </div>
         </div>
@@ -142,33 +183,33 @@
         <div v-if="result?.kills != null || result?.match_result" class="flex items-center gap-2 px-3 py-2 bg-white/[0.03] border border-white/[0.06] rounded-xl">
           <span
             v-if="result?.match_result"
-            class="text-[10px] font-bold px-2 py-0.5 rounded-full flex-shrink-0"
+            class="text-xs font-bold px-2 py-0.5 rounded-full flex-shrink-0"
             :class="result.match_result === 'win' ? 'bg-green-500/15 text-green-400 border border-green-500/25' : 'bg-red-500/15 text-red-400 border border-red-500/25'"
           >{{ result.match_result === 'win' ? 'WIN' : 'LOSS' }}</span>
           <span
             v-if="result?.ally_score != null && result?.enemy_score != null"
-            class="text-[10px] font-mono text-gray-500 flex-shrink-0"
+            class="text-xs font-mono text-gray-500 flex-shrink-0"
           >{{ result.ally_score }}–{{ result.enemy_score }}</span>
           <div v-if="result?.kills != null" class="flex items-center gap-2 ml-auto">
-            <span class="text-[11px] font-bold text-white tabular-nums">{{ result.kills }}</span>
-            <span class="text-[10px] text-gray-600">/</span>
-            <span class="text-[11px] font-bold text-red-400 tabular-nums">{{ result.deaths ?? '?' }}</span>
-            <span class="text-[10px] text-gray-600">/</span>
-            <span class="text-[11px] font-bold text-gray-400 tabular-nums">{{ result.assists ?? '?' }}</span>
-            <span class="text-[9px] text-gray-600">K/D/A</span>
+            <span class="text-xs font-bold text-white tabular-nums">{{ result.kills }}</span>
+            <span class="text-xs text-gray-600">/</span>
+            <span class="text-xs font-bold text-red-400 tabular-nums">{{ result.deaths ?? '?' }}</span>
+            <span class="text-xs text-gray-600">/</span>
+            <span class="text-xs font-bold text-gray-400 tabular-nums">{{ result.assists ?? '?' }}</span>
+            <span class="text-xs text-gray-600">K/D/A</span>
           </div>
         </div>
 
         <!-- Improvements list -->
         <div v-if="improvements.length" class="space-y-1.5">
-          <p class="text-[10px] font-semibold uppercase tracking-wider text-gray-600">Focus on</p>
+          <p class="text-xs font-semibold uppercase tracking-wider text-gray-600">Focus on</p>
           <div
             v-for="(imp, i) in improvements"
             :key="i"
             class="flex items-start gap-2 px-3 py-2 bg-white/[0.03] border border-white/[0.06] rounded-xl"
           >
-            <span class="text-[10px] font-bold w-4 flex-shrink-0 mt-0.5" :class="i === 0 ? 'text-red-400' : 'text-gray-600'">{{ i + 1 }}</span>
-            <p class="text-[11px] text-gray-300 leading-relaxed">{{ imp }}</p>
+            <span class="text-xs font-bold w-4 flex-shrink-0 mt-0.5" :class="i === 0 ? 'text-red-400' : 'text-gray-600'">{{ i + 1 }}</span>
+            <p class="text-xs text-gray-300 leading-relaxed">{{ imp }}</p>
           </div>
         </div>
         <!-- Fallback: top issue only -->
@@ -176,7 +217,7 @@
           <svg class="w-3.5 h-3.5 text-red-400 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
           </svg>
-          <p class="text-[11px] text-gray-300 leading-relaxed">{{ topIssue }}</p>
+          <p class="text-xs text-gray-300 leading-relaxed">{{ topIssue }}</p>
         </div>
 
         <div class="flex gap-2 pt-1">
@@ -188,7 +229,7 @@
           <button
             v-if="result?.overall_score"
             title="Copy score to clipboard"
-            class="px-3 py-2.5 text-[11px] text-gray-400 hover:text-gray-200 bg-white/[0.03] hover:bg-white/[0.06] border border-white/[0.06] rounded-xl transition-colors"
+            class="px-3 py-2.5 text-xs text-gray-400 hover:text-gray-200 bg-white/[0.03] hover:bg-white/[0.06] border border-white/[0.06] rounded-xl transition-colors"
             @click="copyScore"
           >
             <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -198,7 +239,7 @@
           <button
             v-if="result?.analysis_id"
             title="Export / share analysis"
-            class="px-3 py-2.5 text-[11px] text-gray-400 hover:text-gray-200 bg-white/[0.03] hover:bg-white/[0.06] border border-white/[0.06] rounded-xl transition-colors"
+            class="px-3 py-2.5 text-xs text-gray-400 hover:text-gray-200 bg-white/[0.03] hover:bg-white/[0.06] border border-white/[0.06] rounded-xl transition-colors"
             @click="exportAnalysis"
           >
             <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -206,7 +247,7 @@
             </svg>
           </button>
           <button
-            class="px-3 py-2.5 text-[11px] text-gray-500 hover:text-gray-300 bg-white/[0.03] hover:bg-white/[0.06] border border-white/[0.06] rounded-xl transition-colors"
+            class="px-3 py-2.5 text-xs text-gray-500 hover:text-gray-300 bg-white/[0.03] hover:bg-white/[0.06] border border-white/[0.06] rounded-xl transition-colors"
             @click="dismiss"
           >Dismiss</button>
         </div>
@@ -220,7 +261,7 @@
           <svg class="w-3.5 h-3.5 text-red-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.069A1 1 0 0121 8.882v6.236a1 1 0 01-1.447.894L15 14M3 8a2 2 0 012-2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V8z"/>
           </svg>
-          <span class="text-[11px] text-gray-400 flex-1">
+          <span class="text-xs text-gray-400 flex-1">
             <span class="text-white font-semibold">{{ sessionClipCount }} clip{{ sessionClipCount !== 1 ? 's' : '' }}</span> saved from this match
           </span>
           <svg class="w-3 h-3 text-gray-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -243,10 +284,10 @@
         </div>
         <div>
           <p class="text-sm font-semibold">Game recorded</p>
-          <p class="text-[11px] text-gray-500 mt-0.5">
+          <p class="text-xs text-gray-500 mt-0.5">
             {{ gameInfo.agent || gameLabel }}<span v-if="gameInfo.map"> &middot; {{ gameInfo.map }}</span>
           </p>
-          <p class="text-[10px] text-gray-600 mt-1.5">Auto-analyse is off — analyse now or view later from the dashboard.</p>
+          <p class="text-xs text-gray-600 mt-1.5">Auto-analyse is off — analyse now or view later from the dashboard.</p>
         </div>
         <div class="flex gap-2 pt-1">
           <button
@@ -255,7 +296,7 @@
             @click="analyseNow"
           >{{ analysing ? 'Starting...' : 'Analyse Now' }}</button>
           <button
-            class="px-3 py-2 text-[11px] text-gray-500 hover:text-gray-300 bg-white/[0.03] hover:bg-white/[0.06] border border-white/[0.06] rounded-lg transition-colors"
+            class="px-3 py-2 text-xs text-gray-500 hover:text-gray-300 bg-white/[0.03] hover:bg-white/[0.06] border border-white/[0.06] rounded-lg transition-colors"
             @click="dismissPending"
           >Later</button>
         </div>
@@ -272,14 +313,14 @@
           </div>
           <div>
             <p class="text-sm font-semibold text-amber-400">Analysis limit reached</p>
-            <p class="text-[11px] text-gray-500 mt-1">{{ errorMessage }}</p>
+            <p class="text-xs text-gray-500 mt-1">{{ errorMessage }}</p>
           </div>
           <div class="flex gap-2 pt-1">
             <button
               class="flex-1 py-2 text-xs font-semibold bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white rounded-lg transition-all shadow-sm shadow-amber-500/20"
               @click="openUpgrade"
             >Upgrade Plan</button>
-            <button class="px-3 py-2 text-[11px] text-gray-500 hover:text-gray-300 bg-white/[0.03] hover:bg-white/[0.06] border border-white/[0.06] rounded-lg transition-colors" @click="dismiss">Dismiss</button>
+            <button class="px-3 py-2 text-xs text-gray-500 hover:text-gray-300 bg-white/[0.03] hover:bg-white/[0.06] border border-white/[0.06] rounded-lg transition-colors" @click="dismiss">Dismiss</button>
           </div>
         </template>
 
@@ -292,7 +333,7 @@
           </div>
           <div>
             <p class="text-sm font-semibold text-red-400">Upload failed</p>
-            <p class="text-[11px] text-gray-500 mt-1">{{ errorMessage }}</p>
+            <p class="text-xs text-gray-500 mt-1">{{ errorMessage }}</p>
           </div>
           <div class="flex gap-2 pt-1">
             <button
@@ -300,7 +341,7 @@
               class="flex-1 py-2 text-xs font-semibold bg-gradient-to-r from-red-500 to-orange-600 hover:from-red-600 hover:to-orange-700 text-white rounded-lg transition-all shadow-sm shadow-red-500/20 disabled:opacity-40 disabled:cursor-not-allowed"
               @click="retryUpload"
             >Retry</button>
-            <button class="px-3 py-2 text-[11px] text-gray-500 hover:text-gray-300 bg-white/[0.03] hover:bg-white/[0.06] border border-white/[0.06] rounded-lg transition-colors" @click="dismiss">Dismiss</button>
+            <button class="px-3 py-2 text-xs text-gray-500 hover:text-gray-300 bg-white/[0.03] hover:bg-white/[0.06] border border-white/[0.06] rounded-lg transition-colors" @click="dismiss">Dismiss</button>
           </div>
         </template>
       </div>
@@ -325,6 +366,8 @@ const COACHING_TIPS = [
   'A consistent warm-up routine can reduce your reaction time by 15–20ms.',
 ]
 
+const ANALYSIS_STAGES = ['Upload', 'Analyse', 'Generate']
+
 const state = ref<State>('uploading')
 const uploadProgress = ref(0)
 const uploadStartedAt = ref(0)
@@ -348,12 +391,30 @@ const analysisStuck = ref(false)
 const analysisTimedOut = ref(false)
 const tipIndex = ref(Math.floor(Math.random() * COACHING_TIPS.length))
 const sessionClipCount = ref(0)
+const analysisStartedAt = ref(0)
+const analysisElapsedSecs = ref(0)
 let sessionStart = 0
 let stuckTimer: ReturnType<typeof setTimeout> | null = null
 let timeoutTimer: ReturnType<typeof setTimeout> | null = null
 let tipTimer: ReturnType<typeof setInterval> | null = null
+let elapsedInterval: ReturnType<typeof setInterval> | null = null
 
 const currentTip = computed(() => COACHING_TIPS[tipIndex.value])
+
+const analysisElapsedDisplay = computed(() => {
+  const s = analysisElapsedSecs.value
+  const m = Math.floor(s / 60)
+  const sec = s % 60
+  if (m === 0) return `${sec}s`
+  return `${m}m ${sec.toString().padStart(2, '0')}s`
+})
+
+const analysisStageIndex = computed(() => {
+  const s = analysisElapsedSecs.value
+  if (s < 30) return 0
+  if (s < 150) return 1
+  return 2
+})
 
 const uploadEta = computed(() => {
   const pct = uploadProgress.value
@@ -369,17 +430,25 @@ const uploadEta = computed(() => {
 function startStuckTimer() {
   if (stuckTimer) clearTimeout(stuckTimer)
   if (timeoutTimer) clearTimeout(timeoutTimer)
+  analysisStartedAt.value = Date.now()
+  analysisElapsedSecs.value = 0
   stuckTimer = setTimeout(() => { analysisStuck.value = true }, 5 * 60 * 1000)
   timeoutTimer = setTimeout(() => { analysisTimedOut.value = true }, 15 * 60 * 1000)
   tipTimer = setInterval(() => {
     tipIndex.value = (tipIndex.value + 1) % COACHING_TIPS.length
   }, 15000)
+  elapsedInterval = setInterval(() => {
+    if (analysisStartedAt.value) {
+      analysisElapsedSecs.value = Math.floor((Date.now() - analysisStartedAt.value) / 1000)
+    }
+  }, 1000)
 }
 
 function clearStuckTimer() {
   if (stuckTimer) { clearTimeout(stuckTimer); stuckTimer = null }
   if (timeoutTimer) { clearTimeout(timeoutTimer); timeoutTimer = null }
   if (tipTimer) { clearInterval(tipTimer); tipTimer = null }
+  if (elapsedInterval) { clearInterval(elapsedInterval); elapsedInterval = null }
   analysisStuck.value = false
   analysisTimedOut.value = false
 }
@@ -576,3 +645,51 @@ function scoreBarClass(score: number): string {
   return score >= 80 ? 'bg-green-500' : score >= 60 ? 'bg-yellow-500' : 'bg-red-500'
 }
 </script>
+
+<style scoped>
+@keyframes scoreReveal {
+  0%   { transform: scale(0.5); opacity: 0; }
+  80%  { transform: scale(1.05); opacity: 1; }
+  100% { transform: scale(1.0); opacity: 1; }
+}
+
+@keyframes heroBounceIn {
+  0%   { transform: scale(0.8) translateY(6px); opacity: 0; }
+  100% { transform: scale(1.0) translateY(0); opacity: 1; }
+}
+
+@keyframes badgeFadeDown {
+  0%   { opacity: 0; transform: translateY(-6px); }
+  100% { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes readyFadeIn {
+  0%   { opacity: 0; transform: translateY(8px); }
+  100% { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes scoreGradeIn {
+  0%   { opacity: 0; transform: scale(0.6); }
+  100% { opacity: 1; transform: scale(1.0); }
+}
+
+.score-reveal {
+  animation: scoreReveal 0.6s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+}
+
+.hero-animate-in {
+  animation: heroBounceIn 0.5s ease forwards;
+}
+
+.complete-badge-in {
+  animation: badgeFadeDown 0.5s ease 0.1s both;
+}
+
+.score-grade-in {
+  animation: scoreGradeIn 0.4s ease 0.3s both;
+}
+
+.ready-state-in {
+  animation: readyFadeIn 0.5s ease forwards;
+}
+</style>

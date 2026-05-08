@@ -32,13 +32,13 @@
             <p :class="['text-xs font-semibold', boosted ? 'text-green-300' : 'text-gray-400']">
               {{ boosted ? 'Boost Active' : 'Standard Mode' }}
             </p>
-            <p class="text-[10px] text-gray-600 mt-0.5">
+            <p class="text-xs text-gray-600 mt-0.5">
               Power plan: <span class="text-gray-400">{{ powerPlan || '—' }}</span>
             </p>
           </div>
           <button
             v-if="boosted"
-            class="text-[10px] text-gray-500 hover:text-gray-300 transition-colors px-2 py-1 rounded border border-white/[0.07] hover:border-white/[0.15]"
+            class="text-xs text-gray-500 hover:text-gray-300 transition-colors px-2 py-1 rounded border border-white/[0.07] hover:border-white/[0.15]"
             @click="restore"
             :disabled="loading"
           >
@@ -73,7 +73,7 @@
 
       <!-- What this does (pre-boost) -->
       <div v-if="!boosted && !results.length" class="space-y-1.5">
-        <p class="text-[10px] text-gray-600 uppercase tracking-wider font-semibold px-0.5">What gets optimised</p>
+        <p class="text-xs text-gray-600 uppercase tracking-wider font-semibold px-0.5">What gets optimised</p>
         <div class="space-y-1">
           <div
             v-for="item in previewItems"
@@ -85,7 +85,7 @@
             </svg>
             <div class="min-w-0">
               <p class="text-xs font-medium text-gray-300">{{ item.name }}</p>
-              <p class="text-[10px] text-gray-600">{{ item.description }}</p>
+              <p class="text-xs text-gray-600">{{ item.description }}</p>
             </div>
           </div>
         </div>
@@ -93,7 +93,7 @@
 
       <!-- Results (post-boost) -->
       <div v-if="results.length" class="space-y-1.5">
-        <p class="text-[10px] text-gray-600 uppercase tracking-wider font-semibold px-0.5">Results</p>
+        <p class="text-xs text-gray-600 uppercase tracking-wider font-semibold px-0.5">Results</p>
         <div class="space-y-1">
           <div
             v-for="result in results"
@@ -114,7 +114,7 @@
             </svg>
             <div class="min-w-0 flex-1">
               <p class="text-xs font-medium text-gray-300">{{ result.name }}</p>
-              <p :class="['text-[10px]', result.success ? 'text-gray-500' : 'text-orange-500/80']">
+              <p :class="['text-xs', result.success ? 'text-gray-500' : 'text-orange-500/80']">
                 {{ result.message }}
               </p>
             </div>
@@ -124,7 +124,7 @@
         <!-- Admin note if any failed -->
         <div
           v-if="hasAdminFailures"
-          class="flex items-start gap-2 px-3 py-2 rounded-lg bg-orange-500/[0.06] border border-orange-500/20 text-[10px] text-orange-400/80 mt-1"
+          class="flex items-start gap-2 px-3 py-2 rounded-lg bg-orange-500/[0.06] border border-orange-500/20 text-xs text-orange-400/80 mt-1"
         >
           <svg class="w-3 h-3 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" d="M11.25 11.25l.041-.02a.75.75 0 011.063.852l-.708 2.836a.75.75 0 001.063.853l.041-.021M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9-3.75h.008v.008H12V8.25z" />
@@ -135,7 +135,7 @@
         <!-- HAGS reboot notice -->
         <div
           v-if="hagsNeedsReboot"
-          class="flex items-start gap-2 px-3 py-2 rounded-lg bg-blue-500/[0.07] border border-blue-500/20 text-[10px] text-blue-300/90"
+          class="flex items-start gap-2 px-3 py-2 rounded-lg bg-blue-500/[0.07] border border-blue-500/20 text-xs text-blue-300/90"
         >
           <svg class="w-3 h-3 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99" />
@@ -147,9 +147,9 @@
       <!-- Diagnostics panel -->
       <div v-if="diagnostics" class="space-y-1.5">
         <div class="flex items-center justify-between px-0.5">
-          <p class="text-[10px] text-gray-600 uppercase tracking-wider font-semibold">System Diagnostics</p>
+          <p class="text-xs text-gray-600 uppercase tracking-wider font-semibold">System Diagnostics</p>
           <button
-            class="text-[10px] text-gray-600 hover:text-gray-400 transition-colors"
+            class="text-xs text-gray-600 hover:text-gray-400 transition-colors"
             @click="diagnostics = null"
           >dismiss</button>
         </div>
@@ -180,25 +180,25 @@
         <div class="grid grid-cols-2 gap-1">
           <!-- GPU -->
           <div class="px-3 py-2 rounded-lg bg-white/[0.02] border border-white/[0.05] space-y-0.5">
-            <p class="text-[10px] text-gray-600 font-medium uppercase tracking-wide">GPU</p>
+            <p class="text-xs text-gray-600 font-medium uppercase tracking-wide">GPU</p>
             <p class="text-xs text-gray-300 font-semibold truncate">{{ diagnostics.gpuName || '—' }}</p>
-            <p class="text-[10px] text-gray-500">
+            <p class="text-xs text-gray-500">
               <span :class="diagnostics.gpuUsagePct > 85 ? 'text-yellow-400' : 'text-gray-400'">{{ diagnostics.gpuUsagePct }}%</span>
               usage · {{ diagnostics.gpuTempC > 0 ? diagnostics.gpuTempC + '°C' : '—' }}
             </p>
           </div>
           <!-- CPU -->
           <div class="px-3 py-2 rounded-lg bg-white/[0.02] border border-white/[0.05] space-y-0.5">
-            <p class="text-[10px] text-gray-600 font-medium uppercase tracking-wide">CPU</p>
+            <p class="text-xs text-gray-600 font-medium uppercase tracking-wide">CPU</p>
             <p class="text-xs font-semibold" :class="diagnostics.cpuUsagePct > 80 ? 'text-orange-400' : 'text-gray-300'">{{ diagnostics.cpuUsagePct }}%</p>
-            <p class="text-[10px] text-gray-500">{{ diagnostics.cpuSpeedMhz }} / {{ diagnostics.cpuMaxMhz }} MHz</p>
+            <p class="text-xs text-gray-500">{{ diagnostics.cpuSpeedMhz }} / {{ diagnostics.cpuMaxMhz }} MHz</p>
           </div>
           <!-- RAM -->
           <div class="px-3 py-2 rounded-lg bg-white/[0.02] border border-white/[0.05] space-y-0.5 col-span-2">
-            <p class="text-[10px] text-gray-600 font-medium uppercase tracking-wide">RAM</p>
+            <p class="text-xs text-gray-600 font-medium uppercase tracking-wide">RAM</p>
             <div class="flex items-center gap-3">
               <p class="text-xs text-gray-300 font-semibold">{{ diagnostics.ramUsedMb }} / {{ diagnostics.ramTotalMb }} MB</p>
-              <p class="text-[10px]" :class="!diagnostics.xmpEnabled ? 'text-orange-400' : 'text-gray-500'">
+              <p class="text-xs" :class="!diagnostics.xmpEnabled ? 'text-orange-400' : 'text-gray-500'">
                 {{ diagnostics.ramSpeedMhz }} MHz{{ !diagnostics.xmpEnabled ? ' — XMP may be off' : '' }}
               </p>
             </div>
@@ -210,7 +210,7 @@
           <div
             v-for="(w, i) in diagnostics.warnings"
             :key="i"
-            class="flex items-start gap-2 px-3 py-2 rounded-lg bg-orange-500/[0.06] border border-orange-500/20 text-[10px] text-orange-400/90"
+            class="flex items-start gap-2 px-3 py-2 rounded-lg bg-orange-500/[0.06] border border-orange-500/20 text-xs text-orange-400/90"
           >
             <svg class="w-3 h-3 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" d="M11.25 11.25l.041-.02a.75.75 0 011.063.852l-.708 2.836a.75.75 0 001.063.853l.041-.021M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9-3.75h.008v.008H12V8.25z" />
@@ -221,17 +221,17 @@
 
         <!-- Top processes -->
         <div v-if="diagnostics.topProcesses.length" class="space-y-1">
-          <p class="text-[10px] text-gray-600 uppercase tracking-wider font-semibold px-0.5">Top CPU Processes</p>
+          <p class="text-xs text-gray-600 uppercase tracking-wider font-semibold px-0.5">Top CPU Processes</p>
           <div class="space-y-0.5">
             <div
               v-for="proc in diagnostics.topProcesses.slice(0, 5)"
               :key="proc.name"
               class="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-white/[0.02] border border-white/[0.04]"
             >
-              <p class="text-[10px] text-gray-400 truncate flex-1">{{ proc.name }}</p>
-              <p class="text-[10px] font-semibold flex-shrink-0" :class="proc.cpuPct > 10 ? 'text-orange-400' : 'text-gray-500'">{{ proc.cpuPct.toFixed(1) }}%</p>
+              <p class="text-xs text-gray-400 truncate flex-1">{{ proc.name }}</p>
+              <p class="text-xs font-semibold flex-shrink-0" :class="proc.cpuPct > 10 ? 'text-orange-400' : 'text-gray-500'">{{ proc.cpuPct.toFixed(1) }}%</p>
               <button
-                class="text-[10px] px-1.5 py-0.5 rounded border border-red-500/30 text-red-400/80 hover:text-red-300 hover:border-red-400/50 transition-colors flex-shrink-0 disabled:opacity-40"
+                class="text-xs px-1.5 py-0.5 rounded border border-red-500/30 text-red-400/80 hover:text-red-300 hover:border-red-400/50 transition-colors flex-shrink-0 disabled:opacity-40"
                 :disabled="killingProcesses.has(proc.name)"
                 @click="killProcess(proc.name)"
               >
@@ -269,8 +269,8 @@
 
       <!-- Pre-game auto-close list -->
       <div class="space-y-1.5">
-        <p class="text-[10px] text-gray-600 uppercase tracking-wider font-semibold px-0.5">Auto-Close Before Game</p>
-        <p class="text-[10px] text-gray-700 px-0.5">Apps added here are closed automatically when a game is detected starting.</p>
+        <p class="text-xs text-gray-600 uppercase tracking-wider font-semibold px-0.5">Auto-Close Before Game</p>
+        <p class="text-xs text-gray-700 px-0.5">Apps added here are closed automatically when a game is detected starting.</p>
 
         <!-- Existing entries -->
         <div v-if="pregameKillList.length" class="space-y-0.5">
@@ -279,9 +279,9 @@
             :key="proc"
             class="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-white/[0.02] border border-white/[0.04]"
           >
-            <p class="text-[10px] text-gray-400 flex-1 truncate">{{ proc }}</p>
+            <p class="text-xs text-gray-400 flex-1 truncate">{{ proc }}</p>
             <button
-              class="text-[10px] text-gray-600 hover:text-red-400 transition-colors flex-shrink-0"
+              class="text-xs text-gray-600 hover:text-red-400 transition-colors flex-shrink-0"
               @click="removeFromKillList(i)"
             >
               <svg class="w-3 h-3" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
@@ -310,7 +310,7 @@
       </div>
 
       <!-- Admin tip (always show) -->
-      <p class="text-[10px] text-gray-700 text-center px-2">
+      <p class="text-xs text-gray-700 text-center px-2">
         For maximum effect, run UpForge as administrator
       </p>
 

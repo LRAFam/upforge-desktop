@@ -11,7 +11,7 @@
             <div class="flex items-center justify-between mb-2">
               <div class="flex items-center gap-1.5">
                 <div class="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" />
-                <span class="text-[10px] font-bold text-red-400 tracking-wider uppercase">Recording Started</span>
+                <span class="text-xs font-bold text-red-400 tracking-wider uppercase">Recording Started</span>
               </div>
               <button class="text-gray-700 hover:text-gray-500 transition-colors pointer-events-auto" @click="showCheatsheet = false">
                 <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -22,16 +22,16 @@
             <!-- Hotkey rows -->
             <div class="space-y-1.5">
               <div class="flex items-center gap-2.5">
-                <kbd class="min-w-[28px] text-center text-[9px] font-bold bg-white/[0.07] border border-white/[0.12] rounded-md px-1.5 py-1 text-gray-300 shadow-sm">{{ hotkey }}</kbd>
-                <span class="text-[11px] text-gray-300 font-medium">Save clip moment</span>
+                <kbd class="min-w-[28px] text-center text-xs font-bold bg-white/[0.07] border border-white/[0.12] rounded-md px-1.5 py-1 text-gray-300 shadow-sm">{{ hotkey }}</kbd>
+                <span class="text-xs text-gray-300 font-medium">Save clip moment</span>
               </div>
               <div class="flex items-center gap-2.5">
-                <kbd class="min-w-[28px] text-center text-[9px] font-bold bg-white/[0.07] border border-white/[0.12] rounded-md px-1.5 py-1 text-gray-300 shadow-sm">{{ screenshotHotkey }}</kbd>
-                <span class="text-[11px] text-gray-300 font-medium">Take screenshot</span>
+                <kbd class="min-w-[28px] text-center text-xs font-bold bg-white/[0.07] border border-white/[0.12] rounded-md px-1.5 py-1 text-gray-300 shadow-sm">{{ screenshotHotkey }}</kbd>
+                <span class="text-xs text-gray-300 font-medium">Take screenshot</span>
               </div>
               <div class="flex items-center gap-2.5">
-                <kbd class="min-w-[28px] text-center text-[9px] font-bold bg-white/[0.07] border border-white/[0.12] rounded-md px-1.5 py-1 text-gray-300 shadow-sm">F10</kbd>
-                <span class="text-[11px] text-gray-300 font-medium">Toggle this overlay</span>
+                <kbd class="min-w-[28px] text-center text-xs font-bold bg-white/[0.07] border border-white/[0.12] rounded-md px-1.5 py-1 text-gray-300 shadow-sm">F10</kbd>
+                <span class="text-xs text-gray-300 font-medium">Toggle this overlay</span>
               </div>
             </div>
             <!-- Countdown bar -->
@@ -72,11 +72,11 @@
               <div :class="['w-2 h-2 rounded-full transition-colors duration-500', isRecording ? 'bg-red-500' : 'bg-gray-700']" />
               <div v-if="isRecording" class="absolute w-2 h-2 rounded-full bg-red-500 animate-ping opacity-50" />
             </div>
-            <span :class="['text-[10px] font-bold tracking-[0.16em] uppercase transition-colors', isRecording ? 'text-red-400' : 'text-gray-600']">
+            <span :class="['text-xs font-bold tracking-[0.16em] uppercase transition-colors', isRecording ? 'text-red-400' : 'text-gray-600']">
               {{ isRecording ? 'Live Rec' : 'Standby' }}
             </span>
           </div>
-          <kbd class="text-[9px] text-gray-700 font-medium bg-white/[0.04] border border-white/[0.07] rounded px-1.5 py-px">F10</kbd>
+          <kbd class="text-xs text-gray-700 font-medium bg-white/[0.04] border border-white/[0.07] rounded px-1.5 py-px">F10</kbd>
         </div>
 
         <!-- Economy cards -->
@@ -108,10 +108,10 @@
           </div>
           <div v-if="data.allyScore != null && data.enemyScore != null" class="flex items-center gap-1">
             <span class="text-[13px] font-black text-green-400 tabular-nums">{{ data.allyScore }}</span>
-            <span class="text-[10px] text-gray-700 font-bold">–</span>
+            <span class="text-xs text-gray-700 font-bold">–</span>
             <span class="text-[13px] font-black text-red-400 tabular-nums">{{ data.enemyScore }}</span>
           </div>
-          <span v-else class="text-[10px] text-gray-700">–</span>
+          <span v-else class="text-xs text-gray-700">–</span>
         </div>
 
         <!-- Clip button -->
@@ -133,7 +133,7 @@
           </svg>
           <span class="text-[12px] font-semibold tracking-tight">
             {{ isRecording ? 'Save Clip' : 'Not in match' }}
-            <span class="font-normal opacity-40 ml-1 text-[10px]">({{ hotkey }})</span>
+            <span class="font-normal opacity-40 ml-1 text-xs">({{ hotkey }})</span>
           </span>
         </button>
       </div>

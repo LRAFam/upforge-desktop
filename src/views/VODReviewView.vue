@@ -20,7 +20,7 @@
         </span>
         <span
           v-if="timeline?.gameMode"
-          class="flex-shrink-0 text-[9px] font-semibold px-1.5 py-px rounded bg-white/[0.06] text-gray-400 uppercase tracking-wide"
+          class="flex-shrink-0 text-xs font-semibold px-1.5 py-px rounded bg-white/[0.06] text-gray-400 uppercase tracking-wide"
         >{{ timeline.gameMode }}</span>
       </div>
 
@@ -32,11 +32,11 @@
           <span class="font-bold text-red-400">{{ timeline.finalStats.deaths }}</span>
           <span class="text-gray-600">/</span>
           <span class="font-bold text-blue-400">{{ timeline.finalStats.assists }}</span>
-          <span class="text-[10px] text-gray-600 ml-0.5">KDA</span>
+          <span class="text-xs text-gray-600 ml-0.5">KDA</span>
         </div>
         <div
           v-if="timeline.finalStats.won !== undefined"
-          class="text-[10px] font-bold px-1.5 py-0.5 rounded"
+          class="text-xs font-bold px-1.5 py-0.5 rounded"
           :class="timeline.finalStats.won ? 'text-green-400 bg-green-500/10' : 'text-red-400 bg-red-500/10'"
         >
           {{ timeline.finalStats.won ? 'WIN' : 'LOSS' }}
@@ -50,7 +50,7 @@
       <!-- Left sidebar: event feed -->
       <div class="w-44 flex-shrink-0 border-r border-white/[0.05] flex flex-col overflow-hidden bg-[#0a0a0a]">
         <div class="px-3 py-2 border-b border-white/[0.05]">
-          <p class="text-[9px] font-semibold text-gray-600 uppercase tracking-widest">Timeline</p>
+          <p class="text-xs font-semibold text-gray-600 uppercase tracking-widest">Timeline</p>
         </div>
         <div ref="sidebarEl" class="flex-1 overflow-y-auto scrollbar-hide space-y-px py-1">
           <template v-for="round in roundGroups" :key="round.roundNumber">
@@ -63,7 +63,7 @@
                 class="w-1.5 h-1.5 rounded-full flex-shrink-0"
                 :class="round.won ? 'bg-green-500' : 'bg-red-500/70'"
               />
-              <span class="text-[10px] font-semibold text-gray-400">R{{ round.roundNumber + 1 }}</span>
+              <span class="text-xs font-semibold text-gray-400">R{{ round.roundNumber + 1 }}</span>
               <!-- Spike planted icon -->
               <svg v-if="round.spikePlanted" class="w-2.5 h-2.5 text-orange-400 flex-shrink-0" viewBox="0 0 16 16" fill="currentColor" title="Spike planted">
                 <circle cx="7" cy="9" r="5"/>
@@ -112,7 +112,7 @@
                 </svg>
               </div>
               <div class="flex-1 min-w-0">
-                <p class="text-[9px] text-gray-400 truncate group-hover:text-gray-200 transition-colors">
+                <p class="text-xs text-gray-400 truncate group-hover:text-gray-200 transition-colors">
                   <span v-if="event.type === 'kill'">{{ event.victimName }}</span>
                   <span v-else>by {{ event.killerName }}</span>
                 </p>
@@ -124,7 +124,7 @@
 
           <!-- No events -->
           <div v-if="!roundGroups.length" class="px-3 py-4 text-center">
-            <p class="text-[10px] text-gray-600">No timeline data</p>
+            <p class="text-xs text-gray-600">No timeline data</p>
           </div>
         </div>
       </div>
@@ -222,7 +222,7 @@
             <!-- Hover time tooltip -->
             <div
               v-if="hoverTime !== null"
-              class="absolute bottom-full mb-2 px-1.5 py-0.5 bg-black/80 rounded text-[9px] text-gray-200 tabular-nums pointer-events-none -translate-x-1/2"
+              class="absolute bottom-full mb-2 px-1.5 py-0.5 bg-black/80 rounded text-xs text-gray-200 tabular-nums pointer-events-none -translate-x-1/2"
               :style="{ left: (hoverTime / duration * 100) + '%' }"
             >{{ formatMs(hoverTime * 1000) }}</div>
           </div>
@@ -267,19 +267,19 @@
 
             <!-- Playback speed -->
             <button
-              class="text-[10px] font-mono px-2 py-0.5 rounded bg-white/[0.05] hover:bg-white/[0.1] text-gray-400 hover:text-gray-200 transition-colors"
+              class="text-xs font-mono px-2 py-0.5 rounded bg-white/[0.05] hover:bg-white/[0.1] text-gray-400 hover:text-gray-200 transition-colors"
               @click="cycleSpeed"
             >{{ playbackSpeed }}x</button>
 
             <!-- Time display -->
             <div class="flex-1" />
-            <span class="text-[10px] font-mono text-gray-500 tabular-nums">
+            <span class="text-xs font-mono text-gray-500 tabular-nums">
               {{ formatSeconds(currentTime) }} / {{ formatSeconds(duration) }}
             </span>
 
             <!-- Scoreboard toggle -->
             <button
-              class="flex items-center gap-1 text-[9px] text-gray-600 hover:text-gray-400 transition-colors"
+              class="flex items-center gap-1 text-xs text-gray-600 hover:text-gray-400 transition-colors"
               @click="showScoreboard = !showScoreboard"
             >
               <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -292,11 +292,11 @@
             <div class="flex items-center gap-2 ml-1">
               <div class="flex items-center gap-1">
                 <div class="w-2 h-2 rounded-full bg-green-500" />
-                <span class="text-[9px] text-gray-600">Kill</span>
+                <span class="text-xs text-gray-600">Kill</span>
               </div>
               <div class="flex items-center gap-1">
                 <div class="w-2 h-2 rounded-full bg-red-500" />
-                <span class="text-[9px] text-gray-600">Death</span>
+                <span class="text-xs text-gray-600">Death</span>
               </div>
             </div>
           </div>
@@ -336,7 +336,7 @@
                   class="w-4 h-4 object-contain flex-shrink-0 opacity-80"
                 />
                 <div class="min-w-0">
-                  <p class="text-[10px] font-semibold truncate" :class="p.puuid === ownPuuid ? 'text-white' : 'text-gray-300'">
+                  <p class="text-xs font-semibold truncate" :class="p.puuid === ownPuuid ? 'text-white' : 'text-gray-300'">
                     {{ p.puuid === ownPuuid ? 'You' : p.summonerName }}
                     <span v-if="p.puuid === ownPuuid" class="text-[8px] text-gray-600 font-normal ml-0.5">← you</span>
                   </p>
@@ -346,7 +346,7 @@
                 </div>
               </div>
               <!-- K/D/A -->
-              <div class="text-[10px] tabular-nums text-right">
+              <div class="text-xs tabular-nums text-right">
                 <span class="text-green-400 font-semibold">{{ p.kills }}</span>
                 <span class="text-gray-600">/</span>
                 <span class="text-red-400 font-semibold">{{ p.deaths }}</span>
@@ -354,7 +354,7 @@
                 <span class="text-gray-400">{{ p.assists }}</span>
               </div>
               <!-- ACS (combat score) -->
-              <div class="text-[10px] tabular-nums text-right text-gray-400 font-mono">{{ p.score }}</div>
+              <div class="text-xs tabular-nums text-right text-gray-400 font-mono">{{ p.score }}</div>
               <!-- Ability casts (C/Q/E/X) -->
               <div v-if="p.abilityCasts" class="text-[8px] tabular-nums text-right text-gray-600 font-mono space-x-0.5">
                 <span title="C slot">{{ p.abilityCasts.grenade }}C</span>

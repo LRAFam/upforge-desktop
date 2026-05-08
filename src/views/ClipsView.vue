@@ -4,10 +4,10 @@
     <div class="flex items-center justify-between flex-shrink-0">
       <div>
         <h2 class="text-sm font-semibold text-white">Clip Library</h2>
-        <p class="text-[11px] text-gray-500 mt-0.5">{{ clips.length }} clip{{ clips.length !== 1 ? 's' : '' }} saved locally</p>
+        <p class="text-xs text-gray-500 mt-0.5">{{ clips.length }} clip{{ clips.length !== 1 ? 's' : '' }} saved locally</p>
       </div>
       <div class="flex items-center gap-2">
-        <span class="text-[10px] text-gray-600">F9 to bookmark during match</span>
+        <span class="text-xs text-gray-600">F9 to bookmark during match</span>
       </div>
     </div>
 
@@ -16,7 +16,7 @@
       <button
         v-for="f in filters"
         :key="f.value"
-        class="px-2.5 py-1 rounded text-[11px] font-medium transition-colors"
+        class="px-2.5 py-1 rounded text-xs font-medium transition-colors"
         :class="activeFilter === f.value
           ? 'bg-red-500/20 text-red-400 border border-red-500/30'
           : 'text-gray-500 hover:text-gray-300 border border-transparent'"
@@ -34,7 +34,7 @@
       <svg class="w-3.5 h-3.5 text-red-400 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
         <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clip-rule="evenodd"/>
       </svg>
-      <p class="text-[11px] text-red-400 flex-1">{{ uploadError }}</p>
+      <p class="text-xs text-red-400 flex-1">{{ uploadError }}</p>
       <button class="text-red-400/60 hover:text-red-400 transition-colors" @click="uploadError = null">
         <svg class="w-3 h-3" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd"/></svg>
       </button>
@@ -49,7 +49,7 @@
       </div>
       <div>
         <p class="text-sm text-gray-400">No clips yet</p>
-        <p class="text-[11px] text-gray-600 mt-0.5">Press F9 during a match to save a moment</p>
+        <p class="text-xs text-gray-600 mt-0.5">Press F9 during a match to save a moment</p>
       </div>
     </div>
 
@@ -59,15 +59,15 @@
         <div
           v-for="clip in filteredClips"
           :key="clip.id"
-          class="group relative bg-white/[0.03] border border-white/[0.06] rounded-lg overflow-hidden cursor-pointer hover:border-white/[0.12] transition-colors"
+          class="group relative bg-white/[0.03] border border-white/[0.06] rounded-lg overflow-hidden cursor-pointer hover:border-white/[0.12] transition-all"
           @click="openPlayer(clip)"
         >
           <!-- Thumbnail -->
-          <div class="relative aspect-video bg-black">
+          <div class="relative bg-black" style="min-height: 72px; aspect-ratio: 16/9;">
             <img
               v-if="thumbnails[clip.id]"
               :src="thumbnails[clip.id]"
-              class="w-full h-full object-cover"
+              class="w-full h-full object-cover transition-transform duration-200 group-hover:scale-105"
               alt=""
             />
             <div v-else class="w-full h-full flex items-center justify-center">
@@ -76,79 +76,78 @@
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
               </svg>
             </div>
-            <!-- Play overlay -->
-            <div class="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+            <!-- Play overlay (centre) -->
+            <div class="absolute inset-0 bg-black/30 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center pointer-events-none">
               <div class="w-10 h-10 rounded-full bg-white/20 backdrop-blur-sm flex items-center justify-center">
                 <svg class="w-5 h-5 text-white ml-0.5" fill="currentColor" viewBox="0 0 24 24">
                   <path d="M8 5v14l11-7z"/>
                 </svg>
               </div>
             </div>
-            <!-- Duration badge -->
-            <div class="absolute bottom-1.5 right-1.5 bg-black/70 rounded px-1.5 py-0.5 text-[10px] text-gray-300 font-mono">
-              {{ formatDuration(clip.durationSeconds) }}
-            </div>
-            <!-- Trigger badge -->
+            <!-- Trigger badge (top-left) -->
             <div class="absolute top-1.5 left-1.5">
               <span
-                class="px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wide"
+                class="px-1.5 py-0.5 rounded text-xs font-bold uppercase tracking-wide"
                 :class="triggerClass(clip.trigger)"
               >{{ clip.trigger }}</span>
+            </div>
+            <!-- AI Tips badge (top-right) -->
+            <div v-if="clip.suggestion" class="absolute top-1.5 right-1.5">
+              <span class="px-1.5 py-0.5 rounded text-xs font-semibold bg-orange-500/80 text-white backdrop-blur-sm">🤖 AI</span>
+            </div>
+            <!-- Bottom gradient overlay with always-visible action buttons -->
+            <div class="absolute bottom-0 left-0 right-0 h-10 bg-gradient-to-t from-black/80 to-transparent flex items-end justify-between px-1.5 pb-1.5" @click.stop>
+              <span class="text-xs text-gray-300 font-mono bg-black/50 rounded px-1 py-px">{{ formatDuration(clip.durationSeconds) }}</span>
+              <div class="flex gap-1">
+                <button
+                  :class="[
+                    'w-5 h-5 rounded bg-black/60 backdrop-blur-sm flex items-center justify-center transition-colors',
+                    uploadingClipId === clip.id ? 'opacity-50 cursor-wait' : 'hover:bg-white/20'
+                  ]"
+                  :disabled="!!uploadingClipId"
+                  title="Upload & Analyse"
+                  @click="uploadClip(clip)"
+                >
+                  <svg v-if="uploadingClipId !== clip.id" class="w-2.5 h-2.5 text-gray-200" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/>
+                  </svg>
+                  <svg v-else class="w-2.5 h-2.5 text-gray-400 animate-spin" fill="none" viewBox="0 0 24 24">
+                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
+                  </svg>
+                </button>
+                <button
+                  class="w-5 h-5 rounded bg-black/60 backdrop-blur-sm flex items-center justify-center hover:bg-red-500/60 transition-colors"
+                  title="Delete"
+                  @click="deleteClip(clip.id)"
+                >
+                  <svg class="w-2.5 h-2.5 text-gray-200" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6M9 7h6m-7 0a1 1 0 001-1h4a1 1 0 001 1m-7 0h8"/>
+                  </svg>
+                </button>
+              </div>
             </div>
           </div>
 
           <!-- Metadata -->
           <div class="p-2.5">
-            <p class="text-[11px] font-medium text-gray-200 truncate">
+            <p class="text-xs font-medium text-gray-200 truncate">
               {{ clip.title || defaultTitle(clip) }}
             </p>
             <div class="flex items-center gap-1.5 mt-1">
-              <span v-if="clip.map" class="text-[10px] text-gray-500">{{ clip.map }}</span>
-              <span v-if="clip.agent" class="text-[10px] text-gray-600">·</span>
-              <span v-if="clip.agent" class="text-[10px] text-gray-500">{{ clip.agent }}</span>
-              <span class="ml-auto text-[10px] text-gray-600">{{ timeAgo(clip.savedAt) }}</span>
+              <span v-if="clip.map" class="text-xs text-gray-500">{{ clip.map }}</span>
+              <span v-if="clip.agent" class="text-xs text-gray-600">·</span>
+              <span v-if="clip.agent" class="text-xs text-gray-500">{{ clip.agent }}</span>
+              <span class="ml-auto text-xs text-gray-600">{{ timeAgo(clip.savedAt) }}</span>
             </div>
-            <!-- AI coaching tip -->
-            <div v-if="clip.suggestion" class="mt-2 p-1.5 bg-orange-500/10 border border-orange-500/20 rounded text-[10px] text-orange-300/80">
+            <!-- AI coaching tip preview -->
+            <div v-if="clip.suggestion" class="mt-2 p-1.5 bg-orange-500/10 border border-orange-500/20 rounded text-xs text-orange-300/80 line-clamp-2">
               💡 {{ clip.suggestion }}
             </div>
-            <div v-else-if="clip.analysisStatus === 'queued' || clip.analysisStatus === 'processing'" class="mt-2 flex items-center gap-1 text-[10px] text-gray-600">
+            <div v-else-if="clip.analysisStatus === 'queued' || clip.analysisStatus === 'processing'" class="mt-2 flex items-center gap-1 text-xs text-gray-600">
               <span class="w-1 h-1 rounded-full bg-gray-600 animate-pulse" />
               Analysing...
             </div>
-          </div>
-
-          <!-- Action buttons (hover) -->
-          <div
-            class="absolute top-1.5 right-1.5 opacity-0 group-hover:opacity-100 transition-opacity flex gap-1"
-            @click.stop
-          >
-            <button
-              :class="[
-                'w-6 h-6 rounded bg-black/60 backdrop-blur-sm flex items-center justify-center transition-colors',
-                uploadingClipId === clip.id ? 'opacity-50 cursor-wait' : 'hover:bg-black/80'
-              ]"
-              :disabled="!!uploadingClipId"
-              title="Upload & Analyse"
-              @click="uploadClip(clip)"
-            >
-              <svg v-if="uploadingClipId !== clip.id" class="w-3 h-3 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/>
-              </svg>
-              <svg v-else class="w-3 h-3 text-gray-400 animate-spin" fill="none" viewBox="0 0 24 24">
-                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
-                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
-              </svg>
-            </button>
-            <button
-              class="w-6 h-6 rounded bg-black/60 backdrop-blur-sm flex items-center justify-center hover:bg-red-500/60 transition-colors"
-              title="Delete"
-              @click="deleteClip(clip.id)"
-            >
-              <svg class="w-3 h-3 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6M9 7h6m-7 0a1 1 0 001-1h4a1 1 0 001 1m-7 0h8"/>
-              </svg>
-            </button>
           </div>
         </div>
       </div>
@@ -164,11 +163,11 @@
       <div class="flex items-center justify-between px-4 py-3 flex-shrink-0 bg-white/[0.03] border-b border-white/[0.07]">
         <div class="flex-1 min-w-0 pr-3">
           <p class="text-xs font-semibold text-white truncate">{{ playingClip.title || defaultTitle(playingClip) }}</p>
-          <p v-if="playingClip.trigger" class="text-[10px] text-gray-600 mt-0.5 capitalize">{{ playingClip.trigger }} clip</p>
+          <p v-if="playingClip.trigger" class="text-xs text-gray-600 mt-0.5 capitalize">{{ playingClip.trigger }} clip</p>
         </div>
         <div class="flex items-center gap-2 flex-shrink-0">
           <button
-            class="flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-medium bg-white/[0.06] hover:bg-white/[0.10] text-gray-300 border border-white/[0.10] rounded-lg transition-colors"
+            class="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-white/[0.06] hover:bg-white/[0.10] text-gray-300 border border-white/[0.10] rounded-lg transition-colors"
             @click="openTrim(playingClip)"
           >
             <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -178,7 +177,7 @@
           </button>
           <button
             v-if="playingClip.uploadStatus === 'uploaded'"
-            class="flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-medium bg-white/[0.06] hover:bg-white/[0.10] text-gray-300 border border-white/[0.10] rounded-lg transition-colors"
+            class="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-white/[0.06] hover:bg-white/[0.10] text-gray-300 border border-white/[0.10] rounded-lg transition-colors"
             @click="shareClip(playingClip)"
           >
             <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -190,7 +189,7 @@
             v-else
             :disabled="!!uploadingClipId"
             :class="[
-              'flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-medium border rounded-lg transition-colors',
+              'flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium border rounded-lg transition-colors',
               uploadingClipId === playingClip.id
                 ? 'bg-red-500/10 border-red-500/20 text-red-400/60 cursor-wait'
                 : 'bg-red-500/15 hover:bg-red-500/25 text-red-400 border-red-500/25 hover:border-red-500/40'
@@ -226,7 +225,7 @@
             <path fill-rule="evenodd" d="M11.3 1.046A1 1 0 0112 2v5h4a1 1 0 01.82 1.573l-7 10A1 1 0 018 18v-5H4a1 1 0 01-.82-1.573l7-10a1 1 0 011.12-.38z" clip-rule="evenodd"/>
           </svg>
         </div>
-        <p class="text-[11px] text-orange-300/90 leading-relaxed flex-1"><span class="font-semibold text-orange-300">AI Coaching:</span> {{ playingClip.suggestion }}</p>
+        <p class="text-xs text-orange-300/90 leading-relaxed flex-1"><span class="font-semibold text-orange-300">AI Coaching:</span> {{ playingClip.suggestion }}</p>
       </div>
     </div>
 
@@ -241,7 +240,7 @@
           <h3 class="text-sm font-bold text-white mb-4">Trim Clip</h3>
           <div class="space-y-3 mb-4">
             <div>
-              <label class="block text-[11px] text-gray-500 mb-1">Start (seconds)</label>
+              <label class="block text-xs text-gray-500 mb-1">Start (seconds)</label>
               <input
                 v-model.number="trimModal.startSec"
                 type="number"
@@ -252,7 +251,7 @@
               />
             </div>
             <div>
-              <label class="block text-[11px] text-gray-500 mb-1">End (seconds)</label>
+              <label class="block text-xs text-gray-500 mb-1">End (seconds)</label>
               <input
                 v-model.number="trimModal.endSec"
                 type="number"
@@ -261,7 +260,7 @@
                 class="w-full px-2.5 py-1.5 bg-white/[0.04] border border-white/[0.07] rounded-lg text-xs text-white focus:outline-none focus:border-red-500/30 transition-colors"
               />
             </div>
-            <p v-if="trimModal.error" class="text-[11px] text-red-400">{{ trimModal.error }}</p>
+            <p v-if="trimModal.error" class="text-xs text-red-400">{{ trimModal.error }}</p>
           </div>
           <div class="flex gap-2">
             <button

@@ -3,7 +3,7 @@
 
     <!-- Account card -->
     <section>
-      <h3 class="text-[10px] font-semibold text-gray-600 uppercase tracking-widest mb-2 px-0.5">Account</h3>
+      <h3 class="text-xs font-semibold text-gray-600 uppercase tracking-widest mb-2 px-0.5">Account</h3>
       <div v-if="user" class="bg-white/[0.02] border border-white/[0.05] rounded-xl overflow-hidden">
         <div class="flex items-center justify-between px-3 py-3">
           <div class="flex items-center gap-2.5 min-w-0">
@@ -12,7 +12,7 @@
             </div>
             <div class="min-w-0">
               <p class="text-xs font-medium truncate">{{ user.name }}</p>
-              <p class="text-[10px] truncate mt-px">
+              <p class="text-xs truncate mt-px">
                 <span v-if="user.riot_name" class="text-red-400/70">{{ user.riot_name }}#{{ user.riot_tag }}</span>
                 <span v-else class="text-gray-600 italic">No Riot ID linked</span>
               </p>
@@ -20,18 +20,18 @@
           </div>
           <div class="flex items-center gap-2 flex-shrink-0 ml-2">
             <span
-              class="text-[10px] px-2 py-0.5 rounded-full border capitalize"
+              class="text-xs px-2 py-0.5 rounded-full border capitalize"
               :class="getTierClass(user.tier)"
             >{{ user.tier || 'free' }}</span>
           </div>
         </div>
         <div class="flex items-center gap-2 px-3 py-2 border-t border-white/[0.04]">
           <button
-            class="flex-1 text-[11px] text-gray-400 hover:text-white bg-white/[0.03] hover:bg-white/[0.06] border border-white/[0.06] rounded-lg py-1.5 transition-colors"
+            class="flex-1 text-xs text-gray-400 hover:text-white bg-white/[0.03] hover:bg-white/[0.06] border border-white/[0.06] rounded-lg py-1.5 transition-colors"
             @click="openBilling"
           >Manage subscription</button>
           <button
-            class="text-[11px] text-gray-600 hover:text-red-400 transition-colors px-3 py-1.5"
+            class="text-xs text-gray-600 hover:text-red-400 transition-colors px-3 py-1.5"
             @click="handleLogout"
           >Sign out</button>
         </div>
@@ -41,9 +41,9 @@
 
     <!-- Usage / quota -->
     <section v-if="user && (user as UserWithUsage).analyses_used !== undefined">
-      <h3 class="text-[10px] font-semibold text-gray-600 uppercase tracking-widest mb-2 px-0.5">Usage</h3>
+      <h3 class="text-xs font-semibold text-gray-600 uppercase tracking-widest mb-2 px-0.5">Usage</h3>
       <div class="px-3 py-2.5 bg-white/[0.02] border border-white/[0.05] rounded-xl space-y-1.5">
-        <div class="flex items-center justify-between text-[11px]">
+        <div class="flex items-center justify-between text-xs">
           <span class="text-gray-400">Analyses this month</span>
           <span class="text-gray-300 font-medium tabular-nums">
             {{ (user as UserWithUsage).analyses_used }} / {{ (user as UserWithUsage).analyses_limit }}
@@ -61,12 +61,12 @@
         v-if="usagePercent >= 80 && (user as UserWithUsage).analyses_limit && (user as UserWithUsage).analyses_limit! <= 5"
         class="mt-2 px-3 py-2.5 bg-purple-500/[0.07] border border-purple-500/20 rounded-xl"
       >
-        <p class="text-[11px] text-purple-300 font-medium">
+        <p class="text-xs text-purple-300 font-medium">
           {{ usagePercent >= 100 ? 'You\'ve used all your analyses this month.' : 'Running low on analyses.' }}
         </p>
-        <p class="text-[10px] text-purple-400/60 mt-0.5 mb-2">Upgrade for more analyses and full history access.</p>
+        <p class="text-xs text-purple-400/60 mt-0.5 mb-2">Upgrade for more analyses and full history access.</p>
         <button
-          class="w-full py-1.5 bg-gradient-to-r from-purple-600 to-purple-700 hover:from-purple-500 hover:to-purple-600 text-white text-[11px] font-semibold rounded-lg transition-all shadow-sm shadow-purple-900/30"
+          class="w-full py-1.5 bg-gradient-to-r from-purple-600 to-purple-700 hover:from-purple-500 hover:to-purple-600 text-white text-xs font-semibold rounded-lg transition-all shadow-sm shadow-purple-900/30"
           @click="openUpgrade"
         >Upgrade Plan →</button>
       </div>
@@ -74,10 +74,10 @@
 
     <!-- Recording settings -->
     <section>
-      <h3 class="text-[10px] font-semibold text-gray-600 uppercase tracking-widest mb-2 px-0.5">Recording</h3>
+      <h3 class="text-xs font-semibold text-gray-600 uppercase tracking-widest mb-2 px-0.5">Recording</h3>
       <div class="px-3 py-2.5 bg-white/[0.02] border border-white/[0.05] rounded-xl space-y-3">
         <div>
-          <label class="block text-[11px] text-gray-500 mb-1.5">Record game modes</label>
+          <label class="block text-xs text-gray-500 mb-1.5">Record game modes</label>
           <div class="grid grid-cols-2 gap-1">
             <button
               v-for="mode in GAME_MODES"
@@ -101,15 +101,15 @@
                 </svg>
               </div>
               <div class="min-w-0">
-                <span class="text-[11px] font-medium leading-none block truncate">{{ mode.label }}</span>
-                <span v-if="mode.hint" class="text-[9px] text-gray-700 leading-none block mt-0.5">{{ mode.hint }}</span>
+                <span class="text-xs font-medium leading-none block truncate">{{ mode.label }}</span>
+                <span v-if="mode.hint" class="text-xs text-gray-700 leading-none block mt-0.5">{{ mode.hint }}</span>
               </div>
             </button>
           </div>
-          <p class="text-[10px] text-gray-700 mt-1.5 px-0.5">Games in unselected modes will not be recorded.</p>
+          <p class="text-xs text-gray-700 mt-1.5 px-0.5">Games in unselected modes will not be recorded.</p>
         </div>
         <div>
-          <label class="block text-[11px] text-gray-500 mb-1">Quality</label>
+          <label class="block text-xs text-gray-500 mb-1">Quality</label>
           <select
             v-model="settings.recordingQuality"
             class="w-full px-2.5 py-1.5 bg-white/[0.04] border border-white/[0.07] rounded-lg text-xs text-white focus:outline-none focus:border-red-500/30 transition-colors"
@@ -120,7 +120,7 @@
           </select>
         </div>
         <div>
-          <label class="block text-[11px] text-gray-500 mb-1">Capture monitor</label>
+          <label class="block text-xs text-gray-500 mb-1">Capture monitor</label>
           <select
             v-model="settings.captureMonitor"
             class="w-full px-2.5 py-1.5 bg-white/[0.04] border border-white/[0.07] rounded-lg text-xs text-white focus:outline-none focus:border-red-500/30 transition-colors"
@@ -131,10 +131,10 @@
             <option :value="1">Monitor 2</option>
             <option :value="2">Monitor 3</option>
           </select>
-          <p class="text-[10px] text-gray-700 mt-1 px-0.5">Only needed if auto-detect captures the wrong screen.</p>
+          <p class="text-xs text-gray-700 mt-1 px-0.5">Only needed if auto-detect captures the wrong screen.</p>
         </div>
         <div>
-          <label class="block text-[11px] text-gray-500 mb-1">Bitrate</label>
+          <label class="block text-xs text-gray-500 mb-1">Bitrate</label>
           <select
             v-model.number="settings.recordingBitrate"
             class="w-full px-2.5 py-1.5 bg-white/[0.04] border border-white/[0.07] rounded-lg text-xs text-white focus:outline-none focus:border-red-500/30 transition-colors"
@@ -147,7 +147,7 @@
           </select>
         </div>
         <div>
-          <label class="block text-[11px] text-gray-500 mb-1">Save location</label>
+          <label class="block text-xs text-gray-500 mb-1">Save location</label>
           <div class="flex gap-1.5">
             <input
               :value="settings.savePath"
@@ -155,7 +155,7 @@
               class="flex-1 min-w-0 px-2.5 py-1.5 bg-white/[0.04] border border-white/[0.07] rounded-lg text-xs text-gray-400 cursor-default truncate"
             />
             <button
-              class="px-2.5 py-1.5 text-[11px] text-gray-400 hover:text-white bg-white/[0.04] hover:bg-white/[0.08] border border-white/[0.07] rounded-lg transition-colors flex-shrink-0"
+              class="px-2.5 py-1.5 text-xs text-gray-400 hover:text-white bg-white/[0.04] hover:bg-white/[0.08] border border-white/[0.07] rounded-lg transition-colors flex-shrink-0"
               @click="changeSavePath"
             >Change</button>
           </div>
@@ -164,19 +164,19 @@
         <!-- Storage usage -->
         <div class="flex items-center justify-between">
           <div>
-            <p class="text-[11px] text-gray-500">Storage used</p>
-            <p class="text-[10px] text-gray-700 mt-0.5">
+            <p class="text-xs text-gray-500">Storage used</p>
+            <p class="text-xs text-gray-700 mt-0.5">
               {{ storageCount === 0 ? 'No recordings saved' : `${storageCount} file${storageCount === 1 ? '' : 's'} · ${formatBytes(storageBytes)}` }}
             </p>
           </div>
           <button
-            class="px-2.5 py-1.5 text-[11px] text-gray-400 hover:text-white bg-white/[0.04] hover:bg-white/[0.08] border border-white/[0.07] rounded-lg transition-colors flex-shrink-0"
+            class="px-2.5 py-1.5 text-xs text-gray-400 hover:text-white bg-white/[0.04] hover:bg-white/[0.08] border border-white/[0.07] rounded-lg transition-colors flex-shrink-0"
             @click="openRecordingsFolder"
           >Open folder</button>
         </div>
 
         <div>
-          <label class="block text-[11px] text-gray-500 mb-1">Auto-delete clips after</label>
+          <label class="block text-xs text-gray-500 mb-1">Auto-delete clips after</label>
           <select
             v-model.number="settings.clipRetentionDays"
             class="w-full px-2.5 py-1.5 bg-white/[0.04] border border-white/[0.07] rounded-lg text-xs text-white focus:outline-none focus:border-red-500/30 transition-colors"
@@ -188,14 +188,14 @@
             <option :value="30">After 30 days</option>
             <option :value="60">After 60 days</option>
           </select>
-          <p class="text-[10px] text-gray-700 mt-1 px-0.5">Local-only clips older than this are deleted on startup.</p>
+          <p class="text-xs text-gray-700 mt-1 px-0.5">Local-only clips older than this are deleted on startup.</p>
         </div>
       </div>
     </section>
 
     <!-- Behaviour toggles -->
     <section>
-      <h3 class="text-[10px] font-semibold text-gray-600 uppercase tracking-widest mb-2 px-0.5">Behaviour</h3>
+      <h3 class="text-xs font-semibold text-gray-600 uppercase tracking-widest mb-2 px-0.5">Behaviour</h3>
       <div class="bg-white/[0.02] border border-white/[0.05] rounded-xl divide-y divide-white/[0.04]">
         <div
           v-for="toggle in toggles"
@@ -204,7 +204,7 @@
         >
           <div>
             <p class="text-xs text-gray-300">{{ toggle.label }}</p>
-            <p v-if="toggle.hint" class="text-[10px] text-gray-600 mt-0.5">{{ toggle.hint }}</p>
+            <p v-if="toggle.hint" class="text-xs text-gray-600 mt-0.5">{{ toggle.hint }}</p>
           </div>
           <button
             :class="[
@@ -226,21 +226,21 @@
 
     <!-- Shortcuts -->
     <section>
-      <h3 class="text-[10px] font-semibold text-gray-600 uppercase tracking-widest mb-2 px-0.5">Shortcuts</h3>
+      <h3 class="text-xs font-semibold text-gray-600 uppercase tracking-widest mb-2 px-0.5">Shortcuts</h3>
       <div class="bg-white/[0.02] border border-white/[0.05] rounded-xl overflow-hidden divide-y divide-white/[0.04]">
 
         <!-- Static: open window -->
         <div class="flex items-center justify-between px-3 py-2.5">
           <div>
             <p class="text-xs text-gray-300">Open / focus window</p>
-            <p class="text-[10px] text-gray-600 mt-0.5">Cannot be changed</p>
+            <p class="text-xs text-gray-600 mt-0.5">Cannot be changed</p>
           </div>
           <div class="flex items-center gap-1">
-            <kbd class="px-1.5 py-0.5 text-[10px] bg-white/[0.06] border border-white/[0.1] rounded text-gray-400">Ctrl</kbd>
-            <span class="text-[10px] text-gray-600">+</span>
-            <kbd class="px-1.5 py-0.5 text-[10px] bg-white/[0.06] border border-white/[0.1] rounded text-gray-400">Shift</kbd>
-            <span class="text-[10px] text-gray-600">+</span>
-            <kbd class="px-1.5 py-0.5 text-[10px] bg-white/[0.06] border border-white/[0.1] rounded text-gray-400">U</kbd>
+            <kbd class="px-1.5 py-0.5 text-xs bg-white/[0.06] border border-white/[0.1] rounded text-gray-400">Ctrl</kbd>
+            <span class="text-xs text-gray-600">+</span>
+            <kbd class="px-1.5 py-0.5 text-xs bg-white/[0.06] border border-white/[0.1] rounded text-gray-400">Shift</kbd>
+            <span class="text-xs text-gray-600">+</span>
+            <kbd class="px-1.5 py-0.5 text-xs bg-white/[0.06] border border-white/[0.1] rounded text-gray-400">U</kbd>
           </div>
         </div>
 
@@ -252,12 +252,12 @@
               <svg class="w-3 h-3 text-yellow-400 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
                 <path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd"/>
               </svg>
-              <p class="text-[10px] text-yellow-500/80">Failed to register — key may be in use</p>
+              <p class="text-xs text-yellow-500/80">Failed to register — key may be in use</p>
             </div>
-            <p v-else class="text-[10px] text-gray-600 mt-0.5">Press during a match to save a clip</p>
+            <p v-else class="text-xs text-gray-600 mt-0.5">Press during a match to save a clip</p>
             <button
               v-if="hotkeyStatus['save-clip'] === false"
-              class="mt-1.5 inline-flex items-center gap-1 text-[10px] text-yellow-400/80 hover:text-yellow-300 transition-colors"
+              class="mt-1.5 inline-flex items-center gap-1 text-xs text-yellow-400/80 hover:text-yellow-300 transition-colors"
               :disabled="conflictScanning"
               @click="findConflict"
             >
@@ -273,7 +273,7 @@
           </div>
           <button
             :class="[
-              'min-w-[56px] px-2 py-1 rounded-lg border text-[11px] font-mono transition-all',
+              'min-w-[56px] px-2 py-1 rounded-lg border text-xs font-mono transition-all',
               rebinding === 'save-clip'
                 ? 'bg-red-500/15 border-red-500/40 text-red-300 animate-pulse'
                 : 'bg-white/[0.04] border-white/[0.08] text-gray-300 hover:border-white/[0.15] hover:text-white'
@@ -288,13 +288,13 @@
         <div class="flex items-center justify-between px-3 py-2.5">
           <div>
             <p class="text-xs text-gray-300">Toggle overlay</p>
-            <p class="text-[10px] mt-0.5" :class="hotkeyStatus['toggle-overlay'] === false ? 'text-yellow-500/70' : 'text-gray-600'">
+            <p class="text-xs mt-0.5" :class="hotkeyStatus['toggle-overlay'] === false ? 'text-yellow-500/70' : 'text-gray-600'">
               {{ hotkeyStatus['toggle-overlay'] === false ? '⚠ Failed to register — key may be in use' : 'Show/hide the in-game overlay' }}
             </p>
           </div>
           <button
             :class="[
-              'min-w-[56px] px-2 py-1 rounded-lg border text-[11px] font-mono transition-all',
+              'min-w-[56px] px-2 py-1 rounded-lg border text-xs font-mono transition-all',
               rebinding === 'toggle-overlay'
                 ? 'bg-red-500/15 border-red-500/40 text-red-300 animate-pulse'
                 : 'bg-white/[0.04] border-white/[0.08] text-gray-300 hover:border-white/[0.15] hover:text-white'
@@ -309,13 +309,13 @@
         <div class="flex items-center justify-between px-3 py-2.5">
           <div>
             <p class="text-xs text-gray-300">Take screenshot</p>
-            <p class="text-[10px] mt-0.5" :class="hotkeyStatus['take-screenshot'] === false ? 'text-yellow-500/70' : 'text-gray-600'">
+            <p class="text-xs mt-0.5" :class="hotkeyStatus['take-screenshot'] === false ? 'text-yellow-500/70' : 'text-gray-600'">
               {{ hotkeyStatus['take-screenshot'] === false ? '⚠ Failed to register — key may be in use' : 'Save a screenshot during a match' }}
             </p>
           </div>
           <button
             :class="[
-              'min-w-[56px] px-2 py-1 rounded-lg border text-[11px] font-mono transition-all',
+              'min-w-[56px] px-2 py-1 rounded-lg border text-xs font-mono transition-all',
               rebinding === 'take-screenshot'
                 ? 'bg-red-500/15 border-red-500/40 text-red-300 animate-pulse'
                 : 'bg-white/[0.04] border-white/[0.08] text-gray-300 hover:border-white/[0.15] hover:text-white'
@@ -327,7 +327,7 @@
         </div>
 
       </div>
-      <p v-if="rebinding" class="text-[10px] text-gray-600 mt-1.5 px-0.5">Press Escape to cancel · changes apply immediately</p>
+      <p v-if="rebinding" class="text-xs text-gray-600 mt-1.5 px-0.5">Press Escape to cancel · changes apply immediately</p>
 
       <!-- Conflict finder results -->
       <Transition name="result-slide">
@@ -338,11 +338,11 @@
                 <svg class="w-3.5 h-3.5 text-yellow-400 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
                   <path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd"/>
                 </svg>
-                <p class="text-[10px] font-semibold text-yellow-400/90 uppercase tracking-widest">Conflicts detected</p>
+                <p class="text-xs font-semibold text-yellow-400/90 uppercase tracking-widest">Conflicts detected</p>
               </div>
               <div v-for="c in conflictResults.found" :key="c.exe" class="pl-2 border-l border-yellow-500/20 space-y-0.5">
                 <p class="text-xs text-gray-200 font-medium">{{ c.name }}</p>
-                <p class="text-[10px] text-gray-500 leading-snug">{{ c.fix }}</p>
+                <p class="text-xs text-gray-500 leading-snug">{{ c.fix }}</p>
               </div>
             </template>
             <template v-else>
@@ -350,12 +350,12 @@
                 <svg class="w-3.5 h-3.5 text-green-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"/>
                 </svg>
-                <p class="text-[10px] text-gray-400">No known conflicts found. Try rebinding to a different key.</p>
+                <p class="text-xs text-gray-400">No known conflicts found. Try rebinding to a different key.</p>
               </div>
             </template>
           </div>
           <div class="px-3 py-1.5 border-t border-white/[0.04]">
-            <button class="text-[10px] text-gray-600 hover:text-gray-400 transition-colors" @click="conflictResults = null">Dismiss</button>
+            <button class="text-xs text-gray-600 hover:text-gray-400 transition-colors" @click="conflictResults = null">Dismiss</button>
           </div>
         </div>
       </Transition>
@@ -363,14 +363,14 @@
 
     <!-- System -->
     <section>
-      <h3 class="text-[10px] font-semibold text-gray-600 uppercase tracking-widest mb-2 px-0.5">System</h3>
+      <h3 class="text-xs font-semibold text-gray-600 uppercase tracking-widest mb-2 px-0.5">System</h3>
       <div class="px-3 py-2.5 bg-white/[0.02] border border-white/[0.05] rounded-xl space-y-2.5">
         <!-- ffmpeg status -->
         <div class="flex items-center justify-between">
           <div>
-            <p class="text-[11px] text-gray-400">Recording engine (ffmpeg)</p>
-            <p v-if="ffmpegOk" class="text-[10px] text-green-500/70 mt-0.5">Ready</p>
-            <p v-else class="text-[10px] text-yellow-500/70 mt-0.5">Not found — reinstall the app</p>
+            <p class="text-xs text-gray-400">Recording engine (ffmpeg)</p>
+            <p v-if="ffmpegOk" class="text-xs text-green-500/70 mt-0.5">Ready</p>
+            <p v-else class="text-xs text-yellow-500/70 mt-0.5">Not found — reinstall the app</p>
           </div>
           <div :class="['w-2 h-2 rounded-full flex-shrink-0', ffmpegOk ? 'bg-green-500' : 'bg-yellow-400']" />
         </div>
@@ -378,15 +378,15 @@
         <!-- Riot API connection test -->
         <div class="flex items-start justify-between">
           <div class="flex-1 min-w-0 pr-3">
-            <p class="text-[11px] text-gray-400">Match Detection</p>
-            <p v-if="riotApiResult === null" class="text-[10px] text-gray-600 mt-0.5">Open Valorant and start a match, then test</p>
-            <p v-else-if="riotApiResult.processRunning && riotApiResult.logGameMode" class="text-[10px] text-green-500/70 mt-0.5 truncate">✓ In-game · {{ riotApiResult.logGameMode }} (log)</p>
-            <p v-else-if="riotApiResult.processRunning && riotApiResult.gameMode" class="text-[10px] text-green-500/70 mt-0.5 truncate">✓ In-game · {{ riotApiResult.gameMode }} (api)</p>
-            <p v-else-if="riotApiResult.processRunning" class="text-[10px] text-yellow-500/70 mt-0.5">✓ In-game process detected · mode unknown</p>
-            <p v-else class="text-[10px] text-gray-600 mt-0.5">Not in a match · process={{ riotApiResult.processRunning }}</p>
+            <p class="text-xs text-gray-400">Match Detection</p>
+            <p v-if="riotApiResult === null" class="text-xs text-gray-600 mt-0.5">Open Valorant and start a match, then test</p>
+            <p v-else-if="riotApiResult.processRunning && riotApiResult.logGameMode" class="text-xs text-green-500/70 mt-0.5 truncate">✓ In-game · {{ riotApiResult.logGameMode }} (log)</p>
+            <p v-else-if="riotApiResult.processRunning && riotApiResult.gameMode" class="text-xs text-green-500/70 mt-0.5 truncate">✓ In-game · {{ riotApiResult.gameMode }} (api)</p>
+            <p v-else-if="riotApiResult.processRunning" class="text-xs text-yellow-500/70 mt-0.5">✓ In-game process detected · mode unknown</p>
+            <p v-else class="text-xs text-gray-600 mt-0.5">Not in a match · process={{ riotApiResult.processRunning }}</p>
           </div>
           <button
-            class="text-[10px] text-gray-600 hover:text-gray-400 transition-colors flex-shrink-0 mt-0.5"
+            class="text-xs text-gray-600 hover:text-gray-400 transition-colors flex-shrink-0 mt-0.5"
             :disabled="testingRiotApi"
             @click="testRiotApi"
           >{{ testingRiotApi ? 'Testing…' : 'Test' }}</button>
@@ -397,30 +397,33 @@
     <!-- Footer -->
     <div class="pt-1 space-y-2">
       <div class="flex items-center justify-between px-0.5">
-        <p class="text-[10px] text-gray-700">UpForge Desktop v{{ appVersion }}</p>
+        <p class="text-xs text-gray-700">UpForge Desktop v{{ appVersion }}</p>
         <div class="flex items-center gap-3">
           <button
             v-if="!isDev"
-            class="text-[10px] text-gray-600 hover:text-gray-400 transition-colors"
+            class="text-xs text-gray-600 hover:text-gray-400 transition-colors"
             :disabled="checkingForUpdates"
             @click="checkForUpdates"
           >{{ checkingForUpdates ? 'Checking...' : 'Check for updates' }}</button>
-          <button class="text-[10px] text-gray-600 hover:text-gray-400 transition-colors" @click="openHelp">Get help</button>
-          <button class="text-[10px] text-gray-600 hover:text-gray-400 transition-colors" @click="openSite">upforge.gg</button>
+          <button class="text-xs text-gray-600 hover:text-gray-400 transition-colors" @click="openHelp">Get help</button>
+          <button class="text-xs text-gray-600 hover:text-gray-400 transition-colors" @click="openSite">upforge.gg</button>
         </div>
       </div>
       <Transition name="fade">
-        <p v-if="updateMessage" class="text-[10px] text-gray-500 px-0.5">{{ updateMessage }}</p>
+        <p v-if="updateMessage" class="text-xs text-gray-500 px-0.5">{{ updateMessage }}</p>
       </Transition>
     </div>
 
     <!-- Saved toast -->
-    <Transition name="fade">
+    <Transition name="toast-slide">
       <div
         v-if="savedVisible"
-        class="fixed bottom-4 left-1/2 -translate-x-1/2 px-3 py-1.5 bg-white/[0.08] border border-white/[0.1] rounded-full text-[11px] text-gray-300 pointer-events-none"
+        class="fixed bottom-5 right-5 flex items-center gap-2 px-4 py-2.5 bg-gray-900 border border-white/[0.08] rounded-xl shadow-xl text-sm text-white pointer-events-none"
       >
-        ✓ Saved
+        <svg class="w-4 h-4 text-green-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"/>
+        </svg>
+        Settings saved
       </div>
     </Transition>
 
@@ -573,7 +576,7 @@ const usagePercent = computed(() => {
 function showSaved(): void {
   savedVisible.value = true
   if (toastTimer) clearTimeout(toastTimer)
-  toastTimer = setTimeout(() => { savedVisible.value = false }, 1500)
+  toastTimer = setTimeout(() => { savedVisible.value = false }, 2000)
 }
 
 function debouncedSave(): void {
@@ -746,5 +749,19 @@ onMounted(async () => {
 .result-slide-leave-to {
   opacity: 0;
   transform: translateY(-4px);
+}
+.toast-slide-enter-active {
+  transition: opacity 0.25s ease, transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+.toast-slide-leave-active {
+  transition: opacity 0.2s ease, transform 0.2s ease;
+}
+.toast-slide-enter-from {
+  opacity: 0;
+  transform: translateY(12px) scale(0.95);
+}
+.toast-slide-leave-to {
+  opacity: 0;
+  transform: translateY(8px);
 }
 </style>
