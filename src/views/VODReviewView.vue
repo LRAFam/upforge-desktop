@@ -14,7 +14,7 @@
       </button>
       <div class="w-px h-4 bg-white/[0.08]" />
       <div class="flex items-center gap-2 flex-1 min-w-0">
-        <img v-if="agentImageUrl" :src="agentImageUrl" class="w-5 h-5 object-contain" />
+        <img v-if="agentImageUrl" :src="agentImageUrl" class="w-7 h-7 object-contain rounded" />
         <span class="text-xs font-semibold text-gray-200 truncate">
           {{ timeline?.agent || 'VOD Review' }}<span v-if="timeline?.map" class="text-gray-500 font-normal"> · {{ timeline.map }}</span>
         </span>
@@ -76,47 +76,64 @@
               </svg>
             </button>
 
-            <!-- Kill events in this round -->
+            <!-- Kill/death events in this round -->
             <button
               v-for="event in round.events"
               :key="`${event.type}-${event.videoOffsetMs}`"
-              class="w-full flex items-center gap-2 px-3 py-1 pl-6 hover:bg-white/[0.04] transition-colors text-left group"
-              :class="{ 'bg-white/[0.03]': isNearEvent(event) }"
+              class="w-full flex items-center gap-1.5 px-2 py-1.5 pl-5 hover:bg-white/[0.05] transition-colors text-left group border-l-2 mx-1"
+              :class="[
+                isNearEvent(event) ? 'bg-white/[0.04]' : '',
+                event.type === 'kill' ? 'border-green-500/40' : 'border-red-500/30'
+              ]"
               @click="seekToEvent(event)"
             >
-              <!-- Weapon icon (kill) or skull icon (death) -->
-              <div class="w-4 h-4 flex-shrink-0 flex items-center justify-center">
+              <!-- Agent portrait of the other player (victim for kill, killer for death) -->
+              <div class="w-6 h-6 flex-shrink-0 rounded overflow-hidden bg-white/[0.04]">
                 <img
-                  v-if="event.type === 'kill' && event.weapon && getWeaponIcon(event.weapon)"
+                  v-if="event.type === 'kill' && agentByPuuid(event.victimPuuid)"
+                  :src="getAgentImage(agentByPuuid(event.victimPuuid))"
+                  class="w-full h-full object-contain opacity-80 group-hover:opacity-100 transition-opacity"
+                />
+                <img
+                  v-else-if="event.type === 'death' && agentByPuuid(event.killerPuuid)"
+                  :src="getAgentImage(agentByPuuid(event.killerPuuid))"
+                  class="w-full h-full object-contain opacity-80 group-hover:opacity-100 transition-opacity"
+                />
+                <!-- Fallback icon -->
+                <div v-else class="w-full h-full flex items-center justify-center">
+                  <span class="text-[10px]">{{ event.type === 'kill' ? '🎯' : '💀' }}</span>
+                </div>
+              </div>
+
+              <!-- Weapon icon -->
+              <div class="w-8 flex-shrink-0 flex items-center justify-center">
+                <img
+                  v-if="event.weapon && getWeaponIcon(event.weapon)"
                   :src="getWeaponIcon(event.weapon)"
-                  class="w-4 h-3 object-contain opacity-80"
+                  class="w-8 h-4 object-contain"
+                  :class="event.type === 'kill' ? 'opacity-90' : 'opacity-50'"
                   :title="event.weapon"
                 />
                 <svg
                   v-else-if="event.type === 'kill'"
-                  class="w-3 h-3 text-green-500"
-                  viewBox="0 0 16 16"
-                  fill="currentColor"
-                >
-                  <path d="M8 1a5 5 0 100 10A5 5 0 008 1zM6 9a.5.5 0 011 0v1.5a.5.5 0 01-1 0V9zm3 0a.5.5 0 011 0v1.5a.5.5 0 01-1 0V9z"/>
-                  <path d="M6.5 14a.5.5 0 000 1h3a.5.5 0 000-1h-3z"/>
-                </svg>
+                  class="w-3 h-3 text-green-500/60"
+                  viewBox="0 0 16 16" fill="currentColor"
+                ><circle cx="8" cy="6" r="4"/><path d="M6 11h4v4H6z"/></svg>
                 <svg
                   v-else
-                  class="w-3 h-3 text-red-500/70"
-                  viewBox="0 0 16 16"
-                  fill="currentColor"
-                >
-                  <path d="M8 1a5 5 0 100 10A5 5 0 008 1zM6 9a.5.5 0 011 0v1.5a.5.5 0 01-1 0V9zm3 0a.5.5 0 011 0v1.5a.5.5 0 01-1 0V9z"/>
-                  <path d="M6.5 14a.5.5 0 000 1h3a.5.5 0 000-1h-3z"/>
-                </svg>
+                  class="w-3 h-3 text-red-500/40"
+                  viewBox="0 0 16 16" fill="currentColor"
+                ><circle cx="8" cy="6" r="4"/><path d="M6 11h4v4H6z"/></svg>
               </div>
+
+              <!-- Name + weapon label -->
               <div class="flex-1 min-w-0">
-                <p class="text-xs text-gray-400 truncate group-hover:text-gray-200 transition-colors">
-                  <span v-if="event.type === 'kill'">{{ event.victimName }}</span>
-                  <span v-else>by {{ event.killerName }}</span>
+                <p class="text-[11px] leading-tight truncate transition-colors"
+                   :class="event.type === 'kill' ? 'text-gray-300 group-hover:text-white' : 'text-gray-500 group-hover:text-gray-300'"
+                >
+                  {{ event.type === 'kill' ? event.victimName : event.killerName }}
                 </p>
-                <p v-if="event.weapon" class="text-[8px] text-gray-700 truncate">{{ event.weapon }}</p>
+                <p v-if="event.weapon" class="text-[8px] text-gray-600 truncate">{{ event.weapon }}</p>
               </div>
               <span class="text-[8px] text-gray-700 flex-shrink-0 tabular-nums">{{ formatMs(event.videoOffsetMs) }}</span>
             </button>
@@ -163,18 +180,45 @@
           <Transition name="event-pop">
             <div
               v-if="activeEventNotif"
-              class="absolute top-3 right-3 flex items-center gap-2 px-3 py-2 rounded-xl border text-xs pointer-events-none"
+              class="absolute top-3 right-3 flex items-center gap-2.5 px-3 py-2 rounded-xl border text-xs pointer-events-none backdrop-blur-sm"
               :class="activeEventNotif.type === 'kill'
-                ? 'bg-green-500/10 border-green-500/20 text-green-300'
-                : 'bg-red-500/10 border-red-500/20 text-red-300'"
+                ? 'bg-black/70 border-green-500/30 text-green-300'
+                : 'bg-black/70 border-red-500/30 text-red-300'"
             >
-              <img
-                v-if="activeEventNotif.weapon && getWeaponIcon(activeEventNotif.weapon)"
-                :src="getWeaponIcon(activeEventNotif.weapon)"
-                class="w-5 h-4 object-contain"
-              />
-              <span v-else>{{ activeEventNotif.type === 'kill' ? '🎯' : '💀' }}</span>
-              <span class="font-medium">{{ activeEventNotif.type === 'kill' ? activeEventNotif.victimName : `Killed by ${activeEventNotif.killerName}` }}</span>
+              <!-- Agent portrait -->
+              <div class="w-8 h-8 rounded-lg overflow-hidden bg-white/[0.05] flex-shrink-0 ring-1"
+                   :class="activeEventNotif.type === 'kill' ? 'ring-green-500/30' : 'ring-red-500/30'"
+              >
+                <img
+                  v-if="activeEventNotif.type === 'kill' && agentByPuuid(activeEventNotif.victimPuuid)"
+                  :src="getAgentImage(agentByPuuid(activeEventNotif.victimPuuid))"
+                  class="w-full h-full object-contain"
+                />
+                <img
+                  v-else-if="activeEventNotif.type === 'death' && agentByPuuid(activeEventNotif.killerPuuid)"
+                  :src="getAgentImage(agentByPuuid(activeEventNotif.killerPuuid))"
+                  class="w-full h-full object-contain"
+                />
+                <div v-else class="w-full h-full flex items-center justify-center text-base">
+                  {{ activeEventNotif.type === 'kill' ? '🎯' : '💀' }}
+                </div>
+              </div>
+              <!-- Weapon icon + label -->
+              <div class="flex flex-col gap-0.5">
+                <span class="font-semibold leading-tight">
+                  {{ activeEventNotif.type === 'kill'
+                    ? `Killed ${activeEventNotif.victimName}`
+                    : `Killed by ${activeEventNotif.killerName}` }}
+                </span>
+                <div class="flex items-center gap-1.5">
+                  <img
+                    v-if="activeEventNotif.weapon && getWeaponIcon(activeEventNotif.weapon)"
+                    :src="getWeaponIcon(activeEventNotif.weapon)"
+                    class="h-3 w-auto object-contain opacity-80"
+                  />
+                  <span v-if="activeEventNotif.weapon" class="text-[10px] opacity-60">{{ activeEventNotif.weapon }}</span>
+                </div>
+              </div>
             </div>
           </Transition>
         </div>
@@ -329,12 +373,19 @@
               :class="{ 'bg-white/[0.025]': p.puuid === ownPuuid }"
             >
               <!-- Player name + agent + rank -->
-              <div class="flex items-center gap-1.5 min-w-0">
-                <img
-                  v-if="p.agent && getAgentImage(p.agent)"
-                  :src="getAgentImage(p.agent)"
-                  class="w-4 h-4 object-contain flex-shrink-0 opacity-80"
-                />
+              <div class="flex items-center gap-2 min-w-0">
+                <!-- Agent portrait with team-colored ring -->
+                <div class="flex-shrink-0 w-7 h-7 rounded overflow-hidden ring-1"
+                     :class="group.isAlly ? 'ring-blue-500/40' : 'ring-red-500/30'"
+                >
+                  <img
+                    v-if="p.agent && getAgentImage(p.agent)"
+                    :src="getAgentImage(p.agent)"
+                    class="w-full h-full object-contain"
+                    :class="p.puuid === ownPuuid ? 'opacity-100' : 'opacity-75'"
+                  />
+                  <div v-else class="w-full h-full bg-white/[0.05]" />
+                </div>
                 <div class="min-w-0">
                   <p class="text-xs font-semibold truncate" :class="p.puuid === ownPuuid ? 'text-white' : 'text-gray-300'">
                     {{ p.puuid === ownPuuid ? 'You' : p.summonerName }}
@@ -374,7 +425,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, watch } from 'vue'
 import { useRoute } from 'vue-router'
-import { getWeaponImage } from '../lib/valorant'
+import { getWeaponImage, getAgentImage } from '../lib/valorant'
 
 interface KillEvent {
   killerName: string
@@ -459,44 +510,15 @@ const showScoreboard = ref(false)
 const ownPuuid = ref<string | null>(null)
 let notifTimer: ReturnType<typeof setTimeout> | null = null
 
-const AGENT_IMAGES: Record<string, string> = {
-  Jett:      'https://media.valorant-api.com/agents/add6443a-41bd-e414-f6ad-e58d267f4e95/displayicon.png',
-  Reyna: 'https://media.valorant-api.com/agents/a3bfb853-43b2-7238-a4f1-ad90e9e46bcc/displayicon.png',
-  Phoenix: 'https://media.valorant-api.com/agents/eb93336a-449b-9c1b-0a54-a891f7921d69/displayicon.png',
-  Sage: 'https://media.valorant-api.com/agents/569fdd95-4d10-43ab-ca70-79becc718b46/displayicon.png',
-  Sova: 'https://media.valorant-api.com/agents/320b2a48-4d9b-a075-30f1-1f93a9b638fa/displayicon.png',
-  Cypher: 'https://media.valorant-api.com/agents/117ed9e3-49f3-6512-3ccf-0cada7e3823b/displayicon.png',
-  Killjoy: 'https://media.valorant-api.com/agents/1e58de9c-4950-5125-93e9-a0aee9f98746/displayicon.png',
-  Breach: 'https://media.valorant-api.com/agents/5f8d3a7f-467b-97f3-062c-0390fdc621d6/displayicon.png',
-  Omen: 'https://media.valorant-api.com/agents/8e253930-4c05-31dd-1b6c-968525494517/displayicon.png',
-  Viper: 'https://media.valorant-api.com/agents/707eab51-4836-f488-046a-cda6bf494859/displayicon.png',
-  Brimstone: 'https://media.valorant-api.com/agents/6f2a04ca-43e0-be17-7f36-b3908627744d/displayicon.png',
-  Raze: 'https://media.valorant-api.com/agents/f94c3b30-42be-e959-889c-5aa313dba261/displayicon.png',
-  Skye: 'https://media.valorant-api.com/agents/6ebc1aad-4bce-1387-2e2c-e529bf70abb7/displayicon.png',
-  Yoru: 'https://media.valorant-api.com/agents/7f94d92c-4234-0a36-9646-3a87eb8b5c89/displayicon.png',
-  Astra: 'https://media.valorant-api.com/agents/41fb69c1-4189-7b37-f117-bcaf1e96f1bf/displayicon.png',
-  KAY_O: 'https://media.valorant-api.com/agents/601dbbe7-43ce-be57-2a40-4abd24953621/displayicon.png',
-  Chamber: 'https://media.valorant-api.com/agents/22697054-9a77-4711-1c74-7f9724e2c4b4/displayicon.png',
-  Neon: 'https://media.valorant-api.com/agents/bb2a4828-46eb-8cd1-e765-15848195d751/displayicon.png',
-  Fade: 'https://media.valorant-api.com/agents/dade69b4-4f5a-8528-247b-219e5a1facd6/displayicon.png',
-  Harbor: 'https://media.valorant-api.com/agents/95b78ed7-4637-86d9-7e41-71ba8c293152/displayicon.png',
-  Gekko: 'https://media.valorant-api.com/agents/e370fa57-4757-3604-3648-499e1f642d3f/displayicon.png',
-  Deadlock: 'https://media.valorant-api.com/agents/cc8b64c8-4b25-4ff9-6e7f-37b4da43d235/displayicon.png',
-  Iso: 'https://media.valorant-api.com/agents/0e38b510-41a8-5780-5e8f-568b2a4f2d6c/displayicon.png',
-  Clove: 'https://media.valorant-api.com/agents/1dbf2edd-4729-0984-3115-daa5eed44993/displayicon.png',
-  Vyse: 'https://media.valorant-api.com/agents/efba5359-4016-a1e5-7626-b1ae76895940/displayicon.png',
-  Tejo: 'https://media.valorant-api.com/agents/b444168c-4b4c-b691-11e9-b7ace45c39d4/displayicon.png',
-  Waylay: 'https://media.valorant-api.com/agents/a3fe41f2-4a42-f4a4-2c0c-53d9b35e28a9/displayicon.png',
-}
-
 // Weapon icon URLs — delegate to shared valorant.ts helper
 function getWeaponIcon(weapon: string): string | undefined {
   return getWeaponImage(weapon) || undefined
 }
 
-function getAgentImage(agentName: string | null): string {
-  if (!agentName) return ''
-  return AGENT_IMAGES[agentName] ?? ''
+/** Looks up the agent name for a player by puuid from the team snapshot. */
+function agentByPuuid(puuid: string | null | undefined): string | null {
+  if (!puuid || !timeline.value?.teamSnapshot) return null
+  return timeline.value.teamSnapshot.find(p => p.puuid === puuid)?.agent ?? null
 }
 
 function getRankColor(tierName: string): string {
@@ -536,7 +558,7 @@ const scoreboardGroups = computed(() => {
 
 const agentImageUrl = computed(() => {
   if (!timeline.value?.agent) return null
-  return AGENT_IMAGES[timeline.value.agent] ?? null
+  return getAgentImage(timeline.value.agent) || null
 })
 
 const videoSrc = computed(() => {
