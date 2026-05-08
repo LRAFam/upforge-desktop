@@ -180,6 +180,7 @@ declare global {
             name: string
             email: string
             tier: string
+            is_admin: boolean
             riot_name: string | null
             riot_tag: string | null
           } | null

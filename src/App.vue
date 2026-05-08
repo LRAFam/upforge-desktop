@@ -106,6 +106,7 @@ const isMac = navigator.platform.toUpperCase().includes('MAC')
 const status = ref({ recording: false, currentGame: null as string | null })
 const isDev = ref(false)
 const devModeEnabled = ref(false)
+const isAdmin = ref(false)
 const appVersion = ref(__APP_VERSION__)
 const simStatus = ref('')
 const riotId = ref<string | null>(null)
@@ -131,7 +132,7 @@ const navLinks = [
 ]
 
 const devNavLink = computed(() =>
-  devModeEnabled.value ? { to: '/dev', label: 'Developer' } : null
+  (isAdmin.value || devModeEnabled.value) ? { to: '/dev', label: 'Developer' } : null
 )
 
 let statusInterval: ReturnType<typeof setInterval> | null = null
@@ -143,6 +144,7 @@ onMounted(async () => {
     isDev.value = (s as Record<string, unknown>).isDev as boolean
     if (s.version) appVersion.value = s.version
     if (s.user?.riot_name) riotId.value = `${s.user.riot_name}#${s.user.riot_tag}`
+    if (s.user?.is_admin) isAdmin.value = true
   } catch {
     // IPC failed — appVersion stays as compile-time constant
   }
@@ -163,6 +165,7 @@ onMounted(async () => {
       const s = await window.api.app.getStatus()
       status.value = s
       if (s.user?.riot_name) riotId.value = `${s.user.riot_name}#${s.user.riot_tag}`
+      if (s.user?.is_admin) isAdmin.value = true
     } catch { /* ignore */ }
   }, 5000)
 
