@@ -108,7 +108,7 @@ export class ClipExtractor {
   private _run(args: string[], timeoutMs = 60_000): Promise<void> {
     return new Promise((resolve, reject) => {
       const bin = ffmpegPath()
-      const proc = spawn(bin, args, { stdio: ['pipe', 'ignore', 'pipe'] })
+      const proc = spawn(bin, args, { stdio: ['ignore', 'ignore', 'pipe'] })
       let stderr = ''
       proc.stderr?.on('data', (d: Buffer) => { stderr += d.toString() })
       proc.on('error', (err) => reject(new Error(`ffmpeg error: ${err.message}`)))
