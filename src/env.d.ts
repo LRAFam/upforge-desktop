@@ -18,6 +18,14 @@ export interface AppSettings {
   captureMonitor: 'auto' | number
   /** Process names to auto-kill when a game is detected starting */
   pregameKillList: string[]
+  /** Auto-delete clips older than this many days (0 = disabled) */
+  clipRetentionDays: number
+  /** Play a sound when a notification fires */
+  notificationSound: boolean
+  /** Last detected hardware encoder — cached to skip detection on next launch */
+  cachedEncoder: string | null
+  /** Whether ddagrab was available last launch */
+  cachedUseDdagrab: boolean | null
 }
 
 export interface PendingRecording {
@@ -236,6 +244,7 @@ declare global {
         share: (id: string) => Promise<{ ok: boolean; shareToken?: string; error?: string }>
         publish: (id: string, caption?: string) => Promise<{ ok: boolean; error?: string }>
         saveBookmark: () => Promise<{ ok: boolean; bookmarkCount?: number; reason?: string }>
+        trim: (id: string, startSec: number, endSec: number) => Promise<{ ok: boolean; error?: string }>
       }
       squad: {
         getTeam: () => Promise<{

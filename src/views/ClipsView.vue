@@ -168,6 +168,15 @@
         </div>
         <div class="flex items-center gap-2 flex-shrink-0">
           <button
+            class="flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-medium bg-white/[0.06] hover:bg-white/[0.10] text-gray-300 border border-white/[0.10] rounded-lg transition-colors"
+            @click="openTrim(playingClip)"
+          >
+            <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.121 14.121L19 19m-7-7l7-7m-7 7l-2.879 2.879M12 12L9.121 9.121m0 5.758a3 3 0 10-4.243 4.243 3 3 0 004.243-4.243zm0-5.758a3 3 0 10-4.243-4.243 3 3 0 004.243 4.243z"/>
+            </svg>
+            Trim
+          </button>
+          <button
             v-if="playingClip.uploadStatus === 'uploaded'"
             class="flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-medium bg-white/[0.06] hover:bg-white/[0.10] text-gray-300 border border-white/[0.10] rounded-lg transition-colors"
             @click="shareClip(playingClip)"
@@ -220,6 +229,54 @@
         <p class="text-[11px] text-orange-300/90 leading-relaxed flex-1"><span class="font-semibold text-orange-300">AI Coaching:</span> {{ playingClip.suggestion }}</p>
       </div>
     </div>
+
+    <!-- Trim modal -->
+    <Transition name="modal-pop">
+      <div
+        v-if="trimModal.show"
+        class="fixed inset-0 z-[60] flex items-center justify-center bg-black/70 backdrop-blur-md"
+        @click.self="trimModal.show = false"
+      >
+        <div class="relative w-[320px] bg-[#111116] border border-white/[0.10] rounded-2xl p-5 shadow-[0_24px_64px_rgba(0,0,0,0.8)]">
+          <h3 class="text-sm font-bold text-white mb-4">Trim Clip</h3>
+          <div class="space-y-3 mb-4">
+            <div>
+              <label class="block text-[11px] text-gray-500 mb-1">Start (seconds)</label>
+              <input
+                v-model.number="trimModal.startSec"
+                type="number"
+                :min="0"
+                :max="trimModal.endSec - 0.5"
+                step="0.5"
+                class="w-full px-2.5 py-1.5 bg-white/[0.04] border border-white/[0.07] rounded-lg text-xs text-white focus:outline-none focus:border-red-500/30 transition-colors"
+              />
+            </div>
+            <div>
+              <label class="block text-[11px] text-gray-500 mb-1">End (seconds)</label>
+              <input
+                v-model.number="trimModal.endSec"
+                type="number"
+                :min="trimModal.startSec + 0.5"
+                step="0.5"
+                class="w-full px-2.5 py-1.5 bg-white/[0.04] border border-white/[0.07] rounded-lg text-xs text-white focus:outline-none focus:border-red-500/30 transition-colors"
+              />
+            </div>
+            <p v-if="trimModal.error" class="text-[11px] text-red-400">{{ trimModal.error }}</p>
+          </div>
+          <div class="flex gap-2">
+            <button
+              :disabled="trimModal.loading"
+              class="flex-1 py-2 rounded-xl bg-gradient-to-r from-red-500 to-orange-500 hover:from-red-400 hover:to-orange-400 text-white text-[12px] font-bold transition-all disabled:opacity-50"
+              @click="confirmTrim"
+            >{{ trimModal.loading ? 'Trimming…' : 'Trim' }}</button>
+            <button
+              class="flex-1 py-2 rounded-xl text-gray-600 hover:text-gray-400 text-[12px] transition-colors border border-white/[0.07]"
+              @click="trimModal.show = false"
+            >Cancel</button>
+          </div>
+        </div>
+      </div>
+    </Transition>
 
     <!-- Upgrade modal -->
     <Transition name="modal-pop">
@@ -280,6 +337,7 @@ const videoEl = ref<HTMLVideoElement | null>(null)
 const upgradeModal = ref({ show: false, message: '' })
 const uploadingClipId = ref<string | null>(null)
 const uploadError = ref<string | null>(null)
+const trimModal = ref({ show: false, clipId: '', startSec: 0, endSec: 10, loading: false, error: null as string | null })
 
 const filters = [
   { label: 'All', value: 'all' },
@@ -337,6 +395,41 @@ function closePlayer() {
     videoEl.value.src = ''
   }
   playingClip.value = null
+  trimModal.value.show = false
+}
+
+function openTrim(clip: ClipRecord) {
+  trimModal.value = {
+    show: true,
+    clipId: clip.id,
+    startSec: 0,
+    endSec: Math.round(clip.durationSeconds),
+    loading: false,
+    error: null,
+  }
+}
+
+async function confirmTrim() {
+  const { clipId, startSec, endSec } = trimModal.value
+  if (endSec <= startSec) {
+    trimModal.value.error = 'End must be after start'
+    return
+  }
+  trimModal.value.loading = true
+  trimModal.value.error = null
+  try {
+    const result = await window.api.clips.trim(clipId, startSec, endSec)
+    if (!result.ok) {
+      trimModal.value.error = result.error ?? 'Trim failed'
+    } else {
+      trimModal.value.show = false
+      await loadClips()
+    }
+  } catch (e) {
+    trimModal.value.error = e instanceof Error ? e.message : 'Trim failed'
+  } finally {
+    trimModal.value.loading = false
+  }
 }
 
 async function deleteClip(id: string) {

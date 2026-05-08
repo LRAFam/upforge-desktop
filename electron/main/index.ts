@@ -70,7 +70,7 @@ recorder.onStatusChange = (recording, error) => {
       new Notification({
         title: 'UpForge — Recording Stopped',
         body: 'Recording stopped unexpectedly. Open UpForge to see details.',
-        silent: false
+        silent: notifySilent()
       }).show()
     }
     setTimeout(() => tray?.setToolTip('UpForge — Valorant AI Coaching'), 10_000)
@@ -107,6 +107,10 @@ function logActivity(message: string): void {
   activityLog.push(entry)
   if (activityLog.length > MAX_LOG_ENTRIES) activityLog.shift()
   mainWindow?.webContents.send('app:activity-log', activityLog.slice())
+}
+
+function notifySilent(): boolean {
+  return !(settingsManager?.get().notificationSound ?? true)
 }
 
 /**
@@ -631,6 +635,10 @@ function createTray(): void {
     menuTemplate.push(
       { type: 'separator' },
       {
+        label: 'Open Clips Folder',
+        click: () => shell.openPath(ClipExtractor.clipsDir())
+      },
+      {
         label: 'Quit UpForge',
         click: () => {
           app.quit()
@@ -1027,7 +1035,7 @@ function setupGameDetection(): void {
         new Notification({
           title: 'UpForge — Recording Failed',
           body: 'Could not start recording. Open UpForge to see details.',
-          silent: false
+          silent: notifySilent()
         }).show()
       }
       // Reset tray tooltip after 10 seconds so it doesn't stay on "failed"
@@ -1068,6 +1076,11 @@ function setupGameDetection(): void {
       })
     }
 
+    const startupWarning = recorder.getStartupWarning()
+    if (startupWarning) {
+      mainWindow?.webContents.send('app:warning', { message: startupWarning })
+    }
+
     const user = authManager.getUser()
     const userLabel = (user?.riot_name && user?.riot_tag)
       ? `${user.riot_name}#${user.riot_tag}`
@@ -1079,7 +1092,7 @@ function setupGameDetection(): void {
       new Notification({
         title: `UpForge is recording`,
         body: `${gameLabel} match started for ${userLabel}`,
-        silent: true
+        silent: notifySilent()
       }).show()
     }
   })
@@ -1155,7 +1168,8 @@ async function resumePollForJob(
           const notifScore = score != null ? ` — Score: ${score}/100` : ''
           new Notification({
             title: 'UpForge — Analysis Ready',
-            body: `${notifAgent}${notifMap}${notifScore}`
+            body: `${notifAgent}${notifMap}${notifScore}`,
+            silent: notifySilent()
           }).show()
         }
       } else if (status.status === 'failed') {
@@ -1165,7 +1179,8 @@ async function resumePollForJob(
         if (Notification.isSupported()) {
           new Notification({
             title: 'UpForge — Analysis Failed',
-            body: 'Your previous analysis failed. You can retry it from the dashboard.'
+            body: 'Your previous analysis failed. You can retry it from the dashboard.',
+            silent: notifySilent()
           }).show()
         }
         mainWindow?.webContents.send('dashboard:refresh')
@@ -1236,6 +1251,7 @@ async function doUploadAndAnalyse(
 
     // Auto-delete after upload if configured
     if (settingsManager?.get().autoDelete) {
+      log.info('[App] Auto-deleting recording after upload:', videoPath)
       recorder.deleteRecording(videoPath)
     }
 
@@ -1295,7 +1311,8 @@ async function doUploadAndAnalyse(
           const notifScore = score != null ? ` — Score: ${score}/100` : ''
           new Notification({
             title: 'UpForge — Analysis Ready',
-            body: `${notifAgent}${notifMap}${notifScore}`
+            body: `${notifAgent}${notifMap}${notifScore}`,
+            silent: notifySilent()
           }).show()
         } else if (status.status === 'failed') {
           logActivity('Analysis failed')
@@ -1422,12 +1439,26 @@ app.whenReady().then(async () => {
     log.warn('[App] Failed to restore auth token — starting unauthenticated:', err)
   }
 
+  // When a 401 fires mid-session, tell the renderer to show the login screen
+  authManager.onSessionExpired = () => {
+    log.warn('[App] Session expired — notifying renderer')
+    mainWindow?.webContents.send('auth:session-expired')
+  }
+
   // Resume polling for any job_id that was persisted before a crash.
   // We wait until the main window is ready before sending the result.
   const orphanedJob = readPendingJob()
   if (orphanedJob) {
     console.log('[App] Orphaned job found from previous session:', orphanedJob.job_id)
   }
+
+  // Prune old clips on startup if retention is configured
+  const retentionDays = settingsManager.get().clipRetentionDays
+  if (retentionDays > 0) {
+    const pruned = clipStore.pruneByAge(retentionDays)
+    if (pruned > 0) log.info(`[App] Pruned ${pruned} clips older than ${retentionDays} days`)
+  }
+  clipStore.pruneOrphanedThumbnails()
 
   // Show splash launcher while we check for updates
   const splashWindow = createSplashWindow()
@@ -1466,7 +1497,8 @@ app.whenReady().then(async () => {
       if (Notification.isSupported()) {
         new Notification({
           title: 'UpForge — Recording Unavailable',
-          body: `ffmpeg not found: ${result.error ?? 'unknown error'}. Recording will not work.`
+          body: `ffmpeg not found: ${result.error ?? 'unknown error'}. Recording will not work.`,
+          silent: notifySilent()
         }).show()
       }
       // Push the warning to the dashboard if it's already open
@@ -1595,6 +1627,13 @@ app.whenReady().then(async () => {
     log.error('[Main] F9 (save-clip) hotkey failed to register — clips cannot be bookmarked via keyboard')
     logActivity('WARNING: F9 hotkey failed to register (may be in use by another app)')
   }
+  // Send hotkey registration status to any open window so the UI can show a warning
+  const hotkeyStatus = {
+    saveClipRegistered: !!hotkeyResults['save-clip'],
+    toggleOverlayRegistered: !!hotkeyResults['toggle-overlay'],
+    screenshotRegistered: !!hotkeyResults['take-screenshot'],
+  }
+  mainWindow?.webContents.send('app:hotkey-status', hotkeyStatus)
 
   createOverlayWindow()
 

@@ -42,6 +42,8 @@ export class Recorder {
   private _cachedEncoder: HWEncoder | null = null
   private _cachedUseDdagrab: boolean | null = null
   private _recordedWithoutAudio = false
+  private _startupWarning: string | null = null
+  private _paused = false
   onStatusChange?: (recording: boolean, error?: string) => void
 
   isRecording(): boolean {
@@ -59,6 +61,32 @@ export class Recorder {
   /** Returns true if the current/last recording was started without audio (fallback). */
   wasNoAudio(): boolean {
     return this._recordedWithoutAudio
+  }
+
+  /** Returns a startup warning set during encoder detection (e.g. low disk space). */
+  getStartupWarning(): string | null {
+    return this._startupWarning
+  }
+
+  /** Override the cached encoder — called after settings are loaded to skip detection. */
+  setStartupEncoder(encoder: string, useDdagrab: boolean | null): void {
+    this._cachedEncoder = encoder as HWEncoder
+    if (useDdagrab !== null) this._cachedUseDdagrab = useDdagrab
+  }
+
+  /** Whether recording is paused (ffmpeg still running but not being used for new captures). */
+  isPaused(): boolean {
+    return this._paused
+  }
+
+  /** Mark recording as paused (does not stop ffmpeg). */
+  pause(): void {
+    this._paused = true
+  }
+
+  /** Resume from paused state. */
+  resume(): void {
+    this._paused = false
   }
 
   /** Returns recording duration in seconds (0 if not started). */
@@ -117,6 +145,16 @@ export class Recorder {
 
     const dir = config?.savePath ?? join(app.getPath('userData'), 'recordings')
     if (!existsSync(dir)) mkdirSync(dir, { recursive: true })
+
+    // Warn if less than 5 GB free (but don't block recording)
+    const freeBytes = await this.getFreeDiskSpace(dir)
+    if (freeBytes < 5 * 1024 * 1024 * 1024) {
+      const freeGB = (freeBytes / (1024 * 1024 * 1024)).toFixed(1)
+      this._startupWarning = `Low disk space: ${freeGB} GB free. Recordings may fail.`
+      console.warn(`[Recorder] ${this._startupWarning}`)
+    } else {
+      this._startupWarning = null
+    }
 
     const timestamp = Date.now()
     this._outputPath = join(dir, `${game}_${timestamp}.mp4`)

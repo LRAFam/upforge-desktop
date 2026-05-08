@@ -174,6 +174,22 @@
             @click="openRecordingsFolder"
           >Open folder</button>
         </div>
+
+        <div>
+          <label class="block text-[11px] text-gray-500 mb-1">Auto-delete clips after</label>
+          <select
+            v-model.number="settings.clipRetentionDays"
+            class="w-full px-2.5 py-1.5 bg-white/[0.04] border border-white/[0.07] rounded-lg text-xs text-white focus:outline-none focus:border-red-500/30 transition-colors"
+            @change="debouncedSave"
+          >
+            <option :value="0">Never (keep all clips)</option>
+            <option :value="7">After 7 days</option>
+            <option :value="14">After 14 days</option>
+            <option :value="30">After 30 days</option>
+            <option :value="60">After 60 days</option>
+          </select>
+          <p class="text-[10px] text-gray-700 mt-1 px-0.5">Local-only clips older than this are deleted on startup.</p>
+        </div>
       </div>
     </section>
 
@@ -523,6 +539,10 @@ const settings = reactive<AppSettings>({
   firstRun: false,
   captureMonitor: 'auto',
   pregameKillList: [],
+  clipRetentionDays: 0,
+  notificationSound: true,
+  cachedEncoder: null,
+  cachedUseDdagrab: null,
 })
 
 const GAME_MODES = [
@@ -535,10 +555,11 @@ const GAME_MODES = [
   { value: 'TEAMDEATHMATCH', label: 'Team Deathmatch', hint: 'HURM mode' }
 ]
 
-const toggles: Array<{ key: keyof Pick<AppSettings, 'launchOnStartup' | 'autoDelete' | 'autoAnalyse'>; label: string; hint: string | null }> = [
+const toggles: Array<{ key: keyof Pick<AppSettings, 'launchOnStartup' | 'autoDelete' | 'autoAnalyse' | 'notificationSound'>; label: string; hint: string | null }> = [
   { key: 'launchOnStartup', label: 'Launch on startup', hint: null },
   { key: 'autoDelete', label: 'Auto-delete after upload', hint: 'Frees disk space once recording is uploaded' },
-  { key: 'autoAnalyse', label: 'Auto-analyse after game', hint: 'Automatically upload and analyse once a game ends' }
+  { key: 'autoAnalyse', label: 'Auto-analyse after game', hint: 'Automatically upload and analyse once a game ends' },
+  { key: 'notificationSound', label: 'Notification sound', hint: 'Play a sound with system notifications' }
 ]
 
 const usagePercent = computed(() => {
@@ -564,7 +585,7 @@ function debouncedSave(): void {
   }, 500)
 }
 
-function toggleKey(key: keyof Pick<AppSettings, 'launchOnStartup' | 'autoDelete' | 'autoAnalyse'>): void {
+function toggleKey(key: keyof Pick<AppSettings, 'launchOnStartup' | 'autoDelete' | 'autoAnalyse' | 'notificationSound'>): void {
   settings[key] = !settings[key]
   debouncedSave()
 }

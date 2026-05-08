@@ -69,6 +69,7 @@ const api = {
     share: (id: string) => ipcRenderer.invoke('clips:share', { id }),
     publish: (id: string, caption?: string) => ipcRenderer.invoke('clips:publish', { id, caption }),
     saveBookmark: () => ipcRenderer.invoke('clips:save-bookmark'),
+    trim: (id: string, startSec: number, endSec: number) => ipcRenderer.invoke('clips:trim', { id, startSec, endSec }),
   },
   squad: {
     getTeam: () => ipcRenderer.invoke('squad:get-team'),
@@ -134,6 +135,8 @@ const api = {
       'overlay:screenshot-saved',
       'app:navigate',
       'analysis:timeout',
+      'auth:session-expired',
+      'app:hotkey-status',
     ]
     if (allowed.includes(channel)) {
       const handler = (_e: Electron.IpcRendererEvent, ...args: unknown[]) => callback(...args)

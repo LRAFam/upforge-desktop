@@ -382,6 +382,8 @@ interface KillEvent {
   videoOffsetMs?: number
   round?: number
   type?: 'kill' | 'death'
+  killerPuuid?: string
+  victimPuuid?: string
 }
 
 interface TimelineEvent extends KillEvent {

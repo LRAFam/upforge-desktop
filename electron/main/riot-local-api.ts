@@ -361,6 +361,11 @@ export class RiotLocalApi {
   private agentFetchAttempts = 0
   /** Max retries for agent fetch — covers ~3 mins of polling (every 3 s) during loading + early game. */
   private readonly MAX_AGENT_FETCH_ATTEMPTS = 60
+  /** Circuit breaker: consecutive getSessionState failures */
+  private _sessionStateFailures = 0
+  private readonly SESSION_STATE_CB_THRESHOLD = 10
+  private _sessionStateCbOpen = false
+  private _sessionStateCbResetAt = 0
 
   /**
    * Fired when presence transitions INGAME -> MENUS (match ended).
@@ -508,14 +513,31 @@ export class RiotLocalApi {
    */
   async getSessionState(): Promise<SessionState | null> {
     if (!this.lockfileData || !this.ownPuuid) return null
+
+    // Circuit breaker — stop hammering the local API after repeated failures
+    if (this._sessionStateCbOpen) {
+      if (Date.now() < this._sessionStateCbResetAt) return null
+      this._sessionStateCbOpen = false
+      this._sessionStateFailures = 0
+    }
+
     try {
       const data = await this._fetchLocal<{
         presences: Array<{ puuid: string; product: string; private: string }>
       }>('/chat/v4/presences')
+      if (!this._validateShape(data, ['presences'])) {
+        this._sessionStateFailures++
+        if (this._sessionStateFailures >= this.SESSION_STATE_CB_THRESHOLD) {
+          this._sessionStateCbOpen = true
+          this._sessionStateCbResetAt = Date.now() + 30_000
+        }
+        return null
+      }
       const own = data.presences?.find((p) => p.puuid === this.ownPuuid && p.product === 'valorant')
       if (!own?.private) return null
       const decoded = JSON.parse(Buffer.from(own.private, 'base64').toString()) as Record<string, unknown>
       const mpd = (decoded.matchPresenceData ?? {}) as Record<string, unknown>
+      this._sessionStateFailures = 0
       return {
         sessionLoopState: (mpd.sessionLoopState ?? decoded.sessionLoopState ?? 'MENUS') as string,
         queueId: (mpd.queueId ?? decoded.queueId ?? null) as string | null,
@@ -524,8 +546,18 @@ export class RiotLocalApi {
         enemyScore: (decoded.partyOwnerMatchScoreEnemyTeam ?? 0) as number,
       }
     } catch {
+      this._sessionStateFailures++
+      if (this._sessionStateFailures >= this.SESSION_STATE_CB_THRESHOLD) {
+        this._sessionStateCbOpen = true
+        this._sessionStateCbResetAt = Date.now() + 30_000
+      }
       return null
     }
+  }
+
+  private _validateShape(obj: unknown, keys: string[]): obj is Record<string, unknown> {
+    if (typeof obj !== 'object' || obj === null) return false
+    return keys.every(k => k in (obj as Record<string, unknown>))
   }
 
   // ──────────────────────────────────────────────────────────────────────

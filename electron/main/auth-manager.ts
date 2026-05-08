@@ -3,6 +3,7 @@ import { app, safeStorage } from 'electron'
 import { readFileSync, writeFileSync, unlinkSync } from 'fs'
 import { join } from 'path'
 import log from 'electron-log'
+import { withRetry } from './utils/retry'
 
 const API_BASE = 'https://api.upforge.gg'
 
@@ -101,6 +102,8 @@ export class AuthManager {
   private _token: string | null = null
   private _user: AuthUser | null = null
   private _api: AxiosInstance
+  /** Called when a 401 response is received — use to force logout in the UI. */
+  onSessionExpired?: () => void
 
   constructor() {
     this._api = axios.create({
@@ -108,6 +111,20 @@ export class AuthManager {
       timeout: 15000,
       headers: { 'Accept': 'application/json', 'Content-Type': 'application/json' }
     })
+
+    this._api.interceptors.response.use(
+      (res) => res,
+      (err) => {
+        if (err?.response?.status === 401 && this._token) {
+          log.warn('[Auth] 401 received — session expired')
+          this._token = null
+          this._user = null
+          delete this._api.defaults.headers.common['Authorization']
+          this.onSessionExpired?.()
+        }
+        return Promise.reject(err)
+      }
+    )
   }
 
   async loadStoredToken(): Promise<boolean> {
@@ -170,7 +187,14 @@ export class AuthManager {
 
   async fetchUser(): Promise<AuthUser | null> {
     try {
-      const res = await this._api.get('/api/user')
+      const res = await withRetry(() => this._api.get('/api/user'), {
+        attempts: 3,
+        baseDelayMs: 800,
+        shouldRetry: (err) => {
+          const status = (err as { response?: { status?: number } })?.response?.status
+          return !status || status >= 500 // retry server errors, not 4xx
+        },
+      })
       this._user = res.data?.user ?? res.data
       return this._user
     } catch {

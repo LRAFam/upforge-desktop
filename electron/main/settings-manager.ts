@@ -18,6 +18,14 @@ export interface AppSettings {
   lastInsight?: { text: string; score: number; agent: string | null; analysisId: number | null; date: string } | null
   /** Process names to auto-kill when a game is detected starting */
   pregameKillList: string[]
+  /** Auto-delete clips older than this many days (0 = disabled) */
+  clipRetentionDays: number
+  /** Play a sound when a notification fires */
+  notificationSound: boolean
+  /** Last detected hardware encoder — cached to skip detection on next launch */
+  cachedEncoder: string | null
+  /** Whether ddagrab was available last launch */
+  cachedUseDdagrab: boolean | null
 }
 
 const DEFAULTS: AppSettings = {
@@ -31,6 +39,10 @@ const DEFAULTS: AppSettings = {
   firstRun: true,
   captureMonitor: 'auto',
   pregameKillList: [],
+  clipRetentionDays: 0,
+  notificationSound: true,
+  cachedEncoder: null,
+  cachedUseDdagrab: null,
 }
 
 export class SettingsManager {

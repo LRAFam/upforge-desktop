@@ -223,6 +223,25 @@ export function setupClipHandlers(
     }
   })
 
+  ipcMain.handle('clips:trim', async (_e, { id, startSec, endSec }: { id: string; startSec: number; endSec: number }) => {
+    const clip = clipStore.getById(id)
+    if (!clip) return { ok: false, error: 'Clip not found' }
+    if (!fs.existsSync(clip.path)) return { ok: false, error: 'Clip file not found on disk' }
+    const trimmedPath = clip.path.replace(/\.mp4$/, '_trimmed.mp4')
+    try {
+      await clipExtractor.trim({ sourcePath: clip.path, startSec, endSec, outputPath: trimmedPath })
+      // Replace the original file with the trimmed version
+      try { fs.unlinkSync(clip.path) } catch { /* ignore */ }
+      fs.renameSync(trimmedPath, clip.path)
+      const dur = endSec - startSec
+      clipStore.update(id, { durationSeconds: dur, uploadStatus: 'local' })
+      return { ok: true }
+    } catch (err) {
+      try { if (fs.existsSync(trimmedPath)) fs.unlinkSync(trimmedPath) } catch { /* ignore */ }
+      return { ok: false, error: err instanceof Error ? err.message : String(err) }
+    }
+  })
+
   ipcMain.handle('overlay:toggle', () => {
     toggleOverlay()
     return { visible: isOverlayVisible() }

@@ -1,5 +1,6 @@
 import { spawn } from 'child_process'
 import { join, dirname } from 'path'
+import fs from 'fs'
 import { app } from 'electron'
 import { existsSync, mkdirSync } from 'fs'
 import { is } from '@electron-toolkit/utils'
@@ -29,6 +30,15 @@ export interface ThumbnailOptions {
   outputPath: string
 }
 
+export interface TrimOptions {
+  sourcePath: string
+  /** Trim start offset in seconds */
+  startSec: number
+  /** Trim end offset in seconds */
+  endSec: number
+  outputPath: string
+}
+
 export class ClipExtractor {
   /** Extract a clip from a source recording using FFmpeg seek + trim. */
   async extract(opts: ExtractOptions): Promise<void> {
@@ -37,17 +47,23 @@ export class ClipExtractor {
     const startSec = Math.max(0, opts.startOffsetMs / 1000)
     const durSec = opts.durationMs / 1000
 
-    await this._run([
-      '-y',
-      '-ss', String(startSec),
-      '-i', opts.sourcePath,
-      '-t', String(durSec),
-      '-c:v', 'copy',
-      '-c:a', 'copy',
-      '-avoid_negative_ts', '1',
-      '-movflags', '+faststart',
-      opts.outputPath,
-    ])
+    try {
+      await this._run([
+        '-y',
+        '-ss', String(startSec),
+        '-i', opts.sourcePath,
+        '-t', String(durSec),
+        '-c:v', 'copy',
+        '-c:a', 'copy',
+        '-avoid_negative_ts', '1',
+        '-movflags', '+faststart',
+        opts.outputPath,
+      ])
+    } catch (err) {
+      // Clean up partial output on failure
+      try { if (fs.existsSync(opts.outputPath)) fs.unlinkSync(opts.outputPath) } catch { /* ignore */ }
+      throw err
+    }
   }
 
   /** Extract a single JPEG thumbnail frame from a source recording. */
@@ -63,13 +79,36 @@ export class ClipExtractor {
       '-vframes', '1',
       '-q:v', '3',
       opts.outputPath,
-    ])
+    ], 30_000)
   }
 
-  private _run(args: string[]): Promise<void> {
+  /** Trim a clip to a new start/end window in-place (writes to outputPath). */
+  async trim(opts: TrimOptions): Promise<void> {
+    mkdirSync(dirname(opts.outputPath), { recursive: true })
+    const dur = opts.endSec - opts.startSec
+    if (dur <= 0) throw new Error('Trim end must be after start')
+    try {
+      await this._run([
+        '-y',
+        '-ss', String(opts.startSec),
+        '-i', opts.sourcePath,
+        '-t', String(dur),
+        '-c:v', 'copy',
+        '-c:a', 'copy',
+        '-avoid_negative_ts', '1',
+        '-movflags', '+faststart',
+        opts.outputPath,
+      ])
+    } catch (err) {
+      try { if (fs.existsSync(opts.outputPath)) fs.unlinkSync(opts.outputPath) } catch { /* ignore */ }
+      throw err
+    }
+  }
+
+  private _run(args: string[], timeoutMs = 60_000): Promise<void> {
     return new Promise((resolve, reject) => {
       const bin = ffmpegPath()
-      const proc = spawn(bin, args, { stdio: ['ignore', 'ignore', 'pipe'] })
+      const proc = spawn(bin, args, { stdio: ['pipe', 'ignore', 'pipe'] })
       let stderr = ''
       proc.stderr?.on('data', (d: Buffer) => { stderr += d.toString() })
       proc.on('error', (err) => reject(new Error(`ffmpeg error: ${err.message}`)))
@@ -78,7 +117,7 @@ export class ClipExtractor {
         else reject(new Error(`ffmpeg exited ${code}: ${stderr.slice(-300)}`))
       })
       // Hard cap — clips should never take this long
-      setTimeout(() => { proc.kill(); reject(new Error('ffmpeg timed out')) }, 60_000)
+      setTimeout(() => { proc.kill(); reject(new Error('ffmpeg timed out')) }, timeoutMs)
     })
   }
 

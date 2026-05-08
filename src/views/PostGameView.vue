@@ -35,7 +35,11 @@
               :style="{ width: `${uploadProgress}%` }"
             />
           </div>
-          <p class="text-[10px] text-gray-600 text-right">{{ uploadProgress }}%</p>
+          <div class="flex items-center justify-between">
+            <span v-if="uploadEta" class="text-[10px] text-gray-600">{{ uploadEta }}</span>
+            <span v-else class="text-[10px] text-gray-600">&nbsp;</span>
+            <p class="text-[10px] text-gray-600">{{ uploadProgress }}%</p>
+          </div>
         </div>
       </div>
 
@@ -74,6 +78,19 @@
               class="mt-2 px-2.5 py-1 text-[10px] font-medium text-gray-300 bg-white/[0.06] hover:bg-white/[0.1] border border-white/[0.08] rounded-lg transition-colors"
               @click="dismiss"
             >Close &amp; check dashboard</button>
+          </div>
+        </div>
+        <div v-if="analysisTimedOut" class="flex items-start gap-2 px-3 py-2.5 bg-amber-500/[0.07] border border-amber-500/20 rounded-xl text-left">
+          <svg class="w-3.5 h-3.5 text-amber-400 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
+          </svg>
+          <div class="flex-1 min-w-0">
+            <p class="text-[11px] text-amber-300 font-medium">Analysis is taking too long</p>
+            <p class="text-[10px] text-gray-500 mt-0.5">This usually means the AI service is under heavy load. Check the dashboard later for your results.</p>
+            <button
+              class="mt-2 px-2.5 py-1 text-[10px] font-medium text-gray-300 bg-white/[0.06] hover:bg-white/[0.1] border border-white/[0.08] rounded-lg transition-colors"
+              @click="dismiss"
+            >Close</button>
           </div>
         </div>
       </div>
@@ -168,6 +185,26 @@
             :style="{ background: `linear-gradient(135deg, ${agentAccentColor || '#dc2626'}, ${agentAccentColor ? agentAccentColor + 'cc' : '#ea580c'})`, boxShadow: `0 4px 14px ${agentAccentColor || '#dc2626'}40` }"
             @click="viewFullAnalysis"
           >View Full Analysis →</button>
+          <button
+            v-if="result?.overall_score"
+            title="Copy score to clipboard"
+            class="px-3 py-2.5 text-[11px] text-gray-400 hover:text-gray-200 bg-white/[0.03] hover:bg-white/[0.06] border border-white/[0.06] rounded-xl transition-colors"
+            @click="copyScore"
+          >
+            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/>
+            </svg>
+          </button>
+          <button
+            v-if="result?.analysis_id"
+            title="Export / share analysis"
+            class="px-3 py-2.5 text-[11px] text-gray-400 hover:text-gray-200 bg-white/[0.03] hover:bg-white/[0.06] border border-white/[0.06] rounded-xl transition-colors"
+            @click="exportAnalysis"
+          >
+            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/>
+            </svg>
+          </button>
           <button
             class="px-3 py-2.5 text-[11px] text-gray-500 hover:text-gray-300 bg-white/[0.03] hover:bg-white/[0.06] border border-white/[0.06] rounded-xl transition-colors"
             @click="dismiss"
@@ -290,6 +327,7 @@ const COACHING_TIPS = [
 
 const state = ref<State>('uploading')
 const uploadProgress = ref(0)
+const uploadStartedAt = ref(0)
 const gameInfo = ref<{ game: string; map: string | null; agent: string | null }>({ game: 'valorant', map: null, agent: null })
 const result = ref<{
   overall_score: number
@@ -307,17 +345,32 @@ const upgradeUrl = ref('https://upforge.gg/pricing')
 const pendingRecordingId = ref<string | null>(null)
 const analysing = ref(false)
 const analysisStuck = ref(false)
+const analysisTimedOut = ref(false)
 const tipIndex = ref(Math.floor(Math.random() * COACHING_TIPS.length))
 const sessionClipCount = ref(0)
 let sessionStart = 0
 let stuckTimer: ReturnType<typeof setTimeout> | null = null
+let timeoutTimer: ReturnType<typeof setTimeout> | null = null
 let tipTimer: ReturnType<typeof setInterval> | null = null
 
 const currentTip = computed(() => COACHING_TIPS[tipIndex.value])
 
+const uploadEta = computed(() => {
+  const pct = uploadProgress.value
+  if (pct <= 0 || pct >= 100 || !uploadStartedAt.value) return null
+  const elapsed = (Date.now() - uploadStartedAt.value) / 1000
+  const total = elapsed / (pct / 100)
+  const remaining = Math.max(0, Math.round(total - elapsed))
+  if (remaining < 5) return null
+  if (remaining < 60) return `~${remaining}s remaining`
+  return `~${Math.ceil(remaining / 60)}m remaining`
+})
+
 function startStuckTimer() {
   if (stuckTimer) clearTimeout(stuckTimer)
+  if (timeoutTimer) clearTimeout(timeoutTimer)
   stuckTimer = setTimeout(() => { analysisStuck.value = true }, 5 * 60 * 1000)
+  timeoutTimer = setTimeout(() => { analysisTimedOut.value = true }, 15 * 60 * 1000)
   tipTimer = setInterval(() => {
     tipIndex.value = (tipIndex.value + 1) % COACHING_TIPS.length
   }, 15000)
@@ -325,8 +378,10 @@ function startStuckTimer() {
 
 function clearStuckTimer() {
   if (stuckTimer) { clearTimeout(stuckTimer); stuckTimer = null }
+  if (timeoutTimer) { clearTimeout(timeoutTimer); timeoutTimer = null }
   if (tipTimer) { clearInterval(tipTimer); tipTimer = null }
   analysisStuck.value = false
+  analysisTimedOut.value = false
 }
 
 const gameLabel = computed(() => gameInfo.value.game === 'cs2' ? 'CS2' : 'Valorant')
@@ -380,6 +435,7 @@ onMounted(() => {
   ipcCleanup.push(window.api.on('post-game:upload-start', (...args: unknown[]) => {
     const data = args[0] as { game: string; map: string | null; agent: string | null }
     gameInfo.value = { game: data.game, map: data.map, agent: data.agent }
+    uploadStartedAt.value = Date.now()
   }))
   ipcCleanup.push(window.api.on('post-game:upload-progress', (...args: unknown[]) => { uploadProgress.value = args[0] as number }))
   ipcCleanup.push(window.api.on('post-game:upload-complete', () => { state.value = 'analysing'; startStuckTimer() }))
@@ -500,6 +556,18 @@ function viewFullAnalysis() {
 
 function dismiss() { window.close() }
 function openUpgrade() { window.open(upgradeUrl.value, '_blank') }
+
+async function copyScore() {
+  if (!result.value?.overall_score) return
+  const text = `UpForge Score: ${result.value.overall_score}/100 (${scoreGrade(result.value.overall_score)})`
+  await navigator.clipboard.writeText(text).catch(() => {})
+}
+
+function exportAnalysis() {
+  if (result.value?.analysis_id) {
+    window.open(`https://upforge.gg/valorant/results/${result.value.analysis_id}`, '_blank')
+  }
+}
 
 function scoreClass(score: number): string {
   return score >= 80 ? 'text-green-400' : score >= 60 ? 'text-yellow-400' : 'text-red-400'

@@ -57,6 +57,8 @@ export function readPendingJob(): { job_id: string; savedAt: number; agent?: str
 
 export class UploadManager {
   private _s3Request: ReturnType<typeof http.request> | null = null
+  /** Recently completed upload hashes (videoPath hash) to detect double-submits */
+  private _recentUploads = new Set<string>()
 
   constructor(private auth: AuthManager) {}
 
@@ -73,6 +75,20 @@ export class UploadManager {
    *   3. POST /complete → confirm upload and queue analysis (tiny JSON request)
    */
   async upload(opts: UploadOptions): Promise<UploadResult> {
+    if (this._recentUploads.has(opts.videoPath)) {
+      throw new Error('This recording was already uploaded recently')
+    }
+    const result = await this._doUpload(opts)
+    this._recentUploads.add(opts.videoPath)
+    // Keep the set small — only remember the last 20 uploads
+    if (this._recentUploads.size > 20) {
+      const [first] = this._recentUploads
+      this._recentUploads.delete(first)
+    }
+    return result
+  }
+
+  private async _doUpload(opts: UploadOptions): Promise<UploadResult> {
     const apiUrl = process.env['VITE_API_URL'] || 'https://api.upforge.gg'
     const token = this.auth.getToken()
     if (!token) throw new Error('Not authenticated')
@@ -192,6 +208,7 @@ export class UploadManager {
         let body = ''
         res.on('data', (c) => body += c)
         res.on('end', () => {
+          clearInterval(stallCheck)
           this._s3Request = null
           const status = res.statusCode ?? 0
           if (status >= 200 && status < 300) resolve()
@@ -206,12 +223,22 @@ export class UploadManager {
       this._s3Request = req
 
       let uploaded = 0
+      let lastProgressAt = Date.now()
+      const STALL_TIMEOUT_MS = 60_000
+      const stallCheck = setInterval(() => {
+        if (Date.now() - lastProgressAt > STALL_TIMEOUT_MS) {
+          clearInterval(stallCheck)
+          req.destroy(new Error('S3 upload stalled — no progress for 60 seconds'))
+        }
+      }, 5_000)
+
       const stream = fs.createReadStream(filePath)
       stream.on('data', (chunk: Buffer | string) => {
         uploaded += typeof chunk === 'string' ? chunk.length : chunk.length
+        lastProgressAt = Date.now()
         onProgress(Math.min(Math.round((uploaded / totalBytes) * 99), 99))
       })
-      stream.on('error', reject)
+      stream.on('error', (err) => { clearInterval(stallCheck); reject(err) })
       stream.pipe(req)
     })
   }

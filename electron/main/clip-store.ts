@@ -140,4 +140,36 @@ export class ClipStore {
       return true
     })
   }
+
+  /** Delete local-only clips older than `days` days and persist. */
+  pruneByAge(days: number): number {
+    if (days <= 0) return 0
+    const cutoff = Date.now() - days * 24 * 60 * 60 * 1000
+    const before = this.clips.length
+    this.clips = this.clips.filter(c => {
+      if (c.apiClipId != null || c.savedAt >= cutoff) return true
+      for (const p of [c.path, c.thumbPath]) {
+        if (p) try { if (fs.existsSync(p)) fs.unlinkSync(p) } catch { /* ignore */ }
+      }
+      return false
+    })
+    if (this.clips.length !== before) this._persist()
+    return before - this.clips.length
+  }
+
+  /** Remove thumbnail files that have no matching clip record. */
+  pruneOrphanedThumbnails(): void {
+    const clipsDir = path.join(path.dirname(this.filePath), 'clips')
+    if (!fs.existsSync(clipsDir)) return
+    const knownThumbs = new Set(this.clips.map(c => c.thumbPath).filter(Boolean))
+    try {
+      for (const file of fs.readdirSync(clipsDir)) {
+        if (!file.endsWith('_thumb.jpg')) continue
+        const full = path.join(clipsDir, file)
+        if (!knownThumbs.has(full)) {
+          try { fs.unlinkSync(full) } catch { /* ignore */ }
+        }
+      }
+    } catch { /* ignore */ }
+  }
 }

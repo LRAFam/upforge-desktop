@@ -734,6 +734,16 @@ onMounted(async () => {
     const data = args[0] as { waiting: boolean }
     status.value = { ...status.value, waitingForMatch: data.waiting }
   }))
+  ipcCleanup.push(window.api.on('auth:session-expired', () => {
+    router.push('/login')
+  }))
+  ipcCleanup.push(window.api.on('app:hotkey-status', (...args: unknown[]) => {
+    const data = args[0] as { saveClipRegistered: boolean }
+    if (!data.saveClipRegistered) {
+      warning.value = 'Clip hotkey (F9) failed to register — another app may be using it.'
+      setTimeout(() => { warning.value = null }, 15000)
+    }
+  }))
   ;(window as Window & { _dashboardIpcCleanup?: (() => void)[] })._dashboardIpcCleanup = ipcCleanup
 })
 
