@@ -172,11 +172,15 @@ const testingRiot = ref(false)
 const toolResult = ref<string | null>(null)
 let refreshInterval: ReturnType<typeof setInterval> | null = null
 
-// Guard — redirect if dev mode not enabled
+// Guard — redirect if neither dev mode nor admin
 onMounted(async () => {
   try {
-    const settings = await window.api.settings.get()
-    if (!settings.devModeEnabled) {
+    const [settings, status] = await Promise.all([
+      window.api.settings.get(),
+      window.api.app.getStatus(),
+    ])
+    const isAdmin = status.user?.is_admin ?? false
+    if (!settings.devModeEnabled && !isAdmin) {
       router.replace('/settings')
       return
     }
