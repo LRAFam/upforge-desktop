@@ -373,9 +373,40 @@ export class RiotLocalApi {
    */
   public onMatchEnded: (() => void) | null = null
 
-  // ──────────────────────────────────────────────────────────────────────
-  // LOCKFILE
-  // ──────────────────────────────────────────────────────────────────────
+  /** Return a snapshot of internal state for the developer diagnostics panel. */
+  getDiagnostics(): {
+    lockfileFound: boolean
+    ownPuuid: string | null
+    region: string | null
+    playerName: string | null
+    playerTag: string | null
+    accessTokenPresent: boolean
+    entitlementsTokenPresent: boolean
+    clientVersion: string
+    matchDataActive: boolean
+    currentMatchId: string | null
+    circuitBreakerOpen: boolean
+    sessionStateFailures: number
+    lastSessionLoopState: string
+  } {
+    return {
+      lockfileFound: this.lockfileData !== null,
+      ownPuuid: this.ownPuuid,
+      region: this.region,
+      playerName: this.playerName,
+      playerTag: this.playerTag,
+      accessTokenPresent: !!this.accessToken,
+      entitlementsTokenPresent: !!this.entitlementsToken,
+      clientVersion: this.clientVersion,
+      matchDataActive: this.matchData !== null,
+      currentMatchId: this.currentMatchId ?? this.matchData?.matchId ?? null,
+      circuitBreakerOpen: this._sessionStateCbOpen,
+      sessionStateFailures: this._sessionStateFailures,
+      lastSessionLoopState: this.lastSessionLoopState,
+    }
+  }
+
+
 
   readLockfile(): LockfileData | null {
     if (process.platform !== 'win32') return null

@@ -34,7 +34,8 @@ const api = {
   },
   dev: {
     simulateGame: (game?: string, durationMs?: number) =>
-      ipcRenderer.invoke('dev:simulate-game', { game, durationMs })
+      ipcRenderer.invoke('dev:simulate-game', { game, durationMs }),
+    getDiagnostics: () => ipcRenderer.invoke('dev:get-diagnostics'),
   },
   window: {
     minimize: () => ipcRenderer.invoke('window:minimize'),
@@ -137,6 +138,7 @@ const api = {
       'analysis:timeout',
       'auth:session-expired',
       'app:hotkey-status',
+      'settings:changed',
     ]
     if (allowed.includes(channel)) {
       const handler = (_e: Electron.IpcRendererEvent, ...args: unknown[]) => callback(...args)

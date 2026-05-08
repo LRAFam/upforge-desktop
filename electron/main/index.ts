@@ -102,6 +102,21 @@ let currentRecordingStartTime: number | null = null
 // Auto-hide timer for overlay flash feedback (clip bookmarked while overlay is hidden)
 let overlayAutoHideTimer: ReturnType<typeof setTimeout> | null = null
 
+// Last match diagnostic — captured at handleMatchEnd for the developer panel
+interface LastMatchDiagnostic {
+  timestamp: number
+  matchId: string | null
+  map: string | null
+  agent: string | null
+  gameMode: string
+  recordingDuration: number
+  fileSizeMb: number
+  killsInTimeline: number
+  clipsExtracted: number
+  matchDetailsStatus: 'fetched' | 'no_match_id' | 'no_region' | 'no_auth' | 'fetch_failed' | 'pending'
+}
+let lastMatchDiagnostic: LastMatchDiagnostic | null = null
+
 function logActivity(message: string): void {
   const entry = { time: Date.now(), message }
   activityLog.push(entry)
@@ -464,6 +479,7 @@ async function extractMatchClips(
   if (extractedClipIds.length > 0) {
     logActivity(`${extractedClipIds.length} clip${extractedClipIds.length === 1 ? '' : 's'} saved from match`)
     mainWindow?.webContents.send('clips:new', extractedClipIds)
+    if (lastMatchDiagnostic) lastMatchDiagnostic.clipsExtracted = extractedClipIds.length
     if (Notification.isSupported()) {
       new Notification({
         title: 'UpForge — Clips Ready',
@@ -703,6 +719,24 @@ function setupGameDetection(): void {
     const gameMode = riotLocalApi.getLastGameMode() ?? 'UNKNOWN'
     const config = settingsManager?.get()
     const autoAnalyse = config?.autoAnalyse !== false
+
+    // Capture diagnostic state for the developer panel
+    const riotDiag = riotLocalApi.getDiagnostics()
+    const killsInTimeline = timeline?.playerKills?.length ?? 0
+    lastMatchDiagnostic = {
+      timestamp: Date.now(),
+      matchId: timeline?.matchId ?? null,
+      map,
+      agent,
+      gameMode,
+      recordingDuration,
+      fileSizeMb: fileSize / (1024 * 1024),
+      killsInTimeline,
+      clipsExtracted: 0, // updated after extractMatchClips completes
+      matchDetailsStatus: timeline?.matchId
+        ? (killsInTimeline > 0 ? 'fetched' : (riotDiag.region ? 'fetch_failed' : 'no_region'))
+        : (riotDiag.accessTokenPresent ? 'no_match_id' : 'no_auth'),
+    }
 
     log.info(
       `[HandleMatchEnd] duration=${recordingDuration}s videoPath=${videoPath} fileSize=${fileSize} ` +
@@ -1540,7 +1574,34 @@ app.whenReady().then(async () => {
 
   setupClipHandlers(ipcMain, clipStore, clipExtractor, authManager, hotkeyManager)
 
-  // Overlay clip button — same as pressing F9
+  // Developer diagnostics — full internal state snapshot for the admin panel
+  ipcMain.handle('dev:get-diagnostics', () => {
+    return {
+      app: {
+        version: app.getVersion(),
+        platform: process.platform,
+        arch: process.arch,
+        electronVersion: process.versions.electron,
+        nodeVersion: process.versions.node,
+        isDev: is.dev,
+      },
+      riot: riotLocalApi.getDiagnostics(),
+      recording: {
+        active: recorder.isRecording(),
+        duration: recorder.getRecordingDuration(),
+        lastError: recorder.getLastError() ?? null,
+        lastPath: recorder.getLastRecordingPath() ?? null,
+        lastSizeMb: recorder.getLastRecordingSize() / (1024 * 1024),
+      },
+      lastMatch: lastMatchDiagnostic,
+      clips: {
+        total: clipStore.getAll().length,
+      },
+      activityLog: activityLog.slice(),
+    }
+  })
+
+
   ipcMain.handle('clips:save-bookmark', () => {
     if (recorder.isRecording() && currentRecordingStartTime !== null) {
       hotkeyBookmarks.push(Date.now())

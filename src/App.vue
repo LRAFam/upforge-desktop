@@ -59,6 +59,19 @@
       >
         {{ link.label }}
       </RouterLink>
+      <!-- Developer link (shown only when dev mode is unlocked) -->
+      <RouterLink
+        v-if="devNavLink"
+        :to="devNavLink.to"
+        class="px-3 py-1.5 text-xs font-medium transition-all duration-150 ml-auto"
+        :class="
+          $route.path === devNavLink.to
+            ? 'text-amber-400 relative after:absolute after:bottom-0 after:left-0 after:right-0 after:h-px after:bg-amber-500'
+            : 'text-amber-600 hover:text-amber-400'
+        "
+      >
+        {{ devNavLink.label }}
+      </RouterLink>
     </nav>
 
     <!-- Content -->
@@ -92,6 +105,7 @@ const router = useRouter()
 const isMac = navigator.platform.toUpperCase().includes('MAC')
 const status = ref({ recording: false, currentGame: null as string | null })
 const isDev = ref(false)
+const devModeEnabled = ref(false)
 const appVersion = ref(__APP_VERSION__)
 const simStatus = ref('')
 const riotId = ref<string | null>(null)
@@ -116,6 +130,10 @@ const navLinks = [
   { to: '/settings', label: 'Settings' }
 ]
 
+const devNavLink = computed(() =>
+  devModeEnabled.value ? { to: '/dev', label: 'Developer' } : null
+)
+
 let statusInterval: ReturnType<typeof setInterval> | null = null
 
 onMounted(async () => {
@@ -128,6 +146,17 @@ onMounted(async () => {
   } catch {
     // IPC failed — appVersion stays as compile-time constant
   }
+  try {
+    const settings = await window.api.settings.get()
+    devModeEnabled.value = settings.devModeEnabled ?? false
+  } catch { /* ignore */ }
+
+  // React to settings changes (e.g. dev mode toggled in Settings)
+  const settingsCleanup = window.api.on('settings:changed', (...args: unknown[]) => {
+    const s = args[0] as { devModeEnabled?: boolean } | undefined
+    if (s && typeof s.devModeEnabled === 'boolean') devModeEnabled.value = s.devModeEnabled
+  })
+  ;(window as Window & { _settingsCleanup?: () => void })._settingsCleanup = settingsCleanup
   statusInterval = setInterval(async () => {
     if (document.hidden) return // skip while game is running fullscreen
     try {
@@ -147,9 +176,12 @@ onMounted(async () => {
 
 onUnmounted(() => {
   if (statusInterval) clearInterval(statusInterval)
-  const cleanup = (window as Window & { _appNavCleanup?: () => void })._appNavCleanup
-  cleanup?.()
+  const navCleanup = (window as Window & { _appNavCleanup?: () => void })._appNavCleanup
+  navCleanup?.()
   delete (window as Window & { _appNavCleanup?: () => void })._appNavCleanup
+  const settingsCleanup = (window as Window & { _settingsCleanup?: () => void })._settingsCleanup
+  settingsCleanup?.()
+  delete (window as Window & { _settingsCleanup?: () => void })._settingsCleanup
 })
 
 async function simulateGame() {

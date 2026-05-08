@@ -26,6 +26,8 @@ export interface AppSettings {
   cachedEncoder: string | null
   /** Whether ddagrab was available last launch */
   cachedUseDdagrab: boolean | null
+  /** Developer / admin mode — unlocked by tapping version 5× in Settings */
+  devModeEnabled: boolean
 }
 
 export interface PendingRecording {
@@ -206,6 +208,39 @@ declare global {
       }
       dev: {
         simulateGame: (game?: string, durationMs?: number) => Promise<{ ok: boolean }>
+        getDiagnostics: () => Promise<{
+          app: { version: string; platform: string; arch: string; electronVersion: string; nodeVersion: string; isDev: boolean }
+          riot: {
+            lockfileFound: boolean
+            ownPuuid: string | null
+            region: string | null
+            playerName: string | null
+            playerTag: string | null
+            accessTokenPresent: boolean
+            entitlementsTokenPresent: boolean
+            clientVersion: string
+            matchDataActive: boolean
+            currentMatchId: string | null
+            circuitBreakerOpen: boolean
+            sessionStateFailures: number
+            lastSessionLoopState: string
+          }
+          recording: { active: boolean; duration: number; lastError: string | null; lastPath: string | null; lastSizeMb: number }
+          lastMatch: {
+            timestamp: number
+            matchId: string | null
+            map: string | null
+            agent: string | null
+            gameMode: string
+            recordingDuration: number
+            fileSizeMb: number
+            killsInTimeline: number
+            clipsExtracted: number
+            matchDetailsStatus: string
+          } | null
+          clips: { total: number }
+          activityLog: Array<{ time: number; message: string }>
+        }>
       }
       window: {
         minimize: () => Promise<void>

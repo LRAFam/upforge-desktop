@@ -521,6 +521,10 @@ export function setupIpcHandlers(
     if ('launchOnStartup' in partial && partial.launchOnStartup !== prev.launchOnStartup) {
       app.setLoginItemSettings({ openAtLogin: !!partial.launchOnStartup })
     }
+    // Broadcast settings change to all renderer windows
+    BrowserWindow.getAllWindows().forEach(w => {
+      if (!w.isDestroyed()) w.webContents.send('settings:changed', result)
+    })
     return result
   })
 

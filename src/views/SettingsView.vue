@@ -397,7 +397,11 @@
     <!-- Footer -->
     <div class="pt-1 space-y-2">
       <div class="flex items-center justify-between px-0.5">
-        <p class="text-xs text-gray-700">UpForge Desktop v{{ appVersion }}</p>
+        <p
+          class="text-xs text-gray-700 cursor-default select-none"
+          :class="{ 'text-amber-600': devTapCount > 0 && devTapCount < 5 }"
+          @click="handleVersionTap"
+        >UpForge Desktop v{{ appVersion }}<span v-if="devTapCount > 0 && devTapCount < 5" class="ml-1 text-amber-600/60">({{ 5 - devTapCount }} more)</span></p>
         <div class="flex items-center gap-3">
           <button
             v-if="!isDev"
@@ -408,6 +412,14 @@
           <button class="text-xs text-gray-600 hover:text-gray-400 transition-colors" @click="openHelp">Get help</button>
           <button class="text-xs text-gray-600 hover:text-gray-400 transition-colors" @click="openSite">upforge.gg</button>
         </div>
+      </div>
+      <!-- Dev mode enabled indicator -->
+      <div v-if="devModeActive" class="flex items-center justify-between px-0.5 py-1.5 bg-amber-500/[0.06] border border-amber-500/20 rounded-lg">
+        <div class="flex items-center gap-2">
+          <div class="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
+          <span class="text-xs text-amber-500/80 font-medium">Developer mode enabled</span>
+        </div>
+        <button class="text-xs text-amber-700 hover:text-amber-500 transition-colors" @click="disableDevMode">Disable</button>
       </div>
       <Transition name="fade">
         <p v-if="updateMessage" class="text-xs text-gray-500 px-0.5">{{ updateMessage }}</p>
@@ -423,7 +435,7 @@
         <svg class="w-4 h-4 text-green-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"/>
         </svg>
-        Settings saved
+        {{ toastMessage || 'Settings saved' }}
       </div>
     </Transition>
 
@@ -460,6 +472,32 @@ const testingRiotApi = ref(false)
 const riotApiResult = ref<{ portOpen: boolean; gameMode: string | null; logGameMode: string | null; processRunning: boolean } | null>(null)
 let saveTimer: ReturnType<typeof setTimeout> | null = null
 let toastTimer: ReturnType<typeof setTimeout> | null = null
+const toastMessage = ref('')
+
+// ── Dev mode unlock (tap version 5×) ─────────────────────────────────────────
+const devModeActive = ref(false)
+const devTapCount = ref(0)
+let devTapTimer: ReturnType<typeof setTimeout> | null = null
+
+async function handleVersionTap() {
+  if (devModeActive.value) return
+  devTapCount.value++
+  if (devTapTimer) clearTimeout(devTapTimer)
+  if (devTapCount.value >= 5) {
+    devTapCount.value = 0
+    devModeActive.value = true
+    await window.api.settings.save({ devModeEnabled: true })
+    showToast('Developer mode enabled — check the nav bar')
+  } else {
+    devTapTimer = setTimeout(() => { devTapCount.value = 0 }, 3000)
+  }
+}
+
+async function disableDevMode() {
+  devModeActive.value = false
+  await window.api.settings.save({ devModeEnabled: false })
+  showToast('Developer mode disabled')
+}
 
 // ── Hotkeys ──────────────────────────────────────────────────────────────────
 type HotkeyAction = 'save-clip' | 'toggle-overlay' | 'take-screenshot'
@@ -546,6 +584,7 @@ const settings = reactive<AppSettings>({
   notificationSound: true,
   cachedEncoder: null,
   cachedUseDdagrab: null,
+  devModeEnabled: false,
 })
 
 const GAME_MODES = [
@@ -574,9 +613,17 @@ const usagePercent = computed(() => {
 // tierClass and formatMode are imported from valorant.ts (shared helpers)
 
 function showSaved(): void {
+  toastMessage.value = ''
   savedVisible.value = true
   if (toastTimer) clearTimeout(toastTimer)
   toastTimer = setTimeout(() => { savedVisible.value = false }, 2000)
+}
+
+function showToast(msg: string): void {
+  toastMessage.value = msg
+  savedVisible.value = true
+  if (toastTimer) clearTimeout(toastTimer)
+  toastTimer = setTimeout(() => { savedVisible.value = false; toastMessage.value = '' }, 2500)
 }
 
 function debouncedSave(): void {
@@ -697,6 +744,7 @@ onMounted(async () => {
     if (s.version) appVersion.value = s.version
     if (s.ffmpegOk !== undefined) ffmpegOk.value = s.ffmpegOk !== false
     Object.assign(settings, savedSettings)
+    devModeActive.value = savedSettings.devModeEnabled ?? false
     // Use getStatus user as base
     if (s.user) user.value = s.user as UserWithUsage | null
     loadStorageUsage()

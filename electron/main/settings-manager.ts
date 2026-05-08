@@ -26,6 +26,8 @@ export interface AppSettings {
   cachedEncoder: string | null
   /** Whether ddagrab was available last launch */
   cachedUseDdagrab: boolean | null
+  /** Developer / admin mode — unlocked by tapping the version number 5 times in Settings */
+  devModeEnabled: boolean
 }
 
 const DEFAULTS: AppSettings = {
@@ -43,6 +45,7 @@ const DEFAULTS: AppSettings = {
   notificationSound: true,
   cachedEncoder: null,
   cachedUseDdagrab: null,
+  devModeEnabled: false,
 }
 
 export class SettingsManager {
