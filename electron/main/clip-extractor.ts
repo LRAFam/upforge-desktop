@@ -46,21 +46,31 @@ export class ClipExtractor {
 
     const startSec = Math.max(0, opts.startOffsetMs / 1000)
     const durSec = opts.durationMs / 1000
+    const isWebM = opts.sourcePath.toLowerCase().endsWith('.webm')
+
+    // WebM (VP8/VP9) cannot be stream-copied into MP4 — transcode to H.264/AAC.
+    // For MP4 sources, stream-copy is faster and lossless.
+    const videoArgs = isWebM
+      ? ['-c:v', 'libx264', '-crf', '22', '-preset', 'fast', '-pix_fmt', 'yuv420p']
+      : ['-c:v', 'copy']
+    const audioArgs = isWebM ? ['-c:a', 'aac', '-b:a', '128k'] : ['-c:a', 'copy']
 
     try {
-      await this._run([
-        '-y',
-        '-ss', String(startSec),
-        '-i', opts.sourcePath,
-        '-t', String(durSec),
-        '-c:v', 'copy',
-        '-c:a', 'copy',
-        '-avoid_negative_ts', '1',
-        '-movflags', '+faststart',
-        opts.outputPath,
-      ])
+      await this._run(
+        [
+          '-y',
+          '-ss', String(startSec),
+          '-i', opts.sourcePath,
+          '-t', String(durSec),
+          ...videoArgs,
+          ...audioArgs,
+          '-avoid_negative_ts', '1',
+          '-movflags', '+faststart',
+          opts.outputPath,
+        ],
+        isWebM ? 120_000 : 60_000,
+      )
     } catch (err) {
-      // Clean up partial output on failure
       try { if (fs.existsSync(opts.outputPath)) fs.unlinkSync(opts.outputPath) } catch { /* ignore */ }
       throw err
     }

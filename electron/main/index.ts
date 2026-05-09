@@ -15,7 +15,7 @@ import fs from 'fs'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import { setupAutoUpdater } from './updater'
 import { GameDetector } from './game-detector'
-import { Recorder } from './recorder'
+import { DesktopRecorder } from './desktop-recorder'
 import { RiotLocalApi } from './riot-local-api'
 import { UploadManager, savePendingJob, clearPendingJob, readPendingJob } from './upload-manager'
 import { AuthManager } from './auth-manager'
@@ -54,7 +54,7 @@ let updateTrayMenuFn: (() => void) | null = null
 let ffmpegOk = true // updated after preflight; exposed via app:get-status
 
 const gameDetector = new GameDetector()
-const recorder = new Recorder()
+const recorder = new DesktopRecorder(() => mainWindow?.webContents ?? null)
 const clipExtractor = new ClipExtractor()
 const clipStore = new ClipStore()
 const hotkeyManager = new HotkeyManager()

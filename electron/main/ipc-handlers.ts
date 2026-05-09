@@ -7,7 +7,7 @@ import { is } from '@electron-toolkit/utils'
 import { autoUpdater } from 'electron-updater'
 import log from 'electron-log'
 import { AuthManager } from './auth-manager'
-import { Recorder } from './recorder'
+import { DesktopRecorder } from './desktop-recorder'
 import { GameDetector } from './game-detector'
 import { SettingsManager } from './settings-manager'
 import { UploadManager } from './upload-manager'
@@ -415,7 +415,7 @@ function _pollClipAnalysis(
 export function setupIpcHandlers(
   ipcMain: IpcMain,
   auth: AuthManager,
-  recorder: Recorder,
+  recorder: DesktopRecorder,
   gameDetector: GameDetector,
   settingsManager: SettingsManager,
   openPostGameFn?: () => void,

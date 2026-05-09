@@ -98,9 +98,13 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import { useDesktopRecording } from './composables/useDesktopRecording'
 
 const route = useRoute()
 const router = useRouter()
+
+// Initialise renderer-side MediaRecorder bridge — always active while app is running
+useDesktopRecording()
 
 const isMac = navigator.platform.toUpperCase().includes('MAC')
 const status = ref({ recording: false, currentGame: null as string | null })

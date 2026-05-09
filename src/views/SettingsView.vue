@@ -263,6 +263,9 @@
           Re-check Audio Devices
         </button>
       </div>
+      <p v-else-if="audioStatus !== null && audioStatus.winAudioMode === 'desktop-capturer'" class="text-xs text-green-500/80 mt-1.5 px-0.5">
+        ✓ Built-in audio capture active <span class="text-gray-600">(system audio via browser engine)</span>.
+      </p>
       <p v-else-if="audioStatus !== null && audioStatus.winAudioMode" class="text-xs text-green-500/80 mt-1.5 px-0.5">
         ✓ Desktop audio capture ready
         <span v-if="audioStatus.winAudioMode?.startsWith('dshow:')" class="text-gray-600"> (Stereo Mix)</span>

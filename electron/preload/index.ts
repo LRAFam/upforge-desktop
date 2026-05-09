@@ -98,6 +98,21 @@ const api = {
     },
     save: (dataUrl: string) => ipcRenderer.invoke('screenshots:save', { dataUrl }),
   },
+  desktopCapture: {
+    /** Returns available screen/window sources for getUserMedia capture. */
+    getSources: () =>
+      desktopCapturer
+        .getSources({ types: ['screen', 'window'] })
+        .then((sources) => sources.map((s) => ({ id: s.id, name: s.name }))),
+    /** Send a recorded chunk (ArrayBuffer) to the main process for disk writing. */
+    sendChunk: (chunk: ArrayBuffer) => ipcRenderer.send('desktop-recording:chunk', chunk),
+    /** Notify main process that MediaRecorder has started (and whether audio is available). */
+    sendStarted: (noAudio: boolean) => ipcRenderer.send('desktop-recording:started', noAudio),
+    /** Notify main process that MediaRecorder has fully stopped and all data is flushed. */
+    sendComplete: () => ipcRenderer.send('desktop-recording:complete'),
+    /** Notify main process of a fatal recording error. */
+    sendError: (message: string) => ipcRenderer.send('desktop-recording:error', message),
+  },
   performance: {
     getStatus: () => ipcRenderer.invoke('performance:get-status'),
     boost: () => ipcRenderer.invoke('performance:boost'),
@@ -141,6 +156,8 @@ const api = {
       'auth:session-expired',
       'app:hotkey-status',
       'settings:changed',
+      'desktop-recording:start',
+      'desktop-recording:stop',
     ]
     if (allowed.includes(channel)) {
       const handler = (_e: Electron.IpcRendererEvent, ...args: unknown[]) => callback(...args)

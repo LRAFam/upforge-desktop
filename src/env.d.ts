@@ -267,6 +267,13 @@ declare global {
         capture: () => Promise<string | null>
         save: (dataUrl: string) => Promise<{ ok: boolean; path?: string }>
       }
+      desktopCapture: {
+        getSources: () => Promise<Array<{ id: string; name: string }>>
+        sendChunk: (chunk: ArrayBuffer) => void
+        sendStarted: (noAudio: boolean) => void
+        sendComplete: () => void
+        sendError: (message: string) => void
+      }
       storage: {
         getUsage: () => Promise<{ bytes: number; count: number }>
         openFolder: () => Promise<void>
