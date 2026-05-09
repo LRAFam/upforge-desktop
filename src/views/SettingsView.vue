@@ -239,19 +239,35 @@
       </div>
       <div v-else-if="audioStatus !== null && audioStatus.winAudioMode === false" class="mt-1.5 px-0.5 space-y-1">
         <p class="text-xs text-amber-400/80">
-          ⚠️ Desktop audio capture unavailable. UpForge can attempt to auto-fix this for you.
+          <template v-if="isMac">
+            ⚠️ No virtual audio device found. Install
+            <a href="https://existential.audio/blackhole/" target="_blank" class="underline hover:text-amber-300">BlackHole</a>
+            to capture desktop/game audio.
+          </template>
+          <template v-else>
+            ⚠️ Desktop audio capture unavailable. UpForge can attempt to auto-fix this for you.
+          </template>
         </p>
         <button
+          v-if="!isMac"
           class="text-xs bg-white/[0.07] hover:bg-white/[0.12] text-white px-3 py-1.5 rounded-lg transition-colors"
           @click="fixAudio"
         >
           Fix Audio Automatically
         </button>
+        <button
+          v-else
+          class="text-xs bg-white/[0.07] hover:bg-white/[0.12] text-white px-3 py-1.5 rounded-lg transition-colors"
+          @click="fixAudio"
+        >
+          Re-check Audio Devices
+        </button>
       </div>
       <p v-else-if="audioStatus !== null && audioStatus.winAudioMode" class="text-xs text-green-500/80 mt-1.5 px-0.5">
         ✓ Desktop audio capture ready
         <span v-if="audioStatus.winAudioMode?.startsWith('dshow:')" class="text-gray-600"> (Stereo Mix)</span>
-        <span v-else-if="audioStatus.winAudioMode?.startsWith('wasapi')" class="text-gray-600"> (WASAPI loopback)</span>.
+        <span v-else-if="audioStatus.winAudioMode?.startsWith('wasapi')" class="text-gray-600"> (WASAPI loopback)</span>
+        <span v-else-if="audioStatus.winAudioMode?.startsWith('avfoundation:')" class="text-gray-600"> (virtual loopback)</span>.
       </p>
     </section>
 
@@ -530,6 +546,7 @@ const savedVisible = ref(false)
 const storageBytes = ref(0)
 const storageCount = ref(0)
 const ffmpegOk = ref(true)
+const isMac = ref(navigator.userAgent.toLowerCase().includes('mac'))
 const audioStatus = ref<{ winAudioMode: string | false | null; audioEnabled: boolean } | null>(null)
 const fixingAudio = ref(false)
 const testingRiotApi = ref(false)
@@ -843,7 +860,7 @@ onMounted(async () => {
     const audioSt = await window.api.recorder.getAudioStatus()
     audioStatus.value = audioSt
     // If detection hasn't run yet (app just started), auto-trigger it so the UI isn't stuck on null
-    if (audioSt.winAudioMode === null && navigator.userAgent.includes('Windows')) {
+    if (audioSt.winAudioMode === null && (navigator.userAgent.includes('Windows') || isMac.value)) {
       fixAudio()
     }
   } catch { /* non-critical */ }

@@ -1570,9 +1570,11 @@ app.whenReady().then(async () => {
     ffmpegOk = false
   })
 
-  // On Windows, proactively detect audio capture method in the background at startup.
-  // This ensures winAudioMode is cached before the user opens settings for the first time.
-  if (process.platform === 'win32') {
+  // Proactively detect audio capture method in the background at startup.
+  // On Windows: detects WASAPI / DirectShow Stereo Mix.
+  // On Mac: detects virtual loopback devices (BlackHole, Soundflower, Loopback, etc.).
+  // This ensures the audio mode is cached before the user opens settings for the first time.
+  if (process.platform === 'win32' || process.platform === 'darwin') {
     recorder.redetectAudio().catch((err) => {
       console.warn('[App] Background audio detection failed:', err)
     })
@@ -1626,7 +1628,7 @@ app.whenReady().then(async () => {
         lastError: recorder.getLastError() ?? null,
         lastPath: recorder.getLastRecordingPath() ?? null,
         lastSizeMb: recorder.getLastRecordingSize() / (1024 * 1024),
-        wasapiMode: recorder.getWinAudioMode(),
+        wasapiMode: recorder.getAudioMode(),
       },
       lastMatch: lastMatchDiagnostic,
       clips: {
@@ -1639,7 +1641,7 @@ app.whenReady().then(async () => {
 
   ipcMain.handle('recorder:audio-status', () => {
     return {
-      winAudioMode: recorder.getWinAudioMode(),
+      winAudioMode: recorder.getAudioMode(),
       audioEnabled: settingsManager.get().audioEnabled,
     }
   })

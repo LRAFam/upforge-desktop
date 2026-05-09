@@ -51,6 +51,11 @@ export class Recorder {
    * false = no audio available
    */
   private _cachedWinAudioMode: string | false | null = null
+  /**
+   * Mac: avfoundation audio device index for virtual loopback capture.
+   * null = untested, false = no virtual device found, number = device index
+   */
+  private _cachedMacAudioDeviceIndex: number | false | null = null
   private _recordedWithoutAudio = false
   private _startupWarning: string | null = null
   private _paused = false
@@ -313,9 +318,18 @@ export class Recorder {
         const bufferLower = this._stderrBuffer.toLowerCase()
         const audioFailed = bufferLower.includes('wasapi') || bufferLower.includes('loopback') ||
           bufferLower.includes('invalid argument') || bufferLower.includes('coinitialization') ||
-          (IS_MAC && bufferLower.includes('avfoundation') && bufferLower.includes(':0'))
+          (IS_MAC && bufferLower.includes('avfoundation') && bufferLower.includes(':'))
         if (audioFailed) {
           console.warn('[Recorder] Audio capture failed — retrying without audio:', reason)
+          // Mark audio as unavailable so settings don't show false "ready" state
+          if (IS_WIN && this._cachedWinAudioMode !== false) {
+            console.warn('[Recorder] Invalidating cached Windows audio mode — was working at detection but failed at recording time')
+            this._cachedWinAudioMode = false
+          }
+          if (IS_MAC) {
+            console.warn('[Recorder] Invalidating cached Mac audio device — avfoundation audio failed at recording time')
+            this._cachedMacAudioDeviceIndex = false
+          }
           this._stderrBuffer = ''
           this._process = null
           return this._spawnAndConfirm(game, config, encoder, useDesktopFallback, true, useDdagrab, windowInfo)
@@ -412,7 +426,11 @@ export class Recorder {
     const ffmpegPath = this._ffmpegPath()
 
     if (IS_MAC) {
-      const works = await this._testEncoder(ffmpegPath, 'h264_videotoolbox')
+      const [works, macAudioIdx] = await Promise.all([
+        this._testEncoder(ffmpegPath, 'h264_videotoolbox'),
+        this._detectMacAudio(ffmpegPath),
+      ])
+      this._cachedMacAudioDeviceIndex = macAudioIdx
       this._cachedEncoder = works ? 'videotoolbox' : 'software'
       return this._cachedEncoder
     }
@@ -453,7 +471,18 @@ export class Recorder {
     return 'software'
   }
 
-  /** Returns the cached Windows audio mode for renderer diagnostics. */
+  /** Returns the cached audio mode string for renderer diagnostics (cross-platform). */
+  getAudioMode(): string | false | null {
+    if (IS_MAC) {
+      const idx = this._cachedMacAudioDeviceIndex
+      if (idx === null) return null
+      if (idx === false) return false
+      return `avfoundation:${idx}`
+    }
+    return this._cachedWinAudioMode
+  }
+
+  /** @deprecated Use getAudioMode() — kept for backwards compatibility */
   getWinAudioMode(): string | false | null {
     return this._cachedWinAudioMode
   }
@@ -525,6 +554,52 @@ export class Recorder {
 
     console.warn('[Recorder] No working Windows audio capture method found')
     return false
+  }
+
+  /**
+   * Mac: enumerate avfoundation audio devices and find a virtual loopback device.
+   * Looks for BlackHole, Soundflower, Loopback, or similar in priority order.
+   * Returns the device index to use with avfoundation input (e.g. "1:2"), or false if none found.
+   */
+  private _detectMacAudio(ffmpegPath: string): Promise<number | false> {
+    return new Promise((resolve) => {
+      const proc = spawn(ffmpegPath, ['-f', 'avfoundation', '-list_devices', 'true', '-i', ''], { stdio: 'pipe' })
+      let stderr = ''
+      proc.stderr?.on('data', (d: Buffer) => { stderr += d.toString() })
+      proc.on('exit', () => {
+        const devices = this._parseMacAudioDevices(stderr)
+        console.log(`[Recorder] Mac avfoundation audio devices: ${devices.map(d => `[${d.index}] ${d.name}`).join(', ') || 'none'}`)
+
+        // Priority order: prefer dedicated loopback tools, then any virtual/aggregate device
+        const keywords = ['blackhole', 'soundflower', 'loopback', 'virtual', 'aggregate', 'mix']
+        for (const kw of keywords) {
+          const found = devices.find(d => d.name.toLowerCase().includes(kw))
+          if (found) {
+            console.log(`[Recorder] Mac audio: using "${found.name}" at index ${found.index} for desktop audio capture`)
+            return resolve(found.index)
+          }
+        }
+        console.log('[Recorder] Mac: no virtual loopback audio device found — will record without audio')
+        resolve(false)
+      })
+      proc.on('error', () => resolve(false))
+      setTimeout(() => { proc.kill(); resolve(false) }, 5000)
+    })
+  }
+
+  /** Parse avfoundation audio device list from ffmpeg stderr output. */
+  private _parseMacAudioDevices(output: string): Array<{ index: number; name: string }> {
+    const devices: Array<{ index: number; name: string }> = []
+    let inAudio = false
+    for (const line of output.split('\n')) {
+      if (line.includes('AVFoundation audio devices')) { inAudio = true; continue }
+      if (inAudio && line.includes('AVFoundation video devices')) break
+      if (inAudio) {
+        const m = line.match(/\[(\d+)\]\s+(.+)/)
+        if (m) devices.push({ index: parseInt(m[1]), name: m[2].trim() })
+      }
+    }
+    return devices
   }
 
   /**
@@ -619,9 +694,15 @@ export class Recorder {
   /**
    * Public: re-run audio detection and cache result. Called from IPC when user
    * clicks "Fix Audio" in settings, so we can re-detect after Stereo Mix is enabled.
+   * Works cross-platform — on Mac detects virtual loopback devices.
    */
   async redetectAudio(): Promise<string | false> {
     const ffmpegPath = this._ffmpegPath()
+    if (IS_MAC) {
+      const idx = await this._detectMacAudio(ffmpegPath)
+      this._cachedMacAudioDeviceIndex = idx
+      return idx !== false ? `avfoundation:${idx}` : false
+    }
     this._cachedWinAudioMode = await this._detectWindowsAudio(ffmpegPath)
     return this._cachedWinAudioMode
   }
@@ -702,9 +783,14 @@ export class Recorder {
         : ['-b:v', bitrateStr, '-maxrate', maxrateStr, '-bufsize', bufsizeStr]
 
     if (IS_MAC) {
-      // noAudio: capture video device only (no audio index after colon)
-      const input = noAudio ? '1' : '1:0'
-      if (noAudio) console.log('[Recorder] Mac: recording without audio (avfoundation device 1)')
+      const audioDeviceIdx = this._cachedMacAudioDeviceIndex
+      // Only use audio if a virtual loopback device was detected — avfoundation index 0 is
+      // the microphone which we never want to record. If no virtual device, skip audio.
+      const hasAudio = !noAudio && typeof audioDeviceIdx === 'number'
+      const input = hasAudio ? `1:${audioDeviceIdx}` : '1'
+      if (!hasAudio && !noAudio) {
+        console.log('[Recorder] Mac: recording without audio (no virtual loopback device detected)')
+      }
       return [
         '-f', 'avfoundation',
         '-framerate', String(fps),
@@ -712,7 +798,7 @@ export class Recorder {
         '-vf', `scale=${scale}`,
         '-vcodec', codec,
         ...qualityArgs,
-        ...(noAudio ? [] : ['-acodec', 'aac', '-b:a', '128k']),
+        ...(hasAudio ? ['-acodec', 'aac', '-b:a', '128k'] : []),
         '-movflags', '+faststart',
         outputPath
       ]
