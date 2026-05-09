@@ -204,6 +204,17 @@ export class Recorder {
 
     const useDdagrab = IS_WIN && this._cachedUseDdagrab === true
     const audioUserEnabled = config?.audioEnabled !== false
+
+    // Ensure Windows audio detection has completed before building ffmpeg args.
+    // Detection runs proactively at startup, but there's a race if recording starts
+    // before it finishes. If mode is still null here, run it inline now.
+    // Without this, _winAudioInputArgs() returns [] but _buildArgs still emits
+    // `-map 1:a` / `-map 0:a` references that assume an audio input exists → ffmpeg crash.
+    if (IS_WIN && this._cachedWinAudioMode === null && audioUserEnabled) {
+      console.log('[Recorder] Audio detection not yet complete — running inline before start')
+      this._cachedWinAudioMode = await this._detectWindowsAudio(this._ffmpegPath())
+    }
+
     // If audio detection already determined no method works, skip rather than failing at start
     const audioUnavailable = IS_WIN && this._cachedWinAudioMode === false
     const startWithAudio = audioUserEnabled && !audioUnavailable
@@ -318,6 +329,9 @@ export class Recorder {
         const bufferLower = this._stderrBuffer.toLowerCase()
         const audioFailed = bufferLower.includes('wasapi') || bufferLower.includes('loopback') ||
           bufferLower.includes('invalid argument') || bufferLower.includes('coinitialization') ||
+          bufferLower.includes('could not open') || bufferLower.includes('no such device') ||
+          bufferLower.includes('access denied') || bufferLower.includes('device not available') ||
+          bufferLower.includes('exclusive mode') || bufferLower.includes('dshow') ||
           (IS_MAC && bufferLower.includes('avfoundation') && bufferLower.includes(':'))
         if (audioFailed) {
           console.warn('[Recorder] Audio capture failed — retrying without audio:', reason)
@@ -522,6 +536,15 @@ export class Recorder {
       return 'wasapi-loopback-flag'
     }
 
+    // 1b. WASAPI without -use_audioclient3 flag (some drivers reject AudioClient3)
+    const wasapiFlagNoAc3 = await testAudioArgs([
+      '-f', 'wasapi', '-thread_queue_size', '512', '-loopback', '1', '-i', 'default',
+    ])
+    if (wasapiFlagNoAc3) {
+      console.log('[Recorder] Windows audio: WASAPI -loopback 1 (no audioclient3 flag)')
+      return 'wasapi-loopback-flag-no-ac3'
+    }
+
     // 2. WASAPI -i loopback (legacy device specifier)
     const wasapiDevice = await testAudioArgs([
       '-f', 'wasapi', '-use_audioclient3', '0', '-thread_queue_size', '512', '-i', 'loopback',
@@ -529,6 +552,15 @@ export class Recorder {
     if (wasapiDevice) {
       console.log('[Recorder] Windows audio: WASAPI -i loopback')
       return 'wasapi-loopback-device'
+    }
+
+    // 2b. WASAPI -i loopback without audioclient3
+    const wasapiDeviceNoAc3 = await testAudioArgs([
+      '-f', 'wasapi', '-thread_queue_size', '512', '-i', 'loopback',
+    ])
+    if (wasapiDeviceNoAc3) {
+      console.log('[Recorder] Windows audio: WASAPI -i loopback (no audioclient3 flag)')
+      return 'wasapi-loopback-device-no-ac3'
     }
 
     console.log('[Recorder] WASAPI loopback unavailable — trying DirectShow Stereo Mix')
@@ -617,7 +649,10 @@ export class Recorder {
         const loopback = devices.find(d => {
           const lower = d.toLowerCase()
           return lower.includes('stereo mix') || lower.includes('what u hear') ||
-            lower.includes('loopback') || lower.includes('mix stereo')
+            lower.includes('loopback') || lower.includes('mix stereo') ||
+            lower.includes('cable output') || lower.includes('vb-audio') ||
+            lower.includes('voicemeeter') || lower.includes('virtual audio') ||
+            lower.includes('wave out mix')
         })
         resolve(loopback ?? null)
       })
@@ -748,8 +783,14 @@ export class Recorder {
     if (mode === 'wasapi-loopback-flag') {
       return ['-f', 'wasapi', '-use_audioclient3', '0', '-thread_queue_size', '512', '-loopback', '1', '-i', 'default']
     }
+    if (mode === 'wasapi-loopback-flag-no-ac3') {
+      return ['-f', 'wasapi', '-thread_queue_size', '512', '-loopback', '1', '-i', 'default']
+    }
     if (mode === 'wasapi-loopback-device') {
       return ['-f', 'wasapi', '-use_audioclient3', '0', '-thread_queue_size', '512', '-i', 'loopback']
+    }
+    if (mode === 'wasapi-loopback-device-no-ac3') {
+      return ['-f', 'wasapi', '-thread_queue_size', '512', '-i', 'loopback']
     }
     if (mode.startsWith('dshow:')) {
       const deviceName = mode.slice(6)
