@@ -1,4 +1,4 @@
-import OBSWebSocket from 'obs-websocket-js'
+import { OBSWebSocket } from 'obs-websocket-js'
 import { app } from 'electron'
 import { existsSync, statSync } from 'fs'
 import { join } from 'path'
