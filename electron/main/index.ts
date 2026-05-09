@@ -1594,7 +1594,7 @@ app.whenReady().then(async () => {
         lastError: recorder.getLastError() ?? null,
         lastPath: recorder.getLastRecordingPath() ?? null,
         lastSizeMb: recorder.getLastRecordingSize() / (1024 * 1024),
-        wasapiMode: recorder.getWasapiMode(),
+        wasapiMode: recorder.getWinAudioMode(),
       },
       lastMatch: lastMatchDiagnostic,
       clips: {
@@ -1607,9 +1607,14 @@ app.whenReady().then(async () => {
 
   ipcMain.handle('recorder:audio-status', () => {
     return {
-      wasapiMode: recorder.getWasapiMode(),
+      winAudioMode: recorder.getWinAudioMode(),
       audioEnabled: settingsManager.get().audioEnabled,
     }
+  })
+
+  ipcMain.handle('recorder:fix-audio', async () => {
+    const mode = await recorder.redetectAudio()
+    return { winAudioMode: mode }
   })
 
 

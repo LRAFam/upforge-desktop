@@ -231,14 +231,25 @@
           </button>
         </div>
       </div>
-      <!-- WASAPI diagnostic -->
-      <p v-if="audioStatus !== null && audioStatus.wasapiMode === false" class="text-xs text-amber-400/80 mt-1.5 px-0.5">
-        ⚠️ Desktop audio capture unavailable on this machine. Check that your audio driver supports WASAPI loopback and that no app has the audio device in exclusive mode.
+      <!-- Audio capture diagnostic -->
+      <div v-if="audioStatus !== null && audioStatus.winAudioMode === false" class="mt-1.5 px-0.5 space-y-1">
+        <p class="text-xs text-amber-400/80">
+          ⚠️ Desktop audio capture unavailable. UpForge can attempt to auto-fix this for you.
+        </p>
+        <button
+          class="text-xs bg-white/[0.07] hover:bg-white/[0.12] text-white px-3 py-1.5 rounded-lg transition-colors disabled:opacity-50"
+          :disabled="fixingAudio"
+          @click="fixAudio"
+        >
+          {{ fixingAudio ? 'Fixing…' : 'Fix Audio Automatically' }}
+        </button>
+      </div>
+      <p v-else-if="audioStatus !== null && audioStatus.winAudioMode" class="text-xs text-gray-700 mt-1.5 px-0.5">
+        ✓ Desktop audio capture ready
+        <span v-if="audioStatus.winAudioMode?.startsWith('dshow:')" class="text-gray-600"> (Stereo Mix)</span>
+        <span v-else-if="audioStatus.winAudioMode?.startsWith('wasapi')" class="text-gray-600"> (WASAPI loopback)</span>.
       </p>
-      <p v-else-if="audioStatus !== null && audioStatus.wasapiMode !== null" class="text-xs text-gray-700 mt-1.5 px-0.5">
-        Desktop audio capture ready (captures all game + system audio).
-      </p>
-      <p v-else class="text-xs text-gray-700 mt-1.5 px-0.5">Audio status will be detected when a recording starts.</p>
+      <p v-else class="text-xs text-gray-700 mt-1.5 px-0.5">Audio status detecting on next recording start.</p>
     </section>
 
     <!-- Behaviour toggles -->
@@ -516,7 +527,8 @@ const savedVisible = ref(false)
 const storageBytes = ref(0)
 const storageCount = ref(0)
 const ffmpegOk = ref(true)
-const audioStatus = ref<{ wasapiMode: 'loopback-flag' | 'loopback-device' | false | null; audioEnabled: boolean } | null>(null)
+const audioStatus = ref<{ winAudioMode: string | false | null; audioEnabled: boolean } | null>(null)
+const fixingAudio = ref(false)
 const testingRiotApi = ref(false)
 const riotApiResult = ref<{ portOpen: boolean; gameMode: string | null; logGameMode: string | null; processRunning: boolean } | null>(null)
 let saveTimer: ReturnType<typeof setTimeout> | null = null
@@ -709,6 +721,15 @@ function toggleLaunchOnStartup(): void {
 function toggleAudio(): void {
   settings.audioEnabled = !settings.audioEnabled
   debouncedSave()
+}
+
+async function fixAudio(): Promise<void> {
+  fixingAudio.value = true
+  try {
+    const result = await window.api.recorder.fixAudio()
+    if (audioStatus.value) audioStatus.value.winAudioMode = result.winAudioMode
+  } catch { /* non-critical */ }
+  finally { fixingAudio.value = false }
 }
 
 async function changeSavePath(): Promise<void> {

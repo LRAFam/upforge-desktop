@@ -45,6 +45,7 @@ const api = {
   recorder: {
     stop: () => ipcRenderer.invoke('recorder:stop'),
     getAudioStatus: () => ipcRenderer.invoke('recorder:audio-status'),
+    fixAudio: () => ipcRenderer.invoke('recorder:fix-audio'),
   },
   updater: {
     check: () => ipcRenderer.invoke('updater:check')
