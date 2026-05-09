@@ -232,24 +232,27 @@
         </div>
       </div>
       <!-- Audio capture diagnostic -->
-      <div v-if="audioStatus !== null && audioStatus.winAudioMode === false" class="mt-1.5 px-0.5 space-y-1">
+      <div v-if="fixingAudio" class="mt-1.5 px-0.5">
+        <p class="text-xs text-gray-500">
+          <span class="animate-pulse">●</span> Detecting audio capture…
+        </p>
+      </div>
+      <div v-else-if="audioStatus !== null && audioStatus.winAudioMode === false" class="mt-1.5 px-0.5 space-y-1">
         <p class="text-xs text-amber-400/80">
           ⚠️ Desktop audio capture unavailable. UpForge can attempt to auto-fix this for you.
         </p>
         <button
-          class="text-xs bg-white/[0.07] hover:bg-white/[0.12] text-white px-3 py-1.5 rounded-lg transition-colors disabled:opacity-50"
-          :disabled="fixingAudio"
+          class="text-xs bg-white/[0.07] hover:bg-white/[0.12] text-white px-3 py-1.5 rounded-lg transition-colors"
           @click="fixAudio"
         >
-          {{ fixingAudio ? 'Fixing…' : 'Fix Audio Automatically' }}
+          Fix Audio Automatically
         </button>
       </div>
-      <p v-else-if="audioStatus !== null && audioStatus.winAudioMode" class="text-xs text-gray-700 mt-1.5 px-0.5">
+      <p v-else-if="audioStatus !== null && audioStatus.winAudioMode" class="text-xs text-green-500/80 mt-1.5 px-0.5">
         ✓ Desktop audio capture ready
         <span v-if="audioStatus.winAudioMode?.startsWith('dshow:')" class="text-gray-600"> (Stereo Mix)</span>
         <span v-else-if="audioStatus.winAudioMode?.startsWith('wasapi')" class="text-gray-600"> (WASAPI loopback)</span>.
       </p>
-      <p v-else class="text-xs text-gray-700 mt-1.5 px-0.5">Audio status detecting on next recording start.</p>
     </section>
 
     <!-- Behaviour toggles -->
@@ -727,7 +730,8 @@ async function fixAudio(): Promise<void> {
   fixingAudio.value = true
   try {
     const result = await window.api.recorder.fixAudio()
-    if (audioStatus.value) audioStatus.value.winAudioMode = result.winAudioMode
+    if (!audioStatus.value) audioStatus.value = { winAudioMode: result.winAudioMode, audioEnabled: settings.audioEnabled }
+    else audioStatus.value.winAudioMode = result.winAudioMode
   } catch { /* non-critical */ }
   finally { fixingAudio.value = false }
 }
@@ -838,6 +842,10 @@ onMounted(async () => {
   try {
     const audioSt = await window.api.recorder.getAudioStatus()
     audioStatus.value = audioSt
+    // If detection hasn't run yet (app just started), auto-trigger it so the UI isn't stuck on null
+    if (audioSt.winAudioMode === null && navigator.userAgent.includes('Windows')) {
+      fixAudio()
+    }
   } catch { /* non-critical */ }
 
   try {

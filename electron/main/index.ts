@@ -1546,6 +1546,15 @@ app.whenReady().then(async () => {
     console.error('[App] ffmpeg preflight threw unexpectedly:', err)
     ffmpegOk = false
   })
+
+  // On Windows, proactively detect audio capture method in the background at startup.
+  // This ensures winAudioMode is cached before the user opens settings for the first time.
+  if (process.platform === 'win32') {
+    recorder.redetectAudio().catch((err) => {
+      console.warn('[App] Background audio detection failed:', err)
+    })
+  }
+
   setupIpcHandlers(ipcMain, authManager, recorder, gameDetector, settingsManager, () => {
     postGameWindow = createPostGameWindow()
     postGameWindow.webContents.once('did-finish-load', () => {
