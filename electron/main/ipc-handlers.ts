@@ -1,4 +1,4 @@
-import { IpcMain, BrowserWindow, app, dialog, shell } from 'electron'
+import { IpcMain, BrowserWindow, app, dialog, shell, desktopCapturer } from 'electron'
 import fs from 'fs'
 import https from 'https'
 import http from 'http'
@@ -682,6 +682,23 @@ export function setupIpcHandlers(
       log.error('[Screenshots] Failed to save:', err)
       return { ok: false, error: String(err) }
     }
+  })
+
+  // desktopCapturer is only available in the main process (removed from preload in Electron 20+)
+  ipcMain.handle('desktop-capturer:get-sources', async (_e, types: string[]) => {
+    const sources = await desktopCapturer.getSources({ types })
+    return sources.map(s => ({ id: s.id, name: s.name }))
+  })
+
+  ipcMain.handle('screenshots:capture-screen', async () => {
+    try {
+      const sources = await desktopCapturer.getSources({
+        types: ['screen'],
+        thumbnailSize: { width: 3840, height: 2160 },
+      })
+      if (!sources.length) return null
+      return sources[0].thumbnail.toDataURL()
+    } catch { return null }
   })
 
   // OBS WebSocket handlers (Pro tier)

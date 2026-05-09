@@ -1,4 +1,4 @@
-import { contextBridge, ipcRenderer, desktopCapturer } from 'electron'
+import { contextBridge, ipcRenderer } from 'electron'
 
 const api = {
   auth: {
@@ -86,24 +86,13 @@ const api = {
     setInteractive: (interactive: boolean) => ipcRenderer.send('overlay:set-interactive', interactive),
   },
   screenshots: {
-    capture: async (): Promise<string | null> => {
-      try {
-        const sources = await desktopCapturer.getSources({
-          types: ['screen'],
-          thumbnailSize: { width: 3840, height: 2160 },
-        })
-        if (!sources.length) return null
-        return sources[0].thumbnail.toDataURL()
-      } catch { return null }
-    },
+    capture: (): Promise<string | null> => ipcRenderer.invoke('screenshots:capture-screen'),
     save: (dataUrl: string) => ipcRenderer.invoke('screenshots:save', { dataUrl }),
   },
   desktopCapture: {
     /** Returns available screen/window sources for getUserMedia capture. */
-    getSources: () =>
-      desktopCapturer
-        .getSources({ types: ['screen', 'window'] })
-        .then((sources) => sources.map((s) => ({ id: s.id, name: s.name }))),
+    getSources: (): Promise<{ id: string; name: string }[]> =>
+      ipcRenderer.invoke('desktop-capturer:get-sources', ['screen', 'window']),
     /** Send a recorded chunk (ArrayBuffer) to the main process for disk writing. */
     sendChunk: (chunk: ArrayBuffer) => ipcRenderer.send('desktop-recording:chunk', chunk),
     /** Notify main process that MediaRecorder has started (and whether audio is available). */
