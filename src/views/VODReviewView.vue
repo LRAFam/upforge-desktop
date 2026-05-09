@@ -523,6 +523,16 @@ import { ref, computed, onMounted, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { getWeaponImage, getAgentImage } from '../lib/valorant'
 
+// Round outcome icons — bundled locally to avoid CSP/CDN issues
+import iconDiffuseWin from '../assets/round-icons/diffusewin1.png'
+import iconDiffuseLoss from '../assets/round-icons/diffuseloss1.png'
+import iconTimeWin from '../assets/round-icons/timewin1.png'
+import iconTimeLoss from '../assets/round-icons/timeloss1.png'
+import iconEliminationWin from '../assets/round-icons/eliminationwin1.png'
+import iconEliminationLoss from '../assets/round-icons/eliminationloss1.png'
+import iconExplosionWin from '../assets/round-icons/explosionwin1.png'
+import iconExplosionLoss from '../assets/round-icons/explosionloss1.png'
+
 interface KillEvent {
   killerName: string
   victimName: string
@@ -646,20 +656,18 @@ const ownTeam = computed(() => {
   return timeline.value.teamSnapshot.find(p => p.puuid === ownPuuid.value)?.team ?? null
 })
 
-const TRACKER_CDN = 'https://trackercdn.com/cdn/tracker.gg/valorant/icons'
-
 function roundOutcomeIcon(round: RoundGroup): string | null {
   const c = round.ceremony?.toLowerCase() ?? ''
   if (c.includes('bombdefused') || c.includes('defus'))
-    return round.won ? `${TRACKER_CDN}/diffusewin1.png` : `${TRACKER_CDN}/diffuseloss1.png`
+    return round.won ? iconDiffuseWin : iconDiffuseLoss
   if (c.includes('timer') || c.includes('time'))
-    return round.won ? `${TRACKER_CDN}/timewin1.png` : `${TRACKER_CDN}/timeloss1.png`
+    return round.won ? iconTimeWin : iconTimeLoss
   if (c.includes('detonat') || c.includes('explos') || round.spikeDetonated)
-    return round.won ? `${TRACKER_CDN}/explosionwin1.png` : `${TRACKER_CDN}/explosionloss1.png`
+    return round.won ? iconExplosionWin : iconExplosionLoss
   if (c.includes('elim') || c.includes('roundceremon'))
-    return round.won ? `${TRACKER_CDN}/eliminationwin1.png` : `${TRACKER_CDN}/eliminationloss1.png`
+    return round.won ? iconEliminationWin : iconEliminationLoss
   // Fallback by win/loss if no ceremony match
-  return round.won ? `${TRACKER_CDN}/eliminationwin1.png` : `${TRACKER_CDN}/eliminationloss1.png`
+  return round.won ? iconEliminationWin : iconEliminationLoss
 }
 
 function roundOutcomeLabel(round: RoundGroup): string {
