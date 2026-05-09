@@ -324,6 +324,14 @@ async function extractMatchClips(
   const agent = timeline?.agent ?? null
   const extractedClipIds: string[] = []
 
+  // Log kill videoOffsetMs values for diagnostics
+  if (timeline?.playerKills && timeline.playerKills.length > 0) {
+    const sample = timeline.playerKills.slice(0, 5).map(k =>
+      `R${(k.round ?? -1) + 1}@${k.videoOffsetMs != null ? `${(k.videoOffsetMs / 1000).toFixed(1)}s` : 'null'}`
+    ).join(', ')
+    log.info(`[ClipExtract] kills=${timeline.playerKills.length} first5_offsets=[${sample}] videoPath=${videoPath}`)
+  }
+
   // ── Hotkey bookmarks → 30s manual clips ─────────────────────────────
   for (const bookmarkedAt of hotkeyBookmarks) {
     const offsetMs = bookmarkedAt - recordingStart
@@ -408,7 +416,9 @@ async function extractMatchClips(
         clipStore.update(tempRecord.id, { path: clipPath, thumbPath })
         extractedClipIds.push(tempRecord.id)
       } catch (err) {
-        log.warn('[ClipExtract] Kill clip failed:', err)
+        const msg = err instanceof Error ? err.message : String(err)
+        log.warn('[ClipExtract] Kill clip failed:', msg)
+        logActivity(`Clip extraction error (kill): ${msg.slice(0, 120)}`)
       }
     }
 
@@ -835,13 +845,19 @@ function setupGameDetection(): void {
 
       tray?.setToolTip('UpForge — Uploading...')
       const uploadResult = await doUploadAndAnalyse(null, videoPath, user?.riot_name ?? '', user?.riot_tag ?? '',
-        game, map, agent, timeline, thisPostGameWindow, matchSessionStart)
+        game, map, agent, timeline, thisPostGameWindow, matchSessionStart, /* skipAutoDelete= */ true)
 
-      // Extract highlight clips from the recording in the background (non-blocking)
+      // Extract highlight clips from the recording in the background (non-blocking).
+      // Auto-delete is deferred to run AFTER clip extraction so the file is available.
       const jobId = uploadResult ?? null
-      extractMatchClips(videoPath, timeline, jobId).catch(err =>
-        log.warn('[ClipExtract] Background extraction error:', err)
-      )
+      extractMatchClips(videoPath, timeline, jobId)
+        .catch(err => log.warn('[ClipExtract] Background extraction error:', err))
+        .finally(() => {
+          if (settingsManager?.get().autoDelete) {
+            log.info('[App] Auto-deleting recording after clip extraction:', videoPath)
+            recorder.deleteRecording(videoPath)
+          }
+        })
 
       // If Riot hasn't processed the match yet (no kills in timeline), retry match details
       // after a delay — Riot typically takes 1-3 minutes to publish match data.
@@ -1080,11 +1096,16 @@ function setupGameDetection(): void {
     }
     logActivity(`Recording started (${gameMode ?? 'unknown mode'}${recorder.wasNoAudio() ? ' — no audio' : ''})`)
 
-    // Start polling session state to feed the live overlay with round data
+    // Start polling session state to feed the live overlay with round data.
+    // The first time we see INGAME, record the timestamp as the true gameplay start —
+    // this is used instead of the INGAME presence time (which fires during loading screen)
+    // to compute accurate videoOffsetMs for clip seeking.
     overlayPollTimer = setInterval(async () => {
       try {
         const state = await riotLocalApi.getSessionState()
         if (state?.sessionLoopState === 'INGAME') {
+          // Capture gameplay start time on first INGAME poll (loading screen is over)
+          riotLocalApi.setGameplayStartTime(Date.now())
           const round = (state.allyScore ?? 0) + (state.enemyScore ?? 0) + 1
           sendOverlayData('overlay:data', {
             round,
@@ -1253,7 +1274,8 @@ async function doUploadAndAnalyse(
   agent: string | null,
   timeline: MatchData | null,
   targetWindow: BrowserWindow,
-  sessionStart = 0
+  sessionStart = 0,
+  skipAutoDelete = false
 ): Promise<string | null> {
   const send = (channel: string, payload?: unknown) => {
     if (!targetWindow.isDestroyed()) targetWindow.webContents.send(channel, payload)
@@ -1285,8 +1307,9 @@ async function doUploadAndAnalyse(
       mainWindow?.webContents.send('recordings:updated')
     }
 
-    // Auto-delete after upload if configured
-    if (settingsManager?.get().autoDelete) {
+    // Auto-delete after upload if configured (skip when called from handleMatchEnd —
+    // deletion is deferred until after clip extraction so clips aren't skipped)
+    if (!skipAutoDelete && settingsManager?.get().autoDelete) {
       log.info('[App] Auto-deleting recording after upload:', videoPath)
       recorder.deleteRecording(videoPath)
     }

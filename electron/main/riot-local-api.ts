@@ -338,8 +338,15 @@ export interface MatchData {
   playerTag: string | null
 
   // Timing (critical for video frame mapping — NEW)
-  /** Epoch ms when presence transitioned to INGAME (= real match start) */
+  /** Epoch ms when presence transitioned to INGAME (= loading screen start) */
   matchStartTime: number | null
+  /**
+   * Epoch ms when the actual gameplay began (buy phase of round 1).
+   * This is captured by the overlay poll once round 1 is confirmed INGAME.
+   * When set, videoOffsetMs uses this instead of matchStartTime so offsets
+   * are relative to the start of real gameplay rather than the loading screen.
+   */
+  gameplayStartTime: number | null
   /** Epoch ms when recorder.start() was called */
   recordingStartTime: number
 
@@ -891,6 +898,7 @@ export class RiotLocalApi {
       playerName: this.playerName,
       playerTag: this.playerTag,
       matchStartTime: matchStartTime ?? null,
+      gameplayStartTime: null,
       recordingStartTime: Date.now(),
       roundScores: [],
       events: [],
@@ -918,6 +926,18 @@ export class RiotLocalApi {
   /** Update the recording start time once the recorder has actually begun capturing. */
   setRecordingStartTime(ts: number): void {
     if (this.matchData) this.matchData.recordingStartTime = ts
+  }
+
+  /**
+   * Mark the moment actual gameplay began (buy phase of round 1).
+   * Called by the overlay poll the first time it sees INGAME state after recording starts.
+   * This corrects for the loading screen gap between INGAME presence and real game start.
+   */
+  setGameplayStartTime(ts: number): void {
+    if (this.matchData && this.matchData.gameplayStartTime == null) {
+      this.matchData.gameplayStartTime = ts
+      console.log(`[RiotLocalApi] Gameplay start time captured: offset from recording = ${ts - this.matchData.recordingStartTime}ms`)
+    }
   }
 
   /**
@@ -1146,10 +1166,19 @@ export class RiotLocalApi {
     }
 
     // Kill events — video offset math:
-    // videoOffsetMs = (matchStartTime - recordingStartTime) + timeSinceGameStartMillis
+    // If gameplayStartTime is available (captured by overlay poll at round 1 start):
+    //   videoOffsetMs = (gameplayStartTime - recordingStartTime) + timeSinceGameStartMillis
+    // Otherwise fall back to matchStartTime (INGAME presence — includes loading screen gap):
+    //   videoOffsetMs = (matchStartTime - recordingStartTime) + timeSinceGameStartMillis
+    const gameplayStartTime = this.matchData.gameplayStartTime
     const matchStartTime = this.matchData.matchStartTime
     const recordingStartTime = this.matchData.recordingStartTime
-    const recordingOffset = matchStartTime != null ? matchStartTime - recordingStartTime : 0
+    const referenceTime = gameplayStartTime ?? matchStartTime
+    const recordingOffset = referenceTime != null ? referenceTime - recordingStartTime : 0
+    console.log(
+      `[RiotLocalApi] videoOffset base — gameplayStart=${gameplayStartTime} matchStart=${matchStartTime} ` +
+      `recordingStart=${recordingStartTime} offset=${recordingOffset}ms (using ${gameplayStartTime != null ? 'gameplayStartTime' : 'matchStartTime'})`
+    )
 
     // Build a fast PUUID → agent name map for resolving event labels
     const puuidToAgent = new Map<string, string>()
