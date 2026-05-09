@@ -112,19 +112,22 @@
           <!-- Avatar + indicator -->
           <div class="relative flex-shrink-0">
             <div
-              class="w-8 h-8 rounded-lg flex items-center justify-center text-xs font-bold"
-              :style="{ background: memberColor(idx) + '22', color: memberColor(idx) }"
+              class="w-9 h-9 rounded-xl flex items-center justify-center text-sm font-bold border border-white/[0.06]"
+              :style="{ background: `linear-gradient(135deg, ${memberColor(idx)}33, ${memberColor(idx)}18)`, color: memberColor(idx) }"
             >{{ initials(member.name) }}</div>
             <div
-              class="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full border-2 border-[#0d1117]"
-              :class="getPresence(member.id).is_recording ? 'bg-red-500 animate-pulse' : getPresence(member.id).online ? 'bg-green-500' : 'bg-gray-700'"
-            />
+              class="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-[#0d1117] flex items-center justify-center"
+              :class="getPresence(member.id).is_recording ? 'bg-red-500' : getPresence(member.id).online ? 'bg-green-500' : 'bg-gray-700'"
+            >
+              <div v-if="getPresence(member.id).is_recording" class="w-1.5 h-1.5 rounded-full bg-white/60 animate-ping" />
+            </div>
           </div>
           <!-- Info -->
           <div class="flex-1 min-w-0">
             <p class="text-white text-xs font-semibold truncate">{{ member.name }}</p>
-            <p class="text-xs truncate" :class="getPresence(member.id).is_recording ? 'text-red-400' : getPresence(member.id).online ? 'text-green-500' : 'text-gray-600'">
-              {{ getPresence(member.id).is_recording ? 'Recording' : getPresence(member.id).online ? 'Online' : 'Offline' }}
+            <p v-if="member.riot_name" class="text-xs text-gray-700 truncate leading-tight">{{ member.riot_name }}#{{ member.riot_tag }}</p>
+            <p class="text-xs truncate leading-tight" :class="getPresence(member.id).is_recording ? 'text-red-400' : getPresence(member.id).online ? 'text-green-500' : 'text-gray-600'">
+              {{ getPresence(member.id).is_recording ? '🔴 Recording' : getPresence(member.id).online ? '● Online' : '○ Offline' }}
             </p>
           </div>
         </div>
@@ -143,8 +146,8 @@
             class="px-4 py-2.5 flex items-center gap-2.5"
           >
             <div
-              class="w-6 h-6 rounded-lg flex items-center justify-center text-xs font-bold flex-shrink-0"
-              :style="{ background: memberColor(getMemberIdx(item.user_id)) + '22', color: memberColor(getMemberIdx(item.user_id)) }"
+              class="w-7 h-7 rounded-lg flex items-center justify-center text-xs font-bold flex-shrink-0 border border-white/[0.06]"
+              :style="{ background: `linear-gradient(135deg, ${memberColor(getMemberIdx(item.user_id))}33, ${memberColor(getMemberIdx(item.user_id))}18)`, color: memberColor(getMemberIdx(item.user_id)) }"
             >{{ initials(getMemberName(item.user_id)) }}</div>
             <div class="flex-1 min-w-0">
               <p class="text-white text-xs font-semibold truncate">{{ getMemberName(item.user_id) }}</p>
@@ -255,8 +258,10 @@ function openWebTeam() {
 }
 
 onMounted(() => {
+  // Send presence immediately so we appear online before the first polling interval
+  window.api.squad.sendPresence(false, null).catch(() => {})
   load()
-  presenceInterval = setInterval(refreshPresence, 30000)
+  presenceInterval = setInterval(refreshPresence, 15000)
 })
 
 onUnmounted(() => {

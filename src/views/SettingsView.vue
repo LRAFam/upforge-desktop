@@ -147,6 +147,19 @@
           </select>
         </div>
         <div>
+          <label class="block text-xs text-gray-500 mb-1">Frame rate</label>
+          <select
+            v-model.number="settings.recordingFps"
+            class="w-full px-2.5 py-1.5 bg-white/[0.04] border border-white/[0.07] rounded-lg text-xs text-white focus:outline-none focus:border-red-500/30 transition-colors"
+            @change="debouncedSave"
+          >
+            <option :value="24">24 FPS — Lower file size</option>
+            <option :value="30">30 FPS — Default</option>
+            <option :value="60">60 FPS — Smooth playback</option>
+          </select>
+          <p class="text-xs text-gray-700 mt-1 px-0.5">Higher FPS increases file size.</p>
+        </div>
+        <div>
           <label class="block text-xs text-gray-500 mb-1">Save location</label>
           <div class="flex gap-1.5">
             <input
@@ -191,6 +204,34 @@
           <p class="text-xs text-gray-700 mt-1 px-0.5">Local-only clips older than this are deleted on startup.</p>
         </div>
       </div>
+    </section>
+
+    <!-- Audio settings -->
+    <section>
+      <h3 class="text-xs font-semibold text-gray-600 uppercase tracking-widest mb-2 px-0.5">Audio</h3>
+      <div class="bg-white/[0.02] border border-white/[0.05] rounded-xl divide-y divide-white/[0.04]">
+        <div class="flex items-center justify-between px-3 py-2.5">
+          <div>
+            <p class="text-xs text-gray-300">Record game audio</p>
+            <p class="text-xs text-gray-600 mt-0.5">Capture desktop audio in recordings</p>
+          </div>
+          <button
+            :class="[
+              'relative w-8 h-[18px] rounded-full transition-colors flex-shrink-0 ml-4 overflow-hidden',
+              settings.audioEnabled ? 'bg-red-500' : 'bg-white/[0.1]'
+            ]"
+            @click="toggleAudio"
+          >
+            <span
+              :class="[
+                'absolute top-[2px] left-0 w-[14px] h-[14px] bg-white rounded-full shadow transition-transform',
+                settings.audioEnabled ? 'translate-x-[18px]' : 'translate-x-[2px]'
+              ]"
+            />
+          </button>
+        </div>
+      </div>
+      <p class="text-xs text-gray-700 mt-1.5 px-0.5">Audio device selection coming soon — currently captures all desktop audio.</p>
     </section>
 
     <!-- Behaviour toggles -->
@@ -572,6 +613,8 @@ async function loadHotkeyStatus(): Promise<void> {
 const settings = reactive<AppSettings>({
   recordingQuality: '1080p',
   recordingBitrate: 6,
+  recordingFps: 30,
+  audioEnabled: true,
   savePath: '',
   launchOnStartup: false,
   autoDelete: true,
@@ -652,6 +695,11 @@ function toggleMode(value: string): void {
 
 function toggleLaunchOnStartup(): void {
   settings.launchOnStartup = !settings.launchOnStartup
+  debouncedSave()
+}
+
+function toggleAudio(): void {
+  settings.audioEnabled = !settings.audioEnabled
   debouncedSave()
 }
 

@@ -5,6 +5,8 @@ import path from 'path'
 export interface AppSettings {
   recordingQuality: '720p' | '1080p'
   recordingBitrate: number // Mbps: 4, 6, 8, 12
+  recordingFps: 24 | 30 | 60
+  audioEnabled: boolean
   savePath: string
   launchOnStartup: boolean
   autoDelete: boolean // delete recording after successful upload
@@ -33,6 +35,8 @@ export interface AppSettings {
 const DEFAULTS: AppSettings = {
   recordingQuality: '1080p',
   recordingBitrate: 6,
+  recordingFps: 30,
+  audioEnabled: true,
   savePath: '',
   launchOnStartup: false,
   autoDelete: true,

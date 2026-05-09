@@ -10,6 +10,8 @@ type HWEncoder = 'videotoolbox' | 'nvenc' | 'amf' | 'qsv' | 'software'
 export interface RecorderConfig {
   quality: '720p' | '1080p'
   bitrate: number // Mbps
+  fps?: 24 | 30 | 60
+  audioEnabled?: boolean
   savePath: string
   captureMonitor?: 'auto' | number // which monitor to capture; 'auto' = detect from Valorant window
 }
@@ -188,7 +190,8 @@ export class Recorder {
     }
 
     const useDdagrab = IS_WIN && this._cachedUseDdagrab === true
-    await this._spawnAndConfirm(game, config, encoder, false, false, useDdagrab, windowInfo)
+    const startWithAudio = config?.audioEnabled !== false
+    await this._spawnAndConfirm(game, config, encoder, false, !startWithAudio, useDdagrab, windowInfo)
   }
 
   /**
@@ -475,6 +478,7 @@ export class Recorder {
 
     const codec = codecMap[encoder]
     const bitrate = config?.bitrate ?? 4
+    const fps = config?.fps ?? 30
     const bitrateStr = `${bitrate}M`
     const maxrateStr = `${Math.round(bitrate * 1.5)}M`
     const bufsizeStr = `${bitrate * 2}M`
@@ -493,7 +497,7 @@ export class Recorder {
       if (noAudio) console.log('[Recorder] Mac: recording without audio (avfoundation device 1)')
       return [
         '-f', 'avfoundation',
-        '-framerate', '30',
+        '-framerate', String(fps),
         '-i', input,
         '-vf', `scale=${scale}`,
         '-vcodec', codec,
@@ -583,7 +587,7 @@ export class Recorder {
     // cropArgs must come BEFORE -i desktop for gdigrab to respect them
     const captureArgs = [
       '-f', 'gdigrab',
-      '-framerate', '30',
+      '-framerate', String(fps),
       '-draw_mouse', '0',
       '-thread_queue_size', '512',
       ...cropArgs,

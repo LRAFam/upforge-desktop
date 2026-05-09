@@ -38,6 +38,11 @@ body {
   border-radius: 2px;
 }
 
+/* Dark theme for native <select> option dropdowns */
+select option {
+  background-color: #141414;
+  color: #f3f4f6;
+}
 
 * {
   -webkit-app-region: no-drag;

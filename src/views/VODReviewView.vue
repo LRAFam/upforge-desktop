@@ -650,9 +650,16 @@ const TRACKER_CDN = 'https://trackercdn.com/cdn/tracker.gg/valorant/icons'
 
 function roundOutcomeIcon(round: RoundGroup): string | null {
   const c = round.ceremony?.toLowerCase() ?? ''
-  if (c.includes('bombdefused') || c.includes('defus')) return round.won ? `${TRACKER_CDN}/diffusewin1.png` : `${TRACKER_CDN}/diffuseloss1.png`
-  if (c.includes('timer') || c.includes('time')) return round.won ? `${TRACKER_CDN}/timewin1.png` : `${TRACKER_CDN}/timeloss1.png`
-  return null
+  if (c.includes('bombdefused') || c.includes('defus'))
+    return round.won ? `${TRACKER_CDN}/diffusewin1.png` : `${TRACKER_CDN}/diffuseloss1.png`
+  if (c.includes('timer') || c.includes('time'))
+    return round.won ? `${TRACKER_CDN}/timewin1.png` : `${TRACKER_CDN}/timeloss1.png`
+  if (c.includes('detonat') || c.includes('explos') || round.spikeDetonated)
+    return round.won ? `${TRACKER_CDN}/explosionwin1.png` : `${TRACKER_CDN}/explosionloss1.png`
+  if (c.includes('elim') || c.includes('roundceremon'))
+    return round.won ? `${TRACKER_CDN}/eliminationwin1.png` : `${TRACKER_CDN}/eliminationloss1.png`
+  // Fallback by win/loss if no ceremony match
+  return round.won ? `${TRACKER_CDN}/eliminationwin1.png` : `${TRACKER_CDN}/eliminationloss1.png`
 }
 
 function roundOutcomeLabel(round: RoundGroup): string {

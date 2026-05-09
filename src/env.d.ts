@@ -7,6 +7,8 @@ declare global {
 export interface AppSettings {
   recordingQuality: '720p' | '1080p'
   recordingBitrate: number
+  recordingFps: 24 | 30 | 60
+  audioEnabled: boolean
   savePath: string
   launchOnStartup: boolean
   autoDelete: boolean

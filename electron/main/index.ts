@@ -888,6 +888,8 @@ function setupGameDetection(): void {
     const recorderConfig = config ? {
       quality: config.recordingQuality,
       bitrate: config.recordingBitrate,
+      fps: config.recordingFps,
+      audioEnabled: config.audioEnabled,
       savePath: config.savePath,
       captureMonitor: config.captureMonitor,
     } : undefined
