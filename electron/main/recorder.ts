@@ -95,6 +95,11 @@ export class Recorder {
     return Math.floor((Date.now() - this._startedAt) / 1000)
   }
 
+  /** Returns the epoch ms when recording started (null if not recording). */
+  getRecordingStartedAt(): number | null {
+    return this._startedAt ?? null
+  }
+
   /** Returns file size in bytes of the last recording (0 if missing). */
   getLastRecordingSize(): number {
     if (!this._outputPath || !existsSync(this._outputPath)) return 0

@@ -651,7 +651,7 @@ onMounted(async () => {
       return
     }
     status.value = { recording: s.recording, recordingStarting: false, currentGame: s.currentGame, waitingForMatch: s.waitingForMatch ?? false, ffmpegOk: s.ffmpegOk !== false, recordedModes: s.recordedModes ?? [] }
-    if (s.recording) { recordingStartedAt.value = Date.now() }
+    if (s.recording) { recordingStartedAt.value = s.recordingStartedAt ?? Date.now() }
   } catch {
     router.push('/login')
     return

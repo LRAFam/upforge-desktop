@@ -325,17 +325,23 @@ function _apiPost(base: string, pathname: string, body: string, token: string): 
       let data = ''
       res.on('data', (c: Buffer) => { data += c.toString() })
       res.on('end', () => {
+        let json: Record<string, unknown> = {}
         try {
-          const json = JSON.parse(data)
-          if (res.statusCode === 402) throw new UpgradeRequiredError(
-            json.message || 'Upgrade required',
-            json.error || 'upgrade_required',
-            json.upgrade_url || 'https://upforge.gg/pricing'
-          )
-          if ((res.statusCode ?? 0) >= 400) reject(new Error(json.message || `Request failed (${res.statusCode})`))
-          else resolve(json)
+          json = JSON.parse(data)
         } catch {
           reject(new Error(`Invalid response (HTTP ${res.statusCode})`))
+          return
+        }
+        if (res.statusCode === 402) {
+          reject(new UpgradeRequiredError(
+            (json.message as string) || 'Upgrade required',
+            (json.error as string) || 'upgrade_required',
+            (json.upgrade_url as string) || 'https://upforge.gg/pricing'
+          ))
+        } else if ((res.statusCode ?? 0) >= 400) {
+          reject(new Error((json.message as string) || `Request failed (${res.statusCode})`))
+        } else {
+          resolve(json)
         }
       })
     })
@@ -459,6 +465,7 @@ export function setupIpcHandlers(
     const settings = settingsManager.get()
     return {
       recording: recorder.isRecording(),
+      recordingStartedAt: recorder.getRecordingStartedAt(),
       currentGame: gameDetector.currentGame(),
       waitingForMatch: getWaitingForMatch ? getWaitingForMatch() : false,
       authenticated: auth.isAuthenticated(),
