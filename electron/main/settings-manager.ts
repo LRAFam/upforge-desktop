@@ -30,6 +30,16 @@ export interface AppSettings {
   cachedUseDdagrab: boolean | null
   /** Developer / admin mode — unlocked by tapping the version number 5 times in Settings */
   devModeEnabled: boolean
+  /** Use OBS WebSocket for recording (Pro tier) instead of desktopCapturer */
+  obsEnabled: boolean
+  /** OBS WebSocket host (default: localhost) */
+  obsHost: string
+  /** OBS WebSocket port (default: 4455, OBS 28+) */
+  obsPort: number
+  /** OBS WebSocket password (leave empty if auth is disabled in OBS) */
+  obsPassword: string
+  /** Replay buffer length in seconds — how much footage to save per kill clip */
+  obsReplayBufferSeconds: number
 }
 
 const DEFAULTS: AppSettings = {
@@ -50,6 +60,11 @@ const DEFAULTS: AppSettings = {
   cachedEncoder: null,
   cachedUseDdagrab: null,
   devModeEnabled: false,
+  obsEnabled: false,
+  obsHost: 'localhost',
+  obsPort: 4455,
+  obsPassword: '',
+  obsReplayBufferSeconds: 30,
 }
 
 export class SettingsManager {

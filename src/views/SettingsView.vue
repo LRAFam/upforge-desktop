@@ -507,6 +507,121 @@
       </Transition>
     </div>
 
+    <!-- OBS Integration (Pro tier) -->
+    <section v-if="user?.tier === 'pro'">
+      <h3 class="text-xs font-semibold text-gray-600 uppercase tracking-widest mb-2 px-0.5">OBS Integration <span class="ml-1 text-red-400/80 normal-case tracking-normal font-normal">Pro</span></h3>
+      <div class="bg-white/[0.02] border border-white/[0.05] rounded-xl p-3 space-y-3">
+        <!-- Connection status -->
+        <div class="flex items-center justify-between">
+          <div class="flex items-center gap-2">
+            <div :class="['w-2 h-2 rounded-full flex-shrink-0', obsStatus?.connected ? 'bg-green-500' : 'bg-white/20']" />
+            <span class="text-xs text-gray-300">
+              <template v-if="obsStatus?.connected">
+                OBS v{{ obsStatus.obsVersion ?? '?' }} connected
+                <span v-if="obsStatus.recording" class="text-green-400 ml-1">· Recording</span>
+                <span v-if="obsStatus.replayBufferActive" class="text-blue-400 ml-1">· Replay buffer active</span>
+              </template>
+              <template v-else>
+                OBS not connected
+              </template>
+            </span>
+          </div>
+          <div class="flex items-center gap-2">
+            <button
+              v-if="!obsStatus?.connected"
+              :disabled="obsConnecting"
+              class="text-xs bg-red-500/10 hover:bg-red-500/20 text-red-400 px-3 py-1.5 rounded-lg transition-colors disabled:opacity-50"
+              @click="obsConnect"
+            >
+              {{ obsConnecting ? 'Connecting…' : 'Connect' }}
+            </button>
+            <button
+              v-else
+              class="text-xs bg-white/[0.07] hover:bg-white/[0.12] text-white px-3 py-1.5 rounded-lg transition-colors"
+              @click="obsDisconnect"
+            >
+              Disconnect
+            </button>
+          </div>
+        </div>
+
+        <!-- Enable OBS toggle -->
+        <div class="flex items-center justify-between">
+          <div>
+            <p class="text-xs text-gray-300">Use OBS for recording</p>
+            <p class="text-xs text-gray-600 mt-0.5">Requires OBS 28+ with WebSocket server enabled</p>
+          </div>
+          <button
+            :class="[
+              'relative w-8 h-[18px] rounded-full transition-colors flex-shrink-0 ml-4 overflow-hidden',
+              settings.obsEnabled ? 'bg-red-500' : 'bg-white/[0.1]'
+            ]"
+            @click="settings.obsEnabled = !settings.obsEnabled; debouncedSave()"
+          >
+            <span :class="['absolute top-[2px] left-0 w-[14px] h-[14px] bg-white rounded-full shadow transition-transform', settings.obsEnabled ? 'translate-x-[18px]' : 'translate-x-[2px]']" />
+          </button>
+        </div>
+
+        <!-- Host + Port -->
+        <div class="grid grid-cols-[1fr_80px] gap-2">
+          <div>
+            <label class="text-xs text-gray-600 mb-1 block">WebSocket Host</label>
+            <input
+              v-model="settings.obsHost"
+              type="text"
+              class="w-full text-xs bg-white/[0.05] border border-white/[0.08] rounded-lg px-2.5 py-1.5 text-white placeholder-gray-600 focus:outline-none focus:border-red-500/40"
+              placeholder="localhost"
+              @change="debouncedSave()"
+            />
+          </div>
+          <div>
+            <label class="text-xs text-gray-600 mb-1 block">Port</label>
+            <input
+              v-model.number="settings.obsPort"
+              type="number"
+              class="w-full text-xs bg-white/[0.05] border border-white/[0.08] rounded-lg px-2.5 py-1.5 text-white focus:outline-none focus:border-red-500/40"
+              min="1"
+              max="65535"
+              @change="debouncedSave()"
+            />
+          </div>
+        </div>
+
+        <!-- Password -->
+        <div>
+          <label class="text-xs text-gray-600 mb-1 block">WebSocket Password <span class="text-gray-700">(leave blank if auth disabled)</span></label>
+          <input
+            v-model="settings.obsPassword"
+            type="password"
+            class="w-full text-xs bg-white/[0.05] border border-white/[0.08] rounded-lg px-2.5 py-1.5 text-white placeholder-gray-600 focus:outline-none focus:border-red-500/40"
+            placeholder="Optional"
+            @change="debouncedSave()"
+          />
+        </div>
+
+        <!-- Replay buffer seconds -->
+        <div>
+          <div class="flex items-center justify-between mb-1">
+            <label class="text-xs text-gray-600">Replay buffer length</label>
+            <span class="text-xs text-gray-400">{{ settings.obsReplayBufferSeconds }}s</span>
+          </div>
+          <input
+            v-model.number="settings.obsReplayBufferSeconds"
+            type="range"
+            min="10"
+            max="120"
+            step="5"
+            class="w-full accent-red-500"
+            @input="debouncedSave()"
+          />
+          <p class="text-xs text-gray-700 mt-1">How many seconds of footage to save on each kill</p>
+        </div>
+
+        <!-- Error message -->
+        <p v-if="obsStatus?.lastError" class="text-xs text-red-400/80">{{ obsStatus.lastError }}</p>
+      </div>
+    </section>
+
     <!-- Saved toast -->
     <Transition name="toast-slide">
       <div
@@ -581,6 +696,52 @@ async function disableDevMode() {
   devModeActive.value = false
   await window.api.settings.save({ devModeEnabled: false })
   showToast('Developer mode disabled')
+}
+
+// ── OBS Integration (Pro tier) ────────────────────────────────────────────────
+type OBSStatus = {
+  connected: boolean
+  recording: boolean
+  replayBufferActive: boolean
+  outputPath: string | null
+  lastError: string | null
+  obsVersion: string | null
+}
+const obsStatus = ref<OBSStatus | null>(null)
+const obsConnecting = ref(false)
+
+async function obsConnect() {
+  obsConnecting.value = true
+  try {
+    await window.api.settings.save({
+      obsEnabled: settings.obsEnabled,
+      obsHost: settings.obsHost,
+      obsPort: settings.obsPort,
+      obsPassword: settings.obsPassword,
+      obsReplayBufferSeconds: settings.obsReplayBufferSeconds,
+    })
+    const result = await window.api.obs.connect()
+    if (result.ok) {
+      obsStatus.value = await window.api.obs.getStatus()
+      showToast(`Connected to OBS v${result.version ?? '?'}`)
+    } else {
+      showToast(`OBS connection failed: ${result.error ?? 'Unknown error'}`)
+    }
+  } finally {
+    obsConnecting.value = false
+  }
+}
+
+async function obsDisconnect() {
+  await window.api.obs.disconnect()
+  obsStatus.value = await window.api.obs.getStatus()
+  showToast('Disconnected from OBS')
+}
+
+async function refreshObsStatus() {
+  try {
+    obsStatus.value = await window.api.obs.getStatus()
+  } catch { /* not available */ }
 }
 
 // ── Hotkeys ──────────────────────────────────────────────────────────────────
@@ -671,6 +832,11 @@ const settings = reactive<AppSettings>({
   cachedEncoder: null,
   cachedUseDdagrab: null,
   devModeEnabled: false,
+  obsEnabled: false,
+  obsHost: 'localhost',
+  obsPort: 4455,
+  obsPassword: '',
+  obsReplayBufferSeconds: 30,
 })
 
 const GAME_MODES = [
@@ -882,6 +1048,9 @@ onMounted(async () => {
       }
     }
   } catch { /* profile load failure is non-critical */ }
+
+  // Load OBS status (non-critical)
+  refreshObsStatus()
 })
 </script>
 

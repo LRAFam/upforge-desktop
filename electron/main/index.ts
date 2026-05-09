@@ -16,6 +16,7 @@ import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import { setupAutoUpdater } from './updater'
 import { GameDetector } from './game-detector'
 import { DesktopRecorder } from './desktop-recorder'
+import { OBSRecorder } from './obs-recorder'
 import { RiotLocalApi } from './riot-local-api'
 import { UploadManager, savePendingJob, clearPendingJob, readPendingJob } from './upload-manager'
 import { AuthManager } from './auth-manager'
@@ -55,6 +56,21 @@ let ffmpegOk = true // updated after preflight; exposed via app:get-status
 
 const gameDetector = new GameDetector()
 const recorder = new DesktopRecorder(() => mainWindow?.webContents ?? null)
+const obsRecorder = new OBSRecorder(() => {
+  const s = settingsManager?.get()
+  return {
+    host: s?.obsHost ?? 'localhost',
+    port: s?.obsPort ?? 4455,
+    password: s?.obsPassword ?? '',
+    replayBufferSeconds: s?.obsReplayBufferSeconds ?? 30,
+  }
+})
+
+/** Returns the active recorder — OBS when enabled & connected, desktopCapturer otherwise. */
+function activeRecorder(): DesktopRecorder | OBSRecorder {
+  if (settingsManager?.get().obsEnabled && obsRecorder.isConnected()) return obsRecorder
+  return recorder
+}
 const clipExtractor = new ClipExtractor()
 const clipStore = new ClipStore()
 const hotkeyManager = new HotkeyManager()
@@ -78,6 +94,44 @@ recorder.onStatusChange = (recording, error) => {
 }
 const riotLocalApi = new RiotLocalApi()
 const authManager = new AuthManager()
+
+// OBS recorder callbacks — mirror the same tray/notification behaviour as desktopCapturer
+obsRecorder.onStatusChange = (recording, error) => {
+  mainWindow?.webContents.send('recording:status-changed', { recording, error: error ?? null })
+  updateTrayMenuFn?.()
+  if (!recording && error) {
+    console.warn('[Main] OBS recording stopped with error:', error)
+    tray?.setToolTip('UpForge — Recording stopped!')
+    if (Notification.isSupported()) {
+      new Notification({
+        title: 'UpForge — OBS Recording Stopped',
+        body: error,
+        silent: notifySilent()
+      }).show()
+    }
+    setTimeout(() => tray?.setToolTip('UpForge — Valorant AI Coaching'), 10_000)
+  }
+}
+
+// When OBS saves a replay buffer clip during a live match, add it to the clip store immediately
+obsRecorder.onReplayClipSaved = (clipPath, _trigger) => {
+  log.info('[Main] OBS replay clip saved during match:', clipPath)
+  const rec = clipStore.add({
+    path: clipPath,
+    thumbPath: null,
+    trigger: 'kill',
+    map: null,
+    agent: null,
+    durationSeconds: settingsManager?.get().obsReplayBufferSeconds ?? 30,
+    round: null,
+    killCount: 1,
+    analysisJobId: null,
+  })
+  logActivity('OBS kill clip saved')
+  mainWindow?.webContents.send('clips:new', [rec.id])
+  mainWindow?.webContents.send('obs:replay-saved', { clipId: rec.id, path: clipPath })
+}
+
 const performanceManager = new PerformanceManager()
 let uploadManager: UploadManager
 let settingsManager: SettingsManager
@@ -1606,7 +1660,7 @@ app.whenReady().then(async () => {
       mainWindow.focus()
       mainWindow.webContents.send('app:navigate', '/clips')
     }
-  }, performanceManager)
+  }, performanceManager, obsRecorder)
 
   setupClipHandlers(ipcMain, clipStore, clipExtractor, authManager, hotkeyManager)
 

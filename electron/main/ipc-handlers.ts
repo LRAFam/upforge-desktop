@@ -8,6 +8,7 @@ import { autoUpdater } from 'electron-updater'
 import log from 'electron-log'
 import { AuthManager } from './auth-manager'
 import { DesktopRecorder } from './desktop-recorder'
+import { OBSRecorder } from './obs-recorder'
 import { GameDetector } from './game-detector'
 import { SettingsManager } from './settings-manager'
 import { UploadManager } from './upload-manager'
@@ -424,7 +425,8 @@ export function setupIpcHandlers(
   getActivityLog?: () => { time: number; message: string }[],
   uploadManager?: UploadManager,
   showClipsFn?: () => void,
-  performanceManager?: PerformanceManager
+  performanceManager?: PerformanceManager,
+  obsRecorder?: OBSRecorder
 ): void {
   // Auth
   ipcMain.handle('auth:login', async (_e, { email, password }) => {
@@ -680,5 +682,27 @@ export function setupIpcHandlers(
       log.error('[Screenshots] Failed to save:', err)
       return { ok: false, error: String(err) }
     }
+  })
+
+  // OBS WebSocket handlers (Pro tier)
+  ipcMain.handle('obs:connect', async () => {
+    if (!obsRecorder) return { ok: false, error: 'OBS recorder not available' }
+    return obsRecorder.connect()
+  })
+
+  ipcMain.handle('obs:disconnect', async () => {
+    if (!obsRecorder) return
+    return obsRecorder.disconnect()
+  })
+
+  ipcMain.handle('obs:get-status', async () => {
+    if (!obsRecorder) return { connected: false, recording: false, replayBufferActive: false, outputPath: null, lastError: null, obsVersion: null }
+    return obsRecorder.getOBSStatus()
+  })
+
+  ipcMain.handle('obs:save-replay-clip', async () => {
+    if (!obsRecorder) return { path: null }
+    const path = await obsRecorder.saveReplayClip()
+    return { path }
   })
 }

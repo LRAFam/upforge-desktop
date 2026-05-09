@@ -122,6 +122,12 @@ const api = {
     getPregameKillList: () => ipcRenderer.invoke('performance:get-pregame-kill-list'),
     setPregameKillList: (list: string[]) => ipcRenderer.invoke('performance:set-pregame-kill-list', list),
   },
+  obs: {
+    connect: () => ipcRenderer.invoke('obs:connect'),
+    disconnect: () => ipcRenderer.invoke('obs:disconnect'),
+    getStatus: () => ipcRenderer.invoke('obs:get-status'),
+    saveReplayClip: () => ipcRenderer.invoke('obs:save-replay-clip'),
+  },
   on: (channel: string, callback: (...args: unknown[]) => void): (() => void) => {
     const allowed = [
       'post-game:upload-start',
@@ -158,6 +164,7 @@ const api = {
       'settings:changed',
       'desktop-recording:start',
       'desktop-recording:stop',
+      'obs:replay-saved',
     ]
     if (allowed.includes(channel)) {
       const handler = (_e: Electron.IpcRendererEvent, ...args: unknown[]) => callback(...args)

@@ -30,6 +30,16 @@ export interface AppSettings {
   cachedUseDdagrab: boolean | null
   /** Developer / admin mode — unlocked by tapping version 5× in Settings */
   devModeEnabled: boolean
+  /** Use OBS WebSocket for recording instead of desktopCapturer (Pro tier) */
+  obsEnabled: boolean
+  /** OBS WebSocket host */
+  obsHost: string
+  /** OBS WebSocket port */
+  obsPort: number
+  /** OBS WebSocket password */
+  obsPassword: string
+  /** Replay buffer length in seconds */
+  obsReplayBufferSeconds: number
 }
 
 export interface PendingRecording {
@@ -332,6 +342,19 @@ declare global {
         killProcess: (name: string) => Promise<{ name: string; success: boolean; message: string }>
         getPregameKillList: () => Promise<string[]>
         setPregameKillList: (list: string[]) => Promise<string[]>
+      }
+      obs: {
+        connect: () => Promise<{ ok: boolean; error?: string; version?: string }>
+        disconnect: () => Promise<void>
+        getStatus: () => Promise<{
+          connected: boolean
+          recording: boolean
+          replayBufferActive: boolean
+          outputPath: string | null
+          lastError: string | null
+          obsVersion: string | null
+        }>
+        saveReplayClip: () => Promise<{ path: string | null }>
       }
       on: (channel: string, callback: (...args: unknown[]) => void) => (() => void)
     }
