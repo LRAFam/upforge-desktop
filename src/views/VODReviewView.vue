@@ -56,24 +56,36 @@
           <template v-for="round in roundGroups" :key="round.roundNumber">
             <!-- Round header -->
             <button
-              class="w-full flex items-center gap-2 px-3 py-1.5 hover:bg-white/[0.04] transition-colors text-left"
+              class="w-full flex items-center gap-2 px-2 py-1.5 hover:bg-white/[0.05] transition-colors text-left border-l-2 rounded-sm"
+              :class="selectedRound?.roundNumber === round.roundNumber
+                ? (round.won ? 'border-teal-500 bg-teal-500/[0.06]' : 'border-red-500 bg-red-500/[0.04]')
+                : 'border-transparent'"
               @click="seekToRound(round)"
             >
-              <div
-                class="w-1.5 h-1.5 rounded-full flex-shrink-0"
-                :class="round.won ? 'bg-green-500' : 'bg-red-500/70'"
-              />
+              <!-- Outcome icon: CDN image or SVG badge -->
+              <div class="w-5 h-5 flex-shrink-0 flex items-center justify-center">
+                <img
+                  v-if="roundOutcomeIcon(round)"
+                  :src="roundOutcomeIcon(round)!"
+                  class="w-5 h-5 object-contain"
+                />
+                <div
+                  v-else
+                  class="w-4 h-4 rounded-full flex items-center justify-center"
+                  :class="round.won ? 'bg-teal-500' : 'bg-red-500'"
+                >
+                  <svg v-if="round.won" class="w-2.5 h-2.5 text-white" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M3 8l3.5 3.5L13 5"/>
+                  </svg>
+                  <svg v-else class="w-2.5 h-2.5 text-white" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+                    <path d="M4 4l8 8M12 4l-8 8"/>
+                  </svg>
+                </div>
+              </div>
               <span class="text-xs font-semibold text-gray-400">R{{ round.roundNumber + 1 }}</span>
-              <!-- Spike planted icon -->
-              <svg v-if="round.spikePlanted" class="w-2.5 h-2.5 text-orange-400 flex-shrink-0" viewBox="0 0 16 16" fill="currentColor" title="Spike planted">
-                <circle cx="7" cy="9" r="5"/>
-                <path d="M7 4V1M7 1L5.5 2.5M7 1L8.5 2.5" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>
-                <circle cx="11.5" cy="3.5" r="1" fill="currentColor"/>
-              </svg>
-              <!-- Spike defused icon -->
-              <svg v-if="round.spikeDefused" class="w-2.5 h-2.5 text-cyan-400 flex-shrink-0" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" title="Spike defused">
-                <path d="M3 8l3 3 7-7"/>
-              </svg>
+              <span class="text-[9px] font-bold leading-tight truncate" :class="round.won ? 'text-teal-400/80' : 'text-red-400/60'">
+                {{ roundOutcomeLabel(round) }}
+              </span>
             </button>
 
             <!-- Kill/death events in this round -->
@@ -346,6 +358,90 @@
           </div>
         </div>
 
+        <!-- Round detail panel (tracker.gg-inspired, shown when a round is selected) -->
+        <div
+          v-if="selectedRound"
+          class="flex-shrink-0 bg-[#0a0a0a] border-t border-white/[0.06] max-h-52 overflow-y-auto scrollbar-hide"
+        >
+          <!-- Round header -->
+          <div class="flex items-center gap-2.5 px-3 py-2 sticky top-0 bg-[#0a0a0a] border-b border-white/[0.04] z-10">
+            <img v-if="roundOutcomeIcon(selectedRound)" :src="roundOutcomeIcon(selectedRound)!" class="w-5 h-5 object-contain flex-shrink-0" />
+            <div v-else class="w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0" :class="selectedRound.won ? 'bg-teal-500' : 'bg-red-500'">
+              <svg v-if="selectedRound.won" class="w-3 h-3 text-white" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8l3.5 3.5L13 5"/></svg>
+              <svg v-else class="w-3 h-3 text-white" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M4 4l8 8M12 4l-8 8"/></svg>
+            </div>
+            <span class="text-xs font-bold text-gray-200">ROUND {{ selectedRound.roundNumber + 1 }}</span>
+            <span class="text-xs font-bold" :class="selectedRound.won ? 'text-teal-400' : 'text-red-400'">
+              {{ roundOutcomeLabel(selectedRound) }}
+            </span>
+            <div class="flex items-center gap-1.5 ml-1">
+              <span v-if="selectedRound.spikePlanted" class="text-[9px] font-semibold text-orange-400 bg-orange-500/10 px-1.5 py-px rounded">PLANTED</span>
+              <span v-if="selectedRound.spikeDefused" class="text-[9px] font-semibold text-cyan-400 bg-cyan-500/10 px-1.5 py-px rounded">DEFUSED</span>
+              <span v-if="selectedRound.spikeDetonated" class="text-[9px] font-semibold text-red-400 bg-red-500/10 px-1.5 py-px rounded">DETONATED</span>
+            </div>
+            <div class="flex-1" />
+            <button class="text-gray-600 hover:text-gray-300 transition-colors text-base leading-none" @click="selectedRound = null">✕</button>
+          </div>
+
+          <!-- Event feed -->
+          <div v-if="selectedRound.events.length" class="divide-y divide-white/[0.025]">
+            <button
+              v-for="event in selectedRound.events"
+              :key="`detail-${event.videoOffsetMs}`"
+              class="w-full flex items-center gap-2 px-3 py-2 hover:bg-white/[0.03] transition-colors text-left group"
+              @click="seekToEvent(event)"
+            >
+              <!-- Kill/death type indicator -->
+              <div
+                class="w-1 h-6 rounded-full flex-shrink-0"
+                :class="event.type === 'kill' ? 'bg-teal-500/60' : 'bg-red-500/40'"
+              />
+              <!-- Attacker agent portrait -->
+              <div class="w-7 h-7 rounded overflow-hidden bg-white/[0.04] flex-shrink-0 ring-1"
+                   :class="event.type === 'kill' ? 'ring-teal-500/20' : 'ring-red-500/20'">
+                <img
+                  v-if="agentByPuuid(event.killerPuuid)"
+                  :src="getAgentImage(agentByPuuid(event.killerPuuid))"
+                  class="w-full h-full object-contain"
+                />
+                <div v-else class="w-full h-full flex items-center justify-center text-xs">{{ event.type === 'kill' ? '🎯' : '💀' }}</div>
+              </div>
+              <!-- Weapon icon -->
+              <div class="w-10 flex-shrink-0 flex items-center justify-center">
+                <img
+                  v-if="event.weapon && getWeaponIcon(event.weapon)"
+                  :src="getWeaponIcon(event.weapon)"
+                  class="h-3.5 w-auto object-contain"
+                  :class="event.type === 'kill' ? 'opacity-90' : 'opacity-40'"
+                />
+                <svg v-else class="w-3 h-3 text-gray-600" viewBox="0 0 16 16" fill="currentColor"><circle cx="8" cy="6" r="3"/><path d="M5 11h6v4H5z"/></svg>
+              </div>
+              <!-- Victim agent portrait -->
+              <div class="w-7 h-7 rounded overflow-hidden bg-white/[0.04] flex-shrink-0 ring-1"
+                   :class="event.type === 'kill' ? 'ring-red-500/20' : 'ring-teal-500/20'">
+                <img
+                  v-if="agentByPuuid(event.victimPuuid)"
+                  :src="getAgentImage(agentByPuuid(event.victimPuuid))"
+                  class="w-full h-full object-contain opacity-75"
+                />
+                <div v-else class="w-full h-full flex items-center justify-center text-xs">💀</div>
+              </div>
+              <!-- Victim name + weapon label -->
+              <div class="flex-1 min-w-0">
+                <p class="text-xs font-semibold truncate" :class="event.type === 'kill' ? 'text-gray-300 group-hover:text-white' : 'text-gray-500 group-hover:text-gray-300'">
+                  {{ event.victimName }}
+                </p>
+                <p v-if="event.weapon" class="text-[9px] text-gray-600 truncate">{{ event.weapon }}</p>
+              </div>
+              <!-- Timestamp -->
+              <span class="text-[10px] text-gray-600 font-mono tabular-nums flex-shrink-0">{{ formatMs(event.videoOffsetMs) }}</span>
+            </button>
+          </div>
+          <div v-else class="px-3 py-3 text-center">
+            <p class="text-xs text-gray-600">No recorded events this round</p>
+          </div>
+        </div>
+
         <!-- Team scoreboard (collapsible) -->
         <div
           v-if="showScoreboard && sortedTeamSnapshot.length"
@@ -447,6 +543,8 @@ interface RoundGroup {
   won: boolean
   spikePlanted: boolean
   spikeDefused: boolean
+  spikeDetonated: boolean
+  ceremony: string | null
   firstVideoOffsetMs: number | null
   events: TimelineEvent[]
 }
@@ -456,6 +554,8 @@ interface RoundSummary {
   winningTeam: string | null
   spikePlanted: boolean
   spikeDefused: boolean
+  spikeDetonated?: boolean
+  ceremony?: string | null
 }
 
 interface FinalStats {
@@ -507,6 +607,7 @@ const hoverTime = ref<number | null>(null)
 const playbackSpeed = ref(1)
 const activeEventNotif = ref<TimelineEvent | null>(null)
 const showScoreboard = ref(false)
+const selectedRound = ref<RoundGroup | null>(null)
 const ownPuuid = ref<string | null>(null)
 let notifTimer: ReturnType<typeof setTimeout> | null = null
 
@@ -539,6 +640,30 @@ const sortedTeamSnapshot = computed(() => {
   if (!timeline.value?.teamSnapshot?.length) return []
   return [...timeline.value.teamSnapshot].sort((a, b) => b.score - a.score)
 })
+
+const ownTeam = computed(() => {
+  if (!ownPuuid.value || !timeline.value?.teamSnapshot) return null
+  return timeline.value.teamSnapshot.find(p => p.puuid === ownPuuid.value)?.team ?? null
+})
+
+const TRACKER_CDN = 'https://trackercdn.com/cdn/tracker.gg/valorant/icons'
+
+function roundOutcomeIcon(round: RoundGroup): string | null {
+  const c = round.ceremony?.toLowerCase() ?? ''
+  if (c.includes('bombdefused') || c.includes('defus')) return round.won ? `${TRACKER_CDN}/diffusewin1.png` : `${TRACKER_CDN}/diffuseloss1.png`
+  if (c.includes('timer') || c.includes('time')) return round.won ? `${TRACKER_CDN}/timewin1.png` : `${TRACKER_CDN}/timeloss1.png`
+  return null
+}
+
+function roundOutcomeLabel(round: RoundGroup): string {
+  const c = round.ceremony?.toLowerCase() ?? ''
+  const result = round.won ? 'WIN' : 'LOSS'
+  if (c.includes('bombdefused') || c.includes('defus')) return `DEFUSE ${result}`
+  if (c.includes('timer') || c.includes('time')) return `TIME ${result}`
+  if (c.includes('detonat') || round.spikeDetonated) return `SPIKE ${result}`
+  if (c.includes('elim') || c.includes('roundceremon')) return `ELIM ${result}`
+  return result
+}
 
 const scoreboardGroups = computed(() => {
   if (!sortedTeamSnapshot.value.length) return []
@@ -590,9 +715,11 @@ const roundGroups = computed((): RoundGroup[] => {
   for (const s of summaries) {
     roundMap.set(s.roundNumber, {
       roundNumber: s.roundNumber,
-      won: s.winningTeam !== null,
+      won: ownTeam.value ? s.winningTeam === ownTeam.value : s.winningTeam !== null,
       spikePlanted: s.spikePlanted,
       spikeDefused: s.spikeDefused,
+      spikeDetonated: (s as RoundSummary).spikeDetonated ?? false,
+      ceremony: (s as RoundSummary).ceremony ?? null,
       firstVideoOffsetMs: null,
       events: []
     })
@@ -601,7 +728,7 @@ const roundGroups = computed((): RoundGroup[] => {
   for (const event of allTimelineEvents.value) {
     const r = event.round ?? 0
     if (!roundMap.has(r)) {
-      roundMap.set(r, { roundNumber: r, won: false, spikePlanted: false, spikeDefused: false, firstVideoOffsetMs: null, events: [] })
+      roundMap.set(r, { roundNumber: r, won: false, spikePlanted: false, spikeDefused: false, spikeDetonated: false, ceremony: null, firstVideoOffsetMs: null, events: [] })
     }
     const group = roundMap.get(r)!
     group.events.push(event)
@@ -667,6 +794,7 @@ function seekToEvent(event: TimelineEvent) {
 }
 
 function seekToRound(round: RoundGroup) {
+  selectedRound.value = round
   if (!videoEl.value || round.firstVideoOffsetMs == null) return
   videoEl.value.currentTime = Math.max(0, round.firstVideoOffsetMs / 1000 - 2)
   videoEl.value.play()

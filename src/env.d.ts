@@ -167,6 +167,7 @@ declare global {
       app: {
         getStatus: () => Promise<{
           recording: boolean
+          recordingStartedAt: number | null
           currentGame: string | null
           waitingForMatch: boolean
           authenticated: boolean
