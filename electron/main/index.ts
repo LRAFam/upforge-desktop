@@ -1594,12 +1594,21 @@ app.whenReady().then(async () => {
         lastError: recorder.getLastError() ?? null,
         lastPath: recorder.getLastRecordingPath() ?? null,
         lastSizeMb: recorder.getLastRecordingSize() / (1024 * 1024),
+        wasapiMode: recorder.getWasapiMode(),
       },
       lastMatch: lastMatchDiagnostic,
       clips: {
         total: clipStore.getAll().length,
       },
       activityLog: activityLog.slice(),
+    }
+  })
+
+
+  ipcMain.handle('recorder:audio-status', () => {
+    return {
+      wasapiMode: recorder.getWasapiMode(),
+      audioEnabled: settingsManager.get().audioEnabled,
     }
   })
 

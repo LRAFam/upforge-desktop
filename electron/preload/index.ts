@@ -43,7 +43,8 @@ const api = {
     openPostGame: () => ipcRenderer.invoke('window:open-post-game')
   },
   recorder: {
-    stop: () => ipcRenderer.invoke('recorder:stop')
+    stop: () => ipcRenderer.invoke('recorder:stop'),
+    getAudioStatus: () => ipcRenderer.invoke('recorder:audio-status'),
   },
   updater: {
     check: () => ipcRenderer.invoke('updater:check')

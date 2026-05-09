@@ -253,6 +253,7 @@ declare global {
       }
       recorder: {
         stop: () => Promise<{ ok: boolean; reason?: string }>
+        getAudioStatus: () => Promise<{ wasapiMode: 'loopback-flag' | 'loopback-device' | false | null; audioEnabled: boolean }>
       }
       updater: {
         check: () => Promise<void>

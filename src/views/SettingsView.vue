@@ -231,7 +231,14 @@
           </button>
         </div>
       </div>
-      <p class="text-xs text-gray-700 mt-1.5 px-0.5">Audio device selection coming soon — currently captures all desktop audio.</p>
+      <!-- WASAPI diagnostic -->
+      <p v-if="audioStatus !== null && audioStatus.wasapiMode === false" class="text-xs text-amber-400/80 mt-1.5 px-0.5">
+        ⚠️ Desktop audio capture unavailable on this machine. Check that your audio driver supports WASAPI loopback and that no app has the audio device in exclusive mode.
+      </p>
+      <p v-else-if="audioStatus !== null && audioStatus.wasapiMode !== null" class="text-xs text-gray-700 mt-1.5 px-0.5">
+        Desktop audio capture ready (captures all game + system audio).
+      </p>
+      <p v-else class="text-xs text-gray-700 mt-1.5 px-0.5">Audio status will be detected when a recording starts.</p>
     </section>
 
     <!-- Behaviour toggles -->
@@ -509,6 +516,7 @@ const savedVisible = ref(false)
 const storageBytes = ref(0)
 const storageCount = ref(0)
 const ffmpegOk = ref(true)
+const audioStatus = ref<{ wasapiMode: 'loopback-flag' | 'loopback-device' | false | null; audioEnabled: boolean } | null>(null)
 const testingRiotApi = ref(false)
 const riotApiResult = ref<{ portOpen: boolean; gameMode: string | null; logGameMode: string | null; processRunning: boolean } | null>(null)
 let saveTimer: ReturnType<typeof setTimeout> | null = null
@@ -806,6 +814,11 @@ onMounted(async () => {
   }
 
   // Also load richer profile data (includes usage stats) independently
+  try {
+    const audioSt = await window.api.recorder.getAudioStatus()
+    audioStatus.value = audioSt
+  } catch { /* non-critical */ }
+
   try {
     const prof = await window.api.profile.get()
     if (prof?.user) {
