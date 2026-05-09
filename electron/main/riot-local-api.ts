@@ -1166,18 +1166,18 @@ export class RiotLocalApi {
     }
 
     // Kill events — video offset math:
-    // If gameplayStartTime is available (captured by overlay poll at round 1 start):
-    //   videoOffsetMs = (gameplayStartTime - recordingStartTime) + timeSinceGameStartMillis
-    // Otherwise fall back to matchStartTime (INGAME presence — includes loading screen gap):
-    //   videoOffsetMs = (matchStartTime - recordingStartTime) + timeSinceGameStartMillis
+    // timeSinceGameStartMillis from Riot's MatchDetails measures from the INGAME presence transition
+    // (which fires at the same moment as matchStartTime). So matchStartTime is the correct reference.
+    // gameplayStartTime (from overlay poll) is captured up to 5s later due to polling interval,
+    // which would add unnecessary offset to every clip. Always prefer matchStartTime.
     const gameplayStartTime = this.matchData.gameplayStartTime
     const matchStartTime = this.matchData.matchStartTime
     const recordingStartTime = this.matchData.recordingStartTime
-    const referenceTime = gameplayStartTime ?? matchStartTime
+    const referenceTime = matchStartTime ?? gameplayStartTime
     const recordingOffset = referenceTime != null ? referenceTime - recordingStartTime : 0
     console.log(
-      `[RiotLocalApi] videoOffset base — gameplayStart=${gameplayStartTime} matchStart=${matchStartTime} ` +
-      `recordingStart=${recordingStartTime} offset=${recordingOffset}ms (using ${gameplayStartTime != null ? 'gameplayStartTime' : 'matchStartTime'})`
+      `[RiotLocalApi] videoOffset base — matchStart=${matchStartTime} gameplayStart=${gameplayStartTime} ` +
+      `recordingStart=${recordingStartTime} offset=${recordingOffset}ms (using ${matchStartTime != null ? 'matchStartTime' : 'gameplayStartTime'})`
     )
 
     // Build a fast PUUID → agent name map for resolving event labels
@@ -1243,7 +1243,7 @@ export class RiotLocalApi {
           ?.find((ps) => ps.subject === this.ownPuuid)
         const economy = prs?.economy as Record<string, unknown> | undefined
         this.matchData.roundSummaries.push({
-          roundNumber: roundNum + 1,
+          roundNumber: roundNum,
           winningTeam,
           ceremony: resultCode,
           endTime: (round.defuseRoundMsec as number) || (round.plantRoundMsec as number) || 0,

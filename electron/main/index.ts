@@ -959,7 +959,7 @@ function setupGameDetection(): void {
       const PRESENCE_TIMEOUT_MS = 25 * 60 * 1000
       const deadline = Date.now() + PRESENCE_TIMEOUT_MS
       while (Date.now() < deadline && !cancelled) {
-        await new Promise((r) => setTimeout(r, 3000))
+        await new Promise((r) => setTimeout(r, 1000))
         if (cancelled) break
         const stillRunning = await gameDetector.isMatchProcessRunning()
         if (!stillRunning) { cancelled = true; break }
