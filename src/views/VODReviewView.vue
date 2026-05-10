@@ -170,6 +170,7 @@
             preload="metadata"
             @timeupdate="onTimeUpdate"
             @loadedmetadata="onLoadedMetadata"
+            @durationchange="onLoadedMetadata"
             @play="isPlaying = true"
             @pause="isPlaying = false"
             @ended="isPlaying = false"
@@ -714,10 +715,10 @@ const progressPercent = computed(() => {
 const allTimelineEvents = computed((): TimelineEvent[] => {
   if (!timeline.value) return []
   const kills: TimelineEvent[] = (timeline.value.kills ?? [])
-    .filter(k => k.videoOffsetMs != null)
+    .filter(k => k.videoOffsetMs != null && !isNaN(k.videoOffsetMs))
     .map(k => ({ ...k, type: 'kill' as const }))
   const deaths: TimelineEvent[] = (timeline.value.deaths ?? [])
-    .filter(d => d.videoOffsetMs != null)
+    .filter(d => d.videoOffsetMs != null && !isNaN(d.videoOffsetMs))
     .map(d => ({ ...d, type: 'death' as const }))
   return [...kills, ...deaths].sort((a, b) => (a.videoOffsetMs ?? 0) - (b.videoOffsetMs ?? 0))
 })
@@ -773,13 +774,14 @@ function isNearEvent(event: TimelineEvent): boolean {
 }
 
 function formatMs(ms: number | undefined): string {
-  if (ms == null) return '--'
+  if (ms == null || isNaN(ms)) return '--'
   const s = Math.floor(ms / 1000)
   const m = Math.floor(s / 60)
   return `${m}:${String(s % 60).padStart(2, '0')}`
 }
 
 function formatSeconds(s: number): string {
+  if (!s || isNaN(s)) return '0:00'
   const m = Math.floor(s / 60)
   return `${m}:${String(Math.floor(s % 60)).padStart(2, '0')}`
 }
@@ -843,7 +845,8 @@ function onTimeUpdate() {
 
 function onLoadedMetadata() {
   if (!videoEl.value) return
-  duration.value = videoEl.value.duration
+  const d = videoEl.value.duration
+  if (!isNaN(d) && isFinite(d) && d > 0) duration.value = d
 }
 
 function onScrubberClick(e: MouseEvent) {
@@ -856,6 +859,7 @@ function onScrubberClick(e: MouseEvent) {
 }
 
 function onScrubberHover(e: MouseEvent) {
+  if (!duration.value || isNaN(duration.value)) return
   const el = e.currentTarget as HTMLElement
   const rect = el.getBoundingClientRect()
   hoverTime.value = ((e.clientX - rect.left) / rect.width) * duration.value
