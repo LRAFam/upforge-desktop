@@ -352,7 +352,7 @@ async function extractKillClipsOnly(
       new Notification({
         title: 'UpForge — Clips Ready',
         body: `${extractedClipIds.length} highlight clip${extractedClipIds.length === 1 ? '' : 's'} saved from your match!`,
-        silent: true,
+        silent: notifySilent(),
       }).show()
     }
   }
@@ -548,7 +548,7 @@ async function extractMatchClips(
       new Notification({
         title: 'UpForge — Clips Ready',
         body: `${extractedClipIds.length} highlight clip${extractedClipIds.length === 1 ? '' : 's'} saved`,
-        silent: true,
+        silent: notifySilent(),
       }).show()
     }
   } else {
@@ -903,22 +903,31 @@ function setupGameDetection(): void {
 
       // Extract highlight clips from the recording in the background (non-blocking).
       // Auto-delete is deferred to run AFTER clip extraction so the file is available.
+      // If a late-retry is scheduled (no kills yet), auto-delete is further deferred
+      // until after the retry completes — otherwise the video is gone before clips are cut.
       const jobId = uploadResult ?? null
+      const matchId = timeline?.matchId
+      const hasKills = (timeline?.playerKills?.length ?? 0) > 0
+      const lateRetryScheduled = !hasKills && !!matchId
+
+      const doAutoDelete = () => {
+        if (settingsManager?.get().autoDelete) {
+          log.info('[App] Auto-deleting recording after clip extraction:', videoPath)
+          recorder.deleteRecording(videoPath)
+        }
+      }
+
       extractMatchClips(videoPath, timeline, jobId)
         .catch(err => log.warn('[ClipExtract] Background extraction error:', err))
         .finally(() => {
-          if (settingsManager?.get().autoDelete) {
-            log.info('[App] Auto-deleting recording after clip extraction:', videoPath)
-            recorder.deleteRecording(videoPath)
-          }
+          // Defer auto-delete until after the late retry so the video file still exists
+          if (!lateRetryScheduled) doAutoDelete()
         })
 
       // If Riot hasn't processed the match yet (no kills in timeline), retry match details
       // after a delay — Riot typically takes 1-3 minutes to publish match data.
-      const matchId = timeline?.matchId
-      const hasKills = (timeline?.playerKills?.length ?? 0) > 0
-      if (!hasKills && matchId) {
-        log.info('[HandleMatchEnd] No kills in timeline — scheduling late match details retry in 90s')
+      if (lateRetryScheduled) {
+        log.info('[HandleMatchEnd] No kills in timeline — scheduling late match details retry in 90s (auto-delete deferred)')
         setTimeout(async () => {
           try {
             log.info('[LateClipExtract] Fetching match details for', matchId)
@@ -936,6 +945,8 @@ function setupGameDetection(): void {
             await extractKillClipsOnly(videoPath, timeline!, jobId)
           } catch (err) {
             log.warn('[LateClipExtract] Error:', err)
+          } finally {
+            doAutoDelete()
           }
         }, 90_000)
       }
