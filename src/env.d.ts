@@ -356,6 +356,10 @@ declare global {
         }>
         saveReplayClip: () => Promise<{ path: string | null }>
       }
+      trainer: {
+        launch: (config: Record<string, unknown>) => Promise<{ ok: boolean; error?: string }>
+        kill: () => Promise<{ ok: boolean }>
+      }
       on: (channel: string, callback: (...args: unknown[]) => void) => (() => void)
     }
   }

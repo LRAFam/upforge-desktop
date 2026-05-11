@@ -117,6 +117,10 @@ const api = {
     getStatus: () => ipcRenderer.invoke('obs:get-status'),
     saveReplayClip: () => ipcRenderer.invoke('obs:save-replay-clip'),
   },
+  trainer: {
+    launch: (config: Record<string, unknown>) => ipcRenderer.invoke('trainer:launch', config),
+    kill: () => ipcRenderer.invoke('trainer:kill'),
+  },
   on: (channel: string, callback: (...args: unknown[]) => void): (() => void) => {
     const allowed = [
       'post-game:upload-start',
@@ -154,6 +158,7 @@ const api = {
       'desktop-recording:start',
       'desktop-recording:stop',
       'obs:replay-saved',
+      'trainer:session-result',
     ]
     if (allowed.includes(channel)) {
       const handler = (_e: Electron.IpcRendererEvent, ...args: unknown[]) => callback(...args)

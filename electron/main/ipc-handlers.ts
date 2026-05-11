@@ -18,6 +18,7 @@ import { HotkeyManager } from './hotkey-manager'
 import { toggleOverlay, isOverlayVisible, setOverlayInteractive } from './overlay-window'
 import { PerformanceManager } from './performance-manager'
 import { UpgradeRequiredError } from './errors'
+import { TrainerBridge, type DrillConfig } from './trainer-bridge'
 
 // Track all active polling timers so they can be cancelled on logout / app quit
 const _activePollingTimers = new Set<ReturnType<typeof setTimeout>>()
@@ -426,7 +427,8 @@ export function setupIpcHandlers(
   uploadManager?: UploadManager,
   showClipsFn?: () => void,
   performanceManager?: PerformanceManager,
-  obsRecorder?: OBSRecorder
+  obsRecorder?: OBSRecorder,
+  trainerBridge?: TrainerBridge
 ): void {
   // Auth
   ipcMain.handle('auth:login', async (_e, { email, password }) => {
@@ -685,7 +687,7 @@ export function setupIpcHandlers(
   })
 
   // desktopCapturer is only available in the main process (removed from preload in Electron 20+)
-  ipcMain.handle('desktop-capturer:get-sources', async (_e, types: string[]) => {
+  ipcMain.handle('desktop-capturer:get-sources', async (_e, types: Array<'screen' | 'window'>) => {
     const sources = await desktopCapturer.getSources({ types })
     return sources.map(s => ({ id: s.id, name: s.name }))
   })
@@ -721,5 +723,23 @@ export function setupIpcHandlers(
     if (!obsRecorder) return { path: null }
     const path = await obsRecorder.saveReplayClip()
     return { path }
+  })
+
+  // ── Aim Trainer ────────────────────────────────────────────────────────────
+
+  ipcMain.handle('trainer:launch', async (_e, config: DrillConfig) => {
+    if (!trainerBridge) return { ok: false, error: 'Trainer not available' }
+    try {
+      await trainerBridge.launch(config)
+      return { ok: true }
+    } catch (err: any) {
+      log.error('[IPC] trainer:launch error:', err)
+      return { ok: false, error: err?.message ?? 'Failed to launch trainer' }
+    }
+  })
+
+  ipcMain.handle('trainer:kill', () => {
+    trainerBridge?.kill()
+    return { ok: true }
   })
 }

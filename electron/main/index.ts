@@ -29,6 +29,7 @@ import { ClipStore } from './clip-store'
 import { HotkeyManager } from './hotkey-manager'
 import { createOverlayWindow, toggleOverlay, destroyOverlay, sendOverlayData, isOverlayVisible, showOverlay, hideOverlay } from './overlay-window'
 import { PerformanceManager } from './performance-manager'
+import { TrainerBridge } from './trainer-bridge'
 import type { MatchData } from './riot-local-api'
 import log from 'electron-log'
 
@@ -74,6 +75,7 @@ function activeRecorder(): DesktopRecorder | OBSRecorder {
 const clipExtractor = new ClipExtractor()
 const clipStore = new ClipStore()
 const hotkeyManager = new HotkeyManager()
+const trainerBridge = new TrainerBridge(() => mainWindow)
 recorder.onStatusChange = (recording, error) => {
   mainWindow?.webContents.send('recording:status-changed', { recording, error: error ?? null })
   updateTrayMenuFn?.() // keep tray in sync without waiting for the 30s interval
@@ -1677,7 +1679,7 @@ app.whenReady().then(async () => {
       mainWindow.focus()
       mainWindow.webContents.send('app:navigate', '/clips')
     }
-  }, performanceManager, obsRecorder)
+  }, performanceManager, obsRecorder, trainerBridge)
 
   setupClipHandlers(ipcMain, clipStore, clipExtractor, authManager, hotkeyManager)
 
