@@ -220,6 +220,20 @@
           <p class="text-xs text-gray-300 leading-relaxed">{{ topIssue }}</p>
         </div>
 
+        <!-- Match data warning: shown when Riot capture failed -->
+        <div
+          v-if="matchDataWarning"
+          class="flex items-start gap-2.5 px-3 py-2.5 bg-amber-500/[0.07] border border-amber-500/20 rounded-xl"
+        >
+          <svg class="w-3.5 h-3.5 text-amber-400 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
+          </svg>
+          <div class="space-y-0.5">
+            <p class="text-xs text-amber-300/90 leading-relaxed">{{ matchDataWarning.message }}</p>
+            <p class="text-xs text-gray-500 leading-relaxed">{{ matchDataWarning.tip }}</p>
+          </div>
+        </div>
+
         <div class="flex gap-2 pt-1">
           <button
             class="flex-1 py-2.5 text-xs font-bold rounded-xl transition-all shadow-lg"
@@ -372,6 +386,8 @@ const state = ref<State>('uploading')
 const uploadProgress = ref(0)
 const uploadStartedAt = ref(0)
 const gameInfo = ref<{ game: string; map: string | null; agent: string | null }>({ game: 'valorant', map: null, agent: null })
+const matchDataStatus = ref<'fetched' | 'no_match_id' | 'no_region' | 'no_auth' | 'fetch_failed' | 'pending'>('pending')
+const killsCapured = ref(0)
 const result = ref<{
   overall_score: number
   analysis_id: number
@@ -400,6 +416,29 @@ let tipTimer: ReturnType<typeof setInterval> | null = null
 let elapsedInterval: ReturnType<typeof setInterval> | null = null
 
 const currentTip = computed(() => COACHING_TIPS[tipIndex.value])
+
+const matchDataWarning = computed<{ message: string; tip: string } | null>(() => {
+  if (killsCapured.value > 0) return null // Data captured successfully
+  const status = matchDataStatus.value
+  if (status === 'fetched') return null
+  if (status === 'no_auth') return {
+    message: 'Riot match data wasn\'t captured — UpForge wasn\'t running when you launched Valorant.',
+    tip: 'Launch UpForge first, then start Valorant for full match data next time.',
+  }
+  if (status === 'no_region') return {
+    message: 'Region detection failed — live match stats unavailable for this session.',
+    tip: 'Make sure you\'re signed into the Riot Client before launching Valorant.',
+  }
+  if (status === 'fetch_failed') return {
+    message: 'Could not retrieve match details from Riot API — stats may be limited.',
+    tip: 'Check your internet connection. The AI still analysed your gameplay from the video.',
+  }
+  if (status === 'no_match_id') return {
+    message: 'Match ID wasn\'t captured — timeline data unavailable for this session.',
+    tip: 'Start UpForge before launching Valorant to capture full match statistics.',
+  }
+  return null
+})
 
 const analysisElapsedDisplay = computed(() => {
   const s = analysisElapsedSecs.value
@@ -502,8 +541,10 @@ const glowBgStyle = computed(() => {
 onMounted(() => {
   const ipcCleanup: (() => void)[] = []
   ipcCleanup.push(window.api.on('post-game:upload-start', (...args: unknown[]) => {
-    const data = args[0] as { game: string; map: string | null; agent: string | null }
+    const data = args[0] as { game: string; map: string | null; agent: string | null; matchDetailsStatus?: typeof matchDataStatus.value; killsInTimeline?: number }
     gameInfo.value = { game: data.game, map: data.map, agent: data.agent }
+    if (data.matchDetailsStatus) matchDataStatus.value = data.matchDetailsStatus
+    killsCapured.value = data.killsInTimeline ?? 0
     uploadStartedAt.value = Date.now()
   }))
   ipcCleanup.push(window.api.on('post-game:upload-progress', (...args: unknown[]) => { uploadProgress.value = args[0] as number }))

@@ -1346,7 +1346,13 @@ async function doUploadAndAnalyse(
     if (!targetWindow.isDestroyed()) targetWindow.webContents.send(channel, payload)
   }
   try {
-    send('post-game:upload-start', { game, map, agent })
+    send('post-game:upload-start', {
+      game,
+      map,
+      agent,
+      matchDetailsStatus: lastMatchDiagnostic?.matchDetailsStatus ?? 'pending',
+      killsInTimeline: lastMatchDiagnostic?.killsInTimeline ?? 0,
+    })
     logActivity(`Uploading recording${map ? ` (${map}${agent ? ` · ${agent}` : ''})` : ''}`)
 
     const result = await uploadManager.upload({
