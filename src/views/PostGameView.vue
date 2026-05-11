@@ -220,6 +220,25 @@
           <p class="text-xs text-gray-300 leading-relaxed">{{ topIssue }}</p>
         </div>
 
+        <!-- Train This Now CTA — maps top weakness to a drill scenario -->
+        <button
+          v-if="improvements.length || topIssue"
+          :disabled="trainerLaunching"
+          class="w-full flex items-center justify-center gap-2 py-2.5 text-xs font-bold rounded-xl transition-all disabled:opacity-50 text-white"
+          style="background: linear-gradient(135deg, #f97316, #dc2626); box-shadow: 0 4px 14px rgba(249,115,22,0.25);"
+          @click="launchTrainer"
+        >
+          <svg class="w-3.5 h-3.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <circle cx="12" cy="12" r="10" stroke-width="1.5"/>
+            <circle cx="12" cy="12" r="4" stroke-width="1.5"/>
+            <line x1="12" y1="2" x2="12" y2="6" stroke-width="1.5"/>
+            <line x1="12" y1="18" x2="12" y2="22" stroke-width="1.5"/>
+            <line x1="2" y1="12" x2="6" y2="12" stroke-width="1.5"/>
+            <line x1="18" y1="12" x2="22" y2="12" stroke-width="1.5"/>
+          </svg>
+          <span>{{ trainerLaunching ? 'Launching trainer…' : `Train Now · ${SCENARIO_LABELS[trainScenario]}` }}</span>
+        </button>
+
         <!-- Match data warning: shown when Riot capture failed -->
         <div
           v-if="matchDataWarning"
@@ -505,6 +524,51 @@ const improvements = computed<string[]>(() => {
   if (Array.isArray(raw)) return (raw as string[]).slice(0, 3)
   return []
 })
+
+// --- Training CTA ---
+const WEAKNESS_TO_SCENARIO: Record<string, string> = {
+  flick: 'flick', 'one tap': 'flick', reflex: 'flick', headshot: 'flick',
+  accuracy: 'flick', 'first shot': 'flick', aim: 'flick', click: 'flick',
+  track: 'tracking', moving: 'tracking', movement: 'tracking', smooth: 'tracking',
+  spray: 'microadjust', recoil: 'microadjust', control: 'microadjust',
+  precision: 'microadjust', micro: 'microadjust', burst: 'microadjust',
+  crosshair: 'switching', placement: 'switching', switching: 'switching',
+  rotate: 'switching', retake: 'switching', multi: 'switching',
+}
+const SCENARIO_LABELS: Record<string, string> = {
+  flick: 'Flick Training',
+  tracking: 'Tracking',
+  microadjust: 'Micro-Adjust',
+  switching: 'Target Switching',
+}
+
+function pickScenario(imps: string[], issue: string | null): string {
+  const text = [...imps, issue ?? ''].join(' ').toLowerCase()
+  for (const [keyword, scenario] of Object.entries(WEAKNESS_TO_SCENARIO)) {
+    if (text.includes(keyword)) return scenario
+  }
+  return 'flick'
+}
+
+const trainScenario = computed(() => pickScenario(improvements.value, topIssue.value))
+const trainerLaunching = ref(false)
+
+async function launchTrainer() {
+  if (trainerLaunching.value) return
+  trainerLaunching.value = true
+  try {
+    await window.api.trainer.launch({
+      scenario: trainScenario.value,
+      difficulty: 'medium',
+      duration: 60,
+    })
+  } catch (e) {
+    console.error('[PostGame] Trainer launch failed:', e)
+  } finally {
+    trainerLaunching.value = false
+  }
+}
+// --- End Training CTA ---
 
 function scoreGrade(score: number): string {
   if (score >= 90) return 'S'

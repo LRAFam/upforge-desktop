@@ -91,6 +91,13 @@
         "filter": [
           "**/*"
         ]
+      },
+      {
+        "from": "resources/trainer",
+        "to": "trainer",
+        "filter": [
+          "**/*"
+        ]
       }
     ]
   }
