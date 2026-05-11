@@ -7,3 +7,6 @@ resources/ffmpeg/
 *.exe
 *.dmg
 *.AppImage
+
+# Godot trainer binary (built locally, distributed via releases)
+resources/trainer/
