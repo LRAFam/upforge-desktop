@@ -727,10 +727,19 @@ export function setupIpcHandlers(
 
   // ── Aim Trainer ────────────────────────────────────────────────────────────
 
-  // Forward completed session results to the overlay so they flash above the game
+  // Forward completed session results to the overlay AND sync to the API
+  const apiBase = process.env['VITE_API_URL'] || 'https://api.upforge.gg'
   trainerBridge?.setResultCallback((result) => {
     sendOverlayData('overlay:trainer-result', result)
     showOverlay()
+
+    // Fire-and-forget: persist session to Laravel API
+    const token = auth.getToken()
+    if (token) {
+      _apiPost(apiBase, '/api/training/sessions', JSON.stringify(result), token)
+        .then(() => log.info('[Trainer] Session synced to API'))
+        .catch((err) => log.warn('[Trainer] Failed to sync session to API:', err?.message))
+    }
   })
 
   ipcMain.handle('trainer:launch', async (_e, config: DrillConfig) => {
