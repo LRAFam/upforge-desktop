@@ -164,6 +164,7 @@
         <!-- Video area -->
         <div class="flex-1 relative bg-black min-h-0" @click="togglePlay">
           <video
+            v-if="timeline?.videoPath"
             ref="videoEl"
             class="w-full h-full object-contain"
             :src="videoSrc"
@@ -175,6 +176,12 @@
             @pause="isPlaying = false"
             @ended="isPlaying = false"
           />
+          <div v-else class="w-full h-full flex flex-col items-center justify-center gap-3 text-gray-600 pointer-events-none select-none">
+            <svg class="w-10 h-10 opacity-30" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M15 10l4.553-2.069A1 1 0 0121 8.867v6.266a1 1 0 01-1.447.902L15 14M5 8a2 2 0 00-2 2v4a2 2 0 002 2h8a2 2 0 002-2v-4a2 2 0 00-2-2H5z"/>
+            </svg>
+            <span class="text-xs text-gray-600">No video available for this analysis</span>
+          </div>
 
           <!-- Play/pause overlay -->
           <div
@@ -523,6 +530,7 @@
 import { ref, computed, onMounted, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { getWeaponImage, getAgentImage } from '../lib/valorant'
+import { pendingTimeline } from '../stores/pendingTimeline'
 
 // Round outcome icons — bundled locally to avoid CSP/CDN issues
 import iconDiffuseWin from '../assets/round-icons/diffusewin1.png'
@@ -593,7 +601,7 @@ interface TeamPlayerSnapshot {
 
 interface RecordingTimeline {
   id: string
-  videoPath: string
+  videoPath: string | null
   map: string | null
   agent: string | null
   game: string
@@ -867,17 +875,23 @@ function onScrubberHover(e: MouseEvent) {
 
 onMounted(async () => {
   const id = route.query.id as string
-  if (id) {
+  const timelineId = route.query.timelineId as string
+
+  if (timelineId && pendingTimeline.value) {
+    timeline.value = pendingTimeline.value
+    pendingTimeline.value = null
+  } else if (id) {
     timeline.value = await window.api.recordings.getTimeline(id)
-    // Derive ownPuuid from kill/death events where name === 'You'
-    if (timeline.value) {
-      const ownKill = timeline.value.kills?.find((k: any) => k.killerName === 'You')
-      if (ownKill?.killerPuuid) {
-        ownPuuid.value = ownKill.killerPuuid
-      } else {
-        const ownDeath = timeline.value.deaths?.find((d: any) => d.victimName === 'You')
-        if (ownDeath?.victimPuuid) ownPuuid.value = ownDeath.victimPuuid
-      }
+  }
+
+  // Derive ownPuuid from kill/death events where name === 'You'
+  if (timeline.value) {
+    const ownKill = timeline.value.kills?.find((k: any) => k.killerName === 'You')
+    if (ownKill?.killerPuuid) {
+      ownPuuid.value = ownKill.killerPuuid
+    } else {
+      const ownDeath = timeline.value.deaths?.find((d: any) => d.victimName === 'You')
+      if (ownDeath?.victimPuuid) ownPuuid.value = ownDeath.victimPuuid
     }
   }
 })

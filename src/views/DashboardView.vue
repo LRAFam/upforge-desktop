@@ -401,10 +401,10 @@
 
     <!-- Analysis list -->
     <div v-else class="space-y-1.5">
-      <button
+      <div
         v-for="a in analyses"
         :key="a.id"
-        class="w-full flex items-center gap-3 px-3 py-2.5 bg-white/[0.02] hover:bg-white/[0.04] border border-white/[0.05] hover:border-white/[0.08] rounded-xl transition-all text-left"
+        class="w-full flex items-center gap-3 px-3 py-2.5 bg-white/[0.02] hover:bg-white/[0.04] border border-white/[0.05] hover:border-white/[0.08] rounded-xl transition-all cursor-pointer text-left"
         @click="openAnalysis(a.id)"
       >
         <div
@@ -455,7 +455,19 @@
         <svg v-else class="w-3.5 h-3.5 text-gray-700 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
         </svg>
-      </button>
+        <!-- Timeline button (only when match data is likely present) -->
+        <button
+          v-if="a.kills != null && a.kills > 0"
+          :disabled="timelineLoadingId === a.id"
+          class="flex-shrink-0 flex items-center gap-1 px-2 py-1 text-[10px] font-semibold text-gray-400 bg-white/[0.06] hover:bg-white/[0.1] border border-white/[0.08] rounded-lg transition-colors disabled:opacity-50"
+          @click.stop="openTimeline(a.id)"
+        >
+          <svg class="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>
+          </svg>
+          {{ timelineLoadingId === a.id ? '…' : 'Timeline' }}
+        </button>
+      </div>
     </div>
 
     <!-- Dev tools -->
@@ -497,6 +509,7 @@ import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import type { ProfileData, AnalysisItem, PendingRecording } from '../env.d.ts'
 import { getAgentImage, getAgentRole, getAgentColor, getMapMinimap, getRankHexColor, getRoleColor, getTierBadgeClass, formatGameMode } from '../lib/valorant'
+import { pendingTimeline } from '../stores/pendingTimeline'
 
 const router = useRouter()
 
@@ -850,6 +863,20 @@ function simulateGame(game: string, durationMs: number) {
 
 function openAnalysis(id: number) { window.open(`https://upforge.gg/valorant/results/${id}`, '_blank') }
 function openBrowser() { window.open('https://upforge.gg/valorant/history', '_blank') }
+
+const timelineLoadingId = ref<number | null>(null)
+
+async function openTimeline(id: number) {
+  timelineLoadingId.value = id
+  try {
+    const data = await window.api.analyses.getTimeline(id)
+    if (!data) return
+    pendingTimeline.value = data
+    router.push({ path: '/vod-review', query: { timelineId: id } })
+  } finally {
+    timelineLoadingId.value = null
+  }
+}
 function openRiotSettings() { window.open('https://upforge.gg/settings/profile', '_blank') }
 function openUpgrade() { window.open('https://upforge.gg/upgrade', '_blank') }
 

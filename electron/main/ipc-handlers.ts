@@ -506,6 +506,34 @@ export function setupIpcHandlers(
     return auth.fetchAnalyses(limit ?? 10)
   })
 
+  // Analyses — fetch full match timeline for a past analysis
+  ipcMain.handle('analyses:get-timeline', async (_e, { id }: { id: number }) => {
+    const token = auth.getToken()
+    if (!token) return null
+    try {
+      const res = await auth.getApi().get(`/api/analysis/${id}`)
+      const analysis = res.data?.analysis
+      if (!analysis?.match_data) return null
+      const md = analysis.match_data
+      return {
+        id: String(analysis.id),
+        videoPath: null,
+        map: analysis.map ?? md.map ?? null,
+        agent: analysis.agent ?? md.agent ?? null,
+        game: 'valorant',
+        gameMode: md.gameMode ?? md.game_mode ?? null,
+        recordedAt: new Date(analysis.created_at).getTime(),
+        kills: md.killEvents?.filter((k: any) => k.type !== 'death') ?? md.kills ?? [],
+        deaths: md.killEvents?.filter((k: any) => k.type === 'death') ?? md.deaths ?? [],
+        roundSummaries: md.roundSummaries ?? [],
+        finalStats: md.finalStats ?? null,
+        teamSnapshot: md.teamSnapshot ?? [],
+      }
+    } catch {
+      return null
+    }
+  })
+
   // Squad / Team
   ipcMain.handle('squad:get-team', async () => {
     try {

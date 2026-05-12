@@ -61,7 +61,7 @@ export interface PendingRecording {
 
 export interface RecordingTimeline {
   id: string
-  videoPath: string
+  videoPath: string | null
   map: string | null
   agent: string | null
   game: string
@@ -206,6 +206,7 @@ declare global {
       }
       analyses: {
         get: (limit?: number) => Promise<AnalysisItem[]>
+        getTimeline: (id: number) => Promise<RecordingTimeline | null>
       }
       recordings: {
         get: () => Promise<PendingRecording[]>

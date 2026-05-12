@@ -17,7 +17,8 @@ const api = {
     get: () => ipcRenderer.invoke('profile:get')
   },
   analyses: {
-    get: (limit?: number) => ipcRenderer.invoke('analyses:get', { limit })
+    get: (limit?: number) => ipcRenderer.invoke('analyses:get', { limit }),
+    getTimeline: (id: number) => ipcRenderer.invoke('analyses:get-timeline', { id })
   },
   recordings: {
     get: () => ipcRenderer.invoke('recordings:get'),
