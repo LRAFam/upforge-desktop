@@ -45,7 +45,7 @@ jobs:
       - name: Install Godot 4 + export templates
         shell: pwsh
         run: |
-          $godotVersion = "4.4.1"
+          $godotVersion = "4.6.2"
           $godotZip = "$env:TEMP\godot.zip"
           $templatesZip = "$env:TEMP\godot-templates.tpz"
 
@@ -53,8 +53,7 @@ jobs:
           Invoke-WebRequest -Uri "https://github.com/godotengine/godot/releases/download/$godotVersion-stable/Godot_v$($godotVersion)-stable_win64.exe.zip" -OutFile $godotZip
           Expand-Archive -Path $godotZip -DestinationPath "$env:TEMP\godot" -Force
           $godotExe = Get-ChildItem "$env:TEMP\godot" -Filter "*.exe" | Select-Object -First 1 -ExpandProperty FullName
-          Copy-Item $godotExe "$env:TEMP\godot\godot.exe" -Force
-          echo "GODOT=$env:TEMP\godot\godot.exe" >> $env:GITHUB_ENV
+          echo "GODOT=$godotExe" >> $env:GITHUB_ENV
 
           # Download export templates
           Invoke-WebRequest -Uri "https://github.com/godotengine/godot/releases/download/$godotVersion-stable/Godot_v$($godotVersion)-stable_export_templates.tpz" -OutFile $templatesZip
