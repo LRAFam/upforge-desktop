@@ -34,45 +34,15 @@ jobs:
           Copy-Item $ffmpegExe.FullName -Destination "resources\ffmpeg\ffmpeg.exe"
           Write-Host "ffmpeg bundled: $(Get-Item resources\ffmpeg\ffmpeg.exe | Select-Object -ExpandProperty Length) bytes"
 
-      - name: Checkout upforge-trainer
-        uses: actions/checkout@v4
-        with:
-          repository: LRAFam/upforge-trainer
-          ref: main
-          path: upforge-trainer
-          token: ${{ secrets.GH_TOKEN }}
-
-      - name: Install Godot 4 + export templates
-        shell: pwsh
-        run: |
-          $godotVersion = "4.6.2"
-          $godotZip = "$env:TEMP\godot.zip"
-          $templatesZip = "$env:TEMP\godot-templates.tpz"
-
-          # Download Godot headless (console binary)
-          Invoke-WebRequest -Uri "https://github.com/godotengine/godot/releases/download/$godotVersion-stable/Godot_v$($godotVersion)-stable_win64.exe.zip" -OutFile $godotZip
-          Expand-Archive -Path $godotZip -DestinationPath "$env:TEMP\godot" -Force
-          $godotExe = Get-ChildItem "$env:TEMP\godot" -Filter "*.exe" | Select-Object -First 1 -ExpandProperty FullName
-          echo "GODOT=$godotExe" >> $env:GITHUB_ENV
-
-          # Download export templates
-          Invoke-WebRequest -Uri "https://github.com/godotengine/godot/releases/download/$godotVersion-stable/Godot_v$($godotVersion)-stable_export_templates.tpz" -OutFile $templatesZip
-          $templateDir = "$env:APPDATA\Godot\export_templates\$godotVersion.stable"
-          New-Item -ItemType Directory -Force -Path $templateDir
-          # .tpz is a renamed .zip
-          Expand-Archive -Path $templatesZip -DestinationPath "$env:TEMP\godot-templates" -Force
-          Get-ChildItem "$env:TEMP\godot-templates\templates" | Copy-Item -Destination $templateDir -Recurse
-
-      - name: Export Godot trainer for Windows
+      - name: Download Godot trainer binary
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force -Path "resources\trainer"
-          $projectPath = "${{ github.workspace }}\upforge-trainer"
-          $outputPath  = "${{ github.workspace }}\resources\trainer\upforge-trainer.exe"
-          # --headless export
-          & "$env:GODOT" --headless --path $projectPath --export-release "Windows Desktop" $outputPath
-          if (!(Test-Path $outputPath)) { throw "Godot export failed — binary not found at $outputPath" }
-          Write-Host "Trainer binary: $(Get-Item $outputPath | Select-Object -ExpandProperty Length) bytes"
+          $url = "https://github.com/LRAFam/upforge-trainer/releases/latest/download/upforge-trainer.exe"
+          Invoke-WebRequest -Uri $url -OutFile "resources\trainer\upforge-trainer.exe" -Headers @{ Authorization = "token ${{ secrets.GH_TOKEN }}" }
+          $size = (Get-Item "resources\trainer\upforge-trainer.exe").Length
+          Write-Host "Trainer binary downloaded: $size bytes"
+          if ($size -lt 1MB) { throw "Trainer binary too small — download likely failed" }
 
       - name: Rebuild native modules for Electron
         run: npx electron-rebuild -f -w keytar
