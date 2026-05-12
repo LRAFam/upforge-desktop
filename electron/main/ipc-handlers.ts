@@ -773,7 +773,17 @@ export function setupIpcHandlers(
   ipcMain.handle('trainer:launch', async (_e, config: DrillConfig) => {
     if (!trainerBridge) return { ok: false, error: 'Trainer not available' }
     try {
-      await trainerBridge.launch(config)
+      const ms = settingsManager.get().trainerMouse
+      const enrichedConfig: DrillConfig = {
+        ...config,
+        mouse_settings: {
+          dpi: ms.dpi,
+          game: ms.game,
+          sensitivity: ms.sensitivity,
+          fov: ms.fov,
+        }
+      }
+      await trainerBridge.launch(enrichedConfig)
       sendOverlayData('overlay:trainer-started', {
         scenario: config.scenario,
         difficulty: config.difficulty,

@@ -84,6 +84,15 @@ export interface AppSettings {
   obsPassword: string
   /** Replay buffer length in seconds */
   obsReplayBufferSeconds: number
+  /** Mouse & trainer sensitivity settings */
+  trainerMouse: {
+    dpi: number
+    game: 'valorant' | 'cs2' | 'apex' | 'overwatch2' | 'custom'
+    sensitivity: number
+    fov: number
+    rawInput: boolean
+    pollingRate: 125 | 250 | 500 | 1000 | 2000 | 4000
+  }
 }
 
 export interface PendingRecording {

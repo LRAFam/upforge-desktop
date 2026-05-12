@@ -40,6 +40,15 @@ export interface AppSettings {
   obsPassword: string
   /** Replay buffer length in seconds — how much footage to save per kill clip */
   obsReplayBufferSeconds: number
+  /** Mouse & trainer sensitivity settings */
+  trainerMouse: {
+    dpi: number
+    game: 'valorant' | 'cs2' | 'apex' | 'overwatch2' | 'custom'
+    sensitivity: number
+    fov: number
+    rawInput: boolean
+    pollingRate: 125 | 250 | 500 | 1000 | 2000 | 4000
+  }
 }
 
 const DEFAULTS: AppSettings = {
@@ -65,6 +74,14 @@ const DEFAULTS: AppSettings = {
   obsPort: 4455,
   obsPassword: '',
   obsReplayBufferSeconds: 30,
+  trainerMouse: {
+    dpi: 800,
+    game: 'valorant',
+    sensitivity: 0.5,
+    fov: 103,
+    rawInput: true,
+    pollingRate: 1000,
+  },
 }
 
 export class SettingsManager {

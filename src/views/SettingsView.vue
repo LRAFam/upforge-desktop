@@ -206,6 +206,117 @@
       </div>
     </section>
 
+    <!-- Mouse & Trainer -->
+    <section>
+      <h3 class="text-xs font-semibold text-gray-600 uppercase tracking-widest mb-2 px-0.5">Mouse & Trainer</h3>
+      <div class="px-3 py-2.5 bg-white/[0.02] border border-white/[0.05] rounded-xl space-y-3">
+
+        <!-- Game dropdown -->
+        <div>
+          <label class="block text-xs text-gray-500 mb-1">Game</label>
+          <select
+            v-model="settings.trainerMouse.game"
+            class="w-full px-2.5 py-1.5 bg-white/[0.04] border border-white/[0.07] rounded-lg text-xs text-white focus:outline-none focus:border-red-500/30 transition-colors"
+            @change="debouncedSave"
+          >
+            <option value="valorant">Valorant</option>
+            <option value="cs2">CS2</option>
+            <option value="apex">Apex Legends</option>
+            <option value="overwatch2">Overwatch 2</option>
+            <option value="custom">Custom</option>
+          </select>
+        </div>
+
+        <!-- DPI + Sensitivity row -->
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block text-xs text-gray-500 mb-1">Mouse DPI</label>
+            <input
+              type="number"
+              v-model.number="settings.trainerMouse.dpi"
+              min="100"
+              max="32000"
+              step="100"
+              class="w-full px-2.5 py-1.5 bg-white/[0.04] border border-white/[0.07] rounded-lg text-xs text-white focus:outline-none focus:border-red-500/30 transition-colors"
+              @change="debouncedSave"
+            />
+          </div>
+          <div>
+            <label class="block text-xs text-gray-500 mb-1">In-game Sensitivity</label>
+            <input
+              type="number"
+              v-model.number="settings.trainerMouse.sensitivity"
+              min="0.01"
+              max="20"
+              step="0.01"
+              class="w-full px-2.5 py-1.5 bg-white/[0.04] border border-white/[0.07] rounded-lg text-xs text-white focus:outline-none focus:border-red-500/30 transition-colors"
+              @change="debouncedSave"
+            />
+          </div>
+        </div>
+
+        <!-- eDPI display -->
+        <div class="text-xs text-gray-600 -mt-1">
+          eDPI: <span class="text-gray-400 font-mono">{{ Math.round(settings.trainerMouse.dpi * settings.trainerMouse.sensitivity) }}</span>
+          <span class="ml-2 text-gray-700">· {{ eDpiLabel(settings.trainerMouse.dpi * settings.trainerMouse.sensitivity) }}</span>
+        </div>
+
+        <!-- FOV + Polling Rate row -->
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block text-xs text-gray-500 mb-1">Horizontal FOV</label>
+            <input
+              type="number"
+              v-model.number="settings.trainerMouse.fov"
+              min="60"
+              max="120"
+              step="1"
+              class="w-full px-2.5 py-1.5 bg-white/[0.04] border border-white/[0.07] rounded-lg text-xs text-white focus:outline-none focus:border-red-500/30 transition-colors"
+              @change="debouncedSave"
+            />
+          </div>
+          <div>
+            <label class="block text-xs text-gray-500 mb-1">Polling Rate (Hz)</label>
+            <select
+              v-model.number="settings.trainerMouse.pollingRate"
+              class="w-full px-2.5 py-1.5 bg-white/[0.04] border border-white/[0.07] rounded-lg text-xs text-white focus:outline-none focus:border-red-500/30 transition-colors"
+              @change="debouncedSave"
+            >
+              <option :value="125">125 Hz</option>
+              <option :value="250">250 Hz</option>
+              <option :value="500">500 Hz</option>
+              <option :value="1000">1000 Hz</option>
+              <option :value="2000">2000 Hz</option>
+              <option :value="4000">4000 Hz</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- Raw input toggle -->
+        <div class="flex items-center justify-between">
+          <div>
+            <p class="text-xs text-gray-300">Raw Input</p>
+            <p class="text-xs text-gray-600 mt-0.5">Bypass Windows pointer acceleration</p>
+          </div>
+          <button
+            :class="[
+              'relative w-8 h-[18px] rounded-full transition-colors flex-shrink-0 ml-4 overflow-hidden',
+              settings.trainerMouse.rawInput ? 'bg-red-500' : 'bg-white/[0.1]'
+            ]"
+            @click="settings.trainerMouse.rawInput = !settings.trainerMouse.rawInput; debouncedSave()"
+          >
+            <span
+              :class="[
+                'absolute top-[2px] left-0 w-[14px] h-[14px] bg-white rounded-full shadow transition-transform',
+                settings.trainerMouse.rawInput ? 'translate-x-[18px]' : 'translate-x-[2px]'
+              ]"
+            />
+          </button>
+        </div>
+
+      </div>
+    </section>
+
     <!-- Audio settings -->
     <section>
       <h3 class="text-xs font-semibold text-gray-600 uppercase tracking-widest mb-2 px-0.5">Audio</h3>
@@ -837,6 +948,14 @@ const settings = reactive<AppSettings>({
   obsPort: 4455,
   obsPassword: '',
   obsReplayBufferSeconds: 30,
+  trainerMouse: {
+    dpi: 800,
+    game: 'valorant',
+    sensitivity: 0.5,
+    fov: 103,
+    rawInput: true,
+    pollingRate: 1000,
+  },
 })
 
 const GAME_MODES = [
@@ -975,6 +1094,14 @@ function openSite(): void {
 
 function openHelp(): void {
   window.open('https://upforge.gg/help', '_blank')
+}
+
+function eDpiLabel(edpi: number): string {
+  if (edpi < 200) return 'Very low'
+  if (edpi < 400) return 'Low'
+  if (edpi < 700) return 'Medium'
+  if (edpi < 1200) return 'High'
+  return 'Very high'
 }
 
 function formatBytes(bytes: number): string {

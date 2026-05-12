@@ -29,6 +29,12 @@ export interface DrillConfig {
     score?: number
     user_rank?: string
   }
+  mouse_settings?: {
+    dpi: number
+    game: string
+    sensitivity: number
+    fov: number
+  }
 }
 
 export interface SessionResult {
