@@ -36,10 +36,11 @@ jobs:
 
       - name: Download Godot trainer binary
         shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}
         run: |
           New-Item -ItemType Directory -Force -Path "resources\trainer"
-          $url = "https://github.com/LRAFam/upforge-trainer/releases/latest/download/upforge-trainer.exe"
-          Invoke-WebRequest -Uri $url -OutFile "resources\trainer\upforge-trainer.exe" -Headers @{ Authorization = "token ${{ secrets.GH_TOKEN }}" }
+          gh release download --repo LRAFam/upforge-trainer --pattern "upforge-trainer.exe" --dir "resources\trainer"
           $size = (Get-Item "resources\trainer\upforge-trainer.exe").Length
           Write-Host "Trainer binary downloaded: $size bytes"
           if ($size -lt 1MB) { throw "Trainer binary too small — download likely failed" }
