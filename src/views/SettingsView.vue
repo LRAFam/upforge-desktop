@@ -1085,7 +1085,7 @@ function openBilling(): void {
 }
 
 function openUpgrade(): void {
-  window.open('https://upforge.gg/upgrade', '_blank')
+  window.open('https://upforge.gg/pricing', '_blank')
 }
 
 function openSite(): void {

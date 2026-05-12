@@ -878,7 +878,7 @@ async function openTimeline(id: number) {
   }
 }
 function openRiotSettings() { window.open('https://upforge.gg/settings/profile', '_blank') }
-function openUpgrade() { window.open('https://upforge.gg/upgrade', '_blank') }
+function openUpgrade() { window.open('https://upforge.gg/pricing', '_blank') }
 
 function formatDate(d: string): string {
   return new Date(d).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })

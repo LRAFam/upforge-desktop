@@ -345,14 +345,15 @@
             </svg>
           </div>
           <div>
-            <p class="text-sm font-semibold text-amber-400">Analysis limit reached</p>
-            <p class="text-xs text-gray-500 mt-1">{{ errorMessage }}</p>
+            <p class="text-sm font-semibold text-amber-400">Monthly limit reached</p>
+            <p class="text-xs text-gray-400 mt-1">You've used your free analysis this month. Upgrade to get 5–15 analyses per month.</p>
+            <p class="text-xs text-gray-600 mt-1">Premium $14.99/mo · Pro $24.99/mo · Check your email for details.</p>
           </div>
           <div class="flex gap-2 pt-1">
             <button
               class="flex-1 py-2 text-xs font-semibold bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white rounded-lg transition-all shadow-sm shadow-amber-500/20"
               @click="openUpgrade"
-            >Upgrade Plan</button>
+            >View Plans →</button>
             <button class="px-3 py-2 text-xs text-gray-500 hover:text-gray-300 bg-white/[0.03] hover:bg-white/[0.06] border border-white/[0.06] rounded-lg transition-colors" @click="dismiss">Dismiss</button>
           </div>
         </template>
