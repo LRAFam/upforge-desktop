@@ -790,4 +790,28 @@ export function setupIpcHandlers(
     trainerBridge?.kill()
     return { ok: true }
   })
+
+  ipcMain.handle('trainer:get-history', async () => {
+    const token = auth.getToken()
+    if (!token) return null
+    try {
+      const res = await auth.getApi().get('/api/training/sessions?limit=50')
+      return res.data ?? null
+    } catch (err: any) {
+      log.warn('[Trainer] Failed to fetch training history:', err?.message)
+      return null
+    }
+  })
+
+  ipcMain.handle('trainer:get-coaching-drills', async () => {
+    const token = auth.getToken()
+    if (!token) return []
+    try {
+      const res = await auth.getApi().get('/api/drills')
+      return res.data ?? []
+    } catch (err: any) {
+      log.warn('[Trainer] Failed to fetch coaching drills:', err?.message)
+      return []
+    }
+  })
 }

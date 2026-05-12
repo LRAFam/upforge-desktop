@@ -121,6 +121,8 @@ const api = {
   trainer: {
     launch: (config: Record<string, unknown>) => ipcRenderer.invoke('trainer:launch', config),
     kill: () => ipcRenderer.invoke('trainer:kill'),
+    getHistory: () => ipcRenderer.invoke('trainer:get-history'),
+    getCoachingDrills: () => ipcRenderer.invoke('trainer:get-coaching-drills'),
   },
   on: (channel: string, callback: (...args: unknown[]) => void): (() => void) => {
     const allowed = [

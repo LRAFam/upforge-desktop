@@ -4,6 +4,50 @@ declare global {
   const __APP_VERSION__: string
 }
 
+export interface TrainingScenarioStats {
+  best_score: number | null
+  trend: number | null
+  sessions: Array<{
+    id: number
+    scenario: string
+    score: number
+    accuracy_pct: number
+    avg_reaction_ms: number
+    consistency_score: number
+    targets_hit: number
+    targets_missed: number
+    completed_at: string
+  }>
+}
+
+export interface TrainingHistory {
+  total: number
+  sessions: Array<{
+    id: number
+    scenario: string
+    score: number
+    accuracy_pct: number
+    avg_reaction_ms: number
+    consistency_score: number
+    targets_hit: number
+    targets_missed: number
+    completed_at: string
+  }>
+  by_scenario: Record<string, TrainingScenarioStats>
+}
+
+export interface CoachingDrill {
+  id: number
+  category: string
+  title: string
+  instructions: string | null
+  success_metric: string | null
+  practice_mode: string | null
+  baseline_score: number
+  target_score: number
+  status: string
+}
+
 export interface AppSettings {
   recordingQuality: '720p' | '1080p'
   recordingBitrate: number
@@ -360,6 +404,8 @@ declare global {
       trainer: {
         launch: (config: Record<string, unknown>) => Promise<{ ok: boolean; error?: string }>
         kill: () => Promise<{ ok: boolean }>
+        getHistory: () => Promise<TrainingHistory | null>
+        getCoachingDrills: () => Promise<CoachingDrill[]>
       }
       on: (channel: string, callback: (...args: unknown[]) => void) => (() => void)
     }
