@@ -814,4 +814,16 @@ export function setupIpcHandlers(
       return []
     }
   })
+
+  ipcMain.handle('trainer:get-correlation', async () => {
+    const token = auth.getToken()
+    if (!token) return []
+    try {
+      const res = await auth.getApi().get('/api/training/correlation')
+      return Array.isArray(res.data) ? res.data : []
+    } catch (err: any) {
+      log.warn('[Trainer] Failed to fetch correlation insights:', err?.message)
+      return []
+    }
+  })
 }

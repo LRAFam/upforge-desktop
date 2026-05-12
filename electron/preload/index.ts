@@ -123,6 +123,7 @@ const api = {
     kill: () => ipcRenderer.invoke('trainer:kill'),
     getHistory: () => ipcRenderer.invoke('trainer:get-history'),
     getCoachingDrills: () => ipcRenderer.invoke('trainer:get-coaching-drills'),
+    getCorrelation: () => ipcRenderer.invoke('trainer:get-correlation'),
   },
   on: (channel: string, callback: (...args: unknown[]) => void): (() => void) => {
     const allowed = [

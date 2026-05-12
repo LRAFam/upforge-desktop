@@ -406,6 +406,7 @@ declare global {
         kill: () => Promise<{ ok: boolean }>
         getHistory: () => Promise<TrainingHistory | null>
         getCoachingDrills: () => Promise<CoachingDrill[]>
+        getCorrelation: () => Promise<string[]>
       }
       on: (channel: string, callback: (...args: unknown[]) => void) => (() => void)
     }
