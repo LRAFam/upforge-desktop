@@ -98,11 +98,11 @@
           </template>
           <!-- Idle -->
           <template v-else>
-            <p class="text-xs text-gray-300">Watching for Valorant & CS2</p>
-            <p v-if="status.recordedModes && status.recordedModes.length" class="text-xs text-gray-500 mt-0.5">
-              Ready to record: {{ status.recordedModes.map(formatMode).join(' · ') }}
+            <p class="text-xs font-semibold text-gray-300">Ready to record</p>
+            <p v-if="status.recordedModes && status.recordedModes.length" class="text-xs text-gray-600 mt-0.5">
+              Watching for {{ status.recordedModes.map(formatMode).join(' · ') }}
             </p>
-            <p v-else class="text-xs text-gray-600 mt-0.5">No game modes selected — check Settings</p>
+            <p v-else class="text-xs text-amber-600/80 mt-0.5">No game modes selected — check Settings</p>
           </template>
         </div>
 
@@ -326,9 +326,15 @@
           >Review</button>
           <button
             :disabled="analysingIds.has(rec.id)"
-            class="px-2.5 py-1 text-xs font-medium text-white bg-red-500 hover:bg-red-600 disabled:opacity-50 rounded-lg transition-colors"
+            class="px-2.5 py-1 text-xs font-medium text-white bg-red-500 hover:bg-red-600 disabled:opacity-60 rounded-lg transition-colors flex items-center gap-1.5"
             @click="analyseRecording(rec.id)"
-          >{{ analysingIds.has(rec.id) ? '...' : 'Analyse' }}</button>
+          >
+            <svg v-if="analysingIds.has(rec.id)" class="w-3 h-3 animate-spin" fill="none" viewBox="0 0 24 24">
+              <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+              <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+            </svg>
+            {{ analysingIds.has(rec.id) ? 'Uploading…' : 'Analyse' }}
+          </button>
           <button
             class="p-1.5 text-gray-600 hover:text-gray-400 transition-colors rounded-lg hover:bg-white/[0.04]"
             @click="dismissRecording(rec.id)"
@@ -389,14 +395,23 @@
     </div>
 
     <!-- Empty state -->
-    <div v-else-if="analyses.length === 0" class="flex flex-col items-center justify-center py-8 text-center">
+    <div v-else-if="analyses.length === 0" class="flex flex-col items-center justify-center py-6 text-center">
       <div class="w-10 h-10 rounded-xl bg-white/[0.03] border border-white/[0.05] flex items-center justify-center mb-3">
         <svg class="w-5 h-5 text-gray-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M15 10l4.553-2.069A1 1 0 0121 8.87v6.26a1 1 0 01-1.447.894L15 14M3 8a2 2 0 012-2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V8z"/>
         </svg>
       </div>
-      <p class="text-xs text-gray-600">No analyses yet</p>
-      <p class="text-xs text-gray-700 mt-0.5">Play Valorant or CS2 to get started</p>
+      <p class="text-xs text-gray-500">No analyses yet</p>
+      <p class="text-xs text-gray-700 mt-0.5 mb-3">
+        {{ status.recordedModes?.length ? 'Play a game — UpForge will record automatically' : 'Enable game modes in Settings to start recording' }}
+      </p>
+      <button
+        v-if="!status.recordedModes?.length"
+        class="text-xs font-medium px-3 py-1.5 rounded-lg bg-white/[0.04] hover:bg-white/[0.07] border border-white/[0.07] text-gray-400 hover:text-gray-200 transition-all"
+        @click="router.push('/settings')"
+      >
+        Open Settings →
+      </button>
     </div>
 
     <!-- Analysis list -->
