@@ -291,6 +291,7 @@ const SCENARIO_LABEL: Record<string, string> = {
   tracking: 'Tracking',
   microadjust: 'Micro Adjust',
   switching: 'Target Switch',
+  duel: '3D Duel',
 }
 function dismissTrainerResult() {
   trainerResult.value = null

@@ -17,7 +17,7 @@ interface SessionResult {
 }
 
 interface AssignedDrill {
-  scenario: 'flick' | 'tracking' | 'microadjust' | 'switching'
+  scenario: 'flick' | 'tracking' | 'microadjust' | 'switching' | 'duel'
   difficulty: 'easy' | 'medium' | 'hard' | 'pro'
   duration_seconds: number
   weakness: string
@@ -116,6 +116,17 @@ const SCENARIO_META: Record<string, {
     band: 'bg-violet-500',
     dot: 'bg-violet-400',
     ring: 'ring-violet-500/30',
+  },
+  duel: {
+    label: '3D Duel',
+    description: 'FPS arena — peek angles, WASD movement.',
+    tip: 'Pre-aim corners before committing — don\'t wide-peek.',
+    color: 'text-emerald-400',
+    bg: 'bg-emerald-500/[0.08]',
+    border: 'border-emerald-500/20',
+    band: 'bg-emerald-500',
+    dot: 'bg-emerald-400',
+    ring: 'ring-emerald-500/30',
   },
 }
 
@@ -304,7 +315,7 @@ onUnmounted(() => {
 })
 
 // ── Free play ──────────────────────────────────────────────────────────────────
-const freePlayScenario = ref<'flick' | 'tracking' | 'microadjust' | 'switching'>('flick')
+const freePlayScenario = ref<'flick' | 'tracking' | 'microadjust' | 'switching' | 'duel'>('flick')
 const freePlayDifficulty = ref<'easy' | 'medium' | 'hard' | 'pro'>('medium')
 const freePlayDuration = ref(60)
 
@@ -340,6 +351,8 @@ const SCENARIO_ICON: Record<string, string> = {
   microadjust: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" class="w-4 h-4"><circle cx="12" cy="12" r="5"/><line x1="12" y1="2" x2="12" y2="7"/><line x1="12" y1="17" x2="12" y2="22"/><line x1="2" y1="12" x2="7" y2="12"/><line x1="17" y1="12" x2="22" y2="12"/></svg>`,
   // Double arrows — multi-target switching
   switching: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" class="w-4 h-4"><path d="M7 16V4m0 0L4 7m3-3 3 3M17 8v12m0 0 3-3m-3 3-3-3"/></svg>`,
+  // 3D cube — first-person duel
+  duel: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" class="w-4 h-4"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>`,
 }
 
 // SVG icon HTML for coaching drill categories
