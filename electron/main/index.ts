@@ -47,6 +47,15 @@ process.on('unhandledRejection', (reason) => {
   console.error('[Main] Unhandled promise rejection:', reason)
 })
 
+// Enforce single instance — if another UpForge process is already running,
+// focus its window and quit this one immediately.
+const gotLock = app.requestSingleInstanceLock()
+if (!gotLock) {
+  log.warn('[App] Another instance is already running — quitting duplicate.')
+  app.quit()
+  process.exit(0)
+}
+
 let tray: Tray | null = null
 let mainWindow: BrowserWindow | null = null
 let postGameWindow: BrowserWindow | null = null
@@ -1558,6 +1567,16 @@ app.whenReady().then(async () => {
 
   app.on('browser-window-created', (_, window) => {
     optimizer.watchWindowShortcuts(window)
+  })
+
+  // When a second instance is launched (e.g. user double-clicks the icon again),
+  // bring the existing window to the front instead of opening another copy.
+  app.on('second-instance', () => {
+    if (mainWindow) {
+      if (mainWindow.isMinimized()) mainWindow.restore()
+      mainWindow.show()
+      mainWindow.focus()
+    }
   })
 
   uploadManager = new UploadManager(authManager)
