@@ -57,8 +57,7 @@ export class TrainerBridge {
 
   /** Resolve path to the bundled Godot trainer binary */
   private _trainerPath(): string {
-    const isPackaged = app.isPackaged
-    const base = isPackaged
+    const base = app.isPackaged
       ? path.join(process.resourcesPath, 'trainer')
       : path.join(app.getAppPath(), 'resources', 'trainer')
 
@@ -68,27 +67,48 @@ export class TrainerBridge {
   }
 
   /**
-   * In dev on Mac the exported binary won't exist — fall back to running the
-   * Godot project directly via the `godot` CLI so we can test without exporting.
+   * Resolve the binary to spawn. On production the bundled binary is used.
+   * In dev on Mac, falls back to running the Godot project via the editor CLI.
+   * On Windows dev, the bundled .exe must exist — it's gitignored so devs need
+   * to either export it from Godot or build the installer.
    */
   private _resolveSpawnArgs(): { cmd: string; args: string[] } {
     const trainerPath = this._trainerPath()
+
     if (fs.existsSync(trainerPath)) {
+      log.info('[TrainerBridge] Using bundled binary:', trainerPath)
       return { cmd: trainerPath, args: [] }
     }
 
-    // Dev fallback: run the Godot project directly
+    if (process.platform === 'win32') {
+      // On Windows the binary must be present — either from the installer or
+      // manually placed at resources/trainer/upforge-trainer.exe
+      throw new Error(
+        `UpForge Trainer binary not found at: ${trainerPath}\n\n` +
+        'To fix: export the Godot project (upforge-trainer) for Windows ' +
+        'and place upforge-trainer.exe in resources/trainer/, ' +
+        'or install the full UpForge release which bundles it automatically.'
+      )
+    }
+
+    // Mac/Linux dev fallback: run the Godot project directly via editor CLI.
+    // Check absolute paths — Electron's main process doesn't inherit shell PATH.
     const godotCandidates = [
+      '/Applications/Godot.app/Contents/MacOS/Godot',
       '/opt/homebrew/bin/godot',
       '/usr/local/bin/godot',
-      'godot',
     ]
-    const projectDir = path.resolve(app.getAppPath(), '..', '..', 'upforge-trainer')
     const godotBin = godotCandidates.find(c => {
       try { return fs.existsSync(c) } catch { return false }
-    }) ?? 'godot'
+    })
 
-    log.warn('[TrainerBridge] Binary not found — running Godot project directly (dev mode):', projectDir)
+    if (!godotBin) {
+      throw new Error('Godot engine not found. Install from godotengine.org or: brew install godot')
+    }
+
+    // upforge-trainer sits next to upforge-desktop in the monorepo
+    const projectDir = path.resolve(app.getAppPath(), '..', 'upforge-trainer')
+    log.warn('[TrainerBridge] No binary — running project via Godot editor (dev):', projectDir)
     return { cmd: godotBin, args: ['--path', projectDir] }
   }
 

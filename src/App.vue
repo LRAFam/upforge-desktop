@@ -129,6 +129,7 @@ const showNav = computed(() =>
 
 const navLinks = [
   { to: '/dashboard', label: 'Dashboard' },
+  { to: '/training', label: 'Training' },
   { to: '/clips', label: 'Clips' },
   { to: '/squad', label: 'Squad' },
   { to: '/performance', label: 'Performance' },
