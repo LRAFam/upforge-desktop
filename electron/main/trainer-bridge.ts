@@ -67,6 +67,31 @@ export class TrainerBridge {
     return path.join(base, 'upforge-trainer')
   }
 
+  /**
+   * In dev on Mac the exported binary won't exist — fall back to running the
+   * Godot project directly via the `godot` CLI so we can test without exporting.
+   */
+  private _resolveSpawnArgs(): { cmd: string; args: string[] } {
+    const trainerPath = this._trainerPath()
+    if (fs.existsSync(trainerPath)) {
+      return { cmd: trainerPath, args: [] }
+    }
+
+    // Dev fallback: run the Godot project directly
+    const godotCandidates = [
+      '/opt/homebrew/bin/godot',
+      '/usr/local/bin/godot',
+      'godot',
+    ]
+    const projectDir = path.resolve(app.getAppPath(), '..', '..', 'upforge-trainer')
+    const godotBin = godotCandidates.find(c => {
+      try { return fs.existsSync(c) } catch { return false }
+    }) ?? 'godot'
+
+    log.warn('[TrainerBridge] Binary not found — running Godot project directly (dev mode):', projectDir)
+    return { cmd: godotBin, args: ['--path', projectDir] }
+  }
+
   /** Launch a drill. Spawns Godot if not running, then sends config. */
   async launch(config: DrillConfig): Promise<void> {
     this._pendingConfig = config
@@ -82,15 +107,10 @@ export class TrainerBridge {
   }
 
   private async _spawnGodot(): Promise<void> {
-    const trainerPath = this._trainerPath()
+    const { cmd, args } = this._resolveSpawnArgs()
 
-    if (!fs.existsSync(trainerPath)) {
-      log.error('[TrainerBridge] Trainer binary not found at:', trainerPath)
-      throw new Error('UpForge Trainer binary not found. Please reinstall the app.')
-    }
-
-    log.info('[TrainerBridge] Spawning Godot trainer:', trainerPath)
-    this._process = spawn(trainerPath, [], { detached: false })
+    log.info('[TrainerBridge] Spawning trainer:', cmd, args)
+    this._process = spawn(cmd, args, { detached: false })
 
     this._process.on('exit', (code) => {
       log.info('[TrainerBridge] Trainer exited with code:', code)

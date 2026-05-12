@@ -458,6 +458,30 @@
       </button>
     </div>
 
+    <!-- Training Hub shortcut -->
+    <button
+      class="w-full flex items-center gap-3 px-3 py-2.5 bg-orange-500/[0.06] hover:bg-orange-500/[0.10] border border-orange-500/20 hover:border-orange-500/30 rounded-xl transition-all text-left"
+      @click="$router.push('/training')"
+    >
+      <div class="w-8 h-8 rounded-lg flex-shrink-0 flex items-center justify-center bg-orange-500/10">
+        <svg class="w-4 h-4 text-orange-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <circle cx="12" cy="12" r="10" stroke-width="1.5"/>
+          <circle cx="12" cy="12" r="4" stroke-width="1.5"/>
+          <line x1="12" y1="2" x2="12" y2="6" stroke-width="1.5"/>
+          <line x1="12" y1="18" x2="12" y2="22" stroke-width="1.5"/>
+          <line x1="2" y1="12" x2="6" y2="12" stroke-width="1.5"/>
+          <line x1="18" y1="12" x2="22" y2="12" stroke-width="1.5"/>
+        </svg>
+      </div>
+      <div class="flex-1 min-w-0">
+        <p class="text-xs font-semibold text-orange-300">Aim Training</p>
+        <p class="text-xs text-gray-600 mt-0.5">AI-assigned drills · Free play</p>
+      </div>
+      <svg class="w-3.5 h-3.5 text-orange-500/50 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
+      </svg>
+    </button>
+
     <!-- Dev tools -->
     <div v-if="isDev || (platform && platform !== 'win32')" class="mt-2 border border-dashed border-yellow-500/20 rounded-xl overflow-hidden">
       <button
@@ -480,6 +504,10 @@
             class="px-2 py-1.5 rounded-lg text-xs font-medium bg-white/[0.04] text-gray-500 hover:bg-white/[0.07] transition-colors border border-white/[0.05]"
             @click="$router.push('/post-game-preview')"
           >Post-game</button>
+          <button
+            class="px-2 py-1.5 rounded-lg text-xs font-medium bg-orange-500/[0.08] text-orange-500/70 hover:bg-orange-500/[0.14] transition-colors border border-orange-500/10"
+            @click="$router.push('/training')"
+          >Trainer</button>
         </div>
         <p v-if="simStatus" class="text-xs text-yellow-500/50">{{ simStatus }}</p>
       </div>
