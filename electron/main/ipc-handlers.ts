@@ -15,7 +15,7 @@ import { UploadManager } from './upload-manager'
 import { ClipStore, ClipRecord } from './clip-store'
 import { ClipExtractor } from './clip-extractor'
 import { HotkeyManager } from './hotkey-manager'
-import { toggleOverlay, isOverlayVisible, setOverlayInteractive } from './overlay-window'
+import { toggleOverlay, isOverlayVisible, setOverlayInteractive, sendOverlayData, showOverlay } from './overlay-window'
 import { PerformanceManager } from './performance-manager'
 import { UpgradeRequiredError } from './errors'
 import { TrainerBridge, type DrillConfig } from './trainer-bridge'
@@ -727,10 +727,21 @@ export function setupIpcHandlers(
 
   // ── Aim Trainer ────────────────────────────────────────────────────────────
 
+  // Forward completed session results to the overlay so they flash above the game
+  trainerBridge?.setResultCallback((result) => {
+    sendOverlayData('overlay:trainer-result', result)
+    showOverlay()
+  })
+
   ipcMain.handle('trainer:launch', async (_e, config: DrillConfig) => {
     if (!trainerBridge) return { ok: false, error: 'Trainer not available' }
     try {
       await trainerBridge.launch(config)
+      sendOverlayData('overlay:trainer-started', {
+        scenario: config.scenario,
+        difficulty: config.difficulty,
+        duration_seconds: config.duration_seconds,
+      })
       return { ok: true }
     } catch (err: any) {
       log.error('[IPC] trainer:launch error:', err)

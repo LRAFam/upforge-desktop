@@ -46,6 +46,74 @@
       </div>
     </Transition>
 
+    <!-- Training result card — flashes after a session ends, auto-dismisses -->
+    <Transition name="cheatsheet-slide">
+      <div v-if="trainerResult" class="mb-2 w-[288px]">
+        <div :class="['relative rounded-xl overflow-hidden border shadow-[0_8px_32px_rgba(0,0,0,0.7)]', scoreAccentBg(trainerResult.score)]">
+          <div class="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-current to-transparent opacity-40" />
+          <div class="px-3 pt-2.5 pb-2.5">
+            <!-- Header -->
+            <div class="flex items-center justify-between mb-2">
+              <div class="flex items-center gap-1.5">
+                <div class="w-1.5 h-1.5 rounded-full bg-current opacity-80" />
+                <span class="text-[10px] font-bold tracking-wider uppercase text-gray-300">
+                  {{ SCENARIO_LABEL[trainerResult.scenario] ?? trainerResult.scenario }} Complete
+                </span>
+              </div>
+              <button class="text-gray-600 hover:text-gray-400 transition-colors pointer-events-auto" @click="dismissTrainerResult">
+                <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                </svg>
+              </button>
+            </div>
+            <!-- Score row -->
+            <div class="flex items-end gap-3 mb-2">
+              <span :class="['text-[40px] font-black leading-none tabular-nums', scoreColor(trainerResult.score)]">
+                {{ trainerResult.score }}
+              </span>
+              <span class="text-[11px] text-gray-500 font-semibold mb-1.5">/ 100</span>
+              <!-- Stat pills -->
+              <div class="flex flex-col gap-0.5 ml-auto text-right">
+                <span class="text-[10px] text-gray-400 font-medium">
+                  {{ trainerResult.accuracy_pct.toFixed(1) }}% acc
+                </span>
+                <span class="text-[10px] text-gray-500">
+                  {{ trainerResult.avg_reaction_ms.toFixed(0) }}ms react
+                </span>
+                <span class="text-[10px] text-gray-600">
+                  {{ trainerResult.targets_hit }}H / {{ trainerResult.targets_missed }}M
+                </span>
+              </div>
+            </div>
+            <!-- Consistency bar -->
+            <div class="h-[3px] bg-white/[0.06] rounded-full overflow-hidden">
+              <div
+                :class="['h-full rounded-full transition-all duration-700', trainerResult.score >= 80 ? 'bg-green-500' : trainerResult.score >= 60 ? 'bg-yellow-500' : 'bg-red-500']"
+                :style="{ width: trainerResult.score + '%' }"
+              />
+            </div>
+          </div>
+        </div>
+      </div>
+    </Transition>
+
+    <!-- Training active pill — shows while a drill is running -->
+    <Transition name="cheatsheet-slide">
+      <div v-if="trainerActive && !trainerResult" class="mb-2 w-[288px]">
+        <div class="relative rounded-xl overflow-hidden bg-[#0c1a14]/95 border border-green-500/20 shadow-[0_4px_20px_rgba(0,0,0,0.6)]">
+          <div class="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-green-500/60 to-transparent" />
+          <div class="flex items-center gap-2.5 px-3 py-2">
+            <div class="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse flex-shrink-0" />
+            <span class="text-[10px] font-bold text-green-400 uppercase tracking-wider">Training</span>
+            <span class="text-[10px] text-gray-400 font-medium ml-1">
+              {{ SCENARIO_LABEL[trainerActive.scenario] ?? trainerActive.scenario }}
+            </span>
+            <span class="ml-auto text-[10px] text-gray-600 capitalize">{{ trainerActive.difficulty }}</span>
+          </div>
+        </div>
+      </div>
+    </Transition>
+
     <!-- Main panel -->
     <div class="relative w-[288px] rounded-2xl overflow-hidden shadow-[0_12px_48px_rgba(0,0,0,0.8)]">
       <!-- Background layers -->
@@ -192,6 +260,42 @@ import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue'
 
 const TOAST_DURATION = 3000
 const CHEATSHEET_DURATION = 7000
+const TRAINER_RESULT_DURATION = 8000
+
+// ── Trainer state ─────────────────────────────────────────────────────────────
+interface TrainerResult {
+  scenario: string
+  score: number
+  accuracy_pct: number
+  avg_reaction_ms: number
+  consistency_score: number
+  targets_hit: number
+  targets_missed: number
+}
+const trainerResult = ref<TrainerResult | null>(null)
+const trainerActive = ref<{ scenario: string; difficulty: string; duration_seconds: number } | null>(null)
+let trainerResultTimer: ReturnType<typeof setTimeout> | null = null
+
+function scoreColor(score: number): string {
+  if (score >= 80) return 'text-green-400'
+  if (score >= 60) return 'text-yellow-400'
+  return 'text-red-400'
+}
+function scoreAccentBg(score: number): string {
+  if (score >= 80) return 'bg-green-500/10 border-green-500/20'
+  if (score >= 60) return 'bg-yellow-500/10 border-yellow-500/20'
+  return 'bg-red-500/10 border-red-500/20'
+}
+const SCENARIO_LABEL: Record<string, string> = {
+  flick: 'Flick',
+  tracking: 'Tracking',
+  microadjust: 'Micro Adjust',
+  switching: 'Target Switch',
+}
+function dismissTrainerResult() {
+  trainerResult.value = null
+  if (trainerResultTimer) { clearTimeout(trainerResultTimer); trainerResultTimer = null }
+}
 
 const economyLabel = computed(() => {
   const c = data.value.yourCredits
@@ -324,6 +428,21 @@ onMounted(async () => {
     })
   )
   removeListeners.push(
+    window.api.on('overlay:trainer-started', (payload: unknown) => {
+      const p = payload as { scenario: string; difficulty: string; duration_seconds: number }
+      trainerActive.value = p
+      trainerResult.value = null
+    })
+  )
+  removeListeners.push(
+    window.api.on('overlay:trainer-result', (payload: unknown) => {
+      trainerActive.value = null
+      trainerResult.value = payload as TrainerResult
+      if (trainerResultTimer) clearTimeout(trainerResultTimer)
+      trainerResultTimer = setTimeout(dismissTrainerResult, TRAINER_RESULT_DURATION)
+    })
+  )
+  removeListeners.push(
     window.api.on('overlay:clip-bookmarked', (payload: unknown) => {
       const p = payload as { bookmarkCount?: number; elapsedSec?: number }
       const count = p?.bookmarkCount ?? 1
@@ -366,6 +485,7 @@ onUnmounted(() => {
   removeListeners.forEach(fn => fn())
   if (toastTimer) clearTimeout(toastTimer)
   if (cheatsheetTimer) clearTimeout(cheatsheetTimer)
+  if (trainerResultTimer) clearTimeout(trainerResultTimer)
   window.api.overlay.setInteractive(false)
 })
 </script>

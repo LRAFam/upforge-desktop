@@ -51,8 +51,14 @@ export class TrainerBridge {
   private _mainWindow: (() => BrowserWindow | null)
   private _pendingConfig: DrillConfig | null = null
 
+  private _onResultCallback?: (result: SessionResult) => void
+
   constructor(getMainWindow: () => BrowserWindow | null) {
     this._mainWindow = getMainWindow
+  }
+
+  setResultCallback(cb: (result: SessionResult) => void): void {
+    this._onResultCallback = cb
   }
 
   /** Resolve path to the bundled Godot trainer binary */
@@ -199,6 +205,7 @@ export class TrainerBridge {
         const result: SessionResult = JSON.parse(trimmed)
         log.info('[TrainerBridge] Received result, score:', result.score)
         this._mainWindow()?.webContents.send('trainer:session-result', result)
+        this._onResultCallback?.(result)
       } catch (e) {
         log.warn('[TrainerBridge] Bad JSON from Godot:', trimmed)
       }
