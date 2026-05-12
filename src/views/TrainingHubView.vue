@@ -27,6 +27,8 @@ interface AssignedDrill {
 
 // ── State ─────────────────────────────────────────────────────────────────────
 const launching = ref(false)
+const drillRunning = ref(false)    // true from launch success → until result received
+const showResultModal = ref(false) // completion modal
 const lastResult = ref<SessionResult | null>(null)
 const sessionHistory = ref<SessionResult[]>([])
 const activeDrill = ref<AssignedDrill | null>(null)
@@ -243,7 +245,7 @@ function drawHeatmap(result: SessionResult) {
 
 // ── Launch ─────────────────────────────────────────────────────────────────────
 async function launchDrill(drill: AssignedDrill) {
-  if (launching.value) return
+  if (launching.value || drillRunning.value) return
   activeDrill.value = drill
   launching.value = true
   try {
@@ -253,8 +255,11 @@ async function launchDrill(drill: AssignedDrill) {
       difficulty: drill.difficulty,
       context: { weakness: drill.weakness, score: drill.weakness_score },
     })
-    if (!result.ok) {
+    if (result.ok) {
+      drillRunning.value = true
+    } else {
       console.error('[TrainingHub] Launch failed:', result.error)
+      activeDrill.value = null
     }
   } finally {
     launching.value = false
@@ -271,7 +276,10 @@ onMounted(async () => {
     sessionHistory.value.unshift(r)
     if (activeDrill.value) completedDrills.value.add(activeDrill.value.scenario)
     activeDrill.value = null
-    drawHeatmap(r)
+    drillRunning.value = false
+    showResultModal.value = true
+    activeTab.value = 'drills'
+    nextTick(() => drawHeatmap(r))
   })
 
   // Fetch training history + coaching drills from API
@@ -308,6 +316,12 @@ async function launchFreePlay() {
   })
 }
 
+async function stopDrill() {
+  await window.api.trainer.kill()
+  drillRunning.value = false
+  activeDrill.value = null
+}
+
 const averageScore = computed(() => {
   if (!sessionHistory.value.length) return null
   return Math.round(sessionHistory.value.reduce((a, b) => a + b.score, 0) / sessionHistory.value.length)
@@ -324,7 +338,116 @@ const categoryIcon: Record<string, string> = {
 </script>
 
 <template>
-  <div class="h-full text-white flex flex-col overflow-hidden" style="background: #0b1219">
+  <div class="h-full text-white flex flex-col overflow-hidden relative" style="background: #0b1219">
+
+    <!-- ── DRILL RUNNING BANNER ──────────────────────────────────────────── -->
+    <Transition name="result-in">
+      <div
+        v-if="drillRunning && activeDrill"
+        class="flex-shrink-0 mx-4 mt-3 rounded-xl border border-teal-500/30 bg-teal-500/[0.07] overflow-hidden"
+      >
+        <div class="flex items-center justify-between px-4 py-2.5">
+          <div class="flex items-center gap-2.5">
+            <div class="w-2 h-2 rounded-full bg-teal-400 animate-pulse" />
+            <div>
+              <span class="text-[11px] font-bold text-teal-300 uppercase tracking-wider">
+                {{ SCENARIO_META[activeDrill.scenario]?.label ?? activeDrill.scenario }} in progress
+              </span>
+              <span class="ml-2 text-[10px] text-gray-500 capitalize">{{ activeDrill.difficulty }} · {{ activeDrill.duration_seconds }}s</span>
+            </div>
+          </div>
+          <button
+            class="text-[10px] font-bold text-gray-600 hover:text-red-400 border border-white/[0.07] hover:border-red-500/30 rounded-lg px-2.5 py-1 transition-all"
+            @click="stopDrill"
+          >✕ Stop</button>
+        </div>
+        <!-- pulse bar -->
+        <div class="h-px bg-gradient-to-r from-transparent via-teal-500/50 to-transparent animate-pulse" />
+      </div>
+    </Transition>
+
+    <!-- ── COMPLETION MODAL ───────────────────────────────────────────────── -->
+    <Transition name="modal-fade">
+      <div
+        v-if="showResultModal && lastResult"
+        class="absolute inset-0 z-50 flex items-center justify-center"
+        style="background: rgba(11,18,25,0.88); backdrop-filter: blur(8px)"
+        @click.self="showResultModal = false"
+      >
+        <div
+          class="w-[calc(100%-2rem)] max-w-sm rounded-2xl border overflow-hidden shadow-[0_24px_80px_rgba(0,0,0,0.9)]"
+          :class="scoreBg(lastResult.score)"
+        >
+          <!-- top accent -->
+          <div class="h-px bg-gradient-to-r from-transparent via-current to-transparent opacity-30" />
+
+          <!-- header -->
+          <div class="flex items-center justify-between px-5 pt-4 pb-0">
+            <div class="flex items-center gap-2">
+              <span :class="['text-xs font-bold uppercase tracking-widest', scoreColor(lastResult.score)]">
+                {{ SCENARIO_META[lastResult.scenario]?.label ?? lastResult.scenario }} Complete
+              </span>
+            </div>
+            <button class="text-gray-600 hover:text-gray-400 transition-colors text-lg leading-none" @click="showResultModal = false">✕</button>
+          </div>
+
+          <!-- score + grade -->
+          <div class="flex items-end gap-4 px-5 pt-3 pb-4">
+            <div class="flex flex-col">
+              <span :class="['text-[64px] font-black leading-none tabular-nums', scoreColor(lastResult.score)]">
+                {{ lastResult.score }}
+              </span>
+              <span class="text-[10px] font-bold text-gray-500 uppercase tracking-widest mt-1">{{ scoreLabel(lastResult.score) }}</span>
+              <span
+                v-if="scoreDelta(lastResult) !== null"
+                :class="['text-xs font-bold mt-1', scoreDelta(lastResult)! > 0 ? 'text-green-400' : scoreDelta(lastResult)! < 0 ? 'text-red-400' : 'text-gray-500']"
+              >
+                {{ scoreDelta(lastResult)! > 0 ? '▲' : scoreDelta(lastResult)! < 0 ? '▼' : '–' }}
+                {{ Math.abs(scoreDelta(lastResult)!) }} vs previous
+              </span>
+            </div>
+
+            <!-- score bar -->
+            <div class="flex-1 mb-2">
+              <div class="h-2 bg-white/[0.07] rounded-full overflow-hidden">
+                <div
+                  :class="['h-full rounded-full transition-all duration-700', lastResult.score >= 80 ? 'bg-green-500' : lastResult.score >= 60 ? 'bg-yellow-500' : 'bg-red-500']"
+                  :style="{ width: lastResult.score + '%' }"
+                />
+              </div>
+              <!-- stats grid -->
+              <div class="grid grid-cols-3 gap-2 mt-3">
+                <div class="bg-white/[0.05] rounded-xl px-3 py-2 text-center border border-white/[0.07]">
+                  <div class="text-sm font-black text-white tabular-nums">{{ lastResult.accuracy_pct.toFixed(1) }}<span class="text-gray-600 text-[9px] font-normal">%</span></div>
+                  <div class="text-[8px] text-gray-500 uppercase tracking-wide mt-0.5">Acc</div>
+                </div>
+                <div class="bg-white/[0.05] rounded-xl px-3 py-2 text-center border border-white/[0.07]">
+                  <div class="text-sm font-black text-white tabular-nums">{{ Math.round(lastResult.avg_reaction_ms) }}<span class="text-gray-600 text-[9px] font-normal">ms</span></div>
+                  <div class="text-[8px] text-gray-500 uppercase tracking-wide mt-0.5">React</div>
+                </div>
+                <div class="bg-white/[0.05] rounded-xl px-3 py-2 text-center border border-white/[0.07]">
+                  <div class="text-sm font-black text-white tabular-nums">{{ lastResult.targets_hit }}<span class="text-gray-600 text-[9px] font-normal">/{{ lastResult.targets_hit + lastResult.targets_missed }}</span></div>
+                  <div class="text-[8px] text-gray-500 uppercase tracking-wide mt-0.5">Hits</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- action row -->
+          <div class="flex gap-2 px-5 pb-4">
+            <button
+              class="flex-1 py-2.5 rounded-xl border border-white/[0.08] bg-white/[0.04] text-[12px] font-semibold text-gray-400 hover:bg-white/[0.08] transition-all"
+              @click="showResultModal = false"
+            >View Details</button>
+            <button
+              v-if="activeDrill"
+              class="flex-1 py-2.5 rounded-xl border border-teal-500/30 bg-teal-500/10 text-[12px] font-semibold text-teal-300 hover:bg-teal-500/20 transition-all"
+              @click="() => { showResultModal = false; launchDrill(assignedDrills.find(d => d.scenario === lastResult!.scenario) ?? assignedDrills[0]) }"
+            >▶ Play Again</button>
+          </div>
+        </div>
+      </div>
+    </Transition>
 
     <!-- Top bar -->
     <div
@@ -499,7 +622,7 @@ const categoryIcon: Record<string, string> = {
                   ? 'border-teal-500/20 bg-teal-500/[0.04] opacity-60'
                   : 'border-white/[0.07] bg-white/[0.02] hover:bg-white/[0.04] hover:border-white/[0.12] cursor-pointer'
               "
-              @click="!launching && !completedDrills.has(drill.scenario) && launchDrill(drill)"
+              @click="!launching && !drillRunning && !completedDrills.has(drill.scenario) && launchDrill(drill)"
             >
               <div class="flex items-stretch">
                 <!-- Scenario colour band -->
@@ -551,7 +674,7 @@ const categoryIcon: Record<string, string> = {
                   </div>
                 </div>
 
-                <!-- Launch / Done button -->
+                   <!-- Launch / Done button -->
                 <div class="flex-shrink-0 border-l border-white/[0.06]">
                   <button
                     v-if="completedDrills.has(drill.scenario)"
@@ -561,8 +684,16 @@ const categoryIcon: Record<string, string> = {
                     ✓ Done
                   </button>
                   <button
+                    v-else-if="drillRunning && activeDrill?.scenario === drill.scenario"
+                    class="h-full px-4 text-[10px] font-bold text-teal-400 flex items-center gap-1.5"
+                    disabled
+                  >
+                    <div class="w-1.5 h-1.5 rounded-full bg-teal-400 animate-pulse" />
+                    Running
+                  </button>
+                  <button
                     v-else
-                    :disabled="launching"
+                    :disabled="launching || drillRunning"
                     class="h-full px-4 text-sm font-bold text-gray-500 hover:text-white hover:bg-white/[0.06] transition-all disabled:opacity-40"
                     @click.stop="launchDrill(drill)"
                   >
@@ -674,7 +805,7 @@ const categoryIcon: Record<string, string> = {
 
             <!-- Launch button -->
             <button
-              :disabled="launching"
+              :disabled="launching || drillRunning"
               class="w-full py-2.5 text-xs font-bold transition-all disabled:opacity-40 flex items-center justify-center gap-2 text-teal-400 hover:text-teal-300 hover:bg-teal-500/[0.06]"
               @click="launchFreePlay"
             >
@@ -687,7 +818,7 @@ const categoryIcon: Record<string, string> = {
                 <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" />
                 <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
               </svg>
-              <span>{{ launching ? 'Launching…' : '▶ Launch Free Play' }}</span>
+              <span>{{ launching ? 'Launching…' : drillRunning ? '⏳ Drill running…' : '▶ Launch Free Play' }}</span>
             </button>
           </div>
         </div>
@@ -916,5 +1047,21 @@ const categoryIcon: Record<string, string> = {
 .result-in-enter-from {
   opacity: 0;
   transform: translateY(-6px);
+}
+.modal-fade-enter-active {
+  transition: opacity 0.2s ease;
+}
+.modal-fade-leave-active {
+  transition: opacity 0.15s ease;
+}
+.modal-fade-enter-from,
+.modal-fade-leave-to {
+  opacity: 0;
+}
+.modal-fade-enter-active > div {
+  transition: transform 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+.modal-fade-enter-from > div {
+  transform: scale(0.92) translateY(10px);
 }
 </style>

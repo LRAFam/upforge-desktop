@@ -758,8 +758,8 @@ export function setupIpcHandlers(
   // Forward completed session results to the overlay AND sync to the API
   const apiBase = process.env['VITE_API_URL'] || 'https://api.upforge.gg'
   trainerBridge?.setResultCallback((result) => {
+    // Send result to overlay window (only renders if overlay is already open)
     sendOverlayData('overlay:trainer-result', result)
-    showOverlay()
 
     // Fire-and-forget: persist session to Laravel API
     const token = auth.getToken()
