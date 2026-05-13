@@ -30,6 +30,7 @@ interface AssignedDrill {
 const launching = ref(false)
 const drillRunning = ref(false)    // true from launch success → until result received
 const showResultModal = ref(false) // completion modal
+const isPB = ref(false) // whether last drill result is a personal best
 const drillCardExporting = ref(false)
 const drillCardDone = ref(false)
 const weekCardExporting = ref(false)
@@ -394,6 +395,7 @@ onMounted(async () => {
       nextTick(() => drawHeatmap(r))
     }
     window.api.trainer.getHistory().then(async h => {
+      const prevBest = apiHistory.value?.by_scenario[r.scenario]?.best_score ?? null
       apiHistory.value = h
       const newAchs = await achievements.check({
         totalDrills: h?.total ?? 0,
@@ -403,6 +405,7 @@ onMounted(async () => {
         lastReactionMs: r.avg_reaction_ms,
       })
       if (newAchs.length) window.__ufAchievementUnlocked?.(newAchs)
+      isPB.value = r.score > 0 && (prevBest === null || r.score > prevBest)
     })
   })
 
@@ -482,6 +485,10 @@ const averageScore = computed(() => {
   if (!sessionHistory.value.length) return null
   return Math.round(sessionHistory.value.reduce((a, b) => a + b.score, 0) / sessionHistory.value.length)
 })
+
+const hasAnyPersonalBest = computed(() =>
+  RADAR_SCENARIOS.some(s => (apiHistory.value?.by_scenario[s]?.best_score ?? null) !== null)
+)
 
 // ── Drill share card export ────────────────────────────────────────────────────
 function _roundRectPath(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number) {
@@ -1059,6 +1066,9 @@ const CATEGORY_ICON: Record<string, string> = {
                 <svg v-else-if="scoreDelta(lastResult)! < 0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="w-3 h-3"><polyline points="6 9 12 15 18 9"/></svg>
                 <span v-else>–</span>
                 {{ Math.abs(scoreDelta(lastResult)!) }} vs previous
+              </span>
+              <span v-if="isPB && lastResult.score > 0" class="text-xs font-bold text-yellow-400 flex items-center gap-1 mt-0.5">
+                🏆 Personal Best!
               </span>
             </div>
 
@@ -1665,6 +1675,31 @@ const CATEGORY_ICON: Record<string, string> = {
               {{ trainingStats.improvement === null ? '—' : (trainingStats.improvement > 0 ? '+' : '') + trainingStats.improvement }}
             </div>
             <div class="text-[9px] text-gray-500 mt-0.5 uppercase tracking-wide">vs last week</div>
+          </div>
+        </div>
+
+        <!-- Personal Records trophy row -->
+        <div v-if="hasAnyPersonalBest" class="px-4 mt-4">
+          <div class="rounded-xl border border-white/[0.07] overflow-hidden" style="background: #0d1520">
+            <div class="flex items-center gap-2 px-4 py-2.5 border-b border-white/[0.05]">
+              <span class="text-[9px] font-black uppercase tracking-[0.18em] text-gray-500">Personal Records</span>
+              <div class="flex-1 h-px bg-white/[0.04]" />
+              <span class="text-sm leading-none">🏆</span>
+            </div>
+            <div class="flex divide-x divide-white/[0.05]">
+              <div
+                v-for="s in RADAR_SCENARIOS"
+                :key="s"
+                class="flex-1 flex flex-col items-center py-3 px-1 gap-1"
+              >
+                <div class="w-2 h-2 rounded-full flex-shrink-0" :class="SCENARIO_META[s].dot" />
+                <span class="text-[8px] text-gray-500 font-semibold uppercase tracking-wide text-center leading-tight">{{ SCENARIO_META[s].label }}</span>
+                <span
+                  class="text-sm font-black tabular-nums"
+                  :class="(apiHistory?.by_scenario[s]?.best_score ?? null) != null ? scoreColor(apiHistory!.by_scenario[s].best_score!) : 'text-gray-700'"
+                >{{ apiHistory?.by_scenario[s]?.best_score ?? '—' }}</span>
+              </div>
+            </div>
           </div>
         </div>
 

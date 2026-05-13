@@ -467,7 +467,21 @@
         </span>
         <span v-if="avgScore !== null" class="text-xs text-gray-700">avg {{ avgScore }}</span>
       </div>
-      <button v-if="analyses.length > 0" class="text-xs text-gray-600 hover:text-gray-400 transition-colors" @click="openBrowser">View all</button>
+      <button v-if="analyses.length > 0" class="text-xs text-gray-600 hover:text-gray-400 transition-colors" @click="router.push('/history')">View all</button>
+    </div>
+
+    <!-- Score trend mini-chart -->
+    <div v-if="scoreChartData" class="mt-1.5 px-0.5">
+      <svg width="100%" :height="scoreChartData.H" :viewBox="`0 0 ${scoreChartData.W} ${scoreChartData.H}`" preserveAspectRatio="none" style="height:32px; display:block">
+        <defs>
+          <linearGradient id="score-area-grad" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" :stop-color="scoreChartData.up ? '#4ade80' : '#f87171'" stop-opacity="0.35"/>
+            <stop offset="100%" :stop-color="scoreChartData.up ? '#4ade80' : '#f87171'" stop-opacity="0"/>
+          </linearGradient>
+        </defs>
+        <path :d="scoreChartData.areaPath" fill="url(#score-area-grad)" />
+        <path :d="scoreChartData.linePath" fill="none" :stroke="scoreChartData.up ? '#4ade80' : '#f87171'" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
+      </svg>
     </div>
 
     <!-- Loading skeleton -->
@@ -682,6 +696,24 @@ const scoreTrend = computed<number | null>(() => {
   const olderAvg = older.reduce((s, a) => s + (a.overall_score ?? 0), 0) / older.length
   const diff = Math.round(recentAvg - olderAvg)
   return diff === 0 ? null : diff
+})
+
+const scoreChartData = computed(() => {
+  const scored = [...analyses.value].filter(a => a.overall_score != null).reverse().slice(0, 20)
+  if (scored.length < 2) return null
+  const scores = scored.map(a => a.overall_score!)
+  const W = 100, H = 32, pad = 2
+  const pts = scores.map((s, i) => {
+    const x = pad + (i / (scores.length - 1)) * (W - pad * 2)
+    const y = H - pad - (s / 100) * (H - pad * 2)
+    return `${x.toFixed(1)} ${y.toFixed(1)}`
+  })
+  const areaPath = `M ${pts[0]} ` + pts.slice(1).map(p => `L ${p}`).join(' ') +
+    ` L ${(pad + (W - pad * 2)).toFixed(1)} ${H} L ${pad} ${H} Z`
+  const linePath = `M ${pts[0]} ` + pts.slice(1).map(p => `L ${p}`).join(' ')
+  const last = scores[scores.length - 1]
+  const up = last >= scores[0]
+  return { areaPath, linePath, W, H, up, last }
 })
 
 const currentStreak = computed<number>(() => {

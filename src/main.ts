@@ -17,6 +17,7 @@ import SquadView from './views/SquadView.vue'
 import PerformanceView from './views/PerformanceView.vue'
 import VODReviewView from './views/VODReviewView.vue'
 import TrainingHubView from './views/TrainingHubView.vue'
+import CoachingHistoryView from './views/CoachingHistoryView.vue'
 import DevView from './views/DevView.vue'
 
 const PUBLIC_ROUTES = ['/login', '/welcome', '/splash', '/overlay']
@@ -38,6 +39,7 @@ const router = createRouter({
     { path: '/performance', component: PerformanceView },
     { path: '/vod-review', component: VODReviewView },
     { path: '/training', component: TrainingHubView },
+    { path: '/history', component: CoachingHistoryView },
     { path: '/dev', component: DevView },
   ]
 })
