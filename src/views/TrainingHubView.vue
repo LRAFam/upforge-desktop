@@ -341,10 +341,34 @@ onMounted(async () => {
     }
     activeDrill.value = null
     drillRunning.value = false
-    showResultModal.value = true
-    activeTab.value = 'drills'
-    nextTick(() => drawHeatmap(r))
-    // Refresh API history so Progress tab reflects the new session
+
+    if (warmupActive.value) {
+      warmupResults.value.push(r)
+      const nextStep = warmupStep.value + 1
+      warmupStep.value = nextStep
+      if (nextStep < WARMUP_SEQUENCE.length) {
+        // Count down 5s then auto-advance to next step
+        warmupCountdown.value = 5
+        warmupCountdownInterval = setInterval(() => {
+          warmupCountdown.value--
+          if (warmupCountdown.value <= 0) {
+            clearWarmupTimer()
+            launchWarmupStep(nextStep)
+          }
+        }, 1000)
+      } else {
+        warmupActive.value = false
+        warmupStep.value = 0
+        // All steps done — show the final result modal
+        showResultModal.value = true
+        activeTab.value = 'drills'
+        nextTick(() => drawHeatmap(r))
+      }
+    } else {
+      showResultModal.value = true
+      activeTab.value = 'drills'
+      nextTick(() => drawHeatmap(r))
+    }
     window.api.trainer.getHistory().then(h => { apiHistory.value = h })
   })
 
@@ -382,6 +406,7 @@ onMounted(async () => {
 
 onUnmounted(() => {
   removeListener?.()
+  clearWarmupTimer()
 })
 
 // ── Free play ──────────────────────────────────────────────────────────────────
@@ -421,6 +446,113 @@ const averageScore = computed(() => {
   if (!sessionHistory.value.length) return null
   return Math.round(sessionHistory.value.reduce((a, b) => a + b.score, 0) / sessionHistory.value.length)
 })
+
+// ── Training stats (from API history) ─────────────────────────────────────────
+const trainingStats = computed(() => {
+  const sessions = apiHistory.value?.sessions ?? []
+  const now = new Date()
+  const msPerDay = 86400000
+  const weekAgo = new Date(now.getTime() - 7 * msPerDay)
+  const twoWeeksAgo = new Date(now.getTime() - 14 * msPerDay)
+
+  const thisWeek = sessions.filter(s => new Date(s.completed_at) >= weekAgo)
+  const prevWeek = sessions.filter(s => {
+    const d = new Date(s.completed_at)
+    return d >= twoWeeksAgo && d < weekAgo
+  })
+  const thisWeekAvg = thisWeek.length
+    ? Math.round(thisWeek.reduce((a, s) => a + s.score, 0) / thisWeek.length)
+    : null
+  const prevWeekAvg = prevWeek.length
+    ? Math.round(prevWeek.reduce((a, s) => a + s.score, 0) / prevWeek.length)
+    : null
+  const improvement = thisWeekAvg !== null && prevWeekAvg !== null ? thisWeekAvg - prevWeekAvg : null
+
+  // Streak: consecutive days back from today with at least one session
+  const dayKeys = new Set(sessions.map(s => s.completed_at.slice(0, 10)))
+  let streak = 0
+  for (let i = 0; i < 60; i++) {
+    const key = new Date(now.getTime() - i * msPerDay).toISOString().slice(0, 10)
+    if (dayKeys.has(key)) {
+      streak++
+    } else if (i > 0) {
+      break
+    }
+  }
+
+  return {
+    thisWeekCount: thisWeek.length,
+    improvement,
+    streak,
+    totalSessions: sessions.length,
+    thisWeekAvg,
+  }
+})
+
+// ── Daily challenge (deterministic from date) ─────────────────────────────────
+const dailyChallenge = computed(() => {
+  const now = new Date()
+  const seed = now.getFullYear() * 10000 + (now.getMonth() + 1) * 100 + now.getDate()
+  const scenario = RADAR_SCENARIOS[seed % RADAR_SCENARIOS.length] as AssignedDrill['scenario']
+  const targets = [60, 65, 70, 75, 80] as const
+  const target = targets[Math.floor(seed / 10) % targets.length]
+  const todayStr = now.toISOString().slice(0, 10)
+  const completed =
+    (apiHistory.value?.sessions ?? []).some(
+      s => s.scenario === scenario && s.score >= target && s.completed_at.startsWith(todayStr)
+    ) || sessionHistory.value.some(s => s.scenario === scenario && s.score >= target)
+  return { scenario, target, completed }
+})
+
+// ── Warm-up routine ───────────────────────────────────────────────────────────
+const WARMUP_SEQUENCE: Array<{ scenario: AssignedDrill['scenario']; difficulty: AssignedDrill['difficulty']; duration_seconds: number }> = [
+  { scenario: 'flick', difficulty: 'easy', duration_seconds: 30 },
+  { scenario: 'tracking', difficulty: 'easy', duration_seconds: 30 },
+  { scenario: 'microadjust', difficulty: 'easy', duration_seconds: 30 },
+  { scenario: 'switching', difficulty: 'easy', duration_seconds: 30 },
+  { scenario: 'duel', difficulty: 'easy', duration_seconds: 30 },
+]
+const warmupActive = ref(false)
+const warmupStep = ref(0)
+const warmupResults = ref<SessionResult[]>([])
+const warmupCountdown = ref(0)
+let warmupAdvanceTimer: ReturnType<typeof setTimeout> | null = null
+let warmupCountdownInterval: ReturnType<typeof setInterval> | null = null
+
+function clearWarmupTimer() {
+  if (warmupAdvanceTimer) { clearTimeout(warmupAdvanceTimer); warmupAdvanceTimer = null }
+  if (warmupCountdownInterval) { clearInterval(warmupCountdownInterval); warmupCountdownInterval = null }
+  warmupCountdown.value = 0
+}
+
+async function launchWarmupStep(step: number) {
+  clearWarmupTimer()
+  const s = WARMUP_SEQUENCE[step]
+  if (!s) return
+  await launchDrill({
+    scenario: s.scenario,
+    difficulty: s.difficulty,
+    duration_seconds: s.duration_seconds,
+    weakness: 'warmup',
+    weakness_score: 0,
+    reason: `Warm-up step ${step + 1}/${WARMUP_SEQUENCE.length}`,
+  })
+}
+
+async function startWarmup() {
+  warmupActive.value = true
+  warmupStep.value = 0
+  warmupResults.value = []
+  await launchWarmupStep(0)
+}
+
+function cancelWarmup() {
+  clearWarmupTimer()
+  warmupActive.value = false
+  warmupStep.value = 0
+  warmupResults.value = []
+  window.api.trainer.kill()
+}
 
 // SVG icon paths for scenario types
 const SCENARIO_ICON: Record<string, string> = {
@@ -476,6 +608,45 @@ const CATEGORY_ICON: Record<string, string> = {
         </div>
         <!-- pulse bar -->
         <div class="h-px bg-gradient-to-r from-transparent via-teal-500/50 to-transparent animate-pulse" />
+      </div>
+    </Transition>
+
+    <!-- ── WARMUP BETWEEN-STEPS BANNER ──────────────────────────────────── -->
+    <Transition name="result-in">
+      <div
+        v-if="warmupActive && !drillRunning && warmupStep < WARMUP_SEQUENCE.length"
+        class="flex-shrink-0 mx-4 mt-3 rounded-xl border border-amber-500/30 bg-amber-500/[0.07] overflow-hidden"
+      >
+        <div class="flex items-center justify-between px-4 py-2.5">
+          <div class="flex items-center gap-2.5">
+            <div class="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
+            <div>
+              <span class="text-[11px] font-bold text-amber-300 uppercase tracking-wider">
+                Warm-Up {{ warmupStep }}/{{ WARMUP_SEQUENCE.length }} ·
+                Next: {{ SCENARIO_META[WARMUP_SEQUENCE[warmupStep]?.scenario ?? 'flick']?.label }}
+              </span>
+              <span class="ml-2 text-[10px] text-gray-500">Auto-starting in {{ warmupCountdown }}s…</span>
+            </div>
+          </div>
+          <div class="flex items-center gap-2">
+            <button
+              class="text-[10px] font-bold text-amber-400 border border-amber-500/30 hover:bg-amber-500/[0.1] rounded-lg px-2.5 py-1 transition-all"
+              @click="clearWarmupTimer(); launchWarmupStep(warmupStep)"
+            >Start Now</button>
+            <button
+              class="text-[10px] font-bold text-gray-600 hover:text-red-400 border border-white/[0.07] hover:border-red-500/30 rounded-lg px-2.5 py-1 transition-all"
+              @click="cancelWarmup"
+            >Cancel</button>
+          </div>
+        </div>
+        <div class="h-px bg-gradient-to-r from-transparent via-amber-500/40 to-transparent" />
+        <!-- Step progress dots -->
+        <div class="flex items-center justify-center gap-1.5 py-2">
+          <div
+            v-for="(step, si) in WARMUP_SEQUENCE" :key="si"
+            :class="['w-1.5 h-1.5 rounded-full transition-all', si < warmupStep ? 'bg-amber-400' : si === warmupStep ? 'bg-amber-400/50 ring-1 ring-amber-400/50' : 'bg-white/10']"
+          />
+        </div>
       </div>
     </Transition>
 
@@ -569,21 +740,16 @@ const CATEGORY_ICON: Record<string, string> = {
     </Transition>
 
     <!-- Top bar -->
-    <div
-      class="flex items-center justify-between px-4 pt-3 pb-0 flex-shrink-0"
-    >
+    <div class="flex items-center justify-between px-4 pt-3 pb-0 flex-shrink-0">
       <div class="flex items-center gap-3">
         <h1 class="text-sm font-black tracking-tight">Aim Training</h1>
-        <span
-          class="text-[9px] font-bold bg-teal-500/10 text-teal-400 border border-teal-500/25 rounded-full px-2 py-0.5 uppercase tracking-widest"
-          >Beta</span
-        >
+        <span class="text-[9px] font-bold bg-teal-500/10 text-teal-400 border border-teal-500/25 rounded-full px-2 py-0.5 uppercase tracking-widest">Beta</span>
       </div>
-      <div v-if="averageScore !== null" class="flex items-center gap-2">
-        <span class="text-[10px] text-gray-500">Session avg</span>
-        <span :class="['text-sm font-black tabular-nums', scoreColor(averageScore)]">{{
-          averageScore
-        }}</span>
+      <!-- Streak badge when > 0 -->
+      <div v-if="trainingStats.streak > 0" class="flex items-center gap-1.5">
+        <span class="text-[10px]">🔥</span>
+        <span class="text-[11px] font-black text-orange-400">{{ trainingStats.streak }}</span>
+        <span class="text-[9px] text-gray-600">{{ trainingStats.streak === 1 ? 'day' : 'days' }}</span>
       </div>
     </div>
 
@@ -601,13 +767,10 @@ const CATEGORY_ICON: Record<string, string> = {
         @click="activeTab = tab"
       >
         <span class="flex items-center gap-1.5">
-          <!-- Drills: crosshair -->
           <svg v-if="tab === 'drills'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" class="w-3.5 h-3.5"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4.5"/><circle cx="12" cy="12" r="1.2" fill="currentColor" stroke="none"/></svg>
-          <!-- Progress: trend line -->
           <svg v-else-if="tab === 'progress'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" class="w-3.5 h-3.5"><polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/><polyline points="16 7 22 7 22 13"/></svg>
-          <!-- Coaching: list -->
           <svg v-else viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" class="w-3.5 h-3.5"><line x1="9" y1="6" x2="20" y2="6"/><line x1="9" y1="12" x2="20" y2="12"/><line x1="9" y1="18" x2="20" y2="18"/><circle cx="4" cy="6" r="1.5" fill="currentColor" stroke="none"/><circle cx="4" cy="12" r="1.5" fill="currentColor" stroke="none"/><circle cx="4" cy="18" r="1.5" fill="currentColor" stroke="none"/></svg>
-          {{ tab === 'drills' ? 'Drills' : tab === 'progress' ? 'Progress' : 'Coaching' }}
+          {{ tab === 'drills' ? 'Train' : tab === 'progress' ? 'Progress' : 'Coaching' }}
         </span>
         <span
           v-if="tab === 'coaching' && coachingDrills.length"
@@ -615,6 +778,35 @@ const CATEGORY_ICON: Record<string, string> = {
           >{{ coachingDrills.length }}</span
         >
       </button>
+    </div>
+
+    <!-- Stats strip (streak / this week / improvement) — always visible -->
+    <div class="flex mx-4 mt-3 rounded-xl border border-white/[0.06] overflow-hidden flex-shrink-0" style="background: #0d1520">
+      <div class="flex-1 flex flex-col items-center py-2.5 gap-0.5">
+        <span class="text-sm font-black tabular-nums" :class="trainingStats.streak > 0 ? 'text-orange-400' : 'text-gray-700'">
+          {{ trainingStats.streak > 0 ? trainingStats.streak : '—' }}
+        </span>
+        <span class="text-[8px] text-gray-600 uppercase tracking-wide">Streak</span>
+      </div>
+      <div class="w-px bg-white/[0.05]" />
+      <div class="flex-1 flex flex-col items-center py-2.5 gap-0.5">
+        <span class="text-sm font-black tabular-nums text-white">{{ trainingStats.thisWeekCount }}</span>
+        <span class="text-[8px] text-gray-600 uppercase tracking-wide">This week</span>
+      </div>
+      <div class="w-px bg-white/[0.05]" />
+      <div class="flex-1 flex flex-col items-center py-2.5 gap-0.5">
+        <span
+          :class="['text-sm font-black tabular-nums', trainingStats.improvement === null ? 'text-gray-700' : trainingStats.improvement > 0 ? 'text-green-400' : trainingStats.improvement < 0 ? 'text-red-400' : 'text-gray-400']"
+        >
+          {{ trainingStats.improvement === null ? '—' : (trainingStats.improvement > 0 ? '+' : '') + trainingStats.improvement }}
+        </span>
+        <span class="text-[8px] text-gray-600 uppercase tracking-wide">vs last week</span>
+      </div>
+      <div class="w-px bg-white/[0.05]" />
+      <div class="flex-1 flex flex-col items-center py-2.5 gap-0.5">
+        <span class="text-sm font-black tabular-nums text-white">{{ trainingStats.totalSessions }}</span>
+        <span class="text-[8px] text-gray-600 uppercase tracking-wide">All time</span>
+      </div>
     </div>
 
     <!-- Divider -->
@@ -625,6 +817,70 @@ const CATEGORY_ICON: Record<string, string> = {
 
       <!-- ── DRILLS TAB ──────────────────────────────────────────────── -->
       <template v-if="activeTab === 'drills'">
+
+        <!-- Daily Challenge -->
+        <div class="px-4 mt-4">
+          <div
+            class="rounded-xl border overflow-hidden"
+            :class="dailyChallenge.completed ? 'border-teal-500/30 bg-teal-500/[0.05]' : 'border-amber-500/20 bg-amber-500/[0.04]'"
+          >
+            <div class="flex items-center gap-3 px-4 py-3">
+              <div :class="['w-8 h-8 rounded-lg flex items-center justify-center text-base flex-shrink-0', dailyChallenge.completed ? 'bg-teal-500/10' : 'bg-amber-500/10']">
+                {{ dailyChallenge.completed ? '✅' : '🎯' }}
+              </div>
+              <div class="flex-1 min-w-0">
+                <div class="flex items-center gap-2 mb-0.5">
+                  <span class="text-[9px] font-black uppercase tracking-[0.18em]" :class="dailyChallenge.completed ? 'text-teal-400' : 'text-amber-400'">Daily Challenge</span>
+                  <span v-if="dailyChallenge.completed" class="text-[9px] font-bold text-teal-400">Complete!</span>
+                </div>
+                <p class="text-xs font-bold text-white">
+                  Score <span :class="dailyChallenge.completed ? 'text-teal-300' : 'text-amber-300'">{{ dailyChallenge.target }}+</span>
+                  on {{ SCENARIO_META[dailyChallenge.scenario]?.label }}
+                </p>
+              </div>
+              <button
+                v-if="!dailyChallenge.completed"
+                :disabled="launching || drillRunning"
+                class="flex-shrink-0 flex items-center gap-1.5 text-[10px] font-bold text-amber-400 border border-amber-500/30 hover:bg-amber-500/[0.08] rounded-lg px-3 py-1.5 transition-all disabled:opacity-40"
+                @click="launchDrill({ scenario: dailyChallenge.scenario, difficulty: 'medium', duration_seconds: 60, weakness: 'challenge', weakness_score: 0, reason: `Daily challenge: score ${dailyChallenge.target}+` })"
+              >
+                <svg viewBox="0 0 24 24" fill="currentColor" class="w-2.5 h-2.5"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                Go
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Warm-Up Routine -->
+        <div class="px-4 mt-3">
+          <div class="rounded-xl border border-white/[0.07] overflow-hidden" style="background: #0d1520">
+            <div class="flex items-center gap-3 px-4 py-3">
+              <div class="w-8 h-8 rounded-lg bg-violet-500/10 border border-violet-500/20 flex items-center justify-center text-base flex-shrink-0">⚡</div>
+              <div class="flex-1 min-w-0">
+                <div class="flex items-center gap-2 mb-0.5">
+                  <span class="text-[9px] font-black uppercase tracking-[0.18em] text-violet-400">Quick Warm-Up</span>
+                  <span class="text-[9px] text-gray-600">5 exercises · ~2.5 min</span>
+                </div>
+                <!-- Step pills -->
+                <div class="flex gap-1 flex-wrap">
+                  <span
+                    v-for="(step, si) in WARMUP_SEQUENCE" :key="si"
+                    class="text-[8px] font-bold px-1.5 py-px rounded-full border"
+                    :class="[SCENARIO_META[step.scenario]?.bg, SCENARIO_META[step.scenario]?.border, SCENARIO_META[step.scenario]?.color]"
+                  >{{ SCENARIO_META[step.scenario]?.label }} 30s</span>
+                </div>
+              </div>
+              <button
+                :disabled="launching || drillRunning || warmupActive"
+                class="flex-shrink-0 flex items-center gap-1.5 text-[10px] font-bold text-violet-400 border border-violet-500/30 hover:bg-violet-500/[0.08] rounded-lg px-3 py-1.5 transition-all disabled:opacity-40"
+                @click="startWarmup"
+              >
+                <svg viewBox="0 0 24 24" fill="currentColor" class="w-2.5 h-2.5"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                Start
+              </button>
+            </div>
+          </div>
+        </div>
 
         <!-- Last result card -->
         <Transition name="result-in">
@@ -975,8 +1231,37 @@ const CATEGORY_ICON: Record<string, string> = {
         </div>
       </template>
 
-      <!-- ── PROGRESS TAB ────────────────────────────────────────────── -->
+      <!-- ── PROGRESS TAB ────────────────────────────────────────────────── -->
       <template v-if="activeTab === 'progress'">
+        <!-- Stats summary cards -->
+        <div class="px-4 mt-4 grid grid-cols-2 gap-2">
+          <div class="rounded-xl border border-white/[0.07] px-4 py-3" style="background: #0d1520">
+            <div class="text-xl font-black tabular-nums text-white">{{ trainingStats.totalSessions }}</div>
+            <div class="text-[9px] text-gray-500 mt-0.5 uppercase tracking-wide">Total sessions</div>
+          </div>
+          <div class="rounded-xl border border-white/[0.07] px-4 py-3" style="background: #0d1520">
+            <div class="text-xl font-black tabular-nums" :class="trainingStats.streak > 0 ? 'text-orange-400' : 'text-gray-700'">
+              {{ trainingStats.streak > 0 ? trainingStats.streak : '—' }}
+            </div>
+            <div class="text-[9px] text-gray-500 mt-0.5 uppercase tracking-wide">Day streak</div>
+          </div>
+          <div class="rounded-xl border border-white/[0.07] px-4 py-3" style="background: #0d1520">
+            <div class="text-xl font-black tabular-nums" :class="trainingStats.thisWeekAvg !== null ? scoreColor(trainingStats.thisWeekAvg) : 'text-gray-700'">
+              {{ trainingStats.thisWeekAvg ?? '—' }}
+            </div>
+            <div class="text-[9px] text-gray-500 mt-0.5 uppercase tracking-wide">Avg this week</div>
+          </div>
+          <div class="rounded-xl border border-white/[0.07] px-4 py-3" style="background: #0d1520">
+            <div
+              class="text-xl font-black tabular-nums"
+              :class="trainingStats.improvement === null ? 'text-gray-700' : trainingStats.improvement > 0 ? 'text-green-400' : trainingStats.improvement < 0 ? 'text-red-400' : 'text-gray-400'"
+            >
+              {{ trainingStats.improvement === null ? '—' : (trainingStats.improvement > 0 ? '+' : '') + trainingStats.improvement }}
+            </div>
+            <div class="text-[9px] text-gray-500 mt-0.5 uppercase tracking-wide">vs last week</div>
+          </div>
+        </div>
+
         <div class="px-4 mt-4">
           <div v-if="loadingHistory" class="flex items-center justify-center py-8 gap-2">
             <svg class="w-4 h-4 animate-spin text-gray-600" fill="none" viewBox="0 0 24 24">
