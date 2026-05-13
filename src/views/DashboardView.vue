@@ -350,27 +350,83 @@
     <!-- Last insight card -->
     <div
       v-if="lastInsight"
-      class="bg-white/[0.02] border border-white/[0.05] rounded-xl overflow-hidden"
+      class="relative bg-white/[0.02] border border-white/[0.05] rounded-xl overflow-hidden"
     >
-      <div class="flex items-start gap-2.5 px-3 py-2.5">
-        <div
-          class="w-7 h-7 rounded-lg flex-shrink-0 overflow-hidden flex items-center justify-center"
-          :style="lastInsight.agent ? { backgroundColor: getAgentColor(lastInsight.agent) + '22' } : { backgroundColor: 'rgba(239,68,68,0.1)' }"
-        >
-          <img v-if="lastInsight.agent && getAgentImage(lastInsight.agent)" :src="getAgentImage(lastInsight.agent)" class="w-full h-full object-cover object-top" />
-          <svg v-else class="w-3.5 h-3.5 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636-.707.707M21 12h-1M4 12H3m3.343-5.657-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"/>
-          </svg>
+      <!-- Left red accent bar -->
+      <div class="absolute left-0 top-0 bottom-0 w-[3px] bg-gradient-to-b from-[#ff4655] to-orange-600 rounded-l-xl" />
+
+      <div class="pl-5 pr-3 pt-3 pb-3 space-y-2">
+        <!-- Header: label + date + link -->
+        <div class="flex items-center justify-between">
+          <span class="text-[10px] font-bold uppercase tracking-widest text-gray-600">Last Coaching Result</span>
+          <div class="flex items-center gap-2">
+            <span v-if="lastInsight.date" class="text-[10px] text-gray-700">{{ formatRelativeTime(lastInsight.date) }}</span>
+            <button
+              v-if="lastInsight.analysisId"
+              class="text-xs text-gray-600 hover:text-gray-300 transition-colors"
+              @click="openAnalysis(lastInsight.analysisId!)"
+            >↗</button>
+          </div>
         </div>
-        <div class="flex-1 min-w-0">
-          <p class="text-xs font-semibold uppercase tracking-wider text-gray-600 mb-0.5">Focus from last session</p>
-          <p class="text-xs text-gray-300 leading-snug line-clamp-2">{{ lastInsight.text }}</p>
+
+        <!-- Agent + score row -->
+        <div class="flex items-center gap-3">
+          <!-- Agent portrait -->
+          <div
+            class="w-10 h-10 rounded-xl flex-shrink-0 overflow-hidden flex items-center justify-center"
+            :style="lastInsight.agent ? { backgroundColor: getAgentColor(lastInsight.agent) + '22', border: `1px solid ${getAgentColor(lastInsight.agent)}40` } : { backgroundColor: 'rgba(255,70,85,0.1)', border: '1px solid rgba(255,70,85,0.2)' }"
+          >
+            <img v-if="lastInsight.agent && getAgentImage(lastInsight.agent)" :src="getAgentImage(lastInsight.agent)" class="w-full h-full object-cover object-top" />
+            <svg v-else class="w-5 h-5 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636-.707.707M21 12h-1M4 12H3m3.343-5.657-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"/>
+            </svg>
+          </div>
+
+          <!-- Score + grade -->
+          <div class="flex-1 min-w-0">
+            <div class="flex items-baseline gap-1.5">
+              <span
+                class="text-2xl font-black tabular-nums leading-none"
+                :class="lastInsight.score >= 80 ? 'text-green-400' : lastInsight.score >= 60 ? 'text-yellow-400' : 'text-red-400'"
+              >{{ lastInsight.score }}</span>
+              <span class="text-xs text-gray-600">/100</span>
+              <span
+                class="text-xs font-bold px-1.5 py-0.5 rounded-full ml-1"
+                :class="scoreGradeBadgeClass(lastInsight.score)"
+              >{{ scoreGrade(lastInsight.score) }}</span>
+            </div>
+            <div class="mt-1 w-full h-1 bg-white/[0.06] rounded-full overflow-hidden">
+              <div
+                class="h-full rounded-full"
+                :class="lastInsight.score >= 80 ? 'bg-green-500' : lastInsight.score >= 60 ? 'bg-yellow-500' : 'bg-red-500'"
+                :style="{ width: lastInsight.score + '%' }"
+              />
+            </div>
+          </div>
         </div>
+
+        <!-- Coaching focus text -->
+        <p class="text-xs text-gray-400 leading-relaxed line-clamp-2 pl-1">
+          <span class="text-gray-600 font-semibold uppercase tracking-wider text-[10px]">Focus · </span>{{ lastInsight.text }}
+        </p>
+
+        <!-- Train Now button -->
         <button
-          v-if="lastInsight.analysisId"
-          class="flex-shrink-0 text-xs text-gray-600 hover:text-gray-300 transition-colors mt-0.5"
-          @click="openAnalysis(lastInsight!.analysisId!)"
-        >↗</button>
+          :disabled="lastInsightTraining"
+          class="w-full flex items-center justify-center gap-2 py-2 text-xs font-semibold rounded-lg transition-all disabled:opacity-50 text-white/90 hover:text-white"
+          style="background: linear-gradient(135deg, rgba(255,70,85,0.15), rgba(220,38,38,0.15)); border: 1px solid rgba(255,70,85,0.2);"
+          @click="trainLastInsight"
+        >
+          <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <circle cx="12" cy="12" r="10" stroke-width="1.5"/>
+            <circle cx="12" cy="12" r="4" stroke-width="1.5"/>
+            <line x1="12" y1="2" x2="12" y2="6" stroke-width="1.5"/>
+            <line x1="12" y1="18" x2="12" y2="22" stroke-width="1.5"/>
+            <line x1="2" y1="12" x2="6" y2="12" stroke-width="1.5"/>
+            <line x1="18" y1="12" x2="22" y2="12" stroke-width="1.5"/>
+          </svg>
+          {{ lastInsightTraining ? 'Launching…' : 'Train This Weakness' }}
+        </button>
       </div>
     </div>
 
@@ -569,6 +625,7 @@ const rrSparkline = computed(() => {
 const upgradeNeeded = ref(false)
 const activityLog = ref<{ time: number; message: string }[]>([])
 const lastInsight = ref<{ text: string; score: number; agent: string | null; analysisId: number | null; date: string } | null>(null)
+const lastInsightTraining = ref(false)
 
 const quotaPercent = computed(() => {
   const stats = profile.value?.user?.analysis_stats
@@ -877,6 +934,32 @@ function simulateGame(game: string, durationMs: number) {
 }
 
 function openAnalysis(id: number) { window.open(`https://upforge.gg/valorant/results/${id}`, '_blank') }
+
+const WEAKNESS_TO_SCENARIO_DASH: Record<string, string> = {
+  flick: 'flick', 'one tap': 'flick', reflex: 'flick', headshot: 'flick',
+  accuracy: 'flick', 'first shot': 'flick', aim: 'flick', click: 'flick',
+  track: 'tracking', moving: 'tracking', movement: 'tracking', smooth: 'tracking',
+  spray: 'microadjust', recoil: 'microadjust', control: 'microadjust',
+  crosshair: 'switching', placement: 'switching', switching: 'switching',
+  rotate: 'switching', retake: 'switching',
+}
+
+async function trainLastInsight() {
+  if (!lastInsight.value || lastInsightTraining.value) return
+  lastInsightTraining.value = true
+  try {
+    const text = lastInsight.value.text.toLowerCase()
+    let scenario = 'flick'
+    for (const [keyword, s] of Object.entries(WEAKNESS_TO_SCENARIO_DASH)) {
+      if (text.includes(keyword)) { scenario = s; break }
+    }
+    await window.api.trainer.launch({ scenario, difficulty: 'medium', duration: 60 })
+  } catch (e) {
+    console.error('[Dashboard] Trainer launch failed:', e)
+  } finally {
+    lastInsightTraining.value = false
+  }
+}
 function openBrowser() { window.open('https://upforge.gg/valorant/history', '_blank') }
 
 const timelineLoadingId = ref<number | null>(null)

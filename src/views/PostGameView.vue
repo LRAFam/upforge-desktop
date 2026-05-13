@@ -270,14 +270,24 @@
             </svg>
           </button>
           <button
-            v-if="result?.analysis_id"
-            title="Export / share analysis"
-            class="px-3 py-2.5 text-xs text-gray-400 hover:text-gray-200 bg-white/[0.03] hover:bg-white/[0.06] border border-white/[0.06] rounded-xl transition-colors"
+            v-if="result?.overall_score"
+            :title="cardExportDone ? 'Saved!' : 'Save coaching card as PNG'"
+            :disabled="cardExporting"
+            class="px-3 py-2.5 text-xs bg-white/[0.03] hover:bg-white/[0.06] border border-white/[0.06] rounded-xl transition-all disabled:opacity-50 flex items-center gap-1.5"
+            :class="cardExportDone ? 'text-green-400 border-green-500/20' : 'text-gray-400 hover:text-gray-200'"
             @click="exportAnalysis"
           >
-            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg v-if="cardExporting" class="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24">
+              <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+              <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+            </svg>
+            <svg v-else-if="cardExportDone" class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"/>
+            </svg>
+            <svg v-else class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/>
             </svg>
+            <span>{{ cardExporting ? 'Saving…' : cardExportDone ? 'Saved!' : 'Share' }}</span>
           </button>
           <button
             class="px-3 py-2.5 text-xs text-gray-500 hover:text-gray-300 bg-white/[0.03] hover:bg-white/[0.06] border border-white/[0.06] rounded-xl transition-colors"
@@ -553,6 +563,8 @@ function pickScenario(imps: string[], issue: string | null): string {
 
 const trainScenario = computed(() => pickScenario(improvements.value, topIssue.value))
 const trainerLaunching = ref(false)
+const cardExporting = ref(false)
+const cardExportDone = ref(false)
 
 async function launchTrainer() {
   if (trainerLaunching.value) return
@@ -738,9 +750,254 @@ async function copyScore() {
   await navigator.clipboard.writeText(text).catch(() => {})
 }
 
-function exportAnalysis() {
-  if (result.value?.analysis_id) {
-    window.open(`https://upforge.gg/valorant/results/${result.value.analysis_id}`, '_blank')
+function wrapText(ctx: CanvasRenderingContext2D, text: string, x: number, y: number, maxW: number, lineH: number): number {
+  const words = text.split(' ')
+  let line = ''
+  let cy = y
+  for (const word of words) {
+    const test = line + word + ' '
+    if (ctx.measureText(test).width > maxW && line) {
+      ctx.fillText(line.trim(), x, cy)
+      line = word + ' '
+      cy += lineH
+    } else {
+      line = test
+    }
+  }
+  if (line.trim()) ctx.fillText(line.trim(), x, cy)
+  return cy
+}
+
+function roundRectPath(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number) {
+  ctx.beginPath()
+  ctx.moveTo(x + r, y)
+  ctx.lineTo(x + w - r, y)
+  ctx.quadraticCurveTo(x + w, y, x + w, y + r)
+  ctx.lineTo(x + w, y + h - r)
+  ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h)
+  ctx.lineTo(x + r, y + h)
+  ctx.quadraticCurveTo(x, y + h, x, y + h - r)
+  ctx.lineTo(x, y + r)
+  ctx.quadraticCurveTo(x, y, x + r, y)
+  ctx.closePath()
+}
+
+function loadImage(src: string): Promise<HTMLImageElement | null> {
+  return new Promise(resolve => {
+    const img = new Image()
+    img.crossOrigin = 'anonymous'
+    img.onload = () => resolve(img)
+    img.onerror = () => resolve(null)
+    img.src = src
+    setTimeout(() => resolve(null), 3000)
+  })
+}
+
+async function exportAnalysis() {
+  if (cardExporting.value || !result.value) return
+  cardExporting.value = true
+  try {
+    const canvas = document.createElement('canvas')
+    canvas.width = 1200
+    canvas.height = 630
+    const ctx = canvas.getContext('2d')!
+
+    const score = result.value.overall_score ?? 0
+    const scoreColor = score >= 80 ? '#4ade80' : score >= 60 ? '#facc15' : '#f87171'
+
+    // Background
+    ctx.fillStyle = '#0a0a0c'
+    ctx.fillRect(0, 0, 1200, 630)
+
+    // Grid overlay
+    ctx.strokeStyle = 'rgba(255,255,255,0.02)'
+    ctx.lineWidth = 1
+    for (let x = 0; x <= 1200; x += 40) {
+      ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, 630); ctx.stroke()
+    }
+    for (let y = 0; y <= 630; y += 40) {
+      ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(1200, y); ctx.stroke()
+    }
+
+    // Top accent bar
+    const accentGrad = ctx.createLinearGradient(0, 0, 1200, 0)
+    accentGrad.addColorStop(0, '#ff4655')
+    accentGrad.addColorStop(1, '#c4323e')
+    ctx.fillStyle = accentGrad
+    ctx.fillRect(0, 0, 1200, 5)
+
+    // --- Left panel ---
+    // "UPFORGE"
+    ctx.fillStyle = '#ffffff'
+    ctx.font = 'bold 52px system-ui, -apple-system, sans-serif'
+    ctx.fillText('UPFORGE', 60, 80)
+
+    // "AI COACHING REPORT"
+    ctx.fillStyle = '#ff4655'
+    ctx.font = '14px system-ui, -apple-system, sans-serif'
+    ctx.fillText('AI COACHING REPORT', 60, 105)
+
+    // Divider line
+    ctx.strokeStyle = '#ff4655'
+    ctx.lineWidth = 2
+    ctx.beginPath(); ctx.moveTo(60, 120); ctx.lineTo(460, 120); ctx.stroke()
+
+    // Agent · Map · Game label
+    const agentName = gameInfo.value.agent || ''
+    const mapName = gameInfo.value.map || ''
+    const gameName = gameInfo.value.game === 'cs2' ? 'CS2' : 'VALORANT'
+    const labelParts = [agentName, mapName, gameName].filter(Boolean)
+    ctx.fillStyle = '#6b7280'
+    ctx.font = '16px system-ui, -apple-system, sans-serif'
+    ctx.fillText(labelParts.join(' · '), 60, 148)
+
+    // Score number
+    ctx.fillStyle = scoreColor
+    ctx.font = 'bold 110px system-ui, -apple-system, sans-serif'
+    const scoreStr = String(score)
+    const scoreW = ctx.measureText(scoreStr).width
+    ctx.fillText(scoreStr, 60, 285)
+
+    // "/100"
+    ctx.fillStyle = '#4b5563'
+    ctx.font = '22px system-ui, -apple-system, sans-serif'
+    ctx.fillText('/100', 60 + scoreW + 8, 263)
+
+    // Grade badge
+    const grade = scoreGrade(score)
+    ctx.font = 'bold 28px system-ui, -apple-system, sans-serif'
+    const gradeW = ctx.measureText(grade).width
+    const badgeX = 60
+    const badgeY = 298
+    const badgeW = gradeW + 24
+    const badgeH = 36
+    ctx.fillStyle = scoreColor + '22'
+    roundRectPath(ctx, badgeX, badgeY, badgeW, badgeH, 8)
+    ctx.fill()
+    ctx.strokeStyle = scoreColor + '55'
+    ctx.lineWidth = 1
+    roundRectPath(ctx, badgeX, badgeY, badgeW, badgeH, 8)
+    ctx.stroke()
+    ctx.fillStyle = scoreColor
+    ctx.fillText(grade, badgeX + 12, badgeY + 27)
+
+    // Score bar
+    ctx.fillStyle = 'rgba(255,255,255,0.08)'
+    roundRectPath(ctx, 60, 345, 400, 8, 4)
+    ctx.fill()
+    ctx.fillStyle = scoreColor
+    roundRectPath(ctx, 60, 345, Math.round(400 * score / 100), 8, 4)
+    ctx.fill()
+
+    // K/D/A row
+    const kills = result.value.kills
+    const deaths = result.value.deaths
+    const assists = result.value.assists
+    if (kills != null) {
+      ctx.fillStyle = '#6b7280'
+      ctx.font = '15px system-ui, -apple-system, sans-serif'
+      const kdaStr = `${kills} / ${deaths ?? '?'} / ${assists ?? '?'}  K/D/A`
+      ctx.fillText(kdaStr, 60, 375)
+    }
+
+    // Match result badge
+    const matchResult = result.value.match_result
+    if (matchResult) {
+      const isWin = matchResult === 'win'
+      const badgeText = isWin ? 'WIN' : 'LOSS'
+      const badgeBg = isWin ? 'rgba(74,222,128,0.15)' : 'rgba(248,113,113,0.15)'
+      const badgeStroke = isWin ? 'rgba(74,222,128,0.3)' : 'rgba(248,113,113,0.3)'
+      const badgeTextColor = isWin ? '#4ade80' : '#f87171'
+      ctx.font = 'bold 11px system-ui, -apple-system, sans-serif'
+      const bw = ctx.measureText(badgeText).width + 16
+      const bx = kills != null ? 60 + ctx.measureText(`${kills} / ${deaths ?? '?'} / ${assists ?? '?'}  K/D/A`).width + 12 : 60
+      ctx.fillStyle = badgeBg
+      roundRectPath(ctx, bx, 363, bw, 18, 4)
+      ctx.fill()
+      ctx.strokeStyle = badgeStroke
+      ctx.lineWidth = 1
+      roundRectPath(ctx, bx, 363, bw, 18, 4)
+      ctx.stroke()
+      ctx.fillStyle = badgeTextColor
+      ctx.fillText(badgeText, bx + 8, 375)
+    }
+
+    // --- Right panel ---
+    // "AI COACHING FOCUS" header
+    ctx.fillStyle = '#374151'
+    ctx.font = 'bold 11px system-ui, -apple-system, sans-serif'
+    ctx.fillText('AI COACHING FOCUS', 560, 80)
+
+    // Coaching points
+    const coachingPoints: string[] = []
+    if (topIssue.value) coachingPoints.push(topIssue.value)
+    for (const imp of improvements.value) {
+      if (coachingPoints.length >= 3) break
+      coachingPoints.push(imp)
+    }
+
+    let pointY = 115
+    coachingPoints.forEach((point, idx) => {
+      // Red bullet
+      ctx.fillStyle = '#ff4655'
+      ctx.beginPath()
+      ctx.arc(568, pointY - 5, 4, 0, Math.PI * 2)
+      ctx.fill()
+
+      // Point text
+      ctx.fillStyle = idx === 0 ? '#e5e7eb' : '#9ca3af'
+      ctx.font = idx === 0 ? '17px system-ui, -apple-system, sans-serif' : '15px system-ui, -apple-system, sans-serif'
+      const finalY = wrapText(ctx, point, 585, pointY, 540, idx === 0 ? 24 : 22)
+      pointY = finalY + 50
+    })
+
+    // Agent portrait image
+    const agentImgUrl = agentImageUrl.value
+    if (agentImgUrl) {
+      const agentImg = await loadImage(agentImgUrl)
+      if (agentImg) {
+        // Glow background
+        ctx.fillStyle = 'rgba(255,70,85,0.08)'
+        ctx.fillRect(958, 288, 184, 244)
+        ctx.drawImage(agentImg, 960, 290, 180, 240)
+      }
+    }
+
+    // --- Bottom bar ---
+    // Separator line
+    ctx.strokeStyle = 'rgba(255,255,255,0.06)'
+    ctx.lineWidth = 1
+    ctx.beginPath(); ctx.moveTo(0, 580); ctx.lineTo(1200, 580); ctx.stroke()
+
+    // "upforge.gg"
+    ctx.fillStyle = '#4b5563'
+    ctx.font = '14px system-ui, -apple-system, sans-serif'
+    ctx.fillText('upforge.gg', 60, 605)
+
+    // Right-aligned tagline
+    ctx.fillStyle = '#374151'
+    const tagline = 'Powered by AI · Improve your aim, faster'
+    const tagW = ctx.measureText(tagline).width
+    ctx.fillText(tagline, 1140 - tagW, 605)
+
+    // Save
+    const blob = await new Promise<Blob | null>(resolve => canvas.toBlob(resolve, 'image/png'))
+    if (!blob) return
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    const agent = gameInfo.value.agent || 'game'
+    a.download = `upforge-${score}-${agent.toLowerCase().replace(/\s+/g, '-')}.png`
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    setTimeout(() => URL.revokeObjectURL(url), 1000)
+    cardExportDone.value = true
+    setTimeout(() => { cardExportDone.value = false }, 2500)
+  } catch (e) {
+    console.error('[PostGame] Export failed:', e)
+  } finally {
+    cardExporting.value = false
   }
 }
 
