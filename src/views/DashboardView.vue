@@ -119,6 +119,31 @@
           {{ stopping ? 'Stopping…' : 'Stop' }}
         </button>
       </div>
+
+      <!-- Hotkey hints row — shown when idle/ready (not recording, not mac-only) -->
+      <div
+        v-if="status.ffmpegOk && !status.recording && !status.recordingStarting && !(platform && platform !== 'win32') && hotkeys['save-clip']"
+        class="flex items-center gap-1.5 px-3 pb-2.5 flex-wrap"
+      >
+        <span class="text-[10px] text-gray-700 mr-0.5">Hotkeys</span>
+        <span
+          v-for="hk in hotkeyHints"
+          :key="hk.label"
+          class="inline-flex items-center gap-1 px-1.5 py-0.5 bg-white/[0.03] border border-white/[0.05] rounded text-[10px]"
+        >
+          <kbd class="font-mono font-semibold text-gray-400">{{ hk.key }}</kbd>
+          <span class="text-gray-700">{{ hk.label }}</span>
+        </span>
+      </div>
+
+      <!-- Active recording hint: save clip shortcut -->
+      <div
+        v-if="status.recording && hotkeys['save-clip']"
+        class="flex items-center gap-2 px-3 pb-2.5"
+      >
+        <kbd class="inline-block px-1.5 py-0.5 bg-red-500/10 border border-red-500/20 rounded text-[10px] font-mono font-semibold text-red-400">{{ hotkeys['save-clip'] }}</kbd>
+        <span class="text-[10px] text-red-400/70">to save a clip</span>
+      </div>
     </div>
 
     <!-- Activity log — compact event history -->
@@ -594,6 +619,13 @@ const analysingIds = ref(new Set<string>())
 const status = ref<{ recording: boolean; recordingStarting: boolean; currentGame: string | null; waitingForMatch: boolean; ffmpegOk: boolean; recordedModes: string[] }>({ recording: false, recordingStarting: false, currentGame: null, waitingForMatch: false, ffmpegOk: true, recordedModes: [] })
 const isDev = ref(false)
 const platform = ref('')
+const hotkeys = ref<Record<string, string>>({})
+
+const hotkeyHints = computed(() => [
+  { key: hotkeys.value['save-clip'] || 'F9', label: 'save clip' },
+  { key: hotkeys.value['toggle-overlay'] || 'F10', label: 'overlay' },
+  { key: hotkeys.value['take-screenshot'] || 'F8', label: 'screenshot' },
+])
 const devOpen = ref(false)
 const simulating = ref(false)
 const simStatus = ref('')
@@ -769,6 +801,10 @@ onMounted(async () => {
 
   // Load activity log history
   activityLog.value = await window.api.app.getActivityLog().catch(() => [])
+
+  // Load hotkey bindings for UI hints
+  const hkBindings = await window.api.clips.getHotkeys().catch(() => null) as Record<string, string> | null
+  if (hkBindings) hotkeys.value = hkBindings
 
   // Load last insight from persisted settings
   const savedSettings = await window.api.settings.get().catch(() => null) as ({ lastInsight?: typeof lastInsight.value } | null)
