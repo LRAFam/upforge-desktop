@@ -87,6 +87,8 @@ export interface AppSettings {
   cachedUseDdagrab: boolean | null
   /** Developer / admin mode — unlocked by tapping version 5× in Settings */
   devModeEnabled: boolean
+  /** Set to true once the first-run onboarding wizard has been completed */
+  onboardingComplete?: boolean
   /** Use OBS WebSocket for recording instead of desktopCapturer (Pro tier) */
   obsEnabled: boolean
   /** OBS WebSocket host */

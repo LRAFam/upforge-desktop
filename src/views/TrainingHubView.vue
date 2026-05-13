@@ -29,6 +29,8 @@ interface AssignedDrill {
 const launching = ref(false)
 const drillRunning = ref(false)    // true from launch success → until result received
 const showResultModal = ref(false) // completion modal
+const drillCardExporting = ref(false)
+const drillCardDone = ref(false)
 const lastResult = ref<SessionResult | null>(null)
 const lastPlayedDrill = ref<AssignedDrill | null>(null) // preserved after activeDrill cleared
 const sessionHistory = ref<SessionResult[]>([])
@@ -450,6 +452,176 @@ const averageScore = computed(() => {
   return Math.round(sessionHistory.value.reduce((a, b) => a + b.score, 0) / sessionHistory.value.length)
 })
 
+// ── Drill share card export ────────────────────────────────────────────────────
+function _roundRectPath(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number) {
+  ctx.beginPath()
+  ctx.moveTo(x + r, y)
+  ctx.lineTo(x + w - r, y)
+  ctx.quadraticCurveTo(x + w, y, x + w, y + r)
+  ctx.lineTo(x + w, y + h - r)
+  ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h)
+  ctx.lineTo(x + r, y + h)
+  ctx.quadraticCurveTo(x, y + h, x, y + h - r)
+  ctx.lineTo(x, y + r)
+  ctx.quadraticCurveTo(x, y, x + r, y)
+  ctx.closePath()
+}
+
+async function exportDrillCard() {
+  if (drillCardExporting.value || !lastResult.value) return
+  drillCardExporting.value = true
+  try {
+    const r = lastResult.value
+    const drill = lastPlayedDrill.value
+
+    const canvas = document.createElement('canvas')
+    canvas.width = 1200
+    canvas.height = 630
+    const ctx = canvas.getContext('2d')!
+
+    const score = r.score
+    const sColor = score >= 80 ? '#4ade80' : score >= 60 ? '#fbbf24' : '#f87171'
+
+    // Background
+    ctx.fillStyle = '#0b1219'
+    ctx.fillRect(0, 0, 1200, 630)
+
+    // Subtle grid
+    ctx.strokeStyle = 'rgba(255,255,255,0.018)'
+    ctx.lineWidth = 1
+    for (let x = 0; x <= 1200; x += 40) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, 630); ctx.stroke() }
+    for (let y = 0; y <= 630; y += 40) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(1200, y); ctx.stroke() }
+
+    // Left accent bar (8px brand red)
+    ctx.fillStyle = '#ff4655'
+    ctx.fillRect(0, 0, 8, 630)
+
+    // Logo wordmark
+    ctx.fillStyle = '#ffffff'
+    ctx.font = 'bold 48px system-ui, -apple-system, sans-serif'
+    ctx.fillText('UPFORGE', 48, 82)
+    ctx.fillStyle = '#ff4655'
+    ctx.font = '13px system-ui, -apple-system, sans-serif'
+    ctx.fillText('AI COACHING', 48, 104)
+
+    // Divider
+    ctx.strokeStyle = 'rgba(255,255,255,0.08)'
+    ctx.lineWidth = 1
+    ctx.beginPath(); ctx.moveTo(48, 118); ctx.lineTo(460, 118); ctx.stroke()
+
+    // Scenario name
+    const scenarioLabel = SCENARIO_META[r.scenario]?.label ?? r.scenario
+    ctx.fillStyle = '#e5e7eb'
+    ctx.font = 'bold 22px system-ui, -apple-system, sans-serif'
+    ctx.fillText(scenarioLabel + ' Drill', 48, 150)
+
+    // Difficulty badge
+    if (drill?.difficulty) {
+      const diffText = drill.difficulty.toUpperCase()
+      ctx.font = 'bold 11px system-ui, -apple-system, sans-serif'
+      const diffBadgeW = ctx.measureText(diffText).width + 16
+      const diffColors: Record<string, string> = { easy: '#4ade80', medium: '#fbbf24', hard: '#fb923c', pro: '#f87171' }
+      const dc = diffColors[drill.difficulty] ?? '#9ca3af'
+      ctx.fillStyle = dc + '20'
+      _roundRectPath(ctx, 48, 160, diffBadgeW, 20, 4)
+      ctx.fill()
+      ctx.strokeStyle = dc + '50'
+      ctx.lineWidth = 1
+      _roundRectPath(ctx, 48, 160, diffBadgeW, 20, 4)
+      ctx.stroke()
+      ctx.fillStyle = dc
+      ctx.fillText(diffText, 56, 174)
+    }
+
+    // Big score
+    ctx.fillStyle = sColor
+    ctx.font = 'bold 120px system-ui, -apple-system, sans-serif'
+    ctx.fillText(String(score), 48, 315)
+
+    // Grade label
+    ctx.fillStyle = '#6b7280'
+    ctx.font = 'bold 14px system-ui, -apple-system, sans-serif'
+    ctx.fillText(scoreLabel(score).toUpperCase(), 48, 338)
+
+    // Score bar
+    ctx.fillStyle = 'rgba(255,255,255,0.07)'
+    _roundRectPath(ctx, 48, 354, 420, 9, 4)
+    ctx.fill()
+    ctx.fillStyle = sColor
+    _roundRectPath(ctx, 48, 354, Math.round(420 * score / 100), 9, 4)
+    ctx.fill()
+
+    // Delta vs best
+    const delta = scoreDelta(r)
+    if (delta !== null) {
+      const dColor = delta > 0 ? '#4ade80' : delta < 0 ? '#f87171' : '#6b7280'
+      const dText = delta > 0 ? `+${delta} vs best` : delta < 0 ? `${delta} vs best` : '= best'
+      ctx.fillStyle = dColor
+      ctx.font = 'bold 16px system-ui, -apple-system, sans-serif'
+      ctx.fillText(dText, 48, 382)
+    }
+
+    // Stats row
+    const stats = [
+      { label: 'ACCURACY', value: r.accuracy_pct.toFixed(1) + '%' },
+      { label: 'REACTION', value: Math.round(r.avg_reaction_ms) + 'ms' },
+      { label: 'HITS', value: `${r.targets_hit}/${r.targets_hit + r.targets_missed}` },
+      { label: 'CONSISTENCY', value: r.consistency_score + '%' },
+    ]
+    const cardW = 190, cardH = 72, cardY = 422, gap = 18
+    stats.forEach((stat, i) => {
+      const cx = 48 + i * (cardW + gap)
+      ctx.fillStyle = 'rgba(255,255,255,0.04)'
+      _roundRectPath(ctx, cx, cardY, cardW, cardH, 10)
+      ctx.fill()
+      ctx.strokeStyle = 'rgba(255,255,255,0.07)'
+      ctx.lineWidth = 1
+      _roundRectPath(ctx, cx, cardY, cardW, cardH, 10)
+      ctx.stroke()
+      ctx.fillStyle = '#ffffff'
+      ctx.font = 'bold 26px system-ui, -apple-system, sans-serif'
+      const vw = ctx.measureText(stat.value).width
+      ctx.fillText(stat.value, cx + (cardW - vw) / 2, cardY + 40)
+      ctx.fillStyle = '#4b5563'
+      ctx.font = '11px system-ui, -apple-system, sans-serif'
+      const lw = ctx.measureText(stat.label).width
+      ctx.fillText(stat.label, cx + (cardW - lw) / 2, cardY + 58)
+    })
+
+    // Bottom separator
+    ctx.strokeStyle = 'rgba(255,255,255,0.06)'
+    ctx.lineWidth = 1
+    ctx.beginPath(); ctx.moveTo(0, 580); ctx.lineTo(1200, 580); ctx.stroke()
+
+    // Bottom strip
+    ctx.fillStyle = '#4b5563'
+    ctx.font = '14px system-ui, -apple-system, sans-serif'
+    ctx.fillText('upforge.gg', 48, 606)
+    ctx.fillStyle = '#374151'
+    const tag = `${scenarioLabel.toUpperCase()} · Aim Training`
+    const tagW = ctx.measureText(tag).width
+    ctx.fillText(tag, 1152 - tagW, 606)
+
+    // Save
+    const blob = await new Promise<Blob | null>(resolve => canvas.toBlob(resolve, 'image/png'))
+    if (!blob) return
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `upforge-drill-${r.scenario}-${score}.png`
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    setTimeout(() => URL.revokeObjectURL(url), 1000)
+    drillCardDone.value = true
+    setTimeout(() => { drillCardDone.value = false }, 2500)
+  } catch (e) {
+    console.error('[TrainingHub] Drill card export failed:', e)
+  } finally {
+    drillCardExporting.value = false
+  }
+}
+
 // ── Training stats (from API history) ─────────────────────────────────────────
 const trainingStats = computed(() => {
   const sessions = apiHistory.value?.sessions ?? []
@@ -730,6 +902,24 @@ const CATEGORY_ICON: Record<string, string> = {
               class="flex-1 py-2.5 rounded-xl border border-white/[0.08] bg-white/[0.04] text-[12px] font-semibold text-gray-400 hover:bg-white/[0.08] transition-all"
               @click="showResultModal = false"
             >View Details</button>
+            <button
+              :disabled="drillCardExporting"
+              class="flex-1 py-2.5 rounded-xl border border-white/[0.08] bg-white/[0.04] text-[12px] font-semibold transition-all flex items-center justify-center gap-1.5 disabled:opacity-50"
+              :class="drillCardDone ? 'text-green-400 border-green-500/20' : 'text-gray-400 hover:bg-white/[0.08]'"
+              @click="exportDrillCard"
+            >
+              <svg v-if="drillCardExporting" class="w-3 h-3 animate-spin" fill="none" viewBox="0 0 24 24">
+                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+              </svg>
+              <svg v-else-if="drillCardDone" class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"/>
+              </svg>
+              <svg v-else class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/>
+              </svg>
+              {{ drillCardExporting ? 'Saving…' : drillCardDone ? 'Saved!' : 'Share' }}
+            </button>
             <button
               v-if="lastPlayedDrill"
               class="flex-1 py-2.5 rounded-xl border border-[#ff4655]/30 bg-[#ff4655]/10 text-[12px] font-semibold text-[#ff4655] hover:bg-[#ff4655]/20 transition-all flex items-center justify-center gap-1.5"

@@ -79,6 +79,13 @@
       <RouterView />
     </main>
 
+    <!-- First-run onboarding wizard -->
+    <OnboardingWizard
+      v-if="showOnboarding"
+      :already-completed="onboardingWasComplete"
+      @complete="handleOnboardingComplete"
+    />
+
     <!-- Dev toolbar (dev mode only, always visible) -->
     <div v-if="isDev" class="flex items-center gap-2 px-3 py-1.5 border-t border-yellow-500/20 bg-yellow-500/[0.03] flex-shrink-0">
       <span class="text-[10px] text-yellow-500/60 font-mono uppercase tracking-wider">Dev</span>
@@ -99,6 +106,7 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useDesktopRecording } from './composables/useDesktopRecording'
+import OnboardingWizard from './components/OnboardingWizard.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -114,6 +122,8 @@ const isAdmin = ref(false)
 const appVersion = ref(__APP_VERSION__)
 const simStatus = ref('')
 const riotId = ref<string | null>(null)
+const showOnboarding = ref(false)
+const onboardingWasComplete = ref(false)
 
 const showTitleBar = computed(() =>
   route.path !== '/overlay' && route.path !== '/splash'
@@ -156,6 +166,11 @@ onMounted(async () => {
   try {
     const settings = await window.api.settings.get()
     devModeEnabled.value = settings.devModeEnabled ?? false
+    if (!settings.onboardingComplete) {
+      showOnboarding.value = true
+    } else {
+      onboardingWasComplete.value = true
+    }
   } catch { /* ignore */ }
 
   // React to settings changes (e.g. dev mode toggled in Settings)
@@ -209,5 +224,10 @@ function closeWindow() {
 
 function minimizeWindow() {
   window.api.window.minimize()
+}
+
+function handleOnboardingComplete() {
+  showOnboarding.value = false
+  router.push('/training').catch(() => {})
 }
 </script>
