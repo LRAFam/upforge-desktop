@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue'
 import type { TrainingHistory, CoachingDrill, TrainingBenchmark } from '../env'
+import { ACHIEVEMENTS, useAchievements } from '../composables/useAchievements'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 interface SessionResult {
@@ -43,6 +44,22 @@ const benchmarkData = ref<TrainingBenchmark | null>(null)
 const loadingHistory = ref(false)
 const heatmapCanvas = ref<HTMLCanvasElement | null>(null)
 const activeTab = ref<'drills' | 'progress' | 'coaching'>('drills')
+
+// ── Achievements ──────────────────────────────────────────────────────────────
+const achievements = useAchievements()
+const unlockedCount = computed(() => Object.keys(achievements.unlocked.value).length)
+const isUnlocked = (id: string) => !!achievements.unlocked.value[id]
+const displayAchievements = computed(() => ACHIEVEMENTS)
+function formatAchievementDate(iso: string) {
+  if (!iso) return ''
+  return new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })
+}
+
+declare global {
+  interface Window {
+    __ufAchievementUnlocked?: (ids: string[]) => void
+  }
+}
 
 // Assigned drills from API — falls back to defaults if API unavailable
 const assignedDrills = ref<AssignedDrill[]>([
@@ -334,7 +351,9 @@ async function launchDrill(drill: AssignedDrill) {
 let removeListener: (() => void) | null = null
 
 onMounted(async () => {
-  removeListener = window.api.on('trainer:session-result', (result: unknown) => {
+  await achievements.load()
+
+  removeListener = window.api.on('trainer:session-result', async (result: unknown) => {
     const r = result as SessionResult
     lastResult.value = r
     sessionHistory.value.unshift(r)
@@ -372,7 +391,17 @@ onMounted(async () => {
       activeTab.value = 'drills'
       nextTick(() => drawHeatmap(r))
     }
-    window.api.trainer.getHistory().then(h => { apiHistory.value = h })
+    window.api.trainer.getHistory().then(async h => {
+      apiHistory.value = h
+      const newAchs = await achievements.check({
+        totalDrills: h?.total ?? 0,
+        streak: trainingStats.value.streak,
+        lastScore: r.score,
+        lastAccuracy: r.accuracy_pct,
+        lastReactionMs: r.avg_reaction_ms,
+      })
+      if (newAchs.length) window.__ufAchievementUnlocked?.(newAchs)
+    })
   })
 
   // Fetch training history + coaching drills from API
@@ -1663,6 +1692,36 @@ const CATEGORY_ICON: Record<string, string> = {
               >
                 <div class="w-1.5 h-1.5 rounded-full bg-[#ff4655]/50 flex-shrink-0 mt-1.5" />
                 <p class="text-[11px] text-gray-400 leading-relaxed">{{ insight }}</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Achievements -->
+        <div class="px-4 mt-3 pb-4">
+          <div class="rounded-xl border border-white/[0.07] overflow-hidden" style="background: #0d1520">
+            <div class="flex items-center gap-2 px-4 py-2.5 border-b border-white/[0.05]">
+              <span class="text-[9px] font-black uppercase tracking-[0.18em] text-gray-500">Achievements</span>
+              <div class="flex-1 h-px bg-white/[0.04]" />
+              <span class="text-[9px] text-gray-700">{{ unlockedCount }} / {{ ACHIEVEMENTS.length }}</span>
+            </div>
+            <div class="grid grid-cols-3 gap-px p-px bg-white/[0.04]">
+              <div
+                v-for="ach in displayAchievements"
+                :key="ach.id"
+                class="flex flex-col items-center gap-1 px-2 py-3 text-center"
+                :class="isUnlocked(ach.id) ? 'bg-[#0d1520]' : 'bg-[#0b1219]'"
+                :title="isUnlocked(ach.id) ? ach.description : ach.secret ? '???' : ach.description"
+              >
+                <span class="text-lg" :class="isUnlocked(ach.id) ? '' : 'grayscale opacity-30'">
+                  {{ ach.secret && !isUnlocked(ach.id) ? '🔒' : ach.icon }}
+                </span>
+                <span class="text-[8px] font-bold leading-tight" :class="isUnlocked(ach.id) ? 'text-white' : 'text-gray-700'">
+                  {{ ach.secret && !isUnlocked(ach.id) ? '???' : ach.name }}
+                </span>
+                <span v-if="isUnlocked(ach.id)" class="text-[7px] text-[#ff4655]/70 font-medium">
+                  {{ formatAchievementDate(achievements.unlocked.value[ach.id]) }}
+                </span>
               </div>
             </div>
           </div>

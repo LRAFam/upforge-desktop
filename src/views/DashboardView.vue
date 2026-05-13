@@ -606,8 +606,10 @@ import { useRouter } from 'vue-router'
 import type { ProfileData, AnalysisItem, PendingRecording } from '../env.d.ts'
 import { getAgentImage, getAgentRole, getAgentColor, getMapMinimap, getRankHexColor, getRoleColor, getTierBadgeClass, formatGameMode } from '../lib/valorant'
 import { pendingTimeline } from '../stores/pendingTimeline'
+import { useAchievements } from '../composables/useAchievements'
 
 const router = useRouter()
+const achievements = useAchievements()
 
 const profile = ref<ProfileData | null>(null)
 const profileLoading = ref(true)
@@ -809,6 +811,13 @@ onMounted(async () => {
   // Load last insight from persisted settings
   const savedSettings = await window.api.settings.get().catch(() => null) as ({ lastInsight?: typeof lastInsight.value } | null)
   if (savedSettings?.lastInsight) lastInsight.value = savedSettings.lastInsight
+
+  // Achievement: first-analysis
+  await achievements.load()
+  if (savedSettings?.lastInsight?.score) {
+    const newAchs = await achievements.check({ hasAnalysis: true })
+    if (newAchs.length) window.__ufAchievementUnlocked?.(newAchs)
+  }
 
   pollInterval = setInterval(async () => {
     if (document.hidden) return // skip while Valorant is fullscreen

@@ -86,6 +86,9 @@
       @complete="handleOnboardingComplete"
     />
 
+    <!-- Achievement toast manager -->
+    <AchievementManager />
+
     <!-- Dev toolbar (dev mode only, always visible) -->
     <div v-if="isDev" class="flex items-center gap-2 px-3 py-1.5 border-t border-yellow-500/20 bg-yellow-500/[0.03] flex-shrink-0">
       <span class="text-[10px] text-yellow-500/60 font-mono uppercase tracking-wider">Dev</span>
@@ -107,6 +110,7 @@ import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useDesktopRecording } from './composables/useDesktopRecording'
 import OnboardingWizard from './components/OnboardingWizard.vue'
+import AchievementManager from './components/AchievementManager.vue'
 
 const route = useRoute()
 const router = useRouter()
