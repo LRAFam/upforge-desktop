@@ -1,7 +1,7 @@
 <template>
   <div class="splash-root">
     <!-- Hero image background -->
-    <img src="../assets/hero-agents.webp" alt="" class="hero-img" />
+    <img src="../assets/upforge-bg.webp" alt="" class="hero-img" />
     <!-- Ambient background layers -->
     <div class="bg-mesh" />
     <div class="orb orb-1" />
@@ -148,8 +148,8 @@ onUnmounted(() => {
   width: 100%;
   height: 100%;
   object-fit: cover;
-  object-position: center top;
-  opacity: 0.18;
+  object-position: center center;
+  opacity: 0.45;
   z-index: 0;
   pointer-events: none;
 }

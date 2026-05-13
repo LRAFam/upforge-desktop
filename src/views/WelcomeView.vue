@@ -3,7 +3,7 @@
 
     <!-- ─────────────── LEFT PANEL — Brand hero ─────────────── -->
     <div class="left-panel">
-      <img src="../assets/hero-agents.webp" alt="" class="lp-hero-img" />
+      <img src="../assets/upforge-bg.webp" alt="" class="lp-hero-img" />
       <div class="lp-overlay-top" />
       <div class="lp-overlay-bottom" />
       <div class="lp-overlay-right" />
@@ -355,8 +355,8 @@ function openForgotPassword() {
   inset: 0;
   width: 100%; height: 100%;
   object-fit: cover;
-  object-position: center top;
-  opacity: 0.3;
+  object-position: center center;
+  opacity: 0.55;
   z-index: 0;
   pointer-events: none;
 }
