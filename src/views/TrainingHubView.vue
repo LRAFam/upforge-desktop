@@ -32,6 +32,8 @@ const drillRunning = ref(false)    // true from launch success → until result 
 const showResultModal = ref(false) // completion modal
 const drillCardExporting = ref(false)
 const drillCardDone = ref(false)
+const weekCardExporting = ref(false)
+const weekCardDone = ref(false)
 const lastResult = ref<SessionResult | null>(null)
 const lastPlayedDrill = ref<AssignedDrill | null>(null) // preserved after activeDrill cleared
 const sessionHistory = ref<SessionResult[]>([])
@@ -651,6 +653,165 @@ async function exportDrillCard() {
   }
 }
 
+async function exportWeeklyCard() {
+  if (weekCardExporting.value) return
+  weekCardExporting.value = true
+  try {
+    const W = 1200, H = 630
+    const canvas = document.createElement('canvas')
+    canvas.width = W; canvas.height = H
+    const ctx = canvas.getContext('2d')!
+
+    // Background
+    ctx.fillStyle = '#0b1219'
+    ctx.fillRect(0, 0, W, H)
+
+    // Subtle grid lines
+    ctx.strokeStyle = 'rgba(255,255,255,0.03)'
+    ctx.lineWidth = 1
+    for (let x = 0; x < W; x += 60) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke() }
+    for (let y = 0; y < H; y += 60) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke() }
+
+    // Left accent bar
+    ctx.fillStyle = '#ff4655'
+    ctx.fillRect(0, 0, 8, H)
+
+    // Top glow
+    const grd = ctx.createLinearGradient(0, 0, W, 0)
+    grd.addColorStop(0, 'rgba(255,70,85,0.12)')
+    grd.addColorStop(0.5, 'rgba(255,70,85,0.04)')
+    grd.addColorStop(1, 'transparent')
+    ctx.fillStyle = grd
+    ctx.fillRect(8, 0, W - 8, 3)
+
+    const stats = trainingStats.value
+    const now = new Date()
+    // Week label: Mon of this week → today
+    const dayOfWeek = now.getDay() // 0=Sun
+    const monday = new Date(now.getTime() - ((dayOfWeek === 0 ? 6 : dayOfWeek - 1) * 86400000))
+    const weekLabel = `${monday.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })} – ${now.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}`
+
+    // UPFORGE wordmark (top-left)
+    ctx.font = 'bold 22px system-ui, sans-serif'
+    ctx.fillStyle = '#ffffff'
+    ctx.fillText('UP', 40, 54)
+    ctx.fillStyle = '#ff4655'
+    const upWidth = ctx.measureText('UP').width
+    ctx.fillText('FORGE', 40 + upWidth + 2, 54)
+
+    // AI Coaching label
+    ctx.font = '500 11px system-ui, sans-serif'
+    ctx.fillStyle = 'rgba(255,255,255,0.35)'
+    ctx.fillText('AI COACHING', 40, 74)
+
+    // Week label (top-right)
+    ctx.font = '500 14px system-ui, sans-serif'
+    ctx.fillStyle = 'rgba(255,255,255,0.4)'
+    ctx.textAlign = 'right'
+    ctx.fillText(weekLabel, W - 40, 54)
+    ctx.fillText('WEEKLY SUMMARY', W - 40, 74)
+    ctx.textAlign = 'left'
+
+    // Divider
+    ctx.strokeStyle = 'rgba(255,255,255,0.07)'
+    ctx.lineWidth = 1
+    ctx.beginPath(); ctx.moveTo(40, 94); ctx.lineTo(W - 40, 94); ctx.stroke()
+
+    // Central stat: drills this week
+    const drillsX = 120
+    ctx.font = 'bold 96px system-ui, sans-serif'
+    ctx.fillStyle = '#ffffff'
+    ctx.fillText(String(stats.thisWeekCount), drillsX, 240)
+    ctx.font = 'bold 14px system-ui, sans-serif'
+    ctx.fillStyle = 'rgba(255,255,255,0.4)'
+    ctx.fillText('DRILLS THIS WEEK', drillsX, 268)
+
+    // Stat cards row
+    const cards = [
+      { label: 'AVG SCORE', value: stats.thisWeekAvg !== null ? String(stats.thisWeekAvg) : '—', color: stats.thisWeekAvg !== null ? (stats.thisWeekAvg >= 80 ? '#4ade80' : stats.thisWeekAvg >= 60 ? '#fbbf24' : '#f87171') : '#6b7280' },
+      { label: 'BEST SCORE', value: stats.thisWeekBest !== null ? String(stats.thisWeekBest) : '—', color: stats.thisWeekBest !== null ? (stats.thisWeekBest >= 80 ? '#4ade80' : stats.thisWeekBest >= 60 ? '#fbbf24' : '#f87171') : '#6b7280' },
+      { label: 'DAY STREAK', value: stats.streak > 0 ? `${stats.streak}d` : '—', color: stats.streak > 0 ? '#fb923c' : '#6b7280' },
+      { label: 'VS LAST WEEK', value: stats.improvement !== null ? (stats.improvement > 0 ? `+${stats.improvement}` : String(stats.improvement)) : '—', color: stats.improvement === null ? '#6b7280' : stats.improvement > 0 ? '#4ade80' : stats.improvement < 0 ? '#f87171' : '#9ca3af' },
+    ]
+    const cardW = 180, cardH = 110, cardGap = 20
+    const totalCardsW = cards.length * cardW + (cards.length - 1) * cardGap
+    const cardsStartX = (W - totalCardsW) / 2
+    const cardsY = 310
+
+    cards.forEach((card, i) => {
+      const cx = cardsStartX + i * (cardW + cardGap)
+      // Card bg
+      ctx.fillStyle = 'rgba(255,255,255,0.04)'
+      ctx.strokeStyle = 'rgba(255,255,255,0.08)'
+      ctx.lineWidth = 1
+      ctx.beginPath()
+      ctx.roundRect(cx, cardsY, cardW, cardH, 12)
+      ctx.fill(); ctx.stroke()
+      // Value
+      ctx.font = 'bold 36px system-ui, sans-serif'
+      ctx.fillStyle = card.color
+      ctx.textAlign = 'center'
+      ctx.fillText(card.value, cx + cardW / 2, cardsY + 58)
+      // Label
+      ctx.font = '600 10px system-ui, sans-serif'
+      ctx.fillStyle = 'rgba(255,255,255,0.35)'
+      ctx.fillText(card.label, cx + cardW / 2, cardsY + 80)
+      ctx.textAlign = 'left'
+    })
+
+    // Scenario mini pills (bottom section)
+    const weekSessions = stats.thisWeekSessions
+    const scenarioCounts: Record<string, number> = {}
+    weekSessions.forEach(s => { scenarioCounts[s.scenario] = (scenarioCounts[s.scenario] ?? 0) + 1 })
+    const scenarioEntries = Object.entries(scenarioCounts).sort((a, b) => b[1] - a[1])
+
+    if (scenarioEntries.length) {
+      const pillY = 460
+      ctx.font = '600 11px system-ui, sans-serif'
+      ctx.fillStyle = 'rgba(255,255,255,0.25)'
+      ctx.fillText('TRAINED THIS WEEK:', 40, pillY)
+
+      const SCENARIO_COLORS: Record<string, string> = { flick: '#f87171', tracking: '#38bdf8', microadjust: '#a78bfa', switching: '#fbbf24', duel: '#34d399' }
+      let pillX = 40
+      scenarioEntries.forEach(([scenario, count]) => {
+        const label = `${scenario.charAt(0).toUpperCase() + scenario.slice(1)} ×${count}`
+        ctx.font = '700 11px system-ui, sans-serif'
+        const tw = ctx.measureText(label).width
+        const pw = tw + 20, ph = 26
+        const py = pillY + 14
+        ctx.fillStyle = 'rgba(255,255,255,0.05)'
+        ctx.strokeStyle = SCENARIO_COLORS[scenario] ?? '#6b7280'
+        ctx.lineWidth = 1
+        ctx.beginPath(); ctx.roundRect(pillX, py, pw, ph, 6); ctx.fill(); ctx.stroke()
+        ctx.fillStyle = SCENARIO_COLORS[scenario] ?? '#9ca3af'
+        ctx.fillText(label, pillX + 10, py + 17)
+        pillX += pw + 8
+      })
+    }
+
+    // Bottom: upforge.gg
+    ctx.font = '500 13px system-ui, sans-serif'
+    ctx.fillStyle = 'rgba(255,255,255,0.2)'
+    ctx.textAlign = 'center'
+    ctx.fillText('upforge.gg', W / 2, H - 28)
+    ctx.textAlign = 'left'
+
+    // Export
+    const dataUrl = canvas.toDataURL('image/png')
+    const a = document.createElement('a')
+    a.href = dataUrl
+    a.download = `upforge-week-${now.toISOString().slice(0, 10)}.png`
+    a.click()
+
+    weekCardDone.value = true
+    setTimeout(() => { weekCardDone.value = false }, 2500)
+  } catch (e) {
+    console.error('[TrainingHub] Weekly card export failed:', e)
+  } finally {
+    weekCardExporting.value = false
+  }
+}
+
 // ── Training stats (from API history) ─────────────────────────────────────────
 const trainingStats = computed(() => {
   const sessions = apiHistory.value?.sessions ?? []
@@ -686,6 +847,8 @@ const trainingStats = computed(() => {
 
   return {
     thisWeekCount: thisWeek.length,
+    thisWeekBest: thisWeek.length ? Math.max(...thisWeek.map(s => s.score)) : null,
+    thisWeekSessions: thisWeek,
     improvement,
     streak,
     totalSessions: sessions.length,
@@ -1459,8 +1622,25 @@ const CATEGORY_ICON: Record<string, string> = {
 
       <!-- ── PROGRESS TAB ────────────────────────────────────────────────── -->
       <template v-if="activeTab === 'progress'">
+        <!-- Stats summary + Share Week -->
+        <div class="px-4 mt-4 flex items-center justify-between gap-2">
+          <span class="text-[9px] font-black uppercase tracking-[0.18em] text-gray-600">This Week</span>
+          <button
+            :disabled="weekCardExporting || trainingStats.thisWeekCount === 0"
+            class="flex items-center gap-1.5 text-[10px] font-bold rounded-lg px-3 py-1.5 border transition-all disabled:opacity-40"
+            :class="weekCardDone
+              ? 'text-green-400 border-green-500/20 bg-green-500/[0.05]'
+              : 'text-[#ff4655] border-[#ff4655]/25 bg-[#ff4655]/[0.04] hover:bg-[#ff4655]/[0.10]'"
+            @click="exportWeeklyCard"
+          >
+            <svg v-if="weekCardExporting" class="w-3 h-3 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/></svg>
+            <svg v-else-if="weekCardDone" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="w-3 h-3"><polyline points="20 6 9 17 4 12"/></svg>
+            <svg v-else viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-3 h-3"><path d="M4 12v8a2 2 0 002 2h12a2 2 0 002-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/></svg>
+            {{ weekCardExporting ? 'Saving…' : weekCardDone ? 'Saved!' : 'Share Week' }}
+          </button>
+        </div>
         <!-- Stats summary cards -->
-        <div class="px-4 mt-4 grid grid-cols-2 gap-2">
+        <div class="px-4 mt-2 grid grid-cols-2 gap-2">
           <div class="rounded-xl border border-white/[0.07] px-4 py-3" style="background: #0d1520">
             <div class="text-xl font-black tabular-nums text-white">{{ trainingStats.totalSessions }}</div>
             <div class="text-[9px] text-gray-500 mt-0.5 uppercase tracking-wide">Total sessions</div>
