@@ -85,6 +85,10 @@
           <div class="step-fill" :style="{ width: ((step - 1) / (TOTAL_STEPS - 1) * 100) + '%' }" />
         </div>
       </div>
+      <!-- Step labels -->
+      <div class="step-labels">
+        <span v-for="(label, i) in stepLabels" :key="i" class="step-label" :class="{ 'step-label--active': i + 1 === step }">{{ label }}</span>
+      </div>
 
       <!-- Step content -->
       <div class="step-outer">
@@ -93,7 +97,7 @@
         <Transition name="step" mode="out-in">
           <div v-if="step === 1" key="1" class="step-content">
             <div class="step-header">
-              <p class="step-eyebrow">Step 1 of 3</p>
+              <p class="step-eyebrow">Step 1 of 5</p>
               <h2 class="step-title">Everything's included.</h2>
               <p class="step-desc">Zero configuration — install and your next match is already being tracked.</p>
             </div>
@@ -132,7 +136,7 @@
         <Transition name="step" mode="out-in">
           <div v-if="step === 2" key="2" class="step-content">
             <div class="step-header">
-              <p class="step-eyebrow">Step 2 of 3</p>
+              <p class="step-eyebrow">Step 2 of 5</p>
               <h2 class="step-title">Sign in to UpForge.</h2>
               <p class="step-desc">Use your <span class="text-accent">upforge.gg</span> credentials — your coaching history will sync instantly.</p>
             </div>
@@ -192,11 +196,117 @@
           </div>
         </Transition>
 
-        <!-- ── Step 3: Folder ── -->
+        <!-- ── Step 3: Mouse & Aim Setup ── -->
         <Transition name="step" mode="out-in">
           <div v-if="step === 3" key="3" class="step-content">
             <div class="step-header">
-              <p class="step-eyebrow">Step 3 of 3 — Almost there</p>
+              <p class="step-eyebrow">Step 3 of 5 — Aim calibration</p>
+              <h2 class="step-title">Set your mouse settings.</h2>
+              <p class="step-desc">UpForge uses these to calibrate the aim trainer to match your exact in-game feel.</p>
+            </div>
+
+            <!-- Game selector -->
+            <div class="mouse-section">
+              <p class="mouse-section-label">Game</p>
+              <div class="game-btns">
+                <button v-for="g in GAMES" :key="g.value" class="game-btn" :class="{ 'game-btn--active': trainerMouse.game === g.value }" @click="trainerMouse.game = (g.value as typeof trainerMouse.game)">
+                  {{ g.label }}
+                </button>
+              </div>
+            </div>
+
+            <!-- DPI -->
+            <div class="mouse-section">
+              <div class="mouse-row-header">
+                <p class="mouse-section-label">Mouse DPI</p>
+                <input v-model.number="trainerMouse.dpi" type="number" min="100" max="32000" step="100" class="mouse-num-input" />
+              </div>
+              <div class="dpi-presets">
+                <button v-for="d in DPI_PRESETS" :key="d" class="dpi-preset-btn" :class="{ 'dpi-preset-btn--active': trainerMouse.dpi === d }" @click="trainerMouse.dpi = d">{{ d }}</button>
+              </div>
+            </div>
+
+            <!-- Sensitivity -->
+            <div class="mouse-section">
+              <div class="mouse-row-header">
+                <p class="mouse-section-label">In-game Sensitivity</p>
+                <input v-model.number="trainerMouse.sensitivity" type="number" min="0.01" max="20" step="0.01" class="mouse-num-input" />
+              </div>
+              <input v-model.number="trainerMouse.sensitivity" type="range" min="0.01" max="5" step="0.01" class="sens-slider" />
+            </div>
+
+            <!-- eDPI readout -->
+            <div class="edpi-row">
+              <div class="edpi-block">
+                <span class="edpi-label">eDPI</span>
+                <span class="edpi-value">{{ Math.round(trainerMouse.dpi * trainerMouse.sensitivity) }}</span>
+                <span class="edpi-tag" :class="edpiTagClass">{{ edpiLabel }}</span>
+              </div>
+              <p class="edpi-note">eDPI = DPI × Sensitivity — the universal sensitivity standard</p>
+            </div>
+
+            <!-- Polling rate -->
+            <div class="mouse-section">
+              <p class="mouse-section-label">Polling Rate</p>
+              <div class="polling-btns">
+                <button v-for="r in POLLING_RATES" :key="r" class="dpi-preset-btn" :class="{ 'dpi-preset-btn--active': trainerMouse.pollingRate === r }" @click="trainerMouse.pollingRate = r">{{ r }}Hz</button>
+              </div>
+            </div>
+
+            <button class="btn-primary" @click="saveMouseAndNext">
+              Continue
+              <svg class="btn-arrow" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M9 5l7 7-7 7"/></svg>
+            </button>
+            <button class="back-btn" @click="step = 2">← Back</button>
+          </div>
+        </Transition>
+
+        <!-- ── Step 4: Keybinds ── -->
+        <Transition name="step" mode="out-in">
+          <div v-if="step === 4" key="4" class="step-content">
+            <div class="step-header">
+              <p class="step-eyebrow">Step 4 of 5 — Hotkeys</p>
+              <h2 class="step-title">Your control shortcuts.</h2>
+              <p class="step-desc">These global shortcuts work during any game. Customise or keep the defaults — you can always change them in Settings.</p>
+            </div>
+
+            <div class="keybind-list">
+              <div v-for="kb in KEYBIND_DEFS" :key="kb.action" class="keybind-row">
+                <div class="keybind-icon-wrap" :style="{ background: kb.iconBg }">
+                  <svg class="keybind-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.7" :d="kb.icon" />
+                  </svg>
+                </div>
+                <div class="keybind-info">
+                  <p class="keybind-name">{{ kb.label }}</p>
+                  <p class="keybind-desc">{{ kb.desc }}</p>
+                </div>
+                <button
+                  class="keybind-key-btn"
+                  :class="{ 'keybind-key-btn--listening': rebinding === kb.action }"
+                  @click="startRebind(kb.action)"
+                >
+                  <span v-if="rebinding === kb.action" class="key-listen-text">Press a key…</span>
+                  <kbd v-else class="key-badge">{{ hotkeys[kb.action] || kb.default }}</kbd>
+                </button>
+              </div>
+            </div>
+
+            <p v-if="rebinding" class="rebind-hint">Press any key to bind · <button class="link-btn" @click="cancelRebind">Cancel</button></p>
+
+            <button class="btn-primary" :disabled="!!rebinding" @click="saveHotkeysAndNext">
+              Continue
+              <svg class="btn-arrow" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M9 5l7 7-7 7"/></svg>
+            </button>
+            <button class="back-btn" @click="step = 3">← Back</button>
+          </div>
+        </Transition>
+
+        <!-- ── Step 5: Folder ── -->
+        <Transition name="step" mode="out-in">
+          <div v-if="step === 5" key="5" class="step-content">
+            <div class="step-header">
+              <p class="step-eyebrow">Step 5 of 5 — Almost there</p>
               <h2 class="step-title">Where to save recordings?</h2>
               <p class="step-desc">Recordings are stored temporarily — automatically deleted once your AI analysis is ready (usually within 10 minutes).</p>
             </div>
@@ -227,6 +337,7 @@
               <svg class="btn-record-dot" viewBox="0 0 8 8" fill="currentColor"><circle cx="4" cy="4" r="4"/></svg>
               Start Recording
             </button>
+            <button class="back-btn" @click="step = 4">← Back</button>
           </div>
         </Transition>
 
@@ -236,11 +347,12 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 
 const router = useRouter()
-const TOTAL_STEPS = 3
+const TOTAL_STEPS = 5
+const stepLabels = ['Features', 'Sign in', 'Mouse', 'Hotkeys', 'Storage']
 const step = ref(1)
 const email = ref('')
 const password = ref('')
@@ -248,6 +360,78 @@ const loginLoading = ref(false)
 const loginError = ref('')
 const showPassword = ref(false)
 const savePath = ref('')
+
+// Mouse setup state
+const trainerMouse = ref({
+  dpi: 800,
+  game: 'valorant' as 'valorant' | 'cs2' | 'apex' | 'overwatch2' | 'custom',
+  sensitivity: 0.5,
+  fov: 103,
+  rawInput: true,
+  pollingRate: 1000 as 125 | 250 | 500 | 1000 | 2000 | 4000,
+})
+const DPI_PRESETS = [400, 800, 1600, 3200]
+const POLLING_RATES = [125, 250, 500, 1000, 2000, 4000] as const
+const GAMES = [
+  { value: 'valorant', label: 'Valorant' },
+  { value: 'cs2', label: 'CS2' },
+  { value: 'apex', label: 'Apex' },
+  { value: 'overwatch2', label: 'OW2' },
+  { value: 'custom', label: 'Other' },
+]
+const edpiLabel = computed(() => {
+  const e = trainerMouse.value.dpi * trainerMouse.value.sensitivity
+  if (e < 400) return 'Very Low'
+  if (e < 700) return 'Low'
+  if (e < 1200) return 'Medium'
+  if (e < 2000) return 'High'
+  return 'Very High'
+})
+const edpiTagClass = computed(() => {
+  const e = trainerMouse.value.dpi * trainerMouse.value.sensitivity
+  if (e < 400) return 'edpi-tag--low'
+  if (e < 700) return 'edpi-tag--low'
+  if (e < 1200) return 'edpi-tag--mid'
+  if (e < 2000) return 'edpi-tag--high'
+  return 'edpi-tag--high'
+})
+
+// Keybinds state
+type HotkeyAction = 'save-clip' | 'toggle-overlay' | 'take-screenshot'
+const hotkeys = ref<Record<HotkeyAction, string>>({
+  'save-clip': 'F9',
+  'toggle-overlay': 'F10',
+  'take-screenshot': 'F8',
+})
+const rebinding = ref<HotkeyAction | null>(null)
+const KEYBIND_DEFS: { action: HotkeyAction; label: string; desc: string; default: string; icon: string; iconBg: string }[] = [
+  {
+    action: 'save-clip',
+    label: 'Save Clip',
+    desc: 'Save the last 30 seconds as a highlight',
+    default: 'F9',
+    icon: 'M15 10l4.553-2.277A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M4 8h11a1 1 0 011 1v6a1 1 0 01-1 1H4a1 1 0 01-1-1V9a1 1 0 011-1z',
+    iconBg: 'rgba(255,70,85,0.12)',
+  },
+  {
+    action: 'toggle-overlay',
+    label: 'Toggle Overlay',
+    desc: 'Show or hide the in-game stats overlay',
+    default: 'F10',
+    icon: 'M9 17V7m0 10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h2a2 2 0 012 2m0 10a2 2 0 002 2h2a2 2 0 002-2M9 7a2 2 0 012-2h2a2 2 0 012 2m0 10V7',
+    iconBg: 'rgba(168,85,247,0.12)',
+  },
+  {
+    action: 'take-screenshot',
+    label: 'Screenshot',
+    desc: 'Capture and save the current frame',
+    default: 'F8',
+    icon: 'M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z M15 13a3 3 0 11-6 0 3 3 0 016 0z',
+    iconBg: 'rgba(251,191,36,0.12)',
+  },
+]
+
+let keyListener: ((e: KeyboardEvent) => void) | null = null
 
 const features = [
   {
@@ -289,8 +473,19 @@ const features = [
 ]
 
 onMounted(async () => {
-  const settings = await window.api.settings.get() as { savePath: string }
-  savePath.value = settings.savePath
+  try {
+    const settings = await window.api.settings.get() as { savePath: string; trainerMouse?: typeof trainerMouse.value }
+    savePath.value = settings.savePath
+    if (settings.trainerMouse) Object.assign(trainerMouse.value, settings.trainerMouse)
+  } catch { /* defaults fine */ }
+  try {
+    const bindings = await window.api.clips.getHotkeys() as Partial<Record<HotkeyAction, string>>
+    if (bindings) Object.assign(hotkeys.value, bindings)
+  } catch { /* defaults fine */ }
+})
+
+onUnmounted(() => {
+  cancelRebind()
 })
 
 async function handleLogin() {
@@ -303,6 +498,49 @@ async function handleLogin() {
     loginError.value = (result as { error?: string }).error || 'Login failed. Check your credentials.'
   }
   loginLoading.value = false
+}
+
+async function saveMouseAndNext() {
+  try {
+    await window.api.settings.save({ trainerMouse: trainerMouse.value })
+  } catch { /* non-critical */ }
+  step.value = 4
+}
+
+function startRebind(action: HotkeyAction) {
+  rebinding.value = action
+  if (keyListener) window.removeEventListener('keydown', keyListener)
+  keyListener = (e: KeyboardEvent) => {
+    e.preventDefault()
+    if (e.key === 'Escape') { cancelRebind(); return }
+    const acc = keyEventToAccelerator(e)
+    if (!acc) return
+    hotkeys.value[action] = acc
+    window.api.clips.setHotkey(action, acc).catch(() => {})
+    cancelRebind()
+  }
+  window.addEventListener('keydown', keyListener, { once: true })
+}
+
+function cancelRebind() {
+  rebinding.value = null
+  if (keyListener) { window.removeEventListener('keydown', keyListener); keyListener = null }
+}
+
+function keyEventToAccelerator(e: KeyboardEvent): string | null {
+  const skip = ['Control', 'Alt', 'Shift', 'Meta', 'CapsLock', 'NumLock', 'ScrollLock']
+  if (skip.includes(e.key)) return null
+  const parts: string[] = []
+  if (e.ctrlKey) parts.push('Ctrl')
+  if (e.altKey) parts.push('Alt')
+  if (e.shiftKey) parts.push('Shift')
+  const key = e.code.startsWith('Key') ? e.code.slice(3) : e.code.startsWith('Digit') ? e.code.slice(5) : e.key
+  parts.push(key)
+  return parts.join('+')
+}
+
+async function saveHotkeysAndNext() {
+  step.value = 5
 }
 
 async function choosePath() {
@@ -506,7 +744,7 @@ function openForgotPassword() {
 .right-panel {
   flex: 1; display: flex; flex-direction: column;
   align-items: center; justify-content: center;
-  padding: 18px 32px 18px;
+  padding: 62px 32px 18px;
   position: relative; overflow: hidden;
   -webkit-app-region: no-drag;
 }
@@ -528,7 +766,9 @@ function openForgotPassword() {
 }
 .rp-glow--step1 { width: 400px; height: 400px; top: -80px; right: -60px; background: radial-gradient(circle, rgba(239,68,68,0.09) 0%, transparent 65%); }
 .rp-glow--step2 { width: 400px; height: 400px; top: 30%; right: -80px; background: radial-gradient(circle, rgba(168,85,247,0.08) 0%, transparent 65%); }
-.rp-glow--step3 { width: 400px; height: 400px; bottom: -60px; left: -60px; background: radial-gradient(circle, rgba(20,184,166,0.08) 0%, transparent 65%); }
+.rp-glow--step3 { width: 360px; height: 360px; top: 20%; left: -40px; background: radial-gradient(circle, rgba(255,70,85,0.08) 0%, transparent 65%); }
+.rp-glow--step4 { width: 380px; height: 380px; bottom: 0; right: -60px; background: radial-gradient(circle, rgba(168,85,247,0.07) 0%, transparent 65%); }
+.rp-glow--step5 { width: 400px; height: 400px; bottom: -60px; left: -60px; background: radial-gradient(circle, rgba(16,185,129,0.07) 0%, transparent 65%); }
 
 /* ── Step indicator ── */
 .step-indicator {
@@ -537,6 +777,19 @@ function openForgotPassword() {
   display: flex; align-items: center; gap: 0;
   z-index: 2;
 }
+.step-labels {
+  position: absolute; top: 42px; left: 50%;
+  transform: translateX(-50%);
+  display: flex; align-items: center; gap: 0;
+  z-index: 2;
+}
+.step-label {
+  font-size: 8px; font-weight: 600; color: rgba(75,85,99,0.5);
+  text-transform: uppercase; letter-spacing: 0.06em;
+  width: 58px; text-align: center;
+  transition: color 0.3s ease;
+}
+.step-label--active { color: rgba(255,70,85,0.8); }
 .step-track {
   position: absolute; top: 50%; left: 18px; right: 18px;
   height: 1px; background: rgba(255,255,255,0.07);
@@ -741,6 +994,58 @@ function openForgotPassword() {
 }
 .info-text { font-size: 11px; color: rgba(107,114,128,0.7); line-height: 1.4; margin: 0; }
 
+/* ── Mouse setup step ── */
+.mouse-section { display: flex; flex-direction: column; gap: 6px; }
+.mouse-section-label { font-size: 10px; font-weight: 700; color: #4b5563; text-transform: uppercase; letter-spacing: 0.08em; margin: 0; }
+.mouse-row-header { display: flex; align-items: center; justify-content: space-between; }
+.mouse-num-input {
+  width: 72px; padding: 4px 8px; text-align: right;
+  background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 6px; color: #f9fafb; font-size: 12px; font-weight: 600;
+  outline: none; -webkit-app-region: no-drag;
+  transition: border-color 0.15s;
+}
+.mouse-num-input:focus { border-color: rgba(255,70,85,0.4); }
+.game-btns { display: flex; gap: 5px; flex-wrap: wrap; }
+.game-btn {
+  padding: 5px 11px; border-radius: 7px; font-size: 11px; font-weight: 600;
+  background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.07);
+  color: #4b5563; cursor: pointer; transition: all 0.15s;
+  -webkit-app-region: no-drag;
+}
+.game-btn:hover { background: rgba(255,255,255,0.06); color: #9ca3af; }
+.game-btn--active { background: rgba(255,70,85,0.1); border-color: rgba(255,70,85,0.3); color: #ff4655; }
+.dpi-presets, .polling-btns { display: flex; gap: 5px; }
+.dpi-preset-btn {
+  padding: 4px 10px; border-radius: 6px; font-size: 11px; font-weight: 600; font-family: monospace;
+  background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.07);
+  color: #4b5563; cursor: pointer; transition: all 0.15s;
+  -webkit-app-region: no-drag;
+}
+.dpi-preset-btn:hover { background: rgba(255,255,255,0.06); color: #9ca3af; }
+.dpi-preset-btn--active { background: rgba(255,70,85,0.1); border-color: rgba(255,70,85,0.3); color: #ff4655; }
+.sens-slider {
+  width: 100%; height: 3px; cursor: pointer; accent-color: #ff4655;
+  -webkit-app-region: no-drag;
+}
+.edpi-row {
+  display: flex; align-items: center; gap: 12px;
+  padding: 10px 12px;
+  background: rgba(255,255,255,0.025); border: 1px solid rgba(255,255,255,0.06);
+  border-radius: 9px;
+}
+.edpi-block { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+.edpi-label { font-size: 9px; font-weight: 700; color: #4b5563; text-transform: uppercase; letter-spacing: 0.08em; }
+.edpi-value { font-size: 20px; font-weight: 800; color: #f9fafb; font-variant-numeric: tabular-nums; letter-spacing: -0.03em; }
+.edpi-tag {
+  font-size: 9px; font-weight: 700; padding: 2px 7px; border-radius: 20px;
+  text-transform: uppercase; letter-spacing: 0.06em;
+}
+.edpi-tag--low  { background: rgba(59,130,246,0.12); border: 1px solid rgba(59,130,246,0.2); color: #60a5fa; }
+.edpi-tag--mid  { background: rgba(16,185,129,0.12); border: 1px solid rgba(16,185,129,0.2); color: #34d399; }
+.edpi-tag--high { background: rgba(239,68,68,0.12);  border: 1px solid rgba(239,68,68,0.2);  color: #f87171; }
+.edpi-note { font-size: 10px; color: #374151; line-height: 1.4; margin: 0; }
+
 /* ── Transitions ── */
 .step-enter-active { transition: opacity 0.3s ease, transform 0.3s cubic-bezier(0.16,1,0.3,1); }
 .step-leave-active { transition: opacity 0.2s ease, transform 0.2s ease; }
@@ -749,4 +1054,5 @@ function openForgotPassword() {
 
 .error-fade-enter-active, .error-fade-leave-active { transition: opacity 0.25s ease; }
 .error-fade-enter-from, .error-fade-leave-to { opacity: 0; }
+
 </style>
