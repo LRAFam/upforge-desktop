@@ -30,6 +30,7 @@ const launching = ref(false)
 const drillRunning = ref(false)    // true from launch success → until result received
 const showResultModal = ref(false) // completion modal
 const lastResult = ref<SessionResult | null>(null)
+const lastPlayedDrill = ref<AssignedDrill | null>(null) // preserved after activeDrill cleared
 const sessionHistory = ref<SessionResult[]>([])
 const activeDrill = ref<AssignedDrill | null>(null)
 const completedDrills = ref<Set<string>>(new Set())
@@ -144,6 +145,27 @@ const DIFFICULTY_BG: Record<string, string> = {
   pro: 'bg-red-500/10 border-red-500/20',
 }
 
+// ── Radar chart constants ─────────────────────────────────────────────────────
+const RADAR_SCENARIOS = ['flick', 'tracking', 'microadjust', 'switching', 'duel'] as const
+const RADAR_COLORS: Record<string, string> = {
+  flick: '#f87171',
+  tracking: '#38bdf8',
+  microadjust: '#fbbf24',
+  switching: '#a78bfa',
+  duel: '#34d399',
+}
+// Map coaching drill category → trainable scenario
+const CATEGORY_TO_SCENARIO: Record<string, AssignedDrill['scenario']> = {
+  mechanics: 'flick',
+  crosshair_placement: 'microadjust',
+  tracking: 'tracking',
+  switching: 'switching',
+  duel: 'duel',
+  game_sense: 'flick',
+  positioning: 'microadjust',
+  default: 'flick',
+}
+
 // ── Score helpers ─────────────────────────────────────────────────────────────
 function scoreColor(score: number): string {
   if (score >= 80) return 'text-green-400'
@@ -184,6 +206,33 @@ function trendColor(trend: number | null): string {
   if (trend < -2) return 'text-red-400'
   return 'text-gray-500'
 }
+
+// ── Skill radar chart ─────────────────────────────────────────────────────────
+const radarData = computed(() => {
+  const cx = 70, cy = 70, r = 52
+  const getPoint = (i: number, frac: number) => {
+    const angle = -Math.PI / 2 + (i / RADAR_SCENARIOS.length) * Math.PI * 2
+    return { x: cx + r * frac * Math.cos(angle), y: cy + r * frac * Math.sin(angle) }
+  }
+  const scores = RADAR_SCENARIOS.map(s =>
+    apiHistory.value?.by_scenario?.[s]?.best_score ?? 0
+  )
+  const dataVertices = scores.map((s, i) => getPoint(i, s / 100))
+  const outerVertices = RADAR_SCENARIOS.map((_, i) => getPoint(i, 1))
+  const dataPath = 'M ' + dataVertices.map(p => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' L ') + ' Z'
+  const outerPath = 'M ' + outerVertices.map(p => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' L ') + ' Z'
+  const gridPaths = [0.25, 0.5, 0.75].map(frac => {
+    const pts = RADAR_SCENARIOS.map((_, i) => getPoint(i, frac))
+    return 'M ' + pts.map(p => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' L ') + ' Z'
+  })
+  const axisLines = outerVertices.map(p => ({ x1: cx, y1: cy, x2: p.x, y2: p.y }))
+  const labels = RADAR_SCENARIOS.map((s, i) => {
+    const pt = getPoint(i, 1.3)
+    return { x: pt.x, y: pt.y, text: SCENARIO_META[s]?.label ?? s, color: RADAR_COLORS[s] }
+  })
+  const hasData = scores.some(s => s > 0)
+  return { dataPath, outerPath, gridPaths, axisLines, labels, scores, dataVertices, hasData }
+})
 
 // ── Comparison vs last API session ───────────────────────────────────────────
 function lastApiScore(scenario: string): number | null {
@@ -286,12 +335,17 @@ onMounted(async () => {
     const r = result as SessionResult
     lastResult.value = r
     sessionHistory.value.unshift(r)
-    if (activeDrill.value) completedDrills.value.add(activeDrill.value.scenario)
+    if (activeDrill.value) {
+      completedDrills.value.add(activeDrill.value.scenario)
+      lastPlayedDrill.value = activeDrill.value
+    }
     activeDrill.value = null
     drillRunning.value = false
     showResultModal.value = true
     activeTab.value = 'drills'
     nextTick(() => drawHeatmap(r))
+    // Refresh API history so Progress tab reflects the new session
+    window.api.trainer.getHistory().then(h => { apiHistory.value = h })
   })
 
   // Fetch training history + coaching drills from API
@@ -303,8 +357,24 @@ onMounted(async () => {
       window.api.trainer.getCorrelation(),
     ])
     apiHistory.value = history
-    coachingDrills.value = Array.isArray(drills) ? drills : []
+    const drillList = Array.isArray(drills) ? drills : []
+    coachingDrills.value = drillList
     correlationInsights.value = Array.isArray(insights) ? insights : []
+    // If API returned coaching drills that map to scenarios, populate Today's Drills
+    if (drillList.length > 0) {
+      const mapped: AssignedDrill[] = drillList
+        .filter((d: CoachingDrill) => CATEGORY_TO_SCENARIO[d.category])
+        .slice(0, 4)
+        .map((d: CoachingDrill) => ({
+          scenario: CATEGORY_TO_SCENARIO[d.category] ?? 'flick',
+          difficulty: 'medium' as const,
+          duration_seconds: 60,
+          weakness: d.category,
+          weakness_score: d.baseline_score,
+          reason: d.instructions ?? d.title,
+        }))
+      if (mapped.length > 0) assignedDrills.value = mapped
+    }
   } finally {
     loadingHistory.value = false
   }
@@ -334,6 +404,17 @@ async function stopDrill() {
   await window.api.trainer.kill()
   drillRunning.value = false
   activeDrill.value = null
+}
+
+async function launchCoachingDrill(drill: CoachingDrill) {
+  await launchDrill({
+    scenario: CATEGORY_TO_SCENARIO[drill.category] ?? 'flick',
+    difficulty: 'medium',
+    duration_seconds: 60,
+    weakness: drill.category,
+    weakness_score: drill.baseline_score,
+    reason: drill.instructions ?? drill.title,
+  })
 }
 
 const averageScore = computed(() => {
@@ -476,9 +557,9 @@ const CATEGORY_ICON: Record<string, string> = {
               @click="showResultModal = false"
             >View Details</button>
             <button
-              v-if="activeDrill"
+              v-if="lastPlayedDrill"
               class="flex-1 py-2.5 rounded-xl border border-teal-500/30 bg-teal-500/10 text-[12px] font-semibold text-teal-300 hover:bg-teal-500/20 transition-all flex items-center justify-center gap-1.5"
-              @click="() => { showResultModal = false; launchDrill(assignedDrills.find(d => d.scenario === lastResult!.scenario) ?? assignedDrills[0]) }"
+              @click="() => { const d = lastPlayedDrill!; showResultModal = false; launchDrill(d) }"
             >
               <svg viewBox="0 0 24 24" fill="currentColor" class="w-3 h-3"><polygon points="5 3 19 12 5 21 5 3"/></svg>
               Play Again</button>
@@ -911,6 +992,58 @@ const CATEGORY_ICON: Record<string, string> = {
           </div>
 
           <div v-else class="space-y-3 pb-4">
+
+            <!-- Skill Radar -->
+            <div class="rounded-xl border border-white/[0.07] overflow-hidden" style="background: #0d1520">
+              <div class="flex items-center gap-2 px-4 py-2.5 border-b border-white/[0.05]">
+                <span class="text-[9px] font-black uppercase tracking-[0.18em] text-gray-500">Skill Radar</span>
+                <div class="flex-1 h-px bg-white/[0.04]" />
+                <span class="text-[9px] text-gray-700">personal bests</span>
+              </div>
+              <div class="flex items-center justify-center gap-4 py-4 px-4">
+                <svg width="140" height="140" viewBox="0 0 140 140" class="flex-shrink-0">
+                  <!-- grid rings -->
+                  <path v-for="(gp, gi) in radarData.gridPaths" :key="gi" :d="gp" fill="none" stroke="rgba(255,255,255,0.05)" stroke-width="0.75" />
+                  <!-- axis lines -->
+                  <line v-for="(ax, ai) in radarData.axisLines" :key="ai" :x1="ax.x1" :y1="ax.y1" :x2="ax.x2" :y2="ax.y2" stroke="rgba(255,255,255,0.07)" stroke-width="0.75" />
+                  <!-- outer ring -->
+                  <path :d="radarData.outerPath" fill="none" stroke="rgba(255,255,255,0.14)" stroke-width="1" />
+                  <!-- data fill (only when there is data) -->
+                  <path v-if="radarData.hasData" :d="radarData.dataPath" fill="rgba(20,184,166,0.10)" stroke="rgba(20,184,166,0.55)" stroke-width="1.5" stroke-linejoin="round" />
+                  <!-- vertex dots -->
+                  <circle
+                    v-for="(s, vi) in RADAR_SCENARIOS" :key="s"
+                    :cx="radarData.dataVertices[vi].x"
+                    :cy="radarData.dataVertices[vi].y"
+                    :r="radarData.scores[vi] > 0 ? 3 : 0"
+                    :fill="RADAR_COLORS[s]"
+                  />
+                  <!-- labels -->
+                  <text
+                    v-for="(lbl, li) in radarData.labels" :key="li"
+                    :x="lbl.x" :y="lbl.y"
+                    :fill="lbl.color"
+                    font-size="8.5"
+                    font-weight="700"
+                    text-anchor="middle"
+                    dominant-baseline="middle"
+                  >{{ lbl.text }}</text>
+                </svg>
+                <!-- Score pills -->
+                <div class="flex flex-col gap-2">
+                  <div v-for="(s, ri) in RADAR_SCENARIOS" :key="s" class="flex items-center gap-2">
+                    <div class="w-1.5 h-1.5 rounded-full flex-shrink-0" :style="{ backgroundColor: RADAR_COLORS[s] }" />
+                    <span class="text-[9px] text-gray-500 w-14">{{ SCENARIO_META[s]?.label }}</span>
+                    <span :class="['text-[11px] font-black tabular-nums w-6 text-right', radarData.scores[ri] > 0 ? scoreColor(radarData.scores[ri]) : 'text-gray-700']">
+                      {{ radarData.scores[ri] > 0 ? radarData.scores[ri] : '—' }}
+                    </span>
+                  </div>
+                </div>
+              </div>
+              <div v-if="!radarData.hasData" class="px-4 pb-3 -mt-2 text-center">
+                <p class="text-[10px] text-gray-700">Complete training sessions to build your radar.</p>
+              </div>
+            </div>
             <div
               v-for="(meta, scenario) in SCENARIO_META"
               :key="scenario"
@@ -1087,6 +1220,20 @@ const CATEGORY_ICON: Record<string, string> = {
                     {{ drill.success_metric }}
                   </p>
                 </div>
+              </div>
+              <!-- Train it button — maps coaching drill → trainer scenario -->
+              <div v-if="CATEGORY_TO_SCENARIO[drill.category]" class="border-t border-white/[0.05] px-4 py-2 flex items-center justify-between">
+                <span class="text-[9px] text-gray-600">
+                  Train: <span class="text-gray-500">{{ SCENARIO_META[CATEGORY_TO_SCENARIO[drill.category]]?.label ?? drill.category }}</span>
+                </span>
+                <button
+                  :disabled="launching || drillRunning"
+                  class="flex items-center gap-1.5 text-[10px] font-bold text-teal-400 hover:text-teal-300 border border-teal-500/25 hover:border-teal-500/50 hover:bg-teal-500/[0.06] rounded-lg px-2.5 py-1 transition-all disabled:opacity-40"
+                  @click="launchCoachingDrill(drill)"
+                >
+                  <svg viewBox="0 0 24 24" fill="currentColor" class="w-2.5 h-2.5"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                  Train Now
+                </button>
               </div>
             </div>
           </div>

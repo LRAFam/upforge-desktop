@@ -818,7 +818,11 @@ export function setupIpcHandlers(
     if (!token) return []
     try {
       const res = await auth.getApi().get('/api/drills')
-      return res.data ?? []
+      const data = res.data
+      if (Array.isArray(data)) return data
+      // API returns { active: [...], completed: [...] }
+      if (data && typeof data === 'object') return (data as Record<string, unknown>).active ?? []
+      return []
     } catch (err: any) {
       log.warn('[Trainer] Failed to fetch coaching drills:', err?.message)
       return []
