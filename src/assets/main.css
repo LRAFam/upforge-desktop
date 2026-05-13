@@ -2,9 +2,77 @@
 @import "tailwindcss";
 
 @theme {
-  --color-upforge-red: #ef4444;
+  --color-upforge-red: #ff4655;
   --color-upforge-orange: #f97316;
   --font-sans: 'Inter', system-ui, sans-serif;
+}
+
+:root {
+  --brand-red: #ff4655;
+  --brand-red-dark: #c4323e;
+  --brand-red-glow: rgba(255, 70, 85, 0.25);
+}
+
+/* Shared button patterns */
+.btn-primary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 8px 16px;
+  border-radius: 10px;
+  font-size: 12px;
+  font-weight: 700;
+  color: #fff;
+  background: linear-gradient(135deg, #ff4655, #c4323e);
+  box-shadow: 0 4px 14px rgba(255, 70, 85, 0.25);
+  transition: opacity 0.15s, box-shadow 0.15s;
+  border: none;
+  cursor: pointer;
+}
+.btn-primary:hover { opacity: 0.9; box-shadow: 0 4px 18px rgba(255, 70, 85, 0.35); }
+.btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.btn-secondary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 8px 16px;
+  border-radius: 10px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #d1d5db;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  transition: background 0.15s, color 0.15s;
+  cursor: pointer;
+}
+.btn-secondary:hover { background: rgba(255, 255, 255, 0.07); color: #f3f4f6; }
+.btn-secondary:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.btn-ghost {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 500;
+  color: #6b7280;
+  background: transparent;
+  border: none;
+  transition: color 0.15s, background 0.15s;
+  cursor: pointer;
+}
+.btn-ghost:hover { color: #d1d5db; background: rgba(255, 255, 255, 0.04); }
+
+.card {
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: 12px;
+  overflow: hidden;
 }
 
 * {

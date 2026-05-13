@@ -227,38 +227,66 @@
           </select>
         </div>
 
-        <!-- DPI + Sensitivity row -->
-        <div class="grid grid-cols-2 gap-3">
-          <div>
-            <label class="block text-xs text-gray-500 mb-1">Mouse DPI</label>
-            <input
-              type="number"
-              v-model.number="settings.trainerMouse.dpi"
-              min="100"
-              max="32000"
-              step="100"
-              class="w-full px-2.5 py-1.5 bg-white/[0.04] border border-white/[0.07] rounded-lg text-xs text-white focus:outline-none focus:border-red-500/30 transition-colors"
-              @change="debouncedSave"
-            />
+        <!-- DPI quick-picks + custom input -->
+        <div>
+          <label class="block text-xs text-gray-500 mb-1.5">Mouse DPI</label>
+          <div class="flex gap-1.5 mb-1.5">
+            <button
+              v-for="preset in [400, 800, 1600, 3200]"
+              :key="preset"
+              class="flex-1 py-1 text-[11px] font-semibold rounded-lg border transition-all"
+              :class="settings.trainerMouse.dpi === preset
+                ? 'border-[#ff4655]/50 text-[#ff4655]'
+                : 'bg-white/[0.03] border-white/[0.07] text-gray-500 hover:text-gray-300 hover:bg-white/[0.06]'"
+              :style="settings.trainerMouse.dpi === preset ? { background: 'rgba(255,70,85,0.1)' } : {}"
+              @click="settings.trainerMouse.dpi = preset; debouncedSave()"
+            >{{ preset }}</button>
           </div>
-          <div>
-            <label class="block text-xs text-gray-500 mb-1">In-game Sensitivity</label>
-            <input
-              type="number"
-              v-model.number="settings.trainerMouse.sensitivity"
-              min="0.01"
-              max="20"
-              step="0.01"
-              class="w-full px-2.5 py-1.5 bg-white/[0.04] border border-white/[0.07] rounded-lg text-xs text-white focus:outline-none focus:border-red-500/30 transition-colors"
-              @change="debouncedSave"
-            />
-          </div>
+          <input
+            type="number"
+            v-model.number="settings.trainerMouse.dpi"
+            min="100"
+            max="32000"
+            step="100"
+            placeholder="Custom DPI"
+            class="w-full px-2.5 py-1.5 bg-white/[0.04] border border-white/[0.07] rounded-lg text-xs text-white focus:outline-none focus:border-[#ff4655]/30 transition-colors"
+            @change="debouncedSave"
+          />
         </div>
 
-        <!-- eDPI display -->
-        <div class="text-xs text-gray-600 -mt-1">
-          eDPI: <span class="text-gray-400 font-mono">{{ Math.round(settings.trainerMouse.dpi * settings.trainerMouse.sensitivity) }}</span>
-          <span class="ml-2 text-gray-700">· {{ eDpiLabel(settings.trainerMouse.dpi * settings.trainerMouse.sensitivity) }}</span>
+        <!-- Sensitivity -->
+        <div>
+          <label class="block text-xs text-gray-500 mb-1">In-game Sensitivity</label>
+          <input
+            type="number"
+            v-model.number="settings.trainerMouse.sensitivity"
+            min="0.01"
+            max="20"
+            step="0.01"
+            class="w-full px-2.5 py-1.5 bg-white/[0.04] border border-white/[0.07] rounded-lg text-xs text-white focus:outline-none focus:border-[#ff4655]/30 transition-colors"
+            @change="debouncedSave"
+          />
+        </div>
+
+        <!-- eDPI display with visual bar -->
+        <div class="px-3 py-2 bg-white/[0.02] border border-white/[0.04] rounded-lg">
+          <div class="flex items-center justify-between mb-1.5">
+            <span class="text-[10px] font-semibold uppercase tracking-wider text-gray-600">eDPI</span>
+            <div class="flex items-center gap-2">
+              <span class="text-sm font-bold font-mono tabular-nums text-gray-200">{{ Math.round(settings.trainerMouse.dpi * settings.trainerMouse.sensitivity) }}</span>
+              <span class="text-[10px] font-semibold px-1.5 py-0.5 rounded-full"
+                :class="eDpiLevelClass(settings.trainerMouse.dpi * settings.trainerMouse.sensitivity)"
+              >{{ eDpiLabel(settings.trainerMouse.dpi * settings.trainerMouse.sensitivity) }}</span>
+            </div>
+          </div>
+          <div class="w-full h-1.5 bg-white/[0.06] rounded-full overflow-hidden">
+            <div
+              class="h-full rounded-full transition-all duration-300"
+              :class="eDpiBarClass(settings.trainerMouse.dpi * settings.trainerMouse.sensitivity)"
+              :style="{ width: Math.min(100, (settings.trainerMouse.dpi * settings.trainerMouse.sensitivity) / 30) + '%' }"
+            />
+          </div>
+          <p class="text-[10px] text-gray-700 mt-1.5">eDPI = DPI × sensitivity — calibrates aim trainer to match your in-game feel</p>
         </div>
 
         <!-- FOV + Polling Rate row -->
@@ -301,7 +329,7 @@
           <button
             :class="[
               'relative w-8 h-[18px] rounded-full transition-colors flex-shrink-0 ml-4 overflow-hidden',
-              settings.trainerMouse.rawInput ? 'bg-red-500' : 'bg-white/[0.1]'
+              settings.trainerMouse.rawInput ? 'bg-[#ff4655]' : 'bg-white/[0.1]'
             ]"
             @click="settings.trainerMouse.rawInput = !settings.trainerMouse.rawInput; debouncedSave()"
           >
@@ -1102,6 +1130,20 @@ function eDpiLabel(edpi: number): string {
   if (edpi < 700) return 'Medium'
   if (edpi < 1200) return 'High'
   return 'Very high'
+}
+
+function eDpiLevelClass(edpi: number): string {
+  if (edpi < 400) return 'bg-blue-500/20 text-blue-400'
+  if (edpi < 700) return 'bg-green-500/20 text-green-400'
+  if (edpi < 1200) return 'bg-yellow-500/20 text-yellow-400'
+  return 'bg-red-500/20 text-red-400'
+}
+
+function eDpiBarClass(edpi: number): string {
+  if (edpi < 400) return 'bg-blue-500'
+  if (edpi < 700) return 'bg-green-500'
+  if (edpi < 1200) return 'bg-yellow-500'
+  return 'bg-[#ff4655]'
 }
 
 function formatBytes(bytes: number): string {

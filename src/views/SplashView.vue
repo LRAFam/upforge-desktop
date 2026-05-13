@@ -222,7 +222,7 @@ onUnmounted(() => {
   top: 0;
   bottom: 0;
   width: 3px;
-  background: linear-gradient(180deg, transparent 0%, #ef4444 30%, #f97316 70%, transparent 100%);
+  background: linear-gradient(180deg, transparent 0%, #ff4655 30%, #f97316 70%, transparent 100%);
   opacity: 0.7;
 }
 
@@ -292,7 +292,7 @@ onUnmounted(() => {
   line-height: 1;
 }
 .wordmark-up   { color: #fff; }
-.wordmark-forge { color: #ef4444; }
+.wordmark-forge { color: #ff4655; }
 
 .tagline {
   font-size: 11px;
@@ -343,7 +343,7 @@ onUnmounted(() => {
 }
 .progress-fill {
   height: 100%;
-  background: linear-gradient(90deg, #ef4444, #f97316);
+  background: linear-gradient(90deg, #ff4655, #f97316);
   border-radius: 99px;
   transition: width 0.5s cubic-bezier(0.16,1,0.3,1);
   box-shadow: 0 0 10px rgba(239,68,68,0.7);
@@ -371,7 +371,7 @@ onUnmounted(() => {
 .loader-bar {
   height: 100%;
   width: 40%;
-  background: linear-gradient(90deg, transparent, #ef4444, #f97316, transparent);
+  background: linear-gradient(90deg, transparent, #ff4655, #f97316, transparent);
   border-radius: 99px;
   animation: loader-slide 1.6s ease-in-out infinite;
 }

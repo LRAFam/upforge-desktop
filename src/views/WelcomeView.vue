@@ -437,7 +437,7 @@ const features = [
   {
     icon: 'M15 10l4.553-2.277A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M4 8h11a1 1 0 011 1v6a1 1 0 01-1 1H4a1 1 0 01-1-1V9a1 1 0 011-1z',
     iconBg: 'rgba(239,68,68,0.12)',
-    iconColor: '#ef4444',
+    iconColor: '#ff4655',
     glow: 'rgba(239,68,68,0.15)',
     title: 'Automatic match recording',
     text: 'Detects your game and starts recording the moment your match begins',
@@ -617,7 +617,7 @@ function openForgotPassword() {
 
 .lp-top-bar {
   position: absolute; top: 0; left: 0; right: 0; height: 2px;
-  background: linear-gradient(90deg, #ef4444, #f97316, transparent);
+  background: linear-gradient(90deg, #ff4655, #f97316, transparent);
   opacity: 0.8; z-index: 3;
 }
 
@@ -666,7 +666,7 @@ function openForgotPassword() {
 }
 .lp-wordmark { font-size: 14px; font-weight: 800; letter-spacing: -0.01em; line-height: 1; }
 .lp-up    { color: #fff; }
-.lp-forge { color: #ef4444; }
+.lp-forge { color: #ff4655; }
 .lp-tagline { font-size: 9px; color: rgba(107,114,128,0.8); margin-top: 2px; letter-spacing: 0.04em; }
 
 /* Headline */
@@ -677,7 +677,7 @@ function openForgotPassword() {
 }
 .lp-headline em {
   font-style: normal;
-  background: linear-gradient(135deg, #ef4444 0%, #f97316 60%, #fbbf24 100%);
+  background: linear-gradient(135deg, #ff4655 0%, #f97316 60%, #fbbf24 100%);
   -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
 }
 .lp-sub { font-size: 10.5px; color: rgba(107,114,128,0.8); line-height: 1.5; margin: 0; }
@@ -797,7 +797,7 @@ function openForgotPassword() {
 }
 .step-fill {
   height: 100%;
-  background: linear-gradient(90deg, #ef4444, #f97316);
+  background: linear-gradient(90deg, #ff4655, #f97316);
   transition: width 0.5s cubic-bezier(0.16,1,0.3,1);
 }
 .step-pip {
@@ -811,13 +811,13 @@ function openForgotPassword() {
   margin: 0 24px;
 }
 .step-pip--active {
-  background: linear-gradient(135deg, #ef4444, #f97316);
+  background: linear-gradient(135deg, #ff4655, #f97316);
   border-color: transparent; color: #fff;
   box-shadow: 0 0 14px rgba(239,68,68,0.4);
 }
 .step-pip--done {
   background: rgba(239,68,68,0.15);
-  border-color: rgba(239,68,68,0.3); color: #ef4444;
+  border-color: rgba(239,68,68,0.3); color: #ff4655;
 }
 .pip-check { font-size: 10px; }
 .pip-num { font-size: 9px; }
@@ -828,12 +828,12 @@ function openForgotPassword() {
 
 .step-eyebrow {
   font-size: 9px; font-weight: 700; letter-spacing: 0.1em;
-  text-transform: uppercase; color: #ef4444; margin: 0;
+  text-transform: uppercase; color: #ff4655; margin: 0;
 }
 .step-header { display: flex; flex-direction: column; gap: 2px; }
 .step-title { font-size: 18px; font-weight: 700; color: #f9fafb; margin: 0; letter-spacing: -0.02em; }
 .step-desc { font-size: 11px; color: #4b5563; margin: 0; line-height: 1.4; }
-.text-accent { color: #ef4444; }
+.text-accent { color: #ff4655; }
 
 /* ── Feature cards ── */
 .features-list { display: flex; flex-direction: column; gap: 5px; }
@@ -880,7 +880,7 @@ function openForgotPassword() {
 .btn-primary {
   display: flex; align-items: center; justify-content: center; gap: 8px;
   width: 100%; padding: 9px 20px;
-  background: linear-gradient(135deg, #ef4444, #f97316);
+  background: linear-gradient(135deg, #ff4655, #f97316);
   color: #fff; font-size: 13px; font-weight: 700;
   border: none; border-radius: 9px; cursor: pointer;
   transition: opacity 0.15s, transform 0.15s;
@@ -951,7 +951,7 @@ function openForgotPassword() {
 .form-footer-text { font-size: 11px; color: #4b5563; }
 .link-btn {
   background: none; border: none; cursor: pointer; padding: 0;
-  font-size: 11px; color: #ef4444; transition: color 0.15s;
+  font-size: 11px; color: #ff4655; transition: color 0.15s;
   -webkit-app-region: no-drag;
 }
 .link-btn:hover { color: #fca5a5; }
