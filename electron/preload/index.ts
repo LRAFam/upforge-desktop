@@ -124,6 +124,7 @@ const api = {
     getHistory: () => ipcRenderer.invoke('trainer:get-history'),
     getCoachingDrills: () => ipcRenderer.invoke('trainer:get-coaching-drills'),
     getCorrelation: () => ipcRenderer.invoke('trainer:get-correlation'),
+    getBenchmark: () => ipcRenderer.invoke('trainer:get-benchmark'),
   },
   on: (channel: string, callback: (...args: unknown[]) => void): (() => void) => {
     const allowed = [

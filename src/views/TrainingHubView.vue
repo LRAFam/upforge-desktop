@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue'
-import type { TrainingHistory, CoachingDrill } from '../env'
+import type { TrainingHistory, CoachingDrill, TrainingBenchmark } from '../env'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 interface SessionResult {
@@ -37,6 +37,7 @@ const completedDrills = ref<Set<string>>(new Set())
 const apiHistory = ref<TrainingHistory | null>(null)
 const coachingDrills = ref<CoachingDrill[]>([])
 const correlationInsights = ref<string[]>([])
+const benchmarkData = ref<TrainingBenchmark | null>(null)
 const loadingHistory = ref(false)
 const heatmapCanvas = ref<HTMLCanvasElement | null>(null)
 const activeTab = ref<'drills' | 'progress' | 'coaching'>('drills')
@@ -375,15 +376,17 @@ onMounted(async () => {
   // Fetch training history + coaching drills from API
   loadingHistory.value = true
   try {
-    const [history, drills, insights] = await Promise.all([
+    const [history, drills, insights, benchmark] = await Promise.all([
       window.api.trainer.getHistory(),
       window.api.trainer.getCoachingDrills(),
       window.api.trainer.getCorrelation(),
+      window.api.trainer.getBenchmark(),
     ])
     apiHistory.value = history
     const drillList = Array.isArray(drills) ? drills : []
     coachingDrills.value = drillList
     correlationInsights.value = Array.isArray(insights) ? insights : []
+    benchmarkData.value = benchmark
     // If API returned coaching drills that map to scenarios, populate Today's Drills
     if (drillList.length > 0) {
       const mapped: AssignedDrill[] = drillList
@@ -1404,6 +1407,49 @@ const CATEGORY_ICON: Record<string, string> = {
                   </div>
                   <span class="text-[7px] text-gray-700 tabular-nums">{{ sess.score }}</span>
                 </div>
+              </div>
+
+              <!-- Benchmark row -->
+              <div
+                v-if="(benchmarkData?.[scenario]?.peers ?? 0) >= 5"
+                class="px-4 pb-3 border-t border-white/[0.04] pt-2.5"
+              >
+                <div class="flex items-center justify-between mb-1.5">
+                  <span class="text-[9px] font-black uppercase tracking-[0.15em] text-gray-600">vs All Players</span>
+                  <span
+                    v-if="benchmarkData![scenario].label"
+                    class="text-[9px] font-bold px-1.5 py-0.5 rounded-full"
+                    :class="{
+                      'bg-green-500/10 text-green-400 border border-green-500/30': (benchmarkData![scenario].percentile ?? 0) >= 75,
+                      'bg-blue-500/10 text-blue-400 border border-blue-500/30': (benchmarkData![scenario].percentile ?? 0) >= 50 && (benchmarkData![scenario].percentile ?? 0) < 75,
+                      'bg-white/5 text-gray-500 border border-white/10': (benchmarkData![scenario].percentile ?? 0) < 50,
+                    }"
+                  >{{ benchmarkData![scenario].label }}</span>
+                </div>
+                <!-- Dual-bar: user best vs global avg -->
+                <div class="space-y-1">
+                  <div class="flex items-center gap-2">
+                    <span class="text-[8px] text-gray-600 w-10 text-right shrink-0">You</span>
+                    <div class="flex-1 bg-white/[0.05] rounded-full h-1.5 overflow-hidden">
+                      <div
+                        class="h-full rounded-full bg-teal-500/70 transition-all duration-700"
+                        :style="{ width: (benchmarkData![scenario].user_best ?? 0) + '%' }"
+                      />
+                    </div>
+                    <span class="text-[8px] tabular-nums font-bold text-teal-400 w-5 shrink-0">{{ benchmarkData![scenario].user_best ?? '—' }}</span>
+                  </div>
+                  <div class="flex items-center gap-2">
+                    <span class="text-[8px] text-gray-600 w-10 text-right shrink-0">Avg</span>
+                    <div class="flex-1 bg-white/[0.05] rounded-full h-1.5 overflow-hidden">
+                      <div
+                        class="h-full rounded-full bg-gray-500/50 transition-all duration-700"
+                        :style="{ width: (benchmarkData![scenario].global_avg ?? 0) + '%' }"
+                      />
+                    </div>
+                    <span class="text-[8px] tabular-nums text-gray-500 w-5 shrink-0">{{ benchmarkData![scenario].global_avg ?? '—' }}</span>
+                  </div>
+                </div>
+                <p class="text-[8px] text-gray-700 mt-1">{{ benchmarkData![scenario].peers }} players compared</p>
               </div>
             </div>
           </div>

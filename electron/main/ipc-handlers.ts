@@ -840,4 +840,16 @@ export function setupIpcHandlers(
       return []
     }
   })
+
+  ipcMain.handle('trainer:get-benchmark', async () => {
+    const token = auth.getToken()
+    if (!token) return null
+    try {
+      const res = await auth.getApi().get('/api/training/benchmark')
+      return res.data?.benchmark ?? null
+    } catch (err: any) {
+      log.warn('[Trainer] Failed to fetch benchmark:', err?.message)
+      return null
+    }
+  })
 }

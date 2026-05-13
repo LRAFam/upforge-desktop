@@ -20,6 +20,19 @@ export interface TrainingScenarioStats {
   }>
 }
 
+export interface TrainingBenchmark {
+  [scenario: string]: {
+    user_best: number | null
+    user_avg: number | null
+    global_avg: number | null
+    global_best: number | null
+    percentile: number | null
+    label: string | null
+    peers: number
+  }
+}
+
+
 export interface TrainingHistory {
   total: number
   sessions: Array<{
@@ -416,6 +429,7 @@ declare global {
         getHistory: () => Promise<TrainingHistory | null>
         getCoachingDrills: () => Promise<CoachingDrill[]>
         getCorrelation: () => Promise<string[]>
+        getBenchmark: () => Promise<TrainingBenchmark | null>
       }
       on: (channel: string, callback: (...args: unknown[]) => void) => (() => void)
     }
