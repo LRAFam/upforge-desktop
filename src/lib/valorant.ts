@@ -262,10 +262,21 @@ export function getTierClass(tier: string | null | undefined): string {
 /** Returns Tailwind classes for a small tier badge (mini version). */
 export function getTierBadgeClass(tier: string | null | undefined): string {
   switch (tier?.toLowerCase()) {
-    case 'pro':     return 'bg-purple-500/20 text-purple-400'
-    case 'elite':   return 'bg-yellow-500/20 text-yellow-400'
-    case 'premium': return 'bg-red-500/20 text-red-400'
+    case 'admin':   return 'bg-red-500/20 text-red-400 border border-red-500/30'
+    case 'pro':     return 'bg-amber-500/20 text-amber-400 border border-amber-500/30'
+    case 'elite':   return 'bg-yellow-500/20 text-yellow-400 border border-yellow-500/30'
+    case 'premium': return 'bg-purple-500/20 text-purple-400 border border-purple-500/30'
     default:        return 'bg-white/10 text-gray-400'
+  }
+}
+
+export function getTierBadgeLabel(tier: string | null | undefined): string {
+  switch (tier?.toLowerCase()) {
+    case 'admin':   return 'Admin'
+    case 'pro':     return 'Pro'
+    case 'elite':   return 'Elite'
+    case 'premium': return 'Premium'
+    default:        return tier ?? ''
   }
 }
 

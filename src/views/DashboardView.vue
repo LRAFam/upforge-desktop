@@ -133,11 +133,23 @@
                 <div v-else class="w-14 h-14 rounded-xl bg-gradient-to-br from-red-500/30 to-orange-600/30 border border-white/[0.08] flex items-center justify-center">
                   <span class="text-xl font-black text-red-400">{{ profile.user.name?.charAt(0).toUpperCase() }}</span>
                 </div>
-                <div v-if="profile.user.tier && profile.user.tier !== 'free'" :class="['absolute -bottom-1 -right-1 px-1.5 py-px rounded text-[9px] font-bold uppercase', getTierBadgeClass(profile.user.tier)]">{{ profile.user.tier.charAt(0) }}</div>
               </div>
               <!-- Identity -->
               <div class="flex-1 min-w-0 pt-0.5">
-                <p class="text-sm font-bold truncate leading-tight">{{ profile.user.name }}</p>
+                <div class="flex items-center gap-1.5 flex-wrap">
+                  <p class="text-sm font-bold truncate leading-tight">{{ profile.user.name }}</p>
+                  <span
+                    v-if="isAdmin"
+                    :class="['px-1.5 py-px rounded text-[9px] font-bold uppercase flex items-center gap-0.5', getTierBadgeClass('admin')]"
+                  >
+                    <svg class="w-2.5 h-2.5" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 1.944A11.954 11.954 0 012.166 5C2.056 5.649 2 6.319 2 7c0 5.225 3.34 9.67 8 11.317C14.66 16.67 18 12.225 18 7c0-.682-.057-1.35-.166-2.001A11.954 11.954 0 0110 1.944z" clip-rule="evenodd" /></svg>
+                    Admin
+                  </span>
+                  <span
+                    v-else-if="profile.user.tier && profile.user.tier !== 'free'"
+                    :class="['px-1.5 py-px rounded text-[9px] font-bold uppercase', getTierBadgeClass(profile.user.tier)]"
+                  >{{ getTierBadgeLabel(profile.user.tier) }}</span>
+                </div>
                 <p class="text-xs text-gray-500 mt-px leading-tight">
                   <span v-if="profile.user.riot_name">{{ profile.user.riot_name }}#{{ profile.user.riot_tag }}</span>
                   <button v-else class="text-red-400/70 hover:text-red-400 transition-colors" @click="openRiotSettings">Link Riot ID →</button>
@@ -668,7 +680,7 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import type { ProfileData, AnalysisItem, PendingRecording } from '../env.d.ts'
-import { getAgentImage, getAgentRole, getAgentColor, getMapMinimap, getRankHexColor, getRoleColor, getTierBadgeClass, formatGameMode } from '../lib/valorant'
+import { getAgentImage, getAgentRole, getAgentColor, getMapMinimap, getRankHexColor, getRoleColor, getTierBadgeClass, getTierBadgeLabel, formatGameMode } from '../lib/valorant'
 import { pendingTimeline } from '../stores/pendingTimeline'
 import { useAchievements } from '../composables/useAchievements'
 
