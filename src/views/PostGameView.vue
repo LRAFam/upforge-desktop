@@ -12,6 +12,16 @@
 
       <!-- Uploading -->
       <div v-if="state === 'uploading'" class="w-full space-y-4 text-center">
+        <!-- Dismiss during upload -->
+        <button
+          class="absolute top-2 right-2 w-6 h-6 flex items-center justify-center rounded-full text-gray-600 hover:text-gray-300 hover:bg-white/[0.06] transition-colors"
+          title="Dismiss"
+          @click="dismiss"
+        >
+          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+          </svg>
+        </button>
         <div
           class="w-11 h-11 mx-auto rounded-full overflow-hidden flex items-center justify-center transition-all"
           :class="agentImageUrl ? '' : 'bg-red-500/10 border border-red-500/20'"
@@ -45,6 +55,16 @@
 
       <!-- Analysing -->
       <div v-else-if="state === 'analysing'" class="w-full space-y-4 text-center">
+        <!-- Dismiss during analysis -->
+        <button
+          class="absolute top-2 right-2 w-6 h-6 flex items-center justify-center rounded-full text-gray-600 hover:text-gray-300 hover:bg-white/[0.06] transition-colors"
+          title="Dismiss"
+          @click="dismiss"
+        >
+          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+          </svg>
+        </button>
         <div
           class="w-11 h-11 mx-auto rounded-full overflow-hidden flex items-center justify-center transition-all"
           :class="agentImageUrl ? '' : 'bg-orange-500/10 border border-orange-500/20'"
