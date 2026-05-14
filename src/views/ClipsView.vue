@@ -26,6 +26,25 @@
       </button>
     </div>
 
+    <!-- Toast notification -->
+    <Transition name="toast-slide">
+      <div
+        v-if="showToast"
+        class="fixed bottom-5 left-1/2 -translate-x-1/2 z-50 flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl shadow-xl border backdrop-blur-md pointer-events-none"
+        :class="toastType === 'success'
+          ? 'bg-green-500/15 border-green-500/30'
+          : 'bg-red-500/15 border-red-500/30'"
+      >
+        <svg v-if="toastType === 'success'" class="w-3.5 h-3.5 text-green-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+        </svg>
+        <svg v-else class="w-3.5 h-3.5 text-red-400 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+          <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clip-rule="evenodd"/>
+        </svg>
+        <span class="text-xs font-semibold text-white">{{ toastMessage }}</span>
+      </div>
+    </Transition>
+
     <!-- Upload error banner -->
     <div
       v-if="uploadError"
@@ -355,6 +374,20 @@ const uploadingClipId = ref<string | null>(null)
 const uploadError = ref<string | null>(null)
 const trimModal = ref({ show: false, clipId: '', startSec: 0, endSec: 10, loading: false, error: null as string | null })
 
+const showToast = ref(false)
+const toastMessage = ref('')
+const toastType = ref<'success' | 'error'>('success')
+const TOAST_DURATION = 3500
+let toastTimer: ReturnType<typeof setTimeout> | null = null
+
+function showToastMsg(msg: string, type: 'success' | 'error' = 'success') {
+  toastMessage.value = msg
+  toastType.value = type
+  showToast.value = true
+  if (toastTimer) clearTimeout(toastTimer)
+  toastTimer = setTimeout(() => { showToast.value = false }, TOAST_DURATION)
+}
+
 const filters = [
   { label: 'All', value: 'all' },
   { label: 'Manual', value: 'manual' },
@@ -467,6 +500,7 @@ async function uploadClip(clip: ClipRecord) {
     }
     if (!result.ok) {
       uploadError.value = result.error ?? 'Upload failed. Check your internet connection.'
+      showToastMsg('Upload failed — check your connection', 'error')
       return
     }
     const idx = clips.value.findIndex(c => c.id === clip.id)
@@ -476,14 +510,17 @@ async function uploadClip(clip: ClipRecord) {
     const analysisResult = await window.api.clips.requestAnalysis(clip.id)
     if (analysisResult.needsUpgrade) {
       upgradeModal.value = { show: true, message: analysisResult.message ?? 'Upgrade to get AI coaching on clips.' }
+      showToastMsg('Clip uploaded to feed!', 'success')
       return
     }
     if (!analysisResult.ok) {
       uploadError.value = analysisResult.error ?? 'Clip uploaded but analysis request failed.'
+      showToastMsg('Clip uploaded — analysis request failed', 'error')
       return
     }
     const idx2 = clips.value.findIndex(c => c.id === clip.id)
     if (idx2 !== -1) clips.value[idx2] = { ...clips.value[idx2], analysisStatus: 'queued' }
+    showToastMsg('Clip uploaded & analysis queued!', 'success')
   } finally {
     uploadingClipId.value = null
   }
@@ -499,6 +536,9 @@ async function shareClip(clip: ClipRecord) {
   if (result.ok && result.shareToken) {
     const url = `https://upforge.gg/clips/${result.shareToken}`
     await navigator.clipboard.writeText(url)
+    showToastMsg('Share link copied to clipboard!', 'success')
+  } else {
+    showToastMsg('Failed to generate share link', 'error')
   }
 }
 
@@ -554,5 +594,17 @@ function timeAgo(ts: number): string {
 .modal-pop-leave-to {
   opacity: 0;
   transform: scale(0.92) translateY(8px);
+}
+
+.toast-slide-enter-active {
+  transition: opacity 0.2s ease, transform 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+.toast-slide-leave-active {
+  transition: opacity 0.2s ease, transform 0.2s ease;
+}
+.toast-slide-enter-from,
+.toast-slide-leave-to {
+  opacity: 0;
+  transform: translateX(-50%) translateY(12px);
 }
 </style>
