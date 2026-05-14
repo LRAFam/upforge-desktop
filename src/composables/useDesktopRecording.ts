@@ -43,6 +43,7 @@ export function useDesktopRecording() {
           maxWidth,
           maxHeight,
           maxFrameRate: config.fps,
+          cursor: 'never',
         },
       } as MediaTrackConstraints
 

@@ -1223,8 +1223,10 @@ export class RiotLocalApi {
         }
         this.matchData.killEvents.push(ev)
         this.matchData.events.push(ev)
-        if (killerPuuid === this.ownPuuid) this.matchData.playerKills.push(ev)
-        if (victimPuuid === this.ownPuuid) this.matchData.playerDeaths.push(ev)
+        // Case-insensitive PUUID comparison — Riot occasionally returns mixed-case UUIDs
+        const ownLower = this.ownPuuid?.toLowerCase()
+        if (killerPuuid?.toLowerCase() === ownLower) this.matchData.playerKills.push(ev)
+        if (victimPuuid?.toLowerCase() === ownLower) this.matchData.playerDeaths.push(ev)
       }
     }
 

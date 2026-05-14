@@ -317,8 +317,10 @@ async function extractKillClipsOnly(
     if (validKills.length === 0) continue
     const first = validKills.reduce((a, b) => a.videoOffsetMs! < b.videoOffsetMs! ? a : b)
     const last = validKills.reduce((a, b) => a.videoOffsetMs! > b.videoOffsetMs! ? a : b)
-    const startMs = Math.max(0, first.videoOffsetMs! - 5_000)
-    const durationMs = Math.min(last.videoOffsetMs! - first.videoOffsetMs! + 12_000, 120_000)
+    const preBuffer = trigger === 'ace' ? 10_000 : 8_000
+    const postBuffer = trigger === 'ace' ? 20_000 : 18_000
+    const startMs = Math.max(0, first.videoOffsetMs! - preBuffer)
+    const durationMs = Math.min(last.videoOffsetMs! - first.videoOffsetMs! + postBuffer, 120_000)
     try {
       const tempRecord = clipStore.add({ path: '', thumbPath: null, trigger, map, agent, durationSeconds: durationMs / 1000, round, killCount, analysisJobId })
       const clipPath = ClipExtractor.clipPath(tempRecord.id)
@@ -341,7 +343,7 @@ async function extractKillClipsOnly(
     const first = clutchKills.reduce((a, b) => a.videoOffsetMs! < b.videoOffsetMs! ? a : b)
     const last = clutchKills.reduce((a, b) => a.videoOffsetMs! > b.videoOffsetMs! ? a : b)
     const startMs = Math.max(0, first.videoOffsetMs! - 15_000)
-    const durationMs = Math.min(last.videoOffsetMs! - first.videoOffsetMs! + 12_000, 120_000)
+    const durationMs = Math.min(last.videoOffsetMs! - first.videoOffsetMs! + 20_000, 120_000)
     try {
       const tempRecord = clipStore.add({ path: '', thumbPath: null, trigger: 'clutch', map, agent, durationSeconds: durationMs / 1000, round, killCount: clutchKills.length, analysisJobId })
       const clipPath = ClipExtractor.clipPath(tempRecord.id)
@@ -494,8 +496,13 @@ async function extractMatchClips(
       if (validKills.length === 0) continue
       const first = validKills.reduce((a, b) => a.videoOffsetMs! < b.videoOffsetMs! ? a : b)
       const last = validKills.reduce((a, b) => a.videoOffsetMs! > b.videoOffsetMs! ? a : b)
-      const startMs = Math.max(0, first.videoOffsetMs! - 5_000)
-      const durationMs = Math.min(last.videoOffsetMs! - first.videoOffsetMs! + 12_000, 120_000)
+      // Larger pre/post buffers for multi-kill sequences: some kills may be detected
+      // slightly out-of-order or at the boundary of the valid window.
+      // Ace: 10s pre-buffer, 20s post-buffer. 4k/3k: 8s pre, 18s post.
+      const preBuffer = trigger === 'ace' ? 10_000 : 8_000
+      const postBuffer = trigger === 'ace' ? 20_000 : 18_000
+      const startMs = Math.max(0, first.videoOffsetMs! - preBuffer)
+      const durationMs = Math.min(last.videoOffsetMs! - first.videoOffsetMs! + postBuffer, 120_000)
       try {
         const tempRecord = clipStore.add({
           path: '',
@@ -520,14 +527,14 @@ async function extractMatchClips(
       }
     }
 
-    // Clutch clips — 15s buffer before first kill to capture setup
+    // Clutch clips — 15s buffer before first kill to capture setup; 20s post-buffer
     for (const round of clutchRounds) {
       const clutchKills = timeline.playerKills.filter(k => (k.round ?? -1) === round && k.videoOffsetMs != null)
       if (clutchKills.length === 0) continue
       const first = clutchKills.reduce((a, b) => a.videoOffsetMs! < b.videoOffsetMs! ? a : b)
       const last = clutchKills.reduce((a, b) => a.videoOffsetMs! > b.videoOffsetMs! ? a : b)
       const startMs = Math.max(0, first.videoOffsetMs! - 15_000)
-      const durationMs = Math.min(last.videoOffsetMs! - first.videoOffsetMs! + 12_000, 120_000)
+      const durationMs = Math.min(last.videoOffsetMs! - first.videoOffsetMs! + 20_000, 120_000)
       try {
         const tempRecord = clipStore.add({
           path: '',

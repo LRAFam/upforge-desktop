@@ -858,7 +858,8 @@ export class Recorder {
       console.log(`[Recorder] Windows ddagrab (DDA) capture output_idx=${outputIdx}${noAudio ? ' (no audio)' : ''}`)
 
       // scale is applied inside the filter_complex — can't mix -filter_complex with -vf
-      const ddagrabFilter = `ddagrab=output_idx=${outputIdx},hwdownload,format=bgr0,scale=${scale}[v]`
+      // draw_mouse=0: suppress OS cursor in recordings (same as -draw_mouse 0 for gdigrab)
+      const ddagrabFilter = `ddagrab=output_idx=${outputIdx}:draw_mouse=0,hwdownload,format=bgr0,scale=${scale}[v]`
 
       if (noAudio) {
         return [
