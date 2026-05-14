@@ -199,6 +199,14 @@
           />
         </div>
 
+        <!-- AI Verdict (one-liner from analysis) -->
+        <div v-if="result?.verdict" class="flex items-start gap-2 px-3 py-2.5 bg-white/[0.02] border border-white/[0.05] rounded-xl">
+          <svg class="w-3.5 h-3.5 text-red-400/70 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"/>
+          </svg>
+          <p class="text-[11px] text-gray-400 leading-relaxed italic">{{ result.verdict }}</p>
+        </div>
+
         <!-- Match stats row: K/D/A + result -->
         <div v-if="result?.kills != null || result?.match_result" class="flex items-center gap-2 px-3 py-2 bg-white/[0.03] border border-white/[0.06] rounded-xl">
           <span
@@ -258,6 +266,18 @@
           </svg>
           <span>{{ trainerLaunching ? 'Launching trainer…' : `Train Now · ${SCENARIO_LABELS[trainScenario]}` }}</span>
         </button>
+
+        <!-- Coaching tags — areas flagged by AI -->
+        <div v-if="result?.coaching_tags?.length" class="space-y-1.5">
+          <p class="text-[9px] font-semibold uppercase tracking-widest text-gray-600">Areas flagged</p>
+          <div class="flex flex-wrap gap-1">
+            <span
+              v-for="tag in result.coaching_tags"
+              :key="tag"
+              class="text-[9px] font-semibold px-2 py-0.5 rounded-full bg-red-500/10 text-red-400/80 border border-red-500/20 capitalize"
+            >{{ tag.replace(/_/g, ' ') }}</span>
+          </div>
+        </div>
 
         <!-- Match data warning: shown when Riot capture failed -->
         <div
@@ -447,6 +467,10 @@ const result = ref<{
   match_result?: 'win' | 'loss' | null
   ally_score?: number | null
   enemy_score?: number | null
+  verdict?: string | null
+  coaching_tags?: string[]
+  top_issue?: string | null
+  priority_improvements?: string[]
 } | null>(null)
 const errorMessage = ref('')
 const needsUpgrade = ref(false)

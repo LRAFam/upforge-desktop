@@ -123,7 +123,7 @@
               </div>
               <div class="text-right flex-shrink-0 space-y-px">
                 <p class="text-[10px] font-bold tabular-nums" :class="row.wr >= 50 ? 'text-green-400' : 'text-red-400'">{{ row.wr }}%</p>
-                <p class="text-[9px] text-gray-700 tabular-nums">{{ row.kda }}kd</p>
+                <p class="text-[9px] text-gray-700 tabular-nums">{{ row.kda }}kd · <span :class="row.roundWr !== '—' ? 'text-gray-600' : ''">{{ row.roundWr }} rnd</span></p>
               </div>
             </div>
             <div v-if="agentRows.length === 0" class="px-3 py-4 text-center text-[10px] text-gray-700">No data</div>
@@ -146,7 +146,7 @@
               </div>
               <div class="text-right flex-shrink-0 space-y-px">
                 <p class="text-[10px] font-bold tabular-nums" :class="row.wr >= 50 ? 'text-green-400' : 'text-red-400'">{{ row.wr }}%</p>
-                <p class="text-[9px] text-gray-700 tabular-nums">{{ row.kda }}kd</p>
+                <p class="text-[9px] text-gray-700 tabular-nums">{{ row.kda }}kd · <span :class="row.roundWr !== '—' ? 'text-gray-600' : ''">{{ row.roundWr }} rnd</span></p>
               </div>
             </div>
             <div v-if="mapRows.length === 0" class="px-3 py-4 text-center text-[10px] text-gray-700">No data</div>
@@ -295,35 +295,41 @@ const sparkArea = computed(() => buildSparkPath(true))
 
 // ── By Agent & By Map ─────────────────────────────────────────────────────────
 
-type BreakdownRow = { name: string; games: number; wins: number; wr: number; kda: string }
+type BreakdownRow = { name: string; games: number; wins: number; wr: number; kda: string; roundWr: string }
 
 // Game modes / practice areas that appear as map names — filter from map breakdown
 const NON_MAP_NAMES = new Set(['team deathmatch', 'deathmatch', 'the range', 'range', 'training'])
 
 function buildBreakdown(key: 'agent' | 'map'): BreakdownRow[] {
-  const acc = new Map<string, { games: number; wins: number; kdSum: number; kdCount: number }>()
+  const acc = new Map<string, { games: number; wins: number; kdSum: number; kdCount: number; roundsWon: number; roundsLost: number }>()
   for (const a of filteredAnalyses.value) {
     const raw = a[key]
     if (!raw) continue
     const name = key === 'map' ? raw.toLowerCase() : raw
     if (key === 'map' && NON_MAP_NAMES.has(name)) continue
-    const e = acc.get(name) ?? { games: 0, wins: 0, kdSum: 0, kdCount: 0 }
+    const e = acc.get(name) ?? { games: 0, wins: 0, kdSum: 0, kdCount: 0, roundsWon: 0, roundsLost: 0 }
     e.games++
     if (a.won) e.wins++
     if (a.kills != null && a.deaths != null) {
       e.kdSum += a.kills / Math.max(1, a.deaths)
       e.kdCount++
     }
+    if (a.rounds_won != null) e.roundsWon += a.rounds_won
+    if (a.rounds_lost != null) e.roundsLost += a.rounds_lost
     acc.set(name, e)
   }
   return Array.from(acc.entries())
-    .map(([name, e]) => ({
-      name,
-      games: e.games,
-      wins: e.wins,
-      wr: Math.round((e.wins / e.games) * 100),
-      kda: e.kdCount > 0 ? (e.kdSum / e.kdCount).toFixed(1) : '—',
-    }))
+    .map(([name, e]) => {
+      const totalRounds = e.roundsWon + e.roundsLost
+      return {
+        name,
+        games: e.games,
+        wins: e.wins,
+        wr: Math.round((e.wins / e.games) * 100),
+        kda: e.kdCount > 0 ? (e.kdSum / e.kdCount).toFixed(1) : '—',
+        roundWr: totalRounds > 0 ? `${Math.round((e.roundsWon / totalRounds) * 100)}%` : '—',
+      }
+    })
     .sort((a, b) => b.games - a.games)
     .slice(0, 6)
 }

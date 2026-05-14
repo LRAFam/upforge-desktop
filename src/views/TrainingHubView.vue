@@ -2008,6 +2008,26 @@ const CATEGORY_ICON: Record<string, string> = {
               </div>
             </div>
 
+            <!-- Training ↔ Game Correlation Insights -->
+            <div v-if="correlationInsights.length" class="rounded-xl border border-white/[0.07] bg-white/[0.02] overflow-hidden">
+              <div class="flex items-center gap-2 px-4 py-2.5 border-b border-white/[0.05]">
+                <svg class="w-3 h-3 text-red-400/70 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>
+                </svg>
+                <span class="text-[9px] font-black uppercase tracking-[0.18em] text-gray-400">Impact on Game</span>
+              </div>
+              <ul class="px-4 py-3 space-y-2">
+                <li
+                  v-for="(insight, i) in correlationInsights"
+                  :key="i"
+                  class="flex items-start gap-2 text-[10px] text-gray-400 leading-relaxed"
+                >
+                  <span class="w-1 h-1 rounded-full bg-red-400/50 flex-shrink-0 mt-1.5" />
+                  {{ insight }}
+                </li>
+              </ul>
+            </div>
+
           </div><!-- end LEFT column -->
 
           <!-- RIGHT column -->
@@ -2056,6 +2076,13 @@ const CATEGORY_ICON: Record<string, string> = {
                     <p v-if="drill.instructions" class="text-[10px] text-gray-500 leading-relaxed mb-1.5">
                       {{ drill.instructions }}
                     </p>
+                    <!-- VOD source attribution: which weakness drove this drill -->
+                    <div class="flex items-center gap-1 mb-1.5">
+                      <svg class="w-2.5 h-2.5 text-gray-700 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" d="M15 10l4.553-2.069A1 1 0 0121 8.87V15.13a1 1 0 01-1.447.9L15 14M3 8h12a2 2 0 012 2v4a2 2 0 01-2 2H3a2 2 0 01-2-2v-4a2 2 0 012-2z"/>
+                      </svg>
+                      <span class="text-[9px] text-gray-700 italic">From VOD analysis · <span class="text-gray-600 capitalize">{{ drill.category.replace(/_/g, ' ') }}</span> weakness</span>
+                    </div>
                     <!-- Progress bar: baseline → target -->
                     <div class="flex items-center gap-2">
                       <div class="flex-1 bg-white/[0.05] rounded-full h-1 relative">

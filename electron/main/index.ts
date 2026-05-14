@@ -1467,6 +1467,8 @@ async function doUploadAndAnalyse(
             analysis_id: (status.result as Record<string, unknown>).analysis_id,
             top_issue: (status.result as Record<string, unknown>).top_issue,
             priority_improvements: (status.result as Record<string, unknown>).priority_improvements,
+            verdict: (status.result as Record<string, unknown>).verdict ?? null,
+            coaching_tags: (status.result as Record<string, unknown>).coaching_tags ?? [],
             session_start: sessionStart,
             kills: timeline?.finalStats?.kills ?? null,
             deaths: timeline?.finalStats?.deaths ?? null,

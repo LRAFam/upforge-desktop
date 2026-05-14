@@ -144,6 +144,13 @@
             <div v-if="clip.suggestion" class="mt-2 p-1.5 bg-orange-500/10 border border-orange-500/20 rounded text-xs text-orange-300/80 line-clamp-2">
               💡 {{ clip.suggestion }}
             </div>
+            <div v-if="clip.coachingTags?.length" class="flex flex-wrap gap-1 mt-1.5">
+              <span
+                v-for="tag in clip.coachingTags.slice(0, 3)"
+                :key="tag"
+                class="text-[8px] font-semibold px-1.5 py-px rounded-full bg-red-500/10 text-red-400/70 border border-red-500/15 capitalize"
+              >{{ tag.replace(/_/g, ' ') }}</span>
+            </div>
             <div v-else-if="clip.analysisStatus === 'queued' || clip.analysisStatus === 'processing'" class="mt-2 flex items-center gap-1 text-xs text-gray-600">
               <span class="w-1 h-1 rounded-full bg-gray-600 animate-pulse" />
               Analysing...
@@ -225,7 +232,17 @@
             <path fill-rule="evenodd" d="M11.3 1.046A1 1 0 0112 2v5h4a1 1 0 01.82 1.573l-7 10A1 1 0 018 18v-5H4a1 1 0 01-.82-1.573l7-10a1 1 0 011.12-.38z" clip-rule="evenodd"/>
           </svg>
         </div>
-        <p class="text-xs text-orange-300/90 leading-relaxed flex-1"><span class="font-semibold text-orange-300">AI Coaching:</span> {{ playingClip.suggestion }}</p>
+        <div class="flex-1 min-w-0 space-y-1.5">
+          <p v-if="playingClip.verdict" class="text-[10px] text-gray-400 italic leading-relaxed">{{ playingClip.verdict }}</p>
+          <p class="text-xs text-orange-300/90 leading-relaxed"><span class="font-semibold text-orange-300">AI Coaching:</span> {{ playingClip.suggestion }}</p>
+          <div v-if="playingClip.coachingTags?.length" class="flex flex-wrap gap-1 pt-0.5">
+            <span
+              v-for="tag in playingClip.coachingTags"
+              :key="tag"
+              class="text-[8px] font-semibold px-1.5 py-px rounded-full bg-red-500/10 text-red-400/70 border border-red-500/15 capitalize"
+            >{{ tag.replace(/_/g, ' ') }}</span>
+          </div>
+        </div>
       </div>
     </div>
 
