@@ -774,8 +774,8 @@ async function loadSessionClips() {
 }
 
 async function openClips() {
+  // Don't close the post-game window — user may want to come back and analyse the VOD
   await window.api.app.showClips().catch(() => {})
-  window.close()
 }
 
 function viewFullAnalysis() {

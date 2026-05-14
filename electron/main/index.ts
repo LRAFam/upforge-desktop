@@ -924,12 +924,11 @@ function setupGameDetection(): void {
         })
         mainWindow?.webContents.send('recordings:updated')
 
-        // Extract all highlight clips even without auto-analyse — 3k/4k/ace/clutch/hotkey
+        // Extract all highlight clips even without auto-analyse — 3k/4k/ace/clutch/hotkey.
+        // Do NOT auto-delete here: the user hasn't analysed yet (autoAnalyse=false).
+        // Deletion is deferred until after manual analysis via doUploadAndAnalyse.
         extractMatchClips(videoPath, timeline, null)
           .catch(err => log.warn('[ClipExtract] Clip extraction (no-analyse) error:', err))
-          .finally(() => {
-            if (!lateRetryScheduled) doAutoDelete()
-          })
 
         // Late retry for when Riot match data isn't ready yet (same logic as autoAnalyse path)
         if (lateRetryScheduled) {
@@ -958,7 +957,24 @@ function setupGameDetection(): void {
       }
 
       tray?.setToolTip('UpForge — Uploading...')
-      const uploadResult = await doUploadAndAnalyse(null, videoPath, user?.riot_name ?? '', user?.riot_tag ?? '',
+
+      // Always save to the recordings store so the recording appears in the dashboard
+      // and can be retried if upload fails. In the auto-analyse path this was previously
+      // only saved on upload failure, meaning a successful upload + auto-delete left
+      // the user with no trace of the recording.
+      const autoAnalyseRecording = recordingsStore.add({
+        path: videoPath,
+        riotName: user?.riot_name ?? '',
+        riotTag: user?.riot_tag ?? '',
+        game,
+        map,
+        agent,
+        gameMode,
+        timeline
+      })
+      mainWindow?.webContents.send('recordings:updated')
+
+      const uploadResult = await doUploadAndAnalyse(autoAnalyseRecording.id, videoPath, user?.riot_name ?? '', user?.riot_tag ?? '',
         game, map, agent, timeline, thisPostGameWindow, matchSessionStart, /* skipAutoDelete= */ true)
 
       const jobId = uploadResult ?? null
