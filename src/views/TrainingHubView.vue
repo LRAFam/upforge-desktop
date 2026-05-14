@@ -1,7 +1,9 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue'
+import { useRouter } from 'vue-router'
 import type { TrainingHistory, CoachingDrill, TrainingBenchmark } from '../env'
 import { ACHIEVEMENTS, useAchievements } from '../composables/useAchievements'
+import { useTrainerResultStore } from '../stores/trainerResult'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 interface SessionResult {
@@ -27,6 +29,8 @@ interface AssignedDrill {
 }
 
 // ── State ─────────────────────────────────────────────────────────────────────
+const router = useRouter()
+const trainerResultStore = useTrainerResultStore()
 const launching = ref(false)
 const drillRunning = ref(false)    // true from launch success → until result received
 const showResultModal = ref(false) // completion modal
@@ -360,6 +364,16 @@ onMounted(async () => {
     const r = result as SessionResult
     lastResult.value = r
     sessionHistory.value.unshift(r)
+
+    const currentLaunchConfig = activeDrill.value
+      ? {
+          scenario: activeDrill.value.scenario,
+          duration_seconds: activeDrill.value.duration_seconds,
+          difficulty: activeDrill.value.difficulty,
+          context: { weakness: activeDrill.value.weakness, score: activeDrill.value.weakness_score },
+        }
+      : null
+
     if (activeDrill.value) {
       completedDrills.value.add(activeDrill.value.scenario)
       lastPlayedDrill.value = activeDrill.value
@@ -384,15 +398,15 @@ onMounted(async () => {
       } else {
         warmupActive.value = false
         warmupStep.value = 0
-        // All steps done — show the final result modal
-        showResultModal.value = true
-        activeTab.value = 'drills'
-        nextTick(() => drawHeatmap(r))
+        // All steps done — navigate to results view
+        const prevBest = apiHistory.value?.by_scenario[r.scenario]?.best_score ?? null
+        trainerResultStore.setResult(r, currentLaunchConfig, prevBest)
+        router.push('/trainer-results')
       }
     } else {
-      showResultModal.value = true
-      activeTab.value = 'drills'
-      nextTick(() => drawHeatmap(r))
+      const prevBest = apiHistory.value?.by_scenario[r.scenario]?.best_score ?? null
+      trainerResultStore.setResult(r, currentLaunchConfig, prevBest)
+      router.push('/trainer-results')
     }
     window.api.trainer.getHistory().then(async h => {
       const prevBest = apiHistory.value?.by_scenario[r.scenario]?.best_score ?? null
@@ -405,7 +419,7 @@ onMounted(async () => {
         lastReactionMs: r.avg_reaction_ms,
       })
       if (newAchs.length) window.__ufAchievementUnlocked?.(newAchs)
-      isPB.value = r.score > 0 && (prevBest === null || r.score > prevBest)
+      trainerResultStore.setPB(r.score > 0 && (prevBest === null || r.score > prevBest))
     })
   })
 
