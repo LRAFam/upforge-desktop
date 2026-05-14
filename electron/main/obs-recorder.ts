@@ -62,6 +62,8 @@ export class OBSRecorder {
 
   // Replay clip save — resolves when ReplayBufferSaved fires
   private _pendingReplaySave: ((path: string) => void) | null = null
+  // Guard: only one SaveReplayBuffer in-flight at a time — prevents _pendingReplaySave clobber
+  private _savingReplay = false
 
   onStatusChange?: (recording: boolean, error?: string) => void
   onReplayClipSaved?: (path: string, trigger: string) => void
@@ -289,6 +291,14 @@ export class OBSRecorder {
   async saveReplayClip(timeoutMs = 10_000): Promise<string | null> {
     if (!this._connected || !this._replayBufferActive) return null
 
+    // Serialize saves — if a save is already in flight, skip.
+    // A multikill produces overlapping footage anyway; the last save covers the full sequence.
+    if (this._savingReplay) {
+      log.info('[OBSRecorder] saveReplayClip: save already in progress — skipping (multikill)')
+      return null
+    }
+
+    this._savingReplay = true
     try {
       const clipPath = await new Promise<string>((resolve, reject) => {
         const timer = setTimeout(() => reject(new Error('ReplayBufferSaved timeout')), timeoutMs)
@@ -303,6 +313,8 @@ export class OBSRecorder {
     } catch (err) {
       log.warn('[OBSRecorder] saveReplayClip failed:', err)
       return null
+    } finally {
+      this._savingReplay = false
     }
   }
 

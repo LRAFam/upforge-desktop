@@ -77,7 +77,8 @@ const api = {
   },
   squad: {
     getTeam: () => ipcRenderer.invoke('squad:get-team'),
-    sendPresence: (recording: boolean, game: string | null) => ipcRenderer.invoke('squad:send-presence', { recording, game })
+    sendPresence: (recording: boolean, game: string | null) => ipcRenderer.invoke('squad:send-presence', { recording, game }),
+    syncPresence: () => ipcRenderer.invoke('squad:sync-presence'),
   },
   stats: {
     rrHistory: () => ipcRenderer.invoke('stats:rr-history')

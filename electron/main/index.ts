@@ -359,6 +359,7 @@ async function extractKillClipsOnly(
   if (extractedClipIds.length > 0) {
     logActivity(`${extractedClipIds.length} late-extracted clip${extractedClipIds.length === 1 ? '' : 's'} saved`)
     mainWindow?.webContents.send('clips:new', extractedClipIds)
+    if (lastMatchDiagnostic) lastMatchDiagnostic.clipsExtracted += extractedClipIds.length
     if (Notification.isSupported()) {
       new Notification({
         title: 'UpForge — Clips Ready',
@@ -884,6 +885,19 @@ function setupGameDetection(): void {
         return
       }
 
+      // Shared clip extraction logic — runs regardless of autoAnalyse.
+      // Clips (3k/4k/ace/clutch/hotkey) are always extracted from every recording.
+      const matchId = timeline?.matchId
+      const hasKills = (timeline?.playerKills?.length ?? 0) > 0
+      const lateRetryScheduled = !hasKills && !!matchId
+
+      const doAutoDelete = () => {
+        if (settingsManager?.get().autoDelete) {
+          log.info('[App] Auto-deleting recording after clip extraction:', videoPath)
+          recorder.deleteRecording(videoPath)
+        }
+      }
+
       if (!autoAnalyse) {
         const recording = recordingsStore.add({
           path: videoPath,
@@ -902,11 +916,36 @@ function setupGameDetection(): void {
           agent
         })
         mainWindow?.webContents.send('recordings:updated')
-        // Still extract hotkey clips — user explicitly bookmarked them, don't discard
-        if (hotkeyBookmarks.length > 0) {
-          extractMatchClips(videoPath, timeline, null).catch(err =>
-            log.warn('[ClipExtract] Hotkey clip extraction (no-analyse) error:', err)
-          )
+
+        // Extract all highlight clips even without auto-analyse — 3k/4k/ace/clutch/hotkey
+        extractMatchClips(videoPath, timeline, null)
+          .catch(err => log.warn('[ClipExtract] Clip extraction (no-analyse) error:', err))
+          .finally(() => {
+            if (!lateRetryScheduled) doAutoDelete()
+          })
+
+        // Late retry for when Riot match data isn't ready yet (same logic as autoAnalyse path)
+        if (lateRetryScheduled) {
+          log.info('[HandleMatchEnd] No kills (no-analyse) — scheduling late retry in 90s')
+          setTimeout(async () => {
+            try {
+              log.info('[LateClipExtract] Fetching match details for', matchId)
+              const details = await riotLocalApi.fetchMatchDetailsLate(matchId)
+              if (!details) { log.warn('[LateClipExtract] Match details still unavailable'); return }
+              if (timeline) {
+                // Set matchDetails BEFORE populateMatchDataFromDetails so detectClutchRounds works
+                timeline.matchDetails = details
+                riotLocalApi.populateMatchDataFromDetails(timeline, details)
+              }
+              if ((timeline?.playerKills?.length ?? 0) === 0) { log.warn('[LateClipExtract] No kills after retry'); return }
+              log.info(`[LateClipExtract] Got ${timeline!.playerKills.length} kills — extracting clips`)
+              await extractKillClipsOnly(videoPath, timeline!, null)
+            } catch (err) {
+              log.warn('[LateClipExtract] Error (no-analyse path):', err)
+            } finally {
+              doAutoDelete()
+            }
+          }, 90_000)
         }
         return
       }
@@ -915,22 +954,10 @@ function setupGameDetection(): void {
       const uploadResult = await doUploadAndAnalyse(null, videoPath, user?.riot_name ?? '', user?.riot_tag ?? '',
         game, map, agent, timeline, thisPostGameWindow, matchSessionStart, /* skipAutoDelete= */ true)
 
+      const jobId = uploadResult ?? null
+
       // Extract highlight clips from the recording in the background (non-blocking).
       // Auto-delete is deferred to run AFTER clip extraction so the file is available.
-      // If a late-retry is scheduled (no kills yet), auto-delete is further deferred
-      // until after the retry completes — otherwise the video is gone before clips are cut.
-      const jobId = uploadResult ?? null
-      const matchId = timeline?.matchId
-      const hasKills = (timeline?.playerKills?.length ?? 0) > 0
-      const lateRetryScheduled = !hasKills && !!matchId
-
-      const doAutoDelete = () => {
-        if (settingsManager?.get().autoDelete) {
-          log.info('[App] Auto-deleting recording after clip extraction:', videoPath)
-          recorder.deleteRecording(videoPath)
-        }
-      }
-
       extractMatchClips(videoPath, timeline, jobId)
         .catch(err => log.warn('[ClipExtract] Background extraction error:', err))
         .finally(() => {
@@ -950,6 +977,8 @@ function setupGameDetection(): void {
               log.warn('[LateClipExtract] Match details still unavailable after delay')
               return
             }
+            // Set matchDetails BEFORE populateMatchDataFromDetails so detectClutchRounds works
+            if (timeline) timeline.matchDetails = details
             if (timeline) riotLocalApi.populateMatchDataFromDetails(timeline, details)
             if ((timeline?.playerKills?.length ?? 0) === 0) {
               log.warn('[LateClipExtract] Match details fetched but no kills found for this player')
@@ -1047,8 +1076,6 @@ function setupGameDetection(): void {
           if (state?.sessionLoopState === 'INGAME') {
             matchStartTime = Date.now()
             if (state.queueId) {
-              gameMode = state.queueId.toUpperCase().replace(/\b(unrated)\b/i, 'CLASSIC')
-              // Use the exported normalizer for an accurate label
               const { normalizeQueueId } = await import('./riot-local-api')
               gameMode = normalizeQueueId(state.queueId)
               modeConfident = true

@@ -377,12 +377,13 @@ declare global {
       }
       squad: {
         getTeam: () => Promise<{
-          team: { name: string; members: { id: number; name: string; riot_name?: string; riot_tag?: string }[] } | null
-          activity: { id: number; user_id: number; map?: string; agent?: string; result?: string }[]
-          presence: Record<number, { online: boolean; is_recording: boolean }>
+          team: { name: string; plan?: string; max_members?: number; members: { id: number; name: string; riot_name?: string; riot_tag?: string }[] } | null
+          activity: { id: number; user_id: number; map?: string; agent?: string; result?: string; kills?: number | null; deaths?: number | null; assists?: number | null; created_at?: string }[]
+          presence: Record<number, { online: boolean; is_recording: boolean; game?: string | null }>
           error?: string
         } | null>
         sendPresence: (recording: boolean, game: string | null) => Promise<{ ok: boolean }>
+        syncPresence: () => Promise<{ ok: boolean }>
       }
       stats: {
         rrHistory: () => Promise<Array<{ id: number; date: string; rank: string | null; rr: number; elo: number }>>

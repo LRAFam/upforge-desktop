@@ -548,6 +548,12 @@ export function setupIpcHandlers(
     return { ok: true }
   })
 
+  // Immediately sync accurate presence from main process state (called by squad view on mount/heartbeat)
+  ipcMain.handle('squad:sync-presence', async () => {
+    await auth.sendPresence(recorder.isRecording(), gameDetector.currentGame())
+    return { ok: true }
+  })
+
   // Settings
   ipcMain.handle('settings:get', () => {
     return settingsManager.get()
