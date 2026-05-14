@@ -145,6 +145,8 @@
                 <div v-if="profile.latest_stats?.current_rank" class="flex items-center gap-2 mt-1.5">
                   <span class="text-sm font-black" :style="{ color: getRankHexColor(profile.latest_stats.current_rank) }">{{ profile.latest_stats.current_rank }}</span>
                   <span v-if="profile.latest_stats.rr != null" class="text-xs text-gray-600">{{ profile.latest_stats.rr }} RR</span>
+                  <span v-if="profile.latest_stats.last_rr_change != null" class="text-xs font-bold tabular-nums" :class="profile.latest_stats.last_rr_change > 0 ? 'text-green-400' : 'text-red-400'">{{ profile.latest_stats.last_rr_change > 0 ? '+' : '' }}{{ profile.latest_stats.last_rr_change }}</span>
+                  <span v-if="profile.latest_stats.leaderboard_rank" class="text-[10px] font-bold bg-yellow-400/10 text-yellow-400 border border-yellow-400/20 px-1.5 py-0.5 rounded-full tabular-nums">#{{ profile.latest_stats.leaderboard_rank }}</span>
                 </div>
               </div>
               <!-- Actions -->
@@ -644,6 +646,14 @@
             <div class="flex flex-col items-center py-3 px-2">
               <span class="text-sm font-black tabular-nums">{{ profile.latest_stats.avg_combat_score ?? '—' }}</span>
               <span class="text-[10px] text-gray-600 mt-0.5">Avg ACS</span>
+            </div>
+            <div v-if="profile.latest_stats.elo" class="flex flex-col items-center py-3 px-2">
+              <span class="text-sm font-black tabular-nums text-purple-400">{{ profile.latest_stats.elo }}</span>
+              <span class="text-[10px] text-gray-600 mt-0.5">ELO</span>
+            </div>
+            <div v-if="profile.latest_stats.leaderboard_rank" class="flex flex-col items-center py-3 px-2">
+              <span class="text-sm font-black tabular-nums text-yellow-400">#{{ profile.latest_stats.leaderboard_rank }}</span>
+              <span class="text-[10px] text-gray-600 mt-0.5">Leaderboard</span>
             </div>
           </div>
         </div>

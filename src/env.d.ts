@@ -162,6 +162,12 @@ export interface ValorantStats {
   current_rank: string | null
   peak_rank: string | null
   rr: number | null
+  elo: number | null
+  last_rr_change: number | null
+  leaderboard_rank: number | null
+  peak_season: string | null
+  account_level: number | null
+  seasonal_history: unknown[] | null
   kd_ratio: number | null
   win_rate: number | null
   avg_combat_score: number | null
