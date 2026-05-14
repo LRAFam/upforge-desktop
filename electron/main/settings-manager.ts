@@ -58,7 +58,7 @@ const DEFAULTS: AppSettings = {
   audioEnabled: true,
   savePath: '',
   launchOnStartup: false,
-  autoDelete: true,
+  autoDelete: false,
   recordedModes: ['COMPETITIVE', 'PREMIER'],
   autoAnalyse: true,
   firstRun: true,

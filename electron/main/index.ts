@@ -948,9 +948,9 @@ function setupGameDetection(): void {
               await extractKillClipsOnly(videoPath, timeline!, null)
             } catch (err) {
               log.warn('[LateClipExtract] Error (no-analyse path):', err)
-            } finally {
-              doAutoDelete()
             }
+            // Do NOT auto-delete: user has autoAnalyse=false so they intend to
+            // manually analyse this recording. Deletion happens in doUploadAndAnalyse.
           }, 90_000)
         }
         return
