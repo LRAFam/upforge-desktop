@@ -599,7 +599,10 @@ function createMainWindow(): BrowserWindow {
     },
   })
 
-  win.on('ready-to-show', () => win.show())
+  win.on('ready-to-show', () => {
+    win.show()
+    win.maximize()
+  })
 
   win.webContents.on('render-process-gone', (_event, details) => {
     console.error('[Main] Renderer process gone:', details.reason)

@@ -46,10 +46,7 @@
           <Transition :name="slideDir">
             <!-- Step 1: Welcome -->
             <div v-if="step === 1" key="step1" class="px-7 pt-8 pb-7">
-              <div class="flex items-center gap-2 mb-6">
-                <span class="text-2xl font-black text-white tracking-tight">UP</span>
-                <span class="text-2xl font-black text-[#ff4655] tracking-tight">FORGE</span>
-              </div>
+              <img src="../assets/upforge-logo.png" alt="UpForge" class="w-12 h-12 rounded-2xl mb-6" />
               <h2 class="text-xl font-black text-white mb-2 leading-tight">Welcome to UpForge</h2>
               <p class="text-sm text-gray-400 leading-relaxed mb-8">
                 Auto-records your matches. AI coaches you after every game. Let's get you set up.
@@ -68,27 +65,34 @@
               <p class="text-[10px] font-bold text-[#ff4655] uppercase tracking-widest mb-1">Step 1 of 3</p>
               <h2 class="text-xl font-black text-white mb-1 leading-tight">Choose your game</h2>
               <p class="text-xs text-gray-500 mb-5">Pick your primary game for coaching.</p>
-              <div class="flex flex-col gap-3 mb-7">
+              <div class="grid grid-cols-3 gap-2 mb-7">
                 <button
                   v-for="game in GAMES"
                   :key="game.id"
-                  class="flex items-center gap-4 px-4 py-3.5 rounded-xl border transition-all text-left"
+                  class="relative h-[88px] rounded-xl overflow-hidden transition-all duration-200 focus:outline-none"
                   :class="selectedGame === game.id
-                    ? 'border-[#ff4655]/50 bg-[#ff4655]/[0.07]'
-                    : 'border-white/[0.07] bg-white/[0.02] hover:border-white/[0.12] hover:bg-white/[0.04]'"
+                    ? 'ring-2 ring-[#ff4655] ring-offset-1 ring-offset-[#0d1520]'
+                    : 'ring-1 ring-white/[0.07] hover:ring-white/20'"
                   @click="selectedGame = game.id"
                 >
-                  <div
-                    class="w-4 h-4 rounded-full border-2 flex-shrink-0 flex items-center justify-center transition-all"
-                    :class="selectedGame === game.id ? 'border-[#ff4655]' : 'border-white/20'"
-                  >
-                    <div v-if="selectedGame === game.id" class="w-2 h-2 rounded-full bg-[#ff4655]" />
+                  <img :src="game.img" :alt="game.name" class="absolute inset-0 w-full h-full object-cover" />
+                  <div class="absolute inset-0 bg-gradient-to-t from-black/80 via-black/30 to-transparent" />
+                  <div v-if="selectedGame === game.id" class="absolute inset-0 bg-[#ff4655]/10" />
+                  <!-- Check -->
+                  <div v-if="selectedGame === game.id" class="absolute top-1.5 left-1.5 w-4 h-4 rounded-full bg-[#ff4655] flex items-center justify-center">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round" class="w-2.5 h-2.5"><polyline points="20 6 9 17 4 12"/></svg>
                   </div>
-                  <div>
-                    <div class="text-sm font-bold text-white">{{ game.name }}</div>
-                    <div class="text-[11px] text-gray-500 mt-0.5">{{ game.description }}</div>
+                  <!-- Live/Soon badge -->
+                  <div class="absolute top-1.5 right-1.5">
+                    <span v-if="game.live" class="flex items-center gap-0.5 text-[8px] font-bold text-green-400 bg-black/70 px-1.5 py-0.5 rounded-full leading-none">
+                      <span class="w-1 h-1 rounded-full bg-green-400 inline-block" /> Live
+                    </span>
+                    <span v-else class="text-[8px] font-bold text-amber-400 bg-black/70 px-1.5 py-0.5 rounded-full leading-none">Soon</span>
                   </div>
-                  <span class="ml-auto text-[9px] font-bold bg-green-500/10 text-green-400 border border-green-500/20 rounded-full px-2 py-0.5 uppercase tracking-wider flex-shrink-0">Live</span>
+                  <!-- Name -->
+                  <div class="absolute bottom-1.5 left-0 right-0 text-center">
+                    <span class="text-[11px] font-bold text-white drop-shadow">{{ game.name }}</span>
+                  </div>
                 </button>
               </div>
               <button
@@ -204,6 +208,9 @@
 
 <script setup lang="ts">
 import { ref, computed } from 'vue'
+import valorantImg from '../assets/games/valorant.jpg'
+import cs2Img from '../assets/games/cs2.jpg'
+import deadlockImg from '../assets/games/deadlock.jpg'
 
 const emit = defineEmits<{ complete: [] }>()
 
@@ -213,13 +220,14 @@ const step = ref(1)
 const slideDir = ref<'slide-left' | 'slide-right'>('slide-left')
 const saving = ref(false)
 
-const selectedGame = ref<'valorant' | 'cs2'>('valorant')
+const selectedGame = ref<'valorant' | 'cs2' | 'deadlock'>('valorant')
 const dpi = ref(800)
 const sensitivity = ref(0.4)
 
 const GAMES = [
-  { id: 'valorant' as const, name: 'Valorant', description: '5v5 tactical shooter · Riot Games' },
-  { id: 'cs2' as const, name: 'CS2', description: 'Counter-Strike 2 · Valve' },
+  { id: 'valorant' as const, name: 'Valorant', img: valorantImg, live: true },
+  { id: 'cs2' as const, name: 'CS2', img: cs2Img, live: true },
+  { id: 'deadlock' as const, name: 'Deadlock', img: deadlockImg, live: false },
 ]
 
 const DPI_PRESETS = [400, 800, 1600, 3200]
@@ -276,7 +284,7 @@ async function handleComplete() {
       onboardingComplete: true,
       trainerMouse: {
         ...current.trainerMouse,
-        game: selectedGame.value,
+        game: (selectedGame.value === 'deadlock' ? 'valorant' : selectedGame.value),
         dpi: dpi.value,
         sensitivity: sensitivity.value,
       },
