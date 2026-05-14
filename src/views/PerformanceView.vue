@@ -4,12 +4,18 @@
     <!-- macOS notice -->
     <div
       v-if="platform && platform !== 'win32'"
-      class="flex items-center gap-2 px-3 py-2.5 rounded-lg bg-white/[0.03] border border-white/[0.07] text-gray-400 text-xs"
+      class="space-y-3"
     >
-      <svg class="w-3.5 h-3.5 flex-shrink-0 text-gray-500" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
-        <path stroke-linecap="round" stroke-linejoin="round" d="M9 17.25v1.007a3 3 0 01-.879 2.122L7.5 21h9l-.621-.621A3 3 0 0115 18.257V17.25m6-12V15a2.25 2.25 0 01-2.25 2.25H5.25A2.25 2.25 0 013 15V5.25m18 0A2.25 2.25 0 0018.75 3H5.25A2.25 2.25 0 003 5.25m18 0H3" />
-      </svg>
-      <span>Performance boost is only available on Windows.</span>
+      <div class="flex items-center gap-2 px-3 py-2.5 rounded-lg bg-white/[0.03] border border-white/[0.07] text-gray-400 text-xs">
+        <svg class="w-3.5 h-3.5 flex-shrink-0 text-gray-500" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M9 17.25v1.007a3 3 0 01-.879 2.122L7.5 21h9l-.621-.621A3 3 0 0115 18.257V17.25m6-12V15a2.25 2.25 0 01-2.25 2.25H5.25A2.25 2.25 0 013 15V5.25m18 0A2.25 2.25 0 0018.75 3H5.25A2.25 2.25 0 003 5.25m18 0H3" />
+        </svg>
+        <span>Performance boost (process priority &amp; power plan) is Windows-only.</span>
+      </div>
+      <button
+        class="w-full py-2.5 text-xs font-medium text-gray-400 hover:text-white transition-colors border border-white/[0.06] hover:border-white/[0.12] rounded-xl"
+        @click="$router.push('/stats')"
+      >View your game stats &amp; coaching data →</button>
     </div>
 
     <template v-else>

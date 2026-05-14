@@ -146,6 +146,7 @@ const navLinks = [
   { to: '/training', label: 'Training' },
   { to: '/clips', label: 'Clips' },
   { to: '/squad', label: 'Squad' },
+  { to: '/stats', label: 'Stats' },
   { to: '/performance', label: 'Performance' },
   { to: '/settings', label: 'Settings' }
 ]

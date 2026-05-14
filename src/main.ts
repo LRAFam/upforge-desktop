@@ -19,6 +19,7 @@ import VODReviewView from './views/VODReviewView.vue'
 import TrainingHubView from './views/TrainingHubView.vue'
 import CoachingHistoryView from './views/CoachingHistoryView.vue'
 import TrainerResultsView from './views/TrainerResultsView.vue'
+import StatsView from './views/StatsView.vue'
 import DevView from './views/DevView.vue'
 
 const PUBLIC_ROUTES = ['/login', '/welcome', '/splash', '/overlay']
@@ -41,6 +42,7 @@ const router = createRouter({
     { path: '/vod-review', component: VODReviewView },
     { path: '/training', component: TrainingHubView },
     { path: '/trainer-results', component: TrainerResultsView },
+    { path: '/stats', component: StatsView },
     { path: '/history', component: CoachingHistoryView },
     { path: '/dev', component: DevView },
   ]
