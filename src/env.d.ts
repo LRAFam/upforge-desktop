@@ -184,6 +184,7 @@ export interface ProfileData {
     name: string
     email: string
     tier: string
+    is_admin: boolean
     riot_name: string | null
     riot_tag: string | null
     riot_region: string | null

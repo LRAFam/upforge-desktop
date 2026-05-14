@@ -43,8 +43,10 @@ export function useDesktopRecording() {
           maxWidth,
           maxHeight,
           maxFrameRate: config.fps,
-          cursor: 'never',
         },
+        // cursor must be a top-level constraint (not inside mandatory) for
+        // modern Chromium to honour it during screen capture
+        cursor: 'never',
       } as MediaTrackConstraints
 
       let noAudio = false
