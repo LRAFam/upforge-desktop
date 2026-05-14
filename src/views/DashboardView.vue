@@ -146,9 +146,9 @@
                     Admin
                   </span>
                   <span
-                    v-else-if="profile.user.tier && profile.user.tier !== 'free'"
-                    :class="['px-1.5 py-px rounded text-[9px] font-bold uppercase', getTierBadgeClass(profile.user.tier)]"
-                  >{{ getTierBadgeLabel(profile.user.tier) }}</span>
+                    v-else
+                    :class="['px-1.5 py-px rounded text-[9px] font-bold uppercase', getTierBadgeClass(profile.user.tier && profile.user.tier !== 'free' ? profile.user.tier : 'pro')]"
+                  >{{ getTierBadgeLabel(profile.user.tier && profile.user.tier !== 'free' ? profile.user.tier : 'pro') }}</span>
                 </div>
                 <p class="text-xs text-gray-500 mt-px leading-tight">
                   <span v-if="profile.user.riot_name">{{ profile.user.riot_name }}#{{ profile.user.riot_tag }}</span>
@@ -224,12 +224,20 @@
           <!-- Quota -->
           <div v-if="profile.user.analysis_stats" class="px-4 py-2.5 border-t border-white/[0.04] flex items-center gap-3">
             <span class="text-[10px] text-gray-600 shrink-0">Analyses</span>
-            <div class="flex-1 h-1.5 bg-white/[0.06] rounded-full overflow-hidden">
-              <div class="h-full rounded-full transition-all" :class="quotaPercent >= 80 ? 'bg-red-500' : quotaPercent >= 50 ? 'bg-yellow-500' : 'bg-green-500'" :style="{ width: (100 - quotaPercent) + '%' }" />
-            </div>
-            <span class="text-xs font-medium tabular-nums shrink-0" :class="(profile.user.analysis_stats.limit - profile.user.analysis_stats.total) <= 0 ? 'text-red-400' : 'text-gray-400'">
-              {{ Math.max(0, profile.user.analysis_stats.limit - profile.user.analysis_stats.total) }}/{{ profile.user.analysis_stats.limit }}
-            </span>
+            <template v-if="isAdmin">
+              <div class="flex-1 h-1.5 bg-white/[0.06] rounded-full overflow-hidden">
+                <div class="h-full w-full rounded-full bg-green-500" />
+              </div>
+              <span class="text-xs font-medium tabular-nums shrink-0 text-gray-400">∞</span>
+            </template>
+            <template v-else>
+              <div class="flex-1 h-1.5 bg-white/[0.06] rounded-full overflow-hidden">
+                <div class="h-full rounded-full transition-all" :class="quotaPercent >= 80 ? 'bg-red-500' : quotaPercent >= 50 ? 'bg-yellow-500' : 'bg-green-500'" :style="{ width: (100 - quotaPercent) + '%' }" />
+              </div>
+              <span class="text-xs font-medium tabular-nums shrink-0" :class="(profile.user.analysis_stats.limit - profile.user.analysis_stats.total) <= 0 ? 'text-red-400' : 'text-gray-400'">
+                {{ Math.max(0, profile.user.analysis_stats.limit - profile.user.analysis_stats.total) }}/{{ profile.user.analysis_stats.limit }}
+              </span>
+            </template>
           </div>
         </div>
         <div v-else-if="profileLoading" class="h-52 bg-white/[0.02] rounded-2xl animate-pulse border border-white/[0.04]" />
@@ -698,6 +706,8 @@ const status = ref<{ recording: boolean; recordingStarting: boolean; currentGame
 const isDev = ref(false)
 const platform = ref('')
 const hotkeys = ref<Record<string, string>>({})
+
+const isAdmin = computed(() => !!profile.value?.user?.is_admin)
 
 const hotkeyHints = computed(() => [
   { key: hotkeys.value['save-clip'] || 'F9', label: 'save clip' },
