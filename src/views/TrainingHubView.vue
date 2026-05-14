@@ -969,19 +969,19 @@ const CATEGORY_ICON: Record<string, string> = {
 </script>
 
 <template>
-  <div class="h-full text-white flex flex-col overflow-hidden relative" style="background: #0b1219">
+  <div class="h-full text-white flex flex-col overflow-hidden relative">
 
     <!-- ── DRILL RUNNING BANNER ──────────────────────────────────────────── -->
     <Transition name="result-in">
       <div
         v-if="drillRunning && activeDrill"
-        class="flex-shrink-0 mx-4 mt-3 rounded-xl border border-[#ff4655]/30 bg-[#ff4655]/[0.07] overflow-hidden"
+        class="flex-shrink-0 mx-3 mt-3 rounded-xl border border-red-500/30 bg-red-500/[0.07] overflow-hidden"
       >
         <div class="flex items-center justify-between px-4 py-2.5">
           <div class="flex items-center gap-2.5">
-            <div class="w-2 h-2 rounded-full bg-[#ff4655] animate-pulse" />
+            <div class="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
             <div>
-              <span class="text-[11px] font-bold text-[#ff4655] uppercase tracking-wider">
+              <span class="text-[11px] font-bold text-red-400 uppercase tracking-wider">
                 {{ SCENARIO_META[activeDrill.scenario]?.label ?? activeDrill.scenario }} in progress
               </span>
               <span class="ml-2 text-[10px] text-gray-500 capitalize">{{ activeDrill.difficulty }} · {{ activeDrill.duration_seconds }}s</span>
@@ -995,7 +995,7 @@ const CATEGORY_ICON: Record<string, string> = {
             Stop</button>
         </div>
         <!-- pulse bar -->
-        <div class="h-px bg-gradient-to-r from-transparent via-[#ff4655]/50 to-transparent animate-pulse" />
+        <div class="h-px bg-gradient-to-r from-transparent via-red-500/50 to-transparent animate-pulse" />
       </div>
     </Transition>
 
@@ -1003,7 +1003,7 @@ const CATEGORY_ICON: Record<string, string> = {
     <Transition name="result-in">
       <div
         v-if="warmupActive && !drillRunning && warmupStep < WARMUP_SEQUENCE.length"
-        class="flex-shrink-0 mx-4 mt-3 rounded-xl border border-amber-500/30 bg-amber-500/[0.07] overflow-hidden"
+        class="flex-shrink-0 mx-3 mt-3 rounded-xl border border-amber-500/30 bg-amber-500/[0.07] overflow-hidden"
       >
         <div class="flex items-center justify-between px-4 py-2.5">
           <div class="flex items-center gap-2.5">
@@ -1043,7 +1043,7 @@ const CATEGORY_ICON: Record<string, string> = {
       <div
         v-if="showResultModal && lastResult"
         class="absolute inset-0 z-50 flex items-center justify-center"
-        style="background: rgba(11,18,25,0.88); backdrop-filter: blur(8px)"
+        style="background: rgba(10,10,10,0.88); backdrop-filter: blur(8px)"
         @click.self="showResultModal = false"
       >
         <div
@@ -1138,7 +1138,7 @@ const CATEGORY_ICON: Record<string, string> = {
             </button>
             <button
               v-if="lastPlayedDrill"
-              class="flex-1 py-2.5 rounded-xl border border-[#ff4655]/30 bg-[#ff4655]/10 text-[12px] font-semibold text-[#ff4655] hover:bg-[#ff4655]/20 transition-all flex items-center justify-center gap-1.5"
+              class="flex-1 py-2.5 rounded-xl border border-red-500/30 bg-red-500/10 text-[12px] font-semibold text-red-400 hover:bg-red-500/20 transition-all flex items-center justify-center gap-1.5"
               @click="() => { const d = lastPlayedDrill!; showResultModal = false; launchDrill(d) }"
             >
               <svg viewBox="0 0 24 24" fill="currentColor" class="w-3 h-3"><polygon points="5 3 19 12 5 21 5 3"/></svg>
@@ -1149,29 +1149,28 @@ const CATEGORY_ICON: Record<string, string> = {
     </Transition>
 
     <!-- Top bar -->
-    <div class="flex items-center justify-between px-4 pt-3 pb-0 flex-shrink-0">
-      <div class="flex items-center gap-2.5">
-        <div class="w-0.5 h-4 rounded-full bg-[#ff4655] flex-shrink-0" />
-        <h1 class="text-sm font-black tracking-tight text-white">Training Hub</h1>
-        <span class="text-[9px] font-bold bg-[#ff4655]/10 text-[#ff4655] border border-[#ff4655]/25 rounded-full px-2 py-0.5 uppercase tracking-widest">Beta</span>
+    <div class="flex items-center justify-between px-3 pt-3 pb-0 flex-shrink-0">
+      <div>
+        <h2 class="text-xs font-semibold text-white">Training Hub</h2>
+        <p class="text-[10px] text-gray-600 mt-0.5">Aim drills · Progress · Coaching</p>
       </div>
       <!-- Streak badge when > 0 -->
       <div v-if="trainingStats.streak > 0" class="flex items-center gap-1.5">
         <svg viewBox="0 0 24 24" fill="currentColor" class="w-3.5 h-3.5 text-orange-400"><path d="M12 2S6.5 9 6.5 13.5a5.5 5.5 0 0 0 11 0C17.5 9 12 2 12 2zm0 14.5a3 3 0 0 1-3-3c0-2.5 3-6 3-6s3 3.5 3 6a3 3 0 0 1-3 3z"/></svg>
         <span class="text-[11px] font-black text-orange-400">{{ trainingStats.streak }}</span>
-        <span class="text-[9px] text-gray-600">{{ trainingStats.streak === 1 ? 'day' : 'days' }}</span>
+        <span class="text-[9px] text-gray-600">{{ trainingStats.streak === 1 ? 'day' : 'days' }} streak</span>
       </div>
     </div>
 
     <!-- Tab nav -->
-    <div class="flex px-4 pt-3 pb-0 gap-1 flex-shrink-0">
+    <div class="flex px-3 pt-3 pb-0 gap-1 flex-shrink-0">
       <button
         v-for="tab in (['drills', 'progress', 'coaching'] as const)"
         :key="tab"
         class="px-3 py-1.5 rounded-lg text-[11px] font-bold uppercase tracking-wider transition-all border"
         :class="
           activeTab === tab
-            ? 'bg-[#ff4655]/15 border-[#ff4655]/30 text-[#ff4655]'
+            ? 'bg-red-500/15 border-red-500/30 text-red-400'
             : 'border-transparent text-gray-600 hover:text-gray-400 hover:bg-white/[0.03]'
         "
         @click="activeTab = tab"
@@ -1184,14 +1183,14 @@ const CATEGORY_ICON: Record<string, string> = {
         </span>
         <span
           v-if="tab === 'coaching' && coachingDrills.length"
-          class="ml-1 text-[9px] bg-[#ff4655]/20 text-[#ff4655] rounded-full px-1.5 py-px border border-[#ff4655]/30"
+          class="ml-1 text-[9px] bg-red-500/20 text-red-400 rounded-full px-1.5 py-px border border-red-500/30"
           >{{ coachingDrills.length }}</span
         >
       </button>
     </div>
 
     <!-- Stats strip (streak / this week / improvement) — always visible -->
-    <div class="flex mx-4 mt-3 rounded-xl border border-white/[0.06] overflow-hidden flex-shrink-0" style="background: #0d1520">
+    <div class="flex mx-3 mt-3 rounded-xl border border-white/[0.06] bg-white/[0.02] overflow-hidden flex-shrink-0">
       <div class="flex-1 flex flex-col items-center py-2.5 gap-0.5">
         <span class="text-sm font-black tabular-nums" :class="trainingStats.streak > 0 ? 'text-orange-400' : 'text-gray-700'">
           {{ trainingStats.streak > 0 ? trainingStats.streak : '—' }}
@@ -1220,14 +1219,14 @@ const CATEGORY_ICON: Record<string, string> = {
     </div>
 
     <!-- Divider -->
-    <div class="mx-4 mt-3 h-px bg-white/[0.06] flex-shrink-0" />
+    <div class="mx-3 mt-3 h-px bg-white/[0.06] flex-shrink-0" />
 
     <!-- Scrollable content -->
     <div class="flex-1 overflow-y-auto" style="scrollbar-width: none">
 
       <!-- ── DRILLS TAB ──────────────────────────────────────────────── -->
       <template v-if="activeTab === 'drills'">
-        <div class="grid grid-cols-[360px_1fr] gap-4 p-4 items-start">
+        <div class="grid grid-cols-[360px_1fr] gap-4 p-3 items-start">
 
           <!-- LEFT column -->
           <div class="flex flex-col gap-3">
@@ -1235,27 +1234,27 @@ const CATEGORY_ICON: Record<string, string> = {
             <!-- Daily Challenge -->
             <div
               class="rounded-xl border overflow-hidden"
-              :class="dailyChallenge.completed ? 'border-green-500/30 bg-green-500/[0.05]' : 'border-[#ff4655]/20 bg-[#ff4655]/[0.04]'"
+              :class="dailyChallenge.completed ? 'border-green-500/30 bg-green-500/[0.05]' : 'border-red-500/20 bg-red-500/[0.04]'"
             >
               <div class="flex items-center gap-3 px-4 py-3">
-                <div :class="['w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0', dailyChallenge.completed ? 'bg-green-500/10 text-green-400' : 'bg-[#ff4655]/10 text-[#ff4655]']">
+                <div :class="['w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0', dailyChallenge.completed ? 'bg-green-500/10 text-green-400' : 'bg-red-500/10 text-red-400']">
                   <svg v-if="dailyChallenge.completed" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="w-4 h-4"><polyline points="20 6 9 17 4 12"/></svg>
                   <svg v-else viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" class="w-4 h-4"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4"/><circle cx="12" cy="12" r="1" fill="currentColor" stroke="none"/><line x1="12" y1="2" x2="12" y2="8"/><line x1="12" y1="16" x2="12" y2="22"/><line x1="2" y1="12" x2="8" y2="12"/><line x1="16" y1="12" x2="22" y2="12"/></svg>
                 </div>
                 <div class="flex-1 min-w-0">
                   <div class="flex items-center gap-2 mb-0.5">
-                    <span class="text-[9px] font-black uppercase tracking-[0.18em]" :class="dailyChallenge.completed ? 'text-green-400' : 'text-[#ff4655]'">Daily Challenge</span>
+                    <span class="text-[9px] font-black uppercase tracking-[0.18em]" :class="dailyChallenge.completed ? 'text-green-400' : 'text-red-400'">Daily Challenge</span>
                     <span v-if="dailyChallenge.completed" class="text-[9px] font-bold text-green-400">Complete!</span>
                   </div>
                   <p class="text-xs font-bold text-white">
-                    Score <span :class="dailyChallenge.completed ? 'text-green-300' : 'text-[#ff4655]'">{{ dailyChallenge.target }}+</span>
+                    Score <span :class="dailyChallenge.completed ? 'text-green-300' : 'text-red-400'">{{ dailyChallenge.target }}+</span>
                     on {{ SCENARIO_META[dailyChallenge.scenario]?.label }}
                   </p>
                 </div>
                 <button
                   v-if="!dailyChallenge.completed"
                   :disabled="launching || drillRunning"
-                  class="flex-shrink-0 flex items-center gap-1.5 text-[10px] font-bold text-[#ff4655] border border-[#ff4655]/30 hover:bg-[#ff4655]/[0.08] rounded-lg px-3 py-1.5 transition-all disabled:opacity-40"
+                  class="flex-shrink-0 flex items-center gap-1.5 text-[10px] font-bold text-red-400 border border-red-500/30 hover:bg-red-500/[0.08] rounded-lg px-3 py-1.5 transition-all disabled:opacity-40"
                   @click="launchDrill({ scenario: dailyChallenge.scenario, difficulty: 'medium', duration_seconds: 60, weakness: 'challenge', weakness_score: 0, reason: `Daily challenge: score ${dailyChallenge.target}+` })"
                 >
                   <svg viewBox="0 0 24 24" fill="currentColor" class="w-2.5 h-2.5"><polygon points="5 3 19 12 5 21 5 3"/></svg>
@@ -1265,14 +1264,14 @@ const CATEGORY_ICON: Record<string, string> = {
             </div>
 
             <!-- Warm-Up Routine -->
-            <div class="rounded-xl border border-white/[0.07] overflow-hidden" style="background: #0d1520">
+            <div class="rounded-xl border border-white/[0.07] bg-white/[0.02] overflow-hidden">
               <div class="flex items-center gap-3 px-4 py-3">
-                <div class="w-8 h-8 rounded-lg bg-[#ff4655]/10 border border-[#ff4655]/20 flex items-center justify-center flex-shrink-0 text-[#ff4655]">
+                <div class="w-8 h-8 rounded-lg bg-red-500/10 border border-red-500/20 flex items-center justify-center flex-shrink-0 text-red-400">
                   <svg viewBox="0 0 24 24" fill="currentColor" stroke="none" class="w-4 h-4"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
                 </div>
                 <div class="flex-1 min-w-0">
                   <div class="flex items-center gap-2 mb-0.5">
-                    <span class="text-[9px] font-black uppercase tracking-[0.18em] text-[#ff4655]">Quick Warm-Up</span>
+                    <span class="text-[9px] font-black uppercase tracking-[0.18em] text-red-400">Quick Warm-Up</span>
                     <span class="text-[9px] text-gray-600">5 exercises · ~2.5 min</span>
                   </div>
                   <!-- Step pills -->
@@ -1286,7 +1285,7 @@ const CATEGORY_ICON: Record<string, string> = {
                 </div>
                 <button
                   :disabled="launching || drillRunning || warmupActive"
-                  class="flex-shrink-0 flex items-center gap-1.5 text-[10px] font-bold text-[#ff4655] border border-[#ff4655]/30 hover:bg-[#ff4655]/[0.08] rounded-lg px-3 py-1.5 transition-all disabled:opacity-40"
+                  class="flex-shrink-0 flex items-center gap-1.5 text-[10px] font-bold text-red-400 border border-red-500/30 hover:bg-red-500/[0.08] rounded-lg px-3 py-1.5 transition-all disabled:opacity-40"
                   @click="startWarmup"
                 >
                   <svg viewBox="0 0 24 24" fill="currentColor" class="w-2.5 h-2.5"><polygon points="5 3 19 12 5 21 5 3"/></svg>
@@ -1412,7 +1411,7 @@ const CATEGORY_ICON: Record<string, string> = {
                   v-for="(s, i) in sessionHistory"
                   :key="i"
                   class="flex items-center gap-3 px-3 py-2 rounded-lg border border-white/[0.05]"
-                  style="background: #0d1520"
+                  style="background: rgba(255,255,255,0.02)"
                 >
                   <div :class="['w-2 h-2 rounded-full flex-shrink-0', SCENARIO_META[s.scenario]?.dot]" />
                   <span class="text-[10px] font-bold text-gray-400 uppercase w-14 truncate">{{
@@ -1517,10 +1516,10 @@ const CATEGORY_ICON: Record<string, string> = {
                       </button>
                       <button
                         v-else-if="drillRunning && activeDrill?.scenario === drill.scenario"
-                        class="h-full px-4 text-[10px] font-bold text-[#ff4655] flex items-center gap-1.5"
+                        class="h-full px-4 text-[10px] font-bold text-red-400 flex items-center gap-1.5"
                         disabled
                       >
-                        <div class="w-1.5 h-1.5 rounded-full bg-[#ff4655] animate-pulse" />
+                        <div class="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" />
                         Running
                       </button>
                       <button
@@ -1566,7 +1565,7 @@ const CATEGORY_ICON: Record<string, string> = {
                 <div class="flex-1 h-px bg-white/[0.05]" />
               </div>
 
-              <div class="rounded-xl border border-white/[0.07] overflow-hidden" style="background: #0d1520">
+              <div class="rounded-xl border border-white/[0.07] bg-white/[0.02] overflow-hidden">
                 <!-- Scenario tiles -->
                 <div class="grid grid-cols-4 gap-0 border-b border-white/[0.06]">
                   <button
@@ -1630,7 +1629,7 @@ const CATEGORY_ICON: Record<string, string> = {
                 <!-- Launch button -->
                 <button
                   :disabled="launching || drillRunning"
-                  class="w-full py-2.5 text-xs font-bold transition-all disabled:opacity-40 flex items-center justify-center gap-2 text-[#ff4655] hover:text-[#ff4655] hover:bg-[#ff4655]/[0.06]"
+                  class="w-full py-2.5 text-xs font-bold transition-all disabled:opacity-40 flex items-center justify-center gap-2 text-red-400 hover:text-red-400 hover:bg-red-500/[0.06]"
                   @click="launchFreePlay"
                 >
                   <svg
@@ -1654,7 +1653,7 @@ const CATEGORY_ICON: Record<string, string> = {
 
       <!-- ── PROGRESS TAB ────────────────────────────────────────────────── -->
       <template v-if="activeTab === 'progress'">
-        <div class="grid grid-cols-[340px_1fr] gap-4 p-4 items-start">
+        <div class="grid grid-cols-[340px_1fr] gap-4 p-3 items-start">
 
           <!-- LEFT column -->
           <div class="flex flex-col gap-3">
@@ -1667,7 +1666,7 @@ const CATEGORY_ICON: Record<string, string> = {
                 class="flex items-center gap-1.5 text-[10px] font-bold rounded-lg px-3 py-1.5 border transition-all disabled:opacity-40"
                 :class="weekCardDone
                   ? 'text-green-400 border-green-500/20 bg-green-500/[0.05]'
-                  : 'text-[#ff4655] border-[#ff4655]/25 bg-[#ff4655]/[0.04] hover:bg-[#ff4655]/[0.10]'"
+                  : 'text-red-400 border-red-500/25 bg-red-500/[0.04] hover:bg-red-500/[0.10]'"
                 @click="exportWeeklyCard"
               >
                 <svg v-if="weekCardExporting" class="w-3 h-3 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/></svg>
@@ -1679,23 +1678,23 @@ const CATEGORY_ICON: Record<string, string> = {
 
             <!-- Stats summary 2×2 cards -->
             <div class="grid grid-cols-2 gap-2">
-              <div class="rounded-xl border border-white/[0.07] px-4 py-3" style="background: #0d1520">
+              <div class="rounded-xl border border-white/[0.07] px-4 py-3" style="background: rgba(255,255,255,0.02)">
                 <div class="text-xl font-black tabular-nums text-white">{{ trainingStats.totalSessions }}</div>
                 <div class="text-[9px] text-gray-500 mt-0.5 uppercase tracking-wide">Total sessions</div>
               </div>
-              <div class="rounded-xl border border-white/[0.07] px-4 py-3" style="background: #0d1520">
+              <div class="rounded-xl border border-white/[0.07] px-4 py-3" style="background: rgba(255,255,255,0.02)">
                 <div class="text-xl font-black tabular-nums" :class="trainingStats.streak > 0 ? 'text-orange-400' : 'text-gray-700'">
                   {{ trainingStats.streak > 0 ? trainingStats.streak : '—' }}
                 </div>
                 <div class="text-[9px] text-gray-500 mt-0.5 uppercase tracking-wide">Day streak</div>
               </div>
-              <div class="rounded-xl border border-white/[0.07] px-4 py-3" style="background: #0d1520">
+              <div class="rounded-xl border border-white/[0.07] px-4 py-3" style="background: rgba(255,255,255,0.02)">
                 <div class="text-xl font-black tabular-nums" :class="trainingStats.thisWeekAvg !== null ? scoreColor(trainingStats.thisWeekAvg) : 'text-gray-700'">
                   {{ trainingStats.thisWeekAvg ?? '—' }}
                 </div>
                 <div class="text-[9px] text-gray-500 mt-0.5 uppercase tracking-wide">Avg this week</div>
               </div>
-              <div class="rounded-xl border border-white/[0.07] px-4 py-3" style="background: #0d1520">
+              <div class="rounded-xl border border-white/[0.07] px-4 py-3" style="background: rgba(255,255,255,0.02)">
                 <div
                   class="text-xl font-black tabular-nums"
                   :class="trainingStats.improvement === null ? 'text-gray-700' : trainingStats.improvement > 0 ? 'text-green-400' : trainingStats.improvement < 0 ? 'text-red-400' : 'text-gray-400'"
@@ -1707,7 +1706,7 @@ const CATEGORY_ICON: Record<string, string> = {
             </div>
 
             <!-- Personal Records trophy row -->
-            <div v-if="hasAnyPersonalBest" class="rounded-xl border border-white/[0.07] overflow-hidden" style="background: #0d1520">
+            <div v-if="hasAnyPersonalBest" class="rounded-xl border border-white/[0.07] bg-white/[0.02] overflow-hidden">
               <div class="flex items-center gap-2 px-4 py-2.5 border-b border-white/[0.05]">
                 <span class="text-[9px] font-black uppercase tracking-[0.18em] text-gray-500">Personal Records</span>
                 <div class="flex-1 h-px bg-white/[0.04]" />
@@ -1730,7 +1729,7 @@ const CATEGORY_ICON: Record<string, string> = {
             </div>
 
             <!-- Skill Radar -->
-            <div class="rounded-xl border border-white/[0.07] overflow-hidden" style="background: #0d1520">
+            <div class="rounded-xl border border-white/[0.07] bg-white/[0.02] overflow-hidden">
               <div class="flex items-center gap-2 px-4 py-2.5 border-b border-white/[0.05]">
                 <span class="text-[9px] font-black uppercase tracking-[0.18em] text-gray-500">Skill Radar</span>
                 <div class="flex-1 h-px bg-white/[0.04]" />
@@ -1805,7 +1804,7 @@ const CATEGORY_ICON: Record<string, string> = {
                   v-for="(meta, scenario) in SCENARIO_META"
                   :key="scenario"
                   class="rounded-xl border border-white/[0.07] overflow-hidden"
-                  style="background: #0d1520"
+                  style="background: rgba(255,255,255,0.02)"
                 >
                   <div class="flex items-center gap-3 px-4 py-3">
                     <!-- Colour dot -->
@@ -1901,11 +1900,11 @@ const CATEGORY_ICON: Record<string, string> = {
                         <span class="text-[8px] text-gray-600 w-10 text-right shrink-0">You</span>
                         <div class="flex-1 bg-white/[0.05] rounded-full h-1.5 overflow-hidden">
                           <div
-                            class="h-full rounded-full bg-[#ff4655]/70 transition-all duration-700"
+                            class="h-full rounded-full bg-red-500/70 transition-all duration-700"
                             :style="{ width: (benchmarkData![scenario].user_best ?? 0) + '%' }"
                           />
                         </div>
-                        <span class="text-[8px] tabular-nums font-bold text-[#ff4655] w-5 shrink-0">{{ benchmarkData![scenario].user_best ?? '—' }}</span>
+                        <span class="text-[8px] tabular-nums font-bold text-red-400 w-5 shrink-0">{{ benchmarkData![scenario].user_best ?? '—' }}</span>
                       </div>
                       <div class="flex items-center gap-2">
                         <span class="text-[8px] text-gray-600 w-10 text-right shrink-0">Avg</span>
@@ -1925,9 +1924,9 @@ const CATEGORY_ICON: Record<string, string> = {
             </template>
 
             <!-- Correlation Insights -->
-            <div v-if="correlationInsights.length" class="rounded-xl border border-white/[0.08] overflow-hidden" style="background: #0d1520">
+            <div v-if="correlationInsights.length" class="rounded-xl border border-white/[0.08] overflow-hidden" style="background: rgba(255,255,255,0.02)">
               <div class="flex items-center gap-2 px-4 py-2.5 border-b border-white/[0.05]">
-                <div class="w-1.5 h-1.5 rounded-full bg-[#ff4655] flex-shrink-0" />
+                <div class="w-1.5 h-1.5 rounded-full bg-red-500 flex-shrink-0" />
                 <span class="text-[9px] font-black uppercase tracking-[0.18em] text-gray-400">Training Insights</span>
               </div>
               <div class="divide-y divide-white/[0.04]">
@@ -1936,14 +1935,14 @@ const CATEGORY_ICON: Record<string, string> = {
                   :key="i"
                   class="flex items-start gap-3 px-4 py-2.5"
                 >
-                  <div class="w-1.5 h-1.5 rounded-full bg-[#ff4655]/50 flex-shrink-0 mt-1.5" />
+                  <div class="w-1.5 h-1.5 rounded-full bg-red-500/50 flex-shrink-0 mt-1.5" />
                   <p class="text-[11px] text-gray-400 leading-relaxed">{{ insight }}</p>
                 </div>
               </div>
             </div>
 
             <!-- Achievements -->
-            <div class="rounded-xl border border-white/[0.07] overflow-hidden" style="background: #0d1520">
+            <div class="rounded-xl border border-white/[0.07] bg-white/[0.02] overflow-hidden">
               <div class="flex items-center gap-2 px-4 py-2.5 border-b border-white/[0.05]">
                 <span class="text-[9px] font-black uppercase tracking-[0.18em] text-gray-500">Achievements</span>
                 <div class="flex-1 h-px bg-white/[0.04]" />
@@ -1954,7 +1953,7 @@ const CATEGORY_ICON: Record<string, string> = {
                   v-for="ach in displayAchievements"
                   :key="ach.id"
                   class="flex flex-col items-center gap-1 px-2 py-3 text-center"
-                  :class="isUnlocked(ach.id) ? 'bg-[#0d1520]' : 'bg-[#0b1219]'"
+                  :class="isUnlocked(ach.id) ? 'bg-white/[0.02]' : 'bg-white/[0.01]'"
                   :title="isUnlocked(ach.id) ? ach.description : ach.secret ? '???' : ach.description"
                 >
                   <span class="text-lg" :class="isUnlocked(ach.id) ? '' : 'grayscale opacity-30'">
@@ -1963,7 +1962,7 @@ const CATEGORY_ICON: Record<string, string> = {
                   <span class="text-[8px] font-bold leading-tight" :class="isUnlocked(ach.id) ? 'text-white' : 'text-gray-700'">
                     {{ ach.secret && !isUnlocked(ach.id) ? '???' : ach.name }}
                   </span>
-                  <span v-if="isUnlocked(ach.id)" class="text-[7px] text-[#ff4655]/70 font-medium">
+                  <span v-if="isUnlocked(ach.id)" class="text-[7px] text-red-400/70 font-medium">
                     {{ formatAchievementDate(achievements.unlocked.value[ach.id]) }}
                   </span>
                 </div>
@@ -1976,33 +1975,33 @@ const CATEGORY_ICON: Record<string, string> = {
 
       <!-- ── COACHING TAB ────────────────────────────────────────────── -->
       <template v-if="activeTab === 'coaching'">
-        <div class="grid grid-cols-[280px_1fr] gap-4 p-4 items-start">
+        <div class="grid grid-cols-[280px_1fr] gap-4 p-3 items-start">
 
           <!-- LEFT column -->
           <div class="flex flex-col gap-3">
 
             <!-- AI Coaching context card -->
-            <div class="rounded-xl border border-white/[0.07] overflow-hidden" style="background: #0d1520">
+            <div class="rounded-xl border border-white/[0.07] bg-white/[0.02] overflow-hidden">
               <div class="flex items-center gap-2 px-4 py-2.5 border-b border-white/[0.05]">
-                <div class="w-1.5 h-1.5 rounded-full bg-[#ff4655] flex-shrink-0" />
+                <div class="w-1.5 h-1.5 rounded-full bg-red-500 flex-shrink-0" />
                 <span class="text-[9px] font-black uppercase tracking-[0.18em] text-gray-400">AI Coaching</span>
               </div>
               <div class="px-4 py-3 space-y-2">
                 <p class="text-[11px] text-gray-400 leading-relaxed">VOD analysis identifies your weak areas and assigns targeted drills to fix them.</p>
                 <div class="flex items-center gap-1.5 text-[10px] text-gray-500">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" class="w-3 h-3 text-[#ff4655]/70 flex-shrink-0"><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2"/><rect x="9" y="3" width="6" height="4" rx="1"/></svg>
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" class="w-3 h-3 text-red-400/70 flex-shrink-0"><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2"/><rect x="9" y="3" width="6" height="4" rx="1"/></svg>
                   <span>{{ coachingDrills.length }} drill{{ coachingDrills.length !== 1 ? 's' : '' }} assigned</span>
                 </div>
               </div>
             </div>
 
             <!-- Session Progress card -->
-            <div v-if="coachingDrills.length" class="rounded-xl border border-white/[0.07] overflow-hidden" style="background: #0d1520">
+            <div v-if="coachingDrills.length" class="rounded-xl border border-white/[0.07] bg-white/[0.02] overflow-hidden">
               <div class="px-4 py-3">
                 <div class="text-[9px] font-black uppercase tracking-[0.15em] text-gray-500 mb-2">Session Progress</div>
                 <div class="flex items-center gap-2">
                   <div class="flex-1 bg-white/[0.05] rounded-full h-1.5 overflow-hidden">
-                    <div class="h-full bg-[#ff4655]/70 rounded-full transition-all duration-500" :style="{ width: coachingDrills.length ? (completedDrills.size / coachingDrills.length * 100) + '%' : '0%' }" />
+                    <div class="h-full bg-red-500/70 rounded-full transition-all duration-500" :style="{ width: coachingDrills.length ? (completedDrills.size / coachingDrills.length * 100) + '%' : '0%' }" />
                   </div>
                   <span class="text-[10px] font-bold text-gray-400 tabular-nums">{{ completedDrills.size }}/{{ coachingDrills.length }}</span>
                 </div>
@@ -2024,7 +2023,7 @@ const CATEGORY_ICON: Record<string, string> = {
             <div
               v-else-if="!coachingDrills.length"
               class="py-8 text-center rounded-xl border border-white/[0.06]"
-              style="background: #0d1520"
+              style="background: rgba(255,255,255,0.02)"
             >
               <div class="flex items-center justify-center mb-3">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" class="w-8 h-8 text-gray-700"><path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2"/><rect x="9" y="3" width="6" height="4" rx="1"/><line x1="9" y1="12" x2="15" y2="12"/><line x1="9" y1="16" x2="13" y2="16"/></svg>
@@ -2038,19 +2037,19 @@ const CATEGORY_ICON: Record<string, string> = {
                 v-for="drill in coachingDrills"
                 :key="drill.id"
                 class="rounded-xl border border-white/[0.07] overflow-hidden"
-                style="background: #0d1520"
+                style="background: rgba(255,255,255,0.02)"
               >
                 <div class="flex items-start gap-3 px-4 py-3">
                   <!-- Category icon -->
                   <div
-                    class="w-8 h-8 rounded-lg bg-[#ff4655]/10 border border-[#ff4655]/20 flex items-center justify-center flex-shrink-0 text-[#ff4655]/70"
+                    class="w-8 h-8 rounded-lg bg-red-500/10 border border-red-500/20 flex items-center justify-center flex-shrink-0 text-red-400/70"
                     v-html="CATEGORY_ICON[drill.category] ?? CATEGORY_ICON['default']"
                   />
                   <div class="flex-1 min-w-0">
                     <div class="flex items-center gap-2 mb-1">
                       <span class="text-xs font-bold text-white">{{ drill.title }}</span>
                       <span
-                        class="text-[8px] font-bold uppercase bg-[#ff4655]/10 text-[#ff4655]/80 border border-[#ff4655]/20 px-1.5 py-px rounded-full"
+                        class="text-[8px] font-bold uppercase bg-red-500/10 text-red-400/80 border border-red-500/20 px-1.5 py-px rounded-full"
                         >{{ drill.category.replace('_', ' ') }}</span
                       >
                     </div>
@@ -2061,7 +2060,7 @@ const CATEGORY_ICON: Record<string, string> = {
                     <div class="flex items-center gap-2">
                       <div class="flex-1 bg-white/[0.05] rounded-full h-1 relative">
                         <div
-                          class="absolute left-0 top-0 h-1 rounded-full bg-[#ff4655]/60"
+                          class="absolute left-0 top-0 h-1 rounded-full bg-red-500/60"
                           :style="{ width: (drill.baseline_score / 10) * 100 + '%' }"
                         />
                         <div
@@ -2074,7 +2073,7 @@ const CATEGORY_ICON: Record<string, string> = {
                       </span>
                     </div>
                     <p v-if="drill.success_metric" class="text-[9px] text-gray-600 mt-1.5 italic flex items-center gap-1">
-                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="w-2.5 h-2.5 text-[#ff4655]/60 flex-shrink-0"><polyline points="20 6 9 17 4 12"/></svg>
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="w-2.5 h-2.5 text-red-400/60 flex-shrink-0"><polyline points="20 6 9 17 4 12"/></svg>
                       {{ drill.success_metric }}
                     </p>
                   </div>
@@ -2086,7 +2085,7 @@ const CATEGORY_ICON: Record<string, string> = {
                   </span>
                   <button
                     :disabled="launching || drillRunning"
-                    class="flex items-center gap-1.5 text-[10px] font-bold text-[#ff4655] hover:text-[#ff4655] border border-[#ff4655]/25 hover:border-[#ff4655]/50 hover:bg-[#ff4655]/[0.06] rounded-lg px-2.5 py-1 transition-all disabled:opacity-40"
+                    class="flex items-center gap-1.5 text-[10px] font-bold text-red-400 hover:text-red-400 border border-red-500/25 hover:border-red-500/50 hover:bg-red-500/[0.06] rounded-lg px-2.5 py-1 transition-all disabled:opacity-40"
                     @click="launchCoachingDrill(drill)"
                   >
                     <svg viewBox="0 0 24 24" fill="currentColor" class="w-2.5 h-2.5"><polygon points="5 3 19 12 5 21 5 3"/></svg>
