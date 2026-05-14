@@ -506,6 +506,26 @@ export function setupIpcHandlers(
     return auth.fetchAnalyses(limit ?? 10)
   })
 
+  // Analyses — fetch coaching detail (verdict, improvements, tags) for a single analysis
+  ipcMain.handle('analyses:get-detail', async (_e, { id }: { id: number }) => {
+    try {
+      const res = await auth.getApi().get(`/api/analysis/${id}`)
+      const a = res.data?.analysis
+      if (!a) return null
+      const md = a.match_data ?? {}
+      return {
+        verdict: a.verdict ?? null,
+        top_issue: a.top_issue ?? null,
+        priority_improvements: a.priority_improvements ?? [],
+        coaching_tags: a.coaching_tags ?? [],
+        ally_score: md.finalScore?.allyScore ?? a.ally_score ?? null,
+        enemy_score: md.finalScore?.enemyScore ?? a.enemy_score ?? null,
+      }
+    } catch {
+      return null
+    }
+  })
+
   // Analyses — fetch full match timeline for a past analysis
   ipcMain.handle('analyses:get-timeline', async (_e, { id }: { id: number }) => {
     const token = auth.getToken()
