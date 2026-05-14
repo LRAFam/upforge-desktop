@@ -108,16 +108,31 @@
           </div>
           <p class="text-xs text-gray-700 mt-1.5 px-0.5">Games in unselected modes will not be recorded.</p>
         </div>
-        <div>
-          <label class="block text-xs text-gray-500 mb-1">Quality</label>
-          <select
-            v-model="settings.recordingQuality"
-            class="w-full px-2.5 py-1.5 bg-white/[0.04] border border-white/[0.07] rounded-lg text-xs text-white focus:outline-none focus:border-red-500/30 transition-colors"
-            @change="debouncedSave"
-          >
-            <option value="720p">720p — Recommended</option>
-            <option value="1080p">1080p — More detail</option>
-          </select>
+        <!-- Quality + FPS side by side -->
+        <div class="grid grid-cols-2 gap-2">
+          <div>
+            <label class="block text-xs text-gray-500 mb-1">Quality</label>
+            <select
+              v-model="settings.recordingQuality"
+              class="w-full px-2.5 py-1.5 bg-white/[0.04] border border-white/[0.07] rounded-lg text-xs text-white focus:outline-none focus:border-red-500/30 transition-colors"
+              @change="debouncedSave"
+            >
+              <option value="720p">720p</option>
+              <option value="1080p">1080p</option>
+            </select>
+          </div>
+          <div>
+            <label class="block text-xs text-gray-500 mb-1">Frame rate</label>
+            <select
+              v-model.number="settings.recordingFps"
+              class="w-full px-2.5 py-1.5 bg-white/[0.04] border border-white/[0.07] rounded-lg text-xs text-white focus:outline-none focus:border-red-500/30 transition-colors"
+              @change="debouncedSave"
+            >
+              <option :value="24">24 FPS</option>
+              <option :value="30">30 FPS</option>
+              <option :value="60">60 FPS</option>
+            </select>
+          </div>
         </div>
         <div>
           <label class="block text-xs text-gray-500 mb-1">Capture monitor</label>
@@ -145,19 +160,6 @@
             <option :value="8">8 Mbps — ~3.6 GB/hr</option>
             <option :value="12">12 Mbps — ~5.4 GB/hr</option>
           </select>
-        </div>
-        <div>
-          <label class="block text-xs text-gray-500 mb-1">Frame rate</label>
-          <select
-            v-model.number="settings.recordingFps"
-            class="w-full px-2.5 py-1.5 bg-white/[0.04] border border-white/[0.07] rounded-lg text-xs text-white focus:outline-none focus:border-red-500/30 transition-colors"
-            @change="debouncedSave"
-          >
-            <option :value="24">24 FPS — Lower file size</option>
-            <option :value="30">30 FPS — Default</option>
-            <option :value="60">60 FPS — Smooth playback</option>
-          </select>
-          <p class="text-xs text-gray-700 mt-1 px-0.5">Higher FPS increases file size.</p>
         </div>
         <div>
           <label class="block text-xs text-gray-500 mb-1">Save location</label>
@@ -581,72 +583,7 @@
       </Transition>
     </section>
 
-    <!-- System -->
-    <section>
-      <h3 class="text-xs font-semibold text-gray-600 uppercase tracking-widest mb-2 px-0.5">System</h3>
-      <div class="px-3 py-2.5 bg-white/[0.02] border border-white/[0.05] rounded-xl space-y-2.5">
-        <!-- ffmpeg status -->
-        <div class="flex items-center justify-between">
-          <div>
-            <p class="text-xs text-gray-400">Recording engine (ffmpeg)</p>
-            <p v-if="ffmpegOk" class="text-xs text-green-500/70 mt-0.5">Ready</p>
-            <p v-else class="text-xs text-yellow-500/70 mt-0.5">Not found — reinstall the app</p>
-          </div>
-          <div :class="['w-2 h-2 rounded-full flex-shrink-0', ffmpegOk ? 'bg-green-500' : 'bg-yellow-400']" />
-        </div>
-
-        <!-- Riot API connection test -->
-        <div class="flex items-start justify-between">
-          <div class="flex-1 min-w-0 pr-3">
-            <p class="text-xs text-gray-400">Match Detection</p>
-            <p v-if="riotApiResult === null" class="text-xs text-gray-600 mt-0.5">Open Valorant and start a match, then test</p>
-            <p v-else-if="riotApiResult.processRunning && riotApiResult.logGameMode" class="text-xs text-green-500/70 mt-0.5 truncate">✓ In-game · {{ riotApiResult.logGameMode }} (log)</p>
-            <p v-else-if="riotApiResult.processRunning && riotApiResult.gameMode" class="text-xs text-green-500/70 mt-0.5 truncate">✓ In-game · {{ riotApiResult.gameMode }} (api)</p>
-            <p v-else-if="riotApiResult.processRunning" class="text-xs text-yellow-500/70 mt-0.5">✓ In-game process detected · mode unknown</p>
-            <p v-else class="text-xs text-gray-600 mt-0.5">Not in a match · process={{ riotApiResult.processRunning }}</p>
-          </div>
-          <button
-            class="text-xs text-gray-600 hover:text-gray-400 transition-colors flex-shrink-0 mt-0.5"
-            :disabled="testingRiotApi"
-            @click="testRiotApi"
-          >{{ testingRiotApi ? 'Testing…' : 'Test' }}</button>
-        </div>
-      </div>
-    </section>
-
-    <!-- Footer -->
-    <div class="pt-1 space-y-2">
-      <div class="flex items-center justify-between px-0.5">
-        <p
-          class="text-xs text-gray-700 cursor-default select-none"
-          :class="{ 'text-amber-600': devTapCount > 0 && devTapCount < 5 }"
-          @click="handleVersionTap"
-        >UpForge Desktop v{{ appVersion }}<span v-if="devTapCount > 0 && devTapCount < 5" class="ml-1 text-amber-600/60">({{ 5 - devTapCount }} more)</span></p>
-        <div class="flex items-center gap-3">
-          <button
-            v-if="!isDev"
-            class="text-xs text-gray-600 hover:text-gray-400 transition-colors"
-            :disabled="checkingForUpdates"
-            @click="checkForUpdates"
-          >{{ checkingForUpdates ? 'Checking...' : 'Check for updates' }}</button>
-          <button class="text-xs text-gray-600 hover:text-gray-400 transition-colors" @click="openHelp">Get help</button>
-          <button class="text-xs text-gray-600 hover:text-gray-400 transition-colors" @click="openSite">upforge.gg</button>
-        </div>
-      </div>
-      <!-- Dev mode enabled indicator -->
-      <div v-if="devModeActive" class="flex items-center justify-between px-0.5 py-1.5 bg-amber-500/[0.06] border border-amber-500/20 rounded-lg">
-        <div class="flex items-center gap-2">
-          <div class="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
-          <span class="text-xs text-amber-500/80 font-medium">Developer mode enabled</span>
-        </div>
-        <button class="text-xs text-amber-700 hover:text-amber-500 transition-colors" @click="disableDevMode">Disable</button>
-      </div>
-      <Transition name="fade">
-        <p v-if="updateMessage" class="text-xs text-gray-500 px-0.5">{{ updateMessage }}</p>
-      </Transition>
-    </div>
-
-    <!-- OBS Integration (Pro tier) -->
+    <!-- OBS Integration -->
     <section v-if="user?.tier === 'pro'">
       <h3 class="text-xs font-semibold text-gray-600 uppercase tracking-widest mb-2 px-0.5">OBS Integration <span class="ml-1 text-red-400/80 normal-case tracking-normal font-normal">Pro</span></h3>
       <div class="bg-white/[0.02] border border-white/[0.05] rounded-xl p-3 space-y-3">
@@ -760,6 +697,102 @@
         <p v-if="obsStatus?.lastError" class="text-xs text-red-400/80">{{ obsStatus.lastError }}</p>
       </div>
     </section>
+
+    <!-- OBS teaser (non-Pro) -->
+    <section v-else-if="user && user.tier !== 'pro'">
+      <h3 class="text-xs font-semibold text-gray-600 uppercase tracking-widest mb-2 px-0.5">OBS Integration</h3>
+      <div class="flex items-center justify-between px-3 py-2.5 bg-white/[0.02] border border-white/[0.05] rounded-xl">
+        <div class="flex items-center gap-2.5">
+          <div class="w-6 h-6 rounded-md bg-white/[0.04] border border-white/[0.07] flex items-center justify-center flex-shrink-0">
+            <svg class="w-3.5 h-3.5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/>
+            </svg>
+          </div>
+          <div>
+            <p class="text-xs text-gray-500">Use OBS for recording with replay buffers</p>
+            <p class="text-xs text-gray-700 mt-0.5">Available on Pro plan</p>
+          </div>
+        </div>
+        <button
+          class="flex-shrink-0 text-xs px-2.5 py-1 bg-gradient-to-r from-red-500/20 to-orange-500/20 border border-red-500/25 text-red-400 hover:text-red-300 rounded-lg transition-colors"
+          @click="openUpgrade"
+        >Upgrade</button>
+      </div>
+    </section>
+
+    <!-- System -->
+    <section>
+      <h3 class="text-xs font-semibold text-gray-600 uppercase tracking-widest mb-2 px-0.5">System</h3>
+      <div class="px-3 py-2.5 bg-white/[0.02] border border-white/[0.05] rounded-xl space-y-2.5">
+        <!-- ffmpeg status -->
+        <div class="flex items-center justify-between">
+          <div>
+            <p class="text-xs text-gray-400">Recording engine (ffmpeg)</p>
+            <p v-if="ffmpegOk" class="text-xs text-green-500/70 mt-0.5">Ready</p>
+            <p v-else class="text-xs text-yellow-500/70 mt-0.5">Not found — reinstall the app</p>
+          </div>
+          <div :class="['w-2 h-2 rounded-full flex-shrink-0', ffmpegOk ? 'bg-green-500' : 'bg-yellow-400']" />
+        </div>
+
+        <!-- Video encoder -->
+        <div v-if="settings.cachedEncoder" class="flex items-center justify-between">
+          <div>
+            <p class="text-xs text-gray-400">Video encoder</p>
+            <p class="text-xs text-green-500/70 mt-0.5">{{ encoderLabel }}</p>
+          </div>
+          <div class="w-2 h-2 rounded-full bg-green-500 flex-shrink-0" />
+        </div>
+
+        <!-- Riot API connection test -->
+        <div class="flex items-start justify-between">
+          <div class="flex-1 min-w-0 pr-3">
+            <p class="text-xs text-gray-400">Match Detection</p>
+            <p v-if="riotApiResult === null" class="text-xs text-gray-600 mt-0.5">Open Valorant and start a match, then test</p>
+            <p v-else-if="riotApiResult.processRunning && riotApiResult.logGameMode" class="text-xs text-green-500/70 mt-0.5 truncate">✓ In-game · {{ riotApiResult.logGameMode }} (log)</p>
+            <p v-else-if="riotApiResult.processRunning && riotApiResult.gameMode" class="text-xs text-green-500/70 mt-0.5 truncate">✓ In-game · {{ riotApiResult.gameMode }} (api)</p>
+            <p v-else-if="riotApiResult.processRunning" class="text-xs text-yellow-500/70 mt-0.5">✓ In-game process detected · mode unknown</p>
+            <p v-else class="text-xs text-gray-600 mt-0.5">Not in a match · process={{ riotApiResult.processRunning }}</p>
+          </div>
+          <button
+            class="text-xs text-gray-600 hover:text-gray-400 transition-colors flex-shrink-0 mt-0.5"
+            :disabled="testingRiotApi"
+            @click="testRiotApi"
+          >{{ testingRiotApi ? 'Testing…' : 'Test' }}</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- Footer -->
+    <div class="pt-1 space-y-2">
+      <div class="flex items-center justify-between px-0.5">
+        <p
+          class="text-xs text-gray-700 cursor-default select-none"
+          :class="{ 'text-amber-600': devTapCount > 0 && devTapCount < 5 }"
+          @click="handleVersionTap"
+        >UpForge Desktop v{{ appVersion }}<span v-if="devTapCount > 0 && devTapCount < 5" class="ml-1 text-amber-600/60">({{ 5 - devTapCount }} more)</span></p>
+        <div class="flex items-center gap-3">
+          <button
+            v-if="!isDev"
+            class="text-xs text-gray-600 hover:text-gray-400 transition-colors"
+            :disabled="checkingForUpdates"
+            @click="checkForUpdates"
+          >{{ checkingForUpdates ? 'Checking...' : 'Check for updates' }}</button>
+          <button class="text-xs text-gray-600 hover:text-gray-400 transition-colors" @click="openHelp">Get help</button>
+          <button class="text-xs text-gray-600 hover:text-gray-400 transition-colors" @click="openSite">upforge.gg</button>
+        </div>
+      </div>
+      <!-- Dev mode enabled indicator -->
+      <div v-if="devModeActive" class="flex items-center justify-between px-0.5 py-1.5 bg-amber-500/[0.06] border border-amber-500/20 rounded-lg">
+        <div class="flex items-center gap-2">
+          <div class="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
+          <span class="text-xs text-amber-500/80 font-medium">Developer mode enabled</span>
+        </div>
+        <button class="text-xs text-amber-700 hover:text-amber-500 transition-colors" @click="disableDevMode">Disable</button>
+      </div>
+      <Transition name="fade">
+        <p v-if="updateMessage" class="text-xs text-gray-500 px-0.5">{{ updateMessage }}</p>
+      </Transition>
+    </div>
 
     <!-- Saved toast -->
     <Transition name="toast-slide">
@@ -1007,6 +1040,17 @@ const usagePercent = computed(() => {
   const u = user.value as UserWithUsage | null
   if (!u?.analyses_used || !u?.analyses_limit) return 0
   return Math.min(100, Math.round((Math.max(0, u.analyses_used) / u.analyses_limit) * 100))
+})
+
+const encoderLabel = computed(() => {
+  const enc = settings.cachedEncoder
+  if (!enc) return null
+  if (enc.includes('nvenc')) return `${enc} · NVIDIA hardware`
+  if (enc.includes('amf')) return `${enc} · AMD hardware`
+  if (enc.includes('qsv')) return `${enc} · Intel QuickSync`
+  if (enc.includes('videotoolbox')) return `${enc} · Apple hardware`
+  if (enc === 'libx264') return 'libx264 · software encoding'
+  return enc
 })
 
 // tierClass and formatMode are imported from valorant.ts (shared helpers)
