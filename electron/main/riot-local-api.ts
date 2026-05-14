@@ -917,7 +917,7 @@ export class RiotLocalApi {
       endTime: null,
     }
     this._connectWebSocket()
-    this.presencePollInterval = setInterval(() => this._pollPresence(), 3000)
+    this.presencePollInterval = setInterval(() => this._pollPresence(), 10_000)
     // Attempt agent fetch immediately (game is already INGAME by the time start() is called)
     setTimeout(() => this._fetchAgentFromCoreGame().catch(() => {}), 500)
     console.log(`[RiotLocalApi] Match tracking started (game=${game} matchStartTime=${matchStartTime})`)

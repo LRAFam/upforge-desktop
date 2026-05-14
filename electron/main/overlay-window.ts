@@ -6,6 +6,9 @@ let overlayWindow: BrowserWindow | null = null
 let isVisible = false
 
 export function createOverlayWindow(): BrowserWindow {
+  // Guard: if an overlay already exists and isn't destroyed, return it.
+  if (overlayWindow && !overlayWindow.isDestroyed()) return overlayWindow
+
   const display = screen.getPrimaryDisplay()
   const { width } = display.workAreaSize
 

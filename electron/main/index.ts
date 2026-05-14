@@ -1000,6 +1000,12 @@ function setupGameDetection(): void {
     console.log(`[GameDetector] ${game} started`)
     logActivity(`${game === 'cs2' ? 'CS2' : 'Valorant'} detected — waiting for match`)
 
+    // Minimize the main window while gaming to reduce Chromium GPU/CPU overhead.
+    // The user can restore it from the taskbar or tray if needed.
+    if (mainWindow && !mainWindow.isDestroyed() && mainWindow.isVisible()) {
+      mainWindow.minimize()
+    }
+
     const config = settingsManager?.get()
 
     // Auto-kill user-configured background apps before the game starts
@@ -1153,6 +1159,10 @@ function setupGameDetection(): void {
       console.log('[RiotLocalApi] onMatchEnded fired — stopping recording')
       logActivity('Match ended (presence) — stopping recording')
       await handleMatchEnd(game)
+      // Restore main window and tear down the overlay now that the match is over.
+      // The overlay will be recreated if a new match starts.
+      if (mainWindow && !mainWindow.isDestroyed() && mainWindow.isMinimized()) mainWindow.restore()
+      destroyOverlay()
 
       // VALORANT-Win64-Shipping.exe often stays alive between consecutive matches
       // (the user returns to lobby and queues again without relaunching the client).
@@ -1174,6 +1184,9 @@ function setupGameDetection(): void {
     tray?.setToolTip('UpForge — Starting recorder...')
     mainWindow?.webContents.send('recording:starting', { starting: true })
     try {
+      // Create the overlay window just before recording starts — deferred from startup
+      // so it doesn't break Valorant's exclusive fullscreen before we actually need it.
+      createOverlayWindow()
       await recorder.start(game, recorderConfig)
       // Update recordingStartTime to the moment the recorder actually began capturing.
       // This makes videoOffsetMs accurate: offset = (matchStart - recordingStart) + timeSinceGameStart.
@@ -1272,6 +1285,9 @@ function setupGameDetection(): void {
       tray?.setToolTip('UpForge — Valorant AI Coaching')
       console.log('[GameDetector] Game quit before match — no recording to save')
       logActivity('Game quit before match started — nothing recorded')
+      // Restore main window now that game is gone
+      if (mainWindow && !mainWindow.isDestroyed() && mainWindow.isMinimized()) mainWindow.restore()
+      destroyOverlay()
       return
     }
 
@@ -1279,6 +1295,9 @@ function setupGameDetection(): void {
     if (matchHandled) {
       console.log('[GameDetector] Match already handled by onMatchEnded — skipping game-stopped')
       riotLocalApi.onMatchEnded = null
+      // Restore main window now that game is gone
+      if (mainWindow && !mainWindow.isDestroyed() && mainWindow.isMinimized()) mainWindow.restore()
+      destroyOverlay()
       return
     }
 
@@ -1288,6 +1307,9 @@ function setupGameDetection(): void {
     sendOverlayData('overlay:data', { round: null, allyScore: null, enemyScore: null, yourCredits: null, enemyEstimate: null, recording: false })
     logActivity('Game process ended — stopping recording')
     await handleMatchEnd(game)
+    // Restore main window now that game is gone
+    if (mainWindow && !mainWindow.isDestroyed() && mainWindow.isMinimized()) mainWindow.restore()
+    destroyOverlay()
   })
 
   gameDetector.start()
@@ -1870,7 +1892,8 @@ app.whenReady().then(async () => {
   }
   mainWindow?.webContents.send('app:hotkey-status', hotkeyStatus)
 
-  createOverlayWindow()
+  // Overlay window is created lazily just before recording starts to avoid
+  // breaking Valorant's exclusive fullscreen mode (which causes FPS drops).
 
   // Debug: test Riot Live Client API connection — returns raw response or error details
   ipcMain.handle('debug:test-riot-api', async () => {

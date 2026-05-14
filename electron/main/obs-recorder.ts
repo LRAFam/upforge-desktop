@@ -329,7 +329,7 @@ export class OBSRecorder {
 
     this._liveKillPollTimer = setInterval(() => {
       this._pollKillEvents()
-    }, 2_000)
+    }, 4_000)
   }
 
   private _stopLiveKillPoll(): void {
