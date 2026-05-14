@@ -222,7 +222,7 @@ const filteredAnalyses = computed(() => {
 const winRate = computed(() => {
   const withResult = filteredAnalyses.value.filter(a => a.won != null)
   if (!withResult.length) return 0
-  return Math.round((withResult.filter(a => a.won).length / withResult.length) * 100)
+  return Math.round((withResult.filter(a => a.won ? 1 : 0).length / withResult.length) * 100)
 })
 
 const avgScore = computed((): number | null => {
@@ -254,7 +254,7 @@ function scoreColor(s: number): string {
 
 const recentForm = computed(() =>
   filteredAnalyses.value.slice(0, 15).map(a =>
-    a.won === true ? 'W' : a.won === false ? 'L' : '—'
+    a.won != null ? (a.won ? 'W' : 'L') : '—'
   )
 )
 
@@ -297,12 +297,16 @@ const sparkArea = computed(() => buildSparkPath(true))
 
 type BreakdownRow = { name: string; games: number; wins: number; wr: number; kda: string }
 
+// Game modes / practice areas that appear as map names — filter from map breakdown
+const NON_MAP_NAMES = new Set(['team deathmatch', 'deathmatch', 'the range', 'range', 'training'])
+
 function buildBreakdown(key: 'agent' | 'map'): BreakdownRow[] {
   const acc = new Map<string, { games: number; wins: number; kdSum: number; kdCount: number }>()
   for (const a of filteredAnalyses.value) {
     const raw = a[key]
     if (!raw) continue
     const name = key === 'map' ? raw.toLowerCase() : raw
+    if (key === 'map' && NON_MAP_NAMES.has(name)) continue
     const e = acc.get(name) ?? { games: 0, wins: 0, kdSum: 0, kdCount: 0 }
     e.games++
     if (a.won) e.wins++
