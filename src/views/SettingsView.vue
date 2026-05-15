@@ -9,7 +9,7 @@
         :class="[
           'px-3 py-1.5 rounded-lg text-xs font-medium transition-colors',
           activeTab === tab.id
-            ? 'bg-white/[0.08] text-white'
+            ? 'bg-red-500/[0.12] text-red-400 ring-1 ring-red-500/20'
             : 'text-gray-500 hover:text-gray-300 hover:bg-white/[0.04]'
         ]"
         @click="activeTab = tab.id"
@@ -793,8 +793,23 @@
       </div>
     </section>
 
-    <!-- Footer -->
-    <div class="pt-1 space-y-2">
+    <!-- Saved toast -->
+    <Transition name="toast-slide">
+      <div
+        v-if="savedVisible"
+        class="fixed bottom-5 right-5 flex items-center gap-2 px-4 py-2.5 bg-gray-900 border border-white/[0.08] rounded-xl shadow-xl text-sm text-white pointer-events-none"
+      >
+        <svg class="w-4 h-4 text-green-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"/>
+        </svg>
+        {{ toastMessage || 'Settings saved' }}
+      </div>
+    </Transition>
+
+    </div><!-- end scrollable content -->
+
+    <!-- Persistent footer -->
+    <div class="flex-shrink-0 px-3 pt-2 pb-3 border-t border-white/[0.04] space-y-2">
       <div class="flex items-center justify-between px-0.5">
         <p
           class="text-xs text-gray-700 cursor-default select-none"
@@ -825,20 +840,6 @@
       </Transition>
     </div>
 
-    <!-- Saved toast -->
-    <Transition name="toast-slide">
-      <div
-        v-if="savedVisible"
-        class="fixed bottom-5 right-5 flex items-center gap-2 px-4 py-2.5 bg-gray-900 border border-white/[0.08] rounded-xl shadow-xl text-sm text-white pointer-events-none"
-      >
-        <svg class="w-4 h-4 text-green-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"/>
-        </svg>
-        {{ toastMessage || 'Settings saved' }}
-      </div>
-    </Transition>
-
-    </div><!-- end scrollable content -->
   </div><!-- end flex column -->
 </template>
 
