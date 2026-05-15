@@ -588,6 +588,76 @@ async function extractMatchClips(
   currentRecordingStartTime = null
 }
 
+/**
+ * Fire-and-forget post-game debrief using Riot Live Client match data.
+ * Calls the Laravel /api/desktop-submissions/debrief endpoint which proxies to
+ * the AI service for a quick Claude round-by-round coaching breakdown.
+ * Sends the result to the post-game window via 'post-game:debrief'.
+ */
+async function requestPostGameDebrief(opts: {
+  riotName: string
+  riotTag: string
+  agent: string | null
+  map: string | null
+  timeline: MatchData
+  sendToWindow: (channel: string, payload?: unknown) => void
+}): Promise<void> {
+  const { riotName, riotTag, agent, map, timeline, sendToWindow } = opts
+  const token = authManager.getToken()
+  if (!token) return
+
+  const apiUrl = process.env['VITE_API_URL'] || 'https://api.upforge.gg'
+
+  const body = JSON.stringify({
+    riot_name: riotName,
+    riot_tag:  riotTag,
+    agent,
+    map,
+    match_data: timeline,
+  })
+
+  const parsedUrl = new URL(`${apiUrl}/api/desktop-submissions/debrief`)
+  const proto = parsedUrl.protocol === 'https:' ? await import('https') : await import('http')
+
+  return new Promise((resolve) => {
+    const req = proto.default.request({
+      method:   'POST',
+      hostname: parsedUrl.hostname,
+      port:     parsedUrl.port || (parsedUrl.protocol === 'https:' ? 443 : 80),
+      path:     parsedUrl.pathname,
+      headers: {
+        'Content-Type':   'application/json',
+        'Content-Length': Buffer.byteLength(body),
+        'Authorization':  `Bearer ${token}`,
+        'Accept':         'application/json',
+      },
+    }, (res) => {
+      let data = ''
+      res.on('data', (c) => { data += c })
+      res.on('end', () => {
+        try {
+          const json = JSON.parse(data)
+          if ((res.statusCode ?? 0) >= 400) {
+            log.warn('[Debrief] API error:', res.statusCode, json.message)
+          } else {
+            log.info(`[Debrief] Generated for ${riotName}#${riotTag} cost=$${json.estimated_cost_usd ?? 0}`)
+            sendToWindow('post-game:debrief', { debrief: json.debrief_text, agent, map })
+          }
+        } catch {
+          log.warn('[Debrief] Non-JSON response:', data.slice(0, 200))
+        }
+        resolve()
+      })
+    })
+    req.on('error', (err) => {
+      log.warn('[Debrief] Request error:', err.message)
+      resolve()
+    })
+    req.write(body)
+    req.end()
+  })
+}
+
 function createMainWindow(): BrowserWindow {
   const win = new BrowserWindow({
     width: 980,
@@ -859,6 +929,28 @@ function setupGameDetection(): void {
     thisPostGameWindow.on('closed', () => {
       if (postGameWindow === thisPostGameWindow) postGameWindow = null
     })
+
+    // Fire post-game debrief in the background — non-blocking. Uses Riot Live Client
+    // match data (kills, rounds, stats) for instant Claude coaching without needing the VOD.
+    // Only runs for competitive/premier matches where meaningful data was captured.
+    const hasMatchData = timeline && (
+      (timeline.playerKills?.length ?? 0) > 0
+      || (timeline.roundScores?.length ?? 0) > 0
+      || timeline.finalStats != null
+    )
+    const isRankedMode = ['COMPETITIVE', 'PREMIER'].includes(gameMode?.toUpperCase() ?? '')
+    if (hasMatchData && isRankedMode && user?.riot_name) {
+      requestPostGameDebrief({
+        riotName: user.riot_name,
+        riotTag: user.riot_tag ?? 'NA1',
+        agent,
+        map,
+        timeline,
+        sendToWindow: (channel, payload) => {
+          if (!thisPostGameWindow.isDestroyed()) thisPostGameWindow.webContents.send(channel, payload)
+        },
+      }).catch(err => log.warn('[Debrief] Background debrief failed:', err))
+    }
 
     // Notify the user that the match recording has finished and upload is starting
     if (Notification.isSupported()) {
