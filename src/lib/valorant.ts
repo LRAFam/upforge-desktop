@@ -83,6 +83,21 @@ export function getWeaponImage(weaponName: string | null | undefined): string {
   return uuid ? `https://media.valorant-api.com/weapons/${uuid}/displayicon.png` : ''
 }
 
+/**
+ * Returns a CDN URL for a specific agent ability icon.
+ * Slots: Grenade=C, Ability1=Q, Ability2=E, Ultimate=X
+ */
+export function getAbilityIcon(
+  agentName: string | null | undefined,
+  slot: 'Grenade' | 'Ability1' | 'Ability2' | 'Ultimate'
+): string {
+  if (!agentName) return ''
+  const key = agentName.toLowerCase().replace(/[/\s]/g, '')
+  const uuid = AGENT_CDN_UUIDS[key]
+  if (!uuid) return ''
+  return `https://media.valorant-api.com/agents/${uuid}/abilities/${slot}/displayicon.png`
+}
+
 // ── Agent roles ───────────────────────────────────────────────────────────────
 
 const AGENT_ROLES: Record<string, string> = {

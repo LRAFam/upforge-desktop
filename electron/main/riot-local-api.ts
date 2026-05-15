@@ -79,7 +79,8 @@ export function resolveWeaponName(damageType: string | null | undefined, damageI
   }
   // Non-weapon kills: Bomb, Ability, Fall, etc.
   if (damageType === 'Bomb') return 'Spike'
-  if (damageType === 'Ability' || damageType === 'Ultimate') return 'Ability'
+  if (damageType === 'Ability') return 'Ability'
+  if (damageType === 'Ultimate') return 'Ultimate'
   if (damageType === 'Fall') return 'Fall'
   return null
 }

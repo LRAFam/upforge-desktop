@@ -92,62 +92,105 @@
             <button
               v-for="event in round.events"
               :key="`${event.type}-${event.videoOffsetMs}`"
-              class="w-full flex items-center gap-1.5 px-2 py-1.5 pl-5 hover:bg-white/[0.05] transition-colors text-left group border-l-2 mx-1"
-              :class="[
-                isNearEvent(event) ? 'bg-white/[0.04]' : '',
-                event.type === 'kill' ? 'border-green-500/40' : 'border-red-500/30'
-              ]"
+              class="w-full flex items-center gap-1.5 px-2 py-1.5 pl-3 hover:bg-white/[0.05] transition-colors text-left group"
+              :class="isNearEvent(event) ? 'bg-white/[0.04]' : ''"
               @click="seekToEvent(event)"
             >
-              <!-- Agent portrait of the other player (victim for kill, killer for death) -->
-              <div class="w-6 h-6 flex-shrink-0 rounded overflow-hidden bg-white/[0.04]">
-                <img
-                  v-if="event.type === 'kill' && agentByPuuid(event.victimPuuid)"
-                  :src="getAgentImage(agentByPuuid(event.victimPuuid))"
-                  class="w-full h-full object-contain opacity-80 group-hover:opacity-100 transition-opacity"
-                />
-                <img
-                  v-else-if="event.type === 'death' && agentByPuuid(event.killerPuuid)"
-                  :src="getAgentImage(agentByPuuid(event.killerPuuid))"
-                  class="w-full h-full object-contain opacity-80 group-hover:opacity-100 transition-opacity"
-                />
-                <!-- Fallback icon -->
-                <div v-else class="w-full h-full flex items-center justify-center">
-                  <span class="text-[10px]">{{ event.type === 'kill' ? '🎯' : '💀' }}</span>
+              <!-- Spike plant/defuse events -->
+              <template v-if="isSpikeEvent(event)">
+                <div class="w-4 h-4 flex-shrink-0 flex items-center justify-center rounded"
+                     :class="event.type === 'plant' ? 'bg-orange-500/20' : event.type === 'defuse' ? 'bg-cyan-500/20' : 'bg-yellow-500/20'">
+                  <!-- Bomb icon -->
+                  <svg class="w-2.5 h-2.5" :class="event.type === 'plant' ? 'text-orange-400' : event.type === 'defuse' ? 'text-cyan-400' : 'text-yellow-400'" fill="currentColor" viewBox="0 0 20 20">
+                    <path d="M10 2a8 8 0 100 16A8 8 0 0010 2zm0 3a1 1 0 011 1v4a1 1 0 01-2 0V6a1 1 0 011-1zm0 8a1.5 1.5 0 100-3 1.5 1.5 0 000 3z"/>
+                  </svg>
                 </div>
-              </div>
+                <div class="flex-1 min-w-0">
+                  <p class="text-[10px] font-bold leading-tight"
+                     :class="event.type === 'plant' ? 'text-orange-400' : event.type === 'defuse' ? 'text-cyan-400' : 'text-yellow-400'">
+                    {{ event.type === 'plant' ? (event.site ? `PLANT ${event.site}` : 'PLANT') : event.type === 'defuse' ? 'DEFUSE' : 'DETONATE' }}
+                  </p>
+                  <p v-if="event.planter || event.defuser" class="text-[8px] text-gray-600 truncate">{{ event.planter || event.defuser }}</p>
+                </div>
+                <span class="text-[8px] text-gray-700 flex-shrink-0 tabular-nums">{{ formatMs(event.videoOffsetMs) }}</span>
+              </template>
 
-              <!-- Weapon icon -->
-              <div class="w-8 flex-shrink-0 flex items-center justify-center">
-                <img
-                  v-if="event.weapon && getWeaponIcon(event.weapon)"
-                  :src="getWeaponIcon(event.weapon)"
-                  class="w-8 h-4 object-contain"
-                  :class="event.type === 'kill' ? 'opacity-90' : 'opacity-50'"
-                  :title="event.weapon"
-                />
-                <svg
-                  v-else-if="event.type === 'kill'"
-                  class="w-3 h-3 text-green-500/60"
-                  viewBox="0 0 16 16" fill="currentColor"
-                ><circle cx="8" cy="6" r="4"/><path d="M6 11h4v4H6z"/></svg>
-                <svg
-                  v-else
-                  class="w-3 h-3 text-red-500/40"
-                  viewBox="0 0 16 16" fill="currentColor"
-                ><circle cx="8" cy="6" r="4"/><path d="M6 11h4v4H6z"/></svg>
-              </div>
+              <!-- Kill/death events -->
+              <template v-else>
+                <!-- Kill/Death badge pill -->
+                <div class="w-5 flex-shrink-0 flex flex-col items-center gap-px">
+                  <span class="text-[7px] font-black leading-none px-0.5 rounded"
+                        :class="event.type === 'kill' ? 'text-teal-300 bg-teal-500/20' : 'text-red-300 bg-red-500/20'">
+                    {{ event.type === 'kill' ? 'KILL' : 'DIED' }}
+                  </span>
+                  <span v-if="event.isFirstBlood" class="text-[6px] font-bold text-yellow-400 leading-none">FB</span>
+                </div>
 
-              <!-- Name + weapon label -->
-              <div class="flex-1 min-w-0">
-                <p class="text-[11px] leading-tight truncate transition-colors"
-                   :class="event.type === 'kill' ? 'text-gray-300 group-hover:text-white' : 'text-gray-500 group-hover:text-gray-300'"
-                >
-                  {{ event.type === 'kill' ? event.victimName : event.killerName }}
-                </p>
-                <p v-if="event.weapon" class="text-[8px] text-gray-600 truncate">{{ event.weapon }}</p>
-              </div>
-              <span class="text-[8px] text-gray-700 flex-shrink-0 tabular-nums">{{ formatMs(event.videoOffsetMs) }}</span>
+                <!-- Agent portrait of the other player -->
+                <div class="w-6 h-6 flex-shrink-0 rounded overflow-hidden bg-white/[0.04] ring-1"
+                     :class="event.type === 'kill' ? 'ring-teal-500/30' : 'ring-red-500/30'">
+                  <img
+                    v-if="event.type === 'kill' && agentByPuuid(event.victimPuuid)"
+                    :src="getAgentImage(agentByPuuid(event.victimPuuid))"
+                    class="w-full h-full object-contain opacity-80 group-hover:opacity-100 transition-opacity"
+                  />
+                  <img
+                    v-else-if="event.type === 'death' && agentByPuuid(event.killerPuuid)"
+                    :src="getAgentImage(agentByPuuid(event.killerPuuid))"
+                    class="w-full h-full object-contain opacity-80 group-hover:opacity-100 transition-opacity"
+                  />
+                  <div v-else class="w-full h-full flex items-center justify-center">
+                    <span class="text-[10px]">{{ event.type === 'kill' ? '🎯' : '💀' }}</span>
+                  </div>
+                </div>
+
+                <!-- Weapon / ability icon -->
+                <div class="w-7 flex-shrink-0 flex items-center justify-center">
+                  <!-- Regular weapon -->
+                  <img
+                    v-if="event.weapon && !['Ability', 'Ultimate', 'Spike', 'Fall'].includes(event.weapon) && getWeaponIcon(event.weapon)"
+                    :src="getWeaponIcon(event.weapon)"
+                    class="w-7 h-3.5 object-contain"
+                    :class="event.type === 'kill' ? 'opacity-90' : 'opacity-40'"
+                    :title="event.weapon"
+                  />
+                  <!-- Ability kill — show agent ability icon -->
+                  <div v-else-if="event.weapon === 'Ability' || event.weapon === 'Ultimate'"
+                       class="w-5 h-5 rounded flex items-center justify-center"
+                       :class="event.weapon === 'Ultimate' ? 'bg-yellow-500/20' : 'bg-purple-500/20'"
+                       :title="event.weapon === 'Ultimate' ? 'Ultimate' : 'Ability'">
+                    <img
+                      v-if="getAbilityKillIcon(event)"
+                      :src="getAbilityKillIcon(event)"
+                      class="w-4 h-4 object-contain"
+                      :class="event.weapon === 'Ultimate' ? 'opacity-90' : 'opacity-75'"
+                    />
+                    <span v-else class="text-[8px]" :class="event.weapon === 'Ultimate' ? 'text-yellow-400' : 'text-purple-400'">
+                      {{ event.weapon === 'Ultimate' ? 'X' : '⚡' }}
+                    </span>
+                  </div>
+                  <!-- Spike kill -->
+                  <span v-else-if="event.weapon === 'Spike'" class="text-[9px] text-orange-400" title="Spike">💣</span>
+                  <!-- Fall damage -->
+                  <span v-else-if="event.weapon === 'Fall'" class="text-[9px] text-gray-500" title="Fall">⬇</span>
+                  <!-- Unknown fallback -->
+                  <svg v-else class="w-3 h-3 text-gray-700" viewBox="0 0 16 16" fill="currentColor">
+                    <circle cx="8" cy="6" r="4"/><path d="M6 11h4v4H6z"/>
+                  </svg>
+                </div>
+
+                <!-- Name + context label -->
+                <div class="flex-1 min-w-0">
+                  <p class="text-[11px] leading-tight truncate transition-colors"
+                     :class="event.type === 'kill' ? 'text-gray-300 group-hover:text-white' : 'text-gray-500 group-hover:text-gray-300'">
+                    {{ event.type === 'kill' ? event.victimName : event.killerName }}
+                  </p>
+                  <p v-if="event.weapon && !['Ability', 'Ultimate', 'Fall'].includes(event.weapon)" class="text-[8px] text-gray-600 truncate">{{ event.weapon }}</p>
+                  <p v-else-if="event.weapon === 'Ultimate'" class="text-[8px] text-yellow-600 truncate">Ultimate</p>
+                  <p v-else-if="event.weapon === 'Ability'" class="text-[8px] text-purple-600 truncate">Ability</p>
+                </div>
+                <span class="text-[8px] text-gray-700 flex-shrink-0 tabular-nums">{{ formatMs(event.videoOffsetMs) }}</span>
+              </template>
             </button>
           </template>
 
@@ -266,10 +309,16 @@
               <div
                 v-for="(event, i) in allTimelineEvents"
                 :key="i"
-                class="absolute top-1/2 -translate-y-1/2 w-2.5 h-2.5 rounded-full border-2 pointer-events-none transition-transform group-hover:scale-125"
-                :class="event.type === 'kill' ? 'bg-green-500 border-green-300' : 'bg-red-500 border-red-300'"
+                class="absolute top-1/2 -translate-y-1/2 rounded-full border-2 pointer-events-none transition-transform group-hover:scale-125"
+                :class="[
+                  event.type === 'kill' ? 'bg-green-500 border-green-300 w-2.5 h-2.5' : '',
+                  event.type === 'death' ? 'bg-red-500 border-red-300 w-2.5 h-2.5' : '',
+                  event.type === 'plant' ? 'bg-orange-500 border-orange-300 w-2 h-3' : '',
+                  event.type === 'defuse' ? 'bg-cyan-500 border-cyan-300 w-2 h-3' : '',
+                  event.type === 'detonation' ? 'bg-yellow-500 border-yellow-300 w-2.5 h-2.5' : '',
+                ]"
                 :style="{ left: `calc(${eventPercent(event)}% - 5px)` }"
-                :title="event.type === 'kill' ? `Kill: ${event.victimName}` : `Death: ${event.killerName}`"
+                :title="event.type === 'kill' ? `Kill: ${event.victimName}` : event.type === 'death' ? `Death: ${event.killerName}` : event.type === 'plant' ? `Spike planted (${event.site ?? '?'})` : event.type === 'defuse' ? 'Spike defused' : 'Spike detonated'"
               />
               <!-- Hover time indicator -->
               <div
@@ -338,7 +387,7 @@
             <!-- Time display -->
             <div class="flex-1" />
             <span class="text-xs font-mono text-gray-500 tabular-nums">
-              {{ formatSeconds(currentTime) }} / {{ formatSeconds(duration) }}
+              {{ formatSeconds(currentTime) }} / {{ formatSeconds(duration, true) }}
             </span>
 
             <!-- Scoreboard toggle -->
@@ -361,6 +410,10 @@
               <div class="flex items-center gap-1">
                 <div class="w-2 h-2 rounded-full bg-red-500" />
                 <span class="text-xs text-gray-600">Death</span>
+              </div>
+              <div v-if="(timeline?.spikePlants?.length ?? 0) > 0" class="flex items-center gap-1">
+                <div class="w-1.5 h-2.5 rounded-sm bg-orange-500" />
+                <span class="text-xs text-gray-600">Plant</span>
               </div>
             </div>
           </div>
@@ -399,50 +452,104 @@
               class="w-full flex items-center gap-2 px-3 py-2 hover:bg-white/[0.03] transition-colors text-left group"
               @click="seekToEvent(event)"
             >
-              <!-- Kill/death type indicator -->
-              <div
-                class="w-1 h-6 rounded-full flex-shrink-0"
-                :class="event.type === 'kill' ? 'bg-teal-500/60' : 'bg-red-500/40'"
-              />
-              <!-- Attacker agent portrait -->
-              <div class="w-7 h-7 rounded overflow-hidden bg-white/[0.04] flex-shrink-0 ring-1"
-                   :class="event.type === 'kill' ? 'ring-teal-500/20' : 'ring-red-500/20'">
-                <img
-                  v-if="agentByPuuid(event.killerPuuid)"
-                  :src="getAgentImage(agentByPuuid(event.killerPuuid))"
-                  class="w-full h-full object-contain"
-                />
-                <div v-else class="w-full h-full flex items-center justify-center text-xs">{{ event.type === 'kill' ? '🎯' : '💀' }}</div>
-              </div>
-              <!-- Weapon icon -->
-              <div class="w-10 flex-shrink-0 flex items-center justify-center">
-                <img
-                  v-if="event.weapon && getWeaponIcon(event.weapon)"
-                  :src="getWeaponIcon(event.weapon)"
-                  class="h-3.5 w-auto object-contain"
-                  :class="event.type === 'kill' ? 'opacity-90' : 'opacity-40'"
-                />
-                <svg v-else class="w-3 h-3 text-gray-600" viewBox="0 0 16 16" fill="currentColor"><circle cx="8" cy="6" r="3"/><path d="M5 11h6v4H5z"/></svg>
-              </div>
-              <!-- Victim agent portrait -->
-              <div class="w-7 h-7 rounded overflow-hidden bg-white/[0.04] flex-shrink-0 ring-1"
-                   :class="event.type === 'kill' ? 'ring-red-500/20' : 'ring-teal-500/20'">
-                <img
-                  v-if="agentByPuuid(event.victimPuuid)"
-                  :src="getAgentImage(agentByPuuid(event.victimPuuid))"
-                  class="w-full h-full object-contain opacity-75"
-                />
-                <div v-else class="w-full h-full flex items-center justify-center text-xs">💀</div>
-              </div>
-              <!-- Victim name + weapon label -->
-              <div class="flex-1 min-w-0">
-                <p class="text-xs font-semibold truncate" :class="event.type === 'kill' ? 'text-gray-300 group-hover:text-white' : 'text-gray-500 group-hover:text-gray-300'">
-                  {{ event.victimName }}
-                </p>
-                <p v-if="event.weapon" class="text-[9px] text-gray-600 truncate">{{ event.weapon }}</p>
-              </div>
-              <!-- Timestamp -->
-              <span class="text-[10px] text-gray-600 font-mono tabular-nums flex-shrink-0">{{ formatMs(event.videoOffsetMs) }}</span>
+              <!-- Spike events in round detail -->
+              <template v-if="isSpikeEvent(event)">
+                <div class="w-1 h-6 rounded-full flex-shrink-0"
+                     :class="event.type === 'plant' ? 'bg-orange-500/70' : event.type === 'defuse' ? 'bg-cyan-500/70' : 'bg-yellow-500/70'" />
+                <div class="w-7 h-7 rounded flex items-center justify-center flex-shrink-0"
+                     :class="event.type === 'plant' ? 'bg-orange-500/20' : event.type === 'defuse' ? 'bg-cyan-500/20' : 'bg-yellow-500/20'">
+                  <svg class="w-4 h-4" :class="event.type === 'plant' ? 'text-orange-400' : event.type === 'defuse' ? 'text-cyan-400' : 'text-yellow-400'" fill="currentColor" viewBox="0 0 20 20">
+                    <path d="M10 2a8 8 0 100 16A8 8 0 0010 2zm0 3a1 1 0 011 1v4a1 1 0 01-2 0V6a1 1 0 011-1zm0 8a1.5 1.5 0 100-3 1.5 1.5 0 000 3z"/>
+                  </svg>
+                </div>
+                <div class="flex-1 min-w-0">
+                  <p class="text-xs font-semibold"
+                     :class="event.type === 'plant' ? 'text-orange-300' : event.type === 'defuse' ? 'text-cyan-300' : 'text-yellow-300'">
+                    {{ event.type === 'plant' ? (event.site ? `Spike Planted — Site ${event.site}` : 'Spike Planted') : event.type === 'defuse' ? 'Spike Defused' : 'Spike Detonated' }}
+                  </p>
+                  <p v-if="event.planter || event.defuser" class="text-[9px] text-gray-600">{{ event.planter || event.defuser }}</p>
+                </div>
+                <span class="text-[10px] text-gray-600 font-mono tabular-nums flex-shrink-0">{{ formatMs(event.videoOffsetMs) }}</span>
+              </template>
+
+              <!-- Kill/death in round detail -->
+              <template v-else>
+                <!-- Kill/death type indicator -->
+                <div class="w-1 h-6 rounded-full flex-shrink-0"
+                     :class="event.type === 'kill' ? 'bg-teal-500/60' : 'bg-red-500/40'" />
+
+                <!-- First blood badge -->
+                <div v-if="event.isFirstBlood" class="flex-shrink-0 text-[7px] font-black text-yellow-400 bg-yellow-500/20 px-1 py-px rounded leading-none">FB</div>
+
+                <!-- Attacker agent portrait -->
+                <div class="w-7 h-7 rounded overflow-hidden bg-white/[0.04] flex-shrink-0 ring-1"
+                     :class="event.type === 'kill' ? 'ring-teal-500/20' : 'ring-red-500/20'">
+                  <img
+                    v-if="agentByPuuid(event.killerPuuid)"
+                    :src="getAgentImage(agentByPuuid(event.killerPuuid))"
+                    class="w-full h-full object-contain"
+                  />
+                  <div v-else class="w-full h-full flex items-center justify-center text-xs">{{ event.type === 'kill' ? '🎯' : '💀' }}</div>
+                </div>
+
+                <!-- Weapon / ability icon -->
+                <div class="w-10 flex-shrink-0 flex items-center justify-center">
+                  <!-- Regular weapon -->
+                  <img
+                    v-if="event.weapon && !['Ability', 'Ultimate', 'Spike', 'Fall'].includes(event.weapon) && getWeaponIcon(event.weapon)"
+                    :src="getWeaponIcon(event.weapon)"
+                    class="h-3.5 w-auto object-contain"
+                    :class="event.type === 'kill' ? 'opacity-90' : 'opacity-40'"
+                  />
+                  <!-- Ability kill -->
+                  <div v-else-if="event.weapon === 'Ability' || event.weapon === 'Ultimate'"
+                       class="w-6 h-6 rounded flex items-center justify-center"
+                       :class="event.weapon === 'Ultimate' ? 'bg-yellow-500/20' : 'bg-purple-500/20'"
+                       :title="event.weapon">
+                    <img
+                      v-if="getAbilityKillIcon(event)"
+                      :src="getAbilityKillIcon(event)"
+                      class="w-5 h-5 object-contain"
+                    />
+                    <span v-else class="text-xs" :class="event.weapon === 'Ultimate' ? 'text-yellow-400' : 'text-purple-400'">
+                      {{ event.weapon === 'Ultimate' ? 'X' : '⚡' }}
+                    </span>
+                  </div>
+                  <span v-else-if="event.weapon === 'Spike'" class="text-xs text-orange-400">💣</span>
+                  <svg v-else class="w-3 h-3 text-gray-600" viewBox="0 0 16 16" fill="currentColor"><circle cx="8" cy="6" r="3"/><path d="M5 11h6v4H5z"/></svg>
+                </div>
+
+                <!-- Arrow separator -->
+                <svg class="w-3 h-3 text-gray-700 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
+                </svg>
+
+                <!-- Victim agent portrait -->
+                <div class="w-7 h-7 rounded overflow-hidden bg-white/[0.04] flex-shrink-0 ring-1"
+                     :class="event.type === 'kill' ? 'ring-red-500/20' : 'ring-teal-500/20'">
+                  <img
+                    v-if="agentByPuuid(event.victimPuuid)"
+                    :src="getAgentImage(agentByPuuid(event.victimPuuid))"
+                    class="w-full h-full object-contain opacity-75"
+                  />
+                  <div v-else class="w-full h-full flex items-center justify-center text-xs">💀</div>
+                </div>
+
+                <!-- Victim name + kill context -->
+                <div class="flex-1 min-w-0">
+                  <p class="text-xs font-semibold truncate" :class="event.type === 'kill' ? 'text-gray-300 group-hover:text-white' : 'text-gray-500 group-hover:text-gray-300'">
+                    {{ event.victimName }}
+                  </p>
+                  <p class="text-[9px] truncate"
+                     :class="event.weapon === 'Ultimate' ? 'text-yellow-700' : event.weapon === 'Ability' ? 'text-purple-700' : 'text-gray-600'">
+                    {{ event.weapon === 'Ultimate' ? 'Ultimate' : event.weapon === 'Ability' ? 'Ability' : (event.weapon || '') }}
+                    <span v-if="event.assistants?.length" class="text-gray-700 ml-1">+ {{ event.assistants.length }} assist</span>
+                  </p>
+                </div>
+
+                <!-- Timestamp -->
+                <span class="text-[10px] text-gray-600 font-mono tabular-nums flex-shrink-0">{{ formatMs(event.videoOffsetMs) }}</span>
+              </template>
             </button>
           </div>
           <div v-else class="px-3 py-3 text-center">
@@ -529,7 +636,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, watch } from 'vue'
 import { useRoute } from 'vue-router'
-import { getWeaponImage, getAgentImage } from '../lib/valorant'
+import { getWeaponImage, getAgentImage, getAbilityIcon } from '../lib/valorant'
 import { pendingTimeline } from '../stores/pendingTimeline'
 
 // Round outcome icons — bundled locally to avoid CSP/CDN issues
@@ -545,6 +652,7 @@ import iconExplosionLoss from '../assets/round-icons/explosionloss1.png'
 interface KillEvent {
   killerName: string
   victimName: string
+  assistants?: string[]
   weapon?: string
   videoOffsetMs?: number
   round?: number
@@ -553,8 +661,13 @@ interface KillEvent {
   victimPuuid?: string
 }
 
-interface TimelineEvent extends KillEvent {
-  type: 'kill' | 'death'
+interface TimelineEvent extends Omit<KillEvent, 'type'> {
+  type: 'kill' | 'death' | 'plant' | 'defuse' | 'detonation'
+  isFirstBlood?: boolean
+  // Spike-specific fields
+  planter?: string
+  defuser?: string
+  site?: string
 }
 
 interface RoundGroup {
@@ -612,6 +725,10 @@ interface RecordingTimeline {
   roundSummaries: RoundSummary[]
   finalStats: FinalStats | null
   teamSnapshot: TeamPlayerSnapshot[]
+  spikePlants?: Array<{ videoOffsetMs?: number; round?: number; planter?: string; site?: string }>
+  spikeDefuses?: Array<{ videoOffsetMs?: number; round?: number; defuser?: string }>
+  spikeDetonations?: Array<{ videoOffsetMs?: number; round?: number }>
+  firstBloods?: Array<{ killerName: string; victimName: string; killerPuuid?: string; victimPuuid?: string; round?: number }>
 }
 
 const route = useRoute()
@@ -633,6 +750,20 @@ let notifTimer: ReturnType<typeof setTimeout> | null = null
 // Weapon icon URLs — delegate to shared valorant.ts helper
 function getWeaponIcon(weapon: string): string | undefined {
   return getWeaponImage(weapon) || undefined
+}
+
+/** Returns an ability icon URL for a kill event where weapon is Ability/Ultimate. */
+function getAbilityKillIcon(event: TimelineEvent): string {
+  const killerAgent = agentByPuuid(event.killerPuuid)
+  if (!killerAgent) return ''
+  if (event.weapon === 'Ultimate') return getAbilityIcon(killerAgent, 'Ultimate')
+  // Generic ability kill — show signature (E slot) as best guess
+  return getAbilityIcon(killerAgent, 'Ability2')
+}
+
+/** Returns whether a timeline event is a spike-related event type. */
+function isSpikeEvent(event: TimelineEvent): boolean {
+  return event.type === 'plant' || event.type === 'defuse' || event.type === 'detonation'
 }
 
 /** Looks up the agent name for a player by puuid from the team snapshot. */
@@ -722,13 +853,56 @@ const progressPercent = computed(() => {
 
 const allTimelineEvents = computed((): TimelineEvent[] => {
   if (!timeline.value) return []
+
+  // Build set of first-blood killers per round for badge display
+  const firstBloodKeys = new Set(
+    (timeline.value.firstBloods ?? []).map(fb => `${fb.round ?? 0}:${fb.killerPuuid ?? fb.killerName}`)
+  )
+
   const kills: TimelineEvent[] = (timeline.value.kills ?? [])
     .filter(k => k.videoOffsetMs != null && !isNaN(k.videoOffsetMs))
-    .map(k => ({ ...k, type: 'kill' as const }))
+    .map(k => ({
+      ...k,
+      type: 'kill' as const,
+      isFirstBlood: firstBloodKeys.has(`${k.round ?? 0}:${k.killerPuuid ?? k.killerName}`)
+    }))
   const deaths: TimelineEvent[] = (timeline.value.deaths ?? [])
     .filter(d => d.videoOffsetMs != null && !isNaN(d.videoOffsetMs))
     .map(d => ({ ...d, type: 'death' as const }))
-  return [...kills, ...deaths].sort((a, b) => (a.videoOffsetMs ?? 0) - (b.videoOffsetMs ?? 0))
+
+  const plants: TimelineEvent[] = (timeline.value.spikePlants ?? [])
+    .filter(p => p.videoOffsetMs != null)
+    .map(p => ({
+      type: 'plant' as const,
+      killerName: p.planter ?? '',
+      victimName: '',
+      planter: p.planter,
+      site: p.site,
+      videoOffsetMs: p.videoOffsetMs,
+      round: p.round,
+    }))
+  const defuses: TimelineEvent[] = (timeline.value.spikeDefuses ?? [])
+    .filter(d => d.videoOffsetMs != null)
+    .map(d => ({
+      type: 'defuse' as const,
+      killerName: d.defuser ?? '',
+      victimName: '',
+      defuser: d.defuser,
+      videoOffsetMs: d.videoOffsetMs,
+      round: d.round,
+    }))
+  const detonations: TimelineEvent[] = (timeline.value.spikeDetonations ?? [])
+    .filter(d => d.videoOffsetMs != null)
+    .map(d => ({
+      type: 'detonation' as const,
+      killerName: '',
+      victimName: '',
+      videoOffsetMs: d.videoOffsetMs,
+      round: d.round,
+    }))
+
+  return [...kills, ...deaths, ...plants, ...defuses, ...detonations]
+    .sort((a, b) => (a.videoOffsetMs ?? 0) - (b.videoOffsetMs ?? 0))
 })
 
 const roundGroups = computed((): RoundGroup[] => {
@@ -788,8 +962,9 @@ function formatMs(ms: number | undefined): string {
   return `${m}:${String(s % 60).padStart(2, '0')}`
 }
 
-function formatSeconds(s: number): string {
-  if (!s || isNaN(s)) return '0:00'
+function formatSeconds(s: number, zeroAsDash = false): string {
+  if (isNaN(s) || (!s && zeroAsDash)) return '--:--'
+  if (!s) return '0:00'
   const m = Math.floor(s / 60)
   return `${m}:${String(Math.floor(s % 60)).padStart(2, '0')}`
 }

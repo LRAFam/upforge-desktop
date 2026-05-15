@@ -2086,6 +2086,10 @@ app.whenReady().then(async () => {
       roundSummaries: tl?.roundSummaries ?? [],
       finalStats: tl?.finalStats ?? null,
       teamSnapshot: tl?.teamSnapshot ?? [],
+      spikePlants: tl?.spikePlants ?? [],
+      spikeDefuses: tl?.spikeDefuses ?? [],
+      spikeDetonations: tl?.spikeDetonations ?? [],
+      firstBloods: tl?.firstBloods ?? [],
     }
   })
 
