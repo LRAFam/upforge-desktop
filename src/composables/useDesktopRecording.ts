@@ -36,16 +36,19 @@ export function useDesktopRecording() {
       const maxWidth = config.quality === '1080p' ? 1920 : 1280
       const maxHeight = config.quality === '1080p' ? 1080 : 720
 
+      // desktopCapturer still requires chromeMediaSource/chromeMediaSourceId in
+      // mandatory, but resolution and frame rate constraints are more reliably
+      // enforced as top-level modern constraints alongside mandatory.
       const videoConstraints = {
         mandatory: {
           chromeMediaSource: 'desktop',
           chromeMediaSourceId: source.id,
-          maxWidth,
-          maxHeight,
-          maxFrameRate: config.fps,
         },
-        // cursor must be a top-level constraint (not inside mandatory) for
-        // modern Chromium to honour it during screen capture
+        // Top-level modern constraints — Chromium honours these over the
+        // deprecated maxWidth/maxHeight/maxFrameRate in mandatory
+        width:     { ideal: maxWidth,    max: maxWidth },
+        height:    { ideal: maxHeight,   max: maxHeight },
+        frameRate: { ideal: config.fps,  max: config.fps },
         cursor: 'never',
       } as MediaTrackConstraints
 
@@ -70,12 +73,19 @@ export function useDesktopRecording() {
         })
       }
 
-      // Pick best supported codec — VP9 preferred for quality, VP8 as fallback
-      const mimeType = MediaRecorder.isTypeSupported('video/webm;codecs=vp9,opus')
-        ? 'video/webm;codecs=vp9,opus'
-        : MediaRecorder.isTypeSupported('video/webm;codecs=vp8,opus')
-          ? 'video/webm;codecs=vp8,opus'
-          : 'video/webm'
+      // Codec priority: H.264 hardware (GPU, lowest CPU impact) → VP8 → VP9 (last
+      // resort — software-only, crushes CPU and will cause game frame drops).
+      // H.264 uses NVENC/AMF/QSV on Windows, VideoToolbox on macOS.
+      const mimeType =
+        MediaRecorder.isTypeSupported('video/webm;codecs=h264')
+          ? 'video/webm;codecs=h264'
+          : MediaRecorder.isTypeSupported('video/webm;codecs=vp8,opus')
+            ? 'video/webm;codecs=vp8,opus'
+            : MediaRecorder.isTypeSupported('video/webm;codecs=vp9,opus')
+              ? 'video/webm;codecs=vp9,opus'
+              : 'video/webm'
+
+      console.info('[DesktopRecording] Using codec:', mimeType)
 
       mediaRecorder = new MediaRecorder(stream, {
         mimeType,

@@ -155,10 +155,12 @@
             class="w-full px-2.5 py-1.5 bg-white/[0.04] border border-white/[0.07] rounded-lg text-xs text-white focus:outline-none focus:border-red-500/30 transition-colors"
             @change="debouncedSave"
           >
-            <option :value="4">4 Mbps — ~1.8 GB/hr</option>
-            <option :value="6">6 Mbps — ~2.7 GB/hr (Default)</option>
-            <option :value="8">8 Mbps — ~3.6 GB/hr</option>
-            <option :value="12">12 Mbps — ~5.4 GB/hr</option>
+            <option :value="4">4 Mbps — ~1.8 GB/hr (720p 30fps)</option>
+            <option :value="6">6 Mbps — ~2.7 GB/hr (720p 60fps)</option>
+            <option :value="8">8 Mbps — ~3.6 GB/hr (1080p 30fps)</option>
+            <option :value="12">12 Mbps — ~5.4 GB/hr (1080p 30fps high)</option>
+            <option :value="15">15 Mbps — ~6.8 GB/hr (1080p 60fps)</option>
+            <option :value="20">20 Mbps — ~9.0 GB/hr (1080p 60fps high)</option>
           </select>
         </div>
         <div>

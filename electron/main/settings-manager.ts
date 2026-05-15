@@ -4,7 +4,7 @@ import path from 'path'
 
 export interface AppSettings {
   recordingQuality: '720p' | '1080p'
-  recordingBitrate: number // Mbps: 4, 6, 8, 12
+  recordingBitrate: number // Mbps: 4, 6, 8, 12, 15, 20
   recordingFps: 24 | 30 | 60
   audioEnabled: boolean
   savePath: string
