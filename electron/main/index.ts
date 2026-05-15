@@ -164,6 +164,9 @@ const activityLog: { time: number; message: string }[] = []
 const hotkeyBookmarks: number[] = []
 // Recording start time — set when recorder.start() succeeds
 let currentRecordingStartTime: number | null = null
+// The recorder instance chosen at match start (OBS if connected & enabled, else DesktopRecorder).
+// Stored so start/stop/getPath always use the same instance for a given match.
+let currentActiveRecorder: DesktopRecorder | OBSRecorder = recorder
 // Auto-hide timer for overlay flash feedback (clip bookmarked while overlay is hidden)
 let overlayAutoHideTimer: ReturnType<typeof setTimeout> | null = null
 
@@ -863,12 +866,12 @@ function setupGameDetection(): void {
    */
   async function handleMatchEnd(game: string): Promise<void> {
     const timeline = await riotLocalApi.stop()
-    const recordingDuration = recorder.getRecordingDuration()
+    const recordingDuration = currentActiveRecorder.getRecordingDuration()
     const matchSessionStart = currentRecordingStartTime ?? (Date.now() - recordingDuration * 1000)
-    await recorder.stop()
+    await currentActiveRecorder.stop()
 
-    const videoPath = recorder.getLastRecordingPath()
-    const fileSize = recorder.getLastRecordingSize()
+    const videoPath = currentActiveRecorder.getLastRecordingPath()
+    const fileSize = currentActiveRecorder.getLastRecordingSize()
     const user = authManager.getUser()
     const map = timeline?.map ?? null
     const agent = timeline?.agent ?? null
@@ -913,10 +916,10 @@ function setupGameDetection(): void {
       return
     }
 
-    // If recording never started (recorder.start() threw earlier in this match),
+    // If recording never started (currentActiveRecorder.start() threw earlier in this match),
     // skip the post-game window — it would just show a confusing error.
     if (recordingDuration === 0) {
-      const lastErr = recorder.getLastError()
+      const lastErr = currentActiveRecorder.getLastError()
       logActivity(lastErr ? `Match ended — no recording was made (${lastErr})` : 'Match ended — no active recording')
       return
     }
@@ -968,7 +971,7 @@ function setupGameDetection(): void {
       }
 
       if (!videoPath || !fs.existsSync(videoPath)) {
-        const ffmpegError = recorder.getLastError()
+        const ffmpegError = currentActiveRecorder.getLastError()
         const errorMsg = ffmpegError
           ? `Recording failed: ${ffmpegError}`
           : 'Recording file was not created — ffmpeg may have failed to start. Check that ffmpeg is installed (dev) or the app was not corrupted (production).'
@@ -993,7 +996,7 @@ function setupGameDetection(): void {
       const doAutoDelete = () => {
         if (settingsManager?.get().autoDelete) {
           log.info('[App] Auto-deleting recording after clip extraction:', videoPath)
-          recorder.deleteRecording(videoPath)
+          currentActiveRecorder.deleteRecording(videoPath)
         }
       }
 
@@ -1141,7 +1144,9 @@ function setupGameDetection(): void {
 
     // Check disk space now so the warning shows while in lobby
     const savePath = config?.savePath ?? app.getPath('userData')
-    const freeBytes = await recorder.getFreeDiskSpace(savePath)
+    // Determine the recorder to use for this match now (OBS if enabled & connected, else DesktopRecorder)
+    currentActiveRecorder = activeRecorder()
+    const freeBytes = await currentActiveRecorder.getFreeDiskSpace(savePath)
     const TWO_GB = 2 * 1024 * 1024 * 1024
     if (freeBytes < TWO_GB) {
       const freeGB = (freeBytes / (1024 ** 3)).toFixed(1)
@@ -1302,7 +1307,18 @@ function setupGameDetection(): void {
       // Create the overlay window just before recording starts — deferred from startup
       // so it doesn't break Valorant's exclusive fullscreen before we actually need it.
       createOverlayWindow()
-      await recorder.start(game, recorderConfig)
+      // Notify if OBS was enabled but not connected — we fell back to desktop capture
+      if (settingsManager?.get().obsEnabled && !(currentActiveRecorder instanceof OBSRecorder)) {
+        mainWindow?.webContents.send('app:warning', { message: 'OBS is not connected — recording with desktop capture instead' })
+        if (Notification.isSupported()) {
+          new Notification({
+            title: 'UpForge — OBS Not Connected',
+            body: 'Falling back to desktop capture. Connect OBS WebSocket in Settings.',
+            silent: notifySilent()
+          }).show()
+        }
+      }
+      await currentActiveRecorder.start(game, recorderConfig)
       // Update recordingStartTime to the moment the recorder actually began capturing.
       // This makes videoOffsetMs accurate: offset = (matchStart - recordingStart) + timeSinceGameStart.
       const recStartTime = Date.now()
@@ -1328,7 +1344,7 @@ function setupGameDetection(): void {
       setTimeout(() => tray?.setToolTip('UpForge — Valorant AI Coaching'), 10_000)
       return
     }
-    logActivity(`Recording started (${gameMode ?? 'unknown mode'}${recorder.wasNoAudio() ? ' — no audio' : ''})`)
+    logActivity(`Recording started (${gameMode ?? 'unknown mode'}${currentActiveRecorder.wasNoAudio() ? ' — no audio' : ''})`)
 
     // Start polling session state to feed the live overlay with round data.
     // The first time we see INGAME, record the timestamp as the true gameplay start —
@@ -1361,7 +1377,7 @@ function setupGameDetection(): void {
       if (origOnMatchEnded) await origOnMatchEnded()
     }
 
-    if (recorder.wasNoAudio()) {
+    if (currentActiveRecorder.wasNoAudio()) {
       mainWindow?.webContents.send('app:warning', {
         message: 'Recording started without audio — your system audio device was unavailable'
       })
@@ -1560,7 +1576,7 @@ async function doUploadAndAnalyse(
     // deletion is deferred until after clip extraction so clips aren't skipped)
     if (!skipAutoDelete && settingsManager?.get().autoDelete) {
       log.info('[App] Auto-deleting recording after upload:', videoPath)
-      recorder.deleteRecording(videoPath)
+      currentActiveRecorder.deleteRecording(videoPath)
     }
 
     // Poll for analysis result (up to 10 minutes) with exponential backoff
