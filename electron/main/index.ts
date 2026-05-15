@@ -8,7 +8,9 @@ import {
   shell,
   screen,
   Notification,
-  globalShortcut
+  globalShortcut,
+  desktopCapturer,
+  session
 } from 'electron'
 import { join } from 'path'
 import fs from 'fs'
@@ -21,7 +23,7 @@ import { RiotLocalApi } from './riot-local-api'
 import { UploadManager, savePendingJob, clearPendingJob, readPendingJob } from './upload-manager'
 import { AuthManager } from './auth-manager'
 import { SettingsManager } from './settings-manager'
-import { setupIpcHandlers, setupClipHandlers } from './ipc-handlers'
+import { setupIpcHandlers, setupClipHandlers, consumePendingCaptureSourceId } from './ipc-handlers'
 import { UpgradeRequiredError } from './errors'
 import { RecordingsStore } from './recordings-store'
 import { ClipExtractor } from './clip-extractor'
@@ -1749,6 +1751,22 @@ function createSplashWindow(): BrowserWindow {
 
 app.whenReady().then(async () => {
   electronApp.setAppUserModelId('gg.upforge.desktop')
+
+  // Electron 20+ requires setDisplayMediaRequestHandler for getUserMedia with
+  // chromeMediaSource:'desktop' to work. The renderer signals which source it
+  // wants via the 'desktop-capturer:set-source' IPC call immediately before
+  // invoking getUserMedia, and we return that source here.
+  session.defaultSession.setDisplayMediaRequestHandler(async (_request, callback) => {
+    try {
+      const sourceId = consumePendingCaptureSourceId()
+      const sources = await desktopCapturer.getSources({ types: ['screen', 'window'] })
+      const source = (sourceId ? sources.find(s => s.id === sourceId) : null) ?? sources[0]
+      callback({ video: source ?? sources[0], audio: 'loopback' as const })
+    } catch (err) {
+      console.error('[App] setDisplayMediaRequestHandler error:', err)
+      callback({})
+    }
+  })
 
   app.on('browser-window-created', (_, window) => {
     optimizer.watchWindowShortcuts(window)

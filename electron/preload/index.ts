@@ -98,6 +98,9 @@ const api = {
     /** Returns available screen/window sources for getUserMedia capture. */
     getSources: (): Promise<{ id: string; name: string }[]> =>
       ipcRenderer.invoke('desktop-capturer:get-sources', ['screen', 'window']),
+    /** Tell the main process which source to capture before calling getUserMedia (required Electron 20+). */
+    setSource: (sourceId: string): Promise<void> =>
+      ipcRenderer.invoke('desktop-capturer:set-source', sourceId),
     /** Send a recorded chunk (ArrayBuffer) to the main process for disk writing. */
     sendChunk: (chunk: ArrayBuffer) => ipcRenderer.send('desktop-recording:chunk', chunk),
     /** Notify main process that MediaRecorder has started (and whether audio is available). */

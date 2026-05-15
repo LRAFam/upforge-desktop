@@ -379,6 +379,7 @@ declare global {
       }
       desktopCapture: {
         getSources: () => Promise<Array<{ id: string; name: string }>>
+        setSource: (sourceId: string) => Promise<void>
         sendChunk: (chunk: ArrayBuffer) => void
         sendStarted: (noAudio: boolean) => void
         sendComplete: () => void

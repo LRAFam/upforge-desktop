@@ -33,6 +33,11 @@ export function useDesktopRecording() {
 
       if (!source) throw new Error('No desktop sources found for capture')
 
+      // Tell the main process which source we're about to capture.
+      // setDisplayMediaRequestHandler (required in Electron 20+) reads this
+      // back when getUserMedia fires, so it can return the correct source.
+      await window.api.desktopCapture.setSource(source.id)
+
       const maxWidth = config.quality === '1080p' ? 1920 : 1280
       const maxHeight = config.quality === '1080p' ? 1080 : 720
 

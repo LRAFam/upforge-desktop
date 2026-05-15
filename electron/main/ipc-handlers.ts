@@ -25,6 +25,16 @@ import type { AppSettings } from './settings-manager'
 // Track all active polling timers so they can be cancelled on logout / app quit
 const _activePollingTimers = new Set<ReturnType<typeof setTimeout>>()
 
+// Source ID the renderer intends to capture — set just before calling getUserMedia so
+// the setDisplayMediaRequestHandler in index.ts can return the correct source (Electron 20+).
+let _pendingCaptureSourceId: string | null = null
+export function setPendingCaptureSourceId(id: string) { _pendingCaptureSourceId = id }
+export function consumePendingCaptureSourceId(): string | null {
+  const id = _pendingCaptureSourceId
+  _pendingCaptureSourceId = null
+  return id
+}
+
 /** Valorant colour palette — indices match CrosshairConfig.gd VALORANT_COLORS */
 const CROSSHAIR_PALETTE: [number, number, number][] = [
   [1.0,  1.0,  1.0 ], // 0 white
@@ -798,6 +808,12 @@ export function setupIpcHandlers(
   ipcMain.handle('desktop-capturer:get-sources', async (_e, types: Array<'screen' | 'window'>) => {
     const sources = await desktopCapturer.getSources({ types })
     return sources.map(s => ({ id: s.id, name: s.name }))
+  })
+
+  // Renderer tells us which source ID it intends to capture before calling getUserMedia.
+  // This is read back by the setDisplayMediaRequestHandler in index.ts (required Electron 20+).
+  ipcMain.handle('desktop-capturer:set-source', (_e, sourceId: string) => {
+    setPendingCaptureSourceId(sourceId)
   })
 
   ipcMain.handle('screenshots:capture-screen', async () => {
