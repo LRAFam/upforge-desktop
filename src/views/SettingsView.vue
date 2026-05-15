@@ -817,7 +817,6 @@
           @click="handleVersionTap"
         >UpForge Desktop v{{ appVersion }}<span v-if="devTapCount > 0 && devTapCount < 5" class="ml-1 text-amber-600/60">({{ 5 - devTapCount }} more)</span></p>
         <div class="flex items-center gap-3">
-        <div class="flex items-center gap-3">
           <template v-if="!isDev">
             <button
               v-if="updatePhase === 'idle' || updatePhase === 'checking'"
