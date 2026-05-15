@@ -2073,9 +2073,11 @@ app.whenReady().then(async () => {
     const recording = recordingsStore.getById(id)
     if (!recording) return null
     const tl = recording.timeline
+    // Only return videoPath if the file actually exists on disk
+    const videoPath = recording.path && fs.existsSync(recording.path) ? recording.path : null
     return {
       id: recording.id,
-      videoPath: recording.path,
+      videoPath,
       map: recording.map,
       agent: recording.agent,
       game: recording.game,
