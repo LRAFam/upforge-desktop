@@ -365,7 +365,9 @@ declare global {
         fixAudio: () => Promise<{ winAudioMode: string | false | null }>
       }
       updater: {
-        check: () => Promise<void>
+        check: () => Promise<{ status: string; message: string } | undefined>
+        getState: () => Promise<{ phase: string; version?: string; percent?: number; error?: string }>
+        install: () => Promise<void>
       }
       debug: {
         testRiotApi: () => Promise<{ portOpen: boolean; gameMode: string | null; processRunning: boolean }>

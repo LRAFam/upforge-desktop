@@ -13,7 +13,7 @@ import {
 import { join } from 'path'
 import fs from 'fs'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
-import { setupAutoUpdater } from './updater'
+import { setupAutoUpdater, markStartupComplete } from './updater'
 import { GameDetector } from './game-detector'
 import { DesktopRecorder } from './desktop-recorder'
 import { OBSRecorder } from './obs-recorder'
@@ -1805,6 +1805,7 @@ app.whenReady().then(async () => {
   // Close splash and open the main window.
   const launchMainApp = () => {
     mainWindow = createMainWindow()
+    markStartupComplete()
     setupGameDetection()
     // Small delay so main window is loaded before splash closes
     setTimeout(() => {

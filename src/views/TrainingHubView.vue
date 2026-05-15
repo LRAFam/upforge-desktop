@@ -448,7 +448,7 @@ onMounted(async () => {
           duration_seconds: 60,
           weakness: d.category,
           weakness_score: d.baseline_score,
-          reason: d.instructions ?? d.title,
+          reason: d.title,
         }))
       if (mapped.length > 0) assignedDrills.value = mapped
     }
@@ -484,6 +484,20 @@ async function stopDrill() {
   activeDrill.value = null
 }
 
+/**
+ * Strip ability-related sentences from drill instructions.
+ * Deathmatch doesn't allow abilities, so any instruction referencing
+ * key presses for abilities (E, Q, C, X) should be removed.
+ */
+function sanitizeInstructions(text: string | null): string | null {
+  if (!text) return null
+  const sentences = text.split(/(?<=[.!?])\s+/)
+  const filtered = sentences.filter(s =>
+    !/\b(?:press(?:ing)?|use|hit|activate|tap)\s+[ECQX]\b|\b[ECQX]\s*\([^)]+\)/i.test(s)
+  )
+  return (filtered.length > 0 ? filtered.join(' ') : text).trim()
+}
+
 async function launchCoachingDrill(drill: CoachingDrill) {
   await launchDrill({
     scenario: CATEGORY_TO_SCENARIO[drill.category] ?? 'flick',
@@ -491,7 +505,7 @@ async function launchCoachingDrill(drill: CoachingDrill) {
     duration_seconds: 60,
     weakness: drill.category,
     weakness_score: drill.baseline_score,
-    reason: drill.instructions ?? drill.title,
+    reason: drill.title,
   })
 }
 
@@ -1487,7 +1501,7 @@ const CATEGORY_ICON: Record<string, string> = {
                           >
                           <span class="text-[9px] text-gray-600">{{ drill.duration_seconds }}s</span>
                         </div>
-                        <p class="text-[11px] text-gray-500 leading-relaxed truncate">{{ drill.reason }}</p>
+                        <p class="text-[11px] text-gray-500 leading-relaxed line-clamp-2">{{ drill.reason }}</p>
                       </div>
 
                       <!-- Weakness score -->
@@ -2074,7 +2088,7 @@ const CATEGORY_ICON: Record<string, string> = {
                       >
                     </div>
                     <p v-if="drill.instructions" class="text-[10px] text-gray-500 leading-relaxed mb-1.5">
-                      {{ drill.instructions }}
+                      {{ sanitizeInstructions(drill.instructions) }}
                     </p>
                     <!-- VOD source attribution: which weakness drove this drill -->
                     <div class="flex items-center gap-1 mb-1.5">
@@ -2105,22 +2119,9 @@ const CATEGORY_ICON: Record<string, string> = {
                     </p>
                   </div>
                 </div>
-                <!-- Train it button — maps coaching drill → trainer scenario -->
-                <div v-if="CATEGORY_TO_SCENARIO[drill.category]" class="border-t border-white/[0.05] px-4 py-2 flex items-center justify-between">
-                  <span class="text-[9px] text-gray-600">
-                    Train: <span class="text-gray-500">{{ SCENARIO_META[CATEGORY_TO_SCENARIO[drill.category]]?.label ?? drill.category }}</span>
-                  </span>
-                  <button
-                    :disabled="launching || drillRunning"
-                    class="flex items-center gap-1.5 text-[10px] font-bold text-red-400 hover:text-red-400 border border-red-500/25 hover:border-red-500/50 hover:bg-red-500/[0.06] rounded-lg px-2.5 py-1 transition-all disabled:opacity-40"
-                    @click="launchCoachingDrill(drill)"
-                  >
-                    <svg viewBox="0 0 24 24" fill="currentColor" class="w-2.5 h-2.5"><polygon points="5 3 19 12 5 21 5 3"/></svg>
-                    Train Now
-                  </button>
+                <!-- End coaching drill card content -->
                 </div>
               </div>
-            </div>
 
           </div><!-- end RIGHT column -->
         </div><!-- end grid -->

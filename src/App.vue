@@ -41,6 +41,55 @@
       </div>
     </div>
 
+    <!-- Update banner (download progress + ready to install) -->
+    <Transition name="update-banner">
+      <div
+        v-if="appUpdatePhase === 'downloading' || appUpdatePhase === 'ready'"
+        :class="[
+          'flex items-center justify-between px-3 py-1.5 flex-shrink-0 text-xs',
+          appUpdatePhase === 'ready'
+            ? 'bg-gradient-to-r from-red-500/10 to-orange-500/10 border-b border-red-500/20'
+            : 'bg-white/[0.02] border-b border-white/[0.04]'
+        ]"
+      >
+        <div class="flex items-center gap-2 min-w-0">
+          <div
+            v-if="appUpdatePhase === 'downloading'"
+            class="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse flex-shrink-0"
+          />
+          <svg
+            v-else
+            class="w-3 h-3 text-red-400 flex-shrink-0"
+            fill="none" stroke="currentColor" viewBox="0 0 24 24"
+          >
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
+          </svg>
+          <span
+            v-if="appUpdatePhase === 'downloading'"
+            class="text-gray-400 truncate"
+          >Downloading update{{ appUpdateVersion ? ` v${appUpdateVersion}` : '' }}… {{ appUpdatePercent > 0 ? `${Math.round(appUpdatePercent)}%` : '' }}</span>
+          <span v-else class="text-gray-300 truncate">
+            UpForge{{ appUpdateVersion ? ` v${appUpdateVersion}` : '' }} is ready to install
+          </span>
+        </div>
+        <div class="flex items-center gap-3 flex-shrink-0 ml-3">
+          <!-- Download progress bar -->
+          <div v-if="appUpdatePhase === 'downloading'" class="w-20 h-1 bg-white/[0.08] rounded-full overflow-hidden">
+            <div
+              class="h-full bg-amber-400 rounded-full transition-all duration-300"
+              :style="{ width: `${appUpdatePercent}%` }"
+            />
+          </div>
+          <!-- Restart button -->
+          <button
+            v-else
+            class="px-2.5 py-1 bg-red-500/20 hover:bg-red-500/30 border border-red-500/30 text-red-400 hover:text-red-300 rounded-lg transition-colors font-medium"
+            @click="installUpdate"
+          >Restart now</button>
+        </div>
+      </div>
+    </Transition>
+
     <!-- Navigation (hidden on post-game / login) -->
     <nav
       v-if="showNav"
@@ -155,7 +204,15 @@ const devNavLink = computed(() =>
   (isAdmin.value || devModeEnabled.value) ? { to: '/dev', label: 'Developer' } : null
 )
 
+const appUpdatePhase = ref<string>('idle')
+const appUpdateVersion = ref<string | undefined>(undefined)
+const appUpdatePercent = ref(0)
 let statusInterval: ReturnType<typeof setInterval> | null = null
+
+async function installUpdate() {
+  appUpdatePhase.value = 'installing'
+  await window.api.updater.install()
+}
 
 onMounted(async () => {
   try {
@@ -177,6 +234,34 @@ onMounted(async () => {
       onboardingWasComplete.value = true
     }
   } catch { /* ignore */ }
+
+  // Hydrate update state and listen for live updates
+  try {
+    const us = await window.api.updater.getState()
+    appUpdatePhase.value = us.phase
+    appUpdateVersion.value = us.version
+    appUpdatePercent.value = us.percent ?? 0
+  } catch { /* ignore */ }
+  const updaterCleanups = [
+    window.api.on('updater:checking', () => { appUpdatePhase.value = 'checking' }),
+    window.api.on('updater:available', (...args: unknown[]) => {
+      const info = args[0] as { version?: string } | undefined
+      appUpdatePhase.value = 'available'
+      appUpdateVersion.value = info?.version
+    }),
+    window.api.on('updater:progress', (...args: unknown[]) => {
+      appUpdatePhase.value = 'downloading'
+      appUpdatePercent.value = typeof args[0] === 'number' ? args[0] : 0
+    }),
+    window.api.on('updater:downloaded', (...args: unknown[]) => {
+      const info = args[0] as { version?: string } | undefined
+      appUpdatePhase.value = 'ready'
+      appUpdateVersion.value = info?.version
+    }),
+    window.api.on('updater:not-available', () => { appUpdatePhase.value = 'idle' }),
+    window.api.on('updater:error', () => { appUpdatePhase.value = 'idle' }),
+  ]
+  ;(window as Window & { _updaterCleanups?: (() => void)[] })._updaterCleanups = updaterCleanups
 
   // React to settings changes (e.g. dev mode toggled in Settings)
   const settingsCleanup = window.api.on('settings:changed', (...args: unknown[]) => {
@@ -210,6 +295,9 @@ onUnmounted(() => {
   const settingsCleanup = (window as Window & { _settingsCleanup?: () => void })._settingsCleanup
   settingsCleanup?.()
   delete (window as Window & { _settingsCleanup?: () => void })._settingsCleanup
+  const updaterCleanups = (window as Window & { _updaterCleanups?: (() => void)[] })._updaterCleanups
+  updaterCleanups?.forEach(fn => fn())
+  delete (window as Window & { _updaterCleanups?: (() => void)[] })._updaterCleanups
 })
 
 async function simulateGame() {
@@ -236,3 +324,22 @@ function handleOnboardingComplete() {
   router.push('/training').catch(() => {})
 }
 </script>
+
+
+<style scoped>
+.update-banner-enter-active,
+.update-banner-leave-active {
+  transition: all 0.25s ease;
+  overflow: hidden;
+}
+.update-banner-enter-from,
+.update-banner-leave-to {
+  max-height: 0;
+  opacity: 0;
+}
+.update-banner-enter-to,
+.update-banner-leave-from {
+  max-height: 40px;
+  opacity: 1;
+}
+</style>

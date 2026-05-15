@@ -6,6 +6,7 @@ import path from 'path'
 import { is } from '@electron-toolkit/utils'
 import { autoUpdater } from 'electron-updater'
 import log from 'electron-log'
+import { getUpdateState, installUpdate } from './updater'
 import { AuthManager } from './auth-manager'
 import { DesktopRecorder } from './desktop-recorder'
 import { OBSRecorder } from './obs-recorder'
@@ -704,6 +705,13 @@ export function setupIpcHandlers(
       }
       return { status: 'error', message: `Update check failed: ${msg}` }
     }
+  })
+
+  ipcMain.handle('updater:getState', () => getUpdateState())
+
+  ipcMain.handle('updater:install', () => {
+    if (is.dev) return
+    installUpdate()
   })
 
   // Manual recording stop — lets the user stop a session from the UI

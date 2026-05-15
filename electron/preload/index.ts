@@ -50,7 +50,9 @@ const api = {
     fixAudio: () => ipcRenderer.invoke('recorder:fix-audio'),
   },
   updater: {
-    check: () => ipcRenderer.invoke('updater:check')
+    check: () => ipcRenderer.invoke('updater:check'),
+    getState: () => ipcRenderer.invoke('updater:getState'),
+    install: () => ipcRenderer.invoke('updater:install'),
   },
   debug: {
     testRiotApi: () => ipcRenderer.invoke('debug:test-riot-api'),

@@ -817,12 +817,22 @@
           @click="handleVersionTap"
         >UpForge Desktop v{{ appVersion }}<span v-if="devTapCount > 0 && devTapCount < 5" class="ml-1 text-amber-600/60">({{ 5 - devTapCount }} more)</span></p>
         <div class="flex items-center gap-3">
-          <button
-            v-if="!isDev"
-            class="text-xs text-gray-600 hover:text-gray-400 transition-colors"
-            :disabled="checkingForUpdates"
-            @click="checkForUpdates"
-          >{{ checkingForUpdates ? 'Checking...' : 'Check for updates' }}</button>
+        <div class="flex items-center gap-3">
+          <template v-if="!isDev">
+            <button
+              v-if="updatePhase === 'idle' || updatePhase === 'checking'"
+              class="text-xs transition-colors"
+              :class="updatePhase === 'checking' ? 'text-gray-500 cursor-default' : 'text-gray-600 hover:text-gray-400'"
+              :disabled="updatePhase === 'checking'"
+              @click="checkForUpdates"
+            >{{ updatePhase === 'checking' ? 'Checking...' : updateUpToDate ? '✓ Up to date' : 'Check for updates' }}</button>
+            <span v-else-if="updatePhase === 'downloading'" class="text-xs text-amber-500/80">Downloading {{ updatePercent }}%</span>
+            <button
+              v-else-if="updatePhase === 'ready'"
+              class="text-xs text-red-400 hover:text-red-300 transition-colors"
+              @click="installUpdate"
+            >v{{ updateVersion }} ready · Restart now →</button>
+          </template>
           <button class="text-xs text-gray-600 hover:text-gray-400 transition-colors" @click="openHelp">Get help</button>
           <button class="text-xs text-gray-600 hover:text-gray-400 transition-colors" @click="openSite">upforge.gg</button>
         </div>
@@ -835,9 +845,6 @@
         </div>
         <button class="text-xs text-amber-700 hover:text-amber-500 transition-colors" @click="disableDevMode">Disable</button>
       </div>
-      <Transition name="fade">
-        <p v-if="updateMessage" class="text-xs text-gray-500 px-0.5">{{ updateMessage }}</p>
-      </Transition>
     </div>
 
   </div><!-- end flex column -->
@@ -874,8 +881,11 @@ const activeTab = ref<SettingsTab>('general')
 
 const appVersion = ref(__APP_VERSION__)
 const isDev = ref(false)
-const checkingForUpdates = ref(false)
-const updateMessage = ref('')
+const updatePhase = ref('idle')
+const updateVersion = ref<string | undefined>(undefined)
+const updatePercent = ref(0)
+const updateUpToDate = ref(false) // brief "Up to date" flash
+let upToDateTimer: ReturnType<typeof setTimeout> | null = null
 const savedVisible = ref(false)
 const storageBytes = ref(0)
 const storageCount = ref(0)
@@ -1189,17 +1199,24 @@ async function handleLogout(): Promise<void> {
 }
 
 async function checkForUpdates(): Promise<void> {
-  checkingForUpdates.value = true
-  updateMessage.value = ''
+  updatePhase.value = 'checking'
+  updateUpToDate.value = false
+  if (upToDateTimer) clearTimeout(upToDateTimer)
   try {
-    const result = await window.api.updater.check() as { status: string; message: string } | undefined
-    updateMessage.value = result?.message ?? 'Check complete'
+    const result = await window.api.updater.check()
+    if (result?.status === 'up-to-date') {
+      updatePhase.value = 'idle'
+      updateUpToDate.value = true
+      upToDateTimer = setTimeout(() => { updateUpToDate.value = false }, 3000)
+    }
   } catch {
-    updateMessage.value = 'Could not check for updates'
-  } finally {
-    checkingForUpdates.value = false
-    setTimeout(() => { updateMessage.value = '' }, 4000)
+    updatePhase.value = 'idle'
   }
+}
+
+async function installUpdate(): Promise<void> {
+  updatePhase.value = 'installing'
+  await window.api.updater.install()
 }
 
 async function testRiotApi(): Promise<void> {
@@ -1326,6 +1343,34 @@ onMounted(async () => {
 
   // Load OBS status (non-critical)
   refreshObsStatus()
+
+  // Hydrate update state and listen for live events
+  try {
+    const us = await window.api.updater.getState()
+    updatePhase.value = us.phase
+    updateVersion.value = us.version
+    updatePercent.value = us.percent ?? 0
+  } catch { /* ignore */ }
+  const updaterCleanups = [
+    window.api.on('updater:checking', () => { updatePhase.value = 'checking' }),
+    window.api.on('updater:available', (...args: unknown[]) => {
+      const info = args[0] as { version?: string } | undefined
+      updatePhase.value = 'available'
+      updateVersion.value = info?.version
+    }),
+    window.api.on('updater:progress', (...args: unknown[]) => {
+      updatePhase.value = 'downloading'
+      updatePercent.value = typeof args[0] === 'number' ? args[0] : 0
+    }),
+    window.api.on('updater:downloaded', (...args: unknown[]) => {
+      const info = args[0] as { version?: string } | undefined
+      updatePhase.value = 'ready'
+      updateVersion.value = info?.version
+    }),
+    window.api.on('updater:not-available', () => { updatePhase.value = 'idle' }),
+    window.api.on('updater:error', () => { updatePhase.value = 'idle' }),
+  ]
+  ;(window as Window & { _settingsUpdaterCleanups?: (() => void)[] })._settingsUpdaterCleanups = updaterCleanups
 })
 </script>
 
