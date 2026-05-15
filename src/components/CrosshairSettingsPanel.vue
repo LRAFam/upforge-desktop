@@ -15,7 +15,7 @@
             placeholder="0;P;h;0;m;1;0t;2;0l;10;..."
             @keydown.enter="applyImportCode"
           />
-          <button class="btn-import" :class="{ 'btn-error': importError }" @click="applyImportCode">
+          <button v-if="importCode.length > 0" class="btn-import" :class="{ 'btn-error': importError }" @click="applyImportCode">
             {{ importError ? 'Invalid' : 'Apply' }}
           </button>
         </div>

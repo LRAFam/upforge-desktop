@@ -1,8 +1,26 @@
 <template>
-  <div class="px-3 py-3 space-y-4 overflow-y-auto">
+  <div class="flex flex-col h-full overflow-hidden">
+
+    <!-- Sticky tab bar -->
+    <nav class="flex gap-0.5 px-3 pt-3 pb-2.5 border-b border-white/[0.05] flex-shrink-0">
+      <button
+        v-for="tab in SETTINGS_TABS"
+        :key="tab.id"
+        :class="[
+          'px-3 py-1.5 rounded-lg text-xs font-medium transition-colors',
+          activeTab === tab.id
+            ? 'bg-white/[0.08] text-white'
+            : 'text-gray-500 hover:text-gray-300 hover:bg-white/[0.04]'
+        ]"
+        @click="activeTab = tab.id"
+      >{{ tab.label }}</button>
+    </nav>
+
+    <!-- Scrollable content -->
+    <div class="px-3 py-3 space-y-4 overflow-y-auto flex-1 min-h-0">
 
     <!-- Account card -->
-    <section>
+    <section v-show="activeTab === 'general'">
       <h3 class="text-xs font-semibold text-gray-600 uppercase tracking-widest mb-2 px-0.5">Account</h3>
       <div v-if="user" class="bg-white/[0.02] border border-white/[0.05] rounded-xl overflow-hidden">
         <div class="flex items-center justify-between px-3 py-3">
@@ -40,7 +58,7 @@
     </section>
 
     <!-- Usage / quota -->
-    <section v-if="user && (user as UserWithUsage).analyses_used !== undefined">
+    <section v-if="user && (user as UserWithUsage).analyses_used !== undefined" v-show="activeTab === 'general'">
       <h3 class="text-xs font-semibold text-gray-600 uppercase tracking-widest mb-2 px-0.5">Usage</h3>
       <div class="px-3 py-2.5 bg-white/[0.02] border border-white/[0.05] rounded-xl space-y-1.5">
         <div class="flex items-center justify-between text-xs">
@@ -73,7 +91,7 @@
     </section>
 
     <!-- Recording settings -->
-    <section>
+    <section v-show="activeTab === 'recording'">
       <h3 class="text-xs font-semibold text-gray-600 uppercase tracking-widest mb-2 px-0.5">Recording</h3>
       <div class="px-3 py-2.5 bg-white/[0.02] border border-white/[0.05] rounded-xl space-y-3">
         <div>
@@ -211,7 +229,7 @@
     </section>
 
     <!-- Mouse & Trainer -->
-    <section>
+    <section v-show="activeTab === 'trainer'">
       <h3 class="text-xs font-semibold text-gray-600 uppercase tracking-widest mb-2 px-0.5">Mouse & Trainer</h3>
       <div class="px-3 py-2.5 bg-white/[0.02] border border-white/[0.05] rounded-xl space-y-3">
 
@@ -350,7 +368,7 @@
     </section>
 
     <!-- Crosshair -->
-    <section>
+    <section v-show="activeTab === 'trainer'">
       <h3 class="text-xs font-semibold text-gray-600 uppercase tracking-widest mb-2 px-0.5">Crosshair</h3>
       <div class="bg-white/[0.02] border border-white/[0.05] rounded-xl p-3">
         <crosshair-settings-panel
@@ -361,7 +379,7 @@
     </section>
 
     <!-- Audio settings -->
-    <section>
+    <section v-show="activeTab === 'recording'">
       <h3 class="text-xs font-semibold text-gray-600 uppercase tracking-widest mb-2 px-0.5">Audio</h3>
       <div class="bg-white/[0.02] border border-white/[0.05] rounded-xl divide-y divide-white/[0.04]">
         <div class="flex items-center justify-between px-3 py-2.5">
@@ -429,7 +447,7 @@
     </section>
 
     <!-- Behaviour toggles -->
-    <section>
+    <section v-show="activeTab === 'general'">
       <h3 class="text-xs font-semibold text-gray-600 uppercase tracking-widest mb-2 px-0.5">Behaviour</h3>
       <div class="bg-white/[0.02] border border-white/[0.05] rounded-xl divide-y divide-white/[0.04]">
         <div
@@ -460,7 +478,7 @@
     </section>
 
     <!-- Shortcuts -->
-    <section>
+    <section v-show="activeTab === 'trainer'">
       <h3 class="text-xs font-semibold text-gray-600 uppercase tracking-widest mb-2 px-0.5">Shortcuts</h3>
       <div class="bg-white/[0.02] border border-white/[0.05] rounded-xl overflow-hidden divide-y divide-white/[0.04]">
 
@@ -597,7 +615,7 @@
     </section>
 
     <!-- OBS Integration -->
-    <section v-if="user?.tier === 'pro'">
+    <section v-if="user?.tier === 'pro'" v-show="activeTab === 'recording'">
       <h3 class="text-xs font-semibold text-gray-600 uppercase tracking-widest mb-2 px-0.5">OBS Integration <span class="ml-1 text-red-400/80 normal-case tracking-normal font-normal">Pro</span></h3>
       <div class="bg-white/[0.02] border border-white/[0.05] rounded-xl p-3 space-y-3">
         <!-- Connection status -->
@@ -712,7 +730,7 @@
     </section>
 
     <!-- OBS teaser (non-Pro) -->
-    <section v-else-if="user && user.tier !== 'pro'">
+    <section v-else-if="user && user.tier !== 'pro'" v-show="activeTab === 'recording'">
       <h3 class="text-xs font-semibold text-gray-600 uppercase tracking-widest mb-2 px-0.5">OBS Integration</h3>
       <div class="flex items-center justify-between px-3 py-2.5 bg-white/[0.02] border border-white/[0.05] rounded-xl">
         <div class="flex items-center gap-2.5">
@@ -734,7 +752,7 @@
     </section>
 
     <!-- System -->
-    <section>
+    <section v-show="activeTab === 'system'">
       <h3 class="text-xs font-semibold text-gray-600 uppercase tracking-widest mb-2 px-0.5">System</h3>
       <div class="px-3 py-2.5 bg-white/[0.02] border border-white/[0.05] rounded-xl space-y-2.5">
         <!-- ffmpeg status -->
@@ -820,7 +838,8 @@
       </div>
     </Transition>
 
-  </div>
+    </div><!-- end scrollable content -->
+  </div><!-- end flex column -->
 </template>
 
 <script setup lang="ts">
@@ -842,6 +861,16 @@ type UserWithUsage = {
 
 const router = useRouter()
 const user = ref<UserWithUsage | null>(null)
+
+const SETTINGS_TABS = [
+  { id: 'general',   label: 'General'   },
+  { id: 'recording', label: 'Recording' },
+  { id: 'trainer',   label: 'Trainer'   },
+  { id: 'system',    label: 'System'    },
+] as const
+type SettingsTab = typeof SETTINGS_TABS[number]['id']
+const activeTab = ref<SettingsTab>('general')
+
 const appVersion = ref(__APP_VERSION__)
 const isDev = ref(false)
 const checkingForUpdates = ref(false)

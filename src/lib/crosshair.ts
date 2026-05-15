@@ -65,17 +65,21 @@ export const DEFAULT_CROSSHAIR: CrosshairSettings = {
 
 /**
  * Parse a Valorant crosshair import code into CrosshairSettings.
- * Format: "version;profile;key;val;key;val;..."
+ * Handles both old format (`0;P;key;val;...`) and new format (`0;s;1;P;key;val;...`).
  * Throws an error with a user-friendly message on invalid input.
  */
 export function parseValorantCode(code: string): CrosshairSettings {
   const parts = code.trim().split(';')
-  if (parts.length < 4) {
-    throw new Error('Invalid crosshair code — too short')
+
+  // Find the 'P' profile-start token — may be at index 1 (old) or later (new: 0;s;N;P;...)
+  const pIdx = parts.indexOf('P')
+  if (pIdx < 0 || pIdx + 2 >= parts.length) {
+    throw new Error('Invalid crosshair code — paste the full code from Valorant')
   }
 
+  // Build key → value map starting after the 'P' marker
   const kv: Record<string, string> = {}
-  for (let i = 2; i + 1 < parts.length; i += 2) {
+  for (let i = pIdx + 1; i + 1 < parts.length; i += 2) {
     kv[parts[i]] = parts[i + 1]
   }
 
