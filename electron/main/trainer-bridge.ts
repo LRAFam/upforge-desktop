@@ -35,6 +35,23 @@ export interface DrillConfig {
     sensitivity: number
     fov: number
   }
+  crosshair_settings?: {
+    color: [number, number, number]
+    shadow_show: boolean
+    dot_show: boolean
+    dot_radius: number
+    dot_opacity: number
+    inner_show: boolean
+    inner_thickness: number
+    inner_length: number
+    inner_offset: number
+    inner_opacity: number
+    outer_show: boolean
+    outer_thickness: number
+    outer_length: number
+    outer_offset: number
+    outer_opacity: number
+  }
 }
 
 export interface SessionResult {

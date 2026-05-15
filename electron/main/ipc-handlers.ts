@@ -19,9 +19,55 @@ import { toggleOverlay, isOverlayVisible, setOverlayInteractive, sendOverlayData
 import { PerformanceManager } from './performance-manager'
 import { UpgradeRequiredError } from './errors'
 import { TrainerBridge, type DrillConfig } from './trainer-bridge'
+import type { AppSettings } from './settings-manager'
 
 // Track all active polling timers so they can be cancelled on logout / app quit
 const _activePollingTimers = new Set<ReturnType<typeof setTimeout>>()
+
+/** Valorant colour palette — indices match CrosshairConfig.gd VALORANT_COLORS */
+const CROSSHAIR_PALETTE: [number, number, number][] = [
+  [1.0,  1.0,  1.0 ], // 0 white
+  [0.0,  1.0,  0.42], // 1 green
+  [1.0,  0.85, 0.0 ], // 2 yellow
+  [0.0,  0.87, 1.0 ], // 3 cyan
+  [1.0,  0.47, 0.87], // 4 pink
+  [1.0,  0.27, 0.33], // 5 red
+]
+
+/** Convert Electron CrosshairSettings into the Godot dict format. */
+function crosshairSettingsToGodot(
+  cs: AppSettings['crosshairSettings']
+): DrillConfig['crosshair_settings'] {
+  let color: [number, number, number]
+  if (cs.colorIndex >= 0 && cs.colorIndex < CROSSHAIR_PALETTE.length) {
+    color = CROSSHAIR_PALETTE[cs.colorIndex]
+  } else {
+    // Parse custom hex color to normalized [r, g, b]
+    const hex = cs.customColor.replace('#', '').padEnd(6, '0')
+    color = [
+      parseInt(hex.slice(0, 2), 16) / 255,
+      parseInt(hex.slice(2, 4), 16) / 255,
+      parseInt(hex.slice(4, 6), 16) / 255,
+    ]
+  }
+  return {
+    color,
+    shadow_show:      cs.shadowShow,
+    dot_show:         cs.dotShow,
+    dot_radius:       cs.dotRadius,
+    dot_opacity:      cs.dotOpacity,
+    inner_show:       cs.innerShow,
+    inner_thickness:  cs.innerThickness,
+    inner_length:     cs.innerLength,
+    inner_offset:     cs.innerOffset,
+    inner_opacity:    cs.innerOpacity,
+    outer_show:       cs.outerShow,
+    outer_thickness:  cs.outerThickness,
+    outer_length:     cs.outerLength,
+    outer_offset:     cs.outerOffset,
+    outer_opacity:    cs.outerOpacity,
+  }
+}
 
 export function setupClipHandlers(
   ipcMain: IpcMain,
@@ -799,7 +845,9 @@ export function setupIpcHandlers(
   ipcMain.handle('trainer:launch', async (_e, config: DrillConfig) => {
     if (!trainerBridge) return { ok: false, error: 'Trainer not available' }
     try {
-      const ms = settingsManager.get().trainerMouse
+      const s = settingsManager.get()
+      const ms = s.trainerMouse
+      const cs = s.crosshairSettings
       const enrichedConfig: DrillConfig = {
         ...config,
         mouse_settings: {
@@ -807,7 +855,8 @@ export function setupIpcHandlers(
           game: ms.game,
           sensitivity: ms.sensitivity,
           fov: ms.fov,
-        }
+        },
+        crosshair_settings: crosshairSettingsToGodot(cs),
       }
       await trainerBridge.launch(enrichedConfig)
       sendOverlayData('overlay:trainer-started', {

@@ -349,6 +349,17 @@
       </div>
     </section>
 
+    <!-- Crosshair -->
+    <section>
+      <h3 class="text-xs font-semibold text-gray-600 uppercase tracking-widest mb-2 px-0.5">Crosshair</h3>
+      <div class="bg-white/[0.02] border border-white/[0.05] rounded-xl p-3">
+        <crosshair-settings-panel
+          v-model="settings.crosshairSettings"
+          @update:model-value="debouncedSave()"
+        />
+      </div>
+    </section>
+
     <!-- Audio settings -->
     <section>
       <h3 class="text-xs font-semibold text-gray-600 uppercase tracking-widest mb-2 px-0.5">Audio</h3>
@@ -817,6 +828,7 @@ import { ref, reactive, computed, onMounted, onUnmounted, toRaw } from 'vue'
 import { useRouter } from 'vue-router'
 import type { AppSettings } from '../env.d.ts'
 import { getTierClass, getTierBadgeClass, formatGameMode } from '../lib/valorant'
+import CrosshairSettingsPanel from '../components/CrosshairSettingsPanel.vue'
 
 type UserWithUsage = {
   name: string
@@ -1018,6 +1030,24 @@ const settings = reactive<AppSettings>({
     fov: 103,
     rawInput: true,
     pollingRate: 1000,
+  },
+  crosshairSettings: {
+    colorIndex: 1,
+    customColor: '00FF6B',
+    dotShow: true,
+    dotRadius: 1.5,
+    dotOpacity: 1.0,
+    innerShow: true,
+    innerThickness: 2,
+    innerLength: 10,
+    innerOffset: 4,
+    innerOpacity: 1.0,
+    outerShow: false,
+    outerThickness: 2,
+    outerLength: 5,
+    outerOffset: 10,
+    outerOpacity: 1.0,
+    shadowShow: true,
   },
 })
 

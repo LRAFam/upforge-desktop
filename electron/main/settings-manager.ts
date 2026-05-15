@@ -49,6 +49,25 @@ export interface AppSettings {
     rawInput: boolean
     pollingRate: 125 | 250 | 500 | 1000 | 2000 | 4000
   }
+  /** Crosshair appearance for the aim trainer */
+  crosshairSettings: {
+    colorIndex: number  // 0=white, 1=green, 2=yellow, 3=cyan, 4=pink, 5=red, 6=custom
+    customColor: string // hex without '#', e.g. '00FF6B'
+    dotShow: boolean
+    dotRadius: number   // 0.5–6
+    dotOpacity: number  // 0–1
+    innerShow: boolean
+    innerThickness: number // 0.5–8
+    innerLength: number    // 0–30
+    innerOffset: number    // 0–20
+    innerOpacity: number   // 0–1
+    outerShow: boolean
+    outerThickness: number
+    outerLength: number
+    outerOffset: number
+    outerOpacity: number
+    shadowShow: boolean
+  }
 }
 
 const DEFAULTS: AppSettings = {
@@ -81,6 +100,24 @@ const DEFAULTS: AppSettings = {
     fov: 103,
     rawInput: true,
     pollingRate: 1000,
+  },
+  crosshairSettings: {
+    colorIndex: 1,        // Valorant green default
+    customColor: '00FF6B',
+    dotShow: true,
+    dotRadius: 1.5,
+    dotOpacity: 1.0,
+    innerShow: true,
+    innerThickness: 2,
+    innerLength: 10,
+    innerOffset: 4,
+    innerOpacity: 1.0,
+    outerShow: false,
+    outerThickness: 2,
+    outerLength: 5,
+    outerOffset: 10,
+    outerOpacity: 1.0,
+    shadowShow: true,
   },
 }
 

@@ -110,6 +110,25 @@ export interface AppSettings {
     rawInput: boolean
     pollingRate: 125 | 250 | 500 | 1000 | 2000 | 4000
   }
+  /** Crosshair appearance for the aim trainer */
+  crosshairSettings: {
+    colorIndex: number
+    customColor: string
+    dotShow: boolean
+    dotRadius: number
+    dotOpacity: number
+    innerShow: boolean
+    innerThickness: number
+    innerLength: number
+    innerOffset: number
+    innerOpacity: number
+    outerShow: boolean
+    outerThickness: number
+    outerLength: number
+    outerOffset: number
+    outerOpacity: number
+    shadowShow: boolean
+  }
 }
 
 export interface PendingRecording {
