@@ -256,28 +256,13 @@ onUnmounted(() => {
   width: 80px;
   height: 80px;
   border-radius: 22px;
-  background: linear-gradient(135deg, rgba(239,68,68,0.15) 0%, rgba(249,115,22,0.1) 100%);
-  border: 1px solid rgba(239,68,68,0.2);
+  background: transparent;
+  border: none;
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow:
-    0 0 0 1px rgba(239,68,68,0.08),
-    0 0 40px rgba(239,68,68,0.12),
-    inset 0 1px 0 rgba(255,255,255,0.06);
+  box-shadow: none;
 }
-.logo-ring::before {
-  content: '';
-  position: absolute;
-  inset: -1px;
-  border-radius: 23px;
-  background: linear-gradient(135deg, rgba(239,68,68,0.3), transparent 50%);
-  mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
-  mask-composite: exclude;
-  -webkit-mask-composite: xor;
-  padding: 1px;
-}
-
 .logo-img {
   height: 44px;
   width: auto;
