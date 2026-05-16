@@ -24,7 +24,8 @@ async function reportError(payload: {
 
   let user: { id?: number; email?: string; name?: string } | null = null
   try {
-    user = await window.api.auth.getUser()
+    const result = await window.api.auth.getUser()
+    user = result as { id?: number; email?: string; name?: string } | null
   } catch { /* not authenticated yet */ }
 
   const body = {

@@ -251,10 +251,14 @@ export class Recorder {
 
     this._process = spawn(ffmpegPath, args, { stdio: 'pipe' })
 
-    // Lower ffmpeg priority on Windows so it doesn't compete with Valorant for CPU.
+    // Lower ffmpeg priority so it doesn't compete with Valorant for CPU.
     // We do this asynchronously after spawn — no need to wait.
-    if (IS_WIN && this._process.pid) {
-      this._lowerProcessPriority(this._process.pid)
+    if (this._process.pid) {
+      if (IS_WIN) {
+        this._lowerProcessPriority(this._process.pid)
+      } else if (IS_MAC) {
+        this._reniceProcess(this._process.pid)
+      }
     }
 
     this._process.stderr?.on('data', (data: Buffer) => {
@@ -816,9 +820,9 @@ export class Recorder {
     const bufsizeStr = `${bitrate * 2}M`
     const scale = config?.quality === '1080p' ? '1920:1080' : '1280:720'
 
-    // software: ultrafast preset to minimise CPU usage (quality traded for performance)
+    // software: ultrafast preset + thread cap to minimise CPU usage (quality traded for performance)
     const qualityArgs = encoder === 'software'
-      ? ['-crf', '28', '-preset', 'ultrafast']
+      ? ['-crf', '28', '-preset', 'ultrafast', '-threads', '2']
       : encoder === 'videotoolbox'
         ? ['-b:v', bitrateStr]
         : ['-b:v', bitrateStr, '-maxrate', maxrateStr, '-bufsize', bufsizeStr]
@@ -1024,6 +1028,15 @@ export class Recorder {
         else console.log(`[Recorder] ffmpeg (pid ${pid}) set to BelowNormal priority`)
       }
     )
+  }
+
+  /** Renice the ffmpeg process on Mac/Linux so it doesn't compete with the game. */
+  private _reniceProcess(pid: number): void {
+    const { exec } = require('child_process')
+    exec(`renice -n 10 -p ${pid}`, (err: Error | null) => {
+      if (err) console.warn('[Recorder] Could not renice ffmpeg:', err.message)
+      else console.log(`[Recorder] ffmpeg (pid ${pid}) reniced to +10`)
+    })
   }
 
   private _ffmpegPath(): string {

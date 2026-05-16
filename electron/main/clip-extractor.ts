@@ -50,8 +50,9 @@ export class ClipExtractor {
 
     // WebM (VP8/VP9) cannot be stream-copied into MP4 — transcode to H.264/AAC.
     // For MP4 sources, stream-copy is faster and lossless.
+    // veryfast preset + thread cap keeps CPU impact low while the user is still in-game.
     const videoArgs = isWebM
-      ? ['-c:v', 'libx264', '-crf', '22', '-preset', 'fast', '-pix_fmt', 'yuv420p']
+      ? ['-c:v', 'libx264', '-crf', '22', '-preset', 'veryfast', '-threads', '2', '-pix_fmt', 'yuv420p']
       : ['-c:v', 'copy']
     const audioArgs = isWebM ? ['-c:a', 'aac', '-b:a', '128k'] : ['-c:a', 'copy']
 
@@ -118,6 +119,8 @@ export class ClipExtractor {
   private _run(args: string[], timeoutMs = 60_000): Promise<void> {
     return new Promise((resolve, reject) => {
       const bin = ffmpegPath()
+      const IS_WIN = process.platform === 'win32'
+      const IS_MAC = process.platform === 'darwin'
       const proc = spawn(bin, args, { stdio: ['ignore', 'ignore', 'pipe'] })
       let stderr = ''
       proc.stderr?.on('data', (d: Buffer) => { stderr += d.toString() })
@@ -126,6 +129,24 @@ export class ClipExtractor {
         if (code === 0) resolve()
         else reject(new Error(`ffmpeg exited ${code}: ${stderr.slice(-300)}`))
       })
+
+      // Lower process priority so clip extraction doesn't compete with the game or system.
+      if (proc.pid) {
+        if (IS_WIN) {
+          const { exec } = require('child_process') as typeof import('child_process')
+          exec(
+            `powershell -NoProfile -NonInteractive -Command "(Get-Process -Id ${proc.pid}).PriorityClass = 'BelowNormal'"`,
+            { windowsHide: true },
+            (err) => { if (err) console.warn('[ClipExtractor] Could not lower ffmpeg priority:', err.message) },
+          )
+        } else if (IS_MAC || process.platform === 'linux') {
+          const { exec } = require('child_process') as typeof import('child_process')
+          exec(`renice -n 10 -p ${proc.pid}`, (err) => {
+            if (err) console.warn('[ClipExtractor] Could not renice ffmpeg:', err.message)
+          })
+        }
+      }
+
       // Hard cap — clips should never take this long
       setTimeout(() => { proc.kill(); reject(new Error('ffmpeg timed out')) }, timeoutMs)
     })
