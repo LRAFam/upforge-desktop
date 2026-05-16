@@ -12,7 +12,8 @@ const IS_WIN = process.platform === 'win32'
 // VALORANT-Win64-Shipping.exe is loaded only when a map is actually loading/playing.
 const GAME_PROCESSES: Record<string, string[]> = {
   valorant: ['VALORANT-Win64-Shipping.exe'],
-  cs2: ['cs2.exe']
+  cs2: ['cs2.exe'],
+  deadlock: ['deadlock.exe'],
 }
 
 // Poll interval when no game is running (check for game start)

@@ -320,6 +320,9 @@
       <!-- ═══════════ CENTER: Recent matches ═══════════ -->
       <div class="flex flex-col gap-3 min-h-0 overflow-hidden">
 
+        <!-- Deadlock demo upload panel (Deadlock users only) -->
+        <DeadlockDemoPanel v-if="isDeadlockUser" class="flex-shrink-0" />
+
         <!-- Section header -->
         <div class="flex items-center justify-between flex-shrink-0">
           <div class="flex items-center gap-2.5">
@@ -691,6 +694,7 @@ import type { ProfileData, AnalysisItem, PendingRecording } from '../env.d.ts'
 import { getAgentImage, getAgentRole, getAgentColor, getMapMinimap, getRankHexColor, getRoleColor, getTierBadgeClass, getTierBadgeLabel, formatGameMode } from '../lib/valorant'
 import { pendingTimeline } from '../stores/pendingTimeline'
 import { useAchievements } from '../composables/useAchievements'
+import DeadlockDemoPanel from '../components/DeadlockDemoPanel.vue'
 
 const router = useRouter()
 const achievements = useAchievements()
@@ -706,8 +710,10 @@ const status = ref<{ recording: boolean; recordingStarting: boolean; currentGame
 const isDev = ref(false)
 const platform = ref('')
 const hotkeys = ref<Record<string, string>>({})
+const userPrimaryGame = ref<string>('valorant')
 
 const isAdmin = computed(() => !!profile.value?.user?.is_admin)
+const isDeadlockUser = computed(() => userPrimaryGame.value === 'deadlock')
 
 const hotkeyHints = computed(() => [
   { key: hotkeys.value['save-clip'] || 'F9', label: 'save clip' },
@@ -996,8 +1002,9 @@ onMounted(async () => {
   } catch { /* optional */ }
 
   // Load last insight from persisted settings
-  const savedSettings = await window.api.settings.get().catch(() => null) as ({ lastInsight?: typeof lastInsight.value } | null)
+  const savedSettings = await window.api.settings.get().catch(() => null) as ({ lastInsight?: typeof lastInsight.value; trainerMouse?: { game?: string } } | null)
   if (savedSettings?.lastInsight) lastInsight.value = savedSettings.lastInsight
+  if (savedSettings?.trainerMouse?.game) userPrimaryGame.value = savedSettings.trainerMouse.game
 
   // Achievement: first-analysis
   await achievements.load()

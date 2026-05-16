@@ -986,4 +986,43 @@ export function setupIpcHandlers(
       return null
     }
   })
+
+  // ─── Deadlock demo (.dem) replay helpers ────────────────────────────────────
+  ipcMain.handle('deadlock:list-replays', async () => {
+    const localAppData = process.env.LOCALAPPDATA || path.join(app.getPath('home'), 'AppData', 'Local')
+    const replayDir = path.join(localAppData, 'Deadlock', 'game', 'deadlock', 'replays')
+    try {
+      if (!fs.existsSync(replayDir)) return { files: [], dir: replayDir, exists: false }
+      const entries = fs.readdirSync(replayDir)
+      const files = entries
+        .filter(f => f.endsWith('.dem'))
+        .map(f => {
+          const full = path.join(replayDir, f)
+          const stat = fs.statSync(full)
+          return { name: f, path: full, sizeBytes: stat.size, modifiedAt: stat.mtimeMs }
+        })
+        .sort((a, b) => b.modifiedAt - a.modifiedAt)
+        .slice(0, 20)
+      return { files, dir: replayDir, exists: true }
+    } catch (err: any) {
+      log.warn('[Deadlock] Failed to list replays:', err?.message)
+      return { files: [], dir: replayDir, exists: false }
+    }
+  })
+
+  ipcMain.handle('deadlock:open-replays-folder', async () => {
+    const localAppData = process.env.LOCALAPPDATA || path.join(app.getPath('home'), 'AppData', 'Local')
+    const replayDir = path.join(localAppData, 'Deadlock', 'game', 'deadlock', 'replays')
+    if (fs.existsSync(replayDir)) {
+      await shell.openPath(replayDir)
+    } else {
+      await shell.openPath(path.join(localAppData, 'Deadlock'))
+    }
+    return { ok: true }
+  })
+
+  ipcMain.handle('deadlock:open-analyze', () => {
+    shell.openExternal('https://upforge.gg/deadlock/analyze')
+    return { ok: true }
+  })
 }

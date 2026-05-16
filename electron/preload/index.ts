@@ -133,6 +133,11 @@ const api = {
     getCorrelation: () => ipcRenderer.invoke('trainer:get-correlation'),
     getBenchmark: () => ipcRenderer.invoke('trainer:get-benchmark'),
   },
+  deadlock: {
+    listReplays: () => ipcRenderer.invoke('deadlock:list-replays'),
+    openReplaysFolder: () => ipcRenderer.invoke('deadlock:open-replays-folder'),
+    openAnalyze: () => ipcRenderer.invoke('deadlock:open-analyze'),
+  },
   on: (channel: string, callback: (...args: unknown[]) => void): (() => void) => {
     const allowed = [
       'post-game:upload-start',

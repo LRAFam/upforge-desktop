@@ -466,6 +466,15 @@ declare global {
         getCorrelation: () => Promise<string[]>
         getBenchmark: () => Promise<TrainingBenchmark | null>
       }
+      deadlock: {
+        listReplays: () => Promise<{
+          files: Array<{ name: string; path: string; sizeBytes: number; modifiedAt: number }>
+          dir: string
+          exists: boolean
+        }>
+        openReplaysFolder: () => Promise<{ ok: boolean }>
+        openAnalyze: () => Promise<{ ok: boolean }>
+      }
       on: (channel: string, callback: (...args: unknown[]) => void) => (() => void)
     }
   }

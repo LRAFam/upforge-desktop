@@ -23,6 +23,7 @@ const IS_WIN = process.platform === 'win32'
 // gdigrab's -i title= matches the foreground window title exactly.
 const GAME_WINDOW_TITLES: Record<string, string> = {
   valorant: 'VALORANT',
+  deadlock: 'Deadlock',
 }
 
 // Window position info for targeted capture — avoids recording full virtual desktop on multi-monitor setups.
