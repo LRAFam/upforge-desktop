@@ -25,6 +25,16 @@ import type { AppSettings } from './settings-manager'
 // Track all active polling timers so they can be cancelled on logout / app quit
 const _activePollingTimers = new Set<ReturnType<typeof setTimeout>>()
 
+/** Cancel all in-flight clip analysis polling timers. Called on logout and app quit. */
+export function cancelAllPollingTimers(): void {
+  for (const timer of _activePollingTimers) clearTimeout(timer)
+  _activePollingTimers.clear()
+}
+
+// Per-clip in-flight lock — prevents concurrent trim/upload/delete on the same file.
+// A clip ID in this set means an operation is already running against that file.
+const _clipInFlight = new Set<string>()
+
 // Source ID the renderer intends to capture — set just before calling getUserMedia so
 // the setDisplayMediaRequestHandler in index.ts can return the correct source (Electron 20+).
 let _pendingCaptureSourceId: string | null = null
@@ -103,6 +113,7 @@ export function setupClipHandlers(
   })
 
   ipcMain.handle('clips:delete', (_e, { id }: { id: string }) => {
+    if (_clipInFlight.has(id)) return { ok: false, error: 'Cannot delete while an operation is in progress' }
     const clip = clipStore.remove(id)
     if (!clip) return { ok: false, error: 'Not found' }
     // Clean up files from disk
@@ -140,10 +151,12 @@ export function setupClipHandlers(
     const clip = clipStore.getById(id)
     if (!clip) return { ok: false, error: 'Clip not found' }
     if (!fs.existsSync(clip.path)) return { ok: false, error: 'Clip file missing' }
+    if (_clipInFlight.has(id)) return { ok: false, error: 'Upload or trim already in progress for this clip' }
 
     const token = auth.getToken()
     if (!token) return { ok: false, error: 'Not authenticated' }
 
+    _clipInFlight.add(id)
     clipStore.update(id, { uploadStatus: 'uploading' })
 
     try {
@@ -211,6 +224,8 @@ export function setupClipHandlers(
       clipStore.update(id, { uploadStatus: 'failed' })
       log.error('[ClipUpload] Failed:', msg)
       return { ok: false, error: msg }
+    } finally {
+      _clipInFlight.delete(id)
     }
   })
 
@@ -286,6 +301,9 @@ export function setupClipHandlers(
     const clip = clipStore.getById(id)
     if (!clip) return { ok: false, error: 'Clip not found' }
     if (!fs.existsSync(clip.path)) return { ok: false, error: 'Clip file not found on disk' }
+    if (_clipInFlight.has(id)) return { ok: false, error: 'Upload or trim already in progress for this clip' }
+
+    _clipInFlight.add(id)
     const trimmedPath = clip.path.replace(/\.mp4$/, '_trimmed.mp4')
     try {
       await clipExtractor.trim({ sourcePath: clip.path, startSec, endSec, outputPath: trimmedPath })
@@ -314,6 +332,8 @@ export function setupClipHandlers(
     } catch (err) {
       try { if (fs.existsSync(trimmedPath)) fs.unlinkSync(trimmedPath) } catch { /* ignore */ }
       return { ok: false, error: err instanceof Error ? err.message : String(err) }
+    } finally {
+      _clipInFlight.delete(id)
     }
   })
 
@@ -524,8 +544,7 @@ export function setupIpcHandlers(
     // Abort any in-progress S3 upload
     uploadManager?.abort()
     // Cancel any pending clip analysis polling timers
-    for (const timer of _activePollingTimers) clearTimeout(timer)
-    _activePollingTimers.clear()
+    cancelAllPollingTimers()
     return auth.logout()
   })
 

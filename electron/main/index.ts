@@ -23,7 +23,7 @@ import { RiotLocalApi } from './riot-local-api'
 import { UploadManager, savePendingJob, clearPendingJob, readPendingJob } from './upload-manager'
 import { AuthManager } from './auth-manager'
 import { SettingsManager } from './settings-manager'
-import { setupIpcHandlers, setupClipHandlers, consumePendingCaptureSourceId } from './ipc-handlers'
+import { setupIpcHandlers, setupClipHandlers, consumePendingCaptureSourceId, cancelAllPollingTimers } from './ipc-handlers'
 import { UpgradeRequiredError } from './errors'
 import { RecordingsStore } from './recordings-store'
 import { ClipExtractor } from './clip-extractor'
@@ -2190,6 +2190,7 @@ app.on('before-quit', () => {
   if (trayRefreshInterval) clearInterval(trayRefreshInterval)
   tray?.destroy()
   tray = null
+  cancelAllPollingTimers()
   gameDetector.stop()
   recorder.forceStop()
   hotkeyManager.unregisterAll()
