@@ -123,11 +123,14 @@ export class ClipExtractor {
       const IS_MAC = process.platform === 'darwin'
       const proc = spawn(bin, args, { stdio: ['ignore', 'ignore', 'pipe'] })
       let stderr = ''
+      let settled = false
+      const settle = (fn: () => void) => { if (!settled) { settled = true; clearTimeout(timer); fn() } }
+
       proc.stderr?.on('data', (d: Buffer) => { stderr += d.toString() })
-      proc.on('error', (err) => reject(new Error(`ffmpeg error: ${err.message}`)))
+      proc.on('error', (err) => settle(() => reject(new Error(`ffmpeg error: ${err.message}`))))
       proc.on('exit', (code) => {
-        if (code === 0) resolve()
-        else reject(new Error(`ffmpeg exited ${code}: ${stderr.slice(-300)}`))
+        if (code === 0) settle(() => resolve())
+        else settle(() => reject(new Error(`ffmpeg exited ${code}: ${stderr.slice(-300)}`)))
       })
 
       // Lower process priority so clip extraction doesn't compete with the game or system.
@@ -148,7 +151,7 @@ export class ClipExtractor {
       }
 
       // Hard cap — clips should never take this long
-      setTimeout(() => { proc.kill(); reject(new Error('ffmpeg timed out')) }, timeoutMs)
+      const timer = setTimeout(() => { proc.kill(); settle(() => reject(new Error('ffmpeg timed out'))) }, timeoutMs)
     })
   }
 

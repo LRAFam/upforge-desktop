@@ -289,9 +289,25 @@ export function setupClipHandlers(
     const trimmedPath = clip.path.replace(/\.mp4$/, '_trimmed.mp4')
     try {
       await clipExtractor.trim({ sourcePath: clip.path, startSec, endSec, outputPath: trimmedPath })
-      // Replace the original file with the trimmed version
-      try { fs.unlinkSync(clip.path) } catch { /* ignore */ }
-      fs.renameSync(trimmedPath, clip.path)
+      // Swap trimmed file in atomically: rename original to a backup first so we can
+      // restore it if the final rename fails. Never delete the original before the
+      // trimmed file is safely in place.
+      const backupPath = clip.path + '.bak'
+      try {
+        fs.renameSync(clip.path, backupPath)
+        try {
+          fs.renameSync(trimmedPath, clip.path)
+          try { fs.unlinkSync(backupPath) } catch { /* backup cleanup — non-fatal */ }
+        } catch (renameErr) {
+          // Failed to put trimmed file in place — restore original from backup
+          try { fs.renameSync(backupPath, clip.path) } catch { /* best-effort restore */ }
+          throw renameErr
+        }
+      } catch (backupErr) {
+        // Could not rename original to backup (e.g. cross-device) — fall back to delete-then-rename
+        try { fs.unlinkSync(clip.path) } catch { /* ignore */ }
+        fs.renameSync(trimmedPath, clip.path)
+      }
       const dur = endSec - startSec
       clipStore.update(id, { durationSeconds: dur, uploadStatus: 'local' })
       return { ok: true }

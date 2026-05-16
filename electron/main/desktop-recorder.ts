@@ -206,14 +206,20 @@ export class DesktopRecorder {
     contents?.send('desktop-recording:stop')
 
     return new Promise<string | null>((resolve) => {
-      // Force-resolve after 15s in case the renderer never sends 'complete'
+      // Force-resolve after 15s in case the renderer never sends 'complete'.
+      // Wait for the writeStream to fully flush before resolving so the file isn't truncated.
       this._stopTimeout = setTimeout(() => {
         console.warn('[DesktopRecorder] Stop timed out — finalising anyway')
         this._recording = false
         this._startedAt = null
-        if (this._writeStream) { this._writeStream.end(); this._writeStream = null }
         this._pendingStop = null
-        resolve(this._outputPath)
+        if (this._writeStream) {
+          const ws = this._writeStream
+          this._writeStream = null
+          ws.end(() => resolve(this._outputPath))
+        } else {
+          resolve(this._outputPath)
+        }
       }, 15_000)
 
       this._pendingStop = { resolve }
