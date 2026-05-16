@@ -13,6 +13,7 @@ import net from 'net'
 import path from 'path'
 import fs from 'fs'
 import log from 'electron-log'
+import type { AuthManager } from './auth-manager'
 
 const TRAINER_PORT = 7891
 const TRAINER_HOST = '127.0.0.1'
@@ -73,15 +74,21 @@ export class TrainerBridge {
   private _buffer: string = ''
   private _mainWindow: (() => BrowserWindow | null)
   private _pendingConfig: DrillConfig | null = null
+  private _authManager: AuthManager | null = null
 
   private _onResultCallback?: (result: SessionResult) => void
 
-  constructor(getMainWindow: () => BrowserWindow | null) {
+  constructor(getMainWindow: () => BrowserWindow | null, authManager?: AuthManager) {
     this._mainWindow = getMainWindow
+    this._authManager = authManager ?? null
   }
 
   setResultCallback(cb: (result: SessionResult) => void): void {
     this._onResultCallback = cb
+  }
+
+  setAuthManager(authManager: AuthManager): void {
+    this._authManager = authManager
   }
 
   /** Resolve path to the bundled Godot trainer binary */
@@ -212,7 +219,19 @@ export class TrainerBridge {
 
   private _sendConfig(config: DrillConfig): void {
     if (!this._socket || this._socket.destroyed) return
-    const payload = JSON.stringify(config) + '\n'
+    // Inject user context and error reporting key so Godot can report errors
+    const user = this._authManager?.getUser() ?? null
+    const enriched = {
+      ...config,
+      _upforge_meta: {
+        user_id: user?.id ?? null,
+        user_email: user?.email ?? null,
+        user_name: user?.name ?? null,
+        app_version: app.getVersion(),
+        error_key: process.env['VITE_ERROR_REPORTING_KEY'] ?? '',
+      },
+    }
+    const payload = JSON.stringify(enriched) + '\n'
     this._socket.write(payload, 'utf8')
     log.info('[TrainerBridge] Sent drill config:', config.scenario)
   }

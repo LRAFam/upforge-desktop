@@ -3,6 +3,7 @@ import { createPinia } from 'pinia'
 import { createRouter, createWebHashHistory } from 'vue-router'
 import App from './App.vue'
 import './assets/main.css'
+import { setupRendererErrorReporter } from './lib/errorReporter'
 
 // Views
 import LoginView from './views/LoginView.vue'
@@ -66,4 +67,5 @@ const app = createApp(App)
 
 app.use(pinia)
 app.use(router)
+setupRendererErrorReporter(app)
 app.mount('#app')
