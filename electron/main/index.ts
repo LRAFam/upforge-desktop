@@ -702,9 +702,17 @@ function createMainWindow(): BrowserWindow {
     win.maximize()
   })
 
+  let rendererCrashCount = 0
   win.webContents.on('render-process-gone', (_event, details) => {
     console.error('[Main] Renderer process gone:', details.reason)
     if (details.reason !== 'clean-exit') {
+      rendererCrashCount++
+      if (rendererCrashCount > 3) {
+        console.error('[Main] Renderer crashed too many times — not reloading to prevent loop')
+        return
+      }
+      const delay = Math.min(1000 * Math.pow(2, rendererCrashCount - 1), 15_000)
+      console.warn(`[Main] Reloading renderer (attempt ${rendererCrashCount}/3) in ${delay}ms`)
       setTimeout(() => {
         try {
           if (!win.isDestroyed()) {
@@ -713,11 +721,13 @@ function createMainWindow(): BrowserWindow {
             } else {
               win.loadFile(join(__dirname, '../renderer/index.html'))
             }
+            // Reset crash counter on successful reload
+            win.webContents.once('did-finish-load', () => { rendererCrashCount = 0 })
           }
         } catch (e) {
           console.error('[Main] Failed to reload renderer:', e)
         }
-      }, 1000)
+      }, delay)
     }
   })
   win.on('close', (e) => {
@@ -1787,10 +1797,13 @@ app.whenReady().then(async () => {
   // When a second instance is launched (e.g. user double-clicks the icon again),
   // bring the existing window to the front instead of opening another copy.
   app.on('second-instance', () => {
-    if (mainWindow) {
+    if (mainWindow && !mainWindow.isDestroyed()) {
       if (mainWindow.isMinimized()) mainWindow.restore()
       mainWindow.show()
       mainWindow.focus()
+    } else {
+      // Window was destroyed (e.g. after a crash) — recreate it
+      mainWindow = createMainWindow()
     }
   })
 

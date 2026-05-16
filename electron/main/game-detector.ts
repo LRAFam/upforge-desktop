@@ -24,6 +24,7 @@ export class GameDetector extends EventEmitter {
   private _polling = false
   private _interval: NodeJS.Timeout | null = null
   private _activeGame: string | null = null
+  private _simTimer: NodeJS.Timeout | null = null
 
   start(): void {
     if (this._polling) return
@@ -37,6 +38,10 @@ export class GameDetector extends EventEmitter {
     if (this._interval) {
       clearInterval(this._interval)
       this._interval = null
+    }
+    if (this._simTimer) {
+      clearTimeout(this._simTimer)
+      this._simTimer = null
     }
   }
 
@@ -69,10 +74,16 @@ export class GameDetector extends EventEmitter {
 
   /** Simulate a game session for testing on non-Windows platforms */
   simulateGame(game = 'valorant', durationMs = 10000): void {
+    // Cancel any in-flight simulation before starting a new one
+    if (this._simTimer) {
+      clearTimeout(this._simTimer)
+      this._simTimer = null
+    }
     console.log(`[GameDetector] ⚡ Simulating ${game} session for ${durationMs}ms`)
     this._activeGame = game
     this.emit('game-started', game)
-    setTimeout(() => {
+    this._simTimer = setTimeout(() => {
+      this._simTimer = null
       this._activeGame = null
       this.emit('game-stopped', game)
     }, durationMs)
