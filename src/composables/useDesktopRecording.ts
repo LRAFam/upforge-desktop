@@ -41,21 +41,19 @@ export function useDesktopRecording() {
       const maxWidth = config.quality === '1080p' ? 1920 : 1280
       const maxHeight = config.quality === '1080p' ? 1080 : 720
 
-      // desktopCapturer still requires chromeMediaSource/chromeMediaSourceId in
-      // mandatory, but resolution and frame rate constraints are more reliably
-      // enforced as top-level modern constraints alongside mandatory.
+      // desktopCapturer requires chromeMediaSource / chromeMediaSourceId in
+      // mandatory. All other constraints must also go in mandatory — Chromium
+      // throws "Malformed constraint: Cannot use both optional/mandatory and
+      // specific or advanced constraints" if you mix mandatory with top-level keys.
       const videoConstraints = {
         mandatory: {
           chromeMediaSource: 'desktop',
           chromeMediaSourceId: source.id,
+          maxWidth: maxWidth,
+          maxHeight: maxHeight,
+          maxFrameRate: config.fps,
         },
-        // Top-level modern constraints — Chromium honours these over the
-        // deprecated maxWidth/maxHeight/maxFrameRate in mandatory
-        width:     { ideal: maxWidth,    max: maxWidth },
-        height:    { ideal: maxHeight,   max: maxHeight },
-        frameRate: { ideal: config.fps,  max: config.fps },
-        cursor: 'never',
-      } as MediaTrackConstraints
+      } as unknown as MediaTrackConstraints
 
       let noAudio = false
 
