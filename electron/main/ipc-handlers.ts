@@ -529,6 +529,16 @@ export function setupIpcHandlers(
     try {
       const result = await auth.login(email, password)
       log.info('[IPC] auth:login result:', result.ok, result.error)
+      if (result.ok) {
+        // Expand and maximize the window now that the user is authenticated
+        const win = BrowserWindow.fromWebContents(_e.sender)
+        if (win) {
+          win.setResizable(true)
+          win.setMinimumSize(860, 580)
+          win.setSize(980, 660)
+          win.maximize()
+        }
+      }
       return result
     } catch (err) {
       log.error('[IPC] auth:login handler threw:', err)
