@@ -34,6 +34,19 @@ import { PerformanceManager } from './performance-manager'
 import { TrainerBridge } from './trainer-bridge'
 import type { MatchData } from './riot-local-api'
 import log from 'electron-log'
+import { setupMainProcessErrorHandlers } from './error-reporter'
+
+/** Human-readable label for a game identifier. */
+function gameLabel(game?: string | null): string {
+  if (game === 'cs2') return 'CS2'
+  if (game === 'deadlock') return 'Deadlock'
+  return 'Valorant'
+}
+
+/** Idle tray tooltip for a given game (or generic if unknown). */
+function idleTooltip(game?: string | null): string {
+  return `UpForge — ${gameLabel(game)} AI Coaching`
+}
 
 // Disable GPU acceleration in dev to prevent GPU process crashes on macOS
 if (!app.isPackaged) {
@@ -45,9 +58,7 @@ if (!app.isPackaged) {
 
 // Catch any floating promise rejections in the main process before they
 // crash Electron silently. Log them so they show up in support logs.
-process.on('unhandledRejection', (reason) => {
-  console.error('[Main] Unhandled promise rejection:', reason)
-})
+// Full error reporting is set up after AuthManager is ready (see below).
 
 // Enforce single instance — if another UpForge process is already running,
 // focus its window and quit this one immediately.
@@ -102,11 +113,15 @@ recorder.onStatusChange = (recording, error) => {
         silent: notifySilent()
       }).show()
     }
-    setTimeout(() => tray?.setToolTip('UpForge — Valorant AI Coaching'), 10_000)
+    setTimeout(() => tray?.setToolTip(idleTooltip()), 10_000)
   }
 }
 const riotLocalApi = new RiotLocalApi()
 const authManager = new AuthManager()
+
+// Set up crash/error reporting now that authManager is available
+setupMainProcessErrorHandlers(authManager)
+trainerBridge.setAuthManager(authManager)
 
 // OBS recorder callbacks — mirror the same tray/notification behaviour as desktopCapturer
 obsRecorder.onStatusChange = (recording, error) => {
@@ -122,7 +137,7 @@ obsRecorder.onStatusChange = (recording, error) => {
         silent: notifySilent()
       }).show()
     }
-    setTimeout(() => tray?.setToolTip('UpForge — Valorant AI Coaching'), 10_000)
+    setTimeout(() => tray?.setToolTip(idleTooltip()), 10_000)
   }
 }
 
@@ -827,7 +842,7 @@ function createTray(): void {
     tray!.setContextMenu(menu)
   }
 
-  tray.setToolTip('UpForge — Valorant AI Coaching')
+  tray.setToolTip('UpForge — AI Coaching')
   updateTrayMenu()
 
   // Single click toggles window (Mac: click fires before context menu on some versions)
@@ -904,7 +919,7 @@ function setupGameDetection(): void {
       `kills=${timeline?.playerKills?.length ?? 0} matchId=${timeline?.matchId ?? 'none'}`
     )
 
-    tray?.setToolTip('UpForge — Valorant AI Coaching')
+    tray?.setToolTip(idleTooltip(game))
 
     const MIN_DURATION_SECONDS = 120
     const MIN_FILE_SIZE_BYTES = 1024 * 1024
@@ -959,7 +974,7 @@ function setupGameDetection(): void {
 
     // Notify the user that the match recording has finished and upload is starting
     if (Notification.isSupported()) {
-      const agentLabel = agent ?? 'Valorant'
+      const agentLabel = agent ?? gameLabel(game)
       const mapLabel = map ? ` on ${map}` : ''
       new Notification({
         title: 'UpForge — Recording Complete',
@@ -1232,7 +1247,7 @@ function setupGameDetection(): void {
     if (cancelled) {
       logActivity('Match cancelled (game quit during loading)')
       console.log('[GameDetector] Game quit during loading — no recording')
-      tray?.setToolTip('UpForge — Valorant AI Coaching')
+      tray?.setToolTip(idleTooltip(game))
       return
     }
 
@@ -1242,7 +1257,7 @@ function setupGameDetection(): void {
     if (authOk && matchStartTime === null) {
       logActivity('Presence timeout — no match started, returning to idle')
       console.log('[GameDetector] Presence loop timed out without INGAME — not recording')
-      tray?.setToolTip('UpForge — Valorant AI Coaching')
+      tray?.setToolTip(idleTooltip(game))
       // Re-arm: if the game process is still alive, re-enter the detection loop
       // so we catch the next match the player queues into.
       await new Promise((r) => setTimeout(r, 5000))
@@ -1262,7 +1277,7 @@ function setupGameDetection(): void {
     if (filterByMode && modeConfident && gameMode && !recordedModes.includes(gameMode)) {
       console.log(`[GameDetector] Skipping recording — mode is ${gameMode} (not in recordedModes)`)
       logActivity(`Mode ${gameMode} not in recorded modes — skipped`)
-      tray?.setToolTip('UpForge — Valorant AI Coaching')
+      tray?.setToolTip(idleTooltip(game))
       return
     }
 
@@ -1273,35 +1288,32 @@ function setupGameDetection(): void {
     logActivity(`Match detected (${gameMode}${modeConfident ? '' : '?'}) — starting recording`)
     console.log(`[GameDetector] Match confirmed! gameMode=${gameMode} confident=${modeConfident} matchStartTime=${matchStartTime}`)
 
-    // Wire up onMatchEnded — fires when presence transitions INGAME → MENUS.
-    // This is the primary way we know the match ended (before the process dies).
-    riotLocalApi.onMatchEnded = async () => {
-      if (matchHandled) return
-      matchHandled = true
-      console.log('[RiotLocalApi] onMatchEnded fired — stopping recording')
-      logActivity('Match ended (presence) — stopping recording')
-      await handleMatchEnd(game)
-      // Restore main window and tear down the overlay now that the match is over.
-      // The overlay will be recreated if a new match starts.
-      if (mainWindow && !mainWindow.isDestroyed() && mainWindow.isMinimized()) mainWindow.restore()
-      destroyOverlay()
+    // Wire up onMatchEnded — fires when Riot presence transitions INGAME → MENUS.
+    // Only applicable to Valorant; CS2/Deadlock rely on the game process exiting.
+    if (game === 'valorant') {
+      riotLocalApi.onMatchEnded = async () => {
+        if (matchHandled) return
+        matchHandled = true
+        console.log('[RiotLocalApi] onMatchEnded fired — stopping recording')
+        logActivity('Match ended (presence) — stopping recording')
+        await handleMatchEnd(game)
+        // Restore main window and tear down the overlay now that the match is over.
+        if (mainWindow && !mainWindow.isDestroyed() && mainWindow.isMinimized()) mainWindow.restore()
+        destroyOverlay()
 
-      // VALORANT-Win64-Shipping.exe often stays alive between consecutive matches
-      // (the user returns to lobby and queues again without relaunching the client).
-      // In that case game-stopped never fires and game-started never re-fires, so
-      // nothing would detect the next match. Re-enter the full detection loop if
-      // the process is still running. This also covers back-to-back Deathmatch sessions.
-      await new Promise((r) => setTimeout(r, 5000)) // let the post-game lobby settle
-      if (await gameDetector.isMatchProcessRunning()) {
-        console.log('[GameDetector] Game still running after match — watching for next match')
-        logActivity('Watching for next match...')
-        gameDetector.emit('game-started', game)
+        // VALORANT-Win64-Shipping.exe often stays alive between consecutive matches.
+        // Re-enter the full detection loop if the process is still running.
+        await new Promise((r) => setTimeout(r, 5000))
+        if (await gameDetector.isMatchProcessRunning()) {
+          console.log('[GameDetector] Game still running after match — watching for next match')
+          logActivity('Watching for next match...')
+          gameDetector.emit('game-started', game)
+        }
       }
-    }
 
-    // Start tracking + recording
-    // Pass matchStartTime so the API can compute videoOffsetMs once we have recording start.
-    riotLocalApi.start(game, matchStartTime ?? undefined)
+      // Start Riot local API tracking (kill/round events, match ID, post-match details)
+      riotLocalApi.start(game, matchStartTime ?? undefined)
+    }
 
     tray?.setToolTip('UpForge — Starting recorder...')
     mainWindow?.webContents.send('recording:starting', { starting: true })
@@ -1343,7 +1355,7 @@ function setupGameDetection(): void {
         }).show()
       }
       // Reset tray tooltip after 10 seconds so it doesn't stay on "failed"
-      setTimeout(() => tray?.setToolTip('UpForge — Valorant AI Coaching'), 10_000)
+      setTimeout(() => tray?.setToolTip(idleTooltip(game)), 10_000)
       return
     }
     logActivity(`Recording started (${gameMode ?? 'unknown mode'}${currentActiveRecorder.wasNoAudio() ? ' — no audio' : ''})`)
@@ -1415,7 +1427,7 @@ function setupGameDetection(): void {
       cancelMatchWait = null
       waitingForMatch = false
       mainWindow?.webContents.send('recording:waiting-for-match', { waiting: false })
-      tray?.setToolTip('UpForge — Valorant AI Coaching')
+      tray?.setToolTip(idleTooltip(game))
       console.log('[GameDetector] Game quit before match — no recording to save')
       logActivity('Game quit before match started — nothing recorded')
       // Restore main window now that game is gone
@@ -1457,7 +1469,7 @@ async function resumePollForJob(
   jobId: string,
   context: { agent?: string; map?: string; game?: string }
 ): Promise<void> {
-  const { agent = null, map = null } = context
+  const { agent = null, map = null, game = 'valorant' } = context
   logActivity(`Resuming analysis poll for job ${jobId}`)
   tray?.setToolTip('UpForge — Analysing (resumed)…')
 
@@ -1479,9 +1491,9 @@ async function resumePollForJob(
         logActivity(`Resumed analysis ready${score != null ? ` — Score: ${score}/100` : ''}`)
         clearPendingJob()
         mainWindow?.webContents.send('dashboard:refresh')
-        tray?.setToolTip('UpForge — Valorant AI Coaching')
+        tray?.setToolTip(idleTooltip(game))
         if (Notification.isSupported()) {
-          const notifAgent = agent ?? 'Valorant'
+          const notifAgent = agent ?? gameLabel(game)
           const notifMap = map ? ` on ${map}` : ''
           const notifScore = score != null ? ` — Score: ${score}/100` : ''
           new Notification({
@@ -1493,7 +1505,7 @@ async function resumePollForJob(
       } else if (status.status === 'failed') {
         logActivity('Resumed analysis failed — retry from the dashboard')
         clearPendingJob()
-        tray?.setToolTip('UpForge — Valorant AI Coaching')
+        tray?.setToolTip(idleTooltip(game))
         if (Notification.isSupported()) {
           new Notification({
             title: 'UpForge — Analysis Failed',
@@ -1505,7 +1517,7 @@ async function resumePollForJob(
       } else if (Date.now() - startTime > 600_000) {
         logActivity('Resumed analysis poll timed out after 10 minutes')
         clearPendingJob()
-        tray?.setToolTip('UpForge — Valorant AI Coaching')
+        tray?.setToolTip(idleTooltip(game))
       } else {
         schedulePoll()
       }
@@ -1514,7 +1526,7 @@ async function resumePollForJob(
       if (pollFailCount >= 5) {
         logActivity('Resumed poll — lost connection to server')
         clearPendingJob()
-        tray?.setToolTip('UpForge — Valorant AI Coaching')
+        tray?.setToolTip(idleTooltip(game))
       } else {
         schedulePoll()
       }
@@ -1633,8 +1645,8 @@ async function doUploadAndAnalyse(
             enemy_score: lastScore?.enemyScore ?? null,
           })
           mainWindow?.webContents.send('dashboard:refresh')
-          tray?.setToolTip('UpForge — Valorant AI Coaching')
-          const notifAgent = agent ?? 'Valorant'
+          tray?.setToolTip(idleTooltip(game))
+          const notifAgent = agent ?? gameLabel(game)
           const notifMap = map ? ` on ${map}` : ''
           const notifScore = score != null ? ` — Score: ${score}/100` : ''
           new Notification({
@@ -1646,12 +1658,12 @@ async function doUploadAndAnalyse(
           logActivity('Analysis failed')
           clearPendingJob()
           send('post-game:upload-error', 'Analysis failed. Please try again.')
-          tray?.setToolTip('UpForge — Valorant AI Coaching')
+          tray?.setToolTip(idleTooltip(game))
         } else if (Date.now() - startTime > 600_000) {
           logActivity('Analysis timed out')
           clearPendingJob()
           send('post-game:upload-error', 'Analysis timed out.')
-          tray?.setToolTip('UpForge — Valorant AI Coaching')
+          tray?.setToolTip(idleTooltip(game))
         } else {
           schedulePoll()
         }
@@ -1661,7 +1673,7 @@ async function doUploadAndAnalyse(
         if (pollFailCount >= 5) {
           logActivity('Analysis polling failed — lost connection to server')
           send('post-game:upload-error', 'Lost connection while waiting for analysis. Check your internet connection.')
-          tray?.setToolTip('UpForge — Valorant AI Coaching')
+          tray?.setToolTip(idleTooltip(game))
         } else {
           schedulePoll()
         }
@@ -1673,7 +1685,7 @@ async function doUploadAndAnalyse(
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : 'Upload failed'
     logActivity(`Upload failed: ${msg}`)
-    tray?.setToolTip('UpForge — Valorant AI Coaching')
+    tray?.setToolTip(idleTooltip(game))
 
     // Quota exceeded — send upgrade prompt (no retry makes sense here)
     const isUpgradeError = err instanceof UpgradeRequiredError
