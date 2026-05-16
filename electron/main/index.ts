@@ -2004,7 +2004,9 @@ app.whenReady().then(async () => {
       // F9 was pressed but we're not recording — give the user visible feedback in overlay + notification
       log.warn('[Hotkey] F9 pressed but recorder is not active (recording=%s, startTime=%s)',
         recorder.isRecording(), currentRecordingStartTime)
-      logActivity('F9 pressed — not recording (start a Valorant match first)')
+      const currentGame = gameDetector.currentGame()
+      const gameLbl = currentGame ? gameLabel(currentGame) : 'a'
+      logActivity(`F9 pressed — not recording (start a ${gameLbl} match first)`)
       sendOverlayData('overlay:clip-not-recording', {})
       if (!isOverlayVisible()) {
         if (overlayAutoHideTimer) clearTimeout(overlayAutoHideTimer)

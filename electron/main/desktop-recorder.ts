@@ -179,15 +179,15 @@ export class DesktopRecorder {
       game,
     })
 
-    // Wait for first chunk to confirm recording is actually flowing (8s timeout)
+    // Wait for first chunk to confirm recording is actually flowing (15s timeout)
     await new Promise<void>((resolve, reject) => {
       const timeout = setTimeout(() => {
         if (this._pendingStart) {
           this._pendingStart = null
           if (this._writeStream) { this._writeStream.destroy(); this._writeStream = null }
-          reject(new Error('[DesktopRecorder] Recording did not start within 8 seconds'))
+          reject(new Error('[DesktopRecorder] Recording did not start within 15 seconds — check Screen Recording permissions and codec support'))
         }
-      }, 8_000)
+      }, 15_000)
 
       this._pendingStart = {
         resolve: () => { clearTimeout(timeout); resolve() },

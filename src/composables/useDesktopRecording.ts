@@ -96,11 +96,24 @@ export function useDesktopRecording() {
         audioBitsPerSecond: 128_000,
       })
 
+      let emptyChunkCount = 0
       mediaRecorder.ondataavailable = (e) => {
         if (e.data.size > 0) {
+          emptyChunkCount = 0
           e.data.arrayBuffer().then((buffer) => {
             window.api.desktopCapture.sendChunk(buffer)
           })
+        } else {
+          emptyChunkCount++
+          // 3+ consecutive empty chunks = capture is silently broken (common when
+          // macOS Screen Recording permission is not granted for this app).
+          if (emptyChunkCount >= 3) {
+            const hint = navigator.platform.startsWith('Mac')
+              ? 'Check Screen Recording permission: System Settings → Privacy & Security → Screen Recording'
+              : 'Screen capture returned no data — check display capture permissions'
+            window.api.desktopCapture.sendError(hint)
+            cleanup()
+          }
         }
       }
 
