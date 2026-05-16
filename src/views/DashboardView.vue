@@ -320,6 +320,9 @@
       <!-- ═══════════ CENTER: Recent matches ═══════════ -->
       <div class="flex flex-col gap-3 min-h-0 overflow-hidden">
 
+        <!-- Deadlock stats panel (Steam-linked stats) -->
+        <DeadlockStatsPanel v-if="isDeadlockUser" class="flex-shrink-0" />
+
         <!-- Deadlock demo upload panel (Deadlock users only) -->
         <DeadlockDemoPanel v-if="isDeadlockUser" class="flex-shrink-0" />
 
@@ -695,6 +698,7 @@ import { getAgentImage, getAgentRole, getAgentColor, getMapMinimap, getRankHexCo
 import { pendingTimeline } from '../stores/pendingTimeline'
 import { useAchievements } from '../composables/useAchievements'
 import DeadlockDemoPanel from '../components/DeadlockDemoPanel.vue'
+import DeadlockStatsPanel from '../components/DeadlockStatsPanel.vue'
 
 const router = useRouter()
 const achievements = useAchievements()

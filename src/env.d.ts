@@ -263,6 +263,32 @@ export interface AnalysisItem {
   created_at: string
 }
 
+export interface DeadlockProfileStats {
+  current_rank: { name: string; subtier: number | null; image: string | null } | null
+  summary: { wins: number; losses: number; win_rate: number; avg_kda: string }
+  recent_matches: Array<{
+    match_id: number
+    match_result: number
+    hero_name: string
+    hero_icon: string | null
+    hero_color: number[]
+    player_kills: number
+    player_deaths: number
+    player_assists: number
+    net_worth: number
+    match_duration_s: number
+  }>
+  hero_stats: Array<{
+    hero_id: number
+    hero_name: string
+    hero_icon: string | null
+    hero_color: number[]
+    matches_played: number
+    win_rate: number
+  }>
+  mmr_history: Array<{ rank: number | null }>
+}
+
 declare global {
   interface Window {
     api: {
@@ -474,6 +500,8 @@ declare global {
         }>
         openReplaysFolder: () => Promise<{ ok: boolean }>
         openAnalyze: () => Promise<{ ok: boolean }>
+        openDashboard: () => Promise<{ ok: boolean }>
+        getStats: () => Promise<DeadlockProfileStats | null>
       }
       on: (channel: string, callback: (...args: unknown[]) => void) => (() => void)
     }

@@ -137,6 +137,8 @@ const api = {
     listReplays: () => ipcRenderer.invoke('deadlock:list-replays'),
     openReplaysFolder: () => ipcRenderer.invoke('deadlock:open-replays-folder'),
     openAnalyze: () => ipcRenderer.invoke('deadlock:open-analyze'),
+    openDashboard: () => ipcRenderer.invoke('deadlock:open-dashboard'),
+    getStats: () => ipcRenderer.invoke('deadlock:get-stats'),
   },
   on: (channel: string, callback: (...args: unknown[]) => void): (() => void) => {
     const allowed = [

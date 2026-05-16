@@ -1025,4 +1025,21 @@ export function setupIpcHandlers(
     shell.openExternal('https://upforge.gg/deadlock/analyze')
     return { ok: true }
   })
+
+  ipcMain.handle('deadlock:open-dashboard', () => {
+    shell.openExternal('https://upforge.gg/deadlock')
+    return { ok: true }
+  })
+
+  // Fetch Deadlock profile stats from API (Steam-linked data)
+  ipcMain.handle('deadlock:get-stats', async () => {
+    try {
+      const api = auth.getApi()
+      if (!api) return null
+      const res = await api.get('/api/deadlock/profile')
+      return res.data?.profile ?? null
+    } catch {
+      return null
+    }
+  })
 }
