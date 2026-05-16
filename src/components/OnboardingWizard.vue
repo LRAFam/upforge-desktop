@@ -284,7 +284,7 @@ async function handleComplete() {
       onboardingComplete: true,
       trainerMouse: {
         ...current.trainerMouse,
-        game: (selectedGame.value === 'deadlock' ? 'valorant' : selectedGame.value),
+        game: selectedGame.value,
         dpi: dpi.value,
         sensitivity: sensitivity.value,
       },

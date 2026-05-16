@@ -104,7 +104,7 @@ export interface AppSettings {
   /** Mouse & trainer sensitivity settings */
   trainerMouse: {
     dpi: number
-    game: 'valorant' | 'cs2' | 'apex' | 'overwatch2' | 'custom'
+    game: 'valorant' | 'cs2' | 'deadlock' | 'apex' | 'overwatch2' | 'custom'
     sensitivity: number
     fov: number
     rawInput: boolean
