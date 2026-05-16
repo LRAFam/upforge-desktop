@@ -35,7 +35,9 @@ export function useAchievements() {
   async function unlock(id: string): Promise<boolean> {
     if (unlocked.value[id]) return false
     unlocked.value[id] = new Date().toISOString()
-    await window.api.settings.save({ achievements: unlocked.value }).catch(() => {})
+    // Spread to a plain object — Vue reactive proxies can't be serialized by
+    // Electron's structured clone algorithm and will throw "object could not be cloned".
+    await window.api.settings.save({ achievements: { ...unlocked.value } }).catch(() => {})
     return true
   }
 
