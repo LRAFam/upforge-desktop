@@ -34,7 +34,7 @@ import { PerformanceManager } from './performance-manager'
 import { TrainerBridge } from './trainer-bridge'
 import type { MatchData } from './riot-local-api'
 import log from 'electron-log'
-import { setupMainProcessErrorHandlers } from './error-reporter'
+import { setupMainProcessErrorHandlers, reportError } from './error-reporter'
 
 /** Human-readable label for a game identifier. */
 function gameLabel(game?: string | null): string {
@@ -353,6 +353,7 @@ async function extractKillClipsOnly(
       logActivity(`${label} clip saved (late extract) — Round ${round + 1} (${map ?? 'unknown'})`)
     } catch (err) {
       log.warn(`[LateClipExtract] ${trigger} clip failed:`, err)
+      reportError({ message: `[LateClipExtract] ${trigger} clip failed: ${(err as Error)?.message}`, stack: (err as Error)?.stack, component: 'desktop:LateClipExtract' })
     }
   }
 
@@ -375,6 +376,7 @@ async function extractKillClipsOnly(
       logActivity(`Clutch clip saved (late extract) — Round ${round + 1} (${map ?? 'unknown'})`)
     } catch (err) {
       log.warn('[LateClipExtract] Clutch clip failed:', err)
+      reportError({ message: `[LateClipExtract] Clutch clip failed: ${(err as Error)?.message}`, stack: (err as Error)?.stack, component: 'desktop:LateClipExtract' })
     }
   }
 
@@ -444,6 +446,7 @@ async function extractMatchClips(
       logActivity(`Saved hotkey clip (${map ?? 'unknown map'})`)
     } catch (err) {
       log.warn('[ClipExtract] Hotkey clip failed:', err)
+      reportError({ message: `[ClipExtract] Hotkey clip failed: ${(err as Error)?.message}`, stack: (err as Error)?.stack, component: 'desktop:ClipExtract' })
     }
   }
 
@@ -507,6 +510,7 @@ async function extractMatchClips(
         const msg = err instanceof Error ? err.message : String(err)
         log.warn('[ClipExtract] Kill clip failed:', msg)
         logActivity(`Clip extraction error (kill): ${msg.slice(0, 120)}`)
+        reportError({ message: `[ClipExtract] Kill clip failed: ${msg}`, stack: (err as Error)?.stack, component: 'desktop:ClipExtract' })
       }
     }
 
@@ -544,6 +548,7 @@ async function extractMatchClips(
         logActivity(`${label} clip saved — Round ${round + 1} (${map ?? 'unknown'})`)
       } catch (err) {
         log.warn(`[ClipExtract] ${trigger} clip failed:`, err)
+        reportError({ message: `[ClipExtract] ${trigger} clip failed: ${(err as Error)?.message}`, stack: (err as Error)?.stack, component: 'desktop:ClipExtract' })
       }
     }
 
@@ -575,6 +580,7 @@ async function extractMatchClips(
         logActivity(`Clutch clip saved — Round ${round + 1} (${map ?? 'unknown'})`)
       } catch (err) {
         log.warn('[ClipExtract] Clutch clip failed:', err)
+        reportError({ message: `[ClipExtract] Clutch clip failed: ${(err as Error)?.message}`, stack: (err as Error)?.stack, component: 'desktop:ClipExtract' })
       }
     }
   }
@@ -659,6 +665,7 @@ async function requestPostGameDebrief(opts: {
           const json = JSON.parse(data)
           if ((res.statusCode ?? 0) >= 400) {
             log.warn('[Debrief] API error:', res.statusCode, json.message)
+            reportError({ message: `[Debrief] API error ${res.statusCode}: ${json.message}`, component: 'desktop:Debrief', extra: { statusCode: res.statusCode } })
           } else {
             log.info(`[Debrief] Generated for ${riotName}#${riotTag} cost=$${json.estimated_cost_usd ?? 0}`)
             sendToWindow('post-game:debrief', { debrief: json.debrief_text, agent, map })
@@ -671,6 +678,7 @@ async function requestPostGameDebrief(opts: {
     })
     req.on('error', (err) => {
       log.warn('[Debrief] Request error:', err.message)
+      reportError({ message: `[Debrief] Request error: ${err.message}`, stack: err.stack, component: 'desktop:Debrief' })
       resolve()
     })
     req.write(body)
@@ -678,12 +686,13 @@ async function requestPostGameDebrief(opts: {
   })
 }
 
-function createMainWindow(): BrowserWindow {
+function createMainWindow(startAuthenticated: boolean): BrowserWindow {
   const win = new BrowserWindow({
-    width: 980,
-    height: 660,
-    minWidth: 860,
-    minHeight: 580,
+    width: startAuthenticated ? 980 : 860,
+    height: startAuthenticated ? 660 : 580,
+    minWidth: startAuthenticated ? 860 : 860,
+    minHeight: startAuthenticated ? 580 : 580,
+    resizable: !startAuthenticated,
     show: false,
     frame: false,
     titleBarStyle: 'hidden',
@@ -699,7 +708,7 @@ function createMainWindow(): BrowserWindow {
 
   win.on('ready-to-show', () => {
     win.show()
-    win.maximize()
+    if (startAuthenticated) win.maximize()
   })
 
   let rendererCrashCount = 0
@@ -1847,7 +1856,7 @@ app.whenReady().then(async () => {
   // Called when updater confirms no update pending (or errors out).
   // Close splash and open the main window.
   const launchMainApp = () => {
-    mainWindow = createMainWindow()
+    mainWindow = createMainWindow(authManager.isAuthenticated())
     markStartupComplete()
     setupGameDetection()
     // Small delay so main window is loaded before splash closes
@@ -2060,6 +2069,7 @@ app.whenReady().then(async () => {
   if (!hotkeyResults['save-clip']) {
     log.error('[Main] F9 (save-clip) hotkey failed to register — clips cannot be bookmarked via keyboard')
     logActivity('WARNING: F9 hotkey failed to register (may be in use by another app)')
+    reportError({ message: 'F9 (save-clip) hotkey failed to register — users cannot bookmark clips via keyboard', component: 'desktop:HotkeyManager' })
   }
   // Send hotkey registration status to any open window so the UI can show a warning
   const hotkeyStatus = {

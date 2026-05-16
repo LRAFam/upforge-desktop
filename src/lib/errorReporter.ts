@@ -2,6 +2,10 @@
  * Renderer-process error reporter for the UpForge desktop app.
  * Captures Vue errors and unhandled JS errors in the renderer,
  * then POSTs them to the UpForge API for monitoring.
+ *
+ * Usage in components/composables:
+ *   import { reportError } from '../lib/errorReporter'
+ *   reportError({ message: 'Upload failed', component: 'PostGameView', extra: { jobId } })
  */
 
 import type { App } from 'vue'
@@ -12,7 +16,7 @@ const APP_VERSION = import.meta.env['VITE_APP_VERSION'] || ''
 
 const reportedThisSession = new Set<string>()
 
-async function reportError(payload: {
+export async function reportError(payload: {
   message: string
   stack?: string
   component?: string
@@ -33,6 +37,7 @@ async function reportError(payload: {
     message: payload.message.slice(0, 1000),
     stack: payload.stack?.slice(0, 5000),
     component: payload.component,
+    url: window.location.hash || window.location.pathname,
     app_version: APP_VERSION,
     user_id: user?.id,
     user_email: user?.email,
@@ -88,4 +93,38 @@ export function setupRendererErrorReporter(app: App): void {
       stack: reason instanceof Error ? reason.stack : undefined,
     })
   })
+
+  // Intercept fetch to report API failures (4xx/5xx) from the renderer
+  const originalFetch = window.fetch
+  window.fetch = async function (...args) {
+    const response = await originalFetch.apply(this, args)
+
+    const url = typeof args[0] === 'string' ? args[0] : ((args[0] as Request)?.url ?? '')
+    const isOurApi = url.startsWith(API_URL) || url.startsWith('https://api.upforge.gg')
+    const isErrorEndpoint = url.includes('/api/errors')
+    // 401/403 are expected access-control responses, not bugs
+    const isExpectedAccessControl = response.status === 401 || response.status === 403
+
+    if (isOurApi && !isErrorEndpoint && !isExpectedAccessControl && response.status >= 400) {
+      const cloned = response.clone()
+      let responseBody: string | undefined
+      try {
+        const json = await cloned.json()
+        responseBody = json?.message || JSON.stringify(json)
+      } catch {
+        try { responseBody = await cloned.text() } catch { /* ignore */ }
+      }
+
+      try {
+        const pathname = new URL(url).pathname
+        reportError({
+          message: `API ${response.status}: ${pathname}`,
+          component: `fetch:${pathname}`,
+          extra: { status: response.status, endpoint: pathname, response_body: responseBody?.slice(0, 500) },
+        })
+      } catch { /* ignore URL parse errors */ }
+    }
+
+    return response
+  }
 }
