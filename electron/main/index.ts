@@ -948,8 +948,8 @@ function setupGameDetection(): void {
 
     const MIN_DURATION_SECONDS = 120
     const MIN_FILE_SIZE_BYTES = 1024 * 1024
-    // AI service limit for S3 desktop recordings is 2GB — reject early with a helpful message
-    const MAX_FILE_SIZE_BYTES = 2 * 1024 * 1024 * 1024
+    // Full competitive recordings can reach ~3 GB — allow up to 4 GB
+    const MAX_FILE_SIZE_BYTES = 4 * 1024 * 1024 * 1024
 
     if (recordingDuration > 0 && recordingDuration < MIN_DURATION_SECONDS) {
       console.log(`[GameDetector] Recording too short (${recordingDuration}s) — ignoring`)
@@ -1106,7 +1106,7 @@ function setupGameDetection(): void {
 
       if (fileSize > MAX_FILE_SIZE_BYTES) {
         const sizeGB = (fileSize / (1024 * 1024 * 1024)).toFixed(1)
-        const errorMsg = `Recording is too large (${sizeGB} GB). Try lowering your recording quality/resolution in Settings, or enable auto-delete so only the relevant portion is kept.`
+        const errorMsg = `Recording is too large (${sizeGB} GB). Maximum supported size is 4 GB. Try lowering your recording quality or resolution in Settings.`
         log.warn(`[GameDetector] Recording too large to analyse: ${sizeGB} GB`)
         logActivity(`Recording too large (${sizeGB} GB) — analysis skipped`)
         sendToWindow('post-game:upload-error', errorMsg)
