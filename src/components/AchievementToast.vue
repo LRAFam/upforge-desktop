@@ -7,7 +7,7 @@
       <div class="px-4 py-3.5">
         <!-- Row 1: label -->
         <div class="flex items-center justify-between mb-2.5">
-          <span class="text-[9px] font-black uppercase tracking-[0.18em] text-[#ff4655]">🏆 Achievement Unlocked</span>
+          <span class="text-[9px] font-black uppercase tracking-[0.18em] text-[#ff4655]">Achievement Unlocked</span>
           <button
             class="text-gray-600 hover:text-gray-400 transition-colors leading-none"
             @click="dismiss"
@@ -20,7 +20,7 @@
 
         <!-- Row 2: icon + name + description -->
         <div class="flex items-center gap-3">
-          <span class="text-2xl leading-none flex-shrink-0">{{ achievement.icon }}</span>
+          <span class="flex-shrink-0 flex items-center justify-center text-[#ff4655]" v-html="achievement.icon" />
           <div class="min-w-0">
             <div class="text-sm font-black text-white leading-tight">{{ achievement.name }}</div>
             <div class="text-xs text-gray-400 leading-snug mt-0.5">{{ achievement.description }}</div>

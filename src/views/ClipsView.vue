@@ -112,7 +112,7 @@
             </div>
             <!-- AI Tips badge (top-right) -->
             <div v-if="clip.suggestion" class="absolute top-1.5 right-1.5">
-              <span class="px-1.5 py-0.5 rounded text-xs font-semibold bg-orange-500/80 text-white backdrop-blur-sm">🤖 AI</span>
+              <span class="px-1.5 py-0.5 rounded text-xs font-semibold bg-orange-500/80 text-white backdrop-blur-sm flex items-center gap-1"><svg class="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="2"/><rect x="9" y="9" width="6" height="6"/><path d="M15 2v2M9 2v2M2 15h2M2 9h2M22 15h-2M22 9h-2M15 22v-2M9 22v-2"/></svg> AI</span>
             </div>
             <!-- Bottom gradient overlay with always-visible action buttons -->
             <div class="absolute bottom-0 left-0 right-0 h-10 bg-gradient-to-t from-black/80 to-transparent flex items-end justify-between px-1.5 pb-1.5" @click.stop>
@@ -160,8 +160,9 @@
               <span class="ml-auto text-xs text-gray-600">{{ timeAgo(clip.savedAt) }}</span>
             </div>
             <!-- AI coaching tip preview -->
-            <div v-if="clip.suggestion" class="mt-2 p-1.5 bg-orange-500/10 border border-orange-500/20 rounded text-xs text-orange-300/80 line-clamp-2">
-              💡 {{ clip.suggestion }}
+            <div v-if="clip.suggestion" class="mt-2 p-1.5 bg-orange-500/10 border border-orange-500/20 rounded text-xs text-orange-300/80 line-clamp-2 flex items-start gap-1.5">
+              <svg class="w-3.5 h-3.5 flex-shrink-0 mt-px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><line x1="9" y1="18" x2="15" y2="18"/><line x1="10" y1="22" x2="14" y2="22"/><path d="M15.09 14c.18-.98.65-1.74 1.41-2.5A4.65 4.65 0 0 0 18 8 6 6 0 0 0 6 8c0 1 .23 2.23 1.5 3.5A4.61 4.61 0 0 1 8.91 14"/></svg>
+              {{ clip.suggestion }}
             </div>
             <div v-if="clip.coachingTags?.length" class="flex flex-wrap gap-1 mt-1.5">
               <span

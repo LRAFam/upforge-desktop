@@ -3,6 +3,9 @@ import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
 import type { TrainingHistory, CoachingDrill, TrainingBenchmark } from '../env'
 import { ACHIEVEMENTS, useAchievements } from '../composables/useAchievements'
+
+const ICON_LOCK = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" class="w-4 h-4"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>`
+const ICON_TROPHY_SM = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" class="w-4 h-4"><path d="M6 9H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h2"/><path d="M18 9h2a2 2 0 0 0 2-2V5a2 2 0 0 0-2-2h-2"/><path d="M4 22h16"/><path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22"/><path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22"/><path d="M18 2H6v7a6 6 0 0 0 12 0V2z"/></svg>`
 import { useTrainerResultStore } from '../stores/trainerResult'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -1096,7 +1099,7 @@ const CATEGORY_ICON: Record<string, string> = {
                 {{ Math.abs(scoreDelta(lastResult)!) }} vs previous
               </span>
               <span v-if="isPB && lastResult.score > 0" class="text-xs font-bold text-yellow-400 flex items-center gap-1 mt-0.5">
-                🏆 Personal Best!
+                <span v-html="ICON_TROPHY_SM" /> Personal Best!
               </span>
             </div>
 
@@ -1724,7 +1727,7 @@ const CATEGORY_ICON: Record<string, string> = {
               <div class="flex items-center gap-2 px-4 py-2.5 border-b border-white/[0.05]">
                 <span class="text-[9px] font-black uppercase tracking-[0.18em] text-gray-500">Personal Records</span>
                 <div class="flex-1 h-px bg-white/[0.04]" />
-                <span class="text-sm leading-none">🏆</span>
+                <span class="text-yellow-500/70 flex items-center" v-html="ICON_TROPHY_SM" />
               </div>
               <div class="flex divide-x divide-white/[0.05]">
                 <div
@@ -1970,8 +1973,9 @@ const CATEGORY_ICON: Record<string, string> = {
                   :class="isUnlocked(ach.id) ? 'bg-white/[0.02]' : 'bg-white/[0.01]'"
                   :title="isUnlocked(ach.id) ? ach.description : ach.secret ? '???' : ach.description"
                 >
-                  <span class="text-lg" :class="isUnlocked(ach.id) ? '' : 'grayscale opacity-30'">
-                    {{ ach.secret && !isUnlocked(ach.id) ? '🔒' : ach.icon }}
+                  <span class="flex items-center justify-center" :class="isUnlocked(ach.id) ? '' : 'grayscale opacity-30'">
+                    <span v-if="ach.secret && !isUnlocked(ach.id)" v-html="ICON_LOCK" />
+                    <span v-else v-html="ach.icon" />
                   </span>
                   <span class="text-[8px] font-bold leading-tight" :class="isUnlocked(ach.id) ? 'text-white' : 'text-gray-700'">
                     {{ ach.secret && !isUnlocked(ach.id) ? '???' : ach.name }}

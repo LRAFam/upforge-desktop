@@ -410,15 +410,18 @@
         </p>
       </div>
       <div v-else-if="audioStatus !== null && audioStatus.winAudioMode === false" class="mt-1.5 px-0.5 space-y-1">
-        <p class="text-xs text-amber-400/80">
-          <template v-if="isMac">
-            ⚠️ No virtual audio device found. Install
-            <a href="https://existential.audio/blackhole/" target="_blank" class="underline hover:text-amber-300">BlackHole</a>
-            to capture desktop/game audio.
-          </template>
-          <template v-else>
-            ⚠️ Desktop audio capture unavailable. UpForge can attempt to auto-fix this for you.
-          </template>
+        <p class="text-xs text-amber-400/80 flex items-start gap-1.5">
+          <svg class="w-3.5 h-3.5 flex-shrink-0 mt-px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+          <span>
+            <template v-if="isMac">
+              No virtual audio device found. Install
+              <a href="https://existential.audio/blackhole/" target="_blank" class="underline hover:text-amber-300">BlackHole</a>
+              to capture desktop/game audio.
+            </template>
+            <template v-else>
+              Desktop audio capture unavailable. UpForge can attempt to auto-fix this for you.
+            </template>
+          </span>
         </p>
         <button
           v-if="!isMac"
@@ -435,11 +438,13 @@
           Re-check Audio Devices
         </button>
       </div>
-      <p v-else-if="audioStatus !== null && audioStatus.winAudioMode === 'desktop-capturer'" class="text-xs text-green-500/80 mt-1.5 px-0.5">
-        ✓ Built-in audio capture active <span class="text-gray-600">(system audio via browser engine)</span>.
+      <p v-else-if="audioStatus !== null && audioStatus.winAudioMode === 'desktop-capturer'" class="text-xs text-green-500/80 mt-1.5 px-0.5 flex items-center gap-1">
+        <svg class="w-3 h-3 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+        Built-in audio capture active <span class="text-gray-600">(system audio via browser engine)</span>.
       </p>
-      <p v-else-if="audioStatus !== null && audioStatus.winAudioMode" class="text-xs text-green-500/80 mt-1.5 px-0.5">
-        ✓ Desktop audio capture ready
+      <p v-else-if="audioStatus !== null && audioStatus.winAudioMode" class="text-xs text-green-500/80 mt-1.5 px-0.5 flex items-center gap-1">
+        <svg class="w-3 h-3 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+        Desktop audio capture ready
         <span v-if="audioStatus.winAudioMode?.startsWith('dshow:')" class="text-gray-600"> (Stereo Mix)</span>
         <span v-else-if="audioStatus.winAudioMode?.startsWith('wasapi')" class="text-gray-600"> (WASAPI loopback)</span>
         <span v-else-if="audioStatus.winAudioMode?.startsWith('avfoundation:')" class="text-gray-600"> (virtual loopback)</span>.
@@ -541,8 +546,9 @@
         <div class="flex items-center justify-between px-3 py-2.5">
           <div>
             <p class="text-xs text-gray-300">Toggle overlay</p>
-            <p class="text-xs mt-0.5" :class="hotkeyStatus['toggle-overlay'] === false ? 'text-yellow-500/70' : 'text-gray-600'">
-              {{ hotkeyStatus['toggle-overlay'] === false ? '⚠ Failed to register — key may be in use' : 'Show/hide the in-game overlay' }}
+            <p class="text-xs mt-0.5 flex items-center gap-1" :class="hotkeyStatus['toggle-overlay'] === false ? 'text-yellow-500/70' : 'text-gray-600'">
+              <svg v-if="hotkeyStatus['toggle-overlay'] === false" class="w-3 h-3 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+              {{ hotkeyStatus['toggle-overlay'] === false ? 'Failed to register — key may be in use' : 'Show/hide the in-game overlay' }}
             </p>
           </div>
           <button
@@ -562,8 +568,9 @@
         <div class="flex items-center justify-between px-3 py-2.5">
           <div>
             <p class="text-xs text-gray-300">Take screenshot</p>
-            <p class="text-xs mt-0.5" :class="hotkeyStatus['take-screenshot'] === false ? 'text-yellow-500/70' : 'text-gray-600'">
-              {{ hotkeyStatus['take-screenshot'] === false ? '⚠ Failed to register — key may be in use' : 'Save a screenshot during a match' }}
+            <p class="text-xs mt-0.5 flex items-center gap-1" :class="hotkeyStatus['take-screenshot'] === false ? 'text-yellow-500/70' : 'text-gray-600'">
+              <svg v-if="hotkeyStatus['take-screenshot'] === false" class="w-3 h-3 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+              {{ hotkeyStatus['take-screenshot'] === false ? 'Failed to register — key may be in use' : 'Save a screenshot during a match' }}
             </p>
           </div>
           <button
@@ -779,9 +786,9 @@
           <div class="flex-1 min-w-0 pr-3">
             <p class="text-xs text-gray-400">Match Detection</p>
             <p v-if="riotApiResult === null" class="text-xs text-gray-600 mt-0.5">Open Valorant and start a match, then test</p>
-            <p v-else-if="riotApiResult.processRunning && riotApiResult.logGameMode" class="text-xs text-green-500/70 mt-0.5 truncate">✓ In-game · {{ riotApiResult.logGameMode }} (log)</p>
-            <p v-else-if="riotApiResult.processRunning && riotApiResult.gameMode" class="text-xs text-green-500/70 mt-0.5 truncate">✓ In-game · {{ riotApiResult.gameMode }} (api)</p>
-            <p v-else-if="riotApiResult.processRunning" class="text-xs text-yellow-500/70 mt-0.5">✓ In-game process detected · mode unknown</p>
+            <p v-else-if="riotApiResult.processRunning && riotApiResult.logGameMode" class="text-xs text-green-500/70 mt-0.5 truncate flex items-center gap-1"><svg class="w-3 h-3 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg> In-game · {{ riotApiResult.logGameMode }} (log)</p>
+            <p v-else-if="riotApiResult.processRunning && riotApiResult.gameMode" class="text-xs text-green-500/70 mt-0.5 truncate flex items-center gap-1"><svg class="w-3 h-3 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg> In-game · {{ riotApiResult.gameMode }} (api)</p>
+            <p v-else-if="riotApiResult.processRunning" class="text-xs text-yellow-500/70 mt-0.5 flex items-center gap-1"><svg class="w-3 h-3 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg> In-game process detected · mode unknown</p>
             <p v-else class="text-xs text-gray-600 mt-0.5">Not in a match · process={{ riotApiResult.processRunning }}</p>
           </div>
           <button
@@ -824,7 +831,7 @@
               :class="updatePhase === 'checking' ? 'text-gray-500 cursor-default' : 'text-gray-600 hover:text-gray-400'"
               :disabled="updatePhase === 'checking'"
               @click="checkForUpdates"
-            >{{ updatePhase === 'checking' ? 'Checking...' : updateUpToDate ? '✓ Up to date' : 'Check for updates' }}</button>
+            >{{ updatePhase === 'checking' ? 'Checking...' : updateUpToDate ? 'Up to date' : 'Check for updates' }}</button>
             <span v-else-if="updatePhase === 'downloading'" class="text-xs text-amber-500/80">Downloading {{ updatePercent }}%</span>
             <button
               v-else-if="updatePhase === 'ready'"

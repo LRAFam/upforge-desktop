@@ -165,7 +165,8 @@
                     class="w-full h-full object-contain opacity-80 group-hover:opacity-100 transition-opacity"
                   />
                   <div v-else class="w-full h-full flex items-center justify-center">
-                    <span class="text-[10px]">{{ event.type === 'kill' ? '🎯' : '💀' }}</span>
+                    <svg v-if="event.type === 'kill'" class="w-3.5 h-3.5 text-teal-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4.5"/><circle cx="12" cy="12" r="1.2" fill="currentColor" stroke="none"/></svg>
+                    <svg v-else class="w-3.5 h-3.5 text-red-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
                   </div>
                 </div>
 
@@ -182,11 +183,12 @@
                        class="w-5 h-5 rounded flex items-center justify-center"
                        :class="event.weapon === 'Ultimate' ? 'bg-yellow-500/20' : 'bg-purple-500/20'">
                     <img v-if="getAbilityKillIcon(event)" :src="getAbilityKillIcon(event)" class="w-4 h-4 object-contain" />
-                    <span v-else class="text-[8px]" :class="event.weapon === 'Ultimate' ? 'text-yellow-400' : 'text-purple-400'">
-                      {{ event.weapon === 'Ultimate' ? 'X' : '⚡' }}
-                    </span>
+                    <template v-else-if="event.weapon === 'Ultimate'">
+                      <span class="text-[8px]" :class="'text-yellow-400'">X</span>
+                    </template>
+                    <svg v-else class="w-3.5 h-3.5 text-purple-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2 4.09 12.96A1 1 0 0 0 5 14.5h6.5L10 22l10-11h-7z"/></svg>
                   </div>
-                  <span v-else-if="event.weapon === 'Spike'" class="text-[9px] text-orange-400">💣</span>
+                  <span v-else-if="event.weapon === 'Spike'" class="text-orange-400"><svg class="w-3 h-3" viewBox="0 0 24 24" fill="currentColor"><polygon points="12,2 20,12 12,22 4,12"/></svg></span>
                   <span v-else-if="event.weapon === 'Fall'" class="text-[9px] text-gray-500">⬇</span>
                   <svg v-else class="w-3 h-3 text-gray-700" viewBox="0 0 16 16" fill="currentColor">
                     <circle cx="8" cy="6" r="4"/><path d="M6 11h4v4H6z"/>
@@ -278,7 +280,8 @@
                   class="w-full h-full object-contain"
                 />
                 <div v-else class="w-full h-full flex items-center justify-center text-base">
-                  {{ activeEventNotif.type === 'kill' ? '🎯' : '💀' }}
+                  <svg v-if="activeEventNotif.type === 'kill'" class="w-4 h-4 text-teal-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4.5"/><circle cx="12" cy="12" r="1.2" fill="currentColor" stroke="none"/></svg>
+                  <svg v-else class="w-4 h-4 text-red-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
                 </div>
               </div>
               <!-- Weapon icon + label -->
@@ -531,7 +534,10 @@
                     :src="getAgentImage(agentByPuuid(event.killerPuuid))"
                     class="w-full h-full object-contain"
                   />
-                  <div v-else class="w-full h-full flex items-center justify-center text-xs">{{ event.type === 'kill' ? '🎯' : '💀' }}</div>
+                  <div v-else class="w-full h-full flex items-center justify-center text-xs">
+                    <svg v-if="event.type === 'kill'" class="w-3.5 h-3.5 text-teal-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4.5"/><circle cx="12" cy="12" r="1.2" fill="currentColor" stroke="none"/></svg>
+                    <svg v-else class="w-3.5 h-3.5 text-red-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                  </div>
                 </div>
 
                 <!-- Weapon / ability icon -->
@@ -553,11 +559,12 @@
                       :src="getAbilityKillIcon(event)"
                       class="w-5 h-5 object-contain"
                     />
-                    <span v-else class="text-xs" :class="event.weapon === 'Ultimate' ? 'text-yellow-400' : 'text-purple-400'">
-                      {{ event.weapon === 'Ultimate' ? 'X' : '⚡' }}
-                    </span>
+                    <template v-else-if="event.weapon === 'Ultimate'">
+                      <span class="text-xs text-yellow-400">X</span>
+                    </template>
+                    <svg v-else class="w-4 h-4 text-purple-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2 4.09 12.96A1 1 0 0 0 5 14.5h6.5L10 22l10-11h-7z"/></svg>
                   </div>
-                  <span v-else-if="event.weapon === 'Spike'" class="text-xs text-orange-400">💣</span>
+                  <span v-else-if="event.weapon === 'Spike'" class="text-orange-400"><svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="currentColor"><polygon points="12,2 20,12 12,22 4,12"/></svg></span>
                   <svg v-else class="w-3 h-3 text-gray-600" viewBox="0 0 16 16" fill="currentColor"><circle cx="8" cy="6" r="3"/><path d="M5 11h6v4H5z"/></svg>
                 </div>
 
@@ -574,7 +581,9 @@
                     :src="getAgentImage(agentByPuuid(event.victimPuuid))"
                     class="w-full h-full object-contain opacity-75"
                   />
-                  <div v-else class="w-full h-full flex items-center justify-center text-xs">💀</div>
+                  <div v-else class="w-full h-full flex items-center justify-center text-xs">
+                    <svg class="w-3.5 h-3.5 text-red-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                  </div>
                 </div>
 
                 <!-- Victim name + kill context -->

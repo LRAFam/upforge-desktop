@@ -78,7 +78,7 @@
           class="step-pip"
           :class="{ 'step-pip--active': i === step, 'step-pip--done': i < step }"
         >
-          <span v-if="i < step" class="pip-check">✓</span>
+          <span v-if="i < step" class="pip-check"><svg class="w-2.5 h-2.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span>
           <span v-else class="pip-num">{{ i }}</span>
         </div>
         <div class="step-track">
