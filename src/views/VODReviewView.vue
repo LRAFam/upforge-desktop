@@ -98,11 +98,13 @@
             >
               <!-- Spike plant/defuse events -->
               <template v-if="isSpikeEvent(event)">
-                <div class="w-4 h-4 flex-shrink-0 flex items-center justify-center rounded"
+                <div class="w-4 h-4 flex-shrink-0 flex items-center justify-center rounded overflow-hidden"
                      :class="event.type === 'plant' ? 'bg-orange-500/20' : event.type === 'defuse' ? 'bg-cyan-500/20' : 'bg-yellow-500/20'">
-                  <svg class="w-2.5 h-2.5" :class="event.type === 'plant' ? 'text-orange-400' : event.type === 'defuse' ? 'text-cyan-400' : 'text-yellow-400'" fill="currentColor" viewBox="0 0 20 20">
-                    <path d="M10 2a8 8 0 100 16A8 8 0 0010 2zm0 3a1 1 0 011 1v4a1 1 0 01-2 0V6a1 1 0 011-1zm0 8a1.5 1.5 0 100-3 1.5 1.5 0 000 3z"/>
-                  </svg>
+                  <img
+                    :src="event.type === 'plant' ? iconExplosionWin : event.type === 'defuse' ? iconDiffuseWin : iconExplosionLoss"
+                    class="w-3.5 h-3.5 object-contain"
+                    :class="event.type === 'plant' ? 'opacity-90' : event.type === 'defuse' ? 'opacity-90' : 'opacity-90'"
+                  />
                 </div>
                 <div class="flex-1 min-w-0">
                   <p class="text-[10px] font-bold leading-tight"
@@ -455,9 +457,12 @@
               {{ roundOutcomeLabel(selectedRound) }}
             </span>
             <div class="flex items-center gap-1.5 ml-1">
-              <span v-if="selectedRound.spikePlanted" class="text-[9px] font-semibold text-orange-400 bg-orange-500/10 px-1.5 py-px rounded">PLANTED</span>
-              <span v-if="selectedRound.spikeDefused" class="text-[9px] font-semibold text-cyan-400 bg-cyan-500/10 px-1.5 py-px rounded">DEFUSED</span>
-              <span v-if="selectedRound.spikeDetonated" class="text-[9px] font-semibold text-red-400 bg-red-500/10 px-1.5 py-px rounded">DETONATED</span>
+              <span v-if="selectedRound.spikePlanted" class="inline-flex items-center gap-1 text-[9px] font-semibold text-orange-400 bg-orange-500/10 px-1.5 py-px rounded">
+                <img :src="iconExplosionWin" class="w-2.5 h-2.5 object-contain" alt="" />PLANTED</span>
+              <span v-if="selectedRound.spikeDefused" class="inline-flex items-center gap-1 text-[9px] font-semibold text-cyan-400 bg-cyan-500/10 px-1.5 py-px rounded">
+                <img :src="iconDiffuseWin" class="w-2.5 h-2.5 object-contain" alt="" />DEFUSED</span>
+              <span v-if="selectedRound.spikeDetonated" class="inline-flex items-center gap-1 text-[9px] font-semibold text-red-400 bg-red-500/10 px-1.5 py-px rounded">
+                <img :src="iconExplosionLoss" class="w-2.5 h-2.5 object-contain" alt="" />DETONATED</span>
             </div>
             <div class="flex-1" />
             <button class="text-gray-600 hover:text-gray-300 transition-colors text-base leading-none" @click="selectedRound = null">✕</button>
@@ -475,11 +480,12 @@
               <template v-if="isSpikeEvent(event)">
                 <div class="w-1 h-6 rounded-full flex-shrink-0"
                      :class="event.type === 'plant' ? 'bg-orange-500/70' : event.type === 'defuse' ? 'bg-cyan-500/70' : 'bg-yellow-500/70'" />
-                <div class="w-7 h-7 rounded flex items-center justify-center flex-shrink-0"
+                <div class="w-7 h-7 rounded flex items-center justify-center flex-shrink-0 overflow-hidden"
                      :class="event.type === 'plant' ? 'bg-orange-500/20' : event.type === 'defuse' ? 'bg-cyan-500/20' : 'bg-yellow-500/20'">
-                  <svg class="w-4 h-4" :class="event.type === 'plant' ? 'text-orange-400' : event.type === 'defuse' ? 'text-cyan-400' : 'text-yellow-400'" fill="currentColor" viewBox="0 0 20 20">
-                    <path d="M10 2a8 8 0 100 16A8 8 0 0010 2zm0 3a1 1 0 011 1v4a1 1 0 01-2 0V6a1 1 0 011-1zm0 8a1.5 1.5 0 100-3 1.5 1.5 0 000 3z"/>
-                  </svg>
+                  <img
+                    :src="event.type === 'plant' ? iconExplosionWin : event.type === 'defuse' ? iconDiffuseWin : iconExplosionLoss"
+                    class="w-5 h-5 object-contain"
+                  />
                 </div>
                 <div class="flex-1 min-w-0">
                   <p class="text-xs font-semibold"
