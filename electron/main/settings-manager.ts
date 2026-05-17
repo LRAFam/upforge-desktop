@@ -28,6 +28,8 @@ export interface AppSettings {
   cachedEncoder: string | null
   /** Whether ddagrab was available last launch */
   cachedUseDdagrab: boolean | null
+  /** Override path for the CS2 demo directory (undefined = auto-detect via Steam registry) */
+  cs2DemoDir?: string
   /** Developer / admin mode — unlocked by tapping the version number 5 times in Settings */
   devModeEnabled: boolean
   /** Use OBS WebSocket for recording (Pro tier) instead of desktopCapturer */

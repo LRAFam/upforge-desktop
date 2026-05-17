@@ -1052,4 +1052,10 @@ export function setupIpcHandlers(
       return null
     }
   })
+
+  ipcMain.handle('cs2:detect-demo-dir', async () => {
+    const { detectCS2DemoDir } = await import('./cs2-demo-finder')
+    const dir = await detectCS2DemoDir()
+    return { dir }
+  })
 }

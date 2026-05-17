@@ -35,6 +35,8 @@ import { TrainerBridge } from './trainer-bridge'
 import type { MatchData } from './riot-local-api'
 import log from 'electron-log'
 import { setupMainProcessErrorHandlers, reportError } from './error-reporter'
+import { findLatestCS2Demo } from './cs2-demo-finder'
+import { CS2DemoUploader } from './cs2-demo-uploader'
 
 /** Human-readable label for a game identifier. */
 function gameLabel(game?: string | null): string {
@@ -1001,6 +1003,79 @@ function setupGameDetection(): void {
         title: 'UpForge — Recording Complete',
         body: `${agentLabel}${mapLabel} — uploading for AI analysis…`
       }).show()
+    }
+
+    // CS2 demo auto-pull — runs asynchronously and never blocks the main upload flow
+    if (game === 'cs2') {
+      ;(async () => {
+        try {
+          const cs2DemoDir = settingsManager?.get().cs2DemoDir
+          log.info(`[CS2Demo] Match ended — searching for demo (startTime=${matchSessionStart}, dir=${cs2DemoDir ?? 'auto'})`)
+
+          const sendToWindow = (channel: string, payload?: unknown) => {
+            if (!thisPostGameWindow.isDestroyed()) thisPostGameWindow.webContents.send(channel, payload)
+          }
+
+          const demoResult = await findLatestCS2Demo(matchSessionStart, cs2DemoDir)
+
+          if (!demoResult.found || !demoResult.demoPath) {
+            log.info('[CS2Demo] No demo found — user may need cl_demo_auto_recording 1')
+            sendToWindow('post-game:demo-status', { status: 'not-found' })
+            return
+          }
+
+          const { demoPath } = demoResult
+          log.info(`[CS2Demo] Demo found: ${demoPath} — starting upload`)
+          sendToWindow('post-game:demo-status', { status: 'uploading', path: demoPath })
+
+          const uploader = new CS2DemoUploader(authManager)
+          const { jobId } = await uploader.upload({
+            demoPath,
+            steamId: null,
+            onProgress: (pct) => sendToWindow('post-game:demo-progress', pct),
+          })
+
+          log.info(`[CS2Demo] Upload complete — jobId=${jobId}, starting poll`)
+          sendToWindow('post-game:demo-status', { status: 'analysing', jobId })
+
+          // Poll every 10s with exponential backoff up to 30s, for up to 10 minutes
+          const MAX_POLL_MS = 10 * 60 * 1000
+          const pollStart = Date.now()
+          let interval = 10_000
+
+          while (Date.now() - pollStart < MAX_POLL_MS) {
+            await new Promise<void>((r) => setTimeout(r, interval))
+            interval = Math.min(interval * 1.5, 30_000)
+
+            try {
+              const { status, error } = await uploader.pollStatus(jobId)
+              log.info(`[CS2Demo] Poll status=${status}`)
+
+              if (status === 'completed') {
+                log.info(`[CS2Demo] Analysis complete — jobId=${jobId}`)
+                sendToWindow('post-game:demo-status', { status: 'complete', jobId })
+                return
+              }
+              if (status === 'failed') {
+                log.warn(`[CS2Demo] Analysis failed — jobId=${jobId} error=${error}`)
+                sendToWindow('post-game:demo-status', { status: 'error', error: error ?? 'Analysis failed' })
+                return
+              }
+            } catch (pollErr) {
+              log.warn('[CS2Demo] Poll error (non-fatal):', pollErr)
+            }
+          }
+
+          log.warn(`[CS2Demo] Polling timed out after 10 minutes — jobId=${jobId}`)
+        } catch (err) {
+          log.warn('[CS2Demo] Demo upload flow error:', err)
+          try {
+            if (!thisPostGameWindow.isDestroyed()) {
+              thisPostGameWindow.webContents.send('post-game:demo-status', { status: 'error', error: 'Demo upload failed' })
+            }
+          } catch { /* window may already be closed */ }
+        }
+      })().catch(() => { /* swallow — never propagate to caller */ })
     }
 
     thisPostGameWindow.webContents.once('did-finish-load', async () => {

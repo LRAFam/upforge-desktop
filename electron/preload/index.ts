@@ -140,6 +140,9 @@ const api = {
     openDashboard: () => ipcRenderer.invoke('deadlock:open-dashboard'),
     getStats: () => ipcRenderer.invoke('deadlock:get-stats'),
   },
+  cs2: {
+    detectDemoDir: () => ipcRenderer.invoke('cs2:detect-demo-dir'),
+  },
   on: (channel: string, callback: (...args: unknown[]) => void): (() => void) => {
     const allowed = [
       'post-game:upload-start',
@@ -178,6 +181,8 @@ const api = {
       'desktop-recording:stop',
       'obs:replay-saved',
       'trainer:session-result',
+      'post-game:demo-status',
+      'post-game:demo-progress',
     ]
     if (allowed.includes(channel)) {
       const handler = (_e: Electron.IpcRendererEvent, ...args: unknown[]) => callback(...args)

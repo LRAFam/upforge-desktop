@@ -454,6 +454,36 @@
         </template>
       </div>
 
+      <!-- CS2 Demo status row -->
+      <div
+        v-if="gameInfo.game === 'cs2' && demoStatus"
+        class="w-full mt-2 flex items-center gap-2 px-3 py-2 bg-cyan-500/[0.06] border border-cyan-500/20 rounded-xl"
+      >
+        <!-- uploading spinner -->
+        <svg v-if="demoStatus.status === 'uploading'" class="w-3 h-3 text-cyan-400 flex-shrink-0 animate-spin" fill="none" viewBox="0 0 24 24">
+          <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+          <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+        </svg>
+        <!-- analysing pulse -->
+        <svg v-else-if="demoStatus.status === 'analysing'" class="w-3 h-3 text-cyan-400 flex-shrink-0 animate-pulse" fill="currentColor" viewBox="0 0 24 24">
+          <circle cx="12" cy="12" r="10"/>
+        </svg>
+        <!-- complete check -->
+        <svg v-else-if="demoStatus.status === 'complete'" class="w-3 h-3 text-cyan-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"/>
+        </svg>
+        <!-- not-found / error info -->
+        <svg v-else class="w-3 h-3 text-cyan-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+        </svg>
+
+        <span v-if="demoStatus.status === 'uploading'" class="text-xs text-cyan-300/80">Demo uploading… {{ demoProgress }}%</span>
+        <span v-else-if="demoStatus.status === 'analysing'" class="text-xs text-cyan-300/80">Demo analysing…</span>
+        <span v-else-if="demoStatus.status === 'complete'" class="text-xs text-cyan-300/80">Demo analysis ready</span>
+        <span v-else-if="demoStatus.status === 'not-found'" class="text-xs text-cyan-700/80">No demo found — add <code class="font-mono">cl_demo_auto_recording 1</code> to your CS2 autoexec</span>
+        <span v-else-if="demoStatus.status === 'error'" class="text-xs text-cyan-700/80">Demo upload failed</span>
+      </div>
+
     </div>
   </div>
 </template>
@@ -635,6 +665,8 @@ const cardExporting = ref(false)
 const cardExportDone = ref(false)
 const debriefText = ref<string | null>(null)
 const debriefLoading = ref(false)
+const demoStatus = ref<{ status: string; jobId?: string; error?: string } | null>(null)
+const demoProgress = ref(0)
 
 async function launchTrainer() {
   if (trainerLaunching.value) return
@@ -737,6 +769,14 @@ onMounted(() => {
   }))
   // Show loading state immediately so the user knows debrief is coming
   debriefLoading.value = true
+
+  // CS2 demo status listeners
+  ipcCleanup.push(window.api.on('post-game:demo-status', (...args: unknown[]) => {
+    demoStatus.value = args[0] as typeof demoStatus.value
+  }))
+  ipcCleanup.push(window.api.on('post-game:demo-progress', (...args: unknown[]) => {
+    demoProgress.value = args[0] as number
+  }))
 
   // Dev preview: show a mock ready state
   if (window.location.hash.includes('post-game-preview')) {
