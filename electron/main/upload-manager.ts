@@ -243,7 +243,7 @@ export class UploadManager {
     })
   }
 
-  async pollStatus(jobId: string): Promise<{ status: string; result?: Record<string, unknown> }> {
+  async pollStatus(jobId: string): Promise<{ status: string; result?: Record<string, unknown>; error?: string | null }> {
     const apiUrl = process.env['VITE_API_URL'] || 'https://api.upforge.gg'
     const token = this.auth.getToken()
     if (!token) throw new Error('Not authenticated')

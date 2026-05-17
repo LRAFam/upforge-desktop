@@ -942,6 +942,8 @@ function setupGameDetection(): void {
 
     const MIN_DURATION_SECONDS = 120
     const MIN_FILE_SIZE_BYTES = 1024 * 1024
+    // AI service limit for S3 desktop recordings is 2GB — reject early with a helpful message
+    const MAX_FILE_SIZE_BYTES = 2 * 1024 * 1024 * 1024
 
     if (recordingDuration > 0 && recordingDuration < MIN_DURATION_SECONDS) {
       console.log(`[GameDetector] Recording too short (${recordingDuration}s) — ignoring`)
@@ -1019,6 +1021,15 @@ function setupGameDetection(): void {
         const sizeMB = (fileSize / (1024 * 1024)).toFixed(2)
         const errorMsg = `Recording appears corrupt or empty (${sizeMB} MB). Please check your ffmpeg setup.`
         console.error(`[GameDetector] ${errorMsg}`)
+        sendToWindow('post-game:upload-error', errorMsg)
+        return
+      }
+
+      if (fileSize > MAX_FILE_SIZE_BYTES) {
+        const sizeGB = (fileSize / (1024 * 1024 * 1024)).toFixed(1)
+        const errorMsg = `Recording is too large (${sizeGB} GB). Try lowering your recording quality/resolution in Settings, or enable auto-delete so only the relevant portion is kept.`
+        log.warn(`[GameDetector] Recording too large to analyse: ${sizeGB} GB`)
+        logActivity(`Recording too large (${sizeGB} GB) — analysis skipped`)
         sendToWindow('post-game:upload-error', errorMsg)
         return
       }
@@ -1522,13 +1533,14 @@ async function resumePollForJob(
           }).show()
         }
       } else if (status.status === 'failed') {
-        logActivity('Resumed analysis failed — retry from the dashboard')
+        const errorMsg = status.error || 'Your previous analysis failed.'
+        logActivity(`Resumed analysis failed: ${errorMsg}`)
         clearPendingJob()
         tray?.setToolTip(idleTooltip(game))
         if (Notification.isSupported()) {
           new Notification({
             title: 'UpForge — Analysis Failed',
-            body: 'Your previous analysis failed. You can retry it from the dashboard.',
+            body: errorMsg.length > 100 ? errorMsg.slice(0, 97) + '…' : errorMsg,
             silent: notifySilent()
           }).show()
         }
@@ -1674,9 +1686,10 @@ async function doUploadAndAnalyse(
             silent: notifySilent()
           }).show()
         } else if (status.status === 'failed') {
-          logActivity('Analysis failed')
+          const errorMsg = status.error || 'Analysis failed. Please try again.'
+          logActivity(`Analysis failed: ${errorMsg}`)
           clearPendingJob()
-          send('post-game:upload-error', 'Analysis failed. Please try again.')
+          send('post-game:upload-error', errorMsg)
           tray?.setToolTip(idleTooltip(game))
         } else if (Date.now() - startTime > 600_000) {
           logActivity('Analysis timed out')
