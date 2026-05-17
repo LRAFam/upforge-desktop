@@ -666,14 +666,17 @@ async function requestPostGameDebrief(opts: {
         try {
           const json = JSON.parse(data)
           if ((res.statusCode ?? 0) >= 400) {
-            log.warn('[Debrief] API error:', res.statusCode, json.message)
-            reportError({ message: `[Debrief] API error ${res.statusCode}: ${json.message}`, component: 'desktop:Debrief', extra: { statusCode: res.statusCode } })
+            const errMsg = json.message ?? json.error ?? `HTTP ${res.statusCode}`
+            log.warn('[Debrief] API error:', res.statusCode, errMsg)
+            reportError({ message: `[Debrief] API error ${res.statusCode}: ${errMsg}`, component: 'desktop:Debrief', extra: { statusCode: res.statusCode } })
+            sendToWindow('post-game:debrief', null)
           } else {
             log.info(`[Debrief] Generated for ${riotName}#${riotTag} cost=$${json.estimated_cost_usd ?? 0}`)
             sendToWindow('post-game:debrief', { debrief: json.debrief_text, agent, map })
           }
         } catch {
           log.warn('[Debrief] Non-JSON response:', data.slice(0, 200))
+          sendToWindow('post-game:debrief', null)
         }
         resolve()
       })
@@ -681,6 +684,7 @@ async function requestPostGameDebrief(opts: {
     req.on('error', (err) => {
       log.warn('[Debrief] Request error:', err.message)
       reportError({ message: `[Debrief] Request error: ${err.message}`, stack: err.stack, component: 'desktop:Debrief' })
+      sendToWindow('post-game:debrief', null)
       resolve()
     })
     req.write(body)

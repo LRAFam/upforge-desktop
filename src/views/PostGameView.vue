@@ -764,8 +764,8 @@ onMounted(() => {
     const data = args[0] as { debrief: string; agent: string | null; map: string | null } | null
     if (data?.debrief) {
       debriefText.value = data.debrief
-      debriefLoading.value = false
     }
+    debriefLoading.value = false
   }))
   // Show loading state immediately so the user knows debrief is coming
   debriefLoading.value = true
