@@ -1082,10 +1082,16 @@ function setupGameDetection(): void {
       })().catch(() => { /* swallow — never propagate to caller */ })
     }
 
-    thisPostGameWindow.webContents.once('did-finish-load', async () => {
-      const sendToWindow = (channel: string, payload?: unknown) => {
-        if (!thisPostGameWindow.isDestroyed()) thisPostGameWindow.webContents.send(channel, payload)
-      }
+    // Guard: window may be destroyed before it finishes loading (e.g. user closes it immediately).
+    if (thisPostGameWindow.isDestroyed()) return
+    try {
+      thisPostGameWindow.webContents.once('did-finish-load', async () => {
+        if (thisPostGameWindow.isDestroyed()) return
+        const sendToWindow = (channel: string, payload?: unknown) => {
+          try {
+            if (!thisPostGameWindow.isDestroyed()) thisPostGameWindow.webContents.send(channel, payload)
+          } catch { /* destroyed between check and send */ }
+        }
 
       if (!videoPath || !fs.existsSync(videoPath)) {
         const ffmpegError = currentActiveRecorder.getLastError()
@@ -1237,7 +1243,10 @@ function setupGameDetection(): void {
           }
         }, 90_000)
       }
-    })
+      })
+    } catch (err) {
+      log.warn('[HandleMatchEnd] Failed to register did-finish-load handler — window already destroyed:', err)
+    }
   }
 
   gameDetector.on('game-started', async (game: string) => {
@@ -1661,7 +1670,9 @@ async function doUploadAndAnalyse(
   skipAutoDelete = false
 ): Promise<string | null> {
   const send = (channel: string, payload?: unknown) => {
-    if (!targetWindow.isDestroyed()) targetWindow.webContents.send(channel, payload)
+    try {
+      if (!targetWindow.isDestroyed()) targetWindow.webContents.send(channel, payload)
+    } catch { /* destroyed between isDestroyed check and send */ }
   }
   try {
     send('post-game:upload-start', {
