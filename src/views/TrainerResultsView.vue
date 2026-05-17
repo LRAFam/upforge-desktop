@@ -242,7 +242,9 @@ async function playAgain() {
   launching.value = true
   launched.value = false
   try {
-    const res = await window.api.trainer.launch(store.launchConfig as Record<string, unknown>)
+    // Deep-clone to strip Vue reactive Proxy before IPC structured-clone serialisation
+    const config = JSON.parse(JSON.stringify(store.launchConfig)) as Record<string, unknown>
+    const res = await window.api.trainer.launch(config)
     if (res.ok) launched.value = true
   } finally {
     launching.value = false
