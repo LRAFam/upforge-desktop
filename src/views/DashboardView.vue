@@ -682,7 +682,7 @@
         <div v-if="profile?.latest_stats" class="bg-white/[0.02] border border-white/[0.06] rounded-2xl overflow-hidden">
           <div class="px-4 py-2.5 border-b border-white/[0.04] flex items-center justify-between">
             <span class="text-[10px] font-bold uppercase tracking-widest text-gray-600">Season Stats</span>
-            <button class="text-[10px] text-gray-600 hover:text-gray-300 transition-colors" @click="router.push('/performance')">Details →</button>
+            <button class="text-[10px] text-gray-600 hover:text-gray-300 transition-colors" @click="router.push('/stats')">Details →</button>
           </div>
           <div class="grid grid-cols-2 divide-x divide-y divide-white/[0.04]">
             <div class="flex flex-col items-center py-3.5 px-2">
