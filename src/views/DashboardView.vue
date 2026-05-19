@@ -118,7 +118,7 @@
     </div>
 
     <!-- 3-column dashboard grid -->
-    <div class="flex-1 grid grid-cols-[300px_1fr_300px] gap-4 p-4 pt-3 min-h-0 overflow-hidden">
+    <div class="flex-1 grid grid-cols-[360px_1fr_360px] gap-4 p-4 pt-3 min-h-0 overflow-hidden">
 
       <!-- ═══════════ LEFT: Player card ═══════════ -->
       <div class="flex flex-col gap-3 overflow-y-auto" style="scrollbar-width:none">
