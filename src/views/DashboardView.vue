@@ -154,11 +154,11 @@
                   <span v-if="profile.user.riot_name">{{ profile.user.riot_name }}#{{ profile.user.riot_tag }}</span>
                   <button v-else class="text-red-400/70 hover:text-red-400 transition-colors" @click="openRiotSettings">Link Riot ID →</button>
                 </p>
-                <div v-if="profile.latest_stats?.current_rank" class="flex items-center gap-2 mt-1.5">
-                  <span class="text-sm font-black" :style="{ color: getRankHexColor(profile.latest_stats.current_rank) }">{{ profile.latest_stats.current_rank }}</span>
-                  <span v-if="profile.latest_stats.rr != null" class="text-xs text-gray-600">{{ profile.latest_stats.rr }} RR</span>
-                  <span v-if="profile.latest_stats.last_rr_change != null" class="text-xs font-bold tabular-nums" :class="profile.latest_stats.last_rr_change > 0 ? 'text-green-400' : 'text-red-400'">{{ profile.latest_stats.last_rr_change > 0 ? '+' : '' }}{{ profile.latest_stats.last_rr_change }}</span>
-                  <span v-if="profile.latest_stats.leaderboard_rank" class="text-[10px] font-bold bg-yellow-400/10 text-yellow-400 border border-yellow-400/20 px-1.5 py-0.5 rounded-full tabular-nums">#{{ profile.latest_stats.leaderboard_rank }}</span>
+                <div v-if="profile.latest_stats?.current_rank" class="flex items-center gap-2 mt-1.5 flex-wrap">
+                  <span class="text-xl font-black leading-none" :style="{ color: getRankHexColor(profile.latest_stats.current_rank), textShadow: `0 0 20px ${getRankHexColor(profile.latest_stats.current_rank)}55` }">{{ profile.latest_stats.current_rank }}</span>
+                  <span v-if="profile.latest_stats.rr != null" class="text-xs font-semibold text-gray-500">{{ profile.latest_stats.rr }} <span class="text-gray-700">RR</span></span>
+                  <span v-if="profile.latest_stats.last_rr_change != null" class="text-xs font-black tabular-nums px-1.5 py-0.5 rounded-md" :class="profile.latest_stats.last_rr_change > 0 ? 'text-green-400 bg-green-500/10' : 'text-red-400 bg-red-500/10'">{{ profile.latest_stats.last_rr_change > 0 ? '+' : '' }}{{ profile.latest_stats.last_rr_change }}</span>
+                  <span v-if="profile.latest_stats.leaderboard_rank" class="text-[10px] font-black bg-yellow-400/15 text-yellow-300 border border-yellow-400/25 px-1.5 py-0.5 rounded-full tabular-nums">#{{ profile.latest_stats.leaderboard_rank }}</span>
                 </div>
               </div>
               <!-- Actions -->
@@ -176,23 +176,23 @@
           <!-- 4-stat grid -->
           <template v-if="profile.latest_stats">
             <div class="grid grid-cols-4 divide-x divide-white/[0.04] border-t border-white/[0.04]">
-              <div class="flex flex-col items-center py-3">
-                <span class="text-sm font-black tabular-nums">{{ profile.latest_stats.kd_ratio?.toFixed(2) ?? '—' }}</span>
-                <span class="text-[10px] text-gray-600 mt-0.5">K/D</span>
+              <div class="flex flex-col items-center py-3.5">
+                <span class="text-lg font-black tabular-nums leading-none stat-number" :class="profile.latest_stats.kd_ratio != null ? (profile.latest_stats.kd_ratio >= 1.2 ? 'text-green-400' : profile.latest_stats.kd_ratio >= 0.8 ? 'text-white' : 'text-red-400') : 'text-gray-600'">{{ profile.latest_stats.kd_ratio?.toFixed(2) ?? '—' }}</span>
+                <span class="text-[10px] text-gray-600 mt-1">K/D</span>
               </div>
-              <div class="flex flex-col items-center py-3">
-                <span class="text-sm font-black tabular-nums">{{ profile.latest_stats.win_rate != null ? Math.round(profile.latest_stats.win_rate) + '%' : '—' }}</span>
-                <span class="text-[10px] text-gray-600 mt-0.5">Win</span>
+              <div class="flex flex-col items-center py-3.5">
+                <span class="text-lg font-black tabular-nums leading-none stat-number" :class="profile.latest_stats.win_rate != null ? (profile.latest_stats.win_rate >= 52 ? 'text-green-400' : profile.latest_stats.win_rate >= 45 ? 'text-white' : 'text-red-400') : 'text-gray-600'">{{ profile.latest_stats.win_rate != null ? Math.round(profile.latest_stats.win_rate) + '%' : '—' }}</span>
+                <span class="text-[10px] text-gray-600 mt-1">Win</span>
               </div>
-              <div class="flex flex-col items-center py-3">
-                <span class="text-sm font-black tabular-nums">{{ profile.latest_stats.avg_combat_score ?? '—' }}</span>
-                <span class="text-[10px] text-gray-600 mt-0.5">ACS</span>
+              <div class="flex flex-col items-center py-3.5">
+                <span class="text-lg font-black tabular-nums leading-none stat-number" :class="profile.latest_stats.avg_combat_score != null ? (profile.latest_stats.avg_combat_score >= 220 ? 'text-orange-400' : profile.latest_stats.avg_combat_score >= 160 ? 'text-white' : 'text-gray-300') : 'text-gray-600'">{{ profile.latest_stats.avg_combat_score ?? '—' }}</span>
+                <span class="text-[10px] text-gray-600 mt-1">ACS</span>
               </div>
-              <div class="flex flex-col items-center py-3">
-                <span class="text-sm font-black tabular-nums" :class="currentStreak > 0 ? 'text-green-400' : currentStreak < 0 ? 'text-red-400' : 'text-gray-600'">
+              <div class="flex flex-col items-center py-3.5">
+                <span class="text-lg font-black tabular-nums leading-none stat-number" :class="currentStreak > 0 ? 'text-green-400' : currentStreak < 0 ? 'text-red-400' : 'text-gray-600'">
                   {{ currentStreak !== 0 ? (currentStreak > 0 ? '+' : '') + currentStreak : '—' }}
                 </span>
-                <span class="text-[10px] text-gray-600 mt-0.5">Streak</span>
+                <span class="text-[10px] text-gray-600 mt-1">Streak</span>
               </div>
             </div>
 
@@ -326,6 +326,24 @@
         <!-- Deadlock demo upload panel (Deadlock users only) -->
         <DeadlockDemoPanel v-if="isDeadlockUser" class="flex-shrink-0" />
 
+        <!-- Emotional highlights strip -->
+        <Transition name="banner-slide">
+          <div
+            v-if="emotionalHighlights.length"
+            class="flex-shrink-0 flex items-center gap-2 px-3 py-2 rounded-xl overflow-hidden highlights-bar"
+          >
+            <svg class="w-3.5 h-3.5 text-orange-400 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20"><path d="M11.983 1.907a.75.75 0 00-1.292-.657l-8.5 9.5A.75.75 0 002.75 12h6.572l-1.305 6.093a.75.75 0 001.292.657l8.5-9.5A.75.75 0 0017.25 8h-6.572l1.305-6.093z"/></svg>
+            <div class="flex items-center gap-3 overflow-x-auto" style="scrollbar-width:none">
+              <span
+                v-for="(h, i) in emotionalHighlights"
+                :key="i"
+                class="flex-shrink-0 text-[11px] font-semibold"
+                :class="h.accent === 'green' ? 'text-green-400' : h.accent === 'orange' ? 'text-orange-300' : h.accent === 'yellow' ? 'text-yellow-300' : 'text-gray-300'"
+              >{{ h.text }}</span>
+            </div>
+          </div>
+        </Transition>
+
         <!-- Section header -->
         <div class="flex items-center justify-between flex-shrink-0">
           <div class="flex items-center gap-2.5">
@@ -439,9 +457,11 @@
               <div
                 v-for="a in group.items"
                 :key="a.id"
-                class="flex items-center gap-2 px-3 py-2.5 bg-white/[0.02] hover:bg-white/[0.04] border border-white/[0.05] hover:border-white/[0.08] rounded-xl transition-all cursor-pointer"
+                class="relative flex items-center gap-2 px-3 py-2.5 bg-white/[0.02] hover:bg-white/[0.045] border border-white/[0.05] hover:border-white/[0.1] rounded-xl transition-all cursor-pointer hover:scale-[1.005] origin-center"
                 @click="openAnalysis(a.id)"
               >
+                <!-- W/L left accent bar -->
+                <div v-if="a.won != null" class="absolute left-0 top-2 bottom-2 w-[3px] rounded-full" :class="a.won ? 'bg-green-500' : 'bg-red-500'" />
                 <!-- Agent portrait -->
                 <div class="w-9 h-9 rounded-lg flex-shrink-0 overflow-hidden flex items-center justify-center relative" :style="a.agent ? { backgroundColor: getAgentColor(a.agent) + '22' } : {}">
                   <img v-if="a.map && getMapMinimap(a.map)" :src="getMapMinimap(a.map)" class="absolute inset-0 w-full h-full object-cover opacity-20" />
@@ -542,19 +562,19 @@
               </div>
               <div class="flex-1 min-w-0">
                 <div class="flex items-baseline gap-1.5">
-                  <span class="text-2xl font-black tabular-nums leading-none" :class="lastInsight.score >= 80 ? 'text-green-400' : lastInsight.score >= 60 ? 'text-yellow-400' : 'text-red-400'">{{ lastInsight.score }}</span>
-                  <span class="text-xs text-gray-600">/100</span>
-                  <span class="text-xs font-bold px-1.5 py-0.5 rounded-full ml-1" :class="scoreGradeBadgeClass(lastInsight.score)">{{ scoreGrade(lastInsight.score) }}</span>
+                  <span class="text-4xl font-black tabular-nums leading-none score-glow" :class="lastInsight.score >= 80 ? 'text-green-400' : lastInsight.score >= 60 ? 'text-yellow-400' : 'text-red-400'">{{ lastInsight.score }}</span>
+                  <span class="text-sm text-gray-600 font-semibold">/100</span>
+                  <span class="text-xs font-black px-1.5 py-0.5 rounded-full ml-1" :class="scoreGradeBadgeClass(lastInsight.score)">{{ scoreGrade(lastInsight.score) }}</span>
                 </div>
-                <div class="mt-1.5 w-full h-1 bg-white/[0.06] rounded-full overflow-hidden">
-                  <div class="h-full rounded-full" :class="lastInsight.score >= 80 ? 'bg-green-500' : lastInsight.score >= 60 ? 'bg-yellow-500' : 'bg-red-500'" :style="{ width: lastInsight.score + '%' }" />
+                <div class="mt-2 w-full h-1.5 bg-white/[0.06] rounded-full overflow-hidden">
+                  <div class="h-full rounded-full score-bar" :class="lastInsight.score >= 80 ? 'bg-green-500' : lastInsight.score >= 60 ? 'bg-yellow-500' : 'bg-red-500'" :style="{ width: lastInsight.score + '%' }" />
                 </div>
               </div>
             </div>
             <p class="text-xs text-gray-400 leading-relaxed line-clamp-3">
               <span class="text-gray-600 font-semibold uppercase tracking-wider text-[10px]">Focus · </span>{{ lastInsight.text }}
             </p>
-            <button :disabled="lastInsightTraining" class="w-full flex items-center justify-center gap-2 py-2 text-xs font-semibold rounded-xl transition-all disabled:opacity-50 text-white/90 hover:text-white" style="background:linear-gradient(135deg,rgba(255,70,85,0.15),rgba(220,38,38,0.15));border:1px solid rgba(255,70,85,0.2)" @click="trainLastInsight">
+            <button :disabled="lastInsightTraining" class="w-full flex items-center justify-center gap-2 py-2.5 text-xs font-bold rounded-xl transition-all disabled:opacity-50 text-white hover:brightness-110 cta-train" @click="trainLastInsight">
               <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" stroke-width="1.5"/><circle cx="12" cy="12" r="4" stroke-width="1.5"/><line x1="12" y1="2" x2="12" y2="6" stroke-width="1.5"/><line x1="12" y1="18" x2="12" y2="22" stroke-width="1.5"/><line x1="2" y1="12" x2="6" y2="12" stroke-width="1.5"/><line x1="18" y1="12" x2="22" y2="12" stroke-width="1.5"/></svg>
               {{ lastInsightTraining ? 'Launching…' : 'Train This Weakness' }}
             </button>
@@ -657,29 +677,29 @@
             <button class="text-[10px] text-gray-600 hover:text-gray-300 transition-colors" @click="router.push('/performance')">Details →</button>
           </div>
           <div class="grid grid-cols-2 divide-x divide-y divide-white/[0.04]">
-            <div class="flex flex-col items-center py-3 px-2">
-              <span class="text-sm font-black tabular-nums" :style="{ color: getRankHexColor(profile.latest_stats.current_rank ?? '') }">{{ profile.latest_stats.current_rank || '—' }}</span>
-              <span class="text-[10px] text-gray-600 mt-0.5">Rank</span>
+            <div class="flex flex-col items-center py-3.5 px-2">
+              <span class="text-lg font-black tabular-nums leading-none stat-number" :style="{ color: getRankHexColor(profile.latest_stats.current_rank ?? '') }">{{ profile.latest_stats.current_rank || '—' }}</span>
+              <span class="text-[10px] text-gray-600 mt-1">Rank</span>
             </div>
-            <div class="flex flex-col items-center py-3 px-2">
-              <span class="text-sm font-black tabular-nums">{{ profile.latest_stats.win_rate != null ? Math.round(profile.latest_stats.win_rate) + '%' : '—' }}</span>
-              <span class="text-[10px] text-gray-600 mt-0.5">Win Rate</span>
+            <div class="flex flex-col items-center py-3.5 px-2">
+              <span class="text-lg font-black tabular-nums leading-none stat-number" :class="profile.latest_stats.win_rate != null ? (profile.latest_stats.win_rate >= 52 ? 'text-green-400' : profile.latest_stats.win_rate >= 45 ? 'text-white' : 'text-red-400') : 'text-gray-500'">{{ profile.latest_stats.win_rate != null ? Math.round(profile.latest_stats.win_rate) + '%' : '—' }}</span>
+              <span class="text-[10px] text-gray-600 mt-1">Win Rate</span>
             </div>
-            <div class="flex flex-col items-center py-3 px-2">
-              <span class="text-sm font-black tabular-nums">{{ profile.latest_stats.kd_ratio?.toFixed(2) ?? '—' }}</span>
-              <span class="text-[10px] text-gray-600 mt-0.5">K/D</span>
+            <div class="flex flex-col items-center py-3.5 px-2">
+              <span class="text-lg font-black tabular-nums leading-none stat-number" :class="profile.latest_stats.kd_ratio != null ? (profile.latest_stats.kd_ratio >= 1.2 ? 'text-green-400' : profile.latest_stats.kd_ratio >= 0.8 ? 'text-white' : 'text-red-400') : 'text-gray-500'">{{ profile.latest_stats.kd_ratio?.toFixed(2) ?? '—' }}</span>
+              <span class="text-[10px] text-gray-600 mt-1">K/D</span>
             </div>
-            <div class="flex flex-col items-center py-3 px-2">
-              <span class="text-sm font-black tabular-nums">{{ profile.latest_stats.avg_combat_score ?? '—' }}</span>
-              <span class="text-[10px] text-gray-600 mt-0.5">Avg ACS</span>
+            <div class="flex flex-col items-center py-3.5 px-2">
+              <span class="text-lg font-black tabular-nums leading-none stat-number" :class="profile.latest_stats.avg_combat_score != null ? (profile.latest_stats.avg_combat_score >= 220 ? 'text-orange-400' : 'text-white') : 'text-gray-500'">{{ profile.latest_stats.avg_combat_score ?? '—' }}</span>
+              <span class="text-[10px] text-gray-600 mt-1">Avg ACS</span>
             </div>
-            <div v-if="profile.latest_stats.elo" class="flex flex-col items-center py-3 px-2">
-              <span class="text-sm font-black tabular-nums text-purple-400">{{ profile.latest_stats.elo }}</span>
-              <span class="text-[10px] text-gray-600 mt-0.5">ELO</span>
+            <div v-if="profile.latest_stats.elo" class="flex flex-col items-center py-3.5 px-2">
+              <span class="text-lg font-black tabular-nums leading-none text-purple-400 stat-number">{{ profile.latest_stats.elo }}</span>
+              <span class="text-[10px] text-gray-600 mt-1">ELO</span>
             </div>
-            <div v-if="profile.latest_stats.leaderboard_rank" class="flex flex-col items-center py-3 px-2">
-              <span class="text-sm font-black tabular-nums text-yellow-400">#{{ profile.latest_stats.leaderboard_rank }}</span>
-              <span class="text-[10px] text-gray-600 mt-0.5">Leaderboard</span>
+            <div v-if="profile.latest_stats.leaderboard_rank" class="flex flex-col items-center py-3.5 px-2">
+              <span class="text-lg font-black tabular-nums leading-none text-yellow-400 stat-number">#{{ profile.latest_stats.leaderboard_rank }}</span>
+              <span class="text-[10px] text-gray-600 mt-1">Leaderboard</span>
             </div>
           </div>
         </div>
@@ -761,6 +781,46 @@ const trainerSessionCount = ref(0)
 const analysisCompleteToast = ref<{ score: number; agent: string | null } | null>(null)
 let analysisToastTimer: ReturnType<typeof setTimeout> | null = null
 const correlationInsights = ref<string[]>([])
+
+// Emotional highlights — shown above the match list to give the user a sense of momentum
+const emotionalHighlights = computed(() => {
+  const highlights: { text: string; accent: 'green' | 'orange' | 'yellow' | 'white' }[] = []
+  const last5 = analyses.value.slice(0, 5)
+
+  // Win streak
+  if (currentStreak.value >= 3) highlights.push({ text: `${currentStreak.value} game win streak`, accent: 'green' })
+  else if (currentStreak.value === 2) highlights.push({ text: '2 game win streak', accent: 'green' })
+
+  // AI score on the rise
+  const scored = analyses.value.filter(a => a.overall_score != null)
+  if (scored.length >= 3) {
+    const recent = scored.slice(0, 3).map(a => a.overall_score as number)
+    const older  = scored.slice(3, 6).map(a => a.overall_score as number)
+    if (older.length > 0) {
+      const recentAvg = recent.reduce((s, v) => s + v, 0) / recent.length
+      const olderAvg  = older.reduce((s, v) => s + v, 0) / older.length
+      const diff = Math.round(recentAvg - olderAvg)
+      if (diff >= 8) highlights.push({ text: `AI score up ${diff} pts this week`, accent: 'orange' })
+    }
+  }
+
+  // Personal best AI score
+  if (scored.length >= 2) {
+    const best = scored[0].overall_score as number
+    const prevBest = scored.slice(1).reduce((m, a) => Math.max(m, a.overall_score ?? 0), 0)
+    if (best > prevBest && best >= 70) highlights.push({ text: `New best score: ${best}`, accent: 'yellow' })
+  }
+
+  // Solid win rate on last 5
+  const wonCount = last5.filter(a => a.won === true).length
+  if (last5.length >= 5 && wonCount >= 4) highlights.push({ text: `${wonCount}/5 wins recently`, accent: 'green' })
+
+  // Agent mastery
+  const topAgent = topAgents.value.find(a => a.hasWinData && a.winRate >= 65 && a.total >= 3)
+  if (topAgent) highlights.push({ text: `${topAgent.winRate}% WR on ${topAgent.agent}`, accent: 'orange' })
+
+  return highlights
+})
 
 // Last-5 performance strip above match list
 const lastFivePerf = computed(() => {
@@ -1283,5 +1343,50 @@ function formatFileSize(bytes: number): string {
 
 .rec-pulse {
   animation: recPulse 1.2s ease-in-out infinite;
+}
+
+/* Stat numbers slide up on mount */
+@keyframes statEnter {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.stat-number {
+  animation: statEnter 0.4s ease-out both;
+}
+
+/* Score glows in coaching panel */
+@keyframes scoreGlow {
+  0%, 100% { filter: brightness(1); }
+  50%       { filter: brightness(1.15); }
+}
+.score-glow {
+  animation: scoreGlow 3s ease-in-out infinite;
+}
+
+/* Score bar fills on mount */
+@keyframes scoreBarFill {
+  from { width: 0; }
+}
+.score-bar {
+  animation: scoreBarFill 0.8s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+/* Highlights bar */
+.highlights-bar {
+  background: linear-gradient(135deg, rgba(249,115,22,0.07), rgba(255,70,85,0.05));
+  border: 1px solid rgba(249,115,22,0.18);
+}
+
+/* Train CTA button */
+.cta-train {
+  background: linear-gradient(135deg, rgba(255,70,85,0.25), rgba(220,38,38,0.2));
+  border: 1px solid rgba(255,70,85,0.35);
+  box-shadow: 0 0 16px rgba(255,70,85,0.1);
+  transition: all 0.2s ease;
+}
+.cta-train:hover:not(:disabled) {
+  background: linear-gradient(135deg, rgba(255,70,85,0.35), rgba(220,38,38,0.3));
+  box-shadow: 0 0 22px rgba(255,70,85,0.22);
+  border-color: rgba(255,70,85,0.5);
 }
 </style>

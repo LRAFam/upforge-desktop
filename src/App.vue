@@ -99,11 +99,11 @@
         v-for="link in navLinks"
         :key="link.to"
         :to="link.to"
-        class="px-3 py-1.5 text-xs font-medium transition-all duration-150"
+        class="px-3 py-1.5 text-xs font-semibold transition-all duration-150 rounded-t-lg"
         :class="
           $route.path === link.to
-            ? 'text-white relative after:absolute after:bottom-0 after:left-0 after:right-0 after:h-px after:bg-gradient-to-r after:from-red-500 after:to-orange-500'
-            : 'text-gray-500 hover:text-gray-300'
+            ? 'text-white relative after:absolute after:bottom-0 after:left-2 after:right-2 after:h-[2px] after:rounded-full after:bg-gradient-to-r after:from-red-500 after:to-orange-400 after:shadow-[0_0_8px_rgba(255,70,85,0.6)]'
+            : 'text-gray-500 hover:text-gray-200 hover:bg-white/[0.04]'
         "
       >
         {{ link.label }}

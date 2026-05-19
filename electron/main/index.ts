@@ -692,7 +692,7 @@ async function requestPostGameDebrief(opts: {
   })
 }
 
-function createMainWindow(startAuthenticated: boolean): BrowserWindow {
+function createMainWindow(startAuthenticated: boolean = false): BrowserWindow {
   const win = new BrowserWindow({
     width: startAuthenticated ? 980 : 860,
     height: startAuthenticated ? 660 : 580,
