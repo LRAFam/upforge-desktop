@@ -155,6 +155,7 @@
                   <button v-else class="text-red-400/70 hover:text-red-400 transition-colors" @click="openRiotSettings">Link Riot ID →</button>
                 </p>
                 <div v-if="profile.latest_stats?.current_rank" class="flex items-center gap-2 mt-1.5 flex-wrap">
+                  <img v-if="getRankIconUrl(profile.latest_stats.current_rank)" :src="getRankIconUrl(profile.latest_stats.current_rank)!" :alt="profile.latest_stats.current_rank" class="w-8 h-8 object-contain drop-shadow-lg" />
                   <span class="text-xl font-black leading-none" :style="{ color: getRankHexColor(profile.latest_stats.current_rank), textShadow: `0 0 20px ${getRankHexColor(profile.latest_stats.current_rank)}55` }">{{ profile.latest_stats.current_rank }}</span>
                   <span v-if="profile.latest_stats.rr != null" class="text-xs font-semibold text-gray-500">{{ profile.latest_stats.rr }} <span class="text-gray-700">RR</span></span>
                   <span v-if="profile.latest_stats.last_rr_change != null" class="text-xs font-black tabular-nums px-1.5 py-0.5 rounded-md" :class="profile.latest_stats.last_rr_change > 0 ? 'text-green-400 bg-green-500/10' : 'text-red-400 bg-red-500/10'">{{ profile.latest_stats.last_rr_change > 0 ? '+' : '' }}{{ profile.latest_stats.last_rr_change }}</span>
@@ -209,7 +210,10 @@
               <div v-if="showRankHistory && rrHistory.length" class="border-t border-white/[0.04] divide-y divide-white/[0.03] max-h-36 overflow-y-auto">
                 <div v-for="(entry, i) in rrHistory.slice().reverse().slice(0, 10)" :key="entry.id" class="px-4 py-1.5 flex items-center gap-2">
                   <span class="text-xs text-gray-600 shrink-0 w-16 truncate">{{ formatEntryDate(entry.date) }}</span>
-                  <span class="text-xs font-semibold flex-1 truncate" :style="{ color: getRankHexColor(entry.rank ?? '') }">{{ entry.rank ?? '—' }}</span>
+                  <span class="text-xs font-semibold flex-1 truncate flex items-center gap-1.5" :style="{ color: getRankHexColor(entry.rank ?? '') }">
+                    <img v-if="getRankIconUrl(entry.rank)" :src="getRankIconUrl(entry.rank)!" :alt="entry.rank ?? ''" class="w-4 h-4 object-contain flex-shrink-0" />
+                    {{ entry.rank ?? '—' }}
+                  </span>
                   <span class="text-xs font-mono tabular-nums" :class="entry.rr >= 50 ? 'text-white' : 'text-gray-400'">{{ entry.rr }} RR</span>
                   <span v-if="i < rrHistory.length - 1" class="text-xs font-bold tabular-nums shrink-0 w-10 text-right" :class="rrDelta(i) > 0 ? 'text-green-400' : rrDelta(i) < 0 ? 'text-red-400' : 'text-gray-600'">{{ rrDelta(i) > 0 ? '+' : '' }}{{ rrDelta(i) !== 0 ? rrDelta(i) : '—' }}</span>
                   <span v-else class="w-10" />
@@ -678,8 +682,9 @@
           </div>
           <div class="grid grid-cols-2 divide-x divide-y divide-white/[0.04]">
             <div class="flex flex-col items-center py-3.5 px-2">
-              <span class="text-lg font-black tabular-nums leading-none stat-number" :style="{ color: getRankHexColor(profile.latest_stats.current_rank ?? '') }">{{ profile.latest_stats.current_rank || '—' }}</span>
-              <span class="text-[10px] text-gray-600 mt-1">Rank</span>
+              <img v-if="getRankIconUrl(profile.latest_stats.current_rank)" :src="getRankIconUrl(profile.latest_stats.current_rank)!" :alt="profile.latest_stats.current_rank ?? ''" class="w-10 h-10 object-contain drop-shadow-lg" />
+              <span v-else class="text-lg font-black tabular-nums leading-none stat-number" :style="{ color: getRankHexColor(profile.latest_stats.current_rank ?? '') }">{{ profile.latest_stats.current_rank || '—' }}</span>
+              <span class="text-[10px] text-gray-600 mt-1">{{ profile.latest_stats.current_rank || 'Rank' }}</span>
             </div>
             <div class="flex flex-col items-center py-3.5 px-2">
               <span class="text-lg font-black tabular-nums leading-none stat-number" :class="profile.latest_stats.win_rate != null ? (profile.latest_stats.win_rate >= 52 ? 'text-green-400' : profile.latest_stats.win_rate >= 45 ? 'text-white' : 'text-red-400') : 'text-gray-500'">{{ profile.latest_stats.win_rate != null ? Math.round(profile.latest_stats.win_rate) + '%' : '—' }}</span>
@@ -714,7 +719,7 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import type { ProfileData, AnalysisItem, PendingRecording } from '../env.d.ts'
-import { getAgentImage, getAgentRole, getAgentColor, getMapMinimap, getRankHexColor, getRoleColor, getTierBadgeClass, getTierBadgeLabel, formatGameMode } from '../lib/valorant'
+import { getAgentImage, getAgentRole, getAgentColor, getMapMinimap, getRankHexColor, getRankIconUrl, getRoleColor, getTierBadgeClass, getTierBadgeLabel, formatGameMode } from '../lib/valorant'
 import { pendingTimeline } from '../stores/pendingTimeline'
 import { useAchievements } from '../composables/useAchievements'
 import DeadlockDemoPanel from '../components/DeadlockDemoPanel.vue'

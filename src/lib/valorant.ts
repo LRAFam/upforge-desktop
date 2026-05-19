@@ -231,6 +231,28 @@ export function getMapMinimap(mapName: string | null | undefined): string {
 
 // ── Rank colours ──────────────────────────────────────────────────────────────
 
+const RANK_TIER_UUID = '03621f52-342b-cf4e-4f86-9350a49c6d04'
+
+const RANK_TIER_MAP: Record<string, number> = {
+  'iron 1': 3, 'iron 2': 4, 'iron 3': 5,
+  'bronze 1': 6, 'bronze 2': 7, 'bronze 3': 8,
+  'silver 1': 9, 'silver 2': 10, 'silver 3': 11,
+  'gold 1': 12, 'gold 2': 13, 'gold 3': 14,
+  'platinum 1': 15, 'platinum 2': 16, 'platinum 3': 17,
+  'diamond 1': 18, 'diamond 2': 19, 'diamond 3': 20,
+  'ascendant 1': 21, 'ascendant 2': 22, 'ascendant 3': 23,
+  'immortal 1': 24, 'immortal 2': 25, 'immortal 3': 26,
+  'radiant': 27,
+}
+
+/** Returns the CDN icon URL for a given rank string (e.g. "Platinum 2"). */
+export function getRankIconUrl(rank: string | null | undefined): string | null {
+  if (!rank) return null
+  const tier = RANK_TIER_MAP[rank.toLowerCase()]
+  if (!tier) return null
+  return `https://media.valorant-api.com/competitivetiers/${RANK_TIER_UUID}/${tier}/smallicon.png`
+}
+
 /** Returns a hex accent colour for a given rank string (e.g. "Immortal 3"). */
 export function getRankHexColor(rank: string | null | undefined): string {
   if (!rank) return '#6b7280'
