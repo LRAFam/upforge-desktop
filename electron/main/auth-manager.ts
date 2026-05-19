@@ -218,7 +218,8 @@ export class AuthManager {
             // API field names: free_analyses_used + monthly_free_analyses
             total: stats.free_analyses_used ?? 0,
             limit: stats.monthly_free_analyses ?? 1,
-          }
+          },
+          forge_rank: p.forge_rank ?? null,
         },
         latest_stats: p.latest_stats ?? null,
       }

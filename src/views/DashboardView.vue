@@ -253,6 +253,48 @@
           <p class="text-xs text-gray-600">No profile loaded</p>
         </div>
 
+        <!-- ─── Forge Rank card ─── -->
+        <div v-if="profile?.user.forge_rank" class="bg-white/[0.02] border border-white/[0.06] rounded-2xl overflow-hidden">
+          <div class="px-4 pt-3 pb-2">
+            <div class="flex items-center justify-between mb-2">
+              <span class="text-[10px] font-bold uppercase tracking-widest text-gray-600">Forge Rank</span>
+              <span v-if="profile.user.forge_rank.prestige_stars > 0" class="text-xs font-black text-yellow-400 tracking-wide">
+                {{ '⭐'.repeat(Math.min(profile.user.forge_rank.prestige_stars, 5)) }}
+                <span v-if="profile.user.forge_rank.prestige_stars > 5" class="text-[10px] font-semibold">+{{ profile.user.forge_rank.prestige_stars - 5 }}</span>
+              </span>
+            </div>
+            <div class="flex items-center gap-3">
+              <!-- Rank icon / badge -->
+              <div class="relative flex-shrink-0 w-12 h-12 rounded-xl flex items-center justify-center" :style="{ background: forgeRankGradient(profile.user.forge_rank.tier) }">
+                <span class="text-lg font-black text-white select-none">{{ forgeRankInitial(profile.user.forge_rank.tier_name) }}</span>
+              </div>
+              <!-- Rank name + progress -->
+              <div class="flex-1 min-w-0">
+                <p class="text-base font-black leading-tight" :style="{ color: forgeRankColor(profile.user.forge_rank.tier) }">{{ profile.user.forge_rank.rank_name }}</p>
+                <p class="text-[10px] text-gray-600 mt-px">{{ profile.user.forge_rank.xp.toLocaleString() }} XP total</p>
+                <!-- XP bar -->
+                <div class="mt-1.5 h-1.5 bg-white/[0.06] rounded-full overflow-hidden">
+                  <div
+                    class="h-full rounded-full transition-all duration-500"
+                    :style="{ width: profile.user.forge_rank.progress_pct + '%', background: forgeRankColor(profile.user.forge_rank.tier) }"
+                  />
+                </div>
+                <div class="flex items-center justify-between mt-0.5">
+                  <span class="text-[9px] text-gray-700">{{ profile.user.forge_rank.xp_progress.toLocaleString() }} XP</span>
+                  <span v-if="profile.user.forge_rank.xp_needed" class="text-[9px] text-gray-700">{{ profile.user.forge_rank.xp_needed.toLocaleString() }} to next</span>
+                  <span v-else class="text-[9px] text-yellow-400 font-bold">Max Rank</span>
+                </div>
+              </div>
+            </div>
+          </div>
+          <!-- Prestige available -->
+          <div v-if="profile.user.forge_rank.can_prestige" class="px-4 py-2 border-t border-white/[0.04] flex items-center gap-2">
+            <div class="w-1.5 h-1.5 rounded-full bg-yellow-400 animate-pulse flex-shrink-0" />
+            <span class="text-[10px] text-yellow-400 font-semibold flex-1">Prestige available — you've completed the journey!</span>
+            <button class="text-[10px] font-bold text-yellow-400 hover:text-yellow-300 transition-colors px-2 py-0.5 rounded bg-yellow-400/10 hover:bg-yellow-400/20" @click="triggerPrestige">Prestige →</button>
+          </div>
+        </div>
+
         <!-- AI score trend chart -->
         <div v-if="scoreChartData" class="bg-white/[0.02] border border-white/[0.06] rounded-2xl px-4 py-3">
           <div class="flex items-center justify-between mb-2">
@@ -1196,6 +1238,51 @@ async function refreshProfile() {
       analysisCompleteToast.value = { score: newest.overall_score, agent: newest.agent ?? null }
       analysisToastTimer = setTimeout(() => { analysisCompleteToast.value = null }, 5000)
     }
+  }
+}
+
+// ─── Forge Rank helpers ───────────────────────────────────────────────────────
+
+const FORGE_RANK_COLORS: Record<number, string> = {
+  1: '#9ca3af', // Unforged  — grey
+  2: '#f97316', // Kindled   — orange
+  3: '#3b82f6', // Tempered  — blue
+  4: '#8b5cf6', // Craftsman — purple
+  5: '#ec4899', // Artisan   — pink
+  6: '#06b6d4', // Ascended  — cyan
+  7: '#ef4444', // UpForged  — red
+  8: '#eab308', // Legendary — gold
+}
+
+const FORGE_RANK_GRADIENTS: Record<number, string> = {
+  1: 'linear-gradient(135deg,#374151,#1f2937)',
+  2: 'linear-gradient(135deg,#c2410c,#92400e)',
+  3: 'linear-gradient(135deg,#1d4ed8,#1e3a8a)',
+  4: 'linear-gradient(135deg,#7c3aed,#4c1d95)',
+  5: 'linear-gradient(135deg,#db2777,#9d174d)',
+  6: 'linear-gradient(135deg,#0891b2,#164e63)',
+  7: 'linear-gradient(135deg,#dc2626,#7f1d1d)',
+  8: 'linear-gradient(135deg,#d97706,#78350f)',
+}
+
+function forgeRankColor(tier: number): string {
+  return FORGE_RANK_COLORS[tier] ?? '#9ca3af'
+}
+
+function forgeRankGradient(tier: number): string {
+  return FORGE_RANK_GRADIENTS[tier] ?? FORGE_RANK_GRADIENTS[1]
+}
+
+function forgeRankInitial(tierName: string): string {
+  return tierName.charAt(0).toUpperCase()
+}
+
+async function triggerPrestige() {
+  try {
+    await window.api.forgeRank.prestige()
+    await refreshProfile()
+  } catch {
+    // ignore
   }
 }
 

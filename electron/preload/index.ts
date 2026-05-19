@@ -143,6 +143,9 @@ const api = {
   cs2: {
     detectDemoDir: () => ipcRenderer.invoke('cs2:detect-demo-dir'),
   },
+  forgeRank: {
+    prestige: () => ipcRenderer.invoke('forge-rank:prestige'),
+  },
   on: (channel: string, callback: (...args: unknown[]) => void): (() => void) => {
     const allowed = [
       'post-game:upload-start',

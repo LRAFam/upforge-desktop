@@ -1058,4 +1058,15 @@ export function setupIpcHandlers(
     const dir = await detectCS2DemoDir()
     return { dir }
   })
+
+  ipcMain.handle('forge-rank:prestige', async () => {
+    try {
+      const api = auth.getApi()
+      if (!api) return { success: false }
+      const res = await api.post('/api/forge-rank/prestige')
+      return res.data
+    } catch {
+      return { success: false }
+    }
+  })
 }

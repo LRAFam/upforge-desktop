@@ -197,6 +197,25 @@ export interface ValorantStats {
   last_updated: string | null
 }
 
+export interface ForgeRankInfo {
+  level: number
+  tier: number
+  tier_name: string
+  sub_rank: number
+  sub_rank_label: string
+  rank_name: string
+  xp: number
+  xp_for_level: number
+  xp_for_next: number | null
+  xp_progress: number
+  xp_needed: number | null
+  progress_pct: number
+  prestige_stars: number
+  can_prestige: boolean
+  is_max_level: boolean
+  prestige_xp: number
+}
+
 export interface ProfileData {
   user: {
     id: number
@@ -212,6 +231,7 @@ export interface ProfileData {
       total: number
       limit: number
     }
+    forge_rank?: ForgeRankInfo
   }
   latest_stats: ValorantStats | null
 }
@@ -502,6 +522,9 @@ declare global {
         openAnalyze: () => Promise<{ ok: boolean }>
         openDashboard: () => Promise<{ ok: boolean }>
         getStats: () => Promise<DeadlockProfileStats | null>
+      }
+      forgeRank: {
+        prestige: () => Promise<{ success: boolean; forge_rank?: ForgeRankInfo; message?: string }>
       }
       on: (channel: string, callback: (...args: unknown[]) => void) => (() => void)
     }
