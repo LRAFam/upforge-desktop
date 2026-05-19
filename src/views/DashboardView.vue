@@ -118,7 +118,7 @@
     </div>
 
     <!-- 3-column dashboard grid -->
-    <div class="flex-1 grid grid-cols-[272px_1fr_296px] gap-4 p-4 pt-3 min-h-0 overflow-hidden">
+    <div class="flex-1 grid grid-cols-[300px_1fr_300px] gap-4 p-4 pt-3 min-h-0 overflow-hidden">
 
       <!-- ═══════════ LEFT: Player card ═══════════ -->
       <div class="flex flex-col gap-3 overflow-y-auto" style="scrollbar-width:none">
@@ -154,12 +154,16 @@
                   <span v-if="profile.user.riot_name">{{ profile.user.riot_name }}#{{ profile.user.riot_tag }}</span>
                   <button v-else class="text-red-400/70 hover:text-red-400 transition-colors" @click="openRiotSettings">Link Riot ID →</button>
                 </p>
-                <div v-if="profile.latest_stats?.current_rank" class="flex items-center gap-2 mt-1.5 flex-wrap">
-                  <img v-if="getRankIconUrl(profile.latest_stats.current_rank)" :src="getRankIconUrl(profile.latest_stats.current_rank)!" :alt="profile.latest_stats.current_rank" class="w-8 h-8 object-contain drop-shadow-lg" />
-                  <span class="text-xl font-black leading-none" :style="{ color: getRankHexColor(profile.latest_stats.current_rank), textShadow: `0 0 20px ${getRankHexColor(profile.latest_stats.current_rank)}55` }">{{ profile.latest_stats.current_rank }}</span>
-                  <span v-if="profile.latest_stats.rr != null" class="text-xs font-semibold text-gray-500">{{ profile.latest_stats.rr }} <span class="text-gray-700">RR</span></span>
-                  <span v-if="profile.latest_stats.last_rr_change != null" class="text-xs font-black tabular-nums px-1.5 py-0.5 rounded-md" :class="profile.latest_stats.last_rr_change > 0 ? 'text-green-400 bg-green-500/10' : 'text-red-400 bg-red-500/10'">{{ profile.latest_stats.last_rr_change > 0 ? '+' : '' }}{{ profile.latest_stats.last_rr_change }}</span>
-                  <span v-if="profile.latest_stats.leaderboard_rank" class="text-[10px] font-black bg-yellow-400/15 text-yellow-300 border border-yellow-400/25 px-1.5 py-0.5 rounded-full tabular-nums">#{{ profile.latest_stats.leaderboard_rank }}</span>
+                <div v-if="profile.latest_stats?.current_rank" class="mt-1.5">
+                  <div class="flex items-center gap-1.5 flex-nowrap">
+                    <img v-if="getRankIconUrl(profile.latest_stats.current_rank)" :src="getRankIconUrl(profile.latest_stats.current_rank)!" :alt="profile.latest_stats.current_rank" class="w-6 h-6 object-contain drop-shadow-lg flex-shrink-0" />
+                    <span class="text-lg font-black leading-none whitespace-nowrap" :style="{ color: getRankHexColor(profile.latest_stats.current_rank), textShadow: `0 0 20px ${getRankHexColor(profile.latest_stats.current_rank)}55` }">{{ profile.latest_stats.current_rank }}</span>
+                    <span v-if="profile.latest_stats.leaderboard_rank" class="text-[10px] font-black bg-yellow-400/15 text-yellow-300 border border-yellow-400/25 px-1.5 py-0.5 rounded-full tabular-nums whitespace-nowrap">#{{ profile.latest_stats.leaderboard_rank }}</span>
+                  </div>
+                  <div class="flex items-center gap-1.5 mt-0.5">
+                    <span v-if="profile.latest_stats.rr != null" class="text-xs font-semibold text-gray-500">{{ profile.latest_stats.rr }} <span class="text-gray-700">RR</span></span>
+                    <span v-if="profile.latest_stats.last_rr_change != null" class="text-xs font-black tabular-nums px-1.5 py-0.5 rounded-md" :class="profile.latest_stats.last_rr_change > 0 ? 'text-green-400 bg-green-500/10' : 'text-red-400 bg-red-500/10'">{{ profile.latest_stats.last_rr_change > 0 ? '+' : '' }}{{ profile.latest_stats.last_rr_change }}</span>
+                  </div>
                 </div>
               </div>
               <!-- Actions -->
