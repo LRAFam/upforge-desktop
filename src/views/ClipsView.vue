@@ -308,7 +308,7 @@
       >
         <div class="relative w-[380px] bg-[#111116] border border-white/[0.10] rounded-2xl p-5 shadow-[0_24px_64px_rgba(0,0,0,0.8)]">
           <h3 class="text-sm font-bold text-white mb-1">Trim Clip</h3>
-          <p class="text-xs text-gray-500 mb-4">Original duration: <span class="text-gray-400 font-mono">{{ formatDuration(trimModal.duration) }}</span> · New duration: <span class="text-red-400 font-mono">{{ formatDuration(trimModal.endSec - trimModal.startSec) }}</span></p>
+          <p class="text-xs text-gray-500 mb-4">Original duration: <span class="text-gray-400 font-mono">{{ formatDuration(trimModal.duration, true) }}</span> · New duration: <span class="text-red-400 font-mono">{{ formatDuration(trimModal.endSec - trimModal.startSec, true) }}</span></p>
 
           <!-- Trim range visual bar -->
           <div class="relative h-8 mb-4 bg-white/[0.04] rounded-lg overflow-hidden border border-white/[0.06]">
@@ -324,12 +324,12 @@
             <div
               class="absolute top-1 text-[9px] font-mono text-red-400 pointer-events-none"
               :style="{ left: 'calc(' + (trimModal.startSec / trimModal.duration * 100) + '% + 4px)' }"
-            >{{ formatDuration(trimModal.startSec) }}</div>
+            >{{ formatDuration(trimModal.startSec, true) }}</div>
             <!-- End handle label -->
             <div
               class="absolute top-1 text-[9px] font-mono text-red-400 pointer-events-none"
               :style="{ right: 'calc(' + ((1 - trimModal.endSec / trimModal.duration) * 100) + '% + 4px)' }"
-            >{{ formatDuration(trimModal.endSec) }}</div>
+            >{{ formatDuration(trimModal.endSec, true) }}</div>
           </div>
 
           <div class="space-y-3 mb-4">
@@ -340,12 +340,12 @@
                 <div class="flex items-center gap-1">
                   <button
                     class="w-5 h-5 rounded bg-white/[0.05] hover:bg-white/[0.10] text-gray-400 text-xs flex items-center justify-center transition-colors"
-                    @click="trimModal.startSec = Math.max(0, trimModal.startSec - 0.1)"
+                    @click="trimModal.startSec = Math.round(Math.max(0, trimModal.startSec - 0.1) * 10) / 10"
                   >−</button>
-                  <span class="text-xs font-mono text-white w-14 text-center">{{ formatDuration(trimModal.startSec) }}</span>
+                  <span class="text-xs font-mono text-white w-16 text-center">{{ formatDuration(trimModal.startSec, true) }}</span>
                   <button
                     class="w-5 h-5 rounded bg-white/[0.05] hover:bg-white/[0.10] text-gray-400 text-xs flex items-center justify-center transition-colors"
-                    @click="trimModal.startSec = Math.min(trimModal.endSec - 0.5, trimModal.startSec + 0.1)"
+                    @click="trimModal.startSec = Math.round(Math.min(trimModal.endSec - 0.5, trimModal.startSec + 0.1) * 10) / 10"
                   >+</button>
                 </div>
               </div>
@@ -365,12 +365,12 @@
                 <div class="flex items-center gap-1">
                   <button
                     class="w-5 h-5 rounded bg-white/[0.05] hover:bg-white/[0.10] text-gray-400 text-xs flex items-center justify-center transition-colors"
-                    @click="trimModal.endSec = Math.max(trimModal.startSec + 0.5, trimModal.endSec - 0.1)"
+                    @click="trimModal.endSec = Math.round(Math.max(trimModal.startSec + 0.5, trimModal.endSec - 0.1) * 10) / 10"
                   >−</button>
-                  <span class="text-xs font-mono text-white w-14 text-center">{{ formatDuration(trimModal.endSec) }}</span>
+                  <span class="text-xs font-mono text-white w-16 text-center">{{ formatDuration(trimModal.endSec, true) }}</span>
                   <button
                     class="w-5 h-5 rounded bg-white/[0.05] hover:bg-white/[0.10] text-gray-400 text-xs flex items-center justify-center transition-colors"
-                    @click="trimModal.endSec = Math.min(trimModal.duration, trimModal.endSec + 0.1)"
+                    @click="trimModal.endSec = Math.round(Math.min(trimModal.duration, trimModal.endSec + 0.1) * 10) / 10"
                   >+</button>
                 </div>
               </div>
@@ -709,10 +709,13 @@ async function shareClip(clip: ClipRecord) {
   }
 }
 
-function formatDuration(secs: number): string {
+function formatDuration(secs: number, precise = false): string {
   const m = Math.floor(secs / 60)
-  const s = Math.floor(secs % 60)
-  return `${m}:${s.toString().padStart(2, '0')}`
+  const s = secs % 60
+  if (precise) {
+    return `${m}:${Math.floor(s).toString().padStart(2, '0')}.${Math.round((s % 1) * 10)}`
+  }
+  return `${m}:${Math.floor(s).toString().padStart(2, '0')}`
 }
 
 function defaultTitle(clip: ClipRecord): string {
