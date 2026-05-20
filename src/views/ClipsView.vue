@@ -189,8 +189,36 @@
       <!-- Modal header -->
       <div class="flex items-center justify-between px-4 py-3 flex-shrink-0 bg-white/[0.03] border-b border-white/[0.07]">
         <div class="flex-1 min-w-0 pr-3">
-          <p class="text-xs font-semibold text-white truncate">{{ playingClip.title || defaultTitle(playingClip) }}</p>
-          <p v-if="playingClip.trigger" class="text-xs text-gray-600 mt-0.5 capitalize">{{ playingClip.trigger }} clip</p>
+          <!-- Editable title -->
+          <div v-if="editingTitle" class="flex items-center gap-1.5">
+            <input
+              ref="titleInputEl"
+              v-model="titleInputValue"
+              class="flex-1 min-w-0 bg-white/[0.06] border border-white/[0.15] rounded px-2 py-0.5 text-xs font-semibold text-white focus:outline-none focus:border-red-500/40 transition-colors"
+              maxlength="80"
+              @keydown.enter="saveTitleEdit"
+              @keydown.escape="cancelTitleEdit"
+              @blur="saveTitleEdit"
+            />
+            <button class="text-gray-600 hover:text-gray-400 transition-colors" @mousedown.prevent="cancelTitleEdit">
+              <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+              </svg>
+            </button>
+          </div>
+          <div v-else class="flex items-center gap-1.5 group/title">
+            <p class="text-xs font-semibold text-white truncate">{{ playingClip.title || defaultTitle(playingClip) }}</p>
+            <button
+              class="opacity-0 group-hover/title:opacity-100 transition-opacity text-gray-600 hover:text-gray-300 flex-shrink-0"
+              title="Rename clip"
+              @click="startTitleEdit"
+            >
+              <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"/>
+              </svg>
+            </button>
+          </div>
+          <p v-if="playingClip.trigger" class="text-xs text-gray-600 mt-0.5 capitalize">{{ playingClip.trigger }} clip · <span class="font-mono">{{ formatDuration(playingClip.durationSeconds) }}</span></p>
         </div>
         <div class="flex items-center gap-2 flex-shrink-0">
           <button
@@ -244,8 +272,13 @@
         class="flex-1 w-full object-contain"
         controls
         autoplay
-        :src="`file://${playingClip.path}`"
+        :src="`file:///${playingClip.path.replace(/\\/g, '/').split('/').map(encodeURIComponent).join('/')}`"
       />
+      <div class="flex items-center justify-center gap-4 px-4 py-1.5 bg-black/40 border-t border-white/[0.04] flex-shrink-0">
+        <span class="text-[9px] text-gray-700">Space: Play/Pause</span>
+        <span class="text-[9px] text-gray-700">← →: Skip 5s</span>
+        <span class="text-[9px] text-gray-700">Esc: Close</span>
+      </div>
       <div v-if="playingClip.suggestion" class="px-4 py-3 bg-gradient-to-r from-orange-500/[0.08] to-transparent border-t border-orange-500/15 flex-shrink-0 flex items-start gap-2.5">
         <div class="w-5 h-5 rounded-full bg-orange-500/20 flex items-center justify-center flex-shrink-0 mt-px">
           <svg class="w-2.5 h-2.5 text-orange-400" fill="currentColor" viewBox="0 0 20 20">
@@ -273,28 +306,81 @@
         class="fixed inset-0 z-[60] flex items-center justify-center bg-black/70 backdrop-blur-md"
         @click.self="trimModal.show = false"
       >
-        <div class="relative w-[320px] bg-[#111116] border border-white/[0.10] rounded-2xl p-5 shadow-[0_24px_64px_rgba(0,0,0,0.8)]">
-          <h3 class="text-sm font-bold text-white mb-4">Trim Clip</h3>
+        <div class="relative w-[380px] bg-[#111116] border border-white/[0.10] rounded-2xl p-5 shadow-[0_24px_64px_rgba(0,0,0,0.8)]">
+          <h3 class="text-sm font-bold text-white mb-1">Trim Clip</h3>
+          <p class="text-xs text-gray-500 mb-4">Original duration: <span class="text-gray-400 font-mono">{{ formatDuration(trimModal.duration) }}</span> · New duration: <span class="text-red-400 font-mono">{{ formatDuration(trimModal.endSec - trimModal.startSec) }}</span></p>
+
+          <!-- Trim range visual bar -->
+          <div class="relative h-8 mb-4 bg-white/[0.04] rounded-lg overflow-hidden border border-white/[0.06]">
+            <!-- Kept region highlight -->
+            <div
+              class="absolute top-0 bottom-0 bg-red-500/20 border-x border-red-500/40 transition-all"
+              :style="{
+                left: (trimModal.startSec / trimModal.duration * 100) + '%',
+                width: ((trimModal.endSec - trimModal.startSec) / trimModal.duration * 100) + '%'
+              }"
+            />
+            <!-- Start handle label -->
+            <div
+              class="absolute top-1 text-[9px] font-mono text-red-400 pointer-events-none"
+              :style="{ left: 'calc(' + (trimModal.startSec / trimModal.duration * 100) + '% + 4px)' }"
+            >{{ formatDuration(trimModal.startSec) }}</div>
+            <!-- End handle label -->
+            <div
+              class="absolute top-1 text-[9px] font-mono text-red-400 pointer-events-none"
+              :style="{ right: 'calc(' + ((1 - trimModal.endSec / trimModal.duration) * 100) + '% + 4px)' }"
+            >{{ formatDuration(trimModal.endSec) }}</div>
+          </div>
+
           <div class="space-y-3 mb-4">
+            <!-- Start slider -->
             <div>
-              <label class="block text-xs text-gray-500 mb-1">Start (seconds)</label>
+              <div class="flex items-center justify-between mb-1">
+                <label class="text-xs text-gray-500">Start</label>
+                <div class="flex items-center gap-1">
+                  <button
+                    class="w-5 h-5 rounded bg-white/[0.05] hover:bg-white/[0.10] text-gray-400 text-xs flex items-center justify-center transition-colors"
+                    @click="trimModal.startSec = Math.max(0, trimModal.startSec - 0.1)"
+                  >−</button>
+                  <span class="text-xs font-mono text-white w-14 text-center">{{ formatDuration(trimModal.startSec) }}</span>
+                  <button
+                    class="w-5 h-5 rounded bg-white/[0.05] hover:bg-white/[0.10] text-gray-400 text-xs flex items-center justify-center transition-colors"
+                    @click="trimModal.startSec = Math.min(trimModal.endSec - 0.5, trimModal.startSec + 0.1)"
+                  >+</button>
+                </div>
+              </div>
               <input
                 v-model.number="trimModal.startSec"
-                type="number"
+                type="range"
                 :min="0"
                 :max="trimModal.endSec - 0.5"
-                step="0.5"
-                class="w-full px-2.5 py-1.5 bg-white/[0.04] border border-white/[0.07] rounded-lg text-xs text-white focus:outline-none focus:border-red-500/30 transition-colors"
+                step="0.1"
+                class="w-full h-1 appearance-none bg-white/[0.08] rounded-full outline-none accent-red-500 cursor-pointer"
               />
             </div>
+            <!-- End slider -->
             <div>
-              <label class="block text-xs text-gray-500 mb-1">End (seconds)</label>
+              <div class="flex items-center justify-between mb-1">
+                <label class="text-xs text-gray-500">End</label>
+                <div class="flex items-center gap-1">
+                  <button
+                    class="w-5 h-5 rounded bg-white/[0.05] hover:bg-white/[0.10] text-gray-400 text-xs flex items-center justify-center transition-colors"
+                    @click="trimModal.endSec = Math.max(trimModal.startSec + 0.5, trimModal.endSec - 0.1)"
+                  >−</button>
+                  <span class="text-xs font-mono text-white w-14 text-center">{{ formatDuration(trimModal.endSec) }}</span>
+                  <button
+                    class="w-5 h-5 rounded bg-white/[0.05] hover:bg-white/[0.10] text-gray-400 text-xs flex items-center justify-center transition-colors"
+                    @click="trimModal.endSec = Math.min(trimModal.duration, trimModal.endSec + 0.1)"
+                  >+</button>
+                </div>
+              </div>
               <input
                 v-model.number="trimModal.endSec"
-                type="number"
+                type="range"
                 :min="trimModal.startSec + 0.5"
-                step="0.5"
-                class="w-full px-2.5 py-1.5 bg-white/[0.04] border border-white/[0.07] rounded-lg text-xs text-white focus:outline-none focus:border-red-500/30 transition-colors"
+                :max="trimModal.duration"
+                step="0.1"
+                class="w-full h-1 appearance-none bg-white/[0.08] rounded-full outline-none accent-red-500 cursor-pointer"
               />
             </div>
             <p v-if="trimModal.error" class="text-xs text-red-400">{{ trimModal.error }}</p>
@@ -304,7 +390,7 @@
               :disabled="trimModal.loading"
               class="flex-1 py-2 rounded-xl bg-gradient-to-r from-red-500 to-orange-500 hover:from-red-400 hover:to-orange-400 text-white text-[12px] font-bold transition-all disabled:opacity-50"
               @click="confirmTrim"
-            >{{ trimModal.loading ? 'Trimming…' : 'Trim' }}</button>
+            >{{ trimModal.loading ? 'Trimming…' : 'Trim Clip' }}</button>
             <button
               class="flex-1 py-2 rounded-xl text-gray-600 hover:text-gray-400 text-[12px] transition-colors border border-white/[0.07]"
               @click="trimModal.show = false"
@@ -373,7 +459,12 @@ const videoEl = ref<HTMLVideoElement | null>(null)
 const upgradeModal = ref({ show: false, message: '' })
 const uploadingClipId = ref<string | null>(null)
 const uploadError = ref<string | null>(null)
-const trimModal = ref({ show: false, clipId: '', startSec: 0, endSec: 10, loading: false, error: null as string | null })
+const trimModal = ref({ show: false, clipId: '', startSec: 0, endSec: 10, duration: 10, loading: false, error: null as string | null })
+
+// Title editing state
+const editingTitle = ref(false)
+const titleInputValue = ref('')
+const titleInputEl = ref<HTMLInputElement | null>(null)
 
 const showToast = ref(false)
 const toastMessage = ref('')
@@ -411,11 +502,79 @@ onMounted(async () => {
     // clips:new sends an array of newly extracted clip IDs — reload everything
     await loadClips()
   })
+  window.addEventListener('keydown', handleKeyDown)
 })
 
 onUnmounted(() => {
   removeListener.value?.()
+  window.removeEventListener('keydown', handleKeyDown)
 })
+
+function handleKeyDown(e: KeyboardEvent) {
+  if (!playingClip.value) return
+  if (trimModal.value.show) return
+  if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return
+
+  switch (e.key) {
+    case 'Escape':
+      closePlayer()
+      break
+    case ' ':
+      e.preventDefault()
+      toggleModalPlay()
+      break
+    case 'ArrowLeft':
+      e.preventDefault()
+      if (videoEl.value) videoEl.value.currentTime = Math.max(0, videoEl.value.currentTime - 5)
+      break
+    case 'ArrowRight':
+      e.preventDefault()
+      if (videoEl.value) {
+        const dur = videoEl.value.duration || 0
+        videoEl.value.currentTime = Math.min(dur, videoEl.value.currentTime + 5)
+      }
+      break
+  }
+}
+
+function toggleModalPlay() {
+  if (!videoEl.value) return
+  if (videoEl.value.paused) videoEl.value.play().catch(e => {
+    if (e.name !== 'AbortError') console.error('[Clips] play() failed:', e)
+  })
+  else videoEl.value.pause()
+}
+
+// Title editing
+function startTitleEdit() {
+  if (!playingClip.value) return
+  editingTitle.value = true
+  titleInputValue.value = playingClip.value.title || defaultTitle(playingClip.value)
+  // Focus input on next tick
+  setTimeout(() => titleInputEl.value?.select(), 50)
+}
+
+function cancelTitleEdit() {
+  editingTitle.value = false
+  titleInputValue.value = ''
+}
+
+async function saveTitleEdit() {
+  if (!playingClip.value || !editingTitle.value) return
+  const newTitle = titleInputValue.value.trim()
+  editingTitle.value = false
+  if (!newTitle || newTitle === (playingClip.value.title || defaultTitle(playingClip.value))) return
+
+  try {
+    await window.api.clips.updateTitle(playingClip.value.id, newTitle)
+    const idx = clips.value.findIndex(c => c.id === playingClip.value!.id)
+    if (idx !== -1) clips.value[idx] = { ...clips.value[idx], title: newTitle }
+    playingClip.value = { ...playingClip.value, title: newTitle }
+    showToastMsg('Clip renamed', 'success')
+  } catch {
+    showToastMsg('Failed to rename clip', 'error')
+  }
+}
 
 async function loadClips() {
   try {
@@ -446,6 +605,8 @@ function closePlayer() {
   }
   playingClip.value = null
   trimModal.value.show = false
+  editingTitle.value = false
+  titleInputValue.value = ''
 }
 
 function openTrim(clip: ClipRecord) {
@@ -454,6 +615,7 @@ function openTrim(clip: ClipRecord) {
     clipId: clip.id,
     startSec: 0,
     endSec: Math.round(clip.durationSeconds),
+    duration: clip.durationSeconds,
     loading: false,
     error: null,
   }
@@ -474,6 +636,10 @@ async function confirmTrim() {
     } else {
       trimModal.value.show = false
       await loadClips()
+      // Refresh thumbnail for trimmed clip
+      delete thumbnails.value[clipId]
+      await loadThumbnail(clipId)
+      showToastMsg('Clip trimmed successfully', 'success')
     }
   } catch (e) {
     trimModal.value.error = e instanceof Error ? e.message : 'Trim failed'

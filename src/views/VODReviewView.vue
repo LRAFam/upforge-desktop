@@ -364,7 +364,7 @@
           <!-- Playback controls row -->
           <div class="flex items-center gap-3">
             <!-- Play/Pause -->
-            <button class="w-7 h-7 flex items-center justify-center rounded-lg hover:bg-white/[0.06] transition-colors text-gray-300 hover:text-white" @click="togglePlay">
+            <button class="w-7 h-7 flex items-center justify-center rounded-lg hover:bg-white/[0.06] transition-colors text-gray-300 hover:text-white" title="Play/Pause (Space)" @click="togglePlay">
               <svg v-if="isPlaying" class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
                 <path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/>
               </svg>
@@ -374,26 +374,26 @@
             </button>
 
             <!-- Skip back 5s -->
-            <button class="w-7 h-7 flex items-center justify-center rounded-lg hover:bg-white/[0.06] transition-colors text-gray-500 hover:text-gray-300" @click="skip(-5)">
+            <button class="w-7 h-7 flex items-center justify-center rounded-lg hover:bg-white/[0.06] transition-colors text-gray-500 hover:text-gray-300" title="Skip back 5s (←)" @click="skip(-5)">
               <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 19l-7-7 7-7m8 14l-7-7 7-7"/>
               </svg>
             </button>
 
             <!-- Skip forward 5s -->
-            <button class="w-7 h-7 flex items-center justify-center rounded-lg hover:bg-white/[0.06] transition-colors text-gray-500 hover:text-gray-300" @click="skip(5)">
+            <button class="w-7 h-7 flex items-center justify-center rounded-lg hover:bg-white/[0.06] transition-colors text-gray-500 hover:text-gray-300" title="Skip forward 5s (→)" @click="skip(5)">
               <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 5l7 7-7 7M5 5l7 7-7 7"/>
               </svg>
             </button>
 
             <!-- Prev event / Next event -->
-            <button class="w-7 h-7 flex items-center justify-center rounded-lg hover:bg-white/[0.06] transition-colors text-gray-500 hover:text-gray-300" title="Previous event" @click="seekPrevEvent">
+            <button class="w-7 h-7 flex items-center justify-center rounded-lg hover:bg-white/[0.06] transition-colors text-gray-500 hover:text-gray-300" title="Previous event (J)" @click="seekPrevEvent">
               <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 18l-6-6 6-6"/>
               </svg>
             </button>
-            <button class="w-7 h-7 flex items-center justify-center rounded-lg hover:bg-white/[0.06] transition-colors text-gray-500 hover:text-gray-300" title="Next event" @click="seekNextEvent">
+            <button class="w-7 h-7 flex items-center justify-center rounded-lg hover:bg-white/[0.06] transition-colors text-gray-500 hover:text-gray-300" title="Next event (L)" @click="seekNextEvent">
               <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 18l6-6-6-6"/>
               </svg>
@@ -402,6 +402,7 @@
             <!-- Playback speed -->
             <button
               class="text-xs font-mono px-2 py-0.5 rounded bg-white/[0.05] hover:bg-white/[0.1] text-gray-400 hover:text-gray-200 transition-colors"
+              title="Cycle speed ([/])"
               @click="cycleSpeed"
             >{{ playbackSpeed }}x</button>
 
@@ -691,8 +692,8 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, watch } from 'vue'
-import { useRoute } from 'vue-router'
+import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { getWeaponImage, getAgentImage, getAbilityIcon } from '../lib/valorant'
 import { pendingTimeline } from '../stores/pendingTimeline'
 
@@ -789,6 +790,7 @@ interface RecordingTimeline {
 }
 
 const route = useRoute()
+const router = useRouter()
 const videoEl = ref<HTMLVideoElement | null>(null)
 const sidebarEl = ref<HTMLElement | null>(null)
 
@@ -900,7 +902,8 @@ const agentImageUrl = computed(() => {
 
 const videoSrc = computed(() => {
   if (!timeline.value?.videoPath) return ''
-  return `file://${timeline.value.videoPath}`
+  // Encode path to handle spaces and special characters in Windows paths
+  return 'file:///' + timeline.value.videoPath.replace(/\\/g, '/').split('/').map(encodeURIComponent).join('/')
 })
 
 const progressPercent = computed(() => {
@@ -1040,9 +1043,13 @@ function formatSeconds(s: number, zeroAsDash = false): string {
   return `${m}:${String(Math.floor(s % 60)).padStart(2, '0')}`
 }
 
+const EVENT_PRE_ROLL_SECONDS = 5
+
 function togglePlay() {
   if (!videoEl.value) return
-  if (videoEl.value.paused) videoEl.value.play()
+  if (videoEl.value.paused) videoEl.value.play().catch(e => {
+    if (e.name !== 'AbortError') console.error('[VOD] play() failed:', e)
+  })
   else videoEl.value.pause()
 }
 
@@ -1058,17 +1065,30 @@ function cycleSpeed() {
   if (videoEl.value) videoEl.value.playbackRate = playbackSpeed.value
 }
 
+function cycleSpeedDown() {
+  const speeds = [0.25, 0.5, 1, 1.5, 2]
+  const idx = speeds.indexOf(playbackSpeed.value)
+  playbackSpeed.value = speeds[Math.max(0, idx - 1)]
+  if (videoEl.value) videoEl.value.playbackRate = playbackSpeed.value
+}
+
 function seekToEvent(event: TimelineEvent) {
   if (!videoEl.value || event.videoOffsetMs == null) return
-  videoEl.value.currentTime = event.videoOffsetMs / 1000
-  videoEl.value.play()
+  const wasPlaying = !videoEl.value.paused
+  videoEl.value.currentTime = Math.max(0, event.videoOffsetMs / 1000 - EVENT_PRE_ROLL_SECONDS)
+  if (wasPlaying) videoEl.value.play().catch(e => {
+    if (e.name !== 'AbortError') console.error('[VOD] play() failed:', e)
+  })
 }
 
 function seekToRound(round: RoundGroup) {
   selectedRound.value = round
   if (!videoEl.value || round.firstVideoOffsetMs == null) return
+  const wasPlaying = !videoEl.value.paused
   videoEl.value.currentTime = Math.max(0, round.firstVideoOffsetMs / 1000 - 2)
-  videoEl.value.play()
+  if (wasPlaying) videoEl.value.play().catch(e => {
+    if (e.name !== 'AbortError') console.error('[VOD] play() failed:', e)
+  })
 }
 
 function seekPrevEvent() {
@@ -1106,7 +1126,7 @@ function onLoadedMetadata() {
 function onScrubberClick(e: MouseEvent) {
   const el = e.currentTarget as HTMLElement
   const rect = el.getBoundingClientRect()
-  const pct = (e.clientX - rect.left) / rect.width
+  const pct = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width))
   if (videoEl.value) {
     videoEl.value.currentTime = pct * duration.value
   }
@@ -1116,7 +1136,7 @@ function onScrubberHover(e: MouseEvent) {
   if (!duration.value || isNaN(duration.value)) return
   const el = e.currentTarget as HTMLElement
   const rect = el.getBoundingClientRect()
-  hoverTime.value = ((e.clientX - rect.left) / rect.width) * duration.value
+  hoverTime.value = Math.max(0, Math.min(duration.value, ((e.clientX - rect.left) / rect.width) * duration.value))
 }
 
 onMounted(async () => {
@@ -1140,7 +1160,50 @@ onMounted(async () => {
       if (ownDeath?.victimPuuid) ownPuuid.value = ownDeath.victimPuuid
     }
   }
+
+  window.addEventListener('keydown', handleKeyDown)
 })
+
+onUnmounted(() => {
+  window.removeEventListener('keydown', handleKeyDown)
+})
+
+function handleKeyDown(e: KeyboardEvent) {
+  // Don't capture keyboard events when user is typing in an input
+  if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return
+
+  switch (e.key) {
+    case ' ':
+      e.preventDefault()
+      togglePlay()
+      break
+    case 'ArrowLeft':
+      e.preventDefault()
+      skip(e.shiftKey ? -1 : -5)
+      break
+    case 'ArrowRight':
+      e.preventDefault()
+      skip(e.shiftKey ? 1 : 5)
+      break
+    case 'j':
+    case 'J':
+      seekPrevEvent()
+      break
+    case 'l':
+    case 'L':
+      seekNextEvent()
+      break
+    case ']':
+      cycleSpeed()
+      break
+    case '[':
+      cycleSpeedDown()
+      break
+    case 'Escape':
+      router.back()
+      break
+  }
+}
 
 watch(playbackSpeed, (val) => {
   if (videoEl.value) videoEl.value.playbackRate = val
