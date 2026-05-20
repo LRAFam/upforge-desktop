@@ -1,7 +1,20 @@
 import { ipcMain, WebContents, app } from 'electron'
-import { createWriteStream, WriteStream, existsSync, mkdirSync, statSync, unlinkSync } from 'fs'
+import { createWriteStream, WriteStream, existsSync, mkdirSync, statSync, unlinkSync, accessSync, constants as fsConstants, writeFileSync, rmSync } from 'fs'
 import { statfs } from 'fs/promises'
-import { join } from 'path'
+import { join, parse } from 'path'
+
+/** Returns true if we can actually create files inside `dir`. */
+function isDirectoryWritable(dir: string): boolean {
+  try {
+    mkdirSync(dir, { recursive: true })
+    const probe = join(dir, `.upforge_write_test_${Date.now()}`)
+    writeFileSync(probe, '')
+    rmSync(probe)
+    return true
+  } catch {
+    return false
+  }
+}
 
 export interface RecorderConfig {
   quality: '720p' | '1080p'
@@ -161,8 +174,15 @@ export class DesktopRecorder {
     this._noAudio = false
     this._startedAt = null
 
-    const dir = config?.savePath ?? join(app.getPath('userData'), 'recordings')
-    if (!existsSync(dir)) mkdirSync(dir, { recursive: true })
+    const fallbackDir = join(app.getPath('userData'), 'recordings')
+    let dir = config?.savePath ?? fallbackDir
+
+    // Guard against drive roots or unwritable paths (e.g. C:\) — fall back to userData
+    if (!isDirectoryWritable(dir)) {
+      console.warn(`[DesktopRecorder] savePath "${dir}" is not writable — falling back to default recordings folder`)
+      dir = fallbackDir
+      mkdirSync(dir, { recursive: true })
+    }
 
     this._outputPath = join(dir, `${game}_${Date.now()}.webm`)
 
