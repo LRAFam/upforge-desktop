@@ -37,6 +37,7 @@ import log from 'electron-log'
 import { setupMainProcessErrorHandlers, reportError } from './error-reporter'
 import { findLatestCS2Demo } from './cs2-demo-finder'
 import { CS2DemoUploader } from './cs2-demo-uploader'
+import { DiscordRPC } from './discord-rpc'
 
 /** Human-readable label for a game identifier. */
 function gameLabel(game?: string | null): string {
@@ -100,9 +101,18 @@ const clipExtractor = new ClipExtractor()
 const clipStore = new ClipStore()
 const hotkeyManager = new HotkeyManager()
 const trainerBridge = new TrainerBridge(() => mainWindow)
+const discordRPC = new DiscordRPC()
 recorder.onStatusChange = (recording, error) => {
   mainWindow?.webContents.send('recording:status-changed', { recording, error: error ?? null })
   updateTrayMenuFn?.() // keep tray in sync without waiting for the 30s interval
+  // Update Discord presence on recording state change
+  if (recording) {
+    discordRPC.setRecording(gameDetector.currentGame() || 'valorant', new Date())
+  } else if (gameDetector.currentGame()) {
+    discordRPC.setInGame(gameDetector.currentGame()!)
+  } else {
+    discordRPC.setIdle()
+  }
   // If recording stopped unexpectedly due to an error, show a system notification
   // so the user knows even if UpForge is in the background during a game
   if (!recording && error) {
@@ -1252,6 +1262,7 @@ function setupGameDetection(): void {
   gameDetector.on('game-started', async (game: string) => {
     console.log(`[GameDetector] ${game} started`)
     logActivity(`${game === 'cs2' ? 'CS2' : 'Valorant'} detected — waiting for match`)
+    discordRPC.setInGame(game)
 
     // Minimize the main window while gaming to reduce Chromium GPU/CPU overhead.
     // The user can restore it from the taskbar or tray if needed.
@@ -1538,6 +1549,7 @@ function setupGameDetection(): void {
 
   gameDetector.on('game-stopped', async (game: string) => {
     console.log(`[GameDetector] ${game} stopped`)
+    discordRPC.setIdle()
 
     // Game quit while still in lobby (before match started)
     if (cancelMatchWait) {
@@ -2309,4 +2321,5 @@ app.on('before-quit', () => {
   hotkeyManager.unregisterAll()
   globalShortcut.unregisterAll()
   destroyOverlay()
+  discordRPC.destroy()
 })
