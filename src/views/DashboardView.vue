@@ -253,11 +253,11 @@
           <p class="text-xs text-gray-600">No profile loaded</p>
         </div>
 
-        <!-- ─── Forge Rank card ─── -->
+        <!-- ─── Mastery card ─── -->
         <div v-if="profile?.user.forge_rank" class="bg-white/[0.02] border border-white/[0.06] rounded-2xl overflow-hidden">
           <div class="px-4 pt-3 pb-2">
             <div class="flex items-center justify-between mb-2">
-              <span class="text-[10px] font-bold uppercase tracking-widest text-gray-600">Forge Rank</span>
+              <span class="text-[10px] font-bold uppercase tracking-widest text-gray-600">Mastery</span>
               <span v-if="profile.user.forge_rank.prestige_stars > 0" class="flex items-center gap-0.5 text-yellow-400">
                 <svg
                   v-for="n in Math.min(profile.user.forge_rank.prestige_stars, 5)"
