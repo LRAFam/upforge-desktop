@@ -152,7 +152,16 @@ export class TrainerBridge {
   async launch(config: DrillConfig): Promise<void> {
     this._pendingConfig = config
 
-    if (!this._process || this._process.exitCode !== null) {
+    // Always kill any lingering process before spawning a fresh one.
+    // A previous drill may still be in its post-completion quit delay (up to 1.5s),
+    // which would cause the new config to be sent to a dying process — resulting in
+    // the new drill starting but Godot quitting mid-countdown (timer=0 / 0/0 targets).
+    if (this._process && this._process.exitCode === null) {
+      log.info('[TrainerBridge] Killing lingering process before new drill')
+      this.kill()
+    }
+
+    if (!this._process) {
       await this._spawnGodot()
     }
 
