@@ -697,6 +697,9 @@ async function requestPostGameDebrief(opts: {
       sendToWindow('post-game:debrief', null)
       resolve()
     })
+    req.setTimeout(120_000, () => {
+      req.destroy(new Error('Debrief request timed out after 120s'))
+    })
     req.write(body)
     req.end()
   })

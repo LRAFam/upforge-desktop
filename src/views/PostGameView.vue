@@ -354,7 +354,7 @@
 
         <!-- Post-game debrief panel -->
         <div
-          v-if="debriefLoading || debriefText"
+          v-if="debriefLoading || debriefText || debriefFailed"
           class="w-full rounded-xl border border-white/[0.08] bg-white/[0.03] overflow-hidden"
         >
           <div class="flex items-center gap-2 px-3 py-2 border-b border-white/[0.06]">
@@ -372,6 +372,7 @@
               </svg>
               <span>Generating your post-game debrief…</span>
             </div>
+            <p v-else-if="debriefFailed" class="text-xs text-gray-500 italic">Debrief unavailable for this match — the AI service could not be reached. Try again after your next match.</p>
             <p v-else class="text-xs text-gray-300 leading-relaxed whitespace-pre-wrap">{{ debriefText }}</p>
           </div>
         </div>
@@ -665,6 +666,7 @@ const cardExporting = ref(false)
 const cardExportDone = ref(false)
 const debriefText = ref<string | null>(null)
 const debriefLoading = ref(false)
+const debriefFailed = ref(false)
 const demoStatus = ref<{ status: string; jobId?: string; error?: string } | null>(null)
 const demoProgress = ref(0)
 
@@ -764,6 +766,8 @@ onMounted(() => {
     const data = args[0] as { debrief: string; agent: string | null; map: string | null } | null
     if (data?.debrief) {
       debriefText.value = data.debrief
+    } else if (!data) {
+      debriefFailed.value = true
     }
     debriefLoading.value = false
   }))
