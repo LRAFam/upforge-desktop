@@ -902,8 +902,10 @@ const agentImageUrl = computed(() => {
 
 const videoSrc = computed(() => {
   if (!timeline.value?.videoPath) return ''
-  // Encode path to handle spaces and special characters in Windows paths
-  return 'file:///' + timeline.value.videoPath.replace(/\\/g, '/').split('/').map(encodeURIComponent).join('/')
+  const normalized = timeline.value.videoPath.replace(/\\/g, '/')
+  return normalized.startsWith('/')
+    ? encodeURI(`file://${normalized}`)
+    : encodeURI(`file:///${normalized}`)
 })
 
 const progressPercent = computed(() => {

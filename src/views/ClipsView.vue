@@ -272,7 +272,7 @@
         class="flex-1 w-full object-contain"
         controls
         autoplay
-        :src="`file:///${playingClip.path.replace(/\\/g, '/').split('/').map(encodeURIComponent).join('/')}`"
+        :src="toFileUrl(playingClip.path)"
       />
       <div class="flex items-center justify-center gap-4 px-4 py-1.5 bg-black/40 border-t border-white/[0.04] flex-shrink-0">
         <span class="text-[9px] text-gray-700">Space: Play/Pause</span>
@@ -471,6 +471,16 @@ const toastMessage = ref('')
 const toastType = ref<'success' | 'error'>('success')
 const TOAST_DURATION = 3500
 let toastTimer: ReturnType<typeof setTimeout> | null = null
+
+/** Convert a local filesystem path to a valid file:// URL.
+ *  encodeURI preserves : and / so Windows drive letters and path separators
+ *  are kept intact, while spaces and other special chars are percent-encoded. */
+function toFileUrl(path: string): string {
+  const normalized = path.replace(/\\/g, '/')
+  return normalized.startsWith('/')
+    ? encodeURI(`file://${normalized}`)    // macOS/Linux: /path → file:///path
+    : encodeURI(`file:///${normalized}`)   // Windows:   C:/path → file:///C:/path
+}
 
 function showToastMsg(msg: string, type: 'success' | 'error' = 'success') {
   toastMessage.value = msg
