@@ -76,7 +76,7 @@
       </div>
       <!-- Upgrade nudge when near/at limit -->
       <div
-        v-if="usagePercent >= 80 && (user as UserWithUsage).analyses_limit && (user as UserWithUsage).analyses_limit! <= 5"
+        v-if="usagePercent >= 80 && (user as UserWithUsage).analyses_limit"
         class="mt-2 px-3 py-2.5 bg-purple-500/[0.07] border border-purple-500/20 rounded-xl"
       >
         <p class="text-xs text-purple-300 font-medium">
