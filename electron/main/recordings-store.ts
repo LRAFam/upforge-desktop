@@ -50,8 +50,17 @@ export class RecordingsStore {
   }
 
   private persist(): void {
-    fs.mkdirSync(path.dirname(this.filePath), { recursive: true })
-    fs.writeFileSync(this.filePath, JSON.stringify(this.recordings, null, 2))
+    try {
+      fs.mkdirSync(path.dirname(this.filePath), { recursive: true })
+      fs.writeFileSync(this.filePath, JSON.stringify(this.recordings, null, 2))
+    } catch (err: unknown) {
+      const code = (err as NodeJS.ErrnoException).code
+      if (code === 'ENOSPC') {
+        console.error('[RecordingsStore] Disk full — could not persist recordings list')
+      } else {
+        console.error('[RecordingsStore] Failed to persist recordings:', err)
+      }
+    }
   }
 
   add(data: NewRecording): PendingRecording {

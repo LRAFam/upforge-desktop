@@ -12,12 +12,16 @@ function tokenPath(): string {
 }
 
 function saveToken(token: string): void {
-  if (safeStorage.isEncryptionAvailable()) {
-    const encrypted = safeStorage.encryptString(token)
-    writeFileSync(tokenPath(), encrypted)
-  } else {
-    // Fallback: store plaintext (better than nothing, rare edge case)
-    writeFileSync(tokenPath(), Buffer.from(token, 'utf8'))
+  try {
+    if (safeStorage.isEncryptionAvailable()) {
+      const encrypted = safeStorage.encryptString(token)
+      writeFileSync(tokenPath(), encrypted)
+    } else {
+      writeFileSync(tokenPath(), Buffer.from(token, 'utf8'))
+    }
+  } catch (err: unknown) {
+    const code = (err as NodeJS.ErrnoException).code
+    log.error('[Auth] Failed to persist auth token:', code === 'ENOSPC' ? 'disk full' : err)
   }
 }
 

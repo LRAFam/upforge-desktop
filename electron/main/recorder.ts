@@ -167,8 +167,16 @@ export class Recorder {
     const dir = config?.savePath ?? join(app.getPath('userData'), 'recordings')
     if (!existsSync(dir)) mkdirSync(dir, { recursive: true })
 
-    // Warn if less than 5 GB free (but don't block recording)
+    // Refuse to start if critically low disk space (< 500 MB)
     const freeBytes = await this.getFreeDiskSpace(dir)
+    if (freeBytes < 500 * 1024 * 1024) {
+      const freeMB = (freeBytes / (1024 * 1024)).toFixed(0)
+      this._lastError = `Disk full: only ${freeMB} MB free. Free up disk space before recording.`
+      console.error(`[Recorder] ${this._lastError}`)
+      this.onStatusChange?.(false, this._lastError)
+      return
+    }
+    // Warn if less than 5 GB free
     if (freeBytes < 5 * 1024 * 1024 * 1024) {
       const freeGB = (freeBytes / (1024 * 1024 * 1024)).toFixed(1)
       this._startupWarning = `Low disk space: ${freeGB} GB free. Recordings may fail.`

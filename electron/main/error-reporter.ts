@@ -6,7 +6,7 @@
  * Also exports reportError() for manual reporting throughout the codebase.
  */
 
-import { app } from 'electron'
+import { app, Notification } from 'electron'
 import log from 'electron-log'
 import type { AuthManager } from './auth-manager'
 
@@ -76,6 +76,18 @@ export function setupMainProcessErrorHandlers(authManager: AuthManager): void {
 
   process.on('uncaughtException', (error: Error) => {
     log.error('[Main] Uncaught exception:', error)
+
+    const isNoSpace = (error as NodeJS.ErrnoException).code === 'ENOSPC'
+    if (isNoSpace) {
+      // Show a user-facing notification for disk-full errors
+      try {
+        new Notification({
+          title: 'UpForge — Disk Full',
+          body: 'Your disk is full. Please free up space or recordings may not save correctly.',
+        }).show()
+      } catch { /* notifications not available */ }
+    }
+
     reportError({
       message: error.message,
       stack: error.stack,

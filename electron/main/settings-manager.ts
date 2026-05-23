@@ -160,8 +160,17 @@ export class SettingsManager {
 
   save(partial: Partial<AppSettings>): AppSettings {
     this.settings = { ...this.settings, ...partial }
-    fs.mkdirSync(path.dirname(this.filePath), { recursive: true })
-    fs.writeFileSync(this.filePath, JSON.stringify(this.settings, null, 2))
+    try {
+      fs.mkdirSync(path.dirname(this.filePath), { recursive: true })
+      fs.writeFileSync(this.filePath, JSON.stringify(this.settings, null, 2))
+    } catch (err: unknown) {
+      const code = (err as NodeJS.ErrnoException).code
+      if (code === 'ENOSPC') {
+        console.error('[SettingsManager] Disk full — could not save settings')
+      } else {
+        console.error('[SettingsManager] Failed to save settings:', err)
+      }
+    }
     return this.settings
   }
 }
