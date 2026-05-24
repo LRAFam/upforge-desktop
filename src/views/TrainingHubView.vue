@@ -55,6 +55,16 @@ const loadingHistory = ref(false)
 const heatmapCanvas = ref<HTMLCanvasElement | null>(null)
 const activeTab = ref<'drills' | 'progress' | 'coaching'>('drills')
 
+interface AiCoaching {
+  focus_area: string
+  headline: string
+  message: string
+  tips: string[]
+  encouragement: string
+}
+const aiCoaching = ref<AiCoaching | null>(null)
+const loadingAiCoaching = ref(false)
+
 // ── Achievements ──────────────────────────────────────────────────────────────
 const achievements = useAchievements()
 const unlockedCount = computed(() => Object.keys(achievements.unlocked.value).length)
@@ -428,18 +438,21 @@ onMounted(async () => {
 
   // Fetch training history + coaching drills from API
   loadingHistory.value = true
+  loadingAiCoaching.value = true
   try {
-    const [history, drills, insights, benchmark] = await Promise.all([
+    const [history, drills, insights, benchmark, coaching] = await Promise.all([
       window.api.trainer.getHistory(),
       window.api.trainer.getCoachingDrills(),
       window.api.trainer.getCorrelation(),
       window.api.trainer.getBenchmark(),
+      window.api.trainer.getAiCoaching(),
     ])
     apiHistory.value = history
     const drillList = Array.isArray(drills) ? drills : []
     coachingDrills.value = drillList
     correlationInsights.value = Array.isArray(insights) ? insights : []
     benchmarkData.value = benchmark
+    aiCoaching.value = coaching
     // If API returned coaching drills that map to scenarios, populate Today's Drills
     if (drillList.length > 0) {
       const mapped: AssignedDrill[] = drillList
@@ -457,6 +470,7 @@ onMounted(async () => {
     }
   } finally {
     loadingHistory.value = false
+    loadingAiCoaching.value = false
   }
 })
 
@@ -2004,7 +2018,30 @@ const CATEGORY_ICON: Record<string, string> = {
                 <div class="w-1.5 h-1.5 rounded-full bg-red-500 flex-shrink-0" />
                 <span class="text-[9px] font-black uppercase tracking-[0.18em] text-gray-400">AI Coaching</span>
               </div>
-              <div class="px-4 py-3 space-y-2">
+              <!-- Loading -->
+              <div v-if="loadingAiCoaching" class="px-4 py-3 space-y-2">
+                <div class="h-3 w-3/4 rounded bg-white/[0.05] animate-pulse" />
+                <div class="h-2.5 w-full rounded bg-white/[0.05] animate-pulse" />
+                <div class="h-2.5 w-5/6 rounded bg-white/[0.05] animate-pulse" />
+              </div>
+              <!-- AI response -->
+              <div v-else-if="aiCoaching" class="px-4 py-3 space-y-2.5">
+                <p class="text-[11px] font-semibold text-white leading-snug">{{ aiCoaching.headline }}</p>
+                <p class="text-[10px] text-gray-400 leading-relaxed">{{ aiCoaching.message }}</p>
+                <ul class="space-y-1.5 pt-0.5">
+                  <li
+                    v-for="(tip, i) in aiCoaching.tips"
+                    :key="i"
+                    class="flex items-start gap-1.5 text-[10px] text-gray-400 leading-relaxed"
+                  >
+                    <span class="w-1 h-1 rounded-full bg-red-400/60 flex-shrink-0 mt-1.5" />
+                    {{ tip }}
+                  </li>
+                </ul>
+                <p class="text-[10px] italic text-gray-500 pt-0.5">{{ aiCoaching.encouragement }}</p>
+              </div>
+              <!-- Fallback -->
+              <div v-else class="px-4 py-3 space-y-2">
                 <p class="text-[11px] text-gray-400 leading-relaxed">VOD analysis identifies your weak areas and assigns targeted drills to fix them.</p>
                 <div class="flex items-center gap-1.5 text-[10px] text-gray-500">
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" class="w-3 h-3 text-red-400/70 flex-shrink-0"><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2"/><rect x="9" y="3" width="6" height="4" rx="1"/></svg>

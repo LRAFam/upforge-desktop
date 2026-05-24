@@ -132,6 +132,7 @@ const api = {
     getCoachingDrills: () => ipcRenderer.invoke('trainer:get-coaching-drills'),
     getCorrelation: () => ipcRenderer.invoke('trainer:get-correlation'),
     getBenchmark: () => ipcRenderer.invoke('trainer:get-benchmark'),
+    getAiCoaching: () => ipcRenderer.invoke('trainer:get-ai-coaching'),
   },
   deadlock: {
     listReplays: () => ipcRenderer.invoke('deadlock:list-replays'),

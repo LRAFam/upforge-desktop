@@ -997,6 +997,18 @@ export function setupIpcHandlers(
     }
   })
 
+  ipcMain.handle('trainer:get-ai-coaching', async () => {
+    const token = auth.getToken()
+    if (!token) return null
+    try {
+      const res = await auth.getApi().get('/api/training/coaching')
+      return res.data ?? null
+    } catch (err: any) {
+      log.warn('[Trainer] Failed to fetch AI coaching:', err?.message)
+      return null
+    }
+  })
+
   // ─── Deadlock demo (.dem) replay helpers ────────────────────────────────────
   ipcMain.handle('deadlock:list-replays', async () => {
     const localAppData = process.env.LOCALAPPDATA || path.join(app.getPath('home'), 'AppData', 'Local')

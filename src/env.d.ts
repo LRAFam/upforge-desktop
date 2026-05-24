@@ -511,6 +511,13 @@ declare global {
         getCoachingDrills: () => Promise<CoachingDrill[]>
         getCorrelation: () => Promise<string[]>
         getBenchmark: () => Promise<TrainingBenchmark | null>
+        getAiCoaching: () => Promise<{
+          focus_area: string
+          headline: string
+          message: string
+          tips: string[]
+          encouragement: string
+        } | null>
       }
       deadlock: {
         listReplays: () => Promise<{
