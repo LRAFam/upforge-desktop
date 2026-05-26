@@ -632,124 +632,20 @@ async function extractMatchClips(
  * desktop notification so the player can mentally prepare before the match.
  * Optional agent and map context personalise the brief to the current match.
  */
-async function requestPregameBrief(context?: { agent?: string | null; map?: string | null }): Promise<void> {
-  const token = authManager.getToken()
-  if (!token) {
+function requestPregameBrief(context?: { agent?: string | null; map?: string | null }): void {
+  if (!authManager.getToken()) {
     logActivity('Pre-game brief skipped — not logged in')
     return
   }
 
-  logActivity('Pre-game brief: fetching...')
-  const apiUrl = process.env['VITE_API_URL'] || 'https://api.upforge.gg'
   const params = new URLSearchParams()
   if (context?.agent) params.set('agent', context.agent)
   if (context?.map) params.set('map', context.map)
   const qs = params.toString() ? `?${params.toString()}` : ''
-  const parsedUrl = new URL(`${apiUrl}/api/progress/pregame-brief${qs}`)
-  const proto = parsedUrl.protocol === 'https:' ? await import('https') : await import('http')
+  const url = `https://upforge.gg/valorant/pregame-brief${qs}`
 
-  return new Promise((resolve) => {
-    const req = proto.default.request({
-      method:   'GET',
-      hostname: parsedUrl.hostname,
-      port:     parsedUrl.port || (parsedUrl.protocol === 'https:' ? 443 : 80),
-      path:     parsedUrl.pathname + parsedUrl.search,
-      headers: {
-        'Authorization': `Bearer ${token}`,
-        'Accept':        'application/json',
-      },
-    }, (res) => {
-      let data = ''
-      res.on('data', (c) => { data += c })
-      res.on('end', () => {
-        try {
-          const json = JSON.parse(data)
-          if ((res.statusCode ?? 0) >= 400 || !json.success) {
-            logActivity(`Pre-game brief: API error (HTTP ${res.statusCode})`)
-            resolve()
-            return
-          }
-
-          const focusPoints: Array<{ category: string; text: string; severity: string }> = json.focus_points ?? []
-          const momentum: { direction: string; recent_avg: number } | null = json.momentum ?? null
-          const agentCtx: { agent: string; avg: number; games: number } | null = json.agent_context ?? null
-          const recommendedAgent: { agent: string; avg: number } | null = json.recommended_agent ?? null
-
-          // Only show if there's something useful to say
-          if (focusPoints.length === 0 && !recommendedAgent && !agentCtx && !momentum) {
-            logActivity('Pre-game brief: no data to show (need more analyses)')
-            resolve()
-            return
-          }
-
-          let titleSuffix = ''
-          let body = ''
-
-          // If we have real match context (agent + map), personalise the title
-          if (context?.agent || context?.map) {
-            const parts = [context.agent, context.map].filter(Boolean)
-            titleSuffix = ` — ${parts.join(' on ')}`
-          }
-
-          if (agentCtx) {
-            body += `${agentCtx.agent}: ${agentCtx.avg} avg (${agentCtx.games} games)  `
-          } else if (momentum) {
-            const icon = momentum.direction === 'hot' ? 'Hot streak' : momentum.direction === 'cold' ? 'Cold streak' : 'Steady'
-            body += `${icon} — Avg score: ${momentum.recent_avg}  `
-          }
-
-          if (!context?.agent && recommendedAgent) {
-            body += `Best pick: ${recommendedAgent.agent} (${recommendedAgent.avg} avg)  `
-          }
-
-          if (focusPoints.length > 0) {
-            const top = focusPoints[0]
-            const label = top.category.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
-            body += `\nFocus: ${label} — ${top.text.length > 80 ? top.text.slice(0, 80) + '…' : top.text}`
-          }
-
-          const title = `UpForge — Pre-Game Brief${titleSuffix}`
-          const bodyTrimmed = body.trim()
-
-          if (Notification.isSupported()) {
-            new Notification({
-              title,
-              body: bodyTrimmed,
-              silent: true,
-            }).show()
-          }
-
-          // Also show as a tray balloon tip on Windows — this is visible even when
-          // Windows Focus Assist (Do Not Disturb) is suppressing toast notifications
-          // during a fullscreen game session.
-          if (process.platform === 'win32' && tray) {
-            tray.displayBalloon({
-              title,
-              content: bodyTrimmed,
-              iconType: 'info',
-              noSound: true,
-            })
-          }
-
-          logActivity(`Pre-game brief: shown — ${bodyTrimmed.slice(0, 80)}`)
-          log.info('[PregameBrief] Shown:', bodyTrimmed.slice(0, 100))
-        } catch (err) {
-          logActivity(`Pre-game brief: parse error — ${err instanceof Error ? err.message : String(err)}`)
-        }
-        resolve()
-      })
-    })
-    req.on('error', (err) => {
-      logActivity(`Pre-game brief: network error — ${err.message}`)
-      resolve()
-    })
-    req.setTimeout(10_000, () => {
-      req.destroy(new Error('Pregame brief timed out'))
-      logActivity('Pre-game brief: request timed out')
-      resolve()
-    })
-    req.end()
-  })
+  shell.openExternal(url)
+  logActivity('Pre-game brief: opened in browser')
 }
 
 /**
@@ -1510,7 +1406,7 @@ function setupGameDetection(): void {
       const LOADING_DELAY_MS = 90_000
       logActivity('Riot Client API unavailable — recording starts in 90s')
       // Fire generic brief immediately when auth is unavailable
-      requestPregameBrief().catch(() => {})
+      requestPregameBrief()
       pregameBriefFired = true
       const deadline = Date.now() + LOADING_DELAY_MS
       while (Date.now() < deadline && !cancelled) {
