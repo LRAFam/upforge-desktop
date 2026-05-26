@@ -1380,11 +1380,22 @@ function setupGameDetection(): void {
         try {
           const state = await riotLocalApi.getSessionState()
 
-          // Fire the pre-game brief as soon as we see the pregame/loading state
-          // so the notification appears while the loading screen is visible.
-          if (!pregameBriefFired && state && ['PREGAME', 'INGAME'].includes(state.sessionLoopState)) {
+          // Brief: once PREGAME starts, poll until the agent is locked in (CharacterID
+          // is only set after lock-in). Fire as soon as we have agent+map, or fall back
+          // to map-only/generic when INGAME is reached (loading screen).
+          if (!pregameBriefFired && state?.sessionLoopState === 'PREGAME') {
+            const ctx = await riotLocalApi.getPregameContext().catch(() => null)
+            if (ctx?.agent) {
+              // Agent locked in — fire now with full context
+              pregameBriefFired = true
+              requestPregameBrief(ctx)
+            }
+            // else: agent not yet locked — keep looping, try again next tick
+          }
+
+          if (!pregameBriefFired && state?.sessionLoopState === 'INGAME') {
+            // Fallback: INGAME reached without catching the agent lock-in
             pregameBriefFired = true
-            // Try to get agent+map from the pregame REST endpoint for a personalised brief
             riotLocalApi.getPregameContext()
               .then(ctx => requestPregameBrief(ctx ?? undefined))
               .catch(() => requestPregameBrief())
