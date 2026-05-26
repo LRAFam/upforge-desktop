@@ -70,6 +70,8 @@ export interface AppSettings {
     outerOpacity: number
     shadowShow: boolean
   }
+  /** Auto-open the results page in the browser when analysis completes */
+  autoOpenBrowser: boolean
 }
 
 const DEFAULTS: AppSettings = {
@@ -121,6 +123,7 @@ const DEFAULTS: AppSettings = {
     outerOpacity: 1.0,
     shadowShow: true,
   },
+  autoOpenBrowser: true,
 }
 
 export class SettingsManager {

@@ -11,7 +11,8 @@ const api = {
   app: {
     getStatus: () => ipcRenderer.invoke('app:get-status'),
     getActivityLog: () => ipcRenderer.invoke('app:get-activity-log'),
-    showClips: () => ipcRenderer.invoke('app:show-clips')
+    showClips: () => ipcRenderer.invoke('app:show-clips'),
+    openUrl: (url: string) => ipcRenderer.invoke('app:open-url', { url })
   },
   profile: {
     get: () => ipcRenderer.invoke('profile:get')
@@ -146,6 +147,9 @@ const api = {
   },
   forgeRank: {
     prestige: () => ipcRenderer.invoke('forge-rank:prestige'),
+  },
+  discord: {
+    setState: (state: 'idle' | 'reviewing') => ipcRenderer.invoke('discord:set-state', state),
   },
   on: (channel: string, callback: (...args: unknown[]) => void): (() => void) => {
     const allowed = [

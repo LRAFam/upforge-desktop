@@ -284,7 +284,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import type { AnalysisItem } from '../env.d.ts'
 import { getAgentImage, getAgentRole, getAgentColor, getMapMinimap, getRoleColor } from '../lib/valorant'
@@ -309,8 +309,13 @@ const expandedDetail = ref<{
 } | null>(null)
 
 onMounted(async () => {
+  window.api.discord.setState('reviewing').catch(() => {})
   allAnalyses.value = await window.api.analyses.get(100).catch(() => [])
   loading.value = false
+})
+
+onUnmounted(() => {
+  window.api.discord.setState('idle').catch(() => {})
 })
 
 const availableMaps = computed(() => {

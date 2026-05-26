@@ -1142,6 +1142,7 @@ function onScrubberHover(e: MouseEvent) {
 }
 
 onMounted(async () => {
+  window.api.discord.setState('reviewing').catch(() => {})
   const id = route.query.id as string
   const timelineId = route.query.timelineId as string
 
@@ -1167,6 +1168,7 @@ onMounted(async () => {
 })
 
 onUnmounted(() => {
+  window.api.discord.setState('idle').catch(() => {})
   window.removeEventListener('keydown', handleKeyDown)
 })
 

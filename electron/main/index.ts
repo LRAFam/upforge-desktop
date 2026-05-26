@@ -627,6 +627,106 @@ async function extractMatchClips(
 }
 
 /**
+ * Fire-and-forget pre-game brief using the player's historical brain data.
+ * Fetches the top weaknesses and agent/map recommendations and shows a
+ * desktop notification so the player can mentally prepare before the match.
+ * Optional agent and map context personalise the brief to the current match.
+ */
+async function requestPregameBrief(context?: { agent?: string | null; map?: string | null }): Promise<void> {
+  const token = authManager.getToken()
+  if (!token) return
+
+  const apiUrl = process.env['VITE_API_URL'] || 'https://api.upforge.gg'
+  const params = new URLSearchParams()
+  if (context?.agent) params.set('agent', context.agent)
+  if (context?.map) params.set('map', context.map)
+  const qs = params.toString() ? `?${params.toString()}` : ''
+  const parsedUrl = new URL(`${apiUrl}/api/progress/pregame-brief${qs}`)
+  const proto = parsedUrl.protocol === 'https:' ? await import('https') : await import('http')
+
+  return new Promise((resolve) => {
+    const req = proto.default.request({
+      method:   'GET',
+      hostname: parsedUrl.hostname,
+      port:     parsedUrl.port || (parsedUrl.protocol === 'https:' ? 443 : 80),
+      path:     parsedUrl.pathname,
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Accept':        'application/json',
+      },
+    }, (res) => {
+      let data = ''
+      res.on('data', (c) => { data += c })
+      res.on('end', () => {
+        try {
+          const json = JSON.parse(data)
+          if ((res.statusCode ?? 0) >= 400 || !json.success) {
+            resolve()
+            return
+          }
+
+          const focusPoints: Array<{ category: string; text: string; severity: string }> = json.focus_points ?? []
+          const momentum: { direction: string; recent_avg: number } | null = json.momentum ?? null
+          const agentCtx: { agent: string; avg: number; games: number } | null = json.agent_context ?? null
+          const recommendedAgent: { agent: string; avg: number } | null = json.recommended_agent ?? null
+
+          // Only show if there's something useful to say
+          if (focusPoints.length === 0 && !recommendedAgent && !agentCtx) {
+            resolve()
+            return
+          }
+
+          let titleSuffix = ''
+          let body = ''
+
+          // If we have real match context (agent + map), personalise the title
+          if (context?.agent || context?.map) {
+            const parts = [context.agent, context.map].filter(Boolean)
+            titleSuffix = ` — ${parts.join(' on ')}`
+          }
+
+          if (agentCtx) {
+            body += `${agentCtx.agent}: ${agentCtx.avg} avg (${agentCtx.games} games)  `
+          } else if (momentum) {
+            const icon = momentum.direction === 'hot' ? 'Hot streak' : momentum.direction === 'cold' ? 'Cold streak' : 'Steady'
+            body += `${icon} — Avg score: ${momentum.recent_avg}  `
+          }
+
+          if (!context?.agent && recommendedAgent) {
+            body += `Best pick: ${recommendedAgent.agent} (${recommendedAgent.avg} avg)  `
+          }
+
+          if (focusPoints.length > 0) {
+            const top = focusPoints[0]
+            const label = top.category.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
+            body += `\nFocus: ${label} — ${top.text.length > 80 ? top.text.slice(0, 80) + '…' : top.text}`
+          }
+
+          if (Notification.isSupported()) {
+            new Notification({
+              title: `UpForge — Pre-Game Brief${titleSuffix}`,
+              body: body.trim(),
+              silent: true,
+            }).show()
+          }
+
+          log.info('[PregameBrief] Shown:', body.slice(0, 100))
+        } catch {
+          // Non-critical — silently fail
+        }
+        resolve()
+      })
+    })
+    req.on('error', () => resolve())
+    req.setTimeout(10_000, () => {
+      req.destroy(new Error('Pregame brief timed out'))
+      resolve()
+    })
+    req.end()
+  })
+}
+
+/**
  * Fire-and-forget post-game debrief using Riot Live Client match data.
  * Calls the Laravel /api/desktop-submissions/debrief endpoint which proxies to
  * the AI service for a quick Claude round-by-round coaching breakdown.
@@ -1313,6 +1413,11 @@ function setupGameDetection(): void {
     tray?.setToolTip('UpForge — Match loading...')
     mainWindow?.webContents.send('recording:waiting-for-match', { waiting: true })
 
+    // Pre-game brief: fetch agent+map context from the Riot pregame API (available during
+    // loading screen) and show a personalised coaching notification.
+    // Falls back to a generic brief if the Riot Local API is not reachable.
+    let pregameBriefFired = false
+
     // VALORANT-Win64-Shipping.exe is the in-game process — its presence confirms a map
     // is loading or actively in progress. The Riot Live Client Data API (port 2999) was
     // deprecated; we no longer gate recording on it.
@@ -1348,6 +1453,17 @@ function setupGameDetection(): void {
         if (!stillRunning) { cancelled = true; break }
         try {
           const state = await riotLocalApi.getSessionState()
+
+          // Fire the pre-game brief as soon as we see the pregame/loading state
+          // so the notification appears while the loading screen is visible.
+          if (!pregameBriefFired && state && ['PREGAME', 'INGAME'].includes(state.sessionLoopState)) {
+            pregameBriefFired = true
+            // Try to get agent+map from the pregame REST endpoint for a personalised brief
+            riotLocalApi.getPregameContext()
+              .then(ctx => requestPregameBrief(ctx ?? undefined))
+              .catch(() => requestPregameBrief())
+          }
+
           if (state?.sessionLoopState === 'INGAME') {
             matchStartTime = Date.now()
             if (state.queueId) {
@@ -1363,6 +1479,9 @@ function setupGameDetection(): void {
       // Fallback: wait 90 s for the loading screen
       const LOADING_DELAY_MS = 90_000
       logActivity('Riot Client API unavailable — recording starts in 90s')
+      // Fire generic brief immediately when auth is unavailable
+      requestPregameBrief().catch(() => {})
+      pregameBriefFired = true
       const deadline = Date.now() + LOADING_DELAY_MS
       while (Date.now() < deadline && !cancelled) {
         await new Promise((r) => setTimeout(r, 5000))
@@ -2057,6 +2176,12 @@ app.whenReady().then(async () => {
   }, performanceManager, obsRecorder, trainerBridge)
 
   setupClipHandlers(ipcMain, clipStore, clipExtractor, authManager, hotkeyManager)
+
+  // Discord Rich Presence — renderer can push state changes (e.g. when reviewing coaching)
+  ipcMain.handle('discord:set-state', (_e, state: string) => {
+    if (state === 'reviewing') discordRPC.setReviewing()
+    else discordRPC.setIdle()
+  })
 
   // Developer diagnostics — full internal state snapshot for the admin panel
   ipcMain.handle('dev:get-diagnostics', () => {

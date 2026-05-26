@@ -1077,6 +1077,7 @@ const settings = reactive<AppSettings>({
     rawInput: true,
     pollingRate: 1000,
   },
+  autoOpenBrowser: true,
   crosshairSettings: {
     colorIndex: 1,
     customColor: '00FF6B',
@@ -1107,10 +1108,11 @@ const GAME_MODES = [
   { value: 'TEAMDEATHMATCH', label: 'Team Deathmatch', hint: 'HURM mode' }
 ]
 
-const toggles: Array<{ key: keyof Pick<AppSettings, 'launchOnStartup' | 'autoDelete' | 'autoAnalyse' | 'notificationSound'>; label: string; hint: string | null }> = [
+const toggles: Array<{ key: keyof Pick<AppSettings, 'launchOnStartup' | 'autoDelete' | 'autoAnalyse' | 'notificationSound' | 'autoOpenBrowser'>; label: string; hint: string | null }> = [
   { key: 'launchOnStartup', label: 'Launch on startup', hint: null },
   { key: 'autoDelete', label: 'Auto-delete after upload', hint: 'Frees disk space once recording is uploaded' },
   { key: 'autoAnalyse', label: 'Auto-analyse after game', hint: 'Automatically upload and analyse once a game ends' },
+  { key: 'autoOpenBrowser', label: 'Open results in browser', hint: 'Automatically open your results page when analysis completes' },
   { key: 'notificationSound', label: 'Notification sound', hint: 'Play a sound with system notifications' }
 ]
 
@@ -1156,7 +1158,7 @@ function debouncedSave(): void {
   }, 500)
 }
 
-function toggleKey(key: keyof Pick<AppSettings, 'launchOnStartup' | 'autoDelete' | 'autoAnalyse' | 'notificationSound'>): void {
+function toggleKey(key: keyof Pick<AppSettings, 'launchOnStartup' | 'autoDelete' | 'autoAnalyse' | 'notificationSound' | 'autoOpenBrowser'>): void {
   settings[key] = !settings[key]
   debouncedSave()
 }

@@ -594,6 +594,11 @@ export function setupIpcHandlers(
     return { ok: true }
   })
 
+  ipcMain.handle('app:open-url', (_e, { url }: { url: string }) => {
+    shell.openExternal(url)
+    return { ok: true }
+  })
+
   // Profile — full profile + Valorant stats
   ipcMain.handle('profile:get', async () => {
     return auth.fetchProfile()

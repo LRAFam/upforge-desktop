@@ -720,6 +720,7 @@ const glowBgStyle = computed(() => {
 })
 
 onMounted(() => {
+  window.api.discord.setState('reviewing').catch(() => {})
   const ipcCleanup: (() => void)[] = []
   ipcCleanup.push(window.api.on('post-game:upload-start', (...args: unknown[]) => {
     const data = args[0] as { game: string; map: string | null; agent: string | null; matchDetailsStatus?: typeof matchDataStatus.value; killsInTimeline?: number }
@@ -737,6 +738,22 @@ onMounted(() => {
     sessionStart = r?.session_start ?? (Date.now() - 2 * 60 * 60 * 1000)
     state.value = 'ready'
     loadSessionClips()
+
+    // Auto-open the full results page in the browser so the user sees it
+    // immediately when they tab out of Valorant — no button press required.
+    // Can be disabled in Settings → autoOpenBrowser.
+    if (r?.analysis_id) {
+      window.api.settings.get().then((s) => {
+        if (s?.autoOpenBrowser !== false) {
+          window.api.app.openUrl(`https://upforge.gg/valorant/results/${r.analysis_id}`)
+        }
+      }).catch(() => {
+        // Fall back to opening anyway if settings can't be read
+        if (r?.analysis_id) {
+          window.api.app.openUrl(`https://upforge.gg/valorant/results/${r.analysis_id}`)
+        }
+      })
+    }
   }))
   ipcCleanup.push(window.api.on('post-game:pending', (...args: unknown[]) => {
     const data = args[0] as { recordingId: string; game: string; map: string | null; agent: string | null }
@@ -803,6 +820,7 @@ onMounted(() => {
 })
 
 onUnmounted(() => {
+  window.api.discord.setState('idle').catch(() => {})
   clearStuckTimer()
   const cleanup = (window as Window & { _postGameIpcCleanup?: (() => void)[] })._postGameIpcCleanup
   cleanup?.forEach(fn => fn())

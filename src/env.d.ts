@@ -533,6 +533,9 @@ declare global {
       forgeRank: {
         prestige: () => Promise<{ success: boolean; forge_rank?: ForgeRankInfo; message?: string }>
       }
+      discord: {
+        setState: (state: 'idle' | 'reviewing') => Promise<void>
+      }
       on: (channel: string, callback: (...args: unknown[]) => void) => (() => void)
     }
   }
