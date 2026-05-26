@@ -671,7 +671,7 @@ async function requestPregameBrief(context?: { agent?: string | null; map?: stri
           const recommendedAgent: { agent: string; avg: number } | null = json.recommended_agent ?? null
 
           // Only show if there's something useful to say
-          if (focusPoints.length === 0 && !recommendedAgent && !agentCtx) {
+          if (focusPoints.length === 0 && !recommendedAgent && !agentCtx && !momentum) {
             resolve()
             return
           }
@@ -1909,6 +1909,12 @@ async function doUploadAndAnalyse(
             body: `${notifAgent}${notifMap}${notifScore}`,
             silent: notifySilent()
           }).show()
+
+          // Open the results page in the browser directly from the main process.
+          // This fires even if the post-game window was closed before analysis completed.
+          if (analysisId && settingsManager?.get()?.autoOpenBrowser !== false) {
+            shell.openExternal(`https://upforge.gg/${game}/results/${analysisId}`)
+          }
         } else if (status.status === 'failed') {
           const errorMsg = status.error || 'Analysis failed. Please try again.'
           logActivity(`Analysis failed: ${errorMsg}`)

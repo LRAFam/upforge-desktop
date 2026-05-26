@@ -739,21 +739,8 @@ onMounted(() => {
     state.value = 'ready'
     loadSessionClips()
 
-    // Auto-open the full results page in the browser so the user sees it
-    // immediately when they tab out of Valorant — no button press required.
-    // Can be disabled in Settings → autoOpenBrowser.
-    if (r?.analysis_id) {
-      window.api.settings.get().then((s) => {
-        if (s?.autoOpenBrowser !== false) {
-          window.api.app.openUrl(`https://upforge.gg/valorant/results/${r.analysis_id}`)
-        }
-      }).catch(() => {
-        // Fall back to opening anyway if settings can't be read
-        if (r?.analysis_id) {
-          window.api.app.openUrl(`https://upforge.gg/valorant/results/${r.analysis_id}`)
-        }
-      })
-    }
+    // Browser launch is handled by the main process (index.ts) so it fires
+    // even if this window was closed before analysis completed.
   }))
   ipcCleanup.push(window.api.on('post-game:pending', (...args: unknown[]) => {
     const data = args[0] as { recordingId: string; game: string; map: string | null; agent: string | null }
