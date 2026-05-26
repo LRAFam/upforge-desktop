@@ -634,8 +634,12 @@ async function extractMatchClips(
  */
 async function requestPregameBrief(context?: { agent?: string | null; map?: string | null }): Promise<void> {
   const token = authManager.getToken()
-  if (!token) return
+  if (!token) {
+    logActivity('Pre-game brief skipped — not logged in')
+    return
+  }
 
+  logActivity('Pre-game brief: fetching...')
   const apiUrl = process.env['VITE_API_URL'] || 'https://api.upforge.gg'
   const params = new URLSearchParams()
   if (context?.agent) params.set('agent', context.agent)
@@ -649,7 +653,7 @@ async function requestPregameBrief(context?: { agent?: string | null; map?: stri
       method:   'GET',
       hostname: parsedUrl.hostname,
       port:     parsedUrl.port || (parsedUrl.protocol === 'https:' ? 443 : 80),
-      path:     parsedUrl.pathname,
+      path:     parsedUrl.pathname + parsedUrl.search,
       headers: {
         'Authorization': `Bearer ${token}`,
         'Accept':        'application/json',
@@ -661,6 +665,7 @@ async function requestPregameBrief(context?: { agent?: string | null; map?: stri
         try {
           const json = JSON.parse(data)
           if ((res.statusCode ?? 0) >= 400 || !json.success) {
+            logActivity(`Pre-game brief: API error (HTTP ${res.statusCode})`)
             resolve()
             return
           }
@@ -672,6 +677,7 @@ async function requestPregameBrief(context?: { agent?: string | null; map?: stri
 
           // Only show if there's something useful to say
           if (focusPoints.length === 0 && !recommendedAgent && !agentCtx && !momentum) {
+            logActivity('Pre-game brief: no data to show (need more analyses)')
             resolve()
             return
           }
@@ -702,24 +708,44 @@ async function requestPregameBrief(context?: { agent?: string | null; map?: stri
             body += `\nFocus: ${label} — ${top.text.length > 80 ? top.text.slice(0, 80) + '…' : top.text}`
           }
 
+          const title = `UpForge — Pre-Game Brief${titleSuffix}`
+          const bodyTrimmed = body.trim()
+
           if (Notification.isSupported()) {
             new Notification({
-              title: `UpForge — Pre-Game Brief${titleSuffix}`,
-              body: body.trim(),
+              title,
+              body: bodyTrimmed,
               silent: true,
             }).show()
           }
 
-          log.info('[PregameBrief] Shown:', body.slice(0, 100))
-        } catch {
-          // Non-critical — silently fail
+          // Also show as a tray balloon tip on Windows — this is visible even when
+          // Windows Focus Assist (Do Not Disturb) is suppressing toast notifications
+          // during a fullscreen game session.
+          if (process.platform === 'win32' && tray) {
+            tray.displayBalloon({
+              title,
+              content: bodyTrimmed,
+              iconType: 'info',
+              noSound: true,
+            })
+          }
+
+          logActivity(`Pre-game brief: shown — ${bodyTrimmed.slice(0, 80)}`)
+          log.info('[PregameBrief] Shown:', bodyTrimmed.slice(0, 100))
+        } catch (err) {
+          logActivity(`Pre-game brief: parse error — ${err instanceof Error ? err.message : String(err)}`)
         }
         resolve()
       })
     })
-    req.on('error', () => resolve())
+    req.on('error', (err) => {
+      logActivity(`Pre-game brief: network error — ${err.message}`)
+      resolve()
+    })
     req.setTimeout(10_000, () => {
       req.destroy(new Error('Pregame brief timed out'))
+      logActivity('Pre-game brief: request timed out')
       resolve()
     })
     req.end()
@@ -887,7 +913,7 @@ function createPostGameWindow(): BrowserWindow {
     resizable: false,
     frame: false,
     alwaysOnTop: true,
-    skipTaskbar: true,
+    skipTaskbar: false,
     backgroundColor: '#0a0f1c',
     icon: join(__dirname, '../../resources/icon.ico'),
     webPreferences: {
@@ -1089,6 +1115,10 @@ function setupGameDetection(): void {
     thisPostGameWindow.on('closed', () => {
       if (postGameWindow === thisPostGameWindow) postGameWindow = null
     })
+    // Flash the taskbar button so the user knows it's there even if Valorant
+    // is still covering the screen (only stops flashing when user focuses it).
+    thisPostGameWindow.flashFrame(true)
+    thisPostGameWindow.once('focus', () => thisPostGameWindow.flashFrame(false))
 
     // Fire post-game debrief in the background — non-blocking. Uses Riot Live Client
     // match data (kills, rounds, stats) for instant Claude coaching without needing the VOD.
@@ -1909,6 +1939,11 @@ async function doUploadAndAnalyse(
             body: `${notifAgent}${notifMap}${notifScore}`,
             silent: notifySilent()
           }).show()
+          // Flash the post-game window taskbar button to attract attention
+          if (!targetWindow.isDestroyed()) {
+            targetWindow.flashFrame(true)
+            targetWindow.once('focus', () => targetWindow.flashFrame(false))
+          }
 
           // Open the results page in the browser directly from the main process.
           // This fires even if the post-game window was closed before analysis completed.
