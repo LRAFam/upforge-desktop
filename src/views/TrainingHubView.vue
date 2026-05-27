@@ -3,6 +3,7 @@ import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
 import type { TrainingHistory, CoachingDrill, TrainingBenchmark } from '../env'
 import { ACHIEVEMENTS, useAchievements } from '../composables/useAchievements'
+import { type CrosshairSettings, CROSSHAIR_PALETTE_HEX, resolveColor } from '../lib/crosshair'
 
 const ICON_LOCK = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" class="w-4 h-4"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>`
 const ICON_TROPHY_SM = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" class="w-4 h-4"><path d="M6 9H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h2"/><path d="M18 9h2a2 2 0 0 0 2-2V5a2 2 0 0 0-2-2h-2"/><path d="M4 22h16"/><path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22"/><path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22"/><path d="M18 2H6v7a6 6 0 0 0 12 0V2z"/></svg>`
@@ -54,6 +55,36 @@ const benchmarkData = ref<TrainingBenchmark | null>(null)
 const loadingHistory = ref(false)
 const heatmapCanvas = ref<HTMLCanvasElement | null>(null)
 const activeTab = ref<'drills' | 'progress' | 'coaching'>('drills')
+
+// ── Trainer settings (crosshair + mouse) ─────────────────────────────────────
+// Loaded once at mount; used by launchDrill to pass user preferences to Godot.
+let trainerMouseSettings: Record<string, unknown> = {}
+let trainerCrosshairSettings: CrosshairSettings | null = null
+
+/** Convert CrosshairSettings (camelCase + colorIndex) → Godot snake_case dict */
+function buildCrosshairPayload(s: CrosshairSettings): Record<string, unknown> {
+  const hexColor = resolveColor(s)
+  const r = parseInt(hexColor.slice(1, 3), 16) / 255
+  const g = parseInt(hexColor.slice(3, 5), 16) / 255
+  const b = parseInt(hexColor.slice(5, 7), 16) / 255
+  return {
+    color: [r, g, b],
+    shadow_show: s.shadowShow,
+    dot_show: s.dotShow,
+    dot_radius: s.dotRadius,
+    dot_opacity: s.dotOpacity,
+    inner_show: s.innerShow,
+    inner_thickness: s.innerThickness,
+    inner_length: s.innerLength,
+    inner_offset: s.innerOffset,
+    inner_opacity: s.innerOpacity,
+    outer_show: s.outerShow,
+    outer_thickness: s.outerThickness,
+    outer_length: s.outerLength,
+    outer_offset: s.outerOffset,
+    outer_opacity: s.outerOpacity,
+  }
+}
 
 interface AiCoaching {
   focus_area: string
@@ -350,12 +381,19 @@ async function launchDrill(drill: AssignedDrill) {
   activeDrill.value = drill
   launching.value = true
   try {
-    const result = await window.api.trainer.launch({
+    const payload: Record<string, unknown> = {
       scenario: drill.scenario,
       duration_seconds: drill.duration_seconds,
       difficulty: drill.difficulty,
       context: { weakness: drill.weakness, score: drill.weakness_score },
-    })
+    }
+    if (Object.keys(trainerMouseSettings).length > 0) {
+      payload.mouse_settings = trainerMouseSettings
+    }
+    if (trainerCrosshairSettings) {
+      payload.crosshair_settings = buildCrosshairPayload(trainerCrosshairSettings)
+    }
+    const result = await window.api.trainer.launch(payload)
     if (result.ok) {
       drillRunning.value = true
     } else {
@@ -372,6 +410,17 @@ let removeListener: (() => void) | null = null
 
 onMounted(async () => {
   await achievements.load()
+
+  // Load trainer settings (crosshair + mouse) so they're available before first launch
+  try {
+    const saved = await window.api.settings.get() as unknown as Record<string, unknown>
+    if (saved?.trainerMouse && typeof saved.trainerMouse === 'object') {
+      trainerMouseSettings = saved.trainerMouse as Record<string, unknown>
+    }
+    if (saved?.crosshairSettings && typeof saved.crosshairSettings === 'object') {
+      trainerCrosshairSettings = saved.crosshairSettings as CrosshairSettings
+    }
+  } catch { /* non-fatal — trainer uses defaults */ }
 
   removeListener = window.api.on('trainer:session-result', async (result: unknown) => {
     const r = result as SessionResult
