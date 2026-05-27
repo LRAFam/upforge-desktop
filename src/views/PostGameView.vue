@@ -436,13 +436,35 @@
         <!-- Generic upload error -->
         <template v-else>
           <div class="w-11 h-11 mx-auto rounded-full bg-red-500/10 border border-red-500/20 flex items-center justify-center">
-            <svg class="w-5 h-5 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg
+              v-if="isTimeoutError"
+              class="w-5 h-5 text-red-400"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
+            </svg>
+            <svg
+              v-else
+              class="w-5 h-5 text-red-400"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
             </svg>
           </div>
           <div>
-            <p class="text-sm font-semibold text-red-400">Upload failed</p>
-            <p class="text-xs text-gray-500 mt-1">{{ errorMessage }}</p>
+            <p class="text-sm font-semibold text-red-400">
+              {{ isTimeoutError ? 'Analysis timed out' : 'Upload failed' }}
+            </p>
+            <p class="text-xs text-gray-500 mt-1">
+              <template v-if="isTimeoutError">
+                Your recording was saved. The analysis took too long this time — please retry, it usually completes in 5–7 minutes.
+              </template>
+              <template v-else>{{ errorMessage }}</template>
+            </p>
           </div>
           <div class="flex gap-2 pt-1">
             <button
@@ -530,6 +552,7 @@ const result = ref<{
 const errorMessage = ref('')
 const needsUpgrade = ref(false)
 const upgradeUrl = ref('https://upforge.gg/pricing')
+const isTimeoutError = computed(() => /timed? ?out/i.test(errorMessage.value))
 const pendingRecordingId = ref<string | null>(null)
 const analysing = ref(false)
 const analysisStuck = ref(false)

@@ -1871,8 +1871,11 @@ async function doUploadAndAnalyse(
             shell.openExternal(`https://upforge.gg/${game}/results/${analysisId}`)
           }
         } else if (status.status === 'failed') {
-          const errorMsg = status.error || 'Analysis failed. Please try again.'
-          logActivity(`Analysis failed: ${errorMsg}`)
+          const rawError = status.error || 'Analysis failed. Please try again.'
+          // Sanitise raw internal errors into user-friendly messages
+          const isTimeout = /timed? ?out|curl error 28|operation timed/i.test(rawError)
+          const errorMsg = isTimeout ? 'Analysis timed out.' : rawError
+          logActivity(`Analysis failed: ${rawError}`)
           clearPendingJob()
           send('post-game:upload-error', errorMsg)
           tray?.setToolTip(idleTooltip(game))
