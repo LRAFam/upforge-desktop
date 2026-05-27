@@ -1466,6 +1466,19 @@ function setupGameDetection(): void {
       console.log(`[GameDetector] Skipping recording — mode is ${gameMode} (not in recordedModes)`)
       logActivity(`Mode ${gameMode} not in recorded modes — skipped`)
       tray?.setToolTip(idleTooltip(game))
+      // Valorant stays running between matches — re-arm detection once the skipped match ends.
+      // Without this, no new 'game-started' event fires and all subsequent matches are missed.
+      if (game === 'valorant') {
+        riotLocalApi.onMatchEnded = async () => {
+          riotLocalApi.onMatchEnded = null
+          await new Promise((r) => setTimeout(r, 5000))
+          if (await gameDetector.isMatchProcessRunning()) {
+            console.log('[GameDetector] Game still running after skipped match — re-arming detection')
+            logActivity('Watching for next match...')
+            gameDetector.emit('game-started', game)
+          }
+        }
+      }
       return
     }
 
