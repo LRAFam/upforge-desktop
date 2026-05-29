@@ -121,7 +121,7 @@
     <!-- Hero header -->
     <div class="flex-shrink-0 mx-4 mt-4 space-y-6">
       <div class="grid grid-cols-[minmax(0,1fr)_320px] gap-4">
-        <div class="relative overflow-hidden rounded-3xl border border-white/[0.06] bg-gradient-to-br from-white/[0.04] via-white/[0.025] to-red-500/[0.06] px-6 py-6">
+        <div class="relative rounded-3xl border border-white/[0.06] bg-gradient-to-br from-white/[0.04] via-white/[0.025] to-red-500/[0.06] px-6 pt-6 pb-8">
           <div class="absolute -right-12 top-0 h-36 w-36 rounded-full bg-red-500/10 blur-3xl" />
           <div class="absolute left-10 top-10 h-24 w-24 rounded-full bg-orange-500/10 blur-3xl" />
           <div class="relative space-y-5">
@@ -148,7 +148,7 @@
               </div>
             </div>
             <div class="grid grid-cols-4 gap-3 max-w-4xl">
-              <div class="rounded-full border border-white/[0.08] bg-white/[0.03] px-4 py-3 shadow-[0_10px_30px_rgba(0,0,0,0.12)]">
+              <div class="rounded-2xl border border-white/[0.08] bg-white/[0.03] px-4 py-3 shadow-[0_10px_30px_rgba(0,0,0,0.12)]">
                 <div class="flex items-center gap-3">
                   <div class="flex h-10 w-10 items-center justify-center rounded-full border border-red-500/20 bg-red-500/10 text-red-300">
                     <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -161,7 +161,7 @@
                   </div>
                 </div>
               </div>
-              <div class="rounded-full border border-white/[0.08] bg-white/[0.03] px-4 py-3 shadow-[0_10px_30px_rgba(0,0,0,0.12)]">
+              <div class="rounded-2xl border border-white/[0.08] bg-white/[0.03] px-4 py-3 shadow-[0_10px_30px_rgba(0,0,0,0.12)]">
                 <div class="flex items-center gap-3">
                   <div class="flex h-10 w-10 items-center justify-center rounded-full border border-orange-500/20 bg-orange-500/10 text-orange-300">
                     <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -174,7 +174,7 @@
                   </div>
                 </div>
               </div>
-              <div class="rounded-full border border-white/[0.08] bg-white/[0.03] px-4 py-3 shadow-[0_10px_30px_rgba(0,0,0,0.12)]">
+              <div class="rounded-2xl border border-white/[0.08] bg-white/[0.03] px-4 py-3 shadow-[0_10px_30px_rgba(0,0,0,0.12)]">
                 <div class="flex items-center gap-3">
                   <div class="flex h-10 w-10 items-center justify-center rounded-full border border-white/[0.08] bg-white/[0.04] text-gray-200">
                     <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -187,7 +187,7 @@
                   </div>
                 </div>
               </div>
-              <div class="rounded-full border border-white/[0.08] bg-white/[0.03] px-4 py-3 shadow-[0_10px_30px_rgba(0,0,0,0.12)]">
+              <div class="rounded-2xl border border-white/[0.08] bg-white/[0.03] px-4 py-3 shadow-[0_10px_30px_rgba(0,0,0,0.12)]">
                 <div class="flex items-center gap-3">
                   <div class="flex h-10 w-10 items-center justify-center rounded-full border border-emerald-500/20 bg-emerald-500/10 text-emerald-300">
                     <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -461,7 +461,7 @@
         </div>
 
         <!-- Agent performance mini-table -->
-        <div v-if="topAgents.length" class="bg-white/[0.02] border border-white/[0.06] rounded-2xl overflow-hidden">
+        <div v-if="topAgents.length && topAgents.some(a => a.hasWinData || a.avgScore != null)" class="bg-white/[0.02] border border-white/[0.06] rounded-2xl overflow-hidden">
           <div class="px-4 py-2.5 border-b border-white/[0.04]">
             <span class="text-[10px] font-bold uppercase tracking-widest text-gray-600">Agent Win Rates</span>
           </div>
@@ -973,7 +973,11 @@ const hotkeyHints = computed(() => [
 ])
 const dashboardHeadline = computed(() => profile.value?.user?.name ? `Welcome back, ${profile.value.user.name}` : 'Your coaching dashboard')
 const dashboardRankLabel = computed(() => profile.value?.latest_stats?.current_rank || 'Unranked')
-const totalSessionsAnalysed = computed(() => profile.value?.user?.analysis_stats?.total ?? analyses.value.length)
+const totalSessionsAnalysed = computed(() => {
+  const total = profile.value?.user?.analysis_stats?.total
+  if (total != null) return Math.max(0, total)
+  return analyses.value.filter(a => a.overall_score != null).length
+})
 const dashboardWinRateLabel = computed(() => profile.value?.latest_stats?.win_rate != null ? `${Math.round(profile.value.latest_stats.win_rate)}%` : '—')
 const liveDetectionActive = computed(() => status.value.recording || status.value.waitingForMatch || !!status.value.currentGame)
 const activeGameTitle = computed(() => {
@@ -1102,7 +1106,7 @@ const topAgents = computed(() => {
     if (a.overall_score != null) map[a.agent].scores.push(a.overall_score)
   }
   return Object.entries(map)
-    .filter(([, d]) => d.total >= 2)
+    .filter(([, d]) => d.total >= 2 && (d.wonTracked > 0 || d.scores.length > 0))
     .map(([agent, d]) => ({
       agent,
       total: d.total,

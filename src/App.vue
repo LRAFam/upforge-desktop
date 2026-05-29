@@ -17,9 +17,7 @@
     >
       <div class="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-red-500/70 to-orange-500/70" />
       <div class="flex items-center gap-2.5">
-        <div class="flex h-7 w-7 items-center justify-center rounded-xl border border-white/[0.08] bg-gradient-to-br from-white/[0.06] to-white/[0.02] shadow-[0_0_18px_rgba(239,68,68,0.12)]">
-          <img src="./assets/upforge-logo.png" alt="UpForge" class="h-4 w-auto object-contain flex-shrink-0" />
-        </div>
+        <img src="./assets/upforge-logo.png" alt="UpForge" class="h-5 w-auto object-contain flex-shrink-0" />
         <div class="flex items-center gap-2">
           <div class="flex flex-col leading-none">
             <span class="text-[11px] font-semibold tracking-[0.18em] text-gray-200 uppercase">UpForge</span>
