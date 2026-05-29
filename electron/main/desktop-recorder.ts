@@ -38,7 +38,17 @@ async function fixWebmDuration(inputPath: string): Promise<string | null> {
     // Output to MP4 — moov atom always carries duration, works in all players.
     const fixedPath = join(dir, `${name}.mp4`)
 
-    const args = ['-y', '-i', inputPath, '-c', 'copy', '-movflags', '+faststart', fixedPath]
+    // Copy VP9 video, transcode Opus→AAC audio (Opus-in-MP4 requires strict flags in
+    // many ffmpeg builds; AAC is universally compatible and re-encoding is fast).
+    // Optional audio map (?): handles recordings where audio was not captured.
+    const args = [
+      '-y', '-i', inputPath,
+      '-map', '0:v:0', '-map', '0:a:0?',
+      '-c:v', 'copy',
+      '-c:a', 'aac', '-b:a', '128k',
+      '-movflags', '+faststart',
+      fixedPath,
+    ]
     console.info('[DesktopRecorder] Remuxing to MP4 for duration metadata:', inputPath, '→', fixedPath)
     const proc = spawn(ffmpeg, args, { stdio: 'pipe' })
 

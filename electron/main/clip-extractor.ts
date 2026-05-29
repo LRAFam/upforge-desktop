@@ -46,16 +46,12 @@ export class ClipExtractor {
 
     const startSec = Math.max(0, opts.startOffsetMs / 1000)
     const durSec = opts.durationMs / 1000
-    const isWebM = opts.sourcePath.toLowerCase().endsWith('.webm')
 
-    // WebM (VP8/VP9) cannot be stream-copied into MP4 — transcode to H.264/AAC.
-    // For MP4 sources, stream-copy is faster and lossless.
-    // veryfast preset + thread cap keeps CPU impact low while the user is still in-game.
-    const videoArgs = isWebM
-      ? ['-c:v', 'libx264', '-crf', '22', '-preset', 'veryfast', '-threads', '2', '-pix_fmt', 'yuv420p']
-      : ['-c:v', 'copy']
-    const audioArgs = isWebM ? ['-c:a', 'aac', '-b:a', '128k'] : ['-c:a', 'copy']
-
+    // Always transcode to H.264/AAC for maximum player compatibility.
+    // Our source recordings are VP9-in-MP4 (remuxed from WebM) or raw WebM — neither
+    // streams-copies cleanly into MP4 on all platforms. For short clips (8–30s),
+    // veryfast H.264 transcoding is near-instant. Optional audio map handles
+    // recordings where audio capture was unavailable.
     try {
       await this._run(
         [
@@ -63,13 +59,15 @@ export class ClipExtractor {
           '-ss', String(startSec),
           '-i', opts.sourcePath,
           '-t', String(durSec),
-          ...videoArgs,
-          ...audioArgs,
+          '-map', '0:v:0',
+          '-map', '0:a:0?',
+          '-c:v', 'libx264', '-crf', '22', '-preset', 'veryfast', '-threads', '2', '-pix_fmt', 'yuv420p',
+          '-c:a', 'aac', '-b:a', '128k',
           '-avoid_negative_ts', '1',
           '-movflags', '+faststart',
           opts.outputPath,
         ],
-        isWebM ? 120_000 : 60_000,
+        120_000,
       )
     } catch (err) {
       try { if (fs.existsSync(opts.outputPath)) fs.unlinkSync(opts.outputPath) } catch { /* ignore */ }
@@ -87,6 +85,7 @@ export class ClipExtractor {
       '-y',
       '-ss', String(offsetSec),
       '-i', opts.sourcePath,
+      '-map', '0:v:0',
       '-vframes', '1',
       '-q:v', '3',
       opts.outputPath,
