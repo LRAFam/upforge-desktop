@@ -197,6 +197,7 @@ const MAP_SPLASH_URLS: Record<string, string> = {
   pearl: 'https://media.valorant-api.com/maps/fd267378-4d1d-484f-ff52-77821ed10dc2/splash.png',
   split: 'https://media.valorant-api.com/maps/d960549e-485c-e861-8d71-aa9d1aed12a2/splash.png',
   sunset: 'https://media.valorant-api.com/maps/92584fbe-486a-b1b2-9faa-39b0f486b498/splash.png',
+  therange: 'https://media.valorant-api.com/maps/ee613ee9-28b7-4beb-9666-08db13bb2244/splash.png',
 }
 
 const MAP_MINIMAP_URLS: Record<string, string> = {
@@ -213,6 +214,7 @@ const MAP_MINIMAP_URLS: Record<string, string> = {
   pearl: 'https://media.valorant-api.com/maps/fd267378-4d1d-484f-ff52-77821ed10dc2/displayicon.png',
   split: 'https://media.valorant-api.com/maps/d960549e-485c-e861-8d71-aa9d1aed12a2/displayicon.png',
   sunset: 'https://media.valorant-api.com/maps/92584fbe-486a-b1b2-9faa-39b0f486b498/displayicon.png',
+  therange: 'https://media.valorant-api.com/maps/ee613ee9-28b7-4beb-9666-08db13bb2244/displayicon.png',
 }
 
 /** Returns the full-art splash URL for a Valorant map. */
