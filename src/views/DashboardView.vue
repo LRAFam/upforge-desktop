@@ -121,9 +121,12 @@
     <!-- Hero header -->
     <div class="flex-shrink-0 mx-4 mt-4 space-y-6">
       <div class="grid grid-cols-[minmax(0,1fr)_320px] gap-4">
-        <div class="relative rounded-3xl border border-white/[0.10] bg-gradient-to-br from-white/[0.04] via-white/[0.025] to-red-500/[0.06] px-6 pt-6 pb-8">
+        <div class="relative overflow-hidden rounded-3xl border border-white/[0.10] bg-gradient-to-br from-white/[0.04] via-white/[0.025] to-red-500/[0.06] px-6 pt-6 pb-8">
           <div class="absolute -right-12 top-0 h-36 w-36 rounded-full bg-red-500/10 blur-3xl" />
           <div class="absolute left-10 top-10 h-24 w-24 rounded-full bg-orange-500/10 blur-3xl" />
+          <!-- Hero agents artwork -->
+          <img src="../assets/hero-agents.webp" alt="" class="pointer-events-none absolute right-0 top-0 h-full w-[42%] object-cover object-left opacity-[0.14] select-none" />
+          <div class="pointer-events-none absolute inset-y-0" style="right:28%;width:10rem;background:linear-gradient(to right,#111111,transparent)" />
           <div class="relative space-y-5">
             <div class="flex items-start justify-between gap-4">
               <div class="space-y-4">

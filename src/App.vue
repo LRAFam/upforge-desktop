@@ -1,5 +1,7 @@
 <template>
   <div class="relative h-screen bg-[#111111] text-white flex flex-col overflow-hidden select-none">
+    <!-- Subtle branded background texture -->
+    <img src="./assets/upforge-bg.webp" alt="" class="pointer-events-none absolute inset-0 z-0 h-full w-full object-cover opacity-[0.045] select-none" />
     <Transition name="busy-bar">
       <div v-if="busyActive" class="pointer-events-none absolute inset-x-0 top-0 z-50 h-[2px] bg-white/[0.04]">
         <div
@@ -17,7 +19,11 @@
     >
       <div class="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-red-500/70 to-orange-500/70" />
       <div class="flex items-center gap-2.5">
-        <img src="./assets/upforge-logo.png" alt="UpForge" class="h-5 w-auto object-contain flex-shrink-0" />
+        <!-- Logo with red glow halo -->
+        <div class="relative flex-shrink-0">
+          <div class="absolute inset-0 rounded-full bg-red-500/25 blur-md scale-150 pointer-events-none" />
+          <img src="./assets/upforge-logo.png" alt="UpForge" class="relative h-5 w-auto object-contain" />
+        </div>
         <div class="flex items-center gap-2">
           <div class="flex flex-col leading-none">
             <span class="text-[11px] font-semibold tracking-[0.18em] text-gray-200 uppercase">UpForge</span>
@@ -111,8 +117,10 @@
     <!-- Navigation (hidden on post-game / login) -->
     <nav
       v-if="showNav"
-      class="flex flex-col gap-1 px-3 pt-2 pb-2 flex-shrink-0 border-b border-white/[0.09] bg-[#161616]/85"
+      class="relative flex flex-col gap-1 px-3 pt-2 pb-2 flex-shrink-0 border-b border-white/[0.09] bg-[#161616]/85"
     >
+      <!-- Subtle brand glow along nav bottom -->
+      <div class="pointer-events-none absolute inset-x-0 bottom-0 h-[1px] bg-gradient-to-r from-transparent via-red-500/40 to-transparent" />
       <div class="flex items-center gap-0.5">
         <RouterLink
           v-for="link in primaryNavLinks"
@@ -121,7 +129,7 @@
           class="relative flex items-center gap-1.5 px-2.5 py-2 text-[11px] font-semibold transition-all duration-150 rounded-t-lg group"
           :class="
             $route.path === link.to
-              ? 'text-white bg-white/[0.05] after:absolute after:bottom-0 after:left-1.5 after:right-1.5 after:h-[2px] after:rounded-full after:bg-gradient-to-r after:from-red-500 after:to-orange-400 after:shadow-[0_0_8px_rgba(255,70,85,0.6)]'
+              ? 'text-white bg-red-500/[0.07] after:absolute after:bottom-0 after:left-1.5 after:right-1.5 after:h-[2px] after:rounded-full after:bg-gradient-to-r after:from-red-500 after:to-orange-400 after:shadow-[0_0_10px_rgba(255,70,85,0.7)]'
               : 'text-gray-500 hover:text-gray-300 hover:bg-white/[0.03]'
           "
         >
@@ -144,7 +152,7 @@
           class="relative flex items-center gap-1.5 px-2.5 py-2 text-[11px] font-semibold transition-all duration-150 rounded-t-lg group"
           :class="
             $route.path === link.to
-              ? 'text-white bg-white/[0.05] after:absolute after:bottom-0 after:left-1.5 after:right-1.5 after:h-[2px] after:rounded-full after:bg-gradient-to-r after:from-red-500 after:to-orange-400 after:shadow-[0_0_8px_rgba(255,70,85,0.6)]'
+              ? 'text-white bg-red-500/[0.07] after:absolute after:bottom-0 after:left-1.5 after:right-1.5 after:h-[2px] after:rounded-full after:bg-gradient-to-r after:from-red-500 after:to-orange-400 after:shadow-[0_0_10px_rgba(255,70,85,0.7)]'
               : 'text-gray-500 hover:text-gray-300 hover:bg-white/[0.03]'
           "
         >
