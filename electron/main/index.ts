@@ -358,8 +358,8 @@ async function extractKillClipsOnly(
       const clipPath = ClipExtractor.clipPath(tempRecord.id)
       const thumbPath = ClipExtractor.thumbPath(tempRecord.id)
       await clipExtractor.extract({ sourcePath: videoPath, startOffsetMs: startMs, durationMs, outputPath: clipPath })
-      await clipExtractor.thumbnail({ sourcePath: videoPath, offsetMs: first.videoOffsetMs!, outputPath: thumbPath })
-      clipStore.update(tempRecord.id, { path: clipPath, thumbPath })
+      const resolvedThumb = await safeThumb(videoPath, first.videoOffsetMs!, startMs, thumbPath)
+      clipStore.update(tempRecord.id, { path: clipPath, thumbPath: resolvedThumb })
       extractedClipIds.push(tempRecord.id)
       const label = trigger === 'ace' ? 'Ace' : `${killCount}K`
       logActivity(`${label} clip saved (late extract) — Round ${round + 1} (${map ?? 'unknown'})`)
@@ -382,8 +382,8 @@ async function extractKillClipsOnly(
       const clipPath = ClipExtractor.clipPath(tempRecord.id)
       const thumbPath = ClipExtractor.thumbPath(tempRecord.id)
       await clipExtractor.extract({ sourcePath: videoPath, startOffsetMs: startMs, durationMs, outputPath: clipPath })
-      await clipExtractor.thumbnail({ sourcePath: videoPath, offsetMs: first.videoOffsetMs!, outputPath: thumbPath })
-      clipStore.update(tempRecord.id, { path: clipPath, thumbPath })
+      const resolvedThumb = await safeThumb(videoPath, first.videoOffsetMs!, startMs, thumbPath)
+      clipStore.update(tempRecord.id, { path: clipPath, thumbPath: resolvedThumb })
       extractedClipIds.push(tempRecord.id)
       logActivity(`Clutch clip saved (late extract) — Round ${round + 1} (${map ?? 'unknown'})`)
     } catch (err) {
@@ -410,6 +410,26 @@ async function extractKillClipsOnly(
  * Extract highlight clips from a completed match recording.
  * Called post-match once the recording file is finalised.
  */
+/** Extract a thumbnail without aborting clip save on failure.
+ *  Falls back to the clip start offset if the original seek is out-of-range. */
+async function safeThumb(
+  sourcePath: string,
+  offsetMs: number,
+  fallbackMs: number,
+  outputPath: string,
+): Promise<string | null> {
+  for (const ms of [offsetMs, fallbackMs]) {
+    try {
+      await clipExtractor.thumbnail({ sourcePath, offsetMs: ms, outputPath })
+      return outputPath
+    } catch {
+      // try next offset
+    }
+  }
+  log.warn('[ClipExtract] Thumbnail skipped — all seek offsets failed:', outputPath)
+  return null
+}
+
 async function extractMatchClips(
   videoPath: string,
   timeline: MatchData | null,
@@ -452,8 +472,8 @@ async function extractMatchClips(
       const clipPath = ClipExtractor.clipPath(tempRecord.id)
       const thumbPath = ClipExtractor.thumbPath(tempRecord.id)
       await clipExtractor.extract({ sourcePath: videoPath, startOffsetMs: startMs, durationMs: 30_000, outputPath: clipPath })
-      await clipExtractor.thumbnail({ sourcePath: videoPath, offsetMs: offsetMs, outputPath: thumbPath })
-      clipStore.update(tempRecord.id, { path: clipPath, thumbPath })
+      const resolvedThumb = await safeThumb(videoPath, offsetMs, startMs, thumbPath)
+      clipStore.update(tempRecord.id, { path: clipPath, thumbPath: resolvedThumb })
       extractedClipIds.push(tempRecord.id)
       logActivity(`Saved hotkey clip (${map ?? 'unknown map'})`)
     } catch (err) {
@@ -515,8 +535,8 @@ async function extractMatchClips(
         const clipPath = ClipExtractor.clipPath(tempRecord.id)
         const thumbPath = ClipExtractor.thumbPath(tempRecord.id)
         await clipExtractor.extract({ sourcePath: videoPath, startOffsetMs: startMs, durationMs: 13_000, outputPath: clipPath })
-        await clipExtractor.thumbnail({ sourcePath: videoPath, offsetMs: offsetMs, outputPath: thumbPath })
-        clipStore.update(tempRecord.id, { path: clipPath, thumbPath })
+        const resolvedThumb = await safeThumb(videoPath, offsetMs, startMs, thumbPath)
+        clipStore.update(tempRecord.id, { path: clipPath, thumbPath: resolvedThumb })
         extractedClipIds.push(tempRecord.id)
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err)
@@ -553,8 +573,8 @@ async function extractMatchClips(
         const clipPath = ClipExtractor.clipPath(tempRecord.id)
         const thumbPath = ClipExtractor.thumbPath(tempRecord.id)
         await clipExtractor.extract({ sourcePath: videoPath, startOffsetMs: startMs, durationMs, outputPath: clipPath })
-        await clipExtractor.thumbnail({ sourcePath: videoPath, offsetMs: first.videoOffsetMs!, outputPath: thumbPath })
-        clipStore.update(tempRecord.id, { path: clipPath, thumbPath })
+        const resolvedThumb = await safeThumb(videoPath, first.videoOffsetMs!, startMs, thumbPath)
+        clipStore.update(tempRecord.id, { path: clipPath, thumbPath: resolvedThumb })
         extractedClipIds.push(tempRecord.id)
         const label = trigger === 'ace' ? 'Ace' : `${killCount}K`
         logActivity(`${label} clip saved — Round ${round + 1} (${map ?? 'unknown'})`)
@@ -586,8 +606,8 @@ async function extractMatchClips(
         const clipPath = ClipExtractor.clipPath(tempRecord.id)
         const thumbPath = ClipExtractor.thumbPath(tempRecord.id)
         await clipExtractor.extract({ sourcePath: videoPath, startOffsetMs: startMs, durationMs, outputPath: clipPath })
-        await clipExtractor.thumbnail({ sourcePath: videoPath, offsetMs: first.videoOffsetMs!, outputPath: thumbPath })
-        clipStore.update(tempRecord.id, { path: clipPath, thumbPath })
+        const resolvedThumb = await safeThumb(videoPath, first.videoOffsetMs!, startMs, thumbPath)
+        clipStore.update(tempRecord.id, { path: clipPath, thumbPath: resolvedThumb })
         extractedClipIds.push(tempRecord.id)
         logActivity(`Clutch clip saved — Round ${round + 1} (${map ?? 'unknown'})`)
       } catch (err) {
