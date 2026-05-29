@@ -1402,6 +1402,21 @@ function setupGameDetection(): void {
           }
 
           if (state?.sessionLoopState === 'INGAME') {
+            // Replay viewer shows INGAME presence — do not record replays
+            if (state.isReplay) {
+              console.log('[GameDetector] Replay detected (provisioningFlow=Replay) — skipping recording')
+              logActivity('Replay detected — recording skipped')
+              tray?.setToolTip(idleTooltip(game))
+              waitingForMatch = false
+              cancelMatchWait = null
+              mainWindow?.webContents.send('recording:waiting-for-match', { waiting: false })
+              // Re-arm detection so we catch the next real match
+              await new Promise((r) => setTimeout(r, 5000))
+              if (await gameDetector.isMatchProcessRunning()) {
+                gameDetector.emit('game-started', game)
+              }
+              return
+            }
             matchStartTime = Date.now()
             if (state.queueId) {
               const { normalizeQueueId } = await import('./riot-local-api')

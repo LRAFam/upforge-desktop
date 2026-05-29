@@ -312,6 +312,8 @@ export interface SessionState {
   matchMap: string | null
   allyScore: number
   enemyScore: number
+  /** True when the client is playing back a replay rather than a live match */
+  isReplay: boolean
 }
 
 /** Full enriched match data — superset of MatchTimeline */
@@ -614,6 +616,8 @@ export class RiotLocalApi {
       if (!own?.private) return null
       const decoded = JSON.parse(Buffer.from(own.private, 'base64').toString()) as Record<string, unknown>
       const mpd = (decoded.matchPresenceData ?? {}) as Record<string, unknown>
+      const provisioningFlow = (decoded.provisioningFlow ?? mpd.provisioningFlow ?? '') as string
+      const isReplay = provisioningFlow.toLowerCase() === 'replay'
       this._sessionStateFailures = 0
       return {
         sessionLoopState: (mpd.sessionLoopState ?? decoded.sessionLoopState ?? 'MENUS') as string,
@@ -621,6 +625,7 @@ export class RiotLocalApi {
         matchMap: (mpd.matchMap ?? decoded.matchMap ?? null) as string | null,
         allyScore: (decoded.partyOwnerMatchScoreAllyTeam ?? 0) as number,
         enemyScore: (decoded.partyOwnerMatchScoreEnemyTeam ?? 0) as number,
+        isReplay,
       }
     } catch {
       this._sessionStateFailures++
