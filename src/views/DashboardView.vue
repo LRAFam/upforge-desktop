@@ -176,8 +176,9 @@
               </div>
               <div class="rounded-2xl border border-white/[0.08] bg-white/[0.03] px-4 py-3 shadow-[0_10px_30px_rgba(0,0,0,0.12)]">
                 <div class="flex items-center gap-3">
-                  <div class="flex h-10 w-10 items-center justify-center rounded-full border border-white/[0.08] bg-white/[0.04] text-gray-200">
-                    <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <div class="flex h-10 w-10 items-center justify-center rounded-full border border-white/[0.08] bg-white/[0.04]">
+                    <img v-if="getRankIconUrl(profile?.latest_stats?.current_rank)" :src="getRankIconUrl(profile?.latest_stats?.current_rank)!" :alt="profile?.latest_stats?.current_rank ?? ''" class="w-8 h-8 object-contain drop-shadow-lg" />
+                    <svg v-else class="h-4 w-4 text-gray-200" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" d="M12 3l2.5 5.5 6 .9-4.3 4.2 1 5.9-5.2-2.9-5.2 2.9 1-5.9L3.5 9.4l6-.9L12 3z" />
                     </svg>
                   </div>
