@@ -119,15 +119,15 @@
     </div>
 
     <!-- Hero header -->
-    <div class="flex-shrink-0 mx-4 mt-4 space-y-6">
-      <div class="grid grid-cols-[minmax(0,1fr)_320px] gap-4">
-        <div class="relative overflow-hidden rounded-3xl border border-white/[0.10] bg-gradient-to-br from-white/[0.04] via-white/[0.025] to-red-500/[0.06] px-6 pt-6 pb-8">
+    <div class="flex-shrink-0 mx-4 mt-3 space-y-3">
+      <div class="grid grid-cols-[minmax(0,1fr)_320px] gap-3">
+        <div class="relative overflow-hidden rounded-3xl border border-white/[0.10] bg-gradient-to-br from-white/[0.04] via-white/[0.025] to-red-500/[0.06] px-5 pt-4 pb-5">
           <div class="absolute -right-12 top-0 h-36 w-36 rounded-full bg-red-500/10 blur-3xl" />
           <div class="absolute left-10 top-10 h-24 w-24 rounded-full bg-orange-500/10 blur-3xl" />
           <!-- Hero agents artwork -->
           <img src="../assets/hero-agents.webp" alt="" class="pointer-events-none absolute right-0 top-0 h-full w-[42%] object-cover object-left opacity-[0.14] select-none" />
           <div class="pointer-events-none absolute inset-y-0" style="right:28%;width:10rem;background:linear-gradient(to right,#111111,transparent)" />
-          <div class="relative space-y-5">
+          <div class="relative space-y-3">
             <div class="flex items-start justify-between gap-4">
               <div class="space-y-4">
                 <div class="flex flex-wrap items-center gap-2.5">
@@ -150,58 +150,58 @@
                 <p class="mt-1 text-2xl font-black tabular-nums text-red-300">{{ recordingElapsed }}</p>
               </div>
             </div>
-            <div class="grid grid-cols-4 gap-3 max-w-4xl">
-              <div class="rounded-2xl border border-white/[0.08] bg-white/[0.03] px-4 py-3 shadow-[0_10px_30px_rgba(0,0,0,0.12)]">
-                <div class="flex items-center gap-3">
-                  <div class="flex h-10 w-10 items-center justify-center rounded-full border border-red-500/20 bg-red-500/10 text-red-300">
-                    <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <div class="grid grid-cols-4 gap-2 max-w-4xl">
+              <div class="rounded-xl border border-white/[0.08] bg-white/[0.03] px-3 py-2.5 shadow-[0_10px_30px_rgba(0,0,0,0.12)]">
+                <div class="flex items-center gap-2.5">
+                  <div class="flex h-8 w-8 items-center justify-center rounded-full border border-red-500/20 bg-red-500/10 text-red-300 flex-shrink-0">
+                    <svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" d="M15.75 10.5l4.72-2.36A.75.75 0 0121.5 8.81v6.38a.75.75 0 01-1.03.67l-4.72-2.36m0 0V10.5m0 3H4.875A1.875 1.875 0 013 11.625v-3.75C3 6.839 3.84 6 4.875 6H15.75c1.035 0 1.875.84 1.875 1.875v8.25A1.875 1.875 0 0115.75 18H6" />
                     </svg>
                   </div>
                   <div class="min-w-0">
-                    <p class="text-lg font-black tabular-nums text-white">{{ clipCount }}</p>
-                    <p class="text-[10px] font-semibold uppercase tracking-[0.24em] text-gray-600">Total Clips</p>
+                    <p class="text-base font-black tabular-nums text-white">{{ clipCount }}</p>
+                    <p class="text-[9px] font-semibold uppercase tracking-[0.24em] text-gray-600">Total Clips</p>
                   </div>
                 </div>
               </div>
-              <div class="rounded-2xl border border-white/[0.08] bg-white/[0.03] px-4 py-3 shadow-[0_10px_30px_rgba(0,0,0,0.12)]">
-                <div class="flex items-center gap-3">
-                  <div class="flex h-10 w-10 items-center justify-center rounded-full border border-orange-500/20 bg-orange-500/10 text-orange-300">
-                    <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <div class="rounded-xl border border-white/[0.08] bg-white/[0.03] px-3 py-2.5 shadow-[0_10px_30px_rgba(0,0,0,0.12)]">
+                <div class="flex items-center gap-2.5">
+                  <div class="flex h-8 w-8 items-center justify-center rounded-full border border-orange-500/20 bg-orange-500/10 text-orange-300 flex-shrink-0">
+                    <svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" d="M3 13.125C3 12.503 3.504 12 4.125 12h3.75c.621 0 1.125.503 1.125 1.125v6.75C9 20.497 8.496 21 7.875 21h-3.75A1.125 1.125 0 013 19.875v-6.75zm6-4.5C9 8.003 9.504 7.5 10.125 7.5h3.75c.621 0 1.125.503 1.125 1.125v11.25c0 .622-.504 1.125-1.125 1.125h-3.75A1.125 1.125 0 019 19.875V8.625zm6-3.375c0-.622.504-1.125 1.125-1.125h3.75C20.496 4.125 21 4.628 21 5.25v14.625c0 .622-.504 1.125-1.125 1.125h-3.75A1.125 1.125 0 0115 19.875V5.25z" />
                     </svg>
                   </div>
                   <div class="min-w-0">
-                    <p class="text-lg font-black tabular-nums text-white">{{ totalSessionsAnalysed }}</p>
-                    <p class="text-[10px] font-semibold uppercase tracking-[0.24em] text-gray-600">Sessions Analysed</p>
+                    <p class="text-base font-black tabular-nums text-white">{{ totalSessionsAnalysed }}</p>
+                    <p class="text-[9px] font-semibold uppercase tracking-[0.24em] text-gray-600">Sessions</p>
                   </div>
                 </div>
               </div>
-              <div class="rounded-2xl border border-white/[0.08] bg-white/[0.03] px-4 py-3 shadow-[0_10px_30px_rgba(0,0,0,0.12)]">
-                <div class="flex items-center gap-3">
-                  <div class="flex h-10 w-10 items-center justify-center rounded-full border border-white/[0.08] bg-white/[0.04]">
-                    <img v-if="getRankIconUrl(profile?.latest_stats?.current_rank)" :src="getRankIconUrl(profile?.latest_stats?.current_rank)!" :alt="profile?.latest_stats?.current_rank ?? ''" class="w-8 h-8 object-contain drop-shadow-lg" />
-                    <svg v-else class="h-4 w-4 text-gray-200" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <div class="rounded-xl border border-white/[0.08] bg-white/[0.03] px-3 py-2.5 shadow-[0_10px_30px_rgba(0,0,0,0.12)]">
+                <div class="flex items-center gap-2.5">
+                  <div class="flex h-8 w-8 items-center justify-center rounded-full border border-white/[0.08] bg-white/[0.04] flex-shrink-0">
+                    <img v-if="getRankIconUrl(profile?.latest_stats?.current_rank)" :src="getRankIconUrl(profile?.latest_stats?.current_rank)!" :alt="profile?.latest_stats?.current_rank ?? ''" class="w-7 h-7 object-contain drop-shadow-lg" />
+                    <svg v-else class="h-3.5 w-3.5 text-gray-200" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" d="M12 3l2.5 5.5 6 .9-4.3 4.2 1 5.9-5.2-2.9-5.2 2.9 1-5.9L3.5 9.4l6-.9L12 3z" />
                     </svg>
                   </div>
                   <div class="min-w-0">
-                    <p class="text-lg font-black text-white truncate">{{ dashboardRankLabel }}</p>
-                    <p class="text-[10px] font-semibold uppercase tracking-[0.24em] text-gray-600">Current Rank</p>
+                    <p class="text-base font-black text-white truncate">{{ dashboardRankLabel }}</p>
+                    <p class="text-[9px] font-semibold uppercase tracking-[0.24em] text-gray-600">Current Rank</p>
                   </div>
                 </div>
               </div>
-              <div class="rounded-2xl border border-white/[0.08] bg-white/[0.03] px-4 py-3 shadow-[0_10px_30px_rgba(0,0,0,0.12)]">
-                <div class="flex items-center gap-3">
-                  <div class="flex h-10 w-10 items-center justify-center rounded-full border border-emerald-500/20 bg-emerald-500/10 text-emerald-300">
-                    <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <div class="rounded-xl border border-white/[0.08] bg-white/[0.03] px-3 py-2.5 shadow-[0_10px_30px_rgba(0,0,0,0.12)]">
+                <div class="flex items-center gap-2.5">
+                  <div class="flex h-8 w-8 items-center justify-center rounded-full border border-emerald-500/20 bg-emerald-500/10 text-emerald-300 flex-shrink-0">
+                    <svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" d="M3 13.5l5.25-5.25L12 12l8.25-8.25" />
                       <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" d="M16.5 3.75H21v4.5" />
                     </svg>
                   </div>
                   <div class="min-w-0">
-                    <p class="text-lg font-black tabular-nums text-white">{{ dashboardWinRateLabel }}</p>
-                    <p class="text-[10px] font-semibold uppercase tracking-[0.24em] text-gray-600">Win Rate</p>
+                    <p class="text-base font-black tabular-nums text-white">{{ dashboardWinRateLabel }}</p>
+                    <p class="text-[9px] font-semibold uppercase tracking-[0.24em] text-gray-600">Win Rate</p>
                   </div>
                 </div>
               </div>
@@ -741,29 +741,19 @@
       <!-- ═══════════ RIGHT: Coaching + Training + Activity ═══════════ -->
       <div class="flex flex-col gap-3 overflow-y-auto" style="scrollbar-width:none">
 
-        <div v-if="clipCount === 0" class="relative overflow-hidden rounded-2xl border border-white/[0.10] bg-gradient-to-br from-white/[0.03] via-white/[0.02] to-orange-500/[0.05] px-4 py-4">
-          <div class="absolute -right-8 top-0 h-24 w-24 rounded-full bg-red-500/10 blur-3xl" />
-          <div class="relative flex flex-col items-center text-center gap-3">
-            <div class="flex h-12 w-12 items-center justify-center rounded-2xl border border-orange-500/20 bg-orange-500/[0.12] text-orange-300 flex-shrink-0">
-              <svg class="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <div v-if="clipCount === 0" class="relative overflow-hidden rounded-xl border border-white/[0.10] bg-white/[0.02] px-3 py-3">
+          <div class="flex items-center gap-3">
+            <div class="flex h-9 w-9 items-center justify-center rounded-xl border border-orange-500/20 bg-orange-500/[0.10] text-orange-300 flex-shrink-0">
+              <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" d="M3 7.5A2.25 2.25 0 015.25 5.25h2.379a1.5 1.5 0 001.06-.44l.621-.62a1.5 1.5 0 011.06-.44h3.26a1.5 1.5 0 011.06.44l.621.62a1.5 1.5 0 001.06.44h2.379A2.25 2.25 0 0121 7.5v9A2.25 2.25 0 0118.75 18.75H5.25A2.25 2.25 0 013 16.5v-9z" />
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" d="M9 12a3 3 0 116 0 3 3 0 01-6 0z" />
               </svg>
             </div>
-            <div class="space-y-1.5">
-              <p class="text-[10px] font-bold uppercase tracking-[0.28em] text-gray-600">Clip Library</p>
-              <h3 class="text-base font-black tracking-tight text-white">No clips yet</h3>
-              <p class="text-sm leading-relaxed text-gray-400">Enable auto-clipping in Settings or use your save-clip hotkey during a live match to start building your highlight library.</p>
+            <div class="flex-1 min-w-0">
+              <p class="text-xs font-bold text-white">Clip Library</p>
+              <p class="text-[11px] text-gray-600 truncate">Use your save-clip hotkey during a match to build highlights</p>
             </div>
-            <div class="mt-1 flex flex-wrap items-center justify-center gap-2">
-              <span v-if="hotkeys['save-clip']" class="inline-flex items-center gap-2 rounded-full border border-orange-500/20 bg-orange-500/[0.1] px-2.5 py-1 text-[10px] font-semibold text-orange-200">
-                <span>Save clip</span>
-                <kbd class="font-mono">{{ hotkeys['save-clip'] }}</kbd>
-              </span>
-              <button class="inline-flex items-center gap-2 rounded-full border border-white/[0.08] bg-white/[0.03] px-2.5 py-1 text-[10px] font-semibold text-gray-300 hover:bg-white/[0.06] transition-all cursor-pointer" @click="router.push('/settings')">
-                Open Settings
-              </button>
-            </div>
+            <button class="flex-shrink-0 px-2.5 py-1.5 text-[11px] font-semibold text-gray-400 hover:text-white border border-white/[0.09] hover:border-white/[0.14] rounded-lg transition-colors" @click="router.push('/settings')">Settings</button>
           </div>
         </div>
 
