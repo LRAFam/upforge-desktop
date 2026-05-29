@@ -1,5 +1,5 @@
 <template>
-  <div class="h-full text-white flex flex-col overflow-hidden" style="background: #080808">
+  <div class="h-full text-white flex flex-col overflow-hidden bg-[#111111]">
 
     <!-- Header bar -->
     <div class="flex items-center gap-3 px-4 py-2.5 border-b border-white/[0.10] flex-shrink-0 bg-[#161616]">
@@ -19,7 +19,7 @@
 
     <!-- Score trend chart -->
     <div v-if="chartData" class="px-4 pt-3 flex-shrink-0">
-      <div class="rounded-xl border border-white/[0.10] overflow-hidden" style="background: #0d1520">
+      <div class="rounded-xl border border-white/[0.10] overflow-hidden bg-[#161616]">
         <div class="flex items-center gap-2 px-4 py-2 border-b border-white/[0.07]">
           <span class="text-[9px] font-black uppercase tracking-[0.18em] text-gray-500">Score Trend</span>
           <div class="flex-1 h-px bg-white/[0.04]" />
@@ -56,19 +56,19 @@
 
     <!-- Summary stats row -->
     <div v-if="allAnalyses.length" class="flex gap-2 px-4 pt-3 flex-shrink-0">
-      <div class="flex-1 rounded-xl border border-white/[0.10] px-2 py-2.5 text-center" style="background: #0d1520">
+      <div class="flex-1 rounded-xl border border-white/[0.10] px-2 py-2.5 text-center bg-[#161616]">
         <div class="text-sm font-black text-white tabular-nums">{{ allAnalyses.length }}</div>
         <div class="text-[8px] text-gray-600 mt-0.5 uppercase tracking-wide">Games</div>
       </div>
-      <div class="flex-1 rounded-xl border border-white/[0.10] px-2 py-2.5 text-center" style="background: #0d1520">
+      <div class="flex-1 rounded-xl border border-white/[0.10] px-2 py-2.5 text-center bg-[#161616]">
         <div class="text-sm font-black tabular-nums" :class="winRate >= 50 ? 'text-green-400' : 'text-red-400'">{{ winRate }}%</div>
         <div class="text-[8px] text-gray-600 mt-0.5 uppercase tracking-wide">Win Rate</div>
       </div>
-      <div class="flex-1 rounded-xl border border-white/[0.10] px-2 py-2.5 text-center" style="background: #0d1520">
+      <div class="flex-1 rounded-xl border border-white/[0.10] px-2 py-2.5 text-center bg-[#161616]">
         <div class="text-sm font-black tabular-nums" :class="avgScore !== null ? scoreColor(avgScore) : 'text-gray-600'">{{ avgScore != null ? avgScore * 10 : '—' }}</div>
         <div class="text-[8px] text-gray-600 mt-0.5 uppercase tracking-wide">Avg Score</div>
       </div>
-      <div class="flex-1 rounded-xl border border-white/[0.10] px-2 py-2.5 text-center" style="background: #0d1520">
+      <div class="flex-1 rounded-xl border border-white/[0.10] px-2 py-2.5 text-center bg-[#161616]">
         <div class="text-sm font-black text-white tabular-nums">{{ avgKD }}</div>
         <div class="text-[8px] text-gray-600 mt-0.5 uppercase tracking-wide">Avg K/D</div>
       </div>
@@ -116,20 +116,14 @@
       </div>
 
       <div v-else-if="filteredAnalyses.length === 0" class="flex items-center justify-center py-14">
-        <div class="w-full max-w-md rounded-3xl border border-white/[0.07] bg-gradient-to-b from-white/[0.04] to-white/[0.02] px-8 py-10 text-center shadow-[0_24px_60px_rgba(0,0,0,0.35)]">
-          <div class="mx-auto flex h-20 w-20 items-center justify-center rounded-full bg-gradient-to-br from-red-500/20 via-orange-500/15 to-transparent ring-1 ring-red-500/20 ring-offset-4 ring-offset-[#080808]">
-            <div class="flex h-12 w-12 items-center justify-center rounded-full bg-[#191919]">
-              <svg class="h-6 w-6 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.7" d="M15 10l4.553-2.069A1 1 0 0121 8.87v6.26a1 1 0 01-1.447.894L15 14M4 7.75A1.75 1.75 0 015.75 6h7.5A1.75 1.75 0 0115 7.75v8.5A1.75 1.75 0 0113.25 18h-7.5A1.75 1.75 0 014 16.25v-8.5z"/>
-              </svg>
-            </div>
+        <div class="w-full max-w-sm rounded-2xl border border-white/[0.09] bg-white/[0.02] px-6 py-8 text-center">
+          <div class="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl border border-red-500/20 bg-red-500/10 mb-4">
+            <svg class="h-6 w-6 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.7" d="M15 10l4.553-2.069A1 1 0 0121 8.87v6.26a1 1 0 01-1.447.894L15 14M4 7.75A1.75 1.75 0 015.75 6h7.5A1.75 1.75 0 0115 7.75v8.5A1.75 1.75 0 0113.25 18h-7.5A1.75 1.75 0 014 16.25v-8.5z"/>
+            </svg>
           </div>
-          <h3 class="mt-5 text-lg font-semibold text-white">{{ allAnalyses.length === 0 ? 'No coaching sessions yet' : 'No sessions match this filter' }}</h3>
-          <p class="mt-2 text-sm leading-relaxed text-gray-400">{{ allAnalyses.length === 0 ? 'Finish a recorded match or upload a VOD to start building a coaching history with trends, grades, and review notes.' : 'Try switching the result filter or clearing the map filter to bring more sessions back into view.' }}</p>
-          <div class="mt-5 rounded-2xl border border-white/[0.10] bg-black/25 px-4 py-3 text-left">
-            <p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-gray-500">What to expect</p>
-            <p class="mt-1 text-xs text-gray-400">Each session includes your score, round result, key improvement points, and a direct link back into VOD review.</p>
-          </div>
+          <h3 class="text-sm font-bold text-white">{{ allAnalyses.length === 0 ? 'No coaching sessions yet' : 'No sessions match this filter' }}</h3>
+          <p class="mt-1 text-xs text-gray-500">{{ allAnalyses.length === 0 ? 'Finish a recorded match or upload a VOD to start building your coaching history.' : 'Try adjusting the result or map filter.' }}</p>
         </div>
       </div>
 

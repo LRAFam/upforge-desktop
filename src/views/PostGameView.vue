@@ -67,7 +67,7 @@
             <div class="flex items-end justify-between gap-3">
               <div class="text-left">
                 <p class="text-[10px] font-semibold uppercase tracking-[0.24em] text-gray-600">Upload progress</p>
-                <p class="mt-1 text-xs text-gray-500">Sending your recording to the coaching pipeline</p>
+                <p class="mt-1 text-xs text-gray-500">Sending your recording to UpForge for analysis</p>
               </div>
               <div class="text-right">
                 <p class="text-lg font-black tabular-nums text-white upload-stat-in">{{ uploadProgress }}%</p>

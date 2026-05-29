@@ -1,5 +1,5 @@
 <template>
-  <div class="flex flex-col h-full bg-[#080808] text-white overflow-hidden">
+  <div class="flex flex-col h-full bg-[#111111] text-white overflow-hidden">
 
     <!-- Header bar -->
     <div class="flex items-center gap-3 px-4 py-2.5 border-b border-white/[0.10] flex-shrink-0 bg-[#161616]">

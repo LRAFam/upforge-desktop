@@ -4,7 +4,7 @@
     <!-- Header + date range filter -->
     <div class="flex items-center justify-between flex-shrink-0">
       <div>
-        <h2 class="text-xs font-semibold text-white">Performance Stats</h2>
+        <h2 class="text-xs font-semibold text-white">Stats</h2>
         <p class="text-[10px] text-gray-600 mt-0.5">{{ filteredAnalyses.length }} game{{ filteredAnalyses.length !== 1 ? 's' : '' }} in range</p>
       </div>
       <div class="flex items-center gap-0.5">
