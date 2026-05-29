@@ -25,10 +25,12 @@ export function useDesktopRecording() {
     try {
       const sources = await window.api.desktopCapture.getSources()
 
-      // Prefer a named screen source — more reliable for fullscreen games than window capture
+      // All sources are screen (display) sources — prefer Screen 1 / primary display.
+      // On Windows these are named "Screen 1", "Screen 2"; on macOS "Built-in Retina Display" etc.
       const source =
+        sources.find(s => /^screen\s*1$/i.test(s.name)) ??
         sources.find(s => /^screen\s*\d*$/i.test(s.name)) ??
-        sources.find(s => /entire screen|display|monitor/i.test(s.name)) ??
+        sources.find(s => /entire screen|display|monitor|retina|built-in/i.test(s.name)) ??
         sources[0]
 
       if (!source) throw new Error('No desktop sources found for capture')

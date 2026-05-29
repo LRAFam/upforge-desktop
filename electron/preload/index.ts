@@ -96,9 +96,10 @@ const api = {
     save: (dataUrl: string) => ipcRenderer.invoke('screenshots:save', { dataUrl }),
   },
   desktopCapture: {
-    /** Returns available screen/window sources for getUserMedia capture. */
+    /** Returns available screen sources for getUserMedia capture. Only screens are returned
+     *  (not individual application windows) so fullscreen games are always captured whole. */
     getSources: (): Promise<{ id: string; name: string }[]> =>
-      ipcRenderer.invoke('desktop-capturer:get-sources', ['screen', 'window']),
+      ipcRenderer.invoke('desktop-capturer:get-sources', ['screen']),
     /** Tell the main process which source to capture before calling getUserMedia (required Electron 20+). */
     setSource: (sourceId: string): Promise<void> =>
       ipcRenderer.invoke('desktop-capturer:set-source', sourceId),

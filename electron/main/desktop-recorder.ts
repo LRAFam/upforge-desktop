@@ -1,7 +1,69 @@
 import { ipcMain, WebContents, app } from 'electron'
-import { createWriteStream, WriteStream, existsSync, mkdirSync, statSync, unlinkSync, accessSync, constants as fsConstants, writeFileSync, rmSync } from 'fs'
+import { createWriteStream, WriteStream, existsSync, mkdirSync, statSync, unlinkSync, writeFileSync, rmSync, renameSync } from 'fs'
 import { statfs } from 'fs/promises'
 import { join, parse } from 'path'
+import { spawn } from 'child_process'
+import { is } from '@electron-toolkit/utils'
+
+const IS_WIN = process.platform === 'win32'
+
+/** Resolve the bundled ffmpeg binary path — mirrors Recorder._ffmpegPath(). */
+function ffmpegBinaryPath(): string {
+  if (is.dev) return IS_WIN ? 'ffmpeg.exe' : 'ffmpeg'
+  const binary = IS_WIN ? 'ffmpeg.exe' : 'ffmpeg'
+  return join(process.resourcesPath, 'ffmpeg', binary)
+}
+
+/**
+ * Remux a raw MediaRecorder WebM file so it has proper duration and Cue (seek) entries.
+ * MediaRecorder writes WebM as a "live" stream — no duration metadata, no seek table.
+ * ffmpeg -c copy rewrites the container headers in seconds without re-encoding any video.
+ * Returns the path of the fixed file (same path as input), or null if ffmpeg is unavailable.
+ */
+async function fixWebmDuration(inputPath: string): Promise<string | null> {
+  return new Promise((resolve) => {
+    const ffmpeg = ffmpegBinaryPath()
+    if (!existsSync(ffmpeg) && (ffmpeg.includes('/') || ffmpeg.includes('\\'))) {
+      // bundled ffmpeg not found — skip remux silently
+      resolve(null)
+      return
+    }
+
+    const { dir, name, ext } = parse(inputPath)
+    const fixedPath = join(dir, `${name}_fixed${ext}`)
+
+    const args = ['-y', '-i', inputPath, '-c', 'copy', fixedPath]
+    const proc = spawn(ffmpeg, args, { stdio: 'pipe' })
+
+    let stderr = ''
+    proc.stderr?.on('data', (d: Buffer) => { stderr += d.toString() })
+
+    proc.on('close', (code) => {
+      if (code === 0 && existsSync(fixedPath)) {
+        try {
+          unlinkSync(inputPath)
+          renameSync(fixedPath, inputPath)
+          resolve(inputPath)
+        } catch (err) {
+          console.warn('[DesktopRecorder] Could not replace WebM with fixed version:', err)
+          // Leave the fixed file as-is, return it
+          resolve(fixedPath)
+        }
+      } else {
+        console.warn('[DesktopRecorder] ffmpeg remux failed (code=%d): %s', code, stderr.slice(-500))
+        // Clean up partial output if it exists
+        if (existsSync(fixedPath)) { try { unlinkSync(fixedPath) } catch { /* ignore */ } }
+        resolve(null)
+      }
+    })
+
+    proc.on('error', (err) => {
+      console.warn('[DesktopRecorder] ffmpeg spawn error:', err.message)
+      resolve(null)
+    })
+  })
+}
+
 
 /** Returns true if we can actually create files inside `dir`. */
 function isDirectoryWritable(dir: string): boolean {
@@ -81,7 +143,7 @@ export class DesktopRecorder {
 
     ipcMain.on('desktop-recording:complete', () => {
       if (!this._writeStream) return
-      this._writeStream.end(() => {
+      this._writeStream.end(async () => {
         this._writeStream = null
         this._recording = false
         this._startedAt = null
@@ -89,6 +151,16 @@ export class DesktopRecorder {
         const pending = this._pendingStop
         this._pendingStop = null
         this.onStatusChange?.(false)
+
+        // Remux the raw MediaRecorder WebM to add proper duration + Cue seek table.
+        // This is a fast container-only rewrite (no re-encoding).
+        if (this._outputPath && existsSync(this._outputPath)) {
+          const fixed = await fixWebmDuration(this._outputPath)
+          if (fixed) {
+            console.info('[DesktopRecorder] WebM duration fixed:', fixed)
+          }
+        }
+
         pending?.resolve(this._outputPath)
       })
     })
