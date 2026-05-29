@@ -70,24 +70,43 @@
       <!-- Ambient glow tracks active step -->
       <div class="rp-glow" :class="`rp-glow--step${step}`" />
 
-      <!-- Step indicator -->
-      <div class="step-indicator">
-        <div
-          v-for="i in TOTAL_STEPS"
-          :key="i"
-          class="step-pip"
-          :class="{ 'step-pip--active': i === step, 'step-pip--done': i < step }"
-        >
-          <span v-if="i < step" class="pip-check"><svg class="w-2.5 h-2.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span>
-          <span v-else class="pip-num">{{ i }}</span>
+      <div class="step-progress-shell">
+        <div class="step-summary-card">
+          <div class="step-summary-icon-wrap">
+            <svg class="step-summary-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" :d="currentStepMeta.icon" />
+            </svg>
+          </div>
+          <div class="step-summary-copy">
+            <span class="step-summary-label">Current setup stage</span>
+            <strong>{{ currentStepMeta.title }}</strong>
+            <span>{{ currentStepMeta.detail }}</span>
+          </div>
+          <div class="step-summary-progress">
+            <span>{{ stepProgress }}%</span>
+            <small>Complete</small>
+          </div>
         </div>
-        <div class="step-track">
-          <div class="step-fill" :style="{ width: ((step - 1) / (TOTAL_STEPS - 1) * 100) + '%' }" />
+
+        <!-- Step indicator -->
+        <div class="step-indicator">
+          <div
+            v-for="i in TOTAL_STEPS"
+            :key="i"
+            class="step-pip"
+            :class="{ 'step-pip--active': i === step, 'step-pip--done': i < step }"
+          >
+            <span v-if="i < step" class="pip-check"><svg class="w-2.5 h-2.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span>
+            <span v-else class="pip-num">{{ String(i).padStart(2, '0') }}</span>
+          </div>
+          <div class="step-track">
+            <div class="step-fill" :style="{ width: stepProgress + '%' }" />
+          </div>
         </div>
-      </div>
-      <!-- Step labels -->
-      <div class="step-labels">
-        <span v-for="(label, i) in stepLabels" :key="i" class="step-label" :class="{ 'step-label--active': i + 1 === step }">{{ label }}</span>
+        <!-- Step labels -->
+        <div class="step-labels">
+          <span v-for="(label, i) in stepLabels" :key="i" class="step-label" :class="{ 'step-label--active': i + 1 === step }">{{ label }}</span>
+        </div>
       </div>
 
       <!-- Step content -->
@@ -353,7 +372,36 @@ import { useRouter } from 'vue-router'
 const router = useRouter()
 const TOTAL_STEPS = 5
 const stepLabels = ['Features', 'Sign in', 'Mouse', 'Hotkeys', 'Storage']
+const stepMeta = [
+  {
+    title: 'Feature overview',
+    detail: 'Review what UpForge handles automatically after install.',
+    icon: 'M12 6v6l4 2m6-2a10 10 0 11-20 0 10 10 0 0120 0z',
+  },
+  {
+    title: 'Account sign in',
+    detail: 'Connect your UpForge account to sync match coaching and progress.',
+    icon: 'M16 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2m8-10a4 4 0 100-8 4 4 0 000 8z',
+  },
+  {
+    title: 'Mouse profile',
+    detail: 'Set sensitivity and DPI so drills match your in-game feel.',
+    icon: 'M12 4v4m0 0H9m3 0h3m-7 5h8m-9 6h10',
+  },
+  {
+    title: 'Hotkey bindings',
+    detail: 'Choose quick actions for clips, screenshots, and overlay toggles.',
+    icon: 'M5 8h14M5 12h14M5 16h10M7 4h10a2 2 0 012 2v12a2 2 0 01-2 2H7a2 2 0 01-2-2V6a2 2 0 012-2z',
+  },
+  {
+    title: 'Storage setup',
+    detail: 'Confirm where recordings and highlights are saved locally.',
+    icon: 'M3 7.5A2.5 2.5 0 015.5 5h4l2 2H18.5A2.5 2.5 0 0121 9.5v7a2.5 2.5 0 01-2.5 2.5h-13A2.5 2.5 0 013 16.5v-9z',
+  },
+]
 const step = ref(1)
+const stepProgress = computed(() => Math.round(((step.value - 1) / (TOTAL_STEPS - 1)) * 100))
+const currentStepMeta = computed(() => stepMeta[step.value - 1] ?? stepMeta[0])
 const email = ref('')
 const password = ref('')
 const loginLoading = ref(false)
@@ -771,59 +819,159 @@ function openForgotPassword() {
 .rp-glow--step5 { width: 400px; height: 400px; bottom: -60px; left: -60px; background: radial-gradient(circle, rgba(16,185,129,0.07) 0%, transparent 65%); }
 
 /* ── Step indicator ── */
-.step-indicator {
-  position: absolute; top: 16px; left: 50%;
+.step-progress-shell {
+  position: absolute;
+  top: 16px;
+  left: 50%;
   transform: translateX(-50%);
-  display: flex; align-items: center; gap: 0;
+  width: min(100%, 420px);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
   z-index: 2;
+}
+.step-summary-card {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  background: linear-gradient(180deg, rgba(255,255,255,0.05), rgba(255,255,255,0.025));
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 14px;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.18), inset 0 1px 0 rgba(255,255,255,0.03);
+}
+.step-summary-icon-wrap {
+  width: 38px;
+  height: 38px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, rgba(255,70,85,0.16), rgba(249,115,22,0.12));
+  border: 1px solid rgba(255,70,85,0.18);
+  color: #ff8a74;
+  box-shadow: 0 0 24px rgba(239,68,68,0.12);
+}
+.step-summary-icon { width: 18px; height: 18px; }
+.step-summary-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.step-summary-copy strong {
+  font-size: 13px;
+  font-weight: 700;
+  color: #f9fafb;
+}
+.step-summary-copy span {
+  font-size: 10.5px;
+  color: #6b7280;
+  line-height: 1.35;
+}
+.step-summary-label {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: rgba(255,70,85,0.75);
+}
+.step-summary-progress {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 1px;
+  text-align: right;
+}
+.step-summary-progress span {
+  font-size: 22px;
+  font-weight: 800;
+  line-height: 1;
+  color: #f9fafb;
+}
+.step-summary-progress small {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #4b5563;
+}
+.step-indicator {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0;
 }
 .step-labels {
-  position: absolute; top: 42px; left: 50%;
-  transform: translateX(-50%);
-  display: flex; align-items: center; gap: 0;
-  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: 0;
 }
 .step-label {
-  font-size: 8px; font-weight: 600; color: rgba(75,85,99,0.5);
-  text-transform: uppercase; letter-spacing: 0.06em;
-  width: 58px; text-align: center;
+  font-size: 8px;
+  font-weight: 700;
+  color: rgba(75,85,99,0.55);
+  text-transform: uppercase;
+  letter-spacing: 0.09em;
+  width: 64px;
+  text-align: center;
   transition: color 0.3s ease;
 }
-.step-label--active { color: rgba(255,70,85,0.8); }
+.step-label--active { color: rgba(255,70,85,0.9); }
 .step-track {
-  position: absolute; top: 50%; left: 18px; right: 18px;
-  height: 1px; background: rgba(255,255,255,0.07);
-  transform: translateY(-50%); z-index: 0;
+  position: absolute;
+  top: 50%;
+  left: 18px;
+  right: 18px;
+  height: 2px;
+  background: rgba(255,255,255,0.07);
+  transform: translateY(-50%);
+  z-index: 0;
+  border-radius: 999px;
+  overflow: hidden;
 }
 .step-fill {
   height: 100%;
   background: linear-gradient(90deg, #ff4655, #f97316);
   transition: width 0.5s cubic-bezier(0.16,1,0.3,1);
+  box-shadow: 0 0 18px rgba(239,68,68,0.35);
 }
 .step-pip {
-  position: relative; z-index: 1;
-  width: 22px; height: 22px; border-radius: 50%;
-  display: flex; align-items: center; justify-content: center;
-  font-size: 9px; font-weight: 700;
-  background: #0d1525; border: 1px solid rgba(255,255,255,0.1);
+  position: relative;
+  z-index: 1;
+  width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 9px;
+  font-weight: 800;
+  background: linear-gradient(180deg, rgba(13,21,37,0.95), rgba(10,12,16,0.9));
+  border: 1px solid rgba(255,255,255,0.1);
   color: rgba(107,114,128,0.7);
   transition: all 0.35s ease;
-  margin: 0 24px;
+  margin: 0 22px;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.02);
 }
 .step-pip--active {
   background: linear-gradient(135deg, #ff4655, #f97316);
-  border-color: transparent; color: #fff;
-  box-shadow: 0 0 14px rgba(239,68,68,0.4);
+  border-color: transparent;
+  color: #fff;
+  box-shadow: 0 0 18px rgba(239,68,68,0.35), 0 0 0 5px rgba(239,68,68,0.08);
 }
 .step-pip--done {
   background: rgba(239,68,68,0.15);
-  border-color: rgba(239,68,68,0.3); color: #ff4655;
+  border-color: rgba(239,68,68,0.3);
+  color: #ff4655;
 }
 .pip-check { font-size: 10px; }
-.pip-num { font-size: 9px; }
+.pip-num { font-size: 8px; letter-spacing: 0.08em; }
 
 /* ── Step outer ── */
-.step-outer { width: 100%; max-width: 360px; position: relative; z-index: 1; }
+.step-outer { width: 100%; max-width: 360px; position: relative; z-index: 1; margin-top: 118px; }
 .step-content { display: flex; flex-direction: column; gap: 10px; }
 
 .step-eyebrow {

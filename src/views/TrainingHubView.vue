@@ -1651,7 +1651,7 @@ const CATEGORY_ICON: Record<string, string> = {
                   <button
                     v-for="(meta, key) in SCENARIO_META"
                     :key="key"
-                    class="py-3 text-center transition-all border-r border-white/[0.04] last:border-0 flex flex-col items-center gap-1"
+                    class="py-2.5 text-center transition-all border-r border-white/[0.04] last:border-0 flex flex-col items-center gap-0.5 relative"
                     :class="
                       freePlayScenario === key
                         ? `${meta.bg} ${meta.color}`
@@ -1661,6 +1661,13 @@ const CATEGORY_ICON: Record<string, string> = {
                   >
                     <span v-html="SCENARIO_ICON[key] ?? SCENARIO_ICON['flick']" class="flex items-center justify-center" />
                     <span class="text-[10px] font-bold">{{ meta.label }}</span>
+                    <!-- Personal best score chip -->
+                    <span
+                      v-if="apiHistory?.by_scenario?.[key]?.best_score != null"
+                      class="text-[8px] font-bold tabular-nums opacity-70"
+                      :class="freePlayScenario === key ? '' : 'text-gray-600'"
+                    >PB {{ apiHistory!.by_scenario[key].best_score }}</span>
+                    <span v-else class="text-[8px] text-gray-700 opacity-60">no data</span>
                   </button>
                 </div>
 

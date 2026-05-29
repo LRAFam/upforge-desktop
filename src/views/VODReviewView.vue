@@ -439,9 +439,34 @@
               </div>
             </div>
           </div>
-        </div>
 
-        <!-- Round detail panel (tracker.gg-inspired, shown when a round is selected) -->
+          <!-- Keyboard shortcuts strip -->
+          <div class="flex items-center gap-3 px-1 pb-1 flex-wrap">
+            <div class="flex items-center gap-1">
+              <kbd class="px-1 py-px text-[9px] font-bold bg-white/[0.06] border border-white/[0.1] rounded text-gray-500">Space</kbd>
+              <span class="text-[9px] text-gray-700">Play</span>
+            </div>
+            <div class="flex items-center gap-1">
+              <kbd class="px-1 py-px text-[9px] font-bold bg-white/[0.06] border border-white/[0.1] rounded text-gray-500">←</kbd>
+              <kbd class="px-1 py-px text-[9px] font-bold bg-white/[0.06] border border-white/[0.1] rounded text-gray-500">→</kbd>
+              <span class="text-[9px] text-gray-700">Skip 5s</span>
+            </div>
+            <div class="flex items-center gap-1">
+              <kbd class="px-1 py-px text-[9px] font-bold bg-white/[0.06] border border-white/[0.1] rounded text-gray-500">J</kbd>
+              <kbd class="px-1 py-px text-[9px] font-bold bg-white/[0.06] border border-white/[0.1] rounded text-gray-500">L</kbd>
+              <span class="text-[9px] text-gray-700">Prev/Next event</span>
+            </div>
+            <div class="flex items-center gap-1">
+              <kbd class="px-1 py-px text-[9px] font-bold bg-white/[0.06] border border-white/[0.1] rounded text-gray-500">[</kbd>
+              <kbd class="px-1 py-px text-[9px] font-bold bg-white/[0.06] border border-white/[0.1] rounded text-gray-500">]</kbd>
+              <span class="text-[9px] text-gray-700">Speed</span>
+            </div>
+            <div class="flex items-center gap-1">
+              <kbd class="px-1 py-px text-[9px] font-bold bg-white/[0.06] border border-white/[0.1] rounded text-gray-500">S</kbd>
+              <span class="text-[9px] text-gray-700">Scoreboard</span>
+            </div>
+          </div>
+        </div>
         <div
           v-if="selectedRound"
           class="flex-shrink-0 bg-[#0a0a0a] border-t border-white/[0.06] max-h-52 overflow-y-auto scrollbar-hide"
@@ -466,7 +491,12 @@
                 <img :src="iconExplosionLoss" class="w-2.5 h-2.5 object-contain" alt="" />DETONATED</span>
             </div>
             <div class="flex-1" />
-            <button class="text-gray-600 hover:text-gray-300 transition-colors text-base leading-none" @click="selectedRound = null">✕</button>
+            <button
+              class="w-7 h-7 flex items-center justify-center text-gray-600 hover:text-gray-300 transition-colors rounded-lg hover:bg-white/[0.06]"
+              @click="selectedRound = null"
+            >
+              <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
           </div>
 
           <!-- Event feed -->
@@ -1205,6 +1235,10 @@ function handleKeyDown(e: KeyboardEvent) {
       break
     case 'Escape':
       router.back()
+      break
+    case 's':
+    case 'S':
+      showScoreboard.value = !showScoreboard.value
       break
   }
 }

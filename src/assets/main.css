@@ -13,8 +13,7 @@
   --brand-red-glow: rgba(255, 70, 85, 0.25);
 }
 
-/* Shared button patterns */
-.btn-primary {
+/* Shared button patterns */.btn-primary {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -67,13 +66,6 @@
   cursor: pointer;
 }
 .btn-ghost:hover { color: #d1d5db; background: rgba(255, 255, 255, 0.04); }
-
-.card {
-  background: rgba(255, 255, 255, 0.02);
-  border: 1px solid rgba(255, 255, 255, 0.05);
-  border-radius: 12px;
-  overflow: hidden;
-}
 
 * {
   -webkit-app-region: no-drag;
@@ -145,3 +137,283 @@ kbd {
   outline: 2px solid rgba(255, 70, 85, 0.5);
   outline-offset: 2px;
 }
+
+/* ── Global card variants (global-1) ─────────────────────────────────────── */
+.card {
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: 12px;
+  overflow: hidden;
+}
+.card-hover {
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: 12px;
+  transition: background 0.15s, border-color 0.15s, box-shadow 0.15s;
+  cursor: pointer;
+}
+.card-hover:hover {
+  background: rgba(255, 255, 255, 0.04);
+  border-color: rgba(255, 255, 255, 0.09);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+}
+.card-accent {
+  background: rgba(255, 70, 85, 0.04);
+  border: 1px solid rgba(255, 70, 85, 0.15);
+  border-radius: 12px;
+}
+
+/* ── Section headers (global-2) ─────────────────────────────────────────── */
+.section-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 10px;
+  font-weight: 700;
+  color: #4b5563;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  margin-bottom: 8px;
+}
+.section-header::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: linear-gradient(to right, rgba(255,255,255,0.05), transparent);
+}
+
+/* ── Toggle switch (global-3) ────────────────────────────────────────────── */
+.toggle {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  width: 36px;
+  height: 20px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.12);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  cursor: pointer;
+  transition: background 0.2s, border-color 0.2s;
+  flex-shrink: 0;
+}
+.toggle.on {
+  background: #ff4655;
+  border-color: #ff4655;
+}
+.toggle-thumb {
+  position: absolute;
+  left: 3px;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #fff;
+  transition: transform 0.2s;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+}
+.toggle.on .toggle-thumb {
+  transform: translateX(16px);
+}
+
+/* ── Empty state (global-4) ─────────────────────────────────────────────── */
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  text-align: center;
+  padding: 48px 24px;
+}
+.empty-state-icon {
+  width: 56px;
+  height: 56px;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #374151;
+}
+.empty-state-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: #d1d5db;
+}
+.empty-state-body {
+  font-size: 12px;
+  color: #4b5563;
+  max-width: 240px;
+  line-height: 1.5;
+}
+
+/* ── View transitions (global-6) ─────────────────────────────────────────── */
+.view-enter-active,
+.view-leave-active {
+  transition: opacity 0.18s ease, transform 0.18s ease;
+}
+.view-enter-from {
+  opacity: 0;
+  transform: translateY(4px);
+}
+.view-leave-to {
+  opacity: 0;
+  transform: translateY(-4px);
+}
+
+/* ── Tooltip (global-8) ─────────────────────────────────────────────────── */
+[data-tooltip] {
+  position: relative;
+}
+[data-tooltip]::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  bottom: calc(100% + 6px);
+  left: 50%;
+  transform: translateX(-50%);
+  background: #1f2937;
+  color: #f3f4f6;
+  font-size: 10px;
+  font-weight: 500;
+  padding: 4px 8px;
+  border-radius: 6px;
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: 0;
+  border: 1px solid rgba(255,255,255,0.08);
+  transition: opacity 0.15s;
+  z-index: 100;
+}
+[data-tooltip]:hover::after {
+  opacity: 1;
+}
+
+/* ── Modal/dialog (global-7) ────────────────────────────────────────────── */
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.7);
+  backdrop-filter: blur(4px);
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.modal-panel {
+  background: #111111;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 16px;
+  padding: 20px;
+  max-width: 420px;
+  width: 100%;
+  box-shadow: 0 25px 60px rgba(0, 0, 0, 0.7);
+}
+.modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 16px;
+}
+.modal-title {
+  font-size: 14px;
+  font-weight: 700;
+  color: #f9fafb;
+}
+
+/* ── Gradient divider (dash-6) ───────────────────────────────────────────── */
+.gradient-divider {
+  height: 1px;
+  background: linear-gradient(to right, transparent, rgba(255,255,255,0.06) 20%, rgba(255,255,255,0.06) 80%, transparent);
+  margin: 2px 0;
+  flex-shrink: 0;
+}
+
+/* ── Animated score glow (reused across views) ───────────────────────────── */
+.score-glow {
+  text-shadow: 0 0 20px currentColor;
+}
+@keyframes score-reveal {
+  from { opacity: 0; transform: scale(0.85); }
+  to   { opacity: 1; transform: scale(1); }
+}
+.score-reveal {
+  animation: score-reveal 0.4s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+
+/* ── Score bar fill animation ────────────────────────────────────────────── */
+@keyframes bar-fill {
+  from { width: 0; }
+}
+.score-bar {
+  animation: bar-fill 0.8s cubic-bezier(0.4, 0, 0.2, 1) both;
+  animation-delay: 0.2s;
+}
+
+/* ── CTA button gradient (train weakness etc.) ───────────────────────────── */
+.cta-train {
+  background: linear-gradient(135deg, rgba(255,70,85,0.15), rgba(249,115,22,0.10));
+  border: 1px solid rgba(255,70,85,0.25);
+  color: #fca5a5;
+}
+.cta-train:hover:not(:disabled) {
+  background: linear-gradient(135deg, rgba(255,70,85,0.22), rgba(249,115,22,0.15));
+  border-color: rgba(255,70,85,0.35);
+}
+
+/* ── Update banner transition ────────────────────────────────────────────── */
+.update-banner-enter-active,
+.update-banner-leave-active {
+  transition: max-height 0.25s ease, opacity 0.2s ease;
+  overflow: hidden;
+  max-height: 40px;
+}
+.update-banner-enter-from,
+.update-banner-leave-to {
+  max-height: 0;
+  opacity: 0;
+}
+
+/* ── Toast transitions ───────────────────────────────────────────────────── */
+.toast-slide-enter-active,
+.toast-slide-leave-active {
+  transition: opacity 0.25s, transform 0.25s;
+}
+.toast-slide-enter-from,
+.toast-slide-leave-to {
+  opacity: 0;
+  transform: translateY(10px) translateX(-50%);
+}
+
+/* ── Record pulse animation ──────────────────────────────────────────────── */
+@keyframes rec-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
+}
+.rec-dot {
+  animation: rec-pulse 1.2s ease-in-out infinite;
+}
+
+/* ── Difficulty badge colours ────────────────────────────────────────────── */
+.badge-easy   { background: rgba(34,197,94,0.15);  color: #86efac; border: 1px solid rgba(34,197,94,0.25); }
+.badge-medium { background: rgba(234,179,8,0.15);  color: #fde047; border: 1px solid rgba(234,179,8,0.25); }
+.badge-hard   { background: rgba(249,115,22,0.15); color: #fdba74; border: 1px solid rgba(249,115,22,0.25); }
+.badge-pro    { background: rgba(255,70,85,0.15);  color: #fca5a5; border: 1px solid rgba(255,70,85,0.25); }
+
+/* ── Shimmer animation (for loading bars) ───────────────────────────────── */
+@keyframes shimmer {
+  from { background-position: -200% 0; }
+  to   { background-position: 200% 0; }
+}
+.shimmer {
+  background: linear-gradient(90deg, rgba(255,255,255,0.02) 25%, rgba(255,255,255,0.06) 50%, rgba(255,255,255,0.02) 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.5s ease-in-out infinite;
+}
+
+/* ── Sparkline stroke ────────────────────────────────────────────────────── */
+.sparkline { overflow: visible; }
+.sparkline polyline { fill: none; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
+
+/* ── Error transition ────────────────────────────────────────────────────── */
+.err-enter-active, .err-leave-active { transition: opacity 0.2s, transform 0.2s; }
+.err-enter-from, .err-leave-to { opacity: 0; transform: translateY(-4px); }

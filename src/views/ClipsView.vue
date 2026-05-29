@@ -1,44 +1,80 @@
 <template>
-  <div class="flex flex-col h-full px-4 pt-3 pb-4 gap-3">
+  <div class="flex flex-col h-full px-4 pt-3 pb-4 gap-3 bg-[#0a0a0a]">
     <!-- Header -->
-    <div class="flex items-center justify-between flex-shrink-0">
+    <div class="flex items-start justify-between gap-3 flex-shrink-0">
       <div>
-        <h2 class="text-sm font-semibold text-white">Clip Library</h2>
-        <p class="text-xs text-gray-500 mt-0.5">{{ clips.length }} clip{{ clips.length !== 1 ? 's' : '' }} saved locally</p>
+        <div class="flex items-center gap-2">
+          <h2 class="text-sm font-semibold text-white">Clip Library</h2>
+          <span class="rounded-full bg-red-500/10 px-2 py-0.5 text-[11px] font-semibold text-red-400">{{ clips.length }}</span>
+        </div>
+        <p class="mt-0.5 text-xs text-gray-500">Review saved moments, upload the best ones, and keep key plays organized.</p>
       </div>
       <div class="flex items-center gap-2">
+        <div class="flex items-center rounded-xl border border-white/[0.08] bg-white/[0.03] p-1">
+          <button
+            class="flex h-8 w-8 items-center justify-center rounded-lg transition-colors"
+            :class="viewMode === 'grid' ? 'bg-white/[0.08] text-white' : 'text-gray-500 hover:text-gray-300'"
+            title="Grid view"
+            @click="viewMode = 'grid'"
+          >
+            <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M4.75 5.75h5.5v5.5h-5.5zM13.75 5.75h5.5v5.5h-5.5zM4.75 14.75h5.5v5.5h-5.5zM13.75 14.75h5.5v5.5h-5.5z" />
+            </svg>
+          </button>
+          <button
+            class="flex h-8 w-8 items-center justify-center rounded-lg transition-colors"
+            :class="viewMode === 'list' ? 'bg-white/[0.08] text-white' : 'text-gray-500 hover:text-gray-300'"
+            title="List view"
+            @click="viewMode = 'list'"
+          >
+            <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M8 6.75h12M8 12h12M8 17.25h12M4.75 6.75h.5M4.75 12h.5M4.75 17.25h.5" />
+            </svg>
+          </button>
+        </div>
         <span class="text-xs text-gray-600">F9 to bookmark during match</span>
       </div>
     </div>
 
     <!-- Filter row -->
-    <div class="flex items-center gap-2 flex-shrink-0">
-      <button
-        v-for="f in filters"
-        :key="f.value"
-        class="px-3 py-1 rounded-full text-xs font-medium transition-all duration-150"
-        :class="activeFilter === f.value
-          ? 'bg-red-500/20 text-red-400 border border-red-500/30'
-          : 'text-gray-500 hover:text-gray-300 border border-white/[0.06] hover:border-white/[0.12]'"
-        @click="activeFilter = f.value"
-      >
-        {{ f.label }}
-      </button>
+    <div class="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-white/[0.06] bg-[#0c0c0c] px-3 py-2.5 flex-shrink-0">
+      <div class="flex flex-wrap items-center gap-2">
+        <button
+          v-for="f in filters"
+          :key="f.value"
+          class="rounded-full border px-3 py-1 text-xs font-medium transition-all duration-150"
+          :class="activeFilter === f.value
+            ? 'border-red-500/30 bg-red-500/20 text-red-400'
+            : 'border-white/[0.06] text-gray-500 hover:border-white/[0.12] hover:text-gray-300'"
+          @click="activeFilter = f.value"
+        >
+          {{ f.label }}
+        </button>
+      </div>
+      <div class="flex items-center gap-2">
+        <label class="text-[11px] font-medium uppercase tracking-[0.18em] text-gray-600">Sort</label>
+        <select
+          v-model="sortOrder"
+          class="rounded-xl border border-white/[0.08] bg-white/[0.04] px-3 py-2 text-xs font-medium text-gray-200 outline-none transition-colors focus:border-red-500/30"
+        >
+          <option v-for="option in sortOptions" :key="option.value" :value="option.value">{{ option.label }}</option>
+        </select>
+      </div>
     </div>
 
     <!-- Toast notification -->
     <Transition name="toast-slide">
       <div
         v-if="showToast"
-        class="fixed bottom-5 left-1/2 -translate-x-1/2 z-50 flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl shadow-xl border backdrop-blur-md pointer-events-none"
+        class="fixed bottom-5 left-1/2 z-50 flex -translate-x-1/2 items-center gap-2.5 rounded-xl border px-3.5 py-2.5 shadow-xl backdrop-blur-md pointer-events-none"
         :class="toastType === 'success'
-          ? 'bg-green-500/15 border-green-500/30'
-          : 'bg-red-500/15 border-red-500/30'"
+          ? 'border-green-500/30 bg-green-500/15'
+          : 'border-red-500/30 bg-red-500/15'"
       >
-        <svg v-if="toastType === 'success'" class="w-3.5 h-3.5 text-green-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <svg v-if="toastType === 'success'" class="h-3.5 w-3.5 flex-shrink-0 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
         </svg>
-        <svg v-else class="w-3.5 h-3.5 text-red-400 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+        <svg v-else class="h-3.5 w-3.5 flex-shrink-0 text-red-400" fill="currentColor" viewBox="0 0 20 20">
           <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clip-rule="evenodd"/>
         </svg>
         <span class="text-xs font-semibold text-white">{{ toastMessage }}</span>
@@ -48,150 +84,257 @@
     <!-- Upload error banner -->
     <div
       v-if="uploadError"
-      class="flex items-center gap-2 px-3 py-2 bg-red-500/10 border border-red-500/30 rounded-lg flex-shrink-0"
+      class="flex flex-shrink-0 items-center gap-2 rounded-xl border border-red-500/30 bg-red-500/10 px-3 py-2"
     >
-      <svg class="w-3.5 h-3.5 text-red-400 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+      <svg class="h-3.5 w-3.5 flex-shrink-0 text-red-400" fill="currentColor" viewBox="0 0 20 20">
         <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clip-rule="evenodd"/>
       </svg>
-      <p class="text-xs text-red-400 flex-1">{{ uploadError }}</p>
-      <button class="text-red-400/60 hover:text-red-400 transition-colors" @click="uploadError = null">
-        <svg class="w-3 h-3" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd"/></svg>
+      <p class="flex-1 text-xs text-red-400">{{ uploadError }}</p>
+      <button class="text-red-400/60 transition-colors hover:text-red-400" @click="uploadError = null">
+        <svg class="h-3 w-3" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd"/></svg>
       </button>
     </div>
 
     <!-- Empty state -->
-    <div v-if="filteredClips.length === 0" class="flex-1 flex flex-col items-center justify-center gap-3 text-center">
-      <div class="w-14 h-14 rounded-full bg-white/[0.04] flex items-center justify-center">
-        <svg class="w-6 h-6 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M15 10l4.553-2.069A1 1 0 0121 8.845v6.31a1 1 0 01-1.447.894L15 14M3 8a2 2 0 012-2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V8z"/>
-        </svg>
-      </div>
-      <div>
-        <p class="text-sm text-gray-400">No clips yet</p>
-        <p class="text-xs text-gray-600 mt-0.5">Press F9 during a match to save a moment</p>
+    <div v-if="displayedClips.length === 0" class="flex flex-1 items-center justify-center">
+      <div class="max-w-sm rounded-3xl border border-white/[0.08] bg-gradient-to-b from-white/[0.04] to-white/[0.02] px-8 py-10 text-center shadow-[0_24px_60px_rgba(0,0,0,0.35)]">
+        <div class="mx-auto flex h-20 w-20 items-center justify-center rounded-full bg-gradient-to-br from-red-500/20 via-orange-500/15 to-transparent ring-1 ring-red-500/20 ring-offset-4 ring-offset-[#0a0a0a]">
+          <div class="flex h-14 w-14 items-center justify-center rounded-full bg-[#111111]">
+            <svg class="h-7 w-7 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.7" d="M15 10l4.553-2.069A1 1 0 0121 8.845v6.31a1 1 0 01-1.447.894L15 14M4 7.75A1.75 1.75 0 015.75 6h7.5A1.75 1.75 0 0115 7.75v8.5A1.75 1.75 0 0113.25 18h-7.5A1.75 1.75 0 014 16.25v-8.5z" />
+            </svg>
+          </div>
+        </div>
+        <div class="mt-5 space-y-2">
+          <h3 class="text-lg font-semibold text-white">No clips saved yet</h3>
+          <p class="text-sm leading-relaxed text-gray-400">Bookmark important rounds, clutch attempts, or mistakes as they happen so your best review moments are ready after the match.</p>
+        </div>
+        <div class="mt-5 rounded-2xl border border-white/[0.06] bg-black/30 px-4 py-3 text-left">
+          <p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-gray-500">Quick tip</p>
+          <p class="mt-1 text-xs text-gray-400">Press <span class="rounded-md border border-white/[0.12] bg-white/[0.04] px-1.5 py-0.5 font-mono text-gray-200">F9</span> during a match to create a clip, then return here to trim, upload, and review it.</p>
+        </div>
       </div>
     </div>
 
-    <!-- Clip grid -->
+    <!-- Clip collection -->
     <div v-else class="flex-1 overflow-y-auto">
-      <div class="grid grid-cols-2 gap-3">
+      <div v-if="viewMode === 'grid'" class="grid grid-cols-2 gap-3">
         <div
-          v-for="clip in filteredClips"
+          v-for="clip in displayedClips"
           :key="clip.id"
-          class="group relative bg-white/[0.03] border border-white/[0.06] rounded-lg overflow-hidden cursor-pointer hover:border-white/[0.12] transition-all"
+          class="group relative cursor-pointer overflow-hidden rounded-2xl border border-white/[0.06] bg-white/[0.03] transition-all hover:border-white/[0.14] hover:bg-white/[0.04]"
           @click="openPlayer(clip)"
         >
-          <!-- Thumbnail -->
           <div class="relative bg-black" style="min-height: 72px; aspect-ratio: 16/9;">
             <img
               v-if="thumbnails[clip.id]"
               :src="thumbnails[clip.id]"
-              class="w-full h-full object-cover transition-transform duration-200 group-hover:scale-105"
+              class="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
               alt=""
             />
-            <div v-else class="w-full h-full flex items-center justify-center">
-              <svg class="w-8 h-8 text-gray-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <div v-else class="flex h-full w-full items-center justify-center bg-[#060606]">
+              <svg class="h-8 w-8 text-gray-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"/>
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
               </svg>
             </div>
-            <!-- Play overlay (centre) -->
-            <div class="absolute inset-0 bg-black/30 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center pointer-events-none">
-              <div class="w-10 h-10 rounded-full bg-white/20 backdrop-blur-sm flex items-center justify-center">
-                <svg class="w-5 h-5 text-white ml-0.5" fill="currentColor" viewBox="0 0 24 24">
-                  <path d="M8 5v14l11-7z"/>
+            <div class="absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-black/20 opacity-0 transition-opacity duration-200 group-hover:opacity-100" />
+            <div class="pointer-events-none absolute inset-0 flex items-center justify-center opacity-0 transition-all duration-200 group-hover:opacity-100">
+              <div class="flex h-14 w-14 items-center justify-center rounded-full border border-white/20 bg-black/45 backdrop-blur-md shadow-[0_12px_30px_rgba(0,0,0,0.45)]">
+                <svg class="ml-0.5 h-6 w-6 text-white" fill="currentColor" viewBox="0 0 24 24">
+                  <path d="M8 5v14l11-7z" />
                 </svg>
               </div>
             </div>
-            <!-- Trigger badge (top-left) -->
-            <div class="absolute top-1.5 left-1.5">
-              <span
-                class="px-1.5 py-0.5 rounded text-xs font-bold uppercase tracking-wide"
-                :class="triggerClass(clip.trigger)"
-              >{{ clip.trigger }}</span>
+            <div class="absolute left-2 top-2 flex items-center gap-2">
+              <span class="inline-flex items-center gap-1 rounded-full px-2 py-1 text-[10px] font-bold uppercase tracking-[0.16em] shadow-lg backdrop-blur-sm" :class="triggerClass(clip.trigger)">
+                <svg class="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" :d="triggerIconPath(clip.trigger)" />
+                </svg>
+                {{ triggerLabel(clip.trigger) }}
+              </span>
             </div>
-            <!-- AI Tips badge (top-right) -->
-            <div v-if="clip.suggestion" class="absolute top-1.5 right-1.5">
-              <span class="px-1.5 py-0.5 rounded text-xs font-semibold bg-orange-500/80 text-white backdrop-blur-sm flex items-center gap-1"><svg class="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="2"/><rect x="9" y="9" width="6" height="6"/><path d="M15 2v2M9 2v2M2 15h2M2 9h2M22 15h-2M22 9h-2M15 22v-2M9 22v-2"/></svg> AI</span>
+            <div class="absolute bottom-2 left-2">
+              <span class="rounded-full border border-white/15 bg-black/70 px-2 py-1 text-[11px] font-semibold text-white shadow-lg backdrop-blur-sm">{{ formatDuration(clip.durationSeconds) }}</span>
             </div>
-            <!-- Bottom gradient overlay with always-visible action buttons -->
-            <div class="absolute bottom-0 left-0 right-0 h-10 bg-gradient-to-t from-black/80 to-transparent flex items-end justify-between px-1.5 pb-1.5" @click.stop>
-              <span class="text-xs text-gray-300 font-mono bg-black/50 rounded px-1 py-px">{{ formatDuration(clip.durationSeconds) }}</span>
-              <div class="flex gap-1">
-                <button
-                  :class="[
-                    'w-5 h-5 rounded bg-black/60 backdrop-blur-sm flex items-center justify-center transition-colors',
-                    uploadingClipId === clip.id ? 'opacity-50 cursor-wait' : 'hover:bg-white/20'
-                  ]"
-                  :disabled="!!uploadingClipId"
-                  title="Upload & Analyse"
-                  @click="uploadClip(clip)"
-                >
-                  <svg v-if="uploadingClipId !== clip.id" class="w-2.5 h-2.5 text-gray-200" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/>
-                  </svg>
-                  <svg v-else class="w-2.5 h-2.5 text-gray-400 animate-spin" fill="none" viewBox="0 0 24 24">
-                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
-                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
+            <div v-if="clip.suggestion" class="absolute right-2 top-2">
+              <span class="inline-flex items-center gap-1 rounded-full bg-orange-500/80 px-2 py-1 text-[10px] font-semibold text-white backdrop-blur-sm">
+                <svg class="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M11.25 3.75h1.5M12 17.25v3m6-8.25a6 6 0 10-12 0c0 2.204 1.04 3.416 2.25 4.5h7.5C16.96 15.416 18 14.204 18 12zM9.75 20.25h4.5" />
+                </svg>
+                AI
+              </span>
+            </div>
+            <div class="pointer-events-none absolute inset-x-0 bottom-0 h-16 bg-gradient-to-t from-black/85 to-transparent opacity-0 transition-opacity duration-200 group-hover:opacity-100" />
+            <div class="absolute inset-x-0 bottom-0 flex items-end justify-end gap-2 p-2 opacity-0 transition-all duration-200 group-hover:opacity-100" @click.stop>
+              <button
+                :disabled="!!uploadingClipId"
+                class="flex h-8 items-center gap-1.5 rounded-xl border px-2.5 text-[11px] font-semibold backdrop-blur-sm transition-colors"
+                :class="uploadingClipId === clip.id
+                  ? 'cursor-wait border-red-500/20 bg-red-500/10 text-red-400/60'
+                  : 'border-red-500/25 bg-red-500/15 text-red-400 hover:border-red-500/40 hover:bg-red-500/25'"
+                @click="uploadClip(clip)"
+              >
+                <svg v-if="uploadingClipId !== clip.id" class="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/>
+                </svg>
+                <svg v-else class="h-3 w-3 animate-spin" fill="none" viewBox="0 0 24 24">
+                  <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+                  <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
+                </svg>
+                {{ uploadingClipId === clip.id ? 'Uploading…' : 'Upload' }}
+              </button>
+              <template v-if="confirmDeleteId === clip.id">
+                <button class="flex h-8 items-center rounded-xl bg-red-500 px-3 text-[11px] font-semibold text-white transition-colors hover:bg-red-400" @click="deleteClip(clip.id)">Confirm</button>
+                <button class="flex h-8 w-8 items-center justify-center rounded-xl border border-white/10 bg-black/55 text-gray-300 transition-colors hover:border-white/20 hover:text-white" @click="confirmDeleteId = null">
+                  <svg class="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
                   </svg>
                 </button>
-                <!-- Delete confirm -->
-                <template v-if="confirmDeleteId === clip.id">
-                  <button
-                    class="h-5 px-1.5 rounded bg-red-500/80 text-white text-[9px] font-bold hover:bg-red-500 transition-colors"
-                    title="Confirm delete"
-                    @click="deleteClip(clip.id)"
-                  >Del</button>
-                  <button
-                    class="w-5 h-5 rounded bg-black/60 flex items-center justify-center hover:bg-white/20 transition-colors"
-                    title="Cancel"
-                    @click="confirmDeleteId = null"
-                  >
-                    <svg class="w-2.5 h-2.5 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
-                    </svg>
-                  </button>
-                </template>
-                <button
-                  v-else
-                  class="w-5 h-5 rounded bg-black/60 backdrop-blur-sm flex items-center justify-center hover:bg-red-500/60 transition-colors"
-                  title="Delete"
-                  @click="confirmDeleteId = clip.id"
-                >
-                  <svg class="w-2.5 h-2.5 text-gray-200" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6M9 7h6m-7 0a1 1 0 001-1h4a1 1 0 001 1m-7 0h8"/>
-                  </svg>
-                </button>
-              </div>
+              </template>
+              <button
+                v-else
+                class="flex h-8 w-8 items-center justify-center rounded-xl border border-white/10 bg-black/55 text-gray-300 transition-colors hover:border-red-500/30 hover:bg-red-500/20 hover:text-red-300"
+                @click="confirmDeleteId = clip.id"
+              >
+                <svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6M9 7h6m-7 0a1 1 0 001-1h4a1 1 0 001 1m-7 0h8"/>
+                </svg>
+              </button>
             </div>
           </div>
-
-          <!-- Metadata -->
-          <div class="p-2.5">
-            <p class="text-xs font-medium text-gray-200 truncate">
-              {{ clip.title || defaultTitle(clip) }}
-            </p>
-            <div class="flex items-center gap-1.5 mt-1">
-              <span v-if="clip.map" class="text-xs text-gray-500">{{ clip.map }}</span>
-              <span v-if="clip.agent" class="text-xs text-gray-600">·</span>
-              <span v-if="clip.agent" class="text-xs text-gray-500">{{ clip.agent }}</span>
-              <span class="ml-auto text-xs text-gray-600">{{ timeAgo(clip.savedAt) }}</span>
+          <div class="space-y-2 p-3">
+            <div class="flex items-start justify-between gap-2">
+              <p class="min-w-0 flex-1 truncate text-sm font-semibold text-gray-100">{{ clip.title || defaultTitle(clip) }}</p>
+              <span class="text-[11px] text-gray-600">{{ timeAgo(clip.savedAt) }}</span>
             </div>
-            <!-- AI coaching tip preview -->
-            <div v-if="clip.suggestion" class="mt-2 p-1.5 bg-orange-500/10 border border-orange-500/20 rounded text-xs text-orange-300/80 line-clamp-2 flex items-start gap-1.5">
-              <svg class="w-3.5 h-3.5 flex-shrink-0 mt-px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><line x1="9" y1="18" x2="15" y2="18"/><line x1="10" y1="22" x2="14" y2="22"/><path d="M15.09 14c.18-.98.65-1.74 1.41-2.5A4.65 4.65 0 0 0 18 8 6 6 0 0 0 6 8c0 1 .23 2.23 1.5 3.5A4.61 4.61 0 0 1 8.91 14"/></svg>
-              {{ clip.suggestion }}
+            <div class="flex items-center gap-2 text-xs text-gray-500">
+              <span v-if="clip.map">{{ clip.map }}</span>
+              <span v-if="clip.map && clip.agent" class="text-gray-700">•</span>
+              <span v-if="clip.agent">{{ clip.agent }}</span>
             </div>
-            <div v-if="clip.coachingTags?.length" class="flex flex-wrap gap-1 mt-1.5">
+            <div v-if="clip.suggestion" class="flex items-start gap-2 rounded-xl border border-orange-500/15 bg-orange-500/10 p-2 text-xs text-orange-200/85">
+              <svg class="mt-0.5 h-3.5 w-3.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M9 18h6M10 22h4M8.91 14c-.79-.87-1.41-1.86-1.41-4a4.5 4.5 0 119 0c0 2.14-.62 3.13-1.41 4" />
+              </svg>
+              <span class="line-clamp-2">{{ clip.suggestion }}</span>
+            </div>
+            <div v-if="clip.coachingTags?.length" class="flex flex-wrap gap-1">
               <span
                 v-for="tag in clip.coachingTags.slice(0, 3)"
                 :key="tag"
-                class="text-[8px] font-semibold px-1.5 py-px rounded-full bg-red-500/10 text-red-400/70 border border-red-500/15 capitalize"
+                class="rounded-full border border-red-500/15 bg-red-500/10 px-1.5 py-px text-[8px] font-semibold capitalize text-red-400/70"
               >{{ tag.replace(/_/g, ' ') }}</span>
             </div>
-            <div v-else-if="clip.analysisStatus === 'queued' || clip.analysisStatus === 'processing'" class="mt-2 flex items-center gap-1 text-xs text-gray-600">
-              <span class="w-1 h-1 rounded-full bg-gray-600 animate-pulse" />
+            <div v-else-if="clip.analysisStatus === 'queued' || clip.analysisStatus === 'processing'" class="flex items-center gap-1 text-xs text-gray-600">
+              <span class="h-1 w-1 rounded-full bg-gray-600 animate-pulse" />
               Analysing...
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div v-else class="space-y-3">
+        <div
+          v-for="clip in displayedClips"
+          :key="clip.id"
+          class="group flex cursor-pointer gap-4 rounded-2xl border border-white/[0.06] bg-white/[0.03] p-3 transition-all hover:border-white/[0.14] hover:bg-white/[0.04]"
+          @click="openPlayer(clip)"
+        >
+          <div class="relative w-56 flex-shrink-0 overflow-hidden rounded-xl bg-black" style="aspect-ratio: 16/9;">
+            <img
+              v-if="thumbnails[clip.id]"
+              :src="thumbnails[clip.id]"
+              class="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
+              alt=""
+            />
+            <div v-else class="flex h-full w-full items-center justify-center bg-[#060606]">
+              <svg class="h-8 w-8 text-gray-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"/>
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+              </svg>
+            </div>
+            <div class="absolute inset-0 bg-gradient-to-t from-black/70 via-black/15 to-black/10 opacity-0 transition-opacity duration-200 group-hover:opacity-100" />
+            <div class="pointer-events-none absolute inset-0 flex items-center justify-center opacity-0 transition-opacity duration-200 group-hover:opacity-100">
+              <div class="flex h-12 w-12 items-center justify-center rounded-full border border-white/20 bg-black/45 backdrop-blur-md">
+                <svg class="ml-0.5 h-5 w-5 text-white" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z" /></svg>
+              </div>
+            </div>
+            <div class="absolute left-2 top-2">
+              <span class="inline-flex items-center gap-1 rounded-full px-2 py-1 text-[10px] font-bold uppercase tracking-[0.16em] shadow-lg backdrop-blur-sm" :class="triggerClass(clip.trigger)">
+                <svg class="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" :d="triggerIconPath(clip.trigger)" />
+                </svg>
+                {{ triggerLabel(clip.trigger) }}
+              </span>
+            </div>
+            <div class="absolute bottom-2 left-2">
+              <span class="rounded-full border border-white/15 bg-black/70 px-2 py-1 text-[11px] font-semibold text-white shadow-lg backdrop-blur-sm">{{ formatDuration(clip.durationSeconds) }}</span>
+            </div>
+          </div>
+          <div class="flex min-w-0 flex-1 flex-col justify-between gap-3">
+            <div class="space-y-2">
+              <div class="flex items-start justify-between gap-3">
+                <div class="min-w-0 flex-1">
+                  <p class="truncate text-sm font-semibold text-white">{{ clip.title || defaultTitle(clip) }}</p>
+                  <div class="mt-1 flex flex-wrap items-center gap-2 text-xs text-gray-500">
+                    <span>{{ timeAgo(clip.savedAt) }}</span>
+                    <span v-if="clip.map" class="text-gray-700">•</span>
+                    <span v-if="clip.map">{{ clip.map }}</span>
+                    <span v-if="clip.agent" class="text-gray-700">•</span>
+                    <span v-if="clip.agent">{{ clip.agent }}</span>
+                  </div>
+                </div>
+                <div v-if="clip.suggestion" class="rounded-full bg-orange-500/10 px-2 py-1 text-[10px] font-semibold text-orange-300">AI Tip</div>
+              </div>
+              <div v-if="clip.suggestion" class="rounded-xl border border-orange-500/15 bg-orange-500/10 p-3 text-xs leading-relaxed text-orange-200/85">{{ clip.suggestion }}</div>
+              <div v-if="clip.coachingTags?.length" class="flex flex-wrap gap-1">
+                <span
+                  v-for="tag in clip.coachingTags.slice(0, 4)"
+                  :key="tag"
+                  class="rounded-full border border-red-500/15 bg-red-500/10 px-1.5 py-px text-[8px] font-semibold capitalize text-red-400/70"
+                >{{ tag.replace(/_/g, ' ') }}</span>
+              </div>
+              <div v-else-if="clip.analysisStatus === 'queued' || clip.analysisStatus === 'processing'" class="flex items-center gap-1 text-xs text-gray-600">
+                <span class="h-1 w-1 rounded-full bg-gray-600 animate-pulse" />
+                Analysing...
+              </div>
+            </div>
+            <div class="flex items-center justify-end gap-2" @click.stop>
+              <button
+                :disabled="!!uploadingClipId"
+                class="flex h-9 items-center gap-2 rounded-xl border px-3 text-xs font-semibold transition-colors"
+                :class="uploadingClipId === clip.id
+                  ? 'cursor-wait border-red-500/20 bg-red-500/10 text-red-400/60'
+                  : 'border-red-500/25 bg-red-500/15 text-red-400 hover:border-red-500/40 hover:bg-red-500/25'"
+                @click="uploadClip(clip)"
+              >
+                <svg v-if="uploadingClipId !== clip.id" class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/>
+                </svg>
+                <svg v-else class="h-3.5 w-3.5 animate-spin" fill="none" viewBox="0 0 24 24">
+                  <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+                  <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
+                </svg>
+                {{ uploadingClipId === clip.id ? 'Uploading…' : 'Upload & Analyse' }}
+              </button>
+              <template v-if="confirmDeleteId === clip.id">
+                <button class="flex h-9 items-center rounded-xl bg-red-500 px-3 text-xs font-semibold text-white transition-colors hover:bg-red-400" @click="deleteClip(clip.id)">Confirm delete</button>
+                <button class="flex h-9 w-9 items-center justify-center rounded-xl border border-white/[0.08] bg-white/[0.03] text-gray-400 transition-colors hover:border-white/[0.14] hover:text-white" @click="confirmDeleteId = null">
+                  <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                  </svg>
+                </button>
+              </template>
+              <button
+                v-else
+                class="flex h-9 w-9 items-center justify-center rounded-xl border border-white/[0.08] bg-white/[0.03] text-gray-400 transition-colors hover:border-red-500/30 hover:bg-red-500/15 hover:text-red-300"
+                @click="confirmDeleteId = clip.id"
+              >
+                <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6M9 7h6m-7 0a1 1 0 001-1h4a1 1 0 001 1m-7 0h8"/>
+                </svg>
+              </button>
             </div>
           </div>
         </div>
@@ -528,9 +671,26 @@ const filters = [
   { label: 'Aces', value: 'ace' }
 ]
 
+const sortOptions = [
+  { label: 'Newest first', value: 'newest' },
+  { label: 'Oldest first', value: 'oldest' },
+  { label: 'Longest duration', value: 'duration' }
+] as const
+
+const sortOrder = ref<(typeof sortOptions)[number]['value']>('newest')
+const viewMode = ref<'grid' | 'list'>('grid')
+
 const filteredClips = computed(() => {
   if (activeFilter.value === 'all') return clips.value
   return clips.value.filter(c => c.trigger === activeFilter.value)
+})
+
+const displayedClips = computed(() => {
+  return filteredClips.value.slice().sort((a, b) => {
+    if (sortOrder.value === 'oldest') return a.savedAt - b.savedAt
+    if (sortOrder.value === 'duration') return b.durationSeconds - a.durationSeconds
+    return b.savedAt - a.savedAt
+  })
 })
 
 const removeListener = ref<(() => void) | null>(null)
@@ -778,12 +938,46 @@ function defaultTitle(clip: ClipRecord): string {
 
 function triggerClass(trigger: string): string {
   switch (trigger) {
-    case 'ace': return 'bg-yellow-500/80 text-black'
-    case 'multikill': return 'bg-orange-500/80 text-white'
-    case 'kill': return 'bg-red-500/80 text-white'
-    case 'clutch': return 'bg-purple-500/80 text-white'
-    case 'hotkey': return 'bg-blue-500/80 text-white'
-    default: return 'bg-gray-700/80 text-gray-300'
+    case 'ace': return 'bg-yellow-500/85 text-black'
+    case 'multikill': return 'bg-orange-500/85 text-white'
+    case 'kill': return 'bg-red-500/85 text-white'
+    case 'death': return 'bg-rose-500/85 text-white'
+    case 'assist': return 'bg-emerald-500/85 text-white'
+    case 'clutch': return 'bg-purple-500/85 text-white'
+    case 'hotkey':
+    case 'manual': return 'bg-blue-500/85 text-white'
+    default: return 'bg-gray-700/85 text-gray-300'
+  }
+}
+
+function triggerLabel(trigger: string): string {
+  switch (trigger) {
+    case 'multikill': return 'Multi'
+    case 'hotkey': return 'Bookmark'
+    case 'manual': return 'Manual'
+    default: return trigger
+  }
+}
+
+function triggerIconPath(trigger: string): string {
+  switch (trigger) {
+    case 'kill':
+      return 'M12 3v3m0 12v3m9-9h-3M6 12H3m15.364 6.364-2.122-2.122M7.757 7.757 5.636 5.636m12.728 0-2.122 2.121M7.757 16.243l-2.121 2.121M12 15.25a3.25 3.25 0 100-6.5 3.25 3.25 0 000 6.5z'
+    case 'death':
+      return 'M9.75 9.75l4.5 4.5m0-4.5-4.5 4.5M21 12a9 9 0 11-18 0 9 9 0 0118 0z'
+    case 'assist':
+      return 'M15 19.128a9.38 9.38 0 002.625.372c1.035 0 2.03-.166 2.962-.472M8.625 6.75a2.625 2.625 0 115.25 0 2.625 2.625 0 01-5.25 0zM4.5 19.5a4.5 4.5 0 119 0v.128a12.04 12.04 0 01-9 0V19.5z'
+    case 'ace':
+      return 'M11.48 3.499a.562.562 0 011.04 0l2.125 5.111a.563.563 0 00.475.345l5.518.442a.562.562 0 01.321.988l-4.204 3.602a.563.563 0 00-.182.557l1.285 5.385a.562.562 0 01-.84.61L12.27 17.77a.563.563 0 00-.54 0l-4.747 2.77a.562.562 0 01-.84-.61l1.285-5.385a.563.563 0 00-.182-.557l-4.204-3.602a.562.562 0 01.321-.988l5.518-.442a.563.563 0 00.475-.345l2.125-5.111z'
+    case 'clutch':
+      return 'M9 12.75 11.25 15 15 9.75M12 3.75l7.5 3v5.25c0 4.142-2.657 7.884-6.596 9.287a2.25 2.25 0 01-1.808 0C7.157 19.884 4.5 16.142 4.5 12V6.75l7.5-3z'
+    case 'multikill':
+      return 'M13.5 4.5 21 12l-7.5 7.5M3 12h17.25'
+    case 'hotkey':
+    case 'manual':
+      return 'M17.25 6.75v10.563c0 .621-.504 1.124-1.125 1.124-.224 0-.444-.067-.631-.192L12 15.75l-3.494 2.495a1.125 1.125 0 01-1.756-.932V6.75c0-.621.504-1.125 1.125-1.125h8.25c.621 0 1.125.504 1.125 1.125z'
+    default:
+      return 'M12 6v6l4 2m5-2a9 9 0 11-18 0 9 9 0 0118 0z'
   }
 }
 

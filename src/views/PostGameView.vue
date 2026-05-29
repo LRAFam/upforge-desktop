@@ -32,23 +32,58 @@
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/>
           </svg>
         </div>
-        <div>
-          <p class="text-sm font-semibold">Uploading replay</p>
-          <p class="text-xs text-gray-500 mt-0.5">
-            {{ gameInfo.agent || gameLabel }}<span v-if="gameInfo.map"> &middot; {{ gameInfo.map }}</span>
-          </p>
-        </div>
-        <div class="w-full space-y-1.5">
-          <div class="w-full h-1 bg-white/[0.06] rounded-full overflow-hidden">
-            <div
-              class="h-full bg-gradient-to-r from-red-500 to-orange-500 rounded-full transition-all duration-300"
-              :style="{ width: `${uploadProgress}%` }"
-            />
+        <div class="space-y-3">
+          <div class="flex items-center justify-center">
+            <div class="inline-flex items-center gap-3 rounded-2xl border border-white/[0.07] bg-white/[0.03] px-4 py-3 shadow-[0_0_30px_rgba(239,68,68,0.08)]">
+              <div
+                class="w-11 h-11 rounded-2xl overflow-hidden flex items-center justify-center transition-all flex-shrink-0"
+                :class="agentImageUrl ? '' : 'bg-red-500/10 border border-red-500/20'"
+                :style="agentImageUrl ? { border: `1px solid ${agentAccentColor}50`, background: agentAccentColor + '20' } : {}"
+              >
+                <img v-if="agentImageUrl" :src="agentImageUrl" class="w-9 h-9 object-contain" />
+                <svg v-else class="w-5 h-5 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M15 10l4.553-2.069A1 1 0 0121 8.882v6.236a1 1 0 01-1.447.894L15 14M3 8a2 2 0 012-2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V8z"/>
+                </svg>
+              </div>
+              <div class="text-left">
+                <p class="text-sm font-bold text-white">Uploading replay</p>
+                <div class="mt-1 flex items-center gap-2 text-[11px]">
+                  <span class="font-semibold text-gray-200">{{ gameInfo.agent || gameLabel }}</span>
+                  <span v-if="gameInfo.map" class="text-gray-500">{{ gameInfo.map }}</span>
+                </div>
+              </div>
+            </div>
           </div>
-          <div class="flex items-center justify-between">
-            <span v-if="uploadEta" class="text-xs text-gray-600">{{ uploadEta }}</span>
-            <span v-else class="text-xs text-gray-600">&nbsp;</span>
-            <p class="text-xs text-gray-600">{{ uploadProgress }}%</p>
+          <div class="w-full space-y-2.5">
+            <div class="flex items-end justify-between gap-3">
+              <div class="text-left">
+                <p class="text-[10px] font-semibold uppercase tracking-[0.24em] text-gray-600">Upload progress</p>
+                <p class="mt-1 text-xs text-gray-500">Sending your recording to the coaching pipeline</p>
+              </div>
+              <div class="text-right">
+                <p class="text-lg font-black tabular-nums text-white upload-stat-in">{{ uploadProgress }}%</p>
+                <p class="text-[10px] text-gray-600">Complete</p>
+              </div>
+            </div>
+            <div class="relative h-3 w-full overflow-hidden rounded-full border border-white/[0.04] bg-white/[0.05]">
+              <div class="absolute inset-0 upload-bar-track" />
+              <div
+                class="relative h-full overflow-hidden rounded-full upload-bar-fill transition-all duration-300"
+                :style="{ width: `${uploadProgress}%` }"
+              >
+                <div class="absolute inset-0 upload-bar-shimmer" />
+              </div>
+            </div>
+            <div class="grid grid-cols-2 gap-2">
+              <div class="rounded-xl border border-white/[0.05] bg-white/[0.03] px-3 py-2 text-left">
+                <p class="text-[10px] uppercase tracking-[0.2em] text-gray-600">Status</p>
+                <p class="mt-1 text-xs font-semibold text-gray-300">Preparing analysis</p>
+              </div>
+              <div class="rounded-xl border border-white/[0.05] bg-white/[0.03] px-3 py-2 text-right">
+                <p class="text-[10px] uppercase tracking-[0.2em] text-gray-600">ETA</p>
+                <p class="mt-1 text-xs font-semibold text-gray-300">{{ uploadEta || 'Calculating…' }}</p>
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -171,7 +206,7 @@
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
             </svg>
           </div>
-          <div class="flex-1 min-w-0">
+          <div class="flex-1 min-w-0 space-y-2">
             <div class="flex items-center gap-2 mb-0.5">
               <span class="text-xs font-semibold uppercase tracking-wider text-gray-500">Analysis ready</span>
               <span
@@ -180,9 +215,26 @@
                 :class="scoreGradeBadgeClass(result.overall_score)"
               >{{ scoreGrade(result.overall_score) }}</span>
             </div>
-            <p class="text-sm font-bold text-white leading-tight">
-              {{ gameInfo.agent || gameLabel }}<span v-if="gameInfo.map" class="text-gray-500 font-normal"> · {{ gameInfo.map }}</span>
-            </p>
+            <p class="text-base font-black text-white leading-tight tracking-tight">Your post-game debrief is ready</p>
+            <div class="flex flex-wrap items-center gap-2">
+              <div class="inline-flex items-center gap-2 rounded-xl border border-white/[0.06] bg-white/[0.03] px-2.5 py-1.5 agent-map-chip">
+                <div
+                  class="w-7 h-7 rounded-xl overflow-hidden flex items-center justify-center flex-shrink-0"
+                  :class="agentImageUrl ? '' : 'bg-white/[0.04] border border-white/[0.08]'"
+                  :style="agentImageUrl ? { border: `1px solid ${agentAccentColor}40`, background: agentAccentColor + '18' } : {}"
+                >
+                  <img v-if="agentImageUrl" :src="agentImageUrl" class="w-6 h-6 object-contain" />
+                  <svg v-else class="w-3.5 h-3.5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"/>
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                  </svg>
+                </div>
+                <div class="text-left">
+                  <p class="text-[11px] font-semibold text-gray-200">{{ gameInfo.agent || gameLabel }}</p>
+                  <p class="text-[10px] text-gray-500">{{ gameInfo.map || gameLabel }}</p>
+                </div>
+              </div>
+            </div>
           </div>
           <div v-if="result?.overall_score" class="text-right flex-shrink-0">
             <span class="text-3xl font-black tabular-nums score-reveal" :class="scoreClass(result.overall_score)">{{ result.overall_score * 10 }}</span>
@@ -207,24 +259,71 @@
           <p class="text-[11px] text-gray-400 leading-relaxed italic">{{ result.verdict }}</p>
         </div>
 
-        <!-- Match stats row: K/D/A + result -->
-        <div v-if="result?.kills != null || result?.match_result" class="flex items-center gap-2 px-3 py-2 bg-white/[0.03] border border-white/[0.06] rounded-xl">
-          <span
-            v-if="result?.match_result"
-            class="text-xs font-bold px-2 py-0.5 rounded-full flex-shrink-0"
-            :class="result.match_result === 'win' ? 'bg-green-500/15 text-green-400 border border-green-500/25' : 'bg-red-500/15 text-red-400 border border-red-500/25'"
-          >{{ result.match_result === 'win' ? 'WIN' : 'LOSS' }}</span>
-          <span
-            v-if="result?.ally_score != null && result?.enemy_score != null"
-            class="text-xs font-mono text-gray-500 flex-shrink-0"
-          >{{ result.ally_score }}–{{ result.enemy_score }}</span>
-          <div v-if="result?.kills != null" class="flex items-center gap-2 ml-auto">
-            <span class="text-xs font-bold text-white tabular-nums">{{ result.kills }}</span>
-            <span class="text-xs text-gray-600">/</span>
-            <span class="text-xs font-bold text-red-400 tabular-nums">{{ result.deaths ?? '?' }}</span>
-            <span class="text-xs text-gray-600">/</span>
-            <span class="text-xs font-bold text-gray-400 tabular-nums">{{ result.assists ?? '?' }}</span>
-            <span class="text-xs text-gray-600">K/D/A</span>
+        <!-- Match result banner + K/D/A -->
+        <div
+          v-if="result?.kills != null || result?.match_result"
+          class="relative overflow-hidden rounded-2xl border p-4 match-banner stat-panel-in"
+          :class="result?.match_result === 'win' ? 'match-banner-win' : result?.match_result === 'loss' ? 'match-banner-loss' : 'match-banner-neutral'"
+        >
+          <div class="relative flex items-start justify-between gap-3">
+            <div class="space-y-2">
+              <div class="flex flex-wrap items-center gap-2">
+                <span
+                  v-if="result?.match_result"
+                  class="inline-flex items-center rounded-full border px-3 py-1 text-sm font-black tracking-[0.24em] match-result-badge"
+                  :class="result.match_result === 'win' ? 'match-badge-win' : 'match-badge-loss'"
+                >{{ result.match_result === 'win' ? 'WIN' : 'LOSS' }}</span>
+                <span
+                  v-if="result?.ally_score != null && result?.enemy_score != null"
+                  class="rounded-full border border-white/[0.08] bg-black/20 px-3 py-1 text-sm font-black tabular-nums text-gray-100"
+                >{{ result.ally_score }}–{{ result.enemy_score }}</span>
+              </div>
+              <div>
+                <p class="text-xl font-black tracking-tight text-white match-result-glow">
+                  {{ result?.match_result === 'win' ? 'Strong finish on the server' : result?.match_result === 'loss' ? 'Review the turning points' : 'Match summary ready' }}
+                </p>
+                <p class="mt-1 text-xs text-gray-300">{{ gameInfo.agent || gameLabel }}<span v-if="gameInfo.map"> · {{ gameInfo.map }}</span></p>
+              </div>
+            </div>
+            <div v-if="result?.overall_score" class="text-right flex-shrink-0">
+              <p class="text-[10px] font-semibold uppercase tracking-[0.24em] text-gray-500">AI Score</p>
+              <p class="mt-1 text-2xl font-black tabular-nums text-white">{{ result.overall_score * 10 }}</p>
+            </div>
+          </div>
+          <div v-if="result?.kills != null" class="mt-4 grid grid-cols-3 gap-2">
+            <div class="rounded-xl border border-green-500/20 bg-green-500/[0.08] px-3 py-3 text-center stat-chip-in">
+              <p class="text-[10px] font-semibold uppercase tracking-[0.24em] text-green-300/70">Kills</p>
+              <p class="mt-1 text-2xl font-black tabular-nums text-green-400">{{ result.kills }}</p>
+            </div>
+            <div class="rounded-xl border border-red-500/20 bg-red-500/[0.08] px-3 py-3 text-center stat-chip-in" style="animation-delay: 80ms;">
+              <p class="text-[10px] font-semibold uppercase tracking-[0.24em] text-red-300/70">Deaths</p>
+              <p class="mt-1 text-2xl font-black tabular-nums text-red-400">{{ result.deaths ?? '?' }}</p>
+            </div>
+            <div class="rounded-xl border border-blue-500/20 bg-blue-500/[0.08] px-3 py-3 text-center stat-chip-in" style="animation-delay: 160ms;">
+              <p class="text-[10px] font-semibold uppercase tracking-[0.24em] text-blue-300/70">Assists</p>
+              <p class="mt-1 text-2xl font-black tabular-nums text-blue-400">{{ result.assists ?? '?' }}</p>
+            </div>
+          </div>
+        </div>
+
+        <div v-if="roundTimelineCells.length" class="rounded-2xl border border-white/[0.06] bg-white/[0.03] px-3 py-3 stat-panel-in" style="animation-delay: 120ms;">
+          <div class="flex items-center justify-between gap-3">
+            <div>
+              <p class="text-[10px] font-semibold uppercase tracking-[0.24em] text-gray-600">Round timeline</p>
+              <p class="mt-1 text-xs text-gray-400">Won {{ result?.ally_score ?? 0 }} · Lost {{ result?.enemy_score ?? 0 }}</p>
+            </div>
+            <div class="text-xs font-semibold text-gray-500">{{ roundTimelineCells.length }} rounds</div>
+          </div>
+          <div class="mt-3 flex flex-wrap gap-1.5">
+            <div
+              v-for="(round, index) in roundTimelineCells"
+              :key="round.key"
+              class="flex h-7 w-7 items-center justify-center rounded-lg border text-[10px] font-black tabular-nums stat-chip-in"
+              :class="round.type === 'win' ? 'border-green-500/25 bg-green-500/[0.14] text-green-300' : 'border-red-500/25 bg-red-500/[0.14] text-red-300'"
+              :style="{ animationDelay: `${index * 35}ms` }"
+            >
+              {{ round.label }}
+            </div>
           </div>
         </div>
 
@@ -293,46 +392,52 @@
           </div>
         </div>
 
-        <div class="flex gap-2 pt-1">
+        <div class="space-y-2 pt-1">
+          <div class="flex gap-2">
+            <button
+              class="flex-1 flex items-center justify-center gap-2 py-2.5 text-xs font-bold rounded-xl transition-all shadow-lg"
+              :style="{ background: `linear-gradient(135deg, ${agentAccentColor || '#dc2626'}, ${agentAccentColor ? agentAccentColor + 'cc' : '#ea580c'})`, boxShadow: `0 4px 14px ${agentAccentColor || '#dc2626'}40` }"
+              @click="viewFullAnalysis"
+            >
+              <span>View Full Analysis</span>
+              <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.5 4.5L21 12m0 0l-7.5 7.5M21 12H3"/>
+              </svg>
+            </button>
+            <button
+              v-if="result?.overall_score"
+              :title="cardExportDone ? 'Saved!' : 'Save coaching card as PNG'"
+              :disabled="cardExporting"
+              class="flex-1 flex items-center justify-center gap-2 rounded-xl border border-orange-500/20 bg-gradient-to-r from-red-500/10 to-orange-500/10 px-3 py-2.5 text-xs font-bold text-orange-100 transition-all hover:from-red-500/15 hover:to-orange-500/15 hover:border-orange-400/30 disabled:opacity-50"
+              @click="exportAnalysis"
+            >
+              <svg v-if="cardExporting" class="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24">
+                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+              </svg>
+              <svg v-else-if="cardExportDone" class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"/>
+              </svg>
+              <svg v-else class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/>
+              </svg>
+              <span>{{ cardExporting ? 'Saving…' : cardExportDone ? 'Saved!' : 'Export Card' }}</span>
+            </button>
+            <button
+              v-if="result?.overall_score"
+              title="Copy score to clipboard"
+              class="px-3 py-2.5 text-xs text-gray-400 hover:text-gray-200 bg-white/[0.03] hover:bg-white/[0.06] border border-white/[0.06] rounded-xl transition-colors"
+              @click="copyScore"
+            >
+              <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/>
+              </svg>
+            </button>
+          </div>
           <button
-            class="flex-1 py-2.5 text-xs font-bold rounded-xl transition-all shadow-lg"
-            :style="{ background: `linear-gradient(135deg, ${agentAccentColor || '#dc2626'}, ${agentAccentColor ? agentAccentColor + 'cc' : '#ea580c'})`, boxShadow: `0 4px 14px ${agentAccentColor || '#dc2626'}40` }"
-            @click="viewFullAnalysis"
-          >View Full Analysis →</button>
-          <button
-            v-if="result?.overall_score"
-            title="Copy score to clipboard"
-            class="px-3 py-2.5 text-xs text-gray-400 hover:text-gray-200 bg-white/[0.03] hover:bg-white/[0.06] border border-white/[0.06] rounded-xl transition-colors"
-            @click="copyScore"
-          >
-            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/>
-            </svg>
-          </button>
-          <button
-            v-if="result?.overall_score"
-            :title="cardExportDone ? 'Saved!' : 'Save coaching card as PNG'"
-            :disabled="cardExporting"
-            class="px-3 py-2.5 text-xs bg-white/[0.03] hover:bg-white/[0.06] border border-white/[0.06] rounded-xl transition-all disabled:opacity-50 flex items-center gap-1.5"
-            :class="cardExportDone ? 'text-green-400 border-green-500/20' : 'text-gray-400 hover:text-gray-200'"
-            @click="exportAnalysis"
-          >
-            <svg v-if="cardExporting" class="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24">
-              <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
-              <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
-            </svg>
-            <svg v-else-if="cardExportDone" class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"/>
-            </svg>
-            <svg v-else class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/>
-            </svg>
-            <span>{{ cardExporting ? 'Saving…' : cardExportDone ? 'Saved!' : 'Share' }}</span>
-          </button>
-          <button
-            class="px-3 py-2.5 text-xs text-gray-500 hover:text-gray-300 bg-white/[0.03] hover:bg-white/[0.06] border border-white/[0.06] rounded-xl transition-colors"
+            class="w-full px-3 py-2.5 text-xs font-medium text-gray-500 hover:text-gray-300 bg-white/[0.03] hover:bg-white/[0.06] border border-white/[0.06] rounded-xl transition-colors"
             @click="dismiss"
-          >Dismiss</button>
+          >Close panel</button>
         </div>
 
         <!-- Session clips row -->
@@ -390,12 +495,27 @@
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M15 10l4.553-2.069A1 1 0 0121 8.882v6.236a1 1 0 01-1.447.894L15 14M3 8a2 2 0 012-2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V8z"/>
           </svg>
         </div>
-        <div>
+        <div class="space-y-2">
           <p class="text-sm font-semibold">Game recorded</p>
-          <p class="text-xs text-gray-500 mt-0.5">
-            {{ gameInfo.agent || gameLabel }}<span v-if="gameInfo.map"> &middot; {{ gameInfo.map }}</span>
-          </p>
-          <p class="text-xs text-gray-600 mt-1.5">Auto-analyse is off — analyse now or view later from the dashboard.</p>
+          <div class="flex items-center justify-center">
+            <div class="inline-flex items-center gap-2 rounded-xl border border-white/[0.06] bg-white/[0.03] px-3 py-2">
+              <div
+                class="w-8 h-8 rounded-xl overflow-hidden flex items-center justify-center flex-shrink-0"
+                :class="agentImageUrl ? '' : 'bg-blue-500/10 border border-blue-500/20'"
+                :style="agentImageUrl ? { border: `1px solid ${agentAccentColor}50`, background: agentAccentColor + '20' } : {}"
+              >
+                <img v-if="agentImageUrl" :src="agentImageUrl" class="w-6 h-6 object-contain" />
+                <svg v-else class="w-4 h-4 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M15 10l4.553-2.069A1 1 0 0121 8.882v6.236a1 1 0 01-1.447.894L15 14M3 8a2 2 0 012-2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V8z"/>
+                </svg>
+              </div>
+              <div class="text-left">
+                <p class="text-xs font-semibold text-gray-200">{{ gameInfo.agent || gameLabel }}</p>
+                <p class="text-[11px] text-gray-500">{{ gameInfo.map || gameLabel }}</p>
+              </div>
+            </div>
+          </div>
+          <p class="text-xs text-gray-600">Auto-analyse is off — analyse now or view later from the dashboard.</p>
         </div>
         <div class="flex gap-2 pt-1">
           <button
@@ -616,6 +736,17 @@ const uploadEta = computed(() => {
   if (remaining < 5) return null
   if (remaining < 60) return `~${remaining}s remaining`
   return `~${Math.ceil(remaining / 60)}m remaining`
+})
+
+const roundTimelineCells = computed(() => {
+  const ally = Math.max(0, result.value?.ally_score ?? 0)
+  const enemy = Math.max(0, result.value?.enemy_score ?? 0)
+  if (!ally && !enemy) return [] as Array<{ key: string; type: 'win' | 'loss'; label: number }>
+
+  return [
+    ...Array.from({ length: ally }, (_, index) => ({ key: `win-${index}`, type: 'win' as const, label: index + 1 })),
+    ...Array.from({ length: enemy }, (_, index) => ({ key: `loss-${index}`, type: 'loss' as const, label: ally + index + 1 })),
+  ]
 })
 
 function startStuckTimer() {
@@ -1198,6 +1329,95 @@ function scoreBarClass(score: number): string {
 @keyframes scoreGradeIn {
   0%   { opacity: 0; transform: scale(0.6); }
   100% { opacity: 1; transform: scale(1.0); }
+}
+
+@keyframes statLiftIn {
+  0% {
+    opacity: 0;
+    transform: translateY(12px) scale(0.98);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes uploadShimmer {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(100%); }
+}
+
+.stat-panel-in {
+  animation: statLiftIn 0.55s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.stat-chip-in {
+  animation: statLiftIn 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.upload-stat-in {
+  animation: statLiftIn 0.45s ease-out both;
+}
+
+.match-banner {
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+
+.match-banner-win {
+  background: linear-gradient(135deg, rgba(34, 197, 94, 0.14), rgba(249, 115, 22, 0.1));
+  border-color: rgba(34, 197, 94, 0.24);
+  box-shadow: 0 18px 48px rgba(34, 197, 94, 0.08);
+}
+
+.match-banner-loss {
+  background: linear-gradient(135deg, rgba(239, 68, 68, 0.16), rgba(249, 115, 22, 0.1));
+  border-color: rgba(239, 68, 68, 0.24);
+  box-shadow: 0 18px 48px rgba(239, 68, 68, 0.08);
+}
+
+.match-banner-neutral {
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.05), rgba(249, 115, 22, 0.08));
+  border-color: rgba(255, 255, 255, 0.1);
+}
+
+.match-result-badge {
+  text-shadow: 0 0 14px rgba(255, 255, 255, 0.16);
+}
+
+.match-badge-win {
+  background: rgba(34, 197, 94, 0.18);
+  border-color: rgba(34, 197, 94, 0.28);
+  color: #86efac;
+  box-shadow: 0 0 20px rgba(34, 197, 94, 0.15);
+}
+
+.match-badge-loss {
+  background: rgba(239, 68, 68, 0.18);
+  border-color: rgba(239, 68, 68, 0.28);
+  color: #fca5a5;
+  box-shadow: 0 0 20px rgba(239, 68, 68, 0.15);
+}
+
+.match-result-glow {
+  text-shadow: 0 0 18px rgba(255, 255, 255, 0.08), 0 0 28px rgba(239, 68, 68, 0.1);
+}
+
+.upload-bar-track {
+  background: linear-gradient(90deg, rgba(255, 255, 255, 0.02), rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0.02));
+}
+
+.upload-bar-fill {
+  background: linear-gradient(90deg, rgba(239, 68, 68, 0.95), rgba(249, 115, 22, 0.95));
+  box-shadow: 0 0 18px rgba(239, 68, 68, 0.35);
+}
+
+.upload-bar-shimmer {
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.38), transparent);
+  animation: uploadShimmer 1.6s linear infinite;
+}
+
+.agent-map-chip {
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
 }
 
 .score-reveal {

@@ -167,11 +167,12 @@
                 {{ member.riot_name }}<span class="text-gray-700">#{{ member.riot_tag }}</span>
               </p>
               <div class="flex items-center gap-1 mt-0.5">
-                <span
-                  class="text-[11px] font-medium leading-tight"
+                  <span
+                  class="text-[11px] font-medium leading-tight flex items-center gap-1"
                   :class="getPresence(member.id).is_recording ? 'text-red-400' : getPresence(member.id).online ? 'text-green-400' : 'text-gray-600'"
                 >
-                  {{ getPresence(member.id).is_recording ? '● Recording' : getPresence(member.id).online ? '● Online' : '○ Offline' }}
+                  <svg class="w-1.5 h-1.5 flex-shrink-0" viewBox="0 0 6 6" :class="getPresence(member.id).is_recording || getPresence(member.id).online ? '' : 'opacity-40'"><circle cx="3" cy="3" r="3" fill="currentColor"/></svg>
+                  {{ getPresence(member.id).is_recording ? 'Recording' : getPresence(member.id).online ? 'Online' : 'Offline' }}
                 </span>
                 <span v-if="getPresence(member.id).game && getPresence(member.id).is_recording" class="text-[11px] text-gray-600 truncate">
                   · {{ getPresence(member.id).game }}

@@ -40,10 +40,30 @@ const scenarioMeta = computed(() =>
 )
 
 function scoreColor(s: number) {
-  if (s >= 75) return 'text-green-400'
+  if (s >= 90) return 'text-violet-400'
+  if (s >= 78) return 'text-green-400'
+  if (s >= 65) return 'text-teal-400'
   if (s >= 50) return 'text-yellow-400'
-  if (s >= 25) return 'text-orange-400'
+  if (s >= 35) return 'text-orange-400'
   return 'text-red-400'
+}
+
+function scoreLabel(s: number) {
+  if (s >= 90) return 'S · Outstanding'
+  if (s >= 78) return 'A · Strong Game'
+  if (s >= 65) return 'B · Solid'
+  if (s >= 50) return 'C · Room to Improve'
+  if (s >= 35) return 'D · Below Average'
+  return 'E · Lots to Work On'
+}
+
+function scoreGrade(s: number) {
+  if (s >= 90) return 'S'
+  if (s >= 78) return 'A'
+  if (s >= 65) return 'B'
+  if (s >= 50) return 'C'
+  if (s >= 35) return 'D'
+  return 'E'
 }
 
 function scoreAccent(s: number) {
@@ -325,19 +345,28 @@ onUnmounted(() => {
         v-if="isPB"
         class="flex items-center gap-1.5 text-xs font-bold text-yellow-400 bg-yellow-400/10 border border-yellow-400/20 px-2.5 py-1 rounded-full"
       >
-        ★ NEW PERSONAL BEST
+        <svg class="w-3 h-3" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+        NEW PERSONAL BEST
       </span>
       <span
         v-else-if="scoreDelta !== null && scoreDelta > 0"
-        class="text-xs font-semibold text-green-400 bg-green-400/10 border border-green-400/20 px-2.5 py-1 rounded-full"
+        class="flex items-center gap-1 text-xs font-semibold text-green-400 bg-green-400/10 border border-green-400/20 px-2.5 py-1 rounded-full"
       >
-        ↑ +{{ scoreDelta }} vs previous
+        <svg class="w-3 h-3" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24"><polyline points="18 15 12 9 6 15"/></svg>
+        +{{ scoreDelta }} vs previous
+      </span>
+      <span
+        v-else-if="scoreDelta !== null && scoreDelta < 0"
+        class="flex items-center gap-1 text-xs font-semibold text-orange-400 bg-orange-400/10 border border-orange-400/20 px-2.5 py-1 rounded-full"
+      >
+        <svg class="w-3 h-3" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
+        {{ scoreDelta }} vs previous
       </span>
       <button
-        class="ml-2 text-white/30 hover:text-white/60 transition-colors text-xs"
+        class="ml-2 w-7 h-7 flex items-center justify-center text-white/30 hover:text-white/60 hover:bg-white/[0.06] rounded-lg transition-colors"
         @click="backToHub"
       >
-        ✕ close
+        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
       </button>
     </div>
 
@@ -349,15 +378,21 @@ onUnmounted(() => {
 
         <!-- Score -->
         <div class="flex flex-col items-center pt-3 pb-1">
-          <span class="text-[10px] font-bold uppercase tracking-widest text-white/30 mb-2">Score</span>
-          <span :class="['text-[88px] font-black leading-none tabular-nums', scoreColor(result.score)]">
-            {{ result.score }}
+          <!-- Grade letter badge -->
+          <div :class="['w-14 h-14 rounded-2xl flex items-center justify-center mb-3 border', scoreColor(result.score), result.score >= 90 ? 'bg-violet-500/10 border-violet-500/20' : result.score >= 78 ? 'bg-green-500/10 border-green-500/20' : result.score >= 65 ? 'bg-teal-500/10 border-teal-500/20' : result.score >= 50 ? 'bg-yellow-500/10 border-yellow-500/20' : result.score >= 35 ? 'bg-orange-500/10 border-orange-500/20' : 'bg-red-500/10 border-red-500/20']">
+            <span :class="['text-3xl font-black', scoreColor(result.score)]">{{ scoreGrade(result.score) }}</span>
+          </div>
+          <span class="text-[10px] font-bold uppercase tracking-widest text-white/30 mb-1">Score</span>
+          <span :class="['text-[72px] font-black leading-none tabular-nums', scoreColor(result.score)]">
+            {{ result.score * 10 }}
           </span>
-          <span class="text-[11px] text-white/30 mt-1 font-medium">out of 100</span>
+          <span class="text-[11px] text-white/20 mt-1 font-medium">/ 1000 · {{ scoreLabel(result.score) }}</span>
 
           <div v-if="scoreDelta !== null" class="mt-2 flex items-center gap-1">
-            <span :class="['text-sm font-bold', scoreDelta >= 0 ? 'text-green-400' : 'text-red-400']">
-              {{ scoreDelta >= 0 ? '↑' : '↓' }} {{ Math.abs(scoreDelta) }}
+            <svg v-if="scoreDelta > 0" class="w-3 h-3 text-green-400" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24"><polyline points="18 15 12 9 6 15"/></svg>
+            <svg v-else-if="scoreDelta < 0" class="w-3 h-3 text-red-400" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
+            <span :class="['text-sm font-bold', scoreDelta > 0 ? 'text-green-400' : scoreDelta < 0 ? 'text-red-400' : 'text-gray-500']">
+              {{ scoreDelta > 0 ? '+' : '' }}{{ scoreDelta }}
             </span>
             <span class="text-xs text-white/30">vs previous</span>
           </div>
@@ -411,11 +446,14 @@ onUnmounted(() => {
                 : 'bg-white/[0.02] border border-transparent',
             ]"
           >
-            <span :class="['text-[10px] font-bold w-4 text-center', entry.rank === 1 ? 'text-yellow-400' : 'text-white/25']">
-              {{ entry.rank === 1 ? '★' : `#${entry.rank}` }}
+            <span :class="['text-[10px] font-bold w-5 text-center', entry.rank === 1 ? 'text-yellow-400' : entry.rank === 2 ? 'text-gray-400' : entry.rank === 3 ? 'text-amber-600' : 'text-white/25']">
+              <template v-if="entry.rank <= 3">
+                <svg class="w-3 h-3 inline" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+              </template>
+              <template v-else>#{{ entry.rank }}</template>
             </span>
             <span :class="['text-sm font-bold tabular-nums', scoreColor(entry.score)]">
-              {{ entry.score }}
+              {{ entry.score * 10 }}
             </span>
             <span class="flex-1 text-[10px] text-white/30">
               {{ entry.isCurrent ? 'this run' : formatDate(entry.completed_at) }}

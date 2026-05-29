@@ -69,9 +69,9 @@
             <!-- Score row -->
             <div class="flex items-end gap-3 mb-2">
               <span :class="['text-[40px] font-black leading-none tabular-nums', scoreColor(trainerResult.score)]">
-                {{ trainerResult.score }}
+                {{ trainerResult.score * 10 }}
               </span>
-              <span class="text-[11px] text-gray-500 font-semibold mb-1.5">/ 100</span>
+              <span class="text-[11px] text-gray-500 font-semibold mb-1.5">/ 1000</span>
               <!-- Stat pills -->
               <div class="flex flex-col gap-0.5 ml-auto text-right">
                 <span class="text-[10px] text-gray-400 font-medium">

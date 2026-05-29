@@ -1,18 +1,38 @@
 <template>
-  <div class="h-screen bg-[#0a0a0a] text-white flex flex-col overflow-hidden select-none">
+  <div class="relative h-screen bg-[#0a0a0a] text-white flex flex-col overflow-hidden select-none">
+    <Transition name="busy-bar">
+      <div v-if="busyActive" class="pointer-events-none absolute inset-x-0 top-0 z-50 h-[2px] bg-white/[0.04]">
+        <div
+          class="h-full rounded-full bg-gradient-to-r from-red-500 via-orange-500 to-red-500 bg-[length:200%_100%] animate-[busy-shimmer_1.2s_linear_infinite] shadow-[0_0_14px_rgba(239,68,68,0.45)] transition-all duration-300"
+          :style="{ width: `${busyBarWidth}%` }"
+        />
+      </div>
+    </Transition>
+
     <!-- Title bar -->
     <div
       v-if="showTitleBar"
-      class="drag-region flex items-center justify-between flex-shrink-0 px-3 border-b border-white/[0.05]"
-      :style="isMac ? 'height:40px; padding-left:80px' : 'height:40px'"
+      class="drag-region relative flex items-center justify-between flex-shrink-0 px-3 border-b border-white/[0.05] bg-[#0c0c0c]/95 backdrop-blur-xl"
+      :style="isMac ? 'height:44px; padding-left:80px' : 'height:44px'"
     >
-      <div class="flex items-center gap-2">
-        <img src="./assets/upforge-logo.png" alt="UpForge" class="h-4 w-auto object-contain flex-shrink-0" />
-        <span v-if="appVersion" class="text-[10px] text-gray-600 font-normal ml-0.5">v{{ appVersion }}</span>
-        <span v-if="status.recording" class="flex items-center gap-1 ml-1">
-          <span class="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" />
-          <span class="text-[10px] text-red-400 font-medium">REC</span>
-        </span>
+      <div class="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-red-500/70 to-orange-500/70" />
+      <div class="flex items-center gap-2.5">
+        <div class="flex h-7 w-7 items-center justify-center rounded-xl border border-white/[0.08] bg-gradient-to-br from-white/[0.06] to-white/[0.02] shadow-[0_0_18px_rgba(239,68,68,0.12)]">
+          <img src="./assets/upforge-logo.png" alt="UpForge" class="h-4 w-auto object-contain flex-shrink-0" />
+        </div>
+        <div class="flex items-center gap-2">
+          <div class="flex flex-col leading-none">
+            <span class="text-[11px] font-semibold tracking-[0.18em] text-gray-200 uppercase">UpForge</span>
+            <span v-if="appVersion" class="text-[9px] text-gray-500 font-medium">Desktop v{{ appVersion }}</span>
+          </div>
+          <span v-if="status.recording" class="inline-flex items-center gap-1.5 rounded-full border border-red-500/25 bg-red-500/10 px-2 py-1 shadow-[0_0_16px_rgba(239,68,68,0.12)]">
+            <span class="relative flex h-2.5 w-2.5 items-center justify-center">
+              <span class="absolute inline-flex h-2.5 w-2.5 rounded-full bg-red-500/30 animate-ping" />
+              <span class="relative h-1.5 w-1.5 rounded-full bg-red-400" />
+            </span>
+            <span class="text-[10px] font-semibold tracking-[0.14em] text-red-300 uppercase">Recording</span>
+          </span>
+        </div>
       </div>
 
       <!-- User identity (center when not recording) -->
@@ -93,35 +113,47 @@
     <!-- Navigation (hidden on post-game / login) -->
     <nav
       v-if="showNav"
-      class="flex items-center gap-0.5 px-3 pt-2 pb-0 flex-shrink-0 border-b border-white/[0.05]"
+      class="flex items-center gap-0.5 px-3 pt-2 pb-0 flex-shrink-0 border-b border-white/[0.05] bg-[#0c0c0c]/85"
     >
-      <RouterLink
-        v-for="link in navLinks"
-        :key="link.to"
-        :to="link.to"
-        class="relative flex items-center gap-1.5 px-2.5 py-2 text-[11px] font-semibold transition-all duration-150 rounded-t-lg group"
-        :class="
-          $route.path === link.to
-            ? 'text-white bg-white/[0.05] after:absolute after:bottom-0 after:left-1.5 after:right-1.5 after:h-[2px] after:rounded-full after:bg-gradient-to-r after:from-red-500 after:to-orange-400 after:shadow-[0_0_8px_rgba(255,70,85,0.6)]'
-            : 'text-gray-500 hover:text-gray-300 hover:bg-white/[0.03]'
-        "
-      >
-        <component :is="'svg'" class="w-3.5 h-3.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" v-html="link.iconPath" />
-        {{ link.label }}
-      </RouterLink>
-      <!-- Developer link (shown only when dev mode is unlocked) -->
-      <RouterLink
-        v-if="devNavLink"
-        :to="devNavLink.to"
-        class="px-2.5 py-2 text-[11px] font-medium transition-all duration-150 ml-auto"
-        :class="
-          $route.path === devNavLink.to
-            ? 'text-amber-400 relative after:absolute after:bottom-0 after:left-0 after:right-0 after:h-px after:bg-amber-500'
-            : 'text-amber-600 hover:text-amber-400'
-        "
-      >
-        {{ devNavLink.label }}
-      </RouterLink>
+      <div class="flex items-center gap-0.5">
+        <RouterLink
+          v-for="link in navLinks"
+          :key="link.to"
+          :to="link.to"
+          class="relative flex items-center gap-1.5 px-2.5 py-2 text-[11px] font-semibold transition-all duration-150 rounded-t-lg group"
+          :class="
+            $route.path === link.to
+              ? 'text-white bg-white/[0.05] after:absolute after:bottom-0 after:left-1.5 after:right-1.5 after:h-[2px] after:rounded-full after:bg-gradient-to-r after:from-red-500 after:to-orange-400 after:shadow-[0_0_8px_rgba(255,70,85,0.6)]'
+              : 'text-gray-500 hover:text-gray-300 hover:bg-white/[0.03]'
+          "
+        >
+          <component :is="'svg'" class="w-3.5 h-3.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" v-html="link.iconPath" />
+          {{ link.label }}
+        </RouterLink>
+      </div>
+
+      <div class="ml-auto flex items-center gap-2 pl-3 border-l border-white/[0.06]">
+        <RouterLink
+          v-if="devNavLink"
+          :to="devNavLink.to"
+          class="px-2.5 py-2 text-[11px] font-medium transition-all duration-150 rounded-t-lg"
+          :class="
+            $route.path === devNavLink.to
+              ? 'text-amber-400 relative after:absolute after:bottom-0 after:left-1.5 after:right-1.5 after:h-px after:bg-amber-500'
+              : 'text-amber-600 hover:text-amber-400 hover:bg-white/[0.03]'
+          "
+        >
+          {{ devNavLink.label }}
+        </RouterLink>
+        <span v-if="appVersion" class="inline-flex items-center rounded-full border border-white/[0.08] bg-white/[0.03] px-2 py-1 text-[10px] font-medium text-gray-500">v{{ appVersion }}</span>
+        <div class="flex items-center gap-2 rounded-full border border-white/[0.08] bg-white/[0.03] px-2 py-1.5">
+          <div class="flex h-7 w-7 items-center justify-center rounded-full bg-gradient-to-br from-red-500/25 to-orange-500/20 text-[10px] font-bold text-red-300 ring-1 ring-red-500/20">{{ userInitials }}</div>
+          <div class="flex flex-col leading-none">
+            <span class="text-[10px] font-semibold text-gray-300 truncate max-w-[120px]">{{ userDisplayName }}</span>
+            <span class="text-[9px] text-gray-600">Desktop</span>
+          </div>
+        </div>
+      </div>
     </nav>
 
     <!-- Content -->
@@ -156,7 +188,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useDesktopRecording } from './composables/useDesktopRecording'
 import OnboardingWizard from './components/OnboardingWizard.vue'
@@ -208,12 +240,43 @@ const devNavLink = computed(() =>
 const appUpdatePhase = ref<string>('idle')
 const appUpdateVersion = ref<string | undefined>(undefined)
 const appUpdatePercent = ref(0)
+const navigationBusy = ref(false)
 let statusInterval: ReturnType<typeof setInterval> | null = null
+let navBusyTimer: ReturnType<typeof setTimeout> | null = null
+
+const userDisplayName = computed(() => riotId.value || 'UpForge User')
+const userInitials = computed(() =>
+  userDisplayName.value
+    .split('#')[0]
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map(part => part[0]?.toUpperCase() ?? '')
+    .join('') || 'UF'
+)
+
+const busyActive = computed(() =>
+  navigationBusy.value || ['checking', 'downloading', 'installing'].includes(appUpdatePhase.value)
+)
+
+const busyBarWidth = computed(() => {
+  if (appUpdatePhase.value === 'downloading') return Math.max(10, Math.min(100, appUpdatePercent.value || 12))
+  if (appUpdatePhase.value === 'installing') return 96
+  if (appUpdatePhase.value === 'checking') return 22
+  return navigationBusy.value ? 64 : 0
+})
 
 async function installUpdate() {
   appUpdatePhase.value = 'installing'
   await window.api.updater.install()
 }
+
+watch(() => route.fullPath, (newPath, oldPath) => {
+  if (!oldPath || newPath === oldPath) return
+  navigationBusy.value = true
+  if (navBusyTimer) clearTimeout(navBusyTimer)
+  navBusyTimer = setTimeout(() => { navigationBusy.value = false }, 450)
+})
 
 onMounted(async () => {
   try {
@@ -290,6 +353,7 @@ onMounted(async () => {
 
 onUnmounted(() => {
   if (statusInterval) clearInterval(statusInterval)
+  if (navBusyTimer) clearTimeout(navBusyTimer)
   const navCleanup = (window as Window & { _appNavCleanup?: () => void })._appNavCleanup
   navCleanup?.()
   delete (window as Window & { _appNavCleanup?: () => void })._appNavCleanup
@@ -342,5 +406,20 @@ function handleOnboardingComplete() {
 .update-banner-leave-from {
   max-height: 40px;
   opacity: 1;
+}
+
+.busy-bar-enter-active,
+.busy-bar-leave-active {
+  transition: opacity 0.2s ease;
+}
+
+.busy-bar-enter-from,
+.busy-bar-leave-to {
+  opacity: 0;
+}
+
+@keyframes busy-shimmer {
+  0% { background-position: 200% 50%; }
+  100% { background-position: 0% 50%; }
 }
 </style>

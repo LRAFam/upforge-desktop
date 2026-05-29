@@ -52,22 +52,27 @@
         <div class="bg-white/[0.02] border border-white/[0.05] rounded-xl px-2 py-2.5 text-center">
           <p class="text-base font-black tabular-nums text-white">{{ filteredAnalyses.length }}</p>
           <p class="text-[9px] text-gray-600 mt-0.5 uppercase tracking-wider">Games</p>
+          <p class="text-[8px] text-gray-700 mt-1 uppercase tracking-[0.16em]">Range</p>
         </div>
         <div class="bg-white/[0.02] border border-white/[0.05] rounded-xl px-2 py-2.5 text-center">
           <p class="text-base font-black tabular-nums" :class="winRate >= 50 ? 'text-green-400' : 'text-red-400'">{{ winRate }}%</p>
           <p class="text-[9px] text-gray-600 mt-0.5 uppercase tracking-wider">Win Rate</p>
+          <p class="text-[8px] mt-1 font-semibold uppercase tracking-[0.16em]" :class="metricDeltaClass(statDeltas.winRate)">{{ metricDeltaLabel(statDeltas.winRate, '%') }}</p>
         </div>
         <div class="bg-white/[0.02] border border-white/[0.05] rounded-xl px-2 py-2.5 text-center">
           <p class="text-base font-black tabular-nums" :class="avgScore !== null ? scoreColor(avgScore) : 'text-gray-600'">{{ avgScore ?? '—' }}</p>
           <p class="text-[9px] text-gray-600 mt-0.5 uppercase tracking-wider">AI Score</p>
+          <p class="text-[8px] mt-1 font-semibold uppercase tracking-[0.16em]" :class="metricDeltaClass(statDeltas.score)">{{ metricDeltaLabel(statDeltas.score) }}</p>
         </div>
         <div class="bg-white/[0.02] border border-white/[0.05] rounded-xl px-2 py-2.5 text-center">
           <p class="text-base font-black tabular-nums text-white">{{ avgKda }}</p>
           <p class="text-[9px] text-gray-600 mt-0.5 uppercase tracking-wider">Avg K/D</p>
+          <p class="text-[8px] mt-1 font-semibold uppercase tracking-[0.16em]" :class="metricDeltaClass(statDeltas.kda)">{{ metricDeltaLabel(statDeltas.kda) }}</p>
         </div>
         <div class="bg-white/[0.02] border border-white/[0.05] rounded-xl px-2 py-2.5 text-center">
           <p class="text-base font-black tabular-nums text-orange-400">{{ avgHs !== null ? avgHs + '%' : '—' }}</p>
           <p class="text-[9px] text-gray-600 mt-0.5 uppercase tracking-wider">HS%</p>
+          <p class="text-[8px] mt-1 font-semibold uppercase tracking-[0.16em]" :class="metricDeltaClass(statDeltas.hs)">{{ metricDeltaLabel(statDeltas.hs, '%') }}</p>
         </div>
       </div>
 
@@ -104,6 +109,29 @@
             <path :d="sparkLine" fill="none" :stroke="sparkUp ? '#4ade80' : '#f87171'" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
           </svg>
         </div>
+
+        <div v-if="rankPoints.length > 1" class="pt-2 border-t border-white/[0.05]">
+          <div class="flex items-center justify-between mb-1.5">
+            <p class="text-[9px] text-gray-700 uppercase tracking-[0.16em]">Rank Progress</p>
+            <p class="text-[9px] font-semibold" :class="rankDelta >= 0 ? 'text-green-400' : 'text-red-400'">
+              {{ rankDelta >= 0 ? '+' : '' }}{{ rankDelta }} RR
+            </p>
+          </div>
+          <svg width="100%" height="44" :viewBox="`0 0 ${RANK_W} 44`" preserveAspectRatio="none" style="display:block">
+            <defs>
+              <linearGradient id="rank-spark-grad" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" :stop-color="rankDelta >= 0 ? '#fb923c' : '#f87171'" stop-opacity="0.26"/>
+                <stop offset="100%" :stop-color="rankDelta >= 0 ? '#fb923c' : '#f87171'" stop-opacity="0"/>
+              </linearGradient>
+            </defs>
+            <path :d="rankArea" fill="url(#rank-spark-grad)"/>
+            <path :d="rankLine" fill="none" :stroke="rankDelta >= 0 ? '#fb923c' : '#f87171'" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+          <div class="flex items-center justify-between mt-1 text-[8px] uppercase tracking-[0.14em] text-gray-700">
+            <span>{{ rankStartLabel }}</span>
+            <span>{{ rankEndLabel }}</span>
+          </div>
+        </div>
       </div>
 
       <!-- Two-column: By Agent + By Map -->
@@ -115,15 +143,20 @@
             <p class="text-[10px] font-semibold text-gray-600 uppercase tracking-widest">By Agent</p>
           </div>
           <div class="divide-y divide-white/[0.03]">
-            <div v-for="row in agentRows" :key="row.name" class="flex items-center gap-2 px-2.5 py-1.5">
-              <img :src="getAgentImage(row.name)" class="w-5 h-5 rounded object-cover flex-shrink-0" />
-              <div class="flex-1 min-w-0">
-                <p class="text-[10px] font-semibold text-gray-300 truncate">{{ row.name }}</p>
-                <p class="text-[9px] text-gray-700">{{ row.games }}g</p>
+            <div v-for="row in agentRows" :key="row.name" class="px-2.5 py-2 space-y-1.5">
+              <div class="flex items-center gap-2">
+                <img :src="getAgentImage(row.name)" class="w-5 h-5 rounded object-cover flex-shrink-0" />
+                <div class="flex-1 min-w-0">
+                  <p class="text-[10px] font-semibold text-gray-300 truncate">{{ row.name }}</p>
+                  <p class="text-[9px] text-gray-700">{{ row.games }}g</p>
+                </div>
+                <div class="text-right flex-shrink-0 space-y-px">
+                  <p class="text-[10px] font-bold tabular-nums" :class="row.wr >= 50 ? 'text-green-400' : 'text-red-400'">{{ row.wr }}%</p>
+                  <p class="text-[9px] text-gray-700 tabular-nums">{{ row.kda }}kd · <span :class="row.roundWr !== '—' ? 'text-gray-600' : ''">{{ row.roundWr }} rnd</span></p>
+                </div>
               </div>
-              <div class="text-right flex-shrink-0 space-y-px">
-                <p class="text-[10px] font-bold tabular-nums" :class="row.wr >= 50 ? 'text-green-400' : 'text-red-400'">{{ row.wr }}%</p>
-                <p class="text-[9px] text-gray-700 tabular-nums">{{ row.kda }}kd · <span :class="row.roundWr !== '—' ? 'text-gray-600' : ''">{{ row.roundWr }} rnd</span></p>
+              <div class="h-1.5 rounded-full bg-white/[0.05] overflow-hidden">
+                <div class="h-full rounded-full" :class="row.wr >= 50 ? 'bg-gradient-to-r from-green-500/80 to-emerald-400/80' : 'bg-gradient-to-r from-red-500/80 to-orange-400/80'" :style="{ width: row.wr + '%' }" />
               </div>
             </div>
             <div v-if="agentRows.length === 0" class="px-3 py-4 text-center text-[10px] text-gray-700">No data</div>
@@ -136,17 +169,22 @@
             <p class="text-[10px] font-semibold text-gray-600 uppercase tracking-widest">By Map</p>
           </div>
           <div class="divide-y divide-white/[0.03]">
-            <div v-for="row in mapRows" :key="row.name" class="flex items-center gap-2 px-2.5 py-1.5">
-              <div class="w-5 h-5 rounded overflow-hidden flex-shrink-0 bg-white/[0.06]">
-                <img :src="getMapMinimap(row.name)" class="w-full h-full object-cover" />
+            <div v-for="row in mapRows" :key="row.name" class="px-2.5 py-2 space-y-1.5">
+              <div class="flex items-center gap-2">
+                <div class="w-5 h-5 rounded overflow-hidden flex-shrink-0 bg-white/[0.06]">
+                  <img :src="getMapMinimap(row.name)" class="w-full h-full object-cover" />
+                </div>
+                <div class="flex-1 min-w-0">
+                  <p class="text-[10px] font-semibold text-gray-300 truncate capitalize">{{ row.name }}</p>
+                  <p class="text-[9px] text-gray-700">{{ row.games }}g</p>
+                </div>
+                <div class="text-right flex-shrink-0 space-y-px">
+                  <p class="text-[10px] font-bold tabular-nums" :class="row.wr >= 50 ? 'text-green-400' : 'text-red-400'">{{ row.wr }}%</p>
+                  <p class="text-[9px] text-gray-700 tabular-nums">{{ row.kda }}kd · <span :class="row.roundWr !== '—' ? 'text-gray-600' : ''">{{ row.roundWr }} rnd</span></p>
+                </div>
               </div>
-              <div class="flex-1 min-w-0">
-                <p class="text-[10px] font-semibold text-gray-300 truncate capitalize">{{ row.name }}</p>
-                <p class="text-[9px] text-gray-700">{{ row.games }}g</p>
-              </div>
-              <div class="text-right flex-shrink-0 space-y-px">
-                <p class="text-[10px] font-bold tabular-nums" :class="row.wr >= 50 ? 'text-green-400' : 'text-red-400'">{{ row.wr }}%</p>
-                <p class="text-[9px] text-gray-700 tabular-nums">{{ row.kda }}kd · <span :class="row.roundWr !== '—' ? 'text-gray-600' : ''">{{ row.roundWr }} rnd</span></p>
+              <div class="h-1.5 rounded-full bg-white/[0.05] overflow-hidden">
+                <div class="h-full rounded-full" :class="row.wr >= 50 ? 'bg-gradient-to-r from-green-500/80 to-emerald-400/80' : 'bg-gradient-to-r from-red-500/80 to-orange-400/80'" :style="{ width: row.wr + '%' }" />
               </div>
             </div>
             <div v-if="mapRows.length === 0" class="px-3 py-4 text-center text-[10px] text-gray-700">No data</div>
@@ -201,6 +239,7 @@ type RangeValue = '7d' | '30d' | '90d' | 'all'
 
 const loading = ref(true)
 const allAnalyses = ref<AnalysisItem[]>([])
+const rankHistory = ref<Array<{ id: number; date: string; rank: string | null; rr: number; elo: number }>>([])
 const range = ref<RangeValue>('30d')
 
 const ranges: { label: string; value: RangeValue }[] = [
@@ -250,6 +289,39 @@ function scoreColor(s: number): string {
   return 'text-red-400'
 }
 
+function averageOf(values: number[]): number | null {
+  if (!values.length) return null
+  return values.reduce((sum, value) => sum + value, 0) / values.length
+}
+
+function buildDelta(values: Array<number | null | undefined>): number | null {
+  const clean = values.filter((value): value is number => typeof value === 'number' && Number.isFinite(value))
+  if (clean.length < 2) return null
+  const splitIndex = Math.max(1, Math.floor(clean.length / 2))
+  const previous = averageOf(clean.slice(0, splitIndex))
+  const recent = averageOf(clean.slice(splitIndex))
+  if (previous == null || recent == null) return null
+  return recent - previous
+}
+
+const statDeltas = computed(() => ({
+  winRate: buildDelta([...filteredAnalyses.value].reverse().map(a => a.won == null ? null : (a.won ? 100 : 0))),
+  score: buildDelta([...filteredAnalyses.value].reverse().map(a => a.overall_score ?? null)),
+  kda: buildDelta([...filteredAnalyses.value].reverse().map(a => a.kills != null && a.deaths != null ? a.kills / Math.max(1, a.deaths) : null)),
+  hs: buildDelta([...filteredAnalyses.value].reverse().map(a => a.hs_pct ?? null)),
+}))
+
+function metricDeltaClass(value: number | null): string {
+  if (value == null || Math.abs(value) < 0.05) return 'text-gray-700'
+  return value > 0 ? 'text-green-400' : 'text-red-400'
+}
+
+function metricDeltaLabel(value: number | null, suffix = ''): string {
+  if (value == null || Math.abs(value) < 0.05) return 'Stable'
+  const rounded = Math.abs(value) >= 10 ? Math.round(value) : Number(value.toFixed(1))
+  return `${value > 0 ? 'Up' : 'Down'} ${Math.abs(rounded)}${suffix}`
+}
+
 // ── Recent form + sparkline ───────────────────────────────────────────────────
 
 const recentForm = computed(() =>
@@ -292,6 +364,35 @@ function buildSparkPath(filled: boolean): string {
 
 const sparkLine = computed(() => buildSparkPath(false))
 const sparkArea = computed(() => buildSparkPath(true))
+
+const RANK_W = 400
+const RANK_H = 44
+const rankPoints = computed(() => rankHistory.value.slice(-12).map(entry => entry.rr))
+const rankStartLabel = computed(() => rankHistory.value.slice(-12)[0]?.rank ?? 'Earlier')
+const rankEndLabel = computed(() => rankHistory.value.slice(-12)[rankHistory.value.slice(-12).length - 1]?.rank ?? 'Latest')
+const rankDelta = computed(() => {
+  const points = rankPoints.value
+  if (points.length < 2) return 0
+  return points[points.length - 1] - points[0]
+})
+
+function buildRankPath(filled: boolean): string {
+  const points = rankPoints.value
+  if (points.length < 2) return ''
+  const minVal = Math.min(...points)
+  const maxVal = Math.max(...points)
+  const range = Math.max(1, maxVal - minVal)
+  const xs = points.map((_, i) => SPARK_PAD + (i / (points.length - 1)) * (RANK_W - SPARK_PAD * 2))
+  const ys = points.map(value => RANK_H - SPARK_PAD - ((value - minVal) / range) * (RANK_H - SPARK_PAD * 2))
+  const pointStr = xs.map((x, i) => `${x},${ys[i]}`).join(' L ')
+  if (filled) {
+    return `M ${xs[0]},${RANK_H} L ${xs[0]},${ys[0]} L ${pointStr} L ${xs[xs.length - 1]},${RANK_H} Z`
+  }
+  return `M ${pointStr}`
+}
+
+const rankLine = computed(() => buildRankPath(false))
+const rankArea = computed(() => buildRankPath(true))
 
 // ── By Agent & By Map ─────────────────────────────────────────────────────────
 
@@ -356,8 +457,16 @@ const worstMap = computed((): BreakdownRow | null => {
 
 onMounted(async () => {
   try {
-    allAnalyses.value = await window.api.analyses.get(100)
-  } catch { /* non-critical */ }
+    const [analyses, rrHistory] = await Promise.all([
+      window.api.analyses.get(100),
+      window.api.stats.rrHistory().catch(() => []),
+    ])
+    allAnalyses.value = analyses
+    rankHistory.value = rrHistory
+  } catch {
+    allAnalyses.value = []
+    rankHistory.value = []
+  }
   loading.value = false
 })
 </script>

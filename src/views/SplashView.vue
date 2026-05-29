@@ -17,6 +17,8 @@
       <!-- Logo lockup -->
       <div class="logo-lockup">
         <div class="logo-ring">
+          <div class="logo-halo" />
+          <div class="logo-shimmer" />
           <img src="../assets/upforge-logo.png" alt="UpForge" class="logo-img" />
         </div>
         <div class="wordmark">
@@ -44,6 +46,12 @@
           <Transition name="bar-fade">
             <div v-if="!showProgress" class="loader-track">
               <div class="loader-bar" />
+              <div class="loader-spinner-wrap">
+                <svg class="loader-spinner" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                  <circle cx="12" cy="12" r="9" stroke-width="1.75" opacity="0.18" />
+                  <path stroke-linecap="round" stroke-width="2" d="M12 3a9 9 0 017.5 4" />
+                </svg>
+              </div>
             </div>
           </Transition>
         </div>
@@ -253,21 +261,40 @@ onUnmounted(() => {
 
 .logo-ring {
   position: relative;
-  width: 80px;
-  height: 80px;
-  border-radius: 22px;
-  background: transparent;
-  border: none;
+  width: 92px;
+  height: 92px;
+  border-radius: 26px;
+  background: linear-gradient(180deg, rgba(255,255,255,0.06), rgba(255,255,255,0.02));
+  border: 1px solid rgba(255,255,255,0.08);
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: none;
+  box-shadow: 0 18px 40px rgba(0,0,0,0.25), inset 0 1px 0 rgba(255,255,255,0.04);
+  overflow: hidden;
+  animation: logoRingPulse 3s ease-in-out infinite;
+}
+.logo-halo {
+  position: absolute;
+  inset: 12px;
+  border-radius: 20px;
+  background: radial-gradient(circle, rgba(239,68,68,0.18) 0%, rgba(249,115,22,0.08) 48%, transparent 72%);
+  animation: haloPulse 2.6s ease-in-out infinite;
+}
+.logo-shimmer {
+  position: absolute;
+  inset: -40% 20%;
+  transform: rotate(20deg) translateX(-120%);
+  background: linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.2) 45%, transparent 80%);
+  animation: logoSweep 2.8s ease-in-out infinite;
 }
 .logo-img {
-  height: 44px;
+  position: relative;
+  z-index: 1;
+  height: 50px;
   width: auto;
   object-fit: contain;
-  filter: drop-shadow(0 0 16px rgba(239,68,68,0.4));
+  filter: drop-shadow(0 0 18px rgba(239,68,68,0.45));
+  animation: logoFloat 2.8s ease-in-out infinite;
 }
 
 .wordmark {
@@ -301,22 +328,36 @@ onUnmounted(() => {
   flex-direction: column;
   align-items: center;
   gap: 14px;
-  width: 280px;
+  width: 300px;
+  padding: 14px 16px 12px;
+  border-radius: 18px;
+  background: rgba(10,12,18,0.42);
+  border: 1px solid rgba(255,255,255,0.06);
+  animation: statusGlow 2.6s ease-in-out infinite;
 }
 .status-text {
   font-size: 11px;
-  color: rgba(107,114,128,0.9);
+  color: rgba(156,163,175,0.9);
   text-align: center;
-  font-weight: 500;
-  letter-spacing: 0.02em;
+  font-weight: 600;
+  letter-spacing: 0.04em;
   min-height: 16px;
   margin: 0;
+}
+.status-text::after {
+  content: '';
+  display: block;
+  width: 56px;
+  height: 1px;
+  margin: 8px auto 0;
+  background: linear-gradient(90deg, transparent, rgba(239,68,68,0.45), rgba(249,115,22,0.45), transparent);
+  animation: underlinePulse 1.8s ease-in-out infinite;
 }
 
 /* ── Progress bar (deterministic) ── */
 .progress-area {
   width: 100%;
-  height: 2px;
+  height: 8px;
   position: relative;
 }
 .progress-track {
@@ -325,24 +366,28 @@ onUnmounted(() => {
   background: rgba(255,255,255,0.05);
   border-radius: 99px;
   overflow: visible;
+  animation: trackPulse 1.8s ease-in-out infinite;
 }
 .progress-fill {
   height: 100%;
-  background: linear-gradient(90deg, #ff4655, #f97316);
+  background: linear-gradient(90deg, #ff4655, #f97316, #ff4655);
+  background-size: 200% 100%;
   border-radius: 99px;
   transition: width 0.5s cubic-bezier(0.16,1,0.3,1);
-  box-shadow: 0 0 10px rgba(239,68,68,0.7);
+  box-shadow: 0 0 14px rgba(239,68,68,0.45);
+  animation: barFlow 1.4s linear infinite;
 }
 .progress-tip {
   position: absolute;
   top: 50%;
   transform: translate(-50%, -50%);
-  width: 8px;
-  height: 8px;
-  background: #f97316;
+  width: 12px;
+  height: 12px;
+  background: radial-gradient(circle, rgba(255,255,255,0.9) 0%, rgba(249,115,22,0.8) 35%, rgba(249,115,22,0.1) 80%);
   border-radius: 50%;
-  filter: blur(3px);
+  filter: blur(1px);
   transition: left 0.5s cubic-bezier(0.16,1,0.3,1);
+  animation: dotOrbit 1.2s ease-in-out infinite;
 }
 
 /* ── Indeterminate loader ── */
@@ -355,14 +400,84 @@ onUnmounted(() => {
 }
 .loader-bar {
   height: 100%;
-  width: 40%;
-  background: linear-gradient(90deg, transparent, #ff4655, #f97316, transparent);
+  width: 38%;
+  background: linear-gradient(90deg, transparent, rgba(239,68,68,0.95), rgba(249,115,22,0.95), transparent);
   border-radius: 99px;
-  animation: loader-slide 1.6s ease-in-out infinite;
+  animation: loaderOrbit 1.5s ease-in-out infinite;
 }
-@keyframes loader-slide {
-  0%   { transform: translateX(-120%); }
+.loader-spinner-wrap {
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 999px;
+  background: rgba(10,10,10,0.8);
+  border: 1px solid rgba(255,255,255,0.08);
+  animation: loaderGlow 1.5s ease-in-out infinite, spinnerFloat 1.5s ease-in-out infinite;
+}
+.loader-spinner {
+  width: 11px;
+  height: 11px;
+  color: #fca5a5;
+  animation: loaderSpin 0.85s linear infinite;
+}
+
+@keyframes haloPulse {
+  0%, 100% { opacity: 0.45; transform: scale(0.96); }
+  50% { opacity: 0.9; transform: scale(1.02); }
+}
+@keyframes logoSweep {
+  0% { transform: rotate(20deg) translateX(-120%); }
+  55%, 100% { transform: rotate(20deg) translateX(180%); }
+}
+@keyframes logoFloat {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-3px); }
+}
+@keyframes logoRingPulse {
+  0%, 100% { box-shadow: 0 18px 40px rgba(0,0,0,0.25), inset 0 1px 0 rgba(255,255,255,0.04); }
+  50% { box-shadow: 0 18px 50px rgba(239,68,68,0.15), inset 0 1px 0 rgba(255,255,255,0.04); }
+}
+@keyframes statusGlow {
+  0%, 100% { box-shadow: 0 0 0 rgba(239,68,68,0); }
+  50% { box-shadow: 0 0 18px rgba(239,68,68,0.18); }
+}
+@keyframes underlinePulse {
+  0%, 100% { opacity: 0.45; }
+  50% { opacity: 0.9; }
+}
+@keyframes trackPulse {
+  0%, 100% { opacity: 0.8; }
+  50% { opacity: 1; }
+}
+@keyframes barFlow {
+  0% { background-position: 200% 50%; }
+  100% { background-position: 0% 50%; }
+}
+@keyframes dotOrbit {
+  0% { transform: translate(-50%, -50%) scale(0.9); }
+  50% { transform: translate(-50%, -50%) scale(1.15); }
+  100% { transform: translate(-50%, -50%) scale(0.9); }
+}
+@keyframes loaderOrbit {
+  0% { transform: translateX(-120%); }
   100% { transform: translateX(350%); }
+}
+@keyframes loaderSpin {
+  to { transform: rotate(360deg); }
+}
+@keyframes loaderGlow {
+  0%, 100% { opacity: 0.5; }
+  50% { opacity: 1; }
+}
+@keyframes spinnerFloat {
+  0%, 100% { transform: translateY(-50%); }
+  50% { transform: translateY(calc(-50% - 1px)); }
 }
 
 /* ── Bottom meta ── */

@@ -185,29 +185,52 @@
         <!-- Stat grid -->
         <div class="grid grid-cols-2 gap-1">
           <!-- GPU -->
-          <div class="px-3 py-2 rounded-lg bg-white/[0.02] border border-white/[0.05] space-y-0.5">
+          <div class="px-3 py-2 rounded-lg bg-white/[0.02] border border-white/[0.05] space-y-1">
             <p class="text-xs text-gray-600 font-medium uppercase tracking-wide">GPU</p>
             <p class="text-xs text-gray-300 font-semibold truncate">{{ diagnostics.gpuName || '—' }}</p>
-            <p class="text-xs text-gray-500">
-              <span :class="diagnostics.gpuUsagePct > 85 ? 'text-yellow-400' : 'text-gray-400'">{{ diagnostics.gpuUsagePct }}%</span>
-              usage · {{ diagnostics.gpuTempC > 0 ? diagnostics.gpuTempC + '°C' : '—' }}
-            </p>
+            <div class="flex items-center gap-2">
+              <div class="flex-1 h-1 bg-white/[0.07] rounded-full overflow-hidden">
+                <div
+                  class="h-full rounded-full transition-all"
+                  :class="diagnostics.gpuUsagePct > 85 ? 'bg-yellow-500' : diagnostics.gpuUsagePct > 60 ? 'bg-green-500' : 'bg-green-500/60'"
+                  :style="{ width: diagnostics.gpuUsagePct + '%' }"
+                />
+              </div>
+              <span :class="['text-[10px] font-semibold tabular-nums', diagnostics.gpuUsagePct > 85 ? 'text-yellow-400' : 'text-gray-400']">{{ diagnostics.gpuUsagePct }}%</span>
+            </div>
+            <p class="text-[10px] text-gray-600">{{ diagnostics.gpuTempC > 0 ? diagnostics.gpuTempC + '°C' : '—' }}</p>
           </div>
           <!-- CPU -->
-          <div class="px-3 py-2 rounded-lg bg-white/[0.02] border border-white/[0.05] space-y-0.5">
+          <div class="px-3 py-2 rounded-lg bg-white/[0.02] border border-white/[0.05] space-y-1">
             <p class="text-xs text-gray-600 font-medium uppercase tracking-wide">CPU</p>
-            <p class="text-xs font-semibold" :class="diagnostics.cpuUsagePct > 80 ? 'text-orange-400' : 'text-gray-300'">{{ diagnostics.cpuUsagePct }}%</p>
-            <p class="text-xs text-gray-500">{{ diagnostics.cpuSpeedMhz }} / {{ diagnostics.cpuMaxMhz }} MHz</p>
+            <div class="flex items-center gap-2">
+              <div class="flex-1 h-1 bg-white/[0.07] rounded-full overflow-hidden">
+                <div
+                  class="h-full rounded-full transition-all"
+                  :class="diagnostics.cpuUsagePct > 80 ? 'bg-orange-500' : diagnostics.cpuUsagePct > 60 ? 'bg-yellow-500' : 'bg-green-500/60'"
+                  :style="{ width: diagnostics.cpuUsagePct + '%' }"
+                />
+              </div>
+              <span :class="['text-[10px] font-semibold tabular-nums', diagnostics.cpuUsagePct > 80 ? 'text-orange-400' : 'text-gray-400']">{{ diagnostics.cpuUsagePct }}%</span>
+            </div>
+            <p class="text-[10px] text-gray-500">{{ diagnostics.cpuSpeedMhz }} / {{ diagnostics.cpuMaxMhz }} MHz</p>
           </div>
           <!-- RAM -->
-          <div class="px-3 py-2 rounded-lg bg-white/[0.02] border border-white/[0.05] space-y-0.5 col-span-2">
+          <div class="px-3 py-2 rounded-lg bg-white/[0.02] border border-white/[0.05] space-y-1 col-span-2">
             <p class="text-xs text-gray-600 font-medium uppercase tracking-wide">RAM</p>
             <div class="flex items-center gap-3">
-              <p class="text-xs text-gray-300 font-semibold">{{ diagnostics.ramUsedMb }} / {{ diagnostics.ramTotalMb }} MB</p>
-              <p class="text-xs" :class="!diagnostics.xmpEnabled ? 'text-orange-400' : 'text-gray-500'">
-                {{ diagnostics.ramSpeedMhz }} MHz{{ !diagnostics.xmpEnabled ? ' — XMP may be off' : '' }}
-              </p>
+              <div class="flex-1 h-1 bg-white/[0.07] rounded-full overflow-hidden">
+                <div
+                  class="h-full rounded-full transition-all"
+                  :class="diagnostics.ramTotalMb > 0 && (diagnostics.ramUsedMb / diagnostics.ramTotalMb) > 0.85 ? 'bg-orange-500' : 'bg-blue-500/70'"
+                  :style="{ width: diagnostics.ramTotalMb > 0 ? ((diagnostics.ramUsedMb / diagnostics.ramTotalMb) * 100) + '%' : '0%' }"
+                />
+              </div>
+              <p class="text-xs text-gray-300 font-semibold tabular-nums flex-shrink-0">{{ diagnostics.ramUsedMb }} / {{ diagnostics.ramTotalMb }} MB</p>
             </div>
+            <p class="text-[10px]" :class="!diagnostics.xmpEnabled ? 'text-orange-400' : 'text-gray-600'">
+              {{ diagnostics.ramSpeedMhz }} MHz{{ !diagnostics.xmpEnabled ? ' — XMP may be off' : '' }}
+            </p>
           </div>
         </div>
 
