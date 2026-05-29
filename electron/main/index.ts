@@ -1991,8 +1991,13 @@ app.whenReady().then(async () => {
   session.defaultSession.setDisplayMediaRequestHandler(async (_request, callback) => {
     try {
       const sourceId = consumePendingCaptureSourceId()
-      const sources = await desktopCapturer.getSources({ types: ['screen', 'window'] })
+      // Only request screen sources — never window sources — so the fallback is always
+      // a display capture, not an open app window (e.g. Chrome).
+      const sources = await desktopCapturer.getSources({ types: ['screen'] })
       const source = (sourceId ? sources.find(s => s.id === sourceId) : null) ?? sources[0]
+      if (sourceId && !sources.find(s => s.id === sourceId)) {
+        log.warn('[App] setDisplayMediaRequestHandler: source ID not found, falling back to primary screen:', sourceId)
+      }
       callback({ video: source ?? sources[0], audio: 'loopback' as const })
     } catch (err) {
       console.error('[App] setDisplayMediaRequestHandler error:', err)

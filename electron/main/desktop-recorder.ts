@@ -1,5 +1,5 @@
 import { ipcMain, WebContents, app } from 'electron'
-import { createWriteStream, WriteStream, existsSync, mkdirSync, statSync, unlinkSync, writeFileSync, rmSync, renameSync } from 'fs'
+import { createWriteStream, WriteStream, existsSync, mkdirSync, statSync, unlinkSync, writeFileSync, rmSync } from 'fs'
 import { statfs } from 'fs/promises'
 import { join, parse } from 'path'
 import { spawn } from 'child_process'
@@ -15,24 +15,31 @@ function ffmpegBinaryPath(): string {
 }
 
 /**
- * Remux a raw MediaRecorder WebM file so it has proper duration and Cue (seek) entries.
- * MediaRecorder writes WebM as a "live" stream — no duration metadata, no seek table.
- * ffmpeg -c copy rewrites the container headers in seconds without re-encoding any video.
- * Returns the path of the fixed file (same path as input), or null if ffmpeg is unavailable.
+ * Remux a raw MediaRecorder WebM file into an MP4 container so it has proper duration
+ * metadata that all video players can seek.
+ *
+ * MediaRecorder writes WebM as a "live" stream — no duration atom, no seek table.
+ * MP4 (moov atom) always contains accurate duration regardless of the video codec used,
+ * so remuxing to MP4 is more reliable than WebM-to-WebM for seekability.
+ * ffmpeg -c copy is a lossless container-only rewrite — no re-encoding, takes seconds.
+ *
+ * Returns the path of the fixed MP4 file, or null if ffmpeg is unavailable/fails.
  */
 async function fixWebmDuration(inputPath: string): Promise<string | null> {
   return new Promise((resolve) => {
     const ffmpeg = ffmpegBinaryPath()
     if (!existsSync(ffmpeg) && (ffmpeg.includes('/') || ffmpeg.includes('\\'))) {
-      // bundled ffmpeg not found — skip remux silently
+      console.warn('[DesktopRecorder] Bundled ffmpeg not found at:', ffmpeg, '— skipping duration fix')
       resolve(null)
       return
     }
 
-    const { dir, name, ext } = parse(inputPath)
-    const fixedPath = join(dir, `${name}_fixed${ext}`)
+    const { dir, name } = parse(inputPath)
+    // Output to MP4 — moov atom always carries duration, works in all players.
+    const fixedPath = join(dir, `${name}.mp4`)
 
-    const args = ['-y', '-i', inputPath, '-c', 'copy', fixedPath]
+    const args = ['-y', '-i', inputPath, '-c', 'copy', '-movflags', '+faststart', fixedPath]
+    console.info('[DesktopRecorder] Remuxing to MP4 for duration metadata:', inputPath, '→', fixedPath)
     const proc = spawn(ffmpeg, args, { stdio: 'pipe' })
 
     let stderr = ''
@@ -40,18 +47,12 @@ async function fixWebmDuration(inputPath: string): Promise<string | null> {
 
     proc.on('close', (code) => {
       if (code === 0 && existsSync(fixedPath)) {
-        try {
-          unlinkSync(inputPath)
-          renameSync(fixedPath, inputPath)
-          resolve(inputPath)
-        } catch (err) {
-          console.warn('[DesktopRecorder] Could not replace WebM with fixed version:', err)
-          // Leave the fixed file as-is, return it
-          resolve(fixedPath)
-        }
+        // Delete the raw WebM now that we have a proper MP4
+        try { unlinkSync(inputPath) } catch { /* ignore if already gone */ }
+        console.info('[DesktopRecorder] Remux to MP4 complete:', fixedPath)
+        resolve(fixedPath)
       } else {
         console.warn('[DesktopRecorder] ffmpeg remux failed (code=%d): %s', code, stderr.slice(-500))
-        // Clean up partial output if it exists
         if (existsSync(fixedPath)) { try { unlinkSync(fixedPath) } catch { /* ignore */ } }
         resolve(null)
       }
@@ -152,12 +153,12 @@ export class DesktopRecorder {
         this._pendingStop = null
         this.onStatusChange?.(false)
 
-        // Remux the raw MediaRecorder WebM to add proper duration + Cue seek table.
-        // This is a fast container-only rewrite (no re-encoding).
+        // Remux the raw MediaRecorder WebM to MP4 to add proper duration + moov atom.
+        // This is a fast container-only rewrite (no re-encoding). Returns the MP4 path.
         if (this._outputPath && existsSync(this._outputPath)) {
           const fixed = await fixWebmDuration(this._outputPath)
           if (fixed) {
-            console.info('[DesktopRecorder] WebM duration fixed:', fixed)
+            this._outputPath = fixed
           }
         }
 
@@ -299,8 +300,8 @@ export class DesktopRecorder {
 
     return new Promise<string | null>((resolve) => {
       // Force-resolve after 15s in case the renderer never sends 'complete'.
-      // Wait for the writeStream to fully flush before resolving so the file isn't truncated.
-      this._stopTimeout = setTimeout(() => {
+      // Still attempt the duration fix even on timeout so the file is seekable.
+      this._stopTimeout = setTimeout(async () => {
         console.warn('[DesktopRecorder] Stop timed out — finalising anyway')
         this._recording = false
         this._startedAt = null
@@ -308,8 +309,18 @@ export class DesktopRecorder {
         if (this._writeStream) {
           const ws = this._writeStream
           this._writeStream = null
-          ws.end(() => resolve(this._outputPath))
+          ws.end(async () => {
+            if (this._outputPath && existsSync(this._outputPath)) {
+              const fixed = await fixWebmDuration(this._outputPath)
+              if (fixed) this._outputPath = fixed
+            }
+            resolve(this._outputPath)
+          })
         } else {
+          if (this._outputPath && existsSync(this._outputPath)) {
+            const fixed = await fixWebmDuration(this._outputPath)
+            if (fixed) this._outputPath = fixed
+          }
           resolve(this._outputPath)
         }
       }, 15_000)

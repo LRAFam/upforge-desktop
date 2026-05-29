@@ -78,16 +78,17 @@ export function useDesktopRecording() {
         })
       }
 
-      // Codec priority: H.264 hardware (GPU, lowest CPU impact) → VP8 → VP9 (last
-      // resort — software-only, crushes CPU and will cause game frame drops).
-      // H.264 uses NVENC/AMF/QSV on Windows, VideoToolbox on macOS.
+      // Codec priority: VP9 (native WebM codec, hardware-accelerated on modern GPUs) →
+      // VP8 (universal WebM fallback) → H.264 in WebM (non-standard, avoid if possible).
+      // H.264 in WebM is produced by some Chromium builds but is non-standard and can
+      // confuse ffmpeg remux; VP9/VP8 remux to MP4 is more reliable.
       const mimeType =
-        MediaRecorder.isTypeSupported('video/webm;codecs=h264')
-          ? 'video/webm;codecs=h264'
+        MediaRecorder.isTypeSupported('video/webm;codecs=vp9,opus')
+          ? 'video/webm;codecs=vp9,opus'
           : MediaRecorder.isTypeSupported('video/webm;codecs=vp8,opus')
             ? 'video/webm;codecs=vp8,opus'
-            : MediaRecorder.isTypeSupported('video/webm;codecs=vp9,opus')
-              ? 'video/webm;codecs=vp9,opus'
+            : MediaRecorder.isTypeSupported('video/webm;codecs=h264')
+              ? 'video/webm;codecs=h264'
               : 'video/webm'
 
       console.info('[DesktopRecording] Using codec:', mimeType)
