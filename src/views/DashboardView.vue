@@ -127,9 +127,9 @@
           <!-- Hero agents artwork -->
           <img src="../assets/hero-agents.webp" alt="" class="pointer-events-none absolute right-0 top-0 h-full w-[42%] object-cover object-left opacity-[0.14] select-none" />
           <div class="pointer-events-none absolute inset-y-0" style="right:28%;width:10rem;background:linear-gradient(to right,#111111,transparent)" />
-          <div class="relative space-y-3">
+          <div class="relative space-y-2">
             <div class="flex items-start justify-between gap-4">
-              <div class="space-y-4">
+              <div class="space-y-2">
                 <div class="flex flex-wrap items-center gap-2.5">
                   <span class="text-[10px] font-black uppercase tracking-[0.32em] text-red-400/80">Command Center</span>
                   <div v-if="status.recording" class="inline-flex items-center gap-2.5 rounded-full border border-red-500/25 bg-red-500/[0.14] px-3 py-1.5 shadow-[0_0_24px_rgba(239,68,68,0.12)]">
@@ -140,10 +140,7 @@
                     <span class="text-[11px] font-black uppercase tracking-[0.24em] text-red-200">Recording live</span>
                   </div>
                 </div>
-                <div class="space-y-2.5">
-                  <h1 class="text-4xl font-black tracking-tight text-white leading-[1.02]">{{ dashboardHeadline }}</h1>
-                  <p class="max-w-2xl text-sm leading-relaxed text-gray-400">Stay on top of live capture, recent coaching sessions, and the clips that matter most from a single focused workspace.</p>
-                </div>
+                <h1 class="text-3xl font-black tracking-tight text-white leading-[1.02]">{{ dashboardHeadline }}</h1>
               </div>
               <div v-if="status.recording && recordingElapsed" class="rounded-2xl border border-red-500/20 bg-black/20 px-3.5 py-2.5 text-right shadow-[0_0_18px_rgba(239,68,68,0.1)]">
                 <p class="text-[10px] font-semibold uppercase tracking-[0.24em] text-red-300/70">Live timer</p>
@@ -160,7 +157,7 @@
                   </div>
                   <div class="min-w-0">
                     <p class="text-base font-black tabular-nums text-white">{{ clipCount }}</p>
-                    <p class="text-[9px] font-semibold uppercase tracking-[0.24em] text-gray-600">Total Clips</p>
+                    <p class="text-[9px] font-semibold uppercase tracking-[0.24em] text-gray-600">Clips</p>
                   </div>
                 </div>
               </div>
@@ -173,7 +170,7 @@
                   </div>
                   <div class="min-w-0">
                     <p class="text-base font-black tabular-nums text-white">{{ totalSessionsAnalysed }}</p>
-                    <p class="text-[9px] font-semibold uppercase tracking-[0.24em] text-gray-600">Sessions</p>
+                    <p class="text-[9px] font-semibold uppercase tracking-[0.24em] text-gray-600">Analyses</p>
                   </div>
                 </div>
               </div>
@@ -181,13 +178,13 @@
                 <div class="flex items-center gap-2.5">
                   <div class="flex h-8 w-8 items-center justify-center rounded-full border border-white/[0.08] bg-white/[0.04] flex-shrink-0">
                     <img v-if="getRankIconUrl(profile?.latest_stats?.current_rank)" :src="getRankIconUrl(profile?.latest_stats?.current_rank)!" :alt="profile?.latest_stats?.current_rank ?? ''" class="w-7 h-7 object-contain drop-shadow-lg" />
-                    <svg v-else class="h-3.5 w-3.5 text-gray-200" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" d="M12 3l2.5 5.5 6 .9-4.3 4.2 1 5.9-5.2-2.9-5.2 2.9 1-5.9L3.5 9.4l6-.9L12 3z" />
+                    <svg v-else class="h-3.5 w-3.5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
                     </svg>
                   </div>
                   <div class="min-w-0">
                     <p class="text-base font-black text-white truncate">{{ dashboardRankLabel }}</p>
-                    <p class="text-[9px] font-semibold uppercase tracking-[0.24em] text-gray-600">Current Rank</p>
+                    <p class="text-[9px] font-semibold uppercase tracking-[0.24em] text-gray-600">Rank</p>
                   </div>
                 </div>
               </div>
@@ -200,8 +197,8 @@
                     </svg>
                   </div>
                   <div class="min-w-0">
-                    <p class="text-base font-black tabular-nums text-white">{{ dashboardWinRateLabel }}</p>
-                    <p class="text-[9px] font-semibold uppercase tracking-[0.24em] text-gray-600">Win Rate</p>
+                    <p class="text-base font-black tabular-nums" :class="currentStreak > 0 ? 'text-green-400' : currentStreak < 0 ? 'text-red-400' : 'text-white'">{{ currentStreak !== 0 ? (currentStreak > 0 ? '+' : '') + currentStreak : '—' }}</p>
+                    <p class="text-[9px] font-semibold uppercase tracking-[0.24em] text-gray-600">Streak</p>
                   </div>
                 </div>
               </div>
@@ -797,19 +794,17 @@
         </div>
 
         <!-- Empty coaching insight CTA -->
-        <div v-else class="relative bg-white/[0.02] border border-white/[0.09] rounded-2xl overflow-hidden">
+        <div v-else class="relative bg-white/[0.02] border border-white/[0.09] rounded-xl overflow-hidden">
           <div class="absolute left-0 top-0 bottom-0 w-[3px] bg-gradient-to-b from-[#ff4655]/30 to-orange-600/30 rounded-l-xl" />
-          <div class="pl-5 pr-4 py-5 flex flex-col items-center text-center gap-3">
-            <div class="w-10 h-10 rounded-xl bg-red-500/10 border border-red-500/20 flex items-center justify-center">
-              <svg class="w-5 h-5 text-red-400/60" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9.663 17h4.673M12 3v1m6.364 1.636-.707.707M21 12h-1M4 12H3m3.343-5.657-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"/></svg>
+          <div class="pl-4 pr-3 py-3 flex items-center gap-3">
+            <div class="w-9 h-9 rounded-xl bg-red-500/10 border border-red-500/20 flex items-center justify-center flex-shrink-0">
+              <svg class="w-4 h-4 text-red-400/60" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9.663 17h4.673M12 3v1m6.364 1.636-.707.707M21 12h-1M4 12H3m3.343-5.657-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"/></svg>
             </div>
-            <div>
+            <div class="flex-1 min-w-0">
               <p class="text-xs font-semibold text-gray-400">No coaching data yet</p>
-              <p class="text-[11px] text-gray-600 mt-1 leading-relaxed">Record a game and run Analysis to get personalised coaching insights and a skill score</p>
+              <p class="text-[11px] text-gray-600 truncate">Run an Analysis after a game to get personalised insights</p>
             </div>
-            <button class="w-full py-2 text-xs font-semibold rounded-xl text-white/70 hover:text-white transition-all" style="background:linear-gradient(135deg,rgba(255,70,85,0.1),rgba(220,38,38,0.1));border:1px solid rgba(255,70,85,0.15)" @click="router.push('/settings')">
-              Set Up Recording →
-            </button>
+            <button class="flex-shrink-0 px-2.5 py-1.5 text-[11px] font-semibold text-gray-400 hover:text-white border border-white/[0.09] hover:border-white/[0.14] rounded-lg transition-colors" @click="router.push('/settings')">Setup</button>
           </div>
         </div>
 
@@ -885,41 +880,6 @@
               <div :class="['w-1.5 h-1.5 rounded-full flex-shrink-0', logEntryColor(entry.message)]" />
               <span class="text-[10px] text-gray-700 tabular-nums flex-shrink-0 font-mono">{{ formatLogTime(entry.time) }}</span>
               <span class="text-[10px] text-gray-400 leading-snug">{{ entry.message }}</span>
-            </div>
-          </div>
-        </div>
-
-        <!-- Season stats card -->
-        <div v-if="profile?.latest_stats" class="bg-white/[0.02] border border-white/[0.10] rounded-2xl overflow-hidden">
-          <div class="px-4 py-2.5 border-b border-white/[0.07] flex items-center justify-between">
-            <span class="text-[10px] font-bold uppercase tracking-widest text-gray-600">Season Stats</span>
-            <button class="text-[10px] text-gray-600 hover:text-gray-300 transition-colors" @click="router.push('/stats')">Details →</button>
-          </div>
-          <div class="grid grid-cols-2 divide-x divide-y divide-white/[0.04]">
-            <div class="flex flex-col items-center py-3.5 px-2">
-              <img v-if="getRankIconUrl(profile.latest_stats.current_rank)" :src="getRankIconUrl(profile.latest_stats.current_rank)!" :alt="profile.latest_stats.current_rank ?? ''" class="w-10 h-10 object-contain drop-shadow-lg" />
-              <span v-else class="text-lg font-black tabular-nums leading-none stat-number" :style="{ color: getRankHexColor(profile.latest_stats.current_rank ?? '') }">{{ profile.latest_stats.current_rank || '—' }}</span>
-              <span class="text-[10px] text-gray-600 mt-1">{{ profile.latest_stats.current_rank || 'Rank' }}</span>
-            </div>
-            <div class="flex flex-col items-center py-3.5 px-2">
-              <span class="text-lg font-black tabular-nums leading-none stat-number" :class="profile.latest_stats.win_rate != null ? (profile.latest_stats.win_rate >= 52 ? 'text-green-400' : profile.latest_stats.win_rate >= 45 ? 'text-white' : 'text-red-400') : 'text-gray-500'">{{ profile.latest_stats.win_rate != null ? Math.round(profile.latest_stats.win_rate) + '%' : '—' }}</span>
-              <span class="text-[10px] text-gray-600 mt-1">Win Rate</span>
-            </div>
-            <div class="flex flex-col items-center py-3.5 px-2">
-              <span class="text-lg font-black tabular-nums leading-none stat-number" :class="profile.latest_stats.kd_ratio != null ? (profile.latest_stats.kd_ratio >= 1.2 ? 'text-green-400' : profile.latest_stats.kd_ratio >= 0.8 ? 'text-white' : 'text-red-400') : 'text-gray-500'">{{ profile.latest_stats.kd_ratio?.toFixed(2) ?? '—' }}</span>
-              <span class="text-[10px] text-gray-600 mt-1">K/D</span>
-            </div>
-            <div class="flex flex-col items-center py-3.5 px-2">
-              <span class="text-lg font-black tabular-nums leading-none stat-number" :class="profile.latest_stats.avg_combat_score != null ? (profile.latest_stats.avg_combat_score >= 220 ? 'text-orange-400' : 'text-white') : 'text-gray-500'">{{ profile.latest_stats.avg_combat_score ?? '—' }}</span>
-              <span class="text-[10px] text-gray-600 mt-1">Avg ACS</span>
-            </div>
-            <div v-if="profile.latest_stats.elo" class="flex flex-col items-center py-3.5 px-2">
-              <span class="text-lg font-black tabular-nums leading-none text-purple-400 stat-number">{{ profile.latest_stats.elo }}</span>
-              <span class="text-[10px] text-gray-600 mt-1">ELO</span>
-            </div>
-            <div v-if="profile.latest_stats.leaderboard_rank" class="flex flex-col items-center py-3.5 px-2">
-              <span class="text-lg font-black tabular-nums leading-none text-yellow-400 stat-number">#{{ profile.latest_stats.leaderboard_rank }}</span>
-              <span class="text-[10px] text-gray-600 mt-1">Leaderboard</span>
             </div>
           </div>
         </div>
