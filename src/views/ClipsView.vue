@@ -586,7 +586,7 @@
             <h3 class="text-sm font-bold text-white mb-1.5">{{ userTier === 'free' ? 'Upgrade Required' : 'Monthly limit reached' }}</h3>
             <p class="text-[12px] text-gray-500 mb-5 leading-relaxed">
               <template v-if="userTier === 'free'">{{ upgradeModal.message }}</template>
-              <template v-else>You've used all your {{ userTier }} plan analyses for this month. Your allowance resets at the start of next month.</template>
+              <template v-else>You've used all your {{ userTier }} plan analyses for this month. Resets in {{ daysUntilMonthReset() }} day{{ daysUntilMonthReset() === 1 ? '' : 's' }}.</template>
             </p>
 
             <div class="flex flex-col gap-2">
@@ -622,6 +622,12 @@ const playingClip = ref<ClipRecord | null>(null)
 const videoEl = ref<HTMLVideoElement | null>(null)
 const upgradeModal = ref({ show: false, message: '' })
 const userTier = ref<string>('free')
+
+function daysUntilMonthReset(): number {
+  const now = new Date()
+  const firstOfNext = new Date(now.getFullYear(), now.getMonth() + 1, 1)
+  return Math.ceil((firstOfNext.getTime() - now.getTime()) / (1000 * 60 * 60 * 24))
+}
 const uploadingClipId = ref<string | null>(null)
 const uploadError = ref<string | null>(null)
 const trimModal = ref({ show: false, clipId: '', startSec: 0, endSec: 10, duration: 10, loading: false, error: null as string | null })

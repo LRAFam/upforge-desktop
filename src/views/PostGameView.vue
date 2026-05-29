@@ -555,7 +555,7 @@
               <p class="text-xs text-gray-600 mt-1">Premium $14.99/mo · Pro $24.99/mo · Check your email for details.</p>
             </template>
             <template v-else>
-              <p class="text-xs text-gray-400 mt-1">You've used all your {{ userTier }} plan analyses for this month. Your allowance resets at the start of next month.</p>
+              <p class="text-xs text-gray-400 mt-1">You've used all your {{ userTier }} plan analyses for this month. Resets in {{ daysUntilMonthReset() }} day{{ daysUntilMonthReset() === 1 ? '' : 's' }}.</p>
             </template>
           </div>
           <div class="flex gap-2 pt-1">
@@ -688,6 +688,12 @@ const errorMessage = ref('')
 const needsUpgrade = ref(false)
 const upgradeUrl = ref('https://upforge.gg/pricing')
 const userTier = ref<string>('free')
+
+function daysUntilMonthReset(): number {
+  const now = new Date()
+  const firstOfNext = new Date(now.getFullYear(), now.getMonth() + 1, 1)
+  return Math.ceil((firstOfNext.getTime() - now.getTime()) / (1000 * 60 * 60 * 24))
+}
 const isTimeoutError = computed(() => /timed? ?out/i.test(errorMessage.value))
 const pendingRecordingId = ref<string | null>(null)
 const analysing = ref(false)
