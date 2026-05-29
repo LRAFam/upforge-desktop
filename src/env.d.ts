@@ -111,6 +111,8 @@ export interface AppSettings {
     fov: number
     rawInput: boolean
     pollingRate: 125 | 250 | 500 | 1000 | 2000 | 4000
+    movementSpeed: number
+    trainerVolume: number
   }
   /** Crosshair appearance for the aim trainer */
   crosshairSettings: {

@@ -417,6 +417,8 @@ const trainerMouse = ref({
   fov: 103,
   rawInput: true,
   pollingRate: 1000 as 125 | 250 | 500 | 1000 | 2000 | 4000,
+  movementSpeed: 6.75,
+  trainerVolume: 80,
 })
 const DPI_PRESETS = [400, 800, 1600, 3200]
 const POLLING_RATES = [125, 250, 500, 1000, 2000, 4000] as const

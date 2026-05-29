@@ -50,6 +50,8 @@ export interface AppSettings {
     fov: number
     rawInput: boolean
     pollingRate: 125 | 250 | 500 | 1000 | 2000 | 4000
+    movementSpeed: number   // m/s — how fast the player moves in trainer scenarios
+    trainerVolume: number   // 0–100 — hit/miss sound volume
   }
   /** Crosshair appearance for the aim trainer */
   crosshairSettings: {
@@ -104,6 +106,8 @@ const DEFAULTS: AppSettings = {
     fov: 103,
     rawInput: true,
     pollingRate: 1000,
+    movementSpeed: 6.75,
+    trainerVolume: 80,
   },
   crosshairSettings: {
     colorIndex: 1,        // Valorant green default

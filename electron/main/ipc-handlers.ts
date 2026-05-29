@@ -929,6 +929,8 @@ export function setupIpcHandlers(
           game: ms.game,
           sensitivity: ms.sensitivity,
           fov: ms.fov,
+          movement_speed: ms.movementSpeed ?? 6.75,
+          trainer_volume: (ms.trainerVolume ?? 80) / 100,
         },
         crosshair_settings: crosshairSettingsToGodot(cs),
       }

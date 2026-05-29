@@ -519,6 +519,35 @@
                 <span class="inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform" :class="settings.trainerMouse.rawInput ? 'translate-x-4' : 'translate-x-0.5'" />
               </button>
             </div>
+
+            <div>
+              <label class="mb-2 block text-xs text-gray-400">Movement speed</label>
+              <div class="grid grid-cols-3 gap-2">
+                <button
+                  v-for="preset in [{ label: 'Walk', value: 4.4 }, { label: 'Run', value: 6.75 }, { label: 'Fast', value: 9.0 }]"
+                  :key="preset.value"
+                  class="rounded-xl border py-2 text-[11px] font-semibold transition-all"
+                  :class="settings.trainerMouse.movementSpeed === preset.value ? 'border-red-500/30 bg-red-500/10 text-red-300' : 'border-white/[0.10] bg-white/[0.02] text-gray-500 hover:border-white/[0.12] hover:text-gray-300'"
+                  @click="settings.trainerMouse.movementSpeed = preset.value; debouncedSave()"
+                >{{ preset.label }}</button>
+              </div>
+              <p class="mt-2 text-xs text-gray-600">Walk = Valorant shift-walk. Run = Valorant default. Fast = free aim feel.</p>
+            </div>
+
+            <div>
+              <div class="mb-2 flex items-center justify-between">
+                <label class="text-xs text-gray-400">Trainer volume</label>
+                <span class="font-mono text-xs text-gray-400">{{ settings.trainerMouse.trainerVolume }}%</span>
+              </div>
+              <input
+                type="range"
+                v-model.number="settings.trainerMouse.trainerVolume"
+                min="0" max="100" step="5"
+                class="w-full accent-red-500"
+                @input="debouncedSave"
+              />
+              <p class="mt-1 text-xs text-gray-600">Hit and miss sounds in the aim trainer.</p>
+            </div>
           </div>
         </div>
 
@@ -971,6 +1000,8 @@ const settings = reactive<AppSettings>({
     fov: 103,
     rawInput: true,
     pollingRate: 1000,
+    movementSpeed: 6.75,
+    trainerVolume: 80,
   },
   autoOpenBrowser: true,
   crosshairSettings: {

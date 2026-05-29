@@ -35,6 +35,8 @@ export interface DrillConfig {
     game: string
     sensitivity: number
     fov: number
+    movement_speed?: number
+    trainer_volume?: number
   }
   crosshair_settings?: {
     color: [number, number, number]
