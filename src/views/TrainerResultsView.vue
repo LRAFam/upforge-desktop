@@ -158,6 +158,29 @@ const chartDots = computed(() => {
   }))
 })
 
+const breakdownMetrics = computed(() => {
+  const metrics: Array<{ key: string; label: string; value: number; color: string }> = []
+  const totalTargets = result.value.targets_hit + result.value.targets_missed
+
+  if (Number.isFinite(result.value.accuracy_pct)) {
+    metrics.push({ key: 'accuracy', label: 'Accuracy', value: Math.max(0, Math.min(100, Math.round(result.value.accuracy_pct))), color: '#38bdf8' })
+  }
+  if (Number.isFinite(result.value.avg_reaction_ms)) {
+    metrics.push({ key: 'reaction', label: 'Reaction', value: reactionScore(result.value.avg_reaction_ms), color: '#a78bfa' })
+  }
+  if (Number.isFinite(result.value.consistency_score)) {
+    metrics.push({ key: 'consistency', label: 'Consistency', value: Math.max(0, Math.min(100, Math.round(result.value.consistency_score))), color: '#34d399' })
+  }
+  if (totalTargets > 0) {
+    metrics.push({ key: 'targets', label: 'Targets Hit', value: Math.max(0, Math.min(100, Math.round((result.value.targets_hit / totalTargets) * 100))), color: '#f59e0b' })
+  }
+
+  return metrics
+})
+
+const scoreRingCircumference = 2 * Math.PI * 40
+const scoreRingOffset = computed(() => scoreRingCircumference - (Math.max(0, Math.min(100, result.value.score)) / 100) * scoreRingCircumference)
+
 // ── Coaching insight ─────────────────────────────────────────────────────────
 const coachingInsight = computed(() => {
   const r = result.value
@@ -398,6 +421,46 @@ onUnmounted(() => {
           </div>
           <div v-else-if="history?.by_scenario?.[result.scenario]?.sessions?.length === 0" class="mt-2">
             <span class="text-xs text-white/30 italic">First session — no comparison yet</span>
+          </div>
+        </div>
+
+        <div class="rounded-2xl border border-white/[0.06] bg-white/[0.03] p-3">
+          <div class="mb-3 flex items-center justify-between">
+            <div>
+              <div class="text-[9px] font-bold uppercase tracking-widest text-white/25">Score Breakdown</div>
+              <div class="mt-1 text-[10px] text-white/30">Mechanical drivers behind this run</div>
+            </div>
+            <div class="rounded-full border border-white/[0.08] bg-white/[0.04] px-2 py-1 text-[10px] font-semibold text-white/40">{{ breakdownMetrics.length > 1 ? 'Metrics' : 'Score' }}</div>
+          </div>
+
+          <svg v-if="breakdownMetrics.length > 1" viewBox="0 0 220 128" class="h-32 w-full">
+            <g v-for="(metric, index) in breakdownMetrics" :key="metric.key" :transform="`translate(0 ${index * 30})`">
+              <text x="0" y="12" fill="rgba(255,255,255,0.46)" font-size="9" font-weight="700" letter-spacing="0.08em">{{ metric.label.toUpperCase() }}</text>
+              <rect x="0" y="18" width="220" height="8" rx="4" fill="rgba(255,255,255,0.08)" />
+              <rect x="0" y="18" :width="metric.value * 2.2" height="8" rx="4" :fill="metric.color" />
+              <text x="220" y="12" text-anchor="end" :fill="metric.color" font-size="10" font-weight="700">{{ metric.value }}%</text>
+            </g>
+          </svg>
+
+          <div v-else class="relative flex items-center justify-center py-2">
+            <svg viewBox="0 0 100 100" class="h-28 w-28 -rotate-90">
+              <circle cx="50" cy="50" r="40" fill="none" stroke="rgba(255,255,255,0.08)" stroke-width="10" />
+              <circle
+                cx="50"
+                cy="50"
+                r="40"
+                fill="none"
+                :stroke="scoreAccent(result.score)"
+                stroke-width="10"
+                stroke-linecap="round"
+                :stroke-dasharray="scoreRingCircumference"
+                :stroke-dashoffset="scoreRingOffset"
+              />
+            </svg>
+            <div class="absolute text-center">
+              <div class="text-[10px] font-bold uppercase tracking-widest text-white/25">Score</div>
+              <div :class="['mt-1 text-2xl font-black', scoreColor(result.score)]">{{ result.score }}%</div>
+            </div>
           </div>
         </div>
 

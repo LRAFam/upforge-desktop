@@ -184,53 +184,73 @@
 
         <!-- Stat grid -->
         <div class="grid grid-cols-2 gap-1">
-          <!-- GPU -->
-          <div class="px-3 py-2 rounded-lg bg-white/[0.02] border border-white/[0.05] space-y-1">
-            <p class="text-xs text-gray-600 font-medium uppercase tracking-wide">GPU</p>
-            <p class="text-xs text-gray-300 font-semibold truncate">{{ diagnostics.gpuName || '—' }}</p>
-            <div class="flex items-center gap-2">
-              <div class="flex-1 h-1 bg-white/[0.07] rounded-full overflow-hidden">
-                <div
-                  class="h-full rounded-full transition-all"
-                  :class="diagnostics.gpuUsagePct > 85 ? 'bg-yellow-500' : diagnostics.gpuUsagePct > 60 ? 'bg-green-500' : 'bg-green-500/60'"
-                  :style="{ width: diagnostics.gpuUsagePct + '%' }"
-                />
+          <div class="rounded-lg border border-white/[0.05] bg-white/[0.02] px-3 py-2.5 space-y-2">
+            <div class="flex items-start justify-between gap-3">
+              <div class="min-w-0">
+                <p class="text-xs font-medium uppercase tracking-wide text-gray-600">GPU</p>
+                <p class="truncate text-xs font-semibold text-gray-300">{{ diagnostics.gpuName || '—' }}</p>
               </div>
-              <span :class="['text-[10px] font-semibold tabular-nums', diagnostics.gpuUsagePct > 85 ? 'text-yellow-400' : 'text-gray-400']">{{ diagnostics.gpuUsagePct }}%</span>
+              <div class="text-right">
+                <p class="text-lg font-black tabular-nums" :class="statValueClass('gpu', diagnostics.gpuUsagePct)">{{ diagnostics.gpuUsagePct }}%</p>
+                <p v-if="statAverage('gpu') !== null" class="text-[10px] text-gray-500">vs avg: {{ statAverage('gpu') }}%</p>
+              </div>
             </div>
-            <p class="text-[10px] text-gray-600">{{ diagnostics.gpuTempC > 0 ? diagnostics.gpuTempC + '°C' : '—' }}</p>
+            <div class="h-1 overflow-hidden rounded-full bg-white/[0.07]">
+              <div class="h-full rounded-full transition-all" :class="statBarClass('gpu', diagnostics.gpuUsagePct)" :style="{ width: diagnostics.gpuUsagePct + '%' }" />
+            </div>
+            <div class="flex items-center justify-between gap-2">
+              <svg viewBox="0 0 60 20" class="h-5 w-[60px] overflow-visible">
+                <polygon :points="sparklineArea('gpu')" :class="sparklineFillClass('gpu', diagnostics.gpuUsagePct)" />
+                <polyline fill="none" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" :points="sparklinePolyline('gpu')" :class="sparklineLineClass('gpu', diagnostics.gpuUsagePct)" />
+              </svg>
+              <p class="text-[10px] text-gray-600">{{ diagnostics.gpuTempC > 0 ? diagnostics.gpuTempC + '°C' : '—' }}</p>
+            </div>
           </div>
-          <!-- CPU -->
-          <div class="px-3 py-2 rounded-lg bg-white/[0.02] border border-white/[0.05] space-y-1">
-            <p class="text-xs text-gray-600 font-medium uppercase tracking-wide">CPU</p>
-            <div class="flex items-center gap-2">
-              <div class="flex-1 h-1 bg-white/[0.07] rounded-full overflow-hidden">
-                <div
-                  class="h-full rounded-full transition-all"
-                  :class="diagnostics.cpuUsagePct > 80 ? 'bg-orange-500' : diagnostics.cpuUsagePct > 60 ? 'bg-yellow-500' : 'bg-green-500/60'"
-                  :style="{ width: diagnostics.cpuUsagePct + '%' }"
-                />
+
+          <div class="rounded-lg border border-white/[0.05] bg-white/[0.02] px-3 py-2.5 space-y-2">
+            <div class="flex items-start justify-between gap-3">
+              <div>
+                <p class="text-xs font-medium uppercase tracking-wide text-gray-600">CPU</p>
+                <p class="text-xs text-gray-500">{{ diagnostics.cpuSpeedMhz }} / {{ diagnostics.cpuMaxMhz }} MHz</p>
               </div>
-              <span :class="['text-[10px] font-semibold tabular-nums', diagnostics.cpuUsagePct > 80 ? 'text-orange-400' : 'text-gray-400']">{{ diagnostics.cpuUsagePct }}%</span>
+              <div class="text-right">
+                <p class="text-lg font-black tabular-nums" :class="statValueClass('cpu', diagnostics.cpuUsagePct)">{{ diagnostics.cpuUsagePct }}%</p>
+                <p v-if="statAverage('cpu') !== null" class="text-[10px] text-gray-500">vs avg: {{ statAverage('cpu') }}%</p>
+              </div>
             </div>
-            <p class="text-[10px] text-gray-500">{{ diagnostics.cpuSpeedMhz }} / {{ diagnostics.cpuMaxMhz }} MHz</p>
+            <div class="h-1 overflow-hidden rounded-full bg-white/[0.07]">
+              <div class="h-full rounded-full transition-all" :class="statBarClass('cpu', diagnostics.cpuUsagePct)" :style="{ width: diagnostics.cpuUsagePct + '%' }" />
+            </div>
+            <div class="flex items-center justify-between gap-2">
+              <svg viewBox="0 0 60 20" class="h-5 w-[60px] overflow-visible">
+                <polygon :points="sparklineArea('cpu')" :class="sparklineFillClass('cpu', diagnostics.cpuUsagePct)" />
+                <polyline fill="none" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" :points="sparklinePolyline('cpu')" :class="sparklineLineClass('cpu', diagnostics.cpuUsagePct)" />
+              </svg>
+              <p class="text-[10px] text-gray-600">Load trend</p>
+            </div>
           </div>
-          <!-- RAM -->
-          <div class="px-3 py-2 rounded-lg bg-white/[0.02] border border-white/[0.05] space-y-1 col-span-2">
-            <p class="text-xs text-gray-600 font-medium uppercase tracking-wide">RAM</p>
-            <div class="flex items-center gap-3">
-              <div class="flex-1 h-1 bg-white/[0.07] rounded-full overflow-hidden">
-                <div
-                  class="h-full rounded-full transition-all"
-                  :class="diagnostics.ramTotalMb > 0 && (diagnostics.ramUsedMb / diagnostics.ramTotalMb) > 0.85 ? 'bg-orange-500' : 'bg-blue-500/70'"
-                  :style="{ width: diagnostics.ramTotalMb > 0 ? ((diagnostics.ramUsedMb / diagnostics.ramTotalMb) * 100) + '%' : '0%' }"
-                />
+
+          <div class="col-span-2 rounded-lg border border-white/[0.05] bg-white/[0.02] px-3 py-2.5 space-y-2">
+            <div class="flex items-start justify-between gap-3">
+              <div>
+                <p class="text-xs font-medium uppercase tracking-wide text-gray-600">RAM</p>
+                <p class="text-xs text-gray-500">{{ diagnostics.ramUsedMb }} / {{ diagnostics.ramTotalMb }} MB</p>
               </div>
-              <p class="text-xs text-gray-300 font-semibold tabular-nums flex-shrink-0">{{ diagnostics.ramUsedMb }} / {{ diagnostics.ramTotalMb }} MB</p>
+              <div class="text-right">
+                <p class="text-lg font-black tabular-nums" :class="statValueClass('ram', ramUsagePct(diagnostics))">{{ ramUsagePct(diagnostics) }}%</p>
+                <p v-if="statAverage('ram') !== null" class="text-[10px] text-gray-500">vs avg: {{ statAverage('ram') }}%</p>
+              </div>
             </div>
-            <p class="text-[10px]" :class="!diagnostics.xmpEnabled ? 'text-orange-400' : 'text-gray-600'">
-              {{ diagnostics.ramSpeedMhz }} MHz{{ !diagnostics.xmpEnabled ? ' — XMP may be off' : '' }}
-            </p>
+            <div class="h-1 overflow-hidden rounded-full bg-white/[0.07]">
+              <div class="h-full rounded-full transition-all" :class="statBarClass('ram', ramUsagePct(diagnostics))" :style="{ width: ramUsagePct(diagnostics) + '%' }" />
+            </div>
+            <div class="flex items-center justify-between gap-2">
+              <svg viewBox="0 0 60 20" class="h-5 w-[60px] overflow-visible">
+                <polygon :points="sparklineArea('ram')" :class="sparklineFillClass('ram', ramUsagePct(diagnostics))" />
+                <polyline fill="none" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" :points="sparklinePolyline('ram')" :class="sparklineLineClass('ram', ramUsagePct(diagnostics))" />
+              </svg>
+              <p class="text-[10px]" :class="!diagnostics.xmpEnabled ? 'text-orange-400' : 'text-gray-600'">{{ diagnostics.ramSpeedMhz }} MHz{{ !diagnostics.xmpEnabled ? ' — XMP may be off' : '' }}</p>
+            </div>
           </div>
         </div>
 
@@ -389,6 +409,13 @@ const killingProcesses = ref(new Set<string>())
 const pregameKillList = ref<string[]>([])
 const newKillEntry = ref('')
 
+type PerfMetric = 'gpu' | 'cpu' | 'ram'
+const PERF_HISTORY_KEYS: Record<PerfMetric, string> = {
+  gpu: 'perf-history-gpu',
+  cpu: 'perf-history-cpu',
+  ram: 'perf-history-ram',
+}
+
 const hagsNeedsReboot = computed(() =>
   results.value.some((r) => r.name === 'HAGS' && r.success && r.message.includes('reboot'))
 )
@@ -451,6 +478,105 @@ const hasAdminFailures = computed(() =>
   results.value.some((r) => !r.success && r.message.toLowerCase().includes('administrator'))
 )
 
+function ramUsagePct(report: DiagnosticsReport): number {
+  if (report.ramTotalMb <= 0) return 0
+  return Math.round((report.ramUsedMb / report.ramTotalMb) * 100)
+}
+
+function statUsage(metric: PerfMetric, report: DiagnosticsReport): number {
+  if (metric === 'gpu') return report.gpuUsagePct
+  if (metric === 'cpu') return report.cpuUsagePct
+  return ramUsagePct(report)
+}
+
+function readPerfHistory(metric: PerfMetric): number[] {
+  try {
+    const raw = localStorage.getItem(PERF_HISTORY_KEYS[metric])
+    const parsed = raw ? JSON.parse(raw) : []
+    return Array.isArray(parsed) ? parsed.filter((value): value is number => typeof value === 'number') : []
+  } catch {
+    return []
+  }
+}
+
+function writePerfHistory(metric: PerfMetric, values: number[]) {
+  localStorage.setItem(PERF_HISTORY_KEYS[metric], JSON.stringify(values.slice(-7)))
+}
+
+function updatePerfHistory(report: DiagnosticsReport) {
+  ;(['gpu', 'cpu', 'ram'] as PerfMetric[]).forEach((metric) => {
+    const next = [...readPerfHistory(metric), statUsage(metric, report)].slice(-7)
+    writePerfHistory(metric, next)
+  })
+}
+
+function normalizedHistory(metric: PerfMetric): number[] {
+  const history = readPerfHistory(metric).slice(-7)
+  const lastValue = history.length ? history[history.length - 1] : 0
+  while (history.length < 7) history.unshift(lastValue)
+  return history
+}
+
+function statAverage(metric: PerfMetric): number | null {
+  const history = readPerfHistory(metric)
+  if (!history.length) return null
+  return Math.round(history.reduce((sum, value) => sum + value, 0) / history.length)
+}
+
+function statValueClass(metric: PerfMetric, value: number): string {
+  if (metric === 'ram') {
+    if (value < 70) return 'text-emerald-400'
+    if (value <= 90) return 'text-yellow-400'
+    return 'text-red-400'
+  }
+  if (value < 50) return 'text-emerald-400'
+  if (value <= 80) return 'text-yellow-400'
+  return 'text-red-400'
+}
+
+function statBarClass(metric: PerfMetric, value: number): string {
+  if (metric === 'ram') {
+    if (value < 70) return 'bg-emerald-500'
+    if (value <= 90) return 'bg-yellow-500'
+    return 'bg-red-500'
+  }
+  if (value < 50) return 'bg-emerald-500'
+  if (value <= 80) return 'bg-yellow-500'
+  return 'bg-red-500'
+}
+
+function sparklineLineClass(metric: PerfMetric, value: number): string {
+  if (metric === 'ram') {
+    if (value < 70) return 'stroke-emerald-400'
+    if (value <= 90) return 'stroke-yellow-400'
+    return 'stroke-red-400'
+  }
+  if (value < 50) return 'stroke-emerald-400'
+  if (value <= 80) return 'stroke-yellow-400'
+  return 'stroke-red-400'
+}
+
+function sparklineFillClass(metric: PerfMetric, value: number): string {
+  if (metric === 'ram') {
+    if (value < 70) return 'fill-emerald-500/12'
+    if (value <= 90) return 'fill-yellow-500/12'
+    return 'fill-red-500/12'
+  }
+  if (value < 50) return 'fill-emerald-500/12'
+  if (value <= 80) return 'fill-yellow-500/12'
+  return 'fill-red-500/12'
+}
+
+function sparklinePolyline(metric: PerfMetric): string {
+  const points = normalizedHistory(metric)
+  return points.map((value, index) => `${index * 10},${20 - (Math.max(0, Math.min(100, value)) / 100) * 18}`).join(' ')
+}
+
+function sparklineArea(metric: PerfMetric): string {
+  const line = sparklinePolyline(metric)
+  return `0,20 ${line} 60,20`
+}
+
 async function loadStatus() {
   try {
     const status = await window.api.performance.getStatus() as PerformanceStatus
@@ -496,6 +622,7 @@ async function runDiagnostics() {
   diagLoading.value = true
   try {
     diagnostics.value = await window.api.performance.diagnostics() as DiagnosticsReport | null
+    if (diagnostics.value) updatePerfHistory(diagnostics.value)
   } catch {
     diagnostics.value = null
   } finally {

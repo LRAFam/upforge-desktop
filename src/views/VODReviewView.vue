@@ -42,50 +42,52 @@
           {{ timeline.finalStats.won ? 'WIN' : 'LOSS' }}
         </div>
       </div>
+
+      <button
+        class="flex items-center gap-2 rounded-xl border border-white/[0.08] bg-white/[0.04] px-3 py-2 text-xs font-semibold text-gray-300 transition-colors hover:border-white/[0.14] hover:bg-white/[0.08] hover:text-white"
+        @click="showInsightsPanel = !showInsightsPanel"
+      >
+        <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 20 20">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" d="M6.75 6.75h6.5M6.75 10h6.5M6.75 13.25h4.5M4.75 3.75h10.5a1 1 0 0 1 1 1v10.5a1 1 0 0 1-1 1H4.75a1 1 0 0 1-1-1V4.75a1 1 0 0 1 1-1Z"/>
+        </svg>
+        {{ showInsightsPanel ? 'Hide Notes' : 'Show Notes' }}
+      </button>
     </div>
 
     <!-- Main content -->
     <div class="flex flex-1 min-h-0">
 
       <!-- Left sidebar: event feed -->
-      <div class="w-44 flex-shrink-0 border-r border-white/[0.05] flex flex-col overflow-hidden bg-[#0a0a0a]">
+      <div class="w-52 flex-shrink-0 border-r border-white/[0.05] flex flex-col overflow-hidden bg-[#0a0a0a]">
         <div class="px-3 py-2 border-b border-white/[0.05]">
           <p class="text-xs font-semibold text-gray-600 uppercase tracking-widest">Timeline</p>
         </div>
-        <div ref="sidebarEl" class="flex-1 overflow-y-auto scrollbar-hide space-y-px py-1">
+        <div ref="sidebarEl" class="flex-1 overflow-y-auto scrollbar-hide scroll-smooth space-y-1 px-1.5 py-2">
           <template v-for="round in roundGroups" :key="round.roundNumber">
             <!-- Round header -->
             <button
-              class="w-full flex items-center gap-2 px-2 py-1.5 hover:bg-white/[0.05] transition-colors text-left border-l-2 rounded-sm"
-              :class="selectedRound?.roundNumber === round.roundNumber
-                ? (round.won ? 'border-teal-500 bg-teal-500/[0.06]' : 'border-red-500 bg-red-500/[0.04]')
-                : 'border-transparent'"
+              :data-round-anchor="round.roundNumber"
+              class="w-full rounded-2xl border px-3 py-2 text-left transition-all"
+              :class="activeRoundNumber === round.roundNumber
+                ? 'border-white/[0.16] bg-white/[0.08] shadow-[0_10px_30px_rgba(0,0,0,0.24)]'
+                : 'border-transparent bg-transparent hover:border-white/[0.08] hover:bg-white/[0.04]'"
               @click="seekToRound(round)"
             >
-              <!-- Outcome icon: CDN image or SVG badge -->
-              <div class="w-5 h-5 flex-shrink-0 flex items-center justify-center">
+              <div class="flex items-center gap-2.5">
+                <span class="inline-flex h-7 min-w-7 items-center justify-center rounded-full border border-white/[0.08] bg-white/[0.04] px-2 text-[10px] font-black text-gray-200">
+                  R{{ round.roundNumber + 1 }}
+                </span>
+                <span class="h-2.5 w-2.5 rounded-full" :class="round.won ? 'bg-emerald-400' : 'bg-red-400'" />
+                <div class="min-w-0 flex-1">
+                  <p class="text-xs font-semibold text-gray-200">{{ roundOutcomeLabel(round) }}</p>
+                  <p class="text-[10px] text-gray-500">{{ round.events.length }} event{{ round.events.length === 1 ? '' : 's' }}</p>
+                </div>
                 <img
                   v-if="roundOutcomeIcon(round)"
                   :src="roundOutcomeIcon(round)!"
-                  class="w-5 h-5 object-contain"
+                  class="h-6 w-6 object-contain opacity-80"
                 />
-                <div
-                  v-else
-                  class="w-4 h-4 rounded-full flex items-center justify-center"
-                  :class="round.won ? 'bg-teal-500' : 'bg-red-500'"
-                >
-                  <svg v-if="round.won" class="w-2.5 h-2.5 text-white" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                    <path d="M3 8l3.5 3.5L13 5"/>
-                  </svg>
-                  <svg v-else class="w-2.5 h-2.5 text-white" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
-                    <path d="M4 4l8 8M12 4l-8 8"/>
-                  </svg>
-                </div>
               </div>
-              <span class="text-xs font-semibold text-gray-400">R{{ round.roundNumber + 1 }}</span>
-              <span class="text-[9px] font-bold leading-tight truncate" :class="round.won ? 'text-teal-400/80' : 'text-red-400/60'">
-                {{ roundOutcomeLabel(round) }}
-              </span>
             </button>
 
             <!-- Kill/death events in this round -->
@@ -191,7 +193,9 @@
                     <svg v-else class="w-3.5 h-3.5 text-purple-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2 4.09 12.96A1 1 0 0 0 5 14.5h6.5L10 22l10-11h-7z"/></svg>
                   </div>
                   <span v-else-if="event.weapon === 'Spike'" class="text-orange-400"><svg class="w-3 h-3" viewBox="0 0 24 24" fill="currentColor"><polygon points="12,2 20,12 12,22 4,12"/></svg></span>
-                  <span v-else-if="event.weapon === 'Fall'" class="text-[9px] text-gray-500">⬇</span>
+                  <svg v-else-if="event.weapon === 'Fall'" class="w-3.5 h-3.5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 20 20">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" d="M10 4.5v9m0 0-3-3m3 3 3-3"/>
+                  </svg>
                   <svg v-else class="w-3 h-3 text-gray-700" viewBox="0 0 16 16" fill="currentColor">
                     <circle cx="8" cy="6" r="4"/><path d="M6 11h4v4H6z"/>
                   </svg>
@@ -307,163 +311,150 @@
         </div>
 
         <!-- Controls + timeline scrubber -->
-        <div class="flex-shrink-0 bg-[#0c0c0c] border-t border-white/[0.06] px-3 pt-2 pb-3 space-y-2">
-
-          <!-- Custom scrubber with event markers -->
-          <div class="relative group cursor-pointer h-6 flex items-center" @click="onScrubberClick" @mousemove="onScrubberHover" @mouseleave="hoverTime = null">
-            <!-- Track -->
-            <div class="w-full h-1.5 bg-white/[0.08] rounded-full relative overflow-visible">
-              <!-- Played fill -->
+        <div class="flex-shrink-0 border-t border-white/[0.06] bg-[#0c0c0c] px-3 pt-2 pb-3">
+          <div class="backdrop-blur-sm bg-black/40 border border-white/[0.08] rounded-2xl px-4 py-3 space-y-3 shadow-[0_16px_50px_rgba(0,0,0,0.35)]">
+            <div class="relative group cursor-pointer h-8 flex items-center" @click="onScrubberClick" @mousemove="onScrubberHover" @mouseleave="hoverTime = null">
+              <div class="w-full h-2 rounded-full bg-white/[0.08] ring-1 ring-white/[0.04] relative overflow-visible">
+                <div
+                  class="h-full rounded-full bg-gradient-to-r from-red-500 via-red-400 to-orange-400 pointer-events-none shadow-[0_0_18px_rgba(239,68,68,0.35)]"
+                  :style="{ width: progressPercent + '%' }"
+                />
+                <div
+                  v-for="sep in roundSeparators"
+                  :key="sep.percent"
+                  class="absolute top-1/2 h-4 w-px -translate-y-1/2 bg-white/18 pointer-events-none"
+                  :style="{ left: sep.percent + '%' }"
+                />
+                <button
+                  v-for="marker in progressMarkers"
+                  :key="marker.key"
+                  class="absolute top-1/2 -translate-y-1/2 -translate-x-1/2 transition-transform duration-150 hover:scale-125"
+                  :class="marker.kind === 'round'
+                    ? 'h-4 w-1 rounded-full bg-white/35 shadow-[0_0_8px_rgba(255,255,255,0.18)]'
+                    : marker.kind === 'kill'
+                      ? 'h-3 w-3 rounded-full border-2 border-emerald-200 bg-emerald-500 shadow-[0_0_10px_rgba(16,185,129,0.35)]'
+                      : marker.kind === 'death'
+                        ? 'h-3 w-3 rounded-full border-2 border-red-200 bg-red-500 shadow-[0_0_10px_rgba(239,68,68,0.35)]'
+                        : marker.kind === 'plant'
+                          ? 'h-4 w-2 rounded-full border border-orange-200 bg-orange-500 shadow-[0_0_10px_rgba(249,115,22,0.35)]'
+                          : marker.kind === 'defuse'
+                            ? 'h-4 w-2 rounded-full border border-cyan-200 bg-cyan-500 shadow-[0_0_10px_rgba(34,211,238,0.35)]'
+                            : 'h-3 w-3 rounded-full border-2 border-yellow-200 bg-yellow-500 shadow-[0_0_10px_rgba(234,179,8,0.35)]'"
+                  :style="{ left: marker.percent + '%' }"
+                  :title="marker.label"
+                  @click.stop="jumpToMarker(marker)"
+                />
+                <div
+                  v-if="hoverTime !== null"
+                  class="absolute top-1/2 h-5 w-0.5 -translate-y-1/2 bg-white/70 pointer-events-none"
+                  :style="{ left: (hoverTime / duration * 100) + '%' }"
+                />
+              </div>
               <div
-                class="h-full bg-red-500 rounded-full pointer-events-none"
-                :style="{ width: progressPercent + '%' }"
+                class="absolute top-1/2 h-4 w-4 -translate-y-1/2 rounded-full border border-white/60 bg-white shadow-[0_6px_18px_rgba(255,255,255,0.2)] pointer-events-none transition-transform group-hover:scale-110"
+                :style="{ left: `calc(${progressPercent}% - 8px)` }"
               />
-              <!-- Round separator lines -->
-              <div
-                v-for="sep in roundSeparators"
-                :key="sep.percent"
-                class="absolute top-1/2 -translate-y-1/2 w-px h-3 bg-white/20 pointer-events-none"
-                :style="{ left: sep.percent + '%' }"
-              />
-              <!-- Kill markers -->
-              <div
-                v-for="(event, i) in allTimelineEvents"
-                :key="i"
-                class="absolute top-1/2 -translate-y-1/2 rounded-full border pointer-events-none transition-transform group-hover:scale-125"
-                :class="[
-                  event.type === 'kill' ? 'bg-green-500 border-green-300 w-2.5 h-2.5 border-2' : '',
-                  event.type === 'death' ? 'bg-red-500 border-red-300 w-2.5 h-2.5 border-2' : '',
-                  event.type === 'neutral' ? 'bg-gray-600 border-gray-500 w-1.5 h-1.5 border' : '',
-                  event.type === 'plant' ? 'bg-orange-500 border-orange-300 w-2 h-3 border-2' : '',
-                  event.type === 'defuse' ? 'bg-cyan-500 border-cyan-300 w-2 h-3 border-2' : '',
-                  event.type === 'detonation' ? 'bg-yellow-500 border-yellow-300 w-2.5 h-2.5 border-2' : '',
-                ]"
-                :style="{ left: `calc(${eventPercent(event)}% - 5px)` }"
-                :title="event.type === 'kill' ? `Kill: ${event.victimName}` : event.type === 'death' ? `Death: ${event.killerName}` : event.type === 'neutral' ? `${event.killerName} → ${event.victimName}` : event.type === 'plant' ? `Spike planted (${event.site ?? '?'})` : event.type === 'defuse' ? 'Spike defused' : 'Spike detonated'"
-              />
-              <!-- Hover time indicator -->
               <div
                 v-if="hoverTime !== null"
-                class="absolute top-1/2 -translate-y-1/2 w-0.5 h-4 bg-white/60 pointer-events-none"
+                class="absolute bottom-full mb-2 -translate-x-1/2 rounded-lg border border-white/[0.08] bg-black/80 px-2 py-1 text-xs text-gray-200 tabular-nums pointer-events-none"
                 :style="{ left: (hoverTime / duration * 100) + '%' }"
-              />
+              >{{ formatMs(hoverTime * 1000) }}</div>
             </div>
-            <!-- Thumb -->
-            <div
-              class="absolute top-1/2 -translate-y-1/2 w-3 h-3 rounded-full bg-white shadow-md pointer-events-none transition-transform group-hover:scale-125"
-              :style="{ left: `calc(${progressPercent}% - 6px)` }"
-            />
-            <!-- Hover time tooltip -->
-            <div
-              v-if="hoverTime !== null"
-              class="absolute bottom-full mb-2 px-1.5 py-0.5 bg-black/80 rounded text-xs text-gray-200 tabular-nums pointer-events-none -translate-x-1/2"
-              :style="{ left: (hoverTime / duration * 100) + '%' }"
-            >{{ formatMs(hoverTime * 1000) }}</div>
-          </div>
 
-          <!-- Playback controls row -->
-          <div class="flex items-center gap-3">
-            <!-- Play/Pause -->
-            <button class="w-7 h-7 flex items-center justify-center rounded-lg hover:bg-white/[0.06] transition-colors text-gray-300 hover:text-white" title="Play/Pause (Space)" @click="togglePlay">
-              <svg v-if="isPlaying" class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
-                <path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/>
-              </svg>
-              <svg v-else class="w-4 h-4 ml-0.5" fill="currentColor" viewBox="0 0 24 24">
-                <path d="M8 5v14l11-7z"/>
-              </svg>
-            </button>
+            <div class="flex items-center gap-2.5">
+              <button class="h-10 w-10 flex items-center justify-center rounded-2xl border border-white/[0.08] bg-white/[0.06] text-gray-100 transition-all hover:border-white/[0.16] hover:bg-white/[0.12] hover:text-white" title="Play/Pause (Space)" @click="togglePlay">
+                <svg v-if="isPlaying" class="h-5 w-5" fill="currentColor" viewBox="0 0 20 20">
+                  <path d="M5.75 4.5h2.75v11H5.75zM11.5 4.5h2.75v11H11.5z"/>
+                </svg>
+                <svg v-else class="ml-0.5 h-5 w-5" fill="currentColor" viewBox="0 0 20 20">
+                  <path d="M6.75 4.75v10.5l8-5.25-8-5.25Z"/>
+                </svg>
+              </button>
 
-            <!-- Skip back 5s -->
-            <button class="w-7 h-7 flex items-center justify-center rounded-lg hover:bg-white/[0.06] transition-colors text-gray-500 hover:text-gray-300" title="Skip back 5s (←)" @click="skip(-5)">
-              <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 19l-7-7 7-7m8 14l-7-7 7-7"/>
-              </svg>
-            </button>
+              <button class="h-10 w-10 flex items-center justify-center rounded-2xl border border-white/[0.08] bg-white/[0.04] text-gray-400 transition-all hover:border-white/[0.16] hover:bg-white/[0.1] hover:text-gray-100" title="Skip back 5s (←)" @click="skip(-5)">
+                <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 20 20">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" d="M9.75 14.5 5.5 10l4.25-4.5m5.5 9-4.25-4.5 4.25-4.5"/>
+                </svg>
+              </button>
 
-            <!-- Skip forward 5s -->
-            <button class="w-7 h-7 flex items-center justify-center rounded-lg hover:bg-white/[0.06] transition-colors text-gray-500 hover:text-gray-300" title="Skip forward 5s (→)" @click="skip(5)">
-              <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 5l7 7-7 7M5 5l7 7-7 7"/>
-              </svg>
-            </button>
+              <button class="h-10 w-10 flex items-center justify-center rounded-2xl border border-white/[0.08] bg-white/[0.04] text-gray-400 transition-all hover:border-white/[0.16] hover:bg-white/[0.1] hover:text-gray-100" title="Skip forward 5s (→)" @click="skip(5)">
+                <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 20 20">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" d="m10.25 5.5 4.25 4.5-4.25 4.5m-5.5-9 4.25 4.5-4.25 4.5"/>
+                </svg>
+              </button>
 
-            <!-- Prev event / Next event -->
-            <button class="w-7 h-7 flex items-center justify-center rounded-lg hover:bg-white/[0.06] transition-colors text-gray-500 hover:text-gray-300" title="Previous event (J)" @click="seekPrevEvent">
-              <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 18l-6-6 6-6"/>
-              </svg>
-            </button>
-            <button class="w-7 h-7 flex items-center justify-center rounded-lg hover:bg-white/[0.06] transition-colors text-gray-500 hover:text-gray-300" title="Next event (L)" @click="seekNextEvent">
-              <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 18l6-6-6-6"/>
-              </svg>
-            </button>
+              <button class="h-9 w-9 flex items-center justify-center rounded-xl border border-white/[0.08] bg-white/[0.03] text-gray-500 transition-all hover:border-white/[0.14] hover:bg-white/[0.08] hover:text-gray-200" title="Previous event (J)" @click="seekPrevEvent">
+                <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 20 20">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" d="M11.75 14.5 7.5 10l4.25-4.5"/>
+                </svg>
+              </button>
+              <button class="h-9 w-9 flex items-center justify-center rounded-xl border border-white/[0.08] bg-white/[0.03] text-gray-500 transition-all hover:border-white/[0.14] hover:bg-white/[0.08] hover:text-gray-200" title="Next event (L)" @click="seekNextEvent">
+                <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 20 20">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" d="m8.25 14.5 4.25-4.5-4.25-4.5"/>
+                </svg>
+              </button>
 
-            <!-- Playback speed -->
-            <button
-              class="text-xs font-mono px-2 py-0.5 rounded bg-white/[0.05] hover:bg-white/[0.1] text-gray-400 hover:text-gray-200 transition-colors"
-              title="Cycle speed ([/])"
-              @click="cycleSpeed"
-            >{{ playbackSpeed }}x</button>
+              <button
+                class="rounded-xl border border-white/[0.08] bg-white/[0.05] px-3 py-2 text-xs font-mono text-gray-300 transition-all hover:border-white/[0.14] hover:bg-white/[0.1]"
+                title="Cycle speed ([/])"
+                @click="cycleSpeed"
+              >{{ playbackSpeed }}x</button>
 
-            <!-- Time display -->
-            <div class="flex-1" />
-            <span class="text-xs font-mono text-gray-500 tabular-nums">
-              {{ formatSeconds(currentTime) }} / {{ formatSeconds(duration, true) }}
-            </span>
+              <div class="flex-1" />
+              <span class="text-xs font-mono text-gray-400 tabular-nums">
+                {{ formatSeconds(currentTime) }} / {{ formatSeconds(duration, true) }}
+              </span>
 
-            <!-- Scoreboard toggle -->
-            <button
-              class="flex items-center gap-1 text-xs text-gray-600 hover:text-gray-400 transition-colors"
-              @click="showScoreboard = !showScoreboard"
-            >
-              <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>
-              </svg>
-              Score
-            </button>
+              <button
+                class="flex items-center gap-1.5 rounded-xl border border-white/[0.08] bg-white/[0.03] px-3 py-2 text-xs text-gray-400 transition-all hover:border-white/[0.14] hover:bg-white/[0.08] hover:text-gray-200"
+                @click="showScoreboard = !showScoreboard"
+              >
+                <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 20 20">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" d="M4.5 15.5h2.5v-5H4.5v5Zm4.25 0h2.5V7.75h-2.5V15.5Zm4.25 0h2.5V4.5h-2.5v11Z"/>
+                </svg>
+                Score
+              </button>
 
-            <!-- Legend -->
-            <div class="flex items-center gap-2 ml-1">
+              <div class="hidden xl:flex items-center gap-3 ml-1">
+                <div class="flex items-center gap-1.5">
+                  <div class="h-2.5 w-2.5 rounded-full bg-emerald-500" />
+                  <span class="text-xs text-gray-500">Kill</span>
+                </div>
+                <div class="flex items-center gap-1.5">
+                  <div class="h-2.5 w-2.5 rounded-full bg-red-500" />
+                  <span class="text-xs text-gray-500">Death</span>
+                </div>
+                <div v-if="(timeline?.spikePlants?.length ?? 0) > 0" class="flex items-center gap-1.5">
+                  <div class="h-3 w-2 rounded-full bg-orange-500" />
+                  <span class="text-xs text-gray-500">Plant</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="flex items-center gap-3 px-1 pb-1 flex-wrap">
               <div class="flex items-center gap-1">
-                <div class="w-2 h-2 rounded-full bg-green-500" />
-                <span class="text-xs text-gray-600">Kill</span>
+                <kbd class="px-1 py-px text-[9px] font-bold bg-white/[0.06] border border-white/[0.1] rounded text-gray-500">Space</kbd>
+                <span class="text-[9px] text-gray-700">Play</span>
               </div>
               <div class="flex items-center gap-1">
-                <div class="w-2 h-2 rounded-full bg-red-500" />
-                <span class="text-xs text-gray-600">Death</span>
+                <kbd class="px-1 py-px text-[9px] font-bold bg-white/[0.06] border border-white/[0.1] rounded text-gray-500">←</kbd>
+                <kbd class="px-1 py-px text-[9px] font-bold bg-white/[0.06] border border-white/[0.1] rounded text-gray-500">→</kbd>
+                <span class="text-[9px] text-gray-700">Skip 5s</span>
               </div>
-              <div v-if="(timeline?.spikePlants?.length ?? 0) > 0" class="flex items-center gap-1">
-                <div class="w-1.5 h-2.5 rounded-sm bg-orange-500" />
-                <span class="text-xs text-gray-600">Plant</span>
+              <div class="flex items-center gap-1">
+                <kbd class="px-1 py-px text-[9px] font-bold bg-white/[0.06] border border-white/[0.1] rounded text-gray-500">J</kbd>
+                <kbd class="px-1 py-px text-[9px] font-bold bg-white/[0.06] border border-white/[0.1] rounded text-gray-500">L</kbd>
+                <span class="text-[9px] text-gray-700">Prev/Next event</span>
               </div>
-            </div>
-          </div>
-
-          <!-- Keyboard shortcuts strip -->
-          <div class="flex items-center gap-3 px-1 pb-1 flex-wrap">
-            <div class="flex items-center gap-1">
-              <kbd class="px-1 py-px text-[9px] font-bold bg-white/[0.06] border border-white/[0.1] rounded text-gray-500">Space</kbd>
-              <span class="text-[9px] text-gray-700">Play</span>
-            </div>
-            <div class="flex items-center gap-1">
-              <kbd class="px-1 py-px text-[9px] font-bold bg-white/[0.06] border border-white/[0.1] rounded text-gray-500">←</kbd>
-              <kbd class="px-1 py-px text-[9px] font-bold bg-white/[0.06] border border-white/[0.1] rounded text-gray-500">→</kbd>
-              <span class="text-[9px] text-gray-700">Skip 5s</span>
-            </div>
-            <div class="flex items-center gap-1">
-              <kbd class="px-1 py-px text-[9px] font-bold bg-white/[0.06] border border-white/[0.1] rounded text-gray-500">J</kbd>
-              <kbd class="px-1 py-px text-[9px] font-bold bg-white/[0.06] border border-white/[0.1] rounded text-gray-500">L</kbd>
-              <span class="text-[9px] text-gray-700">Prev/Next event</span>
-            </div>
-            <div class="flex items-center gap-1">
-              <kbd class="px-1 py-px text-[9px] font-bold bg-white/[0.06] border border-white/[0.1] rounded text-gray-500">[</kbd>
-              <kbd class="px-1 py-px text-[9px] font-bold bg-white/[0.06] border border-white/[0.1] rounded text-gray-500">]</kbd>
-              <span class="text-[9px] text-gray-700">Speed</span>
-            </div>
-            <div class="flex items-center gap-1">
-              <kbd class="px-1 py-px text-[9px] font-bold bg-white/[0.06] border border-white/[0.1] rounded text-gray-500">S</kbd>
-              <span class="text-[9px] text-gray-700">Scoreboard</span>
+              <div class="flex items-center gap-1">
+                <kbd class="px-1 py-px text-[9px] font-bold bg-white/[0.06] border border-white/[0.1] rounded text-gray-500">[</kbd>
+                <kbd class="px-1 py-px text-[9px] font-bold bg-white/[0.06] border border-white/[0.1] rounded text-gray-500">]</kbd>
+                <span class="text-[9px] text-gray-700">Speed</span>
+              </div>
+              <div class="flex items-center gap-1">
+                <kbd class="px-1 py-px text-[9px] font-bold bg-white/[0.06] border border-white/[0.1] rounded text-gray-500">S</kbd>
+                <span class="text-[9px] text-gray-700">Scoreboard</span>
+              </div>
             </div>
           </div>
         </div>
@@ -717,12 +708,53 @@
           </template>
         </div>
       </div>
+
+      <div
+        v-if="showInsightsPanel"
+        class="w-80 flex-shrink-0 border-l border-white/[0.05] bg-[#090909] flex flex-col min-h-0"
+      >
+        <div class="flex items-center gap-2 px-4 py-3 border-b border-white/[0.05]">
+          <div class="flex h-9 w-9 items-center justify-center rounded-2xl border border-white/[0.08] bg-white/[0.04] text-red-400">
+            <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 20 20">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" d="M10 3.75c-2.071 0-3.75 1.679-3.75 3.75 0 1.349.712 2.53 1.781 3.191.61.378.969 1.036.969 1.754v.3h2v-.3c0-.718.359-1.376.969-1.754A3.748 3.748 0 0 0 13.75 7.5c0-2.071-1.679-3.75-3.75-3.75Zm-1.5 10.25h3m-2.5 2h2"/>
+            </svg>
+          </div>
+          <div class="min-w-0 flex-1">
+            <p class="text-sm font-semibold text-white">Coaching Notes</p>
+            <p class="text-xs text-gray-500">Pinned review takeaways for this session</p>
+          </div>
+          <button
+            class="flex h-8 w-8 items-center justify-center rounded-xl border border-white/[0.08] bg-white/[0.03] text-gray-500 transition-colors hover:border-white/[0.14] hover:bg-white/[0.08] hover:text-gray-200"
+            @click="showInsightsPanel = false"
+          >
+            <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 20 20">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" d="m12.5 5.5-5 4.5 5 4.5"/>
+            </svg>
+          </button>
+        </div>
+        <div class="flex-1 overflow-y-auto scrollbar-hide px-4 py-4 space-y-3">
+          <div
+            v-for="(note, index) in coachingNotes"
+            :key="`${index}-${note}`"
+            class="rounded-2xl border border-white/[0.06] bg-white/[0.03] px-3.5 py-3"
+          >
+            <div class="flex items-start gap-3">
+              <span class="mt-1 h-2 w-2 flex-shrink-0 rounded-full bg-red-400" />
+              <p class="text-sm leading-relaxed text-gray-300">{{ note }}</p>
+            </div>
+          </div>
+          <div class="rounded-2xl border border-white/[0.06] bg-white/[0.02] px-3.5 py-3">
+            <p class="text-[10px] font-semibold uppercase tracking-[0.24em] text-gray-600">Review flow</p>
+            <p class="mt-2 text-xs leading-relaxed text-gray-500">Use the timeline on the left and the clickable markers under the player to jump straight into round starts, kills, deaths, and spike moments.</p>
+          </div>
+        </div>
+      </div>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
+import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { getWeaponImage, getAgentImage, getAbilityIcon } from '../lib/valorant'
 import { pendingTimeline } from '../stores/pendingTimeline'
@@ -819,6 +851,23 @@ interface RecordingTimeline {
   firstBloods?: Array<{ killerName: string; victimName: string; killerPuuid?: string; victimPuuid?: string; round?: number }>
 }
 
+interface AnalysisDetail {
+  verdict: string | null
+  top_issue: string | null
+  priority_improvements: string[]
+  coaching_tags: string[]
+  ally_score: number | null
+  enemy_score: number | null
+}
+
+interface ProgressMarker {
+  key: string
+  kind: 'round' | 'kill' | 'death' | 'neutral' | 'plant' | 'defuse' | 'detonation'
+  label: string
+  percent: number
+  timeSeconds: number
+}
+
 const route = useRoute()
 const router = useRouter()
 const videoEl = ref<HTMLVideoElement | null>(null)
@@ -832,7 +881,9 @@ const hoverTime = ref<number | null>(null)
 const playbackSpeed = ref(1)
 const activeEventNotif = ref<TimelineEvent | null>(null)
 const showScoreboard = ref(false)
+const showInsightsPanel = ref(true)
 const selectedRound = ref<RoundGroup | null>(null)
+const coachingDetail = ref<AnalysisDetail | null>(null)
 const ownPuuid = ref<string | null>(null)
 let notifTimer: ReturnType<typeof setTimeout> | null = null
 
@@ -1051,6 +1102,101 @@ const roundSeparators = computed(() => {
     .map(r => ({ percent: ((r.firstVideoOffsetMs! / 1000) / duration.value) * 100 }))
 })
 
+const activeRoundNumber = computed<number | null>(() => {
+  if (!roundGroups.value.length) return null
+  const timedRounds = roundGroups.value
+    .filter(round => round.firstVideoOffsetMs != null)
+    .sort((a, b) => (a.firstVideoOffsetMs ?? 0) - (b.firstVideoOffsetMs ?? 0))
+
+  if (!timedRounds.length) return roundGroups.value[0]?.roundNumber ?? null
+
+  const currentMs = currentTime.value * 1000
+  for (let index = 0; index < timedRounds.length; index += 1) {
+    const currentRound = timedRounds[index]
+    const nextRound = timedRounds[index + 1]
+    const roundStart = currentRound.firstVideoOffsetMs ?? 0
+    const nextStart = nextRound?.firstVideoOffsetMs ?? duration.value * 1000 + 1
+    if (currentMs < roundStart && index === 0) return currentRound.roundNumber
+    if (currentMs >= roundStart && currentMs < nextStart) return currentRound.roundNumber
+  }
+
+  return timedRounds[timedRounds.length - 1]?.roundNumber ?? null
+})
+
+const progressMarkers = computed((): ProgressMarker[] => {
+  if (!duration.value) return []
+
+  const markers: ProgressMarker[] = []
+
+  for (const round of roundGroups.value) {
+    if (round.firstVideoOffsetMs == null) continue
+    const timeSeconds = round.firstVideoOffsetMs / 1000
+    markers.push({
+      key: `round-${round.roundNumber}`,
+      kind: 'round',
+      label: `Round ${round.roundNumber + 1}`,
+      percent: (timeSeconds / duration.value) * 100,
+      timeSeconds,
+    })
+  }
+
+  for (const event of allTimelineEvents.value) {
+    if (event.videoOffsetMs == null) continue
+    if (!['kill', 'death', 'plant', 'defuse', 'detonation'].includes(event.type)) continue
+
+    let label = 'Event'
+    if (event.type === 'kill') label = `Kill · ${event.victimName || 'Unknown'}`
+    if (event.type === 'death') label = `Death · ${event.killerName || 'Unknown'}`
+    if (event.type === 'plant') label = event.site ? `Plant · Site ${event.site}` : 'Spike Plant'
+    if (event.type === 'defuse') label = 'Spike Defuse'
+    if (event.type === 'detonation') label = 'Spike Detonation'
+
+    markers.push({
+      key: `${event.type}-${event.videoOffsetMs}-${event.round ?? 'na'}-${event.killerName ?? event.planter ?? event.defuser ?? 'event'}`,
+      kind: event.type,
+      label,
+      percent: ((event.videoOffsetMs / 1000) / duration.value) * 100,
+      timeSeconds: event.videoOffsetMs / 1000,
+    })
+  }
+
+  return markers.filter(marker => marker.percent >= 0 && marker.percent <= 100)
+})
+
+const coachingNotes = computed(() => {
+  const detail = coachingDetail.value
+  const notes: string[] = []
+
+  if (detail?.verdict) notes.push(detail.verdict)
+  if (detail?.top_issue) notes.push(detail.top_issue)
+  if (detail?.priority_improvements?.length) notes.push(...detail.priority_improvements)
+  if (detail?.coaching_tags?.length) {
+    notes.push(`Focus areas: ${detail.coaching_tags.map(tag => tag.replace(/_/g, ' ')).join(' · ')}`)
+  }
+
+  if (notes.length) return notes.slice(0, 6)
+
+  const kills = timeline.value?.finalStats?.kills ?? 0
+  const deaths = timeline.value?.finalStats?.deaths ?? 0
+  const firstBloodDeaths = allTimelineEvents.value.filter(event => event.type === 'death' && event.isFirstBlood).length
+  const spikeRounds = roundGroups.value.filter(round => round.spikePlanted || round.spikeDefused || round.spikeDetonated).length
+
+  if (deaths > kills) {
+    notes.push('Review the rounds where you were picked first. Slowing your first peek and preserving utility should create more stable openings.')
+  }
+  if (firstBloodDeaths > 0) {
+    notes.push(`You were involved in ${firstBloodDeaths} first-blood deaths. Pause those rounds and check your spacing before the duel starts.`)
+  }
+  if (spikeRounds > 0) {
+    notes.push(`There are ${spikeRounds} spike-focused rounds marked in the timeline. Use those timestamps to review your post-plant positioning and timing.`)
+  }
+  if (!notes.length) {
+    notes.push('Use the event markers below the video to jump between rounds, deaths, and clutch moments for a faster review workflow.')
+  }
+
+  return notes
+})
+
 function eventPercent(event: TimelineEvent): number {
   if (!duration.value || event.videoOffsetMs == null) return 0
   return (event.videoOffsetMs / 1000 / duration.value) * 100
@@ -1104,6 +1250,23 @@ function cycleSpeedDown() {
   if (videoEl.value) videoEl.value.playbackRate = playbackSpeed.value
 }
 
+function seekToTime(timeSeconds: number) {
+  if (!videoEl.value) return
+  videoEl.value.currentTime = Math.max(0, Math.min(duration.value, timeSeconds))
+}
+
+function jumpToMarker(marker: ProgressMarker) {
+  seekToTime(marker.timeSeconds)
+}
+
+function scrollActiveRoundIntoView(roundNumber: number | null) {
+  if (roundNumber == null) return
+  nextTick(() => {
+    const activeButton = sidebarEl.value?.querySelector(`[data-round-anchor="${roundNumber}"]`) as HTMLElement | null
+    activeButton?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+  })
+}
+
 function seekToEvent(event: TimelineEvent) {
   if (!videoEl.value || event.videoOffsetMs == null) return
   const wasPlaying = !videoEl.value.paused
@@ -1115,6 +1278,7 @@ function seekToEvent(event: TimelineEvent) {
 
 function seekToRound(round: RoundGroup) {
   selectedRound.value = round
+  scrollActiveRoundIntoView(round.roundNumber)
   if (!videoEl.value || round.firstVideoOffsetMs == null) return
   const wasPlaying = !videoEl.value.paused
   videoEl.value.currentTime = Math.max(0, round.firstVideoOffsetMs / 1000 - 2)
@@ -1183,6 +1347,11 @@ onMounted(async () => {
     timeline.value = await window.api.recordings.getTimeline(id)
   }
 
+  const numericTimelineId = Number(timelineId)
+  if (timelineId && !Number.isNaN(numericTimelineId)) {
+    coachingDetail.value = await window.api.analyses.getDetail(numericTimelineId).catch(() => null)
+  }
+
   // Derive ownPuuid from kill/death events where name === 'You'
   if (timeline.value) {
     const ownKill = timeline.value.kills?.find((k: any) => k.killerName === 'You')
@@ -1246,6 +1415,13 @@ function handleKeyDown(e: KeyboardEvent) {
 watch(playbackSpeed, (val) => {
   if (videoEl.value) videoEl.value.playbackRate = val
 })
+
+watch(activeRoundNumber, (roundNumber) => {
+  if (roundNumber == null) return
+  const activeRound = roundGroups.value.find(round => round.roundNumber === roundNumber) ?? null
+  if (activeRound) selectedRound.value = activeRound
+  scrollActiveRoundIntoView(roundNumber)
+}, { immediate: true })
 </script>
 
 <style scoped>

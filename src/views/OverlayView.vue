@@ -1,5 +1,7 @@
 <template>
-  <div class="p-2 select-none" @mousemove="handleMouseMove" @mouseleave="handleMouseLeave">
+  <div class="min-h-screen p-2 select-none" @mousemove="handleMouseMove" @mouseleave="handleMouseLeave">
+    <div class="flex min-h-[calc(100vh-1rem)]" :class="overlayPositionContainerClass">
+      <div ref="interactiveRegionRef" class="flex w-[288px] flex-col">
     <!-- Hotkey cheatsheet — shown when recording starts, auto-dismisses -->
     <Transition name="cheatsheet-slide">
       <div v-if="showCheatsheet" class="mb-2 w-[288px]">
@@ -135,7 +137,6 @@
         <!-- Header row -->
         <div class="flex items-center justify-between mb-3">
           <div class="flex items-center gap-2">
-            <!-- Pulse indicator -->
             <div class="relative w-4 h-4 flex items-center justify-center flex-shrink-0">
               <div :class="['w-2 h-2 rounded-full transition-colors duration-500', isRecording ? 'bg-red-500' : 'bg-gray-700']" />
               <div v-if="isRecording" class="absolute w-2 h-2 rounded-full bg-red-500 animate-ping opacity-50" />
@@ -144,7 +145,17 @@
               {{ isRecording ? 'Live Rec' : 'Standby' }}
             </span>
           </div>
-          <kbd class="text-xs text-gray-700 font-medium bg-white/[0.04] border border-white/[0.07] rounded px-1.5 py-px">F10</kbd>
+          <div class="flex items-center gap-1.5">
+            <button
+              class="pointer-events-auto flex h-7 w-7 items-center justify-center rounded-lg border border-white/[0.07] bg-white/[0.04] text-gray-500 transition-colors hover:border-white/[0.14] hover:text-white"
+              @click="showLayoutTools = !showLayoutTools"
+            >
+              <svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M4 7h16M4 12h16M4 17h16" />
+              </svg>
+            </button>
+            <kbd class="text-xs text-gray-700 font-medium bg-white/[0.04] border border-white/[0.07] rounded px-1.5 py-px">F10</kbd>
+          </div>
         </div>
 
         <!-- Economy cards -->
@@ -207,6 +218,76 @@
       </div>
     </div>
 
+    <Transition name="cheatsheet-slide">
+      <div v-if="showLayoutTools" class="mt-2 w-[288px]">
+        <div class="overflow-hidden rounded-2xl border border-white/[0.08] bg-[#0c0c0c]/95 shadow-[0_12px_48px_rgba(0,0,0,0.78)]">
+          <div class="border-b border-white/[0.06] px-3 py-2.5">
+            <div class="flex items-center justify-between gap-3">
+              <div>
+                <p class="text-[10px] font-bold uppercase tracking-[0.16em] text-gray-500">Overlay Layout</p>
+                <p class="mt-1 text-xs font-semibold text-white">Preview how the panel sits in-game and choose its anchor.</p>
+              </div>
+              <span class="rounded-full border border-white/[0.08] bg-white/[0.04] px-2 py-1 text-[10px] font-semibold text-gray-400">{{ overlayPositionLabel }}</span>
+            </div>
+          </div>
+          <div class="p-3">
+            <div class="relative aspect-video overflow-hidden rounded-xl border border-white/[0.06] bg-[#081015]">
+              <div class="absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(239,68,68,0.12),transparent_35%),linear-gradient(180deg,rgba(15,23,42,0.4),rgba(7,10,14,0.92))]" />
+              <div class="absolute inset-0 opacity-40" style="background-image: linear-gradient(rgba(255,255,255,0.035) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.035) 1px, transparent 1px); background-size: 32px 32px;" />
+              <div class="absolute inset-0 bg-[radial-gradient(circle_at_80%_30%,rgba(244,63,94,0.18),transparent_20%),radial-gradient(circle_at_20%_70%,rgba(59,130,246,0.14),transparent_25%)]" />
+              <div class="absolute h-[64px] w-[124px] rounded-xl border border-white/[0.08] bg-black/80 shadow-[0_10px_30px_rgba(0,0,0,0.45)]" :class="overlayPreviewPositionClass">
+                <div class="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-red-500/70 to-transparent" />
+                <div class="px-2.5 py-2">
+                  <div class="flex items-center justify-between text-[8px] uppercase tracking-[0.14em] text-gray-500">
+                    <span :class="isRecording ? 'text-red-400' : 'text-gray-500'">{{ isRecording ? 'Live Rec' : 'Standby' }}</span>
+                    <span>F10</span>
+                  </div>
+                  <div class="mt-2 grid grid-cols-2 gap-1">
+                    <div class="rounded-lg border border-white/[0.06] bg-white/[0.04] px-2 py-1">
+                      <p class="text-[7px] uppercase tracking-wide text-gray-600">Credits</p>
+                      <p class="mt-1 text-[11px] font-black text-green-400">{{ data.yourCredits != null ? data.yourCredits.toLocaleString() : '—' }}</p>
+                    </div>
+                    <div class="rounded-lg border border-white/[0.06] bg-white/[0.04] px-2 py-1">
+                      <p class="text-[7px] uppercase tracking-wide text-gray-600">Round</p>
+                      <p class="mt-1 text-[11px] font-black text-white">{{ data.round ?? '—' }}</p>
+                    </div>
+                  </div>
+                  <div class="mt-2 h-2 rounded-full bg-white/[0.05]">
+                    <div class="h-full w-1/2 rounded-full bg-red-500/60" />
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="mt-3 grid grid-cols-2 gap-3">
+              <div>
+                <p class="text-[10px] font-bold uppercase tracking-[0.16em] text-gray-600">Position</p>
+                <div class="mt-2 grid grid-cols-3 gap-2">
+                  <button
+                    v-for="cell in OVERLAY_POSITION_CELLS"
+                    :key="cell.id"
+                    class="flex aspect-square items-center justify-center rounded-lg border text-[10px] font-semibold transition-all"
+                    :class="overlayCellClass(cell.id)"
+                    @click="selectOverlayCell(cell.id)"
+                  >
+                    <span class="h-2.5 w-2.5 rounded-sm" :class="overlayCellDotClass(cell.id)" />
+                  </button>
+                </div>
+              </div>
+              <div class="rounded-xl border border-white/[0.06] bg-white/[0.03] px-3 py-2.5">
+                <p class="text-[10px] font-bold uppercase tracking-[0.16em] text-gray-600">Preview Notes</p>
+                <ul class="mt-2 space-y-1.5 text-[11px] leading-relaxed text-gray-400">
+                  <li>Anchors snap to the nearest corner or centre.</li>
+                  <li>The preview reflects your current overlay state.</li>
+                  <li>Layout stays saved for the next session.</li>
+                </ul>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </Transition>
+
     <!-- Toast notification -->
     <Transition name="toast-slide">
       <div v-if="showToast" class="mt-2 w-[288px]">
@@ -252,6 +333,8 @@
         </div>
       </div>
     </Transition>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -333,8 +416,88 @@ const toastRunning = ref(false)
 const hotkey = ref('F9')
 const screenshotHotkey = ref('F8')
 const clipBtnRef = ref<HTMLButtonElement | null>(null)
+const interactiveRegionRef = ref<HTMLDivElement | null>(null)
 let toastTimer: ReturnType<typeof setTimeout> | null = null
 const removeListeners: Array<() => void> = []
+
+type OverlayPosition = 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right' | 'center'
+type OverlayGridCell = 'top-left' | 'top-center' | 'top-right' | 'middle-left' | 'center' | 'middle-right' | 'bottom-left' | 'bottom-center' | 'bottom-right'
+
+const OVERLAY_POSITION_CELLS: Array<{ id: OverlayGridCell }> = [
+  { id: 'top-left' },
+  { id: 'top-center' },
+  { id: 'top-right' },
+  { id: 'middle-left' },
+  { id: 'center' },
+  { id: 'middle-right' },
+  { id: 'bottom-left' },
+  { id: 'bottom-center' },
+  { id: 'bottom-right' },
+]
+
+function loadOverlayCell(): OverlayGridCell {
+  try {
+    const saved = localStorage.getItem('upforge-overlay-position-cell') as OverlayGridCell | null
+    if (saved && OVERLAY_POSITION_CELLS.some((cell) => cell.id === saved)) return saved
+  } catch {
+    // ignore
+  }
+  return 'top-left'
+}
+
+function mapOverlayCellToPosition(cell: OverlayGridCell): OverlayPosition {
+  if (cell === 'top-left' || cell === 'middle-left') return 'top-left'
+  if (cell === 'top-right' || cell === 'middle-right') return 'top-right'
+  if (cell === 'bottom-left') return 'bottom-left'
+  if (cell === 'bottom-right') return 'bottom-right'
+  return 'center'
+}
+
+const overlayGridCell = ref<OverlayGridCell>(loadOverlayCell())
+const overlayPosition = computed<OverlayPosition>(() => mapOverlayCellToPosition(overlayGridCell.value))
+const showLayoutTools = ref(false)
+
+watch(overlayGridCell, (value) => {
+  localStorage.setItem('upforge-overlay-position-cell', value)
+})
+
+const overlayPositionContainerClass = computed(() => {
+  if (overlayPosition.value === 'top-left') return 'items-start justify-start'
+  if (overlayPosition.value === 'top-right') return 'items-start justify-end'
+  if (overlayPosition.value === 'bottom-left') return 'items-end justify-start'
+  if (overlayPosition.value === 'bottom-right') return 'items-end justify-end'
+  return 'items-center justify-center'
+})
+
+const overlayPreviewPositionClass = computed(() => {
+  if (overlayPosition.value === 'top-left') return 'left-3 top-3'
+  if (overlayPosition.value === 'top-right') return 'right-3 top-3'
+  if (overlayPosition.value === 'bottom-left') return 'bottom-3 left-3'
+  if (overlayPosition.value === 'bottom-right') return 'bottom-3 right-3'
+  return 'left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2'
+})
+
+const overlayPositionLabel = computed(() => {
+  if (overlayPosition.value === 'top-left') return 'Top Left'
+  if (overlayPosition.value === 'top-right') return 'Top Right'
+  if (overlayPosition.value === 'bottom-left') return 'Bottom Left'
+  if (overlayPosition.value === 'bottom-right') return 'Bottom Right'
+  return 'Centre'
+})
+
+function overlayCellClass(cell: OverlayGridCell): string {
+  if (overlayGridCell.value === cell) return 'border-red-500/30 bg-red-500/12 text-red-300 shadow-[0_0_0_1px_rgba(239,68,68,0.15)]'
+  return 'border-white/[0.08] bg-black/20 text-gray-500 hover:border-white/[0.16] hover:text-white'
+}
+
+function overlayCellDotClass(cell: OverlayGridCell): string {
+  if (overlayGridCell.value === cell) return 'bg-red-400'
+  return 'bg-white/[0.14]'
+}
+
+function selectOverlayCell(cell: OverlayGridCell) {
+  overlayGridCell.value = cell
+}
 
 // Hotkey cheatsheet (shown when recording starts)
 const showCheatsheet = ref(false)
@@ -365,10 +528,9 @@ watch(isRecording, (newVal, oldVal) => {
 })
 
 function handleMouseMove(e: MouseEvent) {
-  if (!clipBtnRef.value) return
-  const rect = clipBtnRef.value.getBoundingClientRect()
-  const over = e.clientX >= rect.left && e.clientX <= rect.right &&
-    e.clientY >= rect.top && e.clientY <= rect.bottom
+  if (!interactiveRegionRef.value) return
+  const rect = interactiveRegionRef.value.getBoundingClientRect()
+  const over = e.clientX >= rect.left && e.clientX <= rect.right && e.clientY >= rect.top && e.clientY <= rect.bottom
   window.api.overlay.setInteractive(over)
 }
 

@@ -134,49 +134,139 @@
         </div>
       </div>
 
+      <div class="grid gap-3 lg:grid-cols-[1.1fr_0.9fr]">
+        <div class="rounded-2xl border border-white/[0.06] bg-white/[0.03] p-4">
+          <div class="flex items-start justify-between gap-4">
+            <div>
+              <p class="text-[11px] font-black uppercase tracking-[0.18em] text-gray-500">Invite to Squad</p>
+              <p class="mt-1 text-sm font-semibold text-white">Bring another teammate into your UpForge squad.</p>
+              <p class="mt-1 text-xs text-gray-500">Invites open the squad page on the website so you can finish the flow without leaving the desktop app for long.</p>
+            </div>
+            <button
+              class="inline-flex h-10 items-center gap-2 rounded-xl border border-red-500/25 bg-red-500/10 px-4 text-xs font-semibold text-red-300 transition-colors hover:bg-red-500/20"
+              @click="openWebTeam()"
+            >
+              <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M18 8a3 3 0 1 1-6 0 3 3 0 0 1 6 0ZM7 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6Zm11 9v-1a4 4 0 0 0-4-4h-1M3 20v-1a4 4 0 0 1 4-4h3" />
+              </svg>
+              Manage Invites
+            </button>
+          </div>
+          <div class="mt-4 flex flex-col gap-3 sm:flex-row">
+            <div class="relative flex-1">
+              <svg class="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M12 12a5 5 0 1 0-5-5 5 5 0 0 0 5 5Zm-7 9a7 7 0 0 1 14 0" />
+              </svg>
+              <input
+                v-model="inviteTarget"
+                type="text"
+                class="h-11 w-full rounded-xl border border-white/[0.08] bg-black/20 pl-10 pr-3 text-sm text-white outline-none transition-colors placeholder:text-gray-600 focus:border-red-500/30"
+                placeholder="Enter teammate username or invite code"
+                @keyup.enter="submitInvite"
+              >
+            </div>
+            <button
+              class="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-red-500 px-4 text-sm font-semibold text-white shadow-[0_10px_30px_rgba(239,68,68,0.28)] transition-all hover:-translate-y-0.5 hover:bg-red-400"
+              @click="submitInvite"
+            >
+              <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M4 12h16M12 4l8 8-8 8" />
+              </svg>
+              Send Invite
+            </button>
+          </div>
+        </div>
+
+        <div class="rounded-2xl border border-white/[0.06] bg-white/[0.03] p-4">
+          <div class="flex items-center justify-between gap-2">
+            <div>
+              <p class="text-[11px] font-black uppercase tracking-[0.18em] text-gray-500">Pending Invites</p>
+              <p class="mt-1 text-sm font-semibold text-white">Follow up with teammates you just invited.</p>
+            </div>
+            <span class="rounded-full border border-white/[0.08] bg-white/[0.03] px-2.5 py-1 text-[10px] font-bold text-gray-400">{{ pendingInvites.length }}</span>
+          </div>
+          <div v-if="pendingInvites.length" class="mt-4 space-y-2">
+            <div
+              v-for="invite in pendingInvites"
+              :key="invite.value"
+              class="flex items-center justify-between gap-3 rounded-xl border border-white/[0.06] bg-black/20 px-3 py-2.5"
+            >
+              <div>
+                <p class="text-sm font-semibold text-white">{{ invite.value }}</p>
+                <p class="text-[11px] text-gray-500">Pending on website · {{ timeAgo(new Date(invite.createdAt).toISOString()) }}</p>
+              </div>
+              <button
+                class="inline-flex h-8 items-center gap-1 rounded-lg border border-white/[0.08] px-2.5 text-[11px] font-semibold text-gray-400 transition-colors hover:border-white/[0.16] hover:text-white"
+                @click="removePendingInvite(invite.value)"
+              >
+                <svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M6 18 18 6M6 6l12 12" />
+                </svg>
+                Clear
+              </button>
+            </div>
+          </div>
+          <div v-else class="mt-4 rounded-xl border border-dashed border-white/[0.08] bg-black/10 px-4 py-6 text-center">
+            <p class="text-sm font-semibold text-white">No pending invites</p>
+            <p class="mt-1 text-[11px] text-gray-500">Invite someone with their username or invite code and it will show up here until you clear it.</p>
+          </div>
+        </div>
+      </div>
+
       <!-- Member presence grid — sorted: recording > online > offline -->
-      <div class="grid gap-2" :class="sortedMembers.length <= 2 ? 'grid-cols-2' : sortedMembers.length <= 4 ? 'grid-cols-2' : 'grid-cols-3'">
+      <div class="grid gap-3" :class="sortedMembers.length <= 2 ? 'grid-cols-1 xl:grid-cols-2' : sortedMembers.length <= 4 ? 'grid-cols-1 md:grid-cols-2' : 'grid-cols-1 md:grid-cols-2 xl:grid-cols-3'">
         <div
-          v-for="(member, idx) in sortedMembers"
+          v-for="member in sortedMembers"
           :key="member.id"
-          class="rounded-xl border px-3 py-2.5 transition-colors"
-          :class="getPresence(member.id).is_recording
-            ? 'bg-red-500/[0.06] border-red-500/20'
-            : getPresence(member.id).online
-              ? 'bg-green-500/[0.04] border-green-500/15'
-              : 'bg-white/[0.02] border-white/[0.05]'"
+          class="relative overflow-hidden rounded-2xl border border-white/[0.06] bg-white/[0.03] p-4"
         >
-          <div class="flex items-center gap-2.5">
-            <!-- Avatar + status dot -->
+          <div class="absolute inset-x-4 top-0 h-px" :class="statusTopBorderClass(memberStatus(member.id))" />
+          <div class="absolute inset-0 pointer-events-none bg-[radial-gradient(circle_at_top,rgba(255,255,255,0.05),transparent_55%)]" />
+          <div class="relative flex items-start gap-3">
             <div class="relative flex-shrink-0">
               <div
-                class="w-9 h-9 rounded-xl flex items-center justify-center text-sm font-bold border border-white/[0.06]"
-                :style="{ background: `linear-gradient(135deg, ${memberColor(originalIdx(member.id))}33, ${memberColor(originalIdx(member.id))}18)`, color: memberColor(originalIdx(member.id)) }"
+                class="flex h-14 w-14 items-center justify-center rounded-2xl border border-white/[0.08] text-base font-black shadow-[0_20px_40px_rgba(0,0,0,0.22)]"
+                :style="{ background: `linear-gradient(135deg, ${memberColor(originalIdx(member.id))}40, rgba(15,23,42,0.88))`, color: memberColor(originalIdx(member.id)) }"
               >{{ initials(member.name) }}</div>
               <div
-                class="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-[#0d1117]"
-                :class="getPresence(member.id).is_recording ? 'bg-red-500' : getPresence(member.id).online ? 'bg-green-500' : 'bg-gray-700'"
+                class="absolute -bottom-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full border-2 border-[#0d1117]"
+                :class="memberStatus(member.id) === 'recording' ? 'bg-red-500' : memberStatus(member.id) === 'online' ? 'bg-emerald-500' : 'bg-gray-700'"
               >
-                <div v-if="getPresence(member.id).is_recording" class="w-full h-full rounded-full bg-red-400 animate-ping opacity-75" />
+                <div v-if="memberStatus(member.id) === 'recording'" class="h-full w-full rounded-full bg-red-400 animate-ping opacity-75" />
               </div>
             </div>
-            <!-- Info -->
-            <div class="flex-1 min-w-0">
-              <p class="text-white text-xs font-semibold truncate leading-tight">{{ member.name }}</p>
-              <p v-if="member.riot_name" class="text-[11px] text-gray-600 truncate leading-tight">
-                {{ member.riot_name }}<span class="text-gray-700">#{{ member.riot_tag }}</span>
-              </p>
-              <div class="flex items-center gap-1 mt-0.5">
-                  <span
-                  class="text-[11px] font-medium leading-tight flex items-center gap-1"
-                  :class="getPresence(member.id).is_recording ? 'text-red-400' : getPresence(member.id).online ? 'text-green-400' : 'text-gray-600'"
+            <div class="min-w-0 flex-1">
+              <div class="flex flex-wrap items-start justify-between gap-2">
+                <div class="min-w-0">
+                  <p class="truncate text-base font-bold text-white leading-tight">{{ member.name }}</p>
+                  <p v-if="member.riot_name" class="mt-1 truncate text-[12px] text-gray-500">
+                    {{ member.riot_name }}<span class="text-gray-600">#{{ member.riot_tag }}</span>
+                  </p>
+                </div>
+                <span class="inline-flex items-center gap-1 rounded-full border px-2 py-1 text-[10px] font-bold uppercase tracking-wide" :class="statusPillClass(memberStatus(member.id))">
+                  <span class="h-1.5 w-1.5 rounded-full bg-current" />
+                  {{ statusLabel(memberStatus(member.id)) }}
+                </span>
+              </div>
+              <div class="mt-3 flex flex-wrap items-center gap-2">
+                <div
+                  v-if="memberRankLabel(member)"
+                  class="inline-flex items-center gap-1.5 rounded-full border border-white/[0.08] bg-white/[0.03] px-2.5 py-1 text-[11px] font-semibold text-gray-200"
                 >
-                  <svg class="w-1.5 h-1.5 flex-shrink-0" viewBox="0 0 6 6" :class="getPresence(member.id).is_recording || getPresence(member.id).online ? '' : 'opacity-40'"><circle cx="3" cy="3" r="3" fill="currentColor"/></svg>
-                  {{ getPresence(member.id).is_recording ? 'Recording' : getPresence(member.id).online ? 'Online' : 'Offline' }}
-                </span>
-                <span v-if="getPresence(member.id).game && getPresence(member.id).is_recording" class="text-[11px] text-gray-600 truncate">
-                  · {{ getPresence(member.id).game }}
-                </span>
+                  <svg class="h-3.5 w-3.5 text-amber-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="m12 3 7 4v5c0 4.2-2.8 7.9-7 9-4.2-1.1-7-4.8-7-9V7l7-4Z" />
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="m9.5 12 1.5 1.5 3.5-3.5" />
+                  </svg>
+                  {{ memberRankLabel(member) }}
+                </div>
+                <span v-if="getPresence(member.id).game" class="rounded-full border border-white/[0.08] bg-black/20 px-2.5 py-1 text-[11px] font-medium text-gray-400">{{ getPresence(member.id).game }}</span>
+              </div>
+              <div class="mt-4 rounded-xl border border-white/[0.06] bg-black/20 px-3 py-2.5">
+                <p class="text-[10px] font-black uppercase tracking-[0.18em] text-gray-600">Status</p>
+                <p class="mt-1 text-sm font-semibold" :class="statusTextClass(memberStatus(member.id))">{{ statusLabel(memberStatus(member.id)) }}</p>
+                <p class="mt-1 text-[11px] leading-relaxed text-gray-500">
+                  {{ memberStatus(member.id) === 'recording' ? 'Currently capturing gameplay for the squad.' : memberStatus(member.id) === 'online' ? 'Online and ready to squad up.' : 'Offline right now, but still part of your roster.' }}
+                </p>
               </div>
             </div>
           </div>
@@ -322,6 +412,9 @@ interface TeamMember {
   name: string
   riot_name?: string
   riot_tag?: string
+  rank?: string | null
+  competitive_rank?: string | null
+  rank_badge_url?: string | null
 }
 
 interface Team {
@@ -380,6 +473,8 @@ const presence = ref<Record<number, PresenceEntry>>({})
 const activity = ref<ActivityItem[]>([])
 const recentAnalyses = ref<AnalysisItem[]>([])
 const recentClips = ref<ClipItem[]>([])
+const inviteTarget = ref('')
+const pendingInvites = ref<Array<{ value: string; createdAt: number }>>(loadPendingInvites())
 
 let pollTimer: ReturnType<typeof setInterval> | null = null
 
@@ -492,8 +587,72 @@ async function refresh() {
   }
 }
 
-function openWebTeam() {
-  window.open('https://upforge.gg/team', '_blank')
+function loadPendingInvites(): Array<{ value: string; createdAt: number }> {
+  try {
+    const raw = localStorage.getItem('upforge-squad-pending-invites')
+    return raw ? JSON.parse(raw) as Array<{ value: string; createdAt: number }> : []
+  } catch {
+    return []
+  }
+}
+
+function persistPendingInvites() {
+  localStorage.setItem('upforge-squad-pending-invites', JSON.stringify(pendingInvites.value.slice(0, 5)))
+}
+
+function memberStatus(userId: number): 'recording' | 'online' | 'offline' {
+  const entry = getPresence(userId)
+  if (entry.is_recording) return 'recording'
+  if (entry.online) return 'online'
+  return 'offline'
+}
+
+function statusTopBorderClass(status: 'recording' | 'online' | 'offline'): string {
+  if (status === 'recording') return 'bg-gradient-to-r from-transparent via-red-400 to-transparent'
+  if (status === 'online') return 'bg-gradient-to-r from-transparent via-emerald-400 to-transparent'
+  return 'bg-gradient-to-r from-transparent via-gray-500 to-transparent'
+}
+
+function statusPillClass(status: 'recording' | 'online' | 'offline'): string {
+  if (status === 'recording') return 'border-red-500/20 bg-red-500/12 text-red-300'
+  if (status === 'online') return 'border-emerald-500/20 bg-emerald-500/12 text-emerald-300'
+  return 'border-white/[0.08] bg-white/[0.03] text-gray-400'
+}
+
+function statusTextClass(status: 'recording' | 'online' | 'offline'): string {
+  if (status === 'recording') return 'text-red-300'
+  if (status === 'online') return 'text-emerald-300'
+  return 'text-gray-500'
+}
+
+function statusLabel(status: 'recording' | 'online' | 'offline'): string {
+  if (status === 'recording') return 'Recording'
+  if (status === 'online') return 'Online'
+  return 'Offline'
+}
+
+function memberRankLabel(member: TeamMember): string | null {
+  return member.rank ?? member.competitive_rank ?? null
+}
+
+function submitInvite() {
+  const value = inviteTarget.value.trim()
+  if (!value) return
+  pendingInvites.value = [{ value, createdAt: Date.now() }, ...pendingInvites.value.filter((item) => item.value !== value)].slice(0, 5)
+  persistPendingInvites()
+  openWebTeam(value)
+  inviteTarget.value = ''
+}
+
+function removePendingInvite(value: string) {
+  pendingInvites.value = pendingInvites.value.filter((item) => item.value !== value)
+  persistPendingInvites()
+}
+
+function openWebTeam(inviteValue?: string | Event) {
+  const target = typeof inviteValue === 'string' ? inviteValue.trim() : ''
+  const url = target ? `https://upforge.gg/team?invite=${encodeURIComponent(target)}` : 'https://upforge.gg/team'
+  window.open(url, '_blank')
 }
 
 onMounted(() => {

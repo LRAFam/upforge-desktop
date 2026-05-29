@@ -11,7 +11,7 @@ import { useTrainerResultStore } from '../stores/trainerResult'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 interface SessionResult {
-  scenario: string
+  scenario: ScenarioKey
   duration_seconds: number
   score: number
   accuracy_pct: number
@@ -23,8 +23,11 @@ interface SessionResult {
   completed_at: string
 }
 
+type ScenarioKey = 'flick' | 'tracking' | 'microadjust' | 'switching' | 'duel'
+type ScenarioCategory = 'all' | 'aim' | 'reaction' | 'precision' | 'duel'
+
 interface AssignedDrill {
-  scenario: 'flick' | 'tracking' | 'microadjust' | 'switching' | 'duel'
+  scenario: ScenarioKey
   difficulty: 'easy' | 'medium' | 'hard' | 'pro'
   duration_seconds: number
   weakness: string
@@ -55,6 +58,7 @@ const benchmarkData = ref<TrainingBenchmark | null>(null)
 const loadingHistory = ref(false)
 const heatmapCanvas = ref<HTMLCanvasElement | null>(null)
 const activeTab = ref<'drills' | 'progress' | 'coaching'>('drills')
+const activeDrillCategory = ref<ScenarioCategory>('all')
 
 // ── Trainer settings (crosshair + mouse) ─────────────────────────────────────
 // Loaded once at mount; used by launchDrill to pass user preferences to Godot.
@@ -142,13 +146,15 @@ const assignedDrills = ref<AssignedDrill[]>([
 
 // ── Scenario metadata ─────────────────────────────────────────────────────────
 const SCENARIO_META: Record<string, {
-  label: string; description: string; tip: string
+  label: string; description: string; tip: string; category: Exclude<ScenarioCategory, 'all'>; recommended?: boolean
   color: string; bg: string; border: string; band: string; dot: string; ring: string
 }> = {
   flick: {
     label: 'Flick',
     description: 'React and snap to stationary targets.',
     tip: 'Keep your arm loose — flicks are shoulder, not wrist.',
+    category: 'aim',
+    recommended: true,
     color: 'text-red-400',
     bg: 'bg-red-500/[0.08]',
     border: 'border-red-500/20',
@@ -160,6 +166,8 @@ const SCENARIO_META: Record<string, {
     label: 'Tracking',
     description: 'Keep crosshair on a moving target.',
     tip: 'Match the target speed — don\'t overshoot then correct.',
+    category: 'reaction',
+    recommended: true,
     color: 'text-sky-400',
     bg: 'bg-sky-500/[0.08]',
     border: 'border-sky-500/20',
@@ -171,6 +179,8 @@ const SCENARIO_META: Record<string, {
     label: 'Micro-Adj',
     description: 'Fine corrections from near your cursor.',
     tip: 'Slow your mousepad movement — this is fingertip control.',
+    category: 'precision',
+    recommended: true,
     color: 'text-amber-400',
     bg: 'bg-amber-500/[0.08]',
     border: 'border-amber-500/20',
@@ -182,6 +192,7 @@ const SCENARIO_META: Record<string, {
     label: 'Switch',
     description: 'Click highlighted targets across screen.',
     tip: 'Move your eyes before your mouse — predict, don\'t react.',
+    category: 'reaction',
     color: 'text-violet-400',
     bg: 'bg-violet-500/[0.08]',
     border: 'border-violet-500/20',
@@ -193,6 +204,7 @@ const SCENARIO_META: Record<string, {
     label: '3D Duel',
     description: 'FPS arena — peek angles, WASD movement.',
     tip: 'Pre-aim corners before committing — don\'t wide-peek.',
+    category: 'duel',
     color: 'text-emerald-400',
     bg: 'bg-emerald-500/[0.08]',
     border: 'border-emerald-500/20',
@@ -215,6 +227,38 @@ const DIFFICULTY_BG: Record<string, string> = {
   hard: 'bg-orange-500/10 border-orange-500/20',
   pro: 'bg-red-500/10 border-red-500/20',
 }
+
+const DRILL_CATEGORY_FILTERS: Array<{
+  id: ScenarioCategory
+  label: string
+  icon: string
+}> = [
+  {
+    id: 'all',
+    label: 'All',
+    icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" class="w-4 h-4"><rect x="4" y="4" width="6" height="6" rx="1.5"/><rect x="14" y="4" width="6" height="6" rx="1.5"/><rect x="4" y="14" width="6" height="6" rx="1.5"/><rect x="14" y="14" width="6" height="6" rx="1.5"/></svg>`,
+  },
+  {
+    id: 'aim',
+    label: 'Aim',
+    icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" class="w-4 h-4"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3.5"/><circle cx="12" cy="12" r="1" fill="currentColor" stroke="none"/></svg>`,
+  },
+  {
+    id: 'reaction',
+    label: 'Reaction',
+    icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" class="w-4 h-4"><path d="M13 3 6 14h7l-2 7 8-11h-7z"/></svg>`,
+  },
+  {
+    id: 'precision',
+    label: 'Precision',
+    icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" class="w-4 h-4"><circle cx="12" cy="12" r="5"/><line x1="12" y1="2" x2="12" y2="7"/><line x1="12" y1="17" x2="12" y2="22"/><line x1="2" y1="12" x2="7" y2="12"/><line x1="17" y1="12" x2="22" y2="12"/></svg>`,
+  },
+  {
+    id: 'duel',
+    label: 'Duel',
+    icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" class="w-4 h-4"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>`,
+  },
+]
 
 // ── Radar chart constants ─────────────────────────────────────────────────────
 const RADAR_SCENARIOS = ['flick', 'tracking', 'microadjust', 'switching', 'duel'] as const
@@ -318,6 +362,41 @@ function scoreDelta(result: SessionResult): number | null {
   const prev = lastApiScore(result.scenario)
   if (prev === null) return null
   return result.score - prev
+}
+
+function scenarioBestScore(scenario: string): number | null {
+  return apiHistory.value?.by_scenario?.[scenario]?.best_score ?? null
+}
+
+function scenarioProgress(scenario: string): number {
+  const bestScore = scenarioBestScore(scenario)
+  if (bestScore === null) return 0
+  return Math.max(0, Math.min(100, bestScore))
+}
+
+function matchesScenarioCategory(scenario: ScenarioKey, category: ScenarioCategory): boolean {
+  if (category === 'all') return true
+  return SCENARIO_META[scenario].category === category
+}
+
+const filteredAssignedDrills = computed(() =>
+  assignedDrills.value.filter((drill) => matchesScenarioCategory(drill.scenario, activeDrillCategory.value))
+)
+
+const recommendedDrills = computed(() => {
+  const picks = assignedDrills.value.filter((drill) => SCENARIO_META[drill.scenario]?.recommended)
+  return (picks.length ? picks : assignedDrills.value).slice(0, 3)
+})
+
+function improvementRoom(scenario: ScenarioKey): number {
+  return 100 - scenarioProgress(scenario)
+}
+
+function categoryFilterClass(category: ScenarioCategory): string {
+  if (activeDrillCategory.value === category) {
+    return 'border-red-500/30 bg-gradient-to-b from-red-500/15 to-orange-500/10 text-white shadow-[0_0_0_1px_rgba(239,68,68,0.14)]'
+  }
+  return 'border-white/[0.06] bg-white/[0.02] text-gray-400 hover:border-white/[0.14] hover:bg-white/[0.05] hover:text-gray-200'
 }
 
 // ── Sparkline SVG ─────────────────────────────────────────────────────────────
@@ -1530,24 +1609,73 @@ const CATEGORY_ICON: Record<string, string> = {
                 <div class="flex-1 h-px bg-white/[0.05]" />
                 <span class="text-[9px] text-gray-700">Based on your VODs</span>
               </div>
+
+              <div class="mb-3 rounded-2xl border border-amber-500/20 bg-gradient-to-br from-amber-500/[0.08] via-amber-500/[0.03] to-transparent p-3 shadow-[0_18px_45px_rgba(0,0,0,0.22)]">
+                <div class="flex items-center gap-2 mb-3">
+                  <div class="flex h-8 w-8 items-center justify-center rounded-xl border border-amber-400/20 bg-amber-500/10 text-amber-300">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" class="w-4 h-4"><path d="M8.25 18.75 12 15l3.75 3.75M12 15V3.75"/><path d="M4.5 14.25c0 3.314 3.358 6 7.5 6s7.5-2.686 7.5-6"/></svg>
+                  </div>
+                  <div>
+                    <p class="text-[10px] font-black uppercase tracking-[0.18em] text-amber-300">Recommended for You</p>
+                    <p class="text-[11px] text-amber-100/60">Focus these drills next to close your biggest gaps.</p>
+                  </div>
+                </div>
+                <div class="grid grid-cols-3 gap-2">
+                  <button
+                    v-for="drill in recommendedDrills"
+                    :key="`recommended-${drill.scenario}`"
+                    class="rounded-xl border border-amber-400/15 bg-black/20 p-3 text-left transition-all duration-200 hover:-translate-y-0.5 hover:border-amber-300/35 hover:shadow-lg hover:shadow-black/30"
+                    @click="!launching && !drillRunning && launchDrill(drill)"
+                  >
+                    <div class="flex items-center justify-between gap-2">
+                      <span class="flex h-8 w-8 items-center justify-center rounded-lg border border-amber-400/15 bg-amber-500/10 text-amber-300" v-html="SCENARIO_ICON[drill.scenario] ?? SCENARIO_ICON['flick']" />
+                      <span class="rounded-full border border-amber-400/15 bg-amber-500/10 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide text-amber-200">Recommended</span>
+                    </div>
+                    <p class="mt-3 text-xs font-bold text-white">{{ SCENARIO_META[drill.scenario]?.label }}</p>
+                    <p class="mt-1 text-[11px] leading-relaxed text-amber-100/60 line-clamp-2">{{ SCENARIO_META[drill.scenario]?.description }}</p>
+                    <div class="mt-3 flex items-end justify-between gap-2">
+                      <div>
+                        <p class="text-[9px] uppercase tracking-wide text-amber-200/55">Best score</p>
+                        <p class="text-sm font-black tabular-nums text-amber-100">{{ scenarioBestScore(drill.scenario) ?? '—' }}</p>
+                      </div>
+                      <div class="text-right">
+                        <p class="text-[9px] uppercase tracking-wide text-amber-200/55">Room to improve</p>
+                        <p class="text-sm font-black tabular-nums text-amber-300">{{ improvementRoom(drill.scenario) }}%</p>
+                      </div>
+                    </div>
+                  </button>
+                </div>
+              </div>
+
+              <div class="mb-3 flex flex-wrap gap-2">
+                <button
+                  v-for="category in DRILL_CATEGORY_FILTERS"
+                  :key="category.id"
+                  class="group flex items-center gap-2 rounded-full border px-3 py-2 text-[11px] font-semibold transition-all"
+                  :class="categoryFilterClass(category.id)"
+                  @click="activeDrillCategory = category.id"
+                >
+                  <span class="flex h-7 w-7 items-center justify-center rounded-full border border-white/10 bg-black/20" v-html="category.icon" />
+                  <span>{{ category.label }}</span>
+                </button>
+              </div>
+
               <div class="space-y-2">
                 <div
-                  v-for="drill in assignedDrills"
+                  v-for="drill in filteredAssignedDrills"
                   :key="drill.scenario"
-                  class="group rounded-xl border overflow-hidden transition-all"
+                  class="group rounded-xl border overflow-hidden transition-all duration-200"
                   :class="
                     completedDrills.has(drill.scenario)
                       ? 'border-green-500/20 bg-green-500/[0.04] opacity-60'
-                      : 'border-white/[0.07] bg-white/[0.02] hover:bg-white/[0.04] hover:border-white/[0.12] cursor-pointer'
+                      : 'border-white/[0.07] bg-white/[0.02] cursor-pointer hover:-translate-y-0.5 hover:bg-white/[0.04] hover:border-white/[0.18] hover:shadow-lg hover:shadow-black/30'
                   "
                   @click="!launching && !drillRunning && !completedDrills.has(drill.scenario) && launchDrill(drill)"
                 >
                   <div class="flex items-stretch">
-                    <!-- Scenario colour band -->
                     <div :class="['w-1 self-stretch flex-shrink-0', SCENARIO_META[drill.scenario]?.band]" />
 
                     <div class="flex-1 flex items-center gap-3 px-3 py-3 min-w-0">
-                      <!-- Scenario icon area -->
                       <div
                         class="w-8 h-8 rounded-lg flex-shrink-0 flex items-center justify-center border"
                         :class="[SCENARIO_META[drill.scenario]?.bg, SCENARIO_META[drill.scenario]?.border]"
@@ -1566,11 +1694,14 @@ const CATEGORY_ICON: Record<string, string> = {
                             >{{ drill.difficulty }}</span
                           >
                           <span class="text-[9px] text-gray-600">{{ drill.duration_seconds }}s</span>
+                          <span
+                            v-if="scenarioBestScore(drill.scenario) !== null"
+                            class="rounded-full border border-white/[0.08] bg-white/[0.04] px-1.5 py-px text-[9px] font-bold tabular-nums text-gray-400"
+                          >PB {{ scenarioBestScore(drill.scenario) }}</span>
                         </div>
                         <p class="text-[11px] text-gray-500 leading-relaxed line-clamp-2">{{ drill.reason }}</p>
                       </div>
 
-                      <!-- Weakness score -->
                       <div class="flex flex-col items-center gap-1 flex-shrink-0">
                         <div class="w-10 bg-white/[0.06] rounded-full h-1">
                           <div
@@ -1584,7 +1715,6 @@ const CATEGORY_ICON: Record<string, string> = {
                       </div>
                     </div>
 
-                    <!-- Launch / Done button -->
                     <div class="flex-shrink-0 border-l border-white/[0.06]">
                       <button
                         v-if="completedDrills.has(drill.scenario)"
@@ -1632,10 +1762,24 @@ const CATEGORY_ICON: Record<string, string> = {
                       </button>
                     </div>
                   </div>
+                  <div class="h-[3px] bg-white/[0.05]">
+                    <div
+                      class="h-full rounded-r-full transition-all duration-300"
+                      :class="scenarioBestScore(drill.scenario) !== null ? SCENARIO_META[drill.scenario]?.band : 'bg-white/[0.10]'"
+                      :style="{ width: scenarioBestScore(drill.scenario) !== null ? `${scenarioProgress(drill.scenario)}%` : '0%' }"
+                    />
+                  </div>
+                </div>
+
+                <div
+                  v-if="filteredAssignedDrills.length === 0"
+                  class="rounded-xl border border-white/[0.06] bg-white/[0.02] px-4 py-6 text-center"
+                >
+                  <p class="text-xs font-semibold text-white">No drills in this category yet.</p>
+                  <p class="mt-1 text-[11px] text-gray-500">Try another filter to see all of your VOD-based recommendations.</p>
                 </div>
               </div>
             </div>
-
             <!-- Section: Free Play -->
             <div>
               <div class="flex items-center gap-2 mb-2.5">

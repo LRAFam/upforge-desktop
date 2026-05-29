@@ -9,6 +9,15 @@
     </div>
 
     <div class="flex-1 flex flex-col items-center justify-center px-5 py-4 relative z-10">
+      <div
+        v-if="copiedLinkToast"
+        class="absolute right-5 top-4 z-20 inline-flex items-center gap-2 rounded-xl border border-emerald-500/20 bg-emerald-500/10 px-3 py-2 text-xs font-semibold text-emerald-300 shadow-[0_12px_30px_rgba(16,185,129,0.18)]"
+      >
+        <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 20 20">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" d="M4.75 10.25 8 13.5l7.25-7.25"/>
+        </svg>
+        Copied analysis link
+      </div>
 
       <!-- Uploading -->
       <div v-if="state === 'uploading'" class="w-full space-y-4 text-center">
@@ -77,7 +86,13 @@
             <div class="grid grid-cols-2 gap-2">
               <div class="rounded-xl border border-white/[0.05] bg-white/[0.03] px-3 py-2 text-left">
                 <p class="text-[10px] uppercase tracking-[0.2em] text-gray-600">Status</p>
-                <p class="mt-1 text-xs font-semibold text-gray-300">Preparing analysis</p>
+                <div class="mt-1 flex items-center gap-2 text-xs font-semibold text-gray-300">
+                  <svg class="h-3.5 w-3.5 animate-spin text-red-400" fill="none" viewBox="0 0 20 20">
+                    <circle class="opacity-20" cx="10" cy="10" r="7" stroke="currentColor" stroke-width="2"/>
+                    <path class="opacity-90" fill="currentColor" d="M10 3a7 7 0 0 1 7 7h-2a5 5 0 0 0-5-5V3Z"/>
+                  </svg>
+                  <span>{{ uploadStatusLabel }}</span>
+                </div>
               </div>
               <div class="rounded-xl border border-white/[0.05] bg-white/[0.03] px-3 py-2 text-right">
                 <p class="text-[10px] uppercase tracking-[0.2em] text-gray-600">ETA</p>
@@ -291,15 +306,15 @@
             </div>
           </div>
           <div v-if="result?.kills != null" class="mt-4 grid grid-cols-3 gap-2">
-            <div class="rounded-xl border border-green-500/20 bg-green-500/[0.08] px-3 py-3 text-center stat-chip-in">
+            <div class="rounded-xl border border-green-500/20 bg-green-500/[0.08] px-3 py-3 text-center transition-all duration-500 stat-chip-in" :class="isReady ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-2'" style="transition-delay: 50ms;">
               <p class="text-[10px] font-semibold uppercase tracking-[0.24em] text-green-300/70">Kills</p>
               <p class="mt-1 text-2xl font-black tabular-nums text-green-400">{{ result.kills }}</p>
             </div>
-            <div class="rounded-xl border border-red-500/20 bg-red-500/[0.08] px-3 py-3 text-center stat-chip-in" style="animation-delay: 80ms;">
+            <div class="rounded-xl border border-red-500/20 bg-red-500/[0.08] px-3 py-3 text-center transition-all duration-500 stat-chip-in" :class="isReady ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-2'" style="transition-delay: 100ms;">
               <p class="text-[10px] font-semibold uppercase tracking-[0.24em] text-red-300/70">Deaths</p>
               <p class="mt-1 text-2xl font-black tabular-nums text-red-400">{{ result.deaths ?? '?' }}</p>
             </div>
-            <div class="rounded-xl border border-blue-500/20 bg-blue-500/[0.08] px-3 py-3 text-center stat-chip-in" style="animation-delay: 160ms;">
+            <div class="rounded-xl border border-blue-500/20 bg-blue-500/[0.08] px-3 py-3 text-center transition-all duration-500 stat-chip-in" :class="isReady ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-2'" style="transition-delay: 150ms;">
               <p class="text-[10px] font-semibold uppercase tracking-[0.24em] text-blue-300/70">Assists</p>
               <p class="mt-1 text-2xl font-black tabular-nums text-blue-400">{{ result.assists ?? '?' }}</p>
             </div>
@@ -423,6 +438,18 @@
               </svg>
               <span>{{ cardExporting ? 'Saving…' : cardExportDone ? 'Saved!' : 'Export Card' }}</span>
             </button>
+          </div>
+          <div class="flex gap-2">
+            <button
+              v-if="analysisUrl"
+              class="flex-1 flex items-center justify-center gap-2 rounded-xl border border-white/[0.08] bg-white/[0.03] px-3 py-2.5 text-xs font-semibold text-gray-300 transition-colors hover:border-white/[0.14] hover:bg-white/[0.08] hover:text-white"
+              @click="copyAnalysisLink"
+            >
+              <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 20 20">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" d="M11.25 5.5h1.75a3 3 0 1 1 0 6h-1.75m-2.5 3H7a3 3 0 1 1 0-6h1.75m-1.5 3h5.5"/>
+              </svg>
+              <span>Copy Link</span>
+            </button>
             <button
               v-if="result?.overall_score"
               title="Copy score to clipboard"
@@ -433,11 +460,11 @@
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/>
               </svg>
             </button>
+            <button
+              class="flex-1 px-3 py-2.5 text-xs font-medium text-gray-500 hover:text-gray-300 bg-white/[0.03] hover:bg-white/[0.06] border border-white/[0.06] rounded-xl transition-colors"
+              @click="dismiss"
+            >Close panel</button>
           </div>
-          <button
-            class="w-full px-3 py-2.5 text-xs font-medium text-gray-500 hover:text-gray-300 bg-white/[0.03] hover:bg-white/[0.06] border border-white/[0.06] rounded-xl transition-colors"
-            @click="dismiss"
-          >Close panel</button>
         </div>
 
         <!-- Session clips row -->
@@ -720,6 +747,13 @@ const analysisElapsedDisplay = computed(() => {
   return `${m}m ${sec.toString().padStart(2, '0')}s`
 })
 
+const uploadStatusLabel = computed(() => {
+  if (uploadProgress.value < 15) return 'Preparing replay'
+  if (uploadProgress.value < 70) return 'Uploading recording'
+  if (uploadProgress.value < 100) return 'Finalising upload'
+  return 'Handing off to analysis'
+})
+
 const analysisStageIndex = computed(() => {
   const s = analysisElapsedSecs.value
   if (s < 30) return 0
@@ -818,11 +852,14 @@ const trainScenario = computed(() => pickScenario(improvements.value, topIssue.v
 const trainerLaunching = ref(false)
 const cardExporting = ref(false)
 const cardExportDone = ref(false)
+const copiedLinkToast = ref(false)
+const isReady = ref(false)
 const debriefText = ref<string | null>(null)
 const debriefLoading = ref(false)
 const debriefFailed = ref(false)
 const demoStatus = ref<{ status: string; jobId?: string; error?: string } | null>(null)
 const demoProgress = ref(0)
+let copiedLinkTimer: ReturnType<typeof setTimeout> | null = null
 
 async function launchTrainer() {
   if (trainerLaunching.value) return
@@ -886,6 +923,9 @@ const glowBgStyle = computed(() => {
 
 onMounted(() => {
   window.api.discord.setState('reviewing').catch(() => {})
+  setTimeout(() => {
+    isReady.value = true
+  }, 40)
   const ipcCleanup: (() => void)[] = []
   ipcCleanup.push(window.api.on('post-game:upload-start', (...args: unknown[]) => {
     const data = args[0] as { game: string; map: string | null; agent: string | null; matchDetailsStatus?: typeof matchDataStatus.value; killsInTimeline?: number }
@@ -974,6 +1014,7 @@ onMounted(() => {
 onUnmounted(() => {
   window.api.discord.setState('idle').catch(() => {})
   clearStuckTimer()
+  if (copiedLinkTimer) clearTimeout(copiedLinkTimer)
   const cleanup = (window as Window & { _postGameIpcCleanup?: (() => void)[] })._postGameIpcCleanup
   cleanup?.forEach(fn => fn())
   delete (window as Window & { _postGameIpcCleanup?: (() => void)[] })._postGameIpcCleanup
@@ -1029,15 +1070,28 @@ async function openClips() {
   await window.api.app.showClips().catch(() => {})
 }
 
+const analysisUrl = computed(() => result.value?.analysis_id ? `https://upforge.gg/valorant/results/${result.value.analysis_id}` : '')
+
 function viewFullAnalysis() {
-  if (result.value?.analysis_id) {
-    window.open(`https://upforge.gg/valorant/results/${result.value.analysis_id}`, '_blank')
+  if (analysisUrl.value) {
+    window.open(analysisUrl.value, '_blank')
   }
   dismiss()
 }
 
 function dismiss() { window.close() }
 function openUpgrade() { window.open(upgradeUrl.value, '_blank') }
+
+async function copyAnalysisLink() {
+  if (!analysisUrl.value) return
+  await navigator.clipboard.writeText(analysisUrl.value).catch(() => {})
+  copiedLinkToast.value = true
+  if (copiedLinkTimer) clearTimeout(copiedLinkTimer)
+  copiedLinkTimer = setTimeout(() => {
+    copiedLinkToast.value = false
+    copiedLinkTimer = null
+  }, 2000)
+}
 
 async function copyScore() {
   if (!result.value?.overall_score) return

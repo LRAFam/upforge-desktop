@@ -113,11 +113,34 @@
     <!-- Navigation (hidden on post-game / login) -->
     <nav
       v-if="showNav"
-      class="flex items-center gap-0.5 px-3 pt-2 pb-0 flex-shrink-0 border-b border-white/[0.05] bg-[#0c0c0c]/85"
+      class="flex flex-col gap-1 px-3 pt-2 pb-2 flex-shrink-0 border-b border-white/[0.05] bg-[#0c0c0c]/85"
     >
       <div class="flex items-center gap-0.5">
         <RouterLink
-          v-for="link in navLinks"
+          v-for="link in primaryNavLinks"
+          :key="link.to"
+          :to="link.to"
+          class="relative flex items-center gap-1.5 px-2.5 py-2 text-[11px] font-semibold transition-all duration-150 rounded-t-lg group"
+          :class="
+            $route.path === link.to
+              ? 'text-white bg-white/[0.05] after:absolute after:bottom-0 after:left-1.5 after:right-1.5 after:h-[2px] after:rounded-full after:bg-gradient-to-r after:from-red-500 after:to-orange-400 after:shadow-[0_0_8px_rgba(255,70,85,0.6)]'
+              : 'text-gray-500 hover:text-gray-300 hover:bg-white/[0.03]'
+          "
+        >
+          <component :is="'svg'" class="w-3.5 h-3.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" v-html="link.iconPath" />
+          <span class="inline-flex items-center gap-1.5">
+            <span>{{ link.label }}</span>
+            <span v-if="link.to === '/clips' && clipCountAvailable && clipCount > 0" class="inline-flex min-w-[18px] items-center justify-center rounded-full border border-red-500/20 bg-red-500/15 px-1.5 py-0.5 text-[9px] font-bold text-red-300">{{ clipCount }}</span>
+            <span v-else-if="link.to === '/clips' && hasClipIndicator" class="h-1.5 w-1.5 rounded-full bg-red-400 shadow-[0_0_10px_rgba(248,113,113,0.8)]" />
+          </span>
+        </RouterLink>
+      </div>
+
+      <div class="my-2 border-t border-white/[0.05]" />
+
+      <div class="flex items-center gap-0.5">
+        <RouterLink
+          v-for="link in secondaryNavLinks"
           :key="link.to"
           :to="link.to"
           class="relative flex items-center gap-1.5 px-2.5 py-2 text-[11px] font-semibold transition-all duration-150 rounded-t-lg group"
@@ -130,27 +153,30 @@
           <component :is="'svg'" class="w-3.5 h-3.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" v-html="link.iconPath" />
           {{ link.label }}
         </RouterLink>
-      </div>
 
-      <div class="ml-auto flex items-center gap-2 pl-3 border-l border-white/[0.06]">
-        <RouterLink
-          v-if="devNavLink"
-          :to="devNavLink.to"
-          class="px-2.5 py-2 text-[11px] font-medium transition-all duration-150 rounded-t-lg"
-          :class="
-            $route.path === devNavLink.to
-              ? 'text-amber-400 relative after:absolute after:bottom-0 after:left-1.5 after:right-1.5 after:h-px after:bg-amber-500'
-              : 'text-amber-600 hover:text-amber-400 hover:bg-white/[0.03]'
-          "
-        >
-          {{ devNavLink.label }}
-        </RouterLink>
-        <span v-if="appVersion" class="inline-flex items-center rounded-full border border-white/[0.08] bg-white/[0.03] px-2 py-1 text-[10px] font-medium text-gray-500">v{{ appVersion }}</span>
-        <div class="flex items-center gap-2 rounded-full border border-white/[0.08] bg-white/[0.03] px-2 py-1.5">
-          <div class="flex h-7 w-7 items-center justify-center rounded-full bg-gradient-to-br from-red-500/25 to-orange-500/20 text-[10px] font-bold text-red-300 ring-1 ring-red-500/20">{{ userInitials }}</div>
-          <div class="flex flex-col leading-none">
-            <span class="text-[10px] font-semibold text-gray-300 truncate max-w-[120px]">{{ userDisplayName }}</span>
-            <span class="text-[9px] text-gray-600">Desktop</span>
+        <div class="ml-auto flex items-center gap-2 pl-3 border-l border-white/[0.06]">
+          <RouterLink
+            v-if="devNavLink"
+            :to="devNavLink.to"
+            class="px-2.5 py-2 text-[11px] font-medium transition-all duration-150 rounded-t-lg"
+            :class="
+              $route.path === devNavLink.to
+                ? 'text-amber-400 relative after:absolute after:bottom-0 after:left-1.5 after:right-1.5 after:h-px after:bg-amber-500'
+                : 'text-amber-600 hover:text-amber-400 hover:bg-white/[0.03]'
+            "
+          >
+            {{ devNavLink.label }}
+          </RouterLink>
+          <span v-if="appVersion" class="inline-flex items-center rounded-full border border-white/[0.08] bg-white/[0.03] px-2 py-1 text-[10px] font-medium text-gray-500">v{{ appVersion }}</span>
+          <div class="flex items-center gap-2 rounded-full border border-white/[0.08] bg-white/[0.03] px-2 py-1.5">
+            <div class="flex h-7 w-7 items-center justify-center overflow-hidden rounded-full ring-1 ring-red-500/20">
+              <img v-if="userAvatarUrl" :src="userAvatarUrl" :alt="userDisplayName" class="h-full w-full object-cover" @error="userAvatarUrl = ''" />
+              <div v-else class="flex h-full w-full items-center justify-center bg-gradient-to-br from-red-500/25 to-orange-500/20 text-[10px] font-bold text-red-300">{{ userInitial }}</div>
+            </div>
+            <div class="flex flex-col leading-none">
+              <span class="text-[10px] font-semibold text-gray-300 truncate max-w-[120px]">{{ userDisplayName }}</span>
+              <span class="text-[9px] text-gray-600">Desktop</span>
+            </div>
           </div>
         </div>
       </div>
@@ -188,11 +214,12 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useDesktopRecording } from './composables/useDesktopRecording'
 import OnboardingWizard from './components/OnboardingWizard.vue'
 import AchievementManager from './components/AchievementManager.vue'
+import type { ClipRecord, ProfileData } from './env.d.ts'
 
 const route = useRoute()
 const router = useRouter()
@@ -208,6 +235,12 @@ const isAdmin = ref(false)
 const appVersion = ref(__APP_VERSION__)
 const simStatus = ref('')
 const riotId = ref<string | null>(null)
+const userName = ref<string | null>(null)
+const userAvatarUrl = ref('')
+const clipCount = ref(0)
+const clipCountAvailable = ref(false)
+const hasClipIndicator = ref(false)
+const isNavigating = ref(false)
 const showOnboarding = ref(false)
 const onboardingWasComplete = ref(false)
 
@@ -236,34 +269,27 @@ const navLinks = [
 const devNavLink = computed(() =>
   (isAdmin.value || devModeEnabled.value) ? { to: '/dev', label: 'Developer' } : null
 )
+const primaryNavLinks = navLinks.filter(link => !['/performance', '/settings'].includes(link.to))
+const secondaryNavLinks = navLinks.filter(link => ['/performance', '/settings'].includes(link.to))
 
 const appUpdatePhase = ref<string>('idle')
 const appUpdateVersion = ref<string | undefined>(undefined)
 const appUpdatePercent = ref(0)
-const navigationBusy = ref(false)
 let statusInterval: ReturnType<typeof setInterval> | null = null
 let navBusyTimer: ReturnType<typeof setTimeout> | null = null
 
-const userDisplayName = computed(() => riotId.value || 'UpForge User')
-const userInitials = computed(() =>
-  userDisplayName.value
-    .split('#')[0]
-    .split(/\s+/)
-    .filter(Boolean)
-    .slice(0, 2)
-    .map(part => part[0]?.toUpperCase() ?? '')
-    .join('') || 'UF'
-)
+const userDisplayName = computed(() => riotId.value || userName.value || 'UpForge User')
+const userInitial = computed(() => userDisplayName.value.trim().charAt(0).toUpperCase() || 'U')
 
 const busyActive = computed(() =>
-  navigationBusy.value || ['checking', 'downloading', 'installing'].includes(appUpdatePhase.value)
+  isNavigating.value || ['checking', 'downloading', 'installing'].includes(appUpdatePhase.value)
 )
 
 const busyBarWidth = computed(() => {
   if (appUpdatePhase.value === 'downloading') return Math.max(10, Math.min(100, appUpdatePercent.value || 12))
   if (appUpdatePhase.value === 'installing') return 96
   if (appUpdatePhase.value === 'checking') return 22
-  return navigationBusy.value ? 64 : 0
+  return isNavigating.value ? 64 : 0
 })
 
 async function installUpdate() {
@@ -271,11 +297,48 @@ async function installUpdate() {
   await window.api.updater.install()
 }
 
-watch(() => route.fullPath, (newPath, oldPath) => {
-  if (!oldPath || newPath === oldPath) return
-  navigationBusy.value = true
+async function loadClipSummary() {
+  try {
+    const clips = await window.api.clips.get() as ClipRecord[]
+    clipCount.value = clips.length
+    clipCountAvailable.value = true
+    hasClipIndicator.value = clips.length > 0
+  } catch {
+    clipCountAvailable.value = false
+  }
+}
+
+async function loadUserProfile() {
+  try {
+    const profile = await window.api.profile.get() as ProfileData | null
+    userName.value = profile?.user?.name ?? userName.value
+    if (profile?.latest_stats?.player_card_id) {
+      userAvatarUrl.value = `https://media.valorant-api.com/playercards/${profile.latest_stats.player_card_id}/smallart.png`
+      return
+    }
+  } catch {
+    // ignore
+  }
+  userAvatarUrl.value = ''
+}
+
+router.beforeEach((to, from, next) => {
+  if (to.fullPath !== from.fullPath) {
+    isNavigating.value = true
+    if (navBusyTimer) clearTimeout(navBusyTimer)
+  }
+  next()
+})
+
+router.afterEach(() => {
   if (navBusyTimer) clearTimeout(navBusyTimer)
-  navBusyTimer = setTimeout(() => { navigationBusy.value = false }, 450)
+  navBusyTimer = setTimeout(() => { isNavigating.value = false }, 220)
+  loadClipSummary().catch(() => {})
+})
+
+router.onError(() => {
+  if (navBusyTimer) clearTimeout(navBusyTimer)
+  isNavigating.value = false
 })
 
 onMounted(async () => {
@@ -285,6 +348,7 @@ onMounted(async () => {
     isDev.value = (s as Record<string, unknown>).isDev as boolean
     if (s.version) appVersion.value = s.version
     if (s.user?.riot_name) riotId.value = `${s.user.riot_name}#${s.user.riot_tag}`
+    if (s.user?.name) userName.value = s.user.name
     if (s.user?.is_admin) isAdmin.value = true
   } catch {
     // IPC failed — appVersion stays as compile-time constant
@@ -298,6 +362,8 @@ onMounted(async () => {
       onboardingWasComplete.value = true
     }
   } catch { /* ignore */ }
+
+  await Promise.all([loadClipSummary(), loadUserProfile()])
 
   // Hydrate update state and listen for live updates
   try {
@@ -339,9 +405,17 @@ onMounted(async () => {
       const s = await window.api.app.getStatus()
       status.value = s
       if (s.user?.riot_name) riotId.value = `${s.user.riot_name}#${s.user.riot_tag}`
+      if (s.user?.name) userName.value = s.user.name
       if (s.user?.is_admin) isAdmin.value = true
     } catch { /* ignore */ }
   }, 5000)
+
+  const clipsCleanup = window.api.on('clips:new', async (...args: unknown[]) => {
+    const clipIds = args[0] as string[] | undefined
+    hasClipIndicator.value = (clipIds?.length ?? 0) > 0 || hasClipIndicator.value
+    await loadClipSummary()
+  })
+  ;(window as Window & { _clipsCleanup?: () => void })._clipsCleanup = clipsCleanup
 
   // Navigate to a tab when the main process requests it (e.g. from post-game "View Clips" button)
   const navCleanup = window.api.on('app:navigate', (...args: unknown[]) => {
@@ -360,6 +434,9 @@ onUnmounted(() => {
   const settingsCleanup = (window as Window & { _settingsCleanup?: () => void })._settingsCleanup
   settingsCleanup?.()
   delete (window as Window & { _settingsCleanup?: () => void })._settingsCleanup
+  const clipsCleanup = (window as Window & { _clipsCleanup?: () => void })._clipsCleanup
+  clipsCleanup?.()
+  delete (window as Window & { _clipsCleanup?: () => void })._clipsCleanup
   const updaterCleanups = (window as Window & { _updaterCleanups?: (() => void)[] })._updaterCleanups
   updaterCleanups?.forEach(fn => fn())
   delete (window as Window & { _updaterCleanups?: (() => void)[] })._updaterCleanups
@@ -416,6 +493,14 @@ function handleOnboardingComplete() {
 .busy-bar-enter-from,
 .busy-bar-leave-to {
   opacity: 0;
+}
+
+.drag-region {
+  -webkit-app-region: drag;
+}
+
+.-webkit-no-drag {
+  -webkit-app-region: no-drag;
 }
 
 @keyframes busy-shimmer {

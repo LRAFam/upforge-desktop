@@ -119,120 +119,135 @@
     </div>
 
     <!-- Hero header -->
-    <div class="flex-shrink-0 mx-4 mt-3 grid grid-cols-[minmax(0,1fr)_320px] gap-4">
-      <div class="relative overflow-hidden rounded-3xl border border-white/[0.06] bg-gradient-to-br from-white/[0.03] via-white/[0.02] to-red-500/[0.05] px-5 py-5">
-        <div class="absolute -right-12 top-0 h-32 w-32 rounded-full bg-red-500/10 blur-3xl" />
-        <div class="absolute left-8 top-10 h-20 w-20 rounded-full bg-orange-500/8 blur-3xl" />
-        <div class="relative space-y-4">
-          <div class="flex items-start justify-between gap-4">
-            <div class="space-y-3">
-              <div class="flex items-center gap-2 flex-wrap">
-                <span class="text-[10px] font-black uppercase tracking-[0.32em] text-red-400/80">Command Center</span>
-                <div v-if="status.recording" class="inline-flex items-center gap-2 rounded-full border border-red-500/25 bg-red-500/[0.12] px-2.5 py-1 rec-pulse">
-                  <span class="relative flex h-2.5 w-2.5">
-                    <span class="absolute inline-flex h-full w-full rounded-full bg-red-500 opacity-75 animate-ping" />
-                    <span class="relative inline-flex h-2.5 w-2.5 rounded-full bg-red-400" />
-                  </span>
-                  <span class="text-[11px] font-black uppercase tracking-[0.24em] text-red-300">REC</span>
+    <div class="flex-shrink-0 mx-4 mt-4 space-y-6">
+      <div class="grid grid-cols-[minmax(0,1fr)_320px] gap-4">
+        <div class="relative overflow-hidden rounded-3xl border border-white/[0.06] bg-gradient-to-br from-white/[0.04] via-white/[0.025] to-red-500/[0.06] px-6 py-6">
+          <div class="absolute -right-12 top-0 h-36 w-36 rounded-full bg-red-500/10 blur-3xl" />
+          <div class="absolute left-10 top-10 h-24 w-24 rounded-full bg-orange-500/10 blur-3xl" />
+          <div class="relative space-y-5">
+            <div class="flex items-start justify-between gap-4">
+              <div class="space-y-4">
+                <div class="flex flex-wrap items-center gap-2.5">
+                  <span class="text-[10px] font-black uppercase tracking-[0.32em] text-red-400/80">Command Center</span>
+                  <div v-if="status.recording" class="inline-flex items-center gap-2.5 rounded-full border border-red-500/25 bg-red-500/[0.14] px-3 py-1.5 shadow-[0_0_24px_rgba(239,68,68,0.12)]">
+                    <span class="relative flex h-3 w-3">
+                      <span class="absolute inline-flex h-full w-full rounded-full bg-red-500/60 animate-ping" />
+                      <span class="relative inline-flex h-3 w-3 rounded-full bg-red-400 animate-pulse" />
+                    </span>
+                    <span class="text-[11px] font-black uppercase tracking-[0.24em] text-red-200">Recording live</span>
+                  </div>
+                </div>
+                <div class="space-y-2.5">
+                  <h1 class="text-4xl font-black tracking-tight text-white leading-[1.02]">{{ dashboardHeadline }}</h1>
+                  <p class="max-w-2xl text-sm leading-relaxed text-gray-400">Stay on top of live capture, recent coaching sessions, and the clips that matter most from a single focused workspace.</p>
                 </div>
               </div>
-              <div>
-                <h1 class="text-3xl font-black tracking-tight text-white leading-none">{{ dashboardHeadline }}</h1>
-                <p class="mt-2 max-w-2xl text-sm leading-relaxed text-gray-400">Monitor recording status, recent coaching sessions, and saved clips from one focused workspace.</p>
+              <div v-if="status.recording && recordingElapsed" class="rounded-2xl border border-red-500/20 bg-black/20 px-3.5 py-2.5 text-right shadow-[0_0_18px_rgba(239,68,68,0.1)]">
+                <p class="text-[10px] font-semibold uppercase tracking-[0.24em] text-red-300/70">Live timer</p>
+                <p class="mt-1 text-2xl font-black tabular-nums text-red-300">{{ recordingElapsed }}</p>
               </div>
             </div>
-            <div v-if="status.recording && recordingElapsed" class="rounded-2xl border border-red-500/20 bg-black/20 px-3 py-2 text-right">
-              <p class="text-[10px] font-semibold uppercase tracking-[0.24em] text-red-300/70">Live timer</p>
-              <p class="mt-1 text-xl font-black tabular-nums text-red-300">{{ recordingElapsed }}</p>
+            <div class="grid grid-cols-4 gap-3 max-w-4xl">
+              <div class="rounded-full border border-white/[0.08] bg-white/[0.03] px-4 py-3 shadow-[0_10px_30px_rgba(0,0,0,0.12)]">
+                <div class="flex items-center gap-3">
+                  <div class="flex h-10 w-10 items-center justify-center rounded-full border border-red-500/20 bg-red-500/10 text-red-300">
+                    <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" d="M15.75 10.5l4.72-2.36A.75.75 0 0121.5 8.81v6.38a.75.75 0 01-1.03.67l-4.72-2.36m0 0V10.5m0 3H4.875A1.875 1.875 0 013 11.625v-3.75C3 6.839 3.84 6 4.875 6H15.75c1.035 0 1.875.84 1.875 1.875v8.25A1.875 1.875 0 0115.75 18H6" />
+                    </svg>
+                  </div>
+                  <div class="min-w-0">
+                    <p class="text-lg font-black tabular-nums text-white">{{ clipCount }}</p>
+                    <p class="text-[10px] font-semibold uppercase tracking-[0.24em] text-gray-600">Total Clips</p>
+                  </div>
+                </div>
+              </div>
+              <div class="rounded-full border border-white/[0.08] bg-white/[0.03] px-4 py-3 shadow-[0_10px_30px_rgba(0,0,0,0.12)]">
+                <div class="flex items-center gap-3">
+                  <div class="flex h-10 w-10 items-center justify-center rounded-full border border-orange-500/20 bg-orange-500/10 text-orange-300">
+                    <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" d="M3 13.125C3 12.503 3.504 12 4.125 12h3.75c.621 0 1.125.503 1.125 1.125v6.75C9 20.497 8.496 21 7.875 21h-3.75A1.125 1.125 0 013 19.875v-6.75zm6-4.5C9 8.003 9.504 7.5 10.125 7.5h3.75c.621 0 1.125.503 1.125 1.125v11.25c0 .622-.504 1.125-1.125 1.125h-3.75A1.125 1.125 0 019 19.875V8.625zm6-3.375c0-.622.504-1.125 1.125-1.125h3.75C20.496 4.125 21 4.628 21 5.25v14.625c0 .622-.504 1.125-1.125 1.125h-3.75A1.125 1.125 0 0115 19.875V5.25z" />
+                    </svg>
+                  </div>
+                  <div class="min-w-0">
+                    <p class="text-lg font-black tabular-nums text-white">{{ totalSessionsAnalysed }}</p>
+                    <p class="text-[10px] font-semibold uppercase tracking-[0.24em] text-gray-600">Sessions Analysed</p>
+                  </div>
+                </div>
+              </div>
+              <div class="rounded-full border border-white/[0.08] bg-white/[0.03] px-4 py-3 shadow-[0_10px_30px_rgba(0,0,0,0.12)]">
+                <div class="flex items-center gap-3">
+                  <div class="flex h-10 w-10 items-center justify-center rounded-full border border-white/[0.08] bg-white/[0.04] text-gray-200">
+                    <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" d="M12 3l2.5 5.5 6 .9-4.3 4.2 1 5.9-5.2-2.9-5.2 2.9 1-5.9L3.5 9.4l6-.9L12 3z" />
+                    </svg>
+                  </div>
+                  <div class="min-w-0">
+                    <p class="text-lg font-black text-white truncate">{{ dashboardRankLabel }}</p>
+                    <p class="text-[10px] font-semibold uppercase tracking-[0.24em] text-gray-600">Current Rank</p>
+                  </div>
+                </div>
+              </div>
+              <div class="rounded-full border border-white/[0.08] bg-white/[0.03] px-4 py-3 shadow-[0_10px_30px_rgba(0,0,0,0.12)]">
+                <div class="flex items-center gap-3">
+                  <div class="flex h-10 w-10 items-center justify-center rounded-full border border-emerald-500/20 bg-emerald-500/10 text-emerald-300">
+                    <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" d="M3 13.5l5.25-5.25L12 12l8.25-8.25" />
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" d="M16.5 3.75H21v4.5" />
+                    </svg>
+                  </div>
+                  <div class="min-w-0">
+                    <p class="text-lg font-black tabular-nums text-white">{{ dashboardWinRateLabel }}</p>
+                    <p class="text-[10px] font-semibold uppercase tracking-[0.24em] text-gray-600">Win Rate</p>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
-          <div class="grid grid-cols-3 gap-3 max-w-2xl">
-            <div class="rounded-2xl border border-white/[0.06] bg-white/[0.03] px-4 py-3">
-              <div class="flex items-center gap-2">
-                <div class="flex h-9 w-9 items-center justify-center rounded-xl bg-red-500/10 border border-red-500/20 text-red-300">
-                  <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" d="M3 13.125C3 12.503 3.504 12 4.125 12h3.75c.621 0 1.125.503 1.125 1.125v6.75C9 20.497 8.496 21 7.875 21h-3.75A1.125 1.125 0 013 19.875v-6.75zm6-4.5C9 8.003 9.504 7.5 10.125 7.5h3.75c.621 0 1.125.503 1.125 1.125v11.25c0 .622-.504 1.125-1.125 1.125h-3.75A1.125 1.125 0 019 19.875V8.625zm6-3.375c0-.622.504-1.125 1.125-1.125h3.75C20.496 4.125 21 4.628 21 5.25v14.625c0 .622-.504 1.125-1.125 1.125h-3.75A1.125 1.125 0 0115 19.875V5.25z" />
-                  </svg>
-                </div>
-                <div>
-                  <p class="text-[10px] font-semibold uppercase tracking-[0.24em] text-gray-600">Analyses</p>
-                  <p class="mt-1 text-xl font-black text-white tabular-nums">{{ analyses.length }}</p>
-                </div>
-              </div>
+        </div>
+
+        <div
+          class="relative overflow-hidden rounded-3xl border px-4 py-4"
+          :class="!status.ffmpegOk || status.recordingStarting ? 'border-yellow-500/20 bg-gradient-to-br from-yellow-500/[0.1] to-white/[0.02]' : liveDetectionActive ? 'border-emerald-500/20 bg-gradient-to-br from-emerald-500/[0.12] via-emerald-500/[0.04] to-white/[0.02]' : 'border-white/[0.06] bg-white/[0.02]'"
+        >
+          <div v-if="liveDetectionActive" class="absolute inset-y-4 left-0 w-[3px] rounded-full bg-gradient-to-b from-emerald-300 via-emerald-400 to-emerald-500" />
+          <div v-if="liveDetectionActive" class="absolute -right-8 top-6 h-24 w-24 rounded-full bg-emerald-400/10 blur-3xl" />
+          <div class="relative flex items-start gap-3 pl-1">
+            <div
+              class="flex h-11 w-11 items-center justify-center rounded-2xl border"
+              :class="!status.ffmpegOk || status.recordingStarting ? 'border-yellow-500/25 bg-yellow-500/[0.12] text-yellow-300' : liveDetectionActive ? 'border-emerald-500/25 bg-emerald-500/[0.12] text-emerald-300' : 'border-white/[0.08] bg-white/[0.03] text-gray-300'"
+            >
+              <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" d="M3 12h18M3 7.5h18M3 16.5h18" />
+              </svg>
             </div>
-            <div class="rounded-2xl border border-white/[0.06] bg-white/[0.03] px-4 py-3">
-              <div class="flex items-center gap-2">
-                <div class="flex h-9 w-9 items-center justify-center rounded-xl bg-orange-500/10 border border-orange-500/20 text-orange-300">
-                  <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" d="M15.75 10.5l4.72-2.36A.75.75 0 0121.5 8.81v6.38a.75.75 0 01-1.03.67l-4.72-2.36m0 0V10.5m0 3H4.875A1.875 1.875 0 013 11.625v-3.75C3 6.839 3.84 6 4.875 6H15.75c1.035 0 1.875.84 1.875 1.875v8.25A1.875 1.875 0 0115.75 18H6" />
-                  </svg>
-                </div>
-                <div>
-                  <p class="text-[10px] font-semibold uppercase tracking-[0.24em] text-gray-600">Clips</p>
-                  <p class="mt-1 text-xl font-black text-white tabular-nums">{{ clipCount }}</p>
-                </div>
+            <div class="min-w-0 flex-1">
+              <div class="flex items-center justify-between gap-3">
+                <p class="text-[10px] font-bold uppercase tracking-[0.28em] text-gray-600">Active Game Detection</p>
+                <span v-if="liveDetectionActive" class="inline-flex items-center gap-1.5 rounded-full border border-emerald-400/20 bg-emerald-400/[0.12] px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.24em] text-emerald-200">
+                  <span class="h-1.5 w-1.5 rounded-full bg-emerald-300 animate-pulse" />
+                  Live
+                </span>
               </div>
-            </div>
-            <div class="rounded-2xl border border-white/[0.06] bg-white/[0.03] px-4 py-3">
-              <div class="flex items-center gap-2">
-                <div class="flex h-9 w-9 items-center justify-center rounded-xl bg-white/[0.05] border border-white/[0.08] text-gray-200">
-                  <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" d="M16.5 18.75h-9a2.25 2.25 0 01-2.25-2.25v-9A2.25 2.25 0 017.5 5.25h9a2.25 2.25 0 012.25 2.25v9a2.25 2.25 0 01-2.25 2.25z" />
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" d="M9 12.75l1.5 1.5 4.5-4.5" />
-                  </svg>
-                </div>
-                <div>
-                  <p class="text-[10px] font-semibold uppercase tracking-[0.24em] text-gray-600">Rank</p>
-                  <p class="mt-1 text-xl font-black text-white truncate">{{ dashboardRankLabel }}</p>
-                </div>
+              <h2 class="mt-3 text-xl font-black tracking-tight text-white">{{ activeGameTitle }}</h2>
+              <p class="mt-2 text-sm leading-relaxed text-gray-400">{{ activeGameMessage }}</p>
+              <div class="mt-4 flex flex-wrap items-center gap-2">
+                <span v-if="status.recording && hotkeys['save-clip']" class="inline-flex items-center gap-1 rounded-full border border-red-500/20 bg-red-500/[0.12] px-2.5 py-1 text-[10px] font-semibold text-red-300">
+                  <span class="text-red-400">Clip</span>
+                  <kbd class="font-mono text-red-200">{{ hotkeys['save-clip'] }}</kbd>
+                </span>
+                <span v-else-if="status.recordedModes?.length" class="inline-flex items-center gap-1 rounded-full border border-white/[0.08] bg-white/[0.03] px-2.5 py-1 text-[10px] font-semibold text-gray-300">
+                  {{ status.recordedModes.map(formatMode).join(' · ') }}
+                </span>
+                <span v-else class="inline-flex items-center gap-1 rounded-full border border-white/[0.08] bg-white/[0.03] px-2.5 py-1 text-[10px] font-semibold text-gray-400">
+                  Configure modes in Settings
+                </span>
               </div>
             </div>
           </div>
         </div>
       </div>
 
-      <div
-        class="rounded-3xl border px-4 py-4"
-        :class="{
-          'border-red-500/25 bg-gradient-to-br from-red-500/[0.12] to-orange-500/[0.06]': status.recording,
-          'border-orange-500/20 bg-gradient-to-br from-orange-500/[0.1] to-white/[0.02]': !status.recording && (status.waitingForMatch || status.currentGame),
-          'border-yellow-500/20 bg-gradient-to-br from-yellow-500/[0.1] to-white/[0.02]': status.recordingStarting || !status.ffmpegOk,
-          'border-white/[0.06] bg-white/[0.02]': !status.recording && !status.waitingForMatch && !status.currentGame && !status.recordingStarting && status.ffmpegOk
-        }"
-      >
-        <div class="flex items-start gap-3">
-          <div
-            class="flex h-11 w-11 items-center justify-center rounded-2xl border"
-            :class="{
-              'border-red-500/25 bg-red-500/[0.12] text-red-300': status.recording,
-              'border-orange-500/25 bg-orange-500/[0.12] text-orange-300': !status.recording && (status.waitingForMatch || status.currentGame),
-              'border-yellow-500/25 bg-yellow-500/[0.12] text-yellow-300': status.recordingStarting || !status.ffmpegOk,
-              'border-white/[0.08] bg-white/[0.03] text-gray-300': !status.recording && !status.waitingForMatch && !status.currentGame && !status.recordingStarting && status.ffmpegOk
-            }"
-          >
-            <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" d="M3 12h18M3 7.5h18M3 16.5h18" />
-            </svg>
-          </div>
-          <div class="min-w-0 flex-1">
-            <p class="text-[10px] font-bold uppercase tracking-[0.28em] text-gray-600">Active Game Detection</p>
-            <h2 class="mt-2 text-lg font-black tracking-tight text-white">{{ activeGameTitle }}</h2>
-            <p class="mt-2 text-sm leading-relaxed text-gray-400">{{ activeGameMessage }}</p>
-            <div class="mt-4 flex flex-wrap items-center gap-2">
-              <span v-if="status.recording && hotkeys['save-clip']" class="inline-flex items-center gap-1 rounded-full border border-red-500/20 bg-red-500/[0.12] px-2.5 py-1 text-[10px] font-semibold text-red-300">
-                <span class="text-red-400">Clip</span>
-                <kbd class="font-mono text-red-200">{{ hotkeys['save-clip'] }}</kbd>
-              </span>
-              <span v-else-if="status.recordedModes?.length" class="inline-flex items-center gap-1 rounded-full border border-white/[0.08] bg-white/[0.03] px-2.5 py-1 text-[10px] font-semibold text-gray-300">
-                {{ status.recordedModes.map(formatMode).join(' · ') }}
-              </span>
-              <span v-else class="inline-flex items-center gap-1 rounded-full border border-white/[0.08] bg-white/[0.03] px-2.5 py-1 text-[10px] font-semibold text-gray-400">
-                Configure modes in Settings
-              </span>
-            </div>
-          </div>
-        </div>
-      </div>
+      <div class="h-px bg-gradient-to-r from-transparent via-white/[0.08] to-transparent" />
     </div>
 
     <!-- 3-column dashboard grid -->
@@ -520,6 +535,8 @@
           </div>
         </Transition>
 
+        <div class="h-px bg-gradient-to-r from-transparent via-white/[0.08] to-transparent my-1" />
+
         <!-- Section header -->
         <div class="flex items-center justify-between flex-shrink-0">
           <div class="flex items-center gap-2.5">
@@ -633,7 +650,7 @@
               <div
                 v-for="a in group.items"
                 :key="a.id"
-                class="relative flex items-center gap-2 px-3 py-2.5 bg-white/[0.02] hover:bg-white/[0.04] border border-white/[0.05] hover:border-white/[0.1] rounded-xl transition-all cursor-pointer hover:scale-[1.005] origin-center"
+                class="relative flex items-center gap-2 px-3 py-2.5 rounded-xl border border-white/[0.05] bg-white/[0.02] cursor-pointer transition-all hover:border-white/[0.14] hover:bg-white/[0.04] hover:shadow-[0_12px_28px_rgba(0,0,0,0.16)]"
                 @click="openAnalysis(a.id)"
               >
                 <!-- W/L left accent bar -->
@@ -722,28 +739,31 @@
 
         <div v-if="clipCount === 0" class="relative overflow-hidden rounded-2xl border border-white/[0.06] bg-gradient-to-br from-white/[0.03] via-white/[0.02] to-orange-500/[0.05] px-4 py-4">
           <div class="absolute -right-8 top-0 h-24 w-24 rounded-full bg-red-500/10 blur-3xl" />
-          <div class="relative flex items-start gap-3">
-            <div class="flex h-11 w-11 items-center justify-center rounded-2xl border border-orange-500/20 bg-orange-500/[0.12] text-orange-300 flex-shrink-0">
-              <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" d="M15.75 10.5l4.72-2.36A.75.75 0 0121.5 8.81v6.38a.75.75 0 01-1.03.67l-4.72-2.36m0 0V10.5m0 3H4.875A1.875 1.875 0 013 11.625v-3.75C3 6.839 3.84 6 4.875 6H15.75c1.035 0 1.875.84 1.875 1.875v8.25A1.875 1.875 0 0115.75 18H6" />
+          <div class="relative flex flex-col items-center text-center gap-3">
+            <div class="flex h-12 w-12 items-center justify-center rounded-2xl border border-orange-500/20 bg-orange-500/[0.12] text-orange-300 flex-shrink-0">
+              <svg class="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" d="M3 7.5A2.25 2.25 0 015.25 5.25h2.379a1.5 1.5 0 001.06-.44l.621-.62a1.5 1.5 0 011.06-.44h3.26a1.5 1.5 0 011.06.44l.621.62a1.5 1.5 0 001.06.44h2.379A2.25 2.25 0 0121 7.5v9A2.25 2.25 0 0118.75 18.75H5.25A2.25 2.25 0 013 16.5v-9z" />
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" d="M9 12a3 3 0 116 0 3 3 0 01-6 0z" />
               </svg>
             </div>
-            <div class="min-w-0 flex-1">
+            <div class="space-y-1.5">
               <p class="text-[10px] font-bold uppercase tracking-[0.28em] text-gray-600">Clip Library</p>
-              <h3 class="mt-2 text-base font-black tracking-tight text-white">No clips saved yet</h3>
-              <p class="mt-2 text-sm leading-relaxed text-gray-400">Use the save clip hotkey during a match to build a library of key rounds for faster review.</p>
-              <div class="mt-3 flex flex-wrap items-center gap-2">
-                <span v-if="hotkeys['save-clip']" class="inline-flex items-center gap-2 rounded-full border border-orange-500/20 bg-orange-500/[0.1] px-2.5 py-1 text-[10px] font-semibold text-orange-200">
-                  <span>Save clip</span>
-                  <kbd class="font-mono">{{ hotkeys['save-clip'] }}</kbd>
-                </span>
-                <button class="inline-flex items-center gap-2 rounded-full border border-white/[0.08] bg-white/[0.03] px-2.5 py-1 text-[10px] font-semibold text-gray-300 hover:bg-white/[0.06] transition-all cursor-pointer" @click="router.push('/settings')">
-                  Configure recording
-                </button>
-              </div>
+              <h3 class="text-base font-black tracking-tight text-white">No clips yet</h3>
+              <p class="text-sm leading-relaxed text-gray-400">Enable auto-clipping in Settings or use your save-clip hotkey during a live match to start building your highlight library.</p>
+            </div>
+            <div class="mt-1 flex flex-wrap items-center justify-center gap-2">
+              <span v-if="hotkeys['save-clip']" class="inline-flex items-center gap-2 rounded-full border border-orange-500/20 bg-orange-500/[0.1] px-2.5 py-1 text-[10px] font-semibold text-orange-200">
+                <span>Save clip</span>
+                <kbd class="font-mono">{{ hotkeys['save-clip'] }}</kbd>
+              </span>
+              <button class="inline-flex items-center gap-2 rounded-full border border-white/[0.08] bg-white/[0.03] px-2.5 py-1 text-[10px] font-semibold text-gray-300 hover:bg-white/[0.06] transition-all cursor-pointer" @click="router.push('/settings')">
+                Open Settings
+              </button>
             </div>
           </div>
         </div>
+
+        <div class="h-px bg-gradient-to-r from-transparent via-white/[0.08] to-transparent my-1" />
 
         <!-- Last coaching insight (or empty CTA) -->
         <div v-if="lastInsight" class="relative bg-white/[0.02] border border-white/[0.05] rounded-2xl overflow-hidden">
@@ -799,6 +819,8 @@
           </div>
         </div>
 
+        <div class="h-px bg-gradient-to-r from-transparent via-white/[0.08] to-transparent my-1" />
+
         <!-- Correlation insights card -->
         <div v-if="correlationInsights.length" class="bg-white/[0.02] border border-white/[0.05] rounded-2xl overflow-hidden">
           <div class="px-4 py-3 border-b border-white/[0.04]">
@@ -813,6 +835,8 @@
             </li>
           </ul>
         </div>
+
+        <div class="h-px bg-gradient-to-r from-transparent via-white/[0.08] to-transparent my-1" />
 
         <!-- Aim training quick-start -->
         <div class="bg-white/[0.02] border border-white/[0.06] rounded-2xl overflow-hidden">
@@ -949,6 +973,9 @@ const hotkeyHints = computed(() => [
 ])
 const dashboardHeadline = computed(() => profile.value?.user?.name ? `Welcome back, ${profile.value.user.name}` : 'Your coaching dashboard')
 const dashboardRankLabel = computed(() => profile.value?.latest_stats?.current_rank || 'Unranked')
+const totalSessionsAnalysed = computed(() => profile.value?.user?.analysis_stats?.total ?? analyses.value.length)
+const dashboardWinRateLabel = computed(() => profile.value?.latest_stats?.win_rate != null ? `${Math.round(profile.value.latest_stats.win_rate)}%` : '—')
+const liveDetectionActive = computed(() => status.value.recording || status.value.waitingForMatch || !!status.value.currentGame)
 const activeGameTitle = computed(() => {
   if (!status.value.ffmpegOk) return 'Recorder unavailable'
   if (status.value.recording) return 'Recording in progress'
