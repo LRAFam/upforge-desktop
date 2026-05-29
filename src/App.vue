@@ -93,26 +93,27 @@
     <!-- Navigation (hidden on post-game / login) -->
     <nav
       v-if="showNav"
-      class="flex items-center gap-0.5 px-3 pt-2 pb-0 flex-shrink-0"
+      class="flex items-center gap-0.5 px-3 pt-2 pb-0 flex-shrink-0 border-b border-white/[0.05]"
     >
       <RouterLink
         v-for="link in navLinks"
         :key="link.to"
         :to="link.to"
-        class="px-3 py-1.5 text-xs font-semibold transition-all duration-150 rounded-t-lg"
+        class="relative flex items-center gap-1.5 px-2.5 py-2 text-[11px] font-semibold transition-all duration-150 rounded-t-lg group"
         :class="
           $route.path === link.to
-            ? 'text-white relative after:absolute after:bottom-0 after:left-2 after:right-2 after:h-[2px] after:rounded-full after:bg-gradient-to-r after:from-red-500 after:to-orange-400 after:shadow-[0_0_8px_rgba(255,70,85,0.6)]'
-            : 'text-gray-500 hover:text-gray-200 hover:bg-white/[0.04]'
+            ? 'text-white bg-white/[0.05] after:absolute after:bottom-0 after:left-1.5 after:right-1.5 after:h-[2px] after:rounded-full after:bg-gradient-to-r after:from-red-500 after:to-orange-400 after:shadow-[0_0_8px_rgba(255,70,85,0.6)]'
+            : 'text-gray-500 hover:text-gray-300 hover:bg-white/[0.03]'
         "
       >
+        <component :is="'svg'" class="w-3.5 h-3.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" v-html="link.iconPath" />
         {{ link.label }}
       </RouterLink>
       <!-- Developer link (shown only when dev mode is unlocked) -->
       <RouterLink
         v-if="devNavLink"
         :to="devNavLink.to"
-        class="px-3 py-1.5 text-xs font-medium transition-all duration-150 ml-auto"
+        class="px-2.5 py-2 text-[11px] font-medium transition-all duration-150 ml-auto"
         :class="
           $route.path === devNavLink.to
             ? 'text-amber-400 relative after:absolute after:bottom-0 after:left-0 after:right-0 after:h-px after:bg-amber-500'
@@ -191,13 +192,13 @@ const showNav = computed(() =>
 )
 
 const navLinks = [
-  { to: '/dashboard', label: 'Dashboard' },
-  { to: '/training', label: 'Training' },
-  { to: '/clips', label: 'Clips' },
-  { to: '/squad', label: 'Squad' },
-  { to: '/stats', label: 'Stats' },
-  { to: '/performance', label: 'Performance' },
-  { to: '/settings', label: 'Settings' }
+  { to: '/dashboard', label: 'Dashboard', iconPath: '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"/>' },
+  { to: '/training', label: 'Training', iconPath: '<circle cx="12" cy="12" r="10" stroke-width="1.5"/><circle cx="12" cy="12" r="4" stroke-width="1.5"/><line x1="12" y1="2" x2="12" y2="6" stroke-width="1.5"/><line x1="12" y1="18" x2="12" y2="22" stroke-width="1.5"/><line x1="2" y1="12" x2="6" y2="12" stroke-width="1.5"/><line x1="18" y1="12" x2="22" y2="12" stroke-width="1.5"/>' },
+  { to: '/clips', label: 'Clips', iconPath: '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.069A1 1 0 0121 8.882v6.236a1 1 0 01-1.447.894L15 14M3 8a2 2 0 012-2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V8z"/>' },
+  { to: '/squad', label: 'Squad', iconPath: '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"/>' },
+  { to: '/stats', label: 'Stats', iconPath: '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>' },
+  { to: '/performance', label: 'Performance', iconPath: '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"/>' },
+  { to: '/settings', label: 'Settings', iconPath: '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>' },
 ]
 
 const devNavLink = computed(() =>

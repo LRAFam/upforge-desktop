@@ -81,29 +81,29 @@
         <button
           v-for="f in (['All', 'Wins', 'Losses', 'Scored'] as const)"
           :key="f"
-          class="px-3 py-1.5 rounded-lg text-[11px] font-bold uppercase tracking-wider transition-all border"
+          class="px-3 py-1.5 rounded-full text-[11px] font-bold uppercase tracking-wider transition-all border"
           :class="activeFilter === f
             ? 'bg-red-500/15 text-red-400 border-red-500/30'
-            : 'text-gray-500 border-transparent hover:text-gray-300 hover:bg-white/[0.03]'"
+            : 'text-gray-500 border-white/[0.06] hover:text-gray-300 hover:bg-white/[0.03] hover:border-white/[0.12]'"
           @click="activeFilter = f"
         >{{ f }}</button>
       </div>
       <!-- Map filter -->
       <div v-if="availableMaps.length > 1" class="flex gap-1 flex-wrap">
         <button
-          class="px-2 py-1 rounded-lg text-[10px] font-semibold transition-all border capitalize"
+          class="px-2 py-1 rounded-full text-[10px] font-semibold transition-all border capitalize"
           :class="activeMap === null
             ? 'bg-white/[0.06] text-gray-300 border-white/[0.12]'
-            : 'text-gray-600 border-transparent hover:text-gray-400 hover:bg-white/[0.03]'"
+            : 'text-gray-600 border-white/[0.06] hover:text-gray-400 hover:bg-white/[0.03]'"
           @click="activeMap = null"
         >All maps</button>
         <button
           v-for="map in availableMaps"
           :key="map"
-          class="px-2 py-1 rounded-lg text-[10px] font-semibold transition-all border capitalize"
+          class="px-2 py-1 rounded-full text-[10px] font-semibold transition-all border capitalize"
           :class="activeMap === map
             ? 'bg-white/[0.06] text-gray-300 border-white/[0.12]'
-            : 'text-gray-600 border-transparent hover:text-gray-400 hover:bg-white/[0.03]'"
+            : 'text-gray-600 border-white/[0.06] hover:text-gray-400 hover:bg-white/[0.03]'"
           @click="activeMap = map"
         >{{ map }}</button>
       </div>
@@ -178,7 +178,7 @@
 
             <!-- Score badge / spinner / ACS -->
             <div v-if="a.overall_score != null" class="flex-shrink-0 flex flex-col items-end gap-0.5">
-              <span class="text-xs font-bold tabular-nums" :class="a.overall_score >= 80 ? 'text-green-400' : a.overall_score >= 60 ? 'text-yellow-400' : 'text-red-400'">{{ a.overall_score }}</span>
+              <span class="text-xs font-bold tabular-nums" :class="a.overall_score >= 78 ? 'text-green-400' : a.overall_score >= 50 ? 'text-yellow-400' : 'text-red-400'">{{ a.overall_score }}</span>
               <span class="text-[8px] font-bold px-1 py-px rounded" :class="scoreGradeBadgeClass(a.overall_score)">{{ scoreGrade(a.overall_score) }}</span>
             </div>
             <div v-else-if="['queued', 'processing', 'pending'].includes(a.status)" class="flex-shrink-0">
@@ -384,24 +384,26 @@ const chartData = computed(() => {
 
 function scoreColor(score: number): string {
   if (score >= 80) return 'text-green-400'
-  if (score >= 60) return 'text-yellow-400'
+  if (score >= 50) return 'text-yellow-400'
   return 'text-red-400'
 }
 
 function scoreGrade(score: number): string {
   if (score >= 90) return 'S'
-  if (score >= 75) return 'A'
-  if (score >= 60) return 'B'
-  if (score >= 45) return 'C'
-  return 'D'
+  if (score >= 78) return 'A'
+  if (score >= 65) return 'B'
+  if (score >= 50) return 'C'
+  if (score >= 35) return 'D'
+  return 'E'
 }
 
 function scoreGradeBadgeClass(score: number): string {
-  if (score >= 90) return 'bg-yellow-500/20 text-yellow-300'
-  if (score >= 75) return 'bg-green-500/20 text-green-300'
-  if (score >= 60) return 'bg-blue-500/20 text-blue-300'
-  if (score >= 45) return 'bg-orange-500/20 text-orange-300'
-  return 'bg-red-500/20 text-red-300'
+  if (score >= 90) return 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
+  if (score >= 78) return 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+  if (score >= 65) return 'bg-blue-500/20 text-blue-300 border border-blue-500/30'
+  if (score >= 50) return 'bg-yellow-500/20 text-yellow-300 border border-yellow-500/30'
+  if (score >= 35) return 'bg-orange-500/20 text-orange-300 border border-orange-500/30'
+  return 'bg-red-500/20 text-red-400 border border-red-500/30'
 }
 
 function formatDate(d: string): string {

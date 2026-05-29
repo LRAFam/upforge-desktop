@@ -712,18 +712,20 @@ async function launchTrainer() {
 
 function scoreGrade(score: number): string {
   if (score >= 90) return 'S'
-  if (score >= 75) return 'A'
-  if (score >= 60) return 'B'
-  if (score >= 45) return 'C'
-  return 'D'
+  if (score >= 78) return 'A'
+  if (score >= 65) return 'B'
+  if (score >= 50) return 'C'
+  if (score >= 35) return 'D'
+  return 'E'
 }
 
 function scoreGradeBadgeClass(score: number): string {
-  if (score >= 90) return 'bg-yellow-500/20 text-yellow-300 border border-yellow-500/30'
-  if (score >= 75) return 'bg-green-500/20 text-green-300 border border-green-500/30'
-  if (score >= 60) return 'bg-blue-500/20 text-blue-300 border border-blue-500/30'
-  if (score >= 45) return 'bg-orange-500/20 text-orange-300 border border-orange-500/30'
-  return 'bg-red-500/20 text-red-300 border border-red-500/30'
+  if (score >= 90) return 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
+  if (score >= 78) return 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+  if (score >= 65) return 'bg-blue-500/20 text-blue-300 border border-blue-500/30'
+  if (score >= 50) return 'bg-yellow-500/20 text-yellow-300 border border-yellow-500/30'
+  if (score >= 35) return 'bg-orange-500/20 text-orange-300 border border-orange-500/30'
+  return 'bg-red-500/20 text-red-400 border border-red-500/30'
 }
 
 const agentImageUrl = computed(() => gameInfo.value.agent ? getAgentImage(gameInfo.value.agent) : '')
@@ -956,7 +958,7 @@ async function exportAnalysis() {
     const ctx = canvas.getContext('2d')!
 
     const score = result.value.overall_score ?? 0
-    const scoreColor = score >= 80 ? '#4ade80' : score >= 60 ? '#facc15' : '#f87171'
+    const scoreColor = score >= 78 ? '#4ade80' : score >= 50 ? '#facc15' : '#f87171'
 
     // Background
     ctx.fillStyle = '#0a0a0c'
@@ -1155,10 +1157,10 @@ async function exportAnalysis() {
 }
 
 function scoreClass(score: number): string {
-  return score >= 80 ? 'text-green-400' : score >= 60 ? 'text-yellow-400' : 'text-red-400'
+  return score >= 78 ? 'text-green-400' : score >= 50 ? 'text-yellow-400' : 'text-red-400'
 }
 function scoreBarClass(score: number): string {
-  return score >= 80 ? 'bg-green-500' : score >= 60 ? 'bg-yellow-500' : 'bg-red-500'
+  return score >= 78 ? 'bg-green-500' : score >= 50 ? 'bg-yellow-500' : 'bg-red-500'
 }
 </script>
 

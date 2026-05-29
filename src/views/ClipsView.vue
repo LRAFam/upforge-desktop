@@ -16,10 +16,10 @@
       <button
         v-for="f in filters"
         :key="f.value"
-        class="px-2.5 py-1 rounded text-xs font-medium transition-colors"
+        class="px-3 py-1 rounded-full text-xs font-medium transition-all duration-150"
         :class="activeFilter === f.value
           ? 'bg-red-500/20 text-red-400 border border-red-500/30'
-          : 'text-gray-500 hover:text-gray-300 border border-transparent'"
+          : 'text-gray-500 hover:text-gray-300 border border-white/[0.06] hover:border-white/[0.12]'"
         @click="activeFilter = f.value"
       >
         {{ f.label }}
@@ -135,10 +135,28 @@
                     <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
                   </svg>
                 </button>
+                <!-- Delete confirm -->
+                <template v-if="confirmDeleteId === clip.id">
+                  <button
+                    class="h-5 px-1.5 rounded bg-red-500/80 text-white text-[9px] font-bold hover:bg-red-500 transition-colors"
+                    title="Confirm delete"
+                    @click="deleteClip(clip.id)"
+                  >Del</button>
+                  <button
+                    class="w-5 h-5 rounded bg-black/60 flex items-center justify-center hover:bg-white/20 transition-colors"
+                    title="Cancel"
+                    @click="confirmDeleteId = null"
+                  >
+                    <svg class="w-2.5 h-2.5 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                    </svg>
+                  </button>
+                </template>
                 <button
+                  v-else
                   class="w-5 h-5 rounded bg-black/60 backdrop-blur-sm flex items-center justify-center hover:bg-red-500/60 transition-colors"
                   title="Delete"
-                  @click="deleteClip(clip.id)"
+                  @click="confirmDeleteId = clip.id"
                 >
                   <svg class="w-2.5 h-2.5 text-gray-200" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6M9 7h6m-7 0a1 1 0 001-1h4a1 1 0 001 1m-7 0h8"/>
@@ -222,6 +240,15 @@
         </div>
         <div class="flex items-center gap-2 flex-shrink-0">
           <button
+            class="w-8 h-8 flex items-center justify-center rounded-lg text-gray-600 hover:text-white hover:bg-white/[0.07] transition-colors"
+            title="Fullscreen (F)"
+            @click="videoEl?.requestFullscreen()"
+          >
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 8V6a2 2 0 012-2h2M4 16v2a2 2 0 002 2h2m8-16h2a2 2 0 012 2v2m0 8v2a2 2 0 01-2 2h-2"/>
+            </svg>
+          </button>
+          <button
             class="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-white/[0.06] hover:bg-white/[0.10] text-gray-300 border border-white/[0.10] rounded-lg transition-colors"
             @click="openTrim(playingClip)"
           >
@@ -277,6 +304,7 @@
       <div class="flex items-center justify-center gap-4 px-4 py-1.5 bg-black/40 border-t border-white/[0.04] flex-shrink-0">
         <span class="text-[9px] text-gray-700">Space: Play/Pause</span>
         <span class="text-[9px] text-gray-700">← →: Skip 5s</span>
+        <span class="text-[9px] text-gray-700">F: Fullscreen</span>
         <span class="text-[9px] text-gray-700">Esc: Close</span>
       </div>
       <div v-if="playingClip.suggestion" class="px-4 py-3 bg-gradient-to-r from-orange-500/[0.08] to-transparent border-t border-orange-500/15 flex-shrink-0 flex items-start gap-2.5">
@@ -471,6 +499,7 @@ const toastMessage = ref('')
 const toastType = ref<'success' | 'error'>('success')
 const TOAST_DURATION = 3500
 let toastTimer: ReturnType<typeof setTimeout> | null = null
+const confirmDeleteId = ref<string | null>(null)
 
 /** Convert a local filesystem path to a valid file:// URL.
  *  encodeURI preserves : and / so Windows drive letters and path separators
@@ -543,6 +572,11 @@ function handleKeyDown(e: KeyboardEvent) {
         const dur = videoEl.value.duration || 0
         videoEl.value.currentTime = Math.min(dur, videoEl.value.currentTime + 5)
       }
+      break
+    case 'f':
+    case 'F':
+      e.preventDefault()
+      videoEl.value?.requestFullscreen()
       break
   }
 }
@@ -659,6 +693,7 @@ async function confirmTrim() {
 }
 
 async function deleteClip(id: string) {
+  confirmDeleteId.value = null
   await window.api.clips.delete(id)
   clips.value = clips.value.filter(c => c.id !== id)
   delete thumbnails.value[id]

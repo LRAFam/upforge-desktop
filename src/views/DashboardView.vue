@@ -35,6 +35,7 @@
         <span class="text-xs text-green-300/90 flex-1">
           Analysis complete — scored
           <span class="font-bold">{{ analysisCompleteToast.score }}</span>/100
+          <span class="font-bold px-1.5 py-px rounded-full text-[10px] ml-1" :class="scoreGradeBadgeClass(analysisCompleteToast.score)">{{ scoreGrade(analysisCompleteToast.score) }}</span>
           <span v-if="analysisCompleteToast.agent"> · {{ analysisCompleteToast.agent }}</span>
         </span>
         <button class="w-5 h-5 flex items-center justify-center text-green-600/50 hover:text-green-400 transition-colors rounded" @click="analysisCompleteToast = null">
@@ -574,7 +575,7 @@
                 <!-- AI Score -->
                 <div class="flex-1 flex items-center justify-end gap-1.5">
                   <template v-if="a.overall_score != null">
-                    <span class="text-sm font-black tabular-nums" :class="a.overall_score >= 80 ? 'text-green-400' : a.overall_score >= 60 ? 'text-yellow-400' : 'text-red-400'">{{ a.overall_score }}</span>
+                    <span class="text-sm font-black tabular-nums" :class="a.overall_score >= 78 ? 'text-green-400' : a.overall_score >= 50 ? 'text-yellow-400' : 'text-red-400'">{{ a.overall_score }}</span>
                     <span class="text-[8px] font-bold px-1.5 py-px rounded-full" :class="scoreGradeBadgeClass(a.overall_score)">{{ scoreGrade(a.overall_score) }}</span>
                   </template>
                 </div>
@@ -618,14 +619,14 @@
                 <img v-if="lastInsight.agent && getAgentImage(lastInsight.agent)" :src="getAgentImage(lastInsight.agent)" class="w-full h-full object-cover object-top" />
                 <svg v-else class="w-5 h-5 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636-.707.707M21 12h-1M4 12H3m3.343-5.657-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"/></svg>
               </div>
-              <div class="flex-1 min-w-0">
+                <div class="flex-1 min-w-0">
                 <div class="flex items-baseline gap-1.5">
-                  <span class="text-4xl font-black tabular-nums leading-none score-glow" :class="lastInsight.score >= 80 ? 'text-green-400' : lastInsight.score >= 60 ? 'text-yellow-400' : 'text-red-400'">{{ lastInsight.score }}</span>
+                  <span class="text-4xl font-black tabular-nums leading-none score-glow" :class="lastInsight.score >= 78 ? 'text-green-400' : lastInsight.score >= 50 ? 'text-yellow-400' : 'text-red-400'">{{ lastInsight.score }}</span>
                   <span class="text-sm text-gray-600 font-semibold">/100</span>
                   <span class="text-xs font-black px-1.5 py-0.5 rounded-full ml-1" :class="scoreGradeBadgeClass(lastInsight.score)">{{ scoreGrade(lastInsight.score) }}</span>
                 </div>
                 <div class="mt-2 w-full h-1.5 bg-white/[0.06] rounded-full overflow-hidden">
-                  <div class="h-full rounded-full score-bar" :class="lastInsight.score >= 80 ? 'bg-green-500' : lastInsight.score >= 60 ? 'bg-yellow-500' : 'bg-red-500'" :style="{ width: lastInsight.score + '%' }" />
+                  <div class="h-full rounded-full score-bar" :class="lastInsight.score >= 78 ? 'bg-green-500' : lastInsight.score >= 50 ? 'bg-yellow-500' : 'bg-red-500'" :style="{ width: lastInsight.score + '%' }" />
                 </div>
               </div>
             </div>
@@ -688,7 +689,7 @@
                   <p class="text-[10px] text-gray-600 mt-0.5">{{ formatRelativeTime(trainerLastSession.date) }}</p>
                 </div>
                 <div class="text-right flex-shrink-0">
-                  <span class="text-lg font-black tabular-nums" :class="trainerLastSession.score >= 80 ? 'text-green-400' : trainerLastSession.score >= 60 ? 'text-yellow-400' : 'text-red-400'">{{ trainerLastSession.score }}</span>
+                  <span class="text-lg font-black tabular-nums" :class="trainerLastSession.score >= 78 ? 'text-green-400' : trainerLastSession.score >= 50 ? 'text-yellow-400' : 'text-red-400'">{{ trainerLastSession.score }}</span>
                   <p class="text-[9px] text-gray-700">score</p>
                 </div>
               </div>
@@ -998,18 +999,20 @@ const currentStreak = computed<number>(() => {
 
 function scoreGrade(score: number): string {
   if (score >= 90) return 'S'
-  if (score >= 75) return 'A'
-  if (score >= 60) return 'B'
-  if (score >= 45) return 'C'
-  return 'D'
+  if (score >= 78) return 'A'
+  if (score >= 65) return 'B'
+  if (score >= 50) return 'C'
+  if (score >= 35) return 'D'
+  return 'E'
 }
 
 function scoreGradeBadgeClass(score: number): string {
-  if (score >= 90) return 'bg-yellow-500/20 text-yellow-300'
-  if (score >= 75) return 'bg-green-500/20 text-green-300'
-  if (score >= 60) return 'bg-blue-500/20 text-blue-300'
-  if (score >= 45) return 'bg-orange-500/20 text-orange-300'
-  return 'bg-red-500/20 text-red-300'
+  if (score >= 90) return 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
+  if (score >= 78) return 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+  if (score >= 65) return 'bg-blue-500/20 text-blue-300 border border-blue-500/30'
+  if (score >= 50) return 'bg-yellow-500/20 text-yellow-300 border border-yellow-500/30'
+  if (score >= 35) return 'bg-orange-500/20 text-orange-300 border border-orange-500/30'
+  return 'bg-red-500/20 text-red-400 border border-red-500/30'
 }
 
 function formatEntryDate(dateStr: string): string {

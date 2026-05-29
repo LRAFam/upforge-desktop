@@ -7,13 +7,16 @@
         v-for="tab in SETTINGS_TABS"
         :key="tab.id"
         :class="[
-          'px-3 py-1.5 rounded-lg text-xs font-medium transition-colors',
+          'flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors',
           activeTab === tab.id
             ? 'bg-red-500/[0.12] text-red-400 ring-1 ring-red-500/20'
             : 'text-gray-500 hover:text-gray-300 hover:bg-white/[0.04]'
         ]"
         @click="activeTab = tab.id"
-      >{{ tab.label }}</button>
+      >
+        <svg class="w-3.5 h-3.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" v-html="tab.icon" />
+        {{ tab.label }}
+      </button>
     </nav>
 
     <!-- Scrollable content -->
@@ -877,10 +880,10 @@ const router = useRouter()
 const user = ref<UserWithUsage | null>(null)
 
 const SETTINGS_TABS = [
-  { id: 'general',   label: 'General'   },
-  { id: 'recording', label: 'Recording' },
-  { id: 'trainer',   label: 'Trainer'   },
-  { id: 'system',    label: 'System'    },
+  { id: 'general',   label: 'General',   icon: '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/>' },
+  { id: 'recording', label: 'Recording', icon: '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.069A1 1 0 0121 8.882v6.236a1 1 0 01-1.447.894L15 14M3 8a2 2 0 012-2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V8z"/>' },
+  { id: 'trainer',   label: 'Trainer',   icon: '<circle cx="12" cy="12" r="10" stroke-width="1.5"/><circle cx="12" cy="12" r="4" stroke-width="1.5"/><line x1="12" y1="2" x2="12" y2="6" stroke-width="1.5"/><line x1="12" y1="18" x2="12" y2="22" stroke-width="1.5"/><line x1="2" y1="12" x2="6" y2="12" stroke-width="1.5"/><line x1="18" y1="12" x2="22" y2="12" stroke-width="1.5"/>' },
+  { id: 'system',    label: 'System',    icon: '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>' },
 ] as const
 type SettingsTab = typeof SETTINGS_TABS[number]['id']
 const activeTab = ref<SettingsTab>('general')
