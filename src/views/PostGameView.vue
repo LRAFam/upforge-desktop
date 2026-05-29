@@ -185,8 +185,8 @@
             </p>
           </div>
           <div v-if="result?.overall_score" class="text-right flex-shrink-0">
-            <span class="text-3xl font-black tabular-nums score-reveal" :class="scoreClass(result.overall_score)">{{ result.overall_score }}</span>
-            <span class="text-xs text-gray-600 font-normal">/100</span>
+            <span class="text-3xl font-black tabular-nums score-reveal" :class="scoreClass(result.overall_score)">{{ result.overall_score * 10 }}</span>
+            <div class="text-[10px] text-gray-600 font-semibold mt-0.5">{{ scoreLabel(result.overall_score) }}</div>
           </div>
         </div>
 
@@ -719,6 +719,15 @@ function scoreGrade(score: number): string {
   return 'E'
 }
 
+function scoreLabel(score: number): string {
+  if (score >= 90) return 'Outstanding'
+  if (score >= 78) return 'Strong Game'
+  if (score >= 65) return 'Solid'
+  if (score >= 50) return 'Room to Improve'
+  if (score >= 35) return 'Below Average'
+  return 'Lots to Work On'
+}
+
 function scoreGradeBadgeClass(score: number): string {
   if (score >= 90) return 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
   if (score >= 78) return 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
@@ -901,7 +910,7 @@ function openUpgrade() { window.open(upgradeUrl.value, '_blank') }
 
 async function copyScore() {
   if (!result.value?.overall_score) return
-  const text = `UpForge Score: ${result.value.overall_score}/100 (${scoreGrade(result.value.overall_score)})`
+  const text = `UpForge Score: ${result.value.overall_score * 10}/1000 (${scoreGrade(result.value.overall_score)} — ${scoreLabel(result.value.overall_score)})`
   await navigator.clipboard.writeText(text).catch(() => {})
 }
 
@@ -1006,17 +1015,17 @@ async function exportAnalysis() {
     ctx.font = '16px system-ui, -apple-system, sans-serif'
     ctx.fillText(labelParts.join(' · '), 60, 148)
 
-    // Score number
+    // Score number (×10 = 0-1000 display)
     ctx.fillStyle = scoreColor
     ctx.font = 'bold 110px system-ui, -apple-system, sans-serif'
-    const scoreStr = String(score)
+    const scoreStr = String(score * 10)
     const scoreW = ctx.measureText(scoreStr).width
     ctx.fillText(scoreStr, 60, 285)
 
-    // "/100"
+    // "/1000"
     ctx.fillStyle = '#4b5563'
     ctx.font = '22px system-ui, -apple-system, sans-serif'
-    ctx.fillText('/100', 60 + scoreW + 8, 263)
+    ctx.fillText('/1000', 60 + scoreW + 8, 263)
 
     // Grade badge
     const grade = scoreGrade(score)

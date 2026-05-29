@@ -24,7 +24,7 @@
           <span class="text-[9px] font-black uppercase tracking-[0.18em] text-gray-500">Score Trend</span>
           <div class="flex-1 h-px bg-white/[0.04]" />
           <span class="text-[9px] font-bold" :class="chartData.up ? 'text-green-400' : 'text-red-400'">
-            {{ chartData.up ? '↑' : '↓' }} {{ chartData.last }}
+            {{ chartData.up ? '↑' : '↓' }} {{ chartData.last * 10 }}
           </span>
         </div>
         <div class="relative px-2 pt-1.5 pb-0.5">
@@ -65,7 +65,7 @@
         <div class="text-[8px] text-gray-600 mt-0.5 uppercase tracking-wide">Win Rate</div>
       </div>
       <div class="flex-1 rounded-xl border border-white/[0.06] px-2 py-2.5 text-center" style="background: #0d1520">
-        <div class="text-sm font-black tabular-nums" :class="avgScore !== null ? scoreColor(avgScore) : 'text-gray-600'">{{ avgScore ?? '—' }}</div>
+        <div class="text-sm font-black tabular-nums" :class="avgScore !== null ? scoreColor(avgScore) : 'text-gray-600'">{{ avgScore != null ? avgScore * 10 : '—' }}</div>
         <div class="text-[8px] text-gray-600 mt-0.5 uppercase tracking-wide">Avg Score</div>
       </div>
       <div class="flex-1 rounded-xl border border-white/[0.06] px-2 py-2.5 text-center" style="background: #0d1520">
@@ -178,7 +178,7 @@
 
             <!-- Score badge / spinner / ACS -->
             <div v-if="a.overall_score != null" class="flex-shrink-0 flex flex-col items-end gap-0.5">
-              <span class="text-xs font-bold tabular-nums" :class="a.overall_score >= 78 ? 'text-green-400' : a.overall_score >= 50 ? 'text-yellow-400' : 'text-red-400'">{{ a.overall_score }}</span>
+              <span class="text-xs font-bold tabular-nums" :class="a.overall_score >= 78 ? 'text-green-400' : a.overall_score >= 50 ? 'text-yellow-400' : 'text-red-400'">{{ a.overall_score * 10 }}</span>
               <span class="text-[8px] font-bold px-1 py-px rounded" :class="scoreGradeBadgeClass(a.overall_score)">{{ scoreGrade(a.overall_score) }}</span>
             </div>
             <div v-else-if="['queued', 'processing', 'pending'].includes(a.status)" class="flex-shrink-0">
@@ -395,6 +395,15 @@ function scoreGrade(score: number): string {
   if (score >= 50) return 'C'
   if (score >= 35) return 'D'
   return 'E'
+}
+
+function scoreLabel(score: number): string {
+  if (score >= 90) return 'Outstanding'
+  if (score >= 78) return 'Strong Game'
+  if (score >= 65) return 'Solid'
+  if (score >= 50) return 'Room to Improve'
+  if (score >= 35) return 'Below Average'
+  return 'Lots to Work On'
 }
 
 function scoreGradeBadgeClass(score: number): string {

@@ -32,9 +32,9 @@
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"/>
           </svg>
         </div>
-        <span class="text-xs text-green-300/90 flex-1">
+          <span class="text-xs text-green-300/90 flex-1">
           Analysis complete — scored
-          <span class="font-bold">{{ analysisCompleteToast.score }}</span>/100
+          <span class="font-bold">{{ analysisCompleteToast.score * 10 }}</span>
           <span class="font-bold px-1.5 py-px rounded-full text-[10px] ml-1" :class="scoreGradeBadgeClass(analysisCompleteToast.score)">{{ scoreGrade(analysisCompleteToast.score) }}</span>
           <span v-if="analysisCompleteToast.agent"> · {{ analysisCompleteToast.agent }}</span>
         </span>
@@ -311,9 +311,9 @@
             <div class="flex items-center gap-2">
               <span v-if="scoreTrend !== null" class="flex items-center gap-0.5 text-xs font-bold" :class="scoreTrend >= 0 ? 'text-green-400' : 'text-red-400'">
                 <svg class="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" :d="scoreTrend >= 0 ? 'M5 15l7-7 7 7' : 'M19 9l-7 7-7-7'"/></svg>
-                {{ Math.abs(scoreTrend) }}
+                {{ Math.round(Math.abs(scoreTrend) * 10) }}
               </span>
-              <span v-if="avgScore !== null" class="text-[10px] text-gray-600">avg {{ avgScore }}</span>
+              <span v-if="avgScore !== null" class="text-[10px] text-gray-600">avg {{ avgScore * 10 }}</span>
             </div>
           </div>
           <svg width="100%" :viewBox="`0 0 ${scoreChartData.W} ${scoreChartData.H}`" preserveAspectRatio="none" style="height:36px;display:block">
@@ -352,7 +352,7 @@
                   <div class="h-full rounded-full bg-orange-500/60" :style="{ width: ag.avgScore + '%' }" />
                 </div>
               </div>
-              <span v-if="ag.avgScore != null" class="text-[10px] text-gray-600 tabular-nums shrink-0">{{ ag.avgScore }}</span>
+              <span v-if="ag.avgScore != null" class="text-[10px] text-gray-600 tabular-nums shrink-0">{{ ag.avgScore * 10 }}</span>
               <span class="text-[10px] text-gray-700 shrink-0">{{ ag.total }}g</span>
             </div>
           </div>
@@ -440,7 +440,7 @@
           <template v-if="lastFivePerf.avgScore != null">
             <div class="w-px h-3 bg-white/[0.08]" />
             <span class="text-[10px] text-gray-600">AI</span>
-            <span class="text-xs font-bold tabular-nums" :class="lastFivePerf.avgScore >= 70 ? 'text-green-400' : lastFivePerf.avgScore >= 50 ? 'text-yellow-400' : 'text-red-400'">{{ lastFivePerf.avgScore }}</span>
+            <span class="text-xs font-bold tabular-nums" :class="lastFivePerf.avgScore >= 70 ? 'text-green-400' : lastFivePerf.avgScore >= 50 ? 'text-yellow-400' : 'text-red-400'">{{ lastFivePerf.avgScore * 10 }}</span>
           </template>
           <template v-if="lastFivePerf.avgHs != null">
             <div class="w-px h-3 bg-white/[0.08]" />
@@ -575,7 +575,7 @@
                 <!-- AI Score -->
                 <div class="flex-1 flex items-center justify-end gap-1.5">
                   <template v-if="a.overall_score != null">
-                    <span class="text-sm font-black tabular-nums" :class="a.overall_score >= 78 ? 'text-green-400' : a.overall_score >= 50 ? 'text-yellow-400' : 'text-red-400'">{{ a.overall_score }}</span>
+                    <span class="text-sm font-black tabular-nums" :class="a.overall_score >= 78 ? 'text-green-400' : a.overall_score >= 50 ? 'text-yellow-400' : 'text-red-400'">{{ a.overall_score * 10 }}</span>
                     <span class="text-[8px] font-bold px-1.5 py-px rounded-full" :class="scoreGradeBadgeClass(a.overall_score)">{{ scoreGrade(a.overall_score) }}</span>
                   </template>
                 </div>
@@ -621,9 +621,9 @@
               </div>
                 <div class="flex-1 min-w-0">
                 <div class="flex items-baseline gap-1.5">
-                  <span class="text-4xl font-black tabular-nums leading-none score-glow" :class="lastInsight.score >= 78 ? 'text-green-400' : lastInsight.score >= 50 ? 'text-yellow-400' : 'text-red-400'">{{ lastInsight.score }}</span>
-                  <span class="text-sm text-gray-600 font-semibold">/100</span>
+                  <span class="text-4xl font-black tabular-nums leading-none score-glow" :class="lastInsight.score >= 78 ? 'text-green-400' : lastInsight.score >= 50 ? 'text-yellow-400' : 'text-red-400'">{{ lastInsight.score * 10 }}</span>
                   <span class="text-xs font-black px-1.5 py-0.5 rounded-full ml-1" :class="scoreGradeBadgeClass(lastInsight.score)">{{ scoreGrade(lastInsight.score) }}</span>
+                  <span class="text-[10px] text-gray-600 font-semibold">{{ scoreLabel(lastInsight.score) }}</span>
                 </div>
                 <div class="mt-2 w-full h-1.5 bg-white/[0.06] rounded-full overflow-hidden">
                   <div class="h-full rounded-full score-bar" :class="lastInsight.score >= 78 ? 'bg-green-500' : lastInsight.score >= 50 ? 'bg-yellow-500' : 'bg-red-500'" :style="{ width: lastInsight.score + '%' }" />
@@ -1004,6 +1004,15 @@ function scoreGrade(score: number): string {
   if (score >= 50) return 'C'
   if (score >= 35) return 'D'
   return 'E'
+}
+
+function scoreLabel(score: number): string {
+  if (score >= 90) return 'Outstanding'
+  if (score >= 78) return 'Strong Game'
+  if (score >= 65) return 'Solid'
+  if (score >= 50) return 'Room to Improve'
+  if (score >= 35) return 'Below Average'
+  return 'Lots to Work On'
 }
 
 function scoreGradeBadgeClass(score: number): string {
