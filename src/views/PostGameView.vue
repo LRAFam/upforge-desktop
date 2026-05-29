@@ -550,11 +550,17 @@
           </div>
           <div>
             <p class="text-sm font-semibold text-amber-400">Monthly limit reached</p>
-            <p class="text-xs text-gray-400 mt-1">You've used your free analysis this month. Upgrade to get 5–15 analyses per month.</p>
-            <p class="text-xs text-gray-600 mt-1">Premium $14.99/mo · Pro $24.99/mo · Check your email for details.</p>
+            <template v-if="userTier === 'free'">
+              <p class="text-xs text-gray-400 mt-1">You've used your free analysis this month. Upgrade to get 5–15 analyses per month.</p>
+              <p class="text-xs text-gray-600 mt-1">Premium $14.99/mo · Pro $24.99/mo · Check your email for details.</p>
+            </template>
+            <template v-else>
+              <p class="text-xs text-gray-400 mt-1">You've used all your {{ userTier }} plan analyses for this month. Your allowance resets at the start of next month.</p>
+            </template>
           </div>
           <div class="flex gap-2 pt-1">
             <button
+              v-if="userTier === 'free'"
               class="flex-1 py-2 text-xs font-semibold bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white rounded-lg transition-all shadow-sm shadow-amber-500/20"
               @click="openUpgrade"
             >View Plans →</button>
@@ -681,6 +687,7 @@ const result = ref<{
 const errorMessage = ref('')
 const needsUpgrade = ref(false)
 const upgradeUrl = ref('https://upforge.gg/pricing')
+const userTier = ref<string>('free')
 const isTimeoutError = computed(() => /timed? ?out/i.test(errorMessage.value))
 const pendingRecordingId = ref<string | null>(null)
 const analysing = ref(false)
@@ -916,6 +923,7 @@ const glowBgStyle = computed(() => {
 
 onMounted(() => {
   window.api.discord.setState('reviewing').catch(() => {})
+  window.api.app.getStatus().then(s => { if (s.user?.tier) userTier.value = s.user.tier }).catch(() => {})
   setTimeout(() => {
     isReady.value = true
   }, 40)

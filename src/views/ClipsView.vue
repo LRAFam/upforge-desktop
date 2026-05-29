@@ -583,11 +583,15 @@
               </div>
             </div>
 
-            <h3 class="text-sm font-bold text-white mb-1.5">Upgrade Required</h3>
-            <p class="text-[12px] text-gray-500 mb-5 leading-relaxed">{{ upgradeModal.message }}</p>
+            <h3 class="text-sm font-bold text-white mb-1.5">{{ userTier === 'free' ? 'Upgrade Required' : 'Monthly limit reached' }}</h3>
+            <p class="text-[12px] text-gray-500 mb-5 leading-relaxed">
+              <template v-if="userTier === 'free'">{{ upgradeModal.message }}</template>
+              <template v-else>You've used all your {{ userTier }} plan analyses for this month. Your allowance resets at the start of next month.</template>
+            </p>
 
             <div class="flex flex-col gap-2">
               <button
+                v-if="userTier === 'free'"
                 class="w-full py-2.5 rounded-xl bg-gradient-to-r from-red-500 to-orange-500 hover:from-red-400 hover:to-orange-400 text-white text-[12px] font-bold transition-all shadow-lg shadow-red-500/20 hover:shadow-red-500/30"
                 @click="openUpgrade"
               >
@@ -597,7 +601,7 @@
                 class="w-full py-2 rounded-xl text-gray-600 hover:text-gray-400 text-[12px] transition-colors"
                 @click="upgradeModal.show = false"
               >
-                Maybe later
+                {{ userTier === 'free' ? 'Maybe later' : 'Dismiss' }}
               </button>
             </div>
           </div>
@@ -617,6 +621,7 @@ const activeFilter = ref<string>('all')
 const playingClip = ref<ClipRecord | null>(null)
 const videoEl = ref<HTMLVideoElement | null>(null)
 const upgradeModal = ref({ show: false, message: '' })
+const userTier = ref<string>('free')
 const uploadingClipId = ref<string | null>(null)
 const uploadError = ref<string | null>(null)
 const trimModal = ref({ show: false, clipId: '', startSec: 0, endSec: 10, duration: 10, loading: false, error: null as string | null })
@@ -686,6 +691,7 @@ const removeListener = ref<(() => void) | null>(null)
 
 onMounted(async () => {
   await loadClips()
+  window.api.app.getStatus().then(s => { if (s.user?.tier) userTier.value = s.user.tier }).catch(() => {})
   removeListener.value = window.api.on('clips:new', async (_ids: unknown) => {
     // clips:new sends an array of newly extracted clip IDs — reload everything
     await loadClips()
