@@ -209,51 +209,82 @@
           </div>
         </div>
 
-        <!-- Agent hero + score -->
-        <div class="flex items-center gap-4">
-          <div
-            class="relative w-16 h-16 rounded-2xl overflow-hidden flex-shrink-0 hero-animate-in"
-            :class="agentImageUrl ? '' : 'bg-green-500/10 border border-green-500/20'"
-            :style="agentImageUrl ? { border: `2px solid ${agentAccentColor}60`, background: agentAccentColor + '20', boxShadow: `0 0 20px ${agentAccentColor}30` } : {}"
-          >
-            <img v-if="agentImageUrl" :src="agentImageUrl" class="w-full h-full object-cover object-top" />
-            <svg v-else class="w-8 h-8 text-green-400 absolute inset-0 m-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
-            </svg>
+        <!-- Hero card: map splash bg + agent portrait + result -->
+        <div
+          class="relative overflow-hidden rounded-2xl hero-animate-in"
+          :style="agentAccentColor ? { border: `1px solid ${agentAccentColor}35` } : { border: '1px solid rgba(255,255,255,0.08)' }"
+        >
+          <!-- Map splash background -->
+          <div class="absolute inset-0">
+            <img
+              v-if="mapSplashUrl"
+              :src="mapSplashUrl"
+              class="w-full h-full object-cover object-center"
+              style="filter: blur(2px) brightness(0.25) saturate(1.4); transform: scale(1.05);"
+            />
+            <div
+              v-else
+              class="w-full h-full"
+              :style="agentAccentColor ? { background: `linear-gradient(135deg, ${agentAccentColor}18, transparent)` } : { background: 'rgba(255,255,255,0.02)' }"
+            />
+            <!-- Gradient overlay for readability -->
+            <div class="absolute inset-0" style="background: linear-gradient(to right, rgba(0,0,0,0.75) 0%, rgba(0,0,0,0.35) 100%);"/>
           </div>
-          <div class="flex-1 min-w-0 space-y-2">
-            <div class="flex items-center gap-2 mb-0.5">
-              <span class="text-xs font-semibold uppercase tracking-wider text-gray-500">Analysis ready</span>
-              <span
-                v-if="result?.overall_score"
-                class="text-xs font-bold px-1.5 py-0.5 rounded-full score-grade-in"
-                :class="scoreGradeBadgeClass(result.overall_score)"
-              >{{ scoreGrade(result.overall_score) }}</span>
-            </div>
-            <p class="text-base font-black text-white leading-tight tracking-tight">Your post-game debrief is ready</p>
-            <div class="flex flex-wrap items-center gap-2">
-              <div class="inline-flex items-center gap-2 rounded-xl border border-white/[0.10] bg-white/[0.03] px-2.5 py-1.5 agent-map-chip">
-                <div
-                  class="w-7 h-7 rounded-xl overflow-hidden flex items-center justify-center flex-shrink-0"
-                  :class="agentImageUrl ? '' : 'bg-white/[0.04] border border-white/[0.08]'"
-                  :style="agentImageUrl ? { border: `1px solid ${agentAccentColor}40`, background: agentAccentColor + '18' } : {}"
-                >
-                  <img v-if="agentImageUrl" :src="agentImageUrl" class="w-6 h-6 object-contain" />
-                  <svg v-else class="w-3.5 h-3.5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"/>
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
-                  </svg>
-                </div>
-                <div class="text-left">
-                  <p class="text-[11px] font-semibold text-gray-200">{{ gameInfo.agent || gameLabel }}</p>
-                  <p class="text-[10px] text-gray-500">{{ gameInfo.map || gameLabel }}</p>
-                </div>
+
+          <div class="relative flex items-center gap-4 p-4">
+            <!-- Agent portrait -->
+            <div
+              class="relative w-20 h-20 rounded-xl overflow-hidden flex-shrink-0"
+              :style="agentAccentColor
+                ? { border: `2px solid ${agentAccentColor}55`, boxShadow: `0 0 18px ${agentAccentColor}30` }
+                : { border: '1px solid rgba(255,255,255,0.12)' }"
+            >
+              <img v-if="agentImageUrl" :src="agentImageUrl" class="w-full h-full object-cover object-top" />
+              <div v-else class="w-full h-full bg-white/[0.06] flex items-center justify-center">
+                <svg class="w-8 h-8 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+                </svg>
+              </div>
+              <!-- Map minimap badge -->
+              <div v-if="mapMinimapUrl" class="absolute bottom-1 right-1 w-6 h-6 rounded-md overflow-hidden border border-white/20 bg-black/60">
+                <img :src="mapMinimapUrl" class="w-full h-full object-cover" />
               </div>
             </div>
-          </div>
-          <div v-if="result?.overall_score" class="text-right flex-shrink-0">
-            <span class="text-3xl font-black tabular-nums score-reveal" :class="scoreClass(result.overall_score)">{{ result.overall_score * 10 }}</span>
-            <div class="text-[10px] text-gray-600 font-semibold mt-0.5">{{ scoreLabel(result.overall_score) }}</div>
+
+            <!-- Match info -->
+            <div class="flex-1 min-w-0 space-y-1.5">
+              <p class="text-base font-black text-white leading-tight tracking-tight">Your debrief is ready</p>
+              <div class="flex flex-wrap items-center gap-1.5">
+                <span v-if="gameInfo.agent" class="text-xs font-semibold text-gray-300">{{ gameInfo.agent }}</span>
+                <span v-if="gameInfo.agent && gameInfo.map" class="text-gray-600 text-xs">·</span>
+                <span v-if="gameInfo.map" class="text-xs text-gray-500">{{ gameInfo.map }}</span>
+              </div>
+              <div class="flex items-center gap-2 flex-wrap">
+                <!-- Win/loss badge — only when real outcome tracked -->
+                <span
+                  v-if="hasMatchResult"
+                  class="inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-black tracking-widest match-result-badge"
+                  :class="result?.match_result === 'win' ? 'match-badge-win' : 'match-badge-loss'"
+                >{{ result?.match_result === 'win' ? 'WIN' : 'LOSS' }}</span>
+                <!-- Score — only when actually tracked -->
+                <span
+                  v-if="hasTrackedScore"
+                  class="rounded-full border border-white/[0.12] bg-black/30 px-2.5 py-0.5 text-xs font-black tabular-nums text-gray-200"
+                >{{ result?.ally_score }}–{{ result?.enemy_score }}</span>
+                <!-- AI score grade -->
+                <span
+                  v-if="result?.overall_score"
+                  class="text-xs font-bold px-2 py-0.5 rounded-full score-grade-in"
+                  :class="scoreGradeBadgeClass(result.overall_score)"
+                >{{ scoreGrade(result.overall_score) }}</span>
+              </div>
+            </div>
+
+            <!-- AI numeric score -->
+            <div v-if="result?.overall_score" class="text-right flex-shrink-0">
+              <span class="text-3xl font-black tabular-nums score-reveal" :class="scoreClass(result.overall_score)">{{ result.overall_score * 10 }}</span>
+              <div class="text-[10px] text-gray-500 font-semibold mt-0.5">{{ scoreLabel(result.overall_score) }}</div>
+            </div>
           </div>
         </div>
 
@@ -274,71 +305,22 @@
           <p class="text-[11px] text-gray-400 leading-relaxed italic">{{ result.verdict }}</p>
         </div>
 
-        <!-- Match result banner + K/D/A -->
+        <!-- KDA — only when kills are tracked -->
         <div
-          v-if="result?.kills != null || result?.match_result"
-          class="relative overflow-hidden rounded-2xl border p-4 match-banner stat-panel-in"
-          :class="result?.match_result === 'win' ? 'match-banner-win' : result?.match_result === 'loss' ? 'match-banner-loss' : 'match-banner-neutral'"
+          v-if="result?.kills != null && (result.kills > 0 || result.deaths != null)"
+          class="grid grid-cols-3 gap-2"
         >
-          <div class="relative flex items-start justify-between gap-3">
-            <div class="space-y-2">
-              <div class="flex flex-wrap items-center gap-2">
-                <span
-                  v-if="result?.match_result"
-                  class="inline-flex items-center rounded-full border px-3 py-1 text-sm font-black tracking-[0.24em] match-result-badge"
-                  :class="result.match_result === 'win' ? 'match-badge-win' : 'match-badge-loss'"
-                >{{ result.match_result === 'win' ? 'WIN' : 'LOSS' }}</span>
-                <span
-                  v-if="result?.ally_score != null && result?.enemy_score != null"
-                  class="rounded-full border border-white/[0.08] bg-black/20 px-3 py-1 text-sm font-black tabular-nums text-gray-100"
-                >{{ result.ally_score }}–{{ result.enemy_score }}</span>
-              </div>
-              <div>
-                <p class="text-xl font-black tracking-tight text-white match-result-glow">
-                  {{ result?.match_result === 'win' ? 'Strong finish on the server' : result?.match_result === 'loss' ? 'Review the turning points' : 'Match summary ready' }}
-                </p>
-                <p class="mt-1 text-xs text-gray-300">{{ gameInfo.agent || gameLabel }}<span v-if="gameInfo.map"> · {{ gameInfo.map }}</span></p>
-              </div>
-            </div>
-            <div v-if="result?.overall_score" class="text-right flex-shrink-0">
-              <p class="text-[10px] font-semibold uppercase tracking-[0.24em] text-gray-500">AI Score</p>
-              <p class="mt-1 text-2xl font-black tabular-nums text-white">{{ result.overall_score * 10 }}</p>
-            </div>
+          <div class="rounded-xl border border-green-500/20 bg-green-500/[0.08] px-3 py-2.5 text-center stat-chip-in">
+            <p class="text-[10px] font-semibold uppercase tracking-[0.24em] text-green-300/70">Kills</p>
+            <p class="mt-0.5 text-2xl font-black tabular-nums text-green-400">{{ result.kills }}</p>
           </div>
-          <div v-if="result?.kills != null" class="mt-4 grid grid-cols-3 gap-2">
-            <div class="rounded-xl border border-green-500/20 bg-green-500/[0.08] px-3 py-3 text-center transition-all duration-500 stat-chip-in" :class="isReady ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-2'" style="transition-delay: 50ms;">
-              <p class="text-[10px] font-semibold uppercase tracking-[0.24em] text-green-300/70">Kills</p>
-              <p class="mt-1 text-2xl font-black tabular-nums text-green-400">{{ result.kills }}</p>
-            </div>
-            <div class="rounded-xl border border-red-500/20 bg-red-500/[0.08] px-3 py-3 text-center transition-all duration-500 stat-chip-in" :class="isReady ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-2'" style="transition-delay: 100ms;">
-              <p class="text-[10px] font-semibold uppercase tracking-[0.24em] text-red-300/70">Deaths</p>
-              <p class="mt-1 text-2xl font-black tabular-nums text-red-400">{{ result.deaths ?? '?' }}</p>
-            </div>
-            <div class="rounded-xl border border-blue-500/20 bg-blue-500/[0.08] px-3 py-3 text-center transition-all duration-500 stat-chip-in" :class="isReady ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-2'" style="transition-delay: 150ms;">
-              <p class="text-[10px] font-semibold uppercase tracking-[0.24em] text-blue-300/70">Assists</p>
-              <p class="mt-1 text-2xl font-black tabular-nums text-blue-400">{{ result.assists ?? '?' }}</p>
-            </div>
+          <div class="rounded-xl border border-red-500/20 bg-red-500/[0.08] px-3 py-2.5 text-center stat-chip-in">
+            <p class="text-[10px] font-semibold uppercase tracking-[0.24em] text-red-300/70">Deaths</p>
+            <p class="mt-0.5 text-2xl font-black tabular-nums text-red-400">{{ result.deaths ?? '?' }}</p>
           </div>
-        </div>
-
-        <div v-if="roundTimelineCells.length" class="rounded-2xl border border-white/[0.10] bg-white/[0.03] px-3 py-3 stat-panel-in" style="animation-delay: 120ms;">
-          <div class="flex items-center justify-between gap-3">
-            <div>
-              <p class="text-[10px] font-semibold uppercase tracking-[0.24em] text-gray-600">Round timeline</p>
-              <p class="mt-1 text-xs text-gray-400">Won {{ result?.ally_score ?? 0 }} · Lost {{ result?.enemy_score ?? 0 }}</p>
-            </div>
-            <div class="text-xs font-semibold text-gray-500">{{ roundTimelineCells.length }} rounds</div>
-          </div>
-          <div class="mt-3 flex flex-wrap gap-1.5">
-            <div
-              v-for="(round, index) in roundTimelineCells"
-              :key="round.key"
-              class="flex h-7 w-7 items-center justify-center rounded-lg border text-[10px] font-black tabular-nums stat-chip-in"
-              :class="round.type === 'win' ? 'border-green-500/25 bg-green-500/[0.14] text-green-300' : 'border-red-500/25 bg-red-500/[0.14] text-red-300'"
-              :style="{ animationDelay: `${index * 35}ms` }"
-            >
-              {{ round.label }}
-            </div>
+          <div class="rounded-xl border border-blue-500/20 bg-blue-500/[0.08] px-3 py-2.5 text-center stat-chip-in">
+            <p class="text-[10px] font-semibold uppercase tracking-[0.24em] text-blue-300/70">Assists</p>
+            <p class="mt-0.5 text-2xl font-black tabular-nums text-blue-400">{{ result.assists ?? '?' }}</p>
           </div>
         </div>
 
@@ -660,7 +642,7 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from 'vue'
-import { getAgentImage, getAgentColor } from '../lib/valorant'
+import { getAgentImage, getAgentColor, getMapImage, getMapMinimap } from '../lib/valorant'
 
 type State = 'uploading' | 'analysing' | 'ready' | 'error' | 'pending'
 
@@ -907,6 +889,17 @@ function scoreGradeBadgeClass(score: number): string {
 
 const agentImageUrl = computed(() => gameInfo.value.agent ? getAgentImage(gameInfo.value.agent) : '')
 const agentAccentColor = computed(() => gameInfo.value.agent ? getAgentColor(gameInfo.value.agent) : '')
+const mapSplashUrl = computed(() => gameInfo.value.map ? getMapImage(gameInfo.value.map) : '')
+const mapMinimapUrl = computed(() => gameInfo.value.map ? getMapMinimap(gameInfo.value.map) : '')
+/** True when we have a real tracked score (not 0-0 fallback) */
+const hasTrackedScore = computed(() =>
+  result.value != null &&
+  ((result.value.ally_score ?? 0) > 0 || (result.value.enemy_score ?? 0) > 0)
+)
+/** True when match_result is a real outcome (win/loss) with tracked score */
+const hasMatchResult = computed(() =>
+  (result.value?.match_result === 'win' || result.value?.match_result === 'loss') && hasTrackedScore.value
+)
 const glowBgStyle = computed(() => {
   if (agentAccentColor.value) {
     return { background: `radial-gradient(ellipse, ${agentAccentColor.value}25 0%, transparent 70%)` }
