@@ -1984,10 +1984,10 @@ function createSplashWindow(): BrowserWindow {
 app.whenReady().then(async () => {
   electronApp.setAppUserModelId('gg.upforge.desktop')
 
-  // Electron 20+ requires setDisplayMediaRequestHandler for getUserMedia with
-  // chromeMediaSource:'desktop' to work. The renderer signals which source it
-  // wants via the 'desktop-capturer:set-source' IPC call immediately before
-  // invoking getUserMedia, and we return that source here.
+  // Intercepts getDisplayMedia() calls from the renderer so we can auto-select
+  // the screen source without showing the OS picker, and so cursor:'never' in
+  // the renderer's video constraints is honoured. The renderer signals which
+  // source to use via 'desktop-capturer:set-source' before calling getDisplayMedia.
   session.defaultSession.setDisplayMediaRequestHandler(async (_request, callback) => {
     try {
       const sourceId = consumePendingCaptureSourceId()
@@ -2003,7 +2003,7 @@ app.whenReady().then(async () => {
       console.error('[App] setDisplayMediaRequestHandler error:', err)
       callback({})
     }
-  })
+  }, { useSystemPicker: false })
 
   app.on('browser-window-created', (_, window) => {
     optimizer.watchWindowShortcuts(window)

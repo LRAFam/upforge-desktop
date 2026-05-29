@@ -36,45 +36,37 @@ export function useDesktopRecording() {
       if (!source) throw new Error('No desktop sources found for capture')
 
       // Tell the main process which source we're about to capture.
-      // setDisplayMediaRequestHandler (required in Electron 20+) reads this
-      // back when getUserMedia fires, so it can return the correct source.
+      // setDisplayMediaRequestHandler intercepts getDisplayMedia() and returns
+      // the pre-selected source without showing the OS picker.
       await window.api.desktopCapture.setSource(source.id)
 
       const maxWidth = config.quality === '1080p' ? 1920 : 1280
       const maxHeight = config.quality === '1080p' ? 1080 : 720
 
-      // desktopCapturer requires chromeMediaSource / chromeMediaSourceId in
-      // mandatory. All other constraints must also go in mandatory — Chromium
-      // throws "Malformed constraint: Cannot use both optional/mandatory and
-      // specific or advanced constraints" if you mix mandatory with top-level keys.
-      const videoConstraints = {
-        mandatory: {
-          chromeMediaSource: 'desktop',
-          chromeMediaSourceId: source.id,
-          maxWidth: maxWidth,
-          maxHeight: maxHeight,
-          maxFrameRate: config.fps,
-        },
-      } as unknown as MediaTrackConstraints
+      // Use getDisplayMedia (intercepted by setDisplayMediaRequestHandler in the main
+      // process) so we can pass cursor:'never'. getUserMedia with chromeMediaSource:
+      // 'desktop' always includes the cursor and doesn't support the cursor constraint.
+      const videoConstraints: MediaTrackConstraints = {
+        width: { max: maxWidth },
+        height: { max: maxHeight },
+        frameRate: { max: config.fps },
+        cursor: 'never' as const,
+      }
 
       let noAudio = false
 
-      // Try with system audio first, fall back gracefully to video-only
+      // Try with system audio (loopback via handler) first, fall back to video-only.
       try {
-        const audioConstraints = config.audioEnabled
-          ? ({ mandatory: { chromeMediaSource: 'desktop' } } as MediaTrackConstraints)
-          : (false as const)
-
-        stream = await navigator.mediaDevices.getUserMedia({
-          audio: audioConstraints,
+        stream = await navigator.mediaDevices.getDisplayMedia({
           video: videoConstraints,
+          audio: config.audioEnabled,
         })
       } catch (audioErr) {
         console.warn('[DesktopRecording] Audio unavailable, recording video-only:', audioErr)
         noAudio = true
-        stream = await navigator.mediaDevices.getUserMedia({
-          audio: false,
+        stream = await navigator.mediaDevices.getDisplayMedia({
           video: videoConstraints,
+          audio: false,
         })
       }
 
