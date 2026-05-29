@@ -52,7 +52,7 @@
         status.recording ? 'bg-red-500/[0.08] border-red-500/25' :
         status.recordingStarting ? 'bg-yellow-500/[0.07] border-yellow-500/20' :
         status.currentGame ? 'bg-orange-500/[0.07] border-orange-500/20' :
-        'bg-white/[0.02] border-white/[0.05]'
+        'bg-white/[0.02] border-white/[0.09]'
       ]"
     >
       <!-- Status dot -->
@@ -99,7 +99,7 @@
       <!-- Hotkey hints (idle) -->
       <div v-if="status.ffmpegOk && !status.recording && !status.recordingStarting && !(platform && platform !== 'win32') && hotkeys['save-clip']" class="flex items-center gap-1.5 flex-shrink-0">
         <span class="text-[10px] text-gray-700 mr-0.5">Hotkeys</span>
-        <span v-for="hk in hotkeyHints" :key="hk.label" class="inline-flex items-center gap-1 px-1.5 py-0.5 bg-white/[0.03] border border-white/[0.05] rounded text-[10px]">
+        <span v-for="hk in hotkeyHints" :key="hk.label" class="inline-flex items-center gap-1 px-1.5 py-0.5 bg-white/[0.03] border border-white/[0.09] rounded text-[10px]">
           <kbd class="font-mono font-semibold text-gray-400">{{ hk.key }}</kbd>
           <span class="text-gray-700">{{ hk.label }}</span>
         </span>
@@ -121,7 +121,7 @@
     <!-- Hero header -->
     <div class="flex-shrink-0 mx-4 mt-4 space-y-6">
       <div class="grid grid-cols-[minmax(0,1fr)_320px] gap-4">
-        <div class="relative rounded-3xl border border-white/[0.06] bg-gradient-to-br from-white/[0.04] via-white/[0.025] to-red-500/[0.06] px-6 pt-6 pb-8">
+        <div class="relative rounded-3xl border border-white/[0.10] bg-gradient-to-br from-white/[0.04] via-white/[0.025] to-red-500/[0.06] px-6 pt-6 pb-8">
           <div class="absolute -right-12 top-0 h-36 w-36 rounded-full bg-red-500/10 blur-3xl" />
           <div class="absolute left-10 top-10 h-24 w-24 rounded-full bg-orange-500/10 blur-3xl" />
           <div class="relative space-y-5">
@@ -208,7 +208,7 @@
 
         <div
           class="relative overflow-hidden rounded-3xl border px-4 py-4"
-          :class="!status.ffmpegOk || status.recordingStarting ? 'border-yellow-500/20 bg-gradient-to-br from-yellow-500/[0.1] to-white/[0.02]' : liveDetectionActive ? 'border-emerald-500/20 bg-gradient-to-br from-emerald-500/[0.12] via-emerald-500/[0.04] to-white/[0.02]' : 'border-white/[0.06] bg-white/[0.02]'"
+          :class="!status.ffmpegOk || status.recordingStarting ? 'border-yellow-500/20 bg-gradient-to-br from-yellow-500/[0.1] to-white/[0.02]' : liveDetectionActive ? 'border-emerald-500/20 bg-gradient-to-br from-emerald-500/[0.12] via-emerald-500/[0.04] to-white/[0.02]' : 'border-white/[0.10] bg-white/[0.02]'"
         >
           <div v-if="liveDetectionActive" class="absolute inset-y-4 left-0 w-[3px] rounded-full bg-gradient-to-b from-emerald-300 via-emerald-400 to-emerald-500" />
           <div v-if="liveDetectionActive" class="absolute -right-8 top-6 h-24 w-24 rounded-full bg-emerald-400/10 blur-3xl" />
@@ -258,7 +258,7 @@
       <div class="flex flex-col gap-3 overflow-y-auto" style="scrollbar-width:none">
 
         <!-- Player hero card -->
-        <div v-if="profile" class="bg-white/[0.02] border border-white/[0.06] rounded-2xl overflow-hidden">
+        <div v-if="profile" class="bg-white/[0.02] border border-white/[0.10] rounded-2xl overflow-hidden">
           <div class="px-4 pt-4 pb-3">
             <div class="flex items-start gap-3">
               <!-- Avatar -->
@@ -314,7 +314,7 @@
 
           <!-- 4-stat grid -->
           <template v-if="profile.latest_stats">
-            <div class="grid grid-cols-4 divide-x divide-white/[0.04] border-t border-white/[0.04]">
+            <div class="grid grid-cols-4 divide-x divide-white/[0.04] border-t border-white/[0.07]">
               <div class="flex flex-col items-center py-3.5">
                 <span class="text-lg font-black tabular-nums leading-none stat-number" :class="profile.latest_stats.kd_ratio != null ? (profile.latest_stats.kd_ratio >= 1.2 ? 'text-green-400' : profile.latest_stats.kd_ratio >= 0.8 ? 'text-white' : 'text-red-400') : 'text-gray-600'">{{ profile.latest_stats.kd_ratio?.toFixed(2) ?? '—' }}</span>
                 <span class="text-[10px] text-gray-600 mt-1">K/D</span>
@@ -336,7 +336,7 @@
             </div>
 
             <!-- RR trend -->
-            <div v-if="rrSparkline" class="border-t border-white/[0.04]">
+            <div v-if="rrSparkline" class="border-t border-white/[0.07]">
               <button class="w-full px-4 py-2 flex items-center gap-2 hover:bg-white/[0.04] transition-all cursor-pointer" @click="showRankHistory = !showRankHistory">
                 <span class="text-[10px] text-gray-600 shrink-0">RR trend</span>
                 <svg :viewBox="`0 0 ${rrSparkline.W} ${rrSparkline.H}`" class="flex-1 h-5" preserveAspectRatio="none">
@@ -345,7 +345,7 @@
                 <span class="text-xs shrink-0" :class="rrSparkline.trending ? 'text-green-500' : 'text-red-400'">{{ rrSparkline.trending ? '↑' : '↓' }}</span>
                 <svg class="w-3 h-3 text-gray-600 shrink-0 transition-transform" :class="showRankHistory ? 'rotate-180' : ''" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
               </button>
-              <div v-if="showRankHistory && rrHistory.length" class="border-t border-white/[0.04] divide-y divide-white/[0.03] max-h-36 overflow-y-auto">
+              <div v-if="showRankHistory && rrHistory.length" class="border-t border-white/[0.07] divide-y divide-white/[0.03] max-h-36 overflow-y-auto">
                 <div v-for="(entry, i) in rrHistory.slice().reverse().slice(0, 10)" :key="entry.id" class="px-4 py-1.5 flex items-center gap-2">
                   <span class="text-xs text-gray-600 shrink-0 w-16 truncate">{{ formatEntryDate(entry.date) }}</span>
                   <span class="text-xs font-semibold flex-1 truncate flex items-center gap-1.5" :style="{ color: getRankHexColor(entry.rank ?? '') }">
@@ -364,7 +364,7 @@
           </div>
 
           <!-- Quota -->
-          <div v-if="profile.user.analysis_stats" class="px-4 py-2.5 border-t border-white/[0.04] flex items-center gap-3">
+          <div v-if="profile.user.analysis_stats" class="px-4 py-2.5 border-t border-white/[0.07] flex items-center gap-3">
             <span class="text-[10px] text-gray-600 shrink-0">Analyses</span>
             <template v-if="isAdmin">
               <div class="flex-1 h-1.5 bg-white/[0.06] rounded-full overflow-hidden">
@@ -382,13 +382,13 @@
             </template>
           </div>
         </div>
-        <div v-else-if="profileLoading" class="h-52 bg-white/[0.02] rounded-2xl animate-pulse border border-white/[0.04]" />
-        <div v-else class="bg-white/[0.02] border border-white/[0.06] rounded-2xl p-4">
+        <div v-else-if="profileLoading" class="h-52 bg-white/[0.02] rounded-2xl animate-pulse border border-white/[0.07]" />
+        <div v-else class="bg-white/[0.02] border border-white/[0.10] rounded-2xl p-4">
           <p class="text-xs text-gray-600">No profile loaded</p>
         </div>
 
         <!-- ─── Mastery card ─── -->
-        <div v-if="profile?.user.forge_rank" class="bg-white/[0.02] border border-white/[0.06] rounded-2xl overflow-hidden">
+        <div v-if="profile?.user.forge_rank" class="bg-white/[0.02] border border-white/[0.10] rounded-2xl overflow-hidden">
           <div class="px-4 pt-3 pb-2">
             <div class="flex items-center justify-between mb-2">
               <span class="text-[10px] font-bold uppercase tracking-widest text-gray-600">Mastery</span>
@@ -430,7 +430,7 @@
             </div>
           </div>
           <!-- Prestige available -->
-          <div v-if="profile.user.forge_rank.can_prestige" class="px-4 py-2 border-t border-white/[0.04] flex items-center gap-2">
+          <div v-if="profile.user.forge_rank.can_prestige" class="px-4 py-2 border-t border-white/[0.07] flex items-center gap-2">
             <div class="w-1.5 h-1.5 rounded-full bg-yellow-400 animate-pulse flex-shrink-0" />
             <span class="text-[10px] text-yellow-400 font-semibold flex-1">Prestige available — you've completed the journey!</span>
             <button class="text-[10px] font-bold text-yellow-400 hover:text-yellow-300 transition-colors px-2 py-0.5 rounded bg-yellow-400/10 hover:bg-yellow-400/20" @click="triggerPrestige">Prestige →</button>
@@ -438,7 +438,7 @@
         </div>
 
         <!-- AI score trend chart -->
-        <div v-if="scoreChartData" class="bg-white/[0.02] border border-white/[0.06] rounded-2xl px-4 py-3">
+        <div v-if="scoreChartData" class="bg-white/[0.02] border border-white/[0.10] rounded-2xl px-4 py-3">
           <div class="flex items-center justify-between mb-2">
             <span class="text-[10px] font-bold uppercase tracking-widest text-gray-600">AI Score Trend</span>
             <div class="flex items-center gap-2">
@@ -462,8 +462,8 @@
         </div>
 
         <!-- Agent performance mini-table -->
-        <div v-if="topAgents.length && topAgents.some(a => a.hasWinData || a.avgScore != null)" class="bg-white/[0.02] border border-white/[0.06] rounded-2xl overflow-hidden">
-          <div class="px-4 py-2.5 border-b border-white/[0.04]">
+        <div v-if="topAgents.length && topAgents.some(a => a.hasWinData || a.avgScore != null)" class="bg-white/[0.02] border border-white/[0.10] rounded-2xl overflow-hidden">
+          <div class="px-4 py-2.5 border-b border-white/[0.07]">
             <span class="text-[10px] font-bold uppercase tracking-widest text-gray-600">Agent Win Rates</span>
           </div>
           <div class="divide-y divide-white/[0.03]">
@@ -500,7 +500,7 @@
           <div v-if="devOpen" class="px-3 pb-3 space-y-2">
             <div class="flex gap-2">
               <button class="flex-1 px-2 py-1.5 rounded-lg text-xs font-medium bg-yellow-500/[0.08] text-yellow-500/70 hover:bg-yellow-500/[0.14] transition-colors border border-yellow-500/10" :disabled="simulating" @click="simulateGame('valorant', 8000)">{{ simulating ? 'Simulating...' : 'Simulate Valorant (8s)' }}</button>
-              <button class="px-2 py-1.5 rounded-lg text-xs font-medium bg-white/[0.04] text-gray-500 hover:bg-white/[0.07] transition-colors border border-white/[0.05]" @click="$router.push('/post-game-preview')">Post-game</button>
+              <button class="px-2 py-1.5 rounded-lg text-xs font-medium bg-white/[0.04] text-gray-500 hover:bg-white/[0.07] transition-colors border border-white/[0.09]" @click="$router.push('/post-game-preview')">Post-game</button>
               <button class="px-2 py-1.5 rounded-lg text-xs font-medium bg-orange-500/[0.08] text-orange-500/70 hover:bg-orange-500/[0.14] transition-colors border border-orange-500/10" @click="$router.push('/training')">Trainer</button>
             </div>
             <p v-if="simStatus" class="text-xs text-yellow-500/50">{{ simStatus }}</p>
@@ -548,7 +548,7 @@
         </div>
 
         <!-- Last-5 performance strip -->
-        <div v-if="lastFivePerf" class="flex-shrink-0 flex items-center gap-3 px-3 py-2 bg-white/[0.02] border border-white/[0.05] rounded-xl">
+        <div v-if="lastFivePerf" class="flex-shrink-0 flex items-center gap-3 px-3 py-2 bg-white/[0.02] border border-white/[0.09] rounded-xl">
           <!-- W/L dots — only shown when won data exists -->
           <template v-if="lastFivePerf.wins > 0 || lastFivePerf.losses > 0">
             <div class="flex items-center gap-1">
@@ -626,12 +626,12 @@
 
           <!-- Loading skeleton -->
           <template v-if="analysesLoading">
-            <div v-for="i in 6" :key="i" class="h-14 bg-white/[0.02] rounded-xl animate-pulse border border-white/[0.04]" />
+            <div v-for="i in 6" :key="i" class="h-14 bg-white/[0.02] rounded-xl animate-pulse border border-white/[0.07]" />
           </template>
 
           <!-- Empty state -->
           <div v-else-if="analyses.length === 0" class="flex flex-col items-center justify-center py-16 text-center">
-            <div class="w-12 h-12 rounded-xl bg-white/[0.03] border border-white/[0.05] flex items-center justify-center mb-3">
+            <div class="w-12 h-12 rounded-xl bg-white/[0.03] border border-white/[0.09] flex items-center justify-center mb-3">
               <svg class="w-6 h-6 text-gray-700" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M15 10l4.553-2.069A1 1 0 0121 8.87v6.26a1 1 0 01-1.447.894L15 14M3 8a2 2 0 012-2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V8z"/></svg>
             </div>
             <p class="text-xs text-gray-500">No analyses yet</p>
@@ -651,7 +651,7 @@
               <div
                 v-for="a in group.items"
                 :key="a.id"
-                class="relative flex items-center gap-2 px-3 py-2.5 rounded-xl border border-white/[0.05] bg-white/[0.02] cursor-pointer transition-all hover:border-white/[0.14] hover:bg-white/[0.04] hover:shadow-[0_12px_28px_rgba(0,0,0,0.16)]"
+                class="relative flex items-center gap-2 px-3 py-2.5 rounded-xl border border-white/[0.09] bg-white/[0.02] cursor-pointer transition-all hover:border-white/[0.14] hover:bg-white/[0.04] hover:shadow-[0_12px_28px_rgba(0,0,0,0.16)]"
                 @click="openAnalysis(a.id)"
               >
                 <!-- W/L left accent bar -->
@@ -738,7 +738,7 @@
       <!-- ═══════════ RIGHT: Coaching + Training + Activity ═══════════ -->
       <div class="flex flex-col gap-3 overflow-y-auto" style="scrollbar-width:none">
 
-        <div v-if="clipCount === 0" class="relative overflow-hidden rounded-2xl border border-white/[0.06] bg-gradient-to-br from-white/[0.03] via-white/[0.02] to-orange-500/[0.05] px-4 py-4">
+        <div v-if="clipCount === 0" class="relative overflow-hidden rounded-2xl border border-white/[0.10] bg-gradient-to-br from-white/[0.03] via-white/[0.02] to-orange-500/[0.05] px-4 py-4">
           <div class="absolute -right-8 top-0 h-24 w-24 rounded-full bg-red-500/10 blur-3xl" />
           <div class="relative flex flex-col items-center text-center gap-3">
             <div class="flex h-12 w-12 items-center justify-center rounded-2xl border border-orange-500/20 bg-orange-500/[0.12] text-orange-300 flex-shrink-0">
@@ -767,7 +767,7 @@
         <div class="h-px bg-gradient-to-r from-transparent via-white/[0.08] to-transparent my-1" />
 
         <!-- Last coaching insight (or empty CTA) -->
-        <div v-if="lastInsight" class="relative bg-white/[0.02] border border-white/[0.05] rounded-2xl overflow-hidden">
+        <div v-if="lastInsight" class="relative bg-white/[0.02] border border-white/[0.09] rounded-2xl overflow-hidden">
           <div class="absolute left-0 top-0 bottom-0 w-[3px] bg-gradient-to-b from-[#ff4655] to-orange-600 rounded-l-xl" />
           <div class="pl-5 pr-4 pt-4 pb-4 space-y-3">
             <div class="flex items-center justify-between">
@@ -804,7 +804,7 @@
         </div>
 
         <!-- Empty coaching insight CTA -->
-        <div v-else class="relative bg-white/[0.02] border border-white/[0.05] rounded-2xl overflow-hidden">
+        <div v-else class="relative bg-white/[0.02] border border-white/[0.09] rounded-2xl overflow-hidden">
           <div class="absolute left-0 top-0 bottom-0 w-[3px] bg-gradient-to-b from-[#ff4655]/30 to-orange-600/30 rounded-l-xl" />
           <div class="pl-5 pr-4 py-5 flex flex-col items-center text-center gap-3">
             <div class="w-10 h-10 rounded-xl bg-red-500/10 border border-red-500/20 flex items-center justify-center">
@@ -823,8 +823,8 @@
         <div class="h-px bg-gradient-to-r from-transparent via-white/[0.08] to-transparent my-1" />
 
         <!-- Correlation insights card -->
-        <div v-if="correlationInsights.length" class="bg-white/[0.02] border border-white/[0.05] rounded-2xl overflow-hidden">
-          <div class="px-4 py-3 border-b border-white/[0.04]">
+        <div v-if="correlationInsights.length" class="bg-white/[0.02] border border-white/[0.09] rounded-2xl overflow-hidden">
+          <div class="px-4 py-3 border-b border-white/[0.07]">
             <span class="text-[10px] font-bold uppercase tracking-widest text-gray-600">Impact on Game</span>
           </div>
           <ul class="px-4 py-3 space-y-2">
@@ -840,8 +840,8 @@
         <div class="h-px bg-gradient-to-r from-transparent via-white/[0.08] to-transparent my-1" />
 
         <!-- Aim training quick-start -->
-        <div class="bg-white/[0.02] border border-white/[0.06] rounded-2xl overflow-hidden">
-          <div class="px-4 py-3 flex items-center justify-between border-b border-white/[0.04]">
+        <div class="bg-white/[0.02] border border-white/[0.10] rounded-2xl overflow-hidden">
+          <div class="px-4 py-3 flex items-center justify-between border-b border-white/[0.07]">
             <span class="text-[10px] font-bold uppercase tracking-widest text-gray-600">Aim Training</span>
             <button class="text-[10px] text-gray-600 hover:text-gray-300 transition-colors" @click="router.push('/training')">Open →</button>
           </div>
@@ -864,7 +864,7 @@
             </template>
             <template v-else>
               <div class="flex items-center gap-3">
-                <div class="w-9 h-9 rounded-xl bg-white/[0.03] border border-white/[0.05] flex items-center justify-center flex-shrink-0">
+                <div class="w-9 h-9 rounded-xl bg-white/[0.03] border border-white/[0.09] flex items-center justify-center flex-shrink-0">
                   <svg class="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" stroke-width="1.5"/><circle cx="12" cy="12" r="4" stroke-width="1.5"/></svg>
                 </div>
                 <div>
@@ -880,8 +880,8 @@
         </div>
 
         <!-- Activity log -->
-        <div v-if="activityLog.length" class="bg-white/[0.02] border border-white/[0.06] rounded-2xl overflow-hidden">
-          <div class="flex items-center justify-between px-4 py-2.5 border-b border-white/[0.04]">
+        <div v-if="activityLog.length" class="bg-white/[0.02] border border-white/[0.10] rounded-2xl overflow-hidden">
+          <div class="flex items-center justify-between px-4 py-2.5 border-b border-white/[0.07]">
             <span class="text-[10px] font-bold uppercase tracking-widest text-gray-600">Activity</span>
             <button class="w-4 h-4 flex items-center justify-center text-gray-700 hover:text-gray-400 transition-colors" @click="clearLog">
               <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
@@ -897,8 +897,8 @@
         </div>
 
         <!-- Season stats card -->
-        <div v-if="profile?.latest_stats" class="bg-white/[0.02] border border-white/[0.06] rounded-2xl overflow-hidden">
-          <div class="px-4 py-2.5 border-b border-white/[0.04] flex items-center justify-between">
+        <div v-if="profile?.latest_stats" class="bg-white/[0.02] border border-white/[0.10] rounded-2xl overflow-hidden">
+          <div class="px-4 py-2.5 border-b border-white/[0.07] flex items-center justify-between">
             <span class="text-[10px] font-bold uppercase tracking-widest text-gray-600">Season Stats</span>
             <button class="text-[10px] text-gray-600 hover:text-gray-300 transition-colors" @click="router.push('/stats')">Details →</button>
           </div>

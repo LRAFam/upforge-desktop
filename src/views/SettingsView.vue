@@ -1,6 +1,6 @@
 <template>
-  <div class="flex h-full flex-col overflow-hidden bg-[#0a0a0a] text-white">
-    <nav class="flex flex-shrink-0 gap-1 border-b border-white/[0.05] bg-[#0c0c0c] px-3 pt-3 pb-2.5">
+  <div class="flex h-full flex-col overflow-hidden bg-[#1a1a1a] text-white">
+    <nav class="flex flex-shrink-0 gap-1 border-b border-white/[0.09] bg-[#161616] px-3 pt-3 pb-2.5">
       <button
         v-for="tab in SETTINGS_TABS"
         :key="tab.id"
@@ -19,7 +19,7 @@
 
     <div class="flex-1 space-y-4 overflow-y-auto px-3 py-3">
       <section v-show="activeTab === 'general'" class="space-y-4">
-        <div class="overflow-hidden rounded-2xl border border-white/[0.06] bg-white/[0.02]">
+        <div class="overflow-hidden rounded-2xl border border-white/[0.10] bg-white/[0.02]">
           <button class="flex w-full items-center justify-between px-4 py-3 text-left" @click="toggleSection('account')">
             <div class="flex items-center gap-3">
               <div class="flex h-9 w-9 items-center justify-center rounded-xl bg-red-500/10 text-red-400">
@@ -36,11 +36,11 @@
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
             </svg>
           </button>
-          <div v-if="sectionOpen.account" class="border-t border-white/[0.05] p-4">
-            <div v-if="user" class="rounded-2xl border border-white/[0.06] bg-gradient-to-br from-red-500/12 via-orange-500/6 to-transparent p-4">
+          <div v-if="sectionOpen.account" class="border-t border-white/[0.09] p-4">
+            <div v-if="user" class="rounded-2xl border border-white/[0.10] bg-gradient-to-br from-red-500/12 via-orange-500/6 to-transparent p-4">
               <div class="flex items-start justify-between gap-4">
                 <div class="flex min-w-0 items-center gap-3">
-                  <div class="flex h-12 w-12 items-center justify-center rounded-2xl border border-white/[0.08] bg-[#111111] text-sm font-bold text-red-400">{{ accountInitial }}</div>
+                  <div class="flex h-12 w-12 items-center justify-center rounded-2xl border border-white/[0.08] bg-[#1a1a1a] text-sm font-bold text-red-400">{{ accountInitial }}</div>
                   <div class="min-w-0">
                     <div class="flex flex-wrap items-center gap-2">
                       <p class="truncate text-sm font-semibold text-white">{{ user.name }}</p>
@@ -59,11 +59,11 @@
                 <button class="rounded-xl border border-red-500/20 bg-red-500/10 px-3 py-2 text-xs font-medium text-red-300 transition-colors hover:border-red-500/35 hover:bg-red-500/15" @click="handleLogout">Sign out</button>
               </div>
             </div>
-            <div v-else class="h-28 animate-pulse rounded-2xl border border-white/[0.05] bg-white/[0.02]" />
+            <div v-else class="h-28 animate-pulse rounded-2xl border border-white/[0.09] bg-white/[0.02]" />
           </div>
         </div>
 
-        <div v-if="user && user.analyses_used !== undefined" class="overflow-hidden rounded-2xl border border-white/[0.06] bg-white/[0.02]">
+        <div v-if="user && user.analyses_used !== undefined" class="overflow-hidden rounded-2xl border border-white/[0.10] bg-white/[0.02]">
           <button class="flex w-full items-center justify-between px-4 py-3 text-left" @click="toggleSection('usage')">
             <div class="flex items-center gap-3">
               <div class="flex h-9 w-9 items-center justify-center rounded-xl bg-orange-500/10 text-orange-400">
@@ -80,8 +80,8 @@
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
             </svg>
           </button>
-          <div v-if="sectionOpen.usage" class="border-t border-white/[0.05] p-4 space-y-3">
-            <div class="rounded-2xl border border-white/[0.06] bg-black/20 p-4">
+          <div v-if="sectionOpen.usage" class="border-t border-white/[0.09] p-4 space-y-3">
+            <div class="rounded-2xl border border-white/[0.10] bg-black/20 p-4">
               <div class="flex items-center justify-between text-xs">
                 <span class="text-gray-400">Analyses this month</span>
                 <span class="font-medium tabular-nums text-gray-200">{{ user.analyses_used }} / {{ user.analyses_limit }}</span>
@@ -102,7 +102,7 @@
           </div>
         </div>
 
-        <div class="overflow-hidden rounded-2xl border border-white/[0.06] bg-white/[0.02]">
+        <div class="overflow-hidden rounded-2xl border border-white/[0.10] bg-white/[0.02]">
           <button class="flex w-full items-center justify-between px-4 py-3 text-left" @click="toggleSection('behavior')">
             <div class="flex items-center gap-3">
               <div class="flex h-9 w-9 items-center justify-center rounded-xl bg-white/[0.05] text-gray-300">
@@ -119,7 +119,7 @@
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
             </svg>
           </button>
-          <div v-if="sectionOpen.behavior" class="divide-y divide-white/[0.05] border-t border-white/[0.05]">
+          <div v-if="sectionOpen.behavior" class="divide-y divide-white/[0.05] border-t border-white/[0.09]">
             <div v-for="toggle in toggles" :key="toggle.key" class="flex items-center justify-between gap-4 px-4 py-3">
               <div>
                 <p class="text-sm text-gray-200">{{ toggle.label }}</p>
@@ -138,7 +138,7 @@
       </section>
 
       <section v-show="activeTab === 'recording'" class="space-y-4">
-        <div class="overflow-hidden rounded-2xl border border-white/[0.06] bg-white/[0.02]">
+        <div class="overflow-hidden rounded-2xl border border-white/[0.10] bg-white/[0.02]">
           <button class="flex w-full items-center justify-between px-4 py-3 text-left" @click="toggleSection('recordingCapture')">
             <div class="flex items-center gap-3">
               <div class="flex h-9 w-9 items-center justify-center rounded-xl bg-red-500/10 text-red-400">
@@ -155,7 +155,7 @@
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
             </svg>
           </button>
-          <div v-if="sectionOpen.recordingCapture" class="space-y-4 border-t border-white/[0.05] p-4">
+          <div v-if="sectionOpen.recordingCapture" class="space-y-4 border-t border-white/[0.09] p-4">
             <div>
               <label class="mb-2 block text-xs font-medium text-gray-400">Record game modes</label>
               <div class="grid grid-cols-2 gap-2">
@@ -165,7 +165,7 @@
                   class="rounded-xl border px-3 py-2 text-left transition-all"
                   :class="settings.recordedModes.includes(mode.value)
                     ? 'border-red-500/25 bg-red-500/10 text-gray-100'
-                    : 'border-white/[0.06] bg-white/[0.02] text-gray-500 hover:border-white/[0.12] hover:text-gray-300'"
+                    : 'border-white/[0.10] bg-white/[0.02] text-gray-500 hover:border-white/[0.12] hover:text-gray-300'"
                   @click="toggleMode(mode.value)"
                 >
                   <div class="flex items-center gap-2">
@@ -189,7 +189,7 @@
               <div class="grid grid-cols-2 gap-2">
                 <button
                   class="rounded-xl border px-3 py-2 text-left transition-all"
-                  :class="settings.recordingQuality === '720p' ? 'border-red-500/25 bg-red-500/10 text-white' : 'border-white/[0.06] bg-white/[0.02] text-gray-400 hover:border-white/[0.12] hover:text-gray-200'"
+                  :class="settings.recordingQuality === '720p' ? 'border-red-500/25 bg-red-500/10 text-white' : 'border-white/[0.10] bg-white/[0.02] text-gray-400 hover:border-white/[0.12] hover:text-gray-200'"
                   @click="settings.recordingQuality = '720p'; debouncedSave()"
                 >
                   <p class="text-xs font-semibold">720p</p>
@@ -197,7 +197,7 @@
                 </button>
                 <button
                   class="rounded-xl border px-3 py-2 text-left transition-all"
-                  :class="settings.recordingQuality === '1080p' ? 'border-red-500/25 bg-red-500/10 text-white' : 'border-white/[0.06] bg-white/[0.02] text-gray-400 hover:border-white/[0.12] hover:text-gray-200'"
+                  :class="settings.recordingQuality === '1080p' ? 'border-red-500/25 bg-red-500/10 text-white' : 'border-white/[0.10] bg-white/[0.02] text-gray-400 hover:border-white/[0.12] hover:text-gray-200'"
                   @click="settings.recordingQuality = '1080p'; debouncedSave()"
                 >
                   <p class="text-xs font-semibold">1080p</p>
@@ -246,7 +246,7 @@
               </div>
             </div>
 
-            <div class="rounded-2xl border border-white/[0.06] bg-black/20 p-4">
+            <div class="rounded-2xl border border-white/[0.10] bg-black/20 p-4">
               <div class="flex items-center justify-between gap-3">
                 <div>
                   <p class="text-xs font-medium text-gray-300">Storage usage</p>
@@ -277,7 +277,7 @@
           </div>
         </div>
 
-        <div class="overflow-hidden rounded-2xl border border-white/[0.06] bg-white/[0.02]">
+        <div class="overflow-hidden rounded-2xl border border-white/[0.10] bg-white/[0.02]">
           <button class="flex w-full items-center justify-between px-4 py-3 text-left" @click="toggleSection('audio')">
             <div class="flex items-center gap-3">
               <div class="flex h-9 w-9 items-center justify-center rounded-xl bg-white/[0.05] text-gray-300">
@@ -294,8 +294,8 @@
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
             </svg>
           </button>
-          <div v-if="sectionOpen.audio" class="space-y-3 border-t border-white/[0.05] p-4">
-            <div class="flex items-center justify-between rounded-2xl border border-white/[0.06] bg-black/20 px-4 py-3">
+          <div v-if="sectionOpen.audio" class="space-y-3 border-t border-white/[0.09] p-4">
+            <div class="flex items-center justify-between rounded-2xl border border-white/[0.10] bg-black/20 px-4 py-3">
               <div>
                 <p class="text-sm text-gray-200">Record game audio</p>
                 <p class="mt-1 text-xs text-gray-500">Capture desktop audio in saved recordings</p>
@@ -304,7 +304,7 @@
                 <span class="inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform" :class="settings.audioEnabled ? 'translate-x-4' : 'translate-x-0.5'" />
               </button>
             </div>
-            <div v-if="fixingAudio" class="rounded-xl border border-white/[0.06] bg-white/[0.02] px-4 py-3 text-xs text-gray-400">Detecting audio capture…</div>
+            <div v-if="fixingAudio" class="rounded-xl border border-white/[0.10] bg-white/[0.02] px-4 py-3 text-xs text-gray-400">Detecting audio capture…</div>
             <div v-else-if="audioStatus !== null && audioStatus.winAudioMode === false" class="rounded-2xl border border-amber-500/20 bg-amber-500/6 p-4">
               <p class="flex items-start gap-2 text-xs text-amber-300/90">
                 <svg class="mt-0.5 h-3.5 w-3.5 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
@@ -325,7 +325,7 @@
           </div>
         </div>
 
-        <div v-if="user?.tier === 'pro'" class="overflow-hidden rounded-2xl border border-white/[0.06] bg-white/[0.02]">
+        <div v-if="user?.tier === 'pro'" class="overflow-hidden rounded-2xl border border-white/[0.10] bg-white/[0.02]">
           <button class="flex w-full items-center justify-between px-4 py-3 text-left" @click="toggleSection('obs')">
             <div class="flex items-center gap-3">
               <div class="flex h-9 w-9 items-center justify-center rounded-xl bg-red-500/10 text-red-400">
@@ -345,8 +345,8 @@
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
             </svg>
           </button>
-          <div v-if="sectionOpen.obs" class="space-y-4 border-t border-white/[0.05] p-4">
-            <div class="flex items-center justify-between rounded-2xl border border-white/[0.06] bg-black/20 px-4 py-3">
+          <div v-if="sectionOpen.obs" class="space-y-4 border-t border-white/[0.09] p-4">
+            <div class="flex items-center justify-between rounded-2xl border border-white/[0.10] bg-black/20 px-4 py-3">
               <div>
                 <p class="text-sm text-gray-200">OBS connection</p>
                 <p class="mt-1 text-xs text-gray-500">
@@ -361,7 +361,7 @@
               </div>
             </div>
 
-            <div class="flex items-center justify-between rounded-2xl border border-white/[0.06] bg-black/20 px-4 py-3">
+            <div class="flex items-center justify-between rounded-2xl border border-white/[0.10] bg-black/20 px-4 py-3">
               <div>
                 <p class="text-sm text-gray-200">Use OBS for recording</p>
                 <p class="mt-1 text-xs text-gray-500">Requires OBS 28+ with WebSocket enabled</p>
@@ -400,7 +400,7 @@
           </div>
         </div>
 
-        <div v-else-if="user" class="overflow-hidden rounded-2xl border border-white/[0.06] bg-white/[0.02]">
+        <div v-else-if="user" class="overflow-hidden rounded-2xl border border-white/[0.10] bg-white/[0.02]">
           <button class="flex w-full items-center justify-between px-4 py-3 text-left" @click="toggleSection('obsTeaser')">
             <div class="flex items-center gap-3">
               <div class="flex h-9 w-9 items-center justify-center rounded-xl bg-white/[0.05] text-gray-300">
@@ -417,7 +417,7 @@
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
             </svg>
           </button>
-          <div v-if="sectionOpen.obsTeaser" class="border-t border-white/[0.05] p-4">
+          <div v-if="sectionOpen.obsTeaser" class="border-t border-white/[0.09] p-4">
             <div class="flex items-center justify-between rounded-2xl border border-red-500/20 bg-gradient-to-r from-red-500/10 to-orange-500/10 px-4 py-3">
               <div>
                 <p class="text-sm text-gray-100">Unlock OBS replay buffers</p>
@@ -430,7 +430,7 @@
       </section>
 
       <section v-show="activeTab === 'trainer'" class="space-y-4">
-        <div class="overflow-hidden rounded-2xl border border-white/[0.06] bg-white/[0.02]">
+        <div class="overflow-hidden rounded-2xl border border-white/[0.10] bg-white/[0.02]">
           <button class="flex w-full items-center justify-between px-4 py-3 text-left" @click="toggleSection('mouseTrainer')">
             <div class="flex items-center gap-3">
               <div class="flex h-9 w-9 items-center justify-center rounded-xl bg-red-500/10 text-red-400">
@@ -447,7 +447,7 @@
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
             </svg>
           </button>
-          <div v-if="sectionOpen.mouseTrainer" class="space-y-4 border-t border-white/[0.05] p-4">
+          <div v-if="sectionOpen.mouseTrainer" class="space-y-4 border-t border-white/[0.09] p-4">
             <div>
               <label class="mb-1 block text-xs text-gray-400">Game</label>
               <select v-model="settings.trainerMouse.game" class="w-full rounded-xl border border-white/[0.08] bg-white/[0.04] px-3 py-2 text-xs text-white focus:border-red-500/30 focus:outline-none" @change="debouncedSave">
@@ -466,7 +466,7 @@
                   v-for="preset in [400, 800, 1600, 3200]"
                   :key="preset"
                   class="rounded-xl border py-2 text-[11px] font-semibold transition-all"
-                  :class="settings.trainerMouse.dpi === preset ? 'border-red-500/30 bg-red-500/10 text-red-300' : 'border-white/[0.06] bg-white/[0.02] text-gray-500 hover:border-white/[0.12] hover:text-gray-300'"
+                  :class="settings.trainerMouse.dpi === preset ? 'border-red-500/30 bg-red-500/10 text-red-300' : 'border-white/[0.10] bg-white/[0.02] text-gray-500 hover:border-white/[0.12] hover:text-gray-300'"
                   @click="settings.trainerMouse.dpi = preset; debouncedSave()"
                 >{{ preset }}</button>
               </div>
@@ -478,7 +478,7 @@
               <input type="number" v-model.number="settings.trainerMouse.sensitivity" min="0.01" max="20" step="0.01" class="w-full rounded-xl border border-white/[0.08] bg-white/[0.04] px-3 py-2 text-xs font-mono text-white focus:border-red-500/30 focus:outline-none" @change="debouncedSave" />
             </div>
 
-            <div class="rounded-2xl border border-white/[0.06] bg-black/20 p-4">
+            <div class="rounded-2xl border border-white/[0.10] bg-black/20 p-4">
               <div class="mb-2 flex items-center justify-between">
                 <span class="text-[10px] font-semibold uppercase tracking-[0.18em] text-gray-500">eDPI</span>
                 <div class="flex items-center gap-2">
@@ -510,7 +510,7 @@
               </div>
             </div>
 
-            <div class="flex items-center justify-between rounded-2xl border border-white/[0.06] bg-black/20 px-4 py-3">
+            <div class="flex items-center justify-between rounded-2xl border border-white/[0.10] bg-black/20 px-4 py-3">
               <div>
                 <p class="text-sm text-gray-200">Raw input</p>
                 <p class="mt-1 text-xs text-gray-500">Bypass OS pointer acceleration</p>
@@ -522,7 +522,7 @@
           </div>
         </div>
 
-        <div class="overflow-hidden rounded-2xl border border-white/[0.06] bg-white/[0.02]">
+        <div class="overflow-hidden rounded-2xl border border-white/[0.10] bg-white/[0.02]">
           <button class="flex w-full items-center justify-between px-4 py-3 text-left" @click="toggleSection('crosshair')">
             <div class="flex items-center gap-3">
               <div class="flex h-9 w-9 items-center justify-center rounded-xl bg-white/[0.05] text-gray-300">
@@ -539,14 +539,14 @@
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
             </svg>
           </button>
-          <div v-if="sectionOpen.crosshair" class="border-t border-white/[0.05] p-4">
-            <div class="rounded-2xl border border-white/[0.06] bg-black/20 p-3">
+          <div v-if="sectionOpen.crosshair" class="border-t border-white/[0.09] p-4">
+            <div class="rounded-2xl border border-white/[0.10] bg-black/20 p-3">
               <crosshair-settings-panel v-model="settings.crosshairSettings" @update:model-value="debouncedSave()" />
             </div>
           </div>
         </div>
 
-        <div class="overflow-hidden rounded-2xl border border-white/[0.06] bg-white/[0.02]">
+        <div class="overflow-hidden rounded-2xl border border-white/[0.10] bg-white/[0.02]">
           <button class="flex w-full items-center justify-between px-4 py-3 text-left" @click="toggleSection('shortcuts')">
             <div class="flex items-center gap-3">
               <div class="flex h-9 w-9 items-center justify-center rounded-xl bg-red-500/10 text-red-400">
@@ -563,8 +563,8 @@
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
             </svg>
           </button>
-          <div v-if="sectionOpen.shortcuts" class="space-y-3 border-t border-white/[0.05] p-4">
-            <div class="flex items-center justify-between rounded-2xl border border-white/[0.06] bg-black/20 px-4 py-3">
+          <div v-if="sectionOpen.shortcuts" class="space-y-3 border-t border-white/[0.09] p-4">
+            <div class="flex items-center justify-between rounded-2xl border border-white/[0.10] bg-black/20 px-4 py-3">
               <div>
                 <p class="text-sm text-gray-200">Open or focus window</p>
                 <p class="mt-1 text-xs text-gray-500">Fixed system shortcut</p>
@@ -574,7 +574,7 @@
               </div>
             </div>
 
-            <div class="space-y-3 rounded-2xl border border-white/[0.06] bg-black/20 p-4">
+            <div class="space-y-3 rounded-2xl border border-white/[0.10] bg-black/20 p-4">
               <div class="flex items-center justify-between gap-4">
                 <div>
                   <p class="text-sm text-gray-200">Bookmark clip moment</p>
@@ -623,7 +623,7 @@
             <p v-if="rebinding" class="px-1 text-xs text-gray-500">Press Escape to cancel. Changes apply immediately.</p>
 
             <Transition name="result-slide">
-              <div v-if="conflictResults !== null" class="overflow-hidden rounded-2xl border" :class="conflictResults.found.length > 0 ? 'border-yellow-500/20 bg-yellow-500/6' : 'border-white/[0.06] bg-white/[0.02]'">
+              <div v-if="conflictResults !== null" class="overflow-hidden rounded-2xl border" :class="conflictResults.found.length > 0 ? 'border-yellow-500/20 bg-yellow-500/6' : 'border-white/[0.10] bg-white/[0.02]'">
                 <div class="space-y-2 px-4 py-3">
                   <template v-if="conflictResults.found.length > 0">
                     <div class="flex items-center gap-2">
@@ -642,7 +642,7 @@
                     </div>
                   </template>
                 </div>
-                <div class="border-t border-white/[0.05] px-4 py-2">
+                <div class="border-t border-white/[0.09] px-4 py-2">
                   <button class="text-xs text-gray-500 transition-colors hover:text-gray-300" @click="conflictResults = null">Dismiss</button>
                 </div>
               </div>
@@ -652,7 +652,7 @@
       </section>
 
       <section v-show="activeTab === 'system'" class="space-y-4">
-        <div class="overflow-hidden rounded-2xl border border-white/[0.06] bg-white/[0.02]">
+        <div class="overflow-hidden rounded-2xl border border-white/[0.10] bg-white/[0.02]">
           <button class="flex w-full items-center justify-between px-4 py-3 text-left" @click="toggleSection('system')">
             <div class="flex items-center gap-3">
               <div class="flex h-9 w-9 items-center justify-center rounded-xl bg-white/[0.05] text-gray-300">
@@ -669,8 +669,8 @@
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
             </svg>
           </button>
-          <div v-if="sectionOpen.system" class="space-y-3 border-t border-white/[0.05] p-4">
-            <div class="flex items-center justify-between rounded-2xl border border-white/[0.06] bg-black/20 px-4 py-3">
+          <div v-if="sectionOpen.system" class="space-y-3 border-t border-white/[0.09] p-4">
+            <div class="flex items-center justify-between rounded-2xl border border-white/[0.10] bg-black/20 px-4 py-3">
               <div>
                 <p class="text-sm text-gray-200">Recording engine (ffmpeg)</p>
                 <p v-if="ffmpegOk" class="mt-1 text-xs text-green-400/80">Ready</p>
@@ -679,7 +679,7 @@
               <span class="h-2 w-2 rounded-full" :class="ffmpegOk ? 'bg-green-500' : 'bg-yellow-400'" />
             </div>
 
-            <div v-if="settings.cachedEncoder" class="flex items-center justify-between rounded-2xl border border-white/[0.06] bg-black/20 px-4 py-3">
+            <div v-if="settings.cachedEncoder" class="flex items-center justify-between rounded-2xl border border-white/[0.10] bg-black/20 px-4 py-3">
               <div>
                 <p class="text-sm text-gray-200">Video encoder</p>
                 <p class="mt-1 text-xs text-green-400/80">{{ encoderLabel }}</p>
@@ -687,7 +687,7 @@
               <span class="h-2 w-2 rounded-full bg-green-500" />
             </div>
 
-            <div class="rounded-2xl border border-white/[0.06] bg-black/20 px-4 py-3">
+            <div class="rounded-2xl border border-white/[0.10] bg-black/20 px-4 py-3">
               <div class="flex items-start justify-between gap-4">
                 <div class="min-w-0 flex-1">
                   <p class="text-sm text-gray-200">Match detection</p>
@@ -714,7 +714,7 @@
       </Transition>
     </div>
 
-    <div class="flex-shrink-0 space-y-2 border-t border-white/[0.04] bg-[#0c0c0c] px-3 pt-2 pb-3">
+    <div class="flex-shrink-0 space-y-2 border-t border-white/[0.07] bg-[#161616] px-3 pt-2 pb-3">
       <div class="flex items-center justify-between px-0.5">
         <p class="cursor-default select-none text-xs text-gray-700" :class="{ 'text-amber-600': devTapCount > 0 && devTapCount < 5 }" @click="handleVersionTap">UpForge Desktop v{{ appVersion }}<span v-if="devTapCount > 0 && devTapCount < 5" class="ml-1 text-amber-600/60">({{ 5 - devTapCount }} more)</span></p>
         <div class="flex items-center gap-3">

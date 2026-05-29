@@ -8,7 +8,7 @@
 
     <!-- Error loading squad -->
     <template v-else-if="squadError">
-      <div class="rounded-xl border border-white/[0.06] bg-white/[0.02] px-5 py-10 flex flex-col items-center text-center gap-4">
+      <div class="rounded-xl border border-white/[0.10] bg-white/[0.02] px-5 py-10 flex flex-col items-center text-center gap-4">
         <div class="w-14 h-14 rounded-2xl bg-yellow-500/10 border border-yellow-500/20 flex items-center justify-center">
           <svg class="w-7 h-7 text-yellow-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
@@ -40,7 +40,7 @@
 
     <!-- No squad -->
     <template v-else-if="!team">
-      <div class="rounded-xl border border-white/[0.06] bg-white/[0.02] overflow-hidden relative">
+      <div class="rounded-xl border border-white/[0.10] bg-white/[0.02] overflow-hidden relative">
         <div class="absolute inset-0 overflow-hidden pointer-events-none">
           <div class="squad-orb squad-orb-1" />
           <div class="squad-orb squad-orb-2" />
@@ -73,7 +73,7 @@
     <template v-else>
 
       <!-- Header bar: name + online count + quota + website link -->
-      <div class="rounded-xl border border-white/[0.06] bg-white/[0.02] px-4 py-3 flex items-center justify-between gap-3">
+      <div class="rounded-xl border border-white/[0.10] bg-white/[0.02] px-4 py-3 flex items-center justify-between gap-3">
         <div class="flex items-center gap-3 min-w-0">
           <div class="w-9 h-9 rounded-xl bg-red-500/10 border border-red-500/20 flex items-center justify-center flex-shrink-0">
             <svg class="w-4.5 h-4.5 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -123,7 +123,7 @@
             </svg>
           </button>
           <button
-            class="flex-shrink-0 flex items-center gap-1 px-2.5 py-1.5 text-xs font-semibold text-gray-400 hover:text-white border border-white/[0.06] hover:border-white/[0.12] rounded-lg transition-colors"
+            class="flex-shrink-0 flex items-center gap-1 px-2.5 py-1.5 text-xs font-semibold text-gray-400 hover:text-white border border-white/[0.10] hover:border-white/[0.12] rounded-lg transition-colors"
             @click="openWebTeam"
           >
             <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -135,7 +135,7 @@
       </div>
 
       <div class="grid gap-3 lg:grid-cols-[1.1fr_0.9fr]">
-        <div class="rounded-2xl border border-white/[0.06] bg-white/[0.03] p-4">
+        <div class="rounded-2xl border border-white/[0.10] bg-white/[0.03] p-4">
           <div class="flex items-start justify-between gap-4">
             <div>
               <p class="text-[11px] font-black uppercase tracking-[0.18em] text-gray-500">Invite to Squad</p>
@@ -177,7 +177,7 @@
           </div>
         </div>
 
-        <div class="rounded-2xl border border-white/[0.06] bg-white/[0.03] p-4">
+        <div class="rounded-2xl border border-white/[0.10] bg-white/[0.03] p-4">
           <div class="flex items-center justify-between gap-2">
             <div>
               <p class="text-[11px] font-black uppercase tracking-[0.18em] text-gray-500">Pending Invites</p>
@@ -189,7 +189,7 @@
             <div
               v-for="invite in pendingInvites"
               :key="invite.value"
-              class="flex items-center justify-between gap-3 rounded-xl border border-white/[0.06] bg-black/20 px-3 py-2.5"
+              class="flex items-center justify-between gap-3 rounded-xl border border-white/[0.10] bg-black/20 px-3 py-2.5"
             >
               <div>
                 <p class="text-sm font-semibold text-white">{{ invite.value }}</p>
@@ -218,7 +218,7 @@
         <div
           v-for="member in sortedMembers"
           :key="member.id"
-          class="relative overflow-hidden rounded-2xl border border-white/[0.06] bg-white/[0.03] p-4"
+          class="relative overflow-hidden rounded-2xl border border-white/[0.10] bg-white/[0.03] p-4"
         >
           <div class="absolute inset-x-4 top-0 h-px" :class="statusTopBorderClass(memberStatus(member.id))" />
           <div class="absolute inset-0 pointer-events-none bg-[radial-gradient(circle_at_top,rgba(255,255,255,0.05),transparent_55%)]" />
@@ -261,7 +261,7 @@
                 </div>
                 <span v-if="getPresence(member.id).game" class="rounded-full border border-white/[0.08] bg-black/20 px-2.5 py-1 text-[11px] font-medium text-gray-400">{{ getPresence(member.id).game }}</span>
               </div>
-              <div class="mt-4 rounded-xl border border-white/[0.06] bg-black/20 px-3 py-2.5">
+              <div class="mt-4 rounded-xl border border-white/[0.10] bg-black/20 px-3 py-2.5">
                 <p class="text-[10px] font-black uppercase tracking-[0.18em] text-gray-600">Status</p>
                 <p class="mt-1 text-sm font-semibold" :class="statusTextClass(memberStatus(member.id))">{{ statusLabel(memberStatus(member.id)) }}</p>
                 <p class="mt-1 text-[11px] leading-relaxed text-gray-500">
@@ -277,8 +277,8 @@
       <div class="grid grid-cols-2 gap-3">
 
         <!-- Recent Squad Activity -->
-        <div class="rounded-xl border border-white/[0.06] bg-white/[0.02] overflow-hidden flex flex-col">
-          <div class="px-3 py-2.5 border-b border-white/[0.06] flex items-center justify-between flex-shrink-0">
+        <div class="rounded-xl border border-white/[0.10] bg-white/[0.02] overflow-hidden flex flex-col">
+          <div class="px-3 py-2.5 border-b border-white/[0.10] flex items-center justify-between flex-shrink-0">
             <p class="text-xs font-bold text-white">Squad Activity</p>
             <button class="text-[11px] text-gray-500 hover:text-red-400 transition-colors" @click="openWebTeam">All →</button>
           </div>
@@ -289,7 +289,7 @@
               class="px-3 py-2 flex items-center gap-2"
             >
               <div
-                class="w-6 h-6 rounded-lg flex items-center justify-center text-[10px] font-bold flex-shrink-0 border border-white/[0.06]"
+                class="w-6 h-6 rounded-lg flex items-center justify-center text-[10px] font-bold flex-shrink-0 border border-white/[0.10]"
                 :style="{ background: `linear-gradient(135deg, ${memberColor(getMemberIdx(item.user_id))}33, ${memberColor(getMemberIdx(item.user_id))}18)`, color: memberColor(getMemberIdx(item.user_id)) }"
               >{{ initials(getMemberName(item.user_id)) }}</div>
               <div class="flex-1 min-w-0">
@@ -319,8 +319,8 @@
         </div>
 
         <!-- My Recent Analyses -->
-        <div class="rounded-xl border border-white/[0.06] bg-white/[0.02] overflow-hidden flex flex-col">
-          <div class="px-3 py-2.5 border-b border-white/[0.06] flex items-center justify-between flex-shrink-0">
+        <div class="rounded-xl border border-white/[0.10] bg-white/[0.02] overflow-hidden flex flex-col">
+          <div class="px-3 py-2.5 border-b border-white/[0.10] flex items-center justify-between flex-shrink-0">
             <p class="text-xs font-bold text-white">My Analyses</p>
             <span class="text-[11px] text-gray-600">Recent</span>
           </div>
@@ -368,8 +368,8 @@
       </div>
 
       <!-- My Recent Clips row -->
-      <div v-if="recentClips.length > 0" class="rounded-xl border border-white/[0.06] bg-white/[0.02] overflow-hidden">
-        <div class="px-3 py-2.5 border-b border-white/[0.06] flex items-center justify-between">
+      <div v-if="recentClips.length > 0" class="rounded-xl border border-white/[0.10] bg-white/[0.02] overflow-hidden">
+        <div class="px-3 py-2.5 border-b border-white/[0.10] flex items-center justify-between">
           <p class="text-xs font-bold text-white">My Recent Clips</p>
           <span class="text-[11px] text-gray-600">{{ recentClips.length }} clip{{ recentClips.length === 1 ? '' : 's' }}</span>
         </div>
@@ -377,7 +377,7 @@
           <div
             v-for="clip in recentClips"
             :key="clip.id"
-            class="flex-shrink-0 w-28 rounded-lg border border-white/[0.06] bg-white/[0.02] overflow-hidden"
+            class="flex-shrink-0 w-28 rounded-lg border border-white/[0.10] bg-white/[0.02] overflow-hidden"
           >
             <div class="relative w-28 h-16 bg-black/40 flex items-center justify-center overflow-hidden">
               <img v-if="clip.thumbPath" :src="`file://${clip.thumbPath}`" class="w-full h-full object-cover opacity-80" />

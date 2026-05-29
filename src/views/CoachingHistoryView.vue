@@ -2,7 +2,7 @@
   <div class="h-full text-white flex flex-col overflow-hidden" style="background: #080808">
 
     <!-- Header bar -->
-    <div class="flex items-center gap-3 px-4 py-2.5 border-b border-white/[0.06] flex-shrink-0 bg-[#0c0c0c]">
+    <div class="flex items-center gap-3 px-4 py-2.5 border-b border-white/[0.10] flex-shrink-0 bg-[#161616]">
       <button
         class="flex items-center gap-1.5 text-gray-500 hover:text-gray-300 transition-colors text-xs"
         @click="$router.back()"
@@ -19,8 +19,8 @@
 
     <!-- Score trend chart -->
     <div v-if="chartData" class="px-4 pt-3 flex-shrink-0">
-      <div class="rounded-xl border border-white/[0.06] overflow-hidden" style="background: #0d1520">
-        <div class="flex items-center gap-2 px-4 py-2 border-b border-white/[0.04]">
+      <div class="rounded-xl border border-white/[0.10] overflow-hidden" style="background: #0d1520">
+        <div class="flex items-center gap-2 px-4 py-2 border-b border-white/[0.07]">
           <span class="text-[9px] font-black uppercase tracking-[0.18em] text-gray-500">Score Trend</span>
           <div class="flex-1 h-px bg-white/[0.04]" />
           <span class="text-[9px] font-bold" :class="chartData.up ? 'text-green-400' : 'text-red-400'">
@@ -56,19 +56,19 @@
 
     <!-- Summary stats row -->
     <div v-if="allAnalyses.length" class="flex gap-2 px-4 pt-3 flex-shrink-0">
-      <div class="flex-1 rounded-xl border border-white/[0.06] px-2 py-2.5 text-center" style="background: #0d1520">
+      <div class="flex-1 rounded-xl border border-white/[0.10] px-2 py-2.5 text-center" style="background: #0d1520">
         <div class="text-sm font-black text-white tabular-nums">{{ allAnalyses.length }}</div>
         <div class="text-[8px] text-gray-600 mt-0.5 uppercase tracking-wide">Games</div>
       </div>
-      <div class="flex-1 rounded-xl border border-white/[0.06] px-2 py-2.5 text-center" style="background: #0d1520">
+      <div class="flex-1 rounded-xl border border-white/[0.10] px-2 py-2.5 text-center" style="background: #0d1520">
         <div class="text-sm font-black tabular-nums" :class="winRate >= 50 ? 'text-green-400' : 'text-red-400'">{{ winRate }}%</div>
         <div class="text-[8px] text-gray-600 mt-0.5 uppercase tracking-wide">Win Rate</div>
       </div>
-      <div class="flex-1 rounded-xl border border-white/[0.06] px-2 py-2.5 text-center" style="background: #0d1520">
+      <div class="flex-1 rounded-xl border border-white/[0.10] px-2 py-2.5 text-center" style="background: #0d1520">
         <div class="text-sm font-black tabular-nums" :class="avgScore !== null ? scoreColor(avgScore) : 'text-gray-600'">{{ avgScore != null ? avgScore * 10 : '—' }}</div>
         <div class="text-[8px] text-gray-600 mt-0.5 uppercase tracking-wide">Avg Score</div>
       </div>
-      <div class="flex-1 rounded-xl border border-white/[0.06] px-2 py-2.5 text-center" style="background: #0d1520">
+      <div class="flex-1 rounded-xl border border-white/[0.10] px-2 py-2.5 text-center" style="background: #0d1520">
         <div class="text-sm font-black text-white tabular-nums">{{ avgKD }}</div>
         <div class="text-[8px] text-gray-600 mt-0.5 uppercase tracking-wide">Avg K/D</div>
       </div>
@@ -84,7 +84,7 @@
           class="px-3 py-1.5 rounded-full text-[11px] font-bold uppercase tracking-wider transition-all border"
           :class="activeFilter === f
             ? 'bg-red-500/15 text-red-400 border-red-500/30'
-            : 'text-gray-500 border-white/[0.06] hover:text-gray-300 hover:bg-white/[0.03] hover:border-white/[0.12]'"
+            : 'text-gray-500 border-white/[0.10] hover:text-gray-300 hover:bg-white/[0.03] hover:border-white/[0.12]'"
           @click="activeFilter = f"
         >{{ f }}</button>
       </div>
@@ -94,7 +94,7 @@
           class="px-2 py-1 rounded-full text-[10px] font-semibold transition-all border capitalize"
           :class="activeMap === null
             ? 'bg-white/[0.06] text-gray-300 border-white/[0.12]'
-            : 'text-gray-600 border-white/[0.06] hover:text-gray-400 hover:bg-white/[0.03]'"
+            : 'text-gray-600 border-white/[0.10] hover:text-gray-400 hover:bg-white/[0.03]'"
           @click="activeMap = null"
         >All maps</button>
         <button
@@ -103,7 +103,7 @@
           class="px-2 py-1 rounded-full text-[10px] font-semibold transition-all border capitalize"
           :class="activeMap === map
             ? 'bg-white/[0.06] text-gray-300 border-white/[0.12]'
-            : 'text-gray-600 border-white/[0.06] hover:text-gray-400 hover:bg-white/[0.03]'"
+            : 'text-gray-600 border-white/[0.10] hover:text-gray-400 hover:bg-white/[0.03]'"
           @click="activeMap = map"
         >{{ map }}</button>
       </div>
@@ -112,13 +112,13 @@
     <!-- Scrollable list -->
     <div class="flex-1 overflow-y-auto px-4 pb-4" style="scrollbar-width: none">
       <div v-if="loading" class="space-y-2 pt-2">
-        <div v-for="i in 5" :key="i" class="h-[52px] bg-white/[0.02] rounded-xl animate-pulse border border-white/[0.04]" />
+        <div v-for="i in 5" :key="i" class="h-[52px] bg-white/[0.02] rounded-xl animate-pulse border border-white/[0.07]" />
       </div>
 
       <div v-else-if="filteredAnalyses.length === 0" class="flex items-center justify-center py-14">
         <div class="w-full max-w-md rounded-3xl border border-white/[0.07] bg-gradient-to-b from-white/[0.04] to-white/[0.02] px-8 py-10 text-center shadow-[0_24px_60px_rgba(0,0,0,0.35)]">
           <div class="mx-auto flex h-20 w-20 items-center justify-center rounded-full bg-gradient-to-br from-red-500/20 via-orange-500/15 to-transparent ring-1 ring-red-500/20 ring-offset-4 ring-offset-[#080808]">
-            <div class="flex h-12 w-12 items-center justify-center rounded-full bg-[#101010]">
+            <div class="flex h-12 w-12 items-center justify-center rounded-full bg-[#191919]">
               <svg class="h-6 w-6 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.7" d="M15 10l4.553-2.069A1 1 0 0121 8.87v6.26a1 1 0 01-1.447.894L15 14M4 7.75A1.75 1.75 0 015.75 6h7.5A1.75 1.75 0 0115 7.75v8.5A1.75 1.75 0 0113.25 18h-7.5A1.75 1.75 0 014 16.25v-8.5z"/>
               </svg>
@@ -126,7 +126,7 @@
           </div>
           <h3 class="mt-5 text-lg font-semibold text-white">{{ allAnalyses.length === 0 ? 'No coaching sessions yet' : 'No sessions match this filter' }}</h3>
           <p class="mt-2 text-sm leading-relaxed text-gray-400">{{ allAnalyses.length === 0 ? 'Finish a recorded match or upload a VOD to start building a coaching history with trends, grades, and review notes.' : 'Try switching the result filter or clearing the map filter to bring more sessions back into view.' }}</p>
-          <div class="mt-5 rounded-2xl border border-white/[0.06] bg-black/25 px-4 py-3 text-left">
+          <div class="mt-5 rounded-2xl border border-white/[0.10] bg-black/25 px-4 py-3 text-left">
             <p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-gray-500">What to expect</p>
             <p class="mt-1 text-xs text-gray-400">Each session includes your score, round result, key improvement points, and a direct link back into VOD review.</p>
           </div>
@@ -138,7 +138,7 @@
         <section v-for="group in groupedAnalyses" :key="group.label" class="space-y-2">
           <div class="flex items-center gap-3 px-1">
             <div class="h-px flex-1 bg-white/[0.05]" />
-            <div class="flex items-center gap-2 rounded-full border border-white/[0.06] bg-white/[0.03] px-3 py-1">
+            <div class="flex items-center gap-2 rounded-full border border-white/[0.10] bg-white/[0.03] px-3 py-1">
               <span class="text-[10px] font-semibold uppercase tracking-[0.18em] text-gray-500">{{ group.label }}</span>
               <span class="text-[10px] font-semibold text-gray-600">{{ group.items.length }}</span>
             </div>
@@ -148,7 +148,7 @@
           <div class="space-y-1.5">
             <div v-for="a in group.items" :key="a.id">
               <div
-                class="w-full cursor-pointer border border-white/[0.05] bg-white/[0.02] px-3 py-2.5 transition-all hover:border-white/[0.08] hover:bg-white/[0.04]"
+                class="w-full cursor-pointer border border-white/[0.09] bg-white/[0.02] px-3 py-2.5 transition-all hover:border-white/[0.08] hover:bg-white/[0.04]"
                 :class="expandedId === a.id ? 'rounded-t-xl border-b-transparent' : 'rounded-xl'"
                 @click="toggleExpand(a)"
               >
@@ -181,7 +181,7 @@
                       >{{ getAgentRole(a.agent) }}</span>
                       <span
                         v-if="a.game_mode && a.game_mode.toLowerCase() !== 'competitive'"
-                        class="flex-shrink-0 rounded-full border border-white/[0.06] bg-white/[0.05] px-1.5 py-px text-[8px] font-semibold capitalize text-gray-600"
+                        class="flex-shrink-0 rounded-full border border-white/[0.10] bg-white/[0.05] px-1.5 py-px text-[8px] font-semibold capitalize text-gray-600"
                       >{{ a.game_mode }}</span>
                     </div>
                     <p class="mt-0.5 flex items-center gap-1.5 text-xs text-gray-600">
@@ -220,7 +220,7 @@
               <Transition name="detail-expand">
                 <div
                   v-if="expandedId === a.id"
-                  class="overflow-hidden rounded-b-xl border border-t-0 border-white/[0.05]"
+                  class="overflow-hidden rounded-b-xl border border-t-0 border-white/[0.09]"
                   style="background: rgba(255,255,255,0.015)"
                 >
                   <div v-if="detailLoading" class="flex items-center justify-center gap-2 py-4">
@@ -253,7 +253,7 @@
                       </div>
                     </div>
 
-                    <div v-if="expandedDetail.verdict" class="flex items-start gap-2 rounded-lg border border-white/[0.05] bg-white/[0.02] px-2.5 py-2">
+                    <div v-if="expandedDetail.verdict" class="flex items-start gap-2 rounded-lg border border-white/[0.09] bg-white/[0.02] px-2.5 py-2">
                       <svg class="mt-0.5 h-3 w-3 flex-shrink-0 text-red-400/60" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"/>
                       </svg>

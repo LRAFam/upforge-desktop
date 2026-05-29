@@ -355,7 +355,7 @@ onUnmounted(() => {
   <div v-if="result" class="fixed inset-0 bg-[#0b1219] flex flex-col overflow-hidden select-none">
 
     <!-- ── Top bar ─────────────────────────────────────────────────────────── -->
-    <div class="flex items-center gap-3 px-7 py-3 border-b border-white/[0.06] flex-shrink-0">
+    <div class="flex items-center gap-3 px-7 py-3 border-b border-white/[0.10] flex-shrink-0">
       <span class="text-[#ff4655] text-xs font-black tracking-widest">UPFORGE</span>
       <span class="text-white/20 text-xs">·</span>
       <span :class="['text-xs font-bold uppercase tracking-widest', scenarioMeta.color]">
@@ -397,7 +397,7 @@ onUnmounted(() => {
     <div class="flex-1 grid grid-cols-[260px_1fr_260px] gap-0 min-h-0 overflow-hidden">
 
       <!-- ═══ LEFT PANEL ═══════════════════════════════════════════════════ -->
-      <div class="flex flex-col gap-4 p-5 border-r border-white/[0.05] overflow-y-auto scrollbar-none">
+      <div class="flex flex-col gap-4 p-5 border-r border-white/[0.09] overflow-y-auto scrollbar-none">
 
         <!-- Score -->
         <div class="flex flex-col items-center pt-3 pb-1">
@@ -424,7 +424,7 @@ onUnmounted(() => {
           </div>
         </div>
 
-        <div class="rounded-2xl border border-white/[0.06] bg-white/[0.03] p-3">
+        <div class="rounded-2xl border border-white/[0.10] bg-white/[0.03] p-3">
           <div class="mb-3 flex items-center justify-between">
             <div>
               <div class="text-[9px] font-bold uppercase tracking-widest text-white/25">Score Breakdown</div>
@@ -465,7 +465,7 @@ onUnmounted(() => {
         </div>
 
         <!-- Quick stats -->
-        <div class="bg-white/[0.03] border border-white/[0.06] rounded-lg p-3 grid grid-cols-2 gap-x-3 gap-y-2">
+        <div class="bg-white/[0.03] border border-white/[0.10] rounded-lg p-3 grid grid-cols-2 gap-x-3 gap-y-2">
           <div>
             <div class="text-[9px] font-bold uppercase tracking-widest text-white/25 mb-0.5">Duration</div>
             <div class="text-sm font-semibold text-white/80">{{ result.duration_seconds }}s</div>
@@ -527,7 +527,7 @@ onUnmounted(() => {
       </div>
 
       <!-- ═══ CENTER PANEL ══════════════════════════════════════════════════ -->
-      <div class="flex flex-col gap-5 p-5 overflow-y-auto scrollbar-none border-r border-white/[0.05]">
+      <div class="flex flex-col gap-5 p-5 overflow-y-auto scrollbar-none border-r border-white/[0.09]">
 
         <!-- Score trend chart -->
         <div>
@@ -628,7 +628,7 @@ onUnmounted(() => {
         <!-- Heatmap -->
         <div v-if="result.heatmap?.length">
           <div class="text-[9px] font-bold uppercase tracking-widest text-white/25 mb-3">Shot Heatmap</div>
-          <div class="relative bg-white/[0.03] border border-white/[0.06] rounded-lg overflow-hidden" style="aspect-ratio: 16/9;">
+          <div class="relative bg-white/[0.03] border border-white/[0.10] rounded-lg overflow-hidden" style="aspect-ratio: 16/9;">
             <canvas ref="heatmapCanvas" class="absolute inset-0 w-full h-full" width="640" height="360" />
             <div class="absolute bottom-2 right-2 flex items-center gap-3">
               <span class="flex items-center gap-1 text-[9px] text-green-400/60">
@@ -666,7 +666,7 @@ onUnmounted(() => {
         </div>
 
         <!-- Divider -->
-        <div class="border-t border-white/[0.05]" />
+        <div class="border-t border-white/[0.09]" />
 
         <!-- Recommended next -->
         <div>
@@ -694,7 +694,7 @@ onUnmounted(() => {
         </div>
 
         <!-- Tip -->
-        <div class="mt-auto pt-2 border-t border-white/[0.04]">
+        <div class="mt-auto pt-2 border-t border-white/[0.07]">
           <div class="text-[9px] font-bold uppercase tracking-widest text-white/20 mb-1.5">Tip</div>
           <p class="text-[10px] leading-relaxed text-white/30 italic">
             {{
@@ -711,7 +711,7 @@ onUnmounted(() => {
     </div>
 
     <!-- ── Footer ──────────────────────────────────────────────────────────── -->
-    <div class="flex items-center justify-end gap-3 px-7 py-3 border-t border-white/[0.06] flex-shrink-0">
+    <div class="flex items-center justify-end gap-3 px-7 py-3 border-t border-white/[0.10] flex-shrink-0">
       <span v-if="store.launchConfig" class="text-[10px] text-white/25 capitalize mr-auto">
         {{ store.launchConfig.difficulty }} · {{ store.launchConfig.duration_seconds }}s
       </span>

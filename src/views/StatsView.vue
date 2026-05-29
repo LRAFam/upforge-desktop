@@ -49,27 +49,27 @@
 
       <!-- Stat cards -->
       <div class="grid grid-cols-5 gap-2">
-        <div class="bg-white/[0.02] border border-white/[0.05] rounded-xl px-2 py-2.5 text-center">
+        <div class="bg-white/[0.02] border border-white/[0.09] rounded-xl px-2 py-2.5 text-center">
           <p class="text-base font-black tabular-nums text-white">{{ filteredAnalyses.length }}</p>
           <p class="text-[9px] text-gray-600 mt-0.5 uppercase tracking-wider">Games</p>
           <p class="text-[8px] text-gray-700 mt-1 uppercase tracking-[0.16em]">Range</p>
         </div>
-        <div class="bg-white/[0.02] border border-white/[0.05] rounded-xl px-2 py-2.5 text-center">
+        <div class="bg-white/[0.02] border border-white/[0.09] rounded-xl px-2 py-2.5 text-center">
           <p class="text-base font-black tabular-nums" :class="winRate >= 50 ? 'text-green-400' : 'text-red-400'">{{ winRate }}%</p>
           <p class="text-[9px] text-gray-600 mt-0.5 uppercase tracking-wider">Win Rate</p>
           <p class="text-[8px] mt-1 font-semibold uppercase tracking-[0.16em]" :class="metricDeltaClass(statDeltas.winRate)">{{ metricDeltaLabel(statDeltas.winRate, '%') }}</p>
         </div>
-        <div class="bg-white/[0.02] border border-white/[0.05] rounded-xl px-2 py-2.5 text-center">
+        <div class="bg-white/[0.02] border border-white/[0.09] rounded-xl px-2 py-2.5 text-center">
           <p class="text-base font-black tabular-nums" :class="avgScore !== null ? scoreColor(avgScore) : 'text-gray-600'">{{ avgScore ?? '—' }}</p>
           <p class="text-[9px] text-gray-600 mt-0.5 uppercase tracking-wider">AI Score</p>
           <p class="text-[8px] mt-1 font-semibold uppercase tracking-[0.16em]" :class="metricDeltaClass(statDeltas.score)">{{ metricDeltaLabel(statDeltas.score) }}</p>
         </div>
-        <div class="bg-white/[0.02] border border-white/[0.05] rounded-xl px-2 py-2.5 text-center">
+        <div class="bg-white/[0.02] border border-white/[0.09] rounded-xl px-2 py-2.5 text-center">
           <p class="text-base font-black tabular-nums text-white">{{ avgKda }}</p>
           <p class="text-[9px] text-gray-600 mt-0.5 uppercase tracking-wider">Avg K/D</p>
           <p class="text-[8px] mt-1 font-semibold uppercase tracking-[0.16em]" :class="metricDeltaClass(statDeltas.kda)">{{ metricDeltaLabel(statDeltas.kda) }}</p>
         </div>
-        <div class="bg-white/[0.02] border border-white/[0.05] rounded-xl px-2 py-2.5 text-center">
+        <div class="bg-white/[0.02] border border-white/[0.09] rounded-xl px-2 py-2.5 text-center">
           <p class="text-base font-black tabular-nums text-orange-400">{{ avgHs !== null ? avgHs + '%' : '—' }}</p>
           <p class="text-[9px] text-gray-600 mt-0.5 uppercase tracking-wider">HS%</p>
           <p class="text-[8px] mt-1 font-semibold uppercase tracking-[0.16em]" :class="metricDeltaClass(statDeltas.hs)">{{ metricDeltaLabel(statDeltas.hs, '%') }}</p>
@@ -77,7 +77,7 @@
       </div>
 
       <!-- Recent form + score sparkline -->
-      <div class="bg-white/[0.02] border border-white/[0.05] rounded-xl px-3 py-2.5 space-y-2">
+      <div class="bg-white/[0.02] border border-white/[0.09] rounded-xl px-3 py-2.5 space-y-2">
         <div class="flex items-center justify-between">
           <p class="text-[10px] font-semibold text-gray-600 uppercase tracking-widest">Recent Form</p>
           <p class="text-[10px] text-gray-700">last {{ recentForm.length }} results</p>
@@ -87,7 +87,7 @@
             v-for="(r, i) in recentForm"
             :key="i"
             class="w-5 h-5 rounded flex items-center justify-center text-[8px] font-black flex-shrink-0"
-            :class="r === 'W' ? 'bg-green-500/20 text-green-400 border border-green-500/20' : r === 'L' ? 'bg-red-500/20 text-red-400 border border-red-500/20' : 'bg-white/[0.05] text-gray-600 border border-white/[0.05]'"
+            :class="r === 'W' ? 'bg-green-500/20 text-green-400 border border-green-500/20' : r === 'L' ? 'bg-red-500/20 text-red-400 border border-red-500/20' : 'bg-white/[0.05] text-gray-600 border border-white/[0.09]'"
           >{{ r }}</div>
         </div>
         <!-- Score sparkline (only if we have scored analyses) -->
@@ -110,7 +110,7 @@
           </svg>
         </div>
 
-        <div v-if="rankPoints.length > 1" class="pt-2 border-t border-white/[0.05]">
+        <div v-if="rankPoints.length > 1" class="pt-2 border-t border-white/[0.09]">
           <div class="flex items-center justify-between mb-1.5">
             <p class="text-[9px] text-gray-700 uppercase tracking-[0.16em]">Rank Progress</p>
             <p class="text-[9px] font-semibold" :class="rankDelta >= 0 ? 'text-green-400' : 'text-red-400'">
@@ -138,8 +138,8 @@
       <div class="grid grid-cols-2 gap-3">
 
         <!-- By Agent -->
-        <div class="bg-white/[0.02] border border-white/[0.05] rounded-xl overflow-hidden">
-          <div class="px-2.5 py-2 border-b border-white/[0.04]">
+        <div class="bg-white/[0.02] border border-white/[0.09] rounded-xl overflow-hidden">
+          <div class="px-2.5 py-2 border-b border-white/[0.07]">
             <p class="text-[10px] font-semibold text-gray-600 uppercase tracking-widest">By Agent</p>
           </div>
           <div class="divide-y divide-white/[0.03]">
@@ -164,8 +164,8 @@
         </div>
 
         <!-- By Map -->
-        <div class="bg-white/[0.02] border border-white/[0.05] rounded-xl overflow-hidden">
-          <div class="px-2.5 py-2 border-b border-white/[0.04]">
+        <div class="bg-white/[0.02] border border-white/[0.09] rounded-xl overflow-hidden">
+          <div class="px-2.5 py-2 border-b border-white/[0.07]">
             <p class="text-[10px] font-semibold text-gray-600 uppercase tracking-widest">By Map</p>
           </div>
           <div class="divide-y divide-white/[0.03]">
@@ -221,7 +221,7 @@
 
       <!-- Link to full coaching history -->
       <button
-        class="w-full py-2 text-xs text-gray-600 hover:text-gray-300 transition-colors border border-white/[0.05] hover:border-white/[0.1] rounded-xl"
+        class="w-full py-2 text-xs text-gray-600 hover:text-gray-300 transition-colors border border-white/[0.09] hover:border-white/[0.1] rounded-xl"
         @click="$router.push('/history')"
       >View full coaching history →</button>
 

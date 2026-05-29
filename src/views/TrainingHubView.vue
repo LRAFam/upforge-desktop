@@ -396,7 +396,7 @@ function categoryFilterClass(category: ScenarioCategory): string {
   if (activeDrillCategory.value === category) {
     return 'border-red-500/30 bg-gradient-to-b from-red-500/15 to-orange-500/10 text-white shadow-[0_0_0_1px_rgba(239,68,68,0.14)]'
   }
-  return 'border-white/[0.06] bg-white/[0.02] text-gray-400 hover:border-white/[0.14] hover:bg-white/[0.05] hover:text-gray-200'
+  return 'border-white/[0.10] bg-white/[0.02] text-gray-400 hover:border-white/[0.14] hover:bg-white/[0.05] hover:text-gray-200'
 }
 
 // ── Sparkline SVG ─────────────────────────────────────────────────────────────
@@ -1349,7 +1349,7 @@ const CATEGORY_ICON: Record<string, string> = {
     </div>
 
     <!-- Stats strip (streak / this week / improvement) — always visible -->
-    <div class="flex mx-3 mt-3 rounded-xl border border-white/[0.06] bg-white/[0.02] overflow-hidden flex-shrink-0">
+    <div class="flex mx-3 mt-3 rounded-xl border border-white/[0.10] bg-white/[0.02] overflow-hidden flex-shrink-0">
       <div class="flex-1 flex flex-col items-center py-2.5 gap-0.5">
         <span class="text-sm font-black tabular-nums" :class="trainingStats.streak > 0 ? 'text-orange-400' : 'text-gray-700'">
           {{ trainingStats.streak > 0 ? trainingStats.streak : '—' }}
@@ -1569,7 +1569,7 @@ const CATEGORY_ICON: Record<string, string> = {
                 <div
                   v-for="(s, i) in sessionHistory"
                   :key="i"
-                  class="flex items-center gap-3 px-3 py-2 rounded-lg border border-white/[0.05]"
+                  class="flex items-center gap-3 px-3 py-2 rounded-lg border border-white/[0.09]"
                   style="background: rgba(255,255,255,0.02)"
                 >
                   <div :class="['w-2 h-2 rounded-full flex-shrink-0', SCENARIO_META[s.scenario]?.dot]" />
@@ -1715,7 +1715,7 @@ const CATEGORY_ICON: Record<string, string> = {
                       </div>
                     </div>
 
-                    <div class="flex-shrink-0 border-l border-white/[0.06]">
+                    <div class="flex-shrink-0 border-l border-white/[0.10]">
                       <button
                         v-if="completedDrills.has(drill.scenario)"
                         class="h-full px-4 text-[10px] font-bold text-green-400 flex items-center gap-1"
@@ -1773,7 +1773,7 @@ const CATEGORY_ICON: Record<string, string> = {
 
                 <div
                   v-if="filteredAssignedDrills.length === 0"
-                  class="rounded-xl border border-white/[0.06] bg-white/[0.02] px-4 py-6 text-center"
+                  class="rounded-xl border border-white/[0.10] bg-white/[0.02] px-4 py-6 text-center"
                 >
                   <p class="text-xs font-semibold text-white">No drills in this category yet.</p>
                   <p class="mt-1 text-[11px] text-gray-500">Try another filter to see all of your VOD-based recommendations.</p>
@@ -1791,11 +1791,11 @@ const CATEGORY_ICON: Record<string, string> = {
 
               <div class="rounded-xl border border-white/[0.07] bg-white/[0.02] overflow-hidden">
                 <!-- Scenario tiles -->
-                <div class="grid grid-cols-4 gap-0 border-b border-white/[0.06]">
+                <div class="grid grid-cols-4 gap-0 border-b border-white/[0.10]">
                   <button
                     v-for="(meta, key) in SCENARIO_META"
                     :key="key"
-                    class="py-2.5 text-center transition-all border-r border-white/[0.04] last:border-0 flex flex-col items-center gap-0.5 relative"
+                    class="py-2.5 text-center transition-all border-r border-white/[0.07] last:border-0 flex flex-col items-center gap-0.5 relative"
                     :class="
                       freePlayScenario === key
                         ? `${meta.bg} ${meta.color}`
@@ -1816,7 +1816,7 @@ const CATEGORY_ICON: Record<string, string> = {
                 </div>
 
                 <!-- Tip for selected scenario -->
-                <div class="px-3 py-2 border-b border-white/[0.05] flex items-start gap-2">
+                <div class="px-3 py-2 border-b border-white/[0.09] flex items-start gap-2">
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" class="w-3 h-3 flex-shrink-0 mt-px text-gray-600"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="8"/></svg>
                   <p class="text-[10px] text-gray-500 italic leading-relaxed">
                     {{ SCENARIO_META[freePlayScenario]?.tip }}
@@ -1824,12 +1824,12 @@ const CATEGORY_ICON: Record<string, string> = {
                 </div>
 
                 <!-- Difficulty + Duration -->
-                <div class="flex gap-0 border-b border-white/[0.05]">
+                <div class="flex gap-0 border-b border-white/[0.09]">
                   <div class="flex flex-1 gap-0">
                     <button
                       v-for="diff in (['easy', 'medium', 'hard', 'pro'] as const)"
                       :key="diff"
-                      class="flex-1 py-2 text-[10px] font-bold uppercase transition-all border-r border-white/[0.04]"
+                      class="flex-1 py-2 text-[10px] font-bold uppercase transition-all border-r border-white/[0.07]"
                       :class="
                         freePlayDifficulty === diff
                           ? `${DIFFICULTY_COLORS[diff]} bg-white/[0.06]`
@@ -1840,11 +1840,11 @@ const CATEGORY_ICON: Record<string, string> = {
                       {{ diff }}
                     </button>
                   </div>
-                  <div class="flex border-l border-white/[0.05]">
+                  <div class="flex border-l border-white/[0.09]">
                     <button
                       v-for="dur in [30, 60, 120]"
                       :key="dur"
-                      class="px-3 py-2 text-[10px] font-bold transition-all border-r border-white/[0.04] last:border-0"
+                      class="px-3 py-2 text-[10px] font-bold transition-all border-r border-white/[0.07] last:border-0"
                       :class="
                         freePlayDuration === dur
                           ? 'text-white bg-white/[0.06]'
@@ -1938,7 +1938,7 @@ const CATEGORY_ICON: Record<string, string> = {
 
             <!-- Personal Records trophy row -->
             <div v-if="hasAnyPersonalBest" class="rounded-xl border border-white/[0.07] bg-white/[0.02] overflow-hidden">
-              <div class="flex items-center gap-2 px-4 py-2.5 border-b border-white/[0.05]">
+              <div class="flex items-center gap-2 px-4 py-2.5 border-b border-white/[0.09]">
                 <span class="text-[9px] font-black uppercase tracking-[0.18em] text-gray-500">Personal Records</span>
                 <div class="flex-1 h-px bg-white/[0.04]" />
                 <span class="text-yellow-500/70 flex items-center" v-html="ICON_TROPHY_SM" />
@@ -1961,7 +1961,7 @@ const CATEGORY_ICON: Record<string, string> = {
 
             <!-- Skill Radar -->
             <div class="rounded-xl border border-white/[0.07] bg-white/[0.02] overflow-hidden">
-              <div class="flex items-center gap-2 px-4 py-2.5 border-b border-white/[0.05]">
+              <div class="flex items-center gap-2 px-4 py-2.5 border-b border-white/[0.09]">
                 <span class="text-[9px] font-black uppercase tracking-[0.18em] text-gray-500">Skill Radar</span>
                 <div class="flex-1 h-px bg-white/[0.04]" />
                 <span class="text-[9px] text-gray-700">personal bests</span>
@@ -2111,7 +2111,7 @@ const CATEGORY_ICON: Record<string, string> = {
                   <!-- Benchmark row -->
                   <div
                     v-if="(benchmarkData?.[scenario]?.peers ?? 0) >= 5"
-                    class="px-4 pb-3 border-t border-white/[0.04] pt-2.5"
+                    class="px-4 pb-3 border-t border-white/[0.07] pt-2.5"
                   >
                     <div class="flex items-center justify-between mb-1.5">
                       <span class="text-[9px] font-black uppercase tracking-[0.15em] text-gray-600">vs All Players</span>
@@ -2156,7 +2156,7 @@ const CATEGORY_ICON: Record<string, string> = {
 
             <!-- Correlation Insights -->
             <div v-if="correlationInsights.length" class="rounded-xl border border-white/[0.08] overflow-hidden" style="background: rgba(255,255,255,0.02)">
-              <div class="flex items-center gap-2 px-4 py-2.5 border-b border-white/[0.05]">
+              <div class="flex items-center gap-2 px-4 py-2.5 border-b border-white/[0.09]">
                 <div class="w-1.5 h-1.5 rounded-full bg-red-500 flex-shrink-0" />
                 <span class="text-[9px] font-black uppercase tracking-[0.18em] text-gray-400">Training Insights</span>
               </div>
@@ -2174,7 +2174,7 @@ const CATEGORY_ICON: Record<string, string> = {
 
             <!-- Achievements -->
             <div class="rounded-xl border border-white/[0.07] bg-white/[0.02] overflow-hidden">
-              <div class="flex items-center gap-2 px-4 py-2.5 border-b border-white/[0.05]">
+              <div class="flex items-center gap-2 px-4 py-2.5 border-b border-white/[0.09]">
                 <span class="text-[9px] font-black uppercase tracking-[0.18em] text-gray-500">Achievements</span>
                 <div class="flex-1 h-px bg-white/[0.04]" />
                 <span class="text-[9px] text-gray-700">{{ unlockedCount }} / {{ ACHIEVEMENTS.length }}</span>
@@ -2214,7 +2214,7 @@ const CATEGORY_ICON: Record<string, string> = {
 
             <!-- AI Coaching context card -->
             <div class="rounded-xl border border-white/[0.07] bg-white/[0.02] overflow-hidden">
-              <div class="flex items-center gap-2 px-4 py-2.5 border-b border-white/[0.05]">
+              <div class="flex items-center gap-2 px-4 py-2.5 border-b border-white/[0.09]">
                 <div class="w-1.5 h-1.5 rounded-full bg-red-500 flex-shrink-0" />
                 <span class="text-[9px] font-black uppercase tracking-[0.18em] text-gray-400">AI Coaching</span>
               </div>
@@ -2265,7 +2265,7 @@ const CATEGORY_ICON: Record<string, string> = {
 
             <!-- Training ↔ Game Correlation Insights -->
             <div v-if="correlationInsights.length" class="rounded-xl border border-white/[0.07] bg-white/[0.02] overflow-hidden">
-              <div class="flex items-center gap-2 px-4 py-2.5 border-b border-white/[0.05]">
+              <div class="flex items-center gap-2 px-4 py-2.5 border-b border-white/[0.09]">
                 <svg class="w-3 h-3 text-red-400/70 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>
                 </svg>
@@ -2297,7 +2297,7 @@ const CATEGORY_ICON: Record<string, string> = {
 
             <div
               v-else-if="!coachingDrills.length"
-              class="py-8 text-center rounded-xl border border-white/[0.06]"
+              class="py-8 text-center rounded-xl border border-white/[0.10]"
               style="background: rgba(255,255,255,0.02)"
             >
               <div class="flex items-center justify-center mb-3">

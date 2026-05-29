@@ -75,7 +75,7 @@
 body {
   margin: 0;
   font-family: 'Inter', system-ui, sans-serif;
-  background: #0a0a0a;
+  background: #111111;
   color: #f9fafb;
   overflow: hidden;
   user-select: none;
@@ -105,7 +105,7 @@ body {
 
 /* Dark theme for native <select> option dropdowns */
 select option {
-  background-color: #141414;
+  background-color: #1a1a1a;
   color: #f3f4f6;
 }
 
@@ -140,26 +140,26 @@ kbd {
 
 /* ── Global card variants (global-1) ─────────────────────────────────────── */
 .card {
-  background: rgba(255, 255, 255, 0.02);
-  border: 1px solid rgba(255, 255, 255, 0.05);
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.10);
   border-radius: 12px;
   overflow: hidden;
 }
 .card-hover {
-  background: rgba(255, 255, 255, 0.02);
-  border: 1px solid rgba(255, 255, 255, 0.05);
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.10);
   border-radius: 12px;
   transition: background 0.15s, border-color 0.15s, box-shadow 0.15s;
   cursor: pointer;
 }
 .card-hover:hover {
-  background: rgba(255, 255, 255, 0.04);
-  border-color: rgba(255, 255, 255, 0.09);
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.15);
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
 }
 .card-accent {
-  background: rgba(255, 70, 85, 0.04);
-  border: 1px solid rgba(255, 70, 85, 0.15);
+  background: rgba(255, 70, 85, 0.06);
+  border: 1px solid rgba(255, 70, 85, 0.20);
   border-radius: 12px;
 }
 
@@ -170,7 +170,7 @@ kbd {
   gap: 6px;
   font-size: 10px;
   font-weight: 700;
-  color: #4b5563;
+  color: #6b7280;
   text-transform: uppercase;
   letter-spacing: 0.1em;
   margin-bottom: 8px;
@@ -228,12 +228,12 @@ kbd {
   width: 56px;
   height: 56px;
   border-radius: 16px;
-  background: rgba(255, 255, 255, 0.03);
-  border: 1px solid rgba(255, 255, 255, 0.06);
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.10);
   display: flex;
   align-items: center;
   justify-content: center;
-  color: #374151;
+  color: #6b7280;
 }
 .empty-state-title {
   font-size: 14px;
@@ -300,8 +300,8 @@ kbd {
   justify-content: center;
 }
 .modal-panel {
-  background: #111111;
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: #181818;
+  border: 1px solid rgba(255, 255, 255, 0.10);
   border-radius: 16px;
   padding: 20px;
   max-width: 420px;

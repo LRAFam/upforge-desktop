@@ -1,5 +1,5 @@
 <template>
-  <div class="flex flex-col h-full bg-[#0c0c0c] relative overflow-hidden">
+  <div class="flex flex-col h-full bg-[#161616] relative overflow-hidden">
     <!-- Subtle glow bg — uses agent accent colour when available -->
     <div class="absolute inset-0 pointer-events-none">
       <div
@@ -74,7 +74,7 @@
                 <p class="text-[10px] text-gray-600">Complete</p>
               </div>
             </div>
-            <div class="relative h-3 w-full overflow-hidden rounded-full border border-white/[0.04] bg-white/[0.05]">
+            <div class="relative h-3 w-full overflow-hidden rounded-full border border-white/[0.07] bg-white/[0.05]">
               <div class="absolute inset-0 upload-bar-track" />
               <div
                 class="relative h-full overflow-hidden rounded-full upload-bar-fill transition-all duration-300"
@@ -84,7 +84,7 @@
               </div>
             </div>
             <div class="grid grid-cols-2 gap-2">
-              <div class="rounded-xl border border-white/[0.05] bg-white/[0.03] px-3 py-2 text-left">
+              <div class="rounded-xl border border-white/[0.09] bg-white/[0.03] px-3 py-2 text-left">
                 <p class="text-[10px] uppercase tracking-[0.2em] text-gray-600">Status</p>
                 <div class="mt-1 flex items-center gap-2 text-xs font-semibold text-gray-300">
                   <svg class="h-3.5 w-3.5 animate-spin text-red-400" fill="none" viewBox="0 0 20 20">
@@ -94,7 +94,7 @@
                   <span>{{ uploadStatusLabel }}</span>
                 </div>
               </div>
-              <div class="rounded-xl border border-white/[0.05] bg-white/[0.03] px-3 py-2 text-right">
+              <div class="rounded-xl border border-white/[0.09] bg-white/[0.03] px-3 py-2 text-right">
                 <p class="text-[10px] uppercase tracking-[0.2em] text-gray-600">ETA</p>
                 <p class="mt-1 text-xs font-semibold text-gray-300">{{ uploadEta || 'Calculating…' }}</p>
               </div>
@@ -149,7 +149,7 @@
           </template>
         </div>
         <!-- Rotating coaching tip -->
-        <div class="px-3 py-2.5 bg-white/[0.02] border border-white/[0.05] rounded-xl text-left">
+        <div class="px-3 py-2.5 bg-white/[0.02] border border-white/[0.09] rounded-xl text-left">
           <p class="text-xs font-semibold uppercase tracking-wider text-gray-600 mb-1">Did you know?</p>
           <p class="text-xs text-gray-400 leading-relaxed">{{ currentTip }}</p>
         </div>
@@ -168,7 +168,7 @@
             <span v-for="i in 3" :key="i" class="w-1.5 h-1.5 rounded-full bg-orange-500/60 animate-bounce" :style="{ animationDelay: `${(i - 1) * 0.18}s` }" />
           </div>
         </div>
-        <div v-if="analysisStuck" class="flex items-start gap-2 px-3 py-2.5 bg-white/[0.03] border border-white/[0.06] rounded-xl text-left">
+        <div v-if="analysisStuck" class="flex items-start gap-2 px-3 py-2.5 bg-white/[0.03] border border-white/[0.10] rounded-xl text-left">
           <svg class="w-3.5 h-3.5 text-gray-500 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
           </svg>
@@ -232,7 +232,7 @@
             </div>
             <p class="text-base font-black text-white leading-tight tracking-tight">Your post-game debrief is ready</p>
             <div class="flex flex-wrap items-center gap-2">
-              <div class="inline-flex items-center gap-2 rounded-xl border border-white/[0.06] bg-white/[0.03] px-2.5 py-1.5 agent-map-chip">
+              <div class="inline-flex items-center gap-2 rounded-xl border border-white/[0.10] bg-white/[0.03] px-2.5 py-1.5 agent-map-chip">
                 <div
                   class="w-7 h-7 rounded-xl overflow-hidden flex items-center justify-center flex-shrink-0"
                   :class="agentImageUrl ? '' : 'bg-white/[0.04] border border-white/[0.08]'"
@@ -267,7 +267,7 @@
         </div>
 
         <!-- AI Verdict (one-liner from analysis) -->
-        <div v-if="result?.verdict" class="flex items-start gap-2 px-3 py-2.5 bg-white/[0.02] border border-white/[0.05] rounded-xl">
+        <div v-if="result?.verdict" class="flex items-start gap-2 px-3 py-2.5 bg-white/[0.02] border border-white/[0.09] rounded-xl">
           <svg class="w-3.5 h-3.5 text-red-400/70 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"/>
           </svg>
@@ -321,7 +321,7 @@
           </div>
         </div>
 
-        <div v-if="roundTimelineCells.length" class="rounded-2xl border border-white/[0.06] bg-white/[0.03] px-3 py-3 stat-panel-in" style="animation-delay: 120ms;">
+        <div v-if="roundTimelineCells.length" class="rounded-2xl border border-white/[0.10] bg-white/[0.03] px-3 py-3 stat-panel-in" style="animation-delay: 120ms;">
           <div class="flex items-center justify-between gap-3">
             <div>
               <p class="text-[10px] font-semibold uppercase tracking-[0.24em] text-gray-600">Round timeline</p>
@@ -348,7 +348,7 @@
           <div
             v-for="(imp, i) in improvements"
             :key="i"
-            class="flex items-start gap-2 px-3 py-2 bg-white/[0.03] border border-white/[0.06] rounded-xl"
+            class="flex items-start gap-2 px-3 py-2 bg-white/[0.03] border border-white/[0.10] rounded-xl"
           >
             <span class="text-xs font-bold w-4 flex-shrink-0 mt-0.5" :class="i === 0 ? 'text-red-400' : 'text-gray-600'">{{ i + 1 }}</span>
             <p class="text-xs text-gray-300 leading-relaxed">{{ imp }}</p>
@@ -453,7 +453,7 @@
             <button
               v-if="result?.overall_score"
               title="Copy score to clipboard"
-              class="px-3 py-2.5 text-xs text-gray-400 hover:text-gray-200 bg-white/[0.03] hover:bg-white/[0.06] border border-white/[0.06] rounded-xl transition-colors"
+              class="px-3 py-2.5 text-xs text-gray-400 hover:text-gray-200 bg-white/[0.03] hover:bg-white/[0.06] border border-white/[0.10] rounded-xl transition-colors"
               @click="copyScore"
             >
               <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -461,7 +461,7 @@
               </svg>
             </button>
             <button
-              class="flex-1 px-3 py-2.5 text-xs font-medium text-gray-500 hover:text-gray-300 bg-white/[0.03] hover:bg-white/[0.06] border border-white/[0.06] rounded-xl transition-colors"
+              class="flex-1 px-3 py-2.5 text-xs font-medium text-gray-500 hover:text-gray-300 bg-white/[0.03] hover:bg-white/[0.06] border border-white/[0.10] rounded-xl transition-colors"
               @click="dismiss"
             >Close panel</button>
           </div>
@@ -470,7 +470,7 @@
         <!-- Session clips row -->
         <button
           v-if="sessionClipCount > 0"
-          class="w-full flex items-center gap-2 px-3 py-2 bg-white/[0.03] hover:bg-white/[0.05] border border-white/[0.06] rounded-xl transition-colors text-left"
+          class="w-full flex items-center gap-2 px-3 py-2 bg-white/[0.03] hover:bg-white/[0.05] border border-white/[0.10] rounded-xl transition-colors text-left"
           @click="openClips"
         >
           <svg class="w-3.5 h-3.5 text-red-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -489,7 +489,7 @@
           v-if="debriefLoading || debriefText || debriefFailed"
           class="w-full rounded-xl border border-white/[0.08] bg-white/[0.03] overflow-hidden"
         >
-          <div class="flex items-center gap-2 px-3 py-2 border-b border-white/[0.06]">
+          <div class="flex items-center gap-2 px-3 py-2 border-b border-white/[0.10]">
             <svg class="w-3.5 h-3.5 text-purple-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"/>
             </svg>
@@ -525,7 +525,7 @@
         <div class="space-y-2">
           <p class="text-sm font-semibold">Game recorded</p>
           <div class="flex items-center justify-center">
-            <div class="inline-flex items-center gap-2 rounded-xl border border-white/[0.06] bg-white/[0.03] px-3 py-2">
+            <div class="inline-flex items-center gap-2 rounded-xl border border-white/[0.10] bg-white/[0.03] px-3 py-2">
               <div
                 class="w-8 h-8 rounded-xl overflow-hidden flex items-center justify-center flex-shrink-0"
                 :class="agentImageUrl ? '' : 'bg-blue-500/10 border border-blue-500/20'"
@@ -551,7 +551,7 @@
             @click="analyseNow"
           >{{ analysing ? 'Starting...' : 'Analyse Now' }}</button>
           <button
-            class="px-3 py-2 text-xs text-gray-500 hover:text-gray-300 bg-white/[0.03] hover:bg-white/[0.06] border border-white/[0.06] rounded-lg transition-colors"
+            class="px-3 py-2 text-xs text-gray-500 hover:text-gray-300 bg-white/[0.03] hover:bg-white/[0.06] border border-white/[0.10] rounded-lg transition-colors"
             @click="dismissPending"
           >Later</button>
         </div>
@@ -576,7 +576,7 @@
               class="flex-1 py-2 text-xs font-semibold bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white rounded-lg transition-all shadow-sm shadow-amber-500/20"
               @click="openUpgrade"
             >View Plans →</button>
-            <button class="px-3 py-2 text-xs text-gray-500 hover:text-gray-300 bg-white/[0.03] hover:bg-white/[0.06] border border-white/[0.06] rounded-lg transition-colors" @click="dismiss">Dismiss</button>
+            <button class="px-3 py-2 text-xs text-gray-500 hover:text-gray-300 bg-white/[0.03] hover:bg-white/[0.06] border border-white/[0.10] rounded-lg transition-colors" @click="dismiss">Dismiss</button>
           </div>
         </template>
 
@@ -619,7 +619,7 @@
               class="flex-1 py-2 text-xs font-semibold bg-gradient-to-r from-red-500 to-orange-600 hover:from-red-600 hover:to-orange-700 text-white rounded-lg transition-all shadow-sm shadow-red-500/20 disabled:opacity-40 disabled:cursor-not-allowed"
               @click="retryUpload"
             >Retry</button>
-            <button class="px-3 py-2 text-xs text-gray-500 hover:text-gray-300 bg-white/[0.03] hover:bg-white/[0.06] border border-white/[0.06] rounded-lg transition-colors" @click="dismiss">Dismiss</button>
+            <button class="px-3 py-2 text-xs text-gray-500 hover:text-gray-300 bg-white/[0.03] hover:bg-white/[0.06] border border-white/[0.10] rounded-lg transition-colors" @click="dismiss">Dismiss</button>
           </div>
         </template>
       </div>

@@ -1,5 +1,5 @@
 <template>
-  <div class="flex flex-col h-full px-4 pt-3 pb-4 gap-3 bg-[#0a0a0a]">
+  <div class="flex flex-col h-full px-4 pt-3 pb-4 gap-3 bg-[#1a1a1a]">
     <!-- Header -->
     <div class="flex items-start justify-between gap-3 flex-shrink-0">
       <div>
@@ -37,7 +37,7 @@
     </div>
 
     <!-- Filter row -->
-    <div class="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-white/[0.06] bg-[#0c0c0c] px-3 py-2.5 flex-shrink-0">
+    <div class="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-white/[0.10] bg-[#161616] px-3 py-2.5 flex-shrink-0">
       <div class="flex flex-wrap items-center gap-2">
         <button
           v-for="f in filters"
@@ -45,7 +45,7 @@
           class="rounded-full border px-3 py-1 text-xs font-medium transition-all duration-150"
           :class="activeFilter === f.value
             ? 'border-red-500/30 bg-red-500/20 text-red-400'
-            : 'border-white/[0.06] text-gray-500 hover:border-white/[0.12] hover:text-gray-300'"
+            : 'border-white/[0.10] text-gray-500 hover:border-white/[0.12] hover:text-gray-300'"
           @click="activeFilter = f.value"
         >
           {{ f.label }}
@@ -99,7 +99,7 @@
     <div v-if="displayedClips.length === 0" class="flex flex-1 items-center justify-center">
       <div class="max-w-sm rounded-3xl border border-white/[0.08] bg-gradient-to-b from-white/[0.04] to-white/[0.02] px-8 py-10 text-center shadow-[0_24px_60px_rgba(0,0,0,0.35)]">
         <div class="mx-auto flex h-20 w-20 items-center justify-center rounded-full bg-gradient-to-br from-red-500/20 via-orange-500/15 to-transparent ring-1 ring-red-500/20 ring-offset-4 ring-offset-[#0a0a0a]">
-          <div class="flex h-14 w-14 items-center justify-center rounded-full bg-[#111111]">
+          <div class="flex h-14 w-14 items-center justify-center rounded-full bg-[#1a1a1a]">
             <svg class="h-7 w-7 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.7" d="M15 10l4.553-2.069A1 1 0 0121 8.845v6.31a1 1 0 01-1.447.894L15 14M4 7.75A1.75 1.75 0 015.75 6h7.5A1.75 1.75 0 0115 7.75v8.5A1.75 1.75 0 0113.25 18h-7.5A1.75 1.75 0 014 16.25v-8.5z" />
             </svg>
@@ -109,7 +109,7 @@
           <h3 class="text-lg font-semibold text-white">No clips saved yet</h3>
           <p class="text-sm leading-relaxed text-gray-400">Bookmark important rounds, clutch attempts, or mistakes as they happen so your best review moments are ready after the match.</p>
         </div>
-        <div class="mt-5 rounded-2xl border border-white/[0.06] bg-black/30 px-4 py-3 text-left">
+        <div class="mt-5 rounded-2xl border border-white/[0.10] bg-black/30 px-4 py-3 text-left">
           <p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-gray-500">Quick tip</p>
           <p class="mt-1 text-xs text-gray-400">Press <span class="rounded-md border border-white/[0.12] bg-white/[0.04] px-1.5 py-0.5 font-mono text-gray-200">F9</span> during a match to create a clip, then return here to trim, upload, and review it.</p>
         </div>
@@ -122,7 +122,7 @@
         <div
           v-for="clip in displayedClips"
           :key="clip.id"
-          class="group relative cursor-pointer overflow-hidden rounded-2xl border border-white/[0.06] bg-white/[0.03] transition-all hover:border-white/[0.14] hover:bg-white/[0.04]"
+          class="group relative cursor-pointer overflow-hidden rounded-2xl border border-white/[0.10] bg-white/[0.03] transition-all hover:border-white/[0.14] hover:bg-white/[0.04]"
           @click="openPlayer(clip)"
         >
           <div class="relative bg-black" style="min-height: 72px; aspect-ratio: 16/9;">
@@ -238,7 +238,7 @@
         <div
           v-for="clip in displayedClips"
           :key="clip.id"
-          class="group flex cursor-pointer gap-4 rounded-2xl border border-white/[0.06] bg-white/[0.03] p-3 transition-all hover:border-white/[0.14] hover:bg-white/[0.04]"
+          class="group flex cursor-pointer gap-4 rounded-2xl border border-white/[0.10] bg-white/[0.03] p-3 transition-all hover:border-white/[0.14] hover:bg-white/[0.04]"
           @click="openPlayer(clip)"
         >
           <div class="relative w-56 flex-shrink-0 overflow-hidden rounded-xl bg-black" style="aspect-ratio: 16/9;">
@@ -444,7 +444,7 @@
         autoplay
         :src="toFileUrl(playingClip.path)"
       />
-      <div class="flex items-center justify-center gap-4 px-4 py-1.5 bg-black/40 border-t border-white/[0.04] flex-shrink-0">
+      <div class="flex items-center justify-center gap-4 px-4 py-1.5 bg-black/40 border-t border-white/[0.07] flex-shrink-0">
         <span class="text-[9px] text-gray-700">Space: Play/Pause</span>
         <span class="text-[9px] text-gray-700">← →: Skip 5s</span>
         <span class="text-[9px] text-gray-700">F: Fullscreen</span>
@@ -482,7 +482,7 @@
           <p class="text-xs text-gray-500 mb-4">Original duration: <span class="text-gray-400 font-mono">{{ formatDuration(trimModal.duration, true) }}</span> · New duration: <span class="text-red-400 font-mono">{{ formatDuration(trimModal.endSec - trimModal.startSec, true) }}</span></p>
 
           <!-- Trim range visual bar -->
-          <div class="relative h-8 mb-4 bg-white/[0.04] rounded-lg overflow-hidden border border-white/[0.06]">
+          <div class="relative h-8 mb-4 bg-white/[0.04] rounded-lg overflow-hidden border border-white/[0.10]">
             <!-- Kept region highlight -->
             <div
               class="absolute top-0 bottom-0 bg-red-500/20 border-x border-red-500/40 transition-all"

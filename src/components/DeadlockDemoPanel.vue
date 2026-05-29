@@ -1,7 +1,7 @@
 <template>
-  <div class="rounded-xl border border-white/[0.06] bg-white/[0.02] overflow-hidden">
+  <div class="rounded-xl border border-white/[0.10] bg-white/[0.02] overflow-hidden">
     <!-- Header -->
-    <div class="flex items-center justify-between px-3.5 py-2.5 border-b border-white/[0.05]">
+    <div class="flex items-center justify-between px-3.5 py-2.5 border-b border-white/[0.09]">
       <div class="flex items-center gap-2">
         <div class="w-5 h-5 rounded-md flex items-center justify-center" style="background:rgba(20,184,166,0.15)">
           <svg class="w-3 h-3 text-teal-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">

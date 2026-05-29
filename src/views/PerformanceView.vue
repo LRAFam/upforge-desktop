@@ -13,7 +13,7 @@
         <span>Performance boost (process priority &amp; power plan) is Windows-only.</span>
       </div>
       <button
-        class="w-full py-2.5 text-xs font-medium text-gray-400 hover:text-white transition-colors border border-white/[0.06] hover:border-white/[0.12] rounded-xl"
+        class="w-full py-2.5 text-xs font-medium text-gray-400 hover:text-white transition-colors border border-white/[0.10] hover:border-white/[0.12] rounded-xl"
         @click="$router.push('/stats')"
       >View your game stats &amp; coaching data →</button>
     </div>
@@ -26,7 +26,7 @@
           'rounded-xl border transition-all overflow-hidden',
           boosted
             ? 'bg-green-500/[0.07] border-green-500/25'
-            : 'bg-white/[0.02] border-white/[0.05]'
+            : 'bg-white/[0.02] border-white/[0.09]'
         ]"
       >
         <div class="flex items-center gap-3 px-3 py-2.5">
@@ -84,7 +84,7 @@
           <div
             v-for="item in previewItems"
             :key="item.name"
-            class="flex items-center gap-2.5 px-3 py-2 rounded-lg bg-white/[0.02] border border-white/[0.04]"
+            class="flex items-center gap-2.5 px-3 py-2 rounded-lg bg-white/[0.02] border border-white/[0.07]"
           >
             <svg class="w-3.5 h-3.5 flex-shrink-0 text-gray-500" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" :d="item.iconPath" />
@@ -108,7 +108,7 @@
               'flex items-center gap-2.5 px-3 py-2 rounded-lg border',
               result.success
                 ? 'bg-green-500/[0.05] border-green-500/20'
-                : 'bg-white/[0.02] border-white/[0.05]'
+                : 'bg-white/[0.02] border-white/[0.09]'
             ]"
           >
             <!-- Success: check circle / Failure: warning triangle -->
@@ -184,7 +184,7 @@
 
         <!-- Stat grid -->
         <div class="grid grid-cols-2 gap-1">
-          <div class="rounded-lg border border-white/[0.05] bg-white/[0.02] px-3 py-2.5 space-y-2">
+          <div class="rounded-lg border border-white/[0.09] bg-white/[0.02] px-3 py-2.5 space-y-2">
             <div class="flex items-start justify-between gap-3">
               <div class="min-w-0">
                 <p class="text-xs font-medium uppercase tracking-wide text-gray-600">GPU</p>
@@ -207,7 +207,7 @@
             </div>
           </div>
 
-          <div class="rounded-lg border border-white/[0.05] bg-white/[0.02] px-3 py-2.5 space-y-2">
+          <div class="rounded-lg border border-white/[0.09] bg-white/[0.02] px-3 py-2.5 space-y-2">
             <div class="flex items-start justify-between gap-3">
               <div>
                 <p class="text-xs font-medium uppercase tracking-wide text-gray-600">CPU</p>
@@ -230,7 +230,7 @@
             </div>
           </div>
 
-          <div class="col-span-2 rounded-lg border border-white/[0.05] bg-white/[0.02] px-3 py-2.5 space-y-2">
+          <div class="col-span-2 rounded-lg border border-white/[0.09] bg-white/[0.02] px-3 py-2.5 space-y-2">
             <div class="flex items-start justify-between gap-3">
               <div>
                 <p class="text-xs font-medium uppercase tracking-wide text-gray-600">RAM</p>
@@ -275,7 +275,7 @@
             <div
               v-for="proc in diagnostics.topProcesses.slice(0, 5)"
               :key="proc.name"
-              class="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-white/[0.02] border border-white/[0.04]"
+              class="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-white/[0.02] border border-white/[0.07]"
             >
               <p class="text-xs text-gray-400 truncate flex-1">{{ proc.name }}</p>
               <p class="text-xs font-semibold flex-shrink-0" :class="proc.cpuPct > 10 ? 'text-orange-400' : 'text-gray-500'">{{ proc.cpuPct.toFixed(1) }}%</p>
@@ -326,7 +326,7 @@
           <div
             v-for="(proc, i) in pregameKillList"
             :key="proc"
-            class="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-white/[0.02] border border-white/[0.04]"
+            class="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-white/[0.02] border border-white/[0.07]"
           >
             <p class="text-xs text-gray-400 flex-1 truncate">{{ proc }}</p>
             <button

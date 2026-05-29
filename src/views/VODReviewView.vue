@@ -2,7 +2,7 @@
   <div class="flex flex-col h-full bg-[#080808] text-white overflow-hidden">
 
     <!-- Header bar -->
-    <div class="flex items-center gap-3 px-4 py-2.5 border-b border-white/[0.06] flex-shrink-0 bg-[#0c0c0c]">
+    <div class="flex items-center gap-3 px-4 py-2.5 border-b border-white/[0.10] flex-shrink-0 bg-[#161616]">
       <button
         class="flex items-center gap-1.5 text-gray-500 hover:text-gray-300 transition-colors text-xs"
         @click="$router.back()"
@@ -58,8 +58,8 @@
     <div class="flex flex-1 min-h-0">
 
       <!-- Left sidebar: event feed -->
-      <div class="w-52 flex-shrink-0 border-r border-white/[0.05] flex flex-col overflow-hidden bg-[#0a0a0a]">
-        <div class="px-3 py-2 border-b border-white/[0.05]">
+      <div class="w-52 flex-shrink-0 border-r border-white/[0.09] flex flex-col overflow-hidden bg-[#1a1a1a]">
+        <div class="px-3 py-2 border-b border-white/[0.09]">
           <p class="text-xs font-semibold text-gray-600 uppercase tracking-widest">Timeline</p>
         </div>
         <div ref="sidebarEl" class="flex-1 overflow-y-auto scrollbar-hide scroll-smooth space-y-1 px-1.5 py-2">
@@ -311,7 +311,7 @@
         </div>
 
         <!-- Controls + timeline scrubber -->
-        <div class="flex-shrink-0 border-t border-white/[0.06] bg-[#0c0c0c] px-3 pt-2 pb-3">
+        <div class="flex-shrink-0 border-t border-white/[0.10] bg-[#161616] px-3 pt-2 pb-3">
           <div class="backdrop-blur-sm bg-black/40 border border-white/[0.08] rounded-2xl px-4 py-3 space-y-3 shadow-[0_16px_50px_rgba(0,0,0,0.35)]">
             <div class="relative group cursor-pointer h-8 flex items-center" @click="onScrubberClick" @mousemove="onScrubberHover" @mouseleave="hoverTime = null">
               <div class="w-full h-2 rounded-full bg-white/[0.08] ring-1 ring-white/[0.04] relative overflow-visible">
@@ -460,10 +460,10 @@
         </div>
         <div
           v-if="selectedRound"
-          class="flex-shrink-0 bg-[#0a0a0a] border-t border-white/[0.06] max-h-52 overflow-y-auto scrollbar-hide"
+          class="flex-shrink-0 bg-[#1a1a1a] border-t border-white/[0.10] max-h-52 overflow-y-auto scrollbar-hide"
         >
           <!-- Round header -->
-          <div class="flex items-center gap-2.5 px-3 py-2 sticky top-0 bg-[#0a0a0a] border-b border-white/[0.04] z-10">
+          <div class="flex items-center gap-2.5 px-3 py-2 sticky top-0 bg-[#1a1a1a] border-b border-white/[0.07] z-10">
             <img v-if="roundOutcomeIcon(selectedRound)" :src="roundOutcomeIcon(selectedRound)!" class="w-5 h-5 object-contain flex-shrink-0" />
             <div v-else class="w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0" :class="selectedRound.won ? 'bg-teal-500' : 'bg-red-500'">
               <svg v-if="selectedRound.won" class="w-3 h-3 text-white" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8l3.5 3.5L13 5"/></svg>
@@ -639,10 +639,10 @@
         <!-- Team scoreboard (collapsible) -->
         <div
           v-if="showScoreboard && sortedTeamSnapshot.length"
-          class="flex-shrink-0 bg-[#0a0a0a] border-t border-white/[0.06] max-h-52 overflow-y-auto scrollbar-hide"
+          class="flex-shrink-0 bg-[#1a1a1a] border-t border-white/[0.10] max-h-52 overflow-y-auto scrollbar-hide"
         >
           <!-- Column headers -->
-          <div class="grid grid-cols-[1fr_auto_auto_auto] gap-x-2 px-3 py-1.5 border-b border-white/[0.04] sticky top-0 bg-[#0a0a0a]">
+          <div class="grid grid-cols-[1fr_auto_auto_auto] gap-x-2 px-3 py-1.5 border-b border-white/[0.07] sticky top-0 bg-[#1a1a1a]">
             <span class="text-[8px] font-semibold text-gray-600 uppercase tracking-wider">Player</span>
             <span class="text-[8px] font-semibold text-gray-600 uppercase tracking-wider text-right">K/D/A</span>
             <span class="text-[8px] font-semibold text-gray-600 uppercase tracking-wider text-right">ACS</span>
@@ -711,9 +711,9 @@
 
       <div
         v-if="showInsightsPanel"
-        class="w-80 flex-shrink-0 border-l border-white/[0.05] bg-[#090909] flex flex-col min-h-0"
+        class="w-80 flex-shrink-0 border-l border-white/[0.09] bg-[#090909] flex flex-col min-h-0"
       >
-        <div class="flex items-center gap-2 px-4 py-3 border-b border-white/[0.05]">
+        <div class="flex items-center gap-2 px-4 py-3 border-b border-white/[0.09]">
           <div class="flex h-9 w-9 items-center justify-center rounded-2xl border border-white/[0.08] bg-white/[0.04] text-red-400">
             <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 20 20">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" d="M10 3.75c-2.071 0-3.75 1.679-3.75 3.75 0 1.349.712 2.53 1.781 3.191.61.378.969 1.036.969 1.754v.3h2v-.3c0-.718.359-1.376.969-1.754A3.748 3.748 0 0 0 13.75 7.5c0-2.071-1.679-3.75-3.75-3.75Zm-1.5 10.25h3m-2.5 2h2"/>
@@ -736,14 +736,14 @@
           <div
             v-for="(note, index) in coachingNotes"
             :key="`${index}-${note}`"
-            class="rounded-2xl border border-white/[0.06] bg-white/[0.03] px-3.5 py-3"
+            class="rounded-2xl border border-white/[0.10] bg-white/[0.03] px-3.5 py-3"
           >
             <div class="flex items-start gap-3">
               <span class="mt-1 h-2 w-2 flex-shrink-0 rounded-full bg-red-400" />
               <p class="text-sm leading-relaxed text-gray-300">{{ note }}</p>
             </div>
           </div>
-          <div class="rounded-2xl border border-white/[0.06] bg-white/[0.02] px-3.5 py-3">
+          <div class="rounded-2xl border border-white/[0.10] bg-white/[0.02] px-3.5 py-3">
             <p class="text-[10px] font-semibold uppercase tracking-[0.24em] text-gray-600">Review flow</p>
             <p class="mt-2 text-xs leading-relaxed text-gray-500">Use the timeline on the left and the clickable markers under the player to jump straight into round starts, kills, deaths, and spike moments.</p>
           </div>

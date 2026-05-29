@@ -1,5 +1,5 @@
 <template>
-  <div class="relative h-screen bg-[#0a0a0a] text-white flex flex-col overflow-hidden select-none">
+  <div class="relative h-screen bg-[#111111] text-white flex flex-col overflow-hidden select-none">
     <Transition name="busy-bar">
       <div v-if="busyActive" class="pointer-events-none absolute inset-x-0 top-0 z-50 h-[2px] bg-white/[0.04]">
         <div
@@ -12,7 +12,7 @@
     <!-- Title bar -->
     <div
       v-if="showTitleBar"
-      class="drag-region relative flex items-center justify-between flex-shrink-0 px-3 border-b border-white/[0.05] bg-[#0c0c0c]/95 backdrop-blur-xl"
+      class="drag-region relative flex items-center justify-between flex-shrink-0 px-3 border-b border-white/[0.09] bg-[#161616]/95 backdrop-blur-xl"
       :style="isMac ? 'height:44px; padding-left:80px' : 'height:44px'"
     >
       <div class="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-red-500/70 to-orange-500/70" />
@@ -67,7 +67,7 @@
           'flex items-center justify-between px-3 py-1.5 flex-shrink-0 text-xs',
           appUpdatePhase === 'ready'
             ? 'bg-gradient-to-r from-red-500/10 to-orange-500/10 border-b border-red-500/20'
-            : 'bg-white/[0.02] border-b border-white/[0.04]'
+            : 'bg-white/[0.02] border-b border-white/[0.07]'
         ]"
       >
         <div class="flex items-center gap-2 min-w-0">
@@ -111,7 +111,7 @@
     <!-- Navigation (hidden on post-game / login) -->
     <nav
       v-if="showNav"
-      class="flex flex-col gap-1 px-3 pt-2 pb-2 flex-shrink-0 border-b border-white/[0.05] bg-[#0c0c0c]/85"
+      class="flex flex-col gap-1 px-3 pt-2 pb-2 flex-shrink-0 border-b border-white/[0.09] bg-[#161616]/85"
     >
       <div class="flex items-center gap-0.5">
         <RouterLink
@@ -134,7 +134,7 @@
         </RouterLink>
       </div>
 
-      <div class="my-2 border-t border-white/[0.05]" />
+      <div class="my-2 border-t border-white/[0.09]" />
 
       <div class="flex items-center gap-0.5">
         <RouterLink
@@ -152,7 +152,7 @@
           {{ link.label }}
         </RouterLink>
 
-        <div class="ml-auto flex items-center gap-2 pl-3 border-l border-white/[0.06]">
+        <div class="ml-auto flex items-center gap-2 pl-3 border-l border-white/[0.10]">
           <RouterLink
             v-if="devNavLink"
             :to="devNavLink.to"

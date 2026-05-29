@@ -1,7 +1,7 @@
 <template>
-  <div class="h-full flex flex-col bg-[#0e0e10] text-white overflow-hidden">
+  <div class="h-full flex flex-col bg-[#171719] text-white overflow-hidden">
     <!-- Header -->
-    <div class="flex-shrink-0 flex items-center justify-between px-5 pt-4 pb-3 border-b border-white/[0.06]">
+    <div class="flex-shrink-0 flex items-center justify-between px-5 pt-4 pb-3 border-b border-white/[0.10]">
       <div class="flex items-center gap-2.5">
         <span class="text-sm font-semibold text-white">Developer Panel</span>
         <span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/20 text-amber-400 uppercase tracking-widest">Admin</span>
@@ -122,7 +122,7 @@
               @click="findHotkeyConflicts"
             >Find Hotkey Conflicts</button>
           </div>
-          <div v-if="toolResult" class="mt-2 px-3 py-2 rounded-lg bg-gray-900 border border-white/[0.06] text-xs text-gray-300 font-mono whitespace-pre-wrap">{{ toolResult }}</div>
+          <div v-if="toolResult" class="mt-2 px-3 py-2 rounded-lg bg-gray-900 border border-white/[0.10] text-xs text-gray-300 font-mono whitespace-pre-wrap">{{ toolResult }}</div>
         </DevSection>
 
         <!-- Activity Log -->
@@ -149,7 +149,7 @@
     </div>
 
     <!-- Auto-refresh indicator -->
-    <div class="flex-shrink-0 flex items-center justify-between px-4 py-2 border-t border-white/[0.04] bg-[#0a0a0b]">
+    <div class="flex-shrink-0 flex items-center justify-between px-4 py-2 border-t border-white/[0.07] bg-[#0a0a0b]">
       <span class="text-[10px] text-gray-700">Auto-refreshing every 5s</span>
       <span v-if="lastRefreshed" class="text-[10px] text-gray-700">Last: {{ lastRefreshed }}</span>
     </div>
@@ -355,8 +355,8 @@ import { defineComponent, h } from 'vue'
 export const DevSection = defineComponent({
   props: { title: String, count: Number },
   setup(props, { slots }) {
-    return () => h('div', { class: 'rounded-xl bg-white/[0.03] border border-white/[0.06] overflow-hidden' }, [
-      h('div', { class: 'flex items-center justify-between px-3.5 py-2 border-b border-white/[0.05] bg-white/[0.02]' }, [
+    return () => h('div', { class: 'rounded-xl bg-white/[0.03] border border-white/[0.10] overflow-hidden' }, [
+      h('div', { class: 'flex items-center justify-between px-3.5 py-2 border-b border-white/[0.09] bg-white/[0.02]' }, [
         h('span', { class: 'text-[11px] font-semibold text-gray-500 uppercase tracking-widest' }, props.title),
         props.count !== undefined ? h('span', { class: 'text-[10px] text-gray-700' }, String(props.count)) : null,
       ]),
