@@ -586,7 +586,7 @@
             <h3 class="text-sm font-bold text-white mb-1.5">{{ userTier === 'free' ? 'Upgrade Required' : 'Monthly limit reached' }}</h3>
             <p class="text-[12px] text-gray-500 mb-5 leading-relaxed">
               <template v-if="userTier === 'free'">{{ upgradeModal.message }}</template>
-              <template v-else>You've used all your {{ userTier }} plan analyses for this month. Resets in {{ daysUntilMonthReset() }} day{{ daysUntilMonthReset() === 1 ? '' : 's' }}.</template>
+              <template v-else>You've used all your {{ userTier }} plan analyses for this month. Resets in {{ daysUntilReset() }} day{{ daysUntilReset() === 1 ? '' : 's' }}.</template>
             </p>
 
             <div class="flex flex-col gap-2">
@@ -622,8 +622,13 @@ const playingClip = ref<ClipRecord | null>(null)
 const videoEl = ref<HTMLVideoElement | null>(null)
 const upgradeModal = ref({ show: false, message: '' })
 const userTier = ref<string>('free')
+const subscriptionEndsAt = ref<string | null>(null)
 
-function daysUntilMonthReset(): number {
+function daysUntilReset(): number {
+  if (subscriptionEndsAt.value) {
+    const end = new Date(subscriptionEndsAt.value)
+    return Math.max(1, Math.ceil((end.getTime() - Date.now()) / (1000 * 60 * 60 * 24)))
+  }
   const now = new Date()
   const firstOfNext = new Date(now.getFullYear(), now.getMonth() + 1, 1)
   return Math.ceil((firstOfNext.getTime() - now.getTime()) / (1000 * 60 * 60 * 24))
@@ -698,6 +703,7 @@ const removeListener = ref<(() => void) | null>(null)
 onMounted(async () => {
   await loadClips()
   window.api.app.getStatus().then(s => { if (s.user?.tier) userTier.value = s.user.tier }).catch(() => {})
+  window.api.profile.get().then(p => { subscriptionEndsAt.value = p?.user?.analysis_stats?.subscription_ends_at ?? null }).catch(() => {})
   removeListener.value = window.api.on('clips:new', async (_ids: unknown) => {
     // clips:new sends an array of newly extracted clip IDs — reload everything
     await loadClips()

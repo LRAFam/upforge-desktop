@@ -234,6 +234,7 @@ export interface ProfileData {
     analysis_stats: {
       total: number
       limit: number
+      subscription_ends_at?: string | null
     }
     forge_rank?: ForgeRankInfo
   }

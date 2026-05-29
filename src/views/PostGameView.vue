@@ -555,7 +555,7 @@
               <p class="text-xs text-gray-600 mt-1">Premium $14.99/mo · Pro $24.99/mo · Check your email for details.</p>
             </template>
             <template v-else>
-              <p class="text-xs text-gray-400 mt-1">You've used all your {{ userTier }} plan analyses for this month. Resets in {{ daysUntilMonthReset() }} day{{ daysUntilMonthReset() === 1 ? '' : 's' }}.</p>
+              <p class="text-xs text-gray-400 mt-1">You've used all your {{ userTier }} plan analyses for this month. Resets in {{ daysUntilReset() }} day{{ daysUntilReset() === 1 ? '' : 's' }}.</p>
             </template>
           </div>
           <div class="flex gap-2 pt-1">
@@ -688,8 +688,13 @@ const errorMessage = ref('')
 const needsUpgrade = ref(false)
 const upgradeUrl = ref('https://upforge.gg/pricing')
 const userTier = ref<string>('free')
+const subscriptionEndsAt = ref<string | null>(null)
 
-function daysUntilMonthReset(): number {
+function daysUntilReset(): number {
+  if (subscriptionEndsAt.value) {
+    const end = new Date(subscriptionEndsAt.value)
+    return Math.max(1, Math.ceil((end.getTime() - Date.now()) / (1000 * 60 * 60 * 24)))
+  }
   const now = new Date()
   const firstOfNext = new Date(now.getFullYear(), now.getMonth() + 1, 1)
   return Math.ceil((firstOfNext.getTime() - now.getTime()) / (1000 * 60 * 60 * 24))
@@ -930,6 +935,7 @@ const glowBgStyle = computed(() => {
 onMounted(() => {
   window.api.discord.setState('reviewing').catch(() => {})
   window.api.app.getStatus().then(s => { if (s.user?.tier) userTier.value = s.user.tier }).catch(() => {})
+  window.api.profile.get().then(p => { subscriptionEndsAt.value = p?.user?.analysis_stats?.subscription_ends_at ?? null }).catch(() => {})
   setTimeout(() => {
     isReady.value = true
   }, 40)
