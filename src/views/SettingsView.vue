@@ -84,7 +84,7 @@
             <div class="rounded-2xl border border-white/[0.10] bg-black/20 p-4">
               <div class="flex items-center justify-between text-xs">
                 <span class="text-gray-400">Analyses this month</span>
-                <span class="font-medium tabular-nums text-gray-200">{{ user.analyses_used }} / {{ user.analyses_limit }}</span>
+                <span class="font-medium tabular-nums text-gray-200">{{ Math.max(0, user.analyses_used) }} / {{ user.analyses_limit }}</span>
               </div>
               <div v-if="user.analyses_limit" class="mt-3 h-2 overflow-hidden rounded-full bg-white/[0.06]">
                 <div class="h-full rounded-full bg-gradient-to-r from-red-500 to-orange-500 transition-all" :style="{ width: usagePercent + '%' }" />
