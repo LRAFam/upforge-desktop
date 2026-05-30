@@ -1400,10 +1400,20 @@ function setupGameDetection(): void {
         try {
           const state = await riotLocalApi.getSessionState()
 
+          // Resolve game mode as early as possible from presence queueId
+          if (!gameMode && state?.queueId) {
+            const { normalizeQueueId } = await import('./riot-local-api')
+            gameMode = normalizeQueueId(state.queueId)
+          }
+
+          // Pre-game brief is only useful for competitive/premier matches.
+          // Skip it entirely for casual modes (deathmatch, unrated, swiftplay, etc.)
+          const isCompBrief = !gameMode || gameMode === 'COMPETITIVE' || gameMode === 'PREMIER'
+
           // Brief: once PREGAME starts, poll until the agent is locked in (CharacterID
           // is only set after lock-in). Fire as soon as we have agent+map, or fall back
           // to map-only/generic when INGAME is reached (loading screen).
-          if (!pregameBriefFired && state?.sessionLoopState === 'PREGAME') {
+          if (!pregameBriefFired && isCompBrief && state?.sessionLoopState === 'PREGAME') {
             const ctx = await riotLocalApi.getPregameContext().catch(() => null)
             if (ctx?.agent) {
               // Agent locked in — fire now with full context
@@ -1411,14 +1421,20 @@ function setupGameDetection(): void {
               requestPregameBrief(ctx)
             }
             // else: agent not yet locked — keep looping, try again next tick
+          } else if (!pregameBriefFired && !isCompBrief && state?.sessionLoopState === 'PREGAME') {
+            // Non-competitive queue — skip brief entirely
+            pregameBriefFired = true
           }
 
-          if (!pregameBriefFired && state?.sessionLoopState === 'INGAME') {
+          if (!pregameBriefFired && isCompBrief && state?.sessionLoopState === 'INGAME') {
             // Fallback: INGAME reached without catching the agent lock-in
             pregameBriefFired = true
             riotLocalApi.getPregameContext()
               .then(ctx => requestPregameBrief(ctx ?? undefined))
               .catch(() => requestPregameBrief())
+          } else if (!pregameBriefFired && state?.sessionLoopState === 'INGAME') {
+            // Non-competitive — suppress brief
+            pregameBriefFired = true
           }
 
           if (state?.sessionLoopState === 'INGAME') {
