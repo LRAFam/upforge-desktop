@@ -847,12 +847,13 @@ export class Recorder {
       }
       return [
         '-f', 'avfoundation',
+        '-capture_cursor', '0',
         '-framerate', String(fps),
         '-i', input,
         '-vf', `scale=${scale}`,
         '-vcodec', codec,
         ...qualityArgs,
-        ...(hasAudio ? ['-acodec', 'aac', '-b:a', '128k'] : []),
+        ...(hasAudio ? ['-acodec', 'aac', '-b:a', '192k'] : []),
         '-movflags', '+faststart',
         outputPath
       ]
