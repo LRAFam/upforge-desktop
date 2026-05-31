@@ -652,7 +652,7 @@ async function extractMatchClips(
  * desktop notification so the player can mentally prepare before the match.
  * Optional agent and map context personalise the brief to the current match.
  */
-function requestPregameBrief(context?: { agent?: string | null; map?: string | null }): void {
+function requestPregameBrief(context?: { agent?: string | null; map?: string | null; mode?: string | null }): void {
   if (!authManager.getToken()) {
     logActivity('Pre-game brief skipped — not logged in')
     return
@@ -661,8 +661,8 @@ function requestPregameBrief(context?: { agent?: string | null; map?: string | n
   const params = new URLSearchParams()
   if (context?.agent) params.set('agent', context.agent)
   if (context?.map) params.set('map', context.map)
-  const qs = params.toString() ? `?${params.toString()}` : ''
-  const url = `https://upforge.gg/valorant/pregame-brief${qs}`
+  params.set('t', Date.now().toString())
+  const url = `https://upforge.gg/valorant/pregame-brief?${params.toString()}`
 
   shell.openExternal(url)
   logActivity('Pre-game brief: opened in browser')
@@ -1400,41 +1400,53 @@ function setupGameDetection(): void {
         try {
           const state = await riotLocalApi.getSessionState()
 
-          // Resolve game mode as early as possible from presence queueId
+          // Resolve game mode from presence queueId (quick, available early)
           if (!gameMode && state?.queueId) {
             const { normalizeQueueId } = await import('./riot-local-api')
             gameMode = normalizeQueueId(state.queueId)
           }
 
           // Pre-game brief is only useful for competitive/premier matches.
-          // Skip it entirely for casual modes (deathmatch, unrated, swiftplay, etc.)
-          const isCompBrief = !gameMode || gameMode === 'COMPETITIVE' || gameMode === 'PREMIER'
+          // Wait until mode is confirmed — do NOT default to true when unknown,
+          // as that's what was causing the brief to fire for all queues.
+          const modeKnown = gameMode !== null
+          const isCompBrief = gameMode === 'COMPETITIVE' || gameMode === 'PREMIER'
 
           // Brief: once PREGAME starts, poll until the agent is locked in (CharacterID
           // is only set after lock-in). Fire as soon as we have agent+map, or fall back
           // to map-only/generic when INGAME is reached (loading screen).
-          if (!pregameBriefFired && isCompBrief && state?.sessionLoopState === 'PREGAME') {
+          if (!pregameBriefFired && state?.sessionLoopState === 'PREGAME') {
             const ctx = await riotLocalApi.getPregameContext().catch(() => null)
-            if (ctx?.agent) {
-              // Agent locked in — fire now with full context
+
+            // Use QueueID from the pregame match endpoint as the definitive source
+            if (ctx?.mode && !gameMode) {
+              gameMode = ctx.mode
+            }
+
+            const resolvedIsComp = gameMode === 'COMPETITIVE' || gameMode === 'PREMIER'
+
+            if (!resolvedIsComp && gameMode !== null) {
+              // Non-competitive queue confirmed — skip brief
+              pregameBriefFired = true
+            } else if (resolvedIsComp && ctx?.agent) {
+              // Competitive + agent locked in — fire with full context
               pregameBriefFired = true
               requestPregameBrief(ctx)
             }
-            // else: agent not yet locked — keep looping, try again next tick
-          } else if (!pregameBriefFired && !isCompBrief && state?.sessionLoopState === 'PREGAME') {
-            // Non-competitive queue — skip brief entirely
-            pregameBriefFired = true
+            // else: mode not yet known or agent not locked — keep looping, try again next tick
           }
 
-          if (!pregameBriefFired && isCompBrief && state?.sessionLoopState === 'INGAME') {
-            // Fallback: INGAME reached without catching the agent lock-in
-            pregameBriefFired = true
-            riotLocalApi.getPregameContext()
-              .then(ctx => requestPregameBrief(ctx ?? undefined))
-              .catch(() => requestPregameBrief())
-          } else if (!pregameBriefFired && state?.sessionLoopState === 'INGAME') {
-            // Non-competitive — suppress brief
-            pregameBriefFired = true
+          if (!pregameBriefFired && state?.sessionLoopState === 'INGAME') {
+            if (!modeKnown || isCompBrief) {
+              // Competitive (or mode never resolved) — fire fallback brief
+              pregameBriefFired = true
+              riotLocalApi.getPregameContext()
+                .then(ctx => requestPregameBrief(ctx ?? undefined))
+                .catch(() => requestPregameBrief())
+            } else {
+              // Non-competitive confirmed — suppress brief
+              pregameBriefFired = true
+            }
           }
 
           if (state?.sessionLoopState === 'INGAME') {
