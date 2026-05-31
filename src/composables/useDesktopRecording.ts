@@ -6,6 +6,7 @@ interface StartConfig {
   fps: number
   audioEnabled: boolean
   game: string
+  captureMonitor?: number
 }
 
 /**
@@ -25,13 +26,29 @@ export function useDesktopRecording() {
     try {
       const sources = await window.api.desktopCapture.getSources()
 
-      // All sources are screen (display) sources — prefer Screen 1 / primary display.
-      // On Windows these are named "Screen 1", "Screen 2"; on macOS "Built-in Retina Display" etc.
-      const source =
-        sources.find(s => /^screen\s*1$/i.test(s.name)) ??
-        sources.find(s => /^screen\s*\d*$/i.test(s.name)) ??
-        sources.find(s => /entire screen|display|monitor|retina|built-in/i.test(s.name)) ??
-        sources[0]
+      // Select the correct screen source.
+      // captureMonitor is a resolved 0-based index from the main process. Screen source IDs
+      // follow the pattern "screen:<displayIndex>:<something>" on Windows and macOS.
+      // If no match by ID pattern, fall back to positional index, then to "Screen 1" by name.
+      let source: { id: string; name: string } | undefined
+      if (typeof config.captureMonitor === 'number') {
+        const idx = config.captureMonitor
+        source =
+          sources.find(s => {
+            const m = s.id.match(/^screen:(\d+)/)
+            return m ? parseInt(m[1]) === idx : false
+          }) ??
+          sources[idx] ??
+          sources[0]
+        console.info(`[DesktopRecording] Monitor ${idx} → source "${source?.name}" (${source?.id})`)
+      } else {
+        // Fallback: pick Screen 1 / primary by name
+        source =
+          sources.find(s => /^screen\s*1$/i.test(s.name)) ??
+          sources.find(s => /^screen\s*\d*$/i.test(s.name)) ??
+          sources.find(s => /entire screen|display|monitor|retina|built-in/i.test(s.name)) ??
+          sources[0]
+      }
 
       if (!source) throw new Error('No desktop sources found for capture')
 

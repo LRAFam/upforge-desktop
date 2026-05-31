@@ -1,4 +1,4 @@
-import { ipcMain, WebContents, app } from 'electron'
+import { ipcMain, WebContents, app, desktopCapturer, screen } from 'electron'
 import { createWriteStream, WriteStream, existsSync, mkdirSync, statSync, unlinkSync, writeFileSync, rmSync } from 'fs'
 import { statfs } from 'fs/promises'
 import { join, parse } from 'path'
@@ -96,6 +96,48 @@ export interface RecorderConfig {
   audioEnabled?: boolean
   savePath: string
   captureMonitor?: 'auto' | number
+}
+
+/**
+ * Resolve which display index (0-based) to capture.
+ * - If captureMonitor is a number, use it directly.
+ * - If captureMonitor is 'auto' or undefined, find the display that contains the
+ *   game window by name-matching a desktopCapturer screen source.
+ *   Falls back to 0 (primary) if detection fails.
+ */
+async function resolveMonitorIndex(captureMonitor: 'auto' | number | undefined, game: string): Promise<number> {
+  if (typeof captureMonitor === 'number') return captureMonitor
+
+  // 'auto' or undefined — try to find the display the game window is on.
+  // desktopCapturer gives us screen sources with display_id; we match against
+  // electron.screen.getAllDisplays() to get the 0-based index.
+  try {
+    const sources = await desktopCapturer.getSources({
+      types: ['window'],
+      thumbnailSize: { width: 0, height: 0 },
+    })
+
+    const GAME_TITLES: Record<string, RegExp> = {
+      valorant: /valorant/i,
+      cs2: /counter-strike|cs2/i,
+      deadlock: /deadlock/i,
+    }
+    const pattern = GAME_TITLES[game.toLowerCase()]
+    const gameSource = pattern ? sources.find(s => pattern.test(s.name)) : undefined
+
+    if (gameSource?.display_id) {
+      const displays = screen.getAllDisplays()
+      const idx = displays.findIndex(d => String(d.id) === String(gameSource.display_id))
+      if (idx !== -1) {
+        console.log(`[DesktopRecorder] Auto-detected game "${gameSource.name}" on display index ${idx}`)
+        return idx
+      }
+    }
+  } catch (err) {
+    console.warn('[DesktopRecorder] Monitor auto-detection failed:', err)
+  }
+
+  return 0 // primary display fallback
 }
 
 /**
@@ -274,12 +316,18 @@ export class DesktopRecorder {
 
     this._writeStream = createWriteStream(this._outputPath)
 
+    // Resolve which monitor to capture before telling the renderer to start.
+    // The renderer's source selection uses this index to pick the correct screen source.
+    const monitorIndex = await resolveMonitorIndex(config?.captureMonitor, game)
+    console.log(`[DesktopRecorder] Capturing monitor index ${monitorIndex} (setting: ${config?.captureMonitor ?? 'auto'})`)
+
     contents.send('desktop-recording:start', {
       quality: config?.quality ?? '1080p',
       bitrate: config?.bitrate ?? 8,
       fps: config?.fps ?? 60,
       audioEnabled: config?.audioEnabled !== false,
       game,
+      captureMonitor: monitorIndex,
     })
 
     // Wait for first chunk to confirm recording is actually flowing (15s timeout)
