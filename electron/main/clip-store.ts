@@ -44,6 +44,8 @@ export interface ClipRecord {
   overallScore: number | null
   /** Whether the clip has been published to the community feed */
   published: boolean
+  /** Whether the user has starred/favourited this clip */
+  favorited: boolean
 }
 
 export type NewClip = Pick<ClipRecord,
@@ -99,6 +101,7 @@ export class ClipStore {
       overallScore: null,
       published: false,
       shareToken: null,
+      favorited: false,
     }
     this.clips.unshift(clip)
     // Keep last 200 clips in the store

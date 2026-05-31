@@ -134,6 +134,19 @@ export function setupClipHandlers(
     shell.openPath(ClipExtractor.clipsDir())
   })
 
+  ipcMain.handle('clips:reveal-file', (_e, { id }: { id: string }) => {
+    const clip = clipStore.getById(id)
+    if (clip && fs.existsSync(clip.path)) shell.showItemInFolder(clip.path)
+    else shell.openPath(ClipExtractor.clipsDir())
+  })
+
+  ipcMain.handle('clips:toggle-favorite', (_e, { id }: { id: string }) => {
+    const clip = clipStore.getById(id)
+    if (!clip) return { ok: false }
+    clipStore.update(id, { favorited: !clip.favorited })
+    return { ok: true, favorited: !clip.favorited }
+  })
+
   ipcMain.handle('clips:get-hotkeys', () => hotkeyManager.getBindings())
 
   ipcMain.handle('clips:get-hotkey-status', () => ({

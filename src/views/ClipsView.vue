@@ -92,6 +92,31 @@
       </button>
     </div>
 
+    <!-- Stats bar -->
+    <div v-if="clips.length > 0" class="flex items-center gap-3 text-[11px] text-gray-600 px-1 flex-shrink-0">
+      <span>{{ clipStats.total }} clip{{ clipStats.total !== 1 ? 's' : '' }}</span>
+      <span class="text-gray-800">·</span>
+      <span>{{ clipStats.duration }} total</span>
+      <span v-if="clipStats.favs > 0" class="text-gray-800">·</span>
+      <span v-if="clipStats.favs > 0" class="text-yellow-500/80">★ {{ clipStats.favs }} favourite{{ clipStats.favs !== 1 ? 's' : '' }}</span>
+      <div class="flex-1" />
+      <!-- Bulk mode toggle -->
+      <button
+        class="flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-[11px] font-medium transition-colors"
+        :class="bulkMode ? 'border-red-500/30 bg-red-500/15 text-red-400' : 'border-white/[0.08] text-gray-600 hover:text-gray-400'"
+        @click="toggleBulkMode"
+      >
+        <svg class="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/>
+        </svg>
+        {{ bulkMode ? 'Cancel' : 'Select' }}
+      </button>
+      <template v-if="bulkMode && selectedIds.size > 0">
+        <button class="rounded-lg border border-white/[0.08] px-2.5 py-1 text-[11px] text-gray-600 hover:text-gray-400 transition-colors" @click="selectAll">All</button>
+        <button class="rounded-lg border border-red-500/30 bg-red-500/15 px-2.5 py-1 text-[11px] font-medium text-red-400 hover:bg-red-500/25 transition-colors" @click="bulkDelete">Delete {{ selectedIds.size }}</button>
+      </template>
+    </div>
+
     <!-- Empty state -->
     <div v-if="displayedClips.length === 0" class="flex flex-1 items-center justify-center">
       <div class="max-w-sm rounded-2xl border border-white/[0.09] bg-white/[0.02] px-6 py-8 text-center">
@@ -107,13 +132,34 @@
 
     <!-- Clip collection -->
     <div v-else class="flex-1 overflow-y-auto">
-      <div v-if="viewMode === 'grid'" class="grid grid-cols-2 gap-3">
+      <template v-for="group in groupedClips" :key="group.label">
+        <!-- Date group header -->
+        <div class="mb-2 mt-1 flex items-center gap-2 px-1 first:mt-0">
+          <span class="text-[10px] font-semibold uppercase tracking-[0.18em] text-gray-700">{{ group.label }}</span>
+          <div class="h-px flex-1 bg-white/[0.05]" />
+          <span class="text-[10px] text-gray-700">{{ group.clips.length }}</span>
+        </div>
+      <div v-if="viewMode === 'grid'" class="mb-4 grid grid-cols-2 gap-3">
         <div
-          v-for="clip in displayedClips"
+          v-for="clip in group.clips"
           :key="clip.id"
-          class="group relative cursor-pointer overflow-hidden rounded-2xl border border-white/[0.10] bg-white/[0.03] transition-all hover:border-white/[0.14] hover:bg-white/[0.04]"
-          @click="openPlayer(clip)"
+          class="group relative cursor-pointer overflow-hidden rounded-2xl border transition-all"
+          :class="[
+            bulkMode && selectedIds.has(clip.id)
+              ? 'border-red-500/50 bg-red-500/10'
+              : 'border-white/[0.10] bg-white/[0.03] hover:border-white/[0.14] hover:bg-white/[0.04]'
+          ]"
+          @click="bulkMode ? toggleSelect(clip.id) : openPlayer(clip)"
         >
+          <!-- Bulk checkbox -->
+          <div v-if="bulkMode" class="absolute left-2 top-2 z-10">
+            <div class="h-5 w-5 rounded-md border-2 flex items-center justify-center transition-colors"
+              :class="selectedIds.has(clip.id) ? 'border-red-500 bg-red-500' : 'border-white/30 bg-black/50'">
+              <svg v-if="selectedIds.has(clip.id)" class="h-3 w-3 text-white" fill="currentColor" viewBox="0 0 20 20">
+                <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/>
+              </svg>
+            </div>
+          </div>
           <div class="relative bg-black" style="min-height: 72px; aspect-ratio: 16/9;">
             <img
               v-if="thumbnails[clip.id]"
@@ -135,18 +181,24 @@
                 </svg>
               </div>
             </div>
-            <div class="absolute left-2 top-2 flex items-center gap-2">
+            <div class="absolute left-2 top-2 flex items-center gap-2" :class="{ 'left-8': bulkMode }">
               <span class="inline-flex items-center gap-1 rounded-full px-2 py-1 text-[10px] font-bold uppercase tracking-[0.16em] shadow-lg backdrop-blur-sm" :class="triggerClass(clip.trigger)">
                 <svg class="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" :d="triggerIconPath(clip.trigger)" />
                 </svg>
                 {{ triggerLabel(clip.trigger) }}
               </span>
+              <!-- Kill count badge -->
+              <span
+                v-if="(clip.trigger === 'multikill' || clip.trigger === 'ace') && clip.killCount"
+                class="rounded-full bg-black/70 px-2 py-1 text-[11px] font-black text-white shadow-lg backdrop-blur-sm border border-white/10"
+              >{{ clip.trigger === 'ace' ? 'ACE' : `${clip.killCount}K` }}</span>
             </div>
-            <div class="absolute bottom-2 left-2">
-              <span class="rounded-full border border-white/15 bg-black/70 px-2 py-1 text-[11px] font-semibold text-white shadow-lg backdrop-blur-sm">{{ formatDuration(clip.durationSeconds) }}</span>
+            <!-- Score badge -->
+            <div v-if="clip.overallScore" class="absolute right-2 top-2 flex items-center gap-1">
+              <span class="h-6 w-6 flex items-center justify-center rounded-full text-[10px] font-black shadow-lg" :class="scoreColor(clip.overallScore)">{{ clip.overallScore }}</span>
             </div>
-            <div v-if="clip.suggestion" class="absolute right-2 top-2">
+            <div v-else-if="clip.suggestion" class="absolute right-2 top-2">
               <span class="inline-flex items-center gap-1 rounded-full bg-orange-500/80 px-2 py-1 text-[10px] font-semibold text-white backdrop-blur-sm">
                 <svg class="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M11.25 3.75h1.5M12 17.25v3m6-8.25a6 6 0 10-12 0c0 2.204 1.04 3.416 2.25 4.5h7.5C16.96 15.416 18 14.204 18 12zM9.75 20.25h4.5" />
@@ -154,8 +206,22 @@
                 AI
               </span>
             </div>
+            <div class="absolute bottom-2 left-2">
+              <span class="rounded-full border border-white/15 bg-black/70 px-2 py-1 text-[11px] font-semibold text-white shadow-lg backdrop-blur-sm">{{ formatDuration(clip.durationSeconds) }}</span>
+            </div>
             <div class="pointer-events-none absolute inset-x-0 bottom-0 h-16 bg-gradient-to-t from-black/85 to-transparent opacity-0 transition-opacity duration-200 group-hover:opacity-100" />
             <div class="absolute inset-x-0 bottom-0 flex items-end justify-end gap-2 p-2 opacity-0 transition-all duration-200 group-hover:opacity-100" @click.stop>
+              <!-- Favorite star -->
+              <button
+                class="flex h-8 w-8 items-center justify-center rounded-xl border border-white/10 bg-black/55 transition-colors"
+                :class="clip.favorited ? 'text-yellow-400 border-yellow-400/30 bg-yellow-400/15' : 'text-gray-400 hover:text-yellow-400 hover:border-yellow-400/30'"
+                :title="clip.favorited ? 'Unfavourite' : 'Favourite'"
+                @click="toggleFavorite(clip)"
+              >
+                <svg class="h-3.5 w-3.5" :fill="clip.favorited ? 'currentColor' : 'none'" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z"/>
+                </svg>
+              </button>
               <button
                 :disabled="!!uploadingClipId"
                 class="flex h-8 items-center gap-1.5 rounded-xl border px-2.5 text-[11px] font-semibold backdrop-blur-sm transition-colors"
@@ -223,13 +289,27 @@
         </div>
       </div>
 
-      <div v-else class="space-y-3">
+      <div v-else class="mb-4 space-y-3">
         <div
-          v-for="clip in displayedClips"
+          v-for="clip in group.clips"
           :key="clip.id"
-          class="group flex cursor-pointer gap-4 rounded-2xl border border-white/[0.10] bg-white/[0.03] p-3 transition-all hover:border-white/[0.14] hover:bg-white/[0.04]"
-          @click="openPlayer(clip)"
+          class="group flex cursor-pointer gap-4 rounded-2xl border p-3 transition-all"
+          :class="[
+            bulkMode && selectedIds.has(clip.id)
+              ? 'border-red-500/50 bg-red-500/10'
+              : 'border-white/[0.10] bg-white/[0.03] hover:border-white/[0.14] hover:bg-white/[0.04]'
+          ]"
+          @click="bulkMode ? toggleSelect(clip.id) : openPlayer(clip)"
         >
+          <!-- Bulk checkbox (list view) -->
+          <div v-if="bulkMode" class="flex items-center flex-shrink-0">
+            <div class="h-5 w-5 rounded-md border-2 flex items-center justify-center transition-colors"
+              :class="selectedIds.has(clip.id) ? 'border-red-500 bg-red-500' : 'border-white/30 bg-black/50'">
+              <svg v-if="selectedIds.has(clip.id)" class="h-3 w-3 text-white" fill="currentColor" viewBox="0 0 20 20">
+                <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/>
+              </svg>
+            </div>
+          </div>
           <div class="relative w-56 flex-shrink-0 overflow-hidden rounded-xl bg-black" style="aspect-ratio: 16/9;">
             <img
               v-if="thumbnails[clip.id]"
@@ -249,16 +329,24 @@
                 <svg class="ml-0.5 h-5 w-5 text-white" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z" /></svg>
               </div>
             </div>
-            <div class="absolute left-2 top-2">
+            <div class="absolute left-2 top-2 flex items-center gap-1">
               <span class="inline-flex items-center gap-1 rounded-full px-2 py-1 text-[10px] font-bold uppercase tracking-[0.16em] shadow-lg backdrop-blur-sm" :class="triggerClass(clip.trigger)">
                 <svg class="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" :d="triggerIconPath(clip.trigger)" />
                 </svg>
                 {{ triggerLabel(clip.trigger) }}
               </span>
+              <span
+                v-if="(clip.trigger === 'multikill' || clip.trigger === 'ace') && clip.killCount"
+                class="rounded-full bg-black/70 px-2 py-1 text-[11px] font-black text-white shadow-lg backdrop-blur-sm border border-white/10"
+              >{{ clip.trigger === 'ace' ? 'ACE' : `${clip.killCount}K` }}</span>
             </div>
             <div class="absolute bottom-2 left-2">
               <span class="rounded-full border border-white/15 bg-black/70 px-2 py-1 text-[11px] font-semibold text-white shadow-lg backdrop-blur-sm">{{ formatDuration(clip.durationSeconds) }}</span>
+            </div>
+            <!-- Score badge list view -->
+            <div v-if="clip.overallScore" class="absolute right-2 top-2">
+              <span class="h-6 w-6 flex items-center justify-center rounded-full text-[10px] font-black shadow-lg" :class="scoreColor(clip.overallScore)">{{ clip.overallScore }}</span>
             </div>
           </div>
           <div class="flex min-w-0 flex-1 flex-col justify-between gap-3">
@@ -290,6 +378,17 @@
               </div>
             </div>
             <div class="flex items-center justify-end gap-2" @click.stop>
+              <!-- Favorite star (list) -->
+              <button
+                class="flex h-9 w-9 items-center justify-center rounded-xl border transition-colors"
+                :class="clip.favorited ? 'border-yellow-400/30 bg-yellow-400/10 text-yellow-400' : 'border-white/[0.08] bg-white/[0.03] text-gray-500 hover:text-yellow-400 hover:border-yellow-400/30'"
+                :title="clip.favorited ? 'Unfavourite' : 'Favourite'"
+                @click="toggleFavorite(clip)"
+              >
+                <svg class="h-4 w-4" :fill="clip.favorited ? 'currentColor' : 'none'" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z"/>
+                </svg>
+              </button>
               <button
                 :disabled="!!uploadingClipId"
                 class="flex h-9 items-center gap-2 rounded-xl border px-3 text-xs font-semibold transition-colors"
@@ -328,6 +427,7 @@
           </div>
         </div>
       </div>
+      </template>
     </div>
 
     <!-- Video player modal -->
@@ -371,6 +471,37 @@
           <p v-if="playingClip.trigger" class="text-xs text-gray-600 mt-0.5 capitalize">{{ playingClip.trigger }} clip · <span class="font-mono">{{ formatDuration(playingClip.durationSeconds) }}</span></p>
         </div>
         <div class="flex items-center gap-2 flex-shrink-0">
+          <!-- Favourite toggle -->
+          <button
+            class="w-8 h-8 flex items-center justify-center rounded-lg transition-colors"
+            :class="playingClip.favorited ? 'text-yellow-400 bg-yellow-400/10' : 'text-gray-600 hover:text-yellow-400 hover:bg-white/[0.07]'"
+            :title="playingClip.favorited ? 'Unfavourite' : 'Favourite'"
+            @click="toggleFavorite(playingClip)"
+          >
+            <svg class="w-4 h-4" :fill="playingClip.favorited ? 'currentColor' : 'none'" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z"/>
+            </svg>
+          </button>
+          <!-- Copy file path -->
+          <button
+            class="w-8 h-8 flex items-center justify-center rounded-lg text-gray-600 hover:text-white hover:bg-white/[0.07] transition-colors"
+            title="Copy file path to clipboard"
+            @click="copyClipPath(playingClip)"
+          >
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/>
+            </svg>
+          </button>
+          <!-- Reveal in file explorer -->
+          <button
+            class="w-8 h-8 flex items-center justify-center rounded-lg text-gray-600 hover:text-white hover:bg-white/[0.07] transition-colors"
+            title="Show in file explorer"
+            @click="revealInExplorer(playingClip)"
+          >
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"/>
+            </svg>
+          </button>
           <button
             class="w-8 h-8 flex items-center justify-center rounded-lg text-gray-600 hover:text-white hover:bg-white/[0.07] transition-colors"
             title="Fullscreen (F)"
@@ -438,6 +569,16 @@
         <span class="text-[9px] text-gray-700">← →: Skip 5s</span>
         <span class="text-[9px] text-gray-700">F: Fullscreen</span>
         <span class="text-[9px] text-gray-700">Esc: Close</span>
+        <div class="flex-1" />
+        <!-- Playback speed controls -->
+        <div class="flex items-center gap-1">
+          <span class="text-[9px] text-gray-700 mr-1">Speed:</span>
+          <button v-for="spd in [0.5, 1, 2] as const" :key="spd"
+            class="px-1.5 py-0.5 rounded text-[10px] font-semibold transition-colors"
+            :class="playbackSpeed === spd ? 'bg-white/15 text-white' : 'text-gray-600 hover:text-gray-400'"
+            @click="setPlaybackSpeed(spd)"
+          >{{ spd }}x</button>
+        </div>
       </div>
       <div v-if="playingClip.suggestion" class="px-4 py-3 bg-gradient-to-r from-orange-500/[0.08] to-transparent border-t border-orange-500/15 flex-shrink-0 flex items-start gap-2.5">
         <div class="w-5 h-5 rounded-full bg-orange-500/20 flex items-center justify-center flex-shrink-0 mt-px">
@@ -669,6 +810,8 @@ function showToastMsg(msg: string, type: 'success' | 'error' = 'success') {
 
 const filters = [
   { label: 'All', value: 'all' },
+  { label: 'Favorites', value: 'favorites' },
+  { label: 'Bookmarks', value: 'hotkey' },
   { label: 'Manual', value: 'manual' },
   { label: 'Kills', value: 'kill' },
   { label: 'Multi', value: 'multikill' },
@@ -687,6 +830,7 @@ const viewMode = ref<'grid' | 'list'>('grid')
 
 const filteredClips = computed(() => {
   if (activeFilter.value === 'all') return clips.value
+  if (activeFilter.value === 'favorites') return clips.value.filter(c => c.favorited)
   return clips.value.filter(c => c.trigger === activeFilter.value)
 })
 
@@ -807,6 +951,7 @@ async function loadThumbnail(id: string) {
 
 function openPlayer(clip: ClipRecord) {
   playingClip.value = clip
+  playbackSpeed.value = 1
 }
 
 function closePlayer() {
@@ -919,6 +1064,107 @@ async function shareClip(clip: ClipRecord) {
   } else {
     showToastMsg('Failed to generate share link', 'error')
   }
+}
+
+// ── Bulk select ──────────────────────────────────────────────────────────────
+const bulkMode = ref(false)
+const selectedIds = ref<Set<string>>(new Set())
+
+function toggleBulkMode() {
+  bulkMode.value = !bulkMode.value
+  if (!bulkMode.value) selectedIds.value = new Set()
+}
+
+function toggleSelect(id: string) {
+  const s = new Set(selectedIds.value)
+  s.has(id) ? s.delete(id) : s.add(id)
+  selectedIds.value = s
+}
+
+function selectAll() {
+  selectedIds.value = new Set(displayedClips.value.map(c => c.id))
+}
+
+async function bulkDelete() {
+  const ids = Array.from(selectedIds.value)
+  for (const id of ids) {
+    await window.api.clips.delete(id)
+    clips.value = clips.value.filter(c => c.id !== id)
+    delete thumbnails.value[id]
+  }
+  selectedIds.value = new Set()
+  bulkMode.value = false
+  showToastMsg(`Deleted ${ids.length} clip${ids.length !== 1 ? 's' : ''}`, 'success')
+}
+
+// ── Playback speed ────────────────────────────────────────────────────────────
+const playbackSpeed = ref<0.5 | 1 | 2>(1)
+
+function setPlaybackSpeed(speed: 0.5 | 1 | 2) {
+  playbackSpeed.value = speed
+  if (videoEl.value) videoEl.value.playbackRate = speed
+}
+
+// ── Stats ─────────────────────────────────────────────────────────────────────
+const clipStats = computed(() => {
+  const total = clips.value.length
+  const favs = clips.value.filter(c => c.favorited).length
+  const totalSecs = clips.value.reduce((s, c) => s + c.durationSeconds, 0)
+  const m = Math.floor(totalSecs / 60)
+  const s = Math.floor(totalSecs % 60)
+  return { total, favs, duration: `${m}:${s.toString().padStart(2, '0')}` }
+})
+
+// ── Date grouping ─────────────────────────────────────────────────────────────
+interface ClipGroup { label: string; clips: ClipRecord[] }
+
+const groupedClips = computed((): ClipGroup[] => {
+  const now = Date.now()
+  const DAY = 86_400_000
+  const today = new Date(); today.setHours(0, 0, 0, 0)
+  const todayMs = today.getTime()
+  const groups: Record<string, ClipRecord[]> = { Today: [], Yesterday: [], 'This Week': [], 'This Month': [], Older: [] }
+  for (const c of displayedClips.value) {
+    const diff = now - c.savedAt
+    if (c.savedAt >= todayMs) groups['Today'].push(c)
+    else if (c.savedAt >= todayMs - DAY) groups['Yesterday'].push(c)
+    else if (diff < 7 * DAY) groups['This Week'].push(c)
+    else if (diff < 30 * DAY) groups['This Month'].push(c)
+    else groups['Older'].push(c)
+  }
+  return Object.entries(groups)
+    .filter(([, list]) => list.length > 0)
+    .map(([label, list]) => ({ label, clips: list }))
+})
+
+// ── Favorites & file helpers ──────────────────────────────────────────────────
+async function toggleFavorite(clip: ClipRecord) {
+  const result = await window.api.clips.toggleFavorite(clip.id)
+  if (result.ok) {
+    const idx = clips.value.findIndex(c => c.id === clip.id)
+    if (idx !== -1) clips.value[idx] = { ...clips.value[idx], favorited: result.favorited ?? !clip.favorited }
+    if (playingClip.value?.id === clip.id) playingClip.value = { ...playingClip.value, favorited: result.favorited ?? !clip.favorited }
+  }
+}
+
+async function revealInExplorer(clip: ClipRecord) {
+  await window.api.clips.revealFile(clip.id)
+}
+
+async function copyClipPath(clip: ClipRecord) {
+  try {
+    await navigator.clipboard.writeText(clip.path)
+    showToastMsg('File path copied!', 'success')
+  } catch {
+    showToastMsg('Failed to copy path', 'error')
+  }
+}
+
+// ── Score helpers ─────────────────────────────────────────────────────────────
+function scoreColor(score: number): string {
+  if (score >= 8) return 'bg-green-500 text-white'
+  if (score >= 5) return 'bg-yellow-500 text-black'
+  return 'bg-red-500 text-white'
 }
 
 function formatDuration(secs: number, precise = false): string {

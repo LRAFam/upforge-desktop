@@ -265,6 +265,8 @@ export interface ClipRecord {
   coachingTags: string[]
   overallScore: number | null
   published: boolean
+  /** Whether the user has starred/favourited this clip */
+  favorited: boolean
 }
 
 export interface AnalysisItem {
@@ -446,6 +448,8 @@ declare global {
         delete: (id: string) => Promise<{ ok: boolean }>
         updateTitle: (id: string, title: string) => Promise<{ ok: boolean }>
         openFolder: (id: string) => Promise<void>
+        revealFile: (id: string) => Promise<void>
+        toggleFavorite: (id: string) => Promise<{ ok: boolean; favorited?: boolean }>
         getHotkeys: () => Promise<Record<string, string>>
         getHotkeyStatus: () => Promise<{ saveClipRegistered: boolean; toggleOverlayRegistered: boolean }>
         setHotkey: (action: string, accelerator: string) => Promise<{ ok: boolean }>
