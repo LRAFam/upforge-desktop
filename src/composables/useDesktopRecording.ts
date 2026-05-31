@@ -49,12 +49,13 @@ export function useDesktopRecording() {
       //
       // Use `ideal` (not `max`) for frameRate and resolution — `max` only sets an upper
       // bound and Chromium defaults to 30fps when no ideal is specified.
-      const videoConstraints: MediaTrackConstraints = {
+      // cursor:'never' is a Screen Capture API extension not in standard TypeScript lib.
+      const videoConstraints = {
         width: { ideal: maxWidth, max: maxWidth },
         height: { ideal: maxHeight, max: maxHeight },
         frameRate: { ideal: config.fps, min: 15, max: config.fps },
-        cursor: 'never' as const,
-      }
+        cursor: 'never',
+      } as MediaTrackConstraints
 
       let noAudio = false
 
@@ -71,6 +72,19 @@ export function useDesktopRecording() {
           video: videoConstraints,
           audio: false,
         })
+      }
+
+      // Re-apply cursor:'never' after the stream is created. When setDisplayMediaRequestHandler
+      // provides a custom source, Chromium/Electron may not forward the original constraint to
+      // the underlying WGC capture session. applyConstraints() re-triggers the WGC cursor flag.
+      const videoTrack = stream.getVideoTracks()[0]
+      if (videoTrack) {
+        try {
+          await videoTrack.applyConstraints({ cursor: 'never' } as MediaTrackConstraints)
+          console.info('[DesktopRecording] cursor:never applied to video track')
+        } catch {
+          console.warn('[DesktopRecording] cursor:never applyConstraints not supported on this platform')
+        }
       }
 
       // Codec priority: VP9 (native WebM codec, hardware-accelerated on modern GPUs) →
