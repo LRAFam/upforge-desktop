@@ -45,7 +45,7 @@ async function fixWebmDuration(inputPath: string): Promise<string | null> {
       '-y', '-i', inputPath,
       '-map', '0:v:0', '-map', '0:a:0?',
       '-c:v', 'copy',
-      '-c:a', 'aac', '-b:a', '128k',
+      '-c:a', 'aac', '-b:a', '192k',
       '-movflags', '+faststart',
       fixedPath,
     ]

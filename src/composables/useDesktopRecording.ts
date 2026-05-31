@@ -46,10 +46,13 @@ export function useDesktopRecording() {
       // Use getDisplayMedia (intercepted by setDisplayMediaRequestHandler in the main
       // process) so we can pass cursor:'never'. getUserMedia with chromeMediaSource:
       // 'desktop' always includes the cursor and doesn't support the cursor constraint.
+      //
+      // Use `ideal` (not `max`) for frameRate and resolution — `max` only sets an upper
+      // bound and Chromium defaults to 30fps when no ideal is specified.
       const videoConstraints: MediaTrackConstraints = {
-        width: { max: maxWidth },
-        height: { max: maxHeight },
-        frameRate: { max: config.fps },
+        width: { ideal: maxWidth, max: maxWidth },
+        height: { ideal: maxHeight, max: maxHeight },
+        frameRate: { ideal: config.fps, min: 15, max: config.fps },
         cursor: 'never' as const,
       }
 
@@ -88,7 +91,7 @@ export function useDesktopRecording() {
       mediaRecorder = new MediaRecorder(stream, {
         mimeType,
         videoBitsPerSecond: config.bitrate * 1_000_000,
-        audioBitsPerSecond: 128_000,
+        audioBitsPerSecond: 192_000,
       })
 
       let emptyChunkCount = 0
@@ -126,8 +129,9 @@ export function useDesktopRecording() {
         cleanup()
       }
 
-      // 1-second chunks — small enough for smooth writes, large enough to avoid overhead
-      mediaRecorder.start(1_000)
+      // 250ms chunks — fine-grained enough for smooth audio/video sync while keeping
+      // IPC overhead low. 1s chunks cause noticeable audio choppiness on some systems.
+      mediaRecorder.start(250)
 
       window.api.desktopCapture.sendStarted(noAudio)
     } catch (err) {
