@@ -20,7 +20,7 @@
       </div>
 
       <!-- Uploading -->
-      <div v-if="state === 'uploading'" class="w-full space-y-4 text-center">
+      <div v-if="state === 'uploading'" class="w-full space-y-3 text-center">
         <!-- Dismiss during upload -->
         <button
           class="absolute top-2 right-2 w-6 h-6 flex items-center justify-center rounded-full text-gray-600 hover:text-gray-300 hover:bg-white/[0.06] transition-colors"
@@ -31,16 +31,6 @@
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
           </svg>
         </button>
-        <div
-          class="w-11 h-11 mx-auto rounded-full overflow-hidden flex items-center justify-center transition-all"
-          :class="agentImageUrl ? '' : 'bg-red-500/10 border border-red-500/20'"
-          :style="agentImageUrl ? { border: `1px solid ${agentAccentColor}50`, background: agentAccentColor + '20' } : {}"
-        >
-          <img v-if="agentImageUrl" :src="agentImageUrl" class="w-9 h-9 object-contain" />
-          <svg v-else class="w-5 h-5 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/>
-          </svg>
-        </div>
         <div class="space-y-3">
           <div class="flex items-center justify-center">
             <div class="inline-flex items-center gap-3 rounded-2xl border border-white/[0.07] bg-white/[0.03] px-4 py-3 shadow-[0_0_30px_rgba(239,68,68,0.08)]">
