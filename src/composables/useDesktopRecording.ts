@@ -93,15 +93,27 @@ export function useDesktopRecording() {
 
       // Re-apply cursor:'never' after the stream is created. When setDisplayMediaRequestHandler
       // provides a custom source, Chromium/Electron may not forward the original constraint to
-      // the underlying WGC capture session. applyConstraints() re-triggers the WGC cursor flag.
+      // the underlying WGC/SCK capture session. applyConstraints() re-triggers the cursor flag.
+      // We apply immediately AND after a short delay — some platforms (macOS SCK) apply the
+      // constraint asynchronously after the capture session is fully initialised.
       const videoTrack = stream.getVideoTracks()[0]
       if (videoTrack) {
-        try {
-          await videoTrack.applyConstraints({ cursor: 'never' } as MediaTrackConstraints)
-          console.info('[DesktopRecording] cursor:never applied to video track')
-        } catch {
-          console.warn('[DesktopRecording] cursor:never applyConstraints not supported on this platform')
+        const applyCursorNever = async () => {
+          try {
+            await videoTrack.applyConstraints({
+              cursor: 'never',
+              // advanced array forces Chromium to re-evaluate cursor policy on the underlying session
+              advanced: [{ cursor: 'never' } as MediaTrackConstraintSet],
+            } as MediaTrackConstraints)
+            console.info('[DesktopRecording] cursor:never applied to video track')
+          } catch (err) {
+            console.warn('[DesktopRecording] cursor:never applyConstraints failed:', err)
+          }
         }
+        await applyCursorNever()
+        // Second pass after 250ms — macOS SCK initialises capture asynchronously and may
+        // not honour the constraint until the session is fully active.
+        setTimeout(applyCursorNever, 250)
       }
 
       // Codec priority: VP9 (native WebM codec, hardware-accelerated on modern GPUs) →
