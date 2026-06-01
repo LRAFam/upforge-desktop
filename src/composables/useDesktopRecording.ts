@@ -70,7 +70,7 @@ export function useDesktopRecording() {
       const videoConstraints = {
         width: { ideal: maxWidth, max: maxWidth },
         height: { ideal: maxHeight, max: maxHeight },
-        frameRate: { ideal: config.fps, min: 15, max: config.fps },
+        frameRate: { ideal: config.fps, max: config.fps },
         cursor: 'never',
       } as MediaTrackConstraints
 
