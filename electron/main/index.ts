@@ -724,7 +724,12 @@ async function requestPostGameDebrief(opts: {
             sendToWindow('post-game:debrief', null)
           } else {
             log.info(`[Debrief] Generated for ${riotName}#${riotTag} cost=$${json.estimated_cost_usd ?? 0}`)
-            sendToWindow('post-game:debrief', { debrief: json.debrief_text, agent, map })
+            sendToWindow('post-game:debrief', {
+              debrief: json.debrief_text,
+              agent,
+              map,
+              discordLinked: json.discord_linked ?? false,
+            })
           }
         } catch {
           log.warn('[Debrief] Non-JSON response:', data.slice(0, 200))

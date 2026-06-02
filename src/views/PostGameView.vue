@@ -477,7 +477,19 @@
               <span>Generating your post-game debrief…</span>
             </div>
             <p v-else-if="debriefFailed" class="text-xs text-gray-500 italic">Debrief unavailable for this match — the AI service could not be reached. Try again after your next match.</p>
-            <p v-else class="text-xs text-gray-300 leading-relaxed whitespace-pre-wrap">{{ debriefText }}</p>
+            <template v-else>
+              <p class="text-xs text-gray-300 leading-relaxed whitespace-pre-wrap">{{ debriefText }}</p>
+              <div v-if="!debriefDiscordLinked" class="mt-2.5 flex items-center gap-2 px-2.5 py-2 rounded-lg bg-[#5865F2]/10 border border-[#5865F2]/20">
+                <svg class="w-3.5 h-3.5 text-[#5865F2] flex-shrink-0" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M20.317 4.37a19.791 19.791 0 00-4.885-1.515.074.074 0 00-.079.037c-.21.375-.444.864-.608 1.25a18.27 18.27 0 00-5.487 0 12.64 12.64 0 00-.617-1.25.077.077 0 00-.079-.037A19.736 19.736 0 003.677 4.37a.07.07 0 00-.032.027C.533 9.046-.32 13.58.099 18.057a.082.082 0 00.031.057 19.9 19.9 0 005.993 3.03.078.078 0 00.084-.028 14.09 14.09 0 001.226-1.994.076.076 0 00-.041-.106 13.107 13.107 0 01-1.872-.892.077.077 0 01-.008-.128 10.2 10.2 0 00.372-.292.074.074 0 01.077-.01c3.928 1.793 8.18 1.793 12.062 0a.074.074 0 01.078.01c.12.098.246.198.373.292a.077.077 0 01-.006.127 12.299 12.299 0 01-1.873.892.077.077 0 00-.041.107c.36.698.772 1.362 1.225 1.993a.076.076 0 00.084.028 19.839 19.839 0 006.002-3.03.077.077 0 00.032-.054c.5-5.177-.838-9.674-3.549-13.66a.061.061 0 00-.031-.03z"/>
+                </svg>
+                <p class="text-xs text-[#7289da]">
+                  Link Discord in your
+                  <a href="https://upforge.gg/settings" target="_blank" class="underline hover:text-[#5865F2]">account settings</a>
+                  to receive debriefs directly in Discord after every match.
+                </p>
+              </div>
+            </template>
           </div>
         </div>
       </div>
@@ -847,6 +859,7 @@ const isReady = ref(false)
 const debriefText = ref<string | null>(null)
 const debriefLoading = ref(false)
 const debriefFailed = ref(false)
+const debriefDiscordLinked = ref(true)
 const demoStatus = ref<{ status: string; jobId?: string; error?: string } | null>(null)
 const demoProgress = ref(0)
 let copiedLinkTimer: ReturnType<typeof setTimeout> | null = null
@@ -975,9 +988,10 @@ onMounted(() => {
 
   // Debrief arrives asynchronously — show it when ready
   ipcCleanup.push(window.api.on('post-game:debrief', (...args: unknown[]) => {
-    const data = args[0] as { debrief: string; agent: string | null; map: string | null } | null
+    const data = args[0] as { debrief: string; agent: string | null; map: string | null; discordLinked?: boolean } | null
     if (data?.debrief) {
       debriefText.value = data.debrief
+      debriefDiscordLinked.value = data.discordLinked ?? false
     } else if (!data) {
       debriefFailed.value = true
     }
