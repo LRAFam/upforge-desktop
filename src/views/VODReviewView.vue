@@ -227,7 +227,7 @@
       <div class="flex-1 flex flex-col min-w-0 min-h-0">
 
         <!-- Video area -->
-        <div class="flex-1 relative bg-black min-h-0" @click="togglePlay">
+        <div class="flex-1 relative bg-black min-h-0" :class="{ 'cursor-none': cursorHidden }" @click="togglePlay" @mousemove="onVideoMouseMove">
           <video
             v-if="timeline?.videoPath"
             ref="videoEl"
@@ -886,6 +886,25 @@ const selectedRound = ref<RoundGroup | null>(null)
 const coachingDetail = ref<AnalysisDetail | null>(null)
 const ownPuuid = ref<string | null>(null)
 let notifTimer: ReturnType<typeof setTimeout> | null = null
+
+// ── Cursor auto-hide ──────────────────────────────────────────────────────────
+const cursorHidden = ref(false)
+let cursorHideTimer: ReturnType<typeof setTimeout> | null = null
+
+function onVideoMouseMove() {
+  cursorHidden.value = false
+  if (cursorHideTimer) clearTimeout(cursorHideTimer)
+  if (isPlaying.value) {
+    cursorHideTimer = setTimeout(() => { cursorHidden.value = true }, 2500)
+  }
+}
+
+watch(isPlaying, (playing) => {
+  if (!playing) {
+    cursorHidden.value = false
+    if (cursorHideTimer) { clearTimeout(cursorHideTimer); cursorHideTimer = null }
+  }
+})
 
 // Weapon icon URLs — delegate to shared valorant.ts helper
 function getWeaponIcon(weapon: string): string | undefined {

@@ -434,7 +434,9 @@
     <div
       v-if="playingClip"
       class="fixed inset-0 z-50 bg-black/95 backdrop-blur-sm flex flex-col"
+      :class="{ 'cursor-none': cursorHidden }"
       @click.self="closePlayer"
+      @mousemove="onPlayerMouseMove"
     >
       <!-- Modal header -->
       <div class="flex items-center justify-between px-4 py-3 flex-shrink-0 bg-white/[0.03] border-b border-white/[0.07]">
@@ -963,6 +965,8 @@ function closePlayer() {
   trimModal.value.show = false
   editingTitle.value = false
   titleInputValue.value = ''
+  cursorHidden.value = false
+  if (cursorHideTimer) { clearTimeout(cursorHideTimer); cursorHideTimer = null }
 }
 
 function openTrim(clip: ClipRecord) {
@@ -1095,6 +1099,16 @@ async function bulkDelete() {
   selectedIds.value = new Set()
   bulkMode.value = false
   showToastMsg(`Deleted ${ids.length} clip${ids.length !== 1 ? 's' : ''}`, 'success')
+}
+
+// ── Cursor auto-hide ──────────────────────────────────────────────────────────
+const cursorHidden = ref(false)
+let cursorHideTimer: ReturnType<typeof setTimeout> | null = null
+
+function onPlayerMouseMove() {
+  cursorHidden.value = false
+  if (cursorHideTimer) clearTimeout(cursorHideTimer)
+  cursorHideTimer = setTimeout(() => { cursorHidden.value = true }, 2500)
 }
 
 // ── Playback speed ────────────────────────────────────────────────────────────
