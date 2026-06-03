@@ -7,12 +7,16 @@ import {
   resolveWeaponName,
   resolveMapName,
   resolveTierName,
+  resolveEconomyWeapon,
+  resolveEconomyArmor,
 } from './riot-lookup-tables'
 export {
   resolveAgentName,
   resolveWeaponName,
   resolveMapName,
   resolveTierName,
+  resolveEconomyWeapon,
+  resolveEconomyArmor,
 } from './riot-lookup-tables'
 export type {
   GameEvent,
@@ -780,7 +784,9 @@ export class RiotLocalApi {
       this.lastGameMode = this.matchData.gameMode
     }
 
-    const ownPlayer = players?.find((p) => (p.subject as string)?.toLowerCase() === this.ownPuuid?.toLowerCase())
+    const ownLower = this.ownPuuid?.toLowerCase()
+    const ownPlayer = players?.find((p) => (p.subject as string)?.toLowerCase() === ownLower)
+
     if (ownPlayer) {
       this.matchData.agent = resolveAgentName(ownPlayer.characterId as string) ?? this.matchData.agent
       const gameName = (ownPlayer.gameName as string) ?? null
@@ -792,18 +798,16 @@ export class RiotLocalApi {
         this.matchData.finalStats = {
           kills: stats.kills ?? 0, deaths: stats.deaths ?? 0, assists: stats.assists ?? 0,
           score: stats.score ?? 0, summonerName: gameName, agent: this.matchData.agent,
-          team: (ownPlayer.teamId as string) ?? null, level: 0,
+          team: (ownPlayer.teamId as string) ?? null,
+          level: (ownPlayer.accountLevel as number) ?? 0,
+          // HS% and ADR are computed later once we've processed all round damage events
+          headshotPct: null, adr: null,
+          accountLevel: (ownPlayer.accountLevel as number) ?? null,
         }
       }
     }
 
     if (players && players.length > 0) {
-      // Build a PUUID → player map for agent name + tier lookups
-      const puuidMap = new Map<string, Record<string, unknown>>()
-      for (const p of players) {
-        if (p.subject) puuidMap.set(p.subject as string, p)
-      }
-
       this.matchData.teamSnapshot = players.map((p) => {
         const stats = p.stats as Record<string, unknown> | undefined
         const casts = (stats?.abilityCasts) as Record<string, number> | undefined
@@ -811,7 +815,6 @@ export class RiotLocalApi {
         const gameName = (p.gameName as string) || null
         const tier = (p.competitiveTier as number) ?? 0
         return {
-          // Use gameName if available; fall back to agent name, then a short PUUID label
           summonerName: gameName ?? agentName ?? `Player ${((p.subject as string) ?? '').slice(0, 6)}`,
           agent: agentName,
           team: (p.teamId as string) ?? 'Unknown',
@@ -819,7 +822,7 @@ export class RiotLocalApi {
           deaths: (stats?.deaths as number) ?? 0,
           assists: (stats?.assists as number) ?? 0,
           score: (stats?.score as number) ?? 0,
-          level: 0,
+          level: (p.accountLevel as number) ?? 0,
           puuid: (p.subject as string) ?? null,
           competitiveTier: tier,
           competitiveTierName: resolveTierName(tier),
@@ -857,7 +860,7 @@ export class RiotLocalApi {
 
     const _resolveName = (puuid: string | undefined): string => {
       if (!puuid) return 'Unknown'
-      if (puuid === this.ownPuuid) return 'You'
+      if (puuid.toLowerCase() === ownLower) return 'You'
       const agent = puuidToAgent.get(puuid)
       return agent ?? puuid.slice(0, 6)
     }
@@ -892,7 +895,6 @@ export class RiotLocalApi {
         this.matchData.killEvents.push(ev)
         this.matchData.events.push(ev)
         // Case-insensitive PUUID comparison — Riot occasionally returns mixed-case UUIDs
-        const ownLower = this.ownPuuid?.toLowerCase()
         if (killerPuuid?.toLowerCase() === ownLower) this.matchData.playerKills.push(ev)
         if (victimPuuid?.toLowerCase() === ownLower) this.matchData.playerDeaths.push(ev)
       }
@@ -902,6 +904,47 @@ export class RiotLocalApi {
     const isTDM = this.matchData.gameMode === 'TEAMDEATHMATCH'
     const isDM = this.matchData.gameMode === 'DEATHMATCH'
     if (!isTDM && !isDM && roundResults && roundResults.length > 0) {
+      // Pre-build a per-round death count for the own player from the top-level kills array.
+      // roundResults.playerStats only has kills/assists — deaths must be cross-referenced here.
+      const deathsPerRound = new Map<number, number>()
+      for (const k of (allKills ?? [])) {
+        if ((k.victim as string)?.toLowerCase() === ownLower) {
+          const r = (k.round as number) ?? 0
+          deathsPerRound.set(r, (deathsPerRound.get(r) ?? 0) + 1)
+        }
+      }
+
+      // Pre-compute HS% and ADR from per-round damage events.
+      let totalDamage = 0
+      let totalHeadshots = 0
+      let totalShotsLanded = 0
+
+      for (const round of roundResults) {
+        const prs = (round.playerStats as Array<Record<string, unknown>> | undefined)
+          ?.find((ps) => (ps.subject as string)?.toLowerCase() === ownLower)
+        const damage = prs?.damage as Array<Record<string, unknown>> | undefined
+        if (damage) {
+          for (const d of damage) {
+            const hs = (d.headshots as number) ?? 0
+            const bs = (d.bodyshots as number) ?? 0
+            const ls = (d.legshots as number) ?? 0
+            totalHeadshots += hs
+            totalShotsLanded += hs + bs + ls
+            totalDamage += (d.damage as number) ?? 0
+          }
+        }
+      }
+
+      const roundCount = roundResults.length
+      if (this.matchData.finalStats) {
+        this.matchData.finalStats.adr = roundCount > 0
+          ? Math.round((totalDamage / roundCount) * 10) / 10
+          : null
+        this.matchData.finalStats.headshotPct = totalShotsLanded > 0
+          ? Math.round((totalHeadshots / totalShotsLanded) * 1000) / 10
+          : null
+      }
+
       for (const round of roundResults) {
         const roundNum = (round.roundNum as number) ?? 0
         const winningTeam = (round.winningTeam as string) ?? null
@@ -910,7 +953,7 @@ export class RiotLocalApi {
         const bombDefuser = (round.bombDefuser as string) ?? null
         const plantSite = (round.plantSite as string) ?? null
         const prs = (round.playerStats as Array<Record<string, unknown>> | undefined)
-          ?.find((ps) => ps.subject === this.ownPuuid)
+          ?.find((ps) => (ps.subject as string)?.toLowerCase() === ownLower)
         const economy = prs?.economy as Record<string, unknown> | undefined
         this.matchData.roundSummaries.push({
           roundNumber: roundNum,
@@ -919,15 +962,20 @@ export class RiotLocalApi {
           endTime: (round.defuseRoundMsec as number) || (round.plantRoundMsec as number) || 0,
           playerStats: prs ? {
             kills: (prs.kills as unknown[])?.length ?? 0,
-            deaths: 0,
+            deaths: deathsPerRound.get(roundNum) ?? 0,
             assists: (prs.assists as unknown[])?.length ?? 0,
             score: (prs.score as number) ?? 0,
           } : null,
           spikePlanted: !!bombPlanter, spikeSite: plantSite, spikePlanter: bombPlanter,
           spikeDefused: !!bombDefuser, spikeDefuser: bombDefuser,
           spikeDetonated: resultCode === 'BombDetonated',
-          playerGold: (economy?.remaining as number) ?? null, playerAbilities: null,
+          playerGold: (economy?.remaining as number) ?? null,
+          playerAbilities: null,
           playerGotFirstBlood: false, playerWasFirstBlood: false,
+          playerSpent: (economy?.spent as number) ?? null,
+          playerLoadoutValue: (economy?.loadoutValue as number) ?? null,
+          playerWeapon: resolveEconomyWeapon(economy?.weapon) ?? null,
+          playerArmor: resolveEconomyArmor(economy?.armor) ?? null,
         })
         if (bombPlanter) this.matchData.spikePlants.push({
           EventID: roundNum * 100 + 10, EventName: 'SpikePlanted',

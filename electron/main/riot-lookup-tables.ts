@@ -87,6 +87,41 @@ export function resolveWeaponName(
 }
 
 /**
+ * Resolve a weapon from a round economy.weapon field.
+ * Handles both the object form { id, name } and plain UUID string returned by the Riot PVP API.
+ */
+export function resolveEconomyWeapon(weapon: unknown): string | null {
+  if (!weapon) return null
+  if (typeof weapon === 'object' && weapon !== null) {
+    const w = weapon as Record<string, unknown>
+    if (typeof w.name === 'string' && w.name) return w.name
+    if (typeof w.id === 'string') return WEAPON_UUID_TO_NAME[w.id.toLowerCase()] ?? null
+  }
+  if (typeof weapon === 'string') return WEAPON_UUID_TO_NAME[weapon.toLowerCase()] ?? null
+  return null
+}
+
+const ARMOR_UUID_TO_NAME: Record<string, string> = {
+  '4dec83d5-4702-bcde-9244-9f8bc6a5ea5c': 'Light Shields',
+  '822bcab2-40a8-01dd-9d31-13c8cdcc7d8a': 'Heavy Shields',
+}
+
+/**
+ * Resolve armor from a round economy.armor field.
+ * Handles both the object form { id, name } and plain UUID string returned by the Riot PVP API.
+ */
+export function resolveEconomyArmor(armor: unknown): string | null {
+  if (!armor) return null
+  if (typeof armor === 'object' && armor !== null) {
+    const a = armor as Record<string, unknown>
+    if (typeof a.name === 'string' && a.name) return a.name
+    if (typeof a.id === 'string') return ARMOR_UUID_TO_NAME[a.id.toLowerCase()] ?? null
+  }
+  if (typeof armor === 'string') return ARMOR_UUID_TO_NAME[armor.toLowerCase()] ?? null
+  return null
+}
+
+/**
  * Maps Riot's internal map codenames (the last segment of a mapId path) to display names.
  * Source: valorant-api.com — update when new maps are released.
  *

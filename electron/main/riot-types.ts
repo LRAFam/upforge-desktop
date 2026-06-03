@@ -111,6 +111,14 @@ export interface RoundSummary {
   playerGotFirstBlood: boolean
   /** Was the player the first blood victim? */
   playerWasFirstBlood: boolean
+  /** Credits spent on loadout at round start */
+  playerSpent: number | null
+  /** Total loadout value at round start */
+  playerLoadoutValue: number | null
+  /** Weapon carried this round (resolved display name) */
+  playerWeapon: string | null
+  /** Armor type this round (e.g. "Light Shields", "Heavy Shields") */
+  playerArmor: string | null
 }
 
 /** Per-player stats snapshot for the full team — captured at match end */
@@ -151,6 +159,12 @@ export interface FinalPlayerStats {
   agent: string | null
   team: string | null
   level: number
+  /** Headshot percentage across the match (0–100, one decimal place) */
+  headshotPct: number | null
+  /** Average damage per round across the match */
+  adr: number | null
+  /** Player's Riot account level */
+  accountLevel: number | null
 }
 
 /** Round score snapshot captured from presence polling */
