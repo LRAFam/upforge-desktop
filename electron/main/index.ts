@@ -1577,17 +1577,7 @@ app.whenReady().then(async () => {
   })
 
 
-  ipcMain.handle('recorder:audio-status', () => {
-    return {
-      winAudioMode: recorder.getAudioMode(),
-      audioEnabled: settingsManager.get().audioEnabled,
-    }
-  })
-
-  ipcMain.handle('recorder:fix-audio', async () => {
-    const mode = await recorder.redetectAudio()
-    return { winAudioMode: mode }
-  })
+  // recorder:audio-status and recorder:fix-audio are registered in ipc/media-ipc.ts
 
 
   ipcMain.handle('clips:save-bookmark', () => {
