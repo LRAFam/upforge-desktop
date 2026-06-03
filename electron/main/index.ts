@@ -1691,8 +1691,12 @@ function setupGameDetection(): void {
     console.log(`[GameDetector] ${game} stopped`)
     discordRPC.setIdle()
 
-    // Game quit while still in lobby (before match started)
-    if (cancelMatchWait) {
+    // Game quit while still in lobby (before match started).
+    // Only cancel the wait if the match hasn't already been handled by presence — if it has,
+    // the re-arm is running inside cancelMatchWait and we should NOT cancel it: the
+    // isMatchProcessRunning() check inside the loop will cancel it naturally when Shipping.exe
+    // is no longer running.
+    if (cancelMatchWait && !matchHandled) {
       cancelMatchWait()
       cancelMatchWait = null
       waitingForMatch = false
