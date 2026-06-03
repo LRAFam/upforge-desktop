@@ -17,7 +17,7 @@ import fs from 'fs'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import { setupAutoUpdater, markStartupComplete } from './updater'
 import { GameDetector } from './game-detector'
-import { DesktopRecorder } from './desktop-recorder'
+import { Recorder } from './recorder'
 import { OBSRecorder } from './obs-recorder'
 import { RiotLocalApi } from './riot-local-api'
 import { UploadManager, savePendingJob, clearPendingJob, readPendingJob } from './upload-manager'
@@ -81,7 +81,7 @@ let updateTrayMenuFn: (() => void) | null = null
 let ffmpegOk = true // updated after preflight; exposed via app:get-status
 
 const gameDetector = new GameDetector()
-const recorder = new DesktopRecorder(() => mainWindow?.webContents ?? null)
+const recorder = new Recorder()
 const obsRecorder = new OBSRecorder(() => {
   const s = settingsManager?.get()
   return {
@@ -93,7 +93,7 @@ const obsRecorder = new OBSRecorder(() => {
 })
 
 /** Returns the active recorder — OBS when enabled & connected, desktopCapturer otherwise. */
-function activeRecorder(): DesktopRecorder | OBSRecorder {
+function activeRecorder(): Recorder | OBSRecorder {
   if (settingsManager?.get().obsEnabled && obsRecorder.isConnected()) return obsRecorder
   return recorder
 }
@@ -193,9 +193,9 @@ const activityLog: { time: number; message: string }[] = []
 const hotkeyBookmarks: number[] = []
 // Recording start time — set when recorder.start() succeeds
 let currentRecordingStartTime: number | null = null
-// The recorder instance chosen at match start (OBS if connected & enabled, else DesktopRecorder).
+// The recorder instance chosen at match start (OBS if connected & enabled, else FFmpeg Recorder).
 // Stored so start/stop/getPath always use the same instance for a given match.
-let currentActiveRecorder: DesktopRecorder | OBSRecorder = recorder
+let currentActiveRecorder: Recorder | OBSRecorder = recorder
 // Auto-hide timer for overlay flash feedback (clip bookmarked while overlay is hidden)
 let overlayAutoHideTimer: ReturnType<typeof setTimeout> | null = null
 
