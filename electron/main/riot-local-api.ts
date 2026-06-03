@@ -2,389 +2,51 @@ import https from 'https'
 import tls from 'tls'
 import fs from 'fs'
 import path from 'path'
-
-/**
- * Maps Riot's internal agent UUIDs (characterId) to display names.
- * Source: valorant-api.com — update when new agents are released.
- */
-// Source: valorant-api.com/v1/agents?isPlayableCharacter=true — regenerated 2026-04-25
-const AGENT_UUID_TO_NAME: Record<string, string> = {
-  '41fb69c1-4189-7b37-f117-bcaf1e96f1bf': 'Astra',
-  '5f8d3a7f-467b-97f3-062c-13acf203c006': 'Breach',
-  '9f0d8ba9-4140-b941-57d3-a7ad57c6b417': 'Brimstone',
-  '22697a3d-45bf-8dd7-4fec-84a9e28c69d7': 'Chamber',
-  '1dbf2edd-4729-0984-3115-daa5eed44993': 'Clove',
-  '117ed9e3-49f3-6512-3ccf-0cada7e3823b': 'Cypher',
-  'cc8b64c8-4b25-4ff9-6e7f-37b4da43d235': 'Deadlock',
-  'dade69b4-4f5a-8528-247b-219e5a1facd6': 'Fade',
-  'e370fa57-4757-3604-3648-499e1f642d3f': 'Gekko',
-  '95b78ed7-4637-86d9-7e41-71ba8c293152': 'Harbor',
-  '0e38b510-41a8-5780-5e8f-568b2a4f2d6c': 'Iso',
-  'add6443a-41bd-e414-f6ad-e58d267f4e95': 'Jett',
-  '601dbbe7-43ce-be57-2a40-4abd24953621': 'KAY/O',
-  '1e58de9c-4950-5125-93e9-a0aee9f98746': 'Killjoy',
-  '7c8a4701-4de6-9355-b254-e09bc2a34b72': 'Miks',
-  'bb2a4828-46eb-8cd1-e765-15848195d751': 'Neon',
-  '8e253930-4c05-31dd-1b6c-968525494517': 'Omen',
-  'eb93336a-449b-9c1b-0a54-a891f7921d69': 'Phoenix',
-  'f94c3b30-42be-e959-889c-5aa313dba261': 'Raze',
-  'a3bfb853-43b2-7238-a4f1-ad90e9e46bcc': 'Reyna',
-  '569fdd95-4d10-43ab-ca70-79becc718b46': 'Sage',
-  '6f2a04ca-43e0-be17-7f36-b3908627744d': 'Skye',
-  '320b2a48-4d9b-a075-30f1-1f93a9b638fa': 'Sova',
-  'b444168c-4e35-8076-db47-ef9bf368f384': 'Tejo',
-  '92eeef5d-43b5-1d4a-8d03-b3927a09034b': 'Veto',
-  '707eab51-4836-f488-046a-cda6bf494859': 'Viper',
-  'efba5359-4016-a1e5-7626-b1ae76895940': 'Vyse',
-  'df1cb487-4902-002e-5c17-d28e83e78588': 'Waylay',
-  '7f94d92c-4234-0a36-9646-3a87eb8b5c89': 'Yoru',
-}
-
-/** Resolve a Riot characterId UUID to a display name, returning the UUID unchanged if unknown. */
-export function resolveAgentName(characterId: string | null | undefined): string | null {
-  if (!characterId) return null
-  return AGENT_UUID_TO_NAME[characterId.toLowerCase()] ?? characterId
-}
-
-/**
- * Maps Riot weapon UUIDs (from finishingDamage.damageItem) to display names.
- * Mirrors the map in src/lib/valorant.ts — keep in sync when adding new weapons.
- */
-const WEAPON_UUID_TO_NAME: Record<string, string> = {
-  '29a0cfab-485b-f5d5-779a-b59f85e204a8': 'Classic',
-  '42da8ccc-40d5-affc-beec-15aa47b42eda': 'Shorty',
-  '44d4e95c-4157-0037-81b2-17841bf2e8e3': 'Frenzy',
-  '1baa85b4-4c70-1284-64bb-6481dfc3bb4e': 'Ghost',
-  'e336c6b8-418d-9340-d77f-7a9e4cfe0702': 'Sheriff',
-  'f7e1b454-4ad4-1063-ec0a-159e56b58941': 'Stinger',
-  '462080d1-4035-2937-7c09-27aa2a5c27a7': 'Spectre',
-  '910be174-449b-c412-ab22-d0873436b21b': 'Bucky',
-  'ec845bf4-4f79-ddda-a3da-0db3774b2794': 'Judge',
-  'ae3de142-4d85-2547-dd26-4e90bed35cf7': 'Bulldog',
-  '4ade7faa-4cf1-8376-95ef-39884480959b': 'Guardian',
-  'ee8e8d15-496b-07ac-e5f6-8fae5d4c7b1a': 'Phantom',
-  '9c82e19d-4575-0200-1a81-3eacf00cf872': 'Vandal',
-  'c4883e50-4494-202c-3ec3-6b8a9284f00b': 'Marshal',
-  '5f0aaf7a-4289-3998-d5ff-eb9a5cf7ef5c': 'Outlaw',
-  'a03b24d3-4319-996d-0f8c-94bbfba1dfc7': 'Operator',
-  '55d8a0f4-4274-ca67-fe2c-06ab45efdf58': 'Ares',
-  '63e6c2b6-4a8e-869c-3d4c-e38355226584': 'Odin',
-  '2f59173c-4bed-b6c3-2191-dea9b58be9c7': 'Melee',
-}
-
-export function resolveWeaponName(damageType: string | null | undefined, damageItem: string | null | undefined): string | null {
-  if (!damageType) return null
-  if (damageType === 'Weapon' && damageItem) {
-    return WEAPON_UUID_TO_NAME[damageItem.toLowerCase()] ?? null
-  }
-  // Non-weapon kills: Bomb, Ability, Fall, etc.
-  if (damageType === 'Bomb') return 'Spike'
-  if (damageType === 'Ability') return 'Ability'
-  if (damageType === 'Ultimate') return 'Ultimate'
-  if (damageType === 'Fall') return 'Fall'
-  return null
-}
-
-/**
- * Maps Riot's internal map codenames (the last segment of a mapId path) to display names.
- * Source: valorant-api.com — update when new maps are released.
- *
- * Riot returns paths like "/Game/Maps/Duality/Duality" — we take the last segment ("Duality")
- * and resolve it here. Also handles the full path and partial matches.
- */
-const MAP_CODENAME_TO_NAME: Record<string, string> = {
-  // Current maps
-  ascent: 'Ascent',
-  duality: 'Bind',
-  triad: 'Haven',
-  bonsai: 'Split',
-  port: 'Icebox',
-  foxtrot: 'Breeze',
-  canyon: 'Fracture',
-  pitt: 'Pearl',
-  jam: 'Lotus',
-  juliett: 'Sunset',
-  infinity: 'Abyss',
-  rook: 'Corrode',
-  // TDM / special modes — each has its own map name
-  hurm_alley: 'Drift',
-  hurm_bowl: 'Glitch',
-  hurm_district: 'District',
-  hurm_kasbah: 'Kasbah',
-  hurm_helix: 'Helix',
-  hurm_hightide: 'Hightide',
-  hurm_yard: 'Yard',
-  // Range
-  range: 'The Range',
-}
-
-/** Resolve a Riot map ID (full path or last segment) to a display name. */
-export function resolveMapName(mapId: string | null | undefined): string | null {
-  if (!mapId) return null
-  const segment = mapId.split('/').filter(Boolean).pop() ?? mapId
-  return MAP_CODENAME_TO_NAME[segment.toLowerCase()] ?? segment
-}
-
-/** Convert a Riot competitive tier number to a human-readable rank string. */
-export function resolveTierName(tier: number): string {
-  const TIER_NAMES = [
-    'Unranked', 'Unranked', 'Unranked',
-    'Iron 1', 'Iron 2', 'Iron 3',
-    'Bronze 1', 'Bronze 2', 'Bronze 3',
-    'Silver 1', 'Silver 2', 'Silver 3',
-    'Gold 1', 'Gold 2', 'Gold 3',
-    'Platinum 1', 'Platinum 2', 'Platinum 3',
-    'Diamond 1', 'Diamond 2', 'Diamond 3',
-    'Ascendant 1', 'Ascendant 2', 'Ascendant 3',
-    'Immortal 1', 'Immortal 2', 'Immortal 3',
-    'Radiant',
-  ]
-  return TIER_NAMES[tier] ?? 'Unranked'
-}
-
-export interface GameEvent {
-  EventID: number
-  EventName: string
-  EventTime: number
-}
-
-/** A kill/death event — now populated from Riot MatchDetails API post-match */
-export interface KillEvent extends GameEvent {
-  EventName: 'ChampionKill'
-  killerName: string
-  victimName: string
-  assistants: string[]
-  /** Milliseconds since game start — from Riot MatchDetails timeSinceGameStartMillis */
-  timeSinceGameStartMillis?: number
-  /** Offset from recording start in ms — use this to seek video to the kill */
-  videoOffsetMs?: number
-  /** Weapon/damage type (e.g. "Weapon", "Ability", "Bomb") */
-  weapon?: string
-  /** Raw PUUIDs for backend resolution */
-  killerPuuid?: string
-  victimPuuid?: string
-  /** Which round this kill occurred in (0-indexed) */
-  round?: number
-}
-
-/** Spike planted event — includes site (A/B/C) and who planted */
-export interface SpikePlantedEvent extends GameEvent {
-  EventName: 'SpikePlanted'
-  planter: string
-  site: string
-}
-
-/** Spike defused event — who defused */
-export interface SpikeDefusedEvent extends GameEvent {
-  EventName: 'SpikeDefused'
-  defuser: string
-}
-
-/** Spike detonated event */
-export interface SpikeDetonatedEvent extends GameEvent {
-  EventName: 'SpikeDetonated'
-}
-
-/** First blood event */
-export interface FirstBloodEvent extends GameEvent {
-  EventName: 'FirstBlood'
-  killerName: string
-  victimName: string
-}
-
-/** Ability state for a single ability slot */
-export interface AbilityState {
-  displayName: string
-  charges: number | null
-  /** For ultimates: current ult points */
-  currentPoints?: number | null
-  /** For ultimates: points needed to charge ult */
-  maxPoints?: number | null
-}
-
-/** Snapshot of all abilities at a given moment */
-export interface PlayerAbilities {
-  ability1: AbilityState | null
-  ability2: AbilityState | null
-  grenade: AbilityState | null
-  signature: AbilityState | null
-  ultimate: AbilityState | null
-}
-
-/** Snapshot of the local player's stats at a specific round boundary */
-export interface RoundPlayerStats {
-  kills: number
-  deaths: number
-  assists: number
-  score: number
-}
-
-/** Summary of a single completed round */
-export interface RoundSummary {
-  roundNumber: number
-  /** The team that won — "ORDER" or "CHAOS", or null if unknown */
-  winningTeam: string | null
-  /** How the round ended: Elimination, BombDefused, BombDetonated, etc. */
-  ceremony: string | null
-  endTime: number
-  /** Player's cumulative stats at the end of this round */
-  playerStats: RoundPlayerStats | null
-  /** Was the spike planted this round? */
-  spikePlanted: boolean
-  /** Which site was the spike planted on */
-  spikeSite: string | null
-  /** Who planted the spike */
-  spikePlanter: string | null
-  /** Was the spike defused? */
-  spikeDefused: boolean
-  /** Who defused the spike */
-  spikeDefuser: string | null
-  /** Did the spike detonate? */
-  spikeDetonated: boolean
-  /** Player's economy (credits) at round end */
-  playerGold: number | null
-  /** Player's ability states captured at round end */
-  playerAbilities: PlayerAbilities | null
-  /** Did the player get first blood this round? */
-  playerGotFirstBlood: boolean
-  /** Was the player the first blood victim? */
-  playerWasFirstBlood: boolean
-}
-
-/** Per-player stats snapshot for the full team — captured at match end */
-export interface TeamPlayerSnapshot {
-  summonerName: string
-  agent: string | null
-  team: string
-  kills: number
-  deaths: number
-  assists: number
-  /** Combat score */
-  score: number
-  level: number
-  /** Player's PUUID — used for "you" identification in renderer */
-  puuid: string | null
-  /** Valorant competitive tier number (0 = Unranked … 27 = Radiant) */
-  competitiveTier: number
-  /** Human-readable rank string e.g. "Gold 2", "Immortal 1", "Radiant" */
-  competitiveTierName: string
-  /** Ability cast counts from match details */
-  abilityCasts: {
-    grenade: number   // C slot
-    ability1: number  // Q slot
-    ability2: number  // E slot (signature)
-    ultimate: number  // X slot
-  } | null
-}
-
-/** Final match stats for the local player, captured at match end */
-export interface FinalPlayerStats {
-  kills: number
-  deaths: number
-  assists: number
-  score: number
-  /** Riot display name (gameName#tagLine) */
-  summonerName: string | null
-  /** Agent played */
-  agent: string | null
-  team: string | null
-  level: number
-}
-
-/** Round score snapshot captured from presence polling */
-export interface RoundScore {
-  allyScore: number
-  enemyScore: number
-  /** Epoch ms when this score was detected */
-  detectedAt: number
-}
-
-/** Lockfile credentials from Riot Client */
-export interface LockfileData {
-  port: number
-  password: string
-}
-
-/** Presence-derived session state */
-export interface SessionState {
-  sessionLoopState: 'MENUS' | 'PREGAME' | 'INGAME' | string
-  queueId: string | null
-  matchMap: string | null
-  allyScore: number
-  enemyScore: number
-  /** True when the client is playing back a replay rather than a live match */
-  isReplay: boolean
-}
-
-/** Full enriched match data — superset of MatchTimeline */
-export interface MatchData {
-  game: string
-
-  // Identity (NEW)
-  /** Riot match UUID — from WebSocket ares-match-details event */
-  matchId: string | null
-  /** Player's PUUID */
-  puuid: string | null
-  /** Region for Riot PvP API (e.g. 'eu', 'na', 'ap') */
-  region: string | null
-  /** Raw Riot queue ID (e.g. 'competitive', 'swiftplay') */
-  queueId: string | null
-
-  // Match context
-  map: string | null
-  agent: string | null
-  /** Normalised queue string (e.g. 'COMPETITIVE', 'SWIFTPLAY') */
-  gameMode: string | null
-  /** Player's Riot display name (gameName) */
-  playerName: string | null
-  /** Player's Riot tag (tagLine) */
-  playerTag: string | null
-
-  // Timing (critical for video frame mapping — NEW)
-  /** Epoch ms when presence transitioned to INGAME (= loading screen start) */
-  matchStartTime: number | null
-  /**
-   * Epoch ms when the actual gameplay began (buy phase of round 1).
-   * This is captured by the overlay poll once round 1 is confirmed INGAME.
-   * When set, videoOffsetMs uses this instead of matchStartTime so offsets
-   * are relative to the start of real gameplay rather than the loading screen.
-   */
-  gameplayStartTime: number | null
-  /** Epoch ms when recorder.start() was called */
-  recordingStartTime: number
-
-  // Round score progression from presence polling (NEW)
-  roundScores: RoundScore[]
-
-  // Events (populated from Riot MatchDetails API post-match)
-  events: GameEvent[]
-  killEvents: KillEvent[]
-  playerKills: KillEvent[]
-  playerDeaths: KillEvent[]
-  spikePlants: SpikePlantedEvent[]
-  spikeDefuses: SpikeDefusedEvent[]
-  spikeDetonations: SpikeDetonatedEvent[]
-  firstBloods: FirstBloodEvent[]
-  roundSummaries: RoundSummary[]
-  finalStats: FinalPlayerStats | null
-  teamSnapshot: TeamPlayerSnapshot[]
-
-  /** Raw Riot MatchDetails API response — full fidelity data for AI coaching */
-  matchDetails: Record<string, unknown> | null
-
-  startTime: number
-  endTime: number | null
-}
-
-/** @deprecated Use MatchData instead — kept for backwards compatibility */
-export interface MatchTimeline {
-  game: string
-  map: string | null
-  agent: string | null
-  events: GameEvent[]
-  startTime: number
-  endTime: number | null
-}
+import {
+  resolveAgentName,
+  resolveWeaponName,
+  resolveMapName,
+  resolveTierName,
+} from './riot-lookup-tables'
+export {
+  resolveAgentName,
+  resolveWeaponName,
+  resolveMapName,
+  resolveTierName,
+} from './riot-lookup-tables'
+export type {
+  GameEvent,
+  KillEvent,
+  SpikePlantedEvent,
+  SpikeDefusedEvent,
+  SpikeDetonatedEvent,
+  FirstBloodEvent,
+  AbilityState,
+  PlayerAbilities,
+  RoundPlayerStats,
+  RoundSummary,
+  TeamPlayerSnapshot,
+  FinalPlayerStats,
+  RoundScore,
+  LockfileData,
+  SessionState,
+  MatchData,
+  MatchTimeline,
+} from './riot-types'
+import type {
+  GameEvent,
+  KillEvent,
+  SpikePlantedEvent,
+  SpikeDefusedEvent,
+  SpikeDetonatedEvent,
+  LockfileData,
+  SessionState,
+  MatchData,
+  RoundScore,
+  FinalPlayerStats,
+  TeamPlayerSnapshot,
+  RoundSummary,
+} from './riot-types'
 
 export class RiotLocalApi {
   private tlsAgent = new https.Agent({ rejectUnauthorized: false })

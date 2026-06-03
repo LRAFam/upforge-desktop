@@ -2,11 +2,8 @@ import {
   app,
   BrowserWindow,
   Tray,
-  Menu,
-  nativeImage,
   ipcMain,
   shell,
-  screen,
   Notification,
   globalShortcut,
   desktopCapturer,
@@ -32,12 +29,20 @@ import { HotkeyManager } from './hotkey-manager'
 import { createOverlayWindow, toggleOverlay, destroyOverlay, sendOverlayData, isOverlayVisible, showOverlay, hideOverlay } from './overlay-window'
 import { PerformanceManager } from './performance-manager'
 import { TrainerBridge } from './trainer-bridge'
-import type { MatchData } from './riot-local-api'
+import type { MatchData } from './riot-types'
 import log from 'electron-log'
 import { setupMainProcessErrorHandlers, reportError } from './error-reporter'
 import { findLatestCS2Demo } from './cs2-demo-finder'
 import { CS2DemoUploader } from './cs2-demo-uploader'
 import { DiscordRPC } from './discord-rpc'
+import {
+  createMainWindow as _createMainWindow,
+  createPostGameWindow as _createPostGameWindow,
+  createSplashWindow as _createSplashWindow,
+  createTray as _createTray,
+} from './window-manager'
+import { ClipPipeline } from './clip-pipeline'
+import { requestPregameBrief as _requestPregameBrief, requestPostGameDebrief as _requestPostGameDebrief } from './post-game-api'
 
 /** Human-readable label for a game identifier. */
 function gameLabel(game?: string | null): string {
@@ -225,455 +230,43 @@ function notifySilent(): boolean {
   return !(settingsManager?.get().notificationSound ?? true)
 }
 
-/**
- * Detect rounds where the local player was the last alive on their team and won (clutch).
- * Returns the set of round numbers (0-indexed) where a clutch occurred.
- */
-function detectClutchRounds(timeline: MatchData): Set<number> {
-  const clutchRounds = new Set<number>()
-  if (!timeline.matchDetails || !timeline.puuid) return clutchRounds
+const clipPipeline = new ClipPipeline({
+  clipStore,
+  clipExtractor,
+  hotkeyBookmarks,
+  getRecordingStartTime: () => currentRecordingStartTime,
+  logActivity: (msg) => logActivity(msg),
+  notifySilent: () => notifySilent(),
+  notifyMainWindow: (channel, data) => mainWindow?.webContents.send(channel, data),
+  onClipsExtracted: (count) => {
+    if (lastMatchDiagnostic) lastMatchDiagnostic.clipsExtracted = (lastMatchDiagnostic.clipsExtracted ?? 0) + count
+  },
+})
 
-  const details = timeline.matchDetails
-  const players = details.players as Array<Record<string, unknown>> | undefined
-  const roundResults = details.roundResults as Array<Record<string, unknown>> | undefined
-  const allKills = details.kills as Array<Record<string, unknown>> | undefined
-
-  if (!players || !roundResults || !allKills) return clutchRounds
-
-  const ownPuuid = timeline.puuid
-
-  // Build team map: puuid -> teamId
-  const teamMap = new Map<string, string>()
-  for (const p of players) {
-    if (p.subject && p.teamId) teamMap.set(p.subject as string, p.teamId as string)
-  }
-  const ownTeam = teamMap.get(ownPuuid)
-  if (!ownTeam) return clutchRounds
-
-  const allyPuuids = new Set(
-    [...teamMap.entries()].filter(([p, t]) => t === ownTeam && p !== ownPuuid).map(([p]) => p)
-  )
-  const enemyPuuids = new Set(
-    [...teamMap.entries()].filter(([_, t]) => t !== ownTeam).map(([p]) => p)
-  )
-
-  // Group all kills (every player) by round
-  const allKillsByRound = new Map<number, Array<Record<string, unknown>>>()
-  for (const kill of allKills) {
-    const r = (kill.round as number) ?? 0
-    if (!allKillsByRound.has(r)) allKillsByRound.set(r, [])
-    allKillsByRound.get(r)!.push(kill)
-  }
-
-  for (const [roundNum, kills] of allKillsByRound.entries()) {
-    const sorted = [...kills].sort((a, b) =>
-      ((a.timeSinceGameStartMillis as number) ?? 0) - ((b.timeSinceGameStartMillis as number) ?? 0)
-    )
-
-    const liveAllies = new Set(allyPuuids)
-    const liveEnemies = new Set(enemyPuuids)
-    let playerAlive = true
-    let clutchDetected = false
-
-    for (const kill of sorted) {
-      const victim = kill.victim as string
-      if (victim === ownPuuid) { playerAlive = false; break }
-      if (liveAllies.has(victim)) liveAllies.delete(victim)
-      if (liveEnemies.has(victim)) liveEnemies.delete(victim)
-
-      // Player becomes last alive on their team with enemies remaining
-      if (!clutchDetected && liveAllies.size === 0 && liveEnemies.size >= 1) {
-        clutchDetected = true
-      }
-    }
-
-    if (!clutchDetected || !playerAlive) continue
-
-    // Player must have killed at least one enemy after being last alive
-    const clutchKills = timeline.playerKills.filter(k => (k.round ?? -1) === roundNum)
-    if (clutchKills.length === 0) continue
-
-    // Round must have been won by player's team
-    const roundResult = roundResults[roundNum] as Record<string, unknown> | undefined
-    if ((roundResult?.winningTeam as string) === ownTeam) {
-      clutchRounds.add(roundNum)
-    }
-  }
-
-  return clutchRounds
-}
-
-/**
- * Extract only kill-based clips (3K/4K/ace/clutch) from a match recording.
- * Used by the late-retry path when match details weren't available at match end.
- */
 async function extractKillClipsOnly(
   videoPath: string,
   timeline: MatchData,
   analysisJobId: string | null
 ): Promise<void> {
-  if (!fs.existsSync(videoPath)) {
-    log.warn('[LateClipExtract] Source video not found — skipping:', videoPath)
-    logActivity('Late clip extraction skipped — recording file not found')
-    return
-  }
-  if (!timeline.playerKills || timeline.playerKills.length === 0) {
-    log.warn('[LateClipExtract] No player kills in timeline — nothing to clip')
-    return
-  }
-
-  const map = timeline.map ?? null
-  const agent = timeline.agent ?? null
-  const extractedClipIds: string[] = []
-
-  // Group kills by round
-  const killsByRound = new Map<number, typeof timeline.playerKills>()
-  for (const kill of timeline.playerKills) {
-    const r = kill.round ?? -1
-    if (!killsByRound.has(r)) killsByRound.set(r, [])
-    killsByRound.get(r)!.push(kill)
-  }
-
-  const clutchRounds = detectClutchRounds(timeline)
-
-  const combinedRounds = new Map<number, { kills: typeof timeline.playerKills; trigger: 'ace' | 'multikill'; killCount: number }>()
-  for (const [round, kills] of killsByRound.entries()) {
-    if (clutchRounds.has(round)) continue
-    if (kills.length >= 5) combinedRounds.set(round, { kills, trigger: 'ace', killCount: kills.length })
-    else if (kills.length >= 3) combinedRounds.set(round, { kills, trigger: 'multikill', killCount: kills.length })
-  }
-
-  // Combined clips (3k / 4k / ace)
-  for (const [round, { kills: roundKills, trigger, killCount }] of combinedRounds.entries()) {
-    const validKills = roundKills.filter(k => k.videoOffsetMs != null)
-    if (validKills.length === 0) continue
-    const first = validKills.reduce((a, b) => a.videoOffsetMs! < b.videoOffsetMs! ? a : b)
-    const last = validKills.reduce((a, b) => a.videoOffsetMs! > b.videoOffsetMs! ? a : b)
-    const preBuffer = trigger === 'ace' ? 10_000 : 8_000
-    const postBuffer = trigger === 'ace' ? 20_000 : 18_000
-    const startMs = Math.max(0, first.videoOffsetMs! - preBuffer)
-    const durationMs = Math.min(last.videoOffsetMs! - first.videoOffsetMs! + postBuffer, 120_000)
-    try {
-      const tempRecord = clipStore.add({ path: '', thumbPath: null, trigger, map, agent, durationSeconds: durationMs / 1000, round, killCount, analysisJobId })
-      const clipPath = ClipExtractor.clipPath(tempRecord.id)
-      const thumbPath = ClipExtractor.thumbPath(tempRecord.id)
-      await clipExtractor.extract({ sourcePath: videoPath, startOffsetMs: startMs, durationMs, outputPath: clipPath })
-      const resolvedThumb = await safeThumb(videoPath, first.videoOffsetMs!, startMs, thumbPath)
-      clipStore.update(tempRecord.id, { path: clipPath, thumbPath: resolvedThumb })
-      extractedClipIds.push(tempRecord.id)
-      const label = trigger === 'ace' ? 'Ace' : `${killCount}K`
-      logActivity(`${label} clip saved (late extract) — Round ${round + 1} (${map ?? 'unknown'})`)
-    } catch (err) {
-      log.warn(`[LateClipExtract] ${trigger} clip failed:`, err)
-      reportError({ message: `[LateClipExtract] ${trigger} clip failed: ${(err as Error)?.message}`, stack: (err as Error)?.stack, component: 'desktop:LateClipExtract' })
-    }
-  }
-
-  // Clutch clips
-  for (const round of clutchRounds) {
-    const clutchKills = timeline.playerKills.filter(k => (k.round ?? -1) === round && k.videoOffsetMs != null)
-    if (clutchKills.length === 0) continue
-    const first = clutchKills.reduce((a, b) => a.videoOffsetMs! < b.videoOffsetMs! ? a : b)
-    const last = clutchKills.reduce((a, b) => a.videoOffsetMs! > b.videoOffsetMs! ? a : b)
-    const startMs = Math.max(0, first.videoOffsetMs! - 15_000)
-    const durationMs = Math.min(last.videoOffsetMs! - first.videoOffsetMs! + 20_000, 120_000)
-    try {
-      const tempRecord = clipStore.add({ path: '', thumbPath: null, trigger: 'clutch', map, agent, durationSeconds: durationMs / 1000, round, killCount: clutchKills.length, analysisJobId })
-      const clipPath = ClipExtractor.clipPath(tempRecord.id)
-      const thumbPath = ClipExtractor.thumbPath(tempRecord.id)
-      await clipExtractor.extract({ sourcePath: videoPath, startOffsetMs: startMs, durationMs, outputPath: clipPath })
-      const resolvedThumb = await safeThumb(videoPath, first.videoOffsetMs!, startMs, thumbPath)
-      clipStore.update(tempRecord.id, { path: clipPath, thumbPath: resolvedThumb })
-      extractedClipIds.push(tempRecord.id)
-      logActivity(`Clutch clip saved (late extract) — Round ${round + 1} (${map ?? 'unknown'})`)
-    } catch (err) {
-      log.warn('[LateClipExtract] Clutch clip failed:', err)
-      reportError({ message: `[LateClipExtract] Clutch clip failed: ${(err as Error)?.message}`, stack: (err as Error)?.stack, component: 'desktop:LateClipExtract' })
-    }
-  }
-
-  if (extractedClipIds.length > 0) {
-    logActivity(`${extractedClipIds.length} late-extracted clip${extractedClipIds.length === 1 ? '' : 's'} saved`)
-    mainWindow?.webContents.send('clips:new', extractedClipIds)
-    if (lastMatchDiagnostic) lastMatchDiagnostic.clipsExtracted += extractedClipIds.length
-    if (Notification.isSupported()) {
-      new Notification({
-        title: 'UpForge — Clips Ready',
-        body: `${extractedClipIds.length} highlight clip${extractedClipIds.length === 1 ? '' : 's'} saved from your match!`,
-        silent: notifySilent(),
-      }).show()
-    }
-  }
+  return clipPipeline.extractKillClipsOnly(videoPath, timeline, analysisJobId)
 }
 
 /**
  * Extract highlight clips from a completed match recording.
  * Called post-match once the recording file is finalised.
  */
-/** Extract a thumbnail without aborting clip save on failure.
- *  Falls back to the clip start offset if the original seek is out-of-range. */
-async function safeThumb(
-  sourcePath: string,
-  offsetMs: number,
-  fallbackMs: number,
-  outputPath: string,
-): Promise<string | null> {
-  for (const ms of [offsetMs, fallbackMs]) {
-    try {
-      await clipExtractor.thumbnail({ sourcePath, offsetMs: ms, outputPath })
-      return outputPath
-    } catch {
-      // try next offset
-    }
-  }
-  log.warn('[ClipExtract] Thumbnail skipped — all seek offsets failed:', outputPath)
-  return null
-}
-
 async function extractMatchClips(
   videoPath: string,
   timeline: MatchData | null,
   analysisJobId: string | null
 ): Promise<void> {
-  if (!fs.existsSync(videoPath)) {
-    log.warn('[ClipExtract] Source video not found — skipping clip extraction:', videoPath)
-    logActivity('Clip extraction skipped — recording file not found')
-    return
-  }
-
-  const recordingStart = currentRecordingStartTime ?? 0
-  const map = timeline?.map ?? null
-  const agent = timeline?.agent ?? null
-  const extractedClipIds: string[] = []
-
-  // Log kill videoOffsetMs values for diagnostics
-  if (timeline?.playerKills && timeline.playerKills.length > 0) {
-    const sample = timeline.playerKills.slice(0, 5).map(k =>
-      `R${(k.round ?? -1) + 1}@${k.videoOffsetMs != null ? `${(k.videoOffsetMs / 1000).toFixed(1)}s` : 'null'}`
-    ).join(', ')
-    log.info(`[ClipExtract] kills=${timeline.playerKills.length} first5_offsets=[${sample}] videoPath=${videoPath}`)
-  }
-
-  // ── Hotkey bookmarks → 30s manual clips ─────────────────────────────
-  for (const bookmarkedAt of hotkeyBookmarks) {
-    const offsetMs = bookmarkedAt - recordingStart
-    const startMs = Math.max(0, offsetMs - 25_000)
-    try {
-      const tempRecord = clipStore.add({
-        path: '',
-        thumbPath: null,
-        trigger: 'hotkey',
-        map, agent,
-        durationSeconds: 30,
-        round: null,
-        killCount: null,
-        analysisJobId,
-      })
-      const clipPath = ClipExtractor.clipPath(tempRecord.id)
-      const thumbPath = ClipExtractor.thumbPath(tempRecord.id)
-      await clipExtractor.extract({ sourcePath: videoPath, startOffsetMs: startMs, durationMs: 30_000, outputPath: clipPath })
-      const resolvedThumb = await safeThumb(videoPath, offsetMs, startMs, thumbPath)
-      clipStore.update(tempRecord.id, { path: clipPath, thumbPath: resolvedThumb })
-      extractedClipIds.push(tempRecord.id)
-      logActivity(`Saved hotkey clip (${map ?? 'unknown map'})`)
-    } catch (err) {
-      log.warn('[ClipExtract] Hotkey clip failed:', err)
-      reportError({ message: `[ClipExtract] Hotkey clip failed: ${(err as Error)?.message}`, stack: (err as Error)?.stack, component: 'desktop:ClipExtract' })
-    }
-  }
-
-  // ── Kill clips from timeline ─────────────────────────────────────────
-  if (timeline?.playerKills && timeline.playerKills.length > 0) {
-    // Group player kills by round
-    const killsByRound = new Map<number, typeof timeline.playerKills>()
-    for (const kill of timeline.playerKills) {
-      const r = kill.round ?? -1
-      if (!killsByRound.has(r)) killsByRound.set(r, [])
-      killsByRound.get(r)!.push(kill)
-    }
-
-    // Detect clutch rounds first (highest priority)
-    const clutchRounds = detectClutchRounds(timeline)
-
-    // Categorize non-clutch rounds: ace (5+), 4k, 3k → combined clips
-    const combinedRounds = new Map<number, {
-      kills: typeof timeline.playerKills
-      trigger: 'ace' | 'multikill'
-      killCount: number
-    }>()
-    for (const [round, kills] of killsByRound.entries()) {
-      if (clutchRounds.has(round)) continue // clutch takes priority
-      if (kills.length >= 5) {
-        combinedRounds.set(round, { kills, trigger: 'ace', killCount: kills.length })
-      } else if (kills.length >= 3) {
-        combinedRounds.set(round, { kills, trigger: 'multikill', killCount: kills.length })
-      }
-    }
-
-    // Individual kill clips — skip clutch and combined rounds (up to 6 clips)
-    const topKills = timeline.playerKills
-      .filter(k => {
-        const r = k.round ?? -1
-        return !clutchRounds.has(r) && !combinedRounds.has(r) && k.videoOffsetMs != null
-      })
-      .slice(0, 6)
-
-    for (const kill of topKills) {
-      const offsetMs = kill.videoOffsetMs!
-      const startMs = Math.max(0, offsetMs - 8_000)
-      try {
-        const tempRecord = clipStore.add({
-          path: '',
-          thumbPath: null,
-          trigger: 'kill',
-          map, agent,
-          durationSeconds: 13,
-          round: kill.round ?? null,
-          killCount: null,
-          analysisJobId,
-        })
-        const clipPath = ClipExtractor.clipPath(tempRecord.id)
-        const thumbPath = ClipExtractor.thumbPath(tempRecord.id)
-        await clipExtractor.extract({ sourcePath: videoPath, startOffsetMs: startMs, durationMs: 13_000, outputPath: clipPath })
-        const resolvedThumb = await safeThumb(videoPath, offsetMs, startMs, thumbPath)
-        clipStore.update(tempRecord.id, { path: clipPath, thumbPath: resolvedThumb })
-        extractedClipIds.push(tempRecord.id)
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err)
-        log.warn('[ClipExtract] Kill clip failed:', msg)
-        logActivity(`Clip extraction error (kill): ${msg.slice(0, 120)}`)
-        reportError({ message: `[ClipExtract] Kill clip failed: ${msg}`, stack: (err as Error)?.stack, component: 'desktop:ClipExtract' })
-      }
-    }
-
-    // Combined clips: ace (5k+), 4k, 3k
-    for (const [round, { kills: roundKills, trigger, killCount }] of combinedRounds.entries()) {
-      const validKills = roundKills.filter(k => k.videoOffsetMs != null)
-      if (validKills.length === 0) continue
-      const first = validKills.reduce((a, b) => a.videoOffsetMs! < b.videoOffsetMs! ? a : b)
-      const last = validKills.reduce((a, b) => a.videoOffsetMs! > b.videoOffsetMs! ? a : b)
-      // Larger pre/post buffers for multi-kill sequences: some kills may be detected
-      // slightly out-of-order or at the boundary of the valid window.
-      // Ace: 10s pre-buffer, 20s post-buffer. 4k/3k: 8s pre, 18s post.
-      const preBuffer = trigger === 'ace' ? 10_000 : 8_000
-      const postBuffer = trigger === 'ace' ? 20_000 : 18_000
-      const startMs = Math.max(0, first.videoOffsetMs! - preBuffer)
-      const durationMs = Math.min(last.videoOffsetMs! - first.videoOffsetMs! + postBuffer, 120_000)
-      try {
-        const tempRecord = clipStore.add({
-          path: '',
-          thumbPath: null,
-          trigger,
-          map, agent,
-          durationSeconds: durationMs / 1000,
-          round,
-          killCount,
-          analysisJobId,
-        })
-        const clipPath = ClipExtractor.clipPath(tempRecord.id)
-        const thumbPath = ClipExtractor.thumbPath(tempRecord.id)
-        await clipExtractor.extract({ sourcePath: videoPath, startOffsetMs: startMs, durationMs, outputPath: clipPath })
-        const resolvedThumb = await safeThumb(videoPath, first.videoOffsetMs!, startMs, thumbPath)
-        clipStore.update(tempRecord.id, { path: clipPath, thumbPath: resolvedThumb })
-        extractedClipIds.push(tempRecord.id)
-        const label = trigger === 'ace' ? 'Ace' : `${killCount}K`
-        logActivity(`${label} clip saved — Round ${round + 1} (${map ?? 'unknown'})`)
-      } catch (err) {
-        log.warn(`[ClipExtract] ${trigger} clip failed:`, err)
-        reportError({ message: `[ClipExtract] ${trigger} clip failed: ${(err as Error)?.message}`, stack: (err as Error)?.stack, component: 'desktop:ClipExtract' })
-      }
-    }
-
-    // Clutch clips — 15s buffer before first kill to capture setup; 20s post-buffer
-    for (const round of clutchRounds) {
-      const clutchKills = timeline.playerKills.filter(k => (k.round ?? -1) === round && k.videoOffsetMs != null)
-      if (clutchKills.length === 0) continue
-      const first = clutchKills.reduce((a, b) => a.videoOffsetMs! < b.videoOffsetMs! ? a : b)
-      const last = clutchKills.reduce((a, b) => a.videoOffsetMs! > b.videoOffsetMs! ? a : b)
-      const startMs = Math.max(0, first.videoOffsetMs! - 15_000)
-      const durationMs = Math.min(last.videoOffsetMs! - first.videoOffsetMs! + 20_000, 120_000)
-      try {
-        const tempRecord = clipStore.add({
-          path: '',
-          thumbPath: null,
-          trigger: 'clutch',
-          map, agent,
-          durationSeconds: durationMs / 1000,
-          round,
-          killCount: clutchKills.length,
-          analysisJobId,
-        })
-        const clipPath = ClipExtractor.clipPath(tempRecord.id)
-        const thumbPath = ClipExtractor.thumbPath(tempRecord.id)
-        await clipExtractor.extract({ sourcePath: videoPath, startOffsetMs: startMs, durationMs, outputPath: clipPath })
-        const resolvedThumb = await safeThumb(videoPath, first.videoOffsetMs!, startMs, thumbPath)
-        clipStore.update(tempRecord.id, { path: clipPath, thumbPath: resolvedThumb })
-        extractedClipIds.push(tempRecord.id)
-        logActivity(`Clutch clip saved — Round ${round + 1} (${map ?? 'unknown'})`)
-      } catch (err) {
-        log.warn('[ClipExtract] Clutch clip failed:', err)
-        reportError({ message: `[ClipExtract] Clutch clip failed: ${(err as Error)?.message}`, stack: (err as Error)?.stack, component: 'desktop:ClipExtract' })
-      }
-    }
-  }
-
-  if (extractedClipIds.length > 0) {
-    logActivity(`${extractedClipIds.length} clip${extractedClipIds.length === 1 ? '' : 's'} saved from match`)
-    mainWindow?.webContents.send('clips:new', extractedClipIds)
-    if (lastMatchDiagnostic) lastMatchDiagnostic.clipsExtracted = extractedClipIds.length
-    if (Notification.isSupported()) {
-      new Notification({
-        title: 'UpForge — Clips Ready',
-        body: `${extractedClipIds.length} highlight clip${extractedClipIds.length === 1 ? '' : 's'} saved`,
-        silent: notifySilent(),
-      }).show()
-    }
-  } else {
-    const killCount = timeline?.playerKills?.length ?? 0
-    const hotkeyCount = hotkeyBookmarks.length
-    if (killCount === 0 && hotkeyCount === 0) {
-      logActivity('No clips extracted — no kills in timeline (MatchDetails may not be ready yet) and no hotkey bookmarks')
-    } else if (killCount === 0) {
-      logActivity('No kill clips extracted — no kills in timeline; hotkey clips may have been saved')
-    } else {
-      logActivity('No clips extracted — all kills lacked video timestamps')
-    }
-    log.info(`[ClipExtract] 0 clips produced — kills=${killCount} hotkeys=${hotkeyCount} timeline=${!!timeline}`)
-  }
-
-  // Reset bookmarks for next match
-  hotkeyBookmarks.length = 0
-  currentRecordingStartTime = null
+  return clipPipeline.extractMatchClips(videoPath, timeline, analysisJobId)
 }
 
-/**
- * Fire-and-forget pre-game brief using the player's historical brain data.
- * Fetches the top weaknesses and agent/map recommendations and shows a
- * desktop notification so the player can mentally prepare before the match.
- * Optional agent and map context personalise the brief to the current match.
- */
 function requestPregameBrief(context?: { agent?: string | null; map?: string | null; mode?: string | null }): void {
-  if (!authManager.getToken()) {
-    logActivity('Pre-game brief skipped — not logged in')
-    return
-  }
-
-  const params = new URLSearchParams()
-  if (context?.agent) params.set('agent', context.agent)
-  if (context?.map) params.set('map', context.map)
-  params.set('t', Date.now().toString())
-  const url = `https://upforge.gg/valorant/pregame-brief?${params.toString()}`
-
-  shell.openExternal(url)
-  logActivity('Pre-game brief: opened in browser')
+  _requestPregameBrief(() => authManager.getToken(), logActivity, context)
 }
 
-/**
- * Fire-and-forget post-game debrief using Riot Live Client match data.
- * Calls the Laravel /api/desktop-submissions/debrief endpoint which proxies to
- * the AI service for a quick Claude round-by-round coaching breakdown.
- * Sends the result to the post-game window via 'post-game:debrief'.
- */
 async function requestPostGameDebrief(opts: {
   riotName: string
   riotTag: string
@@ -682,279 +275,32 @@ async function requestPostGameDebrief(opts: {
   timeline: MatchData
   sendToWindow: (channel: string, payload?: unknown) => void
 }): Promise<void> {
-  const { riotName, riotTag, agent, map, timeline, sendToWindow } = opts
-  const token = authManager.getToken()
-  if (!token) return
-
-  const apiUrl = process.env['VITE_API_URL'] || 'https://api.upforge.gg'
-
-  const body = JSON.stringify({
-    riot_name: riotName,
-    riot_tag:  riotTag,
-    agent,
-    map,
-    match_data: timeline,
-  })
-
-  const parsedUrl = new URL(`${apiUrl}/api/desktop-submissions/debrief`)
-  const proto = parsedUrl.protocol === 'https:' ? await import('https') : await import('http')
-
-  return new Promise((resolve) => {
-    const req = proto.default.request({
-      method:   'POST',
-      hostname: parsedUrl.hostname,
-      port:     parsedUrl.port || (parsedUrl.protocol === 'https:' ? 443 : 80),
-      path:     parsedUrl.pathname,
-      headers: {
-        'Content-Type':   'application/json',
-        'Content-Length': Buffer.byteLength(body),
-        'Authorization':  `Bearer ${token}`,
-        'Accept':         'application/json',
-      },
-    }, (res) => {
-      let data = ''
-      res.on('data', (c) => { data += c })
-      res.on('end', () => {
-        try {
-          const json = JSON.parse(data)
-          if ((res.statusCode ?? 0) >= 400) {
-            const errMsg = json.message ?? json.error ?? `HTTP ${res.statusCode}`
-            log.warn('[Debrief] API error:', res.statusCode, errMsg)
-            reportError({ message: `[Debrief] API error ${res.statusCode}: ${errMsg}`, component: 'desktop:Debrief', extra: { statusCode: res.statusCode } })
-            sendToWindow('post-game:debrief', null)
-          } else {
-            log.info(`[Debrief] Generated for ${riotName}#${riotTag} cost=$${json.estimated_cost_usd ?? 0}`)
-            sendToWindow('post-game:debrief', {
-              debrief: json.debrief_text,
-              agent,
-              map,
-              discordLinked: json.discord_linked ?? false,
-            })
-          }
-        } catch {
-          log.warn('[Debrief] Non-JSON response:', data.slice(0, 200))
-          sendToWindow('post-game:debrief', null)
-        }
-        resolve()
-      })
-    })
-    req.on('error', (err) => {
-      log.warn('[Debrief] Request error:', err.message)
-      reportError({ message: `[Debrief] Request error: ${err.message}`, stack: err.stack, component: 'desktop:Debrief' })
-      sendToWindow('post-game:debrief', null)
-      resolve()
-    })
-    req.setTimeout(120_000, () => {
-      req.destroy(new Error('Debrief request timed out after 120s'))
-    })
-    req.write(body)
-    req.end()
+  return _requestPostGameDebrief({
+    ...opts,
+    getToken: () => authManager.getToken(),
+    apiUrl: process.env['VITE_API_URL'],
   })
 }
 
 function createMainWindow(startAuthenticated: boolean = false): BrowserWindow {
-  const win = new BrowserWindow({
-    width: startAuthenticated ? 1280 : 860,
-    height: startAuthenticated ? 800 : 580,
-    minWidth: 980,
-    minHeight: 660,
-    resizable: true,
-    show: false,
-    frame: false,
-    titleBarStyle: 'hidden',
-    backgroundColor: '#0a0f1c',
-    icon: join(__dirname, '../../resources/icon.ico'),
-    webPreferences: {
-      preload: join(__dirname, '../preload/index.js'),
-      contextIsolation: true,
-      nodeIntegration: false,
-      sandbox: false
-    },
-  })
-
-  win.on('ready-to-show', () => {
-    win.show()
-    if (startAuthenticated) win.maximize()
-  })
-
-  let rendererCrashCount = 0
-  win.webContents.on('render-process-gone', (_event, details) => {
-    console.error('[Main] Renderer process gone:', details.reason)
-    if (details.reason !== 'clean-exit') {
-      rendererCrashCount++
-      if (rendererCrashCount > 3) {
-        console.error('[Main] Renderer crashed too many times — not reloading to prevent loop')
-        return
-      }
-      const delay = Math.min(1000 * Math.pow(2, rendererCrashCount - 1), 15_000)
-      console.warn(`[Main] Reloading renderer (attempt ${rendererCrashCount}/3) in ${delay}ms`)
-      setTimeout(() => {
-        try {
-          if (!win.isDestroyed()) {
-            if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
-              win.loadURL(process.env['ELECTRON_RENDERER_URL'])
-            } else {
-              win.loadFile(join(__dirname, '../renderer/index.html'))
-            }
-            // Reset crash counter on successful reload
-            win.webContents.once('did-finish-load', () => { rendererCrashCount = 0 })
-          }
-        } catch (e) {
-          console.error('[Main] Failed to reload renderer:', e)
-        }
-      }, delay)
-    }
-  })
-  win.on('close', (e) => {
-    // Minimise to tray instead of closing — unless app is actually quitting
-    if (!isQuitting) {
-      e.preventDefault()
-      win.hide()
-    }
-  })
-
-  win.webContents.setWindowOpenHandler(({ url }) => {
-    shell.openExternal(url)
-    return { action: 'deny' }
-  })
-
-  if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
-    win.loadURL(process.env['ELECTRON_RENDERER_URL'])
-  } else {
-    win.loadFile(join(__dirname, '../renderer/index.html'))
-  }
-
-  return win
+  return _createMainWindow(startAuthenticated, () => isQuitting)
 }
 
 function createPostGameWindow(): BrowserWindow {
-  const win = new BrowserWindow({
-    width: 380,
-    height: 300,
-    resizable: false,
-    frame: false,
-    alwaysOnTop: true,
-    skipTaskbar: false,
-    backgroundColor: '#0a0f1c',
-    icon: join(__dirname, '../../resources/icon.ico'),
-    webPreferences: {
-      preload: join(__dirname, '../preload/index.js'),
-      contextIsolation: true,
-      nodeIntegration: false,
-      sandbox: false
-    }
-  })
-
-  // Position bottom-right corner
-  const display = screen.getPrimaryDisplay()
-  const { width, height } = display.workAreaSize
-  win.setPosition(width - 400, height - 320)
-
-  if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
-    win.loadURL(`${process.env['ELECTRON_RENDERER_URL']}#/post-game`)
-  } else {
-    win.loadFile(join(__dirname, '../renderer/index.html'), { hash: 'post-game' })
-  }
-
-  return win
+  return _createPostGameWindow()
 }
 
 function createTray(): void {
-  const icon = nativeImage.createFromPath(join(__dirname, '../../resources/tray-icon.png'))
-  tray = new Tray(icon.resize({ width: 16, height: 16 }))
-
-  const updateTrayMenu = (): void => {
-    const pendingCount = recordingsStore?.getPending().length ?? 0
-    const pendingLabel = pendingCount === 1
-      ? '1 recording pending analysis'
-      : pendingCount > 1
-        ? `${pendingCount} recordings pending analysis`
-        : null
-
-    const menuTemplate: Electron.MenuItemConstructorOptions[] = [
-      {
-        label: 'Open UpForge',
-        click: () => {
-          if (!mainWindow) {
-            mainWindow = createMainWindow()
-          } else {
-            mainWindow.show()
-            mainWindow.focus()
-          }
-        }
-      },
-      { type: 'separator' },
-      {
-        label: 'Open in Browser',
-        click: () => shell.openExternal('https://upforge.gg/dashboard')
-      },
-      { type: 'separator' },
-      {
-        label: 'Recording: ' + (recorder.isRecording() ? '● Active' : '○ Idle'),
-        enabled: false
-      },
-    ]
-
-    if (pendingLabel) {
-      menuTemplate.push({
-        label: pendingLabel,
-        click: () => {
-          if (!mainWindow) {
-            mainWindow = createMainWindow()
-          } else {
-            mainWindow.show()
-            mainWindow.focus()
-          }
-        }
-      })
-    }
-
-    menuTemplate.push(
-      { type: 'separator' },
-      {
-        label: 'Open Clips Folder',
-        click: () => shell.openPath(ClipExtractor.clipsDir())
-      },
-      {
-        label: 'Quit UpForge',
-        click: () => {
-          app.quit()
-        }
-      }
-    )
-
-    const menu = Menu.buildFromTemplate(menuTemplate)
-    tray!.setContextMenu(menu)
-  }
-
-  tray.setToolTip('UpForge — AI Coaching')
-  updateTrayMenu()
-
-  // Single click toggles window (Mac: click fires before context menu on some versions)
-  tray.on('click', () => {
-    if (!mainWindow) {
-      mainWindow = createMainWindow()
-    } else if (mainWindow.isVisible()) {
-      mainWindow.hide()
-    } else {
-      mainWindow.show()
-      mainWindow.focus()
-    }
+  const result = _createTray({
+    getMainWindow: () => mainWindow,
+    setMainWindow: (win) => { mainWindow = win },
+    isRecording: () => recorder.isRecording(),
+    getPendingCount: () => recordingsStore?.getPending().length ?? 0,
+    createMainWindowFn: () => createMainWindow(),
   })
-
-  tray.on('double-click', () => {
-    if (!mainWindow) {
-      mainWindow = createMainWindow()
-    } else {
-      mainWindow.show()
-      mainWindow.focus()
-    }
-  })
-
-  // Refresh tray menu on recording state changes (event-driven) and fall back to
-  // a low-frequency interval only to catch changes in pending-recording counts.
-  updateTrayMenuFn = updateTrayMenu
-  trayRefreshInterval = setInterval(updateTrayMenu, 30_000)
+  tray = result.tray
+  updateTrayMenuFn = result.updateMenu
+  trayRefreshInterval = result.refreshInterval
 }
 
 function setupGameDetection(): void {
@@ -2028,29 +1374,7 @@ async function doUploadAndAnalyse(
 }
 
 function createSplashWindow(): BrowserWindow {
-  const win = new BrowserWindow({
-    width: 680,
-    height: 440,
-    resizable: false,
-    frame: false,
-    center: true,
-    skipTaskbar: false,
-    backgroundColor: '#0a0f1c',
-    webPreferences: {
-      preload: join(__dirname, '../preload/index.js'),
-      contextIsolation: true,
-      nodeIntegration: false,
-      sandbox: false
-    }
-  })
-
-  if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
-    win.loadURL(`${process.env['ELECTRON_RENDERER_URL']}#/splash`)
-  } else {
-    win.loadFile(join(__dirname, '../renderer/index.html'), { hash: 'splash' })
-  }
-
-  return win
+  return _createSplashWindow()
 }
 
 app.whenReady().then(async () => {
