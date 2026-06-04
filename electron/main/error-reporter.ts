@@ -99,7 +99,7 @@ export function setupMainProcessErrorHandlers(authManager: AuthManager): void {
   process.on('unhandledRejection', (reason: unknown) => {
     const error = reason instanceof Error ? reason : new Error(String(reason))
     // electron-updater can reject before latest.yml is uploaded to a new GitHub release
-    if (/latest\.yml/i.test(error.message) && /404|not found|cannot find/i.test(error.message)) {
+    if (/latest\.yml/i.test(error.message) && /404|not found|cannot find|httperror/i.test(error.message)) {
       log.warn('[Main] Ignoring transient updater metadata rejection:', error.message)
       return
     }

@@ -50,17 +50,26 @@ jobs:
         env:
           npm_config_msvs_version: "2022"
 
-      - name: Build & publish Windows release (on tag)
+      - name: Build Windows installer (tag — publish in publish-release job)
         if: startsWith(github.ref, 'refs/tags/v')
-        run: npm run build && npx electron-builder --win --publish always
-        env:
-          GH_TOKEN: ${{ secrets.GH_TOKEN }}
+        run: npm run build && npx electron-builder --win --publish never
 
       - name: Build Windows installer (dev artifact)
         if: "!startsWith(github.ref, 'refs/tags/v')"
         run: npm run build && npx electron-builder --win --publish never
 
-      - name: Upload Windows artifact
+      - name: Upload Windows release artifacts
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: actions/upload-artifact@v4
+        with:
+          name: UpForge-Windows
+          path: |
+            dist/latest.yml
+            dist/*.exe
+            dist/*.exe.blockmap
+          retention-days: 7
+
+      - name: Upload Windows dev artifact
         if: "!startsWith(github.ref, 'refs/tags/v')"
         uses: actions/upload-artifact@v4
         with:
@@ -88,20 +97,74 @@ jobs:
           cp "$(which ffmpeg)" resources/ffmpeg/ffmpeg
           echo "ffmpeg bundled: $(wc -c < resources/ffmpeg/ffmpeg) bytes"
 
-      - name: Build & publish Mac release (on tag)
+      - name: Build Mac installer (tag — publish in publish-release job)
         if: startsWith(github.ref, 'refs/tags/v')
-        run: npm run build && npx electron-builder --mac --publish always
-        env:
-          GH_TOKEN: ${{ secrets.GH_TOKEN }}
+        run: npm run build && npx electron-builder --mac --publish never
 
       - name: Build Mac installer (dev artifact)
         if: "!startsWith(github.ref, 'refs/tags/v')"
         run: npm run build && npx electron-builder --mac --publish never
 
-      - name: Upload Mac artifact
+      - name: Upload Mac release artifacts
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: actions/upload-artifact@v4
+        with:
+          name: UpForge-Mac
+          path: |
+            dist/latest-mac.yml
+            dist/*.dmg
+            dist/*.dmg.blockmap
+          retention-days: 7
+
+      - name: Upload Mac dev artifact
         if: "!startsWith(github.ref, 'refs/tags/v')"
         uses: actions/upload-artifact@v4
         with:
           name: UpForge-Mac
           path: dist/*.dmg
           retention-days: 30
+
+  # Single publish step: upload latest.yml BEFORE installers so auto-updater never 404s.
+  publish-release:
+    needs: [build-win, build-mac]
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: UpForge-*
+          merge-multiple: true
+          path: dist
+
+      - name: Publish GitHub release (metadata first)
+        env:
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}
+        run: |
+          TAG="${GITHUB_REF#refs/tags/}"
+          VERSION="${TAG#v}"
+          test -f dist/latest.yml || (echo "missing dist/latest.yml" && exit 1)
+          test -f dist/latest-mac.yml || (echo "missing dist/latest-mac.yml" && exit 1)
+
+          if ! gh release view "$TAG" --repo "${{ github.repository }}" >/dev/null 2>&1; then
+            gh release create "$TAG" --repo "${{ github.repository }}" --title "$VERSION" --notes "See commit history for changes."
+          fi
+
+          echo "Uploading auto-update metadata first…"
+          gh release upload "$TAG" --repo "${{ github.repository }}" dist/latest.yml dist/latest-mac.yml --clobber
+
+          echo "Uploading installers…"
+          gh release upload "$TAG" --repo "${{ github.repository }}" \
+            dist/*.exe dist/*.exe.blockmap dist/*.dmg dist/*.dmg.blockmap --clobber
+
+          echo "Verifying latest.yml is downloadable…"
+          for i in $(seq 1 12); do
+            if curl -sfL "https://github.com/${{ github.repository }}/releases/download/${TAG}/latest.yml" >/dev/null; then
+              echo "latest.yml is live"
+              exit 0
+            fi
+            echo "Waiting for CDN… ($i/12)"
+            sleep 5
+          done
+          echo "WARNING: latest.yml not yet reachable after upload"

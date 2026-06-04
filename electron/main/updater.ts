@@ -18,9 +18,9 @@ export interface UpdateState {
 let state: UpdateState = { phase: 'idle' }
 let startupComplete = false
 
-/** CI uploads release assets over several minutes; latest.yml is often last. */
+/** CI may expose a release before latest.yml is on the CDN — treat as transient. */
 function isMissingReleaseMetadata(message: string): boolean {
-  return /latest\.yml/i.test(message) && (/404|not found|cannot find/i.test(message))
+  return /latest\.yml/i.test(message) && (/404|not found|cannot find|httperror/i.test(message))
 }
 
 function sleep(ms: number): Promise<void> {
@@ -53,13 +53,11 @@ export function setupAutoUpdater(
   onReady: () => void,
   beforeQuit?: () => void
 ): void {
-  // Only run in production
   if (!app.isPackaged) {
     onReady()
     return
   }
 
-  // Guard: onReady must only ever fire once, even if multiple updater events arrive
   let readyCalled = false
   const safeOnReady = () => {
     if (readyCalled) return
@@ -67,12 +65,29 @@ export function setupAutoUpdater(
     onReady()
   }
 
-  // Send to splash (startup phase) and broadcast to all windows (post-startup)
   const send = (channel: string, payload?: unknown) => {
     if (splashWindow && !splashWindow.isDestroyed()) {
       splashWindow.webContents.send(channel, payload)
     }
     if (startupComplete) broadcastToAll(channel, payload)
+  }
+
+  // Never leave splash stuck if updater hangs
+  const startupDeadline = setTimeout(() => {
+    log.warn('[Updater] Startup check timed out — continuing without update')
+    safeOnReady()
+  }, 3 * 60 * 1000)
+
+  const finishStartup = () => {
+    clearTimeout(startupDeadline)
+    safeOnReady()
+  }
+
+  let startupCheckDone = false
+  const finishStartupCheck = () => {
+    if (startupCheckDone) return
+    startupCheckDone = true
+    finishStartup()
   }
 
   autoUpdater.on('checking-for-update', () => {
@@ -85,7 +100,12 @@ export function setupAutoUpdater(
     state = { phase: 'available', version: info.version }
     log.info('[Updater] Update available:', info.version)
     send('updater:available', info)
-    autoUpdater.downloadUpdate()
+    void autoUpdater.downloadUpdate().catch((err: Error) => {
+      log.error('[Updater] downloadUpdate failed:', err.message)
+      state = { phase: 'error', error: err.message }
+      send('updater:error', err.message)
+      if (!startupComplete) finishStartupCheck()
+    })
   })
 
   autoUpdater.on('download-progress', (progress) => {
@@ -101,7 +121,6 @@ export function setupAutoUpdater(
     send('updater:downloaded', info)
 
     if (!startupComplete) {
-      // Startup flow: user is watching the splash — auto-install after brief pause
       setTimeout(() => {
         beforeQuit?.()
         BrowserWindow.getAllWindows().forEach(win => {
@@ -110,39 +129,45 @@ export function setupAutoUpdater(
         autoUpdater.quitAndInstall(true, true)
       }, 1500)
     }
-    // Post-startup: wait for user to click "Restart now" via updater:install IPC
   })
 
   autoUpdater.on('update-not-available', () => {
     state = { phase: 'idle' }
     log.info('[Updater] Up to date')
     send('updater:not-available')
-    safeOnReady()
+    finishStartupCheck()
   })
 
   autoUpdater.on('error', (err) => {
     const msg = err.message || String(err)
-    // Startup retries handle transient missing latest.yml; avoid duplicate handling.
-    if (!startupComplete && isMissingReleaseMetadata(msg)) return
+    if (!startupComplete && isMissingReleaseMetadata(msg)) {
+      log.warn('[Updater] Transient metadata error (handled by retry loop):', msg)
+      return
+    }
     state = { phase: 'error', error: msg }
     log.error('[Updater] Error:', msg)
     send('updater:error', msg)
-    safeOnReady()
+    if (!startupComplete) finishStartupCheck()
+    else if (!startupCheckDone) finishStartupCheck()
   })
 
-  const MAX_ATTEMPTS = 5
-  const RETRY_DELAY_MS = 12_000
+  const MAX_ATTEMPTS = 12
+  const RETRY_DELAY_MS = 10_000
+  const INITIAL_DELAY_MS = 8_000
 
   void (async () => {
+    await sleep(INITIAL_DELAY_MS)
+
     for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
       try {
         await autoUpdater.checkForUpdates()
+        // Resolved — wait for update-* events or not-available
         return
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err)
         if (isMissingReleaseMetadata(msg) && attempt < MAX_ATTEMPTS) {
           log.warn(
-            `[Updater] Release metadata not ready yet (${attempt}/${MAX_ATTEMPTS}), retrying in ${RETRY_DELAY_MS / 1000}s…`
+            `[Updater] Release metadata not ready (${attempt}/${MAX_ATTEMPTS}), retrying in ${RETRY_DELAY_MS / 1000}s…`
           )
           await sleep(RETRY_DELAY_MS)
           continue
@@ -154,7 +179,7 @@ export function setupAutoUpdater(
           state = { phase: 'error', error: msg }
           send('updater:error', msg)
         }
-        safeOnReady()
+        finishStartupCheck()
         return
       }
     }
