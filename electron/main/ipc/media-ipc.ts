@@ -7,20 +7,21 @@ import { IpcMain, app, desktopCapturer } from 'electron'
 import fs from 'fs'
 import path from 'path'
 import log from 'electron-log'
-import { Recorder } from '../recorder'
+import type { MatchRecorder } from '../match-recorder'
 import { OBSRecorder } from '../obs-recorder'
 import { SettingsManager } from '../settings-manager'
 import { setPendingCaptureSourceId } from './api-helpers'
 
 export function setupMediaHandlers(
   ipcMain: IpcMain,
-  recorder: Recorder,
+  getActiveRecorder: () => MatchRecorder,
   settingsManager: SettingsManager,
   obsRecorder?: OBSRecorder,
 ): void {
   // ── Recorder ──────────────────────────────────────────────────────────────
 
   ipcMain.handle('recorder:stop', async () => {
+    const recorder = getActiveRecorder()
     if (!recorder.isRecording()) return { ok: false, reason: 'not_recording' }
     try {
       await recorder.stop()
@@ -34,6 +35,7 @@ export function setupMediaHandlers(
   ipcMain.handle('recorder:audio-status', () => {
     const settings = settingsManager.get()
     const obsActive = settings.obsEnabled && obsRecorder?.isConnected()
+    const recorder = getActiveRecorder()
     return {
       winAudioMode: obsActive ? 'obs-websocket' : recorder.getAudioMode(),
       audioEnabled: obsActive ? true : settings.audioEnabled,
@@ -45,7 +47,7 @@ export function setupMediaHandlers(
     if (settings.obsEnabled && obsRecorder?.isConnected()) {
       return { winAudioMode: 'obs-websocket' }
     }
-    const mode = await recorder.redetectAudio()
+    const mode = await getActiveRecorder().redetectAudio()
     return { winAudioMode: mode }
   })
 

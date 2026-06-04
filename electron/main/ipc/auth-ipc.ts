@@ -6,7 +6,7 @@
 import { IpcMain, BrowserWindow } from 'electron'
 import log from 'electron-log'
 import { AuthManager } from '../auth-manager'
-import { Recorder } from '../recorder'
+import type { MatchRecorder } from '../match-recorder'
 import { GameDetector } from '../game-detector'
 import { UploadManager } from '../upload-manager'
 import { cancelAllPollingTimers } from './api-helpers'
@@ -14,7 +14,7 @@ import { cancelAllPollingTimers } from './api-helpers'
 export function setupAuthHandlers(
   ipcMain: IpcMain,
   auth: AuthManager,
-  recorder: Recorder,
+  getActiveRecorder: () => MatchRecorder,
   gameDetector: GameDetector,
   uploadManager?: UploadManager,
 ): void {
@@ -42,6 +42,7 @@ export function setupAuthHandlers(
   })
 
   ipcMain.handle('auth:logout', async () => {
+    const recorder = getActiveRecorder()
     if (recorder.isRecording()) {
       try { await recorder.stop() } catch { /* ignore */ }
     }
@@ -136,7 +137,7 @@ export function setupAuthHandlers(
   })
 
   ipcMain.handle('squad:sync-presence', async () => {
-    await auth.sendPresence(recorder.isRecording(), gameDetector.currentGame())
+    await auth.sendPresence(getActiveRecorder().isRecording(), gameDetector.currentGame())
     return { ok: true }
   })
 }

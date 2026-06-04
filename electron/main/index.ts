@@ -15,7 +15,9 @@ import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import { setupAutoUpdater, markStartupComplete } from './updater'
 import { GameDetector } from './game-detector'
 import { Recorder } from './recorder'
+import { DesktopRecorder } from './desktop-recorder'
 import { OBSRecorder } from './obs-recorder'
+import type { ActiveMatchRecorder } from './match-recorder'
 import { RiotLocalApi } from './riot-local-api'
 import { UploadManager, savePendingJob, clearPendingJob, readPendingJob } from './upload-manager'
 import { AuthManager } from './auth-manager'
@@ -86,7 +88,11 @@ let updateTrayMenuFn: (() => void) | null = null
 let ffmpegOk = true // updated after preflight; exposed via app:get-status
 
 const gameDetector = new GameDetector()
-const recorder = new Recorder()
+/** Bundled ffmpeg — used for preflight + clip remux; not the primary match recorder. */
+const ffmpegRecorder = new Recorder()
+const desktopRecorder = new DesktopRecorder(() =>
+  mainWindow && !mainWindow.isDestroyed() ? mainWindow.webContents : null
+)
 const obsRecorder = new OBSRecorder(() => {
   const s = settingsManager?.get()
   return {
@@ -97,42 +103,43 @@ const obsRecorder = new OBSRecorder(() => {
   }
 })
 
-/** Returns the active recorder — OBS when enabled & connected, desktopCapturer otherwise. */
-function activeRecorder(): Recorder | OBSRecorder {
+/** Returns the active recorder — OBS when enabled & connected, else Electron desktop capture. */
+function activeRecorder(): ActiveMatchRecorder {
   if (settingsManager?.get().obsEnabled && obsRecorder.isConnected()) return obsRecorder
-  return recorder
+  return desktopRecorder
+}
+
+function wireRecorderStatus(rec: ActiveMatchRecorder, label: string): void {
+  rec.onStatusChange = (recording, error) => {
+    mainWindow?.webContents.send('recording:status-changed', { recording, error: error ?? null })
+    updateTrayMenuFn?.()
+    if (recording) {
+      discordRPC.setRecording(gameDetector.currentGame() || 'valorant', new Date())
+    } else if (gameDetector.currentGame()) {
+      discordRPC.setInGame(gameDetector.currentGame()!)
+    } else {
+      discordRPC.setIdle()
+    }
+    if (!recording && error) {
+      console.warn(`[Main] ${label} recording stopped with error:`, error)
+      tray?.setToolTip('UpForge — Recording stopped!')
+      if (Notification.isSupported()) {
+        new Notification({
+          title: 'UpForge — Recording Stopped',
+          body: 'Recording stopped unexpectedly. Open UpForge to see details.',
+          silent: notifySilent()
+        }).show()
+      }
+      setTimeout(() => tray?.setToolTip(idleTooltip()), 10_000)
+    }
+  }
 }
 const clipExtractor = new ClipExtractor()
 const clipStore = new ClipStore()
 const hotkeyManager = new HotkeyManager()
 const trainerBridge = new TrainerBridge(() => mainWindow)
 const discordRPC = new DiscordRPC()
-recorder.onStatusChange = (recording, error) => {
-  mainWindow?.webContents.send('recording:status-changed', { recording, error: error ?? null })
-  updateTrayMenuFn?.() // keep tray in sync without waiting for the 30s interval
-  // Update Discord presence on recording state change
-  if (recording) {
-    discordRPC.setRecording(gameDetector.currentGame() || 'valorant', new Date())
-  } else if (gameDetector.currentGame()) {
-    discordRPC.setInGame(gameDetector.currentGame()!)
-  } else {
-    discordRPC.setIdle()
-  }
-  // If recording stopped unexpectedly due to an error, show a system notification
-  // so the user knows even if UpForge is in the background during a game
-  if (!recording && error) {
-    console.warn('[Main] Recording stopped with error:', error)
-    tray?.setToolTip('UpForge — Recording stopped!')
-    if (Notification.isSupported()) {
-      new Notification({
-        title: 'UpForge — Recording Stopped',
-        body: 'Recording stopped unexpectedly. Open UpForge to see details.',
-        silent: notifySilent()
-      }).show()
-    }
-    setTimeout(() => tray?.setToolTip(idleTooltip()), 10_000)
-  }
-}
+wireRecorderStatus(desktopRecorder, 'Desktop')
 const riotLocalApi = new RiotLocalApi()
 const authManager = new AuthManager()
 
@@ -140,23 +147,7 @@ const authManager = new AuthManager()
 setupMainProcessErrorHandlers(authManager)
 trainerBridge.setAuthManager(authManager)
 
-// OBS recorder callbacks — mirror the same tray/notification behaviour as desktopCapturer
-obsRecorder.onStatusChange = (recording, error) => {
-  mainWindow?.webContents.send('recording:status-changed', { recording, error: error ?? null })
-  updateTrayMenuFn?.()
-  if (!recording && error) {
-    console.warn('[Main] OBS recording stopped with error:', error)
-    tray?.setToolTip('UpForge — Recording stopped!')
-    if (Notification.isSupported()) {
-      new Notification({
-        title: 'UpForge — OBS Recording Stopped',
-        body: error,
-        silent: notifySilent()
-      }).show()
-    }
-    setTimeout(() => tray?.setToolTip(idleTooltip()), 10_000)
-  }
-}
+wireRecorderStatus(obsRecorder, 'OBS')
 
 // When OBS saves a replay buffer clip during a live match, add it to the clip store immediately
 obsRecorder.onReplayClipSaved = (clipPath, _trigger) => {
@@ -198,9 +189,9 @@ const activityLog: { time: number; message: string }[] = []
 const hotkeyBookmarks: number[] = []
 // Recording start time — set when recorder.start() succeeds
 let currentRecordingStartTime: number | null = null
-// The recorder instance chosen at match start (OBS if connected & enabled, else FFmpeg Recorder).
+// The recorder instance chosen at match start (OBS if connected & enabled, else desktop capture).
 // Stored so start/stop/getPath always use the same instance for a given match.
-let currentActiveRecorder: Recorder | OBSRecorder = recorder
+let currentActiveRecorder: ActiveMatchRecorder = desktopRecorder
 // Auto-hide timer for overlay flash feedback (clip bookmarked while overlay is hidden)
 let overlayAutoHideTimer: ReturnType<typeof setTimeout> | null = null
 
@@ -294,7 +285,7 @@ function createTray(): void {
   const result = _createTray({
     getMainWindow: () => mainWindow,
     setMainWindow: (win) => { mainWindow = win },
-    isRecording: () => recorder.isRecording(),
+    isRecording: () => currentActiveRecorder.isRecording(),
     getPendingCount: () => recordingsStore?.getPending().length ?? 0,
     createMainWindowFn: () => createMainWindow(),
   })
@@ -751,10 +742,11 @@ function setupGameDetection(): void {
         try {
           const state = await riotLocalApi.getSessionState()
 
-          // Resolve game mode from presence queueId (quick, available early)
-          if (!gameMode && state?.queueId) {
+          // Resolve game mode from presence queueId (available from queue through agent select)
+          if (state?.queueId) {
             const { normalizeQueueId } = await import('./riot-local-api')
             gameMode = normalizeQueueId(state.queueId)
+            modeConfident = true
           }
 
           // Pre-game brief is only useful for competitive/premier matches.
@@ -821,6 +813,12 @@ function setupGameDetection(): void {
               const { normalizeQueueId } = await import('./riot-local-api')
               gameMode = normalizeQueueId(state.queueId)
               modeConfident = true
+            } else {
+              const mode = await riotLocalApi.getGameMode()
+              if (mode) {
+                gameMode = mode
+                modeConfident = true
+              }
             }
             break
           }
@@ -870,15 +868,20 @@ function setupGameDetection(): void {
       return
     }
 
-    // If presence didn't give us a mode, try the log file as last resort
+    // If presence didn't give us a mode, try the log file as last resort (never overwrite queueId)
     if (!modeConfident) {
       const logMode = await riotLocalApi.getGameModeFromLog()
-      if (logMode) { gameMode = logMode; modeConfident = true }
+      if (logMode) {
+        if (!gameMode) gameMode = logMode
+        modeConfident = true
+      } else if (gameMode) {
+        modeConfident = true
+      }
     }
 
     if (filterByMode && modeConfident && gameMode && !recordedModes.includes(gameMode)) {
-      console.log(`[GameDetector] Skipping recording — mode is ${gameMode} (not in recordedModes)`)
-      logActivity(`Mode ${gameMode} not in recorded modes — skipped`)
+      console.log(`[GameDetector] Skipping recording — mode is ${gameMode} (recordedModes=${recordedModes.join(',')})`)
+      logActivity(`Mode ${gameMode} not in recorded modes (${recordedModes.join(', ')}) — skipped`)
       tray?.setToolTip(idleTooltip(game))
       // Valorant stays running between matches — re-arm detection once the skipped match ends.
       // Without this, no new 'game-started' event fires and all subsequent matches are missed.
@@ -1481,7 +1484,7 @@ app.whenReady().then(async () => {
   setupAutoUpdater(splashWindow, launchMainApp, () => { isQuitting = true })
 
   // Verify ffmpeg is accessible and log a warning if not — better to know early
-  recorder.preflight().then((result) => {
+  ffmpegRecorder.preflight().then((result) => {
     ffmpegOk = result.ok
     if (!result.ok) {
       console.error('[App] ffmpeg preflight FAILED:', result.error)
@@ -1506,11 +1509,9 @@ app.whenReady().then(async () => {
   // On Windows: detects WASAPI / DirectShow Stereo Mix.
   // On Mac: detects virtual loopback devices (BlackHole, Soundflower, Loopback, etc.).
   // This ensures the audio mode is cached before the user opens settings for the first time.
-  if (process.platform === 'win32' || process.platform === 'darwin') {
-    recorder.redetectAudio().catch((err) => {
-      console.warn('[App] Background audio detection failed:', err)
-    })
-  }
+  desktopRecorder.redetectAudio().catch((err) => {
+    console.warn('[App] Background audio detection failed:', err)
+  })
 
   // Auto-connect to OBS on startup if the user has it enabled.
   // Silently retries so a cold OBS start doesn't block the app.
@@ -1527,7 +1528,7 @@ app.whenReady().then(async () => {
     })
   }
 
-  setupIpcHandlers(ipcMain, authManager, recorder, gameDetector, settingsManager, () => {
+  setupIpcHandlers(ipcMain, authManager, () => currentActiveRecorder, gameDetector, settingsManager, () => {
     postGameWindow = createPostGameWindow()
     postGameWindow.webContents.once('did-finish-load', () => {
       postGameWindow?.webContents.send('post-game:upload-start', { game: 'valorant', map: 'Bind', agent: 'Jett' })
@@ -1596,7 +1597,7 @@ app.whenReady().then(async () => {
 
 
   ipcMain.handle('clips:save-bookmark', () => {
-    if (recorder.isRecording() && currentRecordingStartTime !== null) {
+    if (currentActiveRecorder.isRecording() && currentRecordingStartTime !== null) {
       hotkeyBookmarks.push(Date.now())
       logActivity('Clip moment bookmarked (overlay button)')
       log.info('[Overlay] Clip bookmarked via button, total:', hotkeyBookmarks.length)
@@ -1610,7 +1611,7 @@ app.whenReady().then(async () => {
   // Presence heartbeat — update squad presence every 60s when authenticated
   const presenceInterval = setInterval(() => {
     if (!authManager.isAuthenticated()) return
-    authManager.sendPresence(recorder.isRecording(), gameDetector.currentGame())
+    authManager.sendPresence(currentActiveRecorder.isRecording(), gameDetector.currentGame())
       .catch(() => { /* ignore */ })
   }, 60000)
 
@@ -1618,7 +1619,7 @@ app.whenReady().then(async () => {
 
   // Register global hotkeys
   hotkeyManager.on('save-clip', () => {
-    if (recorder.isRecording() && currentRecordingStartTime !== null) {
+    if (currentActiveRecorder.isRecording() && currentRecordingStartTime !== null) {
       hotkeyBookmarks.push(Date.now())
       logActivity('Clip moment bookmarked (F9)')
       log.info('[Hotkey] F9 clip bookmarked, total bookmarks:', hotkeyBookmarks.length)
@@ -1638,7 +1639,7 @@ app.whenReady().then(async () => {
     } else {
       // F9 was pressed but we're not recording — give the user visible feedback in overlay + notification
       log.warn('[Hotkey] F9 pressed but recorder is not active (recording=%s, startTime=%s)',
-        recorder.isRecording(), currentRecordingStartTime)
+        currentActiveRecorder.isRecording(), currentRecordingStartTime)
       const currentGame = gameDetector.currentGame()
       const gameLbl = currentGame ? gameLabel(currentGame) : 'a'
       logActivity(`F9 pressed — not recording (start a ${gameLbl} match first)`)
@@ -1674,7 +1675,7 @@ app.whenReady().then(async () => {
         enemyScore: null,
         yourCredits: null,
         enemyEstimate: null,
-        recording: recorder.isRecording(),
+        recording: currentActiveRecorder.isRecording(),
       })
     }
   })
@@ -1815,7 +1816,7 @@ app.on('before-quit', () => {
   tray = null
   cancelAllPollingTimers()
   gameDetector.stop()
-  recorder.forceStop()
+  currentActiveRecorder.forceStop()
   obsRecorder.forceStop()
   hotkeyManager.unregisterAll()
   globalShortcut.unregisterAll()

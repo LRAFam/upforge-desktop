@@ -12,7 +12,7 @@ import log from 'electron-log'
 import { toggleOverlay, isOverlayVisible, setOverlayInteractive } from './overlay-window'
 
 import { AuthManager } from './auth-manager'
-import { Recorder } from './recorder'
+import type { MatchRecorder } from './match-recorder'
 import { OBSRecorder } from './obs-recorder'
 import { GameDetector } from './game-detector'
 import { SettingsManager } from './settings-manager'
@@ -105,7 +105,7 @@ function setupDebugHandlers(ipcMain: IpcMain, gameDetector: GameDetector): void 
 export function setupIpcHandlers(
   ipcMain: IpcMain,
   auth: AuthManager,
-  recorder: Recorder,
+  getActiveRecorder: () => MatchRecorder,
   gameDetector: GameDetector,
   settingsManager: SettingsManager,
   openPostGameFn?: () => void,
@@ -118,14 +118,14 @@ export function setupIpcHandlers(
   obsRecorder?: OBSRecorder,
   trainerBridge?: TrainerBridge
 ): void {
-  setupAuthHandlers(ipcMain, auth, recorder, gameDetector, uploadManager)
+  setupAuthHandlers(ipcMain, auth, getActiveRecorder, gameDetector, uploadManager)
 
   setupAppHandlers(
-    ipcMain, auth, recorder, gameDetector, settingsManager,
+    ipcMain, auth, getActiveRecorder, gameDetector, settingsManager,
     openPostGameFn, getFFmpegOk, getWaitingForMatch, getActivityLog, showClipsFn
   )
 
-  setupMediaHandlers(ipcMain, recorder, settingsManager, obsRecorder)
+  setupMediaHandlers(ipcMain, getActiveRecorder, settingsManager, obsRecorder)
 
   setupGamingHandlers(ipcMain, auth, settingsManager, gameDetector, performanceManager, trainerBridge)
 

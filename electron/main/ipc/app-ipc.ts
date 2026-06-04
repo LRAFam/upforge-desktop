@@ -11,14 +11,14 @@ import { autoUpdater } from 'electron-updater'
 import log from 'electron-log'
 import { getUpdateState, installUpdate } from '../updater'
 import { AuthManager } from '../auth-manager'
-import { Recorder } from '../recorder'
+import type { MatchRecorder } from '../match-recorder'
 import { GameDetector } from '../game-detector'
 import { SettingsManager } from '../settings-manager'
 
 export function setupAppHandlers(
   ipcMain: IpcMain,
   auth: AuthManager,
-  recorder: Recorder,
+  getActiveRecorder: () => MatchRecorder,
   gameDetector: GameDetector,
   settingsManager: SettingsManager,
   openPostGameFn?: () => void,
@@ -31,6 +31,7 @@ export function setupAppHandlers(
 
   ipcMain.handle('app:get-status', () => {
     const settings = settingsManager.get()
+    const recorder = getActiveRecorder()
     return {
       recording: recorder.isRecording(),
       recordingStartedAt: recorder.getRecordingStartedAt(),
