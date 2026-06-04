@@ -1012,7 +1012,7 @@ function setupGameDetection(): void {
       })
     }
 
-    const startupWarning = recorder.getStartupWarning()
+    const startupWarning = currentActiveRecorder.getStartupWarning()
     if (startupWarning) {
       mainWindow?.webContents.send('app:warning', { message: startupWarning })
     }
@@ -1512,6 +1512,21 @@ app.whenReady().then(async () => {
     })
   }
 
+  // Auto-connect to OBS on startup if the user has it enabled.
+  // Silently retries so a cold OBS start doesn't block the app.
+  if (settingsManager.get().obsEnabled) {
+    obsRecorder.connect().then((result) => {
+      if (result.ok) {
+        log.info('[App] OBS auto-connected on startup:', result.version)
+        mainWindow?.webContents.send('obs:connection-changed', { connected: true })
+      } else {
+        log.info('[App] OBS auto-connect failed (OBS may not be running yet):', result.error)
+      }
+    }).catch((err) => {
+      log.warn('[App] OBS auto-connect threw unexpectedly:', err)
+    })
+  }
+
   setupIpcHandlers(ipcMain, authManager, recorder, gameDetector, settingsManager, () => {
     postGameWindow = createPostGameWindow()
     postGameWindow.webContents.once('did-finish-load', () => {
@@ -1561,12 +1576,12 @@ app.whenReady().then(async () => {
       },
       riot: riotLocalApi.getDiagnostics(),
       recording: {
-        active: recorder.isRecording(),
-        duration: recorder.getRecordingDuration(),
-        lastError: recorder.getLastError() ?? null,
-        lastPath: recorder.getLastRecordingPath() ?? null,
-        lastSizeMb: recorder.getLastRecordingSize() / (1024 * 1024),
-        wasapiMode: recorder.getAudioMode(),
+        active: currentActiveRecorder.isRecording(),
+        duration: currentActiveRecorder.getRecordingDuration(),
+        lastError: currentActiveRecorder.getLastError() ?? null,
+        lastPath: currentActiveRecorder.getLastRecordingPath() ?? null,
+        lastSizeMb: currentActiveRecorder.getLastRecordingSize() / (1024 * 1024),
+        wasapiMode: currentActiveRecorder.getAudioMode(),
       },
       lastMatch: lastMatchDiagnostic,
       clips: {
@@ -1801,6 +1816,7 @@ app.on('before-quit', () => {
   cancelAllPollingTimers()
   gameDetector.stop()
   recorder.forceStop()
+  obsRecorder.forceStop()
   hotkeyManager.unregisterAll()
   globalShortcut.unregisterAll()
   destroyOverlay()

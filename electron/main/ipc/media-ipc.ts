@@ -32,13 +32,19 @@ export function setupMediaHandlers(
   })
 
   ipcMain.handle('recorder:audio-status', () => {
+    const settings = settingsManager.get()
+    const obsActive = settings.obsEnabled && obsRecorder?.isConnected()
     return {
-      winAudioMode: recorder.getAudioMode(),
-      audioEnabled: settingsManager.get().audioEnabled,
+      winAudioMode: obsActive ? 'obs-websocket' : recorder.getAudioMode(),
+      audioEnabled: obsActive ? true : settings.audioEnabled,
     }
   })
 
   ipcMain.handle('recorder:fix-audio', async () => {
+    const settings = settingsManager.get()
+    if (settings.obsEnabled && obsRecorder?.isConnected()) {
+      return { winAudioMode: 'obs-websocket' }
+    }
     const mode = await recorder.redetectAudio()
     return { winAudioMode: mode }
   })

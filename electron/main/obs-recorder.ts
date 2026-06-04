@@ -108,7 +108,7 @@ export class OBSRecorder {
   // ── Connection ──────────────────────────────────────────────────────────────
 
   async connect(): Promise<{ ok: boolean; error?: string; version?: string }> {
-    const { host, port, password } = this.getSettings()
+    const { host, port, password, replayBufferSeconds } = this.getSettings()
     try {
       const { obsWebSocketVersion } = await this._obs.connect(
         `ws://${host}:${port}`,
@@ -119,6 +119,18 @@ export class OBSRecorder {
       this._obsVersion = obsWebSocketVersion
       this._lastError = null
       log.info('[OBSRecorder] Connected to OBS WebSocket', obsWebSocketVersion)
+
+      // Sync replay buffer duration from app settings into OBS profile
+      if (replayBufferSeconds > 0) {
+        this._obs.call('SetProfileParameter', {
+          parameterCategory: 'SimpleOutput',
+          parameterName: 'ReplayBufferDuration',
+          parameterValue: String(replayBufferSeconds),
+        }).catch((err) => {
+          log.warn('[OBSRecorder] Could not set ReplayBufferDuration (non-fatal):', err)
+        })
+      }
+
       return { ok: true, version: obsWebSocketVersion }
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
