@@ -111,10 +111,10 @@
         <span class="text-[10px] text-red-400/70">save clip</span>
       </div>
 
-      <!-- Stop button -->
-      <button v-if="status.recording" :disabled="stopping" class="flex-shrink-0 flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium bg-red-500/[0.12] hover:bg-red-500/[0.2] border border-red-500/20 text-red-400 transition-all disabled:opacity-50" @click="stopRecording">
+      <!-- Stop button — ends match and opens upload/post-game -->
+      <button v-if="status.recording" :disabled="stopping" class="flex-shrink-0 flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium bg-red-500/[0.12] hover:bg-red-500/[0.2] border border-red-500/20 text-red-400 transition-all disabled:opacity-50" :title="stopRecordingHint" @click="stopRecording">
         <svg class="w-3 h-3" fill="currentColor" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="1"/></svg>
-        {{ stopping ? 'Stopping…' : 'Stop' }}
+        {{ stopping ? 'Ending match…' : 'End match' }}
       </button>
     </div>
 
@@ -910,7 +910,26 @@ const analyses = ref<AnalysisItem[]>([])
 const analysesLoading = ref(true)
 const pendingRecordings = ref<PendingRecording[]>([])
 const analysingIds = ref(new Set<string>())
-const status = ref<{ recording: boolean; recordingStarting: boolean; currentGame: string | null; waitingForMatch: boolean; ffmpegOk: boolean; recordedModes: string[] }>({ recording: false, recordingStarting: false, currentGame: null, waitingForMatch: false, ffmpegOk: true, recordedModes: [] })
+const status = ref<{
+  recording: boolean
+  recordingStarting: boolean
+  currentGame: string | null
+  waitingForMatch: boolean
+  ffmpegOk: boolean
+  recordedModes: string[]
+  recordingBackend: 'obs' | 'ffmpeg' | 'desktop'
+  currentQueueMode: string | null
+}>({
+  recording: false,
+  recordingStarting: false,
+  currentGame: null,
+  waitingForMatch: false,
+  ffmpegOk: true,
+  recordedModes: [],
+  recordingBackend: 'desktop',
+  currentQueueMode: null,
+})
+const stopRecordingHint = 'Stop recording and open upload — use if you leave the match early'
 const isDev = ref(false)
 const platform = ref('')
 const hotkeys = ref<Record<string, string>>({})
@@ -1186,10 +1205,16 @@ function rrDelta(reversedIndex: number): number {
 }
 
 const recordingModeLabel = computed(() => {
+  if (status.value.recording) {
+    const queue = status.value.currentQueueMode
+    const backend = status.value.recordingBackend === 'ffmpeg' ? 'FFmpeg'
+      : status.value.recordingBackend === 'obs' ? 'OBS' : 'Desktop'
+    if (queue) return `${formatMode(queue)} · ${backend}`
+    return `Recording · ${backend}`
+  }
   const modes = status.value.recordedModes
-  if (!modes || !modes.length) return 'Recording…'
-  const current = modes.map(formatMode).join(' · ')
-  return `Recording ${current} matches`
+  if (!modes || !modes.length) return 'No modes selected'
+  return modes.map(formatMode).join(' · ')
 })
 
 let pollInterval: ReturnType<typeof setInterval>
@@ -1235,7 +1260,16 @@ onMounted(async () => {
       router.push(s.firstRun ? '/welcome' : '/login')
       return
     }
-    status.value = { recording: s.recording, recordingStarting: false, currentGame: s.currentGame, waitingForMatch: s.waitingForMatch ?? false, ffmpegOk: s.ffmpegOk !== false, recordedModes: s.recordedModes ?? [] }
+    status.value = {
+      recording: s.recording,
+      recordingStarting: false,
+      currentGame: s.currentGame,
+      waitingForMatch: s.waitingForMatch ?? false,
+      ffmpegOk: s.ffmpegOk !== false,
+      recordedModes: s.recordedModes ?? [],
+      recordingBackend: s.recordingBackend ?? 'desktop',
+      currentQueueMode: s.currentQueueMode ?? null,
+    }
     if (s.recording) { recordingStartedAt.value = s.recordingStartedAt ?? Date.now() }
   } catch {
     router.push('/login')
@@ -1304,7 +1338,16 @@ onMounted(async () => {
     try {
       const s = await window.api.app.getStatus()
       const wasRecording = status.value.recording
-      status.value = { recording: s.recording, recordingStarting: status.value.recordingStarting, currentGame: s.currentGame, waitingForMatch: s.waitingForMatch ?? false, ffmpegOk: s.ffmpegOk !== false, recordedModes: s.recordedModes ?? [] }
+      status.value = {
+        recording: s.recording,
+        recordingStarting: status.value.recordingStarting,
+        currentGame: s.currentGame,
+        waitingForMatch: s.waitingForMatch ?? false,
+        ffmpegOk: s.ffmpegOk !== false,
+        recordedModes: s.recordedModes ?? [],
+        recordingBackend: s.recordingBackend ?? status.value.recordingBackend,
+        currentQueueMode: s.currentQueueMode ?? null,
+      }
       if (s.recording && !wasRecording) recordingStartedAt.value = Date.now()
       if (!s.recording) { recordingStartedAt.value = null; stopping.value = false }
     } catch { /* ignore */ }
@@ -1497,11 +1540,23 @@ async function stopRecording() {
   if (stopping.value) return
   stopping.value = true
   try {
-    await window.api.recorder.stop()
-    // Optimistically update state — the poll interval will confirm within 5s
-    status.value = { ...status.value, recording: false }
+    const result = await window.api.recorder.stop()
+    if (!result.ok) {
+      const msg = result.reason === 'not_recording'
+        ? 'Nothing is recording right now.'
+        : result.reason === 'already_handled'
+          ? 'This match was already finished.'
+          : `Could not end match: ${result.reason ?? 'unknown error'}`
+      warning.value = msg
+      setTimeout(() => { warning.value = null }, 12000)
+      stopping.value = false
+      return
+    }
+    status.value = { ...status.value, recording: false, recordingStarting: false, currentQueueMode: null }
     recordingStartedAt.value = null
   } catch {
+    warning.value = 'Could not end the match — try again or finish the game normally.'
+    setTimeout(() => { warning.value = null }, 12000)
     stopping.value = false
   }
 }

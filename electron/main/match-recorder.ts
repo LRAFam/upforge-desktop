@@ -1,8 +1,9 @@
 import type { DesktopRecorder } from './desktop-recorder'
 import type { OBSRecorder } from './obs-recorder'
+import type { Recorder } from './recorder'
 
-/** Recorder used for live match capture (desktop capture or OBS). */
-export type ActiveMatchRecorder = DesktopRecorder | OBSRecorder
+/** Recorder used for live match capture (ffmpeg, desktop capture, or OBS). */
+export type ActiveMatchRecorder = DesktopRecorder | OBSRecorder | Recorder
 
 /**
  * Shared surface used by ActiveMatchRecorder for settings/IPC status.

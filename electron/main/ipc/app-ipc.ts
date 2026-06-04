@@ -26,14 +26,17 @@ export function setupAppHandlers(
   getWaitingForMatch?: () => boolean,
   getActivityLog?: () => { time: number; message: string }[],
   showClipsFn?: () => void,
+  getRecordingBackend?: () => 'obs' | 'ffmpeg' | 'desktop',
+  getCurrentQueueMode?: () => string | null,
 ): void {
   // ── App state ─────────────────────────────────────────────────────────────
 
   ipcMain.handle('app:get-status', () => {
     const settings = settingsManager.get()
     const recorder = getActiveRecorder()
+    const recording = recorder.isRecording()
     return {
-      recording: recorder.isRecording(),
+      recording,
       recordingStartedAt: recorder.getRecordingStartedAt(),
       currentGame: gameDetector.currentGame(),
       waitingForMatch: getWaitingForMatch ? getWaitingForMatch() : false,
@@ -44,7 +47,9 @@ export function setupAppHandlers(
       version: app.getVersion(),
       firstRun: settings.firstRun,
       ffmpegOk: getFFmpegOk ? getFFmpegOk() : true,
-      recordedModes: settings.recordedModes
+      recordedModes: settings.recordedModes,
+      recordingBackend: getRecordingBackend ? getRecordingBackend() : 'desktop',
+      currentQueueMode: recording && getCurrentQueueMode ? getCurrentQueueMode() : null,
     }
   })
 

@@ -181,7 +181,7 @@
                   </div>
                 </button>
               </div>
-              <p class="mt-2 text-xs text-gray-600">Games in unselected modes will not be recorded.</p>
+              <p class="mt-2 text-xs text-gray-600">Only selected modes are recorded. If none are selected, nothing is recorded.</p>
             </div>
 
             <div class="space-y-2">
@@ -236,6 +236,12 @@
                 <option :value="15">15 Mbps — ~6.8 GB/hr (1080p 60fps)</option>
                 <option :value="20">20 Mbps — ~9.0 GB/hr (1080p 60fps high)</option>
               </select>
+              <p
+                v-if="settings.recordingQuality === '1080p' && settings.recordingFps >= 60 && settings.recordingBitrate < 12"
+                class="mt-1 text-xs text-amber-400/90"
+              >
+                1080p at 60fps usually needs at least 12–15 Mbps to avoid blocky footage.
+              </p>
             </div>
 
             <div>
@@ -700,12 +706,11 @@
           </button>
           <div v-if="sectionOpen.system" class="space-y-3 border-t border-white/[0.09] p-4">
             <div class="flex items-center justify-between rounded-2xl border border-white/[0.10] bg-black/20 px-4 py-3">
-              <div>
-                <p class="text-sm text-gray-200">Recording engine (ffmpeg)</p>
-                <p v-if="ffmpegOk" class="mt-1 text-xs text-green-400/80">Ready</p>
-                <p v-else class="mt-1 text-xs text-yellow-400/80">Not found — reinstall the app.</p>
+              <div class="min-w-0 flex-1">
+                <p class="text-sm text-gray-200">Capture method</p>
+                <p class="mt-1 text-xs" :class="captureBackendOk ? 'text-green-400/80' : 'text-yellow-400/80'">{{ captureBackendDescription }}</p>
               </div>
-              <span class="h-2 w-2 rounded-full" :class="ffmpegOk ? 'bg-green-500' : 'bg-yellow-400'" />
+              <span class="h-2 w-2 flex-shrink-0 rounded-full" :class="captureBackendOk ? 'bg-green-500' : 'bg-yellow-400'" />
             </div>
 
             <div v-if="settings.cachedEncoder" class="flex items-center justify-between rounded-2xl border border-white/[0.10] bg-black/20 px-4 py-3">
@@ -807,6 +812,7 @@ const savedToast = ref(false)
 const storageBytes = ref(0)
 const storageCount = ref(0)
 const ffmpegOk = ref(true)
+const recordingBackend = ref<'obs' | 'ffmpeg' | 'desktop'>('desktop')
 const sectionOpen = reactive({
   account: true,
   usage: true,
@@ -879,6 +885,8 @@ async function obsConnect() {
     const result = await window.api.obs.connect()
     if (result.ok) {
       obsStatus.value = await window.api.obs.getStatus()
+      const st = await window.api.app.getStatus().catch(() => null)
+      if (st?.recordingBackend) recordingBackend.value = st.recordingBackend
       showToast(`Connected to OBS v${result.version ?? '?'}`)
     } else {
       showToast(`OBS connection failed: ${result.error ?? 'Unknown error'}`)
@@ -891,6 +899,8 @@ async function obsConnect() {
 async function obsDisconnect() {
   await window.api.obs.disconnect()
   obsStatus.value = await window.api.obs.getStatus()
+  const st = await window.api.app.getStatus().catch(() => null)
+  if (st?.recordingBackend) recordingBackend.value = st.recordingBackend
   showToast('Disconnected from OBS')
 }
 
@@ -1081,6 +1091,28 @@ const encoderLabel = computed(() => {
   return enc
 })
 
+const captureBackendOk = computed(() => {
+  if (recordingBackend.value === 'ffmpeg') return ffmpegOk.value
+  if (recordingBackend.value === 'obs') return !!obsStatus.value?.connected
+  return true
+})
+
+const captureBackendDescription = computed(() => {
+  const quality = `${settings.recordingQuality} · ${settings.recordingFps} fps`
+  const b = recordingBackend.value
+  if (b === 'obs') {
+    return obsStatus.value?.connected
+      ? `OBS WebSocket · ${obsStatus.value.obsVersion ?? 'connected'}`
+      : 'OBS enabled — connect below (uses built-in capture until connected)'
+  }
+  if (b === 'ffmpeg') {
+    return ffmpegOk.value ? `FFmpeg hardware capture · ${quality}` : 'FFmpeg not found — reinstall the app'
+  }
+  return isMac.value
+    ? `Desktop capture · ${quality} (Screen Recording permission required)`
+    : `Desktop capture · ${quality}`
+})
+
 // tierClass and formatMode are imported from valorant.ts (shared helpers)
 
 function showSaved(): void {
@@ -1258,6 +1290,7 @@ onMounted(async () => {
     isDev.value = s.isDev
     if (s.version) appVersion.value = s.version
     if (s.ffmpegOk !== undefined) ffmpegOk.value = s.ffmpegOk !== false
+    if (s.recordingBackend) recordingBackend.value = s.recordingBackend
     Object.assign(settings, savedSettings)
     devModeActive.value = savedSettings.devModeEnabled ?? false
     // Use getStatus user as base

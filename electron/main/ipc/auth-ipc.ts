@@ -17,6 +17,7 @@ export function setupAuthHandlers(
   getActiveRecorder: () => MatchRecorder,
   gameDetector: GameDetector,
   uploadManager?: UploadManager,
+  endActiveMatch?: (game: string) => Promise<{ ok: boolean; reason?: string }>,
 ): void {
   // ── Auth ──────────────────────────────────────────────────────────────────
 
@@ -44,7 +45,12 @@ export function setupAuthHandlers(
   ipcMain.handle('auth:logout', async () => {
     const recorder = getActiveRecorder()
     if (recorder.isRecording()) {
-      try { await recorder.stop() } catch { /* ignore */ }
+      const game = gameDetector.currentGame() ?? 'valorant'
+      if (endActiveMatch) {
+        try { await endActiveMatch(game) } catch { /* ignore */ }
+      } else {
+        try { await recorder.stop() } catch { /* ignore */ }
+      }
     }
     uploadManager?.abort()
     cancelAllPollingTimers()

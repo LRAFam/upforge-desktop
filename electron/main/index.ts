@@ -18,7 +18,7 @@ import { Recorder } from './recorder'
 import { DesktopRecorder } from './desktop-recorder'
 import { OBSRecorder } from './obs-recorder'
 import type { ActiveMatchRecorder } from './match-recorder'
-import { RiotLocalApi } from './riot-local-api'
+import { RiotLocalApi, recomputeTimelineVideoOffsets } from './riot-local-api'
 import { UploadManager, savePendingJob, clearPendingJob, readPendingJob } from './upload-manager'
 import { AuthManager } from './auth-manager'
 import { SettingsManager } from './settings-manager'
@@ -103,9 +103,12 @@ const obsRecorder = new OBSRecorder(() => {
   }
 })
 
-/** Returns the active recorder — OBS when enabled & connected, else Electron desktop capture. */
+/** Returns the active recorder — OBS when enabled & connected, else platform default. */
 function activeRecorder(): ActiveMatchRecorder {
   if (settingsManager?.get().obsEnabled && obsRecorder.isConnected()) return obsRecorder
+  // Windows: Chromium MediaRecorder often caps screen capture at ~30fps even when 60 is requested.
+  // Bundled ffmpeg (ddagrab/gdigrab) honors resolution, fps, and bitrate from settings.
+  if (process.platform === 'win32' && ffmpegOk) return ffmpegRecorder
   return desktopRecorder
 }
 
@@ -140,6 +143,7 @@ const hotkeyManager = new HotkeyManager()
 const trainerBridge = new TrainerBridge(() => mainWindow)
 const discordRPC = new DiscordRPC()
 wireRecorderStatus(desktopRecorder, 'Desktop')
+wireRecorderStatus(ffmpegRecorder, 'FFmpeg')
 const riotLocalApi = new RiotLocalApi()
 const authManager = new AuthManager()
 
@@ -178,6 +182,10 @@ let cancelMatchWait: (() => void) | null = null
 let waitingForMatch = false
 // Prevents double-handling when onMatchEnded + game-stopped both fire for same match
 let matchHandled = false
+/** Bumped on each game-started so superseded lobby-wait loops exit cleanly. */
+let matchFlowGeneration = 0
+/** Serializes handleMatchEnd — prevents double upload/post-game from concurrent end signals. */
+let matchFinalizeInFlight: Promise<boolean> | null = null
 // Overlay polling timer — cleared when match ends or game stops
 let overlayPollTimer: ReturnType<typeof setInterval> | null = null
 
@@ -216,6 +224,26 @@ function logActivity(message: string): void {
   if (activityLog.length > MAX_LOG_ENTRIES) activityLog.shift()
   mainWindow?.webContents.send('app:activity-log', activityLog.slice())
 }
+
+/** Dashboard banner + optional OS notification for recording outcomes. */
+function notifyRecordingUx(message: string, notificationTitle = 'UpForge — Recording'): void {
+  mainWindow?.webContents.send('app:warning', { message })
+  if (Notification.isSupported()) {
+    new Notification({ title: notificationTitle, body: message, silent: notifySilent() }).show()
+  }
+}
+
+type RecordingBackend = 'obs' | 'ffmpeg' | 'desktop'
+
+/** Backend that will be used for the next (or current) match capture. */
+function getRecordingBackendForStatus(): RecordingBackend {
+  if (settingsManager?.get().obsEnabled && obsRecorder.isConnected()) return 'obs'
+  if (process.platform === 'win32' && ffmpegOk) return 'ffmpeg'
+  return 'desktop'
+}
+
+/** Set by setupGameDetection — ends the active match (upload/post-game) when user clicks Stop. */
+let manualEndMatchRecording: ((game: string) => Promise<{ ok: boolean; reason?: string }>) | null = null
 
 function notifySilent(): boolean {
   return !(settingsManager?.get().notificationSound ?? true)
@@ -298,12 +326,99 @@ function setupGameDetection(): void {
   // All known Valorant game modes returned by the Riot Local Client API
   const ALL_MODES = new Set(['COMPETITIVE', 'PREMIER', 'CLASSIC', 'DEATHMATCH', 'TEAMDEATHMATCH', 'SPIKERUSH', 'SWIFTPLAY', 'SNOWBALL'])
 
+  /** Invalidate older game-started handlers and cancel their lobby-wait loops. */
+  function beginMatchFlow(): { isStale: () => boolean } {
+    matchFlowGeneration++
+    const generation = matchFlowGeneration
+    cancelMatchWait?.()
+    cancelMatchWait = null
+    if (waitingForMatch) {
+      waitingForMatch = false
+      mainWindow?.webContents.send('recording:waiting-for-match', { waiting: false })
+    }
+    return { isStale: () => generation !== matchFlowGeneration }
+  }
+
+  /** Exit superseded lobby-wait loops and reset dashboard "waiting for match" UI. */
+  function abortIfStale(isStale: () => boolean, game: string): boolean {
+    if (!isStale()) return false
+    waitingForMatch = false
+    cancelMatchWait = null
+    mainWindow?.webContents.send('recording:waiting-for-match', { waiting: false })
+    tray?.setToolTip(idleTooltip(game))
+    return true
+  }
+
+  function clearOverlayPolling(): void {
+    if (overlayPollTimer) { clearInterval(overlayPollTimer); overlayPollTimer = null }
+    sendOverlayData('overlay:data', {
+      round: null, allyScore: null, enemyScore: null,
+      yourCredits: null, enemyEstimate: null, recording: false,
+    })
+  }
+
   /**
-   * Stop recording, collect the match timeline (with Riot MatchDetails), and
-   * trigger the post-game upload window. Called from both onMatchEnded and
-   * game-stopped — protected by the module-level matchHandled flag.
+   * Single entry for match end — prevents onMatchEnded + game-stopped + manual stop
+   * from running handleMatchEnd/upload twice (common with fast queue / process exit races).
    */
+  async function finalizeMatchOnce(game: string, source: string): Promise<boolean> {
+    if (matchHandled) {
+      console.log(`[MatchEnd] Ignoring duplicate end signal (${source})`)
+      return false
+    }
+    matchHandled = true
+    clearOverlayPolling()
+    riotLocalApi.onMatchEnded = null
+    mainWindow?.webContents.send('recording:starting', { starting: false })
+
+    const run = async (): Promise<boolean> => {
+      try {
+        await handleMatchEnd(game)
+        return true
+      } catch (err) {
+        log.error(`[MatchEnd] handleMatchEnd failed (${source}):`, err)
+        matchHandled = false
+        throw err
+      }
+    }
+
+    if (matchFinalizeInFlight) {
+      await matchFinalizeInFlight.catch(() => { /* logged in run */ })
+      return false
+    }
+
+    matchFinalizeInFlight = run().finally(() => { matchFinalizeInFlight = null })
+    return matchFinalizeInFlight
+  }
+
+  /** Re-enter detection after a skipped match (Valorant stays running between queues). */
+  async function rearmValorantDetection(game: string, waitForMatchEnd = false): Promise<void> {
+    if (game !== 'valorant') return
+    if (waitForMatchEnd) {
+      riotLocalApi.onMatchEnded = async () => {
+        riotLocalApi.onMatchEnded = null
+        await new Promise((r) => setTimeout(r, 5000))
+        if (await gameDetector.isMatchProcessRunning()) {
+          logActivity('Watching for next match...')
+          gameDetector.emit('game-started', game)
+        }
+      }
+      return
+    }
+    await new Promise((r) => setTimeout(r, 5000))
+    if (await gameDetector.isMatchProcessRunning()) {
+      gameDetector.emit('game-started', game)
+    }
+  }
+
+  let handleMatchEndRunning = false
   async function handleMatchEnd(game: string): Promise<void> {
+    if (handleMatchEndRunning) {
+      log.warn('[HandleMatchEnd] Re-entrant call blocked')
+      return
+    }
+    handleMatchEndRunning = true
+    try {
     const timeline = await riotLocalApi.stop()
     const recordingDuration = currentActiveRecorder.getRecordingDuration()
     const matchSessionStart = currentRecordingStartTime ?? (Date.now() - recordingDuration * 1000)
@@ -351,6 +466,10 @@ function setupGameDetection(): void {
     if (recordingDuration > 0 && recordingDuration < MIN_DURATION_SECONDS) {
       console.log(`[GameDetector] Recording too short (${recordingDuration}s) — ignoring`)
       logActivity(`Recording too short (${recordingDuration}s) — discarded`)
+      notifyRecordingUx(
+        `Recording was only ${Math.round(recordingDuration)}s — at least 2 minutes is needed for analysis. The file was discarded.`,
+        'UpForge — Recording Too Short'
+      )
       if (videoPath && fs.existsSync(videoPath)) {
         try { fs.unlinkSync(videoPath) } catch { /* ignore */ }
       }
@@ -361,7 +480,9 @@ function setupGameDetection(): void {
     // skip the post-game window — it would just show a confusing error.
     if (recordingDuration === 0) {
       const lastErr = currentActiveRecorder.getLastError()
-      logActivity(lastErr ? `Match ended — no recording was made (${lastErr})` : 'Match ended — no active recording')
+      const msg = lastErr ? `Match ended — no recording was made (${lastErr})` : 'Match ended — no active recording'
+      logActivity(msg)
+      notifyRecordingUx(lastErr ? `No recording was saved: ${lastErr}` : 'No recording was saved for this match.', 'UpForge — No Recording')
       return
     }
 
@@ -648,10 +769,42 @@ function setupGameDetection(): void {
     } catch (err) {
       log.warn('[HandleMatchEnd] Failed to register did-finish-load handler — window already destroyed:', err)
     }
+    } finally {
+      handleMatchEndRunning = false
+    }
+  }
+
+  manualEndMatchRecording = async (game: string) => {
+    if (!currentActiveRecorder.isRecording()) {
+      return { ok: false, reason: 'not_recording' }
+    }
+    if (matchHandled) {
+      return { ok: false, reason: 'already_handled' }
+    }
+    logActivity('Recording stopped manually — finishing match')
+    try {
+      const didFinalize = await finalizeMatchOnce(game, 'manual')
+      if (!didFinalize) return { ok: false, reason: 'already_handled' }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      logActivity(`Failed to finish match after stop: ${msg}`)
+      notifyRecordingUx(`Could not finish the match: ${msg}`, 'UpForge — Recording')
+      return { ok: false, reason: msg }
+    }
+    if (mainWindow && !mainWindow.isDestroyed() && mainWindow.isMinimized()) mainWindow.restore()
+    destroyOverlay()
+    await rearmValorantDetection(game)
+    return { ok: true }
   }
 
   gameDetector.on('game-started', async (game: string) => {
-    console.log(`[GameDetector] ${game} started`)
+    if (currentActiveRecorder.isRecording()) {
+      console.log('[GameDetector] game-started ignored — already recording')
+      return
+    }
+
+    const { isStale } = beginMatchFlow()
+    console.log(`[GameDetector] ${game} started (flow #${matchFlowGeneration})`)
     logActivity(`${game === 'cs2' ? 'CS2' : 'Valorant'} detected — waiting for match`)
     discordRPC.setInGame(game)
 
@@ -662,6 +815,14 @@ function setupGameDetection(): void {
     }
 
     const config = settingsManager?.get()
+
+    const recordedModesEarly = config?.recordedModes
+    if (Array.isArray(recordedModesEarly) && recordedModesEarly.length === 0) {
+      logActivity('No game modes selected — recording disabled')
+      notifyRecordingUx('Select at least one game mode in Settings → Recording to record matches.')
+      tray?.setToolTip(idleTooltip(game))
+      return
+    }
 
     // Auto-kill user-configured background apps before the game starts
     if (config?.pregameKillList?.length && performanceManager) {
@@ -681,8 +842,15 @@ function setupGameDetection(): void {
 
     // Check disk space now so the warning shows while in lobby
     const savePath = config?.savePath ?? app.getPath('userData')
-    // Determine the recorder to use for this match now (OBS if enabled & connected, else DesktopRecorder)
     currentActiveRecorder = activeRecorder()
+    if (recorderConfig) {
+      const backend = currentActiveRecorder === ffmpegRecorder ? 'ffmpeg'
+        : currentActiveRecorder === obsRecorder ? 'obs' : 'desktop-capture'
+      console.log(
+        `[Recorder] Config: ${recorderConfig.quality} @ ${recorderConfig.fps}fps, ` +
+        `${recorderConfig.bitrate} Mbps, audio=${recorderConfig.audioEnabled}, backend=${backend}`
+      )
+    }
     const freeBytes = await currentActiveRecorder.getFreeDiskSpace(savePath)
     const TWO_GB = 2 * 1024 * 1024 * 1024
     if (freeBytes < TWO_GB) {
@@ -717,6 +885,7 @@ function setupGameDetection(): void {
     waitingForMatch = true
 
     const recordedModes = config?.recordedModes ?? ['COMPETITIVE', 'PREMIER']
+    // Empty list = record nothing (dashboard/settings copy). Non-empty partial list = filter.
     const filterByMode = recordedModes.length > 0 &&
       !([...ALL_MODES].every(m => recordedModes.includes(m)))
 
@@ -735,6 +904,7 @@ function setupGameDetection(): void {
       const PRESENCE_TIMEOUT_MS = 25 * 60 * 1000
       const deadline = Date.now() + PRESENCE_TIMEOUT_MS
       while (Date.now() < deadline && !cancelled) {
+        if (abortIfStale(isStale, game)) return
         await new Promise((r) => setTimeout(r, 1000))
         if (cancelled) break
         const stillRunning = await gameDetector.isMatchProcessRunning()
@@ -797,15 +967,12 @@ function setupGameDetection(): void {
             if (state.isReplay) {
               console.log('[GameDetector] Replay detected (provisioningFlow=Replay) — skipping recording')
               logActivity('Replay detected — recording skipped')
+              notifyRecordingUx('Replay viewer detected — only live matches are recorded.')
               tray?.setToolTip(idleTooltip(game))
               waitingForMatch = false
               cancelMatchWait = null
               mainWindow?.webContents.send('recording:waiting-for-match', { waiting: false })
-              // Re-arm detection so we catch the next real match
-              await new Promise((r) => setTimeout(r, 5000))
-              if (await gameDetector.isMatchProcessRunning()) {
-                gameDetector.emit('game-started', game)
-              }
+              await rearmValorantDetection(game)
               return
             }
             matchStartTime = Date.now()
@@ -833,6 +1000,7 @@ function setupGameDetection(): void {
       pregameBriefFired = true
       const deadline = Date.now() + LOADING_DELAY_MS
       while (Date.now() < deadline && !cancelled) {
+        if (abortIfStale(isStale, game)) return
         await new Promise((r) => setTimeout(r, 5000))
         if (cancelled) break
         const stillRunning = await gameDetector.isMatchProcessRunning()
@@ -843,6 +1011,8 @@ function setupGameDetection(): void {
     waitingForMatch = false
     cancelMatchWait = null
     mainWindow?.webContents.send('recording:waiting-for-match', { waiting: false })
+
+    if (abortIfStale(isStale, game)) return
 
     if (cancelled) {
       logActivity('Match cancelled (game quit during loading)')
@@ -879,23 +1049,31 @@ function setupGameDetection(): void {
       }
     }
 
-    if (filterByMode && modeConfident && gameMode && !recordedModes.includes(gameMode)) {
+    if (filterByMode && !modeConfident) {
+      console.log('[GameDetector] Skipping recording — queue mode unknown')
+      logActivity('Queue mode unknown — recording skipped (select all modes or wait for queue)')
+      notifyRecordingUx(
+        'Could not detect this queue type — recording skipped. Enable more modes in Settings or wait until the queue is identified.',
+      )
+      tray?.setToolTip(idleTooltip(game))
+      await rearmValorantDetection(game, true)
+      return
+    }
+
+    if (filterByMode && gameMode && !recordedModes.includes(gameMode)) {
       console.log(`[GameDetector] Skipping recording — mode is ${gameMode} (recordedModes=${recordedModes.join(',')})`)
       logActivity(`Mode ${gameMode} not in recorded modes (${recordedModes.join(', ')}) — skipped`)
+      notifyRecordingUx(
+        `${gameMode} is not in your recorded modes — this match was not captured. Change modes in Settings → Recording.`,
+      )
       tray?.setToolTip(idleTooltip(game))
-      // Valorant stays running between matches — re-arm detection once the skipped match ends.
-      // Without this, no new 'game-started' event fires and all subsequent matches are missed.
-      if (game === 'valorant') {
-        riotLocalApi.onMatchEnded = async () => {
-          riotLocalApi.onMatchEnded = null
-          await new Promise((r) => setTimeout(r, 5000))
-          if (await gameDetector.isMatchProcessRunning()) {
-            console.log('[GameDetector] Game still running after skipped match — re-arming detection')
-            logActivity('Watching for next match...')
-            gameDetector.emit('game-started', game)
-          }
-        }
-      }
+      await rearmValorantDetection(game, true)
+      return
+    }
+
+    if (abortIfStale(isStale, game)) return
+    if (currentActiveRecorder.isRecording()) {
+      console.log('[GameDetector] Match confirmed but recorder already active — skipping duplicate start')
       return
     }
 
@@ -910,17 +1088,12 @@ function setupGameDetection(): void {
     // Only applicable to Valorant; CS2/Deadlock rely on the game process exiting.
     if (game === 'valorant') {
       riotLocalApi.onMatchEnded = async () => {
-        if (matchHandled) return
-        matchHandled = true
         console.log('[RiotLocalApi] onMatchEnded fired — stopping recording')
         logActivity('Match ended (presence) — stopping recording')
-        await handleMatchEnd(game)
-        // Restore main window and tear down the overlay now that the match is over.
+        const didFinalize = await finalizeMatchOnce(game, 'presence')
+        if (!didFinalize) return
         if (mainWindow && !mainWindow.isDestroyed() && mainWindow.isMinimized()) mainWindow.restore()
         destroyOverlay()
-
-        // VALORANT-Win64-Shipping.exe often stays alive between consecutive matches.
-        // Re-enter the full detection loop if the process is still running.
         await new Promise((r) => setTimeout(r, 5000))
         if (await gameDetector.isMatchProcessRunning()) {
           console.log('[GameDetector] Game still running after match — watching for next match')
@@ -963,30 +1136,23 @@ function setupGameDetection(): void {
       const msg = err instanceof Error ? err.message : String(err)
       console.error('[Main] Failed to start recording:', msg)
       logActivity(`Recording failed to start: ${msg}`)
+      matchHandled = false
+      riotLocalApi.onMatchEnded = null
+      try { await riotLocalApi.stop() } catch { /* ignore */ }
+      destroyOverlay()
       mainWindow?.webContents.send('recording:starting', { starting: false })
+      notifyRecordingUx(`Could not start recording: ${msg}`, 'UpForge — Recording Failed')
       tray?.setToolTip('UpForge — Recording failed!')
-      if (Notification.isSupported()) {
-        new Notification({
-          title: 'UpForge — Recording Failed',
-          body: 'Could not start recording. Open UpForge to see details.',
-          silent: notifySilent()
-        }).show()
-      }
-      // Reset tray tooltip after 10 seconds so it doesn't stay on "failed"
       setTimeout(() => tray?.setToolTip(idleTooltip(game)), 10_000)
       return
     }
     logActivity(`Recording started (${gameMode ?? 'unknown mode'}${currentActiveRecorder.wasNoAudio() ? ' — no audio' : ''})`)
 
-    // Start polling session state to feed the live overlay with round data.
-    // The first time we see INGAME, record the timestamp as the true gameplay start —
-    // this is used instead of the INGAME presence time (which fires during loading screen)
-    // to compute accurate videoOffsetMs for clip seeking.
-    overlayPollTimer = setInterval(async () => {
+    // Poll overlay/session state — first INGAME tick sets gameplayStartTime for VOD sync.
+    const pollOverlaySession = async () => {
       try {
         const state = await riotLocalApi.getSessionState()
         if (state?.sessionLoopState === 'INGAME') {
-          // Capture gameplay start time on first INGAME poll (loading screen is over)
           riotLocalApi.setGameplayStartTime(Date.now())
           const round = (state.allyScore ?? 0) + (state.enemyScore ?? 0) + 1
           sendOverlayData('overlay:data', {
@@ -999,15 +1165,9 @@ function setupGameDetection(): void {
           })
         }
       } catch { /* ignore — session endpoint may be unavailable */ }
-    }, 5_000)
-
-    // Stop overlay polling when the match ends
-    const origOnMatchEnded = riotLocalApi.onMatchEnded
-    riotLocalApi.onMatchEnded = async () => {
-      if (overlayPollTimer) { clearInterval(overlayPollTimer); overlayPollTimer = null }
-      sendOverlayData('overlay:data', { round: null, allyScore: null, enemyScore: null, yourCredits: null, enemyEstimate: null, recording: false })
-      if (origOnMatchEnded) await origOnMatchEnded()
     }
+    void pollOverlaySession()
+    overlayPollTimer = setInterval(() => { void pollOverlaySession() }, 5_000)
 
     if (currentActiveRecorder.wasNoAudio()) {
       mainWindow?.webContents.send('app:warning', {
@@ -1070,11 +1230,8 @@ function setupGameDetection(): void {
     }
 
     // Process died without a clean presence transition (crash, force-quit, etc.)
-    matchHandled = true
-    if (overlayPollTimer) { clearInterval(overlayPollTimer); overlayPollTimer = null }
-    sendOverlayData('overlay:data', { round: null, allyScore: null, enemyScore: null, yourCredits: null, enemyEstimate: null, recording: false })
     logActivity('Game process ended — stopping recording')
-    await handleMatchEnd(game)
+    await finalizeMatchOnce(game, 'process-exit')
     // Restore main window now that game is gone
     if (mainWindow && !mainWindow.isDestroyed() && mainWindow.isMinimized()) mainWindow.restore()
     destroyOverlay()
@@ -1495,22 +1652,21 @@ app.whenReady().then(async () => {
           silent: notifySilent()
         }).show()
       }
-      // Push the warning to the dashboard if it's already open
       mainWindow?.webContents.send('app:ffmpeg-status', { ok: false })
     } else {
       console.log('[App] ffmpeg preflight OK')
     }
+    // Run audio detection after preflight so Windows uses ffmpeg WASAPI path when available.
+    const audioDetect = process.platform === 'win32' && ffmpegOk
+      ? ffmpegRecorder.redetectAudio()
+      : desktopRecorder.redetectAudio()
+    audioDetect.catch((err) => {
+      console.warn('[App] Background audio detection failed:', err)
+    })
   }).catch((err) => {
     console.error('[App] ffmpeg preflight threw unexpectedly:', err)
     ffmpegOk = false
-  })
-
-  // Proactively detect audio capture method in the background at startup.
-  // On Windows: detects WASAPI / DirectShow Stereo Mix.
-  // On Mac: detects virtual loopback devices (BlackHole, Soundflower, Loopback, etc.).
-  // This ensures the audio mode is cached before the user opens settings for the first time.
-  desktopRecorder.redetectAudio().catch((err) => {
-    console.warn('[App] Background audio detection failed:', err)
+    desktopRecorder.redetectAudio().catch(() => { /* ignore */ })
   })
 
   // Auto-connect to OBS on startup if the user has it enabled.
@@ -1554,7 +1710,20 @@ app.whenReady().then(async () => {
       mainWindow.focus()
       mainWindow.webContents.send('app:navigate', '/clips')
     }
-  }, performanceManager, obsRecorder, trainerBridge)
+  }, performanceManager, obsRecorder, trainerBridge,
+  async (game: string) => {
+    if (manualEndMatchRecording) return manualEndMatchRecording(game)
+    if (!currentActiveRecorder.isRecording()) return { ok: false, reason: 'not_recording' }
+    try {
+      await currentActiveRecorder.stop()
+      return { ok: true }
+    } catch (err) {
+      return { ok: false, reason: err instanceof Error ? err.message : String(err) }
+    }
+  },
+  getRecordingBackendForStatus,
+  () => riotLocalApi.getLastGameMode(),
+  )
 
   setupClipHandlers(ipcMain, clipStore, clipExtractor, authManager, hotkeyManager)
 
@@ -1759,6 +1928,7 @@ app.whenReady().then(async () => {
     const recording = recordingsStore.getById(id)
     if (!recording) return null
     const tl = recording.timeline
+    if (tl) recomputeTimelineVideoOffsets(tl)
     // Only return videoPath if the file actually exists on disk
     const videoPath = recording.path && fs.existsSync(recording.path) ? recording.path : null
     return {

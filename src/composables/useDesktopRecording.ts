@@ -64,13 +64,12 @@ export function useDesktopRecording() {
       // process) so we can pass cursor:'never'. getUserMedia with chromeMediaSource:
       // 'desktop' always includes the cursor and doesn't support the cursor constraint.
       //
-      // Use `ideal` (not `max`) for frameRate and resolution — `max` only sets an upper
-      // bound and Chromium defaults to 30fps when no ideal is specified.
+      // Use min + ideal + max — `max` alone lets Chromium default to ~30fps on many systems.
       // cursor:'never' is a Screen Capture API extension not in standard TypeScript lib.
       const videoConstraints = {
-        width: { ideal: maxWidth, max: maxWidth },
-        height: { ideal: maxHeight, max: maxHeight },
-        frameRate: { ideal: config.fps, max: config.fps },
+        width: { min: maxWidth, ideal: maxWidth, max: maxWidth },
+        height: { min: maxHeight, ideal: maxHeight, max: maxHeight },
+        frameRate: { min: config.fps, ideal: config.fps, max: config.fps },
         cursor: 'never',
       } as MediaTrackConstraints
 
@@ -114,6 +113,18 @@ export function useDesktopRecording() {
         // Second pass after 250ms — macOS SCK initialises capture asynchronously and may
         // not honour the constraint until the session is fully active.
         setTimeout(applyCursorNever, 250)
+
+        const settings = videoTrack.getSettings()
+        console.info(
+          `[DesktopRecording] Capture track: ${settings.width ?? '?'}x${settings.height ?? '?'} ` +
+          `@ ${settings.frameRate ?? '?'}fps (requested ${maxWidth}x${maxHeight} @ ${config.fps}fps)`
+        )
+        if (settings.frameRate && settings.frameRate < config.fps - 1) {
+          console.warn(
+            `[DesktopRecording] OS capped frame rate at ${settings.frameRate}fps — ` +
+            'on Windows, enable ffmpeg recording (default when bundled ffmpeg is present)'
+          )
+        }
       }
 
       // Codec priority: VP9 (native WebM codec, hardware-accelerated on modern GPUs) →

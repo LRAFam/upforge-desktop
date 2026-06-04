@@ -1221,9 +1221,19 @@ function eventPercent(event: TimelineEvent): number {
   return (event.videoOffsetMs / 1000 / duration.value) * 100
 }
 
+function eventVideoSeconds(event: TimelineEvent): number | null {
+  if (event.videoOffsetMs == null || isNaN(event.videoOffsetMs)) return null
+  return event.videoOffsetMs / 1000
+}
+
 function isNearEvent(event: TimelineEvent): boolean {
-  if (event.videoOffsetMs == null) return false
-  return Math.abs(currentTime.value - event.videoOffsetMs / 1000) < 1
+  const eventSec = eventVideoSeconds(event)
+  if (eventSec == null) return false
+  // Highlight while in pre-roll window or at the kill/death moment
+  return (
+    Math.abs(currentTime.value - eventSec) < 1
+    || (currentTime.value >= eventSec - EVENT_PRE_ROLL_SECONDS && currentTime.value <= eventSec + 0.5)
+  )
 }
 
 function formatMs(ms: number | undefined): string {
@@ -1240,7 +1250,8 @@ function formatSeconds(s: number, zeroAsDash = false): string {
   return `${m}:${String(Math.floor(s % 60)).padStart(2, '0')}`
 }
 
-const EVENT_PRE_ROLL_SECONDS = 5
+/** Seconds to rewind before a kill/death so the user sees lead-up (markers stay at true event time). */
+const EVENT_PRE_ROLL_SECONDS = 2
 
 function togglePlay() {
   if (!videoEl.value) return
@@ -1275,7 +1286,8 @@ function seekToTime(timeSeconds: number) {
 }
 
 function jumpToMarker(marker: ProgressMarker) {
-  seekToTime(marker.timeSeconds)
+  const preRoll = ['kill', 'death'].includes(marker.kind) ? EVENT_PRE_ROLL_SECONDS : 0
+  seekToTime(Math.max(0, marker.timeSeconds - preRoll))
 }
 
 function scrollActiveRoundIntoView(roundNumber: number | null) {
@@ -1287,9 +1299,10 @@ function scrollActiveRoundIntoView(roundNumber: number | null) {
 }
 
 function seekToEvent(event: TimelineEvent) {
-  if (!videoEl.value || event.videoOffsetMs == null) return
+  const eventSec = eventVideoSeconds(event)
+  if (!videoEl.value || eventSec == null) return
   const wasPlaying = !videoEl.value.paused
-  videoEl.value.currentTime = Math.max(0, event.videoOffsetMs / 1000 - EVENT_PRE_ROLL_SECONDS)
+  videoEl.value.currentTime = Math.max(0, eventSec - EVENT_PRE_ROLL_SECONDS)
   if (wasPlaying) videoEl.value.play().catch(e => {
     if (e.name !== 'AbortError') console.error('[VOD] play() failed:', e)
   })
@@ -1309,22 +1322,31 @@ function seekToRound(round: RoundGroup) {
 function seekPrevEvent() {
   const events = allTimelineEvents.value
   const ct = currentTime.value
-  const prev = [...events].reverse().find(e => e.videoOffsetMs != null && e.videoOffsetMs / 1000 < ct - 0.5)
+  const prev = [...events].reverse().find(e => {
+    const sec = eventVideoSeconds(e)
+    return sec != null && sec < ct - 0.5
+  })
   if (prev) seekToEvent(prev)
 }
 
 function seekNextEvent() {
   const events = allTimelineEvents.value
   const ct = currentTime.value
-  const next = events.find(e => e.videoOffsetMs != null && e.videoOffsetMs / 1000 > ct + 0.5)
+  const next = events.find(e => {
+    const sec = eventVideoSeconds(e)
+    return sec != null && sec > ct + 0.5
+  })
   if (next) seekToEvent(next)
 }
 
 function onTimeUpdate() {
   if (!videoEl.value) return
   currentTime.value = videoEl.value.currentTime
-  // Check if we're near a timeline event and show popup
-  const near = allTimelineEvents.value.find(e => e.videoOffsetMs != null && Math.abs(e.videoOffsetMs / 1000 - currentTime.value) < 0.3)
+  // Popup when playback reaches the event (not when pre-roll seek lands early)
+  const near = allTimelineEvents.value.find(e => {
+    const sec = eventVideoSeconds(e)
+    return sec != null && Math.abs(sec - currentTime.value) < 0.35
+  })
   if (near && (!activeEventNotif.value || activeEventNotif.value !== near)) {
     activeEventNotif.value = near
     if (notifTimer) clearTimeout(notifTimer)

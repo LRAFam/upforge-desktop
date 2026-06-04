@@ -873,7 +873,7 @@ export class Recorder {
 
       // scale is applied inside the filter_complex — can't mix -filter_complex with -vf
       // draw_mouse=0: suppress OS cursor in recordings (same as -draw_mouse 0 for gdigrab)
-      const ddagrabFilter = `ddagrab=output_idx=${outputIdx}:draw_mouse=0,hwdownload,format=bgr0,scale=${scale}[v]`
+      const ddagrabFilter = `ddagrab=output_idx=${outputIdx}:draw_mouse=0,hwdownload,format=bgr0,scale=${scale},fps=${fps}[v]`
 
       if (noAudio) {
         return [

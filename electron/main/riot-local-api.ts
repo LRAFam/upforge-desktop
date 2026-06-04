@@ -85,7 +85,7 @@ export class RiotLocalApi {
    * Fired when presence transitions INGAME -> MENUS (match ended).
    * Set this before calling start() to stop recording promptly.
    */
-  public onMatchEnded: (() => void) | null = null
+  public onMatchEnded: (() => void | Promise<void>) | null = null
 
   /** Return a snapshot of internal state for the developer diagnostics panel. */
   getDiagnostics(): {
@@ -472,7 +472,13 @@ export class RiotLocalApi {
       console.log('[RiotLocalApi] Match ended — presence returned to MENUS')
       this.matchEnded = true
       this.lastSessionLoopState = sessionLoopState
-      this.onMatchEnded?.()
+      const endedCb = this.onMatchEnded
+      this.onMatchEnded = null
+      if (endedCb) {
+        Promise.resolve(endedCb()).catch((err) => {
+          console.error('[RiotLocalApi] onMatchEnded handler error:', err)
+        })
+      }
       return
     }
     this.lastSessionLoopState = sessionLoopState
@@ -554,6 +560,10 @@ export class RiotLocalApi {
    * @param matchStartTime  Epoch ms when presence transitioned to INGAME
    */
   start(game: string, matchStartTime?: number): void {
+    if (this.matchData && !this.matchEnded) {
+      console.warn('[RiotLocalApi] start() called while match already active — ignoring duplicate start')
+      return
+    }
     this.matchEnded = false
     this.currentMatchId = null
     this.agentFetchAttempts = 0
@@ -836,19 +846,15 @@ export class RiotLocalApi {
       })
     }
 
-    // Kill events — video offset math:
-    // timeSinceGameStartMillis from Riot's MatchDetails measures from the INGAME presence transition
-    // (which fires at the same moment as matchStartTime). So matchStartTime is the correct reference.
-    // gameplayStartTime (from overlay poll) is captured up to 5s later due to polling interval,
-    // which would add unnecessary offset to every clip. Always prefer matchStartTime.
-    const gameplayStartTime = this.matchData.gameplayStartTime
-    const matchStartTime = this.matchData.matchStartTime
-    const recordingStartTime = this.matchData.recordingStartTime
-    const referenceTime = matchStartTime ?? gameplayStartTime
-    const recordingOffset = referenceTime != null ? referenceTime - recordingStartTime : 0
+    // Kill events — map Riot game-clock ms to position in the local recording file.
+    // timeSinceGameStartMillis tracks in-round time (after loading), closer to gameplayStartTime
+    // than INGAME presence (matchStartTime, which includes the loading screen).
+    const { offset: recordingOffset, recordingLagMs, clockSkewMs, reference } =
+      computeRecordingOffsetMeta(this.matchData)
     console.log(
-      `[RiotLocalApi] videoOffset base — matchStart=${matchStartTime} gameplayStart=${gameplayStartTime} ` +
-      `recordingStart=${recordingStartTime} offset=${recordingOffset}ms (using ${matchStartTime != null ? 'matchStartTime' : 'gameplayStartTime'})`
+      `[RiotLocalApi] videoOffset base — matchStart=${this.matchData.matchStartTime} ` +
+      `gameplayStart=${this.matchData.gameplayStartTime} recordingStart=${this.matchData.recordingStartTime} ` +
+      `recordingLag=${recordingLagMs}ms clockSkew=${clockSkewMs}ms offset=${recordingOffset}ms (using ${reference})`
     )
 
     // Build a fast PUUID → agent name map for resolving event labels
@@ -872,7 +878,7 @@ export class RiotLocalApi {
         // For TDM/hurm Riot returns 0; use `gameTime` (also ms since game start) as fallback.
         const rawTsgm = k.timeSinceGameStartMillis as number | undefined
         const tsgm = (rawTsgm != null && rawTsgm > 0) ? rawTsgm : ((k.gameTime as number) ?? 0)
-        const videoOffsetMs = recordingOffset + tsgm
+        const videoOffsetMs = Math.max(0, recordingOffset + tsgm)
         const killerPuuid = k.killer as string
         const victimPuuid = k.victim as string
         const ev: KillEvent = {
@@ -1124,6 +1130,59 @@ export class RiotLocalApi {
 // ─────────────────────────────────────────────────────────────────────────────
 // HELPERS
 // ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Map Riot game-clock ms to seconds in the local recording file.
+ * Riot's timeSinceGameStartMillis is aligned with in-round time, not INGAME presence
+ * (which includes the loading screen). Without gameplayStartTime we apply a typical
+ * loading-screen skew so kill markers line up with the video.
+ */
+function computeRecordingOffsetMeta(timeline: Pick<MatchData, 'gameplayStartTime' | 'matchStartTime' | 'recordingStartTime'>): {
+  offset: number
+  recordingLagMs: number
+  clockSkewMs: number
+  reference: 'gameplayStartTime' | 'matchStartTime+skew' | 'matchStartTime' | 'recordingLag'
+} {
+  const { gameplayStartTime, matchStartTime, recordingStartTime } = timeline
+  const recordingLagMs = (matchStartTime != null && recordingStartTime != null)
+    ? Math.max(0, recordingStartTime - matchStartTime)
+    : 0
+  const clockSkewMs = (gameplayStartTime != null && matchStartTime != null)
+    ? gameplayStartTime - matchStartTime
+    : 0
+
+  // Measured gameplay start (overlay poll) is best; else shift matchStart by observed or typical load skew.
+  const typicalLoadSkewMs = 5_000
+  const loadSkewMs = clockSkewMs > 0
+    ? Math.min(clockSkewMs, 15_000)
+    : typicalLoadSkewMs
+  const referenceTime = gameplayStartTime
+    ?? (matchStartTime != null ? matchStartTime + loadSkewMs : null)
+
+  const offset = referenceTime != null
+    ? referenceTime - recordingStartTime
+    : -recordingLagMs
+  const reference = gameplayStartTime != null
+    ? 'gameplayStartTime'
+    : matchStartTime != null
+      ? 'matchStartTime+skew'
+      : 'recordingLag'
+  return { offset, recordingLagMs, clockSkewMs, reference }
+}
+
+/** Recompute kill/death videoOffsetMs (fixes stored timelines + VOD review sync). */
+export function recomputeTimelineVideoOffsets(timeline: MatchData): void {
+  const { offset: recordingOffset } = computeRecordingOffsetMeta(timeline)
+  const patch = (ev: KillEvent) => {
+    const tsgm = ev.timeSinceGameStartMillis
+    if (tsgm != null && !isNaN(tsgm)) {
+      ev.videoOffsetMs = Math.max(0, recordingOffset + tsgm)
+    }
+  }
+  for (const k of timeline.killEvents ?? []) patch(k)
+  for (const k of timeline.playerKills ?? []) patch(k)
+  for (const k of timeline.playerDeaths ?? []) patch(k)
+}
 
 function _normalizeRegion(region: string): string {
   const r = region.replace(/\d+$/, '').toLowerCase()

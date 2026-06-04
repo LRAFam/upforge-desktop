@@ -338,6 +338,8 @@ declare global {
           version: string
           ffmpegOk: boolean
           recordedModes: string[]
+          recordingBackend: 'obs' | 'ffmpeg' | 'desktop'
+          currentQueueMode: string | null
           user: {
             name: string
             email: string

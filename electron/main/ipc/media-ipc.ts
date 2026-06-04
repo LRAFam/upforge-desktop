@@ -17,12 +17,18 @@ export function setupMediaHandlers(
   getActiveRecorder: () => MatchRecorder,
   settingsManager: SettingsManager,
   obsRecorder?: OBSRecorder,
+  endMatchRecording?: (game: string) => Promise<{ ok: boolean; reason?: string }>,
+  getCurrentGame?: () => string | null,
 ): void {
   // ── Recorder ──────────────────────────────────────────────────────────────
 
   ipcMain.handle('recorder:stop', async () => {
     const recorder = getActiveRecorder()
     if (!recorder.isRecording()) return { ok: false, reason: 'not_recording' }
+    if (endMatchRecording) {
+      const game = getCurrentGame?.() ?? 'valorant'
+      return endMatchRecording(game)
+    }
     try {
       await recorder.stop()
       return { ok: true }

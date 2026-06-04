@@ -116,16 +116,23 @@ export function setupIpcHandlers(
   showClipsFn?: () => void,
   performanceManager?: PerformanceManager,
   obsRecorder?: OBSRecorder,
-  trainerBridge?: TrainerBridge
+  trainerBridge?: TrainerBridge,
+  endMatchRecording?: (game: string) => Promise<{ ok: boolean; reason?: string }>,
+  getRecordingBackend?: () => 'obs' | 'ffmpeg' | 'desktop',
+  getCurrentQueueMode?: () => string | null,
 ): void {
-  setupAuthHandlers(ipcMain, auth, getActiveRecorder, gameDetector, uploadManager)
+  setupAuthHandlers(ipcMain, auth, getActiveRecorder, gameDetector, uploadManager, endMatchRecording)
 
   setupAppHandlers(
     ipcMain, auth, getActiveRecorder, gameDetector, settingsManager,
-    openPostGameFn, getFFmpegOk, getWaitingForMatch, getActivityLog, showClipsFn
+    openPostGameFn, getFFmpegOk, getWaitingForMatch, getActivityLog, showClipsFn,
+    getRecordingBackend, getCurrentQueueMode,
   )
 
-  setupMediaHandlers(ipcMain, getActiveRecorder, settingsManager, obsRecorder)
+  setupMediaHandlers(
+    ipcMain, getActiveRecorder, settingsManager, obsRecorder,
+    endMatchRecording, () => gameDetector.currentGame(),
+  )
 
   setupGamingHandlers(ipcMain, auth, settingsManager, gameDetector, performanceManager, trainerBridge)
 
