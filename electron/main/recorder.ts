@@ -854,7 +854,7 @@ export class Recorder {
         '-vcodec', codec,
         ...qualityArgs,
         ...(hasAudio ? ['-acodec', 'aac', '-b:a', '192k'] : []),
-        '-movflags', '+faststart',
+        '-movflags', '+frag_keyframe+empty_moov',
         outputPath
       ]
     }
@@ -881,7 +881,7 @@ export class Recorder {
           '-map', '[v]',
           '-vcodec', codec,
           ...qualityArgs,
-          '-movflags', '+faststart',
+          '-movflags', '+frag_keyframe+empty_moov',
           outputPath
         ]
       }
@@ -895,7 +895,7 @@ export class Recorder {
         ...qualityArgs,
         '-acodec', 'aac',
         '-b:a', '128k',
-        '-movflags', '+faststart',
+        '-movflags', '+frag_keyframe+empty_moov',
         outputPath
       ]
     }
@@ -950,7 +950,7 @@ export class Recorder {
         '-vf', `scale=${scale}`,
         '-vcodec', codec,
         ...qualityArgs,
-        '-movflags', '+faststart',
+        '-movflags', '+frag_keyframe+empty_moov',
         outputPath
       ]
     }
@@ -965,7 +965,7 @@ export class Recorder {
       ...qualityArgs,
       '-acodec', 'aac',
       '-b:a', '128k',
-      '-movflags', '+faststart',
+      '-movflags', '+frag_keyframe+empty_moov',
       outputPath
     ]
   }

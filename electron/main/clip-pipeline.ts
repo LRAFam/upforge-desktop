@@ -148,6 +148,14 @@ export class ClipPipeline {
       return
     }
 
+    const probe = await clipExtractor.probe(videoPath)
+    if (!probe.ok) {
+      log.warn('[ClipExtract] Recording is unreadable — skipping all clip extraction:', probe.reason)
+      logActivity('Clip extraction skipped — recording was incomplete (app or ffmpeg quit before the file was finalised)')
+      reportError({ message: `[ClipExtract] Recording unreadable, skipping extraction: ${probe.reason}`, component: 'desktop:ClipExtract' })
+      return
+    }
+
     const recordingStart = this.ctx.getRecordingStartTime() ?? 0
     const map = timeline?.map ?? null
     const agent = timeline?.agent ?? null
@@ -292,6 +300,15 @@ export class ClipPipeline {
       logActivity('Late clip extraction skipped — recording file not found')
       return
     }
+
+    const probe = await clipExtractor.probe(videoPath)
+    if (!probe.ok) {
+      log.warn('[LateClipExtract] Recording is unreadable — skipping all clip extraction:', probe.reason)
+      logActivity('Late clip extraction skipped — recording was incomplete (app or ffmpeg quit before the file was finalised)')
+      reportError({ message: `[LateClipExtract] Recording unreadable, skipping extraction: ${probe.reason}`, component: 'desktop:ClipExtract' })
+      return
+    }
+
     if (!timeline.playerKills || timeline.playerKills.length === 0) {
       log.warn('[LateClipExtract] No player kills in timeline — nothing to clip')
       return

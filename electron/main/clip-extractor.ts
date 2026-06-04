@@ -115,6 +115,27 @@ export class ClipExtractor {
     }
   }
 
+  /**
+   * Quickly probe a source file to check it is a valid, readable MP4.
+   * Returns ok:false (with a reason) when the moov atom is missing, which
+   * happens when ffmpeg was SIGKILL'd or crashed before finalising the file.
+   * Call this before attempting extraction to surface one clear error rather
+   * than one error per clip type.
+   */
+  async probe(filePath: string): Promise<{ ok: boolean; reason?: string }> {
+    try {
+      // Read only 1 video frame — fails immediately if the container is unreadable.
+      await this._run(['-v', 'error', '-i', filePath, '-frames:v', '1', '-f', 'null', '-'], 10_000)
+      return { ok: true }
+    } catch (err) {
+      const msg = String(err)
+      if (msg.includes('moov atom not found') || msg.includes('Invalid data')) {
+        return { ok: false, reason: 'Recording is incomplete — moov atom not found. ffmpeg likely exited before finalising the file.' }
+      }
+      return { ok: false, reason: msg.slice(0, 200) }
+    }
+  }
+
   private _run(args: string[], timeoutMs = 60_000): Promise<void> {
     return new Promise((resolve, reject) => {
       const bin = ffmpegPath()
