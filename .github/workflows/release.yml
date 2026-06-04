@@ -147,6 +147,20 @@ jobs:
           test -f dist/latest.yml || (echo "missing dist/latest.yml" && exit 1)
           test -f dist/latest-mac.yml || (echo "missing dist/latest-mac.yml" && exit 1)
 
+          # latest.yml path must match the Windows installer filename on the release
+          EXPECTED_EXE=$(grep '^path:' dist/latest.yml | awk '{print $2}')
+          ACTUAL_EXE=$(ls -1 dist/*.exe 2>/dev/null | head -1 || true)
+          if [ -z "$EXPECTED_EXE" ] || [ -z "$ACTUAL_EXE" ]; then
+            echo "Missing installer or latest.yml path"
+            ls -la dist/
+            exit 1
+          fi
+          if [ "$(basename "$ACTUAL_EXE")" != "$EXPECTED_EXE" ]; then
+            echo "Aligning installer name: $(basename "$ACTUAL_EXE") -> $EXPECTED_EXE"
+            cp -f "$ACTUAL_EXE" "dist/$EXPECTED_EXE"
+          fi
+          test -f "dist/$EXPECTED_EXE" || (echo "Expected installer not found: $EXPECTED_EXE" && exit 1)
+
           if ! gh release view "$TAG" --repo "${{ github.repository }}" >/dev/null 2>&1; then
             gh release create "$TAG" --repo "${{ github.repository }}" --title "$VERSION" --notes "See commit history for changes."
           fi
@@ -156,7 +170,7 @@ jobs:
 
           echo "Uploading installers…"
           gh release upload "$TAG" --repo "${{ github.repository }}" \
-            dist/*.exe dist/*.exe.blockmap dist/*.dmg dist/*.dmg.blockmap --clobber
+            "dist/${EXPECTED_EXE}" dist/*.exe.blockmap dist/*.dmg dist/*.dmg.blockmap --clobber
 
           echo "Verifying latest.yml is downloadable…"
           for i in $(seq 1 12); do

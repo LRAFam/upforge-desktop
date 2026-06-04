@@ -38,7 +38,18 @@ Output: `dist/UpForge Setup x.x.x.exe`
 
 ## Auto-Updates
 
-Uses `electron-updater` via GitHub Releases. Tag a release and push — app checks on startup.
+Uses `electron-updater` via GitHub Releases.
+
+**Release flow:** bump version → push `main` → CI auto-tags and builds.
+
+```bash
+npm run patch          # 2.3.42 → 2.3.43 (no local git tag)
+git add package.json package-lock.json
+git commit -m "chore: release v2.3.43"
+git push origin main   # auto-tag.yml creates v* tag and runs release.yml
+```
+
+Do not create tags locally or run `electron-builder --publish` by hand unless debugging.
 
 ## Project Structure
 

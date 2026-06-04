@@ -19,8 +19,9 @@ let state: UpdateState = { phase: 'idle' }
 let startupComplete = false
 
 /** CI may expose a release before latest.yml is on the CDN — treat as transient. */
-function isMissingReleaseMetadata(message: string): boolean {
-  return /latest\.yml/i.test(message) && (/404|not found|cannot find|httperror/i.test(message))
+function isTransientUpdateError(message: string): boolean {
+  const is404 = /404|not found|cannot find|httperror|cannot download/i.test(message)
+  return is404 && (/latest\.yml/i.test(message) || /UpForge-Setup-.*\.exe/i.test(message))
 }
 
 function sleep(ms: number): Promise<void> {
@@ -140,7 +141,7 @@ export function setupAutoUpdater(
 
   autoUpdater.on('error', (err) => {
     const msg = err.message || String(err)
-    if (!startupComplete && isMissingReleaseMetadata(msg)) {
+    if (!startupComplete && isTransientUpdateError(msg)) {
       log.warn('[Updater] Transient metadata error (handled by retry loop):', msg)
       return
     }
@@ -165,15 +166,15 @@ export function setupAutoUpdater(
         return
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err)
-        if (isMissingReleaseMetadata(msg) && attempt < MAX_ATTEMPTS) {
+        if (isTransientUpdateError(msg) && attempt < MAX_ATTEMPTS) {
           log.warn(
             `[Updater] Release metadata not ready (${attempt}/${MAX_ATTEMPTS}), retrying in ${RETRY_DELAY_MS / 1000}s…`
           )
           await sleep(RETRY_DELAY_MS)
           continue
         }
-        if (isMissingReleaseMetadata(msg)) {
-          log.warn('[Updater] Release metadata still missing after retries — continuing without update')
+        if (isTransientUpdateError(msg)) {
+          log.warn('[Updater] Update assets unavailable after retries — continuing without update')
         } else {
           log.error('[Updater] checkForUpdates failed:', msg)
           state = { phase: 'error', error: msg }
