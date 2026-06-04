@@ -1062,7 +1062,7 @@ function openUpgrade() {
 async function shareClip(clip: ClipRecord) {
   const result = await window.api.clips.share(clip.id)
   if (result.ok && result.shareToken) {
-    const url = `https://upforge.gg/clips/${result.shareToken}`
+    const url = result.shareUrl ?? `https://upforge.gg/match/${result.shareToken}`
     await navigator.clipboard.writeText(url)
     showToastMsg('Share link copied to clipboard!', 'success')
   } else {
