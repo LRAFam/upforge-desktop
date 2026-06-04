@@ -18,6 +18,15 @@ export interface UpdateState {
 let state: UpdateState = { phase: 'idle' }
 let startupComplete = false
 
+/** CI uploads release assets over several minutes; latest.yml is often last. */
+function isMissingReleaseMetadata(message: string): boolean {
+  return /latest\.yml/i.test(message) && (/404|not found|cannot find/i.test(message))
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, ms))
+}
+
 function broadcastToAll(channel: string, payload?: unknown) {
   BrowserWindow.getAllWindows().forEach(win => {
     if (!win.isDestroyed()) win.webContents.send(channel, payload)
@@ -112,11 +121,42 @@ export function setupAutoUpdater(
   })
 
   autoUpdater.on('error', (err) => {
-    state = { phase: 'error', error: err.message }
-    log.error('[Updater] Error:', err.message || err)
-    send('updater:error', err.message)
+    const msg = err.message || String(err)
+    // Startup retries handle transient missing latest.yml; avoid duplicate handling.
+    if (!startupComplete && isMissingReleaseMetadata(msg)) return
+    state = { phase: 'error', error: msg }
+    log.error('[Updater] Error:', msg)
+    send('updater:error', msg)
     safeOnReady()
   })
 
-  autoUpdater.checkForUpdates()
+  const MAX_ATTEMPTS = 5
+  const RETRY_DELAY_MS = 12_000
+
+  void (async () => {
+    for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+      try {
+        await autoUpdater.checkForUpdates()
+        return
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err)
+        if (isMissingReleaseMetadata(msg) && attempt < MAX_ATTEMPTS) {
+          log.warn(
+            `[Updater] Release metadata not ready yet (${attempt}/${MAX_ATTEMPTS}), retrying in ${RETRY_DELAY_MS / 1000}s…`
+          )
+          await sleep(RETRY_DELAY_MS)
+          continue
+        }
+        if (isMissingReleaseMetadata(msg)) {
+          log.warn('[Updater] Release metadata still missing after retries — continuing without update')
+        } else {
+          log.error('[Updater] checkForUpdates failed:', msg)
+          state = { phase: 'error', error: msg }
+          send('updater:error', msg)
+        }
+        safeOnReady()
+        return
+      }
+    }
+  })()
 }
