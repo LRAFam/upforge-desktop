@@ -1,0 +1,16 @@
+{
+  "map": "Pearl",
+  "callouts": [
+    { "name": "A Main", "site": "A", "x": 0.78, "y": 0.55, "radius": 0.09 },
+    { "name": "A Art", "site": "A", "x": 0.72, "y": 0.48, "radius": 0.08 },
+    { "name": "A Site", "site": "A", "x": 0.88, "y": 0.50, "radius": 0.08 },
+    { "name": "A Secret", "site": "A", "x": 0.82, "y": 0.62, "radius": 0.07 },
+    { "name": "B Main", "site": "B", "x": 0.22, "y": 0.45, "radius": 0.09 },
+    { "name": "B Ramp", "site": "B", "x": 0.28, "y": 0.38, "radius": 0.08 },
+    { "name": "B Site", "site": "B", "x": 0.12, "y": 0.42, "radius": 0.08 },
+    { "name": "Mid", "site": "Mid", "x": 0.50, "y": 0.52, "radius": 0.09 },
+    { "name": "Mid Shops", "site": "Mid", "x": 0.45, "y": 0.58, "radius": 0.08 },
+    { "name": "Attacker Spawn", "site": "Spawn", "x": 0.15, "y": 0.72, "radius": 0.10 },
+    { "name": "Defender Spawn", "site": "Spawn", "x": 0.85, "y": 0.28, "radius": 0.10 }
+  ]
+}

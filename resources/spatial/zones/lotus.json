@@ -1,0 +1,18 @@
+{
+  "map": "Lotus",
+  "callouts": [
+    { "name": "A Main", "site": "A", "x": 0.78, "y": 0.62, "radius": 0.09 },
+    { "name": "A Root", "site": "A", "x": 0.72, "y": 0.55, "radius": 0.08 },
+    { "name": "A Site", "site": "A", "x": 0.88, "y": 0.58, "radius": 0.08 },
+    { "name": "B Main", "site": "B", "x": 0.50, "y": 0.28, "radius": 0.09 },
+    { "name": "B Upper", "site": "B", "x": 0.55, "y": 0.22, "radius": 0.07 },
+    { "name": "B Site", "site": "B", "x": 0.48, "y": 0.18, "radius": 0.08 },
+    { "name": "C Mound", "site": "C", "x": 0.22, "y": 0.55, "radius": 0.09 },
+    { "name": "C Hall", "site": "C", "x": 0.28, "y": 0.48, "radius": 0.08 },
+    { "name": "C Site", "site": "C", "x": 0.15, "y": 0.42, "radius": 0.08 },
+    { "name": "A Door", "site": "Mid", "x": 0.62, "y": 0.48, "radius": 0.08 },
+    { "name": "C Door", "site": "Mid", "x": 0.38, "y": 0.52, "radius": 0.08 },
+    { "name": "Attacker Spawn", "site": "Spawn", "x": 0.50, "y": 0.82, "radius": 0.10 },
+    { "name": "Defender Spawn", "site": "Spawn", "x": 0.50, "y": 0.15, "radius": 0.10 }
+  ]
+}

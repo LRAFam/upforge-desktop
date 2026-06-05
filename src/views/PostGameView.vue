@@ -16,7 +16,7 @@
         <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 20 20">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" d="M4.75 10.25 8 13.5l7.25-7.25"/>
         </svg>
-        Copied analysis link
+        {{ toastMessage }}
       </div>
 
       <!-- Uploading -->
@@ -94,94 +94,120 @@
       </div>
 
       <!-- Analysing -->
-      <div v-else-if="state === 'analysing'" class="w-full space-y-4 text-center">
-        <!-- Dismiss during analysis -->
+      <div v-else-if="state === 'analysing'" class="w-full space-y-3 text-center">
         <button
           class="absolute top-2 right-2 w-6 h-6 flex items-center justify-center rounded-full text-gray-600 hover:text-gray-300 hover:bg-white/[0.06] transition-colors"
-          title="Dismiss"
+          title="Close — analysis continues in background"
           @click="dismiss"
         >
           <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
           </svg>
         </button>
-        <div
-          class="w-11 h-11 mx-auto rounded-full overflow-hidden flex items-center justify-center transition-all"
-          :class="agentImageUrl ? '' : 'bg-orange-500/10 border border-orange-500/20'"
-          :style="agentImageUrl ? { border: `1px solid ${agentAccentColor}50`, background: agentAccentColor + '20' } : {}"
-        >
-          <img v-if="agentImageUrl" :src="agentImageUrl" class="w-9 h-9 object-contain" />
-          <svg v-else class="w-5 h-5 text-orange-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"/>
-          </svg>
-        </div>
-        <div>
-          <p class="text-sm font-semibold">Analysing gameplay</p>
-          <p class="text-xs text-gray-500 mt-0.5">
-            {{ analysisElapsedSecs > 0 ? `Analysing… ${analysisElapsedDisplay}` : 'Uploading to AI…' }}
-          </p>
-        </div>
-        <!-- Multi-stage progress indicator -->
-        <div class="flex items-center gap-0 w-full px-2">
-          <template v-for="(stage, i) in ANALYSIS_STAGES" :key="stage">
-            <div class="flex items-center gap-1 flex-shrink-0">
+        <div class="space-y-3">
+          <div class="flex items-center justify-center">
+            <div class="inline-flex items-center gap-3 rounded-2xl border border-white/[0.07] bg-white/[0.03] px-4 py-3 shadow-[0_0_30px_rgba(249,115,22,0.08)]">
               <div
-                class="w-1.5 h-1.5 rounded-full transition-colors duration-700"
-                :class="i <= analysisStageIndex ? 'bg-orange-500' : 'bg-white/10'"
-              />
-              <span class="text-xs transition-colors duration-700" :class="i <= analysisStageIndex ? 'text-orange-400' : 'text-gray-700'">{{ stage }}</span>
+                class="w-11 h-11 rounded-2xl overflow-hidden flex items-center justify-center flex-shrink-0"
+                :class="agentImageUrl ? '' : 'bg-orange-500/10 border border-orange-500/20'"
+                :style="agentImageUrl ? { border: `1px solid ${agentAccentColor}50`, background: agentAccentColor + '20' } : {}"
+              >
+                <img v-if="agentImageUrl" :src="agentImageUrl" class="w-9 h-9 object-contain" />
+                <svg v-else class="w-5 h-5 text-orange-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"/>
+                </svg>
+              </div>
+              <div class="text-left">
+                <p class="text-sm font-bold text-white">Analysing gameplay</p>
+                <div class="mt-1 flex items-center gap-2 text-[11px]">
+                  <span class="font-semibold text-gray-200">{{ gameInfo.agent || gameLabel }}</span>
+                  <span v-if="gameInfo.map" class="text-gray-500">{{ gameInfo.map }}</span>
+                </div>
+              </div>
             </div>
-            <div
-              v-if="i < ANALYSIS_STAGES.length - 1"
-              class="flex-1 h-px mx-1 transition-colors duration-700"
-              :class="i < analysisStageIndex ? 'bg-orange-500/50' : 'bg-white/[0.06]'"
-            />
-          </template>
+          </div>
+          <div class="w-full space-y-2.5">
+            <div class="flex items-end justify-between gap-3">
+              <div class="text-left">
+                <p class="text-[10px] font-semibold uppercase tracking-[0.24em] text-gray-600">Pipeline progress</p>
+                <p class="mt-1 text-xs text-gray-500">{{ analysisStep || 'Running AI analysis on your recording' }}</p>
+              </div>
+              <div class="text-right">
+                <p class="text-lg font-black tabular-nums text-white upload-stat-in">{{ analysisProgress }}%</p>
+                <p class="text-[10px] text-gray-600">Complete</p>
+              </div>
+            </div>
+            <div class="relative h-3 w-full overflow-hidden rounded-full border border-white/[0.07] bg-white/[0.05]">
+              <div class="absolute inset-0 upload-bar-track" />
+              <div
+                class="relative h-full overflow-hidden rounded-full transition-all duration-500"
+                :class="analysisProgress > 0 ? 'upload-bar-fill' : 'bg-orange-500/30'"
+                :style="{ width: `${Math.max(analysisProgress, analysisProgress > 0 ? 4 : 8)}%` }"
+              >
+                <div v-if="analysisProgress > 0" class="absolute inset-0 upload-bar-shimmer" />
+              </div>
+            </div>
+            <div class="grid grid-cols-2 gap-2">
+              <div class="rounded-xl border border-white/[0.09] bg-white/[0.03] px-3 py-2 text-left">
+                <p class="text-[10px] uppercase tracking-[0.2em] text-gray-600">Status</p>
+                <div class="mt-1 flex items-center gap-2 text-xs font-semibold text-orange-300">
+                  <span class="relative flex h-2 w-2">
+                    <span class="absolute inline-flex h-full w-full animate-ping rounded-full bg-orange-400 opacity-60" />
+                    <span class="relative inline-flex h-2 w-2 rounded-full bg-orange-500" />
+                  </span>
+                  <span>{{ analysisStatusLabel }}</span>
+                </div>
+              </div>
+              <div class="rounded-xl border border-white/[0.09] bg-white/[0.03] px-3 py-2 text-right">
+                <p class="text-[10px] uppercase tracking-[0.2em] text-gray-600">Elapsed</p>
+                <p class="mt-1 text-xs font-semibold text-gray-300 tabular-nums">{{ analysisElapsedDisplay }}</p>
+              </div>
+            </div>
+          </div>
         </div>
-        <!-- Rotating coaching tip -->
         <div class="px-3 py-2.5 bg-white/[0.02] border border-white/[0.09] rounded-xl text-left">
           <p class="text-xs font-semibold uppercase tracking-wider text-gray-600 mb-1">Did you know?</p>
           <p class="text-xs text-gray-400 leading-relaxed">{{ currentTip }}</p>
         </div>
-        <!-- Progress ring + bouncing dots -->
-        <div class="flex items-center justify-center gap-3">
-          <svg class="w-6 h-6 -rotate-90" viewBox="0 0 24 24">
-            <circle cx="12" cy="12" r="9" fill="none" stroke="rgba(255,255,255,0.06)" stroke-width="2.5"/>
-            <circle
-              cx="12" cy="12" r="9" fill="none" stroke="rgb(249,115,22)" stroke-width="2.5"
-              stroke-linecap="round"
-              :stroke-dasharray="`${Math.min(analysisElapsedSecs / 180 * 56.5, 56.5)} 56.5`"
-              style="transition: stroke-dasharray 1s linear;"
-            />
+        <div
+          v-if="analysisLongRunning || analysisDeferred"
+          class="flex items-start gap-2 px-3 py-2.5 rounded-xl text-left"
+          :class="analysisDeferred ? 'bg-amber-500/[0.07] border border-amber-500/20' : 'bg-blue-500/[0.06] border border-blue-500/20'"
+        >
+          <svg
+            class="w-3.5 h-3.5 flex-shrink-0 mt-0.5"
+            :class="analysisDeferred ? 'text-amber-400' : 'text-blue-400'"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
           </svg>
-          <div class="flex items-center gap-1.5">
-            <span v-for="i in 3" :key="i" class="w-1.5 h-1.5 rounded-full bg-orange-500/60 animate-bounce" :style="{ animationDelay: `${(i - 1) * 0.18}s` }" />
+          <div class="flex-1 min-w-0">
+            <p class="text-xs font-medium" :class="analysisDeferred ? 'text-amber-300' : 'text-blue-300'">
+              {{ analysisDeferred ? 'Still processing on our servers' : 'Taking longer than usual' }}
+            </p>
+            <p class="text-xs text-gray-500 mt-0.5">
+              <template v-if="analysisDeferred">
+                Complex matches can run 15+ minutes. Close this panel — we'll notify you when your score is ready.
+              </template>
+              <template v-else>
+                Your job is still at {{ analysisProgress }}% on our pipeline. You can close this window; analysis continues in the background.
+              </template>
+            </p>
+            <button
+              class="mt-2 px-2.5 py-1 text-xs font-medium text-gray-300 bg-white/[0.06] hover:bg-white/[0.1] border border-white/[0.08] rounded-lg transition-colors"
+              @click="dismiss"
+            >Close &amp; continue in background</button>
           </div>
         </div>
-        <div v-if="analysisStuck" class="flex items-start gap-2 px-3 py-2.5 bg-white/[0.03] border border-white/[0.10] rounded-xl text-left">
+        <div v-else-if="analysisStuck" class="flex items-start gap-2 px-3 py-2.5 bg-white/[0.03] border border-white/[0.10] rounded-xl text-left">
           <svg class="w-3.5 h-3.5 text-gray-500 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
           </svg>
           <div class="flex-1 min-w-0">
-            <p class="text-xs text-gray-400">This is taking a while — complex matches can take up to 10 minutes</p>
-            <p class="text-xs text-gray-600 mt-0.5">Your analysis is still running in the background. Grab a coffee and check back on the dashboard.</p>
-            <button
-              class="mt-2 px-2.5 py-1 text-xs font-medium text-gray-300 bg-white/[0.06] hover:bg-white/[0.1] border border-white/[0.08] rounded-lg transition-colors"
-              @click="dismiss"
-            >Close &amp; check dashboard</button>
-          </div>
-        </div>
-        <div v-if="analysisTimedOut" class="flex items-start gap-2 px-3 py-2.5 bg-amber-500/[0.07] border border-amber-500/20 rounded-xl text-left">
-          <svg class="w-3.5 h-3.5 text-amber-400 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
-          </svg>
-          <div class="flex-1 min-w-0">
-            <p class="text-xs text-amber-300 font-medium">Analysis is taking too long</p>
-            <p class="text-xs text-gray-500 mt-0.5">This usually means the AI service is under heavy load. Check the dashboard later for your results.</p>
-            <button
-              class="mt-2 px-2.5 py-1 text-xs font-medium text-gray-300 bg-white/[0.06] hover:bg-white/[0.1] border border-white/[0.08] rounded-lg transition-colors"
-              @click="dismiss"
-            >Close</button>
+            <p class="text-xs text-gray-400">Complex gameplay can take 10–15 minutes — your match is still processing.</p>
+            <p class="text-xs text-gray-600 mt-0.5">Progress updates live from our servers{{ analysisProgress > 0 ? ` (${analysisProgress}% so far)` : '' }}.</p>
           </div>
         </div>
       </div>
@@ -285,6 +311,49 @@
             :class="scoreBarClass(result.overall_score)"
             :style="{ width: `${result.overall_score}%` }"
           />
+        </div>
+
+        <!-- Spatial minimap (Riot kill coordinates → callouts) -->
+        <div
+          v-if="spatialSummary?.events?.length"
+          class="rounded-2xl border border-white/10 bg-white/[0.02] p-4 space-y-3"
+        >
+          <div class="flex items-center justify-between gap-2">
+            <div>
+              <p class="text-xs font-semibold uppercase tracking-wider text-gray-500">Match map</p>
+              <p class="text-[10px] text-gray-600 mt-0.5">Red = deaths · Green = kills (Riot API positions)</p>
+            </div>
+            <button
+              type="button"
+              class="text-[10px] font-bold uppercase tracking-wider text-gray-400 hover:text-white border border-white/10 rounded-lg px-2.5 py-1.5 transition-colors"
+              @click="copySpatialMapImage"
+            >
+              Copy for social
+            </button>
+          </div>
+          <MatchSpatialMinimap
+            ref="spatialMinimapRef"
+            :summary="spatialSummary"
+            :map-name="gameInfo.map"
+            :active-index="activeSpatialIndex"
+            :large="true"
+            @select="onSpatialEventSelect"
+          />
+          <div v-if="spatialDeathList.length" class="space-y-1 max-h-28 overflow-y-auto">
+            <button
+              v-for="item in spatialDeathList"
+              :key="item.index"
+              type="button"
+              class="w-full text-left text-[11px] px-2 py-1.5 rounded-lg border border-transparent hover:border-red-500/20 hover:bg-red-500/5 text-gray-400 transition-colors"
+              :class="activeSpatialIndex === item.index ? 'border-red-500/30 bg-red-500/10' : ''"
+              @click="activeSpatialIndex = item.index"
+            >
+              <span class="text-red-400 font-semibold">R{{ item.ev.round + 1 }}</span>
+              <span class="text-gray-500 mx-1">·</span>
+              {{ item.ev.callout }}
+              <span v-if="item.ev.isolated" class="text-red-300/80 ml-1">(no trade)</span>
+            </button>
+          </div>
         </div>
 
         <!-- AI Verdict (one-liner from analysis) -->
@@ -598,7 +667,7 @@
             </p>
             <p class="text-xs text-gray-500 mt-1">
               <template v-if="isTimeoutError">
-                Your recording was saved. The analysis took too long this time — please retry, it usually completes in 5–7 minutes.
+                The server reported a timeout for this job. Your recording was saved — try Analyse again from the dashboard.
               </template>
               <template v-else>{{ errorMessage }}</template>
             </p>
@@ -651,6 +720,8 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { getAgentImage, getAgentColor, getMapImage, getMapMinimap } from '../lib/valorant'
+import MatchSpatialMinimap from '../components/MatchSpatialMinimap.vue'
+import type { MatchSpatialSummary, SpatialTimelineEvent } from '../lib/spatial-types'
 
 type State = 'uploading' | 'analysing' | 'ready' | 'error' | 'pending'
 
@@ -663,8 +734,6 @@ const COACHING_TIPS = [
   'Pro players spend more time watching replays than playing ranked.',
   'A consistent warm-up routine can reduce your reaction time by 15–20ms.',
 ]
-
-const ANALYSIS_STAGES = ['Upload', 'Analyse', 'Generate']
 
 const state = ref<State>('uploading')
 const uploadProgress = ref(0)
@@ -685,7 +754,10 @@ const result = ref<{
   coaching_tags?: string[]
   top_issue?: string | null
   priority_improvements?: string[]
+  spatial_summary?: MatchSpatialSummary | null
 } | null>(null)
+const spatialMinimapRef = ref<InstanceType<typeof MatchSpatialMinimap> | null>(null)
+const activeSpatialIndex = ref<number | null>(null)
 const errorMessage = ref('')
 const needsUpgrade = ref(false)
 const upgradeUrl = ref('https://upforge.gg/pricing')
@@ -705,14 +777,17 @@ const isTimeoutError = computed(() => /timed? ?out/i.test(errorMessage.value))
 const pendingRecordingId = ref<string | null>(null)
 const analysing = ref(false)
 const analysisStuck = ref(false)
-const analysisTimedOut = ref(false)
+const analysisLongRunning = ref(false)
+const analysisDeferred = ref(false)
+const analysisProgress = ref(0)
+const analysisStep = ref<string | null>(null)
+const analysisJobStatus = ref<string>('processing')
 const tipIndex = ref(Math.floor(Math.random() * COACHING_TIPS.length))
 const sessionClipCount = ref(0)
 const analysisStartedAt = ref(0)
 const analysisElapsedSecs = ref(0)
 let sessionStart = 0
 let stuckTimer: ReturnType<typeof setTimeout> | null = null
-let timeoutTimer: ReturnType<typeof setTimeout> | null = null
 let tipTimer: ReturnType<typeof setInterval> | null = null
 let elapsedInterval: ReturnType<typeof setInterval> | null = null
 
@@ -756,11 +831,11 @@ const uploadStatusLabel = computed(() => {
   return 'Handing off to analysis'
 })
 
-const analysisStageIndex = computed(() => {
-  const s = analysisElapsedSecs.value
-  if (s < 30) return 0
-  if (s < 150) return 1
-  return 2
+const analysisStatusLabel = computed(() => {
+  const status = analysisJobStatus.value
+  if (status === 'queued') return 'Queued'
+  if (status === 'processing') return 'Processing'
+  return 'Working'
 })
 
 const uploadEta = computed(() => {
@@ -785,13 +860,21 @@ const roundTimelineCells = computed(() => {
   ]
 })
 
+function resetAnalysisUi() {
+  analysisProgress.value = 0
+  analysisStep.value = null
+  analysisJobStatus.value = 'processing'
+  analysisStuck.value = false
+  analysisLongRunning.value = false
+  analysisDeferred.value = false
+}
+
 function startStuckTimer() {
   if (stuckTimer) clearTimeout(stuckTimer)
-  if (timeoutTimer) clearTimeout(timeoutTimer)
+  resetAnalysisUi()
   analysisStartedAt.value = Date.now()
   analysisElapsedSecs.value = 0
-  stuckTimer = setTimeout(() => { analysisStuck.value = true }, 5 * 60 * 1000)
-  timeoutTimer = setTimeout(() => { analysisTimedOut.value = true }, 15 * 60 * 1000)
+  stuckTimer = setTimeout(() => { analysisStuck.value = true }, 8 * 60 * 1000)
   tipTimer = setInterval(() => {
     tipIndex.value = (tipIndex.value + 1) % COACHING_TIPS.length
   }, 15000)
@@ -804,11 +887,11 @@ function startStuckTimer() {
 
 function clearStuckTimer() {
   if (stuckTimer) { clearTimeout(stuckTimer); stuckTimer = null }
-  if (timeoutTimer) { clearTimeout(timeoutTimer); timeoutTimer = null }
   if (tipTimer) { clearInterval(tipTimer); tipTimer = null }
   if (elapsedInterval) { clearInterval(elapsedInterval); elapsedInterval = null }
   analysisStuck.value = false
-  analysisTimedOut.value = false
+  analysisLongRunning.value = false
+  analysisDeferred.value = false
 }
 
 const gameLabel = computed(() => gameInfo.value.game === 'cs2' ? 'CS2' : 'Valorant')
@@ -855,6 +938,7 @@ const trainerLaunching = ref(false)
 const cardExporting = ref(false)
 const cardExportDone = ref(false)
 const copiedLinkToast = ref(false)
+const toastMessage = ref('Copied')
 const isReady = ref(false)
 const debriefText = ref<string | null>(null)
 const debriefLoading = ref(false)
@@ -912,6 +996,40 @@ const agentImageUrl = computed(() => gameInfo.value.agent ? getAgentImage(gameIn
 const agentAccentColor = computed(() => gameInfo.value.agent ? getAgentColor(gameInfo.value.agent) : '')
 const mapSplashUrl = computed(() => gameInfo.value.map ? getMapImage(gameInfo.value.map) : '')
 const mapMinimapUrl = computed(() => gameInfo.value.map ? getMapMinimap(gameInfo.value.map) : '')
+
+const spatialSummary = computed((): MatchSpatialSummary | null => {
+  if (!result.value) return null
+  return (result.value as { spatial_summary?: MatchSpatialSummary | null }).spatial_summary ?? null
+})
+
+const spatialDeathList = computed(() => {
+  const events = spatialSummary.value?.events ?? []
+  return events
+    .map((ev, index) => ({ ev, index }))
+    .filter((x) => x.ev.type === 'death')
+    .slice(0, 8)
+})
+
+function onSpatialEventSelect(_ev: SpatialTimelineEvent, index: number) {
+  activeSpatialIndex.value = index
+}
+
+async function copySpatialMapImage() {
+  const dataUrl = spatialMinimapRef.value?.exportPng()
+  if (!dataUrl) return
+  try {
+    const res = await fetch(dataUrl)
+    const blob = await res.blob()
+    await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })])
+    flashToast('Map copied — paste into Discord or X')
+  } catch {
+    const a = document.createElement('a')
+    a.href = dataUrl
+    a.download = `upforge-map-${(gameInfo.value.map || 'match').toLowerCase()}.png`
+    a.click()
+    flashToast('Map saved as PNG')
+  }
+}
 /** True when we have a real tracked score (not 0-0 fallback) */
 const hasTrackedScore = computed(() =>
   result.value != null &&
@@ -951,7 +1069,36 @@ onMounted(() => {
     uploadStartedAt.value = Date.now()
   }))
   ipcCleanup.push(window.api.on('post-game:upload-progress', (...args: unknown[]) => { uploadProgress.value = args[0] as number }))
-  ipcCleanup.push(window.api.on('post-game:upload-complete', () => { state.value = 'analysing'; startStuckTimer() }))
+  ipcCleanup.push(window.api.on('post-game:upload-complete', () => {
+    state.value = 'analysing'
+    startStuckTimer()
+  }))
+  ipcCleanup.push(window.api.on('post-game:analysis-progress', (...args: unknown[]) => {
+    const data = args[0] as {
+      progress?: number
+      current_step?: string | null
+      status?: string
+      elapsed_ms?: number
+    }
+    if (typeof data.progress === 'number') {
+      analysisProgress.value = Math.min(100, Math.max(0, Math.round(data.progress)))
+    }
+    if (data.current_step) analysisStep.value = data.current_step
+    if (data.status) analysisJobStatus.value = data.status
+    if (data.elapsed_ms && data.elapsed_ms > 0 && analysisStartedAt.value) {
+      const serverElapsed = Math.floor(data.elapsed_ms / 1000)
+      if (serverElapsed > analysisElapsedSecs.value) {
+        analysisElapsedSecs.value = serverElapsed
+      }
+    }
+  }))
+  ipcCleanup.push(window.api.on('post-game:analysis-long-running', () => {
+    analysisLongRunning.value = true
+  }))
+  ipcCleanup.push(window.api.on('post-game:analysis-deferred', () => {
+    analysisDeferred.value = true
+    analysisLongRunning.value = true
+  }))
   ipcCleanup.push(window.api.on('post-game:analysis-ready', (...args: unknown[]) => {
     clearStuckTimer()
     const r = args[0] as typeof result.value & { session_start?: number }
@@ -1102,12 +1249,23 @@ function openUpgrade() { window.open(upgradeUrl.value, '_blank') }
 async function copyAnalysisLink() {
   if (!analysisUrl.value) return
   await navigator.clipboard.writeText(analysisUrl.value).catch(() => {})
+  toastMessage.value = 'Copied analysis link'
   copiedLinkToast.value = true
   if (copiedLinkTimer) clearTimeout(copiedLinkTimer)
   copiedLinkTimer = setTimeout(() => {
     copiedLinkToast.value = false
     copiedLinkTimer = null
   }, 2000)
+}
+
+function flashToast(message: string) {
+  toastMessage.value = message
+  copiedLinkToast.value = true
+  if (copiedLinkTimer) clearTimeout(copiedLinkTimer)
+  copiedLinkTimer = setTimeout(() => {
+    copiedLinkToast.value = false
+    copiedLinkTimer = null
+  }, 2200)
 }
 
 async function copyScore() {
@@ -1316,6 +1474,32 @@ async function exportAnalysis() {
       const finalY = wrapText(ctx, point, 585, pointY, 540, idx === 0 ? 24 : 22)
       pointY = finalY + 50
     })
+
+    // Spatial minimap on social card
+    const spatial = spatialSummary.value
+    const mapUrl = gameInfo.value.map ? getMapMinimap(gameInfo.value.map) : ''
+    if (spatial?.events?.length && mapUrl) {
+      const mapImg = await loadImage(mapUrl)
+      if (mapImg) {
+        const mx = 560
+        const my = 400
+        const ms = 220
+        ctx.drawImage(mapImg, mx, my, ms, ms)
+        for (const ev of spatial.events) {
+          const px = mx + ev.norm.x * ms
+          const py = my + ev.norm.y * ms
+          ctx.beginPath()
+          ctx.arc(px, py, ev.type === 'death' ? 6 : 5, 0, Math.PI * 2)
+          ctx.fillStyle = ev.type === 'death' ? '#ef4444' : '#22c55e'
+          ctx.fill()
+        }
+        ctx.fillStyle = 'rgba(0,0,0,0.7)'
+        ctx.fillRect(mx, my + ms - 22, ms, 22)
+        ctx.fillStyle = '#fff'
+        ctx.font = '10px system-ui, sans-serif'
+        ctx.fillText('Deaths · Kills (Riot positions)', mx + 8, my + ms - 8)
+      }
+    }
 
     // Agent portrait image
     const agentImgUrl = agentImageUrl.value

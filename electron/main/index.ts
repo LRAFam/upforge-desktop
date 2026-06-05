@@ -20,6 +20,7 @@ import { OBSRecorder } from './obs-recorder'
 import type { ActiveMatchRecorder } from './match-recorder'
 import { RiotLocalApi, recomputeTimelineVideoOffsets } from './riot-local-api'
 import { UploadManager, savePendingJob, clearPendingJob, readPendingJob } from './upload-manager'
+import { startAnalysisPoll } from './analysis-poll'
 import { AuthManager } from './auth-manager'
 import { SettingsManager } from './settings-manager'
 import { setupIpcHandlers, setupClipHandlers, consumePendingCaptureSourceId, cancelAllPollingTimers } from './ipc-handlers'
@@ -1253,68 +1254,57 @@ async function resumePollForJob(
   logActivity(`Resuming analysis poll for job ${jobId}`)
   tray?.setToolTip('UpForge — Analysing (resumed)…')
 
-  const startTime = Date.now()
-  let pollFailCount = 0
-  let pollDelay = 5_000
-
-  const schedulePoll = () => {
-    setTimeout(pollOnce, pollDelay)
-    pollDelay = Math.min(Math.round(pollDelay * 1.5), 30_000)
-  }
-
-  const pollOnce = async () => {
-    try {
-      const status = await uploadManager.pollStatus(jobId)
-      pollFailCount = 0
-      if (status.status === 'completed' && status.result) {
-        const score = (status.result as Record<string, unknown>).overall_score as number | undefined
-        logActivity(`Resumed analysis ready${score != null ? ` — Score: ${score}/100` : ''}`)
-        clearPendingJob()
-        mainWindow?.webContents.send('dashboard:refresh')
-        tray?.setToolTip(idleTooltip(game))
+  startAnalysisPoll({
+    uploadManager,
+    jobId,
+    mainWindow,
+    onCompleted: (status) => {
+      const score = (status.result as Record<string, unknown> | undefined)?.overall_score as number | undefined
+      logActivity(`Resumed analysis ready${score != null ? ` — Score: ${score}/100` : ''}`)
+      mainWindow?.webContents.send('dashboard:refresh')
+      tray?.setToolTip(idleTooltip(game))
+      if (Notification.isSupported()) {
+        const notifAgent = agent ?? gameLabel(game)
+        const notifMap = map ? ` on ${map}` : ''
+        const notifScore = score != null ? ` — Score: ${score}/100` : ''
+        new Notification({
+          title: 'UpForge — Analysis Ready',
+          body: `${notifAgent}${notifMap}${notifScore}`,
+          silent: notifySilent()
+        }).show()
+      }
+    },
+    onFailed: (_userMessage, rawError) => {
+      logActivity(`Resumed analysis failed: ${rawError}`)
+      tray?.setToolTip(idleTooltip(game))
+      if (Notification.isSupported()) {
+        const body = rawError.length > 100 ? rawError.slice(0, 97) + '…' : rawError
+        new Notification({
+          title: 'UpForge — Analysis Failed',
+          body,
+          silent: notifySilent()
+        }).show()
+      }
+      mainWindow?.webContents.send('dashboard:refresh')
+    },
+    onConnectionLost: () => {
+      logActivity('Resumed poll — lost connection to server (will retry when you reopen UpForge)')
+      tray?.setToolTip(idleTooltip(game))
+    },
+    onPollEnded: (reason) => {
+      if (reason === 'max_duration') {
+        logActivity('Resumed analysis poll stopped after 90 minutes — job may still be processing')
+        tray?.setToolTip('UpForge — Analysis still running…')
         if (Notification.isSupported()) {
-          const notifAgent = agent ?? gameLabel(game)
-          const notifMap = map ? ` on ${map}` : ''
-          const notifScore = score != null ? ` — Score: ${score}/100` : ''
           new Notification({
-            title: 'UpForge — Analysis Ready',
-            body: `${notifAgent}${notifMap}${notifScore}`,
+            title: 'UpForge — Still analysing',
+            body: 'Your match is still processing on our servers. We\'ll notify you when it\'s ready.',
             silent: notifySilent()
           }).show()
         }
-      } else if (status.status === 'failed') {
-        const errorMsg = status.error || 'Your previous analysis failed.'
-        logActivity(`Resumed analysis failed: ${errorMsg}`)
-        clearPendingJob()
-        tray?.setToolTip(idleTooltip(game))
-        if (Notification.isSupported()) {
-          new Notification({
-            title: 'UpForge — Analysis Failed',
-            body: errorMsg.length > 100 ? errorMsg.slice(0, 97) + '…' : errorMsg,
-            silent: notifySilent()
-          }).show()
-        }
-        mainWindow?.webContents.send('dashboard:refresh')
-      } else if (Date.now() - startTime > 600_000) {
-        logActivity('Resumed analysis poll timed out after 10 minutes')
-        clearPendingJob()
-        tray?.setToolTip(idleTooltip(game))
-      } else {
-        schedulePoll()
       }
-    } catch (pollErr) {
-      pollFailCount++
-      if (pollFailCount >= 5) {
-        logActivity('Resumed poll — lost connection to server')
-        clearPendingJob()
-        tray?.setToolTip(idleTooltip(game))
-      } else {
-        schedulePoll()
-      }
-    }
-  }
-
-  schedulePoll()
+    },
+  })
 }
 
 /** Upload a recording and poll for the analysis result, sending IPC events to `targetWindow`. */
@@ -1376,109 +1366,91 @@ async function doUploadAndAnalyse(
       currentActiveRecorder.deleteRecording(videoPath)
     }
 
-    // Poll for analysis result (up to 10 minutes) with exponential backoff
-    const startTime = Date.now()
-    let pollFailCount = 0
-    let pollDelay = 5_000
-    let pollTimer: ReturnType<typeof setTimeout> | null = null
-
-    const schedulePoll = () => {
-      pollTimer = setTimeout(pollOnce, pollDelay)
-      pollDelay = Math.min(Math.round(pollDelay * 1.5), 30_000)
-    }
-
-    const pollOnce = async () => {
-      try {
-        const status = await uploadManager.pollStatus(result.job_id)
-        pollFailCount = 0
-        if (status.status === 'completed' && status.result) {
-          const score = (status.result as Record<string, unknown>).overall_score as number | undefined
-          const analysisId = (status.result as Record<string, unknown>).analysis_id as number | undefined
-          const improvements = (status.result as Record<string, unknown>).priority_improvements as string[] | undefined
-          const topIssue = (status.result as Record<string, unknown>).top_issue as string | undefined
-          const insightText = (improvements && improvements.length > 0) ? improvements[0] : (topIssue ?? null)
-          logActivity(`Analysis ready${score != null ? ` — Score: ${score}/100` : ''}`)
-          clearPendingJob()
-          if (insightText) {
-            const insight = { text: insightText, score: score ?? 0, agent: agent ?? null, analysisId: analysisId ?? null, date: new Date().toISOString() }
-            settingsManager.save({ lastInsight: insight })
-            mainWindow?.webContents.send('dashboard:last-insight', insight)
-          }
-          // Derive match result from round scores (last entry = final score)
-          const lastScore = timeline?.roundScores?.length
-            ? timeline.roundScores[timeline.roundScores.length - 1]
-            : null
-          const matchResult: 'win' | 'loss' | null = lastScore
-            ? (lastScore.allyScore > lastScore.enemyScore ? 'win' : 'loss')
-            : null
-
-          send('post-game:analysis-ready', {
-            overall_score: (status.result as Record<string, unknown>).overall_score,
-            analysis_id: (status.result as Record<string, unknown>).analysis_id,
-            top_issue: (status.result as Record<string, unknown>).top_issue,
-            priority_improvements: (status.result as Record<string, unknown>).priority_improvements,
-            verdict: (status.result as Record<string, unknown>).verdict ?? null,
-            coaching_tags: (status.result as Record<string, unknown>).coaching_tags ?? [],
-            session_start: sessionStart,
-            kills: timeline?.finalStats?.kills ?? null,
-            deaths: timeline?.finalStats?.deaths ?? null,
-            assists: timeline?.finalStats?.assists ?? null,
-            match_result: matchResult,
-            ally_score: lastScore?.allyScore ?? null,
-            enemy_score: lastScore?.enemyScore ?? null,
-          })
-          mainWindow?.webContents.send('dashboard:refresh')
-          tray?.setToolTip(idleTooltip(game))
-          const notifAgent = agent ?? gameLabel(game)
-          const notifMap = map ? ` on ${map}` : ''
-          const notifScore = score != null ? ` — Score: ${score}/100` : ''
-          new Notification({
-            title: 'UpForge — Analysis Ready',
-            body: `${notifAgent}${notifMap}${notifScore}`,
-            silent: notifySilent()
-          }).show()
-          // Flash the post-game window taskbar button to attract attention
-          if (!targetWindow.isDestroyed()) {
-            targetWindow.flashFrame(true)
-            targetWindow.once('focus', () => targetWindow.flashFrame(false))
-          }
-
-          // Open the results page in the browser directly from the main process.
-          // This fires even if the post-game window was closed before analysis completed.
-          if (analysisId && settingsManager?.get()?.autoOpenBrowser !== false) {
-            shell.openExternal(`https://upforge.gg/${game}/results/${analysisId}`)
-          }
-        } else if (status.status === 'failed') {
-          const rawError = status.error || 'Analysis failed. Please try again.'
-          // Sanitise raw internal errors into user-friendly messages
-          const isTimeout = /timed? ?out|curl error 28|operation timed/i.test(rawError)
-          const errorMsg = isTimeout ? 'Analysis timed out.' : rawError
-          logActivity(`Analysis failed: ${rawError}`)
-          clearPendingJob()
-          send('post-game:upload-error', errorMsg)
-          tray?.setToolTip(idleTooltip(game))
-        } else if (Date.now() - startTime > 600_000) {
-          logActivity('Analysis timed out')
-          clearPendingJob()
-          send('post-game:upload-error', 'Analysis timed out.')
-          tray?.setToolTip(idleTooltip(game))
-        } else {
-          schedulePoll()
+    startAnalysisPoll({
+      uploadManager,
+      jobId: result.job_id,
+      targetWindow,
+      mainWindow,
+      onCompleted: (status) => {
+        const score = (status.result as Record<string, unknown>).overall_score as number | undefined
+        const analysisId = (status.result as Record<string, unknown>).analysis_id as number | undefined
+        const improvements = (status.result as Record<string, unknown>).priority_improvements as string[] | undefined
+        const topIssue = (status.result as Record<string, unknown>).top_issue as string | undefined
+        const insightText = (improvements && improvements.length > 0) ? improvements[0] : (topIssue ?? null)
+        logActivity(`Analysis ready${score != null ? ` — Score: ${score}/100` : ''}`)
+        if (insightText) {
+          const insight = { text: insightText, score: score ?? 0, agent: agent ?? null, analysisId: analysisId ?? null, date: new Date().toISOString() }
+          settingsManager.save({ lastInsight: insight })
+          mainWindow?.webContents.send('dashboard:last-insight', insight)
         }
-      } catch (pollErr) {
-        pollFailCount++
-        console.warn(`[Upload] Poll error (${pollFailCount}):`, pollErr)
-        if (pollFailCount >= 5) {
-          logActivity('Analysis polling failed — lost connection to server')
-          send('post-game:upload-error', 'Lost connection while waiting for analysis. Check your internet connection.')
-          tray?.setToolTip(idleTooltip(game))
-        } else {
-          schedulePoll()
-        }
-      }
-    }
+        const lastScore = timeline?.roundScores?.length
+          ? timeline.roundScores[timeline.roundScores.length - 1]
+          : null
+        const matchResult: 'win' | 'loss' | null = lastScore
+          ? (lastScore.allyScore > lastScore.enemyScore ? 'win' : 'loss')
+          : null
 
-    schedulePoll()
+        send('post-game:analysis-ready', {
+          overall_score: (status.result as Record<string, unknown>).overall_score,
+          analysis_id: (status.result as Record<string, unknown>).analysis_id,
+          top_issue: (status.result as Record<string, unknown>).top_issue,
+          priority_improvements: (status.result as Record<string, unknown>).priority_improvements,
+          verdict: (status.result as Record<string, unknown>).verdict ?? null,
+          coaching_tags: (status.result as Record<string, unknown>).coaching_tags ?? [],
+          spatial_summary: (status.result as Record<string, unknown>).spatial_summary
+            ?? timeline?.spatialSummary
+            ?? null,
+          session_start: sessionStart,
+          kills: timeline?.finalStats?.kills ?? null,
+          deaths: timeline?.finalStats?.deaths ?? null,
+          assists: timeline?.finalStats?.assists ?? null,
+          match_result: matchResult,
+          ally_score: lastScore?.allyScore ?? null,
+          enemy_score: lastScore?.enemyScore ?? null,
+        })
+        mainWindow?.webContents.send('dashboard:refresh')
+        tray?.setToolTip(idleTooltip(game))
+        const notifAgent = agent ?? gameLabel(game)
+        const notifMap = map ? ` on ${map}` : ''
+        const notifScore = score != null ? ` — Score: ${score}/100` : ''
+        new Notification({
+          title: 'UpForge — Analysis Ready',
+          body: `${notifAgent}${notifMap}${notifScore}`,
+          silent: notifySilent()
+        }).show()
+        if (!targetWindow.isDestroyed()) {
+          targetWindow.flashFrame(true)
+          targetWindow.once('focus', () => targetWindow.flashFrame(false))
+        }
+        if (analysisId && settingsManager?.get()?.autoOpenBrowser !== false) {
+          shell.openExternal(`https://upforge.gg/${game}/results/${analysisId}`)
+        }
+      },
+      onFailed: (userMessage, rawError) => {
+        logActivity(`Analysis failed: ${rawError}`)
+        send('post-game:upload-error', userMessage)
+        tray?.setToolTip(idleTooltip(game))
+      },
+      onConnectionLost: () => {
+        logActivity('Analysis polling failed — lost connection to server')
+        send('post-game:upload-error', 'Lost connection while waiting for analysis. Your job is still queued — reopen UpForge when you\'re back online.')
+        tray?.setToolTip(idleTooltip(game))
+      },
+      onPollEnded: (reason) => {
+        if (reason === 'max_duration') {
+          logActivity('Analysis poll reached 90 minute cap — job may still be processing on server')
+          send('post-game:analysis-deferred', { jobId: result.job_id })
+          tray?.setToolTip('UpForge — Analysis still running…')
+          if (Notification.isSupported()) {
+            new Notification({
+              title: 'UpForge — Still analysing',
+              body: 'Your match is still processing. We\'ll notify you when results are ready.',
+              silent: notifySilent()
+            }).show()
+          }
+        }
+      },
+    })
     return result.job_id
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : 'Upload failed'

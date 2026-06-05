@@ -27,6 +27,8 @@ export interface KillEvent extends GameEvent {
   victimPuuid?: string
   /** Which round this kill occurred in (0-indexed) */
   round?: number
+  /** Minimap position + callout (from Riot victimLocation + zone pack). */
+  spatial?: import('./spatial/types').KillSpatial
 }
 
 /** Spike planted event — includes site (A/B/C) and who planted */
@@ -247,6 +249,9 @@ export interface MatchData {
 
   /** Raw Riot MatchDetails API response — full fidelity data for AI coaching */
   matchDetails: Record<string, unknown> | null
+
+  /** Minimap events + death patterns for AI and post-game UI. */
+  spatialSummary?: import('./spatial/types').MatchSpatialSummary
 
   startTime: number
   endTime: number | null

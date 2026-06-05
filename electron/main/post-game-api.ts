@@ -8,6 +8,7 @@ import { shell } from 'electron'
 import log from 'electron-log'
 import { reportError } from './error-reporter'
 import type { MatchData } from './riot-types'
+import { prepareMatchDataForUpload, submissionContextFromTimeline } from './match-data-payload'
 
 // ── Pre-game brief ────────────────────────────────────────────────────────────
 
@@ -58,7 +59,15 @@ export async function requestPostGameDebrief(opts: PostGameDebriefOptions): Prom
   if (!token) return
 
   const apiBase = apiUrl ?? process.env['VITE_API_URL'] ?? 'https://api.upforge.gg'
-  const body = JSON.stringify({ riot_name: riotName, riot_tag: riotTag, agent, map, match_data: timeline })
+  const ctx = submissionContextFromTimeline(timeline ?? null)
+  const body = JSON.stringify({
+    riot_name: riotName,
+    riot_tag: riotTag,
+    agent: ctx.agent ?? agent,
+    map: ctx.map ?? map,
+    game_mode: ctx.game_mode,
+    match_data: ctx.match_data ?? prepareMatchDataForUpload(timeline ?? null),
+  })
   const parsedUrl = new URL(`${apiBase}/api/desktop-submissions/debrief`)
   const proto = parsedUrl.protocol === 'https:' ? await import('https') : await import('http')
 

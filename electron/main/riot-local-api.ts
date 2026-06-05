@@ -18,6 +18,7 @@ export {
   resolveEconomyWeapon,
   resolveEconomyArmor,
 } from './riot-lookup-tables'
+import { applySpatialEnrichment } from './spatial/enrich'
 export type {
   GameEvent,
   KillEvent,
@@ -807,7 +808,9 @@ export class RiotLocalApi {
       if (stats) {
         this.matchData.finalStats = {
           kills: stats.kills ?? 0, deaths: stats.deaths ?? 0, assists: stats.assists ?? 0,
-          score: stats.score ?? 0, summonerName: gameName, agent: this.matchData.agent,
+          score: stats.score ?? 0,
+          summonerName: gameName ?? this.matchData.playerName ?? null,
+          agent: this.matchData.agent,
           team: (ownPlayer.teamId as string) ?? null,
           level: (ownPlayer.accountLevel as number) ?? 0,
           // HS% and ADR are computed later once we've processed all round damage events
@@ -899,6 +902,7 @@ export class RiotLocalApi {
           round: (k.round as number) ?? 0,
         }
         this.matchData.killEvents.push(ev)
+        // `events` is kept in-memory for legacy readers only; upload uses killEvents only.
         this.matchData.events.push(ev)
         // Case-insensitive PUUID comparison — Riot occasionally returns mixed-case UUIDs
         if (killerPuuid?.toLowerCase() === ownLower) this.matchData.playerKills.push(ev)
@@ -996,6 +1000,12 @@ export class RiotLocalApi {
           EventTime: (round.defuseRoundMsec as number) ?? 0,
         })
       }
+    }
+
+    try {
+      applySpatialEnrichment(this.matchData)
+    } catch (err) {
+      console.warn('[RiotLocalApi] Spatial enrichment failed:', err)
     }
   }
 

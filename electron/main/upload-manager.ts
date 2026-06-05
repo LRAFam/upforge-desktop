@@ -6,6 +6,7 @@ import { app } from 'electron'
 import { AuthManager } from './auth-manager'
 import { MatchData } from './riot-local-api'
 import { UpgradeRequiredError } from './errors'
+import { prepareMatchDataForUpload, submissionContextFromTimeline, gameModeForApi } from './match-data-payload'
 
 export interface UploadOptions {
   videoPath: string
@@ -100,14 +101,15 @@ export class UploadManager {
 
     // ── Step 1: get presigned URL ──────────────────────────────────────────
     opts.onProgress(0)
+    const submissionCtx = submissionContextFromTimeline(opts.timeline ?? null)
     const presignBody = JSON.stringify({
       riot_name:  opts.riotName,
       riot_tag:   opts.riotTag,
       game:       opts.game,
-      map:        opts.map,
-      agent:      opts.agent,
-      // Send as a plain object — Laravel validates as nullable|array
-      match_data: opts.timeline ?? undefined,
+      map:        submissionCtx.map ?? opts.map,
+      agent:      submissionCtx.agent ?? opts.agent,
+      game_mode:  submissionCtx.game_mode,
+      match_data: submissionCtx.match_data,
     })
     const { job_id, upload_url } = await this._apiPost(
       `${apiUrl}/api/desktop-submissions/presign`,
@@ -125,13 +127,15 @@ export class UploadManager {
     // ── Step 3: confirm and queue analysis ────────────────────────────────
     // Re-send match context at complete() time so it can override/supplement
     // presign-time data (e.g. if Riot MatchDetails arrived late).
+    const completeCtx = submissionContextFromTimeline(opts.timeline ?? null)
     await this._apiPost(
       `${apiUrl}/api/desktop-submissions/complete`,
       JSON.stringify({
         job_id,
-        agent:      opts.agent ?? undefined,
-        map:        opts.map ?? undefined,
-        match_data: opts.timeline ?? undefined,
+        agent:      completeCtx.agent ?? opts.agent ?? undefined,
+        map:        completeCtx.map ?? opts.map ?? undefined,
+        game_mode:  completeCtx.game_mode ?? gameModeForApi(opts.timeline?.gameMode) ?? undefined,
+        match_data: completeCtx.match_data ?? prepareMatchDataForUpload(opts.timeline ?? null),
       }),
       token
     )
@@ -243,7 +247,14 @@ export class UploadManager {
     })
   }
 
-  async pollStatus(jobId: string): Promise<{ status: string; result?: Record<string, unknown>; error?: string | null }> {
+  async pollStatus(jobId: string): Promise<{
+    status: string
+    progress?: number
+    current_step?: string | null
+    result?: Record<string, unknown>
+    error?: string | null
+    job_id?: string
+  }> {
     const apiUrl = process.env['VITE_API_URL'] || 'https://api.upforge.gg'
     const token = this.auth.getToken()
     if (!token) throw new Error('Not authenticated')

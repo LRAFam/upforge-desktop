@@ -1,0 +1,33 @@
+/** Shared types for spatial minimap UI (mirrors electron/main/spatial/types). */
+
+export interface NormPoint {
+  x: number
+  y: number
+}
+
+export interface SpatialTimelineEvent {
+  type: 'death' | 'kill' | 'plant' | 'defuse'
+  round: number
+  norm: NormPoint
+  callout: string
+  site: string | null
+  label: string
+  videoOffsetMs?: number
+  weapon?: string
+  isolated?: boolean
+  killerDistance?: number | null
+}
+
+export interface SpatialHotspot {
+  callout: string
+  count: number
+  type: 'death' | 'kill'
+}
+
+export interface MatchSpatialSummary {
+  map: string
+  events: SpatialTimelineEvent[]
+  deathHotspots: SpatialHotspot[]
+  killHotspots: SpatialHotspot[]
+  patterns: string[]
+}

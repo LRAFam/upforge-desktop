@@ -1,0 +1,18 @@
+{
+  "map": "Haven",
+  "callouts": [
+    { "name": "A Long", "site": "A", "x": 0.82, "y": 0.55, "radius": 0.09 },
+    { "name": "A Short", "site": "A", "x": 0.72, "y": 0.48, "radius": 0.08 },
+    { "name": "A Site", "site": "A", "x": 0.88, "y": 0.42, "radius": 0.08 },
+    { "name": "A Sewer", "site": "A", "x": 0.75, "y": 0.62, "radius": 0.07 },
+    { "name": "B Site", "site": "B", "x": 0.50, "y": 0.35, "radius": 0.09 },
+    { "name": "B Window", "site": "B", "x": 0.55, "y": 0.28, "radius": 0.07 },
+    { "name": "C Long", "site": "C", "x": 0.18, "y": 0.55, "radius": 0.09 },
+    { "name": "C Short", "site": "C", "x": 0.28, "y": 0.48, "radius": 0.08 },
+    { "name": "C Site", "site": "C", "x": 0.12, "y": 0.42, "radius": 0.08 },
+    { "name": "Garage", "site": "Mid", "x": 0.42, "y": 0.55, "radius": 0.08 },
+    { "name": "Mid", "site": "Mid", "x": 0.48, "y": 0.50, "radius": 0.09 },
+    { "name": "Attacker Spawn", "site": "Spawn", "x": 0.50, "y": 0.82, "radius": 0.10 },
+    { "name": "Defender Spawn", "site": "Spawn", "x": 0.50, "y": 0.12, "radius": 0.10 }
+  ]
+}
