@@ -10,7 +10,7 @@ export interface AppSettings {
   savePath: string
   launchOnStartup: boolean
   autoDelete: boolean // delete recording after successful upload
-  /** Game modes to record. Empty array means record all. */
+  /** Game modes to record. Empty array means record nothing. */
   recordedModes: string[]
   autoAnalyse: boolean // automatically upload & analyse after game ends
   firstRun: boolean

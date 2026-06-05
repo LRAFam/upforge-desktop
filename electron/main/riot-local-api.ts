@@ -98,21 +98,30 @@ export class RiotLocalApi {
   watchUntilMenus(onReturn: () => void | Promise<void>): void {
     this.cancelMenuWatch()
     const gen = ++this.menuWatchGeneration
-    let lastLoop = 'INGAME'
+    let lastLoop: string | null = null
+    let sawIngame = false
 
     const tick = async () => {
       if (gen !== this.menuWatchGeneration) return
       try {
         const state = await this.getSessionState()
         const loop = state?.sessionLoopState ?? 'MENUS'
-        if (lastLoop === 'INGAME' && loop === 'MENUS') {
+
+        // Only fire after a real INGAME session ends — not PREGAME→MENUS (agent select back-out)
+        // and not a false positive on the first poll when loop is already MENUS.
+        if (sawIngame && lastLoop === 'INGAME' && loop === 'MENUS') {
           this.cancelMenuWatch()
           console.log('[RiotLocalApi] Skipped match ended — player returned to menus')
           await Promise.resolve(onReturn())
           return
         }
-        if (loop === 'INGAME' || loop === 'PREGAME') lastLoop = 'INGAME'
-        else lastLoop = loop
+
+        if (loop === 'INGAME') {
+          sawIngame = true
+          lastLoop = 'INGAME'
+        } else if (loop !== 'PREGAME') {
+          lastLoop = loop
+        }
       } catch { /* Riot API flake — keep polling */ }
     }
 

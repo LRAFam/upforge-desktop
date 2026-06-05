@@ -262,7 +262,7 @@ export class DesktopRecorder {
     try {
       const { bavail, bsize } = await statfs(savePath)
       return bavail * bsize
-    } catch { return 0 }
+    } catch { return Infinity }
   }
 
   /** No ffmpeg binary needed for desktop capture — always ok. */
@@ -360,10 +360,13 @@ export class DesktopRecorder {
       // Force-resolve after 15s in case the renderer never sends 'complete'.
       // Still attempt the duration fix even on timeout so the file is seekable.
       this._stopTimeout = setTimeout(async () => {
-        console.warn('[DesktopRecorder] Stop timed out — finalising anyway')
+        const timeoutMsg = 'Recording stop timed out after 15 seconds'
+        console.warn(`[DesktopRecorder] ${timeoutMsg} — finalising anyway`)
+        this._lastError = timeoutMsg
         this._recording = false
         this._startedAt = null
         this._pendingStop = null
+        this.onStatusChange?.(false, timeoutMsg)
         if (this._writeStream) {
           const ws = this._writeStream
           this._writeStream = null

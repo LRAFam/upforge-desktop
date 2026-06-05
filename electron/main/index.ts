@@ -23,7 +23,15 @@ import { UploadManager, savePendingJob, clearPendingJob, readPendingJob } from '
 import { startAnalysisPoll } from './analysis-poll'
 import { AuthManager } from './auth-manager'
 import { SettingsManager } from './settings-manager'
-import { setupIpcHandlers, setupClipHandlers, consumePendingCaptureSourceId, cancelAllPollingTimers } from './ipc-handlers'
+import { setupIpcHandlers, setupClipHandlers, consumePendingCaptureRequest, cancelAllPollingTimers } from './ipc-handlers'
+import {
+  resolveCaptureBackend,
+  selectActiveRecorder,
+  formatRecordingFailure,
+  formatCorruptRecordingMessage,
+  type RecordingBackend,
+} from './capture-backend'
+import { reportRecordingError } from './recording-errors'
 import { UpgradeRequiredError } from './errors'
 import { RecordingsStore } from './recordings-store'
 import { ClipExtractor } from './clip-extractor'
@@ -104,22 +112,29 @@ const obsRecorder = new OBSRecorder(() => {
   }
 })
 
+function captureBackendCtx() {
+  return {
+    ffmpegOk,
+    ffmpegRecorder,
+    desktopRecorder,
+    obsRecorder,
+    settingsManager,
+  }
+}
+
 /** Returns the active recorder — OBS when enabled & connected, else platform default. */
 function activeRecorder(): ActiveMatchRecorder {
-  if (settingsManager?.get().obsEnabled && obsRecorder.isConnected()) return obsRecorder
-  const wantsAudio = settingsManager?.get().audioEnabled !== false
-  // Windows: ffmpeg (ddagrab/gdigrab) honors 60fps + bitrate from settings.
-  // When WASAPI/DirectShow audio is unavailable, fall back to Chromium desktop capture —
-  // its loopback audio path is far more reliable on Windows 11 than ffmpeg WASAPI.
-  if (process.platform === 'win32' && ffmpegOk) {
-    if (wantsAudio && ffmpegRecorder.getAudioMode() === false) {
-      console.log('[Recorder] FFmpeg audio unavailable — using desktop capture for system audio')
-      return desktopRecorder
-    }
-    return ffmpegRecorder
+  const backend = resolveCaptureBackend(captureBackendCtx())
+  if (backend === 'desktop' && process.platform === 'win32' && ffmpegOk
+    && settingsManager?.get().audioEnabled !== false
+    && ffmpegRecorder.getAudioMode() === false) {
+    log.info('[Recorder] FFmpeg audio unavailable — using desktop capture for system audio')
   }
-  return desktopRecorder
+  return selectActiveRecorder(captureBackendCtx())
 }
+
+/** Set by setupGameDetection — handles unexpected mid-match capture loss. */
+let onRecordingLost: ((error: string) => void) | null = null
 
 function wireRecorderStatus(rec: ActiveMatchRecorder, label: string): void {
   rec.onStatusChange = (recording, error) => {
@@ -133,7 +148,9 @@ function wireRecorderStatus(rec: ActiveMatchRecorder, label: string): void {
       discordRPC.setIdle()
     }
     if (!recording && error) {
-      console.warn(`[Main] ${label} recording stopped with error:`, error)
+      log.warn(`[Main] ${label} recording stopped with error:`, error)
+      reportRecordingError('mid-match', error, { label })
+      onRecordingLost?.(error)
       tray?.setToolTip('UpForge — Recording stopped!')
       if (Notification.isSupported()) {
         new Notification({
@@ -242,17 +259,9 @@ function notifyRecordingUx(message: string, notificationTitle = 'UpForge — Rec
   }
 }
 
-type RecordingBackend = 'obs' | 'ffmpeg' | 'desktop'
-
 /** Backend that will be used for the next (or current) match capture. */
 function getRecordingBackendForStatus(): RecordingBackend {
-  if (settingsManager?.get().obsEnabled && obsRecorder.isConnected()) return 'obs'
-  const wantsAudio = settingsManager?.get().audioEnabled !== false
-  if (process.platform === 'win32' && ffmpegOk) {
-    if (wantsAudio && ffmpegRecorder.getAudioMode() === false) return 'desktop'
-    return 'ffmpeg'
-  }
-  return 'desktop'
+  return resolveCaptureBackend(captureBackendCtx())
 }
 
 /** Set by setupGameDetection — ends the active match (upload/post-game) when user clicks Stop. */
@@ -336,6 +345,17 @@ function createTray(): void {
 }
 
 function setupGameDetection(): void {
+  onRecordingLost = (error: string) => {
+    const game = gameDetector.currentGame() ?? 'valorant'
+    logActivity(`Recording lost mid-match: ${error}`)
+    notifyRecordingUx(
+      'Recording stopped unexpectedly — the match continues but may not be saved. Check permissions and disk space.',
+      'UpForge — Recording Lost',
+    )
+    tray?.setToolTip('UpForge — Recording lost!')
+    setTimeout(() => tray?.setToolTip(idleTooltip(game)), 10_000)
+  }
+
   // All known Valorant game modes returned by the Riot Local Client API
   const ALL_MODES = new Set(['COMPETITIVE', 'PREMIER', 'CLASSIC', 'DEATHMATCH', 'TEAMDEATHMATCH', 'SPIKERUSH', 'SWIFTPLAY', 'SNOWBALL'])
 
@@ -343,6 +363,7 @@ function setupGameDetection(): void {
   function beginMatchFlow(): { isStale: () => boolean } {
     matchFlowGeneration++
     const generation = matchFlowGeneration
+    matchHandled = false
     riotLocalApi.cancelMenuWatch()
     riotLocalApi.onMatchEnded = null
     cancelMatchWait?.()
@@ -395,11 +416,6 @@ function setupGameDetection(): void {
         matchHandled = false
         throw err
       }
-    }
-
-    if (matchFinalizeInFlight) {
-      await matchFinalizeInFlight.catch(() => { /* logged in run */ })
-      return false
     }
 
     matchFinalizeInFlight = run().finally(() => { matchFinalizeInFlight = null })
@@ -631,18 +647,16 @@ function setupGameDetection(): void {
         }
 
       if (!videoPath || !fs.existsSync(videoPath)) {
-        const ffmpegError = currentActiveRecorder.getLastError()
-        const errorMsg = ffmpegError
-          ? `Recording failed: ${ffmpegError}`
-          : 'Recording file was not created — ffmpeg may have failed to start. Check that ffmpeg is installed (dev) or the app was not corrupted (production).'
+        const backend = getRecordingBackendForStatus()
+        const errorMsg = formatRecordingFailure(backend, currentActiveRecorder.getLastError())
         sendToWindow('post-game:upload-error', errorMsg)
         return
       }
 
       if (fileSize < MIN_FILE_SIZE_BYTES) {
         const sizeMB = (fileSize / (1024 * 1024)).toFixed(2)
-        const errorMsg = `Recording appears corrupt or empty (${sizeMB} MB). Please check your ffmpeg setup.`
-        console.error(`[GameDetector] ${errorMsg}`)
+        const errorMsg = formatCorruptRecordingMessage(getRecordingBackendForStatus(), sizeMB)
+        log.error(`[GameDetector] ${errorMsg}`)
         sendToWindow('post-game:upload-error', errorMsg)
         return
       }
@@ -865,9 +879,8 @@ function setupGameDetection(): void {
     }
     currentActiveRecorder = activeRecorder()
     if (recorderConfig) {
-      const backend = currentActiveRecorder === ffmpegRecorder ? 'ffmpeg'
-        : currentActiveRecorder === obsRecorder ? 'obs' : 'desktop-capture'
-      console.log(
+      const backend = resolveCaptureBackend(captureBackendCtx())
+      log.info(
         `[Recorder] Config: ${recorderConfig.quality} @ ${recorderConfig.fps}fps, ` +
         `${recorderConfig.bitrate} Mbps, audio=${recorderConfig.audioEnabled}, backend=${backend}`
       )
@@ -899,7 +912,6 @@ function setupGameDetection(): void {
     // is loading or actively in progress. The Riot Live Client Data API (port 2999) was
     // deprecated; we no longer gate recording on it.
     // Wait 90 seconds for the loading screen to pass, cancelling early if the process dies.
-    let matchActive = false
     let gameMode: string | null = null
     let cancelled = false
     cancelMatchWait = () => { cancelled = true }
@@ -971,16 +983,17 @@ function setupGameDetection(): void {
           }
 
           if (!pregameBriefFired && state?.sessionLoopState === 'INGAME') {
-            if (!modeKnown || isCompBrief) {
-              // Competitive (or mode never resolved) — fire fallback brief
+            if (modeKnown && isCompBrief) {
+              // Competitive confirmed — fire fallback brief (agent may still be unknown)
               pregameBriefFired = true
               riotLocalApi.getPregameContext()
                 .then(ctx => requestPregameBrief(ctx ?? undefined))
                 .catch(() => requestPregameBrief())
-            } else {
+            } else if (modeKnown) {
               // Non-competitive confirmed — suppress brief
               pregameBriefFired = true
             }
+            // else: mode still unknown — keep polling; don't brief non-comp queues
           }
 
           if (state?.sessionLoopState === 'INGAME') {
@@ -1016,9 +1029,6 @@ function setupGameDetection(): void {
       // Fallback: wait 90 s for the loading screen
       const LOADING_DELAY_MS = 90_000
       logActivity('Riot Client API unavailable — recording starts in 90s')
-      // Fire generic brief immediately when auth is unavailable
-      requestPregameBrief()
-      pregameBriefFired = true
       const deadline = Date.now() + LOADING_DELAY_MS
       while (Date.now() < deadline && !cancelled) {
         if (abortIfStale(isStale, game)) return
@@ -1099,8 +1109,18 @@ function setupGameDetection(): void {
     }
 
     if (!gameMode) gameMode = 'COMPETITIVE'
-    matchActive = true
     matchHandled = false
+
+    if (!pregameBriefFired && (gameMode === 'COMPETITIVE' || gameMode === 'PREMIER')) {
+      requestPregameBrief({ agent: null, map: null, mode: gameMode })
+      pregameBriefFired = true
+    }
+
+    // Re-select backend at INGAME — OBS/ffmpeg availability may have changed since lobby entry.
+    if (process.platform === 'win32' && ffmpegOk && recorderConfig?.audioEnabled !== false) {
+      await ffmpegRecorder.redetectAudio()
+    }
+    currentActiveRecorder = activeRecorder()
 
     logActivity(`Match detected (${gameMode}${modeConfident ? '' : '?'}) — starting recording`)
     console.log(`[GameDetector] Match confirmed! gameMode=${gameMode} confident=${modeConfident} matchStartTime=${matchStartTime}`)
@@ -1167,7 +1187,8 @@ function setupGameDetection(): void {
       sendOverlayData('overlay:data', { round: null, allyScore: null, enemyScore: null, yourCredits: null, enemyEstimate: null, recording: true })
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
-      console.error('[Main] Failed to start recording:', msg)
+      log.error('[Main] Failed to start recording:', msg)
+      reportRecordingError('start', msg, { backend: getRecordingBackendForStatus() })
       logActivity(`Recording failed to start: ${msg}`)
       matchHandled = false
       riotLocalApi.onMatchEnded = null
@@ -1177,6 +1198,7 @@ function setupGameDetection(): void {
       notifyRecordingUx(`Could not start recording: ${msg}`, 'UpForge — Recording Failed')
       tray?.setToolTip('UpForge — Recording failed!')
       setTimeout(() => tray?.setToolTip(idleTooltip(game)), 10_000)
+      await rearmValorantDetection(game, true)
       return
     }
     logActivity(`Recording started (${gameMode ?? 'unknown mode'}${currentActiveRecorder.wasNoAudio() ? ' — no audio' : ''})`)
@@ -1254,11 +1276,19 @@ function setupGameDetection(): void {
       return
     }
 
-    // Presence already fired onMatchEnded and the match was handled — nothing to do
+    // Match already finalized (or waiting for next queue) — clear lobby state if game quit
     if (matchHandled) {
-      console.log('[GameDetector] Match already handled by onMatchEnded — skipping game-stopped')
+      if (!currentActiveRecorder.isRecording()) {
+        cancelMatchWait?.()
+        cancelMatchWait = null
+        waitingForMatch = false
+        mainWindow?.webContents.send('recording:waiting-for-match', { waiting: false })
+        tray?.setToolTip(idleTooltip(game))
+        logActivity('Game closed — returned to idle')
+      } else {
+        log.info('[GameDetector] Match already handled — skipping game-stopped')
+      }
       riotLocalApi.onMatchEnded = null
-      // Restore main window now that game is gone
       if (mainWindow && !mainWindow.isDestroyed() && mainWindow.isMinimized()) mainWindow.restore()
       destroyOverlay()
       return
@@ -1566,7 +1596,7 @@ app.whenReady().then(async () => {
   // source to use via 'desktop-capturer:set-source' before calling getDisplayMedia.
   session.defaultSession.setDisplayMediaRequestHandler(async (_request, callback) => {
     try {
-      const sourceId = consumePendingCaptureSourceId()
+      const { sourceId, audioEnabled } = consumePendingCaptureRequest()
       // Only request screen sources — never window sources — so the fallback is always
       // a display capture, not an open app window (e.g. Chrome).
       const sources = await desktopCapturer.getSources({ types: ['screen'] })
@@ -1574,9 +1604,12 @@ app.whenReady().then(async () => {
       if (sourceId && !sources.find(s => s.id === sourceId)) {
         log.warn('[App] setDisplayMediaRequestHandler: source ID not found, falling back to primary screen:', sourceId)
       }
-      callback({ video: source ?? sources[0], audio: 'loopback' as const })
+      callback({
+        video: source ?? sources[0],
+        audio: audioEnabled ? ('loopback' as const) : false,
+      })
     } catch (err) {
-      console.error('[App] setDisplayMediaRequestHandler error:', err)
+      log.error('[App] setDisplayMediaRequestHandler error:', err)
       callback({})
     }
   }, { useSystemPicker: false })

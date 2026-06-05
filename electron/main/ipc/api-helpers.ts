@@ -29,16 +29,35 @@ export const _clipInFlight = new Set<string>()
 
 // ── Desktop capture source tracking ──────────────────────────────────────────
 
-let _pendingCaptureSourceId: string | null = null
+const CAPTURE_SOURCE_TTL_MS = 5_000
 
-export function setPendingCaptureSourceId(id: string): void {
+let _pendingCaptureSourceId: string | null = null
+let _pendingCaptureSourceAt = 0
+let _pendingCaptureAudio = true
+
+export function setPendingCaptureSource(id: string, audioEnabled = true): void {
   _pendingCaptureSourceId = id
+  _pendingCaptureSourceAt = Date.now()
+  _pendingCaptureAudio = audioEnabled
+}
+
+/** @deprecated Use setPendingCaptureSource */
+export function setPendingCaptureSourceId(id: string): void {
+  setPendingCaptureSource(id)
+}
+
+export function consumePendingCaptureRequest(): { sourceId: string | null; audioEnabled: boolean } {
+  const expired = Date.now() - _pendingCaptureSourceAt > CAPTURE_SOURCE_TTL_MS
+  const sourceId = expired ? null : _pendingCaptureSourceId
+  if (expired && _pendingCaptureSourceId) {
+    log.warn('[Capture] Pending desktop source expired before getDisplayMedia')
+  }
+  _pendingCaptureSourceId = null
+  return { sourceId, audioEnabled: _pendingCaptureAudio }
 }
 
 export function consumePendingCaptureSourceId(): string | null {
-  const id = _pendingCaptureSourceId
-  _pendingCaptureSourceId = null
-  return id
+  return consumePendingCaptureRequest().sourceId
 }
 
 // ── HTTP helper ───────────────────────────────────────────────────────────────

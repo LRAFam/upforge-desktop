@@ -32,7 +32,9 @@ import { setupGamingHandlers } from './ipc/gaming-ipc'
 // Re-export shared state consumed by index.ts
 export {
   cancelAllPollingTimers,
+  consumePendingCaptureRequest,
   consumePendingCaptureSourceId,
+  setPendingCaptureSource,
   setPendingCaptureSourceId,
 } from './ipc/api-helpers'
 

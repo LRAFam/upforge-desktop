@@ -990,7 +990,7 @@ const settings = reactive<AppSettings>({
   audioEnabled: true,
   savePath: '',
   launchOnStartup: false,
-  autoDelete: true,
+  autoDelete: false,
   recordedModes: ['COMPETITIVE', 'PREMIER'],
   autoAnalyse: true,
   firstRun: false,
@@ -1132,11 +1132,24 @@ function showToast(msg: string): void {
   toastTimer = setTimeout(() => { savedToast.value = false; toastMessage.value = '' }, 2500)
 }
 
+async function refreshRecordingBackendStatus(): Promise<void> {
+  try {
+    const st = await window.api.app.getStatus()
+    if (st?.recordingBackend) recordingBackend.value = st.recordingBackend
+    if (typeof st?.ffmpegOk === 'boolean') ffmpegOk.value = st.ffmpegOk
+    if (settings.obsEnabled) {
+      const obs = await window.api.obs.getStatus()
+      obsStatus.value = obs
+    }
+  } catch { /* non-critical */ }
+}
+
 function debouncedSave(): void {
   if (saveTimer) clearTimeout(saveTimer)
   saveTimer = setTimeout(async () => {
     // toRaw strips Vue Proxy wrappers so arrays/objects serialize cleanly over IPC
     await window.api.settings.save(JSON.parse(JSON.stringify(toRaw(settings))))
+    await refreshRecordingBackendStatus()
     showSaved()
   }, 500)
 }

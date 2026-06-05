@@ -33,6 +33,7 @@ export function requestPregameBrief(
   const params = new URLSearchParams()
   if (context?.agent) params.set('agent', context.agent)
   if (context?.map) params.set('map', context.map)
+  if (context?.mode) params.set('mode', context.mode)
   const qs = params.toString() ? `?${params.toString()}` : ''
   const parsedUrl = new URL(`${apiBase}/api/progress/pregame-brief${qs}`)
 
@@ -40,6 +41,7 @@ export function requestPregameBrief(
     const webParams = new URLSearchParams()
     if (context?.agent) webParams.set('agent', context.agent)
     if (context?.map) webParams.set('map', context.map)
+    if (context?.mode) webParams.set('mode', context.mode)
     webParams.set('t', Date.now().toString())
     shell.openExternal(`https://upforge.gg/valorant/pregame-brief?${webParams.toString()}`)
     logActivity('Pre-game brief: opened in browser')

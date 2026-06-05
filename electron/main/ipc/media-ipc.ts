@@ -10,7 +10,8 @@ import log from 'electron-log'
 import type { MatchRecorder } from '../match-recorder'
 import { OBSRecorder } from '../obs-recorder'
 import { SettingsManager } from '../settings-manager'
-import { setPendingCaptureSourceId } from './api-helpers'
+import { setPendingCaptureSource } from './api-helpers'
+import { reportRecordingError } from '../recording-errors'
 
 export function setupMediaHandlers(
   ipcMain: IpcMain,
@@ -35,8 +36,10 @@ export function setupMediaHandlers(
       await recorder.stop()
       return { ok: true }
     } catch (err) {
+      const msg = String(err)
       log.error('[IPC] recorder:stop error:', err)
-      return { ok: false, reason: String(err) }
+      reportRecordingError('stop', msg)
+      return { ok: false, reason: msg }
     }
   })
 
@@ -46,25 +49,31 @@ export function setupMediaHandlers(
     const detectRecorder = getAudioDetectRecorder?.() ?? getActiveRecorder()
     const activeRecorder = getActiveRecorder()
     const detectedMode = detectRecorder.getAudioMode()
-    const winAudioMode = obsActive
+    const audioCaptureMode = obsActive
       ? 'obs-websocket'
       : (activeRecorder.getAudioMode() === 'desktop-capturer' && detectedMode === false
         ? 'desktop-capturer'
         : detectedMode)
     return {
-      winAudioMode,
+      audioCaptureMode,
+      /** @deprecated */ winAudioMode: audioCaptureMode,
       audioEnabled: obsActive ? true : settings.audioEnabled,
     }
   })
 
   ipcMain.handle('recorder:fix-audio', async () => {
-    const settings = settingsManager.get()
-    if (settings.obsEnabled && obsRecorder?.isConnected()) {
-      return { winAudioMode: 'obs-websocket' }
+    try {
+      const settings = settingsManager.get()
+      if (settings.obsEnabled && obsRecorder?.isConnected()) {
+        return { audioCaptureMode: 'obs-websocket', winAudioMode: 'obs-websocket' }
+      }
+      const detectRecorder = getAudioDetectRecorder?.() ?? getActiveRecorder()
+      const mode = await detectRecorder.redetectAudio()
+      return { audioCaptureMode: mode, winAudioMode: mode }
+    } catch (err) {
+      log.error('[IPC] recorder:fix-audio error:', err)
+      return { audioCaptureMode: false, winAudioMode: false, error: String(err) }
     }
-    const detectRecorder = getAudioDetectRecorder?.() ?? getActiveRecorder()
-    const mode = await detectRecorder.redetectAudio()
-    return { winAudioMode: mode }
   })
 
   // ── Screenshots ───────────────────────────────────────────────────────────
@@ -92,20 +101,32 @@ export function setupMediaHandlers(
         types: ['screen'],
         thumbnailSize: { width: 3840, height: 2160 },
       })
-      if (!sources.length) return null
-      return sources[0].thumbnail.toDataURL()
-    } catch { return null }
+      if (!sources.length) return { ok: false, error: 'no_sources' }
+      return { ok: true, dataUrl: sources[0].thumbnail.toDataURL() }
+    } catch (err) {
+      log.warn('[Screenshots] capture-screen failed:', err)
+      return { ok: false, error: String(err) }
+    }
   })
 
   // ── Desktop capturer ──────────────────────────────────────────────────────
 
   ipcMain.handle('desktop-capturer:get-sources', async (_e, types: Array<'screen' | 'window'>) => {
-    const sources = await desktopCapturer.getSources({ types })
-    return sources.map(s => ({ id: s.id, name: s.name }))
+    try {
+      const sources = await desktopCapturer.getSources({ types })
+      return { ok: true, sources: sources.map(s => ({ id: s.id, name: s.name })) }
+    } catch (err) {
+      log.error('[IPC] desktop-capturer:get-sources error:', err)
+      return { ok: false, sources: [], error: String(err) }
+    }
   })
 
-  ipcMain.handle('desktop-capturer:set-source', (_e, sourceId: string) => {
-    setPendingCaptureSourceId(sourceId)
+  ipcMain.handle('desktop-capturer:set-source', (_e, sourceId: string, audioEnabled?: boolean) => {
+    if (!sourceId || typeof sourceId !== 'string') {
+      return { ok: false, error: 'invalid_source_id' }
+    }
+    setPendingCaptureSource(sourceId, audioEnabled !== false)
+    return { ok: true }
   })
 
   // ── OBS WebSocket ─────────────────────────────────────────────────────────
@@ -116,8 +137,9 @@ export function setupMediaHandlers(
   })
 
   ipcMain.handle('obs:disconnect', async () => {
-    if (!obsRecorder) return
-    return obsRecorder.disconnect()
+    if (!obsRecorder) return { ok: false, error: 'OBS recorder not available' }
+    await obsRecorder.disconnect()
+    return { ok: true }
   })
 
   ipcMain.handle('obs:get-status', async () => {
@@ -126,8 +148,13 @@ export function setupMediaHandlers(
   })
 
   ipcMain.handle('obs:save-replay-clip', async () => {
-    if (!obsRecorder) return { path: null }
-    const clipPath = await obsRecorder.saveReplayClip()
-    return { path: clipPath }
+    if (!obsRecorder) return { ok: false, path: null, error: 'OBS recorder not available' }
+    try {
+      const clipPath = await obsRecorder.saveReplayClip()
+      return clipPath ? { ok: true, path: clipPath } : { ok: false, path: null, error: 'save_failed' }
+    } catch (err) {
+      log.warn('[IPC] obs:save-replay-clip error:', err)
+      return { ok: false, path: null, error: String(err) }
+    }
   })
 }

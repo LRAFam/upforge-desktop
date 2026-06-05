@@ -336,12 +336,17 @@ export class OBSRecorder {
     this._seenKillIds.clear()
     this._localPlayerName = null
 
-    // First, resolve the local player's name from the active-player endpoint
-    this._fetchLocalPlayerName()
-
-    this._liveKillPollTimer = setInterval(() => {
-      this._pollKillEvents()
-    }, 4_000)
+    // Port 2999 Live Client API is deprecated in modern Valorant — probe once before polling.
+    void this._riotGet<{ riotId?: string }>('/liveclientdata/activeplayer')
+      .then(() => {
+        this._fetchLocalPlayerName()
+        this._liveKillPollTimer = setInterval(() => {
+          this._pollKillEvents()
+        }, 4_000)
+      })
+      .catch(() => {
+        log.info('[OBSRecorder] Live Client API unavailable — OBS kill clips disabled; post-match extraction will still run')
+      })
   }
 
   private _stopLiveKillPoll(): void {

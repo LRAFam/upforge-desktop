@@ -55,7 +55,7 @@ export function useDesktopRecording() {
       // Tell the main process which source we're about to capture.
       // setDisplayMediaRequestHandler intercepts getDisplayMedia() and returns
       // the pre-selected source without showing the OS picker.
-      await window.api.desktopCapture.setSource(source.id)
+      await window.api.desktopCapture.setSource(source.id, config.audioEnabled)
 
       const maxWidth = config.quality === '1080p' ? 1920 : 1280
       const maxHeight = config.quality === '1080p' ? 1080 : 720

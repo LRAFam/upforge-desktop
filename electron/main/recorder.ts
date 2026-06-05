@@ -176,7 +176,7 @@ export class Recorder {
       this._lastError = `Disk full: only ${freeMB} MB free. Free up disk space before recording.`
       console.error(`[Recorder] ${this._lastError}`)
       this.onStatusChange?.(false, this._lastError)
-      return
+      throw new Error(this._lastError)
     }
     // Warn if less than 5 GB free
     if (freeBytes < 5 * 1024 * 1024 * 1024) {

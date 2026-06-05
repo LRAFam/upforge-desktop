@@ -98,17 +98,24 @@ const api = {
     setInteractive: (interactive: boolean) => ipcRenderer.send('overlay:set-interactive', interactive),
   },
   screenshots: {
-    capture: (): Promise<string | null> => ipcRenderer.invoke('screenshots:capture-screen'),
+    capture: async (): Promise<string | null> => {
+      const result = await ipcRenderer.invoke('screenshots:capture-screen') as { ok?: boolean; dataUrl?: string }
+      return result?.ok ? (result.dataUrl ?? null) : null
+    },
     save: (dataUrl: string) => ipcRenderer.invoke('screenshots:save', { dataUrl }),
   },
   desktopCapture: {
     /** Returns available screen sources for getUserMedia capture. Only screens are returned
      *  (not individual application windows) so fullscreen games are always captured whole. */
-    getSources: (): Promise<{ id: string; name: string }[]> =>
-      ipcRenderer.invoke('desktop-capturer:get-sources', ['screen']),
+    getSources: async (): Promise<{ id: string; name: string }[]> => {
+      const result = await ipcRenderer.invoke('desktop-capturer:get-sources', ['screen']) as {
+        ok?: boolean; sources?: { id: string; name: string }[]
+      }
+      return result?.ok && result.sources ? result.sources : []
+    },
     /** Tell the main process which source to capture before calling getUserMedia (required Electron 20+). */
-    setSource: (sourceId: string): Promise<void> =>
-      ipcRenderer.invoke('desktop-capturer:set-source', sourceId),
+    setSource: (sourceId: string, audioEnabled?: boolean): Promise<{ ok: boolean }> =>
+      ipcRenderer.invoke('desktop-capturer:set-source', sourceId, audioEnabled),
     /** Send a recorded chunk (ArrayBuffer) to the main process for disk writing. */
     sendChunk: (chunk: ArrayBuffer) => ipcRenderer.send('desktop-recording:chunk', chunk),
     /** Notify main process that MediaRecorder has started (and whether audio is available). */
