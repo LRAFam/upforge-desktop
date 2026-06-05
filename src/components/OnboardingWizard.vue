@@ -6,7 +6,7 @@
     >
       <!-- Numbered progress indicator -->
       <div class="absolute top-6 left-1/2 -translate-x-1/2 flex items-center gap-0">
-        <template v-for="i in 4" :key="i">
+        <template v-for="i in 5" :key="i">
           <div
             class="w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-black transition-all duration-300 relative z-10"
             :class="i < step
@@ -21,7 +21,7 @@
             <span v-else>{{ i }}</span>
           </div>
           <div
-            v-if="i < 4"
+            v-if="i < 5"
             class="w-8 h-px transition-all duration-500"
             :class="i < step ? 'bg-[#ff4655]/40' : 'bg-white/[0.07]'"
           />
@@ -39,9 +39,9 @@
         </svg>
       </button>
 
-      <!-- Close button (step 4 or already completed) -->
+      <!-- Close button (step 5 or already completed) -->
       <button
-        v-if="step === 4 || alreadyCompleted"
+        v-if="step === 5 || alreadyCompleted"
         class="absolute top-5 right-6 w-8 h-8 flex items-center justify-center text-gray-500 hover:text-gray-300 transition-colors rounded-lg hover:bg-white/[0.06]"
         @click="handleComplete"
       >
@@ -130,7 +130,7 @@
 
             <!-- Step 2: Game Setup -->
             <div v-else-if="step === 2" key="step2" class="px-7 pt-8 pb-7">
-              <p class="text-[10px] font-bold text-[#ff4655] uppercase tracking-widest mb-1.5">Step 1 of 3</p>
+              <p class="text-[10px] font-bold text-[#ff4655] uppercase tracking-widest mb-1.5">Step 2 of 5</p>
               <h2 class="text-xl font-black text-white mb-1 leading-tight">Choose your game</h2>
               <p class="text-xs text-gray-500 mb-5">Pick your primary game for AI coaching.</p>
 
@@ -183,7 +183,7 @@
 
             <!-- Step 3: Sensitivity Setup -->
             <div v-else-if="step === 3" key="step3" class="px-7 pt-8 pb-7">
-              <p class="text-[10px] font-bold text-[#ff4655] uppercase tracking-widest mb-1.5">Step 2 of 3</p>
+              <p class="text-[10px] font-bold text-[#ff4655] uppercase tracking-widest mb-1.5">Step 3 of 5</p>
               <h2 class="text-xl font-black text-white mb-1 leading-tight">Sensitivity Setup</h2>
               <p class="text-xs text-gray-500 mb-5">Match your in-game settings for accurate aim training calibration.</p>
 
@@ -247,8 +247,56 @@
               </button>
             </div>
 
-            <!-- Step 4: Ready -->
-            <div v-else-if="step === 4" key="step4" class="px-7 pt-9 pb-7">
+            <!-- Step 4: OBS Setup -->
+            <div v-else-if="step === 4" key="step4" class="px-7 pt-8 pb-7">
+              <p class="text-[10px] font-bold text-[#ff4655] uppercase tracking-widest mb-1.5">Step 4 of 5</p>
+              <h2 class="text-xl font-black text-white mb-1 leading-tight">Connect OBS</h2>
+              <p class="text-xs text-gray-500 mb-5">UpForge records matches through OBS — no extra capture software needed.</p>
+
+              <div class="rounded-xl border p-4 mb-5" :class="obsConnected ? 'border-green-500/25 bg-green-500/[0.06]' : 'border-amber-500/25 bg-amber-500/[0.06]'">
+                <div class="flex items-center gap-2 mb-3">
+                  <span class="h-2 w-2 rounded-full flex-shrink-0" :class="obsConnected ? 'bg-green-400' : 'bg-amber-400'" />
+                  <span class="text-xs font-bold" :class="obsConnected ? 'text-green-300' : 'text-amber-300'">
+                    {{ obsConnected ? 'OBS connected — UpForge scene ready' : 'OBS not connected' }}
+                  </span>
+                </div>
+                <ol class="list-decimal list-inside space-y-1.5 text-[11px] text-gray-400 mb-4">
+                  <li>Install <a href="https://obsproject.com/" target="_blank" class="text-[#ff4655] underline hover:text-[#ff8a93]">OBS Studio 28+</a> and open it</li>
+                  <li>Tools → WebSocket Server Settings → enable server</li>
+                  <li>Click Connect below — we create an &quot;UpForge&quot; scene (cursor hidden)</li>
+                </ol>
+                <p v-if="obsError" class="text-[11px] text-red-400 mb-3">{{ obsError }}</p>
+                <button
+                  v-if="!obsConnected"
+                  :disabled="obsConnecting"
+                  class="w-full py-2.5 rounded-xl border border-[#ff4655]/30 bg-[#ff4655]/10 text-xs font-bold text-[#ff4655] transition-all hover:bg-[#ff4655]/15 disabled:opacity-50"
+                  @click="connectObs"
+                >
+                  {{ obsConnecting ? 'Connecting…' : 'Connect OBS' }}
+                </button>
+              </div>
+
+              <div class="flex gap-2">
+                <button
+                  class="flex-1 py-3 rounded-xl border border-white/[0.08] bg-white/[0.03] text-gray-400 text-sm font-bold transition-all hover:border-white/[0.14] hover:text-gray-200"
+                  @click="nextStep"
+                >
+                  Skip for now
+                </button>
+                <button
+                  class="flex-1 py-3 rounded-xl bg-gradient-to-r from-[#ff4655] to-[#f97316] text-white text-sm font-bold transition-all hover:opacity-90 flex items-center justify-center gap-2 shadow-[0_4px_20px_rgba(255,70,85,0.3)]"
+                  :disabled="!obsConnected"
+                  @click="nextStep"
+                >
+                  Next
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="w-4 h-4"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+                </button>
+              </div>
+              <p v-if="!obsConnected" class="text-center text-[10px] text-gray-600 mt-3">You can connect later in Settings — but matches won&apos;t record until OBS is connected.</p>
+            </div>
+
+            <!-- Step 5: Ready -->
+            <div v-else-if="step === 5" key="step5" class="px-7 pt-9 pb-7">
               <!-- Success icon -->
               <div class="w-14 h-14 rounded-2xl bg-gradient-to-br from-[#ff4655]/20 to-orange-500/10 border border-[#ff4655]/25 flex items-center justify-center mb-5 shadow-[0_0_32px_rgba(255,70,85,0.18)]">
                 <svg viewBox="0 0 24 24" fill="none" stroke="#ff4655" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="w-7 h-7">
@@ -271,6 +319,13 @@
                     <svg viewBox="0 0 24 24" fill="none" stroke="#4ade80" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round" class="w-2 h-2"><polyline points="20 6 9 17 4 12"/></svg>
                   </div>
                   <span class="text-xs text-gray-400">Sensitivity: <span class="text-white font-bold">{{ dpi }} DPI · {{ sensitivity }} sens</span> <span class="text-gray-600">(eDPI {{ edpi }})</span></span>
+                </div>
+                <div class="flex items-center gap-3 px-4 py-2.5 rounded-xl bg-white/[0.025] border border-white/[0.09]">
+                  <div class="w-4 h-4 rounded-full flex items-center justify-center flex-shrink-0 border" :class="obsConnected ? 'bg-green-500/10 border-green-500/25' : 'bg-amber-500/10 border-amber-500/25'">
+                    <svg v-if="obsConnected" viewBox="0 0 24 24" fill="none" stroke="#4ade80" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round" class="w-2 h-2"><polyline points="20 6 9 17 4 12"/></svg>
+                    <span v-else class="text-[9px] font-bold text-amber-400">!</span>
+                  </div>
+                  <span class="text-xs text-gray-400">OBS: <span class="font-bold" :class="obsConnected ? 'text-white' : 'text-amber-300'">{{ obsConnected ? 'Connected' : 'Not connected — set up in Settings' }}</span></span>
                 </div>
               </div>
 
@@ -308,7 +363,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, watch } from 'vue'
 import valorantImg from '../assets/games/valorant.jpg'
 import cs2Img from '../assets/games/cs2.jpg'
 import deadlockImg from '../assets/games/deadlock.jpg'
@@ -320,6 +375,9 @@ defineProps<{ alreadyCompleted?: boolean }>()
 const step = ref(1)
 const slideDir = ref<'slide-left' | 'slide-right'>('slide-left')
 const saving = ref(false)
+const obsConnecting = ref(false)
+const obsConnected = ref(false)
+const obsError = ref('')
 
 const selectedGame = ref<'valorant' | 'cs2' | 'deadlock'>('valorant')
 const dpi = ref(800)
@@ -375,9 +433,35 @@ const edpiBorderClass = computed(() => {
   return 'border-red-500/20'
 })
 
+watch(step, async (s) => {
+  if (s === 4 || s === 5) {
+    try {
+      const st = await window.api.obs.getStatus()
+      obsConnected.value = st.connected
+    } catch { /* OBS API unavailable */ }
+  }
+})
+
+async function connectObs() {
+  obsConnecting.value = true
+  obsError.value = ''
+  try {
+    const result = await window.api.obs.connect()
+    if (result.ok) {
+      obsConnected.value = true
+    } else {
+      obsError.value = result.error ?? 'Could not connect — is OBS running with WebSocket enabled?'
+    }
+  } catch (e) {
+    obsError.value = e instanceof Error ? e.message : 'Connection failed'
+  } finally {
+    obsConnecting.value = false
+  }
+}
+
 function nextStep() {
   slideDir.value = 'slide-left'
-  step.value = Math.min(step.value + 1, 4)
+  step.value = Math.min(step.value + 1, 5)
 }
 
 function prevStep() {

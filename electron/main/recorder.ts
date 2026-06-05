@@ -19,13 +19,6 @@ export interface RecorderConfig {
 const IS_MAC = process.platform === 'darwin'
 const IS_WIN = process.platform === 'win32'
 
-// Window titles for each supported game (used for window-specific capture on Windows).
-// gdigrab's -i title= matches the foreground window title exactly.
-const GAME_WINDOW_TITLES: Record<string, string> = {
-  valorant: 'VALORANT',
-  deadlock: 'Deadlock',
-}
-
 // Window position info for targeted capture — avoids recording full virtual desktop on multi-monitor setups.
 interface WindowInfo {
   x: number
@@ -232,27 +225,26 @@ export class Recorder {
     if (audioUnavailable && audioUserEnabled) {
       console.warn('[Recorder] Skipping audio — no working Windows audio capture method found')
     }
-    await this._spawnAndConfirm(game, config, encoder, false, !startWithAudio, useDdagrab, windowInfo)
+    await this._spawnAndConfirm(game, config, encoder, !startWithAudio, useDdagrab, windowInfo)
   }
 
   /**
    * Spawns ffmpeg and waits up to 2s to confirm it is actually running before
    * declaring recording started. If ffmpeg dies within that window (e.g. ddagrab
-   * unavailable, window title not found, WASAPI unavailable) we catch the real
-   * error and retry with progressively simpler capture strategies.
+   * unavailable or WASAPI unavailable) we catch the real error and retry with
+   * progressively simpler capture strategies.
    */
   private async _spawnAndConfirm(
     game: string,
     config: RecorderConfig | undefined,
     encoder: HWEncoder,
-    useDesktopFallback: boolean,
     noAudio: boolean = false,
     useDdagrab: boolean = false,
     windowInfo: WindowInfo | null = null
   ): Promise<void> {
     const STARTUP_TIMEOUT_MS = 2000
     const ffmpegPath = this._ffmpegPath()
-    const args = this._buildArgs(encoder, this._outputPath!, game, config, useDesktopFallback, noAudio, useDdagrab, windowInfo)
+    const args = this._buildArgs(encoder, this._outputPath!, config, noAudio, useDdagrab, windowInfo)
 
     console.log(`[Recorder] ffmpeg path: ${ffmpegPath}`)
     console.log(`[Recorder] Args: ${args.join(' ')}`)
@@ -320,21 +312,12 @@ export class Recorder {
       // If ddagrab failed (DDA unavailable — Windows 7, driver issue, etc.),
       // fall back to gdigrab immediately. Cache the result so we don't retry each recording.
       if (useDdagrab) {
-        console.warn('[Recorder] ddagrab failed — falling back to gdigrab:', reason)
+        console.warn('[Recorder] ddagrab failed — falling back to gdigrab (cropped desktop, no cursor):', reason)
         this._cachedUseDdagrab = false
         this._stderrBuffer = ''
         this._process = null
-        return this._spawnAndConfirm(game, config, encoder, useDesktopFallback, noAudio, false, windowInfo)
-      }
-
-      // On Windows, if window-title capture failed, retry with targeted desktop crop.
-      // If we have window position info, we crop to just the game window instead of
-      // capturing the entire virtual desktop (which includes all monitors).
-      if (IS_WIN && !useDesktopFallback && GAME_WINDOW_TITLES[game.toLowerCase()]) {
-        console.warn('[Recorder] Window capture failed — retrying with desktop crop capture')
-        this._stderrBuffer = ''
-        this._process = null
-        return this._spawnAndConfirm(game, config, encoder, true, noAudio, false, windowInfo)
+        // Always use cropped desktop gdigrab — never title= window capture (cursor leaks in borderless fullscreen).
+        return this._spawnAndConfirm(game, config, encoder, noAudio, false, windowInfo)
       }
 
       // If audio capture failed, retry without audio (WASAPI unavailable / invalid device).
@@ -354,15 +337,15 @@ export class Recorder {
             console.warn('[Recorder] Audio capture failed — trying next mode:', this._cachedWinAudioMode)
             this._stderrBuffer = ''
             this._process = null
-            return this._spawnAndConfirm(game, config, encoder, useDesktopFallback, false, useDdagrab, windowInfo)
+            return this._spawnAndConfirm(game, config, encoder, false, useDdagrab, windowInfo)
           }
 
           // ddagrab + WASAPI can conflict (COM init) — gdigrab often works with the same audio mode.
-          if (IS_WIN && useDdagrab && !useDesktopFallback) {
-            console.warn('[Recorder] ddagrab+audio failed — retrying gdigrab+audio')
+          if (IS_WIN && useDdagrab) {
+            console.warn('[Recorder] ddagrab+audio failed — retrying gdigrab+audio (draw_mouse=0)')
             this._stderrBuffer = ''
             this._process = null
-            return this._spawnAndConfirm(game, config, encoder, true, false, false, windowInfo)
+            return this._spawnAndConfirm(game, config, encoder, false, false, windowInfo)
           }
 
           console.warn('[Recorder] Audio capture failed — retrying without audio:', reason)
@@ -376,7 +359,7 @@ export class Recorder {
           }
           this._stderrBuffer = ''
           this._process = null
-          return this._spawnAndConfirm(game, config, encoder, useDesktopFallback, true, useDdagrab, windowInfo)
+          return this._spawnAndConfirm(game, config, encoder, true, useDdagrab, windowInfo)
         }
       }
 
@@ -902,7 +885,7 @@ export class Recorder {
     return []
   }
 
-  private _buildArgs(encoder: HWEncoder, outputPath: string, game: string, config?: RecorderConfig, useDesktopFallback = false, noAudio = false, useDdagrab = false, windowInfo: WindowInfo | null = null): string[] {
+  private _buildArgs(encoder: HWEncoder, outputPath: string, config?: RecorderConfig, noAudio = false, useDdagrab = false, windowInfo: WindowInfo | null = null): string[] {
     const codecMap: Record<HWEncoder, string> = {
       videotoolbox: 'h264_videotoolbox',
       nvenc: 'h264_nvenc',
@@ -959,7 +942,7 @@ export class Recorder {
       const outputIdx = typeof monitorOverride === 'number'
         ? monitorOverride
         : (windowInfo?.monitorIndex ?? 0)
-      console.log(`[Recorder] Windows ddagrab (DDA) capture output_idx=${outputIdx}${noAudio ? ' (no audio)' : ''}`)
+      console.log(`[Recorder] Windows ddagrab (DDA, draw_mouse=0) output_idx=${outputIdx}${noAudio ? ' (no audio)' : ''}`)
 
       // scale is applied inside the filter_complex — can't mix -filter_complex with -vf
       // draw_mouse=0: suppress OS cursor in recordings (same as -draw_mouse 0 for gdigrab)
@@ -992,35 +975,26 @@ export class Recorder {
 
     // Windows: gdigrab fallback — used when ddagrab is unavailable (Windows 7 or no D3D11).
     // gdigrab copies the framebuffer via GDI which is CPU-bound and can impact game FPS.
-    const windowTitle = !useDesktopFallback ? GAME_WINDOW_TITLES[game.toLowerCase()] : undefined
-
-    // When falling back from window-title capture, use the detected window bounds to crop
-    // the desktop capture to just the game screen. This prevents recording both monitors
-    // side-by-side on dual-monitor setups. If no window info is available, fall back to
-    // full desktop as a last resort.
+    // Never use title= window capture — it often includes the OS cursor in borderless fullscreen
+    // and draw_mouse is unreliable on that code path. Crop to the game monitor/region instead.
     const monitorOverride = config?.captureMonitor
     const effectiveWindowInfo = typeof monitorOverride === 'number' ? null : windowInfo
 
-    let captureInput: string
+    const captureInput = 'desktop'
     let cropArgs: string[] = []
 
-    if (windowTitle) {
-      captureInput = `title=${windowTitle}`
-    } else if (effectiveWindowInfo && effectiveWindowInfo.width > 400 && effectiveWindowInfo.height > 300) {
-      // Crop gdigrab to just the game window area — avoids multi-monitor bleed
-      captureInput = 'desktop'
+    if (effectiveWindowInfo && effectiveWindowInfo.width > 400 && effectiveWindowInfo.height > 300) {
       cropArgs = [
         '-offset_x', String(Math.max(0, effectiveWindowInfo.x)),
         '-offset_y', String(Math.max(0, effectiveWindowInfo.y)),
         '-video_size', `${effectiveWindowInfo.width}x${effectiveWindowInfo.height}`,
       ]
-      console.log(`[Recorder] gdigrab desktop crop: ${effectiveWindowInfo.width}x${effectiveWindowInfo.height} at ${effectiveWindowInfo.x},${effectiveWindowInfo.y}`)
+      console.log(`[Recorder] gdigrab desktop crop (draw_mouse=0): ${effectiveWindowInfo.width}x${effectiveWindowInfo.height} at ${effectiveWindowInfo.x},${effectiveWindowInfo.y}`)
     } else {
-      captureInput = 'desktop'
-      console.warn('[Recorder] gdigrab full desktop capture (no window bounds available) — may capture multiple monitors')
+      console.warn('[Recorder] gdigrab full desktop capture (draw_mouse=0, no window bounds) — may capture multiple monitors')
     }
 
-    console.log(`[Recorder] Windows capture input: ${captureInput}${noAudio ? ' (no audio)' : ''}`)
+    console.log(`[Recorder] Windows gdigrab input: ${captureInput}${noAudio ? ' (no audio)' : ''}`)
 
     // -draw_mouse 0: skip cursor rendering, minor CPU saving
     // -thread_queue_size: reduce input buffering stalls between gdigrab and WASAPI

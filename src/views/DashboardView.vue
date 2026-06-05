@@ -48,6 +48,7 @@
     <div
       :class="[
         'flex-shrink-0 flex items-center gap-3 mx-4 mt-3 px-3 py-2 rounded-xl border text-xs transition-all',
+        !status.obsConnected && !status.recording ? 'bg-amber-500/[0.07] border-amber-500/25' :
         !status.ffmpegOk ? 'bg-yellow-500/[0.07] border-yellow-500/25' :
         status.recording ? 'bg-red-500/[0.08] border-red-500/25' :
         status.recordingStarting ? 'bg-yellow-500/[0.07] border-yellow-500/20' :
@@ -57,7 +58,7 @@
     >
       <!-- Status dot -->
       <div class="relative flex-shrink-0">
-        <div :class="['w-2 h-2 rounded-full', !status.ffmpegOk ? 'bg-yellow-400' : status.recording ? 'bg-red-500' : status.recordingStarting ? 'bg-yellow-400' : status.currentGame ? 'bg-orange-400' : 'bg-gray-600']" />
+        <div :class="['w-2 h-2 rounded-full', !status.obsConnected && !status.recording ? 'bg-amber-400' : !status.ffmpegOk ? 'bg-yellow-400' : status.recording ? 'bg-red-500' : status.recordingStarting ? 'bg-yellow-400' : status.currentGame ? 'bg-orange-400' : 'bg-gray-600']" />
         <div v-if="status.recording" class="absolute inset-0 w-2 h-2 rounded-full bg-red-500 animate-ping opacity-70" />
         <div v-else-if="status.recordingStarting" class="absolute inset-0 w-2 h-2 rounded-full bg-yellow-400 animate-ping opacity-50" />
         <div v-else-if="status.waitingForMatch" class="absolute inset-0 w-2 h-2 rounded-full bg-orange-400 animate-ping opacity-50" />
@@ -66,9 +67,13 @@
 
       <!-- Status text (single line) -->
       <div class="flex-1 min-w-0 flex items-center gap-2 overflow-hidden">
-        <template v-if="!status.ffmpegOk">
-          <span class="font-semibold text-yellow-400">Recording unavailable</span>
-          <span class="text-yellow-600 hidden sm:inline">Reinstall the app to restore</span>
+        <template v-if="!status.obsConnected && !status.recording && !status.recordingStarting">
+          <span class="font-semibold text-amber-300">OBS not connected</span>
+          <span class="text-amber-600/80 hidden sm:inline">Set up in Settings → Recording</span>
+        </template>
+        <template v-else-if="!status.ffmpegOk">
+          <span class="font-semibold text-yellow-400">Clip tools unavailable</span>
+          <span class="text-yellow-600 hidden sm:inline">Reinstall the app to restore clip extraction</span>
         </template>
         <template v-else-if="status.recording">
           <span class="font-black tracking-widest uppercase text-red-400 rec-pulse flex-shrink-0">● REC</span>
@@ -208,14 +213,14 @@
 
         <div
           class="relative overflow-hidden rounded-3xl border px-4 py-4"
-          :class="!status.ffmpegOk || status.recordingStarting ? 'border-yellow-500/20 bg-gradient-to-br from-yellow-500/[0.1] to-white/[0.02]' : liveDetectionActive ? 'border-emerald-500/20 bg-gradient-to-br from-emerald-500/[0.12] via-emerald-500/[0.04] to-white/[0.02]' : 'border-white/[0.10] bg-white/[0.02]'"
+          :class="(!status.obsConnected && !status.recording) || !status.ffmpegOk || status.recordingStarting ? 'border-amber-500/20 bg-gradient-to-br from-amber-500/[0.08] to-white/[0.02]' : liveDetectionActive ? 'border-emerald-500/20 bg-gradient-to-br from-emerald-500/[0.12] via-emerald-500/[0.04] to-white/[0.02]' : 'border-white/[0.10] bg-white/[0.02]'"
         >
           <div v-if="liveDetectionActive" class="absolute inset-y-4 left-0 w-[3px] rounded-full bg-gradient-to-b from-emerald-300 via-emerald-400 to-emerald-500" />
           <div v-if="liveDetectionActive" class="absolute -right-8 top-6 h-24 w-24 rounded-full bg-emerald-400/10 blur-3xl" />
           <div class="relative flex items-start gap-3 pl-1">
             <div
               class="flex h-11 w-11 items-center justify-center rounded-2xl border"
-              :class="!status.ffmpegOk || status.recordingStarting ? 'border-yellow-500/25 bg-yellow-500/[0.12] text-yellow-300' : liveDetectionActive ? 'border-emerald-500/25 bg-emerald-500/[0.12] text-emerald-300' : 'border-white/[0.08] bg-white/[0.03] text-gray-300'"
+              :class="(!status.obsConnected && !status.recording) || !status.ffmpegOk || status.recordingStarting ? 'border-amber-500/25 bg-amber-500/[0.12] text-amber-300' : liveDetectionActive ? 'border-emerald-500/25 bg-emerald-500/[0.12] text-emerald-300' : 'border-white/[0.08] bg-white/[0.03] text-gray-300'"
             >
               <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" d="M3 12h18M3 7.5h18M3 16.5h18" />
@@ -916,8 +921,9 @@ const status = ref<{
   currentGame: string | null
   waitingForMatch: boolean
   ffmpegOk: boolean
+  obsConnected: boolean
   recordedModes: string[]
-  recordingBackend: 'obs' | 'ffmpeg' | 'desktop'
+  recordingBackend: 'obs'
   currentQueueMode: string | null
 }>({
   recording: false,
@@ -925,8 +931,9 @@ const status = ref<{
   currentGame: null,
   waitingForMatch: false,
   ffmpegOk: true,
+  obsConnected: false,
   recordedModes: [],
-  recordingBackend: 'desktop',
+  recordingBackend: 'obs',
   currentQueueMode: null,
 })
 const stopRecordingHint = 'Stop recording and open upload — use if you leave the match early'
@@ -954,7 +961,8 @@ const totalSessionsAnalysed = computed(() => {
 const dashboardWinRateLabel = computed(() => profile.value?.latest_stats?.win_rate != null ? `${Math.round(profile.value.latest_stats.win_rate)}%` : '—')
 const liveDetectionActive = computed(() => status.value.recording || status.value.waitingForMatch || !!status.value.currentGame)
 const activeGameTitle = computed(() => {
-  if (!status.value.ffmpegOk) return 'Recorder unavailable'
+  if (!status.value.obsConnected && !status.value.recording) return 'OBS not connected'
+  if (!status.value.ffmpegOk) return 'Clip tools unavailable'
   if (status.value.recording) return 'Recording in progress'
   if (status.value.recordingStarting) return 'Starting capture'
   if (status.value.waitingForMatch) return `${status.value.currentGame || 'Valorant'} detected`
@@ -962,7 +970,8 @@ const activeGameTitle = computed(() => {
   return 'Ready for next match'
 })
 const activeGameMessage = computed(() => {
-  if (!status.value.ffmpegOk) return 'Reinstall the desktop recorder to restore automated capture.'
+  if (!status.value.obsConnected && !status.value.recording) return 'Install OBS 28+, enable WebSocket, and connect in Settings → Recording before your next match.'
+  if (!status.value.ffmpegOk) return 'Match recording uses OBS. Clip extraction needs the bundled ffmpeg — reinstall if this persists.'
   if (status.value.recording) return 'UpForge is actively recording this match. Save clips anytime for faster review.'
   if (status.value.recordingStarting) return 'Stand by while capture hooks into the live match.'
   if (status.value.waitingForMatch) return 'You are in lobby or agent select. Auto-recording will begin when the match starts.'
@@ -1207,8 +1216,7 @@ function rrDelta(reversedIndex: number): number {
 const recordingModeLabel = computed(() => {
   if (status.value.recording) {
     const queue = status.value.currentQueueMode
-    const backend = status.value.recordingBackend === 'ffmpeg' ? 'FFmpeg'
-      : status.value.recordingBackend === 'obs' ? 'OBS' : 'Desktop'
+    const backend = 'OBS'
     if (queue) return `${formatMode(queue)} · ${backend}`
     return `Recording · ${backend}`
   }
@@ -1266,8 +1274,9 @@ onMounted(async () => {
       currentGame: s.currentGame,
       waitingForMatch: s.waitingForMatch ?? false,
       ffmpegOk: s.ffmpegOk !== false,
+      obsConnected: s.obsConnected === true,
       recordedModes: s.recordedModes ?? [],
-      recordingBackend: s.recordingBackend ?? 'desktop',
+      recordingBackend: 'obs',
       currentQueueMode: s.currentQueueMode ?? null,
     }
     if (s.recording) { recordingStartedAt.value = s.recordingStartedAt ?? Date.now() }
@@ -1344,6 +1353,7 @@ onMounted(async () => {
         currentGame: s.currentGame,
         waitingForMatch: s.waitingForMatch ?? false,
         ffmpegOk: s.ffmpegOk !== false,
+        obsConnected: s.obsConnected === true,
         recordedModes: s.recordedModes ?? [],
         recordingBackend: s.recordingBackend ?? status.value.recordingBackend,
         currentQueueMode: s.currentQueueMode ?? null,
@@ -1367,6 +1377,12 @@ onMounted(async () => {
   ipcCleanup.push(window.api.on('app:ffmpeg-status', (...args: unknown[]) => {
     const data = args[0] as { ok: boolean }
     status.value = { ...status.value, ffmpegOk: data.ok }
+  }))
+  ipcCleanup.push(window.api.on('obs:connection-changed', (...args: unknown[]) => {
+    const data = args[0] as { connected?: boolean }
+    if (typeof data?.connected === 'boolean') {
+      status.value = { ...status.value, obsConnected: data.connected }
+    }
   }))
   ipcCleanup.push(window.api.on('recording:status-changed', (...args: unknown[]) => {
     const data = args[0] as { recording: boolean; error: string | null }

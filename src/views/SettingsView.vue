@@ -184,64 +184,53 @@
               <p class="mt-2 text-xs text-gray-600">Only selected modes are recorded. If none are selected, nothing is recorded.</p>
             </div>
 
-            <div class="space-y-2">
-              <label class="block text-xs font-medium text-gray-400">Recording quality</label>
-              <div class="grid grid-cols-2 gap-2">
-                <button
-                  class="rounded-xl border px-3 py-2 text-left transition-all"
-                  :class="settings.recordingQuality === '720p' ? 'border-red-500/25 bg-red-500/10 text-white' : 'border-white/[0.10] bg-white/[0.02] text-gray-400 hover:border-white/[0.12] hover:text-gray-200'"
-                  @click="settings.recordingQuality = '720p'; debouncedSave()"
-                >
-                  <p class="text-xs font-semibold">720p</p>
-                  <p class="mt-1 text-[11px] text-gray-500">Balanced for smaller files</p>
-                </button>
-                <button
-                  class="rounded-xl border px-3 py-2 text-left transition-all"
-                  :class="settings.recordingQuality === '1080p' ? 'border-red-500/25 bg-red-500/10 text-white' : 'border-white/[0.10] bg-white/[0.02] text-gray-400 hover:border-white/[0.12] hover:text-gray-200'"
-                  @click="settings.recordingQuality = '1080p'; debouncedSave()"
-                >
-                  <p class="text-xs font-semibold">1080p</p>
-                  <p class="mt-1 text-[11px] text-gray-500">Sharper review footage</p>
-                </button>
+            <div class="rounded-2xl border p-4 space-y-4" :class="obsStatus?.connected ? 'border-green-500/20 bg-green-500/[0.04]' : 'border-amber-500/20 bg-amber-500/[0.04]'">
+              <div class="flex items-start justify-between gap-3">
+                <div>
+                  <p class="text-sm font-semibold text-white">OBS recording</p>
+                  <p class="mt-1 text-xs" :class="obsStatus?.connected ? 'text-green-300/80' : 'text-amber-300/80'">
+                    <template v-if="obsStatus?.connected">Connected — OBS v{{ obsStatus.obsVersion ?? '?' }}</template>
+                    <template v-else>Required — install OBS 28+, enable WebSocket, then connect below</template>
+                  </p>
+                </div>
+                <span class="mt-1 h-2.5 w-2.5 flex-shrink-0 rounded-full" :class="obsStatus?.connected ? 'bg-green-500' : 'bg-amber-400'" />
               </div>
-            </div>
-
-            <div class="grid grid-cols-2 gap-3">
+              <ol class="list-decimal list-inside space-y-1 text-xs text-gray-400">
+                <li>Install <a href="https://obsproject.com/" target="_blank" class="text-red-300 underline hover:text-red-200">OBS Studio 28+</a></li>
+                <li>Tools → WebSocket Server Settings → enable server (port {{ settings.obsPort }})</li>
+                <li>Click Connect — UpForge creates an &quot;UpForge&quot; scene (display capture, cursor hidden)</li>
+                <li>Recording starts/stops automatically when you enter a match</li>
+              </ol>
+              <div class="flex flex-wrap items-center gap-2">
+                <button v-if="!obsStatus?.connected" :disabled="obsConnecting" class="rounded-xl border border-red-500/20 bg-red-500/10 px-3 py-2 text-xs font-medium text-red-300 transition-colors hover:border-red-500/35 hover:bg-red-500/15 disabled:opacity-50" @click="obsConnect">{{ obsConnecting ? 'Connecting…' : 'Connect OBS' }}</button>
+                <template v-else>
+                  <button class="rounded-xl border border-white/[0.08] bg-white/[0.04] px-3 py-2 text-xs font-medium text-gray-300 transition-colors hover:border-white/[0.14] hover:text-white" @click="obsDisconnect">Disconnect</button>
+                  <button :disabled="obsSetupRunning" class="rounded-xl border border-white/[0.08] bg-white/[0.04] px-3 py-2 text-xs font-medium text-gray-300 transition-colors hover:border-white/[0.14] hover:text-white disabled:opacity-50" @click="obsSetupScene">{{ obsSetupRunning ? 'Setting up…' : 'Recreate UpForge scene' }}</button>
+                </template>
+              </div>
+              <div class="grid grid-cols-[1fr_96px] gap-3">
+                <div>
+                  <label class="mb-1 block text-xs text-gray-400">WebSocket host</label>
+                  <input v-model="settings.obsHost" type="text" class="w-full rounded-xl border border-white/[0.08] bg-white/[0.04] px-3 py-2 text-xs text-white placeholder-gray-600 focus:border-red-500/40 focus:outline-none" placeholder="localhost" @change="debouncedSave()" />
+                </div>
+                <div>
+                  <label class="mb-1 block text-xs text-gray-400">Port</label>
+                  <input v-model.number="settings.obsPort" type="number" class="w-full rounded-xl border border-white/[0.08] bg-white/[0.04] px-3 py-2 text-xs text-white focus:border-red-500/40 focus:outline-none" min="1" max="65535" @change="debouncedSave()" />
+                </div>
+              </div>
               <div>
-                <label class="mb-1 block text-xs text-gray-400">Frame rate</label>
-                <select v-model.number="settings.recordingFps" class="w-full rounded-xl border border-white/[0.08] bg-white/[0.04] px-3 py-2 text-xs text-white focus:border-red-500/30 focus:outline-none" @change="debouncedSave">
-                  <option :value="24">24 FPS</option>
-                  <option :value="30">30 FPS</option>
-                  <option :value="60">60 FPS</option>
-                </select>
+                <label class="mb-1 block text-xs text-gray-400">WebSocket password</label>
+                <input v-model="settings.obsPassword" type="password" class="w-full rounded-xl border border-white/[0.08] bg-white/[0.04] px-3 py-2 text-xs text-white placeholder-gray-600 focus:border-red-500/40 focus:outline-none" placeholder="Optional" @change="debouncedSave()" />
               </div>
               <div>
-                <label class="mb-1 block text-xs text-gray-400">Capture monitor</label>
-                <select v-model="settings.captureMonitor" class="w-full rounded-xl border border-white/[0.08] bg-white/[0.04] px-3 py-2 text-xs text-white focus:border-red-500/30 focus:outline-none" @change="debouncedSave">
-                  <option value="auto">Auto-detect</option>
-                  <option :value="0">Monitor 1 (primary)</option>
-                  <option :value="1">Monitor 2</option>
-                  <option :value="2">Monitor 3</option>
-                </select>
+                <div class="mb-1 flex items-center justify-between">
+                  <label class="text-xs text-gray-400">Replay buffer (kill clips)</label>
+                  <span class="text-xs text-gray-500">{{ settings.obsReplayBufferSeconds }}s</span>
+                </div>
+                <input v-model.number="settings.obsReplayBufferSeconds" type="range" min="10" max="120" step="5" class="w-full accent-red-500" @input="debouncedSave()" />
               </div>
-            </div>
-
-            <div>
-              <label class="mb-1 block text-xs text-gray-400">Bitrate</label>
-              <select v-model.number="settings.recordingBitrate" class="w-full rounded-xl border border-white/[0.08] bg-white/[0.04] px-3 py-2 text-xs text-white focus:border-red-500/30 focus:outline-none" @change="debouncedSave">
-                <option :value="4">4 Mbps — ~1.8 GB/hr (720p 30fps)</option>
-                <option :value="6">6 Mbps — ~2.7 GB/hr (720p 60fps)</option>
-                <option :value="8">8 Mbps — ~3.6 GB/hr (1080p 30fps)</option>
-                <option :value="12">12 Mbps — ~5.4 GB/hr (1080p 30fps high)</option>
-                <option :value="15">15 Mbps — ~6.8 GB/hr (1080p 60fps)</option>
-                <option :value="20">20 Mbps — ~9.0 GB/hr (1080p 60fps high)</option>
-              </select>
-              <p
-                v-if="settings.recordingQuality === '1080p' && settings.recordingFps >= 60 && settings.recordingBitrate < 12"
-                class="mt-1 text-xs text-amber-400/90"
-              >
-                1080p at 60fps usually needs at least 12–15 Mbps to avoid blocky footage.
-              </p>
+              <p class="text-xs text-gray-500">Video quality, FPS, and audio are configured in OBS (use NVENC + 60fps for best results).</p>
+              <p v-if="obsStatus?.lastError" class="rounded-xl border border-red-500/20 bg-red-500/6 px-3 py-2 text-xs text-red-300">{{ obsStatus.lastError }}</p>
             </div>
 
             <div>
@@ -283,159 +272,6 @@
           </div>
         </div>
 
-        <div class="overflow-hidden rounded-2xl border border-white/[0.10] bg-white/[0.02]">
-          <button class="flex w-full items-center justify-between px-4 py-3 text-left" @click="toggleSection('audio')">
-            <div class="flex items-center gap-3">
-              <div class="flex h-9 w-9 items-center justify-center rounded-xl bg-white/[0.05] text-gray-300">
-                <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M19.114 5.636a9 9 0 010 12.728M16.286 8.464a5 5 0 010 7.072M8.25 9.75 12 6v12l-3.75-3.75H5.25a.75.75 0 01-.75-.75v-3a.75.75 0 01.75-.75h3z" />
-                </svg>
-              </div>
-              <div>
-                <p class="text-sm font-semibold text-white">Audio</p>
-                <p class="text-xs text-gray-500">Desktop audio capture and diagnostics</p>
-              </div>
-            </div>
-            <svg class="h-4 w-4 text-gray-500 transition-transform" :class="sectionOpen.audio ? 'rotate-90' : ''" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
-            </svg>
-          </button>
-          <div v-if="sectionOpen.audio" class="space-y-3 border-t border-white/[0.09] p-4">
-            <div class="flex items-center justify-between rounded-2xl border border-white/[0.10] bg-black/20 px-4 py-3">
-              <div>
-                <p class="text-sm text-gray-200">Record game audio</p>
-                <p class="mt-1 text-xs text-gray-500">Capture desktop audio in saved recordings</p>
-              </div>
-              <button class="relative inline-flex h-5 w-9 items-center rounded-full transition-colors" :class="settings.audioEnabled ? 'bg-red-500' : 'bg-white/20'" @click="toggleAudio">
-                <span class="inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform" :class="settings.audioEnabled ? 'translate-x-4' : 'translate-x-0.5'" />
-              </button>
-            </div>
-            <div v-if="fixingAudio" class="rounded-xl border border-white/[0.10] bg-white/[0.02] px-4 py-3 text-xs text-gray-400">Detecting audio capture…</div>
-            <div v-else-if="audioStatus !== null && audioStatus.winAudioMode === false" class="rounded-2xl border border-amber-500/20 bg-amber-500/6 p-4">
-              <p class="flex items-start gap-2 text-xs text-amber-300/90">
-                <svg class="mt-0.5 h-3.5 w-3.5 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
-                <span>
-                  <template v-if="isMac">No virtual audio device found. Install <a href="https://existential.audio/blackhole/" target="_blank" class="underline hover:text-amber-200">BlackHole</a> to capture desktop audio.</template>
-                  <template v-else>Desktop audio capture is unavailable right now. UpForge can attempt to auto-fix this for you.</template>
-                </span>
-              </p>
-              <button class="mt-3 rounded-xl border border-white/[0.08] bg-white/[0.06] px-3 py-2 text-xs font-medium text-white transition-colors hover:bg-white/[0.1]" @click="fixAudio">{{ isMac ? 'Re-check audio devices' : 'Fix audio automatically' }}</button>
-            </div>
-            <div v-else-if="audioStatus !== null && audioStatus.winAudioMode === 'desktop-capturer'" class="rounded-xl border border-green-500/20 bg-green-500/6 px-4 py-3 text-xs text-green-300">
-              Built-in audio capture active (system audio via Chromium loopback).
-              <span class="text-green-300/70"> Video may cap at ~30fps — enable Stereo Mix in Windows Sound settings for 60fps ffmpeg recording with WASAPI.</span>
-            </div>
-            <div v-else-if="audioStatus !== null && audioStatus.winAudioMode" class="rounded-xl border border-green-500/20 bg-green-500/6 px-4 py-3 text-xs text-green-300">
-              Desktop audio capture ready
-              <span v-if="audioStatus.winAudioMode?.startsWith('dshow:')" class="text-green-300/70"> (Stereo Mix)</span>
-              <span v-else-if="audioStatus.winAudioMode?.startsWith('wasapi')" class="text-green-300/70"> (WASAPI loopback)</span>
-              <span v-else-if="audioStatus.winAudioMode?.startsWith('avfoundation:')" class="text-green-300/70"> (virtual loopback)</span>.
-            </div>
-          </div>
-        </div>
-
-        <div v-if="user?.tier === 'pro'" class="overflow-hidden rounded-2xl border border-white/[0.10] bg-white/[0.02]">
-          <button class="flex w-full items-center justify-between px-4 py-3 text-left" @click="toggleSection('obs')">
-            <div class="flex items-center gap-3">
-              <div class="flex h-9 w-9 items-center justify-center rounded-xl bg-red-500/10 text-red-400">
-                <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M3.75 15.75V8.25A2.25 2.25 0 016 6h9.75A2.25 2.25 0 0118 8.25v7.5M7.5 18h9M8.25 12h.008v.008H8.25V12zm3.75 0h.008v.008H12V12zm3.75 0h.008v.008H15.75V12z" />
-                </svg>
-              </div>
-              <div>
-                <div class="flex items-center gap-2">
-                  <p class="text-sm font-semibold text-white">OBS Integration</p>
-                  <span class="rounded-full bg-red-500/10 px-2 py-0.5 text-[10px] font-semibold text-red-300">Pro</span>
-                </div>
-                <p class="text-xs text-gray-500">Replay buffer capture and WebSocket control</p>
-              </div>
-            </div>
-            <svg class="h-4 w-4 text-gray-500 transition-transform" :class="sectionOpen.obs ? 'rotate-90' : ''" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
-            </svg>
-          </button>
-          <div v-if="sectionOpen.obs" class="space-y-4 border-t border-white/[0.09] p-4">
-            <div class="flex items-center justify-between rounded-2xl border border-white/[0.10] bg-black/20 px-4 py-3">
-              <div>
-                <p class="text-sm text-gray-200">OBS connection</p>
-                <p class="mt-1 text-xs text-gray-500">
-                  <template v-if="obsStatus?.connected">OBS v{{ obsStatus.obsVersion ?? '?' }} connected</template>
-                  <template v-else>Connect OBS 28+ with the WebSocket server enabled</template>
-                </p>
-              </div>
-              <div class="flex items-center gap-2">
-                <span class="h-2 w-2 rounded-full" :class="obsStatus?.connected ? 'bg-green-500' : 'bg-white/20'" />
-                <button v-if="!obsStatus?.connected" :disabled="obsConnecting" class="rounded-xl border border-red-500/20 bg-red-500/10 px-3 py-2 text-xs font-medium text-red-300 transition-colors hover:border-red-500/35 hover:bg-red-500/15 disabled:opacity-50" @click="obsConnect">{{ obsConnecting ? 'Connecting…' : 'Connect' }}</button>
-                <button v-else class="rounded-xl border border-white/[0.08] bg-white/[0.04] px-3 py-2 text-xs font-medium text-gray-300 transition-colors hover:border-white/[0.14] hover:text-white" @click="obsDisconnect">Disconnect</button>
-              </div>
-            </div>
-
-            <div class="flex items-center justify-between rounded-2xl border border-white/[0.10] bg-black/20 px-4 py-3">
-              <div>
-                <p class="text-sm text-gray-200">Use OBS for recording</p>
-                <p class="mt-1 text-xs text-gray-500">Requires OBS 28+ with WebSocket enabled</p>
-              </div>
-              <button class="relative inline-flex h-5 w-9 items-center rounded-full transition-colors" :class="settings.obsEnabled ? 'bg-red-500' : 'bg-white/20'" @click="settings.obsEnabled = !settings.obsEnabled; debouncedSave()">
-                <span class="inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform" :class="settings.obsEnabled ? 'translate-x-4' : 'translate-x-0.5'" />
-              </button>
-            </div>
-
-            <div class="grid grid-cols-[1fr_96px] gap-3">
-              <div>
-                <label class="mb-1 block text-xs text-gray-400">WebSocket host</label>
-                <input v-model="settings.obsHost" type="text" class="w-full rounded-xl border border-white/[0.08] bg-white/[0.04] px-3 py-2 text-xs text-white placeholder-gray-600 focus:border-red-500/40 focus:outline-none" placeholder="localhost" @change="debouncedSave()" />
-              </div>
-              <div>
-                <label class="mb-1 block text-xs text-gray-400">Port</label>
-                <input v-model.number="settings.obsPort" type="number" class="w-full rounded-xl border border-white/[0.08] bg-white/[0.04] px-3 py-2 text-xs text-white focus:border-red-500/40 focus:outline-none" min="1" max="65535" @change="debouncedSave()" />
-              </div>
-            </div>
-
-            <div>
-              <label class="mb-1 block text-xs text-gray-400">WebSocket password</label>
-              <input v-model="settings.obsPassword" type="password" class="w-full rounded-xl border border-white/[0.08] bg-white/[0.04] px-3 py-2 text-xs text-white placeholder-gray-600 focus:border-red-500/40 focus:outline-none" placeholder="Optional" @change="debouncedSave()" />
-            </div>
-
-            <div>
-              <div class="mb-1 flex items-center justify-between">
-                <label class="text-xs text-gray-400">Replay buffer length</label>
-                <span class="text-xs text-gray-500">{{ settings.obsReplayBufferSeconds }}s</span>
-              </div>
-              <input v-model.number="settings.obsReplayBufferSeconds" type="range" min="10" max="120" step="5" class="w-full accent-red-500" @input="debouncedSave()" />
-              <p class="mt-1 text-xs text-gray-600">How many seconds of footage to save on each clip trigger.</p>
-            </div>
-
-            <p v-if="obsStatus?.lastError" class="rounded-xl border border-red-500/20 bg-red-500/6 px-4 py-3 text-xs text-red-300">{{ obsStatus.lastError }}</p>
-          </div>
-        </div>
-
-        <div v-else-if="user" class="overflow-hidden rounded-2xl border border-white/[0.10] bg-white/[0.02]">
-          <button class="flex w-full items-center justify-between px-4 py-3 text-left" @click="toggleSection('obsTeaser')">
-            <div class="flex items-center gap-3">
-              <div class="flex h-9 w-9 items-center justify-center rounded-xl bg-white/[0.05] text-gray-300">
-                <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M16.5 10.5V6.75A2.25 2.25 0 0014.25 4.5h-4.5A2.25 2.25 0 007.5 6.75v3.75m9 0v6.75A2.25 2.25 0 0114.25 19.5h-4.5A2.25 2.25 0 017.5 17.25V10.5m9 0h2.25m-13.5 0H3.75" />
-                </svg>
-              </div>
-              <div>
-                <p class="text-sm font-semibold text-white">OBS Integration</p>
-                <p class="text-xs text-gray-500">Replay buffer capture is available on Pro</p>
-              </div>
-            </div>
-            <svg class="h-4 w-4 text-gray-500 transition-transform" :class="sectionOpen.obsTeaser ? 'rotate-90' : ''" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
-            </svg>
-          </button>
-          <div v-if="sectionOpen.obsTeaser" class="border-t border-white/[0.09] p-4">
-            <div class="flex items-center justify-between rounded-2xl border border-red-500/20 bg-gradient-to-r from-red-500/10 to-orange-500/10 px-4 py-3">
-              <div>
-                <p class="text-sm text-gray-100">Unlock OBS replay buffers</p>
-                <p class="mt-1 text-xs text-gray-500">Use OBS for more flexible capture workflows and replay buffer clips.</p>
-              </div>
-              <button class="rounded-xl border border-red-500/25 bg-red-500/10 px-3 py-2 text-xs font-medium text-red-300 transition-colors hover:border-red-500/35 hover:bg-red-500/15" @click="openUpgrade">Upgrade</button>
-            </div>
-          </div>
-        </div>
       </section>
 
       <section v-show="activeTab === 'trainer'" class="space-y-4">
@@ -716,14 +552,6 @@
               <span class="h-2 w-2 flex-shrink-0 rounded-full" :class="captureBackendOk ? 'bg-green-500' : 'bg-yellow-400'" />
             </div>
 
-            <div v-if="settings.cachedEncoder" class="flex items-center justify-between rounded-2xl border border-white/[0.10] bg-black/20 px-4 py-3">
-              <div>
-                <p class="text-sm text-gray-200">Video encoder</p>
-                <p class="mt-1 text-xs text-green-400/80">{{ encoderLabel }}</p>
-              </div>
-              <span class="h-2 w-2 rounded-full bg-green-500" />
-            </div>
-
             <div class="rounded-2xl border border-white/[0.10] bg-black/20 px-4 py-3">
               <div class="flex items-start justify-between gap-4">
                 <div class="min-w-0 flex-1">
@@ -777,7 +605,7 @@
 
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted, onUnmounted, toRaw } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRouter, useRoute } from 'vue-router'
 import type { AppSettings } from '../env.d.ts'
 import { getTierBadgeClass, formatGameMode } from '../lib/valorant'
 import CrosshairSettingsPanel from '../components/CrosshairSettingsPanel.vue'
@@ -793,6 +621,7 @@ type UserWithUsage = {
 }
 
 const router = useRouter()
+const route = useRoute()
 const user = ref<UserWithUsage | null>(null)
 
 const SETTINGS_TABS = [
@@ -815,7 +644,7 @@ const savedToast = ref(false)
 const storageBytes = ref(0)
 const storageCount = ref(0)
 const ffmpegOk = ref(true)
-const recordingBackend = ref<'obs' | 'ffmpeg' | 'desktop'>('desktop')
+const recordingBackend = ref<'obs'>('obs')
 const sectionOpen = reactive({
   account: true,
   usage: true,
@@ -823,7 +652,6 @@ const sectionOpen = reactive({
   recordingCapture: true,
   audio: true,
   obs: true,
-  obsTeaser: true,
   mouseTrainer: true,
   crosshair: true,
   shortcuts: true,
@@ -863,7 +691,7 @@ async function disableDevMode() {
   showToast('Developer mode disabled')
 }
 
-// ── OBS Integration (Pro tier) ────────────────────────────────────────────────
+// ── OBS Integration ───────────────────────────────────────────────────────────
 type OBSStatus = {
   connected: boolean
   recording: boolean
@@ -874,6 +702,7 @@ type OBSStatus = {
 }
 const obsStatus = ref<OBSStatus | null>(null)
 const obsConnecting = ref(false)
+const obsSetupRunning = ref(false)
 
 async function obsConnect() {
   obsConnecting.value = true
@@ -890,12 +719,35 @@ async function obsConnect() {
       obsStatus.value = await window.api.obs.getStatus()
       const st = await window.api.app.getStatus().catch(() => null)
       if (st?.recordingBackend) recordingBackend.value = st.recordingBackend
-      showToast(`Connected to OBS v${result.version ?? '?'}`)
+      const setup = result.setup
+      if (setup?.sceneCreated || setup?.inputCreated) {
+        showToast(`Connected to OBS v${result.version ?? '?'} — UpForge scene created`)
+      } else {
+        showToast(`Connected to OBS v${result.version ?? '?'}`)
+      }
     } else {
       showToast(`OBS connection failed: ${result.error ?? 'Unknown error'}`)
     }
   } finally {
     obsConnecting.value = false
+  }
+}
+
+async function obsSetupScene() {
+  obsSetupRunning.value = true
+  try {
+    const result = await window.api.obs.setupScene()
+    if (result.ok) {
+      if (result.sceneCreated || result.inputCreated) {
+        showToast('UpForge scene created in OBS')
+      } else {
+        showToast('UpForge scene is already configured')
+      }
+    } else {
+      showToast(`Scene setup failed: ${result.error ?? 'Unknown error'}`)
+    }
+  } finally {
+    obsSetupRunning.value = false
   }
 }
 
@@ -1001,7 +853,7 @@ const settings = reactive<AppSettings>({
   cachedEncoder: null,
   cachedUseDdagrab: null,
   devModeEnabled: false,
-  obsEnabled: false,
+  obsEnabled: true,
   obsHost: 'localhost',
   obsPort: 4455,
   obsPassword: '',
@@ -1094,26 +946,12 @@ const encoderLabel = computed(() => {
   return enc
 })
 
-const captureBackendOk = computed(() => {
-  if (recordingBackend.value === 'ffmpeg') return ffmpegOk.value
-  if (recordingBackend.value === 'obs') return !!obsStatus.value?.connected
-  return true
-})
+const captureBackendOk = computed(() => !!obsStatus.value?.connected)
 
 const captureBackendDescription = computed(() => {
-  const quality = `${settings.recordingQuality} · ${settings.recordingFps} fps`
-  const b = recordingBackend.value
-  if (b === 'obs') {
-    return obsStatus.value?.connected
-      ? `OBS WebSocket · ${obsStatus.value.obsVersion ?? 'connected'}`
-      : 'OBS enabled — connect below (uses built-in capture until connected)'
-  }
-  if (b === 'ffmpeg') {
-    return ffmpegOk.value ? `FFmpeg hardware capture · ${quality}` : 'FFmpeg not found — reinstall the app'
-  }
-  return isMac.value
-    ? `Desktop capture · ${quality} (Screen Recording permission required)`
-    : `Desktop capture · ${quality}`
+  return obsStatus.value?.connected
+    ? `OBS WebSocket · ${obsStatus.value.obsVersion ?? 'connected'}`
+    : 'OBS not connected — open Settings → Recording to connect'
 })
 
 // tierClass and formatMode are imported from valorant.ts (shared helpers)
@@ -1137,10 +975,8 @@ async function refreshRecordingBackendStatus(): Promise<void> {
     const st = await window.api.app.getStatus()
     if (st?.recordingBackend) recordingBackend.value = st.recordingBackend
     if (typeof st?.ffmpegOk === 'boolean') ffmpegOk.value = st.ffmpegOk
-    if (settings.obsEnabled) {
-      const obs = await window.api.obs.getStatus()
-      obsStatus.value = obs
-    }
+    const obs = await window.api.obs.getStatus()
+    obsStatus.value = obs
   } catch { /* non-critical */ }
 }
 
@@ -1297,6 +1133,10 @@ onUnmounted(() => {
 })
 
 onMounted(async () => {
+  const tabQuery = route.query.tab
+  if (tabQuery === 'recording' || tabQuery === 'general' || tabQuery === 'trainer' || tabQuery === 'system') {
+    activeTab.value = tabQuery
+  }
   window.addEventListener('keydown', handleKeydown)
   try {
     const [s, savedSettings] = await Promise.all([

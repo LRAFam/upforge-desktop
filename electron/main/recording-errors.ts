@@ -19,6 +19,6 @@ export function reportRecordingError(
   })
 }
 
-export function recordingBackendLabel(backend: RecordingBackend): string {
-  return backend === 'obs' ? 'OBS' : backend === 'ffmpeg' ? 'ffmpeg' : 'desktop capture'
+export function recordingBackendLabel(_backend: RecordingBackend): string {
+  return 'OBS'
 }

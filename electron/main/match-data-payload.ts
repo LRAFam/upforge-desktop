@@ -132,7 +132,7 @@ export function prepareMatchDataForUpload(timeline: MatchData | null): UploadMat
     finalStats,
     teamSnapshot: timeline.teamSnapshot,
     matchDetailsLite: slimMatchDetails(timeline.matchDetails),
-    spatialSummary: timeline.spatialSummary ?? null,
+    spatialSummary: timeline.spatialSummary,
     startTime: timeline.startTime,
     endTime: timeline.endTime,
   }

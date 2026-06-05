@@ -26,8 +26,9 @@ export function setupAppHandlers(
   getWaitingForMatch?: () => boolean,
   getActivityLog?: () => { time: number; message: string }[],
   showClipsFn?: () => void,
-  getRecordingBackend?: () => 'obs' | 'ffmpeg' | 'desktop',
+  getRecordingBackend?: () => 'obs',
   getCurrentQueueMode?: () => string | null,
+  getObsConnected?: () => boolean,
 ): void {
   // ── App state ─────────────────────────────────────────────────────────────
 
@@ -47,8 +48,9 @@ export function setupAppHandlers(
       version: app.getVersion(),
       firstRun: settings.firstRun,
       ffmpegOk: getFFmpegOk ? getFFmpegOk() : true,
+      obsConnected: getObsConnected ? getObsConnected() : false,
       recordedModes: settings.recordedModes,
-      recordingBackend: getRecordingBackend ? getRecordingBackend() : 'desktop',
+      recordingBackend: getRecordingBackend ? getRecordingBackend() : 'obs',
       currentQueueMode: recording && getCurrentQueueMode ? getCurrentQueueMode() : null,
     }
   })

@@ -4,6 +4,7 @@ import { existsSync, statSync } from 'fs'
 import { join } from 'path'
 import https from 'https'
 import log from 'electron-log'
+import { setupUpForgeScene, type ObsSetupResult } from './obs-setup'
 
 export interface OBSSettings {
   host: string
@@ -31,7 +32,7 @@ interface LiveKillEvent {
 }
 
 /**
- * OBSRecorder — Pro tier recording via OBS WebSocket (obs-websocket v5, OBS 28+).
+ * OBSRecorder — match recording via OBS WebSocket (obs-websocket v5, OBS 28+).
  *
  * Provides two complementary recording modes running simultaneously:
  *   1. Full match VOD: StartRecord on game start, StopRecord on game end.
@@ -67,6 +68,7 @@ export class OBSRecorder {
 
   onStatusChange?: (recording: boolean, error?: string) => void
   onReplayClipSaved?: (path: string, trigger: string) => void
+  onConnectionChange?: (connected: boolean, error?: string | null) => void
 
   constructor(private getSettings: () => OBSSettings) {
     this._obs.on('ReplayBufferSaved', ({ savedReplayPath }) => {
@@ -102,12 +104,13 @@ export class OBSRecorder {
         this._stopLiveKillPoll()
         this.onStatusChange?.(false, 'OBS disconnected during recording')
       }
+      this.onConnectionChange?.(false, 'OBS disconnected')
     })
   }
 
   // ── Connection ──────────────────────────────────────────────────────────────
 
-  async connect(): Promise<{ ok: boolean; error?: string; version?: string }> {
+  async connect(): Promise<{ ok: boolean; error?: string; version?: string; setup?: ObsSetupResult }> {
     const { host, port, password, replayBufferSeconds } = this.getSettings()
     try {
       const { obsWebSocketVersion } = await this._obs.connect(
@@ -131,7 +134,13 @@ export class OBSRecorder {
         })
       }
 
-      return { ok: true, version: obsWebSocketVersion }
+      const setup = await setupUpForgeScene(this._obs)
+      if (!setup.ok) {
+        log.warn('[OBSRecorder] Scene setup incomplete:', setup.error)
+      }
+
+      this.onConnectionChange?.(true)
+      return { ok: true, version: obsWebSocketVersion, setup }
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
       this._connected = false
@@ -144,9 +153,21 @@ export class OBSRecorder {
   async disconnect(): Promise<void> {
     try { await this._obs.disconnect() } catch { /* ignore */ }
     this._connected = false
+    this.onConnectionChange?.(false)
   }
 
   isConnected(): boolean { return this._connected }
+
+  async setupScene(): Promise<ObsSetupResult> {
+    if (!this._connected) {
+      const result = await this.connect()
+      if (!result.ok) {
+        return { ok: false, sceneCreated: false, inputCreated: false, error: result.error }
+      }
+      return result.setup ?? { ok: true, sceneCreated: false, inputCreated: false }
+    }
+    return setupUpForgeScene(this._obs)
+  }
 
   getOBSStatus(): OBSStatus {
     return {

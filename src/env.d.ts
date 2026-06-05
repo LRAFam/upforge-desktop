@@ -93,7 +93,7 @@ export interface AppSettings {
   onboardingComplete?: boolean
   /** Unlocked achievement IDs mapped to ISO date strings */
   achievements?: Record<string, string>
-  /** Use OBS WebSocket for recording instead of desktopCapturer (Pro tier) */
+  /** OBS WebSocket recording — required for match capture */
   obsEnabled: boolean
   /** OBS WebSocket host */
   obsHost: string
@@ -339,8 +339,9 @@ declare global {
           platform: string
           version: string
           ffmpegOk: boolean
+          obsConnected: boolean
           recordedModes: string[]
-          recordingBackend: 'obs' | 'ffmpeg' | 'desktop'
+          recordingBackend: 'obs'
           currentQueueMode: string | null
           user: {
             name: string
@@ -508,7 +509,12 @@ declare global {
         setPregameKillList: (list: string[]) => Promise<string[]>
       }
       obs: {
-        connect: () => Promise<{ ok: boolean; error?: string; version?: string }>
+        connect: () => Promise<{
+          ok: boolean
+          error?: string
+          version?: string
+          setup?: { ok: boolean; sceneCreated: boolean; inputCreated: boolean; error?: string }
+        }>
         disconnect: () => Promise<void>
         getStatus: () => Promise<{
           connected: boolean
@@ -518,6 +524,7 @@ declare global {
           lastError: string | null
           obsVersion: string | null
         }>
+        setupScene: () => Promise<{ ok: boolean; sceneCreated: boolean; inputCreated: boolean; error?: string }>
         saveReplayClip: () => Promise<{ path: string | null }>
       }
       trainer: {

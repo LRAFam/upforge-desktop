@@ -20,7 +20,6 @@ export function setupMediaHandlers(
   obsRecorder?: OBSRecorder,
   endMatchRecording?: (game: string) => Promise<{ ok: boolean; reason?: string }>,
   getCurrentGame?: () => string | null,
-  /** Windows: ffmpeg audio detection runs on the bundled Recorder even when desktop capture is active. */
   getAudioDetectRecorder?: () => MatchRecorder,
 ): void {
   // ── Recorder ──────────────────────────────────────────────────────────────
@@ -45,31 +44,29 @@ export function setupMediaHandlers(
 
   ipcMain.handle('recorder:audio-status', () => {
     const settings = settingsManager.get()
-    const obsActive = settings.obsEnabled && obsRecorder?.isConnected()
-    const detectRecorder = getAudioDetectRecorder?.() ?? getActiveRecorder()
-    const activeRecorder = getActiveRecorder()
-    const detectedMode = detectRecorder.getAudioMode()
-    const audioCaptureMode = obsActive
-      ? 'obs-websocket'
-      : (activeRecorder.getAudioMode() === 'desktop-capturer' && detectedMode === false
-        ? 'desktop-capturer'
-        : detectedMode)
+    const obsConnected = obsRecorder?.isConnected() ?? false
+    const audioCaptureMode = obsConnected ? 'obs-websocket' : false
     return {
       audioCaptureMode,
       /** @deprecated */ winAudioMode: audioCaptureMode,
-      audioEnabled: obsActive ? true : settings.audioEnabled,
+      audioEnabled: settings.audioEnabled,
     }
   })
 
   ipcMain.handle('recorder:fix-audio', async () => {
     try {
-      const settings = settingsManager.get()
-      if (settings.obsEnabled && obsRecorder?.isConnected()) {
+      if (obsRecorder?.isConnected()) {
         return { audioCaptureMode: 'obs-websocket', winAudioMode: 'obs-websocket' }
       }
-      const detectRecorder = getAudioDetectRecorder?.() ?? getActiveRecorder()
-      const mode = await detectRecorder.redetectAudio()
-      return { audioCaptureMode: mode, winAudioMode: mode }
+      const result = await obsRecorder?.connect()
+      if (result?.ok) {
+        return { audioCaptureMode: 'obs-websocket', winAudioMode: 'obs-websocket' }
+      }
+      return {
+        audioCaptureMode: false,
+        winAudioMode: false,
+        error: result?.error ?? 'Connect OBS in Settings (WebSocket must be enabled)',
+      }
     } catch (err) {
       log.error('[IPC] recorder:fix-audio error:', err)
       return { audioCaptureMode: false, winAudioMode: false, error: String(err) }
@@ -156,5 +153,10 @@ export function setupMediaHandlers(
       log.warn('[IPC] obs:save-replay-clip error:', err)
       return { ok: false, path: null, error: String(err) }
     }
+  })
+
+  ipcMain.handle('obs:setup-scene', async () => {
+    if (!obsRecorder) return { ok: false, sceneCreated: false, inputCreated: false, error: 'OBS recorder not available' }
+    return obsRecorder.setupScene()
   })
 }

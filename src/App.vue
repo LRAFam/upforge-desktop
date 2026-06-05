@@ -114,6 +114,32 @@
       </div>
     </Transition>
 
+    <!-- OBS setup banner — shown as soon as we detect OBS is not connected -->
+    <Transition name="update-banner">
+      <div
+        v-if="showObsBanner"
+        class="flex items-center justify-between gap-3 px-3 py-2 flex-shrink-0 bg-amber-500/[0.08] border-b border-amber-500/25 text-xs"
+      >
+        <div class="flex items-center gap-2 min-w-0">
+          <span class="h-2 w-2 rounded-full bg-amber-400 flex-shrink-0 animate-pulse" />
+          <span class="text-amber-100/90 truncate">
+            OBS not connected — matches won&apos;t record until you set it up.
+          </span>
+        </div>
+        <div class="flex items-center gap-2 flex-shrink-0">
+          <button
+            :disabled="obsConnecting"
+            class="px-2.5 py-1 rounded-lg border border-amber-500/30 bg-amber-500/15 text-amber-200 hover:bg-amber-500/25 transition-colors font-medium disabled:opacity-50"
+            @click="connectObsFromBanner"
+          >{{ obsConnecting ? 'Connecting…' : 'Connect OBS' }}</button>
+          <button
+            class="px-2.5 py-1 rounded-lg border border-white/[0.10] bg-white/[0.04] text-gray-300 hover:text-white hover:bg-white/[0.08] transition-colors font-medium"
+            @click="openObsSettings"
+          >Settings</button>
+        </div>
+      </div>
+    </Transition>
+
     <!-- Navigation (hidden on post-game / login) -->
     <nav
       v-if="showNav"
@@ -222,16 +248,12 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { useDesktopRecording } from './composables/useDesktopRecording'
 import OnboardingWizard from './components/OnboardingWizard.vue'
 import AchievementManager from './components/AchievementManager.vue'
 import type { ClipRecord, ProfileData } from './env.d.ts'
 
 const route = useRoute()
 const router = useRouter()
-
-// Initialise renderer-side MediaRecorder bridge — always active while app is running
-useDesktopRecording()
 
 const isMac = navigator.platform.toUpperCase().includes('MAC')
 const status = ref({ recording: false, currentGame: null as string | null })
@@ -249,6 +271,15 @@ const hasClipIndicator = ref(false)
 const isNavigating = ref(false)
 const showOnboarding = ref(false)
 const onboardingWasComplete = ref(false)
+const obsConnected = ref<boolean | null>(null)
+const obsConnecting = ref(false)
+
+const showObsBanner = computed(() =>
+  showNav.value &&
+  !showOnboarding.value &&
+  obsConnected.value === false &&
+  !status.value.recording
+)
 
 const showTitleBar = computed(() =>
   route.path !== '/overlay' && route.path !== '/splash'
@@ -371,6 +402,20 @@ onMounted(async () => {
 
   await Promise.all([loadClipSummary(), loadUserProfile()])
 
+  try {
+    const obs = await window.api.obs.getStatus()
+    obsConnected.value = obs.connected
+  } catch { /* ignore */ }
+
+  const obsCleanup = window.api.on('obs:connection-changed', (...args: unknown[]) => {
+    const data = args[0] as { connected?: boolean } | undefined
+    if (data && typeof data.connected === 'boolean') {
+      obsConnected.value = data.connected
+      obsConnecting.value = false
+    }
+  })
+  ;(window as Window & { _obsCleanup?: () => void })._obsCleanup = obsCleanup
+
   // Hydrate update state and listen for live updates
   try {
     const us = await window.api.updater.getState()
@@ -451,6 +496,9 @@ onUnmounted(() => {
   const updaterCleanups = (window as Window & { _updaterCleanups?: (() => void)[] })._updaterCleanups
   updaterCleanups?.forEach(fn => fn())
   delete (window as Window & { _updaterCleanups?: (() => void)[] })._updaterCleanups
+  const obsCleanup = (window as Window & { _obsCleanup?: () => void })._obsCleanup
+  obsCleanup?.()
+  delete (window as Window & { _obsCleanup?: () => void })._obsCleanup
 })
 
 async function simulateGame() {
@@ -472,8 +520,24 @@ function minimizeWindow() {
   window.api.window.minimize()
 }
 
+async function connectObsFromBanner() {
+  obsConnecting.value = true
+  try {
+    await window.api.obs.connect()
+  } catch {
+    obsConnecting.value = false
+  }
+}
+
+function openObsSettings() {
+  router.push({ path: '/settings', query: { tab: 'recording' } }).catch(() => {})
+}
+
 function handleOnboardingComplete() {
   showOnboarding.value = false
+  window.api.obs.getStatus()
+    .then((obs) => { obsConnected.value = obs.connected })
+    .catch(() => {})
   router.push('/training').catch(() => {})
 }
 </script>

@@ -138,6 +138,7 @@ const api = {
     connect: () => ipcRenderer.invoke('obs:connect'),
     disconnect: () => ipcRenderer.invoke('obs:disconnect'),
     getStatus: () => ipcRenderer.invoke('obs:get-status'),
+    setupScene: () => ipcRenderer.invoke('obs:setup-scene'),
     saveReplayClip: () => ipcRenderer.invoke('obs:save-replay-clip'),
   },
   trainer: {
@@ -206,6 +207,7 @@ const api = {
       'desktop-recording:start',
       'desktop-recording:stop',
       'obs:replay-saved',
+      'obs:connection-changed',
       'trainer:session-result',
       'post-game:demo-status',
       'post-game:demo-progress',

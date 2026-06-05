@@ -32,7 +32,7 @@ export interface AppSettings {
   cs2DemoDir?: string
   /** Developer / admin mode — unlocked by tapping the version number 5 times in Settings */
   devModeEnabled: boolean
-  /** Use OBS WebSocket for recording (Pro tier) instead of desktopCapturer */
+  /** OBS WebSocket recording — always on; kept for settings migration */
   obsEnabled: boolean
   /** OBS WebSocket host (default: localhost) */
   obsHost: string
@@ -94,7 +94,7 @@ const DEFAULTS: AppSettings = {
   cachedEncoder: null,
   cachedUseDdagrab: null,
   devModeEnabled: false,
-  obsEnabled: false,
+  obsEnabled: true,
   obsHost: 'localhost',
   obsPort: 4455,
   obsPassword: '',
@@ -155,7 +155,8 @@ export class SettingsManager {
       if (!Array.isArray(parsed.recordedModes)) {
         delete parsed.recordedModes
       }
-      return { ...DEFAULTS, ...parsed }
+      const merged = { ...DEFAULTS, ...parsed, obsEnabled: true }
+      return merged
     } catch {
       return { ...DEFAULTS }
     }
