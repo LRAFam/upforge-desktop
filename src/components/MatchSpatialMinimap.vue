@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted } from 'vue'
 import { getMapMinimap } from '../lib/valorant'
+import { fromMinimapDisplayNorm, toMinimapDisplayNorm } from '../lib/map-display-norm'
 import type { MatchSpatialSummary, SpatialTimelineEvent } from '../lib/spatial-types'
 
 const props = withDefaults(defineProps<{
@@ -73,13 +74,20 @@ const minimapUrl = computed(() => {
 
 const size = computed(() => (props.large ? 640 : 320))
 
+const mapLabel = computed(() => props.summary?.map ?? props.mapName ?? null)
+
+function displayNorm(norm: { x: number; y: number }) {
+  return toMinimapDisplayNorm(mapLabel.value, norm)
+}
+
 function drawDeathHeatmap(ctx: CanvasRenderingContext2D, s: number, deaths: SpatialTimelineEvent[]) {
   const blobR = props.large ? 36 : 22
   ctx.save()
   ctx.globalCompositeOperation = 'lighter'
   for (const ev of deaths) {
-    const px = ev.norm.x * s
-    const py = ev.norm.y * s
+    const d = displayNorm(ev.norm)
+    const px = d.x * s
+    const py = d.y * s
     const grad = ctx.createRadialGradient(px, py, 0, px, py, blobR)
     grad.addColorStop(0, 'rgba(239, 68, 68, 0.75)')
     grad.addColorStop(0.45, 'rgba(239, 68, 68, 0.35)')
@@ -98,8 +106,9 @@ function drawSiteHeatmap(ctx: CanvasRenderingContext2D, s: number) {
   ctx.save()
   ctx.globalCompositeOperation = 'lighter'
   for (const h of hotspots) {
-    const px = h.norm.x * s
-    const py = h.norm.y * s
+    const d = displayNorm(h.norm)
+    const px = d.x * s
+    const py = d.y * s
     const blobR = (props.large ? 42 : 28) + (h.count / maxCount) * (props.large ? 24 : 14)
     const grad = ctx.createRadialGradient(px, py, 0, px, py, blobR)
     grad.addColorStop(0, 'rgba(239, 68, 68, 0.85)')
@@ -140,8 +149,9 @@ function draw() {
 
     const heatActive = useCalloutHeat.value || useSiteHeat.value
     summary.events.forEach((ev, idx) => {
-      const px = ev.norm.x * s
-      const py = ev.norm.y * s
+      const d = displayNorm(ev.norm)
+      const px = d.x * s
+      const py = d.y * s
       const isDeath = ev.type === 'death'
       const active = props.activeIndex === idx
       const r = active ? 10 : isDeath ? (heatActive ? 5 : 7) : 6
@@ -170,8 +180,9 @@ function draw() {
 
     const active = activeEvent.value
     if (active) {
-      const ax = active.norm.x * s
-      const ay = active.norm.y * s
+      const ad = displayNorm(active.norm)
+      const ax = ad.x * s
+      const ay = ad.y * s
       const label = `${active.type === 'death' ? 'Died' : 'Kill'} · ${active.callout}`
       ctx.font = 'bold 12px system-ui, sans-serif'
       const tw = ctx.measureText(label).width
@@ -219,11 +230,12 @@ function onClick(e: MouseEvent) {
   const x = (e.clientX - rect.left) * scaleX
   const y = (e.clientY - rect.top) * scaleY
   const s = size.value
+  const clickNorm = fromMinimapDisplayNorm(mapLabel.value, { x: x / s, y: y / s })
 
   let best = -1
   let bestD = 20
   summary.events.forEach((ev, i) => {
-    const d = Math.hypot(ev.norm.x * s - x, ev.norm.y * s - y)
+    const d = Math.hypot(ev.norm.x - clickNorm.x, ev.norm.y - clickNorm.y) * s
     if (d < bestD) {
       bestD = d
       best = i
