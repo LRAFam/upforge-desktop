@@ -198,7 +198,8 @@
               <ol class="list-decimal list-inside space-y-1 text-xs text-gray-400">
                 <li>Install <a href="https://obsproject.com/" target="_blank" class="text-red-300 underline hover:text-red-200">OBS Studio 28+</a></li>
                 <li>Tools → WebSocket Server Settings → enable server (port {{ settings.obsPort }})</li>
-                <li>Click Connect — UpForge creates an &quot;UpForge&quot; scene (display capture, cursor hidden)</li>
+                <li>Click <strong class="text-gray-300">Show Connect Info</strong> in OBS and paste the password below (required on OBS 28+)</li>
+                <li>Host should be <strong class="text-gray-300">127.0.0.1</strong> if OBS is on this PC — click Connect</li>
                 <li>Recording starts/stops automatically when you enter a match</li>
               </ol>
               <div class="flex flex-wrap items-center gap-2">
@@ -211,7 +212,7 @@
               <div class="grid grid-cols-[1fr_96px] gap-3">
                 <div>
                   <label class="mb-1 block text-xs text-gray-400">WebSocket host</label>
-                  <input v-model="settings.obsHost" type="text" class="w-full rounded-xl border border-white/[0.08] bg-white/[0.04] px-3 py-2 text-xs text-white placeholder-gray-600 focus:border-red-500/40 focus:outline-none" placeholder="localhost" @change="debouncedSave()" />
+                  <input v-model="settings.obsHost" type="text" class="w-full rounded-xl border border-white/[0.08] bg-white/[0.04] px-3 py-2 text-xs text-white placeholder-gray-600 focus:border-red-500/40 focus:outline-none" placeholder="127.0.0.1" @change="debouncedSave()" />
                 </div>
                 <div>
                   <label class="mb-1 block text-xs text-gray-400">Port</label>
@@ -220,7 +221,7 @@
               </div>
               <div>
                 <label class="mb-1 block text-xs text-gray-400">WebSocket password</label>
-                <input v-model="settings.obsPassword" type="password" class="w-full rounded-xl border border-white/[0.08] bg-white/[0.04] px-3 py-2 text-xs text-white placeholder-gray-600 focus:border-red-500/40 focus:outline-none" placeholder="Optional" @change="debouncedSave()" />
+                <input v-model="settings.obsPassword" type="password" class="w-full rounded-xl border border-white/[0.08] bg-white/[0.04] px-3 py-2 text-xs text-white placeholder-gray-600 focus:border-red-500/40 focus:outline-none" placeholder="From OBS Show Connect Info" @change="debouncedSave()" />
               </div>
               <div>
                 <div class="mb-1 flex items-center justify-between">

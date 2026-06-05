@@ -95,7 +95,7 @@ const DEFAULTS: AppSettings = {
   cachedUseDdagrab: null,
   devModeEnabled: false,
   obsEnabled: true,
-  obsHost: 'localhost',
+  obsHost: '127.0.0.1',
   obsPort: 4455,
   obsPassword: '',
   obsReplayBufferSeconds: 30,
@@ -154,6 +154,10 @@ export class SettingsManager {
       // Guard against null/non-array recordedModes from corrupted saves
       if (!Array.isArray(parsed.recordedModes)) {
         delete parsed.recordedModes
+      }
+      // localhost → 127.0.0.1: on Windows localhost often resolves to IPv6 while OBS listens on IPv4
+      if (parsed.obsHost === 'localhost') {
+        parsed.obsHost = '127.0.0.1'
       }
       const merged = { ...DEFAULTS, ...parsed, obsEnabled: true }
       return merged

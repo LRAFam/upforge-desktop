@@ -139,7 +139,7 @@ function scheduleObsProbeOnWindowLoad(win: BrowserWindow, notify: boolean): void
 }
 
 const OBS_SETUP_HINT =
-  'OBS is not connected. Install OBS 28+, enable WebSocket (Tools → obs-websocket Settings), start OBS, then Connect in UpForge Settings.'
+  'OBS is not connected. Enable WebSocket in OBS (Tools → WebSocket Server Settings), copy the password from Show Connect Info, then Connect in UpForge Settings → Recording.'
 
 async function ensureObsReady(): Promise<void> {
   if (obsRecorder.isConnected()) return

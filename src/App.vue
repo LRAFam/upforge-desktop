@@ -122,8 +122,8 @@
       >
         <div class="flex items-center gap-2 min-w-0">
           <span class="h-2 w-2 rounded-full bg-amber-400 flex-shrink-0 animate-pulse" />
-          <span class="text-amber-100/90 truncate">
-            OBS not connected — matches won&apos;t record until you set it up.
+          <span class="text-amber-100/90 truncate" :title="obsError ?? undefined">
+            {{ obsError || 'OBS not connected — matches won\'t record until you set it up.' }}
           </span>
         </div>
         <div class="flex items-center gap-2 flex-shrink-0">
@@ -273,6 +273,7 @@ const showOnboarding = ref(false)
 const onboardingWasComplete = ref(false)
 const obsConnected = ref<boolean | null>(null)
 const obsConnecting = ref(false)
+const obsError = ref<string | null>(null)
 
 const showObsBanner = computed(() =>
   showNav.value &&
@@ -405,13 +406,15 @@ onMounted(async () => {
   try {
     const obs = await window.api.obs.getStatus()
     obsConnected.value = obs.connected
+    if (!obs.connected && obs.lastError) obsError.value = obs.lastError
   } catch { /* ignore */ }
 
   const obsCleanup = window.api.on('obs:connection-changed', (...args: unknown[]) => {
-    const data = args[0] as { connected?: boolean } | undefined
+    const data = args[0] as { connected?: boolean; error?: string | null } | undefined
     if (data && typeof data.connected === 'boolean') {
       obsConnected.value = data.connected
       obsConnecting.value = false
+      obsError.value = data.connected ? null : (data.error ?? obsError.value)
     }
   })
   ;(window as Window & { _obsCleanup?: () => void })._obsCleanup = obsCleanup
@@ -522,9 +525,18 @@ function minimizeWindow() {
 
 async function connectObsFromBanner() {
   obsConnecting.value = true
+  obsError.value = null
   try {
-    await window.api.obs.connect()
-  } catch {
+    const result = await window.api.obs.connect()
+    if (result.ok) {
+      obsConnected.value = true
+      obsError.value = null
+    } else {
+      obsError.value = result.error ?? 'Could not connect to OBS'
+    }
+  } catch (e) {
+    obsError.value = e instanceof Error ? e.message : 'Could not connect to OBS'
+  } finally {
     obsConnecting.value = false
   }
 }

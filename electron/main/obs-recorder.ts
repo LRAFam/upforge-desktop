@@ -5,6 +5,7 @@ import { join } from 'path'
 import https from 'https'
 import log from 'electron-log'
 import { setupUpForgeScene, type ObsSetupResult } from './obs-setup'
+import { formatObsConnectError, obsConnectHosts } from './obs-connect'
 
 export interface OBSSettings {
   host: string
@@ -111,43 +112,65 @@ export class OBSRecorder {
   // ── Connection ──────────────────────────────────────────────────────────────
 
   async connect(): Promise<{ ok: boolean; error?: string; version?: string; setup?: ObsSetupResult }> {
-    const { host, port, password, replayBufferSeconds } = this.getSettings()
-    try {
-      const { obsWebSocketVersion } = await this._obs.connect(
-        `ws://${host}:${port}`,
-        password || undefined,
-        { rpcVersion: 1 },
-      )
-      this._connected = true
-      this._obsVersion = obsWebSocketVersion
-      this._lastError = null
-      log.info('[OBSRecorder] Connected to OBS WebSocket', obsWebSocketVersion)
-
-      // Sync replay buffer duration from app settings into OBS profile
-      if (replayBufferSeconds > 0) {
-        this._obs.call('SetProfileParameter', {
-          parameterCategory: 'SimpleOutput',
-          parameterName: 'ReplayBufferDuration',
-          parameterValue: String(replayBufferSeconds),
-        }).catch((err) => {
-          log.warn('[OBSRecorder] Could not set ReplayBufferDuration (non-fatal):', err)
-        })
-      }
-
-      const setup = await setupUpForgeScene(this._obs)
-      if (!setup.ok) {
-        log.warn('[OBSRecorder] Scene setup incomplete:', setup.error)
-      }
-
-      this.onConnectionChange?.(true)
-      return { ok: true, version: obsWebSocketVersion, setup }
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err)
-      this._connected = false
-      this._lastError = msg
-      log.warn('[OBSRecorder] Connection failed:', msg)
-      return { ok: false, error: msg }
+    if (this._connected) {
+      return { ok: true, version: this._obsVersion ?? undefined }
     }
+
+    const { host, port, password, replayBufferSeconds } = this.getSettings()
+    const hosts = obsConnectHosts(host)
+    let lastRawError = 'OBS not reachable'
+
+    // Clear stale socket state from a prior failed attempt
+    try {
+      await this._obs.disconnect()
+    } catch { /* not connected */ }
+    this._connected = false
+
+    for (const tryHost of hosts) {
+      const url = `ws://${tryHost}:${port}`
+      try {
+        log.info('[OBSRecorder] Connecting to', url)
+        const { obsWebSocketVersion } = await this._obs.connect(
+          url,
+          password || undefined,
+          { rpcVersion: 1 },
+        )
+        this._connected = true
+        this._obsVersion = obsWebSocketVersion
+        this._lastError = null
+        log.info('[OBSRecorder] Connected to OBS WebSocket', obsWebSocketVersion, 'via', tryHost)
+
+        if (replayBufferSeconds > 0) {
+          this._obs.call('SetProfileParameter', {
+            parameterCategory: 'SimpleOutput',
+            parameterName: 'ReplayBufferDuration',
+            parameterValue: String(replayBufferSeconds),
+          }).catch((err) => {
+            log.warn('[OBSRecorder] Could not set ReplayBufferDuration (non-fatal):', err)
+          })
+        }
+
+        const setup = await setupUpForgeScene(this._obs)
+        if (!setup.ok) {
+          log.warn('[OBSRecorder] Scene setup incomplete:', setup.error)
+        }
+
+        this.onConnectionChange?.(true)
+        return { ok: true, version: obsWebSocketVersion, setup }
+      } catch (err) {
+        lastRawError = err instanceof Error ? err.message : String(err)
+        log.warn('[OBSRecorder] Connection failed for', url, ':', lastRawError)
+        try {
+          await this._obs.disconnect()
+        } catch { /* ignore */ }
+        this._connected = false
+      }
+    }
+
+    const friendly = formatObsConnectError(lastRawError)
+    this._lastError = friendly
+    this.onConnectionChange?.(false, friendly)
+    return { ok: false, error: friendly }
   }
 
   async disconnect(): Promise<void> {
