@@ -275,12 +275,18 @@
               >
                 Click a {{ spatialViewMode === 'dots' ? 'dot' : 'zone' }} or death chip to jump to that moment (with lead-up).
               </p>
+              <p
+                v-else-if="spatialPreviewAvailable"
+                class="text-[10px] text-amber-200/90 leading-relaxed max-w-md"
+              >
+                Try one free click-to-seek preview, then upgrade to <strong class="text-amber-100">Plus</strong> for unlimited jumps.
+              </p>
               <div
                 v-else
                 class="rounded-lg border border-amber-500/25 bg-amber-500/[0.06] px-2.5 py-2 space-y-1.5 max-w-md"
               >
                 <p class="text-[10px] text-amber-200/90 leading-relaxed">
-                  Heatmap preview is free. Click-to-seek in VOD is a <strong class="text-amber-100">Plus</strong> feature.
+                  You've used your free preview. Unlimited click-to-seek is a <strong class="text-amber-100">Plus</strong> feature.
                 </p>
                 <button
                   type="button"
@@ -288,6 +294,18 @@
                   @click="openUpgrade"
                 >Upgrade to Plus →</button>
               </div>
+
+              <p
+                v-if="spatialPreviewJustUsed"
+                class="text-[10px] text-emerald-300/90 leading-relaxed max-w-md"
+              >
+                Preview seek used — upgrade for unlimited heatmap jumps.
+                <button
+                  type="button"
+                  class="font-bold text-emerald-200 hover:text-white underline ml-1"
+                  @click="openUpgrade"
+                >View Plus →</button>
+              </p>
 
               <div class="flex gap-1 overflow-x-auto pb-0.5">
                 <button
@@ -1016,7 +1034,31 @@ const showInsightsPanel = ref(true)
 const activeSpatialIndex = ref<number | null>(null)
 const recordingId = ref<string | null>(null)
 const userTier = ref('free')
+const SPATIAL_PREVIEW_KEY = 'upforge_spatial_seek_preview_used'
+
 const canSeekFromSpatial = computed(() => canSpatialVodSeek(userTier.value))
+const spatialPreviewUsed = ref(false)
+const spatialPreviewJustUsed = ref(false)
+
+const spatialPreviewAvailable = computed(() =>
+  !canSeekFromSpatial.value && !spatialPreviewUsed.value,
+)
+
+function loadSpatialPreviewState() {
+  try {
+    spatialPreviewUsed.value = localStorage.getItem(SPATIAL_PREVIEW_KEY) === '1'
+  } catch {
+    spatialPreviewUsed.value = false
+  }
+}
+
+function markSpatialPreviewUsed() {
+  spatialPreviewUsed.value = true
+  spatialPreviewJustUsed.value = true
+  try {
+    localStorage.setItem(SPATIAL_PREVIEW_KEY, '1')
+  } catch { /* ignore */ }
+}
 const spatialViewMode = ref<'heat' | 'sites' | 'dots'>('heat')
 const spatialRoundFilter = ref<number | null>(null)
 const videoSyncOffsetMs = ref(0)
@@ -1394,7 +1436,16 @@ function openUpgrade() {
 function onSpatialSelect(ev: SpatialTimelineEvent, displayIndex: number) {
   const item = spatialEventList.value[displayIndex]
   activeSpatialIndex.value = item?.index ?? null
-  if (!canSeekFromSpatial.value) return
+
+  if (!canSeekFromSpatial.value) {
+    if (!spatialPreviewUsed.value) {
+      markSpatialPreviewUsed()
+    } else {
+      openUpgrade()
+      return
+    }
+  }
+
   const preRoll = preRollSeconds(ev.type)
   if (ev.videoOffsetMs != null && !isNaN(ev.videoOffsetMs)) {
     seekToTime(Math.max(0, ev.videoOffsetMs / 1000 - preRoll))
@@ -1634,6 +1685,7 @@ function onScrubberHover(e: MouseEvent) {
 }
 
 onMounted(async () => {
+  loadSpatialPreviewState()
   window.api.discord.setState('reviewing').catch(() => {})
   window.api.app.getStatus().then(s => {
     if (s.user?.tier) userTier.value = s.user.tier
