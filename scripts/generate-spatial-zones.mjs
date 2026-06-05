@@ -1,17 +1,28 @@
 /**
- * Generate resources/spatial/zones/<map>.json from valorant-api.com map callouts.
- * World (x,y) → minimap norm using each map's xMultiplier/yMultiplier/scalars.
+ * Sync maps-manifest.json + zones/*.json from valorant-api.com.
+ *
+ * Includes every standard Spike map (tacticalDescription contains "Sites")
+ * with a valid world→minimap transform (non-zero multipliers).
+ *
+ * As of 2026: Ascent, Bind, Haven, Split, Icebox, Breeze, Fracture, Pearl,
+ * Lotus, Sunset, Abyss, Corrode (12 maps).
  */
-import { readFileSync, writeFileSync, mkdirSync } from 'fs'
+import { writeFileSync, mkdirSync, readdirSync, unlinkSync } from 'fs'
 import { join, dirname } from 'path'
 import { fileURLToPath } from 'url'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const root = join(__dirname, '..')
-const manifestPath = join(root, 'resources/spatial/maps-manifest.json')
-const zonesDir = join(root, 'resources/spatial/zones')
+const spatialDir = join(root, 'resources/spatial')
+const manifestPath = join(spatialDir, 'maps-manifest.json')
+const zonesDir = join(spatialDir, 'zones')
+const coveragePath = join(spatialDir, 'coverage.json')
 
-const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'))
+/** All standard competitive maps released through Corrode (v11.00, 2025). */
+const STANDARD_MAPS_2026 = [
+  'Ascent', 'Bind', 'Haven', 'Split', 'Icebox', 'Breeze', 'Fracture',
+  'Pearl', 'Lotus', 'Sunset', 'Abyss', 'Corrode',
+]
 
 function normalizeKey(name) {
   return name.trim().toLowerCase().replace(/\s+/g, '')
@@ -56,6 +67,20 @@ function radiusFor(region) {
   return 0.075
 }
 
+function isStandardMap(map) {
+  const tactical = map.tacticalDescription || ''
+  if (!/sites/i.test(tactical)) return false
+  const t = map.xMultiplier ?? 0
+  return t !== 0
+}
+
+async function fetchAllMaps() {
+  const res = await fetch('https://valorant-api.com/v1/maps')
+  if (!res.ok) throw new Error(`valorant-api maps HTTP ${res.status}`)
+  const json = await res.json()
+  return json.data || []
+}
+
 async function fetchMap(uuid) {
   const res = await fetch(`https://valorant-api.com/v1/maps/${uuid}`)
   if (!res.ok) throw new Error(`HTTP ${res.status} for ${uuid}`)
@@ -63,17 +88,44 @@ async function fetchMap(uuid) {
   return json.data
 }
 
+function manifestEntry(map) {
+  return {
+    displayName: map.displayName,
+    uuid: map.uuid,
+    xMultiplier: map.xMultiplier,
+    yMultiplier: map.yMultiplier,
+    xScalarToAdd: map.xScalarToAdd,
+    yScalarToAdd: map.yScalarToAdd,
+    displayIcon: map.displayIcon,
+    tacticalDescription: map.tacticalDescription,
+    mapUrl: map.mapUrl,
+  }
+}
+
 mkdirSync(zonesDir, { recursive: true })
 
-for (const entry of manifest) {
+console.log('Fetching valorant-api.com/v1/maps ...')
+const allMaps = await fetchAllMaps()
+const standard = allMaps.filter(isStandardMap).sort((a, b) => a.displayName.localeCompare(b.displayName))
+
+console.log(`Found ${standard.length} standard maps with transforms:`)
+standard.forEach((m) => console.log(`  - ${m.displayName} (${(m.callouts || []).length} callouts in list endpoint)`))
+
+writeFileSync(manifestPath, `${JSON.stringify(standard.map(manifestEntry), null, 2)}\n`)
+console.log(`Wrote ${manifestPath}`)
+
+const results = []
+
+for (const entry of standard) {
   const key = normalizeKey(entry.displayName)
-  console.log(`Generating ${entry.displayName} (${key})...`)
+  console.log(`Generating zones: ${entry.displayName} (${key})...`)
 
   let mapData
   try {
     mapData = await fetchMap(entry.uuid)
   } catch (e) {
     console.warn(`  Skip: ${e.message}`)
+    results.push({ map: entry.displayName, key, callouts: 0, error: e.message })
     continue
   }
 
@@ -107,12 +159,55 @@ for (const entry of manifest) {
   const pack = {
     map: entry.displayName,
     source: 'valorant-api.com callouts',
+    generatedAt: new Date().toISOString().slice(0, 10),
     callouts: callouts.sort((a, b) => a.name.localeCompare(b.name)),
   }
 
-  const outPath = join(zonesDir, `${key}.json`)
-  writeFileSync(outPath, `${JSON.stringify(pack, null, 2)}\n`)
-  console.log(`  Wrote ${callouts.length} callouts → ${outPath}`)
+  writeFileSync(join(zonesDir, `${key}.json`), `${JSON.stringify(pack, null, 2)}\n`)
+  console.log(`  → ${callouts.length} callouts`)
+  results.push({ map: entry.displayName, key, callouts: callouts.length })
 }
 
-console.log('Done.')
+// Remove stale zone files for maps no longer in manifest
+const validKeys = new Set(standard.map((m) => normalizeKey(m.displayName)))
+for (const file of readdirSync(zonesDir)) {
+  if (!file.endsWith('.json')) continue
+  const key = file.replace('.json', '')
+  if (!validKeys.has(key)) {
+    console.warn(`Removing stale zone file: ${file}`)
+    unlinkSync(join(zonesDir, file))
+  }
+}
+
+const apiNames = standard.map((m) => m.displayName).sort()
+const missingFromApi = STANDARD_MAPS_2026.filter((n) => !apiNames.includes(n))
+const extraInApi = apiNames.filter((n) => !STANDARD_MAPS_2026.includes(n))
+
+const coverage = {
+  updatedAt: new Date().toISOString(),
+  standardMapsThrough2026: STANDARD_MAPS_2026,
+  mapsInManifest: apiNames,
+  complete: missingFromApi.length === 0,
+  missingFromValorantApi: missingFromApi,
+  newMapsNotInChecklist: extraInApi,
+  zones: results,
+  excluded: {
+    note: 'TDM/Skirmish maps omitted — valorant-api has zero world transforms for HURM/TDM minimaps',
+    tdmWithCalloutsNoTransform: allMaps
+      .filter((m) => (m.callouts || []).length > 0 && !isStandardMap(m))
+      .map((m) => m.displayName),
+  },
+}
+
+writeFileSync(coveragePath, `${JSON.stringify(coverage, null, 2)}\n`)
+
+if (missingFromApi.length) {
+  console.error('\n⚠️  MISSING standard maps from valorant-api:', missingFromApi.join(', '))
+  process.exit(1)
+}
+
+console.log('\n✅ All 12 standard competitive maps (through 2026) have manifest + zones.')
+console.log(`Coverage report: ${coveragePath}`)
+if (extraInApi.length) {
+  console.log('New maps in API (update STANDARD_MAPS_2026):', extraInApi.join(', '))
+}

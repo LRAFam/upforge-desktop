@@ -1,0 +1,104 @@
+{
+  "updatedAt": "2026-06-05T01:26:43.044Z",
+  "standardMapsThrough2026": [
+    "Ascent",
+    "Bind",
+    "Haven",
+    "Split",
+    "Icebox",
+    "Breeze",
+    "Fracture",
+    "Pearl",
+    "Lotus",
+    "Sunset",
+    "Abyss",
+    "Corrode"
+  ],
+  "mapsInManifest": [
+    "Abyss",
+    "Ascent",
+    "Bind",
+    "Breeze",
+    "Corrode",
+    "Fracture",
+    "Haven",
+    "Icebox",
+    "Lotus",
+    "Pearl",
+    "Split",
+    "Sunset"
+  ],
+  "complete": true,
+  "missingFromValorantApi": [],
+  "newMapsNotInChecklist": [],
+  "zones": [
+    {
+      "map": "Abyss",
+      "key": "abyss",
+      "callouts": 23
+    },
+    {
+      "map": "Ascent",
+      "key": "ascent",
+      "callouts": 22
+    },
+    {
+      "map": "Bind",
+      "key": "bind",
+      "callouts": 24
+    },
+    {
+      "map": "Breeze",
+      "key": "breeze",
+      "callouts": 23
+    },
+    {
+      "map": "Corrode",
+      "key": "corrode",
+      "callouts": 21
+    },
+    {
+      "map": "Fracture",
+      "key": "fracture",
+      "callouts": 22
+    },
+    {
+      "map": "Haven",
+      "key": "haven",
+      "callouts": 21
+    },
+    {
+      "map": "Icebox",
+      "key": "icebox",
+      "callouts": 25
+    },
+    {
+      "map": "Lotus",
+      "key": "lotus",
+      "callouts": 28
+    },
+    {
+      "map": "Pearl",
+      "key": "pearl",
+      "callouts": 26
+    },
+    {
+      "map": "Split",
+      "key": "split",
+      "callouts": 24
+    },
+    {
+      "map": "Sunset",
+      "key": "sunset",
+      "callouts": 17
+    }
+  ],
+  "excluded": {
+    "note": "TDM/Skirmish maps omitted — valorant-api has zero world transforms for HURM/TDM minimaps",
+    "tdmWithCalloutsNoTransform": [
+      "District",
+      "Kasbah",
+      "Drift"
+    ]
+  }
+}

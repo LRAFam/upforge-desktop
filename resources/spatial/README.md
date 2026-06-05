@@ -23,4 +23,6 @@ node scripts/generate-spatial-zones.mjs
 
 Then copy `zones/*.json` to `upforge-ai-service/resources/spatial/zones/`.
 
-Maps: Ascent, Bind, Haven, Split, Fracture, Breeze, Pearl, Icebox, Lotus, Sunset, Abyss, Corrode.
+**Standard maps through 2026 (12/12):** Ascent, Abyss, Bind, Breeze, Corrode, Fracture, Haven, Icebox, Lotus, Pearl, Split, Sunset.
+
+See `coverage.json` after running the sync script. TDM maps (District, Kasbah, Drift, Glitch, Piazza) are excluded — Riot/valorant-api do not publish world→minimap transforms for those modes.

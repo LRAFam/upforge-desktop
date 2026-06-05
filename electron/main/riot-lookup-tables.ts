@@ -142,14 +142,15 @@ const MAP_CODENAME_TO_NAME: Record<string, string> = {
   juliett: 'Sunset',
   infinity: 'Abyss',
   rook: 'Corrode',
-  // TDM / special modes — each has its own map name
-  hurm_alley: 'Drift',
-  hurm_bowl: 'Glitch',
+  // TDM / HURM maps (valorant-api mapUrl last segment → displayName)
+  hurm_alley: 'District',
+  hurm_bowl: 'Kasbah',
+  hurm_helix: 'Drift',
+  hurm_hightide: 'Glitch',
+  hurm_yard: 'Piazza',
+  // Legacy/alternate codenames
   hurm_district: 'District',
   hurm_kasbah: 'Kasbah',
-  hurm_helix: 'Helix',
-  hurm_hightide: 'Hightide',
-  hurm_yard: 'Yard',
   // Range
   range: 'The Range',
 }
