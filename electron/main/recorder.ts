@@ -52,6 +52,8 @@ export class Recorder {
    * false = no audio available
    */
   private _cachedWinAudioMode: string | false | null = null
+  /** Ordered list of working Windows audio modes — try next on recording-time failure. */
+  private _winAudioModesQueue: string[] = []
   /**
    * Mac: avfoundation audio device index for virtual loopback capture.
    * null = untested, false = no virtual device found, number = device index
@@ -347,10 +349,25 @@ export class Recorder {
           bufferLower.includes('exclusive mode') || bufferLower.includes('dshow') ||
           (IS_MAC && bufferLower.includes('avfoundation') && bufferLower.includes(':'))
         if (audioFailed) {
+          // Try the next pre-detected Windows audio device/mode before dropping audio.
+          if (IS_WIN && this._advanceWinAudioMode()) {
+            console.warn('[Recorder] Audio capture failed — trying next mode:', this._cachedWinAudioMode)
+            this._stderrBuffer = ''
+            this._process = null
+            return this._spawnAndConfirm(game, config, encoder, useDesktopFallback, false, useDdagrab, windowInfo)
+          }
+
+          // ddagrab + WASAPI can conflict (COM init) — gdigrab often works with the same audio mode.
+          if (IS_WIN && useDdagrab && !useDesktopFallback) {
+            console.warn('[Recorder] ddagrab+audio failed — retrying gdigrab+audio')
+            this._stderrBuffer = ''
+            this._process = null
+            return this._spawnAndConfirm(game, config, encoder, true, false, false, windowInfo)
+          }
+
           console.warn('[Recorder] Audio capture failed — retrying without audio:', reason)
-          // Mark audio as unavailable so settings don't show false "ready" state
-          if (IS_WIN && this._cachedWinAudioMode !== false) {
-            console.warn('[Recorder] Invalidating cached Windows audio mode — was working at detection but failed at recording time')
+          if (IS_WIN) {
+            this._winAudioModesQueue = []
             this._cachedWinAudioMode = false
           }
           if (IS_MAC) {
@@ -524,81 +541,146 @@ export class Recorder {
   private async _detectWindowsAudio(ffmpegPath: string): Promise<string | false> {
     if (!IS_WIN) return false
 
-    // Helper: test if a set of ffmpeg audio args can open and capture for 0.5s
-    const testAudioArgs = (args: string[]): Promise<boolean> => new Promise((resolve) => {
+    const modes: string[] = []
+    const tryMode = async (key: string, args: string[]): Promise<void> => {
+      if (await this._testWindowsAudioArgs(ffmpegPath, args)) {
+        console.log(`[Recorder] Windows audio: ${key}`)
+        modes.push(key)
+      }
+    }
+
+    // 1. WASAPI loopback-flag (-loopback 1 -i default) — preferred modern approach
+    await tryMode('wasapi-loopback-flag', [
+      '-f', 'wasapi', '-use_audioclient3', '0', '-thread_queue_size', '512', '-loopback', '1', '-i', 'default',
+    ])
+    await tryMode('wasapi-loopback-flag-no-ac3', [
+      '-f', 'wasapi', '-thread_queue_size', '512', '-loopback', '1', '-i', 'default',
+    ])
+    await tryMode('wasapi-loopback-device', [
+      '-f', 'wasapi', '-use_audioclient3', '0', '-thread_queue_size', '512', '-i', 'loopback',
+    ])
+    await tryMode('wasapi-loopback-device-no-ac3', [
+      '-f', 'wasapi', '-thread_queue_size', '512', '-i', 'loopback',
+    ])
+
+    // 2. Named WASAPI output devices — "default" often fails while a specific device works
+    const wasapiDevices = await this._enumerateWasapiDevices(ffmpegPath)
+    if (wasapiDevices.length) {
+      console.log(`[Recorder] WASAPI loopback devices: ${wasapiDevices.join(', ')}`)
+    }
+    for (const device of wasapiDevices) {
+      const key = `wasapi-device:${device}`
+      if (modes.includes(key)) continue
+      if (await this._testWindowsAudioArgs(ffmpegPath, [
+        '-f', 'wasapi', '-use_audioclient3', '0', '-thread_queue_size', '512', '-loopback', '1', '-i', device,
+      ])) {
+        console.log(`[Recorder] Windows audio: WASAPI loopback "${device}"`)
+        modes.push(key)
+        continue
+      }
+      if (await this._testWindowsAudioArgs(ffmpegPath, [
+        '-f', 'wasapi', '-thread_queue_size', '512', '-loopback', '1', '-i', device,
+      ])) {
+        console.log(`[Recorder] Windows audio: WASAPI loopback "${device}" (no audioclient3)`)
+        modes.push(`${key}-no-ac3`)
+      }
+    }
+
+    console.log('[Recorder] Trying DirectShow loopback devices (Stereo Mix, VB-Audio, etc.)')
+
+    // 3a. Enumerate DirectShow audio devices — look for Stereo Mix / What U Hear
+    const dshowDevice = await this._findDShowLoopbackDevice(ffmpegPath)
+    if (dshowDevice) {
+      const key = `dshow:${dshowDevice}`
+      console.log(`[Recorder] Windows audio: DirectShow "${dshowDevice}"`)
+      modes.push(key)
+    }
+
+    // 3b. Stereo Mix wasn't found (may be disabled) — try to enable it via PowerShell
+    if (!dshowDevice) {
+      console.log('[Recorder] Stereo Mix not found — attempting auto-enable via PowerShell')
+      const enabled = await this._tryEnableStereoMix()
+      if (enabled) {
+        const dshowDevice2 = await this._findDShowLoopbackDevice(ffmpegPath)
+        if (dshowDevice2) {
+          const key = `dshow:${dshowDevice2}`
+          console.log(`[Recorder] Windows audio: DirectShow "${dshowDevice2}" (auto-enabled)`)
+          if (!modes.includes(key)) modes.push(key)
+        }
+      }
+    }
+
+    this._winAudioModesQueue = modes
+    if (modes.length === 0) {
+      console.warn('[Recorder] No working Windows audio capture method found')
+      this._cachedWinAudioMode = false
+      return false
+    }
+
+    this._cachedWinAudioMode = modes[0]
+    return modes[0]
+  }
+
+  /** Test if ffmpeg can open and capture from a Windows audio input for ~0.5s. */
+  private _testWindowsAudioArgs(ffmpegPath: string, args: string[]): Promise<boolean> {
+    return new Promise((resolve) => {
       const proc = spawn(ffmpegPath, [...args, '-t', '0.5', '-f', 'null', '-'], { stdio: 'pipe' })
       let stderr = ''
       proc.stderr?.on('data', (d: Buffer) => { stderr += d.toString() })
       proc.on('exit', (code) => {
-        // Only trust exit code — ffmpeg stderr always contains version/config info
-        // that may contain the word "error" even on success
-        const failed = code !== 0 || stderr.toLowerCase().includes('invalid argument') ||
-          stderr.toLowerCase().includes('no such filter') || stderr.toLowerCase().includes('could not open')
+        const lower = stderr.toLowerCase()
+        const failed = code !== 0 ||
+          lower.includes('invalid argument') ||
+          lower.includes('no such filter') ||
+          lower.includes('could not open') ||
+          lower.includes('device not found') ||
+          lower.includes('no such device')
         resolve(!failed)
       })
       proc.on('error', () => resolve(false))
       setTimeout(() => { proc.kill(); resolve(false) }, 5000)
     })
+  }
 
-    // 1. WASAPI loopback-flag (-loopback 1 -i default) — preferred modern approach
-    const wasapiFlag = await testAudioArgs([
-      '-f', 'wasapi', '-use_audioclient3', '0', '-thread_queue_size', '512', '-loopback', '1', '-i', 'default',
-    ])
-    if (wasapiFlag) {
-      console.log('[Recorder] Windows audio: WASAPI -loopback 1 -i default')
-      return 'wasapi-loopback-flag'
+  /** Advance to the next pre-tested Windows audio mode after a recording-time failure. */
+  private _advanceWinAudioMode(): boolean {
+    if (this._winAudioModesQueue.length <= 1) {
+      this._winAudioModesQueue = []
+      this._cachedWinAudioMode = false
+      return false
     }
+    this._winAudioModesQueue.shift()
+    const next = this._winAudioModesQueue[0]
+    this._cachedWinAudioMode = next ?? false
+    return !!next
+  }
 
-    // 1b. WASAPI without -use_audioclient3 flag (some drivers reject AudioClient3)
-    const wasapiFlagNoAc3 = await testAudioArgs([
-      '-f', 'wasapi', '-thread_queue_size', '512', '-loopback', '1', '-i', 'default',
-    ])
-    if (wasapiFlagNoAc3) {
-      console.log('[Recorder] Windows audio: WASAPI -loopback 1 (no audioclient3 flag)')
-      return 'wasapi-loopback-flag-no-ac3'
-    }
+  private _enumerateWasapiDevices(ffmpegPath: string): Promise<string[]> {
+    return new Promise((resolve) => {
+      const proc = spawn(ffmpegPath, ['-list_devices', 'true', '-f', 'wasapi', '-i', 'dummy'], { stdio: 'pipe' })
+      let stderr = ''
+      proc.stderr?.on('data', (d: Buffer) => { stderr += d.toString() })
+      proc.on('exit', () => resolve(this._parseWasapiDevices(stderr)))
+      proc.on('error', () => resolve([]))
+      setTimeout(() => { proc.kill(); resolve([]) }, 5000)
+    })
+  }
 
-    // 2. WASAPI -i loopback (legacy device specifier)
-    const wasapiDevice = await testAudioArgs([
-      '-f', 'wasapi', '-use_audioclient3', '0', '-thread_queue_size', '512', '-i', 'loopback',
-    ])
-    if (wasapiDevice) {
-      console.log('[Recorder] Windows audio: WASAPI -i loopback')
-      return 'wasapi-loopback-device'
-    }
-
-    // 2b. WASAPI -i loopback without audioclient3
-    const wasapiDeviceNoAc3 = await testAudioArgs([
-      '-f', 'wasapi', '-thread_queue_size', '512', '-i', 'loopback',
-    ])
-    if (wasapiDeviceNoAc3) {
-      console.log('[Recorder] Windows audio: WASAPI -i loopback (no audioclient3 flag)')
-      return 'wasapi-loopback-device-no-ac3'
-    }
-
-    console.log('[Recorder] WASAPI loopback unavailable — trying DirectShow Stereo Mix')
-
-    // 3a. Enumerate DirectShow audio devices — look for Stereo Mix / What U Hear
-    const dshowDevice = await this._findDShowLoopbackDevice(ffmpegPath)
-    if (dshowDevice) {
-      console.log(`[Recorder] Windows audio: DirectShow "${dshowDevice}"`)
-      return `dshow:${dshowDevice}`
-    }
-
-    // 3b. Stereo Mix wasn't found (may be disabled) — try to enable it via PowerShell
-    console.log('[Recorder] Stereo Mix not found — attempting auto-enable via PowerShell')
-    const enabled = await this._tryEnableStereoMix()
-    if (enabled) {
-      // Re-enumerate after enabling
-      const dshowDevice2 = await this._findDShowLoopbackDevice(ffmpegPath)
-      if (dshowDevice2) {
-        console.log(`[Recorder] Windows audio: DirectShow "${dshowDevice2}" (auto-enabled)`)
-        return `dshow:${dshowDevice2}`
+  private _parseWasapiDevices(output: string): string[] {
+    const devices: string[] = []
+    let inWasapi = false
+    for (const line of output.split('\n')) {
+      if (line.toLowerCase().includes('wasapi')) inWasapi = true
+      if (!inWasapi) continue
+      const loopback = line.match(/"([^"]+)"\s*\(loopback\)/i)
+      if (loopback) {
+        devices.push(loopback[1])
+        continue
       }
+      const outputDev = line.match(/"([^"]+)"\s*\([^)]*output[^)]*\)/i)
+      if (outputDev) devices.push(outputDev[1])
     }
-
-    console.warn('[Recorder] No working Windows audio capture method found')
-    return false
+    return [...new Set(devices)]
   }
 
   /**
@@ -804,6 +886,14 @@ export class Recorder {
     }
     if (mode === 'wasapi-loopback-device-no-ac3') {
       return ['-f', 'wasapi', '-thread_queue_size', '512', '-i', 'loopback']
+    }
+    if (mode.startsWith('wasapi-device:')) {
+      const suffix = mode.endsWith('-no-ac3') ? '-no-ac3' : ''
+      const device = mode.slice('wasapi-device:'.length, suffix ? -'-no-ac3'.length : undefined)
+      if (suffix) {
+        return ['-f', 'wasapi', '-thread_queue_size', '512', '-loopback', '1', '-i', device]
+      }
+      return ['-f', 'wasapi', '-use_audioclient3', '0', '-thread_queue_size', '512', '-loopback', '1', '-i', device]
     }
     if (mode.startsWith('dshow:')) {
       const deviceName = mode.slice(6)

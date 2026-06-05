@@ -321,7 +321,10 @@
               </p>
               <button class="mt-3 rounded-xl border border-white/[0.08] bg-white/[0.06] px-3 py-2 text-xs font-medium text-white transition-colors hover:bg-white/[0.1]" @click="fixAudio">{{ isMac ? 'Re-check audio devices' : 'Fix audio automatically' }}</button>
             </div>
-            <div v-else-if="audioStatus !== null && audioStatus.winAudioMode === 'desktop-capturer'" class="rounded-xl border border-green-500/20 bg-green-500/6 px-4 py-3 text-xs text-green-300">Built-in audio capture active (system audio via browser engine).</div>
+            <div v-else-if="audioStatus !== null && audioStatus.winAudioMode === 'desktop-capturer'" class="rounded-xl border border-green-500/20 bg-green-500/6 px-4 py-3 text-xs text-green-300">
+              Built-in audio capture active (system audio via Chromium loopback).
+              <span class="text-green-300/70"> Video may cap at ~30fps — enable Stereo Mix in Windows Sound settings for 60fps ffmpeg recording with WASAPI.</span>
+            </div>
             <div v-else-if="audioStatus !== null && audioStatus.winAudioMode" class="rounded-xl border border-green-500/20 bg-green-500/6 px-4 py-3 text-xs text-green-300">
               Desktop audio capture ready
               <span v-if="audioStatus.winAudioMode?.startsWith('dshow:')" class="text-green-300/70"> (Stereo Mix)</span>

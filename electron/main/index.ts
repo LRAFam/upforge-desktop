@@ -107,9 +107,17 @@ const obsRecorder = new OBSRecorder(() => {
 /** Returns the active recorder — OBS when enabled & connected, else platform default. */
 function activeRecorder(): ActiveMatchRecorder {
   if (settingsManager?.get().obsEnabled && obsRecorder.isConnected()) return obsRecorder
-  // Windows: Chromium MediaRecorder often caps screen capture at ~30fps even when 60 is requested.
-  // Bundled ffmpeg (ddagrab/gdigrab) honors resolution, fps, and bitrate from settings.
-  if (process.platform === 'win32' && ffmpegOk) return ffmpegRecorder
+  const wantsAudio = settingsManager?.get().audioEnabled !== false
+  // Windows: ffmpeg (ddagrab/gdigrab) honors 60fps + bitrate from settings.
+  // When WASAPI/DirectShow audio is unavailable, fall back to Chromium desktop capture —
+  // its loopback audio path is far more reliable on Windows 11 than ffmpeg WASAPI.
+  if (process.platform === 'win32' && ffmpegOk) {
+    if (wantsAudio && ffmpegRecorder.getAudioMode() === false) {
+      console.log('[Recorder] FFmpeg audio unavailable — using desktop capture for system audio')
+      return desktopRecorder
+    }
+    return ffmpegRecorder
+  }
   return desktopRecorder
 }
 
@@ -239,7 +247,11 @@ type RecordingBackend = 'obs' | 'ffmpeg' | 'desktop'
 /** Backend that will be used for the next (or current) match capture. */
 function getRecordingBackendForStatus(): RecordingBackend {
   if (settingsManager?.get().obsEnabled && obsRecorder.isConnected()) return 'obs'
-  if (process.platform === 'win32' && ffmpegOk) return 'ffmpeg'
+  const wantsAudio = settingsManager?.get().audioEnabled !== false
+  if (process.platform === 'win32' && ffmpegOk) {
+    if (wantsAudio && ffmpegRecorder.getAudioMode() === false) return 'desktop'
+    return 'ffmpeg'
+  }
   return 'desktop'
 }
 
@@ -845,6 +857,10 @@ function setupGameDetection(): void {
 
     // Check disk space now so the warning shows while in lobby
     const savePath = config?.savePath ?? app.getPath('userData')
+    // Re-detect ffmpeg audio in lobby — default output device can change when the game loads.
+    if (process.platform === 'win32' && ffmpegOk && recorderConfig?.audioEnabled !== false) {
+      await ffmpegRecorder.redetectAudio()
+    }
     currentActiveRecorder = activeRecorder()
     if (recorderConfig) {
       const backend = currentActiveRecorder === ffmpegRecorder ? 'ffmpeg'
@@ -1127,6 +1143,17 @@ function setupGameDetection(): void {
         }
       }
       await currentActiveRecorder.start(game, recorderConfig)
+      if (
+        currentActiveRecorder === desktopRecorder &&
+        process.platform === 'win32' &&
+        ffmpegOk &&
+        recorderConfig?.audioEnabled !== false &&
+        ffmpegRecorder.getAudioMode() === false
+      ) {
+        mainWindow?.webContents.send('app:warning', {
+          message: 'Using built-in audio capture. For 60fps + ffmpeg video, enable Stereo Mix in Windows Sound settings (Recording tab) or use OBS.',
+        })
+      }
       // Update recordingStartTime to the moment the recorder actually began capturing.
       // Accurate videoOffsetMs: offset = (loadSkew − recordingLag) + timeSinceGameStart.
       const recStartTime = Date.now()
@@ -1701,6 +1728,7 @@ app.whenReady().then(async () => {
   },
   getRecordingBackendForStatus,
   () => riotLocalApi.getLastGameMode(),
+  process.platform === 'win32' ? () => ffmpegRecorder : undefined,
   )
 
   setupClipHandlers(ipcMain, clipStore, clipExtractor, authManager, hotkeyManager)

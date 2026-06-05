@@ -120,6 +120,7 @@ export function setupIpcHandlers(
   endMatchRecording?: (game: string) => Promise<{ ok: boolean; reason?: string }>,
   getRecordingBackend?: () => 'obs' | 'ffmpeg' | 'desktop',
   getCurrentQueueMode?: () => string | null,
+  getAudioDetectRecorder?: () => MatchRecorder,
 ): void {
   setupAuthHandlers(ipcMain, auth, getActiveRecorder, gameDetector, uploadManager, endMatchRecording)
 
@@ -132,6 +133,7 @@ export function setupIpcHandlers(
   setupMediaHandlers(
     ipcMain, getActiveRecorder, settingsManager, obsRecorder,
     endMatchRecording, () => gameDetector.currentGame(),
+    getAudioDetectRecorder,
   )
 
   setupGamingHandlers(ipcMain, auth, settingsManager, gameDetector, performanceManager, trainerBridge)

@@ -19,6 +19,8 @@ export function setupMediaHandlers(
   obsRecorder?: OBSRecorder,
   endMatchRecording?: (game: string) => Promise<{ ok: boolean; reason?: string }>,
   getCurrentGame?: () => string | null,
+  /** Windows: ffmpeg audio detection runs on the bundled Recorder even when desktop capture is active. */
+  getAudioDetectRecorder?: () => MatchRecorder,
 ): void {
   // ── Recorder ──────────────────────────────────────────────────────────────
 
@@ -41,9 +43,16 @@ export function setupMediaHandlers(
   ipcMain.handle('recorder:audio-status', () => {
     const settings = settingsManager.get()
     const obsActive = settings.obsEnabled && obsRecorder?.isConnected()
-    const recorder = getActiveRecorder()
+    const detectRecorder = getAudioDetectRecorder?.() ?? getActiveRecorder()
+    const activeRecorder = getActiveRecorder()
+    const detectedMode = detectRecorder.getAudioMode()
+    const winAudioMode = obsActive
+      ? 'obs-websocket'
+      : (activeRecorder.getAudioMode() === 'desktop-capturer' && detectedMode === false
+        ? 'desktop-capturer'
+        : detectedMode)
     return {
-      winAudioMode: obsActive ? 'obs-websocket' : recorder.getAudioMode(),
+      winAudioMode,
       audioEnabled: obsActive ? true : settings.audioEnabled,
     }
   })
@@ -53,7 +62,8 @@ export function setupMediaHandlers(
     if (settings.obsEnabled && obsRecorder?.isConnected()) {
       return { winAudioMode: 'obs-websocket' }
     }
-    const mode = await getActiveRecorder().redetectAudio()
+    const detectRecorder = getAudioDetectRecorder?.() ?? getActiveRecorder()
+    const mode = await detectRecorder.redetectAudio()
     return { winAudioMode: mode }
   })
 
