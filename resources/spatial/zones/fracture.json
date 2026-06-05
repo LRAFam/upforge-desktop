@@ -1,12 +1,40 @@
 {
-  "map": "Haven",
+  "map": "Fracture",
   "source": "valorant-api.com callouts",
   "callouts": [
     {
-      "name": "A Garden",
+      "name": "A Dish",
       "site": "A",
       "x": 1,
-      "y": 0.994,
+      "y": 1,
+      "radius": 0.075
+    },
+    {
+      "name": "A Door",
+      "site": "A",
+      "x": 1,
+      "y": 1,
+      "radius": 0.075
+    },
+    {
+      "name": "A Drop",
+      "site": "A",
+      "x": 1,
+      "y": 0.9354,
+      "radius": 0.075
+    },
+    {
+      "name": "A Gate",
+      "site": "A",
+      "x": 1,
+      "y": 1,
+      "radius": 0.075
+    },
+    {
+      "name": "A Hall",
+      "site": "A",
+      "x": 0.9519,
+      "y": 0.9954,
       "radius": 0.075
     },
     {
@@ -17,21 +45,14 @@
       "radius": 0.075
     },
     {
-      "name": "A Lobby",
+      "name": "A Main",
       "site": "A",
       "x": 1,
-      "y": 1,
-      "radius": 0.075
-    },
-    {
-      "name": "A Long",
-      "site": "A",
-      "x": 1,
-      "y": 1,
+      "y": 0.8867,
       "radius": 0.085
     },
     {
-      "name": "A Sewer",
+      "name": "A Rope",
       "site": "A",
       "x": 1,
       "y": 1,
@@ -41,12 +62,12 @@
       "name": "A Site",
       "site": "A",
       "x": 1,
-      "y": 1,
+      "y": 0.8927,
       "radius": 0.09
     },
     {
-      "name": "A Tower",
-      "site": "A",
+      "name": "Attacker Bridge",
+      "site": "Spawn",
       "x": 1,
       "y": 1,
       "radius": 0.075
@@ -54,16 +75,51 @@
     {
       "name": "Attacker Spawn",
       "site": "Spawn",
-      "x": 1,
-      "y": 0.8409,
+      "x": 0.8959,
+      "y": 1,
       "radius": 0.09
     },
     {
-      "name": "B Back",
+      "name": "B Arcade",
       "site": "B",
       "x": 1,
       "y": 1,
       "radius": 0.075
+    },
+    {
+      "name": "B Bench",
+      "site": "B",
+      "x": 1,
+      "y": 1,
+      "radius": 0.075
+    },
+    {
+      "name": "B Canteen",
+      "site": "B",
+      "x": 1,
+      "y": 1,
+      "radius": 0.075
+    },
+    {
+      "name": "B Generator",
+      "site": "B",
+      "x": 1,
+      "y": 1,
+      "radius": 0.075
+    },
+    {
+      "name": "B Link",
+      "site": "B",
+      "x": 1,
+      "y": 1,
+      "radius": 0.075
+    },
+    {
+      "name": "B Main",
+      "site": "B",
+      "x": 1,
+      "y": 1,
+      "radius": 0.085
     },
     {
       "name": "B Site",
@@ -73,57 +129,22 @@
       "radius": 0.09
     },
     {
-      "name": "C Cubby",
-      "site": "C",
-      "x": 0.9345,
-      "y": 1,
-      "radius": 0.075
-    },
-    {
-      "name": "C Garage",
-      "site": "C",
+      "name": "B Tower",
+      "site": "B",
       "x": 1,
       "y": 1,
       "radius": 0.075
     },
     {
-      "name": "C Link",
-      "site": "C",
-      "x": 1,
+      "name": "B Tree",
+      "site": "B",
+      "x": 0.9442,
       "y": 1,
       "radius": 0.075
     },
     {
-      "name": "C Lobby",
-      "site": "C",
-      "x": 0.9703,
-      "y": 1,
-      "radius": 0.075
-    },
-    {
-      "name": "C Long",
-      "site": "C",
-      "x": 0.8417,
-      "y": 1,
-      "radius": 0.085
-    },
-    {
-      "name": "C Site",
-      "site": "C",
-      "x": 0.9151,
-      "y": 1,
-      "radius": 0.09
-    },
-    {
-      "name": "C Window",
-      "site": "C",
-      "x": 1,
-      "y": 1,
-      "radius": 0.075
-    },
-    {
-      "name": "Courtyard",
-      "site": "Mid",
+      "name": "B Tunnel",
+      "site": "B",
       "x": 1,
       "y": 1,
       "radius": 0.075
@@ -134,20 +155,6 @@
       "x": 1,
       "y": 1,
       "radius": 0.09
-    },
-    {
-      "name": "Doors",
-      "site": "Mid",
-      "x": 1,
-      "y": 1,
-      "radius": 0.075
-    },
-    {
-      "name": "Window",
-      "site": "Mid",
-      "x": 1,
-      "y": 1,
-      "radius": 0.075
     }
   ]
 }

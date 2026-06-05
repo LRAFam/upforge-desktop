@@ -1,0 +1,125 @@
+{
+  "map": "Sunset",
+  "source": "valorant-api.com callouts",
+  "callouts": [
+    {
+      "name": "A Alley",
+      "site": "A",
+      "x": 0.7652,
+      "y": 0.2348,
+      "radius": 0.075
+    },
+    {
+      "name": "A Elbow",
+      "site": "A",
+      "x": 0.5156,
+      "y": 0.188,
+      "radius": 0.075
+    },
+    {
+      "name": "A Link",
+      "site": "A",
+      "x": 0.6716,
+      "y": 0.2816,
+      "radius": 0.075
+    },
+    {
+      "name": "A Lobby",
+      "site": "A",
+      "x": 0.3596,
+      "y": 0.3596,
+      "radius": 0.075
+    },
+    {
+      "name": "A Main",
+      "site": "A",
+      "x": 0.4688,
+      "y": 0.344,
+      "radius": 0.085
+    },
+    {
+      "name": "A Site",
+      "site": "A",
+      "x": 0.578,
+      "y": 0.266,
+      "radius": 0.09
+    },
+    {
+      "name": "Attacker Spawn",
+      "site": "Spawn",
+      "x": 0.0301,
+      "y": 0.5468,
+      "radius": 0.09
+    },
+    {
+      "name": "B Boba",
+      "site": "B",
+      "x": 0.6716,
+      "y": 0.89,
+      "radius": 0.075
+    },
+    {
+      "name": "B Lobby",
+      "site": "B",
+      "x": 0.2348,
+      "y": 0.7184,
+      "radius": 0.075
+    },
+    {
+      "name": "B Main",
+      "site": "B",
+      "x": 0.344,
+      "y": 0.9563,
+      "radius": 0.085
+    },
+    {
+      "name": "B Market",
+      "site": "B",
+      "x": 0.4844,
+      "y": 0.7808,
+      "radius": 0.075
+    },
+    {
+      "name": "B Site",
+      "site": "B",
+      "x": 0.4532,
+      "y": 0.9719,
+      "radius": 0.09
+    },
+    {
+      "name": "Bottom",
+      "site": "Mid",
+      "x": 0.3596,
+      "y": 0.6736,
+      "radius": 0.075
+    },
+    {
+      "name": "Courtyard",
+      "site": "Mid",
+      "x": 0.4532,
+      "y": 0.6092,
+      "radius": 0.075
+    },
+    {
+      "name": "Defender Spawn",
+      "site": "Spawn",
+      "x": 0.7968,
+      "y": 0.6708,
+      "radius": 0.09
+    },
+    {
+      "name": "Tiles",
+      "site": "Mid",
+      "x": 0.3596,
+      "y": 0.4844,
+      "radius": 0.075
+    },
+    {
+      "name": "Top",
+      "site": "Mid",
+      "x": 0.656,
+      "y": 0.6716,
+      "radius": 0.075
+    }
+  ]
+}

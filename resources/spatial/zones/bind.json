@@ -1,18 +1,174 @@
 {
   "map": "Bind",
+  "source": "valorant-api.com callouts",
   "callouts": [
-    { "name": "A Short", "site": "A", "x": 0.75, "y": 0.35, "radius": 0.08 },
-    { "name": "A Lamps", "site": "A", "x": 0.82, "y": 0.42, "radius": 0.07 },
-    { "name": "A Site", "site": "A", "x": 0.88, "y": 0.48, "radius": 0.08 },
-    { "name": "A Bath", "site": "A", "x": 0.70, "y": 0.48, "radius": 0.07 },
-    { "name": "B Long", "site": "B", "x": 0.25, "y": 0.65, "radius": 0.09 },
-    { "name": "B Short", "site": "B", "x": 0.35, "y": 0.72, "radius": 0.08 },
-    { "name": "B Site", "site": "B", "x": 0.18, "y": 0.78, "radius": 0.08 },
-    { "name": "B Garden", "site": "B", "x": 0.42, "y": 0.75, "radius": 0.08 },
-    { "name": "Mid", "site": "Mid", "x": 0.50, "y": 0.50, "radius": 0.09 },
-    { "name": "Teleporter A", "site": "A", "x": 0.62, "y": 0.38, "radius": 0.06 },
-    { "name": "Teleporter B", "site": "B", "x": 0.38, "y": 0.62, "radius": 0.06 },
-    { "name": "Attacker Spawn", "site": "Spawn", "x": 0.50, "y": 0.15, "radius": 0.10 },
-    { "name": "Defender Spawn", "site": "Spawn", "x": 0.50, "y": 0.88, "radius": 0.10 }
+    {
+      "name": "A Bath",
+      "site": "A",
+      "x": 1,
+      "y": 0.705,
+      "radius": 0.075
+    },
+    {
+      "name": "A Cubby",
+      "site": "A",
+      "x": 1,
+      "y": 0.9572,
+      "radius": 0.075
+    },
+    {
+      "name": "A Exit",
+      "site": "A",
+      "x": 1,
+      "y": 0.621,
+      "radius": 0.075
+    },
+    {
+      "name": "A Lamps",
+      "site": "A",
+      "x": 1,
+      "y": 0.9629,
+      "radius": 0.075
+    },
+    {
+      "name": "A Link",
+      "site": "A",
+      "x": 0.9525,
+      "y": 1,
+      "radius": 0.075
+    },
+    {
+      "name": "A Lobby",
+      "site": "A",
+      "x": 0.9376,
+      "y": 0.7812,
+      "radius": 0.075
+    },
+    {
+      "name": "A Short",
+      "site": "A",
+      "x": 1,
+      "y": 0.9201,
+      "radius": 0.085
+    },
+    {
+      "name": "A Site",
+      "site": "A",
+      "x": 1,
+      "y": 0.8104,
+      "radius": 0.09
+    },
+    {
+      "name": "A Teleporter",
+      "site": "A",
+      "x": 1,
+      "y": 0.9387,
+      "radius": 0.075
+    },
+    {
+      "name": "A Tower",
+      "site": "A",
+      "x": 1,
+      "y": 0.8167,
+      "radius": 0.075
+    },
+    {
+      "name": "Attacker Cave",
+      "site": "Spawn",
+      "x": 0.8082,
+      "y": 0.9524,
+      "radius": 0.075
+    },
+    {
+      "name": "Attacker Spawn",
+      "site": "Spawn",
+      "x": 0.5865,
+      "y": 0.963,
+      "radius": 0.09
+    },
+    {
+      "name": "B Elbow",
+      "site": "B",
+      "x": 1,
+      "y": 1,
+      "radius": 0.075
+    },
+    {
+      "name": "B Exit",
+      "site": "B",
+      "x": 1,
+      "y": 1,
+      "radius": 0.075
+    },
+    {
+      "name": "B Fountain",
+      "site": "B",
+      "x": 0.9154,
+      "y": 1,
+      "radius": 0.075
+    },
+    {
+      "name": "B Garden",
+      "site": "B",
+      "x": 1,
+      "y": 1,
+      "radius": 0.075
+    },
+    {
+      "name": "B Hall",
+      "site": "B",
+      "x": 1,
+      "y": 1,
+      "radius": 0.075
+    },
+    {
+      "name": "B Link",
+      "site": "B",
+      "x": 0.9523,
+      "y": 1,
+      "radius": 0.075
+    },
+    {
+      "name": "B Long",
+      "site": "B",
+      "x": 1,
+      "y": 1,
+      "radius": 0.085
+    },
+    {
+      "name": "B Short",
+      "site": "B",
+      "x": 1,
+      "y": 1,
+      "radius": 0.085
+    },
+    {
+      "name": "B Site",
+      "site": "B",
+      "x": 1,
+      "y": 1,
+      "radius": 0.09
+    },
+    {
+      "name": "B Teleporter",
+      "site": "B",
+      "x": 1,
+      "y": 1,
+      "radius": 0.075
+    },
+    {
+      "name": "B Window",
+      "site": "B",
+      "x": 1,
+      "y": 1,
+      "radius": 0.075
+    },
+    {
+      "name": "Defender Spawn",
+      "site": "Spawn",
+      "x": 1,
+      "y": 1,
+      "radius": 0.09
+    }
   ]
 }

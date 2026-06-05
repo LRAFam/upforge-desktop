@@ -1,18 +1,202 @@
 {
   "map": "Lotus",
+  "source": "valorant-api.com callouts",
   "callouts": [
-    { "name": "A Main", "site": "A", "x": 0.78, "y": 0.62, "radius": 0.09 },
-    { "name": "A Root", "site": "A", "x": 0.72, "y": 0.55, "radius": 0.08 },
-    { "name": "A Site", "site": "A", "x": 0.88, "y": 0.58, "radius": 0.08 },
-    { "name": "B Main", "site": "B", "x": 0.50, "y": 0.28, "radius": 0.09 },
-    { "name": "B Upper", "site": "B", "x": 0.55, "y": 0.22, "radius": 0.07 },
-    { "name": "B Site", "site": "B", "x": 0.48, "y": 0.18, "radius": 0.08 },
-    { "name": "C Mound", "site": "C", "x": 0.22, "y": 0.55, "radius": 0.09 },
-    { "name": "C Hall", "site": "C", "x": 0.28, "y": 0.48, "radius": 0.08 },
-    { "name": "C Site", "site": "C", "x": 0.15, "y": 0.42, "radius": 0.08 },
-    { "name": "A Door", "site": "Mid", "x": 0.62, "y": 0.48, "radius": 0.08 },
-    { "name": "C Door", "site": "Mid", "x": 0.38, "y": 0.52, "radius": 0.08 },
-    { "name": "Attacker Spawn", "site": "Spawn", "x": 0.50, "y": 0.82, "radius": 0.10 },
-    { "name": "Defender Spawn", "site": "Spawn", "x": 0.50, "y": 0.15, "radius": 0.10 }
+    {
+      "name": "A Door",
+      "site": "A",
+      "x": 0.8586,
+      "y": 0.5431,
+      "radius": 0.075
+    },
+    {
+      "name": "A Drop",
+      "site": "A",
+      "x": 1,
+      "y": 0.4791,
+      "radius": 0.075
+    },
+    {
+      "name": "A Hut",
+      "site": "A",
+      "x": 1,
+      "y": 0.5176,
+      "radius": 0.075
+    },
+    {
+      "name": "A Link",
+      "site": "A",
+      "x": 0.8876,
+      "y": 0.7674,
+      "radius": 0.075
+    },
+    {
+      "name": "A Lobby",
+      "site": "A",
+      "x": 0.6482,
+      "y": 0.707,
+      "radius": 0.075
+    },
+    {
+      "name": "A Main",
+      "site": "A",
+      "x": 0.8355,
+      "y": 0.6182,
+      "radius": 0.085
+    },
+    {
+      "name": "A Root",
+      "site": "A",
+      "x": 0.7717,
+      "y": 0.6806,
+      "radius": 0.075
+    },
+    {
+      "name": "A Rubble",
+      "site": "A",
+      "x": 0.7717,
+      "y": 0.5636,
+      "radius": 0.075
+    },
+    {
+      "name": "A Site",
+      "site": "A",
+      "x": 1,
+      "y": 0.5176,
+      "radius": 0.09
+    },
+    {
+      "name": "A Stairs",
+      "site": "A",
+      "x": 1,
+      "y": 0.6398,
+      "radius": 0.075
+    },
+    {
+      "name": "A Top",
+      "site": "A",
+      "x": 1,
+      "y": 0.5545,
+      "radius": 0.075
+    },
+    {
+      "name": "A Tree",
+      "site": "A",
+      "x": 0.8976,
+      "y": 0.5176,
+      "radius": 0.075
+    },
+    {
+      "name": "Attacker Spawn",
+      "site": "Spawn",
+      "x": 0.5557,
+      "y": 0.8618,
+      "radius": 0.09
+    },
+    {
+      "name": "B Main",
+      "site": "B",
+      "x": 0.8059,
+      "y": 0.9212,
+      "radius": 0.085
+    },
+    {
+      "name": "B Pillars",
+      "site": "B",
+      "x": 0.7115,
+      "y": 0.8696,
+      "radius": 0.075
+    },
+    {
+      "name": "B Site",
+      "site": "B",
+      "x": 0.9133,
+      "y": 0.8696,
+      "radius": 0.09
+    },
+    {
+      "name": "B Upper",
+      "site": "B",
+      "x": 1,
+      "y": 0.8085,
+      "radius": 0.075
+    },
+    {
+      "name": "C Bend",
+      "site": "C",
+      "x": 0.8621,
+      "y": 1,
+      "radius": 0.075
+    },
+    {
+      "name": "C Door",
+      "site": "C",
+      "x": 0.8017,
+      "y": 1,
+      "radius": 0.075
+    },
+    {
+      "name": "C Gravel",
+      "site": "C",
+      "x": 1,
+      "y": 1,
+      "radius": 0.075
+    },
+    {
+      "name": "C Hall",
+      "site": "C",
+      "x": 1,
+      "y": 1,
+      "radius": 0.075
+    },
+    {
+      "name": "C Link",
+      "site": "C",
+      "x": 0.9951,
+      "y": 1,
+      "radius": 0.075
+    },
+    {
+      "name": "C Lobby",
+      "site": "C",
+      "x": 0.5558,
+      "y": 1,
+      "radius": 0.075
+    },
+    {
+      "name": "C Main",
+      "site": "C",
+      "x": 0.8372,
+      "y": 1,
+      "radius": 0.085
+    },
+    {
+      "name": "C Mound",
+      "site": "C",
+      "x": 0.733,
+      "y": 1,
+      "radius": 0.075
+    },
+    {
+      "name": "C Site",
+      "site": "C",
+      "x": 0.9355,
+      "y": 1,
+      "radius": 0.09
+    },
+    {
+      "name": "C Waterfall",
+      "site": "C",
+      "x": 0.9386,
+      "y": 1,
+      "radius": 0.075
+    },
+    {
+      "name": "Defender Spawn",
+      "site": "Spawn",
+      "x": 1,
+      "y": 0.7955,
+      "radius": 0.09
+    }
   ]
 }

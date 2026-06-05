@@ -13,4 +13,14 @@ Calibrate by logging `norm` from a known death in dev tools, or plot on the mini
 
 ## Supported maps (zones)
 
-Icebox, Ascent, Bind, Haven, Split, Pearl, Lotus — more can be added as JSON only.
+All competitive maps in `maps-manifest.json` have `zones/<map>.json` generated from [valorant-api.com](https://valorant-api.com/v1/maps) official callout coordinates.
+
+Regenerate after API updates:
+
+```bash
+node scripts/generate-spatial-zones.mjs
+```
+
+Then copy `zones/*.json` to `upforge-ai-service/resources/spatial/zones/`.
+
+Maps: Ascent, Bind, Haven, Split, Fracture, Breeze, Pearl, Icebox, Lotus, Sunset, Abyss, Corrode.

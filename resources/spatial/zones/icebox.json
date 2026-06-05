@@ -1,23 +1,181 @@
 {
   "map": "Icebox",
+  "source": "valorant-api.com callouts",
   "callouts": [
-    { "name": "A Main", "site": "A", "x": 0.78, "y": 0.58, "radius": 0.09 },
-    { "name": "A Screen", "site": "A", "x": 0.70, "y": 0.50, "radius": 0.08 },
-    { "name": "A Belt", "site": "A", "x": 0.82, "y": 0.48, "radius": 0.08 },
-    { "name": "A Rafters", "site": "A", "x": 0.88, "y": 0.42, "radius": 0.07 },
-    { "name": "A Pipes", "site": "A", "x": 0.74, "y": 0.66, "radius": 0.07 },
-    { "name": "A Generator", "site": "A", "x": 0.90, "y": 0.55, "radius": 0.07 },
-    { "name": "B Main", "site": "B", "x": 0.22, "y": 0.38, "radius": 0.09 },
-    { "name": "B Tube", "site": "B", "x": 0.18, "y": 0.32, "radius": 0.08 },
-    { "name": "B Yellow", "site": "B", "x": 0.28, "y": 0.28, "radius": 0.08 },
-    { "name": "B Green", "site": "B", "x": 0.35, "y": 0.22, "radius": 0.08 },
-    { "name": "B Snowman", "site": "B", "x": 0.15, "y": 0.22, "radius": 0.07 },
-    { "name": "Mid", "site": "Mid", "x": 0.48, "y": 0.42, "radius": 0.10 },
-    { "name": "Mid Boiler", "site": "Mid", "x": 0.42, "y": 0.35, "radius": 0.08 },
-    { "name": "Mid Zipline", "site": "Mid", "x": 0.55, "y": 0.38, "radius": 0.07 },
-    { "name": "Attacker Spawn", "site": "Spawn", "x": 0.12, "y": 0.72, "radius": 0.10 },
-    { "name": "Defender Spawn", "site": "Spawn", "x": 0.88, "y": 0.78, "radius": 0.10 },
-    { "name": "Kitchen", "site": "Mid", "x": 0.38, "y": 0.48, "radius": 0.07 },
-    { "name": "Rafters", "site": "A", "x": 0.85, "y": 0.38, "radius": 0.06 }
+    {
+      "name": "A Belt",
+      "site": "A",
+      "x": 0,
+      "y": 0.3659,
+      "radius": 0.075
+    },
+    {
+      "name": "A Nest",
+      "site": "A",
+      "x": 0,
+      "y": 0.2399,
+      "radius": 0.075
+    },
+    {
+      "name": "A Pipes",
+      "site": "A",
+      "x": 0.0174,
+      "y": 0.2723,
+      "radius": 0.075
+    },
+    {
+      "name": "A Rafters",
+      "site": "A",
+      "x": 0,
+      "y": 0,
+      "radius": 0.075
+    },
+    {
+      "name": "A Screen",
+      "site": "A",
+      "x": 0.093,
+      "y": 0.0653,
+      "radius": 0.075
+    },
+    {
+      "name": "A Site",
+      "site": "A",
+      "x": 0,
+      "y": 0.0743,
+      "radius": 0.09
+    },
+    {
+      "name": "Attacker Spawn",
+      "site": "Spawn",
+      "x": 0.1776,
+      "y": 0.6251,
+      "radius": 0.09
+    },
+    {
+      "name": "B Back",
+      "site": "B",
+      "x": 0.4783,
+      "y": 0,
+      "radius": 0.075
+    },
+    {
+      "name": "B Cubby",
+      "site": "B",
+      "x": 0.5358,
+      "y": 0.3749,
+      "radius": 0.075
+    },
+    {
+      "name": "B Fence",
+      "site": "B",
+      "x": 0.4864,
+      "y": 0.0458,
+      "radius": 0.075
+    },
+    {
+      "name": "B Garage",
+      "site": "B",
+      "x": 0.3702,
+      "y": 0.4073,
+      "radius": 0.075
+    },
+    {
+      "name": "B Green",
+      "site": "B",
+      "x": 0.4278,
+      "y": 0.3551,
+      "radius": 0.075
+    },
+    {
+      "name": "B Hall",
+      "site": "B",
+      "x": 0.4818,
+      "y": 0.0851,
+      "radius": 0.075
+    },
+    {
+      "name": "B Hut",
+      "site": "B",
+      "x": 0.3576,
+      "y": 0,
+      "radius": 0.075
+    },
+    {
+      "name": "B Kitchen",
+      "site": "B",
+      "x": 0.3003,
+      "y": 0.0596,
+      "radius": 0.075
+    },
+    {
+      "name": "B Orange",
+      "site": "B",
+      "x": 0.4147,
+      "y": 0.1823,
+      "radius": 0.075
+    },
+    {
+      "name": "B Site",
+      "site": "B",
+      "x": 0.5844,
+      "y": 0.1193,
+      "radius": 0.09
+    },
+    {
+      "name": "B Snow Pile",
+      "site": "B",
+      "x": 0.3324,
+      "y": 0.1247,
+      "radius": 0.075
+    },
+    {
+      "name": "B Snowman",
+      "site": "B",
+      "x": 0.6222,
+      "y": 0.0195,
+      "radius": 0.075
+    },
+    {
+      "name": "B Tube",
+      "site": "B",
+      "x": 0.2946,
+      "y": 0.2129,
+      "radius": 0.075
+    },
+    {
+      "name": "B Yellow",
+      "site": "B",
+      "x": 0.6078,
+      "y": 0.3065,
+      "radius": 0.075
+    },
+    {
+      "name": "Blue",
+      "site": "Mid",
+      "x": 0.2568,
+      "y": 0.2345,
+      "radius": 0.075
+    },
+    {
+      "name": "Boiler",
+      "site": "Mid",
+      "x": 0.2172,
+      "y": 0.0941,
+      "radius": 0.075
+    },
+    {
+      "name": "Defender Spawn",
+      "site": "Spawn",
+      "x": 0.1902,
+      "y": 0,
+      "radius": 0.09
+    },
+    {
+      "name": "Pallet",
+      "site": "Mid",
+      "x": 0.1398,
+      "y": 0.1769,
+      "radius": 0.075
+    }
   ]
 }
