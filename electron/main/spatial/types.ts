@@ -66,12 +66,20 @@ export interface SpatialHotspot {
   type: 'death' | 'kill'
 }
 
+/** Death density rolled up by bombsite / Mid. */
+export interface SiteHotspot {
+  site: string
+  count: number
+  norm: NormPoint
+}
+
 /** Compact match-level spatial digest for AI + UI. */
 export interface MatchSpatialSummary {
   map: string
   events: SpatialTimelineEvent[]
   deathHotspots: SpatialHotspot[]
   killHotspots: SpatialHotspot[]
+  siteHotspots?: SiteHotspot[]
   /** Competitive rounds played (for "4 deaths in 13 rounds" insights). */
   roundCount?: number
   /** Glanceable heatmap headline for UI + AI, e.g. "You died @ B Main 4× in 13 rounds". */

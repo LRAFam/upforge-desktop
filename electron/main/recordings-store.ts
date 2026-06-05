@@ -96,6 +96,14 @@ export class RecordingsStore {
     return this.recordings.find(r => r.id === id)
   }
 
+  updateTimeline(id: string, timeline: MatchData): boolean {
+    const rec = this.recordings.find(r => r.id === id)
+    if (!rec) return false
+    rec.timeline = timeline
+    this.persist()
+    return true
+  }
+
   /** Returns recordings that haven't been analysed and whose file still exists */
   getPending(): PendingRecording[] {
     return this.recordings.filter(r => !r.analysed && fs.existsSync(r.path))

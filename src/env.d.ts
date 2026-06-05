@@ -179,6 +179,7 @@ export interface RecordingTimeline {
     abilityCasts: { grenade: number; ability1: number; ability2: number; ultimate: number } | null
   }>
   spatialSummary?: import('./lib/spatial-types').MatchSpatialSummary | null
+  videoSyncOffsetMs?: number
 }
 
 export interface ValorantStats {
@@ -352,6 +353,7 @@ declare global {
         }>
         getActivityLog: () => Promise<{ time: number; message: string }[]>
         showClips: () => Promise<{ ok: boolean }>
+        openVodReview: (id: string, seekMs?: number) => Promise<{ ok: boolean }>
       }
       profile: {
         get: () => Promise<ProfileData | null>
@@ -366,6 +368,8 @@ declare global {
         analyse: (id: string) => Promise<{ ok?: boolean; error?: string }>
         dismiss: (id: string) => Promise<void>
         getTimeline: (id: string) => Promise<RecordingTimeline | null>
+        nudgeSync: (id: string, deltaMs: number) => Promise<{ ok: boolean; videoSyncOffsetMs?: number }>
+        resetSync: (id: string) => Promise<{ ok: boolean; videoSyncOffsetMs?: number }>
       }
       settings: {
         get: () => Promise<AppSettings>

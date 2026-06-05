@@ -12,7 +12,9 @@ const api = {
     getStatus: () => ipcRenderer.invoke('app:get-status'),
     getActivityLog: () => ipcRenderer.invoke('app:get-activity-log'),
     showClips: () => ipcRenderer.invoke('app:show-clips'),
-    openUrl: (url: string) => ipcRenderer.invoke('app:open-url', { url })
+    openUrl: (url: string) => ipcRenderer.invoke('app:open-url', { url }),
+    openVodReview: (id: string, seekMs?: number) =>
+      ipcRenderer.invoke('app:open-vod-review', { id, seekMs }),
   },
   profile: {
     get: () => ipcRenderer.invoke('profile:get')
@@ -26,7 +28,9 @@ const api = {
     get: () => ipcRenderer.invoke('recordings:get'),
     analyse: (id: string) => ipcRenderer.invoke('recordings:analyse', { id }),
     dismiss: (id: string) => ipcRenderer.invoke('recordings:dismiss', { id }),
-    getTimeline: (id: string) => ipcRenderer.invoke('recordings:get-timeline', { id })
+    getTimeline: (id: string) => ipcRenderer.invoke('recordings:get-timeline', { id }),
+    nudgeSync: (id: string, deltaMs: number) => ipcRenderer.invoke('recordings:nudge-sync', { id, deltaMs }),
+    resetSync: (id: string) => ipcRenderer.invoke('recordings:reset-sync', { id }),
   },
   settings: {
     get: () => ipcRenderer.invoke('settings:get'),

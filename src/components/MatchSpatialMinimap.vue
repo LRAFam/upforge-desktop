@@ -6,25 +6,43 @@ import type { MatchSpatialSummary, SpatialTimelineEvent } from '../lib/spatial-t
 const props = withDefaults(defineProps<{
   summary: MatchSpatialSummary | null | undefined
   mapName?: string | null
-  /** Highlight one event index */
   activeIndex?: number | null
   showLegend?: boolean
-  /** Death density overlay (overlapping blobs = hotter zones) */
   showHeatmap?: boolean
-  /** Export-friendly size */
+  /** callout = per-death blobs; site = aggregated bombsite heat */
+  heatmapLayer?: 'callout' | 'site'
   large?: boolean
+  /** Filter events to one round (null = all). */
+  roundFilter?: number | null
+  showRoundSlider?: boolean
 }>(), {
   showLegend: true,
   showHeatmap: true,
+  heatmapLayer: 'callout',
   large: false,
+  roundFilter: null,
+  showRoundSlider: false,
 })
+
+const emit = defineEmits<{
+  select: [event: SpatialTimelineEvent, index: number]
+  'update:roundFilter': [round: number | null]
+}>()
 
 const deathEvents = computed(() =>
   (props.summary?.events ?? []).filter((e) => e.type === 'death'),
 )
 
-const useHeatmap = computed(() =>
-  props.showHeatmap && deathEvents.value.length >= 2,
+const useCalloutHeat = computed(() =>
+  props.showHeatmap
+  && props.heatmapLayer === 'callout'
+  && deathEvents.value.length >= 2,
+)
+
+const useSiteHeat = computed(() =>
+  props.showHeatmap
+  && props.heatmapLayer === 'site'
+  && (props.summary?.siteHotspots?.length ?? 0) > 0,
 )
 
 const activeEvent = computed(() => {
@@ -34,9 +52,16 @@ const activeEvent = computed(() => {
   return events[idx] ?? null
 })
 
-const emit = defineEmits<{
-  select: [event: SpatialTimelineEvent, index: number]
-}>()
+const availableRounds = computed(() => {
+  const rounds = new Set<number>()
+  for (const e of props.summary?.events ?? []) rounds.add(e.round)
+  return [...rounds].sort((a, b) => a - b)
+})
+
+const sliderRound = computed({
+  get: () => props.roundFilter ?? availableRounds.value[0] ?? 0,
+  set: (v: number) => emit('update:roundFilter', v),
+})
 
 const canvasRef = ref<HTMLCanvasElement | null>(null)
 const imgLoaded = ref(false)
@@ -67,6 +92,30 @@ function drawDeathHeatmap(ctx: CanvasRenderingContext2D, s: number, deaths: Spat
   ctx.restore()
 }
 
+function drawSiteHeatmap(ctx: CanvasRenderingContext2D, s: number) {
+  const hotspots = props.summary?.siteHotspots ?? []
+  const maxCount = Math.max(...hotspots.map((h) => h.count), 1)
+  ctx.save()
+  ctx.globalCompositeOperation = 'lighter'
+  for (const h of hotspots) {
+    const px = h.norm.x * s
+    const py = h.norm.y * s
+    const blobR = (props.large ? 42 : 28) + (h.count / maxCount) * (props.large ? 24 : 14)
+    const grad = ctx.createRadialGradient(px, py, 0, px, py, blobR)
+    grad.addColorStop(0, 'rgba(239, 68, 68, 0.85)')
+    grad.addColorStop(0.4, 'rgba(239, 68, 68, 0.4)')
+    grad.addColorStop(1, 'rgba(239, 68, 68, 0)')
+    ctx.fillStyle = grad
+    ctx.beginPath()
+    ctx.arc(px, py, blobR, 0, Math.PI * 2)
+    ctx.fill()
+    ctx.font = 'bold 11px system-ui, sans-serif'
+    ctx.fillStyle = 'rgba(255,255,255,0.9)'
+    ctx.fillText(`${h.site} (${h.count})`, px - 16, py + 4)
+  }
+  ctx.restore()
+}
+
 function draw() {
   const canvas = canvasRef.value
   const url = minimapUrl.value
@@ -86,16 +135,16 @@ function draw() {
     ctx.clearRect(0, 0, s, s)
     ctx.drawImage(img, 0, 0, s, s)
 
-    if (useHeatmap.value) {
-      drawDeathHeatmap(ctx, s, deathEvents.value)
-    }
+    if (useCalloutHeat.value) drawDeathHeatmap(ctx, s, deathEvents.value)
+    if (useSiteHeat.value) drawSiteHeatmap(ctx, s)
 
+    const heatActive = useCalloutHeat.value || useSiteHeat.value
     summary.events.forEach((ev, idx) => {
       const px = ev.norm.x * s
       const py = ev.norm.y * s
       const isDeath = ev.type === 'death'
       const active = props.activeIndex === idx
-      const r = active ? 10 : isDeath ? (useHeatmap.value ? 5 : 7) : 6
+      const r = active ? 10 : isDeath ? (heatActive ? 5 : 7) : 6
 
       ctx.beginPath()
       ctx.arc(px, py, r + 2, 0, Math.PI * 2)
@@ -113,9 +162,9 @@ function draw() {
       ctx.fillRect(0, s - 28, s, 28)
       ctx.fillStyle = '#fff'
       ctx.font = '11px system-ui, sans-serif'
-      const legend = useHeatmap.value
-        ? 'Heat = death density   ● Kills'
-        : '● Deaths   ● Kills'
+      let legend = '● Deaths   ● Kills'
+      if (useSiteHeat.value) legend = 'Heat = site deaths   ● Events'
+      else if (useCalloutHeat.value) legend = 'Heat = death density   ● Kills'
       ctx.fillText(legend, 10, s - 10)
     }
 
@@ -153,7 +202,11 @@ function roundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: numbe
   ctx.closePath()
 }
 
-watch(() => [props.summary, props.activeIndex, props.large, props.showHeatmap], draw, { deep: true })
+watch(
+  () => [props.summary, props.activeIndex, props.large, props.showHeatmap, props.heatmapLayer, props.roundFilter],
+  draw,
+  { deep: true },
+)
 onMounted(draw)
 
 function onClick(e: MouseEvent) {
@@ -179,7 +232,6 @@ function onClick(e: MouseEvent) {
   if (best >= 0) emit('select', summary.events[best], best)
 }
 
-/** Returns PNG data URL for social export. */
 function exportPng(): string | null {
   return canvasRef.value?.toDataURL('image/png') ?? null
 }
@@ -188,7 +240,7 @@ defineExpose({ exportPng })
 </script>
 
 <template>
-  <div class="relative w-full">
+  <div class="relative w-full space-y-2">
     <canvas
       ref="canvasRef"
       class="w-full rounded-xl border border-white/10 bg-black/40 cursor-pointer"
@@ -201,6 +253,39 @@ defineExpose({ exportPng })
       class="absolute inset-0 flex items-center justify-center rounded-xl bg-black/50 text-xs text-gray-500"
     >
       No spatial data for this match
+    </div>
+
+    <div
+      v-if="showRoundSlider && availableRounds.length > 1"
+      class="flex items-center gap-2 px-1"
+    >
+      <button
+        type="button"
+        class="text-[9px] font-semibold px-2 py-0.5 rounded-md border shrink-0 transition-colors"
+        :class="roundFilter == null
+          ? 'bg-white/10 border-white/20 text-white'
+          : 'bg-black/30 border-white/10 text-gray-500'"
+        @click="emit('update:roundFilter', null)"
+      >All</button>
+      <input
+        v-if="roundFilter != null"
+        type="range"
+        class="flex-1 h-1 accent-red-500"
+        :min="availableRounds[0]"
+        :max="availableRounds[availableRounds.length - 1]"
+        :value="sliderRound"
+        @input="sliderRound = Number(($event.target as HTMLInputElement).value)"
+      />
+      <span
+        v-if="roundFilter != null"
+        class="text-[10px] font-bold tabular-nums text-gray-400 shrink-0 min-w-[2.5rem] text-right"
+      >R{{ sliderRound + 1 }}</span>
+      <button
+        v-else
+        type="button"
+        class="text-[9px] font-semibold text-gray-500 hover:text-gray-300"
+        @click="emit('update:roundFilter', availableRounds[0] ?? 0)"
+      >Filter round</button>
     </div>
   </div>
 </template>

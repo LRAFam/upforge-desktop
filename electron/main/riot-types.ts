@@ -36,17 +36,27 @@ export interface SpikePlantedEvent extends GameEvent {
   EventName: 'SpikePlanted'
   planter: string
   site: string
+  round?: number
+  /** Ms since match gameplay start (for VOD seek). */
+  gameTimeMs?: number
+  videoOffsetMs?: number
 }
 
 /** Spike defused event — who defused */
 export interface SpikeDefusedEvent extends GameEvent {
   EventName: 'SpikeDefused'
   defuser: string
+  round?: number
+  gameTimeMs?: number
+  videoOffsetMs?: number
 }
 
 /** Spike detonated event */
 export interface SpikeDetonatedEvent extends GameEvent {
   EventName: 'SpikeDetonated'
+  round?: number
+  gameTimeMs?: number
+  videoOffsetMs?: number
 }
 
 /** First blood event */
@@ -230,6 +240,11 @@ export interface MatchData {
   gameplayStartTime: number | null
   /** Epoch ms when recorder.start() was called */
   recordingStartTime: number
+  /**
+   * User- or auto-tuned ms added to the computed recording offset (negative = seek earlier).
+   * Persisted so VOD review and uploads stay aligned after manual sync nudges.
+   */
+  videoSyncOffsetMs?: number
 
   // Round score progression from presence polling
   roundScores: RoundScore[]

@@ -852,12 +852,13 @@ export class RiotLocalApi {
     // Kill events — map Riot game-clock ms to position in the local recording file.
     // timeSinceGameStartMillis tracks in-round time (after loading), closer to gameplayStartTime
     // than INGAME presence (matchStartTime, which includes the loading screen).
-    const { offset: recordingOffset, recordingLagMs, clockSkewMs, reference } =
+    const { offset: recordingOffset, recordingLagMs, clockSkewMs, loadSkewMs, reference } =
       computeRecordingOffsetMeta(this.matchData)
     console.log(
       `[RiotLocalApi] videoOffset base — matchStart=${this.matchData.matchStartTime} ` +
       `gameplayStart=${this.matchData.gameplayStartTime} recordingStart=${this.matchData.recordingStartTime} ` +
-      `recordingLag=${recordingLagMs}ms clockSkew=${clockSkewMs}ms offset=${recordingOffset}ms (using ${reference})`
+      `recordingLag=${recordingLagMs}ms clockSkew=${clockSkewMs}ms loadSkew=${loadSkewMs}ms ` +
+      `offset=${recordingOffset}ms (using ${reference})`
     )
 
     // Build a fast PUUID → agent name map for resolving event labels
@@ -913,6 +914,8 @@ export class RiotLocalApi {
     // TDM and Deathmatch have no rounds, no economy, no spike
     const isTDM = this.matchData.gameMode === 'TEAMDEATHMATCH'
     const isDM = this.matchData.gameMode === 'DEATHMATCH'
+    const roundStartGameMs = buildRoundStartGameMs(allKills)
+
     if (!isTDM && !isDM && roundResults && roundResults.length > 0) {
       // Pre-build a per-round death count for the own player from the top-level kills array.
       // roundResults.playerStats only has kills/assists — deaths must be cross-referenced here.
@@ -987,18 +990,35 @@ export class RiotLocalApi {
           playerWeapon: resolveEconomyWeapon(economy?.weapon) ?? null,
           playerArmor: resolveEconomyArmor(economy?.armor) ?? null,
         })
-        if (bombPlanter) this.matchData.spikePlants.push({
-          EventID: roundNum * 100 + 10, EventName: 'SpikePlanted',
-          EventTime: (round.plantRoundMsec as number) ?? 0, planter: bombPlanter, site: plantSite ?? '',
-        })
-        if (bombDefuser) this.matchData.spikeDefuses.push({
-          EventID: roundNum * 100 + 20, EventName: 'SpikeDefused',
-          EventTime: (round.defuseRoundMsec as number) ?? 0, defuser: bombDefuser,
-        })
-        if (resultCode === 'BombDetonated') this.matchData.spikeDetonations.push({
-          EventID: roundNum * 100 + 30, EventName: 'SpikeDetonated',
-          EventTime: (round.defuseRoundMsec as number) ?? 0,
-        })
+        if (bombPlanter) {
+          const plantLocal = (round.plantRoundTime as number) ?? (round.plantRoundMsec as number) ?? 0
+          const gameTimeMs = (roundStartGameMs.get(roundNum) ?? 0) + plantLocal
+          this.matchData.spikePlants.push({
+            EventID: roundNum * 100 + 10, EventName: 'SpikePlanted',
+            EventTime: plantLocal, planter: bombPlanter, site: plantSite ?? '',
+            round: roundNum, gameTimeMs,
+            videoOffsetMs: Math.max(0, recordingOffset + gameTimeMs),
+          })
+        }
+        if (bombDefuser) {
+          const defuseLocal = (round.defuseRoundTime as number) ?? (round.defuseRoundMsec as number) ?? 0
+          const gameTimeMs = (roundStartGameMs.get(roundNum) ?? 0) + defuseLocal
+          this.matchData.spikeDefuses.push({
+            EventID: roundNum * 100 + 20, EventName: 'SpikeDefused',
+            EventTime: defuseLocal, defuser: bombDefuser,
+            round: roundNum, gameTimeMs,
+            videoOffsetMs: Math.max(0, recordingOffset + gameTimeMs),
+          })
+        }
+        if (resultCode === 'BombDetonated') {
+          const detLocal = (round.defuseRoundTime as number) ?? (round.defuseRoundMsec as number) ?? 0
+          const gameTimeMs = (roundStartGameMs.get(roundNum) ?? 0) + detLocal
+          this.matchData.spikeDetonations.push({
+            EventID: roundNum * 100 + 30, EventName: 'SpikeDetonated',
+            EventTime: detLocal, round: roundNum, gameTimeMs,
+            videoOffsetMs: Math.max(0, recordingOffset + gameTimeMs),
+          })
+        }
       }
     }
 
@@ -1007,6 +1027,8 @@ export class RiotLocalApi {
     } catch (err) {
       console.warn('[RiotLocalApi] Spatial enrichment failed:', err)
     }
+
+    recomputeTimelineVideoOffsets(this.matchData)
   }
 
   // ──────────────────────────────────────────────────────────────────────
@@ -1142,16 +1164,22 @@ export class RiotLocalApi {
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
- * Map Riot game-clock ms to seconds in the local recording file.
- * Riot's timeSinceGameStartMillis is aligned with in-round time, not INGAME presence
- * (which includes the loading screen). Without gameplayStartTime we apply a typical
- * loading-screen skew so kill markers line up with the video.
+ * Map Riot game-clock ms to position in the local recording file.
+ *
+ * Riot kill timestamps (`timeSinceGameStartMillis`) count from round gameplay, not INGAME
+ * presence (loading screen). The ms from recording start to that clock-zero moment is:
+ *   loadSkewMs - setupDelayMs
+ * where setupDelayMs = recordingStart − matchStart (INGAME) and loadSkewMs ≈ loading duration.
+ *
+ * Do not use overlay `gameplayStartTime` directly — it is stamped when the first session poll
+ * succeeds (often seconds late), which shifts every seek forward.
  */
 function computeRecordingOffsetMeta(timeline: Pick<MatchData, 'gameplayStartTime' | 'matchStartTime' | 'recordingStartTime'>): {
   offset: number
   recordingLagMs: number
   clockSkewMs: number
-  reference: 'gameplayStartTime' | 'matchStartTime+skew' | 'matchStartTime' | 'recordingLag'
+  loadSkewMs: number
+  reference: 'setupDelay' | 'pollLoad' | 'typicalLoad' | 'gameplayStartTime' | 'recordingLag'
 } {
   const { gameplayStartTime, matchStartTime, recordingStartTime } = timeline
   const recordingLagMs = (matchStartTime != null && recordingStartTime != null)
@@ -1161,28 +1189,107 @@ function computeRecordingOffsetMeta(timeline: Pick<MatchData, 'gameplayStartTime
     ? gameplayStartTime - matchStartTime
     : 0
 
-  // Measured gameplay start (overlay poll) is best; else shift matchStart by observed or typical load skew.
-  const typicalLoadSkewMs = 5_000
-  const loadSkewMs = clockSkewMs > 0
-    ? Math.min(clockSkewMs, 15_000)
-    : typicalLoadSkewMs
-  const referenceTime = gameplayStartTime
-    ?? (matchStartTime != null ? matchStartTime + loadSkewMs : null)
+  const TYPICAL_LOAD_MS = 10_000
+  const MIN_TRUSTED_POLL_LOAD_MS = 8_000
+  const MAX_LOAD_MS = 22_000
+  const MIN_SETUP_FOR_SYNC_MS = 5_000
+  const MAX_SETUP_FOR_SYNC_MS = 20_000
 
-  const offset = referenceTime != null
-    ? referenceTime - recordingStartTime
-    : -recordingLagMs
-  const reference = gameplayStartTime != null
-    ? 'gameplayStartTime'
-    : matchStartTime != null
-      ? 'matchStartTime+skew'
-      : 'recordingLag'
-  return { offset, recordingLagMs, clockSkewMs, reference }
+  let loadSkewMs = TYPICAL_LOAD_MS
+  let reference: ReturnType<typeof computeRecordingOffsetMeta>['reference'] = 'typicalLoad'
+
+  if (matchStartTime != null) {
+    if (
+      recordingLagMs >= MIN_SETUP_FOR_SYNC_MS
+      && recordingLagMs <= MAX_SETUP_FOR_SYNC_MS
+    ) {
+      // Recorder spun up near the end of loading — guns-up aligns with recording start.
+      loadSkewMs = recordingLagMs
+      reference = 'setupDelay'
+    } else if (
+      clockSkewMs >= MIN_TRUSTED_POLL_LOAD_MS
+      && clockSkewMs <= MAX_LOAD_MS
+      && clockSkewMs > recordingLagMs + 4_000
+    ) {
+      // Poll fired well after match start (plausibly near gameplay), not just recorder lag.
+      loadSkewMs = clockSkewMs
+      reference = 'pollLoad'
+    }
+    const offset = Math.max(0, loadSkewMs - recordingLagMs)
+    return { offset, recordingLagMs, clockSkewMs, loadSkewMs, reference }
+  }
+
+  if (gameplayStartTime != null) {
+    const offset = Math.max(0, gameplayStartTime - recordingStartTime)
+    return { offset, recordingLagMs, clockSkewMs, loadSkewMs, reference: 'gameplayStartTime' }
+  }
+
+  return { offset: Math.max(0, -recordingLagMs), recordingLagMs, clockSkewMs, loadSkewMs, reference: 'recordingLag' }
+}
+
+/** Estimate each round's gameplay-start ms from kill gameTime − roundTime. */
+function buildRoundStartGameMs(
+  allKills: Array<Record<string, unknown>> | undefined,
+): Map<number, number> {
+  const map = new Map<number, number>()
+  for (const k of allKills ?? []) {
+    const r = (k.round as number) ?? 0
+    const gameTime = (k.timeSinceGameStartMillis as number) ?? (k.gameTime as number) ?? 0
+    const roundTime = (k.roundTime as number) ?? (k.timeSinceRoundStartMillis as number) ?? -1
+    if (gameTime <= 0 || roundTime < 0) continue
+    const start = gameTime - roundTime
+    const prev = map.get(r)
+    if (prev == null || start < prev) map.set(r, start)
+  }
+  return map
+}
+
+function patchSpikeVideoOffsets(
+  timeline: MatchData,
+  recordingOffset: number,
+): void {
+  const patch = (ev: { gameTimeMs?: number; videoOffsetMs?: number }) => {
+    if (ev.gameTimeMs != null && !isNaN(ev.gameTimeMs)) {
+      ev.videoOffsetMs = Math.max(0, recordingOffset + ev.gameTimeMs)
+    }
+  }
+  for (const p of timeline.spikePlants ?? []) patch(p)
+  for (const d of timeline.spikeDefuses ?? []) patch(d)
+  for (const d of timeline.spikeDetonations ?? []) patch(d)
+}
+
+/** Keep spatial heatmap seek times aligned after offset recalculation. */
+function syncSpatialVideoOffsets(timeline: MatchData): void {
+  const events = timeline.spatialSummary?.events
+  if (!events?.length) return
+  let deathIdx = 0
+  let killIdx = 0
+  for (const ev of events) {
+    if (ev.type === 'death') {
+      const src = timeline.playerDeaths[deathIdx++]
+      if (src?.videoOffsetMs != null) ev.videoOffsetMs = src.videoOffsetMs
+    } else if (ev.type === 'kill') {
+      const src = timeline.playerKills[killIdx++]
+      if (src?.videoOffsetMs != null) ev.videoOffsetMs = src.videoOffsetMs
+    }
+  }
+}
+
+/** Total ms from recording start to Riot game-clock zero, including manual nudge. */
+export function totalRecordingOffsetMs(timeline: MatchData): number {
+  const { offset } = computeRecordingOffsetMeta(timeline)
+  return offset + (timeline.videoSyncOffsetMs ?? 0)
+}
+
+/** Shift all event timestamps by deltaMs and persist on the timeline object. */
+export function nudgeTimelineSyncOffset(timeline: MatchData, deltaMs: number): void {
+  timeline.videoSyncOffsetMs = (timeline.videoSyncOffsetMs ?? 0) + deltaMs
+  recomputeTimelineVideoOffsets(timeline)
 }
 
 /** Recompute kill/death videoOffsetMs (fixes stored timelines + VOD review sync). */
 export function recomputeTimelineVideoOffsets(timeline: MatchData): void {
-  const { offset: recordingOffset } = computeRecordingOffsetMeta(timeline)
+  const recordingOffset = totalRecordingOffsetMs(timeline)
   const patch = (ev: KillEvent) => {
     const tsgm = ev.timeSinceGameStartMillis
     if (tsgm != null && !isNaN(tsgm)) {
@@ -1192,6 +1299,8 @@ export function recomputeTimelineVideoOffsets(timeline: MatchData): void {
   for (const k of timeline.killEvents ?? []) patch(k)
   for (const k of timeline.playerKills ?? []) patch(k)
   for (const k of timeline.playerDeaths ?? []) patch(k)
+  patchSpikeVideoOffsets(timeline, recordingOffset)
+  syncSpatialVideoOffsets(timeline)
 }
 
 function _normalizeRegion(region: string): string {

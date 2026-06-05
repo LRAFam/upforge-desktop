@@ -5,6 +5,7 @@ import type {
   KillSpatial,
   MatchSpatialSummary,
   NormPoint,
+  SiteHotspot,
   SpatialHotspot,
   SpatialTimelineEvent,
 } from './types'
@@ -96,6 +97,28 @@ export function enrichKillFromRiotRow(
     alliesNearby,
     killerCallout,
   }
+}
+
+function buildSiteHotspots(deaths: SpatialTimelineEvent[]): SiteHotspot[] {
+  const bySite = new Map<string, { count: number; xs: number[]; ys: number[] }>()
+  for (const d of deaths) {
+    if (!d.site || d.site === 'Spawn') continue
+    const bucket = bySite.get(d.site) ?? { count: 0, xs: [], ys: [] }
+    bucket.count++
+    bucket.xs.push(d.norm.x)
+    bucket.ys.push(d.norm.y)
+    bySite.set(d.site, bucket)
+  }
+  return [...bySite.entries()]
+    .map(([site, v]) => ({
+      site,
+      count: v.count,
+      norm: {
+        x: v.xs.reduce((a, b) => a + b, 0) / v.xs.length,
+        y: v.ys.reduce((a, b) => a + b, 0) / v.ys.length,
+      },
+    }))
+    .sort((a, b) => b.count - a.count)
 }
 
 function buildHotspots(events: SpatialTimelineEvent[], type: 'death' | 'kill'): SpatialHotspot[] {
@@ -216,6 +239,7 @@ export function buildMatchSpatialSummary(match: MatchData): MatchSpatialSummary 
     events,
     deathHotspots,
     killHotspots: buildHotspots(events, 'kill'),
+    siteHotspots: buildSiteHotspots(deaths),
     roundCount,
     heatmapInsight: buildHeatmapInsight(deathHotspots, roundCount),
     patterns: buildPatterns(deaths, roundCount),

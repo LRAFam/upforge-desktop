@@ -3,6 +3,7 @@
  * fills fields the backend and AI service expect.
  */
 import type { MatchData } from './riot-types'
+import { recomputeTimelineVideoOffsets } from './riot-local-api'
 
 /** Slim Riot MatchDetails subset for coaching prompts (avoids multi‑MB raw JSON). */
 export interface MatchDetailsLite {
@@ -91,6 +92,7 @@ export function gameModeForApi(gameMode: string | null | undefined): string | nu
  */
 export function prepareMatchDataForUpload(timeline: MatchData | null): UploadMatchData | undefined {
   if (!timeline) return undefined
+  recomputeTimelineVideoOffsets(timeline)
 
   const finalStats = timeline.finalStats
     ? {
@@ -117,6 +119,7 @@ export function prepareMatchDataForUpload(timeline: MatchData | null): UploadMat
     matchStartTime: timeline.matchStartTime,
     gameplayStartTime: timeline.gameplayStartTime,
     recordingStartTime: timeline.recordingStartTime,
+    videoSyncOffsetMs: timeline.videoSyncOffsetMs ?? 0,
     roundScores: timeline.roundScores,
     killEvents: timeline.killEvents,
     playerKills: timeline.playerKills,

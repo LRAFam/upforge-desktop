@@ -24,11 +24,18 @@ export interface SpatialHotspot {
   type: 'death' | 'kill'
 }
 
+export interface SiteHotspot {
+  site: string
+  count: number
+  norm: NormPoint
+}
+
 export interface MatchSpatialSummary {
   map: string
   events: SpatialTimelineEvent[]
   deathHotspots: SpatialHotspot[]
   killHotspots: SpatialHotspot[]
+  siteHotspots?: SiteHotspot[]
   roundCount?: number
   heatmapInsight?: string | null
   patterns: string[]

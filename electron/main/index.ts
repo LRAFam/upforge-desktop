@@ -18,7 +18,7 @@ import { Recorder } from './recorder'
 import { DesktopRecorder } from './desktop-recorder'
 import { OBSRecorder } from './obs-recorder'
 import type { ActiveMatchRecorder } from './match-recorder'
-import { RiotLocalApi, recomputeTimelineVideoOffsets } from './riot-local-api'
+import { RiotLocalApi, recomputeTimelineVideoOffsets, nudgeTimelineSyncOffset } from './riot-local-api'
 import { UploadManager, savePendingJob, clearPendingJob, readPendingJob } from './upload-manager'
 import { startAnalysisPoll } from './analysis-poll'
 import { AuthManager } from './auth-manager'
@@ -656,6 +656,7 @@ function setupGameDetection(): void {
       }
 
       if (!autoAnalyse) {
+        if (timeline) recomputeTimelineVideoOffsets(timeline)
         const recording = recordingsStore.add({
           path: videoPath,
           riotName: user?.riot_name ?? '',
@@ -712,6 +713,7 @@ function setupGameDetection(): void {
       // and can be retried if upload fails. In the auto-analyse path this was previously
       // only saved on upload failure, meaning a successful upload + auto-delete left
       // the user with no trace of the recording.
+      if (timeline) recomputeTimelineVideoOffsets(timeline)
       const autoAnalyseRecording = recordingsStore.add({
         path: videoPath,
         riotName: user?.riot_name ?? '',
@@ -1126,7 +1128,7 @@ function setupGameDetection(): void {
       }
       await currentActiveRecorder.start(game, recorderConfig)
       // Update recordingStartTime to the moment the recorder actually began capturing.
-      // This makes videoOffsetMs accurate: offset = (matchStart - recordingStart) + timeSinceGameStart.
+      // Accurate videoOffsetMs: offset = (loadSkew − recordingLag) + timeSinceGameStart.
       const recStartTime = Date.now()
       riotLocalApi.setRecordingStartTime(recStartTime)
       currentRecordingStartTime = recStartTime
@@ -1168,7 +1170,7 @@ function setupGameDetection(): void {
       } catch { /* ignore — session endpoint may be unavailable */ }
     }
     void pollOverlaySession()
-    overlayPollTimer = setInterval(() => { void pollOverlaySession() }, 5_000)
+    overlayPollTimer = setInterval(() => { void pollOverlaySession() }, 1_000)
 
     if (currentActiveRecorder.wasNoAudio()) {
       mainWindow?.webContents.send('app:warning', {
@@ -1391,6 +1393,7 @@ async function doUploadAndAnalyse(
           : null
 
         send('post-game:analysis-ready', {
+          recording_id: recordingId,
           overall_score: (status.result as Record<string, unknown>).overall_score,
           analysis_id: (status.result as Record<string, unknown>).analysis_id,
           top_issue: (status.result as Record<string, unknown>).top_issue,
@@ -1478,6 +1481,7 @@ async function doUploadAndAnalyse(
     if (!recordingId && fs.existsSync(videoPath)) {
       try {
         const user = authManager.getUser()
+        if (timeline) recomputeTimelineVideoOffsets(timeline)
         const saved = recordingsStore.add({
           path: videoPath,
           riotName: riotName || user?.riot_name || '',
@@ -1897,11 +1901,45 @@ app.whenReady().then(async () => {
     mainWindow?.webContents.send('recordings:updated')
   })
 
+  ipcMain.handle('app:open-vod-review', (_e, { id, seekMs }: { id: string; seekMs?: number }) => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.show()
+      mainWindow.focus()
+      const query: Record<string, string> = { id }
+      if (seekMs != null && !isNaN(seekMs)) query.seekMs = String(Math.round(seekMs))
+      mainWindow.webContents.send('app:navigate', { path: '/vod-review', query })
+    }
+    return { ok: true }
+  })
+
+  ipcMain.handle('recordings:nudge-sync', (_e, { id, deltaMs }: { id: string; deltaMs: number }) => {
+    const recording = recordingsStore.getById(id)
+    if (!recording?.timeline) return { ok: false as const }
+    nudgeTimelineSyncOffset(recording.timeline, deltaMs)
+    recordingsStore.updateTimeline(id, recording.timeline)
+    return {
+      ok: true as const,
+      videoSyncOffsetMs: recording.timeline.videoSyncOffsetMs ?? 0,
+    }
+  })
+
+  ipcMain.handle('recordings:reset-sync', (_e, { id }: { id: string }) => {
+    const recording = recordingsStore.getById(id)
+    if (!recording?.timeline) return { ok: false as const }
+    recording.timeline.videoSyncOffsetMs = 0
+    recomputeTimelineVideoOffsets(recording.timeline)
+    recordingsStore.updateTimeline(id, recording.timeline)
+    return { ok: true as const, videoSyncOffsetMs: 0 }
+  })
+
   ipcMain.handle('recordings:get-timeline', (_e, { id }: { id: string }) => {
     const recording = recordingsStore.getById(id)
     if (!recording) return null
     const tl = recording.timeline
-    if (tl) recomputeTimelineVideoOffsets(tl)
+    if (tl) {
+      recomputeTimelineVideoOffsets(tl)
+      recordingsStore.updateTimeline(id, tl)
+    }
     // Only return videoPath if the file actually exists on disk
     const videoPath = recording.path && fs.existsSync(recording.path) ? recording.path : null
     return {
@@ -1922,6 +1960,7 @@ app.whenReady().then(async () => {
       spikeDetonations: tl?.spikeDetonations ?? [],
       firstBloods: tl?.firstBloods ?? [],
       spatialSummary: tl?.spatialSummary ?? null,
+      videoSyncOffsetMs: tl?.videoSyncOffsetMs ?? 0,
     }
   })
 

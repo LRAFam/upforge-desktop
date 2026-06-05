@@ -262,6 +262,26 @@
           @copy-map="copySpatialMapImage"
         />
 
+        <div v-if="vodRecordingId" class="flex gap-2">
+          <button
+            v-if="activeDeathSeekMs != null"
+            type="button"
+            class="flex-1 flex items-center justify-center gap-2 py-2.5 text-xs font-bold rounded-xl border border-red-500/30 bg-red-500/10 text-red-200 hover:bg-red-500/15 transition-colors"
+            @click="reviewSelectedDeathInVod"
+          >
+            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"/>
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+            </svg>
+            Review death in VOD
+          </button>
+          <button
+            type="button"
+            class="flex-1 py-2.5 text-xs font-semibold rounded-xl border border-white/10 bg-white/[0.03] text-gray-300 hover:bg-white/[0.06] hover:text-white transition-colors"
+            @click="openVodReview"
+          >Open full VOD</button>
+        </div>
+
         <!-- No spatial data fallback -->
         <div v-else class="space-y-3">
           <div
@@ -608,7 +628,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { getAgentImage, getAgentColor, getMapImage, getMapMinimap } from '../lib/valorant'
 import PostGameIntelHero from '../components/PostGameIntelHero.vue'
 import type { MatchSpatialSummary } from '../lib/spatial-types'
@@ -669,6 +689,7 @@ function daysUntilReset(): number {
 }
 const isTimeoutError = computed(() => /timed? ?out/i.test(errorMessage.value))
 const pendingRecordingId = ref<string | null>(null)
+const sessionRecordingId = ref<string | null>(null)
 const analysing = ref(false)
 const analysisStuck = ref(false)
 const analysisLongRunning = ref(false)
@@ -896,6 +917,38 @@ const spatialSummary = computed((): MatchSpatialSummary | null => {
   return (result.value as { spatial_summary?: MatchSpatialSummary | null }).spatial_summary ?? null
 })
 
+const vodRecordingId = computed(() => sessionRecordingId.value ?? pendingRecordingId.value)
+
+const activeDeathSeekMs = computed((): number | null => {
+  const idx = activeSpatialIndex.value
+  const events = spatialSummary.value?.events
+  if (idx == null || !events?.[idx] || events[idx].type !== 'death') return null
+  const offset = events[idx].videoOffsetMs
+  if (offset == null || isNaN(offset)) return null
+  return Math.max(0, offset - 4000)
+})
+
+async function reviewSelectedDeathInVod() {
+  const id = vodRecordingId.value
+  const seekMs = activeDeathSeekMs.value
+  if (!id) return
+  await window.api.app.openVodReview(id, seekMs ?? undefined)
+  dismiss()
+}
+
+async function openVodReview() {
+  const id = vodRecordingId.value
+  if (!id) return
+  await window.api.app.openVodReview(id)
+  dismiss()
+}
+
+watch(spatialSummary, (summary) => {
+  if (activeSpatialIndex.value != null || !summary?.events?.length) return
+  const firstDeath = summary.events.findIndex((e) => e.type === 'death')
+  if (firstDeath >= 0) activeSpatialIndex.value = firstDeath
+})
+
 const categoryScores = computed((): CategoryScoreItem[] => {
   const raw = (result.value as { category_scores?: CategoryScoreItem[] } | null)?.category_scores
   return Array.isArray(raw) ? raw : []
@@ -1013,8 +1066,9 @@ onMounted(() => {
   }))
   ipcCleanup.push(window.api.on('post-game:analysis-ready', (...args: unknown[]) => {
     clearStuckTimer()
-    const r = args[0] as typeof result.value & { session_start?: number }
+    const r = args[0] as typeof result.value & { session_start?: number; recording_id?: string | null }
     result.value = r
+    if (r?.recording_id) sessionRecordingId.value = r.recording_id
     sessionStart = r?.session_start ?? (Date.now() - 2 * 60 * 60 * 1000)
     state.value = 'ready'
     loadSessionClips()

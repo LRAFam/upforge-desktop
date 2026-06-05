@@ -738,23 +738,88 @@
             v-if="spatialSummary?.events?.length"
             class="rounded-2xl border border-red-500/25 bg-red-500/[0.06] p-3 space-y-2"
           >
-            <div>
-              <p class="text-[10px] font-black uppercase tracking-[0.24em] text-red-400">Match Intel</p>
-              <p
-                v-if="spatialSummary.heatmapInsight"
-                class="text-xs font-bold text-white leading-snug mt-1"
-              >{{ spatialSummary.heatmapInsight }}</p>
+            <div class="flex items-start justify-between gap-2">
+              <div class="min-w-0">
+                <p class="text-[10px] font-black uppercase tracking-[0.24em] text-red-400">Match Intel</p>
+                <p
+                  v-if="spatialSummary.heatmapInsight"
+                  class="text-xs font-bold text-white leading-snug mt-1"
+                >{{ spatialSummary.heatmapInsight }}</p>
+              </div>
+              <div class="flex flex-shrink-0 gap-1">
+                <button
+                  type="button"
+                  class="text-[9px] font-bold uppercase tracking-wide px-2 py-1 rounded-md border transition-colors"
+                  :class="spatialViewMode === 'heat'
+                    ? 'bg-red-500/20 border-red-400/40 text-red-200'
+                    : 'bg-black/30 border-white/10 text-gray-500'"
+                  @click="spatialViewMode = 'heat'"
+                >Heat</button>
+                <button
+                  type="button"
+                  class="text-[9px] font-bold uppercase tracking-wide px-2 py-1 rounded-md border transition-colors"
+                  :class="spatialViewMode === 'sites'
+                    ? 'bg-red-500/20 border-red-400/40 text-red-200'
+                    : 'bg-black/30 border-white/10 text-gray-500'"
+                  @click="spatialViewMode = 'sites'"
+                >Sites</button>
+                <button
+                  type="button"
+                  class="text-[9px] font-bold uppercase tracking-wide px-2 py-1 rounded-md border transition-colors"
+                  :class="spatialViewMode === 'dots'
+                    ? 'bg-white/10 border-white/20 text-white'
+                    : 'bg-black/30 border-white/10 text-gray-500'"
+                  @click="spatialViewMode = 'dots'"
+                >Dots</button>
+              </div>
             </div>
+
             <MatchSpatialMinimap
-              :summary="spatialSummary"
+              :summary="displaySpatialSummary"
               :map-name="timeline?.map"
-              :active-index="activeSpatialIndex"
+              :active-index="activeSpatialDisplayIndex"
               :show-legend="false"
-              :show-heatmap="deathCount >= 2"
+              :show-heatmap="spatialViewMode !== 'dots'"
+              :heatmap-layer="spatialViewMode === 'sites' ? 'site' : 'callout'"
+              :round-filter="spatialRoundFilter"
+              show-round-slider
+              @update:round-filter="spatialRoundFilter = $event"
               @select="onSpatialSelect"
             />
+
+            <!-- Fine-tune if auto-sync is slightly off -->
+            <div
+              v-if="recordingId"
+              class="flex items-center justify-between gap-2 rounded-lg border border-white/10 bg-black/25 px-2 py-1.5"
+            >
+              <span class="text-[9px] text-gray-500">Timeline sync</span>
+              <div class="flex items-center gap-1">
+                <button
+                  type="button"
+                  class="text-[10px] font-bold px-2 py-0.5 rounded border border-white/10 text-gray-400 hover:text-white hover:border-white/20"
+                  title="Shift all events 1s earlier"
+                  @click="nudgeTimelineSync(-1000)"
+                >−1s</button>
+                <span class="text-[9px] tabular-nums text-gray-600 min-w-[3rem] text-center">
+                  {{ syncOffsetLabel }}
+                </span>
+                <button
+                  type="button"
+                  class="text-[10px] font-bold px-2 py-0.5 rounded border border-white/10 text-gray-400 hover:text-white hover:border-white/20"
+                  title="Shift all events 1s later"
+                  @click="nudgeTimelineSync(1000)"
+                >+1s</button>
+                <button
+                  v-if="videoSyncOffsetMs"
+                  type="button"
+                  class="text-[9px] px-1.5 py-0.5 rounded text-gray-600 hover:text-gray-300"
+                  @click="resetTimelineSync"
+                >Reset</button>
+              </div>
+            </div>
+
             <p class="text-[10px] text-gray-500 leading-relaxed">
-              Click a red zone or death chip to jump to that moment in the VOD.
+              Click a {{ spatialViewMode === 'dots' ? 'dot' : 'zone' }} or death chip to jump to that moment (with lead-up).
             </p>
             <div class="flex gap-1 overflow-x-auto pb-0.5">
               <button
@@ -765,7 +830,7 @@
                 :class="activeSpatialIndex === item.index
                   ? 'bg-red-500/25 border-red-400/50 text-white'
                   : 'bg-black/30 border-white/10 text-gray-400 hover:border-red-500/30'"
-                @click="onSpatialSelect(item.ev, item.index)"
+                @click="onSpatialSelect(item.ev, item.displayIndex)"
               >
                 R{{ item.ev.round + 1 }} · {{ item.ev.callout }}
               </button>
@@ -891,6 +956,7 @@ interface RecordingTimeline {
   spikeDetonations?: Array<{ videoOffsetMs?: number; round?: number }>
   firstBloods?: Array<{ killerName: string; victimName: string; killerPuuid?: string; victimPuuid?: string; round?: number }>
   spatialSummary?: MatchSpatialSummary | null
+  videoSyncOffsetMs?: number
 }
 
 interface AnalysisDetail {
@@ -925,6 +991,10 @@ const activeEventNotif = ref<TimelineEvent | null>(null)
 const showScoreboard = ref(false)
 const showInsightsPanel = ref(true)
 const activeSpatialIndex = ref<number | null>(null)
+const recordingId = ref<string | null>(null)
+const spatialViewMode = ref<'heat' | 'sites' | 'dots'>('heat')
+const spatialRoundFilter = ref<number | null>(null)
+const videoSyncOffsetMs = ref(0)
 const selectedRound = ref<RoundGroup | null>(null)
 const coachingDetail = ref<AnalysisDetail | null>(null)
 const ownPuuid = ref<string | null>(null)
@@ -1227,27 +1297,89 @@ const progressMarkers = computed((): ProgressMarker[] => {
 
 const spatialSummary = computed(() => timeline.value?.spatialSummary ?? null)
 
-const deathCount = computed(
-  () => (spatialSummary.value?.events ?? []).filter(e => e.type === 'death').length,
+const spatialEventList = computed(() => {
+  const events = spatialSummary.value?.events ?? []
+  const round = spatialRoundFilter.value
+  return events
+    .map((ev, index) => ({ ev, index }))
+    .filter(x => round == null || x.ev.round === round)
+})
+
+const displaySpatialSummary = computed((): MatchSpatialSummary | null => {
+  const base = spatialSummary.value
+  if (!base) return null
+  const filtered = spatialEventList.value.map(x => x.ev)
+  if (!filtered.length) return base
+  return { ...base, events: filtered }
+})
+
+const activeSpatialDisplayIndex = computed(() => {
+  if (activeSpatialIndex.value == null) return null
+  const idx = spatialEventList.value.findIndex(x => x.index === activeSpatialIndex.value)
+  return idx >= 0 ? idx : null
+})
+
+const displayDeathCount = computed(
+  () => spatialEventList.value.filter(x => x.ev.type === 'death').length,
 )
 
 const spatialDeathChips = computed(() =>
-  (spatialSummary.value?.events ?? [])
-    .map((ev, index) => ({ ev, index }))
+  spatialEventList.value
+    .map((item, displayIndex) => ({ ...item, displayIndex }))
     .filter(x => x.ev.type === 'death'),
 )
 
-function onSpatialSelect(ev: SpatialTimelineEvent, index: number) {
-  activeSpatialIndex.value = index
+const syncOffsetLabel = computed(() => {
+  const ms = videoSyncOffsetMs.value
+  if (!ms) return 'Auto'
+  const sign = ms > 0 ? '+' : ''
+  return `${sign}${(ms / 1000).toFixed(1)}s`
+})
+
+function preRollSeconds(type: string): number {
+  return type === 'death' ? DEATH_PRE_ROLL_SECONDS : EVENT_PRE_ROLL_SECONDS
+}
+
+function onSpatialSelect(ev: SpatialTimelineEvent, displayIndex: number) {
+  const item = spatialEventList.value[displayIndex]
+  activeSpatialIndex.value = item?.index ?? null
+  const preRoll = preRollSeconds(ev.type)
   if (ev.videoOffsetMs != null && !isNaN(ev.videoOffsetMs)) {
-    seekToTime(Math.max(0, ev.videoOffsetMs / 1000 - EVENT_PRE_ROLL_SECONDS))
+    seekToTime(Math.max(0, ev.videoOffsetMs / 1000 - preRoll))
     return
   }
   const death = timeline.value?.deaths?.find(
     d => d.round === ev.round && d.victimName === 'You',
   )
   if (death?.videoOffsetMs != null) {
-    seekToTime(Math.max(0, death.videoOffsetMs / 1000 - EVENT_PRE_ROLL_SECONDS))
+    seekToTime(Math.max(0, death.videoOffsetMs / 1000 - DEATH_PRE_ROLL_SECONDS))
+  }
+}
+
+async function reloadTimelineFromStore() {
+  if (!recordingId.value) return
+  const fresh = await window.api.recordings.getTimeline(recordingId.value)
+  if (fresh) {
+    timeline.value = fresh
+    videoSyncOffsetMs.value = fresh.videoSyncOffsetMs ?? 0
+  }
+}
+
+async function nudgeTimelineSync(deltaMs: number) {
+  if (!recordingId.value) return
+  const res = await window.api.recordings.nudgeSync(recordingId.value, deltaMs)
+  if (res.ok) {
+    videoSyncOffsetMs.value = res.videoSyncOffsetMs ?? 0
+    await reloadTimelineFromStore()
+  }
+}
+
+async function resetTimelineSync() {
+  if (!recordingId.value) return
+  const res = await window.api.recordings.resetSync(recordingId.value)
+  if (res.ok) {
+    videoSyncOffsetMs.value = 0
+    await reloadTimelineFromStore()
   }
 }
 
@@ -1301,7 +1433,7 @@ function isNearEvent(event: TimelineEvent): boolean {
   // Highlight while in pre-roll window or at the kill/death moment
   return (
     Math.abs(currentTime.value - eventSec) < 1
-    || (currentTime.value >= eventSec - EVENT_PRE_ROLL_SECONDS && currentTime.value <= eventSec + 0.5)
+    || (currentTime.value >= eventSec - preRollSeconds(event.type) && currentTime.value <= eventSec + 0.5)
   )
 }
 
@@ -1319,8 +1451,9 @@ function formatSeconds(s: number, zeroAsDash = false): string {
   return `${m}:${String(Math.floor(s % 60)).padStart(2, '0')}`
 }
 
-/** Seconds to rewind before a kill/death so the user sees lead-up (markers stay at true event time). */
+/** Seconds to rewind before an event so the user sees lead-up (markers stay at true event time). */
 const EVENT_PRE_ROLL_SECONDS = 2
+const DEATH_PRE_ROLL_SECONDS = 4
 
 function togglePlay() {
   if (!videoEl.value) return
@@ -1355,7 +1488,7 @@ function seekToTime(timeSeconds: number) {
 }
 
 function jumpToMarker(marker: ProgressMarker) {
-  const preRoll = ['kill', 'death'].includes(marker.kind) ? EVENT_PRE_ROLL_SECONDS : 0
+  const preRoll = ['kill', 'death'].includes(marker.kind) ? preRollSeconds(marker.kind) : 0
   seekToTime(Math.max(0, marker.timeSeconds - preRoll))
 }
 
@@ -1371,7 +1504,10 @@ function seekToEvent(event: TimelineEvent) {
   const eventSec = eventVideoSeconds(event)
   if (!videoEl.value || eventSec == null) return
   const wasPlaying = !videoEl.value.paused
-  videoEl.value.currentTime = Math.max(0, eventSec - EVENT_PRE_ROLL_SECONDS)
+  const preRoll = ['kill', 'death'].includes(event.type)
+    ? preRollSeconds(event.type)
+    : 0
+  videoEl.value.currentTime = Math.max(0, eventSec - preRoll)
   if (wasPlaying) videoEl.value.play().catch(e => {
     if (e.name !== 'AbortError') console.error('[VOD] play() failed:', e)
   })
@@ -1454,7 +1590,9 @@ onMounted(async () => {
     timeline.value = pendingTimeline.value
     pendingTimeline.value = null
   } else if (id) {
+    recordingId.value = id
     timeline.value = await window.api.recordings.getTimeline(id)
+    videoSyncOffsetMs.value = timeline.value?.videoSyncOffsetMs ?? 0
   }
 
   const numericTimelineId = Number(timelineId)
@@ -1471,6 +1609,18 @@ onMounted(async () => {
       const ownDeath = timeline.value.deaths?.find((d: any) => d.victimName === 'You')
       if (ownDeath?.victimPuuid) ownPuuid.value = ownDeath.victimPuuid
     }
+  }
+
+  const seekMs = Number(route.query.seekMs)
+  if (!Number.isNaN(seekMs) && seekMs >= 0) {
+    const trySeek = () => {
+      if (videoEl.value && duration.value > 0) {
+        seekToTime(seekMs / 1000)
+      } else {
+        setTimeout(trySeek, 200)
+      }
+    }
+    trySeek()
   }
 
   window.addEventListener('keydown', handleKeyDown)

@@ -425,8 +425,13 @@ onMounted(async () => {
 
   // Navigate to a tab when the main process requests it (e.g. from post-game "View Clips" button)
   const navCleanup = window.api.on('app:navigate', (...args: unknown[]) => {
-    const path = args[0] as string
-    if (path) router.push(path).catch(() => {})
+    const payload = args[0]
+    if (typeof payload === 'string' && payload) {
+      router.push(payload).catch(() => {})
+    } else if (payload && typeof payload === 'object' && 'path' in payload) {
+      const { path, query } = payload as { path: string; query?: Record<string, string> }
+      if (path) router.push({ path, query }).catch(() => {})
+    }
   })
   ;(window as Window & { _appNavCleanup?: () => void })._appNavCleanup = navCleanup
 })
