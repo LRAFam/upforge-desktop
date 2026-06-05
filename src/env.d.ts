@@ -178,6 +178,7 @@ export interface RecordingTimeline {
     competitiveTierName: string
     abilityCasts: { grenade: number; ability1: number; ability2: number; ultimate: number } | null
   }>
+  spatialSummary?: import('./lib/spatial-types').MatchSpatialSummary | null
 }
 
 export interface ValorantStats {

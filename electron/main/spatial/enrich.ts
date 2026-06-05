@@ -111,6 +111,7 @@ function buildHotspots(events: SpatialTimelineEvent[], type: 'death' | 'kill'): 
 
 function buildPatterns(
   deaths: SpatialTimelineEvent[],
+  roundCount?: number,
 ): string[] {
   const patterns: string[] = []
   const byCallout = new Map<string, SpatialTimelineEvent[]>()
@@ -121,17 +122,33 @@ function buildPatterns(
     byCallout.set(d.callout, list)
   }
 
+  const roundSuffix = roundCount && roundCount > 0 ? ` in ${roundCount} rounds` : ''
+
   for (const [callout, list] of byCallout) {
     if (list.length < 2) continue
     const isolatedCount = list.filter((d) => d.isolated).length
     if (isolatedCount >= 2) {
-      patterns.push(`${list.length} deaths @ ${callout} (${isolatedCount} without trade range)`)
+      patterns.push(
+        `${list.length} deaths @ ${callout}${roundSuffix} (${isolatedCount} without trade range)`,
+      )
     } else {
-      patterns.push(`${list.length} deaths @ ${callout}`)
+      patterns.push(`${list.length} deaths @ ${callout}${roundSuffix}`)
     }
   }
 
   return patterns.slice(0, 6)
+}
+
+function buildHeatmapInsight(
+  deathHotspots: SpatialHotspot[],
+  roundCount?: number,
+): string | null {
+  const top = deathHotspots[0]
+  if (!top || top.count < 2) return null
+  if (roundCount && roundCount > 0) {
+    return `You died @ ${top.callout} ${top.count}× in ${roundCount} rounds`
+  }
+  return `You died @ ${top.callout} ${top.count} times this match`
 }
 
 export function buildMatchSpatialSummary(match: MatchData): MatchSpatialSummary | null {
@@ -191,13 +208,17 @@ export function buildMatchSpatialSummary(match: MatchData): MatchSpatialSummary 
 
   const deaths = events.filter((e) => e.type === 'death')
   const kills = events.filter((e) => e.type === 'kill')
+  const roundCount = match.roundSummaries?.length ?? undefined
+  const deathHotspots = buildHotspots(events, 'death')
 
   return {
     map,
     events,
-    deathHotspots: buildHotspots(events, 'death'),
+    deathHotspots,
     killHotspots: buildHotspots(events, 'kill'),
-    patterns: buildPatterns(deaths),
+    roundCount,
+    heatmapInsight: buildHeatmapInsight(deathHotspots, roundCount),
+    patterns: buildPatterns(deaths, roundCount),
   }
 }
 

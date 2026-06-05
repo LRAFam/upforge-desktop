@@ -9,11 +9,29 @@ const props = withDefaults(defineProps<{
   /** Highlight one event index */
   activeIndex?: number | null
   showLegend?: boolean
+  /** Death density overlay (overlapping blobs = hotter zones) */
+  showHeatmap?: boolean
   /** Export-friendly size */
   large?: boolean
 }>(), {
   showLegend: true,
+  showHeatmap: true,
   large: false,
+})
+
+const deathEvents = computed(() =>
+  (props.summary?.events ?? []).filter((e) => e.type === 'death'),
+)
+
+const useHeatmap = computed(() =>
+  props.showHeatmap && deathEvents.value.length >= 2,
+)
+
+const activeEvent = computed(() => {
+  const idx = props.activeIndex
+  const events = props.summary?.events
+  if (idx == null || !events?.length) return null
+  return events[idx] ?? null
 })
 
 const emit = defineEmits<{
@@ -29,6 +47,25 @@ const minimapUrl = computed(() => {
 })
 
 const size = computed(() => (props.large ? 640 : 320))
+
+function drawDeathHeatmap(ctx: CanvasRenderingContext2D, s: number, deaths: SpatialTimelineEvent[]) {
+  const blobR = props.large ? 36 : 22
+  ctx.save()
+  ctx.globalCompositeOperation = 'lighter'
+  for (const ev of deaths) {
+    const px = ev.norm.x * s
+    const py = ev.norm.y * s
+    const grad = ctx.createRadialGradient(px, py, 0, px, py, blobR)
+    grad.addColorStop(0, 'rgba(239, 68, 68, 0.75)')
+    grad.addColorStop(0.45, 'rgba(239, 68, 68, 0.35)')
+    grad.addColorStop(1, 'rgba(239, 68, 68, 0)')
+    ctx.fillStyle = grad
+    ctx.beginPath()
+    ctx.arc(px, py, blobR, 0, Math.PI * 2)
+    ctx.fill()
+  }
+  ctx.restore()
+}
 
 function draw() {
   const canvas = canvasRef.value
@@ -49,12 +86,16 @@ function draw() {
     ctx.clearRect(0, 0, s, s)
     ctx.drawImage(img, 0, 0, s, s)
 
+    if (useHeatmap.value) {
+      drawDeathHeatmap(ctx, s, deathEvents.value)
+    }
+
     summary.events.forEach((ev, idx) => {
       const px = ev.norm.x * s
       const py = ev.norm.y * s
       const isDeath = ev.type === 'death'
       const active = props.activeIndex === idx
-      const r = active ? 10 : isDeath ? 7 : 6
+      const r = active ? 10 : isDeath ? (useHeatmap.value ? 5 : 7) : 6
 
       ctx.beginPath()
       ctx.arc(px, py, r + 2, 0, Math.PI * 2)
@@ -72,13 +113,47 @@ function draw() {
       ctx.fillRect(0, s - 28, s, 28)
       ctx.fillStyle = '#fff'
       ctx.font = '11px system-ui, sans-serif'
-      ctx.fillText('● Deaths   ● Kills', 10, s - 10)
+      const legend = useHeatmap.value
+        ? 'Heat = death density   ● Kills'
+        : '● Deaths   ● Kills'
+      ctx.fillText(legend, 10, s - 10)
+    }
+
+    const active = activeEvent.value
+    if (active) {
+      const ax = active.norm.x * s
+      const ay = active.norm.y * s
+      const label = `${active.type === 'death' ? 'Died' : 'Kill'} · ${active.callout}`
+      ctx.font = 'bold 12px system-ui, sans-serif'
+      const tw = ctx.measureText(label).width
+      const pad = 8
+      const bx = Math.min(Math.max(ax - tw / 2 - pad, 4), s - tw - pad * 2 - 4)
+      const by = Math.max(ay - 36, 8)
+      ctx.fillStyle = 'rgba(0,0,0,0.82)'
+      roundRect(ctx, bx, by, tw + pad * 2, 22, 6)
+      ctx.fill()
+      ctx.fillStyle = active.type === 'death' ? '#fca5a5' : '#86efac'
+      ctx.fillText(label, bx + pad, by + 15)
     }
   }
   img.src = url
 }
 
-watch(() => [props.summary, props.activeIndex, props.large], draw, { deep: true })
+function roundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number) {
+  ctx.beginPath()
+  ctx.moveTo(x + r, y)
+  ctx.lineTo(x + w - r, y)
+  ctx.quadraticCurveTo(x + w, y, x + w, y + r)
+  ctx.lineTo(x + w, y + h - r)
+  ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h)
+  ctx.lineTo(x + r, y + h)
+  ctx.quadraticCurveTo(x, y + h, x, y + h - r)
+  ctx.lineTo(x, y + r)
+  ctx.quadraticCurveTo(x, y, x + r, y)
+  ctx.closePath()
+}
+
+watch(() => [props.summary, props.activeIndex, props.large, props.showHeatmap], draw, { deep: true })
 onMounted(draw)
 
 function onClick(e: MouseEvent) {
@@ -127,11 +202,5 @@ defineExpose({ exportPng })
     >
       No spatial data for this match
     </div>
-    <ul v-if="summary?.patterns?.length" class="mt-3 space-y-1.5 text-xs text-gray-400">
-      <li v-for="(p, i) in summary.patterns.slice(0, 4)" :key="i" class="flex gap-2">
-        <span class="text-red-400 shrink-0">▸</span>
-        <span>{{ p }}</span>
-      </li>
-    </ul>
   </div>
 </template>

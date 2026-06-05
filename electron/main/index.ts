@@ -1400,6 +1400,7 @@ async function doUploadAndAnalyse(
           spatial_summary: (status.result as Record<string, unknown>).spatial_summary
             ?? timeline?.spatialSummary
             ?? null,
+          category_scores: (status.result as Record<string, unknown>).category_scores ?? [],
           session_start: sessionStart,
           kills: timeline?.finalStats?.kills ?? null,
           deaths: timeline?.finalStats?.deaths ?? null,
@@ -1920,6 +1921,7 @@ app.whenReady().then(async () => {
       spikeDefuses: tl?.spikeDefuses ?? [],
       spikeDetonations: tl?.spikeDetonations ?? [],
       firstBloods: tl?.firstBloods ?? [],
+      spatialSummary: tl?.spatialSummary ?? null,
     }
   })
 

@@ -733,6 +733,45 @@
           </button>
         </div>
         <div class="flex-1 overflow-y-auto scrollbar-hide px-4 py-4 space-y-3">
+          <!-- Spatial death heatmap → seek VOD -->
+          <div
+            v-if="spatialSummary?.events?.length"
+            class="rounded-2xl border border-red-500/25 bg-red-500/[0.06] p-3 space-y-2"
+          >
+            <div>
+              <p class="text-[10px] font-black uppercase tracking-[0.24em] text-red-400">Match Intel</p>
+              <p
+                v-if="spatialSummary.heatmapInsight"
+                class="text-xs font-bold text-white leading-snug mt-1"
+              >{{ spatialSummary.heatmapInsight }}</p>
+            </div>
+            <MatchSpatialMinimap
+              :summary="spatialSummary"
+              :map-name="timeline?.map"
+              :active-index="activeSpatialIndex"
+              :show-legend="false"
+              :show-heatmap="deathCount >= 2"
+              @select="onSpatialSelect"
+            />
+            <p class="text-[10px] text-gray-500 leading-relaxed">
+              Click a red zone or death chip to jump to that moment in the VOD.
+            </p>
+            <div class="flex gap-1 overflow-x-auto pb-0.5">
+              <button
+                v-for="item in spatialDeathChips"
+                :key="item.index"
+                type="button"
+                class="flex-shrink-0 text-[10px] font-semibold px-2 py-1 rounded-lg border transition-all"
+                :class="activeSpatialIndex === item.index
+                  ? 'bg-red-500/25 border-red-400/50 text-white'
+                  : 'bg-black/30 border-white/10 text-gray-400 hover:border-red-500/30'"
+                @click="onSpatialSelect(item.ev, item.index)"
+              >
+                R{{ item.ev.round + 1 }} · {{ item.ev.callout }}
+              </button>
+            </div>
+          </div>
+
           <div
             v-for="(note, index) in coachingNotes"
             :key="`${index}-${note}`"
@@ -758,6 +797,8 @@ import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { getWeaponImage, getAgentImage, getAbilityIcon } from '../lib/valorant'
 import { pendingTimeline } from '../stores/pendingTimeline'
+import MatchSpatialMinimap from '../components/MatchSpatialMinimap.vue'
+import type { MatchSpatialSummary, SpatialTimelineEvent } from '../lib/spatial-types'
 
 // Round outcome icons — bundled locally to avoid CSP/CDN issues
 import iconDiffuseWin from '../assets/round-icons/diffusewin1.png'
@@ -849,6 +890,7 @@ interface RecordingTimeline {
   spikeDefuses?: Array<{ videoOffsetMs?: number; round?: number; defuser?: string }>
   spikeDetonations?: Array<{ videoOffsetMs?: number; round?: number }>
   firstBloods?: Array<{ killerName: string; victimName: string; killerPuuid?: string; victimPuuid?: string; round?: number }>
+  spatialSummary?: MatchSpatialSummary | null
 }
 
 interface AnalysisDetail {
@@ -882,6 +924,7 @@ const playbackSpeed = ref(1)
 const activeEventNotif = ref<TimelineEvent | null>(null)
 const showScoreboard = ref(false)
 const showInsightsPanel = ref(true)
+const activeSpatialIndex = ref<number | null>(null)
 const selectedRound = ref<RoundGroup | null>(null)
 const coachingDetail = ref<AnalysisDetail | null>(null)
 const ownPuuid = ref<string | null>(null)
@@ -1181,6 +1224,32 @@ const progressMarkers = computed((): ProgressMarker[] => {
 
   return markers.filter(marker => marker.percent >= 0 && marker.percent <= 100)
 })
+
+const spatialSummary = computed(() => timeline.value?.spatialSummary ?? null)
+
+const deathCount = computed(
+  () => (spatialSummary.value?.events ?? []).filter(e => e.type === 'death').length,
+)
+
+const spatialDeathChips = computed(() =>
+  (spatialSummary.value?.events ?? [])
+    .map((ev, index) => ({ ev, index }))
+    .filter(x => x.ev.type === 'death'),
+)
+
+function onSpatialSelect(ev: SpatialTimelineEvent, index: number) {
+  activeSpatialIndex.value = index
+  if (ev.videoOffsetMs != null && !isNaN(ev.videoOffsetMs)) {
+    seekToTime(Math.max(0, ev.videoOffsetMs / 1000 - EVENT_PRE_ROLL_SECONDS))
+    return
+  }
+  const death = timeline.value?.deaths?.find(
+    d => d.round === ev.round && d.victimName === 'You',
+  )
+  if (death?.videoOffsetMs != null) {
+    seekToTime(Math.max(0, death.videoOffsetMs / 1000 - EVENT_PRE_ROLL_SECONDS))
+  }
+}
 
 const coachingNotes = computed(() => {
   const detail = coachingDetail.value

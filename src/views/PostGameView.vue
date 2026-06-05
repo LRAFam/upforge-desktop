@@ -225,182 +225,102 @@
           </div>
         </div>
 
-        <!-- Hero card: map splash bg + agent portrait + result -->
-        <div
-          class="relative overflow-hidden rounded-2xl hero-animate-in"
-          :style="agentAccentColor ? { border: `1px solid ${agentAccentColor}35` } : { border: '1px solid rgba(255,255,255,0.08)' }"
-        >
-          <!-- Map splash background -->
-          <div class="absolute inset-0">
-            <img
-              v-if="mapSplashUrl"
-              :src="mapSplashUrl"
-              class="w-full h-full object-cover object-center"
-              style="filter: blur(2px) brightness(0.25) saturate(1.4); transform: scale(1.05);"
-            />
-            <div
-              v-else
-              class="w-full h-full"
-              :style="agentAccentColor ? { background: `linear-gradient(135deg, ${agentAccentColor}18, transparent)` } : { background: 'rgba(255,255,255,0.02)' }"
-            />
-            <!-- Gradient overlay for readability -->
-            <div class="absolute inset-0" style="background: linear-gradient(to right, rgba(0,0,0,0.75) 0%, rgba(0,0,0,0.35) 100%);"/>
-          </div>
-
-          <div class="relative flex items-center gap-4 p-4">
-            <!-- Agent portrait -->
-            <div
-              class="relative w-20 h-20 rounded-xl overflow-hidden flex-shrink-0"
-              :style="agentAccentColor
-                ? { border: `2px solid ${agentAccentColor}55`, boxShadow: `0 0 18px ${agentAccentColor}30` }
-                : { border: '1px solid rgba(255,255,255,0.12)' }"
-            >
-              <img v-if="agentImageUrl" :src="agentImageUrl" class="w-full h-full object-cover object-top" />
-              <div v-else class="w-full h-full bg-white/[0.06] flex items-center justify-center">
-                <svg class="w-8 h-8 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
-                </svg>
-              </div>
-              <!-- Map minimap badge -->
-              <div v-if="mapMinimapUrl" class="absolute bottom-1 right-1 w-6 h-6 rounded-md overflow-hidden border border-white/20 bg-black/60">
-                <img :src="mapMinimapUrl" class="w-full h-full object-cover" />
-              </div>
-            </div>
-
-            <!-- Match info -->
-            <div class="flex-1 min-w-0 space-y-1.5">
-              <p class="text-base font-black text-white leading-tight tracking-tight">Your debrief is ready</p>
-              <div class="flex flex-wrap items-center gap-1.5">
-                <span v-if="gameInfo.agent" class="text-xs font-semibold text-gray-300">{{ gameInfo.agent }}</span>
-                <span v-if="gameInfo.agent && gameInfo.map" class="text-gray-600 text-xs">·</span>
-                <span v-if="gameInfo.map" class="text-xs text-gray-500">{{ gameInfo.map }}</span>
-              </div>
-              <div class="flex items-center gap-2 flex-wrap">
-                <!-- Win/loss badge — only when real outcome tracked -->
-                <span
-                  v-if="hasMatchResult"
-                  class="inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-black tracking-widest match-result-badge"
-                  :class="result?.match_result === 'win' ? 'match-badge-win' : 'match-badge-loss'"
-                >{{ result?.match_result === 'win' ? 'WIN' : 'LOSS' }}</span>
-                <!-- Score — only when actually tracked -->
-                <span
-                  v-if="hasTrackedScore"
-                  class="rounded-full border border-white/[0.12] bg-black/30 px-2.5 py-0.5 text-xs font-black tabular-nums text-gray-200"
-                >{{ result?.ally_score }}–{{ result?.enemy_score }}</span>
-                <!-- AI score grade -->
-                <span
-                  v-if="result?.overall_score"
-                  class="text-xs font-bold px-2 py-0.5 rounded-full score-grade-in"
-                  :class="scoreGradeBadgeClass(result.overall_score)"
-                >{{ scoreGrade(result.overall_score) }}</span>
-              </div>
-            </div>
-
-            <!-- AI numeric score -->
-            <div v-if="result?.overall_score" class="text-right flex-shrink-0">
-              <span class="text-3xl font-black tabular-nums score-reveal" :class="scoreClass(result.overall_score)">{{ result.overall_score * 10 }}</span>
-              <div class="text-[10px] text-gray-500 font-semibold mt-0.5">{{ scoreLabel(result.overall_score) }}</div>
-            </div>
-          </div>
-        </div>
-
-        <!-- Score bar -->
-        <div v-if="result?.overall_score" class="w-full h-1.5 bg-white/[0.06] rounded-full overflow-hidden">
+        <!-- Compact match header -->
+        <div class="flex items-center gap-3 px-1">
           <div
-            class="h-full rounded-full transition-all duration-1000"
-            :class="scoreBarClass(result.overall_score)"
-            :style="{ width: `${result.overall_score}%` }"
-          />
-        </div>
-
-        <!-- Spatial minimap (Riot kill coordinates → callouts) -->
-        <div
-          v-if="spatialSummary?.events?.length"
-          class="rounded-2xl border border-white/10 bg-white/[0.02] p-4 space-y-3"
-        >
-          <div class="flex items-center justify-between gap-2">
-            <div>
-              <p class="text-xs font-semibold uppercase tracking-wider text-gray-500">Match map</p>
-              <p class="text-[10px] text-gray-600 mt-0.5">Red = deaths · Green = kills (Riot API positions)</p>
-            </div>
-            <button
-              type="button"
-              class="text-[10px] font-bold uppercase tracking-wider text-gray-400 hover:text-white border border-white/10 rounded-lg px-2.5 py-1.5 transition-colors"
-              @click="copySpatialMapImage"
-            >
-              Copy for social
-            </button>
-          </div>
-          <MatchSpatialMinimap
-            ref="spatialMinimapRef"
-            :summary="spatialSummary"
-            :map-name="gameInfo.map"
-            :active-index="activeSpatialIndex"
-            :large="true"
-            @select="onSpatialEventSelect"
-          />
-          <div v-if="spatialDeathList.length" class="space-y-1 max-h-28 overflow-y-auto">
-            <button
-              v-for="item in spatialDeathList"
-              :key="item.index"
-              type="button"
-              class="w-full text-left text-[11px] px-2 py-1.5 rounded-lg border border-transparent hover:border-red-500/20 hover:bg-red-500/5 text-gray-400 transition-colors"
-              :class="activeSpatialIndex === item.index ? 'border-red-500/30 bg-red-500/10' : ''"
-              @click="activeSpatialIndex = item.index"
-            >
-              <span class="text-red-400 font-semibold">R{{ item.ev.round + 1 }}</span>
-              <span class="text-gray-500 mx-1">·</span>
-              {{ item.ev.callout }}
-              <span v-if="item.ev.isolated" class="text-red-300/80 ml-1">(no trade)</span>
-            </button>
-          </div>
-        </div>
-
-        <!-- AI Verdict (one-liner from analysis) -->
-        <div v-if="result?.verdict" class="flex items-start gap-2 px-3 py-2.5 bg-white/[0.02] border border-white/[0.09] rounded-xl">
-          <svg class="w-3.5 h-3.5 text-red-400/70 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"/>
-          </svg>
-          <p class="text-[11px] text-gray-400 leading-relaxed italic">{{ result.verdict }}</p>
-        </div>
-
-        <!-- KDA — only when kills are tracked -->
-        <div
-          v-if="result?.kills != null && (result.kills > 0 || result.deaths != null)"
-          class="grid grid-cols-3 gap-2"
-        >
-          <div class="rounded-xl border border-green-500/20 bg-green-500/[0.08] px-3 py-2.5 text-center stat-chip-in">
-            <p class="text-[10px] font-semibold uppercase tracking-[0.24em] text-green-300/70">Kills</p>
-            <p class="mt-0.5 text-2xl font-black tabular-nums text-green-400">{{ result.kills }}</p>
-          </div>
-          <div class="rounded-xl border border-red-500/20 bg-red-500/[0.08] px-3 py-2.5 text-center stat-chip-in">
-            <p class="text-[10px] font-semibold uppercase tracking-[0.24em] text-red-300/70">Deaths</p>
-            <p class="mt-0.5 text-2xl font-black tabular-nums text-red-400">{{ result.deaths ?? '?' }}</p>
-          </div>
-          <div class="rounded-xl border border-blue-500/20 bg-blue-500/[0.08] px-3 py-2.5 text-center stat-chip-in">
-            <p class="text-[10px] font-semibold uppercase tracking-[0.24em] text-blue-300/70">Assists</p>
-            <p class="mt-0.5 text-2xl font-black tabular-nums text-blue-400">{{ result.assists ?? '?' }}</p>
-          </div>
-        </div>
-
-        <!-- Improvements list -->
-        <div v-if="improvements.length" class="space-y-1.5">
-          <p class="text-xs font-semibold uppercase tracking-wider text-gray-600">Focus on</p>
-          <div
-            v-for="(imp, i) in improvements"
-            :key="i"
-            class="flex items-start gap-2 px-3 py-2 bg-white/[0.03] border border-white/[0.10] rounded-xl"
+            class="w-11 h-11 rounded-lg overflow-hidden flex-shrink-0"
+            :style="agentAccentColor ? { border: `1px solid ${agentAccentColor}45` } : { border: '1px solid rgba(255,255,255,0.1)' }"
           >
-            <span class="text-xs font-bold w-4 flex-shrink-0 mt-0.5" :class="i === 0 ? 'text-red-400' : 'text-gray-600'">{{ i + 1 }}</span>
-            <p class="text-xs text-gray-300 leading-relaxed">{{ imp }}</p>
+            <img v-if="agentImageUrl" :src="agentImageUrl" class="w-full h-full object-cover object-top" />
+          </div>
+          <div class="flex-1 min-w-0">
+            <p class="text-sm font-black text-white">Your debrief is ready</p>
+            <p class="text-[11px] text-gray-500">{{ [gameInfo.agent, gameInfo.map].filter(Boolean).join(' · ') }}</p>
+          </div>
+          <span
+            v-if="result?.overall_score && !spatialSummary?.events?.length"
+            class="text-xl font-black tabular-nums"
+            :class="scoreClass(result.overall_score)"
+          >{{ result.overall_score * 10 }}</span>
+        </div>
+
+        <!-- Visual-first: Match Intel (map hero) -->
+        <PostGameIntelHero
+          v-if="spatialSummary?.events?.length"
+          ref="intelHeroRef"
+          :summary="spatialSummary"
+          :map-name="gameInfo.map"
+          :agent-accent="agentAccentColor"
+          :overall-score="result?.overall_score ?? null"
+          :match-result="result?.match_result ?? null"
+          :kills="result?.kills ?? null"
+          :deaths="result?.deaths ?? null"
+          :primary-insight="primaryInsight"
+          :category-scores="categoryScores"
+          :active-spatial-index="activeSpatialIndex"
+          @update:active-spatial-index="activeSpatialIndex = $event"
+          @copy-map="copySpatialMapImage"
+        />
+
+        <!-- No spatial data fallback -->
+        <div v-else class="space-y-3">
+          <div
+            v-if="primaryInsight"
+            class="rounded-xl border border-red-500/25 bg-gradient-to-r from-red-500/10 to-transparent px-4 py-3"
+          >
+            <p class="text-[10px] font-black uppercase tracking-[0.2em] text-red-400 mb-1">Fix this first</p>
+            <p class="text-sm font-bold text-white leading-snug">{{ primaryInsight }}</p>
+          </div>
+          <div v-if="result?.overall_score" class="w-full h-1.5 bg-white/[0.06] rounded-full overflow-hidden">
+            <div class="h-full rounded-full" :class="scoreBarClass(result.overall_score)" :style="{ width: `${result.overall_score}%` }" />
           </div>
         </div>
-        <!-- Fallback: top issue only -->
-        <div v-else-if="topIssue" class="flex items-start gap-2 px-3 py-2 bg-red-500/[0.07] border border-red-500/15 rounded-xl">
-          <svg class="w-3.5 h-3.5 text-red-400 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
+
+        <!-- Collapsed text wall — optional deep dive -->
+        <button
+          v-if="hasDeepDiveContent"
+          type="button"
+          class="w-full flex items-center justify-between px-3 py-2.5 rounded-xl border border-white/10 bg-white/[0.02] text-left hover:bg-white/[0.04] transition-colors"
+          @click="showFullDetails = !showFullDetails"
+        >
+          <span class="text-xs font-semibold text-gray-400">
+            {{ showFullDetails ? 'Hide' : 'Read' }} full AI breakdown
+          </span>
+          <svg class="w-4 h-4 text-gray-500 transition-transform" :class="showFullDetails ? 'rotate-180' : ''" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
           </svg>
-          <p class="text-xs text-gray-300 leading-relaxed">{{ topIssue }}</p>
+        </button>
+
+        <div v-if="showFullDetails && hasDeepDiveContent" class="space-y-2.5 rounded-xl border border-white/10 bg-white/[0.02] p-3">
+          <div v-if="result?.verdict" class="text-[11px] text-gray-400 italic leading-relaxed">{{ result.verdict }}</div>
+          <div
+            v-if="result?.kills != null && (result.kills > 0 || result.deaths != null)"
+            class="grid grid-cols-3 gap-2"
+          >
+            <div class="rounded-lg border border-green-500/20 bg-green-500/[0.08] px-2 py-2 text-center">
+              <p class="text-[9px] uppercase text-green-300/70">K</p>
+              <p class="text-lg font-black text-green-400">{{ result.kills }}</p>
+            </div>
+            <div class="rounded-lg border border-red-500/20 bg-red-500/[0.08] px-2 py-2 text-center">
+              <p class="text-[9px] uppercase text-red-300/70">D</p>
+              <p class="text-lg font-black text-red-400">{{ result.deaths ?? '?' }}</p>
+            </div>
+            <div class="rounded-lg border border-blue-500/20 bg-blue-500/[0.08] px-2 py-2 text-center">
+              <p class="text-[9px] uppercase text-blue-300/70">A</p>
+              <p class="text-lg font-black text-blue-400">{{ result.assists ?? '?' }}</p>
+            </div>
+          </div>
+          <div v-if="improvements.length" class="space-y-1.5">
+            <p class="text-[10px] font-semibold uppercase tracking-wider text-gray-600">Also focus on</p>
+            <p v-for="(imp, i) in improvements.slice(0, 3)" :key="i" class="text-[11px] text-gray-400 leading-relaxed">{{ imp }}</p>
+          </div>
+          <div v-if="result?.coaching_tags?.length" class="flex flex-wrap gap-1">
+            <span
+              v-for="tag in result.coaching_tags"
+              :key="tag"
+              class="text-[9px] px-2 py-0.5 rounded-full bg-red-500/10 text-red-400/80 border border-red-500/20 capitalize"
+            >{{ tag.replace(/_/g, ' ') }}</span>
+          </div>
         </div>
 
         <!-- Train This Now CTA — maps top weakness to a drill scenario -->
@@ -421,18 +341,6 @@
           </svg>
           <span>{{ trainerLaunching ? 'Launching trainer…' : `Train Now · ${SCENARIO_LABELS[trainScenario]}` }}</span>
         </button>
-
-        <!-- Coaching tags — areas flagged by AI -->
-        <div v-if="result?.coaching_tags?.length" class="space-y-1.5">
-          <p class="text-[9px] font-semibold uppercase tracking-widest text-gray-600">Areas flagged</p>
-          <div class="flex flex-wrap gap-1">
-            <span
-              v-for="tag in result.coaching_tags"
-              :key="tag"
-              class="text-[9px] font-semibold px-2 py-0.5 rounded-full bg-red-500/10 text-red-400/80 border border-red-500/20 capitalize"
-            >{{ tag.replace(/_/g, ' ') }}</span>
-          </div>
-        </div>
 
         <!-- Match data warning: shown when Riot capture failed -->
         <div
@@ -525,40 +433,22 @@
           </svg>
         </button>
 
-        <!-- Post-game debrief panel -->
-        <div
-          v-if="debriefLoading || debriefText || debriefFailed"
-          class="w-full rounded-xl border border-white/[0.08] bg-white/[0.03] overflow-hidden"
-        >
-          <div class="flex items-center gap-2 px-3 py-2 border-b border-white/[0.10]">
-            <svg class="w-3.5 h-3.5 text-purple-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"/>
+        <!-- Instant debrief — collapsed by default (text-heavy) -->
+        <div v-if="debriefLoading || debriefText || debriefFailed" class="rounded-xl border border-white/10 overflow-hidden">
+          <button
+            type="button"
+            class="w-full flex items-center justify-between px-3 py-2.5 bg-purple-500/5 hover:bg-purple-500/10 transition-colors"
+            @click="showDebrief = !showDebrief"
+          >
+            <span class="text-xs font-semibold text-purple-300">Instant debrief</span>
+            <svg class="w-4 h-4 text-gray-500" :class="showDebrief ? 'rotate-180' : ''" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
             </svg>
-            <span class="text-xs font-semibold text-purple-300">Instant Debrief</span>
-            <span class="text-xs text-gray-600 ml-auto">no VOD needed</span>
-          </div>
-          <div class="px-3 py-2.5">
-            <div v-if="debriefLoading && !debriefText" class="flex items-center gap-2 text-xs text-gray-500">
-              <svg class="w-3.5 h-3.5 animate-spin text-purple-400" fill="none" viewBox="0 0 24 24">
-                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
-                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
-              </svg>
-              <span>Generating your post-game debrief…</span>
-            </div>
-            <p v-else-if="debriefFailed" class="text-xs text-gray-500 italic">Debrief unavailable for this match — the AI service could not be reached. Try again after your next match.</p>
-            <template v-else>
-              <p class="text-xs text-gray-300 leading-relaxed whitespace-pre-wrap">{{ debriefText }}</p>
-              <div v-if="!debriefDiscordLinked" class="mt-2.5 flex items-center gap-2 px-2.5 py-2 rounded-lg bg-[#5865F2]/10 border border-[#5865F2]/20">
-                <svg class="w-3.5 h-3.5 text-[#5865F2] flex-shrink-0" viewBox="0 0 24 24" fill="currentColor">
-                  <path d="M20.317 4.37a19.791 19.791 0 00-4.885-1.515.074.074 0 00-.079.037c-.21.375-.444.864-.608 1.25a18.27 18.27 0 00-5.487 0 12.64 12.64 0 00-.617-1.25.077.077 0 00-.079-.037A19.736 19.736 0 003.677 4.37a.07.07 0 00-.032.027C.533 9.046-.32 13.58.099 18.057a.082.082 0 00.031.057 19.9 19.9 0 005.993 3.03.078.078 0 00.084-.028 14.09 14.09 0 001.226-1.994.076.076 0 00-.041-.106 13.107 13.107 0 01-1.872-.892.077.077 0 01-.008-.128 10.2 10.2 0 00.372-.292.074.074 0 01.077-.01c3.928 1.793 8.18 1.793 12.062 0a.074.074 0 01.078.01c.12.098.246.198.373.292a.077.077 0 01-.006.127 12.299 12.299 0 01-1.873.892.077.077 0 00-.041.107c.36.698.772 1.362 1.225 1.993a.076.076 0 00.084.028 19.839 19.839 0 006.002-3.03.077.077 0 00.032-.054c.5-5.177-.838-9.674-3.549-13.66a.061.061 0 00-.031-.03z"/>
-                </svg>
-                <p class="text-xs text-[#7289da]">
-                  Link Discord in your
-                  <a href="https://upforge.gg/settings" target="_blank" class="underline hover:text-[#5865F2]">account settings</a>
-                  to receive debriefs directly in Discord after every match.
-                </p>
-              </div>
-            </template>
+          </button>
+          <div v-if="showDebrief" class="px-3 py-2.5 border-t border-white/10">
+            <div v-if="debriefLoading && !debriefText" class="text-xs text-gray-500">Generating…</div>
+            <p v-else-if="debriefFailed" class="text-xs text-gray-500 italic">Debrief unavailable.</p>
+            <p v-else class="text-xs text-gray-400 leading-relaxed whitespace-pre-wrap max-h-40 overflow-y-auto">{{ debriefText }}</p>
           </div>
         </div>
       </div>
@@ -720,8 +610,9 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { getAgentImage, getAgentColor, getMapImage, getMapMinimap } from '../lib/valorant'
-import MatchSpatialMinimap from '../components/MatchSpatialMinimap.vue'
-import type { MatchSpatialSummary, SpatialTimelineEvent } from '../lib/spatial-types'
+import PostGameIntelHero from '../components/PostGameIntelHero.vue'
+import type { MatchSpatialSummary } from '../lib/spatial-types'
+import type { CategoryScoreItem } from '../components/PostGameIntelHero.vue'
 
 type State = 'uploading' | 'analysing' | 'ready' | 'error' | 'pending'
 
@@ -755,9 +646,12 @@ const result = ref<{
   top_issue?: string | null
   priority_improvements?: string[]
   spatial_summary?: MatchSpatialSummary | null
+  category_scores?: CategoryScoreItem[]
 } | null>(null)
-const spatialMinimapRef = ref<InstanceType<typeof MatchSpatialMinimap> | null>(null)
+const intelHeroRef = ref<InstanceType<typeof PostGameIntelHero> | null>(null)
 const activeSpatialIndex = ref<number | null>(null)
+const showFullDetails = ref(false)
+const showDebrief = ref(false)
 const errorMessage = ref('')
 const needsUpgrade = ref(false)
 const upgradeUrl = ref('https://upforge.gg/pricing')
@@ -1002,20 +896,38 @@ const spatialSummary = computed((): MatchSpatialSummary | null => {
   return (result.value as { spatial_summary?: MatchSpatialSummary | null }).spatial_summary ?? null
 })
 
-const spatialDeathList = computed(() => {
-  const events = spatialSummary.value?.events ?? []
-  return events
-    .map((ev, index) => ({ ev, index }))
-    .filter((x) => x.ev.type === 'death')
-    .slice(0, 8)
+const categoryScores = computed((): CategoryScoreItem[] => {
+  const raw = (result.value as { category_scores?: CategoryScoreItem[] } | null)?.category_scores
+  return Array.isArray(raw) ? raw : []
 })
 
-function onSpatialEventSelect(_ev: SpatialTimelineEvent, index: number) {
-  activeSpatialIndex.value = index
-}
+/** One glanceable line — never a paragraph above the fold. */
+const primaryInsight = computed((): string | null => {
+  const heat = spatialSummary.value?.heatmapInsight
+  if (heat) return heat
+  const pattern = spatialSummary.value?.patterns?.[0]
+  if (pattern) return pattern
+  const issue = topIssue.value
+  if (issue) {
+    const first = issue.split(/[.!?]/)[0]?.trim()
+    return first && first.length < 140 ? first : issue.slice(0, 120) + (issue.length > 120 ? '…' : '')
+  }
+  const imp = improvements.value[0]
+  if (imp) return imp.split(/[.!?]/)[0]?.trim() || imp.slice(0, 120)
+  return result.value?.verdict?.slice(0, 120) ?? null
+})
+
+const hasDeepDiveContent = computed(() =>
+  Boolean(
+    result.value?.verdict
+    || improvements.value.length
+    || (result.value?.coaching_tags?.length ?? 0) > 0
+    || (result.value?.kills != null),
+  ),
+)
 
 async function copySpatialMapImage() {
-  const dataUrl = spatialMinimapRef.value?.exportPng()
+  const dataUrl = intelHeroRef.value?.exportPng()
   if (!dataUrl) return
   try {
     const res = await fetch(dataUrl)

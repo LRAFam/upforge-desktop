@@ -72,6 +72,10 @@ export interface MatchSpatialSummary {
   events: SpatialTimelineEvent[]
   deathHotspots: SpatialHotspot[]
   killHotspots: SpatialHotspot[]
+  /** Competitive rounds played (for "4 deaths in 13 rounds" insights). */
+  roundCount?: number
+  /** Glanceable heatmap headline for UI + AI, e.g. "You died @ B Main 4× in 13 rounds". */
+  heatmapInsight?: string | null
   /** One-line patterns for prompts, e.g. "3 deaths @ A Screen (no trade)". */
   patterns: string[]
 }

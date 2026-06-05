@@ -29,5 +29,7 @@ export interface MatchSpatialSummary {
   events: SpatialTimelineEvent[]
   deathHotspots: SpatialHotspot[]
   killHotspots: SpatialHotspot[]
+  roundCount?: number
+  heatmapInsight?: string | null
   patterns: string[]
 }

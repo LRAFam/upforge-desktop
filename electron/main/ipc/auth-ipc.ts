@@ -121,6 +121,11 @@ export function setupAuthHandlers(
         roundSummaries: md.roundSummaries ?? [],
         finalStats: md.finalStats ?? null,
         teamSnapshot: md.teamSnapshot ?? [],
+        spatialSummary: md.spatialSummary ?? null,
+        spikePlants: md.spikePlants ?? [],
+        spikeDefuses: md.spikeDefuses ?? [],
+        spikeDetonations: md.spikeDetonations ?? [],
+        firstBloods: md.firstBloods ?? [],
       }
     } catch {
       return null
