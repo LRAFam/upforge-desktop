@@ -122,6 +122,16 @@ export function createPostGameWindow(): BrowserWindow {
   return win
 }
 
+/** Run callback when the window renderer is ready — avoids missing did-finish-load if already loaded. */
+export function whenWebContentsReady(win: BrowserWindow, fn: () => void): void {
+  if (win.isDestroyed()) return
+  if (win.webContents.isLoading()) {
+    win.webContents.once('did-finish-load', fn)
+  } else {
+    fn()
+  }
+}
+
 // ── Splash window ─────────────────────────────────────────────────────────────
 
 export function createSplashWindow(): BrowserWindow {

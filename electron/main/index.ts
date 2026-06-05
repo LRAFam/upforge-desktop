@@ -52,6 +52,7 @@ import {
   createPostGameWindow as _createPostGameWindow,
   createSplashWindow as _createSplashWindow,
   createTray as _createTray,
+  whenWebContentsReady,
 } from './window-manager'
 import { ClipPipeline } from './clip-pipeline'
 import { requestPregameBrief as _requestPregameBrief, requestPostGameDebrief as _requestPostGameDebrief } from './post-game-api'
@@ -648,8 +649,8 @@ function setupGameDetection(): void {
 
     // Guard: window may be destroyed before it finishes loading (e.g. user closes it immediately).
     if (thisPostGameWindow.isDestroyed()) return
-    try {
-      thisPostGameWindow.webContents.once('did-finish-load', async () => {
+
+    const runPostGameUpload = async () => {
         if (thisPostGameWindow.isDestroyed()) return
         const sendToWindow = (channel: string, payload?: unknown) => {
           try {
@@ -657,23 +658,27 @@ function setupGameDetection(): void {
           } catch { /* destroyed between check and send */ }
         }
 
-      if (!videoPath || !fs.existsSync(videoPath)) {
+      const readyPath = obsRecorder.getLastRecordingPath() ?? videoPath
+      const readySize = obsRecorder.getLastRecordingSize() || fileSize
+
+      if (!readyPath || !fs.existsSync(readyPath)) {
         const backend = getRecordingBackendForStatus()
         const errorMsg = formatRecordingFailure(backend, obsRecorder.getLastError())
         sendToWindow('post-game:upload-error', errorMsg)
         return
       }
 
-      if (fileSize < MIN_FILE_SIZE_BYTES) {
-        const sizeMB = (fileSize / (1024 * 1024)).toFixed(2)
+      if (readySize < MIN_FILE_SIZE_BYTES) {
+        const sizeMB = (readySize / (1024 * 1024)).toFixed(2)
         const errorMsg = formatCorruptRecordingMessage(getRecordingBackendForStatus(), sizeMB)
         log.error(`[GameDetector] ${errorMsg}`)
+        logActivity(`Recording file too small (${sizeMB} MB) — upload skipped`)
         sendToWindow('post-game:upload-error', errorMsg)
         return
       }
 
-      if (fileSize > MAX_FILE_SIZE_BYTES) {
-        const sizeGB = (fileSize / (1024 * 1024 * 1024)).toFixed(1)
+      if (readySize > MAX_FILE_SIZE_BYTES) {
+        const sizeGB = (readySize / (1024 * 1024 * 1024)).toFixed(1)
         const errorMsg = `Recording is too large (${sizeGB} GB). Maximum supported size is 4 GB. Try lowering your recording quality or resolution in Settings.`
         log.warn(`[GameDetector] Recording too large to analyse: ${sizeGB} GB`)
         logActivity(`Recording too large (${sizeGB} GB) — analysis skipped`)
@@ -689,15 +694,15 @@ function setupGameDetection(): void {
 
       const doAutoDelete = () => {
         if (settingsManager?.get().autoDelete) {
-          log.info('[App] Auto-deleting recording after clip extraction:', videoPath)
-          obsRecorder.deleteRecording(videoPath)
+          log.info('[App] Auto-deleting recording after clip extraction:', readyPath)
+          obsRecorder.deleteRecording(readyPath)
         }
       }
 
       if (!autoAnalyse) {
         if (timeline) recomputeTimelineVideoOffsets(timeline)
         const recording = recordingsStore.add({
-          path: videoPath,
+          path: readyPath,
           riotName: user?.riot_name ?? '',
           riotTag: user?.riot_tag ?? '',
           game,
@@ -717,7 +722,7 @@ function setupGameDetection(): void {
         // Extract all highlight clips even without auto-analyse — 3k/4k/ace/clutch/hotkey.
         // Do NOT auto-delete here: the user hasn't analysed yet (autoAnalyse=false).
         // Deletion is deferred until after manual analysis via doUploadAndAnalyse.
-        extractMatchClips(videoPath, timeline, null)
+        extractMatchClips(readyPath, timeline, null)
           .catch(err => log.warn('[ClipExtract] Clip extraction (no-analyse) error:', err))
 
         // Late retry for when Riot match data isn't ready yet (same logic as autoAnalyse path)
@@ -735,7 +740,7 @@ function setupGameDetection(): void {
               }
               if ((timeline?.playerKills?.length ?? 0) === 0) { log.warn('[LateClipExtract] No kills after retry'); return }
               log.info(`[LateClipExtract] Got ${timeline!.playerKills.length} kills — extracting clips`)
-              await extractKillClipsOnly(videoPath, timeline!, null)
+              await extractKillClipsOnly(readyPath, timeline!, null)
             } catch (err) {
               log.warn('[LateClipExtract] Error (no-analyse path):', err)
             }
@@ -754,7 +759,7 @@ function setupGameDetection(): void {
       // the user with no trace of the recording.
       if (timeline) recomputeTimelineVideoOffsets(timeline)
       const autoAnalyseRecording = recordingsStore.add({
-        path: videoPath,
+        path: readyPath,
         riotName: user?.riot_name ?? '',
         riotTag: user?.riot_tag ?? '',
         game,
@@ -765,14 +770,14 @@ function setupGameDetection(): void {
       })
       mainWindow?.webContents.send('recordings:updated')
 
-      const uploadResult = await doUploadAndAnalyse(autoAnalyseRecording.id, videoPath, user?.riot_name ?? '', user?.riot_tag ?? '',
+      const uploadResult = await doUploadAndAnalyse(autoAnalyseRecording.id, readyPath, user?.riot_name ?? '', user?.riot_tag ?? '',
         game, map, agent, timeline, thisPostGameWindow, matchSessionStart, /* skipAutoDelete= */ true)
 
       const jobId = uploadResult ?? null
 
       // Extract highlight clips from the recording in the background (non-blocking).
       // Auto-delete is deferred to run AFTER clip extraction so the file is available.
-      extractMatchClips(videoPath, timeline, jobId)
+      extractMatchClips(readyPath, timeline, jobId)
         .catch(err => log.warn('[ClipExtract] Background extraction error:', err))
         .finally(() => {
           // Defer auto-delete until after the late retry so the video file still exists
@@ -799,7 +804,7 @@ function setupGameDetection(): void {
               return
             }
             log.info(`[LateClipExtract] Got ${timeline!.playerKills.length} kills — extracting clips`)
-            await extractKillClipsOnly(videoPath, timeline!, jobId)
+            await extractKillClipsOnly(readyPath, timeline!, jobId)
           } catch (err) {
             log.warn('[LateClipExtract] Error:', err)
           } finally {
@@ -807,10 +812,14 @@ function setupGameDetection(): void {
           }
         }, 90_000)
       }
-      })
-    } catch (err) {
-      log.warn('[HandleMatchEnd] Failed to register did-finish-load handler — window already destroyed:', err)
     }
+
+    whenWebContentsReady(thisPostGameWindow, () => {
+      void runPostGameUpload().catch((err) => {
+        log.error('[HandleMatchEnd] Post-game upload failed:', err)
+        logActivity(`Upload failed to start: ${err instanceof Error ? err.message : String(err)}`)
+      })
+    })
     } finally {
       handleMatchEndRunning = false
     }
@@ -1894,12 +1903,11 @@ app.whenReady().then(async () => {
 
     if (!postGameWindow || postGameWindow.isDestroyed()) {
       postGameWindow = createPostGameWindow()
-      postGameWindow.webContents.once('did-finish-load', () => triggerAnalysis(postGameWindow!))
+      whenWebContentsReady(postGameWindow, () => void triggerAnalysis(postGameWindow!))
     } else {
       postGameWindow.show()
       postGameWindow.focus()
-      // Window is already loaded — trigger directly
-      triggerAnalysis(postGameWindow)
+      void triggerAnalysis(postGameWindow)
     }
 
     return { ok: true }

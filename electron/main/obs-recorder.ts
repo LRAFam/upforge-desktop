@@ -318,6 +318,10 @@ export class OBSRecorder {
       this._recording = false
       this._startedAt = null
       if (response.outputPath) this._outputPath = response.outputPath
+      await this._resolveOutputPath()
+      if (this._outputPath) {
+        await this._waitForRecordingFile(this._outputPath)
+      }
       this.onStatusChange?.(false)
       log.info('[OBSRecorder] Recording stopped. Output:', this._outputPath)
       return this._outputPath
@@ -339,6 +343,53 @@ export class OBSRecorder {
     this._obs.call('StopRecord').catch(() => {})
     this._obs.call('StopReplayBuffer').catch(() => {})
     this.onStatusChange?.(false)
+  }
+
+  /** OBS may omit outputPath on StopRecord — fall back to GetRecordStatus. */
+  private async _resolveOutputPath(): Promise<string | null> {
+    if (this._outputPath) return this._outputPath
+    try {
+      const status = await this._obs.call('GetRecordStatus') as { outputPath?: string }
+      if (status.outputPath) {
+        this._outputPath = status.outputPath
+      }
+    } catch (err) {
+      log.warn('[OBSRecorder] GetRecordStatus failed:', err)
+    }
+    return this._outputPath
+  }
+
+  /** Wait until the muxed file exists and size has stabilized (OBS writes async after StopRecord). */
+  private async _waitForRecordingFile(filePath: string): Promise<void> {
+    const pollMs = 500
+    const maxWaitMs = 45_000
+    let lastSize = -1
+    let stableChecks = 0
+    const deadline = Date.now() + maxWaitMs
+
+    while (Date.now() < deadline) {
+      if (!existsSync(filePath)) {
+        await new Promise((r) => setTimeout(r, pollMs))
+        continue
+      }
+      let size = 0
+      try {
+        size = statSync(filePath).size
+      } catch {
+        await new Promise((r) => setTimeout(r, pollMs))
+        continue
+      }
+      if (size > 0 && size === lastSize) {
+        stableChecks++
+        if (stableChecks >= 2) return
+      } else {
+        stableChecks = 0
+      }
+      lastSize = size
+      await new Promise((r) => setTimeout(r, pollMs))
+    }
+
+    log.warn('[OBSRecorder] Timed out waiting for recording file to finalize:', filePath)
   }
 
   // ── Replay buffer clip saving ────────────────────────────────────────────────
