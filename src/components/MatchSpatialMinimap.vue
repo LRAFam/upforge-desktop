@@ -13,6 +13,13 @@ const props = withDefaults(defineProps<{
   /** callout = per-death blobs; site = aggregated bombsite heat */
   heatmapLayer?: 'callout' | 'site'
   large?: boolean
+  /** Fixed small footprint for side panels (112px). */
+  compact?: boolean
+  /** HUD overlay on VOD player (96px, 128px when floatLarge). */
+  floatHud?: boolean
+  floatLarge?: boolean
+  /** Slim dock strip under video (80px). */
+  dockHud?: boolean
   /** Filter events to one round (null = all). */
   roundFilter?: number | null
   showRoundSlider?: boolean
@@ -21,6 +28,10 @@ const props = withDefaults(defineProps<{
   showHeatmap: true,
   heatmapLayer: 'callout',
   large: false,
+  compact: false,
+  floatHud: false,
+  floatLarge: false,
+  dockHud: false,
   roundFilter: null,
   showRoundSlider: false,
 })
@@ -72,7 +83,12 @@ const minimapUrl = computed(() => {
   return m ? getMapMinimap(m) : ''
 })
 
-const size = computed(() => (props.large ? 640 : 320))
+const size = computed(() => {
+  if (props.dockHud) return 80
+  if (props.floatHud) return props.floatLarge ? 128 : 96
+  if (props.compact) return 112
+  return props.large ? 640 : 320
+})
 
 const mapLabel = computed(() => props.summary?.map ?? props.mapName ?? null)
 
@@ -81,7 +97,7 @@ function displayNorm(norm: { x: number; y: number }) {
 }
 
 function drawDeathHeatmap(ctx: CanvasRenderingContext2D, s: number, deaths: SpatialTimelineEvent[]) {
-  const blobR = props.large ? 36 : 22
+  const blobR = props.large ? 36 : (props.floatHud || props.dockHud) ? 14 : 22
   ctx.save()
   ctx.globalCompositeOperation = 'lighter'
   for (const ev of deaths) {
@@ -109,7 +125,9 @@ function drawSiteHeatmap(ctx: CanvasRenderingContext2D, s: number) {
     const d = displayNorm(h.norm)
     const px = d.x * s
     const py = d.y * s
-    const blobR = (props.large ? 42 : 28) + (h.count / maxCount) * (props.large ? 24 : 14)
+    const smallHud = props.floatHud || props.dockHud
+    const baseR = props.large ? 42 : smallHud ? 16 : 28
+    const blobR = baseR + (h.count / maxCount) * (props.large ? 24 : smallHud ? 8 : 14)
     const grad = ctx.createRadialGradient(px, py, 0, px, py, blobR)
     grad.addColorStop(0, 'rgba(239, 68, 68, 0.85)')
     grad.addColorStop(0.4, 'rgba(239, 68, 68, 0.4)')
@@ -154,7 +172,11 @@ function draw() {
       const py = d.y * s
       const isDeath = ev.type === 'death'
       const active = props.activeIndex === idx
-      const r = active ? 10 : isDeath ? (heatActive ? 5 : 7) : 6
+      const r = active
+        ? ((props.floatHud || props.dockHud) ? 7 : 10)
+        : isDeath
+          ? (heatActive ? ((props.floatHud || props.dockHud) ? 3 : 5) : ((props.floatHud || props.dockHud) ? 4 : 7))
+          : ((props.floatHud || props.dockHud) ? 4 : 6)
 
       ctx.beginPath()
       ctx.arc(px, py, r + 2, 0, Math.PI * 2)
@@ -214,7 +236,7 @@ function roundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: numbe
 }
 
 watch(
-  () => [props.summary, props.activeIndex, props.large, props.showHeatmap, props.heatmapLayer, props.roundFilter],
+  () => [props.summary, props.activeIndex, props.large, props.compact, props.floatHud, props.floatLarge, props.dockHud, props.showHeatmap, props.heatmapLayer, props.roundFilter],
   draw,
   { deep: true },
 )
@@ -252,12 +274,27 @@ defineExpose({ exportPng })
 </script>
 
 <template>
-  <div class="relative w-full space-y-2">
+  <div
+    class="relative space-y-1.5"
+    :class="dockHud
+      ? 'w-[80px]'
+      : floatHud
+        ? (floatLarge ? 'w-[128px]' : 'w-[96px]')
+        : compact
+          ? 'w-[112px]'
+          : 'w-full'"
+  >
     <canvas
       ref="canvasRef"
-      class="w-full rounded-xl border border-white/10 bg-black/40 cursor-pointer"
-      :class="large ? 'max-w-[640px]' : 'max-w-[320px]'"
-      :style="{ aspectRatio: '1 / 1' }"
+      class="rounded-lg border border-white/10 bg-black/40 cursor-pointer"
+      :class="dockHud
+        ? 'w-[80px] h-[80px]'
+        : floatHud
+          ? (floatLarge ? 'w-[128px] h-[128px]' : 'w-[96px] h-[96px]')
+          : compact
+            ? 'w-[112px] h-[112px]'
+            : ['w-full', large ? 'max-w-[640px]' : 'max-w-[320px]']"
+      :style="(compact || floatHud || dockHud) ? undefined : { aspectRatio: '1 / 1' }"
       @click="onClick"
     />
     <div
