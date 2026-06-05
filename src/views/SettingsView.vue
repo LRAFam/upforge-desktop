@@ -200,6 +200,7 @@
                 <li>Tools → WebSocket Server Settings → enable server (port {{ settings.obsPort }})</li>
                 <li>Click <strong class="text-gray-300">Show Connect Info</strong> in OBS and paste the password below (required on OBS 28+)</li>
                 <li>Host should be <strong class="text-gray-300">127.0.0.1</strong> if OBS is on this PC — click Connect</li>
+                <li>Capture is <strong class="text-gray-300">game window only</strong> (not your desktop) — alt-tab won&apos;t record other apps</li>
                 <li>Recording starts/stops automatically when you enter a match</li>
               </ol>
               <div class="flex flex-wrap items-center gap-2">

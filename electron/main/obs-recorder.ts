@@ -4,7 +4,7 @@ import { existsSync, statSync } from 'fs'
 import { join } from 'path'
 import https from 'https'
 import log from 'electron-log'
-import { setupUpForgeScene, type ObsSetupResult } from './obs-setup'
+import { setupUpForgeScene, retargetUpForgeCapture, type ObsSetupResult } from './obs-setup'
 import { formatObsConnectError, obsConnectHosts } from './obs-connect'
 
 export interface OBSSettings {
@@ -181,7 +181,7 @@ export class OBSRecorder {
 
   isConnected(): boolean { return this._connected }
 
-  async setupScene(): Promise<ObsSetupResult> {
+  async setupScene(game = 'valorant'): Promise<ObsSetupResult> {
     if (!this._connected) {
       const result = await this.connect()
       if (!result.ok) {
@@ -189,7 +189,7 @@ export class OBSRecorder {
       }
       return result.setup ?? { ok: true, sceneCreated: false, inputCreated: false }
     }
-    return setupUpForgeScene(this._obs)
+    return setupUpForgeScene(this._obs, game)
   }
 
   getOBSStatus(): OBSStatus {
@@ -267,6 +267,9 @@ export class OBSRecorder {
     this._outputPath = null
 
     try {
+      // Game/window capture only — never desktop (privacy / policy safe when alt-tabbing)
+      await retargetUpForgeCapture(this._obs, game)
+
       // Configure OBS output path to match our recordings folder
       const savePath = join(app.getPath('userData'), 'recordings')
       await this._obs.call('SetProfileParameter', {

@@ -263,7 +263,7 @@
                 <ol class="list-decimal list-inside space-y-1.5 text-[11px] text-gray-400 mb-4">
                   <li>Install <a href="https://obsproject.com/" target="_blank" class="text-[#ff4655] underline hover:text-[#ff8a93]">OBS Studio 28+</a> and open it</li>
                   <li>Tools → WebSocket Server Settings → enable server</li>
-                  <li>Click Connect below — we create an &quot;UpForge&quot; scene (cursor hidden)</li>
+                  <li>Click Connect below — we create game capture (Valorant window only, not your desktop)</li>
                 </ol>
                 <p v-if="obsError" class="text-[11px] text-red-400 mb-3">{{ obsError }}</p>
                 <button
