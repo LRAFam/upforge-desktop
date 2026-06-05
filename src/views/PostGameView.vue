@@ -262,24 +262,35 @@
           @copy-map="copySpatialMapImage"
         />
 
-        <div v-if="vodRecordingId" class="flex gap-2">
-          <button
-            v-if="activeDeathSeekMs != null"
-            type="button"
-            class="flex-1 flex items-center justify-center gap-2 py-2.5 text-xs font-bold rounded-xl border border-red-500/30 bg-red-500/10 text-red-200 hover:bg-red-500/15 transition-colors"
-            @click="reviewSelectedDeathInVod"
+        <div v-if="vodRecordingId" class="space-y-2">
+          <div class="flex gap-2">
+            <button
+              v-if="activeDeathSeekMs != null && canSeekFromSpatial"
+              type="button"
+              class="flex-1 flex items-center justify-center gap-2 py-2.5 text-xs font-bold rounded-xl border border-red-500/30 bg-red-500/10 text-red-200 hover:bg-red-500/15 transition-colors"
+              @click="reviewSelectedDeathInVod"
+            >
+              <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"/>
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+              </svg>
+              Review death in VOD
+            </button>
+            <button
+              type="button"
+              :class="activeDeathSeekMs != null && canSeekFromSpatial ? 'flex-1' : 'w-full'"
+              class="py-2.5 text-xs font-semibold rounded-xl border border-white/10 bg-white/[0.03] text-gray-300 hover:bg-white/[0.06] hover:text-white transition-colors"
+              @click="openVodReview"
+            >Open full VOD</button>
+          </div>
+          <p
+            v-if="activeDeathSeekMs != null && !canSeekFromSpatial"
+            class="text-[10px] text-center text-gray-500"
           >
-            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"/>
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
-            </svg>
-            Review death in VOD
-          </button>
-          <button
-            type="button"
-            class="flex-1 py-2.5 text-xs font-semibold rounded-xl border border-white/10 bg-white/[0.03] text-gray-300 hover:bg-white/[0.06] hover:text-white transition-colors"
-            @click="openVodReview"
-          >Open full VOD</button>
+            Death heatmap preview is free.
+            <button type="button" class="text-amber-400 hover:text-amber-300 font-semibold" @click="openUpgrade">Plus</button>
+            unlocks click-to-seek.
+          </p>
         </div>
 
         <!-- No spatial data fallback -->
@@ -530,10 +541,10 @@
             </svg>
           </div>
           <div>
-            <p class="text-sm font-semibold text-amber-400">Monthly limit reached</p>
+            <p class="text-sm font-semibold text-amber-400">Analysis limit reached</p>
             <template v-if="userTier === 'free'">
-              <p class="text-xs text-gray-400 mt-1">You've used your free analysis this month. Upgrade to get 5–15 analyses per month.</p>
-              <p class="text-xs text-gray-600 mt-1">Premium $14.99/mo · Pro $24.99/mo · Check your email for details.</p>
+              <p class="text-xs text-gray-400 mt-1">You've used all 3 lifetime free analyses. Upgrade for monthly coaching or pay per analysis on the web.</p>
+              <p class="text-xs text-gray-600 mt-1">Plus $14.99/mo · Pro $24.99/mo</p>
             </template>
             <template v-else>
               <p class="text-xs text-gray-400 mt-1">You've used all your {{ userTier }} plan analyses for this month. Resets in {{ daysUntilReset() }} day{{ daysUntilReset() === 1 ? '' : 's' }}.</p>
@@ -545,6 +556,11 @@
               class="flex-1 py-2 text-xs font-semibold bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white rounded-lg transition-all shadow-sm shadow-amber-500/20"
               @click="openUpgrade"
             >View Plans →</button>
+            <button
+              v-if="userTier === 'free'"
+              class="flex-1 py-2 text-xs font-semibold border border-white/10 bg-white/[0.04] hover:bg-white/[0.08] text-gray-200 rounded-lg transition-colors"
+              @click="openPpa"
+            >Pay per analysis</button>
             <button class="px-3 py-2 text-xs text-gray-500 hover:text-gray-300 bg-white/[0.03] hover:bg-white/[0.06] border border-white/[0.10] rounded-lg transition-colors" @click="dismiss">Dismiss</button>
           </div>
         </template>
@@ -632,6 +648,7 @@ import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { getAgentImage, getAgentColor, getMapImage, getMapMinimap } from '../lib/valorant'
 import PostGameIntelHero from '../components/PostGameIntelHero.vue'
 import type { MatchSpatialSummary } from '../lib/spatial-types'
+import { canSpatialVodSeek } from '../lib/tier-features'
 import type { CategoryScoreItem } from '../components/PostGameIntelHero.vue'
 
 type State = 'uploading' | 'analysing' | 'ready' | 'error' | 'pending'
@@ -675,7 +692,9 @@ const showDebrief = ref(false)
 const errorMessage = ref('')
 const needsUpgrade = ref(false)
 const upgradeUrl = ref('https://upforge.gg/pricing')
+const ppaUrl = ref('https://upforge.gg/valorant/analyze')
 const userTier = ref<string>('free')
+const canSeekFromSpatial = computed(() => canSpatialVodSeek(userTier.value))
 const subscriptionEndsAt = ref<string | null>(null)
 
 function daysUntilReset(): number {
@@ -1083,7 +1102,7 @@ onMounted(() => {
     state.value = 'pending'
   }))
   ipcCleanup.push(window.api.on('post-game:upload-error', (...args: unknown[]) => {
-    const payload = args[0] as string | { message: string; recordingId?: string; needsUpgrade?: boolean; upgradeUrl?: string }
+    const payload = args[0] as string | { message: string; recordingId?: string; needsUpgrade?: boolean; upgradeUrl?: string; ppaUrl?: string }
     needsUpgrade.value = false
     if (typeof payload === 'string') {
       errorMessage.value = payload
@@ -1093,6 +1112,7 @@ onMounted(() => {
       if (payload.needsUpgrade) {
         needsUpgrade.value = true
         upgradeUrl.value = payload.upgradeUrl || 'https://upforge.gg/pricing'
+        ppaUrl.value = payload.ppaUrl || 'https://upforge.gg/valorant/analyze'
       }
     }
     state.value = 'error'
@@ -1211,6 +1231,7 @@ function viewFullAnalysis() {
 
 function dismiss() { window.close() }
 function openUpgrade() { window.open(upgradeUrl.value, '_blank') }
+function openPpa() { window.open(ppaUrl.value, '_blank') }
 
 async function copyAnalysisLink() {
   if (!analysisUrl.value) return

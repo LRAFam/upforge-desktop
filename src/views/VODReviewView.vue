@@ -818,9 +818,25 @@
               </div>
             </div>
 
-            <p class="text-[10px] text-gray-500 leading-relaxed">
+            <p
+              v-if="canSeekFromSpatial"
+              class="text-[10px] text-gray-500 leading-relaxed"
+            >
               Click a {{ spatialViewMode === 'dots' ? 'dot' : 'zone' }} or death chip to jump to that moment (with lead-up).
             </p>
+            <div
+              v-else
+              class="rounded-lg border border-amber-500/25 bg-amber-500/[0.06] px-2.5 py-2 space-y-1.5"
+            >
+              <p class="text-[10px] text-amber-200/90 leading-relaxed">
+                Heatmap preview is free. Click-to-seek in VOD is a <strong class="text-amber-100">Plus</strong> feature.
+              </p>
+              <button
+                type="button"
+                class="text-[10px] font-bold text-amber-300 hover:text-amber-200 underline"
+                @click="openUpgrade"
+              >Upgrade to Plus →</button>
+            </div>
             <div class="flex gap-1 overflow-x-auto pb-0.5">
               <button
                 v-for="item in spatialDeathChips"
@@ -864,6 +880,7 @@ import { getWeaponImage, getAgentImage, getAbilityIcon } from '../lib/valorant'
 import { pendingTimeline } from '../stores/pendingTimeline'
 import MatchSpatialMinimap from '../components/MatchSpatialMinimap.vue'
 import type { MatchSpatialSummary, SpatialTimelineEvent } from '../lib/spatial-types'
+import { canSpatialVodSeek } from '../lib/tier-features'
 
 // Round outcome icons — bundled locally to avoid CSP/CDN issues
 import iconDiffuseWin from '../assets/round-icons/diffusewin1.png'
@@ -992,6 +1009,8 @@ const showScoreboard = ref(false)
 const showInsightsPanel = ref(true)
 const activeSpatialIndex = ref<number | null>(null)
 const recordingId = ref<string | null>(null)
+const userTier = ref('free')
+const canSeekFromSpatial = computed(() => canSpatialVodSeek(userTier.value))
 const spatialViewMode = ref<'heat' | 'sites' | 'dots'>('heat')
 const spatialRoundFilter = ref<number | null>(null)
 const videoSyncOffsetMs = ref(0)
@@ -1340,9 +1359,14 @@ function preRollSeconds(type: string): number {
   return type === 'death' ? DEATH_PRE_ROLL_SECONDS : EVENT_PRE_ROLL_SECONDS
 }
 
+function openUpgrade() {
+  window.open('https://upforge.gg/pricing', '_blank')
+}
+
 function onSpatialSelect(ev: SpatialTimelineEvent, displayIndex: number) {
   const item = spatialEventList.value[displayIndex]
   activeSpatialIndex.value = item?.index ?? null
+  if (!canSeekFromSpatial.value) return
   const preRoll = preRollSeconds(ev.type)
   if (ev.videoOffsetMs != null && !isNaN(ev.videoOffsetMs)) {
     seekToTime(Math.max(0, ev.videoOffsetMs / 1000 - preRoll))
@@ -1583,6 +1607,9 @@ function onScrubberHover(e: MouseEvent) {
 
 onMounted(async () => {
   window.api.discord.setState('reviewing').catch(() => {})
+  window.api.app.getStatus().then(s => {
+    if (s.user?.tier) userTier.value = s.user.tier
+  }).catch(() => {})
   const id = route.query.id as string
   const timelineId = route.query.timelineId as string
 

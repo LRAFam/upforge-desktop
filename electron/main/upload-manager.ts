@@ -171,6 +171,7 @@ export class UploadManager {
               json.message || 'Analysis limit reached. Upgrade to continue.',
               json.error || 'analysis_limit_reached',
               json.upgrade_url || 'https://upforge.gg/pricing',
+              json.ppa_url || 'https://upforge.gg/valorant/analyze',
             ))
             else if (status >= 400) reject(new Error(json.message || `Request failed (${status})`))
             else resolve(json)

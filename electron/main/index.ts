@@ -1471,6 +1471,7 @@ async function doUploadAndAnalyse(
         message: msg,
         needsUpgrade: true,
         upgradeUrl: (upgradeErr.upgradeUrl) || 'https://upforge.gg/pricing',
+        ppaUrl: (upgradeErr.ppaUrl) || 'https://upforge.gg/valorant/analyze',
       })
       return null
     }

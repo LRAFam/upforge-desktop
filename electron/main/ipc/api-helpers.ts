@@ -74,7 +74,8 @@ export function apiPost(base: string, pathname: string, body: string, token: str
           reject(new UpgradeRequiredError(
             (json.message as string) || 'Upgrade required',
             (json.error as string) || 'upgrade_required',
-            (json.upgrade_url as string) || 'https://upforge.gg/pricing'
+            (json.upgrade_url as string) || 'https://upforge.gg/pricing',
+            (json.ppa_url as string) || 'https://upforge.gg/valorant/analyze',
           ))
         } else if ((res.statusCode ?? 0) >= 400) {
           reject(new Error((json.message as string) || `Request failed (${res.statusCode})`))
