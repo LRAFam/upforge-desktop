@@ -66,6 +66,9 @@ export class RiotLocalApi {
   private clientVersion = 'release-09.08-shipping-15-2656652'
   private matchData: MatchData | null = null
   private presencePollInterval: ReturnType<typeof setInterval> | null = null
+  /** Lightweight INGAME→MENUS watcher when recording was skipped (no matchData / no start()). */
+  private menuWatchInterval: ReturnType<typeof setInterval> | null = null
+  private menuWatchGeneration = 0
   private wsSocket: tls.TLSSocket | null = null
   private wsReconnectTimer: ReturnType<typeof setTimeout> | null = null
   private lastSessionLoopState: string = 'MENUS'
@@ -87,6 +90,43 @@ export class RiotLocalApi {
    * Set this before calling start() to stop recording promptly.
    */
   public onMatchEnded: (() => void | Promise<void>) | null = null
+
+  /**
+   * Poll presence until the player returns to menus after a skipped match.
+   * Unlike onMatchEnded, this works without start() / matchData (recording was skipped).
+   */
+  watchUntilMenus(onReturn: () => void | Promise<void>): void {
+    this.cancelMenuWatch()
+    const gen = ++this.menuWatchGeneration
+    let lastLoop = 'INGAME'
+
+    const tick = async () => {
+      if (gen !== this.menuWatchGeneration) return
+      try {
+        const state = await this.getSessionState()
+        const loop = state?.sessionLoopState ?? 'MENUS'
+        if (lastLoop === 'INGAME' && loop === 'MENUS') {
+          this.cancelMenuWatch()
+          console.log('[RiotLocalApi] Skipped match ended — player returned to menus')
+          await Promise.resolve(onReturn())
+          return
+        }
+        if (loop === 'INGAME' || loop === 'PREGAME') lastLoop = 'INGAME'
+        else lastLoop = loop
+      } catch { /* Riot API flake — keep polling */ }
+    }
+
+    this.menuWatchInterval = setInterval(() => { void tick() }, 2000)
+    void tick()
+  }
+
+  cancelMenuWatch(): void {
+    this.menuWatchGeneration++
+    if (this.menuWatchInterval) {
+      clearInterval(this.menuWatchInterval)
+      this.menuWatchInterval = null
+    }
+  }
 
   /** Return a snapshot of internal state for the developer diagnostics panel. */
   getDiagnostics(): {

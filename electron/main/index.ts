@@ -343,6 +343,8 @@ function setupGameDetection(): void {
   function beginMatchFlow(): { isStale: () => boolean } {
     matchFlowGeneration++
     const generation = matchFlowGeneration
+    riotLocalApi.cancelMenuWatch()
+    riotLocalApi.onMatchEnded = null
     cancelMatchWait?.()
     cancelMatchWait = null
     if (waitingForMatch) {
@@ -407,21 +409,21 @@ function setupGameDetection(): void {
   /** Re-enter detection after a skipped match (Valorant stays running between queues). */
   async function rearmValorantDetection(game: string, waitForMatchEnd = false): Promise<void> {
     if (game !== 'valorant') return
-    if (waitForMatchEnd) {
-      riotLocalApi.onMatchEnded = async () => {
-        riotLocalApi.onMatchEnded = null
-        await new Promise((r) => setTimeout(r, 5000))
-        if (await gameDetector.isMatchProcessRunning()) {
-          logActivity('Watching for next match...')
-          gameDetector.emit('game-started', game)
-        }
+    const emitNextMatchWatch = async () => {
+      await new Promise((r) => setTimeout(r, 5000))
+      if (await gameDetector.isMatchProcessRunning()) {
+        console.log('[GameDetector] Re-arming after skipped match — watching for next queue')
+        logActivity('Watching for next match...')
+        gameDetector.emit('game-started', game)
       }
+    }
+    if (waitForMatchEnd) {
+      // onMatchEnded only fires when start() is running presence polls — skipped matches
+      // never call start(), so watch menus directly until the player leaves the map.
+      riotLocalApi.watchUntilMenus(emitNextMatchWatch)
       return
     }
-    await new Promise((r) => setTimeout(r, 5000))
-    if (await gameDetector.isMatchProcessRunning()) {
-      gameDetector.emit('game-started', game)
-    }
+    await emitNextMatchWatch()
   }
 
   let handleMatchEndRunning = false
@@ -991,7 +993,7 @@ function setupGameDetection(): void {
               waitingForMatch = false
               cancelMatchWait = null
               mainWindow?.webContents.send('recording:waiting-for-match', { waiting: false })
-              await rearmValorantDetection(game)
+              await rearmValorantDetection(game, true)
               return
             }
             matchStartTime = Date.now()
@@ -1106,6 +1108,7 @@ function setupGameDetection(): void {
     // Wire up onMatchEnded — fires when Riot presence transitions INGAME → MENUS.
     // Only applicable to Valorant; CS2/Deadlock rely on the game process exiting.
     if (game === 'valorant') {
+      riotLocalApi.cancelMenuWatch()
       riotLocalApi.onMatchEnded = async () => {
         console.log('[RiotLocalApi] onMatchEnded fired — stopping recording')
         logActivity('Match ended (presence) — stopping recording')
@@ -1229,6 +1232,8 @@ function setupGameDetection(): void {
   gameDetector.on('game-stopped', async (game: string) => {
     console.log(`[GameDetector] ${game} stopped`)
     discordRPC.setIdle()
+    riotLocalApi.cancelMenuWatch()
+    riotLocalApi.onMatchEnded = null
 
     // Game quit while still in lobby (before match started).
     // Only cancel the wait if the match hasn't already been handled by presence — if it has,
@@ -1254,6 +1259,16 @@ function setupGameDetection(): void {
       console.log('[GameDetector] Match already handled by onMatchEnded — skipping game-stopped')
       riotLocalApi.onMatchEnded = null
       // Restore main window now that game is gone
+      if (mainWindow && !mainWindow.isDestroyed() && mainWindow.isMinimized()) mainWindow.restore()
+      destroyOverlay()
+      return
+    }
+
+    // Skipped-match menu watch or idle — no recorder running.
+    if (!currentActiveRecorder.isRecording()) {
+      waitingForMatch = false
+      mainWindow?.webContents.send('recording:waiting-for-match', { waiting: false })
+      tray?.setToolTip(idleTooltip(game))
       if (mainWindow && !mainWindow.isDestroyed() && mainWindow.isMinimized()) mainWindow.restore()
       destroyOverlay()
       return
