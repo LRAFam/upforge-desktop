@@ -64,30 +64,49 @@ export function useDesktopRecording() {
       // process) so we can pass cursor:'never'. getUserMedia with chromeMediaSource:
       // 'desktop' always includes the cursor and doesn't support the cursor constraint.
       //
-      // Use min + ideal + max — `max` alone lets Chromium default to ~30fps on many systems.
+      // ideal + max only — Electron's setDisplayMediaRequestHandler rejects `min` constraints
+      // ("min constraints are not supported") and never forwards them to the capture session.
       // cursor:'never' is a Screen Capture API extension not in standard TypeScript lib.
-      const videoConstraints = {
-        width: { min: maxWidth, ideal: maxWidth, max: maxWidth },
-        height: { min: maxHeight, ideal: maxHeight, max: maxHeight },
-        frameRate: { min: config.fps, ideal: config.fps, max: config.fps },
+      const strictVideoConstraints = {
+        width: { ideal: maxWidth, max: maxWidth },
+        height: { ideal: maxHeight, max: maxHeight },
+        frameRate: { ideal: config.fps, max: config.fps },
         cursor: 'never',
       } as MediaTrackConstraints
+
+      const looseVideoConstraints = {
+        width: { ideal: maxWidth },
+        height: { ideal: maxHeight },
+        frameRate: { ideal: config.fps },
+        cursor: 'never',
+      } as MediaTrackConstraints
+
+      async function acquireStream(audio: boolean): Promise<MediaStream> {
+        try {
+          return await navigator.mediaDevices.getDisplayMedia({
+            video: strictVideoConstraints,
+            audio,
+          })
+        } catch (strictErr) {
+          const msg = strictErr instanceof Error ? strictErr.message : String(strictErr)
+          if (!/min constraints|constraint/i.test(msg)) throw strictErr
+          console.warn('[DesktopRecording] Strict constraints rejected, retrying with ideal-only:', msg)
+          return navigator.mediaDevices.getDisplayMedia({
+            video: looseVideoConstraints,
+            audio,
+          })
+        }
+      }
 
       let noAudio = false
 
       // Try with system audio (loopback via handler) first, fall back to video-only.
       try {
-        stream = await navigator.mediaDevices.getDisplayMedia({
-          video: videoConstraints,
-          audio: config.audioEnabled,
-        })
+        stream = await acquireStream(config.audioEnabled)
       } catch (audioErr) {
         console.warn('[DesktopRecording] Audio unavailable, recording video-only:', audioErr)
         noAudio = true
-        stream = await navigator.mediaDevices.getDisplayMedia({
-          video: videoConstraints,
-          audio: false,
-        })
+        stream = await acquireStream(false)
       }
 
       // Re-apply cursor:'never' after the stream is created. When setDisplayMediaRequestHandler

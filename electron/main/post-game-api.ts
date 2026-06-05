@@ -13,27 +13,88 @@ import { prepareMatchDataForUpload, submissionContextFromTimeline } from './matc
 // ── Pre-game brief ────────────────────────────────────────────────────────────
 
 /**
- * Open the player's personalised pre-game coaching brief in their browser.
+ * Request the player's personalised pre-game coaching brief.
+ * Sends to Discord DMs when linked; otherwise opens the web brief page.
  * Fire-and-forget — never blocks the match-start flow.
  */
 export function requestPregameBrief(
   getToken: () => string | null,
   logActivity: (msg: string) => void,
-  context?: { agent?: string | null; map?: string | null; mode?: string | null }
+  context?: { agent?: string | null; map?: string | null; mode?: string | null },
+  apiUrl?: string
 ): void {
-  if (!getToken()) {
+  const token = getToken()
+  if (!token) {
     logActivity('Pre-game brief skipped — not logged in')
     return
   }
 
+  const apiBase = apiUrl ?? process.env['VITE_API_URL'] ?? 'https://api.upforge.gg'
   const params = new URLSearchParams()
   if (context?.agent) params.set('agent', context.agent)
   if (context?.map) params.set('map', context.map)
-  params.set('t', Date.now().toString())
-  const url = `https://upforge.gg/valorant/pregame-brief?${params.toString()}`
+  const qs = params.toString() ? `?${params.toString()}` : ''
+  const parsedUrl = new URL(`${apiBase}/api/progress/pregame-brief${qs}`)
 
-  shell.openExternal(url)
-  logActivity('Pre-game brief: opened in browser')
+  const openBrowserBrief = (): void => {
+    const webParams = new URLSearchParams()
+    if (context?.agent) webParams.set('agent', context.agent)
+    if (context?.map) webParams.set('map', context.map)
+    webParams.set('t', Date.now().toString())
+    shell.openExternal(`https://upforge.gg/valorant/pregame-brief?${webParams.toString()}`)
+    logActivity('Pre-game brief: opened in browser')
+  }
+
+  void (async () => {
+    try {
+      const proto = parsedUrl.protocol === 'https:' ? await import('https') : await import('http')
+      const json = await new Promise<Record<string, unknown>>((resolve, reject) => {
+        const req = proto.default.request({
+          method:   'GET',
+          hostname: parsedUrl.hostname,
+          port:     parsedUrl.port || (parsedUrl.protocol === 'https:' ? 443 : 80),
+          path:     `${parsedUrl.pathname}${parsedUrl.search}`,
+          headers: {
+            Authorization: `Bearer ${token}`,
+            Accept:        'application/json',
+          },
+        }, (res) => {
+          let data = ''
+          res.on('data', (c) => { data += c })
+          res.on('end', () => {
+            try {
+              const body = JSON.parse(data) as Record<string, unknown>
+              if ((res.statusCode ?? 0) >= 400) {
+                reject(new Error((body.message as string) ?? `HTTP ${res.statusCode}`))
+              } else {
+                resolve(body)
+              }
+            } catch {
+              reject(new Error(`Non-JSON response: ${data.slice(0, 200)}`))
+            }
+          })
+        })
+        req.on('error', reject)
+        req.setTimeout(15_000, () => req.destroy(new Error('Pregame brief request timed out')))
+        req.end()
+      })
+
+      if (json.discord_linked) {
+        if (json.discord_sent) {
+          logActivity('Pre-game brief sent to Discord')
+        } else {
+          logActivity('Pre-game brief: Discord linked but DM not sent (not enough data)')
+        }
+        return
+      }
+
+      openBrowserBrief()
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      log.warn('[PregameBrief] API request failed, falling back to browser:', msg)
+      openBrowserBrief()
+    }
+  })()
 }
 
 // ── Post-game debrief ─────────────────────────────────────────────────────────

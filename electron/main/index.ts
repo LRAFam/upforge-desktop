@@ -296,7 +296,7 @@ async function extractMatchClips(
 }
 
 function requestPregameBrief(context?: { agent?: string | null; map?: string | null; mode?: string | null }): void {
-  _requestPregameBrief(() => authManager.getToken(), logActivity, context)
+  _requestPregameBrief(() => authManager.getToken(), logActivity, context, process.env['VITE_API_URL'])
 }
 
 async function requestPostGameDebrief(opts: {
