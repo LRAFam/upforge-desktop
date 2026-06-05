@@ -8,7 +8,13 @@
     "yScalarToAdd": 0.5,
     "displayIcon": "https://media.valorant-api.com/maps/224b0a95-48b9-f703-1bd8-67aca101a61f/displayicon.png",
     "tacticalDescription": "A/B Sites",
-    "mapUrl": "/Game/Maps/Infinity/Infinity"
+    "mapUrl": "/Game/Maps/Infinity/Infinity",
+    "viewport": {
+      "minX": 0.02614999999999995,
+      "maxX": 0.9617,
+      "minY": 0.09904999999999997,
+      "maxY": 0.9272750000000001
+    }
   },
   {
     "displayName": "Ascent",
@@ -19,7 +25,13 @@
     "yScalarToAdd": 0.573242,
     "displayIcon": "https://media.valorant-api.com/maps/7eaecc1b-4337-bbf6-6ab9-04b8f06b3319/displayicon.png",
     "tacticalDescription": "A/B Sites",
-    "mapUrl": "/Game/Maps/Ascent/Ascent"
+    "mapUrl": "/Game/Maps/Ascent/Ascent",
+    "viewport": {
+      "minX": 0.49996082000000003,
+      "maxX": 1.329006849,
+      "minY": 0.5697420000000001,
+      "maxY": 1.25538661
+    }
   },
   {
     "displayName": "Bind",
@@ -30,7 +42,13 @@
     "yScalarToAdd": 0.967566,
     "displayIcon": "https://media.valorant-api.com/maps/2c9d57ec-4431-9c5e-2939-8f9ef6dd5cba/displayicon.png",
     "tacticalDescription": "A/B Sites",
-    "mapUrl": "/Game/Maps/Duality/Duality"
+    "mapUrl": "/Game/Maps/Duality/Duality",
+    "viewport": {
+      "minX": 0.58647825088,
+      "maxX": 1.4408141620000001,
+      "minY": 0.6209706770000001,
+      "maxY": 1.3937705894
+    }
   },
   {
     "displayName": "Breeze",
@@ -41,7 +59,13 @@
     "yScalarToAdd": 0.833078,
     "displayIcon": "https://media.valorant-api.com/maps/2fb9a4fd-47b8-4e7d-a969-74b4046ebd53/displayicon.png",
     "tacticalDescription": "A/B Sites",
-    "mapUrl": "/Game/Maps/Foxtrot/Foxtrot"
+    "mapUrl": "/Game/Maps/Foxtrot/Foxtrot",
+    "viewport": {
+      "minX": 0.37762300000000004,
+      "maxX": 1.1231229999999999,
+      "minY": 0.390328,
+      "maxY": 1.230328
+    }
   },
   {
     "displayName": "Corrode",
@@ -52,7 +76,13 @@
     "yScalarToAdd": 0.5,
     "displayIcon": "https://media.valorant-api.com/maps/1c18ab1f-420d-0d8b-71d0-77ad3c439115/displayicon.png",
     "tacticalDescription": "A/B Sites",
-    "mapUrl": "/Game/Maps/Rook/Rook"
+    "mapUrl": "/Game/Maps/Rook/Rook",
+    "viewport": {
+      "minX": 0.13473734800000003,
+      "maxX": 0.941487551,
+      "minY": 0.10275000000000001,
+      "maxY": 0.90246549
+    }
   },
   {
     "displayName": "Fracture",
@@ -63,7 +93,13 @@
     "yScalarToAdd": 1.155886,
     "displayIcon": "https://media.valorant-api.com/maps/b529448b-4d60-346e-e89e-00a4c527a405/displayicon.png",
     "tacticalDescription": "A/B Sites",
-    "mapUrl": "/Game/Maps/Canyon/Canyon"
+    "mapUrl": "/Game/Maps/Canyon/Canyon",
+    "viewport": {
+      "minX": 0.895905212,
+      "maxX": 1.5868639999999998,
+      "minY": 0.8867108157999999,
+      "maxY": 1.619362
+    }
   },
   {
     "displayName": "Haven",
@@ -74,7 +110,13 @@
     "yScalarToAdd": 0.642728,
     "displayIcon": "https://media.valorant-api.com/maps/2bee0dc9-4ffe-519b-1cbd-7fbe763a6047/displayicon.png",
     "tacticalDescription": "A/B/C Sites",
-    "mapUrl": "/Game/Maps/Triad/Triad"
+    "mapUrl": "/Game/Maps/Triad/Triad",
+    "viewport": {
+      "minX": 0.84168895,
+      "maxX": 1.5975553224999999,
+      "minY": 0.8409374374999999,
+      "maxY": 1.596331025
+    }
   },
   {
     "displayName": "Icebox",
@@ -85,7 +127,13 @@
     "yScalarToAdd": 0.304687,
     "displayIcon": "https://media.valorant-api.com/maps/e2ad5c54-4114-a870-9641-8ea21279579a/displayicon.png",
     "tacticalDescription": "A/B Sites",
-    "mapUrl": "/Game/Maps/Port/Port"
+    "mapUrl": "/Game/Maps/Port/Port",
+    "viewport": {
+      "minX": -0.05818599999999996,
+      "maxX": 0.622214,
+      "minY": -0.20471299999999998,
+      "maxY": 0.625087
+    }
   },
   {
     "displayName": "Lotus",
@@ -96,7 +144,13 @@
     "yScalarToAdd": 0.917752,
     "displayIcon": "https://media.valorant-api.com/maps/2fe4ed3a-450a-948b-6d6b-e89a78e680a9/displayicon.png",
     "tacticalDescription": "A/B/C Sites",
-    "mapUrl": "/Game/Maps/Jam/Jam"
+    "mapUrl": "/Game/Maps/Jam/Jam",
+    "viewport": {
+      "minX": 0.555681988,
+      "maxX": 1.1522362240000001,
+      "minY": 0.47906366079999996,
+      "maxY": 1.298015644
+    }
   },
   {
     "displayName": "Pearl",
@@ -107,7 +161,13 @@
     "yScalarToAdd": 0.916016,
     "displayIcon": "https://media.valorant-api.com/maps/fd267378-4d1d-484f-ff52-77821ed10dc2/displayicon.png",
     "tacticalDescription": "A/B Sites",
-    "mapUrl": "/Game/Maps/Pitt/Pitt"
+    "mapUrl": "/Game/Maps/Pitt/Pitt",
+    "viewport": {
+      "minX": 0.437569,
+      "maxX": 1.345680724,
+      "minY": 0.4593988208000001,
+      "maxY": 1.306088774
+    }
   },
   {
     "displayName": "Split",
@@ -118,7 +178,13 @@
     "yScalarToAdd": 0.697578,
     "displayIcon": "https://media.valorant-api.com/maps/d960549e-485c-e861-8d71-aa9d1aed12a2/displayicon.png",
     "tacticalDescription": "A/B Sites",
-    "mapUrl": "/Game/Maps/Bonsai/Bonsai"
+    "mapUrl": "/Game/Maps/Bonsai/Bonsai",
+    "viewport": {
+      "minX": 0.599827882,
+      "maxX": 1.415101822,
+      "minY": 0.6929300683740001,
+      "maxY": 1.396845582
+    }
   },
   {
     "displayName": "Sunset",
@@ -129,6 +195,12 @@
     "yScalarToAdd": 0.515625,
     "displayIcon": "https://media.valorant-api.com/maps/92584fbe-486a-b1b2-9faa-39b0f486b498/displayicon.png",
     "tacticalDescription": "A/B Sites",
-    "mapUrl": "/Game/Maps/Juliett/Juliett"
+    "mapUrl": "/Game/Maps/Juliett/Juliett",
+    "viewport": {
+      "minX": 0.03005000000000002,
+      "maxX": 0.796827323,
+      "minY": 0.188025,
+      "maxY": 0.9719249999999999
+    }
   }
 ]

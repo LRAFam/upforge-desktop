@@ -81,7 +81,17 @@ export function useDesktopRecording() {
         cursor: 'never',
       } as MediaTrackConstraints
 
-      async function acquireStream(audio: boolean): Promise<MediaStream> {
+      const audioConstraints: boolean | MediaTrackConstraints = config.audioEnabled
+        ? ({
+            echoCancellation: true,
+            noiseSuppression: false,
+            autoGainControl: false,
+            // @ts-expect-error Chromium desktop-capture extension
+            suppressLocalAudioPlayback: true,
+          } as MediaTrackConstraints)
+        : false
+
+      async function acquireStream(audio: boolean | MediaTrackConstraints): Promise<MediaStream> {
         try {
           return await navigator.mediaDevices.getDisplayMedia({
             video: strictVideoConstraints,
@@ -102,7 +112,7 @@ export function useDesktopRecording() {
 
       // Try with system audio (loopback via handler) first, fall back to video-only.
       try {
-        stream = await acquireStream(config.audioEnabled)
+        stream = await acquireStream(audioConstraints)
       } catch (audioErr) {
         console.warn('[DesktopRecording] Audio unavailable, recording video-only:', audioErr)
         noAudio = true

@@ -25,7 +25,34 @@ export function getMapTransform(mapName: string | null | undefined): MapTransfor
   return loadManifest().find((m) => normalizeMapKey(m.displayName) === key) ?? null
 }
 
-/** Riot world (x,y) → normalized minimap (0–1). */
+function rawWorldToTransform(t: MapTransform, worldX: number, worldY: number): NormPoint | null {
+  const x = worldX * t.xMultiplier + t.xScalarToAdd
+  const y = worldY * t.yMultiplier + t.yScalarToAdd
+  if (!Number.isFinite(x) || !Number.isFinite(y)) return null
+  return { x, y }
+}
+
+/** Map raw transform coords to 0–1 using per-map viewport (valorant displayicon space). */
+export function transformToDisplayNorm(t: MapTransform, raw: NormPoint): NormPoint {
+  const vp = t.viewport
+  if (!vp || vp.maxX <= vp.minX || vp.maxY <= vp.minY) {
+    return {
+      x: Math.max(0, Math.min(1, raw.x)),
+      y: Math.max(0, Math.min(1, raw.y)),
+    }
+  }
+  const pad = 0.02
+  const minX = vp.minX - pad
+  const maxX = vp.maxX + pad
+  const minY = vp.minY - pad
+  const maxY = vp.maxY + pad
+  return {
+    x: Math.max(0, Math.min(1, (raw.x - minX) / (maxX - minX))),
+    y: Math.max(0, Math.min(1, (raw.y - minY) / (maxY - minY))),
+  }
+}
+
+/** Riot world (x,y) → normalized minimap (0–1 on displayicon). */
 export function worldToNorm(
   mapName: string | null | undefined,
   worldX: number,
@@ -33,13 +60,9 @@ export function worldToNorm(
 ): NormPoint | null {
   const t = getMapTransform(mapName)
   if (!t) return null
-  const x = worldX * t.xMultiplier + t.xScalarToAdd
-  const y = worldY * t.yMultiplier + t.yScalarToAdd
-  if (!Number.isFinite(x) || !Number.isFinite(y)) return null
-  return {
-    x: Math.max(0, Math.min(1, x)),
-    y: Math.max(0, Math.min(1, y)),
-  }
+  const raw = rawWorldToTransform(t, worldX, worldY)
+  if (!raw) return null
+  return transformToDisplayNorm(t, raw)
 }
 
 export function getMinimapUrl(mapName: string | null | undefined): string | null {

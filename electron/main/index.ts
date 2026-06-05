@@ -18,7 +18,13 @@ import { Recorder } from './recorder'
 import { DesktopRecorder } from './desktop-recorder'
 import { OBSRecorder } from './obs-recorder'
 import type { ActiveMatchRecorder } from './match-recorder'
-import { RiotLocalApi, recomputeTimelineVideoOffsets, nudgeTimelineSyncOffset } from './riot-local-api'
+import {
+  RiotLocalApi,
+  recomputeTimelineVideoOffsets,
+  nudgeTimelineSyncOffset,
+  DEFAULT_VIDEO_SYNC_OFFSET_MS,
+} from './riot-local-api'
+import { applySpatialEnrichment } from './spatial/enrich'
 import { UploadManager, savePendingJob, clearPendingJob, readPendingJob } from './upload-manager'
 import { startAnalysisPoll } from './analysis-poll'
 import { AuthManager } from './auth-manager'
@@ -2003,10 +2009,11 @@ app.whenReady().then(async () => {
   ipcMain.handle('recordings:reset-sync', (_e, { id }: { id: string }) => {
     const recording = recordingsStore.getById(id)
     if (!recording?.timeline) return { ok: false as const }
-    recording.timeline.videoSyncOffsetMs = 0
+    recording.timeline.videoSyncOffsetMs = DEFAULT_VIDEO_SYNC_OFFSET_MS
     recomputeTimelineVideoOffsets(recording.timeline)
+    applySpatialEnrichment(recording.timeline)
     recordingsStore.updateTimeline(id, recording.timeline)
-    return { ok: true as const, videoSyncOffsetMs: 0 }
+    return { ok: true as const, videoSyncOffsetMs: DEFAULT_VIDEO_SYNC_OFFSET_MS }
   })
 
   ipcMain.handle('recordings:get-timeline', (_e, { id }: { id: string }) => {
@@ -2015,6 +2022,7 @@ app.whenReady().then(async () => {
     const tl = recording.timeline
     if (tl) {
       recomputeTimelineVideoOffsets(tl)
+      applySpatialEnrichment(tl)
       recordingsStore.updateTimeline(id, tl)
     }
     // Only return videoPath if the file actually exists on disk

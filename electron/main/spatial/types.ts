@@ -13,6 +13,8 @@ export interface MapTransform {
   xScalarToAdd: number
   yScalarToAdd: number
   displayIcon?: string
+  /** Raw transform bounds from valorant-api callouts — maps playable area to 0–1 for displayicon. */
+  viewport?: { minX: number; maxX: number; minY: number; maxY: number }
 }
 
 /** Radial callout anchor — nearest within radius wins. */

@@ -647,6 +647,7 @@ export class RiotLocalApi {
       matchDetails: null,
       startTime: Date.now(),
       endTime: null,
+      videoSyncOffsetMs: DEFAULT_VIDEO_SYNC_OFFSET_MS,
     }
     this._connectWebSocket()
     this.presencePollInterval = setInterval(() => this._pollPresence(), 10_000)
@@ -910,18 +911,23 @@ export class RiotLocalApi {
       `offset=${recordingOffset}ms (using ${reference})`
     )
 
-    // Build a fast PUUID → agent name map for resolving event labels
+    // PUUID → display label (Riot name, else agent — never raw UUID in UI)
     const puuidToAgent = new Map<string, string>()
+    const puuidToName = new Map<string, string>()
     for (const p of (players ?? [])) {
+      const sub = p.subject as string | undefined
+      if (!sub) continue
       const agent = resolveAgentName(p.characterId as string)
-      if (p.subject && agent) puuidToAgent.set(p.subject as string, agent)
+      const gameName = (p.gameName as string) || null
+      if (agent) puuidToAgent.set(sub, agent)
+      if (gameName) puuidToName.set(sub, gameName)
+      else if (agent) puuidToName.set(sub, agent)
     }
 
     const _resolveName = (puuid: string | undefined): string => {
       if (!puuid) return 'Unknown'
       if (puuid.toLowerCase() === ownLower) return 'You'
-      const agent = puuidToAgent.get(puuid)
-      return agent ?? puuid.slice(0, 6)
+      return puuidToName.get(puuid) ?? puuidToAgent.get(puuid) ?? 'Enemy'
     }
 
     if (allKills && allKills.length > 0) {
@@ -1011,8 +1017,10 @@ export class RiotLocalApi {
         const roundNum = (round.roundNum as number) ?? 0
         const winningTeam = (round.winningTeam as string) ?? null
         const resultCode = (round.roundResultCode as string) ?? (round.roundResult as string) ?? null
-        const bombPlanter = (round.bombPlanter as string) ?? null
-        const bombDefuser = (round.bombDefuser as string) ?? null
+        const bombPlanterRaw = (round.bombPlanter as string) ?? null
+        const bombDefuserRaw = (round.bombDefuser as string) ?? null
+        const bombPlanter = bombPlanterRaw ? _resolveName(bombPlanterRaw) : null
+        const bombDefuser = bombDefuserRaw ? _resolveName(bombDefuserRaw) : null
         const plantSite = (round.plantSite as string) ?? null
         const prs = (round.playerStats as Array<Record<string, unknown>> | undefined)
           ?.find((ps) => (ps.subject as string)?.toLowerCase() === ownLower)
@@ -1324,10 +1332,18 @@ function syncSpatialVideoOffsets(timeline: MatchData): void {
   }
 }
 
+/** Default VOD sync nudge — events sit ~8s late without this offset on typical recordings. */
+export const DEFAULT_VIDEO_SYNC_OFFSET_MS = -8_000
+
+export function effectiveVideoSyncOffsetMs(timeline: MatchData): number {
+  if (timeline.videoSyncOffsetMs != null) return timeline.videoSyncOffsetMs
+  return DEFAULT_VIDEO_SYNC_OFFSET_MS
+}
+
 /** Total ms from recording start to Riot game-clock zero, including manual nudge. */
 export function totalRecordingOffsetMs(timeline: MatchData): number {
   const { offset } = computeRecordingOffsetMeta(timeline)
-  return offset + (timeline.videoSyncOffsetMs ?? 0)
+  return offset + effectiveVideoSyncOffsetMs(timeline)
 }
 
 /** Shift all event timestamps by deltaMs and persist on the timeline object. */

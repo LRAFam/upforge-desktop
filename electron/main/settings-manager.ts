@@ -79,7 +79,7 @@ export interface AppSettings {
 const DEFAULTS: AppSettings = {
   recordingQuality: '1080p',
   recordingBitrate: 6,
-  recordingFps: 30,
+  recordingFps: 60,
   audioEnabled: true,
   savePath: '',
   launchOnStartup: false,

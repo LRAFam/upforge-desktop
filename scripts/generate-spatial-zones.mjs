@@ -28,12 +28,40 @@ function normalizeKey(name) {
   return name.trim().toLowerCase().replace(/\s+/g, '')
 }
 
-function worldToNorm(t, wx, wy) {
-  const x = wx * t.xMultiplier + t.xScalarToAdd
-  const y = wy * t.yMultiplier + t.yScalarToAdd
+function rawTransform(t, wx, wy) {
   return {
-    x: Math.max(0, Math.min(1, x)),
-    y: Math.max(0, Math.min(1, y)),
+    x: wx * t.xMultiplier + t.xScalarToAdd,
+    y: wy * t.yMultiplier + t.yScalarToAdd,
+  }
+}
+
+function computeViewport(rawPoints) {
+  const xs = rawPoints.map((p) => p.x)
+  const ys = rawPoints.map((p) => p.y)
+  return {
+    minX: Math.min(...xs),
+    maxX: Math.max(...xs),
+    minY: Math.min(...ys),
+    maxY: Math.max(...ys),
+  }
+}
+
+function transformToDisplayNorm(t, raw) {
+  const vp = t.viewport
+  if (!vp) {
+    return {
+      x: Math.max(0, Math.min(1, raw.x)),
+      y: Math.max(0, Math.min(1, raw.y)),
+    }
+  }
+  const pad = 0.02
+  const minX = vp.minX - pad
+  const maxX = vp.maxX + pad
+  const minY = vp.minY - pad
+  const maxY = vp.maxY + pad
+  return {
+    x: Math.max(0, Math.min(1, (raw.x - minX) / (maxX - minX))),
+    y: Math.max(0, Math.min(1, (raw.y - minY) / (maxY - minY))),
   }
 }
 
@@ -88,7 +116,7 @@ async function fetchMap(uuid) {
   return json.data
 }
 
-function manifestEntry(map) {
+function manifestEntry(map, viewport) {
   return {
     displayName: map.displayName,
     uuid: map.uuid,
@@ -99,6 +127,7 @@ function manifestEntry(map) {
     displayIcon: map.displayIcon,
     tacticalDescription: map.tacticalDescription,
     mapUrl: map.mapUrl,
+    viewport,
   }
 }
 
@@ -111,9 +140,7 @@ const standard = allMaps.filter(isStandardMap).sort((a, b) => a.displayName.loca
 console.log(`Found ${standard.length} standard maps with transforms:`)
 standard.forEach((m) => console.log(`  - ${m.displayName} (${(m.callouts || []).length} callouts in list endpoint)`))
 
-writeFileSync(manifestPath, `${JSON.stringify(standard.map(manifestEntry), null, 2)}\n`)
-console.log(`Wrote ${manifestPath}`)
-
+const manifestRows = []
 const results = []
 
 for (const entry of standard) {
@@ -137,6 +164,14 @@ for (const entry of standard) {
   }
 
   const raw = mapData.callouts || []
+  const rawPoints = raw
+    .map((c) => c.location)
+    .filter((loc) => loc && loc.x != null && loc.y != null)
+    .map((loc) => rawTransform(t, loc.x, loc.y))
+  const viewport = rawPoints.length ? computeViewport(rawPoints) : null
+  if (viewport) t.viewport = viewport
+  manifestRows.push(manifestEntry(entry, viewport))
+
   const seen = new Set()
   const callouts = []
 
@@ -146,7 +181,7 @@ for (const entry of standard) {
     const name = calloutLabel(c)
     if (seen.has(name)) continue
     seen.add(name)
-    const norm = worldToNorm(t, loc.x, loc.y)
+    const norm = transformToDisplayNorm(t, rawTransform(t, loc.x, loc.y))
     callouts.push({
       name,
       site: siteFromSuper(c.superRegionName),
@@ -167,6 +202,9 @@ for (const entry of standard) {
   console.log(`  → ${callouts.length} callouts`)
   results.push({ map: entry.displayName, key, callouts: callouts.length })
 }
+
+writeFileSync(manifestPath, `${JSON.stringify(manifestRows, null, 2)}\n`)
+console.log(`Wrote ${manifestPath}`)
 
 // Remove stale zone files for maps no longer in manifest
 const validKeys = new Set(standard.map((m) => normalizeKey(m.displayName)))

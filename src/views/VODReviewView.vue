@@ -113,7 +113,7 @@
                      :class="event.type === 'plant' ? 'text-orange-400' : event.type === 'defuse' ? 'text-cyan-400' : 'text-yellow-400'">
                     {{ event.type === 'plant' ? (event.site ? `PLANT ${event.site}` : 'PLANT') : event.type === 'defuse' ? 'DEFUSE' : 'DETONATE' }}
                   </p>
-                  <p v-if="event.planter || event.defuser" class="text-[8px] text-gray-600 truncate">{{ event.planter || event.defuser }}</p>
+                  <p v-if="event.planter || event.defuser" class="text-[8px] text-gray-600 truncate">{{ formatPlayerLabel(event.planter || event.defuser) }}</p>
                 </div>
                 <span class="text-[8px] text-gray-700 flex-shrink-0 tabular-nums">{{ formatMs(event.videoOffsetMs) }}</span>
               </template>
@@ -514,7 +514,7 @@
                      :class="event.type === 'plant' ? 'text-orange-300' : event.type === 'defuse' ? 'text-cyan-300' : 'text-yellow-300'">
                     {{ event.type === 'plant' ? (event.site ? `Spike Planted — Site ${event.site}` : 'Spike Planted') : event.type === 'defuse' ? 'Spike Defused' : 'Spike Detonated' }}
                   </p>
-                  <p v-if="event.planter || event.defuser" class="text-[9px] text-gray-600">{{ event.planter || event.defuser }}</p>
+                  <p v-if="event.planter || event.defuser" class="text-[9px] text-gray-600">{{ formatPlayerLabel(event.planter || event.defuser) }}</p>
                 </div>
                 <span class="text-[10px] text-gray-600 font-mono tabular-nums flex-shrink-0">{{ formatMs(event.videoOffsetMs) }}</span>
               </template>
@@ -1057,10 +1057,29 @@ function isSpikeEvent(event: TimelineEvent): boolean {
   return event.type === 'plant' || event.type === 'defuse' || event.type === 'detonation'
 }
 
+const DEFAULT_SYNC_MS = -8000
+
 /** Looks up the agent name for a player by puuid from the team snapshot. */
 function agentByPuuid(puuid: string | null | undefined): string | null {
   if (!puuid || !timeline.value?.teamSnapshot) return null
   return timeline.value.teamSnapshot.find(p => p.puuid === puuid)?.agent ?? null
+}
+
+/** Resolve planter/defuser/killer labels — never show raw PUUIDs in the UI. */
+function formatPlayerLabel(nameOrPuuid: string | null | undefined): string {
+  if (!nameOrPuuid) return ''
+  if (nameOrPuuid === 'You') return 'You'
+  const fromTeam = timeline.value?.teamSnapshot?.find(
+    p => p.puuid === nameOrPuuid || p.summonerName === nameOrPuuid,
+  )
+  if (fromTeam) {
+    if (fromTeam.puuid === ownPuuid.value) return 'You'
+    return fromTeam.summonerName || fromTeam.agent || 'Teammate'
+  }
+  if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(nameOrPuuid)) {
+    return agentByPuuid(nameOrPuuid) ?? 'Enemy'
+  }
+  return nameOrPuuid
 }
 
 function getRankColor(tierName: string): string {
@@ -1348,9 +1367,12 @@ const spatialDeathChips = computed(() =>
     .filter(x => x.ev.type === 'death'),
 )
 
+const effectiveSyncMs = computed(
+  () => timeline.value?.videoSyncOffsetMs ?? videoSyncOffsetMs.value ?? DEFAULT_SYNC_MS,
+)
+
 const syncOffsetLabel = computed(() => {
-  const ms = videoSyncOffsetMs.value
-  if (!ms) return 'Auto'
+  const ms = effectiveSyncMs.value
   const sign = ms > 0 ? '+' : ''
   return `${sign}${(ms / 1000).toFixed(1)}s`
 })
@@ -1619,7 +1641,7 @@ onMounted(async () => {
   } else if (id) {
     recordingId.value = id
     timeline.value = await window.api.recordings.getTimeline(id)
-    videoSyncOffsetMs.value = timeline.value?.videoSyncOffsetMs ?? 0
+    videoSyncOffsetMs.value = timeline.value?.videoSyncOffsetMs ?? DEFAULT_SYNC_MS
   }
 
   const numericTimelineId = Number(timelineId)

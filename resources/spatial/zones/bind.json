@@ -6,169 +6,169 @@
     {
       "name": "A Bath",
       "site": "A",
-      "x": 1,
-      "y": 0.705,
+      "x": 0.6125,
+      "y": 0.128,
       "radius": 0.075
     },
     {
       "name": "A Cubby",
       "site": "A",
-      "x": 1,
-      "y": 0.9572,
+      "x": 0.5794,
+      "y": 0.4383,
       "radius": 0.075
     },
     {
       "name": "A Exit",
       "site": "A",
-      "x": 1,
-      "y": 0.621,
+      "x": 0.5098,
+      "y": 0.0246,
       "radius": 0.075
     },
     {
       "name": "A Lamps",
       "site": "A",
-      "x": 1,
-      "y": 0.9629,
+      "x": 0.7143,
+      "y": 0.4452,
       "radius": 0.075
     },
     {
       "name": "A Link",
       "site": "A",
-      "x": 0.9525,
-      "y": 1,
+      "x": 0.4316,
+      "y": 0.5241,
       "radius": 0.075
     },
     {
       "name": "A Lobby",
       "site": "A",
-      "x": 0.9376,
-      "y": 0.7812,
+      "x": 0.415,
+      "y": 0.2217,
       "radius": 0.075
     },
     {
       "name": "A Short",
       "site": "A",
-      "x": 1,
-      "y": 0.9201,
+      "x": 0.5384,
+      "y": 0.3927,
       "radius": 0.085
     },
     {
       "name": "A Site",
       "site": "A",
-      "x": 1,
-      "y": 0.8104,
+      "x": 0.7207,
+      "y": 0.2576,
       "radius": 0.09
     },
     {
       "name": "A Teleporter",
       "site": "A",
-      "x": 1,
-      "y": 0.9387,
+      "x": 0.634,
+      "y": 0.4155,
       "radius": 0.075
     },
     {
       "name": "A Tower",
       "site": "A",
-      "x": 1,
-      "y": 0.8167,
+      "x": 0.8609,
+      "y": 0.2654,
       "radius": 0.075
     },
     {
       "name": "Attacker Cave",
       "site": "Spawn",
-      "x": 0.8082,
-      "y": 0.9524,
+      "x": 0.2703,
+      "y": 0.4324,
       "radius": 0.075
     },
     {
       "name": "Attacker Spawn",
       "site": "Spawn",
-      "x": 0.5865,
-      "y": 0.963,
+      "x": 0.0224,
+      "y": 0.4454,
       "radius": 0.09
     },
     {
       "name": "B Elbow",
       "site": "B",
-      "x": 1,
-      "y": 1,
+      "x": 0.7514,
+      "y": 0.9661,
       "radius": 0.075
     },
     {
       "name": "B Exit",
       "site": "B",
-      "x": 1,
-      "y": 1,
+      "x": 0.6003,
+      "y": 0.579,
       "radius": 0.075
     },
     {
       "name": "B Fountain",
       "site": "B",
-      "x": 0.9154,
-      "y": 1,
+      "x": 0.3902,
+      "y": 0.8423,
       "radius": 0.075
     },
     {
       "name": "B Garden",
       "site": "B",
-      "x": 1,
-      "y": 1,
+      "x": 0.6149,
+      "y": 0.8574,
       "radius": 0.075
     },
     {
       "name": "B Hall",
       "site": "B",
-      "x": 1,
-      "y": 1,
+      "x": 0.8681,
+      "y": 0.8097,
       "radius": 0.075
     },
     {
       "name": "B Link",
       "site": "B",
-      "x": 0.9523,
-      "y": 1,
+      "x": 0.4314,
+      "y": 0.6413,
       "radius": 0.075
     },
     {
       "name": "B Long",
       "site": "B",
-      "x": 1,
-      "y": 1,
+      "x": 0.5175,
+      "y": 0.9238,
       "radius": 0.085
     },
     {
       "name": "B Short",
       "site": "B",
-      "x": 1,
-      "y": 1,
+      "x": 0.5015,
+      "y": 0.6729,
       "radius": 0.085
     },
     {
       "name": "B Site",
       "site": "B",
-      "x": 1,
-      "y": 1,
+      "x": 0.7445,
+      "y": 0.8017,
       "radius": 0.09
     },
     {
       "name": "B Teleporter",
       "site": "B",
-      "x": 1,
-      "y": 1,
+      "x": 0.6073,
+      "y": 0.9754,
       "radius": 0.075
     },
     {
       "name": "B Window",
       "site": "B",
-      "x": 1,
-      "y": 1,
+      "x": 0.594,
+      "y": 0.7638,
       "radius": 0.075
     },
     {
       "name": "Defender Spawn",
       "site": "Spawn",
-      "x": 1,
-      "y": 1,
+      "x": 0.9776,
+      "y": 0.5249,
       "radius": 0.09
     }
   ]
