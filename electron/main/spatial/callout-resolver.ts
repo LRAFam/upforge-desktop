@@ -68,6 +68,21 @@ export function resolveCallout(
     return { callout: best.name, site: best.site ?? null }
   }
 
+  // Fallback: nearest anchor when strict radius misses (common before display calibration).
+  let nearest: CalloutAnchor | null = null
+  let nearestD = Infinity
+  for (const c of pack.callouts) {
+    const d = dist(norm, { x: c.x, y: c.y })
+    if (d < nearestD) {
+      nearestD = d
+      nearest = c
+    }
+  }
+  const fallbackMax = Math.max(0.12, (nearest?.radius ?? 0.075) * 1.75)
+  if (nearest && nearestD <= fallbackMax) {
+    return { callout: nearest.name, site: nearest.site ?? null }
+  }
+
   if (pack.sites?.length) {
     for (const z of pack.sites) {
       if (pointInPolygon(norm, z.polygon)) {
