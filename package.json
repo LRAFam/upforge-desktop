@@ -16,6 +16,7 @@
     "major": "npm version major --no-git-tag-version",
     "lint": "eslint . --ext .vue,.js,.jsx,.cjs,.mjs,.ts,.tsx,.cts,.mts --fix --ignore-path .gitignore",
     "type-check": "vue-tsc --noEmit",
+    "spatial:sync": "node scripts/generate-spatial-zones.mjs",
     "prepare": "husky"
   },
   "dependencies": {
@@ -48,6 +49,7 @@
     "eslint": "^8.56.0",
     "eslint-plugin-vue": "^9.20.0",
     "husky": "^9.1.7",
+    "pngjs": "^7.0.0",
     "postcss": "^8.4.33",
     "tailwindcss": "^4.2.2",
     "typescript": "^5.8.0",

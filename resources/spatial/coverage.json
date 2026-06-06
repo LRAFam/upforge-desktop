@@ -1,5 +1,5 @@
 {
-  "updatedAt": "2026-06-05T16:47:08.422Z",
+  "updatedAt": "2026-06-06T19:49:43.355Z",
   "standardMapsThrough2026": [
     "Ascent",
     "Bind",
@@ -35,62 +35,170 @@
     {
       "map": "Abyss",
       "key": "abyss",
-      "callouts": 23
+      "callouts": 23,
+      "displayTransform": "flipY",
+      "displayInset": false,
+      "calibration": {
+        "onMap": 11,
+        "total": 23,
+        "sitesOnMap": 2,
+        "siteCount": 2,
+        "useInset": false
+      }
     },
     {
       "map": "Ascent",
       "key": "ascent",
-      "callouts": 22
+      "callouts": 22,
+      "displayTransform": "identity",
+      "displayInset": true,
+      "calibration": {
+        "onMap": 9,
+        "total": 22,
+        "sitesOnMap": 2,
+        "siteCount": 2,
+        "useInset": true
+      }
     },
     {
       "map": "Bind",
       "key": "bind",
-      "callouts": 24
+      "callouts": 24,
+      "displayTransform": "swapFlipXY",
+      "displayInset": false,
+      "calibration": {
+        "onMap": 7,
+        "total": 24,
+        "sitesOnMap": 2,
+        "siteCount": 2,
+        "useInset": false
+      }
     },
     {
       "map": "Breeze",
       "key": "breeze",
-      "callouts": 23
+      "callouts": 23,
+      "displayTransform": "swapFlipXY",
+      "displayInset": true,
+      "calibration": {
+        "onMap": 15,
+        "total": 23,
+        "sitesOnMap": 2,
+        "siteCount": 2,
+        "useInset": true
+      }
     },
     {
       "map": "Corrode",
       "key": "corrode",
-      "callouts": 21
+      "callouts": 21,
+      "displayTransform": "identity",
+      "displayInset": true,
+      "calibration": {
+        "onMap": 11,
+        "total": 21,
+        "sitesOnMap": 2,
+        "siteCount": 2,
+        "useInset": true
+      }
     },
     {
       "map": "Fracture",
       "key": "fracture",
-      "callouts": 22
+      "callouts": 22,
+      "displayTransform": "flipXY",
+      "displayInset": true,
+      "calibration": {
+        "onMap": 10,
+        "total": 22,
+        "sitesOnMap": 2,
+        "siteCount": 2,
+        "useInset": true
+      }
     },
     {
       "map": "Haven",
       "key": "haven",
-      "callouts": 21
+      "callouts": 21,
+      "displayTransform": "swapFlipXY",
+      "displayInset": true,
+      "calibration": {
+        "onMap": 16,
+        "total": 21,
+        "sitesOnMap": 3,
+        "siteCount": 3,
+        "useInset": true
+      }
     },
     {
       "map": "Icebox",
       "key": "icebox",
-      "callouts": 25
+      "callouts": 25,
+      "displayTransform": "flipXY",
+      "displayInset": false,
+      "calibration": {
+        "onMap": 13,
+        "total": 25,
+        "sitesOnMap": 2,
+        "siteCount": 2,
+        "useInset": false
+      }
     },
     {
       "map": "Lotus",
       "key": "lotus",
-      "callouts": 28
+      "callouts": 28,
+      "displayTransform": "swapFlipXY",
+      "displayInset": true,
+      "calibration": {
+        "onMap": 19,
+        "total": 28,
+        "sitesOnMap": 3,
+        "siteCount": 3,
+        "useInset": true
+      }
     },
     {
       "map": "Pearl",
       "key": "pearl",
-      "callouts": 26
+      "callouts": 26,
+      "displayTransform": "swapFlipXY",
+      "displayInset": true,
+      "calibration": {
+        "onMap": 9,
+        "total": 26,
+        "sitesOnMap": 2,
+        "siteCount": 2,
+        "useInset": true
+      }
     },
     {
       "map": "Split",
       "key": "split",
-      "callouts": 24
+      "callouts": 24,
+      "displayTransform": "swapFlipXY",
+      "displayInset": false,
+      "calibration": {
+        "onMap": 13,
+        "total": 24,
+        "sitesOnMap": 2,
+        "siteCount": 2,
+        "useInset": false
+      }
     },
     {
       "map": "Sunset",
       "key": "sunset",
-      "callouts": 17
+      "callouts": 17,
+      "displayTransform": "swapFlipY",
+      "displayInset": true,
+      "calibration": {
+        "onMap": 9,
+        "total": 17,
+        "sitesOnMap": 2,
+        "siteCount": 2,
+        "useInset": true
+      }
     }
   ],
   "excluded": {

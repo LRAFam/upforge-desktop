@@ -15,6 +15,10 @@ export interface MapTransform {
   displayIcon?: string
   /** Raw transform bounds from valorant-api callouts — maps playable area to 0–1 for displayicon. */
   viewport?: { minX: number; maxX: number; minY: number; maxY: number }
+  /** Gray playable region on displayicon PNG (auto-calibrated). */
+  displayBounds?: { minX: number; minY: number; maxX: number; maxY: number }
+  /** Symmetry applied after viewport norm to align with displayicon art. */
+  displayTransform?: string
 }
 
 /** Radial callout anchor — nearest within radius wins. */

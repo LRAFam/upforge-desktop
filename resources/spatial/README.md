@@ -2,8 +2,9 @@
 
 Two-layer positioning for desktop VOD coaching:
 
-1. **Transforms** (`maps-manifest.json`) — Riot world `(x,y)` → minimap `(0–1)` via [valorant-api.com](https://valorant-api.com/v1/maps) constants.
-2. **Callouts** (`zones/<map>.json`) — radial anchors; nearest callout within `radius` wins.
+1. **Transforms** (`maps-manifest.json`) — Riot world `(x,y)` → internal minimap `(0–1)` via [valorant-api.com](https://valorant-api.com/v1/maps) constants + callout viewport.
+2. **Display calibration** (same manifest) — per-map `displayBounds` (gray playable inset on the PNG) and optional `displayTransform` (symmetry). Applied at render time in `map-display-norm.ts`.
+3. **Callouts** (`zones/<map>.json`) — radial anchors; nearest callout within `radius` wins.
 
 ## Adding / tuning callouts
 
@@ -15,10 +16,10 @@ Calibrate by logging `norm` from a known death in dev tools, or plot on the mini
 
 All competitive maps in `maps-manifest.json` have `zones/<map>.json` generated from [valorant-api.com](https://valorant-api.com/v1/maps) official callout coordinates.
 
-Regenerate after API updates:
+Regenerate after API updates (also syncs to `upforge-frontend`):
 
 ```bash
-node scripts/generate-spatial-zones.mjs
+npm run spatial:sync
 ```
 
 Then copy `zones/*.json` to `upforge-ai-service/resources/spatial/zones/`.

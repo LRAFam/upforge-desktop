@@ -7,9 +7,16 @@
  * As of 2026: Ascent, Bind, Haven, Split, Icebox, Breeze, Fracture, Pearl,
  * Lotus, Sunset, Abyss, Corrode (12 maps).
  */
-import { writeFileSync, mkdirSync, readdirSync, unlinkSync } from 'fs'
+import {
+  writeFileSync,
+  mkdirSync,
+  readdirSync,
+  unlinkSync,
+  cpSync,
+} from 'fs'
 import { join, dirname } from 'path'
 import { fileURLToPath } from 'url'
+import { PNG } from 'pngjs'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const root = join(__dirname, '..')
@@ -17,6 +24,9 @@ const spatialDir = join(root, 'resources/spatial')
 const manifestPath = join(spatialDir, 'maps-manifest.json')
 const zonesDir = join(spatialDir, 'zones')
 const coveragePath = join(spatialDir, 'coverage.json')
+const frontendRoot = join(root, '..', 'upforge-frontend')
+const frontendManifestPath = join(frontendRoot, 'app/data/spatial/maps-manifest.json')
+const frontendZonesDir = join(frontendRoot, 'public/spatial/zones')
 
 /** All standard competitive maps released through Corrode (v11.00, 2025). */
 const STANDARD_MAPS_2026 = [
@@ -116,7 +126,38 @@ async function fetchMap(uuid) {
   return json.data
 }
 
-function manifestEntry(map, viewport) {
+const TRANSFORM_ORDER = [
+  'identity',
+  'flipY',
+  'flipX',
+  'flipXY',
+  'swap',
+  'swapFlipY',
+  'swapFlipX',
+  'swapFlipXY',
+]
+
+const DISPLAY_TRANSFORMS = Object.fromEntries(
+  TRANSFORM_ORDER.map((name) => {
+    const fns = {
+      identity: (x, y) => [x, y],
+      flipX: (x, y) => [1 - x, y],
+      flipY: (x, y) => [x, 1 - y],
+      flipXY: (x, y) => [1 - x, 1 - y],
+      swap: (x, y) => [y, x],
+      swapFlipX: (x, y) => [1 - y, x],
+      swapFlipY: (x, y) => [y, 1 - x],
+      swapFlipXY: (x, y) => [1 - y, 1 - x],
+    }
+    return [name, fns[name]]
+  }),
+)
+
+function round4(v) {
+  return Math.round(v * 10000) / 10000
+}
+
+function manifestEntry(map, viewport, calibration) {
   return {
     displayName: map.displayName,
     uuid: map.uuid,
@@ -128,6 +169,165 @@ function manifestEntry(map, viewport) {
     tacticalDescription: map.tacticalDescription,
     mapUrl: map.mapUrl,
     viewport,
+    ...(calibration?.displayBounds
+      ? { displayBounds: calibration.displayBounds }
+      : {}),
+    ...(calibration?.displayTransform && calibration.displayTransform !== 'identity'
+      ? { displayTransform: calibration.displayTransform }
+      : {}),
+  }
+}
+
+async function fetchDisplayIconPng(url) {
+  const res = await fetch(url)
+  if (!res.ok) throw new Error(`displayIcon HTTP ${res.status}`)
+  const buf = Buffer.from(await res.arrayBuffer())
+  return PNG.sync.read(buf)
+}
+
+function pngPlayableBounds(png) {
+  const { width, height, data } = png
+  let minX = width
+  let minY = height
+  let maxX = 0
+  let maxY = 0
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const i = (y * width + x) * 4
+      const lum = (data[i] + data[i + 1] + data[i + 2]) / 3
+      if (lum > 45 && lum < 210) {
+        if (x < minX) minX = x
+        if (y < minY) minY = y
+        if (x > maxX) maxX = x
+        if (y > maxY) maxY = y
+      }
+    }
+  }
+  if (maxX <= minX || maxY <= minY) {
+    return { minX: 0, minY: 0, maxX: 1, maxY: 1 }
+  }
+  return {
+    minX: minX / width,
+    minY: minY / height,
+    maxX: maxX / width,
+    maxY: maxY / height,
+  }
+}
+
+function pngLuminance(png, nx, ny) {
+  const x = Math.max(0, Math.min(png.width - 1, Math.floor(nx * png.width)))
+  const y = Math.max(0, Math.min(png.height - 1, Math.floor(ny * png.height)))
+  const i = (y * png.width + x) * 4
+  return (png.data[i] + png.data[i + 1] + png.data[i + 2]) / 3
+}
+
+function applyDisplayBounds(bounds, x, y) {
+  return [
+    bounds.minX + x * (bounds.maxX - bounds.minX),
+    bounds.minY + y * (bounds.maxY - bounds.minY),
+  ]
+}
+
+function siteSeparationBonus(callouts, project) {
+  const siteNames = ['A Site', 'B Site', 'C Site']
+  const positions = siteNames
+    .map((name) => {
+      const c = callouts.find((x) => x.name === name)
+      if (!c) return null
+      const [x, y] = project(c.x, c.y)
+      return { x, y }
+    })
+    .filter(Boolean)
+  if (positions.length < 2) return 0
+  let maxDist = 0
+  for (let i = 0; i < positions.length; i++) {
+    for (let j = i + 1; j < positions.length; j++) {
+      const dx = positions[i].x - positions[j].x
+      const dy = positions[i].y - positions[j].y
+      maxDist = Math.max(maxDist, Math.hypot(dx, dy))
+    }
+  }
+  return maxDist * 500
+}
+
+/** On two-site maps, A is usually on the opposite side from B (not clustered). */
+function siteAxisBonus(callouts, project) {
+  const hasC = callouts.some((c) => c.name === 'C Site')
+  if (hasC) return 0
+  const a = callouts.find((c) => c.name === 'A Site')
+  const b = callouts.find((c) => c.name === 'B Site')
+  if (!a || !b) return 0
+  const [ax] = project(a.x, a.y)
+  const [bx] = project(b.x, b.y)
+  const dx = ax - bx
+  return dx > 0.2 ? dx * 1000 : 0
+}
+
+function scoreCalloutsOnPng(png, callouts, bounds, transformName, useInset) {
+  const fn = DISPLAY_TRANSFORMS[transformName]
+  const project = (x, y) => {
+    if (useInset) [x, y] = applyDisplayBounds(bounds, x, y)
+    return fn(x, y)
+  }
+  let onMap = 0
+  let sitesOnMap = 0
+  let siteCount = 0
+  for (const c of callouts) {
+    const [x, y] = project(c.x, c.y)
+    const lum = pngLuminance(png, x, y)
+    if (lum >= 50) onMap++
+    if (c.name === 'A Site' || c.name === 'B Site' || c.name === 'C Site') {
+      siteCount++
+      if (lum >= 50) sitesOnMap++
+    }
+  }
+  const separation = siteSeparationBonus(callouts, project)
+  const axis = siteAxisBonus(callouts, project)
+  const simplicity = TRANSFORM_ORDER.indexOf(transformName)
+  const score =
+    sitesOnMap * 10000 + onMap * 10 + separation + axis - simplicity
+  return { onMap, sitesOnMap, siteCount, score }
+}
+
+async function calibrateDisplayTransform(displayIcon, callouts) {
+  const png = await fetchDisplayIconPng(displayIcon)
+  const bounds = pngPlayableBounds(png)
+  let best = {
+    score: -1,
+    displayTransform: 'identity',
+    useInset: false,
+    onMap: 0,
+    sitesOnMap: 0,
+    siteCount: 0,
+  }
+
+  for (const useInset of [false, true]) {
+    for (const transformName of TRANSFORM_ORDER) {
+      const result = scoreCalloutsOnPng(png, callouts, bounds, transformName, useInset)
+      if (result.sitesOnMap < result.siteCount) continue
+      if (result.score > best.score) {
+        best = { ...result, displayTransform: transformName, useInset }
+      }
+    }
+  }
+
+  return {
+    displayTransform: best.displayTransform,
+    displayBounds: best.useInset
+      ? {
+          minX: round4(bounds.minX),
+          minY: round4(bounds.minY),
+          maxX: round4(bounds.maxX),
+          maxY: round4(bounds.maxY),
+        }
+      : null,
+    calibrationScore: {
+      onMap: best.onMap,
+      total: callouts.length,
+      sitesOnMap: best.sitesOnMap,
+      siteCount: best.siteCount,
+      useInset: best.useInset,
+    },
   }
 }
 
@@ -141,6 +341,7 @@ console.log(`Found ${standard.length} standard maps with transforms:`)
 standard.forEach((m) => console.log(`  - ${m.displayName} (${(m.callouts || []).length} callouts in list endpoint)`))
 
 const manifestRows = []
+const pendingCalibration = []
 const results = []
 
 for (const entry of standard) {
@@ -170,7 +371,6 @@ for (const entry of standard) {
     .map((loc) => rawTransform(t, loc.x, loc.y))
   const viewport = rawPoints.length ? computeViewport(rawPoints) : null
   if (viewport) t.viewport = viewport
-  manifestRows.push(manifestEntry(entry, viewport))
 
   const seen = new Set()
   const callouts = []
@@ -200,11 +400,51 @@ for (const entry of standard) {
 
   writeFileSync(join(zonesDir, `${key}.json`), `${JSON.stringify(pack, null, 2)}\n`)
   console.log(`  → ${callouts.length} callouts`)
+  pendingCalibration.push({
+    entry,
+    viewport,
+    callouts,
+    key,
+  })
   results.push({ map: entry.displayName, key, callouts: callouts.length })
+}
+
+console.log('\nCalibrating displayicon alignment (PNG inset + symmetry)...')
+for (const item of pendingCalibration) {
+  const { entry, viewport, callouts, key } = item
+  try {
+    const calibration = await calibrateDisplayTransform(entry.displayIcon, callouts)
+    manifestRows.push(manifestEntry(entry, viewport, calibration))
+    const { onMap, total, sitesOnMap, siteCount, useInset } = calibration.calibrationScore
+    console.log(
+      `  ${entry.displayName}: ${calibration.displayTransform}${useInset ? ' + inset' : ''} — ${onMap}/${total} callouts, ${sitesOnMap}/${siteCount} sites`,
+    )
+    const zoneResult = results.find((r) => r.key === key)
+    if (zoneResult) {
+      zoneResult.displayTransform = calibration.displayTransform
+      zoneResult.displayInset = useInset
+      zoneResult.calibration = calibration.calibrationScore
+    }
+  } catch (e) {
+    console.warn(`  ${entry.displayName}: calibration failed (${e.message}), using identity`)
+    manifestRows.push(manifestEntry(entry, viewport, null))
+  }
 }
 
 writeFileSync(manifestPath, `${JSON.stringify(manifestRows, null, 2)}\n`)
 console.log(`Wrote ${manifestPath}`)
+
+if (frontendRoot && frontendManifestPath) {
+  try {
+    mkdirSync(join(frontendRoot, 'app/data/spatial'), { recursive: true })
+    mkdirSync(frontendZonesDir, { recursive: true })
+    cpSync(manifestPath, frontendManifestPath)
+    cpSync(zonesDir, frontendZonesDir, { recursive: true })
+    console.log(`Synced manifest + zones → upforge-frontend`)
+  } catch (e) {
+    console.warn(`Could not sync to frontend: ${e.message}`)
+  }
+}
 
 // Remove stale zone files for maps no longer in manifest
 const validKeys = new Set(standard.map((m) => normalizeKey(m.displayName)))
