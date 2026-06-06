@@ -26,6 +26,10 @@ import {
   resolveUploadVideoPath,
   deleteCompressedSibling,
 } from './vod-compressor'
+import {
+  resolveReadyRecordingPath,
+  listUnregisteredRecordingFiles,
+} from './recording-path-resolver'
 import { broadcastObsConnection, probeObsConnection, startObsHealthMonitor } from './obs-health'
 import {
   RiotLocalApi,
@@ -308,6 +312,42 @@ function getRecordingBackendForStatus(): RecordingBackend {
   return 'obs'
 }
 
+let orphanedRecordingsScanned = false
+
+/** Pick up recent local MP4s that never made it into recordings.json (e.g. post-game window closed early). */
+function scanForOrphanedRecordings(force = false): number {
+  if (!settingsManager || !recordingsStore) return 0
+  if (orphanedRecordingsScanned && !force) return 0
+  orphanedRecordingsScanned = true
+
+  const savePath = settingsManager.get().savePath || join(app.getPath('userData'), 'recordings')
+  const known = recordingsStore.getKnownPaths()
+  const orphans = listUnregisteredRecordingFiles(
+    savePath,
+    known,
+    Date.now() - 24 * 60 * 60 * 1000,
+  )
+  if (orphans.length === 0) return 0
+
+  const user = authManager.getUser()
+  for (const file of orphans) {
+    recordingsStore.add({
+      path: file.path,
+      riotName: user?.riot_name ?? '',
+      riotTag: user?.riot_tag ?? '',
+      game: 'valorant',
+      map: null,
+      agent: null,
+      gameMode: 'UNKNOWN',
+      timeline: null,
+    })
+  }
+  log.info(`[Recordings] Imported ${orphans.length} local file(s) into dashboard`)
+  logActivity(`Found ${orphans.length} local recording(s) — added to dashboard`)
+  mainWindow?.webContents.send('recordings:updated')
+  return orphans.length
+}
+
 /** Set by setupGameDetection — ends the active match (upload/post-game) when user clicks Stop. */
 let manualEndMatchRecording: ((game: string) => Promise<{ ok: boolean; reason?: string }>) | null = null
 
@@ -391,12 +431,19 @@ function createTray(): void {
 function setupGameDetection(): void {
   onRecordingLost = (error: string) => {
     const game = gameDetector.currentGame() ?? 'valorant'
-    logActivity(`Recording lost mid-match: ${error}`)
-    notifyRecordingUx(
-      'Recording stopped unexpectedly — the match continues but may not be saved. Check permissions and disk space.',
-      'UpForge — Recording Lost',
+    const obsLost = /obs disconnected/i.test(error)
+    logActivity(
+      obsLost
+        ? 'OBS disconnected mid-match — OBS may still be recording; will recover when the match ends'
+        : `Recording lost mid-match: ${error}`,
     )
-    tray?.setToolTip('UpForge — Recording lost!')
+    notifyRecordingUx(
+      obsLost
+        ? 'OBS disconnected from UpForge. Keep OBS open — your match should still save when it ends. Reconnect in Settings → Recording before the next game.'
+        : 'Recording stopped unexpectedly — the match continues but may not be saved. Check permissions and disk space.',
+      obsLost ? 'UpForge — OBS Disconnected' : 'UpForge — Recording Lost',
+    )
+    tray?.setToolTip(obsLost ? 'UpForge — OBS disconnected' : 'UpForge — Recording lost!')
     setTimeout(() => tray?.setToolTip(idleTooltip(game)), 10_000)
   }
 
@@ -494,21 +541,42 @@ function setupGameDetection(): void {
     }
     handleMatchEndRunning = true
     try {
-    // Finalize OBS and fetch Riot match metadata in parallel — both are network/disk bound.
-    const recordingDuration = obsRecorder.getRecordingDuration()
+    const config = settingsManager?.get()
+    const savePath = config?.savePath || join(app.getPath('userData'), 'recordings')
+
+    // Duration from OBS clock, or wall clock if WebSocket dropped mid-match.
+    let recordingDuration = obsRecorder.getRecordingDuration()
+    if (recordingDuration === 0 && currentRecordingStartTime) {
+      recordingDuration = Math.floor((Date.now() - currentRecordingStartTime) / 1000)
+    }
     const matchSessionStart = currentRecordingStartTime ?? (Date.now() - recordingDuration * 1000)
+
     const [timeline] = await Promise.all([
       riotLocalApi.stop(),
       obsRecorder.stop(),
     ])
 
-    const videoPath = obsRecorder.getLastRecordingPath()
-    const fileSize = obsRecorder.getLastRecordingSize()
+    const resolvedFile = resolveReadyRecordingPath(
+      obsRecorder.getLastRecordingPath(),
+      savePath,
+      matchSessionStart,
+    )
+    const videoPath = resolvedFile?.path ?? obsRecorder.getLastRecordingPath()
+    const fileSize = resolvedFile?.sizeBytes ?? obsRecorder.getLastRecordingSize()
+
+    if (resolvedFile && obsRecorder.hadDisconnectedDuringRecording()) {
+      log.info(`[HandleMatchEnd] Recovered recording after OBS disconnect: ${videoPath}`)
+      logActivity('Recovered recording after OBS disconnect — continuing upload')
+    }
+
+    if (recordingDuration === 0 && fileSize >= MIN_RECORDING_FILE_BYTES && currentRecordingStartTime) {
+      recordingDuration = Math.floor((Date.now() - currentRecordingStartTime) / 1000)
+    }
+
     const user = authManager.getUser()
     const map = timeline?.map ?? null
     const agent = timeline?.agent ?? null
     const gameMode = riotLocalApi.getLastGameMode() ?? 'UNKNOWN'
-    const config = settingsManager?.get()
     const autoAnalyse = config?.autoAnalyse !== false
 
     // Capture diagnostic state for the developer panel
@@ -553,9 +621,9 @@ function setupGameDetection(): void {
       return
     }
 
-    // If recording never started (obsRecorder.start() threw earlier in this match),
-    // skip the post-game window — it would just show a confusing error.
-    if (recordingDuration === 0) {
+    // If recording never started and no file was recovered from disk, skip post-game.
+    if (recordingDuration === 0 && fileSize < MIN_RECORDING_FILE_BYTES) {
+      scanForOrphanedRecordings(true)
       const lastErr = obsRecorder.getLastError()
       const msg = lastErr ? `Match ended — no recording was made (${lastErr})` : 'Match ended — no active recording'
       logActivity(msg)
@@ -681,11 +749,7 @@ function setupGameDetection(): void {
       })().catch(() => { /* swallow — never propagate to caller */ })
     }
 
-    // Guard: window may be destroyed before it finishes loading (e.g. user closes it immediately).
-    if (thisPostGameWindow.isDestroyed()) return
-
     const runPostGameUpload = async () => {
-        if (thisPostGameWindow.isDestroyed()) return
         const sendToWindow = (channel: string, payload?: unknown) => {
           const deliver = () => {
             try {
@@ -702,15 +766,23 @@ function setupGameDetection(): void {
           }
         }
 
-      const readyPath = obsRecorder.getLastRecordingPath() ?? videoPath
-      const readySize = obsRecorder.getLastRecordingSize() || fileSize
+      const savePath = config?.savePath || join(app.getPath('userData'), 'recordings')
+      const ready = resolveReadyRecordingPath(
+        obsRecorder.getLastRecordingPath() ?? videoPath,
+        savePath,
+        matchSessionStart,
+      )
 
-      if (!readyPath || !fs.existsSync(readyPath)) {
+      if (!ready) {
+        scanForOrphanedRecordings(true)
         const backend = getRecordingBackendForStatus()
         const errorMsg = formatRecordingFailure(backend, obsRecorder.getLastError())
+        logActivity('Recording file not found at expected path — check save folder in Settings')
         sendToWindow('post-game:upload-error', errorMsg)
         return
       }
+
+      const { path: readyPath, sizeBytes: readySize } = ready
 
       if (readySize < MIN_FILE_SIZE_BYTES) {
         const sizeMB = (readySize / (1024 * 1024)).toFixed(2)
@@ -720,6 +792,35 @@ function setupGameDetection(): void {
         sendToWindow('post-game:upload-error', errorMsg)
         return
       }
+
+      const matchId = timeline?.matchId
+      const hasKills = (timeline?.playerKills?.length ?? 0) > 0
+      const lateRetryScheduled = !hasKills && !!matchId
+
+      const doAutoDelete = () => {
+        if (settingsManager?.get().autoDelete) {
+          log.info('[App] Auto-deleting recording after clip extraction:', readyPath)
+          obsRecorder.deleteRecording(readyPath)
+          deleteCompressedSibling(readyPath)
+        }
+      }
+
+      // Register on the dashboard immediately — before compression/upload can take minutes.
+      if (timeline) recomputeTimelineVideoOffsets(timeline)
+      const savedRecording = recordingsStore.add({
+        path: readyPath,
+        riotName: user?.riot_name ?? '',
+        riotTag: user?.riot_tag ?? '',
+        game,
+        map,
+        agent,
+        gameMode,
+        timeline,
+      })
+      mainWindow?.webContents.send('recordings:updated')
+      logActivity(
+        `Recording saved (${(readySize / (1024 ** 3)).toFixed(2)} GB) — visible on dashboard`,
+      )
 
       let uploadPath = readyPath
       let uploadSize = readySize
@@ -748,23 +849,6 @@ function setupGameDetection(): void {
         log.warn(`[GameDetector] Recording too large to upload: ${sizeGB} GB — extracting clips only`)
         logActivity(`Recording too large (${sizeGB} GB) — full upload skipped, saving clips`)
 
-        const matchId = timeline?.matchId
-        const hasKills = (timeline?.playerKills?.length ?? 0) > 0
-        const lateRetryScheduled = !hasKills && !!matchId
-
-        if (timeline) recomputeTimelineVideoOffsets(timeline)
-        const oversizedRecording = recordingsStore.add({
-          path: readyPath,
-          riotName: user?.riot_name ?? '',
-          riotTag: user?.riot_tag ?? '',
-          game,
-          map,
-          agent,
-          gameMode,
-          timeline,
-        })
-        mainWindow?.webContents.send('recordings:updated')
-
         extractMatchClips(readyPath, timeline, null)
           .catch(err => log.warn('[ClipExtract] Clip extraction (oversized) error:', err))
 
@@ -790,53 +874,23 @@ function setupGameDetection(): void {
 
         sendToWindow('post-game:upload-error', {
           message: errorMsg,
-          recordingId: oversizedRecording.id,
+          recordingId: savedRecording.id,
           clipsOnly: true,
         })
         return
       }
 
-      // Shared clip extraction logic — runs regardless of autoAnalyse.
-      // Clips (3k/4k/ace/clutch/hotkey) are always extracted from every recording.
-      const matchId = timeline?.matchId
-      const hasKills = (timeline?.playerKills?.length ?? 0) > 0
-      const lateRetryScheduled = !hasKills && !!matchId
-
-      const doAutoDelete = () => {
-        if (settingsManager?.get().autoDelete) {
-          log.info('[App] Auto-deleting recording after clip extraction:', readyPath)
-          obsRecorder.deleteRecording(readyPath)
-          deleteCompressedSibling(readyPath)
-        }
-      }
-
       if (!autoAnalyse) {
-        if (timeline) recomputeTimelineVideoOffsets(timeline)
-        const recording = recordingsStore.add({
-          path: readyPath,
-          riotName: user?.riot_name ?? '',
-          riotTag: user?.riot_tag ?? '',
-          game,
-          map,
-          agent,
-          gameMode,
-          timeline
-        })
         sendToWindow('post-game:pending', {
-          recordingId: recording.id,
+          recordingId: savedRecording.id,
           game,
           map,
           agent
         })
-        mainWindow?.webContents.send('recordings:updated')
 
-        // Extract all highlight clips even without auto-analyse — 3k/4k/ace/clutch/hotkey.
-        // Do NOT auto-delete here: the user hasn't analysed yet (autoAnalyse=false).
-        // Deletion is deferred until after manual analysis via doUploadAndAnalyse.
         extractMatchClips(readyPath, timeline, null)
           .catch(err => log.warn('[ClipExtract] Clip extraction (no-analyse) error:', err))
 
-        // Late retry for when Riot match data isn't ready yet (same logic as autoAnalyse path)
         if (lateRetryScheduled) {
           log.info('[HandleMatchEnd] No kills (no-analyse) — scheduling late retry in 90s')
           setTimeout(async () => {
@@ -845,7 +899,6 @@ function setupGameDetection(): void {
               const details = await riotLocalApi.fetchMatchDetailsLate(matchId)
               if (!details) { log.warn('[LateClipExtract] Match details still unavailable'); return }
               if (timeline) {
-                // Set matchDetails BEFORE populateMatchDataFromDetails so detectClutchRounds works
                 timeline.matchDetails = details
                 riotLocalApi.populateMatchDataFromDetails(timeline, details)
               }
@@ -855,8 +908,6 @@ function setupGameDetection(): void {
             } catch (err) {
               log.warn('[LateClipExtract] Error (no-analyse path):', err)
             }
-            // Do NOT auto-delete: user has autoAnalyse=false so they intend to
-            // manually analyse this recording. Deletion happens in doUploadAndAnalyse.
           }, 90_000)
         }
         return
@@ -864,37 +915,17 @@ function setupGameDetection(): void {
 
       tray?.setToolTip('UpForge — Uploading...')
 
-      // Always save to the recordings store so the recording appears in the dashboard
-      // and can be retried if upload fails. In the auto-analyse path this was previously
-      // only saved on upload failure, meaning a successful upload + auto-delete left
-      // the user with no trace of the recording.
-      if (timeline) recomputeTimelineVideoOffsets(timeline)
-      const autoAnalyseRecording = recordingsStore.add({
-        path: readyPath,
-        riotName: user?.riot_name ?? '',
-        riotTag: user?.riot_tag ?? '',
-        game,
-        map,
-        agent,
-        gameMode,
-        timeline
-      })
-      mainWindow?.webContents.send('recordings:updated')
-
-      const uploadResult = await doUploadAndAnalyse(autoAnalyseRecording.id, uploadPath, user?.riot_name ?? '', user?.riot_tag ?? '',
+      const uploadResult = await doUploadAndAnalyse(savedRecording.id, uploadPath, user?.riot_name ?? '', user?.riot_tag ?? '',
         game, map, agent, timeline, thisPostGameWindow, matchSessionStart, /* skipAutoDelete= */ true)
 
       const jobId = uploadResult ?? null
 
-      // Extract clips after upload completes (doUploadAndAnalyse awaits S3, not analysis polling).
       extractMatchClips(readyPath, timeline, jobId)
         .catch(err => log.warn('[ClipExtract] Background extraction error:', err))
         .finally(() => {
           if (!lateRetryScheduled) doAutoDelete()
         })
 
-      // If Riot hasn't processed the match yet (no kills in timeline), retry match details
-      // after a delay — Riot typically takes 1-3 minutes to publish match data.
       if (lateRetryScheduled) {
         log.info('[HandleMatchEnd] No kills in timeline — scheduling late match details retry in 90s (auto-delete deferred)')
         setTimeout(async () => {
@@ -905,7 +936,6 @@ function setupGameDetection(): void {
               log.warn('[LateClipExtract] Match details still unavailable after delay')
               return
             }
-            // Set matchDetails BEFORE populateMatchDataFromDetails so detectClutchRounds works
             if (timeline) timeline.matchDetails = details
             if (timeline) riotLocalApi.populateMatchDataFromDetails(timeline, details)
             if ((timeline?.playerKills?.length ?? 0) === 0) {
@@ -929,11 +959,12 @@ function setupGameDetection(): void {
     })
     } finally {
       handleMatchEndRunning = false
+      currentRecordingStartTime = null
     }
   }
 
   manualEndMatchRecording = async (game: string) => {
-    if (!obsRecorder.isRecording()) {
+    if (!obsRecorder.isRecording() && currentRecordingStartTime === null) {
       return { ok: false, reason: 'not_recording' }
     }
     if (matchHandled) {
@@ -1589,6 +1620,7 @@ async function doUploadAndAnalyse(
     if (recordingId) {
       recordingsStore.markAnalysed(recordingId, result.job_id)
       mainWindow?.webContents.send('recordings:updated')
+      mainWindow?.webContents.send('dashboard:refresh')
     }
 
     // Auto-delete after upload if configured (skip when called from handleMatchEnd —
@@ -1701,6 +1733,7 @@ async function doUploadAndAnalyse(
       send('post-game:upload-error', {
         message: msg,
         needsUpgrade: true,
+        recordingId: recordingId ?? undefined,
         upgradeUrl: (upgradeErr.upgradeUrl) || 'https://upforge.gg/pricing',
         ppaUrl: (upgradeErr.ppaUrl) || 'https://upforge.gg/valorant/analyze',
       })
@@ -2044,7 +2077,10 @@ app.whenReady().then(async () => {
   })
 
 
-  ipcMain.handle('recordings:get', () => recordingsStore.getPending())
+  ipcMain.handle('recordings:get', () => {
+    scanForOrphanedRecordings()
+    return recordingsStore.getPending()
+  })
 
   ipcMain.handle('recordings:analyse', async (_e, { id }: { id: string }) => {
     const recording = recordingsStore.getById(id)

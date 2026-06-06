@@ -70,6 +70,8 @@ export class OBSRecorder {
   // Guard: only one SaveReplayBuffer in-flight at a time — prevents _pendingReplaySave clobber
   private _savingReplay = false
 
+  private _disconnectedDuringRecording = false
+
   onStatusChange?: (recording: boolean, error?: string) => void
   onReplayClipSaved?: (path: string, trigger: string) => void
   /** Fired when connection state changes. `error` is set only for unexpected disconnects. */
@@ -112,13 +114,15 @@ export class OBSRecorder {
       log.warn('[OBSRecorder] OBS disconnected')
       const wasConnected = this._connected
       this._connected = false
-      if (this._recording) {
-        this._recording = false
-        this._startedAt = null
-        this._stopLiveKillPoll()
-        this.onStatusChange?.(false, 'OBS disconnected during recording')
+      if (this._recording || this._startedAt) {
+        this._disconnectedDuringRecording = true
+        // Keep _startedAt — OBS often keeps recording locally after WebSocket drops.
+        if (this._recording) {
+          this._recording = false
+          this._stopLiveKillPoll()
+          this.onStatusChange?.(false, 'OBS disconnected during recording')
+        }
       }
-      // Only surface as an unexpected disconnect if we had an established session.
       if (wasConnected) {
         this.onConnectionChange?.(false, 'OBS disconnected')
       }
@@ -249,8 +253,12 @@ export class OBSRecorder {
   wasNoAudio(): boolean { return this._noAudio }
   getStartupWarning(): string | null { return this._startupWarning }
   getRecordingDuration(): number {
-    return this._startedAt ? Math.floor((Date.now() - this._startedAt) / 1000) : 0
+    if (this._startedAt) {
+      return Math.floor((Date.now() - this._startedAt) / 1000)
+    }
+    return 0
   }
+  hadDisconnectedDuringRecording(): boolean { return this._disconnectedDuringRecording }
   getRecordingStartedAt(): number | null { return this._startedAt }
 
   getLastRecordingSize(): number {
@@ -309,6 +317,7 @@ export class OBSRecorder {
     this._noAudio = false
     this._startupWarning = null
     this._outputPath = null
+    this._disconnectedDuringRecording = false
 
     try {
       // Game/window capture only — never desktop (privacy / policy safe when alt-tabbing)
@@ -353,18 +362,39 @@ export class OBSRecorder {
   async stop(): Promise<string | null> {
     this._stopLiveKillPoll()
 
-    if (!this._recording) return this._outputPath
+    if (!this._connected) {
+      const reconnect = await this.connect().catch(() => ({ ok: false as const }))
+      if (!reconnect.ok) {
+        log.warn('[OBSRecorder] Cannot reconnect to OBS — using last known output path')
+        return this._outputPath
+      }
+    }
+
+    let outputActive = this._recording
+    try {
+      const status = await this._obs.call('GetRecordStatus') as {
+        outputActive?: boolean
+        outputPath?: string
+      }
+      if (status.outputPath) this._outputPath = status.outputPath
+      if (typeof status.outputActive === 'boolean') outputActive = status.outputActive
+    } catch (err) {
+      log.warn('[OBSRecorder] GetRecordStatus before stop failed:', err)
+    }
+
+    if (!outputActive && !this._recording) {
+      return this._outputPath
+    }
 
     try {
-      // Stop replay buffer first
       if (this._replayBufferActive) {
         await this._obs.call('StopReplayBuffer').catch(() => { /* non-fatal */ })
       }
 
-      // Stop the main recording — response includes the output path
       const response = await this._obs.call('StopRecord')
       this._recording = false
       this._startedAt = null
+      this._disconnectedDuringRecording = false
       if (response.outputPath) this._outputPath = response.outputPath
       await this._resolveOutputPath()
       if (this._outputPath) {

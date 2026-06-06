@@ -109,6 +109,10 @@ export class RecordingsStore {
     return this.recordings.filter(r => !r.analysed && fs.existsSync(r.path))
   }
 
+  getKnownPaths(): Set<string> {
+    return new Set(this.recordings.map((r) => r.path))
+  }
+
   remove(id: string): void {
     this.recordings = this.recordings.filter(r => r.id !== id)
     this.persist()
