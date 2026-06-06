@@ -272,8 +272,29 @@ export class UploadManager {
         let body = ''
         res.on('data', (chunk) => body += chunk)
         res.on('end', () => {
-          try { resolve(JSON.parse(body)) }
-          catch { reject(new Error('Invalid JSON')) }
+          const httpStatus = res.statusCode ?? 0
+          try {
+            const json = JSON.parse(body) as Record<string, unknown>
+            if (httpStatus === 404) {
+              reject(new Error('Job not found'))
+              return
+            }
+            if (httpStatus >= 400) {
+              const msg = (json.error as string) || (json.message as string) || `Request failed (${httpStatus})`
+              reject(new Error(msg))
+              return
+            }
+            resolve(json as {
+              status: string
+              progress?: number
+              current_step?: string | null
+              result?: Record<string, unknown>
+              error?: string | null
+              job_id?: string
+            })
+          } catch {
+            reject(new Error(httpStatus >= 400 ? `Request failed (${httpStatus})` : 'Invalid JSON'))
+          }
         })
       }).on('error', reject)
     })

@@ -23,7 +23,7 @@ import {
 } from './riot-local-api'
 import { applySpatialEnrichment } from './spatial/enrich'
 import { UploadManager, savePendingJob, clearPendingJob, readPendingJob } from './upload-manager'
-import { startAnalysisPoll } from './analysis-poll'
+import { startAnalysisPoll, stopActiveAnalysisPoll, reconcileOrphanedJob } from './analysis-poll'
 import { AuthManager } from './auth-manager'
 import { SettingsManager } from './settings-manager'
 import { setupIpcHandlers, setupClipHandlers, cancelAllPollingTimers } from './ipc-handlers'
@@ -1319,6 +1319,52 @@ function setupGameDetection(): void {
   gameDetector.start()
 }
 
+async function handleOrphanedJobAtStartup(
+  orphanedJob: { job_id: string; savedAt: number; agent?: string; map?: string; game?: string }
+): Promise<void> {
+  const context = {
+    agent: orphanedJob.agent,
+    map: orphanedJob.map,
+    game: orphanedJob.game ?? 'valorant',
+  }
+
+  const decision = await reconcileOrphanedJob(uploadManager, orphanedJob)
+
+  if (decision.action === 'discard') {
+    clearPendingJob()
+    logActivity(`Cleared stale analysis job (${decision.reason})`)
+    return
+  }
+
+  if (decision.action === 'failed') {
+    clearPendingJob()
+    logActivity(`Previous analysis failed: ${decision.error}`)
+    tray?.setToolTip(idleTooltip(context.game))
+    return
+  }
+
+  if (decision.action === 'completed') {
+    clearPendingJob()
+    const score = (decision.status.result as Record<string, unknown> | undefined)?.overall_score as number | undefined
+    logActivity(`Previous analysis finished while app was closed${score != null ? ` — Score: ${score}/100` : ''}`)
+    mainWindow?.webContents.send('dashboard:refresh')
+    tray?.setToolTip(idleTooltip(context.game))
+    if (Notification.isSupported()) {
+      const notifAgent = context.agent ?? gameLabel(context.game)
+      const notifMap = context.map ? ` on ${context.map}` : ''
+      const notifScore = score != null ? ` — Score: ${score}/100` : ''
+      new Notification({
+        title: 'UpForge — Analysis Ready',
+        body: `${notifAgent}${notifMap}${notifScore}`,
+        silent: notifySilent()
+      }).show()
+    }
+    return
+  }
+
+  await resumePollForJob(orphanedJob.job_id, context)
+}
+
 /**
  * Resume polling for a job that was in-flight when the app last crashed.
  * Runs the same exponential-backoff loop as doUploadAndAnalyse, but sends
@@ -1404,6 +1450,8 @@ async function doUploadAndAnalyse(
       if (!targetWindow.isDestroyed()) targetWindow.webContents.send(channel, payload)
     } catch { /* destroyed between isDestroyed check and send */ }
   }
+  stopActiveAnalysisPoll()
+
   try {
     send('post-game:upload-start', {
       game,
@@ -1660,14 +1708,10 @@ app.whenReady().then(async () => {
       if (!splashWindow.isDestroyed()) splashWindow.close()
     }, 400)
 
-    // If an orphaned job was found at startup, resume the full poll loop once the window loads
+    // If an orphaned job was found at startup, reconcile once before resuming a 90-min poll loop.
     if (orphanedJob) {
       mainWindow.webContents.once('did-finish-load', () => {
-        resumePollForJob(orphanedJob.job_id, {
-          agent: orphanedJob.agent,
-          map: orphanedJob.map,
-          game: orphanedJob.game,
-        })
+        void handleOrphanedJobAtStartup(orphanedJob)
       })
     }
   }

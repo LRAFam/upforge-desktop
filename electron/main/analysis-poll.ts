@@ -40,6 +40,58 @@ export interface StartAnalysisPollOptions {
 
 export type AnalysisPollEndReason = 'completed' | 'failed' | 'connection_lost' | 'max_duration'
 
+/** Only one analysis poll should run at a time — a new match upload supersedes resume polls. */
+let activePollStop: (() => void) | null = null
+
+export function stopActiveAnalysisPoll(): void {
+  activePollStop?.()
+  activePollStop = null
+}
+
+export type OrphanedJobReconcile =
+  | { action: 'resume' }
+  | { action: 'completed'; status: AnalysisPollStatus }
+  | { action: 'failed'; error: string }
+  | { action: 'discard'; reason: string }
+
+const ORPHAN_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000
+
+/** Decide whether to resume polling a persisted job_id from a previous session. */
+export async function reconcileOrphanedJob(
+  uploadManager: UploadManager,
+  orphaned: { job_id: string; savedAt: number }
+): Promise<OrphanedJobReconcile> {
+  if (Date.now() - orphaned.savedAt > ORPHAN_MAX_AGE_MS) {
+    return { action: 'discard', reason: 'job older than 7 days' }
+  }
+
+  try {
+    const status = await uploadManager.pollStatus(orphaned.job_id)
+
+    if (status.status === 'completed') {
+      return { action: 'completed', status }
+    }
+    if (status.status === 'failed') {
+      return { action: 'failed', error: status.error || 'Analysis failed' }
+    }
+    // Presign issued but /complete never ran — polling cannot help.
+    if (status.status === 'uploading') {
+      return { action: 'discard', reason: 'upload never completed' }
+    }
+    if (!status.status) {
+      return { action: 'discard', reason: 'unknown job status' }
+    }
+    return { action: 'resume' }
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err)
+    if (/not found/i.test(msg)) {
+      return { action: 'discard', reason: 'job not found on server' }
+    }
+    // Transient network error at startup — try resuming the poll loop.
+    return { action: 'resume' }
+  }
+}
+
 function sendToWindow(win: BrowserWindow | null | undefined, channel: string, payload?: unknown): void {
   if (!win || win.isDestroyed()) return
   try {
@@ -76,12 +128,15 @@ function buildProgressPayload(
  * or hits the hard max duration. Does not treat elapsed time as a server failure.
  */
 export function startAnalysisPoll(opts: StartAnalysisPollOptions): { stop: () => void } {
+  stopActiveAnalysisPoll()
+
   const startTime = Date.now()
   let pollFailCount = 0
   let pollDelay = 5_000
   let pollTimer: ReturnType<typeof setTimeout> | null = null
   let longRunningSent = false
   let stopped = false
+  let uploadingPolls = 0
 
   const stop = () => {
     stopped = true
@@ -89,7 +144,10 @@ export function startAnalysisPoll(opts: StartAnalysisPollOptions): { stop: () =>
       clearTimeout(pollTimer)
       pollTimer = null
     }
+    if (activePollStop === releaseActive) activePollStop = null
   }
+
+  const releaseActive = stop
 
   const schedulePoll = () => {
     if (stopped) return
@@ -103,6 +161,7 @@ export function startAnalysisPoll(opts: StartAnalysisPollOptions): { stop: () =>
 
     if (elapsedMs > ANALYSIS_POLL_MAX_MS) {
       stop()
+      clearPendingJob()
       opts.onPollEnded?.('max_duration')
       return
     }
@@ -123,7 +182,18 @@ export function startAnalysisPoll(opts: StartAnalysisPollOptions): { stop: () =>
       sendToWindow(opts.mainWindow, 'dashboard:analysis-progress', progressPayload)
       opts.onProgress?.(status, elapsedMs)
 
-      if (status.status === 'completed' && status.result) {
+      if (status.status === 'uploading') {
+        uploadingPolls++
+        if (uploadingPolls >= 6) {
+          stop()
+          clearPendingJob()
+          const rawError = 'Upload was interrupted before it finished. Check Pending Recordings on the dashboard to retry.'
+          opts.onPollEnded?.('failed')
+          opts.onFailed(rawError, rawError)
+          return
+        }
+        schedulePoll()
+      } else if (status.status === 'completed') {
         stop()
         clearPendingJob()
         opts.onPollEnded?.('completed')
@@ -136,8 +206,20 @@ export function startAnalysisPoll(opts: StartAnalysisPollOptions): { stop: () =>
         const userMessage = isTimeout ? 'Analysis timed out on the server.' : rawError
         opts.onPollEnded?.('failed')
         opts.onFailed(userMessage, rawError)
-      } else {
+      } else if (status.status === 'queued' || status.status === 'processing') {
+        uploadingPolls = 0
         schedulePoll()
+      } else {
+        pollFailCount++
+        if (pollFailCount >= 3) {
+          stop()
+          clearPendingJob()
+          const rawError = `Unexpected job status: ${status.status || 'unknown'}`
+          opts.onPollEnded?.('failed')
+          opts.onFailed(rawError, rawError)
+        } else {
+          schedulePoll()
+        }
       }
     } catch (pollErr) {
       pollFailCount++
@@ -152,6 +234,7 @@ export function startAnalysisPoll(opts: StartAnalysisPollOptions): { stop: () =>
     }
   }
 
+  activePollStop = releaseActive
   schedulePoll()
   return { stop }
 }
