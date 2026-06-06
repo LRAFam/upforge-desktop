@@ -132,7 +132,8 @@ export function startAnalysisPoll(opts: StartAnalysisPollOptions): { stop: () =>
 
   const startTime = Date.now()
   let pollFailCount = 0
-  let pollDelay = 5_000
+  let pollDelay = 2_000
+  let pollCount = 0
   let pollTimer: ReturnType<typeof setTimeout> | null = null
   let longRunningSent = false
   let stopped = false
@@ -152,7 +153,13 @@ export function startAnalysisPoll(opts: StartAnalysisPollOptions): { stop: () =>
   const schedulePoll = () => {
     if (stopped) return
     pollTimer = setTimeout(pollOnce, pollDelay)
-    pollDelay = Math.min(Math.round(pollDelay * 1.5), 30_000)
+    pollCount++
+    // Poll quickly while queued; back off once processing is underway.
+    if (pollCount <= 15) {
+      pollDelay = 2_000
+    } else {
+      pollDelay = Math.min(Math.round(pollDelay * 1.5), 30_000)
+    }
   }
 
   const pollOnce = async () => {

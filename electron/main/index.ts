@@ -476,10 +476,13 @@ function setupGameDetection(): void {
     }
     handleMatchEndRunning = true
     try {
-    const timeline = await riotLocalApi.stop()
+    // Finalize OBS and fetch Riot match metadata in parallel — both are network/disk bound.
     const recordingDuration = obsRecorder.getRecordingDuration()
     const matchSessionStart = currentRecordingStartTime ?? (Date.now() - recordingDuration * 1000)
-    await obsRecorder.stop()
+    const [timeline] = await Promise.all([
+      riotLocalApi.stop(),
+      obsRecorder.stop(),
+    ])
 
     const videoPath = obsRecorder.getLastRecordingPath()
     const fileSize = obsRecorder.getLastRecordingSize()
@@ -667,9 +670,19 @@ function setupGameDetection(): void {
     const runPostGameUpload = async () => {
         if (thisPostGameWindow.isDestroyed()) return
         const sendToWindow = (channel: string, payload?: unknown) => {
-          try {
-            if (!thisPostGameWindow.isDestroyed()) thisPostGameWindow.webContents.send(channel, payload)
-          } catch { /* destroyed between check and send */ }
+          const deliver = () => {
+            try {
+              if (!thisPostGameWindow.isDestroyed()) {
+                thisPostGameWindow.webContents.send(channel, payload)
+              }
+            } catch { /* destroyed between check and send */ }
+          }
+          if (thisPostGameWindow.isDestroyed()) return
+          if (thisPostGameWindow.webContents.isLoading()) {
+            thisPostGameWindow.webContents.once('did-finish-load', deliver)
+          } else {
+            deliver()
+          }
         }
 
       const readyPath = obsRecorder.getLastRecordingPath() ?? videoPath
@@ -789,12 +802,10 @@ function setupGameDetection(): void {
 
       const jobId = uploadResult ?? null
 
-      // Extract highlight clips from the recording in the background (non-blocking).
-      // Auto-delete is deferred to run AFTER clip extraction so the file is available.
+      // Extract clips after upload completes (doUploadAndAnalyse awaits S3, not analysis polling).
       extractMatchClips(readyPath, timeline, jobId)
         .catch(err => log.warn('[ClipExtract] Background extraction error:', err))
         .finally(() => {
-          // Defer auto-delete until after the late retry so the video file still exists
           if (!lateRetryScheduled) doAutoDelete()
         })
 
@@ -828,11 +839,9 @@ function setupGameDetection(): void {
       }
     }
 
-    whenWebContentsReady(thisPostGameWindow, () => {
-      void runPostGameUpload().catch((err) => {
-        log.error('[HandleMatchEnd] Post-game upload failed:', err)
-        logActivity(`Upload failed to start: ${err instanceof Error ? err.message : String(err)}`)
-      })
+    void runPostGameUpload().catch((err) => {
+      log.error('[HandleMatchEnd] Post-game upload failed:', err)
+      logActivity(`Upload failed to start: ${err instanceof Error ? err.message : String(err)}`)
     })
     } finally {
       handleMatchEndRunning = false
