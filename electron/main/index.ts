@@ -112,19 +112,33 @@ const obsRecorder = new OBSRecorder(() => {
 })
 
 let stopObsHealthMonitor: (() => void) | null = null
+let obsWasConnected = false
+let lastObsDisconnectNotifyAt = 0
+const OBS_DISCONNECT_NOTIFY_COOLDOWN_MS = 10 * 60 * 1000
+
+function maybeNotifyObsDisconnect(error: string | null | undefined): void {
+  if (!error || !Notification.isSupported()) return
+  const now = Date.now()
+  if (now - lastObsDisconnectNotifyAt < OBS_DISCONNECT_NOTIFY_COOLDOWN_MS) return
+  lastObsDisconnectNotifyAt = now
+  new Notification({
+    title: 'UpForge — OBS Disconnected',
+    body: error === 'OBS disconnected'
+      ? 'OBS closed or disconnected. Reopen OBS and connect in Settings → Recording.'
+      : error,
+    silent: notifySilent(),
+  }).show()
+}
 
 function wireObsConnectionEvents(): void {
   obsRecorder.onConnectionChange = (connected, error) => {
+    const lostConnection = obsWasConnected && !connected
+    obsWasConnected = connected
     broadcastObsConnection(mainWindow, obsRecorder, error)
     updateTrayMenuFn?.()
-    if (!connected && error && Notification.isSupported()) {
-      new Notification({
-        title: 'UpForge — OBS Disconnected',
-        body: error === 'OBS disconnected'
-          ? 'OBS closed or disconnected. Reopen OBS and connect in Settings → Recording.'
-          : error,
-        silent: notifySilent(),
-      }).show()
+    // Only notify when an established OBS session is lost — not on failed connect probes.
+    if (lostConnection) {
+      maybeNotifyObsDisconnect(error)
     }
   }
 }

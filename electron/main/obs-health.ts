@@ -7,6 +7,9 @@ import { Notification } from 'electron'
 import log from 'electron-log'
 import type { OBSRecorder } from './obs-recorder'
 
+let lastObsSetupNotifyAt = 0
+const OBS_SETUP_NOTIFY_COOLDOWN_MS = 30 * 60 * 1000
+
 export interface ObsConnectionPayload {
   connected: boolean
   error: string | null
@@ -59,11 +62,15 @@ export async function probeObsConnection(
   opts?.logActivity?.('OBS not connected — open Settings → Recording to fix')
 
   if (opts?.notify && Notification.isSupported()) {
-    new Notification({
-      title: 'UpForge — OBS Required',
-      body: 'OBS is not connected. Set it up in Settings → Recording before your next match.',
-      silent: opts.notifySilent?.() ?? true,
-    }).show()
+    const now = Date.now()
+    if (now - lastObsSetupNotifyAt >= OBS_SETUP_NOTIFY_COOLDOWN_MS) {
+      lastObsSetupNotifyAt = now
+      new Notification({
+        title: 'UpForge — OBS Required',
+        body: 'OBS is not connected. Set it up in Settings → Recording before your next match.',
+        silent: opts.notifySilent?.() ?? true,
+      }).show()
+    }
   }
 
   return payload

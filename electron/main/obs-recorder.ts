@@ -69,7 +69,12 @@ export class OBSRecorder {
 
   onStatusChange?: (recording: boolean, error?: string) => void
   onReplayClipSaved?: (path: string, trigger: string) => void
+  /** Fired when connection state changes. `error` is set only for unexpected disconnects. */
   onConnectionChange?: (connected: boolean, error?: string | null) => void
+
+  /** Suppress ConnectionClosed while we intentionally tear down before reconnecting. */
+  private _suppressConnectionEvents = false
+  private _connectInFlight: Promise<{ ok: boolean; error?: string; version?: string; setup?: ObsSetupResult }> | null = null
 
   constructor(private getSettings: () => OBSSettings) {
     this._obs.on('ReplayBufferSaved', ({ savedReplayPath }) => {
@@ -97,7 +102,9 @@ export class OBSRecorder {
     })
 
     this._obs.on('ConnectionClosed', () => {
+      if (this._suppressConnectionEvents) return
       log.warn('[OBSRecorder] OBS disconnected')
+      const wasConnected = this._connected
       this._connected = false
       if (this._recording) {
         this._recording = false
@@ -105,7 +112,10 @@ export class OBSRecorder {
         this._stopLiveKillPoll()
         this.onStatusChange?.(false, 'OBS disconnected during recording')
       }
-      this.onConnectionChange?.(false, 'OBS disconnected')
+      // Only surface as an unexpected disconnect if we had an established session.
+      if (wasConnected) {
+        this.onConnectionChange?.(false, 'OBS disconnected')
+      }
     })
   }
 
@@ -115,15 +125,27 @@ export class OBSRecorder {
     if (this._connected) {
       return { ok: true, version: this._obsVersion ?? undefined }
     }
+    if (this._connectInFlight) return this._connectInFlight
 
+    this._connectInFlight = this._connectOnce()
+    try {
+      return await this._connectInFlight
+    } finally {
+      this._connectInFlight = null
+    }
+  }
+
+  private async _connectOnce(): Promise<{ ok: boolean; error?: string; version?: string; setup?: ObsSetupResult }> {
     const { host, port, password, replayBufferSeconds } = this.getSettings()
     const hosts = obsConnectHosts(host)
     let lastRawError = 'OBS not reachable'
 
-    // Clear stale socket state from a prior failed attempt
+    // Clear stale socket state from a prior failed attempt (do not treat as user-visible disconnect).
+    this._suppressConnectionEvents = true
     try {
       await this._obs.disconnect()
     } catch { /* not connected */ }
+    this._suppressConnectionEvents = false
     this._connected = false
 
     for (const tryHost of hosts) {
@@ -160,21 +182,26 @@ export class OBSRecorder {
       } catch (err) {
         lastRawError = err instanceof Error ? err.message : String(err)
         log.warn('[OBSRecorder] Connection failed for', url, ':', lastRawError)
+        this._suppressConnectionEvents = true
         try {
           await this._obs.disconnect()
         } catch { /* ignore */ }
+        this._suppressConnectionEvents = false
         this._connected = false
       }
     }
 
     const friendly = formatObsConnectError(lastRawError)
     this._lastError = friendly
-    this.onConnectionChange?.(false, friendly)
+    // Failed probe — update UI via lastError; do not pass error (avoids disconnect notifications).
+    this.onConnectionChange?.(false)
     return { ok: false, error: friendly }
   }
 
   async disconnect(): Promise<void> {
+    this._suppressConnectionEvents = true
     try { await this._obs.disconnect() } catch { /* ignore */ }
+    this._suppressConnectionEvents = false
     this._connected = false
     this.onConnectionChange?.(false)
   }
