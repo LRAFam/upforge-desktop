@@ -152,10 +152,14 @@ function buildPatterns(
     const isolatedCount = list.filter((d) => d.isolated).length
     if (isolatedCount >= 2) {
       patterns.push(
-        `${list.length} deaths @ ${callout}${roundSuffix} (${isolatedCount} without trade range)`,
+        `${isolatedCount} untraded deaths @ ${callout}${roundSuffix}`,
       )
-    } else {
-      patterns.push(`${list.length} deaths @ ${callout}${roundSuffix}`)
+    } else if (isolatedCount === 1 && list.length >= 2) {
+      patterns.push(
+        `${list.length} deaths @ ${callout}${roundSuffix} (1 without trade)`,
+      )
+    } else if (list.length >= 3) {
+      patterns.push(`${list.length} deaths @ ${callout}${roundSuffix} — mostly traded`)
     }
   }
 
@@ -163,15 +167,64 @@ function buildPatterns(
 }
 
 function buildHeatmapInsight(
-  deathHotspots: SpatialHotspot[],
+  deaths: SpatialTimelineEvent[],
   roundCount?: number,
 ): string | null {
-  const top = deathHotspots[0]
-  if (!top || top.count < 2) return null
-  if (roundCount && roundCount > 0) {
-    return `You died @ ${top.callout} ${top.count}× in ${roundCount} rounds`
+  const known = deaths.filter((d) => d.callout !== 'Unknown')
+  if (!known.length) return null
+
+  const isolated = known.filter((d) => d.isolated)
+  const byCallout = new Map<string, SpatialTimelineEvent[]>()
+  for (const d of known) {
+    const list = byCallout.get(d.callout) ?? []
+    list.push(d)
+    byCallout.set(d.callout, list)
   }
-  return `You died @ ${top.callout} ${top.count} times this match`
+
+  let topCallout: string | null = null
+  let topScore = 0
+  for (const [callout, list] of byCallout) {
+    const iso = list.filter((d) => d.isolated).length
+    const rate = roundCount && roundCount > 0 ? list.length / roundCount : 0
+    const score = iso * 3 + (list.length - iso) * 0.4 + (rate >= 0.12 ? list.length : 0)
+    if (score > topScore) {
+      topScore = score
+      topCallout = callout
+    }
+  }
+
+  if (isolated.length >= 3) {
+    const worst = [...byCallout.entries()]
+      .map(([callout, list]) => ({ callout, iso: list.filter((d) => d.isolated).length }))
+      .sort((a, b) => b.iso - a.iso)[0]
+    if (worst?.iso) {
+      return `${isolated.length} deaths with no trade support — worst @ ${worst.callout}`
+    }
+    return `${isolated.length} deaths with no teammate in trade range`
+  }
+
+  if (!topCallout) return null
+  const topList = byCallout.get(topCallout) ?? []
+  const isoAtTop = topList.filter((d) => d.isolated).length
+
+  if (isoAtTop >= 2) {
+    return `${isoAtTop} untraded deaths @ ${topCallout}`
+  }
+  if (topList.length >= 3 && isoAtTop >= 1) {
+    return `${topList.length} deaths @ ${topCallout}, ${isoAtTop} without trade`
+  }
+  if (topList.length >= 3) {
+    return `${topList.length} deaths @ ${topCallout} — mostly traded`
+  }
+  if (topList.length === 2 && isoAtTop === 2) {
+    return `Both deaths @ ${topCallout} were untraded`
+  }
+
+  const areas = byCallout.size
+  if (isolated.length > 0) {
+    return `${known.length} deaths across ${areas} areas · ${isolated.length} untraded`
+  }
+  return `${known.length} deaths across ${areas} areas — no major untraded clusters`
 }
 
 export function buildMatchSpatialSummary(match: MatchData): MatchSpatialSummary | null {
@@ -241,7 +294,7 @@ export function buildMatchSpatialSummary(match: MatchData): MatchSpatialSummary 
     killHotspots: buildHotspots(events, 'kill'),
     siteHotspots: buildSiteHotspots(deaths),
     roundCount,
-    heatmapInsight: buildHeatmapInsight(deathHotspots, roundCount),
+    heatmapInsight: buildHeatmapInsight(deaths, roundCount),
     patterns: buildPatterns(deaths, roundCount),
   }
 }
