@@ -14,6 +14,14 @@ import { setupAutoUpdater, markStartupComplete } from './updater'
 import { GameDetector } from './game-detector'
 import { Recorder } from './recorder'
 import { OBSRecorder } from './obs-recorder'
+import { buildRecorderConfig } from './obs-output-settings'
+import {
+  MIN_RECORDING_DURATION_SECONDS,
+  MIN_RECORDING_FILE_BYTES,
+  MAX_RECORDING_FILE_BYTES,
+  formatRecordingTooLargeMessage,
+} from './recording-limits'
+import { RECORDING_PRESET_LABEL } from './recording-preset'
 import { broadcastObsConnection, probeObsConnection, startObsHealthMonitor } from './obs-health'
 import {
   RiotLocalApi,
@@ -101,15 +109,21 @@ let ffmpegOk = true // clip extraction preflight only
 const gameDetector = new GameDetector()
 /** Bundled ffmpeg — post-match clip extraction only (not used for live recording). */
 const clipFfmpegProbe = new Recorder()
-const obsRecorder = new OBSRecorder(() => {
-  const s = settingsManager?.get()
-  return {
-    host: s?.obsHost ?? 'localhost',
-    port: s?.obsPort ?? 4455,
-    password: s?.obsPassword ?? '',
-    replayBufferSeconds: s?.obsReplayBufferSeconds ?? 30,
-  }
-})
+const obsRecorder = new OBSRecorder(
+  () => {
+    const s = settingsManager?.get()
+    return {
+      host: s?.obsHost ?? 'localhost',
+      port: s?.obsPort ?? 4455,
+      password: s?.obsPassword ?? '',
+      replayBufferSeconds: s?.obsReplayBufferSeconds ?? 30,
+    }
+  },
+  () => {
+    const s = settingsManager?.get()
+    return s ? buildRecorderConfig(s) : undefined
+  },
+)
 
 let stopObsHealthMonitor: (() => void) | null = null
 let obsWasConnected = false
@@ -518,10 +532,9 @@ function setupGameDetection(): void {
 
     tray?.setToolTip(idleTooltip(game))
 
-    const MIN_DURATION_SECONDS = 120
-    const MIN_FILE_SIZE_BYTES = 1024 * 1024
-    // Full competitive recordings can reach ~3 GB — allow up to 4 GB
-    const MAX_FILE_SIZE_BYTES = 4 * 1024 * 1024 * 1024
+    const MIN_DURATION_SECONDS = MIN_RECORDING_DURATION_SECONDS
+    const MIN_FILE_SIZE_BYTES = MIN_RECORDING_FILE_BYTES
+    const MAX_FILE_SIZE_BYTES = MAX_RECORDING_FILE_BYTES
 
     if (recordingDuration > 0 && recordingDuration < MIN_DURATION_SECONDS) {
       console.log(`[GameDetector] Recording too short (${recordingDuration}s) — ignoring`)
@@ -706,10 +719,55 @@ function setupGameDetection(): void {
 
       if (readySize > MAX_FILE_SIZE_BYTES) {
         const sizeGB = (readySize / (1024 * 1024 * 1024)).toFixed(1)
-        const errorMsg = `Recording is too large (${sizeGB} GB). Maximum supported size is 4 GB. Try lowering your recording quality or resolution in Settings.`
-        log.warn(`[GameDetector] Recording too large to analyse: ${sizeGB} GB`)
-        logActivity(`Recording too large (${sizeGB} GB) — analysis skipped`)
-        sendToWindow('post-game:upload-error', errorMsg)
+        const errorMsg = formatRecordingTooLargeMessage(readySize, true)
+        log.warn(`[GameDetector] Recording too large to upload: ${sizeGB} GB — extracting clips only`)
+        logActivity(`Recording too large (${sizeGB} GB) — full upload skipped, saving clips`)
+
+        const matchId = timeline?.matchId
+        const hasKills = (timeline?.playerKills?.length ?? 0) > 0
+        const lateRetryScheduled = !hasKills && !!matchId
+
+        if (timeline) recomputeTimelineVideoOffsets(timeline)
+        const oversizedRecording = recordingsStore.add({
+          path: readyPath,
+          riotName: user?.riot_name ?? '',
+          riotTag: user?.riot_tag ?? '',
+          game,
+          map,
+          agent,
+          gameMode,
+          timeline,
+        })
+        mainWindow?.webContents.send('recordings:updated')
+
+        extractMatchClips(readyPath, timeline, null)
+          .catch(err => log.warn('[ClipExtract] Clip extraction (oversized) error:', err))
+
+        if (lateRetryScheduled) {
+          log.info('[HandleMatchEnd] No kills (oversized) — scheduling late retry in 90s')
+          setTimeout(async () => {
+            try {
+              log.info('[LateClipExtract] Fetching match details for', matchId)
+              const details = await riotLocalApi.fetchMatchDetailsLate(matchId!)
+              if (!details) { log.warn('[LateClipExtract] Match details still unavailable'); return }
+              if (timeline) {
+                timeline.matchDetails = details
+                riotLocalApi.populateMatchDataFromDetails(timeline, details)
+              }
+              if ((timeline?.playerKills?.length ?? 0) === 0) { log.warn('[LateClipExtract] No kills after retry'); return }
+              log.info(`[LateClipExtract] Got ${timeline!.playerKills.length} kills — extracting clips`)
+              await extractKillClipsOnly(readyPath, timeline!, null)
+            } catch (err) {
+              log.warn('[LateClipExtract] Error (oversized path):', err)
+            }
+          }, 90_000)
+        }
+
+        sendToWindow('post-game:upload-error', {
+          message: errorMsg,
+          recordingId: oversizedRecording.id,
+          clipsOnly: true,
+        })
         return
       }
 
@@ -905,14 +963,7 @@ function setupGameDetection(): void {
       }
     }
 
-    const recorderConfig = config ? {
-      quality: config.recordingQuality,
-      bitrate: config.recordingBitrate,
-      fps: config.recordingFps,
-      audioEnabled: config.audioEnabled,
-      savePath: config.savePath,
-      captureMonitor: config.captureMonitor,
-    } : undefined
+    const recorderConfig = config ? buildRecorderConfig(config) : undefined
 
     // Check disk space now so the warning shows while in lobby
     const savePath = config?.savePath ?? app.getPath('userData')
@@ -920,10 +971,7 @@ function setupGameDetection(): void {
       await probeObsConnection(obsRecorder, mainWindow, { notify: false, logActivity })
     }
     if (recorderConfig) {
-      log.info(
-        `[Recorder] OBS · ${recorderConfig.quality} @ ${recorderConfig.fps}fps target ` +
-        `(quality set in OBS — UpForge starts/stops recording via WebSocket)`
-      )
+      log.info(`[Recorder] OBS · ${RECORDING_PRESET_LABEL} (synced to OBS before recording)`)
     }
     const freeBytes = await obsRecorder.getFreeDiskSpace(savePath)
     const TWO_GB = 2 * 1024 * 1024 * 1024

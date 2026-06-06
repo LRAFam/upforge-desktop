@@ -1,10 +1,11 @@
 import { app } from 'electron'
 import fs from 'fs'
 import path from 'path'
+import { RECORDING_PRESET } from './recording-preset'
 
 export interface AppSettings {
   recordingQuality: '720p' | '1080p'
-  recordingBitrate: number // Mbps: 4, 6, 8, 12, 15, 20
+  recordingBitrate: number // Mbps — locked to RECORDING_PRESET; kept for settings migration
   recordingFps: 24 | 30 | 60
   audioEnabled: boolean
   savePath: string
@@ -77,9 +78,9 @@ export interface AppSettings {
 }
 
 const DEFAULTS: AppSettings = {
-  recordingQuality: '1080p',
-  recordingBitrate: 6,
-  recordingFps: 60,
+  recordingQuality: '720p',
+  recordingBitrate: 5,
+  recordingFps: 30,
   audioEnabled: true,
   savePath: '',
   launchOnStartup: false,
@@ -160,6 +161,9 @@ export class SettingsManager {
         parsed.obsHost = '127.0.0.1'
       }
       const merged = { ...DEFAULTS, ...parsed, obsEnabled: true }
+      merged.recordingQuality = RECORDING_PRESET.quality
+      merged.recordingBitrate = RECORDING_PRESET.bitrate
+      merged.recordingFps = RECORDING_PRESET.fps
       return merged
     } catch {
       return { ...DEFAULTS }
@@ -171,7 +175,13 @@ export class SettingsManager {
   }
 
   save(partial: Partial<AppSettings>): AppSettings {
-    this.settings = { ...this.settings, ...partial }
+    this.settings = {
+      ...this.settings,
+      ...partial,
+      recordingQuality: RECORDING_PRESET.quality,
+      recordingBitrate: RECORDING_PRESET.bitrate,
+      recordingFps: RECORDING_PRESET.fps,
+    }
     try {
       fs.mkdirSync(path.dirname(this.filePath), { recursive: true })
       fs.writeFileSync(this.filePath, JSON.stringify(this.settings, null, 2))

@@ -6,6 +6,8 @@ import https from 'https'
 import log from 'electron-log'
 import { setupUpForgeScene, retargetUpForgeCapture, type ObsSetupResult } from './obs-setup'
 import { formatObsConnectError, obsConnectHosts } from './obs-connect'
+import { applyObsRecordingSettings } from './obs-output-settings'
+import type { RecorderConfig } from './recorder'
 
 export interface OBSSettings {
   host: string
@@ -76,7 +78,10 @@ export class OBSRecorder {
   private _suppressConnectionEvents = false
   private _connectInFlight: Promise<{ ok: boolean; error?: string; version?: string; setup?: ObsSetupResult }> | null = null
 
-  constructor(private getSettings: () => OBSSettings) {
+  constructor(
+    private getSettings: () => OBSSettings,
+    private getRecordingConfig?: () => RecorderConfig | undefined,
+  ) {
     this._obs.on('ReplayBufferSaved', ({ savedReplayPath }) => {
       log.info('[OBSRecorder] Replay buffer saved:', savedReplayPath)
       if (this._pendingReplaySave) {
@@ -175,6 +180,11 @@ export class OBSRecorder {
         const setup = await setupUpForgeScene(this._obs)
         if (!setup.ok) {
           log.warn('[OBSRecorder] Scene setup incomplete:', setup.error)
+        }
+
+        const recConfig = this.getRecordingConfig?.()
+        if (recConfig) {
+          await applyObsRecordingSettings(this._obs, recConfig)
         }
 
         this.onConnectionChange?.(true)
@@ -278,7 +288,12 @@ export class OBSRecorder {
     } catch {}
   }
 
-  async start(game: string, _config?: unknown): Promise<void> {
+  async applyRecordingSettings(config: RecorderConfig): Promise<void> {
+    if (!this._connected) return
+    await applyObsRecordingSettings(this._obs, config)
+  }
+
+  async start(game: string, config?: RecorderConfig): Promise<void> {
     if (!this._connected) {
       const result = await this.connect()
       if (!result.ok) throw new Error(`Cannot connect to OBS: ${result.error}`)
@@ -297,13 +312,16 @@ export class OBSRecorder {
       // Game/window capture only — never desktop (privacy / policy safe when alt-tabbing)
       await retargetUpForgeCapture(this._obs, game)
 
-      // Configure OBS output path to match our recordings folder
-      const savePath = join(app.getPath('userData'), 'recordings')
-      await this._obs.call('SetProfileParameter', {
-        parameterCategory: 'SimpleOutput',
-        parameterName: 'FilePath',
-        parameterValue: savePath,
-      }).catch(() => { /* non-fatal — OBS may handle path differently */ })
+      if (config) {
+        await applyObsRecordingSettings(this._obs, config)
+      } else {
+        const savePath = join(app.getPath('userData'), 'recordings')
+        await this._obs.call('SetProfileParameter', {
+          parameterCategory: 'SimpleOutput',
+          parameterName: 'FilePath',
+          parameterValue: savePath,
+        }).catch(() => { /* non-fatal */ })
+      }
 
       // Start the full-match recording
       await this._obs.call('StartRecord')

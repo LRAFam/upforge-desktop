@@ -14,6 +14,8 @@ import { AuthManager } from '../auth-manager'
 import type { MatchRecorder } from '../match-recorder'
 import { GameDetector } from '../game-detector'
 import { SettingsManager } from '../settings-manager'
+import type { OBSRecorder } from '../obs-recorder'
+import { buildRecorderConfig } from '../obs-output-settings'
 
 export function setupAppHandlers(
   ipcMain: IpcMain,
@@ -29,6 +31,7 @@ export function setupAppHandlers(
   getRecordingBackend?: () => 'obs',
   getCurrentQueueMode?: () => string | null,
   getObsConnected?: () => boolean,
+  obsRecorder?: OBSRecorder,
 ): void {
   // ── App state ─────────────────────────────────────────────────────────────
 
@@ -80,6 +83,9 @@ export function setupAppHandlers(
     const result = settingsManager.save(partial)
     if ('launchOnStartup' in partial && partial.launchOnStartup !== prev.launchOnStartup) {
       app.setLoginItemSettings({ openAtLogin: !!partial.launchOnStartup })
+    }
+    if (obsRecorder?.isConnected()) {
+      void obsRecorder.applyRecordingSettings(buildRecorderConfig(result))
     }
     BrowserWindow.getAllWindows().forEach(w => {
       if (!w.isDestroyed()) w.webContents.send('settings:changed', result)

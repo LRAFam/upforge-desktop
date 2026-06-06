@@ -222,8 +222,8 @@ export class UploadManager {
       })
 
       req.on('error', reject)
-      // 90-minute hard cap — 3-4 GB files over moderate connections
-      req.setTimeout(90 * 60 * 1000, () => req.destroy(new Error('S3 upload timed out after 90 minutes')))
+      // 60-minute cap — ~2.5 GB files at the fixed 720p preset
+      req.setTimeout(60 * 60 * 1000, () => req.destroy(new Error('S3 upload timed out after 60 minutes')))
 
       this._s3Request = req
 

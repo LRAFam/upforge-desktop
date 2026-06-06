@@ -131,6 +131,7 @@ export function setupIpcHandlers(
     ipcMain, auth, getActiveRecorder, gameDetector, settingsManager,
     openPostGameFn, getFFmpegOk, getWaitingForMatch, getActivityLog, showClipsFn,
     getRecordingBackend, getCurrentQueueMode, getObsConnected,
+    obsRecorder,
   )
 
   setupMediaHandlers(

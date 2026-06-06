@@ -589,7 +589,7 @@
           </div>
           <div>
             <p class="text-sm font-semibold text-red-400">
-              {{ isTimeoutError ? 'Analysis timed out' : 'Upload failed' }}
+              {{ isTimeoutError ? 'Analysis timed out' : clipsOnlyError ? 'Recording too large' : 'Upload failed' }}
             </p>
             <p class="text-xs text-gray-500 mt-1">
               <template v-if="isTimeoutError">
@@ -600,10 +600,16 @@
           </div>
           <div class="flex gap-2 pt-1">
             <button
+              v-if="!clipsOnlyError"
               :disabled="!pendingRecordingId"
               class="flex-1 py-2 text-xs font-semibold bg-gradient-to-r from-red-500 to-orange-600 hover:from-red-600 hover:to-orange-700 text-white rounded-lg transition-all shadow-sm shadow-red-500/20 disabled:opacity-40 disabled:cursor-not-allowed"
               @click="retryUpload"
             >Retry</button>
+            <button
+              v-else
+              class="flex-1 py-2 text-xs font-semibold bg-gradient-to-r from-red-500 to-orange-600 hover:from-red-600 hover:to-orange-700 text-white rounded-lg transition-all shadow-sm shadow-red-500/20"
+              @click="dismiss"
+            >View clips in dashboard</button>
             <button class="px-3 py-2 text-xs text-gray-500 hover:text-gray-300 bg-white/[0.03] hover:bg-white/[0.06] border border-white/[0.10] rounded-lg transition-colors" @click="dismiss">Dismiss</button>
           </div>
         </template>
@@ -690,6 +696,7 @@ const activeSpatialIndex = ref<number | null>(null)
 const showFullDetails = ref(false)
 const showDebrief = ref(false)
 const errorMessage = ref('')
+const clipsOnlyError = ref(false)
 const needsUpgrade = ref(false)
 const upgradeUrl = ref('https://upforge.gg/pricing')
 const ppaUrl = ref('https://upforge.gg/valorant/analyze')
@@ -1102,13 +1109,15 @@ onMounted(() => {
     state.value = 'pending'
   }))
   ipcCleanup.push(window.api.on('post-game:upload-error', (...args: unknown[]) => {
-    const payload = args[0] as string | { message: string; recordingId?: string; needsUpgrade?: boolean; upgradeUrl?: string; ppaUrl?: string }
+    const payload = args[0] as string | { message: string; recordingId?: string; needsUpgrade?: boolean; upgradeUrl?: string; ppaUrl?: string; clipsOnly?: boolean }
     needsUpgrade.value = false
+    clipsOnlyError.value = false
     if (typeof payload === 'string') {
       errorMessage.value = payload
     } else {
       errorMessage.value = payload.message
       if (payload.recordingId) pendingRecordingId.value = payload.recordingId
+      if (payload.clipsOnly) clipsOnlyError.value = true
       if (payload.needsUpgrade) {
         needsUpgrade.value = true
         upgradeUrl.value = payload.upgradeUrl || 'https://upforge.gg/pricing'
