@@ -1,0 +1,169 @@
+/**
+ * Re-encode oversized OBS recordings to the locked UpForge preset before upload.
+ * OBS profile parameters often do not apply (especially Advanced Output mode).
+ */
+
+import { spawn } from 'child_process'
+import { dirname, join, basename } from 'path'
+import { existsSync, mkdirSync, statSync, unlinkSync } from 'fs'
+import { is } from '@electron-toolkit/utils'
+import log from 'electron-log'
+import { RECORDING_PRESET } from './recording-preset'
+
+const IS_WIN = process.platform === 'win32'
+
+function ffmpegBin(): string {
+  if (is.dev) return IS_WIN ? 'ffmpeg.exe' : 'ffmpeg'
+  return join(process.resourcesPath, 'ffmpeg', IS_WIN ? 'ffmpeg.exe' : 'ffmpeg')
+}
+
+function compressedPathFor(sourcePath: string): string {
+  const dir = dirname(sourcePath)
+  const stem = basename(sourcePath, '.mp4')
+  return join(dir, `${stem}_upforge.mp4`)
+}
+
+/** Compress when the raw OBS file exceeds ~1.5 GB (expected ~1.3 GB at preset). */
+export const COMPRESS_IF_LARGER_THAN_BYTES = Math.round(1.5 * 1024 * 1024 * 1024)
+
+export function shouldCompressVod(sizeBytes: number): boolean {
+  return sizeBytes > COMPRESS_IF_LARGER_THAN_BYTES
+}
+
+export interface CompressVodResult {
+  ok: boolean
+  outputPath: string
+  outputSizeBytes: number
+  error?: string
+}
+
+export async function resolveUploadVideoPath(
+  sourcePath: string,
+  onCompressStart?: (sizeGB: string) => void,
+): Promise<{ path: string; sizeBytes: number; compressed: boolean }> {
+  if (!existsSync(sourcePath)) {
+    throw new Error(`Recording file not found: ${sourcePath}`)
+  }
+
+  let sizeBytes = statSync(sourcePath).size
+  const sibling = compressedPathFor(sourcePath)
+  if (existsSync(sibling)) {
+    const siblingSize = statSync(sibling).size
+    if (statSync(sibling).mtimeMs >= statSync(sourcePath).mtimeMs && siblingSize < sizeBytes) {
+      return { path: sibling, sizeBytes: siblingSize, compressed: true }
+    }
+  }
+
+  if (!shouldCompressVod(sizeBytes)) {
+    return { path: sourcePath, sizeBytes, compressed: false }
+  }
+
+  onCompressStart?.((sizeBytes / (1024 ** 3)).toFixed(1))
+  const result = await compressVodForUpload(sourcePath)
+  if (result.ok) {
+    return { path: result.outputPath, sizeBytes: result.outputSizeBytes, compressed: true }
+  }
+
+  return { path: sourcePath, sizeBytes, compressed: false }
+}
+
+export async function compressVodForUpload(sourcePath: string): Promise<CompressVodResult> {
+  const outputPath = compressedPathFor(sourcePath)
+  mkdirSync(dirname(outputPath), { recursive: true })
+
+  if (existsSync(outputPath)) {
+    try { unlinkSync(outputPath) } catch { /* ignore */ }
+  }
+
+  const scale = RECORDING_PRESET.quality === '1080p' ? '1920:1080' : '1280:720'
+  const bitrate = `${RECORDING_PRESET.bitrate}M`
+  const maxrate = `${Math.round(RECORDING_PRESET.bitrate * 1.1)}M`
+  const bufsize = `${RECORDING_PRESET.bitrate * 2}M`
+  const fps = RECORDING_PRESET.fps
+
+  const videoFilters = `scale=${scale}:force_original_aspect_ratio=decrease,pad=${scale}:(ow-iw)/2:(oh-ih)/2,fps=${fps}`
+
+  const encoders = IS_WIN
+    ? ['h264_nvenc', 'h264_amf', 'h264_qsv', 'libx264']
+    : [process.platform === 'darwin' ? 'h264_videotoolbox' : 'libx264', 'libx264']
+
+  let lastError = 'Compression failed'
+  for (const encoder of encoders) {
+    const videoArgs = encoder === 'libx264'
+      ? ['-c:v', encoder, '-preset', 'veryfast', '-crf', '23', '-threads', '4']
+      : ['-c:v', encoder, '-b:v', bitrate, '-maxrate', maxrate, '-bufsize', bufsize]
+
+    try {
+      log.info(`[VodCompressor] Compressing with ${encoder}: ${sourcePath}`)
+      await runFfmpeg([
+        '-y',
+        '-i', sourcePath,
+        '-map', '0:v:0',
+        '-map', '0:a:0?',
+        '-vf', videoFilters,
+        ...videoArgs,
+        '-c:a', 'aac',
+        '-b:a', '128k',
+        '-movflags', '+faststart',
+        outputPath,
+      ])
+      const outputSizeBytes = statSync(outputPath).size
+      log.info(
+        `[VodCompressor] Done: ${(statSync(sourcePath).size / (1024 ** 3)).toFixed(2)} GB → ` +
+        `${(outputSizeBytes / (1024 ** 3)).toFixed(2)} GB`,
+      )
+      return { ok: true, outputPath, outputSizeBytes }
+    } catch (err) {
+      lastError = err instanceof Error ? err.message : String(err)
+      log.warn(`[VodCompressor] ${encoder} failed:`, lastError)
+      if (existsSync(outputPath)) {
+        try { unlinkSync(outputPath) } catch { /* ignore */ }
+      }
+    }
+  }
+
+  return { ok: false, outputPath, outputSizeBytes: 0, error: lastError }
+}
+
+function runFfmpeg(args: string[]): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const proc = spawn(ffmpegBin(), args, { stdio: ['ignore', 'ignore', 'pipe'] })
+    let stderr = ''
+    let settled = false
+    const timeoutMs = 90 * 60 * 1000
+    const timer = setTimeout(() => {
+      proc.kill('SIGKILL')
+      settle(() => reject(new Error('Compression timed out after 90 minutes')))
+    }, timeoutMs)
+
+    const settle = (fn: () => void) => {
+      if (settled) return
+      settled = true
+      clearTimeout(timer)
+      fn()
+    }
+
+    proc.stderr?.on('data', (d: Buffer) => { stderr += d.toString() })
+    proc.on('error', (err) => settle(() => reject(err)))
+    proc.on('exit', (code) => {
+      if (code === 0) settle(() => resolve())
+      else settle(() => reject(new Error(`ffmpeg exited ${code}: ${stderr.slice(-400)}`)))
+    })
+
+    if (proc.pid && IS_WIN) {
+      const { exec } = require('child_process') as typeof import('child_process')
+      exec(
+        `powershell -NoProfile -NonInteractive -Command "(Get-Process -Id ${proc.pid}).PriorityClass = 'BelowNormal'"`,
+        { windowsHide: true },
+        () => {},
+      )
+    }
+  })
+}
+
+export function deleteCompressedSibling(sourcePath: string): void {
+  const compressed = compressedPathFor(sourcePath)
+  if (existsSync(compressed)) {
+    try { unlinkSync(compressed) } catch { /* ignore */ }
+  }
+}

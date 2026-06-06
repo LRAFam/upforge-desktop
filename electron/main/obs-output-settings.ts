@@ -1,6 +1,9 @@
 /**
- * Push UpForge recording settings into the active OBS profile via WebSocket.
- * OBS Simple Output must use RecQuality=Small so RecRB (Kbps) controls file size.
+ * Push UpForge recording settings into OBS via WebSocket.
+ *
+ * SetProfileParameter only writes the profile file — encoder bitrate often stays
+ * unchanged (especially when OBS Output Mode is Advanced). SetVideoSettings and
+ * SetRecordDirectory use APIs that apply immediately before recording starts.
  */
 
 import { app } from 'electron'
@@ -22,6 +25,30 @@ export function buildRecorderConfig(settings: AppSettings): RecorderConfig {
   }
 }
 
+export interface ObsApplyResult {
+  ok: boolean
+  outputMode: string | null
+  outputWidth: number | null
+  outputHeight: number | null
+  warnings: string[]
+}
+
+async function getProfileParam(
+  obs: OBSWebSocket,
+  parameterCategory: string,
+  parameterName: string,
+): Promise<string | null> {
+  try {
+    const res = await obs.call('GetProfileParameter', {
+      parameterCategory,
+      parameterName,
+    }) as { parameterValue?: string | null }
+    return res.parameterValue ?? null
+  } catch {
+    return null
+  }
+}
+
 async function setProfileParam(
   obs: OBSWebSocket,
   parameterCategory: string,
@@ -32,7 +59,7 @@ async function setProfileParam(
     await obs.call('SetProfileParameter', { parameterCategory, parameterName, parameterValue })
   } catch (err) {
     log.warn(
-      `[OBS Output] SetProfileParameter ${parameterCategory}/${parameterName} failed (non-fatal):`,
+      `[OBS Output] SetProfileParameter ${parameterCategory}/${parameterName} failed:`,
       err instanceof Error ? err.message : err,
     )
   }
@@ -41,30 +68,85 @@ async function setProfileParam(
 export async function applyObsRecordingSettings(
   obs: OBSWebSocket,
   config: RecorderConfig,
-): Promise<void> {
+): Promise<ObsApplyResult> {
   const { cx, cy } = config.quality === '1080p'
     ? { cx: 1920, cy: 1080 }
     : { cx: 1280, cy: 720 }
   const bitrateKbps = Math.round(config.bitrate * 1000)
   const fps = config.fps ?? 30
   const savePath = config.savePath
+  const warnings: string[] = []
 
-  const params: Array<[string, string, string]> = [
-    ['Output', 'Mode', 'Simple'],
-    ['SimpleOutput', 'FilePath', savePath],
-    ['SimpleOutput', 'RecFormat', 'mp4'],
-    // Small = explicit bitrate via RecRB (not quality presets that ignore RecRB)
-    ['SimpleOutput', 'RecQuality', 'Small'],
-    ['SimpleOutput', 'RecRB', String(bitrateKbps)],
-    ['Video', 'OutputCX', String(cx)],
-    ['Video', 'OutputCY', String(cy)],
-    ['Video', 'FPSType', '0'],
-    ['Video', 'FPSCommon', String(fps)],
-  ]
-
-  for (const [category, name, value] of params) {
-    await setProfileParam(obs, category, name, value)
+  const modeBefore = await getProfileParam(obs, 'Output', 'Mode')
+  if (modeBefore === 'Advanced') {
+    warnings.push(
+      'OBS Output Mode is Advanced — recordings may be very large until you switch to Simple ' +
+      '(OBS Settings → Output → Output Mode → Simple) and restart OBS.',
+    )
   }
 
-  log.info(`[OBS Output] Applied ${RECORDING_PRESET_LABEL} → ${savePath}`)
+  await setProfileParam(obs, 'Output', 'Mode', 'Simple')
+  await setProfileParam(obs, 'SimpleOutput', 'RecFormat', 'mp4')
+  await setProfileParam(obs, 'SimpleOutput', 'RecQuality', 'Small')
+  await setProfileParam(obs, 'SimpleOutput', 'RecRB', String(bitrateKbps))
+
+  try {
+    await obs.call('SetRecordDirectory', { recordDirectory: savePath })
+  } catch (err) {
+    log.warn('[OBS Output] SetRecordDirectory failed:', err instanceof Error ? err.message : err)
+    await setProfileParam(obs, 'SimpleOutput', 'FilePath', savePath)
+  }
+
+  try {
+    await obs.call('SetVideoSettings', {
+      baseWidth: cx,
+      baseHeight: cy,
+      outputWidth: cx,
+      outputHeight: cy,
+      fpsNumerator: fps,
+      fpsDenominator: 1,
+    })
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err)
+    log.warn('[OBS Output] SetVideoSettings failed:', msg)
+    if (msg.includes('OutputRunning') || msg.includes('output is active')) {
+      warnings.push('Could not set OBS video resolution — stop any active OBS output and reconnect.')
+    }
+  }
+
+  const outputMode = await getProfileParam(obs, 'Output', 'Mode')
+  let outputWidth: number | null = null
+  let outputHeight: number | null = null
+
+  try {
+    const video = await obs.call('GetVideoSettings') as {
+      outputWidth?: number
+      outputHeight?: number
+    }
+    outputWidth = video.outputWidth ?? null
+    outputHeight = video.outputHeight ?? null
+    if (outputWidth && outputWidth > cx) {
+      warnings.push(`OBS output resolution is ${outputWidth}×${outputHeight} (expected ${cx}×${cy}).`)
+    }
+  } catch (err) {
+    log.warn('[OBS Output] GetVideoSettings failed:', err)
+  }
+
+  const recRb = await getProfileParam(obs, 'SimpleOutput', 'RecRB')
+  log.info(
+    `[OBS Output] Applied ${RECORDING_PRESET_LABEL} → ${savePath} ` +
+    `(mode=${outputMode ?? '?'}, ${outputWidth ?? '?'}×${outputHeight ?? '?'}, RecRB=${recRb ?? '?'} kbps)`,
+  )
+
+  if (warnings.length) {
+    for (const w of warnings) log.warn('[OBS Output]', w)
+  }
+
+  return {
+    ok: warnings.length === 0,
+    outputMode,
+    outputWidth,
+    outputHeight,
+    warnings,
+  }
 }

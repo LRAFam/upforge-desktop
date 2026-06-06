@@ -21,6 +21,6 @@ export function formatRecordingTooLargeMessage(sizeBytes: number, clipsSaved: bo
     : ''
   return (
     `Recording is too large for upload (${sizeGB} GB — max ${MAX_RECORDING_FILE_GB.toFixed(1)} GB).${clipsNote} ` +
-    'Reconnect OBS in Settings → Recording so UpForge can apply the optimised preset, then try a shorter queue mode or contact support.'
+    'UpForge will compress oversized files automatically — if this persists, set OBS Output Mode to Simple and restart OBS.'
   )
 }

@@ -45,7 +45,7 @@
                 </svg>
               </div>
               <div class="text-left">
-                <p class="text-sm font-bold text-white">Uploading replay</p>
+                <p class="text-sm font-bold text-white">{{ compressing ? 'Compressing replay' : 'Uploading replay' }}</p>
                 <div class="mt-1 flex items-center gap-2 text-[11px]">
                   <span class="font-semibold text-gray-200">{{ gameInfo.agent || gameLabel }}</span>
                   <span v-if="gameInfo.map" class="text-gray-500">{{ gameInfo.map }}</span>
@@ -56,8 +56,8 @@
           <div class="w-full space-y-2.5">
             <div class="flex items-end justify-between gap-3">
               <div class="text-left">
-                <p class="text-[10px] font-semibold uppercase tracking-[0.24em] text-gray-600">Upload progress</p>
-                <p class="mt-1 text-xs text-gray-500">Sending your recording to UpForge for analysis</p>
+                <p class="text-[10px] font-semibold uppercase tracking-[0.24em] text-gray-600">{{ compressing ? 'Compression' : 'Upload progress' }}</p>
+                <p class="mt-1 text-xs text-gray-500">{{ compressing ? 'OBS recorded a large file — shrinking to upload size (one-time, may take a few minutes)' : 'Sending your recording to UpForge for analysis' }}</p>
               </div>
               <div class="text-right">
                 <p class="text-lg font-black tabular-nums text-white upload-stat-in">{{ uploadProgress }}%</p>
@@ -671,6 +671,7 @@ const COACHING_TIPS = [
 
 const state = ref<State>('uploading')
 const uploadProgress = ref(0)
+const compressing = ref(false)
 const uploadStartedAt = ref(0)
 const gameInfo = ref<{ game: string; map: string | null; agent: string | null }>({ game: 'valorant', map: null, agent: null })
 const matchDataStatus = ref<'fetched' | 'no_match_id' | 'no_region' | 'no_auth' | 'fetch_failed' | 'pending'>('pending')
@@ -1052,7 +1053,16 @@ onMounted(() => {
     isReady.value = true
   }, 40)
   const ipcCleanup: (() => void)[] = []
+  ipcCleanup.push(window.api.on('post-game:compress-start', (...args: unknown[]) => {
+    const data = args[0] as { sizeGB?: string }
+    compressing.value = true
+    uploadProgress.value = 0
+    if (data?.sizeGB) {
+      errorMessage.value = ''
+    }
+  }))
   ipcCleanup.push(window.api.on('post-game:upload-start', (...args: unknown[]) => {
+    compressing.value = false
     const data = args[0] as { game: string; map: string | null; agent: string | null; matchDetailsStatus?: typeof matchDataStatus.value; killsInTimeline?: number }
     gameInfo.value = { game: data.game, map: data.map, agent: data.agent }
     if (data.matchDetailsStatus) matchDataStatus.value = data.matchDetailsStatus

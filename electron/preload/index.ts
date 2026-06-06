@@ -169,6 +169,7 @@ const api = {
   on: (channel: string, callback: (...args: unknown[]) => void): (() => void) => {
     const allowed = [
       'post-game:upload-start',
+      'post-game:compress-start',
       'post-game:upload-progress',
       'post-game:upload-complete',
       'post-game:analysis-progress',

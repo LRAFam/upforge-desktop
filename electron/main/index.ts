@@ -22,6 +22,10 @@ import {
   formatRecordingTooLargeMessage,
 } from './recording-limits'
 import { RECORDING_PRESET_LABEL } from './recording-preset'
+import {
+  resolveUploadVideoPath,
+  deleteCompressedSibling,
+} from './vod-compressor'
 import { broadcastObsConnection, probeObsConnection, startObsHealthMonitor } from './obs-health'
 import {
   RiotLocalApi,
@@ -717,8 +721,29 @@ function setupGameDetection(): void {
         return
       }
 
-      if (readySize > MAX_FILE_SIZE_BYTES) {
-        const sizeGB = (readySize / (1024 * 1024 * 1024)).toFixed(1)
+      let uploadPath = readyPath
+      let uploadSize = readySize
+
+      try {
+        const resolved = await resolveUploadVideoPath(readyPath, (sizeGB) => {
+          log.warn(`[HandleMatchEnd] Recording is ${sizeGB} GB — compressing before upload`)
+          logActivity(`Recording is ${sizeGB} GB — compressing for upload…`)
+          sendToWindow('post-game:compress-start', { sizeGB })
+        })
+        uploadPath = resolved.path
+        uploadSize = resolved.sizeBytes
+        if (resolved.compressed) {
+          const newGB = (uploadSize / (1024 * 1024 * 1024)).toFixed(2)
+          log.info(`[HandleMatchEnd] Compressed to ${newGB} GB`)
+          logActivity(`Compressed recording to ${newGB} GB — uploading`)
+        }
+      } catch (err) {
+        log.error('[HandleMatchEnd] Failed to prepare upload file:', err)
+        logActivity(`Could not prepare recording for upload: ${err instanceof Error ? err.message : String(err)}`)
+      }
+
+      if (uploadSize > MAX_FILE_SIZE_BYTES) {
+        const sizeGB = (uploadSize / (1024 * 1024 * 1024)).toFixed(1)
         const errorMsg = formatRecordingTooLargeMessage(readySize, true)
         log.warn(`[GameDetector] Recording too large to upload: ${sizeGB} GB — extracting clips only`)
         logActivity(`Recording too large (${sizeGB} GB) — full upload skipped, saving clips`)
@@ -781,6 +806,7 @@ function setupGameDetection(): void {
         if (settingsManager?.get().autoDelete) {
           log.info('[App] Auto-deleting recording after clip extraction:', readyPath)
           obsRecorder.deleteRecording(readyPath)
+          deleteCompressedSibling(readyPath)
         }
       }
 
@@ -855,7 +881,7 @@ function setupGameDetection(): void {
       })
       mainWindow?.webContents.send('recordings:updated')
 
-      const uploadResult = await doUploadAndAnalyse(autoAnalyseRecording.id, readyPath, user?.riot_name ?? '', user?.riot_tag ?? '',
+      const uploadResult = await doUploadAndAnalyse(autoAnalyseRecording.id, uploadPath, user?.riot_name ?? '', user?.riot_tag ?? '',
         game, map, agent, timeline, thisPostGameWindow, matchSessionStart, /* skipAutoDelete= */ true)
 
       const jobId = uploadResult ?? null
@@ -1510,6 +1536,29 @@ async function doUploadAndAnalyse(
   stopActiveAnalysisPoll()
 
   try {
+    let effectivePath = videoPath
+    try {
+      const resolved = await resolveUploadVideoPath(videoPath, (sizeGB) => {
+        log.warn(`[Upload] Recording is ${sizeGB} GB — compressing before upload`)
+        logActivity(`Recording is ${sizeGB} GB — compressing for upload…`)
+        send('post-game:compress-start', { sizeGB })
+      })
+      effectivePath = resolved.path
+      if (resolved.compressed) {
+        const newGB = (resolved.sizeBytes / (1024 ** 3)).toFixed(2)
+        logActivity(`Compressed recording to ${newGB} GB — uploading`)
+      }
+      if (resolved.sizeBytes > MAX_RECORDING_FILE_BYTES) {
+        const sizeGB = (resolved.sizeBytes / (1024 ** 3)).toFixed(1)
+        const errorMsg = formatRecordingTooLargeMessage(resolved.sizeBytes, false)
+        send('post-game:upload-error', { message: errorMsg, recordingId: recordingId ?? undefined })
+        logActivity(`Recording still too large after compression (${sizeGB} GB)`)
+        return null
+      }
+    } catch (prepErr) {
+      log.error('[Upload] Failed to prepare video path:', prepErr)
+    }
+
     send('post-game:upload-start', {
       game,
       map,
@@ -1520,7 +1569,7 @@ async function doUploadAndAnalyse(
     logActivity(`Uploading recording${map ? ` (${map}${agent ? ` · ${agent}` : ''})` : ''}`)
 
     const result = await uploadManager.upload({
-      videoPath,
+      videoPath: effectivePath,
       riotName,
       riotTag,
       game,
@@ -1547,6 +1596,7 @@ async function doUploadAndAnalyse(
     if (!skipAutoDelete && settingsManager?.get().autoDelete) {
       log.info('[App] Auto-deleting recording after upload:', videoPath)
       obsRecorder.deleteRecording(videoPath)
+      deleteCompressedSibling(videoPath)
     }
 
     startAnalysisPoll({

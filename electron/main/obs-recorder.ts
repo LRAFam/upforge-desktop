@@ -6,7 +6,7 @@ import https from 'https'
 import log from 'electron-log'
 import { setupUpForgeScene, retargetUpForgeCapture, type ObsSetupResult } from './obs-setup'
 import { formatObsConnectError, obsConnectHosts } from './obs-connect'
-import { applyObsRecordingSettings } from './obs-output-settings'
+import { applyObsRecordingSettings, type ObsApplyResult } from './obs-output-settings'
 import type { RecorderConfig } from './recorder'
 
 export interface OBSSettings {
@@ -58,6 +58,7 @@ export class OBSRecorder {
   private _lastError: string | null = null
   private _obsVersion: string | null = null
   private _noAudio = false
+  private _startupWarning: string | null = null
 
   // Live kill polling state
   private _liveKillPollTimer: ReturnType<typeof setInterval> | null = null
@@ -246,7 +247,7 @@ export class OBSRecorder {
   getLastRecordingPath(): string | null { return this._outputPath }
   getLastError(): string | null { return this._lastError }
   wasNoAudio(): boolean { return this._noAudio }
-  getStartupWarning(): string | null { return null }
+  getStartupWarning(): string | null { return this._startupWarning }
   getRecordingDuration(): number {
     return this._startedAt ? Math.floor((Date.now() - this._startedAt) / 1000) : 0
   }
@@ -288,9 +289,9 @@ export class OBSRecorder {
     } catch {}
   }
 
-  async applyRecordingSettings(config: RecorderConfig): Promise<void> {
-    if (!this._connected) return
-    await applyObsRecordingSettings(this._obs, config)
+  async applyRecordingSettings(config: RecorderConfig): Promise<ObsApplyResult | null> {
+    if (!this._connected) return null
+    return applyObsRecordingSettings(this._obs, config)
   }
 
   async start(game: string, config?: RecorderConfig): Promise<void> {
@@ -306,6 +307,7 @@ export class OBSRecorder {
 
     this._lastError = null
     this._noAudio = false
+    this._startupWarning = null
     this._outputPath = null
 
     try {
@@ -313,7 +315,8 @@ export class OBSRecorder {
       await retargetUpForgeCapture(this._obs, game)
 
       if (config) {
-        await applyObsRecordingSettings(this._obs, config)
+        const applyResult = await applyObsRecordingSettings(this._obs, config)
+        this._startupWarning = applyResult.warnings[0] ?? null
       } else {
         const savePath = join(app.getPath('userData'), 'recordings')
         await this._obs.call('SetProfileParameter', {
