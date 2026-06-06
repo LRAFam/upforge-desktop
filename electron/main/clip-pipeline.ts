@@ -8,9 +8,9 @@
  * shared state refs it needs to operate (clipStore, hotkeyBookmarks, etc.).
  */
 
-import { Notification } from 'electron'
 import fs from 'fs'
 import log from 'electron-log'
+import { showAppNotification } from './app-notifications'
 import { ClipStore } from './clip-store'
 import { ClipExtractor } from './clip-extractor'
 import { reportError } from './error-reporter'
@@ -383,13 +383,11 @@ export class ClipPipeline {
       logActivity(`${extractedClipIds.length} late-extracted clip${extractedClipIds.length === 1 ? '' : 's'} saved`)
       this.ctx.notifyMainWindow('clips:new', extractedClipIds)
       this.ctx.onClipsExtracted?.(extractedClipIds.length)
-      if (Notification.isSupported()) {
-        new Notification({
-          title: 'UpForge — Clips Ready',
-          body: `${extractedClipIds.length} highlight clip${extractedClipIds.length === 1 ? '' : 's'} saved from your match!`,
-          silent: notifySilent(),
-        }).show()
-      }
+      showAppNotification({
+        title: 'UpForge — Clips Ready',
+        body: `${extractedClipIds.length} highlight clip${extractedClipIds.length === 1 ? '' : 's'} saved from your match!`,
+        silent: notifySilent(),
+      })
     }
   }
 
@@ -402,13 +400,11 @@ export class ClipPipeline {
     if (extractedClipIds.length > 0) {
       this.ctx.logActivity(`${extractedClipIds.length} clip${extractedClipIds.length === 1 ? '' : 's'} saved from match`)
       this.ctx.notifyMainWindow('clips:new', extractedClipIds)
-      if (Notification.isSupported()) {
-        new Notification({
-          title: 'UpForge — Clips Ready',
-          body: `${extractedClipIds.length} highlight clip${extractedClipIds.length === 1 ? '' : 's'} saved`,
-          silent: notifySilent(),
-        }).show()
-      }
+      showAppNotification({
+        title: 'UpForge — Clips Ready',
+        body: `${extractedClipIds.length} highlight clip${extractedClipIds.length === 1 ? '' : 's'} saved`,
+        silent: notifySilent(),
+      })
     } else {
       const killCount  = timeline?.playerKills?.length ?? 0
       const hotkeyCount = this.ctx.hotkeyBookmarks.length

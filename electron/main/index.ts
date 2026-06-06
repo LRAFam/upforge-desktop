@@ -4,12 +4,12 @@ import {
   Tray,
   ipcMain,
   shell,
-  Notification,
   globalShortcut,
 } from 'electron'
 import { join } from 'path'
 import fs from 'fs'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
+import { showAppNotification } from './app-notifications'
 import { setupAutoUpdater, markStartupComplete } from './updater'
 import { GameDetector } from './game-detector'
 import { Recorder } from './recorder'
@@ -139,17 +139,17 @@ let lastObsDisconnectNotifyAt = 0
 const OBS_DISCONNECT_NOTIFY_COOLDOWN_MS = 10 * 60 * 1000
 
 function maybeNotifyObsDisconnect(error: string | null | undefined): void {
-  if (!error || !Notification.isSupported()) return
+  if (!error) return
   const now = Date.now()
   if (now - lastObsDisconnectNotifyAt < OBS_DISCONNECT_NOTIFY_COOLDOWN_MS) return
   lastObsDisconnectNotifyAt = now
-  new Notification({
+  showAppNotification({
     title: 'UpForge — OBS Disconnected',
     body: error === 'OBS disconnected'
       ? 'OBS closed or disconnected. Reopen OBS and connect in Settings → Recording.'
       : error,
     silent: notifySilent(),
-  }).show()
+  })
 }
 
 function wireObsConnectionEvents(): void {
@@ -205,13 +205,11 @@ function wireRecorderStatus(rec: OBSRecorder, label: string): void {
       reportRecordingError('mid-match', error, { label })
       onRecordingLost?.(error)
       tray?.setToolTip('UpForge — Recording stopped!')
-      if (Notification.isSupported()) {
-        new Notification({
-          title: 'UpForge — Recording Stopped',
-          body: 'Recording stopped unexpectedly. Open UpForge to see details.',
-          silent: notifySilent()
-        }).show()
-      }
+      showAppNotification({
+        title: 'UpForge — Recording Stopped',
+        body: 'Recording stopped unexpectedly. Open UpForge to see details.',
+        silent: notifySilent(),
+      })
       setTimeout(() => tray?.setToolTip(idleTooltip()), 10_000)
     }
   }
@@ -302,9 +300,7 @@ function logActivity(message: string): void {
 /** Dashboard banner + optional OS notification for recording outcomes. */
 function notifyRecordingUx(message: string, notificationTitle = 'UpForge — Recording'): void {
   mainWindow?.webContents.send('app:warning', { message })
-  if (Notification.isSupported()) {
-    new Notification({ title: notificationTitle, body: message, silent: notifySilent() }).show()
-  }
+  showAppNotification({ title: notificationTitle, body: message, silent: notifySilent() })
 }
 
 /** Backend that will be used for the next (or current) match capture. */
@@ -667,13 +663,13 @@ function setupGameDetection(): void {
     }
 
     // Notify the user that the match recording has finished and upload is starting
-    if (Notification.isSupported()) {
+    {
       const agentLabel = agent ?? gameLabel(game)
       const mapLabel = map ? ` on ${map}` : ''
-      new Notification({
+      showAppNotification({
         title: 'UpForge — Recording Complete',
-        body: `${agentLabel}${mapLabel} — uploading for AI analysis…`
-      }).show()
+        body: `${agentLabel}${mapLabel} — uploading for AI analysis…`,
+      })
     }
 
     // CS2 demo auto-pull — runs asynchronously and never blocks the main upload flow
@@ -1036,13 +1032,11 @@ function setupGameDetection(): void {
       const freeGB = (freeBytes / (1024 ** 3)).toFixed(1)
       console.warn(`[Recorder] Low disk space: ${freeGB} GB free`)
       mainWindow?.webContents.send('app:warning', { message: `Low disk space (${freeGB} GB free) — recording may be cut short` })
-      if (Notification.isSupported()) {
-        new Notification({
-          title: 'UpForge — Low Disk Space',
-          body: `Only ${freeGB} GB free. Recording may be cut short.`,
-          silent: true
-        }).show()
-      }
+      showAppNotification({
+        title: 'UpForge — Low Disk Space',
+        body: `Only ${freeGB} GB free. Recording may be cut short.`,
+        silent: true,
+      })
     }
 
     tray?.setToolTip('UpForge — Match loading...')
@@ -1360,13 +1354,11 @@ function setupGameDetection(): void {
     const gameLabel = game === 'cs2' ? 'CS2' : 'Valorant'
     tray?.setToolTip(`UpForge — Recording ${gameLabel} (${userLabel})`)
 
-    if (Notification.isSupported()) {
-      new Notification({
-        title: `UpForge is recording`,
-        body: `${gameLabel} match started for ${userLabel}`,
-        silent: notifySilent()
-      }).show()
-    }
+    showAppNotification({
+      title: 'UpForge is recording',
+      body: `${gameLabel} match started for ${userLabel}`,
+      silent: notifySilent(),
+    })
   })
 
   gameDetector.on('game-stopped', async (game: string) => {
@@ -1463,16 +1455,14 @@ async function handleOrphanedJobAtStartup(
     logActivity(`Previous analysis finished while app was closed${score != null ? ` — Score: ${score}/100` : ''}`)
     mainWindow?.webContents.send('dashboard:refresh')
     tray?.setToolTip(idleTooltip(context.game))
-    if (Notification.isSupported()) {
-      const notifAgent = context.agent ?? gameLabel(context.game)
-      const notifMap = context.map ? ` on ${context.map}` : ''
-      const notifScore = score != null ? ` — Score: ${score}/100` : ''
-      new Notification({
-        title: 'UpForge — Analysis Ready',
-        body: `${notifAgent}${notifMap}${notifScore}`,
-        silent: notifySilent()
-      }).show()
-    }
+    const notifAgent = context.agent ?? gameLabel(context.game)
+    const notifMap = context.map ? ` on ${context.map}` : ''
+    const notifScore = score != null ? ` — Score: ${score}/100` : ''
+    showAppNotification({
+      title: 'UpForge — Analysis Ready',
+      body: `${notifAgent}${notifMap}${notifScore}`,
+      silent: notifySilent(),
+    })
     return
   }
 
@@ -1501,28 +1491,24 @@ async function resumePollForJob(
       logActivity(`Resumed analysis ready${score != null ? ` — Score: ${score}/100` : ''}`)
       mainWindow?.webContents.send('dashboard:refresh')
       tray?.setToolTip(idleTooltip(game))
-      if (Notification.isSupported()) {
-        const notifAgent = agent ?? gameLabel(game)
-        const notifMap = map ? ` on ${map}` : ''
-        const notifScore = score != null ? ` — Score: ${score}/100` : ''
-        new Notification({
-          title: 'UpForge — Analysis Ready',
-          body: `${notifAgent}${notifMap}${notifScore}`,
-          silent: notifySilent()
-        }).show()
-      }
+      const notifAgent = agent ?? gameLabel(game)
+      const notifMap = map ? ` on ${map}` : ''
+      const notifScore = score != null ? ` — Score: ${score}/100` : ''
+      showAppNotification({
+        title: 'UpForge — Analysis Ready',
+        body: `${notifAgent}${notifMap}${notifScore}`,
+        silent: notifySilent(),
+      })
     },
     onFailed: (_userMessage, rawError) => {
       logActivity(`Resumed analysis failed: ${rawError}`)
       tray?.setToolTip(idleTooltip(game))
-      if (Notification.isSupported()) {
-        const body = rawError.length > 100 ? rawError.slice(0, 97) + '…' : rawError
-        new Notification({
-          title: 'UpForge — Analysis Failed',
-          body,
-          silent: notifySilent()
-        }).show()
-      }
+      const body = rawError.length > 100 ? rawError.slice(0, 97) + '…' : rawError
+      showAppNotification({
+        title: 'UpForge — Analysis Failed',
+        body,
+        silent: notifySilent(),
+      })
       mainWindow?.webContents.send('dashboard:refresh')
     },
     onConnectionLost: () => {
@@ -1533,13 +1519,11 @@ async function resumePollForJob(
       if (reason === 'max_duration') {
         logActivity('Resumed analysis poll stopped after 90 minutes — job may still be processing')
         tray?.setToolTip('UpForge — Analysis still running…')
-        if (Notification.isSupported()) {
-          new Notification({
-            title: 'UpForge — Still analysing',
-            body: 'Your match is still processing on our servers. We\'ll notify you when it\'s ready.',
-            silent: notifySilent()
-          }).show()
-        }
+        showAppNotification({
+          title: 'UpForge — Still analysing',
+          body: 'Your match is still processing on our servers. We\'ll notify you when it\'s ready.',
+          silent: notifySilent(),
+        })
       }
     },
   })
@@ -1680,11 +1664,11 @@ async function doUploadAndAnalyse(
         const notifAgent = agent ?? gameLabel(game)
         const notifMap = map ? ` on ${map}` : ''
         const notifScore = score != null ? ` — Score: ${score}/100` : ''
-        new Notification({
+        showAppNotification({
           title: 'UpForge — Analysis Ready',
           body: `${notifAgent}${notifMap}${notifScore}`,
-          silent: notifySilent()
-        }).show()
+          silent: notifySilent(),
+        })
         if (!targetWindow.isDestroyed()) {
           targetWindow.flashFrame(true)
           targetWindow.once('focus', () => targetWindow.flashFrame(false))
@@ -1708,13 +1692,11 @@ async function doUploadAndAnalyse(
           logActivity('Analysis poll reached 90 minute cap — job may still be processing on server')
           send('post-game:analysis-deferred', { jobId: result.job_id })
           tray?.setToolTip('UpForge — Analysis still running…')
-          if (Notification.isSupported()) {
-            new Notification({
-              title: 'UpForge — Still analysing',
-              body: 'Your match is still processing. We\'ll notify you when results are ready.',
-              silent: notifySilent()
-            }).show()
-          }
+          showAppNotification({
+            title: 'UpForge — Still analysing',
+            body: 'Your match is still processing. We\'ll notify you when results are ready.',
+            silent: notifySilent(),
+          })
         }
       },
     })

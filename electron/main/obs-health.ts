@@ -5,6 +5,7 @@
 import type { BrowserWindow } from 'electron'
 import { Notification } from 'electron'
 import log from 'electron-log'
+import { showAppNotification } from './app-notifications'
 import type { OBSRecorder } from './obs-recorder'
 
 let lastObsSetupNotifyAt = 0
@@ -65,11 +66,11 @@ export async function probeObsConnection(
     const now = Date.now()
     if (now - lastObsSetupNotifyAt >= OBS_SETUP_NOTIFY_COOLDOWN_MS) {
       lastObsSetupNotifyAt = now
-      new Notification({
+      showAppNotification({
         title: 'UpForge — OBS Required',
         body: 'OBS is not connected. Set it up in Settings → Recording before your next match.',
         silent: opts.notifySilent?.() ?? true,
-      }).show()
+      })
     }
   }
 

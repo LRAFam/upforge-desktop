@@ -6,8 +6,9 @@
  * Also exports reportError() for manual reporting throughout the codebase.
  */
 
-import { app, Notification } from 'electron'
+import { app } from 'electron'
 import log from 'electron-log'
+import { showAppNotification } from './app-notifications'
 import type { AuthManager } from './auth-manager'
 
 const API_URL = process.env['VITE_API_URL'] || 'https://api.upforge.gg'
@@ -81,10 +82,10 @@ export function setupMainProcessErrorHandlers(authManager: AuthManager): void {
     if (isNoSpace) {
       // Show a user-facing notification for disk-full errors
       try {
-        new Notification({
+        showAppNotification({
           title: 'UpForge — Disk Full',
           body: 'Your disk is full. Please free up space or recordings may not save correctly.',
-        }).show()
+        })
       } catch { /* notifications not available */ }
     }
 
