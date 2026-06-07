@@ -342,6 +342,14 @@
                 </div>
               </div>
 
+              <div class="rounded-xl border border-blue-500/20 bg-blue-500/[0.06] px-4 py-3 mb-1">
+                <p class="text-[11px] text-blue-200/90 leading-relaxed">
+                  <span class="font-semibold text-blue-200">Valorant tip:</span>
+                  Exclusive Fullscreen blocks in-game overlays. UpForge confirms clips with a notification sound by default.
+                  For the overlay HUD, set Valorant → Settings → Video → <span class="text-blue-100">Windowed Fullscreen</span>.
+                </p>
+              </div>
+
               <button
                 :disabled="saving"
                 class="w-full py-3 rounded-xl bg-gradient-to-r from-[#ff4655] to-[#f97316] text-white text-sm font-bold transition-all hover:opacity-90 hover:-translate-y-0.5 active:translate-y-0 flex items-center justify-center gap-2 disabled:opacity-60 shadow-[0_4px_20px_rgba(255,70,85,0.3)]"

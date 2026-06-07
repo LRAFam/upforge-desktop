@@ -465,6 +465,32 @@
             </svg>
           </button>
           <div v-if="sectionOpen.shortcuts" class="space-y-3 border-t border-white/[0.09] p-4">
+            <div class="rounded-2xl border border-white/[0.10] bg-black/20 p-4 space-y-3">
+              <div>
+                <p class="text-sm font-semibold text-white">In-game feedback</p>
+                <p class="mt-1 text-xs text-gray-500 leading-relaxed">
+                  Valorant blocks overlays in Exclusive Fullscreen. Use
+                  <span class="text-gray-400">Notifications</span> for reliable clip confirmation, or set Valorant to
+                  <span class="text-gray-400"> Windowed Fullscreen</span> if you want the overlay HUD.
+                </p>
+              </div>
+              <div class="grid grid-cols-1 gap-2 sm:grid-cols-3">
+                <button
+                  v-for="opt in inGameFeedbackOptions"
+                  :key="opt.value"
+                  type="button"
+                  class="rounded-xl border px-3 py-2.5 text-left transition-colors"
+                  :class="settings.inGameFeedback === opt.value
+                    ? 'border-red-500/35 bg-red-500/10'
+                    : 'border-white/[0.08] bg-white/[0.03] hover:border-white/[0.14]'"
+                  @click="setInGameFeedback(opt.value)"
+                >
+                  <p class="text-xs font-semibold" :class="settings.inGameFeedback === opt.value ? 'text-white' : 'text-gray-300'">{{ opt.label }}</p>
+                  <p class="mt-0.5 text-[11px] text-gray-600">{{ opt.hint }}</p>
+                </button>
+              </div>
+            </div>
+
             <div class="flex items-center justify-between rounded-2xl border border-white/[0.10] bg-black/20 px-4 py-3">
               <div>
                 <p class="text-sm text-gray-200">Open or focus window</p>
@@ -877,6 +903,7 @@ const settings = reactive<AppSettings>({
   pregameKillList: [],
   clipRetentionDays: 0,
   notificationSound: true,
+  inGameFeedback: 'notifications',
   cachedEncoder: null,
   cachedUseDdagrab: null,
   devModeEnabled: false,
@@ -931,8 +958,20 @@ const toggles: Array<{ key: keyof Pick<AppSettings, 'launchOnStartup' | 'autoDel
   { key: 'autoDelete', label: 'Auto-delete after upload', hint: 'Frees disk space once recording is uploaded' },
   { key: 'autoAnalyse', label: 'Auto-analyse after game', hint: 'Automatically upload and analyse once a game ends' },
   { key: 'autoOpenBrowser', label: 'Open results in browser', hint: 'Automatically open your results page when analysis completes' },
-  { key: 'notificationSound', label: 'Notification sound', hint: 'Play a sound with system notifications' }
+  { key: 'notificationSound', label: 'Notification sound', hint: 'Play a sound with system notifications' },
 ]
+
+const inGameFeedbackOptions: Array<{ value: AppSettings['inGameFeedback']; label: string; hint: string }> = [
+  { value: 'notifications', label: 'Notifications', hint: 'Toast + beep — works in fullscreen' },
+  { value: 'overlay', label: 'Overlay only', hint: 'Needs Windowed Fullscreen' },
+  { value: 'all', label: 'Both', hint: 'Overlay + notifications' },
+]
+
+async function setInGameFeedback(mode: AppSettings['inGameFeedback']): Promise<void> {
+  settings.inGameFeedback = mode
+  await window.api.settings.save({ inGameFeedback: mode })
+  showSaved()
+}
 
 function toggleSection(section: keyof typeof sectionOpen): void {
   sectionOpen[section] = !sectionOpen[section]

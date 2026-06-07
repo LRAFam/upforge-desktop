@@ -620,7 +620,14 @@ onMounted(async () => {
     })
   )
   removeListeners.push(
+    window.api.on('overlay:screenshot-saved', (payload: unknown) => {
+      const p = payload as { filename?: string }
+      showToastMsg(p?.filename ? `Screenshot saved` : 'Screenshot saved', 'success')
+    })
+  )
+  removeListeners.push(
     window.api.on('overlay:screenshot', async () => {
+      // Legacy path — capture still handled in overlay if main process didn't save yet
       try {
         const dataUrl = await window.api.screenshots.capture()
         if (!dataUrl) { showToastMsg('Screenshot failed', 'warning'); return }

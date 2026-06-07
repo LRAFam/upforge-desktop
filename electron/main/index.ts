@@ -55,6 +55,8 @@ import { ClipExtractor } from './clip-extractor'
 import { ClipStore } from './clip-store'
 import { HotkeyManager } from './hotkey-manager'
 import { createOverlayWindow, toggleOverlay, destroyOverlay, sendOverlayData, isOverlayVisible, showOverlay, hideOverlay } from './overlay-window'
+import { deliverInGameFeedback, usesOverlayFeedback } from './in-game-feedback'
+import { captureAndSaveScreenshot } from './screenshot-capture'
 import { PerformanceManager } from './performance-manager'
 import { TrainerBridge } from './trainer-bridge'
 import type { MatchData } from './riot-types'
@@ -274,6 +276,23 @@ const hotkeyBookmarks: number[] = []
 let currentRecordingStartTime: number | null = null
 // Auto-hide timer for overlay flash feedback (clip bookmarked while overlay is hidden)
 let overlayAutoHideTimer: ReturnType<typeof setTimeout> | null = null
+
+function flashOverlayBriefly(durationMs = 3000): void {
+  if (!settingsManager || !usesOverlayFeedback(settingsManager.get().inGameFeedback ?? 'notifications')) return
+  if (isOverlayVisible()) return
+  if (overlayAutoHideTimer) clearTimeout(overlayAutoHideTimer)
+  showOverlay()
+  overlayAutoHideTimer = setTimeout(() => {
+    hideOverlay()
+    overlayAutoHideTimer = null
+  }, durationMs)
+}
+
+const inGameFeedbackDeps = () => ({
+  getSettings: () => settingsManager.get(),
+  sendOverlayEvent: (channel: string, data?: unknown) => sendOverlayData(channel, data),
+  flashOverlay: (durationMs: number) => flashOverlayBriefly(durationMs),
+})
 
 // Last match diagnostic — captured at handleMatchEnd for the developer panel
 interface LastMatchDiagnostic {
@@ -1365,10 +1384,13 @@ function setupGameDetection(): void {
     const gameLabel = game === 'cs2' ? 'CS2' : 'Valorant'
     tray?.setToolTip(`UpForge — Recording ${gameLabel} (${userLabel})`)
 
-    showAppNotification({
-      title: 'UpForge is recording',
-      body: `${gameLabel} match started for ${userLabel}`,
-      silent: notifySilent(),
+    const feedbackMode = settingsManager.get().inGameFeedback ?? 'notifications'
+    deliverInGameFeedback(inGameFeedbackDeps(), {
+      kind: 'recording-started',
+      title: 'Recording started',
+      body: `${gameLabel} match for ${userLabel} — F9 clip · F8 screenshot · F10 overlay`,
+      beep: 'success',
+      flashOverlayMs: feedbackMode === 'notifications' ? 0 : 7000,
     })
   })
 
@@ -1982,43 +2004,57 @@ app.whenReady().then(async () => {
       logActivity('Clip moment bookmarked (F9)')
       log.info('[Hotkey] F9 clip bookmarked, total bookmarks:', hotkeyBookmarks.length)
       const elapsedSec = Math.round((Date.now() - currentRecordingStartTime) / 1000)
-      sendOverlayData('overlay:clip-bookmarked', { bookmarkCount: hotkeyBookmarks.length, elapsedSec })
-      // Auto-show overlay so user sees the toast even if they didn't press F10
-      // If overlay is already visible (user opened it themselves), don't auto-hide it
-      if (!isOverlayVisible()) {
-        if (overlayAutoHideTimer) clearTimeout(overlayAutoHideTimer)
-        showOverlay()
-        overlayAutoHideTimer = setTimeout(() => {
-          // Only auto-hide if the user didn't manually show it (it would still be visible via F10)
-          hideOverlay()
-          overlayAutoHideTimer = null
-        }, 3000)
-      }
+      const timeLabel = elapsedSec < 60
+        ? `${elapsedSec}s into match`
+        : `${Math.floor(elapsedSec / 60)}m ${elapsedSec % 60}s into match`
+      deliverInGameFeedback(inGameFeedbackDeps(), {
+        kind: 'clip-saved',
+        title: 'Clip moment saved',
+        body: `#${hotkeyBookmarks.length} marked · ${timeLabel}`,
+        overlayChannel: 'overlay:clip-bookmarked',
+        overlayData: { bookmarkCount: hotkeyBookmarks.length, elapsedSec },
+        beep: 'success',
+      })
     } else {
-      // F9 was pressed but we're not recording — give the user visible feedback in overlay + notification
       log.warn('[Hotkey] F9 pressed but recorder is not active (recording=%s, startTime=%s)',
         obsRecorder.isRecording(), currentRecordingStartTime)
       const currentGame = gameDetector.currentGame()
       const gameLbl = currentGame ? gameLabel(currentGame) : 'a'
       logActivity(`F9 pressed — not recording (start a ${gameLbl} match first)`)
-      sendOverlayData('overlay:clip-not-recording', {})
-      if (!isOverlayVisible()) {
-        if (overlayAutoHideTimer) clearTimeout(overlayAutoHideTimer)
-        showOverlay()
-        overlayAutoHideTimer = setTimeout(() => { hideOverlay(); overlayAutoHideTimer = null }, 3000)
-      }
+      deliverInGameFeedback(inGameFeedbackDeps(), {
+        kind: 'not-recording',
+        title: 'Not recording',
+        body: `Start a ${gameLbl} match first — F9 saves clip moments during recording`,
+        overlayChannel: 'overlay:clip-not-recording',
+        beep: 'warning',
+      })
     }
   })
   hotkeyManager.on('take-screenshot', () => {
-    log.info('[Hotkey] F8 screenshot requested')
-    logActivity('Screenshot saved (F8)')
-    sendOverlayData('overlay:screenshot', {})
-    // Auto-show overlay briefly so user sees the confirmation toast
-    if (!isOverlayVisible()) {
-      if (overlayAutoHideTimer) clearTimeout(overlayAutoHideTimer)
-      showOverlay()
-      overlayAutoHideTimer = setTimeout(() => { hideOverlay(); overlayAutoHideTimer = null }, 3000)
-    }
+    void (async () => {
+      log.info('[Hotkey] F8 screenshot requested')
+      const result = await captureAndSaveScreenshot()
+      if (result.ok) {
+        logActivity('Screenshot saved (F8)')
+        deliverInGameFeedback(inGameFeedbackDeps(), {
+          kind: 'screenshot',
+          title: 'Screenshot saved',
+          body: result.filename ?? 'Saved to your UpForge screenshots folder',
+          overlayChannel: 'overlay:screenshot-saved',
+          overlayData: { filename: result.filename },
+          beep: 'success',
+        })
+      } else {
+        logActivity('Screenshot failed (F8)')
+        deliverInGameFeedback(inGameFeedbackDeps(), {
+          kind: 'screenshot',
+          title: 'Screenshot failed',
+          body: 'Could not capture your screen — try again',
+          beep: 'warning',
+          flashOverlayMs: 0,
+        })
+      }
+    })()
   })
   hotkeyManager.on('toggle-overlay', () => {
     // If the auto-hide timer is running (from an F9 flash), cancel it — user is taking manual control

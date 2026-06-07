@@ -25,6 +25,13 @@ export interface AppSettings {
   clipRetentionDays: number
   /** Play a sound when a notification fires */
   notificationSound: boolean
+  /**
+   * How in-game hotkey feedback is delivered.
+   * - notifications: Windows toasts + beep (works in Valorant fullscreen)
+   * - overlay: in-game overlay only (needs Windowed Fullscreen in Valorant)
+   * - all: both channels
+   */
+  inGameFeedback: 'notifications' | 'overlay' | 'all'
   /** Last detected hardware encoder — cached to skip detection on next launch */
   cachedEncoder: string | null
   /** Whether ddagrab was available last launch */
@@ -77,6 +84,8 @@ export interface AppSettings {
   autoOpenBrowser: boolean
 }
 
+export type InGameFeedbackMode = AppSettings['inGameFeedback']
+
 const DEFAULTS: AppSettings = {
   recordingQuality: '720p',
   recordingBitrate: 5,
@@ -92,6 +101,7 @@ const DEFAULTS: AppSettings = {
   pregameKillList: [],
   clipRetentionDays: 0,
   notificationSound: true,
+  inGameFeedback: 'notifications',
   cachedEncoder: null,
   cachedUseDdagrab: null,
   devModeEnabled: false,
