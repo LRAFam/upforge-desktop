@@ -485,47 +485,59 @@
       </div>
 
       <!-- Pending (auto-analyse off) -->
-      <div v-else-if="state === 'pending'" class="w-full space-y-3 text-center">
-        <div
-          class="w-11 h-11 mx-auto rounded-full overflow-hidden flex items-center justify-center transition-all"
-          :class="agentImageUrl ? '' : 'bg-blue-500/10 border border-blue-500/20'"
-          :style="agentImageUrl ? { border: `1px solid ${agentAccentColor}50`, background: agentAccentColor + '20' } : {}"
-        >
-          <img v-if="agentImageUrl" :src="agentImageUrl" class="w-9 h-9 object-contain" />
-          <svg v-else class="w-5 h-5 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M15 10l4.553-2.069A1 1 0 0121 8.882v6.236a1 1 0 01-1.447.894L15 14M3 8a2 2 0 012-2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V8z"/>
-          </svg>
-        </div>
-        <div class="space-y-2">
-          <p class="text-sm font-semibold">Game recorded</p>
-          <div class="flex items-center justify-center">
-            <div class="inline-flex items-center gap-2 rounded-xl border border-white/[0.10] bg-white/[0.03] px-3 py-2">
-              <div
-                class="w-8 h-8 rounded-xl overflow-hidden flex items-center justify-center flex-shrink-0"
-                :class="agentImageUrl ? '' : 'bg-blue-500/10 border border-blue-500/20'"
-                :style="agentImageUrl ? { border: `1px solid ${agentAccentColor}50`, background: agentAccentColor + '20' } : {}"
-              >
-                <img v-if="agentImageUrl" :src="agentImageUrl" class="w-6 h-6 object-contain" />
-                <svg v-else class="w-4 h-4 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M15 10l4.553-2.069A1 1 0 0121 8.882v6.236a1 1 0 01-1.447.894L15 14M3 8a2 2 0 012-2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V8z"/>
-                </svg>
-              </div>
-              <div class="text-left">
-                <p class="text-xs font-semibold text-gray-200">{{ gameInfo.agent || gameLabel }}</p>
-                <p class="text-[11px] text-gray-500">{{ gameInfo.map || gameLabel }}</p>
-              </div>
-            </div>
+      <div v-else-if="state === 'pending'" class="w-full space-y-4 text-center">
+        <div class="flex justify-center">
+          <div class="inline-flex items-center gap-1.5 rounded-full border border-emerald-500/25 bg-emerald-500/10 px-3 py-1">
+            <span class="relative flex h-2 w-2">
+              <span class="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-60" />
+              <span class="relative inline-flex h-2 w-2 rounded-full bg-emerald-400" />
+            </span>
+            <span class="text-[11px] font-semibold text-emerald-300">Match saved</span>
           </div>
-          <p class="text-xs text-gray-600">Auto-analyse is off — analyse now or view later from the dashboard.</p>
         </div>
-        <div class="flex gap-2 pt-1">
+
+        <div
+          class="rounded-2xl border border-white/[0.08] bg-white/[0.03] px-4 py-3.5 text-left shadow-[0_12px_40px_rgba(0,0,0,0.28)]"
+          :style="agentAccentColor ? { boxShadow: `0 12px 40px ${agentAccentColor}18` } : undefined"
+        >
+          <div class="flex items-center gap-3">
+            <div
+              class="w-12 h-12 rounded-xl overflow-hidden flex items-center justify-center flex-shrink-0"
+              :class="agentImageUrl ? '' : 'bg-blue-500/10 border border-blue-500/20'"
+              :style="agentImageUrl ? { border: `1px solid ${agentAccentColor}55`, background: agentAccentColor + '22' } : {}"
+            >
+              <img v-if="agentImageUrl" :src="agentImageUrl" class="w-10 h-10 object-contain" />
+              <svg v-else class="w-5 h-5 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M15 10l4.553-2.069A1 1 0 0121 8.882v6.236a1 1 0 01-1.447.894L15 14M3 8a2 2 0 012-2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V8z"/>
+              </svg>
+            </div>
+            <div class="min-w-0 flex-1">
+              <p class="text-sm font-bold text-white">Game recorded</p>
+              <p class="mt-0.5 text-xs text-gray-400">
+                {{ [gameInfo.agent, gameInfo.map].filter(Boolean).join(' · ') || gameLabel }}
+              </p>
+            </div>
+            <img
+              v-if="mapSplashUrl"
+              :src="mapSplashUrl"
+              alt=""
+              class="h-11 w-11 flex-shrink-0 rounded-lg object-cover opacity-70 ring-1 ring-white/10"
+            />
+          </div>
+        </div>
+
+        <p class="text-xs leading-relaxed text-gray-400 px-1">
+          Auto-analyse is off. Run coaching now, or open this match anytime from your dashboard.
+        </p>
+
+        <div class="flex gap-2.5 pt-0.5">
           <button
             :disabled="analysing"
-            class="flex-1 py-2 text-xs font-semibold bg-gradient-to-r from-red-500 to-orange-600 hover:from-red-600 hover:to-orange-700 disabled:opacity-50 text-white rounded-lg transition-all shadow-sm shadow-red-500/20"
+            class="flex-1 py-2.5 text-xs font-bold bg-gradient-to-r from-red-500 to-orange-600 hover:from-red-600 hover:to-orange-700 disabled:opacity-50 text-white rounded-xl transition-all shadow-md shadow-red-500/25"
             @click="analyseNow"
-          >{{ analysing ? 'Starting...' : 'Analyse Now' }}</button>
+          >{{ analysing ? 'Starting…' : 'Analyse now' }}</button>
           <button
-            class="px-3 py-2 text-xs text-gray-500 hover:text-gray-300 bg-white/[0.03] hover:bg-white/[0.06] border border-white/[0.10] rounded-lg transition-colors"
+            class="flex-1 py-2.5 text-xs font-semibold text-gray-300 hover:text-white bg-white/[0.04] hover:bg-white/[0.08] border border-white/[0.12] rounded-xl transition-colors"
             @click="dismissPending"
           >Later</button>
         </div>

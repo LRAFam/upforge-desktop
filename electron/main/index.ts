@@ -667,8 +667,9 @@ function setupGameDetection(): void {
       const agentLabel = agent ?? gameLabel(game)
       const mapLabel = map ? ` on ${map}` : ''
       showAppNotification({
-        title: 'UpForge — Recording Complete',
-        body: `${agentLabel}${mapLabel} — uploading for AI analysis…`,
+        title: 'Uploading match',
+        body: `${agentLabel}${mapLabel} — coaching report on the way.`,
+        silent: notifySilent(),
       })
     }
 
@@ -883,6 +884,16 @@ function setupGameDetection(): void {
           map,
           agent
         })
+
+        {
+          const agentLabel = agent ?? gameLabel(game)
+          const mapLabel = map ? ` · ${map}` : ''
+          showAppNotification({
+            title: 'Match recorded',
+            body: `${agentLabel}${mapLabel} — tap Analyse now in UpForge or review later from your dashboard.`,
+            silent: notifySilent(),
+          })
+        }
 
         extractMatchClips(readyPath, timeline, null)
           .catch(err => log.warn('[ClipExtract] Clip extraction (no-analyse) error:', err))
@@ -1664,10 +1675,12 @@ async function doUploadAndAnalyse(
         tray?.setToolTip(idleTooltip(game))
         const notifAgent = agent ?? gameLabel(game)
         const notifMap = map ? ` on ${map}` : ''
-        const notifScore = score != null ? ` — Score: ${score}/100` : ''
+        const notifBody = score != null
+          ? `${notifAgent}${notifMap} — ${score}/100`
+          : `${notifAgent}${notifMap}`.trim()
         showAppNotification({
-          title: 'UpForge — Analysis Ready',
-          body: `${notifAgent}${notifMap}${notifScore}`,
+          title: 'Coaching ready',
+          body: notifBody,
           silent: notifySilent(),
         })
         if (!targetWindow.isDestroyed()) {

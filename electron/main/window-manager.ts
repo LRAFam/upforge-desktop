@@ -93,13 +93,13 @@ export function createMainWindow(
 
 export function createPostGameWindow(): BrowserWindow {
   const win = new BrowserWindow({
-    width: 380,
-    height: 300,
+    width: 420,
+    height: 360,
     resizable: false,
     frame: false,
     alwaysOnTop: true,
     skipTaskbar: false,
-    backgroundColor: '#0a0f1c',
+    backgroundColor: '#161616',
     icon: join(__dirname, '../../resources/icon.ico'),
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
@@ -111,7 +111,7 @@ export function createPostGameWindow(): BrowserWindow {
 
   const display = screen.getPrimaryDisplay()
   const { width, height } = display.workAreaSize
-  win.setPosition(width - 400, height - 320)
+  win.setPosition(width - 440, height - 380)
 
   if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
     win.loadURL(`${process.env['ELECTRON_RENDERER_URL']}#/post-game`)

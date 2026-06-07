@@ -1,10 +1,13 @@
 import { Notification } from 'electron'
+import { join } from 'path'
 
 export interface AppNotificationOptions {
   title: string
   body: string
   silent?: boolean
 }
+
+const APP_ICON = join(__dirname, '../../resources/icon.ico')
 
 /** Strong refs until close — prevents GC and lets us dismiss stale toasts on Windows. */
 let activeToasts: Notification[] = []
@@ -28,7 +31,12 @@ export function showAppNotification({ title, body, silent }: AppNotificationOpti
 
   dismissActiveToasts()
 
-  const notification = new Notification({ title, body, silent })
+  const notification = new Notification({
+    title,
+    body,
+    silent,
+    icon: APP_ICON,
+  })
   const remove = () => {
     activeToasts = activeToasts.filter((n) => n !== notification)
   }

@@ -27,7 +27,7 @@
         <div class="flex items-center gap-2">
           <div class="flex flex-col leading-none">
             <span class="text-[11px] font-semibold tracking-[0.18em] text-gray-200 uppercase">UpForge</span>
-            <span class="text-[9px] text-gray-500 font-medium">Desktop</span>
+            <span class="text-[9px] text-gray-500 font-medium">{{ isPostGameRoute ? 'Post-game' : 'Desktop' }}</span>
           </div>
           <span v-if="status.recording" class="inline-flex items-center gap-1.5 rounded-full border border-red-500/25 bg-red-500/10 px-2 py-1 shadow-[0_0_16px_rgba(239,68,68,0.12)]">
             <span class="relative flex h-2.5 w-2.5 items-center justify-center">
@@ -39,8 +39,8 @@
         </div>
       </div>
 
-      <!-- User identity (center when not recording) -->
-      <div v-if="riotId && !isMac" class="absolute left-1/2 -translate-x-1/2 flex items-center gap-1 pointer-events-none">
+      <!-- User identity (center when not recording) — hidden on compact post-game window -->
+      <div v-if="riotId && !isMac && !isPostGameRoute" class="absolute left-1/2 -translate-x-1/2 flex items-center gap-1 pointer-events-none">
         <span class="text-[10px] text-gray-500 font-medium">{{ riotId }}</span>
       </div>
 
@@ -284,6 +284,8 @@ const showObsBanner = computed(() =>
 const showTitleBar = computed(() =>
   route.path !== '/overlay' && route.path !== '/splash'
 )
+
+const isPostGameRoute = computed(() => route.path.startsWith('/post-game'))
 
 const showNav = computed(() =>
   !route.path.startsWith('/post-game') &&
