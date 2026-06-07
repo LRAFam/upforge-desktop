@@ -73,8 +73,8 @@
 
       <!-- Left sidebar: event feed -->
       <div class="w-52 flex-shrink-0 border-r border-white/[0.09] flex flex-col overflow-hidden bg-[#1a1a1a]">
-        <div class="px-3 py-2 border-b border-white/[0.09]">
-          <p class="text-xs font-semibold text-gray-600 uppercase tracking-widest">Timeline</p>
+        <div class="px-3 py-2.5 border-b border-white/[0.09]">
+          <p class="text-[11px] font-semibold text-gray-500 uppercase tracking-widest">Timeline</p>
         </div>
         <div ref="sidebarEl" class="flex-1 overflow-y-auto scrollbar-hide scroll-smooth space-y-1 px-1.5 py-2">
           <template v-for="round in roundGroups" :key="round.roundNumber">
@@ -247,6 +247,7 @@
             ref="videoEl"
             class="w-full h-full object-contain"
             :src="videoSrc"
+            :poster="mapPosterUrl || undefined"
             preload="metadata"
             @timeupdate="onTimeUpdate"
             @loadedmetadata="onLoadedMetadata"
@@ -263,14 +264,14 @@
             <span class="text-[10px] text-gray-700">OBS was not recording when this match was captured</span>
           </div>
 
-          <!-- Play/pause overlay -->
+          <!-- Play/pause overlay — subtle; hidden while playing -->
           <div
             class="absolute inset-0 flex items-center justify-center pointer-events-none"
-            :class="{ 'opacity-0': isPlaying }"
-            style="transition: opacity 0.2s"
+            :class="isPlaying ? 'opacity-0' : 'opacity-100'"
+            style="transition: opacity 0.25s"
           >
-            <div class="w-12 h-12 rounded-full bg-black/60 flex items-center justify-center backdrop-blur-sm">
-              <svg class="w-5 h-5 text-white ml-0.5" fill="currentColor" viewBox="0 0 24 24">
+            <div class="w-14 h-14 rounded-full bg-black/50 flex items-center justify-center backdrop-blur-md ring-1 ring-white/10 shadow-lg shadow-black/40">
+              <svg class="w-6 h-6 text-white/90 ml-0.5" fill="currentColor" viewBox="0 0 24 24">
                 <path d="M8 5v14l11-7z"/>
               </svg>
             </div>
@@ -370,11 +371,11 @@
         <!-- Cinema dock: seek strip under video -->
         <div
           v-if="hasSpatialIntel"
-          class="flex-shrink-0 border-b border-white/[0.08] bg-gradient-to-r from-[#141414] via-[#131313] to-[#141414] px-2.5 py-1.5 min-h-[42px]"
+          class="flex-shrink-0 border-b border-white/[0.08] bg-gradient-to-r from-[#141414] via-[#131313] to-[#141414] px-3 py-2 min-h-[46px]"
           @click.stop
         >
-          <div class="flex items-center gap-2 min-h-[36px]">
-            <span class="hidden sm:block flex-shrink-0 text-[8px] font-black uppercase tracking-[0.2em] text-red-400/80 w-9">Intel</span>
+          <div class="flex items-center gap-2.5 min-h-[38px]">
+            <span class="hidden sm:block flex-shrink-0 text-[10px] font-black uppercase tracking-[0.18em] text-red-400/85 w-10">Intel</span>
 
             <!-- Dock map when HUD is hidden (avoids duplicate minimaps) -->
             <div
@@ -399,12 +400,12 @@
 
             <div v-if="!spatialMapVisible" class="hidden sm:block w-px h-7 bg-white/[0.08] flex-shrink-0" />
 
-            <div class="flex flex-shrink-0 items-center gap-0.5 p-0.5 rounded-md bg-black/25 border border-white/[0.06]">
+            <div class="flex flex-shrink-0 items-center gap-0.5 p-0.5 rounded-lg bg-black/25 border border-white/[0.06]">
               <button
                 v-for="mode in spatialModes"
                 :key="mode.id"
                 type="button"
-                class="px-1.5 py-0.5 rounded text-[8px] font-bold uppercase tracking-wide transition-colors"
+                class="px-2 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wide transition-colors"
                 :class="spatialViewMode === mode.id
                   ? 'bg-red-500/20 text-red-200'
                   : 'text-gray-500 hover:text-gray-300'"
@@ -416,7 +417,7 @@
 
             <p
               v-if="spatialSummary?.heatmapInsight"
-              class="hidden lg:block flex-shrink-0 max-w-[10rem] xl:max-w-[14rem] text-[10px] font-medium text-gray-500 truncate"
+              class="hidden lg:block flex-shrink-0 max-w-[12rem] xl:max-w-[18rem] text-[11px] leading-snug font-medium text-gray-400 line-clamp-2"
               :title="spatialSummary.heatmapInsight"
             >{{ spatialSummary.heatmapInsight }}</p>
 
@@ -430,7 +431,7 @@
                   :key="item.index"
                   :data-spatial-chip="item.index"
                   type="button"
-                  class="flex-shrink-0 text-[9px] font-semibold px-2 py-1 rounded-md border transition-all"
+                  class="flex-shrink-0 text-[10px] font-semibold px-2.5 py-1 rounded-md border transition-all"
                   :class="activeSpatialIndex === item.index
                     ? 'bg-red-500/22 border-red-400/45 text-white shadow-[0_0_12px_rgba(239,68,68,0.2)]'
                     : 'bg-black/35 border-white/10 text-gray-500 hover:border-red-500/30 hover:text-gray-300'"
@@ -919,7 +920,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { getWeaponImage, getAgentImage, getAbilityIcon } from '../lib/valorant'
+import { getWeaponImage, getAgentImage, getAbilityIcon, getMapImage } from '../lib/valorant'
 import { pendingTimeline } from '../stores/pendingTimeline'
 import MatchSpatialMinimap from '../components/MatchSpatialMinimap.vue'
 import type { MatchSpatialSummary, SpatialTimelineEvent } from '../lib/spatial-types'
@@ -1045,6 +1046,7 @@ const timeline = ref<RecordingTimeline | null>(null)
 const isPlaying = ref(false)
 const currentTime = ref(0)
 const duration = ref(0)
+const initialSeekDone = ref(false)
 const hoverTime = ref<number | null>(null)
 const playbackSpeed = ref(1)
 const activeEventNotif = ref<TimelineEvent | null>(null)
@@ -1252,6 +1254,8 @@ const agentImageUrl = computed(() => {
   if (!timeline.value?.agent) return null
   return getAgentImage(timeline.value.agent) || null
 })
+
+const mapPosterUrl = computed(() => getMapImage(timeline.value?.map) || '')
 
 const videoSrc = computed(() => {
   if (!timeline.value?.videoPath) return ''
@@ -1726,6 +1730,52 @@ function onLoadedMetadata() {
   if (!videoEl.value) return
   const d = videoEl.value.duration
   if (!isNaN(d) && isFinite(d) && d > 0) duration.value = d
+  tryInitialGameplaySeek()
+}
+
+/** Skip map-load black frames — land on first real gameplay moment for review (and screenshots). */
+function pickInitialSeekSeconds(): number | null {
+  const MIN_OFFSET_MS = 8000
+  const events = allTimelineEvents.value
+  const firstGameplay = events.find(e => {
+    const ms = e.videoOffsetMs
+    return ms != null && !isNaN(ms) && ms >= MIN_OFFSET_MS
+  })
+  if (firstGameplay?.videoOffsetMs != null) {
+    const preRoll = ['kill', 'death'].includes(firstGameplay.type)
+      ? preRollSeconds(firstGameplay.type)
+      : 2
+    return Math.max(0, firstGameplay.videoOffsetMs / 1000 - preRoll)
+  }
+
+  const firstRound = roundGroups.value.find(
+    r => r.firstVideoOffsetMs != null && r.firstVideoOffsetMs >= MIN_OFFSET_MS,
+  )
+  if (firstRound?.firstVideoOffsetMs != null) {
+    return Math.max(0, firstRound.firstVideoOffsetMs / 1000 - 2)
+  }
+
+  if (duration.value > 15) return 12
+  return null
+}
+
+function tryInitialGameplaySeek() {
+  if (initialSeekDone.value) return
+
+  const routeSeekMs = Number(route.query.seekMs)
+  if (!Number.isNaN(routeSeekMs) && routeSeekMs >= 0) {
+    initialSeekDone.value = true
+    return
+  }
+
+  if (!videoEl.value || duration.value <= 0) return
+
+  const target = pickInitialSeekSeconds()
+  if (target != null && target > 0.5) {
+    videoEl.value.currentTime = target
+    currentTime.value = target
+  }
+  initialSeekDone.value = true
 }
 
 function onScrubberClick(e: MouseEvent) {
@@ -1781,6 +1831,7 @@ onMounted(async () => {
 
   const seekMs = Number(route.query.seekMs)
   if (!Number.isNaN(seekMs) && seekMs >= 0) {
+    initialSeekDone.value = true
     const trySeek = () => {
       if (videoEl.value && duration.value > 0) {
         seekToTime(seekMs / 1000)

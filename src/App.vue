@@ -27,7 +27,7 @@
         <div class="flex items-center gap-2">
           <div class="flex flex-col leading-none">
             <span class="text-[11px] font-semibold tracking-[0.18em] text-gray-200 uppercase">UpForge</span>
-            <span v-if="appVersion" class="text-[9px] text-gray-500 font-medium">Desktop v{{ appVersion }}</span>
+            <span class="text-[9px] text-gray-500 font-medium">Desktop</span>
           </div>
           <span v-if="status.recording" class="inline-flex items-center gap-1.5 rounded-full border border-red-500/25 bg-red-500/10 px-2 py-1 shadow-[0_0_16px_rgba(239,68,68,0.12)]">
             <span class="relative flex h-2.5 w-2.5 items-center justify-center">
@@ -199,7 +199,6 @@
           >
             {{ devNavLink.label }}
           </RouterLink>
-          <span v-if="appVersion" class="inline-flex items-center rounded-full border border-white/[0.08] bg-white/[0.03] px-2 py-1 text-[10px] font-medium text-gray-500">v{{ appVersion }}</span>
           <div class="flex items-center gap-2 rounded-full border border-white/[0.08] bg-white/[0.03] px-2 py-1.5">
             <div class="flex h-7 w-7 items-center justify-center overflow-hidden rounded-full ring-1 ring-red-500/20">
               <img v-if="userAvatarUrl" :src="userAvatarUrl" :alt="userDisplayName" class="h-full w-full object-cover" @error="userAvatarUrl = ''" />

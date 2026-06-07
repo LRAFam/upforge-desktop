@@ -208,7 +208,7 @@
             </form>
 
             <div class="form-footer">
-              <span class="form-footer-text">No account? <button class="link-btn" @click="openSignup">Sign up free ↗</button></span>
+              <span class="form-footer-text">No account? <button class="link-btn" @click="openSignup">Sign up ↗</button></span>
               <button class="link-btn" @click="openForgotPassword">Forgot password?</button>
             </div>
             <button class="back-btn" @click="step = 1">← Back</button>

@@ -543,7 +543,7 @@
           <div>
             <p class="text-sm font-semibold text-amber-400">Analysis limit reached</p>
             <template v-if="userTier === 'free'">
-              <p class="text-xs text-gray-400 mt-1">You've used all 3 lifetime free analyses. Upgrade for monthly coaching or pay per analysis on the web.</p>
+              <p class="text-xs text-gray-400 mt-1">You've used your 3 starter analyses. Upgrade for monthly coaching or pay per analysis on the web.</p>
               <p class="text-xs text-gray-600 mt-1">Plus $14.99/mo · Pro $24.99/mo</p>
             </template>
             <template v-else>
