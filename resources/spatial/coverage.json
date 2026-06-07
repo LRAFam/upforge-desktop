@@ -1,5 +1,5 @@
 {
-  "updatedAt": "2026-06-06T19:49:43.355Z",
+  "updatedAt": "2026-06-07T00:43:13.731Z",
   "standardMapsThrough2026": [
     "Ascent",
     "Bind",
@@ -36,24 +36,24 @@
       "map": "Abyss",
       "key": "abyss",
       "callouts": 23,
-      "displayTransform": "flipY",
-      "displayInset": false,
+      "displayTransform": "swapFlipXY",
+      "displayInset": true,
       "calibration": {
-        "onMap": 11,
+        "onMap": 18,
         "total": 23,
         "sitesOnMap": 2,
         "siteCount": 2,
-        "useInset": false
+        "useInset": true
       }
     },
     {
       "map": "Ascent",
       "key": "ascent",
       "callouts": 22,
-      "displayTransform": "identity",
+      "displayTransform": "swapFlipXY",
       "displayInset": true,
       "calibration": {
-        "onMap": 9,
+        "onMap": 16,
         "total": 22,
         "sitesOnMap": 2,
         "siteCount": 2,
@@ -64,14 +64,14 @@
       "map": "Bind",
       "key": "bind",
       "callouts": 24,
-      "displayTransform": "swapFlipXY",
-      "displayInset": false,
+      "displayTransform": "swapFlipY",
+      "displayInset": true,
       "calibration": {
-        "onMap": 7,
+        "onMap": 10,
         "total": 24,
         "sitesOnMap": 2,
         "siteCount": 2,
-        "useInset": false
+        "useInset": true
       }
     },
     {
@@ -92,10 +92,10 @@
       "map": "Corrode",
       "key": "corrode",
       "callouts": 21,
-      "displayTransform": "identity",
+      "displayTransform": "swapFlipXY",
       "displayInset": true,
       "calibration": {
-        "onMap": 11,
+        "onMap": 14,
         "total": 21,
         "sitesOnMap": 2,
         "siteCount": 2,
@@ -134,14 +134,14 @@
       "map": "Icebox",
       "key": "icebox",
       "callouts": 25,
-      "displayTransform": "flipXY",
-      "displayInset": false,
+      "displayTransform": "flipY",
+      "displayInset": true,
       "calibration": {
-        "onMap": 13,
+        "onMap": 16,
         "total": 25,
         "sitesOnMap": 2,
         "siteCount": 2,
-        "useInset": false
+        "useInset": true
       }
     },
     {
@@ -162,10 +162,10 @@
       "map": "Pearl",
       "key": "pearl",
       "callouts": 26,
-      "displayTransform": "swapFlipXY",
+      "displayTransform": "identity",
       "displayInset": true,
       "calibration": {
-        "onMap": 9,
+        "onMap": 17,
         "total": 26,
         "sitesOnMap": 2,
         "siteCount": 2,

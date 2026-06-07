@@ -19,6 +19,7 @@ export {
   resolveEconomyArmor,
 } from './riot-lookup-tables'
 import { applySpatialEnrichment } from './spatial/enrich'
+import { deriveMatchScore } from './match-score'
 export type {
   GameEvent,
   KillEvent,
@@ -1083,6 +1084,24 @@ export class RiotLocalApi {
       applySpatialEnrichment(this.matchData)
     } catch (err) {
       console.warn('[RiotLocalApi] Spatial enrichment failed:', err)
+    }
+
+    const derived = deriveMatchScore(this.matchData)
+    if (derived) {
+      this.matchData.finalScore = derived
+      // Presence roundScores can lag by one round — append authoritative final snapshot.
+      const last = this.matchData.roundScores[this.matchData.roundScores.length - 1]
+      if (
+        !last
+        || last.allyScore !== derived.allyScore
+        || last.enemyScore !== derived.enemyScore
+      ) {
+        this.matchData.roundScores.push({
+          allyScore: derived.allyScore,
+          enemyScore: derived.enemyScore,
+          detectedAt: Date.now(),
+        })
+      }
     }
 
     recomputeTimelineVideoOffsets(this.matchData)

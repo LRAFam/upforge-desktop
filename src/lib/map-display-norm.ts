@@ -23,12 +23,15 @@ export type DisplayTransformId =
   | 'swapFlipY'
   | 'swapFlipXY'
 
+export type DisplayRotation = 0 | 90 | 180 | 270
+
 type NormTransform = (p: NormPoint) => NormPoint
 
 interface MapDisplayEntry {
   displayName: string
   displayBounds?: DisplayBounds
   displayTransform?: DisplayTransformId
+  displayRotation?: DisplayRotation
 }
 
 const TRANSFORM_TO: Record<DisplayTransformId, NormTransform> = {
@@ -51,6 +54,57 @@ const TRANSFORM_FROM: Record<DisplayTransformId, NormTransform> = {
   swapFlipX: (p) => ({ x: p.y, y: 1 - p.x }),
   swapFlipY: (p) => ({ x: 1 - p.y, y: p.x }),
   swapFlipXY: (p) => ({ x: 1 - p.y, y: 1 - p.x }),
+}
+
+const ROTATION_TO: Record<DisplayRotation, NormTransform> = {
+  0: (p) => p,
+  90: (p) => ({ x: p.y, y: 1 - p.x }),
+  180: (p) => ({ x: 1 - p.x, y: 1 - p.y }),
+  270: (p) => ({ x: 1 - p.y, y: p.x }),
+}
+
+const ROTATION_FROM: Record<DisplayRotation, NormTransform> = {
+  0: (p) => p,
+  90: (p) => ({ x: 1 - p.y, y: p.x }),
+  180: (p) => ({ x: 1 - p.x, y: 1 - p.y }),
+  270: (p) => ({ x: p.y, y: 1 - p.x }),
+}
+
+function normalizeRotation(value: unknown): DisplayRotation {
+  if (value === 90 || value === 180 || value === 270) return value
+  return 0
+}
+
+export function getMinimapDisplayRotation(mapName: string | null | undefined): DisplayRotation {
+  const entry = getMapDisplayEntry(mapName)
+  return normalizeRotation(entry?.displayRotation)
+}
+
+/** Draw the displayicon on canvas with optional per-map rotation (matches dot coords). */
+export function drawMinimapImage(
+  ctx: CanvasRenderingContext2D,
+  img: CanvasImageSource,
+  size: number,
+  mapName: string | null | undefined,
+): void {
+  const rotation = getMinimapDisplayRotation(mapName)
+  if (rotation === 0) {
+    ctx.drawImage(img, 0, 0, size, size)
+    return
+  }
+  ctx.save()
+  if (rotation === 90) {
+    ctx.translate(size, 0)
+    ctx.rotate(Math.PI / 2)
+  } else if (rotation === 180) {
+    ctx.translate(size, size)
+    ctx.rotate(Math.PI)
+  } else if (rotation === 270) {
+    ctx.translate(0, size)
+    ctx.rotate(-Math.PI / 2)
+  }
+  ctx.drawImage(img, 0, 0, size, size)
+  ctx.restore()
 }
 
 function mapKey(mapName: string | null | undefined): string | null {
@@ -85,8 +139,8 @@ function removeDisplayBounds(bounds: DisplayBounds, p: NormPoint): NormPoint {
 }
 
 /**
- * Map stored viewport-normalized coords → pixel space on the displayicon PNG.
- * Applies optional content inset + per-map symmetry (auto-calibrated from PNG).
+ * Map stored viewport-normalized coords → pixel space on the rendered minimap.
+ * Applies content inset, symmetry transform, and optional canvas rotation.
  */
 export function toMinimapDisplayNorm(
   mapName: string | null | undefined,
@@ -101,7 +155,8 @@ export function toMinimapDisplayNorm(
   }
 
   const transform = entry.displayTransform ?? 'identity'
-  return TRANSFORM_TO[transform](p)
+  p = TRANSFORM_TO[transform](p)
+  return ROTATION_TO[normalizeRotation(entry.displayRotation)](p)
 }
 
 /** Inverse for click hit-testing on the rendered minimap. */
@@ -112,8 +167,9 @@ export function fromMinimapDisplayNorm(
   const entry = getMapDisplayEntry(mapName)
   if (!entry) return norm
 
+  let p = ROTATION_FROM[normalizeRotation(entry.displayRotation)](norm)
   const transform = entry.displayTransform ?? 'identity'
-  let p = TRANSFORM_FROM[transform](norm)
+  p = TRANSFORM_FROM[transform](p)
 
   if (entry.displayBounds) {
     p = removeDisplayBounds(entry.displayBounds, p)

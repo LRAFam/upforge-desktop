@@ -15,7 +15,14 @@
       "minY": 0.09904999999999997,
       "maxY": 0.9272750000000001
     },
-    "displayTransform": "flipY"
+    "displayBounds": {
+      "minX": 0.0313,
+      "minY": 0.0156,
+      "maxX": 0.9668,
+      "maxY": 0.9844
+    },
+    "displayTransform": "swapFlipXY",
+    "displayRotation": 90
   },
   {
     "displayName": "Ascent",
@@ -38,7 +45,9 @@
       "minY": 0.0479,
       "maxX": 0.9668,
       "maxY": 0.9141
-    }
+    },
+    "displayTransform": "swapFlipXY",
+    "displayRotation": 90
   },
   {
     "displayName": "Bind",
@@ -56,7 +65,13 @@
       "minY": 0.6209706770000001,
       "maxY": 1.3937705894
     },
-    "displayTransform": "swapFlipXY"
+    "displayBounds": {
+      "minX": 0.0889,
+      "minY": 0.0117,
+      "maxX": 0.9854,
+      "maxY": 0.9561
+    },
+    "displayTransform": "swapFlipY"
   },
   {
     "displayName": "Breeze",
@@ -103,7 +118,9 @@
       "minY": 0.0811,
       "maxX": 0.9844,
       "maxY": 0.918
-    }
+    },
+    "displayTransform": "swapFlipXY",
+    "displayRotation": 90
   },
   {
     "displayName": "Fracture",
@@ -169,7 +186,13 @@
       "minY": -0.20471299999999998,
       "maxY": 0.625087
     },
-    "displayTransform": "flipXY"
+    "displayBounds": {
+      "minX": 0.0635,
+      "minY": 0.0762,
+      "maxX": 0.998,
+      "maxY": 0.9033
+    },
+    "displayTransform": "flipY"
   },
   {
     "displayName": "Lotus",
@@ -216,8 +239,7 @@
       "minY": 0.0371,
       "maxX": 0.9922,
       "maxY": 0.96
-    },
-    "displayTransform": "swapFlipXY"
+    }
   },
   {
     "displayName": "Split",

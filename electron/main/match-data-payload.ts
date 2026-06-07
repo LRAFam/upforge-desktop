@@ -4,6 +4,7 @@
  */
 import type { MatchData } from './riot-types'
 import { recomputeTimelineVideoOffsets } from './riot-local-api'
+import { deriveMatchScore } from './match-score'
 
 /** Slim Riot MatchDetails subset for coaching prompts (avoids multi‑MB raw JSON). */
 export interface MatchDetailsLite {
@@ -121,6 +122,7 @@ export function prepareMatchDataForUpload(timeline: MatchData | null): UploadMat
     recordingStartTime: timeline.recordingStartTime,
     videoSyncOffsetMs: timeline.videoSyncOffsetMs ?? 0,
     roundScores: timeline.roundScores,
+    finalScore: timeline.finalScore ?? deriveMatchScore(timeline) ?? null,
     killEvents: timeline.killEvents,
     playerKills: timeline.playerKills,
     playerDeaths: timeline.playerDeaths,

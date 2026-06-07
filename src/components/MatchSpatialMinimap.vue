@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted } from 'vue'
 import { getMapMinimap } from '../lib/valorant'
-import { fromMinimapDisplayNorm, toMinimapDisplayNorm } from '../lib/map-display-norm'
+import { fromMinimapDisplayNorm, toMinimapDisplayNorm, drawMinimapImage } from '../lib/map-display-norm'
 import type { MatchSpatialSummary, SpatialTimelineEvent } from '../lib/spatial-types'
 
 const props = withDefaults(defineProps<{
@@ -160,7 +160,7 @@ function draw() {
   img.onload = () => {
     imgLoaded.value = true
     ctx.clearRect(0, 0, s, s)
-    ctx.drawImage(img, 0, 0, s, s)
+    drawMinimapImage(ctx, img, s, mapLabel.value)
 
     if (useCalloutHeat.value) drawDeathHeatmap(ctx, s, deathEvents.value)
     if (useSiteHeat.value) drawSiteHeatmap(ctx, s)

@@ -175,6 +175,7 @@ function manifestEntry(map, viewport, calibration) {
     ...(calibration?.displayTransform && calibration.displayTransform !== 'identity'
       ? { displayTransform: calibration.displayTransform }
       : {}),
+    ...(calibration?.displayRotation ? { displayRotation: calibration.displayRotation } : {}),
   }
 }
 
@@ -250,17 +251,39 @@ function siteSeparationBonus(callouts, project) {
   return maxDist * 500
 }
 
-/** On two-site maps, A is usually on the opposite side from B (not clustered). */
+/** Reward A/B separation on whichever axis the transform actually uses. */
 function siteAxisBonus(callouts, project) {
   const hasC = callouts.some((c) => c.name === 'C Site')
   if (hasC) return 0
   const a = callouts.find((c) => c.name === 'A Site')
   const b = callouts.find((c) => c.name === 'B Site')
   if (!a || !b) return 0
-  const [ax] = project(a.x, a.y)
-  const [bx] = project(b.x, b.y)
-  const dx = ax - bx
-  return dx > 0.2 ? dx * 1000 : 0
+  const [ax, ay] = project(a.x, a.y)
+  const [bx, by] = project(b.x, b.y)
+  const sep = Math.max(Math.abs(ax - bx), Math.abs(ay - by))
+  return sep > 0.2 ? sep * 500 : 0
+}
+
+/** Maps whose displayicon is intentionally vertical (A top / B bottom) — do not rotate. */
+const VERTICAL_SITE_MAPS = new Set(['split', 'fracture'])
+
+/**
+ * When swap-based transforms align callouts vertically on the PNG but the map
+ * presents as left/right in-game (e.g. Ascent), rotate the rendered minimap 90° CW.
+ */
+function inferDisplayRotation(mapKey, transformName, callouts, project) {
+  if (!transformName.includes('swap')) return 0
+  if (VERTICAL_SITE_MAPS.has(mapKey)) return 0
+  if (callouts.some((c) => c.name === 'C Site')) return 0
+  const a = callouts.find((c) => c.name === 'A Site')
+  const b = callouts.find((c) => c.name === 'B Site')
+  if (!a || !b) return 0
+  const [ax, ay] = project(a.x, a.y)
+  const [bx, by] = project(b.x, b.y)
+  const dx = Math.abs(ax - bx)
+  const dy = Math.abs(ay - by)
+  if (dy > dx * 1.25 && dy > 0.25) return 90
+  return 0
 }
 
 function scoreCalloutsOnPng(png, callouts, bounds, transformName, useInset) {
@@ -285,11 +308,11 @@ function scoreCalloutsOnPng(png, callouts, bounds, transformName, useInset) {
   const axis = siteAxisBonus(callouts, project)
   const simplicity = TRANSFORM_ORDER.indexOf(transformName)
   const score =
-    sitesOnMap * 10000 + onMap * 10 + separation + axis - simplicity
+    sitesOnMap * 10000 + onMap * 100 + separation + axis - simplicity
   return { onMap, sitesOnMap, siteCount, score }
 }
 
-async function calibrateDisplayTransform(displayIcon, callouts) {
+async function calibrateDisplayTransform(displayIcon, callouts, mapKey) {
   const png = await fetchDisplayIconPng(displayIcon)
   const bounds = pngPlayableBounds(png)
   let best = {
@@ -311,6 +334,14 @@ async function calibrateDisplayTransform(displayIcon, callouts) {
     }
   }
 
+  const fn = DISPLAY_TRANSFORMS[best.displayTransform]
+  const project = (x, y) => {
+    if (best.useInset) [x, y] = applyDisplayBounds(bounds, x, y)
+    return fn(x, y)
+  }
+
+  const displayRotation = inferDisplayRotation(mapKey, best.displayTransform, callouts, project)
+
   return {
     displayTransform: best.displayTransform,
     displayBounds: best.useInset
@@ -321,6 +352,7 @@ async function calibrateDisplayTransform(displayIcon, callouts) {
           maxY: round4(bounds.maxY),
         }
       : null,
+    displayRotation,
     calibrationScore: {
       onMap: best.onMap,
       total: callouts.length,
@@ -413,11 +445,12 @@ console.log('\nCalibrating displayicon alignment (PNG inset + symmetry)...')
 for (const item of pendingCalibration) {
   const { entry, viewport, callouts, key } = item
   try {
-    const calibration = await calibrateDisplayTransform(entry.displayIcon, callouts)
+    const calibration = await calibrateDisplayTransform(entry.displayIcon, callouts, key)
     manifestRows.push(manifestEntry(entry, viewport, calibration))
     const { onMap, total, sitesOnMap, siteCount, useInset } = calibration.calibrationScore
+    const rotSuffix = calibration.displayRotation ? ` + rot${calibration.displayRotation}` : ''
     console.log(
-      `  ${entry.displayName}: ${calibration.displayTransform}${useInset ? ' + inset' : ''} — ${onMap}/${total} callouts, ${sitesOnMap}/${siteCount} sites`,
+      `  ${entry.displayName}: ${calibration.displayTransform}${useInset ? ' + inset' : ''}${rotSuffix} — ${onMap}/${total} callouts, ${sitesOnMap}/${siteCount} sites`,
     )
     const zoneResult = results.find((r) => r.key === key)
     if (zoneResult) {

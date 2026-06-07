@@ -19,6 +19,8 @@ export interface MapTransform {
   displayBounds?: { minX: number; minY: number; maxX: number; maxY: number }
   /** Symmetry applied after viewport norm to align with displayicon art. */
   displayTransform?: string
+  /** Degrees to rotate minimap + coords when rendering (0, 90, 180, 270). */
+  displayRotation?: number
 }
 
 /** Radial callout anchor — nearest within radius wins. */

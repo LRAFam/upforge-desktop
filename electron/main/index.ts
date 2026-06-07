@@ -1632,9 +1632,10 @@ async function doUploadAndAnalyse(
           settingsManager.save({ lastInsight: insight })
           mainWindow?.webContents.send('dashboard:last-insight', insight)
         }
-        const lastScore = timeline?.roundScores?.length
-          ? timeline.roundScores[timeline.roundScores.length - 1]
-          : null
+        const lastScore = timeline?.finalScore
+          ?? (timeline?.roundScores?.length
+            ? timeline.roundScores[timeline.roundScores.length - 1]
+            : null)
         const matchResult: 'win' | 'loss' | null = lastScore
           ? (lastScore.allyScore > lastScore.enemyScore ? 'win' : 'loss')
           : null

@@ -187,6 +187,12 @@ export interface RoundScore {
   detectedAt: number
 }
 
+/** Final match score (rounds won per team). */
+export interface DerivedMatchScore {
+  allyScore: number
+  enemyScore: number
+}
+
 /** Lockfile credentials from Riot Client */
 export interface LockfileData {
   port: number
@@ -248,6 +254,8 @@ export interface MatchData {
 
   // Round score progression from presence polling
   roundScores: RoundScore[]
+  /** Authoritative final score derived from roundSummaries (preferred over roundScores). */
+  finalScore?: DerivedMatchScore | null
 
   // Events (populated from Riot MatchDetails API post-match)
   events: GameEvent[]
