@@ -22,7 +22,7 @@
       "maxY": 0.9844
     },
     "displayTransform": "swapFlipXY",
-    "displayRotation": 90
+    "displayRotation": 270
   },
   {
     "displayName": "Ascent",
@@ -47,7 +47,7 @@
       "maxY": 0.9141
     },
     "displayTransform": "swapFlipXY",
-    "displayRotation": 90
+    "displayRotation": 270
   },
   {
     "displayName": "Bind",
@@ -120,7 +120,7 @@
       "maxY": 0.918
     },
     "displayTransform": "swapFlipXY",
-    "displayRotation": 90
+    "displayRotation": 270
   },
   {
     "displayName": "Fracture",
