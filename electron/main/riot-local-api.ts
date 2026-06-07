@@ -20,6 +20,10 @@ export {
 } from './riot-lookup-tables'
 import { applySpatialEnrichment } from './spatial/enrich'
 import { deriveMatchScore } from './match-score'
+import {
+  shouldApplyMatchDetails,
+  shouldUseMatchHistoryFallback,
+} from './match-details-validation'
 export type {
   GameEvent,
   KillEvent,
@@ -713,22 +717,39 @@ export class RiotLocalApi {
       } catch { /* ignore — proceed without region */ }
     }
 
-    // If we still don't have a matchId, look it up via match history
-    if (!this.matchData.matchId && this.region && this.ownPuuid) {
+    // If we still don't have a matchId, look it up via match history (not for custom/practice).
+    if (
+      !this.matchData.matchId
+      && this.region
+      && this.ownPuuid
+      && shouldUseMatchHistoryFallback(this.matchData)
+    ) {
       console.log('[RiotLocalApi] No matchId captured — trying match history fallback')
       const latestId = await this._fetchLatestMatchId()
       if (latestId) {
         this.matchData.matchId = latestId
         console.log(`[RiotLocalApi] matchId from history: ${latestId}`)
       }
+    } else if (!this.matchData.matchId) {
+      console.log(
+        `[RiotLocalApi] Skipping match history fallback (mode=${this.matchData.gameMode} map=${this.matchData.map})`
+      )
     }
 
     if (this.matchData.matchId && this.region) {
       console.log(`[RiotLocalApi] Fetching MatchDetails for ${this.matchData.matchId}`)
       const details = await this._fetchMatchDetails(this.matchData.matchId)
       if (details) {
-        this.matchData.matchDetails = details
-        this._populateFromMatchDetails(details)
+        const validation = shouldApplyMatchDetails(this.matchData, details)
+        if (validation.apply) {
+          this.matchData.matchDetails = details
+          this._populateFromMatchDetails(details)
+        } else {
+          console.warn(
+            `[RiotLocalApi] Rejected MatchDetails for ${this.matchData.matchId}: ${validation.reason} — using presence/WS data only`
+          )
+          this.matchData.matchId = null
+        }
       } else {
         console.log('[RiotLocalApi] MatchDetails fetch failed — using presence data only')
       }
@@ -835,6 +856,18 @@ export class RiotLocalApi {
     const players = details.players as Array<Record<string, unknown>> | undefined
     const roundResults = details.roundResults as Array<Record<string, unknown>> | undefined
     const allKills = details.kills as Array<Record<string, unknown>> | undefined
+
+    // Replace event streams — do not append onto presence/WS data from a different match.
+    this.matchData.killEvents = []
+    this.matchData.events = []
+    this.matchData.playerKills = []
+    this.matchData.playerDeaths = []
+    this.matchData.roundSummaries = []
+    this.matchData.teamSnapshot = []
+    this.matchData.spikePlants = []
+    this.matchData.spikeDefuses = []
+    this.matchData.spikeDetonations = []
+    this.matchData.firstBloods = []
 
     if (matchInfo?.mapId) {
       this.matchData.map = resolveMapName(matchInfo.mapId as string)
@@ -1197,6 +1230,13 @@ export class RiotLocalApi {
    * Used to backfill kill events after Riot has finished processing the match.
    */
   populateMatchDataFromDetails(matchData: MatchData, details: Record<string, unknown>): void {
+    const validation = shouldApplyMatchDetails(matchData, details)
+    if (!validation.apply) {
+      console.warn(
+        `[RiotLocalApi] Late MatchDetails rejected for ${matchData.matchId}: ${validation.reason}`
+      )
+      return
+    }
     const prev = this.matchData
     this.matchData = matchData
     try { this._populateFromMatchDetails(details) } finally { this.matchData = prev }
