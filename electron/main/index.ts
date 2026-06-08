@@ -191,14 +191,23 @@ async function ensureObsReady(): Promise<void> {
 /** Set by setupGameDetection — handles unexpected mid-match capture loss. */
 let onRecordingLost: ((error: string) => void) | null = null
 
+function discordMatchContext(): { map: string | null; agent: string | null } {
+  const game = gameDetector.currentGame()
+  if (game === 'valorant') return riotLocalApi.getLiveMatchContext()
+  return { map: null, agent: null }
+}
+
 function wireRecorderStatus(rec: OBSRecorder, label: string): void {
   rec.onStatusChange = (recording, error) => {
     mainWindow?.webContents.send('recording:status-changed', { recording, error: error ?? null })
     updateTrayMenuFn?.()
+    const game = gameDetector.currentGame() || 'valorant'
     if (recording) {
-      discordRPC.setRecording(gameDetector.currentGame() || 'valorant', new Date())
+      const start =
+        currentRecordingStartTime != null ? new Date(currentRecordingStartTime) : new Date()
+      discordRPC.setRecording(game, start, discordMatchContext())
     } else if (gameDetector.currentGame()) {
-      discordRPC.setInGame(gameDetector.currentGame()!)
+      discordRPC.setInGame(game, discordMatchContext())
     } else {
       discordRPC.setIdle()
     }
@@ -220,7 +229,10 @@ const clipExtractor = new ClipExtractor()
 const clipStore = new ClipStore()
 const hotkeyManager = new HotkeyManager()
 const trainerBridge = new TrainerBridge(() => mainWindow)
-const discordRPC = new DiscordRPC()
+let settingsManager: SettingsManager
+const discordRPC = new DiscordRPC(
+  () => settingsManager?.get().discordRichPresence !== false,
+)
 const riotLocalApi = new RiotLocalApi()
 const authManager = new AuthManager()
 
@@ -251,7 +263,6 @@ obsRecorder.onReplayClipSaved = (clipPath, _trigger) => {
 
 const performanceManager = new PerformanceManager()
 let uploadManager: UploadManager
-let settingsManager: SettingsManager
 let recordingsStore: RecordingsStore
 
 // Set by setupGameDetection — cancel pending match-wait when game quits from lobby
@@ -1021,7 +1032,13 @@ function setupGameDetection(): void {
     const { isStale } = beginMatchFlow()
     console.log(`[GameDetector] ${game} started (flow #${matchFlowGeneration})`)
     logActivity(`${game === 'cs2' ? 'CS2' : 'Valorant'} detected — waiting for match`)
-    discordRPC.setInGame(game)
+    if (game === 'valorant') {
+      void riotLocalApi.getPregameContext().then((ctx) => {
+        discordRPC.setInGame(game, { map: ctx?.map ?? null, agent: ctx?.agent ?? null })
+      }).catch(() => discordRPC.setInGame(game))
+    } else {
+      discordRPC.setInGame(game)
+    }
 
     // Minimize the main window while gaming to reduce Chromium GPU/CPU overhead.
     // The user can restore it from the taskbar or tray if needed.
@@ -1147,6 +1164,10 @@ function setupGameDetection(): void {
               // Competitive + agent locked in — fire with full context
               pregameBriefFired = true
               requestPregameBrief(ctx)
+            }
+
+            if (ctx?.map || ctx?.agent) {
+              discordRPC.setInGame(game, { map: ctx.map, agent: ctx.agent })
             }
             // else: mode not yet known or agent not locked — keep looping, try again next tick
           }
@@ -1360,6 +1381,11 @@ function setupGameDetection(): void {
             enemyEstimate: null,
             recording: true,
           })
+        }
+        if (obsRecorder.isRecording()) {
+          const start =
+            currentRecordingStartTime != null ? new Date(currentRecordingStartTime) : new Date()
+          discordRPC.setRecording(game, start, discordMatchContext())
         }
       } catch { /* ignore — session endpoint may be unavailable */ }
     }
@@ -1934,6 +1960,9 @@ app.whenReady().then(async () => {
   () => riotLocalApi.getLastGameMode(),
   undefined,
   () => obsRecorder.isConnected(),
+  () => {
+    discordRPC.refresh()
+  },
   )
 
   setupClipHandlers(ipcMain, clipStore, clipExtractor, authManager, hotkeyManager)

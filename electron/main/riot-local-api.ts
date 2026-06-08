@@ -142,6 +142,14 @@ export class RiotLocalApi {
     }
   }
 
+  /** Live map/agent for Discord Rich Presence and UI (null when no active match). */
+  getLiveMatchContext(): { map: string | null; agent: string | null } {
+    return {
+      map: this.matchData?.map ?? null,
+      agent: this.matchData?.agent ?? null,
+    }
+  }
+
   /** Return a snapshot of internal state for the developer diagnostics panel. */
   getDiagnostics(): {
     lockfileFound: boolean

@@ -32,6 +32,7 @@ export function setupAppHandlers(
   getCurrentQueueMode?: () => string | null,
   getObsConnected?: () => boolean,
   obsRecorder?: OBSRecorder,
+  onSettingsSaved?: (settings: ReturnType<SettingsManager['get']>) => void,
 ): void {
   // ── App state ─────────────────────────────────────────────────────────────
 
@@ -90,6 +91,7 @@ export function setupAppHandlers(
     BrowserWindow.getAllWindows().forEach(w => {
       if (!w.isDestroyed()) w.webContents.send('settings:changed', result)
     })
+    onSettingsSaved?.(result)
     return result
   })
 

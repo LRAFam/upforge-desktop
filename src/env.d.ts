@@ -81,6 +81,8 @@ export interface AppSettings {
   clipRetentionDays: number
   /** Play a sound when a notification fires */
   notificationSound: boolean
+  /** Show match status in Discord Rich Presence */
+  discordRichPresence: boolean
   /** In-game hotkey feedback: notifications (default), overlay, or both */
   inGameFeedback: 'notifications' | 'overlay' | 'all'
   /** Auto-open the results page in the browser when analysis completes */

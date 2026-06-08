@@ -25,6 +25,8 @@ export interface AppSettings {
   clipRetentionDays: number
   /** Play a sound when a notification fires */
   notificationSound: boolean
+  /** Show match status in Discord Rich Presence (requires Discord desktop + activity sharing on) */
+  discordRichPresence: boolean
   /**
    * How in-game hotkey feedback is delivered.
    * - notifications: Windows toasts + beep (works in Valorant fullscreen)
@@ -101,6 +103,7 @@ const DEFAULTS: AppSettings = {
   pregameKillList: [],
   clipRetentionDays: 0,
   notificationSound: true,
+  discordRichPresence: true,
   inGameFeedback: 'notifications',
   cachedEncoder: null,
   cachedUseDdagrab: null,

@@ -1,13 +1,33 @@
 import { Client } from 'discord-rpc'
 
-// UpForge Discord application client ID
-// Register at https://discord.com/developers/applications
+// UpForge Discord application — Rich Presence art assets must be uploaded at:
+// https://discord.com/developers/applications → Art Assets
+// Keys: upforge_logo, valorant_icon, cs2_icon, deadlock_icon
 const CLIENT_ID = '1374432218801086504'
+
+const DOWNLOAD_URL = 'https://upforge.gg/desktop'
+const COACHING_URL = 'https://upforge.gg/valorant/analyze'
+const DASHBOARD_URL = 'https://upforge.gg/dashboard'
+
+const DEFAULT_BUTTONS = [
+  { label: 'Download UpForge', url: DOWNLOAD_URL },
+  { label: 'Get coached', url: COACHING_URL },
+] as const
+
+const REVIEW_BUTTONS = [
+  { label: 'View dashboard', url: DASHBOARD_URL },
+  { label: 'Get coached', url: COACHING_URL },
+] as const
+
+export type MatchPresenceContext = {
+  map?: string | null
+  agent?: string | null
+}
 
 type PresenceState =
   | { type: 'idle' }
-  | { type: 'in-game'; game: string }
-  | { type: 'recording'; game: string; startTimestamp: Date }
+  | { type: 'in-game'; game: string; context?: MatchPresenceContext }
+  | { type: 'recording'; game: string; startTimestamp: Date; context?: MatchPresenceContext }
   | { type: 'reviewing' }
 
 export class DiscordRPC {
@@ -16,8 +36,9 @@ export class DiscordRPC {
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null
   private destroyed = false
   private currentState: PresenceState = { type: 'idle' }
+  private lastPayloadKey = ''
 
-  constructor() {
+  constructor(private readonly isEnabled: () => boolean) {
     this.connect()
   }
 
@@ -30,6 +51,7 @@ export class DiscordRPC {
       this.client.on('ready', () => {
         console.log('[DiscordRPC] Connected')
         this.ready = true
+        this.lastPayloadKey = ''
         this.applyState(this.currentState)
       })
 
@@ -40,7 +62,6 @@ export class DiscordRPC {
       })
 
       this.client.login({ clientId: CLIENT_ID }).catch(() => {
-        // Discord not running or RPC unavailable — retry silently
         this.ready = false
         this.scheduleReconnect()
       })
@@ -59,56 +80,98 @@ export class DiscordRPC {
     }, 30_000)
   }
 
-  private applyState(state: PresenceState): void {
-    if (!this.ready || !this.client) return
+  private enabled(): boolean {
+    return this.isEnabled()
+  }
+
+  private matchSubtitle(context?: MatchPresenceContext): string | undefined {
+    const parts: string[] = []
+    if (context?.map) parts.push(context.map)
+    if (context?.agent) parts.push(context.agent)
+    return parts.length ? parts.join(' · ') : undefined
+  }
+
+  private buildActivity(state: PresenceState): Record<string, unknown> | null {
+    if (!this.enabled()) return null
 
     if (state.type === 'idle') {
-      this.client.setActivity({
+      return {
         details: 'In the dashboard',
+        state: 'Fill the gap between games and coaching',
         largeImageKey: 'upforge_logo',
-        largeImageText: 'UpForge — AI Valorant Coaching',
+        largeImageText: 'UpForge — AI Coaching',
+        buttons: [...DEFAULT_BUTTONS],
         instance: false,
-      }).catch(() => {})
-      return
+      }
     }
 
     if (state.type === 'in-game') {
       const gameLabel = this.gameLabel(state.game)
-      this.client.setActivity({
-        details: `Playing ${gameLabel}`,
-        state: 'Waiting for match',
-        largeImageKey: 'upforge_logo',
-        largeImageText: 'UpForge — AI Coaching',
-        smallImageKey: this.gameIcon(state.game),
-        smallImageText: gameLabel,
+      const subtitle = this.matchSubtitle(state.context)
+      return {
+        details: `In ${gameLabel} with UpForge`,
+        state: subtitle ?? 'Waiting for match',
+        largeImageKey: this.gameIcon(state.game),
+        largeImageText: gameLabel,
+        smallImageKey: 'upforge_logo',
+        smallImageText: 'UpForge',
+        buttons: [...DEFAULT_BUTTONS],
         instance: false,
-      }).catch(() => {})
-      return
+      }
     }
 
     if (state.type === 'recording') {
       const gameLabel = this.gameLabel(state.game)
-      this.client.setActivity({
-        details: `Recording ${gameLabel}`,
-        state: 'Match in progress',
-        largeImageKey: 'upforge_logo',
-        largeImageText: 'UpForge — AI Coaching',
-        smallImageKey: this.gameIcon(state.game),
-        smallImageText: gameLabel,
+      const subtitle = this.matchSubtitle(state.context)
+      return {
+        details: `Recording ${gameLabel} with UpForge`,
+        state: subtitle ?? 'Match in progress',
+        largeImageKey: this.gameIcon(state.game),
+        largeImageText: gameLabel,
+        smallImageKey: 'upforge_logo',
+        smallImageText: 'UpForge',
         startTimestamp: state.startTimestamp,
+        buttons: [...DEFAULT_BUTTONS],
         instance: false,
-      }).catch(() => {})
-      return
+      }
     }
 
     if (state.type === 'reviewing') {
-      this.client.setActivity({
+      return {
         details: 'Reviewing coaching report',
+        state: 'UpForge desktop',
         largeImageKey: 'upforge_logo',
         largeImageText: 'UpForge — AI Coaching',
+        buttons: [...REVIEW_BUTTONS],
         instance: false,
-      }).catch(() => {})
+      }
     }
+
+    return null
+  }
+
+  private applyState(state: PresenceState): void {
+    this.currentState = state
+
+    if (!this.ready || !this.client) return
+
+    if (!this.enabled()) {
+      this.lastPayloadKey = ''
+      this.client.clearActivity().catch(() => {})
+      return
+    }
+
+    const activity = this.buildActivity(state)
+    if (!activity) {
+      this.client.clearActivity().catch(() => {})
+      return
+    }
+
+    const payloadKey = JSON.stringify(activity)
+    if (payloadKey === this.lastPayloadKey) return
+    this.lastPayloadKey = payloadKey
+
+    this.client.setActivity(activity).catch(() => {})
   }
 
   private gameLabel(game: string): string {
@@ -123,24 +186,29 @@ export class DiscordRPC {
     return 'valorant_icon'
   }
 
+  refresh(): void {
+    this.lastPayloadKey = ''
+    this.applyState(this.currentState)
+  }
+
   setIdle(): void {
-    this.currentState = { type: 'idle' }
-    this.applyState(this.currentState)
+    this.applyState({ type: 'idle' })
   }
 
-  setInGame(game: string): void {
-    this.currentState = { type: 'in-game', game }
-    this.applyState(this.currentState)
+  setInGame(game: string, context?: MatchPresenceContext): void {
+    this.applyState({ type: 'in-game', game, context })
   }
 
-  setRecording(game: string, startTimestamp?: Date): void {
-    this.currentState = { type: 'recording', game, startTimestamp: startTimestamp ?? new Date() }
-    this.applyState(this.currentState)
+  setRecording(game: string, startTimestamp?: Date, context?: MatchPresenceContext): void {
+    const ts =
+      this.currentState.type === 'recording'
+        ? this.currentState.startTimestamp
+        : (startTimestamp ?? new Date())
+    this.applyState({ type: 'recording', game, startTimestamp: ts, context })
   }
 
   setReviewing(): void {
-    this.currentState = { type: 'reviewing' }
-    this.applyState(this.currentState)
+    this.applyState({ type: 'reviewing' })
   }
 
   destroy(): void {
