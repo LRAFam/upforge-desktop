@@ -276,6 +276,7 @@ const obsError = ref<string | null>(null)
 
 const showObsBanner = computed(() =>
   showNav.value &&
+  route.path !== '/vod-review' &&
   !showOnboarding.value &&
   obsConnected.value === false &&
   !status.value.recording

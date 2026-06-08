@@ -57,6 +57,27 @@
         </svg>
         {{ spatialMapVisible ? 'Hide Map' : 'Map' }}
       </button>
+      <span
+        v-if="activeRoundNumber != null"
+        class="hidden sm:inline-flex flex-shrink-0 items-center rounded-lg border border-white/[0.08] bg-white/[0.04] px-2 py-1 text-[10px] font-bold uppercase tracking-wide text-gray-400"
+      >
+        Round {{ activeRoundNumber + 1 }}
+      </span>
+      <button
+        v-if="timeline?.videoPath"
+        type="button"
+        class="hidden sm:flex items-center gap-1.5 rounded-xl border px-3 py-2 text-xs font-semibold transition-colors"
+        :class="theaterMode
+          ? 'border-red-500/30 bg-red-500/10 text-red-200 hover:border-red-500/40'
+          : 'border-white/[0.08] bg-white/[0.04] text-gray-300 hover:border-white/[0.14] hover:bg-white/[0.08] hover:text-white'"
+        :title="theaterMode ? 'Exit theater (T)' : 'Theater mode (T)'"
+        @click="toggleTheaterMode"
+      >
+        <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" d="M4 8V4h4M20 8V4h-4M4 16v4h4M20 16v4h-4"/>
+        </svg>
+        {{ theaterMode ? 'Exit theater' : 'Theater' }}
+      </button>
       <button
         class="flex items-center gap-2 rounded-xl border border-white/[0.08] bg-white/[0.04] px-3 py-2 text-xs font-semibold text-gray-300 transition-colors hover:border-white/[0.14] hover:bg-white/[0.08] hover:text-white"
         @click="showInsightsPanel = !showInsightsPanel"
@@ -72,7 +93,10 @@
     <div class="flex flex-1 min-h-0">
 
       <!-- Left sidebar: event feed -->
-      <div class="w-52 flex-shrink-0 border-r border-white/[0.09] flex flex-col overflow-hidden bg-[#1a1a1a]">
+      <div
+        v-if="!theaterMode"
+        class="w-52 flex-shrink-0 border-r border-white/[0.09] flex flex-col overflow-hidden bg-[#1a1a1a]"
+      >
         <div class="px-3 py-2.5 border-b border-white/[0.09]">
           <p class="text-[11px] font-semibold text-gray-500 uppercase tracking-widest">Timeline</p>
         </div>
@@ -240,12 +264,26 @@
       <!-- Video + timeline -->
       <div class="flex-1 flex flex-col min-w-0 min-h-0">
 
-        <!-- Video area -->
-        <div class="flex-1 relative bg-black min-h-0" :class="{ 'cursor-none': cursorHidden }" @click="togglePlay" @mousemove="onVideoMouseMove">
+        <!-- Video area — frame sized to video aspect ratio (no letterboxing inside the picture) -->
+        <div
+          ref="videoAreaEl"
+          class="flex-1 relative min-h-0 flex items-center justify-center bg-[#111111] overflow-hidden"
+          :class="{ 'cursor-none': cursorHidden && !theaterMode }"
+          @mousemove="onVideoMouseMove"
+        >
+          <div
+            ref="videoFrameEl"
+            class="relative bg-black shadow-[0_20px_60px_rgba(0,0,0,0.45)]"
+            :class="isFullscreen ? 'w-full h-full' : ''"
+            :style="isFullscreen ? undefined : videoFrameStyle"
+            @click="togglePlay"
+            @dblclick.stop="toggleFullscreen"
+          >
           <video
             v-if="timeline?.videoPath"
             ref="videoEl"
-            class="w-full h-full object-contain"
+            class="w-full h-full block"
+            :class="isFullscreen ? 'object-contain' : ''"
             :src="videoSrc"
             :poster="mapPosterUrl || undefined"
             preload="metadata"
@@ -256,12 +294,47 @@
             @pause="isPlaying = false"
             @ended="isPlaying = false"
           />
-          <div v-else class="w-full h-full flex flex-col items-center justify-center gap-3 text-gray-600 pointer-events-none select-none">
+          <div v-else class="w-full h-full min-h-[240px] min-w-[320px] flex flex-col items-center justify-center gap-3 text-gray-600 pointer-events-none select-none">
             <svg class="w-10 h-10 opacity-30" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M15 10l4.553-2.069A1 1 0 0121 8.867v6.266a1 1 0 01-1.447.902L15 14M5 8a2 2 0 00-2 2v4a2 2 0 002 2h8a2 2 0 002-2v-4a2 2 0 00-2-2H5z"/>
             </svg>
             <span class="text-xs text-gray-600">No video for this session</span>
             <span class="text-[10px] text-gray-700">OBS was not recording when this match was captured</span>
+          </div>
+
+          <!-- Expand / fullscreen -->
+          <div
+            v-if="timeline?.videoPath"
+            class="absolute top-2 right-2 z-30 flex items-center gap-1"
+            @click.stop
+          >
+            <button
+              type="button"
+              class="flex h-8 w-8 items-center justify-center rounded-lg border border-white/15 bg-black/60 text-gray-300 backdrop-blur-sm transition-colors hover:border-white/25 hover:bg-black/80 hover:text-white"
+              :class="theaterMode ? 'border-red-400/40 text-red-200' : ''"
+              :title="theaterMode ? 'Exit theater mode (T)' : 'Theater mode — maximize video (T)'"
+              @click="toggleTheaterMode"
+            >
+              <svg v-if="theaterMode" class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" d="M9 4H4v5M15 4h5v5M4 15v5h5M20 15v5h-5"/>
+              </svg>
+              <svg v-else class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" d="M4 8V4h4M20 8V4h-4M4 16v4h4M20 16v4h-4"/>
+              </svg>
+            </button>
+            <button
+              type="button"
+              class="flex h-8 w-8 items-center justify-center rounded-lg border border-white/15 bg-black/60 text-gray-300 backdrop-blur-sm transition-colors hover:border-white/25 hover:bg-black/80 hover:text-white"
+              :title="isFullscreen ? 'Exit fullscreen (F)' : 'Fullscreen (F)'"
+              @click="toggleFullscreen"
+            >
+              <svg v-if="isFullscreen" class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" d="M9 4H4v5M15 4h5v5M4 15v5h5M20 15v5h-5"/>
+              </svg>
+              <svg v-else class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/>
+              </svg>
+            </button>
           </div>
 
           <!-- Play/pause overlay — subtle; hidden while playing -->
@@ -366,11 +439,12 @@
               </div>
             </div>
           </Transition>
+          </div>
         </div>
 
         <!-- Cinema dock: seek strip under video -->
         <div
-          v-if="hasSpatialIntel"
+          v-if="hasSpatialIntel && !theaterMode"
           class="flex-shrink-0 border-b border-white/[0.08] bg-gradient-to-r from-[#141414] via-[#131313] to-[#141414] px-3 py-2 min-h-[46px]"
           @click.stop
         >
@@ -417,7 +491,7 @@
 
             <p
               v-if="spatialSummary?.heatmapInsight"
-              class="hidden lg:block flex-shrink-0 max-w-[12rem] xl:max-w-[18rem] text-[11px] leading-snug font-medium text-gray-400 line-clamp-2"
+              class="hidden md:block flex-shrink-0 max-w-[10rem] lg:max-w-[14rem] xl:max-w-[20rem] text-[11px] leading-snug font-medium text-gray-300 line-clamp-2"
               :title="spatialSummary.heatmapInsight"
             >{{ spatialSummary.heatmapInsight }}</p>
 
@@ -445,7 +519,7 @@
 
             <div
               v-if="recordingId"
-              class="hidden xl:flex flex-shrink-0 items-center gap-1 rounded-md border border-white/[0.08] bg-black/30 px-1.5 py-0.5"
+              class="hidden lg:flex flex-shrink-0 items-center gap-1 rounded-md border border-white/[0.08] bg-black/30 px-1.5 py-0.5"
             >
               <span class="text-[8px] text-gray-600">Sync</span>
               <button
@@ -576,6 +650,18 @@
               </span>
 
               <button
+                v-if="selectedRound"
+                class="hidden sm:flex items-center gap-1.5 rounded-xl border px-3 py-2 text-xs transition-all"
+                :class="roundDetailExpanded
+                  ? 'border-red-500/30 bg-red-500/10 text-red-200 hover:border-red-500/40'
+                  : 'border-white/[0.08] bg-white/[0.03] text-gray-400 hover:border-white/[0.14] hover:bg-white/[0.08] hover:text-gray-200'"
+                :title="roundDetailExpanded ? 'Hide round events' : 'Show round events'"
+                @click="roundDetailExpanded = !roundDetailExpanded"
+              >
+                R{{ selectedRound.roundNumber + 1 }} events
+              </button>
+
+              <button
                 class="flex items-center gap-1.5 rounded-xl border border-white/[0.08] bg-white/[0.03] px-3 py-2 text-xs text-gray-400 transition-all hover:border-white/[0.14] hover:bg-white/[0.08] hover:text-gray-200"
                 @click="showScoreboard = !showScoreboard"
               >
@@ -601,7 +687,7 @@
               </div>
             </div>
 
-            <div class="flex items-center gap-3 px-1 pb-1 flex-wrap">
+            <div class="hidden lg:flex items-center gap-3 px-1 pb-1 flex-wrap">
               <div class="flex items-center gap-1">
                 <kbd class="px-1 py-px text-[9px] font-bold bg-white/[0.06] border border-white/[0.1] rounded text-gray-500">Space</kbd>
                 <span class="text-[9px] text-gray-700">Play</span>
@@ -625,12 +711,20 @@
                 <kbd class="px-1 py-px text-[9px] font-bold bg-white/[0.06] border border-white/[0.1] rounded text-gray-500">S</kbd>
                 <span class="text-[9px] text-gray-700">Scoreboard</span>
               </div>
+              <div class="flex items-center gap-1">
+                <kbd class="px-1 py-px text-[9px] font-bold bg-white/[0.06] border border-white/[0.1] rounded text-gray-500">T</kbd>
+                <span class="text-[9px] text-gray-700">Theater</span>
+              </div>
+              <div class="flex items-center gap-1">
+                <kbd class="px-1 py-px text-[9px] font-bold bg-white/[0.06] border border-white/[0.1] rounded text-gray-500">F</kbd>
+                <span class="text-[9px] text-gray-700">Fullscreen</span>
+              </div>
             </div>
           </div>
         </div>
         <div
-          v-if="selectedRound"
-          class="flex-shrink-0 bg-[#1a1a1a] border-t border-white/[0.10] max-h-52 overflow-y-auto scrollbar-hide"
+          v-if="roundDetailExpanded && selectedRound && !theaterMode"
+          class="flex-shrink-0 bg-[#1a1a1a] border-t border-white/[0.10] max-h-40 overflow-y-auto scrollbar-hide"
         >
           <!-- Round header -->
           <div class="flex items-center gap-2.5 px-3 py-2 sticky top-0 bg-[#1a1a1a] border-b border-white/[0.07] z-10">
@@ -654,7 +748,8 @@
             <div class="flex-1" />
             <button
               class="w-7 h-7 flex items-center justify-center text-gray-600 hover:text-gray-300 transition-colors rounded-lg hover:bg-white/[0.06]"
-              @click="selectedRound = null"
+              title="Collapse round events"
+              @click="roundDetailExpanded = false"
             >
               <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
             </button>
@@ -808,7 +903,7 @@
 
         <!-- Team scoreboard (collapsible) -->
         <div
-          v-if="showScoreboard && sortedTeamSnapshot.length"
+          v-if="showScoreboard && sortedTeamSnapshot.length && !theaterMode"
           class="flex-shrink-0 bg-[#1a1a1a] border-t border-white/[0.10] max-h-52 overflow-y-auto scrollbar-hide"
         >
           <!-- Column headers -->
@@ -880,7 +975,7 @@
       </div>
 
       <div
-        v-if="showInsightsPanel"
+        v-if="showInsightsPanel && !theaterMode"
         class="w-56 flex-shrink-0 border-l border-white/[0.09] bg-[#0d0d0d] flex flex-col min-h-0"
       >
         <div class="flex items-center gap-2 px-3 py-2.5 border-b border-white/[0.09]">
@@ -1040,7 +1135,14 @@ interface ProgressMarker {
 const route = useRoute()
 const router = useRouter()
 const videoEl = ref<HTMLVideoElement | null>(null)
+const videoAreaEl = ref<HTMLElement | null>(null)
+const videoFrameEl = ref<HTMLElement | null>(null)
 const sidebarEl = ref<HTMLElement | null>(null)
+const theaterMode = ref(false)
+const isFullscreen = ref(false)
+const videoAspect = ref(16 / 9)
+const videoFrameSize = ref({ width: 0, height: 0 })
+let videoAreaObserver: ResizeObserver | null = null
 
 const timeline = ref<RecordingTimeline | null>(null)
 const isPlaying = ref(false)
@@ -1054,6 +1156,7 @@ const showScoreboard = ref(false)
 const showInsightsPanel = ref(false)
 const SPATIAL_MAP_VISIBLE_KEY = 'upforge_vod_map_visible'
 const SPATIAL_MAP_LARGE_KEY = 'upforge_vod_map_large'
+const THEATER_MODE_KEY = 'upforge_vod_theater_mode'
 
 const spatialMapVisible = ref(true)
 const spatialMapLarge = ref(false)
@@ -1090,6 +1193,8 @@ function loadSpatialUiPrefs() {
     if (vis !== null) spatialMapVisible.value = vis === '1'
     const large = localStorage.getItem(SPATIAL_MAP_LARGE_KEY)
     if (large !== null) spatialMapLarge.value = large === '1'
+    const theater = localStorage.getItem(THEATER_MODE_KEY)
+    if (theater !== null) theaterMode.value = theater === '1'
   } catch { /* ignore */ }
 }
 
@@ -1099,6 +1204,10 @@ watch(spatialMapVisible, (v) => {
 
 watch(spatialMapLarge, (v) => {
   try { localStorage.setItem(SPATIAL_MAP_LARGE_KEY, v ? '1' : '0') } catch { /* ignore */ }
+})
+
+watch(theaterMode, (v) => {
+  try { localStorage.setItem(THEATER_MODE_KEY, v ? '1' : '0') } catch { /* ignore */ }
 })
 
 watch(activeSpatialIndex, () => {
@@ -1119,6 +1228,7 @@ const spatialViewMode = ref<'heat' | 'sites' | 'dots'>('heat')
 const spatialRoundFilter = ref<number | null>(null)
 const videoSyncOffsetMs = ref(0)
 const selectedRound = ref<RoundGroup | null>(null)
+const roundDetailExpanded = ref(false)
 const coachingDetail = ref<AnalysisDetail | null>(null)
 const ownPuuid = ref<string | null>(null)
 let notifTimer: ReturnType<typeof setTimeout> | null = null
@@ -1256,6 +1366,57 @@ const agentImageUrl = computed(() => {
 })
 
 const mapPosterUrl = computed(() => getMapImage(timeline.value?.map) || '')
+
+const videoFrameStyle = computed(() => {
+  const { width, height } = videoFrameSize.value
+  if (width > 0 && height > 0) {
+    return { width: `${width}px`, height: `${height}px` }
+  }
+  return { width: '100%', height: '100%', maxHeight: '100%' }
+})
+
+function updateVideoFrameSize(): void {
+  const el = videoAreaEl.value
+  if (!el || isFullscreen.value) return
+  const { width: cw, height: ch } = el.getBoundingClientRect()
+  if (cw <= 0 || ch <= 0) return
+
+  const aspect = videoAspect.value > 0 ? videoAspect.value : 16 / 9
+  let width = cw
+  let height = width / aspect
+  if (height > ch) {
+    height = ch
+    width = height * aspect
+  }
+  videoFrameSize.value = {
+    width: Math.max(1, Math.floor(width)),
+    height: Math.max(1, Math.floor(height)),
+  }
+}
+
+function toggleTheaterMode(): void {
+  theaterMode.value = !theaterMode.value
+  nextTick(() => updateVideoFrameSize())
+}
+
+async function toggleFullscreen(): Promise<void> {
+  const frame = videoFrameEl.value
+  if (!frame) return
+  try {
+    if (document.fullscreenElement) {
+      await document.exitFullscreen()
+    } else {
+      await frame.requestFullscreen()
+    }
+  } catch {
+    /* fullscreen denied or unavailable */
+  }
+}
+
+function onFullscreenChange(): void {
+  isFullscreen.value = document.fullscreenElement === videoFrameEl.value
+  nextTick(() => updateVideoFrameSize())
+}
 
 const videoSrc = computed(() => {
   if (!timeline.value?.videoPath) return ''
@@ -1677,6 +1838,7 @@ function seekToEvent(event: TimelineEvent) {
 
 function seekToRound(round: RoundGroup) {
   selectedRound.value = round
+  roundDetailExpanded.value = true
   scrollActiveRoundIntoView(round.roundNumber)
   if (!videoEl.value || round.firstVideoOffsetMs == null) return
   const wasPlaying = !videoEl.value.paused
@@ -1730,6 +1892,10 @@ function onLoadedMetadata() {
   if (!videoEl.value) return
   const d = videoEl.value.duration
   if (!isNaN(d) && isFinite(d) && d > 0) duration.value = d
+  if (videoEl.value.videoWidth > 0 && videoEl.value.videoHeight > 0) {
+    videoAspect.value = videoEl.value.videoWidth / videoEl.value.videoHeight
+    updateVideoFrameSize()
+  }
   tryInitialGameplaySeek()
 }
 
@@ -1843,12 +2009,29 @@ onMounted(async () => {
   }
 
   window.addEventListener('keydown', handleKeyDown)
+  document.addEventListener('fullscreenchange', onFullscreenChange)
+
+  nextTick(() => {
+    updateVideoFrameSize()
+    if (videoAreaEl.value) {
+      videoAreaObserver = new ResizeObserver(() => updateVideoFrameSize())
+      videoAreaObserver.observe(videoAreaEl.value)
+    }
+  })
 })
 
 onUnmounted(() => {
   window.api.discord.setState('idle').catch(() => {})
   window.removeEventListener('keydown', handleKeyDown)
+  document.removeEventListener('fullscreenchange', onFullscreenChange)
+  videoAreaObserver?.disconnect()
+  videoAreaObserver = null
+  if (document.fullscreenElement === videoFrameEl.value) {
+    document.exitFullscreen().catch(() => {})
+  }
 })
+
+watch(theaterMode, () => nextTick(() => updateVideoFrameSize()))
 
 function handleKeyDown(e: KeyboardEvent) {
   // Don't capture keyboard events when user is typing in an input
@@ -1882,7 +2065,40 @@ function handleKeyDown(e: KeyboardEvent) {
       cycleSpeedDown()
       break
     case 'Escape':
-      router.back()
+      if (document.fullscreenElement) {
+        e.preventDefault()
+        document.exitFullscreen().catch(() => {})
+      } else if (theaterMode.value) {
+        e.preventDefault()
+        theaterMode.value = false
+        nextTick(() => updateVideoFrameSize())
+      } else {
+        router.back()
+      }
+      break
+    case 'f':
+    case 'F':
+      e.preventDefault()
+      toggleFullscreen()
+      break
+    case 't':
+    case 'T':
+      e.preventDefault()
+      toggleTheaterMode()
+      break
+    case 'm':
+    case 'M':
+      if (hasSpatialIntel.value) {
+        e.preventDefault()
+        spatialMapVisible.value = !spatialMapVisible.value
+      }
+      break
+    case 'r':
+    case 'R':
+      if (selectedRound.value) {
+        e.preventDefault()
+        roundDetailExpanded.value = !roundDetailExpanded.value
+      }
       break
     case 's':
     case 'S':
@@ -1897,10 +2113,12 @@ watch(playbackSpeed, (val) => {
 
 watch(activeRoundNumber, (roundNumber) => {
   if (roundNumber == null) return
-  const activeRound = roundGroups.value.find(round => round.roundNumber === roundNumber) ?? null
-  if (activeRound) selectedRound.value = activeRound
+  if (roundDetailExpanded.value) {
+    const activeRound = roundGroups.value.find(round => round.roundNumber === roundNumber) ?? null
+    if (activeRound) selectedRound.value = activeRound
+  }
   scrollActiveRoundIntoView(roundNumber)
-}, { immediate: true })
+})
 </script>
 
 <style scoped>
