@@ -125,8 +125,19 @@ export function setupIpcHandlers(
   getAudioDetectRecorder?: () => MatchRecorder,
   getObsConnected?: () => boolean,
   onSettingsSaved?: (settings: ReturnType<SettingsManager['get']>) => void,
+  onLoginSuccess?: () => void,
+  onLogout?: () => void,
 ): void {
-  setupAuthHandlers(ipcMain, auth, getActiveRecorder, gameDetector, uploadManager, endMatchRecording)
+  setupAuthHandlers(
+    ipcMain,
+    auth,
+    getActiveRecorder,
+    gameDetector,
+    uploadManager,
+    endMatchRecording,
+    onLoginSuccess,
+    onLogout,
+  )
 
   setupAppHandlers(
     ipcMain, auth, getActiveRecorder, gameDetector, settingsManager,

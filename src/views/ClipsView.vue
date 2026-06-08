@@ -854,11 +854,20 @@ onMounted(async () => {
     // clips:new sends an array of newly extracted clip IDs — reload everything
     await loadClips()
   })
+  const clipsUpdatedCleanup = window.api.on('clips:updated', async () => {
+    playingClip.value = null
+    trimModal.value = { show: false, clipId: '', startSec: 0, endSec: 10, duration: 10, loading: false, error: null }
+    await loadClips()
+  })
+  ;(window as Window & { _clipsUpdatedCleanup?: () => void })._clipsUpdatedCleanup = clipsUpdatedCleanup
   window.addEventListener('keydown', handleKeyDown)
 })
 
 onUnmounted(() => {
   removeListener.value?.()
+  const clipsUpdatedCleanup = (window as Window & { _clipsUpdatedCleanup?: () => void })._clipsUpdatedCleanup
+  clipsUpdatedCleanup?.()
+  delete (window as Window & { _clipsUpdatedCleanup?: () => void })._clipsUpdatedCleanup
   window.removeEventListener('keydown', handleKeyDown)
 })
 

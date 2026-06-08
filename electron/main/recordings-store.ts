@@ -3,6 +3,23 @@ import fs from 'fs'
 import path from 'path'
 import { randomUUID } from 'crypto'
 import type { MatchData } from './riot-local-api'
+import { recordingPathVariants, sourcePathForCompressed } from './vod-compressor'
+import { userDataRoot } from './user-data-paths'
+
+function recordingStemKey(filePath: string): string {
+  const stem = path.basename(filePath, '.mp4')
+  const normalizedStem = stem.endsWith('_upforge') ? stem.slice(0, -'_upforge'.length) : stem
+  return path.join(path.dirname(filePath), normalizedStem).toLowerCase()
+}
+
+function preferRecordingEntry(a: PendingRecording, b: PendingRecording): PendingRecording {
+  const aCompressed = sourcePathForCompressed(a.path) != null
+  const bCompressed = sourcePathForCompressed(b.path) != null
+  if (aCompressed !== bCompressed) return aCompressed ? a : b
+  if (a.analysed !== b.analysed) return a.analysed ? a : b
+  if ((a.timeline != null) !== (b.timeline != null)) return a.timeline ? a : b
+  return a.recordedAt >= b.recordedAt ? a : b
+}
 
 export interface PendingRecording {
   id: string
@@ -25,10 +42,24 @@ export type NewRecording = Omit<PendingRecording, 'id' | 'recordedAt' | 'analyse
 export class RecordingsStore {
   private recordings: PendingRecording[] = []
   private filePath: string
+  private userId: number | null = null
 
   constructor() {
     const userDataPath = app.getPath('userData')
     this.filePath = path.join(userDataPath, 'recordings.json')
+    this.recordings = this.load()
+  }
+
+  setUserScope(userId: number | null): void {
+    if (userId === this.userId) return
+    this.userId = userId
+    if (userId == null) {
+      this.recordings = []
+      return
+    }
+    const root = userDataRoot(userId)
+    fs.mkdirSync(root, { recursive: true })
+    this.filePath = path.join(root, 'recordings.json')
     this.recordings = this.load()
   }
 
@@ -38,18 +69,19 @@ export class RecordingsStore {
       const all: PendingRecording[] = JSON.parse(raw)
       // Prune entries whose video file no longer exists to keep the store clean
       const pruned = all.filter(r => r.analysed || fs.existsSync(r.path))
-      // Persist the pruned list so stale entries are removed from disk too
-      if (pruned.length !== all.length) {
+      const deduped = this.dedupeSiblingRecordings(pruned)
+      if (deduped.length !== all.length) {
         fs.mkdirSync(path.dirname(this.filePath), { recursive: true })
-        fs.writeFileSync(this.filePath, JSON.stringify(pruned, null, 2))
+        fs.writeFileSync(this.filePath, JSON.stringify(deduped, null, 2))
       }
-      return pruned
+      return deduped
     } catch {
       return []
     }
   }
 
   private persist(): void {
+    if (this.userId == null) return
     try {
       fs.mkdirSync(path.dirname(this.filePath), { recursive: true })
       fs.writeFileSync(this.filePath, JSON.stringify(this.recordings, null, 2))
@@ -110,7 +142,45 @@ export class RecordingsStore {
   }
 
   getKnownPaths(): Set<string> {
-    return new Set(this.recordings.map((r) => r.path))
+    const paths = new Set<string>()
+    for (const recording of this.recordings) {
+      for (const variant of recordingPathVariants(recording.path)) {
+        paths.add(path.normalize(variant))
+      }
+    }
+    return paths
+  }
+
+  /** Point a pending recording at the compressed file after upload prep. */
+  updatePath(id: string, newPath: string): boolean {
+    const rec = this.recordings.find(r => r.id === id)
+    if (!rec) return false
+    rec.path = newPath
+    try {
+      rec.fileSizeBytes = fs.statSync(newPath).size
+    } catch { /* ignore */ }
+    this.persist()
+    return true
+  }
+
+  private dedupeSiblingRecordings(all: PendingRecording[]): PendingRecording[] {
+    const groups = new Map<string, PendingRecording[]>()
+    for (const recording of all) {
+      const key = recordingStemKey(recording.path)
+      const group = groups.get(key) ?? []
+      group.push(recording)
+      groups.set(key, group)
+    }
+
+    const kept: PendingRecording[] = []
+    for (const group of groups.values()) {
+      if (group.length === 1) {
+        kept.push(group[0]!)
+        continue
+      }
+      kept.push(group.reduce(preferRecordingEntry))
+    }
+    return kept
   }
 
   remove(id: string): void {

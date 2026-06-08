@@ -7,6 +7,12 @@ import { is } from '@electron-toolkit/utils'
 
 const IS_WIN = process.platform === 'win32'
 
+let clipsMediaDirOverride: string | null = null
+
+export function setClipsMediaDir(dir: string | null): void {
+  clipsMediaDirOverride = dir
+}
+
 function ffmpegPath(): string {
   if (is.dev) return IS_WIN ? 'ffmpeg.exe' : 'ffmpeg'
   return join(process.resourcesPath, 'ffmpeg', IS_WIN ? 'ffmpeg.exe' : 'ffmpeg')
@@ -175,9 +181,9 @@ export class ClipExtractor {
     })
   }
 
-  /** Default clips directory inside userData */
+  /** Clips media directory — per-user when scoped, else legacy global path. */
   static clipsDir(): string {
-    return join(app.getPath('userData'), 'clips')
+    return clipsMediaDirOverride ?? join(app.getPath('userData'), 'clips')
   }
 
   /** Build output path for a clip given a unique id */

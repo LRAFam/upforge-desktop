@@ -213,9 +213,9 @@
       </div>
     </nav>
 
-    <!-- Content -->
+    <!-- Content — key forces remount when the signed-in account changes -->
     <main class="flex-1 overflow-y-auto mt-1">
-      <RouterView />
+      <RouterView :key="sessionUserKey" />
     </main>
 
     <!-- First-run onboarding wizard -->
@@ -273,6 +273,8 @@ const onboardingWasComplete = ref(false)
 const obsConnected = ref<boolean | null>(null)
 const obsConnecting = ref(false)
 const obsError = ref<string | null>(null)
+/** Bumps on login/logout/account switch so route views reload user-scoped data. */
+const sessionUserKey = ref('guest')
 
 const showObsBanner = computed(() =>
   showNav.value &&
@@ -362,6 +364,32 @@ async function loadUserProfile() {
   userAvatarUrl.value = ''
 }
 
+async function applySessionUser(userId: number | null) {
+  sessionUserKey.value = userId != null ? `user-${userId}` : 'guest'
+  if (userId == null) {
+    riotId.value = null
+    userName.value = null
+    userAvatarUrl.value = ''
+    isAdmin.value = false
+    clipCount.value = 0
+    clipCountAvailable.value = false
+    hasClipIndicator.value = false
+    return
+  }
+  try {
+    const s = await window.api.app.getStatus()
+    status.value = s
+    if (s.user?.riot_name) riotId.value = `${s.user.riot_name}#${s.user.riot_tag}`
+    else riotId.value = null
+    if (s.user?.name) userName.value = s.user.name
+    if (s.user?.is_admin) isAdmin.value = true
+    else isAdmin.value = false
+  } catch {
+    // ignore
+  }
+  await Promise.all([loadClipSummary(), loadUserProfile()])
+}
+
 router.beforeEach((to, from, next) => {
   if (to.fullPath !== from.fullPath) {
     isNavigating.value = true
@@ -404,6 +432,8 @@ onMounted(async () => {
   } catch { /* ignore */ }
 
   await Promise.all([loadClipSummary(), loadUserProfile()])
+  const initialUserId = (status.value as { user?: { id?: number } }).user?.id
+  sessionUserKey.value = initialUserId != null ? `user-${initialUserId}` : 'guest'
 
   try {
     const obs = await window.api.obs.getStatus()
@@ -473,6 +503,17 @@ onMounted(async () => {
   })
   ;(window as Window & { _clipsCleanup?: () => void })._clipsCleanup = clipsCleanup
 
+  const sessionCleanup = window.api.on('session:user-changed', (...args: unknown[]) => {
+    const payload = args[0] as { userId?: number | null } | undefined
+    void applySessionUser(payload?.userId ?? null)
+  })
+  ;(window as Window & { _sessionCleanup?: () => void })._sessionCleanup = sessionCleanup
+
+  const authExpiredCleanup = window.api.on('auth:session-expired', () => {
+    void applySessionUser(null)
+  })
+  ;(window as Window & { _authExpiredCleanup?: () => void })._authExpiredCleanup = authExpiredCleanup
+
   // Navigate to a tab when the main process requests it (e.g. from post-game "View Clips" button)
   const navCleanup = window.api.on('app:navigate', (...args: unknown[]) => {
     const payload = args[0]
@@ -498,6 +539,12 @@ onUnmounted(() => {
   const clipsCleanup = (window as Window & { _clipsCleanup?: () => void })._clipsCleanup
   clipsCleanup?.()
   delete (window as Window & { _clipsCleanup?: () => void })._clipsCleanup
+  const sessionCleanup = (window as Window & { _sessionCleanup?: () => void })._sessionCleanup
+  sessionCleanup?.()
+  delete (window as Window & { _sessionCleanup?: () => void })._sessionCleanup
+  const authExpiredCleanup = (window as Window & { _authExpiredCleanup?: () => void })._authExpiredCleanup
+  authExpiredCleanup?.()
+  delete (window as Window & { _authExpiredCleanup?: () => void })._authExpiredCleanup
   const updaterCleanups = (window as Window & { _updaterCleanups?: (() => void)[] })._updaterCleanups
   updaterCleanups?.forEach(fn => fn())
   delete (window as Window & { _updaterCleanups?: (() => void)[] })._updaterCleanups

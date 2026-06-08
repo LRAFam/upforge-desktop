@@ -18,6 +18,8 @@ export function setupAuthHandlers(
   gameDetector: GameDetector,
   uploadManager?: UploadManager,
   endActiveMatch?: (game: string) => Promise<{ ok: boolean; reason?: string }>,
+  onLoginSuccess?: () => void,
+  onLogout?: () => void,
 ): void {
   // ── Auth ──────────────────────────────────────────────────────────────────
 
@@ -27,6 +29,7 @@ export function setupAuthHandlers(
       const result = await auth.login(email, password)
       log.info('[IPC] auth:login result:', result.ok, result.error)
       if (result.ok) {
+        onLoginSuccess?.()
         const win = BrowserWindow.fromWebContents(_e.sender)
         if (win) {
           win.setResizable(true)
@@ -54,6 +57,7 @@ export function setupAuthHandlers(
     }
     uploadManager?.abort()
     cancelAllPollingTimers()
+    onLogout?.()
     return auth.logout()
   })
 

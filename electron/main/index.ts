@@ -38,7 +38,13 @@ import {
   DEFAULT_VIDEO_SYNC_OFFSET_MS,
 } from './riot-local-api'
 import { applySpatialEnrichment } from './spatial/enrich'
-import { UploadManager, savePendingJob, clearPendingJob, readPendingJob } from './upload-manager'
+import { UploadManager, savePendingJob, clearPendingJob } from './upload-manager'
+import {
+  activateUserSession,
+  clearUserSession,
+  readActivePendingJob,
+  clearActivePendingJob,
+} from './user-session'
 import { startAnalysisPoll, stopActiveAnalysisPoll, reconcileOrphanedJob } from './analysis-poll'
 import { AuthManager } from './auth-manager'
 import { SettingsManager } from './settings-manager'
@@ -340,6 +346,30 @@ function getRecordingBackendForStatus(): RecordingBackend {
 
 let orphanedRecordingsScanned = false
 
+function userSessionDeps() {
+  return {
+    clipStore,
+    recordingsStore,
+    settingsManager,
+    getMainWindow: () => mainWindow,
+    onScopeChanged: () => {
+      orphanedRecordingsScanned = false
+      activityLog.length = 0
+      mainWindow?.webContents.send('app:activity-log', [])
+      mainWindow?.webContents.send('recordings:updated')
+      mainWindow?.webContents.send('clips:updated')
+      mainWindow?.webContents.send('dashboard:refresh')
+    },
+  }
+}
+
+function syncUserSessionFromAuth(): void {
+  const user = authManager.getUser()
+  if (user?.id) {
+    activateUserSession(user.id, userSessionDeps())
+  }
+}
+
 /** Pick up recent local MP4s that never made it into recordings.json (e.g. post-game window closed early). */
 function scanForOrphanedRecordings(force = false): number {
   if (!settingsManager || !recordingsStore) return 0
@@ -358,7 +388,7 @@ function scanForOrphanedRecordings(force = false): number {
   const user = authManager.getUser()
   for (const file of orphans) {
     recordingsStore.add({
-      path: file.path,
+      path: file.path, // already preferred (compressed when sibling exists)
       riotName: user?.riot_name ?? '',
       riotTag: user?.riot_tag ?? '',
       game: 'valorant',
@@ -864,6 +894,10 @@ function setupGameDetection(): void {
           const newGB = (uploadSize / (1024 * 1024 * 1024)).toFixed(2)
           log.info(`[HandleMatchEnd] Compressed to ${newGB} GB`)
           logActivity(`Compressed recording to ${newGB} GB — uploading`)
+          if (uploadPath !== readyPath) {
+            recordingsStore.updatePath(savedRecording.id, uploadPath)
+            mainWindow?.webContents.send('recordings:updated')
+          }
         }
       } catch (err) {
         log.error('[HandleMatchEnd] Failed to prepare upload file:', err)
@@ -1621,6 +1655,10 @@ async function doUploadAndAnalyse(
       if (resolved.compressed) {
         const newGB = (resolved.sizeBytes / (1024 ** 3)).toFixed(2)
         logActivity(`Compressed recording to ${newGB} GB — uploading`)
+        if (recordingId && effectivePath !== videoPath) {
+          recordingsStore.updatePath(recordingId, effectivePath)
+          mainWindow?.webContents.send('recordings:updated')
+        }
       }
       if (resolved.sizeBytes > MAX_RECORDING_FILE_BYTES) {
         const sizeGB = (resolved.sizeBytes / (1024 ** 3)).toFixed(1)
@@ -1857,12 +1895,16 @@ app.whenReady().then(async () => {
   // When a 401 fires mid-session, tell the renderer to show the login screen
   authManager.onSessionExpired = () => {
     log.warn('[App] Session expired — notifying renderer')
+    clearUserSession(userSessionDeps())
     mainWindow?.webContents.send('auth:session-expired')
   }
 
   // Resume polling for any job_id that was persisted before a crash.
   // We wait until the main window is ready before sending the result.
-  const orphanedJob = readPendingJob()
+  if (authManager.isAuthenticated()) {
+    syncUserSessionFromAuth()
+  }
+  const orphanedJob = readActivePendingJob()
   if (orphanedJob) {
     console.log('[App] Orphaned job found from previous session:', orphanedJob.job_id)
   }
@@ -1962,6 +2004,12 @@ app.whenReady().then(async () => {
   () => obsRecorder.isConnected(),
   () => {
     discordRPC.refresh()
+  },
+  () => {
+    syncUserSessionFromAuth()
+  },
+  () => {
+    clearUserSession(userSessionDeps())
   },
   )
 

@@ -17,10 +17,26 @@ function ffmpegBin(): string {
   return join(process.resourcesPath, 'ffmpeg', IS_WIN ? 'ffmpeg.exe' : 'ffmpeg')
 }
 
-function compressedPathFor(sourcePath: string): string {
+export function compressedPathFor(sourcePath: string): string {
   const dir = dirname(sourcePath)
   const stem = basename(sourcePath, '.mp4')
   return join(dir, `${stem}_upforge.mp4`)
+}
+
+/** Inverse of compressedPathFor — null if not an UpForge-compressed export. */
+export function sourcePathForCompressed(compressedPath: string): string | null {
+  const stem = basename(compressedPath, '.mp4')
+  if (!stem.endsWith('_upforge')) return null
+  return join(dirname(compressedPath), `${stem.slice(0, -'_upforge'.length)}.mp4`)
+}
+
+/** Raw + compressed paths for the same match recording. */
+export function recordingPathVariants(filePath: string): string[] {
+  const variants = new Set<string>([filePath])
+  variants.add(compressedPathFor(filePath))
+  const source = sourcePathForCompressed(filePath)
+  if (source) variants.add(source)
+  return [...variants]
 }
 
 /** Compress when the raw OBS file exceeds ~1.5 GB (expected ~1.3 GB at preset). */

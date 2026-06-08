@@ -23,36 +23,65 @@ export interface UploadResult {
   job_id: string
 }
 
-/** Path where an in-progress job_id is persisted so it survives crashes. */
+import { userPendingJobPath } from './user-data-paths'
+
+let pendingJobUserId: number | null = null
+
+export function setPendingJobUserScope(userId: number | null): void {
+  pendingJobUserId = userId
+}
+
 function pendingJobPath(): string {
+  if (pendingJobUserId != null) {
+    return userPendingJobPath(pendingJobUserId)
+  }
   return path.join(app.getPath('userData'), 'pending-job.json')
 }
 
 /** Persist a job_id to disk immediately after presign, so polling can resume on restart. */
 export function savePendingJob(jobId: string, context?: { agent?: string | null; map?: string | null; game?: string }): void {
   try {
+    const filePath = pendingJobPath()
+    fs.mkdirSync(path.dirname(filePath), { recursive: true })
     fs.writeFileSync(
-      pendingJobPath(),
+      filePath,
       JSON.stringify({ job_id: jobId, savedAt: Date.now(), ...context }),
-      'utf-8'
+      'utf-8',
     )
   } catch { /* non-critical */ }
 }
 
 /** Clear the persisted job_id once the job is finished (completed, failed, or timed out). */
 export function clearPendingJob(): void {
+  clearPendingJobForUser(pendingJobUserId)
+}
+
+export function clearPendingJobForUser(userId: number | null): void {
   try {
-    if (fs.existsSync(pendingJobPath())) fs.unlinkSync(pendingJobPath())
+    const filePath = userId != null ? userPendingJobPath(userId) : path.join(app.getPath('userData'), 'pending-job.json')
+    if (fs.existsSync(filePath)) fs.unlinkSync(filePath)
   } catch { /* non-critical */ }
 }
 
 /** Read any orphaned job_id saved from a previous session. Returns null if none. */
 export function readPendingJob(): { job_id: string; savedAt: number; agent?: string; map?: string; game?: string } | null {
-  try {
-    const raw = fs.readFileSync(pendingJobPath(), 'utf-8')
-    const parsed = JSON.parse(raw)
-    if (parsed?.job_id) return parsed
-  } catch { /* no file or corrupt */ }
+  return readPendingJobForUser(pendingJobUserId)
+}
+
+export function readPendingJobForUser(
+  userId: number | null,
+): { job_id: string; savedAt: number; agent?: string; map?: string; game?: string } | null {
+  const paths = userId != null
+    ? [userPendingJobPath(userId)]
+    : [path.join(app.getPath('userData'), 'pending-job.json')]
+
+  for (const filePath of paths) {
+    try {
+      const raw = fs.readFileSync(filePath, 'utf-8')
+      const parsed = JSON.parse(raw)
+      if (parsed?.job_id) return parsed
+    } catch { /* try next */ }
+  }
   return null
 }
 

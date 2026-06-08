@@ -2,6 +2,7 @@ import { app } from 'electron'
 import fs from 'fs'
 import path from 'path'
 import { randomUUID } from 'crypto'
+import { userDataRoot } from './user-data-paths'
 
 export type ClipTrigger = 'manual' | 'kill' | 'ace' | 'multikill' | 'clutch' | 'hotkey'
 export type ClipUploadStatus = 'local' | 'uploading' | 'uploaded' | 'failed'
@@ -55,10 +56,32 @@ export type NewClip = Pick<ClipRecord,
 export class ClipStore {
   private clips: ClipRecord[] = []
   private filePath: string
+  private userId: number | null = null
 
   constructor() {
     const userDataPath = app.getPath('userData')
     this.filePath = path.join(userDataPath, 'clips.json')
+    this.clips = this._load()
+  }
+
+  getClipsMediaDir(): string {
+    if (this.userId != null) {
+      return path.join(userDataRoot(this.userId), 'clips')
+    }
+    return path.join(path.dirname(this.filePath), 'clips')
+  }
+
+  setUserScope(userId: number | null): void {
+    if (userId === this.userId) return
+    this.userId = userId
+    if (userId == null) {
+      this.clips = []
+      return
+    }
+    const root = userDataRoot(userId)
+    fs.mkdirSync(root, { recursive: true })
+    fs.mkdirSync(this.getClipsMediaDir(), { recursive: true })
+    this.filePath = path.join(root, 'clips.json')
     this.clips = this._load()
   }
 
@@ -74,6 +97,7 @@ export class ClipStore {
   }
 
   private _persist(): void {
+    if (this.userId == null) return
     fs.mkdirSync(path.dirname(this.filePath), { recursive: true })
     fs.writeFileSync(this.filePath, JSON.stringify(this.clips, null, 2))
   }
