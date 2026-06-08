@@ -316,7 +316,7 @@ export function getTierBadgeLabel(tier: string | null | undefined): string {
     case 'admin':   return 'Admin'
     case 'pro':     return 'Pro'
     case 'elite':   return 'Elite'
-    case 'premium': return 'Premium'
+    case 'premium': return 'Plus'
     default:        return tier ?? ''
   }
 }

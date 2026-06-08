@@ -44,7 +44,7 @@
                   <div class="min-w-0">
                     <div class="flex flex-wrap items-center gap-2">
                       <p class="truncate text-sm font-semibold text-white">{{ user.name }}</p>
-                      <span class="rounded-full px-2 py-0.5 text-[11px] font-semibold capitalize" :class="getTierBadgeClass(user.tier)">{{ user.tier || 'free' }}</span>
+                      <span class="rounded-full px-2 py-0.5 text-[11px] font-semibold" :class="getTierBadgeClass(user.tier)">{{ getTierBadgeLabel(user.tier) || 'Free' }}</span>
                     </div>
                     <p class="truncate text-xs text-gray-400">{{ user.email }}</p>
                     <p class="mt-1 text-xs" :class="user.riot_name ? 'text-red-300/80' : 'text-gray-500 italic'">{{ accountRiotId }}</p>
@@ -91,7 +91,7 @@
               </div>
               <div class="mt-2 flex items-center justify-between text-[11px] text-gray-500">
                 <span>Current plan</span>
-                <span class="rounded-full bg-white/[0.04] px-2 py-0.5 capitalize text-gray-300">{{ user.tier || 'free' }}</span>
+                <span class="rounded-full bg-white/[0.04] px-2 py-0.5 text-gray-300">{{ getTierBadgeLabel(user.tier) || 'Free' }}</span>
               </div>
             </div>
             <div v-if="usagePercent >= 80 && user.analyses_limit" class="rounded-2xl border border-purple-500/20 bg-purple-500/10 p-4">
@@ -660,7 +660,7 @@
 import { ref, reactive, computed, onMounted, onUnmounted, toRaw } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import type { AppSettings } from '../env.d.ts'
-import { getTierBadgeClass, formatGameMode } from '../lib/valorant'
+import { getTierBadgeClass, getTierBadgeLabel, formatGameMode } from '../lib/valorant'
 import CrosshairSettingsPanel from '../components/CrosshairSettingsPanel.vue'
 
 type UserWithUsage = {
