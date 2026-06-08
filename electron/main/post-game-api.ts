@@ -155,11 +155,14 @@ export async function requestPostGameDebrief(opts: PostGameDebriefOptions): Prom
           if ((res.statusCode ?? 0) >= 400) {
             const errMsg = json.message ?? json.error ?? `HTTP ${res.statusCode}`
             log.warn('[Debrief] API error:', res.statusCode, errMsg)
-            reportError({
-              message: `[Debrief] API error ${res.statusCode}: ${errMsg}`,
-              component: 'desktop:Debrief',
-              extra: { statusCode: res.statusCode },
-            })
+            // Weekly debrief cap (429) is tier gating — not a product error.
+            if (res.statusCode !== 429) {
+              reportError({
+                message: `[Debrief] API error ${res.statusCode}: ${errMsg}`,
+                component: 'desktop:Debrief',
+                extra: { statusCode: res.statusCode },
+              })
+            }
             sendToWindow('post-game:debrief', null)
           } else {
             log.info(`[Debrief] Generated for ${riotName}#${riotTag} cost=$${json.estimated_cost_usd ?? 0}`)
