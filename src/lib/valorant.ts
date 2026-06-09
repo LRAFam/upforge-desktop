@@ -83,19 +83,39 @@ export function getWeaponImage(weaponName: string | null | undefined): string {
   return uuid ? `https://media.valorant-api.com/weapons/${uuid}/displayicon.png` : ''
 }
 
+/** valorant-api.com ability slot path segment (lowercase). */
+export type AbilitySlotKey = 'grenade' | 'ability1' | 'ability2' | 'ultimate'
+
+/** Normalise Riot / valorant-api slot names to CDN path keys. */
+export function normalizeAbilitySlot(
+  slot: string | null | undefined,
+): AbilitySlotKey | null {
+  if (!slot) return null
+  const s = slot.toLowerCase().replace(/[^a-z0-9]/g, '')
+  if (s === 'grenade' || s === 'grenadeability') return 'grenade'
+  if (s === 'ability1') return 'ability1'
+  if (s === 'ability2') return 'ability2'
+  if (s === 'ultimate') return 'ultimate'
+  return null
+}
+
 /**
- * Returns a CDN URL for a specific agent ability icon.
- * Slots: Grenade=C, Ability1=Q, Ability2=E, Ultimate=X
+ * Returns a CDN URL for a specific agent ability icon (official valorant-api.com assets).
+ * Slots: grenade=C, ability1=Q, ability2=E, ultimate=X
  */
 export function getAbilityIcon(
   agentName: string | null | undefined,
-  slot: 'Grenade' | 'Ability1' | 'Ability2' | 'Ultimate'
+  slot: AbilitySlotKey | string | null | undefined,
 ): string {
-  if (!agentName) return ''
+  if (!agentName || !slot) return ''
+  const slotKey = typeof slot === 'string' && !slot.includes('/')
+    ? normalizeAbilitySlot(slot)
+    : (slot as AbilitySlotKey)
+  if (!slotKey) return ''
   const key = agentName.toLowerCase().replace(/[/\s]/g, '')
   const uuid = AGENT_CDN_UUIDS[key]
   if (!uuid) return ''
-  return `https://media.valorant-api.com/agents/${uuid}/abilities/${slot}/displayicon.png`
+  return `https://media.valorant-api.com/agents/${uuid}/abilities/${slotKey}/displayicon.png`
 }
 
 // ── Agent roles ───────────────────────────────────────────────────────────────

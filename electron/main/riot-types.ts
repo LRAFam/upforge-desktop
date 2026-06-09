@@ -20,8 +20,10 @@ export interface KillEvent extends GameEvent {
   timeSinceGameStartMillis?: number
   /** Offset from recording start in ms — use this to seek video to the kill */
   videoOffsetMs?: number
-  /** Weapon/damage type (e.g. "Weapon", "Ability", "Bomb") */
+  /** Weapon/damage type (e.g. "Vandal", "Ability", "Ultimate", "Spike") */
   weapon?: string
+  /** valorant-api ability slot when weapon is Ability/Ultimate (grenade, ability1, ability2, ultimate) */
+  abilitySlot?: 'grenade' | 'ability1' | 'ability2' | 'ultimate'
   /** Raw PUUIDs for backend resolution */
   killerPuuid?: string
   victimPuuid?: string

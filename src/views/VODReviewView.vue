@@ -961,12 +961,23 @@
               </div>
               <!-- ACS (combat score) -->
               <div class="text-xs tabular-nums text-right text-gray-400 font-mono">{{ p.score }}</div>
-              <!-- Ability casts (C/Q/E/X) -->
-              <div v-if="p.abilityCasts" class="text-[8px] tabular-nums text-right text-gray-600 font-mono space-x-0.5">
-                <span title="C slot">{{ p.abilityCasts.grenade }}C</span>
-                <span title="Q slot">{{ p.abilityCasts.ability1 }}Q</span>
-                <span title="E slot">{{ p.abilityCasts.ability2 }}E</span>
-                <span title="X (ult)">{{ p.abilityCasts.ultimate }}X</span>
+              <!-- Ability casts with official ability icons -->
+              <div v-if="p.abilityCasts && p.agent" class="flex items-center justify-end gap-1">
+                <div
+                  v-for="slot in abilityCastSlots"
+                  :key="slot.key"
+                  v-show="p.abilityCasts[slot.key] > 0"
+                  class="flex items-center gap-0.5"
+                  :title="`${slot.label}: ${p.abilityCasts[slot.key]}`"
+                >
+                  <img
+                    v-if="getAbilityIcon(p.agent, slot.slot)"
+                    :src="getAbilityIcon(p.agent, slot.slot)"
+                    class="w-3 h-3 object-contain opacity-80"
+                    alt=""
+                  />
+                  <span class="text-[8px] tabular-nums text-gray-600 font-mono">{{ p.abilityCasts[slot.key] }}</span>
+                </div>
               </div>
               <div v-else class="text-[8px] text-gray-700 text-right">—</div>
             </div>
@@ -1036,6 +1047,7 @@ interface KillEvent {
   victimName: string
   assistants?: string[]
   weapon?: string
+  abilitySlot?: 'grenade' | 'ability1' | 'ability2' | 'ultimate'
   videoOffsetMs?: number
   round?: number
   type?: 'kill' | 'death'
@@ -1257,13 +1269,21 @@ function getWeaponIcon(weapon: string): string | undefined {
   return getWeaponImage(weapon) || undefined
 }
 
+const abilityCastSlots = [
+  { key: 'grenade' as const, slot: 'grenade' as const, label: 'C ability' },
+  { key: 'ability1' as const, slot: 'ability1' as const, label: 'Q ability' },
+  { key: 'ability2' as const, slot: 'ability2' as const, label: 'E ability' },
+  { key: 'ultimate' as const, slot: 'ultimate' as const, label: 'Ultimate' },
+]
+
 /** Returns an ability icon URL for a kill event where weapon is Ability/Ultimate. */
 function getAbilityKillIcon(event: TimelineEvent): string {
   const killerAgent = agentByPuuid(event.killerPuuid)
   if (!killerAgent) return ''
-  if (event.weapon === 'Ultimate') return getAbilityIcon(killerAgent, 'Ultimate')
-  // Generic ability kill — show signature (E slot) as best guess
-  return getAbilityIcon(killerAgent, 'Ability2')
+  const slot =
+    event.abilitySlot
+    ?? (event.weapon === 'Ultimate' ? 'ultimate' : 'ability2')
+  return getAbilityIcon(killerAgent, slot)
 }
 
 /** Returns whether a timeline event is a spike-related event type. */

@@ -71,19 +71,61 @@ const WEAPON_UUID_TO_NAME: Record<string, string> = {
   '2f59173c-4bed-b6c3-2191-dea9b58be9c7': 'Melee',
 }
 
+export type AbilitySlotKey = 'grenade' | 'ability1' | 'ability2' | 'ultimate'
+
+/** Map Riot finishingDamage.damageItem to a valorant-api ability slot. */
+export function parseAbilitySlotFromDamageItem(
+  damageItem: string | null | undefined,
+): AbilitySlotKey | null {
+  if (!damageItem) return null
+  const item = damageItem.toLowerCase().replace(/[^a-z0-9]/g, '')
+  if (item === 'grenade' || item === 'grenadeability') return 'grenade'
+  if (item === 'ability1') return 'ability1'
+  if (item === 'ability2') return 'ability2'
+  if (item === 'ultimate') return 'ultimate'
+  return null
+}
+
+export interface FinishingDamageInfo {
+  weapon: string | null
+  abilitySlot: AbilitySlotKey | null
+}
+
+/** Resolve weapon label and ability slot from Riot match kill finishingDamage. */
+export function resolveFinishingDamage(
+  damageType: string | null | undefined,
+  damageItem: string | null | undefined,
+): FinishingDamageInfo {
+  if (!damageType) return { weapon: null, abilitySlot: null }
+  if (damageType === 'Weapon' && damageItem) {
+    return {
+      weapon: WEAPON_UUID_TO_NAME[damageItem.toLowerCase()] ?? null,
+      abilitySlot: null,
+    }
+  }
+  if (damageType === 'Bomb') return { weapon: 'Spike', abilitySlot: null }
+  if (damageType === 'Fall') return { weapon: 'Fall', abilitySlot: null }
+  if (damageType === 'Melee') return { weapon: 'Melee', abilitySlot: null }
+
+  const slot = parseAbilitySlotFromDamageItem(damageItem)
+  const isUltimate =
+    damageType === 'Ultimate' || damageItem?.toLowerCase() === 'ultimate'
+
+  if (damageType === 'Ability' || damageType === 'Ultimate' || isUltimate) {
+    return {
+      weapon: isUltimate ? 'Ultimate' : 'Ability',
+      abilitySlot: slot ?? (isUltimate ? 'ultimate' : 'ability2'),
+    }
+  }
+
+  return { weapon: null, abilitySlot: null }
+}
+
 export function resolveWeaponName(
   damageType: string | null | undefined,
   damageItem: string | null | undefined,
 ): string | null {
-  if (!damageType) return null
-  if (damageType === 'Weapon' && damageItem) {
-    return WEAPON_UUID_TO_NAME[damageItem.toLowerCase()] ?? null
-  }
-  if (damageType === 'Bomb') return 'Spike'
-  if (damageType === 'Ability') return 'Ability'
-  if (damageType === 'Ultimate') return 'Ultimate'
-  if (damageType === 'Fall') return 'Fall'
-  return null
+  return resolveFinishingDamage(damageType, damageItem).weapon
 }
 
 /**

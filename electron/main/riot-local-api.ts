@@ -5,6 +5,7 @@ import path from 'path'
 import {
   resolveAgentName,
   resolveWeaponName,
+  resolveFinishingDamage,
   resolveMapName,
   resolveTierName,
   resolveEconomyWeapon,
@@ -13,6 +14,7 @@ import {
 export {
   resolveAgentName,
   resolveWeaponName,
+  resolveFinishingDamage,
   resolveMapName,
   resolveTierName,
   resolveEconomyWeapon,
@@ -982,6 +984,10 @@ export class RiotLocalApi {
         const videoOffsetMs = Math.max(0, recordingOffset + tsgm)
         const killerPuuid = k.killer as string
         const victimPuuid = k.victim as string
+        const finishing = resolveFinishingDamage(
+          (k.finishingDamage as Record<string, unknown>)?.damageType as string | undefined,
+          (k.finishingDamage as Record<string, unknown>)?.damageItem as string | undefined,
+        )
         const ev: KillEvent = {
           EventID: eventId++,
           EventName: 'ChampionKill',
@@ -991,10 +997,8 @@ export class RiotLocalApi {
           assistants: (k.assistants as string[]) ?? [],
           timeSinceGameStartMillis: tsgm,
           videoOffsetMs,
-          weapon: resolveWeaponName(
-            (k.finishingDamage as Record<string, unknown>)?.damageType as string | undefined,
-            (k.finishingDamage as Record<string, unknown>)?.damageItem as string | undefined,
-          ) ?? undefined,
+          weapon: finishing.weapon ?? undefined,
+          abilitySlot: finishing.abilitySlot ?? undefined,
           killerPuuid,
           victimPuuid,
           round: (k.round as number) ?? 0,
