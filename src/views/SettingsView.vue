@@ -1,6 +1,22 @@
 <template>
-  <div class="flex h-full flex-col overflow-hidden bg-[#1a1a1a] text-white">
-    <nav class="flex flex-shrink-0 gap-1 border-b border-white/[0.09] bg-[#161616] px-3 pt-3 pb-2.5">
+  <div class="flex h-full flex-col overflow-hidden text-white">
+    <div class="flex-shrink-0 px-4 pt-4 pb-2 border-b border-white/[0.08]">
+      <div class="panel-elevated relative overflow-hidden px-4 py-3.5">
+        <div class="absolute -right-8 top-0 h-24 w-24 rounded-full bg-orange-500/10 blur-3xl pointer-events-none" />
+        <div class="relative flex items-center justify-between gap-3">
+          <div class="min-w-0">
+            <p class="text-[10px] font-black uppercase tracking-[0.28em] text-red-400/80">Desktop App</p>
+            <h1 class="text-lg font-black tracking-tight text-white">Settings</h1>
+            <p class="text-[11px] text-gray-500 mt-0.5">Account, recording, hotkeys, and preferences</p>
+          </div>
+          <div v-if="user" class="hidden sm:block rounded-xl border border-white/[0.08] bg-white/[0.03] px-3 py-2 text-right">
+            <p class="text-[10px] font-semibold text-gray-300 truncate max-w-[140px]">{{ user.name }}</p>
+            <span class="inline-block mt-1 rounded-full px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider" :class="getTierBadgeClass(user.tier)">{{ getTierBadgeLabel(user.tier) }}</span>
+          </div>
+        </div>
+      </div>
+    </div>
+    <nav class="flex flex-shrink-0 gap-1 overflow-x-auto scrollbar-hide border-b border-white/[0.09] bg-[#161616]/80 px-4 py-2.5">
       <button
         v-for="tab in SETTINGS_TABS"
         :key="tab.id"
@@ -17,9 +33,9 @@
       </button>
     </nav>
 
-    <div class="flex-1 space-y-4 overflow-y-auto px-3 py-3">
+    <div class="flex-1 space-y-4 scroll-col px-4 py-4">
       <section v-show="activeTab === 'general'" class="space-y-4">
-        <div class="overflow-hidden rounded-2xl border border-white/[0.10] bg-white/[0.02]">
+        <div class="panel-elevated overflow-hidden">
           <button class="flex w-full items-center justify-between px-4 py-3 text-left" @click="toggleSection('account')">
             <div class="flex items-center gap-3">
               <div class="flex h-9 w-9 items-center justify-center rounded-xl bg-red-500/10 text-red-400">
@@ -63,7 +79,7 @@
           </div>
         </div>
 
-        <div v-if="user && user.analyses_used !== undefined" class="overflow-hidden rounded-2xl border border-white/[0.10] bg-white/[0.02]">
+        <div v-if="user && user.analyses_used !== undefined" class="panel-elevated overflow-hidden">
           <button class="flex w-full items-center justify-between px-4 py-3 text-left" @click="toggleSection('usage')">
             <div class="flex items-center gap-3">
               <div class="flex h-9 w-9 items-center justify-center rounded-xl bg-orange-500/10 text-orange-400">
@@ -104,7 +120,7 @@
           </div>
         </div>
 
-        <div class="overflow-hidden rounded-2xl border border-white/[0.10] bg-white/[0.02]">
+        <div class="panel-elevated overflow-hidden">
           <button class="flex w-full items-center justify-between px-4 py-3 text-left" @click="toggleSection('behavior')">
             <div class="flex items-center gap-3">
               <div class="flex h-9 w-9 items-center justify-center rounded-xl bg-white/[0.05] text-gray-300">
@@ -140,7 +156,7 @@
       </section>
 
       <section v-show="activeTab === 'recording'" class="space-y-4">
-        <div class="overflow-hidden rounded-2xl border border-white/[0.10] bg-white/[0.02]">
+        <div class="panel-elevated overflow-hidden">
           <button class="flex w-full items-center justify-between px-4 py-3 text-left" @click="toggleSection('recordingCapture')">
             <div class="flex items-center gap-3">
               <div class="flex h-9 w-9 items-center justify-center rounded-xl bg-red-500/10 text-red-400">
@@ -304,7 +320,7 @@
       </section>
 
       <section v-show="activeTab === 'trainer'" class="space-y-4">
-        <div class="overflow-hidden rounded-2xl border border-white/[0.10] bg-white/[0.02]">
+        <div class="panel-elevated overflow-hidden">
           <button class="flex w-full items-center justify-between px-4 py-3 text-left" @click="toggleSection('mouseTrainer')">
             <div class="flex items-center gap-3">
               <div class="flex h-9 w-9 items-center justify-center rounded-xl bg-red-500/10 text-red-400">
@@ -425,7 +441,7 @@
           </div>
         </div>
 
-        <div class="overflow-hidden rounded-2xl border border-white/[0.10] bg-white/[0.02]">
+        <div class="panel-elevated overflow-hidden">
           <button class="flex w-full items-center justify-between px-4 py-3 text-left" @click="toggleSection('crosshair')">
             <div class="flex items-center gap-3">
               <div class="flex h-9 w-9 items-center justify-center rounded-xl bg-white/[0.05] text-gray-300">
@@ -449,7 +465,7 @@
           </div>
         </div>
 
-        <div class="overflow-hidden rounded-2xl border border-white/[0.10] bg-white/[0.02]">
+        <div class="panel-elevated overflow-hidden">
           <button class="flex w-full items-center justify-between px-4 py-3 text-left" @click="toggleSection('shortcuts')">
             <div class="flex items-center gap-3">
               <div class="flex h-9 w-9 items-center justify-center rounded-xl bg-red-500/10 text-red-400">
@@ -581,7 +597,7 @@
       </section>
 
       <section v-show="activeTab === 'system'" class="space-y-4">
-        <div class="overflow-hidden rounded-2xl border border-white/[0.10] bg-white/[0.02]">
+        <div class="panel-elevated overflow-hidden">
           <button class="flex w-full items-center justify-between px-4 py-3 text-left" @click="toggleSection('system')">
             <div class="flex items-center gap-3">
               <div class="flex h-9 w-9 items-center justify-center rounded-xl bg-white/[0.05] text-gray-300">

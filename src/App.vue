@@ -68,7 +68,7 @@
     <!-- Update banner (download progress + ready to install) -->
     <Transition name="update-banner">
       <div
-        v-if="appUpdatePhase === 'downloading' || appUpdatePhase === 'ready'"
+        v-if="appUpdatePhase === 'available' || appUpdatePhase === 'downloading' || appUpdatePhase === 'ready'"
         :class="[
           'flex items-center justify-between px-3 py-1.5 flex-shrink-0 text-xs',
           appUpdatePhase === 'ready'
@@ -81,6 +81,10 @@
             v-if="appUpdatePhase === 'downloading'"
             class="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse flex-shrink-0"
           />
+          <div
+            v-else-if="appUpdatePhase === 'available'"
+            class="w-1.5 h-1.5 rounded-full bg-blue-400 animate-pulse flex-shrink-0"
+          />
           <svg
             v-else
             class="w-3 h-3 text-red-400 flex-shrink-0"
@@ -92,6 +96,9 @@
             v-if="appUpdatePhase === 'downloading'"
             class="text-gray-400 truncate"
           >Downloading update{{ appUpdateVersion ? ` v${appUpdateVersion}` : '' }}… {{ appUpdatePercent > 0 ? `${Math.round(appUpdatePercent)}%` : '' }}</span>
+          <span v-else-if="appUpdatePhase === 'available'" class="text-gray-400 truncate">
+            Update{{ appUpdateVersion ? ` v${appUpdateVersion}` : '' }} available — downloading in background
+          </span>
           <span v-else class="text-gray-300 truncate">
             UpForge{{ appUpdateVersion ? ` v${appUpdateVersion}` : '' }} is ready to install
           </span>
@@ -143,24 +150,23 @@
     <!-- Navigation (hidden on post-game / login) -->
     <nav
       v-if="showNav"
-      class="relative flex flex-col gap-1 px-3 pt-2 pb-2 flex-shrink-0 border-b border-white/[0.09] bg-[#161616]/85"
+      class="relative flex items-center gap-2 px-3 py-1.5 flex-shrink-0 border-b border-white/[0.09] bg-[#161616]/90 backdrop-blur-md"
     >
-      <!-- Subtle brand glow along nav bottom -->
-      <div class="pointer-events-none absolute inset-x-0 bottom-0 h-[1px] bg-gradient-to-r from-transparent via-red-500/40 to-transparent" />
-      <div class="flex items-center gap-0.5">
+      <div class="pointer-events-none absolute inset-x-0 bottom-0 h-px bg-gradient-to-r from-transparent via-red-500/40 to-transparent" />
+      <div class="flex min-w-0 flex-1 items-center gap-0.5 overflow-x-auto scrollbar-hide">
         <RouterLink
-          v-for="link in primaryNavLinks"
+          v-for="link in navLinks"
           :key="link.to"
           :to="link.to"
-          class="relative flex items-center gap-1.5 px-2.5 py-2 text-[11px] font-semibold transition-all duration-150 rounded-t-lg group"
+          class="relative flex flex-shrink-0 items-center gap-1.5 rounded-lg px-2.5 py-2 text-[11px] font-semibold transition-all duration-150"
           :class="
             $route.path === link.to
-              ? 'text-white bg-red-500/[0.07] after:absolute after:bottom-0 after:left-1.5 after:right-1.5 after:h-[2px] after:rounded-full after:bg-gradient-to-r after:from-red-500 after:to-orange-400 after:shadow-[0_0_10px_rgba(255,70,85,0.7)]'
-              : 'text-gray-500 hover:text-gray-300 hover:bg-white/[0.03]'
+              ? 'text-white bg-red-500/[0.10] shadow-[inset_0_0_0_1px_rgba(255,70,85,0.22)]'
+              : 'text-gray-500 hover:text-gray-300 hover:bg-white/[0.04]'
           "
         >
           <component :is="'svg'" class="w-3.5 h-3.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" v-html="link.iconPath" />
-          <span class="inline-flex items-center gap-1.5">
+          <span class="inline-flex items-center gap-1.5 whitespace-nowrap">
             <span>{{ link.label }}</span>
             <span v-if="link.to === '/clips' && clipCountAvailable && clipCount > 0" class="inline-flex min-w-[18px] items-center justify-center rounded-full border border-red-500/20 bg-red-500/15 px-1.5 py-0.5 text-[9px] font-bold text-red-300">{{ clipCount }}</span>
             <span v-else-if="link.to === '/clips' && hasClipIndicator" class="h-1.5 w-1.5 rounded-full bg-red-400 shadow-[0_0_10px_rgba(248,113,113,0.8)]" />
@@ -168,53 +174,38 @@
         </RouterLink>
       </div>
 
-      <div class="my-2 border-t border-white/[0.09]" />
-
-      <div class="flex items-center gap-0.5">
+      <div class="flex flex-shrink-0 items-center gap-2 border-l border-white/[0.10] pl-2">
         <RouterLink
-          v-for="link in secondaryNavLinks"
-          :key="link.to"
-          :to="link.to"
-          class="relative flex items-center gap-1.5 px-2.5 py-2 text-[11px] font-semibold transition-all duration-150 rounded-t-lg group"
+          v-if="devNavLink"
+          :to="devNavLink.to"
+          class="rounded-lg px-2.5 py-2 text-[11px] font-medium transition-all duration-150"
           :class="
-            $route.path === link.to
-              ? 'text-white bg-red-500/[0.07] after:absolute after:bottom-0 after:left-1.5 after:right-1.5 after:h-[2px] after:rounded-full after:bg-gradient-to-r after:from-red-500 after:to-orange-400 after:shadow-[0_0_10px_rgba(255,70,85,0.7)]'
-              : 'text-gray-500 hover:text-gray-300 hover:bg-white/[0.03]'
+            $route.path === devNavLink.to
+              ? 'text-amber-300 bg-amber-500/10'
+              : 'text-amber-600 hover:text-amber-400 hover:bg-white/[0.03]'
           "
         >
-          <component :is="'svg'" class="w-3.5 h-3.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" v-html="link.iconPath" />
-          {{ link.label }}
+          {{ devNavLink.label }}
         </RouterLink>
-
-        <div class="ml-auto flex items-center gap-2 pl-3 border-l border-white/[0.10]">
-          <RouterLink
-            v-if="devNavLink"
-            :to="devNavLink.to"
-            class="px-2.5 py-2 text-[11px] font-medium transition-all duration-150 rounded-t-lg"
-            :class="
-              $route.path === devNavLink.to
-                ? 'text-amber-400 relative after:absolute after:bottom-0 after:left-1.5 after:right-1.5 after:h-px after:bg-amber-500'
-                : 'text-amber-600 hover:text-amber-400 hover:bg-white/[0.03]'
-            "
-          >
-            {{ devNavLink.label }}
-          </RouterLink>
-          <div class="flex items-center gap-2 rounded-full border border-white/[0.08] bg-white/[0.03] px-2 py-1.5">
-            <div class="flex h-7 w-7 items-center justify-center overflow-hidden rounded-full ring-1 ring-red-500/20">
-              <img v-if="userAvatarUrl" :src="userAvatarUrl" :alt="userDisplayName" class="h-full w-full object-cover" @error="userAvatarUrl = ''" />
-              <div v-else class="flex h-full w-full items-center justify-center bg-gradient-to-br from-red-500/25 to-orange-500/20 text-[10px] font-bold text-red-300">{{ userInitial }}</div>
-            </div>
-            <div class="flex flex-col leading-none">
-              <span class="text-[10px] font-semibold text-gray-300 truncate max-w-[120px]">{{ userDisplayName }}</span>
-              <span class="text-[9px] text-gray-600">Desktop</span>
-            </div>
+        <RouterLink
+          to="/settings"
+          class="flex items-center gap-2 rounded-full border border-white/[0.08] bg-white/[0.03] px-2 py-1.5 transition-colors hover:border-white/[0.14] hover:bg-white/[0.05]"
+          title="Account settings"
+        >
+          <div class="flex h-7 w-7 items-center justify-center overflow-hidden rounded-full ring-1 ring-red-500/20">
+            <img v-if="userAvatarUrl" :src="userAvatarUrl" :alt="userDisplayName" class="h-full w-full object-cover" @error="userAvatarUrl = ''" />
+            <div v-else class="flex h-full w-full items-center justify-center bg-gradient-to-br from-red-500/25 to-orange-500/20 text-[10px] font-bold text-red-300">{{ userInitial }}</div>
           </div>
-        </div>
+          <div class="hidden sm:flex flex-col leading-none">
+            <span class="text-[10px] font-semibold text-gray-300 truncate max-w-[120px]">{{ userDisplayName }}</span>
+            <span class="text-[9px] text-gray-600">Settings</span>
+          </div>
+        </RouterLink>
       </div>
     </nav>
 
     <!-- Content — key forces remount when the signed-in account changes -->
-    <main class="flex-1 overflow-y-auto mt-1">
+    <main class="main-content flex-1 overflow-y-auto">
       <RouterView :key="sessionUserKey" />
     </main>
 
@@ -304,6 +295,7 @@ const navLinks = [
   { to: '/clips', label: 'Clips', iconPath: '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.069A1 1 0 0121 8.882v6.236a1 1 0 01-1.447.894L15 14M3 8a2 2 0 012-2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V8z"/>' },
   { to: '/squad', label: 'Squad', iconPath: '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"/>' },
   { to: '/stats', label: 'Stats', iconPath: '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>' },
+  { to: '/history', label: 'History', iconPath: '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>' },
   { to: '/performance', label: 'Performance', iconPath: '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"/>' },
   { to: '/settings', label: 'Settings', iconPath: '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>' },
 ]
@@ -311,8 +303,6 @@ const navLinks = [
 const devNavLink = computed(() =>
   (isAdmin.value || devModeEnabled.value) ? { to: '/dev', label: 'Developer' } : null
 )
-const primaryNavLinks = navLinks.filter(link => !['/performance', '/settings'].includes(link.to))
-const secondaryNavLinks = navLinks.filter(link => ['/performance', '/settings'].includes(link.to))
 
 const appUpdatePhase = ref<string>('idle')
 const appUpdateVersion = ref<string | undefined>(undefined)
@@ -424,7 +414,7 @@ onMounted(async () => {
   try {
     const settings = await window.api.settings.get()
     devModeEnabled.value = settings.devModeEnabled ?? false
-    if (!settings.onboardingComplete) {
+    if (!settings.onboardingComplete && settings.firstRun === false) {
       showOnboarding.value = true
     } else {
       onboardingWasComplete.value = true
@@ -511,6 +501,7 @@ onMounted(async () => {
 
   const authExpiredCleanup = window.api.on('auth:session-expired', () => {
     void applySessionUser(null)
+    router.push('/login').catch(() => {})
   })
   ;(window as Window & { _authExpiredCleanup?: () => void })._authExpiredCleanup = authExpiredCleanup
 
@@ -599,7 +590,7 @@ function handleOnboardingComplete() {
   window.api.obs.getStatus()
     .then((obs) => { obsConnected.value = obs.connected })
     .catch(() => {})
-  router.push('/training').catch(() => {})
+  router.push('/dashboard').catch(() => {})
 }
 </script>
 

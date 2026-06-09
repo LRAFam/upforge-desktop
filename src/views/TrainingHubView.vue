@@ -1332,19 +1332,29 @@ const CATEGORY_ICON: Record<string, string> = {
       </div>
     </Transition>
 
-    <!-- Top bar -->
-    <div class="flex items-center justify-between px-3 pt-3 pb-0 flex-shrink-0">
-      <h2 class="text-xs font-semibold text-white">Training Hub</h2>
-      <!-- Streak badge when > 0 -->
-      <div v-if="trainingStats.streak > 0" class="flex items-center gap-1.5">
-        <svg viewBox="0 0 24 24" fill="currentColor" class="w-3.5 h-3.5 text-orange-400"><path d="M12 2S6.5 9 6.5 13.5a5.5 5.5 0 0 0 11 0C17.5 9 12 2 12 2zm0 14.5a3 3 0 0 1-3-3c0-2.5 3-6 3-6s3 3.5 3 6a3 3 0 0 1-3 3z"/></svg>
-        <span class="text-[11px] font-black text-orange-400">{{ trainingStats.streak }}</span>
-        <span class="text-[9px] text-gray-600">{{ trainingStats.streak === 1 ? 'day' : 'days' }} streak</span>
+    <!-- Header -->
+    <div class="flex-shrink-0 px-4 pt-4 pb-2">
+      <div class="panel-elevated relative overflow-hidden px-4 py-3.5">
+        <div class="absolute -right-10 top-0 h-28 w-28 rounded-full bg-red-500/10 blur-3xl pointer-events-none" />
+        <div class="relative flex items-start justify-between gap-3">
+          <div class="min-w-0">
+            <p class="text-[10px] font-black uppercase tracking-[0.28em] text-red-400/80">Aim Lab</p>
+            <h1 class="text-lg font-black tracking-tight text-white">Training Hub</h1>
+            <p class="text-[11px] text-gray-500 mt-0.5">Drills, progress tracking, and coaching assignments</p>
+          </div>
+          <div v-if="trainingStats.streak > 0" class="flex items-center gap-2 rounded-xl border border-orange-500/20 bg-orange-500/10 px-3 py-2">
+            <svg viewBox="0 0 24 24" fill="currentColor" class="w-4 h-4 text-orange-400"><path d="M12 2S6.5 9 6.5 13.5a5.5 5.5 0 0 0 11 0C17.5 9 12 2 12 2zm0 14.5a3 3 0 0 1-3-3c0-2.5 3-6 3-6s3 3.5 3 6a3 3 0 0 1-3 3z"/></svg>
+            <div class="text-right leading-none">
+              <p class="text-base font-black tabular-nums text-orange-300">{{ trainingStats.streak }}</p>
+              <p class="text-[9px] font-semibold uppercase tracking-[0.18em] text-orange-400/70 mt-0.5">Day streak</p>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
 
     <!-- Tab nav -->
-    <div class="flex px-3 pt-3 pb-0 gap-1 flex-shrink-0">
+    <div class="flex px-4 pt-2 pb-0 gap-1 flex-shrink-0 overflow-x-auto scrollbar-hide">
       <button
         v-for="tab in (['drills', 'progress', 'coaching'] as const)"
         :key="tab"
@@ -1371,7 +1381,7 @@ const CATEGORY_ICON: Record<string, string> = {
     </div>
 
     <!-- Stats strip (streak / this week / improvement) — always visible -->
-    <div class="flex mx-3 mt-3 rounded-xl border border-white/[0.10] bg-white/[0.02] overflow-hidden flex-shrink-0">
+    <div class="panel-elevated flex mx-4 mt-3 overflow-hidden flex-shrink-0">
       <div class="flex-1 flex flex-col items-center py-2.5 gap-0.5">
         <span class="text-sm font-black tabular-nums" :class="trainingStats.streak > 0 ? 'text-orange-400' : 'text-gray-700'">
           {{ trainingStats.streak > 0 ? trainingStats.streak : '—' }}
@@ -1400,10 +1410,10 @@ const CATEGORY_ICON: Record<string, string> = {
     </div>
 
     <!-- Divider -->
-    <div class="mx-3 mt-3 h-px bg-white/[0.06] flex-shrink-0" />
+    <div class="mx-4 mt-3 h-px bg-gradient-to-r from-transparent via-white/[0.08] to-transparent flex-shrink-0" />
 
     <!-- Scrollable content -->
-    <div class="flex-1 overflow-y-auto" style="scrollbar-width: none">
+    <div class="flex-1 scroll-col">
 
       <!-- ── DRILLS TAB ──────────────────────────────────────────────── -->
       <template v-if="activeTab === 'drills'">

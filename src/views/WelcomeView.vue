@@ -602,7 +602,7 @@ async function choosePath() {
 }
 
 async function finishOnboarding() {
-  await window.api.settings.save({ firstRun: false })
+  await window.api.settings.save({ firstRun: false, onboardingComplete: true })
   router.push('/dashboard')
 }
 

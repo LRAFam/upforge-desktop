@@ -1,20 +1,30 @@
 <template>
   <div class="h-full text-white flex flex-col overflow-hidden bg-[#111111]">
 
-    <!-- Header bar -->
-    <div class="flex items-center gap-3 px-4 py-2.5 border-b border-white/[0.10] flex-shrink-0 bg-[#161616]">
-      <button
-        class="flex items-center gap-1.5 text-gray-500 hover:text-gray-300 transition-colors text-xs"
-        @click="$router.back()"
-      >
-        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/>
-        </svg>
-        Back
-      </button>
-      <div class="w-px h-4 bg-white/[0.08]" />
-      <h1 class="text-sm font-black text-white tracking-tight">Coaching History</h1>
-      <span class="ml-auto text-xs text-gray-600">{{ filteredAnalyses.length }} sessions</span>
+    <!-- Header -->
+    <div class="flex-shrink-0 px-4 pt-4 pb-3 border-b border-white/[0.08]">
+      <div class="panel-elevated relative overflow-hidden px-4 py-3.5">
+        <div class="absolute -right-8 top-0 h-24 w-24 rounded-full bg-red-500/10 blur-3xl pointer-events-none" />
+        <div class="relative flex items-center gap-3">
+          <button
+            class="flex items-center gap-1.5 rounded-lg border border-white/[0.08] bg-white/[0.03] px-2.5 py-1.5 text-gray-500 hover:text-gray-300 hover:bg-white/[0.06] transition-colors text-xs"
+            @click="$router.back()"
+          >
+            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/>
+            </svg>
+            Back
+          </button>
+          <div class="min-w-0 flex-1">
+            <p class="text-[10px] font-black uppercase tracking-[0.28em] text-red-400/80">Session Archive</p>
+            <h1 class="text-lg font-black tracking-tight text-white">Coaching History</h1>
+          </div>
+          <div class="rounded-xl border border-white/[0.08] bg-white/[0.03] px-3 py-2 text-right">
+            <p class="text-lg font-black tabular-nums text-white leading-none">{{ filteredAnalyses.length }}</p>
+            <p class="text-[9px] font-semibold uppercase tracking-[0.2em] text-gray-600 mt-0.5">Sessions</p>
+          </div>
+        </div>
+      </div>
     </div>
 
     <!-- Score trend chart -->

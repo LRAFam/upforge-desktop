@@ -338,8 +338,15 @@ export function getTierBadgeLabel(tier: string | null | undefined): string {
     case 'pro':     return 'Pro'
     case 'elite':   return 'Elite'
     case 'premium': return 'Plus'
-    default:        return tier ?? ''
+    case 'free':    return 'Free'
+    case 'founder': return 'Founder'
+    default:        return tier ? tier.charAt(0).toUpperCase() + tier.slice(1) : 'Free'
   }
+}
+
+/** User-facing tier for badges — never upgrades free users to a paid label. */
+export function getDisplayTier(tier: string | null | undefined): string {
+  return (tier ?? 'free').toLowerCase()
 }
 
 // ── Mode label ────────────────────────────────────────────────────────────────

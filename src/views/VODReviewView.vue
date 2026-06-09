@@ -1,31 +1,35 @@
 <template>
   <div class="flex flex-col h-full bg-[#111111] text-white overflow-hidden">
 
-    <!-- Header bar -->
-    <div class="flex items-center gap-3 px-4 py-2.5 border-b border-white/[0.10] flex-shrink-0 bg-[#161616]">
-      <button
-        class="flex items-center gap-1.5 text-gray-500 hover:text-gray-300 transition-colors text-xs"
-        @click="$router.back()"
-      >
-        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/>
-        </svg>
-        Back
-      </button>
-      <div class="w-px h-4 bg-white/[0.08]" />
-      <div class="flex items-center gap-2 flex-1 min-w-0">
-        <img v-if="agentImageUrl" :src="agentImageUrl" class="w-7 h-7 object-contain rounded" />
-        <span class="text-xs font-semibold text-gray-200 truncate">
-          {{ timeline?.agent || 'VOD Review' }}<span v-if="timeline?.map" class="text-gray-500 font-normal"> · {{ timeline.map }}</span>
-        </span>
-        <span
-          v-if="timeline?.gameMode"
-          class="flex-shrink-0 text-xs font-semibold px-1.5 py-px rounded bg-white/[0.06] text-gray-400 uppercase tracking-wide"
-        >{{ timeline.gameMode }}</span>
-      </div>
+    <!-- Header -->
+    <div class="flex-shrink-0 px-4 pt-3 pb-2 border-b border-white/[0.08] bg-[#111111]">
+      <div class="panel-elevated relative flex items-center gap-3 px-3 py-2.5 overflow-hidden">
+        <div class="absolute -right-6 top-0 h-20 w-20 rounded-full bg-red-500/10 blur-3xl pointer-events-none" />
+        <button
+          class="relative flex items-center gap-1.5 rounded-lg border border-white/[0.08] bg-white/[0.03] px-2.5 py-1.5 text-gray-500 hover:text-gray-300 hover:bg-white/[0.06] transition-colors text-xs flex-shrink-0"
+          @click="$router.back()"
+        >
+          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/>
+          </svg>
+          Back
+        </button>
+        <div class="relative flex items-center gap-2 flex-1 min-w-0">
+          <img v-if="agentImageUrl" :src="agentImageUrl" class="w-8 h-8 object-contain rounded-lg border border-white/[0.08] bg-white/[0.03] p-0.5" />
+          <div class="min-w-0">
+            <p class="text-[10px] font-black uppercase tracking-[0.22em] text-red-400/70">VOD Review</p>
+            <p class="text-sm font-bold text-white truncate leading-tight">
+              {{ timeline?.agent || 'Match replay' }}<span v-if="timeline?.map" class="text-gray-500 font-medium"> · {{ timeline.map }}</span>
+            </p>
+          </div>
+          <span
+            v-if="timeline?.gameMode"
+            class="flex-shrink-0 text-[10px] font-bold px-2 py-0.5 rounded-full border border-white/[0.08] bg-white/[0.04] text-gray-400 uppercase tracking-wide"
+          >{{ timeline.gameMode }}</span>
+        </div>
 
       <!-- KDA summary -->
-      <div v-if="timeline?.finalStats" class="flex items-center gap-2 flex-shrink-0">
+      <div v-if="timeline?.finalStats" class="relative flex items-center gap-2 flex-shrink-0">
         <div class="flex items-center gap-1.5 text-xs">
           <span class="font-bold text-green-400">{{ timeline.finalStats.kills }}</span>
           <span class="text-gray-600">/</span>
@@ -87,15 +91,48 @@
         </svg>
         {{ showInsightsPanel ? 'Hide Notes' : 'Notes' }}
       </button>
+      <button
+        type="button"
+        class="flex h-8 w-8 items-center justify-center rounded-xl border border-white/[0.08] bg-white/[0.04] text-xs font-bold text-gray-400 transition-colors hover:border-white/[0.14] hover:bg-white/[0.08] hover:text-white"
+        title="Keyboard shortcuts (?)"
+        @click="showShortcuts = true"
+      >?</button>
+      </div>
+    </div>
+
+    <!-- Loading -->
+    <div v-if="timelineLoading" class="flex flex-1 flex-col items-center justify-center gap-3">
+      <svg class="w-8 h-8 text-red-400 animate-spin" fill="none" viewBox="0 0 24 24">
+        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+      </svg>
+      <p class="text-sm text-gray-400">Loading match timeline…</p>
+    </div>
+
+    <!-- Error -->
+    <div v-else-if="timelineError" class="flex flex-1 flex-col items-center justify-center gap-4 px-6 text-center">
+      <div class="w-12 h-12 rounded-xl bg-red-500/10 border border-red-500/20 flex items-center justify-center">
+        <svg class="w-6 h-6 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 9v2m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+        </svg>
+      </div>
+      <div>
+        <p class="text-sm font-semibold text-gray-200">Could not load VOD</p>
+        <p class="text-xs text-gray-500 mt-1 max-w-sm">{{ timelineError }}</p>
+      </div>
+      <div class="flex items-center gap-2">
+        <button class="px-3 py-1.5 text-xs font-medium text-gray-300 bg-white/[0.06] hover:bg-white/[0.1] border border-white/[0.08] rounded-lg transition-colors" @click="$router.back()">Go back</button>
+        <button class="px-3 py-1.5 text-xs font-medium text-white bg-red-500 hover:bg-red-600 rounded-lg transition-colors" @click="loadTimeline">Retry</button>
+      </div>
     </div>
 
     <!-- Main content -->
-    <div class="flex flex-1 min-h-0">
+    <div v-else class="flex flex-1 min-h-0">
 
       <!-- Left sidebar: event feed -->
       <div
         v-if="!theaterMode"
-        class="w-52 flex-shrink-0 border-r border-white/[0.09] flex flex-col overflow-hidden bg-[#1a1a1a]"
+        class="w-52 flex-shrink-0 border-r border-white/[0.09] flex flex-col overflow-hidden bg-[#141414]"
       >
         <div class="px-3 py-2.5 border-b border-white/[0.09]">
           <p class="text-[11px] font-semibold text-gray-500 uppercase tracking-widest">Timeline</p>
@@ -1020,6 +1057,30 @@
         </div>
       </div>
     </div>
+
+    <!-- Keyboard shortcuts overlay -->
+    <Transition name="event-pop">
+      <div
+        v-if="showShortcuts"
+        class="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm px-4"
+        @click.self="showShortcuts = false"
+      >
+        <div class="w-full max-w-md rounded-2xl border border-white/[0.12] bg-[#1a1a1a] shadow-2xl overflow-hidden">
+          <div class="flex items-center justify-between px-4 py-3 border-b border-white/[0.08]">
+            <p class="text-sm font-semibold text-white">Keyboard shortcuts</p>
+            <button class="text-gray-500 hover:text-gray-300 transition-colors" @click="showShortcuts = false">
+              <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd"/></svg>
+            </button>
+          </div>
+          <div class="px-4 py-3 grid grid-cols-2 gap-x-4 gap-y-2 text-xs">
+            <div v-for="s in shortcutLegend" :key="s.key" class="flex items-center justify-between gap-2 py-1">
+              <kbd class="font-mono text-[10px] text-gray-300 bg-white/[0.06] border border-white/[0.10] rounded px-1.5 py-0.5">{{ s.key }}</kbd>
+              <span class="text-gray-500 text-right">{{ s.label }}</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </Transition>
   </div>
 </template>
 
@@ -1157,6 +1218,23 @@ const videoFrameSize = ref({ width: 0, height: 0 })
 let videoAreaObserver: ResizeObserver | null = null
 
 const timeline = ref<RecordingTimeline | null>(null)
+const timelineLoading = ref(true)
+const timelineError = ref<string | null>(null)
+const showShortcuts = ref(false)
+
+const shortcutLegend = [
+  { key: 'Space', label: 'Play / pause' },
+  { key: '← / →', label: 'Skip 5s (Shift: 1s)' },
+  { key: 'J / L', label: 'Prev / next event' },
+  { key: '[ / ]', label: 'Slower / faster' },
+  { key: 'T', label: 'Theater mode' },
+  { key: 'F', label: 'Fullscreen' },
+  { key: 'M', label: 'Toggle map' },
+  { key: 'S', label: 'Scoreboard' },
+  { key: 'R', label: 'Round detail' },
+  { key: 'Esc', label: 'Back / exit' },
+  { key: '?', label: 'This help' },
+]
 const isPlaying = ref(false)
 const currentTime = ref(0)
 const duration = ref(0)
@@ -1980,6 +2058,78 @@ function onScrubberHover(e: MouseEvent) {
   hoverTime.value = Math.max(0, Math.min(duration.value, ((e.clientX - rect.left) / rect.width) * duration.value))
 }
 
+function applyTimelineDerivedState() {
+  if (!timeline.value) return
+  const ownKill = timeline.value.kills?.find((k: KillEvent) => k.killerName === 'You')
+  if (ownKill?.killerPuuid) {
+    ownPuuid.value = ownKill.killerPuuid
+  } else {
+    const ownDeath = timeline.value.deaths?.find((d: KillEvent) => d.victimName === 'You')
+    if (ownDeath?.victimPuuid) ownPuuid.value = ownDeath.victimPuuid
+  }
+}
+
+function applyInitialSeek() {
+  const seekMs = Number(route.query.seekMs)
+  if (Number.isNaN(seekMs) || seekMs < 0) return
+  initialSeekDone.value = true
+  const trySeek = () => {
+    if (videoEl.value && duration.value > 0) {
+      seekToTime(seekMs / 1000)
+    } else {
+      setTimeout(trySeek, 200)
+    }
+  }
+  trySeek()
+}
+
+async function loadTimeline() {
+  timelineLoading.value = true
+  timelineError.value = null
+  timeline.value = null
+  try {
+    const id = route.query.id as string
+    const timelineId = route.query.timelineId as string
+    const numericTimelineId = Number(timelineId)
+
+    if (timelineId && pendingTimeline.value) {
+      timeline.value = pendingTimeline.value
+      pendingTimeline.value = null
+      videoSyncOffsetMs.value = timeline.value?.videoSyncOffsetMs ?? DEFAULT_SYNC_MS
+    } else if (id) {
+      recordingId.value = id
+      timeline.value = await window.api.recordings.getTimeline(id)
+      if (!timeline.value) {
+        timelineError.value = 'Recording timeline not found.'
+        return
+      }
+      videoSyncOffsetMs.value = timeline.value.videoSyncOffsetMs ?? DEFAULT_SYNC_MS
+    } else if (timelineId && !Number.isNaN(numericTimelineId)) {
+      const data = await window.api.analyses.getTimeline(numericTimelineId)
+      if (!data) {
+        timelineError.value = 'Timeline data is not available for this match yet.'
+        return
+      }
+      timeline.value = data
+      videoSyncOffsetMs.value = timeline.value.videoSyncOffsetMs ?? DEFAULT_SYNC_MS
+    } else {
+      timelineError.value = 'No match selected — open a match from the Dashboard.'
+      return
+    }
+
+    if (timelineId && !Number.isNaN(numericTimelineId)) {
+      coachingDetail.value = await window.api.analyses.getDetail(numericTimelineId).catch(() => null)
+    }
+
+    applyTimelineDerivedState()
+    applyInitialSeek()
+  } catch {
+    timelineError.value = 'Could not load match timeline — check your connection and try again.'
+  } finally {
+    timelineLoading.value = false
+  }
+}
+
 onMounted(async () => {
   loadSpatialPreviewState()
   loadSpatialUiPrefs()
@@ -1987,46 +2137,8 @@ onMounted(async () => {
   window.api.app.getStatus().then(s => {
     if (s.user?.tier) userTier.value = s.user.tier
   }).catch(() => {})
-  const id = route.query.id as string
-  const timelineId = route.query.timelineId as string
 
-  if (timelineId && pendingTimeline.value) {
-    timeline.value = pendingTimeline.value
-    pendingTimeline.value = null
-  } else if (id) {
-    recordingId.value = id
-    timeline.value = await window.api.recordings.getTimeline(id)
-    videoSyncOffsetMs.value = timeline.value?.videoSyncOffsetMs ?? DEFAULT_SYNC_MS
-  }
-
-  const numericTimelineId = Number(timelineId)
-  if (timelineId && !Number.isNaN(numericTimelineId)) {
-    coachingDetail.value = await window.api.analyses.getDetail(numericTimelineId).catch(() => null)
-  }
-
-  // Derive ownPuuid from kill/death events where name === 'You'
-  if (timeline.value) {
-    const ownKill = timeline.value.kills?.find((k: any) => k.killerName === 'You')
-    if (ownKill?.killerPuuid) {
-      ownPuuid.value = ownKill.killerPuuid
-    } else {
-      const ownDeath = timeline.value.deaths?.find((d: any) => d.victimName === 'You')
-      if (ownDeath?.victimPuuid) ownPuuid.value = ownDeath.victimPuuid
-    }
-  }
-
-  const seekMs = Number(route.query.seekMs)
-  if (!Number.isNaN(seekMs) && seekMs >= 0) {
-    initialSeekDone.value = true
-    const trySeek = () => {
-      if (videoEl.value && duration.value > 0) {
-        seekToTime(seekMs / 1000)
-      } else {
-        setTimeout(trySeek, 200)
-      }
-    }
-    trySeek()
-  }
+  await loadTimeline()
 
   window.addEventListener('keydown', handleKeyDown)
   document.addEventListener('fullscreenchange', onFullscreenChange)
@@ -2056,6 +2168,18 @@ watch(theaterMode, () => nextTick(() => updateVideoFrameSize()))
 function handleKeyDown(e: KeyboardEvent) {
   // Don't capture keyboard events when user is typing in an input
   if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return
+
+  if (e.key === '?' && !e.ctrlKey && !e.metaKey && !e.altKey) {
+    e.preventDefault()
+    showShortcuts.value = !showShortcuts.value
+    return
+  }
+
+  if (showShortcuts.value && e.key === 'Escape') {
+    e.preventDefault()
+    showShortcuts.value = false
+    return
+  }
 
   switch (e.key) {
     case ' ':

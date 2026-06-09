@@ -1,5 +1,5 @@
 <template>
-  <div class="flex flex-col h-full px-4 pt-3 pb-4 gap-3 bg-[#111111]">
+  <div class="flex flex-col h-full px-4 pt-4 pb-4 gap-3">
     <!-- Header -->
     <div class="flex items-start justify-between gap-3 flex-shrink-0">
       <div class="flex items-center gap-2">
@@ -29,12 +29,12 @@
             </svg>
           </button>
         </div>
-        <span class="text-xs text-gray-600">F9 to bookmark during match</span>
+        <span class="text-xs text-gray-600"><kbd class="font-mono text-gray-400">{{ saveClipHotkey }}</kbd> to bookmark during match</span>
       </div>
     </div>
 
     <!-- Filter row -->
-    <div class="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-white/[0.10] bg-[#161616] px-3 py-2.5 flex-shrink-0">
+    <div class="panel-elevated flex flex-wrap items-center justify-between gap-3 px-3 py-2.5 flex-shrink-0">
       <div class="flex flex-wrap items-center gap-2">
         <button
           v-for="f in filters"
@@ -113,20 +113,25 @@
       </button>
       <template v-if="bulkMode && selectedIds.size > 0">
         <button class="rounded-lg border border-white/[0.08] px-2.5 py-1 text-[11px] text-gray-600 hover:text-gray-400 transition-colors" @click="selectAll">All</button>
-        <button class="rounded-lg border border-red-500/30 bg-red-500/15 px-2.5 py-1 text-[11px] font-medium text-red-400 hover:bg-red-500/25 transition-colors" @click="bulkDelete">Delete {{ selectedIds.size }}</button>
+        <template v-if="confirmBulkDelete">
+          <span class="text-[11px] text-red-400/80">Delete {{ selectedIds.size }}?</span>
+          <button class="rounded-lg border border-white/[0.08] px-2.5 py-1 text-[11px] text-gray-500 hover:text-gray-300 transition-colors" @click="confirmBulkDelete = false">Cancel</button>
+          <button class="rounded-lg border border-red-500/40 bg-red-500/25 px-2.5 py-1 text-[11px] font-semibold text-red-300 hover:bg-red-500/35 transition-colors" @click="bulkDelete">Confirm</button>
+        </template>
+        <button v-else class="rounded-lg border border-red-500/30 bg-red-500/15 px-2.5 py-1 text-[11px] font-medium text-red-400 hover:bg-red-500/25 transition-colors" @click="confirmBulkDelete = true">Delete {{ selectedIds.size }}</button>
       </template>
     </div>
 
     <!-- Empty state -->
     <div v-if="displayedClips.length === 0" class="flex flex-1 items-center justify-center">
-      <div class="max-w-sm rounded-2xl border border-white/[0.09] bg-white/[0.02] px-6 py-8 text-center">
+      <div class="empty-state max-w-sm panel-elevated px-6 py-8">
         <div class="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl border border-red-500/20 bg-red-500/10 mb-4">
           <svg class="h-6 w-6 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.7" d="M15 10l4.553-2.069A1 1 0 0121 8.845v6.31a1 1 0 01-1.447.894L15 14M4 7.75A1.75 1.75 0 015.75 6h7.5A1.75 1.75 0 0115 7.75v8.5A1.75 1.75 0 0113.25 18h-7.5A1.75 1.75 0 014 16.25v-8.5z" />
           </svg>
         </div>
         <h3 class="text-sm font-bold text-white">No clips yet</h3>
-        <p class="mt-1 text-xs text-gray-500">Press <kbd class="rounded border border-white/[0.12] bg-white/[0.04] px-1.5 py-0.5 font-mono text-gray-200">F9</kbd> during a match to save a clip, then come back here to review and share your best moments.</p>
+        <p class="mt-1 text-xs text-gray-500">Press <kbd class="rounded border border-white/[0.12] bg-white/[0.04] px-1.5 py-0.5 font-mono text-gray-200">{{ saveClipHotkey }}</kbd> during a match to save a clip, then come back here to review and share your best moments.</p>
       </div>
     </div>
 
@@ -139,7 +144,7 @@
           <div class="h-px flex-1 bg-white/[0.05]" />
           <span class="text-[10px] text-gray-700">{{ group.clips.length }}</span>
         </div>
-      <div v-if="viewMode === 'grid'" class="mb-4 grid grid-cols-2 gap-3">
+      <div v-if="viewMode === 'grid'" class="mb-4 grid gap-3" style="grid-template-columns: repeat(auto-fill, minmax(260px, 1fr))">
         <div
           v-for="clip in group.clips"
           :key="clip.id"
@@ -757,6 +762,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import type { ClipRecord } from '../env.d'
+import { loadSaveClipHotkey } from '../lib/hotkeys'
 
 const clips = ref<ClipRecord[]>([])
 const thumbnails = ref<Record<string, string>>({})
@@ -791,6 +797,8 @@ const toastType = ref<'success' | 'error'>('success')
 const TOAST_DURATION = 3500
 let toastTimer: ReturnType<typeof setTimeout> | null = null
 const confirmDeleteId = ref<string | null>(null)
+const confirmBulkDelete = ref(false)
+const saveClipHotkey = ref('F9')
 
 /** Convert a local filesystem path to a valid file:// URL.
  *  encodeURI preserves : and / so Windows drive letters and path separators
@@ -847,6 +855,7 @@ const displayedClips = computed(() => {
 const removeListener = ref<(() => void) | null>(null)
 
 onMounted(async () => {
+  saveClipHotkey.value = await loadSaveClipHotkey()
   await loadClips()
   window.api.app.getStatus().then(s => { if (s.user?.tier) userTier.value = s.user.tier }).catch(() => {})
   window.api.profile.get().then(p => { subscriptionEndsAt.value = p?.user?.analysis_stats?.subscription_ends_at ?? null }).catch(() => {})
@@ -1085,7 +1094,10 @@ const selectedIds = ref<Set<string>>(new Set())
 
 function toggleBulkMode() {
   bulkMode.value = !bulkMode.value
-  if (!bulkMode.value) selectedIds.value = new Set()
+  if (!bulkMode.value) {
+    selectedIds.value = new Set()
+    confirmBulkDelete.value = false
+  }
 }
 
 function toggleSelect(id: string) {
@@ -1107,6 +1119,7 @@ async function bulkDelete() {
   }
   selectedIds.value = new Set()
   bulkMode.value = false
+  confirmBulkDelete.value = false
   showToastMsg(`Deleted ${ids.length} clip${ids.length !== 1 ? 's' : ''}`, 'success')
 }
 

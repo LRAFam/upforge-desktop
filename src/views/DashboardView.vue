@@ -44,6 +44,25 @@
       </div>
     </Transition>
 
+    <!-- macOS preview notice -->
+    <Transition name="banner-slide">
+      <div
+        v-if="showMacPreviewBanner"
+        class="flex-shrink-0 mx-4 mt-3 flex items-center gap-3 px-3 py-2.5 rounded-xl bg-blue-500/[0.07] border border-blue-500/25"
+      >
+        <div class="w-8 h-8 rounded-lg bg-blue-500/15 flex items-center justify-center flex-shrink-0">
+          <svg class="w-4 h-4 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+          </svg>
+        </div>
+        <div class="flex-1 min-w-0">
+          <p class="text-xs font-semibold text-blue-200">macOS preview mode</p>
+          <p class="text-[11px] text-blue-300/70 mt-0.5">Match recording and game detection require Windows. You can still review analyses, clips, and training on Mac.</p>
+        </div>
+        <button class="flex-shrink-0 text-[11px] font-medium text-blue-300/80 hover:text-blue-200 transition-colors px-2 py-1 rounded-lg hover:bg-blue-500/10" @click="dismissMacPreviewBanner">Dismiss</button>
+      </div>
+    </Transition>
+
     <!-- Status card -->
     <div
       :class="[
@@ -125,7 +144,7 @@
 
     <!-- Hero header -->
     <div class="flex-shrink-0 mx-4 mt-3 space-y-3">
-      <div class="grid grid-cols-[minmax(0,1fr)_320px] gap-3">
+      <div class="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_300px] gap-3">
         <div class="relative overflow-hidden rounded-3xl border border-white/[0.10] bg-gradient-to-br from-white/[0.04] via-white/[0.025] to-red-500/[0.06] px-5 pt-4 pb-5">
           <div class="absolute -right-12 top-0 h-36 w-36 rounded-full bg-red-500/10 blur-3xl" />
           <div class="absolute left-10 top-10 h-24 w-24 rounded-full bg-orange-500/10 blur-3xl" />
@@ -257,13 +276,13 @@
     </div>
 
     <!-- 3-column dashboard grid -->
-    <div class="flex-1 grid grid-cols-[360px_1fr_360px] gap-4 p-4 pt-3 min-h-0 overflow-hidden">
+    <div class="flex-1 grid grid-cols-1 lg:grid-cols-[minmax(280px,340px)_1fr] xl:grid-cols-[minmax(280px,340px)_1fr_minmax(280px,340px)] gap-4 p-4 pt-3 min-h-0 overflow-hidden">
 
       <!-- ═══════════ LEFT: Player card ═══════════ -->
-      <div class="flex flex-col gap-3 overflow-y-auto" style="scrollbar-width:none">
+      <div class="flex flex-col gap-3 scroll-col min-h-0 max-h-full">
 
         <!-- Player hero card -->
-        <div v-if="profile" class="bg-white/[0.02] border border-white/[0.10] rounded-2xl overflow-hidden">
+        <div v-if="profile" class="panel-elevated overflow-hidden">
           <div class="px-4 pt-4 pb-3">
             <div class="flex items-start gap-3">
               <!-- Avatar -->
@@ -286,8 +305,8 @@
                   </span>
                   <span
                     v-else
-                    :class="['px-1.5 py-px rounded text-[9px] font-bold uppercase', getTierBadgeClass(profile.user.tier && profile.user.tier !== 'free' ? profile.user.tier : 'pro')]"
-                  >{{ getTierBadgeLabel(profile.user.tier && profile.user.tier !== 'free' ? profile.user.tier : 'pro') }}</span>
+                    :class="['px-1.5 py-px rounded text-[9px] font-bold uppercase', getTierBadgeClass(getDisplayTier(profile.user.tier))]"
+                  >{{ getTierBadgeLabel(getDisplayTier(profile.user.tier)) }}</span>
                 </div>
                 <p class="text-xs text-gray-500 mt-px leading-tight">
                   <span v-if="profile.user.riot_name">{{ profile.user.riot_name }}#{{ profile.user.riot_tag }}</span>
@@ -515,7 +534,7 @@
       </div>
 
       <!-- ═══════════ CENTER: Recent matches ═══════════ -->
-      <div class="flex flex-col gap-3 min-h-0 overflow-hidden">
+      <div class="flex flex-col gap-3 min-h-0 overflow-hidden lg:min-h-[420px] xl:min-h-0">
 
         <!-- Deadlock stats panel (Steam-linked stats) -->
         <DeadlockStatsPanel v-if="isDeadlockUser" class="flex-shrink-0" />
@@ -590,7 +609,23 @@
         </div>
 
         <!-- Scrollable match list -->
-        <div class="flex-1 overflow-y-auto space-y-1.5" style="scrollbar-width:none">
+        <div class="flex-1 min-h-0 flex flex-col panel-elevated overflow-hidden">
+          <div
+            v-if="analyses.length > 0 && !analysesLoading"
+            class="hidden md:grid flex-shrink-0 items-center gap-2 px-3 py-2 border-b border-white/[0.07] text-[9px] font-bold uppercase tracking-[0.18em] text-gray-600"
+            style="grid-template-columns: 36px minmax(0,1fr) 28px 80px 56px 48px 1fr 32px 16px"
+          >
+            <span />
+            <span>Match</span>
+            <span class="text-center">W/L</span>
+            <span class="text-center">K/D/A</span>
+            <span class="text-center">ACS</span>
+            <span class="text-center">HS</span>
+            <span class="text-right pr-2">Score</span>
+            <span />
+            <span />
+          </div>
+          <div class="flex-1 scroll-col p-2 space-y-1.5">
 
           <!-- Pending recordings (above analyses) -->
           <template v-if="pendingRecordings.length > 0">
@@ -619,7 +654,7 @@
                 <button v-if="rec.timeline?.playerKills?.length" class="px-2 py-1 text-xs font-medium text-gray-300 bg-white/[0.06] hover:bg-white/[0.1] border border-white/[0.08] rounded-lg transition-colors" @click="$router.push({ path: '/vod-review', query: { id: rec.id } })">Review</button>
                 <button :disabled="analysingIds.has(rec.id)" class="px-2 py-1 text-xs font-medium text-white bg-red-500 hover:bg-red-600 disabled:opacity-60 rounded-lg transition-colors flex items-center gap-1" @click="analyseRecording(rec.id)">
                   <svg v-if="analysingIds.has(rec.id)" class="w-3 h-3 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
-                  {{ analysingIds.has(rec.id) ? 'Uploading…' : 'Analyse' }}
+                  {{ analysingIds.has(rec.id) ? 'Analysing…' : 'Analyse' }}
                 </button>
                 <button class="p-1.5 text-gray-600 hover:text-gray-400 transition-colors rounded-lg hover:bg-white/[0.04]" @click="dismissRecording(rec.id)">
                   <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
@@ -656,8 +691,8 @@
               <div
                 v-for="a in group.items"
                 :key="a.id"
-                class="relative flex items-center gap-2 px-3 py-2.5 rounded-xl border border-white/[0.09] bg-white/[0.02] cursor-pointer transition-all hover:border-white/[0.14] hover:bg-white/[0.04] hover:shadow-[0_12px_28px_rgba(0,0,0,0.16)]"
-                @click="openAnalysis(a.id)"
+                class="analysis-row relative flex items-center gap-2 px-3 py-2.5 rounded-xl border border-white/[0.09] bg-white/[0.02] cursor-pointer row-interactive"
+                @click="openAnalysisRow(a)"
               >
                 <!-- W/L left accent bar -->
                 <div v-if="a.won != null" class="absolute left-0 top-2 bottom-2 w-[3px] rounded-full" :class="a.won ? 'bg-green-500' : 'bg-red-500'" />
@@ -720,15 +755,13 @@
                   </template>
                 </div>
 
-                <!-- Timeline button -->
+                <!-- Web report -->
                 <button
-                  v-if="a.kills != null && a.kills > 0"
-                  :disabled="timelineLoadingId === a.id"
-                  class="flex-shrink-0 flex items-center gap-1 px-2 py-1 text-[10px] font-semibold text-gray-400 bg-white/[0.06] hover:bg-white/[0.1] border border-white/[0.08] rounded-lg transition-colors disabled:opacity-50"
-                  @click.stop="openTimeline(a.id)"
+                  class="flex-shrink-0 p-1.5 text-gray-600 hover:text-gray-400 transition-colors rounded-lg hover:bg-white/[0.04]"
+                  title="Open web report"
+                  @click.stop="openAnalysis(a.id)"
                 >
-                  <svg class="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/></svg>
-                  {{ timelineLoadingId === a.id ? '…' : 'Timeline' }}
+                  <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/></svg>
                 </button>
 
                 <!-- Arrow -->
@@ -737,11 +770,12 @@
             </template>
           </template>
 
+          </div>
         </div>
       </div>
 
       <!-- ═══════════ RIGHT: Coaching + Training + Activity ═══════════ -->
-      <div class="flex flex-col gap-3 overflow-y-auto" style="scrollbar-width:none">
+      <div class="flex flex-col gap-3 scroll-col min-h-0 max-h-full lg:col-span-2 xl:col-span-1">
 
         <div v-if="clipCount === 0" class="relative overflow-hidden rounded-xl border border-white/[0.10] bg-white/[0.02] px-3 py-3">
           <div class="flex items-center gap-3">
@@ -762,7 +796,7 @@
         <div class="h-px bg-gradient-to-r from-transparent via-white/[0.08] to-transparent my-1" />
 
         <!-- Last coaching insight (or empty CTA) -->
-        <div v-if="lastInsight" class="relative bg-white/[0.02] border border-white/[0.09] rounded-2xl overflow-hidden">
+        <div v-if="lastInsight" class="relative panel-elevated overflow-hidden">
           <div class="absolute left-0 top-0 bottom-0 w-[3px] bg-gradient-to-b from-[#ff4655] to-orange-600 rounded-l-xl" />
           <div class="pl-5 pr-4 pt-4 pb-4 space-y-3">
             <div class="flex items-center justify-between">
@@ -816,7 +850,7 @@
         <div class="h-px bg-gradient-to-r from-transparent via-white/[0.08] to-transparent my-1" />
 
         <!-- Correlation insights card -->
-        <div v-if="correlationInsights.length" class="bg-white/[0.02] border border-white/[0.09] rounded-2xl overflow-hidden">
+        <div v-if="correlationInsights.length" class="panel-elevated overflow-hidden">
           <div class="px-4 py-3 border-b border-white/[0.07]">
             <span class="text-[10px] font-bold uppercase tracking-widest text-gray-600">Impact on Game</span>
           </div>
@@ -833,7 +867,7 @@
         <div class="h-px bg-gradient-to-r from-transparent via-white/[0.08] to-transparent my-1" />
 
         <!-- Aim training quick-start -->
-        <div class="bg-white/[0.02] border border-white/[0.10] rounded-2xl overflow-hidden">
+        <div class="panel-elevated overflow-hidden">
           <div class="px-4 py-3 flex items-center justify-between border-b border-white/[0.07]">
             <span class="text-[10px] font-bold uppercase tracking-widest text-gray-600">Aim Training</span>
             <button class="text-[10px] text-gray-600 hover:text-gray-300 transition-colors" @click="router.push('/training')">Open →</button>
@@ -899,7 +933,7 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import type { ProfileData, AnalysisItem, PendingRecording, ClipRecord } from '../env.d.ts'
-import { getAgentImage, getAgentRole, getAgentColor, getMapMinimap, getRankHexColor, getRankIconUrl, getRoleColor, getTierBadgeClass, getTierBadgeLabel, formatGameMode } from '../lib/valorant'
+import { getAgentImage, getAgentRole, getAgentColor, getMapMinimap, getRankHexColor, getRankIconUrl, getRoleColor, getTierBadgeClass, getTierBadgeLabel, getDisplayTier, formatGameMode } from '../lib/valorant'
 import { hasAnalysisQuotaRemaining, isPlatformAdmin } from '../lib/tier-features'
 import { pendingTimeline } from '../stores/pendingTimeline'
 import { useAchievements } from '../composables/useAchievements'
@@ -940,6 +974,10 @@ const status = ref<{
 const stopRecordingHint = 'Stop recording and open upload — use if you leave the match early'
 const isDev = ref(false)
 const platform = ref('')
+const macPreviewDismissed = ref(localStorage.getItem('dismissedMacPreviewBanner') === '1')
+const showMacPreviewBanner = computed(() =>
+  platform.value !== '' && platform.value !== 'win32' && !macPreviewDismissed.value,
+)
 const hotkeys = ref<Record<string, string>>({})
 const clipCount = ref(0)
 const userPrimaryGame = ref<string>('valorant')
@@ -1422,7 +1460,8 @@ onMounted(async () => {
   ipcCleanup.push(window.api.on('app:hotkey-status', (...args: unknown[]) => {
     const data = args[0] as { saveClipRegistered: boolean }
     if (!data.saveClipRegistered) {
-      warning.value = 'Clip hotkey (F9) failed to register — another app may be using it.'
+      const hk = hotkeys.value['save-clip'] || 'F9'
+      warning.value = `Clip hotkey (${hk}) failed to register — another app may be using it.`
       setTimeout(() => { warning.value = null }, 15000)
     }
   }))
@@ -1544,10 +1583,18 @@ async function analyseRecording(id: string) {
     await window.api.recordings.analyse(id)
     // Remove from pending list — will come back as an analysis via dashboard:refresh
     pendingRecordings.value = pendingRecordings.value.filter(r => r.id !== id)
-  } catch {
+  } catch (e) {
     analysingIds.value.delete(id)
     analysingIds.value = new Set(analysingIds.value)
+    const msg = e instanceof Error ? e.message : 'Analysis failed — check your connection and try again.'
+    warning.value = msg
+    setTimeout(() => { warning.value = null }, 12000)
   }
+}
+
+function dismissMacPreviewBanner() {
+  macPreviewDismissed.value = true
+  localStorage.setItem('dismissedMacPreviewBanner', '1')
 }
 
 async function dismissRecording(id: string) {
@@ -1592,6 +1639,14 @@ function simulateGame(game: string, durationMs: number) {
 
 function openAnalysis(id: number) { window.open(`https://upforge.gg/valorant/results/${id}`, '_blank') }
 
+function openAnalysisRow(a: AnalysisItem) {
+  if (a.kills != null && a.kills > 0) {
+    void openTimeline(a.id)
+  } else {
+    openAnalysis(a.id)
+  }
+}
+
 const WEAKNESS_TO_SCENARIO_DASH: Record<string, string> = {
   flick: 'flick', 'one tap': 'flick', reflex: 'flick', headshot: 'flick',
   accuracy: 'flick', 'first shot': 'flick', aim: 'flick', click: 'flick',
@@ -1625,9 +1680,16 @@ async function openTimeline(id: number) {
   timelineLoadingId.value = id
   try {
     const data = await window.api.analyses.getTimeline(id)
-    if (!data) return
+    if (!data) {
+      warning.value = 'Timeline data not available for this match.'
+      setTimeout(() => { warning.value = null }, 10000)
+      return
+    }
     pendingTimeline.value = data
-    router.push({ path: '/vod-review', query: { timelineId: id } })
+    router.push({ path: '/vod-review', query: { timelineId: String(id) } })
+  } catch {
+    warning.value = 'Could not load VOD timeline — try again.'
+    setTimeout(() => { warning.value = null }, 10000)
   } finally {
     timelineLoadingId.value = null
   }
@@ -1711,6 +1773,14 @@ function formatFileSize(bytes: number): string {
 @keyframes scoreBarFill {
   from { width: 0; }
 }
+.analysis-row:hover {
+  transform: translateY(-1px);
+}
+
+.analysis-row:active {
+  transform: translateY(0);
+}
+
 .score-bar {
   animation: scoreBarFill 0.8s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
