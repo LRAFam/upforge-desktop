@@ -22,6 +22,7 @@ export {
 } from './riot-lookup-tables'
 import { applySpatialEnrichment } from './spatial/enrich'
 import { deriveMatchScore } from './match-score'
+import { riotStatsToAcs } from './combat-score'
 import {
   shouldApplyMatchDetails,
   shouldUseMatchHistoryFallback,
@@ -891,6 +892,7 @@ export class RiotLocalApi {
 
     const ownLower = this.ownPuuid?.toLowerCase()
     const ownPlayer = players?.find((p) => (p.subject as string)?.toLowerCase() === ownLower)
+    const fallbackRounds = roundResults?.length ?? 1
 
     if (ownPlayer) {
       this.matchData.agent = resolveAgentName(ownPlayer.characterId as string) ?? this.matchData.agent
@@ -902,7 +904,7 @@ export class RiotLocalApi {
       if (stats) {
         this.matchData.finalStats = {
           kills: stats.kills ?? 0, deaths: stats.deaths ?? 0, assists: stats.assists ?? 0,
-          score: stats.score ?? 0,
+          score: riotStatsToAcs(stats, fallbackRounds),
           summonerName: gameName ?? this.matchData.playerName ?? null,
           agent: this.matchData.agent,
           team: (ownPlayer.teamId as string) ?? null,
@@ -928,7 +930,7 @@ export class RiotLocalApi {
           kills: (stats?.kills as number) ?? 0,
           deaths: (stats?.deaths as number) ?? 0,
           assists: (stats?.assists as number) ?? 0,
-          score: (stats?.score as number) ?? 0,
+          score: riotStatsToAcs(stats, fallbackRounds),
           level: (p.accountLevel as number) ?? 0,
           puuid: (p.subject as string) ?? null,
           competitiveTier: tier,

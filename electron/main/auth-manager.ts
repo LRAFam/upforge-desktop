@@ -4,6 +4,7 @@ import { readFileSync, writeFileSync, unlinkSync } from 'fs'
 import { join } from 'path'
 import log from 'electron-log'
 import { withRetry } from './utils/retry'
+import { normalizeToAcs } from './combat-score'
 
 const API_BASE = 'https://api.upforge.gg'
 
@@ -250,7 +251,14 @@ export class AuthManager {
   async fetchAnalyses(limit = 10): Promise<AnalysisItem[]> {
     try {
       const res = await this._api.get(`/api/analysis/recent?limit=${limit}`)
-      return res.data?.analyses ?? []
+      const analyses: AnalysisItem[] = res.data?.analyses ?? []
+      return analyses.map((a) => {
+        const rounds = (a.rounds_won ?? 0) + (a.rounds_lost ?? 0)
+        return {
+          ...a,
+          combat_score: normalizeToAcs(a.combat_score, rounds > 0 ? rounds : null),
+        }
+      })
     } catch {
       return []
     }

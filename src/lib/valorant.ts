@@ -366,3 +366,26 @@ const MODE_LABELS: Record<string, string> = {
 export function formatGameMode(mode: string): string {
   return MODE_LABELS[mode] ?? mode
 }
+
+// ── ACS (Average Combat Score) ───────────────────────────────────────────────
+
+/** ACS values above this are extremely rare; larger numbers are almost certainly match totals. */
+const TOTAL_COMBAT_SCORE_THRESHOLD = 500
+
+/** Convert Riot cumulative combat score to per-round ACS. */
+export function computeAcs(totalScore: number, rounds: number): number {
+  if (!Number.isFinite(totalScore) || totalScore <= 0) return 0
+  if (!Number.isFinite(rounds) || rounds <= 0) return Math.round(totalScore)
+  return Math.round(totalScore / rounds)
+}
+
+/** Normalize a stored score to ACS when it looks like a Riot match total. */
+export function normalizeCombatScoreToAcs(
+  score: number | null | undefined,
+  rounds: number | null | undefined,
+): number | null {
+  if (score == null || !Number.isFinite(score)) return null
+  if (score <= TOTAL_COMBAT_SCORE_THRESHOLD) return Math.round(score)
+  if (rounds != null && rounds > 0) return computeAcs(score, rounds)
+  return Math.round(score)
+}

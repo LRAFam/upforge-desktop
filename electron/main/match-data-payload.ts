@@ -5,6 +5,7 @@
 import type { MatchData } from './riot-types'
 import { recomputeTimelineVideoOffsets } from './riot-local-api'
 import { deriveMatchScore } from './match-score'
+import { riotStatsToAcs } from './combat-score'
 
 /** Slim Riot MatchDetails subset for coaching prompts (avoids multi‑MB raw JSON). */
 export interface MatchDetailsLite {
@@ -68,7 +69,7 @@ function slimMatchDetails(raw: Record<string, unknown> | null | undefined): Matc
               kills: stats.kills,
               deaths: stats.deaths,
               assists: stats.assists,
-              score: stats.score,
+              score: riotStatsToAcs(stats, (stats.roundsPlayed as number) || 1),
             }
           : undefined,
       }

@@ -10,6 +10,7 @@ import type { MatchRecorder } from '../match-recorder'
 import { GameDetector } from '../game-detector'
 import { UploadManager } from '../upload-manager'
 import { cancelAllPollingTimers } from './api-helpers'
+import { normalizeToAcs } from '../combat-score'
 
 export function setupAuthHandlers(
   ipcMain: IpcMain,
@@ -112,6 +113,19 @@ export function setupAuthHandlers(
       const analysis = res.data?.analysis
       if (!analysis?.match_data) return null
       const md = analysis.match_data
+      const summaryRounds = (md.roundSummaries as unknown[] | undefined)?.length ?? 0
+      const scoreRounds = (md.finalScore?.allyScore ?? 0) + (md.finalScore?.enemyScore ?? 0)
+      const rounds = summaryRounds > 0 ? summaryRounds : (scoreRounds > 0 ? scoreRounds : null)
+      const finalStats = md.finalStats
+        ? {
+            ...md.finalStats,
+            score: normalizeToAcs(md.finalStats.score, rounds),
+          }
+        : null
+      const teamSnapshot = (md.teamSnapshot as Array<{ score?: number }> | undefined)?.map((p) => ({
+        ...p,
+        score: normalizeToAcs(p.score, rounds) ?? 0,
+      })) ?? []
       return {
         id: String(analysis.id),
         videoPath: null,
@@ -123,8 +137,8 @@ export function setupAuthHandlers(
         kills: md.playerKills ?? md.killEvents?.filter((k: any) => k.killerName === 'You' || k.type === 'kill') ?? [],
         deaths: md.playerDeaths ?? md.killEvents?.filter((k: any) => k.victimName === 'You' || k.type === 'death') ?? [],
         roundSummaries: md.roundSummaries ?? [],
-        finalStats: md.finalStats ?? null,
-        teamSnapshot: md.teamSnapshot ?? [],
+        finalStats,
+        teamSnapshot,
         spatialSummary: md.spatialSummary ?? null,
         spikePlants: md.spikePlants ?? [],
         spikeDefuses: md.spikeDefuses ?? [],

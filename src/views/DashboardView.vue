@@ -921,7 +921,7 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import type { ProfileData, AnalysisItem, PendingRecording, ClipRecord } from '../env.d.ts'
-import { getAgentImage, getAgentRole, getAgentColor, getMapMinimap, getRankHexColor, getRankIconUrl, getRoleColor, getTierBadgeClass, getTierBadgeLabel, getDisplayTier, formatGameMode } from '../lib/valorant'
+import { getAgentImage, getAgentRole, getAgentColor, getMapMinimap, getRankHexColor, getRankIconUrl, getRoleColor, getTierBadgeClass, getTierBadgeLabel, getDisplayTier, formatGameMode, normalizeCombatScoreToAcs } from '../lib/valorant'
 import { hasAnalysisQuotaRemaining, isPlatformAdmin } from '../lib/tier-features'
 import { pendingTimeline } from '../stores/pendingTimeline'
 import { useAchievements } from '../composables/useAchievements'
@@ -1742,12 +1742,15 @@ function resolveTimelineWon(timeline: PendingRecording['timeline']): boolean | n
 function recordingRowStats(rec: PendingRecording): MatchRowStats {
   const fs = rec.timeline?.finalStats
   if (!fs) return EMPTY_ROW_STATS
+  const summaryRounds = rec.timeline?.roundSummaries?.length ?? 0
+  const scoreRounds = (rec.timeline?.finalScore?.allyScore ?? 0) + (rec.timeline?.finalScore?.enemyScore ?? 0)
+  const rounds = summaryRounds > 0 ? summaryRounds : (scoreRounds > 0 ? scoreRounds : null)
   return {
     won: resolveTimelineWon(rec.timeline),
     kills: fs.kills ?? null,
     deaths: fs.deaths ?? null,
     assists: fs.assists ?? null,
-    combat_score: fs.score ?? null,
+    combat_score: normalizeCombatScoreToAcs(fs.score, rounds),
     hs_pct: fs.headshotPct ?? null,
   }
 }

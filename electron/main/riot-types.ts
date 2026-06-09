@@ -143,7 +143,7 @@ export interface TeamPlayerSnapshot {
   kills: number
   deaths: number
   assists: number
-  /** Combat score */
+  /** Average combat score (ACS) for the match */
   score: number
   level: number
   /** Player's PUUID — used for "you" identification in renderer */
@@ -166,6 +166,7 @@ export interface FinalPlayerStats {
   kills: number
   deaths: number
   assists: number
+  /** Average combat score (ACS) for the match */
   score: number
   /** Riot display name (gameName#tagLine) */
   summonerName: string | null
