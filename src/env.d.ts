@@ -153,6 +153,16 @@ export interface PendingRecording {
   timeline?: {
     playerKills?: Array<{ killerName: string; victimName: string; weapon?: string; videoOffsetMs?: number; round?: number }>
     playerDeaths?: Array<{ killerName: string; victimName: string; weapon?: string; videoOffsetMs?: number; round?: number }>
+    finalStats?: {
+      kills: number
+      deaths: number
+      assists: number
+      score: number
+      headshotPct: number | null
+      won?: boolean
+    } | null
+    finalScore?: { allyScore: number; enemyScore: number } | null
+    roundScores?: Array<{ allyScore: number; enemyScore: number }>
   } | null
 }
 

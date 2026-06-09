@@ -206,7 +206,7 @@
                       <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
                     </svg>
                   </div>
-                  <div v-else-if="a.combat_score" class="flex-shrink-0 text-right">
+                  <div v-else-if="a.combat_score != null" class="flex-shrink-0 text-right">
                     <span class="text-xs font-bold tabular-nums text-gray-400">{{ a.combat_score }}</span>
                     <span class="block text-xs text-gray-700">ACS</span>
                   </div>
@@ -251,7 +251,7 @@
                         <span class="font-bold" :class="a.hs_pct >= 25 ? 'text-orange-400' : 'text-gray-400'">{{ a.hs_pct }}%</span>
                         <span class="text-gray-700"> HS</span>
                       </div>
-                      <div v-if="a.combat_score" class="text-[10px] text-gray-500">
+                      <div v-if="a.combat_score != null" class="text-[10px] text-gray-500">
                         <span class="font-bold text-gray-300">{{ a.combat_score }}</span>
                         <span class="text-gray-700"> ACS</span>
                       </div>

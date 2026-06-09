@@ -145,7 +145,7 @@
     <!-- Hero header -->
     <div class="flex-shrink-0 mx-4 mt-3 space-y-3">
       <div class="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_300px] gap-3">
-        <div class="relative overflow-hidden rounded-3xl border border-white/[0.10] bg-gradient-to-br from-white/[0.04] via-white/[0.025] to-red-500/[0.06] px-5 pt-4 pb-5">
+        <div class="relative overflow-hidden rounded-2xl border border-white/[0.10] bg-gradient-to-br from-white/[0.04] via-white/[0.025] to-red-500/[0.06] px-4 pt-3 pb-3">
           <div class="absolute -right-12 top-0 h-36 w-36 rounded-full bg-red-500/10 blur-3xl" />
           <div class="absolute left-10 top-10 h-24 w-24 rounded-full bg-orange-500/10 blur-3xl" />
           <!-- Hero agents artwork -->
@@ -164,15 +164,15 @@
                     <span class="text-[11px] font-black uppercase tracking-[0.24em] text-red-200">Recording live</span>
                   </div>
                 </div>
-                <h1 class="text-3xl font-black tracking-tight text-white leading-[1.02]">{{ dashboardHeadline }}</h1>
+                <h1 class="text-2xl font-black tracking-tight text-white leading-[1.05]">{{ dashboardHeadline }}</h1>
               </div>
               <div v-if="status.recording && recordingElapsed" class="rounded-2xl border border-red-500/20 bg-black/20 px-3.5 py-2.5 text-right shadow-[0_0_18px_rgba(239,68,68,0.1)]">
                 <p class="text-[10px] font-semibold uppercase tracking-[0.24em] text-red-300/70">Live timer</p>
                 <p class="mt-1 text-2xl font-black tabular-nums text-red-300">{{ recordingElapsed }}</p>
               </div>
             </div>
-            <div class="grid grid-cols-4 gap-2 max-w-4xl">
-              <div class="rounded-xl border border-white/[0.08] bg-white/[0.03] px-3 py-2.5 shadow-[0_10px_30px_rgba(0,0,0,0.12)]">
+            <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 max-w-4xl">
+              <div class="rounded-xl border border-white/[0.08] bg-white/[0.03] px-2.5 py-2 shadow-[0_10px_30px_rgba(0,0,0,0.12)]">
                 <div class="flex items-center gap-2.5">
                   <div class="flex h-8 w-8 items-center justify-center rounded-full border border-red-500/20 bg-red-500/10 text-red-300 flex-shrink-0">
                     <svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -180,12 +180,12 @@
                     </svg>
                   </div>
                   <div class="min-w-0">
-                    <p class="text-base font-black tabular-nums text-white">{{ clipCount }}</p>
+                    <p class="text-sm font-black tabular-nums text-white">{{ clipCount }}</p>
                     <p class="text-[9px] font-semibold uppercase tracking-[0.24em] text-gray-600">Clips</p>
                   </div>
                 </div>
               </div>
-              <div class="rounded-xl border border-white/[0.08] bg-white/[0.03] px-3 py-2.5 shadow-[0_10px_30px_rgba(0,0,0,0.12)]">
+              <div class="rounded-xl border border-white/[0.08] bg-white/[0.03] px-2.5 py-2 shadow-[0_10px_30px_rgba(0,0,0,0.12)]">
                 <div class="flex items-center gap-2.5">
                   <div class="flex h-8 w-8 items-center justify-center rounded-full border border-orange-500/20 bg-orange-500/10 text-orange-300 flex-shrink-0">
                     <svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -193,12 +193,12 @@
                     </svg>
                   </div>
                   <div class="min-w-0">
-                    <p class="text-base font-black tabular-nums text-white">{{ totalSessionsAnalysed }}</p>
+                    <p class="text-sm font-black tabular-nums text-white">{{ totalSessionsAnalysed }}</p>
                     <p class="text-[9px] font-semibold uppercase tracking-[0.24em] text-gray-600">Analyses</p>
                   </div>
                 </div>
               </div>
-              <div class="rounded-xl border border-white/[0.08] bg-white/[0.03] px-3 py-2.5 shadow-[0_10px_30px_rgba(0,0,0,0.12)]">
+              <div class="rounded-xl border border-white/[0.08] bg-white/[0.03] px-2.5 py-2 shadow-[0_10px_30px_rgba(0,0,0,0.12)]">
                 <div class="flex items-center gap-2.5">
                   <div class="flex h-8 w-8 items-center justify-center rounded-full border border-white/[0.08] bg-white/[0.04] flex-shrink-0">
                     <img v-if="getRankIconUrl(profile?.latest_stats?.current_rank)" :src="getRankIconUrl(profile?.latest_stats?.current_rank)!" :alt="profile?.latest_stats?.current_rank ?? ''" class="w-7 h-7 object-contain drop-shadow-lg" />
@@ -207,12 +207,12 @@
                     </svg>
                   </div>
                   <div class="min-w-0">
-                    <p class="text-base font-black text-white truncate">{{ dashboardRankLabel }}</p>
+                    <p class="text-sm font-black text-white truncate">{{ dashboardRankLabel }}</p>
                     <p class="text-[9px] font-semibold uppercase tracking-[0.24em] text-gray-600">Rank</p>
                   </div>
                 </div>
               </div>
-              <div class="rounded-xl border border-white/[0.08] bg-white/[0.03] px-3 py-2.5 shadow-[0_10px_30px_rgba(0,0,0,0.12)]">
+              <div class="rounded-xl border border-white/[0.08] bg-white/[0.03] px-2.5 py-2 shadow-[0_10px_30px_rgba(0,0,0,0.12)]">
                 <div class="flex items-center gap-2.5">
                   <div class="flex h-8 w-8 items-center justify-center rounded-full border border-emerald-500/20 bg-emerald-500/10 text-emerald-300 flex-shrink-0">
                     <svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -221,7 +221,7 @@
                     </svg>
                   </div>
                   <div class="min-w-0">
-                    <p class="text-base font-black tabular-nums" :class="currentStreak > 0 ? 'text-green-400' : currentStreak < 0 ? 'text-red-400' : 'text-white'">{{ currentStreak !== 0 ? (currentStreak > 0 ? '+' : '') + currentStreak : '—' }}</p>
+                    <p class="text-sm font-black tabular-nums" :class="currentStreak > 0 ? 'text-green-400' : currentStreak < 0 ? 'text-red-400' : 'text-white'">{{ currentStreak !== 0 ? (currentStreak > 0 ? '+' : '') + currentStreak : '—' }}</p>
                     <p class="text-[9px] font-semibold uppercase tracking-[0.24em] text-gray-600">Streak</p>
                   </div>
                 </div>
@@ -566,7 +566,7 @@
         <div class="flex items-center justify-between flex-shrink-0">
           <div class="flex items-center gap-2.5">
             <h2 class="text-xs font-bold text-gray-400 uppercase tracking-widest">Recent Analyses</h2>
-            <span v-if="analyses.length" class="text-[10px] text-gray-700">{{ analyses.length }} sessions</span>
+            <span v-if="analyses.length || pendingRecordings.length" class="text-[10px] text-gray-700">{{ analyses.length + pendingRecordings.length }} sessions</span>
           </div>
           <button v-if="analyses.length > 0" class="text-xs text-gray-600 hover:text-gray-300 transition-colors" @click="router.push('/history')">View all →</button>
         </div>
@@ -611,9 +611,8 @@
         <!-- Scrollable match list -->
         <div class="flex-1 min-h-0 flex flex-col panel-elevated overflow-hidden">
           <div
-            v-if="analyses.length > 0 && !analysesLoading"
-            class="hidden md:grid flex-shrink-0 items-center gap-2 px-3 py-2 border-b border-white/[0.07] text-[9px] font-bold uppercase tracking-[0.18em] text-gray-600"
-            style="grid-template-columns: 36px minmax(0,1fr) 28px 80px 56px 48px 1fr 32px 16px"
+            v-if="(analyses.length > 0 || pendingRecordings.length > 0) && !analysesLoading"
+            class="match-list-grid match-list-header hidden md:grid flex-shrink-0 px-3 py-2 border-b border-white/[0.07] text-[9px] font-bold uppercase tracking-[0.18em] text-gray-600"
           >
             <span />
             <span>Match</span>
@@ -621,7 +620,7 @@
             <span class="text-center">K/D/A</span>
             <span class="text-center">ACS</span>
             <span class="text-center">HS</span>
-            <span class="text-right pr-2">Score</span>
+            <span class="text-right">AI</span>
             <span />
             <span />
           </div>
@@ -636,27 +635,40 @@
             <div
               v-for="rec in pendingRecordings"
               :key="rec.id"
-              class="flex items-center gap-3 px-3 py-2.5 bg-blue-500/[0.04] hover:bg-blue-500/[0.06] border border-blue-500/[0.12] hover:border-blue-500/25 rounded-xl transition-all"
+              class="match-list-grid pending-row relative px-3 py-2 bg-blue-500/[0.04] hover:bg-blue-500/[0.06] border border-blue-500/[0.12] hover:border-blue-500/25 rounded-xl transition-all"
             >
-              <div class="w-9 h-9 rounded-lg flex-shrink-0 overflow-hidden flex items-center justify-center relative" :style="rec.agent ? { backgroundColor: getAgentColor(rec.agent) + '22' } : { backgroundColor: 'rgba(59,130,246,0.1)' }">
+              <div v-if="recordingRowStats(rec).won != null" class="absolute left-0 top-2 bottom-2 w-[3px] rounded-full" :class="recordingRowStats(rec).won ? 'bg-green-500' : 'bg-red-500'" />
+              <div class="w-9 h-9 rounded-lg overflow-hidden flex items-center justify-center relative" :style="rec.agent ? { backgroundColor: getAgentColor(rec.agent) + '22' } : { backgroundColor: 'rgba(59,130,246,0.1)' }">
                 <img v-if="rec.map && getMapMinimap(rec.map)" :src="getMapMinimap(rec.map)" class="absolute inset-0 w-full h-full object-cover opacity-20" />
                 <img v-if="rec.agent && getAgentImage(rec.agent)" :src="getAgentImage(rec.agent)" class="relative w-8 h-8 object-contain" />
                 <svg v-else class="w-4 h-4 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M15 10l4.553-2.069A1 1 0 0121 8.882v6.236a1 1 0 01-1.447.894L15 14M3 8a2 2 0 012-2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V8z"/></svg>
               </div>
-              <div class="flex-1 min-w-0">
-                <div class="flex items-center gap-1.5">
-                  <p class="text-xs font-medium text-gray-200 truncate">{{ rec.agent || 'Unknown' }}<span v-if="rec.map" class="text-gray-600"> · {{ rec.map }}</span></p>
-                  <span v-if="rec.agent" class="flex-shrink-0 text-[8px] font-semibold px-1 py-px rounded" :style="{ color: getRoleColor(getAgentRole(rec.agent)), backgroundColor: getRoleColor(getAgentRole(rec.agent)) + '20' }">{{ getAgentRole(rec.agent) }}</span>
+              <div class="min-w-0">
+                <div class="flex items-center gap-1">
+                  <span class="text-xs font-semibold truncate text-gray-200">{{ rec.agent || 'Unknown' }}</span>
+                  <span v-if="rec.agent" class="flex-shrink-0 text-[8px] font-bold px-1 py-px rounded" :style="{ color: getRoleColor(getAgentRole(rec.agent)), backgroundColor: getRoleColor(getAgentRole(rec.agent)) + '20' }">{{ getAgentRole(rec.agent) }}</span>
                 </div>
-                <p class="text-[10px] text-gray-600 mt-0.5">{{ formatRelativeTime(new Date(rec.recordedAt).toISOString()) }} · {{ formatMode(rec.gameMode) }}<span v-if="rec.fileSizeBytes"> · {{ formatFileSize(rec.fileSizeBytes) }}</span></p>
+                <p class="text-[10px] text-gray-600 mt-0.5 truncate">
+                  {{ rec.map || '—' }} · {{ formatRelativeTime(new Date(rec.recordedAt).toISOString()) }}
+                  <span class="text-gray-700"> · {{ formatMode(rec.gameMode) }}</span>
+                </p>
               </div>
-              <div class="flex items-center gap-1.5 flex-shrink-0">
-                <button v-if="rec.timeline?.playerKills?.length" class="px-2 py-1 text-xs font-medium text-gray-300 bg-white/[0.06] hover:bg-white/[0.1] border border-white/[0.08] rounded-lg transition-colors" @click="$router.push({ path: '/vod-review', query: { id: rec.id } })">Review</button>
-                <button :disabled="analysingIds.has(rec.id)" class="px-2 py-1 text-xs font-medium text-white bg-red-500 hover:bg-red-600 disabled:opacity-60 rounded-lg transition-colors flex items-center gap-1" @click="analyseRecording(rec.id)">
+              <span v-if="recordingRowStats(rec).won != null" class="text-[10px] font-black px-2 py-0.5 rounded justify-self-center" :class="recordingRowStats(rec).won ? 'bg-green-500/15 text-green-400' : 'bg-red-500/15 text-red-400'">{{ recordingRowStats(rec).won ? 'W' : 'L' }}</span>
+              <span v-else class="text-[10px] text-gray-700 justify-self-center">—</span>
+              <span v-if="recordingRowStats(rec).kills != null" class="text-xs font-mono font-semibold tabular-nums text-center">{{ recordingRowStats(rec).kills }}<span class="text-gray-600">/</span>{{ recordingRowStats(rec).deaths }}<span class="text-gray-600">/</span>{{ recordingRowStats(rec).assists }}</span>
+              <span v-else class="text-[10px] text-gray-700 text-center">—</span>
+              <span v-if="recordingRowStats(rec).combat_score != null" class="text-xs font-bold tabular-nums text-gray-300 text-center">{{ recordingRowStats(rec).combat_score }}</span>
+              <span v-else class="text-[10px] text-gray-700 text-center">—</span>
+              <span v-if="recordingRowStats(rec).hs_pct != null" class="text-xs font-bold tabular-nums text-center" :class="recordingRowStats(rec).hs_pct! >= 25 ? 'text-orange-400' : 'text-gray-400'">{{ recordingRowStats(rec).hs_pct }}%</span>
+              <span v-else class="text-[10px] text-gray-700 text-center">—</span>
+              <span class="text-[10px] text-blue-400/70 text-right">Pending</span>
+              <div class="col-span-2 flex items-center justify-end gap-1.5">
+                <button v-if="rec.timeline?.playerKills?.length || rec.timeline?.playerDeaths?.length" class="px-2 py-1 text-[10px] font-medium text-gray-300 bg-white/[0.06] hover:bg-white/[0.1] border border-white/[0.08] rounded-lg transition-colors" @click="$router.push({ path: '/vod-review', query: { id: rec.id } })">Review</button>
+                <button :disabled="analysingIds.has(rec.id)" class="px-2 py-1 text-[10px] font-medium text-white bg-red-500 hover:bg-red-600 disabled:opacity-60 rounded-lg transition-colors flex items-center gap-1" @click="analyseRecording(rec.id)">
                   <svg v-if="analysingIds.has(rec.id)" class="w-3 h-3 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
-                  {{ analysingIds.has(rec.id) ? 'Analysing…' : 'Analyse' }}
+                  {{ analysingIds.has(rec.id) ? '…' : 'Analyse' }}
                 </button>
-                <button class="p-1.5 text-gray-600 hover:text-gray-400 transition-colors rounded-lg hover:bg-white/[0.04]" @click="dismissRecording(rec.id)">
+                <button class="p-1 text-gray-600 hover:text-gray-400 transition-colors rounded-lg hover:bg-white/[0.04]" title="Dismiss" @click="dismissRecording(rec.id)">
                   <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
                 </button>
               </div>
@@ -691,13 +703,11 @@
               <div
                 v-for="a in group.items"
                 :key="a.id"
-                class="analysis-row relative flex items-center gap-2 px-3 py-2.5 rounded-xl border border-white/[0.09] bg-white/[0.02] cursor-pointer row-interactive"
+                class="match-list-grid analysis-row relative px-3 py-2 rounded-xl border border-white/[0.09] bg-white/[0.02] cursor-pointer row-interactive"
                 @click="openAnalysisRow(a)"
               >
-                <!-- W/L left accent bar -->
                 <div v-if="a.won != null" class="absolute left-0 top-2 bottom-2 w-[3px] rounded-full" :class="a.won ? 'bg-green-500' : 'bg-red-500'" />
-                <!-- Agent portrait -->
-                <div class="w-9 h-9 rounded-lg flex-shrink-0 overflow-hidden flex items-center justify-center relative" :style="a.agent ? { backgroundColor: getAgentColor(a.agent) + '22' } : {}">
+                <div class="w-9 h-9 rounded-lg overflow-hidden flex items-center justify-center relative" :style="a.agent ? { backgroundColor: getAgentColor(a.agent) + '22' } : {}">
                   <img v-if="a.map && getMapMinimap(a.map)" :src="getMapMinimap(a.map)" class="absolute inset-0 w-full h-full object-cover opacity-20" />
                   <img v-if="a.agent && getAgentImage(a.agent)" :src="getAgentImage(a.agent)" class="relative w-8 h-8 object-contain" />
                   <template v-else>
@@ -705,67 +715,40 @@
                     <svg v-else class="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
                   </template>
                 </div>
-
-                <!-- Agent + map + date — wider when no stats available -->
-                <div :class="['flex-shrink-0 min-w-0', (a.kills == null && a.kda == null && a.combat_score == null) ? 'flex-1' : 'w-32']">
+                <div class="min-w-0">
                   <div class="flex items-center gap-1">
                     <span class="text-xs font-semibold truncate">{{ a.agent || 'Unknown' }}</span>
                     <span v-if="a.agent" class="flex-shrink-0 text-[8px] font-bold px-1 py-px rounded" :style="{ color: getRoleColor(getAgentRole(a.agent)), backgroundColor: getRoleColor(getAgentRole(a.agent)) + '20' }">{{ getAgentRole(a.agent) }}</span>
                   </div>
                   <p class="text-[10px] text-gray-600 mt-0.5 truncate">
                     {{ a.map || '—' }} · {{ formatDate(a.created_at) }}
-                    <span v-if="a.rounds_won != null && a.rounds_lost != null" class="text-gray-700"> · {{ a.rounds_won }}–{{ a.rounds_lost }} rds</span>
+                    <span v-if="a.rounds_won != null && a.rounds_lost != null" class="text-gray-700"> · {{ a.rounds_won }}–{{ a.rounds_lost }}</span>
                   </p>
                 </div>
-
-                <!-- W/L -->
-                <span v-if="a.won != null" class="flex-shrink-0 text-[10px] font-black px-2 py-0.5 rounded" :class="a.won ? 'bg-green-500/15 text-green-400' : 'bg-red-500/15 text-red-400'">{{ a.won ? 'W' : 'L' }}</span>
-                <span v-else class="flex-shrink-0 w-7" />
-
-                <!-- K/D/A -->
-                <div v-if="a.kills != null" class="w-20 flex-shrink-0 text-center">
-                  <span class="text-xs font-mono font-semibold tabular-nums">{{ a.kills }}<span class="text-gray-600">/</span>{{ a.deaths }}<span class="text-gray-600">/</span>{{ a.assists }}</span>
-                  <p class="text-[9px] text-gray-700 mt-0.5">K/D/A</p>
-                </div>
-                <div v-else-if="a.kda != null" class="w-20 flex-shrink-0 text-center">
-                  <span class="text-xs font-semibold tabular-nums">{{ a.kda.toFixed(2) }}</span>
-                  <p class="text-[9px] text-gray-700 mt-0.5">KDA</p>
-                </div>
-                <div v-else class="w-20 flex-shrink-0" />
-
-                <!-- ACS -->
-                <div v-if="a.combat_score" class="w-14 flex-shrink-0 text-center">
-                  <span class="text-xs font-bold tabular-nums text-gray-300">{{ a.combat_score }}</span>
-                  <p class="text-[9px] text-gray-700 mt-0.5">ACS</p>
-                </div>
-                <div v-else class="w-14 flex-shrink-0" />
-
-                <!-- HS% -->
-                <div v-if="a.hs_pct != null" class="w-12 flex-shrink-0 text-center">
-                  <span class="text-xs font-bold tabular-nums" :class="a.hs_pct >= 25 ? 'text-orange-400' : 'text-gray-400'">{{ a.hs_pct }}%</span>
-                  <p class="text-[9px] text-gray-700 mt-0.5">HS</p>
-                </div>
-                <div v-else class="w-12 flex-shrink-0" />
-
-                <!-- AI Score -->
-                <div class="flex-1 flex items-center justify-end gap-1.5">
+                <span v-if="a.won != null" class="text-[10px] font-black px-2 py-0.5 rounded justify-self-center" :class="a.won ? 'bg-green-500/15 text-green-400' : 'bg-red-500/15 text-red-400'">{{ a.won ? 'W' : 'L' }}</span>
+                <span v-else class="text-[10px] text-gray-700 justify-self-center">—</span>
+                <span v-if="a.kills != null" class="text-xs font-mono font-semibold tabular-nums text-center">{{ a.kills }}<span class="text-gray-600">/</span>{{ a.deaths }}<span class="text-gray-600">/</span>{{ a.assists }}</span>
+                <span v-else-if="a.kda != null" class="text-xs font-semibold tabular-nums text-center">{{ a.kda.toFixed(2) }}</span>
+                <span v-else class="text-[10px] text-gray-700 text-center">—</span>
+                <span v-if="a.combat_score != null" class="text-xs font-bold tabular-nums text-gray-300 text-center">{{ a.combat_score }}</span>
+                <span v-else class="text-[10px] text-gray-700 text-center">—</span>
+                <span v-if="a.hs_pct != null" class="text-xs font-bold tabular-nums text-center" :class="a.hs_pct >= 25 ? 'text-orange-400' : 'text-gray-400'">{{ a.hs_pct }}%</span>
+                <span v-else class="text-[10px] text-gray-700 text-center">—</span>
+                <div class="flex items-center justify-end gap-1">
                   <template v-if="a.overall_score != null">
                     <span class="text-sm font-black tabular-nums" :class="a.overall_score >= 78 ? 'text-green-400' : a.overall_score >= 50 ? 'text-yellow-400' : 'text-red-400'">{{ a.overall_score * 10 }}</span>
                     <span class="text-[8px] font-bold px-1.5 py-px rounded-full" :class="scoreGradeBadgeClass(a.overall_score)">{{ scoreGrade(a.overall_score) }}</span>
                   </template>
+                  <span v-else class="text-[10px] text-gray-700">—</span>
                 </div>
-
-                <!-- Web report -->
                 <button
-                  class="flex-shrink-0 p-1.5 text-gray-600 hover:text-gray-400 transition-colors rounded-lg hover:bg-white/[0.04]"
+                  class="p-1 text-gray-600 hover:text-gray-400 transition-colors rounded-lg hover:bg-white/[0.04] justify-self-center"
                   title="Open web report"
                   @click.stop="openAnalysis(a.id)"
                 >
                   <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/></svg>
                 </button>
-
-                <!-- Arrow -->
-                <svg class="w-3.5 h-3.5 text-gray-700 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+                <svg class="w-3.5 h-3.5 text-gray-700 justify-self-center" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
               </div>
             </template>
           </template>
@@ -1715,6 +1698,54 @@ function formatFileSize(bytes: number): string {
   if (bytes >= 1024 * 1024) return Math.round(bytes / (1024 * 1024)) + ' MB'
   return Math.round(bytes / 1024) + ' KB'
 }
+
+interface MatchRowStats {
+  won: boolean | null
+  kills: number | null
+  deaths: number | null
+  assists: number | null
+  combat_score: number | null
+  hs_pct: number | null
+}
+
+const EMPTY_ROW_STATS: MatchRowStats = {
+  won: null,
+  kills: null,
+  deaths: null,
+  assists: null,
+  combat_score: null,
+  hs_pct: null,
+}
+
+function resolveTimelineWon(timeline: PendingRecording['timeline']): boolean | null {
+  if (!timeline) return null
+  if (timeline.finalStats?.won != null) return timeline.finalStats.won
+  const finalScore = timeline.finalScore
+  if (finalScore) {
+    if (finalScore.allyScore === finalScore.enemyScore) return null
+    return finalScore.allyScore > finalScore.enemyScore
+  }
+  const rounds = timeline.roundScores
+  if (rounds?.length) {
+    const last = rounds[rounds.length - 1]
+    if (last.allyScore === last.enemyScore) return null
+    return last.allyScore > last.enemyScore
+  }
+  return null
+}
+
+function recordingRowStats(rec: PendingRecording): MatchRowStats {
+  const fs = rec.timeline?.finalStats
+  if (!fs) return EMPTY_ROW_STATS
+  return {
+    won: resolveTimelineWon(rec.timeline),
+    kills: fs.kills ?? null,
+    deaths: fs.deaths ?? null,
+    assists: fs.assists ?? null,
+    combat_score: fs.score ?? null,
+    hs_pct: fs.headshotPct ?? null,
+  }
+}
 </script>
 
 <style scoped>
@@ -1773,6 +1804,17 @@ function formatFileSize(bytes: number): string {
 @keyframes scoreBarFill {
   from { width: 0; }
 }
+.match-list-grid {
+  display: grid;
+  grid-template-columns: 36px minmax(0, 1fr) 32px 72px 44px 40px 52px 28px 14px;
+  column-gap: 8px;
+  align-items: center;
+}
+
+.match-list-header {
+  row-gap: 0;
+}
+
 .analysis-row:hover {
   transform: translateY(-1px);
 }

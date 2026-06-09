@@ -59,7 +59,7 @@
         <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 20 20">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" d="M3.75 5.75h12.5v8.5H3.75v-8.5Zm2 10.25h8.5M8 3.75v2"/>
         </svg>
-        {{ spatialMapVisible ? 'Hide Map' : 'Map' }}
+        {{ spatialMapVisible ? 'Hide Intel' : 'Intel Map' }}
       </button>
       <span
         v-if="activeRoundNumber != null"
@@ -298,7 +298,9 @@
         </div>
       </div>
 
-      <!-- Video + timeline -->
+      <!-- Video + intel + timeline -->
+      <div class="flex flex-1 min-w-0 min-h-0">
+
       <div class="flex-1 flex flex-col min-w-0 min-h-0">
 
         <!-- Video area — frame sized to video aspect ratio (no letterboxing inside the picture) -->
@@ -434,69 +436,21 @@
             </div>
           </Transition>
 
-          <!-- Floating spatial map (HUD overlay on VOD) -->
-          <Transition name="event-pop">
-            <div
-              v-if="hasSpatialIntel && spatialMapVisible"
-              class="absolute bottom-3 right-3 z-20 transition-opacity duration-300"
-              :class="isPlaying && !spatialMapHover ? 'opacity-55 hover:opacity-100' : 'opacity-100'"
-              @click.stop
-              @mousedown.stop
-              @mouseenter="spatialMapHover = true"
-              @mouseleave="spatialMapHover = false"
-            >
-              <div class="relative rounded-lg border border-white/12 bg-black/75 backdrop-blur-md p-1 shadow-[0_8px_28px_rgba(0,0,0,0.5)]">
-                <div class="absolute -top-2 -left-2 z-10 flex gap-0.5">
-                  <button
-                    type="button"
-                    class="flex h-5 w-5 items-center justify-center rounded-full border border-white/15 bg-[#1a1a1a] text-[10px] font-bold text-gray-400 hover:text-white hover:border-white/25"
-                    :title="spatialMapLarge ? 'Smaller map' : 'Larger map'"
-                    @click="spatialMapLarge = !spatialMapLarge"
-                  >{{ spatialMapLarge ? '−' : '+' }}</button>
-                  <button
-                    type="button"
-                    class="flex h-5 w-5 items-center justify-center rounded-full border border-white/15 bg-[#1a1a1a] text-[10px] font-bold text-gray-500 hover:text-white hover:border-white/25"
-                    title="Hide map overlay"
-                    @click="spatialMapVisible = false"
-                  >×</button>
-                </div>
-                <MatchSpatialMinimap
-                  float-hud
-                  :float-large="spatialMapLarge"
-                  :summary="displaySpatialSummary"
-                  :map-name="timeline?.map"
-                  :active-index="activeSpatialDisplayIndex"
-                  :show-legend="false"
-                  :show-heatmap="spatialViewMode !== 'dots'"
-                  :heatmap-layer="spatialViewMode === 'sites' ? 'site' : 'callout'"
-                  :round-filter="spatialRoundFilter"
-                  @update:round-filter="spatialRoundFilter = $event"
-                  @select="onSpatialSelect"
-                />
-              </div>
-            </div>
-          </Transition>
           </div>
         </div>
 
-        <!-- Cinema dock: seek strip under video -->
+        <!-- Mobile / collapsed intel band — large map above scrubber -->
         <div
           v-if="hasSpatialIntel && !theaterMode"
-          class="flex-shrink-0 border-b border-white/[0.08] bg-gradient-to-r from-[#141414] via-[#131313] to-[#141414] px-3 py-2 min-h-[46px]"
+          class="flex-shrink-0 border-b border-white/[0.08] bg-[#131313] px-3 py-3"
+          :class="spatialMapVisible ? 'lg:hidden' : ''"
           @click.stop
         >
-          <div class="flex items-center gap-2.5 min-h-[38px]">
-            <span class="hidden sm:block flex-shrink-0 text-[10px] font-black uppercase tracking-[0.18em] text-red-400/85 w-10">Intel</span>
-
-            <!-- Dock map when HUD is hidden (avoids duplicate minimaps) -->
-            <div
-              v-if="!spatialMapVisible"
-              class="flex-shrink-0 hidden sm:block"
-              @mousedown.stop
-              @click.stop
-            >
+          <div class="flex flex-col sm:flex-row gap-3 min-h-0">
+            <div class="flex-shrink-0 mx-auto sm:mx-0" @mousedown.stop @click.stop>
               <MatchSpatialMinimap
-                dock-hud
+                dock-expanded
+                :dock-large="spatialMapLarge"
                 :summary="displaySpatialSummary"
                 :map-name="timeline?.map"
                 :active-index="activeSpatialDisplayIndex"
@@ -504,47 +458,52 @@
                 :show-heatmap="spatialViewMode !== 'dots'"
                 :heatmap-layer="spatialViewMode === 'sites' ? 'site' : 'callout'"
                 :round-filter="spatialRoundFilter"
+                :show-round-slider="availableSpatialRounds.length > 1"
                 @update:round-filter="spatialRoundFilter = $event"
                 @select="onSpatialSelect"
               />
             </div>
-
-            <div v-if="!spatialMapVisible" class="hidden sm:block w-px h-7 bg-white/[0.08] flex-shrink-0" />
-
-            <div class="flex flex-shrink-0 items-center gap-0.5 p-0.5 rounded-lg bg-black/25 border border-white/[0.06]">
-              <button
-                v-for="mode in spatialModes"
-                :key="mode.id"
-                type="button"
-                class="px-2 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wide transition-colors"
-                :class="spatialViewMode === mode.id
-                  ? 'bg-red-500/20 text-red-200'
-                  : 'text-gray-500 hover:text-gray-300'"
-                @click="spatialViewMode = mode.id"
-              >{{ mode.label }}</button>
-            </div>
-
-            <div class="hidden md:block w-px h-7 bg-white/[0.08] flex-shrink-0" />
-
-            <p
-              v-if="spatialSummary?.heatmapInsight"
-              class="hidden md:block flex-shrink-0 max-w-[10rem] lg:max-w-[14rem] xl:max-w-[20rem] text-[11px] leading-snug font-medium text-gray-300 line-clamp-2"
-              :title="spatialSummary.heatmapInsight"
-            >{{ spatialSummary.heatmapInsight }}</p>
-
-            <div class="relative flex-1 min-w-0">
-              <div
-                ref="dockChipsEl"
-                class="flex gap-1 overflow-x-auto scrollbar-hide pr-1"
-              >
+            <div class="flex-1 min-w-0 flex flex-col gap-2">
+              <div class="flex flex-wrap items-center gap-2">
+                <span class="text-[9px] font-black uppercase tracking-[0.2em] text-red-400/85">Match Intel</span>
+                <div class="flex items-center gap-0.5 p-0.5 rounded-lg bg-black/25 border border-white/[0.06]">
+                  <button
+                    v-for="mode in spatialModes"
+                    :key="mode.id"
+                    type="button"
+                    class="px-2 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wide transition-colors"
+                    :class="spatialViewMode === mode.id
+                      ? 'bg-red-500/20 text-red-200'
+                      : 'text-gray-500 hover:text-gray-300'"
+                    @click="spatialViewMode = mode.id"
+                  >{{ mode.label }}</button>
+                </div>
+                <button
+                  v-if="spatialMapVisible"
+                  type="button"
+                  class="ml-auto text-[9px] font-semibold text-gray-500 hover:text-gray-300 lg:hidden"
+                  @click="spatialMapVisible = false"
+                >Hide</button>
+                <button
+                  v-else
+                  type="button"
+                  class="ml-auto hidden lg:flex text-[9px] font-semibold text-gray-500 hover:text-gray-300"
+                  @click="spatialMapVisible = true"
+                >Dock to side</button>
+              </div>
+              <p
+                v-if="spatialSummary?.heatmapInsight"
+                class="text-[11px] leading-snug font-medium text-gray-300"
+              >{{ spatialSummary.heatmapInsight }}</p>
+              <div ref="dockChipsEl" class="flex flex-wrap gap-1.5 max-h-24 overflow-y-auto scrollbar-hide">
                 <button
                   v-for="item in spatialDeathChips"
                   :key="item.index"
                   :data-spatial-chip="item.index"
                   type="button"
-                  class="flex-shrink-0 text-[10px] font-semibold px-2.5 py-1 rounded-md border transition-all"
+                  class="text-[10px] font-semibold px-2.5 py-1 rounded-md border transition-all"
                   :class="activeSpatialIndex === item.index
-                    ? 'bg-red-500/22 border-red-400/45 text-white shadow-[0_0_12px_rgba(239,68,68,0.2)]'
+                    ? 'bg-red-500/22 border-red-400/45 text-white'
                     : 'bg-black/35 border-white/10 text-gray-500 hover:border-red-500/30 hover:text-gray-300'"
                   :title="`Seek to ${item.ev.callout}`"
                   @click="onSpatialSelect(item.ev, item.displayIndex)"
@@ -552,42 +511,62 @@
                   R{{ item.ev.round + 1 }} · {{ item.ev.callout }}
                 </button>
               </div>
+              <div class="flex flex-wrap items-center gap-2 pt-0.5">
+                <div
+                  v-if="recordingId"
+                  class="flex items-center gap-1 rounded-md border border-white/[0.08] bg-black/30 px-1.5 py-0.5"
+                >
+                  <span class="text-[8px] text-gray-600">Sync</span>
+                  <button type="button" class="text-[9px] font-bold px-1 py-0.5 rounded border border-white/10 text-gray-500 hover:text-white" title="Shift events 1s earlier" @click="nudgeTimelineSync(-1000)">−1s</button>
+                  <span class="text-[8px] tabular-nums text-gray-600 min-w-[2.25rem] text-center">{{ syncOffsetLabel }}</span>
+                  <button type="button" class="text-[9px] font-bold px-1 py-0.5 rounded border border-white/10 text-gray-500 hover:text-white" title="Shift events 1s later" @click="nudgeTimelineSync(1000)">+1s</button>
+                  <button v-if="videoSyncOffsetMs" type="button" class="text-[8px] px-1 py-0.5 rounded text-gray-600 hover:text-gray-300" title="Reset sync offset" @click="resetTimelineSync">↺</button>
+                </div>
+                <p v-if="!canSeekFromSpatial" class="text-[9px] text-amber-300/75">
+                  <template v-if="spatialPreviewAvailable">1 free seek ·</template>
+                  <button type="button" class="underline hover:text-amber-200" @click="openUpgrade">Plus</button>
+                </p>
+              </div>
             </div>
+          </div>
+        </div>
 
-            <div
-              v-if="recordingId"
-              class="hidden lg:flex flex-shrink-0 items-center gap-1 rounded-md border border-white/[0.08] bg-black/30 px-1.5 py-0.5"
-            >
-              <span class="text-[8px] text-gray-600">Sync</span>
-              <button
-                type="button"
-                class="text-[9px] font-bold px-1 py-0.5 rounded border border-white/10 text-gray-500 hover:text-white"
-                title="Shift events 1s earlier"
-                @click="nudgeTimelineSync(-1000)"
-              >−1s</button>
-              <span class="text-[8px] tabular-nums text-gray-600 min-w-[2.25rem] text-center">{{ syncOffsetLabel }}</span>
-              <button
-                type="button"
-                class="text-[9px] font-bold px-1 py-0.5 rounded border border-white/10 text-gray-500 hover:text-white"
-                title="Shift events 1s later"
-                @click="nudgeTimelineSync(1000)"
-              >+1s</button>
-              <button
-                v-if="videoSyncOffsetMs"
-                type="button"
-                class="text-[8px] px-1 py-0.5 rounded text-gray-600 hover:text-gray-300"
-                title="Reset sync offset"
-                @click="resetTimelineSync"
-              >↺</button>
-            </div>
-
-            <p
-              v-if="!canSeekFromSpatial"
-              class="hidden sm:block flex-shrink-0 text-[8px] text-amber-300/75 whitespace-nowrap"
-            >
-              <template v-if="spatialPreviewAvailable">1 free seek ·</template>
-              <button type="button" class="underline hover:text-amber-200" @click="openUpgrade">Plus</button>
-            </p>
+        <!-- Slim intel strip when side panel is open (desktop) -->
+        <div
+          v-else-if="hasSpatialIntel && !theaterMode && spatialMapVisible"
+          class="hidden lg:flex flex-shrink-0 items-center gap-2 border-b border-white/[0.08] bg-[#131313] px-3 py-1.5 min-h-[36px]"
+          @click.stop
+        >
+          <span class="text-[9px] font-black uppercase tracking-[0.18em] text-red-400/85">Intel</span>
+          <div class="flex items-center gap-0.5 p-0.5 rounded-lg bg-black/25 border border-white/[0.06]">
+            <button
+              v-for="mode in spatialModes"
+              :key="mode.id"
+              type="button"
+              class="px-2 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wide transition-colors"
+              :class="spatialViewMode === mode.id
+                ? 'bg-red-500/20 text-red-200'
+                : 'text-gray-500 hover:text-gray-300'"
+              @click="spatialViewMode = mode.id"
+            >{{ mode.label }}</button>
+          </div>
+          <p
+            v-if="spatialSummary?.heatmapInsight"
+            class="flex-1 min-w-0 text-[10px] text-gray-400 truncate"
+            :title="spatialSummary.heatmapInsight"
+          >{{ spatialSummary.heatmapInsight }}</p>
+          <div ref="dockChipsEl" class="flex gap-1 overflow-x-auto scrollbar-hide max-w-[40%]">
+            <button
+              v-for="item in spatialDeathChips"
+              :key="item.index"
+              :data-spatial-chip="item.index"
+              type="button"
+              class="flex-shrink-0 text-[9px] font-semibold px-2 py-0.5 rounded-md border transition-all"
+              :class="activeSpatialIndex === item.index
+                ? 'bg-red-500/22 border-red-400/45 text-white'
+                : 'bg-black/35 border-white/10 text-gray-500 hover:border-red-500/30 hover:text-gray-300'"
+              @click="onSpatialSelect(item.ev, item.displayIndex)"
+            >R{{ item.ev.round + 1 }} · {{ item.ev.callout }}</button>
           </div>
         </div>
 
@@ -708,18 +687,26 @@
                 Score
               </button>
 
-              <div class="hidden xl:flex items-center gap-3 ml-1">
-                <div class="flex items-center gap-1.5">
+              <div class="hidden lg:flex items-center gap-2.5 ml-1 flex-wrap justify-end">
+                <div class="flex items-center gap-1">
                   <div class="h-2.5 w-2.5 rounded-full bg-emerald-500" />
-                  <span class="text-xs text-gray-500">Kill</span>
+                  <span class="text-[10px] text-gray-500">Kill</span>
                 </div>
-                <div class="flex items-center gap-1.5">
+                <div class="flex items-center gap-1">
                   <div class="h-2.5 w-2.5 rounded-full bg-red-500" />
-                  <span class="text-xs text-gray-500">Death</span>
+                  <span class="text-[10px] text-gray-500">Death</span>
                 </div>
-                <div v-if="(timeline?.spikePlants?.length ?? 0) > 0" class="flex items-center gap-1.5">
+                <div class="flex items-center gap-1">
                   <div class="h-3 w-2 rounded-full bg-orange-500" />
-                  <span class="text-xs text-gray-500">Plant</span>
+                  <span class="text-[10px] text-gray-500">Plant</span>
+                </div>
+                <div class="flex items-center gap-1">
+                  <div class="h-3 w-2 rounded-full bg-cyan-500" />
+                  <span class="text-[10px] text-gray-500">Defuse</span>
+                </div>
+                <div class="flex items-center gap-1">
+                  <div class="h-2.5 w-2.5 rounded-full bg-yellow-500" />
+                  <span class="text-[10px] text-gray-500">Detonate</span>
                 </div>
               </div>
             </div>
@@ -1022,6 +1009,107 @@
         </div>
       </div>
 
+      <!-- Desktop intel side panel — full-size heatmap -->
+      <aside
+        v-if="hasSpatialIntel && spatialMapVisible && !theaterMode"
+        class="hidden lg:flex w-[min(340px,30vw)] flex-shrink-0 flex-col min-h-0 border-l border-white/[0.09] bg-[#121212]"
+        @click.stop
+      >
+        <div class="flex items-center gap-2 px-3 py-2 border-b border-white/[0.08] flex-shrink-0">
+          <div class="flex-1 min-w-0">
+            <p class="text-[9px] font-black uppercase tracking-[0.22em] text-red-400">Match Intel</p>
+            <p v-if="spatialSummary?.heatmapInsight" class="text-[10px] text-gray-400 truncate mt-0.5" :title="spatialSummary.heatmapInsight">
+              {{ spatialSummary.heatmapInsight }}
+            </p>
+          </div>
+          <button
+            type="button"
+            class="flex h-7 w-7 items-center justify-center rounded-md border border-white/[0.08] bg-white/[0.03] text-gray-500 hover:text-gray-200"
+            :title="spatialMapLarge ? 'Standard size' : 'Larger map'"
+            @click="spatialMapLarge = !spatialMapLarge"
+          >{{ spatialMapLarge ? '−' : '+' }}</button>
+          <button
+            type="button"
+            class="flex h-7 w-7 items-center justify-center rounded-md border border-white/[0.08] bg-white/[0.03] text-gray-500 hover:text-gray-200"
+            title="Hide intel panel"
+            @click="spatialMapVisible = false"
+          >
+            <svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 20 20">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" d="m12.5 5.5-5 4.5 5 4.5"/>
+            </svg>
+          </button>
+        </div>
+
+        <div class="flex-1 min-h-0 overflow-y-auto scrollbar-hide px-3 py-3 space-y-3">
+          <div class="mx-auto w-fit" @mousedown.stop @click.stop>
+            <MatchSpatialMinimap
+              panel-hud
+              :panel-large="spatialMapLarge"
+              :summary="displaySpatialSummary"
+              :map-name="timeline?.map"
+              :active-index="activeSpatialDisplayIndex"
+              :show-legend="true"
+              :show-heatmap="spatialViewMode !== 'dots'"
+              :heatmap-layer="spatialViewMode === 'sites' ? 'site' : 'callout'"
+              :round-filter="spatialRoundFilter"
+              :show-round-slider="availableSpatialRounds.length > 1"
+              @update:round-filter="spatialRoundFilter = $event"
+              @select="onSpatialSelect"
+            />
+          </div>
+
+          <div class="flex items-center gap-0.5 p-0.5 rounded-lg bg-black/25 border border-white/[0.06] w-fit">
+            <button
+              v-for="mode in spatialModes"
+              :key="mode.id"
+              type="button"
+              class="px-2.5 py-1 rounded-md text-[10px] font-bold uppercase tracking-wide transition-colors"
+              :class="spatialViewMode === mode.id
+                ? 'bg-red-500/20 text-red-200'
+                : 'text-gray-500 hover:text-gray-300'"
+              @click="spatialViewMode = mode.id"
+            >{{ mode.label }}</button>
+          </div>
+
+          <div v-if="spatialDeathChips.length" class="space-y-1.5">
+            <p class="text-[9px] font-semibold uppercase tracking-wider text-gray-600">Death locations</p>
+            <div class="flex flex-wrap gap-1.5">
+              <button
+                v-for="item in spatialDeathChips"
+                :key="item.index"
+                :data-spatial-chip="item.index"
+                type="button"
+                class="text-[10px] font-semibold px-2.5 py-1 rounded-md border transition-all"
+                :class="activeSpatialIndex === item.index
+                  ? 'bg-red-500/22 border-red-400/45 text-white'
+                  : 'bg-black/35 border-white/10 text-gray-500 hover:border-red-500/30 hover:text-gray-300'"
+                @click="onSpatialSelect(item.ev, item.displayIndex)"
+              >
+                R{{ item.ev.round + 1 }} · {{ item.ev.callout }}
+              </button>
+            </div>
+          </div>
+
+          <div
+            v-if="recordingId"
+            class="flex flex-wrap items-center gap-2 rounded-lg border border-white/[0.08] bg-black/25 px-2.5 py-2"
+          >
+            <span class="text-[9px] font-semibold uppercase tracking-wider text-gray-600">Video sync</span>
+            <button type="button" class="text-[10px] font-bold px-2 py-0.5 rounded border border-white/10 text-gray-500 hover:text-white" @click="nudgeTimelineSync(-1000)">−1s</button>
+            <span class="text-[10px] tabular-nums text-gray-400 min-w-[2.5rem] text-center">{{ syncOffsetLabel }}</span>
+            <button type="button" class="text-[10px] font-bold px-2 py-0.5 rounded border border-white/10 text-gray-500 hover:text-white" @click="nudgeTimelineSync(1000)">+1s</button>
+            <button v-if="videoSyncOffsetMs" type="button" class="text-[9px] px-1.5 py-0.5 rounded text-gray-600 hover:text-gray-300" @click="resetTimelineSync">Reset</button>
+          </div>
+
+          <p v-if="!canSeekFromSpatial" class="text-[10px] text-amber-300/80">
+            <template v-if="spatialPreviewAvailable">1 free death seek ·</template>
+            <button type="button" class="underline hover:text-amber-200" @click="openUpgrade">Upgrade for unlimited seeks</button>
+          </p>
+        </div>
+      </aside>
+
+      </div>
+
       <div
         v-if="showInsightsPanel && !theaterMode"
         class="w-56 flex-shrink-0 border-l border-white/[0.09] bg-[#0d0d0d] flex flex-col min-h-0"
@@ -1229,7 +1317,7 @@ const shortcutLegend = [
   { key: '[ / ]', label: 'Slower / faster' },
   { key: 'T', label: 'Theater mode' },
   { key: 'F', label: 'Fullscreen' },
-  { key: 'M', label: 'Toggle map' },
+  { key: 'M', label: 'Toggle intel map' },
   { key: 'S', label: 'Scoreboard' },
   { key: 'R', label: 'Round detail' },
   { key: 'Esc', label: 'Back / exit' },
@@ -1249,8 +1337,7 @@ const SPATIAL_MAP_LARGE_KEY = 'upforge_vod_map_large'
 const THEATER_MODE_KEY = 'upforge_vod_theater_mode'
 
 const spatialMapVisible = ref(true)
-const spatialMapLarge = ref(false)
-const spatialMapHover = ref(false)
+const spatialMapLarge = ref(true)
 const dockChipsEl = ref<HTMLElement | null>(null)
 const activeSpatialIndex = ref<number | null>(null)
 const recordingId = ref<string | null>(null)
@@ -1732,6 +1819,12 @@ const spatialDeathChips = computed(() =>
     .map((item, displayIndex) => ({ ...item, displayIndex }))
     .filter(x => x.ev.type === 'death'),
 )
+
+const availableSpatialRounds = computed(() => {
+  const rounds = new Set<number>()
+  for (const e of spatialSummary.value?.events ?? []) rounds.add(e.round)
+  return [...rounds].sort((a, b) => a - b)
+})
 
 const effectiveSyncMs = computed(
   () => timeline.value?.videoSyncOffsetMs ?? videoSyncOffsetMs.value ?? DEFAULT_SYNC_MS,

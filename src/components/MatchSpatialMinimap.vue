@@ -15,11 +15,17 @@ const props = withDefaults(defineProps<{
   large?: boolean
   /** Fixed small footprint for side panels (112px). */
   compact?: boolean
-  /** HUD overlay on VOD player (96px, 128px when floatLarge). */
+  /** HUD overlay on VOD player. */
   floatHud?: boolean
   floatLarge?: boolean
-  /** Slim dock strip under video (80px). */
+  /** @deprecated Use dockExpanded — kept for compatibility. */
   dockHud?: boolean
+  /** VOD side panel (280px, 360px when panelLarge). */
+  panelHud?: boolean
+  panelLarge?: boolean
+  /** Expanded dock band under video (220px, 260px when dockLarge). */
+  dockExpanded?: boolean
+  dockLarge?: boolean
   /** Filter events to one round (null = all). */
   roundFilter?: number | null
   showRoundSlider?: boolean
@@ -32,6 +38,10 @@ const props = withDefaults(defineProps<{
   floatHud: false,
   floatLarge: false,
   dockHud: false,
+  panelHud: false,
+  panelLarge: false,
+  dockExpanded: false,
+  dockLarge: false,
   roundFilter: null,
   showRoundSlider: false,
 })
@@ -83,9 +93,15 @@ const minimapUrl = computed(() => {
   return m ? getMapMinimap(m) : ''
 })
 
+const isSmallHud = computed(() =>
+  props.floatHud || props.dockHud || props.dockExpanded,
+)
+
 const size = computed(() => {
-  if (props.dockHud) return 80
-  if (props.floatHud) return props.floatLarge ? 128 : 96
+  if (props.panelHud) return props.panelLarge ? 360 : 280
+  if (props.dockExpanded) return props.dockLarge ? 260 : 220
+  if (props.dockHud) return 140
+  if (props.floatHud) return props.floatLarge ? 200 : 160
   if (props.compact) return 112
   return props.large ? 640 : 320
 })
@@ -97,7 +113,15 @@ function displayNorm(norm: { x: number; y: number }) {
 }
 
 function drawDeathHeatmap(ctx: CanvasRenderingContext2D, s: number, deaths: SpatialTimelineEvent[]) {
-  const blobR = props.large ? 36 : (props.floatHud || props.dockHud) ? 14 : 22
+  const blobR = props.large
+    ? 36
+    : props.panelHud
+      ? 32
+      : props.dockExpanded
+        ? 28
+        : isSmallHud.value
+          ? 18
+          : 22
   ctx.save()
   ctx.globalCompositeOperation = 'lighter'
   for (const ev of deaths) {
@@ -125,9 +149,19 @@ function drawSiteHeatmap(ctx: CanvasRenderingContext2D, s: number) {
     const d = displayNorm(h.norm)
     const px = d.x * s
     const py = d.y * s
-    const smallHud = props.floatHud || props.dockHud
-    const baseR = props.large ? 42 : smallHud ? 16 : 28
-    const blobR = baseR + (h.count / maxCount) * (props.large ? 24 : smallHud ? 8 : 14)
+    const smallHud = isSmallHud.value
+    const baseR = props.large
+      ? 42
+      : props.panelHud
+        ? 36
+        : props.dockExpanded
+          ? 30
+          : smallHud
+            ? 18
+            : 28
+    const blobR = baseR + (h.count / maxCount) * (
+      props.large ? 24 : props.panelHud ? 20 : props.dockExpanded ? 16 : smallHud ? 10 : 14
+    )
     const grad = ctx.createRadialGradient(px, py, 0, px, py, blobR)
     grad.addColorStop(0, 'rgba(239, 68, 68, 0.85)')
     grad.addColorStop(0.4, 'rgba(239, 68, 68, 0.4)')
@@ -136,9 +170,11 @@ function drawSiteHeatmap(ctx: CanvasRenderingContext2D, s: number) {
     ctx.beginPath()
     ctx.arc(px, py, blobR, 0, Math.PI * 2)
     ctx.fill()
-    ctx.font = 'bold 11px system-ui, sans-serif'
-    ctx.fillStyle = 'rgba(255,255,255,0.9)'
-    ctx.fillText(`${h.site} (${h.count})`, px - 16, py + 4)
+    if (!smallHud && !props.dockHud) {
+      ctx.font = 'bold 11px system-ui, sans-serif'
+      ctx.fillStyle = 'rgba(255,255,255,0.9)'
+      ctx.fillText(`${h.site} (${h.count})`, px - 16, py + 4)
+    }
   }
   ctx.restore()
 }
@@ -172,11 +208,13 @@ function draw() {
       const py = d.y * s
       const isDeath = ev.type === 'death'
       const active = props.activeIndex === idx
+      const small = isSmallHud.value
+      const medium = props.panelHud || props.dockExpanded
       const r = active
-        ? ((props.floatHud || props.dockHud) ? 7 : 10)
+        ? (small ? 7 : medium ? 9 : 10)
         : isDeath
-          ? (heatActive ? ((props.floatHud || props.dockHud) ? 3 : 5) : ((props.floatHud || props.dockHud) ? 4 : 7))
-          : ((props.floatHud || props.dockHud) ? 4 : 6)
+          ? (heatActive ? (small ? 3 : medium ? 4 : 5) : (small ? 4 : medium ? 6 : 7))
+          : (small ? 4 : medium ? 5 : 6)
 
       ctx.beginPath()
       ctx.arc(px, py, r + 2, 0, Math.PI * 2)
@@ -206,7 +244,7 @@ function draw() {
       const ax = ad.x * s
       const ay = ad.y * s
       const label = `${active.type === 'death' ? 'Died' : 'Kill'} · ${active.callout}`
-      ctx.font = 'bold 12px system-ui, sans-serif'
+      ctx.font = `bold ${props.panelHud || props.dockExpanded || props.large ? 12 : 10}px system-ui, sans-serif`
       const tw = ctx.measureText(label).width
       const pad = 8
       const bx = Math.min(Math.max(ax - tw / 2 - pad, 4), s - tw - pad * 2 - 4)
@@ -236,7 +274,22 @@ function roundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: numbe
 }
 
 watch(
-  () => [props.summary, props.activeIndex, props.large, props.compact, props.floatHud, props.floatLarge, props.dockHud, props.showHeatmap, props.heatmapLayer, props.roundFilter],
+  () => [
+    props.summary,
+    props.activeIndex,
+    props.large,
+    props.compact,
+    props.floatHud,
+    props.floatLarge,
+    props.dockHud,
+    props.panelHud,
+    props.panelLarge,
+    props.dockExpanded,
+    props.dockLarge,
+    props.showHeatmap,
+    props.heatmapLayer,
+    props.roundFilter,
+  ],
   draw,
   { deep: true },
 )
@@ -255,7 +308,7 @@ function onClick(e: MouseEvent) {
   const clickNorm = fromMinimapDisplayNorm(mapLabel.value, { x: x / s, y: y / s })
 
   let best = -1
-  let bestD = 20
+  let bestD = Math.max(20, size.value * 0.08)
   summary.events.forEach((ev, i) => {
     const d = Math.hypot(ev.norm.x - clickNorm.x, ev.norm.y - clickNorm.y) * s
     if (d < bestD) {
@@ -276,25 +329,33 @@ defineExpose({ exportPng })
 <template>
   <div
     class="relative space-y-1.5"
-    :class="dockHud
-      ? 'w-[80px]'
-      : floatHud
-        ? (floatLarge ? 'w-[128px]' : 'w-[96px]')
-        : compact
-          ? 'w-[112px]'
-          : 'w-full'"
+    :class="panelHud
+      ? (panelLarge ? 'w-[360px]' : 'w-[280px]')
+      : dockExpanded
+        ? (dockLarge ? 'w-[260px]' : 'w-[220px]')
+        : dockHud
+          ? 'w-[140px]'
+          : floatHud
+            ? (floatLarge ? 'w-[200px]' : 'w-[160px]')
+            : compact
+              ? 'w-[112px]'
+              : 'w-full'"
   >
     <canvas
       ref="canvasRef"
       class="rounded-lg border border-white/10 bg-black/40 cursor-pointer"
-      :class="dockHud
-        ? 'w-[80px] h-[80px]'
-        : floatHud
-          ? (floatLarge ? 'w-[128px] h-[128px]' : 'w-[96px] h-[96px]')
-          : compact
-            ? 'w-[112px] h-[112px]'
-            : ['w-full', large ? 'max-w-[640px]' : 'max-w-[320px]']"
-      :style="(compact || floatHud || dockHud) ? undefined : { aspectRatio: '1 / 1' }"
+      :class="panelHud
+        ? (panelLarge ? 'w-[360px] h-[360px]' : 'w-[280px] h-[280px]')
+        : dockExpanded
+          ? (dockLarge ? 'w-[260px] h-[260px]' : 'w-[220px] h-[220px]')
+          : dockHud
+            ? 'w-[140px] h-[140px]'
+            : floatHud
+              ? (floatLarge ? 'w-[200px] h-[200px]' : 'w-[160px] h-[160px]')
+              : compact
+                ? 'w-[112px] h-[112px]'
+                : ['w-full', large ? 'max-w-[640px]' : 'max-w-[320px]']"
+      :style="(compact || floatHud || dockHud || panelHud || dockExpanded) ? undefined : { aspectRatio: '1 / 1' }"
       @click="onClick"
     />
     <div
