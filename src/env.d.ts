@@ -239,7 +239,7 @@ export interface ProfileData {
     discord_username: string | null
     analysis_stats: {
       total: number
-      limit: number
+      limit: number | null
       subscription_ends_at?: string | null
     }
     forge_rank?: ForgeRankInfo

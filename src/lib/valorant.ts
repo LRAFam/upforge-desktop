@@ -293,6 +293,7 @@ export function getRoleColor(role: string): string {
 /** Returns Tailwind classes for a subscription tier badge. */
 export function getTierClass(tier: string | null | undefined): string {
   switch (tier?.toLowerCase()) {
+    case 'admin':   return 'border-red-500/30 text-red-400 bg-red-500/[0.08]'
     case 'pro':     return 'border-purple-500/30 text-purple-400 bg-purple-500/[0.08]'
     case 'elite':   return 'border-yellow-500/30 text-yellow-500 bg-yellow-500/[0.08]'
     case 'premium': return 'border-red-500/30 text-red-400 bg-red-500/[0.08]'

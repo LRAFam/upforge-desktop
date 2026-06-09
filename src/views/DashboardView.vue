@@ -377,7 +377,7 @@
               </div>
               <span class="text-xs font-medium tabular-nums shrink-0 text-gray-400">∞</span>
             </template>
-            <template v-else>
+            <template v-else-if="profile.user.analysis_stats.limit != null">
               <div class="flex-1 h-1.5 bg-white/[0.06] rounded-full overflow-hidden">
                 <div class="h-full rounded-full transition-all" :class="quotaPercent >= 80 ? 'bg-red-500' : quotaPercent >= 50 ? 'bg-yellow-500' : 'bg-green-500'" :style="{ width: (100 - quotaPercent) + '%' }" />
               </div>
@@ -900,6 +900,7 @@ import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import type { ProfileData, AnalysisItem, PendingRecording, ClipRecord } from '../env.d.ts'
 import { getAgentImage, getAgentRole, getAgentColor, getMapMinimap, getRankHexColor, getRankIconUrl, getRoleColor, getTierBadgeClass, getTierBadgeLabel, formatGameMode } from '../lib/valorant'
+import { hasAnalysisQuotaRemaining, isPlatformAdmin } from '../lib/tier-features'
 import { pendingTimeline } from '../stores/pendingTimeline'
 import { useAchievements } from '../composables/useAchievements'
 import DeadlockDemoPanel from '../components/DeadlockDemoPanel.vue'
@@ -943,7 +944,9 @@ const hotkeys = ref<Record<string, string>>({})
 const clipCount = ref(0)
 const userPrimaryGame = ref<string>('valorant')
 
-const isAdmin = computed(() => !!profile.value?.user?.is_admin)
+const isAdmin = computed(() =>
+  isPlatformAdmin(profile.value?.user?.tier, profile.value?.user?.is_admin),
+)
 const isDeadlockUser = computed(() => userPrimaryGame.value === 'deadlock')
 
 const hotkeyHints = computed(() => [
@@ -1120,7 +1123,7 @@ const groupedAnalyses = computed(() => {
 
 const quotaPercent = computed(() => {
   const stats = profile.value?.user?.analysis_stats
-  if (!stats || !stats.limit) return 0
+  if (!stats || stats.limit == null || isAdmin.value) return 0
   return Math.min(100, Math.round((stats.total / stats.limit) * 100))
 })
 
@@ -1523,9 +1526,12 @@ async function loadPendingRecordings() {
 async function analyseRecording(id: string) {
   if (analysingIds.value.has(id)) return
 
-  // Quota gate — prevent upload if user has no analyses remaining
-  const stats = profile.value?.user?.analysis_stats
-  if (stats && (stats.limit - stats.total) <= 0) {
+  // Quota gate — prevent upload if user has no analyses remaining (admins bypass)
+  const user = profile.value?.user
+  if (
+    user &&
+    !hasAnalysisQuotaRemaining(user.analysis_stats, user.tier, user.is_admin)
+  ) {
     warning.value = 'No analyses remaining this month.'
     upgradeNeeded.value = true
     // Sticky — user must dismiss manually, and they can upgrade

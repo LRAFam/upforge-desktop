@@ -84,7 +84,9 @@
             <div class="rounded-2xl border border-white/[0.10] bg-black/20 p-4">
               <div class="flex items-center justify-between text-xs">
                 <span class="text-gray-400">Analyses this month</span>
-                <span class="font-medium tabular-nums text-gray-200">{{ Math.max(0, user.analyses_used) }} / {{ user.analyses_limit }}</span>
+                <span class="font-medium tabular-nums text-gray-200">
+                  {{ Math.max(0, user.analyses_used) }} / {{ user.analyses_limit == null ? '∞' : user.analyses_limit }}
+                </span>
               </div>
               <div v-if="user.analyses_limit" class="mt-3 h-2 overflow-hidden rounded-full bg-white/[0.06]">
                 <div class="h-full rounded-full bg-gradient-to-r from-red-500 to-orange-500 transition-all" :style="{ width: usagePercent + '%' }" />
@@ -670,7 +672,7 @@ type UserWithUsage = {
   riot_name: string | null
   riot_tag: string | null
   analyses_used?: number
-  analyses_limit?: number
+  analyses_limit?: number | null
 }
 
 const router = useRouter()
@@ -999,8 +1001,8 @@ function hotkeyParts(accelerator: string): string[] {
 
 const usagePercent = computed(() => {
   const u = user.value as UserWithUsage | null
-  if (!u?.analyses_used || !u?.analyses_limit) return 0
-  return Math.min(100, Math.round((Math.max(0, u.analyses_used) / u.analyses_limit) * 100))
+  if (!u?.analyses_limit) return 0
+  return Math.min(100, Math.round((Math.max(0, u.analyses_used ?? 0) / u.analyses_limit) * 100))
 })
 
 const encoderLabel = computed(() => {
@@ -1249,7 +1251,8 @@ onMounted(async () => {
         riot_name: prof.user.riot_name,
         riot_tag: prof.user.riot_tag,
         analyses_used: prof.user.analysis_stats?.total ?? 0,
-        analyses_limit: prof.user.analysis_stats?.limit ?? 1
+        analyses_limit: prof.user.analysis_stats?.limit
+          ?? (prof.user.is_admin || prof.user.tier === 'admin' ? null : 1)
       }
     }
   } catch { /* profile load failure is non-critical */ }

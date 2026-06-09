@@ -73,11 +73,12 @@ export interface ProfileData {
     name: string
     email: string
     tier: string
+    is_admin: boolean
     riot_name: string | null
     riot_tag: string | null
     riot_region: string | null
     discord_username: string | null
-    analysis_stats: { total: number; limit: number }
+    analysis_stats: { total: number; limit: number | null }
   }
   latest_stats: ValorantStats | null
 }
@@ -215,13 +216,17 @@ export class AuthManager {
       const p = res.data?.profile
       if (!p) return null
       const stats = p.user?.analysis_stats ?? {}
+      const isAdmin = !!(p.user?.is_admin)
+      const tier = p.user?.tier ?? 'free'
+      const unlimited = isAdmin || tier === 'admin'
       return {
         user: {
           ...p.user,
+          is_admin: isAdmin,
           analysis_stats: {
             // API field names: free_analyses_used + monthly_free_analyses
             total: stats.free_analyses_used ?? 0,
-            limit: stats.monthly_free_analyses ?? 1,
+            limit: unlimited ? null : (stats.monthly_free_analyses ?? 1),
             subscription_ends_at: stats.subscription_ends_at ?? null,
           },
           forge_rank: p.forge_rank ?? null,
