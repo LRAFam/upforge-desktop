@@ -250,6 +250,7 @@ export class AuthManager {
 
   async fetchAnalyses(limit = 10): Promise<AnalysisItem[]> {
     try {
+      await this._api.post('/api/analysis/reconcile').catch(() => {})
       const res = await this._api.get(`/api/analysis/recent?limit=${limit}`)
       const analyses: AnalysisItem[] = res.data?.analyses ?? []
       return analyses.map((a) => {

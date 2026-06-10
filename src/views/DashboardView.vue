@@ -1627,12 +1627,21 @@ function simulateGame(game: string, durationMs: number) {
 
 function openAnalysis(id: number) { window.open(`https://upforge.gg/valorant/results/${id}`, '_blank') }
 
-function openAnalysisRow(a: AnalysisItem) {
-  if (a.kills != null && a.kills > 0) {
-    void openTimeline(a.id)
-  } else {
-    openAnalysis(a.id)
+async function openAnalysisRow(a: AnalysisItem) {
+  timelineLoadingId.value = a.id
+  try {
+    const data = await window.api.analyses.getTimeline(a.id)
+    if (data) {
+      pendingTimeline.value = data
+      router.push({ path: '/vod-review', query: { timelineId: String(a.id) } })
+      return
+    }
+  } catch {
+    // Fall through to web results.
+  } finally {
+    timelineLoadingId.value = null
   }
+  openAnalysis(a.id)
 }
 
 const WEAKNESS_TO_SCENARIO_DASH: Record<string, string> = {
