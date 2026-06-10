@@ -128,6 +128,12 @@ export class RecordingsStore {
     return this.recordings.find(r => r.id === id)
   }
 
+  /** Local file path for a desktop upload job, if the recording still exists on disk. */
+  getPathByJobId(jobId: string): string | null {
+    const recording = this.recordings.find(r => r.jobId === jobId && fs.existsSync(r.path))
+    return recording?.path ?? null
+  }
+
   updateTimeline(id: string, timeline: MatchData): boolean {
     const rec = this.recordings.find(r => r.id === id)
     if (!rec) return false

@@ -2013,6 +2013,7 @@ app.whenReady().then(async () => {
   () => {
     clearUserSession(userSessionDeps())
   },
+  (jobId: string) => recordingsStore?.getPathByJobId(jobId) ?? null,
   )
 
   setupClipHandlers(ipcMain, clipStore, clipExtractor, authManager, hotkeyManager)

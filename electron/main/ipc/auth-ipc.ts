@@ -21,6 +21,7 @@ export function setupAuthHandlers(
   endActiveMatch?: (game: string) => Promise<{ ok: boolean; reason?: string }>,
   onLoginSuccess?: () => void,
   onLogout?: () => void,
+  getLocalRecordingPathByJobId?: (jobId: string) => string | null,
 ): void {
   // ── Auth ──────────────────────────────────────────────────────────────────
 
@@ -126,9 +127,14 @@ export function setupAuthHandlers(
         ...p,
         score: normalizeToAcs(p.score, rounds) ?? 0,
       })) ?? []
+      let videoPath: string | null = analysis.recording_url ?? null
+      if (!videoPath && analysis.job_id && getLocalRecordingPathByJobId) {
+        videoPath = getLocalRecordingPathByJobId(analysis.job_id)
+      }
+
       return {
         id: String(analysis.id),
-        videoPath: null,
+        videoPath,
         map: analysis.map ?? md.map ?? null,
         agent: analysis.agent ?? md.agent ?? null,
         game: 'valorant',

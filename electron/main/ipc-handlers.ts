@@ -127,6 +127,7 @@ export function setupIpcHandlers(
   onSettingsSaved?: (settings: ReturnType<SettingsManager['get']>) => void,
   onLoginSuccess?: () => void,
   onLogout?: () => void,
+  getLocalRecordingPathByJobId?: (jobId: string) => string | null,
 ): void {
   setupAuthHandlers(
     ipcMain,
@@ -137,6 +138,7 @@ export function setupIpcHandlers(
     endMatchRecording,
     onLoginSuccess,
     onLogout,
+    getLocalRecordingPathByJobId,
   )
 
   setupAppHandlers(

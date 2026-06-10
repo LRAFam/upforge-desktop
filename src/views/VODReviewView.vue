@@ -338,7 +338,11 @@
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M15 10l4.553-2.069A1 1 0 0121 8.867v6.266a1 1 0 01-1.447.902L15 14M5 8a2 2 0 00-2 2v4a2 2 0 002 2h8a2 2 0 002-2v-4a2 2 0 00-2-2H5z"/>
             </svg>
             <span class="text-xs text-gray-600">No video for this session</span>
-            <span class="text-[10px] text-gray-700">OBS was not recording when this match was captured</span>
+            <span class="text-[10px] text-gray-700 text-center max-w-xs">
+              {{ recordingId
+                ? 'OBS was not recording when this match was captured'
+                : 'Recording unavailable — it may have been deleted locally or expired from cloud storage (30 days).' }}
+            </span>
           </div>
 
           <!-- Expand / fullscreen -->
@@ -1604,8 +1608,10 @@ function onFullscreenChange(): void {
 }
 
 const videoSrc = computed(() => {
-  if (!timeline.value?.videoPath) return ''
-  const normalized = timeline.value.videoPath.replace(/\\/g, '/')
+  const path = timeline.value?.videoPath
+  if (!path) return ''
+  if (/^https?:\/\//i.test(path)) return path
+  const normalized = path.replace(/\\/g, '/')
   return normalized.startsWith('/')
     ? encodeURI(`file://${normalized}`)
     : encodeURI(`file:///${normalized}`)
