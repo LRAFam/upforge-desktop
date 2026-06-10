@@ -305,8 +305,16 @@
                   </span>
                   <span
                     v-else
-                    :class="['px-1.5 py-px rounded text-[9px] font-bold uppercase', getTierBadgeClass(getDisplayTier(profile.user.tier))]"
-                  >{{ getTierBadgeLabel(getDisplayTier(profile.user.tier)) }}</span>
+                    :class="['px-1.5 py-px rounded text-[9px] font-bold uppercase flex items-center gap-0.5', getTierBadgeClass(getDisplayTier(profile.user.tier))]"
+                  >
+                    <img
+                      v-if="getSubscriptionIconUrl(getDisplayTier(profile.user.tier))"
+                      :src="getSubscriptionIconUrl(getDisplayTier(profile.user.tier))!"
+                      :alt="getTierBadgeLabel(getDisplayTier(profile.user.tier))"
+                      class="w-3.5 h-3.5 object-contain"
+                    />
+                    {{ getTierBadgeLabel(getDisplayTier(profile.user.tier)) }}
+                  </span>
                 </div>
                 <p class="text-xs text-gray-500 mt-px leading-tight">
                   <span v-if="profile.user.riot_name">{{ profile.user.riot_name }}#{{ profile.user.riot_tag }}</span>
@@ -433,8 +441,17 @@
             </div>
             <div class="flex items-center gap-3">
               <!-- Rank icon / badge -->
-              <div class="relative flex-shrink-0 w-12 h-12 rounded-xl flex items-center justify-center" :style="{ background: forgeRankGradient(profile.user.forge_rank.tier) }">
-                <span class="text-lg font-black text-white select-none">{{ forgeRankInitial(profile.user.forge_rank.tier_name) }}</span>
+              <div
+                class="relative flex-shrink-0 w-12 h-12 rounded-xl flex items-center justify-center overflow-hidden"
+                :style="getMasteryIconUrl(profile.user.forge_rank.level) ? undefined : { background: forgeRankGradient(profile.user.forge_rank.tier) }"
+              >
+                <img
+                  v-if="getMasteryIconUrl(profile.user.forge_rank.level)"
+                  :src="getMasteryIconUrl(profile.user.forge_rank.level)!"
+                  :alt="profile.user.forge_rank.rank_name"
+                  class="w-full h-full object-contain"
+                />
+                <span v-else class="text-lg font-black text-white select-none">{{ forgeRankInitial(profile.user.forge_rank.tier_name) }}</span>
               </div>
               <!-- Rank name + progress -->
               <div class="flex-1 min-w-0">
@@ -922,6 +939,7 @@ import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import type { ProfileData, AnalysisItem, PendingRecording, ClipRecord } from '../env.d.ts'
 import { getAgentImage, getAgentRole, getAgentColor, getMapMinimap, getRankHexColor, getRankIconUrl, getRoleColor, getTierBadgeClass, getTierBadgeLabel, getDisplayTier, formatGameMode, normalizeCombatScoreToAcs } from '../lib/valorant'
+import { getMasteryIconUrl, getSubscriptionIconUrl } from '../lib/rank-assets'
 import { hasAnalysisQuotaRemaining, isPlatformAdmin } from '../lib/tier-features'
 import { pendingTimeline } from '../stores/pendingTimeline'
 import { useAchievements } from '../composables/useAchievements'

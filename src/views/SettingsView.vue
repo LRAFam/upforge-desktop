@@ -11,7 +11,10 @@
           </div>
           <div v-if="user" class="hidden sm:block rounded-xl border border-white/[0.08] bg-white/[0.03] px-3 py-2 text-right">
             <p class="text-[10px] font-semibold text-gray-300 truncate max-w-[140px]">{{ user.name }}</p>
-            <span class="inline-block mt-1 rounded-full px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider" :class="getTierBadgeClass(user.tier)">{{ getTierBadgeLabel(user.tier) }}</span>
+            <span class="inline-flex items-center gap-1 mt-1 rounded-full px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider" :class="getTierBadgeClass(user.tier)">
+              <img v-if="getSubscriptionIconUrl(user.tier)" :src="getSubscriptionIconUrl(user.tier)!" :alt="getTierBadgeLabel(user.tier)" class="w-3.5 h-3.5 object-contain" />
+              {{ getTierBadgeLabel(user.tier) }}
+            </span>
           </div>
         </div>
       </div>
@@ -60,7 +63,10 @@
                   <div class="min-w-0">
                     <div class="flex flex-wrap items-center gap-2">
                       <p class="truncate text-sm font-semibold text-white">{{ user.name }}</p>
-                      <span class="rounded-full px-2 py-0.5 text-[11px] font-semibold" :class="getTierBadgeClass(user.tier)">{{ getTierBadgeLabel(user.tier) || 'Free' }}</span>
+                      <span class="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold" :class="getTierBadgeClass(user.tier)">
+                        <img v-if="getSubscriptionIconUrl(user.tier)" :src="getSubscriptionIconUrl(user.tier)!" :alt="getTierBadgeLabel(user.tier)" class="w-4 h-4 object-contain" />
+                        {{ getTierBadgeLabel(user.tier) || 'Free' }}
+                      </span>
                     </div>
                     <p class="truncate text-xs text-gray-400">{{ user.email }}</p>
                     <p class="mt-1 text-xs" :class="user.riot_name ? 'text-red-300/80' : 'text-gray-500 italic'">{{ accountRiotId }}</p>
@@ -76,6 +82,29 @@
               </div>
             </div>
             <div v-else class="h-28 animate-pulse rounded-2xl border border-white/[0.09] bg-white/[0.02]" />
+
+            <div class="mt-4 rounded-2xl border border-white/[0.10] bg-black/20 p-4">
+              <p class="text-[10px] font-bold uppercase tracking-widest text-gray-600">Badge &amp; rank icons</p>
+              <p class="mt-1 text-[11px] text-gray-500">Preview of imported artwork (more ranks coming soon).</p>
+              <div class="mt-3 grid grid-cols-4 sm:grid-cols-6 gap-2">
+                <div
+                  v-for="item in BADGE_PREVIEW_ITEMS"
+                  :key="item.slug"
+                  class="flex flex-col items-center gap-1 rounded-xl border border-white/[0.08] bg-white/[0.03] p-2"
+                >
+                  <img :src="getBadgeIconUrl(item.slug)!" :alt="item.label" class="w-10 h-10 object-contain" />
+                  <span class="text-[9px] text-gray-500 text-center leading-tight">{{ item.label }}</span>
+                </div>
+                <div
+                  v-for="item in MASTERY_PREVIEW_ITEMS"
+                  :key="'mastery-' + item.level"
+                  class="flex flex-col items-center gap-1 rounded-xl border border-orange-500/20 bg-orange-500/[0.04] p-2"
+                >
+                  <img :src="getMasteryIconUrl(item.level)!" :alt="item.label" class="w-10 h-10 object-contain" />
+                  <span class="text-[9px] text-orange-400/80 text-center leading-tight">{{ item.label }}</span>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
 
@@ -679,6 +708,7 @@ import { ref, reactive, computed, onMounted, onUnmounted, toRaw } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import type { AppSettings } from '../env.d.ts'
 import { getTierBadgeClass, getTierBadgeLabel, formatGameMode } from '../lib/valorant'
+import { BADGE_PREVIEW_ITEMS, MASTERY_PREVIEW_ITEMS, getBadgeIconUrl, getMasteryIconUrl, getSubscriptionIconUrl } from '../lib/rank-assets'
 import CrosshairSettingsPanel from '../components/CrosshairSettingsPanel.vue'
 
 type UserWithUsage = {
