@@ -93,8 +93,8 @@ export function createMainWindow(
 
 export function createPostGameWindow(): BrowserWindow {
   const win = new BrowserWindow({
-    width: 420,
-    height: 360,
+    width: 400,
+    height: 420,
     resizable: false,
     frame: false,
     alwaysOnTop: true,
@@ -111,7 +111,7 @@ export function createPostGameWindow(): BrowserWindow {
 
   const display = screen.getPrimaryDisplay()
   const { width, height } = display.workAreaSize
-  win.setPosition(width - 440, height - 380)
+  win.setPosition(width - 420, height - 440)
 
   if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
     win.loadURL(`${process.env['ELECTRON_RENDERER_URL']}#/post-game`)

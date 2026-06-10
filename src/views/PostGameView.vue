@@ -8,7 +8,7 @@
       />
     </div>
 
-    <div class="flex-1 flex flex-col items-center justify-center px-5 py-4 relative z-10">
+    <div class="flex-1 flex flex-col items-center justify-center px-6 py-5 relative z-10">
       <div
         v-if="copiedLinkToast"
         class="absolute right-5 top-4 z-20 inline-flex items-center gap-2 rounded-xl border border-emerald-500/20 bg-emerald-500/10 px-3 py-2 text-xs font-semibold text-emerald-300 shadow-[0_12px_30px_rgba(16,185,129,0.18)]"
@@ -485,61 +485,81 @@
       </div>
 
       <!-- Pending (auto-analyse off) -->
-      <div v-else-if="state === 'pending'" class="w-full space-y-4 text-center">
-        <div class="flex justify-center">
-          <div class="inline-flex items-center gap-1.5 rounded-full border border-emerald-500/25 bg-emerald-500/10 px-3 py-1">
-            <span class="relative flex h-2 w-2">
-              <span class="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-60" />
-              <span class="relative inline-flex h-2 w-2 rounded-full bg-emerald-400" />
-            </span>
-            <span class="text-[11px] font-semibold text-emerald-300">Match saved</span>
-          </div>
-        </div>
-
+      <div v-else-if="state === 'pending'" class="pending-panel w-full">
         <div
-          class="rounded-2xl border border-white/[0.08] bg-white/[0.03] px-4 py-3.5 text-left shadow-[0_12px_40px_rgba(0,0,0,0.28)]"
-          :style="agentAccentColor ? { boxShadow: `0 12px 40px ${agentAccentColor}18` } : undefined"
+          class="pending-hero relative overflow-hidden rounded-2xl border border-white/[0.10] text-left"
+          :style="agentAccentColor ? { '--pending-glow': agentAccentColor + '30' } : undefined"
         >
-          <div class="flex items-center gap-3">
-            <div
-              class="w-12 h-12 rounded-xl overflow-hidden flex items-center justify-center flex-shrink-0"
-              :class="agentImageUrl ? '' : 'bg-blue-500/10 border border-blue-500/20'"
-              :style="agentImageUrl ? { border: `1px solid ${agentAccentColor}55`, background: agentAccentColor + '22' } : {}"
-            >
-              <img v-if="agentImageUrl" :src="agentImageUrl" class="w-10 h-10 object-contain" />
-              <svg v-else class="w-5 h-5 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M15 10l4.553-2.069A1 1 0 0121 8.882v6.236a1 1 0 01-1.447.894L15 14M3 8a2 2 0 012-2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V8z"/>
-              </svg>
+          <div v-if="mapSplashUrl" class="absolute inset-0 pointer-events-none">
+            <img :src="mapSplashUrl" alt="" class="h-full w-full object-cover opacity-40 scale-105" />
+            <div class="absolute inset-0 bg-gradient-to-t from-[#141414] via-[#141414]/88 to-[#141414]/55" />
+          </div>
+          <div
+            v-else
+            class="absolute inset-0 pointer-events-none bg-gradient-to-br from-white/[0.04] to-transparent"
+          />
+
+          <div class="relative px-4 pt-4 pb-3.5">
+            <div class="mb-3 inline-flex items-center gap-1.5 rounded-full border border-emerald-500/25 bg-emerald-500/12 px-2.5 py-1 backdrop-blur-sm">
+              <span class="relative flex h-2 w-2">
+                <span class="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-50" />
+                <span class="relative inline-flex h-2 w-2 rounded-full bg-emerald-400" />
+              </span>
+              <span class="text-[10px] font-bold uppercase tracking-[0.14em] text-emerald-300">Recording saved</span>
             </div>
-            <div class="min-w-0 flex-1">
-              <p class="text-sm font-bold text-white">Game recorded</p>
-              <p class="mt-0.5 text-xs text-gray-400">
-                {{ [gameInfo.agent, gameInfo.map].filter(Boolean).join(' · ') || gameLabel }}
-              </p>
+
+            <div class="flex items-end gap-3">
+              <div
+                class="h-14 w-14 flex-shrink-0 overflow-hidden rounded-xl flex items-center justify-center shadow-lg"
+                :class="agentImageUrl ? '' : 'border border-blue-500/25 bg-blue-500/10'"
+                :style="agentImageUrl ? { border: `1px solid ${agentAccentColor}66`, background: agentAccentColor + '28', boxShadow: `0 8px 24px ${agentAccentColor}25` } : undefined"
+              >
+                <img v-if="agentImageUrl" :src="agentImageUrl" class="h-12 w-12 object-contain" />
+                <svg v-else class="h-6 w-6 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M15 10l4.553-2.069A1 1 0 0121 8.882v6.236a1 1 0 01-1.447.894L15 14M3 8a2 2 0 012-2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V8z"/>
+                </svg>
+              </div>
+              <div class="min-w-0 flex-1 pb-0.5">
+                <p class="text-base font-bold leading-tight text-white">
+                  {{ gameInfo.agent || gameLabel }}
+                </p>
+                <p v-if="gameInfo.map" class="mt-0.5 text-xs font-medium text-gray-400">
+                  {{ gameInfo.map }}
+                </p>
+                <p v-else class="mt-0.5 text-xs text-gray-500">Match ready for coaching</p>
+              </div>
             </div>
-            <img
-              v-if="mapSplashUrl"
-              :src="mapSplashUrl"
-              alt=""
-              class="h-11 w-11 flex-shrink-0 rounded-lg object-cover opacity-70 ring-1 ring-white/10"
-            />
           </div>
         </div>
 
-        <p class="text-xs leading-relaxed text-gray-400 px-1">
-          Auto-analyse is off. Run coaching now, or open this match anytime from your dashboard.
-        </p>
+        <div class="mt-4 text-center">
+          <p class="text-sm font-semibold text-gray-200">Ready for AI coaching?</p>
+          <p class="mt-1 text-[11px] leading-relaxed text-gray-500">
+            Auto-analyse is off. Run coaching now or review later from your dashboard.
+          </p>
+        </div>
 
-        <div class="flex gap-2.5 pt-0.5">
-          <button
+        <div class="mt-4 flex flex-col gap-2.5">
+          <GamingButton
+            variant="primary-sm"
+            block
             :disabled="analysing"
-            class="flex-1 py-2.5 text-xs font-bold bg-gradient-to-r from-red-500 to-orange-600 hover:from-red-600 hover:to-orange-700 disabled:opacity-50 text-white rounded-xl transition-all shadow-md shadow-red-500/25"
             @click="analyseNow"
-          >{{ analysing ? 'Starting…' : 'Analyse now' }}</button>
-          <button
-            class="flex-1 py-2.5 text-xs font-semibold text-gray-300 hover:text-white bg-white/[0.04] hover:bg-white/[0.08] border border-white/[0.12] rounded-xl transition-colors"
+          >
+            <svg v-if="analysing" class="h-4 w-4 animate-spin" fill="none" viewBox="0 0 24 24">
+              <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+              <path class="opacity-90" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+            </svg>
+            <svg v-else class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"/>
+            </svg>
+            {{ analysing ? 'Starting…' : 'Analyse now' }}
+          </GamingButton>
+          <GamingButton
+            variant="secondary-sm"
+            block
             @click="dismissPending"
-          >Later</button>
+          >Remind me later</GamingButton>
         </div>
       </div>
 
@@ -665,6 +685,7 @@
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { getAgentImage, getAgentColor, getMapImage, getMapMinimap } from '../lib/valorant'
 import PostGameIntelHero from '../components/PostGameIntelHero.vue'
+import GamingButton from '../components/GamingButton.vue'
 import type { MatchSpatialSummary } from '../lib/spatial-types'
 import { canSpatialVodSeek } from '../lib/tier-features'
 import type { CategoryScoreItem } from '../components/PostGameIntelHero.vue'
@@ -1067,6 +1088,7 @@ onMounted(() => {
   const ipcCleanup: (() => void)[] = []
   ipcCleanup.push(window.api.on('post-game:compress-start', (...args: unknown[]) => {
     const data = args[0] as { sizeGB?: string }
+    state.value = 'uploading'
     compressing.value = true
     uploadProgress.value = 0
     if (data?.sizeGB) {
@@ -1074,7 +1096,9 @@ onMounted(() => {
     }
   }))
   ipcCleanup.push(window.api.on('post-game:upload-start', (...args: unknown[]) => {
+    state.value = 'uploading'
     compressing.value = false
+    uploadProgress.value = 0
     const data = args[0] as { game: string; map: string | null; agent: string | null; matchDetailsStatus?: typeof matchDataStatus.value; killsInTimeline?: number }
     gameInfo.value = { game: data.game, map: data.map, agent: data.agent }
     if (data.matchDetailsStatus) matchDataStatus.value = data.matchDetailsStatus
@@ -1204,6 +1228,8 @@ onUnmounted(() => {
 async function analyseNow() {
   if (!pendingRecordingId.value || analysing.value) return
   analysing.value = true
+  state.value = 'uploading'
+  uploadProgress.value = 0
   try {
     await window.api.recordings.analyse(pendingRecordingId.value)
     // The analysis events (upload-start, progress, etc.) will be received via IPC
@@ -1651,6 +1677,18 @@ function scoreBarClass(score: number): string {
 .match-banner-neutral {
   background: linear-gradient(135deg, rgba(255, 255, 255, 0.05), rgba(249, 115, 22, 0.08));
   border-color: rgba(255, 255, 255, 0.1);
+}
+
+.pending-panel {
+  animation: readyFadeIn 0.45s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.pending-hero {
+  background: #141414;
+  box-shadow:
+    0 20px 50px rgba(0, 0, 0, 0.45),
+    0 0 0 1px rgba(255, 255, 255, 0.04) inset,
+    0 0 40px var(--pending-glow, rgba(255, 70, 85, 0.08));
 }
 
 .match-result-badge {

@@ -1,5 +1,6 @@
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
 @import "tailwindcss";
+@import "./gaming-buttons.css";
 
 @theme {
   --color-upforge-red: #ff4655;
@@ -13,7 +14,8 @@
   --brand-red-glow: rgba(255, 70, 85, 0.25);
 }
 
-/* Shared button patterns */.btn-primary {
+/* Shared button patterns — matches upforge.gg CTA gradient */
+.btn-primary {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -23,14 +25,26 @@
   font-size: 12px;
   font-weight: 700;
   color: #fff;
-  background: linear-gradient(135deg, #ff4655, #c4323e);
-  box-shadow: 0 4px 14px rgba(255, 70, 85, 0.25);
-  transition: opacity 0.15s, box-shadow 0.15s;
+  background: linear-gradient(135deg, #ff4655, #f97316);
+  box-shadow: 0 4px 18px rgba(255, 70, 85, 0.28);
+  transition: opacity 0.15s, transform 0.15s, box-shadow 0.15s;
   border: none;
   cursor: pointer;
+  letter-spacing: 0.01em;
 }
-.btn-primary:hover { opacity: 0.9; box-shadow: 0 4px 18px rgba(255, 70, 85, 0.35); }
-.btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
+.btn-primary:hover:not(:disabled) {
+  opacity: 0.92;
+  transform: translateY(-1px);
+  box-shadow: 0 6px 22px rgba(255, 70, 85, 0.38);
+}
+.btn-primary:active:not(:disabled) { transform: translateY(0); }
+.btn-primary:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+
+.btn-primary--lg {
+  padding: 11px 20px;
+  font-size: 13px;
+  border-radius: 11px;
+}
 
 .btn-secondary {
   display: inline-flex;

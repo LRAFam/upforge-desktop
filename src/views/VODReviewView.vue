@@ -2,8 +2,8 @@
   <div class="flex flex-col h-full bg-[#111111] text-white overflow-hidden">
 
     <!-- Header -->
-    <div class="flex-shrink-0 px-4 pt-3 pb-2 border-b border-white/[0.08] bg-[#111111]">
-      <div class="panel-elevated relative flex items-center gap-3 px-3 py-2.5 overflow-hidden">
+    <div class="flex-shrink-0 px-3 pt-2 pb-2 border-b border-white/[0.08] bg-[#111111]">
+      <div class="panel-elevated relative flex flex-wrap items-center gap-x-2.5 gap-y-2 px-3 py-2">
         <div class="absolute -right-6 top-0 h-20 w-20 rounded-full bg-red-500/10 blur-3xl pointer-events-none" />
         <button
           class="relative flex items-center gap-1.5 rounded-lg border border-white/[0.08] bg-white/[0.03] px-2.5 py-1.5 text-gray-500 hover:text-gray-300 hover:bg-white/[0.06] transition-colors text-xs flex-shrink-0"
@@ -132,7 +132,7 @@
       <!-- Left sidebar: event feed -->
       <div
         v-if="!theaterMode"
-        class="w-52 flex-shrink-0 border-r border-white/[0.09] flex flex-col overflow-hidden bg-[#141414]"
+        class="w-44 xl:w-52 flex-shrink-0 border-r border-white/[0.09] flex flex-col overflow-hidden bg-[#141414]"
       >
         <div class="px-3 py-2.5 border-b border-white/[0.09]">
           <p class="text-[11px] font-semibold text-gray-500 uppercase tracking-widest">Timeline</p>
@@ -306,7 +306,7 @@
         <!-- Video area — frame sized to video aspect ratio (no letterboxing inside the picture) -->
         <div
           ref="videoAreaEl"
-          class="flex-1 relative min-h-0 flex items-center justify-center bg-[#111111] overflow-hidden"
+          class="flex-1 relative min-h-[200px] flex items-center justify-center bg-[#111111] overflow-hidden"
           :class="{ 'cursor-none': cursorHidden && !theaterMode }"
           @mousemove="onVideoMouseMove"
         >
@@ -442,8 +442,8 @@
         <!-- Mobile / collapsed intel band — large map above scrubber -->
         <div
           v-if="hasSpatialIntel && !theaterMode"
-          class="flex-shrink-0 border-b border-white/[0.08] bg-[#131313] px-3 py-3"
-          :class="spatialMapVisible ? 'lg:hidden' : ''"
+          class="flex-shrink-0 border-b border-white/[0.08] bg-[#131313] px-3 py-2"
+          :class="spatialMapVisible ? 'md:hidden' : ''"
           @click.stop
         >
           <div class="flex flex-col sm:flex-row gap-3 min-h-0">
@@ -481,13 +481,13 @@
                 <button
                   v-if="spatialMapVisible"
                   type="button"
-                  class="ml-auto text-[9px] font-semibold text-gray-500 hover:text-gray-300 lg:hidden"
+                  class="ml-auto text-[9px] font-semibold text-gray-500 hover:text-gray-300 md:hidden"
                   @click="spatialMapVisible = false"
                 >Hide</button>
                 <button
                   v-else
                   type="button"
-                  class="ml-auto hidden lg:flex text-[9px] font-semibold text-gray-500 hover:text-gray-300"
+                  class="ml-auto hidden md:flex text-[9px] font-semibold text-gray-500 hover:text-gray-300"
                   @click="spatialMapVisible = true"
                 >Dock to side</button>
               </div>
@@ -534,7 +534,7 @@
         <!-- Slim intel strip when side panel is open (desktop) -->
         <div
           v-else-if="hasSpatialIntel && !theaterMode && spatialMapVisible"
-          class="hidden lg:flex flex-shrink-0 items-center gap-2 border-b border-white/[0.08] bg-[#131313] px-3 py-1.5 min-h-[36px]"
+          class="hidden md:flex flex-shrink-0 items-center gap-2 border-b border-white/[0.08] bg-[#131313] px-3 py-1 min-h-[32px]"
           @click.stop
         >
           <span class="text-[9px] font-black uppercase tracking-[0.18em] text-red-400/85">Intel</span>
@@ -571,9 +571,9 @@
         </div>
 
         <!-- Controls + timeline scrubber -->
-        <div class="flex-shrink-0 border-t border-white/[0.10] bg-[#161616] px-3 pt-2 pb-3">
-          <div class="backdrop-blur-sm bg-black/40 border border-white/[0.08] rounded-2xl px-4 py-3 space-y-3 shadow-[0_16px_50px_rgba(0,0,0,0.35)]">
-            <div class="relative group cursor-pointer h-8 flex items-center" @click="onScrubberClick" @mousemove="onScrubberHover" @mouseleave="hoverTime = null">
+        <div class="flex-shrink-0 border-t border-white/[0.10] bg-[#161616] px-2.5 pt-1.5 pb-2">
+          <div class="backdrop-blur-sm bg-black/40 border border-white/[0.08] rounded-xl px-3 py-2 space-y-2 shadow-[0_12px_40px_rgba(0,0,0,0.3)]">
+            <div class="relative group cursor-pointer h-6 flex items-center" @click="onScrubberClick" @mousemove="onScrubberHover" @mouseleave="hoverTime = null">
               <div class="w-full h-2 rounded-full bg-white/[0.08] ring-1 ring-white/[0.04] relative overflow-visible">
                 <div
                   class="h-full rounded-full bg-gradient-to-r from-red-500 via-red-400 to-orange-400 pointer-events-none shadow-[0_0_18px_rgba(239,68,68,0.35)]"
@@ -621,8 +621,8 @@
               >{{ formatMs(hoverTime * 1000) }}</div>
             </div>
 
-            <div class="flex items-center gap-2.5">
-              <button class="h-10 w-10 flex items-center justify-center rounded-2xl border border-white/[0.08] bg-white/[0.06] text-gray-100 transition-all hover:border-white/[0.16] hover:bg-white/[0.12] hover:text-white" title="Play/Pause (Space)" @click="togglePlay">
+            <div class="flex items-center gap-2">
+              <button class="h-9 w-9 flex items-center justify-center rounded-xl border border-white/[0.08] bg-white/[0.06] text-gray-100 transition-all hover:border-white/[0.16] hover:bg-white/[0.12] hover:text-white" title="Play/Pause (Space)" @click="togglePlay">
                 <svg v-if="isPlaying" class="h-5 w-5" fill="currentColor" viewBox="0 0 20 20">
                   <path d="M5.75 4.5h2.75v11H5.75zM11.5 4.5h2.75v11H11.5z"/>
                 </svg>
@@ -631,13 +631,13 @@
                 </svg>
               </button>
 
-              <button class="h-10 w-10 flex items-center justify-center rounded-2xl border border-white/[0.08] bg-white/[0.04] text-gray-400 transition-all hover:border-white/[0.16] hover:bg-white/[0.1] hover:text-gray-100" title="Skip back 5s (←)" @click="skip(-5)">
+              <button class="h-9 w-9 flex items-center justify-center rounded-xl border border-white/[0.08] bg-white/[0.04] text-gray-400 transition-all hover:border-white/[0.16] hover:bg-white/[0.1] hover:text-gray-100" title="Skip back 5s (←)" @click="skip(-5)">
                 <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 20 20">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" d="M9.75 14.5 5.5 10l4.25-4.5m5.5 9-4.25-4.5 4.25-4.5"/>
                 </svg>
               </button>
 
-              <button class="h-10 w-10 flex items-center justify-center rounded-2xl border border-white/[0.08] bg-white/[0.04] text-gray-400 transition-all hover:border-white/[0.16] hover:bg-white/[0.1] hover:text-gray-100" title="Skip forward 5s (→)" @click="skip(5)">
+              <button class="h-9 w-9 flex items-center justify-center rounded-xl border border-white/[0.08] bg-white/[0.04] text-gray-400 transition-all hover:border-white/[0.16] hover:bg-white/[0.1] hover:text-gray-100" title="Skip forward 5s (→)" @click="skip(5)">
                 <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 20 20">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" d="m10.25 5.5 4.25 4.5-4.25 4.5m-5.5-9 4.25 4.5-4.25 4.5"/>
                 </svg>
@@ -687,7 +687,7 @@
                 Score
               </button>
 
-              <div class="hidden lg:flex items-center gap-2.5 ml-1 flex-wrap justify-end">
+              <div class="hidden xl:flex items-center gap-2 ml-1 flex-wrap justify-end">
                 <div class="flex items-center gap-1">
                   <div class="h-2.5 w-2.5 rounded-full bg-emerald-500" />
                   <span class="text-[10px] text-gray-500">Kill</span>
@@ -711,7 +711,7 @@
               </div>
             </div>
 
-            <div class="hidden lg:flex items-center gap-3 px-1 pb-1 flex-wrap">
+            <div class="hidden xl:flex items-center gap-3 px-1 flex-wrap">
               <div class="flex items-center gap-1">
                 <kbd class="px-1 py-px text-[9px] font-bold bg-white/[0.06] border border-white/[0.1] rounded text-gray-500">Space</kbd>
                 <span class="text-[9px] text-gray-700">Play</span>
@@ -748,7 +748,7 @@
         </div>
         <div
           v-if="roundDetailExpanded && selectedRound && !theaterMode"
-          class="flex-shrink-0 bg-[#1a1a1a] border-t border-white/[0.10] max-h-40 overflow-y-auto scrollbar-hide"
+          class="flex-shrink-0 bg-[#1a1a1a] border-t border-white/[0.10] max-h-28 overflow-y-auto scrollbar-hide"
         >
           <!-- Round header -->
           <div class="flex items-center gap-2.5 px-3 py-2 sticky top-0 bg-[#1a1a1a] border-b border-white/[0.07] z-10">
@@ -1012,7 +1012,7 @@
       <!-- Desktop intel side panel — full-size heatmap -->
       <aside
         v-if="hasSpatialIntel && spatialMapVisible && !theaterMode"
-        class="hidden lg:flex w-[min(340px,30vw)] flex-shrink-0 flex-col min-h-0 border-l border-white/[0.09] bg-[#121212]"
+        class="hidden md:flex w-[min(280px,26vw)] xl:w-[min(300px,28vw)] flex-shrink-0 flex-col min-h-0 border-l border-white/[0.09] bg-[#121212]"
         @click.stop
       >
         <div class="flex items-center gap-2 px-3 py-2 border-b border-white/[0.08] flex-shrink-0">
@@ -1337,7 +1337,7 @@ const SPATIAL_MAP_LARGE_KEY = 'upforge_vod_map_large'
 const THEATER_MODE_KEY = 'upforge_vod_theater_mode'
 
 const spatialMapVisible = ref(true)
-const spatialMapLarge = ref(true)
+const spatialMapLarge = ref(false)
 const dockChipsEl = ref<HTMLElement | null>(null)
 const activeSpatialIndex = ref<number | null>(null)
 const recordingId = ref<string | null>(null)
@@ -2029,7 +2029,6 @@ function seekToEvent(event: TimelineEvent) {
 
 function seekToRound(round: RoundGroup) {
   selectedRound.value = round
-  roundDetailExpanded.value = true
   scrollActiveRoundIntoView(round.roundNumber)
   if (!videoEl.value || round.firstVideoOffsetMs == null) return
   const wasPlaying = !videoEl.value.paused
