@@ -95,14 +95,6 @@
                   <img :src="getBadgeIconUrl(item.slug)!" :alt="item.label" class="w-10 h-10 object-contain" />
                   <span class="text-[9px] text-gray-500 text-center leading-tight">{{ item.label }}</span>
                 </div>
-                <div
-                  v-for="item in MASTERY_PREVIEW_ITEMS"
-                  :key="'mastery-' + item.level"
-                  class="flex flex-col items-center gap-1 rounded-xl border border-orange-500/20 bg-orange-500/[0.04] p-2"
-                >
-                  <img :src="getMasteryIconUrl(item.level)!" :alt="item.label" class="w-10 h-10 object-contain" />
-                  <span class="text-[9px] text-orange-400/80 text-center leading-tight">{{ item.label }}</span>
-                </div>
               </div>
             </div>
           </div>
@@ -708,7 +700,7 @@ import { ref, reactive, computed, onMounted, onUnmounted, toRaw } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import type { AppSettings } from '../env.d.ts'
 import { getTierBadgeClass, getTierBadgeLabel, formatGameMode } from '../lib/valorant'
-import { BADGE_PREVIEW_ITEMS, MASTERY_PREVIEW_ITEMS, getBadgeIconUrl, getMasteryIconUrl, getSubscriptionIconUrl } from '../lib/rank-assets'
+import { BADGE_PREVIEW_ITEMS, getBadgeIconUrl, getSubscriptionIconUrl } from '../lib/rank-assets'
 import CrosshairSettingsPanel from '../components/CrosshairSettingsPanel.vue'
 
 type UserWithUsage = {

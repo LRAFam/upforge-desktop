@@ -14,11 +14,11 @@ import coached from '../assets/ranks/badges/coached.png'
 import approvedCoach from '../assets/ranks/badges/approved-coach.png'
 import topRatedCoach from '../assets/ranks/badges/top-rated-coach.png'
 import founderBadge from '../assets/ranks/badges/founder.png'
+import ambassador from '../assets/ranks/badges/ambassador.png'
+import influencer from '../assets/ranks/badges/influencer.png'
 import plusIcon from '../assets/ranks/subscription/plus.png'
 import proIcon from '../assets/ranks/subscription/pro.png'
 import founderIcon from '../assets/ranks/subscription/founder.png'
-import masteryRank12 from '../assets/ranks/mastery/rank-12.png'
-import masteryRank13 from '../assets/ranks/mastery/rank-13.png'
 
 /** Profile badge slug → icon URL (matches API BadgeSeeder slugs). */
 export const BADGE_ICONS: Record<string, string> = {
@@ -38,6 +38,8 @@ export const BADGE_ICONS: Record<string, string> = {
   approved_coach: approvedCoach,
   top_rated_coach: topRatedCoach,
   founder: founderBadge,
+  ambassador,
+  influencer,
   premium_member: plusIcon,
   pro_elite: proIcon,
 }
@@ -50,11 +52,8 @@ const SUBSCRIPTION_ICONS: Record<string, string> = {
   founder: founderIcon,
 }
 
-/** Forge mastery level → icon URL (partial set until all 24 ranks are exported). */
-const MASTERY_ICONS: Record<number, string> = {
-  12: masteryRank12,
-  13: masteryRank13,
-}
+/** Forge mastery level → icon URL (none imported yet). */
+const MASTERY_ICONS: Record<number, string> = {}
 
 export function getBadgeIconUrl(slug: string): string | null {
   return BADGE_ICONS[slug] ?? null
@@ -88,9 +87,6 @@ export const BADGE_PREVIEW_ITEMS = [
   { slug: 'coached', label: 'Student' },
   { slug: 'approved_coach', label: 'Certified Coach' },
   { slug: 'top_rated_coach', label: 'Elite Coach' },
-] as const
-
-export const MASTERY_PREVIEW_ITEMS = [
-  { level: 12, label: 'Rank 12' },
-  { level: 13, label: 'Rank 13' },
+  { slug: 'ambassador', label: 'Ambassador' },
+  { slug: 'influencer', label: 'Influencer' },
 ] as const
