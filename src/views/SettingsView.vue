@@ -86,13 +86,13 @@
             <div class="mt-4 rounded-2xl border border-white/[0.10] bg-black/20 p-4">
               <p class="text-[10px] font-bold uppercase tracking-widest text-gray-600">Badge &amp; rank icons</p>
               <p class="mt-1 text-[11px] text-gray-500">Preview of imported artwork (more ranks coming soon).</p>
-              <div class="mt-3 grid grid-cols-4 sm:grid-cols-6 gap-2">
+              <div class="mt-3 grid grid-cols-3 sm:grid-cols-4 gap-3">
                 <div
                   v-for="item in BADGE_PREVIEW_ITEMS"
                   :key="item.slug"
-                  class="flex flex-col items-center gap-1 rounded-xl border border-white/[0.08] bg-white/[0.03] p-2"
+                  class="flex flex-col items-center gap-1.5 rounded-xl border border-white/[0.08] bg-white/[0.03] p-3"
                 >
-                  <img :src="getBadgeIconUrl(item.slug)!" :alt="item.label" class="w-10 h-10 object-contain" />
+                  <img :src="getBadgeIconUrl(item.slug)!" :alt="item.label" class="w-16 h-16 object-contain" />
                   <span class="text-[9px] text-gray-500 text-center leading-tight">{{ item.label }}</span>
                 </div>
               </div>
