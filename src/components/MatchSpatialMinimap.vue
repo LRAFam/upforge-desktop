@@ -4,8 +4,8 @@ import { getMapMinimap } from '../lib/valorant'
 import { fromMinimapDisplayNorm, toMinimapDisplayNorm, drawMinimapImage } from '../lib/map-display-norm'
 import {
   MINIMAP_COMPACT,
-  MINIMAP_DEFAULT,
-  MINIMAP_DEFAULT_LARGE,
+  MINIMAP_SIZE,
+  MINIMAP_SIZE_LARGE,
   MINIMAP_DOCK,
   MINIMAP_DOCK_HUD,
   MINIMAP_DOCK_LARGE,
@@ -115,7 +115,7 @@ const size = computed(() => {
   if (props.dockHud) return MINIMAP_DOCK_HUD
   if (props.floatHud) return props.floatLarge ? MINIMAP_FLOAT_LARGE : MINIMAP_FLOAT
   if (props.compact) return MINIMAP_COMPACT
-  return props.large ? MINIMAP_DEFAULT_LARGE : MINIMAP_DEFAULT
+  return props.large ? MINIMAP_SIZE_LARGE : MINIMAP_SIZE
 })
 
 const canvasStyle = computed(() => ({
