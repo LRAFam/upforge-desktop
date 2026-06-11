@@ -81,6 +81,10 @@ export function setupAuthHandlers(
     return auth.fetchRRHistory()
   })
 
+  ipcMain.handle('progress:playstyle-profile', async () => {
+    return auth.fetchPlaystyleProfile()
+  })
+
   // ── Analyses ──────────────────────────────────────────────────────────────
 
   ipcMain.handle('analyses:get', async (_e, { limit } = {}) => {

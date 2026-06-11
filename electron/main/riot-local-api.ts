@@ -1261,7 +1261,13 @@ export class RiotLocalApi {
    * Available from the moment agent select begins through the loading screen.
    * Returns null if the pregame endpoint is not reachable (e.g. game hasn't loaded yet).
    */
-  async getPregameContext(): Promise<{ agent: string | null; map: string | null; mode: string | null } | null> {
+  async getPregameContext(): Promise<{
+    agent: string | null
+    map: string | null
+    mode: string | null
+    allyAgents: string[]
+    enemyAgents: string[]
+  } | null> {
     if (!this.lockfileData || !this.ownPuuid) return null
     try {
       const player = await this._fetchLocal<{ Subject: string; MatchID: string }>(
@@ -1273,6 +1279,7 @@ export class RiotLocalApi {
         MapID?: string
         QueueID?: string
         AllyTeam?: { Players?: Array<{ Subject?: string; CharacterID?: string }> }
+        EnemyTeam?: { Players?: Array<{ Subject?: string; CharacterID?: string }> }
       }>(`/pregame/v1/matches/${player.MatchID}`)
 
       const mapName = match?.MapID ? resolveMapName(match.MapID) : null
@@ -1281,11 +1288,26 @@ export class RiotLocalApi {
         (p) => p.Subject?.toLowerCase() === this.ownPuuid?.toLowerCase()
       )
       const agentName = own?.CharacterID ? resolveAgentName(own.CharacterID) : null
+      const allyAgents = this._pregameAgentsFromTeam(match?.AllyTeam?.Players)
+      const enemyAgents = this._pregameAgentsFromTeam(match?.EnemyTeam?.Players)
 
-      return { agent: agentName, map: mapName, mode }
+      return { agent: agentName, map: mapName, mode, allyAgents, enemyAgents }
     } catch {
       return null
     }
+  }
+
+  private _pregameAgentsFromTeam(
+    players: Array<{ CharacterID?: string }> | undefined,
+  ): string[] {
+    if (!players?.length) return []
+    const agents: string[] = []
+    for (const p of players) {
+      if (!p.CharacterID) continue
+      const name = resolveAgentName(p.CharacterID)
+      if (name && name !== p.CharacterID) agents.push(name)
+    }
+    return agents
   }
 }
 

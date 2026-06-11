@@ -854,6 +854,43 @@
 
         <div class="h-px bg-gradient-to-r from-transparent via-white/[0.08] to-transparent my-1" />
 
+        <!-- Playstyle profile (built from post-game debriefs) -->
+        <div v-if="playstyleProfile?.focus_areas?.length" class="panel-elevated overflow-hidden">
+          <div class="px-4 py-3 border-b border-white/[0.07] flex items-center justify-between">
+            <span class="text-[10px] font-bold uppercase tracking-widest text-gray-600">Your Playstyle</span>
+            <div class="flex items-center gap-2">
+              <span class="text-[10px] text-gray-700 tabular-nums">{{ playstyleProfile.matches_tracked }} matches</span>
+              <button
+                type="button"
+                class="text-[10px] text-gray-600 hover:text-gray-300 transition-colors"
+                @click="openPlaystyleProfile"
+              >View →</button>
+            </div>
+          </div>
+          <ul class="px-4 py-3 space-y-2.5">
+            <li
+              v-for="area in playstyleProfile.focus_areas.slice(0, 3)"
+              :key="area.id"
+              class="flex items-start gap-2"
+            >
+              <span
+                class="mt-0.5 w-1.5 h-1.5 rounded-full flex-shrink-0"
+                :class="area.severity === 'high' ? 'bg-red-400' : area.severity === 'medium' ? 'bg-yellow-400' : 'bg-gray-500'"
+              />
+              <p class="text-[11px] text-gray-400 leading-relaxed">{{ area.text }}</p>
+            </li>
+          </ul>
+          <div v-if="playstyleTopAgents.length" class="px-4 pb-3 flex flex-wrap gap-1.5">
+            <span
+              v-for="ag in playstyleTopAgents"
+              :key="ag.name"
+              class="text-[9px] font-semibold px-1.5 py-0.5 rounded-md bg-white/[0.04] text-gray-500 border border-white/[0.06]"
+            >{{ ag.name }} · {{ ag.count }}</span>
+          </div>
+        </div>
+
+        <div v-if="playstyleProfile?.focus_areas?.length" class="h-px bg-gradient-to-r from-transparent via-white/[0.08] to-transparent my-1" />
+
         <!-- Correlation insights card -->
         <div v-if="correlationInsights.length" class="panel-elevated overflow-hidden">
           <div class="px-4 py-3 border-b border-white/[0.07]">
@@ -1062,6 +1099,21 @@ const trainerSessionCount = ref(0)
 const analysisCompleteToast = ref<{ score: number; agent: string | null } | null>(null)
 let analysisToastTimer: ReturnType<typeof setTimeout> | null = null
 const correlationInsights = ref<string[]>([])
+const playstyleProfile = ref<{
+  matches_tracked: number
+  last_match_at: string | null
+  metrics: Record<string, unknown>
+  focus_areas: Array<{ id: string; category: string; text: string; severity: 'low' | 'medium' | 'high' }>
+  agent_pool: Record<string, number>
+} | null>(null)
+
+const playstyleTopAgents = computed(() => {
+  const pool = playstyleProfile.value?.agent_pool ?? {}
+  return Object.entries(pool)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 3)
+    .map(([name, count]) => ({ name, count }))
+})
 
 // Emotional highlights — shown above the match list to give the user a sense of momentum
 const emotionalHighlights = computed(() => {
@@ -1332,13 +1384,15 @@ onMounted(async () => {
     return
   }
 
-  const [prof, recent] = await Promise.all([
+  const [prof, recent, playstyle] = await Promise.all([
     window.api.profile.get().catch(() => null),
-    window.api.analyses.get(10).catch(() => [] as AnalysisItem[])
+    window.api.analyses.get(10).catch(() => [] as AnalysisItem[]),
+    window.api.progress.playstyleProfile().catch(() => null),
   ])
 
   profile.value = prof
   profileLoading.value = false
+  playstyleProfile.value = playstyle
 
   if (prof?.latest_stats?.player_card_id) {
     playerCardUrl.value = `https://media.valorant-api.com/playercards/${prof.latest_stats.player_card_id}/smallart.png`
@@ -1688,6 +1742,7 @@ async function trainLastInsight() {
   }
 }
 function openBrowser() { window.open('https://upforge.gg/valorant/history', '_blank') }
+function openPlaystyleProfile() { window.open('https://upforge.gg/valorant/playstyle', '_blank') }
 
 const timelineLoadingId = ref<number | null>(null)
 

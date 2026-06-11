@@ -20,7 +20,13 @@ import { prepareMatchDataForUpload, submissionContextFromTimeline } from './matc
 export function requestPregameBrief(
   getToken: () => string | null,
   logActivity: (msg: string) => void,
-  context?: { agent?: string | null; map?: string | null; mode?: string | null },
+  context?: {
+    agent?: string | null
+    map?: string | null
+    mode?: string | null
+    allyAgents?: string[]
+    enemyAgents?: string[]
+  },
   apiUrl?: string
 ): void {
   const token = getToken()
@@ -34,6 +40,8 @@ export function requestPregameBrief(
   if (context?.agent) params.set('agent', context.agent)
   if (context?.map) params.set('map', context.map)
   if (context?.mode) params.set('mode', context.mode)
+  if (context?.allyAgents?.length) params.set('ally_agents', context.allyAgents.join(','))
+  if (context?.enemyAgents?.length) params.set('enemy_agents', context.enemyAgents.join(','))
   const qs = params.toString() ? `?${params.toString()}` : ''
   const parsedUrl = new URL(`${apiBase}/api/progress/pregame-brief${qs}`)
 
@@ -42,6 +50,8 @@ export function requestPregameBrief(
     if (context?.agent) webParams.set('agent', context.agent)
     if (context?.map) webParams.set('map', context.map)
     if (context?.mode) webParams.set('mode', context.mode)
+    if (context?.allyAgents?.length) webParams.set('ally_agents', context.allyAgents.join(','))
+    if (context?.enemyAgents?.length) webParams.set('enemy_agents', context.enemyAgents.join(','))
     webParams.set('t', Date.now().toString())
     shell.openExternal(`https://upforge.gg/valorant/pregame-brief?${webParams.toString()}`)
     logActivity('Pre-game brief: opened in browser')

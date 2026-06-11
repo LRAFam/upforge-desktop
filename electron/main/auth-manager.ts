@@ -84,6 +84,22 @@ export interface ProfileData {
   latest_stats: ValorantStats | null
 }
 
+export interface PlaystyleFocusArea {
+  id: string
+  category: string
+  text: string
+  severity: 'low' | 'medium' | 'high'
+  agent?: string
+}
+
+export interface PlaystyleProfile {
+  matches_tracked: number
+  last_match_at: string | null
+  metrics: Record<string, unknown>
+  focus_areas: PlaystyleFocusArea[]
+  agent_pool: Record<string, number>
+}
+
 export interface AnalysisItem {
   id: number
   job_id: string | null
@@ -234,6 +250,15 @@ export class AuthManager {
         },
         latest_stats: p.latest_stats ?? null,
       }
+    } catch {
+      return null
+    }
+  }
+
+  async fetchPlaystyleProfile(): Promise<PlaystyleProfile | null> {
+    try {
+      const res = await this._api.get('/api/progress/playstyle-profile')
+      return res.data?.profile ?? null
     } catch {
       return null
     }

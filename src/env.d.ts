@@ -495,6 +495,21 @@ declare global {
       stats: {
         rrHistory: () => Promise<Array<{ id: number; date: string; rank: string | null; rr: number; elo: number }>>
       }
+      progress: {
+        playstyleProfile: () => Promise<{
+          matches_tracked: number
+          last_match_at: string | null
+          metrics: Record<string, unknown>
+          focus_areas: Array<{
+            id: string
+            category: string
+            text: string
+            severity: 'low' | 'medium' | 'high'
+            agent?: string
+          }>
+          agent_pool: Record<string, number>
+        } | null>
+      }
       overlay: {
         toggle: () => Promise<void>
         setInteractive: (interactive: boolean) => void

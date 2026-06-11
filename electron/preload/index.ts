@@ -93,6 +93,9 @@ const api = {
   stats: {
     rrHistory: () => ipcRenderer.invoke('stats:rr-history')
   },
+  progress: {
+    playstyleProfile: () => ipcRenderer.invoke('progress:playstyle-profile')
+  },
   overlay: {
     toggle: () => ipcRenderer.invoke('overlay:toggle'),
     setInteractive: (interactive: boolean) => ipcRenderer.send('overlay:set-interactive', interactive),

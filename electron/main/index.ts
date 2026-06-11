@@ -444,7 +444,13 @@ async function extractMatchClips(
   return clipPipeline.extractMatchClips(videoPath, timeline, analysisJobId)
 }
 
-function requestPregameBrief(context?: { agent?: string | null; map?: string | null; mode?: string | null }): void {
+function requestPregameBrief(context?: {
+  agent?: string | null
+  map?: string | null
+  mode?: string | null
+  allyAgents?: string[]
+  enemyAgents?: string[]
+}): void {
   _requestPregameBrief(() => authManager.getToken(), logActivity, context, process.env['VITE_API_URL'])
 }
 
