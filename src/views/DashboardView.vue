@@ -854,8 +854,8 @@
 
         <div class="h-px bg-gradient-to-r from-transparent via-white/[0.08] to-transparent my-1" />
 
-        <!-- Playstyle profile (built from post-game debriefs) -->
-        <div v-if="playstyleProfile?.focus_areas?.length" class="panel-elevated overflow-hidden">
+        <!-- Playstyle profile -->
+        <div v-if="playstyleProfile && playstyleProfile.matches_tracked > 0" class="panel-elevated overflow-hidden">
           <div class="px-4 py-3 border-b border-white/[0.07] flex items-center justify-between">
             <span class="text-[10px] font-bold uppercase tracking-widest text-gray-600">Your Playstyle</span>
             <div class="flex items-center gap-2">
@@ -867,7 +867,7 @@
               >View →</button>
             </div>
           </div>
-          <ul class="px-4 py-3 space-y-2.5">
+          <ul v-if="playstyleProfile.focus_areas?.length" class="px-4 py-3 space-y-2.5">
             <li
               v-for="area in playstyleProfile.focus_areas.slice(0, 3)"
               :key="area.id"
@@ -880,6 +880,11 @@
               <p class="text-[11px] text-gray-400 leading-relaxed">{{ area.text }}</p>
             </li>
           </ul>
+          <p v-else class="px-4 py-3 text-[11px] text-gray-500 leading-relaxed">
+            {{ playstyleProfile.matches_tracked < 3
+              ? `${3 - playstyleProfile.matches_tracked} more ranked game${3 - playstyleProfile.matches_tracked === 1 ? '' : 's'} until focus areas unlock.`
+              : 'View your economy, util, and agent trends on the web profile.' }}
+          </p>
           <div v-if="playstyleTopAgents.length" class="px-4 pb-3 flex flex-wrap gap-1.5">
             <span
               v-for="ag in playstyleTopAgents"
@@ -889,7 +894,7 @@
           </div>
         </div>
 
-        <div v-if="playstyleProfile?.focus_areas?.length" class="h-px bg-gradient-to-r from-transparent via-white/[0.08] to-transparent my-1" />
+        <div v-if="playstyleProfile && playstyleProfile.matches_tracked > 0" class="h-px bg-gradient-to-r from-transparent via-white/[0.08] to-transparent my-1" />
 
         <!-- Correlation insights card -->
         <div v-if="correlationInsights.length" class="panel-elevated overflow-hidden">

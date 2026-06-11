@@ -1157,7 +1157,7 @@ function setRecordingPreset(preset: 'coaching' | 'creator'): void {
   if (settings.recordingPreset === preset) return
   if (preset === 'creator' && !hasProAccess.value) {
     showToast('Creator recording requires Pro — upgrade to unlock')
-    openPricing()
+    openUpgrade()
     return
   }
   settings.recordingPreset = preset

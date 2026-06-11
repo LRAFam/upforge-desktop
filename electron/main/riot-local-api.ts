@@ -1030,6 +1030,8 @@ export class RiotLocalApi {
         }
       }
 
+      const firstBloodByRound = buildFirstBloodByRound(allKills ?? [])
+
       // Pre-compute HS% and ADR from per-round damage events.
       let totalDamage = 0
       let totalHeadshots = 0
@@ -1073,6 +1075,9 @@ export class RiotLocalApi {
         const prs = (round.playerStats as Array<Record<string, unknown>> | undefined)
           ?.find((ps) => (ps.subject as string)?.toLowerCase() === ownLower)
         const economy = prs?.economy as Record<string, unknown> | undefined
+        const fb = firstBloodByRound.get(roundNum)
+        const fbKiller = fb?.killer?.toLowerCase()
+        const fbVictim = fb?.victim?.toLowerCase()
         this.matchData.roundSummaries.push({
           roundNumber: roundNum,
           winningTeam,
@@ -1089,7 +1094,8 @@ export class RiotLocalApi {
           spikeDetonated: resultCode === 'BombDetonated',
           playerGold: (economy?.remaining as number) ?? null,
           playerAbilities: null,
-          playerGotFirstBlood: false, playerWasFirstBlood: false,
+          playerGotFirstBlood: fbKiller === ownLower,
+          playerWasFirstBlood: fbVictim === ownLower,
           playerSpent: (economy?.spent as number) ?? null,
           playerLoadoutValue: (economy?.loadoutValue as number) ?? null,
           playerWeapon: resolveEconomyWeapon(economy?.weapon) ?? null,
@@ -1124,6 +1130,16 @@ export class RiotLocalApi {
             videoOffsetMs: Math.max(0, recordingOffset + gameTimeMs),
           })
         }
+      }
+
+      for (const [roundNum, fb] of firstBloodByRound) {
+        this.matchData.firstBloods.push({
+          EventID: roundNum,
+          EventName: 'FirstBlood',
+          EventTime: fb.tsgm / 1000,
+          killerName: _resolveName(fb.killer),
+          victimName: _resolveName(fb.victim),
+        })
       }
     }
 
@@ -1483,4 +1499,32 @@ function _normalizeQueueId(queueId: string): string {
     onefa: 'REPLICATION', hurm: 'TEAMDEATHMATCH', newmap: 'NEWMAP',
   }
   return map[queueId.toLowerCase()] ?? queueId.toUpperCase()
+}
+
+interface FirstBloodRound {
+  killer: string
+  victim: string
+  tsgm: number
+}
+
+/** Earliest kill per round from Riot MatchDetails — used for first-death playstyle metrics. */
+function buildFirstBloodByRound(
+  kills: Array<Record<string, unknown>>,
+): Map<number, FirstBloodRound> {
+  const map = new Map<number, FirstBloodRound>()
+  for (const k of kills) {
+    const killer = (k.killer as string) ?? ''
+    const victim = (k.victim as string) ?? ''
+    if (!killer || !victim) continue
+    const round = (k.round as number) ?? 0
+    const rawTsgm = k.timeSinceGameStartMillis as number | undefined
+    const tsgm = (rawTsgm != null && rawTsgm > 0)
+      ? rawTsgm
+      : ((k.gameTime as number) ?? Number.MAX_SAFE_INTEGER)
+    const prev = map.get(round)
+    if (!prev || tsgm < prev.tsgm) {
+      map.set(round, { killer, victim, tsgm })
+    }
+  }
+  return map
 }
