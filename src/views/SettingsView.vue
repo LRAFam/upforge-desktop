@@ -226,12 +226,48 @@
             <div class="rounded-2xl border border-white/[0.10] bg-black/20 p-4 space-y-3">
               <div>
                 <p class="text-sm font-semibold text-white">Recording format</p>
-                <p class="mt-1 text-xs text-gray-500">Fixed preset — optimised for AI analysis and upload cost.</p>
+                <p class="mt-1 text-xs text-gray-500">Choose a preset — applied to OBS automatically when a match starts.</p>
               </div>
-              <div class="rounded-xl border border-white/[0.08] bg-white/[0.03] px-3 py-2.5">
-                <p class="text-xs font-semibold text-gray-200">720p · 5 Mbps · 30 fps</p>
-                <p class="mt-1 text-[11px] text-gray-600">Typical comp match ≈ 1.3 GB · applied to OBS automatically</p>
+              <div class="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                <button
+                  type="button"
+                  class="rounded-xl border px-3 py-3 text-left transition-all"
+                  :class="settings.recordingPreset === 'coaching'
+                    ? 'border-red-500/25 bg-red-500/10'
+                    : 'border-white/[0.10] bg-white/[0.02] hover:border-white/[0.14]'"
+                  @click="setRecordingPreset('coaching')"
+                >
+                  <p class="text-xs font-semibold text-gray-100">Coaching</p>
+                  <p class="mt-1 text-[11px] font-medium text-gray-300">720p · 5 Mbps · 30 fps</p>
+                  <p class="mt-1.5 text-[11px] text-gray-600">Best for AI analysis and fast uploads (~1.3 GB / match)</p>
+                </button>
+                <button
+                  type="button"
+                  class="rounded-xl border px-3 py-3 text-left transition-all"
+                  :class="settings.recordingPreset === 'creator'
+                    ? 'border-red-500/25 bg-red-500/10'
+                    : hasProAccess
+                      ? 'border-white/[0.10] bg-white/[0.02] hover:border-white/[0.14]'
+                      : 'border-white/[0.08] bg-white/[0.01] hover:border-purple-500/20'"
+                  @click="setRecordingPreset('creator')"
+                >
+                  <div class="flex items-center gap-2">
+                    <p class="text-xs font-semibold text-gray-100">Creator</p>
+                    <span
+                      v-if="!hasProAccess"
+                      class="rounded-full bg-purple-500/15 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-purple-300"
+                    >Pro</span>
+                  </div>
+                  <p class="mt-1 text-[11px] font-medium text-gray-300">1080p · 10 Mbps · 60 fps</p>
+                  <p class="mt-1.5 text-[11px] text-gray-600">
+                    <template v-if="hasProAccess">Higher quality for streaming/content (~3 GB / match). Uses your OBS video settings.</template>
+                    <template v-else>Pro feature — higher quality for streaming and content creation.</template>
+                  </p>
+                </button>
               </div>
+              <p v-if="settings.recordingPreset === 'creator'" class="text-[11px] text-gray-600">
+                Coaching uploads are compressed automatically — your local file stays at full quality.
+              </p>
               <div class="flex items-center justify-between gap-3">
                 <div>
                   <p class="text-xs font-medium text-gray-300">Record game audio</p>
@@ -700,6 +736,7 @@ import { ref, reactive, computed, onMounted, onUnmounted, toRaw } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import type { AppSettings } from '../env.d.ts'
 import { getTierBadgeClass, getTierBadgeLabel, formatGameMode } from '../lib/valorant'
+import { hasProAccess as proAccessForUser } from '../lib/subscription'
 import { BADGE_PREVIEW_ITEMS, getBadgeIconUrl, getSubscriptionIconUrl } from '../lib/rank-assets'
 import CrosshairSettingsPanel from '../components/CrosshairSettingsPanel.vue'
 
@@ -929,6 +966,7 @@ async function loadHotkeyStatus(): Promise<void> {
 }
 
 const settings = reactive<AppSettings>({
+  recordingPreset: 'coaching',
   recordingQuality: '720p',
   recordingBitrate: 5,
   recordingFps: 30,
@@ -1033,6 +1071,8 @@ const storageSummary = computed(() => {
   return `${storageCount.value} file${storageCount.value === 1 ? '' : 's'} stored locally · ${formatBytes(storageBytes.value)}`
 })
 
+const hasProAccess = computed(() => proAccessForUser(user.value))
+
 function hotkeyParts(accelerator: string): string[] {
   return formatKey(accelerator).split('+')
 }
@@ -1109,6 +1149,26 @@ function toggleMode(value: string): void {
     settings.recordedModes.push(value)
   } else {
     settings.recordedModes.splice(idx, 1)
+  }
+  debouncedSave()
+}
+
+function setRecordingPreset(preset: 'coaching' | 'creator'): void {
+  if (settings.recordingPreset === preset) return
+  if (preset === 'creator' && !hasProAccess.value) {
+    showToast('Creator recording requires Pro — upgrade to unlock')
+    openPricing()
+    return
+  }
+  settings.recordingPreset = preset
+  if (preset === 'coaching') {
+    settings.recordingQuality = '720p'
+    settings.recordingBitrate = 5
+    settings.recordingFps = 30
+  } else {
+    settings.recordingQuality = '1080p'
+    settings.recordingBitrate = 10
+    settings.recordingFps = 60
   }
   debouncedSave()
 }

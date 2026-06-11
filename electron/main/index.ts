@@ -15,13 +15,14 @@ import { GameDetector } from './game-detector'
 import { Recorder } from './recorder'
 import { OBSRecorder } from './obs-recorder'
 import { buildRecorderConfig } from './obs-output-settings'
+import { hasProAccess } from './subscription'
 import {
   MIN_RECORDING_DURATION_SECONDS,
   MIN_RECORDING_FILE_BYTES,
   MAX_RECORDING_FILE_BYTES,
   formatRecordingTooLargeMessage,
 } from './recording-limits'
-import { RECORDING_PRESET_LABEL } from './recording-preset'
+import { formatRecordingLabel } from './recording-preset'
 import {
   resolveUploadVideoPath,
   deleteCompressedSibling,
@@ -137,7 +138,7 @@ const obsRecorder = new OBSRecorder(
   },
   () => {
     const s = settingsManager?.get()
-    return s ? buildRecorderConfig(s) : undefined
+    return s ? buildRecorderConfig(s, hasProAccess(authManager.getUser())) : undefined
   },
 )
 
@@ -367,6 +368,16 @@ function syncUserSessionFromAuth(): void {
   const user = authManager.getUser()
   if (user?.id) {
     activateUserSession(user.id, userSessionDeps())
+  }
+  enforceRecordingPresetAccess()
+}
+
+function enforceRecordingPresetAccess(): void {
+  if (!settingsManager) return
+  const allowCreator = hasProAccess(authManager.getUser())
+  const current = settingsManager.get()
+  if (current.recordingPreset === 'creator' && !allowCreator) {
+    settingsManager.save({ recordingPreset: 'coaching' }, { allowCreator: false })
   }
 }
 
@@ -1117,7 +1128,7 @@ function setupGameDetection(): void {
       }
     }
 
-    const recorderConfig = config ? buildRecorderConfig(config) : undefined
+    const recorderConfig = config ? buildRecorderConfig(config, hasProAccess(authManager.getUser())) : undefined
 
     // Check disk space now so the warning shows while in lobby
     const savePath = config?.savePath || join(app.getPath('userData'), 'recordings')
@@ -1125,7 +1136,10 @@ function setupGameDetection(): void {
       await probeObsConnection(obsRecorder, mainWindow, { notify: false, logActivity })
     }
     if (recorderConfig) {
-      log.info(`[Recorder] OBS · ${RECORDING_PRESET_LABEL} (synced to OBS before recording)`)
+      log.info(
+        `[Recorder] OBS · ${formatRecordingLabel(recorderConfig.quality, recorderConfig.bitrate, recorderConfig.fps ?? 30)}` +
+        `${recorderConfig.manageObsVideo === false ? ' (OBS video settings unchanged)' : ''} (synced to OBS before recording)`,
+      )
     }
     const freeBytes = await obsRecorder.getFreeDiskSpace(savePath)
     const TWO_GB = 2 * 1024 * 1024 * 1024
@@ -1919,6 +1933,7 @@ app.whenReady().then(async () => {
   } catch (err) {
     log.warn('[App] Failed to restore auth token — starting unauthenticated:', err)
   }
+  enforceRecordingPresetAccess()
 
   // When a 401 fires mid-session, tell the renderer to show the login screen
   authManager.onSessionExpired = () => {

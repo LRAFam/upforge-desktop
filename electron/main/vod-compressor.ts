@@ -1,5 +1,5 @@
 /**
- * Re-encode oversized OBS recordings to the locked UpForge preset before upload.
+ * Re-encode oversized OBS recordings to the coaching preset before upload.
  * OBS profile parameters often do not apply (especially Advanced Output mode).
  */
 
@@ -8,7 +8,7 @@ import { dirname, join, basename } from 'path'
 import { existsSync, mkdirSync, statSync, unlinkSync } from 'fs'
 import { is } from '@electron-toolkit/utils'
 import log from 'electron-log'
-import { RECORDING_PRESET } from './recording-preset'
+import { UPLOAD_COMPRESSION_PRESET } from './recording-preset'
 
 const IS_WIN = process.platform === 'win32'
 
@@ -91,11 +91,11 @@ export async function compressVodForUpload(sourcePath: string): Promise<Compress
     try { unlinkSync(outputPath) } catch { /* ignore */ }
   }
 
-  const scale = RECORDING_PRESET.quality === '1080p' ? '1920:1080' : '1280:720'
-  const bitrate = `${RECORDING_PRESET.bitrate}M`
-  const maxrate = `${Math.round(RECORDING_PRESET.bitrate * 1.1)}M`
-  const bufsize = `${RECORDING_PRESET.bitrate * 2}M`
-  const fps = RECORDING_PRESET.fps
+  const scale = UPLOAD_COMPRESSION_PRESET.quality === '1080p' ? '1920:1080' : '1280:720'
+  const bitrate = `${UPLOAD_COMPRESSION_PRESET.bitrate}M`
+  const maxrate = `${Math.round(UPLOAD_COMPRESSION_PRESET.bitrate * 1.1)}M`
+  const bufsize = `${UPLOAD_COMPRESSION_PRESET.bitrate * 2}M`
+  const fps = UPLOAD_COMPRESSION_PRESET.fps
 
   const videoFilters = `scale=${scale}:force_original_aspect_ratio=decrease,pad=${scale}:(ow-iw)/2:(oh-ih)/2,fps=${fps}`
 

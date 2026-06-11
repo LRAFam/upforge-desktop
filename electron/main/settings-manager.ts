@@ -1,11 +1,16 @@
 import { app } from 'electron'
 import fs from 'fs'
 import path from 'path'
-import { RECORDING_PRESET } from './recording-preset'
+import {
+  getRecordingPresetValues,
+  type RecordingPresetId,
+} from './recording-preset'
 
 export interface AppSettings {
+  /** Coaching (720p) or creator (1080p60) recording preset. */
+  recordingPreset: RecordingPresetId
   recordingQuality: '720p' | '1080p'
-  recordingBitrate: number // Mbps — locked to RECORDING_PRESET; kept for settings migration
+  recordingBitrate: number // Mbps — derived from recordingPreset
   recordingFps: 24 | 30 | 60
   audioEnabled: boolean
   savePath: string
@@ -90,10 +95,28 @@ export interface AppSettings {
 
 export type InGameFeedbackMode = AppSettings['inGameFeedback']
 
+function applyRecordingPresetFields(
+  settings: Partial<AppSettings>,
+  allowCreator = true,
+): Pick<
+  AppSettings,
+  'recordingPreset' | 'recordingQuality' | 'recordingBitrate' | 'recordingFps'
+> {
+  let presetId: RecordingPresetId = settings.recordingPreset === 'creator' ? 'creator' : 'coaching'
+  if (presetId === 'creator' && !allowCreator) {
+    presetId = 'coaching'
+  }
+  const preset = getRecordingPresetValues(presetId)
+  return {
+    recordingPreset: presetId,
+    recordingQuality: preset.quality,
+    recordingBitrate: preset.bitrate,
+    recordingFps: preset.fps,
+  }
+}
+
 const DEFAULTS: AppSettings = {
-  recordingQuality: '720p',
-  recordingBitrate: 5,
-  recordingFps: 30,
+  ...applyRecordingPresetFields({ recordingPreset: 'coaching' }),
   audioEnabled: true,
   savePath: '',
   launchOnStartup: false,
@@ -183,10 +206,7 @@ export class SettingsManager {
       if (!String(merged.savePath ?? '').trim()) {
         merged.savePath = DEFAULTS.savePath
       }
-      merged.recordingQuality = RECORDING_PRESET.quality
-      merged.recordingBitrate = RECORDING_PRESET.bitrate
-      merged.recordingFps = RECORDING_PRESET.fps
-      return merged
+      return { ...merged, ...applyRecordingPresetFields(merged) }
     } catch {
       return { ...DEFAULTS }
     }
@@ -196,13 +216,12 @@ export class SettingsManager {
     return { ...this.settings }
   }
 
-  save(partial: Partial<AppSettings>): AppSettings {
+  save(partial: Partial<AppSettings>, opts?: { allowCreator?: boolean }): AppSettings {
+    const allowCreator = opts?.allowCreator ?? true
     this.settings = {
       ...this.settings,
       ...partial,
-      recordingQuality: RECORDING_PRESET.quality,
-      recordingBitrate: RECORDING_PRESET.bitrate,
-      recordingFps: RECORDING_PRESET.fps,
+      ...applyRecordingPresetFields({ ...this.settings, ...partial }, allowCreator),
     }
     if (!String(this.settings.savePath ?? '').trim()) {
       this.settings.savePath = DEFAULTS.savePath

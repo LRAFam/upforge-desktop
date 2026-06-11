@@ -12,13 +12,17 @@ import log from 'electron-log'
 import type OBSWebSocket from 'obs-websocket-js'
 import type { RecorderConfig } from './recorder'
 import type { AppSettings } from './settings-manager'
-import { RECORDING_PRESET, RECORDING_PRESET_LABEL } from './recording-preset'
+import { getRecordingPresetValues, formatRecordingLabel } from './recording-preset'
 
-export function buildRecorderConfig(settings: AppSettings): RecorderConfig {
+export function buildRecorderConfig(settings: AppSettings, allowCreator = true): RecorderConfig {
+  const preset = getRecordingPresetValues(
+    settings.recordingPreset === 'creator' && allowCreator ? 'creator' : 'coaching',
+  )
   return {
-    quality: RECORDING_PRESET.quality,
-    bitrate: RECORDING_PRESET.bitrate,
-    fps: RECORDING_PRESET.fps,
+    quality: preset.quality,
+    bitrate: preset.bitrate,
+    fps: preset.fps,
+    manageObsVideo: preset.manageObsVideo,
     audioEnabled: settings.audioEnabled,
     savePath: settings.savePath || join(app.getPath('userData'), 'recordings'),
     captureMonitor: settings.captureMonitor,
@@ -97,20 +101,22 @@ export async function applyObsRecordingSettings(
     await setProfileParam(obs, 'SimpleOutput', 'FilePath', savePath)
   }
 
-  try {
-    await obs.call('SetVideoSettings', {
-      baseWidth: cx,
-      baseHeight: cy,
-      outputWidth: cx,
-      outputHeight: cy,
-      fpsNumerator: fps,
-      fpsDenominator: 1,
-    })
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err)
-    log.warn('[OBS Output] SetVideoSettings failed:', msg)
-    if (msg.includes('OutputRunning') || msg.includes('output is active')) {
-      warnings.push('Could not set OBS video resolution — stop any active OBS output and reconnect.')
+  if (config.manageObsVideo !== false) {
+    try {
+      await obs.call('SetVideoSettings', {
+        baseWidth: cx,
+        baseHeight: cy,
+        outputWidth: cx,
+        outputHeight: cy,
+        fpsNumerator: fps,
+        fpsDenominator: 1,
+      })
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      log.warn('[OBS Output] SetVideoSettings failed:', msg)
+      if (msg.includes('OutputRunning') || msg.includes('output is active')) {
+        warnings.push('Could not set OBS video resolution — stop any active OBS output and reconnect.')
+      }
     }
   }
 
@@ -125,7 +131,7 @@ export async function applyObsRecordingSettings(
     }
     outputWidth = video.outputWidth ?? null
     outputHeight = video.outputHeight ?? null
-    if (outputWidth && outputWidth > cx) {
+    if (config.manageObsVideo !== false && outputWidth && outputWidth > cx) {
       warnings.push(`OBS output resolution is ${outputWidth}×${outputHeight} (expected ${cx}×${cy}).`)
     }
   } catch (err) {
@@ -133,8 +139,9 @@ export async function applyObsRecordingSettings(
   }
 
   const recRb = await getProfileParam(obs, 'SimpleOutput', 'RecRB')
+  const label = formatRecordingLabel(config.quality, config.bitrate, fps)
   log.info(
-    `[OBS Output] Applied ${RECORDING_PRESET_LABEL} → ${savePath} ` +
+    `[OBS Output] Applied ${label}${config.manageObsVideo === false ? ' (OBS video settings unchanged)' : ''} → ${savePath} ` +
     `(mode=${outputMode ?? '?'}, ${outputWidth ?? '?'}×${outputHeight ?? '?'}, RecRB=${recRb ?? '?'} kbps)`,
   )
 

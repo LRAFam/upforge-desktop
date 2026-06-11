@@ -62,6 +62,8 @@ export interface CoachingDrill {
 }
 
 export interface AppSettings {
+  /** Coaching (720p) or creator (1080p60) recording preset. */
+  recordingPreset: 'coaching' | 'creator'
   recordingQuality: '720p' | '1080p'
   recordingBitrate: number
   recordingFps: 24 | 30 | 60

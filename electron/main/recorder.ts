@@ -14,6 +14,8 @@ export interface RecorderConfig {
   audioEnabled?: boolean
   savePath: string
   captureMonitor?: 'auto' | number // which monitor to capture; 'auto' = detect from Valorant window
+  /** When false, skip SetVideoSettings so OBS keeps the creator's stream/canvas config. */
+  manageObsVideo?: boolean
 }
 
 const IS_MAC = process.platform === 'darwin'

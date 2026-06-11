@@ -16,6 +16,7 @@ import { GameDetector } from '../game-detector'
 import { SettingsManager } from '../settings-manager'
 import type { OBSRecorder } from '../obs-recorder'
 import { buildRecorderConfig } from '../obs-output-settings'
+import { hasProAccess } from '../subscription'
 
 export function setupAppHandlers(
   ipcMain: IpcMain,
@@ -76,23 +77,33 @@ export function setupAppHandlers(
   // ── Settings ──────────────────────────────────────────────────────────────
 
   ipcMain.handle('settings:get', () => {
-    return settingsManager.get()
+    const allowCreator = hasProAccess(auth.getUser())
+    const current = settingsManager.get()
+    if (current.recordingPreset === 'creator' && !allowCreator) {
+      return settingsManager.save({ recordingPreset: 'coaching' }, { allowCreator: false })
+    }
+    return current
   })
 
   ipcMain.handle('settings:save', (_e, partial: Record<string, unknown>) => {
     const prev = settingsManager.get()
-    const result = settingsManager.save(partial)
+    const allowCreator = hasProAccess(auth.getUser())
+    const wantsCreator = partial.recordingPreset === 'creator'
+    const result = settingsManager.save(partial as Partial<import('../settings-manager').AppSettings>, { allowCreator })
     if ('launchOnStartup' in partial && partial.launchOnStartup !== prev.launchOnStartup) {
       app.setLoginItemSettings({ openAtLogin: !!partial.launchOnStartup })
     }
     if (obsRecorder?.isConnected()) {
-      void obsRecorder.applyRecordingSettings(buildRecorderConfig(result))
+      void obsRecorder.applyRecordingSettings(buildRecorderConfig(result, allowCreator))
     }
     BrowserWindow.getAllWindows().forEach(w => {
       if (!w.isDestroyed()) w.webContents.send('settings:changed', result)
     })
     onSettingsSaved?.(result)
-    return result
+    return {
+      ...result,
+      creatorPresetRequiresPro: wantsCreator && !allowCreator,
+    }
   })
 
   ipcMain.handle('settings:mark-first-run-done', () => {
