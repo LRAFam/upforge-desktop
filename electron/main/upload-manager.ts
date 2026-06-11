@@ -129,7 +129,7 @@ export class UploadManager {
     const totalBytes = fs.statSync(opts.videoPath).size
 
     // ── Step 1: get presigned URL ──────────────────────────────────────────
-    opts.onProgress(0)
+    opts.onProgress(3)
     const submissionCtx = submissionContextFromTimeline(opts.timeline ?? null)
     const presignBody = JSON.stringify({
       riot_name:  opts.riotName,
@@ -151,6 +151,7 @@ export class UploadManager {
     savePendingJob(job_id, { agent: opts.agent ?? undefined, map: opts.map ?? undefined, game: opts.game })
 
     // ── Step 2: stream file directly to S3 ────────────────────────────────
+    opts.onProgress(8)
     await this._putToS3(upload_url, opts.videoPath, totalBytes, opts.onProgress)
 
     // ── Step 3: confirm and queue analysis ────────────────────────────────
@@ -270,7 +271,7 @@ export class UploadManager {
       stream.on('data', (chunk: Buffer | string) => {
         uploaded += typeof chunk === 'string' ? chunk.length : chunk.length
         lastProgressAt = Date.now()
-        onProgress(Math.min(Math.round((uploaded / totalBytes) * 99), 99))
+        onProgress(Math.min(8 + Math.round((uploaded / totalBytes) * 91), 99))
       })
       stream.on('error', (err) => { clearInterval(stallCheck); reject(err) })
       stream.pipe(req)

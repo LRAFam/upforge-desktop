@@ -276,7 +276,7 @@
     </div>
 
     <!-- 3-column dashboard grid -->
-    <div class="flex-1 grid grid-cols-1 lg:grid-cols-[minmax(280px,340px)_1fr] xl:grid-cols-[minmax(280px,340px)_1fr_minmax(280px,340px)] gap-4 p-4 pt-3 min-h-0 overflow-hidden">
+    <div class="flex-1 grid grid-cols-1 lg:grid-cols-[minmax(280px,340px)_1fr] xl:grid-cols-[minmax(280px,340px)_1fr_minmax(280px,340px)] gap-4 p-4 pt-3 min-h-0 overflow-y-auto scroll-col xl:overflow-hidden">
 
       <!-- ═══════════ LEFT: Player card ═══════════ -->
       <div class="flex flex-col gap-3 min-h-0 h-full overflow-hidden">

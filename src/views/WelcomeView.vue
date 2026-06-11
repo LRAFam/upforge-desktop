@@ -525,7 +525,7 @@ const features = [
 onMounted(async () => {
   try {
     const settings = await window.api.settings.get() as { savePath: string; trainerMouse?: typeof trainerMouse.value }
-    savePath.value = settings.savePath
+    savePath.value = settings.savePath?.trim() || ''
     if (settings.trainerMouse) Object.assign(trainerMouse.value, settings.trainerMouse)
   } catch { /* defaults fine */ }
   try {
@@ -602,7 +602,13 @@ async function choosePath() {
 }
 
 async function finishOnboarding() {
-  await window.api.settings.save({ firstRun: false, onboardingComplete: true })
+  const current = await window.api.settings.get() as { savePath?: string }
+  const pathToSave = savePath.value.trim() || current.savePath?.trim() || ''
+  await window.api.settings.save({
+    savePath: pathToSave || undefined,
+    firstRun: false,
+    onboardingComplete: true,
+  })
   router.push('/dashboard')
 }
 
@@ -973,8 +979,69 @@ function openForgotPassword() {
 .pip-num { font-size: 8px; letter-spacing: 0.08em; }
 
 /* ── Step outer ── */
-.step-outer { width: 100%; max-width: 360px; position: relative; z-index: 1; margin-top: 118px; }
+.step-outer {
+  width: 100%;
+  max-width: 360px;
+  position: relative;
+  z-index: 1;
+  margin-top: 118px;
+  max-height: calc(100vh - 150px);
+  overflow-y: auto;
+  padding-right: 4px;
+}
 .step-content { display: flex; flex-direction: column; gap: 10px; }
+
+/* ── Hotkey rows (step 4) ── */
+.keybind-list { display: flex; flex-direction: column; gap: 8px; }
+.keybind-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  background: rgba(255,255,255,0.025);
+  border: 1px solid rgba(255,255,255,0.06);
+  border-radius: 10px;
+}
+.keybind-icon-wrap {
+  width: 36px;
+  height: 36px;
+  border-radius: 9px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.keybind-icon { width: 18px; height: 18px; color: #e5e7eb; }
+.keybind-info { flex: 1; min-width: 0; }
+.keybind-name { font-size: 12px; font-weight: 600; color: #f3f4f6; margin: 0 0 2px; }
+.keybind-desc { font-size: 10px; color: #6b7280; margin: 0; line-height: 1.35; }
+.keybind-key-btn {
+  flex-shrink: 0;
+  min-width: 52px;
+  padding: 6px 10px;
+  border-radius: 8px;
+  border: 1px solid rgba(255,255,255,0.1);
+  background: rgba(0,0,0,0.25);
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+  -webkit-app-region: no-drag;
+}
+.keybind-key-btn:hover { border-color: rgba(255,255,255,0.16); background: rgba(255,255,255,0.05); }
+.keybind-key-btn--listening {
+  border-color: rgba(255,70,85,0.35);
+  background: rgba(255,70,85,0.1);
+  animation: pulse-dot 1.2s ease-in-out infinite;
+}
+.key-listen-text { font-size: 10px; color: #ff8a74; white-space: nowrap; }
+.key-badge {
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 700;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  color: #e5e7eb;
+  letter-spacing: 0.04em;
+}
+.rebind-hint { font-size: 10px; color: #6b7280; margin: 0; text-align: center; }
 
 .step-eyebrow {
   font-size: 9px; font-weight: 700; letter-spacing: 0.1em;
@@ -1204,5 +1271,11 @@ function openForgotPassword() {
 
 .error-fade-enter-active, .error-fade-leave-active { transition: opacity 0.25s ease; }
 .error-fade-enter-from, .error-fade-leave-to { opacity: 0; }
+
+@media (max-width: 920px) {
+  .left-panel { display: none; }
+  .right-panel { padding: 72px 24px 20px; }
+  .step-outer { margin-top: 96px; max-height: calc(100vh - 120px); }
+}
 
 </style>

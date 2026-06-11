@@ -20,7 +20,7 @@
       </div>
 
       <!-- Uploading -->
-      <div v-if="state === 'uploading'" class="w-full space-y-3 text-center">
+      <div v-if="state === 'preparing' || state === 'uploading'" class="w-full space-y-3 text-center">
         <!-- Dismiss during upload -->
         <button
           class="absolute top-2 right-2 w-6 h-6 flex items-center justify-center rounded-full text-gray-600 hover:text-gray-300 hover:bg-white/[0.06] transition-colors"
@@ -45,7 +45,7 @@
                 </svg>
               </div>
               <div class="text-left">
-                <p class="text-sm font-bold text-white">{{ compressing ? 'Compressing replay' : 'Uploading replay' }}</p>
+                <p class="text-sm font-bold text-white">{{ state === 'preparing' ? 'Getting replay ready' : compressing ? 'Compressing replay' : 'Uploading replay' }}</p>
                 <div class="mt-1 flex items-center gap-2 text-[11px]">
                   <span class="font-semibold text-gray-200">{{ gameInfo.agent || gameLabel }}</span>
                   <span v-if="gameInfo.map" class="text-gray-500">{{ gameInfo.map }}</span>
@@ -56,8 +56,8 @@
           <div class="w-full space-y-2.5">
             <div class="flex items-end justify-between gap-3">
               <div class="text-left">
-                <p class="text-[10px] font-semibold uppercase tracking-[0.24em] text-gray-600">{{ compressing ? 'Compression' : 'Upload progress' }}</p>
-                <p class="mt-1 text-xs text-gray-500">{{ compressing ? 'OBS recorded a large file — shrinking to upload size (one-time, may take a few minutes)' : 'Sending your recording to UpForge for analysis' }}</p>
+                <p class="text-[10px] font-semibold uppercase tracking-[0.24em] text-gray-600">{{ state === 'preparing' ? 'Preparing' : compressing ? 'Compression' : 'Upload progress' }}</p>
+                <p class="mt-1 text-xs text-gray-500">{{ state === 'preparing' ? 'Saving your match recording and getting it ready to upload' : compressing ? 'OBS recorded a large file — shrinking to upload size (one-time, may take a few minutes)' : 'Sending your recording to UpForge for analysis' }}</p>
               </div>
               <div class="text-right">
                 <p class="text-lg font-black tabular-nums text-white upload-stat-in">{{ uploadProgress }}%</p>
@@ -690,7 +690,7 @@ import type { MatchSpatialSummary } from '../lib/spatial-types'
 import { canSpatialVodSeek } from '../lib/tier-features'
 import type { CategoryScoreItem } from '../components/PostGameIntelHero.vue'
 
-type State = 'uploading' | 'analysing' | 'ready' | 'error' | 'pending'
+type State = 'preparing' | 'uploading' | 'analysing' | 'ready' | 'error' | 'pending'
 
 const COACHING_TIPS = [
   'Players who review their gameplay weekly improve 2x faster than those who don\'t.',
@@ -702,7 +702,7 @@ const COACHING_TIPS = [
   'A consistent warm-up routine can reduce your reaction time by 15–20ms.',
 ]
 
-const state = ref<State>('uploading')
+const state = ref<State>('preparing')
 const uploadProgress = ref(0)
 const compressing = ref(false)
 const uploadStartedAt = ref(0)
@@ -800,6 +800,7 @@ const analysisElapsedDisplay = computed(() => {
 })
 
 const uploadStatusLabel = computed(() => {
+  if (state.value === 'preparing') return 'Finishing recording'
   if (uploadProgress.value < 15) return 'Preparing replay'
   if (uploadProgress.value < 70) return 'Uploading recording'
   if (uploadProgress.value < 100) return 'Finalising upload'
@@ -1086,6 +1087,13 @@ onMounted(() => {
     isReady.value = true
   }, 40)
   const ipcCleanup: (() => void)[] = []
+  ipcCleanup.push(window.api.on('post-game:preparing', (...args: unknown[]) => {
+    const data = args[0] as { game: string; map: string | null; agent: string | null }
+    state.value = 'preparing'
+    gameInfo.value = { game: data.game, map: data.map, agent: data.agent }
+    uploadProgress.value = 0
+    compressing.value = false
+  }))
   ipcCleanup.push(window.api.on('post-game:compress-start', (...args: unknown[]) => {
     const data = args[0] as { sizeGB?: string }
     state.value = 'uploading'

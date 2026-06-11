@@ -120,7 +120,10 @@ async function handleLogin() {
   loading.value = true; error.value = ''
   try {
     const result = await window.api.auth.login(email.value, password.value)
-    if (result.ok) { router.push('/dashboard') }
+    if (result.ok) {
+      const s = await window.api.app.getStatus()
+      router.push(s.firstRun ? '/welcome' : '/dashboard')
+    }
     else { error.value = (result as any).error || 'Invalid email or password.' }
   } catch (e) {
     error.value = `Error: ${e instanceof Error ? e.message : String(e)}`

@@ -15,6 +15,8 @@ export interface AppSettings {
   recordedModes: string[]
   autoAnalyse: boolean // automatically upload & analyse after game ends
   firstRun: boolean
+  /** Set after welcome / onboarding wizard — avoids re-prompting on every launch */
+  onboardingComplete?: boolean
   /** Which monitor to capture. 'auto' detects from the game window; numbers are 0-based display index. */
   captureMonitor: 'auto' | number
   /** Last completed analysis insight — persisted for dashboard display */
@@ -173,7 +175,14 @@ export class SettingsManager {
       if (parsed.obsHost === 'localhost') {
         parsed.obsHost = '127.0.0.1'
       }
+      // Users who finished welcome before onboardingComplete existed
+      if (parsed.firstRun === false && parsed.onboardingComplete === undefined) {
+        parsed.onboardingComplete = true
+      }
       const merged = { ...DEFAULTS, ...parsed, obsEnabled: true }
+      if (!String(merged.savePath ?? '').trim()) {
+        merged.savePath = DEFAULTS.savePath
+      }
       merged.recordingQuality = RECORDING_PRESET.quality
       merged.recordingBitrate = RECORDING_PRESET.bitrate
       merged.recordingFps = RECORDING_PRESET.fps
@@ -194,6 +203,9 @@ export class SettingsManager {
       recordingQuality: RECORDING_PRESET.quality,
       recordingBitrate: RECORDING_PRESET.bitrate,
       recordingFps: RECORDING_PRESET.fps,
+    }
+    if (!String(this.settings.savePath ?? '').trim()) {
+      this.settings.savePath = DEFAULTS.savePath
     }
     try {
       fs.mkdirSync(path.dirname(this.filePath), { recursive: true })

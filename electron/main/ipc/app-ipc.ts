@@ -96,14 +96,14 @@ export function setupAppHandlers(
   })
 
   ipcMain.handle('settings:mark-first-run-done', () => {
-    return settingsManager.save({ firstRun: false })
+    return settingsManager.save({ firstRun: false, onboardingComplete: true })
   })
 
   // ── Storage ───────────────────────────────────────────────────────────────
 
   ipcMain.handle('storage:get-usage', async () => {
     const settings = settingsManager.get()
-    const dir = settings.savePath
+    const dir = settings.savePath || path.join(app.getPath('userData'), 'recordings')
     let bytes = 0
     let count = 0
     try {

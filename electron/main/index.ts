@@ -706,6 +706,14 @@ function setupGameDetection(): void {
     thisPostGameWindow.flashFrame(true)
     thisPostGameWindow.once('focus', () => thisPostGameWindow.flashFrame(false))
 
+    whenWebContentsReady(thisPostGameWindow, () => {
+      try {
+        if (!thisPostGameWindow.isDestroyed()) {
+          thisPostGameWindow.webContents.send('post-game:preparing', { game, map, agent })
+        }
+      } catch { /* window may have closed */ }
+    })
+
     // Fire post-game debrief in the background — non-blocking. Uses Riot Live Client
     // match data (kills, rounds, stats) for instant Claude coaching without needing the VOD.
     // Only runs for competitive/premier matches where meaningful data was captured.
@@ -906,8 +914,14 @@ function setupGameDetection(): void {
           }
         }
       } catch (err) {
+        const prepMsg = err instanceof Error ? err.message : String(err)
         log.error('[HandleMatchEnd] Failed to prepare upload file:', err)
-        logActivity(`Could not prepare recording for upload: ${err instanceof Error ? err.message : String(err)}`)
+        logActivity(`Could not prepare recording for upload: ${prepMsg}`)
+        sendToWindow('post-game:upload-error', {
+          message: `Could not prepare recording for upload: ${prepMsg}`,
+          recordingId: savedRecording.id,
+        })
+        return
       }
 
       if (uploadSize > MAX_FILE_SIZE_BYTES) {
@@ -1106,7 +1120,7 @@ function setupGameDetection(): void {
     const recorderConfig = config ? buildRecorderConfig(config) : undefined
 
     // Check disk space now so the warning shows while in lobby
-    const savePath = config?.savePath ?? app.getPath('userData')
+    const savePath = config?.savePath || join(app.getPath('userData'), 'recordings')
     if (!obsRecorder.isConnected()) {
       await probeObsConnection(obsRecorder, mainWindow, { notify: false, logActivity })
     }
@@ -1649,8 +1663,39 @@ async function doUploadAndAnalyse(
   }
   stopActiveAnalysisPoll()
 
-  // Transition the post-game window immediately — it may still be showing the
-  // "auto-analyse off / match saved" pending state from handleMatchEnd.
+  let effectivePath = videoPath
+  try {
+    const resolved = await resolveUploadVideoPath(videoPath, (sizeGB) => {
+      log.warn(`[Upload] Recording is ${sizeGB} GB — compressing before upload`)
+      logActivity(`Recording is ${sizeGB} GB — compressing for upload…`)
+      send('post-game:compress-start', { sizeGB })
+    })
+    effectivePath = resolved.path
+    if (resolved.compressed) {
+      const newGB = (resolved.sizeBytes / (1024 ** 3)).toFixed(2)
+      logActivity(`Compressed recording to ${newGB} GB — uploading`)
+      if (recordingId && effectivePath !== videoPath) {
+        recordingsStore.updatePath(recordingId, effectivePath)
+        mainWindow?.webContents.send('recordings:updated')
+      }
+    }
+    if (resolved.sizeBytes > MAX_RECORDING_FILE_BYTES) {
+      const sizeGB = (resolved.sizeBytes / (1024 ** 3)).toFixed(1)
+      const errorMsg = formatRecordingTooLargeMessage(resolved.sizeBytes, false)
+      send('post-game:upload-error', { message: errorMsg, recordingId: recordingId ?? undefined })
+      logActivity(`Recording still too large after compression (${sizeGB} GB)`)
+      return null
+    }
+  } catch (prepErr) {
+    log.error('[Upload] Failed to prepare video path:', prepErr)
+    send('post-game:upload-error', {
+      message: prepErr instanceof Error ? prepErr.message : 'Could not prepare recording for upload',
+      recordingId: recordingId ?? undefined,
+    })
+    return null
+  }
+
+  // Show upload UI only after compression/prep — avoids a stuck 0% bar while ffmpeg runs.
   send('post-game:upload-start', {
     game,
     map,
@@ -1658,34 +1703,9 @@ async function doUploadAndAnalyse(
     matchDetailsStatus: lastMatchDiagnostic?.matchDetailsStatus ?? 'pending',
     killsInTimeline: lastMatchDiagnostic?.killsInTimeline ?? 0,
   })
+  send('post-game:upload-progress', 3)
 
   try {
-    let effectivePath = videoPath
-    try {
-      const resolved = await resolveUploadVideoPath(videoPath, (sizeGB) => {
-        log.warn(`[Upload] Recording is ${sizeGB} GB — compressing before upload`)
-        logActivity(`Recording is ${sizeGB} GB — compressing for upload…`)
-        send('post-game:compress-start', { sizeGB })
-      })
-      effectivePath = resolved.path
-      if (resolved.compressed) {
-        const newGB = (resolved.sizeBytes / (1024 ** 3)).toFixed(2)
-        logActivity(`Compressed recording to ${newGB} GB — uploading`)
-        if (recordingId && effectivePath !== videoPath) {
-          recordingsStore.updatePath(recordingId, effectivePath)
-          mainWindow?.webContents.send('recordings:updated')
-        }
-      }
-      if (resolved.sizeBytes > MAX_RECORDING_FILE_BYTES) {
-        const sizeGB = (resolved.sizeBytes / (1024 ** 3)).toFixed(1)
-        const errorMsg = formatRecordingTooLargeMessage(resolved.sizeBytes, false)
-        send('post-game:upload-error', { message: errorMsg, recordingId: recordingId ?? undefined })
-        logActivity(`Recording still too large after compression (${sizeGB} GB)`)
-        return null
-      }
-    } catch (prepErr) {
-      log.error('[Upload] Failed to prepare video path:', prepErr)
-    }
     logActivity(`Uploading recording${map ? ` (${map}${agent ? ` · ${agent}` : ''})` : ''}`)
 
     const result = await uploadManager.upload({
