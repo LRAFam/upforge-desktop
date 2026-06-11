@@ -1016,7 +1016,7 @@
       <!-- Desktop intel side panel — full-size heatmap -->
       <aside
         v-if="hasSpatialIntel && spatialMapVisible && !theaterMode"
-        class="hidden md:flex w-[min(280px,26vw)] xl:w-[min(300px,28vw)] flex-shrink-0 flex-col min-h-0 border-l border-white/[0.09] bg-[#121212]"
+        class="hidden md:flex w-[min(320px,28vw)] xl:w-[min(340px,30vw)] flex-shrink-0 flex-col min-h-0 border-l border-white/[0.09] bg-[#121212]"
         @click.stop
       >
         <div class="flex items-center gap-2 px-3 py-2 border-b border-white/[0.08] flex-shrink-0">

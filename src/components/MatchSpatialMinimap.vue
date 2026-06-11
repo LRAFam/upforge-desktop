@@ -2,6 +2,18 @@
 import { ref, computed, watch, onMounted } from 'vue'
 import { getMapMinimap } from '../lib/valorant'
 import { fromMinimapDisplayNorm, toMinimapDisplayNorm, drawMinimapImage } from '../lib/map-display-norm'
+import {
+  MINIMAP_COMPACT,
+  MINIMAP_DEFAULT,
+  MINIMAP_DEFAULT_LARGE,
+  MINIMAP_DOCK,
+  MINIMAP_DOCK_HUD,
+  MINIMAP_DOCK_LARGE,
+  MINIMAP_FLOAT,
+  MINIMAP_FLOAT_LARGE,
+  MINIMAP_PANEL,
+  MINIMAP_PANEL_LARGE,
+} from '../lib/minimap-sizes'
 import type { MatchSpatialSummary, SpatialTimelineEvent } from '../lib/spatial-types'
 
 const props = withDefaults(defineProps<{
@@ -20,10 +32,10 @@ const props = withDefaults(defineProps<{
   floatLarge?: boolean
   /** @deprecated Use dockExpanded — kept for compatibility. */
   dockHud?: boolean
-  /** VOD side panel (280px, 360px when panelLarge). */
+  /** VOD side panel (320px, 400px when panelLarge). */
   panelHud?: boolean
   panelLarge?: boolean
-  /** Expanded dock band under video (220px, 260px when dockLarge). */
+  /** Expanded dock band under video (260px, 300px when dockLarge). */
   dockExpanded?: boolean
   dockLarge?: boolean
   /** Filter events to one round (null = all). */
@@ -98,13 +110,18 @@ const isSmallHud = computed(() =>
 )
 
 const size = computed(() => {
-  if (props.panelHud) return props.panelLarge ? 360 : 280
-  if (props.dockExpanded) return props.dockLarge ? 260 : 220
-  if (props.dockHud) return 140
-  if (props.floatHud) return props.floatLarge ? 200 : 160
-  if (props.compact) return 112
-  return props.large ? 640 : 320
+  if (props.panelHud) return props.panelLarge ? MINIMAP_PANEL_LARGE : MINIMAP_PANEL
+  if (props.dockExpanded) return props.dockLarge ? MINIMAP_DOCK_LARGE : MINIMAP_DOCK
+  if (props.dockHud) return MINIMAP_DOCK_HUD
+  if (props.floatHud) return props.floatLarge ? MINIMAP_FLOAT_LARGE : MINIMAP_FLOAT
+  if (props.compact) return MINIMAP_COMPACT
+  return props.large ? MINIMAP_DEFAULT_LARGE : MINIMAP_DEFAULT
 })
+
+const canvasStyle = computed(() => ({
+  width: `${size.value}px`,
+  height: `${size.value}px`,
+}))
 
 const mapLabel = computed(() => props.summary?.map ?? props.mapName ?? null)
 
@@ -329,33 +346,13 @@ defineExpose({ exportPng })
 <template>
   <div
     class="relative space-y-1.5"
-    :class="panelHud
-      ? (panelLarge ? 'w-[360px]' : 'w-[280px]')
-      : dockExpanded
-        ? (dockLarge ? 'w-[260px]' : 'w-[220px]')
-        : dockHud
-          ? 'w-[140px]'
-          : floatHud
-            ? (floatLarge ? 'w-[200px]' : 'w-[160px]')
-            : compact
-              ? 'w-[112px]'
-              : 'w-full'"
+    :class="(compact || floatHud || dockHud || panelHud || dockExpanded) ? '' : 'w-full'"
+    :style="(compact || floatHud || dockHud || panelHud || dockExpanded) ? canvasStyle : undefined"
   >
     <canvas
       ref="canvasRef"
-      class="rounded-lg border border-white/10 bg-black/40 cursor-pointer"
-      :class="panelHud
-        ? (panelLarge ? 'w-[360px] h-[360px]' : 'w-[280px] h-[280px]')
-        : dockExpanded
-          ? (dockLarge ? 'w-[260px] h-[260px]' : 'w-[220px] h-[220px]')
-          : dockHud
-            ? 'w-[140px] h-[140px]'
-            : floatHud
-              ? (floatLarge ? 'w-[200px] h-[200px]' : 'w-[160px] h-[160px]')
-              : compact
-                ? 'w-[112px] h-[112px]'
-                : ['w-full', large ? 'max-w-[640px]' : 'max-w-[320px]']"
-      :style="(compact || floatHud || dockHud || panelHud || dockExpanded) ? undefined : { aspectRatio: '1 / 1' }"
+      class="rounded-lg border border-white/10 bg-black/40 cursor-pointer mx-auto block max-w-full"
+      :style="canvasStyle"
       @click="onClick"
     />
     <div
