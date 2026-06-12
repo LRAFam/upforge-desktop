@@ -2,7 +2,7 @@ import fs from 'fs'
 import log from 'electron-log'
 import type { AuthManager } from './auth-manager'
 import type { RecordingsStore } from './recordings-store'
-import { fetchRecordingPlaybackUrl } from './recording-playback'
+import { fetchArchivePlaybackUrl, fetchRecordingPlaybackUrl } from './recording-playback'
 import { deleteCompressedSibling } from './vod-compressor'
 import type { LinkedRiotId } from './user-data-paths'
 
@@ -46,14 +46,17 @@ export async function purgeCloudBackedLocals(
   let skipped = 0
 
   for (const rec of store.getCloudBackedLocal(linkedRiot)) {
-    const analysisId = rec.analysisId
-    if (analysisId == null) {
+    let url: string | null = null
+    if (rec.analysisId != null) {
+      url = await fetchRecordingPlaybackUrl(auth, rec.analysisId)
+    } else if (rec.archiveId) {
+      url = await fetchArchivePlaybackUrl(auth, rec.archiveId)
+    } else {
       skipped++
       continue
     }
-    const url = await fetchRecordingPlaybackUrl(auth, analysisId)
     if (!url) {
-      log.warn(`[StorageCleanup] No cloud URL for analysis ${analysisId} — keeping local file`)
+      log.warn(`[StorageCleanup] No cloud URL for recording ${rec.id} — keeping local file`)
       skipped++
       continue
     }

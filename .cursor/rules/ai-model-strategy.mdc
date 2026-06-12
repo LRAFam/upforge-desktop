@@ -1,0 +1,37 @@
+---
+description: North star — proprietary AI model, data flywheel, and revenue alignment
+alwaysApply: true
+---
+
+# UpForge AI model north star
+
+UpForge will train a **proprietary gameplay model** (Valorant → CS2) once funded. Treat product decisions as **revenue + consented structured data**, not storage alone.
+
+Full strategy: `docs/AI-MODEL-STRATEGY.md` · Upload/analyse model: `docs/UPLOAD-VS-ANALYSIS.md`
+
+## Upload ≠ analyse
+
+Cloud save and AI coaching are **separate user actions** with **separate quotas**. Never bundle them in copy or defaults unless the user explicitly chooses both.
+
+## When planning features, prefer work that:
+
+1. **Retains structured VODs** — archive-only cloud save (no analysis quota burn), tiered retention, clip cloud sync
+2. **Captures labels** — analysis feedback, coach review, clip ↔ `analysisJobId` ↔ round linkage
+3. **Preserves metadata** — match ID, agent, map, rank, timeline JSON on every cloud object
+4. **Separates consent** — playback/storage opt-in ≠ training opt-in; never assume uploads are trainable
+
+## High-leverage backlog (both revenue and corpus)
+
+- Cloud archive API · Pro retention · training opt-in toggle · insight feedback UI · PPA at quota/disk choke points
+
+## Avoid
+
+- Features that only move MP4s without metadata or consent
+- Training on data without explicit user consent
+- Short retention that deletes future eval/training sets without user upgrade path
+
+## Evaluate proposals with
+
+> Does this increase MRR **or** grow consented, structured gameplay signal?
+
+Prefer both.

@@ -228,7 +228,8 @@
                 </svg>
               </button>
               <button
-                :disabled="!!uploadingClipId"
+                v-if="clip.uploadStatus !== 'uploaded'"
+                :disabled="!!uploadingClipId || !!analysingClipId"
                 class="flex h-8 items-center gap-1.5 rounded-xl border px-2.5 text-[11px] font-semibold backdrop-blur-sm transition-colors"
                 :class="uploadingClipId === clip.id
                   ? 'cursor-wait border-red-500/20 bg-red-500/10 text-red-400/60'
@@ -243,6 +244,24 @@
                   <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
                 </svg>
                 {{ uploadingClipId === clip.id ? 'Uploading…' : 'Upload' }}
+              </button>
+              <button
+                v-else-if="canAnalyseClip(clip)"
+                :disabled="!!uploadingClipId || !!analysingClipId"
+                class="flex h-8 items-center gap-1.5 rounded-xl border px-2.5 text-[11px] font-semibold backdrop-blur-sm transition-colors"
+                :class="analysingClipId === clip.id
+                  ? 'cursor-wait border-orange-500/20 bg-orange-500/10 text-orange-400/60'
+                  : 'border-orange-500/25 bg-orange-500/15 text-orange-400 hover:border-orange-500/40 hover:bg-orange-500/25'"
+                @click="analyseClip(clip)"
+              >
+                <svg v-if="analysingClipId !== clip.id" class="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"/>
+                </svg>
+                <svg v-else class="h-3 w-3 animate-spin" fill="none" viewBox="0 0 24 24">
+                  <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+                  <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
+                </svg>
+                {{ analysingClipId === clip.id ? 'Analysing…' : 'Analyse' }}
               </button>
               <template v-if="confirmDeleteId === clip.id">
                 <button class="flex h-8 items-center rounded-xl bg-red-500 px-3 text-[11px] font-semibold text-white transition-colors hover:bg-red-400" @click="deleteClip(clip.id)">Confirm</button>
@@ -395,7 +414,8 @@
                 </svg>
               </button>
               <button
-                :disabled="!!uploadingClipId"
+                v-if="clip.uploadStatus !== 'uploaded'"
+                :disabled="!!uploadingClipId || !!analysingClipId"
                 class="flex h-9 items-center gap-2 rounded-xl border px-3 text-xs font-semibold transition-colors"
                 :class="uploadingClipId === clip.id
                   ? 'cursor-wait border-red-500/20 bg-red-500/10 text-red-400/60'
@@ -409,7 +429,25 @@
                   <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
                   <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
                 </svg>
-                {{ uploadingClipId === clip.id ? 'Uploading…' : 'Upload & Analyse' }}
+                {{ uploadingClipId === clip.id ? 'Uploading…' : 'Upload' }}
+              </button>
+              <button
+                v-else-if="canAnalyseClip(clip)"
+                :disabled="!!uploadingClipId || !!analysingClipId"
+                class="flex h-9 items-center gap-2 rounded-xl border px-3 text-xs font-semibold transition-colors"
+                :class="analysingClipId === clip.id
+                  ? 'cursor-wait border-orange-500/20 bg-orange-500/10 text-orange-400/60'
+                  : 'border-orange-500/25 bg-orange-500/15 text-orange-400 hover:border-orange-500/40 hover:bg-orange-500/25'"
+                @click="analyseClip(clip)"
+              >
+                <svg v-if="analysingClipId !== clip.id" class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"/>
+                </svg>
+                <svg v-else class="h-3.5 w-3.5 animate-spin" fill="none" viewBox="0 0 24 24">
+                  <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+                  <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
+                </svg>
+                {{ analysingClipId === clip.id ? 'Analysing…' : 'Analyse' }}
               </button>
               <template v-if="confirmDeleteId === clip.id">
                 <button class="flex h-9 items-center rounded-xl bg-red-500 px-3 text-xs font-semibold text-white transition-colors hover:bg-red-400" @click="deleteClip(clip.id)">Confirm delete</button>
@@ -528,6 +566,24 @@
             Trim
           </button>
           <button
+            v-if="playingClip.uploadStatus === 'uploaded' && canAnalyseClip(playingClip)"
+            :disabled="!!uploadingClipId || !!analysingClipId"
+            class="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium border rounded-lg transition-colors"
+            :class="analysingClipId === playingClip.id
+              ? 'bg-orange-500/10 border-orange-500/20 text-orange-400/60 cursor-wait'
+              : 'bg-orange-500/15 hover:bg-orange-500/25 text-orange-400 border-orange-500/25 hover:border-orange-500/40'"
+            @click="analyseClip(playingClip)"
+          >
+            <svg v-if="analysingClipId !== playingClip.id" class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"/>
+            </svg>
+            <svg v-else class="w-3 h-3 animate-spin" fill="none" viewBox="0 0 24 24">
+              <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+              <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
+            </svg>
+            {{ analysingClipId === playingClip.id ? 'Analysing…' : 'Analyse' }}
+          </button>
+          <button
             v-if="playingClip.uploadStatus === 'uploaded'"
             class="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-white/[0.06] hover:bg-white/[0.10] text-gray-300 border border-white/[0.10] rounded-lg transition-colors"
             @click="shareClip(playingClip)"
@@ -537,26 +593,39 @@
             </svg>
             Share
           </button>
-          <button
-            v-else
-            :disabled="!!uploadingClipId"
-            :class="[
-              'flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium border rounded-lg transition-colors',
-              uploadingClipId === playingClip.id
-                ? 'bg-red-500/10 border-red-500/20 text-red-400/60 cursor-wait'
-                : 'bg-red-500/15 hover:bg-red-500/25 text-red-400 border-red-500/25 hover:border-red-500/40'
-            ]"
-            @click="uploadClip(playingClip)"
-          >
-            <svg v-if="uploadingClipId !== playingClip.id" class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/>
-            </svg>
-            <svg v-else class="w-3 h-3 animate-spin" fill="none" viewBox="0 0 24 24">
-              <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
-              <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
-            </svg>
-            {{ uploadingClipId === playingClip.id ? 'Uploading…' : 'Upload & Analyse' }}
-          </button>
+          <template v-else>
+            <button
+              :disabled="!!uploadingClipId || !!analysingClipId"
+              :class="[
+                'flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium border rounded-lg transition-colors',
+                uploadingClipId === playingClip.id
+                  ? 'bg-red-500/10 border-red-500/20 text-red-400/60 cursor-wait'
+                  : 'bg-red-500/15 hover:bg-red-500/25 text-red-400 border-red-500/25 hover:border-red-500/40'
+              ]"
+              @click="uploadClip(playingClip)"
+            >
+              <svg v-if="uploadingClipId !== playingClip.id" class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/>
+              </svg>
+              <svg v-else class="w-3 h-3 animate-spin" fill="none" viewBox="0 0 24 24">
+                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
+              </svg>
+              {{ uploadingClipId === playingClip.id ? 'Uploading…' : 'Upload' }}
+            </button>
+            <button
+              :disabled="!!uploadingClipId || !!analysingClipId"
+              :class="[
+                'flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium border rounded-lg transition-colors',
+                uploadingClipId === playingClip.id || analysingClipId === playingClip.id
+                  ? 'bg-white/[0.04] border-white/[0.08] text-gray-500 cursor-wait'
+                  : 'bg-white/[0.06] hover:bg-white/[0.10] text-gray-300 border-white/[0.10]'
+              ]"
+              @click="uploadAndAnalyseClip(playingClip)"
+            >
+              Upload &amp; analyse
+            </button>
+          </template>
           <button class="w-8 h-8 flex items-center justify-center rounded-lg text-gray-600 hover:text-white hover:bg-white/[0.07] transition-colors" @click="closePlayer">
             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
@@ -783,6 +852,7 @@ function daysUntilReset(): number {
   return Math.ceil((firstOfNext.getTime() - now.getTime()) / (1000 * 60 * 60 * 24))
 }
 const uploadingClipId = ref<string | null>(null)
+const analysingClipId = ref<string | null>(null)
 const uploadError = ref<string | null>(null)
 const trimModal = ref({ show: false, clipId: '', startSec: 0, endSec: 10, duration: 10, loading: false, error: null as string | null })
 
@@ -1034,42 +1104,68 @@ async function deleteClip(id: string) {
   if (playingClip.value?.id === id) closePlayer()
 }
 
-async function uploadClip(clip: ClipRecord) {
-  if (uploadingClipId.value) return
+function canAnalyseClip(clip: ClipRecord): boolean {
+  return clip.uploadStatus === 'uploaded'
+    && (clip.analysisStatus === 'none' || clip.analysisStatus === 'failed')
+}
+
+function syncClipInState(clipId: string, patch: Partial<ClipRecord>): void {
+  const idx = clips.value.findIndex(c => c.id === clipId)
+  if (idx !== -1) clips.value[idx] = { ...clips.value[idx], ...patch }
+  if (playingClip.value?.id === clipId) playingClip.value = { ...playingClip.value, ...patch }
+}
+
+async function uploadClip(clip: ClipRecord): Promise<boolean> {
+  if (uploadingClipId.value || analysingClipId.value) return false
   uploadError.value = null
   uploadingClipId.value = clip.id
   try {
     const result = await window.api.clips.upload(clip.id)
     if (result.needsUpgrade) {
       upgradeModal.value = { show: true, message: result.message ?? 'Upgrade to upload more clips.' }
-      return
+      return false
     }
     if (!result.ok) {
       uploadError.value = result.error ?? 'Upload failed. Check your internet connection.'
       showToastMsg('Upload failed — check your connection', 'error')
-      return
+      return false
     }
-    const idx = clips.value.findIndex(c => c.id === clip.id)
-    if (idx !== -1) {
-      clips.value[idx] = { ...clips.value[idx], uploadStatus: 'uploaded', apiClipId: result.apiClipId ?? null }
-    }
-    const analysisResult = await window.api.clips.requestAnalysis(clip.id)
-    if (analysisResult.needsUpgrade) {
-      upgradeModal.value = { show: true, message: analysisResult.message ?? 'Upgrade to get AI coaching on clips.' }
-      showToastMsg('Clip uploaded to feed!', 'success')
-      return
-    }
-    if (!analysisResult.ok) {
-      uploadError.value = analysisResult.error ?? 'Clip uploaded but analysis request failed.'
-      showToastMsg('Clip uploaded — analysis request failed', 'error')
-      return
-    }
-    const idx2 = clips.value.findIndex(c => c.id === clip.id)
-    if (idx2 !== -1) clips.value[idx2] = { ...clips.value[idx2], analysisStatus: 'queued' }
-    showToastMsg('Clip uploaded & analysis queued!', 'success')
+    syncClipInState(clip.id, { uploadStatus: 'uploaded', apiClipId: result.apiClipId ?? null })
+    showToastMsg('Clip saved to cloud', 'success')
+    return true
   } finally {
     uploadingClipId.value = null
   }
+}
+
+async function analyseClip(clip: ClipRecord): Promise<boolean> {
+  if (uploadingClipId.value || analysingClipId.value) return false
+  if (!canAnalyseClip(clip)) return false
+  uploadError.value = null
+  analysingClipId.value = clip.id
+  try {
+    const analysisResult = await window.api.clips.requestAnalysis(clip.id)
+    if (analysisResult.needsUpgrade) {
+      upgradeModal.value = { show: true, message: analysisResult.message ?? 'Upgrade to get AI coaching on clips.' }
+      return false
+    }
+    if (!analysisResult.ok) {
+      uploadError.value = analysisResult.error ?? 'Analysis request failed.'
+      showToastMsg('Analysis request failed', 'error')
+      return false
+    }
+    syncClipInState(clip.id, { analysisStatus: 'queued' })
+    showToastMsg('AI coaching queued', 'success')
+    return true
+  } finally {
+    analysingClipId.value = null
+  }
+}
+
+async function uploadAndAnalyseClip(clip: ClipRecord): Promise<void> {
+  const uploaded = await uploadClip(clip)
+  if (!uploaded) return
+  await analyseClip({ ...clip, uploadStatus: 'uploaded' })
 }
 
 function openUpgrade() {

@@ -23,6 +23,11 @@ export interface UploadResult {
   job_id: string
 }
 
+export interface ArchiveUploadResult {
+  archive_id: string
+  playback_url?: string
+}
+
 import { userPendingJobPath } from './user-data-paths'
 
 let pendingJobUserId: number | null = null
@@ -118,6 +123,34 @@ export class UploadManager {
     return result
   }
 
+  /** Save a recording to cloud without queuing analysis (archive quota, not analysis quota). */
+  async archiveUpload(opts: UploadOptions): Promise<ArchiveUploadResult> {
+    if (this._recentUploads.has(`archive:${opts.videoPath}`)) {
+      throw new Error('This recording was already archived recently')
+    }
+    const result = await this._doArchiveUpload(opts)
+    this._recentUploads.add(`archive:${opts.videoPath}`)
+    if (this._recentUploads.size > 20) {
+      const [first] = this._recentUploads
+      this._recentUploads.delete(first)
+    }
+    return result
+  }
+
+  /** Queue analysis for a recording already saved to cloud. */
+  async analyseArchive(archiveId: string, game: string): Promise<UploadResult> {
+    const apiUrl = process.env['VITE_API_URL'] || 'https://api.upforge.gg'
+    const token = this.auth.getToken()
+    if (!token) throw new Error('Not authenticated')
+
+    const { job_id } = await this._apiPost(
+      `${apiUrl}/api/recordings/archive/${archiveId}/analyse`,
+      JSON.stringify({ game }),
+      token,
+    )
+    return { job_id }
+  }
+
   private async _doUpload(opts: UploadOptions): Promise<UploadResult> {
     const apiUrl = process.env['VITE_API_URL'] || 'https://api.upforge.gg'
     const token = this.auth.getToken()
@@ -174,6 +207,57 @@ export class UploadManager {
     return { job_id }
   }
 
+  private async _doArchiveUpload(opts: UploadOptions): Promise<ArchiveUploadResult> {
+    const apiUrl = process.env['VITE_API_URL'] || 'https://api.upforge.gg'
+    const token = this.auth.getToken()
+    if (!token) throw new Error('Not authenticated')
+
+    if (!fs.existsSync(opts.videoPath)) {
+      throw new Error(`Recording file not found: ${opts.videoPath}`)
+    }
+    const totalBytes = fs.statSync(opts.videoPath).size
+
+    opts.onProgress(3)
+    const submissionCtx = submissionContextFromTimeline(opts.timeline ?? null)
+    const presignBody = JSON.stringify({
+      riot_name:  opts.riotName,
+      riot_tag:   opts.riotTag,
+      game:       opts.game,
+      map:        submissionCtx.map ?? opts.map,
+      agent:      submissionCtx.agent ?? opts.agent,
+      game_mode:  submissionCtx.game_mode,
+      match_data: submissionCtx.match_data,
+    })
+    const { archive_id, upload_url } = await this._apiPost(
+      `${apiUrl}/api/recordings/archive/presign`,
+      presignBody,
+      token,
+    )
+
+    opts.onProgress(8)
+    await this._putToS3(upload_url, opts.videoPath, totalBytes, opts.onProgress)
+
+    const completeCtx = submissionContextFromTimeline(opts.timeline ?? null)
+    const complete = await this._apiPost(
+      `${apiUrl}/api/recordings/archive/complete`,
+      JSON.stringify({
+        archive_id:      archive_id,
+        agent:           completeCtx.agent ?? opts.agent ?? undefined,
+        map:             completeCtx.map ?? opts.map ?? undefined,
+        game_mode:       completeCtx.game_mode ?? gameModeForApi(opts.timeline?.gameMode) ?? undefined,
+        match_data:      completeCtx.match_data ?? prepareMatchDataForUpload(opts.timeline ?? null),
+        file_size_bytes: totalBytes,
+      }),
+      token,
+    )
+    opts.onProgress(100)
+
+    return {
+      archive_id,
+      playback_url: complete.playback_url,
+    }
+  }
+
   /** Backfill match_data on a queued/processing job when Riot stats arrive after upload started. */
   async patchMatchData(jobId: string, timeline: MatchData | null): Promise<void> {
     const token = this.auth.getToken()
@@ -213,7 +297,7 @@ export class UploadManager {
           try {
             const json = JSON.parse(data)
             if (status === 402) reject(new UpgradeRequiredError(
-              json.message || 'Analysis limit reached. Upgrade to continue.',
+              json.message || 'Quota limit reached. Upgrade to continue.',
               json.error || 'analysis_limit_reached',
               json.upgrade_url || 'https://upforge.gg/pricing',
               json.ppa_url || 'https://upforge.gg/valorant/analyze',

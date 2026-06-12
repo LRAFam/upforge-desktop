@@ -72,7 +72,7 @@ import type { MatchData } from './riot-types'
 import log from 'electron-log'
 import { setupMainProcessErrorHandlers, reportError } from './error-reporter'
 import { findLatestCS2Demo } from './cs2-demo-finder'
-import { fetchRecordingPlaybackUrl } from './recording-playback'
+import { fetchArchivePlaybackUrl, fetchRecordingPlaybackUrl } from './recording-playback'
 import {
   CRITICAL_FREE_DISK_BYTES,
   LOW_FREE_DISK_BYTES,
@@ -1717,6 +1717,96 @@ async function resumePollForJob(
   })
 }
 
+/** Save a recording to cloud only (archive quota — no analysis). */
+async function doUploadArchiveOnly(
+  recordingId: string | null,
+  videoPath: string,
+  riotName: string,
+  riotTag: string,
+  game: string,
+  map: string | null,
+  agent: string | null,
+  timeline: MatchData | null,
+  targetWindow: BrowserWindow,
+  deleteLocalAfterUpload = false,
+): Promise<string | null> {
+  const send = (channel: string, payload?: unknown) => {
+    try {
+      if (!targetWindow.isDestroyed()) targetWindow.webContents.send(channel, payload)
+    } catch { /* destroyed */ }
+  }
+
+  let effectivePath = videoPath
+  try {
+    const resolved = await resolveUploadVideoPath(videoPath, (sizeGB) => {
+      logActivity(`Recording is ${sizeGB} GB — compressing for cloud upload…`)
+      send('post-game:compress-start', { sizeGB })
+    })
+    effectivePath = resolved.path
+    if (resolved.compressed && recordingId && effectivePath !== videoPath) {
+      recordingsStore.updatePath(recordingId, effectivePath)
+      mainWindow?.webContents.send('recordings:updated')
+    }
+    if (resolved.sizeBytes > MAX_RECORDING_FILE_BYTES) {
+      const errorMsg = formatRecordingTooLargeMessage(resolved.sizeBytes, false)
+      send('post-game:upload-error', { message: errorMsg, recordingId: recordingId ?? undefined })
+      return null
+    }
+  } catch (prepErr) {
+    send('post-game:upload-error', {
+      message: prepErr instanceof Error ? prepErr.message : 'Could not prepare recording for upload',
+      recordingId: recordingId ?? undefined,
+    })
+    return null
+  }
+
+  send('post-game:upload-start', { game, map, agent, archiveOnly: true })
+  send('post-game:upload-progress', 3)
+
+  try {
+    logActivity(`Saving recording to cloud${map ? ` (${map})` : ''}`)
+    const result = await uploadManager.archiveUpload({
+      videoPath: effectivePath,
+      riotName,
+      riotTag,
+      game,
+      map,
+      agent,
+      timeline,
+      onProgress: (pct) => send('post-game:upload-progress', pct),
+    })
+
+    if (recordingId) {
+      recordingsStore.markArchived(recordingId, result.archive_id)
+      mainWindow?.webContents.send('recordings:updated')
+      mainWindow?.webContents.send('dashboard:refresh')
+    }
+
+    send('post-game:upload-complete', { archiveId: result.archive_id, archiveOnly: true })
+    logActivity('VOD saved to cloud — analyse later from your dashboard')
+
+    if (deleteLocalAfterUpload || settingsManager?.get().autoDelete) {
+      obsRecorder.deleteRecording(videoPath)
+      deleteCompressedSibling(videoPath)
+      logActivity('Local recording removed — VOD available in cloud')
+    }
+
+    return result.archive_id
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : 'Cloud save failed'
+    logActivity(`Cloud save failed: ${msg}`)
+    const isUpgradeError = err instanceof UpgradeRequiredError
+      || (err instanceof Error && /archive.limit.reached|archive_limit_reached/i.test(err.message))
+    send('post-game:upload-error', {
+      message: msg,
+      needsUpgrade: isUpgradeError,
+      recordingId: recordingId ?? undefined,
+      upgradeUrl: err instanceof UpgradeRequiredError ? err.upgradeUrl : 'https://upforge.gg/pricing',
+    })
+    return null
+  }
+}
+
 /** Upload a recording and poll for the analysis result, sending IPC events to `targetWindow`. */
 async function doUploadAndAnalyse(
   recordingId: string | null,
@@ -2334,6 +2424,43 @@ app.whenReady().then(async () => {
     const user = authManager.getUser()
 
     const triggerAnalysis = async (win: BrowserWindow) => {
+      if (recording.archiveId && recording.cloudArchived && !recording.analysed) {
+        stopActiveAnalysisPoll()
+        win.webContents.send('post-game:upload-start', {
+          game: recording.game,
+          map: recording.map,
+          agent: recording.agent,
+        })
+        try {
+          const result = await uploadManager.analyseArchive(recording.archiveId!, recording.game)
+          recordingsStore.markAnalysed(recording.id, result.job_id)
+          mainWindow?.webContents.send('recordings:updated')
+          win.webContents.send('post-game:upload-complete', { jobId: result.job_id })
+          logActivity('Analysis queued for cloud recording')
+          tray?.setToolTip('UpForge — Analysing...')
+          startAnalysisPoll({
+            uploadManager,
+            jobId: result.job_id,
+            targetWindow: win,
+            mainWindow,
+            onCompleted: (status) => {
+              const analysisId = (status.result as Record<string, unknown>).analysis_id as number | undefined
+              if (analysisId != null) recordingsStore.setAnalysisId(recording.id, analysisId)
+              mainWindow?.webContents.send('dashboard:refresh')
+            },
+            onFailed: (userMessage) => {
+              win.webContents.send('post-game:upload-error', userMessage)
+            },
+            onConnectionLost: () => {},
+            onPollEnded: () => {},
+          })
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : 'Failed to queue analysis'
+          win.webContents.send('post-game:upload-error', { message: msg, needsUpgrade: err instanceof UpgradeRequiredError })
+        }
+        return
+      }
+
       await doUploadAndAnalyse(
         recording.id,
         recording.path,
@@ -2409,7 +2536,7 @@ app.whenReady().then(async () => {
         logActivity(`Uploading pending recording ${i + 1}/${pending.length}${rec.map ? ` (${rec.map})` : ''}…`)
 
         try {
-          const jobId = await doUploadAndAnalyse(
+          const archiveId = await doUploadArchiveOnly(
             rec.id,
             rec.path,
             rec.riotName || user?.riot_name || '',
@@ -2419,25 +2546,23 @@ app.whenReady().then(async () => {
             rec.agent,
             rec.timeline,
             mainWindow,
-            0,
-            false,
             true,
           )
-          if (jobId) {
+          if (archiveId) {
             uploaded++
           } else {
             failed++
           }
         } catch (err) {
           const isUpgrade = err instanceof UpgradeRequiredError
-            || (err instanceof Error && /analysis.limit.reached|upgrade.required/i.test(err.message))
+            || (err instanceof Error && /archive.limit.reached|archive_limit_reached|analysis.limit.reached/i.test(err.message))
           if (isUpgrade) {
             stoppedEarly = true
-            stopReason = err instanceof Error ? err.message : 'Analysis limit reached'
+            stopReason = err instanceof Error ? err.message : 'Cloud storage limit reached'
             break
           }
           failed++
-          log.warn('[StorageUpload] Pending upload failed:', err)
+          log.warn('[StorageUpload] Pending archive failed:', err)
         }
       }
     } finally {
@@ -2448,7 +2573,7 @@ app.whenReady().then(async () => {
     }
 
     if (uploaded > 0) {
-      logActivity(`Uploaded ${uploaded} recording(s) to cloud — local copies removed`)
+      logActivity(`Saved ${uploaded} recording(s) to cloud — local copies removed`)
     }
 
     return { ok: true as const, uploaded, failed, stoppedEarly, stopReason }
@@ -2504,9 +2629,13 @@ app.whenReady().then(async () => {
     if (!videoPath && recording.analysisId != null) {
       videoPath = await fetchRecordingPlaybackUrl(authManager, recording.analysisId)
     }
+    if (!videoPath && recording.archiveId) {
+      videoPath = await fetchArchivePlaybackUrl(authManager, recording.archiveId)
+    }
     return {
       id: recording.id,
       analysisId: recording.analysisId ?? null,
+      archiveId: recording.archiveId ?? null,
       videoPath,
       map: recording.map,
       agent: recording.agent,

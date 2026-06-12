@@ -36,6 +36,10 @@ export interface PendingRecording {
   jobId?: string
   /** Set when analysis completes — enables cloud VOD playback after local file deletion. */
   analysisId?: number
+  /** Cloud archive UUID when saved without analysis. */
+  archiveId?: string
+  /** True when VOD is on cloud via archive-only upload. */
+  cloudArchived?: boolean
   fileSizeBytes?: number
 }
 
@@ -73,6 +77,7 @@ export class RecordingsStore {
       const pruned = all.filter(r => {
         if (fs.existsSync(r.path)) return true
         if (r.analysed && r.analysisId != null) return true
+        if (r.cloudArchived && r.archiveId != null) return true
         return false
       })
       const deduped = this.dedupeSiblingRecordings(pruned)
@@ -119,6 +124,15 @@ export class RecordingsStore {
     if (this.recordings.length > 50) this.recordings = this.recordings.slice(0, 50)
     this.persist()
     return recording
+  }
+
+  markArchived(id: string, archiveId: string): void {
+    const rec = this.recordings.find(r => r.id === id)
+    if (rec) {
+      rec.cloudArchived = true
+      rec.archiveId = archiveId
+      this.persist()
+    }
   }
 
   markAnalysed(id: string, jobId: string, analysisId?: number): void {
@@ -171,10 +185,11 @@ export class RecordingsStore {
     })
   }
 
-  /** Analysed recordings that still have a local file and a cloud analysis id. */
+  /** Recordings on cloud (analysed or archive-only) that still have a local file. */
   getCloudBackedLocal(linkedRiot?: LinkedRiotId | null): PendingRecording[] {
     return this.recordings.filter(r => {
-      if (!r.analysed || r.analysisId == null || !fs.existsSync(r.path)) return false
+      const onCloud = (r.analysed && r.analysisId != null) || (r.cloudArchived && r.archiveId != null)
+      if (!onCloud || !fs.existsSync(r.path)) return false
       const name = r.riotName?.trim() || r.timeline?.playerName?.trim()
       const tag = r.riotTag?.trim() || r.timeline?.playerTag?.trim()
       return recordingMatchesLinkedRiot(name, tag, linkedRiot)

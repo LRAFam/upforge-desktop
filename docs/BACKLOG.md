@@ -1,5 +1,34 @@
 # UpForge backlog
 
+## Proprietary AI model — long-term north star
+
+**Status:** Strategy documented (pre-funding)  
+**Doc:** [AI-MODEL-STRATEGY.md](./AI-MODEL-STRATEGY.md)
+
+Near-term desktop/API work should grow revenue **and** consented structured gameplay data (archive-only upload, retention tiers, training opt-in, analysis feedback). Cursor agents load `.cursor/rules/ai-model-strategy.mdc` automatically.
+
+---
+
+## Upload vs analysis — decouple quotas
+
+**Status:** Spec written; clips UI decoupled; VOD archive API pending backend  
+**Doc:** [UPLOAD-VS-ANALYSIS.md](./UPLOAD-VS-ANALYSIS.md)
+
+Users choose **cloud only**, **analyse only**, or **both** — separate storage and analysis quotas.
+
+### Desktop
+- [x] Clips: `upload` no longer auto-chains `requestAnalysis`; separate Analyse action
+- [x] VOD: archive-only upload via `uploadManager.archiveUpload()`; bulk pending uses archive path
+- [ ] Post-game + dashboard: separate **Save to cloud** vs **Analyse** actions
+- [ ] Settings: show archive quota and analysis quota separately
+
+### Backend
+- [x] `POST /api/recordings/archive/presign|complete`
+- [x] `POST /api/recordings/archive/{archiveId}/analyse`
+- [x] `archive_stats` on profile + tier limits in `config/tiers.php`
+
+---
+
 ## Internationalization (Spanish → French) — target: next month
 
 **Status:** Planned (not started)  
