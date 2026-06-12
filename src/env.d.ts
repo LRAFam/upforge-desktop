@@ -365,6 +365,7 @@ declare global {
         login: (email: string, password: string) => Promise<{ ok: boolean; user?: unknown; error?: string }>
         logout: () => Promise<void>
         getUser: () => Promise<unknown>
+        refreshUser: () => Promise<unknown>
         loadStored: () => Promise<{ ok: boolean; user?: unknown }>
       }
       app: {
@@ -650,7 +651,12 @@ declare global {
         openReplaysFolder: () => Promise<{ ok: boolean }>
         openAnalyze: () => Promise<{ ok: boolean }>
         openDashboard: () => Promise<{ ok: boolean }>
-        getStats: () => Promise<DeadlockProfileStats | null>
+        openConnectSteam: () => Promise<{ ok: boolean }>
+        getStats: () => Promise<{
+          stats: DeadlockProfileStats | null
+          linked: boolean
+          error: 'not_authenticated' | 'fetch_failed' | null
+        }>
       }
       cs2: {
         detectDemoDir: () => Promise<{ dir: string | null }>
@@ -662,6 +668,15 @@ declare global {
         openDemosFolder: () => Promise<{ ok: boolean }>
         openAnalyze: () => Promise<{ ok: boolean }>
         openDashboard: () => Promise<{ ok: boolean }>
+        openConnectFaceit: () => Promise<{ ok: boolean }>
+        getFaceitConnection: () => Promise<{
+          connected: boolean
+          nickname?: string
+          elo?: number | null
+          level?: number | null
+          synced_at?: string | null
+          has_auto_sync?: boolean
+        }>
       }
       forgeRank: {
         prestige: () => Promise<{ success: boolean; forge_rank?: ForgeRankInfo; message?: string }>

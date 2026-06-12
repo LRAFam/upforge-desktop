@@ -65,7 +65,7 @@
                 <img src="../assets/upforge-logo.png" alt="UpForge" class="w-12 h-12 rounded-2xl ring-1 ring-[#ff4655]/25 shadow-[0_0_24px_rgba(255,70,85,0.2)]" />
                 <div>
                   <h2 class="text-xl font-black text-white leading-tight">Welcome to <span class="text-[#ff4655]">UpForge</span></h2>
-                  <p class="text-[11px] text-gray-500 mt-0.5">AI-powered coaching for competitive gamers</p>
+                  <p class="text-[11px] text-gray-500 mt-0.5">AI coaching for Valorant, CS2 &amp; Deadlock</p>
                 </div>
               </div>
 
@@ -263,7 +263,7 @@
                 <ol class="list-decimal list-inside space-y-1.5 text-[11px] text-gray-400 mb-4">
                   <li>Install <a href="https://obsproject.com/" target="_blank" class="text-[#ff4655] underline hover:text-[#ff8a93]">OBS Studio 28+</a> and open it</li>
                   <li>Tools → WebSocket Server Settings → enable server</li>
-                  <li>Click Connect below — we create game capture (Valorant window only, not your desktop)</li>
+                  <li>Click Connect below — we create game capture for {{ gameCaptureLabel }} (not your full desktop)</li>
                 </ol>
                 <p v-if="obsError" class="text-[11px] text-red-400 mb-3">{{ obsError }}</p>
                 <button
@@ -342,11 +342,10 @@
                 </div>
               </div>
 
-              <div class="rounded-xl border border-blue-500/20 bg-blue-500/[0.06] px-4 py-3 mb-1">
-                <p class="text-[11px] text-blue-200/90 leading-relaxed">
-                  <span class="font-semibold text-blue-200">Valorant tip:</span>
-                  Exclusive Fullscreen blocks in-game overlays. UpForge confirms clips with a notification sound by default.
-                  For the overlay HUD, set Valorant → Settings → Video → <span class="text-blue-100">Windowed Fullscreen</span>.
+              <div v-if="gameTip" class="rounded-xl border px-4 py-3 mb-1" :class="gameTipBorderClass">
+                <p class="text-[11px] leading-relaxed" :class="gameTipTextClass">
+                  <span class="font-semibold">{{ gameTip.label }}</span>
+                  {{ gameTip.body }}
                 </p>
               </div>
 
@@ -393,9 +392,46 @@ const sensitivity = ref(0.4)
 
 const GAMES = [
   { id: 'valorant' as const, name: 'Valorant', img: valorantImg, live: true, desc: 'Full AI coaching & VOD analysis' },
-  { id: 'cs2' as const, name: 'CS2', img: cs2Img, live: true, desc: 'Match analysis & aim coaching' },
-  { id: 'deadlock' as const, name: 'Deadlock', img: deadlockImg, live: false, desc: 'Support coming soon' },
+  { id: 'cs2' as const, name: 'CS2', img: cs2Img, live: true, desc: 'Demo analysis & FACEIT sync' },
+  { id: 'deadlock' as const, name: 'Deadlock', img: deadlockImg, live: true, desc: 'Replay analysis & rank tracking' },
 ]
+
+const gameCaptureLabel = computed(() => {
+  if (selectedGame.value === 'cs2') return 'CS2'
+  if (selectedGame.value === 'deadlock') return 'Deadlock'
+  return 'Valorant'
+})
+
+const gameTip = computed(() => {
+  if (selectedGame.value === 'cs2') {
+    return {
+      label: 'CS2 tip:',
+      body: 'Enable demo recording in CS2 and link your FACEIT username on upforge.gg to sync match stats. Demos auto-upload after each game.',
+    }
+  }
+  if (selectedGame.value === 'deadlock') {
+    return {
+      label: 'Deadlock tip:',
+      body: 'Enable replay saving in Deadlock settings, then link your Steam profile by display name on upforge.gg — no Steam ID needed.',
+    }
+  }
+  return {
+    label: 'Valorant tip:',
+    body: 'Exclusive Fullscreen blocks in-game overlays. For the overlay HUD, set Valorant → Settings → Video → Windowed Fullscreen.',
+  }
+})
+
+const gameTipBorderClass = computed(() => {
+  if (selectedGame.value === 'cs2') return 'border-orange-500/20 bg-orange-500/[0.06]'
+  if (selectedGame.value === 'deadlock') return 'border-teal-500/20 bg-teal-500/[0.06]'
+  return 'border-blue-500/20 bg-blue-500/[0.06]'
+})
+
+const gameTipTextClass = computed(() => {
+  if (selectedGame.value === 'cs2') return 'text-orange-200/90'
+  if (selectedGame.value === 'deadlock') return 'text-teal-200/90'
+  return 'text-blue-200/90'
+})
 
 const DPI_PRESETS = [400, 800, 1600, 3200]
 

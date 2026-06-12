@@ -70,7 +70,7 @@
               </div>
               <div>
                 <p class="text-sm font-semibold text-white">Account</p>
-                <p class="text-xs text-gray-500">Profile, plan, and connected Riot ID</p>
+                <p class="text-xs text-gray-500">Profile, plan, and linked game accounts</p>
               </div>
             </div>
             <svg class="h-4 w-4 text-gray-500 transition-transform" :class="sectionOpen.account ? 'rotate-90' : ''" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -92,6 +92,8 @@
                     </div>
                     <p class="truncate text-xs text-gray-400">{{ user.email }}</p>
                     <p class="mt-1 text-xs" :class="user.riot_name ? 'text-red-300/80' : 'text-gray-500 italic'">{{ accountRiotId }}</p>
+                    <p v-if="settings.primaryGame === 'deadlock'" class="mt-0.5 text-xs" :class="accountSteamLinked ? 'text-teal-300/80' : 'text-gray-500 italic'">{{ accountSteamStatus }}</p>
+                    <p v-else-if="settings.primaryGame === 'cs2'" class="mt-0.5 text-xs text-gray-500 italic">{{ accountCs2Hint }}</p>
                   </div>
                 </div>
                 <div class="rounded-full border border-white/[0.08] bg-white/[0.04] px-2.5 py-1 text-[11px] font-semibold text-gray-300">Desktop</div>
@@ -881,6 +883,8 @@ type UserWithUsage = {
   tier: string
   riot_name: string | null
   riot_tag: string | null
+  deadlock_account_id?: number | null
+  onboarding_target_rank?: string | null
   analyses_used?: number
   analyses_limit?: number | null
   archive_count?: number
@@ -1254,6 +1258,22 @@ const accountInitial = computed(() => user.value?.name?.charAt(0)?.toUpperCase()
 const accountRiotId = computed(() => {
   if (user.value?.riot_name) return `${user.value.riot_name}#${user.value.riot_tag}`
   return 'No Riot ID linked'
+})
+const accountSteamLinked = computed(() => !!user.value?.deadlock_account_id)
+const accountSteamStatus = computed(() =>
+  accountSteamLinked.value ? 'Steam profile linked' : 'Steam not linked — search by display name on web',
+)
+const cs2FaceitLinked = ref(false)
+const cs2FaceitNickname = ref<string | null>(null)
+
+const accountCs2Hint = computed(() => {
+  if (cs2FaceitLinked.value && cs2FaceitNickname.value) {
+    return `FACEIT: ${cs2FaceitNickname.value}`
+  }
+  if (user.value?.onboarding_target_rank) {
+    return `Goal: ${user.value.onboarding_target_rank} · link FACEIT on web`
+  }
+  return 'Link FACEIT username on web for match sync'
 })
 
 const storageSoftLimitBytes = 50 * 1024 * 1024 * 1024
@@ -1666,7 +1686,18 @@ onMounted(async () => {
     Object.assign(settings, savedSettings)
     devModeActive.value = savedSettings.devModeEnabled ?? false
     // Use getStatus user as base
-    if (s.user) user.value = s.user as UserWithUsage | null
+    if (s.user) user.value = { ...(s.user as UserWithUsage) }
+    try {
+      const authUser = await window.api.auth.refreshUser() as UserWithUsage | null
+      if (authUser) user.value = { ...user.value, ...authUser }
+    } catch { /* non-critical */ }
+    if (settings.primaryGame === 'cs2') {
+      try {
+        const faceit = await window.api.cs2.getFaceitConnection()
+        cs2FaceitLinked.value = !!faceit?.connected
+        cs2FaceitNickname.value = faceit?.nickname ?? null
+      } catch { /* optional */ }
+    }
     loadStorageUsage()
     loadHotkeyStatus()
     window.api.on('storage:upload-progress', (...args: unknown[]) => {

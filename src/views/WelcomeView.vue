@@ -48,7 +48,7 @@
             <div class="lp-game-gradient" />
             <div class="lp-game-body">
               <span class="lp-game-name">Deadlock</span>
-              <span class="lp-badge lp-badge-waitlist">Waitlist</span>
+              <span class="lp-badge lp-badge-live"><span class="lp-badge-dot" />Live</span>
             </div>
           </div>
           <div class="lp-game-card lp-game-cs2">
@@ -412,7 +412,7 @@ const savePath = ref('')
 // Mouse setup state
 const trainerMouse = ref({
   dpi: 800,
-  game: 'valorant' as 'valorant' | 'cs2' | 'apex' | 'overwatch2' | 'custom',
+  game: 'valorant' as 'valorant' | 'cs2' | 'deadlock' | 'apex' | 'overwatch2' | 'custom',
   sensitivity: 0.5,
   fov: 103,
   rawInput: true,
@@ -425,6 +425,7 @@ const POLLING_RATES = [125, 250, 500, 1000, 2000, 4000] as const
 const GAMES = [
   { value: 'valorant', label: 'Valorant' },
   { value: 'cs2', label: 'CS2' },
+  { value: 'deadlock', label: 'Deadlock' },
   { value: 'apex', label: 'Apex' },
   { value: 'overwatch2', label: 'OW2' },
   { value: 'custom', label: 'Other' },

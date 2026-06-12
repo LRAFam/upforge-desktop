@@ -68,6 +68,12 @@ export function setupAuthHandlers(
     return auth.getUser()
   })
 
+  ipcMain.handle('auth:refresh-user', async () => {
+    const user = await auth.fetchUser()
+    if (user) onLoginSuccess?.()
+    return user
+  })
+
   ipcMain.handle('auth:load-stored', async () => {
     return auth.loadStoredToken()
   })

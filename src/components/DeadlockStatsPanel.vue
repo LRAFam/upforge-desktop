@@ -11,13 +11,24 @@
         </div>
         <span class="text-xs font-semibold text-gray-200">Deadlock Stats</span>
       </div>
-      <button
-        class="text-[10px] font-semibold px-2.5 py-1 rounded-lg transition-all"
-        style="background:rgba(20,184,166,0.12);color:#2dd4bf;border:1px solid rgba(20,184,166,0.2)"
-        @click="openWeb"
-      >
-        View details →
-      </button>
+      <div class="flex items-center gap-1">
+        <button
+          class="p-1 text-gray-700 hover:text-gray-400 transition-colors rounded"
+          title="Refresh stats"
+          @click="loadStats"
+        >
+          <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+          </svg>
+        </button>
+        <button
+          class="text-[10px] font-semibold px-2.5 py-1 rounded-lg transition-all"
+          style="background:rgba(20,184,166,0.12);color:#2dd4bf;border:1px solid rgba(20,184,166,0.2)"
+          @click="openWeb"
+        >
+          View details →
+        </button>
+      </div>
     </div>
 
     <!-- Loading -->
@@ -26,17 +37,30 @@
       <span class="text-xs text-gray-600">Loading stats…</span>
     </div>
 
+    <!-- Fetch error (linked but API failed) -->
+    <div v-else-if="fetchError" class="px-3.5 py-4 flex items-center justify-between gap-3">
+      <p class="text-xs text-amber-400/90 leading-relaxed">
+        Couldn't load stats right now. Your Steam profile is linked — try refreshing.
+      </p>
+      <button
+        class="flex-shrink-0 text-[10px] font-semibold px-2.5 py-1.5 rounded-lg transition-all border border-amber-500/25 bg-amber-500/10 text-amber-300"
+        @click="loadStats"
+      >
+        Retry
+      </button>
+    </div>
+
     <!-- Not connected -->
     <div v-else-if="!stats" class="px-3.5 py-4 flex items-center justify-between gap-3">
       <p class="text-xs text-gray-500 leading-relaxed">
-        Connect your Steam account on the web dashboard to see rank, match history, and hero stats here.
+        Link your Steam profile on the web — search by your <strong class="text-gray-400 font-semibold">Steam display name</strong>, no numeric ID needed.
       </p>
       <button
         class="flex-shrink-0 text-[10px] font-semibold px-2.5 py-1.5 rounded-lg transition-all"
         style="background:rgba(20,184,166,0.15);color:#2dd4bf;border:1px solid rgba(20,184,166,0.25)"
         @click="openConnectSteam"
       >
-        Connect Steam →
+        Link Steam →
       </button>
     </div>
 
@@ -45,8 +69,8 @@
       <!-- Rank + summary row -->
       <div class="flex items-center gap-3 px-3.5 py-3">
         <img
-          v-if="stats.current_rank?.image"
-          :src="stats.current_rank.image"
+          v-if="rankIconUrl"
+          :src="rankIconUrl"
           class="w-9 h-9 object-contain flex-shrink-0"
           alt="Rank"
         />
@@ -134,15 +158,48 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import type { DeadlockProfileStats } from '../env.d.ts'
+import { getDeadlockRankIconUrl } from '../lib/deadlock'
 
 const loading = ref(true)
 const stats = ref<DeadlockProfileStats | null>(null)
+const fetchError = ref(false)
 
-onMounted(async () => {
-  stats.value = await window.api.deadlock.getStats()
-  loading.value = false
+const rankIconUrl = computed(() => {
+  if (!stats.value?.current_rank) return null
+  return (
+    stats.value.current_rank.image
+    ?? getDeadlockRankIconUrl(stats.value.current_rank.name, stats.value.current_rank.subtier)
+  )
+})
+
+let refreshCleanup: (() => void) | null = null
+
+async function loadStats() {
+  loading.value = true
+  fetchError.value = false
+  try {
+    const result = await window.api.deadlock.getStats()
+    stats.value = result.stats
+    fetchError.value = result.error === 'fetch_failed'
+  } catch {
+    stats.value = null
+    fetchError.value = true
+  } finally {
+    loading.value = false
+  }
+}
+
+onMounted(() => {
+  loadStats()
+  refreshCleanup = window.api.on('dashboard:refresh', () => {
+    loadStats()
+  })
+})
+
+onUnmounted(() => {
+  refreshCleanup?.()
 })
 
 function heroColor(color: number[]): string {
@@ -159,6 +216,6 @@ function openWeb() {
 }
 
 function openConnectSteam() {
-  window.api.deadlock.openDashboard()
+  window.api.deadlock.openConnectSteam()
 }
 </script>

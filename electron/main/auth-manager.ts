@@ -50,6 +50,13 @@ export interface AuthUser {
   is_admin: boolean
   riot_name: string | null
   riot_tag: string | null
+  primary_game?: string | null
+  games?: string[]
+  deadlock_account_id?: number | null
+  onboarding_target_rank?: string | null
+  onboarding_weaknesses?: string[]
+  cs2_tier?: string | null
+  onboarding?: { connect_steam?: boolean; connected_riot_account?: boolean } | null
 }
 
 export interface ValorantStats {
@@ -186,11 +193,11 @@ export class AuthManager {
       }
 
       this._token = token
-      this._user = user
       this._api.defaults.headers.common['Authorization'] = `Bearer ${token}`
 
       saveToken(token)
-      log.info('[Auth] login succeeded for user:', user?.name)
+      await this.fetchUser()
+      log.info('[Auth] login succeeded for user:', this._user?.name ?? user?.name)
       return { ok: true }
     } catch (err: unknown) {
       const axiosErr = err as { code?: string; message?: string; response?: { status?: number; data?: { message?: string } } }
@@ -225,7 +232,8 @@ export class AuthManager {
           return !status || status >= 500 // retry server errors, not 4xx
         },
       })
-      this._user = res.data?.user ?? res.data
+      const raw = res.data?.user ?? res.data
+      this._user = raw
       return this._user
     } catch {
       this._token = null

@@ -268,14 +268,27 @@ export function setupGamingHandlers(
     return { ok: true }
   })
 
+  ipcMain.handle('deadlock:open-connect-steam', () => {
+    shell.openExternal('https://upforge.gg/onboarding')
+    return { ok: true }
+  })
+
   ipcMain.handle('deadlock:get-stats', async () => {
+    const user = auth.getUser()
+    const linked = !!user?.deadlock_account_id
     try {
       const api = auth.getApi()
-      if (!api) return null
-      const res = await api.get('/api/deadlock/profile')
-      return res.data?.profile ?? null
-    } catch {
-      return null
+      if (!api) return { stats: null, linked: false, error: 'not_authenticated' as const }
+      if (!linked) return { stats: null, linked: false, error: null }
+      const res = await api.get('/api/deadlock/stats')
+      return { stats: res.data ?? null, linked: true, error: null }
+    } catch (err: unknown) {
+      const status = (err as { response?: { status?: number } })?.response?.status
+      if (status === 404) {
+        return { stats: null, linked: false, error: null }
+      }
+      log.warn('[Deadlock] get-stats failed:', (err as Error)?.message)
+      return { stats: null, linked: true, error: 'fetch_failed' as const }
     }
   })
 
@@ -312,6 +325,35 @@ export function setupGamingHandlers(
   ipcMain.handle('cs2:open-dashboard', () => {
     shell.openExternal('https://upforge.gg/cs2')
     return { ok: true }
+  })
+
+  ipcMain.handle('cs2:open-connect-faceit', () => {
+    shell.openExternal('https://upforge.gg/onboarding')
+    return { ok: true }
+  })
+
+  ipcMain.handle('cs2:get-faceit-connection', async () => {
+    try {
+      const api = auth.getApi()
+      if (!api) return { connected: false }
+      const res = await api.get('/api/cs2/faceit/connection')
+      const user = auth.getUser()
+      const hasAutoSync = !!user?.is_admin
+        || user?.tier === 'admin'
+        || user?.tier === 'pro'
+        || user?.cs2_tier === 'cs2_pro'
+      return {
+        connected: !!res.data?.connected,
+        nickname: res.data?.nickname ?? undefined,
+        elo: res.data?.elo ?? null,
+        level: res.data?.level ?? null,
+        synced_at: res.data?.synced_at ?? null,
+        has_auto_sync: hasAutoSync,
+      }
+    } catch (err: unknown) {
+      log.warn('[CS2] get-faceit-connection failed:', (err as Error)?.message)
+      throw err
+    }
   })
 
   // ── ForgeRank ─────────────────────────────────────────────────────────────

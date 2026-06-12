@@ -399,11 +399,30 @@ function userSessionDeps() {
   }
 }
 
+function normalizePrimaryGame(value: string | null | undefined): 'valorant' | 'cs2' | 'deadlock' {
+  if (value === 'cs2' || value === 'deadlock' || value === 'valorant') return value
+  return 'valorant'
+}
+
+function syncPrimaryGameFromUser(): void {
+  const user = authManager.getUser()
+  const apiGame = user?.primary_game
+  if (!apiGame || !settingsManager) return
+  const game = normalizePrimaryGame(apiGame)
+  const current = settingsManager.get()
+  settingsManager.save({
+    primaryGame: game,
+    trainerMouse: { ...current.trainerMouse, game },
+  })
+  mainWindow?.webContents.send('settings:changed', settingsManager.get())
+}
+
 function syncUserSessionFromAuth(): void {
   const user = authManager.getUser()
   if (user?.id) {
     activateUserSession(user.id, userSessionDeps())
     runStorageMaintenanceIfReady(true)
+    syncPrimaryGameFromUser()
   }
   enforceRecordingPresetAccess()
 }

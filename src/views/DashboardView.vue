@@ -221,7 +221,10 @@
               <div class="rounded-xl border border-white/[0.08] bg-white/[0.03] px-2.5 py-2 shadow-[0_10px_30px_rgba(0,0,0,0.12)]">
                 <div class="flex items-center gap-2.5">
                   <div class="flex h-8 w-8 items-center justify-center rounded-full border border-white/[0.08] bg-white/[0.04] flex-shrink-0">
-                    <img v-if="getRankIconUrl(profile?.latest_stats?.current_rank)" :src="getRankIconUrl(profile?.latest_stats?.current_rank)!" :alt="profile?.latest_stats?.current_rank ?? ''" class="w-7 h-7 object-contain drop-shadow-lg" />
+                    <img v-if="isValorant && getRankIconUrl(profile?.latest_stats?.current_rank)" :src="getRankIconUrl(profile?.latest_stats?.current_rank)!" :alt="profile?.latest_stats?.current_rank ?? ''" class="w-7 h-7 object-contain drop-shadow-lg" />
+                    <img v-else-if="isCs2 && dashboardCs2RankIcon" :src="dashboardCs2RankIcon" alt="CS2 rank" class="w-7 h-7 object-contain drop-shadow-lg" />
+                    <img v-else-if="isCs2 && faceitLevelIconUrl" :src="faceitLevelIconUrl" alt="FACEIT level" class="w-7 h-7 object-contain drop-shadow-lg" />
+                    <img v-else-if="isDeadlock && goalsRankIcon" :src="goalsRankIcon" alt="Deadlock rank" class="w-7 h-7 object-contain drop-shadow-lg" />
                     <svg v-else class="h-3.5 w-3.5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
                     </svg>
@@ -232,7 +235,7 @@
                   </div>
                 </div>
               </div>
-              <div class="rounded-xl border border-white/[0.08] bg-white/[0.03] px-2.5 py-2 shadow-[0_10px_30px_rgba(0,0,0,0.12)]">
+              <div v-if="isValorant" class="rounded-xl border border-white/[0.08] bg-white/[0.03] px-2.5 py-2 shadow-[0_10px_30px_rgba(0,0,0,0.12)]">
                 <div class="flex items-center gap-2.5">
                   <div class="flex h-8 w-8 items-center justify-center rounded-full border border-emerald-500/20 bg-emerald-500/10 text-emerald-300 flex-shrink-0">
                     <svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -419,8 +422,21 @@
           <div v-else-if="isValorant" class="px-4 pb-3 pt-1">
             <button class="text-xs text-gray-600 hover:text-gray-400 transition-colors" @click="openRiotSettings">No stats yet — link your Riot ID</button>
           </div>
-          <div v-else-if="isCs2" class="px-4 pb-3 pt-1">
-            <p class="text-xs text-gray-600 leading-relaxed">Match stats appear on <button class="text-orange-400/80 hover:text-orange-300 transition-colors" @click="openBrowser">upforge.gg/cs2</button> after demo analysis.</p>
+          <div v-else-if="isCs2" class="px-4 pb-3 pt-1 space-y-1">
+            <p class="text-xs text-gray-600 leading-relaxed">
+              Link your <button class="text-orange-400/80 hover:text-orange-300 transition-colors" @click="openAccountSetup">FACEIT username</button> on the web, or upload demos for AI coaching.
+            </p>
+            <p v-if="onboardingTargetRank" class="text-[10px] text-gray-600">
+              Goal: <span class="text-orange-300/90 font-semibold">{{ onboardingTargetRank }}</span>
+            </p>
+          </div>
+          <div v-else-if="isDeadlock" class="px-4 pb-3 pt-1 space-y-1">
+            <p class="text-xs text-gray-600 leading-relaxed">
+              <button class="text-teal-400/80 hover:text-teal-300 transition-colors" @click="openAccountSetup">Link Steam by display name</button> on the web to sync rank &amp; match history.
+            </p>
+            <p v-if="onboardingTargetRank" class="text-[10px] text-gray-600">
+              Goal: <span class="text-teal-300/90 font-semibold">{{ onboardingTargetRank }}</span>
+            </p>
           </div>
 
           <!-- Quota -->
@@ -520,7 +536,7 @@
         </div>
 
         <!-- AI score trend chart -->
-        <div v-if="scoreChartData" class="bg-white/[0.02] border border-white/[0.10] rounded-2xl px-4 py-3">
+        <div v-if="isValorant && scoreChartData" class="bg-white/[0.02] border border-white/[0.10] rounded-2xl px-4 py-3">
           <div class="flex items-center justify-between mb-2">
             <span class="text-[10px] font-bold uppercase tracking-widest text-gray-600">AI Score Trend</span>
             <div class="flex items-center gap-2">
@@ -544,7 +560,7 @@
         </div>
 
         <!-- Agent performance mini-table -->
-        <div v-if="topAgents.length && topAgents.some(a => a.hasWinData || a.avgScore != null)" class="bg-white/[0.02] border border-white/[0.10] rounded-2xl overflow-hidden flex-shrink-0">
+        <div v-if="isValorant && topAgents.length && topAgents.some(a => a.hasWinData || a.avgScore != null)" class="bg-white/[0.02] border border-white/[0.10] rounded-2xl overflow-hidden flex-shrink-0">
           <div class="px-4 py-2.5 border-b border-white/[0.07]">
             <span class="text-[10px] font-bold uppercase tracking-widest text-gray-600">Agent Win Rates</span>
           </div>
@@ -596,7 +612,8 @@
       <!-- ═══════════ CENTER: Recent matches ═══════════ -->
       <div class="flex flex-col gap-3 min-h-0 overflow-hidden lg:min-h-[420px] xl:min-h-0">
 
-        <!-- CS2 setup & demos -->
+        <!-- CS2 FACEIT + demos -->
+        <CS2StatsPanel v-if="isCs2" class="flex-shrink-0" />
         <CS2SetupPanel v-if="isCs2" class="flex-shrink-0" />
 
         <!-- Deadlock stats panel (Steam-linked stats) -->
@@ -608,7 +625,7 @@
         <!-- Emotional highlights strip -->
         <Transition name="banner-slide">
           <div
-            v-if="emotionalHighlights.length"
+            v-if="isValorant && emotionalHighlights.length"
             class="flex-shrink-0 flex items-center gap-2 px-3 py-2 rounded-xl overflow-hidden highlights-bar"
           >
             <svg class="w-3.5 h-3.5 text-orange-400 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20"><path d="M11.983 1.907a.75.75 0 00-1.292-.657l-8.5 9.5A.75.75 0 002.75 12h6.572l-1.305 6.093a.75.75 0 001.292.657l8.5-9.5A.75.75 0 0017.25 8h-6.572l1.305-6.093z"/></svg>
@@ -858,7 +875,7 @@
         <div class="h-px bg-gradient-to-r from-transparent via-white/[0.08] to-transparent my-1" />
 
         <!-- Last coaching insight (or empty CTA) -->
-        <div v-if="lastInsight" class="relative panel-elevated overflow-hidden">
+        <div v-if="isValorant && lastInsight" class="relative panel-elevated overflow-hidden">
           <div class="absolute left-0 top-0 bottom-0 w-[3px] bg-gradient-to-b from-[#ff4655] to-orange-600 rounded-l-xl" />
           <div class="pl-5 pr-4 pt-4 pb-4 space-y-3">
             <div class="flex items-center justify-between">
@@ -896,23 +913,32 @@
 
         <!-- Empty coaching insight CTA -->
         <div v-else class="relative bg-white/[0.02] border border-white/[0.09] rounded-xl overflow-hidden">
-          <div class="absolute left-0 top-0 bottom-0 w-[3px] bg-gradient-to-b from-[#ff4655]/30 to-orange-600/30 rounded-l-xl" />
+          <div
+            class="absolute left-0 top-0 bottom-0 w-[3px] rounded-l-xl"
+            :class="isCs2 ? 'bg-gradient-to-b from-orange-500/30 to-amber-600/30' : isDeadlock ? 'bg-gradient-to-b from-teal-500/30 to-cyan-600/30' : 'bg-gradient-to-b from-[#ff4655]/30 to-orange-600/30'"
+          />
           <div class="pl-4 pr-3 py-3 flex items-center gap-3">
-            <div class="w-9 h-9 rounded-xl bg-red-500/10 border border-red-500/20 flex items-center justify-center flex-shrink-0">
-              <svg class="w-4 h-4 text-red-400/60" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9.663 17h4.673M12 3v1m6.364 1.636-.707.707M21 12h-1M4 12H3m3.343-5.657-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"/></svg>
+            <div
+              class="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 border"
+              :class="isCs2 ? 'bg-orange-500/10 border-orange-500/20' : isDeadlock ? 'bg-teal-500/10 border-teal-500/20' : 'bg-red-500/10 border-red-500/20'"
+            >
+              <svg class="w-4 h-4" :class="isCs2 ? 'text-orange-400/60' : isDeadlock ? 'text-teal-400/60' : 'text-red-400/60'" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9.663 17h4.673M12 3v1m6.364 1.636-.707.707M21 12h-1M4 12H3m3.343-5.657-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"/></svg>
             </div>
             <div class="flex-1 min-w-0">
-              <p class="text-xs font-semibold text-gray-400">No coaching data yet</p>
-              <p class="text-[11px] text-gray-600 truncate">Run an Analysis after a game to get personalised insights</p>
+              <p class="text-xs font-semibold text-gray-400">{{ emptyCoachingTitle }}</p>
+              <p class="text-[11px] text-gray-600 truncate">{{ emptyCoachingMessage }}</p>
             </div>
-            <button class="flex-shrink-0 px-2.5 py-1.5 text-[11px] font-semibold text-gray-400 hover:text-white border border-white/[0.09] hover:border-white/[0.14] rounded-lg transition-colors" @click="router.push('/settings')">Setup</button>
+            <button
+              class="flex-shrink-0 px-2.5 py-1.5 text-[11px] font-semibold text-gray-400 hover:text-white border border-white/[0.09] hover:border-white/[0.14] rounded-lg transition-colors"
+              @click="openEmptyCoachingAction"
+            >{{ emptyCoachingAction }}</button>
           </div>
         </div>
 
         <div class="h-px bg-gradient-to-r from-transparent via-white/[0.08] to-transparent my-1" />
 
         <!-- Playstyle profile -->
-        <div v-if="playstyleProfile && playstyleProfile.matches_tracked > 0" class="panel-elevated overflow-hidden">
+        <div v-if="isValorant && playstyleProfile && playstyleProfile.matches_tracked > 0" class="panel-elevated overflow-hidden">
           <div class="px-4 py-3 border-b border-white/[0.07] flex items-center justify-between">
             <span class="text-[10px] font-bold uppercase tracking-widest text-gray-600">Your Playstyle</span>
             <div class="flex items-center gap-2">
@@ -951,10 +977,46 @@
           </div>
         </div>
 
-        <div v-if="playstyleProfile && playstyleProfile.matches_tracked > 0" class="h-px bg-gradient-to-r from-transparent via-white/[0.08] to-transparent my-1" />
+        <div v-if="isValorant && playstyleProfile && playstyleProfile.matches_tracked > 0" class="h-px bg-gradient-to-r from-transparent via-white/[0.08] to-transparent my-1" />
+
+        <!-- CS2 / Deadlock onboarding goals -->
+        <div
+          v-if="(isCs2 || isDeadlock) && (onboardingTargetRank || onboardingWeaknesses.length)"
+          class="panel-elevated overflow-hidden"
+        >
+          <div class="px-4 py-3 border-b border-white/[0.07]">
+            <span class="text-[10px] font-bold uppercase tracking-widest text-gray-600">Your Goals</span>
+          </div>
+          <div class="px-4 py-3 space-y-2">
+            <p v-if="onboardingTargetRank" class="text-xs text-gray-300 flex items-center gap-2">
+              <img
+                v-if="goalsRankIcon"
+                :src="goalsRankIcon"
+                alt=""
+                class="w-6 h-6 object-contain flex-shrink-0"
+              />
+              <span>
+                Target rank:
+                <span class="font-bold" :class="isCs2 ? 'text-orange-300' : 'text-teal-300'">{{ onboardingTargetRank }}</span>
+              </span>
+            </p>
+            <div v-if="onboardingWeaknesses.length" class="flex flex-wrap gap-1.5">
+              <span
+                v-for="w in onboardingWeaknesses.slice(0, 5)"
+                :key="w"
+                class="text-[9px] font-semibold px-1.5 py-0.5 rounded-md bg-white/[0.04] text-gray-500 border border-white/[0.06]"
+              >{{ w }}</span>
+            </div>
+          </div>
+        </div>
+
+        <div
+          v-if="(isCs2 || isDeadlock) && (onboardingTargetRank || onboardingWeaknesses.length)"
+          class="h-px bg-gradient-to-r from-transparent via-white/[0.08] to-transparent my-1"
+        />
 
         <!-- Correlation insights card -->
-        <div v-if="correlationInsights.length" class="panel-elevated overflow-hidden">
+        <div v-if="isValorant && correlationInsights.length" class="panel-elevated overflow-hidden">
           <div class="px-4 py-3 border-b border-white/[0.07]">
             <span class="text-[10px] font-bold uppercase tracking-widest text-gray-600">Impact on Game</span>
           </div>
@@ -1044,9 +1106,12 @@ import { pendingTimeline } from '../stores/pendingTimeline'
 import { useAchievements } from '../composables/useAchievements'
 import DeadlockDemoPanel from '../components/DeadlockDemoPanel.vue'
 import DeadlockStatsPanel from '../components/DeadlockStatsPanel.vue'
+import CS2StatsPanel from '../components/CS2StatsPanel.vue'
 import CS2SetupPanel from '../components/CS2SetupPanel.vue'
 import { usePrimaryGame } from '../composables/usePrimaryGame'
 import { primaryGameWebBase } from '../lib/games'
+import { getCs2RankIconUrl, getFaceitLevelIconUrl, type Cs2FaceitConnection } from '../lib/cs2'
+import { getDeadlockRankIconUrl } from '../lib/deadlock'
 
 const router = useRouter()
 const achievements = useAchievements()
@@ -1054,6 +1119,9 @@ const { primaryGame, isValorant, isCs2, isDeadlock, loadFromSettings, applyFromS
 
 const profile = ref<ProfileData | null>(null)
 const profileLoading = ref(true)
+const onboardingTargetRank = ref<string | null>(null)
+const onboardingWeaknesses = ref<string[]>([])
+const cs2FaceitConnection = ref<Cs2FaceitConnection | null>(null)
 const playerCardUrl = ref('')
 const analyses = ref<AnalysisItem[]>([])
 const analysesLoading = ref(true)
@@ -1100,9 +1168,39 @@ const hotkeyHints = computed(() => [
   { key: hotkeys.value['take-screenshot'] || 'F8', label: 'screenshot' },
 ])
 const dashboardHeadline = computed(() => profile.value?.user?.name ? `Welcome back, ${profile.value.user.name}` : 'Your coaching dashboard')
+const emptyCoachingTitle = computed(() => {
+  if (isCs2.value) return 'Upload a demo for AI coaching'
+  if (isDeadlock.value) return 'Upload a replay for AI coaching'
+  return 'No coaching data yet'
+})
+const emptyCoachingMessage = computed(() => {
+  if (isCs2.value) return 'Analyse a .dem on the web or let UpForge auto-upload after matches'
+  if (isDeadlock.value) return 'Upload a .dem replay on the web for positioning and hero coaching'
+  return 'Run an Analysis after a game to get personalised insights'
+})
+const emptyCoachingAction = computed(() => {
+  if (isCs2.value || isDeadlock.value) return 'Analyze →'
+  return 'Setup'
+})
+const dashboardCs2RankIcon = computed(() => getCs2RankIconUrl(onboardingTargetRank.value))
+const goalsRankIcon = computed(() => {
+  if (!onboardingTargetRank.value) return null
+  if (isCs2.value) return getCs2RankIconUrl(onboardingTargetRank.value)
+  if (isDeadlock.value) return getDeadlockRankIconUrl(onboardingTargetRank.value)
+  return null
+})
+const faceitLevelIconUrl = computed(() => getFaceitLevelIconUrl(cs2FaceitConnection.value?.level))
 const dashboardRankLabel = computed(() => {
-  if (isCs2.value) return 'CS2'
-  if (isDeadlock.value) return 'Deadlock'
+  if (isCs2.value) {
+    if (cs2FaceitConnection.value?.connected) {
+      const nick = cs2FaceitConnection.value.nickname
+      const lvl = cs2FaceitConnection.value.level
+      if (nick && lvl != null) return `${nick} · Lv ${lvl}`
+      if (nick) return nick
+    }
+    return onboardingTargetRank.value || 'CS2'
+  }
+  if (isDeadlock.value) return onboardingTargetRank.value || 'Deadlock'
   return profile.value?.latest_stats?.current_rank || 'Unranked'
 })
 const totalSessionsAnalysed = computed(() => {
@@ -1503,11 +1601,18 @@ onMounted(async () => {
     return
   }
 
+  const earlySettings = await window.api.settings.get().catch(() => ({ primaryGame: 'valorant' as const }))
+  applyFromSettings(earlySettings)
+
   const [prof, recent, playstyle] = await Promise.all([
     window.api.profile.get().catch(() => null),
     window.api.analyses.get(10).catch(() => [] as AnalysisItem[]),
-    window.api.progress.playstyleProfile().catch(() => null),
+    isValorant.value
+      ? window.api.progress.playstyleProfile().catch(() => null)
+      : Promise.resolve(null),
   ])
+
+  await syncAuthUserFields()
 
   profile.value = prof
   profileLoading.value = false
@@ -1520,8 +1625,12 @@ onMounted(async () => {
   analyses.value = recent
   analysesLoading.value = false
 
-  // Load RR history for sparkline
-  rrHistory.value = await window.api.stats.rrHistory().catch(() => [])
+  if (isValorant.value) {
+    rrHistory.value = await window.api.stats.rrHistory().catch(() => [])
+  }
+  if (isCs2.value) {
+    await loadCs2Faceit()
+  }
 
   // Load pending (unanalysed) recordings
   pendingRecordings.value = await window.api.recordings.get().catch(() => [])
@@ -1544,16 +1653,16 @@ onMounted(async () => {
     }
   } catch { /* trainer history is optional */ }
 
-  // Load correlation insights (VOD weakness analysis)
-  try {
-    const insights = await window.api.trainer.getCorrelation()
-    if (Array.isArray(insights)) correlationInsights.value = insights
-  } catch { /* optional */ }
+  if (isValorant.value) {
+    try {
+      const insights = await window.api.trainer.getCorrelation()
+      if (Array.isArray(insights)) correlationInsights.value = insights
+    } catch { /* optional */ }
+  }
 
   // Load last insight from persisted settings
   const savedSettings = await window.api.settings.get().catch(() => null) as ({ lastInsight?: typeof lastInsight.value; trainerMouse?: { game?: string } } | null)
   if (savedSettings?.lastInsight) lastInsight.value = savedSettings.lastInsight
-  await loadFromSettings()
   void maybeShowDiskMigrationHint()
 
   // Achievement: first-analysis
@@ -1676,6 +1785,24 @@ async function loadAnalyses() {
   }
 }
 
+async function loadCs2Faceit() {
+  try {
+    cs2FaceitConnection.value = await window.api.cs2.getFaceitConnection()
+  } catch {
+    cs2FaceitConnection.value = null
+  }
+}
+
+async function syncAuthUserFields() {
+  const authUser = await window.api.auth.refreshUser().catch(() => null) as {
+    onboarding_target_rank?: string | null
+    onboarding_weaknesses?: string[]
+  } | null
+  onboardingTargetRank.value = authUser?.onboarding_target_rank ?? null
+  onboardingWeaknesses.value = authUser?.onboarding_weaknesses ?? []
+  await loadFromSettings()
+}
+
 async function refreshProfile() {
   const prevCount = analyses.value.length
   profileLoading.value = true
@@ -1685,6 +1812,14 @@ async function refreshProfile() {
     if (prof?.latest_stats?.player_card_id) {
       playerCardUrl.value = `https://media.valorant-api.com/playercards/${prof.latest_stats.player_card_id}/smallart.png`
     }
+    if (isValorant.value) {
+      playstyleProfile.value = await window.api.progress.playstyleProfile().catch(() => null)
+      rrHistory.value = await window.api.stats.rrHistory().catch(() => [])
+    }
+    if (isCs2.value) {
+      await loadCs2Faceit()
+    }
+    await syncAuthUserFields()
   } catch { /* ignore */ } finally {
     profileLoading.value = false
   }
@@ -1977,6 +2112,13 @@ async function openTimeline(id: number) {
   }
 }
 function openRiotSettings() { window.open('https://upforge.gg/settings/profile', '_blank') }
+function openAccountSetup() { window.open('https://upforge.gg/onboarding', '_blank') }
+
+function openEmptyCoachingAction() {
+  if (isCs2.value) void window.api.cs2.openAnalyze()
+  else if (isDeadlock.value) void window.api.deadlock.openAnalyze()
+  else router.push('/settings')
+}
 function openUpgrade() { window.open('https://upforge.gg/pricing', '_blank') }
 function openPpa() { window.open('https://upforge.gg/valorant/analyze', '_blank') }
 

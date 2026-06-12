@@ -6,6 +6,7 @@ const api = {
       ipcRenderer.invoke('auth:login', { email, password }),
     logout: () => ipcRenderer.invoke('auth:logout'),
     getUser: () => ipcRenderer.invoke('auth:get-user'),
+    refreshUser: () => ipcRenderer.invoke('auth:refresh-user'),
     loadStored: () => ipcRenderer.invoke('auth:load-stored')
   },
   app: {
@@ -168,6 +169,7 @@ const api = {
     openReplaysFolder: () => ipcRenderer.invoke('deadlock:open-replays-folder'),
     openAnalyze: () => ipcRenderer.invoke('deadlock:open-analyze'),
     openDashboard: () => ipcRenderer.invoke('deadlock:open-dashboard'),
+    openConnectSteam: () => ipcRenderer.invoke('deadlock:open-connect-steam'),
     getStats: () => ipcRenderer.invoke('deadlock:get-stats'),
   },
   cs2: {
@@ -176,6 +178,8 @@ const api = {
     openDemosFolder: () => ipcRenderer.invoke('cs2:open-demos-folder'),
     openAnalyze: () => ipcRenderer.invoke('cs2:open-analyze'),
     openDashboard: () => ipcRenderer.invoke('cs2:open-dashboard'),
+    openConnectFaceit: () => ipcRenderer.invoke('cs2:open-connect-faceit'),
+    getFaceitConnection: () => ipcRenderer.invoke('cs2:get-faceit-connection'),
   },
   forgeRank: {
     prestige: () => ipcRenderer.invoke('forge-rank:prestige'),
