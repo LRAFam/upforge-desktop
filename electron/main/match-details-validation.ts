@@ -19,6 +19,15 @@ function normalizeQueueId(queueId: string): string {
 const PRACTICE_MODES = new Set(['CUSTOM', 'SHOOTING_RANGE', 'NEWMAP'])
 
 export function recordingDurationMs(matchData: MatchData): number {
+  // Riot gameLengthMillis is in-round gameplay only — exclude load-in before gameplayStartTime.
+  if (
+    matchData.gameplayStartTime != null
+    && matchData.endTime != null
+    && matchData.endTime > matchData.gameplayStartTime
+  ) {
+    const gameplayMs = matchData.endTime - matchData.gameplayStartTime
+    if (gameplayMs >= 60_000) return gameplayMs
+  }
   if (matchData.endTime && matchData.recordingStartTime) {
     return Math.max(0, matchData.endTime - matchData.recordingStartTime)
   }
@@ -95,7 +104,5 @@ export function shouldApplyMatchDetails(
 export function shouldUseMatchHistoryFallback(matchData: MatchData): boolean {
   const mode = (matchData.gameMode ?? '').toUpperCase()
   if (PRACTICE_MODES.has(mode)) return false
-  // Presence captured a map — prefer live data over "most recent match" guess.
-  if (matchData.map) return false
   return true
 }

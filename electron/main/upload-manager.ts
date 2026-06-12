@@ -174,6 +174,21 @@ export class UploadManager {
     return { job_id }
   }
 
+  /** Backfill match_data on a queued/processing job when Riot stats arrive after upload started. */
+  async patchMatchData(jobId: string, timeline: MatchData | null): Promise<void> {
+    const token = this.auth.getToken()
+    if (!token || !timeline) return
+    const match_data = prepareMatchDataForUpload(timeline)
+    if (!match_data) return
+
+    const apiUrl = process.env['VITE_API_URL'] || 'https://api.upforge.gg'
+    await this._apiPost(
+      `${apiUrl}/api/desktop-submissions/${jobId}/match-data`,
+      JSON.stringify({ match_data }),
+      token,
+    )
+  }
+
   /** POST JSON to an API endpoint with Bearer auth. Returns parsed response body. */
   private _apiPost(url: string, body: string, token: string): Promise<Record<string, string>> {
     return new Promise((resolve, reject) => {

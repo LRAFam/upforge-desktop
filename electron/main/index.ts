@@ -876,8 +876,10 @@ function setupGameDetection(): void {
       }
 
       const matchId = timeline?.matchId
-      const hasKills = (timeline?.playerKills?.length ?? 0) > 0
-      const lateRetryScheduled = !hasKills && !!matchId
+      const hasRichMatchData = (timeline?.roundSummaries?.length ?? 0) > 0
+        || (timeline?.killEvents?.length ?? 0) > 0
+        || (timeline?.playerKills?.length ?? 0) > 0
+      const lateRetryScheduled = !hasRichMatchData && !!matchId
 
       const doAutoDelete = () => {
         if (settingsManager?.get().autoDelete) {
@@ -954,6 +956,8 @@ function setupGameDetection(): void {
               if (timeline) {
                 timeline.matchDetails = details
                 riotLocalApi.populateMatchDataFromDetails(timeline, details)
+                recordingsStore.updateTimeline(savedRecording.id, timeline)
+                mainWindow?.webContents.send('recordings:updated')
               }
               if ((timeline?.playerKills?.length ?? 0) === 0) { log.warn('[LateClipExtract] No kills after retry'); return }
               log.info(`[LateClipExtract] Got ${timeline!.playerKills.length} kills — extracting clips`)
@@ -1003,6 +1007,8 @@ function setupGameDetection(): void {
               if (timeline) {
                 timeline.matchDetails = details
                 riotLocalApi.populateMatchDataFromDetails(timeline, details)
+                recordingsStore.updateTimeline(savedRecording.id, timeline)
+                mainWindow?.webContents.send('recordings:updated')
               }
               if ((timeline?.playerKills?.length ?? 0) === 0) { log.warn('[LateClipExtract] No kills after retry'); return }
               log.info(`[LateClipExtract] Got ${timeline!.playerKills.length} kills — extracting clips`)
@@ -1040,9 +1046,20 @@ function setupGameDetection(): void {
             }
             if (timeline) timeline.matchDetails = details
             if (timeline) riotLocalApi.populateMatchDataFromDetails(timeline, details)
-            if ((timeline?.playerKills?.length ?? 0) === 0) {
-              log.warn('[LateClipExtract] Match details fetched but no kills found for this player')
+            if (timeline) {
+              recordingsStore.updateTimeline(savedRecording.id, timeline)
+              mainWindow?.webContents.send('recordings:updated')
+            }
+            const gotData = (timeline?.roundSummaries?.length ?? 0) > 0
+              || (timeline?.playerKills?.length ?? 0) > 0
+            if (!gotData) {
+              log.warn('[LateClipExtract] Match details fetched but no round/kill data for this player')
               return
+            }
+            if (jobId && timeline) {
+              await uploadManager.patchMatchData(jobId, timeline).catch((err) => {
+                log.warn('[LateClipExtract] Failed to patch job match_data:', err)
+              })
             }
             log.info(`[LateClipExtract] Got ${timeline!.playerKills.length} kills — extracting clips`)
             await extractKillClipsOnly(readyPath, timeline!, jobId)
@@ -1707,6 +1724,30 @@ async function doUploadAndAnalyse(
       recordingId: recordingId ?? undefined,
     })
     return null
+  }
+
+  if (timeline && game === 'valorant') {
+    try {
+      const enriched = await riotLocalApi.enrichTimelineMatchDetails(timeline, {
+        onStatus: (msg) => logActivity(msg),
+      })
+      if (enriched) {
+        recomputeTimelineVideoOffsets(timeline)
+        if (recordingId) {
+          recordingsStore.updateTimeline(recordingId, timeline)
+          mainWindow?.webContents.send('recordings:updated')
+        }
+        if (lastMatchDiagnostic) {
+          lastMatchDiagnostic.killsInTimeline = timeline.playerKills?.length ?? 0
+          lastMatchDiagnostic.matchDetailsStatus = 'fetched'
+        }
+        logActivity(
+          `Riot match stats loaded (${timeline.roundSummaries?.length ?? 0} rounds, ${timeline.playerKills?.length ?? 0} kills)`,
+        )
+      }
+    } catch (err) {
+      log.warn('[Upload] Match details enrichment failed:', err)
+    }
   }
 
   // Show upload UI only after compression/prep — avoids a stuck 0% bar while ffmpeg runs.

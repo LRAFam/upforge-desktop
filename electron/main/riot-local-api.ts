@@ -748,21 +748,9 @@ export class RiotLocalApi {
     }
 
     if (this.matchData.matchId && this.region) {
-      console.log(`[RiotLocalApi] Fetching MatchDetails for ${this.matchData.matchId}`)
-      const details = await this._fetchMatchDetails(this.matchData.matchId)
-      if (details) {
-        const validation = shouldApplyMatchDetails(this.matchData, details)
-        if (validation.apply) {
-          this.matchData.matchDetails = details
-          this._populateFromMatchDetails(details)
-        } else {
-          console.warn(
-            `[RiotLocalApi] Rejected MatchDetails for ${this.matchData.matchId}: ${validation.reason} — using presence/WS data only`
-          )
-          this.matchData.matchId = null
-        }
-      } else {
-        console.log('[RiotLocalApi] MatchDetails fetch failed — using presence data only')
+      const applied = await this._fetchMatchDetailsWithRetries(this.matchData, [0, 10_000, 20_000])
+      if (!applied) {
+        console.log('[RiotLocalApi] MatchDetails not ready at match end — will retry before upload')
       }
     } else {
       console.log(
@@ -1230,6 +1218,92 @@ export class RiotLocalApi {
   // ──────────────────────────────────────────────────────────────────────
   // LATE POST-MATCH HELPERS
   // ──────────────────────────────────────────────────────────────────────
+
+  /**
+   * Keep retrying Riot MatchDetails until timeline has rounds/kills or delays exhaust.
+   * Call before upload — compression/upload time often covers Riot's post-match delay.
+   */
+  async enrichTimelineMatchDetails(
+    timeline: MatchData,
+    options?: { maxWaitMs?: number; onStatus?: (message: string) => void },
+  ): Promise<boolean> {
+    const hasData = (timeline.killEvents?.length ?? 0) > 0
+      || (timeline.roundSummaries?.length ?? 0) > 0
+    if (hasData) return true
+
+    await this._refreshTokens()
+    if (!this.accessToken || !this.entitlementsToken) {
+      await this.initAuth()
+    }
+    if (!this.region && this.lockfileData) {
+      try {
+        const sess = await this._fetchLocal<{ region: string }>('/chat/v1/session')
+        if (sess.region) this.region = _normalizeRegion(sess.region)
+      } catch { /* ignore */ }
+    }
+
+    if (!timeline.matchId && this.region && this.ownPuuid && shouldUseMatchHistoryFallback(timeline)) {
+      const latestId = await this._fetchLatestMatchId()
+      if (latestId) {
+        timeline.matchId = latestId
+        console.log(`[RiotLocalApi] enrich — matchId from history: ${latestId}`)
+      }
+    }
+
+    if (!timeline.matchId || !this.region) return false
+
+    const maxWaitMs = options?.maxWaitMs ?? 120_000
+    const delays = [0, 15_000, 30_000, 45_000, 60_000, 90_000]
+    const started = Date.now()
+
+    for (const delay of delays) {
+      if (Date.now() - started > maxWaitMs) break
+      if (delay > 0) {
+        options?.onStatus?.(`Waiting for Riot match stats (${Math.round(delay / 1000)}s)…`)
+        await new Promise((r) => setTimeout(r, delay))
+      }
+      if (await this._fetchMatchDetailsWithRetries(timeline, [0])) {
+        return true
+      }
+    }
+    return (timeline.killEvents?.length ?? 0) > 0 || (timeline.roundSummaries?.length ?? 0) > 0
+  }
+
+  private async _fetchMatchDetailsWithRetries(
+    timeline: MatchData,
+    delaysMs: number[],
+  ): Promise<boolean> {
+    const matchId = timeline.matchId
+    if (!matchId || !this.region) return false
+
+    for (const delay of delaysMs) {
+      if (delay > 0) await new Promise((r) => setTimeout(r, delay))
+      const details = await this._fetchMatchDetails(matchId)
+      if (!details) continue
+      const validation = shouldApplyMatchDetails(timeline, details)
+      if (!validation.apply) {
+        console.warn(
+          `[RiotLocalApi] Rejected MatchDetails for ${matchId}: ${validation.reason}`,
+        )
+        continue
+      }
+      timeline.matchDetails = details
+      const prev = this.matchData
+      this.matchData = timeline
+      try {
+        this._populateFromMatchDetails(details)
+      } finally {
+        this.matchData = prev
+      }
+      if ((timeline.killEvents?.length ?? 0) > 0 || (timeline.roundSummaries?.length ?? 0) > 0) {
+        console.log(
+          `[RiotLocalApi] MatchDetails applied — kills=${timeline.killEvents.length} rounds=${timeline.roundSummaries.length}`,
+        )
+        return true
+      }
+    }
+    return false
+  }
 
   /**
    * One-shot match details fetch using stored tokens. Riot takes 1-3 minutes
