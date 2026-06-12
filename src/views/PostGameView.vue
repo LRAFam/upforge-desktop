@@ -57,7 +57,7 @@
             <div class="flex items-end justify-between gap-3">
               <div class="text-left">
                 <p class="text-[10px] font-semibold uppercase tracking-[0.24em] text-gray-600">{{ state === 'preparing' ? 'Preparing' : compressing ? 'Compression' : 'Upload progress' }}</p>
-                <p class="mt-1 text-xs text-gray-500">{{ state === 'preparing' ? 'Saving your match recording and getting it ready to upload' : compressing ? 'OBS recorded a large file — shrinking to upload size (one-time, may take a few minutes)' : 'Sending your recording to UpForge for analysis' }}</p>
+                <p class="mt-1 text-xs text-gray-500">{{ state === 'preparing' ? 'Saving your match recording and getting it ready to upload' : compressing ? 'OBS recorded a large file — shrinking to upload size (one-time, may take a few minutes)' : archiveOnlyUpload ? 'Saving your recording to cloud for playback — no analysis quota used' : 'Sending your recording to UpForge for analysis' }}</p>
               </div>
               <div class="text-right">
                 <p class="text-lg font-black tabular-nums text-white upload-stat-in">{{ uploadProgress }}%</p>
@@ -533,9 +533,9 @@
         </div>
 
         <div class="mt-4 text-center">
-          <p class="text-sm font-semibold text-gray-200">Ready for AI coaching?</p>
+          <p class="text-sm font-semibold text-gray-200">What would you like to do?</p>
           <p class="mt-1 text-[11px] leading-relaxed text-gray-500">
-            Auto-analyse is off. Run coaching now or review later from your dashboard.
+            Save to cloud frees disk space. Analyse uses your coaching quota when you are ready.
           </p>
         </div>
 
@@ -543,7 +543,7 @@
           <GamingButton
             variant="primary-sm"
             block
-            :disabled="analysing"
+            :disabled="analysing || savingToCloud"
             @click="analyseNow"
           >
             <svg v-if="analysing" class="h-4 w-4 animate-spin" fill="none" viewBox="0 0 24 24">
@@ -558,9 +558,38 @@
           <GamingButton
             variant="secondary-sm"
             block
+            :disabled="analysing || savingToCloud"
+            @click="saveToCloudNow"
+          >
+            <svg v-if="savingToCloud" class="h-4 w-4 animate-spin" fill="none" viewBox="0 0 24 24">
+              <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+              <path class="opacity-90" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+            </svg>
+            <svg v-else class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/>
+            </svg>
+            {{ savingToCloud ? 'Saving…' : 'Save to cloud only' }}
+          </GamingButton>
+          <GamingButton
+            variant="secondary-sm"
+            block
             @click="dismissPending"
           >Remind me later</GamingButton>
         </div>
+      </div>
+
+      <!-- Cloud saved (archive-only success) -->
+      <div v-else-if="state === 'archived'" class="w-full space-y-4 text-center">
+        <div class="w-11 h-11 mx-auto rounded-full bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center">
+          <svg class="w-5 h-5 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+          </svg>
+        </div>
+        <div>
+          <p class="text-sm font-semibold text-emerald-300">Saved to cloud</p>
+          <p class="text-xs text-gray-400 mt-1">Your VOD is backed up. Run AI coaching anytime from the dashboard — it uses analysis quota, not cloud storage.</p>
+        </div>
+        <GamingButton variant="secondary-sm" block @click="dismiss">Done</GamingButton>
       </div>
 
       <!-- Error -->
@@ -573,8 +602,11 @@
             </svg>
           </div>
           <div>
-            <p class="text-sm font-semibold text-amber-400">Analysis limit reached</p>
-            <template v-if="userTier === 'free'">
+            <p class="text-sm font-semibold text-amber-400">{{ needsArchiveUpgrade ? 'Cloud storage limit reached' : 'Analysis limit reached' }}</p>
+            <template v-if="needsArchiveUpgrade">
+              <p class="text-xs text-gray-400 mt-1">You have used all your cloud VOD slots. Upgrade for more storage or remove old cloud-backed locals in Settings.</p>
+            </template>
+            <template v-else-if="userTier === 'free'">
               <p class="text-xs text-gray-400 mt-1">You've used your 3 starter analyses. Upgrade for monthly coaching or pay per analysis on the web.</p>
               <p class="text-xs text-gray-600 mt-1">Plus $14.99/mo · Pro $24.99/mo</p>
             </template>
@@ -690,7 +722,7 @@ import type { MatchSpatialSummary } from '../lib/spatial-types'
 import { canSpatialVodSeek } from '../lib/tier-features'
 import type { CategoryScoreItem } from '../components/PostGameIntelHero.vue'
 
-type State = 'preparing' | 'uploading' | 'analysing' | 'ready' | 'error' | 'pending'
+type State = 'preparing' | 'uploading' | 'analysing' | 'ready' | 'error' | 'pending' | 'archived'
 
 const COACHING_TIPS = [
   'Players who review their gameplay weekly improve 2x faster than those who don\'t.',
@@ -751,6 +783,9 @@ const isTimeoutError = computed(() => /timed? ?out/i.test(errorMessage.value))
 const pendingRecordingId = ref<string | null>(null)
 const sessionRecordingId = ref<string | null>(null)
 const analysing = ref(false)
+const savingToCloud = ref(false)
+const archiveOnlyUpload = ref(false)
+const needsArchiveUpgrade = ref(false)
 const analysisStuck = ref(false)
 const analysisLongRunning = ref(false)
 const analysisDeferred = ref(false)
@@ -1107,14 +1142,22 @@ onMounted(() => {
     state.value = 'uploading'
     compressing.value = false
     uploadProgress.value = 0
-    const data = args[0] as { game: string; map: string | null; agent: string | null; matchDetailsStatus?: typeof matchDataStatus.value; killsInTimeline?: number }
+    const data = args[0] as { game: string; map: string | null; agent: string | null; matchDetailsStatus?: typeof matchDataStatus.value; killsInTimeline?: number; archiveOnly?: boolean }
+    archiveOnlyUpload.value = !!data.archiveOnly
     gameInfo.value = { game: data.game, map: data.map, agent: data.agent }
     if (data.matchDetailsStatus) matchDataStatus.value = data.matchDetailsStatus
     killsCapured.value = data.killsInTimeline ?? 0
     uploadStartedAt.value = Date.now()
   }))
   ipcCleanup.push(window.api.on('post-game:upload-progress', (...args: unknown[]) => { uploadProgress.value = args[0] as number }))
-  ipcCleanup.push(window.api.on('post-game:upload-complete', () => {
+  ipcCleanup.push(window.api.on('post-game:upload-complete', (...args: unknown[]) => {
+    const data = args[0] as { archiveOnly?: boolean } | undefined
+    if (data?.archiveOnly) {
+      archiveOnlyUpload.value = false
+      savingToCloud.value = false
+      state.value = 'archived'
+      return
+    }
     state.value = 'analysing'
     startStuckTimer()
   }))
@@ -1165,7 +1208,10 @@ onMounted(() => {
   ipcCleanup.push(window.api.on('post-game:upload-error', (...args: unknown[]) => {
     const payload = args[0] as string | { message: string; recordingId?: string; needsUpgrade?: boolean; upgradeUrl?: string; ppaUrl?: string; clipsOnly?: boolean }
     needsUpgrade.value = false
+    needsArchiveUpgrade.value = false
     clipsOnlyError.value = false
+    savingToCloud.value = false
+    archiveOnlyUpload.value = false
     if (typeof payload === 'string') {
       errorMessage.value = payload
     } else {
@@ -1174,6 +1220,7 @@ onMounted(() => {
       if (payload.clipsOnly) clipsOnlyError.value = true
       if (payload.needsUpgrade) {
         needsUpgrade.value = true
+        needsArchiveUpgrade.value = /archive.limit|cloud storage/i.test(payload.message)
         upgradeUrl.value = payload.upgradeUrl || 'https://upforge.gg/pricing'
         ppaUrl.value = payload.ppaUrl || 'https://upforge.gg/valorant/analyze'
       }
@@ -1232,6 +1279,34 @@ onUnmounted(() => {
   cleanup?.forEach(fn => fn())
   delete (window as Window & { _postGameIpcCleanup?: (() => void)[] })._postGameIpcCleanup
 })
+
+async function saveToCloudNow() {
+  if (!pendingRecordingId.value || savingToCloud.value || analysing.value) return
+  savingToCloud.value = true
+  state.value = 'uploading'
+  uploadProgress.value = 0
+  archiveOnlyUpload.value = true
+  try {
+    const result = await window.api.recordings.saveToCloud(pendingRecordingId.value)
+    if (result.alreadySaved) {
+      state.value = 'archived'
+      return
+    }
+    if (!result.ok) {
+      state.value = 'error'
+      errorMessage.value = result.error ?? 'Could not save to cloud'
+      if (/archive.limit|cloud storage/i.test(result.error ?? '')) {
+        needsUpgrade.value = true
+        needsArchiveUpgrade.value = true
+      }
+    }
+  } catch {
+    state.value = 'error'
+    errorMessage.value = 'Could not save to cloud. Try again from the dashboard.'
+  } finally {
+    savingToCloud.value = false
+  }
+}
 
 async function analyseNow() {
   if (!pendingRecordingId.value || analysing.value) return

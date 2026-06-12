@@ -11,16 +11,17 @@ Near-term desktop/API work should grow revenue **and** consented structured game
 
 ## Upload vs analysis — decouple quotas
 
-**Status:** Spec written; clips UI decoupled; VOD archive API pending backend  
+**Status:** Shipped (v2.5.43+) — archive API + desktop UX  
 **Doc:** [UPLOAD-VS-ANALYSIS.md](./UPLOAD-VS-ANALYSIS.md)
 
 Users choose **cloud only**, **analyse only**, or **both** — separate storage and analysis quotas.
 
 ### Desktop
-- [x] Clips: `upload` no longer auto-chains `requestAnalysis`; separate Analyse action
-- [x] VOD: archive-only upload via `uploadManager.archiveUpload()`; bulk pending uses archive path
-- [ ] Post-game + dashboard: separate **Save to cloud** vs **Analyse** actions
-- [ ] Settings: show archive quota and analysis quota separately
+- [x] Clips: separate Upload and Analyse actions
+- [x] VOD: archive-only upload; bulk pending uses archive path
+- [x] Post-game pending: Save to cloud vs Analyse now
+- [x] Dashboard pending row: separate Save and Analyse
+- [x] Settings: show archive quota and analysis quota separately
 
 ### Backend
 - [x] `POST /api/recordings/archive/presign|complete`

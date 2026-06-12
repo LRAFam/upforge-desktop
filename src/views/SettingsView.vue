@@ -142,15 +142,33 @@
           <div v-if="sectionOpen.usage" class="border-t border-white/[0.09] p-4 space-y-3">
             <div class="rounded-2xl border border-white/[0.10] bg-black/20 p-4">
               <div class="flex items-center justify-between text-xs">
-                <span class="text-gray-400">Analyses this month</span>
+                <span class="text-gray-400">AI analyses</span>
                 <span class="font-medium tabular-nums text-gray-200">
-                  {{ Math.max(0, user.analyses_used) }} / {{ user.analyses_limit == null ? '∞' : user.analyses_limit }}
+                  {{ Math.max(0, user.analyses_used ?? 0) }} / {{ user.analyses_limit == null ? '∞' : user.analyses_limit }}
                 </span>
               </div>
               <div v-if="user.analyses_limit" class="mt-3 h-2 overflow-hidden rounded-full bg-white/[0.06]">
                 <div class="h-full rounded-full bg-gradient-to-r from-red-500 to-orange-500 transition-all" :style="{ width: usagePercent + '%' }" />
               </div>
-              <div class="mt-2 flex items-center justify-between text-[11px] text-gray-500">
+              <p class="mt-2 text-[11px] text-gray-600">Used when you run full-match AI coaching.</p>
+            </div>
+            <div v-if="user.archive_limit != null" class="rounded-2xl border border-white/[0.10] bg-black/20 p-4">
+              <div class="flex items-center justify-between text-xs">
+                <span class="text-gray-400">Cloud VODs saved</span>
+                <span class="font-medium tabular-nums text-gray-200">
+                  {{ user.archive_count ?? 0 }} / {{ user.archive_limit }}
+                </span>
+              </div>
+              <div class="mt-3 h-2 overflow-hidden rounded-full bg-white/[0.06]">
+                <div class="h-full rounded-full bg-gradient-to-r from-emerald-500 to-teal-500 transition-all" :style="{ width: archiveUsagePercent + '%' }" />
+              </div>
+              <p class="mt-2 text-[11px] text-gray-600">
+                Save recordings without using analysis quota.
+                <span v-if="user.archive_retention_days"> Retained {{ user.archive_retention_days }} days on your plan.</span>
+              </p>
+            </div>
+            <div class="rounded-2xl border border-white/[0.10] bg-black/20 p-4">
+              <div class="flex items-center justify-between text-[11px] text-gray-500">
                 <span>Current plan</span>
                 <span class="rounded-full bg-white/[0.04] px-2 py-0.5 text-gray-300">{{ getTierBadgeLabel(user.tier) || 'Free' }}</span>
               </div>
@@ -419,7 +437,7 @@
                   @click="uploadPendingToCloud"
                 >
                   <span v-if="storageUploadProgress">Uploading {{ storageUploadProgress.current }}/{{ storageUploadProgress.total }}…</span>
-                  <span v-else>Upload {{ storageBreakdown.pendingCount }} pending to cloud ({{ formatBytes(storageBreakdown.pendingBytes) }})</span>
+                  <span v-else>Save {{ storageBreakdown.pendingCount }} pending to cloud ({{ formatBytes(storageBreakdown.pendingBytes) }})</span>
                 </button>
                 <button
                   v-if="storageBreakdown.cloudBackedCount > 0"
@@ -823,6 +841,10 @@ type UserWithUsage = {
   riot_tag: string | null
   analyses_used?: number
   analyses_limit?: number | null
+  archive_count?: number
+  archive_limit?: number | null
+  archive_remaining?: number | null
+  archive_retention_days?: number | null
 }
 
 const router = useRouter()
@@ -1124,7 +1146,7 @@ const GAME_MODES = [
 const toggles: Array<{ key: keyof Pick<AppSettings, 'launchOnStartup' | 'autoDelete' | 'autoAnalyse' | 'notificationSound' | 'autoOpenBrowser' | 'discordRichPresence'>; label: string; hint: string | null }> = [
   { key: 'launchOnStartup', label: 'Launch on startup', hint: null },
   { key: 'autoDelete', label: 'Auto-delete after upload', hint: 'Removes the local MP4 once uploaded — review from cloud anytime' },
-  { key: 'autoAnalyse', label: 'Auto-analyse after game', hint: 'Automatically upload and analyse once a game ends' },
+  { key: 'autoAnalyse', label: 'Auto-analyse after game', hint: 'Upload and run AI coaching automatically when a match ends (uses analysis quota)' },
   { key: 'autoOpenBrowser', label: 'Open results in browser', hint: 'Automatically open your results page when analysis completes' },
   { key: 'notificationSound', label: 'Notification sound', hint: 'Play a sound with system notifications' },
   { key: 'discordRichPresence', label: 'Show status in Discord', hint: 'Friends see when you\'re recording or reviewing coaching — requires Discord desktop and Activity Status enabled' },
@@ -1181,6 +1203,12 @@ const usagePercent = computed(() => {
   const u = user.value as UserWithUsage | null
   if (!u?.analyses_limit) return 0
   return Math.min(100, Math.round((Math.max(0, u.analyses_used ?? 0) / u.analyses_limit) * 100))
+})
+
+const archiveUsagePercent = computed(() => {
+  const u = user.value as UserWithUsage | null
+  if (!u?.archive_limit) return 0
+  return Math.min(100, Math.round(((u.archive_count ?? 0) / u.archive_limit) * 100))
 })
 
 const encoderLabel = computed(() => {
@@ -1552,7 +1580,11 @@ onMounted(async () => {
         riot_tag: prof.user.riot_tag,
         analyses_used: prof.user.analysis_stats?.total ?? 0,
         analyses_limit: prof.user.analysis_stats?.limit
-          ?? (prof.user.is_admin || prof.user.tier === 'admin' ? null : 1)
+          ?? (prof.user.is_admin || prof.user.tier === 'admin' ? null : 1),
+        archive_count: prof.user.archive_stats?.count ?? 0,
+        archive_limit: prof.user.archive_stats?.limit ?? null,
+        archive_remaining: prof.user.archive_stats?.remaining ?? null,
+        archive_retention_days: prof.user.archive_stats?.retention_days ?? null,
       }
     }
   } catch { /* profile load failure is non-critical */ }

@@ -79,7 +79,14 @@ export interface ProfileData {
     riot_tag: string | null
     riot_region: string | null
     discord_username: string | null
-    analysis_stats: { total: number; limit: number | null }
+    analysis_stats: { total: number; limit: number | null; subscription_ends_at?: string | null }
+    archive_stats?: {
+      count: number
+      limit: number | null
+      remaining: number | null
+      retention_days: number | null
+      storage_bytes_used: number
+    }
   }
   latest_stats: ValorantStats | null
 }
@@ -233,6 +240,7 @@ export class AuthManager {
       const p = res.data?.profile
       if (!p) return null
       const stats = p.user?.analysis_stats ?? {}
+      const archiveRaw = p.user?.archive_stats ?? {}
       const isAdmin = !!(p.user?.is_admin)
       const tier = p.user?.tier ?? 'free'
       const unlimited = isAdmin || tier === 'admin'
@@ -245,6 +253,13 @@ export class AuthManager {
             total: stats.free_analyses_used ?? 0,
             limit: unlimited ? null : (stats.monthly_free_analyses ?? 1),
             subscription_ends_at: stats.subscription_ends_at ?? null,
+          },
+          archive_stats: {
+            count: archiveRaw.archived_count ?? 0,
+            limit: unlimited ? null : (archiveRaw.archived_limit ?? null),
+            remaining: unlimited ? null : (archiveRaw.archived_remaining ?? null),
+            retention_days: archiveRaw.retention_days ?? null,
+            storage_bytes_used: archiveRaw.storage_bytes_used ?? 0,
           },
           forge_rank: p.forge_rank ?? null,
         },

@@ -406,22 +406,33 @@
           </div>
 
           <!-- Quota -->
-          <div v-if="profile.user.analysis_stats" class="px-4 py-2.5 border-t border-white/[0.07] flex items-center gap-3">
-            <span class="text-[10px] text-gray-600 shrink-0">Analyses</span>
-            <template v-if="isAdmin">
+          <div v-if="profile.user.analysis_stats" class="px-4 py-2.5 border-t border-white/[0.07] space-y-2">
+            <div class="flex items-center gap-3">
+              <span class="text-[10px] text-gray-600 shrink-0 w-14">Analyses</span>
+              <template v-if="isAdmin">
+                <div class="flex-1 h-1.5 bg-white/[0.06] rounded-full overflow-hidden">
+                  <div class="h-full w-full rounded-full bg-green-500" />
+                </div>
+                <span class="text-xs font-medium tabular-nums shrink-0 text-gray-400">∞</span>
+              </template>
+              <template v-else-if="profile.user.analysis_stats.limit != null">
+                <div class="flex-1 h-1.5 bg-white/[0.06] rounded-full overflow-hidden">
+                  <div class="h-full rounded-full transition-all" :class="quotaPercent >= 80 ? 'bg-red-500' : quotaPercent >= 50 ? 'bg-yellow-500' : 'bg-green-500'" :style="{ width: (100 - quotaPercent) + '%' }" />
+                </div>
+                <span class="text-xs font-medium tabular-nums shrink-0" :class="(profile.user.analysis_stats.limit - profile.user.analysis_stats.total) <= 0 ? 'text-red-400' : 'text-gray-400'">
+                  {{ Math.max(0, profile.user.analysis_stats.limit - profile.user.analysis_stats.total) }}/{{ profile.user.analysis_stats.limit }}
+                </span>
+              </template>
+            </div>
+            <div v-if="profile.user.archive_stats?.limit != null" class="flex items-center gap-3">
+              <span class="text-[10px] text-gray-600 shrink-0 w-14">Cloud</span>
               <div class="flex-1 h-1.5 bg-white/[0.06] rounded-full overflow-hidden">
-                <div class="h-full w-full rounded-full bg-green-500" />
+                <div class="h-full rounded-full transition-all bg-emerald-500/80" :style="{ width: archiveQuotaPercent + '%' }" />
               </div>
-              <span class="text-xs font-medium tabular-nums shrink-0 text-gray-400">∞</span>
-            </template>
-            <template v-else-if="profile.user.analysis_stats.limit != null">
-              <div class="flex-1 h-1.5 bg-white/[0.06] rounded-full overflow-hidden">
-                <div class="h-full rounded-full transition-all" :class="quotaPercent >= 80 ? 'bg-red-500' : quotaPercent >= 50 ? 'bg-yellow-500' : 'bg-green-500'" :style="{ width: (100 - quotaPercent) + '%' }" />
-              </div>
-              <span class="text-xs font-medium tabular-nums shrink-0" :class="(profile.user.analysis_stats.limit - profile.user.analysis_stats.total) <= 0 ? 'text-red-400' : 'text-gray-400'">
-                {{ Math.max(0, profile.user.analysis_stats.limit - profile.user.analysis_stats.total) }}/{{ profile.user.analysis_stats.limit }}
+              <span class="text-xs font-medium tabular-nums shrink-0 text-gray-400">
+                {{ profile.user.archive_stats.remaining ?? 0 }}/{{ profile.user.archive_stats.limit }}
               </span>
-            </template>
+            </div>
           </div>
         </div>
         <div v-else-if="profileLoading" class="h-52 bg-white/[0.02] rounded-2xl animate-pulse border border-white/[0.07] flex-shrink-0" />
@@ -663,7 +674,7 @@
           <!-- Pending recordings (above analyses) -->
           <template v-if="pendingRecordings.length > 0">
             <div class="flex items-center gap-2 px-0.5 mb-1">
-              <span class="text-[10px] font-semibold text-gray-600 uppercase tracking-wider">Pending Analysis</span>
+              <span class="text-[10px] font-semibold text-gray-600 uppercase tracking-wider">Pending recordings</span>
               <span class="text-[10px] text-blue-500/70 bg-blue-500/10 px-1.5 py-px rounded-full">{{ pendingRecordings.length }}</span>
               <button
                 v-if="pendingRecordings.length > 1"
@@ -671,7 +682,7 @@
                 class="ml-auto text-[10px] font-medium text-blue-400/80 hover:text-blue-300 transition-colors disabled:opacity-50"
                 :disabled="bulkUploading"
                 @click="uploadAllPending"
-              >{{ bulkUploading ? 'Uploading…' : 'Upload all to cloud' }}</button>
+              >{{ bulkUploading ? 'Saving…' : 'Save all to cloud' }}</button>
             </div>
             <div
               v-for="rec in pendingRecordings"
@@ -692,6 +703,7 @@
                 <p class="text-[10px] text-gray-600 mt-0.5 truncate">
                   {{ rec.map || '—' }} · {{ formatRelativeTime(new Date(rec.recordedAt).toISOString()) }}
                   <span v-if="rec.fileSizeBytes" class="text-gray-700"> · {{ formatFileSize(rec.fileSizeBytes) }}</span>
+                  <span v-if="rec.cloudArchived" class="text-emerald-500/80"> · In cloud</span>
                   <span class="text-gray-700"> · {{ formatMode(rec.gameMode) }}</span>
                 </p>
               </div>
@@ -707,6 +719,12 @@
               </div>
               <div class="flex items-center gap-1.5 flex-shrink-0 ml-1">
                 <button v-if="rec.timeline?.playerKills?.length || rec.timeline?.playerDeaths?.length" class="px-2 py-1 text-[10px] font-medium text-gray-300 bg-white/[0.06] hover:bg-white/[0.1] border border-white/[0.08] rounded-lg transition-colors" @click="openRecordingReview(rec)">Review</button>
+                <button
+                  v-if="!rec.cloudArchived"
+                  :disabled="savingIds.has(rec.id)"
+                  class="px-2 py-1 text-[10px] font-medium text-emerald-300 bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/20 disabled:opacity-60 rounded-lg transition-colors"
+                  @click="saveRecording(rec.id)"
+                >{{ savingIds.has(rec.id) ? '…' : 'Save' }}</button>
                 <button :disabled="analysingIds.has(rec.id)" class="px-2 py-1 text-[10px] font-medium text-white bg-red-500 hover:bg-red-600 disabled:opacity-60 rounded-lg transition-colors flex items-center gap-1" @click="analyseRecording(rec.id)">
                   <svg v-if="analysingIds.has(rec.id)" class="w-3 h-3 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
                   {{ analysingIds.has(rec.id) ? '…' : 'Analyse' }}
@@ -1003,7 +1021,7 @@ import { useRouter } from 'vue-router'
 import type { ProfileData, AnalysisItem, PendingRecording, ClipRecord } from '../env.d.ts'
 import { getAgentImage, getAgentRole, getAgentColor, getMapMinimap, getRankHexColor, getRankIconUrl, getRoleColor, getTierBadgeClass, getTierBadgeLabel, getDisplayTier, formatGameMode, normalizeCombatScoreToAcs } from '../lib/valorant'
 import { getMasteryIconUrl, getSubscriptionIconUrl } from '../lib/rank-assets'
-import { hasAnalysisQuotaRemaining, isPlatformAdmin } from '../lib/tier-features'
+import { hasAnalysisQuotaRemaining, hasArchiveQuotaRemaining, isPlatformAdmin } from '../lib/tier-features'
 import { pendingTimeline } from '../stores/pendingTimeline'
 import { useAchievements } from '../composables/useAchievements'
 import DeadlockDemoPanel from '../components/DeadlockDemoPanel.vue'
@@ -1023,6 +1041,7 @@ const analyses = ref<AnalysisItem[]>([])
 const analysesLoading = ref(true)
 const pendingRecordings = ref<PendingRecording[]>([])
 const analysingIds = ref(new Set<string>())
+const savingIds = ref(new Set<string>())
 const status = ref<{
   recording: boolean
   recordingStarting: boolean
@@ -1265,6 +1284,12 @@ const quotaPercent = computed(() => {
   const stats = profile.value?.user?.analysis_stats
   if (!stats || stats.limit == null || isAdmin.value) return 0
   return Math.min(100, Math.round((stats.total / stats.limit) * 100))
+})
+
+const archiveQuotaPercent = computed(() => {
+  const stats = profile.value?.user?.archive_stats
+  if (!stats?.limit || isAdmin.value) return 0
+  return Math.min(100, Math.round((stats.count / stats.limit) * 100))
 })
 
 const avgScore = computed<number | null>(() => {
@@ -1714,6 +1739,38 @@ async function uploadAllPending() {
     setTimeout(() => { warning.value = null }, 12000)
   } finally {
     bulkUploading.value = false
+  }
+}
+
+async function saveRecording(id: string) {
+  if (savingIds.value.has(id)) return
+  const user = profile.value?.user
+  if (
+    user &&
+    !hasArchiveQuotaRemaining(user.archive_stats, user.tier, user.is_admin)
+  ) {
+    warning.value = 'Cloud storage limit reached — upgrade for more archived VODs.'
+    upgradeNeeded.value = true
+    return
+  }
+
+  savingIds.value.add(id)
+  savingIds.value = new Set(savingIds.value)
+  try {
+    const result = await window.api.recordings.saveToCloud(id)
+    if (!result.ok) {
+      warning.value = result.error ?? 'Could not save to cloud'
+      if (/archive.limit|cloud storage/i.test(result.error ?? '')) upgradeNeeded.value = true
+      setTimeout(() => { warning.value = null }, 12000)
+      return
+    }
+    await loadPendingRecordings()
+  } catch {
+    warning.value = 'Save to cloud failed — check your connection'
+    setTimeout(() => { warning.value = null }, 12000)
+  } finally {
+    savingIds.value.delete(id)
+    savingIds.value = new Set(savingIds.value)
   }
 }
 

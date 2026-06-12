@@ -175,10 +175,13 @@ export class RecordingsStore {
     return true
   }
 
-  /** Unanalysed local recordings for the active account (optionally filtered by linked Riot ID). */
+  /** Unanalysed recordings for the active account (local file and/or saved to cloud). */
   getPending(linkedRiot?: LinkedRiotId | null): PendingRecording[] {
     return this.recordings.filter(r => {
-      if (r.analysed || !fs.existsSync(r.path)) return false
+      if (r.analysed) return false
+      const hasLocal = fs.existsSync(r.path)
+      const hasCloud = r.cloudArchived && r.archiveId != null
+      if (!hasLocal && !hasCloud) return false
       const name = r.riotName?.trim() || r.timeline?.playerName?.trim()
       const tag = r.riotTag?.trim() || r.timeline?.playerTag?.trim()
       return recordingMatchesLinkedRiot(name, tag, linkedRiot)

@@ -118,7 +118,7 @@ See [AI-MODEL-STRATEGY.md](./AI-MODEL-STRATEGY.md).
 - [x] Clips: decouple upload UI from automatic analyse
 - [x] VOD: `archiveUpload()` in upload-manager
 - [x] `storage:upload-pending` uses archive path (no analysis quota burn)
-- [ ] Post-game: “Save to cloud” vs “Analyse” vs both
-- [ ] Dashboard pending row: separate **Save** and **Analyse** actions
-- [ ] Settings: show archive quota + analysis quota
-- [ ] `recordings-store`: `archiveId` distinct from `analysisId`
+- [x] Post-game: “Save to cloud” vs “Analyse”
+- [x] Dashboard pending row: separate **Save** and **Analyse** actions
+- [x] Settings: show archive quota + analysis quota
+- [x] `recordings-store`: `archiveId` distinct from `analysisId`

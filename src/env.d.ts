@@ -160,6 +160,8 @@ export interface PendingRecording {
   analysed: boolean
   jobId?: string
   analysisId?: number
+  archiveId?: string
+  cloudArchived?: boolean
   fileSizeBytes?: number
   timeline?: {
     playerKills?: Array<{ killerName: string; victimName: string; weapon?: string; videoOffsetMs?: number; round?: number }>
@@ -263,6 +265,13 @@ export interface ProfileData {
       total: number
       limit: number | null
       subscription_ends_at?: string | null
+    }
+    archive_stats?: {
+      count: number
+      limit: number | null
+      remaining: number | null
+      retention_days: number | null
+      storage_bytes_used: number
     }
     forge_rank?: ForgeRankInfo
   }
@@ -394,6 +403,7 @@ declare global {
       recordings: {
         get: () => Promise<PendingRecording[]>
         analyse: (id: string) => Promise<{ ok?: boolean; error?: string }>
+        saveToCloud: (id: string) => Promise<{ ok: boolean; archiveId?: string; alreadySaved?: boolean; error?: string }>
         dismiss: (id: string) => Promise<void>
         getTimeline: (id: string) => Promise<RecordingTimeline | null>
         nudgeSync: (id: string, deltaMs: number) => Promise<{ ok: boolean; videoSyncOffsetMs?: number }>

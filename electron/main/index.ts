@@ -2486,6 +2486,43 @@ app.whenReady().then(async () => {
     return { ok: true }
   })
 
+  ipcMain.handle('recordings:save-to-cloud', async (e, { id }: { id: string }) => {
+    const recording = recordingsStore.getById(id)
+    if (!recording) return { ok: false as const, error: 'Recording not found' }
+    if (recording.cloudArchived && recording.archiveId) {
+      return { ok: true as const, archiveId: recording.archiveId, alreadySaved: true }
+    }
+    if (!fs.existsSync(recording.path)) {
+      return { ok: false as const, error: 'Recording file missing on disk' }
+    }
+
+    const user = authManager.getUser()
+    const targetWindow = BrowserWindow.fromWebContents(e.sender)
+      ?? (mainWindow && !mainWindow.isDestroyed() ? mainWindow : null)
+    if (!targetWindow || targetWindow.isDestroyed()) {
+      return { ok: false as const, error: 'App window unavailable' }
+    }
+
+    const deleteLocal = settingsManager?.get().autoDelete ?? true
+    const archiveId = await doUploadArchiveOnly(
+      recording.id,
+      recording.path,
+      recording.riotName || user?.riot_name || '',
+      recording.riotTag || user?.riot_tag || '',
+      recording.game,
+      recording.map,
+      recording.agent,
+      recording.timeline,
+      targetWindow,
+      deleteLocal,
+    )
+
+    if (!archiveId) {
+      return { ok: false as const, error: 'Could not save recording to cloud' }
+    }
+    return { ok: true as const, archiveId }
+  })
+
   let bulkPendingUploadRunning = false
 
   ipcMain.handle('storage:get-breakdown', () => {
