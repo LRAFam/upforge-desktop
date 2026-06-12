@@ -80,7 +80,7 @@ import {
   getFreeDiskSpace,
 } from './disk-space'
 import { getStorageBreakdown, purgeCloudBackedLocals, runRecordingStorageMaintenance, buildStorageUsage, purgeUntrackedRecordingFiles, isLocalOnlyRecording } from './storage-cleanup'
-import { deleteLocalRecordingFiles } from './vod-compressor'
+import { buildStorageEstimate } from './storage-stats'
 import { CS2DemoUploader } from './cs2-demo-uploader'
 import { DiscordRPC } from './discord-rpc'
 import {
@@ -92,6 +92,7 @@ import {
 } from './window-manager'
 import { ClipPipeline } from './clip-pipeline'
 import { requestPregameBrief as _requestPregameBrief, requestPostGameDebrief as _requestPostGameDebrief } from './post-game-api'
+import { resolveInstanceLock, startInstanceCoordinator } from './instance-coordinator'
 
 /** Human-readable label for a game identifier. */
 function gameLabel(game?: string | null): string {
@@ -117,14 +118,8 @@ if (!app.isPackaged) {
 // crash Electron silently. Log them so they show up in support logs.
 // Full error reporting is set up after AuthManager is ready (see below).
 
-// Enforce single instance — if another UpForge process is already running,
-// focus its window and quit this one immediately.
-const gotLock = app.requestSingleInstanceLock()
-if (!gotLock) {
-  log.warn('[App] Another instance is already running — quitting duplicate.')
-  app.quit()
-  process.exit(0)
-}
+// Single-instance lock is resolved in bootstrap() before the app starts.
+let stopInstanceCoordinator: (() => void) | null = null
 
 let tray: Tray | null = null
 let mainWindow: BrowserWindow | null = null
@@ -215,9 +210,22 @@ function discordMatchContext(): { map: string | null; agent: string | null } {
   return { map: null, agent: null }
 }
 
+function focusMainWindow(): void {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    if (mainWindow.isMinimized()) mainWindow.restore()
+    mainWindow.show()
+    mainWindow.focus()
+    return
+  }
+  mainWindow = createMainWindow(authManager?.isAuthenticated() ?? false)
+}
+
 function wireRecorderStatus(rec: OBSRecorder, label: string): void {
   rec.onStatusChange = (recording, error) => {
-    mainWindow?.webContents.send('recording:status-changed', { recording, error: error ?? null })
+    if (isQuitting) return
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('recording:status-changed', { recording, error: error ?? null })
+    }
     updateTrayMenuFn?.()
     const game = gameDetector.currentGame() || 'valorant'
     if (recording) {
@@ -233,13 +241,19 @@ function wireRecorderStatus(rec: OBSRecorder, label: string): void {
       log.warn(`[Main] ${label} recording stopped with error:`, error)
       reportRecordingError('mid-match', error, { label })
       onRecordingLost?.(error)
-      tray?.setToolTip('UpForge — Recording stopped!')
+      try {
+        if (tray && !tray.isDestroyed()) tray.setToolTip('UpForge — Recording stopped!')
+      } catch { /* ignore */ }
       showAppNotification({
         title: 'UpForge — Recording Stopped',
         body: 'Recording stopped unexpectedly. Open UpForge to see details.',
         silent: notifySilent(),
       })
-      setTimeout(() => tray?.setToolTip(idleTooltip()), 10_000)
+      setTimeout(() => {
+        try {
+          if (!isQuitting && tray && !tray.isDestroyed()) tray.setToolTip(idleTooltip())
+        } catch { /* ignore */ }
+      }, 10_000)
     }
   }
 }
@@ -700,6 +714,18 @@ function setupGameDetection(): void {
     const agent = timeline?.agent ?? null
     const gameMode = riotLocalApi.getLastGameMode() ?? 'UNKNOWN'
     const autoAnalyse = config?.autoAnalyse !== false
+    const clipsOnly = config?.fullMatchRecording === false || obsRecorder.isClipsOnlySession()
+
+    if (clipsOnly) {
+      tray?.setToolTip(idleTooltip(game))
+      logActivity('Clips-only mode — highlight clips saved during the match (no full VOD on disk)')
+      showAppNotification({
+        title: 'UpForge — Match complete',
+        body: 'Clips-only mode: kill highlights were saved during the match. No full recording was stored locally.',
+        silent: notifySilent(),
+      })
+      return
+    }
 
     // Capture diagnostic state for the developer panel
     const riotDiag = riotLocalApi.getDiagnostics()
@@ -2109,24 +2135,21 @@ function createSplashWindow(): BrowserWindow {
   return _createSplashWindow()
 }
 
-app.whenReady().then(async () => {
+async function startApp(): Promise<void> {
+  await app.whenReady()
   electronApp.setAppUserModelId('gg.upforge.desktop')
 
   app.on('browser-window-created', (_, window) => {
     optimizer.watchWindowShortcuts(window)
   })
 
-  // When a second instance is launched (e.g. user double-clicks the icon again),
-  // bring the existing window to the front instead of opening another copy.
+  // When a second instance is launched, bring the existing window to the front.
   app.on('second-instance', () => {
-    if (mainWindow && !mainWindow.isDestroyed()) {
-      if (mainWindow.isMinimized()) mainWindow.restore()
-      mainWindow.show()
-      mainWindow.focus()
-    } else {
-      // Window was destroyed (e.g. after a crash) — recreate it
-      mainWindow = createMainWindow()
-    }
+    focusMainWindow()
+  })
+
+  stopInstanceCoordinator = startInstanceCoordinator(() => {
+    focusMainWindow()
   })
 
   uploadManager = new UploadManager(authManager)
@@ -2193,7 +2216,11 @@ app.whenReady().then(async () => {
     }
   }
 
-  setupAutoUpdater(splashWindow, launchMainApp, () => { isQuitting = true })
+  setupAutoUpdater(splashWindow, launchMainApp, () => {
+    isQuitting = true
+    stopObsHealthMonitor?.()
+    obsRecorder.forceStop()
+  })
 
   // ffmpeg is only used for post-match clip extraction — verify bundled binary early.
   clipFfmpegProbe.preflight().then((result) => {
@@ -2564,6 +2591,19 @@ app.whenReady().then(async () => {
     return buildStorageUsage(savePath, getActiveUserId(), recordingsStore)
   })
 
+  ipcMain.handle('storage:get-estimate', () => {
+    const savePath = recordingSavePath()
+    const settings = settingsManager?.get()
+    if (!settings) {
+      return buildStorageEstimate(savePath, {
+        recordingPreset: 'coaching',
+        recordingBitrate: 5,
+        fullMatchRecording: true,
+      })
+    }
+    return buildStorageEstimate(savePath, settings)
+  })
+
   ipcMain.handle('storage:purge-orphans', () => {
     const result = purgeUntrackedRecordingFiles(recordingsStore, recordingSavePath(), 0)
     mainWindow?.webContents.send('recordings:updated')
@@ -2750,7 +2790,7 @@ app.whenReady().then(async () => {
       mainWindow.focus()
     }
   })
-})
+}
 
 // Re-show window when clicking dock icon on Mac
 app.on('activate', () => {
@@ -2766,7 +2806,6 @@ app.on('window-all-closed', () => {
   // Don't quit when all windows close — keep running in tray
 })
 
-// Prevent the network-service utility process crash from killing the whole app
 app.on('child-process-gone', (_event, details) => {
   log.warn('[Main] Child process gone:', details.type, details.reason)
 })
@@ -2774,14 +2813,27 @@ app.on('child-process-gone', (_event, details) => {
 app.on('before-quit', () => {
   isQuitting = true
   stopObsHealthMonitor?.()
+  stopInstanceCoordinator?.()
+  stopInstanceCoordinator = null
+  obsRecorder.forceStop()
   if (trayRefreshInterval) clearInterval(trayRefreshInterval)
-  tray?.destroy()
+  try {
+    tray?.destroy()
+  } catch { /* ignore */ }
   tray = null
   cancelAllPollingTimers()
   gameDetector.stop()
-  obsRecorder.forceStop()
   hotkeyManager.unregisterAll()
   globalShortcut.unregisterAll()
   destroyOverlay()
   discordRPC.destroy()
 })
+
+void (async () => {
+  const role = await resolveInstanceLock()
+  if (role === 'duplicate') {
+    app.quit()
+    return
+  }
+  await startApp()
+})()

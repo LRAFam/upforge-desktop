@@ -213,7 +213,7 @@ export function createTray(deps: TrayDeps): TrayResult {
     template.push(
       { type: 'separator' },
       { label: 'Open Clips Folder', click: () => shell.openPath(ClipExtractor.clipsDir()) },
-      { label: 'Quit UpForge', click: () => { require('electron').app.quit() } }
+      { label: 'Quit UpForge completely', click: () => { require('electron').app.quit() } }
     )
 
     tray.setContextMenu(Menu.buildFromTemplate(template))

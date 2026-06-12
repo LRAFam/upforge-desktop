@@ -345,6 +345,22 @@
               </div>
             </div>
 
+            <div class="panel-elevated overflow-hidden p-4">
+              <div class="flex items-center justify-between gap-3">
+                <div>
+                  <p class="text-xs font-medium text-gray-300">Record full match VODs</p>
+                  <p class="mt-0.5 text-[11px] text-gray-600">Off = replay-buffer kill clips only (~minimal disk use). No AI match coaching without a VOD.</p>
+                </div>
+                <button
+                  class="relative inline-flex h-5 w-9 flex-shrink-0 items-center rounded-full transition-colors"
+                  :class="settings.fullMatchRecording !== false ? 'bg-red-500' : 'bg-white/20'"
+                  @click="toggleFullMatchRecording()"
+                >
+                  <span class="inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform" :class="settings.fullMatchRecording !== false ? 'translate-x-4' : 'translate-x-0.5'" />
+                </button>
+              </div>
+            </div>
+
             <div class="rounded-2xl border p-4 space-y-4" :class="obsStatus?.connected ? 'border-green-500/20 bg-green-500/[0.04]' : 'border-amber-500/20 bg-amber-500/[0.04]'">
               <div class="flex items-start justify-between gap-3">
                 <div>
@@ -366,7 +382,8 @@
                 <li>Recording starts/stops automatically when you enter a match</li>
               </ol>
               <div class="flex flex-wrap items-center gap-2">
-                <button v-if="!obsStatus?.connected" :disabled="obsConnecting" class="rounded-xl border border-red-500/20 bg-red-500/10 px-3 py-2 text-xs font-medium text-red-300 transition-colors hover:border-red-500/35 hover:bg-red-500/15 disabled:opacity-50" @click="obsConnect">{{ obsConnecting ? 'Connecting…' : 'Connect OBS' }}</button>
+                <button v-if="!obsStatus?.connected" :disabled="obsConnecting" class="rounded-xl border border-amber-500/20 bg-amber-500/10 px-3 py-2 text-xs font-medium text-amber-200 transition-colors hover:border-amber-500/30 hover:bg-amber-500/15 disabled:opacity-50" @click="obsLaunchAndConnect">{{ obsConnecting ? 'Starting…' : 'Launch OBS + Connect' }}</button>
+                <button v-if="!obsStatus?.connected" :disabled="obsConnecting" class="rounded-xl border border-red-500/20 bg-red-500/10 px-3 py-2 text-xs font-medium text-red-300 transition-colors hover:border-red-500/35 hover:bg-red-500/15 disabled:opacity-50" @click="obsConnect">{{ obsConnecting ? 'Connecting…' : 'Connect' }}</button>
                 <template v-else>
                   <button class="rounded-xl border border-white/[0.08] bg-white/[0.04] px-3 py-2 text-xs font-medium text-gray-300 transition-colors hover:border-white/[0.14] hover:text-white" @click="obsDisconnect">Disconnect</button>
                   <button :disabled="obsSetupRunning" class="rounded-xl border border-white/[0.08] bg-white/[0.04] px-3 py-2 text-xs font-medium text-gray-300 transition-colors hover:border-white/[0.14] hover:text-white disabled:opacity-50" @click="obsSetupScene">{{ obsSetupRunning ? 'Setting up…' : 'Recreate UpForge scene' }}</button>
@@ -410,6 +427,7 @@
                 <div>
                   <p class="text-xs font-medium text-gray-300">Storage usage</p>
                   <p class="mt-1 text-xs" :class="diskSpaceCritical ? 'text-red-300/90' : diskSpaceLow ? 'text-orange-300/90' : 'text-gray-500'">{{ storageSummary }}</p>
+                  <p v-if="storageEstimateLabel" class="mt-1 text-[11px] text-gray-600">{{ storageEstimateLabel }}</p>
                 </div>
                 <button class="rounded-xl border border-white/[0.08] bg-white/[0.04] px-3 py-2 text-xs font-medium text-gray-300 transition-colors hover:border-white/[0.14] hover:text-white" @click="openRecordingsFolder">Open folder</button>
               </div>
@@ -904,6 +922,12 @@ const storageBreakdown = ref({
   orphanBytes: 0,
   legacyDuplicateBytes: 0,
 })
+const storageEstimate = ref<{
+  estimatedGbPerMatch: number
+  estimatedGbPerWeek: number
+  assumedMatchesPerWeek: number
+  recent: { bytesInPeriod: number; filesInPeriod: number; bytesPerDay: number; lookbackDays: number }
+} | null>(null)
 const storageBusy = ref(false)
 const storageMessage = ref('')
 const storageMessageError = ref(false)
@@ -996,6 +1020,35 @@ async function obsConnect() {
   } finally {
     obsConnecting.value = false
   }
+}
+
+async function obsLaunchAndConnect() {
+  obsConnecting.value = true
+  try {
+    await window.api.settings.save({
+      obsHost: settings.obsHost,
+      obsPort: settings.obsPort,
+      obsPassword: settings.obsPassword,
+      obsReplayBufferSeconds: settings.obsReplayBufferSeconds,
+    })
+    const result = await window.api.obs.launchAndConnect()
+    if (result.ok) {
+      obsStatus.value = await window.api.obs.getStatus()
+      showToast(result.alreadyConnected ? 'OBS already connected' : 'OBS launched and connected')
+    } else {
+      showToast(result.error ?? 'Could not launch or connect to OBS')
+    }
+  } finally {
+    obsConnecting.value = false
+  }
+}
+
+async function toggleFullMatchRecording(): Promise<void> {
+  const next = settings.fullMatchRecording === false
+  settings.fullMatchRecording = next
+  await window.api.settings.save({ fullMatchRecording: next })
+  await loadStorageUsage()
+  showSaved()
 }
 
 async function obsSetupScene() {
@@ -1118,7 +1171,8 @@ const settings = reactive<AppSettings>({
   captureMonitor: 'auto',
   pregameKillList: [],
   clipRetentionDays: 0,
-  recordingRetentionDays: 0,
+  recordingRetentionDays: 14,
+  fullMatchRecording: true,
   notificationSound: true,
   discordRichPresence: true,
   inGameFeedback: 'notifications',
@@ -1221,6 +1275,19 @@ const storageSummary = computed(() => {
   const local = `${formatBytes(storageBytes.value)} on disk`
   if (freeDiskLabel.value == null) return local
   return `${local} · ${freeDiskLabel.value} free`
+})
+
+const storageEstimateLabel = computed(() => {
+  const est = storageEstimate.value
+  if (!est) return ''
+  if (settings.fullMatchRecording === false) {
+    if (est.recent.bytesPerDay <= 0) return 'Clips-only mode — disk use depends on highlights saved in-game.'
+    return `Clips-only · ~${formatBytes(est.recent.bytesPerDay)}/day recently (${est.recent.filesInPeriod} files in ${est.recent.lookbackDays}d)`
+  }
+  if (est.recent.bytesPerDay > 0) {
+    return `~${formatBytes(est.recent.bytesPerDay)}/day recently · ~${est.estimatedGbPerWeek.toFixed(1)} GB/week at current pace`
+  }
+  return `~${est.estimatedGbPerMatch.toFixed(1)} GB per match · ~${est.estimatedGbPerWeek.toFixed(0)} GB/week (${est.assumedMatchesPerWeek} matches)`
 })
 
 const hasProAccess = computed(() => proAccessForUser(user.value))
@@ -1481,14 +1548,16 @@ function formatBytes(bytes: number): string {
 
 async function loadStorageUsage(): Promise<void> {
   try {
-    const [usage, breakdown] = await Promise.all([
+    const [usage, breakdown, estimate] = await Promise.all([
       window.api.storage.getUsage(),
       window.api.storage.getBreakdown(),
+      window.api.storage.getEstimate(),
     ])
     storageBytes.value = usage.bytes
     storageCount.value = usage.count
     freeDiskBytes.value = usage.freeDiskBytes
     storageBreakdown.value = breakdown
+    storageEstimate.value = estimate
   } catch { /* ignore */ }
 }
 

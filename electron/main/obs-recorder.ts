@@ -76,6 +76,8 @@ export class OBSRecorder {
   private _savingReplay = false
 
   private _disconnectedDuringRecording = false
+  private _clipsOnlySession = false
+  private _lastConnectWarnAt = 0
 
   onStatusChange?: (recording: boolean, error?: string) => void
   onReplayClipSaved?: (path: string, trigger: string) => void
@@ -201,7 +203,13 @@ export class OBSRecorder {
         return { ok: true, version: obsWebSocketVersion, setup }
       } catch (err) {
         lastRawError = err instanceof Error ? err.message : String(err)
-        log.warn('[OBSRecorder] Connection failed for', url, ':', lastRawError)
+        const now = Date.now()
+        if (now - this._lastConnectWarnAt >= 5 * 60 * 1000) {
+          log.warn('[OBSRecorder] Connection failed for', url, ':', lastRawError)
+          this._lastConnectWarnAt = now
+        } else {
+          log.debug('[OBSRecorder] Connection failed for', url, ':', lastRawError)
+        }
         this._suppressConnectionEvents = true
         try {
           await this._obs.disconnect()
@@ -253,6 +261,7 @@ export class OBSRecorder {
   // ── Recording interface (DesktopRecorder-compatible) ────────────────────────
 
   isRecording(): boolean { return this._recording }
+  isClipsOnlySession(): boolean { return this._clipsOnlySession }
   getLastRecordingPath(): string | null { return this._outputPath }
   getLastError(): string | null { return this._lastError }
   wasNoAudio(): boolean { return this._noAudio }
@@ -323,6 +332,7 @@ export class OBSRecorder {
     this._startupWarning = null
     this._outputPath = null
     this._disconnectedDuringRecording = false
+    this._clipsOnlySession = config?.clipsOnly === true
 
     const saveDir = config?.savePath ?? join(app.getPath('userData'), 'recordings')
     const freeBytes = await getFreeDiskSpace(saveDir)
@@ -357,12 +367,17 @@ export class OBSRecorder {
         }).catch(() => { /* non-fatal */ })
       }
 
-      // Start the full-match recording
-      await this._obs.call('StartRecord')
+      // Start the full-match recording (skipped in clips-only mode)
+      if (!this._clipsOnlySession) {
+        await this._obs.call('StartRecord')
+      }
       this._startedAt = Date.now()
       this._recording = true
       this.onStatusChange?.(true)
-      log.info('[OBSRecorder] Recording started for game:', game)
+      log.info(
+        `[OBSRecorder] ${this._clipsOnlySession ? 'Clips-only session' : 'Recording'} started for game:`,
+        game,
+      )
 
       // Start replay buffer alongside the recording
       await this._obs.call('StartReplayBuffer').catch((err) => {
@@ -405,12 +420,24 @@ export class OBSRecorder {
     }
 
     if (!outputActive && !this._recording) {
+      this._clipsOnlySession = false
       return this._outputPath
     }
 
     try {
       if (this._replayBufferActive) {
         await this._obs.call('StopReplayBuffer').catch(() => { /* non-fatal */ })
+      }
+
+      if (this._clipsOnlySession) {
+        this._recording = false
+        this._startedAt = null
+        this._clipsOnlySession = false
+        this._disconnectedDuringRecording = false
+        this._outputPath = null
+        this.onStatusChange?.(false)
+        log.info('[OBSRecorder] Clips-only session ended')
+        return null
       }
 
       const response = await this._obs.call('StopRecord')
@@ -442,7 +469,7 @@ export class OBSRecorder {
     this._startedAt = null
     this._obs.call('StopRecord').catch(() => {})
     this._obs.call('StopReplayBuffer').catch(() => {})
-    this.onStatusChange?.(false)
+    // Skip UI callbacks during app shutdown — windows/tray may already be destroyed.
   }
 
   /** OBS may omit outputPath on StopRecord — fall back to GetRecordStatus. */

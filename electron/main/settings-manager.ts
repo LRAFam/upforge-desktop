@@ -36,6 +36,8 @@ export interface AppSettings {
   clipRetentionDays: number
   /** Auto-delete local-only match recordings older than this many days (0 = disabled) */
   recordingRetentionDays: number
+  /** When false, only save replay-buffer highlight clips (no full-match VOD). */
+  fullMatchRecording: boolean
   /** Play a sound when a notification fires */
   notificationSound: boolean
   /** Show match status in Discord Rich Presence (requires Discord desktop + activity sharing on) */
@@ -134,7 +136,8 @@ const DEFAULTS: AppSettings = {
   captureMonitor: 'auto',
   pregameKillList: [],
   clipRetentionDays: 0,
-  recordingRetentionDays: 0,
+  recordingRetentionDays: 14,
+  fullMatchRecording: true,
   notificationSound: true,
   discordRichPresence: true,
   inGameFeedback: 'notifications',

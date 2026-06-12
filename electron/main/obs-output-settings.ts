@@ -29,6 +29,7 @@ export function buildRecorderConfig(
     audioEnabled: settings.audioEnabled,
     savePath: resolveRecordingSavePath(settings.savePath, userId),
     captureMonitor: settings.captureMonitor,
+    clipsOnly: settings.fullMatchRecording === false,
   }
 }
 

@@ -89,6 +89,8 @@ export interface AppSettings {
   clipRetentionDays: number
   /** Auto-delete local-only match recordings after this many days (0 = disabled) */
   recordingRetentionDays: number
+  /** When false, only replay-buffer highlight clips are saved (no full-match VOD). */
+  fullMatchRecording: boolean
   /** Play a sound when a notification fires */
   notificationSound: boolean
   /** Show match status in Discord Rich Presence */
@@ -514,6 +516,17 @@ declare global {
           | { ok: true; uploaded: number; failed: number; stoppedEarly: boolean; stopReason?: string }
         >
         openFolder: () => Promise<void>
+        getEstimate: () => Promise<{
+          estimatedGbPerMatch: number
+          estimatedGbPerWeek: number
+          assumedMatchesPerWeek: number
+          recent: {
+            bytesInPeriod: number
+            filesInPeriod: number
+            bytesPerDay: number
+            lookbackDays: number
+          }
+        }>
       }
       clips: {
         get: () => Promise<ClipRecord[]>
@@ -595,6 +608,10 @@ declare global {
           version?: string
           setup?: { ok: boolean; sceneCreated: boolean; inputCreated: boolean; error?: string }
         }>
+        launchAndConnect: () => Promise<
+          | { ok: true; alreadyConnected?: boolean; launched?: boolean }
+          | { ok: false; error?: string; launched?: boolean }
+        >
         disconnect: () => Promise<void>
         getStatus: () => Promise<{
           connected: boolean

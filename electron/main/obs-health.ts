@@ -41,6 +41,7 @@ export async function probeObsConnection(
     notify?: boolean
     notifySilent?: () => boolean
     logActivity?: (msg: string) => void
+    quiet?: boolean
   },
 ): Promise<ObsConnectionPayload> {
   if (obsRecorder.isConnected()) {
@@ -53,14 +54,18 @@ export async function probeObsConnection(
   }))
 
   if (result.ok) {
-    opts?.logActivity?.('OBS connected — recording ready')
+    if (!opts?.quiet) opts?.logActivity?.('OBS connected — recording ready')
     return broadcastObsConnection(mainWindow, obsRecorder)
   }
 
   const error = result.error ?? 'OBS not running'
-  log.info('[OBS Health] Connection probe failed:', error)
+  if (!opts?.quiet) {
+    log.info('[OBS Health] Connection probe failed:', error)
+  }
   const payload = broadcastObsConnection(mainWindow, obsRecorder, error)
-  opts?.logActivity?.('OBS not connected — open Settings → Recording to fix')
+  if (!opts?.quiet) {
+    opts?.logActivity?.('OBS not connected — open Settings → Recording to fix')
+  }
 
   if (opts?.notify && Notification.isSupported()) {
     const now = Date.now()
@@ -77,21 +82,40 @@ export async function probeObsConnection(
   return payload
 }
 
-/** Retry OBS connect every 30s while disconnected (e.g. user opens OBS after UpForge). */
+/** Retry OBS connect while disconnected — backs off to reduce log noise. */
 export function startObsHealthMonitor(
   obsRecorder: OBSRecorder,
   getMainWindow: () => BrowserWindow | null | undefined,
   opts?: { logActivity?: (msg: string) => void },
 ): () => void {
-  const interval = setInterval(() => {
-    if (obsRecorder.isConnected()) return
-    const mainWindow = getMainWindow()
-    if (!mainWindow || mainWindow.isDestroyed()) return
-    void probeObsConnection(obsRecorder, mainWindow, {
-      notify: false,
-      logActivity: opts?.logActivity,
-    })
-  }, 30_000)
+  let intervalMs = 30_000
+  let timer: ReturnType<typeof setTimeout> | null = null
 
-  return () => clearInterval(interval)
+  const schedule = () => {
+    timer = setTimeout(async () => {
+      if (obsRecorder.isConnected()) {
+        intervalMs = 30_000
+        schedule()
+        return
+      }
+      const mainWindow = getMainWindow()
+      if (!mainWindow || mainWindow.isDestroyed()) {
+        schedule()
+        return
+      }
+      await probeObsConnection(obsRecorder, mainWindow, {
+        notify: false,
+        quiet: true,
+        logActivity: opts?.logActivity,
+      })
+      intervalMs = Math.min(intervalMs * 1.5, 120_000)
+      schedule()
+    }, intervalMs)
+  }
+
+  schedule()
+
+  return () => {
+    if (timer) clearTimeout(timer)
+  }
 }

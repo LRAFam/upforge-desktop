@@ -137,8 +137,13 @@
           <button
             :disabled="obsConnecting"
             class="px-2.5 py-1 rounded-lg border border-amber-500/30 bg-amber-500/15 text-amber-200 hover:bg-amber-500/25 transition-colors font-medium disabled:opacity-50"
+            @click="launchObsFromBanner"
+          >{{ obsConnecting ? 'Starting…' : 'Launch OBS' }}</button>
+          <button
+            :disabled="obsConnecting"
+            class="px-2.5 py-1 rounded-lg border border-amber-500/25 bg-amber-500/10 text-amber-200 hover:bg-amber-500/15 transition-colors font-medium disabled:opacity-50"
             @click="connectObsFromBanner"
-          >{{ obsConnecting ? 'Connecting…' : 'Connect OBS' }}</button>
+          >{{ obsConnecting ? 'Connecting…' : 'Connect' }}</button>
           <button
             class="px-2.5 py-1 rounded-lg border border-white/[0.10] bg-white/[0.04] text-gray-300 hover:text-white hover:bg-white/[0.08] transition-colors font-medium"
             @click="openObsSettings"
@@ -593,6 +598,24 @@ async function connectObsFromBanner() {
     }
   } catch (e) {
     obsError.value = e instanceof Error ? e.message : 'Could not connect to OBS'
+  } finally {
+    obsConnecting.value = false
+  }
+}
+
+async function launchObsFromBanner() {
+  obsConnecting.value = true
+  obsError.value = null
+  try {
+    const result = await window.api.obs.launchAndConnect()
+    if (result.ok) {
+      obsConnected.value = true
+      obsError.value = null
+    } else {
+      obsError.value = result.error ?? 'Could not launch or connect to OBS'
+    }
+  } catch (e) {
+    obsError.value = e instanceof Error ? e.message : 'Could not launch OBS'
   } finally {
     obsConnecting.value = false
   }

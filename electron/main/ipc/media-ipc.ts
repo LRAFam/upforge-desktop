@@ -3,10 +3,12 @@
  * IPC handlers for recording control, screenshots, desktop capture, and OBS WebSocket.
  */
 
-import { IpcMain, app, desktopCapturer } from 'electron'
+import { IpcMain, app, desktopCapturer, BrowserWindow } from 'electron'
 import fs from 'fs'
 import path from 'path'
 import log from 'electron-log'
+import { broadcastObsConnection, probeObsConnection } from '../obs-health'
+import { launchObsStudio, obsLaunchDelayMs } from '../obs-launcher'
 import type { MatchRecorder } from '../match-recorder'
 import { OBSRecorder } from '../obs-recorder'
 import { SettingsManager } from '../settings-manager'
@@ -130,7 +132,39 @@ export function setupMediaHandlers(
 
   ipcMain.handle('obs:connect', async () => {
     if (!obsRecorder) return { ok: false, error: 'OBS recorder not available' }
-    return obsRecorder.connect()
+    const result = await obsRecorder.connect()
+    if (result.ok) {
+      const win = BrowserWindow.getAllWindows().find(w => !w.isDestroyed())
+      broadcastObsConnection(win, obsRecorder)
+    }
+    return result
+  })
+
+  ipcMain.handle('obs:launch-and-connect', async () => {
+    if (!obsRecorder) return { ok: false, error: 'OBS recorder not available' }
+    if (obsRecorder.isConnected()) {
+      return { ok: true, alreadyConnected: true as const }
+    }
+
+    const launched = await launchObsStudio()
+    if (!launched.ok) {
+      return { ok: false, error: launched.error ?? 'Could not launch OBS' }
+    }
+
+    await new Promise((r) => setTimeout(r, obsLaunchDelayMs()))
+
+    const result = await obsRecorder.connect()
+    const win = BrowserWindow.getAllWindows().find(w => !w.isDestroyed())
+    if (result.ok) {
+      broadcastObsConnection(win, obsRecorder)
+      return { ok: true as const, launched: true as const }
+    }
+    broadcastObsConnection(win, obsRecorder, result.error)
+    return {
+      ok: false as const,
+      launched: true as const,
+      error: result.error ?? 'OBS opened but WebSocket connection failed — enable it in Tools → WebSocket Server Settings',
+    }
   })
 
   ipcMain.handle('obs:disconnect', async () => {

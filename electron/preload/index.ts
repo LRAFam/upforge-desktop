@@ -68,6 +68,7 @@ const api = {
   },
   storage: {
     getUsage: () => ipcRenderer.invoke('storage:get-usage'),
+    getEstimate: () => ipcRenderer.invoke('storage:get-estimate'),
     getBreakdown: () => ipcRenderer.invoke('storage:get-breakdown'),
     purgeCloudBacked: () => ipcRenderer.invoke('storage:purge-cloud-backed'),
     purgeOrphans: () => ipcRenderer.invoke('storage:purge-orphans'),
@@ -146,6 +147,7 @@ const api = {
   },
   obs: {
     connect: () => ipcRenderer.invoke('obs:connect'),
+    launchAndConnect: () => ipcRenderer.invoke('obs:launch-and-connect'),
     disconnect: () => ipcRenderer.invoke('obs:disconnect'),
     getStatus: () => ipcRenderer.invoke('obs:get-status'),
     setupScene: () => ipcRenderer.invoke('obs:setup-scene'),

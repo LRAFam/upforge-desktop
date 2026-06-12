@@ -42,9 +42,10 @@ export function markStartupComplete(): void {
   startupComplete = true
 }
 
-export function installUpdate(): void {
+export function installUpdate(beforeQuit?: () => void): void {
+  beforeQuit?.()
   BrowserWindow.getAllWindows().forEach(win => {
-    try { win.destroy() } catch { /* ignore */ }
+    try { if (!win.isDestroyed()) win.destroy() } catch { /* ignore */ }
   })
   autoUpdater.quitAndInstall(true, true)
 }
@@ -125,7 +126,7 @@ export function setupAutoUpdater(
       setTimeout(() => {
         beforeQuit?.()
         BrowserWindow.getAllWindows().forEach(win => {
-          try { win.destroy() } catch { /* ignore */ }
+          try { if (!win.isDestroyed()) win.destroy() } catch { /* ignore */ }
         })
         autoUpdater.quitAndInstall(true, true)
       }, 1500)
@@ -152,8 +153,8 @@ export function setupAutoUpdater(
     else if (!startupCheckDone) finishStartupCheck()
   })
 
-  const MAX_ATTEMPTS = 12
-  const RETRY_DELAY_MS = 10_000
+  const MAX_ATTEMPTS = 8
+  const RETRY_BASE_MS = 10_000
   const INITIAL_DELAY_MS = 8_000
 
   void (async () => {
@@ -167,10 +168,11 @@ export function setupAutoUpdater(
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err)
         if (isTransientUpdateError(msg) && attempt < MAX_ATTEMPTS) {
+          const delayMs = RETRY_BASE_MS * Math.min(attempt, 4)
           log.warn(
-            `[Updater] Release metadata not ready (${attempt}/${MAX_ATTEMPTS}), retrying in ${RETRY_DELAY_MS / 1000}s…`
+            `[Updater] Release metadata not ready (${attempt}/${MAX_ATTEMPTS}), retrying in ${delayMs / 1000}s…`
           )
-          await sleep(RETRY_DELAY_MS)
+          await sleep(delayMs)
           continue
         }
         if (isTransientUpdateError(msg)) {

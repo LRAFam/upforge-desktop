@@ -122,6 +122,24 @@
         </template>
       </div>
 
+      <div
+        v-if="!status.obsConnected && !status.recording && !status.recordingStarting && platform === 'win32'"
+        class="flex items-center gap-1.5 flex-shrink-0"
+      >
+        <button
+          type="button"
+          class="px-2 py-1 rounded-lg text-[10px] font-medium border border-amber-500/30 bg-amber-500/10 text-amber-200 hover:bg-amber-500/20 disabled:opacity-50"
+          :disabled="obsConnecting"
+          @click="launchAndConnectObs"
+        >{{ obsConnecting ? '…' : 'Launch OBS' }}</button>
+        <button
+          type="button"
+          class="px-2 py-1 rounded-lg text-[10px] font-medium border border-white/[0.10] bg-white/[0.04] text-gray-300 hover:text-white disabled:opacity-50"
+          :disabled="obsConnecting"
+          @click="connectObs"
+        >Connect</button>
+      </div>
+
       <!-- Hotkey hints (idle) -->
       <div v-if="status.ffmpegOk && !status.recording && !status.recordingStarting && !(platform && platform !== 'win32') && hotkeys['save-clip']" class="flex items-center gap-1.5 flex-shrink-0">
         <span class="text-[10px] text-gray-700 mr-0.5">Hotkeys</span>
@@ -1129,6 +1147,38 @@ const simStatus = ref('')
 const recordingStartedAt = ref<number | null>(null)
 const recordingElapsed = ref('')
 const stopping = ref(false)
+const obsConnecting = ref(false)
+
+async function connectObs(): Promise<void> {
+  obsConnecting.value = true
+  try {
+    const result = await window.api.obs.connect()
+    if (result.ok) {
+      status.value = { ...status.value, obsConnected: true }
+    } else {
+      warning.value = result.error ?? 'Could not connect to OBS'
+      setTimeout(() => { warning.value = null }, 12000)
+    }
+  } finally {
+    obsConnecting.value = false
+  }
+}
+
+async function launchAndConnectObs(): Promise<void> {
+  obsConnecting.value = true
+  try {
+    const result = await window.api.obs.launchAndConnect()
+    if (result.ok) {
+      status.value = { ...status.value, obsConnected: true }
+    } else {
+      warning.value = result.error ?? 'Could not launch or connect to OBS'
+      setTimeout(() => { warning.value = null }, 12000)
+    }
+  } finally {
+    obsConnecting.value = false
+  }
+}
+
 const showRankHistory = ref(false)
 const warning = ref<string | null>(null)
 const warningAction = ref<{ label: string; route: string } | null>(null)
