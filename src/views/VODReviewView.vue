@@ -342,7 +342,7 @@
             <span class="text-[10px] text-gray-700 text-center max-w-xs">
               <template v-if="playbackRefreshing">Refreshing cloud playback…</template>
               <template v-else-if="recordingId">
-                {{ timeline?.analysisId
+                {{ timeline?.analysisId || timeline?.archiveId
                   ? 'Local file removed — cloud copy unavailable or expired.'
                   : 'OBS was not recording when this match was captured.' }}
               </template>
@@ -351,7 +351,7 @@
               </template>
             </span>
             <button
-              v-if="activePlaybackAnalysisId && !playbackRefreshing"
+              v-if="canRefreshCloudPlayback && !playbackRefreshing"
               type="button"
               class="pointer-events-auto text-[10px] font-semibold text-red-400/80 hover:text-red-300 transition-colors"
               @click="refreshPlaybackUrl()"
@@ -1275,6 +1275,7 @@ interface TeamPlayerSnapshot {
 interface RecordingTimeline {
   id: string
   analysisId?: number | null
+  archiveId?: string | null
   videoPath: string | null
   map: string | null
   agent: string | null
@@ -1630,6 +1631,16 @@ const activePlaybackAnalysisId = computed((): number | null => {
   return null
 })
 
+const activePlaybackArchiveId = computed((): string | null => {
+  const fromTimeline = timeline.value?.archiveId
+  if (typeof fromTimeline === 'string' && fromTimeline.length > 0) return fromTimeline
+  return null
+})
+
+const canRefreshCloudPlayback = computed(() =>
+  activePlaybackAnalysisId.value != null || activePlaybackArchiveId.value != null,
+)
+
 const videoSrc = computed(() => {
   const path = timeline.value?.videoPath
   if (!path) return ''
@@ -1641,13 +1652,26 @@ const videoSrc = computed(() => {
 })
 
 async function refreshPlaybackUrl(): Promise<boolean> {
-  const analysisId = activePlaybackAnalysisId.value
-  if (!analysisId || playbackRefreshing.value) return false
+  if (playbackRefreshing.value || !canRefreshCloudPlayback.value) return false
   playbackRefreshing.value = true
   try {
-    const url = await window.api.analyses.refreshPlayback(analysisId)
+    const analysisId = activePlaybackAnalysisId.value
+    const archiveId = activePlaybackArchiveId.value
+    let url: string | null = null
+    if (analysisId != null) {
+      url = await window.api.analyses.refreshPlayback(analysisId)
+    } else if (recordingId.value) {
+      url = await window.api.recordings.refreshPlayback(recordingId.value)
+    }
     if (url && timeline.value) {
-      timeline.value = { ...timeline.value, videoPath: url, analysisId }
+      timeline.value = {
+        ...timeline.value,
+        videoPath: url,
+        analysisId: analysisId ?? timeline.value.analysisId ?? null,
+        archiveId: archiveId ?? timeline.value.archiveId ?? null,
+      }
+      duration.value = 0
+      currentTime.value = 0
       await nextTick()
       if (videoEl.value) {
         videoEl.value.load()
@@ -1661,9 +1685,7 @@ async function refreshPlaybackUrl(): Promise<boolean> {
 }
 
 function onVideoError() {
-  const path = timeline.value?.videoPath
-  if (!path || !/^https?:\/\//i.test(path)) return
-  if (!activePlaybackAnalysisId.value) return
+  if (!canRefreshCloudPlayback.value) return
   void refreshPlaybackUrl().then((ok) => {
     if (ok && videoEl.value) {
       void videoEl.value.play().catch(() => {})
@@ -2274,10 +2296,9 @@ async function loadTimeline() {
     }
 
     applyTimelineDerivedState()
-    if (!timeline.value?.videoPath) {
-      const analysisId = timeline.value?.analysisId
-        ?? (route.query.timelineId ? Number(route.query.timelineId) : null)
-      if (analysisId != null && !Number.isNaN(analysisId)) {
+    if (canRefreshCloudPlayback.value) {
+      const path = timeline.value?.videoPath
+      if (!path || /^https?:\/\//i.test(path)) {
         await refreshPlaybackUrl()
       }
     }

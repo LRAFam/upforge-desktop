@@ -32,6 +32,7 @@ const api = {
     dismiss: (id: string, opts?: { deleteLocal?: boolean }) =>
       ipcRenderer.invoke('recordings:dismiss', { id, deleteLocal: opts?.deleteLocal }),
     getTimeline: (id: string) => ipcRenderer.invoke('recordings:get-timeline', { id }),
+    refreshPlayback: (id: string) => ipcRenderer.invoke('recordings:refresh-playback', { id }),
     nudgeSync: (id: string, deltaMs: number) => ipcRenderer.invoke('recordings:nudge-sync', { id, deltaMs }),
     resetSync: (id: string) => ipcRenderer.invoke('recordings:reset-sync', { id }),
   },

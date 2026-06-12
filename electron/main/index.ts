@@ -72,7 +72,11 @@ import type { MatchData } from './riot-types'
 import log from 'electron-log'
 import { setupMainProcessErrorHandlers, reportError } from './error-reporter'
 import { findLatestCS2Demo } from './cs2-demo-finder'
-import { fetchArchivePlaybackUrl, fetchRecordingPlaybackUrl } from './recording-playback'
+import {
+  fetchArchivePlaybackUrl,
+  fetchRecordingPlaybackUrl,
+  isLikelyBrowserPlayableLocal,
+} from './recording-playback'
 import {
   CRITICAL_FREE_DISK_BYTES,
   LOW_FREE_DISK_BYTES,
@@ -2743,6 +2747,19 @@ async function startApp(): Promise<void> {
     return { ok: true as const, videoSyncOffsetMs: DEFAULT_VIDEO_SYNC_OFFSET_MS }
   })
 
+  ipcMain.handle('recordings:refresh-playback', async (_e, { id }: { id: string }) => {
+    const recording = recordingsStore.getById(id)
+    if (!recording) return null
+    if (recording.analysisId != null) {
+      const url = await fetchRecordingPlaybackUrl(authManager, recording.analysisId)
+      if (url) return url
+    }
+    if (recording.archiveId) {
+      return fetchArchivePlaybackUrl(authManager, recording.archiveId)
+    }
+    return null
+  })
+
   ipcMain.handle('recordings:get-timeline', async (_e, { id }: { id: string }) => {
     const recording = recordingsStore.getById(id)
     if (!recording) return null
@@ -2752,12 +2769,25 @@ async function startApp(): Promise<void> {
       applySpatialEnrichment(tl)
       recordingsStore.updateTimeline(id, tl)
     }
-    let videoPath = recording.path && fs.existsSync(recording.path) ? recording.path : null
-    if (!videoPath && recording.analysisId != null) {
-      videoPath = await fetchRecordingPlaybackUrl(authManager, recording.analysisId)
+    const localPath = recording.path && fs.existsSync(recording.path) ? recording.path : null
+    const cloudBacked = Boolean(
+      (recording.cloudArchived && recording.archiveId)
+      || recording.analysisId != null,
+    )
+
+    let videoPath: string | null = null
+    if (cloudBacked) {
+      if (recording.analysisId != null) {
+        videoPath = await fetchRecordingPlaybackUrl(authManager, recording.analysisId)
+      }
+      if (!videoPath && recording.archiveId) {
+        videoPath = await fetchArchivePlaybackUrl(authManager, recording.archiveId)
+      }
     }
-    if (!videoPath && recording.archiveId) {
-      videoPath = await fetchArchivePlaybackUrl(authManager, recording.archiveId)
+    if (!videoPath && localPath && isLikelyBrowserPlayableLocal(localPath)) {
+      videoPath = localPath
+    } else if (!videoPath && localPath && !cloudBacked) {
+      videoPath = localPath
     }
     return {
       id: recording.id,

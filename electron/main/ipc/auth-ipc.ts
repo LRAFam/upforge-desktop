@@ -132,7 +132,11 @@ export function setupAuthHandlers(
         ...p,
         score: normalizeToAcs(p.score, rounds) ?? 0,
       })) ?? []
-      let videoPath: string | null = analysis.recording_url ?? null
+      let videoPath: string | null = await fetchRecordingPlaybackUrl(auth, id)
+      if (!videoPath) {
+        const inline = analysis.recording_url
+        videoPath = typeof inline === 'string' && /^https?:\/\//i.test(inline) ? inline : null
+      }
       if (!videoPath && analysis.job_id && getLocalRecordingPathByJobId) {
         videoPath = getLocalRecordingPathByJobId(analysis.job_id)
       }

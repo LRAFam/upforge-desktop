@@ -186,6 +186,7 @@ export interface PendingRecording {
 export interface RecordingTimeline {
   id: string
   analysisId?: number | null
+  archiveId?: string | null
   videoPath: string | null
   map: string | null
   agent: string | null
@@ -410,6 +411,7 @@ declare global {
         saveToCloud: (id: string) => Promise<{ ok: boolean; archiveId?: string; alreadySaved?: boolean; error?: string }>
         dismiss: (id: string, opts?: { deleteLocal?: boolean }) => Promise<{ ok: boolean; deletedLocal?: boolean }>
         getTimeline: (id: string) => Promise<RecordingTimeline | null>
+        refreshPlayback: (id: string) => Promise<string | null>
         nudgeSync: (id: string, deltaMs: number) => Promise<{ ok: boolean; videoSyncOffsetMs?: number }>
         resetSync: (id: string) => Promise<{ ok: boolean; videoSyncOffsetMs?: number }>
       }
