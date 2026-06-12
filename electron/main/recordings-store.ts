@@ -171,6 +171,16 @@ export class RecordingsStore {
     })
   }
 
+  /** Analysed recordings that still have a local file and a cloud analysis id. */
+  getCloudBackedLocal(linkedRiot?: LinkedRiotId | null): PendingRecording[] {
+    return this.recordings.filter(r => {
+      if (!r.analysed || r.analysisId == null || !fs.existsSync(r.path)) return false
+      const name = r.riotName?.trim() || r.timeline?.playerName?.trim()
+      const tag = r.riotTag?.trim() || r.timeline?.playerTag?.trim()
+      return recordingMatchesLinkedRiot(name, tag, linkedRiot)
+    })
+  }
+
   getKnownPaths(): Set<string> {
     const paths = new Set<string>()
     for (const recording of this.recordings) {

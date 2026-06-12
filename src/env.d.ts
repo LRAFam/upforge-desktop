@@ -475,6 +475,17 @@ declare global {
       }
       storage: {
         getUsage: () => Promise<{ bytes: number; count: number }>
+        getBreakdown: () => Promise<{
+          pendingCount: number
+          pendingBytes: number
+          cloudBackedCount: number
+          cloudBackedBytes: number
+        }>
+        purgeCloudBacked: () => Promise<{ freedBytes: number; removed: number; skipped: number }>
+        uploadPending: () => Promise<
+          | { ok: false; error: string }
+          | { ok: true; uploaded: number; failed: number; stoppedEarly: boolean; stopReason?: string }
+        >
         openFolder: () => Promise<void>
       }
       clips: {

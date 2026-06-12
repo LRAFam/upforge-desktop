@@ -66,6 +66,9 @@ const api = {
   },
   storage: {
     getUsage: () => ipcRenderer.invoke('storage:get-usage'),
+    getBreakdown: () => ipcRenderer.invoke('storage:get-breakdown'),
+    purgeCloudBacked: () => ipcRenderer.invoke('storage:purge-cloud-backed'),
+    uploadPending: () => ipcRenderer.invoke('storage:upload-pending'),
     openFolder: () => ipcRenderer.invoke('storage:open-folder')
   },
   clips: {
@@ -191,7 +194,7 @@ const api = {
       'dashboard:refresh',
       'dashboard:last-insight',
       'recordings:updated',
-      'app:ffmpeg-status',
+      'storage:upload-progress',
       'recording:status-changed',
       'recording:waiting-for-match',
       'recording:starting',

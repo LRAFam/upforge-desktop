@@ -402,6 +402,32 @@
                 <span>Local budget</span>
                 <span>{{ storageSoftLimitLabel }}</span>
               </div>
+              <p class="mt-3 text-[11px] leading-relaxed text-gray-600">
+                Uploaded VODs are stored in the cloud and can be reviewed without a local file (v2.5.40+).
+                Turn on <span class="text-gray-400">Auto-delete after upload</span> below to free disk automatically after each match.
+              </p>
+              <div v-if="storageBreakdown.pendingCount > 0 || storageBreakdown.cloudBackedCount > 0" class="mt-3 space-y-2">
+                <button
+                  v-if="storageBreakdown.pendingCount > 0"
+                  type="button"
+                  class="w-full rounded-xl border border-blue-500/25 bg-blue-500/10 px-3 py-2 text-xs font-medium text-blue-300 transition-colors hover:bg-blue-500/15 disabled:opacity-50"
+                  :disabled="storageBusy"
+                  @click="uploadPendingToCloud"
+                >
+                  <span v-if="storageUploadProgress">Uploading {{ storageUploadProgress.current }}/{{ storageUploadProgress.total }}…</span>
+                  <span v-else>Upload {{ storageBreakdown.pendingCount }} pending to cloud ({{ formatBytes(storageBreakdown.pendingBytes) }})</span>
+                </button>
+                <button
+                  v-if="storageBreakdown.cloudBackedCount > 0"
+                  type="button"
+                  class="w-full rounded-xl border border-white/[0.08] bg-white/[0.04] px-3 py-2 text-xs font-medium text-gray-300 transition-colors hover:border-white/[0.14] hover:text-white disabled:opacity-50"
+                  :disabled="storageBusy"
+                  @click="purgeCloudBackedLocals"
+                >
+                  Remove {{ storageBreakdown.cloudBackedCount }} cloud-backed local file{{ storageBreakdown.cloudBackedCount === 1 ? '' : 's' }} ({{ formatBytes(storageBreakdown.cloudBackedBytes) }})
+                </button>
+              </div>
+              <p v-if="storageMessage" class="mt-2 text-[11px]" :class="storageMessageError ? 'text-red-400' : 'text-green-400'">{{ storageMessage }}</p>
             </div>
 
             <div>
@@ -818,6 +844,16 @@ let upToDateTimer: ReturnType<typeof setTimeout> | null = null
 const savedToast = ref(false)
 const storageBytes = ref(0)
 const storageCount = ref(0)
+const storageBreakdown = ref({
+  pendingCount: 0,
+  pendingBytes: 0,
+  cloudBackedCount: 0,
+  cloudBackedBytes: 0,
+})
+const storageBusy = ref(false)
+const storageMessage = ref('')
+const storageMessageError = ref(false)
+const storageUploadProgress = ref<{ current: number; total: number } | null>(null)
 const ffmpegOk = ref(true)
 const recordingBackend = ref<'obs'>('obs')
 const sectionOpen = reactive({
@@ -1082,7 +1118,7 @@ const GAME_MODES = [
 
 const toggles: Array<{ key: keyof Pick<AppSettings, 'launchOnStartup' | 'autoDelete' | 'autoAnalyse' | 'notificationSound' | 'autoOpenBrowser' | 'discordRichPresence'>; label: string; hint: string | null }> = [
   { key: 'launchOnStartup', label: 'Launch on startup', hint: null },
-  { key: 'autoDelete', label: 'Auto-delete after upload', hint: 'Frees disk space once recording is uploaded' },
+  { key: 'autoDelete', label: 'Auto-delete after upload', hint: 'Removes the local MP4 once uploaded — review from cloud anytime' },
   { key: 'autoAnalyse', label: 'Auto-analyse after game', hint: 'Automatically upload and analyse once a game ends' },
   { key: 'autoOpenBrowser', label: 'Open results in browser', hint: 'Automatically open your results page when analysis completes' },
   { key: 'notificationSound', label: 'Notification sound', hint: 'Play a sound with system notifications' },
@@ -1371,10 +1407,69 @@ function formatBytes(bytes: number): string {
 
 async function loadStorageUsage(): Promise<void> {
   try {
-    const usage = await window.api.storage.getUsage()
+    const [usage, breakdown] = await Promise.all([
+      window.api.storage.getUsage(),
+      window.api.storage.getBreakdown(),
+    ])
     storageBytes.value = usage.bytes
     storageCount.value = usage.count
+    storageBreakdown.value = breakdown
   } catch { /* ignore */ }
+}
+
+async function purgeCloudBackedLocals(): Promise<void> {
+  if (storageBusy.value || storageBreakdown.value.cloudBackedCount === 0) return
+  storageBusy.value = true
+  storageMessage.value = ''
+  storageMessageError.value = false
+  try {
+    const result = await window.api.storage.purgeCloudBacked()
+    storageMessage.value = result.removed > 0
+      ? `Freed ${formatBytes(result.freedBytes)} — ${result.removed} local file${result.removed === 1 ? '' : 's'} removed. VODs still available from cloud.`
+      : result.skipped > 0
+        ? 'No local files could be removed — cloud copies may be unavailable.'
+        : 'Nothing to remove.'
+    storageMessageError.value = result.removed === 0
+    await loadStorageUsage()
+  } catch {
+    storageMessage.value = 'Could not remove local files.'
+    storageMessageError.value = true
+  } finally {
+    storageBusy.value = false
+  }
+}
+
+async function uploadPendingToCloud(): Promise<void> {
+  if (storageBusy.value || storageBreakdown.value.pendingCount === 0) return
+  storageBusy.value = true
+  storageMessage.value = ''
+  storageMessageError.value = false
+  storageUploadProgress.value = { current: 0, total: storageBreakdown.value.pendingCount }
+  try {
+    const result = await window.api.storage.uploadPending()
+    if (!result.ok) {
+      storageMessage.value = result.error
+      storageMessageError.value = true
+      return
+    }
+    if (result.stoppedEarly) {
+      storageMessage.value = `Uploaded ${result.uploaded} — stopped: ${result.stopReason ?? 'analysis limit reached'}`
+      storageMessageError.value = true
+    } else if (result.uploaded > 0) {
+      storageMessage.value = `Uploaded ${result.uploaded} recording${result.uploaded === 1 ? '' : 's'} to cloud and removed local copies.${result.failed > 0 ? ` ${result.failed} failed.` : ''}`
+      storageMessageError.value = result.failed > 0
+    } else {
+      storageMessage.value = 'No recordings were uploaded.'
+      storageMessageError.value = true
+    }
+    await loadStorageUsage()
+  } catch {
+    storageMessage.value = 'Upload failed — check your connection and try again.'
+    storageMessageError.value = true
+  } finally {
+    storageBusy.value = false
+    storageUploadProgress.value = null
+  }
 }
 
 function openRecordingsFolder(): void {
@@ -1406,6 +1501,11 @@ onMounted(async () => {
     if (s.user) user.value = s.user as UserWithUsage | null
     loadStorageUsage()
     loadHotkeyStatus()
+    window.api.on('storage:upload-progress', (...args: unknown[]) => {
+      const data = args[0] as { current: number; total: number } | null
+      storageUploadProgress.value = data
+    })
+    window.api.on('recordings:updated', () => { void loadStorageUsage() })
   } catch (err) {
     console.error('[Settings] Failed to load status:', err)
     try {

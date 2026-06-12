@@ -81,6 +81,11 @@ export class RiotLocalApi {
   private wsReconnectTimer: ReturnType<typeof setTimeout> | null = null
   private lastSessionLoopState: string = 'MENUS'
   private matchEnded = false
+  /** True after at least one INGAME presence poll this match — avoids false end on startup flakes. */
+  private _seenIngameSinceStart = false
+  /** Consecutive MENUS polls while in-match — debounces transient presence glitches. */
+  private _consecutiveMenusPolls = 0
+  private static readonly MENUS_END_POLLS = 2
   private currentMatchId: string | null = null
   private lastGameMode: string | null = null
   /** Counts how many times core-game agent fetch has been attempted this match. */
@@ -534,19 +539,37 @@ export class RiotLocalApi {
         console.log(`[RiotLocalApi] Score: ${allyScore}-${enemyScore}`)
     }
 
-    if (this.lastSessionLoopState === 'INGAME' && sessionLoopState === 'MENUS') {
-      console.log('[RiotLocalApi] Match ended — presence returned to MENUS')
-      this.matchEnded = true
-      this.lastSessionLoopState = sessionLoopState
-      const endedCb = this.onMatchEnded
-      this.onMatchEnded = null
-      if (endedCb) {
-        Promise.resolve(endedCb()).catch((err) => {
-          console.error('[RiotLocalApi] onMatchEnded handler error:', err)
-        })
+    if (sessionLoopState === 'INGAME') {
+      this._seenIngameSinceStart = true
+      this._consecutiveMenusPolls = 0
+    } else if (sessionLoopState === 'MENUS' && this._seenIngameSinceStart) {
+      this._consecutiveMenusPolls++
+      if (this._consecutiveMenusPolls >= RiotLocalApi.MENUS_END_POLLS) {
+        const confirm = await this.getSessionState()
+        if (confirm?.sessionLoopState === 'INGAME') {
+          console.log('[RiotLocalApi] MENUS end debounced — presence back to INGAME')
+          this._consecutiveMenusPolls = 0
+          this.lastSessionLoopState = 'INGAME'
+          return
+        }
+        console.log(
+          `[RiotLocalApi] Match ended — presence returned to MENUS (${this._consecutiveMenusPolls} polls)`,
+        )
+        this.matchEnded = true
+        this.lastSessionLoopState = sessionLoopState
+        const endedCb = this.onMatchEnded
+        this.onMatchEnded = null
+        if (endedCb) {
+          Promise.resolve(endedCb()).catch((err) => {
+            console.error('[RiotLocalApi] onMatchEnded handler error:', err)
+          })
+        }
+        return
       }
-      return
+    } else if (sessionLoopState !== 'MENUS') {
+      this._consecutiveMenusPolls = 0
     }
+
     this.lastSessionLoopState = sessionLoopState
   }
 
@@ -633,7 +656,9 @@ export class RiotLocalApi {
     this.matchEnded = false
     this.currentMatchId = null
     this.agentFetchAttempts = 0
-    this.lastSessionLoopState = 'INGAME'
+    this._seenIngameSinceStart = false
+    this._consecutiveMenusPolls = 0
+    this.lastSessionLoopState = 'MENUS'
     this.matchData = {
       game,
       matchId: null,

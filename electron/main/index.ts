@@ -73,6 +73,7 @@ import log from 'electron-log'
 import { setupMainProcessErrorHandlers, reportError } from './error-reporter'
 import { findLatestCS2Demo } from './cs2-demo-finder'
 import { fetchRecordingPlaybackUrl } from './recording-playback'
+import { getStorageBreakdown, purgeCloudBackedLocals } from './storage-cleanup'
 import { CS2DemoUploader } from './cs2-demo-uploader'
 import { DiscordRPC } from './discord-rpc'
 import {
@@ -1417,8 +1418,11 @@ function setupGameDetection(): void {
     if (game === 'valorant') {
       riotLocalApi.cancelMenuWatch()
       riotLocalApi.onMatchEnded = async () => {
-        console.log('[RiotLocalApi] onMatchEnded fired — stopping recording')
-        logActivity('Match ended (presence) — stopping recording')
+        const elapsedSec = currentRecordingStartTime
+          ? Math.floor((Date.now() - currentRecordingStartTime) / 1000)
+          : 0
+        console.log(`[RiotLocalApi] onMatchEnded fired — stopping recording (${elapsedSec}s captured)`)
+        logActivity(`Match ended (presence) — stopping recording (${elapsedSec > 0 ? `${Math.round(elapsedSec / 60)}m ${elapsedSec % 60}s` : 'unknown duration'})`)
         const didFinalize = await finalizeMatchOnce(game, 'presence')
         if (!didFinalize) return
         if (mainWindow && !mainWindow.isDestroyed() && mainWindow.isMinimized()) mainWindow.restore()
@@ -1703,7 +1707,9 @@ async function doUploadAndAnalyse(
   timeline: MatchData | null,
   targetWindow: BrowserWindow,
   sessionStart = 0,
-  skipAutoDelete = false
+  skipAutoDelete = false,
+  /** When true, delete local file after upload even if autoDelete setting is off (storage cleanup flow). */
+  deleteLocalAfterUpload = false,
 ): Promise<string | null> {
   const send = (channel: string, payload?: unknown) => {
     try {
@@ -1807,7 +1813,7 @@ async function doUploadAndAnalyse(
 
     // Auto-delete after upload if configured (skip when called from handleMatchEnd —
     // deletion is deferred until after clip extraction so clips aren't skipped)
-    if (!skipAutoDelete && settingsManager?.get().autoDelete) {
+    if ((!skipAutoDelete && settingsManager?.get().autoDelete) || deleteLocalAfterUpload) {
       log.info('[App] Auto-deleting recording after upload:', videoPath)
       obsRecorder.deleteRecording(videoPath)
       deleteCompressedSibling(videoPath)
@@ -2328,6 +2334,101 @@ app.whenReady().then(async () => {
     }
 
     return { ok: true }
+  })
+
+  let bulkPendingUploadRunning = false
+
+  ipcMain.handle('storage:get-breakdown', () => {
+    return getStorageBreakdown(recordingsStore, linkedRiotFromAuth())
+  })
+
+  ipcMain.handle('storage:purge-cloud-backed', async () => {
+    const result = await purgeCloudBackedLocals(
+      recordingsStore,
+      authManager,
+      linkedRiotFromAuth(),
+      (filePath) => obsRecorder.deleteRecording(filePath),
+    )
+    mainWindow?.webContents.send('recordings:updated')
+    mainWindow?.webContents.send('dashboard:refresh')
+    return result
+  })
+
+  ipcMain.handle('storage:upload-pending', async () => {
+    if (bulkPendingUploadRunning) {
+      return { ok: false as const, error: 'Upload already in progress' }
+    }
+    if (!mainWindow || mainWindow.isDestroyed()) {
+      return { ok: false as const, error: 'App window unavailable' }
+    }
+
+    const pending = recordingsStore.getPending(linkedRiotFromAuth())
+    if (pending.length === 0) {
+      return { ok: true as const, uploaded: 0, failed: 0, stoppedEarly: false }
+    }
+
+    bulkPendingUploadRunning = true
+    const user = authManager.getUser()
+    let uploaded = 0
+    let failed = 0
+    let stoppedEarly = false
+    let stopReason: string | undefined
+
+    try {
+      for (let i = 0; i < pending.length; i++) {
+        const rec = pending[i]!
+        mainWindow.webContents.send('storage:upload-progress', {
+          current: i + 1,
+          total: pending.length,
+          map: rec.map,
+          agent: rec.agent,
+        })
+        logActivity(`Uploading pending recording ${i + 1}/${pending.length}${rec.map ? ` (${rec.map})` : ''}…`)
+
+        try {
+          const jobId = await doUploadAndAnalyse(
+            rec.id,
+            rec.path,
+            rec.riotName || user?.riot_name || '',
+            rec.riotTag || user?.riot_tag || '',
+            rec.game,
+            rec.map,
+            rec.agent,
+            rec.timeline,
+            mainWindow,
+            0,
+            false,
+            true,
+          )
+          if (jobId) {
+            uploaded++
+          } else {
+            failed++
+          }
+        } catch (err) {
+          const isUpgrade = err instanceof UpgradeRequiredError
+            || (err instanceof Error && /analysis.limit.reached|upgrade.required/i.test(err.message))
+          if (isUpgrade) {
+            stoppedEarly = true
+            stopReason = err instanceof Error ? err.message : 'Analysis limit reached'
+            break
+          }
+          failed++
+          log.warn('[StorageUpload] Pending upload failed:', err)
+        }
+      }
+    } finally {
+      bulkPendingUploadRunning = false
+      mainWindow?.webContents.send('storage:upload-progress', null)
+      mainWindow?.webContents.send('recordings:updated')
+      mainWindow?.webContents.send('dashboard:refresh')
+    }
+
+    if (uploaded > 0) {
+      logActivity(`Uploaded ${uploaded} recording(s) to cloud — local copies removed`)
+    }
+
+    return { ok: true as const, uploaded, failed, stoppedEarly, stopReason }
   })
 
   ipcMain.handle('recordings:dismiss', (_e, { id }: { id: string }) => {
