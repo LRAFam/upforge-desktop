@@ -26,6 +26,10 @@ const api = {
     refreshPlayback: (id: number) => ipcRenderer.invoke('analyses:refresh-playback', { id }),
     getDetail: (id: number) => ipcRenderer.invoke('analyses:get-detail', { id }),
   },
+  archives: {
+    refreshPlayback: (archiveId: string) =>
+      ipcRenderer.invoke('archives:refresh-playback', { archiveId }),
+  },
   recordings: {
     get: () => ipcRenderer.invoke('recordings:get'),
     analyse: (id: string) => ipcRenderer.invoke('recordings:analyse', { id }),

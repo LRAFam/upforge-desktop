@@ -46,6 +46,12 @@ export function shouldCompressVod(sizeBytes: number): boolean {
   return sizeBytes > COMPRESS_IF_LARGER_THAN_BYTES
 }
 
+/** OBS often records `.mkv` — S3 keys are `.mp4`, so transcode before cloud upload. */
+export function needsTranscodeForCloudUpload(sourcePath: string): boolean {
+  const normalized = sourcePath.replace(/\\/g, '/')
+  return !/\.(mp4|webm|m4v|mov)$/i.test(normalized)
+}
+
 export interface CompressVodResult {
   ok: boolean
   outputPath: string
@@ -70,11 +76,14 @@ export async function resolveUploadVideoPath(
     }
   }
 
-  if (!shouldCompressVod(sizeBytes)) {
+  const mustTranscode = needsTranscodeForCloudUpload(sourcePath)
+  if (!shouldCompressVod(sizeBytes) && !mustTranscode) {
     return { path: sourcePath, sizeBytes, compressed: false }
   }
 
-  onCompressStart?.((sizeBytes / (1024 ** 3)).toFixed(1))
+  onCompressStart?.(mustTranscode && !shouldCompressVod(sizeBytes)
+    ? 'preparing'
+    : (sizeBytes / (1024 ** 3)).toFixed(1))
   const result = await compressVodForUpload(sourcePath)
   if (result.ok) {
     return { path: result.outputPath, sizeBytes: result.outputSizeBytes, compressed: true }

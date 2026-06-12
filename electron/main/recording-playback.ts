@@ -32,6 +32,32 @@ export async function fetchRecordingPlaybackUrl(
   }
 }
 
+/** Prefer cloud HTTPS playback; only use local path when Chromium can play it. */
+export async function resolveCloudFirstPlaybackUrl(opts: {
+  auth: AuthManager
+  analysisId?: number | null
+  archiveId?: string | null
+  inlineRecordingUrl?: unknown
+  localPath?: string | null
+}): Promise<{ url: string | null; archiveId: string | null }> {
+  const { auth, analysisId, archiveId, inlineRecordingUrl, localPath } = opts
+  let url: string | null = null
+  let resolvedArchiveId = typeof archiveId === 'string' && archiveId ? archiveId : null
+
+  url = parseHttpsUrl(inlineRecordingUrl)
+  if (!url && resolvedArchiveId) {
+    url = await fetchArchivePlaybackUrl(auth, resolvedArchiveId)
+  }
+  if (!url && analysisId != null) {
+    url = await fetchRecordingPlaybackUrl(auth, analysisId)
+  }
+  if (!url && localPath && isLikelyBrowserPlayableLocal(localPath)) {
+    url = localPath
+  }
+
+  return { url, archiveId: resolvedArchiveId }
+}
+
 /** Fetch playback URL for a cloud-archived recording (no analysis). */
 export async function fetchArchivePlaybackUrl(
   auth: AuthManager,

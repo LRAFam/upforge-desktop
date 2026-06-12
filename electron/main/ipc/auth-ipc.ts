@@ -11,7 +11,11 @@ import { GameDetector } from '../game-detector'
 import { UploadManager } from '../upload-manager'
 import { cancelAllPollingTimers } from './api-helpers'
 import { normalizeToAcs } from '../combat-score'
-import { fetchRecordingPlaybackUrl } from '../recording-playback'
+import {
+  fetchRecordingPlaybackUrl,
+  isLikelyBrowserPlayableLocal,
+  resolveCloudFirstPlaybackUrl,
+} from '../recording-playback'
 
 export function setupAuthHandlers(
   ipcMain: IpcMain,
@@ -138,18 +142,23 @@ export function setupAuthHandlers(
         ...p,
         score: normalizeToAcs(p.score, rounds) ?? 0,
       })) ?? []
-      let videoPath: string | null = await fetchRecordingPlaybackUrl(auth, id)
-      if (!videoPath) {
-        const inline = analysis.recording_url
-        videoPath = typeof inline === 'string' && /^https?:\/\//i.test(inline) ? inline : null
-      }
-      if (!videoPath && analysis.job_id && getLocalRecordingPathByJobId) {
-        videoPath = getLocalRecordingPathByJobId(analysis.job_id)
-      }
+      const jobArchiveId = typeof analysis.archive_id === 'string' ? analysis.archive_id : null
+      const localFallback = analysis.job_id && getLocalRecordingPathByJobId
+        ? getLocalRecordingPathByJobId(analysis.job_id)
+        : null
+      const playback = await resolveCloudFirstPlaybackUrl({
+        auth,
+        analysisId: id,
+        archiveId: jobArchiveId,
+        inlineRecordingUrl: analysis.recording_url,
+        localPath: localFallback && isLikelyBrowserPlayableLocal(localFallback) ? localFallback : null,
+      })
+      const videoPath = playback.url
 
       return {
         id: String(analysis.id),
         analysisId: analysis.id as number,
+        archiveId: playback.archiveId,
         videoPath,
         map: analysis.map ?? md.map ?? null,
         agent: analysis.agent ?? md.agent ?? null,
@@ -174,7 +183,20 @@ export function setupAuthHandlers(
 
   ipcMain.handle('analyses:refresh-playback', async (_e, { id }: { id: number }) => {
     if (!id || Number.isNaN(id)) return null
-    return fetchRecordingPlaybackUrl(auth, id)
+    try {
+      const res = await auth.getApi().get(`/api/analysis/${id}`)
+      const analysis = res.data?.analysis
+      if (!analysis) return fetchRecordingPlaybackUrl(auth, id)
+      const playback = await resolveCloudFirstPlaybackUrl({
+        auth,
+        analysisId: id,
+        archiveId: typeof analysis.archive_id === 'string' ? analysis.archive_id : null,
+        inlineRecordingUrl: analysis.recording_url,
+      })
+      return playback.url
+    } catch {
+      return fetchRecordingPlaybackUrl(auth, id)
+    }
   })
 
   // ── Squad / Team ──────────────────────────────────────────────────────────

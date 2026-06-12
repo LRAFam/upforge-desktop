@@ -2766,6 +2766,11 @@ async function startApp(): Promise<void> {
     return { ok: true as const, videoSyncOffsetMs: DEFAULT_VIDEO_SYNC_OFFSET_MS }
   })
 
+  ipcMain.handle('archives:refresh-playback', async (_e, { archiveId }: { archiveId: string }) => {
+    if (!archiveId) return null
+    return fetchArchivePlaybackUrl(authManager, archiveId)
+  })
+
   ipcMain.handle('recordings:refresh-playback', async (_e, { id }: { id: string }) => {
     const recording = recordingsStore.getById(id)
     if (!recording) return null

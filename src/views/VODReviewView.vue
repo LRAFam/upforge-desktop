@@ -1638,7 +1638,9 @@ const activePlaybackArchiveId = computed((): string | null => {
 })
 
 const canRefreshCloudPlayback = computed(() =>
-  activePlaybackAnalysisId.value != null || activePlaybackArchiveId.value != null,
+  activePlaybackAnalysisId.value != null
+  || activePlaybackArchiveId.value != null
+  || !!recordingId.value,
 )
 
 const videoSrc = computed(() => {
@@ -1651,6 +1653,13 @@ const videoSrc = computed(() => {
     : encodeURI(`file:///${normalized}`)
 })
 
+function needsCloudPlaybackRefresh(path: string | null | undefined): boolean {
+  if (!path) return true
+  if (/^https?:\/\//i.test(path)) return true
+  const normalized = path.replace(/\\/g, '/')
+  return !/\.(mp4|webm|m4v|mov)$/i.test(normalized)
+}
+
 async function refreshPlaybackUrl(): Promise<boolean> {
   if (playbackRefreshing.value || !canRefreshCloudPlayback.value) return false
   playbackRefreshing.value = true
@@ -1662,6 +1671,8 @@ async function refreshPlaybackUrl(): Promise<boolean> {
       url = await window.api.analyses.refreshPlayback(analysisId)
     } else if (recordingId.value) {
       url = await window.api.recordings.refreshPlayback(recordingId.value)
+    } else if (archiveId) {
+      url = await window.api.archives.refreshPlayback(archiveId)
     }
     if (url && timeline.value) {
       timeline.value = {
@@ -2160,6 +2171,8 @@ function onTimeUpdate() {
   }
 }
 
+const playbackDurationRetryDone = ref(false)
+
 function onLoadedMetadata() {
   if (!videoEl.value) return
   const d = videoEl.value.duration
@@ -2167,6 +2180,15 @@ function onLoadedMetadata() {
   if (videoEl.value.videoWidth > 0 && videoEl.value.videoHeight > 0) {
     videoAspect.value = videoEl.value.videoWidth / videoEl.value.videoHeight
     updateVideoFrameSize()
+  }
+  if (
+    duration.value <= 0
+    && canRefreshCloudPlayback.value
+    && !playbackDurationRetryDone.value
+  ) {
+    playbackDurationRetryDone.value = true
+    void refreshPlaybackUrl()
+    return
   }
   tryInitialGameplaySeek()
 }
@@ -2261,6 +2283,7 @@ async function loadTimeline() {
   timelineLoading.value = true
   timelineError.value = null
   timeline.value = null
+  playbackDurationRetryDone.value = false
   try {
     const id = route.query.id as string
     const timelineId = route.query.timelineId as string
@@ -2296,11 +2319,8 @@ async function loadTimeline() {
     }
 
     applyTimelineDerivedState()
-    if (canRefreshCloudPlayback.value) {
-      const path = timeline.value?.videoPath
-      if (!path || /^https?:\/\//i.test(path)) {
-        await refreshPlaybackUrl()
-      }
+    if (canRefreshCloudPlayback.value && needsCloudPlaybackRefresh(timeline.value?.videoPath)) {
+      await refreshPlaybackUrl()
     }
     applyInitialSeek()
   } catch {

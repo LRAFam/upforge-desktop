@@ -406,6 +406,9 @@ declare global {
         refreshPlayback: (id: number) => Promise<string | null>
         getDetail: (id: number) => Promise<{ verdict: string | null; top_issue: string | null; priority_improvements: string[]; coaching_tags: string[]; ally_score: number | null; enemy_score: number | null } | null>
       }
+      archives: {
+        refreshPlayback: (archiveId: string) => Promise<string | null>
+      }
       recordings: {
         get: () => Promise<PendingRecording[]>
         analyse: (id: string) => Promise<{ ok?: boolean; error?: string }>
