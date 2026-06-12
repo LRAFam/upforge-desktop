@@ -150,6 +150,7 @@ const obsRecorder = new OBSRecorder(
     const s = settingsManager?.get()
     return s ? buildRecorderConfig(s, hasProAccess(authManager.getUser()), getActiveUserId()) : undefined
   },
+  () => settingsManager?.get()?.primaryGame ?? 'valorant',
 )
 
 let stopObsHealthMonitor: (() => void) | null = null
@@ -190,6 +191,10 @@ function scheduleObsProbeOnWindowLoad(win: BrowserWindow, notify: boolean): void
       notify,
       notifySilent,
       logActivity,
+    }).then(() => {
+      if (!settingsManager) return
+      const game = normalizePrimaryGame(settingsManager.get().primaryGame)
+      void ensureObsCaptureForGame(game)
     })
   })
 }
@@ -266,6 +271,7 @@ const clipStore = new ClipStore()
 const hotkeyManager = new HotkeyManager()
 const trainerBridge = new TrainerBridge(() => mainWindow)
 let settingsManager: SettingsManager
+let trackedPrimaryGame: ReturnType<typeof normalizePrimaryGame> = 'valorant'
 const discordRPC = new DiscordRPC(
   () => settingsManager?.get().discordRichPresence !== false,
 )
@@ -415,6 +421,68 @@ function syncPrimaryGameFromUser(): void {
     trainerMouse: { ...current.trainerMouse, game },
   })
   mainWindow?.webContents.send('settings:changed', settingsManager.get())
+  handlePrimaryGameSwitch(game, current.primaryGame)
+  trackedPrimaryGame = game
+}
+
+function handlePrimaryGameSwitch(
+  game: ReturnType<typeof normalizePrimaryGame>,
+  previousGame?: ReturnType<typeof normalizePrimaryGame>,
+): void {
+  if (previousGame === game) return
+
+  const deferActiveStop = obsRecorder.isRecording()
+  gameDetector.setWatchGame(game, { deferActiveStop })
+  logActivity(`Switched to ${gameLabel(game)} — monitoring ${gameLabel(game)}`)
+
+  void ensureObsCaptureForGame(game)
+
+  updateTrayMenuFn?.()
+}
+
+async function ensureObsCaptureForGame(game: string): Promise<void> {
+  if (obsRecorder.isRecording()) return
+
+  if (!obsRecorder.isConnected()) {
+    await probeObsConnection(obsRecorder, mainWindow, { notify: false, logActivity, quiet: true })
+  }
+  if (!obsRecorder.isConnected()) return
+
+  const needsLiveWindow = game === 'cs2' || game === 'deadlock'
+  const processRunning =
+    gameDetector.currentGame() === game || await gameDetector.isGameProcessRunning(game)
+
+  const result = await obsRecorder.retargetCaptureWithRetry(game, {
+    maxAttempts: needsLiveWindow && processRunning ? 12 : 1,
+    intervalMs: 2000,
+  })
+
+  if (result.ok && (result.liveWindow || !processRunning)) {
+    if (processRunning) {
+      logActivity(`OBS capture ready for ${gameLabel(game)}`)
+    } else if (needsLiveWindow) {
+      logActivity(`OBS will capture ${gameLabel(game)} when the game opens`)
+    } else {
+      logActivity(`OBS capture retargeted to ${gameLabel(game)}`)
+    }
+    return
+  }
+
+  if (needsLiveWindow && processRunning) {
+    logActivity(`${gameLabel(game)} window not found — use borderless windowed mode for OBS`)
+    mainWindow?.webContents.send('app:warning', {
+      message: `${gameLabel(game)} uses OBS Window Capture. Run the game in borderless windowed mode, then reconnect OBS in Settings → Recording if capture stays black.`,
+      actionLabel: 'Recording settings',
+      actionRoute: '/settings?tab=recording',
+    })
+  }
+}
+
+function onSettingsSaved(settings: ReturnType<SettingsManager['get']>): void {
+  discordRPC.refresh()
+  const game = normalizePrimaryGame(settings.primaryGame)
+  handlePrimaryGameSwitch(game, trackedPrimaryGame)
+  trackedPrimaryGame = game
 }
 
 function syncUserSessionFromAuth(): void {
@@ -588,6 +656,8 @@ function createTray(): void {
 }
 
 function setupGameDetection(): void {
+  gameDetector.setWatchGame(normalizePrimaryGame(settingsManager.get().primaryGame))
+
   onRecordingLost = (error: string) => {
     const game = gameDetector.currentGame() ?? 'valorant'
     const obsLost = /obs disconnected/i.test(error)
@@ -1189,7 +1259,7 @@ function setupGameDetection(): void {
 
     const { isStale } = beginMatchFlow()
     console.log(`[GameDetector] ${game} started (flow #${matchFlowGeneration})`)
-    logActivity(`${game === 'cs2' ? 'CS2' : 'Valorant'} detected — waiting for match`)
+    logActivity(`${gameLabel(game)} detected — waiting for match`)
     if (game === 'valorant') {
       void riotLocalApi.getPregameContext().then((ctx) => {
         discordRPC.setInGame(game, { map: ctx?.map ?? null, agent: ctx?.agent ?? null })
@@ -1228,6 +1298,7 @@ function setupGameDetection(): void {
     if (!obsRecorder.isConnected()) {
       await probeObsConnection(obsRecorder, mainWindow, { notify: false, logActivity })
     }
+    void ensureObsCaptureForGame(game)
     if (recorderConfig) {
       log.info(
         `[Recorder] OBS · ${formatRecordingLabel(recorderConfig.quality, recorderConfig.bitrate, recorderConfig.fps ?? 30)}` +
@@ -1276,23 +1347,32 @@ function setupGameDetection(): void {
     // deprecated; we no longer gate recording on it.
     // Wait 90 seconds for the loading screen to pass, cancelling early if the process dies.
     let gameMode: string | null = null
+    let matchStartTime: number | null = null
+    let modeConfident = false
     let cancelled = false
     cancelMatchWait = () => { cancelled = true }
     waitingForMatch = true
 
     const recordedModes = config?.recordedModes ?? ['COMPETITIVE', 'PREMIER']
     // Empty list = record nothing (dashboard/settings copy). Non-empty partial list = filter.
-    const filterByMode = recordedModes.length > 0 &&
+    const filterByMode = game === 'valorant' && recordedModes.length > 0 &&
       !([...ALL_MODES].every(m => recordedModes.includes(m)))
 
+    // CS2 / Deadlock — process detection is the match signal (no Riot presence gate).
+    if (game !== 'valorant') {
+      waitingForMatch = false
+      cancelMatchWait = null
+      mainWindow?.webContents.send('recording:waiting-for-match', { waiting: false })
+      matchStartTime = Date.now()
+      gameMode = 'COMPETITIVE'
+      modeConfident = true
+    } else {
     // ── Presence-based match detection ────────────────────────────────────
     // Try to use the Riot Local API to detect when the match actually goes
     // INGAME, so we avoid the old blind 90s wait.  Falls back to a 90s wait
-    // if the lockfile / auth is not available (rare on modern installs).
+    // if the lockfile / auth is not available (rare on modern installations).
     // ──────────────────────────────────────────────────────────────────────
-    let matchStartTime: number | null = null
-    let modeConfident = false
-    const authOk = game === 'valorant' && await riotLocalApi.initAuth()
+    const authOk = await riotLocalApi.initAuth()
 
     if (authOk) {
       logActivity('Riot Client API ready — waiting for INGAME presence')
@@ -1412,7 +1492,7 @@ function setupGameDetection(): void {
 
     if (abortIfStale(isStale, game)) return
 
-    if (cancelled) {
+    if (game === 'valorant' && cancelled) {
       logActivity('Match cancelled (game quit during loading)')
       console.log('[GameDetector] Game quit during loading — no recording')
       tray?.setToolTip(idleTooltip(game))
@@ -1422,7 +1502,7 @@ function setupGameDetection(): void {
     // If presence API was available but INGAME was never seen, the player is idle
     // in the lobby (or queued and cancelled). Do NOT start recording — this is what
     // causes "hallucinated" matches when the app is left idle for 25+ minutes.
-    if (authOk && matchStartTime === null) {
+    if (game === 'valorant' && authOk && matchStartTime === null) {
       logActivity('Presence timeout — no match started, returning to idle')
       console.log('[GameDetector] Presence loop timed out without INGAME — not recording')
       tray?.setToolTip(idleTooltip(game))
@@ -1435,9 +1515,10 @@ function setupGameDetection(): void {
       }
       return
     }
+    }
 
     // If presence didn't give us a mode, try the log file as last resort (never overwrite queueId)
-    if (!modeConfident) {
+    if (game === 'valorant' && !modeConfident) {
       const logMode = await riotLocalApi.getGameModeFromLog()
       if (logMode) {
         if (!gameMode) gameMode = logMode
@@ -1447,7 +1528,7 @@ function setupGameDetection(): void {
       }
     }
 
-    if (filterByMode && !modeConfident) {
+    if (game === 'valorant' && filterByMode && !modeConfident) {
       console.log('[GameDetector] Skipping recording — queue mode unknown')
       logActivity('Queue mode unknown — recording skipped (select all modes or wait for queue)')
       notifyRecordingUx(
@@ -1458,7 +1539,7 @@ function setupGameDetection(): void {
       return
     }
 
-    if (filterByMode && gameMode && !recordedModes.includes(gameMode)) {
+    if (game === 'valorant' && filterByMode && gameMode && !recordedModes.includes(gameMode)) {
       console.log(`[GameDetector] Skipping recording — mode is ${gameMode} (recordedModes=${recordedModes.join(',')})`)
       logActivity(`Mode ${gameMode} not in recorded modes (${recordedModes.join(', ')}) — skipped`)
       notifyRecordingUx(
@@ -1478,7 +1559,7 @@ function setupGameDetection(): void {
     if (!gameMode) gameMode = 'COMPETITIVE'
     matchHandled = false
 
-    if (!pregameBriefFired && (gameMode === 'COMPETITIVE' || gameMode === 'PREMIER')) {
+    if (game === 'valorant' && !pregameBriefFired && (gameMode === 'COMPETITIVE' || gameMode === 'PREMIER')) {
       requestPregameBrief({ agent: null, map: null, mode: gameMode })
       pregameBriefFired = true
     }
@@ -1587,14 +1668,14 @@ function setupGameDetection(): void {
     const userLabel = (user?.riot_name && user?.riot_tag)
       ? `${user.riot_name}#${user.riot_tag}`
       : user?.name ?? 'your account'
-    const gameLabel = game === 'cs2' ? 'CS2' : 'Valorant'
-    tray?.setToolTip(`UpForge — Recording ${gameLabel} (${userLabel})`)
+    const gameLabelText = gameLabel(game)
+    tray?.setToolTip(`UpForge — Recording ${gameLabelText} (${userLabel})`)
 
     const feedbackMode = settingsManager.get().inGameFeedback ?? 'notifications'
     deliverInGameFeedback(inGameFeedbackDeps(), {
       kind: 'recording-started',
       title: 'Recording started',
-      body: `${gameLabel} match for ${userLabel} — F9 clip · F8 screenshot · F10 overlay`,
+      body: `${gameLabelText} match for ${userLabel} — F9 clip · F8 screenshot · F10 overlay`,
       beep: 'success',
       flashOverlayMs: feedbackMode === 'notifications' ? 0 : 7000,
     })
@@ -2163,6 +2244,7 @@ async function startApp(): Promise<void> {
 
   uploadManager = new UploadManager(authManager)
   settingsManager = new SettingsManager()
+  trackedPrimaryGame = normalizePrimaryGame(settingsManager.get().primaryGame)
   recordingsStore = new RecordingsStore()
 
   // Restore auth session from keychain before creating window
@@ -2289,9 +2371,7 @@ async function startApp(): Promise<void> {
   () => riotLocalApi.getLastGameMode(),
   undefined,
   () => obsRecorder.isConnected(),
-  () => {
-    discordRPC.refresh()
-  },
+  onSettingsSaved,
   () => {
     syncUserSessionFromAuth()
   },

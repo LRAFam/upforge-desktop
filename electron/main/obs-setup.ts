@@ -5,6 +5,7 @@
 
 import type OBSWebSocket from 'obs-websocket-js'
 import log from 'electron-log'
+import { resolveObsCaptureWindow } from './game-window-finder'
 
 export const UPFORGE_SCENE_NAME = 'UpForge'
 export const UPFORGE_INPUT_NAME = 'UpForge Capture'
@@ -14,24 +15,39 @@ export interface ObsSetupResult {
   sceneCreated: boolean
   inputCreated: boolean
   inputUpgraded?: boolean
+  captureWindow?: string
   error?: string
-}
-
-/** OBS game-capture window strings (title:class:executable). */
-const GAME_CAPTURE_WINDOWS: Record<string, string> = {
-  valorant: 'VALORANT  :UnrealWindow:VALORANT-Win64-Shipping.exe',
-  cs2: 'Counter-Strike 2:SDL_app:cs2.exe',
-  deadlock: 'Deadlock:SDL_app:deadlock.exe',
 }
 
 const DESKTOP_CAPTURE_KINDS = new Set(['monitor_capture', 'display_capture', 'screen_capture'])
 
-export function getUpForgeCaptureConfig(game: string): {
+/** Source 2 titles block OBS game-capture hooks — use window capture instead. */
+function usesWindowCapture(game: string): boolean {
+  const g = game.toLowerCase()
+  return g === 'cs2' || g === 'deadlock'
+}
+
+export function getUpForgeCaptureConfig(
+  game: string,
+  window: string,
+): {
   inputKind: string
   inputSettings: Record<string, string | number | boolean>
 } {
   const normalized = game.toLowerCase()
-  const window = GAME_CAPTURE_WINDOWS[normalized] ?? GAME_CAPTURE_WINDOWS.valorant
+
+  if (process.platform === 'win32' && usesWindowCapture(normalized)) {
+    return {
+      inputKind: 'window_capture',
+      inputSettings: {
+        window,
+        method: 0,
+        priority: 0,
+        cursor: false,
+        compatibility: false,
+      },
+    }
+  }
 
   if (process.platform === 'win32') {
     return {
@@ -82,8 +98,10 @@ async function removeUpForgeInput(obs: OBSWebSocket): Promise<void> {
 export async function ensureUpForgeCapture(
   obs: OBSWebSocket,
   game: string,
-): Promise<{ inputCreated: boolean; inputUpgraded: boolean }> {
-  const { inputKind, inputSettings } = getUpForgeCaptureConfig(game)
+  windowOverride?: string,
+): Promise<{ inputCreated: boolean; inputUpgraded: boolean; captureWindow: string }> {
+  const captureWindow = windowOverride ?? await resolveObsCaptureWindow(game)
+  const { inputKind, inputSettings } = getUpForgeCaptureConfig(game, captureWindow)
   const inputList = await obs.call('GetInputList') as { inputs?: { inputName: string }[] }
   const hasInput = inputList.inputs?.some((i) => i.inputName === UPFORGE_INPUT_NAME) ?? false
 
@@ -93,9 +111,10 @@ export async function ensureUpForgeCapture(
       await obs.call('SetInputSettings', {
         inputName: UPFORGE_INPUT_NAME,
         inputSettings: inputSettings as never,
+        overlay: true,
       })
-      log.info('[OBS Setup] Updated capture target for', game)
-      return { inputCreated: false, inputUpgraded: false }
+      log.info('[OBS Setup] Updated capture target for', game, '→', captureWindow)
+      return { inputCreated: false, inputUpgraded: false, captureWindow }
     }
     const inputUpgraded = !!kind
     if (kind && DESKTOP_CAPTURE_KINDS.has(kind)) {
@@ -109,8 +128,8 @@ export async function ensureUpForgeCapture(
       inputSettings: inputSettings as never,
       sceneItemEnabled: true,
     })
-    log.info('[OBS Setup] Created', inputKind, 'for', game)
-    return { inputCreated: true, inputUpgraded }
+    log.info('[OBS Setup] Created', inputKind, 'for', game, '→', captureWindow)
+    return { inputCreated: true, inputUpgraded, captureWindow }
   }
 
   await obs.call('CreateInput', {
@@ -120,13 +139,18 @@ export async function ensureUpForgeCapture(
     inputSettings: inputSettings as never,
     sceneItemEnabled: true,
   })
-  log.info('[OBS Setup] Created', inputKind, 'for', game)
-  return { inputCreated: true, inputUpgraded: false }
+  log.info('[OBS Setup] Created', inputKind, 'for', game, '→', captureWindow)
+  return { inputCreated: true, inputUpgraded: false, captureWindow }
 }
 
 /** Re-target capture to the active game window right before recording starts. */
-export async function retargetUpForgeCapture(obs: OBSWebSocket, game: string): Promise<void> {
-  await ensureUpForgeCapture(obs, game)
+export async function retargetUpForgeCapture(
+  obs: OBSWebSocket,
+  game: string,
+): Promise<{ captureWindow: string }> {
+  const capture = await ensureUpForgeCapture(obs, game)
+  await obs.call('SetCurrentProgramScene', { sceneName: UPFORGE_SCENE_NAME }).catch(() => { /* non-fatal */ })
+  return { captureWindow: capture.captureWindow }
 }
 
 export async function setupUpForgeScene(
@@ -136,6 +160,7 @@ export async function setupUpForgeScene(
   let sceneCreated = false
   let inputCreated = false
   let inputUpgraded = false
+  let captureWindow: string | undefined
 
   try {
     const sceneList = await obs.call('GetSceneList') as unknown as { scenes?: { sceneName: string }[] }
@@ -150,6 +175,7 @@ export async function setupUpForgeScene(
     const capture = await ensureUpForgeCapture(obs, game)
     inputCreated = capture.inputCreated
     inputUpgraded = capture.inputUpgraded
+    captureWindow = capture.captureWindow
 
     const items = await obs.call('GetSceneItemList', { sceneName: UPFORGE_SCENE_NAME }) as {
       sceneItems?: { sourceName: string }[]
@@ -176,10 +202,10 @@ export async function setupUpForgeScene(
       }).catch(() => { /* profile layout varies — non-fatal */ })
     }
 
-    return { ok: true, sceneCreated, inputCreated, inputUpgraded }
+    return { ok: true, sceneCreated, inputCreated, inputUpgraded, captureWindow }
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err)
     log.warn('[OBS Setup] setupUpForgeScene failed:', msg)
-    return { ok: false, sceneCreated, inputCreated, inputUpgraded, error: msg }
+    return { ok: false, sceneCreated, inputCreated, inputUpgraded, captureWindow, error: msg }
   }
 }

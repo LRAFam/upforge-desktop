@@ -191,6 +191,7 @@ export function setupMediaHandlers(
 
   ipcMain.handle('obs:setup-scene', async () => {
     if (!obsRecorder) return { ok: false, sceneCreated: false, inputCreated: false, error: 'OBS recorder not available' }
-    return obsRecorder.setupScene()
+    const game = settingsManager.get().primaryGame ?? 'valorant'
+    return obsRecorder.setupScene(game)
   })
 }

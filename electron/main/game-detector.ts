@@ -26,6 +26,8 @@ export class GameDetector extends EventEmitter {
   private _interval: NodeJS.Timeout | null = null
   private _activeGame: string | null = null
   private _simTimer: NodeJS.Timeout | null = null
+  /** When set, only this game's process is monitored (matches primaryGame in settings). */
+  private _watchGame: string | null = null
 
   start(): void {
     if (this._polling) return
@@ -51,14 +53,50 @@ export class GameDetector extends EventEmitter {
   }
 
   /**
+   * Limit detection to a single game (typically settings.primaryGame).
+   * Re-polls immediately so UpForge reacts when the user switches games.
+   */
+  setWatchGame(
+    game: string | null,
+    options?: { deferActiveStop?: boolean },
+  ): void {
+    const normalized = game && GAME_PROCESSES[game] ? game : null
+    this._watchGame = normalized
+
+    if (
+      normalized &&
+      this._activeGame &&
+      this._activeGame !== normalized &&
+      !options?.deferActiveStop
+    ) {
+      const stopped = this._activeGame
+      this._activeGame = null
+      this.emit('game-stopped', stopped)
+      console.log(`[GameDetector] ${stopped} stopped (primary game switched to ${normalized})`)
+    }
+
+    if (this._polling) {
+      void this._poll()
+    }
+  }
+
+  /**
    * Returns true if the Valorant *game* process is running (not just the launcher).
    * VALORANT-Win64-Shipping.exe only appears during actual match loading/play.
    * VALORANT.exe is the launcher — it runs from client open, not just during matches.
    */
   async isMatchProcessRunning(): Promise<boolean> {
+    return this.isGameProcessRunning('valorant')
+  }
+
+  /** Check whether a supported game's capture process is running. */
+  async isGameProcessRunning(game: string): Promise<boolean> {
     if (!IS_WIN) return false
+    const processNames = GAME_PROCESSES[game]
+    if (!processNames?.length) return false
     try {
-      return await this._isProcessRunning('VALORANT-Win64-Shipping.exe')
+      const results = await Promise.all(processNames.map((n) => this._isProcessRunning(n)))
+      return results.some(Boolean)
     } catch {
       return false
     }
@@ -90,22 +128,31 @@ export class GameDetector extends EventEmitter {
     }, durationMs)
   }
 
+  private _gamesToPoll(): Array<[string, string[]]> {
+    if (this._watchGame) {
+      const names = GAME_PROCESSES[this._watchGame]
+      return names ? [[this._watchGame, names]] : []
+    }
+    return Object.entries(GAME_PROCESSES)
+  }
+
   private async _poll(): Promise<void> {
     // Game detection only works on Windows — Valorant/CS2 don't run on Mac/Linux
     if (!IS_WIN) return
 
     try {
-      for (const [game, processNames] of Object.entries(GAME_PROCESSES)) {
-        // Only check one game: if a game is active, check if it's still running;
-        // if idle, check if any game has started.
-        if (this._activeGame && this._activeGame !== game) continue
-
+      for (const [game, processNames] of this._gamesToPoll()) {
         const running = (
           await Promise.all(processNames.map((n) => this._isProcessRunning(n)))
         ).some(Boolean)
 
         if (running && this._activeGame !== game) {
+          const previous = this._activeGame
           this._activeGame = game
+          if (previous) {
+            this.emit('game-stopped', previous)
+            console.log(`[GameDetector] ${previous} stopped (switched to ${game})`)
+          }
           this.emit('game-started', game)
           console.log(`[GameDetector] ${game} started`)
         } else if (!running && this._activeGame === game) {

@@ -10,6 +10,7 @@ import {
   getFreeDiskSpace,
 } from './disk-space'
 import { setupUpForgeScene, retargetUpForgeCapture, type ObsSetupResult } from './obs-setup'
+import { findObsWindowString } from './game-window-finder'
 import { formatObsConnectError, obsConnectHosts } from './obs-connect'
 import { applyObsRecordingSettings, type ObsApplyResult } from './obs-output-settings'
 import type { RecorderConfig } from './recorder'
@@ -91,6 +92,7 @@ export class OBSRecorder {
   constructor(
     private getSettings: () => OBSSettings,
     private getRecordingConfig?: () => RecorderConfig | undefined,
+    private getPrimaryGame?: () => string,
   ) {
     this._obs.on('ReplayBufferSaved', ({ savedReplayPath }) => {
       log.info('[OBSRecorder] Replay buffer saved:', savedReplayPath)
@@ -189,7 +191,7 @@ export class OBSRecorder {
           })
         }
 
-        const setup = await setupUpForgeScene(this._obs)
+        const setup = await setupUpForgeScene(this._obs, this.getPrimaryGame?.() ?? 'valorant')
         if (!setup.ok) {
           log.warn('[OBSRecorder] Scene setup incomplete:', setup.error)
         }
@@ -314,6 +316,57 @@ export class OBSRecorder {
   async applyRecordingSettings(config: RecorderConfig): Promise<ObsApplyResult | null> {
     if (!this._connected) return null
     return applyObsRecordingSettings(this._obs, config)
+  }
+
+  /** Point OBS capture at the active title (no-op while recording). */
+  async retargetCapture(game?: string): Promise<{ ok: boolean; captureWindow?: string }> {
+    if (!this._connected || this._recording) {
+      return { ok: false }
+    }
+    const target = game ?? this.getPrimaryGame?.() ?? 'valorant'
+    try {
+      const { captureWindow } = await retargetUpForgeCapture(this._obs, target)
+      log.info('[OBSRecorder] Capture retargeted to', target, '→', captureWindow)
+      return { ok: true, captureWindow }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      log.warn('[OBSRecorder] retargetCapture failed:', msg)
+      this._lastError = msg
+      return { ok: false }
+    }
+  }
+
+  /**
+   * Retry capture setup until the game window exists (CS2/Deadlock often start after the process).
+   */
+  async retargetCaptureWithRetry(
+    game?: string,
+    opts?: { maxAttempts?: number; intervalMs?: number },
+  ): Promise<{ ok: boolean; captureWindow?: string; liveWindow?: boolean }> {
+    const target = game ?? this.getPrimaryGame?.() ?? 'valorant'
+    const maxAttempts = opts?.maxAttempts ?? 15
+    const intervalMs = opts?.intervalMs ?? 2000
+
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      if (!this._connected) {
+        const connect = await this.connect()
+        if (!connect.ok) return { ok: false }
+      }
+      if (this._recording) return { ok: false }
+
+      const liveWindow = await findObsWindowString(target)
+      const result = await this.retargetCapture(target)
+      if (result.ok && liveWindow) {
+        return { ok: true, captureWindow: result.captureWindow, liveWindow: true }
+      }
+      if (result.ok && attempt === maxAttempts) {
+        return { ok: true, captureWindow: result.captureWindow, liveWindow: false }
+      }
+      if (attempt < maxAttempts) {
+        await new Promise((r) => setTimeout(r, intervalMs))
+      }
+    }
+    return { ok: false }
   }
 
   async start(game: string, config?: RecorderConfig): Promise<void> {
