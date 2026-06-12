@@ -287,6 +287,33 @@ export function setupGamingHandlers(
     return { dir }
   })
 
+  ipcMain.handle('cs2:list-demos', async () => {
+    const { listRecentCS2Demos } = await import('../cs2-demo-finder')
+    const demoDir = settingsManager.get().cs2DemoDir
+    return listRecentCS2Demos(demoDir)
+  })
+
+  ipcMain.handle('cs2:open-demos-folder', async () => {
+    const { detectCS2DemoDir } = await import('../cs2-demo-finder')
+    const custom = settingsManager.get().cs2DemoDir
+    const dir = custom ?? (await detectCS2DemoDir())
+    if (dir && fs.existsSync(dir)) {
+      shell.openPath(dir)
+      return { ok: true }
+    }
+    return { ok: false }
+  })
+
+  ipcMain.handle('cs2:open-analyze', () => {
+    shell.openExternal('https://upforge.gg/cs2/analyze')
+    return { ok: true }
+  })
+
+  ipcMain.handle('cs2:open-dashboard', () => {
+    shell.openExternal('https://upforge.gg/cs2')
+    return { ok: true }
+  })
+
   // ── ForgeRank ─────────────────────────────────────────────────────────────
 
   ipcMain.handle('forge-rank:prestige', async () => {

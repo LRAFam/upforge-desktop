@@ -61,7 +61,11 @@ export interface CoachingDrill {
   status: string
 }
 
+export type PrimaryGame = 'valorant' | 'cs2' | 'deadlock'
+
 export interface AppSettings {
+  /** Active game context — drives dashboard, settings sections, and web links. */
+  primaryGame: PrimaryGame
   /** Coaching (720p) or creator (1080p60) recording preset. */
   recordingPreset: 'coaching' | 'creator'
   recordingQuality: '720p' | '1080p'
@@ -109,6 +113,8 @@ export interface AppSettings {
   obsPassword: string
   /** Replay buffer length in seconds */
   obsReplayBufferSeconds: number
+  /** Override path for CS2 demo directory (undefined = auto-detect via Steam) */
+  cs2DemoDir?: string
   /** Mouse & trainer sensitivity settings */
   trainerMouse: {
     dpi: number
@@ -583,6 +589,17 @@ declare global {
         openAnalyze: () => Promise<{ ok: boolean }>
         openDashboard: () => Promise<{ ok: boolean }>
         getStats: () => Promise<DeadlockProfileStats | null>
+      }
+      cs2: {
+        detectDemoDir: () => Promise<{ dir: string | null }>
+        listDemos: () => Promise<{
+          files: Array<{ name: string; path: string; sizeBytes: number; modifiedAt: number }>
+          dir: string | null
+          exists: boolean
+        }>
+        openDemosFolder: () => Promise<{ ok: boolean }>
+        openAnalyze: () => Promise<{ ok: boolean }>
+        openDashboard: () => Promise<{ ok: boolean }>
       }
       forgeRank: {
         prestige: () => Promise<{ success: boolean; forge_rank?: ForgeRankInfo; message?: string }>

@@ -6,7 +6,11 @@ import {
   type RecordingPresetId,
 } from './recording-preset'
 
+export type PrimaryGame = 'valorant' | 'cs2' | 'deadlock'
+
 export interface AppSettings {
+  /** Active game context — drives dashboard copy, settings sections, and web links. */
+  primaryGame: PrimaryGame
   /** Coaching (720p) or creator (1080p60) recording preset. */
   recordingPreset: RecordingPresetId
   recordingQuality: '720p' | '1080p'
@@ -116,6 +120,7 @@ function applyRecordingPresetFields(
 }
 
 const DEFAULTS: AppSettings = {
+  primaryGame: 'valorant',
   ...applyRecordingPresetFields({ recordingPreset: 'coaching' }),
   audioEnabled: true,
   savePath: '',
@@ -201,6 +206,13 @@ export class SettingsManager {
       // Users who finished welcome before onboardingComplete existed
       if (parsed.firstRun === false && parsed.onboardingComplete === undefined) {
         parsed.onboardingComplete = true
+      }
+      // Migrate trainerMouse.game → primaryGame for existing installs
+      if (!parsed.primaryGame && parsed.trainerMouse?.game) {
+        const g = parsed.trainerMouse.game
+        if (g === 'valorant' || g === 'cs2' || g === 'deadlock') {
+          parsed.primaryGame = g
+        }
       }
       const merged = { ...DEFAULTS, ...parsed, obsEnabled: true }
       if (!String(merged.savePath ?? '').trim()) {

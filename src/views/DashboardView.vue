@@ -260,10 +260,13 @@
                   <span class="text-red-400">Clip</span>
                   <kbd class="font-mono text-red-200">{{ hotkeys['save-clip'] }}</kbd>
                 </span>
-                <span v-else-if="status.recordedModes?.length" class="inline-flex items-center gap-1 rounded-full border border-white/[0.08] bg-white/[0.03] px-2.5 py-1 text-[10px] font-semibold text-gray-300">
+                <span v-else-if="isCs2" class="inline-flex items-center gap-1 rounded-full border border-orange-500/20 bg-orange-500/[0.10] px-2.5 py-1 text-[10px] font-semibold text-orange-300">
+                  Demo auto-upload
+                </span>
+                <span v-else-if="isValorant && status.recordedModes?.length" class="inline-flex items-center gap-1 rounded-full border border-white/[0.08] bg-white/[0.03] px-2.5 py-1 text-[10px] font-semibold text-gray-300">
                   {{ status.recordedModes.map(formatMode).join(' · ') }}
                 </span>
-                <span v-else class="inline-flex items-center gap-1 rounded-full border border-white/[0.08] bg-white/[0.03] px-2.5 py-1 text-[10px] font-semibold text-gray-400">
+                <span v-else-if="isValorant" class="inline-flex items-center gap-1 rounded-full border border-white/[0.08] bg-white/[0.03] px-2.5 py-1 text-[10px] font-semibold text-gray-400">
                   Configure modes in Settings
                 </span>
               </div>
@@ -287,7 +290,7 @@
             <div class="flex items-start gap-3">
               <!-- Avatar -->
               <div class="relative flex-shrink-0">
-                <img v-if="playerCardUrl" :src="playerCardUrl" class="w-14 h-14 rounded-xl object-cover" @error="playerCardUrl = ''" />
+                <img v-if="isValorant && playerCardUrl" :src="playerCardUrl" class="w-14 h-14 rounded-xl object-cover" @error="playerCardUrl = ''" />
                 <div v-else class="w-14 h-14 rounded-xl bg-gradient-to-br from-red-500/30 to-orange-600/30 border border-white/[0.08] flex items-center justify-center">
                   <span class="text-xl font-black text-red-400">{{ profile.user.name?.charAt(0).toUpperCase() }}</span>
                 </div>
@@ -317,10 +320,12 @@
                   </span>
                 </div>
                 <p class="text-xs text-gray-500 mt-px leading-tight">
-                  <span v-if="profile.user.riot_name">{{ profile.user.riot_name }}#{{ profile.user.riot_tag }}</span>
+                  <span v-if="isCs2" class="text-orange-300/80">CS2 · demo analysis &amp; VOD coaching</span>
+                  <span v-else-if="isDeadlock" class="text-teal-300/80">Deadlock · replay analysis</span>
+                  <span v-else-if="profile.user.riot_name">{{ profile.user.riot_name }}#{{ profile.user.riot_tag }}</span>
                   <button v-else class="text-red-400/70 hover:text-red-400 transition-colors" @click="openRiotSettings">Link Riot ID →</button>
                 </p>
-                <div v-if="profile.latest_stats?.current_rank" class="mt-1.5">
+                <div v-if="isValorant && profile.latest_stats?.current_rank" class="mt-1.5">
                   <div class="flex items-center gap-1.5 flex-nowrap">
                     <img v-if="getRankIconUrl(profile.latest_stats.current_rank)" :src="getRankIconUrl(profile.latest_stats.current_rank)!" :alt="profile.latest_stats.current_rank" class="w-6 h-6 object-contain drop-shadow-lg flex-shrink-0" />
                     <span class="text-lg font-black leading-none whitespace-nowrap" :style="{ color: getRankHexColor(profile.latest_stats.current_rank), textShadow: `0 0 20px ${getRankHexColor(profile.latest_stats.current_rank)}55` }">{{ profile.latest_stats.current_rank }}</span>
@@ -345,7 +350,7 @@
           </div>
 
           <!-- 4-stat grid -->
-          <template v-if="profile.latest_stats">
+          <template v-if="isValorant && profile.latest_stats">
             <div class="grid grid-cols-4 divide-x divide-white/[0.04] border-t border-white/[0.07]">
               <div class="flex flex-col items-center py-3.5">
                 <span class="text-lg font-black tabular-nums leading-none stat-number" :class="profile.latest_stats.kd_ratio != null ? (profile.latest_stats.kd_ratio >= 1.2 ? 'text-green-400' : profile.latest_stats.kd_ratio >= 0.8 ? 'text-white' : 'text-red-400') : 'text-gray-600'">{{ profile.latest_stats.kd_ratio?.toFixed(2) ?? '—' }}</span>
@@ -391,8 +396,11 @@
               </div>
             </div>
           </template>
-          <div v-else class="px-4 pb-3 pt-1">
+          <div v-else-if="isValorant" class="px-4 pb-3 pt-1">
             <button class="text-xs text-gray-600 hover:text-gray-400 transition-colors" @click="openRiotSettings">No stats yet — link your Riot ID</button>
+          </div>
+          <div v-else-if="isCs2" class="px-4 pb-3 pt-1">
+            <p class="text-xs text-gray-600 leading-relaxed">Match stats appear on <button class="text-orange-400/80 hover:text-orange-300 transition-colors" @click="openBrowser">upforge.gg/cs2</button> after demo analysis.</p>
           </div>
 
           <!-- Quota -->
@@ -557,11 +565,14 @@
       <!-- ═══════════ CENTER: Recent matches ═══════════ -->
       <div class="flex flex-col gap-3 min-h-0 overflow-hidden lg:min-h-[420px] xl:min-h-0">
 
-        <!-- Deadlock stats panel (Steam-linked stats) -->
-        <DeadlockStatsPanel v-if="isDeadlockUser" class="flex-shrink-0" />
+        <!-- CS2 setup & demos -->
+        <CS2SetupPanel v-if="isCs2" class="flex-shrink-0" />
 
-        <!-- Deadlock demo upload panel (Deadlock users only) -->
-        <DeadlockDemoPanel v-if="isDeadlockUser" class="flex-shrink-0" />
+        <!-- Deadlock stats panel (Steam-linked stats) -->
+        <DeadlockStatsPanel v-if="isDeadlock" class="flex-shrink-0" />
+
+        <!-- Deadlock demo upload panel -->
+        <DeadlockDemoPanel v-if="isDeadlock" class="flex-shrink-0" />
 
         <!-- Emotional highlights strip -->
         <Transition name="banner-slide">
@@ -987,9 +998,13 @@ import { pendingTimeline } from '../stores/pendingTimeline'
 import { useAchievements } from '../composables/useAchievements'
 import DeadlockDemoPanel from '../components/DeadlockDemoPanel.vue'
 import DeadlockStatsPanel from '../components/DeadlockStatsPanel.vue'
+import CS2SetupPanel from '../components/CS2SetupPanel.vue'
+import { usePrimaryGame } from '../composables/usePrimaryGame'
+import { primaryGameWebBase } from '../lib/games'
 
 const router = useRouter()
 const achievements = useAchievements()
+const { primaryGame, isValorant, isCs2, isDeadlock, loadFromSettings, applyFromSettings } = usePrimaryGame()
 
 const profile = ref<ProfileData | null>(null)
 const profileLoading = ref(true)
@@ -1028,12 +1043,9 @@ const showMacPreviewBanner = computed(() =>
 )
 const hotkeys = ref<Record<string, string>>({})
 const clipCount = ref(0)
-const userPrimaryGame = ref<string>('valorant')
-
 const isAdmin = computed(() =>
   isPlatformAdmin(profile.value?.user?.tier, profile.value?.user?.is_admin),
 )
-const isDeadlockUser = computed(() => userPrimaryGame.value === 'deadlock')
 
 const hotkeyHints = computed(() => [
   { key: hotkeys.value['save-clip'] || 'F9', label: 'save clip' },
@@ -1041,7 +1053,11 @@ const hotkeyHints = computed(() => [
   { key: hotkeys.value['take-screenshot'] || 'F8', label: 'screenshot' },
 ])
 const dashboardHeadline = computed(() => profile.value?.user?.name ? `Welcome back, ${profile.value.user.name}` : 'Your coaching dashboard')
-const dashboardRankLabel = computed(() => profile.value?.latest_stats?.current_rank || 'Unranked')
+const dashboardRankLabel = computed(() => {
+  if (isCs2.value) return 'CS2'
+  if (isDeadlock.value) return 'Deadlock'
+  return profile.value?.latest_stats?.current_rank || 'Unranked'
+})
 const totalSessionsAnalysed = computed(() => {
   const total = profile.value?.user?.analysis_stats?.total
   if (total != null) return Math.max(0, total)
@@ -1050,22 +1066,33 @@ const totalSessionsAnalysed = computed(() => {
 const dashboardWinRateLabel = computed(() => profile.value?.latest_stats?.win_rate != null ? `${Math.round(profile.value.latest_stats.win_rate)}%` : '—')
 const liveDetectionActive = computed(() => status.value.recording || status.value.waitingForMatch || !!status.value.currentGame)
 const activeGameTitle = computed(() => {
+  const gameName = isCs2.value ? 'CS2' : isDeadlock.value ? 'Deadlock' : 'Valorant'
   if (!status.value.obsConnected && !status.value.recording) return 'OBS not connected'
   if (!status.value.ffmpegOk) return 'Clip tools unavailable'
   if (status.value.recording) return 'Recording in progress'
   if (status.value.recordingStarting) return 'Starting capture'
-  if (status.value.waitingForMatch) return `${status.value.currentGame || 'Valorant'} detected`
+  if (status.value.waitingForMatch) return `${status.value.currentGame || gameName} detected`
   if (status.value.currentGame) return `${status.value.currentGame} detected`
-  return 'Ready for next match'
+  return `Ready for your next ${gameName} match`
 })
 const activeGameMessage = computed(() => {
   if (!status.value.obsConnected && !status.value.recording) return 'Install OBS 28+, enable WebSocket, and connect in Settings → Recording before your next match.'
   if (!status.value.ffmpegOk) return 'Match recording uses OBS. Clip extraction needs the bundled ffmpeg — reinstall if this persists.'
-  if (status.value.recording) return 'UpForge is actively recording this match. Save clips anytime for faster review.'
+  if (status.value.recording) {
+    return isCs2.value
+      ? 'UpForge is recording and will upload your match demo when the game closes.'
+      : 'UpForge is actively recording this match. Save clips anytime for faster review.'
+  }
   if (status.value.recordingStarting) return 'Stand by while capture hooks into the live match.'
-  if (status.value.waitingForMatch) return 'You are in lobby or agent select. Auto-recording will begin when the match starts.'
-  if (status.value.currentGame) return 'Game detected and monitoring. Launch into a supported mode to begin recording.'
-  return 'Launch a supported game and UpForge will watch for the next recordable session.'
+  if (status.value.waitingForMatch) {
+    if (isCs2.value) return 'CS2 is running — auto-recording will begin shortly after you load in.'
+    if (isDeadlock.value) return 'Deadlock is running — auto-recording will begin when a match starts.'
+    return 'You are in lobby or agent select. Auto-recording will begin when the match starts.'
+  }
+  if (status.value.currentGame) return 'Game detected and monitoring. Launch into a match to begin recording.'
+  return isCs2.value
+    ? 'Launch CS2 — UpForge will record matches and upload demos automatically.'
+    : 'Launch a supported game and UpForge will watch for the next recordable session.'
 })
 const devOpen = ref(false)
 const simulating = ref(false)
@@ -1439,7 +1466,7 @@ onMounted(async () => {
   // Load last insight from persisted settings
   const savedSettings = await window.api.settings.get().catch(() => null) as ({ lastInsight?: typeof lastInsight.value; trainerMouse?: { game?: string } } | null)
   if (savedSettings?.lastInsight) lastInsight.value = savedSettings.lastInsight
-  if (savedSettings?.trainerMouse?.game) userPrimaryGame.value = savedSettings.trainerMouse.game
+  await loadFromSettings()
 
   // Achievement: first-analysis
   await achievements.load()
@@ -1472,6 +1499,10 @@ onMounted(async () => {
   durationInterval = setInterval(updateRecordingElapsed, 1000)
 
   const ipcCleanup: (() => void)[] = []
+  ipcCleanup.push(window.api.on('settings:changed', (...args: unknown[]) => {
+    const s = args[0] as { primaryGame?: string; trainerMouse?: { game?: string } } | undefined
+    if (s) applyFromSettings(s)
+  }))
   ipcCleanup.push(window.api.on('dashboard:refresh', refreshProfile))
   ipcCleanup.push(window.api.on('dashboard:last-insight', (...args: unknown[]) => {
     lastInsight.value = args[0] as typeof lastInsight.value
@@ -1746,7 +1777,7 @@ async function trainLastInsight() {
     lastInsightTraining.value = false
   }
 }
-function openBrowser() { window.open('https://upforge.gg/valorant/history', '_blank') }
+function openBrowser() { window.open(`${primaryGameWebBase(primaryGame.value)}/history`, '_blank') }
 function openPlaystyleProfile() { window.open('https://upforge.gg/valorant/playstyle', '_blank') }
 
 const timelineLoadingId = ref<number | null>(null)

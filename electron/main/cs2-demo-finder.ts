@@ -186,3 +186,62 @@ function findNewestDem(dir: string, notBefore: number): string | null {
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms))
 }
+
+export interface CS2DemoFile {
+  name: string
+  path: string
+  sizeBytes: number
+  modifiedAt: number
+}
+
+/** List the most recent .dem files in the CS2 demo directory. */
+export async function listRecentCS2Demos(
+  customDemoDir?: string,
+  limit = 8,
+): Promise<{ files: CS2DemoFile[]; dir: string | null; exists: boolean }> {
+  if (!IS_WIN) {
+    return { files: [], dir: null, exists: false }
+  }
+
+  let demoDir: string | null = customDemoDir ?? null
+  if (!demoDir) {
+    const steamPath = await getSteamPath()
+    if (steamPath) {
+      const candidates = await getCandidateDemoDirs(steamPath)
+      for (const dir of candidates) {
+        if (fs.existsSync(dir)) {
+          demoDir = dir
+          break
+        }
+      }
+    }
+  }
+
+  if (!demoDir || !fs.existsSync(demoDir)) {
+    return { files: [], dir: demoDir, exists: false }
+  }
+
+  const files: CS2DemoFile[] = []
+  try {
+    for (const entry of fs.readdirSync(demoDir)) {
+      if (!entry.toLowerCase().endsWith('.dem')) continue
+      const fullPath = path.join(demoDir, entry)
+      try {
+        const stat = fs.statSync(fullPath)
+        files.push({
+          name: entry,
+          path: fullPath,
+          sizeBytes: stat.size,
+          modifiedAt: stat.mtimeMs,
+        })
+      } catch {
+        // skip unreadable
+      }
+    }
+  } catch {
+    return { files: [], dir: demoDir, exists: true }
+  }
+
+  files.sort((a, b) => b.modifiedAt - a.modifiedAt)
+  return { files: files.slice(0, limit), dir: demoDir, exists: true }
+}

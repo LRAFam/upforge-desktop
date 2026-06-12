@@ -484,6 +484,7 @@ async function handleComplete() {
     const current = await window.api.settings.get()
     await window.api.settings.save({
       onboardingComplete: true,
+      primaryGame: selectedGame.value,
       trainerMouse: {
         ...current.trainerMouse,
         game: selectedGame.value,

@@ -162,6 +162,10 @@ const api = {
   },
   cs2: {
     detectDemoDir: () => ipcRenderer.invoke('cs2:detect-demo-dir'),
+    listDemos: () => ipcRenderer.invoke('cs2:list-demos'),
+    openDemosFolder: () => ipcRenderer.invoke('cs2:open-demos-folder'),
+    openAnalyze: () => ipcRenderer.invoke('cs2:open-analyze'),
+    openDashboard: () => ipcRenderer.invoke('cs2:open-dashboard'),
   },
   forgeRank: {
     prestige: () => ipcRenderer.invoke('forge-rank:prestige'),

@@ -40,8 +40,8 @@
       </div>
 
       <!-- User identity (center when not recording) — hidden on compact post-game window -->
-      <div v-if="riotId && !isMac && !isPostGameRoute" class="absolute left-1/2 -translate-x-1/2 flex items-center gap-1 pointer-events-none">
-        <span class="text-[10px] text-gray-500 font-medium">{{ riotId }}</span>
+      <div v-if="titleBarIdentity && !isMac && !isPostGameRoute" class="absolute left-1/2 -translate-x-1/2 flex items-center gap-1 pointer-events-none">
+        <span class="text-[10px] text-gray-500 font-medium">{{ titleBarIdentity }}</span>
       </div>
 
       <!-- Windows-only window controls -->
@@ -153,7 +153,9 @@
       class="relative flex items-center gap-2 px-3 py-1.5 flex-shrink-0 border-b border-white/[0.09] bg-[#161616]/90 backdrop-blur-md"
     >
       <div class="pointer-events-none absolute inset-x-0 bottom-0 h-px bg-gradient-to-r from-transparent via-red-500/40 to-transparent" />
-      <div class="flex min-w-0 flex-1 items-center gap-0.5 overflow-x-auto scrollbar-hide">
+      <div class="flex min-w-0 flex-1 items-center gap-2 overflow-x-auto scrollbar-hide">
+        <GameSwitcher />
+        <div class="h-5 w-px flex-shrink-0 bg-white/[0.10]" />
         <RouterLink
           v-for="link in navLinks"
           :key="link.to"
@@ -243,10 +245,13 @@ import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import OnboardingWizard from './components/OnboardingWizard.vue'
 import AchievementManager from './components/AchievementManager.vue'
+import GameSwitcher from './components/GameSwitcher.vue'
+import { usePrimaryGame } from './composables/usePrimaryGame'
 import type { ClipRecord, ProfileData } from './env.d.ts'
 
 const route = useRoute()
 const router = useRouter()
+const { primaryGame, isValorant, loadFromSettings, applyFromSettings } = usePrimaryGame()
 
 const isMac = navigator.platform.toUpperCase().includes('MAC')
 const status = ref({ recording: false, currentGame: null as string | null })
@@ -314,8 +319,13 @@ const appUpdatePercent = ref(0)
 let statusInterval: ReturnType<typeof setInterval> | null = null
 let navBusyTimer: ReturnType<typeof setTimeout> | null = null
 
-const userDisplayName = computed(() => riotId.value || userName.value || 'UpForge User')
+const userDisplayName = computed(() => userName.value || riotId.value || 'UpForge User')
 const userInitial = computed(() => userDisplayName.value.trim().charAt(0).toUpperCase() || 'U')
+const titleBarIdentity = computed(() => {
+  if (isValorant.value && riotId.value) return riotId.value
+  if (!isValorant.value && userName.value) return `${userName.value} · ${primaryGame.value.toUpperCase()}`
+  return riotId.value
+})
 
 const busyActive = computed(() =>
   isNavigating.value || ['checking', 'downloading', 'installing'].includes(appUpdatePhase.value)
@@ -417,6 +427,7 @@ onMounted(async () => {
   }
   try {
     const settings = await window.api.settings.get()
+    applyFromSettings(settings)
     devModeEnabled.value = settings.devModeEnabled ?? false
     if (!settings.onboardingComplete && settings.firstRun === false) {
       showOnboarding.value = true
@@ -425,7 +436,7 @@ onMounted(async () => {
     }
   } catch { /* ignore */ }
 
-  await Promise.all([loadClipSummary(), loadUserProfile()])
+  await Promise.all([loadClipSummary(), loadUserProfile(), loadFromSettings()])
   const initialUserId = (status.value as { user?: { id?: number } }).user?.id
   sessionUserKey.value = initialUserId != null ? `user-${initialUserId}` : 'guest'
 
@@ -475,8 +486,10 @@ onMounted(async () => {
 
   // React to settings changes (e.g. dev mode toggled in Settings)
   const settingsCleanup = window.api.on('settings:changed', (...args: unknown[]) => {
-    const s = args[0] as { devModeEnabled?: boolean } | undefined
-    if (s && typeof s.devModeEnabled === 'boolean') devModeEnabled.value = s.devModeEnabled
+    const s = args[0] as { devModeEnabled?: boolean; primaryGame?: string; trainerMouse?: { game?: string } } | undefined
+    if (!s) return
+    if (typeof s.devModeEnabled === 'boolean') devModeEnabled.value = s.devModeEnabled
+    applyFromSettings(s)
   })
   ;(window as Window & { _settingsCleanup?: () => void })._settingsCleanup = settingsCleanup
   statusInterval = setInterval(async () => {

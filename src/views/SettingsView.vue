@@ -38,6 +38,28 @@
 
     <div class="flex-1 space-y-4 scroll-col px-4 py-4">
       <section v-show="activeTab === 'general'" class="space-y-4">
+        <div class="panel-elevated overflow-hidden p-4">
+          <p class="text-sm font-semibold text-white">Your game</p>
+          <p class="mt-1 text-xs text-gray-500">Switches dashboard, settings, and web links — same as upforge.gg.</p>
+          <div class="mt-3 grid grid-cols-3 gap-2">
+            <button
+              v-for="game in PRIMARY_GAMES"
+              :key="game.id"
+              type="button"
+              class="rounded-xl border px-3 py-2.5 text-left transition-all"
+              :class="settings.primaryGame === game.id
+                ? 'border-white/[0.20] bg-white/[0.08]'
+                : 'border-white/[0.10] bg-white/[0.02] hover:border-white/[0.14] hover:bg-white/[0.04]'"
+              @click="selectPrimaryGame(game.id)"
+            >
+              <div class="flex items-center gap-2">
+                <span class="h-2 w-2 rounded-full flex-shrink-0" :style="{ backgroundColor: game.accent }" />
+                <span class="text-xs font-semibold text-gray-200">{{ game.label }}</span>
+              </div>
+            </button>
+          </div>
+        </div>
+
         <div class="panel-elevated overflow-hidden">
           <button class="flex w-full items-center justify-between px-4 py-3 text-left" @click="toggleSection('account')">
             <div class="flex items-center gap-3">
@@ -195,7 +217,7 @@
             </svg>
           </button>
           <div v-if="sectionOpen.recordingCapture" class="space-y-4 border-t border-white/[0.09] p-4">
-            <div>
+            <div v-if="settings.primaryGame === 'valorant'">
               <label class="mb-2 block text-xs font-medium text-gray-400">Record game modes</label>
               <div class="grid grid-cols-2 gap-2">
                 <button
@@ -221,6 +243,28 @@
                 </button>
               </div>
               <p class="mt-2 text-xs text-gray-600">Only selected modes are recorded. If none are selected, nothing is recorded.</p>
+            </div>
+
+            <div v-else-if="settings.primaryGame === 'cs2'" class="rounded-2xl border border-orange-500/20 bg-orange-500/[0.05] p-4 space-y-3">
+              <div>
+                <p class="text-sm font-semibold text-white">CS2 demo recording</p>
+                <p class="mt-1 text-xs text-gray-500 leading-relaxed">Add <code class="font-mono text-orange-300/90">cl_demo_auto_recording 1</code> to your CS2 autoexec. UpForge uploads the demo when a match ends.</p>
+              </div>
+              <div>
+                <label class="mb-1 block text-xs text-gray-400">Demo folder</label>
+                <p class="text-[11px] font-mono text-gray-500 truncate mb-2">{{ settings.cs2DemoDir || 'Auto-detect via Steam' }}</p>
+                <div class="flex flex-wrap gap-2">
+                  <button type="button" class="rounded-xl border border-white/[0.10] bg-white/[0.04] px-3 py-1.5 text-xs font-medium text-gray-300 hover:text-white transition-colors" :disabled="cs2Detecting" @click="detectCs2DemoDir">
+                    {{ cs2Detecting ? 'Detecting…' : 'Detect folder' }}
+                  </button>
+                  <button type="button" class="rounded-xl border border-white/[0.10] bg-white/[0.04] px-3 py-1.5 text-xs font-medium text-gray-300 hover:text-white transition-colors" @click="browseCs2DemoDir">Browse…</button>
+                  <button type="button" class="rounded-xl border border-orange-500/20 bg-orange-500/10 px-3 py-1.5 text-xs font-medium text-orange-300 hover:bg-orange-500/20 transition-colors" @click="openCs2Analyze">Open web uploader</button>
+                </div>
+              </div>
+            </div>
+
+            <div v-else class="rounded-2xl border border-white/[0.10] bg-black/20 p-4">
+              <p class="text-xs text-gray-500 leading-relaxed">Recording starts when {{ settings.primaryGame === 'deadlock' ? 'Deadlock' : 'your game' }} is detected. Queue filters apply to Valorant only.</p>
             </div>
 
             <div class="rounded-2xl border border-white/[0.10] bg-black/20 p-4 space-y-3">
@@ -735,6 +779,7 @@
 import { ref, reactive, computed, onMounted, onUnmounted, toRaw } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import type { AppSettings } from '../env.d.ts'
+import { PRIMARY_GAMES, type PrimaryGame } from '../lib/games'
 import { getTierBadgeClass, getTierBadgeLabel, formatGameMode } from '../lib/valorant'
 import { hasProAccess as proAccessForUser } from '../lib/subscription'
 import { BADGE_PREVIEW_ITEMS, getBadgeIconUrl, getSubscriptionIconUrl } from '../lib/rank-assets'
@@ -965,7 +1010,10 @@ async function loadHotkeyStatus(): Promise<void> {
   } catch { /* non-critical */ }
 }
 
+const cs2Detecting = ref(false)
+
 const settings = reactive<AppSettings>({
+  primaryGame: 'valorant',
   recordingPreset: 'coaching',
   recordingQuality: '720p',
   recordingBitrate: 5,
@@ -1126,6 +1174,43 @@ async function refreshRecordingBackendStatus(): Promise<void> {
     const obs = await window.api.obs.getStatus()
     obsStatus.value = obs
   } catch { /* non-critical */ }
+}
+
+async function selectPrimaryGame(game: PrimaryGame): Promise<void> {
+  if (settings.primaryGame === game) return
+  settings.primaryGame = game
+  settings.trainerMouse.game = game
+  await window.api.settings.save({ primaryGame: game, trainerMouse: { ...toRaw(settings.trainerMouse) } })
+  showSaved()
+}
+
+async function detectCs2DemoDir(): Promise<void> {
+  cs2Detecting.value = true
+  try {
+    const { dir } = await window.api.cs2.detectDemoDir()
+    if (dir) {
+      settings.cs2DemoDir = dir
+      await window.api.settings.save({ cs2DemoDir: dir })
+      showSaved()
+    } else {
+      showToast('Could not find CS2 demo folder')
+    }
+  } finally {
+    cs2Detecting.value = false
+  }
+}
+
+async function browseCs2DemoDir(): Promise<void> {
+  const dir = await window.api.dialog.openDirectory()
+  if (dir) {
+    settings.cs2DemoDir = dir
+    await window.api.settings.save({ cs2DemoDir: dir })
+    showSaved()
+  }
+}
+
+function openCs2Analyze(): void {
+  window.api.cs2.openAnalyze()
 }
 
 function debouncedSave(): void {
