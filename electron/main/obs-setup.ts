@@ -143,6 +143,49 @@ export async function ensureUpForgeCapture(
   return { inputCreated: true, inputUpgraded: false, captureWindow }
 }
 
+/** Scale the capture source to fill the OBS canvas (same as Transform → Fit to screen). */
+export async function fitUpForgeCaptureToCanvas(obs: OBSWebSocket): Promise<void> {
+  try {
+    const items = await obs.call('GetSceneItemList', { sceneName: UPFORGE_SCENE_NAME }) as {
+      sceneItems?: { sourceName: string; sceneItemId: number }[]
+    }
+    const item = items.sceneItems?.find((i) => i.sourceName === UPFORGE_INPUT_NAME)
+    if (!item) return
+
+    const video = await obs.call('GetVideoSettings') as {
+      baseWidth?: number
+      baseHeight?: number
+    }
+    const boundsWidth = video.baseWidth ?? 1920
+    const boundsHeight = video.baseHeight ?? 1080
+    if (boundsWidth < 1 || boundsHeight < 1) return
+
+    await obs.call('SetSceneItemTransform', {
+      sceneName: UPFORGE_SCENE_NAME,
+      sceneItemId: item.sceneItemId,
+      sceneItemTransform: {
+        positionX: 0,
+        positionY: 0,
+        rotation: 0,
+        scaleX: 1,
+        scaleY: 1,
+        alignment: 5,
+        boundsType: 'OBS_BOUNDS_SCALE_INNER',
+        boundsAlignment: 0,
+        boundsWidth,
+        boundsHeight,
+        cropTop: 0,
+        cropRight: 0,
+        cropBottom: 0,
+        cropLeft: 0,
+      },
+    })
+    log.info('[OBS Setup] Fit capture to canvas', boundsWidth, '×', boundsHeight)
+  } catch (err) {
+    log.warn('[OBS Setup] fitUpForgeCaptureToCanvas failed:', err instanceof Error ? err.message : err)
+  }
+}
+
 /** Re-target capture to the active game window right before recording starts. */
 export async function retargetUpForgeCapture(
   obs: OBSWebSocket,
@@ -150,6 +193,7 @@ export async function retargetUpForgeCapture(
 ): Promise<{ captureWindow: string }> {
   const capture = await ensureUpForgeCapture(obs, game)
   await obs.call('SetCurrentProgramScene', { sceneName: UPFORGE_SCENE_NAME }).catch(() => { /* non-fatal */ })
+  await fitUpForgeCaptureToCanvas(obs)
   return { captureWindow: capture.captureWindow }
 }
 
@@ -189,6 +233,8 @@ export async function setupUpForgeScene(
     }
 
     await obs.call('SetCurrentProgramScene', { sceneName: UPFORGE_SCENE_NAME })
+
+    await fitUpForgeCaptureToCanvas(obs)
 
     const profileParams: Array<[string, string, string]> = [
       ['SimpleOutput', 'RecFormat', 'mp4'],

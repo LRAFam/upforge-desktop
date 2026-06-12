@@ -1,6 +1,3 @@
-/** Official Deadlock rank badge URLs from the community assets API. */
-const RANK_ASSETS = 'https://assets-bucket.deadlock-api.com/assets-api-res/images/ranks'
-
 const RANK_TIERS: Record<string, number> = {
   Obscurus: 0,
   Initiate: 1,
@@ -16,6 +13,10 @@ const RANK_TIERS: Record<string, number> = {
   Eternus: 11,
 }
 
+function deadlockRankAsset(filename: string): string {
+  return new URL(`../assets/ranks/deadlock/${filename}`, import.meta.url).href
+}
+
 /** Resolve an official rank badge URL from rank name and optional subtier (1–6). */
 export function getDeadlockRankIconUrl(
   name: string | null | undefined,
@@ -24,9 +25,13 @@ export function getDeadlockRankIconUrl(
   if (!name) return null
   const tier = RANK_TIERS[name]
   if (tier === undefined) return null
+
   const sub = subtier != null && subtier >= 1 && subtier <= 6 ? subtier : null
   if (sub != null) {
-    return `${RANK_ASSETS}/rank${tier}/badge_sm_subrank${sub}.png`
+    return deadlockRankAsset(`rank${tier}-sub${sub}.png`)
   }
-  return `${RANK_ASSETS}/rank${tier}/badge_sm.png`
+  if (tier === 0) {
+    return deadlockRankAsset('rank0-sm.png')
+  }
+  return deadlockRankAsset(`rank${tier}-lg.png`)
 }

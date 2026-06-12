@@ -12,6 +12,7 @@ import type { RecorderConfig } from './recorder'
 import type { AppSettings } from './settings-manager'
 import { getRecordingPresetValues, formatRecordingLabel } from './recording-preset'
 import { resolveRecordingSavePath } from './user-data-paths'
+import { fitUpForgeCaptureToCanvas } from './obs-setup'
 
 export function buildRecorderConfig(
   settings: AppSettings,
@@ -122,6 +123,7 @@ export async function applyObsRecordingSettings(
         warnings.push('Could not set OBS video resolution — stop any active OBS output and reconnect.')
       }
     }
+    await fitUpForgeCaptureToCanvas(obs)
   }
 
   const outputMode = await getProfileParam(obs, 'Output', 'Mode')

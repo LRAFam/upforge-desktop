@@ -1,5 +1,16 @@
+import valorantArtwork from '../assets/games/valorant.jpg'
+import cs2Artwork from '../assets/games/cs2.jpg'
+import deadlockArtwork from '../assets/games/deadlock.jpg'
+
 /** Games supported as a desktop "primary game" context (matches website switcher). */
 export type PrimaryGame = 'valorant' | 'cs2' | 'deadlock'
+
+/** Bundled game card artwork (login, onboarding, welcome). */
+export const PRIMARY_GAME_ARTWORK: Record<PrimaryGame, string> = {
+  valorant: valorantArtwork,
+  cs2: cs2Artwork,
+  deadlock: deadlockArtwork,
+}
 
 export interface PrimaryGameOption {
   id: PrimaryGame

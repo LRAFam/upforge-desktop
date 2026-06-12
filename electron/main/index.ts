@@ -97,6 +97,14 @@ import {
 import { ClipPipeline } from './clip-pipeline'
 import { requestPregameBrief as _requestPregameBrief, requestPostGameDebrief as _requestPostGameDebrief } from './post-game-api'
 import { resolveInstanceLock, startInstanceCoordinator } from './instance-coordinator'
+import {
+  startSteamGsiServer,
+  resetSteamGsiSession,
+  installSteamGsiConfig,
+  isGsiMatchLive,
+  isGsiMatchEnded,
+  isGsiReceiving,
+} from './steam-gsi-server'
 
 /** Human-readable label for a game identifier. */
 function gameLabel(game?: string | null): string {
@@ -318,6 +326,7 @@ let matchFlowGeneration = 0
 let matchFinalizeInFlight: Promise<boolean> | null = null
 // Overlay polling timer — cleared when match ends or game stops
 let overlayPollTimer: ReturnType<typeof setInterval> | null = null
+let gsiPollTimer: ReturnType<typeof setInterval> | null = null
 
 // Activity log — recent events shown on dashboard for user visibility
 const MAX_LOG_ENTRIES = 30
@@ -656,6 +665,7 @@ function createTray(): void {
 }
 
 function setupGameDetection(): void {
+  startSteamGsiServer()
   gameDetector.setWatchGame(normalizePrimaryGame(settingsManager.get().primaryGame))
 
   onRecordingLost = (error: string) => {
@@ -707,6 +717,7 @@ function setupGameDetection(): void {
 
   function clearOverlayPolling(): void {
     if (overlayPollTimer) { clearInterval(overlayPollTimer); overlayPollTimer = null }
+    if (gsiPollTimer) { clearInterval(gsiPollTimer); gsiPollTimer = null }
     sendOverlayData('overlay:data', {
       round: null, allyScore: null, enemyScore: null,
       yourCredits: null, enemyEstimate: null, recording: false,
@@ -758,6 +769,25 @@ function setupGameDetection(): void {
       // never call start(), so watch menus directly until the player leaves the map.
       riotLocalApi.watchUntilMenus(emitNextMatchWatch)
       return
+    }
+    await emitNextMatchWatch()
+  }
+
+  /** Re-arm lobby watch when a title stays open between matches. */
+  async function rearmGameDetection(game: string, waitForMatchEnd = false): Promise<void> {
+    if (game === 'valorant') {
+      return rearmValorantDetection(game, waitForMatchEnd)
+    }
+    if (game !== 'cs2' && game !== 'deadlock') return
+
+    resetSteamGsiSession()
+    const emitNextMatchWatch = async () => {
+      await new Promise((r) => setTimeout(r, 5000))
+      if (await gameDetector.isGameProcessRunning(game)) {
+        console.log(`[GameDetector] ${game} still running — watching for next match`)
+        logActivity('Watching for next match...')
+        gameDetector.emit('game-started', game)
+      }
     }
     await emitNextMatchWatch()
   }
@@ -1247,7 +1277,7 @@ function setupGameDetection(): void {
     }
     if (mainWindow && !mainWindow.isDestroyed() && mainWindow.isMinimized()) mainWindow.restore()
     destroyOverlay()
-    await rearmValorantDetection(game)
+    await rearmGameDetection(game)
     return { ok: true }
   }
 
@@ -1316,7 +1346,7 @@ function setupGameDetection(): void {
         actionRoute: '/settings?tab=recording',
       })
       tray?.setToolTip(idleTooltip(game))
-      await rearmValorantDetection(game, true)
+      await rearmGameDetection(game, true)
       return
     }
     if (freeBytes < LOW_FREE_DISK_BYTES) {
@@ -1358,21 +1388,47 @@ function setupGameDetection(): void {
     const filterByMode = game === 'valorant' && recordedModes.length > 0 &&
       !([...ALL_MODES].every(m => recordedModes.includes(m)))
 
-    // CS2 / Deadlock — process detection is the match signal (no Riot presence gate).
-    if (game !== 'valorant') {
-      waitingForMatch = false
-      cancelMatchWait = null
-      mainWindow?.webContents.send('recording:waiting-for-match', { waiting: false })
-      matchStartTime = Date.now()
-      gameMode = 'COMPETITIVE'
-      modeConfident = true
-    } else {
+    // CS2 / Deadlock — wait for GSI live match (process open ≠ in a match).
+    let authOk = false
+    if (game === 'cs2' || game === 'deadlock') {
+      resetSteamGsiSession()
+      const gsiInstall = await installSteamGsiConfig(game)
+      if (gsiInstall.needsRestart) {
+        logActivity(`Restart ${gameLabel(game)} once so UpForge can detect when a match starts`)
+      }
+      logActivity(`${gameLabel(game)} running — waiting for match`)
+
+      const MATCH_TIMEOUT_MS = 25 * 60 * 1000
+      const loopStart = Date.now()
+      let gsiHintShown = false
+      const deadline = Date.now() + MATCH_TIMEOUT_MS
+      while (Date.now() < deadline && !cancelled) {
+        if (abortIfStale(isStale, game)) return
+        await new Promise((r) => setTimeout(r, 1000))
+        if (cancelled) break
+        if (!await gameDetector.isGameProcessRunning(game)) { cancelled = true; break }
+
+        if (!gsiHintShown && Date.now() - loopStart > 45_000 && !isGsiReceiving()) {
+          gsiHintShown = true
+          logActivity(
+            `${gameLabel(game)} match detection inactive — restart the game if recording never starts on its own`,
+          )
+        }
+
+        if (isGsiMatchLive()) {
+          matchStartTime = Date.now()
+          gameMode = 'COMPETITIVE'
+          modeConfident = true
+          break
+        }
+      }
+    } else if (game === 'valorant') {
     // ── Presence-based match detection ────────────────────────────────────
     // Try to use the Riot Local API to detect when the match actually goes
     // INGAME, so we avoid the old blind 90s wait.  Falls back to a 90s wait
     // if the lockfile / auth is not available (rare on modern installations).
     // ──────────────────────────────────────────────────────────────────────
-    const authOk = await riotLocalApi.initAuth()
+    authOk = await riotLocalApi.initAuth()
 
     if (authOk) {
       logActivity('Riot Client API ready — waiting for INGAME presence')
@@ -1453,7 +1509,7 @@ function setupGameDetection(): void {
               waitingForMatch = false
               cancelMatchWait = null
               mainWindow?.webContents.send('recording:waiting-for-match', { waiting: false })
-              await rearmValorantDetection(game, true)
+              await rearmGameDetection(game, true)
               return
             }
             matchStartTime = Date.now()
@@ -1485,6 +1541,7 @@ function setupGameDetection(): void {
         if (!stillRunning) { cancelled = true; break }
       }
     }
+    }
 
     waitingForMatch = false
     cancelMatchWait = null
@@ -1506,15 +1563,23 @@ function setupGameDetection(): void {
       logActivity('Presence timeout — no match started, returning to idle')
       console.log('[GameDetector] Presence loop timed out without INGAME — not recording')
       tray?.setToolTip(idleTooltip(game))
-      // Re-arm: if the game process is still alive, re-enter the detection loop
-      // so we catch the next match the player queues into.
-      await new Promise((r) => setTimeout(r, 5000))
-      if (await gameDetector.isMatchProcessRunning()) {
-        console.log('[GameDetector] Game still running after presence timeout — re-arming detection')
-        gameDetector.emit('game-started', game)
-      }
+      await rearmGameDetection(game)
       return
     }
+
+    if ((game === 'cs2' || game === 'deadlock') && cancelled) {
+      logActivity('Game quit before match started — nothing recorded')
+      console.log('[GameDetector] Game quit before match — no recording')
+      tray?.setToolTip(idleTooltip(game))
+      return
+    }
+
+    if ((game === 'cs2' || game === 'deadlock') && matchStartTime === null) {
+      logActivity('No match started — returning to idle')
+      console.log('[GameDetector] GSI wait timed out without live match — not recording')
+      tray?.setToolTip(idleTooltip(game))
+      await rearmGameDetection(game)
+      return
     }
 
     // If presence didn't give us a mode, try the log file as last resort (never overwrite queueId)
@@ -1535,7 +1600,7 @@ function setupGameDetection(): void {
         'Could not detect this queue type — recording skipped. Enable more modes in Settings or wait until the queue is identified.',
       )
       tray?.setToolTip(idleTooltip(game))
-      await rearmValorantDetection(game, true)
+      await rearmGameDetection(game, true)
       return
     }
 
@@ -1546,7 +1611,7 @@ function setupGameDetection(): void {
         `${gameMode} is not in your recorded modes — this match was not captured. Change modes in Settings → Recording.`,
       )
       tray?.setToolTip(idleTooltip(game))
-      await rearmValorantDetection(game, true)
+      await rearmGameDetection(game, true)
       return
     }
 
@@ -1568,7 +1633,6 @@ function setupGameDetection(): void {
     console.log(`[GameDetector] Match confirmed! gameMode=${gameMode} confident=${modeConfident} matchStartTime=${matchStartTime}`)
 
     // Wire up onMatchEnded — fires when Riot presence transitions INGAME → MENUS.
-    // Only applicable to Valorant; CS2/Deadlock rely on the game process exiting.
     if (game === 'valorant') {
       riotLocalApi.cancelMenuWatch()
       riotLocalApi.onMatchEnded = async () => {
@@ -1581,16 +1645,32 @@ function setupGameDetection(): void {
         if (!didFinalize) return
         if (mainWindow && !mainWindow.isDestroyed() && mainWindow.isMinimized()) mainWindow.restore()
         destroyOverlay()
-        await new Promise((r) => setTimeout(r, 5000))
-        if (await gameDetector.isMatchProcessRunning()) {
-          console.log('[GameDetector] Game still running after match — watching for next match')
-          logActivity('Watching for next match...')
-          gameDetector.emit('game-started', game)
-        }
+        await rearmGameDetection(game)
       }
 
       // Start Riot local API tracking (kill/round events, match ID, post-match details)
       riotLocalApi.start(game, matchStartTime ?? undefined)
+    } else if (game === 'cs2' || game === 'deadlock') {
+      // Stop when GSI reports menu/gameover — game process often stays open between matches.
+      gsiPollTimer = setInterval(() => {
+        void (async () => {
+          if (!obsRecorder.isRecording() || matchHandled) return
+          if (!isGsiMatchEnded()) return
+
+          const elapsedSec = currentRecordingStartTime
+            ? Math.floor((Date.now() - currentRecordingStartTime) / 1000)
+            : 0
+          console.log(`[SteamGSI] Match ended — stopping recording (${elapsedSec}s captured)`)
+          logActivity(
+            `Match ended — stopping recording (${elapsedSec > 0 ? `${Math.round(elapsedSec / 60)}m ${elapsedSec % 60}s` : 'unknown duration'})`,
+          )
+          const didFinalize = await finalizeMatchOnce(game, 'gsi')
+          if (!didFinalize) return
+          if (mainWindow && !mainWindow.isDestroyed() && mainWindow.isMinimized()) mainWindow.restore()
+          destroyOverlay()
+          await rearmGameDetection(game)
+        })()
+      }, 2000)
     }
 
     tray?.setToolTip('UpForge — Starting recorder...')
@@ -1622,7 +1702,7 @@ function setupGameDetection(): void {
       notifyRecordingUx(`Could not start recording: ${msg}`, 'UpForge — Recording Failed')
       tray?.setToolTip('UpForge — Recording failed!')
       setTimeout(() => tray?.setToolTip(idleTooltip(game)), 10_000)
-      await rearmValorantDetection(game, true)
+      await rearmGameDetection(game, true)
       return
     }
     logActivity(`Recording started (${gameMode ?? 'unknown mode'}${obsRecorder.wasNoAudio() ? ' — no audio' : ''})`)

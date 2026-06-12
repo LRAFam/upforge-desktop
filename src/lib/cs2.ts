@@ -7,18 +7,6 @@ export interface Cs2FaceitConnection {
   has_auto_sync?: boolean
 }
 
-/** Official FACEIT level badge images (same CDN as faceit.com). */
-const FACEIT_CDN = 'https://cdn.faceit.com/staticassets/stats_assets/csgo/players/level'
-
-export function getFaceitLevelIconUrl(level: number | null | undefined): string | null {
-  if (level == null || level < 1) return null
-  const clamped = Math.max(1, Math.min(10, Math.round(level)))
-  return `${FACEIT_CDN}/${clamped}_level.png`
-}
-
-/** Valve skill group images (community CDN used on upforge.gg/cs2). */
-const CS2_RANK_CDN = 'https://static.csgostats.gg/images/ranks'
-
 const CS2_RANK_IMAGE_IDS: Record<string, number> = {
   'Silver I': 1,
   'Silver II': 2,
@@ -39,9 +27,25 @@ const CS2_RANK_IMAGE_IDS: Record<string, number> = {
   'Global Elite': 18,
 }
 
+function cs2RankAsset(id: number): string {
+  return new URL(`../assets/ranks/cs2/${id}.png`, import.meta.url).href
+}
+
+function faceitLevelAsset(level: number): string {
+  return new URL(`../assets/ranks/faceit/${level}.png`, import.meta.url).href
+}
+
+/** Bundled FACEIT level badge (official CDN blocks Electron CSP / hotlinking). */
+export function getFaceitLevelIconUrl(level: number | null | undefined): string | null {
+  if (level == null || level < 1) return null
+  const clamped = Math.max(1, Math.min(10, Math.round(level)))
+  return faceitLevelAsset(clamped)
+}
+
+/** Bundled Valve skill group icons (from csgostats.gg, stored under src/assets/ranks/cs2). */
 export function getCs2RankIconUrl(rank: string | null | undefined): string | null {
   if (!rank) return null
   const id = CS2_RANK_IMAGE_IDS[rank]
   if (id == null) return null
-  return `${CS2_RANK_CDN}/${id}.png`
+  return cs2RankAsset(id)
 }

@@ -371,9 +371,7 @@
 
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue'
-import valorantImg from '../assets/games/valorant.jpg'
-import cs2Img from '../assets/games/cs2.jpg'
-import deadlockImg from '../assets/games/deadlock.jpg'
+import { PRIMARY_GAME_ARTWORK } from '../lib/games'
 
 const emit = defineEmits<{ complete: [] }>()
 
@@ -391,9 +389,9 @@ const dpi = ref(800)
 const sensitivity = ref(0.4)
 
 const GAMES = [
-  { id: 'valorant' as const, name: 'Valorant', img: valorantImg, live: true, desc: 'Full AI coaching & VOD analysis' },
-  { id: 'cs2' as const, name: 'CS2', img: cs2Img, live: true, desc: 'Demo analysis & FACEIT sync' },
-  { id: 'deadlock' as const, name: 'Deadlock', img: deadlockImg, live: true, desc: 'Replay analysis & rank tracking' },
+  { id: 'valorant' as const, name: 'Valorant', img: PRIMARY_GAME_ARTWORK.valorant, live: true, desc: 'Full AI coaching & VOD analysis' },
+  { id: 'cs2' as const, name: 'CS2', img: PRIMARY_GAME_ARTWORK.cs2, live: true, desc: 'Demo analysis & FACEIT sync' },
+  { id: 'deadlock' as const, name: 'Deadlock', img: PRIMARY_GAME_ARTWORK.deadlock, live: true, desc: 'Replay analysis & rank tracking' },
 ]
 
 const gameCaptureLabel = computed(() => {

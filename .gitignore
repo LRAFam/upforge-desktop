@@ -10,3 +10,5 @@ resources/ffmpeg/
 
 # Godot trainer binary (built locally, distributed via releases)
 resources/trainer/
+src/assets/preview.html
+scripts/.cache/

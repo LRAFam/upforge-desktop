@@ -168,10 +168,7 @@ const fetchError = ref(false)
 
 const rankIconUrl = computed(() => {
   if (!stats.value?.current_rank) return null
-  return (
-    stats.value.current_rank.image
-    ?? getDeadlockRankIconUrl(stats.value.current_rank.name, stats.value.current_rank.subtier)
-  )
+  return getDeadlockRankIconUrl(stats.value.current_rank.name, stats.value.current_rank.subtier)
 })
 
 let refreshCleanup: (() => void) | null = null

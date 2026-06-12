@@ -9,7 +9,7 @@ import {
   WARN_FREE_DISK_BYTES,
   getFreeDiskSpace,
 } from './disk-space'
-import { setupUpForgeScene, retargetUpForgeCapture, type ObsSetupResult } from './obs-setup'
+import { setupUpForgeScene, retargetUpForgeCapture, fitUpForgeCaptureToCanvas, type ObsSetupResult } from './obs-setup'
 import { findObsWindowString } from './game-window-finder'
 import { formatObsConnectError, obsConnectHosts } from './obs-connect'
 import { applyObsRecordingSettings, type ObsApplyResult } from './obs-output-settings'
@@ -418,6 +418,7 @@ export class OBSRecorder {
           parameterName: 'FilePath',
           parameterValue: savePath,
         }).catch(() => { /* non-fatal */ })
+        await fitUpForgeCaptureToCanvas(this._obs)
       }
 
       // Start the full-match recording (skipped in clips-only mode)
