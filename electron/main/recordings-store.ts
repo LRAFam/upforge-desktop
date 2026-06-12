@@ -3,7 +3,7 @@ import fs from 'fs'
 import path from 'path'
 import { randomUUID } from 'crypto'
 import type { MatchData } from './riot-local-api'
-import { recordingPathVariants, sourcePathForCompressed } from './vod-compressor'
+import { recordingPathVariants, sourcePathForCompressed, deleteLocalRecordingFiles } from './vod-compressor'
 import { recordingMatchesLinkedRiot, userDataRoot, type LinkedRiotId } from './user-data-paths'
 
 function recordingStemKey(filePath: string): string {
@@ -44,6 +44,13 @@ export interface PendingRecording {
 }
 
 export type NewRecording = Omit<PendingRecording, 'id' | 'recordedAt' | 'analysed'>
+
+function isLocalOnlyRecording(rec: PendingRecording): boolean {
+  const onCloud =
+    (rec.analysed && rec.analysisId != null)
+    || (rec.cloudArchived && rec.archiveId != null)
+  return !onCloud
+}
 
 export class RecordingsStore {
   private recordings: PendingRecording[] = []
@@ -120,8 +127,15 @@ export class RecordingsStore {
       fileSizeBytes
     }
     this.recordings.unshift(recording)
-    // Keep last 50 recordings
-    if (this.recordings.length > 50) this.recordings = this.recordings.slice(0, 50)
+    if (this.recordings.length > 50) {
+      const evicted = this.recordings.slice(50)
+      this.recordings = this.recordings.slice(0, 50)
+      for (const rec of evicted) {
+        if (!isLocalOnlyRecording(rec)) continue
+        if (!fs.existsSync(rec.path)) continue
+        deleteLocalRecordingFiles(rec.path)
+      }
+    }
     this.persist()
     return recording
   }

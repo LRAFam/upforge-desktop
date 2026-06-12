@@ -1810,7 +1810,9 @@ function dismissMacPreviewBanner() {
 }
 
 async function dismissRecording(id: string) {
-  await window.api.recordings.dismiss(id).catch(() => {})
+  const rec = pendingRecordings.value.find(r => r.id === id)
+  if (rec && !window.confirm('Remove this recording from your dashboard and delete the local file?')) return
+  await window.api.recordings.dismiss(id, { deleteLocal: true }).catch(() => {})
   pendingRecordings.value = pendingRecordings.value.filter(r => r.id !== id)
 }
 

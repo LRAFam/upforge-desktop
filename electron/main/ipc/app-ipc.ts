@@ -4,8 +4,6 @@
  */
 
 import { IpcMain, BrowserWindow, app, dialog, shell } from 'electron'
-import fs from 'fs'
-import path from 'path'
 import { is } from '@electron-toolkit/utils'
 import { autoUpdater } from 'electron-updater'
 import log from 'electron-log'
@@ -19,7 +17,6 @@ import { buildRecorderConfig } from '../obs-output-settings'
 import { hasProAccess } from '../subscription'
 import { getActiveUserId } from '../user-session'
 import { resolveRecordingSavePath } from '../user-data-paths'
-import { getFreeDiskSpace } from '../disk-space'
 
 export function setupAppHandlers(
   ipcMain: IpcMain,
@@ -116,25 +113,7 @@ export function setupAppHandlers(
     return settingsManager.save({ firstRun: false, onboardingComplete: true })
   })
 
-  // ── Storage ───────────────────────────────────────────────────────────────
-
-  ipcMain.handle('storage:get-usage', async () => {
-    const settings = settingsManager.get()
-    const dir = resolveRecordingSavePath(settings.savePath, getActiveUserId())
-    let bytes = 0
-    let count = 0
-    try {
-      const entries = await fs.promises.readdir(dir)
-      await Promise.all(entries.map(async (entry) => {
-        try {
-          const stat = await fs.promises.stat(path.join(dir, entry))
-          if (stat.isFile()) { bytes += stat.size; count++ }
-        } catch { /* ignore unreadable entries */ }
-      }))
-    } catch { /* dir may not exist yet */ }
-    const freeDiskBytes = await getFreeDiskSpace(dir)
-    return { bytes, count, freeDiskBytes }
-  })
+  // ── Storage (usage/open-folder handlers live in index.ts where recordingsStore is available) ──
 
   ipcMain.handle('storage:open-folder', () => {
     const settings = settingsManager.get()

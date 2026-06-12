@@ -32,8 +32,10 @@ export interface AppSettings {
   lastInsight?: { text: string; score: number; agent: string | null; analysisId: number | null; date: string } | null
   /** Process names to auto-kill when a game is detected starting */
   pregameKillList: string[]
-  /** Auto-delete clips older than this many days (0 = disabled) */
+  /** Auto-delete local-only clips older than this many days (0 = disabled) */
   clipRetentionDays: number
+  /** Auto-delete local-only match recordings older than this many days (0 = disabled) */
+  recordingRetentionDays: number
   /** Play a sound when a notification fires */
   notificationSound: boolean
   /** Show match status in Discord Rich Presence (requires Discord desktop + activity sharing on) */
@@ -132,6 +134,7 @@ const DEFAULTS: AppSettings = {
   captureMonitor: 'auto',
   pregameKillList: [],
   clipRetentionDays: 0,
+  recordingRetentionDays: 0,
   notificationSound: true,
   discordRichPresence: true,
   inGameFeedback: 'notifications',

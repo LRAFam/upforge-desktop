@@ -428,7 +428,7 @@
                 Turn on <span class="text-gray-400">Auto-delete after upload</span> below to free disk automatically after each match.
                 <span class="text-gray-500"> Pro plans include higher analysis limits and extended cloud retention.</span>
               </p>
-              <div v-if="storageBreakdown.pendingCount > 0 || storageBreakdown.cloudBackedCount > 0" class="mt-3 space-y-2">
+              <div v-if="storageBreakdown.pendingCount > 0 || storageBreakdown.cloudBackedCount > 0 || storageBreakdown.orphanCount > 0 || storageBreakdown.legacyDuplicateBytes > 0" class="mt-3 space-y-2">
                 <button
                   v-if="storageBreakdown.pendingCount > 0"
                   type="button"
@@ -448,7 +448,19 @@
                 >
                   Remove {{ storageBreakdown.cloudBackedCount }} cloud-backed local file{{ storageBreakdown.cloudBackedCount === 1 ? '' : 's' }} ({{ formatBytes(storageBreakdown.cloudBackedBytes) }})
                 </button>
+                <button
+                  v-if="storageBreakdown.orphanCount > 0"
+                  type="button"
+                  class="w-full rounded-xl border border-amber-500/25 bg-amber-500/10 px-3 py-2 text-xs font-medium text-amber-200 transition-colors hover:bg-amber-500/15 disabled:opacity-50"
+                  :disabled="storageBusy"
+                  @click="purgeUntrackedRecordings"
+                >
+                  Remove {{ storageBreakdown.orphanCount }} untracked file{{ storageBreakdown.orphanCount === 1 ? '' : 's' }} ({{ formatBytes(storageBreakdown.orphanBytes) }})
+                </button>
               </div>
+              <p v-if="storageBreakdown.legacyDuplicateBytes > 0" class="mt-2 text-[11px] text-gray-500">
+                Legacy duplicate recordings ({{ formatBytes(storageBreakdown.legacyDuplicateBytes) }}) are removed automatically on launch.
+              </p>
               <p v-if="storageMessage" class="mt-2 text-[11px]" :class="storageMessageError ? 'text-red-400' : 'text-green-400'">{{ storageMessage }}</p>
             </div>
 
@@ -462,6 +474,18 @@
                 <option :value="60">After 60 days</option>
               </select>
               <p class="mt-1 text-xs text-gray-600">Local-only clips older than this are deleted on startup.</p>
+            </div>
+
+            <div>
+              <label class="mb-1 block text-xs text-gray-400">Auto-delete local match recordings</label>
+              <select v-model.number="settings.recordingRetentionDays" class="w-full rounded-xl border border-white/[0.08] bg-white/[0.04] px-3 py-2 text-xs text-white focus:border-red-500/30 focus:outline-none" @change="debouncedSave">
+                <option :value="0">Never (keep until uploaded or removed manually)</option>
+                <option :value="7">After 7 days (local-only, not on cloud)</option>
+                <option :value="14">After 14 days</option>
+                <option :value="30">After 30 days</option>
+                <option :value="60">After 60 days</option>
+              </select>
+              <p class="mt-1 text-xs text-gray-600">Deletes pending local VODs and untracked files in your save folder on startup. Cloud-backed recordings are not affected.</p>
             </div>
           </div>
         </div>
@@ -876,6 +900,9 @@ const storageBreakdown = ref({
   pendingBytes: 0,
   cloudBackedCount: 0,
   cloudBackedBytes: 0,
+  orphanCount: 0,
+  orphanBytes: 0,
+  legacyDuplicateBytes: 0,
 })
 const storageBusy = ref(false)
 const storageMessage = ref('')
@@ -1091,6 +1118,7 @@ const settings = reactive<AppSettings>({
   captureMonitor: 'auto',
   pregameKillList: [],
   clipRetentionDays: 0,
+  recordingRetentionDays: 0,
   notificationSound: true,
   discordRichPresence: true,
   inGameFeedback: 'notifications',
@@ -1186,11 +1214,13 @@ const freeDiskLabel = computed(() => {
 const diskSpaceCritical = computed(() => freeDiskBytes.value != null && freeDiskBytes.value < CRITICAL_FREE_DISK_BYTES)
 const diskSpaceLow = computed(() => freeDiskBytes.value != null && freeDiskBytes.value < LOW_FREE_DISK_BYTES)
 const storageSummary = computed(() => {
-  const local = storageCount.value === 0
-    ? 'No recordings saved locally'
-    : `${storageCount.value} local file${storageCount.value === 1 ? '' : 's'} · ${formatBytes(storageBytes.value)}`
+  if (storageBytes.value === 0) {
+    const free = freeDiskLabel.value
+    return free ? `No UpForge media on disk · ${free} free` : 'No UpForge media on disk'
+  }
+  const local = `${formatBytes(storageBytes.value)} on disk`
   if (freeDiskLabel.value == null) return local
-  return `${local} · ${freeDiskLabel.value} free on disk`
+  return `${local} · ${freeDiskLabel.value} free`
 })
 
 const hasProAccess = computed(() => proAccessForUser(user.value))
@@ -1460,6 +1490,30 @@ async function loadStorageUsage(): Promise<void> {
     freeDiskBytes.value = usage.freeDiskBytes
     storageBreakdown.value = breakdown
   } catch { /* ignore */ }
+}
+
+async function purgeUntrackedRecordings(): Promise<void> {
+  if (storageBusy.value || storageBreakdown.value.orphanCount === 0) return
+  if (!window.confirm(
+    `Remove ${storageBreakdown.value.orphanCount} untracked recording file(s) (${formatBytes(storageBreakdown.value.orphanBytes)})? These are not shown in your dashboard.`,
+  )) return
+
+  storageBusy.value = true
+  storageMessage.value = ''
+  storageMessageError.value = false
+  try {
+    const result = await window.api.storage.purgeOrphans()
+    storageMessage.value = result.removed > 0
+      ? `Freed ${formatBytes(result.freedBytes)} — removed ${result.removed} untracked file${result.removed === 1 ? '' : 's'}.`
+      : 'No untracked files were removed.'
+    storageMessageError.value = result.removed === 0
+    await loadStorageUsage()
+  } catch {
+    storageMessage.value = 'Could not remove untracked files.'
+    storageMessageError.value = true
+  } finally {
+    storageBusy.value = false
+  }
 }
 
 async function purgeCloudBackedLocals(): Promise<void> {

@@ -87,6 +87,8 @@ export interface AppSettings {
   pregameKillList: string[]
   /** Auto-delete clips older than this many days (0 = disabled) */
   clipRetentionDays: number
+  /** Auto-delete local-only match recordings after this many days (0 = disabled) */
+  recordingRetentionDays: number
   /** Play a sound when a notification fires */
   notificationSound: boolean
   /** Show match status in Discord Rich Presence */
@@ -404,7 +406,7 @@ declare global {
         get: () => Promise<PendingRecording[]>
         analyse: (id: string) => Promise<{ ok?: boolean; error?: string }>
         saveToCloud: (id: string) => Promise<{ ok: boolean; archiveId?: string; alreadySaved?: boolean; error?: string }>
-        dismiss: (id: string) => Promise<void>
+        dismiss: (id: string, opts?: { deleteLocal?: boolean }) => Promise<{ ok: boolean; deletedLocal?: boolean }>
         getTimeline: (id: string) => Promise<RecordingTimeline | null>
         nudgeSync: (id: string, deltaMs: number) => Promise<{ ok: boolean; videoSyncOffsetMs?: number }>
         resetSync: (id: string) => Promise<{ ok: boolean; videoSyncOffsetMs?: number }>
@@ -484,14 +486,29 @@ declare global {
         sendError: (message: string) => void
       }
       storage: {
-        getUsage: () => Promise<{ bytes: number; count: number; freeDiskBytes: number }>
+        getUsage: () => Promise<{
+          bytes: number
+          count: number
+          freeDiskBytes: number
+          recordingsBytes: number
+          recordingsCount: number
+          clipsBytes: number
+          clipsCount: number
+          legacyRecordingsBytes: number
+          orphanBytes: number
+          orphanCount: number
+        }>
         getBreakdown: () => Promise<{
           pendingCount: number
           pendingBytes: number
           cloudBackedCount: number
           cloudBackedBytes: number
+          orphanCount: number
+          orphanBytes: number
+          legacyDuplicateBytes: number
         }>
         purgeCloudBacked: () => Promise<{ freedBytes: number; removed: number; skipped: number }>
+        purgeOrphans: () => Promise<{ removed: number; freedBytes: number }>
         uploadPending: () => Promise<
           | { ok: false; error: string }
           | { ok: true; uploaded: number; failed: number; stoppedEarly: boolean; stopReason?: string }

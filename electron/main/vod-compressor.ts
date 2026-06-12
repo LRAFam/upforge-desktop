@@ -183,3 +183,17 @@ export function deleteCompressedSibling(sourcePath: string): void {
     try { unlinkSync(compressed) } catch { /* ignore */ }
   }
 }
+
+/** Delete a recording and any raw/compressed siblings. Returns bytes freed. */
+export function deleteLocalRecordingFiles(filePath: string): number {
+  let freed = 0
+  for (const variant of recordingPathVariants(filePath)) {
+    try {
+      if (existsSync(variant)) {
+        freed += statSync(variant).size
+        unlinkSync(variant)
+      }
+    } catch { /* ignore */ }
+  }
+  return freed
+}

@@ -29,7 +29,8 @@ const api = {
     get: () => ipcRenderer.invoke('recordings:get'),
     analyse: (id: string) => ipcRenderer.invoke('recordings:analyse', { id }),
     saveToCloud: (id: string) => ipcRenderer.invoke('recordings:save-to-cloud', { id }),
-    dismiss: (id: string) => ipcRenderer.invoke('recordings:dismiss', { id }),
+    dismiss: (id: string, opts?: { deleteLocal?: boolean }) =>
+      ipcRenderer.invoke('recordings:dismiss', { id, deleteLocal: opts?.deleteLocal }),
     getTimeline: (id: string) => ipcRenderer.invoke('recordings:get-timeline', { id }),
     nudgeSync: (id: string, deltaMs: number) => ipcRenderer.invoke('recordings:nudge-sync', { id, deltaMs }),
     resetSync: (id: string) => ipcRenderer.invoke('recordings:reset-sync', { id }),
@@ -69,6 +70,7 @@ const api = {
     getUsage: () => ipcRenderer.invoke('storage:get-usage'),
     getBreakdown: () => ipcRenderer.invoke('storage:get-breakdown'),
     purgeCloudBacked: () => ipcRenderer.invoke('storage:purge-cloud-backed'),
+    purgeOrphans: () => ipcRenderer.invoke('storage:purge-orphans'),
     uploadPending: () => ipcRenderer.invoke('storage:upload-pending'),
     openFolder: () => ipcRenderer.invoke('storage:open-folder')
   },

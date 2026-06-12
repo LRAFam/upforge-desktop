@@ -79,7 +79,8 @@ import {
   formatFreeDiskLabel,
   getFreeDiskSpace,
 } from './disk-space'
-import { getStorageBreakdown, purgeCloudBackedLocals } from './storage-cleanup'
+import { getStorageBreakdown, purgeCloudBackedLocals, runRecordingStorageMaintenance, buildStorageUsage, purgeUntrackedRecordingFiles, isLocalOnlyRecording } from './storage-cleanup'
+import { deleteLocalRecordingFiles } from './vod-compressor'
 import { CS2DemoUploader } from './cs2-demo-uploader'
 import { DiscordRPC } from './discord-rpc'
 import {
@@ -384,8 +385,31 @@ function syncUserSessionFromAuth(): void {
   const user = authManager.getUser()
   if (user?.id) {
     activateUserSession(user.id, userSessionDeps())
+    runStorageMaintenanceIfReady(true)
   }
   enforceRecordingPresetAccess()
+}
+
+function runStorageMaintenanceIfReady(notify = false): void {
+  if (!recordingsStore || !settingsManager) return
+  const maintenance = runRecordingStorageMaintenance({
+    store: recordingsStore,
+    savePath: recordingSavePath(),
+    recordingRetentionDays: settingsManager.get().recordingRetentionDays,
+    linkedRiot: linkedRiotFromAuth(),
+  })
+  if (maintenance.freedBytes > 0) {
+    log.info(
+      `[App] Storage maintenance freed ${(maintenance.freedBytes / (1024 ** 3)).toFixed(2)} GB`,
+    )
+    if (notify) {
+      logActivity(
+        `Freed ${(maintenance.freedBytes / (1024 ** 3)).toFixed(1)} GB of old local recordings`,
+      )
+      mainWindow?.webContents.send('recordings:updated')
+      mainWindow?.webContents.send('dashboard:refresh')
+    }
+  }
 }
 
 function enforceRecordingPresetAccess(): void {
@@ -2142,6 +2166,8 @@ app.whenReady().then(async () => {
   }
   clipStore.pruneOrphanedThumbnails()
 
+  runStorageMaintenanceIfReady(false)
+
   // Show splash launcher while we check for updates
   const splashWindow = createSplashWindow()
 
@@ -2526,7 +2552,23 @@ app.whenReady().then(async () => {
   let bulkPendingUploadRunning = false
 
   ipcMain.handle('storage:get-breakdown', () => {
-    return getStorageBreakdown(recordingsStore, linkedRiotFromAuth())
+    return getStorageBreakdown(
+      recordingsStore,
+      linkedRiotFromAuth(),
+      recordingSavePath(),
+    )
+  })
+
+  ipcMain.handle('storage:get-usage', async () => {
+    const savePath = recordingSavePath()
+    return buildStorageUsage(savePath, getActiveUserId(), recordingsStore)
+  })
+
+  ipcMain.handle('storage:purge-orphans', () => {
+    const result = purgeUntrackedRecordingFiles(recordingsStore, recordingSavePath(), 0)
+    mainWindow?.webContents.send('recordings:updated')
+    mainWindow?.webContents.send('dashboard:refresh')
+    return result
   })
 
   ipcMain.handle('storage:purge-cloud-backed', async () => {
@@ -2534,7 +2576,6 @@ app.whenReady().then(async () => {
       recordingsStore,
       authManager,
       linkedRiotFromAuth(),
-      (filePath) => obsRecorder.deleteRecording(filePath),
     )
     mainWindow?.webContents.send('recordings:updated')
     mainWindow?.webContents.send('dashboard:refresh')
@@ -2616,9 +2657,18 @@ app.whenReady().then(async () => {
     return { ok: true as const, uploaded, failed, stoppedEarly, stopReason }
   })
 
-  ipcMain.handle('recordings:dismiss', (_e, { id }: { id: string }) => {
+  ipcMain.handle('recordings:dismiss', (_e, { id, deleteLocal = true }: { id: string; deleteLocal?: boolean }) => {
+    const recording = recordingsStore.getById(id)
+    const wasLocalOnly = !!(recording && deleteLocal && isLocalOnlyRecording(recording))
+    if (wasLocalOnly) {
+      const freed = deleteLocalRecordingFiles(recording!.path)
+      if (freed > 0) {
+        log.info(`[Recordings] Dismiss removed local file (${freed} bytes): ${recording!.path}`)
+      }
+    }
     recordingsStore.remove(id)
     mainWindow?.webContents.send('recordings:updated')
+    return { ok: true as const, deletedLocal: wasLocalOnly }
   })
 
   ipcMain.handle('app:open-vod-review', (_e, { id, seekMs }: { id: string; seekMs?: number }) => {

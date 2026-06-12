@@ -87,6 +87,13 @@ export function migrateLegacyUserData(userId: number): void {
         if (fs.statSync(src).isFile() && !fs.existsSync(dest)) {
           fs.copyFileSync(src, dest)
           copied++
+        } else if (fs.statSync(src).isFile() && fs.existsSync(dest)) {
+          try {
+            fs.unlinkSync(src)
+            log.info(`[UserSession] Removed legacy duplicate recording: ${name}`)
+          } catch (err) {
+            log.warn(`[UserSession] Failed to remove legacy duplicate ${src}:`, err)
+          }
         }
       }
       if (copied > 0) {
