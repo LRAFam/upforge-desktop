@@ -332,6 +332,7 @@
             @play="isPlaying = true"
             @pause="isPlaying = false"
             @ended="isPlaying = false"
+            @error="onVideoError"
           />
           <div v-else class="w-full h-full min-h-[240px] min-w-[320px] flex flex-col items-center justify-center gap-3 text-gray-600 pointer-events-none select-none">
             <svg class="w-10 h-10 opacity-30" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -339,10 +340,22 @@
             </svg>
             <span class="text-xs text-gray-600">No video for this session</span>
             <span class="text-[10px] text-gray-700 text-center max-w-xs">
-              {{ recordingId
-                ? 'OBS was not recording when this match was captured'
-                : 'Recording unavailable — it may have been deleted locally or expired from cloud storage (30 days).' }}
+              <template v-if="playbackRefreshing">Refreshing cloud playback…</template>
+              <template v-else-if="recordingId">
+                {{ timeline?.analysisId
+                  ? 'Local file removed — cloud copy unavailable or expired.'
+                  : 'OBS was not recording when this match was captured.' }}
+              </template>
+              <template v-else>
+                Recording unavailable — it may have been deleted locally or expired from cloud storage.
+              </template>
             </span>
+            <button
+              v-if="activePlaybackAnalysisId && !playbackRefreshing"
+              type="button"
+              class="pointer-events-auto text-[10px] font-semibold text-red-400/80 hover:text-red-300 transition-colors"
+              @click="refreshPlaybackUrl()"
+            >Retry cloud playback</button>
           </div>
 
           <!-- Expand / fullscreen -->
@@ -1261,6 +1274,7 @@ interface TeamPlayerSnapshot {
 
 interface RecordingTimeline {
   id: string
+  analysisId?: number | null
   videoPath: string | null
   map: string | null
   agent: string | null
@@ -1345,6 +1359,7 @@ const spatialMapLarge = ref(false)
 const dockChipsEl = ref<HTMLElement | null>(null)
 const activeSpatialIndex = ref<number | null>(null)
 const recordingId = ref<string | null>(null)
+const playbackRefreshing = ref(false)
 const userTier = ref('free')
 const SPATIAL_PREVIEW_KEY = 'upforge_spatial_seek_preview_used'
 
@@ -1607,6 +1622,14 @@ function onFullscreenChange(): void {
   nextTick(() => updateVideoFrameSize())
 }
 
+const activePlaybackAnalysisId = computed((): number | null => {
+  const fromTimeline = timeline.value?.analysisId
+  if (fromTimeline != null && !Number.isNaN(fromTimeline)) return fromTimeline
+  const fromQuery = Number(route.query.timelineId)
+  if (!Number.isNaN(fromQuery) && fromQuery > 0) return fromQuery
+  return null
+})
+
 const videoSrc = computed(() => {
   const path = timeline.value?.videoPath
   if (!path) return ''
@@ -1616,6 +1639,37 @@ const videoSrc = computed(() => {
     ? encodeURI(`file://${normalized}`)
     : encodeURI(`file:///${normalized}`)
 })
+
+async function refreshPlaybackUrl(): Promise<boolean> {
+  const analysisId = activePlaybackAnalysisId.value
+  if (!analysisId || playbackRefreshing.value) return false
+  playbackRefreshing.value = true
+  try {
+    const url = await window.api.analyses.refreshPlayback(analysisId)
+    if (url && timeline.value) {
+      timeline.value = { ...timeline.value, videoPath: url, analysisId }
+      await nextTick()
+      if (videoEl.value) {
+        videoEl.value.load()
+      }
+      return true
+    }
+    return false
+  } finally {
+    playbackRefreshing.value = false
+  }
+}
+
+function onVideoError() {
+  const path = timeline.value?.videoPath
+  if (!path || !/^https?:\/\//i.test(path)) return
+  if (!activePlaybackAnalysisId.value) return
+  void refreshPlaybackUrl().then((ok) => {
+    if (ok && videoEl.value) {
+      void videoEl.value.play().catch(() => {})
+    }
+  })
+}
 
 const progressPercent = computed(() => {
   if (!duration.value) return 0
@@ -2220,6 +2274,13 @@ async function loadTimeline() {
     }
 
     applyTimelineDerivedState()
+    if (!timeline.value?.videoPath) {
+      const analysisId = timeline.value?.analysisId
+        ?? (route.query.timelineId ? Number(route.query.timelineId) : null)
+      if (analysisId != null && !Number.isNaN(analysisId)) {
+        await refreshPlaybackUrl()
+      }
+    }
     applyInitialSeek()
   } catch {
     timelineError.value = 'Could not load match timeline — check your connection and try again.'

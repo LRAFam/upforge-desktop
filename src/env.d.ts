@@ -73,6 +73,8 @@ export interface AppSettings {
   recordingFps: 24 | 30 | 60
   audioEnabled: boolean
   savePath: string
+  /** Resolved folder for the logged-in user (per-account default or custom savePath). */
+  effectiveSavePath?: string
   launchOnStartup: boolean
   autoDelete: boolean
   /** Game modes to record. Empty array means record all. */
@@ -157,6 +159,7 @@ export interface PendingRecording {
   recordedAt: number
   analysed: boolean
   jobId?: string
+  analysisId?: number
   fileSizeBytes?: number
   timeline?: {
     playerKills?: Array<{ killerName: string; victimName: string; weapon?: string; videoOffsetMs?: number; round?: number }>
@@ -176,6 +179,7 @@ export interface PendingRecording {
 
 export interface RecordingTimeline {
   id: string
+  analysisId?: number | null
   videoPath: string | null
   map: string | null
   agent: string | null
@@ -384,6 +388,7 @@ declare global {
       analyses: {
         get: (limit?: number) => Promise<AnalysisItem[]>
         getTimeline: (id: number) => Promise<RecordingTimeline | null>
+        refreshPlayback: (id: number) => Promise<string | null>
         getDetail: (id: number) => Promise<{ verdict: string | null; top_issue: string | null; priority_improvements: string[]; coaching_tags: string[]; ally_score: number | null; enemy_score: number | null } | null>
       }
       recordings: {

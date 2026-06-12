@@ -6,15 +6,18 @@
  * SetRecordDirectory use APIs that apply immediately before recording starts.
  */
 
-import { app } from 'electron'
-import { join } from 'path'
 import log from 'electron-log'
 import type OBSWebSocket from 'obs-websocket-js'
 import type { RecorderConfig } from './recorder'
 import type { AppSettings } from './settings-manager'
 import { getRecordingPresetValues, formatRecordingLabel } from './recording-preset'
+import { resolveRecordingSavePath } from './user-data-paths'
 
-export function buildRecorderConfig(settings: AppSettings, allowCreator = true): RecorderConfig {
+export function buildRecorderConfig(
+  settings: AppSettings,
+  allowCreator = true,
+  userId: number | null = null,
+): RecorderConfig {
   const preset = getRecordingPresetValues(
     settings.recordingPreset === 'creator' && allowCreator ? 'creator' : 'coaching',
   )
@@ -24,7 +27,7 @@ export function buildRecorderConfig(settings: AppSettings, allowCreator = true):
     fps: preset.fps,
     manageObsVideo: preset.manageObsVideo,
     audioEnabled: settings.audioEnabled,
-    savePath: settings.savePath || join(app.getPath('userData'), 'recordings'),
+    savePath: resolveRecordingSavePath(settings.savePath, userId),
     captureMonitor: settings.captureMonitor,
   }
 }

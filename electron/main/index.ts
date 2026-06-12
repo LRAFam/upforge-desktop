@@ -45,7 +45,9 @@ import {
   clearUserSession,
   readActivePendingJob,
   clearActivePendingJob,
+  getActiveUserId,
 } from './user-session'
+import { resolveRecordingSavePath } from './user-data-paths'
 import { startAnalysisPoll, stopActiveAnalysisPoll, reconcileOrphanedJob } from './analysis-poll'
 import { AuthManager } from './auth-manager'
 import { SettingsManager } from './settings-manager'
@@ -70,6 +72,7 @@ import type { MatchData } from './riot-types'
 import log from 'electron-log'
 import { setupMainProcessErrorHandlers, reportError } from './error-reporter'
 import { findLatestCS2Demo } from './cs2-demo-finder'
+import { fetchRecordingPlaybackUrl } from './recording-playback'
 import { CS2DemoUploader } from './cs2-demo-uploader'
 import { DiscordRPC } from './discord-rpc'
 import {
@@ -138,7 +141,7 @@ const obsRecorder = new OBSRecorder(
   },
   () => {
     const s = settingsManager?.get()
-    return s ? buildRecorderConfig(s, hasProAccess(authManager.getUser())) : undefined
+    return s ? buildRecorderConfig(s, hasProAccess(authManager.getUser()), getActiveUserId()) : undefined
   },
 )
 
@@ -360,6 +363,12 @@ function userSessionDeps() {
       mainWindow?.webContents.send('recordings:updated')
       mainWindow?.webContents.send('clips:updated')
       mainWindow?.webContents.send('dashboard:refresh')
+      const config = settingsManager?.get()
+      if (config) {
+        void obsRecorder.applyRecordingSettings(
+          buildRecorderConfig(config, hasProAccess(authManager.getUser()), getActiveUserId()),
+        )
+      }
     },
   }
 }
@@ -381,13 +390,23 @@ function enforceRecordingPresetAccess(): void {
   }
 }
 
+function recordingSavePath(): string {
+  return resolveRecordingSavePath(settingsManager?.get().savePath, getActiveUserId())
+}
+
+function linkedRiotFromAuth() {
+  const user = authManager.getUser()
+  if (!user?.riot_name?.trim() || !user?.riot_tag?.trim()) return null
+  return { name: user.riot_name, tag: user.riot_tag }
+}
+
 /** Pick up recent local MP4s that never made it into recordings.json (e.g. post-game window closed early). */
 function scanForOrphanedRecordings(force = false): number {
   if (!settingsManager || !recordingsStore) return 0
   if (orphanedRecordingsScanned && !force) return 0
   orphanedRecordingsScanned = true
 
-  const savePath = settingsManager.get().savePath || join(app.getPath('userData'), 'recordings')
+  const savePath = recordingSavePath()
   const known = recordingsStore.getKnownPaths()
   const orphans = listUnregisteredRecordingFiles(
     savePath,
@@ -396,12 +415,11 @@ function scanForOrphanedRecordings(force = false): number {
   )
   if (orphans.length === 0) return 0
 
-  const user = authManager.getUser()
   for (const file of orphans) {
     recordingsStore.add({
       path: file.path, // already preferred (compressed when sibling exists)
-      riotName: user?.riot_name ?? '',
-      riotTag: user?.riot_tag ?? '',
+      riotName: '',
+      riotTag: '',
       game: 'valorant',
       map: null,
       agent: null,
@@ -493,7 +511,7 @@ function createTray(): void {
     getMainWindow: () => mainWindow,
     setMainWindow: (win) => { mainWindow = win },
     isRecording: () => obsRecorder.isRecording(),
-    getPendingCount: () => recordingsStore?.getPending().length ?? 0,
+    getPendingCount: () => recordingsStore?.getPending(linkedRiotFromAuth()).length ?? 0,
     createMainWindowFn: () => createMainWindow(),
   })
   tray = result.tray
@@ -615,7 +633,7 @@ function setupGameDetection(): void {
     handleMatchEndRunning = true
     try {
     const config = settingsManager?.get()
-    const savePath = config?.savePath || join(app.getPath('userData'), 'recordings')
+    const savePath = recordingSavePath()
 
     // Duration from OBS clock, or wall clock if WebSocket dropped mid-match.
     let recordingDuration = obsRecorder.getRecordingDuration()
@@ -848,7 +866,7 @@ function setupGameDetection(): void {
           }
         }
 
-      const savePath = config?.savePath || join(app.getPath('userData'), 'recordings')
+      const savePath = recordingSavePath()
       const ready = resolveReadyRecordingPath(
         obsRecorder.getLastRecordingPath() ?? videoPath,
         savePath,
@@ -893,8 +911,8 @@ function setupGameDetection(): void {
       if (timeline) recomputeTimelineVideoOffsets(timeline)
       const savedRecording = recordingsStore.add({
         path: readyPath,
-        riotName: user?.riot_name ?? '',
-        riotTag: user?.riot_tag ?? '',
+        riotName: timeline?.playerName?.trim() ?? '',
+        riotTag: timeline?.playerTag?.trim() ?? '',
         game,
         map,
         agent,
@@ -1145,10 +1163,10 @@ function setupGameDetection(): void {
       }
     }
 
-    const recorderConfig = config ? buildRecorderConfig(config, hasProAccess(authManager.getUser())) : undefined
+    const recorderConfig = config ? buildRecorderConfig(config, hasProAccess(authManager.getUser()), getActiveUserId()) : undefined
 
     // Check disk space now so the warning shows while in lobby
-    const savePath = config?.savePath || join(app.getPath('userData'), 'recordings')
+    const savePath = recordingSavePath()
     if (!obsRecorder.isConnected()) {
       await probeObsConnection(obsRecorder, mainWindow, { notify: false, logActivity })
     }
@@ -1803,6 +1821,10 @@ async function doUploadAndAnalyse(
       onCompleted: (status) => {
         const score = (status.result as Record<string, unknown>).overall_score as number | undefined
         const analysisId = (status.result as Record<string, unknown>).analysis_id as number | undefined
+        if (recordingId && analysisId != null) {
+          recordingsStore.setAnalysisId(recordingId, analysisId)
+          mainWindow?.webContents.send('recordings:updated')
+        }
         const improvements = (status.result as Record<string, unknown>).priority_improvements as string[] | undefined
         const topIssue = (status.result as Record<string, unknown>).top_issue as string | undefined
         const insightText = (improvements && improvements.length > 0) ? improvements[0] : (topIssue ?? null)
@@ -2273,7 +2295,7 @@ app.whenReady().then(async () => {
 
   ipcMain.handle('recordings:get', () => {
     scanForOrphanedRecordings()
-    return recordingsStore.getPending()
+    return recordingsStore.getPending(linkedRiotFromAuth())
   })
 
   ipcMain.handle('recordings:analyse', async (_e, { id }: { id: string }) => {
@@ -2345,7 +2367,7 @@ app.whenReady().then(async () => {
     return { ok: true as const, videoSyncOffsetMs: DEFAULT_VIDEO_SYNC_OFFSET_MS }
   })
 
-  ipcMain.handle('recordings:get-timeline', (_e, { id }: { id: string }) => {
+  ipcMain.handle('recordings:get-timeline', async (_e, { id }: { id: string }) => {
     const recording = recordingsStore.getById(id)
     if (!recording) return null
     const tl = recording.timeline
@@ -2354,10 +2376,13 @@ app.whenReady().then(async () => {
       applySpatialEnrichment(tl)
       recordingsStore.updateTimeline(id, tl)
     }
-    // Only return videoPath if the file actually exists on disk
-    const videoPath = recording.path && fs.existsSync(recording.path) ? recording.path : null
+    let videoPath = recording.path && fs.existsSync(recording.path) ? recording.path : null
+    if (!videoPath && recording.analysisId != null) {
+      videoPath = await fetchRecordingPlaybackUrl(authManager, recording.analysisId)
+    }
     return {
       id: recording.id,
+      analysisId: recording.analysisId ?? null,
       videoPath,
       map: recording.map,
       agent: recording.agent,

@@ -17,6 +17,8 @@ import { SettingsManager } from '../settings-manager'
 import type { OBSRecorder } from '../obs-recorder'
 import { buildRecorderConfig } from '../obs-output-settings'
 import { hasProAccess } from '../subscription'
+import { getActiveUserId } from '../user-session'
+import { resolveRecordingSavePath } from '../user-data-paths'
 
 export function setupAppHandlers(
   ipcMain: IpcMain,
@@ -79,10 +81,13 @@ export function setupAppHandlers(
   ipcMain.handle('settings:get', () => {
     const allowCreator = hasProAccess(auth.getUser())
     const current = settingsManager.get()
-    if (current.recordingPreset === 'creator' && !allowCreator) {
-      return settingsManager.save({ recordingPreset: 'coaching' }, { allowCreator: false })
+    const settings = current.recordingPreset === 'creator' && !allowCreator
+      ? settingsManager.save({ recordingPreset: 'coaching' }, { allowCreator: false })
+      : current
+    return {
+      ...settings,
+      effectiveSavePath: resolveRecordingSavePath(settings.savePath, getActiveUserId()),
     }
-    return current
   })
 
   ipcMain.handle('settings:save', (_e, partial: Record<string, unknown>) => {
@@ -94,7 +99,7 @@ export function setupAppHandlers(
       app.setLoginItemSettings({ openAtLogin: !!partial.launchOnStartup })
     }
     if (obsRecorder?.isConnected()) {
-      void obsRecorder.applyRecordingSettings(buildRecorderConfig(result, allowCreator))
+      void obsRecorder.applyRecordingSettings(buildRecorderConfig(result, allowCreator, getActiveUserId()))
     }
     BrowserWindow.getAllWindows().forEach(w => {
       if (!w.isDestroyed()) w.webContents.send('settings:changed', result)
@@ -114,7 +119,7 @@ export function setupAppHandlers(
 
   ipcMain.handle('storage:get-usage', async () => {
     const settings = settingsManager.get()
-    const dir = settings.savePath || path.join(app.getPath('userData'), 'recordings')
+    const dir = resolveRecordingSavePath(settings.savePath, getActiveUserId())
     let bytes = 0
     let count = 0
     try {
@@ -131,7 +136,7 @@ export function setupAppHandlers(
 
   ipcMain.handle('storage:open-folder', () => {
     const settings = settingsManager.get()
-    shell.openPath(settings.savePath)
+    shell.openPath(resolveRecordingSavePath(settings.savePath, getActiveUserId()))
   })
 
   // ── Dialog ────────────────────────────────────────────────────────────────

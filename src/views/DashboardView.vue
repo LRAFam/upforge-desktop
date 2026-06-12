@@ -696,7 +696,7 @@
                 <span v-else class="w-10 text-[10px] text-gray-700 text-center">—</span>
               </div>
               <div class="flex items-center gap-1.5 flex-shrink-0 ml-1">
-                <button v-if="rec.timeline?.playerKills?.length || rec.timeline?.playerDeaths?.length" class="px-2 py-1 text-[10px] font-medium text-gray-300 bg-white/[0.06] hover:bg-white/[0.1] border border-white/[0.08] rounded-lg transition-colors" @click="$router.push({ path: '/vod-review', query: { id: rec.id } })">Review</button>
+                <button v-if="rec.timeline?.playerKills?.length || rec.timeline?.playerDeaths?.length" class="px-2 py-1 text-[10px] font-medium text-gray-300 bg-white/[0.06] hover:bg-white/[0.1] border border-white/[0.08] rounded-lg transition-colors" @click="openRecordingReview(rec)">Review</button>
                 <button :disabled="analysingIds.has(rec.id)" class="px-2 py-1 text-[10px] font-medium text-white bg-red-500 hover:bg-red-600 disabled:opacity-60 rounded-lg transition-colors flex items-center gap-1" @click="analyseRecording(rec.id)">
                   <svg v-if="analysingIds.has(rec.id)" class="w-3 h-3 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
                   {{ analysingIds.has(rec.id) ? '…' : 'Analyse' }}
@@ -1781,6 +1781,14 @@ function openBrowser() { window.open(`${primaryGameWebBase(primaryGame.value)}/h
 function openPlaystyleProfile() { window.open('https://upforge.gg/valorant/playstyle', '_blank') }
 
 const timelineLoadingId = ref<number | null>(null)
+
+function openRecordingReview(rec: PendingRecording) {
+  if (rec.analysisId) {
+    void openTimeline(rec.analysisId)
+    return
+  }
+  router.push({ path: '/vod-review', query: { id: rec.id } })
+}
 
 async function openTimeline(id: number) {
   timelineLoadingId.value = id

@@ -11,7 +11,7 @@ import {
   readPendingJobForUser,
   setPendingJobUserScope,
 } from './upload-manager'
-import { userDataRoot, userOverlayPath } from './user-data-paths'
+import { userDataRoot, userOverlayPath, userRecordingsDir } from './user-data-paths'
 
 export { userDataRoot } from './user-data-paths'
 
@@ -74,6 +74,28 @@ export function migrateLegacyUserData(userId: number): void {
       log.warn('[UserSession] Failed to migrate clips directory:', err)
     }
   }
+
+  const legacyRecordingsDir = path.join(userData, 'recordings')
+  const targetRecordingsDir = userRecordingsDir(userId)
+  if (fs.existsSync(legacyRecordingsDir)) {
+    try {
+      fs.mkdirSync(targetRecordingsDir, { recursive: true })
+      let copied = 0
+      for (const name of fs.readdirSync(legacyRecordingsDir)) {
+        const src = path.join(legacyRecordingsDir, name)
+        const dest = path.join(targetRecordingsDir, name)
+        if (fs.statSync(src).isFile() && !fs.existsSync(dest)) {
+          fs.copyFileSync(src, dest)
+          copied++
+        }
+      }
+      if (copied > 0) {
+        log.info(`[UserSession] Migrated ${copied} recording(s) → users/${userId}/recordings/`)
+      }
+    } catch (err) {
+      log.warn('[UserSession] Failed to migrate recordings directory:', err)
+    }
+  }
 }
 
 export interface UserSessionDeps {
@@ -95,6 +117,7 @@ export function activateUserSession(userId: number, deps: UserSessionDeps): void
   activeUserId = userId
   setPendingJobUserScope(userId)
 
+  fs.mkdirSync(userRecordingsDir(userId), { recursive: true })
   deps.clipStore.setUserScope(userId)
   deps.recordingsStore.setUserScope(userId)
   setClipsMediaDir(deps.clipStore.getClipsMediaDir())

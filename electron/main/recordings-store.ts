@@ -4,7 +4,7 @@ import path from 'path'
 import { randomUUID } from 'crypto'
 import type { MatchData } from './riot-local-api'
 import { recordingPathVariants, sourcePathForCompressed } from './vod-compressor'
-import { userDataRoot } from './user-data-paths'
+import { recordingMatchesLinkedRiot, userDataRoot, type LinkedRiotId } from './user-data-paths'
 
 function recordingStemKey(filePath: string): string {
   const stem = path.basename(filePath, '.mp4')
@@ -34,6 +34,8 @@ export interface PendingRecording {
   recordedAt: number
   analysed: boolean
   jobId?: string
+  /** Set when analysis completes — enables cloud VOD playback after local file deletion. */
+  analysisId?: number
   fileSizeBytes?: number
 }
 
@@ -67,8 +69,12 @@ export class RecordingsStore {
     try {
       const raw = fs.readFileSync(this.filePath, 'utf-8')
       const all: PendingRecording[] = JSON.parse(raw)
-      // Prune entries whose video file no longer exists to keep the store clean
-      const pruned = all.filter(r => r.analysed || fs.existsSync(r.path))
+      // Keep analysed entries linked to cloud playback; drop orphan locals with no file
+      const pruned = all.filter(r => {
+        if (fs.existsSync(r.path)) return true
+        if (r.analysed && r.analysisId != null) return true
+        return false
+      })
       const deduped = this.dedupeSiblingRecordings(pruned)
       if (deduped.length !== all.length) {
         fs.mkdirSync(path.dirname(this.filePath), { recursive: true })
@@ -115,13 +121,26 @@ export class RecordingsStore {
     return recording
   }
 
-  markAnalysed(id: string, jobId: string): void {
+  markAnalysed(id: string, jobId: string, analysisId?: number): void {
     const rec = this.recordings.find(r => r.id === id)
     if (rec) {
       rec.analysed = true
       rec.jobId = jobId
+      if (analysisId != null) rec.analysisId = analysisId
       this.persist()
     }
+  }
+
+  setAnalysisId(id: string, analysisId: number): void {
+    const rec = this.recordings.find(r => r.id === id)
+    if (rec) {
+      rec.analysisId = analysisId
+      this.persist()
+    }
+  }
+
+  getAnalysisId(id: string): number | null {
+    return this.recordings.find(r => r.id === id)?.analysisId ?? null
   }
 
   getById(id: string): PendingRecording | undefined {
@@ -142,9 +161,14 @@ export class RecordingsStore {
     return true
   }
 
-  /** Returns recordings that haven't been analysed and whose file still exists */
-  getPending(): PendingRecording[] {
-    return this.recordings.filter(r => !r.analysed && fs.existsSync(r.path))
+  /** Unanalysed local recordings for the active account (optionally filtered by linked Riot ID). */
+  getPending(linkedRiot?: LinkedRiotId | null): PendingRecording[] {
+    return this.recordings.filter(r => {
+      if (r.analysed || !fs.existsSync(r.path)) return false
+      const name = r.riotName?.trim() || r.timeline?.playerName?.trim()
+      const tag = r.riotTag?.trim() || r.timeline?.playerTag?.trim()
+      return recordingMatchesLinkedRiot(name, tag, linkedRiot)
+    })
   }
 
   getKnownPaths(): Set<string> {

@@ -11,6 +11,7 @@ import { GameDetector } from '../game-detector'
 import { UploadManager } from '../upload-manager'
 import { cancelAllPollingTimers } from './api-helpers'
 import { normalizeToAcs } from '../combat-score'
+import { fetchRecordingPlaybackUrl } from '../recording-playback'
 
 export function setupAuthHandlers(
   ipcMain: IpcMain,
@@ -138,6 +139,7 @@ export function setupAuthHandlers(
 
       return {
         id: String(analysis.id),
+        analysisId: analysis.id as number,
         videoPath,
         map: analysis.map ?? md.map ?? null,
         agent: analysis.agent ?? md.agent ?? null,
@@ -158,6 +160,11 @@ export function setupAuthHandlers(
     } catch {
       return null
     }
+  })
+
+  ipcMain.handle('analyses:refresh-playback', async (_e, { id }: { id: number }) => {
+    if (!id || Number.isNaN(id)) return null
+    return fetchRecordingPlaybackUrl(auth, id)
   })
 
   // ── Squad / Team ──────────────────────────────────────────────────────────
