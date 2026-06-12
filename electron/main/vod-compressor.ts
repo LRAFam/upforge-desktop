@@ -82,7 +82,7 @@ export async function resolveUploadVideoPath(
   }
 
   onCompressStart?.(mustTranscode && !shouldCompressVod(sizeBytes)
-    ? 'preparing'
+    ? 'transcode'
     : (sizeBytes / (1024 ** 3)).toFixed(1))
   const result = await compressVodForUpload(sourcePath)
   if (result.ok) {

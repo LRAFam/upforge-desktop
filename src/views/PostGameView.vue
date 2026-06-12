@@ -45,7 +45,7 @@
                 </svg>
               </div>
               <div class="text-left">
-                <p class="text-sm font-bold text-white">{{ state === 'preparing' ? 'Getting replay ready' : compressing ? 'Compressing replay' : 'Uploading replay' }}</p>
+                <p class="text-sm font-bold text-white">{{ state === 'preparing' ? 'Getting replay ready' : compressing ? (uploadStatusLabel === 'Converting replay format' ? 'Converting replay' : 'Compressing replay') : 'Uploading replay' }}</p>
                 <div class="mt-1 flex items-center gap-2 text-[11px]">
                   <span class="font-semibold text-gray-200">{{ gameInfo.agent || gameLabel }}</span>
                   <span v-if="gameInfo.map" class="text-gray-500">{{ gameInfo.map }}</span>
@@ -57,7 +57,7 @@
             <div class="flex items-end justify-between gap-3">
               <div class="text-left">
                 <p class="text-[10px] font-semibold uppercase tracking-[0.24em] text-gray-600">{{ state === 'preparing' ? 'Preparing' : compressing ? 'Compression' : 'Upload progress' }}</p>
-                <p class="mt-1 text-xs text-gray-500">{{ state === 'preparing' ? 'Saving your match recording and getting it ready to upload' : compressing ? 'OBS recorded a large file — shrinking to upload size (one-time, may take a few minutes)' : archiveOnlyUpload ? 'Saving your recording to cloud for playback — no analysis quota used' : 'Sending your recording to UpForge for analysis' }}</p>
+                <p class="mt-1 text-xs text-gray-500">{{ state === 'preparing' ? 'Saving your match recording and getting it ready to upload' : compressing ? (uploadStatusLabel === 'Converting replay format' ? 'OBS saved as MKV — converting to a playable format before upload (one-time, may take a few minutes)' : 'OBS recorded a large file — shrinking to upload size (one-time, may take a few minutes)') : archiveOnlyUpload ? 'Saving your recording to cloud for playback — no analysis quota used' : 'Sending your recording to UpForge for analysis' }}</p>
               </div>
               <div class="text-right">
                 <p class="text-lg font-black tabular-nums text-white upload-stat-in">{{ uploadProgress }}%</p>
@@ -836,6 +836,7 @@ const analysisElapsedDisplay = computed(() => {
 
 const uploadStatusLabel = computed(() => {
   if (state.value === 'preparing') return 'Finishing recording'
+  if (compressing.value) return 'Converting replay format'
   if (uploadProgress.value < 15) return 'Preparing replay'
   if (uploadProgress.value < 70) return 'Uploading recording'
   if (uploadProgress.value < 100) return 'Finalising upload'
@@ -1124,17 +1125,28 @@ onMounted(() => {
   const ipcCleanup: (() => void)[] = []
   ipcCleanup.push(window.api.on('post-game:preparing', (...args: unknown[]) => {
     const data = args[0] as { game: string; map: string | null; agent: string | null }
-    state.value = 'preparing'
     gameInfo.value = { game: data.game, map: data.map, agent: data.agent }
+    if (state.value === 'uploading' || state.value === 'analysing') return
+    state.value = 'preparing'
     uploadProgress.value = 0
     compressing.value = false
+  }))
+  ipcCleanup.push(window.api.on('post-game:prep-step', (...args: unknown[]) => {
+    const data = args[0] as { game?: string; map?: string | null; agent?: string | null }
+    if (data?.game) {
+      gameInfo.value = { game: data.game, map: data.map ?? null, agent: data.agent ?? null }
+    }
+    state.value = 'uploading'
+    compressing.value = false
+    uploadProgress.value = 0
+    uploadStartedAt.value = Date.now()
   }))
   ipcCleanup.push(window.api.on('post-game:compress-start', (...args: unknown[]) => {
     const data = args[0] as { sizeGB?: string }
     state.value = 'uploading'
     compressing.value = true
     uploadProgress.value = 0
-    if (data?.sizeGB) {
+    if (data?.sizeGB && data.sizeGB !== 'transcode') {
       errorMessage.value = ''
     }
   }))

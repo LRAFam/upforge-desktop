@@ -963,6 +963,7 @@ function setupGameDetection(): void {
       }
 
       const { path: readyPath, sizeBytes: readySize } = ready
+      sendToWindow('post-game:prep-step', { game, map, agent })
 
       if (readySize < MIN_FILE_SIZE_BYTES) {
         const sizeMB = (readySize / (1024 * 1024)).toFixed(2)
@@ -1004,39 +1005,8 @@ function setupGameDetection(): void {
         `Recording saved (${(readySize / (1024 ** 3)).toFixed(2)} GB) — visible on dashboard`,
       )
 
-      let uploadPath = readyPath
-      let uploadSize = readySize
-
-      try {
-        const resolved = await resolveUploadVideoPath(readyPath, (sizeGB) => {
-          log.warn(`[HandleMatchEnd] Recording is ${sizeGB} GB — compressing before upload`)
-          logActivity(`Recording is ${sizeGB} GB — compressing for upload…`)
-          sendToWindow('post-game:compress-start', { sizeGB })
-        })
-        uploadPath = resolved.path
-        uploadSize = resolved.sizeBytes
-        if (resolved.compressed) {
-          const newGB = (uploadSize / (1024 * 1024 * 1024)).toFixed(2)
-          log.info(`[HandleMatchEnd] Compressed to ${newGB} GB`)
-          logActivity(`Compressed recording to ${newGB} GB — uploading`)
-          if (uploadPath !== readyPath) {
-            recordingsStore.updatePath(savedRecording.id, uploadPath)
-            mainWindow?.webContents.send('recordings:updated')
-          }
-        }
-      } catch (err) {
-        const prepMsg = err instanceof Error ? err.message : String(err)
-        log.error('[HandleMatchEnd] Failed to prepare upload file:', err)
-        logActivity(`Could not prepare recording for upload: ${prepMsg}`)
-        sendToWindow('post-game:upload-error', {
-          message: `Could not prepare recording for upload: ${prepMsg}`,
-          recordingId: savedRecording.id,
-        })
-        return
-      }
-
-      if (uploadSize > MAX_FILE_SIZE_BYTES) {
-        const sizeGB = (uploadSize / (1024 * 1024 * 1024)).toFixed(1)
+      if (readySize > MAX_FILE_SIZE_BYTES) {
+        const sizeGB = (readySize / (1024 * 1024 * 1024)).toFixed(1)
         const errorMsg = formatRecordingTooLargeMessage(readySize, true)
         log.warn(`[GameDetector] Recording too large to upload: ${sizeGB} GB — extracting clips only`)
         logActivity(`Recording too large (${sizeGB} GB) — full upload skipped, saving clips`)
@@ -1121,7 +1091,7 @@ function setupGameDetection(): void {
 
       tray?.setToolTip('UpForge — Uploading...')
 
-      const uploadResult = await doUploadAndAnalyse(savedRecording.id, uploadPath, user?.riot_name ?? '', user?.riot_tag ?? '',
+      const uploadResult = await doUploadAndAnalyse(savedRecording.id, readyPath, user?.riot_name ?? '', user?.riot_tag ?? '',
         game, map, agent, timeline, thisPostGameWindow, matchSessionStart, /* skipAutoDelete= */ true)
 
       const jobId = uploadResult ?? null
@@ -1171,8 +1141,16 @@ function setupGameDetection(): void {
     }
 
     void runPostGameUpload().catch((err) => {
+      const msg = err instanceof Error ? err.message : String(err)
       log.error('[HandleMatchEnd] Post-game upload failed:', err)
-      logActivity(`Upload failed to start: ${err instanceof Error ? err.message : String(err)}`)
+      logActivity(`Upload failed to start: ${msg}`)
+      try {
+        if (!thisPostGameWindow.isDestroyed()) {
+          thisPostGameWindow.webContents.send('post-game:upload-error', {
+            message: `Upload failed to start: ${msg}`,
+          })
+        }
+      } catch { /* window closed */ }
     })
     } finally {
       handleMatchEndRunning = false
@@ -1906,8 +1884,12 @@ async function doUploadAndAnalyse(
   let effectivePath = videoPath
   try {
     const resolved = await resolveUploadVideoPath(videoPath, (sizeGB) => {
-      log.warn(`[Upload] Recording is ${sizeGB} GB — compressing before upload`)
-      logActivity(`Recording is ${sizeGB} GB — compressing for upload…`)
+      if (sizeGB === 'transcode') {
+        logActivity('Converting OBS recording to upload format…')
+      } else {
+        log.warn(`[Upload] Recording is ${sizeGB} GB — compressing before upload`)
+        logActivity(`Recording is ${sizeGB} GB — compressing for upload…`)
+      }
       send('post-game:compress-start', { sizeGB })
     })
     effectivePath = resolved.path
@@ -1935,9 +1917,21 @@ async function doUploadAndAnalyse(
     return null
   }
 
-  if (timeline && game === 'valorant') {
+  // Show upload UI as soon as the file is ready — don't block on Riot stats (can take minutes).
+  send('post-game:upload-start', {
+    game,
+    map,
+    agent,
+    matchDetailsStatus: lastMatchDiagnostic?.matchDetailsStatus ?? 'pending',
+    killsInTimeline: lastMatchDiagnostic?.killsInTimeline ?? 0,
+  })
+  send('post-game:upload-progress', 3)
+
+  const enrichTimelineInBackground = async (): Promise<void> => {
+    if (!timeline || game !== 'valorant') return
     try {
       const enriched = await riotLocalApi.enrichTimelineMatchDetails(timeline, {
+        maxWaitMs: 90_000,
         onStatus: (msg) => logActivity(msg),
       })
       if (enriched) {
@@ -1959,19 +1953,10 @@ async function doUploadAndAnalyse(
     }
   }
 
-  // Show upload UI only after compression/prep — avoids a stuck 0% bar while ffmpeg runs.
-  send('post-game:upload-start', {
-    game,
-    map,
-    agent,
-    matchDetailsStatus: lastMatchDiagnostic?.matchDetailsStatus ?? 'pending',
-    killsInTimeline: lastMatchDiagnostic?.killsInTimeline ?? 0,
-  })
-  send('post-game:upload-progress', 3)
-
   try {
     logActivity(`Uploading recording${map ? ` (${map}${agent ? ` · ${agent}` : ''})` : ''}`)
 
+    const enrichPromise = enrichTimelineInBackground()
     const result = await uploadManager.upload({
       videoPath: effectivePath,
       riotName,
@@ -1984,6 +1969,7 @@ async function doUploadAndAnalyse(
         send('post-game:upload-progress', pct)
       }
     })
+    await enrichPromise.catch(() => {})
 
     send('post-game:upload-complete', { jobId: result.job_id })
     logActivity('Upload complete — AI analysis running')
