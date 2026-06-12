@@ -606,6 +606,7 @@ async function finishOnboarding() {
   const pathToSave = savePath.value.trim() || current.savePath?.trim() || ''
   await window.api.settings.save({
     savePath: pathToSave || undefined,
+    autoDelete: true,
     firstRun: false,
     onboardingComplete: true,
   })

@@ -14,8 +14,10 @@
           </svg>
         </div>
         <span class="text-xs text-orange-300/90 flex-1 leading-snug">{{ warning }}</span>
-        <button v-if="upgradeNeeded" class="flex-shrink-0 text-xs font-semibold text-orange-300 hover:text-orange-100 transition-colors border border-orange-500/30 rounded-lg px-2 py-1" @click="openUpgrade">Upgrade →</button>
-        <button class="w-5 h-5 flex items-center justify-center text-orange-500/50 hover:text-orange-300/70 transition-colors rounded flex-shrink-0" :class="{ 'ml-auto': !upgradeNeeded }" @click="warning = null; upgradeNeeded = false">
+        <button v-if="warningAction" class="flex-shrink-0 text-xs font-semibold text-orange-300 hover:text-orange-100 transition-colors border border-orange-500/30 rounded-lg px-2 py-1" @click="goWarningAction">{{ warningAction.label }}</button>
+        <button v-if="upgradeNeeded" class="flex-shrink-0 text-xs font-semibold text-orange-300 hover:text-orange-100 transition-colors border border-orange-500/30 rounded-lg px-2 py-1" @click="openPpa">Buy one</button>
+        <button v-if="upgradeNeeded" class="flex-shrink-0 text-xs font-semibold text-orange-300 hover:text-orange-100 transition-colors border border-orange-500/30 rounded-lg px-2 py-1" @click="openUpgrade">Upgrade</button>
+        <button class="w-5 h-5 flex items-center justify-center text-orange-500/50 hover:text-orange-300/70 transition-colors rounded flex-shrink-0" :class="{ 'ml-auto': !upgradeNeeded && !warningAction }" @click="warning = null; warningAction = null; upgradeNeeded = false">
           <svg class="w-3 h-3" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd"/></svg>
         </button>
       </div>
@@ -663,6 +665,13 @@
             <div class="flex items-center gap-2 px-0.5 mb-1">
               <span class="text-[10px] font-semibold text-gray-600 uppercase tracking-wider">Pending Analysis</span>
               <span class="text-[10px] text-blue-500/70 bg-blue-500/10 px-1.5 py-px rounded-full">{{ pendingRecordings.length }}</span>
+              <button
+                v-if="pendingRecordings.length > 1"
+                type="button"
+                class="ml-auto text-[10px] font-medium text-blue-400/80 hover:text-blue-300 transition-colors disabled:opacity-50"
+                :disabled="bulkUploading"
+                @click="uploadAllPending"
+              >{{ bulkUploading ? 'Uploading…' : 'Upload all to cloud' }}</button>
             </div>
             <div
               v-for="rec in pendingRecordings"
@@ -682,6 +691,7 @@
                 </div>
                 <p class="text-[10px] text-gray-600 mt-0.5 truncate">
                   {{ rec.map || '—' }} · {{ formatRelativeTime(new Date(rec.recordedAt).toISOString()) }}
+                  <span v-if="rec.fileSizeBytes" class="text-gray-700"> · {{ formatFileSize(rec.fileSizeBytes) }}</span>
                   <span class="text-gray-700"> · {{ formatMode(rec.gameMode) }}</span>
                 </p>
               </div>
@@ -1102,6 +1112,8 @@ const recordingElapsed = ref('')
 const stopping = ref(false)
 const showRankHistory = ref(false)
 const warning = ref<string | null>(null)
+const warningAction = ref<{ label: string; route: string } | null>(null)
+const bulkUploading = ref(false)
 const rrHistory = ref<Array<{ id: number; date: string; rank: string | null; rr: number; elo: number }>>([])
 
 const rrSparkline = computed(() => {
@@ -1467,6 +1479,7 @@ onMounted(async () => {
   const savedSettings = await window.api.settings.get().catch(() => null) as ({ lastInsight?: typeof lastInsight.value; trainerMouse?: { game?: string } } | null)
   if (savedSettings?.lastInsight) lastInsight.value = savedSettings.lastInsight
   await loadFromSettings()
+  void maybeShowDiskMigrationHint()
 
   // Achievement: first-analysis
   await achievements.load()
@@ -1538,9 +1551,12 @@ onMounted(async () => {
     status.value = { ...status.value, recordingStarting: data.starting }
   }))
   ipcCleanup.push(window.api.on('app:warning', (...args: unknown[]) => {
-    const data = args[0] as { message: string }
+    const data = args[0] as { message: string; actionLabel?: string; actionRoute?: string }
     warning.value = data.message
-    setTimeout(() => { warning.value = null }, 12000)
+    warningAction.value = data.actionLabel && data.actionRoute
+      ? { label: data.actionLabel, route: data.actionRoute }
+      : null
+    setTimeout(() => { warning.value = null; warningAction.value = null }, 15000)
   }))
   ipcCleanup.push(window.api.on('analysis:timeout', () => {
     warning.value = 'Clip analysis timed out — please try re-submitting from the Clips tab.'
@@ -1656,6 +1672,49 @@ async function triggerPrestige() {
 
 async function loadPendingRecordings() {
   pendingRecordings.value = await window.api.recordings.get().catch(() => [])
+}
+
+function goWarningAction() {
+  if (!warningAction.value) return
+  router.push(warningAction.value.route)
+  warning.value = null
+  warningAction.value = null
+}
+
+async function uploadAllPending() {
+  if (bulkUploading.value || pendingRecordings.value.length === 0) return
+  const user = profile.value?.user
+  if (
+    user &&
+    !hasAnalysisQuotaRemaining(user.analysis_stats, user.tier, user.is_admin)
+  ) {
+    warning.value = 'No analyses remaining this month.'
+    upgradeNeeded.value = true
+    return
+  }
+  bulkUploading.value = true
+  try {
+    const result = await window.api.storage.uploadPending()
+    if (!result.ok) {
+      warning.value = result.error
+      setTimeout(() => { warning.value = null }, 12000)
+      return
+    }
+    if (result.stoppedEarly) {
+      warning.value = `Uploaded ${result.uploaded} — ${result.stopReason ?? 'analysis limit reached'}`
+      upgradeNeeded.value = true
+    } else if (result.uploaded > 0) {
+      analysisCompleteToast.value = `Uploaded ${result.uploaded} recording${result.uploaded === 1 ? '' : 's'} to cloud — local copies removed`
+      setTimeout(() => { analysisCompleteToast.value = null }, 8000)
+    }
+    await loadPendingRecordings()
+    await loadAnalyses()
+  } catch {
+    warning.value = 'Bulk upload failed — try again from Settings → Recording.'
+    setTimeout(() => { warning.value = null }, 12000)
+  } finally {
+    bulkUploading.value = false
+  }
 }
 
 async function analyseRecording(id: string) {
@@ -1810,6 +1869,27 @@ async function openTimeline(id: number) {
 }
 function openRiotSettings() { window.open('https://upforge.gg/settings/profile', '_blank') }
 function openUpgrade() { window.open('https://upforge.gg/pricing', '_blank') }
+function openPpa() { window.open('https://upforge.gg/valorant/analyze', '_blank') }
+
+const DISK_MIGRATION_HINT_KEY = 'upforge-disk-hint-v1'
+const LOW_FREE_DISK_BYTES = 2 * 1024 * 1024 * 1024
+
+async function maybeShowDiskMigrationHint(): Promise<void> {
+  try {
+    if (localStorage.getItem(DISK_MIGRATION_HINT_KEY)) return
+    const [usage, settings] = await Promise.all([
+      window.api.storage.getUsage(),
+      window.api.settings.get(),
+    ])
+    if (usage.freeDiskBytes >= LOW_FREE_DISK_BYTES) return
+    if (settings.autoDelete && settings.autoAnalyse !== false) return
+    localStorage.setItem(DISK_MIGRATION_HINT_KEY, '1')
+    warning.value = settings.autoDelete
+      ? 'Low disk space — upload pending VODs in Settings → Recording to move them to the cloud and free space.'
+      : 'Low disk space — turn on Auto-delete after upload in Settings so cloud VODs replace local files on your drive.'
+    warningAction.value = { label: 'Open Settings', route: '/settings?tab=recording' }
+  } catch { /* optional */ }
+}
 
 function formatDate(d: string): string {
   return new Date(d).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })

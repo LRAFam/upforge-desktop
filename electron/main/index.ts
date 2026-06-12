@@ -73,6 +73,12 @@ import log from 'electron-log'
 import { setupMainProcessErrorHandlers, reportError } from './error-reporter'
 import { findLatestCS2Demo } from './cs2-demo-finder'
 import { fetchRecordingPlaybackUrl } from './recording-playback'
+import {
+  CRITICAL_FREE_DISK_BYTES,
+  LOW_FREE_DISK_BYTES,
+  formatFreeDiskLabel,
+  getFreeDiskSpace,
+} from './disk-space'
 import { getStorageBreakdown, purgeCloudBackedLocals } from './storage-cleanup'
 import { CS2DemoUploader } from './cs2-demo-uploader'
 import { DiscordRPC } from './discord-rpc'
@@ -1177,15 +1183,31 @@ function setupGameDetection(): void {
         `${recorderConfig.manageObsVideo === false ? ' (OBS video settings unchanged)' : ''} (synced to OBS before recording)`,
       )
     }
-    const freeBytes = await obsRecorder.getFreeDiskSpace(savePath)
-    const TWO_GB = 2 * 1024 * 1024 * 1024
-    if (freeBytes < TWO_GB) {
-      const freeGB = (freeBytes / (1024 ** 3)).toFixed(1)
-      console.warn(`[Recorder] Low disk space: ${freeGB} GB free`)
-      mainWindow?.webContents.send('app:warning', { message: `Low disk space (${freeGB} GB free) — recording may be cut short` })
+    const freeBytes = await getFreeDiskSpace(savePath)
+    if (freeBytes < CRITICAL_FREE_DISK_BYTES) {
+      const msg = `Not enough disk space (${formatFreeDiskLabel(freeBytes)}) — recording skipped. Free space in Settings → Recording.`
+      logActivity(msg)
+      notifyRecordingUx(msg, 'UpForge — Disk Full')
+      mainWindow?.webContents.send('app:warning', {
+        message: msg,
+        actionLabel: 'Free up space',
+        actionRoute: '/settings?tab=recording',
+      })
+      tray?.setToolTip(idleTooltip(game))
+      await rearmValorantDetection(game, true)
+      return
+    }
+    if (freeBytes < LOW_FREE_DISK_BYTES) {
+      const msg = `Low disk space (${formatFreeDiskLabel(freeBytes)}) — recording may fail. Upload pending VODs in Settings → Recording.`
+      console.warn(`[Recorder] ${msg}`)
+      mainWindow?.webContents.send('app:warning', {
+        message: msg,
+        actionLabel: 'Free up space',
+        actionRoute: '/settings?tab=recording',
+      })
       showAppNotification({
         title: 'UpForge — Low Disk Space',
-        body: `Only ${freeGB} GB free. Recording may be cut short.`,
+        body: msg,
         silent: true,
       })
     }
@@ -1817,6 +1839,7 @@ async function doUploadAndAnalyse(
       log.info('[App] Auto-deleting recording after upload:', videoPath)
       obsRecorder.deleteRecording(videoPath)
       deleteCompressedSibling(videoPath)
+      logActivity('Local recording removed — VOD saved to cloud and available for review')
     }
 
     startAnalysisPoll({

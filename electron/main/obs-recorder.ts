@@ -4,6 +4,11 @@ import { existsSync, statSync } from 'fs'
 import { join } from 'path'
 import https from 'https'
 import log from 'electron-log'
+import {
+  CRITICAL_FREE_DISK_BYTES,
+  WARN_FREE_DISK_BYTES,
+  getFreeDiskSpace,
+} from './disk-space'
 import { setupUpForgeScene, retargetUpForgeCapture, type ObsSetupResult } from './obs-setup'
 import { formatObsConnectError, obsConnectHosts } from './obs-connect'
 import { applyObsRecordingSettings, type ObsApplyResult } from './obs-output-settings'
@@ -318,6 +323,23 @@ export class OBSRecorder {
     this._startupWarning = null
     this._outputPath = null
     this._disconnectedDuringRecording = false
+
+    const saveDir = config?.savePath ?? join(app.getPath('userData'), 'recordings')
+    const freeBytes = await getFreeDiskSpace(saveDir)
+    if (freeBytes < CRITICAL_FREE_DISK_BYTES) {
+      const freeMB = (freeBytes / (1024 * 1024)).toFixed(0)
+      this._lastError = `Disk full: only ${freeMB} MB free. Free up disk space before recording.`
+      log.error(`[OBSRecorder] ${this._lastError}`)
+      this.onStatusChange?.(false, this._lastError)
+      throw new Error(this._lastError)
+    }
+    if (freeBytes < WARN_FREE_DISK_BYTES) {
+      const freeGB = (freeBytes / (1024 ** 3)).toFixed(1)
+      this._startupWarning = `Low disk space: ${freeGB} GB free. Recordings may fail — upload pending VODs in Settings.`
+      log.warn(`[OBSRecorder] ${this._startupWarning}`)
+    } else {
+      this._startupWarning = null
+    }
 
     try {
       // Game/window capture only — never desktop (privacy / policy safe when alt-tabbing)

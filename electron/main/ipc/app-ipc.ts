@@ -19,6 +19,7 @@ import { buildRecorderConfig } from '../obs-output-settings'
 import { hasProAccess } from '../subscription'
 import { getActiveUserId } from '../user-session'
 import { resolveRecordingSavePath } from '../user-data-paths'
+import { getFreeDiskSpace } from '../disk-space'
 
 export function setupAppHandlers(
   ipcMain: IpcMain,
@@ -131,7 +132,8 @@ export function setupAppHandlers(
         } catch { /* ignore unreadable entries */ }
       }))
     } catch { /* dir may not exist yet */ }
-    return { bytes, count }
+    const freeDiskBytes = await getFreeDiskSpace(dir)
+    return { bytes, count, freeDiskBytes }
   })
 
   ipcMain.handle('storage:open-folder', () => {

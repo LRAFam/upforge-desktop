@@ -387,14 +387,17 @@
               </div>
             </div>
 
-            <div class="rounded-2xl border border-white/[0.10] bg-black/20 p-4">
+            <div class="rounded-2xl border p-4" :class="diskSpaceCritical ? 'border-red-500/30 bg-red-500/[0.06]' : diskSpaceLow ? 'border-orange-500/25 bg-orange-500/[0.05]' : 'border-white/[0.10] bg-black/20'">
               <div class="flex items-center justify-between gap-3">
                 <div>
                   <p class="text-xs font-medium text-gray-300">Storage usage</p>
-                  <p class="mt-1 text-xs text-gray-500">{{ storageSummary }}</p>
+                  <p class="mt-1 text-xs" :class="diskSpaceCritical ? 'text-red-300/90' : diskSpaceLow ? 'text-orange-300/90' : 'text-gray-500'">{{ storageSummary }}</p>
                 </div>
                 <button class="rounded-xl border border-white/[0.08] bg-white/[0.04] px-3 py-2 text-xs font-medium text-gray-300 transition-colors hover:border-white/[0.14] hover:text-white" @click="openRecordingsFolder">Open folder</button>
               </div>
+              <p v-if="diskSpaceLow" class="mt-2 text-[11px] leading-relaxed text-orange-300/80">
+                Low disk space can cut recordings short. Upload pending VODs to the cloud, then remove local copies you no longer need.
+              </p>
               <div class="mt-3 h-2 overflow-hidden rounded-full bg-white/[0.06]">
                 <div class="h-full rounded-full bg-gradient-to-r from-red-500 to-orange-500 transition-all" :style="{ width: storageUsagePercent + '%' }" />
               </div>
@@ -403,8 +406,9 @@
                 <span>{{ storageSoftLimitLabel }}</span>
               </div>
               <p class="mt-3 text-[11px] leading-relaxed text-gray-600">
-                Uploaded VODs are stored in the cloud and can be reviewed without a local file (v2.5.40+).
+                Uploaded VODs are stored in the cloud and can be reviewed without a local file.
                 Turn on <span class="text-gray-400">Auto-delete after upload</span> below to free disk automatically after each match.
+                <span class="text-gray-500"> Pro plans include higher analysis limits and extended cloud retention.</span>
               </p>
               <div v-if="storageBreakdown.pendingCount > 0 || storageBreakdown.cloudBackedCount > 0" class="mt-3 space-y-2">
                 <button
@@ -844,6 +848,7 @@ let upToDateTimer: ReturnType<typeof setTimeout> | null = null
 const savedToast = ref(false)
 const storageBytes = ref(0)
 const storageCount = ref(0)
+const freeDiskBytes = ref<number | null>(null)
 const storageBreakdown = ref({
   pendingCount: 0,
   pendingBytes: 0,
@@ -1057,7 +1062,7 @@ const settings = reactive<AppSettings>({
   audioEnabled: true,
   savePath: '',
   launchOnStartup: false,
-  autoDelete: false,
+  autoDelete: true,
   recordedModes: ['COMPETITIVE', 'PREMIER'],
   autoAnalyse: true,
   firstRun: false,
@@ -1148,11 +1153,22 @@ const accountRiotId = computed(() => {
 })
 
 const storageSoftLimitBytes = 50 * 1024 * 1024 * 1024
+const LOW_FREE_DISK_BYTES = 2 * 1024 * 1024 * 1024
+const CRITICAL_FREE_DISK_BYTES = 500 * 1024 * 1024
 const storageUsagePercent = computed(() => Math.min(100, Math.round((storageBytes.value / storageSoftLimitBytes) * 100)))
 const storageSoftLimitLabel = computed(() => `${formatBytes(storageBytes.value)} of ${formatBytes(storageSoftLimitBytes)}`)
+const freeDiskLabel = computed(() => {
+  if (freeDiskBytes.value == null) return null
+  return formatBytes(freeDiskBytes.value)
+})
+const diskSpaceCritical = computed(() => freeDiskBytes.value != null && freeDiskBytes.value < CRITICAL_FREE_DISK_BYTES)
+const diskSpaceLow = computed(() => freeDiskBytes.value != null && freeDiskBytes.value < LOW_FREE_DISK_BYTES)
 const storageSummary = computed(() => {
-  if (storageCount.value === 0) return 'No recordings saved yet'
-  return `${storageCount.value} file${storageCount.value === 1 ? '' : 's'} stored locally · ${formatBytes(storageBytes.value)}`
+  const local = storageCount.value === 0
+    ? 'No recordings saved locally'
+    : `${storageCount.value} local file${storageCount.value === 1 ? '' : 's'} · ${formatBytes(storageBytes.value)}`
+  if (freeDiskLabel.value == null) return local
+  return `${local} · ${freeDiskLabel.value} free on disk`
 })
 
 const hasProAccess = computed(() => proAccessForUser(user.value))
@@ -1413,6 +1429,7 @@ async function loadStorageUsage(): Promise<void> {
     ])
     storageBytes.value = usage.bytes
     storageCount.value = usage.count
+    freeDiskBytes.value = usage.freeDiskBytes
     storageBreakdown.value = breakdown
   } catch { /* ignore */ }
 }

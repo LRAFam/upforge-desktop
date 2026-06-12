@@ -474,7 +474,7 @@ declare global {
         sendError: (message: string) => void
       }
       storage: {
-        getUsage: () => Promise<{ bytes: number; count: number }>
+        getUsage: () => Promise<{ bytes: number; count: number; freeDiskBytes: number }>
         getBreakdown: () => Promise<{
           pendingCount: number
           pendingBytes: number
