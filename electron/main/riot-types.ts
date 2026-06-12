@@ -66,6 +66,10 @@ export interface FirstBloodEvent extends GameEvent {
   EventName: 'FirstBlood'
   killerName: string
   victimName: string
+  killerPuuid?: string
+  victimPuuid?: string
+  /** 0-indexed round (R1 = 0) */
+  round?: number
 }
 
 /** Ability state for a single ability slot */

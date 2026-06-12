@@ -1063,8 +1063,11 @@ export class RiotLocalApi {
           : null
       }
 
-      for (const round of roundResults) {
-        const roundNum = (round.roundNum as number) ?? 0
+      for (let roundIndex = 0; roundIndex < roundResults.length; roundIndex++) {
+        const round = roundResults[roundIndex]!
+        const roundNum = (round.roundNum as number)
+          ?? (round.roundNumber as number)
+          ?? roundIndex
         const winningTeam = (round.winningTeam as string) ?? null
         const resultCode = (round.roundResultCode as string) ?? (round.roundResult as string) ?? null
         const bombPlanterRaw = (round.bombPlanter as string) ?? null
@@ -1139,6 +1142,9 @@ export class RiotLocalApi {
           EventTime: fb.tsgm / 1000,
           killerName: _resolveName(fb.killer),
           victimName: _resolveName(fb.victim),
+          killerPuuid: fb.killer,
+          victimPuuid: fb.victim,
+          round: roundNum,
         })
       }
     }
