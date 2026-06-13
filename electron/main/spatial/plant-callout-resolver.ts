@@ -36,6 +36,36 @@ function dist(a: NormPoint, b: NormPoint): number {
   return Math.hypot(a.x - b.x, a.y - b.y)
 }
 
+/** Bombsite anchor when Riot omits plantLocation or world coords land on the wrong site. */
+export function resolveSitePlantAnchor(
+  mapName: string | null | undefined,
+  site: string | null | undefined,
+): { norm: NormPoint; callout: string; site: string | null } | null {
+  const letter = site?.trim().charAt(0).toUpperCase()
+  if (!letter || !['A', 'B', 'C'].includes(letter)) return null
+
+  const pack = loadPlantPack(mapName)
+  if (!pack?.spots?.length) return null
+
+  const names = [
+    ...(letter === 'A' ? ['A Pyramids'] : []),
+    `${letter} Default`,
+    `${letter} Site`,
+  ]
+  for (const name of names) {
+    const spot = pack.spots.find((s) => s.name === name)
+    if (spot) {
+      return { norm: { x: spot.x, y: spot.y }, callout: spot.name, site: spot.site ?? letter }
+    }
+  }
+
+  const any = pack.spots.find((s) => (s.site ?? '').toUpperCase() === letter)
+  if (any) {
+    return { norm: { x: any.x, y: any.y }, callout: any.name, site: any.site ?? letter }
+  }
+  return null
+}
+
 /** Resolve spike plant position to a named plant spot (tighter than kill callouts). */
 export function resolvePlantCallout(
   mapName: string | null | undefined,

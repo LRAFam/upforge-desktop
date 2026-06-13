@@ -38,11 +38,12 @@ for (const file of readdirSync(zonesDir).filter((f) => f.endsWith('.json'))) {
 
     if (/^([ABC]) Site$/.test(c.name)) {
       const letter = c.name.charAt(0)
+      const pyramids = pack.callouts?.find((x) => x.name === `${letter} Pyramids`)
       push({
         name: `${letter} Default`,
         site: letter,
-        x: c.x,
-        y: c.y,
+        x: pyramids?.x ?? c.x,
+        y: pyramids?.y ?? c.y,
         radius: 0.09,
       })
     }

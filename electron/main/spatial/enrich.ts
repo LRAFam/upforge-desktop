@@ -1,7 +1,7 @@
 import type { KillEvent, MatchData } from '../riot-types'
 import { worldToNorm } from './map-transforms'
 import { resolveCallout } from './callout-resolver'
-import { resolvePlantCallout } from './plant-callout-resolver'
+import { resolvePlantCallout, resolveSitePlantAnchor } from './plant-callout-resolver'
 import { getPlantBenchmarkHint } from './plant-benchmarks'
 import { resolvePlayerRankTier } from './plant-benchmarks-helpers'
 import { getPeekBenchmarkHint, buildPeekHotspots } from './peek-benchmarks'
@@ -170,6 +170,12 @@ function buildPatterns(
   return patterns.slice(0, 6)
 }
 
+function plantSiteLetter(site: string | null | undefined): string | null {
+  if (!site) return null
+  const letter = site.trim().charAt(0).toUpperCase()
+  return letter === 'A' || letter === 'B' || letter === 'C' ? letter : null
+}
+
 function buildPlantEvents(match: MatchData): {
   events: SpatialTimelineEvent[]
   byRound: Map<number, { norm: NormPoint; callout: string; site: string | null }>
@@ -181,16 +187,51 @@ function buildPlantEvents(match: MatchData): {
   const rankTier = resolvePlayerRankTier(match)
   const events: SpatialTimelineEvent[] = []
   for (const plant of match.spikePlants ?? []) {
-    const loc = plant.plantLocation
-    if (!loc || typeof loc.x !== 'number' || typeof loc.y !== 'number') continue
-
-    const norm = worldToNorm(map, loc.x, loc.y)
-    if (!norm) continue
-
-    const { callout, site } = resolvePlantCallout(map, norm)
-    const siteLabel = site ?? (plant.site || null)
-    const benchmarkHint = getPlantBenchmarkHint(map, callout, rankTier)
     const round = plant.round ?? 0
+    const declaredSite = plantSiteLetter(plant.site)
+    const loc = plant.plantLocation
+
+    let norm: NormPoint | null = null
+    let callout = declaredSite ? `${declaredSite} Site` : 'Plant'
+    let siteLabel: string | null = declaredSite ?? plant.site ?? null
+
+    if (loc && typeof loc.x === 'number' && typeof loc.y === 'number') {
+      norm = worldToNorm(map, loc.x, loc.y)
+      if (norm && declaredSite) {
+        const zone = resolveCallout(map, norm)
+        const zoneSite = plantSiteLetter(zone.site)
+        if (zoneSite === declaredSite) {
+          const resolved = resolvePlantCallout(map, norm)
+          callout = resolved.callout
+          siteLabel = resolved.site ?? plant.site ?? null
+        } else {
+          const anchor = resolveSitePlantAnchor(map, plant.site)
+          if (anchor) {
+            norm = anchor.norm
+            callout = anchor.callout
+            siteLabel = anchor.site
+          } else {
+            const resolved = resolvePlantCallout(map, norm)
+            callout = resolved.callout
+            siteLabel = resolved.site ?? plant.site ?? null
+          }
+        }
+      } else if (norm) {
+        const resolved = resolvePlantCallout(map, norm)
+        callout = resolved.callout
+        siteLabel = resolved.site ?? plant.site ?? null
+      }
+    }
+
+    if (!norm) {
+      const anchor = resolveSitePlantAnchor(map, plant.site)
+      if (!anchor) continue
+      norm = anchor.norm
+      callout = anchor.callout
+      siteLabel = anchor.site
+    }
+
+    const benchmarkHint = getPlantBenchmarkHint(map, callout, rankTier)
     byRound.set(round, { norm, callout, site: siteLabel })
     events.push({
       type: 'plant',
