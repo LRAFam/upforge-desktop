@@ -395,6 +395,13 @@
 
           <!-- Play/pause overlay — subtle; hidden while playing -->
           <div
+            v-if="playbackError"
+            class="absolute inset-x-4 bottom-4 z-20 rounded-xl border border-amber-500/25 bg-black/75 px-3 py-2 text-center pointer-events-none"
+          >
+            <p class="text-[11px] text-amber-200/90 leading-relaxed">{{ playbackError }}</p>
+          </div>
+
+          <div
             class="absolute inset-0 flex items-center justify-center pointer-events-none"
             :class="isPlaying ? 'opacity-0' : 'opacity-100'"
             style="transition: opacity 0.25s"
@@ -1361,6 +1368,7 @@ const dockChipsEl = ref<HTMLElement | null>(null)
 const activeSpatialIndex = ref<number | null>(null)
 const recordingId = ref<string | null>(null)
 const playbackRefreshing = ref(false)
+const playbackError = ref<string | null>(null)
 const userTier = ref('free')
 const SPATIAL_PREVIEW_KEY = 'upforge_spatial_seek_preview_used'
 
@@ -1675,6 +1683,7 @@ async function refreshPlaybackUrl(): Promise<boolean> {
       url = await window.api.archives.refreshPlayback(archiveId)
     }
     if (url && timeline.value) {
+      playbackError.value = null
       timeline.value = {
         ...timeline.value,
         videoPath: url,
@@ -1689,6 +1698,7 @@ async function refreshPlaybackUrl(): Promise<boolean> {
       }
       return true
     }
+    playbackError.value = 'Cloud playback URL unavailable — try Retry or open this match on upforge.gg.'
     return false
   } finally {
     playbackRefreshing.value = false
@@ -1696,10 +1706,15 @@ async function refreshPlaybackUrl(): Promise<boolean> {
 }
 
 function onVideoError() {
-  if (!canRefreshCloudPlayback.value) return
+  if (!canRefreshCloudPlayback.value) {
+    playbackError.value = 'This recording cannot be played in the desktop app.'
+    return
+  }
   void refreshPlaybackUrl().then((ok) => {
     if (ok && videoEl.value) {
       void videoEl.value.play().catch(() => {})
+    } else if (!ok) {
+      playbackError.value = playbackError.value ?? 'Cloud video failed to load — try Retry cloud playback.'
     }
   })
 }
@@ -2282,6 +2297,7 @@ function applyInitialSeek() {
 async function loadTimeline() {
   timelineLoading.value = true
   timelineError.value = null
+  playbackError.value = null
   timeline.value = null
   playbackDurationRetryDone.value = false
   try {
