@@ -243,6 +243,7 @@ const api = {
       'trainer:session-result',
       'post-game:demo-status',
       'post-game:demo-progress',
+      'spatial:population-updated',
     ]
     if (allowed.includes(channel)) {
       const handler = (_e: Electron.IpcRendererEvent, ...args: unknown[]) => callback(...args)

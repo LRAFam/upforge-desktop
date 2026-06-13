@@ -1088,6 +1088,10 @@ export class RiotLocalApi {
         const bombPlanter = bombPlanterRaw ? _resolveName(bombPlanterRaw) : null
         const bombDefuser = bombDefuserRaw ? _resolveName(bombDefuserRaw) : null
         const plantSite = (round.plantSite as string) ?? null
+        const plantLocRaw = round.plantLocation as { x?: number; y?: number } | null | undefined
+        const plantLocation = plantLocRaw?.x != null && plantLocRaw?.y != null
+          ? { x: plantLocRaw.x as number, y: plantLocRaw.y as number }
+          : undefined
         const prs = (round.playerStats as Array<Record<string, unknown>> | undefined)
           ?.find((ps) => (ps.subject as string)?.toLowerCase() === ownLower)
         const economy = prs?.economy as Record<string, unknown> | undefined
@@ -1122,7 +1126,8 @@ export class RiotLocalApi {
           const gameTimeMs = (roundStartGameMs.get(roundNum) ?? 0) + plantLocal
           this.matchData.spikePlants.push({
             EventID: roundNum * 100 + 10, EventName: 'SpikePlanted',
-            EventTime: plantLocal, planter: bombPlanter, site: plantSite ?? '',
+            EventTime: plantLocal, planter: bombPlanter, planterPuuid: bombPlanterRaw ?? undefined,
+            site: plantSite ?? '', plantLocation,
             round: roundNum, gameTimeMs,
             videoOffsetMs: Math.max(0, recordingOffset + gameTimeMs),
           })

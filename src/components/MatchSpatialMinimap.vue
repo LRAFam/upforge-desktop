@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted } from 'vue'
-import { getMapMinimap } from '../lib/valorant'
-import { fromMinimapDisplayNorm, toMinimapDisplayNorm, drawMinimapImage } from '../lib/map-display-norm'
+import { resolveMapRadarUrl, toRadarDisplayNorm, fromRadarDisplayNorm } from '../lib/map-radar'
+import { cs2MapDisplayName, isCs2Map, normalizeCs2MapKey } from '../lib/cs2-maps'
+import { drawMinimapImage } from '../lib/map-display-norm'
 import {
   MINIMAP_COMPACT,
   MINIMAP_SIZE,
@@ -19,11 +20,13 @@ import type { MatchSpatialSummary, SpatialTimelineEvent } from '../lib/spatial-t
 const props = withDefaults(defineProps<{
   summary: MatchSpatialSummary | null | undefined
   mapName?: string | null
+  /** Game context for radar image + coord calibration (valorant | cs2 | deadlock). */
+  game?: string | null
   activeIndex?: number | null
   showLegend?: boolean
   showHeatmap?: boolean
-  /** callout = per-death blobs; site = aggregated bombsite heat */
-  heatmapLayer?: 'callout' | 'site'
+  /** callout = per-death blobs; site = aggregated bombsite heat; peek = population defender-favored angles */
+  heatmapLayer?: 'callout' | 'site' | 'peek'
   large?: boolean
   /** Fixed small footprint for side panels (112px). */
   compact?: boolean
@@ -63,8 +66,17 @@ const emit = defineEmits<{
   'update:roundFilter': [round: number | null]
 }>()
 
+const spatialEvents = computed(() => {
+  const events = props.summary?.events ?? []
+  const rf = props.roundFilter
+  if (rf == null) return events
+  return events.filter((e) => e.round === rf)
+})
+
+const hasSpatialEvents = computed(() => spatialEvents.value.length > 0)
+
 const deathEvents = computed(() =>
-  (props.summary?.events ?? []).filter((e) => e.type === 'death'),
+  spatialEvents.value.filter((e) => e.type === 'death'),
 )
 
 const useCalloutHeat = computed(() =>
@@ -77,6 +89,12 @@ const useSiteHeat = computed(() =>
   props.showHeatmap
   && props.heatmapLayer === 'site'
   && (props.summary?.siteHotspots?.length ?? 0) > 0,
+)
+
+const usePeekHeat = computed(() =>
+  props.showHeatmap
+  && props.heatmapLayer === 'peek'
+  && (props.summary?.peekHotspots?.length ?? 0) > 0,
 )
 
 const activeEvent = computed(() => {
@@ -102,7 +120,7 @@ const imgLoaded = ref(false)
 
 const minimapUrl = computed(() => {
   const m = props.summary?.map ?? props.mapName
-  return m ? getMapMinimap(m) : ''
+  return resolveMapRadarUrl(props.game, m)
 })
 
 const isSmallHud = computed(() =>
@@ -123,10 +141,18 @@ const canvasStyle = computed(() => ({
   height: `${size.value}px`,
 }))
 
-const mapLabel = computed(() => props.summary?.map ?? props.mapName ?? null)
+const mapLabel = computed(() => {
+  const m = props.summary?.map ?? props.mapName ?? null
+  if (!m) return null
+  if (props.game === 'cs2' || isCs2Map(m)) {
+    const key = isCs2Map(m) ? normalizeCs2MapKey(m) : null
+    return key ? cs2MapDisplayName(key) : m
+  }
+  return m
+})
 
 function displayNorm(norm: { x: number; y: number }) {
-  return toMinimapDisplayNorm(mapLabel.value, norm)
+  return toRadarDisplayNorm(props.game, mapLabel.value ?? props.mapName, norm)
 }
 
 function drawDeathHeatmap(ctx: CanvasRenderingContext2D, s: number, deaths: SpatialTimelineEvent[]) {
@@ -196,11 +222,45 @@ function drawSiteHeatmap(ctx: CanvasRenderingContext2D, s: number) {
   ctx.restore()
 }
 
+function drawPeekHeatmap(ctx: CanvasRenderingContext2D, s: number) {
+  const hotspots = props.summary?.peekHotspots ?? []
+  const maxKd = Math.max(...hotspots.map((h) => h.defenderKd), 1.05)
+  ctx.save()
+  ctx.globalCompositeOperation = 'lighter'
+  for (const h of hotspots) {
+    const d = displayNorm(h.norm)
+    const px = d.x * s
+    const py = d.y * s
+    const smallHud = isSmallHud.value
+    const baseR = props.large
+      ? 34
+      : props.panelHud
+        ? 28
+        : props.dockExpanded
+          ? 24
+          : smallHud
+            ? 14
+            : 22
+    const intensity = (h.defenderKd - 1) / Math.max(maxKd - 1, 0.05)
+    const blobR = baseR + intensity * (smallHud ? 8 : 14)
+    const grad = ctx.createRadialGradient(px, py, 0, px, py, blobR)
+    grad.addColorStop(0, 'rgba(59, 130, 246, 0.8)')
+    grad.addColorStop(0.45, 'rgba(59, 130, 246, 0.35)')
+    grad.addColorStop(1, 'rgba(59, 130, 246, 0)')
+    ctx.fillStyle = grad
+    ctx.beginPath()
+    ctx.arc(px, py, blobR, 0, Math.PI * 2)
+    ctx.fill()
+  }
+  ctx.restore()
+}
+
 function draw() {
   const canvas = canvasRef.value
   const url = minimapUrl.value
   const summary = props.summary
-  if (!canvas || !url || !summary?.events?.length) return
+  const events = spatialEvents.value
+  if (!canvas || !url || !summary || !hasSpatialEvents.value) return
 
   const s = size.value
   canvas.width = s
@@ -216,22 +276,27 @@ function draw() {
     drawMinimapImage(ctx, img, s, mapLabel.value)
 
     if (useCalloutHeat.value) drawDeathHeatmap(ctx, s, deathEvents.value)
-    if (useSiteHeat.value) drawSiteHeatmap(ctx, s)
+    else if (useSiteHeat.value) drawSiteHeatmap(ctx, s)
+    else if (usePeekHeat.value) drawPeekHeatmap(ctx, s)
 
-    const heatActive = useCalloutHeat.value || useSiteHeat.value
-    summary.events.forEach((ev, idx) => {
+    const heatActive = useCalloutHeat.value || useSiteHeat.value || usePeekHeat.value
+    events.forEach((ev, idx) => {
+      const globalIdx = summary.events.indexOf(ev)
       const d = displayNorm(ev.norm)
       const px = d.x * s
       const py = d.y * s
       const isDeath = ev.type === 'death'
-      const active = props.activeIndex === idx
+      const isPlant = ev.type === 'plant'
+      const active = props.activeIndex === globalIdx
       const small = isSmallHud.value
       const medium = props.panelHud || props.dockExpanded
       const r = active
         ? (small ? 7 : medium ? 9 : 10)
         : isDeath
           ? (heatActive ? (small ? 3 : medium ? 4 : 5) : (small ? 4 : medium ? 6 : 7))
-          : (small ? 4 : medium ? 5 : 6)
+          : isPlant
+            ? (small ? 5 : medium ? 6 : 7)
+            : (small ? 4 : medium ? 5 : 6)
 
       ctx.beginPath()
       ctx.arc(px, py, r + 2, 0, Math.PI * 2)
@@ -240,7 +305,7 @@ function draw() {
 
       ctx.beginPath()
       ctx.arc(px, py, r, 0, Math.PI * 2)
-      ctx.fillStyle = isDeath ? '#ef4444' : '#22c55e'
+      ctx.fillStyle = isDeath ? '#ef4444' : isPlant ? '#f97316' : '#22c55e'
       ctx.fill()
     })
 
@@ -249,9 +314,10 @@ function draw() {
       ctx.fillRect(0, s - 28, s, 28)
       ctx.fillStyle = '#fff'
       ctx.font = '11px system-ui, sans-serif'
-      let legend = '● Deaths   ● Kills'
+      let legend = '● Deaths   ● Kills   ● Plants'
       if (useSiteHeat.value) legend = 'Heat = site deaths   ● Events'
-      else if (useCalloutHeat.value) legend = 'Heat = death density   ● Kills'
+      else if (usePeekHeat.value) legend = 'Blue = defender-favored peeks   ● Events'
+      else if (useCalloutHeat.value) legend = 'Heat = death density   ● Kills / Plants'
       ctx.fillText(legend, 10, s - 10)
     }
 
@@ -260,17 +326,29 @@ function draw() {
       const ad = displayNorm(active.norm)
       const ax = ad.x * s
       const ay = ad.y * s
-      const label = `${active.type === 'death' ? 'Died' : 'Kill'} · ${active.callout}`
+      const label = active.type === 'plant'
+        ? `Planted · ${active.callout}`
+        : `${active.type === 'death' ? 'Died' : 'Kill'} · ${active.callout}`
+      const sublabel = active.benchmarkHint
+        ? (active.type === 'plant' || active.type === 'death' ? active.benchmarkHint : null)
+        : null
       ctx.font = `bold ${props.panelHud || props.dockExpanded || props.large ? 12 : 10}px system-ui, sans-serif`
       const tw = ctx.measureText(label).width
       const pad = 8
       const bx = Math.min(Math.max(ax - tw / 2 - pad, 4), s - tw - pad * 2 - 4)
-      const by = Math.max(ay - 36, 8)
+      const by = Math.max(ay - (sublabel ? 52 : 36), 8)
+      const boxH = sublabel ? 40 : 22
       ctx.fillStyle = 'rgba(0,0,0,0.82)'
-      roundRect(ctx, bx, by, tw + pad * 2, 22, 6)
+      roundRect(ctx, bx, by, tw + pad * 2, boxH, 6)
       ctx.fill()
-      ctx.fillStyle = active.type === 'death' ? '#fca5a5' : '#86efac'
+      ctx.fillStyle = active.type === 'death' ? '#fca5a5' : active.type === 'plant' ? '#fdba74' : '#86efac'
       ctx.fillText(label, bx + pad, by + 15)
+      if (sublabel) {
+        ctx.font = '9px system-ui, sans-serif'
+        ctx.fillStyle = '#fed7aa'
+        const words = sublabel.length > 48 ? `${sublabel.slice(0, 46)}…` : sublabel
+        ctx.fillText(words, bx + pad, by + 30)
+      }
     }
   }
   img.src = url
@@ -315,14 +393,15 @@ onMounted(draw)
 function onClick(e: MouseEvent) {
   const summary = props.summary
   const canvas = canvasRef.value
-  if (!summary?.events?.length || !canvas) return
+  const events = summary?.events ?? []
+  if (!events.length || !canvas) return
   const rect = canvas.getBoundingClientRect()
   const scaleX = canvas.width / rect.width
   const scaleY = canvas.height / rect.height
   const x = (e.clientX - rect.left) * scaleX
   const y = (e.clientY - rect.top) * scaleY
   const s = size.value
-  const clickNorm = fromMinimapDisplayNorm(mapLabel.value, { x: x / s, y: y / s })
+  const clickNorm = fromRadarDisplayNorm(props.game, mapLabel.value ?? props.mapName, { x: x / s, y: y / s })
 
   let best = -1
   let bestD = Math.max(20, size.value * 0.08)
@@ -356,7 +435,7 @@ defineExpose({ exportPng })
       @click="onClick"
     />
     <div
-      v-if="!summary?.events?.length"
+      v-if="!hasSpatialEvents"
       class="absolute inset-0 flex items-center justify-center rounded-xl bg-black/50 text-xs text-gray-500"
     >
       No spatial data for this match

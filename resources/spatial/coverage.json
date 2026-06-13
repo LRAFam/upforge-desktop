@@ -1,5 +1,5 @@
 {
-  "updatedAt": "2026-06-07T00:43:13.731Z",
+  "updatedAt": "2026-06-13T11:34:22.409Z",
   "standardMapsThrough2026": [
     "Ascent",
     "Bind",
@@ -39,7 +39,7 @@
       "displayTransform": "swapFlipXY",
       "displayInset": true,
       "calibration": {
-        "onMap": 18,
+        "onMap": 17,
         "total": 23,
         "sitesOnMap": 2,
         "siteCount": 2,
@@ -67,7 +67,7 @@
       "displayTransform": "swapFlipY",
       "displayInset": true,
       "calibration": {
-        "onMap": 10,
+        "onMap": 9,
         "total": 24,
         "sitesOnMap": 2,
         "siteCount": 2,
@@ -92,10 +92,10 @@
       "map": "Corrode",
       "key": "corrode",
       "callouts": 21,
-      "displayTransform": "swapFlipXY",
+      "displayTransform": "swapFlipX",
       "displayInset": true,
       "calibration": {
-        "onMap": 14,
+        "onMap": 13,
         "total": 21,
         "sitesOnMap": 2,
         "siteCount": 2,
@@ -106,42 +106,42 @@
       "map": "Fracture",
       "key": "fracture",
       "callouts": 22,
-      "displayTransform": "flipXY",
-      "displayInset": true,
+      "displayTransform": "identity",
+      "displayInset": false,
       "calibration": {
-        "onMap": 10,
+        "onMap": 0,
         "total": 22,
-        "sitesOnMap": 2,
-        "siteCount": 2,
-        "useInset": true
+        "sitesOnMap": 0,
+        "siteCount": 0,
+        "useInset": false
       }
     },
     {
       "map": "Haven",
       "key": "haven",
       "callouts": 21,
-      "displayTransform": "swapFlipXY",
-      "displayInset": true,
+      "displayTransform": "identity",
+      "displayInset": false,
       "calibration": {
-        "onMap": 16,
+        "onMap": 0,
         "total": 21,
-        "sitesOnMap": 3,
-        "siteCount": 3,
-        "useInset": true
+        "sitesOnMap": 0,
+        "siteCount": 0,
+        "useInset": false
       }
     },
     {
       "map": "Icebox",
       "key": "icebox",
       "callouts": 25,
-      "displayTransform": "flipY",
-      "displayInset": true,
+      "displayTransform": "identity",
+      "displayInset": false,
       "calibration": {
-        "onMap": 16,
+        "onMap": 0,
         "total": 25,
-        "sitesOnMap": 2,
-        "siteCount": 2,
-        "useInset": true
+        "sitesOnMap": 0,
+        "siteCount": 0,
+        "useInset": false
       }
     },
     {
@@ -151,7 +151,7 @@
       "displayTransform": "swapFlipXY",
       "displayInset": true,
       "calibration": {
-        "onMap": 19,
+        "onMap": 17,
         "total": 28,
         "sitesOnMap": 3,
         "siteCount": 3,
@@ -162,7 +162,7 @@
       "map": "Pearl",
       "key": "pearl",
       "callouts": 26,
-      "displayTransform": "identity",
+      "displayTransform": "flipY",
       "displayInset": true,
       "calibration": {
         "onMap": 17,
@@ -179,7 +179,7 @@
       "displayTransform": "swapFlipXY",
       "displayInset": false,
       "calibration": {
-        "onMap": 13,
+        "onMap": 14,
         "total": 24,
         "sitesOnMap": 2,
         "siteCount": 2,
@@ -190,14 +190,14 @@
       "map": "Sunset",
       "key": "sunset",
       "callouts": 17,
-      "displayTransform": "swapFlipY",
-      "displayInset": true,
+      "displayTransform": "identity",
+      "displayInset": false,
       "calibration": {
-        "onMap": 9,
+        "onMap": 0,
         "total": 17,
-        "sitesOnMap": 2,
-        "siteCount": 2,
-        "useInset": true
+        "sitesOnMap": 0,
+        "siteCount": 0,
+        "useInset": false
       }
     }
   ],

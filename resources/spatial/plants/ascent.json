@@ -1,0 +1,91 @@
+{
+  "map": "Ascent",
+  "source": "derived from zones callouts",
+  "generatedAt": "2026-06-13",
+  "spots": [
+    {
+      "name": "A Default",
+      "site": "A",
+      "x": 0.8982,
+      "y": 0.6816,
+      "radius": 0.09
+    },
+    {
+      "name": "A Garden",
+      "site": "A",
+      "x": 0.6973,
+      "y": 0.7761,
+      "radius": 0.06149999999999999
+    },
+    {
+      "name": "A Main",
+      "site": "A",
+      "x": 0.828,
+      "y": 0.486,
+      "radius": 0.0697
+    },
+    {
+      "name": "A Rafters",
+      "site": "A",
+      "x": 0.8962,
+      "y": 0.8433,
+      "radius": 0.06149999999999999
+    },
+    {
+      "name": "A Site",
+      "site": "A",
+      "x": 0.8982,
+      "y": 0.6816,
+      "radius": 0.07379999999999999
+    },
+    {
+      "name": "A Tree",
+      "site": "A",
+      "x": 0.7148,
+      "y": 0.6114,
+      "radius": 0.06149999999999999
+    },
+    {
+      "name": "A Window",
+      "site": "A",
+      "x": 0.7184,
+      "y": 0.8403,
+      "radius": 0.06149999999999999
+    },
+    {
+      "name": "A Wine",
+      "site": "A",
+      "x": 1,
+      "y": 0.4838,
+      "radius": 0.06149999999999999
+    },
+    {
+      "name": "B Boat House",
+      "site": "B",
+      "x": 0,
+      "y": 0.7977,
+      "radius": 0.06149999999999999
+    },
+    {
+      "name": "B Default",
+      "site": "B",
+      "x": 0.1807,
+      "y": 0.7758,
+      "radius": 0.09
+    },
+    {
+      "name": "B Main",
+      "site": "B",
+      "x": 0.2112,
+      "y": 0.6014,
+      "radius": 0.0697
+    },
+    {
+      "name": "B Site",
+      "site": "B",
+      "x": 0.1807,
+      "y": 0.7758,
+      "radius": 0.07379999999999999
+    }
+  ]
+}

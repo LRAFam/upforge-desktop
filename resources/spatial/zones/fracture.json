@@ -1,160 +1,160 @@
 {
   "map": "Fracture",
   "source": "valorant-api.com callouts",
-  "generatedAt": "2026-06-07",
+  "generatedAt": "2026-06-13",
   "callouts": [
     {
       "name": "A Dish",
       "site": "A",
-      "x": 0.7691,
-      "y": 0.2338,
+      "x": 0.7847,
+      "y": 0.2192,
       "radius": 0.075
     },
     {
       "name": "A Door",
       "site": "A",
-      "x": 0.1834,
-      "y": 0.1784,
+      "x": 0.1651,
+      "y": 0.1608,
       "radius": 0.075
     },
     {
       "name": "A Drop",
       "site": "A",
-      "x": 0.5568,
-      "y": 0.089,
+      "x": 0.5601,
+      "y": 0.0665,
       "radius": 0.075
     },
     {
       "name": "A Gate",
       "site": "A",
-      "x": 0.9468,
-      "y": 0.2163,
+      "x": 0.9727,
+      "y": 0.2008,
       "radius": 0.075
     },
     {
       "name": "A Hall",
       "site": "A",
-      "x": 0.104,
-      "y": 0.1665,
+      "x": 0.0811,
+      "y": 0.1483,
       "radius": 0.075
     },
     {
       "name": "A Link",
       "site": "A",
-      "x": 0.479,
-      "y": 0.2428,
+      "x": 0.4778,
+      "y": 0.2288,
       "radius": 0.075
     },
     {
       "name": "A Main",
       "site": "A",
-      "x": 0.191,
-      "y": 0.0259,
+      "x": 0.1731,
+      "y": 0,
       "radius": 0.085
     },
     {
       "name": "A Rope",
       "site": "A",
-      "x": 0.2721,
-      "y": 0.268,
+      "x": 0.2589,
+      "y": 0.2553,
       "radius": 0.075
     },
     {
       "name": "A Site",
       "site": "A",
-      "x": 0.4307,
-      "y": 0.0337,
+      "x": 0.4267,
+      "y": 0.0082,
       "radius": 0.09
     },
     {
       "name": "Attacker Bridge",
       "site": "Spawn",
-      "x": 0.9726,
-      "y": 0.4506,
+      "x": 1,
+      "y": 0.4479,
       "radius": 0.075
     },
     {
       "name": "Attacker Spawn",
       "site": "Spawn",
-      "x": 0.0274,
-      "y": 0.47,
+      "x": 0,
+      "y": 0.4684,
       "radius": 0.09
     },
     {
       "name": "B Arcade",
       "site": "B",
-      "x": 0.6501,
-      "y": 0.7961,
+      "x": 0.6587,
+      "y": 0.8123,
       "radius": 0.075
     },
     {
       "name": "B Bench",
       "site": "B",
-      "x": 0.7879,
-      "y": 0.6667,
+      "x": 0.8046,
+      "y": 0.6758,
       "radius": 0.075
     },
     {
       "name": "B Canteen",
       "site": "B",
-      "x": 0.3225,
-      "y": 0.691,
+      "x": 0.3122,
+      "y": 0.7015,
       "radius": 0.075
     },
     {
       "name": "B Generator",
       "site": "B",
-      "x": 0.456,
-      "y": 0.7155,
+      "x": 0.4534,
+      "y": 0.7272,
       "radius": 0.075
     },
     {
       "name": "B Link",
       "site": "B",
-      "x": 0.5452,
-      "y": 0.651,
+      "x": 0.5478,
+      "y": 0.6592,
       "radius": 0.075
     },
     {
       "name": "B Main",
       "site": "B",
-      "x": 0.2004,
-      "y": 0.9136,
+      "x": 0.183,
+      "y": 0.9362,
       "radius": 0.085
     },
     {
       "name": "B Site",
       "site": "B",
-      "x": 0.4363,
-      "y": 0.9741,
+      "x": 0.4326,
+      "y": 1,
       "radius": 0.09
     },
     {
       "name": "B Tower",
       "site": "B",
-      "x": 0.5406,
-      "y": 0.9397,
+      "x": 0.5429,
+      "y": 0.9637,
       "radius": 0.075
     },
     {
       "name": "B Tree",
       "site": "B",
-      "x": 0.0935,
-      "y": 0.7891,
+      "x": 0.0699,
+      "y": 0.8049,
       "radius": 0.075
     },
     {
       "name": "B Tunnel",
       "site": "B",
-      "x": 0.3535,
-      "y": 0.7839,
+      "x": 0.345,
+      "y": 0.7994,
       "radius": 0.075
     },
     {
       "name": "Defender Spawn",
       "site": "Spawn",
-      "x": 0.5407,
-      "y": 0.4426,
+      "x": 0.543,
+      "y": 0.4395,
       "radius": 0.09
     }
   ]

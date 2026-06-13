@@ -1,6 +1,10 @@
 import type { KillEvent, MatchData } from '../riot-types'
 import { worldToNorm } from './map-transforms'
 import { resolveCallout } from './callout-resolver'
+import { resolvePlantCallout } from './plant-callout-resolver'
+import { getPlantBenchmarkHint } from './plant-benchmarks'
+import { resolvePlayerRankTier } from './plant-benchmarks-helpers'
+import { getPeekBenchmarkHint, buildPeekHotspots } from './peek-benchmarks'
 import type {
   KillSpatial,
   MatchSpatialSummary,
@@ -166,6 +170,99 @@ function buildPatterns(
   return patterns.slice(0, 6)
 }
 
+function isLocalPlanter(
+  plant: { planter?: string; planterPuuid?: string },
+  match: MatchData,
+): boolean {
+  const ownPuuid = match.puuid?.toLowerCase()
+  if (ownPuuid && plant.planterPuuid?.toLowerCase() === ownPuuid) return true
+  const ownName = match.playerName?.trim().toLowerCase()
+  if (!ownName) return true
+  const planter = plant.planter?.trim().toLowerCase() ?? ''
+  if (!planter) return false
+  return planter === ownName || planter.startsWith(`${ownName}#`)
+}
+
+function buildPlantEvents(match: MatchData): SpatialTimelineEvent[] {
+  const map = match.map
+  if (!map) return []
+
+  const rankTier = resolvePlayerRankTier(match)
+  const events: SpatialTimelineEvent[] = []
+  for (const plant of match.spikePlants ?? []) {
+    if (!isLocalPlanter(plant, match)) continue
+    const loc = plant.plantLocation
+    if (!loc || typeof loc.x !== 'number' || typeof loc.y !== 'number') continue
+
+    const norm = worldToNorm(map, loc.x, loc.y)
+    if (!norm) continue
+
+    const { callout, site } = resolvePlantCallout(map, norm)
+    const siteLabel = site ?? (plant.site || null)
+    const benchmarkHint = getPlantBenchmarkHint(map, callout, rankTier)
+    events.push({
+      type: 'plant',
+      round: plant.round ?? 0,
+      norm,
+      callout,
+      site: siteLabel,
+      label: `Planted @ ${callout}`,
+      videoOffsetMs: plant.videoOffsetMs,
+      benchmarkHint,
+    })
+  }
+  return events
+}
+
+function buildPeekBenchmarks(deaths: SpatialTimelineEvent[]): string[] {
+  const seen = new Set<string>()
+  const lines: string[] = []
+  for (const d of deaths) {
+    const hint = d.benchmarkHint
+    if (!hint || seen.has(hint)) continue
+    seen.add(hint)
+    lines.push(hint)
+  }
+  return lines.slice(0, 4)
+}
+
+function attachDeathPeekHints(
+  deaths: SpatialTimelineEvent[],
+  map: string,
+  rankTier: string | null,
+): void {
+  for (const d of deaths) {
+    if (d.type !== 'death') continue
+    d.benchmarkHint = getPeekBenchmarkHint(map, d.callout, rankTier)
+  }
+}
+
+function buildPlantBenchmarks(plants: SpatialTimelineEvent[]): string[] {
+  const seen = new Set<string>()
+  const lines: string[] = []
+  for (const p of plants) {
+    const hint = p.benchmarkHint
+    if (!hint || seen.has(hint)) continue
+    seen.add(hint)
+    lines.push(hint)
+  }
+  return lines.slice(0, 4)
+}
+
+function buildPlantInsight(plants: SpatialTimelineEvent[]): string | null {
+  if (!plants.length) return null
+  const byCallout = new Map<string, number>()
+  for (const p of plants) {
+    if (p.callout === 'Unknown') continue
+    byCallout.set(p.callout, (byCallout.get(p.callout) ?? 0) + 1)
+  }
+  const top = [...byCallout.entries()].sort((a, b) => b[1] - a[1])[0]
+  if (top && top[1] >= 2) return `${top[1]} plants @ ${top[0]}`
+  if (top) return `Planted @ ${top[0]}`
+  if (plants.length >= 2) return `${plants.length} spike plants on radar`
+  return null
+}
+
 function buildHeatmapInsight(
   deaths: SpatialTimelineEvent[],
   roundCount?: number,
@@ -280,12 +377,21 @@ export function buildMatchSpatialSummary(match: MatchData): MatchSpatialSummary 
     pushEvent('kill', k)
   }
 
+  events.push(...buildPlantEvents(match))
+
   if (events.length === 0) return null
 
   const deaths = events.filter((e) => e.type === 'death')
   const kills = events.filter((e) => e.type === 'kill')
+  const plants = events.filter((e) => e.type === 'plant')
+  const rankTier = resolvePlayerRankTier(match)
+  attachDeathPeekHints(deaths, map, rankTier)
   const roundCount = match.roundSummaries?.length ?? undefined
   const deathHotspots = buildHotspots(events, 'death')
+  const plantInsight = buildPlantInsight(plants)
+  const plantBenchmarks = buildPlantBenchmarks(plants)
+  const peekBenchmarks = buildPeekBenchmarks(deaths)
+  const peekHotspots = buildPeekHotspots(map)
 
   return {
     map,
@@ -294,8 +400,20 @@ export function buildMatchSpatialSummary(match: MatchData): MatchSpatialSummary 
     killHotspots: buildHotspots(events, 'kill'),
     siteHotspots: buildSiteHotspots(deaths),
     roundCount,
-    heatmapInsight: buildHeatmapInsight(deaths, roundCount),
-    patterns: buildPatterns(deaths, roundCount),
+    heatmapInsight: buildHeatmapInsight(deaths, roundCount)
+      ?? peekBenchmarks[0]
+      ?? plantBenchmarks[0]
+      ?? plantInsight,
+    patterns: [
+      ...buildPatterns(deaths, roundCount),
+      ...(plantInsight ? [plantInsight] : []),
+      ...peekBenchmarks,
+      ...plantBenchmarks,
+    ],
+    plantBenchmarks: plantBenchmarks.length ? plantBenchmarks : undefined,
+    peekBenchmarks: peekBenchmarks.length ? peekBenchmarks : undefined,
+    peekHotspots: peekHotspots.length ? peekHotspots : undefined,
+    populationSource: 'bundled',
   }
 }
 

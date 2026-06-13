@@ -41,11 +41,10 @@ export function transformToDisplayNorm(t: MapTransform, raw: NormPoint): NormPoi
       y: Math.max(0, Math.min(1, raw.y)),
     }
   }
-  const pad = 0.02
-  const minX = vp.minX - pad
-  const maxX = vp.maxX + pad
-  const minY = vp.minY - pad
-  const maxY = vp.maxY + pad
+  const minX = vp.minX
+  const maxX = vp.maxX
+  const minY = vp.minY
+  const maxY = vp.maxY
   return {
     x: Math.max(0, Math.min(1, (raw.x - minX) / (maxX - minX))),
     y: Math.max(0, Math.min(1, (raw.y - minY) / (maxY - minY))),

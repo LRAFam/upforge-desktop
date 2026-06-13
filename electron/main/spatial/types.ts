@@ -66,6 +66,8 @@ export interface SpatialTimelineEvent {
   weapon?: string
   isolated?: boolean
   killerDistance?: number | null
+  /** Population benchmark line for plant spots (rank-bracketed). */
+  benchmarkHint?: string | null
 }
 
 export interface SpatialHotspot {
@@ -81,6 +83,13 @@ export interface SiteHotspot {
   norm: NormPoint
 }
 
+/** Population peek angle where defenders have K/D advantage (>1.0). */
+export interface PeekHotspot {
+  callout: string
+  norm: NormPoint
+  defenderKd: number
+}
+
 /** Compact match-level spatial digest for AI + UI. */
 export interface MatchSpatialSummary {
   map: string
@@ -94,4 +103,12 @@ export interface MatchSpatialSummary {
   heatmapInsight?: string | null
   /** One-line patterns for prompts, e.g. "3 deaths @ A Screen (no trade)". */
   patterns: string[]
+  /** Rank-bracketed plant spot benchmarks (population reference). */
+  plantBenchmarks?: string[]
+  /** Rank-bracketed peek K/D benchmarks for death callouts. */
+  peekBenchmarks?: string[]
+  /** Population defender-favored peek angles for minimap overlay. */
+  peekHotspots?: PeekHotspot[]
+  /** bundled | api — whether live population aggregates were merged. */
+  populationSource?: 'bundled' | 'api'
 }

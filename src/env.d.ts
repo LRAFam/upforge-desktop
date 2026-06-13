@@ -170,6 +170,7 @@ export interface PendingRecording {
   timeline?: {
     playerKills?: Array<{ killerName: string; victimName: string; weapon?: string; videoOffsetMs?: number; round?: number }>
     playerDeaths?: Array<{ killerName: string; victimName: string; weapon?: string; videoOffsetMs?: number; round?: number }>
+    roundSummaries?: Array<{ roundNumber: number; winningTeam?: string | null }>
     finalStats?: {
       kills: number
       deaths: number

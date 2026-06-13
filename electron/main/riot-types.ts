@@ -37,8 +37,11 @@ export interface KillEvent extends GameEvent {
 export interface SpikePlantedEvent extends GameEvent {
   EventName: 'SpikePlanted'
   planter: string
+  planterPuuid?: string
   site: string
   round?: number
+  /** Riot world coordinates of the spike plant. */
+  plantLocation?: { x: number; y: number }
   /** Ms since match gameplay start (for VOD seek). */
   gameTimeMs?: number
   videoOffsetMs?: number

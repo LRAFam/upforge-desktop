@@ -16,6 +16,7 @@ export interface SpatialTimelineEvent {
   weapon?: string
   isolated?: boolean
   killerDistance?: number | null
+  benchmarkHint?: string | null
 }
 
 export interface SpatialHotspot {
@@ -30,6 +31,12 @@ export interface SiteHotspot {
   norm: NormPoint
 }
 
+export interface PeekHotspot {
+  callout: string
+  norm: NormPoint
+  defenderKd: number
+}
+
 export interface MatchSpatialSummary {
   map: string
   events: SpatialTimelineEvent[]
@@ -39,4 +46,8 @@ export interface MatchSpatialSummary {
   roundCount?: number
   heatmapInsight?: string | null
   patterns: string[]
+  plantBenchmarks?: string[]
+  peekBenchmarks?: string[]
+  peekHotspots?: PeekHotspot[]
+  populationSource?: 'bundled' | 'api'
 }

@@ -22,7 +22,7 @@
       "maxY": 0.9844
     },
     "displayTransform": "swapFlipXY",
-    "displayRotation": 270
+    "displayRotation": 90
   },
   {
     "displayName": "Ascent",
@@ -47,7 +47,7 @@
       "maxY": 0.9141
     },
     "displayTransform": "swapFlipXY",
-    "displayRotation": 270
+    "displayRotation": 90
   },
   {
     "displayName": "Bind",
@@ -119,8 +119,8 @@
       "maxX": 0.9844,
       "maxY": 0.918
     },
-    "displayTransform": "swapFlipXY",
-    "displayRotation": 270
+    "displayTransform": "swapFlipX",
+    "displayRotation": 90
   },
   {
     "displayName": "Fracture",
@@ -137,14 +137,7 @@
       "maxX": 1.5868639999999998,
       "minY": 0.8867108157999999,
       "maxY": 1.619362
-    },
-    "displayBounds": {
-      "minX": 0.0234,
-      "minY": 0.0674,
-      "maxX": 0.9219,
-      "maxY": 0.9248
-    },
-    "displayTransform": "flipXY"
+    }
   },
   {
     "displayName": "Haven",
@@ -161,14 +154,7 @@
       "maxX": 1.5975553224999999,
       "minY": 0.8409374374999999,
       "maxY": 1.596331025
-    },
-    "displayBounds": {
-      "minX": 0.0342,
-      "minY": 0.083,
-      "maxX": 0.9678,
-      "maxY": 0.9209
-    },
-    "displayTransform": "swapFlipXY"
+    }
   },
   {
     "displayName": "Icebox",
@@ -185,14 +171,7 @@
       "maxX": 0.622214,
       "minY": -0.20471299999999998,
       "maxY": 0.625087
-    },
-    "displayBounds": {
-      "minX": 0.0635,
-      "minY": 0.0762,
-      "maxX": 0.998,
-      "maxY": 0.9033
-    },
-    "displayTransform": "flipY"
+    }
   },
   {
     "displayName": "Lotus",
@@ -239,7 +218,8 @@
       "minY": 0.0371,
       "maxX": 0.9922,
       "maxY": 0.96
-    }
+    },
+    "displayTransform": "flipY"
   },
   {
     "displayName": "Split",
@@ -274,13 +254,6 @@
       "maxX": 0.796827323,
       "minY": 0.188025,
       "maxY": 0.9719249999999999
-    },
-    "displayBounds": {
-      "minX": 0.0449,
-      "minY": 0.0088,
-      "maxX": 0.9707,
-      "maxY": 0.9873
-    },
-    "displayTransform": "swapFlipY"
+    }
   }
 ]

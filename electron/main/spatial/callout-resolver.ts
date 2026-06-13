@@ -78,9 +78,18 @@ export function resolveCallout(
       nearest = c
     }
   }
-  const fallbackMax = Math.max(0.12, (nearest?.radius ?? 0.075) * 1.75)
+  const fallbackMax = Math.max(0.16, (nearest?.radius ?? 0.075) * 2)
   if (nearest && nearestD <= fallbackMax) {
     return { callout: nearest.name, site: nearest.site ?? null }
+  }
+
+  const siteAnchors = ['A Site', 'B Site', 'C Site'] as const
+  for (const siteName of siteAnchors) {
+    const anchor = pack.callouts.find((c) => c.name === siteName)
+    if (!anchor) continue
+    if (dist(norm, { x: anchor.x, y: anchor.y }) <= 0.22) {
+      return { callout: siteName, site: anchor.site ?? siteName.charAt(0) }
+    }
   }
 
   if (pack.sites?.length) {

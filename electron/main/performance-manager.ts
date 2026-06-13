@@ -40,6 +40,7 @@ const BALANCED_GUID = '381b4222-f694-41f0-9685-ff5bb260df2e'
 const GAME_PROCESSES: Record<string, string[]> = {
   valorant: ['VALORANT-Win64-Shipping.exe'],
   csgo: ['cs2.exe', 'csgo.exe'],
+  deadlock: ['deadlock.exe'],
   fortnite: ['FortniteClient-Win64-Shipping.exe'],
   apex: ['r5apex.exe'],
   overwatch: ['Overwatch.exe'],

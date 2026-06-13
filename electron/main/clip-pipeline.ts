@@ -15,6 +15,10 @@ import { ClipStore } from './clip-store'
 import { ClipExtractor } from './clip-extractor'
 import { reportError } from './error-reporter'
 import type { MatchData, KillEvent } from './riot-types'
+import { detectClutchRoundsForGame } from './demo-clutch'
+
+// Re-export for callers that imported from clip-pipeline.
+export { detectClutchRounds } from './demo-clutch'
 
 // ── Context ───────────────────────────────────────────────────────────────────
 
@@ -30,81 +34,6 @@ export interface ClipPipelineContext {
   notifyMainWindow: (channel: string, data?: unknown) => void
   /** Called after extraction completes to update the diagnostic clip count. */
   onClipsExtracted?: (count: number) => void
-}
-
-// ── Pure helpers ──────────────────────────────────────────────────────────────
-
-/**
- * Detect rounds where the local player was the last alive on their team and won.
- * Returns the set of round numbers (0-indexed) where a clutch occurred.
- * Pure function — no side effects.
- */
-export function detectClutchRounds(timeline: MatchData): Set<number> {
-  const clutchRounds = new Set<number>()
-  if (!timeline.matchDetails || !timeline.puuid) return clutchRounds
-
-  const details = timeline.matchDetails
-  const players = details.players as Array<Record<string, unknown>> | undefined
-  const roundResults = details.roundResults as Array<Record<string, unknown>> | undefined
-  const allKills = details.kills as Array<Record<string, unknown>> | undefined
-
-  if (!players || !roundResults || !allKills) return clutchRounds
-
-  const ownPuuid = timeline.puuid
-  const teamMap = new Map<string, string>()
-  for (const p of players) {
-    if (p.subject && p.teamId) teamMap.set(p.subject as string, p.teamId as string)
-  }
-  const ownTeam = teamMap.get(ownPuuid)
-  if (!ownTeam) return clutchRounds
-
-  const allyPuuids = new Set(
-    [...teamMap.entries()].filter(([p, t]) => t === ownTeam && p !== ownPuuid).map(([p]) => p)
-  )
-  const enemyPuuids = new Set(
-    [...teamMap.entries()].filter(([, t]) => t !== ownTeam).map(([p]) => p)
-  )
-
-  const allKillsByRound = new Map<number, Array<Record<string, unknown>>>()
-  for (const kill of allKills) {
-    const r = (kill.round as number) ?? 0
-    if (!allKillsByRound.has(r)) allKillsByRound.set(r, [])
-    allKillsByRound.get(r)!.push(kill)
-  }
-
-  for (const [roundNum, kills] of allKillsByRound.entries()) {
-    const sorted = [...kills].sort((a, b) =>
-      ((a.timeSinceGameStartMillis as number) ?? 0) - ((b.timeSinceGameStartMillis as number) ?? 0)
-    )
-
-    const liveAllies = new Set(allyPuuids)
-    const liveEnemies = new Set(enemyPuuids)
-    let playerAlive = true
-    let clutchDetected = false
-
-    for (const kill of sorted) {
-      const victim = kill.victim as string
-      if (victim === ownPuuid) { playerAlive = false; break }
-      if (liveAllies.has(victim)) liveAllies.delete(victim)
-      if (liveEnemies.has(victim)) liveEnemies.delete(victim)
-
-      if (!clutchDetected && liveAllies.size === 0 && liveEnemies.size >= 1) {
-        clutchDetected = true
-      }
-    }
-
-    if (!clutchDetected || !playerAlive) continue
-
-    const clutchKills = timeline.playerKills.filter(k => (k.round ?? -1) === roundNum)
-    if (clutchKills.length === 0) continue
-
-    const roundResult = roundResults[roundNum] as Record<string, unknown> | undefined
-    if ((roundResult?.winningTeam as string) === ownTeam) {
-      clutchRounds.add(roundNum)
-    }
-  }
-
-  return clutchRounds
 }
 
 // ── ClipPipeline class ────────────────────────────────────────────────────────
@@ -196,7 +125,7 @@ export class ClipPipeline {
         killsByRound.get(r)!.push(kill)
       }
 
-      const clutchRounds = detectClutchRounds(timeline)
+      const clutchRounds = detectClutchRoundsForGame(timeline)
 
       const combinedRounds = new Map<number, { kills: typeof timeline.playerKills; trigger: 'ace' | 'multikill'; killCount: number }>()
       for (const [round, kills] of killsByRound.entries()) {
@@ -325,7 +254,7 @@ export class ClipPipeline {
       killsByRound.get(r)!.push(kill)
     }
 
-    const clutchRounds = detectClutchRounds(timeline)
+    const clutchRounds = detectClutchRoundsForGame(timeline)
     const combinedRounds = new Map<number, { kills: KillEvent[]; trigger: 'ace' | 'multikill'; killCount: number }>()
     for (const [round, kills] of killsByRound.entries()) {
       if (clutchRounds.has(round)) continue

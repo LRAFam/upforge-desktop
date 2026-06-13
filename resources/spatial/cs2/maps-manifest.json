@@ -1,0 +1,65 @@
+[
+  {
+    "name": "de_dust2",
+    "displayName": "Dust II",
+    "posX": -2476,
+    "posY": 3239,
+    "scale": 4.4,
+    "radarSize": 1024,
+    "displayBounds": { "minX": 0.02, "minY": 0.02, "maxX": 0.98, "maxY": 0.98 }
+  },
+  {
+    "name": "de_mirage",
+    "displayName": "Mirage",
+    "posX": -3230,
+    "posY": 1713,
+    "scale": 5,
+    "radarSize": 1024,
+    "displayBounds": { "minX": 0.02, "minY": 0.02, "maxX": 0.98, "maxY": 0.98 }
+  },
+  {
+    "name": "de_inferno",
+    "displayName": "Inferno",
+    "posX": -2087,
+    "posY": 3870,
+    "scale": 4.9,
+    "radarSize": 1024,
+    "displayBounds": { "minX": 0.02, "minY": 0.02, "maxX": 0.98, "maxY": 0.98 }
+  },
+  {
+    "name": "de_nuke",
+    "displayName": "Nuke",
+    "posX": -3453,
+    "posY": 2887,
+    "scale": 7,
+    "radarSize": 1024,
+    "displayBounds": { "minX": 0.02, "minY": 0.02, "maxX": 0.98, "maxY": 0.98 }
+  },
+  {
+    "name": "de_overpass",
+    "displayName": "Overpass",
+    "posX": -4831,
+    "posY": 1781,
+    "scale": 5.2,
+    "radarSize": 1024,
+    "displayBounds": { "minX": 0.02, "minY": 0.02, "maxX": 0.98, "maxY": 0.98 }
+  },
+  {
+    "name": "de_ancient",
+    "displayName": "Ancient",
+    "posX": -2953,
+    "posY": 2164,
+    "scale": 5,
+    "radarSize": 1024,
+    "displayBounds": { "minX": 0.02, "minY": 0.02, "maxX": 0.98, "maxY": 0.98 }
+  },
+  {
+    "name": "de_anubis",
+    "displayName": "Anubis",
+    "posX": -2796,
+    "posY": 3328,
+    "scale": 5.22,
+    "radarSize": 1024,
+    "displayBounds": { "minX": 0.02, "minY": 0.02, "maxX": 0.98, "maxY": 0.98 }
+  }
+]

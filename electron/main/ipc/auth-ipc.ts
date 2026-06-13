@@ -162,7 +162,7 @@ export function setupAuthHandlers(
         videoPath,
         map: analysis.map ?? md.map ?? null,
         agent: analysis.agent ?? md.agent ?? null,
-        game: 'valorant',
+        game: (analysis.game as string) ?? (md.game as string) ?? 'valorant',
         gameMode: md.gameMode ?? md.game_mode ?? null,
         recordedAt: new Date(analysis.created_at).getTime(),
         kills: md.playerKills ?? md.killEvents?.filter((k: any) => k.killerName === 'You' || k.type === 'kill') ?? [],

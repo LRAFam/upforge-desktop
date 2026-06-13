@@ -250,6 +250,7 @@
           ref="intelHeroRef"
           :summary="spatialSummary"
           :map-name="gameInfo.map"
+          :game="gameInfo.game"
           :agent-accent="agentAccentColor"
           :overall-score="result?.overall_score ?? null"
           :match-result="result?.match_result ?? null"
@@ -679,9 +680,9 @@
         </template>
       </div>
 
-      <!-- CS2 Demo status row -->
+      <!-- CS2 / Deadlock replay status row -->
       <div
-        v-if="gameInfo.game === 'cs2' && demoStatus"
+        v-if="(gameInfo.game === 'cs2' || gameInfo.game === 'deadlock') && demoStatus"
         class="w-full mt-2 flex items-center gap-2 px-3 py-2 bg-cyan-500/[0.06] border border-cyan-500/20 rounded-xl"
       >
         <!-- uploading spinner -->
@@ -702,11 +703,11 @@
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
         </svg>
 
-        <span v-if="demoStatus.status === 'uploading'" class="text-xs text-cyan-300/80">Demo uploading… {{ demoProgress }}%</span>
-        <span v-else-if="demoStatus.status === 'analysing'" class="text-xs text-cyan-300/80">Demo analysing…</span>
-        <span v-else-if="demoStatus.status === 'complete'" class="text-xs text-cyan-300/80">Demo analysis ready</span>
-        <span v-else-if="demoStatus.status === 'not-found'" class="text-xs text-cyan-700/80">No demo found — add <code class="font-mono">cl_demo_auto_recording 1</code> to your CS2 autoexec</span>
-        <span v-else-if="demoStatus.status === 'error'" class="text-xs text-cyan-700/80">Demo upload failed</span>
+        <span v-if="demoStatus.status === 'uploading'" class="text-xs text-cyan-300/80">Replay uploading… {{ demoProgress }}%</span>
+        <span v-else-if="demoStatus.status === 'analysing'" class="text-xs text-cyan-300/80">Replay analysing…</span>
+        <span v-else-if="demoStatus.status === 'complete'" class="text-xs text-cyan-300/80">Replay analysis ready</span>
+        <span v-else-if="demoStatus.status === 'not-found'" class="text-xs text-cyan-700/80">{{ replayNotFoundHint }}</span>
+        <span v-else-if="demoStatus.status === 'error'" class="text-xs text-cyan-700/80">Replay upload failed</span>
       </div>
 
     </div>
@@ -716,6 +717,7 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { getAgentImage, getAgentColor, getMapImage, getMapMinimap } from '../lib/valorant'
+import { analysisResultsUrl, isPrimaryGame, normalizePrimaryGame, recordingGameLabel, type PrimaryGame } from '../lib/games'
 import PostGameIntelHero from '../components/PostGameIntelHero.vue'
 import GamingButton from '../components/GamingButton.vue'
 import type { MatchSpatialSummary } from '../lib/spatial-types'
@@ -906,7 +908,14 @@ function clearStuckTimer() {
   analysisDeferred.value = false
 }
 
-const gameLabel = computed(() => gameInfo.value.game === 'cs2' ? 'CS2' : 'Valorant')
+const gameLabel = computed(() => recordingGameLabel(gameInfo.value.game))
+
+const replayNotFoundHint = computed(() => {
+  if (gameInfo.value.game === 'deadlock') {
+    return 'No replay found — enable replay saving in Deadlock settings'
+  }
+  return 'No demo found — add cl_demo_auto_recording 1 to your CS2 autoexec'
+})
 
 const topIssue = computed(() => {
   if (!result.value) return null
@@ -1009,9 +1018,27 @@ const agentAccentColor = computed(() => gameInfo.value.agent ? getAgentColor(gam
 const mapSplashUrl = computed(() => gameInfo.value.map ? getMapImage(gameInfo.value.map) : '')
 const mapMinimapUrl = computed(() => gameInfo.value.map ? getMapMinimap(gameInfo.value.map) : '')
 
+const localSpatialSummary = ref<MatchSpatialSummary | null>(null)
+
+async function refreshLocalSpatialSummary() {
+  const id = vodRecordingId.value
+  if (!id) {
+    localSpatialSummary.value = null
+    return
+  }
+  try {
+    const tl = await window.api.recordings.getTimeline(id)
+    localSpatialSummary.value = tl?.spatialSummary ?? null
+  } catch {
+    localSpatialSummary.value = null
+  }
+}
+
 const spatialSummary = computed((): MatchSpatialSummary | null => {
-  if (!result.value) return null
-  return (result.value as { spatial_summary?: MatchSpatialSummary | null }).spatial_summary ?? null
+  const api = result.value?.spatial_summary ?? null
+  if (api?.events?.length) return api
+  if (localSpatialSummary.value?.events?.length) return localSpatialSummary.value
+  return api ?? localSpatialSummary.value
 })
 
 const vodRecordingId = computed(() => sessionRecordingId.value ?? pendingRecordingId.value)
@@ -1207,15 +1234,21 @@ onMounted(() => {
     sessionStart = r?.session_start ?? (Date.now() - 2 * 60 * 60 * 1000)
     state.value = 'ready'
     loadSessionClips()
+    void refreshLocalSpatialSummary()
 
     // Browser launch is handled by the main process (index.ts) so it fires
     // even if this window was closed before analysis completed.
+  }))
+  ipcCleanup.push(window.api.on('spatial:population-updated', (...args: unknown[]) => {
+    const summary = args[0] as MatchSpatialSummary
+    if (summary?.events?.length) localSpatialSummary.value = summary
   }))
   ipcCleanup.push(window.api.on('post-game:pending', (...args: unknown[]) => {
     const data = args[0] as { recordingId: string; game: string; map: string | null; agent: string | null }
     pendingRecordingId.value = data.recordingId
     gameInfo.value = { game: data.game, map: data.map, agent: data.agent }
     state.value = 'pending'
+    void refreshLocalSpatialSummary()
   }))
   ipcCleanup.push(window.api.on('post-game:upload-error', (...args: unknown[]) => {
     const payload = args[0] as string | { message: string; recordingId?: string; needsUpgrade?: boolean; upgradeUrl?: string; ppaUrl?: string; clipsOnly?: boolean }
@@ -1372,7 +1405,11 @@ async function openClips() {
   await window.api.app.showClips().catch(() => {})
 }
 
-const analysisUrl = computed(() => result.value?.analysis_id ? `https://upforge.gg/valorant/results/${result.value.analysis_id}` : '')
+const analysisUrl = computed(() => {
+  if (!result.value?.analysis_id) return ''
+  const game = isPrimaryGame(gameInfo.value.game) ? gameInfo.value.game : normalizePrimaryGame(gameInfo.value.game)
+  return analysisResultsUrl(game as PrimaryGame, result.value.analysis_id)
+})
 
 function viewFullAnalysis() {
   if (analysisUrl.value) {

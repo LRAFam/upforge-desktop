@@ -1,160 +1,160 @@
 {
   "map": "Ascent",
   "source": "valorant-api.com callouts",
-  "generatedAt": "2026-06-07",
+  "generatedAt": "2026-06-13",
   "callouts": [
     {
       "name": "A Garden",
       "site": "A",
-      "x": 0.6882,
-      "y": 0.7608,
+      "x": 0.6973,
+      "y": 0.7761,
       "radius": 0.075
     },
     {
       "name": "A Lobby",
       "site": "A",
-      "x": 0.7458,
-      "y": 0.3231,
+      "x": 0.7577,
+      "y": 0.3128,
       "radius": 0.075
     },
     {
       "name": "A Main",
       "site": "A",
-      "x": 0.8129,
-      "y": 0.4868,
+      "x": 0.828,
+      "y": 0.486,
       "radius": 0.085
     },
     {
       "name": "A Rafters",
       "site": "A",
-      "x": 0.878,
-      "y": 0.8244,
+      "x": 0.8962,
+      "y": 0.8433,
       "radius": 0.075
     },
     {
       "name": "A Site",
       "site": "A",
-      "x": 0.8799,
-      "y": 0.6716,
+      "x": 0.8982,
+      "y": 0.6816,
       "radius": 0.09
     },
     {
       "name": "A Tree",
       "site": "A",
-      "x": 0.7049,
-      "y": 0.6053,
+      "x": 0.7148,
+      "y": 0.6114,
       "radius": 0.075
     },
     {
       "name": "A Window",
       "site": "A",
-      "x": 0.7083,
-      "y": 0.8215,
+      "x": 0.7184,
+      "y": 0.8403,
       "radius": 0.075
     },
     {
       "name": "A Wine",
       "site": "A",
-      "x": 0.977,
-      "y": 0.4847,
+      "x": 1,
+      "y": 0.4838,
       "radius": 0.075
     },
     {
       "name": "Attacker Spawn",
       "site": "Spawn",
-      "x": 0.3891,
-      "y": 0.0276,
+      "x": 0.3837,
+      "y": 0,
       "radius": 0.09
     },
     {
       "name": "B Boat House",
       "site": "B",
-      "x": 0.023,
-      "y": 0.7813,
+      "x": 0,
+      "y": 0.7977,
       "radius": 0.075
     },
     {
       "name": "B Lobby",
       "site": "B",
-      "x": 0.2642,
-      "y": 0.1665,
+      "x": 0.2528,
+      "y": 0.147,
       "radius": 0.075
     },
     {
       "name": "B Main",
       "site": "B",
-      "x": 0.2245,
-      "y": 0.5958,
+      "x": 0.2112,
+      "y": 0.6014,
       "radius": 0.085
     },
     {
       "name": "B Site",
       "site": "B",
-      "x": 0.1954,
-      "y": 0.7606,
+      "x": 0.1807,
+      "y": 0.7758,
       "radius": 0.09
     },
     {
       "name": "Bottom",
       "site": "Mid",
-      "x": 0.4746,
-      "y": 0.6065,
+      "x": 0.4734,
+      "y": 0.6127,
       "radius": 0.075
     },
     {
       "name": "Catwalk",
       "site": "Mid",
-      "x": 0.5708,
-      "y": 0.4305,
+      "x": 0.5742,
+      "y": 0.4265,
       "radius": 0.075
     },
     {
       "name": "Courtyard",
       "site": "Mid",
-      "x": 0.4827,
-      "y": 0.4748,
+      "x": 0.4819,
+      "y": 0.4734,
       "radius": 0.075
     },
     {
       "name": "Cubby",
       "site": "Mid",
-      "x": 0.6571,
-      "y": 0.5272,
+      "x": 0.6647,
+      "y": 0.5288,
       "radius": 0.075
     },
     {
       "name": "Defender Spawn",
       "site": "Spawn",
-      "x": 0.545,
-      "y": 0.9724,
+      "x": 0.5471,
+      "y": 1,
       "radius": 0.09
     },
     {
       "name": "Link",
       "site": "Mid",
-      "x": 0.3333,
-      "y": 0.4453,
+      "x": 0.3253,
+      "y": 0.4421,
       "radius": 0.075
     },
     {
       "name": "Market",
       "site": "Mid",
-      "x": 0.472,
-      "y": 0.7427,
+      "x": 0.4706,
+      "y": 0.7568,
       "radius": 0.075
     },
     {
       "name": "Pizza",
       "site": "Mid",
-      "x": 0.5294,
-      "y": 0.7329,
+      "x": 0.5308,
+      "y": 0.7465,
       "radius": 0.075
     },
     {
       "name": "Top",
       "site": "Mid",
-      "x": 0.6061,
-      "y": 0.2378,
+      "x": 0.6112,
+      "y": 0.2225,
       "radius": 0.075
     }
   ]

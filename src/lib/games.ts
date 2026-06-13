@@ -42,3 +42,13 @@ export function primaryGameLabel(game: PrimaryGame): string {
 export function primaryGameWebBase(game: PrimaryGame): string {
   return `https://upforge.gg/${game}`
 }
+
+export function analysisResultsUrl(game: PrimaryGame, analysisId: number | string): string {
+  return `${primaryGameWebBase(game)}/results/${analysisId}`
+}
+
+export function recordingGameLabel(game: string | null | undefined): string {
+  if (game === 'cs2') return 'CS2'
+  if (game === 'deadlock') return 'Deadlock'
+  return 'Valorant'
+}

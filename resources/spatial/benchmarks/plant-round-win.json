@@ -1,0 +1,154 @@
+{
+  "_meta": {
+    "source": "Public aggregate stats (vstats.gg-style population data). Update per act.",
+    "rankKeys": {
+      "all": "All ranks",
+      "diamond_plus": "Diamond+",
+      "immortal_plus": "Immortal & Radiant"
+    }
+  },
+  "ascent": {
+    "B Default": {
+      "immortal_plus": 68,
+      "all": 72,
+      "betterSpot": "B Lane",
+      "betterWinPct": 77,
+      "note": "Lane/boat plants convert better than default behind Dice at high elo."
+    },
+    "B Lane": {
+      "immortal_plus": 77,
+      "all": 75
+    },
+    "B Main": {
+      "all": 74,
+      "immortal_plus": 73
+    }
+  },
+  "bind": {
+    "A Default": {
+      "all": 65,
+      "immortal_plus": 62,
+      "betterSpot": "A Short",
+      "betterWinPct": 70,
+      "note": "Short plants post higher round win rate than showers/default on A."
+    },
+    "A Short": {
+      "all": 70,
+      "immortal_plus": 70
+    }
+  },
+  "split": {
+    "A Default": {
+      "all": 71,
+      "immortal_plus": 72,
+      "betterSpot": "A Heaven",
+      "note": "Plant for Heaven + Main watch is the high-elo default on A."
+    },
+    "B Default": {
+      "all": 70,
+      "immortal_plus": 71,
+      "betterSpot": "B Heaven",
+      "note": "Heaven + Main coverage beats safe back-site plants on B."
+    }
+  },
+  "haven": {
+    "A Default": {
+      "all": 69,
+      "immortal_plus": 70
+    },
+    "B Default": {
+      "all": 68,
+      "immortal_plus": 69
+    },
+    "C Default": {
+      "all": 67,
+      "immortal_plus": 68
+    }
+  },
+  "lotus": {
+    "A Default": {
+      "all": 70,
+      "immortal_plus": 71,
+      "note": "Post-12.05 meta favours open default A plants over old link/breakable spots."
+    },
+    "B Default": {
+      "all": 69,
+      "immortal_plus": 70
+    },
+    "C Default": {
+      "all": 66,
+      "immortal_plus": 65,
+      "note": "C plants are often retake-heavy — pair with post-plant utility."
+    }
+  },
+  "pearl": {
+    "A Default": {
+      "all": 68,
+      "immortal_plus": 69
+    },
+    "B Default": {
+      "all": 67,
+      "immortal_plus": 68
+    }
+  },
+  "icebox": {
+    "A Default": {
+      "all": 70,
+      "immortal_plus": 71
+    },
+    "B Default": {
+      "all": 69,
+      "immortal_plus": 70
+    }
+  },
+  "breeze": {
+    "A Default": {
+      "all": 71,
+      "immortal_plus": 72
+    },
+    "B Default": {
+      "all": 70,
+      "immortal_plus": 71
+    }
+  },
+  "fracture": {
+    "A Default": {
+      "all": 69,
+      "immortal_plus": 70
+    },
+    "B Default": {
+      "all": 68,
+      "immortal_plus": 69
+    }
+  },
+  "sunset": {
+    "A Default": {
+      "all": 70,
+      "immortal_plus": 71
+    },
+    "B Default": {
+      "all": 69,
+      "immortal_plus": 70
+    }
+  },
+  "abyss": {
+    "A Default": {
+      "all": 70,
+      "immortal_plus": 71
+    },
+    "B Default": {
+      "all": 69,
+      "immortal_plus": 70
+    }
+  },
+  "corrode": {
+    "A Default": {
+      "all": 69,
+      "immortal_plus": 70
+    },
+    "B Default": {
+      "all": 68,
+      "immortal_plus": 69
+    }
+  }
+}

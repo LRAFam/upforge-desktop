@@ -1,0 +1,225 @@
+{
+  "_meta": {
+    "source": "Public aggregate peek K/D (vstats.gg-style). Defender >1.0 = angle favors defenders.",
+    "rankKeys": {
+      "all": "All ranks",
+      "diamond_plus": "Diamond+",
+      "immortal_plus": "Immortal & Radiant"
+    }
+  },
+  "ascent": {
+    "peeks": {
+      "A Main": {
+        "defender_kd": 1.14,
+        "attacker_kd": 0.88,
+        "immortal_plus": { "defender_kd": 1.22, "attacker_kd": 0.82 },
+        "note": "Wide A Main peeks are heavily punished at high elo."
+      },
+      "A Tree": {
+        "defender_kd": 1.08,
+        "attacker_kd": 0.93,
+        "immortal_plus": { "defender_kd": 1.15, "attacker_kd": 0.87 }
+      },
+      "B Main": {
+        "defender_kd": 1.11,
+        "attacker_kd": 0.9,
+        "immortal_plus": { "defender_kd": 1.19, "attacker_kd": 0.84 }
+      },
+      "Mid Market": {
+        "defender_kd": 1.06,
+        "attacker_kd": 0.94,
+        "note": "Mid control trades often favor anchored defenders."
+      },
+      "Mid Catwalk": {
+        "defender_kd": 1.12,
+        "attacker_kd": 0.89,
+        "immortal_plus": { "defender_kd": 1.18, "attacker_kd": 0.85 }
+      }
+    }
+  },
+  "bind": {
+    "peeks": {
+      "A Short": {
+        "defender_kd": 1.09,
+        "attacker_kd": 0.92,
+        "immortal_plus": { "defender_kd": 1.16, "attacker_kd": 0.86 }
+      },
+      "A Lamps": {
+        "defender_kd": 1.13,
+        "attacker_kd": 0.88,
+        "note": "Lamps angle is a classic defender-favored duel."
+      },
+      "B Long": {
+        "defender_kd": 1.1,
+        "attacker_kd": 0.91,
+        "immortal_plus": { "defender_kd": 1.17, "attacker_kd": 0.85 }
+      },
+      "B Garden": {
+        "defender_kd": 1.07,
+        "attacker_kd": 0.93
+      }
+    }
+  },
+  "split": {
+    "peeks": {
+      "A Main": {
+        "defender_kd": 1.12,
+        "attacker_kd": 0.89,
+        "immortal_plus": { "defender_kd": 1.2, "attacker_kd": 0.83 }
+      },
+      "A Ramps": {
+        "defender_kd": 1.08,
+        "attacker_kd": 0.93
+      },
+      "B Main": {
+        "defender_kd": 1.1,
+        "attacker_kd": 0.91,
+        "immortal_plus": { "defender_kd": 1.16, "attacker_kd": 0.86 }
+      },
+      "Mid Vent": {
+        "defender_kd": 1.15,
+        "attacker_kd": 0.87,
+        "note": "Vent peeks are high-risk for attackers without util."
+      }
+    }
+  },
+  "haven": {
+    "peeks": {
+      "A Long": {
+        "defender_kd": 1.1,
+        "attacker_kd": 0.91
+      },
+      "C Long": {
+        "defender_kd": 1.13,
+        "attacker_kd": 0.88,
+        "immortal_plus": { "defender_kd": 1.19, "attacker_kd": 0.84 }
+      },
+      "Garage": {
+        "defender_kd": 1.07,
+        "attacker_kd": 0.93
+      }
+    }
+  },
+  "lotus": {
+    "peeks": {
+      "A Main": {
+        "defender_kd": 1.09,
+        "attacker_kd": 0.92
+      },
+      "B Main": {
+        "defender_kd": 1.11,
+        "attacker_kd": 0.9
+      },
+      "C Mound": {
+        "defender_kd": 1.14,
+        "attacker_kd": 0.87,
+        "note": "C Mound holds punish dry peeks without flash."
+      }
+    }
+  },
+  "icebox": {
+    "peeks": {
+      "A Belt": {
+        "defender_kd": 1.12,
+        "attacker_kd": 0.89
+      },
+      "B Yellow": {
+        "defender_kd": 1.1,
+        "attacker_kd": 0.91
+      },
+      "Mid Tube": {
+        "defender_kd": 1.16,
+        "attacker_kd": 0.86,
+        "immortal_plus": { "defender_kd": 1.22, "attacker_kd": 0.82 }
+      }
+    }
+  },
+  "pearl": {
+    "peeks": {
+      "A Main": {
+        "defender_kd": 1.1,
+        "attacker_kd": 0.91
+      },
+      "B Main": {
+        "defender_kd": 1.08,
+        "attacker_kd": 0.93
+      },
+      "Mid Link": {
+        "defender_kd": 1.11,
+        "attacker_kd": 0.9
+      }
+    }
+  },
+  "breeze": {
+    "peeks": {
+      "A Main": {
+        "defender_kd": 1.13,
+        "attacker_kd": 0.88
+      },
+      "B Main": {
+        "defender_kd": 1.1,
+        "attacker_kd": 0.91
+      },
+      "Mid Pyramids": {
+        "defender_kd": 1.07,
+        "attacker_kd": 0.94
+      }
+    }
+  },
+  "fracture": {
+    "peeks": {
+      "A Main": {
+        "defender_kd": 1.09,
+        "attacker_kd": 0.92
+      },
+      "B Main": {
+        "defender_kd": 1.1,
+        "attacker_kd": 0.91
+      },
+      "A Drop": {
+        "defender_kd": 1.14,
+        "attacker_kd": 0.87
+      }
+    }
+  },
+  "sunset": {
+    "peeks": {
+      "A Main": {
+        "defender_kd": 1.11,
+        "attacker_kd": 0.9
+      },
+      "B Main": {
+        "defender_kd": 1.09,
+        "attacker_kd": 0.92
+      },
+      "Mid Tiles": {
+        "defender_kd": 1.08,
+        "attacker_kd": 0.93
+      }
+    }
+  },
+  "abyss": {
+    "peeks": {
+      "A Main": {
+        "defender_kd": 1.1,
+        "attacker_kd": 0.91
+      },
+      "B Main": {
+        "defender_kd": 1.12,
+        "attacker_kd": 0.89
+      }
+    }
+  },
+  "corrode": {
+    "peeks": {
+      "A Main": {
+        "defender_kd": 1.09,
+        "attacker_kd": 0.92
+      },
+      "B Main": {
+        "defender_kd": 1.1,
+        "attacker_kd": 0.91
+      }
+    }
+  }
+}

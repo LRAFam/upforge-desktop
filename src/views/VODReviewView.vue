@@ -477,10 +477,11 @@
                 :dock-large="spatialMapLarge"
                 :summary="displaySpatialSummary"
                 :map-name="timeline?.map"
+                :game="timeline?.game"
                 :active-index="activeSpatialDisplayIndex"
                 :show-legend="false"
                 :show-heatmap="spatialViewMode !== 'dots'"
-                :heatmap-layer="spatialViewMode === 'sites' ? 'site' : 'callout'"
+                :heatmap-layer="spatialViewMode === 'sites' ? 'site' : spatialViewMode === 'peek' ? 'peek' : 'callout'"
                 :round-filter="spatialRoundFilter"
                 :show-round-slider="availableSpatialRounds.length > 1"
                 @update:round-filter="spatialRoundFilter = $event"
@@ -1071,10 +1072,11 @@
               :panel-large="spatialMapLarge"
               :summary="displaySpatialSummary"
               :map-name="timeline?.map"
+              :game="timeline?.game"
               :active-index="activeSpatialDisplayIndex"
               :show-legend="true"
               :show-heatmap="spatialViewMode !== 'dots'"
-              :heatmap-layer="spatialViewMode === 'sites' ? 'site' : 'callout'"
+              :heatmap-layer="spatialViewMode === 'sites' ? 'site' : spatialViewMode === 'peek' ? 'peek' : 'callout'"
               :round-filter="spatialRoundFilter"
               :show-round-slider="availableSpatialRounds.length > 1"
               @update:round-filter="spatialRoundFilter = $event"
@@ -1381,6 +1383,7 @@ const spatialPreviewAvailable = computed(() =>
 const spatialModes = [
   { id: 'heat' as const, label: 'Heat' },
   { id: 'sites' as const, label: 'Sites' },
+  { id: 'peek' as const, label: 'Peek' },
   { id: 'dots' as const, label: 'Dots' },
 ]
 
@@ -1429,7 +1432,7 @@ function markSpatialPreviewUsed() {
     localStorage.setItem(SPATIAL_PREVIEW_KEY, '1')
   } catch { /* ignore */ }
 }
-const spatialViewMode = ref<'heat' | 'sites' | 'dots'>('heat')
+const spatialViewMode = ref<'heat' | 'sites' | 'peek' | 'dots'>('heat')
 const spatialRoundFilter = ref<number | null>(null)
 const videoSyncOffsetMs = ref(0)
 const selectedRound = ref<RoundGroup | null>(null)

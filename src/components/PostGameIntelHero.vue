@@ -12,6 +12,7 @@ export interface CategoryScoreItem {
 const props = defineProps<{
   summary: MatchSpatialSummary | null | undefined
   mapName?: string | null
+  game?: string | null
   agentAccent?: string | null
   overallScore?: number | null
   matchResult?: 'win' | 'loss' | null
@@ -40,6 +41,15 @@ const deathEvents = computed(() =>
     .filter((x) => x.ev.type === 'death'),
 )
 
+const plantEvents = computed(() =>
+  (props.summary?.events ?? [])
+    .map((ev, index) => ({ ev, index }))
+    .filter((x) => x.ev.type === 'plant'),
+)
+
+const plantBenchmarks = computed(() => props.summary?.plantBenchmarks ?? [])
+const peekBenchmarks = computed(() => props.summary?.peekBenchmarks ?? [])
+
 const isolatedCount = computed(() =>
   deathEvents.value.filter((d) => d.ev.isolated).length,
 )
@@ -51,7 +61,12 @@ const heatmapInsight = computed(
   () => props.summary?.heatmapInsight ?? props.summary?.patterns?.[0] ?? null,
 )
 
-const showHeatmap = computed(() => (props.summary?.events ?? []).filter((e) => e.type === 'death').length >= 2)
+const showHeatmap = computed(() => {
+  const events = props.summary?.events ?? []
+  const deaths = events.filter((e) => e.type === 'death').length
+  const plants = events.filter((e) => e.type === 'plant').length
+  return deaths >= 2 || plants >= 1
+})
 
 const worstCategories = computed(() => {
   const list = [...(props.categoryScores ?? [])]
@@ -96,6 +111,7 @@ function onSelect(index: number) {
             v-if="heatmapInsight"
             class="text-xs font-bold text-white leading-snug mt-1 drop-shadow-md"
           >{{ heatmapInsight }}</p>
+          <p v-else-if="game === 'cs2'" class="text-[10px] text-gray-500 mt-0.5">Demo-verified positions · radar heatmap</p>
           <p v-else class="text-[10px] text-gray-500 mt-0.5">Riot-verified positions · not guesswork</p>
         </div>
         <div v-if="overallScore != null" class="text-right">
@@ -108,6 +124,7 @@ function onSelect(index: number) {
         ref="minimapRef"
         :summary="summary"
         :map-name="mapName"
+        :game="game"
         :active-index="activeSpatialIndex ?? null"
         :large="true"
         :show-legend="false"
@@ -140,16 +157,46 @@ function onSelect(index: number) {
         <div class="flex gap-1.5 overflow-x-auto pb-0.5 scrollbar-thin">
           <button
             v-for="item in deathEvents"
-            :key="item.index"
+            :key="`d-${item.index}`"
             type="button"
             class="flex-shrink-0 text-[10px] font-semibold px-2.5 py-1.5 rounded-lg border transition-all"
             :class="activeSpatialIndex === item.index
               ? 'bg-red-500/25 border-red-400/50 text-white'
               : 'bg-black/40 border-white/10 text-gray-400 hover:border-red-500/30'"
+            :title="item.ev.benchmarkHint ?? undefined"
             @click="onSelect(item.index)"
           >
             R{{ item.ev.round + 1 }} · {{ item.ev.callout }}
           </button>
+          <button
+            v-for="item in plantEvents"
+            :key="`p-${item.index}`"
+            type="button"
+            class="flex-shrink-0 text-[10px] font-semibold px-2.5 py-1.5 rounded-lg border transition-all"
+            :class="activeSpatialIndex === item.index
+              ? 'bg-orange-500/25 border-orange-400/50 text-white'
+              : 'bg-black/40 border-white/10 text-gray-400 hover:border-orange-500/30'"
+            :title="item.ev.benchmarkHint ?? undefined"
+            @click="onSelect(item.index)"
+          >
+            R{{ item.ev.round + 1 }} · {{ item.ev.callout }}
+          </button>
+        </div>
+
+        <div v-if="peekBenchmarks.length" class="mt-2 space-y-1 pointer-events-auto">
+          <p
+            v-for="(line, i) in peekBenchmarks"
+            :key="`peek-${i}`"
+            class="text-[10px] text-blue-200/90 leading-snug"
+          >{{ line }}</p>
+        </div>
+
+        <div v-if="plantBenchmarks.length" class="mt-2 space-y-1 pointer-events-auto">
+          <p
+            v-for="(line, i) in plantBenchmarks"
+            :key="i"
+            class="text-[10px] text-orange-200/90 leading-snug"
+          >{{ line }}</p>
         </div>
 
         <button

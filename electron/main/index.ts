@@ -26,6 +26,7 @@ import { formatRecordingLabel } from './recording-preset'
 import {
   resolveUploadVideoPath,
   deleteCompressedSibling,
+  deleteLocalRecordingFiles,
 } from './vod-compressor'
 import {
   resolveReadyRecordingPath,
@@ -39,6 +40,8 @@ import {
   DEFAULT_VIDEO_SYNC_OFFSET_MS,
 } from './riot-local-api'
 import { applySpatialEnrichment } from './spatial/enrich'
+import { refreshMatchPopulationBenchmarks } from './spatial/enrich-population'
+import { applyDemoSpatialEnrichment } from './spatial/demo-enrich'
 import { UploadManager, savePendingJob, clearPendingJob } from './upload-manager'
 import {
   activateUserSession,
@@ -71,7 +74,6 @@ import { TrainerBridge } from './trainer-bridge'
 import type { MatchData } from './riot-types'
 import log from 'electron-log'
 import { setupMainProcessErrorHandlers, reportError } from './error-reporter'
-import { findLatestCS2Demo } from './cs2-demo-finder'
 import {
   fetchArchivePlaybackUrl,
   fetchRecordingPlaybackUrl,
@@ -85,7 +87,7 @@ import {
 } from './disk-space'
 import { getStorageBreakdown, purgeCloudBackedLocals, runRecordingStorageMaintenance, buildStorageUsage, purgeUntrackedRecordingFiles, isLocalOnlyRecording } from './storage-cleanup'
 import { buildStorageEstimate } from './storage-stats'
-import { CS2DemoUploader } from './cs2-demo-uploader'
+import { buildTimelineFromReplay, uploadReplayInBackground } from './post-match-replay'
 import { DiscordRPC } from './discord-rpc'
 import {
   createMainWindow as _createMainWindow,
@@ -104,6 +106,7 @@ import {
   isGsiMatchLive,
   isGsiMatchEnded,
   isGsiReceiving,
+  getLatestGsiMap,
 } from './steam-gsi-server'
 
 /** Human-readable label for a game identifier. */
@@ -336,6 +339,9 @@ const activityLog: { time: number; message: string }[] = []
 const hotkeyBookmarks: number[] = []
 // Recording start time — set when recorder.start() succeeds
 let currentRecordingStartTime: number | null = null
+/** GSI match-live timestamp (CS2 / Deadlock) — when map_phase went live */
+let currentMatchStartTime: number | null = null
+let currentGsiMapName: string | null = null
 // Auto-hide timer for overlay flash feedback (clip bookmarked while overlay is hidden)
 let overlayAutoHideTimer: ReturnType<typeof setTimeout> | null = null
 
@@ -412,6 +418,38 @@ function userSessionDeps() {
       }
     },
   }
+}
+
+function enrichTimelineSpatial(timeline: MatchData): void {
+  if (timeline.game === 'valorant') {
+    applySpatialEnrichment(timeline)
+    schedulePopulationRefresh(timeline)
+  } else if (timeline.game === 'cs2' || timeline.game === 'deadlock') {
+    applyDemoSpatialEnrichment(timeline)
+  }
+}
+
+function schedulePopulationRefresh(timeline: MatchData): void {
+  if (!timeline.spatialSummary?.events?.length) return
+  const token = authManager.getToken()
+  void refreshMatchPopulationBenchmarks(
+    timeline,
+    token ? authManager.getApi() : null,
+    (summary) => {
+      mainWindow?.webContents.send('spatial:population-updated', summary)
+      postGameWindow?.webContents.send('spatial:population-updated', summary)
+    },
+  )
+}
+
+function mergeSpatialSummary(
+  apiSpatial: unknown,
+  localSpatial: import('./spatial/types').MatchSpatialSummary | null | undefined,
+): import('./spatial/types').MatchSpatialSummary | null {
+  const api = apiSpatial as import('./spatial/types').MatchSpatialSummary | null | undefined
+  if (api?.events?.length) return api
+  if (localSpatial?.events?.length) return localSpatial
+  return api ?? localSpatial ?? null
 }
 
 function normalizePrimaryGame(value: string | null | undefined): 'valorant' | 'cs2' | 'deadlock' {
@@ -561,11 +599,12 @@ function scanForOrphanedRecordings(force = false): number {
   if (orphans.length === 0) return 0
 
   for (const file of orphans) {
+    const orphanGame = normalizePrimaryGame(settingsManager.get().primaryGame)
     recordingsStore.add({
       path: file.path, // already preferred (compressed when sibling exists)
       riotName: '',
       riotTag: '',
-      game: 'valorant',
+      game: orphanGame,
       map: null,
       agent: null,
       gameMode: 'UNKNOWN',
@@ -810,10 +849,31 @@ function setupGameDetection(): void {
     }
     const matchSessionStart = currentRecordingStartTime ?? (Date.now() - recordingDuration * 1000)
 
-    const [timeline] = await Promise.all([
-      riotLocalApi.stop(),
+    let timeline: MatchData | null = null
+    let pendingReplayPath: string | null = null
+
+    await Promise.all([
+      (async () => { timeline = await riotLocalApi.stop() })(),
       obsRecorder.stop(),
     ])
+
+    if ((game === 'cs2' || game === 'deadlock') && !timeline) {
+      const replayCtx = {
+        game: game as 'cs2' | 'deadlock',
+        matchSessionStart,
+        matchStartTime: currentMatchStartTime,
+        recordingStartTime: currentRecordingStartTime ?? matchSessionStart,
+        gsiMap: currentGsiMapName ?? getLatestGsiMap(),
+        customReplayDir: game === 'cs2' ? config?.cs2DemoDir : undefined,
+        localPlayerName: null as string | null,
+      }
+      const parsed = await buildTimelineFromReplay(replayCtx)
+      if (parsed.timeline) timeline = parsed.timeline
+      pendingReplayPath = parsed.demoPath
+      if (timeline) {
+        log.info(`[HandleMatchEnd] ${game} demo timeline — kills=${timeline.playerKills.length}`)
+      }
+    }
 
     const resolvedFile = resolveReadyRecordingPath(
       obsRecorder.getLastRecordingPath(),
@@ -833,9 +893,11 @@ function setupGameDetection(): void {
     }
 
     const user = authManager.getUser()
-    const map = timeline?.map ?? null
+    const map = timeline?.map ?? currentGsiMapName ?? null
     const agent = timeline?.agent ?? null
-    const gameMode = riotLocalApi.getLastGameMode() ?? 'UNKNOWN'
+    const gameMode = game === 'valorant'
+      ? (riotLocalApi.getLastGameMode() ?? 'UNKNOWN')
+      : (timeline?.gameMode ?? 'COMPETITIVE')
     const autoAnalyse = config?.autoAnalyse !== false
     const clipsOnly = config?.fullMatchRecording === false || obsRecorder.isClipsOnlySession()
 
@@ -865,7 +927,9 @@ function setupGameDetection(): void {
       clipsExtracted: 0, // updated after extractMatchClips completes
       matchDetailsStatus: timeline?.matchId
         ? (killsInTimeline > 0 ? 'fetched' : (riotDiag.region ? 'fetch_failed' : 'no_region'))
-        : (riotDiag.accessTokenPresent ? 'no_match_id' : 'no_auth'),
+        : (game === 'cs2' || game === 'deadlock')
+          ? (killsInTimeline > 0 ? 'fetched' : 'fetch_failed')
+          : (riotDiag.accessTokenPresent ? 'no_match_id' : 'no_auth'),
     }
 
     log.info(
@@ -932,7 +996,7 @@ function setupGameDetection(): void {
       || timeline.finalStats != null
     )
     const isRankedMode = ['COMPETITIVE', 'PREMIER'].includes(gameMode?.toUpperCase() ?? '')
-    if (hasMatchData && isRankedMode && user?.riot_name) {
+    if (hasMatchData && isRankedMode && user?.riot_name && timeline) {
       requestPostGameDebrief({
         riotName: user.riot_name,
         riotTag: user.riot_tag ?? 'NA1',
@@ -956,77 +1020,18 @@ function setupGameDetection(): void {
       })
     }
 
-    // CS2 demo auto-pull — runs asynchronously and never blocks the main upload flow
-    if (game === 'cs2') {
-      ;(async () => {
+    // CS2 / Deadlock replay upload — runs asynchronously and never blocks VOD upload
+    if (game === 'cs2' || game === 'deadlock') {
+      if (pendingReplayPath) {
+        void uploadReplayInBackground(game as 'cs2' | 'deadlock', pendingReplayPath, authManager, thisPostGameWindow)
+          .catch(() => { /* logged inside */ })
+      } else {
         try {
-          const cs2DemoDir = settingsManager?.get().cs2DemoDir
-          log.info(`[CS2Demo] Match ended — searching for demo (startTime=${matchSessionStart}, dir=${cs2DemoDir ?? 'auto'})`)
-
-          const sendToWindow = (channel: string, payload?: unknown) => {
-            if (!thisPostGameWindow.isDestroyed()) thisPostGameWindow.webContents.send(channel, payload)
+          if (!thisPostGameWindow.isDestroyed()) {
+            thisPostGameWindow.webContents.send('post-game:demo-status', { status: 'not-found' })
           }
-
-          const demoResult = await findLatestCS2Demo(matchSessionStart, cs2DemoDir)
-
-          if (!demoResult.found || !demoResult.demoPath) {
-            log.info('[CS2Demo] No demo found — user may need cl_demo_auto_recording 1')
-            sendToWindow('post-game:demo-status', { status: 'not-found' })
-            return
-          }
-
-          const { demoPath } = demoResult
-          log.info(`[CS2Demo] Demo found: ${demoPath} — starting upload`)
-          sendToWindow('post-game:demo-status', { status: 'uploading', path: demoPath })
-
-          const uploader = new CS2DemoUploader(authManager)
-          const { jobId } = await uploader.upload({
-            demoPath,
-            steamId: null,
-            onProgress: (pct) => sendToWindow('post-game:demo-progress', pct),
-          })
-
-          log.info(`[CS2Demo] Upload complete — jobId=${jobId}, starting poll`)
-          sendToWindow('post-game:demo-status', { status: 'analysing', jobId })
-
-          // Poll every 10s with exponential backoff up to 30s, for up to 10 minutes
-          const MAX_POLL_MS = 10 * 60 * 1000
-          const pollStart = Date.now()
-          let interval = 10_000
-
-          while (Date.now() - pollStart < MAX_POLL_MS) {
-            await new Promise<void>((r) => setTimeout(r, interval))
-            interval = Math.min(interval * 1.5, 30_000)
-
-            try {
-              const { status, error } = await uploader.pollStatus(jobId)
-              log.info(`[CS2Demo] Poll status=${status}`)
-
-              if (status === 'completed') {
-                log.info(`[CS2Demo] Analysis complete — jobId=${jobId}`)
-                sendToWindow('post-game:demo-status', { status: 'complete', jobId })
-                return
-              }
-              if (status === 'failed') {
-                log.warn(`[CS2Demo] Analysis failed — jobId=${jobId} error=${error}`)
-                sendToWindow('post-game:demo-status', { status: 'error', error: error ?? 'Analysis failed' })
-                return
-              }
-            } catch (pollErr) {
-              log.warn('[CS2Demo] Poll error (non-fatal):', pollErr)
-            }
-          }
-
-          log.warn(`[CS2Demo] Polling timed out after 10 minutes — jobId=${jobId}`)
-        } catch (err) {
-          log.warn('[CS2Demo] Demo upload flow error:', err)
-          try {
-            if (!thisPostGameWindow.isDestroyed()) {
-              thisPostGameWindow.webContents.send('post-game:demo-status', { status: 'error', error: 'Demo upload failed' })
-            }
-          } catch { /* window may already be closed */ }
-        }
-      })().catch(() => { /* swallow — never propagate to caller */ })
+        } catch { /* window closed */ }
+      }
     }
 
     const runPostGameUpload = async () => {
@@ -1255,6 +1260,8 @@ function setupGameDetection(): void {
     } finally {
       handleMatchEndRunning = false
       currentRecordingStartTime = null
+      currentMatchStartTime = null
+      currentGsiMapName = null
     }
   }
 
@@ -1307,7 +1314,7 @@ function setupGameDetection(): void {
     const config = settingsManager?.get()
 
     const recordedModesEarly = config?.recordedModes
-    if (Array.isArray(recordedModesEarly) && recordedModesEarly.length === 0) {
+    if (game === 'valorant' && Array.isArray(recordedModesEarly) && recordedModesEarly.length === 0) {
       logActivity('No game modes selected — recording disabled')
       notifyRecordingUx('Select at least one game mode in Settings → Recording to record matches.')
       tray?.setToolTip(idleTooltip(game))
@@ -1417,6 +1424,8 @@ function setupGameDetection(): void {
 
         if (isGsiMatchLive()) {
           matchStartTime = Date.now()
+          currentMatchStartTime = matchStartTime
+          currentGsiMapName = getLatestGsiMap()
           gameMode = 'COMPETITIVE'
           modeConfident = true
           break
@@ -2181,6 +2190,17 @@ async function doUploadAndAnalyse(
           ? (lastScore.allyScore > lastScore.enemyScore ? 'win' : 'loss')
           : null
 
+        let localSpatial = timeline?.spatialSummary
+        if (timeline) enrichTimelineSpatial(timeline)
+        if (recordingId) {
+          const rec = recordingsStore.getById(recordingId)
+          if (rec?.timeline) {
+            enrichTimelineSpatial(rec.timeline)
+            recordingsStore.updateTimeline(recordingId, rec.timeline)
+            localSpatial = rec.timeline.spatialSummary ?? localSpatial
+          }
+        }
+
         send('post-game:analysis-ready', {
           recording_id: recordingId,
           overall_score: (status.result as Record<string, unknown>).overall_score,
@@ -2189,9 +2209,10 @@ async function doUploadAndAnalyse(
           priority_improvements: (status.result as Record<string, unknown>).priority_improvements,
           verdict: (status.result as Record<string, unknown>).verdict ?? null,
           coaching_tags: (status.result as Record<string, unknown>).coaching_tags ?? [],
-          spatial_summary: (status.result as Record<string, unknown>).spatial_summary
-            ?? timeline?.spatialSummary
-            ?? null,
+          spatial_summary: mergeSpatialSummary(
+            (status.result as Record<string, unknown>).spatial_summary,
+            localSpatial,
+          ),
           category_scores: (status.result as Record<string, unknown>).category_scores ?? [],
           session_start: sessionStart,
           kills: timeline?.finalStats?.kills ?? null,
@@ -2907,7 +2928,7 @@ async function startApp(): Promise<void> {
     if (!recording?.timeline) return { ok: false as const }
     recording.timeline.videoSyncOffsetMs = DEFAULT_VIDEO_SYNC_OFFSET_MS
     recomputeTimelineVideoOffsets(recording.timeline)
-    applySpatialEnrichment(recording.timeline)
+    enrichTimelineSpatial(recording.timeline)
     recordingsStore.updateTimeline(id, recording.timeline)
     return { ok: true as const, videoSyncOffsetMs: DEFAULT_VIDEO_SYNC_OFFSET_MS }
   })
@@ -2936,7 +2957,7 @@ async function startApp(): Promise<void> {
     const tl = recording.timeline
     if (tl) {
       recomputeTimelineVideoOffsets(tl)
-      applySpatialEnrichment(tl)
+      enrichTimelineSpatial(tl)
       recordingsStore.updateTimeline(id, tl)
     }
     const localPath = recording.path && fs.existsSync(recording.path) ? recording.path : null

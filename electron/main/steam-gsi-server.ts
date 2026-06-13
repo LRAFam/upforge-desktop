@@ -82,6 +82,16 @@ export function isGsiMatchLive(payload: SteamGsiPayload | null = latestPayload):
   )
 }
 
+export function getLatestGsiMap(): string | null {
+  const name = latestPayload?.map?.name
+  if (!name || name.toLowerCase() === 'menu') return null
+  return name
+}
+
+export function getLatestGsiPayload(): SteamGsiPayload | null {
+  return latestPayload
+}
+
 /** True after a live match was seen and GSI reports return to menu / game over. */
 export function isGsiMatchEnded(payload: SteamGsiPayload | null = latestPayload): boolean {
   if (!sawLiveMatch || !payload) return false

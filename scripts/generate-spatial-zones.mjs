@@ -64,7 +64,7 @@ function transformToDisplayNorm(t, raw) {
       y: Math.max(0, Math.min(1, raw.y)),
     }
   }
-  const pad = 0.02
+  const pad = 0
   const minX = vp.minX - pad
   const maxX = vp.maxX + pad
   const minY = vp.minY - pad
