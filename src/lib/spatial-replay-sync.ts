@@ -9,7 +9,9 @@ import type {
 export const SPATIAL_EVENT_HIT_WINDOW_SEC = 0.35
 
 export function spatialPreRollSeconds(type: SpatialTimelineEvent['type']): number {
-  return type === 'death' ? 4 : 2
+  if (type === 'death') return 4
+  if (type === 'plant' || type === 'defuse') return 3
+  return 2
 }
 
 export function adjustedSpatialVideoMs(
@@ -29,22 +31,19 @@ export function spatialEventVideoSeconds(
   return ms == null ? null : ms / 1000
 }
 
-export function isSpatialEventNearPlayback(
+/** True when playback scrubber is at the event timestamp (not pre-roll seek window). */
+export function isSpatialEventAtPlayback(
   ev: SpatialTimelineEvent,
   currentTimeSec: number,
   syncOffsetMs = 0,
 ): boolean {
   const eventSec = spatialEventVideoSeconds(ev, syncOffsetMs)
   if (eventSec == null) return false
-  const preRoll = spatialPreRollSeconds(ev.type)
-  return (
-    Math.abs(currentTimeSec - eventSec) < SPATIAL_EVENT_HIT_WINDOW_SEC
-    || (currentTimeSec >= eventSec - preRoll && currentTimeSec <= eventSec + 0.5)
-  )
+  return Math.abs(currentTimeSec - eventSec) <= SPATIAL_EVENT_HIT_WINDOW_SEC
 }
 
-/** Nearest spatial event at playback time (prefers exact hit, then pre-roll window). */
-export function findSpatialEventNearPlayback(
+/** Nearest spatial event at current playback time (for VOD toast / active highlight). */
+export function findSpatialEventAtPlayback(
   events: SpatialTimelineEvent[],
   currentTimeSec: number,
   syncOffsetMs = 0,
@@ -52,20 +51,20 @@ export function findSpatialEventNearPlayback(
   for (let i = events.length - 1; i >= 0; i--) {
     const ev = events[i]
     if (!ev) continue
-    const sec = spatialEventVideoSeconds(ev, syncOffsetMs)
-    if (sec == null) continue
-    if (Math.abs(currentTimeSec - sec) < SPATIAL_EVENT_HIT_WINDOW_SEC) {
-      return { ev, index: i }
-    }
-  }
-  for (let i = events.length - 1; i >= 0; i--) {
-    const ev = events[i]
-    if (!ev) continue
-    if (isSpatialEventNearPlayback(ev, currentTimeSec, syncOffsetMs)) {
+    if (isSpatialEventAtPlayback(ev, currentTimeSec, syncOffsetMs)) {
       return { ev, index: i }
     }
   }
   return null
+}
+
+/** @deprecated Use findSpatialEventAtPlayback — pre-roll window caused toasts ~2s early. */
+export function findSpatialEventNearPlayback(
+  events: SpatialTimelineEvent[],
+  currentTimeSec: number,
+  syncOffsetMs = 0,
+): { ev: SpatialTimelineEvent; index: number } | null {
+  return findSpatialEventAtPlayback(events, currentTimeSec, syncOffsetMs)
 }
 
 /** Events that have occurred at or before current playback time. Events without timestamps stay visible. */
@@ -146,22 +145,31 @@ export function buildReplaySpatialSummary(
   }
 }
 
-export function spatialEventToastLabel(ev: SpatialTimelineEvent): {
+export function spatialEventToastLabel(
+  ev: SpatialTimelineEvent,
+  displayCallout?: string | null,
+): {
   title: string
   sub?: string
   tone: 'death' | 'kill' | 'plant' | 'defuse' | 'neutral'
 } {
+  const callout =
+    displayCallout && displayCallout !== 'Unknown' && displayCallout !== 'Unknown area'
+      ? displayCallout
+      : ev.callout && ev.callout !== 'Unknown'
+        ? ev.callout
+        : (displayCallout ?? ev.callout)
   if (ev.type === 'death') {
-    return { title: `Died @ ${ev.callout}`, sub: ev.weapon, tone: 'death' }
+    return { title: `Died @ ${callout}`, sub: ev.weapon, tone: 'death' }
   }
   if (ev.type === 'kill') {
-    return { title: `Kill @ ${ev.callout}`, sub: ev.weapon, tone: 'kill' }
+    return { title: `Kill @ ${callout}`, sub: ev.weapon, tone: 'kill' }
   }
   if (ev.type === 'plant') {
-    return { title: `Planted @ ${ev.callout}`, sub: ev.site ?? undefined, tone: 'plant' }
+    return { title: `Planted @ ${callout}`, sub: ev.site ?? undefined, tone: 'plant' }
   }
   if (ev.type === 'defuse') {
-    return { title: `Defused @ ${ev.callout}`, tone: 'defuse' }
+    return { title: `Defused @ ${callout}`, sub: ev.site ?? undefined, tone: 'defuse' }
   }
-  return { title: ev.label || ev.callout, tone: 'neutral' }
+  return { title: ev.label || callout, tone: 'neutral' }
 }

@@ -170,27 +170,17 @@ function buildPatterns(
   return patterns.slice(0, 6)
 }
 
-function isLocalPlanter(
-  plant: { planter?: string; planterPuuid?: string },
-  match: MatchData,
-): boolean {
-  const ownPuuid = match.puuid?.toLowerCase()
-  if (ownPuuid && plant.planterPuuid?.toLowerCase() === ownPuuid) return true
-  const ownName = match.playerName?.trim().toLowerCase()
-  if (!ownName) return true
-  const planter = plant.planter?.trim().toLowerCase() ?? ''
-  if (!planter) return false
-  return planter === ownName || planter.startsWith(`${ownName}#`)
-}
-
-function buildPlantEvents(match: MatchData): SpatialTimelineEvent[] {
+function buildPlantEvents(match: MatchData): {
+  events: SpatialTimelineEvent[]
+  byRound: Map<number, { norm: NormPoint; callout: string; site: string | null }>
+} {
   const map = match.map
-  if (!map) return []
+  const byRound = new Map<number, { norm: NormPoint; callout: string; site: string | null }>()
+  if (!map) return { events: [], byRound }
 
   const rankTier = resolvePlayerRankTier(match)
   const events: SpatialTimelineEvent[] = []
   for (const plant of match.spikePlants ?? []) {
-    if (!isLocalPlanter(plant, match)) continue
     const loc = plant.plantLocation
     if (!loc || typeof loc.x !== 'number' || typeof loc.y !== 'number') continue
 
@@ -200,15 +190,46 @@ function buildPlantEvents(match: MatchData): SpatialTimelineEvent[] {
     const { callout, site } = resolvePlantCallout(map, norm)
     const siteLabel = site ?? (plant.site || null)
     const benchmarkHint = getPlantBenchmarkHint(map, callout, rankTier)
+    const round = plant.round ?? 0
+    byRound.set(round, { norm, callout, site: siteLabel })
     events.push({
       type: 'plant',
-      round: plant.round ?? 0,
+      round,
       norm,
       callout,
       site: siteLabel,
       label: `Planted @ ${callout}`,
       videoOffsetMs: plant.videoOffsetMs,
       benchmarkHint,
+    })
+  }
+  return { events, byRound }
+}
+
+function buildDefuseEvents(
+  match: MatchData,
+  plantByRound: Map<number, { norm: NormPoint; callout: string; site: string | null }>,
+): SpatialTimelineEvent[] {
+  const map = match.map
+  if (!map) return []
+
+  const events: SpatialTimelineEvent[] = []
+  for (const defuse of match.spikeDefuses ?? []) {
+    const round = defuse.round ?? 0
+    const plantMeta = plantByRound.get(round)
+    const site = plantMeta?.site ?? null
+    const norm = plantMeta?.norm
+    if (!norm) continue
+
+    const callout = plantMeta?.callout ?? (site ? `${site} Site` : 'Defuse')
+    events.push({
+      type: 'defuse',
+      round,
+      norm,
+      callout,
+      site,
+      label: `Defused @ ${callout}`,
+      videoOffsetMs: defuse.videoOffsetMs,
     })
   }
   return events
@@ -377,7 +398,9 @@ export function buildMatchSpatialSummary(match: MatchData): MatchSpatialSummary 
     pushEvent('kill', k)
   }
 
-  events.push(...buildPlantEvents(match))
+  const { events: plantEvents, byRound: plantByRound } = buildPlantEvents(match)
+  events.push(...plantEvents)
+  events.push(...buildDefuseEvents(match, plantByRound))
 
   if (events.length === 0) return null
 

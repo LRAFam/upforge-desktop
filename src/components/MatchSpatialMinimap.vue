@@ -290,6 +290,7 @@ function draw() {
       const py = d.y * s
       const isDeath = ev.type === 'death'
       const isPlant = ev.type === 'plant'
+      const isDefuse = ev.type === 'defuse'
       const active = props.activeIndex === globalIdx
       const small = isSmallHud.value
       const medium = props.panelHud || props.dockExpanded
@@ -299,7 +300,9 @@ function draw() {
           ? (heatActive ? (small ? 3 : medium ? 4 : 5) : (small ? 4 : medium ? 6 : 7))
           : isPlant
             ? (small ? 5 : medium ? 6 : 7)
-            : (small ? 4 : medium ? 5 : 6)
+            : isDefuse
+              ? (small ? 5 : medium ? 6 : 7)
+              : (small ? 4 : medium ? 5 : 6)
 
       ctx.beginPath()
       ctx.arc(px, py, r + 2, 0, Math.PI * 2)
@@ -308,7 +311,13 @@ function draw() {
 
       ctx.beginPath()
       ctx.arc(px, py, r, 0, Math.PI * 2)
-      ctx.fillStyle = isDeath ? '#ef4444' : isPlant ? '#f97316' : '#22c55e'
+      ctx.fillStyle = isDeath
+        ? '#ef4444'
+        : isPlant
+          ? '#f97316'
+          : isDefuse
+            ? '#38bdf8'
+            : '#22c55e'
       ctx.fill()
     })
 
@@ -317,7 +326,7 @@ function draw() {
       ctx.fillRect(0, s - 28, s, 28)
       ctx.fillStyle = '#fff'
       ctx.font = '11px system-ui, sans-serif'
-      let legend = '● Deaths   ● Kills   ● Plants'
+      let legend = '● Deaths   ● Kills   ● Plants   ● Defuses'
       if (useSiteHeat.value) legend = 'Heat = site deaths   ● Events'
       else if (usePeekHeat.value) legend = 'Blue = defender-favored peeks   ● Events'
       else if (useCalloutHeat.value) legend = 'Heat = death density   ● Kills / Plants'
@@ -331,7 +340,9 @@ function draw() {
       const ay = ad.y * s
       const label = active.type === 'plant'
         ? `Planted · ${active.callout}`
-        : `${active.type === 'death' ? 'Died' : 'Kill'} · ${active.callout}`
+        : active.type === 'defuse'
+          ? `Defused · ${active.callout}`
+          : `${active.type === 'death' ? 'Died' : 'Kill'} · ${active.callout}`
       const sublabel = active.benchmarkHint
         ? (active.type === 'plant' || active.type === 'death' ? active.benchmarkHint : null)
         : null
@@ -344,7 +355,13 @@ function draw() {
       ctx.fillStyle = 'rgba(0,0,0,0.82)'
       roundRect(ctx, bx, by, tw + pad * 2, boxH, 6)
       ctx.fill()
-      ctx.fillStyle = active.type === 'death' ? '#fca5a5' : active.type === 'plant' ? '#fdba74' : '#86efac'
+      ctx.fillStyle = active.type === 'death'
+        ? '#fca5a5'
+        : active.type === 'plant'
+          ? '#fdba74'
+          : active.type === 'defuse'
+            ? '#7dd3fc'
+            : '#86efac'
       ctx.fillText(label, bx + pad, by + 15)
       if (sublabel) {
         ctx.font = '9px system-ui, sans-serif'

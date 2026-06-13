@@ -1272,7 +1272,7 @@ import MatchSpatialMinimap from '../components/MatchSpatialMinimap.vue'
 import type { MatchSpatialSummary, SpatialTimelineEvent } from '../lib/spatial-types'
 import {
   buildReplaySpatialSummary,
-  findSpatialEventNearPlayback,
+  findSpatialEventAtPlayback,
   spatialEventToastLabel,
 } from '../lib/spatial-replay-sync'
 import { canSpatialVodSeek } from '../lib/tier-features'
@@ -2286,7 +2286,7 @@ function onTimeUpdate() {
   }
 
   const playbackEvents = spatialEventList.value.map(x => x.ev)
-  const nearSpatial = findSpatialEventNearPlayback(playbackEvents, currentTime.value, 0)
+  const nearSpatial = findSpatialEventAtPlayback(playbackEvents, currentTime.value, 0)
   if (nearSpatial) {
     const globalIdx = spatialEventList.value[nearSpatial.index]?.index ?? null
     if (globalIdx != null) activeSpatialIndex.value = globalIdx
