@@ -460,6 +460,50 @@
             </div>
           </Transition>
 
+          <!-- Spatial callout popup (replay sync) -->
+          <Transition name="event-pop">
+            <div
+              v-if="activeSpatialToast && hasSpatialIntel"
+              class="absolute bottom-3 left-3 flex flex-col gap-0.5 px-3 py-2 rounded-xl border text-xs pointer-events-none backdrop-blur-sm z-10 max-w-[min(240px,70vw)]"
+              :class="{
+                'bg-black/75 border-red-500/35 text-red-200': activeSpatialToast.tone === 'death',
+                'bg-black/75 border-green-500/35 text-green-200': activeSpatialToast.tone === 'kill',
+                'bg-black/75 border-orange-500/35 text-orange-200': activeSpatialToast.tone === 'plant',
+                'bg-black/75 border-blue-500/35 text-blue-200': activeSpatialToast.tone === 'defuse',
+                'bg-black/75 border-white/20 text-gray-200': activeSpatialToast.tone === 'neutral',
+              }"
+            >
+              <span class="font-semibold leading-tight">{{ activeSpatialToast.title }}</span>
+              <span v-if="activeSpatialToast.sub" class="text-[10px] opacity-70">{{ activeSpatialToast.sub }}</span>
+            </div>
+          </Transition>
+
+          <!-- Floating minimap HUD on video -->
+          <div
+            v-if="hasSpatialIntel && spatialHudVisible && displaySpatialSummary"
+            class="absolute bottom-3 right-3 z-20 pointer-events-auto"
+            @click.stop
+            @mousedown.stop
+          >
+            <MatchSpatialMinimap
+              float-hud
+              :summary="displaySpatialSummary"
+              :map-name="timeline?.map"
+              :game="timeline?.game"
+              :active-index="activeSpatialDisplayIndex"
+              :show-legend="false"
+              :show-heatmap="spatialReplaySync && spatialViewMode !== 'dots'"
+              :heatmap-layer="spatialViewMode === 'sites' ? 'site' : spatialViewMode === 'peek' ? 'peek' : 'callout'"
+              @select="onSpatialSelect"
+            />
+          </div>
+          <button
+            v-else-if="hasSpatialIntel && displaySpatialSummary"
+            type="button"
+            class="absolute bottom-3 right-3 z-20 text-[9px] font-bold uppercase tracking-wider px-2 py-1 rounded-md border border-white/10 bg-black/60 text-gray-400 hover:text-white pointer-events-auto"
+            @click.stop="spatialHudVisible = true"
+          >Show map</button>
+
           </div>
         </div>
 
@@ -491,6 +535,15 @@
             <div class="flex-1 min-w-0 flex flex-col gap-2">
               <div class="flex flex-wrap items-center gap-2">
                 <span class="text-[9px] font-black uppercase tracking-[0.2em] text-red-400/85">Match Intel</span>
+                <button
+                  type="button"
+                  class="text-[9px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-md border transition-colors"
+                  :class="spatialReplaySync
+                    ? 'bg-red-500/15 border-red-500/30 text-red-200'
+                    : 'border-white/10 text-gray-500 hover:text-gray-300'"
+                  title="When on, map dots and heat build up as the VOD plays"
+                  @click="spatialReplaySync = !spatialReplaySync"
+                >{{ spatialReplaySync ? 'Replay sync' : 'Full map' }}</button>
                 <div class="flex items-center gap-0.5 p-0.5 rounded-lg bg-black/25 border border-white/[0.06]">
                   <button
                     v-for="mode in spatialModes"
@@ -1097,6 +1150,18 @@
             >{{ mode.label }}</button>
           </div>
 
+          <button
+            type="button"
+            class="text-[10px] font-bold uppercase tracking-wide px-2.5 py-1 rounded-md border transition-colors w-fit"
+            :class="spatialReplaySync
+              ? 'bg-red-500/15 border-red-500/30 text-red-200'
+              : 'border-white/10 text-gray-500 hover:text-gray-300'"
+            @click="spatialReplaySync = !spatialReplaySync"
+          >{{ spatialReplaySync ? 'Replay sync on' : 'Full match map' }}</button>
+          <p v-if="spatialReplaySync" class="text-[10px] text-gray-500 leading-relaxed -mt-1">
+            Dots and heat appear as the VOD reaches each moment. Use video sync if markers are early or late.
+          </p>
+
           <div v-if="spatialDeathChips.length" class="space-y-1.5">
             <p class="text-[9px] font-semibold uppercase tracking-wider text-gray-600">Death locations</p>
             <div class="flex flex-wrap gap-1.5">
@@ -1205,6 +1270,11 @@ import { getWeaponImage, getAgentImage, getAbilityIcon, getMapImage } from '../l
 import { pendingTimeline } from '../stores/pendingTimeline'
 import MatchSpatialMinimap from '../components/MatchSpatialMinimap.vue'
 import type { MatchSpatialSummary, SpatialTimelineEvent } from '../lib/spatial-types'
+import {
+  buildReplaySpatialSummary,
+  findSpatialEventNearPlayback,
+  spatialEventToastLabel,
+} from '../lib/spatial-replay-sync'
 import { canSpatialVodSeek } from '../lib/tier-features'
 
 // Round outcome icons — bundled locally to avoid CSP/CDN issues
@@ -1358,16 +1428,22 @@ const initialSeekDone = ref(false)
 const hoverTime = ref<number | null>(null)
 const playbackSpeed = ref(1)
 const activeEventNotif = ref<TimelineEvent | null>(null)
+let spatialNotifTimer: ReturnType<typeof setTimeout> | null = null
 const showScoreboard = ref(false)
 const showInsightsPanel = ref(false)
 const SPATIAL_MAP_VISIBLE_KEY = 'upforge_vod_map_visible'
 const SPATIAL_MAP_LARGE_KEY = 'upforge_vod_map_large'
+const SPATIAL_HUD_VISIBLE_KEY = 'upforge_vod_spatial_hud'
+const SPATIAL_REPLAY_SYNC_KEY = 'upforge_spatial_replay_sync'
 const THEATER_MODE_KEY = 'upforge_vod_theater_mode'
 
 const spatialMapVisible = ref(true)
 const spatialMapLarge = ref(false)
+const spatialHudVisible = ref(true)
+const spatialReplaySync = ref(true)
 const dockChipsEl = ref<HTMLElement | null>(null)
 const activeSpatialIndex = ref<number | null>(null)
+const activeSpatialNotif = ref<SpatialTimelineEvent | null>(null)
 const recordingId = ref<string | null>(null)
 const playbackRefreshing = ref(false)
 const playbackError = ref<string | null>(null)
@@ -1401,6 +1477,10 @@ function loadSpatialUiPrefs() {
     if (vis !== null) spatialMapVisible.value = vis === '1'
     const large = localStorage.getItem(SPATIAL_MAP_LARGE_KEY)
     if (large !== null) spatialMapLarge.value = large === '1'
+    const hud = localStorage.getItem(SPATIAL_HUD_VISIBLE_KEY)
+    if (hud !== null) spatialHudVisible.value = hud === '1'
+    const replay = localStorage.getItem(SPATIAL_REPLAY_SYNC_KEY)
+    if (replay !== null) spatialReplaySync.value = replay === '1'
     const theater = localStorage.getItem(THEATER_MODE_KEY)
     if (theater !== null) theaterMode.value = theater === '1'
   } catch { /* ignore */ }
@@ -1412,6 +1492,14 @@ watch(spatialMapVisible, (v) => {
 
 watch(spatialMapLarge, (v) => {
   try { localStorage.setItem(SPATIAL_MAP_LARGE_KEY, v ? '1' : '0') } catch { /* ignore */ }
+})
+
+watch(spatialHudVisible, (v) => {
+  try { localStorage.setItem(SPATIAL_HUD_VISIBLE_KEY, v ? '1' : '0') } catch { /* ignore */ }
+})
+
+watch(spatialReplaySync, (v) => {
+  try { localStorage.setItem(SPATIAL_REPLAY_SYNC_KEY, v ? '1' : '0') } catch { /* ignore */ }
 })
 
 watch(theaterMode, (v) => {
@@ -1907,7 +1995,7 @@ const spatialEventList = computed(() => {
     .filter(x => round == null || x.ev.round === round)
 })
 
-const displaySpatialSummary = computed((): MatchSpatialSummary | null => {
+const baseDisplaySpatialSummary = computed((): MatchSpatialSummary | null => {
   const base = spatialSummary.value
   if (!base) return null
   const filtered = spatialEventList.value.map(x => x.ev)
@@ -1915,10 +2003,24 @@ const displaySpatialSummary = computed((): MatchSpatialSummary | null => {
   return { ...base, events: filtered }
 })
 
+const displaySpatialSummary = computed((): MatchSpatialSummary | null => {
+  const base = baseDisplaySpatialSummary.value
+  if (!base) return null
+  return buildReplaySpatialSummary(base, currentTime.value, 0, spatialReplaySync.value)
+})
+
 const activeSpatialDisplayIndex = computed(() => {
   if (activeSpatialIndex.value == null) return null
-  const idx = spatialEventList.value.findIndex(x => x.index === activeSpatialIndex.value)
+  const events = displaySpatialSummary.value?.events ?? []
+  const activeEv = spatialSummary.value?.events?.[activeSpatialIndex.value]
+  if (!activeEv) return null
+  const idx = events.indexOf(activeEv)
   return idx >= 0 ? idx : null
+})
+
+const activeSpatialToast = computed(() => {
+  const ev = activeSpatialNotif.value
+  return ev ? spatialEventToastLabel(ev) : null
 })
 
 const displayDeathCount = computed(
@@ -1955,9 +2057,9 @@ function openUpgrade() {
   window.open('https://upforge.gg/pricing', '_blank')
 }
 
-function onSpatialSelect(ev: SpatialTimelineEvent, displayIndex: number) {
-  const item = spatialEventList.value[displayIndex]
-  activeSpatialIndex.value = item?.index ?? null
+function onSpatialSelect(ev: SpatialTimelineEvent, _displayIndex: number) {
+  const globalIdx = spatialSummary.value?.events.indexOf(ev) ?? null
+  activeSpatialIndex.value = globalIdx
 
   if (!canSeekFromSpatial.value) {
     if (!spatialPreviewUsed.value) {
@@ -2183,9 +2285,16 @@ function onTimeUpdate() {
     notifTimer = setTimeout(() => { activeEventNotif.value = null }, 2500)
   }
 
-  const nearDeath = spatialDeathChips.value.find(item => isNearEvent(item.ev))
-  if (nearDeath) {
-    activeSpatialIndex.value = nearDeath.index
+  const playbackEvents = spatialEventList.value.map(x => x.ev)
+  const nearSpatial = findSpatialEventNearPlayback(playbackEvents, currentTime.value, 0)
+  if (nearSpatial) {
+    const globalIdx = spatialEventList.value[nearSpatial.index]?.index ?? null
+    if (globalIdx != null) activeSpatialIndex.value = globalIdx
+    if (activeSpatialNotif.value !== nearSpatial.ev) {
+      activeSpatialNotif.value = nearSpatial.ev
+      if (spatialNotifTimer) clearTimeout(spatialNotifTimer)
+      spatialNotifTimer = setTimeout(() => { activeSpatialNotif.value = null }, 2800)
+    }
   }
 }
 

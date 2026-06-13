@@ -90,10 +90,10 @@
       "maxY": 1.230328
     },
     "displayBounds": {
-      "minX": 0.0332,
-      "minY": 0.0332,
-      "maxX": 0.9658,
-      "maxY": 0.9482
+      "minX": 0.0432,
+      "minY": 0.0792,
+      "maxX": 0.9018,
+      "maxY": 0.9042
     },
     "displayTransform": "swapFlipXY"
   },

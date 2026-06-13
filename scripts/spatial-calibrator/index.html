@@ -1,0 +1,646 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>UpForge Spatial Calibrator</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #0b1018;
+      --panel: #121a26;
+      --border: #243044;
+      --text: #e8edf5;
+      --muted: #8b9bb3;
+      --accent: #ff4655;
+      --blue: #60a5fa;
+      --green: #4ade80;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font: 13px/1.45 system-ui, -apple-system, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+    }
+    header {
+      padding: 14px 18px;
+      border-bottom: 1px solid var(--border);
+      background: #0f1520;
+    }
+    header h1 { margin: 0 0 4px; font-size: 16px; }
+    header p { margin: 0; color: var(--muted); font-size: 12px; }
+    .layout {
+      display: grid;
+      grid-template-columns: 340px 1fr 320px;
+      min-height: calc(100vh - 64px);
+    }
+    .panel {
+      border-right: 1px solid var(--border);
+      padding: 14px;
+      overflow: auto;
+      background: var(--panel);
+    }
+    .panel:last-child { border-right: none; border-left: 1px solid var(--border); }
+    .panel h2 {
+      margin: 0 0 10px;
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: .12em;
+      color: var(--muted);
+    }
+    label {
+      display: block;
+      font-size: 11px;
+      color: var(--muted);
+      margin: 10px 0 4px;
+    }
+    input[type="text"], input[type="number"], input[type="password"], select, textarea {
+      width: 100%;
+      background: #0a0f17;
+      border: 1px solid var(--border);
+      color: var(--text);
+      border-radius: 8px;
+      padding: 8px 10px;
+      font: inherit;
+    }
+    textarea { min-height: 88px; resize: vertical; font-family: ui-monospace, monospace; font-size: 11px; }
+    input[type="range"] { width: 100%; }
+    .row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    button {
+      background: #1b2838;
+      border: 1px solid var(--border);
+      color: var(--text);
+      border-radius: 8px;
+      padding: 8px 12px;
+      font: inherit;
+      cursor: pointer;
+    }
+    button.primary { background: #3b1218; border-color: #7f1d2a; color: #fecaca; }
+    button:hover { filter: brightness(1.08); }
+    .canvas-wrap {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+      gap: 12px;
+    }
+    canvas {
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      background: #000;
+      cursor: crosshair;
+      max-width: min(90vw, 640px);
+      max-height: min(70vh, 640px);
+    }
+    .chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 8px;
+      border-radius: 999px;
+      border: 1px solid var(--border);
+      font-size: 11px;
+      margin: 2px;
+      cursor: pointer;
+    }
+    .chip.active { border-color: #fff; background: #1f2a3d; }
+    .chip.death { color: #fca5a5; }
+    .chip.plant { color: #fdba74; }
+    .chip.kill { color: #86efac; }
+    pre.export {
+      background: #0a0f17;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 10px;
+      font-size: 10px;
+      overflow: auto;
+      max-height: 220px;
+      white-space: pre-wrap;
+      word-break: break-all;
+    }
+    .toggle { display: flex; align-items: center; gap: 8px; margin: 8px 0; font-size: 12px; }
+    .hint { font-size: 11px; color: var(--muted); margin-top: 6px; }
+    .status { font-size: 11px; color: #fbbf24; min-height: 16px; }
+    .legend { display: flex; gap: 12px; font-size: 11px; color: var(--muted); flex-wrap: wrap; justify-content: center; }
+    .legend span::before {
+      content: '';
+      display: inline-block;
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      margin-right: 5px;
+      vertical-align: middle;
+    }
+    .legend .d::before { background: #ef4444; }
+    .legend .k::before { background: #22c55e; }
+    .legend .p::before { background: #f97316; }
+    .legend .z::before { background: #64748b; }
+    .legend .t::before { background: #fff; border: 1px solid #999; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>UpForge Spatial Calibrator</h1>
+    <p>Tune <code>displayBounds</code> / transforms until death dots sit on the gray playable art. Export JSON → paste into <code>maps-manifest.json</code>, then <code>npm run spatial:sync</code>.</p>
+  </header>
+
+  <div class="layout">
+    <aside class="panel">
+      <h2>Match data</h2>
+      <label>Map</label>
+      <select id="mapSelect"></select>
+
+      <label>Analysis ID (UpForge API)</label>
+      <input id="analysisId" type="number" placeholder="e.g. 12345" />
+
+      <label>Bearer token</label>
+      <input id="apiToken" type="password" placeholder="Paste from desktop login / devtools" />
+
+      <button class="primary" id="loadAnalysis" style="width:100%;margin-top:8px">Load analysis</button>
+      <div class="status" id="loadStatus"></div>
+
+      <label>Or paste spatial JSON</label>
+      <textarea id="pasteJson" placeholder='{ "map": "Breeze", "events": [...] }'></textarea>
+      <button id="loadPaste" style="width:100%;margin-top:6px">Load pasted JSON</button>
+
+      <h2 style="margin-top:18px">Events</h2>
+      <div id="eventChips"></div>
+    </aside>
+
+    <main class="canvas-wrap">
+      <canvas id="map" width="512" height="512"></canvas>
+      <div class="legend">
+        <span class="d">Death</span>
+        <span class="k">Kill</span>
+        <span class="p">Plant</span>
+        <span class="z">Zone anchor</span>
+        <span class="t">Test click</span>
+      </div>
+      <p class="hint">Click the canvas to drop a white test marker at the pixel you expect. Tune until event dots align with it.</p>
+    </main>
+
+    <aside class="panel">
+      <h2>Image crop (displayBounds)</h2>
+      <label>minX <span id="minXVal"></span></label>
+      <input id="minX" type="range" min="0" max="0.2" step="0.001" />
+      <label>minY <span id="minYVal"></span></label>
+      <input id="minY" type="range" min="0" max="0.2" step="0.001" />
+      <label>maxX <span id="maxXVal"></span></label>
+      <input id="maxX" type="range" min="0.8" max="1" step="0.001" />
+      <label>maxY <span id="maxYVal"></span></label>
+      <input id="maxY" type="range" min="0.8" max="1" step="0.001" />
+
+      <label>displayTransform</label>
+      <select id="displayTransform">
+        <option value="identity">identity</option>
+        <option value="flipX">flipX</option>
+        <option value="flipY">flipY</option>
+        <option value="flipXY">flipXY</option>
+        <option value="swap">swap</option>
+        <option value="swapFlipX">swapFlipX</option>
+        <option value="swapFlipY">swapFlipY</option>
+        <option value="swapFlipXY">swapFlipXY</option>
+      </select>
+
+      <label>displayRotation</label>
+      <select id="displayRotation">
+        <option value="0">0</option>
+        <option value="90">90</option>
+        <option value="180">180</option>
+        <option value="270">270</option>
+      </select>
+
+      <h2 style="margin-top:16px">Coord fine-tune</h2>
+      <p class="hint">Dot too far <strong>north</strong>? Increase <em>offset Y</em> or decrease <em>coord scale</em>.</p>
+      <label>Coord scale <span id="coordScaleVal"></span></label>
+      <input id="coordScale" type="range" min="0.85" max="1.15" step="0.001" value="1" />
+      <label>Offset X <span id="offsetXVal"></span></label>
+      <input id="offsetX" type="range" min="-0.15" max="0.15" step="0.001" value="0" />
+      <label>Offset Y <span id="offsetYVal"></span></label>
+      <input id="offsetY" type="range" min="-0.15" max="0.15" step="0.001" value="0" />
+
+      <div class="toggle"><input type="checkbox" id="showZones" checked /> Show zone anchors</div>
+      <div class="toggle"><input type="checkbox" id="showHeat" /> Death heat blobs</div>
+      <div class="toggle"><input type="checkbox" id="showCrop" checked /> Show crop rect on source PNG</div>
+
+      <button id="resetMap" style="width:100%;margin-top:10px">Reset to manifest defaults</button>
+      <button id="copyExport" class="primary" style="width:100%;margin-top:8px">Copy manifest snippet</button>
+
+      <h2 style="margin-top:16px">Export</h2>
+      <pre class="export" id="exportBox"></pre>
+    </aside>
+  </div>
+
+  <script>
+    const TRANSFORM_TO = {
+      identity: (p) => p,
+      flipX: (p) => ({ x: 1 - p.x, y: p.y }),
+      flipY: (p) => ({ x: p.x, y: 1 - p.y }),
+      flipXY: (p) => ({ x: 1 - p.x, y: 1 - p.y }),
+      swap: (p) => ({ x: p.y, y: p.x }),
+      swapFlipX: (p) => ({ x: 1 - p.y, y: p.x }),
+      swapFlipY: (p) => ({ x: p.y, y: 1 - p.x }),
+      swapFlipXY: (p) => ({ x: 1 - p.y, y: 1 - p.x }),
+    }
+    const ROTATION_TO = {
+      0: (p) => p,
+      90: (p) => ({ x: p.y, y: 1 - p.x }),
+      180: (p) => ({ x: 1 - p.x, y: 1 - p.y }),
+      270: (p) => ({ x: 1 - p.y, y: p.x }),
+    }
+
+    const state = {
+      manifest: [],
+      mapEntry: null,
+      zones: null,
+      summary: null,
+      activeIndex: null,
+      testDot: null,
+      radarImg: null,
+      sourceImg: null,
+    }
+
+    const $ = (id) => document.getElementById(id)
+    const canvas = $('map')
+    const ctx = canvas.getContext('2d')
+    const SIZE = 512
+
+    function mapKey(name) {
+      return (name || '').trim().toLowerCase().replace(/\s+/g, '')
+    }
+
+    function getControls() {
+      return {
+        bounds: {
+          minX: +$('minX').value,
+          minY: +$('minY').value,
+          maxX: +$('maxX').value,
+          maxY: +$('maxY').value,
+        },
+        transform: $('displayTransform').value,
+        rotation: +$('displayRotation').value,
+        coordScale: +$('coordScale').value,
+        offsetX: +$('offsetX').value,
+        offsetY: +$('offsetY').value,
+      }
+    }
+
+    function applyFineTune(norm, c) {
+      return {
+        x: (norm.x - 0.5) * c.coordScale + 0.5 + c.offsetX,
+        y: (norm.y - 0.5) * c.coordScale + 0.5 + c.offsetY,
+      }
+    }
+
+    function toDisplayNorm(norm) {
+      const c = getControls()
+      let p = applyFineTune(norm, c)
+      p = TRANSFORM_TO[c.transform](p)
+      p = ROTATION_TO[c.rotation](p)
+      return p
+    }
+
+    function imageSourceRect(img, bounds) {
+      const w = img.naturalWidth || 1024
+      const h = img.naturalHeight || 1024
+      if (!bounds) return { sx: 0, sy: 0, sw: w, sh: h }
+      return {
+        sx: bounds.minX * w,
+        sy: bounds.minY * h,
+        sw: (bounds.maxX - bounds.minX) * w,
+        sh: (bounds.maxY - bounds.minY) * h,
+      }
+    }
+
+    function drawMinimap(img, mapName) {
+      const c = getControls()
+      const rect = imageSourceRect(img, c.bounds)
+      const rotation = c.rotation
+      const drawCrop = () => ctx.drawImage(img, rect.sx, rect.sy, rect.sw, rect.sh, 0, 0, SIZE, SIZE)
+      ctx.clearRect(0, 0, SIZE, SIZE)
+      if (rotation === 0) {
+        drawCrop()
+        return
+      }
+      ctx.save()
+      if (rotation === 90) { ctx.translate(SIZE, 0); ctx.rotate(Math.PI / 2) }
+      else if (rotation === 180) { ctx.translate(SIZE, SIZE); ctx.rotate(Math.PI) }
+      else if (rotation === 270) { ctx.translate(0, SIZE); ctx.rotate(-Math.PI / 2) }
+      drawCrop()
+      ctx.restore()
+    }
+
+    function drawCropOverlay(img) {
+      if (!$('showCrop').checked || !img) return
+      const c = getControls()
+      const w = img.naturalWidth
+      const h = img.naturalHeight
+      const preview = document.createElement('canvas')
+      preview.width = 140
+      preview.height = 140
+      const pctx = preview.getContext('2d')
+      pctx.drawImage(img, 0, 0, 140, 140)
+      pctx.strokeStyle = '#60a5fa'
+      pctx.lineWidth = 2
+      pctx.strokeRect(
+        c.bounds.minX * 140,
+        c.bounds.minY * 140,
+        (c.bounds.maxX - c.bounds.minX) * 140,
+        (c.bounds.maxY - c.bounds.minY) * 140,
+      )
+      ctx.drawImage(preview, SIZE - 150, 10, 140, 140)
+      ctx.fillStyle = 'rgba(0,0,0,0.65)'
+      ctx.fillRect(SIZE - 150, SIZE - 28, 140, 18)
+      ctx.fillStyle = '#93c5fd'
+      ctx.font = '10px system-ui'
+      ctx.fillText('source crop', SIZE - 142, SIZE - 15)
+    }
+
+    function draw() {
+      const img = state.radarImg
+      if (!img?.complete) return
+      drawMinimap(img, state.mapEntry?.displayName)
+      drawCropOverlay(img)
+
+      if ($('showHeat').checked && state.summary?.events) {
+        const deaths = state.summary.events.filter((e) => e.type === 'death')
+        ctx.save()
+        ctx.globalCompositeOperation = 'lighter'
+        for (const ev of deaths) {
+          const d = toDisplayNorm(ev.norm)
+          const px = d.x * SIZE
+          const py = d.y * SIZE
+          const grad = ctx.createRadialGradient(px, py, 0, px, py, 28)
+          grad.addColorStop(0, 'rgba(239,68,68,0.7)')
+          grad.addColorStop(1, 'rgba(239,68,68,0)')
+          ctx.fillStyle = grad
+          ctx.beginPath()
+          ctx.arc(px, py, 28, 0, Math.PI * 2)
+          ctx.fill()
+        }
+        ctx.restore()
+      }
+
+      if ($('showZones').checked && state.zones?.callouts) {
+        for (const z of state.zones.callouts) {
+          const d = toDisplayNorm({ x: z.x, y: z.y })
+          const px = d.x * SIZE
+          const py = d.y * SIZE
+          ctx.beginPath()
+          ctx.arc(px, py, 3, 0, Math.PI * 2)
+          ctx.fillStyle = 'rgba(148,163,184,0.55)'
+          ctx.fill()
+        }
+      }
+
+      const events = state.summary?.events || []
+      events.forEach((ev, idx) => {
+        const d = toDisplayNorm(ev.norm)
+        const px = d.x * SIZE
+        const py = d.y * SIZE
+        const active = state.activeIndex === idx
+        const color = ev.type === 'death' ? '#ef4444' : ev.type === 'plant' ? '#f97316' : '#22c55e'
+        const r = active ? 9 : 6
+        ctx.beginPath()
+        ctx.arc(px, py, r + 2, 0, Math.PI * 2)
+        ctx.fillStyle = active ? '#fff' : 'rgba(255,255,255,0.45)'
+        ctx.fill()
+        ctx.beginPath()
+        ctx.arc(px, py, r, 0, Math.PI * 2)
+        ctx.fillStyle = color
+        ctx.fill()
+      })
+
+      if (state.testDot) {
+        const px = state.testDot.x * SIZE
+        const py = state.testDot.y * SIZE
+        ctx.beginPath()
+        ctx.arc(px, py, 7, 0, Math.PI * 2)
+        ctx.strokeStyle = '#fff'
+        ctx.lineWidth = 2
+        ctx.stroke()
+      }
+
+      const active = state.activeIndex != null ? events[state.activeIndex] : null
+      if (active) {
+        const d = toDisplayNorm(active.norm)
+        const ax = d.x * SIZE
+        const ay = d.y * SIZE
+        const label = `${active.type} · ${active.callout}`
+        ctx.font = 'bold 12px system-ui'
+        const tw = ctx.measureText(label).width
+        const pad = 8
+        const bx = Math.min(Math.max(ax - tw / 2 - pad, 4), SIZE - tw - pad * 2 - 4)
+        const by = Math.max(ay - 36, 8)
+        ctx.fillStyle = 'rgba(0,0,0,0.82)'
+        roundRect(bx, by, tw + pad * 2, 22, 6)
+        ctx.fillStyle = active.type === 'death' ? '#fca5a5' : '#86efac'
+        ctx.fillText(label, bx + pad, by + 15)
+      }
+
+      updateExport()
+    }
+
+    function roundRect(x, y, w, h, r) {
+      ctx.beginPath()
+      ctx.moveTo(x + r, y)
+      ctx.lineTo(x + w - r, y)
+      ctx.quadraticCurveTo(x + w, y, x + w, y + r)
+      ctx.lineTo(x + w, y + h - r)
+      ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h)
+      ctx.lineTo(x + r, y + h)
+      ctx.quadraticCurveTo(x, y + h, x, y + h - r)
+      ctx.lineTo(x, y + r)
+      ctx.quadraticCurveTo(x, y, x + r, y)
+      ctx.closePath()
+      ctx.fill()
+    }
+
+    function updateExport() {
+      const c = getControls()
+      const name = state.mapEntry?.displayName || 'Map'
+      const snippet = {
+        displayBounds: {
+          minX: round(c.bounds.minX),
+          minY: round(c.bounds.minY),
+          maxX: round(c.bounds.maxX),
+          maxY: round(c.bounds.maxY),
+        },
+        displayTransform: c.transform,
+        ...(c.rotation ? { displayRotation: c.rotation } : {}),
+      }
+      let note = ''
+      if (c.coordScale !== 1 || c.offsetX !== 0 || c.offsetY !== 0) {
+        note = `\n// Fine-tune still active — bake into displayBounds or viewport before shipping:\n// coordScale=${c.coordScale}, offsetX=${c.offsetX}, offsetY=${c.offsetY}`
+      }
+      $('exportBox').textContent = `// ${name}\n${JSON.stringify(snippet, null, 2)}${note}`
+    }
+
+    function round(n) { return Math.round(n * 10000) / 10000 }
+
+    function loadMapEntry(entry) {
+      state.mapEntry = entry
+      const b = entry.displayBounds || { minX: 0, minY: 0, maxX: 1, maxY: 1 }
+      $('minX').value = b.minX
+      $('minY').value = b.minY
+      $('maxX').value = b.maxX
+      $('maxY').value = b.maxY
+      $('displayTransform').value = entry.displayTransform || 'identity'
+      $('displayRotation').value = entry.displayRotation || 0
+      $('coordScale').value = 1
+      $('offsetX').value = 0
+      $('offsetY').value = 0
+      updateSliderLabels()
+      const img = new Image()
+      img.crossOrigin = 'anonymous'
+      img.onload = () => { state.radarImg = img; state.sourceImg = img; draw() }
+      img.src = entry.displayIcon
+      fetch(`/zones/${mapKey(entry.displayName)}.json`)
+        .then((r) => r.json())
+        .then((z) => { state.zones = z; draw() })
+        .catch(() => { state.zones = null })
+    }
+
+    function updateSliderLabels() {
+      $('minXVal').textContent = (+$('minX').value).toFixed(4)
+      $('minYVal').textContent = (+$('minY').value).toFixed(4)
+      $('maxXVal').textContent = (+$('maxX').value).toFixed(4)
+      $('maxYVal').textContent = (+$('maxY').value).toFixed(4)
+      $('coordScaleVal').textContent = (+$('coordScale').value).toFixed(3)
+      $('offsetXVal').textContent = (+$('offsetX').value).toFixed(3)
+      $('offsetYVal').textContent = (+$('offsetY').value).toFixed(3)
+    }
+
+    function setSummary(summary) {
+      state.summary = summary
+      state.activeIndex = summary?.events?.length ? 0 : null
+      const mapName = summary?.map
+      if (mapName) {
+        const entry = state.manifest.find((m) => mapKey(m.displayName) === mapKey(mapName))
+        if (entry) {
+          $('mapSelect').value = mapKey(mapName)
+          loadMapEntry(entry)
+        }
+      }
+      renderEventChips()
+      draw()
+    }
+
+    function renderEventChips() {
+      const el = $('eventChips')
+      el.innerHTML = ''
+      const events = state.summary?.events || []
+      events.forEach((ev, idx) => {
+        const chip = document.createElement('button')
+        chip.type = 'button'
+        chip.className = `chip ${ev.type} ${state.activeIndex === idx ? 'active' : ''}`
+        chip.textContent = `R${ev.round + 1} · ${ev.callout}`
+        chip.onclick = () => { state.activeIndex = idx; renderEventChips(); draw() }
+        el.appendChild(chip)
+      })
+    }
+
+    function formatLoadError(err) {
+      const msg = err?.message || String(err)
+      if (msg.includes('Failed to fetch') || msg.includes('NetworkError') || msg.includes('Load failed')) {
+        return 'Cannot reach calibrator — run `npm run spatial:calibrate` in a terminal and keep it open.'
+      }
+      return msg
+    }
+
+    async function init() {
+      $('analysisId').value = localStorage.getItem('uf_calib_analysis') || '321'
+      $('apiToken').value = localStorage.getItem('uf_calib_token') || ''
+
+      try {
+        const manifest = await fetch('/manifest.json').then((r) => {
+          if (!r.ok) throw new Error(`manifest HTTP ${r.status}`)
+          return r.json()
+        })
+        $('loadStatus').textContent = 'Calibrator server connected — paste token and load analysis'
+        state.manifest = manifest
+        const sel = $('mapSelect')
+        manifest.forEach((m) => {
+          const opt = document.createElement('option')
+          opt.value = mapKey(m.displayName)
+          opt.textContent = m.displayName
+          sel.appendChild(opt)
+        })
+        sel.onchange = () => {
+          const entry = manifest.find((m) => mapKey(m.displayName) === sel.value)
+          if (entry) loadMapEntry(entry)
+        }
+        loadMapEntry(manifest.find((m) => mapKey(m.displayName) === 'breeze') || manifest[0])
+      } catch (err) {
+        $('loadStatus').textContent = formatLoadError(err)
+      }
+    }
+
+    $('loadAnalysis').onclick = async () => {
+      const id = $('analysisId').value
+      const token = $('apiToken').value.trim()
+      if (!id || !token) {
+        $('loadStatus').textContent = 'Need analysis ID + bearer token'
+        return
+      }
+      localStorage.setItem('uf_calib_analysis', id)
+      localStorage.setItem('uf_calib_token', token)
+      $('loadStatus').textContent = 'Loading…'
+      try {
+        const res = await fetch(`/proxy/api/analysis/${id}`, {
+          headers: { Authorization: token.startsWith('Bearer ') ? token : `Bearer ${token}` },
+        })
+        const data = await res.json()
+        if (!res.ok) throw new Error(data.message || data.error || res.status)
+        const a = data.analysis || data
+        const md = a.match_data || {}
+        const spatial = md.spatialSummary || a.spatial_summary || md.spatial_summary
+        if (!spatial?.events?.length) throw new Error('No spatialSummary on this analysis')
+        $('loadStatus').textContent = `Loaded ${spatial.events.length} events · ${spatial.map}`
+        setSummary(spatial)
+      } catch (err) {
+        $('loadStatus').textContent = formatLoadError(err)
+      }
+    }
+
+    $('loadPaste').onclick = () => {
+      try {
+        const raw = JSON.parse($('pasteJson').value)
+        const spatial = raw.events ? raw : raw.spatialSummary || raw.spatial_summary
+        if (!spatial?.events?.length) throw new Error('Need events[]')
+        $('loadStatus').textContent = `Pasted ${spatial.events.length} events`
+        setSummary(spatial)
+      } catch (err) {
+        $('loadStatus').textContent = err.message
+      }
+    }
+
+    $('resetMap').onclick = () => {
+      if (state.mapEntry) loadMapEntry(state.mapEntry)
+    }
+
+    $('copyExport').onclick = async () => {
+      await navigator.clipboard.writeText($('exportBox').textContent)
+      $('loadStatus').textContent = 'Copied manifest snippet to clipboard'
+    }
+
+    for (const id of ['minX','minY','maxX','maxY','coordScale','offsetX','offsetY','displayTransform','displayRotation']) {
+      $(id).addEventListener('input', () => { updateSliderLabels(); draw() })
+    }
+    for (const id of ['showZones','showHeat','showCrop']) {
+      $(id).addEventListener('change', draw)
+    }
+
+    canvas.addEventListener('click', (e) => {
+      const rect = canvas.getBoundingClientRect()
+      const x = (e.clientX - rect.left) / rect.width
+      const y = (e.clientY - rect.top) / rect.height
+      state.testDot = { x, y }
+      draw()
+    })
+
+    init()
+  </script>
+</body>
+</html>
