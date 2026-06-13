@@ -176,6 +176,83 @@ function plantSiteLetter(site: string | null | undefined): string | null {
   return letter === 'A' || letter === 'B' || letter === 'C' ? letter : null
 }
 
+function eventMatchesPlantSite(
+  site: string | null | undefined,
+  callout: string | null | undefined,
+  letter: string,
+): boolean {
+  if (plantSiteLetter(site) === letter) return true
+  if (!callout) return false
+  return callout.startsWith(`${letter} `) || callout === `${letter} Site`
+}
+
+function medianNorm(pts: NormPoint[]): NormPoint | null {
+  if (!pts.length) return null
+  const filtered =
+    pts.length >= 3 ? pts.filter((p) => p.y > 0.01 || (p.x > 0.05 && p.x < 0.95)) : pts
+  const use = filtered.length >= 2 ? filtered : pts
+  const xs = use.map((p) => p.x).sort((a, b) => a - b)
+  const ys = use.map((p) => p.y).sort((a, b) => a - b)
+  const mid = Math.floor(use.length / 2)
+  return { x: xs[mid]!, y: ys[mid]! }
+}
+
+function inferPlantNormFromRoundEvents(
+  match: MatchData,
+  round: number,
+  site: string | null | undefined,
+  plantVideoMs?: number,
+): NormPoint | null {
+  const letter = plantSiteLetter(site)
+  if (!letter) return null
+
+  const pts: NormPoint[] = []
+  const push = (
+    norm: NormPoint | null | undefined,
+    siteLabel?: string | null,
+    callout?: string | null,
+  ) => {
+    if (!norm || (norm.x === 0 && norm.y === 0)) return
+    if (!eventMatchesPlantSite(siteLabel, callout, letter)) return
+    pts.push(norm)
+  }
+
+  for (const e of match.spatialSummary?.events ?? []) {
+    if (e.round !== round || (e.type !== 'kill' && e.type !== 'death')) continue
+    push(e.norm, e.site, e.callout)
+  }
+
+  const killRows = [
+    ...(match.killEvents ?? []),
+    ...(match.playerKills ?? []),
+    ...(match.playerDeaths ?? []),
+  ]
+  for (const row of killRows) {
+    if ((row.round ?? 0) !== round) continue
+    if (row.spatial?.norm) push(row.spatial.norm, row.spatial.site, row.spatial.callout)
+  }
+
+  if (!pts.length) return null
+
+  if (plantVideoMs != null) {
+    const timed: NormPoint[] = []
+    for (const e of match.spatialSummary?.events ?? []) {
+      if (e.round !== round || (e.type !== 'kill' && e.type !== 'death') || !e.norm) continue
+      if (!eventMatchesPlantSite(e.site, e.callout, letter)) continue
+      if (Math.abs((e.videoOffsetMs ?? 0) - plantVideoMs) <= 45_000) timed.push(e.norm)
+    }
+    for (const row of killRows) {
+      if ((row.round ?? 0) !== round) continue
+      const sp = row.spatial
+      if (!sp?.norm || !eventMatchesPlantSite(sp.site, sp.callout, letter)) continue
+      if (Math.abs((row.videoOffsetMs ?? 0) - plantVideoMs) <= 45_000) timed.push(sp.norm)
+    }
+    if (timed.length >= 2) return medianNorm(timed)
+  }
+
+  return medianNorm(pts)
+}
+
 function buildPlantEvents(match: MatchData): {
   events: SpatialTimelineEvent[]
   byRound: Map<number, { norm: NormPoint; callout: string; site: string | null }>
@@ -218,6 +295,21 @@ function buildPlantEvents(match: MatchData): {
         }
       } else if (norm) {
         const resolved = resolvePlantCallout(map, norm)
+        callout = resolved.callout
+        siteLabel = resolved.site ?? plant.site ?? null
+      }
+    }
+
+    if (!norm) {
+      const inferred = inferPlantNormFromRoundEvents(
+        match,
+        round,
+        plant.site,
+        plant.videoOffsetMs,
+      )
+      if (inferred) {
+        const resolved = resolvePlantCallout(map, inferred)
+        norm = inferred
         callout = resolved.callout
         siteLabel = resolved.site ?? plant.site ?? null
       }
