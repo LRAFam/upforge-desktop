@@ -33,6 +33,14 @@ export interface KillEvent extends GameEvent {
   spatial?: import('./spatial/types').KillSpatial
 }
 
+/** Per-round plant coords kept in uploaded match_data (survives matchDetails strip). */
+export interface RoundPlantSnapshot {
+  round: number
+  site: string | null
+  plantLocation?: { x: number; y: number }
+  planterPuuid?: string
+}
+
 /** Spike planted event — includes site (A/B/C) and who planted */
 export interface SpikePlantedEvent extends GameEvent {
   EventName: 'SpikePlanted'
@@ -275,6 +283,8 @@ export interface MatchData {
   spikePlants: SpikePlantedEvent[]
   spikeDefuses: SpikeDefusedEvent[]
   spikeDetonations: SpikeDetonatedEvent[]
+  /** Slim plant coords preserved on upload when raw matchDetails is stripped. */
+  roundPlants?: RoundPlantSnapshot[]
   firstBloods: FirstBloodEvent[]
   roundSummaries: RoundSummary[]
   finalStats: FinalPlayerStats | null

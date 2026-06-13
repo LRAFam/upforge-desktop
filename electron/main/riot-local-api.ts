@@ -23,6 +23,8 @@ export {
 import { applySpatialEnrichment } from './spatial/enrich'
 import { deriveMatchScore } from './match-score'
 import { riotStatsToAcs } from './combat-score'
+import { resolvePlantLocationFromRound } from './plant-location'
+import { logPlantCoordStats } from './match-plant-telemetry'
 import {
   shouldApplyMatchDetails,
   shouldUseMatchHistoryFallback,
@@ -1088,10 +1090,7 @@ export class RiotLocalApi {
         const bombPlanter = bombPlanterRaw ? _resolveName(bombPlanterRaw) : null
         const bombDefuser = bombDefuserRaw ? _resolveName(bombDefuserRaw) : null
         const plantSite = (round.plantSite as string) ?? null
-        const plantLocRaw = round.plantLocation as { x?: number; y?: number } | null | undefined
-        const plantLocation = plantLocRaw?.x != null && plantLocRaw?.y != null
-          ? { x: plantLocRaw.x as number, y: plantLocRaw.y as number }
-          : undefined
+        const plantLocation = resolvePlantLocationFromRound(round, bombPlanterRaw)
         const prs = (round.playerStats as Array<Record<string, unknown>> | undefined)
           ?.find((ps) => (ps.subject as string)?.toLowerCase() === ownLower)
         const economy = prs?.economy as Record<string, unknown> | undefined
@@ -1192,6 +1191,7 @@ export class RiotLocalApi {
     }
 
     recomputeTimelineVideoOffsets(this.matchData)
+    logPlantCoordStats(this.matchData, 'match-details')
   }
 
   // ──────────────────────────────────────────────────────────────────────
@@ -1250,16 +1250,19 @@ export class RiotLocalApi {
   // ──────────────────────────────────────────────────────────────────────
 
   /**
-   * Keep retrying Riot MatchDetails until timeline has rounds/kills or delays exhaust.
+   * Keep retrying Riot MatchDetails until timeline has rounds/kills and plant coords, or delays exhaust.
    * Call before upload — compression/upload time often covers Riot's post-match delay.
    */
   async enrichTimelineMatchDetails(
     timeline: MatchData,
-    options?: { maxWaitMs?: number; onStatus?: (message: string) => void },
+    options?: { maxWaitMs?: number; onStatus?: (message: string) => void; forceRefresh?: boolean },
   ): Promise<boolean> {
-    const hasData = (timeline.killEvents?.length ?? 0) > 0
+    if (!options?.forceRefresh && !timelineNeedsEnrichRefresh(timeline)) {
+      return (timeline.killEvents?.length ?? 0) > 0 || (timeline.roundSummaries?.length ?? 0) > 0
+    }
+
+    const hasCoreData = (timeline.killEvents?.length ?? 0) > 0
       || (timeline.roundSummaries?.length ?? 0) > 0
-    if (hasData) return true
 
     await this._refreshTokens()
     if (!this.accessToken || !this.entitlementsToken) {
@@ -1283,7 +1286,9 @@ export class RiotLocalApi {
     if (!timeline.matchId || !this.region) return false
 
     const maxWaitMs = options?.maxWaitMs ?? 120_000
-    const delays = [0, 15_000, 30_000, 45_000, 60_000, 90_000]
+    const delays = hasCoreData
+      ? [0, 15_000, 30_000, 45_000]
+      : [0, 15_000, 30_000, 45_000, 60_000, 90_000]
     const started = Date.now()
 
     for (const delay of delays) {
@@ -1296,7 +1301,8 @@ export class RiotLocalApi {
         return true
       }
     }
-    return (timeline.killEvents?.length ?? 0) > 0 || (timeline.roundSummaries?.length ?? 0) > 0
+    const hasCore = (timeline.killEvents?.length ?? 0) > 0 || (timeline.roundSummaries?.length ?? 0) > 0
+    return hasCore && !timelineNeedsEnrichRefresh(timeline)
   }
 
   private async _fetchMatchDetailsWithRetries(
@@ -1326,10 +1332,14 @@ export class RiotLocalApi {
         this.matchData = prev
       }
       if ((timeline.killEvents?.length ?? 0) > 0 || (timeline.roundSummaries?.length ?? 0) > 0) {
-        console.log(
-          `[RiotLocalApi] MatchDetails applied — kills=${timeline.killEvents.length} rounds=${timeline.roundSummaries.length}`,
-        )
-        return true
+        if (!timelineNeedsEnrichRefresh(timeline)) {
+          console.log(
+            `[RiotLocalApi] MatchDetails applied — kills=${timeline.killEvents.length} rounds=${timeline.roundSummaries.length}`,
+          )
+          return true
+        }
+        console.log('[RiotLocalApi] MatchDetails partial — still waiting for plant coords/spatial')
+        continue
       }
     }
     return false
@@ -1536,18 +1546,43 @@ function patchSpikeVideoOffsets(
   for (const d of timeline.spikeDetonations ?? []) patch(d)
 }
 
+/** True when Riot refresh may add kills, plants, or plant coordinates. */
+export function timelineNeedsEnrichRefresh(timeline: MatchData): boolean {
+  const hasCore = (timeline.killEvents?.length ?? 0) > 0
+    || (timeline.roundSummaries?.length ?? 0) > 0
+  if (!hasCore) return true
+
+  const plantedRounds = (timeline.roundSummaries ?? []).filter((r) => r.spikePlanted).length
+  const spikePlants = timeline.spikePlants ?? []
+  if (plantedRounds > 0 && spikePlants.length === 0) return true
+  if (spikePlants.some((p) => !p.plantLocation)) return true
+
+  const spatialPlants = (timeline.spatialSummary?.events ?? []).filter((e) => e.type === 'plant').length
+  if (plantedRounds > 0 && spatialPlants === 0) return true
+
+  return false
+}
+
 /** Keep spatial heatmap seek times aligned after offset recalculation. */
 function syncSpatialVideoOffsets(timeline: MatchData): void {
   const events = timeline.spatialSummary?.events
   if (!events?.length) return
   let deathIdx = 0
   let killIdx = 0
+  let plantIdx = 0
+  let defuseIdx = 0
   for (const ev of events) {
     if (ev.type === 'death') {
       const src = timeline.playerDeaths[deathIdx++]
       if (src?.videoOffsetMs != null) ev.videoOffsetMs = src.videoOffsetMs
     } else if (ev.type === 'kill') {
       const src = timeline.playerKills[killIdx++]
+      if (src?.videoOffsetMs != null) ev.videoOffsetMs = src.videoOffsetMs
+    } else if (ev.type === 'plant') {
+      const src = timeline.spikePlants?.[plantIdx++]
+      if (src?.videoOffsetMs != null) ev.videoOffsetMs = src.videoOffsetMs
+    } else if (ev.type === 'defuse') {
+      const src = timeline.spikeDefuses?.[defuseIdx++]
       if (src?.videoOffsetMs != null) ev.videoOffsetMs = src.videoOffsetMs
     }
   }

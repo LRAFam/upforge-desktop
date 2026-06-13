@@ -17,6 +17,8 @@ export interface UploadOptions {
   agent: string | null
   timeline: MatchData | null
   onProgress: (pct: number) => void
+  /** Awaited after S3 upload, before complete() — e.g. wait for Riot enrich. */
+  beforeComplete?: () => Promise<void>
 }
 
 export interface UploadResult {
@@ -186,6 +188,10 @@ export class UploadManager {
     // ── Step 2: stream file directly to S3 ────────────────────────────────
     opts.onProgress(8)
     await this._putToS3(upload_url, opts.videoPath, totalBytes, opts.onProgress)
+
+    if (opts.beforeComplete) {
+      await opts.beforeComplete()
+    }
 
     // ── Step 3: confirm and queue analysis ────────────────────────────────
     // Re-send match context at complete() time so it can override/supplement

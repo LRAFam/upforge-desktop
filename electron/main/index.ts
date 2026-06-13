@@ -2135,11 +2135,20 @@ async function doUploadAndAnalyse(
       map,
       agent,
       timeline,
+      beforeComplete: async () => {
+        await enrichPromise.catch(() => {})
+      },
       onProgress: (pct) => {
         send('post-game:upload-progress', pct)
-      }
+      },
     })
     await enrichPromise.catch(() => {})
+
+    if (timeline && game === 'valorant') {
+      await uploadManager.patchMatchData(result.job_id, timeline).catch((err) => {
+        log.warn('[Upload] Failed to patch match_data after enrich:', err)
+      })
+    }
 
     send('post-game:upload-complete', { jobId: result.job_id })
     logActivity('Upload complete — AI analysis running')

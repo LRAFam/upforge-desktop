@@ -2,10 +2,12 @@
  * Shapes MatchData for API upload / analysis — drops redundant blobs and
  * fills fields the backend and AI service expect.
  */
-import type { MatchData } from './riot-types'
+import type { MatchData, RoundPlantSnapshot } from './riot-types'
 import { recomputeTimelineVideoOffsets } from './riot-local-api'
 import { deriveMatchScore } from './match-score'
 import { riotStatsToAcs } from './combat-score'
+import { logPlantCoordStats } from './match-plant-telemetry'
+import { resolvePlantLocationFromRound } from './plant-location'
 
 /** Slim Riot MatchDetails subset for coaching prompts (avoids multi‑MB raw JSON). */
 export interface MatchDetailsLite {
@@ -37,6 +39,7 @@ export type UploadMatchData = Omit<MatchData, 'events' | 'matchDetails'> & {
   events?: never
   matchDetails?: never
   matchDetailsLite?: MatchDetailsLite | null
+  roundPlants?: RoundPlantSnapshot[]
 }
 
 function slimMatchDetails(raw: Record<string, unknown> | null | undefined): MatchDetailsLite | null {
@@ -77,6 +80,40 @@ function slimMatchDetails(raw: Record<string, unknown> | null | undefined): Matc
   }
 }
 
+function buildRoundPlants(timeline: MatchData): RoundPlantSnapshot[] {
+  const byRound = new Map<number, RoundPlantSnapshot>()
+
+  for (const plant of timeline.spikePlants ?? []) {
+    const round = plant.round ?? 0
+    byRound.set(round, {
+      round,
+      site: plant.site ?? null,
+      plantLocation: plant.plantLocation,
+      planterPuuid: plant.planterPuuid,
+    })
+  }
+
+  const roundResults = timeline.matchDetails?.roundResults as Array<Record<string, unknown>> | undefined
+  if (roundResults?.length) {
+    for (const round of roundResults) {
+      const roundNum = (round.roundNum as number) ?? 0
+      const existing = byRound.get(roundNum)
+      if (existing?.plantLocation) continue
+      const bombPlanter = (round.bombPlanter as string) ?? null
+      const plantLocation = resolvePlantLocationFromRound(round, bombPlanter)
+      if (!plantLocation && !bombPlanter) continue
+      byRound.set(roundNum, {
+        round: roundNum,
+        site: (round.plantSite as string) ?? existing?.site ?? null,
+        plantLocation: plantLocation ?? existing?.plantLocation,
+        planterPuuid: bombPlanter ?? existing?.planterPuuid,
+      })
+    }
+  }
+
+  return [...byRound.values()].sort((a, b) => a.round - b.round)
+}
+
 /** Normalise queue/mode for Laravel + AI (lowercase snake). */
 export function gameModeForApi(gameMode: string | null | undefined): string | null {
   if (!gameMode) return null
@@ -107,6 +144,9 @@ export function prepareMatchDataForUpload(timeline: MatchData | null): UploadMat
       }
     : null
 
+  const roundPlants = buildRoundPlants(timeline)
+  timeline.roundPlants = roundPlants
+
   const upload: UploadMatchData = {
     game: timeline.game,
     matchId: timeline.matchId,
@@ -136,10 +176,12 @@ export function prepareMatchDataForUpload(timeline: MatchData | null): UploadMat
     teamSnapshot: timeline.teamSnapshot,
     matchDetailsLite: slimMatchDetails(timeline.matchDetails),
     spatialSummary: timeline.spatialSummary,
+    roundPlants,
     startTime: timeline.startTime,
     endTime: timeline.endTime,
   }
 
+  logPlantCoordStats(timeline, 'upload')
   return upload
 }
 
