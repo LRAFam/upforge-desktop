@@ -24,9 +24,6 @@ const spatialDir = join(root, 'resources/spatial')
 const manifestPath = join(spatialDir, 'maps-manifest.json')
 const zonesDir = join(spatialDir, 'zones')
 const coveragePath = join(spatialDir, 'coverage.json')
-const frontendRoot = join(root, '..', 'upforge-frontend')
-const frontendManifestPath = join(frontendRoot, 'app/data/spatial/maps-manifest.json')
-const frontendZonesDir = join(frontendRoot, 'public/spatial/zones')
 
 /** All standard competitive maps released through Corrode (v11.00, 2025). */
 const STANDARD_MAPS_2026 = [
@@ -467,17 +464,7 @@ for (const item of pendingCalibration) {
 writeFileSync(manifestPath, `${JSON.stringify(manifestRows, null, 2)}\n`)
 console.log(`Wrote ${manifestPath}`)
 
-if (frontendRoot && frontendManifestPath) {
-  try {
-    mkdirSync(join(frontendRoot, 'app/data/spatial'), { recursive: true })
-    mkdirSync(frontendZonesDir, { recursive: true })
-    cpSync(manifestPath, frontendManifestPath)
-    cpSync(zonesDir, frontendZonesDir, { recursive: true })
-    console.log(`Synced manifest + zones → upforge-frontend`)
-  } catch (e) {
-    console.warn(`Could not sync to frontend: ${e.message}`)
-  }
-}
+// Frontend sync runs via scripts/sync-spatial-to-frontend.mjs (spatial:sync chain).
 
 // Remove stale zone files for maps no longer in manifest
 const validKeys = new Set(standard.map((m) => normalizeKey(m.displayName)))
