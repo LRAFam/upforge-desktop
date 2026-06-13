@@ -74,6 +74,7 @@ const spatialEvents = computed(() => {
 })
 
 const hasSpatialEvents = computed(() => spatialEvents.value.length > 0)
+const hasMapContext = computed(() => !!(minimapUrl.value && props.summary))
 
 const deathEvents = computed(() =>
   spatialEvents.value.filter((e) => e.type === 'death'),
@@ -260,7 +261,7 @@ function draw() {
   const url = minimapUrl.value
   const summary = props.summary
   const events = spatialEvents.value
-  if (!canvas || !url || !summary || !hasSpatialEvents.value) return
+  if (!canvas || !url || !summary) return
 
   const s = size.value
   canvas.width = s
@@ -274,6 +275,8 @@ function draw() {
     imgLoaded.value = true
     ctx.clearRect(0, 0, s, s)
     drawMinimapImage(ctx, img, s, mapLabel.value)
+
+    if (!hasSpatialEvents.value) return
 
     if (useCalloutHeat.value) drawDeathHeatmap(ctx, s, deathEvents.value)
     else if (useSiteHeat.value) drawSiteHeatmap(ctx, s)
@@ -435,7 +438,7 @@ defineExpose({ exportPng })
       @click="onClick"
     />
     <div
-      v-if="!hasSpatialEvents"
+      v-if="!hasMapContext"
       class="absolute inset-0 flex items-center justify-center rounded-xl bg-black/50 text-xs text-gray-500"
     >
       No spatial data for this match
