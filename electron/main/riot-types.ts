@@ -81,6 +81,10 @@ export interface FirstBloodEvent extends GameEvent {
   victimPuuid?: string
   /** 0-indexed round (R1 = 0) */
   round?: number
+  /** Milliseconds since game start — same clock as kill events */
+  timeSinceGameStartMillis?: number
+  /** Offset from recording start in ms — use this to seek video to first blood */
+  videoOffsetMs?: number
 }
 
 /** Ability state for a single ability slot */
@@ -256,10 +260,9 @@ export interface MatchData {
   /** Epoch ms when presence transitioned to INGAME (= loading screen start) */
   matchStartTime: number | null
   /**
-   * Epoch ms when the actual gameplay began (buy phase of round 1).
-   * This is captured by the overlay poll once round 1 is confirmed INGAME.
-   * When set, videoOffsetMs uses this instead of matchStartTime so offsets
-   * are relative to the start of real gameplay rather than the loading screen.
+   * Epoch ms when the overlay poll first sees INGAME after recording starts.
+   * Used only as a fallback load-skew hint when matchStartTime is unavailable —
+   * not the primary input for video offset math (poll can fire seconds late).
    */
   gameplayStartTime: number | null
   /** Epoch ms when recorder.start() was called */

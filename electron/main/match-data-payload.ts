@@ -3,7 +3,7 @@
  * fills fields the backend and AI service expect.
  */
 import type { MatchData, RoundPlantSnapshot } from './riot-types'
-import { recomputeTimelineVideoOffsets } from './riot-local-api'
+import { recomputeTimelineVideoOffsets, effectiveVideoSyncOffsetMs } from './riot-local-api'
 import { deriveMatchScore } from './match-score'
 import { riotStatsToAcs } from './combat-score'
 import { logPlantCoordStats } from './match-plant-telemetry'
@@ -161,7 +161,7 @@ export function prepareMatchDataForUpload(timeline: MatchData | null): UploadMat
     matchStartTime: timeline.matchStartTime,
     gameplayStartTime: timeline.gameplayStartTime,
     recordingStartTime: timeline.recordingStartTime,
-    videoSyncOffsetMs: timeline.videoSyncOffsetMs ?? 0,
+    videoSyncOffsetMs: effectiveVideoSyncOffsetMs(timeline),
     roundScores: timeline.roundScores,
     finalScore: timeline.finalScore ?? deriveMatchScore(timeline) ?? null,
     killEvents: timeline.killEvents,

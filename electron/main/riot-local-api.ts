@@ -25,6 +25,7 @@ import { deriveMatchScore } from './match-score'
 import { riotStatsToAcs } from './combat-score'
 import { resolvePlantLocationFromRound } from './plant-location'
 import { logPlantCoordStats } from './match-plant-telemetry'
+import { gameTimeToVideoOffsetMs } from './recording-sync'
 import {
   shouldApplyMatchDetails,
   shouldUseMatchHistoryFallback,
@@ -1032,7 +1033,7 @@ export class RiotLocalApi {
     // TDM and Deathmatch have no rounds, no economy, no spike
     const isTDM = this.matchData.gameMode === 'TEAMDEATHMATCH'
     const isDM = this.matchData.gameMode === 'DEATHMATCH'
-    const roundStartGameMs = buildRoundStartGameMs(allKills)
+    const roundStartGameMs = buildRoundStartGameMs(allKills, roundResults?.length)
 
     if (!isTDM && !isDM && roundResults && roundResults.length > 0) {
       // Pre-build a per-round death count for the own player from the top-level kills array.
@@ -1162,6 +1163,7 @@ export class RiotLocalApi {
           killerPuuid: fb.killer,
           victimPuuid: fb.victim,
           round: roundNum,
+          timeSinceGameStartMillis: fb.tsgm,
         })
       }
     }
@@ -1518,6 +1520,7 @@ function computeRecordingOffsetMeta(timeline: Pick<MatchData, 'gameplayStartTime
 /** Estimate each round's gameplay-start ms from kill gameTime − roundTime. */
 function buildRoundStartGameMs(
   allKills: Array<Record<string, unknown>> | undefined,
+  roundCount?: number,
 ): Map<number, number> {
   const map = new Map<number, number>()
   for (const k of allKills ?? []) {
@@ -1529,22 +1532,42 @@ function buildRoundStartGameMs(
     const prev = map.get(r)
     if (prev == null || start < prev) map.set(r, start)
   }
+  if (map.size === 0) return map
+
+  const knownRounds = [...map.keys()].sort((a, b) => a - b)
+  const maxRound = roundCount != null && roundCount > 0
+    ? roundCount - 1
+    : knownRounds[knownRounds.length - 1]!
+
+  const durations: number[] = []
+  for (let i = 1; i < knownRounds.length; i++) {
+    const prevRound = knownRounds[i - 1]!
+    const currRound = knownRounds[i]!
+    const duration = map.get(currRound)! - map.get(prevRound)!
+    if (duration >= 30_000 && duration <= 180_000) durations.push(duration)
+  }
+  const avgRoundMs = durations.length > 0
+    ? Math.round(durations.reduce((sum, d) => sum + d, 0) / durations.length)
+    : 100_000
+
+  for (let round = 0; round <= maxRound; round++) {
+    if (map.has(round)) continue
+    let lowerRound = -1
+    for (const known of knownRounds) {
+      if (known < round) lowerRound = known
+      else break
+    }
+    if (lowerRound >= 0) {
+      map.set(round, map.get(lowerRound)! + (round - lowerRound) * avgRoundMs)
+      continue
+    }
+    const firstRound = knownRounds[0]!
+    map.set(round, Math.max(0, map.get(firstRound)! - (firstRound - round) * avgRoundMs))
+  }
+
   return map
 }
 
-function patchSpikeVideoOffsets(
-  timeline: MatchData,
-  recordingOffset: number,
-): void {
-  const patch = (ev: { gameTimeMs?: number; videoOffsetMs?: number }) => {
-    if (ev.gameTimeMs != null && !isNaN(ev.gameTimeMs)) {
-      ev.videoOffsetMs = Math.max(0, recordingOffset + ev.gameTimeMs)
-    }
-  }
-  for (const p of timeline.spikePlants ?? []) patch(p)
-  for (const d of timeline.spikeDefuses ?? []) patch(d)
-  for (const d of timeline.spikeDetonations ?? []) patch(d)
-}
 
 /** True when Riot refresh may add kills, plants, or plant coordinates. */
 export function timelineNeedsEnrichRefresh(timeline: MatchData): boolean {
@@ -1588,12 +1611,21 @@ function syncSpatialVideoOffsets(timeline: MatchData): void {
   }
 }
 
-/** Default VOD sync nudge — events sit ~8s late without this offset on typical recordings. */
+/** Default VOD sync nudge — Valorant events sit ~8s late without this on typical recordings. */
 export const DEFAULT_VIDEO_SYNC_OFFSET_MS = -8_000
+
+export function isValorantTimeline(timeline: Pick<MatchData, 'game'>): boolean {
+  return timeline.game === 'valorant'
+}
+
+/** Baseline sync nudge when the user has not adjusted offsets. */
+export function defaultVideoSyncOffsetMs(timeline: Pick<MatchData, 'game'>): number {
+  return isValorantTimeline(timeline) ? DEFAULT_VIDEO_SYNC_OFFSET_MS : 0
+}
 
 export function effectiveVideoSyncOffsetMs(timeline: MatchData): number {
   if (timeline.videoSyncOffsetMs != null) return timeline.videoSyncOffsetMs
-  return DEFAULT_VIDEO_SYNC_OFFSET_MS
+  return defaultVideoSyncOffsetMs(timeline)
 }
 
 /** Total ms from recording start to Riot game-clock zero, including manual nudge. */
@@ -1602,25 +1634,49 @@ export function totalRecordingOffsetMs(timeline: MatchData): number {
   return offset + effectiveVideoSyncOffsetMs(timeline)
 }
 
+function gameTimeToEventVideoOffsetMs(timeline: MatchData, gameTimeMs: number): number {
+  if (isValorantTimeline(timeline)) {
+    return Math.max(0, totalRecordingOffsetMs(timeline) + gameTimeMs)
+  }
+  const syncNudge = timeline.videoSyncOffsetMs ?? 0
+  return Math.max(0, gameTimeToVideoOffsetMs(gameTimeMs, timeline) + syncNudge)
+}
+
 /** Shift all event timestamps by deltaMs and persist on the timeline object. */
 export function nudgeTimelineSyncOffset(timeline: MatchData, deltaMs: number): void {
-  timeline.videoSyncOffsetMs = (timeline.videoSyncOffsetMs ?? 0) + deltaMs
+  timeline.videoSyncOffsetMs = effectiveVideoSyncOffsetMs(timeline) + deltaMs
   recomputeTimelineVideoOffsets(timeline)
 }
 
 /** Recompute kill/death videoOffsetMs (fixes stored timelines + VOD review sync). */
 export function recomputeTimelineVideoOffsets(timeline: MatchData): void {
-  const recordingOffset = totalRecordingOffsetMs(timeline)
-  const patch = (ev: KillEvent) => {
+  const patchKill = (ev: KillEvent) => {
     const tsgm = ev.timeSinceGameStartMillis
     if (tsgm != null && !isNaN(tsgm)) {
-      ev.videoOffsetMs = Math.max(0, recordingOffset + tsgm)
+      ev.videoOffsetMs = gameTimeToEventVideoOffsetMs(timeline, tsgm)
     }
   }
-  for (const k of timeline.killEvents ?? []) patch(k)
-  for (const k of timeline.playerKills ?? []) patch(k)
-  for (const k of timeline.playerDeaths ?? []) patch(k)
-  patchSpikeVideoOffsets(timeline, recordingOffset)
+  for (const k of timeline.killEvents ?? []) patchKill(k)
+  for (const k of timeline.playerKills ?? []) patchKill(k)
+  for (const k of timeline.playerDeaths ?? []) patchKill(k)
+
+  for (const fb of timeline.firstBloods ?? []) {
+    const tsgm = fb.timeSinceGameStartMillis
+      ?? (fb.EventTime > 0 ? Math.round(fb.EventTime * 1000) : null)
+    if (tsgm != null && !isNaN(tsgm)) {
+      fb.videoOffsetMs = gameTimeToEventVideoOffsetMs(timeline, tsgm)
+    }
+  }
+
+  const patchSpike = (ev: { gameTimeMs?: number; videoOffsetMs?: number }) => {
+    if (ev.gameTimeMs != null && !isNaN(ev.gameTimeMs)) {
+      ev.videoOffsetMs = gameTimeToEventVideoOffsetMs(timeline, ev.gameTimeMs)
+    }
+  }
+  for (const p of timeline.spikePlants ?? []) patchSpike(p)
+  for (const d of timeline.spikeDefuses ?? []) patchSpike(d)
+  for (const d of timeline.spikeDetonations ?? []) patchSpike(d)
+
   syncSpatialVideoOffsets(timeline)
 }
 

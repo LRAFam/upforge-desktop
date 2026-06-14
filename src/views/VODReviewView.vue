@@ -1575,7 +1575,9 @@ function isSpikeEvent(event: TimelineEvent): boolean {
   return event.type === 'plant' || event.type === 'defuse' || event.type === 'detonation'
 }
 
-const DEFAULT_SYNC_MS = -8000
+function defaultSyncMsForGame(game: string | undefined): number {
+  return game === 'valorant' ? -8000 : 0
+}
 
 /** Looks up the agent name for a player by puuid from the team snapshot. */
 function agentByPuuid(puuid: string | null | undefined): string | null {
@@ -2040,7 +2042,9 @@ const availableSpatialRounds = computed(() => {
 })
 
 const effectiveSyncMs = computed(
-  () => timeline.value?.videoSyncOffsetMs ?? videoSyncOffsetMs.value ?? DEFAULT_SYNC_MS,
+  () => timeline.value?.videoSyncOffsetMs
+    ?? videoSyncOffsetMs.value
+    ?? defaultSyncMsForGame(timeline.value?.game),
 )
 
 const syncOffsetLabel = computed(() => {
@@ -2420,7 +2424,8 @@ async function loadTimeline() {
     if (timelineId && pendingTimeline.value) {
       timeline.value = pendingTimeline.value
       pendingTimeline.value = null
-      videoSyncOffsetMs.value = timeline.value?.videoSyncOffsetMs ?? DEFAULT_SYNC_MS
+      videoSyncOffsetMs.value = timeline.value?.videoSyncOffsetMs
+        ?? defaultSyncMsForGame(timeline.value?.game)
     } else if (id) {
       recordingId.value = id
       timeline.value = await window.api.recordings.getTimeline(id)
@@ -2428,7 +2433,8 @@ async function loadTimeline() {
         timelineError.value = 'Recording timeline not found.'
         return
       }
-      videoSyncOffsetMs.value = timeline.value.videoSyncOffsetMs ?? DEFAULT_SYNC_MS
+      videoSyncOffsetMs.value = timeline.value.videoSyncOffsetMs
+        ?? defaultSyncMsForGame(timeline.value.game)
     } else if (timelineId && !Number.isNaN(numericTimelineId)) {
       const data = await window.api.analyses.getTimeline(numericTimelineId)
       if (!data) {
@@ -2436,7 +2442,8 @@ async function loadTimeline() {
         return
       }
       timeline.value = data
-      videoSyncOffsetMs.value = timeline.value.videoSyncOffsetMs ?? DEFAULT_SYNC_MS
+      videoSyncOffsetMs.value = timeline.value.videoSyncOffsetMs
+        ?? defaultSyncMsForGame(timeline.value.game)
     } else {
       timelineError.value = 'No match selected — open a match from the Dashboard.'
       return

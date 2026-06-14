@@ -37,7 +37,8 @@ import {
   RiotLocalApi,
   recomputeTimelineVideoOffsets,
   nudgeTimelineSyncOffset,
-  DEFAULT_VIDEO_SYNC_OFFSET_MS,
+  effectiveVideoSyncOffsetMs,
+  defaultVideoSyncOffsetMs,
 } from './riot-local-api'
 import { applySpatialEnrichment } from './spatial/enrich'
 import { refreshMatchPopulationBenchmarks } from './spatial/enrich-population'
@@ -2928,18 +2929,19 @@ async function startApp(): Promise<void> {
     recordingsStore.updateTimeline(id, recording.timeline)
     return {
       ok: true as const,
-      videoSyncOffsetMs: recording.timeline.videoSyncOffsetMs ?? 0,
+      videoSyncOffsetMs: effectiveVideoSyncOffsetMs(recording.timeline),
     }
   })
 
   ipcMain.handle('recordings:reset-sync', (_e, { id }: { id: string }) => {
     const recording = recordingsStore.getById(id)
     if (!recording?.timeline) return { ok: false as const }
-    recording.timeline.videoSyncOffsetMs = DEFAULT_VIDEO_SYNC_OFFSET_MS
+    const resetOffset = defaultVideoSyncOffsetMs(recording.timeline)
+    recording.timeline.videoSyncOffsetMs = resetOffset
     recomputeTimelineVideoOffsets(recording.timeline)
     enrichTimelineSpatial(recording.timeline)
     recordingsStore.updateTimeline(id, recording.timeline)
-    return { ok: true as const, videoSyncOffsetMs: DEFAULT_VIDEO_SYNC_OFFSET_MS }
+    return { ok: true as const, videoSyncOffsetMs: resetOffset }
   })
 
   ipcMain.handle('archives:refresh-playback', async (_e, { archiveId }: { archiveId: string }) => {
@@ -3009,7 +3011,7 @@ async function startApp(): Promise<void> {
       spikeDetonations: tl?.spikeDetonations ?? [],
       firstBloods: tl?.firstBloods ?? [],
       spatialSummary: tl?.spatialSummary ?? null,
-      videoSyncOffsetMs: tl?.videoSyncOffsetMs ?? 0,
+      videoSyncOffsetMs: tl ? effectiveVideoSyncOffsetMs(tl) : 0,
     }
   })
 

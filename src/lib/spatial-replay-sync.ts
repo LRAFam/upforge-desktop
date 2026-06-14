@@ -67,7 +67,7 @@ export function findSpatialEventNearPlayback(
   return findSpatialEventAtPlayback(events, currentTimeSec, syncOffsetMs)
 }
 
-/** Events that have occurred at or before current playback time. Events without timestamps stay visible. */
+/** Events that have occurred at or before current playback time. */
 export function filterEventsByPlayback(
   events: SpatialTimelineEvent[],
   currentTimeSec: number,
@@ -76,7 +76,7 @@ export function filterEventsByPlayback(
   const currentMs = currentTimeSec * 1000
   return events.filter((ev) => {
     const ms = adjustedSpatialVideoMs(ev, syncOffsetMs)
-    if (ms == null) return true
+    if (ms == null) return false
     return ms <= currentMs + 80
   })
 }
