@@ -57,6 +57,13 @@ import { AuthManager } from './auth-manager'
 import { SettingsManager } from './settings-manager'
 import { setupIpcHandlers, setupClipHandlers, cancelAllPollingTimers } from './ipc-handlers'
 import {
+  initFunnelEvents,
+  trackAppOpened,
+  trackLogin,
+  trackFirstRecording,
+  trackObsConnected,
+} from './funnel-events'
+import {
   formatRecordingFailure,
   formatCorruptRecordingMessage,
   type RecordingBackend,
@@ -186,8 +193,10 @@ function maybeNotifyObsDisconnect(error: string | null | undefined): void {
 
 function wireObsConnectionEvents(): void {
   obsRecorder.onConnectionChange = (connected, error) => {
+    const newlyConnected = connected && !obsWasConnected
     const lostConnection = obsWasConnected && !connected
     obsWasConnected = connected
+    if (newlyConnected) trackObsConnected()
     broadcastObsConnection(mainWindow, obsRecorder, error)
     updateTrayMenuFn?.()
     // Only notify when an established OBS session is lost — not on failed connect probes.
@@ -1716,6 +1725,7 @@ function setupGameDetection(): void {
       return
     }
     logActivity(`Recording started (${gameMode ?? 'unknown mode'}${obsRecorder.wasNoAudio() ? ' — no audio' : ''})`)
+    trackFirstRecording(game)
 
     // Poll overlay/session state — first INGAME tick sets gameplayStartTime for VOD sync.
     const pollOverlaySession = async () => {
@@ -2355,6 +2365,7 @@ async function startApp(): Promise<void> {
 
   uploadManager = new UploadManager(authManager)
   settingsManager = new SettingsManager()
+  initFunnelEvents(authManager, app.getVersion())
   trackedPrimaryGame = normalizePrimaryGame(settingsManager.get().primaryGame)
   recordingsStore = new RecordingsStore()
 
@@ -2377,6 +2388,7 @@ async function startApp(): Promise<void> {
   // We wait until the main window is ready before sending the result.
   if (authManager.isAuthenticated()) {
     syncUserSessionFromAuth()
+    trackAppOpened()
   }
   const orphanedJob = readActivePendingJob()
   if (orphanedJob) {
@@ -2485,6 +2497,8 @@ async function startApp(): Promise<void> {
   onSettingsSaved,
   () => {
     syncUserSessionFromAuth()
+    trackLogin()
+    trackAppOpened()
   },
   () => {
     clearUserSession(userSessionDeps())

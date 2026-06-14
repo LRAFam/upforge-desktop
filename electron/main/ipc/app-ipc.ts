@@ -17,6 +17,7 @@ import { buildRecorderConfig } from '../obs-output-settings'
 import { hasProAccess } from '../subscription'
 import { getActiveUserId } from '../user-session'
 import { resolveRecordingSavePath } from '../user-data-paths'
+import { trackOnboardingComplete } from '../funnel-events'
 
 export function setupAppHandlers(
   ipcMain: IpcMain,
@@ -103,13 +104,17 @@ export function setupAppHandlers(
       if (!w.isDestroyed()) w.webContents.send('settings:changed', result)
     })
     onSettingsSaved?.(result)
+    if (partial.onboardingComplete === true && !prev.onboardingComplete) {
+      trackOnboardingComplete()
+    }
     return {
       ...result,
       creatorPresetRequiresPro: wantsCreator && !allowCreator,
     }
   })
 
-  ipcMain.handle('settings:mark-first-run-done', () => {
+  ipcMain.handle('settings:mark-first-run-done', async () => {
+    trackOnboardingComplete()
     return settingsManager.save({ firstRun: false, onboardingComplete: true })
   })
 
