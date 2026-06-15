@@ -388,6 +388,64 @@
           </div>
         </div>
 
+        <!-- Coaching feedback -->
+        <div
+          v-if="result?.analysis_id && feedbackSubmitted"
+          class="flex items-center gap-2 rounded-xl border border-green-500/20 bg-green-500/[0.06] px-3 py-2"
+        >
+          <svg class="h-3.5 w-3.5 flex-shrink-0 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"/>
+          </svg>
+          <p class="text-xs text-green-300/90">Thanks — your feedback helps improve future coaching.</p>
+        </div>
+        <div
+          v-else-if="result?.analysis_id"
+          class="rounded-xl border border-white/[0.08] bg-white/[0.02] px-3 py-2.5 space-y-2"
+        >
+          <p class="text-[10px] font-semibold uppercase tracking-wider text-gray-500">Was this coaching helpful?</p>
+          <div class="flex gap-2">
+            <button
+              type="button"
+              class="flex-1 rounded-lg border px-3 py-2 text-xs font-semibold transition-colors disabled:opacity-50"
+              :class="feedbackRating === 'thumbs_up'
+                ? 'border-green-500/40 bg-green-500/15 text-green-200'
+                : 'border-white/[0.08] bg-white/[0.03] text-gray-300 hover:border-white/[0.14] hover:text-white'"
+              :disabled="feedbackSubmitting"
+              @click="submitAnalysisFeedback('thumbs_up')"
+            >
+              {{ feedbackSubmitting && feedbackRating === 'thumbs_up' ? 'Sending…' : 'Yes, helpful' }}
+            </button>
+            <button
+              type="button"
+              class="flex-1 rounded-lg border px-3 py-2 text-xs font-semibold transition-colors disabled:opacity-50"
+              :class="feedbackRating === 'thumbs_down'
+                ? 'border-amber-500/40 bg-amber-500/15 text-amber-200'
+                : 'border-white/[0.08] bg-white/[0.03] text-gray-300 hover:border-white/[0.14] hover:text-white'"
+              :disabled="feedbackSubmitting"
+              @click="feedbackRating = 'thumbs_down'"
+            >
+              Not quite
+            </button>
+          </div>
+          <div v-if="feedbackRating === 'thumbs_down'" class="space-y-2">
+            <textarea
+              v-model="feedbackText"
+              rows="2"
+              maxlength="500"
+              placeholder="Anything we missed? (optional)"
+              class="w-full resize-none rounded-lg border border-white/[0.08] bg-black/30 px-2.5 py-2 text-xs text-gray-300 placeholder:text-gray-600 focus:border-white/[0.14] focus:outline-none"
+            />
+            <button
+              type="button"
+              class="w-full rounded-lg border border-white/[0.10] bg-white/[0.04] py-2 text-xs font-semibold text-gray-200 transition-colors hover:bg-white/[0.08] disabled:opacity-50"
+              :disabled="feedbackSubmitting"
+              @click="submitAnalysisFeedback('thumbs_down')"
+            >
+              {{ feedbackSubmitting ? 'Sending…' : 'Send feedback' }}
+            </button>
+          </div>
+        </div>
+
         <div class="space-y-2 pt-1">
           <div class="flex gap-2">
             <button
@@ -395,7 +453,7 @@
               :style="{ background: `linear-gradient(135deg, ${agentAccentColor || '#dc2626'}, ${agentAccentColor ? agentAccentColor + 'cc' : '#ea580c'})`, boxShadow: `0 4px 14px ${agentAccentColor || '#dc2626'}40` }"
               @click="viewFullAnalysis"
             >
-              <span>View Full Analysis</span>
+              <span>Open full report</span>
               <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.5 4.5L21 12m0 0l-7.5 7.5M21 12H3"/>
               </svg>
@@ -798,6 +856,10 @@ const tipIndex = ref(Math.floor(Math.random() * COACHING_TIPS.length))
 const sessionClipCount = ref(0)
 const analysisStartedAt = ref(0)
 const analysisElapsedSecs = ref(0)
+const feedbackRating = ref<'thumbs_up' | 'thumbs_down' | null>(null)
+const feedbackText = ref('')
+const feedbackSubmitting = ref(false)
+const feedbackSubmitted = ref(false)
 let sessionStart = 0
 let stuckTimer: ReturnType<typeof setTimeout> | null = null
 let tipTimer: ReturnType<typeof setInterval> | null = null
@@ -1416,6 +1478,25 @@ function viewFullAnalysis() {
     window.open(analysisUrl.value, '_blank')
   }
   dismiss()
+}
+
+async function submitAnalysisFeedback(rating: 'thumbs_up' | 'thumbs_down') {
+  const analysisId = result.value?.analysis_id
+  if (!analysisId || feedbackSubmitting.value || feedbackSubmitted.value) return
+  feedbackRating.value = rating
+  feedbackSubmitting.value = true
+  try {
+    const res = await window.api.analyses.submitFeedback({
+      analysisId,
+      rating,
+      feedbackText: rating === 'thumbs_down' ? feedbackText.value.trim() : undefined,
+    })
+    if (res.ok) {
+      feedbackSubmitted.value = true
+    }
+  } finally {
+    feedbackSubmitting.value = false
+  }
 }
 
 function dismiss() { window.close() }

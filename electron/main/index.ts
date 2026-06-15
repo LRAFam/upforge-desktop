@@ -2005,6 +2005,7 @@ async function doUploadArchiveOnly(
       map,
       agent,
       timeline,
+      trainingConsent: settingsManager?.get().trainingConsent === true,
       onProgress: (pct) => send('post-game:upload-progress', pct),
     })
 

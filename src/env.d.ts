@@ -99,6 +99,8 @@ export interface AppSettings {
   inGameFeedback: 'notifications' | 'overlay' | 'all'
   /** Auto-open the results page in the browser when analysis completes */
   autoOpenBrowser: boolean
+  /** Opt-in: anonymised use of cloud-archived VODs for model training (separate from storage). */
+  trainingConsent: boolean
   /** Last detected hardware encoder — cached to skip detection on next launch */
   cachedEncoder: string | null
   /** Whether ddagrab was available last launch */
@@ -406,6 +408,11 @@ declare global {
         getTimeline: (id: number) => Promise<RecordingTimeline | null>
         refreshPlayback: (id: number) => Promise<string | null>
         getDetail: (id: number) => Promise<{ verdict: string | null; top_issue: string | null; priority_improvements: string[]; coaching_tags: string[]; ally_score: number | null; enemy_score: number | null } | null>
+        submitFeedback: (opts: {
+          analysisId: number
+          rating: 'thumbs_up' | 'thumbs_down'
+          feedbackText?: string
+        }) => Promise<{ ok: boolean; error?: string }>
       }
       archives: {
         refreshPlayback: (archiveId: string) => Promise<string | null>

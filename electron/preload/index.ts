@@ -25,6 +25,11 @@ const api = {
     getTimeline: (id: number) => ipcRenderer.invoke('analyses:get-timeline', { id }),
     refreshPlayback: (id: number) => ipcRenderer.invoke('analyses:refresh-playback', { id }),
     getDetail: (id: number) => ipcRenderer.invoke('analyses:get-detail', { id }),
+    submitFeedback: (opts: {
+      analysisId: number
+      rating: 'thumbs_up' | 'thumbs_down'
+      feedbackText?: string
+    }) => ipcRenderer.invoke('analyses:submit-feedback', opts),
   },
   archives: {
     refreshPlayback: (archiveId: string) =>

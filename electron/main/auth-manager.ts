@@ -296,6 +296,21 @@ export class AuthManager {
     }
   }
 
+  async submitAnalysisFeedback(
+    analysisId: number,
+    payload: { rating: 'thumbs_up' | 'thumbs_down'; feedback_text?: string },
+  ): Promise<{ ok: boolean; error?: string }> {
+    try {
+      await this._api.post(`/api/analysis/${analysisId}/feedback`, payload)
+      return { ok: true }
+    } catch (err: unknown) {
+      const msg = (err as { response?: { data?: { message?: string; error?: string } } })?.response?.data?.message
+        ?? (err as { response?: { data?: { error?: string } } })?.response?.data?.error
+        ?? (err instanceof Error ? err.message : 'Failed to submit feedback')
+      return { ok: false, error: msg }
+    }
+  }
+
   async fetchAnalyses(limit = 10): Promise<AnalysisItem[]> {
     try {
       await this._api.post('/api/analysis/reconcile').catch(() => {})

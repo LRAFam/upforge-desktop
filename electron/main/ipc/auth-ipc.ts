@@ -102,6 +102,22 @@ export function setupAuthHandlers(
     return auth.fetchAnalyses(limit ?? 10)
   })
 
+  ipcMain.handle('analyses:submit-feedback', async (_e, {
+    analysisId,
+    rating,
+    feedbackText,
+  }: {
+    analysisId: number
+    rating: 'thumbs_up' | 'thumbs_down'
+    feedbackText?: string
+  }) => {
+    if (!auth.getToken()) return { ok: false, error: 'Not logged in' }
+    return auth.submitAnalysisFeedback(analysisId, {
+      rating,
+      feedback_text: feedbackText?.trim() || undefined,
+    })
+  })
+
   ipcMain.handle('analyses:get-detail', async (_e, { id }: { id: number }) => {
     try {
       const res = await auth.getApi().get(`/api/analysis/${id}`)

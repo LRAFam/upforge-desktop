@@ -169,6 +169,19 @@
                 <span v-if="user.archive_retention_days"> Retained {{ user.archive_retention_days }} days on your plan.</span>
               </p>
             </div>
+            <div class="flex items-center justify-between gap-4 rounded-2xl border border-white/[0.10] bg-black/20 p-4">
+              <div>
+                <p class="text-sm text-gray-200">Help improve UpForge AI</p>
+                <p class="mt-1 text-xs text-gray-500">Allow anonymised use of cloud-archived VODs for model training. Separate from saving to cloud — off by default.</p>
+              </div>
+              <button
+                class="relative inline-flex h-5 w-9 flex-shrink-0 items-center rounded-full transition-colors"
+                :class="settings.trainingConsent ? 'bg-red-500' : 'bg-white/20'"
+                @click="toggleTrainingConsent"
+              >
+                <span class="inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform" :class="settings.trainingConsent ? 'translate-x-4' : 'translate-x-0.5'" />
+              </button>
+            </div>
             <div class="rounded-2xl border border-white/[0.10] bg-black/20 p-4">
               <div class="flex items-center justify-between text-[11px] text-gray-500">
                 <span>Current plan</span>
@@ -1198,7 +1211,8 @@ const settings = reactive<AppSettings>({
     movementSpeed: 6.75,
     trainerVolume: 80,
   },
-  autoOpenBrowser: true,
+  autoOpenBrowser: false,
+  trainingConsent: false,
   crosshairSettings: {
     colorIndex: 1,
     customColor: '00FF6B',
@@ -1233,7 +1247,7 @@ const toggles: Array<{ key: keyof Pick<AppSettings, 'launchOnStartup' | 'autoDel
   { key: 'launchOnStartup', label: 'Launch on startup', hint: null },
   { key: 'autoDelete', label: 'Auto-delete after upload', hint: 'Removes the local MP4 once uploaded — review from cloud anytime' },
   { key: 'autoAnalyse', label: 'Auto-analyse after game', hint: 'Upload and run AI coaching automatically when a match ends (uses analysis quota)' },
-  { key: 'autoOpenBrowser', label: 'Open results in browser', hint: 'Automatically open your results page when analysis completes' },
+  { key: 'autoOpenBrowser', label: 'Open results in browser', hint: 'Opens the full web report when analysis completes — review in-app first with this off' },
   { key: 'notificationSound', label: 'Notification sound', hint: 'Play a sound with system notifications' },
   { key: 'discordRichPresence', label: 'Show status in Discord', hint: 'Friends see when you\'re recording or reviewing coaching — requires Discord desktop and Activity Status enabled' },
 ]
@@ -1418,6 +1432,12 @@ function debouncedSave(): void {
     await refreshRecordingBackendStatus()
     showSaved()
   }, 500)
+}
+
+async function toggleTrainingConsent(): Promise<void> {
+  settings.trainingConsent = !settings.trainingConsent
+  await window.api.settings.save({ trainingConsent: settings.trainingConsent })
+  showSaved()
 }
 
 function toggleKey(key: keyof Pick<AppSettings, 'launchOnStartup' | 'autoDelete' | 'autoAnalyse' | 'notificationSound' | 'autoOpenBrowser' | 'discordRichPresence'>): void {

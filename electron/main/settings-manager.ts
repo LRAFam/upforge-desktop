@@ -99,6 +99,11 @@ export interface AppSettings {
   }
   /** Auto-open the results page in the browser when analysis completes */
   autoOpenBrowser: boolean
+  /**
+   * When true, cloud-archived VODs may be used for anonymised model training (separate from storage).
+   * Does not affect analysis quota.
+   */
+  trainingConsent: boolean
 }
 
 export type InGameFeedbackMode = AppSettings['inGameFeedback']
@@ -177,7 +182,8 @@ const DEFAULTS: AppSettings = {
     outerOpacity: 1.0,
     shadowShow: true,
   },
-  autoOpenBrowser: true,
+  autoOpenBrowser: false,
+  trainingConsent: false,
 }
 
 export class SettingsManager {

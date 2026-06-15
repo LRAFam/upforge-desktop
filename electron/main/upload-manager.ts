@@ -19,6 +19,8 @@ export interface UploadOptions {
   onProgress: (pct: number) => void
   /** Awaited after S3 upload, before complete() — e.g. wait for Riot enrich. */
   beforeComplete?: () => Promise<void>
+  /** Opt-in for anonymised training use of archived VODs (storage is separate). */
+  trainingConsent?: boolean
 }
 
 export interface UploadResult {
@@ -253,6 +255,7 @@ export class UploadManager {
         game_mode:       completeCtx.game_mode ?? gameModeForApi(opts.timeline?.gameMode) ?? undefined,
         match_data:      completeCtx.match_data ?? prepareMatchDataForUpload(opts.timeline ?? null),
         file_size_bytes: totalBytes,
+        training_consent: opts.trainingConsent === true,
       }),
       token,
     )
