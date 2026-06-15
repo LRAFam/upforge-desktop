@@ -170,7 +170,7 @@ Optional: agent × map slices **only** if sample size ≥ N per cell.
 **Phase 2 — Scale (~200–500 URLs)**
 
 - Add agent, map, role modifiers where sample size allows
-- Spanish equivalents under `/es/valorant/estadisticas/...` (native copy, separate sitemap — see i18n backlog)
+- [x] Spanish equivalents under `/es/valorant/estadisticas/...` (native copy, separate sitemap — see i18n backlog)
 - Internal links: hub page → metric → rank → related metrics
 
 **Phase 3 — “Thousands”**
