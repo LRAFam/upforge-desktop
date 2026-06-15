@@ -142,6 +142,42 @@ export class ClipExtractor {
     }
   }
 
+  /** Concatenate multiple H.264 MP4 segments into one recap file. */
+  async concat(segmentPaths: string[], outputPath: string): Promise<void> {
+    if (segmentPaths.length === 0) {
+      throw new Error('No segments to concat')
+    }
+    mkdirSync(dirname(outputPath), { recursive: true })
+
+    if (segmentPaths.length === 1) {
+      fs.copyFileSync(segmentPaths[0], outputPath)
+      return
+    }
+
+    const listPath = outputPath.replace(/\.mp4$/i, '_concat_list.txt')
+    const listBody = segmentPaths
+      .map((p) => `file '${p.replace(/'/g, "'\\''")}'`)
+      .join('\n')
+    fs.writeFileSync(listPath, listBody, 'utf8')
+
+    try {
+      await this._run([
+        '-y',
+        '-f', 'concat',
+        '-safe', '0',
+        '-i', listPath,
+        '-c', 'copy',
+        '-movflags', '+faststart',
+        outputPath,
+      ], 180_000)
+    } catch (err) {
+      try { if (fs.existsSync(outputPath)) fs.unlinkSync(outputPath) } catch { /* ignore */ }
+      throw err
+    } finally {
+      try { fs.unlinkSync(listPath) } catch { /* ignore */ }
+    }
+  }
+
   private _run(args: string[], timeoutMs = 60_000): Promise<void> {
     return new Promise((resolve, reject) => {
       const bin = ffmpegPath()

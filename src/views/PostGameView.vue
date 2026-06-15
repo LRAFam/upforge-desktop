@@ -263,6 +263,36 @@
           @copy-map="copySpatialMapImage"
         />
 
+        <MatchRecapPanel
+          :priority-improvements="improvements"
+          :top-issue="topIssue"
+          :coaching-tags="result?.coaching_tags"
+          :overall-score="result?.overall_score ?? null"
+          :spatial-summary="spatialSummary"
+          :session-clips="sessionClips"
+          :api-highlights="result?.match_highlights ?? null"
+          :recording-id="vodRecordingId"
+          @seek="seekRecapMoment"
+          @open-clip="openRecapClip"
+        />
+
+        <TimingComparisonPanel
+          v-if="timingComparisons.length"
+          :comparisons="timingComparisons"
+          @seek="seekRecapMoment"
+        />
+
+        <SkillProfileBars
+          v-if="result?.skill_profile"
+          :profile="result.skill_profile"
+          :compact="true"
+        />
+
+        <CoachMemoryCard
+          v-if="result?.skill_profile"
+          :profile="result.skill_profile"
+        />
+
         <div v-if="vodRecordingId" class="space-y-2">
           <div class="flex gap-2">
             <button
@@ -778,7 +808,15 @@ import { getAgentImage, getAgentColor, getMapImage, getMapMinimap } from '../lib
 import { analysisResultsUrl, isPrimaryGame, normalizePrimaryGame, recordingGameLabel, type PrimaryGame } from '../lib/games'
 import PostGameIntelHero from '../components/PostGameIntelHero.vue'
 import GamingButton from '../components/GamingButton.vue'
+import MatchRecapPanel from '../components/MatchRecapPanel.vue'
+import TimingComparisonPanel from '../components/TimingComparisonPanel.vue'
+import type { TimingComparison } from '../components/TimingComparisonPanel.vue'
+import SkillProfileBars from '../components/SkillProfileBars.vue'
+import CoachMemoryCard from '../components/CoachMemoryCard.vue'
 import type { MatchSpatialSummary } from '../lib/spatial-types'
+import type { SkillProfileSnapshot } from '../lib/skill-profile'
+import type { MatchHighlight } from '../lib/match-highlights'
+import type { ClipRecord } from '../env.d.ts'
 import { canSpatialVodSeek } from '../lib/tier-features'
 import type { CategoryScoreItem } from '../components/PostGameIntelHero.vue'
 
@@ -816,7 +854,17 @@ const result = ref<{
   priority_improvements?: string[]
   spatial_summary?: MatchSpatialSummary | null
   category_scores?: CategoryScoreItem[]
+  match_highlights?: MatchHighlight[] | null
+  skill_profile?: SkillProfileSnapshot | null
+  timing_comparisons?: TimingComparison[]
 } | null>(null)
+const sessionClips = ref<ClipRecord[]>([])
+
+const timingComparisons = computed((): TimingComparison[] => {
+  const raw = result.value?.timing_comparisons
+  if (!Array.isArray(raw)) return []
+  return raw.filter((x) => x && typeof x.label === 'string')
+})
 const intelHeroRef = ref<InstanceType<typeof PostGameIntelHero> | null>(null)
 const activeSpatialIndex = ref<number | null>(null)
 const showFullDetails = ref(false)
@@ -1301,6 +1349,9 @@ onMounted(() => {
     // Browser launch is handled by the main process (index.ts) so it fires
     // even if this window was closed before analysis completed.
   }))
+  ipcCleanup.push(window.api.on('clips:new', () => {
+    if (state.value === 'ready') void loadSessionClips()
+  }))
   ipcCleanup.push(window.api.on('spatial:population-updated', (...args: unknown[]) => {
     const summary = args[0] as MatchSpatialSummary
     if (summary?.events?.length) localSpatialSummary.value = summary
@@ -1456,10 +1507,24 @@ function retryUpload() {
 async function loadSessionClips() {
   try {
     const clips = await window.api.clips.get()
-    sessionClipCount.value = clips.filter((c) => c.savedAt >= sessionStart).length
+    const session = clips.filter((c) => c.savedAt >= sessionStart)
+    sessionClips.value = session
+    sessionClipCount.value = session.length
   } catch {
+    sessionClips.value = []
     sessionClipCount.value = 0
   }
+}
+
+async function seekRecapMoment(seekMs: number) {
+  const id = vodRecordingId.value
+  if (!id) return
+  await window.api.app.openVodReview(id, seekMs)
+  dismiss()
+}
+
+async function openRecapClip(clipId: string) {
+  await window.api.clips.revealFile(clipId).catch(() => {})
 }
 
 async function openClips() {

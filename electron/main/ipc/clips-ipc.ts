@@ -13,13 +13,16 @@ import { ClipExtractor } from '../clip-extractor'
 import { HotkeyManager } from '../hotkey-manager'
 import { UpgradeRequiredError } from '../errors'
 import { _clipInFlight, apiPost, pollClipAnalysis } from './api-helpers'
+import type { RecordingsStore } from '../recordings-store'
+import { exportMatchRecap } from '../recap-export'
 
 export function setupClipHandlers(
   ipcMain: IpcMain,
   clipStore: ClipStore,
   clipExtractor: ClipExtractor,
   auth: AuthManager,
-  hotkeyManager: HotkeyManager
+  hotkeyManager: HotkeyManager,
+  recordingsStore?: RecordingsStore,
 ): void {
   const apiBase = process.env['VITE_API_URL'] || 'https://api.upforge.gg'
 
@@ -260,5 +263,21 @@ export function setupClipHandlers(
     } finally {
       _clipInFlight.delete(id)
     }
+  })
+
+  ipcMain.handle('recap:export-stitched', async (_e, payload: {
+    recordingId: string
+    highlights: Array<{ id: string; clipId?: string | null; videoOffsetMs?: number | null; rank?: number }>
+    maxMoments?: number
+  }) => {
+    if (!recordingsStore) {
+      return { ok: false, error: 'Recordings store unavailable' }
+    }
+    return exportMatchRecap(
+      { clipStore, clipExtractor, recordingsStore },
+      payload.recordingId,
+      payload.highlights ?? [],
+      payload.maxMoments ?? 5,
+    )
   })
 }

@@ -88,3 +88,124 @@ Users choose **cloud only**, **analyse only**, or **both** — separate storage 
 **Issue:** Startup orphan scan re-imported raw OBS files when a `_upforge` compressed sibling already existed on disk / dashboard.
 
 **Fix:** Sibling-aware known paths, prefer compressed file for import, dedupe `recordings.json` on load, update store path after compression.
+
+---
+
+## Daily improvement loop — progress platform (not “AI VOD reviewer”)
+
+**Status:** Desktop v1 shipped (v2.5.61+) · API/web follow-ups below  
+**Positioning:** Rank improvement + habit. AI is infrastructure, not the product.
+
+### Shipped (desktop)
+
+- [x] **Match recap** — `MatchRecapPanel` curates best plays, mistakes, clutches from session clips + spatial deaths + coaching output (`src/lib/match-highlights.ts`, post-game)
+- [x] **Skill RPG bars** — six dimensions with EMA smoothing after each analysis (`src/lib/skill-profile.ts`, dashboard + post-game)
+- [x] **Coach memory (structured)** — games analysed, issue trend copy, next focus (`CoachMemoryCard.vue`) — not conversational chat history
+- [x] **API-forwarding** — desktop parses `match_highlights` from poll result when backend adds it; local curation is fallback
+- [x] **Skill profile persistence** — `skillProfile` / `skillProfilePrevious` in desktop settings, updated on analysis complete
+
+### Next — high leverage
+
+- [x] **Backend `match_highlights`** — `MatchHighlightsService` in poll result + `GET /api/analysis/{id}`
+- [x] **Stitched recap export** — `recap:export-stitched` IPC, ffmpeg concat top 5 moments
+- [ ] **Weekly improvement plan** — one goal, one drill, one metric; derived from skill profile + playstyle API
+- [ ] **Session reviews** — aggregate last 5–10 games (grade, trends, “fix this week”) — web dashboard first
+- [ ] **Percentiles in product UI** — `GET /api/analysis/{id}/percentiles` already exists; surface on results + post-game card export
+- [x] **Population benchmarks / timing comparison** — `TimingComparisonService` + `TimingComparisonPanel` (plant pace vs rank avg)
+
+### Later
+
+- [ ] **Pro / named player timing comparison** — extend cohort timing with pro VOD corpus
+- [x] **Public improvement profiles** — `/u/[slug]`, opt-in via profile privacy settings
+- [x] **Skill leaderboards** — `/leaderboard?tab=skills`, opt-in filter on API
+
+### Repos
+
+| Layer | Repo |
+|-------|------|
+| Recap UI, skill EMA, coach memory | `upforge-desktop` |
+| `match_highlights` generation, percentiles, playstyle | `upforge-api` |
+| Public profiles, SEO stat pages, share cards | `upforge-frontend` |
+
+---
+
+## SEO — statistics authority (programmatic pages)
+
+**Status:** Phase 0 shipped (hub + ~40 URLs when data allows) · **Do not** scale to thousands before GSC validation  
+**Complements:** Spanish locale backlog (isolated `/es/` pages, not translated duplicates)
+
+### Does “thousands of stat pages” make sense?
+
+**Yes as a strategy, no as a day-one sprint.**
+
+Players search high-intent queries (“Diamond average headshot %”, “good ACS by rank”, “KAST benchmark”). Those pages compound in Google and match UpForge’s benchmark story (percentiles API, playstyle profile, spatial population data). Competitors in adjacent categories (trackers, stat sites) win largely on programmatic SEO.
+
+**Risk:** Thin programmatic pages (same template, no unique data, duplicate titles) hurt more than they help. Google expects **useful, distinct** answers per URL.
+
+### Phased approach (recommended)
+
+**Phase 0 — Validate (2–4 weeks)**
+
+- [x] Pick **10–15** queries with clear intent (headshot %, ACS, K/D, win rate × tiers)
+- [x] Ship **one** Nuxt template: `/valorant/stats` hub + `/valorant/stats/[slug]` (metric, tier, rank)
+- [x] Data source: aggregated `valorant_stats_snapshots` by rank (`GET /api/public/valorant/rank-benchmarks`)
+- [x] Every page: metric definition, rank table, “how to improve”, CTA → `/valorant/analyze` or `/desktop`
+- [ ] Measure: impressions, CTR, signup attribution — **before** scaling
+
+**Phase 1 — Core grid (~30–80 URLs, not thousands)**
+
+Metrics × ranks (only where data is defensible):
+
+| Metric | Example slug |
+|--------|----------------|
+| Headshot % | `/valorant/stats/headshot-percentage` + `/by-rank/diamond` |
+| ACS / combat score | `/valorant/stats/average-combat-score` |
+| K/D | `/valorant/stats/kd-ratio` |
+| KAST | `/valorant/stats/kast` |
+| First deaths / first bloods | `/valorant/stats/first-deaths` |
+| Category scores (from AI) | `/valorant/stats/trading-score` |
+
+Optional: agent × map slices **only** if sample size ≥ N per cell.
+
+**Phase 2 — Scale (~200–500 URLs)**
+
+- Add agent, map, role modifiers where sample size allows
+- Spanish equivalents under `/es/valorant/estadisticas/...` (native copy, separate sitemap — see i18n backlog)
+- Internal links: hub page → metric → rank → related metrics
+
+**Phase 3 — “Thousands”**
+
+Only after Phase 1–2 pages rank and convert. Expand to long-tail: “Jett Ascent average ACS”, patch-era comparisons, etc. Recompute aggregates on a schedule; show `last updated` date for trust.
+
+### API / frontend work
+
+- [x] `GET /api/public/valorant/rank-benchmarks` — tier/rank breakdowns, sample size, updated_at (no auth)
+- [x] Nuxt dynamic route + `useSeoMeta` + JSON-LD FAQ + breadcrumbs
+- [x] Add URLs to `server/routes/sitemap.xml.ts` (and `sitemap-es.xml` when ES ships)
+- [ ] “Compare yours” widget — logged-in users see their stat vs page benchmark (bridges SEO → product)
+
+### Success metrics (90-day)
+
+- Organic impressions on `/valorant/stats/*` in GSC
+- Click-through to analyze / desktop install
+- **Not** raw page count
+
+### Explicitly avoid
+
+- Machine-generating thousands of pages before corpus size supports them
+- Copying tracker sites without unique UpForge angle (AI coaching category scores, improvement CTA)
+- Mixed-language URLs or hreflang mistakes (see i18n section)
+
+---
+
+## AI model prep — Phase 1 checkbox sync
+
+Per [UPLOAD-VS-ANALYSIS.md](./UPLOAD-VS-ANALYSIS.md) and desktop v2.5.43+:
+
+- [x] Decoupled upload vs analyse (desktop + archive API)
+- [x] Analysis feedback UI (post-game thumbs up/down → API)
+- [ ] Cloud archive retention tiers enforced end-to-end
+- [ ] Training opt-in toggle + `training_consent_at` on API user
+- [ ] Richer upload metadata on every cloud object
+
+Full model roadmap: [AI-MODEL-STRATEGY.md](./AI-MODEL-STRATEGY.md).

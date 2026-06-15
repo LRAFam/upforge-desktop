@@ -153,6 +153,10 @@ export interface AppSettings {
     outerOpacity: number
     shadowShow: boolean
   }
+  /** Rolling RPG-style skill scores (desktop, updated after each analysis) */
+  skillProfile?: import('./lib/skill-profile').SkillProfileSnapshot | null
+  skillProfilePrevious?: import('./lib/skill-profile').SkillProfileSnapshot | null
+  lastInsight?: { text: string; score: number; agent: string | null; analysisId: number | null; date: string } | null
 }
 
 export interface PendingRecording {
@@ -559,6 +563,13 @@ declare global {
         publish: (id: string, caption?: string) => Promise<{ ok: boolean; error?: string }>
         saveBookmark: () => Promise<{ ok: boolean; bookmarkCount?: number; reason?: string }>
         trim: (id: string, startSec: number, endSec: number) => Promise<{ ok: boolean; error?: string }>
+      }
+      recap: {
+        exportStitched: (opts: {
+          recordingId: string
+          highlights: Array<{ id: string; clipId?: string | null; videoOffsetMs?: number | null; rank?: number }>
+          maxMoments?: number
+        }) => Promise<{ ok: boolean; path?: string; error?: string }>
       }
       squad: {
         getTeam: () => Promise<{

@@ -104,6 +104,13 @@ const api = {
     saveBookmark: () => ipcRenderer.invoke('clips:save-bookmark'),
     trim: (id: string, startSec: number, endSec: number) => ipcRenderer.invoke('clips:trim', { id, startSec, endSec }),
   },
+  recap: {
+    exportStitched: (opts: {
+      recordingId: string
+      highlights: Array<{ id: string; clipId?: string | null; videoOffsetMs?: number | null; rank?: number }>
+      maxMoments?: number
+    }) => ipcRenderer.invoke('recap:export-stitched', opts),
+  },
   squad: {
     getTeam: () => ipcRenderer.invoke('squad:get-team'),
     sendPresence: (recording: boolean, game: string | null) => ipcRenderer.invoke('squad:send-presence', { recording, game }),

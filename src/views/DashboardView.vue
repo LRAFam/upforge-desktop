@@ -979,6 +979,25 @@
 
         <div v-if="isValorant && playstyleProfile && playstyleProfile.matches_tracked > 0" class="h-px bg-gradient-to-r from-transparent via-white/[0.08] to-transparent my-1" />
 
+        <SkillProfileBars
+          v-if="isValorant && skillProfile"
+          :profile="skillProfile"
+          :previous="skillProfilePrevious"
+          :rank-name="playerRankName"
+        />
+
+        <CoachMemoryCard
+          v-if="isValorant && skillProfile"
+          :profile="skillProfile"
+          :focus-areas="playstyleProfile?.focus_areas"
+          class="mt-0"
+        />
+
+        <div
+          v-if="isValorant && skillProfile"
+          class="h-px bg-gradient-to-r from-transparent via-white/[0.08] to-transparent my-1"
+        />
+
         <!-- CS2 / Deadlock onboarding goals -->
         <div
           v-if="(isCs2 || isDeadlock) && (onboardingTargetRank || onboardingWeaknesses.length)"
@@ -1108,6 +1127,9 @@ import DeadlockDemoPanel from '../components/DeadlockDemoPanel.vue'
 import DeadlockStatsPanel from '../components/DeadlockStatsPanel.vue'
 import CS2StatsPanel from '../components/CS2StatsPanel.vue'
 import CS2SetupPanel from '../components/CS2SetupPanel.vue'
+import SkillProfileBars from '../components/SkillProfileBars.vue'
+import CoachMemoryCard from '../components/CoachMemoryCard.vue'
+import type { SkillProfileSnapshot } from '../lib/skill-profile'
 import { usePrimaryGame } from '../composables/usePrimaryGame'
 import { primaryGameWebBase } from '../lib/games'
 import { getCs2RankIconUrl, getFaceitLevelIconUrl, type Cs2FaceitConnection } from '../lib/cs2'
@@ -1317,6 +1339,8 @@ const playstyleProfile = ref<{
   focus_areas: Array<{ id: string; category: string; text: string; severity: 'low' | 'medium' | 'high' }>
   agent_pool: Record<string, number>
 } | null>(null)
+const skillProfile = ref<SkillProfileSnapshot | null>(null)
+const skillProfilePrevious = ref<SkillProfileSnapshot | null>(null)
 
 const playstyleTopAgents = computed(() => {
   const pool = playstyleProfile.value?.agent_pool ?? {}
@@ -1325,6 +1349,17 @@ const playstyleTopAgents = computed(() => {
     .slice(0, 3)
     .map(([name, count]) => ({ name, count }))
 })
+
+const playerRankName = computed(() => profile.value?.latest_stats?.current_rank ?? null)
+
+async function loadSkillProfileFromSettings() {
+  const saved = await window.api.settings.get().catch(() => null) as {
+    skillProfile?: SkillProfileSnapshot | null
+    skillProfilePrevious?: SkillProfileSnapshot | null
+  } | null
+  skillProfile.value = saved?.skillProfile ?? null
+  skillProfilePrevious.value = saved?.skillProfilePrevious ?? null
+}
 
 // Emotional highlights — shown above the match list to give the user a sense of momentum
 const emotionalHighlights = computed(() => {
@@ -1661,8 +1696,15 @@ onMounted(async () => {
   }
 
   // Load last insight from persisted settings
-  const savedSettings = await window.api.settings.get().catch(() => null) as ({ lastInsight?: typeof lastInsight.value; trainerMouse?: { game?: string } } | null)
+  const savedSettings = await window.api.settings.get().catch(() => null) as ({
+    lastInsight?: typeof lastInsight.value
+    trainerMouse?: { game?: string }
+    skillProfile?: SkillProfileSnapshot | null
+    skillProfilePrevious?: SkillProfileSnapshot | null
+  } | null)
   if (savedSettings?.lastInsight) lastInsight.value = savedSettings.lastInsight
+  skillProfile.value = savedSettings?.skillProfile ?? null
+  skillProfilePrevious.value = savedSettings?.skillProfilePrevious ?? null
   void maybeShowDiskMigrationHint()
 
   // Achievement: first-analysis
@@ -1700,7 +1742,10 @@ onMounted(async () => {
     const s = args[0] as { primaryGame?: string; trainerMouse?: { game?: string } } | undefined
     if (s) applyFromSettings(s)
   }))
-  ipcCleanup.push(window.api.on('dashboard:refresh', refreshProfile))
+  ipcCleanup.push(window.api.on('dashboard:refresh', async () => {
+    await refreshProfile()
+    await loadSkillProfileFromSettings()
+  }))
   ipcCleanup.push(window.api.on('dashboard:last-insight', (...args: unknown[]) => {
     lastInsight.value = args[0] as typeof lastInsight.value
   }))

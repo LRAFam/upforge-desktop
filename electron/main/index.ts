@@ -70,6 +70,8 @@ import {
 } from './capture-backend'
 import { reportRecordingError } from './recording-errors'
 import { UpgradeRequiredError } from './errors'
+import { mergeSkillProfileFromAnalysis } from '../../src/lib/skill-profile'
+import { parseMatchHighlightsFromApi } from '../../src/lib/match-highlights'
 import { RecordingsStore } from './recordings-store'
 import { ClipExtractor } from './clip-extractor'
 import { ClipStore } from './clip-store'
@@ -2222,6 +2224,27 @@ async function doUploadAndAnalyse(
           }
         }
 
+        const categoryScores = (status.result as Record<string, unknown>).category_scores as
+          | Array<{ category: string; score: number }>
+          | undefined
+        const coachingTags = (status.result as Record<string, unknown>).coaching_tags as string[] | undefined
+        const prevSkillProfile = settingsManager.get().skillProfile
+        const nextSkillProfile = mergeSkillProfileFromAnalysis(prevSkillProfile, {
+          categoryScores: categoryScores ?? [],
+          coachingTags: coachingTags ?? [],
+          overallScore: score ?? null,
+          headshotPct: timeline?.finalStats?.headshotPct ?? null,
+        })
+        settingsManager.save({
+          skillProfile: nextSkillProfile,
+          skillProfilePrevious: prevSkillProfile ?? undefined,
+        })
+
+        const rawHighlights = (status.result as Record<string, unknown>).match_highlights
+        const matchHighlights = parseMatchHighlightsFromApi(rawHighlights)
+
+        const rawTiming = (status.result as Record<string, unknown>).timing_comparisons
+
         send('post-game:analysis-ready', {
           recording_id: recordingId,
           overall_score: (status.result as Record<string, unknown>).overall_score,
@@ -2242,6 +2265,9 @@ async function doUploadAndAnalyse(
           match_result: matchResult,
           ally_score: lastScore?.allyScore ?? null,
           enemy_score: lastScore?.enemyScore ?? null,
+          match_highlights: matchHighlights,
+          skill_profile: nextSkillProfile,
+          timing_comparisons: Array.isArray(rawTiming) ? rawTiming : [],
         })
         mainWindow?.webContents.send('dashboard:refresh')
         tray?.setToolTip(idleTooltip(game))
@@ -2507,7 +2533,7 @@ async function startApp(): Promise<void> {
   (jobId: string) => recordingsStore?.getPathByJobId(jobId) ?? null,
   )
 
-  setupClipHandlers(ipcMain, clipStore, clipExtractor, authManager, hotkeyManager)
+  setupClipHandlers(ipcMain, clipStore, clipExtractor, authManager, hotkeyManager, recordingsStore)
 
   // Discord Rich Presence — renderer can push state changes (e.g. when reviewing coaching)
   ipcMain.handle('discord:set-state', (_e, state: string) => {

@@ -30,6 +30,10 @@ export interface AppSettings {
   captureMonitor: 'auto' | number
   /** Last completed analysis insight — persisted for dashboard display */
   lastInsight?: { text: string; score: number; agent: string | null; analysisId: number | null; date: string } | null
+  /** Rolling RPG-style skill scores updated after each analysis */
+  skillProfile?: import('../../src/lib/skill-profile').SkillProfileSnapshot | null
+  /** Previous snapshot for trend arrows on dashboard */
+  skillProfilePrevious?: import('../../src/lib/skill-profile').SkillProfileSnapshot | null
   /** Process names to auto-kill when a game is detected starting */
   pregameKillList: string[]
   /** Auto-delete local-only clips older than this many days (0 = disabled) */
