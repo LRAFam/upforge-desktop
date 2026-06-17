@@ -109,6 +109,12 @@ import {
 import { ClipPipeline } from './clip-pipeline'
 import { buildAndUploadScoutMoments } from './scout-moments'
 import { requestPregameBrief as _requestPregameBrief, requestPostGameDebrief as _requestPostGameDebrief } from './post-game-api'
+import { enrichTimelineForCoaching } from './match-coaching-enrich'
+import {
+  buildCoachingSubmissionExtras,
+  topSkillFocus,
+  type CoachingSubmissionExtras,
+} from './match-coaching-context'
 import { resolveInstanceLock, startInstanceCoordinator } from './instance-coordinator'
 import {
   startSteamGsiServer,
@@ -312,16 +318,21 @@ wireRecorderStatus(obsRecorder, 'OBS')
 // When OBS saves a replay buffer clip during a live match, add it to the clip store immediately
 obsRecorder.onReplayClipSaved = (clipPath, _trigger) => {
   log.info('[Main] OBS replay clip saved during match:', clipPath)
+  const live = riotLocalApi.getLiveMatchContext()
   const rec = clipStore.add({
     path: clipPath,
     thumbPath: null,
     trigger: 'kill',
-    map: null,
-    agent: null,
+    map: live.map,
+    agent: live.agent,
     durationSeconds: settingsManager?.get().obsReplayBufferSeconds ?? 30,
     round: null,
     killCount: 1,
     analysisJobId: null,
+    matchId: live.matchId,
+    gameMode: live.gameMode,
+    weapon: null,
+    abilitySlot: null,
   })
   logActivity('OBS kill clip saved')
   mainWindow?.webContents.send('clips:new', [rec.id])
@@ -687,6 +698,44 @@ async function syncScoutMomentsForJob(
   })
 }
 
+async function prepareTimelineForCoaching(
+  timeline: MatchData | null,
+  game: string,
+  recordingId?: string | null,
+): Promise<{ extras: CoachingSubmissionExtras | undefined }> {
+  if (!timeline || game !== 'valorant') return { extras: undefined }
+
+  await enrichTimelineForCoaching(riotLocalApi, timeline, {
+    onStatus: (msg) => logActivity(msg),
+    api: authManager.getToken() ? authManager.getApi() : null,
+  })
+
+  const rrHistory = await authManager.fetchRRHistory().catch(() => [])
+  const extras = buildCoachingSubmissionExtras(
+    timeline,
+    settingsManager.get(),
+    rrHistory,
+    riotLocalApi.getDiagnostics().clientVersion,
+  )
+
+  if (recordingId) {
+    recordingsStore.updateTimeline(recordingId, timeline)
+    mainWindow?.webContents.send('recordings:updated')
+  }
+
+  return { extras }
+}
+
+const DEBRIEF_SKIP_MODES = new Set(['DEATHMATCH', 'TEAMDEATHMATCH'])
+
+function shouldRequestDebrief(timeline: MatchData | null, mode: string | null | undefined): boolean {
+  if (!timeline) return false
+  if (DEBRIEF_SKIP_MODES.has((mode ?? '').toUpperCase())) return false
+  return (timeline.playerKills?.length ?? 0) > 0
+    || (timeline.roundSummaries?.length ?? 0) > 0
+    || timeline.finalStats != null
+}
+
 function requestPregameBrief(context?: {
   agent?: string | null
   map?: string | null
@@ -694,7 +743,21 @@ function requestPregameBrief(context?: {
   allyAgents?: string[]
   enemyAgents?: string[]
 }): void {
-  _requestPregameBrief(() => authManager.getToken(), logActivity, context, process.env['VITE_API_URL'])
+  void authManager.fetchRRHistory().then((history) => {
+    const skillFocus = topSkillFocus(settingsManager.get())
+    _requestPregameBrief(
+      () => authManager.getToken(),
+      logActivity,
+      {
+        ...context,
+        rank: history[0]?.rank ?? null,
+        skillFocus: skillFocus ?? null,
+      },
+      process.env['VITE_API_URL'],
+    )
+  }).catch(() => {
+    _requestPregameBrief(() => authManager.getToken(), logActivity, context, process.env['VITE_API_URL'])
+  })
 }
 
 async function requestPostGameDebrief(opts: {
@@ -704,6 +767,7 @@ async function requestPostGameDebrief(opts: {
   map: string | null
   timeline: MatchData
   sendToWindow: (channel: string, payload?: unknown) => void
+  coachingExtras?: CoachingSubmissionExtras
 }): Promise<void> {
   return _requestPostGameDebrief({
     ...opts,
@@ -1017,28 +1081,6 @@ function setupGameDetection(): void {
       } catch { /* window may have closed */ }
     })
 
-    // Fire post-game debrief in the background — non-blocking. Uses Riot Live Client
-    // match data (kills, rounds, stats) for instant Claude coaching without needing the VOD.
-    // Only runs for competitive/premier matches where meaningful data was captured.
-    const hasMatchData = timeline && (
-      (timeline.playerKills?.length ?? 0) > 0
-      || (timeline.roundScores?.length ?? 0) > 0
-      || timeline.finalStats != null
-    )
-    const isRankedMode = ['COMPETITIVE', 'PREMIER'].includes(gameMode?.toUpperCase() ?? '')
-    if (hasMatchData && isRankedMode && user?.riot_name && timeline) {
-      requestPostGameDebrief({
-        riotName: user.riot_name,
-        riotTag: user.riot_tag ?? 'NA1',
-        agent,
-        map,
-        timeline,
-        sendToWindow: (channel, payload) => {
-          if (!thisPostGameWindow.isDestroyed()) thisPostGameWindow.webContents.send(channel, payload)
-        },
-      }).catch(err => log.warn('[Debrief] Background debrief failed:', err))
-    }
-
     // Notify the user that the match recording has finished and upload is starting
     {
       const agentLabel = agent ?? gameLabel(game)
@@ -1140,6 +1182,28 @@ function setupGameDetection(): void {
         `Recording saved (${(readySize / (1024 ** 3)).toFixed(2)} GB) — visible on dashboard`,
       )
 
+      let coachingExtras: CoachingSubmissionExtras | undefined
+      const enrichPromise = prepareTimelineForCoaching(timeline, game, savedRecording.id)
+        .then((result) => {
+          coachingExtras = result.extras
+          return result
+        })
+
+      void enrichPromise.then(() => {
+        if (!user?.riot_name || !timeline || !shouldRequestDebrief(timeline, gameMode)) return
+        void requestPostGameDebrief({
+          riotName: user.riot_name,
+          riotTag: user.riot_tag ?? 'NA1',
+          agent,
+          map,
+          timeline,
+          coachingExtras,
+          sendToWindow: (channel, payload) => {
+            if (!thisPostGameWindow.isDestroyed()) thisPostGameWindow.webContents.send(channel, payload)
+          },
+        }).catch((err) => log.warn('[Debrief] Background debrief failed:', err))
+      }).catch((err) => log.warn('[Enrich] Match coaching enrich failed:', err))
+
       if (readySize > MAX_FILE_SIZE_BYTES) {
         const sizeGB = (readySize / (1024 * 1024 * 1024)).toFixed(1)
         const errorMsg = formatRecordingTooLargeMessage(readySize, true)
@@ -1200,6 +1264,8 @@ function setupGameDetection(): void {
         extractMatchClips(readyPath, timeline, null)
           .catch(err => log.warn('[ClipExtract] Clip extraction (no-analyse) error:', err))
 
+        await enrichPromise.catch(() => {})
+
         if (lateRetryScheduled) {
           log.info('[HandleMatchEnd] No kills (no-analyse) — scheduling late retry in 90s')
           setTimeout(async () => {
@@ -1226,8 +1292,11 @@ function setupGameDetection(): void {
 
       tray?.setToolTip('UpForge — Uploading...')
 
-      const uploadResult = await doUploadAndAnalyse(savedRecording.id, readyPath, user?.riot_name ?? '', user?.riot_tag ?? '',
-        game, map, agent, timeline, thisPostGameWindow, matchSessionStart, /* skipAutoDelete= */ true)
+      const uploadResult = await doUploadAndAnalyse(
+        savedRecording.id, readyPath, user?.riot_name ?? '', user?.riot_tag ?? '',
+        game, map, agent, timeline, thisPostGameWindow, matchSessionStart,
+        /* skipAutoDelete= */ true, /* deleteLocalAfterUpload= */ false, enrichPromise,
+      )
 
       const jobId = uploadResult ?? null
 
@@ -1261,7 +1330,15 @@ function setupGameDetection(): void {
               return
             }
             if (jobId && timeline) {
-              await uploadManager.patchMatchData(jobId, timeline).catch((err) => {
+              enrichTimelineSpatial(timeline)
+              const rrHistory = await authManager.fetchRRHistory().catch(() => [])
+              const lateExtras = buildCoachingSubmissionExtras(
+                timeline,
+                settingsManager.get(),
+                rrHistory,
+                riotLocalApi.getDiagnostics().clientVersion,
+              )
+              await uploadManager.patchMatchData(jobId, timeline, lateExtras).catch((err) => {
                 log.warn('[LateClipExtract] Failed to patch job match_data:', err)
               })
             }
@@ -2017,6 +2094,12 @@ async function doUploadArchiveOnly(
   send('post-game:upload-start', { game, map, agent, archiveOnly: true })
   send('post-game:upload-progress', 3)
 
+  let coachingExtras: CoachingSubmissionExtras | undefined
+  if (timeline && game === 'valorant') {
+    const prepared = await prepareTimelineForCoaching(timeline, game, recordingId)
+    coachingExtras = prepared.extras
+  }
+
   try {
     logActivity(`Saving recording to cloud${map ? ` (${map})` : ''}`)
     const result = await uploadManager.archiveUpload({
@@ -2027,6 +2110,7 @@ async function doUploadArchiveOnly(
       map,
       agent,
       timeline,
+      coachingExtras,
       trainingConsent: settingsManager?.get().trainingConsent === true,
       onProgress: (pct) => send('post-game:upload-progress', pct),
     })
@@ -2077,6 +2161,8 @@ async function doUploadAndAnalyse(
   skipAutoDelete = false,
   /** When true, delete local file after upload even if autoDelete setting is off (storage cleanup flow). */
   deleteLocalAfterUpload = false,
+  /** Shared enrich from handleMatchEnd — avoids duplicate Riot polling. */
+  enrichPromise?: Promise<{ extras: CoachingSubmissionExtras | undefined }>,
 ): Promise<string | null> {
   const send = (channel: string, payload?: unknown) => {
     try {
@@ -2131,27 +2217,24 @@ async function doUploadAndAnalyse(
   })
   send('post-game:upload-progress', 3)
 
-  const enrichTimelineInBackground = async (): Promise<void> => {
+  let coachingExtras: CoachingSubmissionExtras | undefined
+  const runEnrich = async (): Promise<void> => {
     if (!timeline || game !== 'valorant') return
     try {
-      const enriched = await riotLocalApi.enrichTimelineMatchDetails(timeline, {
-        maxWaitMs: 90_000,
-        onStatus: (msg) => logActivity(msg),
-      })
-      if (enriched) {
-        recomputeTimelineVideoOffsets(timeline)
-        if (recordingId) {
-          recordingsStore.updateTimeline(recordingId, timeline)
-          mainWindow?.webContents.send('recordings:updated')
-        }
-        if (lastMatchDiagnostic) {
-          lastMatchDiagnostic.killsInTimeline = timeline.playerKills?.length ?? 0
-          lastMatchDiagnostic.matchDetailsStatus = 'fetched'
-        }
-        logActivity(
-          `Riot match stats loaded (${timeline.roundSummaries?.length ?? 0} rounds, ${timeline.playerKills?.length ?? 0} kills)`,
-        )
+      if (enrichPromise) {
+        const result = await enrichPromise
+        coachingExtras = result.extras
+      } else {
+        const result = await prepareTimelineForCoaching(timeline, game, recordingId)
+        coachingExtras = result.extras
       }
+      if (lastMatchDiagnostic) {
+        lastMatchDiagnostic.killsInTimeline = timeline.playerKills?.length ?? 0
+        lastMatchDiagnostic.matchDetailsStatus = 'fetched'
+      }
+      logActivity(
+        `Riot match stats loaded (${timeline.roundSummaries?.length ?? 0} rounds, ${timeline.playerKills?.length ?? 0} kills)`,
+      )
     } catch (err) {
       log.warn('[Upload] Match details enrichment failed:', err)
     }
@@ -2160,7 +2243,8 @@ async function doUploadAndAnalyse(
   try {
     logActivity(`Uploading recording${map ? ` (${map}${agent ? ` · ${agent}` : ''})` : ''}`)
 
-    const enrichPromise = enrichTimelineInBackground()
+    await runEnrich()
+
     const result = await uploadManager.upload({
       videoPath: effectivePath,
       riotName,
@@ -2169,17 +2253,23 @@ async function doUploadAndAnalyse(
       map,
       agent,
       timeline,
-      beforeComplete: async () => {
-        await enrichPromise.catch(() => {})
-      },
+      coachingExtras,
       onProgress: (pct) => {
         send('post-game:upload-progress', pct)
       },
     })
-    await enrichPromise.catch(() => {})
 
     if (timeline && game === 'valorant') {
-      await uploadManager.patchMatchData(result.job_id, timeline).catch((err) => {
+      if (!coachingExtras) {
+        const rrHistory = await authManager.fetchRRHistory().catch(() => [])
+        coachingExtras = buildCoachingSubmissionExtras(
+          timeline,
+          settingsManager.get(),
+          rrHistory,
+          riotLocalApi.getDiagnostics().clientVersion,
+        )
+      }
+      await uploadManager.patchMatchData(result.job_id, timeline, coachingExtras).catch((err) => {
         log.warn('[Upload] Failed to patch match_data after enrich:', err)
       })
     }
@@ -2553,7 +2643,7 @@ async function startApp(): Promise<void> {
   (jobId: string) => recordingsStore?.getPathByJobId(jobId) ?? null,
   )
 
-  setupClipHandlers(ipcMain, clipStore, clipExtractor, authManager, hotkeyManager, recordingsStore)
+  setupClipHandlers(ipcMain, clipStore, clipExtractor, authManager, hotkeyManager, recordingsStore, settingsManager)
 
   // Discord Rich Presence — renderer can push state changes (e.g. when reviewing coaching)
   ipcMain.handle('discord:set-state', (_e, state: string) => {
@@ -2746,7 +2836,20 @@ async function startApp(): Promise<void> {
           agent: recording.agent,
         })
         try {
-          const result = await uploadManager.analyseArchive(recording.archiveId!, recording.game)
+          let timeline = recording.timeline
+          let coachingExtras: CoachingSubmissionExtras | undefined
+          if (timeline && recording.game === 'valorant') {
+            const prepared = await prepareTimelineForCoaching(timeline, recording.game, recording.id)
+            coachingExtras = prepared.extras
+            timeline = recordingsStore.getById(recording.id)?.timeline ?? timeline
+            recordingsStore.updateTimeline(recording.id, timeline)
+          }
+          const result = await uploadManager.analyseArchive(
+            recording.archiveId!,
+            recording.game,
+            timeline,
+            coachingExtras,
+          )
           recordingsStore.markAnalysed(recording.id, result.job_id)
           mainWindow?.webContents.send('recordings:updated')
           win.webContents.send('post-game:upload-complete', { jobId: result.job_id })

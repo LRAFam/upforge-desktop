@@ -21,6 +21,7 @@ export {
   resolveEconomyArmor,
 } from './riot-lookup-tables'
 import { applySpatialEnrichment } from './spatial/enrich'
+import { parsePlayerAbilitiesFromRoundStats } from './player-abilities'
 import { deriveMatchScore } from './match-score'
 import { riotStatsToAcs } from './combat-score'
 import { resolvePlantLocationFromRound } from './plant-location'
@@ -153,11 +154,18 @@ export class RiotLocalApi {
     }
   }
 
-  /** Live map/agent for Discord Rich Presence and UI (null when no active match). */
-  getLiveMatchContext(): { map: string | null; agent: string | null } {
+  /** Live map/agent/mode for clips and Rich Presence during an active match. */
+  getLiveMatchContext(): {
+    map: string | null
+    agent: string | null
+    gameMode: string | null
+    matchId: string | null
+  } {
     return {
       map: this.matchData?.map ?? null,
       agent: this.matchData?.agent ?? null,
+      gameMode: this.matchData?.gameMode ?? null,
+      matchId: this.currentMatchId ?? this.matchData?.matchId ?? null,
     }
   }
 
@@ -1095,6 +1103,7 @@ export class RiotLocalApi {
         const prs = (round.playerStats as Array<Record<string, unknown>> | undefined)
           ?.find((ps) => (ps.subject as string)?.toLowerCase() === ownLower)
         const economy = prs?.economy as Record<string, unknown> | undefined
+        const playerAbilities = parsePlayerAbilitiesFromRoundStats(prs)
         let playerDamageDealt = 0
         const roundDamageRows = prs?.damage as Array<Record<string, unknown>> | undefined
         if (roundDamageRows?.length) {
@@ -1120,7 +1129,7 @@ export class RiotLocalApi {
           spikeDefused: !!bombDefuser, spikeDefuser: bombDefuser,
           spikeDetonated: resultCode === 'BombDetonated',
           playerGold: (economy?.remaining as number) ?? null,
-          playerAbilities: null,
+          playerAbilities,
           playerGotFirstBlood: fbKiller === ownLower,
           playerWasFirstBlood: fbVictim === ownLower,
           playerSpent: (economy?.spent as number) ?? null,

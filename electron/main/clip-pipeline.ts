@@ -17,6 +17,23 @@ import { reportError } from './error-reporter'
 import type { MatchData, KillEvent } from './riot-types'
 import { detectClutchRoundsForGame } from './demo-clutch'
 
+function clipMatchMeta(
+  timeline: MatchData | null,
+  kill?: KillEvent | null,
+): {
+  matchId: string | null
+  gameMode: string | null
+  weapon: string | null
+  abilitySlot: string | null
+} {
+  return {
+    matchId: timeline?.matchId ?? null,
+    gameMode: timeline?.gameMode ?? null,
+    weapon: kill?.weapon ?? null,
+    abilitySlot: kill?.abilitySlot ?? null,
+  }
+}
+
 // Re-export for callers that imported from clip-pipeline.
 export { detectClutchRounds } from './demo-clutch'
 
@@ -88,6 +105,7 @@ export class ClipPipeline {
     const recordingStart = this.ctx.getRecordingStartTime() ?? 0
     const map = timeline?.map ?? null
     const agent = timeline?.agent ?? null
+    const baseMeta = clipMatchMeta(timeline)
     const extractedClipIds: string[] = []
 
     if (timeline?.playerKills && timeline.playerKills.length > 0) {
@@ -102,7 +120,7 @@ export class ClipPipeline {
       const offsetMs = bookmarkedAt - recordingStart
       const startMs = Math.max(0, offsetMs - 25_000)
       try {
-        const rec = clipStore.add({ path: '', thumbPath: null, trigger: 'hotkey', map, agent, durationSeconds: 30, round: null, killCount: null, analysisJobId })
+        const rec = clipStore.add({ path: '', thumbPath: null, trigger: 'hotkey', map, agent, durationSeconds: 30, round: null, killCount: null, analysisJobId, ...baseMeta })
         const clipPath = ClipExtractor.clipPath(rec.id)
         const thumbPath = ClipExtractor.thumbPath(rec.id)
         await clipExtractor.extract({ sourcePath: videoPath, startOffsetMs: startMs, durationMs: 30_000, outputPath: clipPath })
@@ -145,7 +163,10 @@ export class ClipPipeline {
         const offsetMs = kill.videoOffsetMs!
         const startMs = Math.max(0, offsetMs - 8_000)
         try {
-          const rec = clipStore.add({ path: '', thumbPath: null, trigger: 'kill', map, agent, durationSeconds: 13, round: kill.round ?? null, killCount: null, analysisJobId })
+          const rec = clipStore.add({
+            path: '', thumbPath: null, trigger: 'kill', map, agent, durationSeconds: 13,
+            round: kill.round ?? null, killCount: null, analysisJobId, ...clipMatchMeta(timeline, kill),
+          })
           const clipPath = ClipExtractor.clipPath(rec.id)
           const thumbPath = ClipExtractor.thumbPath(rec.id)
           await clipExtractor.extract({ sourcePath: videoPath, startOffsetMs: startMs, durationMs: 13_000, outputPath: clipPath })
@@ -170,7 +191,10 @@ export class ClipPipeline {
         const startMs   = Math.max(0, first.videoOffsetMs! - preBuffer)
         const durationMs = Math.min(last.videoOffsetMs! - first.videoOffsetMs! + postBuffer, 120_000)
         try {
-          const rec = clipStore.add({ path: '', thumbPath: null, trigger, map, agent, durationSeconds: durationMs / 1000, round, killCount, analysisJobId })
+          const rec = clipStore.add({
+            path: '', thumbPath: null, trigger, map, agent, durationSeconds: durationMs / 1000, round, killCount, analysisJobId,
+            ...clipMatchMeta(timeline, first),
+          })
           const clipPath = ClipExtractor.clipPath(rec.id)
           const thumbPath = ClipExtractor.thumbPath(rec.id)
           await clipExtractor.extract({ sourcePath: videoPath, startOffsetMs: startMs, durationMs, outputPath: clipPath })
@@ -192,7 +216,10 @@ export class ClipPipeline {
         const startMs    = Math.max(0, first.videoOffsetMs! - 15_000)
         const durationMs = Math.min(last.videoOffsetMs! - first.videoOffsetMs! + 20_000, 120_000)
         try {
-          const rec = clipStore.add({ path: '', thumbPath: null, trigger: 'clutch', map, agent, durationSeconds: durationMs / 1000, round, killCount: clutchKills.length, analysisJobId })
+          const rec = clipStore.add({
+            path: '', thumbPath: null, trigger: 'clutch', map, agent, durationSeconds: durationMs / 1000, round,
+            killCount: clutchKills.length, analysisJobId, ...clipMatchMeta(timeline, first),
+          })
           const clipPath = ClipExtractor.clipPath(rec.id)
           const thumbPath = ClipExtractor.thumbPath(rec.id)
           await clipExtractor.extract({ sourcePath: videoPath, startOffsetMs: startMs, durationMs, outputPath: clipPath })
@@ -272,7 +299,10 @@ export class ClipPipeline {
       const startMs    = Math.max(0, first.videoOffsetMs! - preBuffer)
       const durationMs = Math.min(last.videoOffsetMs! - first.videoOffsetMs! + postBuffer, 120_000)
       try {
-        const rec = clipStore.add({ path: '', thumbPath: null, trigger, map, agent, durationSeconds: durationMs / 1000, round, killCount, analysisJobId })
+        const rec = clipStore.add({
+          path: '', thumbPath: null, trigger, map, agent, durationSeconds: durationMs / 1000, round, killCount, analysisJobId,
+          ...clipMatchMeta(timeline, first),
+        })
         const clipPath = ClipExtractor.clipPath(rec.id)
         const thumbPath = ClipExtractor.thumbPath(rec.id)
         await clipExtractor.extract({ sourcePath: videoPath, startOffsetMs: startMs, durationMs, outputPath: clipPath })
@@ -294,7 +324,10 @@ export class ClipPipeline {
       const startMs    = Math.max(0, first.videoOffsetMs! - 15_000)
       const durationMs = Math.min(last.videoOffsetMs! - first.videoOffsetMs! + 20_000, 120_000)
       try {
-        const rec = clipStore.add({ path: '', thumbPath: null, trigger: 'clutch', map, agent, durationSeconds: durationMs / 1000, round, killCount: clutchKills.length, analysisJobId })
+        const rec = clipStore.add({
+          path: '', thumbPath: null, trigger: 'clutch', map, agent, durationSeconds: durationMs / 1000, round,
+          killCount: clutchKills.length, analysisJobId, ...clipMatchMeta(timeline, first),
+        })
         const clipPath = ClipExtractor.clipPath(rec.id)
         const thumbPath = ClipExtractor.thumbPath(rec.id)
         await clipExtractor.extract({ sourcePath: videoPath, startOffsetMs: startMs, durationMs, outputPath: clipPath })

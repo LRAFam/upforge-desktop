@@ -9,6 +9,7 @@ import log from 'electron-log'
 import { reportError } from './error-reporter'
 import type { MatchData } from './riot-types'
 import { prepareMatchDataForUpload, submissionContextFromTimeline } from './match-data-payload'
+import type { CoachingSubmissionExtras } from './match-coaching-context'
 
 // ── Pre-game brief ────────────────────────────────────────────────────────────
 
@@ -26,6 +27,8 @@ export function requestPregameBrief(
     mode?: string | null
     allyAgents?: string[]
     enemyAgents?: string[]
+    rank?: string | null
+    skillFocus?: string | null
   },
   apiUrl?: string
 ): void {
@@ -42,6 +45,8 @@ export function requestPregameBrief(
   if (context?.mode) params.set('mode', context.mode)
   if (context?.allyAgents?.length) params.set('ally_agents', context.allyAgents.join(','))
   if (context?.enemyAgents?.length) params.set('enemy_agents', context.enemyAgents.join(','))
+  if (context?.rank) params.set('rank', context.rank)
+  if (context?.skillFocus) params.set('skill_focus', context.skillFocus)
   const qs = params.toString() ? `?${params.toString()}` : ''
   const parsedUrl = new URL(`${apiBase}/api/progress/pregame-brief${qs}`)
 
@@ -52,6 +57,8 @@ export function requestPregameBrief(
     if (context?.mode) webParams.set('mode', context.mode)
     if (context?.allyAgents?.length) webParams.set('ally_agents', context.allyAgents.join(','))
     if (context?.enemyAgents?.length) webParams.set('enemy_agents', context.enemyAgents.join(','))
+    if (context?.rank) webParams.set('rank', context.rank)
+    if (context?.skillFocus) webParams.set('skill_focus', context.skillFocus)
     webParams.set('t', Date.now().toString())
     shell.openExternal(`https://upforge.gg/valorant/pregame-brief?${webParams.toString()}`)
     logActivity('Pre-game brief: opened in browser')
@@ -120,6 +127,7 @@ export interface PostGameDebriefOptions {
   sendToWindow: (channel: string, payload?: unknown) => void
   getToken: () => string | null
   apiUrl?: string
+  coachingExtras?: CoachingSubmissionExtras
 }
 
 /**
@@ -127,19 +135,23 @@ export interface PostGameDebriefOptions {
  * Fire-and-forget — call without await and let it resolve on its own timeline.
  */
 export async function requestPostGameDebrief(opts: PostGameDebriefOptions): Promise<void> {
-  const { riotName, riotTag, agent, map, timeline, sendToWindow, getToken, apiUrl } = opts
+  const { riotName, riotTag, agent, map, timeline, sendToWindow, getToken, apiUrl, coachingExtras } = opts
   const token = getToken()
   if (!token) return
 
   const apiBase = apiUrl ?? process.env['VITE_API_URL'] ?? 'https://api.upforge.gg'
-  const ctx = submissionContextFromTimeline(timeline ?? null)
+  const ctx = submissionContextFromTimeline(timeline ?? null, coachingExtras)
   const body = JSON.stringify({
     riot_name: riotName,
     riot_tag: riotTag,
     agent: ctx.agent ?? agent,
     map: ctx.map ?? map,
     game_mode: ctx.game_mode,
-    match_data: ctx.match_data ?? prepareMatchDataForUpload(timeline ?? null),
+    match_data: ctx.match_data ?? prepareMatchDataForUpload(timeline ?? null, coachingExtras),
+    ally_agents: ctx.ally_agents,
+    enemy_agents: ctx.enemy_agents,
+    skill_profile: ctx.skill_profile,
+    rank_snapshot: ctx.rank_snapshot,
   })
   const parsedUrl = new URL(`${apiBase}/api/desktop-submissions/debrief`)
   const proto = parsedUrl.protocol === 'https:' ? await import('https') : await import('http')

@@ -181,6 +181,11 @@ export class RecordingsStore {
     return recording?.path ?? null
   }
 
+  /** Match timeline captured for a desktop analysis job (for clip coaching context). */
+  getTimelineByJobId(jobId: string): MatchData | null {
+    return this.recordings.find((r) => r.jobId === jobId)?.timeline ?? null
+  }
+
   updateTimeline(id: string, timeline: MatchData): boolean {
     const rec = this.recordings.find(r => r.id === id)
     if (!rec) return false

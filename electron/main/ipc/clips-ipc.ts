@@ -14,6 +14,9 @@ import { HotkeyManager } from '../hotkey-manager'
 import { UpgradeRequiredError } from '../errors'
 import { _clipInFlight, apiPost, pollClipAnalysis } from './api-helpers'
 import type { RecordingsStore } from '../recordings-store'
+import type { SettingsManager } from '../settings-manager'
+import { buildClipUploadPayload } from '../clip-coaching-context'
+import { buildCoachingSubmissionExtras } from '../match-coaching-context'
 import { exportMatchRecap } from '../recap-export'
 
 export function setupClipHandlers(
@@ -23,8 +26,30 @@ export function setupClipHandlers(
   auth: AuthManager,
   hotkeyManager: HotkeyManager,
   recordingsStore?: RecordingsStore,
+  settingsManager?: SettingsManager,
 ): void {
   const apiBase = process.env['VITE_API_URL'] || 'https://api.upforge.gg'
+
+  async function clipCoachingExtras(clip: { analysisJobId: string | null }) {
+    const recordings = recordingsStore?.getAll().map((r) => ({ jobId: r.jobId, timeline: r.timeline })) ?? []
+    const timeline = resolveClipTimeline(
+      { analysisJobId: clip.analysisJobId } as import('../clip-store').ClipRecord,
+      recordings,
+    )
+    if (!timeline || !settingsManager) return undefined
+    const rrHistory = await auth.fetchRRHistory().catch(() => [])
+    return buildCoachingSubmissionExtras(
+      timeline,
+      settingsManager.get(),
+      rrHistory,
+      null,
+    )
+  }
+
+  function clipTimeline(clip: import('../clip-store').ClipRecord) {
+    if (!clip.analysisJobId || !recordingsStore) return null
+    return recordingsStore.getTimelineByJobId(clip.analysisJobId)
+  }
 
   ipcMain.handle('clips:get', () => clipStore.getAll())
 
@@ -99,14 +124,11 @@ export function setupClipHandlers(
     clipStore.update(id, { uploadStatus: 'uploading' })
 
     try {
-      const presignPayload = JSON.stringify({
-        trigger:          clip.trigger,
-        map:              clip.map ?? undefined,
-        agent:            clip.agent ?? undefined,
-        duration_seconds: clip.durationSeconds,
-        round:            clip.round ?? undefined,
-        analysis_id:      clip.analysisJobId ?? undefined,
-      })
+      const timeline = clipTimeline(clip)
+      const extras = timeline && settingsManager
+        ? buildCoachingSubmissionExtras(timeline, settingsManager.get(), await auth.fetchRRHistory().catch(() => []))
+        : undefined
+      const presignPayload = JSON.stringify(buildClipUploadPayload(clip, timeline, extras))
       const { upload_url: uploadUrl, clip_uuid: clipUuid } = await apiPost(
         apiBase, '/api/clips/presign', presignPayload, token
       ) as { upload_url: string; clip_uuid: string }
@@ -137,13 +159,8 @@ export function setupClipHandlers(
       })
 
       const completePayload = JSON.stringify({
-        clip_uuid:        clipUuid,
-        trigger:          clip.trigger,
-        map:              clip.map ?? undefined,
-        agent:            clip.agent ?? undefined,
-        duration_seconds: clip.durationSeconds,
-        round:            clip.round ?? undefined,
-        analysis_id:      clip.analysisJobId ?? undefined,
+        clip_uuid: clipUuid,
+        ...buildClipUploadPayload(clip, timeline, extras),
       })
       const { id: apiClipId } = await apiPost(
         apiBase, '/api/clips/complete', completePayload, token
@@ -178,7 +195,12 @@ export function setupClipHandlers(
     clipStore.update(id, { analysisStatus: 'queued' })
 
     try {
-      await apiPost(apiBase, `/api/clips/${clip.apiClipId}/analyse`, '{}', token)
+      const timeline = clipTimeline(clip)
+      const extras = await clipCoachingExtras(clip)
+      const analyseBody = JSON.stringify(
+        buildClipUploadPayload(clip, timeline, extras),
+      )
+      await apiPost(apiBase, `/api/clips/${clip.apiClipId}/analyse`, analyseBody, token)
       clipStore.update(id, { analysisStatus: 'queued' })
       pollClipAnalysis(id, clip.apiClipId, token, clipStore, apiBase)
       return { ok: true }

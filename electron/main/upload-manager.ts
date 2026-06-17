@@ -7,6 +7,7 @@ import { AuthManager } from './auth-manager'
 import { MatchData } from './riot-local-api'
 import { UpgradeRequiredError } from './errors'
 import { prepareMatchDataForUpload, submissionContextFromTimeline, gameModeForApi } from './match-data-payload'
+import type { CoachingSubmissionExtras } from './match-coaching-context'
 
 export interface UploadOptions {
   videoPath: string
@@ -21,6 +22,8 @@ export interface UploadOptions {
   beforeComplete?: () => Promise<void>
   /** Opt-in for anonymised training use of archived VODs (storage is separate). */
   trainingConsent?: boolean
+  /** Skill profile, rank snapshot, etc. for coaching continuity. */
+  coachingExtras?: CoachingSubmissionExtras
 }
 
 export interface UploadResult {
@@ -142,14 +145,32 @@ export class UploadManager {
   }
 
   /** Queue analysis for a recording already saved to cloud. */
-  async analyseArchive(archiveId: string, game: string): Promise<UploadResult> {
+  async analyseArchive(
+    archiveId: string,
+    game: string,
+    timeline?: MatchData | null,
+    coachingExtras?: CoachingSubmissionExtras,
+  ): Promise<UploadResult> {
     const apiUrl = process.env['VITE_API_URL'] || 'https://api.upforge.gg'
     const token = this.auth.getToken()
     if (!token) throw new Error('Not authenticated')
 
+    const ctx = submissionContextFromTimeline(timeline ?? null, coachingExtras)
+    const body = JSON.stringify({
+      game,
+      map: ctx.map,
+      agent: ctx.agent,
+      game_mode: ctx.game_mode,
+      match_data: ctx.match_data,
+      ally_agents: ctx.ally_agents,
+      enemy_agents: ctx.enemy_agents,
+      skill_profile: ctx.skill_profile,
+      rank_snapshot: ctx.rank_snapshot,
+    })
+
     const { job_id } = await this._apiPost(
       `${apiUrl}/api/recordings/archive/${archiveId}/analyse`,
-      JSON.stringify({ game }),
+      body,
       token,
     )
     return { job_id }
@@ -167,7 +188,7 @@ export class UploadManager {
 
     // ── Step 1: get presigned URL ──────────────────────────────────────────
     opts.onProgress(3)
-    const submissionCtx = submissionContextFromTimeline(opts.timeline ?? null)
+    const submissionCtx = submissionContextFromTimeline(opts.timeline ?? null, opts.coachingExtras)
     const presignBody = JSON.stringify({
       riot_name:  opts.riotName,
       riot_tag:   opts.riotTag,
@@ -176,6 +197,10 @@ export class UploadManager {
       agent:      submissionCtx.agent ?? opts.agent,
       game_mode:  submissionCtx.game_mode,
       match_data: submissionCtx.match_data,
+      ally_agents: submissionCtx.ally_agents,
+      enemy_agents: submissionCtx.enemy_agents,
+      skill_profile: submissionCtx.skill_profile,
+      rank_snapshot: submissionCtx.rank_snapshot,
     })
     const { job_id, upload_url } = await this._apiPost(
       `${apiUrl}/api/desktop-submissions/presign`,
@@ -198,7 +223,7 @@ export class UploadManager {
     // ── Step 3: confirm and queue analysis ────────────────────────────────
     // Re-send match context at complete() time so it can override/supplement
     // presign-time data (e.g. if Riot MatchDetails arrived late).
-    const completeCtx = submissionContextFromTimeline(opts.timeline ?? null)
+    const completeCtx = submissionContextFromTimeline(opts.timeline ?? null, opts.coachingExtras)
     await this._apiPost(
       `${apiUrl}/api/desktop-submissions/complete`,
       JSON.stringify({
@@ -206,7 +231,11 @@ export class UploadManager {
         agent:      completeCtx.agent ?? opts.agent ?? undefined,
         map:        completeCtx.map ?? opts.map ?? undefined,
         game_mode:  completeCtx.game_mode ?? gameModeForApi(opts.timeline?.gameMode) ?? undefined,
-        match_data: completeCtx.match_data ?? prepareMatchDataForUpload(opts.timeline ?? null),
+        match_data: completeCtx.match_data ?? prepareMatchDataForUpload(opts.timeline ?? null, opts.coachingExtras),
+        ally_agents: completeCtx.ally_agents,
+        enemy_agents: completeCtx.enemy_agents,
+        skill_profile: completeCtx.skill_profile,
+        rank_snapshot: completeCtx.rank_snapshot,
       }),
       token
     )
@@ -226,7 +255,7 @@ export class UploadManager {
     const totalBytes = fs.statSync(opts.videoPath).size
 
     opts.onProgress(3)
-    const submissionCtx = submissionContextFromTimeline(opts.timeline ?? null)
+    const submissionCtx = submissionContextFromTimeline(opts.timeline ?? null, opts.coachingExtras)
     const presignBody = JSON.stringify({
       riot_name:  opts.riotName,
       riot_tag:   opts.riotTag,
@@ -235,6 +264,10 @@ export class UploadManager {
       agent:      submissionCtx.agent ?? opts.agent,
       game_mode:  submissionCtx.game_mode,
       match_data: submissionCtx.match_data,
+      ally_agents: submissionCtx.ally_agents,
+      enemy_agents: submissionCtx.enemy_agents,
+      skill_profile: submissionCtx.skill_profile,
+      rank_snapshot: submissionCtx.rank_snapshot,
     })
     const { archive_id, upload_url } = await this._apiPost(
       `${apiUrl}/api/recordings/archive/presign`,
@@ -245,7 +278,7 @@ export class UploadManager {
     opts.onProgress(8)
     await this._putToS3(upload_url, opts.videoPath, totalBytes, opts.onProgress)
 
-    const completeCtx = submissionContextFromTimeline(opts.timeline ?? null)
+    const completeCtx = submissionContextFromTimeline(opts.timeline ?? null, opts.coachingExtras)
     const complete = await this._apiPost(
       `${apiUrl}/api/recordings/archive/complete`,
       JSON.stringify({
@@ -253,7 +286,11 @@ export class UploadManager {
         agent:           completeCtx.agent ?? opts.agent ?? undefined,
         map:             completeCtx.map ?? opts.map ?? undefined,
         game_mode:       completeCtx.game_mode ?? gameModeForApi(opts.timeline?.gameMode) ?? undefined,
-        match_data:      completeCtx.match_data ?? prepareMatchDataForUpload(opts.timeline ?? null),
+        match_data:      completeCtx.match_data ?? prepareMatchDataForUpload(opts.timeline ?? null, opts.coachingExtras),
+        ally_agents:     completeCtx.ally_agents,
+        enemy_agents:    completeCtx.enemy_agents,
+        skill_profile:   completeCtx.skill_profile,
+        rank_snapshot:   completeCtx.rank_snapshot,
         file_size_bytes: totalBytes,
         training_consent: opts.trainingConsent === true,
       }),
@@ -268,16 +305,27 @@ export class UploadManager {
   }
 
   /** Backfill match_data on a queued/processing job when Riot stats arrive after upload started. */
-  async patchMatchData(jobId: string, timeline: MatchData | null): Promise<void> {
+  async patchMatchData(
+    jobId: string,
+    timeline: MatchData | null,
+    coachingExtras?: CoachingSubmissionExtras,
+  ): Promise<void> {
     const token = this.auth.getToken()
     if (!token || !timeline) return
-    const match_data = prepareMatchDataForUpload(timeline)
+    const match_data = prepareMatchDataForUpload(timeline, coachingExtras)
     if (!match_data) return
 
     const apiUrl = process.env['VITE_API_URL'] || 'https://api.upforge.gg'
+    const ctx = submissionContextFromTimeline(timeline, coachingExtras)
     await this._apiPost(
       `${apiUrl}/api/desktop-submissions/${jobId}/match-data`,
-      JSON.stringify({ match_data }),
+      JSON.stringify({
+        match_data,
+        ally_agents: ctx.ally_agents,
+        enemy_agents: ctx.enemy_agents,
+        skill_profile: ctx.skill_profile,
+        rank_snapshot: ctx.rank_snapshot,
+      }),
       token,
     )
   }

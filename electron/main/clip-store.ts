@@ -31,6 +31,14 @@ export interface ClipRecord {
   savedAt: number
   /** ID of the analysis job this clip came from (for linking to match) */
   analysisJobId: string | null
+  /** Riot match UUID when clip was extracted from a tracked match */
+  matchId: string | null
+  /** Queue/mode at extraction time */
+  gameMode: string | null
+  /** Weapon used on the highlighted kill, when known */
+  weapon: string | null
+  /** Ability slot on the highlighted kill (grenade, ability1, etc.) */
+  abilitySlot: string | null
   uploadStatus: ClipUploadStatus
   /** API clip ID once uploaded */
   apiClipId: number | null
@@ -61,6 +69,10 @@ export type NewClip = Pick<ClipRecord,
   | 'round'
   | 'analysisJobId'
   | 'killCount'
+  | 'matchId'
+  | 'gameMode'
+  | 'weapon'
+  | 'abilitySlot'
 > & { momentOffsetMs?: number | null }
 
 export class ClipStore {
@@ -127,6 +139,10 @@ export class ClipStore {
       savedAt: Date.now(),
       analysisJobId: data.analysisJobId,
       killCount: data.killCount ?? null,
+      matchId: data.matchId ?? null,
+      gameMode: data.gameMode ?? null,
+      weapon: data.weapon ?? null,
+      abilitySlot: data.abilitySlot ?? null,
       uploadStatus: 'local',
       apiClipId: null,
       analysisStatus: 'none',

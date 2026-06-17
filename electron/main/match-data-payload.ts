@@ -9,6 +9,12 @@ import { riotStatsToAcs } from './combat-score'
 import { logPlantCoordStats } from './match-plant-telemetry'
 import { resolvePlantLocationFromRound } from './plant-location'
 import { buildCoachingFacts, type CoachingFacts } from './coaching-facts'
+import {
+  buildTeamComp,
+  type CoachingSubmissionExtras,
+  type RankSnapshot,
+} from './match-coaching-context'
+import type { SkillProfileSnapshot } from '../../src/lib/skill-profile'
 
 /** Slim Riot MatchDetails subset for coaching prompts (avoids multi‑MB raw JSON). */
 export interface MatchDetailsLite {
@@ -54,6 +60,15 @@ export type UploadMatchData = Omit<MatchData, 'events' | 'matchDetails'> & {
   roundPlants?: RoundPlantSnapshot[]
   /** Authoritative facts for AI coaching (ability casts, per-round damage, ability kills). */
   coachingFacts?: CoachingFacts
+  /** Explicit team comps for KB routing and comp-aware coaching. */
+  allyAgents?: string[]
+  enemyAgents?: string[]
+  /** Rolling weakness profile from prior analyses (desktop-local, sent for continuity). */
+  skillProfile?: SkillProfileSnapshot | null
+  /** Player rank snapshot at upload time. */
+  rankSnapshot?: RankSnapshot | null
+  /** Valorant client build when captured. */
+  gameClientVersion?: string | null
 }
 
 function slimMatchDetails(raw: Record<string, unknown> | null | undefined): MatchDetailsLite | null {
@@ -160,7 +175,10 @@ export function gameModeForApi(gameMode: string | null | undefined): string | nu
  * - Replaces raw `matchDetails` with `matchDetailsLite`
  * - Fills finalStats.summonerName from playerName when Riot omits gameName
  */
-export function prepareMatchDataForUpload(timeline: MatchData | null): UploadMatchData | undefined {
+export function prepareMatchDataForUpload(
+  timeline: MatchData | null,
+  extras?: CoachingSubmissionExtras,
+): UploadMatchData | undefined {
   if (!timeline) return undefined
   recomputeTimelineVideoOffsets(timeline)
 
@@ -177,6 +195,7 @@ export function prepareMatchDataForUpload(timeline: MatchData | null): UploadMat
 
   const roundPlants = buildRoundPlants(timeline)
   timeline.roundPlants = roundPlants
+  const { allyAgents, enemyAgents } = buildTeamComp(timeline)
 
   const upload: UploadMatchData = {
     game: timeline.game,
@@ -209,6 +228,11 @@ export function prepareMatchDataForUpload(timeline: MatchData | null): UploadMat
     spatialSummary: timeline.spatialSummary,
     roundPlants,
     coachingFacts: buildCoachingFacts(timeline),
+    allyAgents: allyAgents.length ? allyAgents : undefined,
+    enemyAgents: enemyAgents.length ? enemyAgents : undefined,
+    skillProfile: extras?.skillProfile ?? undefined,
+    rankSnapshot: extras?.rankSnapshot ?? undefined,
+    gameClientVersion: extras?.gameClientVersion ?? undefined,
     startTime: timeline.startTime,
     endTime: timeline.endTime,
   }
@@ -218,19 +242,31 @@ export function prepareMatchDataForUpload(timeline: MatchData | null): UploadMat
 }
 
 /** Top-level job fields derived from timeline (avoids null game_mode on params). */
-export function submissionContextFromTimeline(timeline: MatchData | null): {
+export function submissionContextFromTimeline(
+  timeline: MatchData | null,
+  extras?: CoachingSubmissionExtras,
+): {
   map?: string
   agent?: string
   game_mode?: string
   match_data?: UploadMatchData
+  ally_agents?: string[]
+  enemy_agents?: string[]
+  skill_profile?: SkillProfileSnapshot | null
+  rank_snapshot?: RankSnapshot | null
 } {
   if (!timeline) return {}
-  const match_data = prepareMatchDataForUpload(timeline)
+  const match_data = prepareMatchDataForUpload(timeline, extras)
+  const { allyAgents, enemyAgents } = buildTeamComp(timeline)
   const game_mode = gameModeForApi(timeline.gameMode ?? undefined)
   return {
     map: timeline.map ?? undefined,
     agent: timeline.agent ?? undefined,
     game_mode: game_mode ?? undefined,
     match_data,
+    ally_agents: allyAgents.length ? allyAgents : undefined,
+    enemy_agents: enemyAgents.length ? enemyAgents : undefined,
+    skill_profile: extras?.skillProfile ?? undefined,
+    rank_snapshot: extras?.rankSnapshot ?? undefined,
   }
 }
