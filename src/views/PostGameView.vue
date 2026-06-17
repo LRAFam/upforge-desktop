@@ -8,7 +8,10 @@
       />
     </div>
 
-    <div class="flex-1 flex flex-col items-center justify-center px-6 py-5 relative z-10">
+    <div
+      class="flex-1 flex flex-col min-h-0 relative z-10"
+      :class="state === 'ready' ? 'overflow-y-auto overflow-x-hidden px-6 py-5' : 'items-center justify-center px-6 py-5'"
+    >
       <div
         v-if="copiedLinkToast"
         class="absolute right-5 top-4 z-20 inline-flex items-center gap-2 rounded-xl border border-emerald-500/20 bg-emerald-500/10 px-3 py-2 text-xs font-semibold text-emerald-300 shadow-[0_12px_30px_rgba(16,185,129,0.18)]"
@@ -228,10 +231,20 @@
         <!-- Compact match header -->
         <div class="flex items-center gap-3 px-1">
           <div
-            class="w-11 h-11 rounded-lg overflow-hidden flex-shrink-0"
-            :style="agentAccentColor ? { border: `1px solid ${agentAccentColor}45` } : { border: '1px solid rgba(255,255,255,0.1)' }"
+            class="w-11 h-11 rounded-lg overflow-hidden flex-shrink-0 flex items-center justify-center"
+            :class="agentImageUrl && !agentImageBroken ? '' : 'bg-red-500/10 border border-red-500/20'"
+            :style="agentImageUrl && !agentImageBroken ? { border: `1px solid ${agentAccentColor}45`, background: agentAccentColor + '20' } : { border: '1px solid rgba(255,255,255,0.1)' }"
           >
-            <img v-if="agentImageUrl" :src="agentImageUrl" class="w-full h-full object-cover object-top" />
+            <img
+              v-if="agentImageUrl && !agentImageBroken"
+              :src="agentImageUrl"
+              class="w-full h-full object-cover object-top"
+              @error="agentImageBroken = true"
+            />
+            <span v-else-if="gameInfo.agent" class="text-sm font-black text-red-300">{{ gameInfo.agent.charAt(0) }}</span>
+            <svg v-else class="w-5 h-5 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M15 10l4.553-2.069A1 1 0 0121 8.882v6.236a1 1 0 01-1.447.894L15 14M3 8a2 2 0 012-2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V8z"/>
+            </svg>
           </div>
           <div class="flex-1 min-w-0">
             <p class="text-sm font-black text-white">Your debrief is ready</p>
@@ -1124,6 +1137,8 @@ function scoreGradeBadgeClass(score: number): string {
 }
 
 const agentImageUrl = computed(() => gameInfo.value.agent ? getAgentImage(gameInfo.value.agent) : '')
+const agentImageBroken = ref(false)
+watch(() => gameInfo.value.agent, () => { agentImageBroken.value = false })
 const agentAccentColor = computed(() => gameInfo.value.agent ? getAgentColor(gameInfo.value.agent) : '')
 const mapSplashUrl = computed(() => gameInfo.value.map ? getMapImage(gameInfo.value.map) : '')
 const mapMinimapUrl = computed(() => gameInfo.value.map ? getMapMinimap(gameInfo.value.map) : '')

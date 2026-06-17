@@ -22,6 +22,8 @@ export interface ClipRecord {
   durationSeconds: number
   /** Which round the key moment occurred in */
   round: number | null
+  /** Video offset (ms) of the key moment — used for scout timeline sync */
+  momentOffsetMs: number | null
   /** For multi-kill and clutch clips: number of kills in the round (3=3k, 4=4k, 5=ace etc.) */
   killCount: number | null
   /** Title set by user */
@@ -50,8 +52,16 @@ export interface ClipRecord {
 }
 
 export type NewClip = Pick<ClipRecord,
-  'path' | 'thumbPath' | 'trigger' | 'map' | 'agent' | 'durationSeconds' | 'round' | 'analysisJobId' | 'killCount'
->
+  | 'path'
+  | 'thumbPath'
+  | 'trigger'
+  | 'map'
+  | 'agent'
+  | 'durationSeconds'
+  | 'round'
+  | 'analysisJobId'
+  | 'killCount'
+> & { momentOffsetMs?: number | null }
 
 export class ClipStore {
   private clips: ClipRecord[] = []
@@ -112,6 +122,7 @@ export class ClipStore {
       agent: data.agent,
       durationSeconds: data.durationSeconds,
       round: data.round ?? null,
+      momentOffsetMs: data.momentOffsetMs ?? null,
       title: null,
       savedAt: Date.now(),
       analysisJobId: data.analysisJobId,

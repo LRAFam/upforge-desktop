@@ -9,7 +9,7 @@ import {
   WARN_FREE_DISK_BYTES,
   getFreeDiskSpace,
 } from './disk-space'
-import { setupUpForgeScene, retargetUpForgeCapture, fitUpForgeCaptureToCanvas, type ObsSetupResult } from './obs-setup'
+import { setupUpForgeScene, retargetUpForgeCapture, fitUpForgeCaptureToCanvas, type ObsSetupResult, type ObsSceneSwitchOptions } from './obs-setup'
 import { findObsWindowString } from './game-window-finder'
 import { formatObsConnectError, obsConnectHosts } from './obs-connect'
 import { applyObsRecordingSettings, type ObsApplyResult } from './obs-output-settings'
@@ -20,6 +20,8 @@ export interface OBSSettings {
   port: number
   password: string
   replayBufferSeconds: number
+  /** When true, do not switch OBS to the UpForge scene on connect/record (for custom stream layouts). */
+  obsPreserveActiveScene: boolean
 }
 
 export interface OBSStatus {
@@ -191,7 +193,9 @@ export class OBSRecorder {
           })
         }
 
-        const setup = await setupUpForgeScene(this._obs, this.getPrimaryGame?.() ?? 'valorant')
+        const setup = await setupUpForgeScene(this._obs, this.getPrimaryGame?.() ?? 'valorant', {
+          switchScene: !this.getSettings().obsPreserveActiveScene,
+        })
         if (!setup.ok) {
           log.warn('[OBSRecorder] Scene setup incomplete:', setup.error)
         }
@@ -238,7 +242,7 @@ export class OBSRecorder {
 
   isConnected(): boolean { return this._connected }
 
-  async setupScene(game = 'valorant'): Promise<ObsSetupResult> {
+  async setupScene(game = 'valorant', forceSwitchScene = false): Promise<ObsSetupResult> {
     if (!this._connected) {
       const result = await this.connect()
       if (!result.ok) {
@@ -246,7 +250,13 @@ export class OBSRecorder {
       }
       return result.setup ?? { ok: true, sceneCreated: false, inputCreated: false }
     }
-    return setupUpForgeScene(this._obs, game)
+    return setupUpForgeScene(this._obs, game, {
+      switchScene: forceSwitchScene || !this.getSettings().obsPreserveActiveScene,
+    })
+  }
+
+  private obsSceneOptions(): ObsSceneSwitchOptions {
+    return { switchScene: !this.getSettings().obsPreserveActiveScene }
   }
 
   getOBSStatus(): OBSStatus {
@@ -325,7 +335,7 @@ export class OBSRecorder {
     }
     const target = game ?? this.getPrimaryGame?.() ?? 'valorant'
     try {
-      const { captureWindow } = await retargetUpForgeCapture(this._obs, target)
+      const { captureWindow } = await retargetUpForgeCapture(this._obs, target, this.obsSceneOptions())
       log.info('[OBSRecorder] Capture retargeted to', target, '→', captureWindow)
       return { ok: true, captureWindow }
     } catch (err) {
@@ -406,7 +416,7 @@ export class OBSRecorder {
 
     try {
       // Game/window capture only — never desktop (privacy / policy safe when alt-tabbing)
-      await retargetUpForgeCapture(this._obs, game)
+      await retargetUpForgeCapture(this._obs, game, this.obsSceneOptions())
 
       if (config) {
         const applyResult = await applyObsRecordingSettings(this._obs, config)

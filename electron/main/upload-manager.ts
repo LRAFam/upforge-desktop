@@ -282,6 +282,27 @@ export class UploadManager {
     )
   }
 
+  /** Upload pre-extracted scout moment thumbnails for fast Smart Review. */
+  async uploadScoutMoments(
+    jobId: string,
+    moments: Array<{
+      timestamp_sec: number
+      trigger: string
+      round: number | null
+      image_base64: string
+    }>,
+  ): Promise<void> {
+    const token = this.auth.getToken()
+    if (!token || moments.length === 0) return
+
+    const apiUrl = process.env['VITE_API_URL'] || 'https://api.upforge.gg'
+    await this._apiPost(
+      `${apiUrl}/api/desktop-submissions/${jobId}/scout-moments`,
+      JSON.stringify({ moments }),
+      token,
+    )
+  }
+
   /** POST JSON to an API endpoint with Bearer auth. Returns parsed response body. */
   private _apiPost(url: string, body: string, token: string): Promise<Record<string, string>> {
     return new Promise((resolve, reject) => {

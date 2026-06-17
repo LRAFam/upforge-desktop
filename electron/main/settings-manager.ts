@@ -71,6 +71,8 @@ export interface AppSettings {
   obsPassword: string
   /** Replay buffer length in seconds — how much footage to save per kill clip */
   obsReplayBufferSeconds: number
+  /** Keep the streamer's active OBS scene when a match starts (do not auto-switch to UpForge). */
+  obsPreserveActiveScene: boolean
   /** Mouse & trainer sensitivity settings */
   trainerMouse: {
     dpi: number
@@ -158,6 +160,7 @@ const DEFAULTS: AppSettings = {
   obsPort: 4455,
   obsPassword: '',
   obsReplayBufferSeconds: 30,
+  obsPreserveActiveScene: true,
   trainerMouse: {
     dpi: 800,
     game: 'valorant',

@@ -121,6 +121,8 @@ export interface AppSettings {
   obsPassword: string
   /** Replay buffer length in seconds */
   obsReplayBufferSeconds: number
+  /** Keep active OBS scene when recording starts (for stream layouts with face cam) */
+  obsPreserveActiveScene: boolean
   /** Override path for CS2 demo directory (undefined = auto-detect via Steam) */
   cs2DemoDir?: string
   /** Mouse & trainer sensitivity settings */

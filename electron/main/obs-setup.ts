@@ -186,13 +186,21 @@ export async function fitUpForgeCaptureToCanvas(obs: OBSWebSocket): Promise<void
   }
 }
 
+export type ObsSceneSwitchOptions = {
+  /** When false, update capture on the UpForge scene but leave the streamer's active scene alone. */
+  switchScene?: boolean
+}
+
 /** Re-target capture to the active game window right before recording starts. */
 export async function retargetUpForgeCapture(
   obs: OBSWebSocket,
   game: string,
+  options: ObsSceneSwitchOptions = {},
 ): Promise<{ captureWindow: string }> {
   const capture = await ensureUpForgeCapture(obs, game)
-  await obs.call('SetCurrentProgramScene', { sceneName: UPFORGE_SCENE_NAME }).catch(() => { /* non-fatal */ })
+  if (options.switchScene !== false) {
+    await obs.call('SetCurrentProgramScene', { sceneName: UPFORGE_SCENE_NAME }).catch(() => { /* non-fatal */ })
+  }
   await fitUpForgeCaptureToCanvas(obs)
   return { captureWindow: capture.captureWindow }
 }
@@ -200,6 +208,7 @@ export async function retargetUpForgeCapture(
 export async function setupUpForgeScene(
   obs: OBSWebSocket,
   game = 'valorant',
+  options: ObsSceneSwitchOptions = {},
 ): Promise<ObsSetupResult> {
   let sceneCreated = false
   let inputCreated = false
@@ -232,7 +241,9 @@ export async function setupUpForgeScene(
       })
     }
 
-    await obs.call('SetCurrentProgramScene', { sceneName: UPFORGE_SCENE_NAME })
+    if (options.switchScene !== false) {
+      await obs.call('SetCurrentProgramScene', { sceneName: UPFORGE_SCENE_NAME })
+    }
 
     await fitUpForgeCaptureToCanvas(obs)
 

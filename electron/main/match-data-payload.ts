@@ -8,6 +8,7 @@ import { deriveMatchScore } from './match-score'
 import { riotStatsToAcs } from './combat-score'
 import { logPlantCoordStats } from './match-plant-telemetry'
 import { resolvePlantLocationFromRound } from './plant-location'
+import { buildCoachingFacts, type CoachingFacts } from './coaching-facts'
 
 /** Slim Riot MatchDetails subset for coaching prompts (avoids multi‑MB raw JSON). */
 export interface MatchDetailsLite {
@@ -30,7 +31,18 @@ export interface MatchDetailsLite {
       deaths?: number
       assists?: number
       score?: number
+      abilityCasts?: {
+        grenadeCasts?: number
+        ability1Casts?: number
+        ability2Casts?: number
+        ultimateCasts?: number
+      }
     }
+    roundDamage?: Array<{
+      round: number
+      receiver: string
+      damage: number
+    }>
   }>
 }
 
@@ -40,6 +52,8 @@ export type UploadMatchData = Omit<MatchData, 'events' | 'matchDetails'> & {
   matchDetails?: never
   matchDetailsLite?: MatchDetailsLite | null
   roundPlants?: RoundPlantSnapshot[]
+  /** Authoritative facts for AI coaching (ability casts, per-round damage, ability kills). */
+  coachingFacts?: CoachingFacts
 }
 
 function slimMatchDetails(raw: Record<string, unknown> | null | undefined): MatchDetailsLite | null {
@@ -58,7 +72,15 @@ function slimMatchDetails(raw: Record<string, unknown> | null | undefined): Matc
         }
       : undefined,
     players: players?.map((p) => {
-      const stats = p.stats as Record<string, number> | undefined
+      const stats = p.stats as Record<string, unknown> | undefined
+      const abilityCasts = stats?.abilityCasts as Record<string, number> | undefined
+      const roundDamageRaw = p.roundDamage as Array<Record<string, unknown>> | undefined
+      const roundDamage = roundDamageRaw?.map((row) => ({
+        round: (row.round as number) ?? 0,
+        receiver: (row.receiver as string) ?? '',
+        damage: (row.damage as number) ?? 0,
+      }))
+
       return {
         subject: (p.subject as string) ?? null,
         gameName: (p.gameName as string) ?? null,
@@ -69,12 +91,21 @@ function slimMatchDetails(raw: Record<string, unknown> | null | undefined): Matc
         accountLevel: (p.accountLevel as number) ?? null,
         stats: stats
           ? {
-              kills: stats.kills,
-              deaths: stats.deaths,
-              assists: stats.assists,
-              score: riotStatsToAcs(stats, (stats.roundsPlayed as number) || 1),
+              kills: stats.kills as number | undefined,
+              deaths: stats.deaths as number | undefined,
+              assists: stats.assists as number | undefined,
+              score: riotStatsToAcs(stats as Record<string, number>, (stats.roundsPlayed as number) || 1),
+              abilityCasts: abilityCasts
+                ? {
+                    grenadeCasts: abilityCasts.grenadeCasts,
+                    ability1Casts: abilityCasts.ability1Casts,
+                    ability2Casts: abilityCasts.ability2Casts,
+                    ultimateCasts: abilityCasts.ultimateCasts,
+                  }
+                : undefined,
             }
           : undefined,
+        roundDamage: roundDamage?.length ? roundDamage : undefined,
       }
     }),
   }
@@ -177,6 +208,7 @@ export function prepareMatchDataForUpload(timeline: MatchData | null): UploadMat
     matchDetailsLite: slimMatchDetails(timeline.matchDetails),
     spatialSummary: timeline.spatialSummary,
     roundPlants,
+    coachingFacts: buildCoachingFacts(timeline),
     startTime: timeline.startTime,
     endTime: timeline.endTime,
   }

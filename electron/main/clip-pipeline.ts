@@ -107,7 +107,7 @@ export class ClipPipeline {
         const thumbPath = ClipExtractor.thumbPath(rec.id)
         await clipExtractor.extract({ sourcePath: videoPath, startOffsetMs: startMs, durationMs: 30_000, outputPath: clipPath })
         const resolvedThumb = await this.safeThumb(videoPath, offsetMs, startMs, thumbPath)
-        clipStore.update(rec.id, { path: clipPath, thumbPath: resolvedThumb })
+        clipStore.update(rec.id, { path: clipPath, thumbPath: resolvedThumb, momentOffsetMs: offsetMs })
         extractedClipIds.push(rec.id)
         logActivity(`Saved hotkey clip (${map ?? 'unknown map'})`)
       } catch (err) {
@@ -150,7 +150,7 @@ export class ClipPipeline {
           const thumbPath = ClipExtractor.thumbPath(rec.id)
           await clipExtractor.extract({ sourcePath: videoPath, startOffsetMs: startMs, durationMs: 13_000, outputPath: clipPath })
           const resolvedThumb = await this.safeThumb(videoPath, offsetMs, startMs, thumbPath)
-          clipStore.update(rec.id, { path: clipPath, thumbPath: resolvedThumb })
+          clipStore.update(rec.id, { path: clipPath, thumbPath: resolvedThumb, momentOffsetMs: offsetMs })
           extractedClipIds.push(rec.id)
         } catch (err) {
           const msg = err instanceof Error ? err.message : String(err)
@@ -175,7 +175,7 @@ export class ClipPipeline {
           const thumbPath = ClipExtractor.thumbPath(rec.id)
           await clipExtractor.extract({ sourcePath: videoPath, startOffsetMs: startMs, durationMs, outputPath: clipPath })
           const resolvedThumb = await this.safeThumb(videoPath, first.videoOffsetMs!, startMs, thumbPath)
-          clipStore.update(rec.id, { path: clipPath, thumbPath: resolvedThumb })
+          clipStore.update(rec.id, { path: clipPath, thumbPath: resolvedThumb, momentOffsetMs: first.videoOffsetMs! })
           extractedClipIds.push(rec.id)
           logActivity(`${trigger === 'ace' ? 'Ace' : `${killCount}K`} clip saved — Round ${round + 1} (${map ?? 'unknown'})`)
         } catch (err) {
@@ -197,7 +197,7 @@ export class ClipPipeline {
           const thumbPath = ClipExtractor.thumbPath(rec.id)
           await clipExtractor.extract({ sourcePath: videoPath, startOffsetMs: startMs, durationMs, outputPath: clipPath })
           const resolvedThumb = await this.safeThumb(videoPath, first.videoOffsetMs!, startMs, thumbPath)
-          clipStore.update(rec.id, { path: clipPath, thumbPath: resolvedThumb })
+          clipStore.update(rec.id, { path: clipPath, thumbPath: resolvedThumb, momentOffsetMs: first.videoOffsetMs! })
           extractedClipIds.push(rec.id)
           logActivity(`Clutch clip saved — Round ${round + 1} (${map ?? 'unknown'})`)
         } catch (err) {
@@ -277,7 +277,7 @@ export class ClipPipeline {
         const thumbPath = ClipExtractor.thumbPath(rec.id)
         await clipExtractor.extract({ sourcePath: videoPath, startOffsetMs: startMs, durationMs, outputPath: clipPath })
         const resolvedThumb = await this.safeThumb(videoPath, first.videoOffsetMs!, startMs, thumbPath)
-        clipStore.update(rec.id, { path: clipPath, thumbPath: resolvedThumb })
+        clipStore.update(rec.id, { path: clipPath, thumbPath: resolvedThumb, momentOffsetMs: first.videoOffsetMs! })
         extractedClipIds.push(rec.id)
         logActivity(`${trigger === 'ace' ? 'Ace' : `${killCount}K`} clip saved (late extract) — Round ${round + 1} (${map ?? 'unknown'})`)
       } catch (err) {
@@ -299,7 +299,7 @@ export class ClipPipeline {
         const thumbPath = ClipExtractor.thumbPath(rec.id)
         await clipExtractor.extract({ sourcePath: videoPath, startOffsetMs: startMs, durationMs, outputPath: clipPath })
         const resolvedThumb = await this.safeThumb(videoPath, first.videoOffsetMs!, startMs, thumbPath)
-        clipStore.update(rec.id, { path: clipPath, thumbPath: resolvedThumb })
+        clipStore.update(rec.id, { path: clipPath, thumbPath: resolvedThumb, momentOffsetMs: first.videoOffsetMs! })
         extractedClipIds.push(rec.id)
         logActivity(`Clutch clip saved (late extract) — Round ${round + 1} (${map ?? 'unknown'})`)
       } catch (err) {

@@ -215,6 +215,7 @@ export async function buildTimelineFromDemo(opts: DemoTimelineOptions): Promise<
           playerLoadoutValue: null,
           playerWeapon: null,
           playerArmor: null,
+          playerDamageDealt: null,
         })
       }
       timeline.roundSummaries = roundSummaries

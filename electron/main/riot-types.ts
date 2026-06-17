@@ -152,6 +152,8 @@ export interface RoundSummary {
   playerWeapon: string | null
   /** Armor type this round (e.g. "Light Shields", "Heavy Shields") */
   playerArmor: string | null
+  /** Total damage dealt by the player this round (from Riot roundResults.playerStats.damage) */
+  playerDamageDealt: number | null
 }
 
 /** Per-player stats snapshot for the full team — captured at match end */

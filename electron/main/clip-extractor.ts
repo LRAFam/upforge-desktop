@@ -231,4 +231,11 @@ export class ClipExtractor {
   static thumbPath(id: string): string {
     return join(ClipExtractor.clipsDir(), `${id}_thumb.jpg`)
   }
+
+  /** Directory for scout gap thumbnails (not full clips). */
+  scoutThumbDir(): string {
+    const dir = join(ClipExtractor.clipsDir(), 'scout-thumbs')
+    mkdirSync(dir, { recursive: true })
+    return dir
+  }
 }

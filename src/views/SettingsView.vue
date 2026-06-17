@@ -425,6 +425,20 @@
                 </div>
                 <input v-model.number="settings.obsReplayBufferSeconds" type="range" min="10" max="120" step="5" class="w-full accent-red-500" @input="debouncedSave()" />
               </div>
+              <label class="flex items-start gap-3 cursor-pointer">
+                <input
+                  v-model="settings.obsPreserveActiveScene"
+                  type="checkbox"
+                  class="mt-0.5 rounded border-white/20 bg-white/5 text-red-500 focus:ring-red-500/30"
+                  @change="debouncedSave()"
+                />
+                <span>
+                  <span class="text-sm text-white">Keep my active OBS scene when a match starts</span>
+                  <span class="mt-0.5 block text-[11px] text-gray-500 leading-relaxed">
+                    Turn on if you stream with face cam and overlays — UpForge will still retarget game capture but won&apos;t force-switch to the UpForge scene.
+                  </span>
+                </span>
+              </label>
               <p class="text-xs text-gray-500">UpForge starts/stops OBS and applies the recording preset on connect and before each match.</p>
               <p v-if="obsStatus?.lastError" class="rounded-xl border border-red-500/20 bg-red-500/6 px-3 py-2 text-xs text-red-300">{{ obsStatus.lastError }}</p>
             </div>
@@ -1019,6 +1033,7 @@ async function obsConnect() {
       obsPort: settings.obsPort,
       obsPassword: settings.obsPassword,
       obsReplayBufferSeconds: settings.obsReplayBufferSeconds,
+      obsPreserveActiveScene: settings.obsPreserveActiveScene,
     })
     const result = await window.api.obs.connect()
     if (result.ok) {
@@ -1047,6 +1062,7 @@ async function obsLaunchAndConnect() {
       obsPort: settings.obsPort,
       obsPassword: settings.obsPassword,
       obsReplayBufferSeconds: settings.obsReplayBufferSeconds,
+      obsPreserveActiveScene: settings.obsPreserveActiveScene,
     })
     const result = await window.api.obs.launchAndConnect()
     if (result.ok) {
@@ -1201,6 +1217,7 @@ const settings = reactive<AppSettings>({
   obsPort: 4455,
   obsPassword: '',
   obsReplayBufferSeconds: 30,
+  obsPreserveActiveScene: true,
   trainerMouse: {
     dpi: 800,
     game: 'valorant',

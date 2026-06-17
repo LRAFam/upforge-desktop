@@ -1095,6 +1095,13 @@ export class RiotLocalApi {
         const prs = (round.playerStats as Array<Record<string, unknown>> | undefined)
           ?.find((ps) => (ps.subject as string)?.toLowerCase() === ownLower)
         const economy = prs?.economy as Record<string, unknown> | undefined
+        let playerDamageDealt = 0
+        const roundDamageRows = prs?.damage as Array<Record<string, unknown>> | undefined
+        if (roundDamageRows?.length) {
+          for (const d of roundDamageRows) {
+            playerDamageDealt += (d.damage as number) ?? 0
+          }
+        }
         const fb = firstBloodByRound.get(roundNum)
         const fbKiller = fb?.killer?.toLowerCase()
         const fbVictim = fb?.victim?.toLowerCase()
@@ -1120,6 +1127,7 @@ export class RiotLocalApi {
           playerLoadoutValue: (economy?.loadoutValue as number) ?? null,
           playerWeapon: resolveEconomyWeapon(economy?.weapon) ?? null,
           playerArmor: resolveEconomyArmor(economy?.armor) ?? null,
+          playerDamageDealt: playerDamageDealt > 0 ? playerDamageDealt : null,
         })
         if (bombPlanter) {
           const plantLocal = (round.plantRoundTime as number) ?? (round.plantRoundMsec as number) ?? 0

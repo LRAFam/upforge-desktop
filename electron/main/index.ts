@@ -107,6 +107,7 @@ import {
   whenWebContentsReady,
 } from './window-manager'
 import { ClipPipeline } from './clip-pipeline'
+import { buildAndUploadScoutMoments } from './scout-moments'
 import { requestPregameBrief as _requestPregameBrief, requestPostGameDebrief as _requestPostGameDebrief } from './post-game-api'
 import { resolveInstanceLock, startInstanceCoordinator } from './instance-coordinator'
 import {
@@ -165,6 +166,7 @@ const obsRecorder = new OBSRecorder(
       port: s?.obsPort ?? 4455,
       password: s?.obsPassword ?? '',
       replayBufferSeconds: s?.obsReplayBufferSeconds ?? 30,
+      obsPreserveActiveScene: s?.obsPreserveActiveScene ?? true,
     }
   },
   () => {
@@ -667,6 +669,22 @@ async function extractMatchClips(
   analysisJobId: string | null
 ): Promise<void> {
   return clipPipeline.extractMatchClips(videoPath, timeline, analysisJobId)
+}
+
+async function syncScoutMomentsForJob(
+  jobId: string | null,
+  videoPath: string,
+  timeline: MatchData | null,
+): Promise<void> {
+  if (!jobId) return
+  await buildAndUploadScoutMoments({
+    jobId,
+    videoPath,
+    timeline,
+    clipStore,
+    clipExtractor,
+    upload: (id, moments) => uploadManager.uploadScoutMoments(id, moments),
+  })
 }
 
 function requestPregameBrief(context?: {
@@ -1214,6 +1232,7 @@ function setupGameDetection(): void {
       const jobId = uploadResult ?? null
 
       extractMatchClips(readyPath, timeline, jobId)
+        .then(() => syncScoutMomentsForJob(jobId, readyPath, timeline))
         .catch(err => log.warn('[ClipExtract] Background extraction error:', err))
         .finally(() => {
           if (!lateRetryScheduled) doAutoDelete()
@@ -1248,6 +1267,7 @@ function setupGameDetection(): void {
             }
             log.info(`[LateClipExtract] Got ${timeline!.playerKills.length} kills — extracting clips`)
             await extractKillClipsOnly(readyPath, timeline!, jobId)
+            await syncScoutMomentsForJob(jobId, readyPath, timeline!)
           } catch (err) {
             log.warn('[LateClipExtract] Error:', err)
           } finally {
