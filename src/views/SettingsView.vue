@@ -78,6 +78,9 @@
             </svg>
           </button>
           <div v-if="sectionOpen.account" class="border-t border-white/[0.09] p-4">
+            <div v-if="paymentPastDue" class="mb-4">
+              <PaymentFailedAlert @error="showBillingError" />
+            </div>
             <div v-if="user" class="rounded-2xl border border-white/[0.10] bg-gradient-to-br from-red-500/12 via-orange-500/6 to-transparent p-4">
               <div class="flex items-start justify-between gap-4">
                 <div class="flex min-w-0 items-center gap-3">
@@ -99,13 +102,14 @@
                 <div class="rounded-full border border-white/[0.08] bg-white/[0.04] px-2.5 py-1 text-[11px] font-semibold text-gray-300">Desktop</div>
               </div>
               <div class="mt-4 grid grid-cols-2 gap-2">
-                <button class="rounded-xl border border-white/[0.08] bg-white/[0.04] px-3 py-2 text-xs font-medium text-gray-300 transition-colors hover:border-white/[0.14] hover:text-white" @click="openBilling">Manage billing</button>
+                <button class="rounded-xl border border-white/[0.08] bg-white/[0.04] px-3 py-2 text-xs font-medium text-gray-300 transition-colors hover:border-white/[0.14] hover:text-white disabled:opacity-60" :disabled="billingPortalLoading" @click="openBilling">{{ billingPortalLoading ? 'Opening…' : 'Manage billing' }}</button>
                 <button class="rounded-xl border border-white/[0.08] bg-white/[0.04] px-3 py-2 text-xs font-medium text-gray-300 transition-colors hover:border-white/[0.14] hover:text-white" @click="openSite">Open dashboard</button>
                 <button class="rounded-xl border border-white/[0.08] bg-white/[0.04] px-3 py-2 text-xs font-medium text-gray-300 transition-colors hover:border-white/[0.14] hover:text-white" @click="openHelp">Support</button>
                 <button class="rounded-xl border border-red-500/20 bg-red-500/10 px-3 py-2 text-xs font-medium text-red-300 transition-colors hover:border-red-500/35 hover:bg-red-500/15" @click="handleLogout">Sign out</button>
               </div>
             </div>
             <div v-else class="h-28 animate-pulse rounded-2xl border border-white/[0.09] bg-white/[0.02]" />
+            <p v-if="billingMessage" class="mt-3 text-xs" :class="billingMessageError ? 'text-red-400' : 'text-gray-400'">{{ billingMessage }}</p>
 
             <div class="mt-4 rounded-2xl border border-white/[0.10] bg-black/20 p-4">
               <p class="text-[10px] font-bold uppercase tracking-widest text-gray-600">Badge &amp; rank icons</p>
@@ -903,6 +907,8 @@ import { getTierBadgeClass, getTierBadgeLabel, formatGameMode } from '../lib/val
 import { hasProAccess as proAccessForUser } from '../lib/subscription'
 import { BADGE_PREVIEW_ITEMS, getBadgeIconUrl, getSubscriptionIconUrl } from '../lib/rank-assets'
 import CrosshairSettingsPanel from '../components/CrosshairSettingsPanel.vue'
+import PaymentFailedAlert from '../components/PaymentFailedAlert.vue'
+import { isPaymentPastDue, openBillingPortal as requestBillingPortal } from '../lib/billing'
 
 type UserWithUsage = {
   name: string
@@ -918,11 +924,17 @@ type UserWithUsage = {
   archive_limit?: number | null
   archive_remaining?: number | null
   archive_retention_days?: number | null
+  stripe_subscription_status?: string | null
 }
 
 const router = useRouter()
 const route = useRoute()
 const user = ref<UserWithUsage | null>(null)
+const billingPortalLoading = ref(false)
+const billingMessage = ref('')
+const billingMessageError = ref(false)
+
+const paymentPastDue = computed(() => isPaymentPastDue(user.value?.stripe_subscription_status))
 
 const SETTINGS_TABS = [
   { id: 'general',   label: 'General',   icon: '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/>' },
@@ -1558,8 +1570,25 @@ async function testRiotApi(): Promise<void> {
   }
 }
 
-function openBilling(): void {
-  window.open('https://upforge.gg/billing', '_blank')
+function showBillingError(message: string): void {
+  billingMessage.value = message
+  billingMessageError.value = true
+}
+
+async function openBilling(): Promise<void> {
+  if (billingPortalLoading.value) return
+  billingPortalLoading.value = true
+  billingMessage.value = ''
+  billingMessageError.value = false
+  try {
+    const result = await requestBillingPortal()
+    if (!result.ok) {
+      billingMessage.value = result.error ?? 'Could not open billing portal.'
+      billingMessageError.value = true
+    }
+  } finally {
+    billingPortalLoading.value = false
+  }
 }
 
 function openUpgrade(): void {
@@ -1776,6 +1805,7 @@ onMounted(async () => {
         archive_limit: prof.user.archive_stats?.limit ?? null,
         archive_remaining: prof.user.archive_stats?.remaining ?? null,
         archive_retention_days: prof.user.archive_stats?.retention_days ?? null,
+        stripe_subscription_status: prof.user.stripe_subscription_status ?? null,
       }
     }
   } catch { /* profile load failure is non-critical */ }

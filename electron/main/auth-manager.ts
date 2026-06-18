@@ -57,6 +57,7 @@ export interface AuthUser {
   onboarding_weaknesses?: string[]
   cs2_tier?: string | null
   onboarding?: { connect_steam?: boolean; connected_riot_account?: boolean } | null
+  stripe_subscription_status?: string | null
 }
 
 export interface ValorantStats {
@@ -82,6 +83,7 @@ export interface ProfileData {
     email: string
     tier: string
     is_admin: boolean
+    stripe_subscription_status?: string | null
     riot_name: string | null
     riot_tag: string | null
     riot_region: string | null
@@ -357,6 +359,26 @@ export class AuthManager {
     try {
       await this._api.post('/api/teams/presence', { is_recording: recording, game })
     } catch { /* ignore */ }
+  }
+
+  async createBillingPortalSession(): Promise<{ ok: true; url: string } | { ok: false; error: string }> {
+    if (!this._token) return { ok: false, error: 'Not logged in' }
+    try {
+      const res = await this._api.post('/api/payment/billing-portal')
+      const url = res.data?.portal_url as string | undefined
+      if (!res.data?.success || !url) {
+        const msg = (res.data?.error as string | undefined)
+          ?? (res.data?.message as string | undefined)
+          ?? 'Could not open billing portal'
+        return { ok: false, error: msg }
+      }
+      return { ok: true, url }
+    } catch (err: unknown) {
+      const msg = (err as { response?: { data?: { error?: string; message?: string } } })?.response?.data?.error
+        ?? (err as { response?: { data?: { message?: string } } })?.response?.data?.message
+        ?? (err instanceof Error ? err.message : 'Could not open billing portal')
+      return { ok: false, error: msg }
+    }
   }
 
   getToken(): string | null {

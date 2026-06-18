@@ -3,7 +3,7 @@
  * IPC handlers for authentication, profile, stats, analyses, and squad presence.
  */
 
-import { IpcMain, BrowserWindow } from 'electron'
+import { IpcMain, BrowserWindow, shell } from 'electron'
 import log from 'electron-log'
 import { AuthManager } from '../auth-manager'
 import type { MatchRecorder } from '../match-recorder'
@@ -86,6 +86,13 @@ export function setupAuthHandlers(
 
   ipcMain.handle('profile:get', async () => {
     return auth.fetchProfile()
+  })
+
+  ipcMain.handle('billing:open-portal', async () => {
+    const result = await auth.createBillingPortalSession()
+    if (!result.ok) return result
+    await shell.openExternal(result.url)
+    return { ok: true as const }
   })
 
   ipcMain.handle('stats:rr-history', async () => {

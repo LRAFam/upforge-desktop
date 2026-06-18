@@ -4,6 +4,31 @@
     <!-- Warning banner (full-width, conditional) -->
     <Transition name="banner-slide">
       <div
+        v-if="paymentPastDue"
+        class="flex-shrink-0 mx-4 mt-3 relative flex items-center gap-3 pl-4 pr-3 py-2.5 rounded-xl bg-red-500/[0.08] border border-red-500/25 overflow-hidden"
+      >
+        <div class="absolute left-0 top-0 bottom-0 w-[3px] bg-gradient-to-b from-red-400 to-red-600 rounded-l-xl" />
+        <div class="w-5 h-5 rounded-full bg-red-500/15 flex items-center justify-center flex-shrink-0">
+          <svg class="w-3 h-3 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/>
+          </svg>
+        </div>
+        <span class="text-xs text-red-300/90 flex-1 leading-snug">
+          Your last payment failed — update your card to keep your subscription active.
+        </span>
+        <button
+          class="flex-shrink-0 text-xs font-semibold text-red-200 hover:text-white transition-colors border border-red-500/30 rounded-lg px-2 py-1 disabled:opacity-60"
+          :disabled="billingPortalLoading"
+          @click="openBillingPortal"
+        >
+          {{ billingPortalLoading ? 'Opening…' : 'Fix payment' }}
+        </button>
+      </div>
+    </Transition>
+
+    <!-- Warning banner (full-width, conditional) -->
+    <Transition name="banner-slide">
+      <div
         v-if="warning"
         class="flex-shrink-0 mx-4 mt-3 relative flex items-center gap-3 pl-4 pr-3 py-2 rounded-xl bg-orange-500/[0.07] border border-orange-500/20 overflow-hidden"
       >
@@ -437,6 +462,11 @@
             <p v-if="onboardingTargetRank" class="text-[10px] text-gray-600">
               Goal: <span class="text-teal-300/90 font-semibold">{{ onboardingTargetRank }}</span>
             </p>
+          </div>
+
+          <!-- Payment failed -->
+          <div v-if="paymentPastDue" class="px-4 py-3 border-t border-white/[0.07]">
+            <PaymentFailedAlert @error="showBillingError" />
           </div>
 
           <!-- Quota -->
@@ -1129,7 +1159,9 @@ import CS2StatsPanel from '../components/CS2StatsPanel.vue'
 import CS2SetupPanel from '../components/CS2SetupPanel.vue'
 import SkillProfileBars from '../components/SkillProfileBars.vue'
 import CoachMemoryCard from '../components/CoachMemoryCard.vue'
+import PaymentFailedAlert from '../components/PaymentFailedAlert.vue'
 import type { SkillProfileSnapshot } from '../lib/skill-profile'
+import { isPaymentPastDue, openBillingPortal as requestBillingPortal } from '../lib/billing'
 import { usePrimaryGame } from '../composables/usePrimaryGame'
 import { primaryGameWebBase } from '../lib/games'
 import { getCs2RankIconUrl, getFaceitLevelIconUrl, type Cs2FaceitConnection } from '../lib/cs2'
@@ -1183,6 +1215,10 @@ const clipCount = ref(0)
 const isAdmin = computed(() =>
   isPlatformAdmin(profile.value?.user?.tier, profile.value?.user?.is_admin),
 )
+const paymentPastDue = computed(() =>
+  isPaymentPastDue(profile.value?.user?.stripe_subscription_status),
+)
+const billingPortalLoading = ref(false)
 
 const hotkeyHints = computed(() => [
   { key: hotkeys.value['save-clip'] || 'F9', label: 'save clip' },
@@ -2166,6 +2202,22 @@ function openEmptyCoachingAction() {
 }
 function openUpgrade() { window.open('https://upforge.gg/pricing', '_blank') }
 function openPpa() { window.open('https://upforge.gg/valorant/analyze', '_blank') }
+
+function showBillingError(message: string): void {
+  warning.value = message
+  setTimeout(() => { warning.value = null }, 12000)
+}
+
+async function openBillingPortal(): Promise<void> {
+  if (billingPortalLoading.value) return
+  billingPortalLoading.value = true
+  try {
+    const result = await requestBillingPortal()
+    if (!result.ok) showBillingError(result.error ?? 'Could not open billing portal.')
+  } finally {
+    billingPortalLoading.value = false
+  }
+}
 
 const DISK_MIGRATION_HINT_KEY = 'upforge-disk-hint-v1'
 const LOW_FREE_DISK_BYTES = 2 * 1024 * 1024 * 1024

@@ -20,6 +20,9 @@ const api = {
   profile: {
     get: () => ipcRenderer.invoke('profile:get')
   },
+  billing: {
+    openPortal: () => ipcRenderer.invoke('billing:open-portal') as Promise<{ ok: boolean; error?: string }>,
+  },
   analyses: {
     get: (limit?: number) => ipcRenderer.invoke('analyses:get', { limit }),
     getTimeline: (id: number) => ipcRenderer.invoke('analyses:get-timeline', { id }),

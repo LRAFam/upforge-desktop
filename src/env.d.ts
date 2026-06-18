@@ -271,6 +271,7 @@ export interface ProfileData {
     email: string
     tier: string
     is_admin: boolean
+    stripe_subscription_status?: string | null
     riot_name: string | null
     riot_tag: string | null
     riot_region: string | null
@@ -408,6 +409,9 @@ declare global {
       }
       profile: {
         get: () => Promise<ProfileData | null>
+      }
+      billing: {
+        openPortal: () => Promise<{ ok: boolean; error?: string }>
       }
       analyses: {
         get: (limit?: number) => Promise<AnalysisItem[]>
