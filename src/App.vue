@@ -214,7 +214,7 @@
     <!-- Content — key forces remount when the signed-in account changes -->
     <main
       class="main-content flex-1 min-h-0"
-      :class="isVodReviewRoute ? 'overflow-hidden' : 'overflow-y-auto'"
+      :class="isFullHeightView ? 'overflow-hidden' : 'overflow-y-auto'"
     >
       <RouterView :key="sessionUserKey" />
     </main>
@@ -293,7 +293,9 @@ const showTitleBar = computed(() =>
 )
 
 const isPostGameRoute = computed(() => route.path.startsWith('/post-game'))
-const isVodReviewRoute = computed(() => route.path === '/vod-review')
+const isFullHeightView = computed(() =>
+  ['/vod-review', '/dashboard', '/training'].includes(route.path),
+)
 
 const showNav = computed(() =>
   !route.path.startsWith('/post-game') &&

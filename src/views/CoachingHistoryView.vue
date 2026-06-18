@@ -184,9 +184,9 @@
                         :style="{ color: getRoleColor(getAgentRole(a.agent)), backgroundColor: getRoleColor(getAgentRole(a.agent)) + '20' }"
                       >{{ getAgentRole(a.agent) }}</span>
                       <span
-                        v-if="a.game_mode && a.game_mode.toLowerCase() !== 'competitive'"
-                        class="flex-shrink-0 rounded-full border border-white/[0.10] bg-white/[0.05] px-1.5 py-px text-[8px] font-semibold capitalize text-gray-600"
-                      >{{ a.game_mode }}</span>
+                        v-if="isDisplayableGameMode(a.game_mode)"
+                        class="flex-shrink-0 rounded-full border border-white/[0.10] bg-white/[0.05] px-1.5 py-px text-[8px] font-semibold text-gray-600"
+                      >{{ formatGameMode(a.game_mode) }}</span>
                     </div>
                     <p class="mt-0.5 flex items-center gap-1.5 text-xs text-gray-600">
                       <span>{{ formatDate(a.created_at) }}</span>
@@ -299,7 +299,7 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import type { AnalysisItem } from '../env.d.ts'
-import { getAgentImage, getAgentRole, getAgentColor, getMapMinimap, getRoleColor } from '../lib/valorant'
+import { getAgentImage, getAgentRole, getAgentColor, getMapMinimap, getRoleColor, formatGameMode, isDisplayableGameMode } from '../lib/valorant'
 import { pendingTimeline } from '../stores/pendingTimeline'
 
 const router = useRouter()

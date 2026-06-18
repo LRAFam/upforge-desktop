@@ -90,247 +90,95 @@
       </div>
     </Transition>
 
-    <!-- Status card -->
+    <!-- Unified status + quick stats bar -->
     <div
       :class="[
-        'flex-shrink-0 flex items-center gap-3 mx-4 mt-3 px-3 py-2 rounded-xl border text-xs transition-all',
-        !status.obsConnected && !status.recording ? 'bg-amber-500/[0.07] border-amber-500/25' :
-        !status.ffmpegOk ? 'bg-yellow-500/[0.07] border-yellow-500/25' :
-        status.recording ? 'bg-red-500/[0.08] border-red-500/25' :
-        status.recordingStarting ? 'bg-yellow-500/[0.07] border-yellow-500/20' :
-        status.currentGame ? 'bg-orange-500/[0.07] border-orange-500/20' :
-        'bg-white/[0.02] border-white/[0.09]'
+        'flex-shrink-0 mx-4 mt-3 panel-elevated overflow-hidden text-xs transition-all',
+        !status.obsConnected && !status.recording ? 'ring-1 ring-amber-500/15' :
+        !status.ffmpegOk ? 'ring-1 ring-yellow-500/15' :
+        status.recording ? 'ring-1 ring-red-500/20' : ''
       ]"
     >
-      <!-- Status dot -->
-      <div class="relative flex-shrink-0">
-        <div :class="['w-2 h-2 rounded-full', !status.obsConnected && !status.recording ? 'bg-amber-400' : !status.ffmpegOk ? 'bg-yellow-400' : status.recording ? 'bg-red-500' : status.recordingStarting ? 'bg-yellow-400' : status.currentGame ? 'bg-orange-400' : 'bg-gray-600']" />
-        <div v-if="status.recording" class="absolute inset-0 w-2 h-2 rounded-full bg-red-500 animate-ping opacity-70" />
-        <div v-else-if="status.recordingStarting" class="absolute inset-0 w-2 h-2 rounded-full bg-yellow-400 animate-ping opacity-50" />
-        <div v-else-if="status.waitingForMatch" class="absolute inset-0 w-2 h-2 rounded-full bg-orange-400 animate-ping opacity-50" />
-        <div v-else-if="!status.currentGame && status.ffmpegOk && !(platform && platform !== 'win32')" class="absolute rounded-full border border-gray-600/50 idle-breathe" style="width:14px;height:14px;top:-3px;left:-3px;" />
-      </div>
-
-      <!-- Status text (single line) -->
-      <div class="flex-1 min-w-0 flex items-center gap-2 overflow-hidden">
-        <template v-if="!status.obsConnected && !status.recording && !status.recordingStarting">
-          <span class="font-semibold text-amber-300">OBS not connected</span>
-          <span class="text-amber-600/80 hidden sm:inline">Set up in Settings → Recording</span>
-        </template>
-        <template v-else-if="!status.ffmpegOk">
-          <span class="font-semibold text-yellow-400">Clip tools unavailable</span>
-          <span class="text-yellow-600 hidden sm:inline">Reinstall the app to restore clip extraction</span>
-        </template>
-        <template v-else-if="status.recording">
-          <span class="font-black tracking-widest uppercase text-red-400 rec-pulse flex-shrink-0">● REC</span>
-          <span class="font-semibold capitalize flex-shrink-0">{{ status.currentGame || 'Valorant' }}</span>
-          <span v-if="recordingElapsed" class="font-mono tabular-nums text-red-400/80 flex-shrink-0">{{ recordingElapsed }}</span>
-          <span class="text-gray-600 truncate">{{ recordingModeLabel }}</span>
-        </template>
-        <template v-else-if="status.recordingStarting">
-          <span class="font-semibold text-yellow-300">Starting recorder…</span>
-        </template>
-        <template v-else-if="status.waitingForMatch">
-          <span class="font-semibold text-orange-300 flex-shrink-0">{{ status.currentGame || 'Valorant' }} running</span>
-          <span class="text-orange-500/70">In lobby — watching for match…</span>
-        </template>
-        <template v-else-if="status.currentGame">
-          <span class="font-semibold text-orange-300">{{ status.currentGame }} detected</span>
-        </template>
-        <template v-else-if="platform && platform !== 'win32'">
-          <span class="text-gray-500">macOS — preview mode</span>
-        </template>
-        <template v-else>
-          <span class="font-semibold text-gray-300 flex-shrink-0">Ready to record</span>
-          <span v-if="status.recordedModes && status.recordedModes.length" class="text-gray-600 truncate">{{ status.recordedModes.map(formatMode).join(' · ') }}</span>
-          <span v-else class="text-amber-600/80">No modes selected — check Settings</span>
-        </template>
-      </div>
-
-      <div
-        v-if="!status.obsConnected && !status.recording && !status.recordingStarting && platform === 'win32'"
-        class="flex items-center gap-1.5 flex-shrink-0"
-      >
-        <button
-          type="button"
-          class="px-2 py-1 rounded-lg text-[10px] font-medium border border-amber-500/30 bg-amber-500/10 text-amber-200 hover:bg-amber-500/20 disabled:opacity-50"
-          :disabled="obsConnecting"
-          @click="launchAndConnectObs"
-        >{{ obsConnecting ? '…' : 'Launch OBS' }}</button>
-        <button
-          type="button"
-          class="px-2 py-1 rounded-lg text-[10px] font-medium border border-white/[0.10] bg-white/[0.04] text-gray-300 hover:text-white disabled:opacity-50"
-          :disabled="obsConnecting"
-          @click="connectObs"
-        >Connect</button>
-      </div>
-
-      <!-- Hotkey hints (idle) -->
-      <div v-if="status.ffmpegOk && !status.recording && !status.recordingStarting && !(platform && platform !== 'win32') && hotkeys['save-clip']" class="flex items-center gap-1.5 flex-shrink-0">
-        <span class="text-[10px] text-gray-700 mr-0.5">Hotkeys</span>
-        <span v-for="hk in hotkeyHints" :key="hk.label" class="inline-flex items-center gap-1 px-1.5 py-0.5 bg-white/[0.03] border border-white/[0.09] rounded text-[10px]">
-          <kbd class="font-mono font-semibold text-gray-400">{{ hk.key }}</kbd>
-          <span class="text-gray-700">{{ hk.label }}</span>
-        </span>
-      </div>
-
-      <!-- Clip hint (recording) -->
-      <div v-if="status.recording && hotkeys['save-clip']" class="flex items-center gap-1.5 flex-shrink-0">
-        <kbd class="inline-block px-1.5 py-0.5 bg-red-500/10 border border-red-500/20 rounded text-[10px] font-mono font-semibold text-red-400">{{ hotkeys['save-clip'] }}</kbd>
-        <span class="text-[10px] text-red-400/70">save clip</span>
-      </div>
-
-      <!-- Stop button — ends match and opens upload/post-game -->
-      <button v-if="status.recording" :disabled="stopping" class="flex-shrink-0 flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium bg-red-500/[0.12] hover:bg-red-500/[0.2] border border-red-500/20 text-red-400 transition-all disabled:opacity-50" :title="stopRecordingHint" @click="stopRecording">
-        <svg class="w-3 h-3" fill="currentColor" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="1"/></svg>
-        {{ stopping ? 'Ending match…' : 'End match' }}
-      </button>
-    </div>
-
-    <!-- Hero header -->
-    <div class="flex-shrink-0 mx-4 mt-3 space-y-3">
-      <div class="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_300px] gap-3">
-        <div class="relative overflow-hidden rounded-2xl border border-white/[0.10] bg-gradient-to-br from-white/[0.04] via-white/[0.025] to-red-500/[0.06] px-4 pt-3 pb-3">
-          <div class="absolute -right-12 top-0 h-36 w-36 rounded-full bg-red-500/10 blur-3xl" />
-          <div class="absolute left-10 top-10 h-24 w-24 rounded-full bg-orange-500/10 blur-3xl" />
-          <!-- Hero agents artwork -->
-          <img src="../assets/hero-agents.webp" alt="" class="pointer-events-none absolute right-0 top-0 h-full w-[42%] object-cover object-left opacity-[0.14] select-none" />
-          <div class="pointer-events-none absolute inset-y-0" style="right:28%;width:10rem;background:linear-gradient(to right,#111111,transparent)" />
-          <div class="relative space-y-2">
-            <div class="flex items-start justify-between gap-4">
-              <div class="space-y-2">
-                <div class="flex flex-wrap items-center gap-2.5">
-                  <span class="text-[10px] font-black uppercase tracking-[0.32em] text-red-400/80">Command Center</span>
-                  <div v-if="status.recording" class="inline-flex items-center gap-2.5 rounded-full border border-red-500/25 bg-red-500/[0.14] px-3 py-1.5 shadow-[0_0_24px_rgba(239,68,68,0.12)]">
-                    <span class="relative flex h-3 w-3">
-                      <span class="absolute inline-flex h-full w-full rounded-full bg-red-500/60 animate-ping" />
-                      <span class="relative inline-flex h-3 w-3 rounded-full bg-red-400 animate-pulse" />
-                    </span>
-                    <span class="text-[11px] font-black uppercase tracking-[0.24em] text-red-200">Recording live</span>
-                  </div>
-                </div>
-                <h1 class="text-2xl font-black tracking-tight text-white leading-[1.05]">{{ dashboardHeadline }}</h1>
-              </div>
-              <div v-if="status.recording && recordingElapsed" class="rounded-2xl border border-red-500/20 bg-black/20 px-3.5 py-2.5 text-right shadow-[0_0_18px_rgba(239,68,68,0.1)]">
-                <p class="text-[10px] font-semibold uppercase tracking-[0.24em] text-red-300/70">Live timer</p>
-                <p class="mt-1 text-2xl font-black tabular-nums text-red-300">{{ recordingElapsed }}</p>
-              </div>
+      <div class="flex flex-col lg:flex-row lg:items-stretch divide-y lg:divide-y-0 lg:divide-x divide-white/[0.07]">
+        <div class="flex-1 min-w-0 flex flex-col justify-center gap-1.5 px-3 py-2.5">
+          <div class="flex items-center gap-2 min-w-0">
+            <div class="relative flex-shrink-0">
+              <div :class="['w-2 h-2 rounded-full', !status.obsConnected && !status.recording ? 'bg-amber-400' : !status.ffmpegOk ? 'bg-yellow-400' : status.recording ? 'bg-red-500' : status.recordingStarting ? 'bg-yellow-400' : status.currentGame ? 'bg-orange-400' : 'bg-gray-600']" />
+              <div v-if="status.recording" class="absolute inset-0 w-2 h-2 rounded-full bg-red-500 animate-ping opacity-70" />
+              <div v-else-if="status.recordingStarting" class="absolute inset-0 w-2 h-2 rounded-full bg-yellow-400 animate-ping opacity-50" />
+              <div v-else-if="status.waitingForMatch" class="absolute inset-0 w-2 h-2 rounded-full bg-orange-400 animate-ping opacity-50" />
             </div>
-            <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 max-w-4xl">
-              <div class="rounded-xl border border-white/[0.08] bg-white/[0.03] px-2.5 py-2 shadow-[0_10px_30px_rgba(0,0,0,0.12)]">
-                <div class="flex items-center gap-2.5">
-                  <div class="flex h-8 w-8 items-center justify-center rounded-full border border-red-500/20 bg-red-500/10 text-red-300 flex-shrink-0">
-                    <svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" d="M15.75 10.5l4.72-2.36A.75.75 0 0121.5 8.81v6.38a.75.75 0 01-1.03.67l-4.72-2.36m0 0V10.5m0 3H4.875A1.875 1.875 0 013 11.625v-3.75C3 6.839 3.84 6 4.875 6H15.75c1.035 0 1.875.84 1.875 1.875v8.25A1.875 1.875 0 0115.75 18H6" />
-                    </svg>
-                  </div>
-                  <div class="min-w-0">
-                    <p class="text-sm font-black tabular-nums text-white">{{ clipCount }}</p>
-                    <p class="text-[9px] font-semibold uppercase tracking-[0.24em] text-gray-600">Clips</p>
-                  </div>
-                </div>
-              </div>
-              <div class="rounded-xl border border-white/[0.08] bg-white/[0.03] px-2.5 py-2 shadow-[0_10px_30px_rgba(0,0,0,0.12)]">
-                <div class="flex items-center gap-2.5">
-                  <div class="flex h-8 w-8 items-center justify-center rounded-full border border-orange-500/20 bg-orange-500/10 text-orange-300 flex-shrink-0">
-                    <svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" d="M3 13.125C3 12.503 3.504 12 4.125 12h3.75c.621 0 1.125.503 1.125 1.125v6.75C9 20.497 8.496 21 7.875 21h-3.75A1.125 1.125 0 013 19.875v-6.75zm6-4.5C9 8.003 9.504 7.5 10.125 7.5h3.75c.621 0 1.125.503 1.125 1.125v11.25c0 .622-.504 1.125-1.125 1.125h-3.75A1.125 1.125 0 019 19.875V8.625zm6-3.375c0-.622.504-1.125 1.125-1.125h3.75C20.496 4.125 21 4.628 21 5.25v14.625c0 .622-.504 1.125-1.125 1.125h-3.75A1.125 1.125 0 0115 19.875V5.25z" />
-                    </svg>
-                  </div>
-                  <div class="min-w-0">
-                    <p class="text-sm font-black tabular-nums text-white">{{ totalSessionsAnalysed }}</p>
-                    <p class="text-[9px] font-semibold uppercase tracking-[0.24em] text-gray-600">Analyses</p>
-                  </div>
-                </div>
-              </div>
-              <div class="rounded-xl border border-white/[0.08] bg-white/[0.03] px-2.5 py-2 shadow-[0_10px_30px_rgba(0,0,0,0.12)]">
-                <div class="flex items-center gap-2.5">
-                  <div class="flex h-8 w-8 items-center justify-center rounded-full border border-white/[0.08] bg-white/[0.04] flex-shrink-0">
-                    <img v-if="isValorant && getRankIconUrl(profile?.latest_stats?.current_rank)" :src="getRankIconUrl(profile?.latest_stats?.current_rank)!" :alt="profile?.latest_stats?.current_rank ?? ''" class="w-7 h-7 object-contain drop-shadow-lg" />
-                    <img v-else-if="isCs2 && dashboardCs2RankIcon" :src="dashboardCs2RankIcon" alt="CS2 rank" class="w-7 h-7 object-contain drop-shadow-lg" />
-                    <img v-else-if="isCs2 && faceitLevelIconUrl" :src="faceitLevelIconUrl" alt="FACEIT level" class="w-7 h-7 object-contain drop-shadow-lg" />
-                    <img v-else-if="isDeadlock && goalsRankIcon" :src="goalsRankIcon" alt="Deadlock rank" class="w-7 h-7 object-contain drop-shadow-lg" />
-                    <svg v-else class="h-3.5 w-3.5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-                    </svg>
-                  </div>
-                  <div class="min-w-0">
-                    <p class="text-sm font-black text-white truncate">{{ dashboardRankLabel }}</p>
-                    <p class="text-[9px] font-semibold uppercase tracking-[0.24em] text-gray-600">Rank</p>
-                  </div>
-                </div>
-              </div>
-              <div v-if="isValorant" class="rounded-xl border border-white/[0.08] bg-white/[0.03] px-2.5 py-2 shadow-[0_10px_30px_rgba(0,0,0,0.12)]">
-                <div class="flex items-center gap-2.5">
-                  <div class="flex h-8 w-8 items-center justify-center rounded-full border border-emerald-500/20 bg-emerald-500/10 text-emerald-300 flex-shrink-0">
-                    <svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" d="M3 13.5l5.25-5.25L12 12l8.25-8.25" />
-                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" d="M16.5 3.75H21v4.5" />
-                    </svg>
-                  </div>
-                  <div class="min-w-0">
-                    <p class="text-sm font-black tabular-nums" :class="currentStreak > 0 ? 'text-green-400' : currentStreak < 0 ? 'text-red-400' : 'text-white'">{{ currentStreak !== 0 ? (currentStreak > 0 ? '+' : '') + currentStreak : '—' }}</p>
-                    <p class="text-[9px] font-semibold uppercase tracking-[0.24em] text-gray-600">Streak</p>
-                  </div>
-                </div>
-              </div>
+            <div class="flex-1 min-w-0 flex items-center gap-2 overflow-hidden">
+              <template v-if="!status.obsConnected && !status.recording && !status.recordingStarting">
+                <span class="font-semibold text-amber-300 flex-shrink-0">OBS not connected</span>
+                <span class="text-amber-600/80 hidden md:inline truncate">Settings → Recording</span>
+              </template>
+              <template v-else-if="!status.ffmpegOk">
+                <span class="font-semibold text-yellow-400 flex-shrink-0">Clip tools unavailable</span>
+              </template>
+              <template v-else-if="status.recording">
+                <span class="font-black tracking-widest uppercase text-red-400 rec-pulse flex-shrink-0">● REC</span>
+                <span class="font-semibold capitalize flex-shrink-0">{{ status.currentGame || 'Valorant' }}</span>
+                <span v-if="recordingElapsed" class="font-mono tabular-nums text-red-400/80 flex-shrink-0">{{ recordingElapsed }}</span>
+              </template>
+              <template v-else-if="status.recordingStarting">
+                <span class="font-semibold text-yellow-300">Starting recorder…</span>
+              </template>
+              <template v-else-if="status.waitingForMatch">
+                <span class="font-semibold text-orange-300 flex-shrink-0">{{ status.currentGame || 'Valorant' }}</span>
+                <span class="text-orange-500/70 truncate">Watching for match…</span>
+              </template>
+              <template v-else-if="status.currentGame">
+                <span class="font-semibold text-orange-300">{{ status.currentGame }} detected</span>
+              </template>
+              <template v-else-if="platform && platform !== 'win32'">
+                <span class="text-gray-500">macOS preview mode</span>
+              </template>
+              <template v-else>
+                <span class="font-semibold text-gray-300 flex-shrink-0">Ready</span>
+                <span v-if="status.recordedModes?.length" class="text-gray-600 truncate">{{ status.recordedModes.map(formatMode).join(' · ') }}</span>
+              </template>
             </div>
-          </div>
-        </div>
-
-        <div
-          class="relative overflow-hidden rounded-3xl border px-4 py-4"
-          :class="(!status.obsConnected && !status.recording) || !status.ffmpegOk || status.recordingStarting ? 'border-amber-500/20 bg-gradient-to-br from-amber-500/[0.08] to-white/[0.02]' : liveDetectionActive ? 'border-emerald-500/20 bg-gradient-to-br from-emerald-500/[0.12] via-emerald-500/[0.04] to-white/[0.02]' : 'border-white/[0.10] bg-white/[0.02]'"
-        >
-          <div v-if="liveDetectionActive" class="absolute inset-y-4 left-0 w-[3px] rounded-full bg-gradient-to-b from-emerald-300 via-emerald-400 to-emerald-500" />
-          <div v-if="liveDetectionActive" class="absolute -right-8 top-6 h-24 w-24 rounded-full bg-emerald-400/10 blur-3xl" />
-          <div class="relative flex items-start gap-3 pl-1">
             <div
-              class="flex h-11 w-11 items-center justify-center rounded-2xl border"
-              :class="(!status.obsConnected && !status.recording) || !status.ffmpegOk || status.recordingStarting ? 'border-amber-500/25 bg-amber-500/[0.12] text-amber-300' : liveDetectionActive ? 'border-emerald-500/25 bg-emerald-500/[0.12] text-emerald-300' : 'border-white/[0.08] bg-white/[0.03] text-gray-300'"
+              v-if="!status.obsConnected && !status.recording && !status.recordingStarting && platform === 'win32'"
+              class="flex items-center gap-1 flex-shrink-0"
             >
-              <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" d="M3 12h18M3 7.5h18M3 16.5h18" />
-              </svg>
+              <button type="button" class="px-2 py-1 rounded-lg text-[10px] font-medium border border-amber-500/30 bg-amber-500/10 text-amber-200 hover:bg-amber-500/20 disabled:opacity-50" :disabled="obsConnecting" @click="launchAndConnectObs">{{ obsConnecting ? '…' : 'Launch OBS' }}</button>
+              <button type="button" class="px-2 py-1 rounded-lg text-[10px] font-medium border border-white/[0.10] bg-white/[0.04] text-gray-300 hover:text-white disabled:opacity-50" :disabled="obsConnecting" @click="connectObs">Connect</button>
             </div>
-            <div class="min-w-0 flex-1">
-              <div class="flex items-center justify-between gap-3">
-                <p class="text-[10px] font-bold uppercase tracking-[0.28em] text-gray-600">Active Game Detection</p>
-                <span v-if="liveDetectionActive" class="inline-flex items-center gap-1.5 rounded-full border border-emerald-400/20 bg-emerald-400/[0.12] px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.24em] text-emerald-200">
-                  <span class="h-1.5 w-1.5 rounded-full bg-emerald-300 animate-pulse" />
-                  Live
-                </span>
-              </div>
-              <h2 class="mt-3 text-xl font-black tracking-tight text-white">{{ activeGameTitle }}</h2>
-              <p class="mt-2 text-sm leading-relaxed text-gray-400">{{ activeGameMessage }}</p>
-              <div class="mt-4 flex flex-wrap items-center gap-2">
-                <span v-if="status.recording && hotkeys['save-clip']" class="inline-flex items-center gap-1 rounded-full border border-red-500/20 bg-red-500/[0.12] px-2.5 py-1 text-[10px] font-semibold text-red-300">
-                  <span class="text-red-400">Clip</span>
-                  <kbd class="font-mono text-red-200">{{ hotkeys['save-clip'] }}</kbd>
-                </span>
-                <span v-else-if="isCs2" class="inline-flex items-center gap-1 rounded-full border border-orange-500/20 bg-orange-500/[0.10] px-2.5 py-1 text-[10px] font-semibold text-orange-300">
-                  Demo auto-upload
-                </span>
-                <span v-else-if="isValorant && status.recordedModes?.length" class="inline-flex items-center gap-1 rounded-full border border-white/[0.08] bg-white/[0.03] px-2.5 py-1 text-[10px] font-semibold text-gray-300">
-                  {{ status.recordedModes.map(formatMode).join(' · ') }}
-                </span>
-                <span v-else-if="isValorant" class="inline-flex items-center gap-1 rounded-full border border-white/[0.08] bg-white/[0.03] px-2.5 py-1 text-[10px] font-semibold text-gray-400">
-                  Configure modes in Settings
-                </span>
-              </div>
-            </div>
+            <button v-if="status.recording" :disabled="stopping" class="flex-shrink-0 flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-medium bg-red-500/[0.12] hover:bg-red-500/[0.2] border border-red-500/20 text-red-400 transition-all disabled:opacity-50" @click="stopRecording">
+              {{ stopping ? 'Ending…' : 'End match' }}
+            </button>
+          </div>
+          <p class="text-sm font-bold text-white leading-snug">{{ dashboardHeadline }}</p>
+        </div>
+        <div class="flex flex-shrink-0 divide-x divide-white/[0.07] bg-white/[0.015]">
+          <div class="flex flex-col items-center justify-center py-2 px-3.5 gap-0.5 min-w-[4.25rem]">
+            <span class="text-sm font-black tabular-nums text-white">{{ clipCount }}</span>
+            <span class="text-[8px] text-gray-600 uppercase tracking-wide">Clips</span>
+          </div>
+          <div class="flex flex-col items-center justify-center py-2 px-3.5 gap-0.5 min-w-[4.25rem]">
+            <span class="text-sm font-black tabular-nums text-white">{{ totalSessionsAnalysed }}</span>
+            <span class="text-[8px] text-gray-600 uppercase tracking-wide">Analyses</span>
+          </div>
+          <div class="flex flex-col items-center justify-center py-2 px-2.5 gap-0.5 min-w-[5rem] max-w-[6.5rem]">
+            <span class="text-[11px] font-black text-white text-center leading-tight line-clamp-2">{{ dashboardRankLabel }}</span>
+            <span class="text-[8px] text-gray-600 uppercase tracking-wide">Rank</span>
+          </div>
+          <div v-if="isValorant" class="flex flex-col items-center justify-center py-2 px-3.5 gap-0.5 min-w-[4.25rem]">
+            <span class="text-sm font-black tabular-nums" :class="currentStreak > 0 ? 'text-green-400' : currentStreak < 0 ? 'text-red-400' : 'text-white'">{{ currentStreak !== 0 ? (currentStreak > 0 ? '+' : '') + currentStreak : '—' }}</span>
+            <span class="text-[8px] text-gray-600 uppercase tracking-wide">Streak</span>
           </div>
         </div>
       </div>
-
-      <div class="h-px bg-gradient-to-r from-transparent via-white/[0.08] to-transparent" />
     </div>
 
     <!-- 3-column dashboard grid -->
-    <div class="flex-1 grid grid-cols-1 lg:grid-cols-[minmax(280px,340px)_1fr] xl:grid-cols-[minmax(280px,340px)_1fr_minmax(280px,340px)] gap-4 p-4 pt-3 min-h-0 overflow-y-auto scroll-col xl:overflow-hidden">
+    <div class="flex-1 min-h-0 px-4 pb-4 pt-3 overflow-hidden">
+      <div class="h-full grid grid-cols-1 lg:grid-cols-[280px_minmax(0,1fr)_320px] gap-3 min-h-0 items-start">
 
       <!-- ═══════════ LEFT: Player card ═══════════ -->
-      <div class="flex flex-col gap-3 min-h-0 h-full overflow-hidden">
+      <div class="flex flex-col gap-3 min-w-0 w-full self-start max-h-full overflow-y-auto scroll-col">
 
         <!-- Player hero card -->
         <div v-if="profile" class="panel-elevated overflow-hidden flex-shrink-0">
@@ -400,23 +248,23 @@
           <!-- 4-stat grid -->
           <template v-if="isValorant && profile.latest_stats">
             <div class="grid grid-cols-4 divide-x divide-white/[0.04] border-t border-white/[0.07]">
-              <div class="flex flex-col items-center py-3.5">
+              <div class="flex flex-col items-center py-2.5">
                 <span class="text-lg font-black tabular-nums leading-none stat-number" :class="profile.latest_stats.kd_ratio != null ? (profile.latest_stats.kd_ratio >= 1.2 ? 'text-green-400' : profile.latest_stats.kd_ratio >= 0.8 ? 'text-white' : 'text-red-400') : 'text-gray-600'">{{ profile.latest_stats.kd_ratio?.toFixed(2) ?? '—' }}</span>
                 <span class="text-[10px] text-gray-600 mt-1">K/D</span>
               </div>
-              <div class="flex flex-col items-center py-3.5">
+              <div class="flex flex-col items-center py-2.5">
                 <span class="text-lg font-black tabular-nums leading-none stat-number" :class="profile.latest_stats.win_rate != null ? (profile.latest_stats.win_rate >= 52 ? 'text-green-400' : profile.latest_stats.win_rate >= 45 ? 'text-white' : 'text-red-400') : 'text-gray-600'">{{ profile.latest_stats.win_rate != null ? Math.round(profile.latest_stats.win_rate) + '%' : '—' }}</span>
                 <span class="text-[10px] text-gray-600 mt-1">Win</span>
               </div>
-              <div class="flex flex-col items-center py-3.5">
+              <div class="flex flex-col items-center py-2.5">
                 <span class="text-lg font-black tabular-nums leading-none stat-number" :class="profile.latest_stats.avg_combat_score != null ? (profile.latest_stats.avg_combat_score >= 220 ? 'text-orange-400' : profile.latest_stats.avg_combat_score >= 160 ? 'text-white' : 'text-gray-300') : 'text-gray-600'">{{ profile.latest_stats.avg_combat_score ?? '—' }}</span>
                 <span class="text-[10px] text-gray-600 mt-1">ACS</span>
               </div>
-              <div class="flex flex-col items-center py-3.5">
-                <span class="text-lg font-black tabular-nums leading-none stat-number" :class="currentStreak > 0 ? 'text-green-400' : currentStreak < 0 ? 'text-red-400' : 'text-gray-600'">
-                  {{ currentStreak !== 0 ? (currentStreak > 0 ? '+' : '') + currentStreak : '—' }}
+              <div class="flex flex-col items-center py-2.5">
+                <span class="text-lg font-black tabular-nums leading-none stat-number" :class="profile.latest_stats.headshot_percentage != null ? (profile.latest_stats.headshot_percentage >= 25 ? 'text-orange-400' : profile.latest_stats.headshot_percentage >= 18 ? 'text-white' : 'text-gray-400') : 'text-gray-600'">
+                  {{ profile.latest_stats.headshot_percentage != null ? Math.round(profile.latest_stats.headshot_percentage) + '%' : '—' }}
                 </span>
-                <span class="text-[10px] text-gray-600 mt-1">Streak</span>
+                <span class="text-[10px] text-gray-600 mt-1">HS%</span>
               </div>
             </div>
 
@@ -504,122 +352,86 @@
           <p class="text-xs text-gray-600">No profile loaded</p>
         </div>
 
-        <div class="flex-1 min-h-0 overflow-y-auto scroll-col flex flex-col gap-3 pr-0.5">
-
-        <!-- ─── Mastery card ─── -->
-        <div v-if="profile?.user.forge_rank" class="bg-white/[0.02] border border-white/[0.10] rounded-2xl flex-shrink-0">
-          <div class="px-4 pt-3 pb-3">
-            <div class="flex items-center justify-between mb-2">
-              <span class="text-[10px] font-bold uppercase tracking-widest text-gray-600">Mastery</span>
-              <span v-if="profile.user.forge_rank.prestige_stars > 0" class="flex items-center gap-0.5 text-yellow-400">
-                <svg
-                  v-for="n in Math.min(profile.user.forge_rank.prestige_stars, 5)"
-                  :key="n"
-                  class="w-3 h-3"
-                  fill="currentColor"
-                  viewBox="0 0 20 20"
+        <PanelCarousel
+          v-if="leftInsightPanels.length"
+          v-model:index="leftInsightIndex"
+          :panels="leftInsightPanels"
+        >
+          <template #default="{ panel }">
+            <template v-if="panel">
+            <!-- Mastery -->
+            <div v-if="panel.id === 'mastery' && profile?.user.forge_rank" class="pt-0.5">
+              <div class="flex items-center gap-2.5">
+                <div
+                  class="relative flex-shrink-0 w-10 h-10 rounded-lg flex items-center justify-center overflow-hidden"
+                  :style="getMasteryIconUrl(profile.user.forge_rank.level) ? undefined : { background: forgeRankGradient(profile.user.forge_rank.tier) }"
                 >
-                  <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z"/>
-                </svg>
-                <span v-if="profile.user.forge_rank.prestige_stars > 5" class="text-[10px] font-semibold ml-0.5">+{{ profile.user.forge_rank.prestige_stars - 5 }}</span>
-              </span>
-            </div>
-            <div class="flex items-center gap-3">
-              <!-- Rank icon / badge -->
-              <div
-                class="relative flex-shrink-0 w-12 h-12 rounded-xl flex items-center justify-center overflow-hidden"
-                :style="getMasteryIconUrl(profile.user.forge_rank.level) ? undefined : { background: forgeRankGradient(profile.user.forge_rank.tier) }"
-              >
-                <img
-                  v-if="getMasteryIconUrl(profile.user.forge_rank.level)"
-                  :src="getMasteryIconUrl(profile.user.forge_rank.level)!"
-                  :alt="profile.user.forge_rank.rank_name"
-                  class="w-full h-full object-contain"
-                />
-                <span v-else class="text-lg font-black text-white select-none">{{ forgeRankInitial(profile.user.forge_rank.tier_name) }}</span>
-              </div>
-              <!-- Rank name + progress -->
-              <div class="flex-1 min-w-0">
-                <p class="text-base font-black leading-tight" :style="{ color: forgeRankColor(profile.user.forge_rank.tier) }">{{ profile.user.forge_rank.rank_name }}</p>
-                <p class="text-[10px] text-gray-600 mt-px">{{ profile.user.forge_rank.xp.toLocaleString() }} XP total</p>
-                <!-- XP bar -->
-                <div class="mt-1.5 h-1.5 bg-white/[0.06] rounded-full overflow-hidden">
-                  <div
-                    class="h-full rounded-full transition-all duration-500"
-                    :style="{ width: profile.user.forge_rank.progress_pct + '%', background: forgeRankColor(profile.user.forge_rank.tier) }"
+                  <img
+                    v-if="getMasteryIconUrl(profile.user.forge_rank.level)"
+                    :src="getMasteryIconUrl(profile.user.forge_rank.level)!"
+                    :alt="profile.user.forge_rank.rank_name"
+                    class="w-full h-full object-contain"
                   />
+                  <span v-else class="text-sm font-black text-white select-none">{{ forgeRankInitial(profile.user.forge_rank.tier_name) }}</span>
                 </div>
-                <div class="flex items-center justify-between mt-0.5">
-                  <span class="text-[9px] text-gray-700">{{ profile.user.forge_rank.xp_progress.toLocaleString() }} XP</span>
-                  <span v-if="profile.user.forge_rank.xp_needed" class="text-[9px] text-gray-700">{{ profile.user.forge_rank.xp_needed.toLocaleString() }} to next</span>
-                  <span v-else class="text-[9px] text-yellow-400 font-bold">Max Rank</span>
+                <div class="flex-1 min-w-0">
+                  <p class="text-sm font-black leading-tight" :style="{ color: forgeRankColor(profile.user.forge_rank.tier) }">{{ profile.user.forge_rank.rank_name }}</p>
+                  <p class="text-[9px] text-gray-600">{{ profile.user.forge_rank.xp.toLocaleString() }} XP</p>
+                  <div class="mt-1 h-1 bg-white/[0.06] rounded-full overflow-hidden">
+                    <div class="h-full rounded-full transition-all" :style="{ width: profile.user.forge_rank.progress_pct + '%', background: forgeRankColor(profile.user.forge_rank.tier) }" />
+                  </div>
+                </div>
+                <span v-if="profile.user.forge_rank.prestige_stars > 0" class="text-[10px] font-bold text-yellow-400 tabular-nums">★{{ profile.user.forge_rank.prestige_stars }}</span>
+              </div>
+              <button
+                v-if="profile.user.forge_rank.can_prestige"
+                class="mt-2 w-full text-[10px] font-bold text-yellow-400 hover:text-yellow-300 py-1 rounded-lg bg-yellow-400/10"
+                @click="triggerPrestige"
+              >Prestige available →</button>
+            </div>
+
+            <!-- AI score trend -->
+            <div v-else-if="panel.id === 'score' && scoreChartData" class="pt-0.5">
+              <div class="flex items-center justify-between mb-1.5">
+                <span v-if="scoreTrend !== null" class="text-xs font-bold" :class="scoreTrend >= 0 ? 'text-green-400' : 'text-red-400'">
+                  {{ scoreTrend >= 0 ? '↑' : '↓' }} {{ Math.round(Math.abs(scoreTrend) * 10) }} pts
+                </span>
+                <span v-if="avgScore !== null" class="text-[10px] text-gray-600 ml-auto">avg {{ avgScore * 10 }}</span>
+              </div>
+              <svg width="100%" :viewBox="`0 0 ${scoreChartData.W} ${scoreChartData.H}`" preserveAspectRatio="none" class="h-9 block">
+                <defs>
+                  <linearGradient id="dash-score-area-grad" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" :stop-color="scoreChartData.up ? '#4ade80' : '#f87171'" stop-opacity="0.35"/>
+                    <stop offset="100%" :stop-color="scoreChartData.up ? '#4ade80' : '#f87171'" stop-opacity="0"/>
+                  </linearGradient>
+                </defs>
+                <path :d="scoreChartData.areaPath" fill="url(#dash-score-area-grad)" />
+                <path :d="scoreChartData.linePath" fill="none" :stroke="scoreChartData.up ? '#4ade80' : '#f87171'" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
+              </svg>
+            </div>
+
+            <!-- Agent win rates -->
+            <div v-else-if="panel.id === 'agents'" class="space-y-1.5 pt-0.5">
+              <div v-for="ag in topAgents.slice(0, 4)" :key="ag.agent" class="flex items-center gap-2">
+                <div class="w-6 h-6 rounded-md flex-shrink-0 overflow-hidden flex items-center justify-center" :style="{ backgroundColor: getAgentColor(ag.agent) + '22' }">
+                  <img v-if="getAgentImage(ag.agent)" :src="getAgentImage(ag.agent)" class="w-5 h-5 object-contain" />
+                </div>
+                <div class="flex-1 min-w-0">
+                  <div class="flex items-center justify-between">
+                    <span class="text-[10px] font-semibold truncate">{{ ag.agent }}</span>
+                    <span class="text-[9px] font-bold tabular-nums" :class="ag.hasWinData ? (ag.winRate >= 55 ? 'text-green-400' : ag.winRate >= 45 ? 'text-gray-300' : 'text-red-400') : 'text-gray-600'">
+                      {{ ag.hasWinData ? ag.winRate + '%' : '—' }}
+                    </span>
+                  </div>
+                  <div class="h-0.5 bg-white/[0.06] rounded-full overflow-hidden mt-0.5">
+                    <div class="h-full rounded-full" :class="ag.hasWinData ? (ag.winRate >= 55 ? 'bg-green-500' : ag.winRate >= 45 ? 'bg-gray-500' : 'bg-red-500') : 'bg-orange-500/60'" :style="{ width: (ag.hasWinData ? ag.winRate : (ag.avgScore ?? 0)) + '%' }" />
+                  </div>
                 </div>
               </div>
             </div>
-          </div>
-          <!-- Prestige available -->
-          <div v-if="profile.user.forge_rank.can_prestige" class="px-4 py-2 border-t border-white/[0.07] flex items-center gap-2">
-            <div class="w-1.5 h-1.5 rounded-full bg-yellow-400 animate-pulse flex-shrink-0" />
-            <span class="text-[10px] text-yellow-400 font-semibold flex-1">Prestige available — you've completed the journey!</span>
-            <button class="text-[10px] font-bold text-yellow-400 hover:text-yellow-300 transition-colors px-2 py-0.5 rounded bg-yellow-400/10 hover:bg-yellow-400/20" @click="triggerPrestige">Prestige →</button>
-          </div>
-        </div>
-
-        <!-- AI score trend chart -->
-        <div v-if="isValorant && scoreChartData" class="bg-white/[0.02] border border-white/[0.10] rounded-2xl px-4 py-3">
-          <div class="flex items-center justify-between mb-2">
-            <span class="text-[10px] font-bold uppercase tracking-widest text-gray-600">AI Score Trend</span>
-            <div class="flex items-center gap-2">
-              <span v-if="scoreTrend !== null" class="flex items-center gap-0.5 text-xs font-bold" :class="scoreTrend >= 0 ? 'text-green-400' : 'text-red-400'">
-                <svg class="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" :d="scoreTrend >= 0 ? 'M5 15l7-7 7 7' : 'M19 9l-7 7-7-7'"/></svg>
-                {{ Math.round(Math.abs(scoreTrend) * 10) }}
-              </span>
-              <span v-if="avgScore !== null" class="text-[10px] text-gray-600">avg {{ avgScore * 10 }}</span>
-            </div>
-          </div>
-          <svg width="100%" :viewBox="`0 0 ${scoreChartData.W} ${scoreChartData.H}`" preserveAspectRatio="none" style="height:36px;display:block">
-            <defs>
-              <linearGradient id="score-area-grad" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" :stop-color="scoreChartData.up ? '#4ade80' : '#f87171'" stop-opacity="0.35"/>
-                <stop offset="100%" :stop-color="scoreChartData.up ? '#4ade80' : '#f87171'" stop-opacity="0"/>
-              </linearGradient>
-            </defs>
-            <path :d="scoreChartData.areaPath" fill="url(#score-area-grad)" />
-            <path :d="scoreChartData.linePath" fill="none" :stroke="scoreChartData.up ? '#4ade80' : '#f87171'" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
-          </svg>
-        </div>
-
-        <!-- Agent performance mini-table -->
-        <div v-if="isValorant && topAgents.length && topAgents.some(a => a.hasWinData || a.avgScore != null)" class="bg-white/[0.02] border border-white/[0.10] rounded-2xl overflow-hidden flex-shrink-0">
-          <div class="px-4 py-2.5 border-b border-white/[0.07]">
-            <span class="text-[10px] font-bold uppercase tracking-widest text-gray-600">Agent Win Rates</span>
-          </div>
-          <div class="divide-y divide-white/[0.03] max-h-44 overflow-y-auto scroll-col">
-            <div v-for="ag in topAgents" :key="ag.agent" class="flex items-center gap-2.5 px-3 py-2">
-              <div class="w-7 h-7 rounded-lg flex-shrink-0 overflow-hidden flex items-center justify-center" :style="{ backgroundColor: getAgentColor(ag.agent) + '22' }">
-                <img v-if="getAgentImage(ag.agent)" :src="getAgentImage(ag.agent)" class="w-6 h-6 object-contain" />
-              </div>
-              <div class="flex-1 min-w-0">
-                <div class="flex items-center justify-between mb-0.5">
-                  <span class="text-xs font-semibold truncate">{{ ag.agent }}</span>
-                  <span class="text-[10px] font-bold tabular-nums" :class="ag.hasWinData ? (ag.winRate >= 55 ? 'text-green-400' : ag.winRate >= 45 ? 'text-gray-300' : 'text-red-400') : 'text-gray-600'">
-                    {{ ag.hasWinData ? ag.winRate + '%' : '—' }}
-                  </span>
-                </div>
-                <div v-if="ag.hasWinData" class="h-1 bg-white/[0.06] rounded-full overflow-hidden">
-                  <div class="h-full rounded-full transition-all" :class="ag.winRate >= 55 ? 'bg-green-500' : ag.winRate >= 45 ? 'bg-gray-500' : 'bg-red-500'" :style="{ width: ag.winRate + '%' }" />
-                </div>
-                <div v-else-if="ag.avgScore != null" class="h-1 bg-white/[0.06] rounded-full overflow-hidden">
-                  <div class="h-full rounded-full bg-orange-500/60" :style="{ width: ag.avgScore + '%' }" />
-                </div>
-              </div>
-              <span v-if="ag.avgScore != null" class="text-[10px] text-gray-600 tabular-nums shrink-0">{{ ag.avgScore * 10 }}</span>
-              <span class="text-[10px] text-gray-700 shrink-0">{{ ag.total }}g</span>
-            </div>
-          </div>
-        </div>
-
-        </div>
+            </template>
+          </template>
+        </PanelCarousel>
 
         <!-- Dev tools -->
         <div v-if="isDev || (platform && platform !== 'win32')" class="border border-dashed border-yellow-500/20 rounded-xl overflow-hidden flex-shrink-0">
@@ -640,7 +452,7 @@
       </div>
 
       <!-- ═══════════ CENTER: Recent matches ═══════════ -->
-      <div class="flex flex-col gap-3 min-h-0 overflow-hidden lg:min-h-[420px] xl:min-h-0">
+      <div class="flex flex-col gap-2 min-h-0 h-full max-h-full self-stretch w-full min-w-0 overflow-hidden">
 
         <!-- CS2 FACEIT + demos -->
         <CS2StatsPanel v-if="isCs2" class="flex-shrink-0" />
@@ -652,89 +464,59 @@
         <!-- Deadlock demo upload panel -->
         <DeadlockDemoPanel v-if="isDeadlock" class="flex-shrink-0" />
 
-        <!-- Emotional highlights strip -->
-        <Transition name="banner-slide">
-          <div
-            v-if="isValorant && emotionalHighlights.length"
-            class="flex-shrink-0 flex items-center gap-2 px-3 py-2 rounded-xl overflow-hidden highlights-bar"
-          >
-            <svg class="w-3.5 h-3.5 text-orange-400 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20"><path d="M11.983 1.907a.75.75 0 00-1.292-.657l-8.5 9.5A.75.75 0 002.75 12h6.572l-1.305 6.093a.75.75 0 001.292.657l8.5-9.5A.75.75 0 0017.25 8h-6.572l1.305-6.093z"/></svg>
-            <div class="flex items-center gap-3 overflow-x-auto" style="scrollbar-width:none">
-              <span
-                v-for="(h, i) in emotionalHighlights"
-                :key="i"
-                class="flex-shrink-0 text-[11px] font-semibold"
-                :class="h.accent === 'green' ? 'text-green-400' : h.accent === 'orange' ? 'text-orange-300' : h.accent === 'yellow' ? 'text-yellow-300' : 'text-gray-300'"
-              >{{ h.text }}</span>
-            </div>
-          </div>
-        </Transition>
-
-        <div class="h-px bg-gradient-to-r from-transparent via-white/[0.08] to-transparent my-1" />
-
-        <!-- Section header -->
-        <div class="flex items-center justify-between flex-shrink-0">
-          <div class="flex items-center gap-2.5">
-            <h2 class="text-xs font-bold text-gray-400 uppercase tracking-widest">Recent Analyses</h2>
-            <span v-if="analyses.length || pendingRecordings.length" class="text-[10px] text-gray-700">{{ analyses.length + pendingRecordings.length }} sessions</span>
-          </div>
-          <button v-if="analyses.length > 0" class="text-xs text-gray-600 hover:text-gray-300 transition-colors" @click="router.push('/history')">View all →</button>
-        </div>
-
-        <!-- Last-5 performance strip -->
-        <div v-if="lastFivePerf" class="flex-shrink-0 flex items-center gap-3 px-3 py-2 bg-white/[0.02] border border-white/[0.09] rounded-xl">
-          <!-- W/L dots — only shown when won data exists -->
-          <template v-if="lastFivePerf.wins > 0 || lastFivePerf.losses > 0">
-            <div class="flex items-center gap-1">
-              <span class="text-[9px] text-gray-700 mr-0.5 uppercase tracking-wider">Last {{ lastFivePerf.wl.length }}</span>
-              <span
-                v-for="(won, i) in lastFivePerf.wl"
-                :key="i"
-                class="w-4 h-4 rounded-full flex items-center justify-center text-[8px] font-black"
-                :class="won === true ? 'bg-green-500/20 text-green-400' : won === false ? 'bg-red-500/20 text-red-400' : 'bg-white/[0.05] text-gray-700'"
-              >{{ won === true ? 'W' : won === false ? 'L' : '·' }}</span>
-            </div>
-            <div class="w-px h-4 bg-gradient-to-b from-transparent via-white/[0.14] to-transparent" />
-            <span class="text-xs tabular-nums"><span class="text-green-400 font-bold">{{ lastFivePerf.wins }}W</span><span class="text-gray-600 mx-0.5">·</span><span class="text-red-400 font-bold">{{ lastFivePerf.losses }}L</span></span>
-          </template>
-          <template v-else>
-            <span class="text-[10px] text-gray-600">Last {{ lastFivePerf.wl.length }} games</span>
-          </template>
-          <div class="flex-1" />
-          <!-- Avg stats -->
-          <template v-if="lastFivePerf.avgAcs != null">
-            <span class="text-[10px] text-gray-600">ACS</span>
-            <span class="text-xs font-bold tabular-nums text-gray-200">{{ lastFivePerf.avgAcs }}</span>
-          </template>
-          <template v-if="lastFivePerf.avgScore != null">
-            <div class="w-px h-4 bg-gradient-to-b from-transparent via-white/[0.14] to-transparent" />
-            <span class="text-[10px] text-gray-600">AI</span>
-            <span class="text-xs font-bold tabular-nums" :class="lastFivePerf.avgScore >= 70 ? 'text-green-400' : lastFivePerf.avgScore >= 50 ? 'text-yellow-400' : 'text-red-400'">{{ lastFivePerf.avgScore * 10 }}</span>
-          </template>
-          <template v-if="lastFivePerf.avgHs != null">
-            <div class="w-px h-4 bg-gradient-to-b from-transparent via-white/[0.14] to-transparent" />
-            <span class="text-[10px] text-gray-600">HS%</span>
-            <span class="text-xs font-bold tabular-nums text-gray-200">{{ lastFivePerf.avgHs }}%</span>
-          </template>
-        </div>
-
-        <!-- Scrollable match list -->
+        <!-- Recent analyses panel -->
         <div class="flex-1 min-h-0 flex flex-col panel-elevated overflow-hidden">
+          <div class="flex items-center justify-between flex-shrink-0 px-3 pt-2.5 pb-2 border-b border-white/[0.07]">
+            <div class="flex items-center gap-2.5 min-w-0">
+              <h2 class="text-xs font-bold text-gray-400 uppercase tracking-widest">Recent Analyses</h2>
+              <span v-if="analyses.length || pendingRecordings.length" class="text-[10px] text-gray-700">{{ analyses.length + pendingRecordings.length }} sessions</span>
+            </div>
+            <button v-if="analyses.length > 0" class="text-xs text-gray-600 hover:text-gray-300 transition-colors flex-shrink-0" @click="router.push('/history')">View all →</button>
+          </div>
+
+          <div
+            v-if="lastFivePerf"
+            class="flex-shrink-0 flex items-center gap-2.5 px-3 py-2 border-b border-white/[0.06] bg-white/[0.015] text-xs"
+          >
+            <template v-if="lastFivePerf.wins > 0 || lastFivePerf.losses > 0">
+              <div class="flex items-center gap-1">
+                <span
+                  v-for="(won, i) in lastFivePerf.wl"
+                  :key="i"
+                  class="w-3.5 h-3.5 rounded-full flex items-center justify-center text-[7px] font-black"
+                  :class="won === true ? 'bg-green-500/20 text-green-400' : won === false ? 'bg-red-500/20 text-red-400' : 'bg-white/[0.05] text-gray-700'"
+                >{{ won === true ? 'W' : won === false ? 'L' : '·' }}</span>
+              </div>
+              <span class="text-[10px] tabular-nums text-gray-500"><span class="text-green-400 font-bold">{{ lastFivePerf.wins }}W</span> · <span class="text-red-400 font-bold">{{ lastFivePerf.losses }}L</span></span>
+            </template>
+            <div class="flex-1" />
+            <template v-if="lastFivePerf.avgAcs != null">
+              <span class="text-[10px] text-gray-600">ACS <span class="font-bold text-gray-300">{{ lastFivePerf.avgAcs }}</span></span>
+            </template>
+            <template v-if="lastFivePerf.avgScore != null">
+              <span class="text-[10px] text-gray-600">AI <span class="font-bold" :class="lastFivePerf.avgScore >= 70 ? 'text-green-400' : lastFivePerf.avgScore >= 50 ? 'text-yellow-400' : 'text-red-400'">{{ lastFivePerf.avgScore * 10 }}</span></span>
+            </template>
+            <template v-if="lastFivePerf.avgHs != null">
+              <span class="text-[10px] text-gray-600">HS <span class="font-bold text-gray-300">{{ lastFivePerf.avgHs }}%</span></span>
+            </template>
+          </div>
+
           <div
             v-if="(analyses.length > 0 || pendingRecordings.length > 0) && !analysesLoading"
             class="match-list-grid match-list-header hidden md:grid flex-shrink-0 px-3 py-2 border-b border-white/[0.07] text-[9px] font-bold uppercase tracking-[0.18em] text-gray-600"
           >
-            <span />
-            <span>Match</span>
-            <span class="text-center">W/L</span>
-            <span class="text-center">K/D/A</span>
-            <span class="text-center">ACS</span>
-            <span class="text-center">HS</span>
-            <span class="text-right">AI</span>
-            <span />
-            <span />
+            <span class="match-list-cell-icon" />
+            <span class="match-list-col-match">Match</span>
+            <div class="match-list-stats">
+              <span>W/L</span>
+              <span>K/D/A</span>
+              <span>ACS</span>
+              <span>HS</span>
+              <span>AI</span>
+            </div>
+            <span class="match-list-actions" />
           </div>
-          <div class="flex-1 scroll-col p-2 space-y-1.5">
+          <div class="flex-1 min-h-0 scroll-col overflow-y-auto p-2 space-y-1.5">
 
           <!-- Pending recordings (above analyses) -->
           <template v-if="pendingRecordings.length > 0">
@@ -769,7 +551,7 @@
                   {{ rec.map || '—' }} · {{ formatRelativeTime(new Date(rec.recordedAt).toISOString()) }}
                   <span v-if="rec.fileSizeBytes" class="text-gray-700"> · {{ formatFileSize(rec.fileSizeBytes) }}</span>
                   <span v-if="rec.cloudArchived" class="text-emerald-500/80"> · In cloud</span>
-                  <span class="text-gray-700"> · {{ formatMode(rec.gameMode) }}</span>
+                  <span v-if="isDisplayableGameMode(rec.gameMode)" class="text-gray-700"> · {{ formatMode(rec.gameMode) }}</span>
                 </p>
               </div>
               <div class="hidden md:flex items-center justify-center gap-3 lg:gap-4 flex-shrink-0 px-1">
@@ -830,10 +612,11 @@
                 v-for="a in group.items"
                 :key="a.id"
                 class="match-list-grid analysis-row relative px-3 py-2 rounded-xl border border-white/[0.09] bg-white/[0.02] cursor-pointer row-interactive"
+                :class="a.won === true ? 'analysis-row--won' : a.won === false ? 'analysis-row--lost' : ''"
+                :title="coachingSnippets[a.id] || undefined"
                 @click="openAnalysisRow(a)"
               >
-                <div v-if="a.won != null" class="absolute left-0 top-2 bottom-2 w-[3px] rounded-full" :class="a.won ? 'bg-green-500' : 'bg-red-500'" />
-                <div class="w-9 h-9 rounded-lg overflow-hidden flex items-center justify-center relative" :style="a.agent ? { backgroundColor: getAgentColor(a.agent) + '22' } : {}">
+                <div class="match-list-cell-icon w-8 h-8 rounded-lg overflow-hidden flex items-center justify-center relative flex-shrink-0" :style="a.agent ? { backgroundColor: getAgentColor(a.agent) + '22' } : {}">
                   <img v-if="a.map && getMapMinimap(a.map)" :src="getMapMinimap(a.map)" class="absolute inset-0 w-full h-full object-cover opacity-20" />
                   <img v-if="a.agent && getAgentImage(a.agent)" :src="getAgentImage(a.agent)" class="relative w-8 h-8 object-contain" />
                   <template v-else>
@@ -841,40 +624,50 @@
                     <svg v-else class="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
                   </template>
                 </div>
-                <div class="min-w-0">
-                  <div class="flex items-center gap-1">
+                <div class="min-w-0 match-list-col-match">
+                  <div class="flex items-center gap-1 min-w-0">
                     <span class="text-xs font-semibold truncate">{{ a.agent || 'Unknown' }}</span>
                     <span v-if="a.agent" class="flex-shrink-0 text-[8px] font-bold px-1 py-px rounded" :style="{ color: getRoleColor(getAgentRole(a.agent)), backgroundColor: getRoleColor(getAgentRole(a.agent)) + '20' }">{{ getAgentRole(a.agent) }}</span>
+                    <span
+                      v-if="isDisplayableGameMode(a.game_mode)"
+                      class="flex-shrink-0 rounded-full border border-white/[0.10] bg-white/[0.05] px-1.5 py-px text-[8px] font-semibold text-gray-600"
+                    >{{ formatMode(a.game_mode) }}</span>
                   </div>
                   <p class="text-[10px] text-gray-600 mt-0.5 truncate">
                     {{ a.map || '—' }} · {{ formatDate(a.created_at) }}
+                    <span v-if="a.rank" class="text-gray-700"> · {{ a.rank }}</span>
                     <span v-if="a.rounds_won != null && a.rounds_lost != null" class="text-gray-700"> · {{ a.rounds_won }}–{{ a.rounds_lost }}</span>
                   </p>
                 </div>
-                <span v-if="a.won != null" class="text-[10px] font-black px-2 py-0.5 rounded justify-self-center" :class="a.won ? 'bg-green-500/15 text-green-400' : 'bg-red-500/15 text-red-400'">{{ a.won ? 'W' : 'L' }}</span>
-                <span v-else class="text-[10px] text-gray-700 justify-self-center">—</span>
-                <span v-if="a.kills != null" class="text-xs font-mono font-semibold tabular-nums text-center">{{ a.kills }}<span class="text-gray-600">/</span>{{ a.deaths }}<span class="text-gray-600">/</span>{{ a.assists }}</span>
-                <span v-else-if="a.kda != null" class="text-xs font-semibold tabular-nums text-center">{{ a.kda.toFixed(2) }}</span>
-                <span v-else class="text-[10px] text-gray-700 text-center">—</span>
-                <span v-if="a.combat_score != null" class="text-xs font-bold tabular-nums text-gray-300 text-center">{{ a.combat_score }}</span>
-                <span v-else class="text-[10px] text-gray-700 text-center">—</span>
-                <span v-if="a.hs_pct != null" class="text-xs font-bold tabular-nums text-center" :class="a.hs_pct >= 25 ? 'text-orange-400' : 'text-gray-400'">{{ a.hs_pct }}%</span>
-                <span v-else class="text-[10px] text-gray-700 text-center">—</span>
-                <div class="flex items-center justify-end gap-1">
-                  <template v-if="a.overall_score != null">
-                    <span class="text-sm font-black tabular-nums" :class="a.overall_score >= 78 ? 'text-green-400' : a.overall_score >= 50 ? 'text-yellow-400' : 'text-red-400'">{{ a.overall_score * 10 }}</span>
-                    <span class="text-[8px] font-bold px-1.5 py-px rounded-full" :class="scoreGradeBadgeClass(a.overall_score)">{{ scoreGrade(a.overall_score) }}</span>
+                <div class="match-list-stats" :class="isAnalysisProcessing(a) ? 'match-list-stats--processing' : ''">
+                  <template v-if="isAnalysisProcessing(a)">
+                    <span class="match-list-stats-processing">
+                      <svg class="w-3.5 h-3.5 animate-spin text-gray-500" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
+                      Analysing…
+                    </span>
                   </template>
-                  <span v-else class="text-[10px] text-gray-700">—</span>
+                  <template v-else>
+                    <span v-if="a.won != null" class="text-[10px] font-black px-2 py-0.5 rounded" :class="a.won ? 'bg-green-500/15 text-green-400' : 'bg-red-500/15 text-red-400'">{{ a.won ? 'W' : 'L' }}</span>
+                    <span v-else class="text-[10px] text-gray-700">—</span>
+                    <span v-if="a.kills != null" class="text-xs font-mono font-semibold tabular-nums">{{ a.kills }}<span class="text-gray-600">/</span>{{ a.deaths }}<span class="text-gray-600">/</span>{{ a.assists }}</span>
+                    <span v-else-if="a.kda != null" class="text-xs font-semibold tabular-nums text-gray-400" title="K/D ratio">{{ a.kda.toFixed(2) }}<span class="text-[8px] text-gray-700 ml-px">kd</span></span>
+                    <span v-else class="text-[10px] text-gray-700">—</span>
+                    <span v-if="displayAcs(a) != null" class="text-xs font-bold tabular-nums text-gray-300">{{ displayAcs(a) }}</span>
+                    <span v-else class="text-[10px] text-gray-700">—</span>
+                    <span v-if="a.hs_pct != null" class="text-xs font-bold tabular-nums" :class="a.hs_pct >= 25 ? 'text-orange-400' : 'text-gray-400'">{{ a.hs_pct }}%</span>
+                    <span v-else class="text-[10px] text-gray-700">—</span>
+                    <span
+                      v-if="a.overall_score != null"
+                      class="text-sm font-black tabular-nums"
+                      :class="a.overall_score >= 78 ? 'text-green-400' : a.overall_score >= 50 ? 'text-yellow-400' : 'text-red-400'"
+                      :title="`${scoreGrade(a.overall_score)} — ${scoreLabel(a.overall_score)}`"
+                    >{{ a.overall_score * 10 }}</span>
+                    <span v-else class="text-[10px] text-gray-700">—</span>
+                  </template>
                 </div>
-                <button
-                  class="p-1 text-gray-600 hover:text-gray-400 transition-colors rounded-lg hover:bg-white/[0.04] justify-self-center"
-                  title="Open web report"
-                  @click.stop="openAnalysis(a.id)"
-                >
-                  <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/></svg>
-                </button>
-                <svg class="w-3.5 h-3.5 text-gray-700 justify-self-center" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+                <div class="match-list-actions">
+                  <svg class="w-3.5 h-3.5 text-gray-700 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+                </div>
               </div>
             </template>
           </template>
@@ -884,262 +677,157 @@
       </div>
 
       <!-- ═══════════ RIGHT: Coaching + Training + Activity ═══════════ -->
-      <div class="flex flex-col gap-3 scroll-col min-h-0 max-h-full lg:col-span-2 xl:col-span-1">
+      <div class="flex flex-col gap-2 min-w-0 w-full self-start max-h-full overflow-y-auto scroll-col">
 
-        <div v-if="clipCount === 0" class="relative overflow-hidden rounded-xl border border-white/[0.10] bg-white/[0.02] px-3 py-3">
-          <div class="flex items-center gap-3">
-            <div class="flex h-9 w-9 items-center justify-center rounded-xl border border-orange-500/20 bg-orange-500/[0.10] text-orange-300 flex-shrink-0">
-              <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <div v-if="clipCount === 0" class="relative overflow-hidden rounded-xl border border-white/[0.10] bg-white/[0.02] px-3 py-2 flex-shrink-0">
+          <div class="flex items-center gap-2.5">
+            <div class="flex h-8 w-8 items-center justify-center rounded-lg border border-orange-500/20 bg-orange-500/[0.10] text-orange-300 flex-shrink-0">
+              <svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" d="M3 7.5A2.25 2.25 0 015.25 5.25h2.379a1.5 1.5 0 001.06-.44l.621-.62a1.5 1.5 0 011.06-.44h3.26a1.5 1.5 0 011.06.44l.621.62a1.5 1.5 0 001.06.44h2.379A2.25 2.25 0 0121 7.5v9A2.25 2.25 0 0118.75 18.75H5.25A2.25 2.25 0 013 16.5v-9z" />
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" d="M9 12a3 3 0 116 0 3 3 0 01-6 0z" />
               </svg>
             </div>
             <div class="flex-1 min-w-0">
-              <p class="text-xs font-bold text-white">Clip Library</p>
-              <p class="text-[11px] text-gray-600 truncate">Use your save-clip hotkey during a match to build highlights</p>
+              <p class="text-[11px] font-bold text-white">Clip Library</p>
+              <p class="text-[10px] text-gray-600 leading-snug">Save clips with your hotkey during matches</p>
             </div>
-            <button class="flex-shrink-0 px-2.5 py-1.5 text-[11px] font-semibold text-gray-400 hover:text-white border border-white/[0.09] hover:border-white/[0.14] rounded-lg transition-colors" @click="router.push('/settings')">Settings</button>
+            <button class="flex-shrink-0 px-2 py-1 text-[10px] font-semibold text-gray-400 hover:text-white border border-white/[0.09] rounded-lg transition-colors" @click="router.push('/settings')">Settings</button>
           </div>
         </div>
 
-        <div class="h-px bg-gradient-to-r from-transparent via-white/[0.08] to-transparent my-1" />
-
-        <!-- Last coaching insight (or empty CTA) -->
-        <div v-if="isValorant && lastInsight" class="relative panel-elevated overflow-hidden">
+        <!-- Last coaching insight (pinned) -->
+        <div v-if="isValorant && lastInsight" class="relative panel-elevated overflow-hidden flex-shrink-0">
           <div class="absolute left-0 top-0 bottom-0 w-[3px] bg-gradient-to-b from-[#ff4655] to-orange-600 rounded-l-xl" />
-          <div class="pl-5 pr-4 pt-4 pb-4 space-y-3">
-            <div class="flex items-center justify-between">
-              <span class="text-[10px] font-bold uppercase tracking-widest text-gray-600">Last Coaching Result</span>
-              <div class="flex items-center gap-2">
-                <span v-if="lastInsight.date" class="text-[10px] text-gray-700">{{ formatRelativeTime(lastInsight.date) }}</span>
-                <button v-if="lastInsight.analysisId" class="text-xs text-gray-600 hover:text-gray-300 transition-colors" @click="openAnalysis(lastInsight.analysisId!)">↗</button>
-              </div>
+          <div class="pl-4 pr-3 py-2.5 space-y-2">
+            <div class="flex items-center justify-between gap-2">
+              <span class="text-[9px] font-bold uppercase tracking-widest text-gray-600">Last Coaching</span>
+              <span v-if="lastInsight.date" class="text-[9px] text-gray-700">{{ formatRelativeTime(lastInsight.date) }}</span>
             </div>
-            <div class="flex items-center gap-3">
-              <div class="w-10 h-10 rounded-xl flex-shrink-0 overflow-hidden flex items-center justify-center" :style="lastInsight.agent ? { backgroundColor: getAgentColor(lastInsight.agent) + '22', border: `1px solid ${getAgentColor(lastInsight.agent)}40` } : { backgroundColor: 'rgba(255,70,85,0.1)', border: '1px solid rgba(255,70,85,0.2)' }">
+            <div class="flex items-center gap-2.5">
+              <div class="w-8 h-8 rounded-lg flex-shrink-0 overflow-hidden flex items-center justify-center" :style="lastInsight.agent ? { backgroundColor: getAgentColor(lastInsight.agent) + '22' } : { backgroundColor: 'rgba(255,70,85,0.1)' }">
                 <img v-if="lastInsight.agent && getAgentImage(lastInsight.agent)" :src="getAgentImage(lastInsight.agent)" class="w-full h-full object-cover object-top" />
-                <svg v-else class="w-5 h-5 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636-.707.707M21 12h-1M4 12H3m3.343-5.657-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"/></svg>
               </div>
-                <div class="flex-1 min-w-0">
-                <div class="flex items-baseline gap-1.5">
-                  <span class="text-4xl font-black tabular-nums leading-none score-glow" :class="lastInsight.score >= 78 ? 'text-green-400' : lastInsight.score >= 50 ? 'text-yellow-400' : 'text-red-400'">{{ lastInsight.score * 10 }}</span>
-                  <span class="text-xs font-black px-1.5 py-0.5 rounded-full ml-1" :class="scoreGradeBadgeClass(lastInsight.score)">{{ scoreGrade(lastInsight.score) }}</span>
-                  <span class="text-[10px] text-gray-600 font-semibold">{{ scoreLabel(lastInsight.score) }}</span>
-                </div>
-                <div class="mt-2 w-full h-1.5 bg-white/[0.06] rounded-full overflow-hidden">
-                  <div class="h-full rounded-full score-bar" :class="lastInsight.score >= 78 ? 'bg-green-500' : lastInsight.score >= 50 ? 'bg-yellow-500' : 'bg-red-500'" :style="{ width: lastInsight.score + '%' }" />
+              <div class="flex-1 min-w-0">
+                <div class="flex items-baseline gap-1">
+                  <span class="text-2xl font-black tabular-nums leading-none" :class="lastInsight.score >= 78 ? 'text-green-400' : lastInsight.score >= 50 ? 'text-yellow-400' : 'text-red-400'">{{ lastInsight.score * 10 }}</span>
+                  <span class="text-[9px] font-black px-1 py-px rounded-full" :class="scoreGradeBadgeClass(lastInsight.score)">{{ scoreGrade(lastInsight.score) }}</span>
                 </div>
               </div>
+              <button v-if="lastInsight.analysisId" class="text-[10px] text-gray-600 hover:text-gray-300" @click="openAnalysis(lastInsight.analysisId!)">↗</button>
             </div>
-            <p class="text-xs text-gray-400 leading-relaxed line-clamp-3">
-              <span class="text-gray-600 font-semibold uppercase tracking-wider text-[10px]">Focus · </span>{{ lastInsight.text }}
-            </p>
-            <button :disabled="lastInsightTraining" class="w-full flex items-center justify-center gap-2 py-2.5 text-xs font-bold rounded-xl transition-all disabled:opacity-50 text-white hover:brightness-110 cta-train" @click="trainLastInsight">
-              <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" stroke-width="1.5"/><circle cx="12" cy="12" r="4" stroke-width="1.5"/><line x1="12" y1="2" x2="12" y2="6" stroke-width="1.5"/><line x1="12" y1="18" x2="12" y2="22" stroke-width="1.5"/><line x1="2" y1="12" x2="6" y2="12" stroke-width="1.5"/><line x1="18" y1="12" x2="22" y2="12" stroke-width="1.5"/></svg>
+            <p class="text-[11px] text-gray-400 leading-snug line-clamp-2">{{ lastInsight.text }}</p>
+            <button :disabled="lastInsightTraining" class="w-full flex items-center justify-center gap-1.5 py-2 text-[11px] font-bold rounded-lg transition-all disabled:opacity-50 text-white cta-train" @click="trainLastInsight">
               {{ lastInsightTraining ? 'Launching…' : 'Train This Weakness' }}
             </button>
           </div>
         </div>
 
-        <!-- Empty coaching insight CTA -->
-        <div v-else class="relative bg-white/[0.02] border border-white/[0.09] rounded-xl overflow-hidden">
-          <div
-            class="absolute left-0 top-0 bottom-0 w-[3px] rounded-l-xl"
-            :class="isCs2 ? 'bg-gradient-to-b from-orange-500/30 to-amber-600/30' : isDeadlock ? 'bg-gradient-to-b from-teal-500/30 to-cyan-600/30' : 'bg-gradient-to-b from-[#ff4655]/30 to-orange-600/30'"
-          />
-          <div class="pl-4 pr-3 py-3 flex items-center gap-3">
-            <div
-              class="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 border"
-              :class="isCs2 ? 'bg-orange-500/10 border-orange-500/20' : isDeadlock ? 'bg-teal-500/10 border-teal-500/20' : 'bg-red-500/10 border-red-500/20'"
-            >
-              <svg class="w-4 h-4" :class="isCs2 ? 'text-orange-400/60' : isDeadlock ? 'text-teal-400/60' : 'text-red-400/60'" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9.663 17h4.673M12 3v1m6.364 1.636-.707.707M21 12h-1M4 12H3m3.343-5.657-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"/></svg>
+        <div v-else class="relative bg-white/[0.02] border border-white/[0.09] rounded-xl overflow-hidden flex-shrink-0">
+          <div class="pl-3 pr-2.5 py-2 flex items-center gap-2.5">
+            <div class="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 border" :class="isCs2 ? 'bg-orange-500/10 border-orange-500/20' : isDeadlock ? 'bg-teal-500/10 border-teal-500/20' : 'bg-red-500/10 border-red-500/20'">
+              <svg class="w-3.5 h-3.5" :class="isCs2 ? 'text-orange-400/60' : isDeadlock ? 'text-teal-400/60' : 'text-red-400/60'" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9.663 17h4.673M12 3v1m6.364 1.636-.707.707M21 12h-1M4 12H3m3.343-5.657-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"/></svg>
             </div>
             <div class="flex-1 min-w-0">
-              <p class="text-xs font-semibold text-gray-400">{{ emptyCoachingTitle }}</p>
-              <p class="text-[11px] text-gray-600 truncate">{{ emptyCoachingMessage }}</p>
+              <p class="text-[11px] font-semibold text-gray-400">{{ emptyCoachingTitle }}</p>
+              <p class="text-[10px] text-gray-600 leading-snug">{{ emptyCoachingMessage }}</p>
             </div>
-            <button
-              class="flex-shrink-0 px-2.5 py-1.5 text-[11px] font-semibold text-gray-400 hover:text-white border border-white/[0.09] hover:border-white/[0.14] rounded-lg transition-colors"
-              @click="openEmptyCoachingAction"
-            >{{ emptyCoachingAction }}</button>
+            <button class="flex-shrink-0 px-2 py-1 text-[10px] font-semibold text-gray-400 hover:text-white border border-white/[0.09] rounded-lg transition-colors" @click="openEmptyCoachingAction">{{ emptyCoachingAction }}</button>
           </div>
         </div>
 
-        <div class="h-px bg-gradient-to-r from-transparent via-white/[0.08] to-transparent my-1" />
-
-        <!-- Playstyle profile -->
-        <div v-if="isValorant && playstyleProfile && playstyleProfile.matches_tracked > 0" class="panel-elevated overflow-hidden">
-          <div class="px-4 py-3 border-b border-white/[0.07] flex items-center justify-between">
-            <span class="text-[10px] font-bold uppercase tracking-widest text-gray-600">Your Playstyle</span>
-            <div class="flex items-center gap-2">
-              <span class="text-[10px] text-gray-700 tabular-nums">{{ playstyleProfile.matches_tracked }} matches</span>
-              <button
-                type="button"
-                class="text-[10px] text-gray-600 hover:text-gray-300 transition-colors"
-                @click="openPlaystyleProfile"
-              >View →</button>
-            </div>
-          </div>
-          <ul v-if="playstyleProfile.focus_areas?.length" class="px-4 py-3 space-y-2.5">
-            <li
-              v-for="area in playstyleProfile.focus_areas.slice(0, 3)"
-              :key="area.id"
-              class="flex items-start gap-2"
-            >
-              <span
-                class="mt-0.5 w-1.5 h-1.5 rounded-full flex-shrink-0"
-                :class="area.severity === 'high' ? 'bg-red-400' : area.severity === 'medium' ? 'bg-yellow-400' : 'bg-gray-500'"
-              />
-              <p class="text-[11px] text-gray-400 leading-relaxed">{{ area.text }}</p>
-            </li>
-          </ul>
-          <p v-else class="px-4 py-3 text-[11px] text-gray-500 leading-relaxed">
-            {{ playstyleProfile.matches_tracked < 3
-              ? `${3 - playstyleProfile.matches_tracked} more ranked game${3 - playstyleProfile.matches_tracked === 1 ? '' : 's'} until focus areas unlock.`
-              : 'View your economy, util, and agent trends on the web profile.' }}
-          </p>
-          <div v-if="playstyleTopAgents.length" class="px-4 pb-3 flex flex-wrap gap-1.5">
-            <span
-              v-for="ag in playstyleTopAgents"
-              :key="ag.name"
-              class="text-[9px] font-semibold px-1.5 py-0.5 rounded-md bg-white/[0.04] text-gray-500 border border-white/[0.06]"
-            >{{ ag.name }} · {{ ag.count }}</span>
-          </div>
-        </div>
-
-        <div v-if="isValorant && playstyleProfile && playstyleProfile.matches_tracked > 0" class="h-px bg-gradient-to-r from-transparent via-white/[0.08] to-transparent my-1" />
-
-        <SkillProfileBars
-          v-if="isValorant && skillProfile"
-          :profile="skillProfile"
-          :previous="skillProfilePrevious"
-          :rank-name="playerRankName"
-        />
-
-        <CoachMemoryCard
-          v-if="isValorant && skillProfile"
-          :profile="skillProfile"
-          :focus-areas="playstyleProfile?.focus_areas"
-          class="mt-0"
-        />
-
-        <div
-          v-if="isValorant && skillProfile"
-          class="h-px bg-gradient-to-r from-transparent via-white/[0.08] to-transparent my-1"
-        />
-
-        <!-- CS2 / Deadlock onboarding goals -->
-        <div
-          v-if="(isCs2 || isDeadlock) && (onboardingTargetRank || onboardingWeaknesses.length)"
-          class="panel-elevated overflow-hidden"
+        <!-- Rotating coaching / skills / training panels -->
+        <PanelCarousel
+          v-if="rightInsightPanels.length"
+          v-model:index="rightInsightIndex"
+          :panels="rightInsightPanels"
         >
-          <div class="px-4 py-3 border-b border-white/[0.07]">
-            <span class="text-[10px] font-bold uppercase tracking-widest text-gray-600">Your Goals</span>
-          </div>
-          <div class="px-4 py-3 space-y-2">
-            <p v-if="onboardingTargetRank" class="text-xs text-gray-300 flex items-center gap-2">
-              <img
-                v-if="goalsRankIcon"
-                :src="goalsRankIcon"
-                alt=""
-                class="w-6 h-6 object-contain flex-shrink-0"
-              />
-              <span>
-                Target rank:
-                <span class="font-bold" :class="isCs2 ? 'text-orange-300' : 'text-teal-300'">{{ onboardingTargetRank }}</span>
-              </span>
-            </p>
-            <div v-if="onboardingWeaknesses.length" class="flex flex-wrap gap-1.5">
-              <span
-                v-for="w in onboardingWeaknesses.slice(0, 5)"
-                :key="w"
-                class="text-[9px] font-semibold px-1.5 py-0.5 rounded-md bg-white/[0.04] text-gray-500 border border-white/[0.06]"
-              >{{ w }}</span>
+          <template #default="{ panel }">
+            <template v-if="panel">
+            <!-- Playstyle -->
+            <div v-if="panel.id === 'playstyle' && playstyleProfile" class="space-y-2 pt-0.5">
+              <div class="flex items-center justify-between">
+                <span class="text-[9px] text-gray-600 tabular-nums">{{ playstyleProfile.matches_tracked }} matches</span>
+                <button type="button" class="text-[9px] text-gray-600 hover:text-gray-300" @click="openPlaystyleProfile">View →</button>
+              </div>
+              <ul v-if="playstyleProfile.focus_areas?.length" class="space-y-1.5">
+                <li v-for="area in playstyleProfile.focus_areas.slice(0, 2)" :key="area.id" class="flex items-start gap-1.5">
+                  <span class="mt-1 w-1 h-1 rounded-full flex-shrink-0" :class="area.severity === 'high' ? 'bg-red-400' : area.severity === 'medium' ? 'bg-yellow-400' : 'bg-gray-500'" />
+                  <p class="text-[10px] text-gray-400 leading-snug">{{ area.text }}</p>
+                </li>
+              </ul>
+              <p v-else class="text-[10px] text-gray-500 leading-snug">
+                {{ playstyleProfile.matches_tracked < 3 ? `${3 - playstyleProfile.matches_tracked} more games for focus areas` : 'View economy & util trends on web' }}
+              </p>
             </div>
-          </div>
-        </div>
 
-        <div
-          v-if="(isCs2 || isDeadlock) && (onboardingTargetRank || onboardingWeaknesses.length)"
-          class="h-px bg-gradient-to-r from-transparent via-white/[0.08] to-transparent my-1"
-        />
+            <!-- Skills + coach -->
+            <div v-else-if="panel.id === 'skills' && skillProfile" class="space-y-2 pt-0.5">
+              <SkillProfileBars :profile="skillProfile" :previous="skillProfilePrevious" :rank-name="playerRankName" compact />
+              <CoachMemoryCard :profile="skillProfile" :focus-areas="playstyleProfile?.focus_areas" />
+            </div>
 
-        <!-- Correlation insights card -->
-        <div v-if="isValorant && correlationInsights.length" class="panel-elevated overflow-hidden">
-          <div class="px-4 py-3 border-b border-white/[0.07]">
-            <span class="text-[10px] font-bold uppercase tracking-widest text-gray-600">Impact on Game</span>
-          </div>
-          <ul class="px-4 py-3 space-y-2">
-            <li v-for="(insight, i) in correlationInsights.slice(0, 3)" :key="i" class="flex items-start gap-2">
-              <span class="mt-0.5 w-4 h-4 rounded-full bg-[#ff4655]/15 flex items-center justify-center flex-shrink-0">
-                <svg class="w-2.5 h-2.5 text-[#ff4655]" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M12.395 2.553a1 1 0 00-1.45-.385c-.345.23-.614.558-.822.88-.214.33-.403.713-.57 1.116-.334.804-.614 1.768-.84 2.734a31.365 31.365 0 00-.613 3.58 2.64 2.64 0 01-.945-1.067c-.328-.68-.398-1.534-.398-2.654A1 1 0 005.05 6.05 6.981 6.981 0 003 11a7 7 0 1011.95-4.95c-.592-.591-.98-.985-1.348-1.467-.363-.476-.724-1.063-1.207-2.03zM12.12 15.12A3 3 0 017 13s.879.5 2.5.5c0-1 .5-4 1.25-4.5.5 1 .786 1.293 1.371 1.879A2.99 2.99 0 0113 13a2.99 2.99 0 01-.879 2.121z" clip-rule="evenodd"/></svg>
-              </span>
-              <p class="text-[11px] text-gray-400 leading-relaxed">{{ insight }}</p>
-            </li>
-          </ul>
-        </div>
-
-        <div class="h-px bg-gradient-to-r from-transparent via-white/[0.08] to-transparent my-1" />
-
-        <!-- Aim training quick-start -->
-        <div class="panel-elevated overflow-hidden">
-          <div class="px-4 py-3 flex items-center justify-between border-b border-white/[0.07]">
-            <span class="text-[10px] font-bold uppercase tracking-widest text-gray-600">Aim Training</span>
-            <button class="text-[10px] text-gray-600 hover:text-gray-300 transition-colors" @click="router.push('/training')">Open →</button>
-          </div>
-          <div class="px-4 py-3 space-y-2.5">
-            <template v-if="trainerLastSession">
-              <div class="flex items-center gap-3">
-                <div class="w-9 h-9 rounded-xl bg-orange-500/10 border border-orange-500/20 flex items-center justify-center flex-shrink-0">
-                  <svg class="w-4 h-4 text-orange-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" stroke-width="1.5"/><circle cx="12" cy="12" r="4" stroke-width="1.5"/><line x1="12" y1="2" x2="12" y2="6" stroke-width="1.5"/><line x1="12" y1="18" x2="12" y2="22" stroke-width="1.5"/><line x1="2" y1="12" x2="6" y2="12" stroke-width="1.5"/><line x1="18" y1="12" x2="22" y2="12" stroke-width="1.5"/></svg>
-                </div>
-                <div class="flex-1 min-w-0">
-                  <p class="text-xs font-semibold capitalize">{{ trainerLastSession.scenario }} drill</p>
-                  <p class="text-[10px] text-gray-600 mt-0.5">{{ formatRelativeTime(trainerLastSession.date) }}</p>
-                </div>
-                <div class="text-right flex-shrink-0">
-                  <span class="text-lg font-black tabular-nums" :class="trainerLastSession.score >= 78 ? 'text-green-400' : trainerLastSession.score >= 50 ? 'text-yellow-400' : 'text-red-400'">{{ trainerLastSession.score }}</span>
-                  <p class="text-[9px] text-gray-700">score</p>
-                </div>
+            <!-- Goals (CS2 / Deadlock) -->
+            <div v-else-if="panel.id === 'goals'" class="space-y-2 pt-0.5">
+              <p v-if="onboardingTargetRank" class="text-[11px] text-gray-300 flex items-center gap-2">
+                <img v-if="goalsRankIcon" :src="goalsRankIcon" alt="" class="w-5 h-5 object-contain flex-shrink-0" />
+                <span>Target: <span class="font-bold" :class="isCs2 ? 'text-orange-300' : 'text-teal-300'">{{ onboardingTargetRank }}</span></span>
+              </p>
+              <div v-if="onboardingWeaknesses.length" class="flex flex-wrap gap-1">
+                <span v-for="w in onboardingWeaknesses.slice(0, 4)" :key="w" class="text-[9px] font-semibold px-1.5 py-0.5 rounded-md bg-white/[0.04] text-gray-500 border border-white/[0.06]">{{ w }}</span>
               </div>
-              <p v-if="trainerSessionCount > 1" class="text-[10px] text-gray-700 text-center">{{ trainerSessionCount }} total sessions</p>
-            </template>
-            <template v-else>
-              <div class="flex items-center gap-3">
-                <div class="w-9 h-9 rounded-xl bg-white/[0.03] border border-white/[0.09] flex items-center justify-center flex-shrink-0">
-                  <svg class="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" stroke-width="1.5"/><circle cx="12" cy="12" r="4" stroke-width="1.5"/></svg>
-                </div>
-                <div>
-                  <p class="text-xs text-gray-500">No sessions yet</p>
-                  <p class="text-[10px] text-gray-700 mt-0.5">Start your first aim training drill</p>
-                </div>
-              </div>
-            </template>
-            <button class="w-full py-2 text-xs font-semibold text-white/80 hover:text-white rounded-xl transition-all" style="background:linear-gradient(135deg,rgba(251,146,60,0.15),rgba(234,88,12,0.15));border:1px solid rgba(251,146,60,0.2)" @click="router.push('/training')">
-              {{ trainerLastSession ? 'Continue Training →' : 'Start Training →' }}
-            </button>
-          </div>
-        </div>
+            </div>
 
-        <!-- Activity log -->
-        <div v-if="activityLog.length" class="bg-white/[0.02] border border-white/[0.10] rounded-2xl overflow-hidden">
-          <div class="flex items-center justify-between px-4 py-2.5 border-b border-white/[0.07]">
-            <span class="text-[10px] font-bold uppercase tracking-widest text-gray-600">Activity</span>
+            <!-- Correlation insights -->
+            <ul v-else-if="panel.id === 'impact'" class="space-y-1.5 pt-0.5">
+              <li v-for="(insight, i) in correlationInsights.slice(0, 3)" :key="i" class="flex items-start gap-1.5">
+                <span class="mt-1 w-1 h-1 rounded-full bg-red-400 flex-shrink-0" />
+                <p class="text-[10px] text-gray-400 leading-snug line-clamp-2">{{ insight }}</p>
+              </li>
+            </ul>
+
+            <!-- Aim training -->
+            <div v-else-if="panel.id === 'training'" class="space-y-2 pt-0.5">
+              <template v-if="trainerLastSession">
+                <div class="flex items-center gap-2.5">
+                  <div class="w-8 h-8 rounded-lg bg-orange-500/10 border border-orange-500/20 flex items-center justify-center flex-shrink-0 text-orange-400">
+                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" stroke-width="1.5"/><circle cx="12" cy="12" r="4" stroke-width="1.5"/></svg>
+                  </div>
+                  <div class="flex-1 min-w-0">
+                    <p class="text-[11px] font-semibold capitalize">{{ trainerLastSession.scenario }}</p>
+                    <p class="text-[9px] text-gray-600">{{ formatRelativeTime(trainerLastSession.date) }}</p>
+                  </div>
+                  <span class="text-base font-black tabular-nums" :class="trainerLastSession.score >= 78 ? 'text-green-400' : trainerLastSession.score >= 50 ? 'text-yellow-400' : 'text-red-400'">{{ trainerLastSession.score }}</span>
+                </div>
+                <p v-if="trainerSessionCount > 1" class="text-[9px] text-gray-700 text-center">{{ trainerSessionCount }} sessions total</p>
+              </template>
+              <p v-else class="text-[10px] text-gray-600">No aim sessions yet — warm up before ranked.</p>
+              <button class="w-full py-1.5 text-[11px] font-semibold text-white/80 hover:text-white rounded-lg transition-all" style="background:linear-gradient(135deg,rgba(251,146,60,0.15),rgba(234,88,12,0.15));border:1px solid rgba(251,146,60,0.2)" @click="router.push('/training')">
+                {{ trainerLastSession ? 'Continue →' : 'Start Training →' }}
+              </button>
+            </div>
+            </template>
+          </template>
+        </PanelCarousel>
+
+        <!-- Activity log (compact) -->
+        <div v-if="activityLog.length" class="bg-white/[0.02] border border-white/[0.10] rounded-xl overflow-hidden flex-shrink-0">
+          <div class="flex items-center justify-between px-3 py-1.5 border-b border-white/[0.07]">
+            <span class="text-[9px] font-bold uppercase tracking-widest text-gray-600">Activity</span>
             <button class="w-4 h-4 flex items-center justify-center text-gray-700 hover:text-gray-400 transition-colors" @click="clearLog">
               <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
             </button>
           </div>
-          <div class="py-1.5 max-h-40 overflow-y-auto">
-            <div v-for="entry in [...activityLog].reverse().slice(0, 8)" :key="entry.time" class="flex items-center gap-2.5 px-4 py-1">
-              <div :class="['w-1.5 h-1.5 rounded-full flex-shrink-0', logEntryColor(entry.message)]" />
-              <span class="text-[10px] text-gray-700 tabular-nums flex-shrink-0 font-mono">{{ formatLogTime(entry.time) }}</span>
-              <span class="text-[10px] text-gray-400 leading-snug">{{ entry.message }}</span>
+          <div class="py-1 max-h-24 overflow-y-auto scroll-col">
+            <div v-for="entry in [...activityLog].reverse().slice(0, 5)" :key="entry.time" class="flex items-center gap-2 px-3 py-0.5">
+              <div :class="['w-1 h-1 rounded-full flex-shrink-0', logEntryColor(entry.message)]" />
+              <span class="text-[9px] text-gray-700 tabular-nums flex-shrink-0 font-mono">{{ formatLogTime(entry.time) }}</span>
+              <span class="text-[9px] text-gray-500 truncate">{{ entry.message }}</span>
             </div>
           </div>
         </div>
 
       </div>
-
+      </div>
     </div>
   </div>
 </template>
@@ -1148,7 +836,7 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import type { ProfileData, AnalysisItem, PendingRecording, ClipRecord } from '../env.d.ts'
-import { getAgentImage, getAgentRole, getAgentColor, getMapMinimap, getRankHexColor, getRankIconUrl, getRoleColor, getTierBadgeClass, getTierBadgeLabel, getDisplayTier, formatGameMode, normalizeCombatScoreToAcs } from '../lib/valorant'
+import { getAgentImage, getAgentRole, getAgentColor, getMapMinimap, getRankHexColor, getRankIconUrl, getRoleColor, getTierBadgeClass, getTierBadgeLabel, getDisplayTier, formatGameMode, isDisplayableGameMode, normalizeCombatScoreToAcs } from '../lib/valorant'
 import { getMasteryIconUrl, getSubscriptionIconUrl } from '../lib/rank-assets'
 import { hasAnalysisQuotaRemaining, hasArchiveQuotaRemaining, isPlatformAdmin } from '../lib/tier-features'
 import { pendingTimeline } from '../stores/pendingTimeline'
@@ -1160,6 +848,7 @@ import CS2SetupPanel from '../components/CS2SetupPanel.vue'
 import SkillProfileBars from '../components/SkillProfileBars.vue'
 import CoachMemoryCard from '../components/CoachMemoryCard.vue'
 import PaymentFailedAlert from '../components/PaymentFailedAlert.vue'
+import PanelCarousel, { type CarouselPanel } from '../components/PanelCarousel.vue'
 import type { SkillProfileSnapshot } from '../lib/skill-profile'
 import { isPaymentPastDue, openBillingPortal as requestBillingPortal } from '../lib/billing'
 import { usePrimaryGame } from '../composables/usePrimaryGame'
@@ -1179,6 +868,7 @@ const cs2FaceitConnection = ref<Cs2FaceitConnection | null>(null)
 const playerCardUrl = ref('')
 const analyses = ref<AnalysisItem[]>([])
 const analysesLoading = ref(true)
+const coachingSnippets = ref<Record<number, string>>({})
 const pendingRecordings = ref<PendingRecording[]>([])
 const analysingIds = ref(new Set<string>())
 const savingIds = ref(new Set<string>())
@@ -1390,6 +1080,41 @@ const playstyleTopAgents = computed(() => {
 
 const playerRankName = computed(() => profile.value?.latest_stats?.current_rank ?? null)
 
+const leftInsightIndex = ref(0)
+const rightInsightIndex = ref(0)
+
+const leftInsightPanels = computed<CarouselPanel[]>(() => {
+  const panels: CarouselPanel[] = []
+  if (profile.value?.user.forge_rank) {
+    panels.push({ id: 'mastery', label: 'Mastery', accent: 'bg-yellow-500' })
+  }
+  if (isValorant.value && scoreChartData.value) {
+    panels.push({ id: 'score', label: 'AI Score', accent: 'bg-green-500' })
+  }
+  if (isValorant.value && topAgents.value.length && topAgents.value.some(a => a.hasWinData || a.avgScore != null)) {
+    panels.push({ id: 'agents', label: 'Agents', accent: 'bg-red-500' })
+  }
+  return panels
+})
+
+const rightInsightPanels = computed<CarouselPanel[]>(() => {
+  const panels: CarouselPanel[] = []
+  if (isValorant.value && playstyleProfile.value && playstyleProfile.value.matches_tracked > 0) {
+    panels.push({ id: 'playstyle', label: 'Playstyle', accent: 'bg-violet-500' })
+  }
+  if (isValorant.value && skillProfile.value) {
+    panels.push({ id: 'skills', label: 'Skills', accent: 'bg-emerald-500' })
+  }
+  if ((isCs2.value || isDeadlock.value) && (onboardingTargetRank.value || onboardingWeaknesses.value.length)) {
+    panels.push({ id: 'goals', label: 'Goals', accent: isCs2.value ? 'bg-orange-500' : 'bg-teal-500' })
+  }
+  if (isValorant.value && correlationInsights.value.length) {
+    panels.push({ id: 'impact', label: 'Impact', accent: 'bg-red-500' })
+  }
+  panels.push({ id: 'training', label: 'Aim Training', accent: 'bg-orange-500' })
+  return panels
+})
+
 async function loadSkillProfileFromSettings() {
   const saved = await window.api.settings.get().catch(() => null) as {
     skillProfile?: SkillProfileSnapshot | null
@@ -1399,46 +1124,6 @@ async function loadSkillProfileFromSettings() {
   skillProfilePrevious.value = saved?.skillProfilePrevious ?? null
 }
 
-// Emotional highlights — shown above the match list to give the user a sense of momentum
-const emotionalHighlights = computed(() => {
-  const highlights: { text: string; accent: 'green' | 'orange' | 'yellow' | 'white' }[] = []
-  const last5 = analyses.value.slice(0, 5)
-
-  // Win streak
-  if (currentStreak.value >= 3) highlights.push({ text: `${currentStreak.value} game win streak`, accent: 'green' })
-  else if (currentStreak.value === 2) highlights.push({ text: '2 game win streak', accent: 'green' })
-
-  // AI score on the rise
-  const scored = analyses.value.filter(a => a.overall_score != null)
-  if (scored.length >= 3) {
-    const recent = scored.slice(0, 3).map(a => a.overall_score as number)
-    const older  = scored.slice(3, 6).map(a => a.overall_score as number)
-    if (older.length > 0) {
-      const recentAvg = recent.reduce((s, v) => s + v, 0) / recent.length
-      const olderAvg  = older.reduce((s, v) => s + v, 0) / older.length
-      const diff = Math.round(recentAvg - olderAvg)
-      if (diff >= 8) highlights.push({ text: `AI score up ${diff} pts this week`, accent: 'orange' })
-    }
-  }
-
-  // Personal best AI score
-  if (scored.length >= 2) {
-    const best = scored[0].overall_score as number
-    const prevBest = scored.slice(1).reduce((m, a) => Math.max(m, a.overall_score ?? 0), 0)
-    if (best > prevBest && best >= 70) highlights.push({ text: `New best score: ${best}`, accent: 'yellow' })
-  }
-
-  // Solid win rate on last 5
-  const wonCount = last5.filter(a => a.won === true).length
-  if (last5.length >= 5 && wonCount >= 4) highlights.push({ text: `${wonCount}/5 wins recently`, accent: 'green' })
-
-  // Agent mastery
-  const topAgent = topAgents.value.find(a => a.hasWinData && a.winRate >= 65 && a.total >= 3)
-  if (topAgent) highlights.push({ text: `${topAgent.winRate}% WR on ${topAgent.agent}`, accent: 'orange' })
-
-  return highlights
-})
-
 // Last-5 performance strip above match list
 const lastFivePerf = computed(() => {
   const last5 = analyses.value.slice(0, 5)
@@ -1446,14 +1131,14 @@ const lastFivePerf = computed(() => {
   const wins = last5.filter(a => a.won === true).length
   const losses = last5.filter(a => a.won === false).length
   const wl = last5.map(a => a.won)
-  const acsItems = last5.filter(a => a.combat_score != null)
+  const acsItems = last5.filter(a => displayAcs(a) != null)
   const scoreItems = last5.filter(a => a.overall_score != null)
   const hsItems = last5.filter(a => a.hs_pct != null)
   return {
     wl,
     wins,
     losses,
-    avgAcs: acsItems.length ? Math.round(acsItems.reduce((s, a) => s + (a.combat_score ?? 0), 0) / acsItems.length) : null,
+    avgAcs: acsItems.length ? Math.round(acsItems.reduce((s, a) => s + (displayAcs(a) ?? 0), 0) / acsItems.length) : null,
     avgScore: scoreItems.length ? Math.round(scoreItems.reduce((s, a) => s + (a.overall_score ?? 0), 0) / scoreItems.length) : null,
     avgHs: hsItems.length ? Math.round(hsItems.reduce((s, a) => s + (a.hs_pct ?? 0), 0) / hsItems.length) : null,
   }
@@ -1697,6 +1382,7 @@ onMounted(async () => {
 
   analyses.value = recent
   analysesLoading.value = false
+  void loadCoachingSnippets(recent)
 
   if (isValorant.value) {
     rrHistory.value = await window.api.stats.rrHistory().catch(() => [])
@@ -1861,11 +1547,21 @@ async function loadAnalyses() {
   analysesLoading.value = true
   try {
     analyses.value = await window.api.analyses.get(10)
+    void loadCoachingSnippets(analyses.value)
   } catch {
     analyses.value = []
   } finally {
     analysesLoading.value = false
   }
+}
+
+async function loadCoachingSnippets(items: AnalysisItem[]) {
+  const toFetch = items.filter(a => !isAnalysisProcessing(a) && !coachingSnippets.value[a.id])
+  await Promise.all(toFetch.map(async (a) => {
+    const detail = await window.api.analyses.getDetail(a.id).catch(() => null)
+    const snippet = detail?.top_issue ?? detail?.priority_improvements?.[0] ?? detail?.verdict ?? null
+    if (snippet) coachingSnippets.value[a.id] = snippet
+  }))
 }
 
 async function loadCs2Faceit() {
@@ -2264,6 +1960,19 @@ function formatFileSize(bytes: number): string {
   return Math.round(bytes / 1024) + ' KB'
 }
 
+function isAnalysisProcessing(a: AnalysisItem): boolean {
+  return ['queued', 'processing', 'pending'].includes(a.status)
+}
+
+function analysisRounds(a: AnalysisItem): number | null {
+  if (a.rounds_won != null && a.rounds_lost != null) return a.rounds_won + a.rounds_lost
+  return null
+}
+
+function displayAcs(a: AnalysisItem): number | null {
+  return normalizeCombatScoreToAcs(a.combat_score, analysisRounds(a))
+}
+
 interface MatchRowStats {
   won: boolean | null
   kills: number | null
@@ -2374,9 +2083,74 @@ function recordingRowStats(rec: PendingRecording): MatchRowStats {
 }
 .match-list-grid {
   display: grid;
-  grid-template-columns: 36px minmax(0, 1fr) 32px 68px 44px 40px 52px 24px 12px;
-  column-gap: 8px;
+  grid-template-columns: 32px minmax(0, 1fr) auto 16px;
+  column-gap: 10px;
   align-items: center;
+}
+
+.match-list-grid.analysis-row {
+  align-items: center;
+}
+
+.match-list-cell-icon {
+  grid-column: 1;
+}
+
+.match-list-col-match {
+  grid-column: 2;
+  min-width: 0;
+}
+
+.match-list-stats {
+  grid-column: 3;
+  display: grid;
+  grid-template-columns: 34px 72px 46px 40px 48px;
+  gap: 10px;
+  align-items: center;
+  justify-items: center;
+  text-align: center;
+}
+
+.match-list-stats--processing {
+  grid-template-columns: 1fr;
+}
+
+.match-list-stats-processing {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: 100%;
+  font-size: 10px;
+  color: rgb(107 114 128);
+  white-space: nowrap;
+}
+
+.match-list-actions {
+  grid-column: 4;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 2px;
+}
+
+.analysis-row--won::before,
+.analysis-row--lost::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 8px;
+  bottom: 8px;
+  width: 3px;
+  border-radius: 999px;
+}
+
+.analysis-row--won::before {
+  background: #22c55e;
+}
+
+.analysis-row--lost::before {
+  background: #ef4444;
 }
 
 .pending-row {
@@ -2385,6 +2159,10 @@ function recordingRowStats(rec: PendingRecording): MatchRowStats {
 
 .match-list-header {
   row-gap: 0;
+}
+
+.match-list-header .match-list-stats {
+  gap: 18px;
 }
 
 .analysis-row:hover {
@@ -2397,12 +2175,6 @@ function recordingRowStats(rec: PendingRecording): MatchRowStats {
 
 .score-bar {
   animation: scoreBarFill 0.8s cubic-bezier(0.22, 1, 0.36, 1) both;
-}
-
-/* Highlights bar */
-.highlights-bar {
-  background: linear-gradient(135deg, rgba(249,115,22,0.07), rgba(255,70,85,0.05));
-  border: 1px solid rgba(249,115,22,0.18);
 }
 
 /* Train CTA button */

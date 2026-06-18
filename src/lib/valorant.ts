@@ -360,11 +360,40 @@ const MODE_LABELS: Record<string, string> = {
   SPIKERUSH: 'Spike Rush',
   SWIFTPLAY: 'Swift Play',
   SNOWBALL: 'Snowball Fight',
+  RANGEV2: 'Range',
+}
+
+const PLACEHOLDER_MODE_VALUES = new Set(['', 'null', 'undefined', 'unknown', 'none', 'n/a'])
+
+/** Drop API placeholders and whitespace — returns a queue id or null. */
+export function normalizeGameModeId(mode: string | null | undefined): string | null {
+  if (mode == null) return null
+  const trimmed = mode.trim()
+  if (!trimmed) return null
+  if (PLACEHOLDER_MODE_VALUES.has(trimmed.toLowerCase())) return null
+  return trimmed
+}
+
+/** Whether to show a non-competitive mode pill in match lists. */
+export function isDisplayableGameMode(mode: string | null | undefined): boolean {
+  const normalized = normalizeGameModeId(mode)
+  if (!normalized) return false
+  const lower = normalized.toLowerCase()
+  return lower !== 'competitive' && lower !== 'ranked' && lower !== 'premier'
 }
 
 /** Returns a human-readable label for a Valorant queue/mode ID. */
-export function formatGameMode(mode: string): string {
-  return MODE_LABELS[mode] ?? mode
+export function formatGameMode(mode: string | null | undefined): string {
+  const normalized = normalizeGameModeId(mode)
+  if (!normalized) return ''
+  const key = normalized.toUpperCase()
+  if (MODE_LABELS[key]) return MODE_LABELS[key]
+  return normalized
+    .replace(/([a-z])([A-Z])/g, '$1 $2')
+    .replace(/_/g, ' ')
+    .split(' ')
+    .map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
+    .join(' ')
 }
 
 // ── ACS (Average Combat Score) ───────────────────────────────────────────────
@@ -387,5 +416,5 @@ export function normalizeCombatScoreToAcs(
   if (score == null || !Number.isFinite(score)) return null
   if (score <= TOTAL_COMBAT_SCORE_THRESHOLD) return Math.round(score)
   if (rounds != null && rounds > 0) return computeAcs(score, rounds)
-  return Math.round(score)
+  return null
 }
