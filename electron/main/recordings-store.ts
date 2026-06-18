@@ -21,6 +21,9 @@ function preferRecordingEntry(a: PendingRecording, b: PendingRecording): Pending
   return a.recordedAt >= b.recordedAt ? a : b
 }
 
+export type RecordingPipelineStatus = 'pending' | 'uploading' | 'analysing'
+export type ClipOnlyReason = 'clips_only_mode' | 'no_recording'
+
 export interface PendingRecording {
   id: string
   path: string
@@ -41,15 +44,32 @@ export interface PendingRecording {
   /** True when VOD is on cloud via archive-only upload. */
   cloudArchived?: boolean
   fileSizeBytes?: number
+  /** Upload / analysis in progress — keeps the row visible on the dashboard. */
+  pipelineStatus?: RecordingPipelineStatus
+  uploadProgress?: number
+  analysisProgress?: number
+  analysisStep?: string | null
+  /** Highlights-only session with no full-match VOD on disk. */
+  clipsOnly?: boolean
+  clipOnlyReason?: ClipOnlyReason
+  clipCount?: number
+  matchId?: string | null
 }
 
 export type NewRecording = Omit<PendingRecording, 'id' | 'recordedAt' | 'analysed'>
 
 function isLocalOnlyRecording(rec: PendingRecording): boolean {
+  if (rec.clipsOnly) return false
   const onCloud =
     (rec.analysed && rec.analysisId != null)
     || (rec.cloudArchived && rec.archiveId != null)
   return !onCloud
+}
+
+function matchesLinkedAccount(r: PendingRecording, linkedRiot?: LinkedRiotId | null): boolean {
+  const name = r.riotName?.trim() || r.timeline?.playerName?.trim()
+  const tag = r.riotTag?.trim() || r.timeline?.playerTag?.trim()
+  return recordingMatchesLinkedRiot(name, tag, linkedRiot)
 }
 
 export class RecordingsStore {
@@ -80,11 +100,12 @@ export class RecordingsStore {
     try {
       const raw = fs.readFileSync(this.filePath, 'utf-8')
       const all: PendingRecording[] = JSON.parse(raw)
-      // Keep analysed entries linked to cloud playback; drop orphan locals with no file
       const pruned = all.filter(r => {
-        if (fs.existsSync(r.path)) return true
+        if (r.clipsOnly) return true
+        if (r.path && fs.existsSync(r.path)) return true
         if (r.analysed && r.analysisId != null) return true
         if (r.cloudArchived && r.archiveId != null) return true
+        if (r.analysed && r.pipelineStatus === 'analysing' && r.analysisId == null) return true
         return false
       })
       const deduped = this.dedupeSiblingRecordings(pruned)
@@ -115,16 +136,19 @@ export class RecordingsStore {
 
   add(data: NewRecording): PendingRecording {
     let fileSizeBytes: number | undefined
-    try {
-      fileSizeBytes = fs.statSync(data.path).size
-    } catch { /* file might not be readable yet */ }
+    if (data.path && !data.clipsOnly) {
+      try {
+        fileSizeBytes = fs.statSync(data.path).size
+      } catch { /* file might not be readable yet */ }
+    }
 
     const recording: PendingRecording = {
       ...data,
       id: randomUUID(),
       recordedAt: Date.now(),
       analysed: false,
-      fileSizeBytes
+      pipelineStatus: data.pipelineStatus ?? 'pending',
+      fileSizeBytes,
     }
     this.recordings.unshift(recording)
     if (this.recordings.length > 50) {
@@ -132,7 +156,7 @@ export class RecordingsStore {
       this.recordings = this.recordings.slice(0, 50)
       for (const rec of evicted) {
         if (!isLocalOnlyRecording(rec)) continue
-        if (!fs.existsSync(rec.path)) continue
+        if (!rec.path || !fs.existsSync(rec.path)) continue
         deleteLocalRecordingFiles(rec.path)
       }
     }
@@ -154,7 +178,15 @@ export class RecordingsStore {
     if (rec) {
       rec.analysed = true
       rec.jobId = jobId
-      if (analysisId != null) rec.analysisId = analysisId
+      rec.uploadProgress = undefined
+      if (analysisId != null) {
+        rec.analysisId = analysisId
+        rec.pipelineStatus = undefined
+        rec.analysisProgress = undefined
+        rec.analysisStep = undefined
+      } else {
+        rec.pipelineStatus = 'analysing'
+      }
       this.persist()
     }
   }
@@ -163,8 +195,67 @@ export class RecordingsStore {
     const rec = this.recordings.find(r => r.id === id)
     if (rec) {
       rec.analysisId = analysisId
+      rec.pipelineStatus = undefined
+      rec.analysisProgress = undefined
+      rec.analysisStep = undefined
       this.persist()
     }
+  }
+
+  setPipelineStatus(id: string, status: RecordingPipelineStatus): void {
+    const rec = this.recordings.find(r => r.id === id)
+    if (!rec) return
+    rec.pipelineStatus = status
+    if (status === 'pending') {
+      rec.uploadProgress = undefined
+      rec.analysisProgress = undefined
+      rec.analysisStep = undefined
+    } else if (status === 'uploading') {
+      rec.uploadProgress = rec.uploadProgress ?? 0
+    }
+    this.persist()
+  }
+
+  setUploadProgress(id: string, progress: number): void {
+    const rec = this.recordings.find(r => r.id === id)
+    if (!rec) return
+    rec.pipelineStatus = 'uploading'
+    rec.uploadProgress = Math.min(100, Math.max(0, Math.round(progress)))
+    this.persist()
+  }
+
+  setAnalysisProgress(id: string, progress: number, step: string | null): void {
+    const rec = this.recordings.find(r => r.id === id)
+    if (!rec) return
+    rec.pipelineStatus = 'analysing'
+    rec.analysisProgress = Math.min(100, Math.max(0, Math.round(progress)))
+    rec.analysisStep = step
+    this.persist()
+  }
+
+  updateClipOnlyMeta(
+    id: string,
+    patch: { clipCount?: number; timeline?: MatchData | null },
+  ): void {
+    const rec = this.recordings.find(r => r.id === id)
+    if (!rec?.clipsOnly) return
+    if (patch.clipCount != null) rec.clipCount = patch.clipCount
+    if (patch.timeline !== undefined) rec.timeline = patch.timeline
+    this.persist()
+  }
+
+  findRecentClipOnly(opts: {
+    matchId: string | null
+    agent: string | null
+    withinMs: number
+  }): PendingRecording | undefined {
+    const cutoff = Date.now() - opts.withinMs
+    return this.recordings.find(r => {
+      if (!r.clipsOnly || r.recordedAt < cutoff) return false
+      if (opts.matchId && r.matchId === opts.matchId) return true
+      if (opts.agent && r.agent === opts.agent && !opts.matchId) return true
+      return false
+    })
   }
 
   getAnalysisId(id: string): number | null {
@@ -175,9 +266,13 @@ export class RecordingsStore {
     return this.recordings.find(r => r.id === id)
   }
 
+  getByJobId(jobId: string): PendingRecording | undefined {
+    return this.recordings.find(r => r.jobId === jobId)
+  }
+
   /** Local file path for a desktop upload job, if the recording still exists on disk. */
   getPathByJobId(jobId: string): string | null {
-    const recording = this.recordings.find(r => r.jobId === jobId && fs.existsSync(r.path))
+    const recording = this.recordings.find(r => r.jobId === jobId && r.path && fs.existsSync(r.path))
     return recording?.path ?? null
   }
 
@@ -194,33 +289,39 @@ export class RecordingsStore {
     return true
   }
 
-  /** Unanalysed recordings for the active account (local file and/or saved to cloud). */
+  /** Sessions visible on the dashboard: pending locals, in-flight upload/analysis, clip-only stubs. */
   getPending(linkedRiot?: LinkedRiotId | null): PendingRecording[] {
     return this.recordings.filter(r => {
-      if (r.analysed) return false
-      const hasLocal = fs.existsSync(r.path)
+      if (!matchesLinkedAccount(r, linkedRiot)) return false
+
+      if (r.clipsOnly) return true
+
+      if (r.analysed) {
+        if (r.analysisId != null) return false
+        return r.pipelineStatus === 'analysing' || r.jobId != null
+      }
+
+      const hasLocal = r.path ? fs.existsSync(r.path) : false
       const hasCloud = r.cloudArchived && r.archiveId != null
       if (!hasLocal && !hasCloud) return false
-      const name = r.riotName?.trim() || r.timeline?.playerName?.trim()
-      const tag = r.riotTag?.trim() || r.timeline?.playerTag?.trim()
-      return recordingMatchesLinkedRiot(name, tag, linkedRiot)
+      return true
     })
   }
 
   /** Recordings on cloud (analysed or archive-only) that still have a local file. */
   getCloudBackedLocal(linkedRiot?: LinkedRiotId | null): PendingRecording[] {
     return this.recordings.filter(r => {
+      if (r.clipsOnly) return false
       const onCloud = (r.analysed && r.analysisId != null) || (r.cloudArchived && r.archiveId != null)
-      if (!onCloud || !fs.existsSync(r.path)) return false
-      const name = r.riotName?.trim() || r.timeline?.playerName?.trim()
-      const tag = r.riotTag?.trim() || r.timeline?.playerTag?.trim()
-      return recordingMatchesLinkedRiot(name, tag, linkedRiot)
+      if (!onCloud || !r.path || !fs.existsSync(r.path)) return false
+      return matchesLinkedAccount(r, linkedRiot)
     })
   }
 
   getKnownPaths(): Set<string> {
     const paths = new Set<string>()
     for (const recording of this.recordings) {
+      if (!recording.path) continue
       for (const variant of recordingPathVariants(recording.path)) {
         paths.add(path.normalize(variant))
       }
@@ -243,7 +344,9 @@ export class RecordingsStore {
   private dedupeSiblingRecordings(all: PendingRecording[]): PendingRecording[] {
     const groups = new Map<string, PendingRecording[]>()
     for (const recording of all) {
-      const key = recordingStemKey(recording.path)
+      const key = recording.clipsOnly || !recording.path
+        ? `clips-only:${recording.id}`
+        : recordingStemKey(recording.path)
       const group = groups.get(key) ?? []
       group.push(recording)
       groups.set(key, group)
@@ -265,3 +368,5 @@ export class RecordingsStore {
     this.persist()
   }
 }
+
+export { isLocalOnlyRecording }

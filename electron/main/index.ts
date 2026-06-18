@@ -74,7 +74,7 @@ import { reportRecordingError } from './recording-errors'
 import { UpgradeRequiredError } from './errors'
 import { mergeSkillProfileFromAnalysis } from '../../src/lib/skill-profile'
 import { parseMatchHighlightsFromApi } from '../../src/lib/match-highlights'
-import { RecordingsStore } from './recordings-store'
+import { RecordingsStore, type ClipOnlyReason } from './recordings-store'
 import { ClipExtractor } from './clip-extractor'
 import { ClipStore } from './clip-store'
 import { HotkeyManager } from './hotkey-manager'
@@ -684,6 +684,73 @@ async function extractMatchClips(
   return clipPipeline.extractMatchClips(videoPath, timeline, analysisJobId)
 }
 
+function countSessionClips(
+  timeline: MatchData | null,
+  agent: string | null,
+  sessionStart: number,
+): number {
+  const matchId = timeline?.matchId ?? null
+  const windowStart = sessionStart > 0 ? sessionStart - 60_000 : Date.now() - 4 * 60 * 60 * 1000
+  return clipStore.getAll().filter(c => {
+    if (!c.path || !fs.existsSync(c.path)) return false
+    if (matchId && c.matchId === matchId) return true
+    if (agent && c.agent === agent && c.savedAt >= windowStart) return true
+    return false
+  }).length
+}
+
+/** Dashboard stub when highlights were saved but no full-match VOD is available. */
+function registerClipOnlySession(opts: {
+  game: string
+  map: string | null
+  agent: string | null
+  gameMode: string
+  timeline: MatchData | null
+  sessionStart: number
+  reason: ClipOnlyReason
+  requireClips?: boolean
+}): void {
+  if (!recordingsStore) return
+  const clipCount = countSessionClips(opts.timeline, opts.agent, opts.sessionStart)
+  if (opts.requireClips && clipCount === 0) return
+
+  const user = authManager.getUser()
+  const matchId = opts.timeline?.matchId ?? null
+  const existing = recordingsStore.findRecentClipOnly({
+    matchId,
+    agent: opts.agent,
+    withinMs: 2 * 60 * 60 * 1000,
+  })
+  if (existing) {
+    recordingsStore.updateClipOnlyMeta(existing.id, { clipCount, timeline: opts.timeline })
+    mainWindow?.webContents.send('recordings:updated')
+    return
+  }
+
+  recordingsStore.add({
+    path: '',
+    clipsOnly: true,
+    clipOnlyReason: opts.reason,
+    clipCount,
+    matchId,
+    pipelineStatus: 'pending',
+    riotName: opts.timeline?.playerName?.trim() ?? user?.riot_name ?? '',
+    riotTag: opts.timeline?.playerTag?.trim() ?? user?.riot_tag ?? '',
+    game: opts.game,
+    map: opts.map,
+    agent: opts.agent,
+    gameMode: opts.gameMode,
+    timeline: opts.timeline,
+  })
+  const clipLabel = clipCount === 1 ? '1 highlight clip' : `${clipCount} highlight clips`
+  logActivity(
+    opts.reason === 'clips_only_mode'
+      ? `Match on dashboard — ${clipLabel} (clips-only mode)`
+      : `Match on dashboard — ${clipLabel} (no full recording)`,
+  )
+  mainWindow?.webContents.send('recordings:updated')
+}
+
 async function syncScoutMomentsForJob(
   jobId: string | null,
   videoPath: string,
@@ -998,6 +1065,15 @@ function setupGameDetection(): void {
     const clipsOnly = config?.fullMatchRecording === false || obsRecorder.isClipsOnlySession()
 
     if (clipsOnly) {
+      registerClipOnlySession({
+        game,
+        map,
+        agent,
+        gameMode,
+        timeline,
+        sessionStart: matchSessionStart,
+        reason: 'clips_only_mode',
+      })
       tray?.setToolTip(idleTooltip(game))
       logActivity('Clips-only mode — highlight clips saved during the match (no full VOD on disk)')
       showAppNotification({
@@ -1042,6 +1118,16 @@ function setupGameDetection(): void {
     if (recordingDuration > 0 && recordingDuration < MIN_DURATION_SECONDS) {
       console.log(`[GameDetector] Recording too short (${recordingDuration}s) — ignoring`)
       logActivity(`Recording too short (${recordingDuration}s) — discarded`)
+      registerClipOnlySession({
+        game,
+        map,
+        agent,
+        gameMode,
+        timeline,
+        sessionStart: matchSessionStart,
+        reason: 'no_recording',
+        requireClips: true,
+      })
       notifyRecordingUx(
         `Recording was only ${Math.round(recordingDuration)}s — at least 2 minutes is needed for analysis. The file was discarded.`,
         'UpForge — Recording Too Short'
@@ -1055,6 +1141,16 @@ function setupGameDetection(): void {
     // If recording never started and no file was recovered from disk, skip post-game.
     if (recordingDuration === 0 && fileSize < MIN_RECORDING_FILE_BYTES) {
       scanForOrphanedRecordings(true)
+      registerClipOnlySession({
+        game,
+        map,
+        agent,
+        gameMode,
+        timeline,
+        sessionStart: matchSessionStart,
+        reason: 'no_recording',
+        requireClips: true,
+      })
       const lastErr = obsRecorder.getLastError()
       const msg = lastErr ? `Match ended — no recording was made (${lastErr})` : 'Match ended — no active recording'
       logActivity(msg)
@@ -2007,8 +2103,24 @@ async function resumePollForJob(
     uploadManager,
     jobId,
     mainWindow,
+    onProgress: (status) => {
+      const rec = recordingsStore.getByJobId(jobId)
+      if (!rec) return
+      const raw = status.progress
+      const progress = typeof raw === 'number' && !Number.isNaN(raw)
+        ? Math.min(100, Math.max(0, Math.round(raw)))
+        : status.status === 'queued' ? 0 : 5
+      recordingsStore.setAnalysisProgress(rec.id, progress, status.current_step ?? null)
+      mainWindow?.webContents.send('recordings:updated')
+    },
     onCompleted: (status) => {
       const score = (status.result as Record<string, unknown> | undefined)?.overall_score as number | undefined
+      const analysisId = (status.result as Record<string, unknown> | undefined)?.analysis_id as number | undefined
+      const rec = recordingsStore.getByJobId(jobId)
+      if (rec && analysisId != null) {
+        recordingsStore.setAnalysisId(rec.id, analysisId)
+        mainWindow?.webContents.send('recordings:updated')
+      }
       logActivity(`Resumed analysis ready${score != null ? ` — Score: ${score}/100` : ''}`)
       mainWindow?.webContents.send('dashboard:refresh')
       tray?.setToolTip(idleTooltip(game))
@@ -2173,6 +2285,11 @@ async function doUploadAndAnalyse(
   }
   stopActiveAnalysisPoll()
 
+  if (recordingId) {
+    recordingsStore.setPipelineStatus(recordingId, 'uploading')
+    mainWindow?.webContents.send('recordings:updated')
+  }
+
   let effectivePath = videoPath
   try {
     const resolved = await resolveUploadVideoPath(videoPath, (sizeGB) => {
@@ -2218,6 +2335,10 @@ async function doUploadAndAnalyse(
     killsInTimeline: lastMatchDiagnostic?.killsInTimeline ?? 0,
   })
   send('post-game:upload-progress', 3)
+  if (recordingId) {
+    recordingsStore.setUploadProgress(recordingId, 3)
+    mainWindow?.webContents.send('dashboard:upload-progress', { recordingId, progress: 3 })
+  }
 
   let coachingExtras: CoachingSubmissionExtras | undefined
   const runEnrich = async (): Promise<void> => {
@@ -2258,6 +2379,10 @@ async function doUploadAndAnalyse(
       coachingExtras,
       onProgress: (pct) => {
         send('post-game:upload-progress', pct)
+        if (recordingId) {
+          recordingsStore.setUploadProgress(recordingId, pct)
+          mainWindow?.webContents.send('dashboard:upload-progress', { recordingId, progress: pct })
+        }
       },
     })
 
@@ -2301,6 +2426,14 @@ async function doUploadAndAnalyse(
       jobId: result.job_id,
       targetWindow,
       mainWindow,
+      onProgress: (status) => {
+        if (!recordingId) return
+        const raw = status.progress
+        const progress = typeof raw === 'number' && !Number.isNaN(raw)
+          ? Math.min(100, Math.max(0, Math.round(raw)))
+          : status.status === 'queued' ? 0 : 5
+        recordingsStore.setAnalysisProgress(recordingId, progress, status.current_step ?? null)
+      },
       onCompleted: (status) => {
         const score = (status.result as Record<string, unknown>).overall_score as number | undefined
         const analysisId = (status.result as Record<string, unknown>).analysis_id as number | undefined
@@ -2437,6 +2570,10 @@ async function doUploadAndAnalyse(
     const msg = err instanceof Error ? err.message : 'Upload failed'
     logActivity(`Upload failed: ${msg}`)
     tray?.setToolTip(idleTooltip(game))
+    if (recordingId) {
+      recordingsStore.setPipelineStatus(recordingId, 'pending')
+      mainWindow?.webContents.send('recordings:updated')
+    }
 
     // Quota exceeded — send upgrade prompt (no retry makes sense here)
     const isUpgradeError = err instanceof UpgradeRequiredError
@@ -2870,6 +3007,13 @@ async function startApp(): Promise<void> {
             jobId: result.job_id,
             targetWindow: win,
             mainWindow,
+            onProgress: (status) => {
+              const raw = status.progress
+              const progress = typeof raw === 'number' && !Number.isNaN(raw)
+                ? Math.min(100, Math.max(0, Math.round(raw)))
+                : status.status === 'queued' ? 0 : 5
+              recordingsStore.setAnalysisProgress(recording.id, progress, status.current_step ?? null)
+            },
             onCompleted: (status) => {
               const analysisId = (status.result as Record<string, unknown>).analysis_id as number | undefined
               if (analysisId != null) recordingsStore.setAnalysisId(recording.id, analysisId)
@@ -3073,7 +3217,13 @@ async function startApp(): Promise<void> {
 
   ipcMain.handle('recordings:dismiss', (_e, { id, deleteLocal = true }: { id: string; deleteLocal?: boolean }) => {
     const recording = recordingsStore.getById(id)
-    const wasLocalOnly = !!(recording && deleteLocal && isLocalOnlyRecording(recording))
+    const wasLocalOnly = !!(
+      recording
+      && deleteLocal
+      && !recording.clipsOnly
+      && recording.path
+      && isLocalOnlyRecording(recording)
+    )
     if (wasLocalOnly) {
       const freed = deleteLocalRecordingFiles(recording!.path)
       if (freed > 0) {

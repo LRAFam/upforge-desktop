@@ -55,8 +55,9 @@ function fileSizeBytes(filePath: string): number {
 
 export function isLocalOnlyRecording(rec: Pick<
   PendingRecording,
-  'analysed' | 'analysisId' | 'cloudArchived' | 'archiveId'
+  'analysed' | 'analysisId' | 'cloudArchived' | 'archiveId' | 'clipsOnly'
 >): boolean {
+  if (rec.clipsOnly) return false
   const onCloud =
     (rec.analysed && rec.analysisId != null)
     || (rec.cloudArchived && rec.archiveId != null)

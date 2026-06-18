@@ -830,12 +830,16 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { useRoute } from 'vue-router'
 import type { ClipRecord } from '../env.d'
 import { loadSaveClipHotkey } from '../lib/hotkeys'
 
+const route = useRoute()
 const clips = ref<ClipRecord[]>([])
 const thumbnails = ref<Record<string, string>>({})
 const activeFilter = ref<string>('all')
+const sessionAgentFilter = ref<string | null>(null)
+const sessionMatchIdFilter = ref<string | null>(null)
 const playingClip = ref<ClipRecord | null>(null)
 const videoEl = ref<HTMLVideoElement | null>(null)
 const upgradeModal = ref({ show: false, message: '' })
@@ -909,9 +913,15 @@ const sortOrder = ref<(typeof sortOptions)[number]['value']>('newest')
 const viewMode = ref<'grid' | 'list'>('grid')
 
 const filteredClips = computed(() => {
-  if (activeFilter.value === 'all') return clips.value
-  if (activeFilter.value === 'favorites') return clips.value.filter(c => c.favorited)
-  return clips.value.filter(c => c.trigger === activeFilter.value)
+  let list = clips.value
+  if (sessionMatchIdFilter.value) {
+    list = list.filter(c => c.matchId === sessionMatchIdFilter.value)
+  } else if (sessionAgentFilter.value) {
+    list = list.filter(c => c.agent === sessionAgentFilter.value)
+  }
+  if (activeFilter.value === 'all') return list
+  if (activeFilter.value === 'favorites') return list.filter(c => c.favorited)
+  return list.filter(c => c.trigger === activeFilter.value)
 })
 
 const displayedClips = computed(() => {
@@ -925,6 +935,11 @@ const displayedClips = computed(() => {
 const removeListener = ref<(() => void) | null>(null)
 
 onMounted(async () => {
+  const agentQ = typeof route.query.agent === 'string' ? route.query.agent : null
+  const matchIdQ = typeof route.query.matchId === 'string' ? route.query.matchId : null
+  if (matchIdQ) sessionMatchIdFilter.value = matchIdQ
+  else if (agentQ) sessionAgentFilter.value = agentQ
+
   saveClipHotkey.value = await loadSaveClipHotkey()
   await loadClips()
   window.api.app.getStatus().then(s => { if (s.user?.tier) userTier.value = s.user.tier }).catch(() => {})

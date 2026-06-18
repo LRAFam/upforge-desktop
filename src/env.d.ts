@@ -175,6 +175,14 @@ export interface PendingRecording {
   archiveId?: string
   cloudArchived?: boolean
   fileSizeBytes?: number
+  pipelineStatus?: 'pending' | 'uploading' | 'analysing'
+  uploadProgress?: number
+  analysisProgress?: number
+  analysisStep?: string | null
+  clipsOnly?: boolean
+  clipOnlyReason?: 'clips_only_mode' | 'no_recording'
+  clipCount?: number
+  matchId?: string | null
   timeline?: {
     playerKills?: Array<{ killerName: string; victimName: string; weapon?: string; videoOffsetMs?: number; round?: number }>
     playerDeaths?: Array<{ killerName: string; victimName: string; weapon?: string; videoOffsetMs?: number; round?: number }>
@@ -308,6 +316,8 @@ export interface ClipRecord {
   title: string | null
   savedAt: number
   analysisJobId: string | null
+  matchId: string | null
+  gameMode: string | null
   uploadStatus: 'local' | 'uploading' | 'uploaded' | 'failed'
   apiClipId: number | null
   shareToken: string | null

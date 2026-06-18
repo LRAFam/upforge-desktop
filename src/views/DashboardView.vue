@@ -502,7 +502,7 @@
           </div>
 
           <div
-            v-if="(analyses.length > 0 || pendingRecordings.length > 0) && !analysesLoading"
+            v-if="(dashboardAnalyses.length > 0 || pendingRecordings.length > 0) && !analysesLoading"
             class="match-list-grid match-list-header hidden md:grid flex-shrink-0 px-3 py-2 border-b border-white/[0.07] text-[9px] font-bold uppercase tracking-[0.18em] text-gray-600"
           >
             <span class="match-list-cell-icon" />
@@ -518,13 +518,13 @@
           </div>
           <div class="flex-1 min-h-0 scroll-col overflow-y-auto p-2 space-y-1.5">
 
-          <!-- Pending recordings (above analyses) -->
+          <!-- In-progress sessions (pending upload, analysing, or clips-only) -->
           <template v-if="pendingRecordings.length > 0">
             <div class="flex items-center gap-2 px-0.5 mb-1">
-              <span class="text-[10px] font-semibold text-gray-600 uppercase tracking-wider">Pending recordings</span>
+              <span class="text-[10px] font-semibold text-gray-600 uppercase tracking-wider">In progress</span>
               <span class="text-[10px] text-blue-500/70 bg-blue-500/10 px-1.5 py-px rounded-full">{{ pendingRecordings.length }}</span>
               <button
-                v-if="pendingRecordings.length > 1"
+                v-if="bulkUploadablePending.length > 1"
                 type="button"
                 class="ml-auto text-[10px] font-medium text-blue-400/80 hover:text-blue-300 transition-colors disabled:opacity-50"
                 :disabled="bulkUploading"
@@ -549,9 +549,11 @@
                 </div>
                 <p class="text-[10px] text-gray-600 mt-0.5 truncate">
                   {{ rec.map || '—' }} · {{ formatRelativeTime(new Date(rec.recordedAt).toISOString()) }}
-                  <span v-if="rec.fileSizeBytes" class="text-gray-700"> · {{ formatFileSize(rec.fileSizeBytes) }}</span>
+                  <span v-if="rec.clipsOnly && rec.clipCount != null" class="text-orange-400/80"> · {{ rec.clipCount }} clip{{ rec.clipCount === 1 ? '' : 's' }}</span>
+                  <span v-else-if="rec.fileSizeBytes" class="text-gray-700"> · {{ formatFileSize(rec.fileSizeBytes) }}</span>
                   <span v-if="rec.cloudArchived" class="text-emerald-500/80"> · In cloud</span>
                   <span v-if="isDisplayableGameMode(rec.gameMode)" class="text-gray-700"> · {{ formatMode(rec.gameMode) }}</span>
+                  <span v-if="recordingPipelineLabel(rec)" class="text-blue-400/90"> · {{ recordingPipelineLabel(rec) }}</span>
                 </p>
               </div>
               <div class="hidden md:flex items-center justify-center gap-3 lg:gap-4 flex-shrink-0 px-1">
@@ -565,17 +567,27 @@
                 <span v-else class="w-10 text-[10px] text-gray-700 text-center">—</span>
               </div>
               <div class="flex items-center gap-1.5 flex-shrink-0 ml-1">
-                <button v-if="rec.timeline?.playerKills?.length || rec.timeline?.playerDeaths?.length" class="px-2 py-1 text-[10px] font-medium text-gray-300 bg-white/[0.06] hover:bg-white/[0.1] border border-white/[0.08] rounded-lg transition-colors" @click="openRecordingReview(rec)">Review</button>
+                <button v-if="rec.clipsOnly" class="px-2 py-1 text-[10px] font-medium text-orange-300 bg-orange-500/10 hover:bg-orange-500/20 border border-orange-500/20 rounded-lg transition-colors" @click="openClipsForSession(rec)">View clips</button>
+                <button v-else-if="rec.timeline?.playerKills?.length || rec.timeline?.playerDeaths?.length" class="px-2 py-1 text-[10px] font-medium text-gray-300 bg-white/[0.06] hover:bg-white/[0.1] border border-white/[0.08] rounded-lg transition-colors" @click="openRecordingReview(rec)">Review</button>
                 <button
-                  v-if="!rec.cloudArchived"
+                  v-if="!rec.clipsOnly && !rec.cloudArchived && !isRecordingInFlight(rec)"
                   :disabled="savingIds.has(rec.id)"
                   class="px-2 py-1 text-[10px] font-medium text-emerald-300 bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/20 disabled:opacity-60 rounded-lg transition-colors"
                   @click="saveRecording(rec.id)"
                 >{{ savingIds.has(rec.id) ? '…' : 'Save' }}</button>
-                <button :disabled="analysingIds.has(rec.id)" class="px-2 py-1 text-[10px] font-medium text-white bg-red-500 hover:bg-red-600 disabled:opacity-60 rounded-lg transition-colors flex items-center gap-1" @click="analyseRecording(rec.id)">
+                <button
+                  v-if="!rec.clipsOnly && !isRecordingInFlight(rec)"
+                  :disabled="analysingIds.has(rec.id)"
+                  class="px-2 py-1 text-[10px] font-medium text-white bg-red-500 hover:bg-red-600 disabled:opacity-60 rounded-lg transition-colors flex items-center gap-1"
+                  @click="analyseRecording(rec.id)"
+                >
                   <svg v-if="analysingIds.has(rec.id)" class="w-3 h-3 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
                   {{ analysingIds.has(rec.id) ? '…' : 'Analyse' }}
                 </button>
+                <span v-if="isRecordingInFlight(rec)" class="px-2 py-1 text-[10px] font-medium text-blue-300/90 flex items-center gap-1">
+                  <svg class="w-3 h-3 animate-spin text-blue-400" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
+                  {{ recordingPipelineLabel(rec) || 'Working…' }}
+                </span>
                 <button class="p-1 text-gray-600 hover:text-gray-400 transition-colors rounded-lg hover:bg-white/[0.04]" title="Dismiss" @click="dismissRecording(rec.id)">
                   <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
                 </button>
@@ -590,7 +602,7 @@
           </template>
 
           <!-- Empty state -->
-          <div v-else-if="analyses.length === 0" class="flex flex-col items-center justify-center py-16 text-center">
+          <div v-else-if="dashboardAnalyses.length === 0 && pendingRecordings.length === 0" class="flex flex-col items-center justify-center py-16 text-center">
             <div class="w-12 h-12 rounded-xl bg-white/[0.03] border border-white/[0.09] flex items-center justify-center mb-3">
               <svg class="w-6 h-6 text-gray-700" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M15 10l4.553-2.069A1 1 0 0121 8.87v6.26a1 1 0 01-1.447.894L15 14M3 8a2 2 0 012-2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V8z"/></svg>
             </div>
@@ -870,6 +882,7 @@ const analyses = ref<AnalysisItem[]>([])
 const analysesLoading = ref(true)
 const coachingSnippets = ref<Record<number, string>>({})
 const pendingRecordings = ref<PendingRecording[]>([])
+const uploadProgressByRecordingId = ref<Record<string, number>>({})
 const analysingIds = ref(new Set<string>())
 const savingIds = ref(new Set<string>())
 const status = ref<{
@@ -1168,6 +1181,18 @@ const topAgents = computed(() => {
     .slice(0, 3)
 })
 
+// Hide API rows that are still shown as in-flight pending sessions (prevents duplicate rows).
+const dashboardAnalyses = computed(() => {
+  const inFlightJobIds = new Set(
+    pendingRecordings.value.map(r => r.jobId).filter((id): id is string => !!id),
+  )
+  return analyses.value.filter(a => !a.job_id || !inFlightJobIds.has(a.job_id))
+})
+
+const bulkUploadablePending = computed(() =>
+  pendingRecordings.value.filter(r => !r.clipsOnly && !isRecordingInFlight(r) && !r.cloudArchived),
+)
+
 // Analyses grouped by recency for the match list
 const groupedAnalyses = computed(() => {
   const now = new Date()
@@ -1175,10 +1200,10 @@ const groupedAnalyses = computed(() => {
   const yesterday = new Date(today.getTime() - 86400000)
   const weekAgo = new Date(today.getTime() - 7 * 86400000)
   const groups: { label: string; items: AnalysisItem[] }[] = []
-  const todayItems = analyses.value.filter(a => new Date(a.created_at) >= today)
-  const yestItems = analyses.value.filter(a => { const d = new Date(a.created_at); return d >= yesterday && d < today })
-  const weekItems = analyses.value.filter(a => { const d = new Date(a.created_at); return d >= weekAgo && d < yesterday })
-  const olderItems = analyses.value.filter(a => new Date(a.created_at) < weekAgo)
+  const todayItems = dashboardAnalyses.value.filter(a => new Date(a.created_at) >= today)
+  const yestItems = dashboardAnalyses.value.filter(a => { const d = new Date(a.created_at); return d >= yesterday && d < today })
+  const weekItems = dashboardAnalyses.value.filter(a => { const d = new Date(a.created_at); return d >= weekAgo && d < yesterday })
+  const olderItems = dashboardAnalyses.value.filter(a => new Date(a.created_at) < weekAgo)
   if (todayItems.length) groups.push({ label: 'Today', items: todayItems })
   if (yestItems.length) groups.push({ label: 'Yesterday', items: yestItems })
   if (weekItems.length) groups.push({ label: 'This week', items: weekItems })
@@ -1474,6 +1499,17 @@ onMounted(async () => {
     lastInsight.value = args[0] as typeof lastInsight.value
   }))
   ipcCleanup.push(window.api.on('recordings:updated', loadPendingRecordings))
+  ipcCleanup.push(window.api.on('dashboard:upload-progress', (...args: unknown[]) => {
+    const data = args[0] as { recordingId: string; progress: number }
+    if (!data?.recordingId) return
+    uploadProgressByRecordingId.value = {
+      ...uploadProgressByRecordingId.value,
+      [data.recordingId]: data.progress,
+    }
+  }))
+  ipcCleanup.push(window.api.on('dashboard:analysis-progress', () => {
+    void loadPendingRecordings()
+  }))
   ipcCleanup.push(window.api.on('app:activity-log', (...args: unknown[]) => {
     activityLog.value = args[0] as { time: number; message: string }[]
   }))
@@ -1671,7 +1707,7 @@ function goWarningAction() {
 }
 
 async function uploadAllPending() {
-  if (bulkUploading.value || pendingRecordings.value.length === 0) return
+  if (bulkUploading.value || bulkUploadablePending.value.length === 0) return
   const user = profile.value?.user
   if (
     user &&
@@ -1775,7 +1811,10 @@ function dismissMacPreviewBanner() {
 
 async function dismissRecording(id: string) {
   const rec = pendingRecordings.value.find(r => r.id === id)
-  if (rec && !window.confirm('Remove this recording from your dashboard and delete the local file?')) return
+  const msg = rec?.clipsOnly
+    ? 'Remove this match from your dashboard? Your clips will stay in the Clips library.'
+    : 'Remove this recording from your dashboard and delete the local file?'
+  if (rec && !window.confirm(msg)) return
   await window.api.recordings.dismiss(id, { deleteLocal: true }).catch(() => {})
   pendingRecordings.value = pendingRecordings.value.filter(r => r.id !== id)
 }
@@ -1958,6 +1997,35 @@ function formatFileSize(bytes: number): string {
   if (bytes >= 1024 * 1024 * 1024) return (bytes / (1024 * 1024 * 1024)).toFixed(1) + ' GB'
   if (bytes >= 1024 * 1024) return Math.round(bytes / (1024 * 1024)) + ' MB'
   return Math.round(bytes / 1024) + ' KB'
+}
+
+function isRecordingInFlight(rec: PendingRecording): boolean {
+  if (rec.clipsOnly) return false
+  return rec.pipelineStatus === 'uploading'
+    || rec.pipelineStatus === 'analysing'
+    || (!!rec.analysed && rec.analysisId == null)
+}
+
+function recordingPipelineLabel(rec: PendingRecording): string | null {
+  if (rec.clipsOnly) {
+    if (rec.clipOnlyReason === 'clips_only_mode') return 'Highlights only'
+    return 'Highlights saved'
+  }
+  if (rec.pipelineStatus === 'uploading') {
+    const pct = uploadProgressByRecordingId.value[rec.id] ?? rec.uploadProgress
+    return pct != null ? `Uploading ${pct}%` : 'Uploading…'
+  }
+  if (rec.pipelineStatus === 'analysing' || (rec.analysed && !rec.analysisId)) {
+    return rec.analysisStep?.trim() || 'Analysing…'
+  }
+  return null
+}
+
+function openClipsForSession(rec: PendingRecording) {
+  const query: Record<string, string> = {}
+  if (rec.agent) query.agent = rec.agent
+  if (rec.matchId) query.matchId = rec.matchId
+  router.push({ path: '/clips', query })
 }
 
 function isAnalysisProcessing(a: AnalysisItem): boolean {

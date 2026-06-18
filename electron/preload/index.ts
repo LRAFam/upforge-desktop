@@ -220,6 +220,7 @@ const api = {
       'post-game:analysis-ready',
       'post-game:upload-error',
       'dashboard:analysis-progress',
+      'dashboard:upload-progress',
       'post-game:pending',
       'dashboard:refresh',
       'dashboard:last-insight',
