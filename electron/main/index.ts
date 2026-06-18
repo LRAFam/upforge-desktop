@@ -62,6 +62,8 @@ import {
   trackLogin,
   trackFirstRecording,
   trackObsConnected,
+  trackFirstAnalysis,
+  trackSecondAnalysis,
 } from './funnel-events'
 import {
   formatRecordingFailure,
@@ -2398,6 +2400,14 @@ async function doUploadAndAnalyse(
         if (analysisId && settingsManager?.get()?.autoOpenBrowser !== false) {
           shell.openExternal(`https://upforge.gg/${game}/results/${analysisId}`)
         }
+        void (async () => {
+          try {
+            const profile = await authManager.fetchProfile()
+            const total = profile?.user?.analysis_stats?.total ?? 0
+            if (total <= 1) trackFirstAnalysis({ game, analysisId })
+            else if (total === 2) trackSecondAnalysis()
+          } catch { /* non-fatal */ }
+        })()
       },
       onFailed: (userMessage, rawError) => {
         logActivity(`Analysis failed: ${rawError}`)

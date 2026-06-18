@@ -116,9 +116,9 @@
         <Transition name="step" mode="out-in">
           <div v-if="step === 1" key="1" class="step-content">
             <div class="step-header">
-              <p class="step-eyebrow">Step 1 of 5</p>
+              <p class="step-eyebrow">Step {{ step }} of {{ stepTotal }}</p>
               <h2 class="step-title">Everything's included.</h2>
-              <p class="step-desc">Zero configuration — install and your next match is already being tracked.</p>
+              <p class="step-desc">Install the app, connect OBS, and your next match is auto-recorded and coached.</p>
             </div>
 
             <div class="features-list">
@@ -155,7 +155,7 @@
         <Transition name="step" mode="out-in">
           <div v-if="step === 2" key="2" class="step-content">
             <div class="step-header">
-              <p class="step-eyebrow">Step 2 of 5</p>
+              <p class="step-eyebrow">Step {{ step }} of {{ stepTotal }}</p>
               <h2 class="step-title">Sign in to UpForge.</h2>
               <p class="step-desc">Use your <span class="text-accent">upforge.gg</span> credentials — your coaching history will sync instantly.</p>
             </div>
@@ -219,7 +219,7 @@
         <Transition name="step" mode="out-in">
           <div v-if="step === 3" key="3" class="step-content">
             <div class="step-header">
-              <p class="step-eyebrow">Step 3 of 5 — Aim calibration</p>
+              <p class="step-eyebrow">Step {{ step }} of {{ stepTotal }} — Aim calibration</p>
               <h2 class="step-title">Set your mouse settings.</h2>
               <p class="step-desc">UpForge uses these to calibrate the aim trainer to match your exact in-game feel.</p>
             </div>
@@ -284,7 +284,7 @@
         <Transition name="step" mode="out-in">
           <div v-if="step === 4" key="4" class="step-content">
             <div class="step-header">
-              <p class="step-eyebrow">Step 4 of 5 — Hotkeys</p>
+              <p class="step-eyebrow">Step {{ step }} of {{ stepTotal }} — Hotkeys</p>
               <h2 class="step-title">Your control shortcuts.</h2>
               <p class="step-desc">These global shortcuts work during any game. Customise or keep the defaults — you can always change them in Settings.</p>
             </div>
@@ -321,11 +321,56 @@
           </div>
         </Transition>
 
-        <!-- ── Step 5: Folder ── -->
+        <!-- ── Step 5: OBS (Windows) ── -->
         <Transition name="step" mode="out-in">
-          <div v-if="step === 5" key="5" class="step-content">
+          <div v-if="step === 5 && needsObsStep" key="5" class="step-content">
             <div class="step-header">
-              <p class="step-eyebrow">Step 5 of 5 — Almost there</p>
+              <p class="step-eyebrow">Step {{ step }} of {{ stepTotal }} — Recording</p>
+              <h2 class="step-title">Connect OBS</h2>
+              <p class="step-desc">UpForge records matches through OBS — one-time setup, then every game is captured automatically.</p>
+            </div>
+
+            <div class="folder-box" :style="{ borderColor: obsConnected ? 'rgba(34,197,94,0.3)' : 'rgba(245,158,11,0.3)' }">
+              <div class="folder-info">
+                <p class="folder-label">{{ obsConnected ? 'OBS connected' : 'OBS not connected' }}</p>
+                <p class="folder-path text-xs leading-relaxed">
+                  Install OBS 28+, enable WebSocket (Tools → WebSocket Server Settings), then connect below.
+                </p>
+              </div>
+            </div>
+
+            <p v-if="obsError" class="error-box text-xs">{{ obsError }}</p>
+
+            <div v-if="!obsConnected" class="flex gap-2">
+              <button
+                type="button"
+                class="btn-primary flex-1"
+                :disabled="obsConnecting"
+                @click="launchAndConnectObs"
+              >{{ obsConnecting ? 'Connecting…' : 'Launch OBS + Connect' }}</button>
+              <button
+                type="button"
+                class="back-btn flex-1"
+                :disabled="obsConnecting"
+                @click="connectObs"
+              >Connect only</button>
+            </div>
+
+            <button class="btn-primary" :disabled="needsObsStep && !obsConnected" @click="step = storageStep">
+              Continue
+              <svg class="btn-arrow" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M9 5l7 7-7 7"/></svg>
+            </button>
+            <button v-if="!obsConnected" class="back-btn" @click="skipObsStep">Skip for now</button>
+            <button class="back-btn" @click="step = 4">← Back</button>
+            <p v-if="!obsConnected" class="text-center text-[11px] text-gray-600 mt-1">Matches won&apos;t record until OBS is connected — you can finish this in Settings later.</p>
+          </div>
+        </Transition>
+
+        <!-- ── Step 6: Folder (step 5 on Mac) ── -->
+        <Transition name="step" mode="out-in">
+          <div v-if="step === storageStep" :key="storageStep" class="step-content">
+            <div class="step-header">
+              <p class="step-eyebrow">Step {{ step }} of {{ stepTotal }} — Almost there</p>
               <h2 class="step-title">Where to save recordings?</h2>
               <p class="step-desc">Recordings are stored temporarily — automatically deleted once your AI analysis is ready (usually within 10 minutes).</p>
             </div>
@@ -356,7 +401,7 @@
               <svg class="btn-record-dot" viewBox="0 0 8 8" fill="currentColor"><circle cx="4" cy="4" r="4"/></svg>
               Start Recording
             </button>
-            <button class="back-btn" @click="step = 4">← Back</button>
+            <button class="back-btn" @click="step = needsObsStep ? 5 : 4">← Back</button>
           </div>
         </Transition>
 
@@ -366,12 +411,20 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
 
 const router = useRouter()
-const TOTAL_STEPS = 5
-const stepLabels = ['Features', 'Sign in', 'Mouse', 'Hotkeys', 'Storage']
+const isWin32 = ref(navigator.userAgent.toLowerCase().includes('win'))
+const needsObsStep = computed(() => isWin32.value)
+const stepTotal = computed(() => (needsObsStep.value ? 6 : 5))
+const storageStep = computed(() => (needsObsStep.value ? 6 : 5))
+const TOTAL_STEPS = computed(() => stepTotal.value)
+const stepLabels = computed(() =>
+  needsObsStep.value
+    ? ['Features', 'Sign in', 'Mouse', 'Hotkeys', 'OBS', 'Storage']
+    : ['Features', 'Sign in', 'Mouse', 'Hotkeys', 'Storage'],
+)
 const stepMeta = [
   {
     title: 'Feature overview',
@@ -394,14 +447,27 @@ const stepMeta = [
     icon: 'M5 8h14M5 12h14M5 16h10M7 4h10a2 2 0 012 2v12a2 2 0 01-2 2H7a2 2 0 01-2-2V6a2 2 0 012-2z',
   },
   {
+    title: 'OBS recording',
+    detail: 'Connect OBS so UpForge can auto-record and analyse your matches.',
+    icon: 'M15.75 10.5l4.72-4.72a.75.75 0 011.28.53v11.38a.75.75 0 01-1.28.53l-4.72-4.72M4.5 18.75h9a2.25 2.25 0 002.25-2.25v-9a2.25 2.25 0 00-2.25-2.25h-9A2.25 2.25 0 002.25 7.5v9a2.25 2.25 0 002.25 2.25z',
+  },
+  {
     title: 'Storage setup',
     detail: 'Confirm where recordings and highlights are saved locally.',
     icon: 'M3 7.5A2.5 2.5 0 015.5 5h4l2 2H18.5A2.5 2.5 0 0121 9.5v7a2.5 2.5 0 01-2.5 2.5h-13A2.5 2.5 0 013 16.5v-9z',
   },
 ]
 const step = ref(1)
-const stepProgress = computed(() => Math.round(((step.value - 1) / (TOTAL_STEPS - 1)) * 100))
-const currentStepMeta = computed(() => stepMeta[step.value - 1] ?? stepMeta[0])
+const stepProgress = computed(() => Math.round(((step.value - 1) / (stepTotal.value - 1)) * 100))
+const currentStepMeta = computed(() => {
+  const index = needsObsStep.value
+    ? [0, 1, 2, 3, 4, 5][step.value - 1]
+    : [0, 1, 2, 3, 4][step.value - 1]
+  return stepMeta[index] ?? stepMeta[0]
+})
+const obsConnecting = ref(false)
+const obsConnected = ref(false)
+const obsError = ref('')
 const email = ref('')
 const password = ref('')
 const loginLoading = ref(false)
@@ -535,6 +601,10 @@ onMounted(async () => {
   } catch { /* defaults fine */ }
 })
 
+watch(step, (s) => {
+  if (s === 5 && needsObsStep.value) void refreshObsStatus()
+})
+
 onUnmounted(() => {
   cancelRebind()
 })
@@ -591,7 +661,46 @@ function keyEventToAccelerator(e: KeyboardEvent): string | null {
 }
 
 async function saveHotkeysAndNext() {
-  step.value = 5
+  step.value = needsObsStep.value ? 5 : storageStep.value
+}
+
+async function refreshObsStatus() {
+  try {
+    const st = await window.api.obs.getStatus()
+    obsConnected.value = st.connected
+  } catch { /* non-critical */ }
+}
+
+async function connectObs() {
+  obsConnecting.value = true
+  obsError.value = ''
+  try {
+    const result = await window.api.obs.connect()
+    if (result.ok) obsConnected.value = true
+    else obsError.value = result.error ?? 'Could not connect — is OBS running with WebSocket enabled?'
+  } catch (e) {
+    obsError.value = e instanceof Error ? e.message : 'Connection failed'
+  } finally {
+    obsConnecting.value = false
+  }
+}
+
+async function launchAndConnectObs() {
+  obsConnecting.value = true
+  obsError.value = ''
+  try {
+    const result = await window.api.obs.launchAndConnect()
+    if (result.ok) obsConnected.value = true
+    else obsError.value = result.error ?? 'Could not launch or connect to OBS'
+  } catch (e) {
+    obsError.value = e instanceof Error ? e.message : 'Connection failed'
+  } finally {
+    obsConnecting.value = false
+  }
+}
+
+function skipObsStep() {
+  step.value = storageStep.value
 }
 
 async function choosePath() {

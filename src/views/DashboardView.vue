@@ -1234,11 +1234,13 @@ const emptyCoachingTitle = computed(() => {
 const emptyCoachingMessage = computed(() => {
   if (isCs2.value) return 'Analyse a .dem on the web or let UpForge auto-upload after matches'
   if (isDeadlock.value) return 'Upload a .dem replay on the web for positioning and hero coaching'
-  return 'Run an Analysis after a game to get personalised insights'
+  if (!status.value.obsConnected) return 'Connect OBS in Settings, then queue a match — UpForge records automatically'
+  return 'Queue a Valorant match — your next game will be recorded and coached'
 })
 const emptyCoachingAction = computed(() => {
   if (isCs2.value || isDeadlock.value) return 'Analyze →'
-  return 'Setup'
+  if (!status.value.obsConnected) return 'Connect OBS'
+  return 'Ready to play'
 })
 const dashboardCs2RankIcon = computed(() => getCs2RankIconUrl(onboardingTargetRank.value))
 const goalsRankIcon = computed(() => {
@@ -2198,7 +2200,11 @@ function openAccountSetup() { window.open('https://upforge.gg/onboarding', '_bla
 function openEmptyCoachingAction() {
   if (isCs2.value) void window.api.cs2.openAnalyze()
   else if (isDeadlock.value) void window.api.deadlock.openAnalyze()
-  else router.push('/settings')
+  else if (!status.value.obsConnected) router.push('/settings?tab=recording')
+  else {
+    warning.value = 'Launch Valorant — UpForge will auto-record your next match.'
+    setTimeout(() => { warning.value = null }, 10000)
+  }
 }
 function openUpgrade() { window.open('https://upforge.gg/pricing', '_blank') }
 function openPpa() { window.open('https://upforge.gg/valorant/analyze', '_blank') }

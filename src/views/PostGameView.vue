@@ -547,6 +547,13 @@
               @click="dismiss"
             >Close panel</button>
           </div>
+
+          <div class="rounded-xl border border-red-500/20 bg-red-500/[0.06] px-4 py-3">
+            <p class="text-xs font-bold text-white">Queue your next match</p>
+            <p class="text-[11px] text-gray-500 mt-1 leading-relaxed">
+              UpForge runs in the background — play another game and you&apos;ll get a fresh coaching report automatically.
+            </p>
+          </div>
         </div>
 
         <!-- Session clips row -->
