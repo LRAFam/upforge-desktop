@@ -1,305 +1,473 @@
 <template>
   <div class="h-full text-white flex flex-col overflow-hidden bg-[#111111]">
 
-    <!-- Header -->
-    <div class="flex-shrink-0 px-4 pt-4 pb-3 border-b border-white/[0.08]">
-      <div class="panel-elevated relative overflow-hidden px-4 py-3.5">
-        <div class="absolute -right-8 top-0 h-24 w-24 rounded-full bg-red-500/10 blur-3xl pointer-events-none" />
-        <div class="relative flex items-center gap-3">
+    <!-- Toolbar: filters + session count (nav already labels this view) -->
+    <div class="flex-shrink-0 px-4 py-2.5 border-b border-white/[0.08] space-y-2">
+      <div class="flex flex-wrap items-center gap-2">
+        <div class="flex gap-1.5 flex-wrap flex-1 min-w-0">
           <button
-            class="flex items-center gap-1.5 rounded-lg border border-white/[0.08] bg-white/[0.03] px-2.5 py-1.5 text-gray-500 hover:text-gray-300 hover:bg-white/[0.06] transition-colors text-xs"
-            @click="$router.back()"
-          >
-            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/>
-            </svg>
-            Back
-          </button>
-          <div class="min-w-0 flex-1">
-            <p class="text-[10px] font-black uppercase tracking-[0.28em] text-red-400/80">Session Archive</p>
-            <h1 class="text-lg font-black tracking-tight text-white">Coaching History</h1>
-          </div>
-          <div class="rounded-xl border border-white/[0.08] bg-white/[0.03] px-3 py-2 text-right">
-            <p class="text-lg font-black tabular-nums text-white leading-none">{{ filteredAnalyses.length }}</p>
-            <p class="text-[9px] font-semibold uppercase tracking-[0.2em] text-gray-600 mt-0.5">Sessions</p>
-          </div>
+            v-for="f in RESULT_FILTERS"
+            :key="f"
+            class="px-3 py-1.5 rounded-full text-[11px] font-bold uppercase tracking-wider transition-all border"
+            :class="activeFilter === f
+              ? 'bg-red-500/15 text-red-400 border-red-500/30'
+              : 'text-gray-500 border-white/[0.10] hover:text-gray-300 hover:bg-white/[0.03] hover:border-white/[0.12]'"
+            @click="activeFilter = f"
+          >{{ f }}</button>
         </div>
+        <p class="text-[10px] text-gray-600 tabular-nums flex-shrink-0">
+          <span class="font-bold text-gray-400">{{ filteredAnalyses.length }}</span>
+          <span class="text-gray-700"> / {{ allAnalyses.length }}</span>
+          <span class="ml-1 uppercase tracking-wide">sessions</span>
+        </p>
       </div>
-    </div>
-
-    <!-- Score trend chart -->
-    <div v-if="chartData" class="px-4 pt-3 flex-shrink-0">
-      <div class="rounded-xl border border-white/[0.10] overflow-hidden bg-[#161616]">
-        <div class="flex items-center gap-2 px-4 py-2 border-b border-white/[0.07]">
-          <span class="text-[9px] font-black uppercase tracking-[0.18em] text-gray-500">Score Trend</span>
-          <div class="flex-1 h-px bg-white/[0.04]" />
-          <span class="text-[9px] font-bold" :class="chartData.up ? 'text-green-400' : 'text-red-400'">
-            {{ chartData.up ? '↑' : '↓' }} {{ chartData.last * 10 }}
-          </span>
-        </div>
-        <div class="relative px-2 pt-1.5 pb-0.5">
-          <div class="absolute left-2 top-1.5 flex flex-col pointer-events-none" style="height: 80px; justify-content: space-between">
-            <span class="text-[7px] text-gray-700 tabular-nums leading-none">100</span>
-            <span class="text-[7px] text-gray-700 tabular-nums leading-none">50</span>
-            <span class="text-[7px] text-gray-700 tabular-nums leading-none">0</span>
-          </div>
-          <div class="pl-6 pr-1">
-            <svg width="100%" :height="chartData.H" :viewBox="`0 0 ${chartData.W} ${chartData.H}`" preserveAspectRatio="none" style="height:80px; display:block">
-              <defs>
-                <linearGradient id="hist-area-grad" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" :stop-color="chartData.up ? '#4ade80' : '#f87171'" stop-opacity="0.3"/>
-                  <stop offset="100%" :stop-color="chartData.up ? '#4ade80' : '#f87171'" stop-opacity="0"/>
-                </linearGradient>
-              </defs>
-              <line v-for="gl in chartData.gridLines" :key="gl.score" :x1="chartData.pad" :y1="gl.y" :x2="chartData.W - chartData.pad" :y2="gl.y" stroke="rgba(255,255,255,0.05)" stroke-width="0.75"/>
-              <path :d="chartData.areaPath" fill="url(#hist-area-grad)" />
-              <path :d="chartData.linePath" fill="none" :stroke="chartData.up ? '#4ade80' : '#f87171'" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
-            </svg>
-            <div class="flex justify-between mt-0.5">
-              <span class="text-[7px] text-gray-700">{{ chartData.firstDate }}</span>
-              <span class="text-[7px] text-gray-700">{{ chartData.lastDate }}</span>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- Summary stats row -->
-    <div v-if="allAnalyses.length" class="flex gap-2 px-4 pt-3 flex-shrink-0">
-      <div class="flex-1 rounded-xl border border-white/[0.10] px-2 py-2.5 text-center bg-[#161616]">
-        <div class="text-sm font-black text-white tabular-nums">{{ allAnalyses.length }}</div>
-        <div class="text-[8px] text-gray-600 mt-0.5 uppercase tracking-wide">Games</div>
-      </div>
-      <div class="flex-1 rounded-xl border border-white/[0.10] px-2 py-2.5 text-center bg-[#161616]">
-        <div class="text-sm font-black tabular-nums" :class="winRate >= 50 ? 'text-green-400' : 'text-red-400'">{{ winRate }}%</div>
-        <div class="text-[8px] text-gray-600 mt-0.5 uppercase tracking-wide">Win Rate</div>
-      </div>
-      <div class="flex-1 rounded-xl border border-white/[0.10] px-2 py-2.5 text-center bg-[#161616]">
-        <div class="text-sm font-black tabular-nums" :class="avgScore !== null ? scoreColor(avgScore) : 'text-gray-600'">{{ avgScore != null ? avgScore * 10 : '—' }}</div>
-        <div class="text-[8px] text-gray-600 mt-0.5 uppercase tracking-wide">Avg Score</div>
-      </div>
-      <div class="flex-1 rounded-xl border border-white/[0.10] px-2 py-2.5 text-center bg-[#161616]">
-        <div class="text-sm font-black text-white tabular-nums">{{ avgKD }}</div>
-        <div class="text-[8px] text-gray-600 mt-0.5 uppercase tracking-wide">Avg K/D</div>
-      </div>
-    </div>
-
-    <!-- Filter row: result tabs + map pills -->
-    <div class="px-4 pt-3 pb-1 flex-shrink-0 space-y-2">
-      <!-- Result filter -->
-      <div class="flex gap-1.5">
+      <div v-if="availableMaps.length > 1" class="flex gap-2 overflow-x-auto scrollbar-hide pb-0.5 -mx-1 px-1">
         <button
-          v-for="f in RESULT_FILTERS"
-          :key="f"
-          class="px-3 py-1.5 rounded-full text-[11px] font-bold uppercase tracking-wider transition-all border"
-          :class="activeFilter === f
-            ? 'bg-red-500/15 text-red-400 border-red-500/30'
-            : 'text-gray-500 border-white/[0.10] hover:text-gray-300 hover:bg-white/[0.03] hover:border-white/[0.12]'"
-          @click="activeFilter = f"
-        >{{ f }}</button>
-      </div>
-      <!-- Map filter -->
-      <div v-if="availableMaps.length > 1" class="flex gap-1 flex-wrap">
-        <button
-          class="px-2 py-1 rounded-full text-[10px] font-semibold transition-all border capitalize"
-          :class="activeMap === null
-            ? 'bg-white/[0.06] text-gray-300 border-white/[0.12]'
-            : 'text-gray-600 border-white/[0.10] hover:text-gray-400 hover:bg-white/[0.03]'"
+          class="history-map-pill history-map-pill--all flex-shrink-0"
+          :class="{ 'history-map-pill--active': activeMap === null }"
           @click="activeMap = null"
-        >All maps</button>
+        >
+          <div class="history-map-pill__shade history-map-pill__shade--all" />
+          <span class="history-map-pill__label">All maps</span>
+        </button>
         <button
           v-for="map in availableMaps"
           :key="map"
-          class="px-2 py-1 rounded-full text-[10px] font-semibold transition-all border capitalize"
-          :class="activeMap === map
-            ? 'bg-white/[0.06] text-gray-300 border-white/[0.12]'
-            : 'text-gray-600 border-white/[0.10] hover:text-gray-400 hover:bg-white/[0.03]'"
+          class="history-map-pill flex-shrink-0"
+          :class="{ 'history-map-pill--active': activeMap === map }"
           @click="activeMap = map"
-        >{{ map }}</button>
+        >
+          <img
+            v-if="getMapImage(map)"
+            :src="getMapImage(map)"
+            class="history-map-pill__bg object-cover"
+            alt=""
+          />
+          <div class="history-map-pill__shade" />
+          <span class="history-map-pill__label">{{ formatMapLabel(map) }}</span>
+        </button>
       </div>
     </div>
 
-    <!-- Scrollable list -->
-    <div class="flex-1 overflow-y-auto px-4 pb-4" style="scrollbar-width: none">
-      <div v-if="loading" class="space-y-2 pt-2">
-        <div v-for="i in 5" :key="i" class="h-[52px] bg-white/[0.02] rounded-xl animate-pulse border border-white/[0.07]" />
-      </div>
+    <!-- Split: session list + detail -->
+    <div class="flex flex-1 min-h-0 flex-col lg:flex-row">
 
-      <div v-else-if="filteredAnalyses.length === 0" class="flex items-center justify-center py-14">
-        <div class="w-full max-w-sm rounded-2xl border border-white/[0.09] bg-white/[0.02] px-6 py-8 text-center">
-          <div class="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl border border-red-500/20 bg-red-500/10 mb-4">
-            <svg class="h-6 w-6 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.7" d="M15 10l4.553-2.069A1 1 0 0121 8.87v6.26a1 1 0 01-1.447.894L15 14M4 7.75A1.75 1.75 0 015.75 6h7.5A1.75 1.75 0 0115 7.75v8.5A1.75 1.75 0 0113.25 18h-7.5A1.75 1.75 0 014 16.25v-8.5z"/>
-            </svg>
+      <!-- Left: compact session list -->
+      <div
+        class="history-list flex flex-col min-h-0 border-b border-white/[0.08] lg:border-b-0 lg:border-r lg:w-[min(400px,38%)] xl:w-[min(440px,36%)] flex-shrink-0"
+        :class="selectedId && 'hidden lg:flex'"
+      >
+        <div class="flex-1 overflow-y-auto px-3 py-3 scrollbar-hide">
+          <div v-if="loading" class="space-y-2">
+            <div v-for="i in 6" :key="i" class="h-16 rounded-xl bg-white/[0.02] animate-pulse border border-white/[0.07]" />
           </div>
-          <h3 class="text-sm font-bold text-white">{{ allAnalyses.length === 0 ? 'No coaching sessions yet' : 'No sessions match this filter' }}</h3>
-          <p class="mt-1 text-xs text-gray-500">{{ allAnalyses.length === 0 ? 'Finish a recorded match or upload a VOD to start building your coaching history.' : 'Try adjusting the result or map filter.' }}</p>
-        </div>
-      </div>
 
-      <!-- Analysis rows -->
-      <div v-else class="space-y-4 pt-2">
-        <section v-for="group in groupedAnalyses" :key="group.label" class="space-y-2">
-          <div class="flex items-center gap-3 px-1">
-            <div class="h-px flex-1 bg-white/[0.05]" />
-            <div class="flex items-center gap-2 rounded-full border border-white/[0.10] bg-white/[0.03] px-3 py-1">
-              <span class="text-[10px] font-semibold uppercase tracking-[0.18em] text-gray-500">{{ group.label }}</span>
-              <span class="text-[10px] font-semibold text-gray-600">{{ group.items.length }}</span>
+          <div v-else-if="filteredAnalyses.length === 0" class="flex items-center justify-center py-12 px-2">
+            <div class="text-center">
+              <p class="text-sm font-semibold text-gray-300">{{ allAnalyses.length === 0 ? 'No sessions yet' : 'No matches for this filter' }}</p>
+              <p class="mt-1 text-xs text-gray-600">Record or upload a match to build your archive.</p>
             </div>
-            <div class="h-px flex-1 bg-white/[0.05]" />
           </div>
 
-          <div class="space-y-1.5">
-            <div v-for="a in group.items" :key="a.id">
-              <div
-                class="w-full cursor-pointer border border-white/[0.09] bg-white/[0.02] px-3 py-2.5 transition-all hover:border-white/[0.08] hover:bg-white/[0.04]"
-                :class="expandedId === a.id ? 'rounded-t-xl border-b-transparent' : 'rounded-xl'"
-                @click="toggleExpand(a)"
+          <div v-else class="space-y-4">
+            <section v-for="group in groupedAnalyses" :key="group.label" class="space-y-1.5">
+              <div class="flex items-center gap-2 px-1 py-0.5">
+                <span class="text-[9px] font-bold uppercase tracking-[0.2em] text-gray-600">{{ group.label }}</span>
+                <span class="text-[9px] text-gray-700">{{ group.items.length }}</span>
+                <div class="flex-1 h-px bg-white/[0.05]" />
+              </div>
+
+              <button
+                v-for="a in group.items"
+                :key="a.id"
+                type="button"
+                class="history-list-row w-full text-left rounded-xl border px-2.5 py-2 transition-all"
+                :class="[
+                  selectedId === a.id
+                    ? 'border-red-500/35 bg-red-500/[0.08] shadow-[0_0_0_1px_rgba(239,68,68,0.12)]'
+                    : 'border-white/[0.08] bg-white/[0.02] hover:border-white/[0.14] hover:bg-white/[0.04]',
+                  a.won === true ? 'history-list-row--won' : a.won === false ? 'history-list-row--lost' : '',
+                ]"
+                @click="selectSession(a)"
               >
-                <div class="flex items-center gap-3">
+                <div class="flex items-center gap-2.5">
                   <div
-                    class="relative flex h-8 w-8 flex-shrink-0 items-center justify-center overflow-hidden rounded-lg"
-                    :style="a.agent ? { backgroundColor: getAgentColor(a.agent) + '22' } : {}"
+                    class="history-list-thumb relative h-12 w-[54px] flex-shrink-0 rounded-lg overflow-hidden border border-white/10 bg-black/50"
+                    :style="a.agent ? { boxShadow: `inset 0 0 0 1px ${getAgentColor(a.agent)}33` } : {}"
                   >
-                    <img v-if="a.map && getMapMinimap(a.map)" :src="getMapMinimap(a.map)" class="absolute inset-0 h-full w-full object-cover opacity-20" />
-                    <img v-if="a.agent && getAgentImage(a.agent)" :src="getAgentImage(a.agent)" class="relative h-7 w-7 object-contain" />
-                    <template v-else>
-                      <svg v-if="a.job_id" class="h-4 w-4 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <circle cx="12" cy="12" r="8" stroke-width="1.5"/><circle cx="12" cy="12" r="3" fill="currentColor" stroke="none"/>
-                      </svg>
-                      <svg v-else class="h-4 w-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
-                      </svg>
-                    </template>
+                    <img
+                      v-if="a.map && getMapImage(a.map)"
+                      :src="getMapImage(a.map)"
+                      class="absolute inset-0 h-full w-full object-cover opacity-55"
+                      alt=""
+                    />
+                    <div class="absolute inset-0 bg-gradient-to-t from-black/85 via-black/35 to-black/10" />
+                    <img
+                      v-if="a.agent && getAgentImage(a.agent)"
+                      :src="getAgentImage(a.agent)"
+                      class="relative mx-auto mt-1 h-8 w-8 object-contain drop-shadow-md"
+                      alt=""
+                    />
                   </div>
 
                   <div class="min-w-0 flex-1">
-                    <div class="flex flex-wrap items-center gap-1.5">
-                      <p class="truncate text-xs font-medium text-gray-200">
-                        {{ a.agent || 'Unknown' }} <span class="text-gray-600">&middot;</span> {{ a.map || 'Unknown' }}
-                      </p>
-                      <span
-                        v-if="a.agent"
-                        class="flex-shrink-0 rounded px-1 py-px text-[8px] font-semibold"
-                        :style="{ color: getRoleColor(getAgentRole(a.agent)), backgroundColor: getRoleColor(getAgentRole(a.agent)) + '20' }"
-                      >{{ getAgentRole(a.agent) }}</span>
-                      <span
-                        v-if="isDisplayableGameMode(a.game_mode)"
-                        class="flex-shrink-0 rounded-full border border-white/[0.10] bg-white/[0.05] px-1.5 py-px text-[8px] font-semibold text-gray-600"
-                      >{{ formatGameMode(a.game_mode) }}</span>
+                    <div class="flex items-center gap-1 min-w-0">
+                      <span class="text-xs font-bold text-white truncate">{{ a.agent || 'Unknown' }}</span>
+                      <span class="text-gray-700">·</span>
+                      <span class="text-xs text-gray-400 truncate">{{ formatMapLabel(a.map) || '—' }}</span>
                     </div>
-                    <p class="mt-0.5 flex items-center gap-1.5 text-xs text-gray-600">
+                    <div class="mt-0.5 flex flex-wrap items-center gap-1.5 text-[10px] text-gray-600">
                       <span>{{ formatDate(a.created_at) }}</span>
-                      <span v-if="a.won != null" :class="a.won ? 'text-green-500/70' : 'text-red-500/60'">{{ a.won ? 'W' : 'L' }}</span>
-                      <span v-if="a.rounds_won != null && a.rounds_lost != null" class="text-gray-700">{{ a.rounds_won }}–{{ a.rounds_lost }}</span>
-                      <span v-if="a.kda != null">{{ a.kda.toFixed(2) }} K/D</span>
-                    </p>
+                      <span
+                        v-if="a.rank && getRankIconUrl(a.rank)"
+                        class="inline-flex items-center gap-0.5 rounded border border-white/[0.08] bg-white/[0.03] px-1 py-px"
+                        :title="a.rank"
+                      >
+                        <img :src="getRankIconUrl(a.rank)!" class="h-3.5 w-3.5 object-contain" :alt="a.rank" />
+                        <span class="text-[9px] font-semibold" :style="{ color: getRankHexColor(a.rank) }">{{ a.rank }}</span>
+                      </span>
+                      <span
+                        v-if="a.won != null"
+                        class="font-bold"
+                        :class="a.won ? 'text-green-500/80' : 'text-red-500/70'"
+                      >{{ a.won ? 'W' : 'L' }}</span>
+                      <span v-if="a.rounds_won != null && a.rounds_lost != null" class="tabular-nums">{{ a.rounds_won }}–{{ a.rounds_lost }}</span>
+                      <span v-if="a.kills != null" class="tabular-nums font-mono text-gray-500">{{ a.kills }}/{{ a.deaths }}/{{ a.assists }}</span>
+                    </div>
                   </div>
 
-                  <div v-if="a.overall_score != null" class="flex flex-shrink-0 flex-col items-end gap-0.5">
-                    <span class="text-xs font-bold tabular-nums" :class="a.overall_score >= 78 ? 'text-green-400' : a.overall_score >= 50 ? 'text-yellow-400' : 'text-red-400'">{{ a.overall_score * 10 }}</span>
-                    <span class="rounded px-1 py-px text-[8px] font-bold" :class="scoreGradeBadgeClass(a.overall_score)">{{ scoreGrade(a.overall_score) }}</span>
+                  <div class="flex flex-shrink-0 flex-col items-end gap-0.5">
+                    <span
+                      v-if="a.overall_score != null"
+                      class="text-sm font-black tabular-nums leading-none"
+                      :class="a.overall_score >= 78 ? 'text-green-400' : a.overall_score >= 50 ? 'text-yellow-400' : 'text-red-400'"
+                    >{{ a.overall_score * 10 }}</span>
+                    <span
+                      v-else-if="['queued', 'processing', 'pending'].includes(a.status)"
+                      class="text-[9px] text-gray-600"
+                    >…</span>
+                    <span
+                      v-if="a.overall_score != null"
+                      class="rounded px-1 py-px text-[8px] font-bold"
+                      :class="scoreGradeBadgeClass(a.overall_score)"
+                    >{{ scoreGrade(a.overall_score) }}</span>
                   </div>
-                  <div v-else-if="['queued', 'processing', 'pending'].includes(a.status)" class="flex-shrink-0">
-                    <svg class="h-4 w-4 animate-spin text-gray-600" fill="none" viewBox="0 0 24 24">
-                      <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
-                      <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
-                    </svg>
-                  </div>
-                  <div v-else-if="a.combat_score != null" class="flex-shrink-0 text-right">
-                    <span class="text-xs font-bold tabular-nums text-gray-400">{{ a.combat_score }}</span>
-                    <span class="block text-xs text-gray-700">ACS</span>
-                  </div>
+                </div>
+              </button>
+            </section>
+          </div>
+        </div>
+      </div>
 
-                  <svg
-                    class="h-3.5 w-3.5 flex-shrink-0 text-gray-700 transition-transform duration-200"
-                    :class="expandedId === a.id ? 'rotate-90' : ''"
-                    fill="none" stroke="currentColor" viewBox="0 0 24 24"
+      <!-- Right: overview or session detail -->
+      <div
+        class="history-detail flex flex-1 flex-col min-h-0 min-w-0 bg-[#0e0e0e]"
+        :class="!selectedId && 'hidden lg:flex'"
+      >
+        <!-- Mobile back -->
+        <div v-if="selectedId" class="lg:hidden flex-shrink-0 px-3 py-2 border-b border-white/[0.08]">
+          <button
+            type="button"
+            class="flex items-center gap-1.5 text-xs text-gray-400 hover:text-white"
+            @click="selectedId = null"
+          >
+            <svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/>
+            </svg>
+            All sessions
+          </button>
+        </div>
+
+        <div class="flex-1 overflow-y-auto scrollbar-hide p-4">
+          <!-- Overview when nothing selected (desktop) -->
+          <div v-if="!selectedAnalysis" class="space-y-4 max-w-2xl">
+            <div>
+              <p class="text-[10px] font-black uppercase tracking-[0.24em] text-red-400/80">Archive overview</p>
+              <p class="mt-1 text-sm text-gray-500">Select a session from the list to view coaching detail and open the VOD.</p>
+            </div>
+
+            <div v-if="allAnalyses.length" class="grid grid-cols-2 sm:grid-cols-4 gap-2">
+              <div class="rounded-xl border border-white/[0.10] px-2 py-2.5 text-center bg-[#161616]">
+                <div class="text-sm font-black text-white tabular-nums">{{ allAnalyses.length }}</div>
+                <div class="text-[8px] text-gray-600 mt-0.5 uppercase tracking-wide">Games</div>
+              </div>
+              <div class="rounded-xl border border-white/[0.10] px-2 py-2.5 text-center bg-[#161616]">
+                <div class="text-sm font-black tabular-nums" :class="winRate >= 50 ? 'text-green-400' : 'text-red-400'">{{ winRate }}%</div>
+                <div class="text-[8px] text-gray-600 mt-0.5 uppercase tracking-wide">Win rate</div>
+              </div>
+              <div class="rounded-xl border border-white/[0.10] px-2 py-2.5 text-center bg-[#161616]">
+                <div class="text-sm font-black tabular-nums" :class="avgScore !== null ? scoreColor(avgScore) : 'text-gray-600'">{{ avgScore != null ? avgScore * 10 : '—' }}</div>
+                <div class="text-[8px] text-gray-600 mt-0.5 uppercase tracking-wide">Avg score</div>
+              </div>
+              <div class="rounded-xl border border-white/[0.10] px-2 py-2.5 text-center bg-[#161616]">
+                <div class="text-sm font-black text-white tabular-nums">{{ avgKD }}</div>
+                <div class="text-[8px] text-gray-600 mt-0.5 uppercase tracking-wide">Avg K/D</div>
+              </div>
+            </div>
+
+            <div v-if="topAgent || topMap" class="grid sm:grid-cols-2 gap-2">
+              <div v-if="topAgent" class="flex items-center gap-3 rounded-xl border border-white/[0.10] bg-[#161616] px-3 py-3">
+                <div class="h-12 w-12 rounded-xl overflow-hidden border border-white/10 p-1" :style="{ background: `linear-gradient(145deg, ${getAgentColor(topAgent)}33, #111)` }">
+                  <img v-if="getAgentImage(topAgent)" :src="getAgentImage(topAgent)" class="h-full w-full object-contain" alt="" />
+                </div>
+                <div>
+                  <p class="text-[8px] font-bold uppercase tracking-wider text-gray-600">Most played agent</p>
+                  <p class="text-sm font-bold text-white">{{ topAgent }}</p>
+                </div>
+              </div>
+              <div v-if="topMap" class="flex items-center gap-3 rounded-xl border border-white/[0.10] bg-[#161616] px-3 py-3">
+                <div class="h-16 w-24 flex-shrink-0 rounded-lg overflow-hidden border border-white/10">
+                  <img
+                    v-if="getMapImage(topMap)"
+                    :src="getMapImage(topMap)"
+                    class="h-full w-full object-cover"
+                    alt=""
+                  />
+                </div>
+                <div>
+                  <p class="text-[8px] font-bold uppercase tracking-wider text-gray-600">Top map</p>
+                  <p class="text-sm font-bold text-white">{{ formatMapLabel(topMap) }}</p>
+                </div>
+              </div>
+            </div>
+
+            <div v-if="chartData" class="rounded-xl border border-white/[0.10] overflow-hidden bg-[#161616]">
+              <div class="flex items-center gap-2 px-4 py-2 border-b border-white/[0.07]">
+                <span class="text-[9px] font-black uppercase tracking-[0.18em] text-gray-500">Score trend</span>
+                <div class="flex-1" />
+                <span class="text-[9px] font-bold" :class="chartData.up ? 'text-green-400' : 'text-red-400'">
+                  {{ chartData.up ? '↑' : '↓' }} {{ chartData.last * 10 }}
+                </span>
+              </div>
+              <div class="px-3 py-2">
+                <svg width="100%" :height="chartData.H" :viewBox="`0 0 ${chartData.W} ${chartData.H}`" preserveAspectRatio="none" class="block h-24 w-full">
+                  <defs>
+                    <linearGradient id="hist-area-grad" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" :stop-color="chartData.up ? '#4ade80' : '#f87171'" stop-opacity="0.3"/>
+                      <stop offset="100%" :stop-color="chartData.up ? '#4ade80' : '#f87171'" stop-opacity="0"/>
+                    </linearGradient>
+                  </defs>
+                  <line v-for="gl in chartData.gridLines" :key="gl.score" :x1="chartData.pad" :y1="gl.y" :x2="chartData.W - chartData.pad" :y2="gl.y" stroke="rgba(255,255,255,0.05)" stroke-width="0.75"/>
+                  <path :d="chartData.areaPath" fill="url(#hist-area-grad)" />
+                  <path :d="chartData.linePath" fill="none" :stroke="chartData.up ? '#4ade80' : '#f87171'" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
+                </svg>
+                <div class="flex justify-between mt-1">
+                  <span class="text-[8px] text-gray-700">{{ chartData.firstDate }}</span>
+                  <span class="text-[8px] text-gray-700">{{ chartData.lastDate }}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Session detail -->
+          <div v-else class="space-y-4">
+            <!-- Map + agent hero -->
+            <div class="history-hero relative overflow-hidden rounded-2xl border border-white/[0.10]">
+              <div class="absolute inset-0">
+                <img
+                  v-if="selectedAnalysis.map && getMapImage(selectedAnalysis.map)"
+                  :src="getMapImage(selectedAnalysis.map)"
+                  class="h-full w-full object-cover"
+                  alt=""
+                />
+                <div class="absolute inset-0 bg-gradient-to-r from-black/92 via-black/72 to-black/45" />
+                <div class="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-black/20" />
+              </div>
+              <div class="relative flex flex-col lg:flex-row gap-4 p-4 min-h-[180px]">
+                <div class="flex items-end gap-4 flex-1 min-w-0">
+                  <div
+                    class="relative h-24 w-24 flex-shrink-0 rounded-2xl overflow-hidden border border-white/15 bg-black/50 shadow-2xl"
+                    :style="selectedAnalysis.agent ? { boxShadow: `0 0 32px ${getAgentColor(selectedAnalysis.agent)}33` } : {}"
                   >
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
-                  </svg>
+                    <img
+                      v-if="selectedAnalysis.agent && getAgentImage(selectedAnalysis.agent)"
+                      :src="getAgentImage(selectedAnalysis.agent)"
+                      class="h-full w-full object-contain p-2"
+                      alt=""
+                    />
+                  </div>
+                  <div class="min-w-0 pb-1">
+                    <p class="text-[10px] font-black uppercase tracking-[0.22em] text-red-400/90">Session review</p>
+                    <h2 class="text-xl font-black text-white truncate">{{ selectedAnalysis.agent || 'Unknown agent' }}</h2>
+                    <p class="text-sm text-gray-300 font-medium">{{ formatMapLabel(selectedAnalysis.map) || 'Unknown map' }}</p>
+                    <div class="mt-2 flex flex-wrap items-center gap-1.5">
+                      <span
+                        v-if="selectedAnalysis.agent"
+                        class="rounded px-1.5 py-px text-[9px] font-bold uppercase"
+                        :style="{ color: getRoleColor(getAgentRole(selectedAnalysis.agent)), backgroundColor: getRoleColor(getAgentRole(selectedAnalysis.agent)) + '22' }"
+                      >{{ getAgentRole(selectedAnalysis.agent) }}</span>
+                      <span
+                        v-if="isDisplayableGameMode(selectedAnalysis.game_mode)"
+                        class="rounded-full border border-white/10 bg-white/[0.05] px-2 py-px text-[9px] font-semibold text-gray-500"
+                      >{{ formatGameMode(selectedAnalysis.game_mode) }}</span>
+                      <span class="text-[10px] text-gray-500">{{ formatDate(selectedAnalysis.created_at) }}</span>
+                      <span
+                        v-if="selectedAnalysis.rank && getRankIconUrl(selectedAnalysis.rank)"
+                        class="inline-flex items-center gap-1 rounded-lg border border-white/10 bg-black/40 px-1.5 py-0.5"
+                      >
+                        <img :src="getRankIconUrl(selectedAnalysis.rank)!" class="h-4 w-4 object-contain" :alt="selectedAnalysis.rank" />
+                        <span class="text-[10px] font-bold" :style="{ color: getRankHexColor(selectedAnalysis.rank) }">{{ selectedAnalysis.rank }}</span>
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                <div
+                  v-if="selectedAnalysis.map && getMapImage(selectedAnalysis.map)"
+                  class="relative h-36 w-full sm:w-56 lg:w-60 flex-shrink-0 rounded-xl overflow-hidden border border-white/15 shadow-xl self-stretch sm:self-center"
+                >
+                  <img :src="getMapImage(selectedAnalysis.map)" class="h-full w-full object-cover" alt="" />
+                  <div class="absolute inset-0 bg-gradient-to-r from-black/25 via-black/10 to-black/50" />
+                  <div class="absolute inset-0 bg-gradient-to-t from-black/75 via-transparent to-black/15" />
+                  <p class="absolute bottom-2 left-2.5 text-[10px] font-bold uppercase tracking-wider text-white/90 drop-shadow-md">
+                    {{ formatMapLabel(selectedAnalysis.map) }}
+                  </p>
+                  <div
+                    v-if="selectedAnalysis.overall_score != null"
+                    class="absolute inset-y-0 right-0 flex w-[42%] min-w-[5.5rem] flex-col items-center justify-center gap-1 border-l border-white/10 bg-black/45 px-2 py-3 backdrop-blur-md"
+                  >
+                    <span
+                      class="text-3xl font-black tabular-nums leading-none drop-shadow-lg"
+                      :class="selectedAnalysis.overall_score >= 78 ? 'text-green-400' : selectedAnalysis.overall_score >= 50 ? 'text-yellow-400' : 'text-red-400'"
+                    >{{ selectedAnalysis.overall_score * 10 }}</span>
+                    <span class="rounded-md px-2 py-0.5 text-[10px] font-bold text-center leading-tight" :class="scoreGradeBadgeClass(selectedAnalysis.overall_score)">
+                      {{ scoreGrade(selectedAnalysis.overall_score) }} · {{ scoreLabel(selectedAnalysis.overall_score) }}
+                    </span>
+                  </div>
+                </div>
+
+                <div
+                  v-else-if="selectedAnalysis.overall_score != null"
+                  class="flex flex-col items-end justify-center flex-shrink-0 rounded-xl border border-white/15 bg-black/40 px-4 py-3 backdrop-blur-sm"
+                >
+                  <span
+                    class="text-4xl font-black tabular-nums leading-none"
+                    :class="selectedAnalysis.overall_score >= 78 ? 'text-green-400' : selectedAnalysis.overall_score >= 50 ? 'text-yellow-400' : 'text-red-400'"
+                  >{{ selectedAnalysis.overall_score * 10 }}</span>
+                  <span class="mt-1 rounded-md px-2 py-0.5 text-xs font-bold" :class="scoreGradeBadgeClass(selectedAnalysis.overall_score)">
+                    {{ scoreGrade(selectedAnalysis.overall_score) }} · {{ scoreLabel(selectedAnalysis.overall_score) }}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            <!-- Match stats -->
+            <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">
+              <div v-if="selectedAnalysis.rank && getRankIconUrl(selectedAnalysis.rank)" class="rounded-xl border border-white/[0.08] bg-white/[0.02] px-3 py-2.5">
+                <p class="text-[8px] font-bold uppercase tracking-wider text-gray-600">Rank</p>
+                <div class="mt-1 flex items-center gap-1.5">
+                  <img :src="getRankIconUrl(selectedAnalysis.rank)!" class="h-6 w-6 object-contain" :alt="selectedAnalysis.rank" />
+                  <p class="text-xs font-bold leading-tight" :style="{ color: getRankHexColor(selectedAnalysis.rank) }">{{ selectedAnalysis.rank }}</p>
+                </div>
+              </div>
+              <div class="rounded-xl border border-white/[0.08] bg-white/[0.02] px-3 py-2.5 text-center">
+                <p class="text-[8px] font-bold uppercase tracking-wider text-gray-600">Result</p>
+                <p class="mt-1 text-sm font-black" :class="selectedAnalysis.won ? 'text-green-400' : selectedAnalysis.won === false ? 'text-red-400' : 'text-gray-500'">
+                  {{ selectedAnalysis.won == null ? '—' : selectedAnalysis.won ? 'WIN' : 'LOSS' }}
+                </p>
+              </div>
+              <div v-if="selectedAnalysis.rounds_won != null" class="rounded-xl border border-white/[0.08] bg-white/[0.02] px-3 py-2.5 text-center">
+                <p class="text-[8px] font-bold uppercase tracking-wider text-gray-600">Rounds</p>
+                <p class="mt-1 text-sm font-black tabular-nums text-gray-200">{{ selectedAnalysis.rounds_won }}–{{ selectedAnalysis.rounds_lost }}</p>
+              </div>
+              <div v-if="selectedAnalysis.kills != null" class="rounded-xl border border-white/[0.08] bg-white/[0.02] px-3 py-2.5 text-center">
+                <p class="text-[8px] font-bold uppercase tracking-wider text-gray-600">K/D/A</p>
+                <p class="mt-1 text-sm font-black tabular-nums font-mono text-gray-200">
+                  {{ selectedAnalysis.kills }}/{{ selectedAnalysis.deaths }}/{{ selectedAnalysis.assists }}
+                </p>
+              </div>
+              <div v-if="displayAcs(selectedAnalysis) != null" class="rounded-xl border border-white/[0.08] bg-white/[0.02] px-3 py-2.5 text-center">
+                <p class="text-[8px] font-bold uppercase tracking-wider text-gray-600">ACS</p>
+                <p class="mt-1 text-sm font-black tabular-nums text-gray-200">{{ displayAcs(selectedAnalysis) }}</p>
+              </div>
+              <div v-if="selectedAnalysis.hs_pct != null" class="rounded-xl border border-white/[0.08] bg-white/[0.02] px-3 py-2.5 text-center">
+                <p class="text-[8px] font-bold uppercase tracking-wider text-gray-600">Headshot</p>
+                <p class="mt-1 text-sm font-black tabular-nums" :class="selectedAnalysis.hs_pct >= 25 ? 'text-orange-400' : 'text-gray-300'">{{ selectedAnalysis.hs_pct }}%</p>
+              </div>
+              <div v-if="expandedDetail?.ally_score != null" class="rounded-xl border border-white/[0.08] bg-white/[0.02] px-3 py-2.5 text-center">
+                <p class="text-[8px] font-bold uppercase tracking-wider text-gray-600">Scoreline</p>
+                <p class="mt-1 text-sm font-black tabular-nums">
+                  <span :class="(expandedDetail.ally_score ?? 0) > (expandedDetail.enemy_score ?? 0) ? 'text-green-400' : 'text-white'">{{ expandedDetail.ally_score }}</span>
+                  <span class="text-gray-600">–</span>
+                  <span class="text-gray-500">{{ expandedDetail.enemy_score }}</span>
+                </p>
+              </div>
+            </div>
+
+            <div v-if="detailLoading" class="flex items-center justify-center gap-2 py-10">
+              <svg class="h-5 w-5 animate-spin text-gray-600" fill="none" viewBox="0 0 24 24">
+                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+              </svg>
+              <span class="text-sm text-gray-500">Loading coaching detail…</span>
+            </div>
+
+            <template v-else>
+              <TacticalIntelBrief v-if="expandedBrief" :brief="expandedBrief" />
+
+              <div v-else-if="expandedDetail?.verdict" class="rounded-xl border border-white/[0.08] bg-white/[0.02] px-4 py-3">
+                <p class="text-[9px] font-bold uppercase tracking-[0.16em] text-gray-600 mb-1.5">Coach verdict</p>
+                <p class="text-sm italic leading-relaxed text-gray-400">{{ expandedDetail.verdict }}</p>
+              </div>
+
+              <div v-if="expandedDetail?.priority_improvements?.length && !expandedBrief?.improvements.length" class="rounded-xl border border-white/[0.08] bg-white/[0.02] px-4 py-3 space-y-2">
+                <p class="text-[9px] font-black uppercase tracking-widest text-gray-600">Focus areas</p>
+                <div v-for="(imp, i) in expandedDetail.priority_improvements" :key="i" class="flex gap-2">
+                  <span class="text-[10px] font-bold flex-shrink-0" :class="i === 0 ? 'text-red-400' : 'text-gray-600'">{{ i + 1 }}</span>
+                  <p class="text-sm text-gray-400 leading-relaxed">{{ imp }}</p>
                 </div>
               </div>
 
-              <Transition name="detail-expand">
-                <div
-                  v-if="expandedId === a.id"
-                  class="overflow-hidden rounded-b-xl border border-t-0 border-white/[0.09]"
-                  style="background: rgba(255,255,255,0.015)"
-                >
-                  <div v-if="detailLoading" class="flex items-center justify-center gap-2 py-4">
-                    <svg class="h-3.5 w-3.5 animate-spin text-gray-600" fill="none" viewBox="0 0 24 24">
-                      <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
-                      <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
-                    </svg>
-                    <span class="text-[10px] text-gray-600">Loading detail…</span>
-                  </div>
+              <div v-if="expandedDetail?.coaching_tags?.length" class="flex flex-wrap gap-1.5">
+                <span
+                  v-for="tag in expandedDetail.coaching_tags"
+                  :key="tag"
+                  class="rounded-full border border-red-500/15 bg-red-500/10 px-2.5 py-0.5 text-[9px] font-semibold capitalize text-red-400/80"
+                >{{ tag.replace(/_/g, ' ') }}</span>
+              </div>
 
-                  <div v-else-if="!expandedDetail" class="px-4 py-3 text-center text-[10px] text-gray-600">
-                    No coaching detail available for this session.
-                    <button class="mx-auto mt-1.5 block text-[10px] text-red-400/70 underline hover:text-red-400" @click.stop="openTimeline(a.id)">Open in VOD Review →</button>
-                  </div>
+              <p v-if="!expandedDetail && !expandedBrief && !detailLoading" class="text-sm text-gray-600 text-center py-4">
+                No structured coaching notes for this session.
+              </p>
+            </template>
 
-                  <div v-else class="space-y-3 px-4 py-3">
-                    <div class="flex flex-wrap items-center gap-3">
-                      <div v-if="expandedDetail.ally_score != null" class="flex items-center gap-1.5">
-                        <span class="text-xs font-black" :class="(expandedDetail.ally_score ?? 0) > (expandedDetail.enemy_score ?? 0) ? 'text-green-400' : 'text-red-400'">{{ expandedDetail.ally_score }}</span>
-                        <span class="text-xs text-gray-600">–</span>
-                        <span class="text-xs font-black text-gray-500">{{ expandedDetail.enemy_score }}</span>
-                      </div>
-                      <div v-if="a.hs_pct != null" class="text-[10px] text-gray-500">
-                        <span class="font-bold" :class="a.hs_pct >= 25 ? 'text-orange-400' : 'text-gray-400'">{{ a.hs_pct }}%</span>
-                        <span class="text-gray-700"> HS</span>
-                      </div>
-                      <div v-if="a.combat_score != null" class="text-[10px] text-gray-500">
-                        <span class="font-bold text-gray-300">{{ a.combat_score }}</span>
-                        <span class="text-gray-700"> ACS</span>
-                      </div>
-                    </div>
-
-                    <div v-if="expandedDetail.verdict" class="flex items-start gap-2 rounded-lg border border-white/[0.09] bg-white/[0.02] px-2.5 py-2">
-                      <svg class="mt-0.5 h-3 w-3 flex-shrink-0 text-red-400/60" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"/>
-                      </svg>
-                      <p class="text-[10px] italic leading-relaxed text-gray-400">{{ expandedDetail.verdict }}</p>
-                    </div>
-
-                    <div v-if="expandedDetail.priority_improvements?.length" class="space-y-1">
-                      <p class="text-[8px] font-black uppercase tracking-widest text-gray-600">Focus areas</p>
-                      <div v-for="(imp, i) in expandedDetail.priority_improvements" :key="i" class="flex items-start gap-2">
-                        <span class="mt-0.5 w-3.5 flex-shrink-0 text-[9px] font-bold" :class="i === 0 ? 'text-red-400' : 'text-gray-600'">{{ i + 1 }}</span>
-                        <p class="text-[10px] leading-relaxed text-gray-400">{{ imp }}</p>
-                      </div>
-                    </div>
-
-                    <div v-if="expandedDetail.coaching_tags?.length" class="flex flex-wrap gap-1">
-                      <span
-                        v-for="tag in expandedDetail.coaching_tags"
-                        :key="tag"
-                        class="rounded-full border border-red-500/15 bg-red-500/10 px-2 py-0.5 text-[8px] font-semibold capitalize text-red-400/70"
-                      >{{ tag.replace(/_/g, ' ') }}</span>
-                    </div>
-
-                    <button
-                      class="w-full py-1 text-center text-[10px] text-gray-600 transition-colors hover:text-gray-400"
-                      @click.stop="openTimeline(a.id)"
-                    >View full VOD timeline →</button>
-                  </div>
-                </div>
-              </Transition>
-            </div>
+            <button
+              type="button"
+              class="w-full rounded-xl border border-red-500/30 bg-red-500/10 py-3 text-sm font-bold text-red-100 transition-colors hover:border-red-500/45 hover:bg-red-500/15 disabled:opacity-50"
+              :disabled="timelineLoadingId === selectedAnalysis.id"
+              @click="openTimeline(selectedAnalysis.id)"
+            >
+              {{ timelineLoadingId === selectedAnalysis.id ? 'Opening VOD…' : 'Open VOD review →' }}
+            </button>
           </div>
-        </section>
+        </div>
       </div>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import type { AnalysisItem } from '../env.d.ts'
-import { getAgentImage, getAgentRole, getAgentColor, getMapMinimap, getRoleColor, formatGameMode, isDisplayableGameMode } from '../lib/valorant'
+import {
+  getAgentImage,
+  getAgentRole,
+  getAgentColor,
+  getMapImage,
+  getRankIconUrl,
+  getRankHexColor,
+  getRoleColor,
+  formatGameMode,
+  formatMapLabel,
+  isDisplayableGameMode,
+  normalizeCombatScoreToAcs,
+  normalizeMapAssetKey,
+  NON_MAP_NAMES,
+} from '../lib/valorant'
+import { buildTacticalIntelBrief } from '../lib/coaching-brief'
+import type { TacticalIntelBrief as TacticalIntelBriefData } from '../lib/coaching-brief'
+import TacticalIntelBrief from '../components/TacticalIntelBrief.vue'
 import { pendingTimeline } from '../stores/pendingTimeline'
 
 const router = useRouter()
@@ -310,7 +478,7 @@ const activeFilter = ref<(typeof RESULT_FILTERS)[number]>('All')
 const activeMap = ref<string | null>(null)
 const timelineLoadingId = ref<number | null>(null)
 
-const expandedId = ref<number | null>(null)
+const selectedId = ref<number | null>(null)
 const detailLoading = ref(false)
 const expandedDetail = ref<{
   verdict: string | null
@@ -320,6 +488,60 @@ const expandedDetail = ref<{
   ally_score: number | null
   enemy_score: number | null
 } | null>(null)
+
+const expandedBrief = computed((): TacticalIntelBriefData | null => {
+  const d = expandedDetail.value
+  const raw = d?.top_issue ?? d?.verdict ?? null
+  if (!raw) return null
+  return buildTacticalIntelBrief(raw, {
+    improvements: d?.priority_improvements ?? [],
+    tags: d?.coaching_tags ?? [],
+    source: 'coaching',
+  })
+})
+
+function displayAcs(a: AnalysisItem): number | null {
+  return normalizeCombatScoreToAcs(a.combat_score, a.rounds_won, a.rounds_lost)
+}
+
+function pickTopByCount(
+  analyses: AnalysisItem[],
+  pick: (item: AnalysisItem) => string | null | undefined,
+): string | null {
+  const counts = new Map<string, number>()
+  for (const item of analyses) {
+    const key = pick(item)
+    if (!key) continue
+    counts.set(key, (counts.get(key) ?? 0) + 1)
+  }
+  let best: string | null = null
+  let max = 0
+  for (const [key, count] of counts) {
+    if (count > max) {
+      max = count
+      best = key
+    }
+  }
+  return best
+}
+
+const topAgent = computed(() => pickTopByCount(allAnalyses.value, a => a.agent))
+const topMap = computed(() => {
+  const key = pickTopByCount(allAnalyses.value, a => {
+    if (!a.map) return null
+    const normalized = normalizeMapAssetKey(a.map)
+    return normalized && !NON_MAP_NAMES.has(normalized) ? normalized : null
+  })
+  return key
+})
+
+const selectedAnalysis = computed(() =>
+  allAnalyses.value.find(a => a.id === selectedId.value) ?? null,
+)
+
+function isWideLayout(): boolean {
+  return typeof window !== 'undefined' && window.matchMedia('(min-width: 1024px)').matches
+}
 
 onMounted(async () => {
   window.api.discord.setState('reviewing').catch(() => {})
@@ -332,11 +554,14 @@ onUnmounted(() => {
 })
 
 const availableMaps = computed(() => {
-  const maps = new Set<string>()
+  const keys = new Set<string>()
   for (const a of allAnalyses.value) {
-    if (a.map) maps.add(a.map.toLowerCase())
+    if (!a.map) continue
+    const key = normalizeMapAssetKey(a.map)
+    if (!key || NON_MAP_NAMES.has(key)) continue
+    keys.add(key)
   }
-  return [...maps].sort()
+  return [...keys].sort((a, b) => formatMapLabel(a).localeCompare(formatMapLabel(b)))
 })
 
 const filteredAnalyses = computed(() => {
@@ -346,8 +571,26 @@ const filteredAnalyses = computed(() => {
     case 'Losses': list = list.filter(a => a.won === false || a.won === 0 as unknown); break
     case 'Scored': list = list.filter(a => a.overall_score != null); break
   }
-  if (activeMap.value) list = list.filter(a => a.map?.toLowerCase() === activeMap.value)
+  if (activeMap.value) list = list.filter(a => normalizeMapAssetKey(a.map) === activeMap.value)
   return list
+})
+
+watch([filteredAnalyses, loading], () => {
+  if (loading.value) return
+  const list = filteredAnalyses.value
+  if (!list.length) {
+    selectedId.value = null
+    expandedDetail.value = null
+    return
+  }
+  const stillVisible = selectedId.value != null && list.some(a => a.id === selectedId.value)
+  if (stillVisible) return
+  if (isWideLayout()) {
+    void selectSession(list[0])
+  } else {
+    selectedId.value = null
+    expandedDetail.value = null
+  }
 })
 
 const groupedAnalyses = computed(() => {
@@ -462,15 +705,13 @@ function formatDate(d: string): string {
   return new Date(d).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })
 }
 
-async function toggleExpand(a: AnalysisItem) {
-  if (expandedId.value === a.id) {
-    expandedId.value = null
-    expandedDetail.value = null
+async function selectSession(a: AnalysisItem) {
+  selectedId.value = a.id
+  expandedDetail.value = null
+  if (!a.overall_score && !['queued', 'processing', 'pending'].includes(a.status)) {
+    detailLoading.value = false
     return
   }
-  expandedId.value = a.id
-  expandedDetail.value = null
-  if (!a.overall_score && !['queued', 'processing', 'pending'].includes(a.status)) return
   detailLoading.value = true
   try {
     expandedDetail.value = await window.api.analyses.getDetail(a.id)
@@ -498,15 +739,136 @@ async function openTimeline(id: number) {
 </script>
 
 <style scoped>
-.detail-expand-enter-active,
-.detail-expand-leave-active {
-  transition: max-height 0.2s ease, opacity 0.15s ease;
-  max-height: 400px;
-  overflow: hidden;
+.scrollbar-hide {
+  scrollbar-width: none;
 }
-.detail-expand-enter-from,
-.detail-expand-leave-to {
-  max-height: 0;
-  opacity: 0;
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
+}
+
+.history-list-row {
+  position: relative;
+}
+
+.history-list-row--won::before,
+.history-list-row--lost::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 8px;
+  bottom: 8px;
+  width: 3px;
+  border-radius: 999px;
+}
+
+.history-list-row--won::before {
+  background: #22c55e;
+}
+
+.history-list-row--lost::before {
+  background: #ef4444;
+}
+
+.history-hero {
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.35);
+}
+
+.history-map-pill {
+  position: relative;
+  overflow: hidden;
+  width: 5.75rem;
+  height: 2.75rem;
+  border-radius: 0.625rem;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  transition: border-color 0.2s, box-shadow 0.2s, transform 0.2s;
+}
+
+.history-map-pill:hover {
+  border-color: rgba(255, 255, 255, 0.2);
+  transform: translateY(-1px);
+}
+
+.history-map-pill--active {
+  border-color: rgba(239, 68, 68, 0.5);
+  box-shadow: 0 0 0 1px rgba(239, 68, 68, 0.12), 0 6px 16px rgba(0, 0, 0, 0.35);
+}
+
+.history-map-pill--all {
+  width: 4.75rem;
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.history-map-pill__bg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  transition: transform 0.35s ease;
+}
+
+.history-map-pill:hover .history-map-pill__bg {
+  transform: scale(1.06);
+}
+
+.history-map-pill__shade {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    to top,
+    rgba(0, 0, 0, 0.88) 0%,
+    rgba(0, 0, 0, 0.42) 42%,
+    rgba(0, 0, 0, 0.12) 100%
+  );
+  transition: background 0.2s;
+}
+
+.history-map-pill__shade--all {
+  background: linear-gradient(
+    135deg,
+    rgba(255, 255, 255, 0.06) 0%,
+    rgba(255, 255, 255, 0.02) 100%
+  );
+}
+
+.history-map-pill--active .history-map-pill__shade:not(.history-map-pill__shade--all) {
+  background: linear-gradient(
+    to top,
+    rgba(127, 29, 29, 0.72) 0%,
+    rgba(0, 0, 0, 0.55) 48%,
+    rgba(0, 0, 0, 0.2) 100%
+  );
+}
+
+.history-map-pill--active .history-map-pill__shade--all {
+  background: linear-gradient(
+    135deg,
+    rgba(239, 68, 68, 0.22) 0%,
+    rgba(255, 255, 255, 0.04) 100%
+  );
+}
+
+.history-map-pill__label {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 1;
+  padding: 0.3rem 0.4rem;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  text-align: center;
+  color: rgba(255, 255, 255, 0.92);
+  background: rgba(0, 0, 0, 0.42);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.65);
+  line-height: 1.1;
+}
+
+.history-map-pill--active .history-map-pill__label {
+  color: #fff;
+  background: rgba(0, 0, 0, 0.52);
 }
 </style>

@@ -190,11 +190,13 @@ const MAP_CODENAME_TO_NAME: Record<string, string> = {
   hurm_helix: 'Drift',
   hurm_hightide: 'Glitch',
   hurm_yard: 'Piazza',
+  yard: 'Piazza',
   // Legacy/alternate codenames
   hurm_district: 'District',
   hurm_kasbah: 'Kasbah',
   // Range
   range: 'The Range',
+  rangev2: 'The Range',
 }
 
 /** Resolve a Riot map ID (full path or last segment) to a display name. */

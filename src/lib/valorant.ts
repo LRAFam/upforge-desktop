@@ -203,22 +203,79 @@ export function getAgentColor(agentName: string | null | undefined): string {
 
 // ── Map images ────────────────────────────────────────────────────────────────
 
+/** Game modes / practice areas stored as map names — not real maps. */
+export const NON_MAP_NAMES = new Set([
+  'teamdeathmatch',
+  'deathmatch',
+  'training',
+  'basictraining',
+  'npev2',
+])
+
+/** Riot codenames and legacy stored names → canonical asset key. */
+const MAP_NAME_ALIASES: Record<string, string> = {
+  duality: 'bind',
+  triad: 'haven',
+  bonsai: 'split',
+  port: 'icebox',
+  foxtrot: 'breeze',
+  canyon: 'fracture',
+  pitt: 'pearl',
+  jam: 'lotus',
+  juliett: 'sunset',
+  infinity: 'abyss',
+  rook: 'corrode',
+  hurmalley: 'district',
+  hurmdistrict: 'district',
+  hurmbowl: 'kasbah',
+  hurmkasbah: 'kasbah',
+  hurmhelix: 'drift',
+  hurmhightide: 'glitch',
+  hurmyard: 'piazza',
+  yard: 'piazza',
+  range: 'therange',
+}
+
+const MAP_DISPLAY_NAMES: Record<string, string> = {
+  bind: 'Bind',
+  haven: 'Haven',
+  split: 'Split',
+  icebox: 'Icebox',
+  breeze: 'Breeze',
+  fracture: 'Fracture',
+  pearl: 'Pearl',
+  lotus: 'Lotus',
+  sunset: 'Sunset',
+  abyss: 'Abyss',
+  corrode: 'Corrode',
+  district: 'District',
+  kasbah: 'Kasbah',
+  glitch: 'Glitch',
+  piazza: 'Piazza',
+  therange: 'The Range',
+  rangev2: 'The Range',
+}
+
 const MAP_SPLASH_URLS: Record<string, string> = {
   abyss: 'https://media.valorant-api.com/maps/224b0a95-48b9-f703-1bd8-67aca101a61f/splash.png',
   ascent: 'https://media.valorant-api.com/maps/7eaecc1b-4337-bbf6-6ab9-04b8f06b3319/splash.png',
   bind: 'https://media.valorant-api.com/maps/2c9d57ec-4431-9c5e-2939-8f9ef6dd5cba/splash.png',
   breeze: 'https://media.valorant-api.com/maps/2fb9a4fd-47b8-4e7d-a969-74b4046ebd53/splash.png',
   corrode: 'https://media.valorant-api.com/maps/1c18ab1f-420d-0d8b-71d0-77ad3c439115/splash.png',
+  district: 'https://media.valorant-api.com/maps/690b3ed2-4dff-945b-8223-6da834e30d24/splash.png',
   drift: 'https://media.valorant-api.com/maps/2c09d728-42d5-30d8-43dc-96a05cc7ee9d/splash.png',
   fracture: 'https://media.valorant-api.com/maps/b529448b-4d60-346e-e89e-00a4c527a405/splash.png',
+  glitch: 'https://media.valorant-api.com/maps/d6336a5a-428f-c591-98db-c8a291159134/splash.png',
   haven: 'https://media.valorant-api.com/maps/2bee0dc9-4ffe-519b-1cbd-7fbe763a6047/splash.png',
   icebox: 'https://media.valorant-api.com/maps/e2ad5c54-4114-a870-9641-8ea21279579a/splash.png',
+  kasbah: 'https://media.valorant-api.com/maps/12452a9d-48c3-0b02-e7eb-0381c3520404/splash.png',
   lotus: 'https://media.valorant-api.com/maps/2fe4ed3a-450a-948b-6d6b-e89a78e680a9/splash.png',
   pearl: 'https://media.valorant-api.com/maps/fd267378-4d1d-484f-ff52-77821ed10dc2/splash.png',
+  piazza: 'https://media.valorant-api.com/maps/de28aa9b-4cbe-1003-320e-6cb3ec309557/splash.png',
   split: 'https://media.valorant-api.com/maps/d960549e-485c-e861-8d71-aa9d1aed12a2/splash.png',
   sunset: 'https://media.valorant-api.com/maps/92584fbe-486a-b1b2-9faa-39b0f486b498/splash.png',
   therange: 'https://media.valorant-api.com/maps/ee613ee9-28b7-4beb-9666-08db13bb2244/splash.png',
-  rangev2: 'https://media.valorant-api.com/maps/ee613ee9-28b7-4beb-9666-08db13bb2244/splash.png',
+  rangev2: 'https://media.valorant-api.com/maps/5914d1e0-40c4-cfdd-6b88-eba06347686c/splash.png',
 }
 
 const MAP_MINIMAP_URLS: Record<string, string> = {
@@ -227,30 +284,60 @@ const MAP_MINIMAP_URLS: Record<string, string> = {
   bind: 'https://media.valorant-api.com/maps/2c9d57ec-4431-9c5e-2939-8f9ef6dd5cba/displayicon.png',
   breeze: 'https://media.valorant-api.com/maps/2fb9a4fd-47b8-4e7d-a969-74b4046ebd53/displayicon.png',
   corrode: 'https://media.valorant-api.com/maps/1c18ab1f-420d-0d8b-71d0-77ad3c439115/displayicon.png',
+  district: 'https://media.valorant-api.com/maps/690b3ed2-4dff-945b-8223-6da834e30d24/displayicon.png',
   drift: 'https://media.valorant-api.com/maps/2c09d728-42d5-30d8-43dc-96a05cc7ee9d/displayicon.png',
   fracture: 'https://media.valorant-api.com/maps/b529448b-4d60-346e-e89e-00a4c527a405/displayicon.png',
+  glitch: 'https://media.valorant-api.com/maps/d6336a5a-428f-c591-98db-c8a291159134/displayicon.png',
   haven: 'https://media.valorant-api.com/maps/2bee0dc9-4ffe-519b-1cbd-7fbe763a6047/displayicon.png',
   icebox: 'https://media.valorant-api.com/maps/e2ad5c54-4114-a870-9641-8ea21279579a/displayicon.png',
+  kasbah: 'https://media.valorant-api.com/maps/12452a9d-48c3-0b02-e7eb-0381c3520404/displayicon.png',
   lotus: 'https://media.valorant-api.com/maps/2fe4ed3a-450a-948b-6d6b-e89a78e680a9/displayicon.png',
   pearl: 'https://media.valorant-api.com/maps/fd267378-4d1d-484f-ff52-77821ed10dc2/displayicon.png',
+  piazza: 'https://media.valorant-api.com/maps/de28aa9b-4cbe-1003-320e-6cb3ec309557/displayicon.png',
   split: 'https://media.valorant-api.com/maps/d960549e-485c-e861-8d71-aa9d1aed12a2/displayicon.png',
   sunset: 'https://media.valorant-api.com/maps/92584fbe-486a-b1b2-9faa-39b0f486b498/displayicon.png',
-  therange: 'https://media.valorant-api.com/maps/ee613ee9-28b7-4beb-9666-08db13bb2244/displayicon.png',
-  rangev2: 'https://media.valorant-api.com/maps/ee613ee9-28b7-4beb-9666-08db13bb2244/displayicon.png',
+}
+
+/** Range maps have no displayicon on valorant-api — use listViewIcon for chips. */
+const MAP_CHIP_ICON_URLS: Record<string, string> = {
+  therange: 'https://media.valorant-api.com/maps/ee613ee9-28b7-4beb-9666-08db13bb2244/listviewicon.png',
+  rangev2: 'https://media.valorant-api.com/maps/5914d1e0-40c4-cfdd-6b88-eba06347686c/listviewicon.png',
+}
+
+function compactMapKey(mapName: string): string {
+  return mapName.toLowerCase().replace(/[\s_/-]/g, '')
+}
+
+/** Normalise stored map names (codenames, HURM paths) to canonical asset keys. */
+export function normalizeMapAssetKey(mapName: string | null | undefined): string {
+  if (!mapName) return ''
+  const compact = compactMapKey(mapName)
+  return MAP_NAME_ALIASES[compact] ?? compact
+}
+
+/** Human-readable map label for UI (resolves codenames like Duality → Bind). */
+export function formatMapLabel(mapName: string | null | undefined): string {
+  if (!mapName) return ''
+  const key = normalizeMapAssetKey(mapName)
+  if (MAP_DISPLAY_NAMES[key]) return MAP_DISPLAY_NAMES[key]
+  if (key === key.toLowerCase()) {
+    return mapName.replace(/\b\w/g, c => c.toUpperCase())
+  }
+  return mapName
 }
 
 /** Returns the full-art splash URL for a Valorant map. */
 export function getMapImage(mapName: string | null | undefined): string {
-  if (!mapName) return ''
-  const key = mapName.toLowerCase().replace(/\s/g, '')
+  const key = normalizeMapAssetKey(mapName)
+  if (!key || NON_MAP_NAMES.has(key)) return ''
   return MAP_SPLASH_URLS[key] ?? ''
 }
 
 /** Returns the minimap / display-icon URL for a Valorant map. */
 export function getMapMinimap(mapName: string | null | undefined): string {
-  if (!mapName) return ''
-  const key = mapName.toLowerCase().replace(/\s/g, '')
-  return MAP_MINIMAP_URLS[key] ?? ''
+  const key = normalizeMapAssetKey(mapName)
+  if (!key || NON_MAP_NAMES.has(key)) return ''
+  return MAP_MINIMAP_URLS[key] ?? MAP_CHIP_ICON_URLS[key] ?? ''
 }
 
 // ── Rank colours ──────────────────────────────────────────────────────────────
