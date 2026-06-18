@@ -1,12 +1,11 @@
 <template>
-  <div class="flex flex-col h-full bg-[#111111] text-white overflow-hidden">
+  <div class="vod-review flex flex-col h-full text-white overflow-hidden">
 
-    <!-- Header -->
-    <div class="flex-shrink-0 px-3 pt-2 pb-2 border-b border-white/[0.08] bg-[#111111]">
-      <div class="panel-elevated relative flex flex-wrap items-center gap-x-2.5 gap-y-2 px-3 py-2">
-        <div class="absolute -right-6 top-0 h-20 w-20 rounded-full bg-red-500/10 blur-3xl pointer-events-none" />
+    <!-- Broadcast command bar -->
+    <div class="vod-command-bar flex-shrink-0 border-b border-white/[0.08]">
+      <div class="flex flex-wrap items-center gap-2 px-3 py-2">
         <button
-          class="relative flex items-center gap-1.5 rounded-lg border border-white/[0.08] bg-white/[0.03] px-2.5 py-1.5 text-gray-500 hover:text-gray-300 hover:bg-white/[0.06] transition-colors text-xs flex-shrink-0"
+          class="flex items-center gap-1.5 rounded-lg border border-white/[0.08] bg-white/[0.03] px-2.5 py-1.5 text-gray-500 hover:text-gray-300 hover:bg-white/[0.06] transition-colors text-xs flex-shrink-0"
           @click="$router.back()"
         >
           <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -14,89 +13,116 @@
           </svg>
           Back
         </button>
-        <div class="relative flex items-center gap-2 flex-1 min-w-0">
-          <img v-if="agentImageUrl" :src="agentImageUrl" class="w-8 h-8 object-contain rounded-lg border border-white/[0.08] bg-white/[0.03] p-0.5" />
+
+        <div class="flex items-center gap-2.5 flex-1 min-w-0">
+          <div
+            class="relative h-11 w-11 flex-shrink-0 rounded-xl overflow-hidden border border-white/[0.1] bg-black/40"
+            :style="agentAccentStyle"
+          >
+            <img
+              v-if="mapPosterUrl"
+              :src="mapPosterUrl"
+              class="absolute inset-0 h-full w-full object-cover opacity-25"
+              alt=""
+            />
+            <img
+              v-if="agentImageUrl"
+              :src="agentImageUrl"
+              class="relative h-full w-full object-contain p-1"
+              alt=""
+            />
+          </div>
           <div class="min-w-0">
-            <p class="text-[10px] font-black uppercase tracking-[0.22em] text-red-400/70">VOD Review</p>
+            <p class="text-[9px] font-black uppercase tracking-[0.28em] text-red-400/90">Session Review</p>
             <p class="text-sm font-bold text-white truncate leading-tight">
               {{ timeline?.agent || 'Match replay' }}<span v-if="timeline?.map" class="text-gray-500 font-medium"> · {{ timeline.map }}</span>
             </p>
+            <div class="flex items-center gap-1.5 mt-0.5 flex-wrap">
+              <span
+                v-if="displayGameMode"
+                class="text-[9px] font-bold px-1.5 py-px rounded border border-white/[0.08] bg-white/[0.04] text-gray-500 uppercase tracking-wide"
+              >{{ displayGameMode }}</span>
+              <span v-if="roundRecord" class="text-[9px] text-gray-600 tabular-nums">{{ roundRecord.wins }}W · {{ roundRecord.losses }}L</span>
+            </div>
           </div>
-          <span
-            v-if="timeline?.gameMode"
-            class="flex-shrink-0 text-[10px] font-bold px-2 py-0.5 rounded-full border border-white/[0.08] bg-white/[0.04] text-gray-400 uppercase tracking-wide"
-          >{{ timeline.gameMode }}</span>
         </div>
 
-      <!-- KDA summary -->
-      <div v-if="timeline?.finalStats" class="relative flex items-center gap-2 flex-shrink-0">
-        <div class="flex items-center gap-1.5 text-xs">
-          <span class="font-bold text-green-400">{{ timeline.finalStats.kills }}</span>
-          <span class="text-gray-600">/</span>
-          <span class="font-bold text-red-400">{{ timeline.finalStats.deaths }}</span>
-          <span class="text-gray-600">/</span>
-          <span class="font-bold text-blue-400">{{ timeline.finalStats.assists }}</span>
-          <span class="text-xs text-gray-600 ml-0.5">KDA</span>
-        </div>
         <div
-          v-if="timeline.finalStats.won !== undefined"
-          class="text-xs font-bold px-1.5 py-0.5 rounded"
-          :class="timeline.finalStats.won ? 'text-green-400 bg-green-500/10' : 'text-red-400 bg-red-500/10'"
+          v-if="matchScoreline"
+          class="hidden sm:flex items-center gap-2 flex-shrink-0 rounded-xl border border-white/[0.08] bg-black/30 px-3 py-1.5"
         >
-          {{ timeline.finalStats.won ? 'WIN' : 'LOSS' }}
+          <span class="text-lg font-black tabular-nums" :class="matchScoreline.ally > matchScoreline.enemy ? 'text-green-400' : 'text-white'">{{ matchScoreline.ally }}</span>
+          <span class="text-[10px] font-bold text-gray-600">—</span>
+          <span class="text-lg font-black tabular-nums" :class="matchScoreline.enemy > matchScoreline.ally ? 'text-green-400' : 'text-gray-400'">{{ matchScoreline.enemy }}</span>
         </div>
-      </div>
 
-      <button
-        v-if="hasSpatialIntel"
-        type="button"
-        class="flex items-center gap-1.5 rounded-xl border px-3 py-2 text-xs font-semibold transition-colors"
-        :class="spatialMapVisible
-          ? 'border-red-500/30 bg-red-500/10 text-red-200 hover:border-red-500/40'
-          : 'border-white/[0.08] bg-white/[0.04] text-gray-300 hover:border-white/[0.14] hover:bg-white/[0.08] hover:text-white'"
-        @click="spatialMapVisible = !spatialMapVisible"
-      >
-        <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 20 20">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" d="M3.75 5.75h12.5v8.5H3.75v-8.5Zm2 10.25h8.5M8 3.75v2"/>
-        </svg>
-        {{ spatialMapVisible ? 'Hide Intel' : 'Intel Map' }}
-      </button>
-      <span
-        v-if="activeRoundNumber != null"
-        class="hidden sm:inline-flex flex-shrink-0 items-center rounded-lg border border-white/[0.08] bg-white/[0.04] px-2 py-1 text-[10px] font-bold uppercase tracking-wide text-gray-400"
-      >
-        Round {{ activeRoundNumber + 1 }}
-      </span>
-      <button
-        v-if="timeline?.videoPath"
-        type="button"
-        class="hidden sm:flex items-center gap-1.5 rounded-xl border px-3 py-2 text-xs font-semibold transition-colors"
-        :class="theaterMode
-          ? 'border-red-500/30 bg-red-500/10 text-red-200 hover:border-red-500/40'
-          : 'border-white/[0.08] bg-white/[0.04] text-gray-300 hover:border-white/[0.14] hover:bg-white/[0.08] hover:text-white'"
-        :title="theaterMode ? 'Exit theater (T)' : 'Theater mode (T)'"
-        @click="toggleTheaterMode"
-      >
-        <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" d="M4 8V4h4M20 8V4h-4M4 16v4h4M20 16v4h-4"/>
-        </svg>
-        {{ theaterMode ? 'Exit theater' : 'Theater' }}
-      </button>
-      <button
-        class="flex items-center gap-2 rounded-xl border border-white/[0.08] bg-white/[0.04] px-3 py-2 text-xs font-semibold text-gray-300 transition-colors hover:border-white/[0.14] hover:bg-white/[0.08] hover:text-white"
-        @click="showInsightsPanel = !showInsightsPanel"
-      >
-        <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 20 20">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" d="M6.75 6.75h6.5M6.75 10h6.5M6.75 13.25h4.5M4.75 3.75h10.5a1 1 0 0 1 1 1v10.5a1 1 0 0 1-1 1H4.75a1 1 0 0 1-1-1V4.75a1 1 0 0 1 1-1Z"/>
-        </svg>
-        {{ showInsightsPanel ? 'Hide Notes' : 'Notes' }}
-      </button>
-      <button
-        type="button"
-        class="flex h-8 w-8 items-center justify-center rounded-xl border border-white/[0.08] bg-white/[0.04] text-xs font-bold text-gray-400 transition-colors hover:border-white/[0.14] hover:bg-white/[0.08] hover:text-white"
-        title="Keyboard shortcuts (?)"
-        @click="showShortcuts = true"
-      >?</button>
+        <div v-if="timeline?.finalStats" class="flex items-center gap-2 flex-shrink-0 rounded-xl border border-white/[0.08] bg-white/[0.03] px-2.5 py-1.5">
+          <div class="flex items-center gap-1 text-xs tabular-nums">
+            <span class="font-bold text-green-400">{{ timeline.finalStats.kills }}</span>
+            <span class="text-gray-700">/</span>
+            <span class="font-bold text-red-400">{{ timeline.finalStats.deaths }}</span>
+            <span class="text-gray-700">/</span>
+            <span class="font-bold text-blue-400">{{ timeline.finalStats.assists }}</span>
+          </div>
+          <div
+            v-if="timeline.finalStats.won !== undefined"
+            class="text-[10px] font-black px-1.5 py-0.5 rounded"
+            :class="timeline.finalStats.won ? 'text-green-400 bg-green-500/15' : 'text-red-400 bg-red-500/15'"
+          >
+            {{ timeline.finalStats.won ? 'WIN' : 'LOSS' }}
+          </div>
+        </div>
+
+        <div class="flex items-center gap-1.5 flex-shrink-0 flex-wrap justify-end">
+          <button
+            v-if="!theaterMode && roundGroups.length"
+            type="button"
+            class="vod-toolbar-btn hidden lg:inline-flex"
+            :class="roundLogCollapsed ? '' : 'vod-toolbar-btn--active'"
+            :title="roundLogCollapsed ? 'Show round log (B)' : 'Hide round log (B)'"
+            @click="roundLogCollapsed = !roundLogCollapsed"
+          >
+            {{ roundLogCollapsed ? 'Log' : 'Log on' }}
+          </button>
+          <button
+            v-if="hasSpatialIntel"
+            type="button"
+            class="vod-toolbar-btn"
+            :class="spatialMapVisible ? 'vod-toolbar-btn--active' : ''"
+            @click="spatialMapVisible = !spatialMapVisible"
+          >
+            {{ spatialMapVisible ? 'Intel on' : 'Intel' }}
+          </button>
+          <span
+            v-if="activeRoundNumber != null"
+            class="hidden md:inline-flex items-center rounded-lg border border-white/[0.08] bg-white/[0.04] px-2 py-1 text-[10px] font-bold uppercase tracking-wide text-gray-400"
+          >
+            R{{ activeRoundNumber + 1 }}
+          </span>
+          <button
+            v-if="timeline?.videoPath"
+            type="button"
+            class="vod-toolbar-btn hidden sm:inline-flex"
+            :class="theaterMode ? 'vod-toolbar-btn--active' : ''"
+            :title="theaterMode ? 'Exit theater (T)' : 'Theater mode (T)'"
+            @click="toggleTheaterMode"
+          >
+            {{ theaterMode ? 'Exit' : 'Theater' }}
+          </button>
+          <button
+            class="vod-toolbar-btn"
+            :class="showInsightsPanel ? 'vod-toolbar-btn--active' : ''"
+            @click="showInsightsPanel = !showInsightsPanel"
+          >
+            {{ showInsightsPanel ? 'Notes on' : 'Notes' }}
+          </button>
+          <button
+            type="button"
+            class="vod-toolbar-btn w-8 justify-center px-0"
+            title="Keyboard shortcuts (?)"
+            @click="showShortcuts = true"
+          >?</button>
+        </div>
       </div>
     </div>
 
@@ -129,48 +155,94 @@
     <!-- Main content -->
     <div v-else class="flex flex-1 min-h-0">
 
-      <!-- Left sidebar: event feed -->
+      <!-- Left sidebar: round log -->
       <div
-        v-if="!theaterMode"
-        class="w-44 xl:w-52 flex-shrink-0 border-r border-white/[0.09] flex flex-col overflow-hidden bg-[#141414]"
+        v-if="!theaterMode && !roundLogCollapsed"
+        class="vod-round-log w-48 xl:w-56 flex-shrink-0 border-r border-white/[0.09] flex flex-col overflow-hidden"
       >
-        <div class="px-3 py-2.5 border-b border-white/[0.09]">
-          <p class="text-[11px] font-semibold text-gray-500 uppercase tracking-widest">Timeline</p>
+        <div class="px-3 py-2.5 border-b border-white/[0.09] flex flex-col gap-2">
+          <div class="flex items-center justify-between gap-2">
+            <div>
+              <p class="text-[10px] font-black uppercase tracking-[0.2em] text-gray-500">Round Log</p>
+              <p v-if="roundRecord" class="text-[10px] text-gray-600 mt-0.5 tabular-nums">{{ roundRecord.total }} rounds</p>
+            </div>
+            <div v-if="roundRecord" class="flex items-center gap-1 text-[10px] font-bold tabular-nums">
+              <span class="text-green-400">{{ roundRecord.wins }}W</span>
+              <span class="text-gray-700">·</span>
+              <span class="text-red-400">{{ roundRecord.losses }}L</span>
+            </div>
+          </div>
+          <div class="flex items-center gap-1 p-0.5 rounded-lg bg-black/30 border border-white/[0.06]">
+            <button
+              type="button"
+              class="flex-1 rounded-md px-2 py-1 text-[9px] font-bold uppercase tracking-wide transition-colors"
+              :class="roundLogFilter === 'mine'
+                ? 'bg-red-500/20 text-red-200'
+                : 'text-gray-500 hover:text-gray-300'"
+              @click="roundLogFilter = 'mine'"
+            >My moments</button>
+            <button
+              type="button"
+              class="flex-1 rounded-md px-2 py-1 text-[9px] font-bold uppercase tracking-wide transition-colors"
+              :class="roundLogFilter === 'all'
+                ? 'bg-white/[0.08] text-gray-200'
+                : 'text-gray-500 hover:text-gray-300'"
+              @click="roundLogFilter = 'all'"
+            >Full feed</button>
+          </div>
         </div>
         <div ref="sidebarEl" class="flex-1 overflow-y-auto scrollbar-hide scroll-smooth space-y-1 px-1.5 py-2">
           <template v-for="round in roundGroups" :key="round.roundNumber">
             <!-- Round header -->
             <button
               :data-round-anchor="round.roundNumber"
-              class="w-full rounded-2xl border px-3 py-2 text-left transition-all"
+              class="vod-round-card w-full rounded-xl border px-2.5 py-2 text-left transition-all"
               :class="activeRoundNumber === round.roundNumber
-                ? 'border-white/[0.16] bg-white/[0.08] shadow-[0_10px_30px_rgba(0,0,0,0.24)]'
+                ? 'border-white/[0.16] bg-white/[0.08] shadow-[0_8px_24px_rgba(0,0,0,0.28)]'
                 : 'border-transparent bg-transparent hover:border-white/[0.08] hover:bg-white/[0.04]'"
+              :style="activeRoundNumber === round.roundNumber
+                ? { borderLeftColor: round.won ? 'rgba(52, 211, 153, 0.65)' : 'rgba(248, 113, 113, 0.65)' }
+                : undefined"
               @click="seekToRound(round)"
             >
-              <div class="flex items-center gap-2.5">
-                <span class="inline-flex h-7 min-w-7 items-center justify-center rounded-full border border-white/[0.08] bg-white/[0.04] px-2 text-[10px] font-black text-gray-200">
-                  R{{ round.roundNumber + 1 }}
+              <div class="flex items-center gap-2">
+                <span
+                  class="inline-flex h-7 min-w-7 items-center justify-center rounded-lg border border-white/[0.08] bg-black/30 px-1.5 text-[10px] font-black tabular-nums"
+                  :class="round.won ? 'text-emerald-300' : 'text-red-300'"
+                >
+                  {{ round.roundNumber + 1 }}
                 </span>
-                <span class="h-2.5 w-2.5 rounded-full" :class="round.won ? 'bg-emerald-400' : 'bg-red-400'" />
                 <div class="min-w-0 flex-1">
-                  <p class="text-xs font-semibold text-gray-200">{{ roundOutcomeLabel(round) }}</p>
-                  <p class="text-[10px] text-gray-500">{{ round.events.length }} event{{ round.events.length === 1 ? '' : 's' }}</p>
+                  <p class="text-[11px] font-semibold text-gray-200 leading-tight">{{ roundOutcomeLabel(round) }}</p>
+                  <p class="text-[9px] text-gray-600">
+                    {{ visibleRoundEvents(round).length }} {{ roundLogFilter === 'mine' ? 'moments' : 'events' }}
+                  </p>
                 </div>
+                <svg
+                  v-if="visibleRoundEvents(round).length"
+                  class="h-3.5 w-3.5 flex-shrink-0 text-gray-600 transition-transform"
+                  :class="expandedRoundNumber === round.roundNumber ? 'rotate-180' : ''"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+                </svg>
                 <img
                   v-if="roundOutcomeIcon(round)"
                   :src="roundOutcomeIcon(round)!"
-                  class="h-6 w-6 object-contain opacity-80"
+                  class="h-5 w-5 object-contain opacity-85 flex-shrink-0"
                 />
               </div>
             </button>
 
-            <!-- Kill/death events in this round -->
+            <!-- Kill/death events in this round (accordion) -->
+            <template v-if="expandedRoundNumber === round.roundNumber">
             <button
-              v-for="event in round.events"
+              v-for="event in visibleRoundEvents(round)"
               :key="`${event.type}-${event.videoOffsetMs}`"
               class="w-full flex items-center gap-1.5 px-2 py-1.5 pl-3 hover:bg-white/[0.05] transition-colors text-left group"
-              :class="isNearEvent(event) ? 'bg-white/[0.04]' : ''"
+              :class="isNearEvent(event) ? 'bg-red-500/[0.08] ring-1 ring-inset ring-red-500/20' : ''"
               @click="seekToEvent(event)"
             >
               <!-- Spike plant/defuse events -->
@@ -289,6 +361,11 @@
                 <span class="text-[8px] text-gray-700 flex-shrink-0 tabular-nums">{{ formatMs(event.videoOffsetMs) }}</span>
               </template>
             </button>
+            <p
+              v-if="!visibleRoundEvents(round).length"
+              class="px-3 py-2 text-[10px] text-gray-600 text-center"
+            >No {{ roundLogFilter === 'mine' ? 'personal moments' : 'events' }} this round</p>
+            </template>
           </template>
 
           <!-- No events -->
@@ -303,16 +380,25 @@
 
       <div class="flex-1 flex flex-col min-w-0 min-h-0">
 
-        <!-- Video area — frame sized to video aspect ratio (no letterboxing inside the picture) -->
+        <!-- Video area -->
         <div
           ref="videoAreaEl"
-          class="flex-1 relative min-h-[200px] flex items-center justify-center bg-[#111111] overflow-hidden"
+          class="vod-cinema flex-1 relative min-h-[200px] flex items-center justify-center overflow-hidden"
           :class="{ 'cursor-none': cursorHidden && !theaterMode }"
           @mousemove="onVideoMouseMove"
         >
+          <button
+            v-if="roundLogCollapsed && roundGroups.length"
+            type="button"
+            class="absolute left-2 top-1/2 z-20 -translate-y-1/2 rounded-r-xl border border-white/10 border-l-0 bg-black/70 px-2 py-3 text-[9px] font-bold uppercase tracking-[0.16em] text-gray-400 backdrop-blur-sm transition-colors hover:border-red-500/30 hover:bg-black/85 hover:text-white writing-mode-vertical"
+            style="writing-mode: vertical-rl; text-orientation: mixed;"
+            title="Show round log (B)"
+            @click.stop="roundLogCollapsed = false"
+          >Round log</button>
+
           <div
             ref="videoFrameEl"
-            class="relative bg-black shadow-[0_20px_60px_rgba(0,0,0,0.45)]"
+            class="vod-cinema-frame relative bg-black"
             :class="isFullscreen ? 'w-full h-full' : ''"
             :style="isFullscreen ? undefined : videoFrameStyle"
             @click="togglePlay"
@@ -569,10 +655,12 @@
                   @click="spatialMapVisible = true"
                 >Dock to side</button>
               </div>
-              <p
-                v-if="spatialSummary?.heatmapInsight"
-                class="text-[11px] leading-snug font-medium text-gray-300"
-              >{{ spatialSummary.heatmapInsight }}</p>
+              <TacticalIntelBrief
+                v-if="tacticalIntelBrief"
+                :brief="tacticalIntelBrief"
+                compact
+                @seek-evidence="seekCoachingEvidence"
+              />
               <div ref="dockChipsEl" class="flex flex-wrap gap-1.5 max-h-24 overflow-y-auto scrollbar-hide">
                 <button
                   v-for="item in spatialDeathChips"
@@ -609,50 +697,18 @@
           </div>
         </div>
 
-        <!-- Slim intel strip when side panel is open (desktop) -->
-        <div
-          v-else-if="hasSpatialIntel && !theaterMode && spatialMapVisible"
-          class="hidden md:flex flex-shrink-0 items-center gap-2 border-b border-white/[0.08] bg-[#131313] px-3 py-1 min-h-[32px]"
-          @click.stop
-        >
-          <span class="text-[9px] font-black uppercase tracking-[0.18em] text-red-400/85">Intel</span>
-          <div class="flex items-center gap-0.5 p-0.5 rounded-lg bg-black/25 border border-white/[0.06]">
-            <button
-              v-for="mode in spatialModes"
-              :key="mode.id"
-              type="button"
-              class="px-2 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wide transition-colors"
-              :class="spatialViewMode === mode.id
-                ? 'bg-red-500/20 text-red-200'
-                : 'text-gray-500 hover:text-gray-300'"
-              @click="spatialViewMode = mode.id"
-            >{{ mode.label }}</button>
-          </div>
-          <p
-            v-if="spatialSummary?.heatmapInsight"
-            class="flex-1 min-w-0 text-[10px] text-gray-400 truncate"
-            :title="spatialSummary.heatmapInsight"
-          >{{ spatialSummary.heatmapInsight }}</p>
-          <div ref="dockChipsEl" class="flex gap-1 overflow-x-auto scrollbar-hide max-w-[40%]">
-            <button
-              v-for="item in spatialDeathChips"
-              :key="item.index"
-              :data-spatial-chip="item.index"
-              type="button"
-              class="flex-shrink-0 text-[9px] font-semibold px-2 py-0.5 rounded-md border transition-all"
-              :class="activeSpatialIndex === item.index
-                ? 'bg-red-500/22 border-red-400/45 text-white'
-                : 'bg-black/35 border-white/10 text-gray-500 hover:border-red-500/30 hover:text-gray-300'"
-              @click="onSpatialSelect(item.ev, item.displayIndex)"
-            >R{{ item.ev.round + 1 }} · {{ item.ev.callout }}</button>
-          </div>
-        </div>
+        <!-- Slim intel strip when side panel is open (desktop) — removed; intel lives in side panel -->
 
-        <!-- Controls + timeline scrubber -->
-        <div class="flex-shrink-0 border-t border-white/[0.10] bg-[#161616] px-2.5 pt-1.5 pb-2">
-          <div class="backdrop-blur-sm bg-black/40 border border-white/[0.08] rounded-xl px-3 py-2 space-y-2 shadow-[0_12px_40px_rgba(0,0,0,0.3)]">
+        <!-- Transport deck -->
+        <div class="vod-transport flex-shrink-0 border-t border-white/[0.08] bg-[#101010] px-3 py-2">
+          <div class="vod-transport-inner space-y-2">
             <div class="relative group cursor-pointer h-6 flex items-center" @click="onScrubberClick" @mousemove="onScrubberHover" @mouseleave="hoverTime = null">
               <div class="w-full h-2 rounded-full bg-white/[0.08] ring-1 ring-white/[0.04] relative overflow-visible">
+                <div
+                  v-if="activeRoundSegment"
+                  class="absolute top-0 h-full rounded-full bg-white/[0.07] pointer-events-none"
+                  :style="{ left: activeRoundSegment.left + '%', width: activeRoundSegment.width + '%' }"
+                />
                 <div
                   class="h-full rounded-full bg-gradient-to-r from-red-500 via-red-400 to-orange-400 pointer-events-none shadow-[0_0_18px_rgba(239,68,68,0.35)]"
                   :style="{ width: progressPercent + '%' }"
@@ -694,9 +750,12 @@
               />
               <div
                 v-if="hoverTime !== null"
-                class="absolute bottom-full mb-2 -translate-x-1/2 rounded-lg border border-white/[0.08] bg-black/80 px-2 py-1 text-xs text-gray-200 tabular-nums pointer-events-none"
+                class="absolute bottom-full mb-2 -translate-x-1/2 rounded-lg border border-white/[0.08] bg-black/80 px-2 py-1 text-xs text-gray-200 tabular-nums pointer-events-none whitespace-nowrap"
                 :style="{ left: (hoverTime / duration * 100) + '%' }"
-              >{{ formatMs(hoverTime * 1000) }}</div>
+              >
+                {{ formatMs(hoverTime * 1000) }}
+                <span v-if="hoverRoundLabel" class="text-gray-500"> · {{ hoverRoundLabel }}</span>
+              </div>
             </div>
 
             <div class="flex items-center gap-2">
@@ -738,6 +797,23 @@
                 @click="cycleSpeed"
               >{{ playbackSpeed }}x</button>
 
+              <button
+                v-if="timeline?.videoPath"
+                class="h-9 w-9 flex items-center justify-center rounded-xl border border-white/[0.08] bg-white/[0.03] text-gray-500 transition-all hover:border-white/[0.14] hover:bg-white/[0.08] hover:text-gray-200"
+                :title="isMuted ? 'Unmute (V)' : 'Mute (V)'"
+                @click="toggleMute"
+              >
+                <svg v-if="isMuted" class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" d="M11 5 6 9H3v6h3l5 4V5Z"/>
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" d="m22 2-6 6m0 8 6 6M16 8l10 10"/>
+                </svg>
+                <svg v-else class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" d="M11 5 6 9H3v6h3l5 4V5Z"/>
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" d="M15.54 8.46a5 5 0 0 1 0 7.07"/>
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" d="M19.07 4.93a10 10 0 0 1 0 14.14"/>
+                </svg>
+              </button>
+
               <div class="flex-1" />
               <span class="text-xs font-mono text-gray-400 tabular-nums">
                 {{ formatSeconds(currentTime) }} / {{ formatSeconds(duration, true) }}
@@ -765,61 +841,12 @@
                 Score
               </button>
 
-              <div class="hidden xl:flex items-center gap-2 ml-1 flex-wrap justify-end">
-                <div class="flex items-center gap-1">
-                  <div class="h-2.5 w-2.5 rounded-full bg-emerald-500" />
-                  <span class="text-[10px] text-gray-500">Kill</span>
-                </div>
-                <div class="flex items-center gap-1">
-                  <div class="h-2.5 w-2.5 rounded-full bg-red-500" />
-                  <span class="text-[10px] text-gray-500">Death</span>
-                </div>
-                <div class="flex items-center gap-1">
-                  <div class="h-3 w-2 rounded-full bg-orange-500" />
-                  <span class="text-[10px] text-gray-500">Plant</span>
-                </div>
-                <div class="flex items-center gap-1">
-                  <div class="h-3 w-2 rounded-full bg-cyan-500" />
-                  <span class="text-[10px] text-gray-500">Defuse</span>
-                </div>
-                <div class="flex items-center gap-1">
-                  <div class="h-2.5 w-2.5 rounded-full bg-yellow-500" />
-                  <span class="text-[10px] text-gray-500">Detonate</span>
-                </div>
-              </div>
-            </div>
-
-            <div class="hidden xl:flex items-center gap-3 px-1 flex-wrap">
-              <div class="flex items-center gap-1">
-                <kbd class="px-1 py-px text-[9px] font-bold bg-white/[0.06] border border-white/[0.1] rounded text-gray-500">Space</kbd>
-                <span class="text-[9px] text-gray-700">Play</span>
-              </div>
-              <div class="flex items-center gap-1">
-                <kbd class="px-1 py-px text-[9px] font-bold bg-white/[0.06] border border-white/[0.1] rounded text-gray-500">←</kbd>
-                <kbd class="px-1 py-px text-[9px] font-bold bg-white/[0.06] border border-white/[0.1] rounded text-gray-500">→</kbd>
-                <span class="text-[9px] text-gray-700">Skip 5s</span>
-              </div>
-              <div class="flex items-center gap-1">
-                <kbd class="px-1 py-px text-[9px] font-bold bg-white/[0.06] border border-white/[0.1] rounded text-gray-500">J</kbd>
-                <kbd class="px-1 py-px text-[9px] font-bold bg-white/[0.06] border border-white/[0.1] rounded text-gray-500">L</kbd>
-                <span class="text-[9px] text-gray-700">Prev/Next event</span>
-              </div>
-              <div class="flex items-center gap-1">
-                <kbd class="px-1 py-px text-[9px] font-bold bg-white/[0.06] border border-white/[0.1] rounded text-gray-500">[</kbd>
-                <kbd class="px-1 py-px text-[9px] font-bold bg-white/[0.06] border border-white/[0.1] rounded text-gray-500">]</kbd>
-                <span class="text-[9px] text-gray-700">Speed</span>
-              </div>
-              <div class="flex items-center gap-1">
-                <kbd class="px-1 py-px text-[9px] font-bold bg-white/[0.06] border border-white/[0.1] rounded text-gray-500">S</kbd>
-                <span class="text-[9px] text-gray-700">Scoreboard</span>
-              </div>
-              <div class="flex items-center gap-1">
-                <kbd class="px-1 py-px text-[9px] font-bold bg-white/[0.06] border border-white/[0.1] rounded text-gray-500">T</kbd>
-                <span class="text-[9px] text-gray-700">Theater</span>
-              </div>
-              <div class="flex items-center gap-1">
-                <kbd class="px-1 py-px text-[9px] font-bold bg-white/[0.06] border border-white/[0.1] rounded text-gray-500">F</kbd>
-                <span class="text-[9px] text-gray-700">Fullscreen</span>
+              <div class="hidden xl:flex items-center gap-2 ml-1 flex-wrap justify-end text-[9px] text-gray-600">
+                <span class="inline-flex items-center gap-1"><span class="h-2 w-2 rounded-full bg-emerald-500" />Kill</span>
+                <span class="inline-flex items-center gap-1"><span class="h-2 w-2 rounded-full bg-red-500" />Death</span>
+                <span class="inline-flex items-center gap-1"><span class="h-2.5 w-1.5 rounded-full bg-orange-500" />Plant</span>
+                <span class="inline-flex items-center gap-1"><span class="h-2.5 w-1.5 rounded-full bg-cyan-500" />Defuse</span>
+                <button type="button" class="ml-1 text-gray-500 hover:text-gray-300 underline-offset-2 hover:underline" @click="showShortcuts = true">Shortcuts</button>
               </div>
             </div>
           </div>
@@ -1087,18 +1114,16 @@
         </div>
       </div>
 
-      <!-- Desktop intel side panel — full-size heatmap -->
+      <!-- Desktop intel side panel -->
       <aside
         v-if="hasSpatialIntel && spatialMapVisible && !theaterMode"
-        class="hidden md:flex w-[min(320px,28vw)] xl:w-[min(340px,30vw)] flex-shrink-0 flex-col min-h-0 border-l border-white/[0.09] bg-[#121212]"
+        class="vod-intel-panel hidden md:flex w-[min(340px,30vw)] xl:w-[min(380px,32vw)] flex-shrink-0 flex-col min-h-0 border-l border-white/[0.09]"
         @click.stop
       >
-        <div class="flex items-center gap-2 px-3 py-2 border-b border-white/[0.08] flex-shrink-0">
+        <div class="flex items-center gap-2 px-3 py-2 border-b border-white/[0.08] flex-shrink-0 bg-gradient-to-r from-red-500/[0.06] to-transparent">
           <div class="flex-1 min-w-0">
-            <p class="text-[9px] font-black uppercase tracking-[0.22em] text-red-400">Match Intel</p>
-            <p v-if="spatialSummary?.heatmapInsight" class="text-[10px] text-gray-400 truncate mt-0.5" :title="spatialSummary.heatmapInsight">
-              {{ spatialSummary.heatmapInsight }}
-            </p>
+            <p class="text-[9px] font-black uppercase tracking-[0.24em] text-red-400">Tactical Intel</p>
+            <p class="text-[10px] text-gray-600 mt-0.5">Map sync · death heat · coach notes</p>
           </div>
           <button
             type="button"
@@ -1119,6 +1144,13 @@
         </div>
 
         <div class="flex-1 min-h-0 overflow-y-auto scrollbar-hide px-3 py-3 space-y-3">
+          <div v-if="tacticalIntelBrief" class="sticky top-0 z-10 -mx-1 px-1 pb-1 bg-gradient-to-b from-[#101010] via-[#101010] to-transparent">
+            <TacticalIntelBrief
+              :brief="tacticalIntelBrief"
+              @seek-evidence="seekCoachingEvidence"
+            />
+          </div>
+
           <div class="mx-auto w-fit" @mousedown.stop @click.stop>
             <MatchSpatialMinimap
               panel-hud
@@ -1203,13 +1235,13 @@
 
       <div
         v-if="showInsightsPanel && !theaterMode"
-        class="w-56 flex-shrink-0 border-l border-white/[0.09] bg-[#0d0d0d] flex flex-col min-h-0"
+        class="vod-notes-panel w-60 xl:w-64 flex-shrink-0 border-l border-white/[0.09] flex flex-col min-h-0"
       >
-        <div class="flex items-center gap-2 px-3 py-2.5 border-b border-white/[0.09]">
-          <p class="flex-1 text-[10px] font-bold uppercase tracking-[0.18em] text-gray-500">Coaching Notes</p>
+        <div class="flex items-center gap-2 px-3 py-2.5 border-b border-white/[0.09] bg-gradient-to-r from-red-500/[0.05] to-transparent">
+          <p class="flex-1 text-[10px] font-black uppercase tracking-[0.2em] text-gray-500">Review Notes</p>
           <button
             class="flex h-7 w-7 items-center justify-center rounded-md border border-white/[0.08] bg-white/[0.03] text-gray-500 transition-colors hover:border-white/[0.14] hover:text-gray-200"
-            title="Hide notes"
+            title="Hide notes (N)"
             @click="showInsightsPanel = false"
           >
             <svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 20 20">
@@ -1218,20 +1250,40 @@
           </button>
         </div>
 
-        <div class="flex-1 overflow-y-auto scrollbar-hide px-2.5 py-2.5 space-y-2">
+        <div class="flex-1 overflow-y-auto scrollbar-hide px-2.5 py-2.5 space-y-2.5">
+          <TacticalIntelBrief
+            v-if="tacticalIntelBrief"
+            :brief="tacticalIntelBrief"
+            compact
+            @seek-evidence="seekCoachingEvidence"
+          />
+
           <div
-            v-for="(note, index) in coachingNotes"
+            v-for="(note, index) in supplementalCoachingNotes"
             :key="`${index}-${note}`"
             class="rounded-lg border border-white/[0.08] bg-white/[0.02] px-2.5 py-2"
           >
             <div class="flex items-start gap-2">
-              <span class="mt-1 h-1.5 w-1.5 flex-shrink-0 rounded-full bg-red-400" />
+              <span class="mt-1.5 h-1.5 w-1.5 flex-shrink-0 rounded-full bg-red-400/80" />
               <p class="text-[11px] leading-relaxed text-gray-400">{{ note }}</p>
             </div>
           </div>
-          <div class="rounded-lg border border-white/[0.08] bg-white/[0.02] px-2.5 py-2">
-            <p class="text-[9px] font-semibold uppercase tracking-[0.2em] text-gray-600">Review flow</p>
-            <p class="mt-1.5 text-[10px] leading-relaxed text-gray-600">Use the timeline and scrubber markers to jump to kills, deaths, and spike moments.</p>
+
+          <div
+            v-if="!tacticalIntelBrief && !supplementalCoachingNotes.length"
+            class="rounded-xl border border-dashed border-white/[0.08] px-3 py-6 text-center"
+          >
+            <p class="text-[11px] font-medium text-gray-500">No coaching analysis yet</p>
+            <p class="mt-1 text-[10px] text-gray-600 leading-relaxed">Run match analysis from the dashboard to unlock structured review notes here.</p>
+          </div>
+
+          <div class="rounded-lg border border-white/[0.06] bg-black/20 px-2.5 py-2">
+            <p class="text-[9px] font-semibold uppercase tracking-[0.18em] text-gray-600">Workflow</p>
+            <ul class="mt-1.5 space-y-1 text-[10px] text-gray-600 leading-relaxed">
+              <li>· Use <kbd class="text-[9px] px-1 rounded bg-white/[0.06] border border-white/10">J</kbd>/<kbd class="text-[9px] px-1 rounded bg-white/[0.06] border border-white/10">L</kbd> to hop between moments</li>
+              <li>· Toggle <span class="text-gray-500">My moments</span> in the round log for self-review</li>
+              <li>· Press <kbd class="text-[9px] px-1 rounded bg-white/[0.06] border border-white/10">?</kbd> for all shortcuts</li>
+            </ul>
           </div>
         </div>
       </div>
@@ -1266,9 +1318,12 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { getWeaponImage, getAgentImage, getAbilityIcon, getMapImage } from '../lib/valorant'
+import { getWeaponImage, getAgentImage, getAbilityIcon, getMapImage, getAgentColor, formatGameMode, normalizeGameModeId } from '../lib/valorant'
 import { pendingTimeline } from '../stores/pendingTimeline'
 import MatchSpatialMinimap from '../components/MatchSpatialMinimap.vue'
+import TacticalIntelBrief from '../components/TacticalIntelBrief.vue'
+import { buildTacticalIntelBrief } from '../lib/coaching-brief'
+import type { CoachingEvidence } from '../lib/coaching-brief'
 import type { MatchSpatialSummary, SpatialTimelineEvent } from '../lib/spatial-types'
 import {
   buildReplaySpatialSummary,
@@ -1416,6 +1471,9 @@ const shortcutLegend = [
   { key: 'T', label: 'Theater mode' },
   { key: 'F', label: 'Fullscreen' },
   { key: 'M', label: 'Toggle intel map' },
+  { key: 'B', label: 'Round log panel' },
+  { key: 'N', label: 'Review notes' },
+  { key: 'V', label: 'Mute / unmute' },
   { key: 'S', label: 'Scoreboard' },
   { key: 'R', label: 'Round detail' },
   { key: 'Esc', label: 'Back / exit' },
@@ -1436,11 +1494,18 @@ const SPATIAL_MAP_LARGE_KEY = 'upforge_vod_map_large'
 const SPATIAL_HUD_VISIBLE_KEY = 'upforge_vod_spatial_hud'
 const SPATIAL_REPLAY_SYNC_KEY = 'upforge_spatial_replay_sync'
 const THEATER_MODE_KEY = 'upforge_vod_theater_mode'
+const ROUND_LOG_COLLAPSED_KEY = 'upforge_vod_round_log_collapsed'
+const PLAYBACK_POS_PREFIX = 'upforge_vod_pos:'
+const PLAYBACK_MUTE_KEY = 'upforge_vod_muted'
 
 const spatialMapVisible = ref(true)
 const spatialMapLarge = ref(false)
 const spatialHudVisible = ref(true)
 const spatialReplaySync = ref(true)
+const roundLogCollapsed = ref(false)
+const roundLogFilter = ref<'all' | 'mine'>('mine')
+const expandedRoundNumber = ref<number | null>(null)
+const isMuted = ref(false)
 const dockChipsEl = ref<HTMLElement | null>(null)
 const activeSpatialIndex = ref<number | null>(null)
 const activeSpatialNotif = ref<SpatialTimelineEvent | null>(null)
@@ -1483,6 +1548,10 @@ function loadSpatialUiPrefs() {
     if (replay !== null) spatialReplaySync.value = replay === '1'
     const theater = localStorage.getItem(THEATER_MODE_KEY)
     if (theater !== null) theaterMode.value = theater === '1'
+    const logCollapsed = localStorage.getItem(ROUND_LOG_COLLAPSED_KEY)
+    if (logCollapsed !== null) roundLogCollapsed.value = logCollapsed === '1'
+    const muted = localStorage.getItem(PLAYBACK_MUTE_KEY)
+    if (muted !== null) isMuted.value = muted === '1'
   } catch { /* ignore */ }
 }
 
@@ -1504,6 +1573,15 @@ watch(spatialReplaySync, (v) => {
 
 watch(theaterMode, (v) => {
   try { localStorage.setItem(THEATER_MODE_KEY, v ? '1' : '0') } catch { /* ignore */ }
+})
+
+watch(roundLogCollapsed, (v) => {
+  try { localStorage.setItem(ROUND_LOG_COLLAPSED_KEY, v ? '1' : '0') } catch { /* ignore */ }
+})
+
+watch(isMuted, (v) => {
+  if (videoEl.value) videoEl.value.muted = v
+  try { localStorage.setItem(PLAYBACK_MUTE_KEY, v ? '1' : '0') } catch { /* ignore */ }
 })
 
 watch(activeSpatialIndex, () => {
@@ -1669,6 +1747,18 @@ const scoreboardGroups = computed(() => {
 const agentImageUrl = computed(() => {
   if (!timeline.value?.agent) return null
   return getAgentImage(timeline.value.agent) || null
+})
+
+const agentAccentStyle = computed(() => {
+  const agent = timeline.value?.agent
+  if (!agent) return {}
+  const color = getAgentColor(agent)
+  return { boxShadow: `inset 0 0 0 1px ${color}44`, background: `linear-gradient(145deg, ${color}22, rgba(0,0,0,0.5))` }
+})
+
+const displayGameMode = computed(() => {
+  const mode = normalizeGameModeId(timeline.value?.gameMode)
+  return mode ? formatGameMode(mode) : ''
 })
 
 const mapPosterUrl = computed(() => getMapImage(timeline.value?.map) || '')
@@ -1918,6 +2008,23 @@ const roundGroups = computed((): RoundGroup[] => {
   return Array.from(roundMap.values()).sort((a, b) => a.roundNumber - b.roundNumber)
 })
 
+const roundRecord = computed(() => {
+  const rounds = roundGroups.value
+  if (!rounds.length) return null
+  const wins = rounds.filter(r => r.won).length
+  return { wins, losses: rounds.length - wins, total: rounds.length }
+})
+
+const matchScoreline = computed(() => {
+  const d = coachingDetail.value
+  if (d?.ally_score != null && d?.enemy_score != null) {
+    return { ally: d.ally_score, enemy: d.enemy_score }
+  }
+  const rec = roundRecord.value
+  if (!rec) return null
+  return { ally: rec.wins, enemy: rec.losses }
+})
+
 const roundSeparators = computed(() => {
   if (!duration.value || !roundGroups.value.length) return []
   return roundGroups.value
@@ -1944,6 +2051,46 @@ const activeRoundNumber = computed<number | null>(() => {
   }
 
   return timedRounds[timedRounds.length - 1]?.roundNumber ?? null
+})
+
+watch(activeRoundNumber, (roundNumber) => {
+  if (roundNumber == null) return
+  expandedRoundNumber.value = roundNumber
+})
+
+const activeRoundSegment = computed(() => {
+  if (!duration.value || activeRoundNumber.value == null) return null
+  const timedRounds = roundGroups.value
+    .filter(round => round.firstVideoOffsetMs != null)
+    .sort((a, b) => (a.firstVideoOffsetMs ?? 0) - (b.firstVideoOffsetMs ?? 0))
+  const idx = timedRounds.findIndex(r => r.roundNumber === activeRoundNumber.value)
+  if (idx < 0) return null
+  const start = (timedRounds[idx].firstVideoOffsetMs ?? 0) / 1000
+  const end = idx + 1 < timedRounds.length
+    ? (timedRounds[idx + 1].firstVideoOffsetMs ?? duration.value * 1000) / 1000
+    : duration.value
+  if (end <= start) return null
+  return {
+    left: (start / duration.value) * 100,
+    width: ((end - start) / duration.value) * 100,
+  }
+})
+
+const hoverRoundLabel = computed(() => {
+  if (hoverTime.value == null || !duration.value) return null
+  const ms = hoverTime.value * 1000
+  const timedRounds = roundGroups.value
+    .filter(round => round.firstVideoOffsetMs != null)
+    .sort((a, b) => (a.firstVideoOffsetMs ?? 0) - (b.firstVideoOffsetMs ?? 0))
+  for (let i = 0; i < timedRounds.length; i += 1) {
+    const round = timedRounds[i]
+    const start = round.firstVideoOffsetMs ?? 0
+    const end = i + 1 < timedRounds.length
+      ? (timedRounds[i + 1].firstVideoOffsetMs ?? duration.value * 1000)
+      : duration.value * 1000
+    if (ms >= start && ms < end) return `R${round.roundNumber + 1}`
+  }
+  return null
 })
 
 const progressMarkers = computed((): ProgressMarker[] => {
@@ -1987,6 +2134,22 @@ const progressMarkers = computed((): ProgressMarker[] => {
 })
 
 const spatialSummary = computed(() => timeline.value?.spatialSummary ?? null)
+const tacticalIntelBrief = computed(() => {
+  const d = coachingDetail.value
+  const coachingRaw = d?.top_issue ?? d?.verdict ?? null
+  if (coachingRaw) {
+    return buildTacticalIntelBrief(coachingRaw, {
+      improvements: d?.priority_improvements ?? [],
+      tags: d?.coaching_tags ?? [],
+      source: 'coaching',
+    })
+  }
+  const heat = spatialSummary.value?.heatmapInsight
+  if (heat) {
+    return buildTacticalIntelBrief(heat, { source: 'heatmap' })
+  }
+  return null
+})
 const hasSpatialIntel = computed(() => (spatialSummary.value?.events?.length ?? 0) > 0)
 
 const spatialEventList = computed(() => {
@@ -2148,6 +2311,61 @@ const coachingNotes = computed(() => {
   return notes
 })
 
+const supplementalCoachingNotes = computed(() => {
+  const brief = tacticalIntelBrief.value
+  const rawNotes = coachingNotes.value
+  if (!brief) return rawNotes
+
+  const covered = new Set<string>()
+  if (brief.headline) covered.add(brief.headline.toLowerCase())
+  if (brief.fix) covered.add(brief.fix.toLowerCase())
+  for (const ev of brief.evidence) covered.add(ev.text.toLowerCase())
+  for (const imp of brief.improvements) covered.add(imp.toLowerCase())
+
+  return rawNotes.filter(note => {
+    const lower = note.toLowerCase()
+    if (covered.has(lower)) return false
+    return ![...covered].some(chunk => chunk.length > 24 && lower.includes(chunk.slice(0, 40)))
+  })
+})
+
+function visibleRoundEvents(round: RoundGroup): TimelineEvent[] {
+  const events = roundLogFilter.value === 'mine'
+    ? round.events.filter(event =>
+      event.type === 'kill'
+      || event.type === 'death'
+      || isSpikeEvent(event),
+    )
+    : round.events
+  return events
+}
+
+function toggleMute(): void {
+  isMuted.value = !isMuted.value
+}
+
+function getSavedPlaybackPosition(id: string): number | null {
+  try {
+    const raw = localStorage.getItem(`${PLAYBACK_POS_PREFIX}${id}`)
+    if (raw == null) return null
+    const value = Number(raw)
+    return Number.isFinite(value) && value >= 0 ? value : null
+  } catch {
+    return null
+  }
+}
+
+let lastPlaybackSaveAt = 0
+function savePlaybackPosition(): void {
+  if (!recordingId.value || !duration.value || duration.value <= 0) return
+  const now = Date.now()
+  if (now - lastPlaybackSaveAt < 4000) return
+  lastPlaybackSaveAt = now
+  try {
+    localStorage.setItem(`${PLAYBACK_POS_PREFIX}${recordingId.value}`, String(currentTime.value))
+  } catch { /* ignore */ }
+}
+
 function eventPercent(event: TimelineEvent): number {
   if (!duration.value || event.videoOffsetMs == null) return 0
   return (event.videoOffsetMs / 1000 / duration.value) * 100
@@ -2244,8 +2462,18 @@ function seekToEvent(event: TimelineEvent) {
   })
 }
 
+function seekCoachingEvidence(evidence: CoachingEvidence) {
+  const round = roundGroups.value.find(r => r.roundNumber === evidence.roundNumber)
+  if (round) {
+    selectedRound.value = round
+    scrollActiveRoundIntoView(round.roundNumber)
+  }
+  seekToTime(Math.max(0, evidence.timeSeconds - 2))
+}
+
 function seekToRound(round: RoundGroup) {
   selectedRound.value = round
+  expandedRoundNumber.value = round.roundNumber
   scrollActiveRoundIntoView(round.roundNumber)
   if (!videoEl.value || round.firstVideoOffsetMs == null) return
   const wasPlaying = !videoEl.value.paused
@@ -2278,6 +2506,7 @@ function seekNextEvent() {
 function onTimeUpdate() {
   if (!videoEl.value) return
   currentTime.value = videoEl.value.currentTime
+  savePlaybackPosition()
   // Popup when playback reaches the event (not when pre-roll seek lands early)
   const near = allTimelineEvents.value.find(e => {
     const sec = eventVideoSeconds(e)
@@ -2306,6 +2535,7 @@ const playbackDurationRetryDone = ref(false)
 
 function onLoadedMetadata() {
   if (!videoEl.value) return
+  videoEl.value.muted = isMuted.value
   const d = videoEl.value.duration
   if (!isNaN(d) && isFinite(d) && d > 0) duration.value = d
   if (videoEl.value.videoWidth > 0 && videoEl.value.videoHeight > 0) {
@@ -2360,6 +2590,14 @@ function tryInitialGameplaySeek() {
   }
 
   if (!videoEl.value || duration.value <= 0) return
+
+  const saved = recordingId.value ? getSavedPlaybackPosition(recordingId.value) : null
+  if (saved != null && saved > 8 && saved < duration.value - 15) {
+    videoEl.value.currentTime = saved
+    currentTime.value = saved
+    initialSeekDone.value = true
+    return
+  }
 
   const target = pickInitialSeekSeconds()
   if (target != null && target > 0.5) {
@@ -2572,6 +2810,25 @@ function handleKeyDown(e: KeyboardEvent) {
         spatialMapVisible.value = !spatialMapVisible.value
       }
       break
+    case 'b':
+    case 'B':
+      if (!theaterMode.value && roundGroups.value.length) {
+        e.preventDefault()
+        roundLogCollapsed.value = !roundLogCollapsed.value
+      }
+      break
+    case 'n':
+    case 'N':
+      e.preventDefault()
+      showInsightsPanel.value = !showInsightsPanel.value
+      break
+    case 'v':
+    case 'V':
+      if (timeline.value?.videoPath) {
+        e.preventDefault()
+        toggleMute()
+      }
+      break
     case 'r':
     case 'R':
       if (selectedRound.value) {
@@ -2601,6 +2858,89 @@ watch(activeRoundNumber, (roundNumber) => {
 </script>
 
 <style scoped>
+.vod-review {
+  background:
+    radial-gradient(ellipse 120% 80% at 50% -20%, rgba(255, 70, 85, 0.07), transparent 55%),
+    linear-gradient(180deg, #121212 0%, #0a0a0a 100%);
+}
+
+.vod-command-bar {
+  background: linear-gradient(180deg, rgba(22, 22, 22, 0.98), rgba(14, 14, 14, 0.95));
+  box-shadow: inset 0 -1px 0 rgba(255, 70, 85, 0.12);
+}
+
+.vod-toolbar-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  border-radius: 0.5rem;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.04);
+  padding: 0.375rem 0.625rem;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  color: rgb(156, 163, 175);
+  transition: color 0.15s, background 0.15s, border-color 0.15s;
+}
+.vod-toolbar-btn:hover {
+  border-color: rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.08);
+  color: white;
+}
+.vod-toolbar-btn--active {
+  border-color: rgba(239, 68, 68, 0.35);
+  background: rgba(239, 68, 68, 0.12);
+  color: rgb(254, 202, 202);
+}
+
+.vod-round-log {
+  background: linear-gradient(180deg, rgba(18, 18, 18, 0.98), rgba(12, 12, 12, 0.98));
+}
+
+.vod-round-card {
+  border-left: 2px solid transparent;
+}
+
+.vod-cinema {
+  background:
+    radial-gradient(ellipse at center, rgba(255, 255, 255, 0.03), transparent 65%),
+    #050505;
+}
+
+.vod-cinema-frame {
+  box-shadow:
+    0 0 0 1px rgba(255, 255, 255, 0.08),
+    0 0 0 1px rgba(255, 70, 85, 0.08) inset,
+    0 28px 80px rgba(0, 0, 0, 0.65),
+    0 0 48px rgba(255, 70, 85, 0.05);
+}
+
+.vod-transport {
+  background: linear-gradient(0deg, rgba(8, 8, 8, 0.98), rgba(14, 14, 14, 0.92));
+}
+
+.vod-transport-inner {
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 0.875rem;
+  background: rgba(0, 0, 0, 0.35);
+  padding: 0.625rem 0.75rem;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.35);
+}
+
+.vod-intel-panel {
+  background: linear-gradient(180deg, rgba(16, 16, 16, 0.98), rgba(10, 10, 10, 0.98));
+  box-shadow: inset 1px 0 0 rgba(255, 70, 85, 0.06);
+}
+
+.vod-notes-panel {
+  background: linear-gradient(180deg, rgba(14, 14, 14, 0.98), rgba(10, 10, 10, 0.98));
+  box-shadow: inset 1px 0 0 rgba(255, 255, 255, 0.04);
+}
+
+:deep(.vod-intel-brief) {
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.25);
+}
+
 .scrollbar-hide::-webkit-scrollbar { display: none; }
 .scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
 
