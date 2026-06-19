@@ -119,6 +119,19 @@ const api = {
     sendPresence: (recording: boolean, game: string | null) => ipcRenderer.invoke('squad:send-presence', { recording, game }),
     syncPresence: () => ipcRenderer.invoke('squad:sync-presence'),
   },
+  coach: {
+    getMyCoaches: () => ipcRenderer.invoke('coach:get-my-coaches'),
+    requestRosterReview: (opts: {
+      analysisId: number
+      coachId: number
+      question?: string
+      roundNumbers?: number[]
+    }) => ipcRenderer.invoke('coach:request-roster-review', opts),
+    getAnalysisReview: (analysisId: number) =>
+      ipcRenderer.invoke('coach:get-analysis-review', { analysisId }),
+    getReviewAnnotations: (reviewId: number) =>
+      ipcRenderer.invoke('coach:get-review-annotations', { reviewId }),
+  },
   stats: {
     rrHistory: () => ipcRenderer.invoke('stats:rr-history')
   },

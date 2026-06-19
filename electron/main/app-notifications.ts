@@ -5,6 +5,7 @@ export interface AppNotificationOptions {
   title: string
   body: string
   silent?: boolean
+  onClick?: () => void
 }
 
 const APP_ICON = join(__dirname, '../../resources/icon.ico')
@@ -26,7 +27,7 @@ export function dismissActiveToasts(): void {
 }
 
 /** Show a native OS notification, replacing any toast already on screen. */
-export function showAppNotification({ title, body, silent }: AppNotificationOptions): void {
+export function showAppNotification({ title, body, silent, onClick }: AppNotificationOptions): void {
   if (!Notification.isSupported()) return
 
   dismissActiveToasts()
@@ -42,6 +43,12 @@ export function showAppNotification({ title, body, silent }: AppNotificationOpti
   }
   notification.on('close', remove)
   notification.on('failed', remove)
+  if (onClick) {
+    notification.on('click', () => {
+      onClick()
+      notification.close()
+    })
+  }
   activeToasts.push(notification)
   notification.show()
 }

@@ -597,6 +597,47 @@ declare global {
         sendPresence: (recording: boolean, game: string | null) => Promise<{ ok: boolean }>
         syncPresence: () => Promise<{ ok: boolean }>
       }
+      coach: {
+        getMyCoaches: () => Promise<Array<{
+          coach_id: number
+          display_name: string
+          avatar_url: string | null
+          current_rank: string | null
+          specialties: string[]
+        }>>
+        requestRosterReview: (opts: {
+          analysisId: number
+          coachId: number
+          question?: string
+          roundNumbers?: number[]
+        }) => Promise<{ ok: boolean; review?: unknown; error?: string }>
+        getAnalysisReview: (analysisId: number) => Promise<{
+          id: number
+          status: string
+          source: string
+          student_question: string | null
+          round_numbers: number[] | null
+          coach?: { id: number; display_name: string }
+          annotations?: Array<{
+            id: number
+            round_number: number | null
+            video_offset_ms: number | null
+            body: string
+          }>
+        } | null>
+        getReviewAnnotations: (reviewId: number) => Promise<{
+          status: string
+          student_question: string | null
+          round_numbers: number[] | null
+          annotations: Array<{
+            id: number
+            round_number: number | null
+            video_offset_ms: number | null
+            body: string
+            created_at: string
+          }>
+        } | null>
+      }
       stats: {
         rrHistory: () => Promise<Array<{ id: number; date: string; rank: string | null; rr: number; elo: number }>>
       }

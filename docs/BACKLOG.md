@@ -129,6 +129,51 @@ Users choose **cloud only**, **analyse only**, or **both** — separate storage 
 
 ---
 
+## Coach Hub — creator / coaching community (v1)
+
+**Status:** Coach Hub v1 complete (web + API + desktop notifications) · Prod Stripe + pilot next  
+**Doc:** [COACH-HUB-V1.md](./COACH-HUB-V1.md) · **E2E:** [COACH-HUB-E2E.md](./COACH-HUB-E2E.md)
+
+Coaching creators connect with students via structured match review — not a Discord replacement. Builds on public profiles, VOD Review, skill profile, and planned coach review workflow in [AI-MODEL-STRATEGY.md](./AI-MODEL-STRATEGY.md).
+
+### v1 pillars
+
+- [x] **Roster API** — join/leave/list; coach aggregates; extends existing `coaches` table (`upforge-api`)
+- [x] **Roster review API** — free `POST /analyses/{id}/request-roster-review`; timeline annotations (`upforge-api`)
+- [x] **Coach profile page** — join roster on `/coaches/[id]` (`upforge-frontend`)
+- [x] **Coach dashboard** — `/coach-dashboard/roster` + `/coach-dashboard/reviews` (`upforge-frontend`)
+- [x] **Student ask coach** — analysis Next Steps + modal (`upforge-frontend`)
+- [x] **VOD annotation UI** — coach review detail + notes in VOD Review (`upforge-frontend`)
+- [x] **Coach roster settings** — opt-in toggle, welcome message, tier usage meters (`upforge-api` + `upforge-frontend`)
+- [x] **Student My Coaches** — `/my-coaches` list, sharing prefs, leave roster (`upforge-frontend`)
+- [x] **Roster tier limits** — Community 50 members / 30 reviews·mo; Pro unlimited (API enforced, billing TBD)
+- [x] **Coach Pro Stripe billing** — checkout + webhooks + roster dashboard upgrade UI (`STRIPE_COACH_HUB_PRO_PRICE_ID`)
+- [x] **Roster referral attribution** — roster join → coach affiliate; commission on student Premium/Pro subs (`CoachHubAttributionService`)
+- [x] **Deep-dive upsell** — post-roster-review CTA → paid micro-coaching with same coach (`deep_dive_available` API + Next Steps UI)
+- [x] **Coach affiliate auto-create** — active affiliate on roster enable for referral commissions
+- [x] **Coach earnings summary** — paid deep dives + referral stats on roster dashboard
+
+### Desktop (v1)
+
+- [x] **Ask my coach** — post-game → create roster review request
+- [x] **Coach annotations in VOD Review** — read markers on timeline when review exists
+- [x] **Notification** — OS toast when coach completes review (or new review request for coaches); opens VOD Review or web dashboard
+- [x] **Local API URL** — `VITE_API_URL` respected in auth-manager + CSP allows localhost
+
+### Explicitly later
+
+- Weekly community challenges, Discord bot, teaching-moment export, live co-watch, coach marketplace
+
+### Repos
+
+| Layer | Repo |
+|-------|------|
+| API, roster, reviews, annotations | `upforge-api` |
+| Coach page, dashboard, VOD annotation UI | `upforge-frontend` |
+| Ask coach, annotation display, notifications | `upforge-desktop` |
+
+---
+
 ## SEO — statistics authority (programmatic pages)
 
 **Status:** Phase 0 shipped (hub + ~40 URLs when data allows) · **Do not** scale to thousands before GSC validation  

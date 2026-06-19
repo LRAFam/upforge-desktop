@@ -489,6 +489,45 @@
           </div>
         </div>
 
+        <!-- Ask my coach (roster) -->
+        <div
+          v-if="result?.analysis_id && myCoaches.length && !coachReviewSent"
+          class="rounded-xl border border-violet-500/20 bg-violet-500/[0.04] px-3 py-2.5 space-y-2"
+        >
+          <p class="text-[10px] font-semibold uppercase tracking-wider text-violet-300/80">Ask my coach</p>
+          <select
+            v-if="myCoaches.length > 1"
+            v-model="selectedCoachId"
+            class="w-full rounded-lg border border-white/[0.08] bg-black/30 px-2.5 py-2 text-xs text-gray-200 focus:border-violet-500/30 focus:outline-none"
+          >
+            <option v-for="c in myCoaches" :key="c.coach_id" :value="c.coach_id">{{ c.display_name }}</option>
+          </select>
+          <textarea
+            v-model="coachQuestion"
+            rows="2"
+            maxlength="1000"
+            placeholder="Optional: what should your coach focus on?"
+            class="w-full resize-none rounded-lg border border-white/[0.08] bg-black/30 px-2.5 py-2 text-xs text-gray-300 placeholder:text-gray-600 focus:border-violet-500/30 focus:outline-none"
+          />
+          <button
+            type="button"
+            class="w-full rounded-lg border border-violet-500/30 bg-violet-500/15 py-2 text-xs font-semibold text-violet-100 transition-colors hover:bg-violet-500/25 disabled:opacity-50"
+            :disabled="coachReviewSubmitting || !selectedCoachId"
+            @click="submitCoachReview"
+          >
+            {{ coachReviewSubmitting ? 'Sending…' : `Send to ${selectedCoachName}` }}
+          </button>
+        </div>
+        <div
+          v-else-if="result?.analysis_id && coachReviewSent"
+          class="flex items-center gap-2 rounded-xl border border-violet-500/20 bg-violet-500/[0.06] px-3 py-2"
+        >
+          <svg class="h-3.5 w-3.5 flex-shrink-0 text-violet-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"/>
+          </svg>
+          <p class="text-xs text-violet-200/90">Review request sent — your coach will annotate this match on the timeline.</p>
+        </div>
+
         <div class="space-y-2 pt-1">
           <div class="flex gap-2">
             <button
@@ -928,6 +967,14 @@ const feedbackRating = ref<'thumbs_up' | 'thumbs_down' | null>(null)
 const feedbackText = ref('')
 const feedbackSubmitting = ref(false)
 const feedbackSubmitted = ref(false)
+const myCoaches = ref<Array<{ coach_id: number; display_name: string }>>([])
+const selectedCoachId = ref<number | null>(null)
+const coachQuestion = ref('')
+const coachReviewSubmitting = ref(false)
+const coachReviewSent = ref(false)
+const selectedCoachName = computed(() =>
+  myCoaches.value.find(c => c.coach_id === selectedCoachId.value)?.display_name ?? 'coach',
+)
 let sessionStart = 0
 let stuckTimer: ReturnType<typeof setTimeout> | null = null
 let tipTimer: ReturnType<typeof setInterval> | null = null
@@ -1367,6 +1414,7 @@ onMounted(() => {
     state.value = 'ready'
     loadSessionClips()
     void refreshLocalSpatialSummary()
+    void loadMyCoaches()
 
     // Browser launch is handled by the main process (index.ts) so it fires
     // even if this window was closed before analysis completed.
@@ -1583,6 +1631,46 @@ async function submitAnalysisFeedback(rating: 'thumbs_up' | 'thumbs_down') {
     }
   } finally {
     feedbackSubmitting.value = false
+  }
+}
+
+async function loadMyCoaches() {
+  try {
+    const coaches = await window.api.coach.getMyCoaches()
+    myCoaches.value = coaches
+    if (coaches.length === 1) {
+      selectedCoachId.value = coaches[0].coach_id
+    } else if (coaches.length > 1 && !selectedCoachId.value) {
+      selectedCoachId.value = coaches[0].coach_id
+    }
+    const analysisId = result.value?.analysis_id
+    if (analysisId && coaches.length) {
+      const existing = await window.api.coach.getAnalysisReview(analysisId).catch(() => null)
+      if (existing?.source === 'roster' && ['pending', 'in_progress', 'completed'].includes(existing.status)) {
+        coachReviewSent.value = true
+      }
+    }
+  } catch {
+    myCoaches.value = []
+  }
+}
+
+async function submitCoachReview() {
+  const analysisId = result.value?.analysis_id
+  const coachId = selectedCoachId.value
+  if (!analysisId || !coachId || coachReviewSubmitting.value || coachReviewSent.value) return
+  coachReviewSubmitting.value = true
+  try {
+    const res = await window.api.coach.requestRosterReview({
+      analysisId,
+      coachId,
+      question: coachQuestion.value.trim() || undefined,
+    })
+    if (res.ok) {
+      coachReviewSent.value = true
+    }
+  } finally {
+    coachReviewSubmitting.value = false
   }
 }
 

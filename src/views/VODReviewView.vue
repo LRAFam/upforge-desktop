@@ -1259,6 +1259,39 @@
           />
 
           <div
+            v-if="coachReview?.annotations?.length"
+            class="rounded-lg border border-violet-500/25 bg-violet-500/[0.06] px-2.5 py-2 space-y-2"
+          >
+            <div class="flex items-center justify-between gap-2">
+              <p class="text-[9px] font-bold uppercase tracking-[0.16em] text-violet-300/90">
+                Coach notes
+                <span v-if="coachReview.coach?.display_name" class="normal-case font-medium text-violet-200/80">
+                  · {{ coachReview.coach.display_name }}
+                </span>
+              </p>
+              <span
+                class="text-[9px] font-semibold uppercase tracking-wide"
+                :class="coachReview.status === 'completed' ? 'text-emerald-400' : 'text-amber-400'"
+              >{{ coachReview.status.replace('_', ' ') }}</span>
+            </div>
+            <p v-if="coachReview.student_question" class="text-[10px] text-gray-500 italic leading-relaxed">
+              You asked: {{ coachReview.student_question }}
+            </p>
+            <button
+              v-for="note in coachReview.annotations"
+              :key="note.id"
+              type="button"
+              class="w-full text-left rounded-md border border-white/[0.06] bg-black/20 px-2 py-1.5 transition-colors hover:border-violet-500/30 hover:bg-violet-500/[0.08]"
+              @click="seekCoachAnnotation(note.video_offset_ms)"
+            >
+              <p v-if="note.round_number" class="text-[9px] font-semibold text-violet-300/80 mb-0.5">
+                Round {{ note.round_number }}
+              </p>
+              <p class="text-[11px] leading-relaxed text-gray-300">{{ note.body }}</p>
+            </button>
+          </div>
+
+          <div
             v-for="(note, index) in supplementalCoachingNotes"
             :key="`${index}-${note}`"
             class="rounded-lg border border-white/[0.08] bg-white/[0.02] px-2.5 py-2"
@@ -1604,6 +1637,18 @@ const videoSyncOffsetMs = ref(0)
 const selectedRound = ref<RoundGroup | null>(null)
 const roundDetailExpanded = ref(false)
 const coachingDetail = ref<AnalysisDetail | null>(null)
+const coachReview = ref<{
+  id: number
+  status: string
+  student_question: string | null
+  coach?: { display_name: string }
+  annotations: Array<{
+    id: number
+    round_number: number | null
+    video_offset_ms: number | null
+    body: string
+  }>
+} | null>(null)
 const ownPuuid = ref<string | null>(null)
 let notifTimer: ReturnType<typeof setTimeout> | null = null
 
@@ -2436,6 +2481,11 @@ function seekToTime(timeSeconds: number) {
   videoEl.value.currentTime = Math.max(0, Math.min(duration.value, timeSeconds))
 }
 
+function seekCoachAnnotation(offsetMs: number | null) {
+  if (offsetMs == null) return
+  seekToTime(Math.max(0, offsetMs / 1000 - 2))
+}
+
 function jumpToMarker(marker: ProgressMarker) {
   const preRoll = ['kill', 'death'].includes(marker.kind) ? preRollSeconds(marker.kind) : 0
   seekToTime(Math.max(0, marker.timeSeconds - preRoll))
@@ -2689,6 +2739,19 @@ async function loadTimeline() {
 
     if (timelineId && !Number.isNaN(numericTimelineId)) {
       coachingDetail.value = await window.api.analyses.getDetail(numericTimelineId).catch(() => null)
+      const review = await window.api.coach.getAnalysisReview(numericTimelineId).catch(() => null)
+      if (review?.id) {
+        const detail = await window.api.coach.getReviewAnnotations(review.id).catch(() => null)
+        coachReview.value = {
+          id: review.id,
+          status: review.status,
+          student_question: review.student_question,
+          coach: review.coach,
+          annotations: detail?.annotations ?? review.annotations ?? [],
+        }
+      } else {
+        coachReview.value = null
+      }
     }
 
     applyTimelineDerivedState()

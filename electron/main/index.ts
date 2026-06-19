@@ -10,6 +10,10 @@ import { join } from 'path'
 import fs from 'fs'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import { showAppNotification } from './app-notifications'
+import {
+  startCoachNotificationPoller,
+  stopCoachNotificationPoller,
+} from './coach-notification-poller'
 import { setupAutoUpdater, markStartupComplete } from './updater'
 import { GameDetector } from './game-detector'
 import { Recorder } from './recorder'
@@ -649,6 +653,18 @@ let manualEndMatchRecording: ((game: string) => Promise<{ ok: boolean; reason?: 
 
 function notifySilent(): boolean {
   return !(settingsManager?.get().notificationSound ?? true)
+}
+
+function refreshCoachNotificationPoller(): void {
+  if (authManager.isAuthenticated()) {
+    startCoachNotificationPoller({
+      authManager,
+      getMainWindow: () => mainWindow,
+      notifySilent,
+    })
+  } else {
+    stopCoachNotificationPoller()
+  }
 }
 
 const clipPipeline = new ClipPipeline({
@@ -2664,6 +2680,7 @@ async function startApp(): Promise<void> {
   // When a 401 fires mid-session, tell the renderer to show the login screen
   authManager.onSessionExpired = () => {
     log.warn('[App] Session expired — notifying renderer')
+    stopCoachNotificationPoller()
     clearUserSession(userSessionDeps())
     mainWindow?.webContents.send('auth:session-expired')
   }
@@ -2673,6 +2690,7 @@ async function startApp(): Promise<void> {
   if (authManager.isAuthenticated()) {
     syncUserSessionFromAuth()
     trackAppOpened()
+    refreshCoachNotificationPoller()
   }
   const orphanedJob = readActivePendingJob()
   if (orphanedJob) {
@@ -2783,8 +2801,10 @@ async function startApp(): Promise<void> {
     syncUserSessionFromAuth()
     trackLogin()
     trackAppOpened()
+    refreshCoachNotificationPoller()
   },
   () => {
+    stopCoachNotificationPoller()
     clearUserSession(userSessionDeps())
   },
   (jobId: string) => recordingsStore?.getPathByJobId(jobId) ?? null,

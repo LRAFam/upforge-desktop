@@ -5,8 +5,9 @@ import { join } from 'path'
 import log from 'electron-log'
 import { withRetry } from './utils/retry'
 import { normalizeToAcs } from './combat-score'
+import { getApiBaseUrl } from './api-base'
 
-const API_BASE = 'https://api.upforge.gg'
+const API_BASE = getApiBaseUrl()
 
 function tokenPath(): string {
   return join(app.getPath('userData'), 'auth.enc')
@@ -359,6 +360,83 @@ export class AuthManager {
     try {
       await this._api.post('/api/teams/presence', { is_recording: recording, game })
     } catch { /* ignore */ }
+  }
+
+  async fetchMyCoaches(): Promise<Array<{
+    coach_id: number
+    display_name: string
+    avatar_url: string | null
+    current_rank: string | null
+    specialties: string[]
+  }>> {
+    try {
+      const res = await this._api.get('/api/coach/my-coaches')
+      return res.data?.coaches ?? []
+    } catch {
+      return []
+    }
+  }
+
+  async requestRosterReview(
+    analysisId: number,
+    payload: { coachId: number; question?: string; roundNumbers?: number[] },
+  ): Promise<{ ok: boolean; review?: unknown; error?: string }> {
+    if (!this._token) return { ok: false, error: 'Not logged in' }
+    try {
+      const res = await this._api.post(`/api/analyses/${analysisId}/request-roster-review`, {
+        coach_id: payload.coachId,
+        question: payload.question?.trim() || undefined,
+        round_numbers: payload.roundNumbers?.length ? payload.roundNumbers : undefined,
+      })
+      return { ok: true, review: res.data?.review }
+    } catch (err: unknown) {
+      const msg = (err as { response?: { data?: { message?: string; error?: string } } })?.response?.data?.message
+        ?? (err as { response?: { data?: { error?: string } } })?.response?.data?.error
+        ?? (err instanceof Error ? err.message : 'Failed to request review')
+      return { ok: false, error: msg }
+    }
+  }
+
+  async fetchCoachReviewAnnotations(reviewId: number): Promise<{
+    status: string
+    student_question: string | null
+    round_numbers: number[] | null
+    annotations: Array<{
+      id: number
+      round_number: number | null
+      video_offset_ms: number | null
+      body: string
+      created_at: string
+    }>
+  } | null> {
+    try {
+      const res = await this._api.get(`/api/coach/reviews/${reviewId}/annotations`)
+      return res.data ?? null
+    } catch {
+      return null
+    }
+  }
+
+  async fetchAnalysisCoachReview(analysisId: number): Promise<{
+    id: number
+    status: string
+    source: string
+    student_question: string | null
+    round_numbers: number[] | null
+    coach?: { id: number; display_name: string }
+    annotations?: Array<{
+      id: number
+      round_number: number | null
+      video_offset_ms: number | null
+      body: string
+    }>
+  } | null> {
+    try {
+      const res = await this._api.get(`/api/analyses/${analysisId}/coach-review`)
+      return res.data?.review ?? null
+    } catch {
+      return null
+    }
   }
 
   async createBillingPortalSession(): Promise<{ ok: true; url: string } | { ok: false; error: string }> {

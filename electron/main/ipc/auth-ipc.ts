@@ -241,4 +241,36 @@ export function setupAuthHandlers(
     await auth.sendPresence(getActiveRecorder().isRecording(), gameDetector.currentGame())
     return { ok: true }
   })
+
+  // ── Coach Hub ─────────────────────────────────────────────────────────────
+
+  ipcMain.handle('coach:get-my-coaches', async () => {
+    if (!auth.getToken()) return []
+    return auth.fetchMyCoaches()
+  })
+
+  ipcMain.handle('coach:request-roster-review', async (_e, {
+    analysisId,
+    coachId,
+    question,
+    roundNumbers,
+  }: {
+    analysisId: number
+    coachId: number
+    question?: string
+    roundNumbers?: number[]
+  }) => {
+    if (!auth.getToken()) return { ok: false, error: 'Not logged in' }
+    return auth.requestRosterReview(analysisId, { coachId, question, roundNumbers })
+  })
+
+  ipcMain.handle('coach:get-analysis-review', async (_e, { analysisId }: { analysisId: number }) => {
+    if (!auth.getToken()) return null
+    return auth.fetchAnalysisCoachReview(analysisId)
+  })
+
+  ipcMain.handle('coach:get-review-annotations', async (_e, { reviewId }: { reviewId: number }) => {
+    if (!auth.getToken()) return null
+    return auth.fetchCoachReviewAnnotations(reviewId)
+  })
 }
