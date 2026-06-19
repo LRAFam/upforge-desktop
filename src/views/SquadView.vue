@@ -85,8 +85,8 @@
             <div class="flex items-center gap-2">
               <p class="text-white text-sm font-bold truncate">{{ team.name }}</p>
               <span v-if="team.plan" class="flex-shrink-0 px-1.5 py-0.5 text-[10px] font-bold rounded"
-                :class="team.plan === 'pro' ? 'bg-yellow-500/15 text-yellow-400 border border-yellow-500/20' : 'bg-white/[0.06] text-gray-400 border border-white/[0.08]'">
-                {{ team.plan === 'pro' ? 'PRO' : 'FREE' }}
+                :class="squadPlanBadgeClass(team.plan)">
+                {{ squadPlanBadgeLabel(team.plan) }}
               </span>
             </div>
             <div class="flex items-center gap-3 mt-0.5">
@@ -96,16 +96,16 @@
                 <span class="text-gray-600"> online</span>
               </p>
               <!-- Member slot quota -->
-              <div v-if="team.max_members" class="flex items-center gap-1">
+              <div v-if="squadMaxMembers(team.plan, team.max_members)" class="flex items-center gap-1">
                 <div class="flex gap-0.5">
                   <div
-                    v-for="i in team.max_members"
+                    v-for="i in squadMaxMembers(team.plan, team.max_members)!"
                     :key="i"
                     class="w-2 h-2 rounded-sm"
                     :class="i <= team.members.length ? 'bg-red-500/70' : 'bg-white/[0.06]'"
                   />
                 </div>
-                <span class="text-gray-700 text-[10px]">{{ team.members.length }}/{{ team.max_members }}</span>
+                <span class="text-gray-700 text-[10px]">{{ team.members.length }}/{{ squadMaxMembers(team.plan, team.max_members) }}</span>
               </div>
             </div>
           </div>
@@ -406,6 +406,34 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from 'vue'
+
+function squadPlanBadgeLabel(plan?: string): string {
+  switch (plan) {
+    case 'squad_6': return 'SQUAD 6'
+    case 'squad_4': return 'SQUAD 4'
+    case 'pro': return 'PRO'
+    default: return 'FREE'
+  }
+}
+
+function squadPlanBadgeClass(plan?: string): string {
+  switch (plan) {
+    case 'squad_6':
+    case 'squad_4':
+      return 'bg-teal-500/15 text-teal-400 border border-teal-500/20'
+    case 'pro':
+      return 'bg-yellow-500/15 text-yellow-400 border border-yellow-500/20'
+    default:
+      return 'bg-white/[0.06] text-gray-400 border border-white/[0.08]'
+  }
+}
+
+function squadMaxMembers(plan?: string, maxMembers?: number): number | undefined {
+  if (maxMembers) return maxMembers
+  if (plan === 'squad_6') return 6
+  if (plan === 'squad_4') return 4
+  return undefined
+}
 
 interface TeamMember {
   id: number

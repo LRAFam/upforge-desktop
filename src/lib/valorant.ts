@@ -415,6 +415,11 @@ export function getTierBadgeClass(tier: string | null | undefined): string {
     case 'pro':     return 'bg-amber-500/20 text-amber-400 border border-amber-500/30'
     case 'elite':   return 'bg-yellow-500/20 text-yellow-400 border border-yellow-500/30'
     case 'premium': return 'bg-purple-500/20 text-purple-400 border border-purple-500/30'
+    case 'squad-4':
+    case 'squad-6':
+    case 'squad_4':
+    case 'squad_6':
+      return 'bg-teal-500/20 text-teal-400 border border-teal-500/30'
     default:        return 'bg-white/10 text-gray-400'
   }
 }
@@ -427,6 +432,10 @@ export function getTierBadgeLabel(tier: string | null | undefined): string {
     case 'premium': return 'Plus'
     case 'free':    return 'Free'
     case 'founder': return 'Founder'
+    case 'squad-4':
+    case 'squad_4': return 'Squad'
+    case 'squad-6':
+    case 'squad_6': return 'Squad'
     default:        return tier ? tier.charAt(0).toUpperCase() + tier.slice(1) : 'Free'
   }
 }
