@@ -1,0 +1,61 @@
+---
+description: Never run destructive DB, cache, or deploy commands against production
+alwaysApply: true
+---
+
+# Production safety — no destructive commands
+
+**Never run destructive or data-wiping commands against production. No exceptions unless the user explicitly names production and confirms data loss is intended (rare — prefer asking first).**
+
+## Treat as production unless proven local
+
+Assume **production** when any of these are true:
+
+- `APP_ENV=production` or `APP_ENV=prod`
+- Database host is not `127.0.0.1`, `localhost`, or a clearly local Docker service name
+- API URL is `https://api.upforge.gg` or any non-localhost domain
+- SSH/remote target is a staging or production server
+- `.env` or shell context cannot be verified as local dev
+
+When unsure, **stop and ask** — do not run the command.
+
+## Forbidden on production (never run)
+
+### Laravel / database
+
+- `migrate:fresh`, `migrate:refresh`, `migrate:reset`, `db:wipe`
+- `migrate:fresh --seed`, `migrate:refresh --seed`
+- Raw SQL: `DROP DATABASE`, `DROP TABLE`, `TRUNCATE`, mass `DELETE` without a scoped WHERE
+- `schema:dump` followed by destructive migrate on a live DB
+
+### Reseed / wipe workflows (local only)
+
+These are **local-dev only** — verify local env first:
+
+```bash
+php artisan migrate:fresh --seeder=LocalTestSeeder
+```
+
+Before running, confirm: local API checkout, local DB, `APP_ENV=local` (or `testing` in PHPUnit).
+
+### Cache / queues (production requires explicit ops approval)
+
+- `cache:clear`, `config:clear`, `route:clear`, `view:clear` on prod
+- `queue:flush`, `horizon:clear`, Redis `FLUSHALL` / `FLUSHDB`
+
+### Git / deploy (see also user git rules)
+
+- `git push --force` to `main` / `master` or production deploy branches
+- `git reset --hard`, `git clean -fdx` on shared or production checkouts
+
+## Required before any destructive local command
+
+1. Confirm working directory is the intended **local** repo (e.g. `upforge-api` on the developer machine).
+2. Confirm database is local (not prod connection string).
+3. Prefer `--seeder=LocalTestSeeder` over ad-hoc wipes; never use `LocalTestSeeder` against shared or remote DBs.
+
+## If the user asks to "reseed" or "reset the DB"
+
+- Run only against **local** API (`127.0.0.1:8000` / localhost).
+- Use `migrate:fresh --seeder=LocalTestSeeder` in `upforge-api`.
+- Do **not** run if the session is pointed at production or the environment cannot be verified.

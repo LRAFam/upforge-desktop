@@ -275,7 +275,10 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
+import { useRouter } from 'vue-router'
 import type { AnalysisItem } from '../env.d.ts'
+import { useGameTheme } from '../composables/useGameTheme'
+import { loadGameAnalyses } from '../lib/game-modules'
 import {
   getAgentImage,
   getAgentColor,
@@ -286,6 +289,9 @@ import {
 } from '../lib/valorant'
 
 type RangeValue = '7d' | '30d' | '90d' | 'all'
+
+const router = useRouter()
+const { primaryGame, features } = useGameTheme()
 
 const loading = ref(true)
 const allAnalyses = ref<AnalysisItem[]>([])
@@ -513,9 +519,13 @@ const worstMap = computed((): BreakdownRow | null => {
 // ── Data load ─────────────────────────────────────────────────────────────────
 
 onMounted(async () => {
+  if (!features.value.performanceStats) {
+    await router.replace('/dashboard')
+    return
+  }
   try {
     const [analyses, rrHistory] = await Promise.all([
-      window.api.analyses.get(100),
+      loadGameAnalyses(primaryGame.value, 100),
       window.api.stats.rrHistory().catch(() => []),
     ])
     allAnalyses.value = analyses

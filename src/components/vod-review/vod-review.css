@@ -1,0 +1,90 @@
+.vod-review {
+  background:
+    radial-gradient(ellipse 120% 80% at 50% -20%, rgba(255, 70, 85, 0.07), transparent 55%),
+    linear-gradient(180deg, #121212 0%, #0a0a0a 100%);
+}
+
+.vod-command-bar {
+  background: linear-gradient(180deg, rgba(22, 22, 22, 0.98), rgba(14, 14, 14, 0.95));
+  box-shadow: inset 0 -1px 0 rgba(255, 70, 85, 0.12);
+}
+
+.vod-toolbar-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  border-radius: 0.5rem;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.04);
+  padding: 0.375rem 0.625rem;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  color: rgb(156, 163, 175);
+  transition: color 0.15s, background 0.15s, border-color 0.15s;
+}
+.vod-toolbar-btn:hover {
+  border-color: rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.08);
+  color: white;
+}
+.vod-toolbar-btn--active {
+  border-color: rgba(239, 68, 68, 0.35);
+  background: rgba(239, 68, 68, 0.12);
+  color: rgb(254, 202, 202);
+}
+
+.vod-round-log {
+  background: linear-gradient(180deg, rgba(18, 18, 18, 0.98), rgba(12, 12, 12, 0.98));
+}
+
+.vod-round-card {
+  border-left: 2px solid transparent;
+}
+
+.vod-cinema {
+  background:
+    radial-gradient(ellipse at center, rgba(255, 255, 255, 0.03), transparent 65%),
+    #050505;
+}
+
+.vod-cinema-frame {
+  box-shadow:
+    0 0 0 1px rgba(255, 255, 255, 0.08),
+    0 0 0 1px rgba(255, 70, 85, 0.08) inset,
+    0 28px 80px rgba(0, 0, 0, 0.65),
+    0 0 48px rgba(255, 70, 85, 0.05);
+}
+
+.vod-transport {
+  background: linear-gradient(0deg, rgba(8, 8, 8, 0.98), rgba(14, 14, 14, 0.92));
+}
+
+.vod-transport-inner {
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 0.875rem;
+  background: rgba(0, 0, 0, 0.35);
+  padding: 0.625rem 0.75rem;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.35);
+}
+
+.vod-intel-panel {
+  background: linear-gradient(180deg, rgba(16, 16, 16, 0.98), rgba(10, 10, 10, 0.98));
+  box-shadow: inset 1px 0 0 rgba(255, 70, 85, 0.06);
+}
+
+.vod-notes-panel {
+  background: linear-gradient(180deg, rgba(14, 14, 14, 0.98), rgba(10, 10, 10, 0.98));
+  box-shadow: inset 1px 0 0 rgba(255, 255, 255, 0.04);
+}
+
+:deep(.vod-intel-brief) {
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.25);
+}
+
+.scrollbar-hide::-webkit-scrollbar { display: none; }
+.scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
+
+.event-pop-enter-active,
+.event-pop-leave-active { transition: all 0.2s cubic-bezier(0.34, 1.56, 0.64, 1); }
+.event-pop-enter-from { opacity: 0; transform: translateY(-6px) scale(0.9); }
+.event-pop-leave-to { opacity: 0; transform: translateY(-4px) scale(0.95); }

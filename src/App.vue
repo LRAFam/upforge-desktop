@@ -1,12 +1,16 @@
 <template>
-  <div class="relative h-screen bg-[#111111] text-white flex flex-col overflow-hidden select-none">
+  <div
+    class="relative h-screen bg-[#111111] text-white flex flex-col overflow-hidden select-none"
+    :style="cssVars"
+  >
     <!-- Subtle branded background texture -->
     <img src="./assets/upforge-bg.webp" alt="" class="pointer-events-none absolute inset-0 z-0 h-full w-full object-cover opacity-[0.045] select-none" />
     <Transition name="busy-bar">
       <div v-if="busyActive" class="pointer-events-none absolute inset-x-0 top-0 z-50 h-[2px] bg-white/[0.04]">
         <div
-          class="h-full rounded-full bg-gradient-to-r from-red-500 via-orange-500 to-red-500 bg-[length:200%_100%] animate-[busy-shimmer_1.2s_linear_infinite] shadow-[0_0_14px_rgba(239,68,68,0.45)] transition-all duration-300"
-          :style="{ width: `${busyBarWidth}%` }"
+          class="h-full rounded-full bg-[length:200%_100%] animate-[busy-shimmer_1.2s_linear_infinite] transition-all duration-300"
+          :class="`shadow-[0_0_14px_rgba(${theme.rgb},0.45)]`"
+          :style="{ width: `${busyBarWidth}%`, backgroundImage: `linear-gradient(90deg, ${theme.hexColor}, ${secondaryAccent}, ${theme.hexColor})` }"
         />
       </div>
     </Transition>
@@ -17,11 +21,11 @@
       class="drag-region relative flex items-center justify-between flex-shrink-0 px-3 border-b border-white/[0.09] bg-[#161616]/95 backdrop-blur-xl"
       :style="isMac ? 'height:44px; padding-left:80px' : 'height:44px'"
     >
-      <div class="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-red-500/70 to-orange-500/70" />
+      <div class="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r" :class="theme.chromeGradient" />
       <div class="flex items-center gap-2.5">
         <!-- Logo with red glow halo -->
         <div class="relative flex-shrink-0">
-          <div class="absolute inset-0 rounded-full bg-red-500/25 blur-md scale-150 pointer-events-none" />
+          <div class="absolute inset-0 rounded-full blur-md scale-150 pointer-events-none" :style="{ backgroundColor: `rgba(${theme.rgb}, 0.25)` }" />
           <img src="./assets/upforge-logo.png" alt="UpForge" class="relative h-5 w-auto object-contain" />
         </div>
         <div class="flex items-center gap-2">
@@ -157,26 +161,26 @@
       v-if="showNav"
       class="relative flex items-center gap-2 px-3 py-1.5 flex-shrink-0 border-b border-white/[0.09] bg-[#161616]/90 backdrop-blur-md"
     >
-      <div class="pointer-events-none absolute inset-x-0 bottom-0 h-px bg-gradient-to-r from-transparent via-red-500/40 to-transparent" />
+      <div class="pointer-events-none absolute inset-x-0 bottom-0 h-px bg-gradient-to-r" :class="theme.chromeGradient" />
       <div class="flex min-w-0 flex-1 items-center gap-2 overflow-x-auto scrollbar-hide">
         <GameSwitcher />
         <div class="h-5 w-px flex-shrink-0 bg-white/[0.10]" />
         <RouterLink
-          v-for="link in navLinks"
+          v-for="link in visibleNavLinks"
           :key="link.to"
           :to="link.to"
           class="relative flex flex-shrink-0 items-center gap-1.5 rounded-lg px-2.5 py-2 text-[11px] font-semibold transition-all duration-150"
           :class="
             $route.path === link.to
-              ? 'text-white bg-red-500/[0.10] shadow-[inset_0_0_0_1px_rgba(255,70,85,0.22)]'
+              ? theme.navActiveClass
               : 'text-gray-500 hover:text-gray-300 hover:bg-white/[0.04]'
           "
         >
           <component :is="'svg'" class="w-3.5 h-3.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" v-html="link.iconPath" />
           <span class="inline-flex items-center gap-1.5 whitespace-nowrap">
             <span>{{ link.label }}</span>
-            <span v-if="link.to === '/clips' && clipCountAvailable && clipCount > 0" class="inline-flex min-w-[18px] items-center justify-center rounded-full border border-red-500/20 bg-red-500/15 px-1.5 py-0.5 text-[9px] font-bold text-red-300">{{ clipCount }}</span>
-            <span v-else-if="link.to === '/clips' && hasClipIndicator" class="h-1.5 w-1.5 rounded-full bg-red-400 shadow-[0_0_10px_rgba(248,113,113,0.8)]" />
+            <span v-if="link.to === '/clips' && clipCountAvailable && clipCount > 0" class="inline-flex min-w-[18px] items-center justify-center rounded-full px-1.5 py-0.5 text-[9px] font-bold" :class="[theme.accentBg, theme.accentBorder, theme.accentText, 'border']">{{ clipCount }}</span>
+            <span v-else-if="link.to === '/clips' && hasClipIndicator" class="h-1.5 w-1.5 rounded-full" :style="{ backgroundColor: theme.hexColor, boxShadow: `0 0 10px rgba(${theme.rgb}, 0.8)` }" />
           </span>
         </RouterLink>
       </div>
@@ -199,9 +203,9 @@
           class="flex items-center gap-2 rounded-full border border-white/[0.08] bg-white/[0.03] px-2 py-1.5 transition-colors hover:border-white/[0.14] hover:bg-white/[0.05]"
           title="Account settings"
         >
-          <div class="flex h-7 w-7 items-center justify-center overflow-hidden rounded-full ring-1 ring-red-500/20">
+          <div class="flex h-7 w-7 items-center justify-center overflow-hidden rounded-full ring-1" :style="{ boxShadow: `inset 0 0 0 1px rgba(${theme.rgb}, 0.2)` }">
             <img v-if="userAvatarUrl" :src="userAvatarUrl" :alt="userDisplayName" class="h-full w-full object-cover" @error="userAvatarUrl = ''" />
-            <div v-else class="flex h-full w-full items-center justify-center bg-gradient-to-br from-red-500/25 to-orange-500/20 text-[10px] font-bold text-red-300">{{ userInitial }}</div>
+            <div v-else class="flex h-full w-full items-center justify-center text-[10px] font-bold" :class="[theme.accentBg, theme.accentText]">{{ userInitial }}</div>
           </div>
           <div class="hidden sm:flex flex-col leading-none">
             <span class="text-[10px] font-semibold text-gray-300 truncate max-w-[120px]">{{ userDisplayName }}</span>
@@ -246,17 +250,27 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import OnboardingWizard from './components/OnboardingWizard.vue'
 import AchievementManager from './components/AchievementManager.vue'
 import GameSwitcher from './components/GameSwitcher.vue'
 import { usePrimaryGame } from './composables/usePrimaryGame'
+import { useGameTheme } from './composables/useGameTheme'
+import { gameNavRoutes } from './lib/game-modules'
 import type { ClipRecord, ProfileData } from './env.d.ts'
 
 const route = useRoute()
 const router = useRouter()
 const { primaryGame, isValorant, loadFromSettings, applyFromSettings } = usePrimaryGame()
+const { theme, cssVars } = useGameTheme()
+
+/** Secondary accent for busy-bar gradient (orange for Valorant, muted variant for others). */
+const secondaryAccent = computed(() => {
+  if (primaryGame.value === 'valorant') return '#f97316'
+  if (primaryGame.value === 'cs2') return '#fbbf24'
+  return '#06b6d4'
+})
 
 const isMac = navigator.platform.toUpperCase().includes('MAC')
 const status = ref({ recording: false, currentGame: null as string | null })
@@ -315,6 +329,11 @@ const navLinks = [
   { to: '/performance', label: 'Performance', iconPath: '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"/>' },
   { to: '/settings', label: 'Settings', iconPath: '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>' },
 ]
+
+const visibleNavLinks = computed(() => {
+  const allowed = new Set(gameNavRoutes(primaryGame.value))
+  return navLinks.filter(link => allowed.has(link.to))
+})
 
 const devNavLink = computed(() =>
   (isAdmin.value || devModeEnabled.value) ? { to: '/dev', label: 'Developer' } : null
@@ -413,6 +432,14 @@ router.afterEach(() => {
   if (navBusyTimer) clearTimeout(navBusyTimer)
   navBusyTimer = setTimeout(() => { isNavigating.value = false }, 220)
   loadClipSummary().catch(() => {})
+})
+
+watch(primaryGame, () => {
+  if (!showNav.value) return
+  const allowed = gameNavRoutes(primaryGame.value)
+  if (!allowed.includes(route.path)) {
+    router.push('/dashboard').catch(() => {})
+  }
 })
 
 router.onError(() => {
