@@ -131,6 +131,16 @@ import {
   isGsiReceiving,
   getLatestGsiMap,
 } from './steam-gsi-server'
+import {
+  startDeadlockLogWatcher,
+  stopDeadlockLogWatcher,
+  resetDeadlockLogSession,
+  isDeadlockMatchLive,
+  isDeadlockMatchEnded,
+  isDeadlockDetectionActive,
+  getDeadlockMap,
+} from './deadlock-log-watcher'
+import { ensureDeadlockSteamLaunchOptions } from './deadlock-steam-setup'
 
 /** Human-readable label for a game identifier. */
 function gameLabel(game?: string | null): string {
@@ -531,6 +541,10 @@ function handlePrimaryGameSwitch(
 
   void ensureObsCaptureForGame(game)
 
+  if (game === 'deadlock') {
+    void ensureDeadlockSteamLaunchOptions()
+  }
+
   updateTrayMenuFn?.()
 }
 
@@ -901,6 +915,9 @@ function createTray(): void {
 function setupGameDetection(): void {
   startSteamGsiServer()
   gameDetector.setWatchGame(normalizePrimaryGame(settingsManager.get().primaryGame))
+  if (normalizePrimaryGame(settingsManager.get().primaryGame) === 'deadlock') {
+    void ensureDeadlockSteamLaunchOptions()
+  }
 
   onRecordingLost = (error: string) => {
     const game = gameDetector.currentGame() ?? 'valorant'
@@ -1014,7 +1031,8 @@ function setupGameDetection(): void {
     }
     if (game !== 'cs2' && game !== 'deadlock') return
 
-    resetSteamGsiSession()
+    if (game === 'cs2') resetSteamGsiSession()
+    if (game === 'deadlock') resetDeadlockLogSession()
     const emitNextMatchWatch = async () => {
       await new Promise((r) => setTimeout(r, 5000))
       if (await gameDetector.isGameProcessRunning(game)) {
@@ -1058,7 +1076,7 @@ function setupGameDetection(): void {
         matchSessionStart,
         matchStartTime: currentMatchStartTime,
         recordingStartTime: currentRecordingStartTime ?? matchSessionStart,
-        gsiMap: currentGsiMapName ?? getLatestGsiMap(),
+        gsiMap: currentGsiMapName ?? (game === 'deadlock' ? getDeadlockMap() : getLatestGsiMap()),
         customReplayDir: game === 'cs2' ? config?.cs2DemoDir : undefined,
         localPlayerName: null as string | null,
       }
@@ -1636,15 +1654,16 @@ function setupGameDetection(): void {
     const filterByMode = game === 'valorant' && recordedModes.length > 0 &&
       !([...ALL_MODES].every(m => recordedModes.includes(m)))
 
-    // CS2 / Deadlock — wait for GSI live match (process open ≠ in a match).
+    // CS2 — GSI live match (process open ≠ in a match).
+    // Deadlock — console.log tailing (-condebug); no Valve GSI support.
     let authOk = false
-    if (game === 'cs2' || game === 'deadlock') {
+    if (game === 'cs2') {
       resetSteamGsiSession()
-      const gsiInstall = await installSteamGsiConfig(game)
+      const gsiInstall = await installSteamGsiConfig('cs2')
       if (gsiInstall.needsRestart) {
-        logActivity(`Restart ${gameLabel(game)} once so UpForge can detect when a match starts`)
+        logActivity('Restart CS2 once so UpForge can detect when a match starts')
       }
-      logActivity(`${gameLabel(game)} running — waiting for match`)
+      logActivity('CS2 running — waiting for match')
 
       const MATCH_TIMEOUT_MS = 25 * 60 * 1000
       const loopStart = Date.now()
@@ -1658,15 +1677,48 @@ function setupGameDetection(): void {
 
         if (!gsiHintShown && Date.now() - loopStart > 45_000 && !isGsiReceiving()) {
           gsiHintShown = true
-          logActivity(
-            `${gameLabel(game)} match detection inactive — restart the game if recording never starts on its own`,
-          )
+          logActivity('CS2 match detection inactive — restart the game if recording never starts on its own')
         }
 
         if (isGsiMatchLive()) {
           matchStartTime = Date.now()
           currentMatchStartTime = matchStartTime
           currentGsiMapName = getLatestGsiMap()
+          gameMode = 'COMPETITIVE'
+          modeConfident = true
+          break
+        }
+      }
+    } else if (game === 'deadlock') {
+      const steamSetup = await ensureDeadlockSteamLaunchOptions()
+      resetDeadlockLogSession()
+      startDeadlockLogWatcher()
+      logActivity('Deadlock running — waiting for match')
+
+      const MATCH_TIMEOUT_MS = 25 * 60 * 1000
+      const loopStart = Date.now()
+      let reopenHintShown = false
+      const deadline = Date.now() + MATCH_TIMEOUT_MS
+      while (Date.now() < deadline && !cancelled) {
+        if (abortIfStale(isStale, game)) return
+        await new Promise((r) => setTimeout(r, 1000))
+        if (cancelled) break
+        if (!await gameDetector.isGameProcessRunning(game)) { cancelled = true; break }
+
+        if (
+          !reopenHintShown
+          && steamSetup.needsGameRestart
+          && Date.now() - loopStart > 20_000
+          && !isDeadlockDetectionActive()
+        ) {
+          reopenHintShown = true
+          logActivity('Reopen Deadlock so UpForge can detect matches')
+        }
+
+        if (isDeadlockMatchLive()) {
+          matchStartTime = Date.now()
+          currentMatchStartTime = matchStartTime
+          currentGsiMapName = getDeadlockMap()
           gameMode = 'COMPETITIVE'
           modeConfident = true
           break
@@ -1820,13 +1872,15 @@ function setupGameDetection(): void {
     if ((game === 'cs2' || game === 'deadlock') && cancelled) {
       logActivity('Game quit before match started — nothing recorded')
       console.log('[GameDetector] Game quit before match — no recording')
+      if (game === 'deadlock') stopDeadlockLogWatcher()
       tray?.setToolTip(idleTooltip(game))
       return
     }
 
     if ((game === 'cs2' || game === 'deadlock') && matchStartTime === null) {
       logActivity('No match started — returning to idle')
-      console.log('[GameDetector] GSI wait timed out without live match — not recording')
+      console.log(`[GameDetector] ${game} match wait timed out without live match — not recording`)
+      if (game === 'deadlock') stopDeadlockLogWatcher()
       tray?.setToolTip(idleTooltip(game))
       await rearmGameDetection(game)
       return
@@ -1901,11 +1955,12 @@ function setupGameDetection(): void {
       // Start Riot local API tracking (kill/round events, match ID, post-match details)
       riotLocalApi.start(game, matchStartTime ?? undefined)
     } else if (game === 'cs2' || game === 'deadlock') {
-      // Stop when GSI reports menu/gameover — game process often stays open between matches.
+      // Stop when match ends — CS2 via GSI, Deadlock via console.log.
       gsiPollTimer = setInterval(() => {
         void (async () => {
           if (!obsRecorder.isRecording() || matchHandled) return
-          if (!isGsiMatchEnded()) return
+          const ended = game === 'deadlock' ? isDeadlockMatchEnded() : isGsiMatchEnded()
+          if (!ended) return
 
           const elapsedSec = currentRecordingStartTime
             ? Math.floor((Date.now() - currentRecordingStartTime) / 1000)

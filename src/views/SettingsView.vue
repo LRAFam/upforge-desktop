@@ -300,8 +300,15 @@
               </div>
             </div>
 
+            <div v-else-if="settings.primaryGame === 'deadlock'" class="rounded-2xl border border-teal-500/20 bg-teal-500/[0.05] p-4 space-y-2">
+              <div>
+                <p class="text-sm font-semibold text-white">Deadlock recording</p>
+                <p class="mt-1 text-xs text-gray-500 leading-relaxed">UpForge configures Deadlock automatically and starts recording when a match loads. Use borderless windowed mode so OBS can capture the game.</p>
+              </div>
+            </div>
+
             <div v-else class="rounded-2xl border border-white/[0.10] bg-black/20 p-4">
-              <p class="text-xs text-gray-500 leading-relaxed">Recording starts when {{ settings.primaryGame === 'deadlock' ? 'Deadlock' : 'your game' }} is detected. Queue filters apply to Valorant only.</p>
+              <p class="text-xs text-gray-500 leading-relaxed">Recording starts when your game is detected. Queue filters apply to Valorant only.</p>
             </div>
 
             <div class="rounded-2xl border border-white/[0.10] bg-black/20 p-4 space-y-3">

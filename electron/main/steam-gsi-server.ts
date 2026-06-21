@@ -1,6 +1,5 @@
 /**
- * CS2 / Deadlock match detection via Valve Game State Integration (GSI).
- * Process open ≠ in-match — GSI map_phase distinguishes menu from live play.
+ * CS2 match detection via Valve Game State Integration (GSI).
  */
 
 import http from 'http'
