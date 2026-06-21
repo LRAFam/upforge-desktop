@@ -57,6 +57,7 @@ import {
 } from './user-session'
 import { resolveRecordingSavePath } from './user-data-paths'
 import { startAnalysisPoll, stopActiveAnalysisPoll, reconcileOrphanedJob } from './analysis-poll'
+import { reconcileStuckAnalysisJobs, type ReconciledAnalysisContext } from './stuck-analysis-reconciler'
 import { AuthManager } from './auth-manager'
 import { SettingsManager } from './settings-manager'
 import { setupIpcHandlers, setupClipHandlers, cancelAllPollingTimers } from './ipc-handlers'
@@ -697,8 +698,112 @@ function refreshCoachNotificationPoller(): void {
       getMainWindow: () => mainWindow,
       notifySilent,
     })
+    startStuckAnalysisReconciler()
   } else {
     stopCoachNotificationPoller()
+    stopStuckAnalysisReconciler()
+  }
+}
+
+let stuckAnalysisReconcileTimer: ReturnType<typeof setInterval> | null = null
+
+function dispatchReconciledAnalysisReady(ctx: ReconciledAnalysisContext): void {
+  const result = ctx.status.result as Record<string, unknown> | undefined
+  const analysisId = typeof result?.analysis_id === 'number' ? result.analysis_id : undefined
+  const score = typeof result?.overall_score === 'number' ? result.overall_score : undefined
+
+  if (ctx.recordingId) {
+    if (analysisId != null) recordingsStore.setAnalysisId(ctx.recordingId, analysisId)
+    else recordingsStore.clearAnalysisPipeline(ctx.recordingId)
+    mainWindow?.webContents.send('recordings:updated')
+  }
+
+  clearPendingJob()
+  logActivity(`Analysis ready${score != null ? ` — Score: ${score}/100` : ''}`)
+
+  const rec = ctx.recordingId
+    ? recordingsStore.getById(ctx.recordingId)
+    : recordingsStore.getByJobId(ctx.jobId)
+  const timeline = rec?.timeline ?? null
+  const lastScore = timeline?.finalScore
+    ?? (timeline?.roundScores?.length ? timeline.roundScores[timeline.roundScores.length - 1] : null)
+  const matchResult: 'win' | 'loss' | null = lastScore
+    ? (lastScore.allyScore > lastScore.enemyScore ? 'win' : 'loss')
+    : null
+  const rawTiming = result?.timing_comparisons
+
+  const payload = {
+    recording_id: ctx.recordingId,
+    overall_score: result?.overall_score,
+    analysis_id: analysisId,
+    top_issue: result?.top_issue,
+    priority_improvements: result?.priority_improvements ?? [],
+    verdict: result?.verdict ?? null,
+    coaching_tags: result?.coaching_tags ?? [],
+    spatial_summary: mergeSpatialSummary(result?.spatial_summary, timeline?.spatialSummary),
+    category_scores: result?.category_scores ?? [],
+    session_start: rec?.recordedAt ?? Date.now(),
+    kills: timeline?.finalStats?.kills ?? result?.kills ?? null,
+    deaths: timeline?.finalStats?.deaths ?? result?.deaths ?? null,
+    assists: timeline?.finalStats?.assists ?? result?.assists ?? null,
+    match_result: matchResult,
+    ally_score: lastScore?.allyScore ?? null,
+    enemy_score: lastScore?.enemyScore ?? null,
+    match_highlights: result?.match_highlights ?? [],
+    skill_profile: null,
+    timing_comparisons: Array.isArray(rawTiming) ? rawTiming : [],
+  }
+
+  if (postGameWindow && !postGameWindow.isDestroyed()) {
+    postGameWindow.webContents.send('post-game:analysis-ready', payload)
+  }
+  mainWindow?.webContents.send('dashboard:refresh')
+
+  const notifAgent = ctx.agent ?? gameLabel(ctx.game)
+  const notifMap = ctx.map ? ` on ${ctx.map}` : ''
+  const notifBody = score != null
+    ? `${notifAgent}${notifMap} — ${score}/100`
+    : `${notifAgent}${notifMap}`.trim()
+  showAppNotification({
+    title: 'Coaching ready',
+    body: notifBody,
+    silent: notifySilent(),
+  })
+  tray?.setToolTip(idleTooltip(ctx.game))
+}
+
+function runStuckAnalysisReconcile(): void {
+  if (!authManager.isAuthenticated()) return
+  void reconcileStuckAnalysisJobs({
+    uploadManager,
+    recordingsStore,
+    isAuthenticated: () => authManager.isAuthenticated(),
+    onCompleted: dispatchReconciledAnalysisReady,
+    onFailed: ({ error, recordingId }) => {
+      if (recordingId) recordingsStore.clearAnalysisPipeline(recordingId)
+      logActivity(`Analysis failed: ${error}`)
+      mainWindow?.webContents.send('recordings:updated')
+      mainWindow?.webContents.send('dashboard:refresh')
+      if (postGameWindow && !postGameWindow.isDestroyed()) {
+        postGameWindow.webContents.send('post-game:upload-error', error)
+      }
+    },
+    resumePoll: (jobId, context) => {
+      void resumePollForJob(jobId, context)
+    },
+  })
+}
+
+function startStuckAnalysisReconciler(): void {
+  if (stuckAnalysisReconcileTimer) return
+  runStuckAnalysisReconcile()
+  stuckAnalysisReconcileTimer = setInterval(runStuckAnalysisReconcile, 2 * 60 * 1000)
+}
+
+function stopStuckAnalysisReconciler(): void {
+  if (stuckAnalysisReconcileTimer) {
+    clearInterval(stuckAnalysisReconcileTimer)
+    stuckAnalysisReconcileTimer = null
   }
 }
 
@@ -2233,18 +2338,13 @@ async function handleOrphanedJobAtStartup(
   }
 
   if (decision.action === 'completed') {
-    clearPendingJob()
-    const score = (decision.status.result as Record<string, unknown> | undefined)?.overall_score as number | undefined
-    logActivity(`Previous analysis finished while app was closed${score != null ? ` — Score: ${score}/100` : ''}`)
-    mainWindow?.webContents.send('dashboard:refresh')
-    tray?.setToolTip(idleTooltip(context.game))
-    const notifAgent = context.agent ?? gameLabel(context.game)
-    const notifMap = context.map ? ` on ${context.map}` : ''
-    const notifScore = score != null ? ` — Score: ${score}/100` : ''
-    showAppNotification({
-      title: 'UpForge — Analysis Ready',
-      body: `${notifAgent}${notifMap}${notifScore}`,
-      silent: notifySilent(),
+    dispatchReconciledAnalysisReady({
+      jobId: orphanedJob.job_id,
+      status: decision.status,
+      recordingId: recordingsStore.getByJobId(orphanedJob.job_id)?.id ?? null,
+      agent: context.agent ?? null,
+      map: context.map ?? null,
+      game: context.game ?? 'valorant',
     })
     return
   }
@@ -2283,8 +2383,9 @@ async function resumePollForJob(
       const score = (status.result as Record<string, unknown> | undefined)?.overall_score as number | undefined
       const analysisId = (status.result as Record<string, unknown> | undefined)?.analysis_id as number | undefined
       const rec = recordingsStore.getByJobId(jobId)
-      if (rec && analysisId != null) {
-        recordingsStore.setAnalysisId(rec.id, analysisId)
+      if (rec) {
+        if (analysisId != null) recordingsStore.setAnalysisId(rec.id, analysisId)
+        else recordingsStore.clearAnalysisPipeline(rec.id)
         mainWindow?.webContents.send('recordings:updated')
       }
       logActivity(`Resumed analysis ready${score != null ? ` — Score: ${score}/100` : ''}`)
@@ -2603,8 +2704,9 @@ async function doUploadAndAnalyse(
       onCompleted: (status) => {
         const score = (status.result as Record<string, unknown>).overall_score as number | undefined
         const analysisId = (status.result as Record<string, unknown>).analysis_id as number | undefined
-        if (recordingId && analysisId != null) {
-          recordingsStore.setAnalysisId(recordingId, analysisId)
+        if (recordingId) {
+          if (analysisId != null) recordingsStore.setAnalysisId(recordingId, analysisId)
+          else recordingsStore.clearAnalysisPipeline(recordingId)
           mainWindow?.webContents.send('recordings:updated')
         }
         const improvements = (status.result as Record<string, unknown>).priority_improvements as string[] | undefined
@@ -2714,9 +2816,10 @@ async function doUploadAndAnalyse(
         tray?.setToolTip(idleTooltip(game))
       },
       onConnectionLost: () => {
-        logActivity('Analysis polling failed — lost connection to server')
-        send('post-game:upload-error', 'Lost connection while waiting for analysis. Your job is still queued — reopen UpForge when you\'re back online.')
-        tray?.setToolTip(idleTooltip(game))
+        logActivity('Analysis polling paused — lost connection (retrying automatically)')
+        send('post-game:analysis-deferred', { jobId: result.job_id })
+        tray?.setToolTip('UpForge — Analysis still running…')
+        runStuckAnalysisReconcile()
       },
       onPollEnded: (reason) => {
         if (reason === 'max_duration') {
@@ -3135,7 +3238,13 @@ async function startApp(): Promise<void> {
 
   ipcMain.handle('recordings:get', () => {
     scanForOrphanedRecordings()
+    runStuckAnalysisReconcile()
     return recordingsStore.getPending(linkedRiotFromAuth())
+  })
+
+  ipcMain.handle('analysis:reconcile-stuck', () => {
+    runStuckAnalysisReconcile()
+    return { ok: true }
   })
 
   ipcMain.handle('recordings:analyse', async (_e, { id }: { id: string }) => {

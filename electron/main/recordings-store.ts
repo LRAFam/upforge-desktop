@@ -202,6 +202,25 @@ export class RecordingsStore {
     }
   }
 
+  /** Clear in-flight upload/analysis UI state when a job finishes without a linked analysis id. */
+  clearAnalysisPipeline(id: string): void {
+    const rec = this.recordings.find(r => r.id === id)
+    if (!rec) return
+    rec.pipelineStatus = undefined
+    rec.analysisProgress = undefined
+    rec.analysisStep = undefined
+    this.persist()
+  }
+
+  /** Recordings with a job id that still look in-flight on the dashboard. */
+  listStuckAnalysisJobs(): PendingRecording[] {
+    return this.recordings.filter(r => {
+      if (!r.jobId) return false
+      if (r.pipelineStatus === 'analysing' || r.pipelineStatus === 'uploading') return true
+      return r.analysed && r.analysisId == null
+    })
+  }
+
   setPipelineStatus(id: string, status: RecordingPipelineStatus): void {
     const rec = this.recordings.find(r => r.id === id)
     if (!rec) return

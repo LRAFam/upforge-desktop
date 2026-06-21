@@ -200,6 +200,10 @@
             </p>
             <button
               class="mt-2 px-2.5 py-1 text-xs font-medium text-gray-300 bg-white/[0.06] hover:bg-white/[0.1] border border-white/[0.08] rounded-lg transition-colors"
+              @click="checkAnalysisNow"
+            >Check for results</button>
+            <button
+              class="mt-2 ml-2 px-2.5 py-1 text-xs font-medium text-gray-300 bg-white/[0.06] hover:bg-white/[0.1] border border-white/[0.08] rounded-lg transition-colors"
               @click="dismiss"
             >Close &amp; continue in background</button>
           </div>
@@ -210,7 +214,11 @@
           </svg>
           <div class="flex-1 min-w-0">
             <p class="text-xs text-gray-400">Complex gameplay can take 10–15 minutes — your match is still processing.</p>
-            <p class="text-xs text-gray-600 mt-0.5">Progress updates live from our servers{{ analysisProgress > 0 ? ` (${analysisProgress}% so far)` : '' }}.</p>
+            <p class="text-xs text-gray-600 mt-0.5">Progress updates live from our servers{{ analysisProgress > 0 ? ` (${analysisProgress}% so far)` : '' }}. If this looks stuck, check for results below.</p>
+            <button
+              class="mt-2 px-2.5 py-1 text-xs font-medium text-gray-300 bg-white/[0.06] hover:bg-white/[0.1] border border-white/[0.08] rounded-lg transition-colors"
+              @click="checkAnalysisNow"
+            >Check for results</button>
           </div>
         </div>
       </div>
@@ -977,6 +985,7 @@ const selectedCoachName = computed(() =>
 )
 let sessionStart = 0
 let stuckTimer: ReturnType<typeof setTimeout> | null = null
+let reconcileKickTimer: ReturnType<typeof setTimeout> | null = null
 let tipTimer: ReturnType<typeof setInterval> | null = null
 let elapsedInterval: ReturnType<typeof setInterval> | null = null
 
@@ -1060,12 +1069,18 @@ function resetAnalysisUi() {
   analysisDeferred.value = false
 }
 
+function checkAnalysisNow() {
+  void window.api.recordings.get().catch(() => {})
+}
+
 function startStuckTimer() {
   if (stuckTimer) clearTimeout(stuckTimer)
+  if (reconcileKickTimer) clearTimeout(reconcileKickTimer)
   resetAnalysisUi()
   analysisStartedAt.value = Date.now()
   analysisElapsedSecs.value = 0
   stuckTimer = setTimeout(() => { analysisStuck.value = true }, 8 * 60 * 1000)
+  reconcileKickTimer = setTimeout(checkAnalysisNow, 30_000)
   tipTimer = setInterval(() => {
     tipIndex.value = (tipIndex.value + 1) % COACHING_TIPS.length
   }, 15000)
@@ -1078,6 +1093,7 @@ function startStuckTimer() {
 
 function clearStuckTimer() {
   if (stuckTimer) { clearTimeout(stuckTimer); stuckTimer = null }
+  if (reconcileKickTimer) { clearTimeout(reconcileKickTimer); reconcileKickTimer = null }
   if (tipTimer) { clearInterval(tipTimer); tipTimer = null }
   if (elapsedInterval) { clearInterval(elapsedInterval); elapsedInterval = null }
   analysisStuck.value = false

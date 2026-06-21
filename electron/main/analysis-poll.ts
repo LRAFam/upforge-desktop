@@ -42,10 +42,16 @@ export type AnalysisPollEndReason = 'completed' | 'failed' | 'connection_lost' |
 
 /** Only one analysis poll should run at a time — a new match upload supersedes resume polls. */
 let activePollStop: (() => void) | null = null
+let activePollJobId: string | null = null
+
+export function getActiveAnalysisPollJobId(): string | null {
+  return activePollJobId
+}
 
 export function stopActiveAnalysisPoll(): void {
   activePollStop?.()
   activePollStop = null
+  activePollJobId = null
 }
 
 export type OrphanedJobReconcile =
@@ -145,7 +151,10 @@ export function startAnalysisPoll(opts: StartAnalysisPollOptions): { stop: () =>
       clearTimeout(pollTimer)
       pollTimer = null
     }
-    if (activePollStop === releaseActive) activePollStop = null
+    if (activePollStop === releaseActive) {
+      activePollStop = null
+      if (activePollJobId === opts.jobId) activePollJobId = null
+    }
   }
 
   const releaseActive = stop
@@ -168,7 +177,7 @@ export function startAnalysisPoll(opts: StartAnalysisPollOptions): { stop: () =>
 
     if (elapsedMs > ANALYSIS_POLL_MAX_MS) {
       stop()
-      clearPendingJob()
+      // Keep pending-job.json — server may still finish; stuck-job reconciler will pick it up.
       opts.onPollEnded?.('max_duration')
       return
     }
@@ -241,6 +250,7 @@ export function startAnalysisPoll(opts: StartAnalysisPollOptions): { stop: () =>
     }
   }
 
+  activePollJobId = opts.jobId
   activePollStop = releaseActive
   schedulePoll()
   return { stop }
