@@ -3,6 +3,7 @@ import { useSettings } from '../../composables/useSettings'
 import PaymentFailedAlert from '../../components/PaymentFailedAlert.vue'
 
 const {
+  BADGE_PREVIEW_ITEMS,
   PRIMARY_GAMES,
   accountCs2Hint,
   accountInitial,
@@ -10,6 +11,10 @@ const {
   accountSteamLinked,
   accountSteamStatus,
   archiveUsagePercent,
+  getBadgeIconUrl,
+  getSubscriptionIconUrl,
+  getTierBadgeClass,
+  getTierBadgeLabel,
   billingMessage,
   billingMessageError,
   billingPortalLoading,

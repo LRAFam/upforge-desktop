@@ -3,6 +3,7 @@ import { useSettings } from '../../composables/useSettings'
 
 const {
   GAME_MODES,
+  formatGameMode,
   browseCs2DemoDir,
   changeSavePath,
   cs2Detecting,

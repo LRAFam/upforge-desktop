@@ -1,4 +1,4 @@
-import { ref, computed, reactive, inject, provide, onMounted, onUnmounted, type InjectionKey } from 'vue'
+import { ref, computed, reactive, inject, provide, onMounted, onUnmounted, toRaw, type InjectionKey } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import type { AppSettings } from '../env.d.ts'
 import { PRIMARY_GAMES, type PrimaryGame } from '../lib/games'
@@ -955,13 +955,17 @@ function createSettings() {
   })
 
   return {
+    BADGE_PREVIEW_ITEMS,
     CRITICAL_FREE_DISK_BYTES,
     GAME_MODES,
-    HotkeyAction,
     LOW_FREE_DISK_BYTES,
-    OBSStatus,
+    PRIMARY_GAMES,
     SETTINGS_TABS,
-    SettingsTab,
+    getBadgeIconUrl,
+    getSubscriptionIconUrl,
+    getTierBadgeClass,
+    getTierBadgeLabel,
+    formatGameMode,
     accountCs2Hint,
     accountInitial,
     accountRiotId,
