@@ -104,6 +104,10 @@ export function setupAppHandlers(
       if (!w.isDestroyed()) w.webContents.send('settings:changed', result)
     })
     onSettingsSaved?.(result)
+    if ('primaryGame' in partial && partial.primaryGame !== prev.primaryGame && auth.isAuthenticated()) {
+      const game = String(partial.primaryGame)
+      void auth.syncPrimaryGameToApi(game)
+    }
     if (partial.onboardingComplete === true && !prev.onboardingComplete) {
       trackOnboardingComplete()
     }

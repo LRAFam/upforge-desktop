@@ -245,6 +245,31 @@ export class AuthManager {
     }
   }
 
+  /** Push desktop primary-game choice to the account (keeps web + desktop in sync). */
+  async syncPrimaryGameToApi(game: string): Promise<boolean> {
+    if (!this._token) return false
+    const primaryGame = game === 'cs2' || game === 'deadlock' ? game : 'valorant'
+    const existing = this._user?.games?.length
+      ? [...this._user.games]
+      : [primaryGame]
+    const games = existing.includes(primaryGame) ? existing : [...existing, primaryGame]
+    try {
+      const res = await this._api.put('/api/user/games', {
+        games,
+        primary_game: primaryGame,
+      })
+      const next = res.data?.primary_game ?? primaryGame
+      if (this._user) {
+        this._user.primary_game = next
+        this._user.games = res.data?.games ?? games
+      }
+      return true
+    } catch (err) {
+      log.warn('[Auth] Failed to sync primary game to API:', err)
+      return false
+    }
+  }
+
   async fetchProfile(): Promise<ProfileData | null> {
     try {
       const res = await this._api.get('/api/profile')

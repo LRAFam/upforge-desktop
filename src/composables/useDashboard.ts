@@ -382,7 +382,7 @@ function createDashboard() {
   }
 
   async function loadClipCount() {
-    clipCount.value = (await window.api.clips.get().catch(() => [] as ClipRecord[])).length
+    clipCount.value = (await window.api.clips.get({ game: primaryGame.value }).catch(() => [] as ClipRecord[])).length
   }
 
   async function loadSkillProfileFromSettings() {

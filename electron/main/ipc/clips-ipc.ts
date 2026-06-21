@@ -9,6 +9,7 @@ import https from 'https'
 import http from 'http'
 import { AuthManager } from '../auth-manager'
 import { ClipStore } from '../clip-store'
+import { clipMatchesGame, normalizeClipGame } from '../clip-game'
 import { ClipExtractor } from '../clip-extractor'
 import { HotkeyManager } from '../hotkey-manager'
 import { UpgradeRequiredError } from '../errors'
@@ -51,7 +52,12 @@ export function setupClipHandlers(
     return recordingsStore.getTimelineByJobId(clip.analysisJobId)
   }
 
-  ipcMain.handle('clips:get', () => clipStore.getAll())
+  ipcMain.handle('clips:get', (_e, opts?: { game?: string; allGames?: boolean }) => {
+    const all = clipStore.getAll()
+    if (opts?.allGames || !opts?.game) return all
+    const game = normalizeClipGame(opts.game)
+    return all.filter(c => clipMatchesGame(c, game))
+  })
 
   ipcMain.handle('clips:get-thumbnail', (_e, { id }: { id: string }) => {
     const clip = clipStore.getById(id)

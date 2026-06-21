@@ -1576,7 +1576,7 @@ function retryUpload() {
 
 async function loadSessionClips() {
   try {
-    const clips = await window.api.clips.get()
+    const clips = await window.api.clips.get({ game: gameInfo.value.game })
     const session = clips.filter((c) => c.savedAt >= sessionStart)
     sessionClips.value = session
     sessionClipCount.value = session.length

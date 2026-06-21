@@ -317,6 +317,8 @@ export interface ClipRecord {
   savedAt: number
   analysisJobId: string | null
   matchId: string | null
+  /** valorant | cs2 | deadlock — omitted on legacy clips (treated as valorant) */
+  game?: 'valorant' | 'cs2' | 'deadlock' | null
   gameMode: string | null
   uploadStatus: 'local' | 'uploading' | 'uploaded' | 'failed'
   apiClipId: number | null
@@ -581,7 +583,7 @@ declare global {
         }>
       }
       clips: {
-        get: () => Promise<ClipRecord[]>
+        get: (opts?: { game?: string; allGames?: boolean }) => Promise<ClipRecord[]>
         getThumbnail: (id: string) => Promise<string | null>
         delete: (id: string) => Promise<{ ok: boolean }>
         updateTitle: (id: string, title: string) => Promise<{ ok: boolean }>

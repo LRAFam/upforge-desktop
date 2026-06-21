@@ -16,6 +16,7 @@ import { ClipExtractor } from './clip-extractor'
 import { reportError } from './error-reporter'
 import type { MatchData, KillEvent } from './riot-types'
 import { detectClutchRoundsForGame } from './demo-clutch'
+import type { ClipGame } from './clip-game'
 
 function clipMatchMeta(
   timeline: MatchData | null,
@@ -85,6 +86,7 @@ export class ClipPipeline {
     videoPath: string,
     timeline: MatchData | null,
     analysisJobId: string | null,
+    game: ClipGame = 'valorant',
   ): Promise<void> {
     const { clipStore, clipExtractor, hotkeyBookmarks, logActivity, notifySilent } = this.ctx
 
@@ -120,7 +122,7 @@ export class ClipPipeline {
       const offsetMs = bookmarkedAt - recordingStart
       const startMs = Math.max(0, offsetMs - 25_000)
       try {
-        const rec = clipStore.add({ path: '', thumbPath: null, trigger: 'hotkey', map, agent, durationSeconds: 30, round: null, killCount: null, analysisJobId, ...baseMeta })
+        const rec = clipStore.add({ path: '', thumbPath: null, trigger: 'hotkey', map, agent, durationSeconds: 30, round: null, killCount: null, analysisJobId, game, ...baseMeta })
         const clipPath = ClipExtractor.clipPath(rec.id)
         const thumbPath = ClipExtractor.thumbPath(rec.id)
         await clipExtractor.extract({ sourcePath: videoPath, startOffsetMs: startMs, durationMs: 30_000, outputPath: clipPath })
@@ -165,7 +167,7 @@ export class ClipPipeline {
         try {
           const rec = clipStore.add({
             path: '', thumbPath: null, trigger: 'kill', map, agent, durationSeconds: 13,
-            round: kill.round ?? null, killCount: null, analysisJobId, ...clipMatchMeta(timeline, kill),
+            round: kill.round ?? null, killCount: null, analysisJobId, game, ...clipMatchMeta(timeline, kill),
           })
           const clipPath = ClipExtractor.clipPath(rec.id)
           const thumbPath = ClipExtractor.thumbPath(rec.id)
@@ -192,7 +194,7 @@ export class ClipPipeline {
         const durationMs = Math.min(last.videoOffsetMs! - first.videoOffsetMs! + postBuffer, 120_000)
         try {
           const rec = clipStore.add({
-            path: '', thumbPath: null, trigger, map, agent, durationSeconds: durationMs / 1000, round, killCount, analysisJobId,
+            path: '', thumbPath: null, trigger, map, agent, durationSeconds: durationMs / 1000, round, killCount, analysisJobId, game,
             ...clipMatchMeta(timeline, first),
           })
           const clipPath = ClipExtractor.clipPath(rec.id)
@@ -218,7 +220,7 @@ export class ClipPipeline {
         try {
           const rec = clipStore.add({
             path: '', thumbPath: null, trigger: 'clutch', map, agent, durationSeconds: durationMs / 1000, round,
-            killCount: clutchKills.length, analysisJobId, ...clipMatchMeta(timeline, first),
+            killCount: clutchKills.length, analysisJobId, game, ...clipMatchMeta(timeline, first),
           })
           const clipPath = ClipExtractor.clipPath(rec.id)
           const thumbPath = ClipExtractor.thumbPath(rec.id)
@@ -248,6 +250,7 @@ export class ClipPipeline {
     videoPath: string,
     timeline: MatchData,
     analysisJobId: string | null,
+    game: ClipGame = 'valorant',
   ): Promise<void> {
     const { clipStore, clipExtractor, logActivity, notifySilent } = this.ctx
 
@@ -300,7 +303,7 @@ export class ClipPipeline {
       const durationMs = Math.min(last.videoOffsetMs! - first.videoOffsetMs! + postBuffer, 120_000)
       try {
         const rec = clipStore.add({
-          path: '', thumbPath: null, trigger, map, agent, durationSeconds: durationMs / 1000, round, killCount, analysisJobId,
+          path: '', thumbPath: null, trigger, map, agent, durationSeconds: durationMs / 1000, round, killCount, analysisJobId, game,
           ...clipMatchMeta(timeline, first),
         })
         const clipPath = ClipExtractor.clipPath(rec.id)
@@ -326,7 +329,7 @@ export class ClipPipeline {
       try {
         const rec = clipStore.add({
           path: '', thumbPath: null, trigger: 'clutch', map, agent, durationSeconds: durationMs / 1000, round,
-          killCount: clutchKills.length, analysisJobId, ...clipMatchMeta(timeline, first),
+          killCount: clutchKills.length, analysisJobId, game, ...clipMatchMeta(timeline, first),
         })
         const clipPath = ClipExtractor.clipPath(rec.id)
         const thumbPath = ClipExtractor.thumbPath(rec.id)

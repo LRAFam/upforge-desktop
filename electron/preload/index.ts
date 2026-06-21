@@ -90,7 +90,7 @@ const api = {
     openFolder: () => ipcRenderer.invoke('storage:open-folder')
   },
   clips: {
-    get: () => ipcRenderer.invoke('clips:get'),
+    get: (opts?: { game?: string; allGames?: boolean }) => ipcRenderer.invoke('clips:get', opts ?? {}),
     getThumbnail: (id: string) => ipcRenderer.invoke('clips:get-thumbnail', { id }),
     delete: (id: string) => ipcRenderer.invoke('clips:delete', { id }),
     updateTitle: (id: string, title: string) => ipcRenderer.invoke('clips:update-title', { id, title }),

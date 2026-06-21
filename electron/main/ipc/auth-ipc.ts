@@ -73,9 +73,8 @@ export function setupAuthHandlers(
   })
 
   ipcMain.handle('auth:refresh-user', async () => {
-    const user = await auth.fetchUser()
-    if (user) onLoginSuccess?.()
-    return user
+    // Profile refresh only — do not run login hooks (they overwrite local primaryGame from API).
+    return auth.fetchUser()
   })
 
   ipcMain.handle('auth:load-stored', async () => {

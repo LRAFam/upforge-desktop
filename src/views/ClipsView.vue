@@ -4,9 +4,26 @@
     <div class="flex items-start justify-between gap-3 flex-shrink-0">
       <div class="flex items-center gap-2">
         <h2 class="text-sm font-semibold text-white">Clip Library</h2>
-        <span class="rounded-full bg-red-500/10 px-2 py-0.5 text-[11px] font-semibold text-red-400">{{ clips.length }}</span>
+        <span
+          v-if="!showAllGames"
+          class="rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider"
+          :class="[theme.accentBg, theme.accentBorder, theme.accentText, 'border']"
+        >{{ theme.shortName }}</span>
+        <span v-else class="rounded-full border border-white/10 px-2 py-0.5 text-[10px] font-medium text-gray-500">All games</span>
+        <span
+          class="rounded-full px-2 py-0.5 text-[11px] font-semibold"
+          :class="theme.accentBg"
+          :style="{ color: theme.hexColor }"
+        >{{ clips.length }}</span>
       </div>
       <div class="flex items-center gap-2">
+        <button
+          class="rounded-lg border px-2.5 py-1 text-[10px] font-medium transition-colors"
+          :class="showAllGames ? 'border-white/15 text-gray-300' : 'border-white/[0.08] text-gray-600 hover:text-gray-400'"
+          @click="toggleAllGames"
+        >
+          {{ showAllGames ? `${theme.shortName} only` : 'All games' }}
+        </button>
         <div class="flex items-center rounded-xl border border-white/[0.08] bg-white/[0.03] p-1">
           <button
             class="flex h-8 w-8 items-center justify-center rounded-lg transition-colors"
@@ -41,7 +58,7 @@
           :key="f.value"
           class="rounded-full border px-3 py-1 text-xs font-medium transition-all duration-150"
           :class="activeFilter === f.value
-            ? 'border-red-500/30 bg-red-500/20 text-red-400'
+            ? filterActiveClass
             : 'border-white/[0.10] text-gray-500 hover:border-white/[0.12] hover:text-gray-300'"
           @click="activeFilter = f.value"
         >
@@ -125,13 +142,13 @@
     <!-- Empty state -->
     <div v-if="displayedClips.length === 0" class="flex flex-1 items-center justify-center">
       <div class="empty-state max-w-sm panel-elevated px-6 py-8">
-        <div class="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl border border-red-500/20 bg-red-500/10 mb-4">
-          <svg class="h-6 w-6 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <div class="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl border mb-4" :class="[theme.accentBorder, theme.accentBg]">
+          <svg class="h-6 w-6" :class="theme.accentText" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.7" d="M15 10l4.553-2.069A1 1 0 0121 8.845v6.31a1 1 0 01-1.447.894L15 14M4 7.75A1.75 1.75 0 015.75 6h7.5A1.75 1.75 0 0115 7.75v8.5A1.75 1.75 0 0113.25 18h-7.5A1.75 1.75 0 014 16.25v-8.5z" />
           </svg>
         </div>
-        <h3 class="text-sm font-bold text-white">No clips yet</h3>
-        <p class="mt-1 text-xs text-gray-500">Press <kbd class="rounded border border-white/[0.12] bg-white/[0.04] px-1.5 py-0.5 font-mono text-gray-200">{{ saveClipHotkey }}</kbd> during a match to save a clip, then come back here to review and share your best moments.</p>
+        <h3 class="text-sm font-bold text-white">{{ showAllGames ? 'No clips yet' : `No ${theme.shortName} clips yet` }}</h3>
+        <p class="mt-1 text-xs text-gray-500">{{ emptyStateHint }}</p>
       </div>
     </div>
 
@@ -829,12 +846,18 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import type { ClipRecord } from '../env.d'
 import { loadSaveClipHotkey } from '../lib/hotkeys'
+import { usePrimaryGame } from '../composables/usePrimaryGame'
+import { useGameTheme } from '../composables/useGameTheme'
+import { primaryGameLabel } from '../lib/games'
 
 const route = useRoute()
+const { primaryGame, isValorant } = usePrimaryGame()
+const { theme } = useGameTheme()
+const showAllGames = ref(false)
 const clips = ref<ClipRecord[]>([])
 const thumbnails = ref<Record<string, string>>({})
 const activeFilter = ref<string>('all')
@@ -892,16 +915,32 @@ function showToastMsg(msg: string, type: 'success' | 'error' = 'success') {
   toastTimer = setTimeout(() => { showToast.value = false }, TOAST_DURATION)
 }
 
-const filters = [
-  { label: 'All', value: 'all' },
-  { label: 'Favorites', value: 'favorites' },
-  { label: 'Bookmarks', value: 'hotkey' },
-  { label: 'Manual', value: 'manual' },
-  { label: 'Kills', value: 'kill' },
-  { label: 'Multi', value: 'multikill' },
-  { label: 'Clutch', value: 'clutch' },
-  { label: 'Aces', value: 'ace' }
-]
+const filters = computed(() => {
+  const base = [
+    { label: 'All', value: 'all' },
+    { label: 'Favorites', value: 'favorites' },
+    { label: 'Bookmarks', value: 'hotkey' },
+  ]
+  if (isValorant.value) {
+    base.push(
+      { label: 'Manual', value: 'manual' },
+      { label: 'Kills', value: 'kill' },
+      { label: 'Multi', value: 'multikill' },
+      { label: 'Clutch', value: 'clutch' },
+      { label: 'Aces', value: 'ace' },
+    )
+  }
+  return base
+})
+
+const emptyStateHint = computed(() => {
+  if (showAllGames.value) {
+    return `Press ${saveClipHotkey.value} during a match to bookmark a moment — clips are saved when the match ends.`
+  }
+  return `No ${primaryGameLabel(primaryGame.value)} clips yet. Press ${saveClipHotkey.value} during a match to bookmark a moment, then review highlights here after the game.`
+})
+
+const filterActiveClass = computed(() => `${theme.value.accentBorder} ${theme.value.accentBg} ${theme.value.accentText}`)
 
 const sortOptions = [
   { label: 'Newest first', value: 'newest' },
@@ -955,6 +994,19 @@ onMounted(async () => {
   })
   ;(window as Window & { _clipsUpdatedCleanup?: () => void })._clipsUpdatedCleanup = clipsUpdatedCleanup
   window.addEventListener('keydown', handleKeyDown)
+  watch(primaryGame, () => {
+    showAllGames.value = false
+    activeFilter.value = 'all'
+    void loadClips()
+  })
+  const settingsCleanup = window.api.on('settings:changed', (...args: unknown[]) => {
+    const s = args[0] as { primaryGame?: string } | undefined
+    if (s?.primaryGame) {
+      showAllGames.value = false
+      void loadClips()
+    }
+  })
+  ;(window as Window & { _clipsSettingsCleanup?: () => void })._clipsSettingsCleanup = settingsCleanup
 })
 
 onUnmounted(() => {
@@ -962,6 +1014,9 @@ onUnmounted(() => {
   const clipsUpdatedCleanup = (window as Window & { _clipsUpdatedCleanup?: () => void })._clipsUpdatedCleanup
   clipsUpdatedCleanup?.()
   delete (window as Window & { _clipsUpdatedCleanup?: () => void })._clipsUpdatedCleanup
+  const settingsCleanup = (window as Window & { _clipsSettingsCleanup?: () => void })._clipsSettingsCleanup
+  settingsCleanup?.()
+  delete (window as Window & { _clipsSettingsCleanup?: () => void })._clipsSettingsCleanup
   window.removeEventListener('keydown', handleKeyDown)
 })
 
@@ -1038,13 +1093,21 @@ async function saveTitleEdit() {
 
 async function loadClips() {
   try {
-    clips.value = await window.api.clips.get()
+    clips.value = await window.api.clips.get(
+      showAllGames.value ? { allGames: true } : { game: primaryGame.value },
+    )
     for (const clip of clips.value) {
       loadThumbnail(clip.id)
     }
   } catch {
     clips.value = []
   }
+}
+
+function toggleAllGames() {
+  showAllGames.value = !showAllGames.value
+  activeFilter.value = 'all'
+  void loadClips()
 }
 
 async function loadThumbnail(id: string) {

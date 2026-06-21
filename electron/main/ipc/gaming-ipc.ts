@@ -310,13 +310,13 @@ export function setupGamingHandlers(
   })
 
   ipcMain.handle('deadlock:get-stats', async (_event, opts?: { fresh?: boolean }) => {
-    const user = auth.getUser()
-    const linked = !!user?.deadlock_account_id
+    if (!auth.getToken()) {
+      return { stats: null, linked: false, error: 'not_authenticated' as const }
+    }
     try {
-      const api = auth.getApi()
-      if (!api) return { stats: null, linked: false, error: 'not_authenticated' as const }
-      if (!linked) return { stats: null, linked: false, error: null }
-      const res = await api.get('/api/deadlock/stats', {
+      // Refresh cached user so link state matches web (user may have connected on upforge.gg).
+      await auth.fetchUser().catch(() => null)
+      const res = await auth.getApi().get('/api/deadlock/stats', {
         params: opts?.fresh ? { fresh: 1 } : undefined,
       })
       return { stats: res.data ?? null, linked: true, error: null }
@@ -326,7 +326,8 @@ export function setupGamingHandlers(
         return { stats: null, linked: false, error: null }
       }
       log.warn('[Deadlock] get-stats failed:', (err as Error)?.message)
-      return { stats: null, linked: true, error: 'fetch_failed' as const }
+      const linked = !!auth.getUser()?.deadlock_account_id
+      return { stats: null, linked, error: 'fetch_failed' as const }
     }
   })
 

@@ -3,10 +3,15 @@ import fs from 'fs'
 import path from 'path'
 import { randomUUID } from 'crypto'
 import { userDataRoot } from './user-data-paths'
+import type { ClipGame } from './clip-game'
+import { clipMatchesGame } from './clip-game'
 
 export type ClipTrigger = 'manual' | 'kill' | 'ace' | 'multikill' | 'clutch' | 'hotkey'
 export type ClipUploadStatus = 'local' | 'uploading' | 'uploaded' | 'failed'
 export type ClipAnalysisStatus = 'none' | 'queued' | 'processing' | 'completed' | 'failed'
+
+export type { ClipGame } from './clip-game'
+export { resolveClipGame, clipMatchesGame } from './clip-game'
 
 export interface ClipRecord {
   id: string
@@ -33,6 +38,8 @@ export interface ClipRecord {
   analysisJobId: string | null
   /** Riot match UUID when clip was extracted from a tracked match */
   matchId: string | null
+  /** Which game this clip belongs to (valorant / cs2 / deadlock). */
+  game: ClipGame | null
   /** Queue/mode at extraction time */
   gameMode: string | null
   /** Weapon used on the highlighted kill, when known */
@@ -71,6 +78,7 @@ export type NewClip = Pick<ClipRecord,
   | 'killCount'
   | 'matchId'
   | 'gameMode'
+  | 'game'
   | 'weapon'
   | 'abilitySlot'
 > & { momentOffsetMs?: number | null }
@@ -141,6 +149,7 @@ export class ClipStore {
       killCount: data.killCount ?? null,
       matchId: data.matchId ?? null,
       gameMode: data.gameMode ?? null,
+      game: data.game ?? null,
       weapon: data.weapon ?? null,
       abilitySlot: data.abilitySlot ?? null,
       uploadStatus: 'local',
@@ -186,8 +195,9 @@ export class ClipStore {
   }
 
   /** Return clips matching optional filters */
-  query(opts: { map?: string; agent?: string; trigger?: ClipTrigger } = {}): ClipRecord[] {
+  query(opts: { map?: string; agent?: string; trigger?: ClipTrigger; game?: ClipGame } = {}): ClipRecord[] {
     return this.clips.filter(c => {
+      if (opts.game && !clipMatchesGame(c, opts.game)) return false
       if (opts.map && c.map !== opts.map) return false
       if (opts.agent && c.agent !== opts.agent) return false
       if (opts.trigger && c.trigger !== opts.trigger) return false

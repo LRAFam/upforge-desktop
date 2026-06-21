@@ -349,6 +349,7 @@ obsRecorder.onReplayClipSaved = (clipPath, _trigger) => {
     gameMode: live.gameMode,
     weapon: null,
     abilitySlot: null,
+    game: normalizePrimaryGame(gameDetector.currentGame() ?? trackedPrimaryGame),
   })
   logActivity('OBS kill clip saved')
   mainWindow?.webContents.send('clips:new', [rec.id])
@@ -717,9 +718,10 @@ const clipPipeline = new ClipPipeline({
 async function extractKillClipsOnly(
   videoPath: string,
   timeline: MatchData,
-  analysisJobId: string | null
+  analysisJobId: string | null,
+  game: string = trackedPrimaryGame,
 ): Promise<void> {
-  return clipPipeline.extractKillClipsOnly(videoPath, timeline, analysisJobId)
+  return clipPipeline.extractKillClipsOnly(videoPath, timeline, analysisJobId, normalizePrimaryGame(game))
 }
 
 /**
@@ -729,9 +731,10 @@ async function extractKillClipsOnly(
 async function extractMatchClips(
   videoPath: string,
   timeline: MatchData | null,
-  analysisJobId: string | null
+  analysisJobId: string | null,
+  game: string = trackedPrimaryGame,
 ): Promise<void> {
-  return clipPipeline.extractMatchClips(videoPath, timeline, analysisJobId)
+  return clipPipeline.extractMatchClips(videoPath, timeline, analysisJobId, normalizePrimaryGame(game))
 }
 
 function countSessionClips(
@@ -1390,7 +1393,7 @@ function setupGameDetection(): void {
         log.warn(`[GameDetector] Recording too large to upload: ${sizeGB} GB — extracting clips only`)
         logActivity(`Recording too large (${sizeGB} GB) — full upload skipped, saving clips`)
 
-        extractMatchClips(readyPath, timeline, null)
+        extractMatchClips(readyPath, timeline, null, game)
           .catch(err => log.warn('[ClipExtract] Clip extraction (oversized) error:', err))
 
         if (lateRetryScheduled) {
@@ -1408,7 +1411,7 @@ function setupGameDetection(): void {
               }
               if ((timeline?.playerKills?.length ?? 0) === 0) { log.warn('[LateClipExtract] No kills after retry'); return }
               log.info(`[LateClipExtract] Got ${timeline!.playerKills.length} kills — extracting clips`)
-              await extractKillClipsOnly(readyPath, timeline!, null)
+              await extractKillClipsOnly(readyPath, timeline!, null, game)
             } catch (err) {
               log.warn('[LateClipExtract] Error (oversized path):', err)
             }
@@ -1441,7 +1444,7 @@ function setupGameDetection(): void {
           })
         }
 
-        extractMatchClips(readyPath, timeline, null)
+        extractMatchClips(readyPath, timeline, null, game)
           .catch(err => log.warn('[ClipExtract] Clip extraction (no-analyse) error:', err))
 
         await enrichPromise.catch(() => {})
@@ -1461,7 +1464,7 @@ function setupGameDetection(): void {
               }
               if ((timeline?.playerKills?.length ?? 0) === 0) { log.warn('[LateClipExtract] No kills after retry'); return }
               log.info(`[LateClipExtract] Got ${timeline!.playerKills.length} kills — extracting clips`)
-              await extractKillClipsOnly(readyPath, timeline!, null)
+              await extractKillClipsOnly(readyPath, timeline!, null, game)
             } catch (err) {
               log.warn('[LateClipExtract] Error (no-analyse path):', err)
             }
@@ -1480,7 +1483,7 @@ function setupGameDetection(): void {
 
       const jobId = uploadResult ?? null
 
-      extractMatchClips(readyPath, timeline, jobId)
+      extractMatchClips(readyPath, timeline, jobId, game)
         .then(() => syncScoutMomentsForJob(jobId, readyPath, timeline))
         .catch(err => log.warn('[ClipExtract] Background extraction error:', err))
         .finally(() => {
@@ -1523,7 +1526,7 @@ function setupGameDetection(): void {
               })
             }
             log.info(`[LateClipExtract] Got ${timeline!.playerKills.length} kills — extracting clips`)
-            await extractKillClipsOnly(readyPath, timeline!, jobId)
+            await extractKillClipsOnly(readyPath, timeline!, jobId, game)
             await syncScoutMomentsForJob(jobId, readyPath, timeline!)
           } catch (err) {
             log.warn('[LateClipExtract] Error:', err)

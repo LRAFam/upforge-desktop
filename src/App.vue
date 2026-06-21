@@ -371,7 +371,7 @@ async function installUpdate() {
 
 async function loadClipSummary() {
   try {
-    const clips = await window.api.clips.get() as ClipRecord[]
+    const clips = await window.api.clips.get({ game: primaryGame.value }) as ClipRecord[]
     clipCount.value = clips.length
     clipCountAvailable.value = true
     hasClipIndicator.value = clips.length > 0

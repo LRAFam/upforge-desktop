@@ -51,7 +51,7 @@
     </div>
 
     <!-- Not connected -->
-    <div v-else-if="!stats" class="px-3.5 py-4 flex items-center justify-between gap-3">
+    <div v-else-if="!linked" class="px-3.5 py-4 flex items-center justify-between gap-3">
       <p class="text-xs text-gray-500 leading-relaxed">
         Stats sync from your linked Steam profile (match history on deadlock-api.com). Link once on the web — search by your <strong class="text-gray-400 font-semibold">Steam display name</strong>.
       </p>
@@ -172,11 +172,13 @@ import { formatDeadlockMatchDate, fmtDeadlockDuration, fmtDeadlockNW } from '../
 
 const loading = ref(true)
 const stats = ref<DeadlockProfileStats | null>(null)
+const linked = ref(false)
 const fetchError = ref(false)
 
 const rankIconUrl = computed(() => {
-  if (!stats.value?.current_rank) return null
-  return getDeadlockRankIconUrl(stats.value.current_rank.name, stats.value.current_rank.subtier)
+  const rank = stats.value?.current_rank
+  if (!rank) return getDeadlockRankIconUrl('Obscurus')
+  return getDeadlockRankIconUrl(rank.name, rank.subtier) ?? getDeadlockRankIconUrl('Obscurus')
 })
 
 let refreshCleanup: (() => void) | null = null
@@ -187,9 +189,11 @@ async function loadStats(fresh = false) {
   try {
     const result = await window.api.deadlock.getStats({ fresh })
     stats.value = result.stats
+    linked.value = result.linked
     fetchError.value = result.error === 'fetch_failed'
   } catch {
     stats.value = null
+    linked.value = false
     fetchError.value = true
   } finally {
     loading.value = false
