@@ -26,7 +26,7 @@ export class GameDetector extends EventEmitter {
   private _interval: NodeJS.Timeout | null = null
   private _activeGame: string | null = null
   private _simTimer: NodeJS.Timeout | null = null
-  /** When set, only this game's process is monitored (matches primaryGame in settings). */
+  /** Last primary game from settings — used to clear stale active state on manual switch. */
   private _watchGame: string | null = null
 
   start(): void {
@@ -53,8 +53,8 @@ export class GameDetector extends EventEmitter {
   }
 
   /**
-   * Limit detection to a single game (typically settings.primaryGame).
-   * Re-polls immediately so UpForge reacts when the user switches games.
+   * Sync with settings.primaryGame — clears stale active state when the user
+   * picks a different game in Settings. All supported games are always polled.
    */
   setWatchGame(
     game: string | null,
@@ -129,10 +129,6 @@ export class GameDetector extends EventEmitter {
   }
 
   private _gamesToPoll(): Array<[string, string[]]> {
-    if (this._watchGame) {
-      const names = GAME_PROCESSES[this._watchGame]
-      return names ? [[this._watchGame, names]] : []
-    }
     return Object.entries(GAME_PROCESSES)
   }
 

@@ -503,6 +503,22 @@ function syncPrimaryGameFromUser(): void {
   trackedPrimaryGame = game
 }
 
+function syncPrimaryGameFromDetection(game: string): void {
+  if (!settingsManager) return
+  const detected = normalizePrimaryGame(game)
+  const primary = normalizePrimaryGame(settingsManager.get().primaryGame)
+  if (detected === primary) return
+
+  const current = settingsManager.get()
+  settingsManager.save({
+    primaryGame: detected,
+    trainerMouse: { ...current.trainerMouse, game: detected },
+  })
+  mainWindow?.webContents.send('settings:changed', settingsManager.get())
+  handlePrimaryGameSwitch(detected, primary)
+  trackedPrimaryGame = detected
+}
+
 function handlePrimaryGameSwitch(
   game: ReturnType<typeof normalizePrimaryGame>,
   previousGame?: ReturnType<typeof normalizePrimaryGame>,
@@ -511,7 +527,7 @@ function handlePrimaryGameSwitch(
 
   const deferActiveStop = obsRecorder.isRecording()
   gameDetector.setWatchGame(game, { deferActiveStop })
-  logActivity(`Switched to ${gameLabel(game)} — monitoring ${gameLabel(game)}`)
+  logActivity(`Switched to ${gameLabel(game)}`)
 
   void ensureObsCaptureForGame(game)
 
@@ -1516,6 +1532,8 @@ function setupGameDetection(): void {
       console.log('[GameDetector] game-started ignored — already recording')
       return
     }
+
+    syncPrimaryGameFromDetection(game)
 
     const { isStale } = beginMatchFlow()
     console.log(`[GameDetector] ${game} started (flow #${matchFlowGeneration})`)
