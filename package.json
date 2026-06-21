@@ -119,6 +119,13 @@
         "filter": [
           "**/*"
         ]
+      },
+      {
+        "from": "resources/branding",
+        "to": "branding",
+        "filter": [
+          "**/*"
+        ]
       }
     ]
   }

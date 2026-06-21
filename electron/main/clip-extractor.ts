@@ -4,6 +4,12 @@ import fs from 'fs'
 import { app } from 'electron'
 import { existsSync, mkdirSync } from 'fs'
 import { is } from '@electron-toolkit/utils'
+import log from 'electron-log'
+import {
+  buildClipWatermarkFilterComplex,
+  isWatermarkAvailable,
+  watermarkLogoPath,
+} from './clip-watermark'
 
 const IS_WIN = process.platform === 'win32'
 
@@ -27,6 +33,8 @@ export interface ExtractOptions {
   durationMs: number
   /** Output file path (mp4) */
   outputPath: string
+  /** When false, skip the animated UpForge logo overlay (default: true). */
+  watermark?: boolean
 }
 
 export interface ThumbnailOptions {
@@ -58,23 +66,41 @@ export class ClipExtractor {
     // streams-copies cleanly into MP4 on all platforms. For short clips (8–30s),
     // veryfast H.264 transcoding is near-instant. Optional audio map handles
     // recordings where audio capture was unavailable.
-    try {
-      await this._run(
-        [
+    const applyWatermark = opts.watermark !== false && isWatermarkAvailable()
+    if (opts.watermark !== false && !applyWatermark) {
+      log.warn('[ClipExtractor] Watermark logo missing at', watermarkLogoPath())
+    }
+
+    const encodeArgs = [
+      '-c:v', 'libx264', '-crf', '22', '-preset', 'veryfast', '-threads', '2', '-pix_fmt', 'yuv420p',
+      '-c:a', 'aac', '-b:a', '128k',
+      '-avoid_negative_ts', '1',
+      '-movflags', '+faststart',
+      opts.outputPath,
+    ]
+
+    const inputArgs = applyWatermark
+      ? [
+          '-y',
+          '-ss', String(startSec),
+          '-i', opts.sourcePath,
+          '-i', watermarkLogoPath(),
+          '-t', String(durSec),
+          '-filter_complex', buildClipWatermarkFilterComplex(),
+          '-map', '[v]',
+          '-map', '0:a:0?',
+        ]
+      : [
           '-y',
           '-ss', String(startSec),
           '-i', opts.sourcePath,
           '-t', String(durSec),
           '-map', '0:v:0',
           '-map', '0:a:0?',
-          '-c:v', 'libx264', '-crf', '22', '-preset', 'veryfast', '-threads', '2', '-pix_fmt', 'yuv420p',
-          '-c:a', 'aac', '-b:a', '128k',
-          '-avoid_negative_ts', '1',
-          '-movflags', '+faststart',
-          opts.outputPath,
-        ],
-        120_000,
-      )
+        ]
+
+    try {
+      await this._run([...inputArgs, ...encodeArgs], 120_000)
     } catch (err) {
       try { if (fs.existsSync(opts.outputPath)) fs.unlinkSync(opts.outputPath) } catch { /* ignore */ }
       throw err
