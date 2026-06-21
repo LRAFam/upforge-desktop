@@ -1,4 +1,4 @@
-import { ref, computed, watch, onMounted, onUnmounted, inject, provide, type InjectionKey } from 'vue'
+import { ref, computed, watch, onMounted, onUnmounted, nextTick, inject, provide, type InjectionKey } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { getWeaponImage, getAgentImage, getAbilityIcon, getMapImage, getAgentColor, formatGameMode, normalizeGameModeId } from '../lib/valorant'
 import { pendingTimeline } from '../stores/pendingTimeline'
