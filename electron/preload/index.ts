@@ -196,14 +196,17 @@ const api = {
     getBenchmark: () => ipcRenderer.invoke('trainer:get-benchmark'),
     getAiCoaching: () => ipcRenderer.invoke('trainer:get-ai-coaching'),
   },
-  deadlock: {
-    listReplays: () => ipcRenderer.invoke('deadlock:list-replays'),
-    openReplaysFolder: () => ipcRenderer.invoke('deadlock:open-replays-folder'),
-    openAnalyze: () => ipcRenderer.invoke('deadlock:open-analyze'),
-    openDashboard: () => ipcRenderer.invoke('deadlock:open-dashboard'),
-    openConnectSteam: () => ipcRenderer.invoke('deadlock:open-connect-steam'),
-    getStats: () => ipcRenderer.invoke('deadlock:get-stats'),
-  },
+      deadlock: {
+        listReplays: () => ipcRenderer.invoke('deadlock:list-replays'),
+        openReplaysFolder: () => ipcRenderer.invoke('deadlock:open-replays-folder'),
+        openAnalyze: () => ipcRenderer.invoke('deadlock:open-analyze'),
+        openResults: (jobId: string) => ipcRenderer.invoke('deadlock:open-results', jobId),
+        openDashboard: () => ipcRenderer.invoke('deadlock:open-dashboard'),
+        openConnectSteam: () => ipcRenderer.invoke('deadlock:open-connect-steam'),
+        getStats: (opts?: { fresh?: boolean }) => ipcRenderer.invoke('deadlock:get-stats', opts),
+        getAnalyses: (limit?: number) => ipcRenderer.invoke('deadlock:get-analyses', limit),
+        uploadDemo: (demoPath: string) => ipcRenderer.invoke('deadlock:upload-demo', demoPath),
+      },
   cs2: {
     detectDemoDir: () => ipcRenderer.invoke('cs2:detect-demo-dir'),
     listDemos: () => ipcRenderer.invoke('cs2:list-demos'),
@@ -272,6 +275,7 @@ const api = {
       'trainer:session-result',
       'post-game:demo-status',
       'post-game:demo-progress',
+      'deadlock:upload-progress',
       'spatial:population-updated',
     ]
     if (allowed.includes(channel)) {

@@ -4,7 +4,7 @@
  * and ForgeRank prestige. Also holds the crosshair→Godot conversion helper.
  */
 
-import { IpcMain, app, shell } from 'electron'
+import { IpcMain, shell } from 'electron'
 import fs from 'fs'
 import path from 'path'
 import log from 'electron-log'
@@ -16,6 +16,9 @@ import { TrainerBridge, type DrillConfig } from '../trainer-bridge'
 import { sendOverlayData } from '../overlay-window'
 import type { AppSettings } from '../settings-manager'
 import { apiPost } from './api-helpers'
+import { getDeadlockReplayDirs } from '../source-replay-finder'
+import { listRecentDemosInDir } from '../demo-finder'
+import { SourceReplayUploader } from '../source-replay-uploader'
 
 // ── Crosshair helper ──────────────────────────────────────────────────────────
 
@@ -226,40 +229,42 @@ export function setupGamingHandlers(
   // ── Deadlock replays ──────────────────────────────────────────────────────
 
   ipcMain.handle('deadlock:list-replays', async () => {
-    const localAppData = process.env.LOCALAPPDATA || path.join(app.getPath('home'), 'AppData', 'Local')
-    const replayDir = path.join(localAppData, 'Deadlock', 'game', 'deadlock', 'replays')
-    try {
-      if (!fs.existsSync(replayDir)) return { files: [], dir: replayDir, exists: false }
-      const entries = fs.readdirSync(replayDir)
-      const files = entries
-        .filter(f => f.endsWith('.dem'))
-        .map(f => {
-          const full = path.join(replayDir, f)
-          const stat = fs.statSync(full)
-          return { name: f, path: full, sizeBytes: stat.size, modifiedAt: stat.mtimeMs }
-        })
-        .sort((a, b) => b.modifiedAt - a.modifiedAt)
-        .slice(0, 20)
-      return { files, dir: replayDir, exists: true }
-    } catch (err: any) {
-      log.warn('[Deadlock] Failed to list replays:', err?.message)
-      return { files: [], dir: replayDir, exists: false }
+    const dirs = getDeadlockReplayDirs()
+    const seen = new Set<string>()
+    const files: Array<{ name: string; path: string; sizeBytes: number; modifiedAt: number }> = []
+
+    for (const dir of dirs) {
+      const listed = listRecentDemosInDir(dir, 20)
+      for (const f of listed.files) {
+        if (seen.has(f.path)) continue
+        seen.add(f.path)
+        files.push(f)
+      }
     }
+
+    files.sort((a, b) => b.modifiedAt - a.modifiedAt)
+    const primaryDir = dirs.find((d) => fs.existsSync(d)) ?? dirs[0] ?? ''
+    return { files: files.slice(0, 20), dir: primaryDir, exists: dirs.some((d) => fs.existsSync(d)) }
   })
 
   ipcMain.handle('deadlock:open-replays-folder', async () => {
-    const localAppData = process.env.LOCALAPPDATA || path.join(app.getPath('home'), 'AppData', 'Local')
-    const replayDir = path.join(localAppData, 'Deadlock', 'game', 'deadlock', 'replays')
-    if (fs.existsSync(replayDir)) {
-      await shell.openPath(replayDir)
-    } else {
-      await shell.openPath(path.join(localAppData, 'Deadlock'))
+    const dirs = getDeadlockReplayDirs()
+    const dir = dirs.find((d) => fs.existsSync(d)) ?? dirs[0]
+    if (dir && fs.existsSync(dir)) {
+      await shell.openPath(dir)
+    } else if (dirs[0]) {
+      await shell.openPath(path.dirname(dirs[0]))
     }
     return { ok: true }
   })
 
   ipcMain.handle('deadlock:open-analyze', () => {
     shell.openExternal('https://upforge.gg/deadlock/analyze')
+    return { ok: true }
+  })
+
+  ipcMain.handle('deadlock:open-results', (_event, jobId: string) => {
+    shell.openExternal(`https://upforge.gg/deadlock/results/${jobId}`)
     return { ok: true }
   })
 
@@ -273,14 +278,47 @@ export function setupGamingHandlers(
     return { ok: true }
   })
 
-  ipcMain.handle('deadlock:get-stats', async () => {
+  ipcMain.handle('deadlock:get-analyses', async (_event, limit = 10) => {
+    return auth.fetchDeadlockAnalyses(limit)
+  })
+
+  ipcMain.handle('deadlock:upload-demo', async (event, demoPath: string) => {
+    const sender = event.sender
+    if (!fs.existsSync(demoPath)) {
+      return { ok: false as const, error: 'Demo file not found' }
+    }
+    try {
+      const user = auth.getUser()
+      const steamId = user?.deadlock_account_id != null
+        ? String(BigInt(user.deadlock_account_id) + BigInt('76561197960265728'))
+        : null
+      const uploader = new SourceReplayUploader(auth)
+      const { jobId } = await uploader.upload({
+        game: 'deadlock',
+        demoPath,
+        steamId,
+        onProgress: (pct) => {
+          try { sender.send('deadlock:upload-progress', { demoPath, pct }) } catch { /* ignore */ }
+        },
+      })
+      return { ok: true as const, jobId }
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err)
+      log.warn('[Deadlock] upload-demo failed:', msg)
+      return { ok: false as const, error: msg }
+    }
+  })
+
+  ipcMain.handle('deadlock:get-stats', async (_event, opts?: { fresh?: boolean }) => {
     const user = auth.getUser()
     const linked = !!user?.deadlock_account_id
     try {
       const api = auth.getApi()
       if (!api) return { stats: null, linked: false, error: 'not_authenticated' as const }
       if (!linked) return { stats: null, linked: false, error: null }
-      const res = await api.get('/api/deadlock/stats')
+      const res = await api.get('/api/deadlock/stats', {
+        params: opts?.fresh ? { fresh: 1 } : undefined,
+      })
       return { stats: res.data ?? null, linked: true, error: null }
     } catch (err: unknown) {
       const status = (err as { response?: { status?: number } })?.response?.status

@@ -5,6 +5,7 @@ import { findLatestReplay, type SourceGame } from './source-replay-finder'
 import { SourceReplayUploader } from './source-replay-uploader'
 import type { AuthManager } from './auth-manager'
 import type { MatchData } from './riot-types'
+import { findLatestReplay, type SourceGame } from './source-replay-finder'
 
 export interface PostMatchReplayContext {
   game: SourceGame
@@ -58,19 +59,27 @@ export async function uploadReplayInBackground(
   game: SourceGame,
   demoPath: string,
   auth: AuthManager,
-  postGameWindow: BrowserWindow,
-): Promise<void> {
-  const send = (channel: string, payload?: unknown) => sendToWindow(postGameWindow, channel, payload)
+  notifyWindow: BrowserWindow | null,
+): Promise<{ jobId?: string; status: string }> {
+  const send = (channel: string, payload?: unknown) => {
+    if (notifyWindow && !notifyWindow.isDestroyed()) {
+      sendToWindow(notifyWindow, channel, payload)
+    }
+  }
 
   try {
     log.info(`[Replay] ${game} replay found: ${demoPath} — uploading`)
     send('post-game:demo-status', { status: 'uploading', path: demoPath })
 
     const uploader = new SourceReplayUploader(auth)
+    const user = auth.getUser()
+    const steamId = user?.deadlock_account_id != null
+      ? String(BigInt(user.deadlock_account_id) + BigInt('76561197960265728'))
+      : null
     const { jobId } = await uploader.upload({
       game,
       demoPath,
-      steamId: null,
+      steamId: game === 'deadlock' ? steamId : null,
       onProgress: (pct) => send('post-game:demo-progress', pct),
     })
 
@@ -88,11 +97,11 @@ export async function uploadReplayInBackground(
         const { status, error } = await uploader.pollStatus(game, jobId)
         if (status === 'completed') {
           send('post-game:demo-status', { status: 'complete', jobId })
-          return
+          return { jobId, status: 'completed' }
         }
         if (status === 'failed') {
           send('post-game:demo-status', { status: 'error', error: error ?? 'Analysis failed' })
-          return
+          return { jobId, status: 'failed' }
         }
       } catch (pollErr) {
         log.warn(`[Replay] ${game} poll error (non-fatal):`, pollErr)
@@ -100,8 +109,28 @@ export async function uploadReplayInBackground(
     }
 
     log.warn(`[Replay] ${game} poll timed out — jobId=${jobId}`)
+    return { jobId, status: 'timeout' }
   } catch (err) {
     log.warn(`[Replay] ${game} upload flow error:`, err)
     send('post-game:demo-status', { status: 'error', error: 'Replay upload failed' })
+    return { status: 'error' }
   }
+}
+
+/** Upload a replay when VOD recording failed or was skipped — demo-only coaching path. */
+export async function tryAutoUploadSourceReplay(opts: {
+  game: SourceGame
+  demoPath: string | null
+  matchSessionStart: number
+  auth: AuthManager
+  notifyWindow: BrowserWindow | null
+  customReplayDir?: string
+}): Promise<void> {
+  let demoPath = opts.demoPath
+  if (!demoPath) {
+    const found = await findLatestReplay(opts.game, opts.matchSessionStart, opts.customReplayDir)
+    demoPath = found.demoPath
+  }
+  if (!demoPath) return
+  await uploadReplayInBackground(opts.game, demoPath, opts.auth, opts.notifyWindow)
 }

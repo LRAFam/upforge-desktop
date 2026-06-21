@@ -867,6 +867,7 @@ import { usePrimaryGame } from '../composables/usePrimaryGame'
 import { primaryGameWebBase } from '../lib/games'
 import { getCs2RankIconUrl, getFaceitLevelIconUrl, type Cs2FaceitConnection } from '../lib/cs2'
 import { getDeadlockRankIconUrl } from '../lib/deadlock'
+import { mapDeadlockToAnalysisItem } from '../lib/deadlock-analyses'
 
 const router = useRouter()
 const achievements = useAchievements()
@@ -936,7 +937,7 @@ const emptyCoachingTitle = computed(() => {
 })
 const emptyCoachingMessage = computed(() => {
   if (isCs2.value) return 'Analyse a .dem on the web or let UpForge auto-upload after matches'
-  if (isDeadlock.value) return 'Upload a .dem replay on the web for positioning and hero coaching'
+  if (isDeadlock.value) return 'Replays auto-upload after matches — or analyze any .dem from the Replays panel'
   if (!status.value.obsConnected) return 'Connect OBS in Settings, then queue a match — UpForge records automatically'
   return 'Queue a Valorant match — your next game will be recorded and coached'
 })
@@ -994,7 +995,7 @@ const activeGameMessage = computed(() => {
   if (status.value.recordingStarting) return 'Stand by while capture hooks into the live match.'
   if (status.value.waitingForMatch) {
     if (isCs2.value) return 'CS2 is running — auto-recording will begin shortly after you load in.'
-    if (isDeadlock.value) return 'Deadlock is running — auto-recording will begin when a match starts.'
+    if (isDeadlock.value) return 'Deadlock is running — recording starts when you load in (tutorial, bot, or PvP).'
     return 'You are in lobby or agent select. Auto-recording will begin when the match starts.'
   }
   if (status.value.currentGame) return 'Game detected and monitoring. Launch into a match to begin recording.'
@@ -1389,7 +1390,9 @@ onMounted(async () => {
 
   const [prof, recent, playstyle] = await Promise.all([
     window.api.profile.get().catch(() => null),
-    window.api.analyses.get(10).catch(() => [] as AnalysisItem[]),
+    isDeadlock.value
+      ? window.api.deadlock.getAnalyses(10).then((items) => items.map(mapDeadlockToAnalysisItem)).catch(() => [] as AnalysisItem[])
+      : window.api.analyses.get(10).catch(() => [] as AnalysisItem[]),
     isValorant.value
       ? window.api.progress.playstyleProfile().catch(() => null)
       : Promise.resolve(null),
@@ -1494,6 +1497,7 @@ onMounted(async () => {
   ipcCleanup.push(window.api.on('dashboard:refresh', async () => {
     await refreshProfile()
     await loadSkillProfileFromSettings()
+    if (isDeadlock.value) await loadAnalyses()
   }))
   ipcCleanup.push(window.api.on('dashboard:last-insight', (...args: unknown[]) => {
     lastInsight.value = args[0] as typeof lastInsight.value
@@ -1509,6 +1513,12 @@ onMounted(async () => {
   }))
   ipcCleanup.push(window.api.on('dashboard:analysis-progress', () => {
     void loadPendingRecordings()
+  }))
+  ipcCleanup.push(window.api.on('post-game:demo-status', (...args: unknown[]) => {
+    const payload = args[0] as { status?: string; jobId?: string }
+    if (payload?.status === 'complete' && isDeadlock.value) {
+      void loadAnalyses()
+    }
   }))
   ipcCleanup.push(window.api.on('app:activity-log', (...args: unknown[]) => {
     activityLog.value = args[0] as { time: number; message: string }[]
@@ -1582,7 +1592,12 @@ onUnmounted(() => {
 async function loadAnalyses() {
   analysesLoading.value = true
   try {
-    analyses.value = await window.api.analyses.get(10)
+    if (isDeadlock.value) {
+      const dl = await window.api.deadlock.getAnalyses(10)
+      analyses.value = dl.map(mapDeadlockToAnalysisItem)
+    } else {
+      analyses.value = await window.api.analyses.get(10)
+    }
     void loadCoachingSnippets(analyses.value)
   } catch {
     analyses.value = []
@@ -1857,6 +1872,10 @@ function simulateGame(game: string, durationMs: number) {
 function openAnalysis(id: number) { window.open(`https://upforge.gg/valorant/results/${id}`, '_blank') }
 
 async function openAnalysisRow(a: AnalysisItem) {
+  if (a.game_mode === 'DEADLOCK' && a.job_id) {
+    void window.api.deadlock.openResults(a.job_id)
+    return
+  }
   timelineLoadingId.value = a.id
   try {
     const data = await window.api.analyses.getTimeline(a.id)
@@ -2029,6 +2048,9 @@ function openClipsForSession(rec: PendingRecording) {
 }
 
 function isAnalysisProcessing(a: AnalysisItem): boolean {
+  if (a.game_mode === 'DEADLOCK') {
+    return a.status === 'pending' || a.status === 'processing' || a.status === 'uploading'
+  }
   return ['queued', 'processing', 'pending'].includes(a.status)
 }
 

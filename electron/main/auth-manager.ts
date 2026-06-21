@@ -331,6 +331,30 @@ export class AuthManager {
     }
   }
 
+  async fetchDeadlockAnalyses(limit = 10): Promise<Array<{
+    id: number
+    job_id: string
+    status: string
+    hero: string | null
+    player_name: string | null
+    match_result: string | null
+    duration_minutes: number | null
+    overall_rating: number | null
+    kd_ratio: number | null
+    kills: number | null
+    deaths: number | null
+    assists: number | null
+    created_at: string
+    completed_at: string | null
+  }>> {
+    try {
+      const res = await this._api.get(`/api/deadlock/analyses?per_page=${limit}`)
+      return res.data?.analyses ?? []
+    } catch {
+      return []
+    }
+  }
+
   async fetchSquad(): Promise<{ team: unknown; activity: unknown[]; presence: Record<number, { online: boolean; is_recording: boolean }>; error?: string } | null> {
     try {
       // Fetch my-team first to detect auth errors vs no-team

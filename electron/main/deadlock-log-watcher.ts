@@ -44,7 +44,11 @@ const RE = {
   loopModeMenu: /LoopMode:\s*menu/,
   changeGameState: /ChangeGameState:\s+(\w+)\s+\((\d+)\)/,
   serverDisconnect: /\[Client\] Disconnecting from server:\s+(\S+)/,
-  spectate: /Playing Broadcast/,
+  serverConnect: /\[Client\] CL:\s+Connected to '([^']+)'/,
+  precachingHeroes: /Precaching (\d+) heroes in CCitadelGameRules/,
+  startMatchmaking: /k_EMsgClientToGCStartMatchmaking/,
+  hostActivate: /\[HostStateManager\] Host activate:.*\(([^)]+)\)/,
+  spectate: /spectat/i,
 }
 
 function resetState(): void {
@@ -182,7 +186,7 @@ function processLine(line: string): void {
   }
 
   if (RE.lobbyCreated.test(trimmed)) {
-    if (phase === 'idle' || phase === 'post_match') {
+    if (phase === 'idle' || phase === 'post_match' || phase === 'match_intro') {
       phase = 'match_intro'
     }
     return
@@ -233,6 +237,34 @@ function processLine(line: string): void {
   if (RE.loopModeMenu.test(trimmed)
     && (phase === 'in_match' || phase === 'match_intro' || phase === 'spectating')) {
     phase = 'post_match'
+    return
+  }
+
+  m = RE.serverConnect.exec(trimmed)
+  if (m && !m[1].toLowerCase().includes('loopback')) {
+    if (phase !== 'spectating' && phase !== 'in_match') {
+      phase = 'match_intro'
+    }
+    return
+  }
+
+  m = RE.precachingHeroes.exec(trimmed)
+  if (m && Number.parseInt(m[1], 10) > 0) {
+    hideoutLoaded = false
+    if (phase === 'idle' || phase === 'match_intro') {
+      phase = 'match_intro'
+    }
+    return
+  }
+
+  if (RE.startMatchmaking.test(trimmed) && (phase === 'idle' || phase === 'post_match')) {
+    phase = 'match_intro'
+    return
+  }
+
+  m = RE.hostActivate.exec(trimmed)
+  if (m && !isHideoutMap(m[1])) {
+    hideoutLoaded = false
   }
 }
 
@@ -406,4 +438,20 @@ export function isDeadlockMatchEnded(): boolean {
 export function getDeadlockMap(): string | null {
   if (!mapName || isHideoutMap(mapName)) return null
   return mapName
+}
+
+export function getDeadlockDetectionStatus(): {
+  phase: DeadlockPhase
+  mapName: string | null
+  logPath: string | null
+  logReceiving: boolean
+  replayLive: boolean
+} {
+  return {
+    phase,
+    mapName,
+    logPath: activeLogPath,
+    logReceiving: isDeadlockLogReceiving(),
+    replayLive: sawReplayLive,
+  }
 }

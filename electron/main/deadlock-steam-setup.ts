@@ -25,24 +25,39 @@ export interface DeadlockSteamSetupResult {
 
 async function getSteamPath(): Promise<string | null> {
   if (!IS_WIN) return null
-  try {
-    const { stdout } = await execAsync(
-      'reg query "HKLM\\SOFTWARE\\WOW6432Node\\Valve\\Steam" /v InstallPath',
-      { windowsHide: true, timeout: 5000 },
-    )
-    const match = /InstallPath\s+REG_SZ\s+(.+)/i.exec(stdout)
-    if (match) return match[1].trim()
-  } catch {
-    try {
-      const { stdout } = await execAsync(
-        'reg query "HKLM\\SOFTWARE\\Valve\\Steam" /v InstallPath',
-        { windowsHide: true, timeout: 5000 },
-      )
-      const match = /InstallPath\s+REG_SZ\s+(.+)/i.exec(stdout)
-      if (match) return match[1].trim()
-    } catch { /* ignore */ }
+  for (const key of [
+    'HKCU\\Software\\Valve\\Steam',
+    'HKLM\\SOFTWARE\\WOW6432Node\\Valve\\Steam',
+    'HKLM\\SOFTWARE\\Valve\\Steam',
+  ]) {
+    for (const valueName of ['SteamPath', 'InstallPath']) {
+      try {
+        const { stdout } = await execAsync(
+          `reg query "${key}" /v ${valueName}`,
+          { windowsHide: true, timeout: 5000 },
+        )
+        const match = new RegExp(`${valueName}\\s+REG_SZ\\s+(.+)`, 'i').exec(stdout)
+        if (match?.[1]?.trim()) return match[1].trim()
+      } catch { /* try next */ }
+    }
   }
   return null
+}
+
+async function getActiveSteamAccountId(): Promise<string | null> {
+  if (!IS_WIN) return null
+  try {
+    const { stdout } = await execAsync(
+      'reg query "HKCU\\Software\\Valve\\Steam\\ActiveProcess" /v ActiveUser',
+      { windowsHide: true, timeout: 5000 },
+    )
+    const match = /ActiveUser\s+REG_DWORD\s+0x([0-9a-f]+)/i.exec(stdout)
+    if (!match) return null
+    const accountId = Number.parseInt(match[1], 16)
+    return accountId > 0 ? String(accountId) : null
+  } catch {
+    return null
+  }
 }
 
 function steamId64ToAccountId(steamId64: string): string | null {
@@ -58,6 +73,12 @@ function steamId64ToAccountId(steamId64: string): string | null {
 async function findSteamUserDataConfigDir(): Promise<string | null> {
   const steamPath = await getSteamPath()
   if (!steamPath) return null
+
+  const activeAccountId = await getActiveSteamAccountId()
+  if (activeAccountId) {
+    const configDir = path.join(steamPath, 'userdata', activeAccountId, 'config')
+    if (fs.existsSync(configDir)) return configDir
+  }
 
   const loginUsersPath = path.join(steamPath, 'config', 'loginusers.vdf')
   if (!fs.existsSync(loginUsersPath)) return null
@@ -137,7 +158,7 @@ function patchLaunchOptionsInLocalConfig(
     }
   }
 
-  const appsRe = /"Apps"\s*\{/
+  const appsRe = /"apps"\s*\{/i
   const appsMatch = appsRe.exec(content)
   if (!appsMatch) return { content, changed: false }
 

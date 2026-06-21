@@ -103,7 +103,7 @@ import {
 } from './disk-space'
 import { getStorageBreakdown, purgeCloudBackedLocals, runRecordingStorageMaintenance, buildStorageUsage, purgeUntrackedRecordingFiles, isLocalOnlyRecording } from './storage-cleanup'
 import { buildStorageEstimate } from './storage-stats'
-import { buildTimelineFromReplay, uploadReplayInBackground } from './post-match-replay'
+import { buildTimelineFromReplay, tryAutoUploadSourceReplay, uploadReplayInBackground } from './post-match-replay'
 import { DiscordRPC } from './discord-rpc'
 import {
   createMainWindow as _createMainWindow,
@@ -364,6 +364,10 @@ let cancelMatchWait: (() => void) | null = null
 let waitingForMatch = false
 // Prevents double-handling when onMatchEnded + game-stopped both fire for same match
 let matchHandled = false
+/** Deadlock recorded via game window when log/replay signals were unavailable. */
+let deadlockUsedWindowFallback = false
+/** When Deadlock process was detected — used to locate replays after quit without recording. */
+let deadlockSessionStartAt: number | null = null
 /** Bumped on each game-started so superseded lobby-wait loops exit cleanly. */
 let matchFlowGeneration = 0
 /** Serializes handleMatchEnd — prevents double upload/post-game from concurrent end signals. */
@@ -912,6 +916,12 @@ function createTray(): void {
   trayRefreshInterval = result.refreshInterval
 }
 
+async function refreshDeadlockProfile(fresh = true): Promise<void> {
+  if (!authManager.isAuthenticated()) return
+  await authManager.fetchUser().catch(() => null)
+  mainWindow?.webContents.send('dashboard:refresh', { fresh })
+}
+
 function setupGameDetection(): void {
   startSteamGsiServer()
   gameDetector.setWatchGame(normalizePrimaryGame(settingsManager.get().primaryGame))
@@ -945,6 +955,7 @@ function setupGameDetection(): void {
     matchFlowGeneration++
     const generation = matchFlowGeneration
     matchHandled = false
+    deadlockUsedWindowFallback = false
     riotLocalApi.cancelMenuWatch()
     riotLocalApi.onMatchEnded = null
     cancelMatchWait?.()
@@ -1112,6 +1123,27 @@ function setupGameDetection(): void {
       ? (riotLocalApi.getLastGameMode() ?? 'UNKNOWN')
       : (timeline?.gameMode ?? 'COMPETITIVE')
     const autoAnalyse = config?.autoAnalyse !== false
+
+    async function maybeUploadDemoOnly(reason: string): Promise<void> {
+      if (!autoAnalyse || (game !== 'cs2' && game !== 'deadlock')) return
+      if (!authManager.isAuthenticated()) return
+      logActivity(`${gameLabel(game)} replay uploading (${reason})`)
+      showAppNotification({
+        title: `${gameLabel(game)} replay analysis`,
+        body: 'No VOD saved — uploading match replay for AI coaching.',
+        silent: notifySilent(),
+      })
+      const notifyWin = mainWindow && !mainWindow.isDestroyed() ? mainWindow : null
+      await tryAutoUploadSourceReplay({
+        game: game as 'cs2' | 'deadlock',
+        demoPath: pendingReplayPath,
+        matchSessionStart: matchSessionStart,
+        auth: authManager,
+        notifyWindow: notifyWin,
+        customReplayDir: game === 'cs2' ? config?.cs2DemoDir : undefined,
+      })
+      mainWindow?.webContents.send('dashboard:refresh', { fresh: true })
+    }
     const clipsOnly = config?.fullMatchRecording === false || obsRecorder.isClipsOnlySession()
 
     if (clipsOnly) {
@@ -1185,10 +1217,9 @@ function setupGameDetection(): void {
       if (videoPath && fs.existsSync(videoPath)) {
         try { fs.unlinkSync(videoPath) } catch { /* ignore */ }
       }
+      void maybeUploadDemoOnly('recording too short')
       return
     }
-
-    // If recording never started and no file was recovered from disk, skip post-game.
     if (recordingDuration === 0 && fileSize < MIN_RECORDING_FILE_BYTES) {
       scanForOrphanedRecordings(true)
       registerClipOnlySession({
@@ -1205,6 +1236,7 @@ function setupGameDetection(): void {
       const msg = lastErr ? `Match ended — no recording was made (${lastErr})` : 'Match ended — no active recording'
       logActivity(msg)
       notifyRecordingUx(lastErr ? `No recording was saved: ${lastErr}` : 'No recording was saved for this match.', 'UpForge — No Recording')
+      void maybeUploadDemoOnly('no recording')
       return
     }
 
@@ -1556,6 +1588,7 @@ function setupGameDetection(): void {
     const { isStale } = beginMatchFlow()
     console.log(`[GameDetector] ${game} started (flow #${matchFlowGeneration})`)
     logActivity(`${gameLabel(game)} detected — waiting for match`)
+    if (game === 'deadlock') deadlockSessionStartAt = Date.now()
     if (game === 'valorant') {
       void riotLocalApi.getPregameContext().then((ctx) => {
         discordRPC.setInGame(game, { map: ctx?.map ?? null, agent: ctx?.agent ?? null })
@@ -1696,6 +1729,7 @@ function setupGameDetection(): void {
       logActivity('Deadlock running — waiting for match')
 
       const MATCH_TIMEOUT_MS = 25 * 60 * 1000
+      const WINDOW_FALLBACK_MS = 15_000
       const loopStart = Date.now()
       let reopenHintShown = false
       const deadline = Date.now() + MATCH_TIMEOUT_MS
@@ -1722,6 +1756,21 @@ function setupGameDetection(): void {
           gameMode = 'COMPETITIVE'
           modeConfident = true
           break
+        }
+
+        // Fallback: process still running after brief wait (tutorial, bot, first match — any mode).
+        if (Date.now() - loopStart >= WINDOW_FALLBACK_MS) {
+          if (await gameDetector.isGameProcessRunning('deadlock')) {
+            await ensureObsCaptureForGame('deadlock')
+            matchStartTime = Date.now()
+            currentMatchStartTime = matchStartTime
+            gameMode = 'STANDARD'
+            modeConfident = false
+            deadlockUsedWindowFallback = true
+            logActivity('Deadlock gameplay detected — starting recording')
+            log.info('[GameDetector] Deadlock process fallback after', WINDOW_FALLBACK_MS, 'ms')
+            break
+          }
         }
       }
     } else if (game === 'valorant') {
@@ -1959,7 +2008,9 @@ function setupGameDetection(): void {
       gsiPollTimer = setInterval(() => {
         void (async () => {
           if (!obsRecorder.isRecording() || matchHandled) return
-          const ended = game === 'deadlock' ? isDeadlockMatchEnded() : isGsiMatchEnded()
+          const ended = game === 'deadlock'
+            ? (isDeadlockMatchEnded() || (deadlockUsedWindowFallback && !(await gameDetector.isGameProcessRunning('deadlock'))))
+            : isGsiMatchEnded()
           if (!ended) return
 
           const elapsedSec = currentRecordingStartTime
@@ -1971,6 +2022,7 @@ function setupGameDetection(): void {
           )
           const didFinalize = await finalizeMatchOnce(game, 'gsi')
           if (!didFinalize) return
+          if (game === 'deadlock') void refreshDeadlockProfile(true)
           if (mainWindow && !mainWindow.isDestroyed() && mainWindow.isMinimized()) mainWindow.restore()
           destroyOverlay()
           await rearmGameDetection(game)
@@ -2073,6 +2125,7 @@ function setupGameDetection(): void {
     riotLocalApi.cancelMenuWatch()
     riotLocalApi.onMatchEnded = null
 
+    try {
     // Game quit while still in lobby (before match started).
     // Only cancel the wait if the match hasn't already been handled by presence — if it has,
     // the re-arm is running inside cancelMatchWait and we should NOT cancel it: the
@@ -2126,6 +2179,27 @@ function setupGameDetection(): void {
     // Restore main window now that game is gone
     if (mainWindow && !mainWindow.isDestroyed() && mainWindow.isMinimized()) mainWindow.restore()
     destroyOverlay()
+    } finally {
+      if (game === 'deadlock') {
+        stopDeadlockLogWatcher()
+        void refreshDeadlockProfile(true)
+        const sessionStart = currentMatchStartTime ?? deadlockSessionStartAt
+        const autoAnalyse = settingsManager?.get().autoAnalyse !== false
+        if (!matchHandled && sessionStart != null && autoAnalyse && authManager.isAuthenticated()) {
+          void tryAutoUploadSourceReplay({
+            game: 'deadlock',
+            demoPath: null,
+            matchSessionStart: sessionStart,
+            auth: authManager,
+            notifyWindow: mainWindow && !mainWindow.isDestroyed() ? mainWindow : null,
+          }).then(() => {
+            mainWindow?.webContents.send('dashboard:refresh', { fresh: true })
+          })
+        }
+        deadlockSessionStartAt = null
+        currentMatchStartTime = null
+      }
+    }
   })
 
   gameDetector.start()

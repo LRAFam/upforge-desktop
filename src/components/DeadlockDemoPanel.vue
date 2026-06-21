@@ -18,11 +18,10 @@
           Open folder
         </button>
         <button
-          class="text-[10px] font-semibold px-2.5 py-1 rounded-lg transition-all"
-          style="background:rgba(20,184,166,0.12);color:#2dd4bf;border:1px solid rgba(20,184,166,0.2)"
-          @click="openAnalyze"
+          class="text-[10px] font-medium text-gray-500 hover:text-gray-300 transition-colors px-2 py-0.5 rounded-md hover:bg-white/[0.05]"
+          @click="refreshList"
         >
-          Analyze on Web →
+          Refresh
         </button>
       </div>
     </div>
@@ -36,15 +35,10 @@
     <!-- No replay folder -->
     <div v-else-if="!result.exists" class="px-3.5 py-4">
       <p class="text-xs text-gray-500 leading-relaxed">
-        No Deadlock replay folder found. Play a match first — replays are saved automatically at<br>
-        <span class="font-mono text-gray-600 text-[10px]">%LOCALAPPDATA%\Deadlock\game\deadlock\replays\</span>
+        No Deadlock replay folder found. Replays save automatically after matches to
+        <span class="font-mono text-gray-600 text-[10px]">…\Deadlock\game\deadlock\replays\</span>
+        or <span class="font-mono text-gray-600 text-[10px]">…\citadel\replays\</span>.
       </p>
-      <button
-        class="mt-3 text-xs font-medium text-teal-400 hover:text-teal-300 transition-colors"
-        @click="openAnalyze"
-      >
-        Upload a demo manually → upforge.gg/deadlock/analyze
-      </button>
     </div>
 
     <!-- Empty folder -->
@@ -63,26 +57,33 @@
         <div class="flex-1 min-w-0">
           <p class="text-[11px] font-medium text-gray-300 truncate">{{ file.name }}</p>
           <p class="text-[10px] text-gray-600">{{ formatSize(file.sizeBytes) }} · {{ formatAge(file.modifiedAt) }}</p>
+          <div v-if="uploadState(file.path)?.status === 'uploading'" class="mt-1 h-0.5 bg-white/[0.06] rounded-full overflow-hidden">
+            <div class="h-full bg-teal-400 transition-all" :style="{ width: (uploadState(file.path)?.pct ?? 0) + '%' }" />
+          </div>
+          <p v-if="uploadState(file.path)?.error" class="text-[9px] text-red-400/90 mt-0.5">{{ uploadState(file.path)?.error }}</p>
         </div>
         <button
-          class="opacity-0 group-hover:opacity-100 transition-opacity text-[10px] font-semibold text-teal-400 hover:text-teal-300 px-2 py-0.5 rounded border border-teal-500/20 hover:border-teal-500/40"
-          title="Open upforge.gg/deadlock/analyze to upload this file"
-          @click="openAnalyze"
+          class="text-[10px] font-semibold text-teal-400 hover:text-teal-300 px-2 py-0.5 rounded border border-teal-500/20 hover:border-teal-500/40 disabled:opacity-50 transition-opacity"
+          :disabled="!!uploadState(file.path)?.busy"
+          @click="analyzeFile(file.path)"
         >
-          Analyze
+          {{ uploadLabel(file.path) }}
         </button>
       </div>
     </div>
 
     <!-- Footer note -->
     <div v-if="result.exists && result.files.length > 0" class="px-3.5 py-2 border-t border-white/[0.03]">
-      <p class="text-[10px] text-gray-700">Upload .dem files at <span class="text-teal-600">upforge.gg/deadlock/analyze</span> for AI coaching</p>
+      <p class="text-[10px] text-gray-700">
+        Replays auto-upload after matches when <strong class="text-gray-500 font-semibold">Auto-analyse</strong> is on.
+        Manual uploads use your Deadlock analysis quota.
+      </p>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, onUnmounted } from 'vue'
 
 interface DemFile {
   name: string
@@ -91,24 +92,78 @@ interface DemFile {
   modifiedAt: number
 }
 
+interface UploadState {
+  busy: boolean
+  status: 'idle' | 'uploading' | 'done' | 'error'
+  pct: number
+  jobId?: string
+  error?: string
+}
+
 const loading = ref(true)
 const result = ref<{ files: DemFile[]; dir: string; exists: boolean }>({
   files: [],
   dir: '',
   exists: false,
 })
+const uploads = ref<Record<string, UploadState>>({})
 
-onMounted(async () => {
+let progressCleanup: (() => void) | null = null
+let refreshCleanup: (() => void) | null = null
+
+async function refreshList() {
+  loading.value = true
   result.value = await window.api.deadlock.listReplays()
   loading.value = false
+}
+
+onMounted(async () => {
+  await refreshList()
+  progressCleanup = window.api.on('deadlock:upload-progress', (...args: unknown[]) => {
+    const payload = args[0] as { demoPath?: string; pct?: number }
+    if (!payload?.demoPath) return
+    const prev = uploads.value[payload.demoPath] ?? { busy: true, status: 'uploading', pct: 0 }
+    uploads.value[payload.demoPath] = { ...prev, busy: true, status: 'uploading', pct: payload.pct ?? 0 }
+  })
+  refreshCleanup = window.api.on('dashboard:refresh', () => { void refreshList() })
 })
+
+onUnmounted(() => {
+  progressCleanup?.()
+  refreshCleanup?.()
+})
+
+function uploadState(path: string): UploadState | undefined {
+  return uploads.value[path]
+}
+
+function uploadLabel(path: string): string {
+  const s = uploads.value[path]
+  if (!s || s.status === 'idle') return 'Analyze'
+  if (s.status === 'uploading') return `${s.pct}%`
+  if (s.status === 'done') return 'View →'
+  return 'Retry'
+}
+
+async function analyzeFile(demoPath: string) {
+  const existing = uploads.value[demoPath]
+  if (existing?.status === 'done' && existing.jobId) {
+    void window.api.deadlock.openResults(existing.jobId)
+    return
+  }
+
+  uploads.value[demoPath] = { busy: true, status: 'uploading', pct: 0 }
+  const res = await window.api.deadlock.uploadDemo(demoPath)
+  if (res.ok) {
+    uploads.value[demoPath] = { busy: false, status: 'done', pct: 100, jobId: res.jobId }
+    void window.api.deadlock.openResults(res.jobId)
+  } else {
+    uploads.value[demoPath] = { busy: false, status: 'error', pct: 0, error: res.error }
+  }
+}
 
 function openFolder() {
   window.api.deadlock.openReplaysFolder()
-}
-
-function openAnalyze() {
-  window.api.deadlock.openAnalyze()
 }
 
 function formatSize(bytes: number): string {

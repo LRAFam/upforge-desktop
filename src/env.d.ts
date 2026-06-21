@@ -352,6 +352,23 @@ export interface AnalysisItem {
   created_at: string
 }
 
+export interface DeadlockAnalysisItem {
+  id: number
+  job_id: string
+  status: string
+  hero: string | null
+  player_name: string | null
+  match_result: string | null
+  duration_minutes: number | null
+  overall_rating: number | null
+  kd_ratio: number | null
+  kills: number | null
+  deaths: number | null
+  assists: number | null
+  created_at: string
+  completed_at: string | null
+}
+
 export interface DeadlockProfileStats {
   current_rank: { name: string; subtier: number | null; image: string | null } | null
   summary: { wins: number; losses: number; win_rate: number; avg_kda: string }
@@ -366,6 +383,7 @@ export interface DeadlockProfileStats {
     player_assists: number
     net_worth: number
     match_duration_s: number
+    start_time?: number
   }>
   hero_stats: Array<{
     hero_id: number
@@ -729,13 +747,16 @@ declare global {
         }>
         openReplaysFolder: () => Promise<{ ok: boolean }>
         openAnalyze: () => Promise<{ ok: boolean }>
+        openResults: (jobId: string) => Promise<{ ok: boolean }>
         openDashboard: () => Promise<{ ok: boolean }>
         openConnectSteam: () => Promise<{ ok: boolean }>
-        getStats: () => Promise<{
+        getStats: (opts?: { fresh?: boolean }) => Promise<{
           stats: DeadlockProfileStats | null
           linked: boolean
           error: 'not_authenticated' | 'fetch_failed' | null
         }>
+        getAnalyses: (limit?: number) => Promise<DeadlockAnalysisItem[]>
+        uploadDemo: (demoPath: string) => Promise<{ ok: true; jobId: string } | { ok: false; error: string }>
       }
       cs2: {
         detectDemoDir: () => Promise<{ dir: string | null }>

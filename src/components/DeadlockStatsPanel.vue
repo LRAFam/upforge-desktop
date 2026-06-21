@@ -15,7 +15,7 @@
         <button
           class="p-1 text-gray-700 hover:text-gray-400 transition-colors rounded"
           title="Refresh stats"
-          @click="loadStats"
+          @click="loadStats(true)"
         >
           <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
@@ -44,7 +44,7 @@
       </p>
       <button
         class="flex-shrink-0 text-[10px] font-semibold px-2.5 py-1.5 rounded-lg transition-all border border-amber-500/25 bg-amber-500/10 text-amber-300"
-        @click="loadStats"
+        @click="loadStats(true)"
       >
         Retry
       </button>
@@ -53,7 +53,7 @@
     <!-- Not connected -->
     <div v-else-if="!stats" class="px-3.5 py-4 flex items-center justify-between gap-3">
       <p class="text-xs text-gray-500 leading-relaxed">
-        Link your Steam profile on the web — search by your <strong class="text-gray-400 font-semibold">Steam display name</strong>, no numeric ID needed.
+        Stats sync from your linked Steam profile (match history on deadlock-api.com). Link once on the web — search by your <strong class="text-gray-400 font-semibold">Steam display name</strong>.
       </p>
       <button
         class="flex-shrink-0 text-[10px] font-semibold px-2.5 py-1.5 rounded-lg transition-all"
@@ -124,7 +124,14 @@
               <span v-else class="text-white/60">{{ heroInitials(match.hero_name) }}</span>
             </div>
             <span class="flex-1 text-[10px] text-gray-400 truncate">{{ match.hero_name }}</span>
-            <span class="text-[10px] font-mono text-gray-500 flex-shrink-0">
+            <span v-if="matchDate(match)" class="text-[9px] text-gray-600 flex-shrink-0 w-14 text-right">{{ matchDate(match) }}</span>
+            <span class="text-[10px] font-mono text-gray-500 flex-shrink-0 w-12 text-right">
+              {{ fmtNW(match.net_worth) }}
+            </span>
+            <span class="text-[10px] font-mono text-gray-600 flex-shrink-0 w-10 text-right">
+              {{ fmtDuration(match.match_duration_s) }}
+            </span>
+            <span class="text-[10px] font-mono text-gray-500 flex-shrink-0 w-14 text-right">
               {{ match.player_kills }}/{{ match.player_deaths }}/{{ match.player_assists }}
             </span>
           </div>
@@ -161,6 +168,7 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import type { DeadlockProfileStats } from '../env.d.ts'
 import { getDeadlockRankIconUrl } from '../lib/deadlock'
+import { formatDeadlockMatchDate, fmtDeadlockDuration, fmtDeadlockNW } from '../lib/deadlock-analyses'
 
 const loading = ref(true)
 const stats = ref<DeadlockProfileStats | null>(null)
@@ -173,11 +181,11 @@ const rankIconUrl = computed(() => {
 
 let refreshCleanup: (() => void) | null = null
 
-async function loadStats() {
+async function loadStats(fresh = false) {
   loading.value = true
   fetchError.value = false
   try {
-    const result = await window.api.deadlock.getStats()
+    const result = await window.api.deadlock.getStats({ fresh })
     stats.value = result.stats
     fetchError.value = result.error === 'fetch_failed'
   } catch {
@@ -188,15 +196,20 @@ async function loadStats() {
   }
 }
 
+let periodicRefresh: ReturnType<typeof setInterval> | null = null
+
 onMounted(() => {
   loadStats()
-  refreshCleanup = window.api.on('dashboard:refresh', () => {
-    loadStats()
+  refreshCleanup = window.api.on('dashboard:refresh', (...args: unknown[]) => {
+    const payload = args[0] as { fresh?: boolean } | undefined
+    loadStats(!!payload?.fresh)
   })
+  periodicRefresh = setInterval(() => { loadStats(true) }, 3 * 60 * 1000)
 })
 
 onUnmounted(() => {
   refreshCleanup?.()
+  if (periodicRefresh) clearInterval(periodicRefresh)
 })
 
 function heroColor(color: number[]): string {
@@ -214,5 +227,17 @@ function openWeb() {
 
 function openConnectSteam() {
   window.api.deadlock.openConnectSteam()
+}
+
+function matchDate(match: { start_time?: number }): string {
+  return formatDeadlockMatchDate(match.start_time)
+}
+
+function fmtNW(n: number): string {
+  return fmtDeadlockNW(n)
+}
+
+function fmtDuration(secs: number): string {
+  return fmtDeadlockDuration(secs)
 }
 </script>
