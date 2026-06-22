@@ -214,6 +214,7 @@ const api = {
     openAnalyze: () => ipcRenderer.invoke('cs2:open-analyze'),
     openDashboard: () => ipcRenderer.invoke('cs2:open-dashboard'),
     openConnectFaceit: () => ipcRenderer.invoke('cs2:open-connect-faceit'),
+    getAnalyses: (limit?: number) => ipcRenderer.invoke('cs2:get-analyses', limit),
     getFaceitConnection: () => ipcRenderer.invoke('cs2:get-faceit-connection'),
   },
   forgeRank: {

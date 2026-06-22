@@ -35,11 +35,12 @@ let trackedReplayPath: string | null = null
 let trackedReplaySize = 0
 let sawReplayLive = false
 let replayStableSince: number | null = null
+let lobbyMatchId: number | null = null
 
 const RE = {
   mapInfo: /\[Client\] Map:\s+"([^"]+)"/,
   mapCreated: /\[Client\] Created physics for\s+(\S+)/,
-  lobbyCreated: /Lobby\s+\d+\s+for\s+Match\s+\d+\s+created/,
+  lobbyCreated: /Lobby\s+\d+\s+for\s+Match\s+(\d+)\s+created/,
   lobbyDestroyed: /Lobby\s+\d+\s+for\s+Match\s+\d+\s+destroyed/,
   loopModeMenu: /LoopMode:\s*menu/,
   changeGameState: /ChangeGameState:\s+(\w+)\s+\((\d+)\)/,
@@ -60,6 +61,7 @@ function resetState(): void {
   trackedReplaySize = 0
   sawReplayLive = false
   replayStableSince = null
+  lobbyMatchId = null
 }
 
 export function resetDeadlockLogSession(): void {
@@ -185,7 +187,9 @@ function processLine(line: string): void {
     return
   }
 
-  if (RE.lobbyCreated.test(trimmed)) {
+  m = RE.lobbyCreated.exec(trimmed)
+  if (m) {
+    lobbyMatchId = Number.parseInt(m[1], 10)
     if (phase === 'idle' || phase === 'post_match' || phase === 'match_intro') {
       phase = 'match_intro'
     }
@@ -414,8 +418,17 @@ export function isDeadlockDetectionActive(): boolean {
   return isDeadlockLogReceiving() || sawReplayLive
 }
 
+/** Match is loading (lobby, hero select, server connect) — UI hint only. */
 export function isDeadlockMatchLive(): boolean {
   if (phase === 'in_match' || phase === 'match_intro') return true
+  if (sawReplayLive && trackedReplayPath && !replayStableSince) return true
+  if (sawReplayLive && replayStableSince && Date.now() - replayStableSince < 20_000) return true
+  return false
+}
+
+/** Stricter gate for OBS recording — map loaded / demo writing, not main menu or queue lobby. */
+export function isDeadlockReadyToRecord(): boolean {
+  if (phase === 'in_match') return true
   if (sawReplayLive && trackedReplayPath && !replayStableSince) return true
   if (sawReplayLive && replayStableSince && Date.now() - replayStableSince < 20_000) return true
   return false
@@ -438,6 +451,11 @@ export function isDeadlockMatchEnded(): boolean {
 export function getDeadlockMap(): string | null {
   if (!mapName || isHideoutMap(mapName)) return null
   return mapName
+}
+
+/** Lobby match id from -condebug log (deadlock-api match_id when indexed). */
+export function getDeadlockLobbyMatchId(): number | null {
+  return lobbyMatchId
 }
 
 export function getDeadlockDetectionStatus(): {

@@ -4,6 +4,7 @@ import type { AnalysisItem } from '../env.d.ts'
 import type { PrimaryGame } from './games'
 import { analysisResultsUrl } from './games'
 import { mapDeadlockToAnalysisItem } from './deadlock-analyses'
+import { mapCs2ToAnalysisItem } from './cs2-analyses'
 import { pendingTimeline } from '../stores/pendingTimeline'
 import { isAnalysisProcessing } from './dashboard-match-row'
 import CS2StatsPanel from '../components/CS2StatsPanel.vue'
@@ -66,6 +67,13 @@ async function loadDeadlockAnalyses(limit = 10): Promise<AnalysisItem[]> {
   return items.map(mapDeadlockToAnalysisItem)
 }
 
+async function loadCs2Analyses(limit = 10): Promise<AnalysisItem[]> {
+  const items = await window.api.cs2.getAnalyses(limit).catch(() => [])
+  return items
+    .filter(a => a.status === 'completed')
+    .map(mapCs2ToAnalysisItem)
+}
+
 export const GAME_MODULES: Record<PrimaryGame, GameModule> = {
   valorant: {
     id: 'valorant',
@@ -81,7 +89,7 @@ export const GAME_MODULES: Record<PrimaryGame, GameModule> = {
     centerPanels: [CS2StatsPanel, CS2SetupPanel],
     navRoutes: DEMO_GAME_NAV,
     features: DEMO_GAME_FEATURES,
-    loadAnalyses: loadValorantAnalyses,
+    loadAnalyses: loadCs2Analyses,
     openAnalyze: () => { void window.api.cs2.openAnalyze() },
     openHistoryWeb: () => { window.open('https://upforge.gg/cs2/history', '_blank') },
   },
@@ -120,6 +128,10 @@ export async function openGameAnalysis(
 ): Promise<void> {
   if (item.game_mode === 'DEADLOCK' && item.job_id) {
     void window.api.deadlock.openResults(item.job_id)
+    return
+  }
+  if (game === 'cs2' && item.job_id) {
+    window.open(analysisResultsUrl('cs2', item.job_id), '_blank')
     return
   }
   if (game === 'valorant' && !isAnalysisProcessing(item)) {

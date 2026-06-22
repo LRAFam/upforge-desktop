@@ -414,22 +414,41 @@ function createSettings() {
     if (user.value?.riot_name) return `${user.value.riot_name}#${user.value.riot_tag}`
     return 'No Riot ID linked'
   })
-  const accountSteamLinked = computed(() => !!user.value?.deadlock_account_id)
   const accountSteamStatus = computed(() =>
     accountSteamLinked.value ? 'Steam profile linked' : 'Steam not linked — search by display name on web',
   )
-  const cs2FaceitLinked = ref(false)
-  const cs2FaceitNickname = ref<string | null>(null)
-  
+
   const accountCs2Hint = computed(() => {
     if (cs2FaceitLinked.value && cs2FaceitNickname.value) {
       return `FACEIT: ${cs2FaceitNickname.value}`
     }
-    if (user.value?.onboarding_target_rank) {
-      return `Goal: ${user.value.onboarding_target_rank} · link FACEIT on web`
-    }
     return 'Link FACEIT username on web for match sync'
   })
+  const cs2FaceitLinked = ref(false)
+  const cs2FaceitNickname = ref<string | null>(null)
+  const deadlockLinked = ref(false)
+
+  async function loadDeadlockLink(): Promise<void> {
+    if (settings.primaryGame !== 'deadlock') {
+      deadlockLinked.value = false
+      return
+    }
+    try {
+      await window.api.auth.refreshUser().catch(() => null)
+      const result = await window.api.deadlock.getStats()
+      deadlockLinked.value = result.linked
+      const authUser = await window.api.auth.getUser() as UserWithUsage | null
+      if (authUser?.deadlock_account_id && user.value) {
+        user.value = { ...user.value, deadlock_account_id: authUser.deadlock_account_id }
+      }
+    } catch {
+      deadlockLinked.value = false
+    }
+  }
+
+  const accountSteamLinked = computed(
+    () => !!user.value?.deadlock_account_id || deadlockLinked.value,
+  )
   
   const storageSoftLimitBytes = 50 * 1024 * 1024 * 1024
   const LOW_FREE_DISK_BYTES = 2 * 1024 * 1024 * 1024
@@ -533,6 +552,14 @@ function createSettings() {
     settings.primaryGame = game
     settings.trainerMouse.game = game
     await window.api.settings.save({ primaryGame: game, trainerMouse: { ...toRaw(settings.trainerMouse) } })
+    if (game === 'deadlock') void loadDeadlockLink()
+    else if (game === 'cs2') {
+      try {
+        const faceit = await window.api.cs2.getFaceitConnection()
+        cs2FaceitLinked.value = !!faceit?.connected
+        cs2FaceitNickname.value = faceit?.nickname ?? null
+      } catch { /* optional */ }
+    }
     showSaved()
   }
   
@@ -876,6 +903,9 @@ function createSettings() {
           cs2FaceitNickname.value = faceit?.nickname ?? null
         } catch { /* optional */ }
       }
+      if (settings.primaryGame === 'deadlock') {
+        await loadDeadlockLink()
+      }
       loadStorageUsage()
       loadHotkeyStatus()
       window.api.on('storage:upload-progress', (...args: unknown[]) => {
@@ -883,6 +913,7 @@ function createSettings() {
         storageUploadProgress.value = data
       })
       window.api.on('recordings:updated', () => { void loadStorageUsage() })
+      window.api.on('dashboard:refresh', () => { void loadDeadlockLink() })
     } catch (err) {
       console.error('[Settings] Failed to load status:', err)
       try {
@@ -905,11 +936,15 @@ function createSettings() {
       const prof = await window.api.profile.get()
       if (prof?.user) {
         user.value = {
+          ...user.value,
           name: prof.user.name,
           email: prof.user.email,
           tier: prof.user.tier,
           riot_name: prof.user.riot_name,
           riot_tag: prof.user.riot_tag,
+          deadlock_account_id: (prof.user as UserWithUsage).deadlock_account_id
+            ?? user.value?.deadlock_account_id
+            ?? null,
           analyses_used: prof.user.analysis_stats?.total ?? 0,
           analyses_limit: prof.user.analysis_stats?.limit
             ?? (prof.user.is_admin || prof.user.tier === 'admin' ? null : 1),
@@ -919,6 +954,9 @@ function createSettings() {
           archive_retention_days: prof.user.archive_stats?.retention_days ?? null,
           stripe_subscription_status: prof.user.stripe_subscription_status ?? null,
         }
+      }
+      if (settings.primaryGame === 'deadlock') {
+        await loadDeadlockLink()
       }
     } catch { /* profile load failure is non-critical */ }
   

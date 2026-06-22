@@ -371,6 +371,10 @@ export function setupGamingHandlers(
     return { ok: true }
   })
 
+  ipcMain.handle('cs2:get-analyses', async (_event, limit = 10) => {
+    return auth.fetchCs2Analyses(limit)
+  })
+
   ipcMain.handle('cs2:get-faceit-connection', async () => {
     try {
       const api = auth.getApi()

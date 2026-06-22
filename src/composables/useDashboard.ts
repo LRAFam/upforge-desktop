@@ -1,7 +1,7 @@
 import { ref, computed, inject, provide, onMounted, onUnmounted, type InjectionKey } from 'vue'
 import { useRouter } from 'vue-router'
-import type { ProfileData, AnalysisItem, PendingRecording, ClipRecord } from '../env.d.ts'
-import { formatGameMode } from '../lib/valorant'
+import type { ProfileData, AnalysisItem, PendingRecording, ClipRecord, DeadlockProfileStats } from '../env.d.ts'
+import { formatGameMode, getRankIconUrl } from '../lib/valorant'
 import { getMasteryIconUrl } from '../lib/rank-assets'
 import { hasAnalysisQuotaRemaining, hasArchiveQuotaRemaining, isPlatformAdmin } from '../lib/tier-features'
 import { pendingTimeline } from '../stores/pendingTimeline'
@@ -12,8 +12,7 @@ import { isPaymentPastDue, openBillingPortal as requestBillingPortal } from '../
 import { usePrimaryGame } from './usePrimaryGame'
 import { gameTheme, type GameTheme } from '../lib/game-themes'
 import { loadGameAnalyses, openGameAnalysis, openGameHistoryWeb, openGameAnalyze } from '../lib/game-modules'
-import { getCs2RankIconUrl, getFaceitLevelIconUrl, type Cs2FaceitConnection } from '../lib/cs2'
-import { getDeadlockRankIconUrl } from '../lib/deadlock'
+import { getFaceitLevelIconUrl, type Cs2FaceitConnection } from '../lib/cs2'
 import {
   displayAcs,
   isAnalysisProcessing,
@@ -48,6 +47,8 @@ function createDashboard() {
   const onboardingTargetRank = ref<string | null>(null)
   const onboardingWeaknesses = ref<string[]>([])
   const cs2FaceitConnection = ref<Cs2FaceitConnection | null>(null)
+  const deadlockLinked = ref(false)
+  const deadlockStats = ref<DeadlockProfileStats | null>(null)
   const playerCardUrl = ref('')
   const analyses = ref<AnalysisItem[]>([])
   const analysesLoading = ref(true)
@@ -93,11 +94,12 @@ function createDashboard() {
   const emptyCoachingAction = computed(() =>
     theme.value.coachingEmptyAction({ obsConnected: status.value.obsConnected }),
   )
+  const hasOnboardingGoals = computed(
+    () => !!(onboardingTargetRank.value || onboardingWeaknesses.value.length),
+  )
   const goalsRankIcon = computed(() => {
-    if (!onboardingTargetRank.value) return null
-    if (isCs2.value) return getCs2RankIconUrl(onboardingTargetRank.value)
-    if (isDeadlock.value) return getDeadlockRankIconUrl(onboardingTargetRank.value)
-    return null
+    if (!isValorant.value || !onboardingTargetRank.value) return null
+    return getRankIconUrl(onboardingTargetRank.value)
   })
   const dashboardRankLabel = computed(() => {
     if (isCs2.value) {
@@ -107,9 +109,9 @@ function createDashboard() {
         if (nick && lvl != null) return `${nick} · Lv ${lvl}`
         if (nick) return nick
       }
-      return onboardingTargetRank.value || theme.value.rankFallback
+      return theme.value.rankFallback
     }
-    if (isDeadlock.value) return onboardingTargetRank.value || theme.value.rankFallback
+    if (isDeadlock.value) return theme.value.rankFallback
     return profile.value?.latest_stats?.current_rank || theme.value.rankFallback
   })
   const totalSessionsAnalysed = computed(() => {
@@ -197,8 +199,8 @@ function createDashboard() {
     if (isValorant.value && skillProfile.value) {
       panels.push({ id: 'skills', label: 'Skills', accent: 'bg-emerald-500' })
     }
-    if ((isCs2.value || isDeadlock.value) && (onboardingTargetRank.value || onboardingWeaknesses.value.length)) {
-      panels.push({ id: 'goals', label: 'Goals', accent: isCs2.value ? 'bg-orange-500' : 'bg-teal-500' })
+    if (isValorant.value && hasOnboardingGoals.value) {
+      panels.push({ id: 'goals', label: 'Goals', accent: 'bg-red-500' })
     }
     if (isValorant.value && correlationInsights.value.length) {
       panels.push({ id: 'impact', label: 'Impact', accent: 'bg-red-500' })
@@ -398,6 +400,7 @@ function createDashboard() {
     analysesLoading.value = true
     try {
       analyses.value = await loadGameAnalyses(primaryGame.value, 10)
+      coachingSnippets.value = {}
       void loadCoachingSnippets(analyses.value)
     } catch {
       analyses.value = []
@@ -420,6 +423,17 @@ function createDashboard() {
       cs2FaceitConnection.value = await window.api.cs2.getFaceitConnection()
     } catch {
       cs2FaceitConnection.value = null
+    }
+  }
+
+  async function loadDeadlockProfile() {
+    try {
+      const result = await window.api.deadlock.getStats()
+      deadlockLinked.value = result.linked
+      deadlockStats.value = result.stats
+    } catch {
+      deadlockLinked.value = false
+      deadlockStats.value = null
     }
   }
 
@@ -447,6 +461,7 @@ function createDashboard() {
         rrHistory.value = await window.api.stats.rrHistory().catch(() => [])
       }
       if (isCs2.value) await loadCs2Faceit()
+      if (isDeadlock.value) await loadDeadlockProfile()
       await syncAuthUserFields()
     } catch { /* ignore */ } finally {
       profileLoading.value = false
@@ -847,6 +862,7 @@ function createDashboard() {
       rrHistory.value = await window.api.stats.rrHistory().catch(() => [])
     }
     if (isCs2.value) await loadCs2Faceit()
+    if (isDeadlock.value) await loadDeadlockProfile()
 
     pendingRecordings.value = await window.api.recordings.get().catch(() => [])
     activityLog.value = await window.api.app.getActivityLog().catch(() => [])
@@ -917,12 +933,14 @@ function createDashboard() {
       const prevGame = primaryGame.value
       applyFromSettings(s)
       if (s.primaryGame && s.primaryGame !== prevGame) {
-        await loadAnalyses()
+        await Promise.all([loadAnalyses(), loadClipCount()])
         if (isValorant.value) {
           playstyleProfile.value = await window.api.progress.playstyleProfile().catch(() => null)
           rrHistory.value = await window.api.stats.rrHistory().catch(() => [])
         } else if (isCs2.value) {
           await loadCs2Faceit()
+        } else if (isDeadlock.value) {
+          await loadDeadlockProfile()
         }
       }
     }))
@@ -1020,6 +1038,9 @@ function createDashboard() {
     profileLoading,
     onboardingTargetRank,
     onboardingWeaknesses,
+    cs2FaceitConnection,
+    deadlockLinked,
+    deadlockStats,
     playerCardUrl,
     analyses,
     analysesLoading,

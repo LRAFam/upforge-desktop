@@ -13,6 +13,16 @@ const RANK_TIERS: Record<string, number> = {
   Eternus: 11,
 }
 
+const DEADLOCK_ASSETS_BASE = 'https://assets-bucket.deadlock-api.com/assets-api-res'
+
+/** Resolve a Deadlock hero portrait URL from API stats (absolute or assets-relative). */
+export function getDeadlockHeroIconUrl(icon: string | null | undefined): string | null {
+  if (!icon) return null
+  if (icon.startsWith('http://') || icon.startsWith('https://')) return icon
+  if (icon.startsWith('/')) return `${DEADLOCK_ASSETS_BASE}${icon}`
+  return `${DEADLOCK_ASSETS_BASE}/images/heroes/${icon}`
+}
+
 function deadlockRankAsset(filename: string): string {
   return new URL(`../assets/ranks/deadlock/${filename}`, import.meta.url).href
 }

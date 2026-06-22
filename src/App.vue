@@ -162,9 +162,9 @@
       class="relative flex items-center gap-2 px-3 py-1.5 flex-shrink-0 border-b border-white/[0.09] bg-[#161616]/90 backdrop-blur-md"
     >
       <div class="pointer-events-none absolute inset-x-0 bottom-0 h-px bg-gradient-to-r" :class="theme.chromeGradient" />
+      <GameSwitcher />
+      <div class="h-5 w-px flex-shrink-0 bg-white/[0.10]" />
       <div class="flex min-w-0 flex-1 items-center gap-2 overflow-x-auto scrollbar-hide">
-        <GameSwitcher />
-        <div class="h-5 w-px flex-shrink-0 bg-white/[0.10]" />
         <RouterLink
           v-for="link in visibleNavLinks"
           :key="link.to"

@@ -120,7 +120,7 @@
               class="w-5 h-5 rounded flex-shrink-0 overflow-hidden flex items-center justify-center text-[9px] font-bold"
               :style="{ background: heroColor(match.hero_color) }"
             >
-              <img v-if="match.hero_icon" :src="match.hero_icon" class="w-full h-full object-cover" alt="" />
+              <img v-if="match.hero_icon" :src="getDeadlockHeroIconUrl(match.hero_icon)!" class="w-full h-full object-cover" alt="" />
               <span v-else class="text-white/60">{{ heroInitials(match.hero_name) }}</span>
             </div>
             <span class="flex-1 text-[10px] text-gray-400 truncate">{{ match.hero_name }}</span>
@@ -151,12 +151,61 @@
               class="w-5 h-5 rounded flex-shrink-0 overflow-hidden flex items-center justify-center text-[9px] font-bold"
               :style="{ background: heroColor(hero.hero_color) }"
             >
-              <img v-if="hero.hero_icon" :src="hero.hero_icon" class="w-full h-full object-cover" alt="" />
+              <img v-if="hero.hero_icon" :src="getDeadlockHeroIconUrl(hero.hero_icon)!" class="w-full h-full object-cover" alt="" />
               <span v-else class="text-white/60">{{ heroInitials(hero.hero_name) }}</span>
             </div>
             <span class="flex-1 text-[10px] text-gray-300 truncate">{{ hero.hero_name }}</span>
             <span class="text-[10px] text-gray-600">{{ hero.matches_played }}G</span>
             <span class="text-[10px] font-semibold text-teal-400 w-8 text-right">{{ hero.win_rate }}%</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Vs meta (deadlock-api population benchmarks) -->
+      <div v-if="stats.meta_insights?.length" class="px-3.5 py-2">
+        <p class="text-[9px] font-bold uppercase tracking-widest text-gray-600 mb-1.5">Vs Meta</p>
+        <div class="space-y-1.5">
+          <div
+            v-for="row in stats.meta_insights.slice(0, 3)"
+            :key="row.hero_id"
+            class="flex items-center gap-2"
+          >
+            <div
+              class="w-5 h-5 rounded flex-shrink-0 overflow-hidden flex items-center justify-center text-[9px] font-bold"
+              style="background:rgba(20,184,166,0.15)"
+            >
+              <img v-if="row.hero_icon" :src="getDeadlockHeroIconUrl(row.hero_icon)!" class="w-full h-full object-cover" alt="" />
+              <span v-else class="text-white/60">{{ heroInitials(row.hero_name) }}</span>
+            </div>
+            <span class="flex-1 text-[10px] text-gray-400 truncate">{{ row.hero_name }}</span>
+            <span class="text-[10px] text-gray-600 w-10 text-right">{{ row.player_win_rate }}%</span>
+            <span
+              class="text-[10px] font-semibold w-14 text-right"
+              :class="metaDeltaClass(row.signal)"
+            >
+              {{ formatMetaDelta(row.delta_vs_meta) }}
+            </span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Patch meta leaders -->
+      <div v-if="stats.top_meta_heroes?.length" class="px-3.5 py-2 pb-3">
+        <p class="text-[9px] font-bold uppercase tracking-widest text-gray-600 mb-1.5">Meta Leaders</p>
+        <div class="flex flex-wrap gap-1.5">
+          <div
+            v-for="hero in stats.top_meta_heroes.slice(0, 4)"
+            :key="hero.hero_id"
+            class="flex items-center gap-1 px-1.5 py-0.5 rounded-md border border-white/[0.06] bg-white/[0.02]"
+          >
+            <img
+              v-if="hero.hero_icon"
+              :src="getDeadlockHeroIconUrl(hero.hero_icon)!"
+              class="w-4 h-4 rounded object-cover"
+              alt=""
+            />
+            <span class="text-[9px] text-gray-400">{{ hero.hero_name }}</span>
+            <span class="text-[9px] font-semibold text-teal-400">{{ hero.win_rate }}%</span>
           </div>
         </div>
       </div>
@@ -167,7 +216,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import type { DeadlockProfileStats } from '../env.d.ts'
-import { getDeadlockRankIconUrl } from '../lib/deadlock'
+import { getDeadlockRankIconUrl, getDeadlockHeroIconUrl } from '../lib/deadlock'
 import { formatDeadlockMatchDate, fmtDeadlockDuration, fmtDeadlockNW } from '../lib/deadlock-analyses'
 
 const loading = ref(true)
@@ -243,5 +292,17 @@ function fmtNW(n: number): string {
 
 function fmtDuration(secs: number): string {
   return fmtDeadlockDuration(secs)
+}
+
+function formatMetaDelta(delta: number | null | undefined): string {
+  if (delta == null) return '—'
+  const sign = delta > 0 ? '+' : ''
+  return `${sign}${delta}%`
+}
+
+function metaDeltaClass(signal: string | null | undefined): string {
+  if (signal === 'outperforming') return 'text-teal-400'
+  if (signal === 'underperforming') return 'text-red-400'
+  return 'text-gray-500'
 }
 </script>

@@ -46,7 +46,7 @@ export function displayAcs(a: AnalysisItem): number | null {
 }
 
 export function isAnalysisProcessing(a: AnalysisItem): boolean {
-  if (a.game_mode === 'DEADLOCK') {
+  if (a.game_mode === 'DEADLOCK' || a.game_mode === 'CS2') {
     return a.status === 'pending' || a.status === 'processing' || a.status === 'uploading'
   }
   return ['queued', 'processing', 'pending'].includes(a.status)

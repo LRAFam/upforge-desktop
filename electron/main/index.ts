@@ -136,10 +136,11 @@ import {
   startDeadlockLogWatcher,
   stopDeadlockLogWatcher,
   resetDeadlockLogSession,
-  isDeadlockMatchLive,
+  isDeadlockReadyToRecord,
   isDeadlockMatchEnded,
   isDeadlockDetectionActive,
   getDeadlockMap,
+  getDeadlockLobbyMatchId,
 } from './deadlock-log-watcher'
 import { ensureDeadlockSteamLaunchOptions } from './deadlock-steam-setup'
 
@@ -366,8 +367,6 @@ let cancelMatchWait: (() => void) | null = null
 let waitingForMatch = false
 // Prevents double-handling when onMatchEnded + game-stopped both fire for same match
 let matchHandled = false
-/** Deadlock recorded via game window when log/replay signals were unavailable. */
-let deadlockUsedWindowFallback = false
 /** When Deadlock process was detected — used to locate replays after quit without recording. */
 let deadlockSessionStartAt: number | null = null
 /** Bumped on each game-started so superseded lobby-wait loops exit cleanly. */
@@ -1063,7 +1062,6 @@ function setupGameDetection(): void {
     matchFlowGeneration++
     const generation = matchFlowGeneration
     matchHandled = false
-    deadlockUsedWindowFallback = false
     riotLocalApi.cancelMenuWatch()
     riotLocalApi.onMatchEnded = null
     cancelMatchWait?.()
@@ -1383,8 +1381,19 @@ function setupGameDetection(): void {
     // CS2 / Deadlock replay upload — runs asynchronously and never blocks VOD upload
     if (game === 'cs2' || game === 'deadlock') {
       if (pendingReplayPath) {
-        void uploadReplayInBackground(game as 'cs2' | 'deadlock', pendingReplayPath, authManager, thisPostGameWindow)
-          .catch(() => { /* logged inside */ })
+        const replayMeta = game === 'deadlock'
+          ? {
+              matchId: getDeadlockLobbyMatchId(),
+              matchStartedAt: Math.floor(matchSessionStart / 1000),
+            }
+          : undefined
+        void uploadReplayInBackground(
+          game as 'cs2' | 'deadlock',
+          pendingReplayPath,
+          authManager,
+          thisPostGameWindow,
+          replayMeta,
+        ).catch(() => { /* logged inside */ })
       } else {
         try {
           if (!thisPostGameWindow.isDestroyed()) {
@@ -1837,9 +1846,9 @@ function setupGameDetection(): void {
       logActivity('Deadlock running — waiting for match')
 
       const MATCH_TIMEOUT_MS = 25 * 60 * 1000
-      const WINDOW_FALLBACK_MS = 15_000
       const loopStart = Date.now()
       let reopenHintShown = false
+      let detectionHintShown = false
       const deadline = Date.now() + MATCH_TIMEOUT_MS
       while (Date.now() < deadline && !cancelled) {
         if (abortIfStale(isStale, game)) return
@@ -1854,31 +1863,29 @@ function setupGameDetection(): void {
           && !isDeadlockDetectionActive()
         ) {
           reopenHintShown = true
-          logActivity('Reopen Deadlock so UpForge can detect matches')
+          logActivity('Reopen Deadlock so UpForge can detect matches (-condebug)')
+          notifyRecordingUx(
+            'Restart Deadlock once so UpForge can detect when a match starts. Recording waits until you are in-game.',
+          )
         }
 
-        if (isDeadlockMatchLive()) {
+        if (
+          !detectionHintShown
+          && !steamSetup.needsGameRestart
+          && Date.now() - loopStart > 45_000
+          && !isDeadlockDetectionActive()
+        ) {
+          detectionHintShown = true
+          logActivity('Deadlock match detection inactive — restart the game if recording never starts')
+        }
+
+        if (isDeadlockReadyToRecord()) {
           matchStartTime = Date.now()
           currentMatchStartTime = matchStartTime
           currentGsiMapName = getDeadlockMap()
           gameMode = 'COMPETITIVE'
           modeConfident = true
           break
-        }
-
-        // Fallback: process still running after brief wait (tutorial, bot, first match — any mode).
-        if (Date.now() - loopStart >= WINDOW_FALLBACK_MS) {
-          if (await gameDetector.isGameProcessRunning('deadlock')) {
-            await ensureObsCaptureForGame('deadlock')
-            matchStartTime = Date.now()
-            currentMatchStartTime = matchStartTime
-            gameMode = 'STANDARD'
-            modeConfident = false
-            deadlockUsedWindowFallback = true
-            logActivity('Deadlock gameplay detected — starting recording')
-            log.info('[GameDetector] Deadlock process fallback after', WINDOW_FALLBACK_MS, 'ms')
-            break
-          }
         }
       }
     } else if (game === 'valorant') {
@@ -2117,7 +2124,7 @@ function setupGameDetection(): void {
         void (async () => {
           if (!obsRecorder.isRecording() || matchHandled) return
           const ended = game === 'deadlock'
-            ? (isDeadlockMatchEnded() || (deadlockUsedWindowFallback && !(await gameDetector.isGameProcessRunning('deadlock'))))
+            ? isDeadlockMatchEnded()
             : isGsiMatchEnded()
           if (!ended) return
 
@@ -2300,6 +2307,10 @@ function setupGameDetection(): void {
             matchSessionStart: sessionStart,
             auth: authManager,
             notifyWindow: mainWindow && !mainWindow.isDestroyed() ? mainWindow : null,
+            meta: {
+              matchId: getDeadlockLobbyMatchId(),
+              matchStartedAt: Math.floor(sessionStart / 1000),
+            },
           }).then(() => {
             mainWindow?.webContents.send('dashboard:refresh', { fresh: true })
           })

@@ -9,6 +9,9 @@ export interface SourceReplayUploadOptions {
   game: SourceGame
   demoPath: string
   steamId?: string | null
+  matchId?: number | null
+  matchStartedAt?: number | null
+  heroId?: number | null
   onProgress: (pct: number) => void
 }
 
@@ -39,19 +42,30 @@ export class SourceReplayUploader {
     const filename = path.basename(opts.demoPath)
 
     opts.onProgress(0)
-    const presignBody = JSON.stringify({
-      filename,
-      player_steam_id: opts.steamId ?? undefined,
-    })
-    const presignResult = await this._apiPost(`${apiUrl}${prefix}/presign`, presignBody, token)
+    const presignBody: Record<string, unknown> = { filename }
+    if (opts.game === 'deadlock') {
+      if (opts.steamId) presignBody.steam_id = opts.steamId
+      if (opts.matchId) presignBody.match_id = opts.matchId
+      if (opts.matchStartedAt) presignBody.match_started_at = opts.matchStartedAt
+      if (opts.heroId) presignBody.hero_id = opts.heroId
+    } else if (opts.steamId) {
+      presignBody.player_steam_id = opts.steamId
+    }
+    const presignResult = await this._apiPost(`${apiUrl}${prefix}/presign`, JSON.stringify(presignBody), token)
     const jobId = presignResult['job_id'] as string
     const uploadUrl = presignResult['upload_url'] as string
 
     await this._putToS3(uploadUrl, opts.demoPath, totalBytes, opts.onProgress)
 
+    const confirmBody: Record<string, unknown> = { job_id: jobId }
+    if (opts.game === 'deadlock') {
+      if (opts.matchId) confirmBody.match_id = opts.matchId
+      if (opts.matchStartedAt) confirmBody.match_started_at = opts.matchStartedAt
+      if (opts.heroId) confirmBody.hero_id = opts.heroId
+    }
     await this._apiPost(
       `${apiUrl}${prefix}/confirm`,
-      JSON.stringify({ job_id: jobId }),
+      JSON.stringify(confirmBody),
       token,
     )
     opts.onProgress(100)

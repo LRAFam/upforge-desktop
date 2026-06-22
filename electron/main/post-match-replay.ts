@@ -5,7 +5,12 @@ import { findLatestReplay, type SourceGame } from './source-replay-finder'
 import { SourceReplayUploader } from './source-replay-uploader'
 import type { AuthManager } from './auth-manager'
 import type { MatchData } from './riot-types'
-import { findLatestReplay, type SourceGame } from './source-replay-finder'
+
+export interface ReplayUploadMeta {
+  matchId?: number | null
+  matchStartedAt?: number | null
+  heroId?: number | null
+}
 
 export interface PostMatchReplayContext {
   game: SourceGame
@@ -60,6 +65,7 @@ export async function uploadReplayInBackground(
   demoPath: string,
   auth: AuthManager,
   notifyWindow: BrowserWindow | null,
+  meta?: ReplayUploadMeta,
 ): Promise<{ jobId?: string; status: string }> {
   const send = (channel: string, payload?: unknown) => {
     if (notifyWindow && !notifyWindow.isDestroyed()) {
@@ -80,6 +86,9 @@ export async function uploadReplayInBackground(
       game,
       demoPath,
       steamId: game === 'deadlock' ? steamId : null,
+      matchId: meta?.matchId ?? null,
+      matchStartedAt: meta?.matchStartedAt ?? null,
+      heroId: meta?.heroId ?? null,
       onProgress: (pct) => send('post-game:demo-progress', pct),
     })
 
@@ -125,6 +134,7 @@ export async function tryAutoUploadSourceReplay(opts: {
   auth: AuthManager
   notifyWindow: BrowserWindow | null
   customReplayDir?: string
+  meta?: ReplayUploadMeta
 }): Promise<void> {
   let demoPath = opts.demoPath
   if (!demoPath) {
@@ -132,5 +142,8 @@ export async function tryAutoUploadSourceReplay(opts: {
     demoPath = found.demoPath
   }
   if (!demoPath) return
-  await uploadReplayInBackground(opts.game, demoPath, opts.auth, opts.notifyWindow)
+  const meta = opts.meta ?? (opts.game === 'deadlock'
+    ? { matchStartedAt: Math.floor(opts.matchSessionStart / 1000) }
+    : undefined)
+  await uploadReplayInBackground(opts.game, demoPath, opts.auth, opts.notifyWindow, meta)
 }

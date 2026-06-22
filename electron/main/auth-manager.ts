@@ -380,6 +380,27 @@ export class AuthManager {
     }
   }
 
+  async fetchCs2Analyses(limit = 10): Promise<Array<{
+    id: number
+    job_id: string
+    status: string
+    player_name: string | null
+    map: string | null
+    rounds_played: number | null
+    score: string | null
+    kd_ratio: number | null
+    overall_rating: number | null
+    created_at: string
+    completed_at: string | null
+  }>> {
+    try {
+      const res = await this._api.get(`/api/cs2/analyses?per_page=${limit}`)
+      return res.data?.analyses ?? []
+    } catch {
+      return []
+    }
+  }
+
   async fetchSquad(): Promise<{ team: unknown; activity: unknown[]; presence: Record<number, { online: boolean; is_recording: boolean }>; error?: string } | null> {
     try {
       // Fetch my-team first to detect auth errors vs no-team

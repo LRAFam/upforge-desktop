@@ -354,6 +354,20 @@ export interface AnalysisItem {
   created_at: string
 }
 
+export interface Cs2AnalysisItem {
+  id: number
+  job_id: string
+  status: string
+  player_name: string | null
+  map: string | null
+  rounds_played: number | null
+  score: string | null
+  kd_ratio: number | null
+  overall_rating: number | null
+  created_at: string
+  completed_at: string | null
+}
+
 export interface DeadlockAnalysisItem {
   id: number
   job_id: string
@@ -396,6 +410,23 @@ export interface DeadlockProfileStats {
     win_rate: number
   }>
   mmr_history: Array<{ rank: number | null }>
+  meta_insights?: Array<{
+    hero_id: number
+    hero_name: string
+    hero_icon: string | null
+    player_win_rate: number
+    meta_win_rate: number | null
+    delta_vs_meta: number | null
+    matches_played: number
+    signal: 'outperforming' | 'underperforming' | 'on_par' | null
+  }>
+  top_meta_heroes?: Array<{
+    hero_id: number
+    hero_name: string
+    hero_icon: string | null
+    win_rate: number
+    matches: number
+  }>
 }
 
 declare global {
@@ -771,6 +802,7 @@ declare global {
         openAnalyze: () => Promise<{ ok: boolean }>
         openDashboard: () => Promise<{ ok: boolean }>
         openConnectFaceit: () => Promise<{ ok: boolean }>
+        getAnalyses: (limit?: number) => Promise<Cs2AnalysisItem[]>
         getFaceitConnection: () => Promise<{
           connected: boolean
           nickname?: string
