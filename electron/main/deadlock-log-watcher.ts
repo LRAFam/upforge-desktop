@@ -8,7 +8,7 @@ import path from 'path'
 import { exec } from 'child_process'
 import { promisify } from 'util'
 import log from 'electron-log'
-import { getReplayDirForGame } from './source-replay-finder'
+import { getDeadlockReplayDirs } from './source-replay-finder'
 
 const execAsync = promisify(exec)
 const IS_WIN = process.platform === 'win32'
@@ -49,7 +49,8 @@ const RE = {
   precachingHeroes: /Precaching (\d+) heroes in CCitadelGameRules/,
   startMatchmaking: /k_EMsgClientToGCStartMatchmaking/,
   hostActivate: /\[HostStateManager\] Host activate:.*\(([^)]+)\)/,
-  spectate: /spectat/i,
+  spectateBroadcast: /Playing Broadcast/,
+  stopMatchmaking: /k_EMsgClientToGCStopMatchmaking/,
 }
 
 function resetState(): void {
@@ -140,10 +141,22 @@ async function resolveConsoleLogCandidates(): Promise<string[]> {
 }
 
 export async function resolveDeadlockConsoleLog(): Promise<string | null> {
-  for (const candidate of await resolveConsoleLogCandidates()) {
-    if (fs.existsSync(candidate)) return candidate
+  const candidates = await resolveConsoleLogCandidates()
+  let bestPath: string | null = null
+  let bestMtime = 0
+
+  for (const candidate of candidates) {
+    try {
+      if (!fs.existsSync(candidate)) continue
+      const mtime = fs.statSync(candidate).mtimeMs
+      if (mtime > bestMtime) {
+        bestMtime = mtime
+        bestPath = candidate
+      }
+    } catch { /* skip */ }
   }
-  return null
+
+  return bestPath
 }
 
 function isHideoutMap(name: string): boolean {
@@ -152,7 +165,7 @@ function isHideoutMap(name: string): boolean {
 
 function applyMap(name: string): void {
   const mapLower = name.toLowerCase()
-  if (!mapLower || mapLower === 'start' || mapLower === ' ') return
+  if (!mapLower || mapLower === 'start' || mapLower === '<empty>' || mapLower === ' ') return
   if (phase === 'spectating') return
 
   if (isHideoutMap(mapLower)) {
@@ -163,6 +176,7 @@ function applyMap(name: string): void {
   }
 
   mapName = mapLower
+  // Any non-hideout map load means a live match is starting (align with deadlock-rpc).
   if (phase === 'match_intro' || phase === 'idle' || phase === 'post_match' || phase === 'in_match') {
     phase = 'in_match'
     sawLiveMatch = true
@@ -203,8 +217,13 @@ function processLine(line: string): void {
     return
   }
 
-  if (RE.spectate.test(trimmed)) {
+  if (RE.spectateBroadcast.test(trimmed)) {
     phase = 'spectating'
+    return
+  }
+
+  if (RE.stopMatchmaking.test(trimmed) && phase === 'match_intro') {
+    phase = 'idle'
     return
   }
 
@@ -329,25 +348,28 @@ function readFrom(logPath: string, offset: number, skipPartial: boolean): string
 }
 
 function pollReplayDir(): void {
-  const dir = getReplayDirForGame('deadlock')
-  if (!dir || !fs.existsSync(dir)) return
+  const dirs = getDeadlockReplayDirs()
+  if (!dirs.length) return
 
   const notBefore = sessionStartAt - 120_000
   let newest: { path: string; size: number; mtimeMs: number } | null = null
 
-  try {
-    for (const entry of fs.readdirSync(dir)) {
-      if (!entry.toLowerCase().endsWith('.dem')) continue
-      const fullPath = path.join(dir, entry)
-      try {
-        const stat = fs.statSync(fullPath)
-        if (stat.mtimeMs < notBefore || stat.size < 4096) continue
-        if (!newest || stat.mtimeMs > newest.mtimeMs) {
-          newest = { path: fullPath, size: stat.size, mtimeMs: stat.mtimeMs }
-        }
-      } catch { /* skip */ }
-    }
-  } catch { return }
+  for (const dir of dirs) {
+    if (!fs.existsSync(dir)) continue
+    try {
+      for (const entry of fs.readdirSync(dir)) {
+        if (!entry.toLowerCase().endsWith('.dem')) continue
+        const fullPath = path.join(dir, entry)
+        try {
+          const stat = fs.statSync(fullPath)
+          if (stat.mtimeMs < notBefore || stat.size < 1024) continue
+          if (!newest || stat.mtimeMs > newest.mtimeMs) {
+            newest = { path: fullPath, size: stat.size, mtimeMs: stat.mtimeMs }
+          }
+        } catch { /* skip */ }
+      }
+    } catch { /* skip dir */ }
+  }
 
   if (!newest) return
 
@@ -375,8 +397,23 @@ function pollReplayDir(): void {
 
 async function pollOnce(): Promise<void> {
   pollReplayDir()
+
+  // If the tailed log goes stale, try switching to a newer console.log path.
+  if (activeLogPath && initialized && !isDeadlockLogReceiving(45_000)) {
+    const refreshed = await resolveDeadlockConsoleLog()
+    if (refreshed && refreshed !== activeLogPath) {
+      log.info(`[DeadlockLog] Switching log path: ${activeLogPath} → ${refreshed}`)
+      activeLogPath = refreshed
+      initialized = false
+      lastReadPos = 0
+    }
+  }
+
   if (!activeLogPath) {
     activeLogPath = await resolveDeadlockConsoleLog()
+    if (activeLogPath) {
+      log.info('[DeadlockLog] Resolved console.log:', activeLogPath)
+    }
   }
   if (activeLogPath) readNewLines(activeLogPath)
 }
@@ -429,6 +466,8 @@ export function isDeadlockMatchLive(): boolean {
 /** Stricter gate for OBS recording — map loaded / demo writing, not main menu or queue lobby. */
 export function isDeadlockReadyToRecord(): boolean {
   if (phase === 'in_match') return true
+  // Hero select / load screen: real map name set but not yet in_match from game state.
+  if (phase === 'match_intro' && mapName != null && !isHideoutMap(mapName)) return true
   if (sawReplayLive && trackedReplayPath && !replayStableSince) return true
   if (sawReplayLive && replayStableSince && Date.now() - replayStableSince < 20_000) return true
   return false
@@ -464,12 +503,18 @@ export function getDeadlockDetectionStatus(): {
   logPath: string | null
   logReceiving: boolean
   replayLive: boolean
+  condebugLikely: boolean
+  replayDir: string | null
 } {
+  const dirs = getDeadlockReplayDirs()
+  const replayDir = dirs.find((d) => fs.existsSync(d)) ?? dirs[0] ?? null
   return {
     phase,
     mapName,
     logPath: activeLogPath,
     logReceiving: isDeadlockLogReceiving(),
     replayLive: sawReplayLive,
+    condebugLikely: isDeadlockLogReceiving() || (activeLogPath != null && fs.existsSync(activeLogPath)),
+    replayDir,
   }
 }

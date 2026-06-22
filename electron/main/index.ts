@@ -141,6 +141,7 @@ import {
   isDeadlockDetectionActive,
   getDeadlockMap,
   getDeadlockLobbyMatchId,
+  getDeadlockDetectionStatus,
 } from './deadlock-log-watcher'
 import { ensureDeadlockSteamLaunchOptions } from './deadlock-steam-setup'
 
@@ -1843,18 +1844,31 @@ function setupGameDetection(): void {
       const steamSetup = await ensureDeadlockSteamLaunchOptions()
       resetDeadlockLogSession()
       startDeadlockLogWatcher()
+      if (!steamSetup.ok && steamSetup.error) {
+        log.warn('[Deadlock] Steam launch options:', steamSetup.error)
+        logActivity('Deadlock: add -condebug to Steam launch options manually (Properties → Launch Options)')
+      } else if (steamSetup.needsGameRestart) {
+        logActivity('Restart Deadlock once — UpForge added -condebug for match detection')
+        notifyRecordingUx(
+          'Close and reopen Deadlock so match detection works (-condebug was just added to Steam launch options).',
+          'UpForge — Restart Deadlock',
+        )
+      }
       logActivity('Deadlock running — waiting for match')
 
       const MATCH_TIMEOUT_MS = 25 * 60 * 1000
       const loopStart = Date.now()
       let reopenHintShown = false
       let detectionHintShown = false
+      let condebugHintShown = false
       const deadline = Date.now() + MATCH_TIMEOUT_MS
       while (Date.now() < deadline && !cancelled) {
         if (abortIfStale(isStale, game)) return
         await new Promise((r) => setTimeout(r, 1000))
         if (cancelled) break
         if (!await gameDetector.isGameProcessRunning(game)) { cancelled = true; break }
+
+        const dlStatus = getDeadlockDetectionStatus()
 
         if (
           !reopenHintShown
@@ -1870,13 +1884,31 @@ function setupGameDetection(): void {
         }
 
         if (
+          !condebugHintShown
+          && !steamSetup.needsGameRestart
+          && Date.now() - loopStart > 30_000
+          && !dlStatus.logReceiving
+          && !dlStatus.replayLive
+        ) {
+          condebugHintShown = true
+          logActivity('Deadlock console.log not updating — verify -condebug in Steam launch options')
+          notifyRecordingUx(
+            'UpForge is not seeing Deadlock match logs. In Steam: Deadlock → Properties → Launch Options, add -condebug, then restart the game.',
+            'UpForge — Match detection',
+          )
+        }
+
+        if (
           !detectionHintShown
           && !steamSetup.needsGameRestart
           && Date.now() - loopStart > 45_000
           && !isDeadlockDetectionActive()
         ) {
           detectionHintShown = true
-          logActivity('Deadlock match detection inactive — restart the game if recording never starts')
+          const replayHint = dlStatus.replayDir
+            ? ` Replays folder: ${dlStatus.replayDir}`
+            : ''
+          logActivity(`Deadlock match detection inactive — check -condebug and replay saving.${replayHint}`)
         }
 
         if (isDeadlockReadyToRecord()) {
@@ -1885,6 +1917,7 @@ function setupGameDetection(): void {
           currentGsiMapName = getDeadlockMap()
           gameMode = 'COMPETITIVE'
           modeConfident = true
+          log.info('[Deadlock] Match ready:', getDeadlockDetectionStatus())
           break
         }
       }
