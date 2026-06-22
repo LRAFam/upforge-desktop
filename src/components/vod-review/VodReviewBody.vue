@@ -3,6 +3,9 @@ import { useVodReview } from '../../composables/useVodReview'
 import MatchSpatialMinimap from '../MatchSpatialMinimap.vue'
 import TacticalIntelBrief from '../TacticalIntelBrief.vue'
 import { getAgentImage, getAbilityIcon } from '../../lib/valorant'
+import iconDiffuseWin from '../../assets/round-icons/diffusewin1.png'
+import iconExplosionWin from '../../assets/round-icons/explosionwin1.png'
+import iconExplosionLoss from '../../assets/round-icons/explosionloss1.png'
 
 const {
   abilityCastSlots,
@@ -27,9 +30,7 @@ const {
   formatMs,
   formatPlayerLabel,
   formatSeconds,
-  getAbilityIcon,
   getAbilityKillIcon,
-  getAgentImage,
   getRankColor,
   getWeaponIcon,
   hasSpatialIntel,
