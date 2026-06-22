@@ -499,41 +499,85 @@
 
         <!-- Ask my coach (roster) -->
         <div
-          v-if="result?.analysis_id && myCoaches.length && !coachReviewSent"
-          class="rounded-xl border border-violet-500/20 bg-violet-500/[0.04] px-3 py-2.5 space-y-2"
+          v-if="result?.analysis_id && liveCoaches.length && !coachReviewSent"
+          class="rounded-xl border border-white/[0.08] bg-white/[0.02] px-3 py-2.5 space-y-2"
         >
-          <p class="text-[10px] font-semibold uppercase tracking-wider text-violet-300/80">Ask my coach</p>
-          <select
-            v-if="myCoaches.length > 1"
-            v-model="selectedCoachId"
-            class="w-full rounded-lg border border-white/[0.08] bg-black/30 px-2.5 py-2 text-xs text-gray-200 focus:border-violet-500/30 focus:outline-none"
-          >
-            <option v-for="c in myCoaches" :key="c.coach_id" :value="c.coach_id">{{ c.display_name }}</option>
-          </select>
-          <textarea
-            v-model="coachQuestion"
-            rows="2"
-            maxlength="1000"
-            placeholder="Optional: what should your coach focus on?"
-            class="w-full resize-none rounded-lg border border-white/[0.08] bg-black/30 px-2.5 py-2 text-xs text-gray-300 placeholder:text-gray-600 focus:border-violet-500/30 focus:outline-none"
-          />
+          <p class="text-[10px] font-semibold uppercase tracking-wider text-gray-400">Ask my coach</p>
+          <template v-if="!coachAskExpanded">
+            <button
+              type="button"
+              class="w-full rounded-lg border border-white/[0.12] bg-white/[0.04] py-2.5 text-xs font-semibold text-white transition-colors hover:bg-white/[0.07] disabled:opacity-50"
+              :disabled="coachReviewSubmitting || !selectedCoachId"
+              @click="submitCoachReview"
+            >
+              {{ coachReviewSubmitting ? 'Sending…' : `Send to ${selectedCoachName}` }}
+            </button>
+            <button
+              type="button"
+              class="w-full text-[10px] text-gray-500 hover:text-gray-300"
+              @click="coachAskExpanded = true"
+            >
+              Add focus question or change coach
+            </button>
+          </template>
+          <template v-else>
+            <select
+              v-if="liveCoaches.length > 1"
+              v-model="selectedCoachId"
+              class="w-full rounded-lg border border-white/[0.08] bg-black/30 px-2.5 py-2 text-xs text-gray-200 focus:border-white/[0.14] focus:outline-none"
+            >
+              <option v-for="c in liveCoaches" :key="c.coach_id" :value="c.coach_id">{{ c.display_name }}</option>
+            </select>
+            <textarea
+              v-model="coachQuestion"
+              rows="2"
+              maxlength="1000"
+              placeholder="Optional: what should your coach focus on?"
+              class="w-full resize-none rounded-lg border border-white/[0.08] bg-black/30 px-2.5 py-2 text-xs text-gray-300 placeholder:text-gray-600 focus:border-white/[0.14] focus:outline-none"
+            />
+            <button
+              type="button"
+              class="w-full rounded-lg border border-white/[0.12] bg-white/[0.06] py-2 text-xs font-semibold text-white transition-colors hover:bg-white/[0.09] disabled:opacity-50"
+              :disabled="coachReviewSubmitting || !selectedCoachId"
+              @click="submitCoachReview"
+            >
+              {{ coachReviewSubmitting ? 'Sending…' : 'Send review request' }}
+            </button>
+          </template>
+        </div>
+        <div
+          v-else-if="result?.analysis_id && coachesLoaded && myCoaches.length && !liveCoaches.length && !coachReviewSent"
+          class="rounded-xl border border-white/[0.08] bg-white/[0.02] px-3 py-2.5 space-y-2"
+        >
+          <p class="text-[10px] font-semibold uppercase tracking-wider text-gray-500">Ask my coach</p>
+          <p class="text-xs text-gray-400 leading-relaxed">
+            Your coach hasn't opened their community roster yet — book a paid review on the web for priority feedback.
+          </p>
+        </div>
+        <div
+          v-else-if="result?.analysis_id && coachesLoaded && !myCoaches.length && !coachReviewSent"
+          class="rounded-xl border border-white/[0.08] bg-white/[0.02] px-3 py-2.5 space-y-2"
+        >
+          <p class="text-[10px] font-semibold uppercase tracking-wider text-gray-500">Coaching</p>
+          <p class="text-xs text-gray-400 leading-relaxed">
+            Join a coach's roster on the web to send this match for human feedback.
+          </p>
           <button
             type="button"
-            class="w-full rounded-lg border border-violet-500/30 bg-violet-500/15 py-2 text-xs font-semibold text-violet-100 transition-colors hover:bg-violet-500/25 disabled:opacity-50"
-            :disabled="coachReviewSubmitting || !selectedCoachId"
-            @click="submitCoachReview"
+            class="w-full rounded-lg border border-orange-500/25 py-2 text-xs font-semibold text-orange-200 transition-colors hover:bg-orange-500/10"
+            @click="openFindCoaches"
           >
-            {{ coachReviewSubmitting ? 'Sending…' : `Send to ${selectedCoachName}` }}
+            Find a coach →
           </button>
         </div>
         <div
           v-else-if="result?.analysis_id && coachReviewSent"
-          class="flex items-center gap-2 rounded-xl border border-violet-500/20 bg-violet-500/[0.06] px-3 py-2"
+          class="flex items-center gap-2 rounded-xl border border-orange-500/25 bg-orange-500/[0.06] px-3 py-2"
         >
-          <svg class="h-3.5 w-3.5 flex-shrink-0 text-violet-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <svg class="h-3.5 w-3.5 flex-shrink-0 text-orange-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"/>
           </svg>
-          <p class="text-xs text-violet-200/90">Review request sent — your coach will annotate this match on the timeline.</p>
+          <p class="text-xs text-orange-200/90">Review request sent — your coach will annotate this match on the timeline.</p>
         </div>
 
         <div class="space-y-2 pt-1">
@@ -975,11 +1019,17 @@ const feedbackRating = ref<'thumbs_up' | 'thumbs_down' | null>(null)
 const feedbackText = ref('')
 const feedbackSubmitting = ref(false)
 const feedbackSubmitted = ref(false)
-const myCoaches = ref<Array<{ coach_id: number; display_name: string }>>([])
+const myCoaches = ref<Array<{ coach_id: number; display_name: string; roster_is_live?: boolean; can_request_review?: boolean }>>([])
+const coachesLoaded = ref(false)
 const selectedCoachId = ref<number | null>(null)
 const coachQuestion = ref('')
+const coachAskExpanded = ref(false)
 const coachReviewSubmitting = ref(false)
 const coachReviewSent = ref(false)
+const LAST_COACH_KEY = 'upforge_last_roster_coach_id'
+const liveCoaches = computed(() =>
+  myCoaches.value.filter(c => c.roster_is_live !== false && c.can_request_review !== false),
+)
 const selectedCoachName = computed(() =>
   myCoaches.value.find(c => c.coach_id === selectedCoachId.value)?.display_name ?? 'coach',
 )
@@ -1651,13 +1701,21 @@ async function submitAnalysisFeedback(rating: 'thumbs_up' | 'thumbs_down') {
 }
 
 async function loadMyCoaches() {
+  coachesLoaded.value = false
   try {
     const coaches = await window.api.coach.getMyCoaches()
     myCoaches.value = coaches
-    if (coaches.length === 1) {
-      selectedCoachId.value = coaches[0].coach_id
-    } else if (coaches.length > 1 && !selectedCoachId.value) {
-      selectedCoachId.value = coaches[0].coach_id
+    const eligible = coaches.filter(c => c.roster_is_live !== false && c.can_request_review !== false)
+    const storedId = Number(localStorage.getItem(LAST_COACH_KEY))
+    const storedCoach = eligible.find(c => c.coach_id === storedId)
+    if (storedCoach) {
+      selectedCoachId.value = storedCoach.coach_id
+    } else if (eligible.length === 1) {
+      selectedCoachId.value = eligible[0].coach_id
+    } else if (eligible.length > 1) {
+      selectedCoachId.value = eligible[0].coach_id
+    } else {
+      selectedCoachId.value = null
     }
     const analysisId = result.value?.analysis_id
     if (analysisId && coaches.length) {
@@ -1668,6 +1726,9 @@ async function loadMyCoaches() {
     }
   } catch {
     myCoaches.value = []
+    flashToast('Could not load your coaches — try again from My Coaches on the web')
+  } finally {
+    coachesLoaded.value = true
   }
 }
 
@@ -1684,10 +1745,20 @@ async function submitCoachReview() {
     })
     if (res.ok) {
       coachReviewSent.value = true
+      localStorage.setItem(LAST_COACH_KEY, String(coachId))
+      flashToast(`Sent to ${selectedCoachName.value}`)
+    } else {
+      flashToast(res.error || 'Could not send review request')
     }
+  } catch {
+    flashToast('Could not send review request')
   } finally {
     coachReviewSubmitting.value = false
   }
+}
+
+function openFindCoaches() {
+  window.open('https://upforge.gg/coaches', '_blank')
 }
 
 function dismiss() { window.close() }

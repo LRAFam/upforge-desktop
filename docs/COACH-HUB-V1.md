@@ -39,11 +39,12 @@ UpForge already has match-linked timelines, AI coaching, skill profiles, clip sh
 
 | Stream | Who pays | Who earns | Notes |
 |--------|----------|-----------|-------|
-| **Coach Pro** ($29/mo) | Coach → UpForge | UpForge (SaaS) | Unlimited roster size + reviews. Coaches do **not** receive a cut of this fee. |
-| **Referral commission** | Student → UpForge (Premium/Pro) | Coach (affiliate) | On roster join, student is attributed to coach's affiliate account (~25% recurring). |
-| **Paid deep dive** | Student → Coach | Coach (micro-coaching) | After free roster review completes, student can book paid VOD review with same coach via existing `/request-review` flow. |
+| **Community membership** | Student → Coach | Coach (Connect payout) | Coach chooses **free** or **paid** community. Paid: any price ≥ $5/mo; includes N async reviews/month. Platform takes % via Stripe Connect. |
+| **Coach Pro** ($49/mo default) | Coach → UpForge | UpForge (SaaS) | **Optional** — review feed studio, unlimited roster caps, analytics. Not required for paid communities. |
+| **Referral commission** | Student → UpForge (Plus/Pro) | Coach (affiliate) | On roster join, student attributed to coach affiliate (~25% recurring). |
+| **Paid deep dive** | Student → Coach | Coach (micro-coaching) | After included roster review, book paid VOD review via `/request-review`. |
 
-Coach Pro and student subscriptions are **separate products**. Roster membership is free; monetization for coaches is referral commission + paid micro-coaching upsells.
+**Default for new rosters:** paid community ($9.99/mo suggested). **Free mode** is explicit opt-in for creators and new coaches building portfolio.
 
 ---
 
@@ -57,12 +58,11 @@ Coach Pro and student subscriptions are **separate products**. Roster membership
 
 ### Student joins roster
 
-1. Student opens coach link → **Join roster**.
-2. Consent screen — student chooses what coach can see:
-   - **Always:** display name, rank, games analysed count, aggregate skill profile (6 bars)
-   - **Opt-in per match:** full analysis summary, VOD access for review
-   - **Never shared by default:** raw VOD file path, other matches not submitted for review
-3. Coach sees student on roster dashboard.
+1. Student opens coach link → sees **free** or **$X/mo** community pricing.
+2. **Paid:** Stripe Checkout (student → coach via Connect) → active membership on webhook.
+3. **Free:** consent screen → join immediately (creators / portfolio building).
+4. Consent — student chooses what coach can see (skill profile, analyses summary).
+5. Coach sees student on roster dashboard.
 
 ### Review request (core loop)
 
@@ -135,7 +135,8 @@ Roster reviews use `coaching_reviews` with `source = 'roster'`, `price_cents = 0
 GET    /api/coaches/{id}/hub                    # public coach hub page data
 GET    /api/coach/roster                        # coach: list students + aggregates
 GET    /api/coach/my-coaches                    # student: coaches on their roster
-POST   /api/coach/roster/join                   # student: join roster
+POST   /api/coach/roster/join                   # student: join free community
+POST   /api/coach/roster/join-checkout          # student: paid community Stripe checkout
 PATCH  /api/coach/roster/{coachId}              # student: update sharing prefs
 DELETE /api/coach/roster/{coachId}              # student leave / coach remove student
 POST   /api/analyses/{id}/request-roster-review # student: free roster review request
@@ -233,30 +234,32 @@ coach:getReviewAnnotations({ analysisId })
 
 ---
 
-## Monetization (Sprint 3 — hooks shipped, billing later)
+## Monetization (Sprint 3 — shipped)
 
-Roster reviews stay **free for students** (community loop). Revenue comes from the **coach side** and **upsells**, not paywalling join.
+Students pay the **coach** for paid communities (Stripe Connect). Coach Pro is **optional** SaaS for power tools.
 
 ### Coach control (shipped)
 
-- **`roster_enabled`** — opt-in per coach; default **off**. Separate from `accepting_students` (paid 1-on-1).
-- **Coach dashboard** — toggle roster, welcome message, usage meters (`/coach-dashboard/roster`).
-- **Student** — `/my-coaches` to view rosters, sharing prefs, leave.
+- **`roster_enabled`** — opt-in per coach; default **off**.
+- **`roster_membership_mode`** — `paid` (default) or `free` (creators / portfolio).
+- **Paid communities** — coach sets price ≥ $5/mo + included reviews/month; requires Stripe Connect.
+- **Free communities** — explicit opt-in; optional Coach Pro gate via `COACH_HUB_ROSTER_REQUIRES_PRO` (default **false**).
+- **Coach dashboard** — `/coach-dashboard/roster` for pricing, welcome message, usage meters.
 
-### Tier limits (shipped)
+### Tier limits (Coach Pro SaaS)
 
-| Tier | Roster members | Roster reviews / month | Price |
-|------|----------------|------------------------|-------|
-| **Community** (default) | 50 | 30 | Free |
-| **Coach Pro** | Unlimited | Unlimited | $29/mo |
-
-When limits hit: student sees “book paid review”; coach sees upgrade CTA.
+| Tier | Roster members | Coach roster reviews / month | Per-student caps | Price |
+|------|----------------|------------------------------|------------------|-------|
+| **Community** (no Coach Pro) | 15 | 8 | coach-set included reviews | — |
+| **Coach Pro** | Unlimited | Unlimited | coach-set included reviews | $49/mo default |
 
 ### Stripe billing (shipped)
 
 **Env (API):**
-- `STRIPE_COACH_HUB_PRO_PRICE_ID` — Stripe Price for Coach Pro subscription
-- `COACH_HUB_BILLING_ENABLED=false` — disable checkout locally (manual `coach_hub_tier=pro` for dev)
+- `STRIPE_COACH_HUB_PRO_PRICE_ID` — Coach Pro subscription
+- `COACH_HUB_PRO_PRICE_CENTS=4900` — display/default Coach Pro price
+- `COACH_HUB_BILLING_ENABLED=false` — local dev without Stripe
+- `COACH_HUB_ROSTER_REQUIRES_PRO=false` — Coach Pro not required for live paid rosters
 
 **Endpoints:**
 - `POST /api/coach/roster/checkout` — Stripe Checkout → success URL `/coach-dashboard/roster?coach_hub=success`

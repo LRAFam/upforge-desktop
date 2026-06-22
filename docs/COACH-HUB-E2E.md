@@ -61,10 +61,18 @@ Test accounts from `LocalTestSeeder`:
 1. **Coach** — `/coach-dashboard/roster` → enable roster → upgrade Coach Pro (local dev skips Stripe)
 2. **Student** — `/coaches/{id}` → join roster
 3. **Student** — complete an analysis → Next Steps → **Ask my coach**
-4. **Coach** — `/coach-dashboard/reviews` → add annotation → **Complete**
+4. **Coach** — `/coach-dashboard/reviews/feed` → add quick notes → **Complete & next** (or classic `/reviews/:id`)
 5. **Student (web)** — refresh analysis Next Steps → see coach notes + deep-dive CTA
 6. **Student (desktop)** — within ~2 min, OS notification “Coach notes are ready” → click opens VOD Review
 7. **Coach** — roster settings shows **Earnings** (affiliate link + paid review totals)
+
+### Production pilot checklist (notifications)
+
+- [ ] Coach web notification **review_requested** opens `/coach-dashboard/reviews/feed?review={id}`
+- [ ] Student web notification **review_completed** opens VOD review (`/valorant/results/{id}/review` or game path)
+- [ ] Desktop post-game **Ask my coach** shows errors + **Find a coach** when roster empty
+- [ ] Student receives **CoachReviewCompleted** email (preference: `review_notifications`)
+- [ ] Discord coach DM links to review feed (not generic dashboard)
 
 ---
 
@@ -78,7 +86,7 @@ To test faster:
 3. Wait for poll (or restart desktop to trigger immediate poll on login)
 4. Click notification → should open VOD Review for that analysis
 
-Coaches receive **New roster review request** notifications; click opens `/coach-dashboard/reviews` in the browser.
+Coaches receive **New roster review request** notifications; click opens `/coach-dashboard/reviews/feed` in the browser.
 
 ---
 

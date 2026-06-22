@@ -655,6 +655,14 @@ declare global {
           avatar_url: string | null
           current_rank: string | null
           specialties: string[]
+          roster_is_live?: boolean
+          can_request_review?: boolean
+          review_limits?: {
+            active_reviews: number
+            active_reviews_limit: number
+            reviews_this_month: number
+            reviews_month_limit: number
+          }
         }>>
         requestRosterReview: (opts: {
           analysisId: number

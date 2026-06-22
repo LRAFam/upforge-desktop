@@ -160,6 +160,14 @@ Coaching creators connect with students via structured match review — not a Di
 - [x] **Notification** — OS toast when coach completes review (or new review request for coaches); opens VOD Review or web dashboard
 - [x] **Local API URL** — `VITE_API_URL` respected in auth-manager + CSP allows localhost
 
+### Coach Review Feed (web v1)
+
+- [x] **API** — `GET /api/coach/review-feed` with AI briefing + `match_highlights` per pending roster review
+- [x] **Feed UI** — `/coach-dashboard/reviews/feed` (queue rail + full VOD + quick notes + complete & next)
+- [x] **Doc** — [COACH-REVIEW-FEED.md](./COACH-REVIEW-FEED.md)
+- [ ] **Mobile swipe** — responsive PWA queue
+- [ ] **Deep link** — `?review=` from desktop notification
+
 ### Explicitly later
 
 - Weekly community challenges, Discord bot, teaching-moment export, live co-watch, coach marketplace

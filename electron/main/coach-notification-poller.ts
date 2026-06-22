@@ -64,8 +64,10 @@ function openVodReviewForAnalysis(mainWindow: BrowserWindow | null, analysisId: 
   })
 }
 
-function openCoachReviewsInBrowser(): void {
-  void shell.openExternal(`${getFrontendBaseUrl()}/coach-dashboard/reviews`)
+function openCoachReviewsInBrowser(reviewId?: number): void {
+  const base = `${getFrontendBaseUrl()}/coach-dashboard/reviews/feed`
+  const url = reviewId ? `${base}?review=${reviewId}` : base
+  void shell.openExternal(url)
 }
 
 async function markNotificationRead(authManager: AuthManager, id: number): Promise<void> {
@@ -93,11 +95,12 @@ async function pollOnce(deps: PollerDeps): Promise<void> {
       changed = true
 
       const analysisId = notification.data?.analysis_id
+      const reviewId = notification.data?.review_id
       const isCoachRequest = notification.type === 'review_requested'
       const onClick = () => {
         void markNotificationRead(deps.authManager, notification.id)
         if (isCoachRequest) {
-          openCoachReviewsInBrowser()
+          openCoachReviewsInBrowser(reviewId)
           return
         }
         if (analysisId) {
