@@ -52,8 +52,17 @@ const SUBSCRIPTION_ICONS: Record<string, string> = {
   founder: founderIcon,
 }
 
-/** Forge mastery level → icon URL (none imported yet). */
+/** Forge mastery level (1–40) → icon URL. */
+const masteryModules = import.meta.glob<string>(
+  '../assets/ranks/mastery/levels/mastery-level-*.png',
+  { eager: true, import: 'default' },
+)
+
 const MASTERY_ICONS: Record<number, string> = {}
+for (const [path, url] of Object.entries(masteryModules)) {
+  const match = path.match(/mastery-level-(\d+)\.png$/)
+  if (match) MASTERY_ICONS[Number(match[1])] = url
+}
 
 export function getBadgeIconUrl(slug: string): string | null {
   return BADGE_ICONS[slug] ?? null
