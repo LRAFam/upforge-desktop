@@ -156,6 +156,12 @@ function round4(v) {
 }
 
 function manifestEntry(map, viewport, calibration, existing) {
+  const displayBounds = calibration?.displayBounds ?? existing?.displayBounds
+  const displayTransform =
+    calibration?.displayTransform && calibration.displayTransform !== 'identity'
+      ? calibration.displayTransform
+      : existing?.displayTransform
+
   return {
     displayName: map.displayName,
     uuid: map.uuid,
@@ -167,13 +173,10 @@ function manifestEntry(map, viewport, calibration, existing) {
     tacticalDescription: map.tacticalDescription,
     mapUrl: map.mapUrl,
     viewport,
-    ...(calibration?.displayBounds
-      ? { displayBounds: calibration.displayBounds }
+    ...(displayBounds ? { displayBounds } : {}),
+    ...(displayTransform && displayTransform !== 'identity'
+      ? { displayTransform }
       : {}),
-    ...(calibration?.displayTransform && calibration.displayTransform !== 'identity'
-      ? { displayTransform: calibration.displayTransform }
-      : {}),
-    ...(calibration?.displayRotation ? { displayRotation: calibration.displayRotation } : {}),
     ...(existing?.displayCoordScale != null && existing.displayCoordScale !== 1
       ? { displayCoordScale: existing.displayCoordScale }
       : {}),
@@ -274,22 +277,8 @@ function siteAxisBonus(callouts, project) {
 /** Maps whose displayicon is intentionally vertical (A top / B bottom) — do not rotate. */
 const VERTICAL_SITE_MAPS = new Set(['split', 'fracture'])
 
-/**
- * When swap-based transforms align callouts vertically on the PNG but the map
- * presents as left/right in-game (e.g. Ascent), rotate the rendered minimap 90° CW.
- */
-function inferDisplayRotation(mapKey, transformName, callouts, project) {
-  if (!transformName.includes('swap')) return 0
-  if (VERTICAL_SITE_MAPS.has(mapKey)) return 0
-  if (callouts.some((c) => c.name === 'C Site')) return 0
-  const a = callouts.find((c) => c.name === 'A Site')
-  const b = callouts.find((c) => c.name === 'B Site')
-  if (!a || !b) return 0
-  const [ax, ay] = project(a.x, a.y)
-  const [bx, by] = project(b.x, b.y)
-  const dx = Math.abs(ax - bx)
-  const dy = Math.abs(ay - by)
-  if (dy > dx * 1.25 && dy > 0.25) return 90
+/** displayRotation is deprecated — bounds-aware swap transforms + fine-tune only. */
+function inferDisplayRotation() {
   return 0
 }
 

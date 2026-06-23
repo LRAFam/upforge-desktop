@@ -1,5 +1,5 @@
 {
-  "updatedAt": "2026-06-23T11:13:19.528Z",
+  "updatedAt": "2026-06-23T15:27:47.643Z",
   "standardMapsThrough2026": [
     "Ascent",
     "Bind",
@@ -26,11 +26,14 @@
     "Lotus",
     "Pearl",
     "Split",
+    "Summit",
     "Sunset"
   ],
   "complete": true,
   "missingFromValorantApi": [],
-  "newMapsNotInChecklist": [],
+  "newMapsNotInChecklist": [
+    "Summit"
+  ],
   "zones": [
     {
       "map": "Abyss",
@@ -184,6 +187,20 @@
         "sitesOnMap": 2,
         "siteCount": 2,
         "useInset": false
+      }
+    },
+    {
+      "map": "Summit",
+      "key": "summit",
+      "callouts": 24,
+      "displayTransform": "swapFlipXY",
+      "displayInset": true,
+      "calibration": {
+        "onMap": 19,
+        "total": 24,
+        "sitesOnMap": 2,
+        "siteCount": 2,
+        "useInset": true
       }
     },
     {

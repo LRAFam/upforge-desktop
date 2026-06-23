@@ -1,6 +1,6 @@
 {
   "name": "upforge-desktop",
-  "version": "2.6.19",
+  "version": "2.6.20",
   "description": "UpForge Desktop — Automatic Valorant gameplay recording and AI coaching",
   "main": "./out/main/index.js",
   "author": "UpForge",
@@ -16,7 +16,7 @@
     "major": "npm version major --no-git-tag-version",
     "lint": "eslint . --ext .vue,.js,.jsx,.cjs,.mjs,.ts,.tsx,.cts,.mts --fix --ignore-path .gitignore",
     "type-check": "vue-tsc --noEmit",
-    "spatial:sync": "node scripts/generate-spatial-zones.mjs && node scripts/generate-plant-spots.mjs && node scripts/sync-spatial-to-frontend.mjs",
+    "spatial:sync": "node scripts/generate-spatial-zones.mjs && node scripts/calibrate-manifest-display.mjs --write && node scripts/generate-plant-spots.mjs && node scripts/sync-spatial-to-frontend.mjs",
     "spatial:calibrate": "node scripts/spatial-calibrator.mjs",
     "spatial:plants": "node scripts/generate-plant-spots.mjs",
     "spatial:fetch-cs2-radars": "node scripts/fetch-cs2-radars.mjs",

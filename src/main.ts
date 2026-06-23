@@ -4,6 +4,7 @@ import { createRouter, createWebHashHistory } from 'vue-router'
 import App from './App.vue'
 import './assets/main.css'
 import { setupRendererErrorReporter } from './lib/errorReporter'
+import { hasDesktopApi } from './lib/desktop-api'
 
 // Views
 import LoginView from './views/LoginView.vue'
@@ -51,6 +52,7 @@ const router = createRouter({
 
 router.beforeEach(async (to) => {
   if (PUBLIC_ROUTES.includes(to.path)) return true
+  if (!hasDesktopApi()) return '/login'
   try {
     const s = await window.api.app.getStatus()
     if (!s.authenticated) {

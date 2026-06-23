@@ -48,8 +48,8 @@
         <span class="text-[10px] text-gray-500 font-medium">{{ titleBarIdentity }}</span>
       </div>
 
-      <!-- Windows-only window controls -->
-      <div v-if="!isMac" class="flex items-center -webkit-no-drag">
+      <!-- Windows-only window controls (Electron preload required) -->
+      <div v-if="!isMac && desktopApiAvailable" class="flex items-center -webkit-no-drag">
         <button
           class="w-10 h-10 flex items-center justify-center text-gray-500 hover:text-white hover:bg-white/[0.06] transition-colors"
           @click="minimizeWindow()"
@@ -258,6 +258,7 @@ import GameSwitcher from './components/GameSwitcher.vue'
 import { usePrimaryGame } from './composables/usePrimaryGame'
 import { useGameTheme } from './composables/useGameTheme'
 import { gameNavRoutes } from './lib/game-modules'
+import { getDesktopApi, hasDesktopApi } from './lib/desktop-api'
 import type { ClipRecord, ProfileData } from './env.d.ts'
 
 const route = useRoute()
@@ -273,6 +274,7 @@ const secondaryAccent = computed(() => {
 })
 
 const isMac = navigator.platform.toUpperCase().includes('MAC')
+const desktopApiAvailable = hasDesktopApi()
 const status = ref({ recording: false, currentGame: null as string | null })
 const isDev = ref(false)
 const devModeEnabled = ref(false)
@@ -480,7 +482,10 @@ onMounted(async () => {
     if (!obs.connected && obs.lastError) obsError.value = obs.lastError
   } catch { /* ignore */ }
 
-  const obsCleanup = window.api.on('obs:connection-changed', (...args: unknown[]) => {
+  const api = getDesktopApi()
+  if (!api) return
+
+  const obsCleanup = api.on('obs:connection-changed', (...args: unknown[]) => {
     const data = args[0] as { connected?: boolean; error?: string | null } | undefined
     if (data && typeof data.connected === 'boolean') {
       obsConnected.value = data.connected
@@ -492,34 +497,34 @@ onMounted(async () => {
 
   // Hydrate update state and listen for live updates
   try {
-    const us = await window.api.updater.getState()
+    const us = await api.updater.getState()
     appUpdatePhase.value = us.phase
     appUpdateVersion.value = us.version
     appUpdatePercent.value = us.percent ?? 0
   } catch { /* ignore */ }
   const updaterCleanups = [
-    window.api.on('updater:checking', () => { appUpdatePhase.value = 'checking' }),
-    window.api.on('updater:available', (...args: unknown[]) => {
+    api.on('updater:checking', () => { appUpdatePhase.value = 'checking' }),
+    api.on('updater:available', (...args: unknown[]) => {
       const info = args[0] as { version?: string } | undefined
       appUpdatePhase.value = 'available'
       appUpdateVersion.value = info?.version
     }),
-    window.api.on('updater:progress', (...args: unknown[]) => {
+    api.on('updater:progress', (...args: unknown[]) => {
       appUpdatePhase.value = 'downloading'
       appUpdatePercent.value = typeof args[0] === 'number' ? args[0] : 0
     }),
-    window.api.on('updater:downloaded', (...args: unknown[]) => {
+    api.on('updater:downloaded', (...args: unknown[]) => {
       const info = args[0] as { version?: string } | undefined
       appUpdatePhase.value = 'ready'
       appUpdateVersion.value = info?.version
     }),
-    window.api.on('updater:not-available', () => { appUpdatePhase.value = 'idle' }),
-    window.api.on('updater:error', () => { appUpdatePhase.value = 'idle' }),
+    api.on('updater:not-available', () => { appUpdatePhase.value = 'idle' }),
+    api.on('updater:error', () => { appUpdatePhase.value = 'idle' }),
   ]
   ;(window as Window & { _updaterCleanups?: (() => void)[] })._updaterCleanups = updaterCleanups
 
   // React to settings changes (e.g. dev mode toggled in Settings)
-  const settingsCleanup = window.api.on('settings:changed', (...args: unknown[]) => {
+  const settingsCleanup = api.on('settings:changed', (...args: unknown[]) => {
     const s = args[0] as { devModeEnabled?: boolean; primaryGame?: string; trainerMouse?: { game?: string } } | undefined
     if (!s) return
     if (typeof s.devModeEnabled === 'boolean') devModeEnabled.value = s.devModeEnabled
@@ -529,7 +534,7 @@ onMounted(async () => {
   statusInterval = setInterval(async () => {
     if (document.hidden) return // skip while game is running fullscreen
     try {
-      const s = await window.api.app.getStatus()
+      const s = await api.app.getStatus()
       status.value = s
       if (s.user?.riot_name) riotId.value = `${s.user.riot_name}#${s.user.riot_tag}`
       if (s.user?.name) userName.value = s.user.name
@@ -537,27 +542,27 @@ onMounted(async () => {
     } catch { /* ignore */ }
   }, 5000)
 
-  const clipsCleanup = window.api.on('clips:new', async (...args: unknown[]) => {
+  const clipsCleanup = api.on('clips:new', async (...args: unknown[]) => {
     const clipIds = args[0] as string[] | undefined
     hasClipIndicator.value = (clipIds?.length ?? 0) > 0 || hasClipIndicator.value
     await loadClipSummary()
   })
   ;(window as Window & { _clipsCleanup?: () => void })._clipsCleanup = clipsCleanup
 
-  const sessionCleanup = window.api.on('session:user-changed', (...args: unknown[]) => {
+  const sessionCleanup = api.on('session:user-changed', (...args: unknown[]) => {
     const payload = args[0] as { userId?: number | null } | undefined
     void applySessionUser(payload?.userId ?? null)
   })
   ;(window as Window & { _sessionCleanup?: () => void })._sessionCleanup = sessionCleanup
 
-  const authExpiredCleanup = window.api.on('auth:session-expired', () => {
+  const authExpiredCleanup = api.on('auth:session-expired', () => {
     void applySessionUser(null)
     router.push('/login').catch(() => {})
   })
   ;(window as Window & { _authExpiredCleanup?: () => void })._authExpiredCleanup = authExpiredCleanup
 
   // Navigate to a tab when the main process requests it (e.g. from post-game "View Clips" button)
-  const navCleanup = window.api.on('app:navigate', (...args: unknown[]) => {
+  const navCleanup = api.on('app:navigate', (...args: unknown[]) => {
     const payload = args[0]
     if (typeof payload === 'string' && payload) {
       router.push(payload).catch(() => {})
@@ -603,15 +608,15 @@ async function simulateGame() {
 }
 
 function openPostGame() {
-  window.api.window.openPostGame?.()
+  getDesktopApi()?.window?.openPostGame?.()
 }
 
 function closeWindow() {
-  window.api.window.close()
+  getDesktopApi()?.window?.close()
 }
 
 function minimizeWindow() {
-  window.api.window.minimize()
+  getDesktopApi()?.window?.minimize()
 }
 
 async function connectObsFromBanner() {

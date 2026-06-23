@@ -9,6 +9,7 @@
  */
 
 import type { App } from 'vue'
+import { hasDesktopApi } from './desktop-api'
 
 const API_URL = import.meta.env['VITE_API_URL'] || 'https://api.upforge.gg'
 const ERROR_KEY = import.meta.env['VITE_ERROR_REPORTING_KEY'] || ''
@@ -28,12 +29,12 @@ export async function reportError(payload: {
 
   let user: { id?: number; email?: string; name?: string } | null = null
   try {
-    const result = await window.api.auth.getUser()
+    const result = await window.api?.auth?.getUser()
     user = result as { id?: number; email?: string; name?: string } | null
   } catch { /* not authenticated yet */ }
 
   const body = {
-    platform: 'desktop',
+    platform: hasDesktopApi() ? 'desktop' : 'renderer',
     message: payload.message.slice(0, 1000),
     stack: payload.stack?.slice(0, 5000),
     component: payload.component,
