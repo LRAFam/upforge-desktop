@@ -37,6 +37,7 @@ import {
   listUnregisteredRecordingFiles,
 } from './recording-path-resolver'
 import { broadcastObsConnection, probeObsConnection, startObsHealthMonitor } from './obs-health'
+import { launchObsStudio, obsLaunchDelayMs } from './obs-launcher'
 import {
   RiotLocalApi,
   recomputeTimelineVideoOffsets,
@@ -254,10 +255,22 @@ const OBS_SETUP_HINT =
 
 async function ensureObsReady(): Promise<void> {
   if (obsRecorder.isConnected()) return
-  const result = await obsRecorder.connect()
-  if (!result.ok) {
-    throw new Error(`${OBS_SETUP_HINT}${result.error ? ` (${result.error})` : ''}`)
+
+  let result = await obsRecorder.connect()
+  if (result.ok) return
+
+  const launched = await launchObsStudio()
+  if (launched.ok) {
+    await new Promise((r) => setTimeout(r, obsLaunchDelayMs()))
+    result = await obsRecorder.connect()
+    if (result.ok) {
+      broadcastObsConnection(mainWindow, obsRecorder)
+      logActivity('OBS launched and connected — recording ready')
+      return
+    }
   }
+
+  throw new Error(`${OBS_SETUP_HINT}${result.error ? ` (${result.error})` : ''}`)
 }
 
 /** Set by setupGameDetection — handles unexpected mid-match capture loss. */
