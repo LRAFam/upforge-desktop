@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { useSettings } from '../../composables/useSettings'
+import SettingsDeadlockDiagnostics from './SettingsDeadlockDiagnostics.vue'
 
 const {
   GAME_MODES,
@@ -110,11 +111,14 @@ const {
               </div>
             </div>
 
-            <div v-else-if="settings.primaryGame === 'deadlock'" class="rounded-2xl border border-teal-500/20 bg-teal-500/[0.05] p-4 space-y-2">
+            <div v-else-if="settings.primaryGame === 'deadlock'" class="rounded-2xl border border-teal-500/20 bg-teal-500/[0.05] p-4 space-y-3">
               <div>
                 <p class="text-sm font-semibold text-white">Deadlock recording</p>
-                <p class="mt-1 text-xs text-gray-500 leading-relaxed">UpForge configures Deadlock automatically and starts recording when a match loads. Use borderless windowed mode so OBS can capture the game.</p>
+                <p class="mt-1 text-xs text-gray-500 leading-relaxed">
+                  UpForge reads <code class="font-mono text-teal-300/90">-condebug</code> console logs to detect matches and builds a timeline from the log (and replay when available). Use borderless windowed mode for OBS capture.
+                </p>
               </div>
+              <SettingsDeadlockDiagnostics />
             </div>
 
             <div v-else class="rounded-2xl border border-white/[0.10] bg-black/20 p-4">

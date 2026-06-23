@@ -35,9 +35,10 @@
     <!-- No replay folder -->
     <div v-else-if="!result.exists" class="px-3.5 py-4">
       <p class="text-xs text-gray-500 leading-relaxed">
-        No Deadlock replay folder found. Replays save automatically after matches to
-        <span class="font-mono text-gray-600 text-[10px]">…\Deadlock\game\deadlock\replays\</span>
-        or <span class="font-mono text-gray-600 text-[10px]">…\citadel\replays\</span>.
+        No Deadlock replay folder found. Replays save after matches — check
+        <span class="font-mono text-gray-600 text-[10px]">Steam\…\Deadlock\game\citadel\replays\</span>
+        or <span class="font-mono text-gray-600 text-[10px]">%LOCALAPPDATA%\Deadlock\game\citadel\replays\</span>
+        (language-specific <span class="font-mono text-gray-600 text-[10px]">citadel_*</span> folders too).
       </p>
     </div>
 

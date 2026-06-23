@@ -142,8 +142,10 @@ import {
   isDeadlockMatchEnded,
   isDeadlockDetectionActive,
   getDeadlockMap,
+  getDeadlockHero,
   getDeadlockLobbyMatchId,
   getDeadlockDetectionStatus,
+  buildDeadlockTimelineFromLogSession,
 } from './deadlock-log-watcher'
 import { ensureDeadlockSteamLaunchOptions } from './deadlock-steam-setup'
 
@@ -563,6 +565,9 @@ function handlePrimaryGameSwitch(
 
   if (game === 'deadlock') {
     void ensureDeadlockSteamLaunchOptions()
+    startDeadlockLogWatcher()
+  } else {
+    stopDeadlockLogWatcher()
   }
 
   updateTrayMenuFn?.()
@@ -1056,6 +1061,7 @@ function setupGameDetection(): void {
   gameDetector.setWatchGame(normalizePrimaryGame(settingsManager.get().primaryGame))
   if (normalizePrimaryGame(settingsManager.get().primaryGame) === 'deadlock') {
     void ensureDeadlockSteamLaunchOptions()
+    startDeadlockLogWatcher()
   }
 
   onRecordingLost = (error: string) => {
@@ -1227,6 +1233,28 @@ function setupGameDetection(): void {
       }
     }
 
+    if (game === 'deadlock') {
+      const logTimeline = buildDeadlockTimelineFromLogSession(
+        currentRecordingStartTime ?? matchSessionStart,
+        currentMatchStartTime,
+      )
+      if (logTimeline && !timeline) {
+        timeline = logTimeline
+        log.info(
+          `[HandleMatchEnd] deadlock log timeline — kills=${logTimeline.playerKills.length} hero=${logTimeline.agent ?? '?'}`,
+        )
+      } else if (logTimeline && timeline) {
+        if (!timeline.agent && logTimeline.agent) timeline.agent = logTimeline.agent
+        if (!timeline.map && logTimeline.map) timeline.map = logTimeline.map
+        if (timeline.playerKills.length === 0 && logTimeline.playerKills.length > 0) {
+          timeline.playerKills = logTimeline.playerKills
+          timeline.playerDeaths = logTimeline.playerDeaths
+          timeline.killEvents = logTimeline.killEvents
+          log.info(`[HandleMatchEnd] merged ${logTimeline.playerKills.length} kills from console log`)
+        }
+      }
+    }
+
     const resolvedFile = resolveReadyRecordingPath(
       obsRecorder.getLastRecordingPath(),
       savePath,
@@ -1246,7 +1274,7 @@ function setupGameDetection(): void {
 
     const user = authManager.getUser()
     const map = timeline?.map ?? currentGsiMapName ?? null
-    const agent = timeline?.agent ?? null
+    const agent = timeline?.agent ?? (game === 'deadlock' ? getDeadlockHero() : null) ?? null
     const gameMode = game === 'valorant'
       ? (riotLocalApi.getLastGameMode() ?? 'UNKNOWN')
       : (timeline?.gameMode ?? 'COMPETITIVE')
@@ -2090,7 +2118,6 @@ function setupGameDetection(): void {
     if ((game === 'cs2' || game === 'deadlock') && cancelled) {
       logActivity('Game quit before match started — nothing recorded')
       console.log('[GameDetector] Game quit before match — no recording')
-      if (game === 'deadlock') stopDeadlockLogWatcher()
       tray?.setToolTip(idleTooltip(game))
       return
     }
@@ -2098,7 +2125,6 @@ function setupGameDetection(): void {
     if ((game === 'cs2' || game === 'deadlock') && matchStartTime === null) {
       logActivity('No match started — returning to idle')
       console.log(`[GameDetector] ${game} match wait timed out without live match — not recording`)
-      if (game === 'deadlock') stopDeadlockLogWatcher()
       tray?.setToolTip(idleTooltip(game))
       await rearmGameDetection(game)
       return
@@ -2350,7 +2376,6 @@ function setupGameDetection(): void {
     destroyOverlay()
     } finally {
       if (game === 'deadlock') {
-        stopDeadlockLogWatcher()
         void refreshDeadlockProfile(true)
         const sessionStart = currentMatchStartTime ?? deadlockSessionStartAt
         const autoAnalyse = settingsManager?.get().autoAnalyse !== false

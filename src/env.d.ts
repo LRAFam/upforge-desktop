@@ -799,6 +799,30 @@ declare global {
         }>
         getAnalyses: (limit?: number) => Promise<DeadlockAnalysisItem[]>
         uploadDemo: (demoPath: string) => Promise<{ ok: true; jobId: string } | { ok: false; error: string }>
+        getDetectionStatus: () => Promise<{
+          phase: string
+          mapName: string | null
+          heroKey: string | null
+          logPath: string | null
+          logReceiving: boolean
+          logGrowing: boolean
+          lastLogLine: string
+          replayLive: boolean
+          condebugLikely: boolean
+          replayDir: string | null
+          readyToRecord: boolean
+          matchLive: boolean
+          liveKills: number
+          liveDeaths: number
+          lobbyMatchId: number | null
+          logCandidates: Array<{ path: string; size: number; exists: boolean }>
+        }>
+        ensureCondebug: () => Promise<{
+          ok: boolean
+          alreadyConfigured: boolean
+          needsGameRestart: boolean
+          error?: string
+        }>
       }
       cs2: {
         detectDemoDir: () => Promise<{ dir: string | null }>

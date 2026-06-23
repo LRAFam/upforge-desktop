@@ -207,6 +207,8 @@ const api = {
         getStats: (opts?: { fresh?: boolean }) => ipcRenderer.invoke('deadlock:get-stats', opts),
         getAnalyses: (limit?: number) => ipcRenderer.invoke('deadlock:get-analyses', limit),
         uploadDemo: (demoPath: string) => ipcRenderer.invoke('deadlock:upload-demo', demoPath),
+        getDetectionStatus: () => ipcRenderer.invoke('deadlock:get-detection-status'),
+        ensureCondebug: () => ipcRenderer.invoke('deadlock:ensure-condebug'),
       },
   cs2: {
     detectDemoDir: () => ipcRenderer.invoke('cs2:detect-demo-dir'),

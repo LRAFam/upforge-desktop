@@ -1,21 +1,15 @@
 import fs from 'fs'
-import path from 'path'
 import log from 'electron-log'
 import { findNewestDemoInDir } from './demo-finder'
 import { detectCS2DemoDir } from './cs2-demo-finder'
 import { pollForLatestDemo } from './demo-finder'
+import { getDeadlockReplayDirsSync, resolveDeadlockReplayDirs } from './deadlock-paths'
 
 export type SourceGame = 'cs2' | 'deadlock'
 
-/** Deadlock may write replays under deadlock/ or citadel/ depending on build. */
+/** @deprecated Prefer resolveDeadlockReplayDirs — kept for sync hot paths. */
 export function getDeadlockReplayDirs(customDir?: string): string[] {
-  if (customDir?.trim()) return [customDir.trim()]
-  const local = process.env.LOCALAPPDATA
-  if (!local) return []
-  return [
-    path.join(local, 'Deadlock', 'game', 'deadlock', 'replays'),
-    path.join(local, 'Deadlock', 'game', 'citadel', 'replays'),
-  ]
+  return getDeadlockReplayDirsSync(customDir)
 }
 
 export function getReplayDirForGame(game: SourceGame, customDir?: string): string | null {
@@ -23,7 +17,7 @@ export function getReplayDirForGame(game: SourceGame, customDir?: string): strin
 
   if (game === 'cs2') return null // resolved async via Steam
 
-  const dirs = getDeadlockReplayDirs()
+  const dirs = getDeadlockReplayDirsSync()
   return dirs[0] ?? null
 }
 
@@ -41,12 +35,15 @@ export async function findLatestReplay(
     return pollForLatestDemo(dir, matchStartTime)
   }
 
-  const dirs = getDeadlockReplayDirs(customDir)
+  const dirs = await resolveDeadlockReplayDirs(customDir)
   if (!dirs.length) {
     return { found: false, demoPath: null, demoDir: null, error: 'Deadlock replay directory not found' }
   }
 
-  const deadline = Date.now() + 15_000
+  log.info(`[Replay] Deadlock — polling ${dirs.length} replay dirs`)
+
+  // Deadlock can take a minute+ to finalize .dem files after match end.
+  const deadline = Date.now() + 90_000
   while (Date.now() < deadline) {
     for (const dir of dirs) {
       if (!fs.existsSync(dir)) continue

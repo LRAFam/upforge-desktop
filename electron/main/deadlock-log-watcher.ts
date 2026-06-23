@@ -1,19 +1,23 @@
 /**
  * Deadlock match detection via console.log tailing.
- * Deadlock does not expose CS2-style GSI — community tools use -condebug log parsing.
+ * Aligned with community parsers (deadlock-rpc) — -condebug required.
  */
 
 import fs from 'fs'
 import path from 'path'
-import { exec } from 'child_process'
-import { promisify } from 'util'
 import log from 'electron-log'
-import { getDeadlockReplayDirs } from './source-replay-finder'
+import {
+  appendDeadlockCombatEvent,
+  buildDeadlockLogTimeline,
+  type DeadlockLogSessionSnapshot,
+} from './deadlock-live-timeline'
+import {
+  getDeadlockReplayDirsSync,
+  resolveDeadlockConsoleLogCandidates,
+  resolveDeadlockReplayDirs,
+} from './deadlock-paths'
+import type { MatchData } from './riot-types'
 
-const execAsync = promisify(exec)
-const IS_WIN = process.platform === 'win32'
-const DEADLOCK_APP_ID = '1422450'
-const CONSOLE_LOG_SUFFIX = path.join('game', 'citadel', 'console.log')
 const RESYNC_BYTES = 10 * 1024 * 1024
 const HIDEOUT_MAPS = new Set(['dl_hideout'])
 
@@ -24,45 +28,76 @@ let activeLogPath: string | null = null
 let lastReadPos = 0
 let initialized = false
 let lastActivityAt = 0
+let lastLogLine = ''
 
 let phase: DeadlockPhase = 'idle'
 let mapName: string | null = null
+let heroKey: string | null = null
+let heroWindowOpen = true
 let sawLiveMatch = false
 let hideoutLoaded = false
 
 let sessionStartAt = 0
+let matchStartedAtMs: number | null = null
 let trackedReplayPath: string | null = null
 let trackedReplaySize = 0
 let sawReplayLive = false
 let replayStableSince: number | null = null
 let lobbyMatchId: number | null = null
 
+const liveKills: DeadlockLogSessionSnapshot['kills'] = []
+const liveDeaths: DeadlockLogSessionSnapshot['deaths'] = []
+
+const logPathSizes = new Map<string, { size: number; checkedAt: number }>()
+
 const RE = {
   mapInfo: /\[Client\] Map:\s+"([^"]+)"/,
   mapCreated: /\[Client\] Created physics for\s+(\S+)/,
-  lobbyCreated: /Lobby\s+\d+\s+for\s+Match\s+(\d+)\s+created/,
+  lobbyCreated: /Lobby\s+(\d+)\s+for\s+Match\s+(\d+)\s+created/,
   lobbyDestroyed: /Lobby\s+\d+\s+for\s+Match\s+\d+\s+destroyed/,
   loopModeMenu: /LoopMode:\s*menu/,
   changeGameState: /ChangeGameState:\s+(\w+)\s+\((\d+)\)/,
   serverDisconnect: /\[Client\] Disconnecting from server:\s+(\S+)/,
+  serverShutdown: /\[Server\] SV:\s+Server shutting down:\s+(\S+)/,
   serverConnect: /\[Client\] CL:\s+Connected to '([^']+)'/,
   precachingHeroes: /Precaching (\d+) heroes in CCitadelGameRules/,
   startMatchmaking: /k_EMsgClientToGCStartMatchmaking/,
+  stopMatchmaking: /k_EMsgClientToGCStopMatchmaking/,
   hostActivate: /\[HostStateManager\] Host activate:.*\(([^)]+)\)/,
   spectateBroadcast: /Playing Broadcast/,
-  stopMatchmaking: /k_EMsgClientToGCStopMatchmaking/,
+  loadedHero: /\[Server\] Loaded hero \d+\/(hero_\w+)/,
+  clientHeroVmdl: /VMDL Camera Pose Success!.*models\/heroes(?:_wip|_staging)?\/(\w+)\//,
+  appShutdown: /Dispatching EventAppShutdown_t|Source2Shutdown/,
+}
+
+function normalizeHeroKey(raw: string): string {
+  let s = raw.toLowerCase()
+  const us = s.lastIndexOf('_')
+  if (us > 0) {
+    const suffix = s.slice(us + 1)
+    if (suffix.startsWith('v') && suffix.length > 1 && /^\d+$/.test(suffix.slice(1))) {
+      s = s.slice(0, us)
+    }
+  }
+  if (!s.startsWith('hero_')) s = `hero_${s}`
+  return s
 }
 
 function resetState(): void {
   phase = 'idle'
   mapName = null
+  heroKey = null
+  heroWindowOpen = true
   sawLiveMatch = false
   hideoutLoaded = false
+  matchStartedAtMs = null
   trackedReplayPath = null
   trackedReplaySize = 0
   sawReplayLive = false
   replayStableSince = null
   lobbyMatchId = null
+  liveKills.length = 0
+  liveDeaths.length = 0
 }
 
 export function resetDeadlockLogSession(): void {
@@ -70,93 +105,84 @@ export function resetDeadlockLogSession(): void {
   resetState()
 }
 
-function parseLibraryFolders(vdfPath: string): string[] {
-  try {
-    const content = fs.readFileSync(vdfPath, 'utf-8')
-    const paths: string[] = []
-    const re = /"path"\s+"([^"]+)"/gi
-    let m: RegExpExecArray | null
-    while ((m = re.exec(content)) !== null) {
-      paths.push(m[1].replace(/\\\\/g, '\\'))
-    }
-    return paths
-  } catch {
-    return []
-  }
+function markMatchStarted(): void {
+  if (matchStartedAtMs == null) matchStartedAtMs = Date.now()
 }
 
-async function getSteamPath(): Promise<string | null> {
-  if (!IS_WIN) return null
-  try {
-    const { stdout } = await execAsync(
-      'reg query "HKLM\\SOFTWARE\\WOW6432Node\\Valve\\Steam" /v InstallPath',
-      { windowsHide: true, timeout: 5000 },
-    )
-    const match = /InstallPath\s+REG_SZ\s+(.+)/i.exec(stdout)
-    if (match) return match[1].trim()
-  } catch {
-    try {
-      const { stdout } = await execAsync(
-        'reg query "HKLM\\SOFTWARE\\Valve\\Steam" /v InstallPath',
-        { windowsHide: true, timeout: 5000 },
-      )
-      const match = /InstallPath\s+REG_SZ\s+(.+)/i.exec(stdout)
-      if (match) return match[1].trim()
-    } catch { /* ignore */ }
+function applyHeroSignal(key: string): void {
+  if (phase === 'spectating') return
+  const normalized = normalizeHeroKey(key)
+
+  if (phase === 'match_intro' || phase === 'in_match') {
+    if (heroKey && heroKey !== normalized && !heroWindowOpen) return
+    heroKey = normalized
+    heroWindowOpen = false
+    return
   }
-  return null
+  if (phase === 'idle' || phase === 'post_match') return
+  heroKey = normalized
 }
 
-async function resolveConsoleLogCandidates(): Promise<string[]> {
-  const candidates: string[] = []
-  const local = process.env.LOCALAPPDATA
-  if (local) {
-    candidates.push(path.join(local, 'Deadlock', 'game', 'citadel', 'console.log'))
-    candidates.push(path.join(local, 'Deadlock', 'game', 'deadlock', 'console.log'))
+let cachedReplayDirs: string[] = []
+let replayDirsResolvedAt = 0
+
+async function refreshReplayDirsIfStale(): Promise<string[]> {
+  if (Date.now() - replayDirsResolvedAt < 30_000 && cachedReplayDirs.length) {
+    return cachedReplayDirs
   }
+  cachedReplayDirs = await resolveDeadlockReplayDirs()
+  replayDirsResolvedAt = Date.now()
+  return cachedReplayDirs
+}
 
-  const steamPath = await getSteamPath()
-  const libraries = steamPath
-    ? [steamPath, ...parseLibraryFolders(path.join(steamPath, 'steamapps', 'libraryfolders.vdf'))]
-    : []
-
-  for (const lib of libraries) {
-    candidates.push(path.join(lib, 'steamapps', 'common', 'Deadlock', CONSOLE_LOG_SUFFIX))
+async function sampleLogPathGrowth(): Promise<Map<string, number>> {
+  const growth = new Map<string, number>()
+  const now = Date.now()
+  const candidates = await resolveDeadlockConsoleLogCandidates()
+  for (const candidate of candidates) {
     try {
-      const manifest = path.join(lib, 'steamapps', `appmanifest_${DEADLOCK_APP_ID}.acf`)
-      if (!fs.existsSync(manifest)) continue
-      const text = fs.readFileSync(manifest, 'utf-8')
-      const dirMatch = /"installdir"\s+"([^"]+)"/i.exec(text)
-      if (dirMatch) {
-        candidates.push(path.join(lib, 'steamapps', 'common', dirMatch[1], CONSOLE_LOG_SUFFIX))
-      }
-    } catch { /* ignore */ }
+      if (!fs.existsSync(candidate)) continue
+      const size = fs.statSync(candidate).size
+      const prev = logPathSizes.get(candidate)
+      if (prev) growth.set(candidate, size - prev.size)
+      logPathSizes.set(candidate, { size, checkedAt: now })
+    } catch { /* skip */ }
   }
-
-  if (steamPath) {
-    candidates.push(path.join(steamPath, 'steamapps', 'common', 'Deadlock', CONSOLE_LOG_SUFFIX))
-  }
-
-  return [...new Set(candidates)]
+  return growth
 }
 
 export async function resolveDeadlockConsoleLog(): Promise<string | null> {
-  const candidates = await resolveConsoleLogCandidates()
-  let bestPath: string | null = null
+  const growth = await sampleLogPathGrowth()
+
+  const candidates = await resolveDeadlockConsoleLogCandidates()
+
+  let bestGrowing: { path: string; delta: number } | null = null
   let bestMtime = 0
+  let bestMtimePath: string | null = null
 
   for (const candidate of candidates) {
     try {
       if (!fs.existsSync(candidate)) continue
-      const mtime = fs.statSync(candidate).mtimeMs
-      if (mtime > bestMtime) {
-        bestMtime = mtime
-        bestPath = candidate
+      const stat = fs.statSync(candidate)
+      if (stat.mtimeMs > bestMtime) {
+        bestMtime = stat.mtimeMs
+        bestMtimePath = candidate
+      }
+
+      const delta = growth.get(candidate) ?? 0
+      if (delta > 0 && (!bestGrowing || delta > bestGrowing.delta)) {
+        bestGrowing = { path: candidate, delta }
       }
     } catch { /* skip */ }
   }
 
-  return bestPath
+  if (activeLogPath && initialized) {
+    const delta = growth.get(activeLogPath) ?? 0
+    if (delta > 0) return activeLogPath
+  }
+
+  if (bestGrowing) return bestGrowing.path
+  return bestMtimePath
 }
 
 function isHideoutMap(name: string): boolean {
@@ -171,16 +197,15 @@ function applyMap(name: string): void {
   if (isHideoutMap(mapLower)) {
     phase = 'idle'
     mapName = mapLower
-    hideoutLoaded = false
     return
   }
 
   mapName = mapLower
-  // Any non-hideout map load means a live match is starting (align with deadlock-rpc).
   if (phase === 'match_intro' || phase === 'idle' || phase === 'post_match' || phase === 'in_match') {
     phase = 'in_match'
     sawLiveMatch = true
     hideoutLoaded = false
+    markMatchStarted()
   }
 }
 
@@ -188,6 +213,14 @@ function processLine(line: string): void {
   const trimmed = line.trim()
   if (!trimmed) return
   lastActivityAt = Date.now()
+  lastLogLine = trimmed.slice(0, 240)
+
+  appendDeadlockCombatEvent(
+    { kills: liveKills, deaths: liveDeaths },
+    trimmed,
+    { matchStartTime: matchStartedAtMs, recordingStartTime: matchStartedAtMs ?? sessionStartAt },
+    heroKey,
+  )
 
   let m = RE.mapCreated.exec(trimmed)
   if (m) {
@@ -203,9 +236,12 @@ function processLine(line: string): void {
 
   m = RE.lobbyCreated.exec(trimmed)
   if (m) {
-    lobbyMatchId = Number.parseInt(m[1], 10)
-    if (phase === 'idle' || phase === 'post_match' || phase === 'match_intro') {
+    lobbyMatchId = Number.parseInt(m[2], 10)
+    heroKey = null
+    heroWindowOpen = true
+    if (phase === 'idle' || phase === 'post_match' || phase === 'match_intro' || phase === 'in_match') {
       phase = 'match_intro'
+      markMatchStarted()
     }
     return
   }
@@ -219,6 +255,7 @@ function processLine(line: string): void {
 
   if (RE.spectateBroadcast.test(trimmed)) {
     phase = 'spectating'
+    hideoutLoaded = false
     return
   }
 
@@ -235,9 +272,11 @@ function processLine(line: string): void {
     if (phase !== 'spectating' && (onMatchMap || !hideoutLoaded)) {
       if (name === 'matchintro' || id === 4) {
         phase = 'match_intro'
+        markMatchStarted()
       } else if (name === 'gameinprogress' || name === 'inprogress' || id === 7) {
         phase = 'in_match'
         sawLiveMatch = true
+        markMatchStarted()
       } else if (name === 'postgame' || id === 6) {
         phase = 'post_match'
       }
@@ -257,6 +296,17 @@ function processLine(line: string): void {
     return
   }
 
+  m = RE.serverShutdown.exec(trimmed)
+  if (m?.[1]?.toUpperCase().includes('EXITING')) {
+    resetState()
+    return
+  }
+
+  if (RE.appShutdown.test(trimmed)) {
+    resetState()
+    return
+  }
+
   if (RE.loopModeMenu.test(trimmed)
     && (phase === 'in_match' || phase === 'match_intro' || phase === 'spectating')) {
     phase = 'post_match'
@@ -265,8 +315,11 @@ function processLine(line: string): void {
 
   m = RE.serverConnect.exec(trimmed)
   if (m && !m[1].toLowerCase().includes('loopback')) {
+    heroKey = null
+    heroWindowOpen = true
     if (phase !== 'spectating' && phase !== 'in_match') {
       phase = 'match_intro'
+      markMatchStarted()
     }
     return
   }
@@ -276,6 +329,7 @@ function processLine(line: string): void {
     hideoutLoaded = false
     if (phase === 'idle' || phase === 'match_intro') {
       phase = 'match_intro'
+      markMatchStarted()
     }
     return
   }
@@ -286,8 +340,22 @@ function processLine(line: string): void {
   }
 
   m = RE.hostActivate.exec(trimmed)
-  if (m && !isHideoutMap(m[1])) {
-    hideoutLoaded = false
+  if (m) {
+    hideoutLoaded = isHideoutMap(m[1])
+    return
+  }
+
+  m = RE.loadedHero.exec(trimmed)
+  if (m) {
+    if (phase !== 'idle' || hideoutLoaded) {
+      applyHeroSignal(m[1])
+    }
+    return
+  }
+
+  m = RE.clientHeroVmdl.exec(trimmed)
+  if (m) {
+    applyHeroSignal(m[1])
   }
 }
 
@@ -347,8 +415,7 @@ function readFrom(logPath: string, offset: number, skipPartial: boolean): string
   }
 }
 
-function pollReplayDir(): void {
-  const dirs = getDeadlockReplayDirs()
+function pollReplayDir(dirs: string[]): void {
   if (!dirs.length) return
 
   const notBefore = sessionStartAt - 120_000
@@ -378,6 +445,7 @@ function pollReplayDir(): void {
     sawLiveMatch = true
     replayStableSince = null
     trackedReplaySize = newest.size
+    markMatchStarted()
     return
   }
 
@@ -392,13 +460,14 @@ function pollReplayDir(): void {
     sawReplayLive = true
     sawLiveMatch = true
     replayStableSince = null
+    markMatchStarted()
   }
 }
 
 async function pollOnce(): Promise<void> {
-  pollReplayDir()
+  const replayDirs = await refreshReplayDirsIfStale()
+  pollReplayDir(replayDirs.length ? replayDirs : getDeadlockReplayDirsSync())
 
-  // If the tailed log goes stale, try switching to a newer console.log path.
   if (activeLogPath && initialized && !isDeadlockLogReceiving(45_000)) {
     const refreshed = await resolveDeadlockConsoleLog()
     if (refreshed && refreshed !== activeLogPath) {
@@ -439,7 +508,6 @@ export function isDeadlockLogAvailable(): boolean {
   return activeLogPath != null && fs.existsSync(activeLogPath)
 }
 
-/** Log file exists and has been written recently. */
 export function isDeadlockLogReceiving(maxAgeMs = 30_000): boolean {
   if (!activeLogPath || !fs.existsSync(activeLogPath)) return false
   if (lastActivityAt && Date.now() - lastActivityAt < maxAgeMs) return true
@@ -455,7 +523,6 @@ export function isDeadlockDetectionActive(): boolean {
   return isDeadlockLogReceiving() || sawReplayLive
 }
 
-/** Match is loading (lobby, hero select, server connect) — UI hint only. */
 export function isDeadlockMatchLive(): boolean {
   if (phase === 'in_match' || phase === 'match_intro') return true
   if (sawReplayLive && trackedReplayPath && !replayStableSince) return true
@@ -463,11 +530,9 @@ export function isDeadlockMatchLive(): boolean {
   return false
 }
 
-/** Stricter gate for OBS recording — map loaded / demo writing, not main menu or queue lobby. */
 export function isDeadlockReadyToRecord(): boolean {
   if (phase === 'in_match') return true
-  // Hero select / load screen: real map name set but not yet in_match from game state.
-  if (phase === 'match_intro' && mapName != null && !isHideoutMap(mapName)) return true
+  if (phase === 'match_intro') return true
   if (sawReplayLive && trackedReplayPath && !replayStableSince) return true
   if (sawReplayLive && replayStableSince && Date.now() - replayStableSince < 20_000) return true
   return false
@@ -492,29 +557,87 @@ export function getDeadlockMap(): string | null {
   return mapName
 }
 
-/** Lobby match id from -condebug log (deadlock-api match_id when indexed). */
+export function getDeadlockHero(): string | null {
+  return heroKey
+}
+
 export function getDeadlockLobbyMatchId(): number | null {
   return lobbyMatchId
 }
 
-export function getDeadlockDetectionStatus(): {
+export function getDeadlockLogSessionSnapshot(): DeadlockLogSessionSnapshot {
+  return {
+    heroKey,
+    mapName: getDeadlockMap(),
+    phase,
+    lobbyMatchId,
+    matchStartedAtMs,
+    kills: [...liveKills],
+    deaths: [...liveDeaths],
+  }
+}
+
+export function buildDeadlockTimelineFromLogSession(
+  recordingStartTime: number,
+  matchStartTime: number | null,
+): MatchData | null {
+  return buildDeadlockLogTimeline(
+    getDeadlockLogSessionSnapshot(),
+    recordingStartTime,
+    matchStartTime ?? matchStartedAtMs,
+  )
+}
+
+export interface DeadlockDetectionDiagnostics {
   phase: DeadlockPhase
   mapName: string | null
+  heroKey: string | null
   logPath: string | null
   logReceiving: boolean
+  logGrowing: boolean
+  lastLogLine: string
   replayLive: boolean
   condebugLikely: boolean
   replayDir: string | null
-} {
-  const dirs = getDeadlockReplayDirs()
+  readyToRecord: boolean
+  matchLive: boolean
+  liveKills: number
+  liveDeaths: number
+  lobbyMatchId: number | null
+  logCandidates: Array<{ path: string; size: number; exists: boolean }>
+}
+
+export function getDeadlockDetectionStatus(): DeadlockDetectionDiagnostics {
+  const dirs = cachedReplayDirs.length ? cachedReplayDirs : getDeadlockReplayDirsSync()
   const replayDir = dirs.find((d) => fs.existsSync(d)) ?? dirs[0] ?? null
+
+  let logGrowing = false
+  if (activeLogPath) {
+    logGrowing = lastActivityAt > 0 && Date.now() - lastActivityAt < 3_000
+  }
+
+  const logCandidates: DeadlockDetectionDiagnostics['logCandidates'] = []
+  for (const [p, meta] of logPathSizes.entries()) {
+    logCandidates.push({ path: p, size: meta.size, exists: fs.existsSync(p) })
+  }
+  logCandidates.sort((a, b) => b.size - a.size)
+
   return {
     phase,
     mapName,
+    heroKey,
     logPath: activeLogPath,
     logReceiving: isDeadlockLogReceiving(),
+    logGrowing,
+    lastLogLine,
     replayLive: sawReplayLive,
     condebugLikely: isDeadlockLogReceiving() || (activeLogPath != null && fs.existsSync(activeLogPath)),
     replayDir,
+    readyToRecord: isDeadlockReadyToRecord(),
+    matchLive: isDeadlockMatchLive(),
+    liveKills: liveKills.length,
+    liveDeaths: liveDeaths.length,
+    lobbyMatchId,
+    logCandidates: logCandidates.slice(0, 8),
   }
 }

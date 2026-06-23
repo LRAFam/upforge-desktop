@@ -16,9 +16,10 @@ import { TrainerBridge, type DrillConfig } from '../trainer-bridge'
 import { sendOverlayData } from '../overlay-window'
 import type { AppSettings } from '../settings-manager'
 import { apiPost } from './api-helpers'
-import { getDeadlockReplayDirs } from '../source-replay-finder'
 import { listRecentDemosInDir } from '../demo-finder'
 import { SourceReplayUploader } from '../source-replay-uploader'
+import { getDeadlockDetectionStatus } from '../deadlock-log-watcher'
+import { ensureDeadlockSteamLaunchOptions } from '../deadlock-steam-setup'
 
 // ── Crosshair helper ──────────────────────────────────────────────────────────
 
@@ -229,7 +230,8 @@ export function setupGamingHandlers(
   // ── Deadlock replays ──────────────────────────────────────────────────────
 
   ipcMain.handle('deadlock:list-replays', async () => {
-    const dirs = getDeadlockReplayDirs()
+    const { resolveDeadlockReplayDirs } = await import('../deadlock-paths')
+    const dirs = await resolveDeadlockReplayDirs()
     const seen = new Set<string>()
     const files: Array<{ name: string; path: string; sizeBytes: number; modifiedAt: number }> = []
 
@@ -248,7 +250,8 @@ export function setupGamingHandlers(
   })
 
   ipcMain.handle('deadlock:open-replays-folder', async () => {
-    const dirs = getDeadlockReplayDirs()
+    const { resolveDeadlockReplayDirs } = await import('../deadlock-paths')
+    const dirs = await resolveDeadlockReplayDirs()
     const dir = dirs.find((d) => fs.existsSync(d)) ?? dirs[0]
     if (dir && fs.existsSync(dir)) {
       await shell.openPath(dir)
@@ -308,6 +311,10 @@ export function setupGamingHandlers(
       return { ok: false as const, error: msg }
     }
   })
+
+  ipcMain.handle('deadlock:get-detection-status', () => getDeadlockDetectionStatus())
+
+  ipcMain.handle('deadlock:ensure-condebug', async () => ensureDeadlockSteamLaunchOptions())
 
   ipcMain.handle('deadlock:get-stats', async (_event, opts?: { fresh?: boolean }) => {
     if (!auth.getToken()) {
