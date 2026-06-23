@@ -4,6 +4,17 @@ import { resolveMapRadarUrl, toRadarDisplayNorm, fromRadarDisplayNorm } from '..
 import { cs2MapDisplayName, isCs2Map, normalizeCs2MapKey } from '../lib/cs2-maps'
 import { drawMinimapImage } from '../lib/map-display-norm'
 import {
+  getCalloutAnchor,
+  getSiteAnchor,
+  getZonePack,
+  resolveAnchorNorm,
+} from '../lib/spatial-zones'
+import {
+  drawCalloutCountLabel,
+  drawZoneAnchors,
+  zoneDrawStyle,
+} from '../lib/map-zone-draw'
+import {
   MINIMAP_COMPACT,
   MINIMAP_SIZE,
   MINIMAP_SIZE_LARGE,
@@ -27,6 +38,8 @@ const props = withDefaults(defineProps<{
   showHeatmap?: boolean
   /** callout = per-death blobs; site = aggregated bombsite heat; peek = population defender-favored angles */
   heatmapLayer?: 'callout' | 'site' | 'peek'
+  /** Draw valorant-api callout anchors (grey dots + labels). */
+  showZoneAnchors?: boolean
   large?: boolean
   /** Fixed small footprint for side panels (112px). */
   compact?: boolean
@@ -48,6 +61,7 @@ const props = withDefaults(defineProps<{
   showLegend: true,
   showHeatmap: true,
   heatmapLayer: 'callout',
+  showZoneAnchors: true,
   large: false,
   compact: false,
   floatHud: false,
@@ -152,8 +166,54 @@ const mapLabel = computed(() => {
   return m
 })
 
+const isValorantSpatial = computed(() =>
+  props.game !== 'cs2' && !isCs2Map(props.summary?.map ?? props.mapName),
+)
+
+const zonePack = computed(() =>
+  isValorantSpatial.value ? getZonePack(mapLabel.value) : null,
+)
+
+const useZoneAnchors = computed(() =>
+  props.showZoneAnchors && !!zonePack.value && props.showHeatmap,
+)
+
+const activeCalloutNames = computed(() => {
+  const names = new Set<string>()
+  for (const ev of spatialEvents.value) {
+    if (ev.callout && ev.callout !== 'Unknown') names.add(ev.callout)
+  }
+  for (const h of props.summary?.peekHotspots ?? []) {
+    if (h.callout) names.add(h.callout)
+  }
+  return names
+})
+
 function displayNorm(norm: { x: number; y: number }) {
   return toRadarDisplayNorm(props.game, mapLabel.value ?? props.mapName, norm)
+}
+
+function eventSourceNorm(ev: SpatialTimelineEvent) {
+  const map = mapLabel.value ?? props.mapName
+  const snap = props.showHeatmap && isValorantSpatial.value
+  if (!snap) return ev.norm
+  return resolveAnchorNorm(map, ev.callout, ev.norm) ?? ev.norm
+}
+
+function eventDisplayNorm(ev: SpatialTimelineEvent) {
+  return displayNorm(eventSourceNorm(ev))
+}
+
+function groupDeathsByCallout(deaths: SpatialTimelineEvent[]) {
+  const byCallout = new Map<string, { count: number; norms: { x: number; y: number }[] }>()
+  for (const ev of deaths) {
+    if (ev.callout === 'Unknown') continue
+    const bucket = byCallout.get(ev.callout) ?? { count: 0, norms: [] }
+    bucket.count++
+    bucket.norms.push(ev.norm)
+    byCallout.set(ev.callout, bucket)
+  }
+  return byCallout
 }
 
 function drawDeathHeatmap(ctx: CanvasRenderingContext2D, s: number, deaths: SpatialTimelineEvent[]) {
@@ -166,20 +226,29 @@ function drawDeathHeatmap(ctx: CanvasRenderingContext2D, s: number, deaths: Spat
         : isSmallHud.value
           ? 18
           : 22
+  const map = mapLabel.value ?? props.mapName
+  const byCallout = groupDeathsByCallout(deaths)
+  const maxCount = Math.max(...[...byCallout.values()].map((v) => v.count), 1)
+  const labelFont = props.large || props.panelHud ? 11 : isSmallHud.value ? 0 : 10
   ctx.save()
   ctx.globalCompositeOperation = 'lighter'
-  for (const ev of deaths) {
-    const d = displayNorm(ev.norm)
+  for (const [callout, { count, norms }] of byCallout) {
+    const anchor = resolveAnchorNorm(map, callout, norms)
+    if (!anchor) continue
+    const d = displayNorm(anchor)
     const px = d.x * s
     const py = d.y * s
-    const grad = ctx.createRadialGradient(px, py, 0, px, py, blobR)
+    const scale = 0.75 + (count / maxCount) * 0.55
+    const r = blobR * scale
+    const grad = ctx.createRadialGradient(px, py, 0, px, py, r)
     grad.addColorStop(0, 'rgba(239, 68, 68, 0.75)')
     grad.addColorStop(0.45, 'rgba(239, 68, 68, 0.35)')
     grad.addColorStop(1, 'rgba(239, 68, 68, 0)')
     ctx.fillStyle = grad
     ctx.beginPath()
-    ctx.arc(px, py, blobR, 0, Math.PI * 2)
+    ctx.arc(px, py, r, 0, Math.PI * 2)
     ctx.fill()
+    if (labelFont > 0) drawCalloutCountLabel(ctx, px, py, callout, count, labelFont)
   }
   ctx.restore()
 }
@@ -187,10 +256,12 @@ function drawDeathHeatmap(ctx: CanvasRenderingContext2D, s: number, deaths: Spat
 function drawSiteHeatmap(ctx: CanvasRenderingContext2D, s: number) {
   const hotspots = props.summary?.siteHotspots ?? []
   const maxCount = Math.max(...hotspots.map((h) => h.count), 1)
+  const map = mapLabel.value ?? props.mapName
   ctx.save()
   ctx.globalCompositeOperation = 'lighter'
   for (const h of hotspots) {
-    const d = displayNorm(h.norm)
+    const anchor = getSiteAnchor(map, h.site) ?? h.norm
+    const d = displayNorm(anchor)
     const px = d.x * s
     const py = d.y * s
     const smallHud = isSmallHud.value
@@ -215,9 +286,7 @@ function drawSiteHeatmap(ctx: CanvasRenderingContext2D, s: number) {
     ctx.arc(px, py, blobR, 0, Math.PI * 2)
     ctx.fill()
     if (!smallHud && !props.dockHud) {
-      ctx.font = 'bold 11px system-ui, sans-serif'
-      ctx.fillStyle = 'rgba(255,255,255,0.9)'
-      ctx.fillText(`${h.site} (${h.count})`, px - 16, py + 4)
+      drawCalloutCountLabel(ctx, px, py, `${h.site} Site`, h.count, 11)
     }
   }
   ctx.restore()
@@ -226,10 +295,13 @@ function drawSiteHeatmap(ctx: CanvasRenderingContext2D, s: number) {
 function drawPeekHeatmap(ctx: CanvasRenderingContext2D, s: number) {
   const hotspots = props.summary?.peekHotspots ?? []
   const maxKd = Math.max(...hotspots.map((h) => h.defenderKd), 1.05)
+  const map = mapLabel.value ?? props.mapName
+  const labelFont = props.large || props.panelHud ? 10 : isSmallHud.value ? 0 : 9
   ctx.save()
   ctx.globalCompositeOperation = 'lighter'
   for (const h of hotspots) {
-    const d = displayNorm(h.norm)
+    const anchor = getCalloutAnchor(map, h.callout) ?? h.norm
+    const d = displayNorm(anchor)
     const px = d.x * s
     const py = d.y * s
     const smallHud = isSmallHud.value
@@ -252,6 +324,14 @@ function drawPeekHeatmap(ctx: CanvasRenderingContext2D, s: number) {
     ctx.beginPath()
     ctx.arc(px, py, blobR, 0, Math.PI * 2)
     ctx.fill()
+    if (labelFont > 0) {
+      ctx.font = `bold ${labelFont}px system-ui, sans-serif`
+      ctx.fillStyle = 'rgba(191, 219, 254, 0.95)'
+      ctx.strokeStyle = 'rgba(0, 0, 0, 0.65)'
+      ctx.lineWidth = 3
+      ctx.strokeText(h.callout, px + 6, py - 6)
+      ctx.fillText(h.callout, px + 6, py - 6)
+    }
   }
   ctx.restore()
 }
@@ -276,6 +356,24 @@ function draw() {
     ctx.clearRect(0, 0, s, s)
     drawMinimapImage(ctx, img, s, mapLabel.value)
 
+    if (useZoneAnchors.value && zonePack.value) {
+      const style = zoneDrawStyle(s, {
+        compact: isSmallHud.value || props.compact,
+        forceLabels: props.large || props.panelHud || props.dockExpanded,
+      })
+      const activeLabels = activeCalloutNames.value.size > 0
+        ? activeCalloutNames.value
+        : undefined
+      drawZoneAnchors(
+        ctx,
+        zonePack.value.callouts,
+        s,
+        (norm) => displayNorm(norm),
+        style,
+        activeLabels,
+      )
+    }
+
     if (!hasSpatialEvents.value) return
 
     if (useCalloutHeat.value) drawDeathHeatmap(ctx, s, deathEvents.value)
@@ -285,7 +383,7 @@ function draw() {
     const heatActive = useCalloutHeat.value || useSiteHeat.value || usePeekHeat.value
     events.forEach((ev, idx) => {
       const globalIdx = summary.events.indexOf(ev)
-      const d = displayNorm(ev.norm)
+      const d = eventDisplayNorm(ev)
       const px = d.x * s
       const py = d.y * s
       const isDeath = ev.type === 'death'
@@ -327,15 +425,16 @@ function draw() {
       ctx.fillStyle = '#fff'
       ctx.font = '11px system-ui, sans-serif'
       let legend = '● Deaths   ● Kills   ● Plants   ● Defuses'
-      if (useSiteHeat.value) legend = 'Heat = site deaths   ● Events'
-      else if (usePeekHeat.value) legend = 'Blue = defender-favored peeks   ● Events'
-      else if (useCalloutHeat.value) legend = 'Heat = death density   ● Kills / Plants'
+      if (useSiteHeat.value) legend = 'Heat @ site anchors   ● Events'
+      else if (usePeekHeat.value) legend = 'Blue = defender peeks @ callouts   ● Events'
+      else if (useCalloutHeat.value) legend = 'Heat @ callout anchors   ● Events'
+      else if (useZoneAnchors.value) legend = '● Events   ○ Callout anchors'
       ctx.fillText(legend, 10, s - 10)
     }
 
     const active = activeEvent.value
     if (active) {
-      const ad = displayNorm(active.norm)
+      const ad = eventDisplayNorm(active)
       const ax = ad.x * s
       const ay = ad.y * s
       const label = active.type === 'plant'
@@ -403,6 +502,7 @@ watch(
     props.dockLarge,
     props.showHeatmap,
     props.heatmapLayer,
+    props.showZoneAnchors,
     props.roundFilter,
   ],
   draw,
@@ -414,7 +514,7 @@ function onClick(e: MouseEvent) {
   const summary = props.summary
   const canvas = canvasRef.value
   const events = summary?.events ?? []
-  if (!events.length || !canvas) return
+  if (!summary || !events.length || !canvas) return
   const rect = canvas.getBoundingClientRect()
   const scaleX = canvas.width / rect.width
   const scaleY = canvas.height / rect.height
@@ -426,7 +526,8 @@ function onClick(e: MouseEvent) {
   let best = -1
   let bestD = Math.max(20, size.value * 0.08)
   summary.events.forEach((ev, i) => {
-    const d = Math.hypot(ev.norm.x - clickNorm.x, ev.norm.y - clickNorm.y) * s
+    const src = eventSourceNorm(ev)
+    const d = Math.hypot(src.x - clickNorm.x, src.y - clickNorm.y) * s
     if (d < bestD) {
       bestD = d
       best = i

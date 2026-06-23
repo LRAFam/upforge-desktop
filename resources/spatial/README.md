@@ -6,6 +6,26 @@ Two-layer positioning for desktop VOD coaching:
 2. **Display calibration** (same manifest) — per-map `displayBounds` (gray playable inset on the PNG) and optional `displayTransform` (symmetry). Applied at render time in `map-display-norm.ts`.
 3. **Callouts** (`zones/<map>.json`) — radial anchors; nearest callout within `radius` wins.
 
+## Calibrating heatmaps (dev workflow)
+
+Interactive tuner — no more hand-editing JSON:
+
+```bash
+# One-time: paste bearer token in the UI (saved in localStorage)
+npm run spatial:calibrate
+
+# Pre-fill analysis + auto-load (token must already be saved)
+npm run spatial:calibrate -- --analysis 12345 --map fracture
+```
+
+1. Load a real analysis (or paste `spatialSummary` JSON).
+2. **VOD plays at the top** — pause on a death, check the dot on the minimap below.
+3. Enable **Replay sync** so dots appear as the VOD plays.
+4. Click an event chip to seek the VOD to that moment.
+5. Enable **Deaths only** + **Death heat blobs** to match the product heatmap.
+6. **Fit gray map** → tune rotation/transform → lower **coord scale** if dots are too far out.
+7. **Save to manifest** → `npm run spatial:sync`
+
 ## Adding / tuning callouts
 
 Edit `zones/<map>.json`. Each callout has normalized `x`, `y` (0–1 on the displayicon minimap) and `radius`.

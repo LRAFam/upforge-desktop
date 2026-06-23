@@ -32,6 +32,20 @@ interface MapDisplayEntry {
   displayBounds?: DisplayBounds
   displayTransform?: DisplayTransformId
   displayRotation?: DisplayRotation
+  displayCoordScale?: number
+  displayOffsetX?: number
+  displayOffsetY?: number
+}
+
+function applyDisplayFineTune(norm: NormPoint, entry: MapDisplayEntry): NormPoint {
+  const scale = entry.displayCoordScale ?? 1
+  const ox = entry.displayOffsetX ?? 0
+  const oy = entry.displayOffsetY ?? 0
+  if (scale === 1 && ox === 0 && oy === 0) return norm
+  return {
+    x: (norm.x - 0.5) * scale + 0.5 + ox,
+    y: (norm.y - 0.5) * scale + 0.5 + oy,
+  }
 }
 
 const TRANSFORM_TO: Record<DisplayTransformId, NormTransform> = {
@@ -78,6 +92,29 @@ function normalizeRotation(value: unknown): DisplayRotation {
 function mapKey(mapName: string | null | undefined): string | null {
   if (!mapName) return null
   return mapName.trim().toLowerCase().replace(/\s+/g, '')
+}
+
+function expandToPngBounds(norm: NormPoint, bounds: DisplayBounds): NormPoint {
+  return {
+    x: bounds.minX + norm.x * (bounds.maxX - bounds.minX),
+    y: bounds.minY + norm.y * (bounds.maxY - bounds.minY),
+  }
+}
+
+function pngToCropCanvas(png: NormPoint, bounds: DisplayBounds): NormPoint {
+  const w = bounds.maxX - bounds.minX
+  const h = bounds.maxY - bounds.minY
+  if (w <= 0 || h <= 0) return png
+  return {
+    x: (png.x - bounds.minX) / w,
+    y: (png.y - bounds.minY) / h,
+  }
+}
+
+function hasDisplayCrop(bounds: DisplayBounds | undefined): bounds is DisplayBounds {
+  if (!bounds) return false
+  return bounds.maxX > bounds.minX && bounds.maxY > bounds.minY
+    && (bounds.minX > 0.001 || bounds.minY > 0.001 || bounds.maxX < 0.999 || bounds.maxY < 0.999)
 }
 
 function getMapDisplayEntry(mapName: string | null | undefined): MapDisplayEntry | null {
@@ -157,9 +194,18 @@ export function toMinimapDisplayNorm(
   const entry = getMapDisplayEntry(mapName)
   if (!entry) return norm
 
-  let p = norm
+  let p = applyDisplayFineTune(norm, entry)
   const transform = entry.displayTransform ?? 'identity'
-  p = TRANSFORM_TO[transform](p)
+  const bounds = entry.displayBounds
+
+  if (hasDisplayCrop(bounds)) {
+    p = expandToPngBounds(p, bounds)
+    p = TRANSFORM_TO[transform](p)
+    p = pngToCropCanvas(p, bounds)
+  } else {
+    p = TRANSFORM_TO[transform](p)
+  }
+
   return ROTATION_TO[normalizeRotation(entry.displayRotation)](p)
 }
 
@@ -173,6 +219,27 @@ export function fromMinimapDisplayNorm(
 
   let p = ROTATION_FROM[normalizeRotation(entry.displayRotation)](norm)
   const transform = entry.displayTransform ?? 'identity'
-  p = TRANSFORM_FROM[transform](p)
-  return p
+  const bounds = entry.displayBounds
+
+  if (hasDisplayCrop(bounds)) {
+    let png = expandToPngBounds(p, bounds)
+    png = TRANSFORM_FROM[transform](png)
+    const w = bounds.maxX - bounds.minX
+    const h = bounds.maxY - bounds.minY
+    p = {
+      x: (png.x - bounds.minX) / w,
+      y: (png.y - bounds.minY) / h,
+    }
+  } else {
+    p = TRANSFORM_FROM[transform](p)
+  }
+
+  const scale = entry.displayCoordScale ?? 1
+  const ox = entry.displayOffsetX ?? 0
+  const oy = entry.displayOffsetY ?? 0
+  if (scale === 1 && ox === 0 && oy === 0) return p
+  return {
+    x: (p.x - 0.5 - ox) / scale + 0.5,
+    y: (p.y - 0.5 - oy) / scale + 0.5,
+  }
 }

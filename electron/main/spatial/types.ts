@@ -21,6 +21,10 @@ export interface MapTransform {
   displayTransform?: string
   /** Degrees to rotate minimap + coords when rendering (0, 90, 180, 270). */
   displayRotation?: number
+  /** Per-map scale/offset fine-tune after viewport norm (calibrator). */
+  displayCoordScale?: number
+  displayOffsetX?: number
+  displayOffsetY?: number
 }
 
 /** Radial callout anchor — nearest within radius wins. */

@@ -1,10 +1,15 @@
 #!/usr/bin/env node
 /**
  * Local spatial minimap calibration lab.
- * Usage: npm run spatial:calibrate
  *
- * Loads maps-manifest + zones from resources/spatial, proxies UpForge API
- * (avoids CORS), and opens an interactive tuner in the browser.
+ * Usage:
+ *   npm run spatial:calibrate
+ *   npm run spatial:calibrate -- --analysis 12345
+ *   npm run spatial:calibrate -- --analysis 12345 --map fracture
+ *   SPATIAL_ANALYSIS_ID=12345 npm run spatial:calibrate
+ *
+ * Opens http://127.0.0.1:8766 — tune displayBounds/transform/rotation, then
+ * "Save to manifest" (writes resources/spatial/maps-manifest.json).
  */
 import fs from 'node:fs'
 import http from 'node:http'
@@ -15,9 +20,28 @@ import { fileURLToPath } from 'node:url'
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const spatialDir = path.join(root, 'resources/spatial')
+const manifestPath = path.join(spatialDir, 'maps-manifest.json')
 const htmlPath = path.join(root, 'scripts/spatial-calibrator/index.html')
 const port = 8766
 const apiBase = process.env.VITE_API_URL || 'https://api.upforge.gg'
+
+function parseArgv(argv) {
+  let analysisId = process.env.SPATIAL_ANALYSIS_ID || null
+  let map = process.env.SPATIAL_MAP || null
+  for (let i = 0; i < argv.length; i++) {
+    const arg = argv[i]
+    if (arg === '--analysis' && argv[i + 1]) analysisId = argv[++i]
+    else if (arg === '--map' && argv[i + 1]) map = argv[++i]
+    else if (/^\d+$/.test(arg) && !analysisId) analysisId = arg
+  }
+  return { analysisId, map }
+}
+
+const startup = parseArgv(process.argv.slice(2))
+
+function mapKey(name) {
+  return (name || '').trim().toLowerCase().replace(/\s+/g, '')
+}
 
 const mime = {
   '.html': 'text/html; charset=utf-8',
@@ -79,7 +103,51 @@ function staticFile(filePath) {
   return filePath
 }
 
-const server = http.createServer((req, res) => {
+function readBody(req) {
+  return new Promise((resolve, reject) => {
+    const chunks = []
+    req.on('data', (c) => chunks.push(c))
+    req.on('end', () => {
+      try {
+        resolve(JSON.parse(Buffer.concat(chunks).toString('utf8') || '{}'))
+      } catch (err) {
+        reject(err)
+      }
+    })
+    req.on('error', reject)
+  })
+}
+
+function applyManifestPatch(mapName, patch) {
+  const key = mapKey(mapName)
+  if (!key) throw new Error('map name required')
+  const manifest = readJson(manifestPath)
+  const idx = manifest.findIndex((m) => mapKey(m.displayName) === key)
+  if (idx < 0) throw new Error(`Map not found in manifest: ${mapName}`)
+
+  const entry = manifest[idx]
+  if (patch.displayBounds) entry.displayBounds = patch.displayBounds
+  if (patch.displayTransform) {
+    if (patch.displayTransform === 'identity') delete entry.displayTransform
+    else entry.displayTransform = patch.displayTransform
+  }
+  if (patch.displayRotation != null) {
+    if (patch.displayRotation === 0) delete entry.displayRotation
+    else entry.displayRotation = patch.displayRotation
+  }
+  for (const key of ['displayCoordScale', 'displayOffsetX', 'displayOffsetY']) {
+    if (patch[key] == null || patch[key] === 0 || (key === 'displayCoordScale' && patch[key] === 1)) {
+      delete entry[key]
+    } else {
+      entry[key] = patch[key]
+    }
+  }
+
+  fs.writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`)
+  return entry.displayName
+}
+
+const server = http.createServer(async (req, res) => {
   const url = new URL(req.url ?? '/', `http://127.0.0.1:${port}`)
   const pathname = decodeURIComponent(url.pathname)
 
@@ -87,9 +155,25 @@ const server = http.createServer((req, res) => {
     res.writeHead(204, {
       'Access-Control-Allow-Origin': '*',
       'Access-Control-Allow-Headers': 'Authorization, Content-Type',
-      'Access-Control-Allow-Methods': 'GET, OPTIONS',
+      'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
     })
     res.end()
+    return
+  }
+
+  if (pathname === '/startup.json' && req.method === 'GET') {
+    sendJson(res, 200, { analysisId: startup.analysisId, map: startup.map, apiBase })
+    return
+  }
+
+  if (pathname === '/manifest/apply' && req.method === 'POST') {
+    try {
+      const body = await readBody(req)
+      const saved = applyManifestPatch(body.map, body.patch)
+      sendJson(res, 200, { ok: true, map: saved, path: manifestPath.replace(root, '.') })
+    } catch (err) {
+      sendJson(res, 400, { error: err.message })
+    }
     return
   }
 
@@ -139,9 +223,16 @@ const server = http.createServer((req, res) => {
 })
 
 server.listen(port, '127.0.0.1', () => {
-  const url = `http://127.0.0.1:${port}/`
+  const qs = new URLSearchParams()
+  if (startup.analysisId) qs.set('analysis', startup.analysisId)
+  if (startup.map) qs.set('map', startup.map)
+  if (startup.analysisId) qs.set('autoload', '1')
+  const url = `http://127.0.0.1:${port}/${qs.toString() ? `?${qs}` : ''}`
   console.log(`Spatial calibrator: ${url}`)
   console.log(`API proxy → ${apiBase}`)
+  if (startup.analysisId) console.log(`Pre-filled analysis ID: ${startup.analysisId}`)
+  console.log('Save writes → resources/spatial/maps-manifest.json')
+  console.log('Then run: npm run spatial:sync')
   try {
     execSync(`open "${url}"`, { stdio: 'inherit' })
   } catch {

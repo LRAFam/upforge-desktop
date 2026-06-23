@@ -47,7 +47,10 @@
       "maxY": 0.9141
     },
     "displayTransform": "swapFlipXY",
-    "displayRotation": 90
+    "displayRotation": 90,
+    "displayCoordScale": 0.88,
+    "displayOffsetX": 0.03,
+    "displayOffsetY": 0.03
   },
   {
     "displayName": "Bind",
@@ -137,7 +140,17 @@
       "maxX": 1.5868639999999998,
       "minY": 0.8867108157999999,
       "maxY": 1.619362
-    }
+    },
+    "displayBounds": {
+      "minX": 0.0234,
+      "minY": 0.0674,
+      "maxX": 0.9219,
+      "maxY": 0.9248
+    },
+    "displayTransform": "swapFlipXY",
+    "displayCoordScale": 0.805,
+    "displayOffsetX": 0.06,
+    "displayOffsetY": 0.055
   },
   {
     "displayName": "Haven",

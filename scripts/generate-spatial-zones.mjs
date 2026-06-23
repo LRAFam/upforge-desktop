@@ -9,6 +9,7 @@
  */
 import {
   writeFileSync,
+  readFileSync,
   mkdirSync,
   readdirSync,
   unlinkSync,
@@ -154,7 +155,7 @@ function round4(v) {
   return Math.round(v * 10000) / 10000
 }
 
-function manifestEntry(map, viewport, calibration) {
+function manifestEntry(map, viewport, calibration, existing) {
   return {
     displayName: map.displayName,
     uuid: map.uuid,
@@ -173,6 +174,15 @@ function manifestEntry(map, viewport, calibration) {
       ? { displayTransform: calibration.displayTransform }
       : {}),
     ...(calibration?.displayRotation ? { displayRotation: calibration.displayRotation } : {}),
+    ...(existing?.displayCoordScale != null && existing.displayCoordScale !== 1
+      ? { displayCoordScale: existing.displayCoordScale }
+      : {}),
+    ...(existing?.displayOffsetX != null && existing.displayOffsetX !== 0
+      ? { displayOffsetX: existing.displayOffsetX }
+      : {}),
+    ...(existing?.displayOffsetY != null && existing.displayOffsetY !== 0
+      ? { displayOffsetY: existing.displayOffsetY }
+      : {}),
   }
 }
 
@@ -439,11 +449,18 @@ for (const entry of standard) {
 }
 
 console.log('\nCalibrating displayicon alignment (PNG inset + symmetry)...')
+let existingManifest = []
+try {
+  existingManifest = JSON.parse(readFileSync(manifestPath, 'utf8'))
+} catch {
+  existingManifest = []
+}
 for (const item of pendingCalibration) {
   const { entry, viewport, callouts, key } = item
+  const existing = existingManifest.find((m) => normalizeKey(m.displayName) === key) ?? null
   try {
     const calibration = await calibrateDisplayTransform(entry.displayIcon, callouts, key)
-    manifestRows.push(manifestEntry(entry, viewport, calibration))
+    manifestRows.push(manifestEntry(entry, viewport, calibration, existing))
     const { onMap, total, sitesOnMap, siteCount, useInset } = calibration.calibrationScore
     const rotSuffix = calibration.displayRotation ? ` + rot${calibration.displayRotation}` : ''
     console.log(
@@ -457,7 +474,7 @@ for (const item of pendingCalibration) {
     }
   } catch (e) {
     console.warn(`  ${entry.displayName}: calibration failed (${e.message}), using identity`)
-    manifestRows.push(manifestEntry(entry, viewport, null))
+    manifestRows.push(manifestEntry(entry, viewport, null, existing))
   }
 }
 

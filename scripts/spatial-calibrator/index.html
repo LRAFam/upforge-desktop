@@ -78,6 +78,31 @@
     }
     button.primary { background: #3b1218; border-color: #7f1d2a; color: #fecaca; }
     button:hover { filter: brightness(1.08); }
+    .center-panel {
+      display: flex;
+      flex-direction: column;
+      overflow: auto;
+      background: #0a0f17;
+    }
+    .vod-panel {
+      border-bottom: 1px solid var(--border);
+      padding: 14px 18px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .vod-panel[hidden] { display: none !important; }
+    .vod-panel video {
+      width: 100%;
+      max-height: 42vh;
+      border-radius: 10px;
+      background: #000;
+    }
+    .vod-time {
+      font-size: 11px;
+      color: var(--muted);
+      font-variant-numeric: tabular-nums;
+    }
     .canvas-wrap {
       display: flex;
       flex-direction: column;
@@ -85,14 +110,51 @@
       justify-content: center;
       padding: 20px;
       gap: 12px;
+      flex: 1;
+      position: relative;
     }
+    .map-tooltip {
+      position: absolute;
+      pointer-events: none;
+      background: rgba(0, 0, 0, 0.9);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 4px 8px;
+      font-size: 10px;
+      line-height: 1.3;
+      z-index: 5;
+      max-width: 180px;
+      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+      white-space: nowrap;
+    }
+    .map-tooltip .title {
+      font-weight: 700;
+    }
+    .map-tooltip .title.death { color: #fca5a5; }
+    .map-tooltip .title.kill { color: #86efac; }
+    .map-tooltip .title.plant { color: #fdba74; }
+    .event-focus-bar {
+      font-size: 11px;
+      color: var(--muted);
+      text-align: center;
+      min-height: 16px;
+      max-width: min(90vw, 512px);
+      line-height: 1.4;
+    }
+    .event-focus-bar strong { color: #e2e8f0; font-weight: 600; }
+    canvas.hit-events { cursor: pointer; }
     canvas {
       border: 1px solid var(--border);
       border-radius: 12px;
       background: #000;
       cursor: crosshair;
-      max-width: min(90vw, 640px);
-      max-height: min(70vh, 640px);
+      max-width: min(90vw, 512px);
+      max-height: min(50vh, 512px);
+      outline: none;
+    }
+    canvas:focus {
+      border-color: #60a5fa;
+      box-shadow: 0 0 0 2px rgba(96, 165, 250, 0.35);
     }
     .chip {
       display: inline-flex;
@@ -142,7 +204,7 @@
 <body>
   <header>
     <h1>UpForge Spatial Calibrator</h1>
-    <p>Tune <code>displayBounds</code> / transforms until death dots sit on the gray playable art. Export JSON → paste into <code>maps-manifest.json</code>, then <code>npm run spatial:sync</code>.</p>
+    <p>Load an analysis to play the VOD alongside the minimap — scrub the timeline and tune <code>displayBounds</code> until dots match where deaths actually happen. <strong>Save to manifest</strong> when aligned.</p>
   </header>
 
   <div class="layout">
@@ -168,8 +230,20 @@
       <div id="eventChips"></div>
     </aside>
 
-    <main class="canvas-wrap">
-      <canvas id="map" width="512" height="512"></canvas>
+    <main class="center-panel">
+      <section class="vod-panel" id="vodPanel" hidden>
+        <h2 style="margin:0;font-size:11px;text-transform:uppercase;letter-spacing:.12em;color:var(--muted)">VOD replay</h2>
+        <video id="vodVideo" controls playsinline preload="metadata"></video>
+        <input id="vodScrub" type="range" min="0" max="1000" step="0.25" value="0" />
+        <div class="vod-time" id="vodTime">0:00 / 0:00</div>
+        <div class="toggle"><input type="checkbox" id="replaySync" checked /> Replay sync — dots appear as the VOD plays</div>
+        <label>Video sync offset (ms) <span id="syncOffsetVal">0</span></label>
+        <input id="syncOffset" type="range" min="-8000" max="8000" step="50" value="0" />
+        <p class="hint">Pause on a death in the VOD. If the dot is wrong on the map, tune crop/rotation below — not the sync offset (that's video timing).</p>
+      </section>
+      <div class="canvas-wrap">
+      <div id="mapTooltip" class="map-tooltip" hidden></div>
+      <canvas id="map" width="512" height="512" tabindex="0"></canvas>
       <div class="legend">
         <span class="d">Death</span>
         <span class="k">Kill</span>
@@ -177,11 +251,15 @@
         <span class="z">Zone anchor</span>
         <span class="t">Test click</span>
       </div>
-      <p class="hint">Click the canvas to drop a white test marker at the pixel you expect. Tune until event dots align with it.</p>
+      <div id="eventFocusBar" class="event-focus-bar" hidden></div>
+      <p class="hint">Click a dot to play that moment. Hover a dot for a quick label. <strong>Shift+click</strong> empty map for a test marker. Press <strong>R</strong> to rotate +90°.</p>
+      </div>
     </main>
 
     <aside class="panel">
       <h2>Image crop (displayBounds)</h2>
+      <p class="hint">Dots outside the gray map? Click <strong>Fit gray map</strong> first, then tweak min/max sliders. Blue inset in the corner preview should hug the playable art.</p>
+      <button type="button" id="fitGray" style="width:100%;margin-bottom:8px">Fit gray map (auto crop)</button>
       <label>minX <span id="minXVal"></span></label>
       <input id="minX" type="range" min="0" max="0.2" step="0.001" />
       <label>minY <span id="minYVal"></span></label>
@@ -204,15 +282,24 @@
       </select>
 
       <label>displayRotation</label>
-      <select id="displayRotation">
-        <option value="0">0</option>
-        <option value="90">90</option>
-        <option value="180">180</option>
-        <option value="270">270</option>
-      </select>
+      <div class="row">
+        <select id="displayRotation" style="flex:1">
+          <option value="0">0</option>
+          <option value="90">90</option>
+          <option value="180">180</option>
+          <option value="270">270</option>
+        </select>
+        <button type="button" id="rotate90" title="Keyboard: R">+90°</button>
+      </div>
+
+      <h2 style="margin-top:16px">Quick presets</h2>
+      <div class="row" style="margin-bottom:8px">
+        <button type="button" id="presetRotate90">Rotate 90°</button>
+        <button type="button" id="presetSwapXY">swapFlipXY</button>
+      </div>
 
       <h2 style="margin-top:16px">Coord fine-tune</h2>
-      <p class="hint">Dot too far <strong>north</strong>? Increase <em>offset Y</em> or decrease <em>coord scale</em>.</p>
+      <p class="hint">Still too far toward the edges? Lower <em>coord scale</em> (try 0.88–0.95). Saved with manifest.</p>
       <label>Coord scale <span id="coordScaleVal"></span></label>
       <input id="coordScale" type="range" min="0.85" max="1.15" step="0.001" value="1" />
       <label>Offset X <span id="offsetXVal"></span></label>
@@ -220,12 +307,15 @@
       <label>Offset Y <span id="offsetYVal"></span></label>
       <input id="offsetY" type="range" min="-0.15" max="0.15" step="0.001" value="0" />
 
+      <div class="toggle"><input type="checkbox" id="deathsOnly" /> Deaths only (heatmap tuning)</div>
       <div class="toggle"><input type="checkbox" id="showZones" checked /> Show zone anchors</div>
+      <div class="toggle"><input type="checkbox" id="labelZones" checked /> Label zone anchors</div>
       <div class="toggle"><input type="checkbox" id="showHeat" /> Death heat blobs</div>
       <div class="toggle"><input type="checkbox" id="showCrop" checked /> Show crop rect on source PNG</div>
 
       <button id="resetMap" style="width:100%;margin-top:10px">Reset to manifest defaults</button>
-      <button id="copyExport" class="primary" style="width:100%;margin-top:8px">Copy manifest snippet</button>
+      <button id="saveManifest" class="primary" style="width:100%;margin-top:8px">Save to manifest</button>
+      <button id="copyExport" style="width:100%;margin-top:8px">Copy manifest snippet</button>
 
       <h2 style="margin-top:16px">Export</h2>
       <pre class="export" id="exportBox"></pre>
@@ -256,9 +346,15 @@
       zones: null,
       summary: null,
       activeIndex: null,
+      hoveredIndex: null,
       testDot: null,
       radarImg: null,
       sourceImg: null,
+      playbackUrl: null,
+      scrubbing: false,
+      hitTargets: [],
+      manualMapSelect: false,
+      manualMapSelectTimer: null,
     }
 
     const $ = (id) => document.getElementById(id)
@@ -266,8 +362,63 @@
     const ctx = canvas.getContext('2d')
     const SIZE = 512
 
+    const MAP_ALIASES = {
+      canyon: 'fracture',
+      duality: 'bind',
+      triad: 'haven',
+      bonsai: 'split',
+      port: 'icebox',
+      foxtrot: 'breeze',
+      pitt: 'pearl',
+      jam: 'lotus',
+      juliett: 'sunset',
+      infinity: 'abyss',
+      rook: 'corrode',
+    }
+
     function mapKey(name) {
-      return (name || '').trim().toLowerCase().replace(/\s+/g, '')
+      const key = (name || '').trim().toLowerCase().replace(/\s+/g, '')
+      return MAP_ALIASES[key] || key
+    }
+
+    function isNormPoint(p) {
+      return p && typeof p.x === 'number' && typeof p.y === 'number' && Number.isFinite(p.x) && Number.isFinite(p.y)
+    }
+
+    /** API / pasted JSON may omit norm or nest it differently. */
+    function extractNorm(ev) {
+      if (!ev || typeof ev !== 'object') return null
+      if (isNormPoint(ev.norm)) return ev.norm
+      if (isNormPoint(ev.spatial?.norm)) return ev.spatial.norm
+      if (typeof ev.norm_x === 'number' && typeof ev.norm_y === 'number') return { x: ev.norm_x, y: ev.norm_y }
+      if (typeof ev.normX === 'number' && typeof ev.normY === 'number') return { x: ev.normX, y: ev.normY }
+      if (typeof ev.x === 'number' && typeof ev.y === 'number') return { x: ev.x, y: ev.y }
+      return null
+    }
+
+    function normalizeSpatialSummary(spatial) {
+      const events = (spatial?.events ?? [])
+        .map((ev) => {
+          const norm = extractNorm(ev)
+          if (!norm) return null
+          return { ...ev, norm }
+        })
+        .filter(Boolean)
+      return {
+        ...spatial,
+        map: spatial?.map ?? spatial?.map_name ?? spatial?.mapName ?? null,
+        events,
+      }
+    }
+
+    function unwrapAnalysisPayload(data) {
+      const payload = data?.data ?? data
+      return payload?.analysis ?? payload
+    }
+
+    function extractSpatialFromAnalysis(a) {
+      const md = a?.match_data ?? a?.matchData ?? {}
+      return md.spatialSummary ?? md.spatial_summary ?? a?.spatial_summary ?? a?.spatialSummary ?? null
     }
 
     function getControls() {
@@ -287,17 +438,50 @@
     }
 
     function applyFineTune(norm, c) {
+      if (!isNormPoint(norm)) return { x: 0.5, y: 0.5 }
       return {
         x: (norm.x - 0.5) * c.coordScale + 0.5 + c.offsetX,
         y: (norm.y - 0.5) * c.coordScale + 0.5 + c.offsetY,
       }
     }
 
+    function expandToPngBounds(norm, bounds) {
+      return {
+        x: bounds.minX + norm.x * (bounds.maxX - bounds.minX),
+        y: bounds.minY + norm.y * (bounds.maxY - bounds.minY),
+      }
+    }
+
+    function pngToCropCanvas(png, bounds) {
+      const w = bounds.maxX - bounds.minX
+      const h = bounds.maxY - bounds.minY
+      if (w <= 0 || h <= 0) return png
+      return {
+        x: (png.x - bounds.minX) / w,
+        y: (png.y - bounds.minY) / h,
+      }
+    }
+
+    function hasDisplayCrop(bounds) {
+      if (!bounds) return false
+      return bounds.maxX > bounds.minX && bounds.maxY > bounds.minY
+        && (bounds.minX > 0.001 || bounds.minY > 0.001 || bounds.maxX < 0.999 || bounds.maxY < 0.999)
+    }
+
     function toDisplayNorm(norm) {
+      if (!isNormPoint(norm)) return { x: 0.5, y: 0.5 }
       const c = getControls()
+      const transform = TRANSFORM_TO[c.transform] ?? TRANSFORM_TO.identity
+      const rotation = ROTATION_TO[c.rotation] ?? ROTATION_TO[0]
       let p = applyFineTune(norm, c)
-      p = TRANSFORM_TO[c.transform](p)
-      p = ROTATION_TO[c.rotation](p)
+      if (hasDisplayCrop(c.bounds)) {
+        p = expandToPngBounds(p, c.bounds)
+        p = transform(p)
+        p = pngToCropCanvas(p, c.bounds)
+      } else {
+        p = transform(p)
+      }
+      p = rotation(p)
       return p
     }
 
@@ -357,17 +541,164 @@
       ctx.fillText('source crop', SIZE - 142, SIZE - 15)
     }
 
+    function eventHitRadius(ev, active) {
+      const base = active ? 18 : 14
+      if ($('showHeat')?.checked && ev.type === 'death') return 42
+      return base
+    }
+
+    function rebuildHitTargets() {
+      state.hitTargets = []
+      const all = state.summary?.events || []
+      all.forEach((ev, globalIdx) => {
+        if ($('deathsOnly')?.checked && ev.type !== 'death') return
+        if (!isNormPoint(ev.norm)) return
+        const d = toDisplayNorm(ev.norm)
+        const active = state.activeIndex === globalIdx
+        state.hitTargets.push({
+          globalIdx,
+          x: d.x,
+          y: d.y,
+          r: eventHitRadius(ev, active),
+          ev,
+        })
+      })
+    }
+
+    function findEventHitFromPointer(clientX, clientY) {
+      const rect = canvas.getBoundingClientRect()
+      if (!rect.width || !rect.height || !state.hitTargets.length) return null
+      const px = clientX - rect.left
+      const py = clientY - rect.top
+      const scale = rect.width / SIZE
+      let bestIdx = null
+      let bestDist = Infinity
+      for (const t of state.hitTargets) {
+        const tpx = t.x * rect.width
+        const tpy = t.y * rect.height
+        const dist = Math.hypot(px - tpx, py - tpy)
+        const hitPx = Math.max(t.r * scale, 12)
+        if (dist <= hitPx && dist < bestDist) {
+          bestDist = dist
+          bestIdx = t.globalIdx
+        }
+      }
+      return bestIdx
+    }
+
+    function eventTooltipTitle(ev) {
+      const titleClass = ev.type === 'death' ? 'death' : ev.type === 'plant' ? 'plant' : ev.type === 'kill' ? 'kill' : ''
+      return `<span class="title ${titleClass}">${ev.type} · ${ev.callout || 'Unknown'}</span>`
+    }
+
+    function eventFocusSummary(ev) {
+      const parts = [
+        `<strong>${ev.type} · ${ev.callout || 'Unknown'}</strong>`,
+        `Round ${(ev.round ?? 0) + 1}`,
+      ]
+      if (ev.weapon) parts.push(ev.weapon)
+      if (ev.videoOffsetMs != null) parts.push(`@ ${formatTime(ev.videoOffsetMs / 1000)}`)
+      return parts.join(' · ')
+    }
+
+    function updateEventFocusBar() {
+      const bar = $('eventFocusBar')
+      const active = state.activeIndex != null ? state.summary?.events?.[state.activeIndex] : null
+      if (!active) {
+        bar.hidden = true
+        bar.textContent = ''
+        return
+      }
+      bar.hidden = false
+      bar.innerHTML = eventFocusSummary(active)
+    }
+
+    function positionMapTooltip(ev) {
+      const tip = $('mapTooltip')
+      if (!ev || !isNormPoint(ev.norm)) {
+        tip.hidden = true
+        return
+      }
+      const d = toDisplayNorm(ev.norm)
+      const wrap = canvas.parentElement
+      const wrapRect = wrap.getBoundingClientRect()
+      const canvasRect = canvas.getBoundingClientRect()
+      tip.innerHTML = eventTooltipTitle(ev)
+      tip.hidden = false
+      tip.style.visibility = 'hidden'
+      const tipW = tip.offsetWidth || 120
+      const tipH = tip.offsetHeight || 24
+      tip.style.visibility = 'visible'
+      const px = canvasRect.left - wrapRect.left + d.x * canvasRect.width
+      const py = canvasRect.top - wrapRect.top + d.y * canvasRect.height
+      let left = px + 12
+      let top = py - tipH - 8
+      if (left + tipW > wrapRect.width - 4) left = px - tipW - 12
+      if (top < 4) top = py + 12
+      left = Math.max(4, Math.min(left, wrapRect.width - tipW - 4))
+      top = Math.max(4, Math.min(top, wrapRect.height - tipH - 4))
+      tip.style.left = `${left}px`
+      tip.style.top = `${top}px`
+    }
+
+    function hideMapTooltip() {
+      $('mapTooltip').hidden = true
+    }
+
+    function drawZoneAnchorLabel(px, py, text) {
+      ctx.font = '9px system-ui, sans-serif'
+      const tw = ctx.measureText(text).width
+      const padX = 4
+      const padY = 2
+      const lx = px + 5
+      const ly = py - 5
+      const boxW = tw + padX * 2
+      const boxH = 12
+      let bx = lx
+      let by = ly - boxH
+      if (bx + boxW > SIZE - 2) bx = px - boxW - 5
+      if (by < 2) by = py + 6
+      ctx.fillStyle = 'rgba(15, 23, 42, 0.82)'
+      ctx.beginPath()
+      ctx.roundRect(bx, by, boxW, boxH, 3)
+      ctx.fill()
+      ctx.fillStyle = '#cbd5e1'
+      ctx.fillText(text, bx + padX, by + 9)
+    }
+
+    function drawZoneAnchors() {
+      if (!$('showZones').checked || !state.zones?.callouts) return
+      const labelAnchors = $('labelZones')?.checked
+      ctx.save()
+      for (const z of state.zones.callouts) {
+        if (!isNormPoint(z)) continue
+        const d = toDisplayNorm({ x: z.x, y: z.y })
+        const px = d.x * SIZE
+        const py = d.y * SIZE
+        ctx.beginPath()
+        ctx.arc(px, py, 3, 0, Math.PI * 2)
+        ctx.fillStyle = 'rgba(148,163,184,0.55)'
+        ctx.fill()
+        ctx.strokeStyle = 'rgba(226,232,240,0.35)'
+        ctx.lineWidth = 1
+        ctx.stroke()
+        if (labelAnchors && z.name) drawZoneAnchorLabel(px, py, z.name)
+      }
+      ctx.restore()
+    }
+
     function draw() {
       const img = state.radarImg
       if (!img?.complete) return
       drawMinimap(img, state.mapEntry?.displayName)
       drawCropOverlay(img)
 
-      if ($('showHeat').checked && state.summary?.events) {
-        const deaths = state.summary.events.filter((e) => e.type === 'death')
+      if ($('showHeat').checked) {
+        const deaths = eventsForDraw().filter((e) => e.type === 'death')
         ctx.save()
         ctx.globalCompositeOperation = 'lighter'
         for (const ev of deaths) {
+          if (!isNormPoint(ev.norm)) continue
           const d = toDisplayNorm(ev.norm)
           const px = d.x * SIZE
           const py = d.y * SIZE
@@ -382,24 +713,16 @@
         ctx.restore()
       }
 
-      if ($('showZones').checked && state.zones?.callouts) {
-        for (const z of state.zones.callouts) {
-          const d = toDisplayNorm({ x: z.x, y: z.y })
-          const px = d.x * SIZE
-          const py = d.y * SIZE
-          ctx.beginPath()
-          ctx.arc(px, py, 3, 0, Math.PI * 2)
-          ctx.fillStyle = 'rgba(148,163,184,0.55)'
-          ctx.fill()
-        }
-      }
+      drawZoneAnchors()
 
-      const events = state.summary?.events || []
+      const events = eventsForDraw()
       events.forEach((ev, idx) => {
+        if (!isNormPoint(ev.norm)) return
         const d = toDisplayNorm(ev.norm)
         const px = d.x * SIZE
         const py = d.y * SIZE
-        const active = state.activeIndex === idx
+        const globalIdx = state.summary?.events?.indexOf(ev) ?? idx
+        const active = state.activeIndex === globalIdx
         const color = ev.type === 'death' ? '#ef4444' : ev.type === 'plant' ? '#f97316' : '#22c55e'
         const r = active ? 9 : 6
         ctx.beginPath()
@@ -412,6 +735,8 @@
         ctx.fill()
       })
 
+      rebuildHitTargets()
+
       if (state.testDot) {
         const px = state.testDot.x * SIZE
         const py = state.testDot.y * SIZE
@@ -420,47 +745,27 @@
         ctx.strokeStyle = '#fff'
         ctx.lineWidth = 2
         ctx.stroke()
+        const active = state.activeIndex != null ? state.summary?.events?.[state.activeIndex] : null
+        if (active && isNormPoint(active.norm)) {
+          const d = toDisplayNorm(active.norm)
+          const dist = Math.hypot(d.x - state.testDot.x, d.y - state.testDot.y) * SIZE
+          ctx.font = '11px system-ui'
+          ctx.fillStyle = dist < 24 ? '#4ade80' : '#fbbf24'
+          ctx.fillText(`Δ ${Math.round(dist)}px`, 8, SIZE - 10)
+        }
       }
 
-      const active = state.activeIndex != null ? events[state.activeIndex] : null
-      if (active) {
-        const d = toDisplayNorm(active.norm)
-        const ax = d.x * SIZE
-        const ay = d.y * SIZE
-        const label = `${active.type} · ${active.callout}`
-        ctx.font = 'bold 12px system-ui'
-        const tw = ctx.measureText(label).width
-        const pad = 8
-        const bx = Math.min(Math.max(ax - tw / 2 - pad, 4), SIZE - tw - pad * 2 - 4)
-        const by = Math.max(ay - 36, 8)
-        ctx.fillStyle = 'rgba(0,0,0,0.82)'
-        roundRect(bx, by, tw + pad * 2, 22, 6)
-        ctx.fillStyle = active.type === 'death' ? '#fca5a5' : '#86efac'
-        ctx.fillText(label, bx + pad, by + 15)
-      }
+      updateEventFocusBar()
+      const hovered = state.hoveredIndex != null ? state.summary?.events?.[state.hoveredIndex] : null
+      if (hovered && isNormPoint(hovered.norm)) positionMapTooltip(hovered)
+      else hideMapTooltip()
 
       updateExport()
     }
 
-    function roundRect(x, y, w, h, r) {
-      ctx.beginPath()
-      ctx.moveTo(x + r, y)
-      ctx.lineTo(x + w - r, y)
-      ctx.quadraticCurveTo(x + w, y, x + w, y + r)
-      ctx.lineTo(x + w, y + h - r)
-      ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h)
-      ctx.lineTo(x + r, y + h)
-      ctx.quadraticCurveTo(x, y + h, x, y + h - r)
-      ctx.lineTo(x, y + r)
-      ctx.quadraticCurveTo(x, y, x + r, y)
-      ctx.closePath()
-      ctx.fill()
-    }
-
-    function updateExport() {
+    function getExportPatch() {
       const c = getControls()
-      const name = state.mapEntry?.displayName || 'Map'
-      const snippet = {
+      const patch = {
         displayBounds: {
           minX: round(c.bounds.minX),
           minY: round(c.bounds.minY),
@@ -468,18 +773,211 @@
           maxY: round(c.bounds.maxY),
         },
         displayTransform: c.transform,
-        ...(c.rotation ? { displayRotation: c.rotation } : {}),
+        displayRotation: c.rotation || 0,
       }
+      if (c.coordScale !== 1) patch.displayCoordScale = round(c.coordScale)
+      if (c.offsetX !== 0) patch.displayOffsetX = round(c.offsetX)
+      if (c.offsetY !== 0) patch.displayOffsetY = round(c.offsetY)
+      return patch
+    }
+
+    function detectPlayableBounds(img) {
+      const w = img.naturalWidth
+      const h = img.naturalHeight
+      const scratch = document.createElement('canvas')
+      scratch.width = w
+      scratch.height = h
+      const sctx = scratch.getContext('2d')
+      sctx.drawImage(img, 0, 0)
+      const { data } = sctx.getImageData(0, 0, w, h)
+      let minX = w
+      let minY = h
+      let maxX = 0
+      let maxY = 0
+      for (let y = 0; y < h; y++) {
+        for (let x = 0; x < w; x++) {
+          const i = (y * w + x) * 4
+          const lum = (data[i] + data[i + 1] + data[i + 2]) / 3
+          if (lum > 45 && lum < 210) {
+            if (x < minX) minX = x
+            if (y < minY) minY = y
+            if (x > maxX) maxX = x
+            if (y > maxY) maxY = y
+          }
+        }
+      }
+      if (maxX <= minX || maxY <= minY) return null
+      return {
+        minX: minX / w,
+        minY: minY / h,
+        maxX: maxX / w,
+        maxY: maxY / h,
+      }
+    }
+
+    function extractPlaybackUrl(a) {
+      const url = a?.recording_url ?? a?.recordingUrl
+      return typeof url === 'string' && /^https?:\/\//i.test(url.trim()) ? url.trim() : null
+    }
+
+    function formatTime(sec) {
+      if (!Number.isFinite(sec) || sec < 0) return '0:00'
+      const m = Math.floor(sec / 60)
+      const s = Math.floor(sec % 60)
+      return `${m}:${String(s).padStart(2, '0')}`
+    }
+
+    function syncOffsetMs() {
+      return +($('syncOffset')?.value || 0)
+    }
+
+    function adjustedVideoMs(ev) {
+      const ms = ev?.videoOffsetMs ?? ev?.video_offset_ms
+      if (ms == null || Number.isNaN(ms)) return null
+      return ms + syncOffsetMs()
+    }
+
+    function spatialPreRollSec(type) {
+      if (type === 'death') return 4
+      if (type === 'plant' || type === 'defuse') return 3
+      return 2
+    }
+
+    function filterEventsByPlayback(events, currentTimeSec) {
+      const currentMs = currentTimeSec * 1000
+      return events.filter((ev) => {
+        const ms = adjustedVideoMs(ev)
+        return ms != null && ms <= currentMs + 80
+      })
+    }
+
+    function findEventAtPlayback(events, currentTimeSec) {
+      for (let i = events.length - 1; i >= 0; i--) {
+        const ev = events[i]
+        const ms = adjustedVideoMs(ev)
+        if (ms == null) continue
+        if (Math.abs(currentTimeSec - ms / 1000) <= 0.35) return i
+      }
+      return null
+    }
+
+    function setPlaybackUrl(url) {
+      state.playbackUrl = url
+      const panel = $('vodPanel')
+      const video = $('vodVideo')
+      if (!url) {
+        panel.hidden = true
+        video.removeAttribute('src')
+        video.load()
+        return
+      }
+      panel.hidden = false
+      video.src = url
+      video.load()
+    }
+
+    function updateVodTime() {
+      const video = $('vodVideo')
+      const scrub = $('vodScrub')
+      if (!video.duration || !Number.isFinite(video.duration)) {
+        $('vodTime').textContent = `${formatTime(video.currentTime)} / —`
+        return
+      }
+      $('vodTime').textContent = `${formatTime(video.currentTime)} / ${formatTime(video.duration)}`
+      if (!state.scrubbing) {
+        scrub.max = String(video.duration)
+        scrub.value = String(video.currentTime)
+      }
+    }
+
+    function selectEvent(idx) {
+      if (idx == null || idx < 0) return
+      state.manualMapSelect = true
+      clearTimeout(state.manualMapSelectTimer)
+      state.manualMapSelectTimer = setTimeout(() => {
+        state.manualMapSelect = false
+      }, 2500)
+      state.activeIndex = idx
+      state.testDot = null
+      const ev = state.summary?.events?.[idx]
+      const video = $('vodVideo')
+      if (ev && state.playbackUrl && video?.src) {
+        const ms = adjustedVideoMs(ev)
+        if (ms != null) {
+          video.currentTime = Math.max(0, (ms - spatialPreRollSec(ev.type) * 1000) / 1000)
+          video.play().catch(() => {})
+        }
+      }
+      renderEventChips()
+      draw()
+      if (ev) flashStatus(`${state.playbackUrl ? 'Playing' : 'Selected'} ${ev.type} @ ${ev.callout || 'Unknown'}`)
+    }
+
+    function eventsForDraw() {
+      let events = state.summary?.events || []
+      const video = $('vodVideo')
+      if ($('replaySync')?.checked && state.playbackUrl && video && !video.paused) {
+        events = filterEventsByPlayback(events, video.currentTime)
+      } else if ($('replaySync')?.checked && state.playbackUrl && video && video.currentTime > 0) {
+        events = filterEventsByPlayback(events, video.currentTime)
+      }
+      if ($('deathsOnly')?.checked) events = events.filter((e) => e.type === 'death')
+      return events
+    }
+
+    function updateExport() {
+      const c = getControls()
+      const name = state.mapEntry?.displayName || 'Map'
+      const snippet = getExportPatch()
       let note = ''
       if (c.coordScale !== 1 || c.offsetX !== 0 || c.offsetY !== 0) {
-        note = `\n// Fine-tune still active — bake into displayBounds or viewport before shipping:\n// coordScale=${c.coordScale}, offsetX=${c.offsetX}, offsetY=${c.offsetY}`
+        note = `\n// Fine-tune still active — bake into displayBounds or viewport before saving:\n// coordScale=${c.coordScale}, offsetX=${c.offsetX}, offsetY=${c.offsetY}`
       }
       $('exportBox').textContent = `// ${name}\n${JSON.stringify(snippet, null, 2)}${note}`
     }
 
     function round(n) { return Math.round(n * 10000) / 10000 }
 
-    function loadMapEntry(entry) {
+    function draftStorageKey(name) {
+      return `uf_calib_draft_${mapKey(name)}`
+    }
+
+    function applyControlsToForm(c) {
+      if (!c) return
+      if (c.bounds) {
+        $('minX').value = c.bounds.minX
+        $('minY').value = c.bounds.minY
+        $('maxX').value = c.bounds.maxX
+        $('maxY').value = c.bounds.maxY
+      }
+      if (c.transform) $('displayTransform').value = c.transform
+      if (c.rotation != null) $('displayRotation').value = String(c.rotation)
+      if (c.coordScale != null) $('coordScale').value = c.coordScale
+      if (c.offsetX != null) $('offsetX').value = c.offsetX
+      if (c.offsetY != null) $('offsetY').value = c.offsetY
+      updateSliderLabels()
+    }
+
+    function saveCalibrationDraft() {
+      const name = state.mapEntry?.displayName
+      if (!name) return
+      try {
+        localStorage.setItem(draftStorageKey(name), JSON.stringify(getControls()))
+      } catch { /* quota */ }
+    }
+
+    function loadCalibrationDraft(name) {
+      try {
+        const raw = localStorage.getItem(draftStorageKey(name))
+        if (!raw) return false
+        applyControlsToForm(JSON.parse(raw))
+        return true
+      } catch {
+        return false
+      }
+    }
+
+    function loadMapEntry(entry, opts = {}) {
       state.mapEntry = entry
       const b = entry.displayBounds || { minX: 0, minY: 0, maxX: 1, maxY: 1 }
       $('minX').value = b.minX
@@ -488,10 +986,14 @@
       $('maxY').value = b.maxY
       $('displayTransform').value = entry.displayTransform || 'identity'
       $('displayRotation').value = entry.displayRotation || 0
-      $('coordScale').value = 1
-      $('offsetX').value = 0
-      $('offsetY').value = 0
+      $('coordScale').value = entry.displayCoordScale ?? 1
+      $('offsetX').value = entry.displayOffsetX ?? 0
+      $('offsetY').value = entry.displayOffsetY ?? 0
       updateSliderLabels()
+      const restored = !opts.skipDraft && loadCalibrationDraft(entry.displayName)
+      if (restored) {
+        flashStatus(`Restored unsaved draft for ${entry.displayName}`)
+      }
       const img = new Image()
       img.crossOrigin = 'anonymous'
       img.onload = () => { state.radarImg = img; state.sourceImg = img; draw() }
@@ -512,16 +1014,25 @@
       $('offsetYVal').textContent = (+$('offsetY').value).toFixed(3)
     }
 
-    function setSummary(summary) {
+    function setSummary(rawSummary) {
+      const rawCount = rawSummary?.events?.length ?? 0
+      const summary = normalizeSpatialSummary(rawSummary)
+      const skipped = rawCount - summary.events.length
       state.summary = summary
-      state.activeIndex = summary?.events?.length ? 0 : null
-      const mapName = summary?.map
+      state.activeIndex = null
+      const mapName = summary.map
       if (mapName) {
-        const entry = state.manifest.find((m) => mapKey(m.displayName) === mapKey(mapName))
+        const key = mapKey(mapName)
+        const entry = state.manifest.find((m) => mapKey(m.displayName) === key)
         if (entry) {
-          $('mapSelect').value = mapKey(mapName)
+          $('mapSelect').value = key
           loadMapEntry(entry)
+        } else {
+          $('loadStatus').textContent = `Unknown map "${mapName}" — pick the correct map from the dropdown`
         }
+      }
+      if (skipped > 0) {
+        $('loadStatus').textContent = `Loaded ${summary.events.length} events (${skipped} skipped — missing coords)`
       }
       renderEventChips()
       draw()
@@ -535,8 +1046,8 @@
         const chip = document.createElement('button')
         chip.type = 'button'
         chip.className = `chip ${ev.type} ${state.activeIndex === idx ? 'active' : ''}`
-        chip.textContent = `R${ev.round + 1} · ${ev.callout}`
-        chip.onclick = () => { state.activeIndex = idx; renderEventChips(); draw() }
+        chip.textContent = `R${ev.round + 1} · ${ev.callout}${ev.videoOffsetMs != null ? ` · ${formatTime(ev.videoOffsetMs / 1000)}` : ''}`
+        chip.onclick = () => selectEvent(idx)
         el.appendChild(chip)
       })
     }
@@ -549,37 +1060,7 @@
       return msg
     }
 
-    async function init() {
-      $('analysisId').value = localStorage.getItem('uf_calib_analysis') || '321'
-      $('apiToken').value = localStorage.getItem('uf_calib_token') || ''
-
-      try {
-        const manifest = await fetch('/manifest.json').then((r) => {
-          if (!r.ok) throw new Error(`manifest HTTP ${r.status}`)
-          return r.json()
-        })
-        $('loadStatus').textContent = 'Calibrator server connected — paste token and load analysis'
-        state.manifest = manifest
-        const sel = $('mapSelect')
-        manifest.forEach((m) => {
-          const opt = document.createElement('option')
-          opt.value = mapKey(m.displayName)
-          opt.textContent = m.displayName
-          sel.appendChild(opt)
-        })
-        sel.onchange = () => {
-          const entry = manifest.find((m) => mapKey(m.displayName) === sel.value)
-          if (entry) loadMapEntry(entry)
-        }
-        loadMapEntry(manifest.find((m) => mapKey(m.displayName) === 'breeze') || manifest[0])
-      } catch (err) {
-        $('loadStatus').textContent = formatLoadError(err)
-      }
-    }
-
-    $('loadAnalysis').onclick = async () => {
-      const id = $('analysisId').value
-      const token = $('apiToken').value.trim()
+    async function loadAnalysisById(id, token) {
       if (!id || !token) {
         $('loadStatus').textContent = 'Need analysis ID + bearer token'
         return
@@ -593,23 +1074,88 @@
         })
         const data = await res.json()
         if (!res.ok) throw new Error(data.message || data.error || res.status)
-        const a = data.analysis || data
-        const md = a.match_data || {}
-        const spatial = md.spatialSummary || a.spatial_summary || md.spatial_summary
-        if (!spatial?.events?.length) throw new Error('No spatialSummary on this analysis')
-        $('loadStatus').textContent = `Loaded ${spatial.events.length} events · ${spatial.map}`
+        const a = unwrapAnalysisPayload(data)
+        const spatialRaw = extractSpatialFromAnalysis(a)
+        if (!spatialRaw?.events?.length) {
+          throw new Error('No spatialSummary on this analysis (check match_data.spatialSummary)')
+        }
+        const spatial = normalizeSpatialSummary(spatialRaw)
+        if (!spatial.events.length) {
+          throw new Error(`Found ${spatialRaw.events.length} events but none have norm/x/y coords`)
+        }
+        let playbackUrl = extractPlaybackUrl(a)
+        if (!playbackUrl && a.archive_id) {
+          try {
+            const archRes = await fetch(`/proxy/api/recordings/archive/${a.archive_id}/playback`, {
+              headers: { Authorization: token.startsWith('Bearer ') ? token : `Bearer ${token}` },
+            })
+            const archData = await archRes.json()
+            if (archRes.ok) {
+              playbackUrl = archData.playback_url || archData.url || null
+            }
+          } catch { /* optional */ }
+        }
+        setPlaybackUrl(playbackUrl)
+        const vodNote = playbackUrl ? ' · VOD loaded' : ' · no recording_url on analysis'
+        $('loadStatus').textContent = `Loaded ${spatial.events.length} events · ${spatial.map ?? 'unknown map'}${vodNote}`
         setSummary(spatial)
       } catch (err) {
         $('loadStatus').textContent = formatLoadError(err)
       }
     }
 
+    async function init() {
+      const params = new URLSearchParams(location.search)
+      const startup = await fetch('/startup.json').then((r) => r.json()).catch(() => ({}))
+      $('analysisId').value = params.get('analysis') || startup.analysisId || localStorage.getItem('uf_calib_analysis') || ''
+      $('apiToken').value = localStorage.getItem('uf_calib_token') || ''
+
+      try {
+        const manifest = await fetch('/manifest.json').then((r) => {
+          if (!r.ok) throw new Error(`manifest HTTP ${r.status}`)
+          return r.json()
+        })
+        $('loadStatus').textContent = 'Calibrator ready — paste token once, then load analysis'
+        state.manifest = manifest
+        const sel = $('mapSelect')
+        manifest.forEach((m) => {
+          const opt = document.createElement('option')
+          opt.value = mapKey(m.displayName)
+          opt.textContent = m.displayName
+          sel.appendChild(opt)
+        })
+        sel.onchange = () => {
+          const entry = manifest.find((m) => mapKey(m.displayName) === sel.value)
+          if (entry) loadMapEntry(entry)
+        }
+        const preferredMap = params.get('map') || startup.map
+        const initial = preferredMap
+          ? manifest.find((m) => mapKey(m.displayName) === mapKey(preferredMap))
+          : manifest.find((m) => mapKey(m.displayName) === 'fracture')
+        loadMapEntry(initial || manifest[0])
+
+        const shouldAutoLoad = params.get('autoload') === '1' || params.has('analysis')
+        if (shouldAutoLoad && $('analysisId').value && $('apiToken').value) {
+          await loadAnalysisById($('analysisId').value, $('apiToken').value)
+        }
+      } catch (err) {
+        $('loadStatus').textContent = formatLoadError(err)
+      }
+    }
+
+    $('loadAnalysis').onclick = async () => {
+      await loadAnalysisById($('analysisId').value, $('apiToken').value.trim())
+    }
+
     $('loadPaste').onclick = () => {
       try {
         const raw = JSON.parse($('pasteJson').value)
-        const spatial = raw.events ? raw : raw.spatialSummary || raw.spatial_summary
-        if (!spatial?.events?.length) throw new Error('Need events[]')
-        $('loadStatus').textContent = `Pasted ${spatial.events.length} events`
+        const spatialRaw = raw.events ? raw : raw.spatialSummary || raw.spatial_summary
+        if (!spatialRaw?.events?.length) throw new Error('Need events[]')
+        const spatial = normalizeSpatialSummary(spatialRaw)
+        if (!spatial.events.length) throw new Error('events[] present but no norm/x/y on any row')
+        setPlaybackUrl(null)
+        $('loadStatus').textContent = `Pasted ${spatial.events.length} events (no VOD — use Load analysis for replay)`
         setSummary(spatial)
       } catch (err) {
         $('loadStatus').textContent = err.message
@@ -625,19 +1171,179 @@
       $('loadStatus').textContent = 'Copied manifest snippet to clipboard'
     }
 
-    for (const id of ['minX','minY','maxX','maxY','coordScale','offsetX','offsetY','displayTransform','displayRotation']) {
-      $(id).addEventListener('input', () => { updateSliderLabels(); draw() })
+    $('saveManifest').onclick = async () => {
+      const mapName = state.mapEntry?.displayName
+      if (!mapName) {
+        $('loadStatus').textContent = 'Pick a map first'
+        return
+      }
+      $('loadStatus').textContent = 'Saving…'
+      try {
+        const res = await fetch('/manifest/apply', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ map: mapName, patch: getExportPatch() }),
+        })
+        const data = await res.json()
+        if (!res.ok) throw new Error(data.error || res.status)
+        $('loadStatus').textContent = `Saved ${data.map} → maps-manifest.json · run npm run spatial:sync`
+        state.mapEntry = { ...state.mapEntry, ...getExportPatch() }
+        saveCalibrationDraft()
+      } catch (err) {
+        $('loadStatus').textContent = err.message
+      }
     }
-    for (const id of ['showZones','showHeat','showCrop']) {
+
+    function isTextEntryTarget(el) {
+      if (!el || el === document.body) return false
+      const tag = el.tagName?.toLowerCase()
+      if (tag === 'textarea') return true
+      if (tag === 'input') {
+        const type = (el.type || 'text').toLowerCase()
+        return type === 'text' || type === 'password' || type === 'number' || type === 'search'
+      }
+      return false
+    }
+
+    function flashStatus(msg) {
+      $('loadStatus').textContent = msg
+    }
+
+    function bumpRotation(delta) {
+      const sel = $('displayRotation')
+      const next = (+sel.value + delta + 360) % 360
+      sel.value = String(next)
+      sel.dispatchEvent(new Event('change', { bubbles: true }))
+      updateSliderLabels()
+      saveCalibrationDraft()
+      draw()
+      flashStatus(`Rotation: ${next}°`)
+    }
+
+    $('rotate90').onclick = () => bumpRotation(90)
+    $('presetRotate90').onclick = () => {
+      $('displayRotation').value = '90'
+      updateSliderLabels()
+      saveCalibrationDraft()
+      draw()
+    }
+    $('presetSwapXY').onclick = () => {
+      $('displayTransform').value = 'swapFlipXY'
+      saveCalibrationDraft()
+      draw()
+    }
+
+    $('fitGray').onclick = () => {
+      const img = state.sourceImg || state.radarImg
+      if (!img?.complete) {
+        flashStatus('Map image not loaded yet')
+        return
+      }
+      const bounds = detectPlayableBounds(img)
+      if (!bounds) {
+        flashStatus('Could not detect gray playable area')
+        return
+      }
+      $('minX').value = bounds.minX
+      $('minY').value = bounds.minY
+      $('maxX').value = bounds.maxX
+      $('maxY').value = bounds.maxY
+      updateSliderLabels()
+      saveCalibrationDraft()
+      draw()
+      flashStatus('Cropped to gray playable inset — check zone anchors align')
+    }
+
+    for (const id of ['minX','minY','maxX','maxY','coordScale','offsetX','offsetY','displayTransform','displayRotation']) {
+      const el = $(id)
+      const onAdjust = () => { updateSliderLabels(); saveCalibrationDraft(); draw() }
+      el.addEventListener('input', onAdjust)
+      el.addEventListener('change', onAdjust)
+    }
+    for (const id of ['showZones','labelZones','showHeat','showCrop','deathsOnly','replaySync']) {
       $(id).addEventListener('change', draw)
     }
 
+    $('syncOffset').addEventListener('input', () => {
+      $('syncOffsetVal').textContent = $('syncOffset').value
+      draw()
+    })
+
+    const vodVideo = $('vodVideo')
+    vodVideo.addEventListener('timeupdate', () => {
+      updateVodTime()
+      if (state.summary?.events?.length && !state.manualMapSelect) {
+        const idx = findEventAtPlayback(state.summary.events, vodVideo.currentTime)
+        if (idx != null && state.activeIndex !== idx) {
+          state.activeIndex = idx
+          renderEventChips()
+        }
+      }
+      draw()
+    })
+    vodVideo.addEventListener('loadedmetadata', updateVodTime)
+    vodVideo.addEventListener('pause', draw)
+    vodVideo.addEventListener('play', draw)
+
+    const vodScrub = $('vodScrub')
+    vodScrub.addEventListener('pointerdown', () => { state.scrubbing = true })
+    vodScrub.addEventListener('pointerup', () => { state.scrubbing = false })
+    vodScrub.addEventListener('input', () => {
+      vodVideo.currentTime = +vodScrub.value
+      updateVodTime()
+      draw()
+    })
+
+    window.addEventListener('keydown', (e) => {
+      if (isTextEntryTarget(e.target)) return
+      if (e.key === 'r' || e.key === 'R') {
+        e.preventDefault()
+        bumpRotation(90)
+      }
+    }, true)
+
+    canvas.addEventListener('pointerdown', (e) => {
+      if (e.button !== 0) return
+      canvas.focus()
+      const hit = findEventHitFromPointer(e.clientX, e.clientY)
+      if (hit != null && !e.shiftKey) {
+        e.preventDefault()
+        selectEvent(hit)
+        return
+      }
+    })
+
     canvas.addEventListener('click', (e) => {
+      canvas.focus()
+      const hit = findEventHitFromPointer(e.clientX, e.clientY)
+      if (hit != null && !e.shiftKey) return
       const rect = canvas.getBoundingClientRect()
       const x = (e.clientX - rect.left) / rect.width
       const y = (e.clientY - rect.top) / rect.height
       state.testDot = { x, y }
+      state.activeIndex = null
+      state.hoveredIndex = null
+      state.manualMapSelect = false
+      hideMapTooltip()
+      renderEventChips()
       draw()
+    })
+
+    canvas.addEventListener('mousemove', (e) => {
+      const hit = findEventHitFromPointer(e.clientX, e.clientY)
+      canvas.classList.toggle('hit-events', hit != null)
+      canvas.title = hit != null ? 'Click to play this moment' : ''
+      if (state.hoveredIndex !== hit) {
+        state.hoveredIndex = hit
+        draw()
+      }
+    })
+
+    canvas.addEventListener('mouseleave', () => {
+      if (state.hoveredIndex != null) {
+        state.hoveredIndex = null
+        hideMapTooltip()
+      }
     })
 
     init()

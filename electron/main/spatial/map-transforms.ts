@@ -13,10 +13,25 @@ function loadManifest(): MapTransform[] {
   return manifest
 }
 
-/** Normalise map name from Riot (Icebox, ICEBOX, icebox). */
+const MAP_NAME_ALIASES: Record<string, string> = {
+  duality: 'bind',
+  triad: 'haven',
+  bonsai: 'split',
+  port: 'icebox',
+  foxtrot: 'breeze',
+  canyon: 'fracture',
+  pitt: 'pearl',
+  jam: 'lotus',
+  juliett: 'sunset',
+  infinity: 'abyss',
+  rook: 'corrode',
+}
+
+/** Normalise map name from Riot (Icebox, ICEBOX, icebox, Canyon → fracture). */
 export function normalizeMapKey(mapName: string | null | undefined): string | null {
   if (!mapName) return null
-  return mapName.trim().toLowerCase().replace(/\s+/g, '')
+  const key = mapName.trim().toLowerCase().replace(/\s+/g, '')
+  return MAP_NAME_ALIASES[key] ?? key
 }
 
 export function getMapTransform(mapName: string | null | undefined): MapTransform | null {
