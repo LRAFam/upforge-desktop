@@ -74,7 +74,7 @@ onUnmounted(() => {
       <span class="text-gray-600">Log growing</span>
       <span :class="flag(status.logGrowing)">{{ status.logGrowing ? 'Yes' : 'No' }}</span>
       <span class="text-gray-600">Ready to record</span>
-      <span :class="flag(status.readyToRecord)">{{ status.readyToRecord ? 'Yes' : 'No' }}</span>
+      <span :class="flag(status.readyToRecord)">{{ status.readyToRecord ? 'Yes (in match)' : 'No — waits for map load' }}</span>
       <span class="text-gray-600">Replay writing</span>
       <span :class="flag(status.replayLive)">{{ status.replayLive ? 'Yes' : 'No' }}</span>
       <span v-if="status.mapName" class="text-gray-600">Map</span>

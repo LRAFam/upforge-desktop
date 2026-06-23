@@ -21,7 +21,10 @@ export function buildDeadlockLogTimeline(
     snapshot.kills.length > 0
     || snapshot.deaths.length > 0
     || snapshot.heroKey != null
-    || (snapshot.mapName != null && snapshot.phase === 'in_match')
+    || snapshot.mapName != null
+    || snapshot.lobbyMatchId != null
+    || snapshot.phase === 'in_match'
+    || snapshot.phase === 'post_match'
 
   if (!hasSignal) return null
 
@@ -50,6 +53,7 @@ export function buildDeadlockLogTimeline(
   timeline.endTime = Date.now()
 
   if (snapshot.lobbyMatchId != null) {
+    timeline.matchId = String(snapshot.lobbyMatchId)
     timeline.matchDetails = { deadlockLobbyMatchId: snapshot.lobbyMatchId }
   }
 

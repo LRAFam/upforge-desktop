@@ -144,6 +144,7 @@ import {
   getDeadlockMap,
   getDeadlockHero,
   getDeadlockLobbyMatchId,
+  getDeadlockMatchStartedAt,
   getDeadlockDetectionStatus,
   buildDeadlockTimelineFromLogSession,
 } from './deadlock-log-watcher'
@@ -1961,7 +1962,7 @@ function setupGameDetection(): void {
         }
 
         if (isDeadlockReadyToRecord()) {
-          matchStartTime = Date.now()
+          matchStartTime = getDeadlockMatchStartedAt() ?? Date.now()
           currentMatchStartTime = matchStartTime
           currentGsiMapName = getDeadlockMap()
           gameMode = 'COMPETITIVE'

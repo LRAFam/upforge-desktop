@@ -18,7 +18,6 @@ import {
 } from './deadlock-paths'
 import type { MatchData } from './riot-types'
 
-const RESYNC_BYTES = 10 * 1024 * 1024
 const HIDEOUT_MAPS = new Set(['dl_hideout'])
 
 type DeadlockPhase = 'idle' | 'match_intro' | 'in_match' | 'post_match' | 'spectating'
@@ -103,6 +102,20 @@ function resetState(): void {
 export function resetDeadlockLogSession(): void {
   sessionStartAt = Date.now()
   resetState()
+  seekLogToEnd()
+}
+
+function seekLogToEnd(): void {
+  if (!activeLogPath) return
+  try {
+    if (fs.existsSync(activeLogPath)) {
+      lastReadPos = fs.statSync(activeLogPath).size
+      initialized = true
+    }
+  } catch {
+    initialized = false
+    lastReadPos = 0
+  }
 }
 
 function markMatchStarted(): void {
@@ -241,7 +254,6 @@ function processLine(line: string): void {
     heroWindowOpen = true
     if (phase === 'idle' || phase === 'post_match' || phase === 'match_intro' || phase === 'in_match') {
       phase = 'match_intro'
-      markMatchStarted()
     }
     return
   }
@@ -272,7 +284,6 @@ function processLine(line: string): void {
     if (phase !== 'spectating' && (onMatchMap || !hideoutLoaded)) {
       if (name === 'matchintro' || id === 4) {
         phase = 'match_intro'
-        markMatchStarted()
       } else if (name === 'gameinprogress' || name === 'inprogress' || id === 7) {
         phase = 'in_match'
         sawLiveMatch = true
@@ -319,7 +330,6 @@ function processLine(line: string): void {
     heroWindowOpen = true
     if (phase !== 'spectating' && phase !== 'in_match') {
       phase = 'match_intro'
-      markMatchStarted()
     }
     return
   }
@@ -329,7 +339,6 @@ function processLine(line: string): void {
     hideoutLoaded = false
     if (phase === 'idle' || phase === 'match_intro') {
       phase = 'match_intro'
-      markMatchStarted()
     }
     return
   }
@@ -371,12 +380,9 @@ function readNewLines(logPath: string): void {
   }
 
   if (!initialized) {
-    const start = size > RESYNC_BYTES ? size - RESYNC_BYTES : 0
-    const chunk = readFrom(logPath, start, start > 0)
-    for (const line of chunk) processLine(line)
     lastReadPos = size
     initialized = true
-    log.info('[DeadlockLog] Tailing', logPath, `(${chunk.length} resync lines)`)
+    log.info('[DeadlockLog] Tailing from EOF', logPath, `(size=${size})`)
     return
   }
 
@@ -418,7 +424,7 @@ function readFrom(logPath: string, offset: number, skipPartial: boolean): string
 function pollReplayDir(dirs: string[]): void {
   if (!dirs.length) return
 
-  const notBefore = sessionStartAt - 120_000
+  const notBefore = sessionStartAt
   let newest: { path: string; size: number; mtimeMs: number } | null = null
 
   for (const dir of dirs) {
@@ -524,17 +530,21 @@ export function isDeadlockDetectionActive(): boolean {
 }
 
 export function isDeadlockMatchLive(): boolean {
-  if (phase === 'in_match' || phase === 'match_intro') return true
+  if (phase === 'in_match' && mapName != null && !isHideoutMap(mapName)) return true
   if (sawReplayLive && trackedReplayPath && !replayStableSince) return true
   if (sawReplayLive && replayStableSince && Date.now() - replayStableSince < 20_000) return true
   return false
 }
 
+function isReplayReadyForSession(): boolean {
+  if (!sawReplayLive || !trackedReplayPath) return false
+  if (!replayStableSince) return true
+  return Date.now() - replayStableSince < 20_000
+}
+
 export function isDeadlockReadyToRecord(): boolean {
-  if (phase === 'in_match') return true
-  if (phase === 'match_intro') return true
-  if (sawReplayLive && trackedReplayPath && !replayStableSince) return true
-  if (sawReplayLive && replayStableSince && Date.now() - replayStableSince < 20_000) return true
+  if (phase === 'in_match' && mapName != null && !isHideoutMap(mapName)) return true
+  if (isReplayReadyForSession()) return true
   return false
 }
 
@@ -563,6 +573,10 @@ export function getDeadlockHero(): string | null {
 
 export function getDeadlockLobbyMatchId(): number | null {
   return lobbyMatchId
+}
+
+export function getDeadlockMatchStartedAt(): number | null {
+  return matchStartedAtMs
 }
 
 export function getDeadlockLogSessionSnapshot(): DeadlockLogSessionSnapshot {
