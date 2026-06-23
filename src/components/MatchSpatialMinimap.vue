@@ -2,7 +2,7 @@
 import { ref, computed, watch, onMounted } from 'vue'
 import { resolveMapRadarUrl, toRadarDisplayNorm, fromRadarDisplayNorm } from '../lib/map-radar'
 import { cs2MapDisplayName, isCs2Map, normalizeCs2MapKey } from '../lib/cs2-maps'
-import { drawMinimapImage } from '../lib/map-display-norm'
+import { drawMinimapImage, isNormPoint } from '../lib/map-display-norm'
 import {
   getCalloutAnchor,
   getSiteAnchor,
@@ -189,25 +189,28 @@ const activeCalloutNames = computed(() => {
   return names
 })
 
-function displayNorm(norm: { x: number; y: number }) {
+function displayNorm(norm: { x: number; y: number } | null | undefined) {
   return toRadarDisplayNorm(props.game, mapLabel.value ?? props.mapName, norm)
 }
 
-function eventSourceNorm(ev: SpatialTimelineEvent) {
+function eventSourceNorm(ev: SpatialTimelineEvent): { x: number; y: number } | null {
   const map = mapLabel.value ?? props.mapName
   const snap = props.showHeatmap && isValorantSpatial.value
-  if (!snap) return ev.norm
-  return resolveAnchorNorm(map, ev.callout, ev.norm) ?? ev.norm
+  if (snap) {
+    return resolveAnchorNorm(map, ev.callout, ev.norm) ?? (isNormPoint(ev.norm) ? ev.norm : null)
+  }
+  return isNormPoint(ev.norm) ? ev.norm : null
 }
 
-function eventDisplayNorm(ev: SpatialTimelineEvent) {
-  return displayNorm(eventSourceNorm(ev))
+function eventDisplayNorm(ev: SpatialTimelineEvent): { x: number; y: number } | null {
+  const src = eventSourceNorm(ev)
+  return src ? displayNorm(src) : null
 }
 
 function groupDeathsByCallout(deaths: SpatialTimelineEvent[]) {
   const byCallout = new Map<string, { count: number; norms: { x: number; y: number }[] }>()
   for (const ev of deaths) {
-    if (ev.callout === 'Unknown') continue
+    if (ev.callout === 'Unknown' || !isNormPoint(ev.norm)) continue
     const bucket = byCallout.get(ev.callout) ?? { count: 0, norms: [] }
     bucket.count++
     bucket.norms.push(ev.norm)
@@ -261,6 +264,7 @@ function drawSiteHeatmap(ctx: CanvasRenderingContext2D, s: number) {
   ctx.globalCompositeOperation = 'lighter'
   for (const h of hotspots) {
     const anchor = getSiteAnchor(map, h.site) ?? h.norm
+    if (!isNormPoint(anchor)) continue
     const d = displayNorm(anchor)
     const px = d.x * s
     const py = d.y * s
@@ -301,6 +305,7 @@ function drawPeekHeatmap(ctx: CanvasRenderingContext2D, s: number) {
   ctx.globalCompositeOperation = 'lighter'
   for (const h of hotspots) {
     const anchor = getCalloutAnchor(map, h.callout) ?? h.norm
+    if (!isNormPoint(anchor)) continue
     const d = displayNorm(anchor)
     const px = d.x * s
     const py = d.y * s
@@ -384,6 +389,7 @@ function draw() {
     events.forEach((ev, idx) => {
       const globalIdx = summary.events.indexOf(ev)
       const d = eventDisplayNorm(ev)
+      if (!d) return
       const px = d.x * s
       const py = d.y * s
       const isDeath = ev.type === 'death'
@@ -435,6 +441,7 @@ function draw() {
     const active = activeEvent.value
     if (active) {
       const ad = eventDisplayNorm(active)
+      if (!ad) return
       const ax = ad.x * s
       const ay = ad.y * s
       const label = active.type === 'plant'
@@ -527,6 +534,7 @@ function onClick(e: MouseEvent) {
   let bestD = Math.max(20, size.value * 0.08)
   summary.events.forEach((ev, i) => {
     const src = eventSourceNorm(ev)
+    if (!src) return
     const d = Math.hypot(src.x - clickNorm.x, src.y - clickNorm.y) * s
     if (d < bestD) {
       bestD = d

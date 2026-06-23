@@ -133,6 +133,7 @@
     .map-tooltip .title.death { color: #fca5a5; }
     .map-tooltip .title.kill { color: #86efac; }
     .map-tooltip .title.plant { color: #fdba74; }
+    .map-tooltip .title.defuse { color: #7dd3fc; }
     .event-focus-bar {
       font-size: 11px;
       color: var(--muted);
@@ -170,6 +171,7 @@
     .chip.active { border-color: #fff; background: #1f2a3d; }
     .chip.death { color: #fca5a5; }
     .chip.plant { color: #fdba74; }
+    .chip.defuse { color: #7dd3fc; }
     .chip.kill { color: #86efac; }
     pre.export {
       background: #0a0f17;
@@ -197,6 +199,7 @@
     .legend .d::before { background: #ef4444; }
     .legend .k::before { background: #22c55e; }
     .legend .p::before { background: #f97316; }
+    .legend .f::before { background: #38bdf8; }
     .legend .z::before { background: #64748b; }
     .legend .t::before { background: #fff; border: 1px solid #999; }
   </style>
@@ -248,6 +251,7 @@
         <span class="d">Death</span>
         <span class="k">Kill</span>
         <span class="p">Plant</span>
+        <span class="f">Defuse</span>
         <span class="z">Zone anchor</span>
         <span class="t">Test click</span>
       </div>
@@ -344,6 +348,8 @@
       manifest: [],
       mapEntry: null,
       zones: null,
+      plantPack: null,
+      spatialSource: null,
       summary: null,
       activeIndex: null,
       hoveredIndex: null,
@@ -409,6 +415,252 @@
         map: spatial?.map ?? spatial?.map_name ?? spatial?.mapName ?? null,
         events,
       }
+    }
+
+    function isPlaceholderNorm(norm) {
+      return isNormPoint(norm) && norm.x === 0 && norm.y === 0
+    }
+
+    function getMapTransform(mapName) {
+      const key = mapKey(mapName)
+      return state.manifest?.find((m) => mapKey(m.displayName) === key) ?? null
+    }
+
+    function worldToNorm(mapName, worldX, worldY) {
+      const t = getMapTransform(mapName)
+      if (!t) return null
+      const x = worldX * t.xMultiplier + t.xScalarToAdd
+      const y = worldY * t.yMultiplier + t.yScalarToAdd
+      if (!Number.isFinite(x) || !Number.isFinite(y)) return null
+      const vp = t.viewport
+      if (!vp || vp.maxX <= vp.minX || vp.maxY <= vp.minY) {
+        return { x: Math.max(0, Math.min(1, x)), y: Math.max(0, Math.min(1, y)) }
+      }
+      return {
+        x: Math.max(0, Math.min(1, (x - vp.minX) / (vp.maxX - vp.minX))),
+        y: Math.max(0, Math.min(1, (y - vp.minY) / (vp.maxY - vp.minY))),
+      }
+    }
+
+    function getCalloutAnchor(callout) {
+      if (!callout || callout === 'Unknown' || !state.zones?.callouts) return null
+      const hit = state.zones.callouts.find((c) => c.name === callout.trim())
+      return hit ? { x: hit.x, y: hit.y } : null
+    }
+
+    function plantSiteLetter(site) {
+      const letter = site?.trim?.().charAt(0).toUpperCase()
+      return letter && ['A', 'B', 'C'].includes(letter) ? letter : null
+    }
+
+    function resolveSitePlantAnchor(site) {
+      const letter = plantSiteLetter(site)
+      if (!letter) return null
+      const pack = state.plantPack
+      if (pack?.spots?.length) {
+        const names = [
+          ...(letter === 'A' ? ['A Pyramids'] : []),
+          `${letter} Default`,
+          `${letter} Site`,
+        ]
+        for (const name of names) {
+          const spot = pack.spots.find((s) => s.name === name)
+          if (spot) {
+            return { norm: { x: spot.x, y: spot.y }, callout: spot.name, site: spot.site ?? letter }
+          }
+        }
+        const any = pack.spots.find((s) => (s.site ?? '').toUpperCase() === letter)
+        if (any) {
+          return { norm: { x: any.x, y: any.y }, callout: any.name, site: any.site ?? letter }
+        }
+      }
+      const zoneAnchor = getCalloutAnchor(`${letter} Site`)
+      if (zoneAnchor) {
+        return { norm: zoneAnchor, callout: `${letter} Site`, site: letter }
+      }
+      return null
+    }
+
+    function resolveNormFromCallout(callout, site) {
+      const anchor = getCalloutAnchor(callout)
+      if (anchor) return anchor
+      return resolveSitePlantAnchor(site)?.norm ?? null
+    }
+
+    function backfillPlantLocations(matchData) {
+      if (!matchData || typeof matchData !== 'object') return matchData
+      const roundPlants = matchData.roundPlants ?? matchData.round_plants ?? []
+      if (!roundPlants.length) return matchData
+
+      const byRound = {}
+      for (const snap of roundPlants) {
+        if (!snap || typeof snap !== 'object') continue
+        const round = snap.round ?? -1
+        const loc = snap.plantLocation ?? snap.plant_location
+        if (round < 0 || !loc || typeof loc.x !== 'number' || typeof loc.y !== 'number') continue
+        byRound[round] = { x: loc.x, y: loc.y }
+      }
+      if (!Object.keys(byRound).length) return matchData
+
+      const spikePlants = [...(matchData.spikePlants ?? matchData.spike_plants ?? [])]
+      let changed = false
+      for (let i = 0; i < spikePlants.length; i++) {
+        const plant = spikePlants[i]
+        if (!plant || typeof plant !== 'object') continue
+        const loc = plant.plantLocation ?? plant.plant_location
+        if (loc && typeof loc.x === 'number' && typeof loc.y === 'number') continue
+        const round = plant.round ?? -1
+        if (byRound[round]) {
+          spikePlants[i] = { ...plant, plantLocation: byRound[round] }
+          changed = true
+        }
+      }
+      if (!changed) return matchData
+      return { ...matchData, spikePlants }
+    }
+
+    function buildPlantEventFromSpike(plant, mapName) {
+      const round = plant.round ?? 0
+      const declaredSite = plantSiteLetter(plant.site)
+      const loc = plant.plantLocation ?? plant.plant_location
+      let norm = null
+      let callout = declaredSite ? `${declaredSite} Site` : 'Plant'
+      let siteLabel = declaredSite ?? plant.site ?? null
+
+      if (loc && typeof loc.x === 'number' && typeof loc.y === 'number') {
+        norm = worldToNorm(mapName, loc.x, loc.y)
+      }
+      if (!norm || isPlaceholderNorm(norm)) {
+        const anchor = resolveSitePlantAnchor(plant.site)
+        if (anchor) {
+          norm = anchor.norm
+          callout = anchor.callout
+          siteLabel = anchor.site
+        }
+      } else if (plant.callout) {
+        const fromCallout = resolveNormFromCallout(plant.callout, plant.site)
+        if (fromCallout) callout = plant.callout
+      }
+
+      if (!norm || isPlaceholderNorm(norm)) return null
+
+      return {
+        type: 'plant',
+        round,
+        norm,
+        callout,
+        site: siteLabel,
+        videoOffsetMs: plant.videoOffsetMs ?? plant.video_offset_ms ?? null,
+      }
+    }
+
+    function enrichSpatialSummary(spatial, matchData) {
+      const mapName = spatial?.map ?? spatial?.map_name ?? spatial?.mapName
+        ?? matchData?.map ?? matchData?.mapName ?? matchData?.map_name ?? null
+      const md = matchData ? backfillPlantLocations(matchData) : null
+      const spikePlants = md?.spikePlants ?? md?.spike_plants ?? []
+      const spikeDefuses = md?.spikeDefuses ?? md?.spike_defuses ?? []
+
+      let events = [...(spatial?.events ?? [])]
+      const plantByRound = new Map()
+
+      events = events.map((ev) => {
+        let norm = extractNorm(ev)
+        if (norm && !isPlaceholderNorm(norm)) {
+          if (ev.type === 'plant') {
+            plantByRound.set(ev.round ?? 0, { norm, callout: ev.callout, site: ev.site })
+          }
+          return { ...ev, norm }
+        }
+        if (ev.type === 'plant') {
+          norm = resolveNormFromCallout(ev.callout, ev.site)
+            ?? resolveSitePlantAnchor(ev.site)?.norm
+            ?? null
+          if (norm) {
+            const anchor = resolveSitePlantAnchor(ev.site)
+            const enriched = {
+              ...ev,
+              norm,
+              callout: ev.callout || anchor?.callout || 'Plant',
+              site: ev.site ?? anchor?.site ?? null,
+            }
+            plantByRound.set(ev.round ?? 0, { norm, callout: enriched.callout, site: enriched.site })
+            return enriched
+          }
+        }
+        if (ev.type === 'defuse') {
+          const plantMeta = plantByRound.get(ev.round ?? 0)
+          norm = resolveNormFromCallout(ev.callout, ev.site) ?? plantMeta?.norm ?? null
+          if (norm) {
+            return {
+              ...ev,
+              norm,
+              callout: plantMeta?.callout ?? ev.callout,
+              site: plantMeta?.site ?? ev.site,
+            }
+          }
+        }
+        return ev
+      })
+
+      const plantRoundResolved = (round) => events.some((e) => e.type === 'plant' && (e.round ?? 0) === round && isNormPoint(extractNorm(e)) && !isPlaceholderNorm(extractNorm(e)))
+      for (const plant of spikePlants) {
+        if (!plant || typeof plant !== 'object') continue
+        const round = plant.round ?? 0
+        if (plantRoundResolved(round)) continue
+        const built = buildPlantEventFromSpike(plant, mapName)
+        if (!built) continue
+        events.push(built)
+        plantByRound.set(round, { norm: built.norm, callout: built.callout, site: built.site })
+      }
+
+      events = events.map((ev) => {
+        if (ev.type !== 'defuse') return ev
+        const norm = extractNorm(ev)
+        if (norm && !isPlaceholderNorm(norm)) return ev
+        const plantMeta = plantByRound.get(ev.round ?? 0)
+        if (!plantMeta?.norm) return ev
+        return {
+          ...ev,
+          norm: plantMeta.norm,
+          callout: plantMeta.callout ?? ev.callout,
+          site: plantMeta.site ?? ev.site,
+        }
+      })
+
+      const defuseRoundResolved = (round) => events.some((e) => e.type === 'defuse' && (e.round ?? 0) === round && isNormPoint(extractNorm(e)) && !isPlaceholderNorm(extractNorm(e)))
+      for (const defuse of spikeDefuses) {
+        if (!defuse || typeof defuse !== 'object') continue
+        const round = defuse.round ?? 0
+        if (defuseRoundResolved(round)) continue
+        const plantMeta = plantByRound.get(round)
+        if (!plantMeta?.norm) continue
+        events.push({
+          type: 'defuse',
+          round,
+          norm: plantMeta.norm,
+          callout: plantMeta.callout ?? 'Defuse',
+          site: plantMeta.site ?? null,
+          videoOffsetMs: defuse.videoOffsetMs ?? defuse.video_offset_ms ?? null,
+        })
+      }
+
+      events.sort((a, b) => {
+        const aMs = a.videoOffsetMs ?? a.video_offset_ms ?? Number.MAX_SAFE_INTEGER
+        const bMs = b.videoOffsetMs ?? b.video_offset_ms ?? Number.MAX_SAFE_INTEGER
+        if (aMs !== bMs) return aMs - bMs
+        return (a.round ?? 0) - (b.round ?? 0)
+      })
+
+      return {
+        ...spatial,
+        map: mapName ?? spatial?.map ?? null,
+        events,
+      }
+    }
+
+    function prepareSpatialSummary(spatial, matchData) {
+      return normalizeSpatialSummary(enrichSpatialSummary(spatial ?? { events: [] }, matchData))
     }
 
     function unwrapAnalysisPayload(data) {
@@ -587,7 +839,10 @@
     }
 
     function eventTooltipTitle(ev) {
-      const titleClass = ev.type === 'death' ? 'death' : ev.type === 'plant' ? 'plant' : ev.type === 'kill' ? 'kill' : ''
+      const titleClass = ev.type === 'death' ? 'death'
+        : ev.type === 'plant' ? 'plant'
+        : ev.type === 'defuse' ? 'defuse'
+        : ev.type === 'kill' ? 'kill' : ''
       return `<span class="title ${titleClass}">${ev.type} · ${ev.callout || 'Unknown'}</span>`
     }
 
@@ -723,7 +978,10 @@
         const py = d.y * SIZE
         const globalIdx = state.summary?.events?.indexOf(ev) ?? idx
         const active = state.activeIndex === globalIdx
-        const color = ev.type === 'death' ? '#ef4444' : ev.type === 'plant' ? '#f97316' : '#22c55e'
+        const color = ev.type === 'death' ? '#ef4444'
+          : ev.type === 'plant' ? '#f97316'
+          : ev.type === 'defuse' ? '#38bdf8'
+          : '#22c55e'
         const r = active ? 9 : 6
         ctx.beginPath()
         ctx.arc(px, py, r + 2, 0, Math.PI * 2)
@@ -999,9 +1257,27 @@
       img.onload = () => { state.radarImg = img; state.sourceImg = img; draw() }
       img.src = entry.displayIcon
       fetch(`/zones/${mapKey(entry.displayName)}.json`)
-        .then((r) => r.json())
-        .then((z) => { state.zones = z; draw() })
+        .then((r) => (r.ok ? r.json() : null))
+        .then((z) => {
+          state.zones = z
+          if (state.spatialSource) {
+            state.summary = refreshSummary()
+            renderEventChips()
+          }
+          draw()
+        })
         .catch(() => { state.zones = null })
+      fetch(`/plants/${mapKey(entry.displayName)}.json`)
+        .then((r) => (r.ok ? r.json() : null))
+        .then((p) => {
+          state.plantPack = p
+          if (state.spatialSource) {
+            state.summary = refreshSummary()
+            renderEventChips()
+            draw()
+          }
+        })
+        .catch(() => { state.plantPack = null })
     }
 
     function updateSliderLabels() {
@@ -1014,13 +1290,24 @@
       $('offsetYVal').textContent = (+$('offsetY').value).toFixed(3)
     }
 
-    function setSummary(rawSummary) {
+    function refreshSummary() {
+      const src = state.spatialSource
+      if (!src?.spatial) {
+        state.summary = null
+        return null
+      }
+      return prepareSpatialSummary(src.spatial, src.matchData)
+    }
+
+    function setSummary(rawSummary, matchData) {
+      state.spatialSource = { spatial: rawSummary, matchData: matchData ?? null }
       const rawCount = rawSummary?.events?.length ?? 0
-      const summary = normalizeSpatialSummary(rawSummary)
-      const skipped = rawCount - summary.events.length
+      const beforeNorm = normalizeSpatialSummary(rawSummary).events.length
+      const summary = refreshSummary()
+      const enriched = Math.max(0, (summary?.events?.length ?? 0) - beforeNorm)
       state.summary = summary
       state.activeIndex = null
-      const mapName = summary.map
+      const mapName = summary?.map
       if (mapName) {
         const key = mapKey(mapName)
         const entry = state.manifest.find((m) => mapKey(m.displayName) === key)
@@ -1031,11 +1318,16 @@
           $('loadStatus').textContent = `Unknown map "${mapName}" — pick the correct map from the dropdown`
         }
       }
-      if (skipped > 0) {
-        $('loadStatus').textContent = `Loaded ${summary.events.length} events (${skipped} skipped — missing coords)`
+      if (enriched > 0) {
+        const plants = summary.events.filter((e) => e.type === 'plant').length
+        const defuses = summary.events.filter((e) => e.type === 'defuse').length
+        $('loadStatus').textContent = `Loaded ${summary.events.length} events (${plants} plants, ${defuses} defuses; ${enriched} resolved from match data)`
+      } else if (rawCount > (summary?.events?.length ?? 0)) {
+        $('loadStatus').textContent = `Loaded ${summary.events.length} events (${rawCount - summary.events.length} skipped — missing coords)`
       }
       renderEventChips()
       draw()
+      return summary
     }
 
     function renderEventChips() {
@@ -1075,13 +1367,16 @@
         const data = await res.json()
         if (!res.ok) throw new Error(data.message || data.error || res.status)
         const a = unwrapAnalysisPayload(data)
+        const md = a?.match_data ?? a?.matchData ?? null
         const spatialRaw = extractSpatialFromAnalysis(a)
-        if (!spatialRaw?.events?.length) {
+        const hasSpike = (md?.spikePlants ?? md?.spike_plants ?? []).length > 0
+          || (md?.spikeDefuses ?? md?.spike_defuses ?? []).length > 0
+        if (!spatialRaw?.events?.length && !hasSpike) {
           throw new Error('No spatialSummary on this analysis (check match_data.spatialSummary)')
         }
-        const spatial = normalizeSpatialSummary(spatialRaw)
+        const spatial = prepareSpatialSummary(spatialRaw ?? { events: [] }, md)
         if (!spatial.events.length) {
-          throw new Error(`Found ${spatialRaw.events.length} events but none have norm/x/y coords`)
+          throw new Error('No drawable events — kills/deaths lack coords and no spike plants in match_data')
         }
         let playbackUrl = extractPlaybackUrl(a)
         if (!playbackUrl && a.archive_id) {
@@ -1097,8 +1392,11 @@
         }
         setPlaybackUrl(playbackUrl)
         const vodNote = playbackUrl ? ' · VOD loaded' : ' · no recording_url on analysis'
-        $('loadStatus').textContent = `Loaded ${spatial.events.length} events · ${spatial.map ?? 'unknown map'}${vodNote}`
-        setSummary(spatial)
+        const plants = spatial.events.filter((e) => e.type === 'plant').length
+        const defuses = spatial.events.filter((e) => e.type === 'defuse').length
+        const spikeNote = (plants || defuses) ? ` · ${plants} plants, ${defuses} defuses` : ''
+        $('loadStatus').textContent = `Loaded ${spatial.events.length} events · ${spatial.map ?? 'unknown map'}${spikeNote}${vodNote}`
+        setSummary(spatialRaw ?? { events: [] }, md)
       } catch (err) {
         $('loadStatus').textContent = formatLoadError(err)
       }
@@ -1150,13 +1448,21 @@
     $('loadPaste').onclick = () => {
       try {
         const raw = JSON.parse($('pasteJson').value)
-        const spatialRaw = raw.events ? raw : raw.spatialSummary || raw.spatial_summary
-        if (!spatialRaw?.events?.length) throw new Error('Need events[]')
-        const spatial = normalizeSpatialSummary(spatialRaw)
-        if (!spatial.events.length) throw new Error('events[] present but no norm/x/y on any row')
+        const spatialRaw = raw.events && !raw.match_data && !raw.matchData
+          ? raw
+          : raw.spatialSummary || raw.spatial_summary || raw
+        const matchData = raw.match_data ?? raw.matchData
+          ?? (raw.spikePlants || raw.spike_plants ? raw : null)
+        if (!spatialRaw?.events?.length && !(matchData?.spikePlants ?? matchData?.spike_plants ?? []).length) {
+          throw new Error('Need events[] or spikePlants in match_data')
+        }
+        const spatial = prepareSpatialSummary(spatialRaw ?? { events: [] }, matchData)
+        if (!spatial.events.length) throw new Error('No drawable events after resolving plants/defuses')
         setPlaybackUrl(null)
-        $('loadStatus').textContent = `Pasted ${spatial.events.length} events (no VOD — use Load analysis for replay)`
-        setSummary(spatial)
+        const plants = spatial.events.filter((e) => e.type === 'plant').length
+        const defuses = spatial.events.filter((e) => e.type === 'defuse').length
+        $('loadStatus').textContent = `Pasted ${spatial.events.length} events (${plants} plants, ${defuses} defuses) — no VOD`
+        setSummary(spatialRaw ?? { events: [] }, matchData)
       } catch (err) {
         $('loadStatus').textContent = err.message
       }

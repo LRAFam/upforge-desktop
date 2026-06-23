@@ -21,6 +21,10 @@ const copies = [
     to: join(frontendRoot, 'app/data/spatial/maps-manifest.json'),
   },
   {
+    from: join(root, 'src/lib/map-display-norm.ts'),
+    to: join(frontendRoot, 'app/lib/map-display-norm.ts'),
+  },
+  {
     from: join(spatialDir, 'zones'),
     to: join(frontendRoot, 'public/spatial/zones'),
     recursive: true,

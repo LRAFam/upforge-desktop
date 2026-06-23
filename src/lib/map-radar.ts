@@ -19,9 +19,11 @@ export function resolveMapRadarUrl(
 export function toRadarDisplayNorm(
   game: string | null | undefined,
   mapName: string | null | undefined,
-  norm: NormPoint,
+  norm: NormPoint | null | undefined,
 ): NormPoint {
-  if (game === 'cs2' || isCs2Map(mapName)) return norm
+  if (game === 'cs2' || isCs2Map(mapName)) {
+    return norm && typeof norm.x === 'number' ? norm : { x: 0.5, y: 0.5 }
+  }
   return toMinimapDisplayNorm(mapName, norm)
 }
 

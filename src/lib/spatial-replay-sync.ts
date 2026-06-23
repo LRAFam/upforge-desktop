@@ -4,6 +4,7 @@ import type {
   SpatialHotspot,
   SpatialTimelineEvent,
 } from './spatial-types'
+import { isNormPoint } from './spatial-norm'
 
 /** Seconds around the event timestamp to treat as a hit. */
 export const SPATIAL_EVENT_HIT_WINDOW_SEC = 0.35
@@ -106,7 +107,7 @@ function buildKillHotspots(kills: SpatialTimelineEvent[]): SpatialHotspot[] {
 function buildSiteHotspotsFromDeaths(deaths: SpatialTimelineEvent[]): SiteHotspot[] {
   const bySite = new Map<string, { count: number; xs: number[]; ys: number[] }>()
   for (const d of deaths) {
-    if (!d.site || d.site === 'Spawn') continue
+    if (!d.site || d.site === 'Spawn' || !isNormPoint(d.norm)) continue
     const bucket = bySite.get(d.site) ?? { count: 0, xs: [], ys: [] }
     bucket.count++
     bucket.xs.push(d.norm.x)

@@ -317,7 +317,7 @@ export class RecordingsStore {
 
       if (r.analysed) {
         if (r.analysisId != null) return false
-        return r.pipelineStatus === 'analysing' || r.jobId != null
+        return r.pipelineStatus === 'analysing' || r.pipelineStatus === 'uploading'
       }
 
       const hasLocal = r.path ? fs.existsSync(r.path) : false

@@ -1,5 +1,6 @@
 import type { BrowserWindow } from 'electron'
 import type { UploadManager } from './upload-manager'
+import { asCompletedPollStatus, isTerminalPollSuccess } from './analysis-completion'
 import { clearPendingJob } from './upload-manager'
 
 /** Keep polling while the server job is still queued/processing (matches long VOD runs). */
@@ -74,8 +75,8 @@ export async function reconcileOrphanedJob(
   try {
     const status = await uploadManager.pollStatus(orphaned.job_id)
 
-    if (status.status === 'completed') {
-      return { action: 'completed', status }
+    if (status.status === 'completed' || isTerminalPollSuccess(status)) {
+      return { action: 'completed', status: asCompletedPollStatus(status) }
     }
     if (status.status === 'failed') {
       return { action: 'failed', error: status.error || 'Analysis failed' }
@@ -209,11 +210,11 @@ export function startAnalysisPoll(opts: StartAnalysisPollOptions): { stop: () =>
           return
         }
         schedulePoll()
-      } else if (status.status === 'completed') {
+      } else if (status.status === 'completed' || isTerminalPollSuccess(status)) {
         stop()
         clearPendingJob()
         opts.onPollEnded?.('completed')
-        opts.onCompleted(status)
+        opts.onCompleted(asCompletedPollStatus(status))
       } else if (status.status === 'failed') {
         stop()
         clearPendingJob()

@@ -1120,7 +1120,12 @@ function resetAnalysisUi() {
 }
 
 function checkAnalysisNow() {
-  void window.api.recordings.get().catch(() => {})
+  void (async () => {
+    try {
+      await window.api.analyses.reconcileStuck()
+      await window.api.recordings.get()
+    } catch { /* ignore */ }
+  })()
 }
 
 function startStuckTimer() {
@@ -2005,6 +2010,7 @@ async function exportAnalysis() {
         const ms = 220
         ctx.drawImage(mapImg, mx, my, ms, ms)
         for (const ev of spatial.events) {
+          if (!ev.norm || typeof ev.norm.x !== 'number' || typeof ev.norm.y !== 'number') continue
           const px = mx + ev.norm.x * ms
           const py = my + ev.norm.y * ms
           ctx.beginPath()

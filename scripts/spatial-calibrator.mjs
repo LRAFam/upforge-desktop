@@ -212,6 +212,24 @@ const server = http.createServer(async (req, res) => {
     return
   }
 
+  if (pathname.startsWith('/plants/')) {
+    const name = pathname.replace('/plants/', '')
+    if (!/^[a-z]+\.json$/i.test(name)) {
+      res.writeHead(400)
+      res.end('bad plant pack name')
+      return
+    }
+    const file = staticFile(path.join(spatialDir, 'plants', name))
+    if (!file) {
+      res.writeHead(404)
+      res.end('plant pack missing')
+      return
+    }
+    res.writeHead(200, { 'Content-Type': mime['.json'] })
+    fs.createReadStream(file).pipe(res)
+    return
+  }
+
   if (pathname === '/' || pathname === '/index.html') {
     res.writeHead(200, { 'Content-Type': mime['.html'] })
     fs.createReadStream(htmlPath).pipe(res)

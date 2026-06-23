@@ -57,6 +57,7 @@ import {
   getActiveUserId,
 } from './user-session'
 import { resolveRecordingSavePath } from './user-data-paths'
+import { extractAnalysisIdFromPollResult } from './analysis-completion'
 import { startAnalysisPoll, stopActiveAnalysisPoll, reconcileOrphanedJob } from './analysis-poll'
 import { reconcileStuckAnalysisJobs, type ReconciledAnalysisContext } from './stuck-analysis-reconciler'
 import { AuthManager } from './auth-manager'
@@ -722,7 +723,7 @@ let stuckAnalysisReconcileTimer: ReturnType<typeof setInterval> | null = null
 
 function dispatchReconciledAnalysisReady(ctx: ReconciledAnalysisContext): void {
   const result = ctx.status.result as Record<string, unknown> | undefined
-  const analysisId = typeof result?.analysis_id === 'number' ? result.analysis_id : undefined
+  const analysisId = extractAnalysisIdFromPollResult(result)
   const score = typeof result?.overall_score === 'number' ? result.overall_score : undefined
 
   if (ctx.recordingId) {
@@ -785,12 +786,19 @@ function dispatchReconciledAnalysisReady(ctx: ReconciledAnalysisContext): void {
   tray?.setToolTip(idleTooltip(ctx.game))
 }
 
-function runStuckAnalysisReconcile(): void {
-  if (!authManager.isAuthenticated()) return
-  void reconcileStuckAnalysisJobs({
+function runStuckAnalysisReconcile(): Promise<number> {
+  if (!authManager.isAuthenticated()) return Promise.resolve(0)
+  return reconcileStuckAnalysisJobs({
     uploadManager,
     recordingsStore,
     isAuthenticated: () => authManager.isAuthenticated(),
+    reconcileOrphanedAnalyses: async () => {
+      await authManager.getApi().post('/api/analysis/reconcile').catch(() => {})
+    },
+    fetchRecentAnalyses: async () => {
+      const rows = await authManager.fetchAnalyses(30)
+      return rows.map((a) => ({ id: a.id, job_id: a.job_id, overall_score: a.overall_score }))
+    },
     onCompleted: dispatchReconciledAnalysisReady,
     onFailed: ({ error, recordingId }) => {
       if (recordingId) recordingsStore.clearAnalysisPipeline(recordingId)
@@ -809,8 +817,8 @@ function runStuckAnalysisReconcile(): void {
 
 function startStuckAnalysisReconciler(): void {
   if (stuckAnalysisReconcileTimer) return
-  runStuckAnalysisReconcile()
-  stuckAnalysisReconcileTimer = setInterval(runStuckAnalysisReconcile, 2 * 60 * 1000)
+  void runStuckAnalysisReconcile()
+  stuckAnalysisReconcileTimer = setInterval(() => { void runStuckAnalysisReconcile() }, 2 * 60 * 1000)
 }
 
 function stopStuckAnalysisReconciler(): void {
@@ -2438,7 +2446,7 @@ async function resumePollForJob(
     },
     onCompleted: (status) => {
       const score = (status.result as Record<string, unknown> | undefined)?.overall_score as number | undefined
-      const analysisId = (status.result as Record<string, unknown> | undefined)?.analysis_id as number | undefined
+      const analysisId = extractAnalysisIdFromPollResult(status.result as Record<string, unknown> | undefined)
       const rec = recordingsStore.getByJobId(jobId)
       if (rec) {
         if (analysisId != null) recordingsStore.setAnalysisId(rec.id, analysisId)
@@ -2476,6 +2484,7 @@ async function resumePollForJob(
       if (reason === 'max_duration') {
         logActivity('Resumed analysis poll stopped after 90 minutes — job may still be processing')
         tray?.setToolTip('UpForge — Analysis still running…')
+        void runStuckAnalysisReconcile()
         showAppNotification({
           title: 'UpForge — Still analysing',
           body: 'Your match is still processing on our servers. We\'ll notify you when it\'s ready.',
@@ -2760,7 +2769,7 @@ async function doUploadAndAnalyse(
       },
       onCompleted: (status) => {
         const score = (status.result as Record<string, unknown>).overall_score as number | undefined
-        const analysisId = (status.result as Record<string, unknown>).analysis_id as number | undefined
+        const analysisId = extractAnalysisIdFromPollResult(status.result as Record<string, unknown> | undefined)
         if (recordingId) {
           if (analysisId != null) recordingsStore.setAnalysisId(recordingId, analysisId)
           else recordingsStore.clearAnalysisPipeline(recordingId)
@@ -2876,13 +2885,14 @@ async function doUploadAndAnalyse(
         logActivity('Analysis polling paused — lost connection (retrying automatically)')
         send('post-game:analysis-deferred', { jobId: result.job_id })
         tray?.setToolTip('UpForge — Analysis still running…')
-        runStuckAnalysisReconcile()
+        void runStuckAnalysisReconcile()
       },
       onPollEnded: (reason) => {
         if (reason === 'max_duration') {
           logActivity('Analysis poll reached 90 minute cap — job may still be processing on server')
           send('post-game:analysis-deferred', { jobId: result.job_id })
           tray?.setToolTip('UpForge — Analysis still running…')
+          void runStuckAnalysisReconcile()
           showAppNotification({
             title: 'UpForge — Still analysing',
             body: 'Your match is still processing. We\'ll notify you when results are ready.',
@@ -3293,15 +3303,15 @@ async function startApp(): Promise<void> {
   })
 
 
-  ipcMain.handle('recordings:get', () => {
+  ipcMain.handle('recordings:get', async () => {
     scanForOrphanedRecordings()
-    runStuckAnalysisReconcile()
+    await runStuckAnalysisReconcile()
     return recordingsStore.getPending(linkedRiotFromAuth())
   })
 
-  ipcMain.handle('analysis:reconcile-stuck', () => {
-    runStuckAnalysisReconcile()
-    return { ok: true }
+  ipcMain.handle('analysis:reconcile-stuck', async () => {
+    const reconciled = await runStuckAnalysisReconcile()
+    return { ok: true, reconciled }
   })
 
   ipcMain.handle('recordings:analyse', async (_e, { id }: { id: string }) => {
@@ -3351,7 +3361,7 @@ async function startApp(): Promise<void> {
               recordingsStore.setAnalysisProgress(recording.id, progress, status.current_step ?? null)
             },
             onCompleted: (status) => {
-              const analysisId = (status.result as Record<string, unknown>).analysis_id as number | undefined
+              const analysisId = extractAnalysisIdFromPollResult(status.result as Record<string, unknown> | undefined)
               if (analysisId != null) recordingsStore.setAnalysisId(recording.id, analysisId)
               mainWindow?.webContents.send('dashboard:refresh')
             },

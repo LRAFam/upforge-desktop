@@ -479,6 +479,7 @@ declare global {
         getTimeline: (id: number) => Promise<RecordingTimeline | null>
         refreshPlayback: (id: number) => Promise<string | null>
         getDetail: (id: number) => Promise<{ verdict: string | null; top_issue: string | null; priority_improvements: string[]; coaching_tags: string[]; ally_score: number | null; enemy_score: number | null } | null>
+        reconcileStuck: () => Promise<{ ok: boolean; reconciled: number }>
         submitFeedback: (opts: {
           analysisId: number
           rating: 'thumbs_up' | 'thumbs_down'

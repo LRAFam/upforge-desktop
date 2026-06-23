@@ -1,4 +1,7 @@
 import mapsManifest from '../../resources/spatial/maps-manifest.json'
+import { isNormPoint, normOrCenter } from './spatial-norm'
+
+export { isNormPoint, normOrCenter } from './spatial-norm'
 
 /** Normalized minimap point (0–1, origin top-left of displayicon). */
 export interface NormPoint {
@@ -38,13 +41,14 @@ interface MapDisplayEntry {
 }
 
 function applyDisplayFineTune(norm: NormPoint, entry: MapDisplayEntry): NormPoint {
+  const safe = normOrCenter(norm)
   const scale = entry.displayCoordScale ?? 1
   const ox = entry.displayOffsetX ?? 0
   const oy = entry.displayOffsetY ?? 0
-  if (scale === 1 && ox === 0 && oy === 0) return norm
+  if (scale === 1 && ox === 0 && oy === 0) return safe
   return {
-    x: (norm.x - 0.5) * scale + 0.5 + ox,
-    y: (norm.y - 0.5) * scale + 0.5 + oy,
+    x: (safe.x - 0.5) * scale + 0.5 + ox,
+    y: (safe.y - 0.5) * scale + 0.5 + oy,
   }
 }
 
@@ -189,8 +193,9 @@ export function drawMinimapImage(
  */
 export function toMinimapDisplayNorm(
   mapName: string | null | undefined,
-  norm: NormPoint,
+  norm: NormPoint | null | undefined,
 ): NormPoint {
+  if (!isNormPoint(norm)) return { x: 0.5, y: 0.5 }
   const entry = getMapDisplayEntry(mapName)
   if (!entry) return norm
 
@@ -212,8 +217,9 @@ export function toMinimapDisplayNorm(
 /** Inverse for click hit-testing on the rendered minimap. */
 export function fromMinimapDisplayNorm(
   mapName: string | null | undefined,
-  norm: NormPoint,
+  norm: NormPoint | null | undefined,
 ): NormPoint {
+  if (!isNormPoint(norm)) return { x: 0.5, y: 0.5 }
   const entry = getMapDisplayEntry(mapName)
   if (!entry) return norm
 

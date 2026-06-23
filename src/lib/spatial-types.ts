@@ -8,7 +8,7 @@ export interface NormPoint {
 export interface SpatialTimelineEvent {
   type: 'death' | 'kill' | 'plant' | 'defuse'
   round: number
-  norm: NormPoint
+  norm?: NormPoint | null
   callout: string
   site: string | null
   label: string

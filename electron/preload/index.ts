@@ -28,6 +28,7 @@ const api = {
     getTimeline: (id: number) => ipcRenderer.invoke('analyses:get-timeline', { id }),
     refreshPlayback: (id: number) => ipcRenderer.invoke('analyses:refresh-playback', { id }),
     getDetail: (id: number) => ipcRenderer.invoke('analyses:get-detail', { id }),
+    reconcileStuck: () => ipcRenderer.invoke('analysis:reconcile-stuck') as Promise<{ ok: boolean; reconciled: number }>,
     submitFeedback: (opts: {
       analysisId: number
       rating: 'thumbs_up' | 'thumbs_down'
