@@ -11,6 +11,7 @@ import iceboxZones from '../../resources/spatial/zones/icebox.json'
 import lotusZones from '../../resources/spatial/zones/lotus.json'
 import pearlZones from '../../resources/spatial/zones/pearl.json'
 import splitZones from '../../resources/spatial/zones/split.json'
+import summitZones from '../../resources/spatial/zones/summit.json'
 import sunsetZones from '../../resources/spatial/zones/sunset.json'
 
 export interface ZoneCallout {
@@ -38,6 +39,7 @@ const MAP_ALIASES: Record<string, string> = {
   juliett: 'sunset',
   infinity: 'abyss',
   rook: 'corrode',
+  plummet: 'summit',
 }
 
 const ZONE_PACKS: Record<string, ZonePack> = {
@@ -52,6 +54,7 @@ const ZONE_PACKS: Record<string, ZonePack> = {
   lotus: lotusZones as ZonePack,
   pearl: pearlZones as ZonePack,
   split: splitZones as ZonePack,
+  summit: summitZones as ZonePack,
   sunset: sunsetZones as ZonePack,
 }
 

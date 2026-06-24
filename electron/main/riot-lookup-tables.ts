@@ -184,6 +184,7 @@ const MAP_CODENAME_TO_NAME: Record<string, string> = {
   juliett: 'Sunset',
   infinity: 'Abyss',
   rook: 'Corrode',
+  plummet: 'Summit',
   // TDM / HURM maps (valorant-api mapUrl last segment → displayName)
   hurm_alley: 'District',
   hurm_bowl: 'Kasbah',

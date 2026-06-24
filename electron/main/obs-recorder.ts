@@ -81,6 +81,8 @@ export class OBSRecorder {
   private _disconnectedDuringRecording = false
   private _clipsOnlySession = false
   private _lastConnectWarnAt = 0
+  /** Last game OBS capture was pointed at — used to force refresh on game switches. */
+  private _lastCaptureGame: string | null = null
 
   onStatusChange?: (recording: boolean, error?: string) => void
   onReplayClipSaved?: (path: string, trigger: string) => void
@@ -199,6 +201,7 @@ export class OBSRecorder {
         if (!setup.ok) {
           log.warn('[OBSRecorder] Scene setup incomplete:', setup.error)
         }
+        this._lastCaptureGame = this.getPrimaryGame?.() ?? 'valorant'
 
         const recConfig = this.getRecordingConfig?.()
         if (recConfig) {
@@ -237,6 +240,7 @@ export class OBSRecorder {
     try { await this._obs.disconnect() } catch { /* ignore */ }
     this._suppressConnectionEvents = false
     this._connected = false
+    this._lastCaptureGame = null
     this.onConnectionChange?.(false)
   }
 
@@ -257,6 +261,15 @@ export class OBSRecorder {
 
   private obsSceneOptions(): ObsSceneSwitchOptions {
     return { switchScene: !this.getSettings().obsPreserveActiveScene }
+  }
+
+  private retargetOptionsForGame(game: string, forRecording = false): ObsSceneSwitchOptions {
+    const gameChanged = this._lastCaptureGame !== null && this._lastCaptureGame !== game
+    return {
+      ...this.obsSceneOptions(),
+      forceRecreate: gameChanged || forRecording,
+      refitAfterSettle: gameChanged || forRecording,
+    }
   }
 
   getOBSStatus(): OBSStatus {
@@ -335,7 +348,12 @@ export class OBSRecorder {
     }
     const target = game ?? this.getPrimaryGame?.() ?? 'valorant'
     try {
-      const { captureWindow } = await retargetUpForgeCapture(this._obs, target, this.obsSceneOptions())
+      const { captureWindow } = await retargetUpForgeCapture(
+        this._obs,
+        target,
+        this.retargetOptionsForGame(target),
+      )
+      this._lastCaptureGame = target
       log.info('[OBSRecorder] Capture retargeted to', target, '→', captureWindow)
       return { ok: true, captureWindow }
     } catch (err) {
@@ -416,7 +434,8 @@ export class OBSRecorder {
 
     try {
       // Game/window capture only — never desktop (privacy / policy safe when alt-tabbing)
-      await retargetUpForgeCapture(this._obs, game, this.obsSceneOptions())
+      await retargetUpForgeCapture(this._obs, game, this.retargetOptionsForGame(game, true))
+      this._lastCaptureGame = game
 
       if (config) {
         const applyResult = await applyObsRecordingSettings(this._obs, config)

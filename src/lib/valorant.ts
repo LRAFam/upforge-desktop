@@ -225,6 +225,7 @@ const MAP_NAME_ALIASES: Record<string, string> = {
   juliett: 'sunset',
   infinity: 'abyss',
   rook: 'corrode',
+  plummet: 'summit',
   hurmalley: 'district',
   hurmdistrict: 'district',
   hurmbowl: 'kasbah',
@@ -248,6 +249,7 @@ const MAP_DISPLAY_NAMES: Record<string, string> = {
   sunset: 'Sunset',
   abyss: 'Abyss',
   corrode: 'Corrode',
+  summit: 'Summit',
   district: 'District',
   kasbah: 'Kasbah',
   glitch: 'Glitch',
@@ -273,6 +275,7 @@ const MAP_SPLASH_URLS: Record<string, string> = {
   pearl: 'https://media.valorant-api.com/maps/fd267378-4d1d-484f-ff52-77821ed10dc2/splash.png',
   piazza: 'https://media.valorant-api.com/maps/de28aa9b-4cbe-1003-320e-6cb3ec309557/splash.png',
   split: 'https://media.valorant-api.com/maps/d960549e-485c-e861-8d71-aa9d1aed12a2/splash.png',
+  summit: 'https://media.valorant-api.com/maps/756da597-416b-c0f2-f47b-afbdf28670bc/splash.png',
   sunset: 'https://media.valorant-api.com/maps/92584fbe-486a-b1b2-9faa-39b0f486b498/splash.png',
   therange: 'https://media.valorant-api.com/maps/ee613ee9-28b7-4beb-9666-08db13bb2244/splash.png',
   rangev2: 'https://media.valorant-api.com/maps/5914d1e0-40c4-cfdd-6b88-eba06347686c/splash.png',
@@ -295,6 +298,7 @@ const MAP_MINIMAP_URLS: Record<string, string> = {
   pearl: 'https://media.valorant-api.com/maps/fd267378-4d1d-484f-ff52-77821ed10dc2/displayicon.png',
   piazza: 'https://media.valorant-api.com/maps/de28aa9b-4cbe-1003-320e-6cb3ec309557/displayicon.png',
   split: 'https://media.valorant-api.com/maps/d960549e-485c-e861-8d71-aa9d1aed12a2/displayicon.png',
+  summit: 'https://media.valorant-api.com/maps/756da597-416b-c0f2-f47b-afbdf28670bc/displayicon.png',
   sunset: 'https://media.valorant-api.com/maps/92584fbe-486a-b1b2-9faa-39b0f486b498/displayicon.png',
 }
 

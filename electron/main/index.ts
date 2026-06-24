@@ -587,7 +587,7 @@ async function ensureObsCaptureForGame(game: string): Promise<void> {
     gameDetector.currentGame() === game || await gameDetector.isGameProcessRunning(game)
 
   const result = await obsRecorder.retargetCaptureWithRetry(game, {
-    maxAttempts: needsLiveWindow && processRunning ? 12 : 1,
+    maxAttempts: processRunning ? 12 : needsLiveWindow ? 6 : 1,
     intervalMs: 2000,
   })
 

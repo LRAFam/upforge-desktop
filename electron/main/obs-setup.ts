@@ -83,6 +83,24 @@ async function getInputKind(obs: OBSWebSocket, inputName: string): Promise<strin
   }
 }
 
+async function getCurrentCaptureWindow(obs: OBSWebSocket, inputName: string): Promise<string | null> {
+  try {
+    const res = await obs.call('GetInputSettings', { inputName }) as {
+      inputSettings?: { window?: string }
+    }
+    const window = res.inputSettings?.window
+    return typeof window === 'string' && window.length > 0 ? window : null
+  } catch {
+    return null
+  }
+}
+
+export type EnsureUpForgeCaptureOptions = {
+  /** Tear down and recreate the capture source (resets resolution after game switches). */
+  forceRecreate?: boolean
+  windowOverride?: string
+}
+
 async function removeUpForgeInput(obs: OBSWebSocket): Promise<void> {
   try {
     await obs.call('RemoveInput', { inputName: UPFORGE_INPUT_NAME })
@@ -98,16 +116,20 @@ async function removeUpForgeInput(obs: OBSWebSocket): Promise<void> {
 export async function ensureUpForgeCapture(
   obs: OBSWebSocket,
   game: string,
-  windowOverride?: string,
+  options: EnsureUpForgeCaptureOptions = {},
 ): Promise<{ inputCreated: boolean; inputUpgraded: boolean; captureWindow: string }> {
-  const captureWindow = windowOverride ?? await resolveObsCaptureWindow(game)
+  const captureWindow = options.windowOverride ?? await resolveObsCaptureWindow(game)
   const { inputKind, inputSettings } = getUpForgeCaptureConfig(game, captureWindow)
   const inputList = await obs.call('GetInputList') as { inputs?: { inputName: string }[] }
   const hasInput = inputList.inputs?.some((i) => i.inputName === UPFORGE_INPUT_NAME) ?? false
 
   if (hasInput) {
     const kind = await getInputKind(obs, UPFORGE_INPUT_NAME)
-    if (kind === inputKind) {
+    const currentWindow = await getCurrentCaptureWindow(obs, UPFORGE_INPUT_NAME)
+    const windowChanged = currentWindow !== captureWindow
+    const needsRecreate = options.forceRecreate || kind !== inputKind || windowChanged
+
+    if (!needsRecreate && kind === inputKind) {
       await obs.call('SetInputSettings', {
         inputName: UPFORGE_INPUT_NAME,
         inputSettings: inputSettings as never,
@@ -119,6 +141,8 @@ export async function ensureUpForgeCapture(
     const inputUpgraded = !!kind
     if (kind && DESKTOP_CAPTURE_KINDS.has(kind)) {
       log.info('[OBS Setup] Upgrading desktop capture to', inputKind)
+    } else if (needsRecreate) {
+      log.info('[OBS Setup] Recreating', inputKind, 'for', game, '(game/window changed)')
     }
     await removeUpForgeInput(obs)
     await obs.call('CreateInput', {
@@ -186,9 +210,24 @@ export async function fitUpForgeCaptureToCanvas(obs: OBSWebSocket): Promise<void
   }
 }
 
+/** OBS needs a moment after retargeting before source dimensions are stable — refit again. */
+export async function refitCaptureWithSettle(
+  obs: OBSWebSocket,
+  delaysMs: number[] = [1200, 2800],
+): Promise<void> {
+  await fitUpForgeCaptureToCanvas(obs)
+  for (const delayMs of delaysMs) {
+    await new Promise((resolve) => setTimeout(resolve, delayMs))
+    await fitUpForgeCaptureToCanvas(obs)
+  }
+}
+
 export type ObsSceneSwitchOptions = {
   /** When false, update capture on the UpForge scene but leave the streamer's active scene alone. */
   switchScene?: boolean
+  forceRecreate?: boolean
+  /** Refit after short delays so capture resolution matches the new game window. */
+  refitAfterSettle?: boolean
 }
 
 /** Re-target capture to the active game window right before recording starts. */
@@ -197,11 +236,17 @@ export async function retargetUpForgeCapture(
   game: string,
   options: ObsSceneSwitchOptions = {},
 ): Promise<{ captureWindow: string }> {
-  const capture = await ensureUpForgeCapture(obs, game)
+  const capture = await ensureUpForgeCapture(obs, game, {
+    forceRecreate: options.forceRecreate,
+  })
   if (options.switchScene !== false) {
     await obs.call('SetCurrentProgramScene', { sceneName: UPFORGE_SCENE_NAME }).catch(() => { /* non-fatal */ })
   }
-  await fitUpForgeCaptureToCanvas(obs)
+  if (options.refitAfterSettle) {
+    await refitCaptureWithSettle(obs)
+  } else {
+    await fitUpForgeCaptureToCanvas(obs)
+  }
   return { captureWindow: capture.captureWindow }
 }
 

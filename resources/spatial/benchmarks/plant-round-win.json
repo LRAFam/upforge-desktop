@@ -150,5 +150,19 @@
       "all": 68,
       "immortal_plus": 69
     }
+  },
+  "summit": {
+    "A Default": {
+      "all": 70,
+      "immortal_plus": 71,
+      "betterSpot": "A Garden",
+      "betterWinPct": 73,
+      "note": "Wall drops on A Link reshape post-plant — Garden plants convert slightly better at launch."
+    },
+    "B Default": {
+      "all": 69,
+      "immortal_plus": 70,
+      "note": "B Gym/Tower sightlines punish slow retakes when mid wall is committed."
+    }
   }
 }

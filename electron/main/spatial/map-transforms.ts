@@ -25,6 +25,7 @@ const MAP_NAME_ALIASES: Record<string, string> = {
   juliett: 'sunset',
   infinity: 'abyss',
   rook: 'corrode',
+  plummet: 'summit',
 }
 
 /** Normalise map name from Riot (Icebox, ICEBOX, icebox, Canyon → fracture). */

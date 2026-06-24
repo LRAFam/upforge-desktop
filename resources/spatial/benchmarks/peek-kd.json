@@ -221,5 +221,30 @@
         "attacker_kd": 0.91
       }
     }
+  },
+  "summit": {
+    "peeks": {
+      "A Main": {
+        "defender_kd": 1.1,
+        "attacker_kd": 0.91,
+        "immortal_plus": { "defender_kd": 1.17, "attacker_kd": 0.85 },
+        "note": "Long A Main sightline favors anchors before wall drops."
+      },
+      "B Main": {
+        "defender_kd": 1.09,
+        "attacker_kd": 0.92,
+        "immortal_plus": { "defender_kd": 1.14, "attacker_kd": 0.88 }
+      },
+      "Window": {
+        "defender_kd": 1.07,
+        "attacker_kd": 0.93,
+        "note": "Mid Window control is critical before committing droppable walls."
+      },
+      "Bend": {
+        "defender_kd": 1.11,
+        "attacker_kd": 0.9,
+        "note": "Bend peek is defender-favored when walls seal rotates."
+      }
+    }
   }
 }
