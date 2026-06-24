@@ -9,6 +9,47 @@ import { resolveObsCaptureWindow } from './game-window-finder'
 
 export const UPFORGE_SCENE_NAME = 'UpForge'
 export const UPFORGE_INPUT_NAME = 'UpForge Capture'
+const UPFORGE_CAPTURE_PREFIX = 'UpForge Capture'
+
+export function isUpForgeCaptureName(name: string): boolean {
+  return name === UPFORGE_INPUT_NAME || name.startsWith(`${UPFORGE_CAPTURE_PREFIX} `)
+}
+
+async function listUpForgeCaptureInputNames(obs: OBSWebSocket): Promise<string[]> {
+  const inputList = await obs.call('GetInputList') as { inputs?: { inputName: string }[] }
+  return (inputList.inputs ?? [])
+    .map((i) => i.inputName)
+    .filter(isUpForgeCaptureName)
+}
+
+/** Remove duplicate UpForge capture sources (OBS appends " 2", " 3", … when recreate races). */
+export async function pruneUpForgeCaptureSources(obs: OBSWebSocket): Promise<number> {
+  let removed = 0
+  try {
+    const items = await obs.call('GetSceneItemList', { sceneName: UPFORGE_SCENE_NAME }) as {
+      sceneItems?: { sourceName: string; sceneItemId: number }[]
+    }
+    for (const item of items.sceneItems ?? []) {
+      if (!isUpForgeCaptureName(item.sourceName)) continue
+      try {
+        await obs.call('RemoveSceneItem', {
+          sceneName: UPFORGE_SCENE_NAME,
+          sceneItemId: item.sceneItemId,
+        })
+        removed++
+      } catch { /* ignore */ }
+    }
+  } catch { /* scene may not exist */ }
+
+  for (const inputName of await listUpForgeCaptureInputNames(obs)) {
+    try {
+      await obs.call('RemoveInput', { inputName })
+      removed++
+      log.info('[OBS Setup] Pruned capture input:', inputName)
+    } catch { /* ignore */ }
+  }
+  return removed
+}
 
 export interface ObsSetupResult {
   ok: boolean
@@ -102,12 +143,20 @@ export type EnsureUpForgeCaptureOptions = {
 }
 
 async function removeUpForgeInput(obs: OBSWebSocket): Promise<void> {
-  try {
-    await obs.call('RemoveInput', { inputName: UPFORGE_INPUT_NAME })
-    log.info('[OBS Setup] Removed old capture input:', UPFORGE_INPUT_NAME)
-  } catch {
-    /* input may not exist */
+  await pruneUpForgeCaptureSources(obs)
+}
+
+async function findUpForgeSceneItem(obs: OBSWebSocket): Promise<{
+  sourceName: string
+  sceneItemId: number
+} | null> {
+  const items = await obs.call('GetSceneItemList', { sceneName: UPFORGE_SCENE_NAME }) as {
+    sceneItems?: { sourceName: string; sceneItemId: number }[]
   }
+  const matches = (items.sceneItems ?? []).filter((i) => isUpForgeCaptureName(i.sourceName))
+  if (!matches.length) return null
+  const preferred = matches.find((i) => i.sourceName === UPFORGE_INPUT_NAME) ?? matches[matches.length - 1]
+  return preferred ?? null
 }
 
 /**
@@ -120,29 +169,45 @@ export async function ensureUpForgeCapture(
 ): Promise<{ inputCreated: boolean; inputUpgraded: boolean; captureWindow: string }> {
   const captureWindow = options.windowOverride ?? await resolveObsCaptureWindow(game)
   const { inputKind, inputSettings } = getUpForgeCaptureConfig(game, captureWindow)
-  const inputList = await obs.call('GetInputList') as { inputs?: { inputName: string }[] }
-  const hasInput = inputList.inputs?.some((i) => i.inputName === UPFORGE_INPUT_NAME) ?? false
+  let existingNames = await listUpForgeCaptureInputNames(obs)
+  if (existingNames.length !== 1 || existingNames[0] !== UPFORGE_INPUT_NAME) {
+    if (existingNames.length > 0) {
+      log.info('[OBS Setup] Cleaning', existingNames.length, 'stale UpForge capture source(s)')
+      await pruneUpForgeCaptureSources(obs)
+    }
+    existingNames = []
+  }
+  const hasCanonical = existingNames.includes(UPFORGE_INPUT_NAME)
+  const hasInput = hasCanonical
 
-  if (hasInput) {
-    const kind = await getInputKind(obs, UPFORGE_INPUT_NAME)
-    const currentWindow = await getCurrentCaptureWindow(obs, UPFORGE_INPUT_NAME)
+  if (hasInput && !options.forceRecreate) {
+    const targetName = hasCanonical ? UPFORGE_INPUT_NAME : existingNames[existingNames.length - 1]!
+    const kind = await getInputKind(obs, targetName)
+    const currentWindow = await getCurrentCaptureWindow(obs, targetName)
     const windowChanged = currentWindow !== captureWindow
-    const needsRecreate = options.forceRecreate || kind !== inputKind || windowChanged
 
-    if (!needsRecreate && kind === inputKind) {
+    if (kind === inputKind && !windowChanged) {
       await obs.call('SetInputSettings', {
-        inputName: UPFORGE_INPUT_NAME,
+        inputName: targetName,
         inputSettings: inputSettings as never,
         overlay: true,
       })
       log.info('[OBS Setup] Updated capture target for', game, '→', captureWindow)
       return { inputCreated: false, inputUpgraded: false, captureWindow }
     }
+  }
+
+  if (options.forceRecreate || hasInput) {
+    const kind = hasCanonical
+      ? await getInputKind(obs, UPFORGE_INPUT_NAME)
+      : existingNames.length
+        ? await getInputKind(obs, existingNames[existingNames.length - 1]!)
+        : null
     const inputUpgraded = !!kind
     if (kind && DESKTOP_CAPTURE_KINDS.has(kind)) {
       log.info('[OBS Setup] Upgrading desktop capture to', inputKind)
-    } else if (needsRecreate) {
-      log.info('[OBS Setup] Recreating', inputKind, 'for', game, '(game/window changed)')
+    } else if (options.forceRecreate || hasInput) {
+      log.info('[OBS Setup] Recreating', inputKind, 'for', game)
     }
     await removeUpForgeInput(obs)
     await obs.call('CreateInput', {
@@ -170,11 +235,21 @@ export async function ensureUpForgeCapture(
 /** Scale the capture source to fill the OBS canvas (same as Transform → Fit to screen). */
 export async function fitUpForgeCaptureToCanvas(obs: OBSWebSocket): Promise<void> {
   try {
+    const item = await findUpForgeSceneItem(obs)
+    if (!item) return
+
     const items = await obs.call('GetSceneItemList', { sceneName: UPFORGE_SCENE_NAME }) as {
       sceneItems?: { sourceName: string; sceneItemId: number }[]
     }
-    const item = items.sceneItems?.find((i) => i.sourceName === UPFORGE_INPUT_NAME)
-    if (!item) return
+    for (const sceneItem of items.sceneItems ?? []) {
+      if (!isUpForgeCaptureName(sceneItem.sourceName)) continue
+      if (sceneItem.sceneItemId !== item.sceneItemId) {
+        await obs.call('RemoveSceneItem', {
+          sceneName: UPFORGE_SCENE_NAME,
+          sceneItemId: sceneItem.sceneItemId,
+        }).catch(() => { /* ignore */ })
+      }
+    }
 
     const video = await obs.call('GetVideoSettings') as {
       baseWidth?: number
@@ -194,7 +269,7 @@ export async function fitUpForgeCaptureToCanvas(obs: OBSWebSocket): Promise<void
         scaleX: 1,
         scaleY: 1,
         alignment: 5,
-        boundsType: 'OBS_BOUNDS_SCALE_INNER',
+        boundsType: 'OBS_BOUNDS_SCALE_OUTER',
         boundsAlignment: 0,
         boundsWidth,
         boundsHeight,
@@ -213,7 +288,7 @@ export async function fitUpForgeCaptureToCanvas(obs: OBSWebSocket): Promise<void
 /** OBS needs a moment after retargeting before source dimensions are stable — refit again. */
 export async function refitCaptureWithSettle(
   obs: OBSWebSocket,
-  delaysMs: number[] = [1200, 2800],
+  delaysMs: number[] = [600, 1800, 4000],
 ): Promise<void> {
   await fitUpForgeCaptureToCanvas(obs)
   for (const delayMs of delaysMs) {
@@ -274,17 +349,6 @@ export async function setupUpForgeScene(
     inputCreated = capture.inputCreated
     inputUpgraded = capture.inputUpgraded
     captureWindow = capture.captureWindow
-
-    const items = await obs.call('GetSceneItemList', { sceneName: UPFORGE_SCENE_NAME }) as {
-      sceneItems?: { sourceName: string }[]
-    }
-    if (!items.sceneItems?.some((i) => i.sourceName === UPFORGE_INPUT_NAME)) {
-      await obs.call('CreateSceneItem', {
-        sceneName: UPFORGE_SCENE_NAME,
-        sourceName: UPFORGE_INPUT_NAME,
-        sceneItemEnabled: true,
-      })
-    }
 
     if (options.switchScene !== false) {
       await obs.call('SetCurrentProgramScene', { sceneName: UPFORGE_SCENE_NAME })

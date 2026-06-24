@@ -267,7 +267,7 @@ export class OBSRecorder {
     const gameChanged = this._lastCaptureGame !== null && this._lastCaptureGame !== game
     return {
       ...this.obsSceneOptions(),
-      forceRecreate: gameChanged || forRecording,
+      forceRecreate: gameChanged,
       refitAfterSettle: gameChanged || forRecording,
     }
   }
