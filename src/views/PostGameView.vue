@@ -515,7 +515,7 @@
             <button
               type="button"
               class="w-full text-[10px] text-gray-500 hover:text-gray-300"
-              @click="coachAskExpanded = true"
+              @click="coachAskExpanded = true; coachSelectedRounds = coachSuggestedRounds.length ? [coachSuggestedRounds[0]!] : []"
             >
               Add focus question or change coach
             </button>
@@ -535,6 +535,21 @@
               placeholder="Optional: what should your coach focus on?"
               class="w-full resize-none rounded-lg border border-white/[0.08] bg-black/30 px-2.5 py-2 text-xs text-gray-300 placeholder:text-gray-600 focus:border-white/[0.14] focus:outline-none"
             />
+            <div v-if="coachSuggestedRounds.length" class="space-y-1">
+              <p class="text-[10px] font-semibold uppercase tracking-wide text-gray-500">Focus rounds</p>
+              <div class="flex flex-wrap gap-1">
+                <button
+                  v-for="round in coachSuggestedRounds"
+                  :key="round"
+                  type="button"
+                  class="text-[10px] font-semibold px-2 py-0.5 rounded-full border transition-colors"
+                  :class="coachSelectedRounds.includes(round) ? 'border-violet-500/50 bg-violet-500/20 text-violet-200' : 'border-white/[0.08] text-gray-500 hover:text-violet-200'"
+                  @click="toggleCoachRound(round)"
+                >
+                  R{{ round }}
+                </button>
+              </div>
+            </div>
             <button
               type="button"
               class="w-full rounded-lg border border-white/[0.12] bg-white/[0.06] py-2 text-xs font-semibold text-white transition-colors hover:bg-white/[0.09] disabled:opacity-50"
@@ -572,12 +587,31 @@
         </div>
         <div
           v-else-if="result?.analysis_id && coachReviewSent"
-          class="flex items-center gap-2 rounded-xl border border-orange-500/25 bg-orange-500/[0.06] px-3 py-2"
+          class="rounded-xl border px-3 py-2.5 space-y-1"
+          :class="
+            coachReviewStatus === 'completed'
+              ? 'border-emerald-500/25 bg-emerald-500/[0.06]'
+              : coachReviewStatus === 'in_progress'
+                ? 'border-violet-500/25 bg-violet-500/[0.06]'
+                : 'border-orange-500/25 bg-orange-500/[0.06]'
+          "
         >
-          <svg class="h-3.5 w-3.5 flex-shrink-0 text-orange-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"/>
-          </svg>
-          <p class="text-xs text-orange-200/90">Review request sent — your coach will annotate this match on the timeline.</p>
+          <div class="flex items-center gap-2">
+            <svg class="h-3.5 w-3.5 flex-shrink-0" :class="coachReviewStatus === 'completed' ? 'text-emerald-400' : coachReviewStatus === 'in_progress' ? 'text-violet-400' : 'text-orange-400'" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"/>
+            </svg>
+            <p class="text-xs" :class="coachReviewStatus === 'completed' ? 'text-emerald-200/90' : coachReviewStatus === 'in_progress' ? 'text-violet-200/90' : 'text-orange-200/90'">
+              <template v-if="coachReviewStatus === 'completed'">
+                Coach feedback is ready — open VOD Review to see timeline notes.
+              </template>
+              <template v-else-if="coachReviewStatus === 'in_progress'">
+                Your coach is reviewing this match — notes will appear on your timeline soon.
+              </template>
+              <template v-else>
+                Review request sent — your coach will annotate this match on the timeline.
+              </template>
+            </p>
+          </div>
         </div>
 
         <div class="space-y-2 pt-1">
@@ -1026,6 +1060,8 @@ const coachQuestion = ref('')
 const coachAskExpanded = ref(false)
 const coachReviewSubmitting = ref(false)
 const coachReviewSent = ref(false)
+const coachReviewStatus = ref<'pending' | 'in_progress' | 'completed' | null>(null)
+const coachSelectedRounds = ref<number[]>([])
 const LAST_COACH_KEY = 'upforge_last_roster_coach_id'
 const liveCoaches = computed(() =>
   myCoaches.value.filter(c => c.roster_is_live !== false && c.can_request_review !== false),
@@ -1290,6 +1326,27 @@ const spatialSummary = computed((): MatchSpatialSummary | null => {
   if (localSpatialSummary.value?.events?.length) return localSpatialSummary.value
   return api ?? localSpatialSummary.value
 })
+
+const coachSuggestedRounds = computed(() => {
+  const events = spatialSummary.value?.events ?? []
+  const rounds = new Set<number>()
+  for (const ev of events) {
+    if (ev.type === 'death' && ev.round != null) rounds.add(ev.round + 1)
+  }
+  return [...rounds].sort((a, b) => a - b).slice(0, 8)
+})
+
+function toggleCoachRound(round: number) {
+  const idx = coachSelectedRounds.value.indexOf(round)
+  if (idx >= 0) {
+    coachSelectedRounds.value.splice(idx, 1)
+    return
+  }
+  if (coachSelectedRounds.value.length < 5) {
+    coachSelectedRounds.value.push(round)
+    coachSelectedRounds.value.sort((a, b) => a - b)
+  }
+}
 
 const vodRecordingId = computed(() => sessionRecordingId.value ?? pendingRecordingId.value)
 
@@ -1727,6 +1784,9 @@ async function loadMyCoaches() {
       const existing = await window.api.coach.getAnalysisReview(analysisId).catch(() => null)
       if (existing?.source === 'roster' && ['pending', 'in_progress', 'completed'].includes(existing.status)) {
         coachReviewSent.value = true
+        coachReviewStatus.value = existing.status as 'pending' | 'in_progress' | 'completed'
+      } else {
+        coachReviewStatus.value = null
       }
     }
   } catch {
@@ -1747,9 +1807,11 @@ async function submitCoachReview() {
       analysisId,
       coachId,
       question: coachQuestion.value.trim() || undefined,
+      roundNumbers: coachSelectedRounds.value.length ? coachSelectedRounds.value : undefined,
     })
     if (res.ok) {
       coachReviewSent.value = true
+      coachReviewStatus.value = 'pending'
       localStorage.setItem(LAST_COACH_KEY, String(coachId))
       flashToast(`Sent to ${selectedCoachName.value}`)
     } else {

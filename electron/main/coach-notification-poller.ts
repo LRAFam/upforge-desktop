@@ -6,8 +6,8 @@ import type { AuthManager } from './auth-manager'
 import { getFrontendBaseUrl } from './api-base'
 import { showAppNotification } from './app-notifications'
 
-const POLL_INTERVAL_MS = 2 * 60 * 1000
-const COACH_NOTIFICATION_TYPES = new Set(['review_completed', 'review_requested'])
+const POLL_INTERVAL_MS = 60 * 1000
+const COACH_NOTIFICATION_TYPES = new Set(['review_completed', 'review_requested', 'review_in_progress'])
 
 interface ApiNotification {
   id: number
@@ -97,11 +97,18 @@ async function pollOnce(deps: PollerDeps): Promise<void> {
       const analysisId = notification.data?.analysis_id
       const reviewId = notification.data?.review_id
       const isCoachRequest = notification.type === 'review_requested'
+      const isReviewInProgress = notification.type === 'review_in_progress'
       const onClick = () => {
         void markNotificationRead(deps.authManager, notification.id)
         if (isCoachRequest) {
           openCoachReviewsInBrowser(reviewId)
           return
+        }
+        if (isReviewInProgress || notification.type === 'review_completed') {
+          if (analysisId) {
+            openVodReviewForAnalysis(deps.getMainWindow(), analysisId)
+            return
+          }
         }
         if (analysisId) {
           openVodReviewForAnalysis(deps.getMainWindow(), analysisId)

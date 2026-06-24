@@ -303,6 +303,7 @@ function createVodReview() {
     id: number
     status: string
     student_question: string | null
+    coach_perspective?: string | null
     coach?: { display_name: string }
     annotations: Array<{
       id: number
@@ -1408,6 +1409,7 @@ function createVodReview() {
             id: review.id,
             status: review.status,
             student_question: review.student_question,
+            coach_perspective: detail?.coach_perspective ?? review.coach_perspective ?? null,
             coach: review.coach,
             annotations: detail?.annotations ?? review.annotations ?? [],
           }

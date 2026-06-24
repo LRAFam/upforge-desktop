@@ -471,6 +471,7 @@ export class AuthManager {
     status: string
     student_question: string | null
     round_numbers: number[] | null
+    coach_perspective: string | null
     annotations: Array<{
       id: number
       round_number: number | null
@@ -493,6 +494,7 @@ export class AuthManager {
     source: string
     student_question: string | null
     round_numbers: number[] | null
+    coach_perspective?: string | null
     coach?: { id: number; display_name: string }
     annotations?: Array<{
       id: number

@@ -1234,6 +1234,12 @@ const {
             <p v-if="coachReview.student_question" class="text-[10px] text-gray-500 italic leading-relaxed">
               You asked: {{ coachReview.student_question }}
             </p>
+            <p
+              v-if="coachReview.coach_perspective"
+              class="text-[11px] text-emerald-200/90 leading-relaxed rounded-md border border-emerald-500/20 bg-emerald-500/[0.06] px-2 py-1.5"
+            >
+              {{ coachReview.coach_perspective }}
+            </p>
             <button
               v-for="note in coachReview.annotations"
               :key="note.id"
