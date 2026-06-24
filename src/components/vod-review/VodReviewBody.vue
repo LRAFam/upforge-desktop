@@ -19,7 +19,9 @@ const {
   availableSpatialRounds,
   canRefreshCloudPlayback,
   canSeekFromSpatial,
+  activeCoachNoteId,
   coachReview,
+  coachProgressMarkers,
   currentTime,
   cursorHidden,
   cycleSpeed,
@@ -34,13 +36,16 @@ const {
   getRankColor,
   getWeaponIcon,
   hasSpatialIntel,
+  hasCoachFeedback,
   hoverRoundLabel,
   hoverTime,
   isFullscreen,
+  isCloudVideo,
   isMuted,
   isNearEvent,
   isPlaying,
   isSpikeEvent,
+  jumpToCoachMarker,
   jumpToMarker,
   mapPosterUrl,
   nudgeTimelineSync,
@@ -49,8 +54,11 @@ const {
   onScrubberHover,
   onSpatialSelect,
   onTimeUpdate,
+  onVideoCanPlay,
   onVideoError,
   onVideoMouseMove,
+  onVideoPlaying,
+  onVideoWaiting,
   openUpgrade,
   ownPuuid,
   playbackError,
@@ -105,6 +113,8 @@ const {
   videoEl,
   videoFrameEl,
   videoFrameStyle,
+  videoSeeking,
+  videoBuffering,
   videoSrc,
   videoSyncOffsetMs,
   visibleRoundEvents,
@@ -338,6 +348,29 @@ const {
 
       <div class="flex-1 flex flex-col min-w-0 min-h-0">
 
+        <!-- Coach feedback banner -->
+        <div
+          v-if="hasCoachFeedback && coachReview?.status === 'completed'"
+          class="flex-shrink-0 border-b border-violet-500/20 bg-gradient-to-r from-violet-500/[0.12] to-transparent px-3 py-2"
+        >
+          <div class="flex flex-wrap items-center gap-2">
+            <span class="text-[10px] font-black uppercase tracking-[0.18em] text-violet-300">Coach feedback ready</span>
+            <span v-if="coachReview?.coach?.display_name" class="text-[10px] text-violet-200/80">
+              from {{ coachReview.coach.display_name }}
+            </span>
+            <span class="text-[10px] text-gray-500">
+              · {{ coachReview?.annotations?.length ?? 0 }} timeline notes
+            </span>
+            <button
+              type="button"
+              class="ml-auto text-[10px] font-semibold text-violet-200 hover:text-white transition-colors"
+              @click="showInsightsPanel = true"
+            >
+              Open coach notes →
+            </button>
+          </div>
+        </div>
+
         <!-- Video area -->
         <div
           ref="videoAreaEl"
@@ -369,13 +402,16 @@ const {
             :class="isFullscreen ? 'object-contain' : ''"
             :src="videoSrc"
             :poster="mapPosterUrl || undefined"
-            preload="metadata"
+            :preload="isCloudVideo ? 'auto' : 'metadata'"
             @timeupdate="onTimeUpdate"
             @loadedmetadata="onLoadedMetadata"
             @durationchange="onLoadedMetadata"
             @play="isPlaying = true"
+            @playing="onVideoPlaying"
             @pause="isPlaying = false"
             @ended="isPlaying = false"
+            @waiting="onVideoWaiting"
+            @canplay="onVideoCanPlay"
             @error="onVideoError"
           />
           <div v-else class="w-full h-full min-h-[240px] min-w-[320px] flex flex-col items-center justify-center gap-3 text-gray-600 pointer-events-none select-none">
@@ -435,6 +471,19 @@ const {
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/>
               </svg>
             </button>
+          </div>
+
+          <div
+            v-if="videoSeeking || videoBuffering"
+            class="absolute inset-0 z-20 flex items-center justify-center bg-black/35 pointer-events-none"
+          >
+            <div class="flex items-center gap-2 rounded-xl border border-white/10 bg-black/70 px-3 py-2 text-[11px] text-gray-200">
+              <svg class="h-4 w-4 animate-spin text-violet-300" fill="none" viewBox="0 0 24 24">
+                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+                <path class="opacity-90" fill="currentColor" d="M4 12a8 8 0 018-8v4l3-3-3-3v4a8 8 0 100 16v-4l-3 3 3 3v-4a8 8 0 01-8-8z"/>
+              </svg>
+              {{ videoSeeking ? 'Seeking…' : 'Buffering…' }}
+            </div>
           </div>
 
           <!-- Play/pause overlay — subtle; hidden while playing -->
@@ -676,6 +725,14 @@ const {
                   :key="sep.percent"
                   class="absolute top-1/2 h-4 w-px -translate-y-1/2 bg-white/18 pointer-events-none"
                   :style="{ left: sep.percent + '%' }"
+                />
+                <button
+                  v-for="marker in coachProgressMarkers"
+                  :key="marker.key"
+                  class="absolute top-1/2 -translate-y-1/2 -translate-x-1/2 z-10 h-3.5 w-3.5 rounded-full border-2 border-violet-200 bg-violet-500 shadow-[0_0_12px_rgba(167,139,250,0.45)] transition-transform duration-150 hover:scale-125"
+                  :style="{ left: marker.percent + '%' }"
+                  :title="`Coach note: ${marker.label}`"
+                  @click.stop="jumpToCoachMarker(marker)"
                 />
                 <button
                   v-for="marker in progressMarkers"
@@ -1216,7 +1273,7 @@ const {
           />
 
           <div
-            v-if="coachReview?.annotations?.length"
+            v-if="coachReview?.annotations?.length || coachReview?.coach_perspective"
             class="rounded-lg border border-violet-500/25 bg-violet-500/[0.06] px-2.5 py-2 space-y-2"
           >
             <div class="flex items-center justify-between gap-2">
@@ -1241,15 +1298,26 @@ const {
               {{ coachReview.coach_perspective }}
             </p>
             <button
-              v-for="note in coachReview.annotations"
+              v-for="(note, noteIndex) in coachReview.annotations"
               :key="note.id"
+              :data-coach-note="note.id"
               type="button"
-              class="w-full text-left rounded-md border border-white/[0.06] bg-black/20 px-2 py-1.5 transition-colors hover:border-violet-500/30 hover:bg-violet-500/[0.08]"
-              @click="seekCoachAnnotation(note.video_offset_ms)"
+              class="w-full text-left rounded-md border px-2 py-1.5 transition-colors"
+              :class="activeCoachNoteId === note.id
+                ? 'border-violet-400/45 bg-violet-500/[0.14] ring-1 ring-violet-400/20'
+                : 'border-white/[0.06] bg-black/20 hover:border-violet-500/30 hover:bg-violet-500/[0.08]'"
+              @click="seekCoachAnnotation(note.video_offset_ms, note.id)"
             >
-              <p v-if="note.round_number" class="text-[9px] font-semibold text-violet-300/80 mb-0.5">
-                Round {{ note.round_number }}
-              </p>
+              <div class="flex items-center justify-between gap-2 mb-0.5">
+                <p v-if="note.round_number != null" class="text-[9px] font-semibold text-violet-300/80">
+                  Round {{ note.round_number }}
+                </p>
+                <span
+                  v-if="noteIndex < 9"
+                  class="text-[8px] font-mono text-gray-600 tabular-nums"
+                  title="Press number key to jump"
+                >{{ noteIndex + 1 }}</span>
+              </div>
               <p class="text-[11px] leading-relaxed text-gray-300">{{ note.body }}</p>
             </button>
           </div>
@@ -1276,6 +1344,8 @@ const {
           <div class="rounded-lg border border-white/[0.06] bg-black/20 px-2.5 py-2">
             <p class="text-[9px] font-semibold uppercase tracking-[0.18em] text-gray-600">Workflow</p>
             <ul class="mt-1.5 space-y-1 text-[10px] text-gray-600 leading-relaxed">
+              <li v-if="hasCoachFeedback">· <kbd class="text-[9px] px-1 rounded bg-violet-500/15 border border-violet-500/25 text-violet-200/90">C</kbd> coach notes · <kbd class="text-[9px] px-1 rounded bg-violet-500/15 border border-violet-500/25 text-violet-200/90">G</kbd> first note</li>
+              <li v-if="hasCoachFeedback">· <kbd class="text-[9px] px-1 rounded bg-violet-500/15 border border-violet-500/25 text-violet-200/90">Shift+J/L</kbd> prev/next coach note · <kbd class="text-[9px] px-1 rounded bg-violet-500/15 border border-violet-500/25 text-violet-200/90">1–9</kbd> jump to note</li>
               <li>· Use <kbd class="text-[9px] px-1 rounded bg-white/[0.06] border border-white/10">J</kbd>/<kbd class="text-[9px] px-1 rounded bg-white/[0.06] border border-white/10">L</kbd> to hop between moments</li>
               <li>· Toggle <span class="text-gray-500">My moments</span> in the round log for self-review</li>
               <li>· Press <kbd class="text-[9px] px-1 rounded bg-white/[0.06] border border-white/10">?</kbd> for all shortcuts</li>

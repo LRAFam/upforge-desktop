@@ -4,7 +4,6 @@ import type { ProfileData, AnalysisItem, PendingRecording, ClipRecord, DeadlockP
 import { formatGameMode, getRankIconUrl } from '../lib/valorant'
 import { getMasteryIconUrl } from '../lib/rank-assets'
 import { hasAnalysisQuotaRemaining, hasArchiveQuotaRemaining, isPlatformAdmin } from '../lib/tier-features'
-import { pendingTimeline } from '../stores/pendingTimeline'
 import { useAchievements } from './useAchievements'
 import type { CarouselPanel } from '../components/PanelCarousel.vue'
 import type { SkillProfileSnapshot } from '../lib/skill-profile'
@@ -12,6 +11,8 @@ import { isPaymentPastDue, openBillingPortal as requestBillingPortal } from '../
 import { usePrimaryGame } from './usePrimaryGame'
 import { gameTheme, type GameTheme } from '../lib/game-themes'
 import { loadGameAnalyses, openGameAnalysis, openGameHistoryWeb, openGameAnalyze } from '../lib/game-modules'
+import { loadCoachReviewSummaries, type CoachReviewSummary } from '../lib/coach-review-cache'
+import { openAnalysisVodReview } from '../lib/open-vod-review'
 import { getFaceitLevelIconUrl, type Cs2FaceitConnection } from '../lib/cs2'
 import {
   displayAcs,
@@ -53,6 +54,7 @@ function createDashboard() {
   const analyses = ref<AnalysisItem[]>([])
   const analysesLoading = ref(true)
   const coachingSnippets = ref<Record<number, string>>({})
+  const coachReviewByAnalysisId = ref<Record<number, CoachReviewSummary>>({})
   const pendingRecordings = ref<PendingRecording[]>([])
   const uploadProgressByRecordingId = ref<Record<string, number>>({})
   const analysingIds = ref(new Set<string>())
@@ -401,11 +403,37 @@ function createDashboard() {
     try {
       analyses.value = await loadGameAnalyses(primaryGame.value, 10)
       coachingSnippets.value = {}
+      coachReviewByAnalysisId.value = {}
       void loadCoachingSnippets(analyses.value)
+      void loadCoachReviewBadges(analyses.value)
     } catch {
       analyses.value = []
     } finally {
       analysesLoading.value = false
+    }
+  }
+
+  async function loadCoachReviewBadges(items: AnalysisItem[]) {
+    const ids = items
+      .filter(a => !isAnalysisProcessing(a))
+      .map(a => a.id)
+    if (!ids.length) return
+    coachReviewByAnalysisId.value = await loadCoachReviewSummaries(ids)
+  }
+
+  async function openCoachNotesVod(analysisId: number) {
+    timelineLoadingId.value = analysisId
+    try {
+      const ok = await openAnalysisVodReview(router, analysisId, { coachNotes: true })
+      if (!ok) {
+        warning.value = 'Timeline data not available for this match.'
+        setTimeout(() => { warning.value = null }, 10000)
+      }
+    } catch {
+      warning.value = 'Could not open coach notes — try again.'
+      setTimeout(() => { warning.value = null }, 10000)
+    } finally {
+      timelineLoadingId.value = null
     }
   }
 
@@ -719,17 +747,14 @@ function createDashboard() {
     router.push({ path: '/vod-review', query: { id: rec.id } })
   }
 
-  async function openTimeline(id: number) {
+  async function openTimeline(id: number, opts?: { coachNotes?: boolean }) {
     timelineLoadingId.value = id
     try {
-      const data = await window.api.analyses.getTimeline(id)
-      if (!data) {
+      const ok = await openAnalysisVodReview(router, id, { coachNotes: opts?.coachNotes })
+      if (!ok) {
         warning.value = 'Timeline data not available for this match.'
         setTimeout(() => { warning.value = null }, 10000)
-        return
       }
-      pendingTimeline.value = data
-      router.push({ path: '/vod-review', query: { timelineId: String(id) } })
     } catch {
       warning.value = 'Could not load VOD timeline — try again.'
       setTimeout(() => { warning.value = null }, 10000)
@@ -1045,6 +1070,7 @@ function createDashboard() {
     analyses,
     analysesLoading,
     coachingSnippets,
+    coachReviewByAnalysisId,
     pendingRecordings,
     analysingIds,
     savingIds,
@@ -1125,6 +1151,9 @@ function createDashboard() {
     simulateGame,
     openAnalysis,
     openAnalysisRow,
+    openCoachNotesVod,
+    openTimeline,
+    timelineLoadingId,
     trainLastInsight,
     openBrowser,
     openPlaystyleProfile,

@@ -18,9 +18,10 @@ import {
 } from '../lib/valorant'
 import { buildTacticalIntelBrief } from '../lib/coaching-brief'
 import type { TacticalIntelBrief as TacticalIntelBriefData } from '../lib/coaching-brief'
-import { pendingTimeline } from '../stores/pendingTimeline'
 import { useGameTheme } from '../composables/useGameTheme'
 import { loadGameAnalyses, openGameAnalysis } from '../lib/game-modules'
+import { fetchCoachReviewSummary, loadCoachReviewSummaries, type CoachReviewSummary } from '../lib/coach-review-cache'
+import { openAnalysisVodReview } from '../lib/open-vod-review'
 import { scoreGrade, scoreLabel, scoreGradeBadgeClass } from '../lib/analysis-scoring'
 
 export const COACHING_HISTORY_KEY: InjectionKey<ReturnType<typeof createCoachingHistory>> = Symbol('coachingHistory')
@@ -57,6 +58,8 @@ function createCoachingHistory() {
     ally_score: number | null
     enemy_score: number | null
   } | null>(null)
+  const coachReviewSummary = ref<CoachReviewSummary | null>(null)
+  const coachReviewByAnalysisId = ref<Record<number, CoachReviewSummary>>({})
   
   const expandedBrief = computed((): TacticalIntelBriefData | null => {
     const d = expandedDetail.value
@@ -125,6 +128,9 @@ function createCoachingHistory() {
     loading.value = true
     activeMap.value = null
     allAnalyses.value = await loadGameAnalyses(primaryGame.value, 100)
+    coachReviewByAnalysisId.value = await loadCoachReviewSummaries(
+      allAnalyses.value.slice(0, 24).map(a => a.id),
+    )
     loading.value = false
   }
   
@@ -260,6 +266,7 @@ function createCoachingHistory() {
   async function selectSession(a: AnalysisItem) {
     selectedId.value = a.id
     expandedDetail.value = null
+    coachReviewSummary.value = null
     if (!features.value.coachingDetail || a.game_mode === 'DEADLOCK') {
       detailLoading.value = false
       return
@@ -270,7 +277,12 @@ function createCoachingHistory() {
     }
     detailLoading.value = true
     try {
-      expandedDetail.value = await window.api.analyses.getDetail(a.id)
+      const [detail, coachReview] = await Promise.all([
+        window.api.analyses.getDetail(a.id).catch(() => null),
+        fetchCoachReviewSummary(a.id),
+      ])
+      expandedDetail.value = detail
+      coachReviewSummary.value = coachReview
     } catch { /* ignore */ } finally {
       detailLoading.value = false
     }
@@ -280,22 +292,21 @@ function createCoachingHistory() {
     await openGameAnalysis(primaryGame.value, a, router)
   }
   
-  async function openTimeline(id: number) {
+  async function openTimeline(id: number, opts?: { coachNotes?: boolean }) {
     if (!features.value.vodReviewTimeline) return
     timelineLoadingId.value = id
     try {
-      const data = await window.api.analyses.getTimeline(id)
-      if (data) {
-        pendingTimeline.value = data
-        router.push({ path: '/vod-review', query: { timelineId: id } })
-      } else {
-        router.push('/vod-review')
-      }
+      const ok = await openAnalysisVodReview(router, id, { coachNotes: opts?.coachNotes })
+      if (!ok) router.push('/vod-review')
     } catch {
       router.push('/vod-review')
     } finally {
       timelineLoadingId.value = null
     }
+  }
+
+  async function openCoachNotes(id: number) {
+    await openTimeline(id, { coachNotes: true })
   }
   
 
@@ -308,6 +319,8 @@ function createCoachingHistory() {
     avgKD,
     avgScore,
     chartData,
+    coachReviewByAnalysisId,
+    coachReviewSummary,
     detailLoading,
     displayAcs,
     expandedBrief,
@@ -330,6 +343,7 @@ function createCoachingHistory() {
     isWideLayout,
     loading,
     openSession,
+    openCoachNotes,
     openTimeline,
     pickTopByCount,
     primaryGame,

@@ -1,10 +1,15 @@
 <script setup lang="ts">
+import { computed } from 'vue'
 import { useVodReview } from '../../composables/useVodReview'
 
 const {
   shortcutLegend,
   showShortcuts,
 } = useVodReview()
+
+const coachShortcutKeys = new Set(['C', 'G', 'Shift + J / L', '1 – 9'])
+const coachShortcuts = computed(() => shortcutLegend.value.filter(s => coachShortcutKeys.has(s.key)))
+const generalShortcuts = computed(() => shortcutLegend.value.filter(s => !coachShortcutKeys.has(s.key)))
 </script>
 
 <template>
@@ -22,10 +27,24 @@ const {
               <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd"/></svg>
             </button>
           </div>
-          <div class="px-4 py-3 grid grid-cols-2 gap-x-4 gap-y-2 text-xs">
-            <div v-for="s in shortcutLegend" :key="s.key" class="flex items-center justify-between gap-2 py-1">
-              <kbd class="font-mono text-[10px] text-gray-300 bg-white/[0.06] border border-white/[0.10] rounded px-1.5 py-0.5">{{ s.key }}</kbd>
-              <span class="text-gray-500 text-right">{{ s.label }}</span>
+          <div class="px-4 py-3 space-y-3 text-xs max-h-[min(70vh,520px)] overflow-y-auto scrollbar-hide">
+            <div v-if="coachShortcuts.length" class="space-y-2">
+              <p class="text-[10px] font-bold uppercase tracking-[0.18em] text-violet-400/80">Coach notes</p>
+              <div class="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-2">
+                <div v-for="s in coachShortcuts" :key="s.key" class="flex items-center justify-between gap-2 py-1">
+                  <kbd class="font-mono text-[10px] text-gray-300 bg-white/[0.06] border border-white/[0.10] rounded px-1.5 py-0.5">{{ s.key }}</kbd>
+                  <span class="text-gray-500 text-right">{{ s.label }}</span>
+                </div>
+              </div>
+            </div>
+            <div class="space-y-2">
+              <p v-if="coachShortcuts.length" class="text-[10px] font-bold uppercase tracking-[0.18em] text-gray-500">Playback</p>
+              <div class="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-2">
+                <div v-for="s in generalShortcuts" :key="s.key" class="flex items-center justify-between gap-2 py-1">
+                  <kbd class="font-mono text-[10px] text-gray-300 bg-white/[0.06] border border-white/[0.10] rounded px-1.5 py-0.5">{{ s.key }}</kbd>
+                  <span class="text-gray-500 text-right">{{ s.label }}</span>
+                </div>
+              </div>
             </div>
           </div>
         </div>

@@ -3,6 +3,7 @@ import { useCoachingHistory } from '../../composables/useCoachingHistory'
 
 const {
   allAnalyses,
+  coachReviewByAnalysisId,
   filteredAnalyses,
   formatDate,
   formatMapLabel,
@@ -105,6 +106,18 @@ const {
                   </div>
 
                   <div class="flex flex-shrink-0 flex-col items-end gap-0.5">
+                    <span
+                      v-if="coachReviewByAnalysisId[a.id]?.status === 'completed'"
+                      class="inline-flex items-center gap-0.5 rounded-full border border-violet-500/30 bg-violet-500/10 px-1.5 py-px text-[8px] font-semibold text-violet-300/90"
+                      title="Coach feedback ready"
+                    >
+                      <span class="h-1 w-1 rounded-full bg-violet-400" />
+                      Coach
+                    </span>
+                    <span
+                      v-else-if="coachReviewByAnalysisId[a.id]?.status === 'in_progress'"
+                      class="text-[8px] font-medium text-amber-400/80"
+                    >Reviewing</span>
                     <span
                       v-if="a.overall_score != null"
                       class="text-sm font-black tabular-nums leading-none"

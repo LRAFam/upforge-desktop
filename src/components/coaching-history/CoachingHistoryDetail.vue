@@ -7,6 +7,7 @@ const {
   avgKD,
   avgScore,
   chartData,
+  coachReviewSummary,
   detailLoading,
   displayAcs,
   expandedBrief,
@@ -22,8 +23,8 @@ const {
   getRankIconUrl,
   getRoleColor,
   isDisplayableGameMode,
+  openCoachNotes,
   openTimeline,
-  score,
   scoreColor,
   scoreGrade,
   scoreGradeBadgeClass,
@@ -282,6 +283,44 @@ const {
             </div>
 
             <template v-else>
+              <div
+                v-if="coachReviewSummary?.status === 'completed'"
+                class="rounded-xl border border-violet-500/25 bg-violet-500/[0.08] px-4 py-3 space-y-2"
+              >
+                <div class="flex flex-wrap items-center gap-2">
+                  <p class="text-[10px] font-black uppercase tracking-[0.18em] text-violet-300">Coach feedback</p>
+                  <span
+                    v-if="coachReviewSummary.annotationCount"
+                    class="text-[10px] text-violet-200/70 tabular-nums"
+                  >{{ coachReviewSummary.annotationCount }} timeline notes</span>
+                  <span v-if="coachReviewSummary.coachName" class="text-[10px] text-gray-500">
+                    from {{ coachReviewSummary.coachName }}
+                  </span>
+                </div>
+                <p class="text-xs text-gray-400 leading-relaxed">
+                  Your coach finished this review. Open VOD review to see violet markers on the timeline and jump between notes with
+                  <kbd class="rounded border border-violet-500/25 bg-violet-500/10 px-1 text-[10px] text-violet-200/90">C</kbd>,
+                  <kbd class="rounded border border-violet-500/25 bg-violet-500/10 px-1 text-[10px] text-violet-200/90">G</kbd>, or
+                  <kbd class="rounded border border-violet-500/25 bg-violet-500/10 px-1 text-[10px] text-violet-200/90">1–9</kbd>.
+                </p>
+                <button
+                  type="button"
+                  class="w-full rounded-lg border border-violet-500/35 bg-violet-500/15 py-2.5 text-sm font-bold text-violet-100 transition-colors hover:border-violet-400/45 hover:bg-violet-500/20 disabled:opacity-50"
+                  :disabled="timelineLoadingId === selectedAnalysis.id"
+                  @click="openCoachNotes(selectedAnalysis.id)"
+                >
+                  {{ timelineLoadingId === selectedAnalysis.id ? 'Opening coach notes…' : 'Open coach notes in VOD →' }}
+                </button>
+              </div>
+
+              <div
+                v-else-if="coachReviewSummary?.status === 'in_progress'"
+                class="rounded-xl border border-amber-500/20 bg-amber-500/[0.06] px-4 py-3"
+              >
+                <p class="text-[10px] font-black uppercase tracking-[0.18em] text-amber-300/90">Coach reviewing</p>
+                <p class="mt-1 text-xs text-gray-400 leading-relaxed">Your coach is annotating this match — you'll get a notification when notes are ready.</p>
+              </div>
+
               <TacticalIntelBrief v-if="expandedBrief" :brief="expandedBrief" />
 
               <div v-else-if="expandedDetail?.verdict" class="rounded-xl border border-white/[0.08] bg-white/[0.02] px-4 py-3">

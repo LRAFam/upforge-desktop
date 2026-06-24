@@ -20,6 +20,7 @@ const {
   analyses,
   analysesLoading,
   coachingSnippets,
+  coachReviewByAnalysisId,
   pendingRecordings,
   analysingIds,
   savingIds,
@@ -29,12 +30,14 @@ const {
   bulkUploadablePending,
   groupedAnalyses,
   bulkUploading,
+  timelineLoadingId,
   formatMode,
   uploadAllPending,
   saveRecording,
   analyseRecording,
   dismissRecording,
   openAnalysisRow,
+  openCoachNotesVod,
   openClipsForSession,
   openRecordingReview,
   recInFlight,
@@ -225,6 +228,25 @@ const {
                 <span v-if="a.rank" class="text-gray-700"> · {{ a.rank }}</span>
                 <span v-if="a.rounds_won != null && a.rounds_lost != null" class="text-gray-700"> · {{ a.rounds_won }}–{{ a.rounds_lost }}</span>
               </p>
+              <button
+                v-if="coachReviewByAnalysisId[a.id]?.status === 'completed'"
+                type="button"
+                class="mt-1 inline-flex items-center gap-1 rounded-md border border-violet-500/30 bg-violet-500/10 px-1.5 py-0.5 text-[9px] font-semibold text-violet-200/90 transition-colors hover:border-violet-400/45 hover:bg-violet-500/15"
+                :disabled="timelineLoadingId === a.id"
+                @click.stop="openCoachNotesVod(a.id)"
+              >
+                <span class="h-1.5 w-1.5 rounded-full bg-violet-400" />
+                {{ timelineLoadingId === a.id ? 'Opening…' : 'Coach notes' }}
+                <span v-if="coachReviewByAnalysisId[a.id]?.annotationCount" class="text-violet-300/70 tabular-nums">
+                  · {{ coachReviewByAnalysisId[a.id].annotationCount }}
+                </span>
+              </button>
+              <span
+                v-else-if="coachReviewByAnalysisId[a.id]?.status === 'in_progress'"
+                class="mt-1 inline-flex items-center gap-1 text-[9px] font-medium text-amber-300/80"
+              >
+                Coach reviewing…
+              </span>
             </div>
             <div class="match-list-stats" :class="isAnalysisProcessing(a) ? 'match-list-stats--processing' : ''">
               <template v-if="isAnalysisProcessing(a)">

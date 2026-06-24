@@ -54,13 +54,22 @@ function saveShownIds(ids: Set<number>): void {
   }
 }
 
-function openVodReviewForAnalysis(mainWindow: BrowserWindow | null, analysisId: number): void {
+function openVodReviewForAnalysis(
+  mainWindow: BrowserWindow | null,
+  analysisId: number,
+  opts?: { coachNotes?: boolean; seekMs?: number },
+): void {
   if (!mainWindow || mainWindow.isDestroyed()) return
   mainWindow.show()
   mainWindow.focus()
+  const query: Record<string, string> = { timelineId: String(analysisId) }
+  if (opts?.coachNotes) query.coachNotes = '1'
+  if (opts?.seekMs != null && !Number.isNaN(opts.seekMs) && opts.seekMs >= 0) {
+    query.seekMs = String(Math.round(opts.seekMs))
+  }
   mainWindow.webContents.send('app:navigate', {
     path: '/vod-review',
-    query: { timelineId: String(analysisId) },
+    query,
   })
 }
 
@@ -106,7 +115,24 @@ async function pollOnce(deps: PollerDeps): Promise<void> {
         }
         if (isReviewInProgress || notification.type === 'review_completed') {
           if (analysisId) {
-            openVodReviewForAnalysis(deps.getMainWindow(), analysisId)
+            void (async () => {
+              let seekMs: number | undefined
+              if (notification.type === 'review_completed') {
+                try {
+                  const res = await deps.authManager.getApi().get(`/api/analyses/${analysisId}/coach-review`)
+                  const review = res.data?.review ?? res.data
+                  const first = (review?.annotations as Array<{ video_offset_ms?: number | null }> | undefined)
+                    ?.find(a => a.video_offset_ms != null && !Number.isNaN(a.video_offset_ms))
+                  if (first?.video_offset_ms != null) seekMs = first.video_offset_ms
+                } catch {
+                  // Fall back to coachNotes-only deep link.
+                }
+              }
+              openVodReviewForAnalysis(deps.getMainWindow(), analysisId, {
+                coachNotes: notification.type === 'review_completed',
+                seekMs,
+              })
+            })()
             return
           }
         }

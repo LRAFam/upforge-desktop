@@ -602,7 +602,7 @@
             </svg>
             <p class="text-xs" :class="coachReviewStatus === 'completed' ? 'text-emerald-200/90' : coachReviewStatus === 'in_progress' ? 'text-violet-200/90' : 'text-orange-200/90'">
               <template v-if="coachReviewStatus === 'completed'">
-                Coach feedback is ready — open VOD Review to see timeline notes.
+                Coach feedback is ready — open VOD Review and check the violet markers on the timeline.
               </template>
               <template v-else-if="coachReviewStatus === 'in_progress'">
                 Your coach is reviewing this match — notes will appear on your timeline soon.
@@ -612,6 +612,15 @@
               </template>
             </p>
           </div>
+          <button
+            v-if="coachReviewStatus === 'completed' && result?.analysis_id"
+            type="button"
+            class="w-full rounded-xl border border-violet-500/30 bg-violet-500/10 py-2.5 text-xs font-bold text-violet-100 transition-colors hover:border-violet-400/40 hover:bg-violet-500/15 disabled:opacity-50"
+            :disabled="coachNotesOpening"
+            @click="openCoachNotesFromPostGame"
+          >
+            {{ coachNotesOpening ? 'Opening coach notes…' : 'View coach notes in VOD →' }}
+          </button>
         </div>
 
         <div class="space-y-2 pt-1">
@@ -949,6 +958,8 @@
 
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
+import { useRouter } from 'vue-router'
+import { openAnalysisVodReview } from '../lib/open-vod-review'
 import { getAgentImage, getAgentColor, getMapImage, getMapMinimap } from '../lib/valorant'
 import { analysisResultsUrl, isPrimaryGame, normalizePrimaryGame, recordingGameLabel, type PrimaryGame } from '../lib/games'
 import PostGameIntelHero from '../components/PostGameIntelHero.vue'
@@ -1061,6 +1072,8 @@ const coachAskExpanded = ref(false)
 const coachReviewSubmitting = ref(false)
 const coachReviewSent = ref(false)
 const coachReviewStatus = ref<'pending' | 'in_progress' | 'completed' | null>(null)
+const coachNotesOpening = ref(false)
+const router = useRouter()
 const coachSelectedRounds = ref<number[]>([])
 const LAST_COACH_KEY = 'upforge_last_roster_coach_id'
 const liveCoaches = computed(() =>
@@ -1829,6 +1842,21 @@ function openFindCoaches() {
 }
 
 function dismiss() { window.close() }
+
+async function openCoachNotesFromPostGame() {
+  const analysisId = result.value?.analysis_id
+  if (!analysisId || coachNotesOpening.value) return
+  coachNotesOpening.value = true
+  try {
+    const ok = await openAnalysisVodReview(router, analysisId, { coachNotes: true })
+    if (ok) dismiss()
+    else flashToast('Could not open coach notes — try from the dashboard')
+  } catch {
+    flashToast('Could not open coach notes — try again')
+  } finally {
+    coachNotesOpening.value = false
+  }
+}
 function openUpgrade() { window.open(upgradeUrl.value, '_blank') }
 function openPpa() { window.open(ppaUrl.value, '_blank') }
 

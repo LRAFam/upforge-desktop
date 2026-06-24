@@ -16,6 +16,11 @@ import {
   isLikelyBrowserPlayableLocal,
   resolveCloudFirstPlaybackUrl,
 } from '../recording-playback'
+import {
+  effectiveVideoSyncOffsetMs,
+  recomputeTimelineVideoOffsets,
+} from '../riot-local-api'
+import type { MatchData } from '../riot-types'
 
 export function setupAuthHandlers(
   ipcMain: IpcMain,
@@ -177,6 +182,29 @@ export function setupAuthHandlers(
       })
       const videoPath = playback.url
 
+      const game = (analysis.game as string) ?? (md.game as string) ?? 'valorant'
+      const timelineForSync = {
+        ...md,
+        game,
+        recordingStartTime: (md.recordingStartTime as number) ?? Date.now(),
+        killEvents: md.killEvents ?? [],
+        playerKills: md.playerKills ?? [],
+        playerDeaths: md.playerDeaths ?? [],
+        spikePlants: md.spikePlants ?? [],
+        spikeDefuses: md.spikeDefuses ?? [],
+        spikeDetonations: md.spikeDetonations ?? [],
+        firstBloods: md.firstBloods ?? [],
+        roundSummaries: md.roundSummaries ?? [],
+        events: md.events ?? [],
+        roundScores: md.roundScores ?? [],
+        teamSnapshot: md.teamSnapshot ?? [],
+        finalStats: md.finalStats ?? null,
+        matchDetails: null,
+        startTime: (md.startTime as number) ?? Date.now(),
+        endTime: (md.endTime as number) ?? null,
+      } as MatchData
+      recomputeTimelineVideoOffsets(timelineForSync)
+
       return {
         id: String(analysis.id),
         analysisId: analysis.id as number,
@@ -184,19 +212,24 @@ export function setupAuthHandlers(
         videoPath,
         map: analysis.map ?? md.map ?? null,
         agent: analysis.agent ?? md.agent ?? null,
-        game: (analysis.game as string) ?? (md.game as string) ?? 'valorant',
+        game,
         gameMode: md.gameMode ?? md.game_mode ?? null,
         recordedAt: new Date(analysis.created_at).getTime(),
-        kills: md.playerKills ?? md.killEvents?.filter((k: any) => k.killerName === 'You' || k.type === 'kill') ?? [],
-        deaths: md.playerDeaths ?? md.killEvents?.filter((k: any) => k.victimName === 'You' || k.type === 'death') ?? [],
-        roundSummaries: md.roundSummaries ?? [],
+        kills: timelineForSync.playerKills?.length
+          ? timelineForSync.playerKills
+          : md.killEvents?.filter((k: { killerName?: string; type?: string }) => k.killerName === 'You' || k.type === 'kill') ?? [],
+        deaths: timelineForSync.playerDeaths?.length
+          ? timelineForSync.playerDeaths
+          : md.killEvents?.filter((k: { victimName?: string; type?: string }) => k.victimName === 'You' || k.type === 'death') ?? [],
+        roundSummaries: timelineForSync.roundSummaries ?? [],
         finalStats,
         teamSnapshot,
-        spatialSummary: md.spatialSummary ?? null,
-        spikePlants: md.spikePlants ?? [],
-        spikeDefuses: md.spikeDefuses ?? [],
-        spikeDetonations: md.spikeDetonations ?? [],
-        firstBloods: md.firstBloods ?? [],
+        spatialSummary: timelineForSync.spatialSummary ?? md.spatialSummary ?? null,
+        spikePlants: timelineForSync.spikePlants ?? [],
+        spikeDefuses: timelineForSync.spikeDefuses ?? [],
+        spikeDetonations: timelineForSync.spikeDetonations ?? [],
+        firstBloods: timelineForSync.firstBloods ?? [],
+        videoSyncOffsetMs: effectiveVideoSyncOffsetMs(timelineForSync),
       }
     } catch {
       return null

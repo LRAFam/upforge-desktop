@@ -6,6 +6,7 @@ const {
   agentAccentStyle,
   agentImageUrl,
   displayGameMode,
+  hasCoachFeedback,
   hasSpatialIntel,
   mapPosterUrl,
   matchScoreline,
@@ -132,11 +133,17 @@ const {
             {{ theaterMode ? 'Exit' : 'Theater' }}
           </button>
           <button
-            class="vod-toolbar-btn"
+            class="vod-toolbar-btn relative"
             :class="showInsightsPanel ? 'vod-toolbar-btn--active' : ''"
+            :title="hasCoachFeedback ? 'Coach notes (C) · Review notes (N)' : 'Review notes (N)'"
             @click="showInsightsPanel = !showInsightsPanel"
           >
-            {{ showInsightsPanel ? 'Notes on' : 'Notes' }}
+            {{ showInsightsPanel ? 'Notes on' : (hasCoachFeedback ? 'Coach' : 'Notes') }}
+            <span
+              v-if="hasCoachFeedback && !showInsightsPanel"
+              class="absolute -top-0.5 -right-0.5 h-2 w-2 rounded-full bg-violet-400 shadow-[0_0_8px_rgba(167,139,250,0.8)]"
+              title="Coach feedback available"
+            />
           </button>
           <button
             type="button"

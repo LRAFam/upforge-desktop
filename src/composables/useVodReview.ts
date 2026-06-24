@@ -158,7 +158,7 @@ function createVodReview() {
   const timelineError = ref<string | null>(null)
   const showShortcuts = ref(false)
   
-  const shortcutLegend = [
+  const baseShortcutLegend = [
     { key: 'Space', label: 'Play / pause' },
     { key: '← / →', label: 'Skip 5s (Shift: 1s)' },
     { key: 'J / L', label: 'Prev / next event' },
@@ -180,10 +180,13 @@ function createVodReview() {
   const initialSeekDone = ref(false)
   const hoverTime = ref<number | null>(null)
   const playbackSpeed = ref(1)
+  const videoSeeking = ref(false)
+  const videoBuffering = ref(false)
   const activeEventNotif = ref<TimelineEvent | null>(null)
   let spatialNotifTimer: ReturnType<typeof setTimeout> | null = null
   const showScoreboard = ref(false)
   const showInsightsPanel = ref(false)
+  const activeCoachNoteId = ref<number | null>(null)
   const SPATIAL_MAP_VISIBLE_KEY = 'upforge_vod_map_visible'
   const SPATIAL_MAP_LARGE_KEY = 'upforge_vod_map_large'
   const SPATIAL_HUD_VISIBLE_KEY = 'upforge_vod_spatial_hud'
@@ -551,6 +554,8 @@ function createVodReview() {
       ? encodeURI(`file://${normalized}`)
       : encodeURI(`file:///${normalized}`)
   })
+
+  const isCloudVideo = computed(() => /^https?:\/\//i.test(timeline.value?.videoPath ?? ''))
   
   function needsCloudPlaybackRefresh(path: string | null | undefined): boolean {
     if (!path) return true
@@ -1111,6 +1116,57 @@ function createVodReview() {
   /** Seconds to rewind before an event so the user sees lead-up (markers stay at true event time). */
   const EVENT_PRE_ROLL_SECONDS = 2
   const DEATH_PRE_ROLL_SECONDS = 4
+  const COACH_ANNOTATION_PRE_ROLL_SECONDS = 5
+
+  const hasCoachFeedback = computed(() => {
+    const review = coachReview.value
+    if (!review) return false
+    return Boolean(
+      review.coach_perspective
+      || review.annotations?.length
+      || review.student_question,
+    )
+  })
+
+  const coachProgressMarkers = computed((): ProgressMarker[] => {
+    if (!duration.value || !coachReview.value?.annotations?.length) return []
+    return coachReview.value.annotations
+      .filter(note => note.video_offset_ms != null && !isNaN(note.video_offset_ms))
+      .map(note => ({
+        key: `coach-${note.id}`,
+        kind: 'neutral' as const,
+        label: note.body.length > 48 ? `${note.body.slice(0, 48)}…` : note.body,
+        percent: ((note.video_offset_ms! / 1000) / duration.value) * 100,
+        timeSeconds: note.video_offset_ms! / 1000,
+      }))
+      .filter(marker => marker.percent >= 0 && marker.percent <= 100)
+  })
+
+  const sortedCoachAnnotations = computed(() => {
+    const notes = coachReview.value?.annotations ?? []
+    return [...notes].sort((a, b) => {
+      const aMs = a.video_offset_ms ?? Number.MAX_SAFE_INTEGER
+      const bMs = b.video_offset_ms ?? Number.MAX_SAFE_INTEGER
+      return aMs - bMs
+    })
+  })
+
+  const shortcutLegend = computed(() => {
+    if (!hasCoachFeedback.value) return baseShortcutLegend
+    const coachShortcuts = [
+      { key: 'C', label: 'Coach notes panel' },
+      { key: 'G', label: 'First coach note' },
+      { key: 'Shift + J / L', label: 'Prev / next coach note' },
+      { key: '1 – 9', label: 'Jump to coach note #' },
+    ]
+    const insertAt = baseShortcutLegend.findIndex(s => s.key === 'N')
+    if (insertAt < 0) return [...coachShortcuts, ...baseShortcutLegend]
+    return [
+      ...baseShortcutLegend.slice(0, insertAt + 1),
+      ...coachShortcuts,
+      ...baseShortcutLegend.slice(insertAt + 1),
+    ]
+  })
   
   function togglePlay() {
     if (!videoEl.value) return
@@ -1139,14 +1195,127 @@ function createVodReview() {
     if (videoEl.value) videoEl.value.playbackRate = playbackSpeed.value
   }
   
-  function seekToTime(timeSeconds: number) {
+  function seekToTime(timeSeconds: number, options?: { autoPlay?: boolean }) {
     if (!videoEl.value) return
-    videoEl.value.currentTime = Math.max(0, Math.min(duration.value, timeSeconds))
+    const video = videoEl.value
+    const maxTime = duration.value > 0 ? duration.value : (Number.isFinite(video.duration) ? video.duration : timeSeconds)
+    const target = Math.max(0, Math.min(maxTime, timeSeconds))
+    const shouldResume = options?.autoPlay === true && !video.paused
+
+    video.pause()
+
+    const finishSeek = () => {
+      videoSeeking.value = false
+      currentTime.value = video.currentTime
+      if (shouldResume) {
+        video.play().catch(e => {
+          if (e.name !== 'AbortError') console.error('[VOD] play() failed:', e)
+        })
+      }
+    }
+
+    if (isCloudVideo.value) {
+      videoSeeking.value = true
+      const onSeeked = () => {
+        video.removeEventListener('seeked', onSeeked)
+        finishSeek()
+      }
+      video.addEventListener('seeked', onSeeked)
+      video.currentTime = target
+      window.setTimeout(() => {
+        if (videoSeeking.value) finishSeek()
+      }, 2500)
+      return
+    }
+
+    video.currentTime = target
+    currentTime.value = target
+    if (shouldResume) {
+      video.play().catch(e => {
+        if (e.name !== 'AbortError') console.error('[VOD] play() failed:', e)
+      })
+    }
   }
-  
-  function seekCoachAnnotation(offsetMs: number | null) {
+
+  function seekCoachAnnotation(offsetMs: number | null, noteId?: number) {
     if (offsetMs == null) return
-    seekToTime(Math.max(0, offsetMs / 1000 - 2))
+    if (noteId != null) activeCoachNoteId.value = noteId
+    showInsightsPanel.value = true
+    seekToTime(Math.max(0, offsetMs / 1000 - COACH_ANNOTATION_PRE_ROLL_SECONDS))
+    nextTick(() => scrollActiveCoachNoteIntoView(noteId ?? null))
+  }
+
+  function scrollActiveCoachNoteIntoView(noteId: number | null) {
+    if (noteId == null) return
+    nextTick(() => {
+      const el = document.querySelector(`[data-coach-note="${noteId}"]`) as HTMLElement | null
+      el?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+    })
+  }
+
+  function seekCoachNoteByIndex(index: number) {
+    const notes = sortedCoachAnnotations.value.filter(
+      n => n.video_offset_ms != null && !isNaN(n.video_offset_ms),
+    )
+    const note = notes[index]
+    if (!note) return
+    seekCoachAnnotation(note.video_offset_ms, note.id)
+  }
+
+  function seekFirstCoachNote() {
+    seekCoachNoteByIndex(0)
+  }
+
+  function seekPrevCoachNote() {
+    const notes = sortedCoachAnnotations.value.filter(
+      n => n.video_offset_ms != null && !isNaN(n.video_offset_ms),
+    )
+    if (!notes.length) return
+    const currentMs = currentTime.value * 1000
+    const activeIdx = activeCoachNoteId.value != null
+      ? notes.findIndex(n => n.id === activeCoachNoteId.value)
+      : -1
+    let targetIdx = activeIdx
+    if (targetIdx < 0) {
+      const before = notes.filter(n => (n.video_offset_ms ?? 0) < currentMs - 500)
+      targetIdx = before.length ? before.length - 1 : notes.length - 1
+    } else {
+      targetIdx = Math.max(0, targetIdx - 1)
+    }
+    const note = notes[targetIdx]
+    if (note) seekCoachAnnotation(note.video_offset_ms, note.id)
+  }
+
+  function seekNextCoachNote() {
+    const notes = sortedCoachAnnotations.value.filter(
+      n => n.video_offset_ms != null && !isNaN(n.video_offset_ms),
+    )
+    if (!notes.length) return
+    const currentMs = currentTime.value * 1000
+    const activeIdx = activeCoachNoteId.value != null
+      ? notes.findIndex(n => n.id === activeCoachNoteId.value)
+      : -1
+    let targetIdx = activeIdx
+    if (targetIdx < 0) {
+      const after = notes.findIndex(n => (n.video_offset_ms ?? 0) > currentMs + 500)
+      targetIdx = after >= 0 ? after : 0
+    } else {
+      targetIdx = Math.min(notes.length - 1, targetIdx + 1)
+    }
+    const note = notes[targetIdx]
+    if (note) seekCoachAnnotation(note.video_offset_ms, note.id)
+  }
+
+  function toggleCoachNotesPanel() {
+    showInsightsPanel.value = true
+    if (sortedCoachAnnotations.value.length) {
+      nextTick(() => scrollActiveCoachNoteIntoView(activeCoachNoteId.value))
+    }
+  }
+
+  function jumpToCoachMarker(marker: ProgressMarker) {
+    showInsightsPanel.value = true
+    seekToTime(Math.max(0, marker.timeSeconds - COACH_ANNOTATION_PRE_ROLL_SECONDS))
   }
   
   function jumpToMarker(marker: ProgressMarker) {
@@ -1169,10 +1338,7 @@ function createVodReview() {
     const preRoll = ['kill', 'death'].includes(event.type)
       ? preRollSeconds(event.type)
       : 0
-    videoEl.value.currentTime = Math.max(0, eventSec - preRoll)
-    if (wasPlaying) videoEl.value.play().catch(e => {
-      if (e.name !== 'AbortError') console.error('[VOD] play() failed:', e)
-    })
+    seekToTime(Math.max(0, eventSec - preRoll), { autoPlay: wasPlaying })
   }
   
   function seekCoachingEvidence(evidence: CoachingEvidence) {
@@ -1190,10 +1356,7 @@ function createVodReview() {
     scrollActiveRoundIntoView(round.roundNumber)
     if (!videoEl.value || round.firstVideoOffsetMs == null) return
     const wasPlaying = !videoEl.value.paused
-    videoEl.value.currentTime = Math.max(0, round.firstVideoOffsetMs / 1000 - 2)
-    if (wasPlaying) videoEl.value.play().catch(e => {
-      if (e.name !== 'AbortError') console.error('[VOD] play() failed:', e)
-    })
+    seekToTime(Math.max(0, round.firstVideoOffsetMs / 1000 - 2), { autoPlay: wasPlaying })
   }
   
   function seekPrevEvent() {
@@ -1216,6 +1379,19 @@ function createVodReview() {
     if (next) seekToEvent(next)
   }
   
+  function onVideoWaiting() {
+    videoBuffering.value = true
+  }
+
+  function onVideoCanPlay() {
+    videoBuffering.value = false
+  }
+
+  function onVideoPlaying() {
+    videoBuffering.value = false
+    videoSeeking.value = false
+  }
+
   function onTimeUpdate() {
     if (!videoEl.value) return
     currentTime.value = videoEl.value.currentTime
@@ -1347,13 +1523,29 @@ function createVodReview() {
     }
   }
   
-  function applyInitialSeek() {
-    const seekMs = Number(route.query.seekMs)
+  function applyCoachReviewUiState() {
+    if (!hasCoachFeedback.value) return
+    showInsightsPanel.value = true
+    const routeSeekMs = Number(route.query.seekMs)
+    if (!Number.isNaN(routeSeekMs) && routeSeekMs >= 0) return
+    const firstNote = coachReview.value?.annotations?.find(
+      note => note.video_offset_ms != null && !isNaN(note.video_offset_ms),
+    )
+    if (route.query.coachNotes === '1' && firstNote?.video_offset_ms != null && !initialSeekDone.value) {
+      applyInitialSeek(firstNote.video_offset_ms)
+    }
+  }
+
+  function applyInitialSeek(seekMsOverride?: number) {
+    const seekMs = seekMsOverride ?? Number(route.query.seekMs)
     if (Number.isNaN(seekMs) || seekMs < 0) return
     initialSeekDone.value = true
+    const prerollMs = (route.query.coachNotes === '1' || seekMsOverride != null)
+      ? COACH_ANNOTATION_PRE_ROLL_SECONDS * 1000
+      : 0
     const trySeek = () => {
       if (videoEl.value && duration.value > 0) {
-        seekToTime(seekMs / 1000)
+        seekToTime(Math.max(0, (seekMs - prerollMs) / 1000))
       } else {
         setTimeout(trySeek, 200)
       }
@@ -1417,12 +1609,21 @@ function createVodReview() {
           coachReview.value = null
         }
       }
-  
+
+      applyCoachReviewUiState()
+
       applyTimelineDerivedState()
       if (canRefreshCloudPlayback.value && needsCloudPlaybackRefresh(timeline.value?.videoPath)) {
         await refreshPlaybackUrl()
       }
-      applyInitialSeek()
+      if (route.query.coachNotes === '1') {
+        const routeSeekMs = Number(route.query.seekMs)
+        if (!Number.isNaN(routeSeekMs) && routeSeekMs >= 0) {
+          applyInitialSeek()
+        }
+      } else {
+        applyInitialSeek()
+      }
     } catch {
       timelineError.value = 'Could not load match timeline — check your connection and try again.'
     } finally {
@@ -1468,6 +1669,28 @@ function createVodReview() {
   function handleKeyDown(e: KeyboardEvent) {
     // Don't capture keyboard events when user is typing in an input
     if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return
+
+    if (e.shiftKey && (e.key === 'j' || e.key === 'J')) {
+      if (hasCoachFeedback.value && sortedCoachAnnotations.value.length) {
+        e.preventDefault()
+        seekPrevCoachNote()
+        return
+      }
+    }
+    if (e.shiftKey && (e.key === 'l' || e.key === 'L')) {
+      if (hasCoachFeedback.value && sortedCoachAnnotations.value.length) {
+        e.preventDefault()
+        seekNextCoachNote()
+        return
+      }
+    }
+    if (!e.shiftKey && !e.ctrlKey && !e.metaKey && !e.altKey && e.key >= '1' && e.key <= '9') {
+      if (hasCoachFeedback.value && sortedCoachAnnotations.value.length) {
+        e.preventDefault()
+        seekCoachNoteByIndex(Number(e.key) - 1)
+        return
+      }
+    }
   
     if (e.key === '?' && !e.ctrlKey && !e.metaKey && !e.altKey) {
       e.preventDefault()
@@ -1549,6 +1772,20 @@ function createVodReview() {
         e.preventDefault()
         showInsightsPanel.value = !showInsightsPanel.value
         break
+      case 'c':
+      case 'C':
+        if (hasCoachFeedback.value) {
+          e.preventDefault()
+          toggleCoachNotesPanel()
+        }
+        break
+      case 'g':
+      case 'G':
+        if (hasCoachFeedback.value && sortedCoachAnnotations.value.length) {
+          e.preventDefault()
+          seekFirstCoachNote()
+        }
+        break
       case 'v':
       case 'V':
         if (timeline.value?.videoPath) {
@@ -1596,6 +1833,7 @@ function createVodReview() {
     SPATIAL_REPLAY_SYNC_KEY,
     THEATER_MODE_KEY,
     abilityCastSlots,
+    activeCoachNoteId,
     activeEventNotif,
     activePlaybackAnalysisId,
     activePlaybackArchiveId,
@@ -1615,7 +1853,10 @@ function createVodReview() {
     baseDisplaySpatialSummary,
     canRefreshCloudPlayback,
     canSeekFromSpatial,
+    COACH_ANNOTATION_PRE_ROLL_SECONDS,
+    coachProgressMarkers,
     coachReview,
+    hasCoachFeedback,
     coachingDetail,
     coachingNotes,
     currentTime,
@@ -1647,11 +1888,13 @@ function createVodReview() {
     hoverRoundLabel,
     hoverTime,
     initialSeekDone,
+    isCloudVideo,
     isFullscreen,
     isMuted,
     isNearEvent,
     isPlaying,
     isSpikeEvent,
+    jumpToCoachMarker,
     jumpToMarker,
     lastPlaybackSaveAt,
     loadSpatialPreviewState,
@@ -1669,6 +1912,9 @@ function createVodReview() {
     onScrubberHover,
     onSpatialSelect,
     onTimeUpdate,
+    onVideoCanPlay,
+    onVideoPlaying,
+    onVideoWaiting,
     onVideoError,
     onVideoMouseMove,
     openUpgrade,
@@ -1700,6 +1946,9 @@ function createVodReview() {
     scoreboardGroups,
     scrollActiveRoundIntoView,
     seekCoachAnnotation,
+    seekFirstCoachNote,
+    seekNextCoachNote,
+    seekPrevCoachNote,
     seekCoachingEvidence,
     seekNextEvent,
     seekPrevEvent,
@@ -1714,6 +1963,7 @@ function createVodReview() {
     sidebarEl,
     skip,
     sortedTeamSnapshot,
+    sortedCoachAnnotations,
     spatialDeathChips,
     spatialEventList,
     spatialHudVisible,
@@ -1734,6 +1984,7 @@ function createVodReview() {
     timeline,
     timelineError,
     timelineLoading,
+    toggleCoachNotesPanel,
     toggleFullscreen,
     toggleMute,
     togglePlay,
@@ -1744,10 +1995,12 @@ function createVodReview() {
     videoAreaEl,
     videoAreaObserver,
     videoAspect,
+    videoBuffering,
     videoEl,
     videoFrameEl,
     videoFrameSize,
     videoFrameStyle,
+    videoSeeking,
     videoSrc,
     videoSyncOffsetMs,
     visibleRoundEvents,
