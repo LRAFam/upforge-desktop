@@ -94,6 +94,7 @@ import { reportRecordingError } from './recording-errors'
 import { UpgradeRequiredError } from './errors'
 import { mergeSkillProfileFromAnalysis } from '../../src/lib/skill-profile'
 import { parseMatchHighlightsFromApi } from '../../src/lib/match-highlights'
+import { extractSpatialFromAnalysisPayload } from '../../src/lib/analysis-enrichment'
 import { RecordingsStore, type ClipOnlyReason } from './recordings-store'
 import { ClipExtractor } from './clip-extractor'
 import { ClipStore } from './clip-store'
@@ -849,6 +850,7 @@ function dispatchReconciledAnalysisReady(ctx: ReconciledAnalysisContext): void {
     ? (lastScore.allyScore > lastScore.enemyScore ? 'win' : 'loss')
     : null
   const rawTiming = result?.timing_comparisons
+  const matchHighlights = parseMatchHighlightsFromApi(result?.match_highlights)
 
   const payload = {
     recording_id: ctx.recordingId,
@@ -858,7 +860,10 @@ function dispatchReconciledAnalysisReady(ctx: ReconciledAnalysisContext): void {
     priority_improvements: result?.priority_improvements ?? [],
     verdict: result?.verdict ?? null,
     coaching_tags: result?.coaching_tags ?? [],
-    spatial_summary: mergeSpatialSummary(result?.spatial_summary, timeline?.spatialSummary),
+    spatial_summary: mergeSpatialSummary(
+      extractSpatialFromAnalysisPayload(result),
+      timeline?.spatialSummary,
+    ),
     category_scores: result?.category_scores ?? [],
     session_start: rec?.recordedAt ?? Date.now(),
     kills: timeline?.finalStats?.kills ?? result?.kills ?? null,
@@ -867,7 +872,7 @@ function dispatchReconciledAnalysisReady(ctx: ReconciledAnalysisContext): void {
     match_result: matchResult,
     ally_score: lastScore?.allyScore ?? null,
     enemy_score: lastScore?.enemyScore ?? null,
-    match_highlights: result?.match_highlights ?? [],
+    match_highlights: matchHighlights,
     skill_profile: null,
     timing_comparisons: Array.isArray(rawTiming) ? rawTiming : [],
     duel_moments: result?.duel_moments ?? timeline?.duelMoments ?? null,
@@ -2980,7 +2985,7 @@ async function doUploadAndAnalyse(
           verdict: (status.result as Record<string, unknown>).verdict ?? null,
           coaching_tags: (status.result as Record<string, unknown>).coaching_tags ?? [],
           spatial_summary: mergeSpatialSummary(
-            (status.result as Record<string, unknown>).spatial_summary,
+            extractSpatialFromAnalysisPayload(status.result as Record<string, unknown>),
             localSpatial,
           ),
           category_scores: (status.result as Record<string, unknown>).category_scores ?? [],

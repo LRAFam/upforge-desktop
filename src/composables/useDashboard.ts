@@ -459,7 +459,12 @@ function createDashboard() {
     const toFetch = items.filter(a => !isAnalysisProcessing(a) && !coachingSnippets.value[a.id])
     await Promise.all(toFetch.map(async (a) => {
       const detail = await window.api.analyses.getDetail(a.id).catch(() => null)
-      const snippet = detail?.top_issue ?? detail?.priority_improvements?.[0] ?? detail?.verdict ?? null
+      const snippet = detail?.top_issue
+        ?? detail?.priority_improvements?.[0]
+        ?? detail?.match_highlights?.[0]?.reason
+        ?? detail?.heatmap_insight
+        ?? detail?.verdict
+        ?? null
       if (snippet) coachingSnippets.value[a.id] = snippet
     }))
   }

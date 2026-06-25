@@ -479,15 +479,7 @@ declare global {
         get: (limit?: number) => Promise<AnalysisItem[]>
         getTimeline: (id: number) => Promise<RecordingTimeline | null>
         refreshPlayback: (id: number) => Promise<string | null>
-        getDetail: (id: number) => Promise<{
-          verdict: string | null
-          top_issue: string | null
-          priority_improvements: string[]
-          coaching_tags: string[]
-          ally_score: number | null
-          enemy_score: number | null
-          duel_moments?: import('./lib/duel-moments').DuelMoment[] | null
-        } | null>
+        getDetail: (id: number) => Promise<import('./lib/analysis-enrichment').AnalysisDetailEnriched | null>
         getPercentiles: (id: number) => Promise<{
           success: boolean
           percentiles: Record<string, { score: number; percentile: number; peers: number; label: string }>
@@ -640,7 +632,7 @@ declare global {
         getHotkeys: () => Promise<Record<string, string>>
         getHotkeyStatus: () => Promise<{ saveClipRegistered: boolean; toggleOverlayRegistered: boolean }>
         setHotkey: (action: string, accelerator: string) => Promise<{ ok: boolean }>
-        upload: (id: string) => Promise<{ ok: boolean; apiClipId?: number; error?: string; needsUpgrade?: boolean; message?: string; upgradeUrl?: string }>
+        upload: (id: string) => Promise<{ ok: boolean; apiClipId?: number; error?: string; needsUpgrade?: boolean; message?: string; upgradeUrl?: string; uploadResolution?: 'hd' | '720p' }>
         requestAnalysis: (id: string) => Promise<{ ok: boolean; error?: string; needsUpgrade?: boolean; message?: string; upgradeUrl?: string }>
         share: (id: string) => Promise<{ ok: boolean; shareToken?: string; error?: string }>
         publish: (id: string, caption?: string) => Promise<{ ok: boolean; error?: string }>

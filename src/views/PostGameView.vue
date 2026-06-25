@@ -1450,6 +1450,7 @@ const focusHero = computed(() =>
     priorityImprovements: improvements.value,
     verdict: result.value?.verdict ?? null,
     heatmapInsight: spatialSummary.value?.heatmapInsight ?? spatialSummary.value?.patterns?.[0] ?? null,
+    highlightReason: result.value?.match_highlights?.[0]?.reason ?? null,
     profile: result.value?.skill_profile ?? null,
   }),
 )
@@ -1461,6 +1462,8 @@ const hasDeepDiveContent = computed(() =>
     result.value?.verdict
     || improvements.value.length
     || (result.value?.coaching_tags?.length ?? 0) > 0
+    || (result.value?.match_highlights?.length ?? 0) > 0
+    || timingComparisons.value.length > 0
     || (result.value?.kills != null),
   ),
 )

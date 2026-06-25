@@ -7,18 +7,21 @@ import { IpcMain, shell } from 'electron'
 import fs from 'fs'
 import https from 'https'
 import http from 'http'
+import { tmpdir } from 'os'
+import { join } from 'path'
 import { AuthManager } from '../auth-manager'
 import { ClipStore } from '../clip-store'
 import { clipMatchesGame, normalizeClipGame } from '../clip-game'
-import { ClipExtractor } from '../clip-extractor'
+import { ClipExtractor, FREE_CLIP_UPLOAD_MAX_HEIGHT } from '../clip-extractor'
 import { HotkeyManager } from '../hotkey-manager'
 import { UpgradeRequiredError } from '../errors'
 import { _clipInFlight, apiPost, pollClipAnalysis } from './api-helpers'
 import type { RecordingsStore } from '../recordings-store'
 import type { SettingsManager } from '../settings-manager'
-import { buildClipUploadPayload } from '../clip-coaching-context'
+import { buildClipUploadPayload, resolveClipTimeline } from '../clip-coaching-context'
 import { buildCoachingSubmissionExtras } from '../match-coaching-context'
 import { exportMatchRecap } from '../recap-export'
+import { hasProAccess } from '../subscription'
 
 export function setupClipHandlers(
   ipcMain: IpcMain,
@@ -50,6 +53,25 @@ export function setupClipHandlers(
   function clipTimeline(clip: import('../clip-store').ClipRecord) {
     if (!clip.analysisJobId || !recordingsStore) return null
     return recordingsStore.getTimelineByJobId(clip.analysisJobId)
+  }
+
+  async function resolveClipUploadPath(
+    clipId: string,
+    sourcePath: string,
+  ): Promise<{ path: string; cleanup: string | null; uploadResolution: 'hd' | '720p' }> {
+    const user = auth.getUser()
+    if (hasProAccess(user)) {
+      return { path: sourcePath, cleanup: null, uploadResolution: 'hd' }
+    }
+
+    const dims = await clipExtractor.probeDimensions(sourcePath)
+    if (!dims || dims.height <= FREE_CLIP_UPLOAD_MAX_HEIGHT) {
+      return { path: sourcePath, cleanup: null, uploadResolution: '720p' }
+    }
+
+    const tempPath = join(tmpdir(), `upforge_clip_upload_${clipId}_${Date.now()}.mp4`)
+    await clipExtractor.transcodeForCloudUpload(sourcePath, tempPath)
+    return { path: tempPath, cleanup: tempPath, uploadResolution: '720p' }
   }
 
   ipcMain.handle('clips:get', (_e, opts?: { game?: string; allGames?: boolean }) => {
@@ -129,7 +151,11 @@ export function setupClipHandlers(
     _clipInFlight.add(id)
     clipStore.update(id, { uploadStatus: 'uploading' })
 
+    let uploadCleanup: string | null = null
     try {
+      const { path: uploadPath, cleanup, uploadResolution } = await resolveClipUploadPath(id, clip.path)
+      uploadCleanup = cleanup
+
       const timeline = clipTimeline(clip)
       const extras = timeline && settingsManager
         ? buildCoachingSubmissionExtras(timeline, settingsManager.get(), await auth.fetchRRHistory().catch(() => []))
@@ -139,7 +165,7 @@ export function setupClipHandlers(
         apiBase, '/api/clips/presign', presignPayload, token
       ) as { upload_url: string; clip_uuid: string }
 
-      const fileSize = fs.statSync(clip.path).size
+      const fileSize = fs.statSync(uploadPath).size
       const s3Url = new URL(uploadUrl)
       const s3Proto = s3Url.protocol === 'https:' ? https : http
       await new Promise<void>((resolve, reject) => {
@@ -161,7 +187,7 @@ export function setupClipHandlers(
         })
         req.on('error', reject)
         req.setTimeout(300_000, () => req.destroy(new Error('S3 upload timed out')))
-        fs.createReadStream(clip.path).pipe(req)
+        fs.createReadStream(uploadPath).pipe(req)
       })
 
       const completePayload = JSON.stringify({
@@ -173,7 +199,7 @@ export function setupClipHandlers(
       ) as { id: number }
 
       clipStore.update(id, { uploadStatus: 'uploaded', apiClipId })
-      return { ok: true, apiClipId }
+      return { ok: true, apiClipId, uploadResolution }
     } catch (err) {
       if (err instanceof UpgradeRequiredError) {
         clipStore.update(id, { uploadStatus: 'local' })
@@ -183,6 +209,9 @@ export function setupClipHandlers(
       clipStore.update(id, { uploadStatus: 'failed' })
       return { ok: false, error: msg }
     } finally {
+      if (uploadCleanup && fs.existsSync(uploadCleanup)) {
+        try { fs.unlinkSync(uploadCleanup) } catch { /* ignore */ }
+      }
       _clipInFlight.delete(id)
     }
   })

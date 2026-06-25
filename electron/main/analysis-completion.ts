@@ -26,6 +26,7 @@ export function isTerminalPollSuccess(status: AnalysisPollStatus): boolean {
 
   if (result && typeof result.overall_score === 'number') return true
   if (result?.success === true && analysisId != null) return true
+  if (Array.isArray(result?.match_highlights) && result.match_highlights.length > 0) return true
 
   return false
 }

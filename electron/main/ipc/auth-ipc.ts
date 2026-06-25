@@ -5,6 +5,7 @@
 
 import { IpcMain, BrowserWindow, shell } from 'electron'
 import log from 'electron-log'
+import { enrichAnalysisDetail } from '../../../src/lib/analysis-enrichment'
 import { AuthManager } from '../auth-manager'
 import type { MatchRecorder } from '../match-recorder'
 import { GameDetector } from '../game-detector'
@@ -151,16 +152,7 @@ export function setupAuthHandlers(
       const res = await auth.getApi().get(`/api/analysis/${id}`)
       const a = res.data?.analysis
       if (!a) return null
-      const md = a.match_data ?? {}
-      return {
-        verdict: a.verdict ?? null,
-        top_issue: a.top_issue ?? null,
-        priority_improvements: a.priority_improvements ?? [],
-        coaching_tags: a.coaching_tags ?? [],
-        ally_score: md.finalScore?.allyScore ?? a.ally_score ?? null,
-        enemy_score: md.finalScore?.enemyScore ?? a.enemy_score ?? null,
-        duel_moments: Array.isArray(a.duel_moments) ? a.duel_moments : null,
-      }
+      return enrichAnalysisDetail(a as Record<string, unknown>)
     } catch {
       return null
     }

@@ -259,6 +259,7 @@ export function buildFocusHeroCopy(opts: {
   priorityImprovements?: string[]
   verdict?: string | null
   heatmapInsight?: string | null
+  highlightReason?: string | null
   profile?: SkillProfileSnapshot | null
 }): FocusHeroCopy | null {
   let headline: string | null = null
@@ -269,6 +270,8 @@ export function buildFocusHeroCopy(opts: {
   } else if (opts.priorityImprovements?.[0]) {
     const imp = opts.priorityImprovements[0]
     headline = imp.split(/[.!?]/)[0]?.trim() || imp.slice(0, 120)
+  } else if (opts.highlightReason) {
+    headline = opts.highlightReason.split(/[.!?]/)[0]?.trim() || opts.highlightReason.slice(0, 120)
   } else if (opts.heatmapInsight) {
     headline = opts.heatmapInsight
   } else if (opts.verdict) {

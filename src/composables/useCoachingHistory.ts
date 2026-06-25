@@ -23,6 +23,10 @@ import { loadGameAnalyses, openGameAnalysis } from '../lib/game-modules'
 import { fetchCoachReviewSummary, loadCoachReviewSummaries, type CoachReviewSummary } from '../lib/coach-review-cache'
 import { openAnalysisVodReview } from '../lib/open-vod-review'
 import { scoreGrade, scoreLabel, scoreGradeBadgeClass } from '../lib/analysis-scoring'
+import {
+  hasMomentHybridContent,
+  type AnalysisDetailEnriched,
+} from '../lib/analysis-enrichment'
 
 export const COACHING_HISTORY_KEY: InjectionKey<ReturnType<typeof createCoachingHistory>> = Symbol('coachingHistory')
 
@@ -50,14 +54,7 @@ function createCoachingHistory() {
   
   const selectedId = ref<number | null>(null)
   const detailLoading = ref(false)
-  const expandedDetail = ref<{
-    verdict: string | null
-    top_issue: string | null
-    priority_improvements: string[]
-    coaching_tags: string[]
-    ally_score: number | null
-    enemy_score: number | null
-  } | null>(null)
+  const expandedDetail = ref<AnalysisDetailEnriched | null>(null)
   const coachReviewSummary = ref<CoachReviewSummary | null>(null)
   const coachReviewByAnalysisId = ref<Record<number, CoachReviewSummary>>({})
   
@@ -266,6 +263,19 @@ function createCoachingHistory() {
     return new Date(d).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })
   }
   
+  const hasMomentContent = computed(() => hasMomentHybridContent(expandedDetail.value))
+
+  async function seekAnalysisMoment(videoOffsetMs: number) {
+    const id = selectedId.value
+    if (!id) return
+    timelineLoadingId.value = id
+    try {
+      await openAnalysisVodReview(router, id, { seekMs: Math.max(0, videoOffsetMs - 4000) })
+    } finally {
+      timelineLoadingId.value = null
+    }
+  }
+
   async function selectSession(a: AnalysisItem) {
     selectedId.value = a.id
     expandedDetail.value = null
@@ -274,7 +284,7 @@ function createCoachingHistory() {
       detailLoading.value = false
       return
     }
-    if (!a.overall_score && !['queued', 'processing', 'pending'].includes(a.status)) {
+    if (['queued', 'processing', 'pending'].includes(a.status)) {
       detailLoading.value = false
       return
     }
@@ -328,6 +338,7 @@ function createCoachingHistory() {
     displayAcs,
     expandedBrief,
     expandedDetail,
+    hasMomentContent,
     features,
     filteredAnalyses,
     formatDate,
@@ -356,6 +367,7 @@ function createCoachingHistory() {
     scoreGrade,
     scoreGradeBadgeClass,
     scoreLabel,
+    seekAnalysisMoment,
     selectSession,
     selectedAnalysis,
     selectedId,

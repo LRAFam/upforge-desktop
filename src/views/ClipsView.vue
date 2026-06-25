@@ -76,6 +76,11 @@
       </div>
     </div>
 
+    <p v-if="!hasProAccess" class="flex-shrink-0 text-[11px] text-gray-600">
+      Cloud uploads are 720p on Free.
+      <button type="button" class="text-red-400/90 hover:text-red-300 transition-colors" @click="openUpgrade">Upgrade for HD</button>
+    </p>
+
     <!-- Toast notification -->
     <Transition name="toast-slide">
       <div
@@ -247,6 +252,7 @@
               <button
                 v-if="clip.uploadStatus !== 'uploaded'"
                 :disabled="!!uploadingClipId || !!analysingClipId"
+                :title="uploadButtonTitle"
                 class="flex h-8 items-center gap-1.5 rounded-xl border px-2.5 text-[11px] font-semibold backdrop-blur-sm transition-colors"
                 :class="uploadingClipId === clip.id
                   ? 'cursor-wait border-red-500/20 bg-red-500/10 text-red-400/60'
@@ -433,6 +439,7 @@
               <button
                 v-if="clip.uploadStatus !== 'uploaded'"
                 :disabled="!!uploadingClipId || !!analysingClipId"
+                :title="uploadButtonTitle"
                 class="flex h-9 items-center gap-2 rounded-xl border px-3 text-xs font-semibold transition-colors"
                 :class="uploadingClipId === clip.id
                   ? 'cursor-wait border-red-500/20 bg-red-500/10 text-red-400/60'
@@ -613,6 +620,7 @@
           <template v-else>
             <button
               :disabled="!!uploadingClipId || !!analysingClipId"
+              :title="uploadButtonTitle"
               :class="[
                 'flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium border rounded-lg transition-colors',
                 uploadingClipId === playingClip.id
@@ -853,6 +861,7 @@ import { loadSaveClipHotkey } from '../lib/hotkeys'
 import { usePrimaryGame } from '../composables/usePrimaryGame'
 import { useGameTheme } from '../composables/useGameTheme'
 import { primaryGameLabel } from '../lib/games'
+import { hasProAccess as proAccessForUser } from '../lib/subscription'
 
 const route = useRoute()
 const { primaryGame, isValorant } = usePrimaryGame()
@@ -867,7 +876,14 @@ const playingClip = ref<ClipRecord | null>(null)
 const videoEl = ref<HTMLVideoElement | null>(null)
 const upgradeModal = ref({ show: false, message: '' })
 const userTier = ref<string>('free')
+const appUser = ref<{ tier?: string; is_admin?: boolean } | null>(null)
+const hasProAccess = computed(() => proAccessForUser(appUser.value))
 const subscriptionEndsAt = ref<string | null>(null)
+const uploadButtonTitle = computed(() =>
+  hasProAccess.value
+    ? 'Upload clip to cloud in full resolution'
+    : 'Upload clip to cloud at 720p — upgrade for HD',
+)
 
 function daysUntilReset(): number {
   if (subscriptionEndsAt.value) {
@@ -981,7 +997,10 @@ onMounted(async () => {
 
   saveClipHotkey.value = await loadSaveClipHotkey()
   await loadClips()
-  window.api.app.getStatus().then(s => { if (s.user?.tier) userTier.value = s.user.tier }).catch(() => {})
+  window.api.app.getStatus().then(s => {
+    if (s.user?.tier) userTier.value = s.user.tier
+    appUser.value = s.user ?? null
+  }).catch(() => {})
   window.api.profile.get().then(p => { subscriptionEndsAt.value = p?.user?.analysis_stats?.subscription_ends_at ?? null }).catch(() => {})
   removeListener.value = window.api.on('clips:new', async (_ids: unknown) => {
     // clips:new sends an array of newly extracted clip IDs — reload everything
@@ -1209,7 +1228,10 @@ async function uploadClip(clip: ClipRecord): Promise<boolean> {
       return false
     }
     syncClipInState(clip.id, { uploadStatus: 'uploaded', apiClipId: result.apiClipId ?? null })
-    showToastMsg('Clip saved to cloud', 'success')
+    showToastMsg(
+      result.uploadResolution === '720p' ? 'Clip saved to cloud (720p)' : 'Clip saved to cloud',
+      'success',
+    )
     return true
   } finally {
     uploadingClipId.value = null

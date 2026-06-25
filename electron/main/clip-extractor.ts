@@ -7,6 +7,9 @@ import { is } from '@electron-toolkit/utils'
 
 const IS_WIN = process.platform === 'win32'
 
+/** Max cloud upload height for free-tier clip shares. */
+export const FREE_CLIP_UPLOAD_MAX_HEIGHT = 720
+
 let clipsMediaDirOverride: string | null = null
 
 export function setClipsMediaDir(dir: string | null): void {
@@ -117,6 +120,51 @@ export class ClipExtractor {
       ])
     } catch (err) {
       try { if (fs.existsSync(opts.outputPath)) fs.unlinkSync(opts.outputPath) } catch { /* ignore */ }
+      throw err
+    }
+  }
+
+  /** Read video dimensions from container metadata (ffmpeg stderr). */
+  async probeDimensions(filePath: string): Promise<{ width: number; height: number } | null> {
+    return new Promise((resolve) => {
+      const proc = spawn(ffmpegPath(), ['-i', filePath], { stdio: ['ignore', 'ignore', 'pipe'] })
+      let stderr = ''
+      proc.stderr?.on('data', (d: Buffer) => { stderr += d.toString() })
+      proc.on('close', () => {
+        const match = stderr.match(/,\s*(\d{2,5})x(\d{2,5})(?:\s|,|\[)/)
+        if (match) {
+          resolve({ width: parseInt(match[1], 10), height: parseInt(match[2], 10) })
+        } else {
+          resolve(null)
+        }
+      })
+      proc.on('error', () => resolve(null))
+    })
+  }
+
+  /**
+   * Downscale a clip to coaching resolution for free-tier cloud upload.
+   * Local files stay at full resolution — only the upload copy is capped.
+   */
+  async transcodeForCloudUpload(sourcePath: string, outputPath: string): Promise<void> {
+    mkdirSync(dirname(outputPath), { recursive: true })
+    const scale = '1280:720'
+    const videoFilters = `scale=${scale}:force_original_aspect_ratio=decrease,pad=${scale}:(ow-iw)/2:(oh-ih)/2`
+    try {
+      await this._run([
+        '-y',
+        '-i', sourcePath,
+        '-map', '0:v:0',
+        '-map', '0:a:0?',
+        '-vf', videoFilters,
+        '-c:v', 'libx264', '-crf', '22', '-preset', 'veryfast', '-threads', '2', '-pix_fmt', 'yuv420p',
+        '-c:a', 'aac', '-b:a', '128k',
+        '-avoid_negative_ts', '1',
+        '-movflags', '+faststart',
+        outputPath,
+      ], 120_000)
+    } catch (err) {
+      try { if (fs.existsSync(outputPath)) fs.unlinkSync(outputPath) } catch { /* ignore */ }
       throw err
     }
   }

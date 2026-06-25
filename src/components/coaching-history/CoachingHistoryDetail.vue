@@ -1,6 +1,9 @@
 <script setup lang="ts">
 import { useCoachingHistory } from '../../composables/useCoachingHistory'
 import TacticalIntelBrief from '../TacticalIntelBrief.vue'
+import MatchRecapPanel from '../MatchRecapPanel.vue'
+import TimingComparisonPanel from '../TimingComparisonPanel.vue'
+import DuelMomentCards from '../analysis/DuelMomentCards.vue'
 
 const {
   allAnalyses,
@@ -12,6 +15,7 @@ const {
   displayAcs,
   expandedBrief,
   expandedDetail,
+  hasMomentContent,
   formatDate,
   formatGameMode,
   formatMapLabel,
@@ -25,6 +29,7 @@ const {
   isDisplayableGameMode,
   openCoachNotes,
   openTimeline,
+  seekAnalysisMoment,
   scoreColor,
   scoreGrade,
   scoreGradeBadgeClass,
@@ -323,6 +328,37 @@ const {
 
               <TacticalIntelBrief v-if="expandedBrief" :brief="expandedBrief" />
 
+              <div
+                v-else-if="expandedDetail?.heatmap_insight"
+                class="rounded-xl border border-amber-500/20 bg-amber-500/[0.06] px-4 py-3"
+              >
+                <p class="text-[9px] font-black uppercase tracking-widest text-amber-300/80 mb-1.5">Map intel</p>
+                <p class="text-sm text-gray-300 leading-relaxed">{{ expandedDetail.heatmap_insight }}</p>
+              </div>
+
+              <MatchRecapPanel
+                v-if="expandedDetail?.match_highlights?.length"
+                :priority-improvements="expandedDetail.priority_improvements"
+                :top-issue="expandedDetail.top_issue"
+                :coaching-tags="expandedDetail.coaching_tags"
+                :spatial-summary="expandedDetail.spatial_summary"
+                :api-highlights="expandedDetail.match_highlights"
+                @seek="seekAnalysisMoment"
+              />
+
+              <TimingComparisonPanel
+                v-if="expandedDetail?.timing_comparisons?.length"
+                :comparisons="expandedDetail.timing_comparisons"
+                @seek="seekAnalysisMoment"
+              />
+
+              <DuelMomentCards
+                v-if="expandedDetail?.duel_moments?.length"
+                :moments="expandedDetail.duel_moments"
+                compact
+                @seek="(ms) => seekAnalysisMoment(Math.max(0, ms - 3000))"
+              />
+
               <div v-else-if="expandedDetail?.verdict" class="rounded-xl border border-white/[0.08] bg-white/[0.02] px-4 py-3">
                 <p class="text-[9px] font-bold uppercase tracking-[0.16em] text-gray-600 mb-1.5">Coach verdict</p>
                 <p class="text-sm italic leading-relaxed text-gray-400">{{ expandedDetail.verdict }}</p>
@@ -344,7 +380,7 @@ const {
                 >{{ tag.replace(/_/g, ' ') }}</span>
               </div>
 
-              <p v-if="!expandedDetail && !expandedBrief && !detailLoading" class="text-sm text-gray-600 text-center py-4">
+              <p v-if="!hasMomentContent && !expandedBrief && !detailLoading" class="text-sm text-gray-600 text-center py-4">
                 No structured coaching notes for this session.
               </p>
             </template>
