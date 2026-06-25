@@ -3,6 +3,7 @@
  * Alt-tabbing shows black/last game frame in the VOD, not other apps.
  */
 
+import { isBenignObsWebSocketError } from './obs-errors'
 import type OBSWebSocket from 'obs-websocket-js'
 import log from 'electron-log'
 import { resolveObsCaptureWindow } from './game-window-finder'
@@ -251,6 +252,9 @@ export async function fitUpForgeCaptureToCanvas(obs: OBSWebSocket): Promise<void
       }
     }
 
+    const freshItem = await findUpForgeSceneItem(obs)
+    if (!freshItem) return
+
     const video = await obs.call('GetVideoSettings') as {
       baseWidth?: number
       baseHeight?: number
@@ -261,7 +265,7 @@ export async function fitUpForgeCaptureToCanvas(obs: OBSWebSocket): Promise<void
 
     await obs.call('SetSceneItemTransform', {
       sceneName: UPFORGE_SCENE_NAME,
-      sceneItemId: item.sceneItemId,
+      sceneItemId: freshItem.sceneItemId,
       sceneItemTransform: {
         positionX: 0,
         positionY: 0,
@@ -281,6 +285,10 @@ export async function fitUpForgeCaptureToCanvas(obs: OBSWebSocket): Promise<void
     })
     log.info('[OBS Setup] Fit capture to canvas', boundsWidth, '×', boundsHeight)
   } catch (err) {
+    if (isBenignObsWebSocketError(err)) {
+      log.debug('[OBS Setup] fitUpForgeCaptureToCanvas skipped stale scene item')
+      return
+    }
     log.warn('[OBS Setup] fitUpForgeCaptureToCanvas failed:', err instanceof Error ? err.message : err)
   }
 }

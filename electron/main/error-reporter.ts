@@ -10,6 +10,7 @@ import { app } from 'electron'
 import log from 'electron-log'
 import { showAppNotification } from './app-notifications'
 import type { AuthManager } from './auth-manager'
+import { isBenignObsWebSocketError } from './obs-errors'
 
 const API_URL = process.env['VITE_API_URL'] || 'https://api.upforge.gg'
 const ERROR_KEY = process.env['VITE_ERROR_REPORTING_KEY'] || ''
@@ -99,6 +100,10 @@ export function setupMainProcessErrorHandlers(authManager: AuthManager): void {
 
   process.on('unhandledRejection', (reason: unknown) => {
     const error = reason instanceof Error ? reason : new Error(String(reason))
+    if (isBenignObsWebSocketError(error)) {
+      log.debug('[Main] Ignoring benign OBS WebSocket rejection:', error.message)
+      return
+    }
     // electron-updater can reject before latest.yml is uploaded to a new GitHub release
     if (
       (/latest\.yml/i.test(error.message) || /UpForge-Setup-.*\.exe/i.test(error.message))
