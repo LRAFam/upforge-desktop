@@ -42,7 +42,7 @@ const {
 <!-- Right: overview or session detail -->
       <div
         class="history-detail flex flex-1 flex-col min-h-0 min-w-0 bg-[#0e0e0e]"
-        :class="!selectedId && 'hidden lg:flex'"
+        :class="selectedId == null ? 'hidden lg:flex' : undefined"
       >
         <!-- Mobile back -->
         <div v-if="selectedId" class="lg:hidden flex-shrink-0 px-3 py-2 border-b border-white/[0.08]">

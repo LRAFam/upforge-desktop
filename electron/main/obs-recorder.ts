@@ -64,6 +64,8 @@ export class OBSRecorder {
   private _obs = new OBSWebSocket()
   private _connected = false
   private _recording = false
+  /** True only when UpForge called start() — ignores manual OBS recordings for promo/streaming. */
+  private _matchOwnedRecording = false
   private _replayBufferActive = false
   private _startedAt: number | null = null
   private _outputPath: string | null = null
@@ -113,13 +115,18 @@ export class OBSRecorder {
     })
 
     this._obs.on('RecordStateChanged', ({ outputActive, outputPath }) => {
-      this._recording = outputActive
       if (outputPath) this._outputPath = outputPath
-      if (!outputActive) {
-        this._startedAt = null
-        this.onStatusChange?.(false)
-        this._stopLiveKillPoll()
+      if (outputActive) {
+        if (!this._matchOwnedRecording) return
+        this._recording = true
+        return
       }
+      if (!this._matchOwnedRecording) return
+      this._recording = false
+      this._matchOwnedRecording = false
+      this._startedAt = null
+      this.onStatusChange?.(false)
+      this._stopLiveKillPoll()
     })
 
     this._obs.on('ReplayBufferStateChanged', ({ outputActive }) => {
@@ -131,7 +138,7 @@ export class OBSRecorder {
       log.warn('[OBSRecorder] OBS disconnected')
       const wasConnected = this._connected
       this._connected = false
-      if (this._recording || this._startedAt) {
+      if (this._matchOwnedRecording && (this._recording || this._startedAt)) {
         this._disconnectedDuringRecording = true
         // Keep _startedAt — OBS often keeps recording locally after WebSocket drops.
         if (this._recording) {
@@ -281,7 +288,7 @@ export class OBSRecorder {
   getOBSStatus(): OBSStatus {
     return {
       connected: this._connected,
-      recording: this._recording,
+      recording: this._matchOwnedRecording && this._recording,
       replayBufferActive: this._replayBufferActive,
       outputPath: this._outputPath,
       lastError: this._lastError,
@@ -291,7 +298,7 @@ export class OBSRecorder {
 
   // ── Recording interface (DesktopRecorder-compatible) ────────────────────────
 
-  isRecording(): boolean { return this._recording }
+  isRecording(): boolean { return this._matchOwnedRecording && this._recording }
   isClipsOnlySession(): boolean { return this._clipsOnlySession }
   getLastRecordingPath(): string | null { return this._outputPath }
   getLastError(): string | null { return this._lastError }
@@ -409,9 +416,18 @@ export class OBSRecorder {
       if (!result.ok) throw new Error(`Cannot connect to OBS: ${result.error}`)
     }
 
-    if (this._recording) {
+    if (this._matchOwnedRecording && this._recording) {
       log.warn('[OBSRecorder] Already recording — ignoring start()')
       return
+    }
+
+    try {
+      const status = await this._obs.call('GetRecordStatus') as { outputActive?: boolean }
+      if (status.outputActive && !this._matchOwnedRecording) {
+        throw new Error('OBS is already recording — stop the current OBS recording before a match capture starts.')
+      }
+    } catch (err) {
+      if (err instanceof Error && err.message.includes('already recording')) throw err
     }
 
     this._lastError = null
@@ -460,6 +476,7 @@ export class OBSRecorder {
       if (!this._clipsOnlySession) {
         await this._obs.call('StartRecord')
       }
+      this._matchOwnedRecording = true
       this._startedAt = Date.now()
       this._recording = true
       this.onStatusChange?.(true)
@@ -478,6 +495,7 @@ export class OBSRecorder {
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
       this._lastError = msg
+      this._matchOwnedRecording = false
       this._recording = false
       this._startedAt = null
       this.onStatusChange?.(false, msg)
@@ -508,7 +526,13 @@ export class OBSRecorder {
       log.warn('[OBSRecorder] GetRecordStatus before stop failed:', err)
     }
 
+    if (!this._matchOwnedRecording) {
+      this._clipsOnlySession = false
+      return this._outputPath
+    }
+
     if (!outputActive && !this._recording) {
+      this._matchOwnedRecording = false
       this._clipsOnlySession = false
       return this._outputPath
     }
@@ -520,6 +544,7 @@ export class OBSRecorder {
 
       if (this._clipsOnlySession) {
         this._recording = false
+        this._matchOwnedRecording = false
         this._startedAt = null
         this._clipsOnlySession = false
         this._disconnectedDuringRecording = false
@@ -531,6 +556,7 @@ export class OBSRecorder {
 
       const response = await this._obs.call('StopRecord')
       this._recording = false
+      this._matchOwnedRecording = false
       this._startedAt = null
       this._disconnectedDuringRecording = false
       if (response.outputPath) this._outputPath = response.outputPath
@@ -546,6 +572,7 @@ export class OBSRecorder {
       log.error('[OBSRecorder] Error stopping recording:', msg)
       this._lastError = msg
       this._recording = false
+      this._matchOwnedRecording = false
       this._startedAt = null
       this.onStatusChange?.(false, msg)
       return this._outputPath
@@ -555,6 +582,7 @@ export class OBSRecorder {
   forceStop(): void {
     this._stopLiveKillPoll()
     this._recording = false
+    this._matchOwnedRecording = false
     this._startedAt = null
     this._obs.call('StopRecord').catch(() => {})
     this._obs.call('StopReplayBuffer').catch(() => {})

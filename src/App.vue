@@ -310,7 +310,7 @@ const showTitleBar = computed(() =>
 
 const isPostGameRoute = computed(() => route.path.startsWith('/post-game'))
 const isFullHeightView = computed(() =>
-  ['/vod-review', '/dashboard', '/training'].includes(route.path),
+  ['/vod-review', '/dashboard', '/training', '/history', '/clips', '/stats', '/squad', '/performance', '/settings'].includes(route.path),
 )
 
 const showNav = computed(() =>

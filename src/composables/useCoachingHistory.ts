@@ -73,7 +73,10 @@ function createCoachingHistory() {
   })
   
   function displayAcs(a: AnalysisItem): number | null {
-    return normalizeCombatScoreToAcs(a.combat_score, a.rounds_won, a.rounds_lost)
+    const rounds = a.rounds_won != null && a.rounds_lost != null
+      ? a.rounds_won + a.rounds_lost
+      : null
+    return normalizeCombatScoreToAcs(a.combat_score, rounds)
   }
   
   function pickTopByCount(

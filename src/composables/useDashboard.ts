@@ -880,12 +880,13 @@ function createDashboard() {
     const earlySettings = await window.api.settings.get().catch(() => ({ primaryGame: 'valorant' as const }))
     applyFromSettings(earlySettings)
 
-    const [prof, recent, playstyle] = await Promise.all([
+    const [prof, recent, playstyle, pending] = await Promise.all([
       window.api.profile.get().catch(() => null),
       loadGameAnalyses(primaryGame.value, 10).catch(() => [] as AnalysisItem[]),
       isValorant.value
         ? window.api.progress.playstyleProfile().catch(() => null)
         : Promise.resolve(null),
+      window.api.recordings.get().catch(() => [] as PendingRecording[]),
     ])
 
     await syncAuthUserFields()
@@ -898,6 +899,7 @@ function createDashboard() {
     }
 
     analyses.value = recent
+    pendingRecordings.value = pending
     analysesLoading.value = false
     void loadCoachingSnippets(recent)
 
@@ -907,7 +909,6 @@ function createDashboard() {
     if (isCs2.value) await loadCs2Faceit()
     if (isDeadlock.value) await loadDeadlockProfile()
 
-    pendingRecordings.value = await window.api.recordings.get().catch(() => [])
     activityLog.value = await window.api.app.getActivityLog().catch(() => [])
 
     const hkBindings = await window.api.clips.getHotkeys().catch(() => null) as Record<string, string> | null

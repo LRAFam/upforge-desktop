@@ -434,6 +434,18 @@ let matchFinalizeInFlight: Promise<boolean> | null = null
 let overlayPollTimer: ReturnType<typeof setInterval> | null = null
 let gsiPollTimer: ReturnType<typeof setInterval> | null = null
 
+/** Recording ids with an active S3 upload in this process — excludes them from stale-upload reset. */
+const activeUploadRecordingIds = new Set<string>()
+
+function reconcileInterruptedUploads(): void {
+  if (!recordingsStore) return
+  const reset = recordingsStore.resetInterruptedUploads(activeUploadRecordingIds)
+  if (reset > 0) {
+    logActivity(`Upload interrupted — tap Analyse to retry (${reset} recording${reset === 1 ? '' : 's'})`)
+    mainWindow?.webContents.send('recordings:updated')
+  }
+}
+
 // Activity log — recent events shown on dashboard for user visibility
 const MAX_LOG_ENTRIES = 30
 const activityLog: { time: number; message: string }[] = []
@@ -664,6 +676,7 @@ function syncUserSessionFromAuth(): void {
   const user = authManager.getUser()
   if (user?.id) {
     activateUserSession(user.id, userSessionDeps())
+    reconcileInterruptedUploads()
     runStorageMaintenanceIfReady(true)
     syncPrimaryGameFromUser()
   }
@@ -2463,6 +2476,7 @@ async function handleOrphanedJobAtStartup(
 
   if (decision.action === 'discard') {
     clearPendingJob()
+    reconcileInterruptedUploads()
     logActivity(`Cleared stale analysis job (${decision.reason})`)
     return
   }
@@ -2692,6 +2706,7 @@ async function doUploadAndAnalyse(
 
   if (recordingId) {
     recordingsStore.setPipelineStatus(recordingId, 'uploading')
+    activeUploadRecordingIds.add(recordingId)
     mainWindow?.webContents.send('recordings:updated')
   }
 
@@ -3037,6 +3052,8 @@ async function doUploadAndAnalyse(
       : msg
     )
     return null
+  } finally {
+    if (recordingId) activeUploadRecordingIds.delete(recordingId)
   }
 }
 
@@ -3123,11 +3140,12 @@ async function startApp(): Promise<void> {
     }, 400)
 
     // If an orphaned job was found at startup, reconcile once before resuming a 90-min poll loop.
-    if (orphanedJob) {
-      mainWindow.webContents.once('did-finish-load', () => {
+    mainWindow.webContents.once('did-finish-load', () => {
+      reconcileInterruptedUploads()
+      if (orphanedJob) {
         void handleOrphanedJobAtStartup(orphanedJob)
-      })
-    }
+      }
+    })
   }
 
   setupAutoUpdater(splashWindow, launchMainApp, () => {
