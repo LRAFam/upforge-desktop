@@ -33,6 +33,14 @@ import {
   deleteLocalRecordingFiles,
 } from './vod-compressor'
 import {
+  waitUntilBackgroundWorkAllowed,
+  pauseHeavyBackgroundWork,
+  registerDeferredUploadRetry,
+  clearDeferredUploadRetry,
+  flushDeferredUploadRetries,
+  shouldDeferHeavyBackgroundWork,
+} from './match-priority-guard'
+import {
   resolveReadyRecordingPath,
   listUnregisteredRecordingFiles,
 } from './recording-path-resolver'
@@ -444,6 +452,42 @@ function reconcileInterruptedUploads(): void {
     logActivity(`Upload interrupted — tap Analyse to retry (${reset} recording${reset === 1 ? '' : 's'})`)
     mainWindow?.webContents.send('recordings:updated')
   }
+}
+
+function matchPriorityDeps() {
+  return {
+    isRecording: () => obsRecorder.isRecording(),
+    currentGame: () => gameDetector.currentGame(),
+    waitingForMatch: () => waitingForMatch,
+  }
+}
+
+function interruptBackgroundWorkForMatch(): void {
+  pauseHeavyBackgroundWork(
+    matchPriorityDeps(),
+    () => uploadManager?.abort(),
+    (ids) => {
+      for (const id of ids) {
+        recordingsStore?.setPipelineStatus(id, 'pending')
+      }
+      if ([...ids].length > 0) {
+        logActivity('Upload paused for match — will retry when you finish playing')
+        mainWindow?.webContents.send('recordings:updated')
+      }
+    },
+    activeUploadRecordingIds,
+  )
+}
+
+function maybeResumeDeferredUploads(): void {
+  if (!shouldDeferHeavyBackgroundWork(matchPriorityDeps())) {
+    void flushDeferredUploadRetries()
+  }
+}
+
+function wasBackgroundWorkInterrupted(err: unknown): boolean {
+  const msg = err instanceof Error ? err.message : String(err)
+  return /upload aborted|compression cancelled — match/i.test(msg)
 }
 
 // Activity log — recent events shown on dashboard for user visibility
@@ -1802,6 +1846,8 @@ function setupGameDetection(): void {
   }
 
   gameDetector.on('game-started', async (game: string) => {
+    interruptBackgroundWorkForMatch()
+
     if (obsRecorder.isRecording()) {
       console.log('[GameDetector] game-started ignored — already recording')
       return
@@ -2457,6 +2503,7 @@ function setupGameDetection(): void {
         deadlockSessionStartAt = null
         currentMatchStartTime = null
       }
+      maybeResumeDeferredUploads()
     }
   })
 
@@ -2600,6 +2647,8 @@ async function doUploadArchiveOnly(
     } catch { /* destroyed */ }
   }
 
+  await waitUntilBackgroundWorkAllowed(matchPriorityDeps(), { logActivity })
+
   let effectivePath = videoPath
   try {
     const resolved = await resolveUploadVideoPath(videoPath, (sizeGB) => {
@@ -2703,6 +2752,17 @@ async function doUploadAndAnalyse(
     } catch { /* destroyed between isDestroyed check and send */ }
   }
   stopActiveAnalysisPoll()
+
+  await waitUntilBackgroundWorkAllowed(matchPriorityDeps(), { logActivity })
+
+  if (recordingId) {
+    registerDeferredUploadRetry(recordingId, () =>
+      doUploadAndAnalyse(
+        recordingId, videoPath, riotName, riotTag, game, map, agent, timeline,
+        targetWindow, sessionStart, skipAutoDelete, deleteLocalAfterUpload, enrichPromise,
+      ),
+    )
+  }
 
   if (recordingId) {
     recordingsStore.setPipelineStatus(recordingId, 'uploading')
@@ -2994,6 +3054,7 @@ async function doUploadAndAnalyse(
         }
       },
     })
+    if (recordingId) clearDeferredUploadRetry(recordingId)
     return result.job_id
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : 'Upload failed'
@@ -3002,6 +3063,9 @@ async function doUploadAndAnalyse(
     if (recordingId) {
       recordingsStore.setPipelineStatus(recordingId, 'pending')
       mainWindow?.webContents.send('recordings:updated')
+      if (!wasBackgroundWorkInterrupted(err)) {
+        clearDeferredUploadRetry(recordingId)
+      }
     }
 
     // Quota exceeded — send upgrade prompt (no retry makes sense here)

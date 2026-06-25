@@ -9,6 +9,7 @@ import { existsSync, mkdirSync, statSync, unlinkSync } from 'fs'
 import { is } from '@electron-toolkit/utils'
 import log from 'electron-log'
 import { UPLOAD_COMPRESSION_PRESET } from './recording-preset'
+import { registerVodCompressionProc } from './match-priority-guard'
 
 const IS_WIN = process.platform === 'win32'
 
@@ -108,14 +109,15 @@ export async function compressVodForUpload(sourcePath: string): Promise<Compress
 
   const videoFilters = `scale=${scale}:force_original_aspect_ratio=decrease,pad=${scale}:(ow-iw)/2:(oh-ih)/2,fps=${fps}`
 
+  // CPU-only — OBS uses NVENC/AMF during matches; hardware encoders here cause stutter.
   const encoders = IS_WIN
-    ? ['h264_nvenc', 'h264_amf', 'h264_qsv', 'libx264']
-    : [process.platform === 'darwin' ? 'h264_videotoolbox' : 'libx264', 'libx264']
+    ? ['libx264']
+    : [process.platform === 'darwin' ? 'h264_videotoolbox' : 'libx264']
 
   let lastError = 'Compression failed'
   for (const encoder of encoders) {
     const videoArgs = encoder === 'libx264'
-      ? ['-c:v', encoder, '-preset', 'veryfast', '-crf', '23', '-threads', '4']
+      ? ['-c:v', encoder, '-preset', 'veryfast', '-crf', '23', '-threads', '2']
       : ['-c:v', encoder, '-b:v', bitrate, '-maxrate', maxrate, '-bufsize', bufsize]
 
     try {
@@ -153,6 +155,7 @@ export async function compressVodForUpload(sourcePath: string): Promise<Compress
 function runFfmpeg(args: string[]): Promise<void> {
   return new Promise((resolve, reject) => {
     const proc = spawn(ffmpegBin(), args, { stdio: ['ignore', 'ignore', 'pipe'] })
+    registerVodCompressionProc(proc)
     let stderr = ''
     let settled = false
     const timeoutMs = 90 * 60 * 1000
@@ -165,23 +168,29 @@ function runFfmpeg(args: string[]): Promise<void> {
       if (settled) return
       settled = true
       clearTimeout(timer)
+      registerVodCompressionProc(null)
       fn()
     }
 
     proc.stderr?.on('data', (d: Buffer) => { stderr += d.toString() })
     proc.on('error', (err) => settle(() => reject(err)))
-    proc.on('exit', (code) => {
+    proc.on('exit', (code, signal) => {
       if (code === 0) settle(() => resolve())
+      else if (signal === 'SIGKILL') settle(() => reject(new Error('Compression cancelled — match in progress')))
       else settle(() => reject(new Error(`ffmpeg exited ${code}: ${stderr.slice(-400)}`)))
     })
 
-    if (proc.pid && IS_WIN) {
+    if (proc.pid) {
       const { exec } = require('child_process') as typeof import('child_process')
-      exec(
-        `powershell -NoProfile -NonInteractive -Command "(Get-Process -Id ${proc.pid}).PriorityClass = 'BelowNormal'"`,
-        { windowsHide: true },
-        () => {},
-      )
+      if (IS_WIN) {
+        exec(
+          `powershell -NoProfile -NonInteractive -Command "(Get-Process -Id ${proc.pid}).PriorityClass = 'Idle'"`,
+          { windowsHide: true },
+          () => {},
+        )
+      } else {
+        exec(`renice -n 15 -p ${proc.pid}`, () => {})
+      }
     }
   })
 }
