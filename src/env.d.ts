@@ -229,6 +229,7 @@ export interface RecordingTimeline {
     abilityCasts: { grenade: number; ability1: number; ability2: number; ultimate: number } | null
   }>
   spatialSummary?: import('./lib/spatial-types').MatchSpatialSummary | null
+  duelMoments?: import('./lib/duel-moments').DuelMomentManifest[]
   videoSyncOffsetMs?: number
 }
 
@@ -478,7 +479,21 @@ declare global {
         get: (limit?: number) => Promise<AnalysisItem[]>
         getTimeline: (id: number) => Promise<RecordingTimeline | null>
         refreshPlayback: (id: number) => Promise<string | null>
-        getDetail: (id: number) => Promise<{ verdict: string | null; top_issue: string | null; priority_improvements: string[]; coaching_tags: string[]; ally_score: number | null; enemy_score: number | null } | null>
+        getDetail: (id: number) => Promise<{
+          verdict: string | null
+          top_issue: string | null
+          priority_improvements: string[]
+          coaching_tags: string[]
+          ally_score: number | null
+          enemy_score: number | null
+          duel_moments?: import('./lib/duel-moments').DuelMoment[] | null
+        } | null>
+        getPercentiles: (id: number) => Promise<{
+          success: boolean
+          percentiles: Record<string, { score: number; percentile: number; peers: number; label: string }>
+          note?: string | null
+          tier?: string | null
+        }>
         reconcileStuck: () => Promise<{ ok: boolean; reconciled: number }>
         submitFeedback: (opts: {
           analysisId: number
@@ -766,6 +781,8 @@ declare global {
           obsVersion: string | null
         }>
         setupScene: () => Promise<{ ok: boolean; sceneCreated: boolean; inputCreated: boolean; error?: string }>
+        installProfile: () => Promise<{ ok: boolean; installed: boolean; error?: string; profilePath?: string; websocketConfigured?: boolean }>
+        installStudio: () => Promise<{ ok: boolean; installed?: boolean; alreadyInstalled?: boolean; error?: string }>
         saveReplayClip: () => Promise<{ path: string | null }>
       }
       trainer: {

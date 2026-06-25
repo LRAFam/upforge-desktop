@@ -28,6 +28,7 @@ const api = {
     getTimeline: (id: number) => ipcRenderer.invoke('analyses:get-timeline', { id }),
     refreshPlayback: (id: number) => ipcRenderer.invoke('analyses:refresh-playback', { id }),
     getDetail: (id: number) => ipcRenderer.invoke('analyses:get-detail', { id }),
+    getPercentiles: (id: number) => ipcRenderer.invoke('analyses:get-percentiles', { id }),
     reconcileStuck: () => ipcRenderer.invoke('analysis:reconcile-stuck') as Promise<{ ok: boolean; reconciled: number }>,
     submitFeedback: (opts: {
       analysisId: number
@@ -186,7 +187,9 @@ const api = {
     disconnect: () => ipcRenderer.invoke('obs:disconnect'),
     getStatus: () => ipcRenderer.invoke('obs:get-status'),
     setupScene: () => ipcRenderer.invoke('obs:setup-scene'),
-    saveReplayClip: () => ipcRenderer.invoke('obs:save-replay-clip'),
+        saveReplayClip: () => ipcRenderer.invoke('obs:save-replay-clip'),
+    installProfile: () => ipcRenderer.invoke('obs:install-profile'),
+    installStudio: () => ipcRenderer.invoke('obs:install-studio'),
   },
   trainer: {
     launch: (config: Record<string, unknown>) => ipcRenderer.invoke('trainer:launch', config),

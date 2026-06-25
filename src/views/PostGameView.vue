@@ -166,6 +166,18 @@
                 <p class="mt-1 text-xs font-semibold text-gray-300 tabular-nums">{{ analysisElapsedDisplay }}</p>
               </div>
             </div>
+            <AnalysisPipelineStages
+              v-if="pendingDuelMoments.length"
+              :progress="analysisProgress"
+              :step="analysisStep"
+              :moment-count="pendingDuelMoments.length"
+            />
+            <p
+              v-if="pendingDuelMoments.length"
+              class="text-[10px] text-left text-gray-500"
+            >
+              {{ pendingDuelMoments.length }} duel windows queued from your deaths — studying peek &amp; crosshair on each clip.
+            </p>
           </div>
         </div>
         <div class="px-3 py-2.5 bg-white/[0.02] border border-white/[0.09] rounded-xl text-left">
@@ -265,6 +277,12 @@
           >{{ result.overall_score * 10 }}</span>
         </div>
 
+        <PostGameFocusHero
+          v-if="focusHero"
+          :focus="focusHero"
+          :match-label="[gameInfo.agent, gameInfo.map].filter(Boolean).join(' · ') || null"
+        />
+
         <!-- Visual-first: Match Intel (map hero) -->
         <PostGameIntelHero
           v-if="spatialSummary?.events?.length"
@@ -297,6 +315,13 @@
           @open-clip="openRecapClip"
         />
 
+        <DuelMomentCards
+          v-if="duelMoments.length"
+          :moments="duelMoments"
+          compact
+          @seek="(ms) => seekRecapMoment(Math.max(0, ms - 3000))"
+        />
+
         <TimingComparisonPanel
           v-if="timingComparisons.length"
           :comparisons="timingComparisons"
@@ -307,6 +332,12 @@
           v-if="result?.skill_profile"
           :profile="result.skill_profile"
           :compact="true"
+        />
+
+        <CategoryPercentilesStrip
+          v-if="Object.keys(categoryPercentiles).length"
+          :percentiles="categoryPercentiles"
+          :tier="percentileTier"
         />
 
         <CoachMemoryCard
@@ -347,13 +378,6 @@
 
         <!-- No spatial data fallback -->
         <div v-else class="space-y-3">
-          <div
-            v-if="primaryInsight"
-            class="rounded-xl border border-red-500/25 bg-gradient-to-r from-red-500/10 to-transparent px-4 py-3"
-          >
-            <p class="text-[10px] font-black uppercase tracking-[0.2em] text-red-400 mb-1">Fix this first</p>
-            <p class="text-sm font-bold text-white leading-snug">{{ primaryInsight }}</p>
-          </div>
           <div v-if="result?.overall_score" class="w-full h-1.5 bg-white/[0.06] rounded-full overflow-hidden">
             <div class="h-full rounded-full" :class="scoreBarClass(result.overall_score)" :style="{ width: `${result.overall_score}%` }" />
           </div>
@@ -969,6 +993,14 @@ import TimingComparisonPanel from '../components/TimingComparisonPanel.vue'
 import type { TimingComparison } from '../components/TimingComparisonPanel.vue'
 import SkillProfileBars from '../components/SkillProfileBars.vue'
 import CoachMemoryCard from '../components/CoachMemoryCard.vue'
+import CategoryPercentilesStrip from '../components/CategoryPercentilesStrip.vue'
+import type { CategoryPercentileEntry } from '../components/CategoryPercentilesStrip.vue'
+import PostGameFocusHero from '../components/PostGameFocusHero.vue'
+import AnalysisPipelineStages from '../components/analysis/AnalysisPipelineStages.vue'
+import DuelMomentCards from '../components/analysis/DuelMomentCards.vue'
+import { type DuelMoment, type DuelMomentManifest } from '../lib/duel-moments'
+import { buildFocusHeroCopy } from '../lib/skill-profile'
+import { pickTrainingScenario, SCENARIO_LABELS } from '../lib/training-drills'
 import type { MatchSpatialSummary } from '../lib/spatial-types'
 import type { SkillProfileSnapshot } from '../lib/skill-profile'
 import type { MatchHighlight } from '../lib/match-highlights'
@@ -1013,8 +1045,26 @@ const result = ref<{
   match_highlights?: MatchHighlight[] | null
   skill_profile?: SkillProfileSnapshot | null
   timing_comparisons?: TimingComparison[]
+  duel_moments?: DuelMoment[] | null
+  pipeline?: string | null
 } | null>(null)
 const sessionClips = ref<ClipRecord[]>([])
+const categoryPercentiles = ref<Record<string, CategoryPercentileEntry>>({})
+const percentileTier = ref<string | null>(null)
+
+async function loadCategoryPercentiles(): Promise<void> {
+  const id = result.value?.analysis_id
+  if (!id) return
+  categoryPercentiles.value = {}
+  percentileTier.value = null
+  try {
+    const resp = await window.api.analyses.getPercentiles(id)
+    if (resp.success && resp.percentiles && Object.keys(resp.percentiles).length > 0) {
+      categoryPercentiles.value = resp.percentiles
+      percentileTier.value = resp.tier ?? null
+    }
+  } catch { /* non-fatal */ }
+}
 
 const timingComparisons = computed((): TimingComparison[] => {
   const raw = result.value?.timing_comparisons
@@ -1227,31 +1277,9 @@ const improvements = computed<string[]>(() => {
 })
 
 // --- Training CTA ---
-const WEAKNESS_TO_SCENARIO: Record<string, string> = {
-  flick: 'flick', 'one tap': 'flick', reflex: 'flick', headshot: 'flick',
-  accuracy: 'flick', 'first shot': 'flick', aim: 'flick', click: 'flick',
-  track: 'tracking', moving: 'tracking', movement: 'tracking', smooth: 'tracking',
-  spray: 'microadjust', recoil: 'microadjust', control: 'microadjust',
-  precision: 'microadjust', micro: 'microadjust', burst: 'microadjust',
-  crosshair: 'switching', placement: 'switching', switching: 'switching',
-  rotate: 'switching', retake: 'switching', multi: 'switching',
-}
-const SCENARIO_LABELS: Record<string, string> = {
-  flick: 'Flick Training',
-  tracking: 'Tracking',
-  microadjust: 'Micro-Adjust',
-  switching: 'Target Switching',
-}
-
-function pickScenario(imps: string[], issue: string | null): string {
-  const text = [...imps, issue ?? ''].join(' ').toLowerCase()
-  for (const [keyword, scenario] of Object.entries(WEAKNESS_TO_SCENARIO)) {
-    if (text.includes(keyword)) return scenario
-  }
-  return 'flick'
-}
-
-const trainScenario = computed(() => pickScenario(improvements.value, topIssue.value))
+const trainScenario = computed(() =>
+  pickTrainingScenario(...improvements.value, topIssue.value),
+)
 const trainerLaunching = ref(false)
 const cardExporting = ref(false)
 const cardExportDone = ref(false)
@@ -1318,19 +1346,28 @@ const mapSplashUrl = computed(() => gameInfo.value.map ? getMapImage(gameInfo.va
 const mapMinimapUrl = computed(() => gameInfo.value.map ? getMapMinimap(gameInfo.value.map) : '')
 
 const localSpatialSummary = ref<MatchSpatialSummary | null>(null)
+const localDuelManifest = ref<DuelMomentManifest[]>([])
 
-async function refreshLocalSpatialSummary() {
+async function refreshLocalTimelineMeta() {
   const id = vodRecordingId.value
   if (!id) {
     localSpatialSummary.value = null
+    localDuelManifest.value = []
     return
   }
   try {
     const tl = await window.api.recordings.getTimeline(id)
     localSpatialSummary.value = tl?.spatialSummary ?? null
+    localDuelManifest.value = (tl as { duelMoments?: DuelMomentManifest[] } | null)?.duelMoments ?? []
   } catch {
     localSpatialSummary.value = null
+    localDuelManifest.value = []
   }
+}
+
+/** @deprecated use refreshLocalTimelineMeta */
+async function refreshLocalSpatialSummary() {
+  await refreshLocalTimelineMeta()
 }
 
 const spatialSummary = computed((): MatchSpatialSummary | null => {
@@ -1338,6 +1375,14 @@ const spatialSummary = computed((): MatchSpatialSummary | null => {
   if (api?.events?.length) return api
   if (localSpatialSummary.value?.events?.length) return localSpatialSummary.value
   return api ?? localSpatialSummary.value
+})
+
+const pendingDuelMoments = computed(() => localDuelManifest.value)
+
+const duelMoments = computed((): DuelMoment[] => {
+  const fromApi = result.value?.duel_moments
+  if (fromApi?.length) return fromApi
+  return localDuelManifest.value
 })
 
 const coachSuggestedRounds = computed(() => {
@@ -1399,20 +1444,17 @@ const categoryScores = computed((): CategoryScoreItem[] => {
 })
 
 /** One glanceable line — never a paragraph above the fold. */
-const primaryInsight = computed((): string | null => {
-  const heat = spatialSummary.value?.heatmapInsight
-  if (heat) return heat
-  const pattern = spatialSummary.value?.patterns?.[0]
-  if (pattern) return pattern
-  const issue = topIssue.value
-  if (issue) {
-    const first = issue.split(/[.!?]/)[0]?.trim()
-    return first && first.length < 140 ? first : issue.slice(0, 120) + (issue.length > 120 ? '…' : '')
-  }
-  const imp = improvements.value[0]
-  if (imp) return imp.split(/[.!?]/)[0]?.trim() || imp.slice(0, 120)
-  return result.value?.verdict?.slice(0, 120) ?? null
-})
+const focusHero = computed(() =>
+  buildFocusHeroCopy({
+    topIssue: topIssue.value,
+    priorityImprovements: improvements.value,
+    verdict: result.value?.verdict ?? null,
+    heatmapInsight: spatialSummary.value?.heatmapInsight ?? spatialSummary.value?.patterns?.[0] ?? null,
+    profile: result.value?.skill_profile ?? null,
+  }),
+)
+
+const primaryInsight = computed((): string | null => focusHero.value?.headline ?? null)
 
 const hasDeepDiveContent = computed(() =>
   Boolean(
@@ -1518,6 +1560,7 @@ onMounted(() => {
       return
     }
     state.value = 'analysing'
+    void refreshLocalTimelineMeta()
     startStuckTimer()
   }))
   ipcCleanup.push(window.api.on('post-game:analysis-progress', (...args: unknown[]) => {
@@ -1556,6 +1599,7 @@ onMounted(() => {
     loadSessionClips()
     void refreshLocalSpatialSummary()
     void loadMyCoaches()
+    void loadCategoryPercentiles()
 
     // Browser launch is handled by the main process (index.ts) so it fires
     // even if this window was closed before analysis completed.
@@ -2027,6 +2071,43 @@ async function exportAnalysis() {
     roundRectPath(ctx, 60, 345, Math.round(400 * score / 100), 8, 4)
     ctx.fill()
 
+    const percentileEntries = Object.entries(categoryPercentiles.value)
+      .map(([key, entry]) => ({ key, ...entry }))
+      .sort((a, b) => a.percentile - b.percentile)
+      .slice(0, 3)
+
+    let kdaY = 375
+    if (percentileEntries.length) {
+      ctx.fillStyle = '#374151'
+      ctx.font = 'bold 10px system-ui, sans-serif'
+      ctx.fillText(`VS ${(percentileTier.value || 'YOUR RANK').toUpperCase()}`, 60, 368)
+      let py = 388
+      for (const item of percentileEntries) {
+        const label = (item.label || item.key).replace(/_/g, ' ')
+        const pctColor =
+          item.percentile >= 75 ? '#4ade80'
+            : item.percentile >= 50 ? '#60a5fa'
+              : item.percentile >= 25 ? '#fbbf24'
+                : '#f87171'
+        ctx.fillStyle = '#9ca3af'
+        ctx.font = '12px system-ui, sans-serif'
+        const labelText = label.length > 22 ? `${label.slice(0, 21)}…` : label
+        ctx.fillText(labelText, 60, py)
+        ctx.fillStyle = pctColor
+        ctx.font = 'bold 12px system-ui, sans-serif'
+        ctx.fillText(`${item.percentile}th`, 420, py)
+        py += 6
+        ctx.fillStyle = 'rgba(255,255,255,0.08)'
+        roundRectPath(ctx, 60, py, 360, 5, 2)
+        ctx.fill()
+        ctx.fillStyle = pctColor
+        roundRectPath(ctx, 60, py, Math.max(8, Math.round(360 * item.percentile / 100)), 5, 2)
+        ctx.fill()
+        py += 20
+      }
+      kdaY = py + 4
+    }
+
     // K/D/A row
     const kills = result.value.kills
     const deaths = result.value.deaths
@@ -2035,7 +2116,7 @@ async function exportAnalysis() {
       ctx.fillStyle = '#6b7280'
       ctx.font = '15px system-ui, -apple-system, sans-serif'
       const kdaStr = `${kills} / ${deaths ?? '?'} / ${assists ?? '?'}  K/D/A`
-      ctx.fillText(kdaStr, 60, 375)
+      ctx.fillText(kdaStr, 60, kdaY)
     }
 
     // Match result badge
@@ -2050,31 +2131,38 @@ async function exportAnalysis() {
       const bw = ctx.measureText(badgeText).width + 16
       const bx = kills != null ? 60 + ctx.measureText(`${kills} / ${deaths ?? '?'} / ${assists ?? '?'}  K/D/A`).width + 12 : 60
       ctx.fillStyle = badgeBg
-      roundRectPath(ctx, bx, 363, bw, 18, 4)
+      roundRectPath(ctx, bx, kdaY - 12, bw, 18, 4)
       ctx.fill()
       ctx.strokeStyle = badgeStroke
       ctx.lineWidth = 1
-      roundRectPath(ctx, bx, 363, bw, 18, 4)
+      roundRectPath(ctx, bx, kdaY - 12, bw, 18, 4)
       ctx.stroke()
       ctx.fillStyle = badgeTextColor
-      ctx.fillText(badgeText, bx + 8, 375)
+      ctx.fillText(badgeText, bx + 8, kdaY)
     }
 
     // --- Right panel ---
-    // "AI COACHING FOCUS" header
+    const hero = focusHero.value
     ctx.fillStyle = '#374151'
     ctx.font = 'bold 11px system-ui, -apple-system, sans-serif'
     ctx.fillText('AI COACHING FOCUS', 560, 80)
 
-    // Coaching points
-    const coachingPoints: string[] = []
-    if (topIssue.value) coachingPoints.push(topIssue.value)
-    for (const imp of improvements.value) {
-      if (coachingPoints.length >= 3) break
-      coachingPoints.push(imp)
+    if (hero?.recurrence) {
+      ctx.fillStyle = '#fbbf24'
+      ctx.font = '10px system-ui, -apple-system, sans-serif'
+      ctx.fillText(hero.recurrence, 560, 98)
     }
 
-    let pointY = 115
+    const coachingPoints: string[] = []
+    if (hero?.headline) coachingPoints.push(hero.headline)
+    if (hero?.subline) coachingPoints.push(hero.subline)
+    for (const imp of improvements.value) {
+      if (coachingPoints.length >= 3) break
+      if (!coachingPoints.some((p) => p.includes(imp.slice(0, 24)))) coachingPoints.push(imp)
+    }
+    if (!coachingPoints.length && topIssue.value) coachingPoints.push(topIssue.value)
+
+    let pointY = hero?.recurrence ? 125 : 115
     coachingPoints.forEach((point, idx) => {
       // Red bullet
       ctx.fillStyle = '#ff4655'

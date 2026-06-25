@@ -9,6 +9,7 @@ import { riotStatsToAcs } from './combat-score'
 import { logPlantCoordStats } from './match-plant-telemetry'
 import { resolvePlantLocationFromRound } from './plant-location'
 import { buildCoachingFacts, type CoachingFacts } from './coaching-facts'
+import { duelMomentsForUpload, type DuelMomentManifest } from './moment-picker'
 import {
   buildTeamComp,
   type CoachingSubmissionExtras,
@@ -250,6 +251,7 @@ export function submissionContextFromTimeline(
   agent?: string
   game_mode?: string
   match_data?: UploadMatchData
+  duel_moments?: DuelMomentManifest[]
   ally_agents?: string[]
   enemy_agents?: string[]
   skill_profile?: SkillProfileSnapshot | null
@@ -259,11 +261,13 @@ export function submissionContextFromTimeline(
   const match_data = prepareMatchDataForUpload(timeline, extras)
   const { allyAgents, enemyAgents } = buildTeamComp(timeline)
   const game_mode = gameModeForApi(timeline.gameMode ?? undefined)
+  const duel_moments = duelMomentsForUpload(timeline)
   return {
     map: timeline.map ?? undefined,
     agent: timeline.agent ?? undefined,
     game_mode: game_mode ?? undefined,
     match_data,
+    duel_moments: duel_moments.length ? duel_moments : undefined,
     ally_agents: allyAgents.length ? allyAgents : undefined,
     enemy_agents: enemyAgents.length ? enemyAgents : undefined,
     skill_profile: extras?.skillProfile ?? undefined,

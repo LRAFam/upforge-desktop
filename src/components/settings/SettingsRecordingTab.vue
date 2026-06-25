@@ -20,6 +20,7 @@ const {
   obsLaunchAndConnect,
   obsSetupRunning,
   obsSetupScene,
+  installObsProfile,
   obsStatus,
   openCs2Analyze,
   openRecordingsFolder,
@@ -214,16 +215,16 @@ const {
               </div>
               <ol class="list-decimal list-inside space-y-1 text-xs text-gray-400">
                 <li>Install <a href="https://obsproject.com/" target="_blank" class="text-red-300 underline hover:text-red-200">OBS Studio 28+</a></li>
-                <li>Tools → WebSocket Server Settings → enable server (port {{ settings.obsPort }})</li>
-                <li>Click <strong class="text-gray-300">Show Connect Info</strong> in OBS and paste the password below (required on OBS 28+)</li>
-                <li>Host should be <strong class="text-gray-300">127.0.0.1</strong> if OBS is on this PC — click Connect</li>
-                <li>In OBS: Settings → Output → set <strong class="text-gray-300">Output Mode</strong> to <strong class="text-gray-300">Simple</strong> (not Advanced), then restart OBS once</li>
-                <li>Capture is <strong class="text-gray-300">game window only</strong> (not your desktop) — alt-tab won&apos;t record other apps</li>
-                <li>Recording starts/stops automatically when you enter a match</li>
+                <li>Click <strong class="text-gray-300">Launch OBS + Connect</strong> — we install the UpForge profile and WebSocket defaults</li>
+                <li>Default password is <strong class="text-gray-300">upforge</strong> unless you changed it in OBS</li>
+                <li>Capture is <strong class="text-gray-300">game window only</strong> — alt-tab won&apos;t record other apps</li>
               </ol>
               <div class="flex flex-wrap items-center gap-2">
-                <button v-if="!obsStatus?.connected" :disabled="obsConnecting" class="rounded-xl border border-amber-500/20 bg-amber-500/10 px-3 py-2 text-xs font-medium text-amber-200 transition-colors hover:border-amber-500/30 hover:bg-amber-500/15 disabled:opacity-50" @click="obsLaunchAndConnect">{{ obsConnecting ? 'Starting…' : 'Launch OBS + Connect' }}</button>
-                <button v-if="!obsStatus?.connected" :disabled="obsConnecting" class="rounded-xl border border-red-500/20 bg-red-500/10 px-3 py-2 text-xs font-medium text-red-300 transition-colors hover:border-red-500/35 hover:bg-red-500/15 disabled:opacity-50" @click="obsConnect">{{ obsConnecting ? 'Connecting…' : 'Connect' }}</button>
+                <template v-if="!obsStatus?.connected">
+                  <button :disabled="obsConnecting" class="rounded-xl border border-amber-500/20 bg-amber-500/10 px-3 py-2 text-xs font-medium text-amber-200 transition-colors hover:border-amber-500/30 hover:bg-amber-500/15 disabled:opacity-50" @click="obsLaunchAndConnect">{{ obsConnecting ? 'Starting…' : 'Launch OBS + Connect' }}</button>
+                  <button :disabled="obsConnecting" class="rounded-xl border border-red-500/20 bg-red-500/10 px-3 py-2 text-xs font-medium text-red-300 transition-colors hover:border-red-500/35 hover:bg-red-500/15 disabled:opacity-50" @click="obsConnect">{{ obsConnecting ? 'Connecting…' : 'Connect' }}</button>
+                  <button class="rounded-xl border border-white/[0.08] bg-white/[0.04] px-3 py-2 text-xs font-medium text-gray-400 transition-colors hover:border-white/[0.14] hover:text-white" @click="installObsProfile">Install OBS profile</button>
+                </template>
                 <template v-else>
                   <button class="rounded-xl border border-white/[0.08] bg-white/[0.04] px-3 py-2 text-xs font-medium text-gray-300 transition-colors hover:border-white/[0.14] hover:text-white" @click="obsDisconnect">Disconnect</button>
                   <button :disabled="obsSetupRunning" class="rounded-xl border border-white/[0.08] bg-white/[0.04] px-3 py-2 text-xs font-medium text-gray-300 transition-colors hover:border-white/[0.14] hover:text-white disabled:opacity-50" @click="obsSetupScene">{{ obsSetupRunning ? 'Setting up…' : 'Recreate UpForge scene' }}</button>
@@ -241,7 +242,8 @@ const {
               </div>
               <div>
                 <label class="mb-1 block text-xs text-gray-400">WebSocket password</label>
-                <input v-model="settings.obsPassword" type="password" class="w-full rounded-xl border border-white/[0.08] bg-white/[0.04] px-3 py-2 text-xs text-white placeholder-gray-600 focus:border-red-500/40 focus:outline-none" placeholder="From OBS Show Connect Info" @change="debouncedSave()" />
+                <input v-model="settings.obsPassword" type="password" class="w-full rounded-xl border border-white/[0.08] bg-white/[0.04] px-3 py-2 text-xs text-white placeholder-gray-600 focus:border-red-500/40 focus:outline-none" placeholder="Default: upforge" @change="debouncedSave()" />
+                <p class="mt-1 text-[10px] text-gray-600">Leave blank to use UpForge default after profile install.</p>
               </div>
               <div>
                 <div class="mb-1 flex items-center justify-between">

@@ -7,6 +7,8 @@ import { hasAnalysisQuotaRemaining, hasArchiveQuotaRemaining, isPlatformAdmin } 
 import { useAchievements } from './useAchievements'
 import type { CarouselPanel } from '../components/PanelCarousel.vue'
 import type { SkillProfileSnapshot } from '../lib/skill-profile'
+import { buildSessionReview } from '../lib/session-review'
+import { buildWeeklyFocusPlan } from '../lib/weekly-focus'
 import { isPaymentPastDue, openBillingPortal as requestBillingPortal } from '../lib/billing'
 import { usePrimaryGame } from './usePrimaryGame'
 import { gameTheme, type GameTheme } from '../lib/game-themes'
@@ -228,6 +230,22 @@ function createDashboard() {
       avgScore: scoreItems.length ? Math.round(scoreItems.reduce((s, a) => s + (a.overall_score ?? 0), 0) / scoreItems.length) : null,
       avgHs: hsItems.length ? Math.round(hsItems.reduce((s, a) => s + (a.hs_pct ?? 0), 0) / hsItems.length) : null,
     }
+  })
+
+  const sessionReview = computed(() => {
+    if (!isValorant.value) return null
+    return buildSessionReview(analyses.value, skillProfile.value, 8)
+  })
+
+  const weeklyFocus = computed(() => {
+    if (!isValorant.value) return null
+    return buildWeeklyFocusPlan({
+      skillProfile: skillProfile.value,
+      playstyleFocus: playstyleProfile.value?.focus_areas ?? null,
+      rankName: playerRankName.value,
+      sessionFix: sessionReview.value?.fixThisWeek ?? null,
+      avgSessionScore: sessionReview.value?.avgScore ?? null,
+    })
   })
 
   const topAgents = computed(() => {
@@ -1118,6 +1136,8 @@ function createDashboard() {
     leftInsightPanels,
     rightInsightPanels,
     lastFivePerf,
+    sessionReview,
+    weeklyFocus,
     topAgents,
     dashboardAnalyses,
     bulkUploadablePending,

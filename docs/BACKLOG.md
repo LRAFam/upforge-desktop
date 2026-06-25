@@ -7,6 +7,22 @@
 
 Near-term desktop/API work should grow revenue **and** consented structured gameplay data (archive-only upload, retention tiers, training opt-in, analysis feedback). Cursor agents load `.cursor/rules/ai-model-strategy.mdc` automatically.
 
+**Public roadmap:** [upforge.gg/roadmap](https://upforge.gg/roadmap) — synced with sections below.
+
+---
+
+## Operating model (Q2 2026)
+
+Three lanes — not “Valorant only,” but **tiered investment**:
+
+| Lane | Focus | Rule |
+|------|--------|------|
+| **A — Core loop** | Valorant coaching quality, habit UI, OBS first-run | Most engineering until post-game feels undeniable |
+| **B — Growth** | Deadlock community beta, SEO, acquisition | Light eng; land-grab while beta window is open |
+| **C — Marketplace** | Coach Hub, bookings, referrals | Maintain & convert traffic — no new marketplace pillars |
+
+**Positioning:** Progress platform (rank improvement + habit). AI is infrastructure, not the product headline.
+
 ---
 
 ## Upload vs analysis — decouple quotas
@@ -106,11 +122,15 @@ Users choose **cloud only**, **analyse only**, or **both** — separate storage 
 
 ### Next — high leverage
 
+- [x] **Coaching quality sprint (v1)** — round-linked `top_issue`, `verdict`, `coaching_tags`; rank-grounded copy; API safety net (`CoachingQualityService` + `coaching_postprocess.py`)
+- [x] **Coaching quality sprint (v2)** — per-rank prompt tone (`rank_tone.py`), thumbs-down feedback loop (`CoachingFeedbackContextService`), eval harness (`coaching_eval.py`)
 - [x] **Backend `match_highlights`** — `MatchHighlightsService` in poll result + `GET /api/analysis/{id}`
 - [x] **Stitched recap export** — `recap:export-stitched` IPC, ffmpeg concat top 5 moments
-- [ ] **Weekly improvement plan** — one goal, one drill, one metric; derived from skill profile + playstyle API
-- [ ] **Session reviews** — aggregate last 5–10 games (grade, trends, “fix this week”) — web dashboard first
-- [ ] **Percentiles in product UI** — `GET /api/analysis/{id}/percentiles` already exists; surface on results + post-game card export
+- [x] **Weekly improvement plan** — one goal, one drill, one metric; `DashboardWeeklyFocus` + `buildWeeklyFocusPlan()` (desktop)
+- [x] **Session reviews** — aggregate last 5–10 games (grade, trends, “fix this week”) — web dashboard + desktop
+- [x] **Session review card (desktop)** — last 8 games grade, W/L strip, fix-this-week from skill profile
+- [x] **Percentiles in desktop post-game** — `GET /api/analysis/{id}/percentiles` via `CategoryPercentilesStrip` (web results already had this)
+- [x] **Percentiles on post-game share card export** — focus hero + cohort percentiles on PNG export
 - [x] **Population benchmarks / timing comparison** — `TimingComparisonService` + `TimingComparisonPanel` (plant pace vs rank avg)
 
 ### Later
@@ -159,6 +179,16 @@ Coaching creators connect with students via structured match review — not a Di
 - [x] **Coach annotations in VOD Review** — read markers on timeline when review exists
 - [x] **Notification** — OS toast when coach completes review (or new review request for coaches); opens VOD Review or web dashboard
 - [x] **Local API URL** — `VITE_API_URL` respected in auth-manager + CSP allows localhost
+- [x] **OBS onboarding** — Launch OBS & Connect primary CTA in onboarding wizard
+- [x] **OBS pre-queue warning** — notify when game detected but OBS not connected
+
+### OBS first-run (Q2)
+
+- [x] Onboarding: `launchAndConnect` as primary button
+- [x] Pre-queue tray notification when game opens without OBS
+- [x] Bundled OBS profile + WebSocket config (`resources/obs`, default password `upforge`)
+- [x] Launch OBS with `--websocket_password` / `--websocket_port` CLI overrides
+- [x] Optional silent OBS install via winget in installer
 
 ### Coach Review Feed (web v1)
 
@@ -235,7 +265,7 @@ Only after Phase 1–2 pages rank and convert. Expand to long-tail: “Jett Asce
 - [x] `GET /api/public/valorant/rank-benchmarks` — tier/rank breakdowns, sample size, updated_at (no auth)
 - [x] Nuxt dynamic route + `useSeoMeta` + JSON-LD FAQ + breadcrumbs
 - [x] Add URLs to `server/routes/sitemap.xml.ts` (and `sitemap-es.xml` when ES ships)
-- [ ] “Compare yours” widget — logged-in users see their stat vs page benchmark (bridges SEO → product)
+- [x] “Compare yours” widget — logged-in users see their stat vs page benchmark (bridges SEO → product)
 
 ### Success metrics (90-day)
 

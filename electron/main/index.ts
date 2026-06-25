@@ -37,7 +37,12 @@ import {
   listUnregisteredRecordingFiles,
 } from './recording-path-resolver'
 import { broadcastObsConnection, probeObsConnection, startObsHealthMonitor } from './obs-health'
-import { launchObsStudio, obsLaunchDelayMs } from './obs-launcher'
+import { launchObsStudio, obsLaunchDelayMs, type LaunchObsOptions } from './obs-launcher'
+import {
+  ensureObsProfileInstalled,
+  resolveObsWebSocketPassword,
+  UPFORGE_OBS_DEFAULT_PASSWORD,
+} from './obs-profile-installer'
 import {
   RiotLocalApi,
   recomputeTimelineVideoOffsets,
@@ -116,6 +121,7 @@ import {
   whenWebContentsReady,
 } from './window-manager'
 import { ClipPipeline } from './clip-pipeline'
+import { duelMomentsForUpload } from './moment-picker'
 import { buildAndUploadScoutMoments } from './scout-moments'
 import { requestPregameBrief as _requestPregameBrief, requestPostGameDebrief as _requestPostGameDebrief } from './post-game-api'
 import { enrichTimelineForCoaching } from './match-coaching-enrich'
@@ -209,7 +215,28 @@ const obsRecorder = new OBSRecorder(
 let stopObsHealthMonitor: (() => void) | null = null
 let obsWasConnected = false
 let lastObsDisconnectNotifyAt = 0
+let lastObsPreQueueNotifyAt = 0
 const OBS_DISCONNECT_NOTIFY_COOLDOWN_MS = 10 * 60 * 1000
+const OBS_PREQUEUE_NOTIFY_COOLDOWN_MS = 20 * 60 * 1000
+
+function maybeNotifyObsNotReadyBeforeQueue(): void {
+  if (obsRecorder.isConnected()) return
+  const now = Date.now()
+  if (now - lastObsPreQueueNotifyAt < OBS_PREQUEUE_NOTIFY_COOLDOWN_MS) return
+  lastObsPreQueueNotifyAt = now
+  const body = 'OBS is not connected — matches will not record. Use Launch OBS in the dashboard or Settings → Recording before you queue.'
+  logActivity('OBS not connected — connect before your next match')
+  showAppNotification({
+    title: 'UpForge — OBS not ready',
+    body,
+    silent: notifySilent(),
+  })
+  mainWindow?.webContents.send('app:warning', {
+    message: body,
+    actionLabel: 'Connect OBS',
+    actionRoute: '/settings?tab=recording',
+  })
+}
 
 function maybeNotifyObsDisconnect(error: string | null | undefined): void {
   if (!error) return
@@ -260,10 +287,22 @@ const OBS_SETUP_HINT =
 async function ensureObsReady(): Promise<void> {
   if (obsRecorder.isConnected()) return
 
+  const settings = settingsManager?.get()
+  const port = settings?.obsPort ?? 4455
+  let password = resolveObsWebSocketPassword(settings?.obsPassword)
+  if (!settings?.obsPassword?.trim()) {
+    ensureObsProfileInstalled(password, port)
+    settingsManager?.save({ obsPassword: UPFORGE_OBS_DEFAULT_PASSWORD })
+    password = UPFORGE_OBS_DEFAULT_PASSWORD
+  } else {
+    ensureObsProfileInstalled(password, port)
+  }
+
   let result = await obsRecorder.connect()
   if (result.ok) return
 
-  const launched = await launchObsStudio()
+  const launchOpts: LaunchObsOptions = { password, port }
+  const launched = await launchObsStudio(launchOpts)
   if (launched.ok) {
     await new Promise((r) => setTimeout(r, obsLaunchDelayMs()))
     result = await obsRecorder.connect()
@@ -487,6 +526,8 @@ function userSessionDeps() {
 function enrichTimelineSpatial(timeline: MatchData): void {
   if (timeline.game === 'valorant') {
     applySpatialEnrichment(timeline)
+    const moments = duelMomentsForUpload(timeline)
+    if (moments.length) timeline.duelMoments = moments
     schedulePopulationRefresh(timeline)
   } else if (timeline.game === 'cs2' || timeline.game === 'deadlock') {
     applyDemoSpatialEnrichment(timeline)
@@ -772,6 +813,8 @@ function dispatchReconciledAnalysisReady(ctx: ReconciledAnalysisContext): void {
     match_highlights: result?.match_highlights ?? [],
     skill_profile: null,
     timing_comparisons: Array.isArray(rawTiming) ? rawTiming : [],
+    duel_moments: result?.duel_moments ?? timeline?.duelMoments ?? null,
+    pipeline: result?.pipeline ?? result?.pipeline_type ?? null,
   }
 
   if (postGameWindow && !postGameWindow.isDestroyed()) {
@@ -1794,6 +1837,9 @@ function setupGameDetection(): void {
     const savePath = recordingSavePath()
     if (!obsRecorder.isConnected()) {
       await probeObsConnection(obsRecorder, mainWindow, { notify: false, logActivity })
+    }
+    if (!obsRecorder.isConnected()) {
+      maybeNotifyObsNotReadyBeforeQueue()
     }
     void ensureObsCaptureForGame(game)
     if (recorderConfig) {
@@ -2873,6 +2919,12 @@ async function doUploadAndAnalyse(
           match_highlights: matchHighlights,
           skill_profile: nextSkillProfile,
           timing_comparisons: Array.isArray(rawTiming) ? rawTiming : [],
+          duel_moments: (status.result as Record<string, unknown>).duel_moments
+            ?? timeline?.duelMoments
+            ?? null,
+          pipeline: (status.result as Record<string, unknown>).pipeline
+            ?? (status.result as Record<string, unknown>).pipeline_type
+            ?? null,
         })
         mainWindow?.webContents.send('dashboard:refresh')
         tray?.setToolTip(idleTooltip(game))
@@ -3707,6 +3759,7 @@ async function startApp(): Promise<void> {
       spikeDetonations: tl?.spikeDetonations ?? [],
       firstBloods: tl?.firstBloods ?? [],
       spatialSummary: tl?.spatialSummary ?? null,
+      duelMoments: tl?.duelMoments ?? [],
       videoSyncOffsetMs: tl ? effectiveVideoSyncOffsetMs(tl) : 0,
     }
   })

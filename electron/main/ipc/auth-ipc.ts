@@ -129,6 +129,23 @@ export function setupAuthHandlers(
     })
   })
 
+  ipcMain.handle('analyses:get-percentiles', async (_e, { id }: { id: number }) => {
+    if (!auth.getToken()) {
+      return { success: false, percentiles: {}, note: 'Not logged in' }
+    }
+    try {
+      const res = await auth.getApi().get(`/api/analysis/${id}/percentiles`)
+      return {
+        success: res.data?.success ?? true,
+        percentiles: res.data?.percentiles ?? {},
+        note: res.data?.note ?? null,
+        tier: res.data?.tier ?? null,
+      }
+    } catch {
+      return { success: false, percentiles: {}, note: null, tier: null }
+    }
+  })
+
   ipcMain.handle('analyses:get-detail', async (_e, { id }: { id: number }) => {
     try {
       const res = await auth.getApi().get(`/api/analysis/${id}`)
@@ -142,6 +159,7 @@ export function setupAuthHandlers(
         coaching_tags: a.coaching_tags ?? [],
         ally_score: md.finalScore?.allyScore ?? a.ally_score ?? null,
         enemy_score: md.finalScore?.enemyScore ?? a.enemy_score ?? null,
+        duel_moments: Array.isArray(a.duel_moments) ? a.duel_moments : null,
       }
     } catch {
       return null
@@ -229,6 +247,9 @@ export function setupAuthHandlers(
         spikeDefuses: timelineForSync.spikeDefuses ?? [],
         spikeDetonations: timelineForSync.spikeDetonations ?? [],
         firstBloods: timelineForSync.firstBloods ?? [],
+        duelMoments: Array.isArray(analysis.duel_moments) && analysis.duel_moments.length
+          ? analysis.duel_moments
+          : (Array.isArray(md.duelMoments) ? md.duelMoments : []),
         videoSyncOffsetMs: effectiveVideoSyncOffsetMs(timelineForSync),
       }
     } catch {

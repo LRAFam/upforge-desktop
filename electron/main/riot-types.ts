@@ -301,6 +301,9 @@ export interface MatchData {
   /** Minimap events + death patterns for AI and post-game UI. */
   spatialSummary?: import('./spatial/types').MatchSpatialSummary
 
+  /** Timestamp manifest for moment-pipeline vision coaching (desktop). */
+  duelMoments?: import('./moment-picker').DuelMomentManifest[]
+
   startTime: number
   endTime: number | null
 }

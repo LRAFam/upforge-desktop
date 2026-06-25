@@ -5,6 +5,7 @@ import { pendingTimeline } from '../stores/pendingTimeline'
 import { buildTacticalIntelBrief } from '../lib/coaching-brief'
 import type { CoachingEvidence } from '../lib/coaching-brief'
 import type { MatchSpatialSummary, SpatialTimelineEvent } from '../lib/spatial-types'
+import type { DuelMoment, DuelMomentManifest } from '../lib/duel-moments'
 import {
   buildReplaySpatialSummary,
   findSpatialEventAtPlayback,
@@ -106,6 +107,7 @@ interface RecordingTimeline {
   spikeDetonations?: Array<{ videoOffsetMs?: number; round?: number }>
   firstBloods?: Array<{ killerName: string; victimName: string; killerPuuid?: string; victimPuuid?: string; round?: number }>
   spatialSummary?: MatchSpatialSummary | null
+  duelMoments?: DuelMomentManifest[]
   videoSyncOffsetMs?: number
 }
 
@@ -116,6 +118,7 @@ interface AnalysisDetail {
   coaching_tags: string[]
   ally_score: number | null
   enemy_score: number | null
+  duel_moments?: DuelMoment[] | null
 }
 
 interface ProgressMarker {
@@ -302,6 +305,7 @@ function createVodReview() {
   const selectedRound = ref<RoundGroup | null>(null)
   const roundDetailExpanded = ref(false)
   const coachingDetail = ref<AnalysisDetail | null>(null)
+  const activeDuelMomentId = ref<string | null>(null)
   const coachReview = ref<{
     id: number
     status: string
@@ -847,6 +851,25 @@ function createVodReview() {
   })
   
   const spatialSummary = computed(() => timeline.value?.spatialSummary ?? null)
+
+  const duelMoments = computed((): DuelMoment[] => {
+    const fromDetail = coachingDetail.value?.duel_moments
+    if (fromDetail?.length) return fromDetail
+    const manifest = timeline.value?.duelMoments ?? []
+    return manifest
+  })
+
+  const hasDuelMoments = computed(() => duelMoments.value.length > 0)
+
+  function seekDuelMoment(offsetMs: number, momentId?: string) {
+    if (momentId) activeDuelMomentId.value = momentId
+    seekToTime(Math.max(0, offsetMs / 1000 - 3))
+  }
+
+  function onDuelMomentBandSelect(moment: DuelMomentManifest) {
+    activeDuelMomentId.value = moment.moment_id
+    seekDuelMoment(moment.window_start_ms, moment.moment_id)
+  }
   const tacticalIntelBrief = computed(() => {
     const d = coachingDetail.value
     const coachingRaw = d?.top_issue ?? d?.verdict ?? null
@@ -1868,6 +1891,11 @@ function createVodReview() {
     displayDeathCount,
     displayGameMode,
     displaySpatialSummary,
+    duelMoments,
+    hasDuelMoments,
+    activeDuelMomentId,
+    seekDuelMoment,
+    onDuelMomentBandSelect,
     dockChipsEl,
     duration,
     effectiveSyncMs,

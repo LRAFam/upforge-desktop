@@ -2,6 +2,8 @@
 import { useVodReview } from '../../composables/useVodReview'
 import MatchSpatialMinimap from '../MatchSpatialMinimap.vue'
 import TacticalIntelBrief from '../TacticalIntelBrief.vue'
+import DuelMomentScrubberBands from '../analysis/DuelMomentScrubberBands.vue'
+import DuelMomentCards from '../analysis/DuelMomentCards.vue'
 import { getAgentImage, getAbilityIcon } from '../../lib/valorant'
 import iconDiffuseWin from '../../assets/round-icons/diffusewin1.png'
 import iconExplosionWin from '../../assets/round-icons/explosionwin1.png'
@@ -28,6 +30,11 @@ const {
   displaySpatialSummary,
   dockChipsEl,
   duration,
+  duelMoments,
+  activeDuelMomentId,
+  seekDuelMoment,
+  onDuelMomentBandSelect,
+  hasDuelMoments,
   expandedRoundNumber,
   formatMs,
   formatPlayerLabel,
@@ -720,6 +727,13 @@ const {
                   class="h-full rounded-full bg-gradient-to-r from-red-500 via-red-400 to-orange-400 pointer-events-none shadow-[0_0_18px_rgba(239,68,68,0.35)]"
                   :style="{ width: progressPercent + '%' }"
                 />
+                <DuelMomentScrubberBands
+                  v-if="hasDuelMoments && duration > 0"
+                  :moments="duelMoments"
+                  :duration-sec="duration"
+                  :active-moment-id="activeDuelMomentId"
+                  @select="onDuelMomentBandSelect"
+                />
                 <div
                   v-for="sep in roundSeparators"
                   :key="sep.percent"
@@ -1164,6 +1178,14 @@ const {
               @seek-evidence="seekCoachingEvidence"
             />
           </div>
+
+          <DuelMomentCards
+            v-if="hasDuelMoments"
+            :moments="duelMoments"
+            :active-moment-id="activeDuelMomentId"
+            compact
+            @seek="seekDuelMoment"
+          />
 
           <div class="mx-auto w-fit" @mousedown.stop @click.stop>
             <MatchSpatialMinimap

@@ -246,3 +246,54 @@ export function buildCoachMemoryLine(
     focusNext,
   }
 }
+
+export interface FocusHeroCopy {
+  headline: string
+  subline?: string
+  recurrence?: string
+}
+
+/** Post-game hero: one headline + optional recurrence from skill profile. */
+export function buildFocusHeroCopy(opts: {
+  topIssue?: string | null
+  priorityImprovements?: string[]
+  verdict?: string | null
+  heatmapInsight?: string | null
+  profile?: SkillProfileSnapshot | null
+}): FocusHeroCopy | null {
+  let headline: string | null = null
+
+  if (opts.topIssue) {
+    const first = opts.topIssue.split(/[.!?]/)[0]?.trim()
+    headline = first && first.length < 140 ? first : opts.topIssue.slice(0, 120) + (opts.topIssue.length > 120 ? '…' : '')
+  } else if (opts.priorityImprovements?.[0]) {
+    const imp = opts.priorityImprovements[0]
+    headline = imp.split(/[.!?]/)[0]?.trim() || imp.slice(0, 120)
+  } else if (opts.heatmapInsight) {
+    headline = opts.heatmapInsight
+  } else if (opts.verdict) {
+    headline = opts.verdict.slice(0, 120) + (opts.verdict.length > 120 ? '…' : '')
+  }
+
+  if (!headline) return null
+
+  const profile = opts.profile
+  let recurrence: string | undefined
+  let subline: string | undefined
+
+  if (profile && profile.gamesAnalysed >= 2) {
+    const [topTag, count] = Object.entries(profile.issueCounts).sort((a, b) => b[1] - a[1])[0] ?? []
+    if (topTag && count >= 2) {
+      const label = topTag.replace(/_/g, ' ')
+      recurrence = `${count}× in last ${profile.gamesAnalysed} games`
+      subline = `Recurring pattern: ${label} — make this your focus before the next queue.`
+    }
+  }
+
+  const memory = buildCoachMemoryLine(profile)
+  if (memory?.focusNext && !subline) {
+    subline = memory.focusNext
+  }
+
+  return { headline, subline, recurrence }
+}

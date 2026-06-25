@@ -9,6 +9,8 @@ import path from 'path'
 import log from 'electron-log'
 import { broadcastObsConnection, probeObsConnection } from '../obs-health'
 import { launchObsStudio, obsLaunchDelayMs } from '../obs-launcher'
+import { installObsViaWinget, isObsInstalled } from '../obs-installer'
+import { ensureObsProfileInstalled, resolveObsWebSocketPassword } from '../obs-profile-installer'
 import type { MatchRecorder } from '../match-recorder'
 import { OBSRecorder } from '../obs-recorder'
 import { SettingsManager } from '../settings-manager'
@@ -146,7 +148,15 @@ export function setupMediaHandlers(
       return { ok: true, alreadyConnected: true as const }
     }
 
-    const launched = await launchObsStudio()
+    const cfg = settingsManager.get()
+    const port = cfg.obsPort ?? 4455
+    const password = resolveObsWebSocketPassword(cfg.obsPassword)
+    ensureObsProfileInstalled(password, port)
+    if (!cfg.obsPassword?.trim()) {
+      settingsManager.save({ obsPassword: password })
+    }
+
+    const launched = await launchObsStudio({ password, port })
     if (!launched.ok) {
       return { ok: false, error: launched.error ?? 'Could not launch OBS' }
     }
@@ -187,6 +197,24 @@ export function setupMediaHandlers(
       log.warn('[IPC] obs:save-replay-clip error:', err)
       return { ok: false, path: null, error: String(err) }
     }
+  })
+
+  ipcMain.handle('obs:install-profile', async () => {
+    const cfg = settingsManager.get()
+    const port = cfg.obsPort ?? 4455
+    const password = resolveObsWebSocketPassword(cfg.obsPassword)
+    const result = ensureObsProfileInstalled(password, port)
+    if (result.ok && !cfg.obsPassword?.trim()) {
+      settingsManager.save({ obsPassword: password })
+    }
+    return result
+  })
+
+  ipcMain.handle('obs:install-studio', async () => {
+    if (isObsInstalled()) {
+      return { ok: true, alreadyInstalled: true as const }
+    }
+    return installObsViaWinget()
   })
 
   ipcMain.handle('obs:setup-scene', async () => {

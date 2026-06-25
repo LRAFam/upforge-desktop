@@ -12,6 +12,10 @@ import {
 import { setupUpForgeScene, retargetUpForgeCapture, fitUpForgeCaptureToCanvas, type ObsSetupResult, type ObsSceneSwitchOptions } from './obs-setup'
 import { findObsWindowString } from './game-window-finder'
 import { formatObsConnectError, obsConnectHosts } from './obs-connect'
+import {
+  ensureObsProfileInstalled,
+  resolveObsWebSocketPassword,
+} from './obs-profile-installer'
 import { applyObsRecordingSettings, type ObsApplyResult } from './obs-output-settings'
 import type { RecorderConfig } from './recorder'
 
@@ -160,6 +164,8 @@ export class OBSRecorder {
 
   private async _connectOnce(): Promise<{ ok: boolean; error?: string; version?: string; setup?: ObsSetupResult }> {
     const { host, port, password, replayBufferSeconds } = this.getSettings()
+    const effectivePassword = resolveObsWebSocketPassword(password)
+    ensureObsProfileInstalled(effectivePassword, port || 4455)
     const hosts = obsConnectHosts(host)
     let lastRawError = 'OBS not reachable'
 
@@ -177,7 +183,7 @@ export class OBSRecorder {
         log.info('[OBSRecorder] Connecting to', url)
         const { obsWebSocketVersion } = await this._obs.connect(
           url,
-          password || undefined,
+          effectivePassword || undefined,
           { rpcVersion: 1 },
         )
         this._connected = true

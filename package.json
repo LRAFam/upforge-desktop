@@ -1,6 +1,6 @@
 {
   "name": "upforge-desktop",
-  "version": "2.6.24",
+  "version": "2.7.0",
   "description": "UpForge Desktop — Automatic Valorant gameplay recording and AI coaching",
   "main": "./out/main/index.js",
   "author": "UpForge",
@@ -116,6 +116,13 @@
       {
         "from": "resources/spatial",
         "to": "spatial",
+        "filter": [
+          "**/*"
+        ]
+      },
+      {
+        "from": "resources/obs",
+        "to": "obs",
         "filter": [
           "**/*"
         ]

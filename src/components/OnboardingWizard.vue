@@ -251,7 +251,7 @@
             <div v-else-if="step === 4" key="step4" class="px-7 pt-8 pb-7">
               <p class="text-[10px] font-bold text-[#ff4655] uppercase tracking-widest mb-1.5">Step 4 of 5</p>
               <h2 class="text-xl font-black text-white mb-1 leading-tight">Connect OBS</h2>
-              <p class="text-xs text-gray-500 mb-5">UpForge records matches through OBS — no extra capture software needed.</p>
+              <p class="text-xs text-gray-500 mb-5">UpForge records through OBS — we set up game capture automatically once connected.</p>
 
               <div class="rounded-xl border p-4 mb-5" :class="obsConnected ? 'border-green-500/25 bg-green-500/[0.06]' : 'border-amber-500/25 bg-amber-500/[0.06]'">
                 <div class="flex items-center gap-2 mb-3">
@@ -261,19 +261,27 @@
                   </span>
                 </div>
                 <ol class="list-decimal list-inside space-y-1.5 text-[11px] text-gray-400 mb-4">
-                  <li>Install <a href="https://obsproject.com/" target="_blank" class="text-[#ff4655] underline hover:text-[#ff8a93]">OBS Studio 28+</a> and open it</li>
-                  <li>Tools → WebSocket Server Settings → enable server</li>
-                  <li>Click Connect below — we create game capture for {{ gameCaptureLabel }} (not your full desktop)</li>
+                  <li>Install <a href="https://obsproject.com/" target="_blank" class="text-[#ff4655] underline hover:text-[#ff8a93]">OBS Studio 28+</a> if you haven't already</li>
+                  <li>Click <strong class="text-gray-300">Launch OBS &amp; Connect</strong> — we open OBS and create game capture for {{ gameCaptureLabel }}</li>
+                  <li>If WebSocket asks for a password: paste from OBS → Show Connect Info, or use default <strong class="text-gray-300">upforge</strong> after Launch OBS &amp; Connect</li>
                 </ol>
                 <p v-if="obsError" class="text-[11px] text-red-400 mb-3">{{ obsError }}</p>
-                <button
-                  v-if="!obsConnected"
-                  :disabled="obsConnecting"
-                  class="w-full py-2.5 rounded-xl border border-[#ff4655]/30 bg-[#ff4655]/10 text-xs font-bold text-[#ff4655] transition-all hover:bg-[#ff4655]/15 disabled:opacity-50"
-                  @click="connectObs"
-                >
-                  {{ obsConnecting ? 'Connecting…' : 'Connect OBS' }}
-                </button>
+                <div v-if="!obsConnected" class="space-y-2">
+                  <button
+                    :disabled="obsConnecting"
+                    class="w-full py-2.5 rounded-xl bg-gradient-to-r from-[#ff4655] to-[#f97316] text-xs font-bold text-white transition-all hover:opacity-90 disabled:opacity-50"
+                    @click="launchAndConnectObs"
+                  >
+                    {{ obsConnecting ? 'Launching…' : 'Launch OBS & Connect' }}
+                  </button>
+                  <button
+                    :disabled="obsConnecting"
+                    class="w-full py-2 text-[11px] font-semibold text-gray-500 hover:text-gray-300 transition-colors disabled:opacity-50"
+                    @click="connectObs"
+                  >
+                    Already open? Connect only
+                  </button>
+                </div>
               </div>
 
               <div class="flex gap-2">
@@ -496,6 +504,23 @@ async function connectObs() {
     }
   } catch (e) {
     obsError.value = e instanceof Error ? e.message : 'Connection failed'
+  } finally {
+    obsConnecting.value = false
+  }
+}
+
+async function launchAndConnectObs() {
+  obsConnecting.value = true
+  obsError.value = ''
+  try {
+    const result = await window.api.obs.launchAndConnect()
+    if (result.ok) {
+      obsConnected.value = true
+    } else {
+      obsError.value = result.error ?? 'Could not launch or connect to OBS'
+    }
+  } catch (e) {
+    obsError.value = e instanceof Error ? e.message : 'Launch failed'
   } finally {
     obsConnecting.value = false
   }

@@ -4,6 +4,8 @@ import DashboardBanners from '../components/dashboard/DashboardBanners.vue'
 import DashboardStatusBar from '../components/dashboard/DashboardStatusBar.vue'
 import DashboardPlayerCard from '../components/dashboard/DashboardPlayerCard.vue'
 import DashboardLeftInsights from '../components/dashboard/DashboardLeftInsights.vue'
+import DashboardSessionReview from '../components/dashboard/DashboardSessionReview.vue'
+import DashboardWeeklyFocus from '../components/dashboard/DashboardWeeklyFocus.vue'
 import DashboardDevTools from '../components/dashboard/DashboardDevTools.vue'
 import DashboardGamePanels from '../components/dashboard/DashboardGamePanels.vue'
 import DashboardRecentAnalyses from '../components/dashboard/DashboardRecentAnalyses.vue'
@@ -22,6 +24,8 @@ provideDashboard()
 
         <div class="flex flex-col gap-3 min-w-0 w-full self-start max-h-full overflow-y-auto scroll-col">
           <DashboardPlayerCard />
+          <DashboardSessionReview />
+          <DashboardWeeklyFocus />
           <DashboardLeftInsights />
           <DashboardDevTools />
         </div>

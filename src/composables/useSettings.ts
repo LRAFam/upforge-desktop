@@ -225,6 +225,23 @@ function createSettings() {
       obsSetupRunning.value = false
     }
   }
+
+  async function installObsProfile() {
+    try {
+      const result = await window.api.obs.installProfile()
+      if (result.ok) {
+        if (!settings.obsPassword?.trim()) {
+          settings.obsPassword = 'upforge'
+          await window.api.settings.save({ obsPassword: 'upforge' })
+        }
+        showToast(result.installed ? 'UpForge OBS profile installed' : 'OBS profile already up to date')
+      } else {
+        showToast(result.error ?? 'Could not install OBS profile')
+      }
+    } catch {
+      showToast('Could not install OBS profile')
+    }
+  }
   
   async function obsDisconnect() {
     await window.api.obs.disconnect()
@@ -1066,6 +1083,7 @@ function createSettings() {
     obsLaunchAndConnect,
     obsSetupRunning,
     obsSetupScene,
+    installObsProfile,
     obsStatus,
     openBilling,
     openCs2Analyze,

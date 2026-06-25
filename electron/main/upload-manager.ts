@@ -197,6 +197,7 @@ export class UploadManager {
       agent:      submissionCtx.agent ?? opts.agent,
       game_mode:  submissionCtx.game_mode,
       match_data: submissionCtx.match_data,
+      duel_moments: submissionCtx.duel_moments,
       ally_agents: submissionCtx.ally_agents,
       enemy_agents: submissionCtx.enemy_agents,
       skill_profile: submissionCtx.skill_profile,
@@ -232,6 +233,7 @@ export class UploadManager {
         map:        completeCtx.map ?? opts.map ?? undefined,
         game_mode:  completeCtx.game_mode ?? gameModeForApi(opts.timeline?.gameMode) ?? undefined,
         match_data: completeCtx.match_data ?? prepareMatchDataForUpload(opts.timeline ?? null, opts.coachingExtras),
+        duel_moments: completeCtx.duel_moments,
         ally_agents: completeCtx.ally_agents,
         enemy_agents: completeCtx.enemy_agents,
         skill_profile: completeCtx.skill_profile,
@@ -321,6 +323,7 @@ export class UploadManager {
       `${apiUrl}/api/desktop-submissions/${jobId}/match-data`,
       JSON.stringify({
         match_data,
+        duel_moments: ctx.duel_moments,
         ally_agents: ctx.ally_agents,
         enemy_agents: ctx.enemy_agents,
         skill_profile: ctx.skill_profile,
