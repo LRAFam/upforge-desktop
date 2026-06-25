@@ -432,6 +432,15 @@ let recordingsStore: RecordingsStore
 // Set by setupGameDetection — cancel pending match-wait when game quits from lobby
 let cancelMatchWait: (() => void) | null = null
 let waitingForMatch = false
+
+/** Cancel lobby/match-wait loops — e.g. when the user starts a dashboard action instead. */
+function dismissMatchWaitUi(): void {
+  cancelMatchWait?.()
+  cancelMatchWait = null
+  if (!waitingForMatch) return
+  waitingForMatch = false
+  mainWindow?.webContents.send('recording:waiting-for-match', { waiting: false })
+}
 // Prevents double-handling when onMatchEnded + game-stopped both fire for same match
 let matchHandled = false
 /** When Deadlock process was detected — used to locate replays after quit without recording. */
@@ -2337,6 +2346,20 @@ function setupGameDetection(): void {
       }, 2000)
     }
 
+    const gameProcessStillRunning = game === 'valorant'
+      ? await gameDetector.isMatchProcessRunning()
+      : await gameDetector.isGameProcessRunning(game)
+    if (!gameProcessStillRunning) {
+      log.warn('[GameDetector] Game process exited before recorder start — aborting')
+      logActivity('Match ended before recording could start')
+      tray?.setToolTip(idleTooltip(game))
+      mainWindow?.webContents.send('recording:starting', { starting: false })
+      waitingForMatch = false
+      mainWindow?.webContents.send('recording:waiting-for-match', { waiting: false })
+      await rearmGameDetection(game, true)
+      return
+    }
+
     tray?.setToolTip('UpForge — Starting recorder...')
     mainWindow?.webContents.send('recording:starting', { starting: true })
     try {
@@ -3493,6 +3516,9 @@ async function startApp(): Promise<void> {
   ipcMain.handle('recordings:analyse', async (_e, { id }: { id: string }) => {
     const recording = recordingsStore.getById(id)
     if (!recording) return { error: 'Recording not found' }
+
+    // Dashboard analyse is unrelated to live match capture — don't block on lobby wait.
+    dismissMatchWaitUi()
 
     const user = authManager.getUser()
 

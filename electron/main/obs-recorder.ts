@@ -410,6 +410,46 @@ export class OBSRecorder {
     return { ok: false }
   }
 
+  /**
+   * OBS can leave outputActive=true after a crash or WebSocket drop even when the UI
+   * shows idle. Clear unowned stale state before refusing match capture.
+   */
+  private async _resolveUnownedObsRecordState(): Promise<'idle' | 'cleared' | 'blocked'> {
+    type RecordStatus = { outputActive?: boolean }
+    let status: RecordStatus
+    try {
+      status = await this._obs.call('GetRecordStatus') as RecordStatus
+    } catch (err) {
+      log.warn('[OBSRecorder] GetRecordStatus before start failed:', err)
+      return 'idle'
+    }
+
+    if (!status.outputActive || this._matchOwnedRecording) return 'idle'
+
+    // Brief settle — OBS sometimes flips outputActive off moments after StopRecord.
+    await new Promise((r) => setTimeout(r, 400))
+    const recheck = await this._obs.call('GetRecordStatus') as RecordStatus
+    if (!recheck.outputActive) {
+      log.info('[OBSRecorder] OBS outputActive cleared after settle wait')
+      return 'idle'
+    }
+
+    log.warn('[OBSRecorder] Unowned OBS outputActive — attempting StopRecord to clear stale state')
+    try {
+      await this._obs.call('StopRecord')
+      await new Promise((r) => setTimeout(r, 400))
+      const afterStop = await this._obs.call('GetRecordStatus') as RecordStatus
+      if (!afterStop.outputActive) {
+        log.info('[OBSRecorder] Cleared stale OBS record state')
+        return 'cleared'
+      }
+    } catch (err) {
+      log.warn('[OBSRecorder] StopRecord while clearing stale state failed:', err)
+    }
+
+    return 'blocked'
+  }
+
   async start(game: string, config?: RecorderConfig): Promise<void> {
     if (!this._connected) {
       const result = await this.connect()
@@ -421,13 +461,9 @@ export class OBSRecorder {
       return
     }
 
-    try {
-      const status = await this._obs.call('GetRecordStatus') as { outputActive?: boolean }
-      if (status.outputActive && !this._matchOwnedRecording) {
-        throw new Error('OBS is already recording — stop the current OBS recording before a match capture starts.')
-      }
-    } catch (err) {
-      if (err instanceof Error && err.message.includes('already recording')) throw err
+    const obsRecordState = await this._resolveUnownedObsRecordState()
+    if (obsRecordState === 'blocked') {
+      throw new Error('OBS is already recording — stop the current OBS recording before a match capture starts.')
     }
 
     this._lastError = null

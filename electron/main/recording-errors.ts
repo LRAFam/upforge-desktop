@@ -13,7 +13,8 @@ export function isExpectedRecordingConfigError(message: string): boolean {
     lower.includes('obs is not connected') ||
     lower.includes('obs not connected') ||
     lower.includes('obs not running') ||
-    (lower.includes('obs') && lower.includes('websocket'))
+    (lower.includes('obs') && lower.includes('websocket')) ||
+    lower.includes('obs is already recording')
   )
 }
 
