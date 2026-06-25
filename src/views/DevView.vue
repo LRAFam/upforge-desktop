@@ -109,6 +109,130 @@
           <DevRow label="Total clips" :value="diag.clips.total" />
         </DevSection>
 
+        <!-- VOD Analysis Pipeline -->
+        <DevSection title="VOD Analysis Pipeline">
+          <div v-if="diag.analysisPipeline" class="space-y-3">
+            <div
+              class="px-3 py-2.5 rounded-lg border text-xs leading-relaxed"
+              :class="pipelineSummaryClass"
+            >
+              {{ diag.analysisPipeline.summary }}
+            </div>
+
+            <div class="flex flex-wrap gap-2 text-[10px]">
+              <span
+                class="px-2 py-0.5 rounded-full font-semibold uppercase tracking-wide"
+                :class="modeBadgeClass"
+              >{{ pipelineModeLabel }}</span>
+              <span v-if="diag.analysisPipeline.activePollJobId" class="px-2 py-0.5 rounded-full bg-cyan-500/15 text-cyan-400">
+                Polling active
+              </span>
+              <span v-else-if="diag.analysisPipeline.primaryJobId && diag.analysisPipeline.mode === 'analyse'" class="px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-400">
+                Poll inactive
+              </span>
+              <span v-if="diag.analysisPipeline.inFlightCount > 0" class="px-2 py-0.5 rounded-full bg-white/[0.06] text-gray-500">
+                {{ diag.analysisPipeline.inFlightCount }} in-flight
+              </span>
+            </div>
+
+            <!-- Stepper -->
+            <div class="space-y-1">
+              <div
+                v-for="(s, i) in diag.analysisPipeline.steps"
+                :key="s.id"
+                class="flex gap-2.5 items-start"
+              >
+                <div class="flex flex-col items-center flex-shrink-0 pt-0.5">
+                  <div
+                    class="w-5 h-5 rounded-full flex items-center justify-center text-[9px] font-bold border"
+                    :class="stepIconClass(s.state)"
+                  >
+                    <template v-if="s.state === 'done'">✓</template>
+                    <template v-else-if="s.state === 'error'">!</template>
+                    <template v-else-if="s.state === 'active'">●</template>
+                    <template v-else>{{ i + 1 }}</template>
+                  </div>
+                  <div
+                    v-if="i < diag.analysisPipeline.steps.length - 1"
+                    class="w-px flex-1 min-h-[10px] my-0.5"
+                    :class="s.state === 'done' ? 'bg-green-500/40' : 'bg-white/[0.08]'"
+                  />
+                </div>
+                <div class="flex-1 min-w-0 pb-2">
+                  <div class="flex items-baseline justify-between gap-2">
+                    <span class="text-xs font-medium" :class="stepLabelClass(s.state)">{{ s.label }}</span>
+                    <span v-if="s.detail" class="text-[10px] text-gray-500 truncate max-w-[55%]">{{ s.detail }}</span>
+                  </div>
+                  <p class="text-[10px] text-gray-600 leading-snug">{{ s.description }}</p>
+                </div>
+              </div>
+            </div>
+
+            <!-- Live metrics -->
+            <div v-if="diag.analysisPipeline.recording || diag.analysisPipeline.serverStatus || diag.analysisPipeline.pendingJob" class="grid grid-cols-2 gap-x-6 gap-y-1.5 pt-1 border-t border-white/[0.06]">
+              <DevRow
+                v-if="diag.analysisPipeline.recording"
+                label="Recording"
+                :value="pipelineRecordingLabel"
+                class="col-span-2"
+              />
+              <DevRow label="Job ID" :value="diag.analysisPipeline.primaryJobId ? diag.analysisPipeline.primaryJobId.slice(0, 12) + '…' : null" />
+              <DevRow
+                label="Server status"
+                :value="diag.analysisPipeline.serverStatus?.status ?? '—'"
+                :warn="diag.analysisPipeline.serverStatus?.status === 'failed' || diag.analysisPipeline.serverStatus?.status === 'poll_error'"
+              />
+              <DevRow
+                v-if="diag.analysisPipeline.recording?.uploadProgress != null"
+                label="Upload"
+                :value="diag.analysisPipeline.recording.uploadProgress + '%'"
+              />
+              <DevRow
+                v-if="diag.analysisPipeline.serverStatus && diag.analysisPipeline.mode === 'analyse'"
+                label="Analysis"
+                :value="diag.analysisPipeline.serverStatus.progress + '%'"
+              />
+              <DevRow
+                v-if="diag.analysisPipeline.serverStatus?.current_step"
+                label="Current step"
+                :value="diag.analysisPipeline.serverStatus.current_step"
+                class="col-span-2"
+              />
+              <DevRow
+                v-if="diag.analysisPipeline.serverStatus?.analysis_id"
+                label="Analysis ID"
+                :value="diag.analysisPipeline.serverStatus.analysis_id"
+              />
+              <DevRow
+                v-if="diag.analysisPipeline.pendingJob"
+                label="Persisted job age"
+                :value="formatDuration(diag.analysisPipeline.pendingJob.ageMs)"
+              />
+              <DevRow
+                v-if="diag.analysisPipeline.recording"
+                label="Local file"
+                :value="diag.analysisPipeline.recording.localFileExists"
+                badge
+              />
+            </div>
+
+            <!-- Analysis-specific activity -->
+            <div v-if="diag.analysisPipeline.recentEvents.length" class="pt-1 border-t border-white/[0.06]">
+              <p class="text-[10px] text-gray-600 uppercase tracking-widest mb-1.5">Pipeline events</p>
+              <div class="max-h-36 overflow-y-auto space-y-0.5 scrollbar-thin scrollbar-thumb-white/10 pr-1">
+                <div
+                  v-for="(entry, i) in [...diag.analysisPipeline.recentEvents].reverse()"
+                  :key="i"
+                  class="flex gap-2 text-xs py-0.5"
+                >
+                  <span class="flex-shrink-0 text-gray-600 font-mono tabular-nums">{{ formatTime(entry.time) }}</span>
+                  <span class="text-gray-400">{{ entry.message }}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </DevSection>
+
         <!-- Tools -->
         <DevSection title="Tools">
           <div class="flex flex-wrap gap-2">
@@ -241,6 +365,59 @@ const clipInterpretation = computed((): string | null => {
   return null
 })
 
+const pipelineModeLabel = computed(() => {
+  const mode = diag.value?.analysisPipeline?.mode
+  if (mode === 'analyse') return 'Analyse path'
+  if (mode === 'archive') return 'Archive only'
+  return 'Idle'
+})
+
+const pipelineSummaryClass = computed(() => {
+  const p = diag.value?.analysisPipeline
+  if (!p) return 'bg-white/[0.03] border-white/[0.08] text-gray-400'
+  if (p.serverStatus?.status === 'failed' || p.serverStatus?.status === 'poll_error') {
+    return 'bg-red-500/[0.08] border-red-500/20 text-red-400'
+  }
+  if (p.mode === 'idle') return 'bg-white/[0.03] border-white/[0.08] text-gray-500'
+  if (p.serverStatus?.status === 'completed' || p.recording?.analysisId != null) {
+    return 'bg-green-500/[0.08] border-green-500/20 text-green-400'
+  }
+  return 'bg-cyan-500/[0.08] border-cyan-500/20 text-cyan-300'
+})
+
+const modeBadgeClass = computed(() => {
+  const mode = diag.value?.analysisPipeline?.mode
+  if (mode === 'analyse') return 'bg-cyan-500/15 text-cyan-400'
+  if (mode === 'archive') return 'bg-violet-500/15 text-violet-400'
+  return 'bg-white/[0.06] text-gray-600'
+})
+
+const pipelineRecordingLabel = computed(() => {
+  const r = diag.value?.analysisPipeline?.recording
+  if (!r) return null
+  const parts = [r.agent, r.map, r.game].filter(Boolean)
+  return parts.length ? parts.join(' · ') : r.id.slice(0, 8) + '…'
+})
+
+function stepIconClass(state: string): string {
+  switch (state) {
+    case 'done': return 'bg-green-500/20 border-green-500/40 text-green-400'
+    case 'active': return 'bg-cyan-500/20 border-cyan-500/40 text-cyan-400 animate-pulse'
+    case 'error': return 'bg-red-500/20 border-red-500/40 text-red-400'
+    case 'skipped': return 'bg-white/[0.04] border-white/[0.08] text-gray-600'
+    default: return 'bg-white/[0.04] border-white/[0.10] text-gray-600'
+  }
+}
+
+function stepLabelClass(state: string): string {
+  switch (state) {
+    case 'done': return 'text-green-400'
+    case 'active': return 'text-cyan-300'
+    case 'error': return 'text-red-400'
+    default: return 'text-gray-400'
+  }
+}
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 function formatDuration(ms: number): string {
@@ -338,6 +515,28 @@ function buildReport(): string {
       `Details status: ${m.matchDetailsStatus}`,
     )
     if (clipInterpretation.value) lines.push(`Interpretation: ${clipInterpretation.value}`)
+  }
+  if (d.analysisPipeline) {
+    const p = d.analysisPipeline
+    lines.push(
+      '',
+      '=== VOD ANALYSIS PIPELINE ===',
+      `Summary: ${p.summary}`,
+      `Mode: ${p.mode}`,
+      `Primary job: ${p.primaryJobId ?? 'none'}`,
+      `Active poll: ${p.activePollJobId ?? 'none'}`,
+    )
+    if (p.serverStatus) {
+      lines.push(
+        `Server: ${p.serverStatus.status} (${p.serverStatus.progress}%)`,
+        `Step: ${p.serverStatus.current_step ?? '—'}`,
+        `Error: ${p.serverStatus.error ?? 'none'}`,
+      )
+    }
+    lines.push('', 'Steps:')
+    for (const s of p.steps) {
+      lines.push(`  [${s.state}] ${s.label}${s.detail ? ` — ${s.detail}` : ''}`)
+    }
   }
   lines.push(
     '',

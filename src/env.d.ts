@@ -546,6 +546,51 @@ declare global {
             matchDetailsStatus: string
           } | null
           clips: { total: number }
+          analysisPipeline: {
+            summary: string
+            mode: 'idle' | 'analyse' | 'archive'
+            activePollJobId: string | null
+            primaryJobId: string | null
+            pendingJob: {
+              job_id: string
+              savedAt: number
+              agent?: string
+              map?: string
+              game?: string
+              ageMs: number
+            } | null
+            serverStatus: {
+              status: string
+              progress: number
+              current_step: string | null
+              error: string | null
+              analysis_id: number | null
+            } | null
+            recording: {
+              id: string
+              map: string | null
+              agent: string | null
+              game: string
+              pipelineStatus: string | null
+              uploadProgress: number | null
+              analysisProgress: number | null
+              analysisStep: string | null
+              jobId: string | null
+              analysisId: number | null
+              cloudArchived: boolean
+              archiveId: string | null
+              localFileExists: boolean
+            } | null
+            inFlightCount: number
+            steps: Array<{
+              id: string
+              label: string
+              description: string
+              state: 'pending' | 'active' | 'done' | 'error' | 'skipped'
+              detail: string | null
+            }>
+            recentEvents: Array<{ time: number; message: string }>
+          }
           activityLog: Array<{ time: number; message: string }>
         }>
       }

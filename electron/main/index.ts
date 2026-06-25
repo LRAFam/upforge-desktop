@@ -71,7 +71,8 @@ import {
 } from './user-session'
 import { resolveRecordingSavePath } from './user-data-paths'
 import { extractAnalysisIdFromPollResult } from './analysis-completion'
-import { startAnalysisPoll, stopActiveAnalysisPoll, reconcileOrphanedJob } from './analysis-poll'
+import { startAnalysisPoll, stopActiveAnalysisPoll, reconcileOrphanedJob, getActiveAnalysisPollJobId } from './analysis-poll'
+import { buildAnalysisPipelineDiagnostics } from './analysis-pipeline-diagnostics'
 import { reconcileStuckAnalysisJobs, type ReconciledAnalysisContext } from './stuck-analysis-reconciler'
 import { AuthManager } from './auth-manager'
 import { SettingsManager } from './settings-manager'
@@ -3304,7 +3305,16 @@ async function startApp(): Promise<void> {
   })
 
   // Developer diagnostics — full internal state snapshot for the admin panel
-  ipcMain.handle('dev:get-diagnostics', () => {
+  ipcMain.handle('dev:get-diagnostics', async () => {
+    const analysisPipeline = await buildAnalysisPipelineDiagnostics({
+      uploadManager,
+      recordingsStore,
+      activePollJobId: getActiveAnalysisPollJobId(),
+      pendingJob: readActivePendingJob(),
+      activityLog: activityLog.slice(),
+      localFileExists: (p) => fs.existsSync(p),
+    })
+
     return {
       app: {
         version: app.getVersion(),
@@ -3327,6 +3337,7 @@ async function startApp(): Promise<void> {
       clips: {
         total: clipStore.getAll().length,
       },
+      analysisPipeline,
       activityLog: activityLog.slice(),
     }
   })

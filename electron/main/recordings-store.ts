@@ -212,6 +212,13 @@ export class RecordingsStore {
     this.persist()
   }
 
+  /** Recordings with an active upload or analysis pipeline (dashboard in-flight rows). */
+  listInFlightPipelines(): PendingRecording[] {
+    return this.recordings.filter(
+      (r) => r.pipelineStatus === 'uploading' || r.pipelineStatus === 'analysing',
+    )
+  }
+
   /** Recordings with a job id that still look in-flight on the dashboard. */
   listStuckAnalysisJobs(): PendingRecording[] {
     return this.recordings.filter(r => {
