@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import type { PendingRecording } from '../../env.d.ts'
 import { useDashboard } from '../../composables/useDashboard'
 import {
   getAgentImage,
@@ -28,24 +29,46 @@ const {
   lastFivePerf,
   dashboardAnalyses,
   bulkUploadablePending,
+  bulkAnalysablePending,
   groupedAnalyses,
   bulkUploading,
   timelineLoadingId,
   formatMode,
   uploadAllPending,
+  analyseOldestPending,
   saveRecording,
   analyseRecording,
+  retryRecording,
   dismissRecording,
   openAnalysisRow,
   openCoachNotesVod,
   openClipsForSession,
   openRecordingReview,
   recInFlight,
+  recIsDeferred,
+  recUploadProgress,
   recPipelineLabel,
   recRowStats,
   displayAcs,
   isAnalysisProcessing,
 } = useDashboard()
+
+function failureHint(rec: PendingRecording): string | null {
+  if (rec.lastAnalysisErrorHint) return rec.lastAnalysisErrorHint
+  const message = rec.lastAnalysisError
+  if (!message) return null
+  if (/late|unclear|sync/i.test(message)) return 'Tip: wait ~30s after the game ends, then try again.'
+  if (/timed out/i.test(message)) return 'Tip: try again — off-peak hours are usually faster.'
+  if (rec.lastAnalysisCreditRefunded) return 'Your coaching credit was refunded — you can try again.'
+  return null
+}
+
+function pendingRowClass(rec: PendingRecording): string {
+  if (recIsDeferred(rec)) return 'pending-row-deferred'
+  if (rec.pipelineArchiveOnly && rec.pipelineStatus === 'uploading') return 'pending-row-archive'
+  if (rec.pipelineStatus === 'analysing' || (rec.analysed && !rec.analysisId)) return 'pending-row-analyse'
+  return 'pending-row-default'
+}
 </script>
 
 <template>
@@ -107,6 +130,13 @@ const {
           <span class="text-[10px] font-semibold text-gray-600 uppercase tracking-wider">In progress</span>
           <span class="text-[10px] text-blue-500/70 bg-blue-500/10 px-1.5 py-px rounded-full">{{ pendingRecordings.length }}</span>
           <button
+            v-if="bulkAnalysablePending.length > 1"
+            type="button"
+            class="text-[10px] font-medium text-red-400/80 hover:text-red-300 transition-colors disabled:opacity-50"
+            :disabled="analysingIds.size > 0"
+            @click="analyseOldestPending"
+          >Analyse next</button>
+          <button
             v-if="bulkUploadablePending.length > 1"
             type="button"
             class="ml-auto text-[10px] font-medium text-blue-400/80 hover:text-blue-300 transition-colors disabled:opacity-50"
@@ -117,7 +147,8 @@ const {
         <div
           v-for="rec in pendingRecordings"
           :key="rec.id"
-          class="pending-row relative flex items-center gap-2 sm:gap-3 px-3 py-2.5 bg-blue-500/[0.04] hover:bg-blue-500/[0.06] border border-blue-500/[0.12] hover:border-blue-500/25 rounded-xl transition-all"
+          class="pending-row relative flex items-center gap-2 sm:gap-3 px-3 py-2.5 rounded-xl transition-all"
+          :class="pendingRowClass(rec)"
         >
           <div v-if="recRowStats(rec).won != null" class="absolute left-0 top-2 bottom-2 w-[3px] rounded-full" :class="recRowStats(rec).won ? 'bg-green-500' : 'bg-red-500'" />
           <div class="w-9 h-9 rounded-lg overflow-hidden flex-shrink-0 flex items-center justify-center relative" :style="rec.agent ? { backgroundColor: getAgentColor(rec.agent) + '22' } : { backgroundColor: 'rgba(59,130,246,0.1)' }">
@@ -138,6 +169,29 @@ const {
               <span v-if="isDisplayableGameMode(rec.gameMode)" class="text-gray-700"> · {{ formatMode(rec.gameMode) }}</span>
               <span v-if="recPipelineLabel(rec)" class="text-blue-400/90"> · {{ recPipelineLabel(rec) }}</span>
             </p>
+            <p
+              v-if="rec.lastAnalysisError && !recInFlight(rec) && !recIsDeferred(rec)"
+              class="text-[10px] text-amber-400/85 mt-1 leading-snug line-clamp-2"
+            >
+              {{ rec.lastAnalysisError }}
+              <span v-if="rec.lastAnalysisCreditRefunded" class="text-emerald-500/80"> · Credit refunded</span>
+            </p>
+            <p
+              v-if="rec.lastAnalysisError && !recInFlight(rec) && failureHint(rec)"
+              class="text-[10px] text-gray-600 mt-0.5 leading-snug"
+            >
+              {{ failureHint(rec) }}
+            </p>
+            <div
+              v-if="recUploadProgress(rec) != null"
+              class="mt-1.5 h-1 w-full max-w-[12rem] overflow-hidden rounded-full bg-white/[0.06]"
+            >
+              <div
+                class="h-full rounded-full transition-all duration-300"
+                :class="rec.pipelineArchiveOnly ? 'bg-emerald-500/80' : 'bg-blue-500/80'"
+                :style="{ width: recUploadProgress(rec)! + '%' }"
+              />
+            </div>
           </div>
           <div class="hidden md:flex items-center justify-center gap-3 lg:gap-4 flex-shrink-0 px-1">
             <span v-if="recRowStats(rec).won != null" class="text-[10px] font-black px-2 py-0.5 rounded w-7 text-center" :class="recRowStats(rec).won ? 'bg-green-500/15 text-green-400' : 'bg-red-500/15 text-red-400'">{{ recRowStats(rec).won ? 'W' : 'L' }}</span>
@@ -159,7 +213,16 @@ const {
               @click="saveRecording(rec.id)"
             >{{ savingIds.has(rec.id) ? '…' : 'Save' }}</button>
             <button
-              v-if="!rec.clipsOnly && !recInFlight(rec)"
+              v-if="rec.lastAnalysisError && !rec.clipsOnly && !recInFlight(rec)"
+              :disabled="analysingIds.has(rec.id)"
+              class="px-2 py-1 text-[10px] font-medium text-amber-200 bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/25 disabled:opacity-60 rounded-lg transition-colors flex items-center gap-1"
+              @click="retryRecording(rec.id)"
+            >
+              <svg v-if="analysingIds.has(rec.id)" class="w-3 h-3 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
+              {{ analysingIds.has(rec.id) ? '…' : 'Retry' }}
+            </button>
+            <button
+              v-else-if="!rec.clipsOnly && !recInFlight(rec) && !rec.lastAnalysisError"
               :disabled="analysingIds.has(rec.id)"
               class="px-2 py-1 text-[10px] font-medium text-white bg-red-500 hover:bg-red-600 disabled:opacity-60 rounded-lg transition-colors flex items-center gap-1"
               @click="analyseRecording(rec.id)"
@@ -167,8 +230,9 @@ const {
               <svg v-if="analysingIds.has(rec.id)" class="w-3 h-3 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
               {{ analysingIds.has(rec.id) ? '…' : 'Analyse' }}
             </button>
-            <span v-if="recInFlight(rec)" class="px-2 py-1 text-[10px] font-medium text-blue-300/90 flex items-center gap-1">
-              <svg class="w-3 h-3 animate-spin text-blue-400" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
+            <span v-if="recInFlight(rec) || recIsDeferred(rec)" class="px-2 py-1 text-[10px] font-medium flex items-center gap-1" :class="recIsDeferred(rec) ? 'text-amber-300/90' : rec.pipelineArchiveOnly ? 'text-emerald-300/90' : 'text-blue-300/90'">
+              <svg v-if="!recIsDeferred(rec)" class="w-3 h-3 animate-spin" :class="rec.pipelineArchiveOnly ? 'text-emerald-400' : 'text-blue-400'" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
+              <svg v-else class="w-3 h-3 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 9v6m4-6v6m7-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
               {{ recPipelineLabel(rec) || 'Working…' }}
             </span>
             <button class="p-1 text-gray-600 hover:text-gray-400 transition-colors rounded-lg hover:bg-white/[0.04]" title="Dismiss" @click="dismissRecording(rec.id)">
@@ -345,6 +409,26 @@ const {
 }
 .analysis-row--lost::before {
   background: #ef4444;
+}
+.pending-row-default {
+  background: rgba(59, 130, 246, 0.04);
+  border: 1px solid rgba(59, 130, 246, 0.12);
+}
+.pending-row-default:hover {
+  background: rgba(59, 130, 246, 0.06);
+  border-color: rgba(59, 130, 246, 0.25);
+}
+.pending-row-archive {
+  background: rgba(16, 185, 129, 0.04);
+  border: 1px solid rgba(16, 185, 129, 0.14);
+}
+.pending-row-analyse {
+  background: rgba(239, 68, 68, 0.04);
+  border: 1px solid rgba(239, 68, 68, 0.12);
+}
+.pending-row-deferred {
+  background: rgba(245, 158, 11, 0.05);
+  border: 1px solid rgba(245, 158, 11, 0.18);
 }
 .pending-row {
   min-width: 0;

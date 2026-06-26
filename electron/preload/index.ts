@@ -68,6 +68,9 @@ const api = {
     close: () => ipcRenderer.invoke('window:close'),
     openPostGame: () => ipcRenderer.invoke('window:open-post-game')
   },
+  postGame: {
+    retryDemoScan: () => ipcRenderer.invoke('post-game:retry-demo-scan'),
+  },
   recorder: {
     stop: () => ipcRenderer.invoke('recorder:stop'),
     getAudioStatus: () => ipcRenderer.invoke('recorder:audio-status'),
@@ -240,10 +243,14 @@ const api = {
       'post-game:analysis-progress',
       'post-game:analysis-long-running',
       'post-game:analysis-deferred',
+      'post-game:upload-deferred',
       'post-game:analysis-ready',
       'post-game:upload-error',
       'dashboard:analysis-progress',
+      'dashboard:analysis-failed',
       'dashboard:upload-progress',
+      'dashboard:open-latest-analysis',
+      'dashboard:analyse-recording',
       'post-game:pending',
       'dashboard:refresh',
       'dashboard:last-insight',
@@ -254,6 +261,7 @@ const api = {
       'recording:starting',
       'app:warning',
       'app:activity-log',
+      'app:activity-toast',
       'updater:checking',
       'updater:available',
       'updater:progress',

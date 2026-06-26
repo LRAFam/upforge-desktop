@@ -121,7 +121,7 @@ export async function reconcileStuckAnalysisJobs(deps: StuckAnalysisReconcilerDe
 
       if (status.status === 'failed') {
         clearPendingJob()
-        if (recordingId) deps.recordingsStore.clearAnalysisPipeline(recordingId)
+        if (recordingId) deps.recordingsStore.setAnalysisFailure(recordingId, status.error || 'Analysis failed')
         deps.onFailed({
           jobId,
           error: status.error || 'Analysis failed',

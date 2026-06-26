@@ -74,6 +74,7 @@ import { extractAnalysisIdFromPollResult } from './analysis-completion'
 import { startAnalysisPoll, stopActiveAnalysisPoll, reconcileOrphanedJob, getActiveAnalysisPollJobId } from './analysis-poll'
 import { buildAnalysisPipelineDiagnostics } from './analysis-pipeline-diagnostics'
 import { reconcileStuckAnalysisJobs, type ReconciledAnalysisContext } from './stuck-analysis-reconciler'
+import { buildAnalysisErrorPayload, type AnalysisErrorPayload } from './analysis-failure-messages'
 import { AuthManager } from './auth-manager'
 import { SettingsManager } from './settings-manager'
 import { setupIpcHandlers, setupClipHandlers, cancelAllPollingTimers } from './ipc-handlers'
@@ -455,6 +456,13 @@ let matchFinalizeInFlight: Promise<boolean> | null = null
 let overlayPollTimer: ReturnType<typeof setInterval> | null = null
 let gsiPollTimer: ReturnType<typeof setInterval> | null = null
 
+let lastReplayRetryContext: {
+  game: 'cs2' | 'deadlock'
+  matchSessionStart: number
+  customReplayDir?: string
+  meta?: import('./post-match-replay').ReplayUploadMeta
+} | null = null
+
 /** Recording ids with an active S3 upload in this process — excludes them from stale-upload reset. */
 const activeUploadRecordingIds = new Set<string>()
 
@@ -470,8 +478,6 @@ function reconcileInterruptedUploads(): void {
 function matchPriorityDeps() {
   return {
     isRecording: () => obsRecorder.isRecording(),
-    currentGame: () => gameDetector.currentGame(),
-    waitingForMatch: () => waitingForMatch,
   }
 }
 
@@ -481,11 +487,14 @@ function interruptBackgroundWorkForMatch(): void {
     () => uploadManager?.abort(),
     (ids) => {
       for (const id of ids) {
-        recordingsStore?.setPipelineStatus(id, 'pending')
+        recordingsStore?.setPipelineDeferReason(id, 'recording')
       }
       if ([...ids].length > 0) {
-        logActivity('Upload paused for match — will retry when you finish playing')
+        logActivity('Upload paused for match — will retry when recording finishes')
         mainWindow?.webContents.send('recordings:updated')
+        if (postGameWindow && !postGameWindow.isDestroyed()) {
+          postGameWindow.webContents.send('post-game:upload-deferred', { reason: 'recording' })
+        }
       }
     },
     activeUploadRecordingIds,
@@ -554,6 +563,17 @@ function logActivity(message: string): void {
   activityLog.push(entry)
   if (activityLog.length > MAX_LOG_ENTRIES) activityLog.shift()
   mainWindow?.webContents.send('app:activity-log', activityLog.slice())
+  const lower = message.toLowerCase()
+  if (
+    lower.includes('analysis ready')
+    || lower.includes('analysis failed')
+    || lower.includes('upload paused')
+    || lower.includes('upload continues')
+    || lower.includes('saved to cloud')
+    || lower.includes('coaching ready')
+  ) {
+    mainWindow?.webContents.send('app:activity-toast', { message })
+  }
 }
 
 /** Dashboard banner + optional OS notification for recording outcomes. */
@@ -901,12 +921,89 @@ function dispatchReconciledAnalysisReady(ctx: ReconciledAnalysisContext): void {
   const notifBody = score != null
     ? `${notifAgent}${notifMap} — ${score}/100`
     : `${notifAgent}${notifMap}`.trim()
+  notifyCoachingReady(notifBody, analysisId ?? undefined)
+  tray?.setToolTip(idleTooltip(ctx.game))
+}
+
+function dispatchAnalysisFailure(
+  rawError: string,
+  opts: {
+    recordingId?: string | null
+    targetWindow?: BrowserWindow | null
+    notify?: boolean
+    needsUpgrade?: boolean
+    upgradeUrl?: string
+    ppaUrl?: string
+    clipsOnly?: boolean
+  } = {},
+): AnalysisErrorPayload {
+  const payload = buildAnalysisErrorPayload(rawError, {
+    recordingId: opts.recordingId ?? undefined,
+    needsUpgrade: opts.needsUpgrade,
+    upgradeUrl: opts.upgradeUrl,
+    ppaUrl: opts.ppaUrl,
+    clipsOnly: opts.clipsOnly,
+  })
+
+  if (opts.recordingId) {
+    recordingsStore.setAnalysisFailure(opts.recordingId, payload.message, {
+      hint: payload.hint,
+      creditRefunded: payload.creditRefunded,
+    })
+  }
+
+  const windows = new Set<BrowserWindow>()
+  if (opts.targetWindow && !opts.targetWindow.isDestroyed()) windows.add(opts.targetWindow)
+  if (postGameWindow && !postGameWindow.isDestroyed()) windows.add(postGameWindow)
+  for (const win of windows) {
+    win.webContents.send('post-game:upload-error', payload)
+  }
+
+  mainWindow?.webContents.send('dashboard:analysis-failed', payload)
+  mainWindow?.webContents.send('recordings:updated')
+
+  if (opts.notify !== false) {
+    const notifBody = payload.hint
+      ? `${payload.message} ${payload.hint}`
+      : payload.message
+    showAppNotification({
+      title: payload.creditRefunded ? `${payload.title} — credit refunded` : payload.title,
+      body: notifBody.length > 220 ? `${notifBody.slice(0, 217)}…` : notifBody,
+      silent: notifySilent(),
+    })
+  }
+
+  return payload
+}
+
+/** Route upload/prep failures through shared failure copy without duplicate OS notifications. */
+function sendUploadFailure(
+  rawError: string,
+  opts: {
+    recordingId?: string | null
+    targetWindow?: BrowserWindow | null
+    needsUpgrade?: boolean
+    upgradeUrl?: string
+    ppaUrl?: string
+    clipsOnly?: boolean
+    notify?: boolean
+  } = {},
+): AnalysisErrorPayload {
+  return dispatchAnalysisFailure(rawError, { ...opts, notify: opts.notify ?? false })
+}
+
+function notifyCoachingReady(body: string, analysisId?: number | null): void {
   showAppNotification({
     title: 'Coaching ready',
-    body: notifBody,
+    body,
     silent: notifySilent(),
+    onClick: () => {
+      focusMainWindow()
+      if (analysisId != null) {
+        mainWindow?.webContents.send('dashboard:open-latest-analysis', { analysisId })
+      }
+    },
   })
-  tray?.setToolTip(idleTooltip(ctx.game))
 }
 
 function runStuckAnalysisReconcile(): Promise<number> {
@@ -924,13 +1021,9 @@ function runStuckAnalysisReconcile(): Promise<number> {
     },
     onCompleted: dispatchReconciledAnalysisReady,
     onFailed: ({ error, recordingId }) => {
-      if (recordingId) recordingsStore.clearAnalysisPipeline(recordingId)
-      logActivity(`Analysis failed: ${error}`)
-      mainWindow?.webContents.send('recordings:updated')
+      const presentation = dispatchAnalysisFailure(error, { recordingId })
+      logActivity(`Analysis failed: ${presentation.message}`)
       mainWindow?.webContents.send('dashboard:refresh')
-      if (postGameWindow && !postGameWindow.isDestroyed()) {
-        postGameWindow.webContents.send('post-game:upload-error', error)
-      }
     },
     resumePoll: (jobId, context) => {
       void resumePollForJob(jobId, context)
@@ -1162,6 +1255,18 @@ function createTray(): void {
     setMainWindow: (win) => { mainWindow = win },
     isRecording: () => obsRecorder.isRecording(),
     getPendingCount: () => recordingsStore?.getPending(linkedRiotFromAuth()).length ?? 0,
+    getInFlightCount: () => recordingsStore?.listInFlightPipelines().length ?? 0,
+    getAnalysablePendingCount: () => {
+      const pending = recordingsStore?.getPending(linkedRiotFromAuth()) ?? []
+      return pending.filter((r) => !r.clipsOnly && !r.cloudArchived && r.pipelineStatus !== 'uploading' && r.pipelineStatus !== 'analysing').length
+    },
+    onAnalyseOldest: () => {
+      const pending = recordingsStore?.getPending(linkedRiotFromAuth()) ?? []
+      const oldest = pending.find((r) => !r.clipsOnly && !r.cloudArchived && r.pipelineStatus !== 'uploading' && r.pipelineStatus !== 'analysing')
+      if (!oldest) return
+      focusMainWindow()
+      mainWindow?.webContents.send('dashboard:analyse-recording', { id: oldest.id })
+    },
     createMainWindowFn: () => createMainWindow(),
   })
   tray = result.tray
@@ -1347,6 +1452,14 @@ function setupGameDetection(): void {
       const parsed = await buildTimelineFromReplay(replayCtx)
       if (parsed.timeline) timeline = parsed.timeline
       pendingReplayPath = parsed.demoPath
+      lastReplayRetryContext = {
+        game: game as 'cs2' | 'deadlock',
+        matchSessionStart,
+        customReplayDir: game === 'cs2' ? config?.cs2DemoDir : undefined,
+        meta: game === 'deadlock'
+          ? { matchStartedAt: Math.floor(matchSessionStart / 1000) }
+          : undefined,
+      }
       if (timeline) {
         log.info(`[HandleMatchEnd] ${game} demo timeline — kills=${timeline.playerKills.length}`)
       }
@@ -1601,7 +1714,7 @@ function setupGameDetection(): void {
         const backend = getRecordingBackendForStatus()
         const errorMsg = formatRecordingFailure(backend, obsRecorder.getLastError())
         logActivity('Recording file not found at expected path — check save folder in Settings')
-        sendToWindow('post-game:upload-error', errorMsg)
+        sendUploadFailure(errorMsg, { targetWindow: thisPostGameWindow })
         return
       }
 
@@ -1613,7 +1726,7 @@ function setupGameDetection(): void {
         const errorMsg = formatCorruptRecordingMessage(getRecordingBackendForStatus(), sizeMB)
         log.error(`[GameDetector] ${errorMsg}`)
         logActivity(`Recording file too small (${sizeMB} MB) — upload skipped`)
-        sendToWindow('post-game:upload-error', errorMsg)
+        sendUploadFailure(errorMsg, { targetWindow: thisPostGameWindow })
         return
       }
 
@@ -1699,8 +1812,8 @@ function setupGameDetection(): void {
           }, 90_000)
         }
 
-        sendToWindow('post-game:upload-error', {
-          message: errorMsg,
+        sendUploadFailure(errorMsg, {
+          targetWindow: thisPostGameWindow,
           recordingId: savedRecording.id,
           clipsOnly: true,
         })
@@ -1824,9 +1937,7 @@ function setupGameDetection(): void {
       logActivity(`Upload failed to start: ${msg}`)
       try {
         if (!thisPostGameWindow.isDestroyed()) {
-          thisPostGameWindow.webContents.send('post-game:upload-error', {
-            message: `Upload failed to start: ${msg}`,
-          })
+          sendUploadFailure(`Upload failed to start: ${msg}`, { targetWindow: thisPostGameWindow })
         }
       } catch { /* window closed */ }
     })
@@ -1862,8 +1973,6 @@ function setupGameDetection(): void {
   }
 
   gameDetector.on('game-started', async (game: string) => {
-    interruptBackgroundWorkForMatch()
-
     if (obsRecorder.isRecording()) {
       console.log('[GameDetector] game-started ignored — already recording')
       return
@@ -2369,6 +2478,7 @@ function setupGameDetection(): void {
       createOverlayWindow()
       await ensureObsReady()
       await obsRecorder.start(game, recorderConfig)
+      interruptBackgroundWorkForMatch()
       // Update recordingStartTime to the moment the recorder actually began capturing.
       // Accurate videoOffsetMs: offset = (loadSkew − recordingLag) + timeSinceGameStart.
       const recStartTime = Date.now()
@@ -2560,6 +2670,8 @@ async function handleOrphanedJobAtStartup(
 
   if (decision.action === 'failed') {
     clearPendingJob()
+    const rec = recordingsStore.getByJobId(orphanedJob.job_id)
+    dispatchAnalysisFailure(decision.error, { recordingId: rec?.id ?? null })
     logActivity(`Previous analysis failed: ${decision.error}`)
     tray?.setToolTip(idleTooltip(context.game))
     return
@@ -2628,15 +2740,11 @@ async function resumePollForJob(
         silent: notifySilent(),
       })
     },
-    onFailed: (_userMessage, rawError) => {
-      logActivity(`Resumed analysis failed: ${rawError}`)
+    onFailed: (userMessage, rawError) => {
+      const rec = recordingsStore.getByJobId(jobId)
+      dispatchAnalysisFailure(rawError || userMessage, { recordingId: rec?.id ?? null })
+      logActivity(`Resumed analysis failed: ${rawError || userMessage}`)
       tray?.setToolTip(idleTooltip(game))
-      const body = rawError.length > 100 ? rawError.slice(0, 97) + '…' : rawError
-      showAppNotification({
-        title: 'UpForge — Analysis Failed',
-        body,
-        silent: notifySilent(),
-      })
       mainWindow?.webContents.send('dashboard:refresh')
     },
     onConnectionLost: () => {
@@ -2692,15 +2800,20 @@ async function doUploadArchiveOnly(
     }
     if (resolved.sizeBytes > MAX_RECORDING_FILE_BYTES) {
       const errorMsg = formatRecordingTooLargeMessage(resolved.sizeBytes, false)
-      send('post-game:upload-error', { message: errorMsg, recordingId: recordingId ?? undefined })
+      sendUploadFailure(errorMsg, { targetWindow, recordingId, notify: false })
       return null
     }
   } catch (prepErr) {
-    send('post-game:upload-error', {
-      message: prepErr instanceof Error ? prepErr.message : 'Could not prepare recording for upload',
-      recordingId: recordingId ?? undefined,
-    })
+    sendUploadFailure(
+      prepErr instanceof Error ? prepErr.message : 'Could not prepare recording for upload',
+      { targetWindow, recordingId, notify: false },
+    )
     return null
+  }
+
+  if (recordingId) {
+    recordingsStore.setPipelineArchiveOnly(recordingId, true)
+    mainWindow?.webContents.send('recordings:updated')
   }
 
   send('post-game:upload-start', { game, map, agent, archiveOnly: true })
@@ -2748,13 +2861,19 @@ async function doUploadArchiveOnly(
     logActivity(`Cloud save failed: ${msg}`)
     const isUpgradeError = err instanceof UpgradeRequiredError
       || (err instanceof Error && /archive.limit.reached|archive_limit_reached/i.test(err.message))
-    send('post-game:upload-error', {
-      message: msg,
+    sendUploadFailure(msg, {
+      targetWindow,
+      recordingId,
       needsUpgrade: isUpgradeError,
-      recordingId: recordingId ?? undefined,
       upgradeUrl: err instanceof UpgradeRequiredError ? err.upgradeUrl : 'https://upforge.gg/pricing',
+      notify: false,
     })
     return null
+  } finally {
+    if (recordingId) {
+      recordingsStore.setPipelineArchiveOnly(recordingId, false)
+      mainWindow?.webContents.send('recordings:updated')
+    }
   }
 }
 
@@ -2783,15 +2902,26 @@ async function doUploadAndAnalyse(
   }
   stopActiveAnalysisPoll()
 
+  if (recordingId && shouldDeferHeavyBackgroundWork(matchPriorityDeps())) {
+    recordingsStore.setPipelineDeferReason(recordingId, 'recording')
+    mainWindow?.webContents.send('recordings:updated')
+    send('post-game:upload-deferred', { reason: 'recording' })
+  }
+
   await waitUntilBackgroundWorkAllowed(matchPriorityDeps(), { logActivity })
 
   if (recordingId) {
-    registerDeferredUploadRetry(recordingId, () =>
-      doUploadAndAnalyse(
+    recordingsStore.clearPipelineDeferReason(recordingId)
+    mainWindow?.webContents.send('recordings:updated')
+  }
+
+  if (recordingId) {
+    registerDeferredUploadRetry(recordingId, async () => {
+      await doUploadAndAnalyse(
         recordingId, videoPath, riotName, riotTag, game, map, agent, timeline,
         targetWindow, sessionStart, skipAutoDelete, deleteLocalAfterUpload, enrichPromise,
-      ),
-    )
+      )
+    })
   }
 
   if (recordingId) {
@@ -2803,7 +2933,9 @@ async function doUploadAndAnalyse(
   let effectivePath = videoPath
   try {
     const resolved = await resolveUploadVideoPath(videoPath, (sizeGB) => {
-      if (sizeGB === 'transcode') {
+      if (sizeGB === 'remux') {
+        logActivity('Wrapping OBS recording for upload (no re-encode)…')
+      } else if (sizeGB === 'transcode') {
         logActivity('Converting OBS recording to upload format…')
       } else {
         log.warn(`[Upload] Recording is ${sizeGB} GB — compressing before upload`)
@@ -2823,16 +2955,16 @@ async function doUploadAndAnalyse(
     if (resolved.sizeBytes > MAX_RECORDING_FILE_BYTES) {
       const sizeGB = (resolved.sizeBytes / (1024 ** 3)).toFixed(1)
       const errorMsg = formatRecordingTooLargeMessage(resolved.sizeBytes, false)
-      send('post-game:upload-error', { message: errorMsg, recordingId: recordingId ?? undefined })
+      sendUploadFailure(errorMsg, { targetWindow, recordingId, notify: false })
       logActivity(`Recording still too large after compression (${sizeGB} GB)`)
       return null
     }
   } catch (prepErr) {
     log.error('[Upload] Failed to prepare video path:', prepErr)
-    send('post-game:upload-error', {
-      message: prepErr instanceof Error ? prepErr.message : 'Could not prepare recording for upload',
-      recordingId: recordingId ?? undefined,
-    })
+    sendUploadFailure(
+      prepErr instanceof Error ? prepErr.message : 'Could not prepare recording for upload',
+      { targetWindow, recordingId, notify: false },
+    )
     return null
   }
 
@@ -3085,11 +3217,7 @@ async function doUploadAndAnalyse(
         const notifBody = score != null
           ? `${notifAgent}${notifMap} — ${score}/100`
           : `${notifAgent}${notifMap}`.trim()
-        showAppNotification({
-          title: 'Coaching ready',
-          body: notifBody,
-          silent: notifySilent(),
-        })
+        notifyCoachingReady(notifBody, analysisId ?? undefined)
         if (!targetWindow.isDestroyed()) {
           targetWindow.flashFrame(true)
           targetWindow.once('focus', () => targetWindow.flashFrame(false))
@@ -3107,20 +3235,23 @@ async function doUploadAndAnalyse(
         })()
       },
       onFailed: (userMessage, rawError) => {
-        logActivity(`Analysis failed: ${rawError}`)
-        send('post-game:upload-error', userMessage)
+        dispatchAnalysisFailure(rawError || userMessage, {
+          recordingId,
+          targetWindow,
+        })
+        logActivity(`Analysis failed: ${rawError || userMessage}`)
         tray?.setToolTip(idleTooltip(game))
       },
       onConnectionLost: () => {
         logActivity('Analysis polling paused — lost connection (retrying automatically)')
-        send('post-game:analysis-deferred', { jobId: result.job_id })
+        send('post-game:analysis-deferred', { jobId: result.job_id, reason: 'server' })
         tray?.setToolTip('UpForge — Analysis still running…')
         void runStuckAnalysisReconcile()
       },
       onPollEnded: (reason) => {
         if (reason === 'max_duration') {
           logActivity('Analysis poll reached 90 minute cap — job may still be processing on server')
-          send('post-game:analysis-deferred', { jobId: result.job_id })
+          send('post-game:analysis-deferred', { jobId: result.job_id, reason: 'server' })
           tray?.setToolTip('UpForge — Analysis still running…')
           void runStuckAnalysisReconcile()
           showAppNotification({
@@ -3151,12 +3282,13 @@ async function doUploadAndAnalyse(
       || (err instanceof Error && /analysis.limit.reached|upgrade.required/i.test(err.message))
     if (isUpgradeError) {
       const upgradeErr = err as UpgradeRequiredError
-      send('post-game:upload-error', {
-        message: msg,
+      sendUploadFailure(msg, {
+        targetWindow,
+        recordingId,
         needsUpgrade: true,
-        recordingId: recordingId ?? undefined,
-        upgradeUrl: (upgradeErr.upgradeUrl) || 'https://upforge.gg/pricing',
-        ppaUrl: (upgradeErr.ppaUrl) || 'https://upforge.gg/valorant/analyze',
+        upgradeUrl: upgradeErr.upgradeUrl || 'https://upforge.gg/pricing',
+        ppaUrl: upgradeErr.ppaUrl || 'https://upforge.gg/valorant/analyze',
+        notify: false,
       })
       return null
     }
@@ -3188,10 +3320,7 @@ async function doUploadAndAnalyse(
 
     // Send the error with the recordingId (if we have one) so the renderer can offer retry.
     // The payload is either a plain string (legacy, for analysis polling errors) or an object.
-    send('post-game:upload-error', effectiveRecordingId
-      ? { message: msg, recordingId: effectiveRecordingId }
-      : msg
-    )
+    sendUploadFailure(msg, { targetWindow, recordingId: effectiveRecordingId ?? undefined, notify: false })
     return null
   } finally {
     if (recordingId) activeUploadRecordingIds.delete(recordingId)
@@ -3265,28 +3394,37 @@ async function startApp(): Promise<void> {
 
   // Show splash launcher while we check for updates
   const splashWindow = createSplashWindow()
+  const splashShownAt = Date.now()
+  /** Minimum time splash stays visible (dev skips updater so needs a longer floor). */
+  const splashMinMs = is.dev ? 2800 : 1800
 
   createTray()
 
   // Called when updater confirms no update pending (or errors out).
   // Close splash and open the main window.
   const launchMainApp = () => {
-    mainWindow = createMainWindow(authManager.isAuthenticated())
-    markStartupComplete()
-    setupGameDetection()
-    scheduleObsProbeOnWindowLoad(mainWindow, true)
-    // Small delay so main window is loaded before splash closes
-    setTimeout(() => {
-      if (!splashWindow.isDestroyed()) splashWindow.close()
-    }, 400)
+    const openMain = () => {
+      mainWindow = createMainWindow(authManager.isAuthenticated())
+      markStartupComplete()
+      setupGameDetection()
+      scheduleObsProbeOnWindowLoad(mainWindow, true)
+      // Small delay so main window is loaded before splash closes
+      setTimeout(() => {
+        if (!splashWindow.isDestroyed()) splashWindow.close()
+      }, 400)
 
-    // If an orphaned job was found at startup, reconcile once before resuming a 90-min poll loop.
-    mainWindow.webContents.once('did-finish-load', () => {
-      reconcileInterruptedUploads()
-      if (orphanedJob) {
-        void handleOrphanedJobAtStartup(orphanedJob)
-      }
-    })
+      // If an orphaned job was found at startup, reconcile once before resuming a 90-min poll loop.
+      mainWindow.webContents.once('did-finish-load', () => {
+        reconcileInterruptedUploads()
+        if (orphanedJob) {
+          void handleOrphanedJobAtStartup(orphanedJob)
+        }
+      })
+    }
+
+    const waitMs = Math.max(0, splashMinMs - (Date.now() - splashShownAt))
+    if (waitMs > 0) setTimeout(openMain, waitMs)
+    else openMain()
   }
 
   setupAutoUpdater(splashWindow, launchMainApp, () => {
@@ -3550,6 +3688,25 @@ async function startApp(): Promise<void> {
   })
 
 
+  ipcMain.handle('post-game:retry-demo-scan', async () => {
+    if (!lastReplayRetryContext) {
+      return { ok: false as const, error: 'No recent match to scan' }
+    }
+    const notifyWin = postGameWindow && !postGameWindow.isDestroyed()
+      ? postGameWindow
+      : (mainWindow && !mainWindow.isDestroyed() ? mainWindow : null)
+    await tryAutoUploadSourceReplay({
+      game: lastReplayRetryContext.game,
+      demoPath: null,
+      matchSessionStart: lastReplayRetryContext.matchSessionStart,
+      auth: authManager,
+      notifyWindow: notifyWin,
+      customReplayDir: lastReplayRetryContext.customReplayDir,
+      meta: lastReplayRetryContext.meta,
+    })
+    return { ok: true as const }
+  })
+
   ipcMain.handle('recordings:get', async () => {
     scanForOrphanedRecordings()
     await runStuckAnalysisReconcile()
@@ -3567,6 +3724,7 @@ async function startApp(): Promise<void> {
 
     // Dashboard analyse is unrelated to live match capture — don't block on lobby wait.
     dismissMatchWaitUi()
+    recordingsStore.clearAnalysisFailure(id)
 
     const user = authManager.getUser()
 
@@ -3615,15 +3773,23 @@ async function startApp(): Promise<void> {
               if (analysisId != null) recordingsStore.setAnalysisId(recording.id, analysisId)
               mainWindow?.webContents.send('dashboard:refresh')
             },
-            onFailed: (userMessage) => {
-              win.webContents.send('post-game:upload-error', userMessage)
+            onFailed: (userMessage, rawError) => {
+              dispatchAnalysisFailure(rawError || userMessage, {
+                recordingId: recording.id,
+                targetWindow: win,
+              })
             },
             onConnectionLost: () => {},
             onPollEnded: () => {},
           })
         } catch (err) {
           const msg = err instanceof Error ? err.message : 'Failed to queue analysis'
-          win.webContents.send('post-game:upload-error', { message: msg, needsUpgrade: err instanceof UpgradeRequiredError })
+          sendUploadFailure(msg, {
+            targetWindow: win,
+            recordingId: recording.id,
+            needsUpgrade: err instanceof UpgradeRequiredError,
+            notify: false,
+          })
         }
         return
       }

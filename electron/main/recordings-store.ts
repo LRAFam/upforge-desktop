@@ -22,6 +22,7 @@ function preferRecordingEntry(a: PendingRecording, b: PendingRecording): Pending
 }
 
 export type RecordingPipelineStatus = 'pending' | 'uploading' | 'analysing'
+export type PipelineDeferReason = 'recording'
 export type ClipOnlyReason = 'clips_only_mode' | 'no_recording'
 
 export interface PendingRecording {
@@ -49,6 +50,14 @@ export interface PendingRecording {
   uploadProgress?: number
   analysisProgress?: number
   analysisStep?: string | null
+  /** Last analysis failure message for dashboard retry UX. */
+  lastAnalysisError?: string | null
+  lastAnalysisErrorHint?: string | null
+  lastAnalysisCreditRefunded?: boolean
+  /** Upload queued but paused while OBS is recording. */
+  pipelineDeferReason?: PipelineDeferReason | null
+  /** True when an in-flight upload is archive-only (no analysis quota). */
+  pipelineArchiveOnly?: boolean
   /** Highlights-only session with no full-match VOD on disk. */
   clipsOnly?: boolean
   clipOnlyReason?: ClipOnlyReason
@@ -198,6 +207,7 @@ export class RecordingsStore {
       rec.pipelineStatus = undefined
       rec.analysisProgress = undefined
       rec.analysisStep = undefined
+      rec.lastAnalysisError = undefined
       this.persist()
     }
   }
@@ -209,6 +219,56 @@ export class RecordingsStore {
     rec.pipelineStatus = undefined
     rec.analysisProgress = undefined
     rec.analysisStep = undefined
+    this.persist()
+  }
+
+  setAnalysisFailure(
+    id: string,
+    message: string,
+    meta?: { hint?: string | null; creditRefunded?: boolean },
+  ): void {
+    const rec = this.recordings.find(r => r.id === id)
+    if (!rec) return
+    rec.pipelineStatus = undefined
+    rec.analysisProgress = undefined
+    rec.analysisStep = undefined
+    rec.pipelineDeferReason = undefined
+    rec.pipelineArchiveOnly = undefined
+    rec.lastAnalysisError = message
+    rec.lastAnalysisErrorHint = meta?.hint ?? null
+    rec.lastAnalysisCreditRefunded = meta?.creditRefunded ?? false
+    this.persist()
+  }
+
+  clearAnalysisFailure(id: string): void {
+    const rec = this.recordings.find(r => r.id === id)
+    if (!rec?.lastAnalysisError) return
+    rec.lastAnalysisError = undefined
+    rec.lastAnalysisErrorHint = undefined
+    rec.lastAnalysisCreditRefunded = undefined
+    this.persist()
+  }
+
+  setPipelineDeferReason(id: string, reason: PipelineDeferReason): void {
+    const rec = this.recordings.find(r => r.id === id)
+    if (!rec) return
+    rec.pipelineDeferReason = reason
+    rec.pipelineStatus = 'pending'
+    rec.uploadProgress = undefined
+    this.persist()
+  }
+
+  clearPipelineDeferReason(id: string): void {
+    const rec = this.recordings.find(r => r.id === id)
+    if (!rec?.pipelineDeferReason) return
+    rec.pipelineDeferReason = undefined
+    this.persist()
+  }
+
+  setPipelineArchiveOnly(id: string, archiveOnly: boolean): void {
+    const rec = this.recordings.find(r => r.id === id)
+    if (!rec) return
+    rec.pipelineArchiveOnly = archiveOnly
     this.persist()
   }
 
@@ -255,6 +315,16 @@ export class RecordingsStore {
       rec.analysisStep = undefined
     } else if (status === 'uploading') {
       rec.uploadProgress = rec.uploadProgress ?? 0
+      rec.lastAnalysisError = undefined
+      rec.lastAnalysisErrorHint = undefined
+      rec.lastAnalysisCreditRefunded = undefined
+      rec.pipelineDeferReason = undefined
+    } else if (status === 'analysing') {
+      rec.lastAnalysisError = undefined
+      rec.lastAnalysisErrorHint = undefined
+      rec.lastAnalysisCreditRefunded = undefined
+      rec.pipelineDeferReason = undefined
+      rec.pipelineArchiveOnly = undefined
     }
     this.persist()
   }

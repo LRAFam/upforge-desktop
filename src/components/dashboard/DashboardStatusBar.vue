@@ -13,6 +13,9 @@ const {
   totalSessionsAnalysed,
   dashboardRankLabel,
   currentStreak,
+  inFlightUploadCount,
+  inFlightAnalysisCount,
+  deferredUploadCount,
   formatMode,
   connectObs,
   launchAndConnectObs,
@@ -81,6 +84,31 @@ const { features } = useGameTheme()
           <button v-if="status.recording" :disabled="stopping" class="flex-shrink-0 flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-medium bg-red-500/[0.12] hover:bg-red-500/[0.2] border border-red-500/20 text-red-400 transition-all disabled:opacity-50" @click="stopRecording">
             {{ stopping ? 'Ending…' : 'End match' }}
           </button>
+        </div>
+        <div
+          v-if="inFlightUploadCount || inFlightAnalysisCount || deferredUploadCount"
+          class="flex flex-wrap items-center gap-1.5"
+        >
+          <span
+            v-if="inFlightUploadCount"
+            class="inline-flex items-center gap-1 rounded-full border border-blue-500/20 bg-blue-500/10 px-2 py-0.5 text-[10px] font-medium text-blue-300/90"
+          >
+            <span class="h-1.5 w-1.5 rounded-full bg-blue-400 animate-pulse" />
+            {{ inFlightUploadCount }} uploading
+          </span>
+          <span
+            v-if="inFlightAnalysisCount"
+            class="inline-flex items-center gap-1 rounded-full border border-red-500/20 bg-red-500/10 px-2 py-0.5 text-[10px] font-medium text-red-300/90"
+          >
+            <span class="h-1.5 w-1.5 rounded-full bg-red-400 animate-pulse" />
+            {{ inFlightAnalysisCount }} analysing
+          </span>
+          <span
+            v-if="deferredUploadCount"
+            class="inline-flex items-center gap-1 rounded-full border border-amber-500/20 bg-amber-500/10 px-2 py-0.5 text-[10px] font-medium text-amber-300/90"
+          >
+            {{ deferredUploadCount }} paused for recording
+          </span>
         </div>
         <p class="text-sm font-bold text-white leading-snug">{{ dashboardHeadline }}</p>
       </div>

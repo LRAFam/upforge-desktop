@@ -60,7 +60,7 @@ function listCandidateFiles(savePath: string, notBeforeMs: number): ResolvedReco
   const candidates: Array<ResolvedRecordingFile & { mtimeMs: number }> = []
   for (const name of fs.readdirSync(savePath)) {
     const lower = name.toLowerCase()
-    if (!lower.endsWith('.mp4')) continue
+    if (!/\.(mp4|mkv|mov|webm)$/i.test(lower)) continue
 
     const fullPath = join(savePath, name)
     try {

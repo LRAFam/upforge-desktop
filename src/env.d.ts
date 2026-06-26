@@ -179,6 +179,11 @@ export interface PendingRecording {
   uploadProgress?: number
   analysisProgress?: number
   analysisStep?: string | null
+  lastAnalysisError?: string | null
+  lastAnalysisErrorHint?: string | null
+  lastAnalysisCreditRefunded?: boolean
+  pipelineDeferReason?: 'recording' | null
+  pipelineArchiveOnly?: boolean
   clipsOnly?: boolean
   clipOnlyReason?: 'clips_only_mode' | 'no_recording'
   clipCount?: number
@@ -598,6 +603,9 @@ declare global {
         minimize: () => Promise<void>
         close: () => Promise<void>
         openPostGame?: () => Promise<void>
+      }
+      postGame: {
+        retryDemoScan: () => Promise<{ ok: boolean; error?: string }>
       }
       recorder: {
         stop: () => Promise<{ ok: boolean; reason?: string }>

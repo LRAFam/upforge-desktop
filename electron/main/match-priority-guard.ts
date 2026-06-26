@@ -1,6 +1,6 @@
 /**
- * Pauses heavy background work (VOD compression, S3 upload) while a match is
- * active so OBS NVENC recording and gameplay stay smooth.
+ * Pauses heavy background work (VOD compression, S3 upload) while OBS is
+ * actively recording — that's what contends with NVENC and gameplay FPS.
  */
 
 import type { ChildProcess } from 'child_process'
@@ -8,8 +8,6 @@ import log from 'electron-log'
 
 export interface MatchPriorityDeps {
   isRecording: () => boolean
-  currentGame: () => string | null
-  waitingForMatch?: () => boolean
 }
 
 let activeVodCompressionProc: ChildProcess | null = null
@@ -31,8 +29,6 @@ export function abortVodCompression(): boolean {
 
 export function shouldDeferHeavyBackgroundWork(deps: MatchPriorityDeps): boolean {
   return deps.isRecording()
-    || deps.currentGame() != null
-    || deps.waitingForMatch?.() === true
 }
 
 export async function waitUntilBackgroundWorkAllowed(
@@ -44,8 +40,8 @@ export async function waitUntilBackgroundWorkAllowed(
   while (shouldDeferHeavyBackgroundWork(deps)) {
     if (!loggedWait) {
       loggedWait = true
-      opts?.logActivity?.('Match in progress — upload will resume when you finish playing')
-      log.info('[MatchPriority] Deferring heavy background work until match ends')
+      opts?.logActivity?.('Recording in progress — upload will resume when the match ends')
+      log.info('[MatchPriority] Deferring heavy background work until recording ends')
     }
     await new Promise((r) => setTimeout(r, intervalMs))
   }
@@ -85,5 +81,5 @@ export function pauseHeavyBackgroundWork(
   if (activeUploadIds && onUploadInterrupted) {
     onUploadInterrupted(activeUploadIds)
   }
-  log.info('[MatchPriority] Paused uploads/compression for active match')
+  log.info('[MatchPriority] Paused uploads/compression — OBS recording active')
 }

@@ -19,12 +19,9 @@
         <div class="logo-ring">
           <div class="logo-halo" />
           <div class="logo-shimmer" />
-          <img src="../assets/upforge-logo.png" alt="UpForge" class="logo-img" />
+          <img src="../assets/upforge-icon.png" alt="UpForge" class="logo-img" />
         </div>
-        <div class="wordmark">
-          <span class="wordmark-up">UP</span><span class="wordmark-forge">FORGE</span>
-        </div>
-        <p class="tagline">AI-Powered Valorant Coaching</p>
+        <p class="tagline">Competitive coaching platform &amp; marketplace</p>
       </div>
 
       <!-- Divider -->
@@ -290,29 +287,23 @@ onUnmounted(() => {
 .logo-img {
   position: relative;
   z-index: 1;
-  height: 50px;
-  width: auto;
+  height: 58px;
+  width: 58px;
   object-fit: contain;
   filter: drop-shadow(0 0 18px rgba(239,68,68,0.45));
   animation: logoFloat 2.8s ease-in-out infinite;
 }
 
-.wordmark {
-  font-size: 26px;
-  font-weight: 800;
-  letter-spacing: -0.02em;
-  line-height: 1;
-}
-.wordmark-up   { color: #fff; }
-.wordmark-forge { color: #ff4655; }
-
 .tagline {
   font-size: 11px;
   font-weight: 500;
-  color: rgba(156,163,175,0.6);
-  letter-spacing: 0.12em;
+  color: rgba(156,163,175,0.65);
+  letter-spacing: 0.1em;
   text-transform: uppercase;
   margin: 0;
+  max-width: 280px;
+  text-align: center;
+  line-height: 1.5;
 }
 
 /* ── Divider ── */

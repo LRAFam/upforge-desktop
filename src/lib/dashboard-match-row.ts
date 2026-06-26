@@ -73,9 +73,14 @@ export function isRecordingInFlight(
   uploadProgressByRecordingId: Record<string, number>,
 ): boolean {
   if (rec.clipsOnly) return false
+  if (rec.pipelineDeferReason === 'recording') return false
   return rec.pipelineStatus === 'uploading'
     || rec.pipelineStatus === 'analysing'
     || (!!rec.analysed && rec.analysisId == null)
+}
+
+export function isRecordingDeferred(rec: PendingRecording): boolean {
+  return rec.pipelineDeferReason === 'recording' && !rec.clipsOnly
 }
 
 export function recordingPipelineLabel(
@@ -86,14 +91,27 @@ export function recordingPipelineLabel(
     if (rec.clipOnlyReason === 'clips_only_mode') return 'Highlights only'
     return 'Highlights saved'
   }
+  if (rec.pipelineDeferReason === 'recording') {
+    return 'Paused — match recording'
+  }
   if (rec.pipelineStatus === 'uploading') {
     const pct = uploadProgressByRecordingId[rec.id] ?? rec.uploadProgress
-    return pct != null ? `Uploading ${pct}%` : 'Uploading…'
+    const prefix = rec.pipelineArchiveOnly ? 'Saving to cloud' : 'Uploading'
+    return pct != null ? `${prefix} ${pct}%` : `${prefix}…`
   }
   if (rec.pipelineStatus === 'analysing' || (rec.analysed && !rec.analysisId)) {
     return rec.analysisStep?.trim() || 'Analysing…'
   }
   return null
+}
+
+export function recordingUploadProgress(
+  rec: PendingRecording,
+  uploadProgressByRecordingId: Record<string, number>,
+): number | null {
+  if (rec.pipelineStatus !== 'uploading') return null
+  const pct = uploadProgressByRecordingId[rec.id] ?? rec.uploadProgress
+  return pct != null ? Math.min(100, Math.max(0, pct)) : null
 }
 
 export function formatRelativeTime(d: string): string {

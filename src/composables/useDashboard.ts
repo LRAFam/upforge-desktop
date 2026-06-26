@@ -19,10 +19,13 @@ import { getFaceitLevelIconUrl, type Cs2FaceitConnection } from '../lib/cs2'
 import {
   displayAcs,
   isAnalysisProcessing,
+  isRecordingDeferred,
   isRecordingInFlight,
   recordingPipelineLabel,
   recordingRowStats,
+  recordingUploadProgress,
 } from '../lib/dashboard-match-row'
+import { buildAnalysisErrorPayload, type AnalysisErrorPayload } from '../lib/analysis-failure-messages'
 
 export const DASHBOARD_KEY: InjectionKey<ReturnType<typeof createDashboard>> = Symbol('dashboard')
 
@@ -88,9 +91,17 @@ function createDashboard() {
   )
   const billingPortalLoading = ref(false)
 
-  const dashboardHeadline = computed(() =>
-    profile.value?.user?.name ? `Welcome back, ${profile.value.user.name}` : 'Your coaching dashboard',
-  )
+  const dashboardHeadline = computed(() => {
+    const pending = pendingRecordings.value.filter((r) => !r.clipsOnly)
+    if (hasOnboardingGoals.value && pending.length > 0 && onboardingWeaknesses.value.length > 0) {
+      const focus = onboardingWeaknesses.value[0]!
+      const agent = pending[0]?.agent
+      return agent
+        ? `You wanted to work on ${focus} — analyse your ${agent} game when ready`
+        : `You wanted to work on ${focus} — analyse your latest match when ready`
+    }
+    return profile.value?.user?.name ? `Welcome back, ${profile.value.user.name}` : 'Your coaching dashboard'
+  })
   const emptyCoachingTitle = computed(() => theme.value.coachingEmptyTitle)
   const emptyCoachingMessage = computed(() =>
     theme.value.coachingEmptyMessage({ obsConnected: status.value.obsConnected }),
@@ -162,8 +173,13 @@ function createDashboard() {
   const lastInsightTraining = ref(false)
   const trainerLastSession = ref<{ score: number; scenario: string; date: string } | null>(null)
   const trainerSessionCount = ref(0)
-  const analysisCompleteToast = ref<{ score: number; agent: string | null } | null>(null)
+  const analysisCompleteToast = ref<{ score: number; agent: string | null; analysisId?: number | null } | null>(null)
+  const analysisFailure = ref<AnalysisErrorPayload | null>(null)
+  const activityToast = ref<string | null>(null)
+  const backgroundWorkBanner = ref(false)
   let analysisToastTimer: ReturnType<typeof setTimeout> | null = null
+  let analysisFailureTimer: ReturnType<typeof setTimeout> | null = null
+  let activityToastTimer: ReturnType<typeof setTimeout> | null = null
 
   const correlationInsights = ref<string[]>([])
   const playstyleProfile = ref<{
@@ -281,6 +297,45 @@ function createDashboard() {
   const bulkUploadablePending = computed(() =>
     pendingRecordings.value.filter(r => !r.clipsOnly && !isRecordingInFlight(r, uploadProgressByRecordingId.value) && !r.cloudArchived),
   )
+
+  const bulkAnalysablePending = computed(() =>
+    pendingRecordings.value.filter((r) =>
+      !r.clipsOnly
+      && !isRecordingInFlight(r, uploadProgressByRecordingId.value)
+      && !isRecordingDeferred(r),
+    ),
+  )
+
+  const inFlightUploadCount = computed(() =>
+    pendingRecordings.value.filter((r) => r.pipelineStatus === 'uploading').length,
+  )
+
+  const inFlightAnalysisCount = computed(() =>
+    pendingRecordings.value.filter((r) =>
+      r.pipelineStatus === 'analysing' || (!!r.analysed && r.analysisId == null),
+    ).length,
+  )
+
+  const deferredUploadCount = computed(() =>
+    pendingRecordings.value.filter((r) => isRecordingDeferred(r)).length,
+  )
+
+  const quotaRemaining = computed(() => {
+    const stats = profile.value?.user?.analysis_stats
+    if (!stats || stats.limit == null || isAdmin.value) return null
+    return Math.max(0, stats.limit - stats.total)
+  })
+
+  const quotaLowWarning = computed(() => {
+    if (quotaRemaining.value == null) return null
+    if (quotaPercent.value >= 80 && quotaRemaining.value > 0) {
+      return `${quotaRemaining.value} coaching ${quotaRemaining.value === 1 ? 'credit' : 'credits'} left this month`
+    }
+    if (quotaRemaining.value === 0) {
+      return 'No coaching credits left this month'
+    }
+    return null
+  })
 
   const groupedAnalyses = computed(() => {
     const now = new Date()
@@ -522,7 +577,11 @@ function createDashboard() {
       const newest = analyses.value[0]
       if (newest?.overall_score != null) {
         if (analysisToastTimer) clearTimeout(analysisToastTimer)
-        analysisCompleteToast.value = { score: newest.overall_score, agent: newest.agent ?? null }
+        analysisCompleteToast.value = {
+          score: newest.overall_score,
+          agent: newest.agent ?? null,
+          analysisId: newest.id,
+        }
         analysisToastTimer = setTimeout(() => { analysisCompleteToast.value = null }, 5000)
       }
     }
@@ -564,8 +623,8 @@ function createDashboard() {
   async function uploadAllPending() {
     if (bulkUploading.value || bulkUploadablePending.value.length === 0) return
     const user = profile.value?.user
-    if (user && !hasAnalysisQuotaRemaining(user.analysis_stats, user.tier, user.is_admin)) {
-      warning.value = 'No analyses remaining this month.'
+    if (user && !hasArchiveQuotaRemaining(user.archive_stats, user.tier, user.is_admin)) {
+      warning.value = 'Cloud storage limit reached — upgrade for more archived VODs.'
       upgradeNeeded.value = true
       return
     }
@@ -617,6 +676,24 @@ function createDashboard() {
       savingIds.value.delete(id)
       savingIds.value = new Set(savingIds.value)
     }
+  }
+
+  async function analyseOldestPending() {
+    const rec = bulkAnalysablePending.value[0]
+    if (!rec) return
+    await analyseRecording(rec.id)
+  }
+
+  async function retryRecording(id: string) {
+    await analyseRecording(id)
+  }
+
+  function recUploadProgress(rec: PendingRecording) {
+    return recordingUploadProgress(rec, uploadProgressByRecordingId.value)
+  }
+
+  function recIsDeferred(rec: PendingRecording) {
+    return isRecordingDeferred(rec)
   }
 
   async function analyseRecording(id: string) {
@@ -830,9 +907,11 @@ function createDashboard() {
       if (usage.freeDiskBytes >= LOW_FREE_DISK_BYTES) return
       if (settings.autoDelete && settings.autoAnalyse !== false) return
       localStorage.setItem(DISK_MIGRATION_HINT_KEY, '1')
+      const pendingCount = pendingRecordings.value.filter((r) => !r.clipsOnly && !r.cloudArchived).length
+      const pendingNote = pendingCount > 0 ? ` (${pendingCount} pending on dashboard)` : ''
       warning.value = settings.autoDelete
-        ? 'Low disk space — upload pending VODs in Settings → Recording to move them to the cloud and free space.'
-        : 'Low disk space — turn on Auto-delete after upload in Settings so cloud VODs replace local files on your drive.'
+        ? `Low disk space${pendingNote} — save pending VODs to cloud in Settings → Recording.`
+        : `Low disk space${pendingNote} — turn on Auto-delete after upload so cloud VODs replace local files.`
       warningAction.value = { label: 'Open Settings', route: '/settings?tab=recording' }
     } catch { /* optional */ }
   }
@@ -945,6 +1024,12 @@ function createDashboard() {
     skillProfile.value = savedSettings?.skillProfile ?? null
     skillProfilePrevious.value = savedSettings?.skillProfilePrevious ?? null
     void maybeShowDiskMigrationHint()
+    if (quotaLowWarning.value && !warning.value) {
+      warning.value = quotaLowWarning.value
+      if (quotaRemaining.value === 0) upgradeNeeded.value = true
+    }
+
+    const BACKGROUND_BANNER_KEY = 'upforge-background-upload-banner'
 
     await achievements.load()
     if (savedSettings?.lastInsight?.score) {
@@ -1006,14 +1091,45 @@ function createDashboard() {
       const data = args[0] as { recordingId: string; progress: number }
       if (!data?.recordingId) return
       uploadProgressByRecordingId.value = { ...uploadProgressByRecordingId.value, [data.recordingId]: data.progress }
+      if (!sessionStorage.getItem(BACKGROUND_BANNER_KEY)) {
+        backgroundWorkBanner.value = true
+        sessionStorage.setItem(BACKGROUND_BANNER_KEY, '1')
+      }
     }))
     ipcCleanup.push(window.api.on('dashboard:analysis-progress', () => { void loadPendingRecordings() }))
+    ipcCleanup.push(window.api.on('dashboard:analysis-failed', (...args: unknown[]) => {
+      const data = args[0] as AnalysisErrorPayload
+      if (!data?.message) return
+      analysisFailure.value = data
+      warning.value = data.message
+      if (analysisFailureTimer) clearTimeout(analysisFailureTimer)
+      analysisFailureTimer = setTimeout(() => {
+        analysisFailure.value = null
+        if (warning.value === data.message) warning.value = null
+      }, 20_000)
+      void loadPendingRecordings()
+    }))
+    ipcCleanup.push(window.api.on('app:activity-log', (...args: unknown[]) => {
+      activityLog.value = args[0] as { time: number; message: string }[]
+    }))
     ipcCleanup.push(window.api.on('post-game:demo-status', (...args: unknown[]) => {
       const payload = args[0] as { status?: string }
       if (payload?.status === 'complete' && isDeadlock.value) void loadAnalyses()
     }))
-    ipcCleanup.push(window.api.on('app:activity-log', (...args: unknown[]) => {
-      activityLog.value = args[0] as { time: number; message: string }[]
+    ipcCleanup.push(window.api.on('app:activity-toast', (...args: unknown[]) => {
+      const data = args[0] as { message?: string }
+      if (!data?.message) return
+      activityToast.value = data.message
+      if (activityToastTimer) clearTimeout(activityToastTimer)
+      activityToastTimer = setTimeout(() => { activityToast.value = null }, 8000)
+    }))
+    ipcCleanup.push(window.api.on('dashboard:open-latest-analysis', (...args: unknown[]) => {
+      const data = args[0] as { analysisId?: number }
+      if (data?.analysisId != null) void openAnalysis(data.analysisId)
+    }))
+    ipcCleanup.push(window.api.on('dashboard:analyse-recording', (...args: unknown[]) => {
+      const data = args[0] as { id?: string }
+      if (data?.id) void analyseRecording(data.id)
     }))
     ipcCleanup.push(window.api.on('app:ffmpeg-status', (...args: unknown[]) => {
       const data = args[0] as { ok: boolean }
@@ -1132,6 +1248,9 @@ function createDashboard() {
     trainerLastSession,
     trainerSessionCount,
     analysisCompleteToast,
+    analysisFailure,
+    activityToast,
+    backgroundWorkBanner,
     correlationInsights,
     playstyleProfile,
     skillProfile,
@@ -1147,6 +1266,12 @@ function createDashboard() {
     topAgents,
     dashboardAnalyses,
     bulkUploadablePending,
+    bulkAnalysablePending,
+    inFlightUploadCount,
+    inFlightAnalysisCount,
+    deferredUploadCount,
+    quotaRemaining,
+    quotaLowWarning,
     groupedAnalyses,
     quotaPercent,
     archiveQuotaPercent,
@@ -1167,6 +1292,8 @@ function createDashboard() {
     triggerPrestige,
     goWarningAction,
     uploadAllPending,
+    analyseOldestPending,
+    retryRecording,
     saveRecording,
     analyseRecording,
     dismissMacPreviewBanner,
@@ -1193,6 +1320,8 @@ function createDashboard() {
     openBillingPortal,
     refreshProfile,
     recInFlight,
+    recIsDeferred,
+    recUploadProgress,
     recPipelineLabel,
     recRowStats,
     displayAcs,

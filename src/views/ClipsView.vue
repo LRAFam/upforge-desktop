@@ -862,6 +862,7 @@ import { usePrimaryGame } from '../composables/usePrimaryGame'
 import { useGameTheme } from '../composables/useGameTheme'
 import { primaryGameLabel } from '../lib/games'
 import { hasProAccess as proAccessForUser } from '../lib/subscription'
+import { formatAnalysisFailureMessage } from '../lib/analysis-failure-messages'
 
 const route = useRoute()
 const { primaryGame, isValorant } = usePrimaryGame()
@@ -1250,8 +1251,9 @@ async function analyseClip(clip: ClipRecord): Promise<boolean> {
       return false
     }
     if (!analysisResult.ok) {
-      uploadError.value = analysisResult.error ?? 'Analysis request failed.'
-      showToastMsg('Analysis request failed', 'error')
+      const msg = formatAnalysisFailureMessage(analysisResult.error ?? 'Analysis request failed.')
+      uploadError.value = msg
+      showToastMsg(msg, 'error')
       return false
     }
     syncClipInState(clip.id, { analysisStatus: 'queued' })

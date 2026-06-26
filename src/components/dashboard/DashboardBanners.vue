@@ -13,18 +13,67 @@ const {
   openPpa,
   openUpgrade,
   analysisCompleteToast,
+  analysisFailure,
+  activityToast,
+  backgroundWorkBanner,
+  quotaLowWarning,
+  openAnalysis,
   showMacPreviewBanner,
   dismissMacPreviewBanner,
 } = useDashboard()
+
+function dismissBackgroundBanner() {
+  backgroundWorkBanner.value = false
+}
 
 function dismissWarning() {
   warning.value = null
   warningAction.value = null
   upgradeNeeded.value = false
+  analysisFailure.value = null
 }
 </script>
 
 <template>
+  <Transition name="banner-slide">
+    <div
+      v-if="backgroundWorkBanner"
+      class="flex-shrink-0 mx-4 mt-3 flex items-center gap-3 px-4 py-2.5 rounded-xl bg-blue-500/[0.07] border border-blue-500/20 overflow-hidden"
+    >
+      <div class="w-5 h-5 rounded-full bg-blue-500/15 flex items-center justify-center flex-shrink-0">
+        <svg class="w-3 h-3 text-blue-400 animate-pulse" fill="currentColor" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/></svg>
+      </div>
+      <span class="text-xs text-blue-300/90 flex-1">Upload continues in the background — track progress in Recent Analyses below.</span>
+      <button class="w-5 h-5 flex items-center justify-center text-blue-500/50 hover:text-blue-300 transition-colors rounded" @click="dismissBackgroundBanner">
+        <svg class="w-3 h-3" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd"/></svg>
+      </button>
+    </div>
+  </Transition>
+
+  <Transition name="banner-slide">
+    <div
+      v-if="activityToast"
+      class="flex-shrink-0 mx-4 mt-3 flex items-center gap-3 px-4 py-2 rounded-xl bg-white/[0.03] border border-white/[0.10] overflow-hidden"
+    >
+      <div class="w-2 h-2 rounded-full bg-blue-400 flex-shrink-0" />
+      <span class="text-xs text-gray-300 flex-1">{{ activityToast }}</span>
+      <button class="w-5 h-5 flex items-center justify-center text-gray-600 hover:text-gray-400 transition-colors rounded" @click="activityToast = null">
+        <svg class="w-3 h-3" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd"/></svg>
+      </button>
+    </div>
+  </Transition>
+
+  <Transition name="banner-slide">
+    <div
+      v-if="quotaLowWarning && !warning"
+      class="flex-shrink-0 mx-4 mt-3 flex items-center gap-3 px-4 py-2.5 rounded-xl bg-orange-500/[0.07] border border-orange-500/20 overflow-hidden"
+    >
+      <span class="text-xs text-orange-300/90 flex-1">{{ quotaLowWarning }}</span>
+      <button class="flex-shrink-0 text-xs font-semibold text-orange-300 hover:text-orange-100 border border-orange-500/30 rounded-lg px-2 py-1" @click="openPpa">Buy one</button>
+      <button class="flex-shrink-0 text-xs font-semibold text-orange-300 hover:text-orange-100 border border-orange-500/30 rounded-lg px-2 py-1" @click="openUpgrade">Upgrade</button>
+    </div>
+  </Transition>
+
   <Transition name="banner-slide">
     <div
       v-if="paymentPastDue"
@@ -52,15 +101,36 @@ function dismissWarning() {
   <Transition name="banner-slide">
     <div
       v-if="warning"
-      class="flex-shrink-0 mx-4 mt-3 relative flex items-center gap-3 pl-4 pr-3 py-2 rounded-xl bg-orange-500/[0.07] border border-orange-500/20 overflow-hidden"
+      class="flex-shrink-0 mx-4 mt-3 relative flex items-center gap-3 pl-4 pr-3 py-2 rounded-xl overflow-hidden"
+      :class="analysisFailure?.creditRefunded
+        ? 'bg-amber-500/[0.07] border border-amber-500/20'
+        : 'bg-orange-500/[0.07] border border-orange-500/20'"
     >
-      <div class="absolute left-0 top-0 bottom-0 w-[3px] bg-gradient-to-b from-orange-400 to-orange-600 rounded-l-xl" />
-      <div class="w-5 h-5 rounded-full bg-orange-500/15 flex items-center justify-center flex-shrink-0">
-        <svg class="w-3 h-3 text-orange-400" fill="currentColor" viewBox="0 0 20 20">
+      <div
+        class="absolute left-0 top-0 bottom-0 w-[3px] rounded-l-xl"
+        :class="analysisFailure?.creditRefunded
+          ? 'bg-gradient-to-b from-amber-400 to-amber-600'
+          : 'bg-gradient-to-b from-orange-400 to-orange-600'"
+      />
+      <div
+        class="w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0"
+        :class="analysisFailure?.creditRefunded ? 'bg-amber-500/15' : 'bg-orange-500/15'"
+      >
+        <svg
+          class="w-3 h-3"
+          :class="analysisFailure?.creditRefunded ? 'text-amber-400' : 'text-orange-400'"
+          fill="currentColor"
+          viewBox="0 0 20 20"
+        >
           <path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd"/>
         </svg>
       </div>
-      <span class="text-xs text-orange-300/90 flex-1 leading-snug">{{ warning }}</span>
+      <div class="flex-1 min-w-0">
+        <p v-if="analysisFailure?.title" class="text-[11px] font-semibold text-amber-200/90 mb-0.5">{{ analysisFailure.title }}</p>
+        <p class="text-xs leading-snug" :class="analysisFailure?.creditRefunded ? 'text-amber-300/90' : 'text-orange-300/90'">{{ warning }}</p>
+        <p v-if="analysisFailure?.hint" class="text-[10px] text-gray-500 mt-1 leading-snug">{{ analysisFailure.hint }}</p>
+        <p v-if="analysisFailure?.creditRefunded" class="text-[10px] font-semibold text-emerald-400/90 mt-1">Coaching credit refunded — try Analyse again when ready.</p>
+      </div>
       <button v-if="warningAction" class="flex-shrink-0 text-xs font-semibold text-orange-300 hover:text-orange-100 transition-colors border border-orange-500/30 rounded-lg px-2 py-1" @click="goWarningAction">{{ warningAction.label }}</button>
       <button v-if="upgradeNeeded" class="flex-shrink-0 text-xs font-semibold text-orange-300 hover:text-orange-100 transition-colors border border-orange-500/30 rounded-lg px-2 py-1" @click="openPpa">Buy one</button>
       <button v-if="upgradeNeeded" class="flex-shrink-0 text-xs font-semibold text-orange-300 hover:text-orange-100 transition-colors border border-orange-500/30 rounded-lg px-2 py-1" @click="openUpgrade">Upgrade</button>
@@ -86,6 +156,11 @@ function dismissWarning() {
         <span class="font-bold px-1.5 py-px rounded-full text-[10px] ml-1" :class="scoreGradeBadgeClass(analysisCompleteToast.score)">{{ scoreGrade(analysisCompleteToast.score) }}</span>
         <span v-if="analysisCompleteToast.agent"> · {{ analysisCompleteToast.agent }}</span>
       </span>
+      <button
+        v-if="analysisCompleteToast.analysisId"
+        class="flex-shrink-0 text-xs font-semibold text-green-300 hover:text-green-100 border border-green-500/30 rounded-lg px-2 py-1"
+        @click="openAnalysis(analysisCompleteToast.analysisId!)"
+      >View results</button>
       <button class="w-5 h-5 flex items-center justify-center text-green-600/50 hover:text-green-400 transition-colors rounded" @click="analysisCompleteToast = null">
         <svg class="w-3 h-3" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd"/></svg>
       </button>

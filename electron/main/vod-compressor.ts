@@ -20,7 +20,8 @@ function ffmpegBin(): string {
 
 export function compressedPathFor(sourcePath: string): string {
   const dir = dirname(sourcePath)
-  const stem = basename(sourcePath, '.mp4')
+  const base = basename(sourcePath)
+  const stem = base.replace(/\.(mp4|mkv|webm|mov|m4v|flv)$/i, '')
   return join(dir, `${stem}_upforge.mp4`)
 }
 
@@ -93,15 +94,70 @@ export async function resolveUploadVideoPath(
     return { path: sourcePath, sizeBytes, compressed: false }
   }
 
+  // MKV/MOV → MP4 via stream copy when codecs are already browser/S3 compatible (seconds, not minutes).
+  if (mustTranscode && !shouldCompressVod(sizeBytes, forAnalysis)) {
+    onCompressStart?.('remux')
+    const remuxed = await remuxVodForUpload(sourcePath)
+    if (remuxed.ok) {
+      return { path: remuxed.outputPath, sizeBytes: remuxed.outputSizeBytes, compressed: true }
+    }
+    log.warn('[VodCompressor] Remux failed, falling back to full transcode:', remuxed.error)
+  }
+
   onCompressStart?.(mustTranscode && !shouldCompressVod(sizeBytes, forAnalysis)
     ? 'transcode'
     : (sizeBytes / (1024 ** 3)).toFixed(1))
-  const result = await compressVodForUpload(sourcePath)
+
+  let inputPath = sourcePath
+  if (mustTranscode && shouldCompressVod(sizeBytes, forAnalysis)) {
+    onCompressStart?.('remux')
+    const remuxed = await remuxVodForUpload(sourcePath)
+    if (remuxed.ok) {
+      inputPath = remuxed.outputPath
+      sizeBytes = remuxed.outputSizeBytes
+      if (!shouldCompressVod(sizeBytes, forAnalysis)) {
+        return { path: remuxed.outputPath, sizeBytes, compressed: true }
+      }
+      onCompressStart?.((sizeBytes / (1024 ** 3)).toFixed(1))
+    }
+  }
+
+  const result = await compressVodForUpload(inputPath)
   if (result.ok) {
     return { path: result.outputPath, sizeBytes: result.outputSizeBytes, compressed: true }
   }
 
   return { path: sourcePath, sizeBytes, compressed: false }
+}
+
+export async function remuxVodForUpload(sourcePath: string): Promise<CompressVodResult> {
+  const outputPath = compressedPathFor(sourcePath)
+  mkdirSync(dirname(outputPath), { recursive: true })
+
+  if (existsSync(outputPath)) {
+    try { unlinkSync(outputPath) } catch { /* ignore */ }
+  }
+
+  try {
+    log.info(`[VodCompressor] Remux (stream copy): ${sourcePath}`)
+    await runFfmpeg([
+      '-y',
+      '-i', sourcePath,
+      '-map', '0:v:0',
+      '-map', '0:a:0?',
+      '-c', 'copy',
+      '-movflags', '+faststart',
+      outputPath,
+    ])
+    const outputSizeBytes = statSync(outputPath).size
+    return { ok: true, outputPath, outputSizeBytes }
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err)
+    if (existsSync(outputPath)) {
+      try { unlinkSync(outputPath) } catch { /* ignore */ }
+    }
+    return { ok: false, outputPath, outputSizeBytes: 0, error: msg }
+  }
 }
 
 export async function compressVodForUpload(sourcePath: string): Promise<CompressVodResult> {
@@ -120,16 +176,18 @@ export async function compressVodForUpload(sourcePath: string): Promise<Compress
 
   const videoFilters = `scale=${scale}:force_original_aspect_ratio=decrease,pad=${scale}:(ow-iw)/2:(oh-ih)/2,fps=${fps}`
 
-  // CPU-only — OBS uses NVENC/AMF during matches; hardware encoders here cause stutter.
+  // Post-match only — use GPU encoders when available (5–10× faster than libx264 at 2 threads).
   const encoders = IS_WIN
-    ? ['libx264']
+    ? ['h264_nvenc', 'h264_amf', 'h264_qsv', 'libx264']
     : [process.platform === 'darwin' ? 'h264_videotoolbox' : 'libx264']
 
   let lastError = 'Compression failed'
   for (const encoder of encoders) {
     const videoArgs = encoder === 'libx264'
-      ? ['-c:v', encoder, '-preset', 'veryfast', '-crf', '23', '-threads', '2']
-      : ['-c:v', encoder, '-b:v', bitrate, '-maxrate', maxrate, '-bufsize', bufsize]
+      ? ['-c:v', encoder, '-preset', 'veryfast', '-crf', '23', '-threads', '4']
+      : encoder === 'h264_nvenc'
+        ? ['-c:v', encoder, '-preset', 'p4', '-rc', 'vbr', '-b:v', bitrate, '-maxrate', maxrate, '-bufsize', bufsize]
+        : ['-c:v', encoder, '-b:v', bitrate, '-maxrate', maxrate, '-bufsize', bufsize]
 
     try {
       log.info(`[VodCompressor] Compressing with ${encoder}: ${sourcePath}`)

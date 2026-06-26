@@ -60,7 +60,7 @@
             <div class="flex items-end justify-between gap-3">
               <div class="text-left">
                 <p class="text-[10px] font-semibold uppercase tracking-[0.24em] text-gray-600">{{ state === 'preparing' ? 'Preparing' : compressing ? 'Compression' : 'Upload progress' }}</p>
-                <p class="mt-1 text-xs text-gray-500">{{ state === 'preparing' ? 'Saving your match recording and getting it ready to upload' : compressing ? (uploadStatusLabel === 'Converting replay format' ? 'OBS saved as MKV — converting to a playable format before upload (one-time, may take a few minutes)' : 'OBS recorded a large file — shrinking to upload size (one-time, may take a few minutes)') : archiveOnlyUpload ? 'Saving your recording to cloud for playback — no analysis quota used' : 'Sending your recording to UpForge for analysis' }}</p>
+                <p class="mt-1 text-xs text-gray-500">{{ state === 'preparing' ? 'Saving your match recording and getting it ready to upload' : compressing ? compressHint : archiveOnlyUpload ? 'Saving your recording to cloud for playback — no analysis quota used' : 'Sending your recording to UpForge for analysis' }}</p>
               </div>
               <div class="text-right">
                 <p class="text-lg font-black tabular-nums text-white upload-stat-in">{{ uploadProgress }}%</p>
@@ -185,13 +185,13 @@
           <p class="text-xs text-gray-400 leading-relaxed">{{ currentTip }}</p>
         </div>
         <div
-          v-if="analysisLongRunning || analysisDeferred"
+          v-if="analysisLongRunning || analysisDeferredReason"
           class="flex items-start gap-2 px-3 py-2.5 rounded-xl text-left"
-          :class="analysisDeferred ? 'bg-amber-500/[0.07] border border-amber-500/20' : 'bg-blue-500/[0.06] border border-blue-500/20'"
+          :class="analysisDeferredReason === 'recording' ? 'bg-amber-500/[0.07] border border-amber-500/20' : analysisDeferredReason === 'server' ? 'bg-amber-500/[0.07] border border-amber-500/20' : 'bg-blue-500/[0.06] border border-blue-500/20'"
         >
           <svg
             class="w-3.5 h-3.5 flex-shrink-0 mt-0.5"
-            :class="analysisDeferred ? 'text-amber-400' : 'text-blue-400'"
+            :class="analysisDeferredReason ? 'text-amber-400' : 'text-blue-400'"
             fill="none"
             stroke="currentColor"
             viewBox="0 0 24 24"
@@ -199,11 +199,16 @@
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
           </svg>
           <div class="flex-1 min-w-0">
-            <p class="text-xs font-medium" :class="analysisDeferred ? 'text-amber-300' : 'text-blue-300'">
-              {{ analysisDeferred ? 'Still processing on our servers' : 'Taking longer than usual' }}
+            <p class="text-xs font-medium" :class="analysisDeferredReason ? 'text-amber-300' : 'text-blue-300'">
+              <template v-if="analysisDeferredReason === 'recording'">Upload paused — match recording</template>
+              <template v-else-if="analysisDeferredReason === 'server'">Still processing on our servers</template>
+              <template v-else>Taking longer than usual</template>
             </p>
             <p class="text-xs text-gray-500 mt-0.5">
-              <template v-if="analysisDeferred">
+              <template v-if="analysisDeferredReason === 'recording'">
+                Your upload will resume automatically when you end the current match. You can close this panel — progress shows on your dashboard.
+              </template>
+              <template v-else-if="analysisDeferredReason === 'server'">
                 Complex matches can run 15+ minutes. Close this panel — we'll notify you when your score is ready.
               </template>
               <template v-else>
@@ -896,17 +901,22 @@
           </div>
         </template>
 
-        <!-- Generic upload error -->
+        <!-- Generic upload / analysis error -->
         <template v-else>
-          <div class="w-11 h-11 mx-auto rounded-full bg-red-500/10 border border-red-500/20 flex items-center justify-center">
+          <div
+            class="w-11 h-11 mx-auto rounded-full flex items-center justify-center border"
+            :class="creditRefunded
+              ? 'bg-amber-500/10 border-amber-500/25'
+              : 'bg-red-500/10 border-red-500/20'"
+          >
             <svg
-              v-if="isTimeoutError"
-              class="w-5 h-5 text-red-400"
+              v-if="creditRefunded"
+              class="w-5 h-5 text-amber-400"
               fill="none"
               stroke="currentColor"
               viewBox="0 0 24 24"
             >
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 12l2 2 4-4m5-2a9 9 0 11-18 0 9 9 0 0118 0z"/>
             </svg>
             <svg
               v-else
@@ -918,30 +928,32 @@
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
             </svg>
           </div>
-          <div>
-            <p class="text-sm font-semibold text-red-400">
-              {{ isTimeoutError ? 'Analysis timed out' : clipsOnlyError ? 'Recording too large' : 'Upload failed' }}
+          <div class="space-y-2">
+            <p class="text-sm font-semibold" :class="creditRefunded ? 'text-amber-300' : 'text-red-400'">
+              {{ errorTitle }}
             </p>
-            <p class="text-xs text-gray-500 mt-1">
-              <template v-if="isTimeoutError">
-                The server reported a timeout for this job. Your recording was saved — try Analyse again from the dashboard.
-              </template>
-              <template v-else>{{ errorMessage }}</template>
+            <p v-if="creditRefunded" class="inline-flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wide text-emerald-400/90">
+              <span class="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+              Coaching credit refunded
             </p>
+            <p class="text-xs text-gray-400 leading-relaxed">{{ errorMessage }}</p>
+            <p v-if="errorHint" class="text-[11px] text-gray-500 leading-relaxed">{{ errorHint }}</p>
           </div>
           <div class="flex gap-2 pt-1">
             <button
-              v-if="!clipsOnlyError"
+              v-if="canRetryAnalysis && !clipsOnlyError"
               :disabled="!pendingRecordingId"
               class="flex-1 py-2 text-xs font-semibold bg-gradient-to-r from-red-500 to-orange-600 hover:from-red-600 hover:to-orange-700 text-white rounded-lg transition-all shadow-sm shadow-red-500/20 disabled:opacity-40 disabled:cursor-not-allowed"
               @click="retryUpload"
-            >Retry</button>
+            >{{ creditRefunded ? 'Try again' : 'Retry' }}</button>
             <button
-              v-else
+              v-else-if="clipsOnlyError"
               class="flex-1 py-2 text-xs font-semibold bg-gradient-to-r from-red-500 to-orange-600 hover:from-red-600 hover:to-orange-700 text-white rounded-lg transition-all shadow-sm shadow-red-500/20"
               @click="dismiss"
             >View clips in dashboard</button>
-            <button class="px-3 py-2 text-xs text-gray-500 hover:text-gray-300 bg-white/[0.03] hover:bg-white/[0.06] border border-white/[0.10] rounded-lg transition-colors" @click="dismiss">Dismiss</button>
+            <button class="px-3 py-2 text-xs text-gray-500 hover:text-gray-300 bg-white/[0.03] hover:bg-white/[0.06] border border-white/[0.10] rounded-lg transition-colors" @click="dismiss">
+              {{ canRetryAnalysis && !clipsOnlyError ? 'Dismiss' : 'Close' }}
+            </button>
           </div>
         </template>
       </div>
@@ -949,8 +961,12 @@
       <!-- CS2 / Deadlock replay status row -->
       <div
         v-if="(gameInfo.game === 'cs2' || gameInfo.game === 'deadlock') && demoStatus"
-        class="w-full mt-2 flex items-center gap-2 px-3 py-2 bg-cyan-500/[0.06] border border-cyan-500/20 rounded-xl"
+        class="w-full mt-2 rounded-xl border overflow-hidden"
+        :class="demoStatus.status === 'not-found' || demoStatus.status === 'error'
+          ? 'bg-cyan-500/[0.04] border-cyan-500/15'
+          : 'bg-cyan-500/[0.06] border-cyan-500/20'"
       >
+        <div class="flex items-center gap-2 px-3 py-2">
         <!-- uploading spinner -->
         <svg v-if="demoStatus.status === 'uploading'" class="w-3 h-3 text-cyan-400 flex-shrink-0 animate-spin" fill="none" viewBox="0 0 24 24">
           <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
@@ -972,8 +988,25 @@
         <span v-if="demoStatus.status === 'uploading'" class="text-xs text-cyan-300/80">Replay uploading… {{ demoProgress }}%</span>
         <span v-else-if="demoStatus.status === 'analysing'" class="text-xs text-cyan-300/80">Replay analysing…</span>
         <span v-else-if="demoStatus.status === 'complete'" class="text-xs text-cyan-300/80">Replay analysis ready</span>
-        <span v-else-if="demoStatus.status === 'not-found'" class="text-xs text-cyan-700/80">{{ replayNotFoundHint }}</span>
+        <span v-else-if="demoStatus.status === 'not-found'" class="text-xs text-cyan-700/80">Replay not found</span>
         <span v-else-if="demoStatus.status === 'error'" class="text-xs text-cyan-700/80">Replay upload failed</span>
+        </div>
+        <div
+          v-if="demoStatus.status === 'not-found'"
+          class="border-t border-cyan-500/10 px-3 py-2.5 space-y-2"
+        >
+          <p class="text-[11px] text-gray-400 leading-relaxed">{{ replayNotFoundHint }}</p>
+          <ul class="text-[10px] text-gray-500 space-y-1 list-disc pl-4">
+            <li v-if="gameInfo.game === 'cs2'">Add <code class="text-cyan-400/80">cl_demo_auto_recording 1</code> to your autoexec and restart CS2</li>
+            <li v-if="gameInfo.game === 'deadlock'">Enable replay saving in Deadlock settings, then play another match</li>
+            <li>Wait ~1 minute after the match ends before the replay file appears</li>
+          </ul>
+          <button
+            type="button"
+            class="text-[10px] font-semibold text-cyan-300/90 hover:text-cyan-200"
+            @click="retryDemoScan"
+          >{{ demoRescanning ? 'Scanning…' : 'Scan for replay again' }}</button>
+        </div>
       </div>
 
     </div>
@@ -1006,6 +1039,7 @@ import type { SkillProfileSnapshot } from '../lib/skill-profile'
 import type { MatchHighlight } from '../lib/match-highlights'
 import type { ClipRecord } from '../env.d.ts'
 import { canSpatialVodSeek } from '../lib/tier-features'
+import { buildAnalysisErrorPayload, type AnalysisErrorPayload } from '../lib/analysis-failure-messages'
 import type { CategoryScoreItem } from '../components/PostGameIntelHero.vue'
 
 type State = 'preparing' | 'uploading' | 'analysing' | 'ready' | 'error' | 'pending' | 'archived'
@@ -1023,6 +1057,7 @@ const COACHING_TIPS = [
 const state = ref<State>('preparing')
 const uploadProgress = ref(0)
 const compressing = ref(false)
+const compressKind = ref<'remux' | 'transcode' | 'shrink' | null>(null)
 const uploadStartedAt = ref(0)
 const gameInfo = ref<{ game: string; map: string | null; agent: string | null }>({ game: 'valorant', map: null, agent: null })
 const matchDataStatus = ref<'fetched' | 'no_match_id' | 'no_region' | 'no_auth' | 'fetch_failed' | 'pending'>('pending')
@@ -1076,6 +1111,7 @@ const activeSpatialIndex = ref<number | null>(null)
 const showFullDetails = ref(false)
 const showDebrief = ref(false)
 const errorMessage = ref('')
+const errorDetails = ref<AnalysisErrorPayload | null>(null)
 const clipsOnlyError = ref(false)
 const needsUpgrade = ref(false)
 const upgradeUrl = ref('https://upforge.gg/pricing')
@@ -1093,7 +1129,16 @@ function daysUntilReset(): number {
   const firstOfNext = new Date(now.getFullYear(), now.getMonth() + 1, 1)
   return Math.ceil((firstOfNext.getTime() - now.getTime()) / (1000 * 60 * 60 * 24))
 }
-const isTimeoutError = computed(() => /timed? ?out/i.test(errorMessage.value))
+const isTimeoutError = computed(() => errorDetails.value?.kind === 'refunded_timeout' || /timed? ?out/i.test(errorMessage.value))
+const errorTitle = computed(() => {
+  if (errorDetails.value?.title) return errorDetails.value.title
+  if (clipsOnlyError.value) return 'Recording too large'
+  if (isTimeoutError.value) return 'Analysis timed out'
+  return 'Upload failed'
+})
+const errorHint = computed(() => errorDetails.value?.hint ?? null)
+const creditRefunded = computed(() => errorDetails.value?.creditRefunded ?? /refunded/i.test(errorMessage.value))
+const canRetryAnalysis = computed(() => errorDetails.value?.canRetry ?? (!clipsOnlyError.value && !needsUpgrade.value))
 const pendingRecordingId = ref<string | null>(null)
 const sessionRecordingId = ref<string | null>(null)
 const analysing = ref(false)
@@ -1102,7 +1147,7 @@ const archiveOnlyUpload = ref(false)
 const needsArchiveUpgrade = ref(false)
 const analysisStuck = ref(false)
 const analysisLongRunning = ref(false)
-const analysisDeferred = ref(false)
+const analysisDeferredReason = ref<'recording' | 'server' | null>(null)
 const analysisProgress = ref(0)
 const analysisStep = ref<string | null>(null)
 const analysisJobStatus = ref<string>('processing')
@@ -1173,11 +1218,25 @@ const analysisElapsedDisplay = computed(() => {
 
 const uploadStatusLabel = computed(() => {
   if (state.value === 'preparing') return 'Finishing recording'
-  if (compressing.value) return 'Converting replay format'
+  if (compressing.value) {
+    if (compressKind.value === 'remux') return 'Wrapping replay'
+    if (compressKind.value === 'transcode') return 'Converting replay format'
+    return 'Compressing replay'
+  }
   if (uploadProgress.value < 15) return 'Preparing replay'
   if (uploadProgress.value < 70) return 'Uploading recording'
   if (uploadProgress.value < 100) return 'Finalising upload'
   return 'Handing off to analysis'
+})
+
+const compressHint = computed(() => {
+  if (compressKind.value === 'remux') {
+    return 'OBS saved in a container format we need to wrap for upload — usually under a minute with no re-encoding.'
+  }
+  if (compressKind.value === 'transcode') {
+    return 'OBS saved as MKV or an incompatible codec — converting before upload (one-time, may take a few minutes).'
+  }
+  return 'OBS recorded a large file — shrinking to upload size (one-time, may take a few minutes on CPU; faster with NVIDIA/AMD GPU).'
 })
 
 const analysisStatusLabel = computed(() => {
@@ -1215,7 +1274,7 @@ function resetAnalysisUi() {
   analysisJobStatus.value = 'processing'
   analysisStuck.value = false
   analysisLongRunning.value = false
-  analysisDeferred.value = false
+  analysisDeferredReason.value = null
 }
 
 function checkAnalysisNow() {
@@ -1252,7 +1311,7 @@ function clearStuckTimer() {
   if (elapsedInterval) { clearInterval(elapsedInterval); elapsedInterval = null }
   analysisStuck.value = false
   analysisLongRunning.value = false
-  analysisDeferred.value = false
+  analysisDeferredReason.value = null
 }
 
 const gameLabel = computed(() => recordingGameLabel(gameInfo.value.game))
@@ -1292,6 +1351,23 @@ const debriefFailed = ref(false)
 const debriefDiscordLinked = ref(true)
 const demoStatus = ref<{ status: string; jobId?: string; error?: string } | null>(null)
 const demoProgress = ref(0)
+const demoRescanning = ref(false)
+
+async function retryDemoScan() {
+  if (demoRescanning.value) return
+  demoRescanning.value = true
+  demoStatus.value = { status: 'uploading' }
+  try {
+    const res = await window.api.postGame.retryDemoScan()
+    if (!res.ok) {
+      demoStatus.value = { status: 'not-found' }
+    }
+  } catch {
+    demoStatus.value = { status: 'error', error: 'Scan failed' }
+  } finally {
+    demoRescanning.value = false
+  }
+}
 let copiedLinkTimer: ReturnType<typeof setTimeout> | null = null
 
 async function launchTrainer() {
@@ -1522,6 +1598,7 @@ onMounted(() => {
     state.value = 'preparing'
     uploadProgress.value = 0
     compressing.value = false
+    compressKind.value = null
   }))
   ipcCleanup.push(window.api.on('post-game:prep-step', (...args: unknown[]) => {
     const data = args[0] as { game?: string; map?: string | null; agent?: string | null }
@@ -1530,6 +1607,7 @@ onMounted(() => {
     }
     state.value = 'uploading'
     compressing.value = false
+    compressKind.value = null
     uploadProgress.value = 0
     uploadStartedAt.value = Date.now()
   }))
@@ -1538,13 +1616,18 @@ onMounted(() => {
     state.value = 'uploading'
     compressing.value = true
     uploadProgress.value = 0
-    if (data?.sizeGB && data.sizeGB !== 'transcode') {
+    if (data?.sizeGB === 'remux') compressKind.value = 'remux'
+    else if (data?.sizeGB === 'transcode') compressKind.value = 'transcode'
+    else if (data?.sizeGB) compressKind.value = 'shrink'
+    else compressKind.value = 'shrink'
+    if (data?.sizeGB && data.sizeGB !== 'transcode' && data.sizeGB !== 'remux') {
       errorMessage.value = ''
     }
   }))
   ipcCleanup.push(window.api.on('post-game:upload-start', (...args: unknown[]) => {
     state.value = 'uploading'
     compressing.value = false
+    compressKind.value = null
     uploadProgress.value = 0
     const data = args[0] as { game: string; map: string | null; agent: string | null; matchDetailsStatus?: typeof matchDataStatus.value; killsInTimeline?: number; archiveOnly?: boolean }
     archiveOnlyUpload.value = !!data.archiveOnly
@@ -1588,8 +1671,14 @@ onMounted(() => {
   ipcCleanup.push(window.api.on('post-game:analysis-long-running', () => {
     analysisLongRunning.value = true
   }))
-  ipcCleanup.push(window.api.on('post-game:analysis-deferred', () => {
-    analysisDeferred.value = true
+  ipcCleanup.push(window.api.on('post-game:analysis-deferred', (...args: unknown[]) => {
+    const data = args[0] as { reason?: 'recording' | 'server' }
+    analysisDeferredReason.value = data?.reason ?? 'server'
+    analysisLongRunning.value = true
+  }))
+  ipcCleanup.push(window.api.on('post-game:upload-deferred', (...args: unknown[]) => {
+    const data = args[0] as { reason?: 'recording' | 'server' }
+    analysisDeferredReason.value = data?.reason ?? 'recording'
     analysisLongRunning.value = true
   }))
   ipcCleanup.push(window.api.on('post-game:analysis-ready', (...args: unknown[]) => {
@@ -1622,15 +1711,17 @@ onMounted(() => {
     void refreshLocalSpatialSummary()
   }))
   ipcCleanup.push(window.api.on('post-game:upload-error', (...args: unknown[]) => {
-    const payload = args[0] as string | { message: string; recordingId?: string; needsUpgrade?: boolean; upgradeUrl?: string; ppaUrl?: string; clipsOnly?: boolean }
+    const payload = args[0] as string | AnalysisErrorPayload & { needsUpgrade?: boolean; upgradeUrl?: string; ppaUrl?: string; clipsOnly?: boolean; recordingId?: string }
     needsUpgrade.value = false
     needsArchiveUpgrade.value = false
     clipsOnlyError.value = false
     savingToCloud.value = false
     archiveOnlyUpload.value = false
     if (typeof payload === 'string') {
-      errorMessage.value = payload
+      errorDetails.value = buildAnalysisErrorPayload(payload)
+      errorMessage.value = errorDetails.value.message
     } else {
+      errorDetails.value = buildAnalysisErrorPayload(payload.message, payload)
       errorMessage.value = payload.message
       if (payload.recordingId) pendingRecordingId.value = payload.recordingId
       if (payload.clipsOnly) clipsOnlyError.value = true

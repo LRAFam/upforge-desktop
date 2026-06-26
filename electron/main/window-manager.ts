@@ -172,6 +172,9 @@ export interface TrayDeps {
   setMainWindow: (win: BrowserWindow) => void
   isRecording: () => boolean
   getPendingCount: () => number
+  getInFlightCount?: () => number
+  getAnalysablePendingCount?: () => number
+  onAnalyseOldest?: () => void
   createMainWindowFn: () => BrowserWindow
 }
 
@@ -197,10 +200,17 @@ export function createTray(deps: TrayDeps): TrayResult {
 
   const updateMenu = (): void => {
     const pendingCount = deps.getPendingCount()
+    const inFlightCount = deps.getInFlightCount?.() ?? 0
+    const analysableCount = deps.getAnalysablePendingCount?.() ?? 0
     const pendingLabel = pendingCount === 1
       ? '1 recording pending analysis'
       : pendingCount > 1
         ? `${pendingCount} recordings pending analysis`
+        : null
+    const inFlightLabel = inFlightCount === 1
+      ? '1 upload/analysis in progress'
+      : inFlightCount > 1
+        ? `${inFlightCount} uploads/analyses in progress`
         : null
 
     const template: Electron.MenuItemConstructorOptions[] = [
@@ -211,8 +221,17 @@ export function createTray(deps: TrayDeps): TrayResult {
       { label: 'Recording: ' + (deps.isRecording() ? '● Active' : '○ Idle'), enabled: false },
     ]
 
+    if (inFlightLabel) {
+      template.push({ label: inFlightLabel, click: focusOrCreate })
+    }
     if (pendingLabel) {
       template.push({ label: pendingLabel, click: focusOrCreate })
+    }
+    if (analysableCount > 0 && deps.onAnalyseOldest) {
+      template.push({
+        label: analysableCount === 1 ? 'Analyse pending match' : `Analyse oldest pending (${analysableCount})`,
+        click: deps.onAnalyseOldest,
+      })
     }
 
     template.push(
@@ -222,9 +241,15 @@ export function createTray(deps: TrayDeps): TrayResult {
     )
 
     tray.setContextMenu(Menu.buildFromTemplate(template))
+    tray.setToolTip(
+      inFlightCount > 0
+        ? `UpForge — ${inFlightCount} in progress`
+        : pendingCount > 0
+          ? `UpForge — ${pendingCount} pending`
+          : 'UpForge — AI Coaching',
+    )
   }
 
-  tray.setToolTip('UpForge — AI Coaching')
   updateMenu()
 
   tray.on('click', () => {
