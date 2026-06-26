@@ -95,6 +95,12 @@ export class RiotLocalApi {
   /** Shipping.exe was seen while tracking — used when process exits before presence updates. */
   private _shippingSeen = false
   private _shippingGoneStreak = 0
+  /** Last time core-game / pregame end heuristics ran (avoid hammering every 1s overlay tick). */
+  private _lastExternalEndCheckAt = 0
+  private static readonly EXTERNAL_END_CHECK_MS = 3_000
+  /** Last agent fetch attempt — agent REST is polled slowly, not every overlay tick. */
+  private _lastAgentFetchAt = 0
+  private static readonly AGENT_FETCH_INTERVAL_MS = 3_000
   /** Debounce transient MENUS presence during a live match (overlay polls every 1s). */
   private static readonly MENUS_END_POLLS = 8
   /** Shipping.exe must be gone for this many overlay polls before match-end. */
@@ -574,7 +580,6 @@ export class RiotLocalApi {
 
   /** Presence/API heuristics can flake early — require a minimum tracked duration. */
   private _canAcceptPresenceEnd(reason: string): boolean {
-    if (this._peakRoundCount >= 3) return true
     const elapsed = this._matchTrackingElapsedMs()
     if (elapsed >= RiotLocalApi.MIN_PRESENCE_END_MS) return true
     console.log(
@@ -600,8 +605,14 @@ export class RiotLocalApi {
       console.log(`[RiotLocalApi] Queue: ${queueId} -> ${normalized}`)
     }
 
-    // If agent still unknown, try core-game REST API — retry until match ends
-    if (!this.matchData.agent && this.agentFetchAttempts < this.MAX_AGENT_FETCH_ATTEMPTS && this.ownPuuid) {
+    // If agent still unknown, try core-game REST API — throttled during overlay poll.
+    if (
+      !this.matchData.agent
+      && this.agentFetchAttempts < this.MAX_AGENT_FETCH_ATTEMPTS
+      && this.ownPuuid
+      && Date.now() - this._lastAgentFetchAt >= RiotLocalApi.AGENT_FETCH_INTERVAL_MS
+    ) {
+      this._lastAgentFetchAt = Date.now()
       this.agentFetchAttempts++
       this._fetchAgentFromCoreGame().catch(() => { /* swallow — not fatal */ })
     }
@@ -681,6 +692,12 @@ export class RiotLocalApi {
     allyScore: number,
     enemyScore: number,
   ): Promise<string | null> {
+    const now = Date.now()
+    if (now - this._lastExternalEndCheckAt < RiotLocalApi.EXTERNAL_END_CHECK_MS) {
+      return null
+    }
+    this._lastExternalEndCheckAt = now
+
     // Stale INGAME with 0-0 after real rounds — common post-match lobby quirk.
     if (
       sessionLoopState === 'INGAME'
@@ -816,6 +833,8 @@ export class RiotLocalApi {
     this._peakRoundCount = 0
     this._shippingSeen = false
     this._shippingGoneStreak = 0
+    this._lastExternalEndCheckAt = 0
+    this._lastAgentFetchAt = 0
     this.lastSessionLoopState = 'MENUS'
     this.matchData = {
       game,

@@ -9,7 +9,7 @@ import {
 import { join } from 'path'
 import fs from 'fs'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
-import { showAppNotification } from './app-notifications'
+import { showAppNotification, setMatchRecordingGuard } from './app-notifications'
 import {
   startCoachNotificationPoller,
   stopCoachNotificationPoller,
@@ -381,6 +381,7 @@ function wireRecorderStatus(rec: OBSRecorder, label: string): void {
         title: 'UpForge — Recording Stopped',
         body: 'Recording stopped unexpectedly. Open UpForge to see details.',
         silent: notifySilent(),
+        allowDuringRecording: true,
       })
       setTimeout(() => {
         try {
@@ -459,6 +460,10 @@ let matchFlowGeneration = 0
 let matchFinalizeInFlight: Promise<boolean> | null = null
 // Overlay polling timer — cleared when match ends or game stops
 let overlayPollTimer: ReturnType<typeof setInterval> | null = null
+/** Cached Shipping.exe status — tasklist is expensive; check every 5s not every overlay tick. */
+let cachedShippingProcessUp = true
+let lastShippingProcessCheckAt = 0
+const SHIPPING_PROCESS_CHECK_MS = 5_000
 let gsiPollTimer: ReturnType<typeof setInterval> | null = null
 
 let lastReplayRetryContext: {
@@ -593,7 +598,12 @@ function logActivity(message: string): void {
 /** Dashboard banner + optional OS notification for recording outcomes. */
 function notifyRecordingUx(message: string, notificationTitle = 'UpForge — Recording'): void {
   mainWindow?.webContents.send('app:warning', { message })
-  showAppNotification({ title: notificationTitle, body: message, silent: notifySilent() })
+  showAppNotification({
+    title: notificationTitle,
+    body: message,
+    silent: notifySilent(),
+    allowDuringRecording: true,
+  })
 }
 
 /** Backend that will be used for the next (or current) match capture. */
@@ -1316,6 +1326,7 @@ async function refreshDeadlockProfile(fresh = true): Promise<void> {
 }
 
 function setupGameDetection(): void {
+  setMatchRecordingGuard(() => obsRecorder.isRecording())
   startSteamGsiServer()
   gameDetector.setWatchGame(normalizePrimaryGame(settingsManager.get().primaryGame))
   if (normalizePrimaryGame(settingsManager.get().primaryGame) === 'deadlock') {
@@ -1373,6 +1384,8 @@ function setupGameDetection(): void {
   function clearOverlayPolling(): void {
     if (overlayPollTimer) { clearInterval(overlayPollTimer); overlayPollTimer = null }
     if (gsiPollTimer) { clearInterval(gsiPollTimer); gsiPollTimer = null }
+    cachedShippingProcessUp = true
+    lastShippingProcessCheckAt = 0
     sendOverlayData('overlay:data', {
       round: null, allyScore: null, enemyScore: null,
       yourCredits: null, enemyEstimate: null, recording: false,
@@ -1712,17 +1725,17 @@ function setupGameDetection(): void {
     thisPostGameWindow.on('closed', () => {
       if (postGameWindow === thisPostGameWindow) postGameWindow = null
     })
-    // Flash the taskbar button so the user knows it's there even if Valorant
-    // is still covering the screen (only stops flashing when user focuses it).
-    thisPostGameWindow.flashFrame(true)
-    thisPostGameWindow.once('focus', () => thisPostGameWindow.flashFrame(false))
-
+    // Show without stealing focus from fullscreen Valorant — user can alt-tab when ready.
     whenWebContentsReady(thisPostGameWindow, () => {
+      if (thisPostGameWindow.isDestroyed()) return
       try {
-        if (!thisPostGameWindow.isDestroyed()) {
-          thisPostGameWindow.webContents.send('post-game:preparing', { game, map, agent })
-        }
+        thisPostGameWindow.webContents.send('post-game:preparing', { game, map, agent })
       } catch { /* window may have closed */ }
+      if (process.platform === 'win32') {
+        thisPostGameWindow.showInactive()
+      } else {
+        thisPostGameWindow.show()
+      }
     })
 
     // Notify the user that the match recording has finished and upload is starting
@@ -1733,6 +1746,7 @@ function setupGameDetection(): void {
         title: 'Uploading match',
         body: `${agentLabel}${mapLabel} — coaching report on the way.`,
         silent: notifySilent(),
+        allowDuringRecording: true,
       })
     }
 
@@ -2554,13 +2568,20 @@ function setupGameDetection(): void {
     logActivity(`Recording started (${gameMode ?? 'unknown mode'}${obsRecorder.wasNoAudio() ? ' — no audio' : ''})`)
     trackFirstRecording(game)
 
-    // Poll overlay/session state — drives Valorant match-end detection at 1s via pollActiveMatch.
+    // Poll overlay/session state — drives Valorant match-end detection via pollActiveMatch.
     const pollOverlaySession = async () => {
       try {
         const state = await riotLocalApi.getSessionState()
         if (game === 'valorant' && obsRecorder.isRecording() && !matchHandled) {
-          const shippingUp = await gameDetector.isMatchProcessRunning()
-          await riotLocalApi.pollActiveMatch({ shippingProcessRunning: shippingUp, state })
+          const now = Date.now()
+          if (now - lastShippingProcessCheckAt >= SHIPPING_PROCESS_CHECK_MS) {
+            lastShippingProcessCheckAt = now
+            cachedShippingProcessUp = await gameDetector.isMatchProcessRunning()
+          }
+          await riotLocalApi.pollActiveMatch({
+            shippingProcessRunning: cachedShippingProcessUp,
+            state,
+          })
         }
         if (state?.sessionLoopState === 'INGAME') {
           riotLocalApi.setGameplayStartTime(Date.now())
@@ -2581,6 +2602,9 @@ function setupGameDetection(): void {
         }
       } catch { /* ignore — session endpoint may be unavailable */ }
     }
+    if (overlayPollTimer) { clearInterval(overlayPollTimer); overlayPollTimer = null }
+    cachedShippingProcessUp = true
+    lastShippingProcessCheckAt = 0
     void pollOverlaySession()
     overlayPollTimer = setInterval(() => { void pollOverlaySession() }, 1_000)
 

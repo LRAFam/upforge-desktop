@@ -106,6 +106,7 @@ export function createPostGameWindow(): BrowserWindow {
     frame: false,
     alwaysOnTop: true,
     skipTaskbar: false,
+    show: false,
     backgroundColor: '#161616',
     icon: join(__dirname, '../../resources/icon.ico'),
     webPreferences: {

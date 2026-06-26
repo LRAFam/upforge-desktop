@@ -68,6 +68,12 @@ export function deliverInGameFeedback(deps: InGameFeedbackDeps, opts: InGameFeed
       title: opts.title,
       body: opts.body,
       silent: true,
+      allowDuringRecording:
+        opts.kind === 'recording-started'
+        || opts.kind === 'clip-saved'
+        || opts.kind === 'screenshot'
+        || opts.kind === 'not-recording'
+        || opts.kind === 'clip-failed',
     })
     if (opts.beep !== 'none' && settings.notificationSound) {
       playFeedbackBeep(opts.beep ?? 'success')

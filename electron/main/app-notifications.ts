@@ -6,6 +6,15 @@ export interface AppNotificationOptions {
   body: string
   silent?: boolean
   onClick?: () => void
+  /** Allow during an active match recording (default: block automated toasts). */
+  allowDuringRecording?: boolean
+}
+
+/** Set from main — suppresses focus-stealing toasts while OBS is capturing. */
+let isMatchRecordingActive: () => boolean = () => false
+
+export function setMatchRecordingGuard(fn: () => boolean): void {
+  isMatchRecordingActive = fn
 }
 
 const APP_ICON = join(__dirname, '../../resources/icon.ico')
@@ -26,9 +35,27 @@ export function dismissActiveToasts(): void {
   activeToasts = []
 }
 
+let lastToastKey = ''
+let lastToastAt = 0
+const TOAST_DEDUPE_MS = 60_000
+
 /** Show a native OS notification, replacing any toast already on screen. */
-export function showAppNotification({ title, body, silent, onClick }: AppNotificationOptions): void {
+export function showAppNotification({
+  title,
+  body,
+  silent,
+  onClick,
+  allowDuringRecording = false,
+}: AppNotificationOptions): void {
   if (!Notification.isSupported()) return
+
+  if (!allowDuringRecording && isMatchRecordingActive()) return
+
+  const key = `${title}\0${body}`
+  const now = Date.now()
+  if (key === lastToastKey && now - lastToastAt < TOAST_DEDUPE_MS) return
+  lastToastKey = key
+  lastToastAt = now
 
   dismissActiveToasts()
 
