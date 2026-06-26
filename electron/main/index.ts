@@ -1436,11 +1436,29 @@ function setupGameDetection(): void {
     if (game !== 'valorant') return
     const emitNextMatchWatch = async () => {
       await new Promise((r) => setTimeout(r, 5000))
-      if (await gameDetector.isMatchProcessRunning()) {
-        console.log('[GameDetector] Re-arming after skipped match — watching for next queue')
-        logActivity('Watching for next match...')
-        gameDetector.emit('game-started', game)
-      }
+      if (!(await gameDetector.isMatchProcessRunning())) return
+
+      // Avoid stop/start loops: a false early match-end while still INGAME must not
+      // immediately start a second recording for the same live match.
+      try {
+        const authOk = await riotLocalApi.initAuth()
+        if (authOk) {
+          const state = await riotLocalApi.getSessionState()
+          if (state?.sessionLoopState === 'INGAME') {
+            const coreActive = await riotLocalApi.isCoreGameSessionActive()
+            if (coreActive === true) {
+              console.log('[GameDetector] Still INGAME with active core-game — waiting for menus before re-arm')
+              logActivity('Still in match — waiting for post-game lobby before next recording')
+              riotLocalApi.watchUntilMenus(emitNextMatchWatch)
+              return
+            }
+          }
+        }
+      } catch { /* fall through to normal re-arm */ }
+
+      console.log('[GameDetector] Re-arming after skipped match — watching for next queue')
+      logActivity('Watching for next match...')
+      gameDetector.emit('game-started', game)
     }
     if (waitForMatchEnd) {
       // onMatchEnded only fires when start() is running presence polls — skipped matches

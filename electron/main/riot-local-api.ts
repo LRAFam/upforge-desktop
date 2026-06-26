@@ -95,8 +95,16 @@ export class RiotLocalApi {
   /** Shipping.exe was seen while tracking — used when process exits before presence updates. */
   private _shippingSeen = false
   private _shippingGoneStreak = 0
-  private static readonly MENUS_END_POLLS = 2
-  private static readonly SHIPPING_EXIT_POLLS = 4
+  /** Debounce transient MENUS presence during a live match (overlay polls every 1s). */
+  private static readonly MENUS_END_POLLS = 8
+  /** Shipping.exe must be gone for this many overlay polls before match-end. */
+  private static readonly SHIPPING_EXIT_POLLS = 8
+  /** Ignore presence/core-game end heuristics until the match has been tracked this long. */
+  private static readonly MIN_PRESENCE_END_MS = 90_000
+  /** Consecutive external-end polls required once rounds have been seen. */
+  private static readonly EXTERNAL_END_POLLS = 5
+  /** Longer streak while core-game is still warming up (404 during loading). */
+  private static readonly EXTERNAL_END_POLLS_LOADING = 15
   private currentMatchId: string | null = null
   private lastGameMode: string | null = null
   /** Counts how many times core-game agent fetch has been attempted this match. */
@@ -558,6 +566,24 @@ export class RiotLocalApi {
     }
   }
 
+  private _matchTrackingElapsedMs(): number {
+    if (!this.matchData) return 0
+    const base = this.matchData.recordingStartTime ?? this.matchData.startTime
+    return Date.now() - base
+  }
+
+  /** Presence/API heuristics can flake early — require a minimum tracked duration. */
+  private _canAcceptPresenceEnd(reason: string): boolean {
+    if (this._peakRoundCount >= 3) return true
+    const elapsed = this._matchTrackingElapsedMs()
+    if (elapsed >= RiotLocalApi.MIN_PRESENCE_END_MS) return true
+    console.log(
+      `[RiotLocalApi] Match-end debounced (${reason}) — ${Math.round(elapsed / 1000)}s tracked ` +
+      `(min ${RiotLocalApi.MIN_PRESENCE_END_MS / 1000}s, rounds=${this._peakRoundCount})`,
+    )
+    return false
+  }
+
   private async _processActiveMatchState(state: SessionState): Promise<void> {
     if (!this.matchData || this.matchEnded) return
     const { sessionLoopState, queueId, matchMap, allyScore, enemyScore } = state
@@ -663,7 +689,7 @@ export class RiotLocalApi {
       && enemyScore === 0
     ) {
       this._externalEndPolls++
-      if (this._externalEndPolls >= 2) {
+      if (this._externalEndPolls >= RiotLocalApi.EXTERNAL_END_POLLS) {
         return `scores reset to 0-0 after ${this._peakRoundCount} rounds (stale INGAME presence)`
       }
     } else {
@@ -676,7 +702,10 @@ export class RiotLocalApi {
         this._externalEndPolls = 0
       } else if (coreActive === false && pregameActive === false) {
         this._externalEndPolls++
-        if (this._externalEndPolls >= 2) {
+        const required = this._peakRoundCount >= 1
+          ? RiotLocalApi.EXTERNAL_END_POLLS
+          : RiotLocalApi.EXTERNAL_END_POLLS_LOADING
+        if (this._externalEndPolls >= required) {
           return 'core-game and pregame sessions ended (presence may still show INGAME)'
         }
       }
@@ -686,6 +715,7 @@ export class RiotLocalApi {
 
   private _fireMatchEnded(reason: string): void {
     if (this.matchEnded) return
+    if (!this._canAcceptPresenceEnd(reason)) return
     console.log(`[RiotLocalApi] Match ended — ${reason}`)
     this.matchEnded = true
     const endedCb = this.onMatchEnded
