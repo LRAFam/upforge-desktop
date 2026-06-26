@@ -1422,9 +1422,35 @@ function setupGameDetection(): void {
   }
 
   /** Shared path for presence / GSI / process-exit match-end signals. */
+  async function isValorantStillInLiveMatch(): Promise<boolean> {
+    try {
+      const shippingUp = await gameDetector.isMatchProcessRunning()
+      if (!shippingUp) return false
+      const state = await riotLocalApi.getSessionState()
+      if (state?.sessionLoopState === 'INGAME') {
+        const coreActive = await riotLocalApi.isCoreGameSessionActive()
+        if (coreActive === true) return true
+      }
+      // Shipping running but presence not yet MENUS — likely still on map.
+      if (state?.sessionLoopState !== 'MENUS') return true
+    } catch { /* not live */ }
+    return false
+  }
+
   async function finishActiveMatch(game: string, source: string): Promise<void> {
     if (matchHandled) return
     if (!(await obsRecorder.isCaptureActive())) return
+
+    if (game === 'valorant' && await isValorantStillInLiveMatch()) {
+      console.log(`[MatchEnd] Suppressing false end (${source}) — Valorant match still live`)
+      logActivity('False match-end ignored — recording continues')
+      riotLocalApi.clearSuppressedMatchEnd()
+      riotLocalApi.onMatchEnded = () => finishActiveMatch(game, 'presence')
+      if (!obsRecorder.isRecording() && await obsRecorder.isObsOutputActive()) {
+        await obsRecorder.reclaimActiveRecording()
+      }
+      return
+    }
 
     const elapsedSec = currentRecordingStartTime
       ? Math.floor((Date.now() - currentRecordingStartTime) / 1000)
@@ -1518,7 +1544,12 @@ function setupGameDetection(): void {
     if (recordingDuration === 0 && currentRecordingStartTime) {
       recordingDuration = Math.floor((Date.now() - currentRecordingStartTime) / 1000)
     }
-    const matchSessionStart = currentRecordingStartTime ?? (Date.now() - recordingDuration * 1000)
+    const matchSessionStart = currentMatchStartTime ?? currentRecordingStartTime
+      ?? (Date.now() - recordingDuration * 1000)
+    const matchWallDurationSec = matchSessionStart
+      ? Math.floor((Date.now() - matchSessionStart) / 1000)
+      : recordingDuration
+    const effectiveDuration = Math.max(recordingDuration, matchWallDurationSec)
 
     let timeline: MatchData | null = null
     let pendingReplayPath: string | null = null
@@ -1592,6 +1623,8 @@ function setupGameDetection(): void {
     if (recordingDuration === 0 && fileSize >= MIN_RECORDING_FILE_BYTES && currentRecordingStartTime) {
       recordingDuration = Math.floor((Date.now() - currentRecordingStartTime) / 1000)
     }
+
+    const durationForGate = Math.max(recordingDuration, effectiveDuration)
 
     const user = authManager.getUser()
     const map = timeline?.map ?? currentGsiMapName ?? null
@@ -1674,9 +1707,9 @@ function setupGameDetection(): void {
     const MIN_FILE_SIZE_BYTES = MIN_RECORDING_FILE_BYTES
     const MAX_FILE_SIZE_BYTES = MAX_RECORDING_FILE_BYTES
 
-    if (recordingDuration > 0 && recordingDuration < MIN_DURATION_SECONDS) {
-      console.log(`[GameDetector] Recording too short (${recordingDuration}s) — ignoring`)
-      logActivity(`Recording too short (${recordingDuration}s) — discarded`)
+    if (durationForGate > 0 && durationForGate < MIN_DURATION_SECONDS) {
+      console.log(`[GameDetector] Recording too short (${durationForGate}s) — ignoring`)
+      logActivity(`Recording too short (${durationForGate}s) — discarded`)
       registerClipOnlySession({
         game,
         map,
@@ -1688,7 +1721,7 @@ function setupGameDetection(): void {
         requireClips: true,
       })
       notifyRecordingUx(
-        `Recording was only ${Math.round(recordingDuration)}s — at least 2 minutes is needed for analysis. The file was discarded.`,
+        `Recording was only ${Math.round(durationForGate)}s — at least 2 minutes is needed for analysis. The file was discarded.`,
         'UpForge — Recording Too Short'
       )
       if (videoPath && fs.existsSync(videoPath)) {
@@ -2064,8 +2097,15 @@ function setupGameDetection(): void {
 
   gameDetector.on('game-started', async (game: string) => {
     if (obsRecorder.isRecording()) {
-      console.log('[GameDetector] game-started ignored — already recording')
+      console.log('[GameDetector] game-started ignored — capture already active')
       return
+    }
+    if (await obsRecorder.isObsOutputActive()) {
+      const reclaimed = await obsRecorder.reclaimActiveRecording()
+      if (reclaimed) {
+        console.log('[GameDetector] game-started reclaimed ongoing OBS capture')
+        return
+      }
     }
 
     syncPrimaryGameFromDetection(game)
@@ -2486,12 +2526,25 @@ function setupGameDetection(): void {
 
     if (abortIfStale(isStale, game)) return
     if (obsRecorder.isRecording()) {
-      console.log('[GameDetector] Match confirmed but recorder already active — skipping duplicate start')
+      console.log('[GameDetector] Match confirmed but capture already active — skipping duplicate start')
       return
+    }
+    const obsOutputActive = await obsRecorder.isObsOutputActive()
+    let reclaimedExistingCapture = false
+    if (obsOutputActive) {
+      reclaimedExistingCapture = await obsRecorder.reclaimActiveRecording()
+      if (reclaimedExistingCapture) {
+        console.log('[GameDetector] Reclaimed in-progress OBS recording — continuing same file')
+        logActivity('Recovered in-progress recording — continuing capture')
+      } else {
+        console.log('[GameDetector] OBS output active but not reclaimable — skipping duplicate start')
+        return
+      }
     }
 
     if (!gameMode) gameMode = 'COMPETITIVE'
     matchHandled = false
+    if (matchStartTime != null) currentMatchStartTime = matchStartTime
 
     if (game === 'valorant' && !pregameBriefFired && (gameMode === 'COMPETITIVE' || gameMode === 'PREMIER')) {
       requestPregameBrief({ agent: null, map: null, mode: gameMode })
@@ -2539,14 +2592,24 @@ function setupGameDetection(): void {
       // so it doesn't break Valorant's exclusive fullscreen before we actually need it.
       createOverlayWindow()
       await ensureObsReady()
-      await obsRecorder.start(game, recorderConfig)
+      if (!reclaimedExistingCapture) {
+        await obsRecorder.start(game, recorderConfig)
+      }
       interruptBackgroundWorkForMatch()
-      // Update recordingStartTime to the moment the recorder actually began capturing.
       // Accurate videoOffsetMs: offset = (loadSkew − recordingLag) + timeSinceGameStart.
-      const recStartTime = Date.now()
-      riotLocalApi.setRecordingStartTime(recStartTime)
-      currentRecordingStartTime = recStartTime
-      hotkeyBookmarks.length = 0 // clear any stale bookmarks from previous match
+      if (!reclaimedExistingCapture) {
+        const recStartTime = Date.now()
+        riotLocalApi.setRecordingStartTime(recStartTime)
+        currentRecordingStartTime = recStartTime
+        hotkeyBookmarks.length = 0 // clear any stale bookmarks from previous match
+      } else {
+        const recStartTime = obsRecorder.getRecordingStartedAt()
+          ?? currentRecordingStartTime
+          ?? currentMatchStartTime
+          ?? Date.now()
+        riotLocalApi.setRecordingStartTime(recStartTime)
+        currentRecordingStartTime = recStartTime
+      }
       // Push recording=true to the overlay immediately — don't wait for the poll cycle
       sendOverlayData('overlay:data', { round: null, allyScore: null, enemyScore: null, yourCredits: null, enemyEstimate: null, recording: true })
     } catch (err) {
@@ -2692,6 +2755,27 @@ function setupGameDetection(): void {
     }
 
     // Process died without a clean presence transition (crash, force-quit, etc.)
+    const processStillRunning = game === 'valorant'
+      ? await gameDetector.isMatchProcessRunning()
+      : await gameDetector.isGameProcessRunning(game)
+    if (processStillRunning) {
+      console.log(`[GameDetector] game-stopped debounced — ${game} process still running`)
+      return
+    }
+
+    if (game === 'valorant') {
+      try {
+        const state = await riotLocalApi.getSessionState()
+        if (state?.sessionLoopState === 'INGAME') {
+          const coreActive = await riotLocalApi.isCoreGameSessionActive()
+          if (coreActive === true) {
+            console.log('[GameDetector] game-stopped ignored — still INGAME with core-game')
+            return
+          }
+        }
+      } catch { /* process is gone — proceed with finalize */ }
+    }
+
     logActivity('Game process ended — stopping recording')
     await finalizeMatchOnce(game, 'process-exit')
     // Restore main window now that game is gone

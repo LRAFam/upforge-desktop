@@ -26,6 +26,9 @@ export class GameDetector extends EventEmitter {
   private _interval: NodeJS.Timeout | null = null
   private _activeGame: string | null = null
   private _simTimer: NodeJS.Timeout | null = null
+  /** Consecutive tasklist misses before emitting game-stopped (avoids flake mid-match). */
+  private _missedPollStreak = 0
+  private static readonly MISSED_POLLS_BEFORE_STOP = 2
   /** Last primary game from settings — used to clear stale active state on manual switch. */
   private _watchGame: string | null = null
 
@@ -145,13 +148,25 @@ export class GameDetector extends EventEmitter {
         if (running && this._activeGame !== game) {
           const previous = this._activeGame
           this._activeGame = game
+          this._missedPollStreak = 0
           if (previous) {
             this.emit('game-stopped', previous)
             console.log(`[GameDetector] ${previous} stopped (switched to ${game})`)
           }
           this.emit('game-started', game)
           console.log(`[GameDetector] ${game} started`)
+        } else if (running && this._activeGame === game) {
+          this._missedPollStreak = 0
         } else if (!running && this._activeGame === game) {
+          this._missedPollStreak++
+          if (this._missedPollStreak < GameDetector.MISSED_POLLS_BEFORE_STOP) {
+            console.log(
+              `[GameDetector] ${game} process miss ${this._missedPollStreak}/` +
+              `${GameDetector.MISSED_POLLS_BEFORE_STOP} — waiting before game-stopped`,
+            )
+            continue
+          }
+          this._missedPollStreak = 0
           this._activeGame = null
           this.emit('game-stopped', game)
           console.log(`[GameDetector] ${game} stopped`)

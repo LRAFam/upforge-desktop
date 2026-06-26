@@ -98,13 +98,15 @@ export function resolveReadyRecordingPath(
   const candidates = listCandidateFiles(savePath, notBeforeMs - 60_000)
   if (candidates.length === 0) return null
 
-  const newest = candidates[0]!
-  const resolvedPath = preferredRecordingPath(newest.path)
-  const resolved = statRecordingFile(resolvedPath) ?? newest
+  // Fragmented stop/start leaves multiple files — prefer the largest valid capture.
+  const best = [...candidates].sort((a, b) => b.sizeBytes - a.sizeBytes)[0]!
+  const resolvedPath = preferredRecordingPath(best.path)
+  const resolved = statRecordingFile(resolvedPath) ?? best
 
   if (preferredPath && resolved.path !== preferredPath) {
     log.warn(
-      `[RecordingPath] Using fallback file ${resolved.path} (OBS reported ${preferredPath ?? 'none'})`,
+      `[RecordingPath] Using fallback file ${resolved.path} (${(resolved.sizeBytes / (1024 ** 2)).toFixed(1)} MB, ` +
+      `OBS reported ${preferredPath ?? 'none'})`,
     )
   }
   return resolved

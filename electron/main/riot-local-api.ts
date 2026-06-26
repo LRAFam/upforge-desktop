@@ -568,7 +568,7 @@ export class RiotLocalApi {
     if (!this._shippingSeen) return
     this._shippingGoneStreak++
     if (this._shippingGoneStreak >= RiotLocalApi.SHIPPING_EXIT_POLLS) {
-      this._fireMatchEnded('VALORANT-Win64-Shipping.exe exited')
+      void this._fireMatchEnded('VALORANT-Win64-Shipping.exe exited')
     }
   }
 
@@ -580,6 +580,7 @@ export class RiotLocalApi {
 
   /** Presence/API heuristics can flake early — require a minimum tracked duration. */
   private _canAcceptPresenceEnd(reason: string): boolean {
+    if (this._peakRoundCount >= 3) return true
     const elapsed = this._matchTrackingElapsedMs()
     if (elapsed >= RiotLocalApi.MIN_PRESENCE_END_MS) return true
     console.log(
@@ -587,6 +588,29 @@ export class RiotLocalApi {
       `(min ${RiotLocalApi.MIN_PRESENCE_END_MS / 1000}s, rounds=${this._peakRoundCount})`,
     )
     return false
+  }
+
+  /** Last-chance guard — presence/core-game can disagree with process heuristics mid-match. */
+  private async _confirmMatchEnded(reason: string): Promise<boolean> {
+    const state = await this.getSessionState().catch(() => null)
+    if (state?.sessionLoopState === 'INGAME') {
+      const coreActive = await this.isCoreGameSessionActive()
+      if (coreActive === true) {
+        console.log(`[RiotLocalApi] Match-end suppressed (${reason}) — still INGAME with core-game`)
+        return false
+      }
+    }
+    return true
+  }
+
+  private _backoffEndHeuristic(reason: string): void {
+    if (reason.includes('Shipping.exe')) {
+      this._shippingGoneStreak = Math.floor(RiotLocalApi.SHIPPING_EXIT_POLLS / 2)
+    } else if (reason.includes('MENUS')) {
+      this._consecutiveMenusPolls = Math.floor(RiotLocalApi.MENUS_END_POLLS / 2)
+    } else {
+      this._externalEndPolls = Math.max(0, Math.floor(RiotLocalApi.EXTERNAL_END_POLLS / 2))
+    }
   }
 
   private async _processActiveMatchState(state: SessionState): Promise<void> {
@@ -639,7 +663,7 @@ export class RiotLocalApi {
           this.lastSessionLoopState = 'INGAME'
           return
         }
-        this._fireMatchEnded(`presence returned to MENUS (${this._consecutiveMenusPolls} polls)`)
+        void this._fireMatchEnded(`presence returned to MENUS (${this._consecutiveMenusPolls} polls)`)
         return
       }
     } else if (sessionLoopState !== 'MENUS') {
@@ -654,7 +678,7 @@ export class RiotLocalApi {
         enemyScore,
       )
       if (externalEnd) {
-        this._fireMatchEnded(externalEnd)
+        void this._fireMatchEnded(externalEnd)
         return
       }
     }
@@ -730,9 +754,13 @@ export class RiotLocalApi {
     return null
   }
 
-  private _fireMatchEnded(reason: string): void {
+  private async _fireMatchEnded(reason: string): Promise<void> {
     if (this.matchEnded) return
     if (!this._canAcceptPresenceEnd(reason)) return
+    if (!(await this._confirmMatchEnded(reason))) {
+      this._backoffEndHeuristic(reason)
+      return
+    }
     console.log(`[RiotLocalApi] Match ended — ${reason}`)
     this.matchEnded = true
     const endedCb = this.onMatchEnded
@@ -742,6 +770,13 @@ export class RiotLocalApi {
         console.error('[RiotLocalApi] onMatchEnded handler error:', err)
       })
     }
+  }
+
+  /** Undo a false match-end so overlay polling and onMatchEnded can resume. */
+  clearSuppressedMatchEnd(): void {
+    if (!this.matchEnded) return
+    this.matchEnded = false
+    console.log('[RiotLocalApi] Match-end reversed — resuming active match tracking')
   }
 
   // ──────────────────────────────────────────────────────────────────────
