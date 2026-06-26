@@ -48,8 +48,10 @@ const api = {
       ipcRenderer.invoke('recordings:dismiss', { id, deleteLocal: opts?.deleteLocal }),
     getTimeline: (id: string) => ipcRenderer.invoke('recordings:get-timeline', { id }),
     refreshPlayback: (id: string) => ipcRenderer.invoke('recordings:refresh-playback', { id }),
-    nudgeSync: (id: string, deltaMs: number) => ipcRenderer.invoke('recordings:nudge-sync', { id, deltaMs }),
-    resetSync: (id: string) => ipcRenderer.invoke('recordings:reset-sync', { id }),
+        nudgeSync: (id: string, deltaMs: number) => ipcRenderer.invoke('recordings:nudge-sync', { id, deltaMs }),
+        resetSync: (id: string) => ipcRenderer.invoke('recordings:reset-sync', { id }),
+        trim: (id: string, startSec: number, endSec: number) =>
+          ipcRenderer.invoke('recordings:trim', { id, startSec, endSec }),
   },
   settings: {
     get: () => ipcRenderer.invoke('settings:get'),

@@ -17,9 +17,9 @@ describe('formatAnalysisFailureMessage', () => {
     )).toContain('duel clips')
   })
 
-  it('marks generic server errors as refunded', () => {
+  it('marks generic server errors as retryable', () => {
     const p = classifyAnalysisFailure('Server error')
-    expect(p.creditRefunded).toBe(true)
+    expect(p.creditRefunded).toBe(false)
     expect(p.canRetry).toBe(true)
   })
 
@@ -27,6 +27,31 @@ describe('formatAnalysisFailureMessage', () => {
     const p = classifyAnalysisFailure('analysis.limit.reached')
     expect(p.kind).toBe('quota')
     expect(p.creditRefunded).toBe(false)
+  })
+
+  it('maps API outage errors to temporary unavailable copy', () => {
+    const p = classifyAnalysisFailure('Request failed (500)')
+    expect(p.title).toBe('UpForge is temporarily unavailable')
+    expect(p.creditRefunded).toBe(false)
+    expect(p.message).not.toContain('SQLSTATE')
+  })
+
+  it('maps moov atom ffmpeg errors to incomplete recording copy', () => {
+    const p = classifyAnalysisFailure(
+      'ffmpeg exited 3199971767: moov atom not found Error opening input file C:\\Users\\Adam\\recordings\\match.mp4',
+    )
+    expect(p.kind).toBe('upload')
+    expect(p.title).toBe('Recording file is incomplete')
+    expect(p.message).not.toContain('ffmpeg')
+    expect(p.canRetry).toBe(false)
+  })
+
+  it('maps S3 SlowDown XML to throttled upload copy', () => {
+    const raw = 'S3 upload failed (HTTP 503): <?xml version="1.0"?><Error><Code>SlowDown</Code><Message>Please reduce your request rate.</Message></Error>'
+    const p = classifyAnalysisFailure(raw)
+    expect(p.kind).toBe('upload')
+    expect(p.title).toBe('Upload temporarily throttled')
+    expect(p.message).not.toContain('<?xml')
   })
 })
 

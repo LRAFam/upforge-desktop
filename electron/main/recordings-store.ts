@@ -234,6 +234,8 @@ export class RecordingsStore {
     rec.analysisStep = undefined
     rec.pipelineDeferReason = undefined
     rec.pipelineArchiveOnly = undefined
+    rec.uploadProgress = undefined
+    rec.jobId = undefined
     rec.lastAnalysisError = message
     rec.lastAnalysisErrorHint = meta?.hint ?? null
     rec.lastAnalysisCreditRefunded = meta?.creditRefunded ?? false
@@ -283,6 +285,7 @@ export class RecordingsStore {
   listStuckAnalysisJobs(): PendingRecording[] {
     return this.recordings.filter(r => {
       if (!r.jobId) return false
+      if (r.lastAnalysisError) return false
       if (r.pipelineStatus === 'analysing' || r.pipelineStatus === 'uploading') return true
       return r.analysed && r.analysisId == null
     })

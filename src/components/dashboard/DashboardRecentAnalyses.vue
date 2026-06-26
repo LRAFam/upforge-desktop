@@ -15,6 +15,7 @@ import {
   formatFileSize,
 } from '../../lib/dashboard-match-row'
 import { scoreGrade, scoreLabel } from '../../lib/analysis-scoring'
+import { formatAnalysisFailureMessage } from '../../lib/analysis-failure-messages'
 
 const {
   router,
@@ -59,8 +60,15 @@ function failureHint(rec: PendingRecording): string | null {
   if (!message) return null
   if (/late|unclear|sync/i.test(message)) return 'Tip: wait ~30s after the game ends, then try again.'
   if (/timed out/i.test(message)) return 'Tip: try again — off-peak hours are usually faster.'
+  if (/throttled|slow down/i.test(message)) return 'Tip: wait a minute, then tap Retry.'
+  if (/incomplete|moov|finished saving/i.test(message)) return 'Tip: let OBS finish writing after the match ends.'
   if (rec.lastAnalysisCreditRefunded) return 'Your coaching credit was refunded — you can try again.'
   return null
+}
+
+function displayAnalysisError(rec: PendingRecording): string {
+  if (!rec.lastAnalysisError) return ''
+  return formatAnalysisFailureMessage(rec.lastAnalysisError)
 }
 
 function pendingRowClass(rec: PendingRecording): string {
@@ -171,9 +179,9 @@ function pendingRowClass(rec: PendingRecording): string {
             </p>
             <p
               v-if="rec.lastAnalysisError && !recInFlight(rec) && !recIsDeferred(rec)"
-              class="text-[10px] text-amber-400/85 mt-1 leading-snug line-clamp-2"
+              class="text-[10px] text-amber-400/85 mt-1 leading-snug max-h-20 overflow-y-auto scroll-col pr-1"
             >
-              {{ rec.lastAnalysisError }}
+              {{ displayAnalysisError(rec) }}
               <span v-if="rec.lastAnalysisCreditRefunded" class="text-emerald-500/80"> · Credit refunded</span>
             </p>
             <p

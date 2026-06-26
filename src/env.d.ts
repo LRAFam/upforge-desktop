@@ -510,6 +510,12 @@ declare global {
         refreshPlayback: (id: string) => Promise<string | null>
         nudgeSync: (id: string, deltaMs: number) => Promise<{ ok: boolean; videoSyncOffsetMs?: number }>
         resetSync: (id: string) => Promise<{ ok: boolean; videoSyncOffsetMs?: number }>
+        trim: (id: string, startSec: number, endSec: number) => Promise<{
+          ok: boolean
+          error?: string
+          newDurationSec?: number
+          cloudStale?: boolean
+        }>
       }
       settings: {
         get: () => Promise<AppSettings>

@@ -180,6 +180,9 @@ function createDashboard() {
   let analysisToastTimer: ReturnType<typeof setTimeout> | null = null
   let analysisFailureTimer: ReturnType<typeof setTimeout> | null = null
   let activityToastTimer: ReturnType<typeof setTimeout> | null = null
+  let pendingReloadTimer: ReturnType<typeof setTimeout> | null = null
+  let lastPendingReloadAt = 0
+  const PENDING_RELOAD_MIN_MS = 15_000
 
   const correlationInsights = ref<string[]>([])
   const playstyleProfile = ref<{
@@ -610,7 +613,25 @@ function createDashboard() {
   }
 
   async function loadPendingRecordings() {
+    lastPendingReloadAt = Date.now()
     pendingRecordings.value = await window.api.recordings.get().catch(() => [])
+  }
+
+  function schedulePendingReload(force = false) {
+    const now = Date.now()
+    if (!force && now - lastPendingReloadAt < PENDING_RELOAD_MIN_MS) {
+      if (pendingReloadTimer) return
+      pendingReloadTimer = setTimeout(() => {
+        pendingReloadTimer = null
+        void loadPendingRecordings()
+      }, PENDING_RELOAD_MIN_MS - (now - lastPendingReloadAt))
+      return
+    }
+    if (pendingReloadTimer) {
+      clearTimeout(pendingReloadTimer)
+      pendingReloadTimer = null
+    }
+    void loadPendingRecordings()
   }
 
   function goWarningAction() {
@@ -1096,7 +1117,28 @@ function createDashboard() {
         sessionStorage.setItem(BACKGROUND_BANNER_KEY, '1')
       }
     }))
-    ipcCleanup.push(window.api.on('dashboard:analysis-progress', () => { void loadPendingRecordings() }))
+    ipcCleanup.push(window.api.on('dashboard:analysis-progress', (...args: unknown[]) => {
+      const data = args[0] as { jobId?: string; progress?: number; current_step?: string | null }
+      if (!data?.jobId) {
+        schedulePendingReload()
+        return
+      }
+      const idx = pendingRecordings.value.findIndex(r => r.jobId === data.jobId)
+      if (idx < 0) {
+        schedulePendingReload()
+        return
+      }
+      pendingRecordings.value = pendingRecordings.value.map((r, i) =>
+        i === idx
+          ? {
+              ...r,
+              pipelineStatus: 'analysing' as const,
+              analysisProgress: data.progress ?? r.analysisProgress,
+              analysisStep: data.current_step ?? r.analysisStep,
+            }
+          : r,
+      )
+    }))
     ipcCleanup.push(window.api.on('dashboard:analysis-failed', (...args: unknown[]) => {
       const data = args[0] as AnalysisErrorPayload
       if (!data?.message) return

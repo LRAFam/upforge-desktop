@@ -268,10 +268,6 @@ export class UploadManager {
     // analysis, the user can resume polling from the next launch.
     savePendingJob(job_id, { agent: opts.agent ?? undefined, map: opts.map ?? undefined, game: opts.game })
 
-    const clipTask = opts.prepareDuelClips && opts.duelMoments?.length
-      ? opts.prepareDuelClips(job_id, opts.videoPath)
-      : null
-
     // ── Step 2: stream file directly to S3 ────────────────────────────────
     opts.onProgress(8)
     let uploadParts: UploadedPart[] | undefined
@@ -299,9 +295,9 @@ export class UploadManager {
     const completeExtras = opts.getCoachingExtras?.() ?? opts.coachingExtras
     const completeCtx = submissionContextFromTimeline(opts.timeline ?? null, completeExtras)
     let duelMomentsPayload = opts.duelMoments
-    if (clipTask) {
+    if (opts.prepareDuelClips && opts.duelMoments?.length) {
       try {
-        duelMomentsPayload = await clipTask
+        duelMomentsPayload = await opts.prepareDuelClips(job_id, opts.videoPath)
       } catch (err) {
         console.error('[UploadManager] Duel clip upload failed:', err)
         throw err
@@ -711,7 +707,10 @@ export class UploadManager {
               return
             }
             if (httpStatus >= 400) {
-              const msg = (json.error as string) || (json.message as string) || `Request failed (${httpStatus})`
+              let msg = (json.error as string) || (json.message as string) || `Request failed (${httpStatus})`
+              if (httpStatus >= 500 || /sqlstate|connection refused|queryexception/i.test(msg)) {
+                msg = `Request failed (${httpStatus})`
+              }
               reject(new Error(msg))
               return
             }

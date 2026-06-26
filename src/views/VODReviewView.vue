@@ -4,8 +4,20 @@ import VodReviewCommandBar from '../components/vod-review/VodReviewCommandBar.vu
 import VodReviewStates from '../components/vod-review/VodReviewStates.vue'
 import VodReviewBody from '../components/vod-review/VodReviewBody.vue'
 import VodReviewShortcuts from '../components/vod-review/VodReviewShortcuts.vue'
+import TrimRangeModal from '../components/shared/TrimRangeModal.vue'
 
-const { timelineLoading, timelineError } = provideVodReview()
+const {
+  timelineLoading,
+  timelineError,
+  trimModalOpen,
+  trimStartSec,
+  trimEndSec,
+  trimLoading,
+  trimError,
+  trimHint,
+  duration,
+  confirmVodTrim,
+} = provideVodReview()
 </script>
 
 <template>
@@ -17,6 +29,22 @@ const { timelineLoading, timelineError } = provideVodReview()
     <VodReviewBody v-else />
 
     <VodReviewShortcuts />
+
+    <TrimRangeModal
+      :show="trimModalOpen"
+      title="Trim VOD"
+      confirm-label="Trim VOD"
+      :duration="duration"
+      :start-sec="trimStartSec"
+      :end-sec="trimEndSec"
+      :loading="trimLoading"
+      :error="trimError"
+      :hint="trimHint"
+      @close="trimModalOpen = false"
+      @confirm="confirmVodTrim"
+      @update:start-sec="trimStartSec = $event"
+      @update:end-sec="trimEndSec = $event"
+    />
   </div>
 </template>
 

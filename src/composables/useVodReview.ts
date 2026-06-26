@@ -180,6 +180,11 @@ function createVodReview() {
   const isPlaying = ref(false)
   const currentTime = ref(0)
   const duration = ref(0)
+  const trimModalOpen = ref(false)
+  const trimStartSec = ref(0)
+  const trimEndSec = ref(0)
+  const trimLoading = ref(false)
+  const trimError = ref<string | null>(null)
   const initialSeekDone = ref(false)
   const hoverTime = ref<number | null>(null)
   const playbackSpeed = ref(1)
@@ -560,6 +565,15 @@ function createVodReview() {
   })
 
   const isCloudVideo = computed(() => /^https?:\/\//i.test(timeline.value?.videoPath ?? ''))
+
+  const canTrimLocalVod = computed(() =>
+    !!recordingId.value && !isCloudVideo.value && duration.value > 5,
+  )
+
+  const trimHint = computed(() => {
+    if (!timeline.value?.analysisId && !timeline.value?.archiveId) return null
+    return 'This match is saved to cloud — trimming only updates your local file. Re-upload to refresh the cloud copy.'
+  })
   
   function needsCloudPlaybackRefresh(path: string | null | undefined): boolean {
     if (!path) return true
@@ -1688,10 +1702,60 @@ function createVodReview() {
   })
   
   watch(theaterMode, () => nextTick(() => updateVideoFrameSize()))
+
+  function openVodTrim() {
+    if (!canTrimLocalVod.value) return
+    trimStartSec.value = 0
+    trimEndSec.value = Math.round(duration.value * 10) / 10
+    trimError.value = null
+    trimModalOpen.value = true
+  }
+
+  async function confirmVodTrim() {
+    if (!recordingId.value || trimEndSec.value <= trimStartSec.value) {
+      trimError.value = 'End must be after start'
+      return
+    }
+    trimLoading.value = true
+    trimError.value = null
+    try {
+      const result = await window.api.recordings.trim(
+        recordingId.value,
+        trimStartSec.value,
+        trimEndSec.value,
+      )
+      if (!result.ok) {
+        trimError.value = result.error ?? 'Trim failed'
+        return
+      }
+      trimModalOpen.value = false
+      initialSeekDone.value = false
+      currentTime.value = 0
+      timeline.value = await window.api.recordings.getTimeline(recordingId.value)
+      videoSyncOffsetMs.value = timeline.value?.videoSyncOffsetMs
+        ?? defaultSyncMsForGame(timeline.value?.game)
+      applyTimelineDerivedState()
+      await nextTick()
+      videoEl.value?.load()
+      duration.value = 0
+    } catch (e) {
+      trimError.value = e instanceof Error ? e.message : 'Trim failed'
+    } finally {
+      trimLoading.value = false
+    }
+  }
   
   function handleKeyDown(e: KeyboardEvent) {
     // Don't capture keyboard events when user is typing in an input
     if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return
+
+    if (trimModalOpen.value) {
+      if (e.key === 'Escape' && !trimLoading.value) {
+        e.preventDefault()
+        trimModalOpen.value = false
+      }
+      return
+    }
 
     if (e.shiftKey && (e.key === 'j' || e.key === 'J')) {
       if (hasCoachFeedback.value && sortedCoachAnnotations.value.length) {
@@ -1875,6 +1939,8 @@ function createVodReview() {
     availableSpatialRounds,
     baseDisplaySpatialSummary,
     canRefreshCloudPlayback,
+    canTrimLocalVod,
+    confirmVodTrim,
     canSeekFromSpatial,
     COACH_ANNOTATION_PRE_ROLL_SECONDS,
     coachProgressMarkers,
@@ -1898,6 +1964,12 @@ function createVodReview() {
     onDuelMomentBandSelect,
     dockChipsEl,
     duration,
+    trimEndSec,
+    trimError,
+    trimHint,
+    trimLoading,
+    trimModalOpen,
+    trimStartSec,
     effectiveSyncMs,
     eventPercent,
     eventVideoSeconds,
@@ -1946,6 +2018,7 @@ function createVodReview() {
     onVideoError,
     onVideoMouseMove,
     openUpgrade,
+    openVodTrim,
     ownPuuid,
     ownTeam,
     pickInitialSeekSeconds,

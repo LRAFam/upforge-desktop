@@ -171,11 +171,11 @@ const {
         <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
       </button>
     </div>
-    <div class="py-1 max-h-24 overflow-y-auto scroll-col">
-      <div v-for="entry in [...activityLog].reverse().slice(0, 5)" :key="entry.time" class="flex items-center gap-2 px-3 py-0.5">
-        <div :class="['w-1 h-1 rounded-full flex-shrink-0', logEntryColor(entry.message)]" />
+    <div class="py-1 max-h-32 overflow-y-auto scroll-col">
+      <div v-for="entry in [...activityLog].reverse().slice(0, 8)" :key="entry.time" class="flex items-start gap-2 px-3 py-1">
+        <div :class="['w-1 h-1 rounded-full flex-shrink-0 mt-1.5', logEntryColor(entry.message)]" />
         <span class="text-[9px] text-gray-700 tabular-nums flex-shrink-0 font-mono">{{ formatLogTime(entry.time) }}</span>
-        <span class="text-[9px] text-gray-500 truncate">{{ entry.message }}</span>
+        <span class="text-[9px] text-gray-500 leading-snug min-w-0 break-words">{{ entry.message }}</span>
       </div>
     </div>
   </div>

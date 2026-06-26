@@ -36,6 +36,22 @@ export interface AnalysisErrorPayload {
   clipsOnly?: boolean
 }
 
+function extractXmlErrorParts(raw: string): { code?: string; message?: string } {
+  const code = raw.match(/<Code>([^<]+)<\/Code>/i)?.[1]
+  const message = raw.match(/<Message>([^<]+)<\/Message>/i)?.[1]
+  return { code, message }
+}
+
+/** True when the string looks like raw infrastructure noise, not user copy. */
+export function isTechnicalErrorMessage(raw: string): boolean {
+  const err = raw.trim()
+  if (!err) return false
+  if (err.includes('<?xml') || err.includes('<Error>')) return true
+  if (/ffmpeg exited|moov atom|invalid data found when processing/i.test(err)) return true
+  if (err.length > 160) return true
+  return false
+}
+
 export function formatAnalysisFailureMessage(rawError: string): string {
   return classifyAnalysisFailure(rawError).message
 }
@@ -43,6 +59,7 @@ export function formatAnalysisFailureMessage(rawError: string): string {
 export function classifyAnalysisFailure(rawError: string): AnalysisFailurePresentation {
   const err = rawError.trim()
   const lower = err.toLowerCase()
+  const xml = extractXmlErrorParts(err)
 
   if (/analysis\.limit|upgrade\.required|no analyses remaining/i.test(lower)) {
     return {
@@ -59,18 +76,79 @@ export function classifyAnalysisFailure(rawError: string): AnalysisFailurePresen
     return {
       kind: 'clips_only',
       title: 'Recording too large',
-      message: err,
+      message: isTechnicalErrorMessage(err) ? 'This recording is too large to upload for full analysis.' : err,
       hint: 'Your highlight clips were saved — open the dashboard to review them.',
       creditRefunded: false,
       canRetry: false,
     }
   }
 
-  if (/upload was interrupted|file not found|upload failed|could not prepare/i.test(lower)) {
+  if (/moov atom|invalid data found when processing|error opening input file|recording is incomplete/i.test(lower)) {
+    return {
+      kind: 'upload',
+      title: 'Recording file is incomplete',
+      message: 'OBS stopped before the replay finished saving, so the video cannot be analysed.',
+      hint: 'Let recording finish after the match ends (UpForge stops OBS automatically). Play another match, or retry from the dashboard only if the file on disk plays in a media player.',
+      creditRefunded: /credit.*refund|refunded/i.test(lower),
+      canRetry: false,
+    }
+  }
+
+  if (
+    /connection refused|sqlstate|queryexception|request failed \(5|econnrefused|enotfound|econnaborted|etimedout|fetch failed|temporarily unavailable|cannot reach upforge|network error|server error/i.test(lower)
+  ) {
+    return {
+      kind: 'upload',
+      title: 'UpForge is temporarily unavailable',
+      message: 'We could not reach the servers right now. This usually clears within a minute.',
+      hint: 'Your recording is safe on your PC — try again shortly from the dashboard.',
+      creditRefunded: false,
+      canRetry: true,
+    }
+  }
+
+  if (
+    xml.code === 'SlowDown'
+    || /slowdown|please reduce your request rate/i.test(lower)
+  ) {
+    return {
+      kind: 'upload',
+      title: 'Upload temporarily throttled',
+      message: 'Cloud storage asked us to slow down — wait a minute, then try again.',
+      hint: 'Your recording is still on the dashboard — tap Analyse or Retry in a moment.',
+      creditRefunded: false,
+      canRetry: true,
+    }
+  }
+
+  if (/s3 upload failed|service unavailable|http 503|http 502|http 500/i.test(lower) || err.includes('<?xml')) {
+    const friendly = xml.message || (xml.code ? `Cloud storage error (${xml.code})` : null)
     return {
       kind: 'upload',
       title: 'Upload did not finish',
-      message: err,
+      message: friendly ?? 'The replay could not be sent to cloud storage.',
+      hint: 'Your recording is still on the dashboard — tap Analyse to try again.',
+      creditRefunded: false,
+      canRetry: true,
+    }
+  }
+
+  if (/upload was interrupted|file not found|could not prepare/i.test(lower)) {
+    return {
+      kind: 'upload',
+      title: 'Upload did not finish',
+      message: isTechnicalErrorMessage(err) ? 'The replay could not be prepared for upload.' : err,
+      hint: 'Your recording is still on the dashboard — tap Analyse to try again.',
+      creditRefunded: false,
+      canRetry: true,
+    }
+  }
+
+  if (/upload failed/i.test(lower)) {
+    return {
+      kind: 'upload',
+      title: 'Upload did not finish',
+      message: 'The replay could not be sent to cloud storage.',
       hint: 'Your recording is still on the dashboard — tap Analyse to try again.',
       creditRefunded: false,
       canRetry: true,
@@ -136,7 +214,7 @@ export function classifyAnalysisFailure(rawError: string): AnalysisFailurePresen
     return {
       kind: 'refunded_generic',
       title: 'Analysis could not complete',
-      message: err,
+      message: isTechnicalErrorMessage(err) ? 'Something went wrong while analysing this match.' : err,
       hint: 'Your coaching credit was refunded. You can try again from the dashboard.',
       creditRefunded: true,
       canRetry: true,
@@ -146,9 +224,13 @@ export function classifyAnalysisFailure(rawError: string): AnalysisFailurePresen
   return {
     kind: 'refunded_generic',
     title: 'Analysis could not complete',
-    message: err || 'Something went wrong while analysing this match.',
-    hint: 'Your coaching credit was refunded. Try again from the dashboard.',
-    creditRefunded: true,
+    message: isTechnicalErrorMessage(err)
+      ? 'Something went wrong while analysing this match.'
+      : (err || 'Something went wrong while analysing this match.'),
+    hint: /credit.*refund|refunded/i.test(lower)
+      ? 'Your coaching credit was refunded. Try again from the dashboard.'
+      : 'Try again from the dashboard, or contact support if this keeps happening.',
+    creditRefunded: /credit.*refund|refunded/i.test(lower),
     canRetry: true,
   }
 }

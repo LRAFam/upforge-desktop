@@ -4,6 +4,7 @@ import fs from 'fs'
 import { app } from 'electron'
 import { existsSync, mkdirSync } from 'fs'
 import { is } from '@electron-toolkit/utils'
+import log from 'electron-log'
 
 const IS_WIN = process.platform === 'win32'
 
@@ -121,6 +122,32 @@ export class ClipExtractor {
     } catch (err) {
       try { if (fs.existsSync(opts.outputPath)) fs.unlinkSync(opts.outputPath) } catch { /* ignore */ }
       throw err
+    }
+  }
+
+  /** Trim a full match VOD — stream-copy first, H.264 transcode fallback for OBS codecs. */
+  async trimVod(opts: TrimOptions): Promise<void> {
+    mkdirSync(dirname(opts.outputPath), { recursive: true })
+    const dur = opts.endSec - opts.startSec
+    if (dur <= 0) throw new Error('Trim end must be after start')
+    try {
+      await this.trim({ ...opts })
+    } catch (copyErr) {
+      try { if (fs.existsSync(opts.outputPath)) fs.unlinkSync(opts.outputPath) } catch { /* ignore */ }
+      log.warn('[ClipExtractor] VOD trim stream-copy failed, transcoding:', copyErr)
+      await this._run([
+        '-y',
+        '-ss', String(opts.startSec),
+        '-i', opts.sourcePath,
+        '-t', String(dur),
+        '-map', '0:v:0',
+        '-map', '0:a:0?',
+        '-c:v', 'libx264', '-crf', '22', '-preset', 'veryfast', '-threads', '2', '-pix_fmt', 'yuv420p',
+        '-c:a', 'aac', '-b:a', '128k',
+        '-avoid_negative_ts', '1',
+        '-movflags', '+faststart',
+        opts.outputPath,
+      ], 20 * 60_000)
     }
   }
 

@@ -9,8 +9,8 @@
     </div>
 
     <div
-      class="flex-1 flex flex-col min-h-0 relative z-10"
-      :class="state === 'ready' ? 'overflow-y-auto overflow-x-hidden px-6 py-5' : 'items-center justify-center px-6 py-5'"
+      class="flex-1 flex flex-col min-h-0 relative z-10 overflow-y-auto overflow-x-hidden px-6 py-5"
+      :class="state === 'ready' ? '' : 'items-center'"
     >
       <div
         v-if="copiedLinkToast"
@@ -23,7 +23,7 @@
       </div>
 
       <!-- Uploading -->
-      <div v-if="state === 'preparing' || state === 'uploading'" class="w-full space-y-3 text-center">
+      <div v-if="state === 'preparing' || state === 'uploading'" class="w-full max-w-sm mx-auto space-y-3 text-center">
         <!-- Dismiss during upload -->
         <button
           class="absolute top-2 right-2 w-6 h-6 flex items-center justify-center rounded-full text-gray-600 hover:text-gray-300 hover:bg-white/[0.06] transition-colors"
@@ -97,7 +97,7 @@
       </div>
 
       <!-- Analysing -->
-      <div v-else-if="state === 'analysing'" class="w-full space-y-3 text-center">
+      <div v-else-if="state === 'analysing'" class="w-full max-w-sm mx-auto space-y-3 text-center">
         <button
           class="absolute top-2 right-2 w-6 h-6 flex items-center justify-center rounded-full text-gray-600 hover:text-gray-300 hover:bg-white/[0.06] transition-colors"
           title="Close — analysis continues in background"
@@ -865,7 +865,7 @@
       </div>
 
       <!-- Error -->
-      <div v-else-if="state === 'error'" class="w-full space-y-3 text-center">
+      <div v-else-if="state === 'error'" class="w-full max-w-sm mx-auto space-y-3 text-center">
         <!-- Quota exceeded -->
         <template v-if="needsUpgrade">
           <div class="w-11 h-11 mx-auto rounded-full bg-amber-500/10 border border-amber-500/20 flex items-center justify-center">

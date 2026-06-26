@@ -40,6 +40,11 @@ export async function extractAndUploadDuelClips(opts: {
   const { uploadManager, jobId, videoPath, moments, clipExtractor } = opts
   if (moments.length === 0) return []
 
+  const probe = await clipExtractor.probe(videoPath)
+  if (!probe.ok) {
+    throw new Error(probe.reason ?? 'Recording file is incomplete — cannot extract duel clips')
+  }
+
   const workDir = await mkdtemp(join(tmpdir(), 'upforge-duel-clips-'))
   const localPaths = new Map<string, string>()
 

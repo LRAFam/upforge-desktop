@@ -101,6 +101,9 @@ export async function resolveUploadVideoPath(
     if (remuxed.ok) {
       return { path: remuxed.outputPath, sizeBytes: remuxed.outputSizeBytes, compressed: true }
     }
+    if (/moov atom|invalid data/i.test(remuxed.error ?? '')) {
+      throw new Error('Recording file is incomplete — OBS may have stopped before the file finished saving.')
+    }
     log.warn('[VodCompressor] Remux failed, falling back to full transcode:', remuxed.error)
   }
 
@@ -125,6 +128,14 @@ export async function resolveUploadVideoPath(
   const result = await compressVodForUpload(inputPath)
   if (result.ok) {
     return { path: result.outputPath, sizeBytes: result.outputSizeBytes, compressed: true }
+  }
+
+  if (mustTranscode || shouldCompressVod(sizeBytes, forAnalysis)) {
+    const detail = result.error ?? ''
+    if (/moov atom|invalid data/i.test(detail)) {
+      throw new Error('Recording file is incomplete — OBS may have stopped before the file finished saving.')
+    }
+    throw new Error('Could not prepare recording for upload')
   }
 
   return { path: sourcePath, sizeBytes, compressed: false }

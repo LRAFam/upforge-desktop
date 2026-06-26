@@ -5,11 +5,13 @@ const {
   activeRoundNumber,
   agentAccentStyle,
   agentImageUrl,
+  canTrimLocalVod,
   displayGameMode,
   hasCoachFeedback,
   hasSpatialIntel,
   mapPosterUrl,
   matchScoreline,
+  openVodTrim,
   roundGroups,
   roundLogCollapsed,
   roundRecord,
@@ -122,6 +124,15 @@ const {
           >
             R{{ activeRoundNumber + 1 }}
           </span>
+          <button
+            v-if="canTrimLocalVod"
+            type="button"
+            class="vod-toolbar-btn hidden sm:inline-flex"
+            title="Trim local recording file"
+            @click="openVodTrim"
+          >
+            Trim
+          </button>
           <button
             v-if="timeline?.videoPath"
             type="button"

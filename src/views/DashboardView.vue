@@ -19,10 +19,10 @@ provideDashboard()
     <DashboardBanners />
     <DashboardStatusBar />
 
-    <div class="flex-1 min-h-0 px-4 pb-4 pt-3 overflow-hidden">
-      <div class="h-full grid grid-cols-1 lg:grid-cols-[280px_minmax(0,1fr)_320px] gap-3 min-h-0 items-start">
+    <div class="flex-1 min-h-0 px-4 pb-4 pt-1 overflow-hidden">
+      <div class="h-full grid grid-cols-1 lg:grid-cols-[280px_minmax(0,1fr)_320px] gap-3 min-h-0 items-stretch overflow-hidden">
 
-        <div class="flex flex-col gap-3 min-w-0 w-full self-start max-h-full overflow-y-auto scroll-col">
+        <div class="flex flex-col gap-3 min-w-0 min-h-0 self-stretch overflow-y-auto overflow-x-hidden scroll-col">
           <DashboardPlayerCard />
           <DashboardSessionReview />
           <DashboardWeeklyFocus />
@@ -35,7 +35,7 @@ provideDashboard()
           <DashboardRecentAnalyses />
         </div>
 
-        <div class="flex flex-col gap-2 min-w-0 w-full self-start max-h-full overflow-y-auto scroll-col">
+        <div class="flex flex-col gap-2 min-w-0 min-h-0 self-stretch overflow-y-auto overflow-x-hidden scroll-col">
           <DashboardCoachingSidebar />
         </div>
 

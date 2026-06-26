@@ -33,6 +33,11 @@ import {
   deleteLocalRecordingFiles,
 } from './vod-compressor'
 import {
+  applyVodTrimToTimeline,
+  swapMediaFileInPlace,
+  trimmedOutputPath,
+} from './vod-trimmer'
+import {
   waitUntilBackgroundWorkAllowed,
   pauseHeavyBackgroundWork,
   registerDeferredUploadRetry,
@@ -558,6 +563,11 @@ interface LastMatchDiagnostic {
 }
 let lastMatchDiagnostic: LastMatchDiagnostic | null = null
 
+const FAILURE_NOTIFY_COOLDOWN_MS = 5 * 60 * 1000
+const recentFailureNotifications = new Map<string, number>()
+
+let lastActivityToast = { message: '', at: 0 }
+
 function logActivity(message: string): void {
   const entry = { time: Date.now(), message }
   activityLog.push(entry)
@@ -572,7 +582,11 @@ function logActivity(message: string): void {
     || lower.includes('saved to cloud')
     || lower.includes('coaching ready')
   ) {
-    mainWindow?.webContents.send('app:activity-toast', { message })
+    const now = Date.now()
+    if (message !== lastActivityToast.message || now - lastActivityToast.at > FAILURE_NOTIFY_COOLDOWN_MS) {
+      lastActivityToast = { message, at: now }
+      mainWindow?.webContents.send('app:activity-toast', { message })
+    }
   }
 }
 
@@ -946,6 +960,17 @@ function dispatchAnalysisFailure(
   })
 
   if (opts.recordingId) {
+    const existing = recordingsStore.getById(opts.recordingId)
+    if (
+      existing?.lastAnalysisError === payload.message
+      && !existing.pipelineStatus
+      && !existing.jobId
+    ) {
+      return payload
+    }
+  }
+
+  if (opts.recordingId) {
     recordingsStore.setAnalysisFailure(opts.recordingId, payload.message, {
       hint: payload.hint,
       creditRefunded: payload.creditRefunded,
@@ -963,14 +988,20 @@ function dispatchAnalysisFailure(
   mainWindow?.webContents.send('recordings:updated')
 
   if (opts.notify !== false) {
-    const notifBody = payload.hint
-      ? `${payload.message} ${payload.hint}`
-      : payload.message
-    showAppNotification({
-      title: payload.creditRefunded ? `${payload.title} — credit refunded` : payload.title,
-      body: notifBody.length > 220 ? `${notifBody.slice(0, 217)}…` : notifBody,
-      silent: notifySilent(),
-    })
+    const notifyKey = `${opts.recordingId ?? 'global'}:${payload.kind}:${payload.title}`
+    const now = Date.now()
+    const lastNotified = recentFailureNotifications.get(notifyKey)
+    if (!lastNotified || now - lastNotified >= FAILURE_NOTIFY_COOLDOWN_MS) {
+      recentFailureNotifications.set(notifyKey, now)
+      const notifBody = payload.hint
+        ? `${payload.message} ${payload.hint}`
+        : payload.message
+      showAppNotification({
+        title: payload.creditRefunded ? `${payload.title} — credit refunded` : payload.title,
+        body: notifBody.length > 220 ? `${notifBody.slice(0, 217)}…` : notifBody,
+        silent: notifySilent(),
+      })
+    }
   }
 
   return payload
@@ -1021,7 +1052,7 @@ function runStuckAnalysisReconcile(): Promise<number> {
     },
     onCompleted: dispatchReconciledAnalysisReady,
     onFailed: ({ error, recordingId }) => {
-      const presentation = dispatchAnalysisFailure(error, { recordingId })
+      const presentation = dispatchAnalysisFailure(error, { recordingId, notify: false })
       logActivity(`Analysis failed: ${presentation.message}`)
       mainWindow?.webContents.send('dashboard:refresh')
     },
@@ -2932,6 +2963,11 @@ async function doUploadAndAnalyse(
 
   let effectivePath = videoPath
   try {
+    const readable = await clipExtractor.probe(videoPath)
+    if (!readable.ok) {
+      throw new Error(readable.reason ?? 'Recording file is incomplete')
+    }
+
     const resolved = await resolveUploadVideoPath(videoPath, (sizeGB) => {
       if (sizeGB === 'remux') {
         logActivity('Wrapping OBS recording for upload (no re-encode)…')
@@ -3709,7 +3745,6 @@ async function startApp(): Promise<void> {
 
   ipcMain.handle('recordings:get', async () => {
     scanForOrphanedRecordings()
-    await runStuckAnalysisReconcile()
     return recordingsStore.getPending(linkedRiotFromAuth())
   })
 
@@ -4028,6 +4063,62 @@ async function startApp(): Promise<void> {
     enrichTimelineSpatial(recording.timeline)
     recordingsStore.updateTimeline(id, recording.timeline)
     return { ok: true as const, videoSyncOffsetMs: resetOffset }
+  })
+
+  const _vodTrimInFlight = new Set<string>()
+
+  ipcMain.handle('recordings:trim', async (_e, { id, startSec, endSec }: {
+    id: string
+    startSec: number
+    endSec: number
+  }) => {
+    const recording = recordingsStore.getById(id)
+    if (!recording?.path || !fs.existsSync(recording.path)) {
+      return { ok: false as const, error: 'Local recording file not found on disk' }
+    }
+    if (recording.pipelineStatus === 'uploading' || recording.pipelineStatus === 'analysing') {
+      return { ok: false as const, error: 'Wait for upload or analysis to finish before trimming' }
+    }
+    if (!Number.isFinite(startSec) || !Number.isFinite(endSec) || endSec <= startSec) {
+      return { ok: false as const, error: 'End time must be after start time' }
+    }
+    if (endSec - startSec < 5) {
+      return { ok: false as const, error: 'Trimmed VOD must be at least 5 seconds long' }
+    }
+    if (_vodTrimInFlight.has(id)) {
+      return { ok: false as const, error: 'Trim already in progress for this recording' }
+    }
+
+    _vodTrimInFlight.add(id)
+    const trimmedPath = trimmedOutputPath(recording.path)
+    const cloudStale = Boolean(recording.analysisId || recording.archiveId)
+    try {
+      await clipExtractor.trimVod({
+        sourcePath: recording.path,
+        startSec,
+        endSec,
+        outputPath: trimmedPath,
+      })
+      swapMediaFileInPlace(recording.path, trimmedPath)
+      if (recording.timeline) {
+        applyVodTrimToTimeline(recording.timeline, { startSec, endSec })
+        enrichTimelineSpatial(recording.timeline)
+        recordingsStore.updateTimeline(id, recording.timeline)
+      }
+      recordingsStore.updatePath(id, recording.path)
+      mainWindow?.webContents.send('recordings:updated')
+      return {
+        ok: true as const,
+        newDurationSec: endSec - startSec,
+        cloudStale,
+      }
+    } catch (err) {
+      try { if (fs.existsSync(trimmedPath)) fs.unlinkSync(trimmedPath) } catch { /* ignore */ }
+      const msg = err instanceof Error ? err.message : String(err)
+      return { ok: false as const, error: msg }
+    } finally {
+      _vodTrimInFlight.delete(id)
+    }
   })
 
   ipcMain.handle('archives:refresh-playback', async (_e, { archiveId }: { archiveId: string }) => {
