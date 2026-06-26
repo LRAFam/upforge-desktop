@@ -77,7 +77,6 @@ export class RiotLocalApi {
   /** Current Riot client version — fetched from valorant-api.com at init, used in PVP API headers. */
   private clientVersion = 'release-09.08-shipping-15-2656652'
   private matchData: MatchData | null = null
-  private presencePollInterval: ReturnType<typeof setInterval> | null = null
   /** Lightweight INGAME→MENUS watcher when recording was skipped (no matchData / no start()). */
   private menuWatchInterval: ReturnType<typeof setInterval> | null = null
   private menuWatchGeneration = 0
@@ -89,7 +88,15 @@ export class RiotLocalApi {
   private _seenIngameSinceStart = false
   /** Consecutive MENUS polls while in-match — debounces transient presence glitches. */
   private _consecutiveMenusPolls = 0
+  /** Consecutive polls with no core-game / pregame session while we were in-match. */
+  private _externalEndPolls = 0
+  /** Highest round count seen this match (ally+enemy) — detects stale INGAME + 0-0 in lobby. */
+  private _peakRoundCount = 0
+  /** Shipping.exe was seen while tracking — used when process exits before presence updates. */
+  private _shippingSeen = false
+  private _shippingGoneStreak = 0
   private static readonly MENUS_END_POLLS = 2
+  private static readonly SHIPPING_EXIT_POLLS = 4
   private currentMatchId: string | null = null
   private lastGameMode: string | null = null
   /** Counts how many times core-game agent fetch has been attempted this match. */
@@ -516,13 +523,43 @@ export class RiotLocalApi {
   }
 
   // ──────────────────────────────────────────────────────────────────────
-  // PRESENCE POLLING (during match)
+  // ACTIVE MATCH POLLING (presence, scores, match-end signals)
   // ──────────────────────────────────────────────────────────────────────
 
-  private async _pollPresence(): Promise<void> {
+  /**
+   * Poll session state while a match is tracked. Called from the 1s overlay loop
+   * (with optional Shipping.exe status). All Valorant match-end signals live here.
+   */
+  async pollActiveMatch(opts?: {
+    shippingProcessRunning?: boolean
+    /** Reuse a session snapshot when the caller already fetched it (overlay loop). */
+    state?: SessionState | null
+  }): Promise<void> {
+    if (opts?.shippingProcessRunning != null) {
+      this._noteShippingProcess(opts.shippingProcessRunning)
+    }
     if (!this.matchData || this.matchEnded) return
-    const state = await this.getSessionState()
+    const state = opts?.state !== undefined ? opts.state : await this.getSessionState()
     if (!state) return
+    await this._processActiveMatchState(state)
+  }
+
+  private _noteShippingProcess(running: boolean): void {
+    if (!this._seenIngameSinceStart || this.matchEnded) return
+    if (running) {
+      this._shippingSeen = true
+      this._shippingGoneStreak = 0
+      return
+    }
+    if (!this._shippingSeen) return
+    this._shippingGoneStreak++
+    if (this._shippingGoneStreak >= RiotLocalApi.SHIPPING_EXIT_POLLS) {
+      this._fireMatchEnded('VALORANT-Win64-Shipping.exe exited')
+    }
+  }
+
+  private async _processActiveMatchState(state: SessionState): Promise<void> {
+    if (!this.matchData || this.matchEnded) return
     const { sessionLoopState, queueId, matchMap, allyScore, enemyScore } = state
 
     if (!this.matchData.map && matchMap && matchMap.length > 1) {
@@ -549,6 +586,8 @@ export class RiotLocalApi {
       if (sessionLoopState === 'INGAME' && (allyScore > 0 || enemyScore > 0))
         console.log(`[RiotLocalApi] Score: ${allyScore}-${enemyScore}`)
     }
+    const roundCount = allyScore + enemyScore
+    if (roundCount > this._peakRoundCount) this._peakRoundCount = roundCount
 
     if (sessionLoopState === 'INGAME') {
       this._seenIngameSinceStart = true
@@ -563,25 +602,99 @@ export class RiotLocalApi {
           this.lastSessionLoopState = 'INGAME'
           return
         }
-        console.log(
-          `[RiotLocalApi] Match ended — presence returned to MENUS (${this._consecutiveMenusPolls} polls)`,
-        )
-        this.matchEnded = true
-        this.lastSessionLoopState = sessionLoopState
-        const endedCb = this.onMatchEnded
-        this.onMatchEnded = null
-        if (endedCb) {
-          Promise.resolve(endedCb()).catch((err) => {
-            console.error('[RiotLocalApi] onMatchEnded handler error:', err)
-          })
-        }
+        this._fireMatchEnded(`presence returned to MENUS (${this._consecutiveMenusPolls} polls)`)
         return
       }
     } else if (sessionLoopState !== 'MENUS') {
       this._consecutiveMenusPolls = 0
     }
 
+    // Presence often stays INGAME in lobby — fall back to core-game / score signals.
+    if (this._seenIngameSinceStart && !this.matchEnded) {
+      const externalEnd = await this._checkExternalMatchEndSignals(
+        sessionLoopState,
+        allyScore,
+        enemyScore,
+      )
+      if (externalEnd) {
+        this._fireMatchEnded(externalEnd)
+        return
+      }
+    }
+
     this.lastSessionLoopState = sessionLoopState
+  }
+
+  /**
+   * True when the player is in an active core-game or pregame match.
+   * Returns null when the local API cannot be queried.
+   */
+  async isCoreGameSessionActive(): Promise<boolean | null> {
+    return this._isPlayerSessionActive(`/core-game/v1/players/${this.ownPuuid}`)
+  }
+
+  /** True when the player is in agent select / pregame (not post-match lobby). */
+  async isPregameSessionActive(): Promise<boolean | null> {
+    return this._isPlayerSessionActive(`/pregame/v1/players/${this.ownPuuid}`)
+  }
+
+  private async _isPlayerSessionActive(apiPath: string): Promise<boolean | null> {
+    if (!this.lockfileData || !this.ownPuuid) return null
+    try {
+      const player = await this._fetchLocal<{ MatchID?: string }>(apiPath)
+      return !!(player?.MatchID)
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      if (/HTTP 404/.test(msg)) return false
+      return null
+    }
+  }
+
+  private async _checkExternalMatchEndSignals(
+    sessionLoopState: string,
+    allyScore: number,
+    enemyScore: number,
+  ): Promise<string | null> {
+    // Stale INGAME with 0-0 after real rounds — common post-match lobby quirk.
+    if (
+      sessionLoopState === 'INGAME'
+      && this._peakRoundCount >= 2
+      && allyScore === 0
+      && enemyScore === 0
+    ) {
+      this._externalEndPolls++
+      if (this._externalEndPolls >= 2) {
+        return `scores reset to 0-0 after ${this._peakRoundCount} rounds (stale INGAME presence)`
+      }
+    } else {
+      const coreActive = await this.isCoreGameSessionActive()
+      const pregameActive = coreActive === false
+        ? await this.isPregameSessionActive()
+        : null
+
+      if (coreActive === true || pregameActive === true) {
+        this._externalEndPolls = 0
+      } else if (coreActive === false && pregameActive === false) {
+        this._externalEndPolls++
+        if (this._externalEndPolls >= 2) {
+          return 'core-game and pregame sessions ended (presence may still show INGAME)'
+        }
+      }
+    }
+    return null
+  }
+
+  private _fireMatchEnded(reason: string): void {
+    if (this.matchEnded) return
+    console.log(`[RiotLocalApi] Match ended — ${reason}`)
+    this.matchEnded = true
+    const endedCb = this.onMatchEnded
+    this.onMatchEnded = null
+    if (endedCb) {
+      Promise.resolve(endedCb()).catch((err) => {
+        console.error('[RiotLocalApi] onMatchEnded handler error:', err)
+      })
+    }
   }
 
   // ──────────────────────────────────────────────────────────────────────
@@ -669,6 +782,10 @@ export class RiotLocalApi {
     this.agentFetchAttempts = 0
     this._seenIngameSinceStart = false
     this._consecutiveMenusPolls = 0
+    this._externalEndPolls = 0
+    this._peakRoundCount = 0
+    this._shippingSeen = false
+    this._shippingGoneStreak = 0
     this.lastSessionLoopState = 'MENUS'
     this.matchData = {
       game,
@@ -702,7 +819,7 @@ export class RiotLocalApi {
       videoSyncOffsetMs: DEFAULT_VIDEO_SYNC_OFFSET_MS,
     }
     this._connectWebSocket()
-    this.presencePollInterval = setInterval(() => this._pollPresence(), 10_000)
+    void this.pollActiveMatch()
     // Attempt agent fetch immediately (game is already INGAME by the time start() is called)
     setTimeout(() => this._fetchAgentFromCoreGame().catch(() => {}), 500)
     console.log(`[RiotLocalApi] Match tracking started (game=${game} matchStartTime=${matchStartTime})`)
@@ -730,7 +847,6 @@ export class RiotLocalApi {
    * Fetches Riot MatchDetails API post-match if matchId + region are available.
    */
   async stop(): Promise<MatchData | null> {
-    if (this.presencePollInterval) { clearInterval(this.presencePollInterval); this.presencePollInterval = null }
     if (this.wsReconnectTimer) { clearTimeout(this.wsReconnectTimer); this.wsReconnectTimer = null }
     if (this.wsSocket) { this.wsSocket.destroy(); this.wsSocket = null }
     if (!this.matchData) return null

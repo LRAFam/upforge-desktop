@@ -123,8 +123,7 @@ export class OBSRecorder {
       }
       if (!this._matchOwnedRecording) return
       this._recording = false
-      this._matchOwnedRecording = false
-      this._startedAt = null
+      // Keep match ownership until stop() — OBS can emit transient outputActive=false while still recording.
       this.onStatusChange?.(false)
       this._stopLiveKillPoll()
     })
@@ -298,7 +297,8 @@ export class OBSRecorder {
 
   // ── Recording interface (DesktopRecorder-compatible) ────────────────────────
 
-  isRecording(): boolean { return this._matchOwnedRecording && this._recording }
+  /** True while UpForge owns an active match capture session (until stop() completes). */
+  isRecording(): boolean { return this._matchOwnedRecording }
   isClipsOnlySession(): boolean { return this._clipsOnlySession }
   getLastRecordingPath(): string | null { return this._outputPath }
   getLastError(): string | null { return this._lastError }
@@ -312,6 +312,25 @@ export class OBSRecorder {
   }
   hadDisconnectedDuringRecording(): boolean { return this._disconnectedDuringRecording }
   getRecordingStartedAt(): number | null { return this._startedAt }
+
+  /** Query OBS directly — catches sessions where UpForge lost its recording flag. */
+  async isObsOutputActive(): Promise<boolean> {
+    if (!this._connected) {
+      const result = await this.connect().catch(() => ({ ok: false as const }))
+      if (!result.ok) return false
+    }
+    try {
+      const status = await this._obs.call('GetRecordStatus') as { outputActive?: boolean }
+      return status.outputActive === true
+    } catch {
+      return false
+    }
+  }
+
+  /** True when UpForge or OBS still has an active match recording to finalize. */
+  async isCaptureActive(): Promise<boolean> {
+    return this.isRecording() || await this.isObsOutputActive()
+  }
 
   getLastRecordingSize(): number {
     if (!this._outputPath || !existsSync(this._outputPath)) return 0
@@ -562,14 +581,19 @@ export class OBSRecorder {
       log.warn('[OBSRecorder] GetRecordStatus before stop failed:', err)
     }
 
-    if (!this._matchOwnedRecording) {
+    const shouldStop = outputActive || this._matchOwnedRecording || this._recording
+    if (!shouldStop) {
       this._clipsOnlySession = false
       return this._outputPath
     }
 
-    if (!outputActive && !this._recording) {
+    if (!outputActive) {
+      this._recording = false
       this._matchOwnedRecording = false
       this._clipsOnlySession = false
+      this._startedAt = null
+      this._disconnectedDuringRecording = false
+      this.onStatusChange?.(false)
       return this._outputPath
     }
 

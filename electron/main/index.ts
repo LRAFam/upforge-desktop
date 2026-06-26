@@ -1373,6 +1373,29 @@ function setupGameDetection(): void {
     return matchFinalizeInFlight
   }
 
+  /** Shared path for presence / GSI / process-exit match-end signals. */
+  async function finishActiveMatch(game: string, source: string): Promise<void> {
+    if (matchHandled) return
+    if (!(await obsRecorder.isCaptureActive())) return
+
+    const elapsedSec = currentRecordingStartTime
+      ? Math.floor((Date.now() - currentRecordingStartTime) / 1000)
+      : 0
+    const durationLabel = elapsedSec > 0
+      ? `${Math.round(elapsedSec / 60)}m ${elapsedSec % 60}s`
+      : 'unknown duration'
+    console.log(`[MatchEnd] ${source} — stopping recording (${elapsedSec}s captured)`)
+    logActivity(`Match ended (${source}) — stopping recording (${durationLabel})`)
+    riotLocalApi.onMatchEnded = null
+
+    const didFinalize = await finalizeMatchOnce(game, source)
+    if (!didFinalize) return
+    if (game === 'deadlock') void refreshDeadlockProfile(true)
+    if (mainWindow && !mainWindow.isDestroyed() && mainWindow.isMinimized()) mainWindow.restore()
+    destroyOverlay()
+    await rearmGameDetection(game)
+  }
+
   /** Re-enter detection after a skipped match (Valorant stays running between queues). */
   async function rearmValorantDetection(game: string, waitForMatchEnd = false): Promise<void> {
     if (game !== 'valorant') return
@@ -2411,26 +2434,11 @@ function setupGameDetection(): void {
     logActivity(`Match detected (${gameMode}${modeConfident ? '' : '?'}) — starting recording`)
     console.log(`[GameDetector] Match confirmed! gameMode=${gameMode} confident=${modeConfident} matchStartTime=${matchStartTime}`)
 
-    // Wire up onMatchEnded — fires when Riot presence transitions INGAME → MENUS.
     if (game === 'valorant') {
       riotLocalApi.cancelMenuWatch()
-      riotLocalApi.onMatchEnded = async () => {
-        const elapsedSec = currentRecordingStartTime
-          ? Math.floor((Date.now() - currentRecordingStartTime) / 1000)
-          : 0
-        console.log(`[RiotLocalApi] onMatchEnded fired — stopping recording (${elapsedSec}s captured)`)
-        logActivity(`Match ended (presence) — stopping recording (${elapsedSec > 0 ? `${Math.round(elapsedSec / 60)}m ${elapsedSec % 60}s` : 'unknown duration'})`)
-        const didFinalize = await finalizeMatchOnce(game, 'presence')
-        if (!didFinalize) return
-        if (mainWindow && !mainWindow.isDestroyed() && mainWindow.isMinimized()) mainWindow.restore()
-        destroyOverlay()
-        await rearmGameDetection(game)
-      }
-
-      // Start Riot local API tracking (kill/round events, match ID, post-match details)
+      riotLocalApi.onMatchEnded = () => finishActiveMatch(game, 'presence')
       riotLocalApi.start(game, matchStartTime ?? undefined)
     } else if (game === 'cs2' || game === 'deadlock') {
-      // Stop when match ends — CS2 via GSI, Deadlock via console.log.
       gsiPollTimer = setInterval(() => {
         void (async () => {
           if (!obsRecorder.isRecording() || matchHandled) return
@@ -2438,20 +2446,7 @@ function setupGameDetection(): void {
             ? isDeadlockMatchEnded()
             : isGsiMatchEnded()
           if (!ended) return
-
-          const elapsedSec = currentRecordingStartTime
-            ? Math.floor((Date.now() - currentRecordingStartTime) / 1000)
-            : 0
-          console.log(`[SteamGSI] Match ended — stopping recording (${elapsedSec}s captured)`)
-          logActivity(
-            `Match ended — stopping recording (${elapsedSec > 0 ? `${Math.round(elapsedSec / 60)}m ${elapsedSec % 60}s` : 'unknown duration'})`,
-          )
-          const didFinalize = await finalizeMatchOnce(game, 'gsi')
-          if (!didFinalize) return
-          if (game === 'deadlock') void refreshDeadlockProfile(true)
-          if (mainWindow && !mainWindow.isDestroyed() && mainWindow.isMinimized()) mainWindow.restore()
-          destroyOverlay()
-          await rearmGameDetection(game)
+          await finishActiveMatch(game, 'gsi')
         })()
       }, 2000)
     }
@@ -2506,10 +2501,14 @@ function setupGameDetection(): void {
     logActivity(`Recording started (${gameMode ?? 'unknown mode'}${obsRecorder.wasNoAudio() ? ' — no audio' : ''})`)
     trackFirstRecording(game)
 
-    // Poll overlay/session state — first INGAME tick sets gameplayStartTime for VOD sync.
+    // Poll overlay/session state — drives Valorant match-end detection at 1s via pollActiveMatch.
     const pollOverlaySession = async () => {
       try {
         const state = await riotLocalApi.getSessionState()
+        if (game === 'valorant' && obsRecorder.isRecording() && !matchHandled) {
+          const shippingUp = await gameDetector.isMatchProcessRunning()
+          await riotLocalApi.pollActiveMatch({ shippingProcessRunning: shippingUp, state })
+        }
         if (state?.sessionLoopState === 'INGAME') {
           riotLocalApi.setGameplayStartTime(Date.now())
           const round = (state.allyScore ?? 0) + (state.enemyScore ?? 0) + 1
@@ -2605,7 +2604,8 @@ function setupGameDetection(): void {
     }
 
     // Skipped-match menu watch or idle — no recorder running.
-    if (!obsRecorder.isRecording()) {
+    const captureActive = await obsRecorder.isCaptureActive()
+    if (!captureActive) {
       waitingForMatch = false
       mainWindow?.webContents.send('recording:waiting-for-match', { waiting: false })
       tray?.setToolTip(idleTooltip(game))
