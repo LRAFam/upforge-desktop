@@ -1307,7 +1307,9 @@ export class RiotLocalApi {
     const maxWaitMs = options?.maxWaitMs ?? 120_000
     const delays = hasCoreData
       ? [0, 15_000, 30_000, 45_000]
-      : [0, 15_000, 30_000, 45_000, 60_000, 90_000]
+      : maxWaitMs >= 180_000
+        ? [0, 15_000, 30_000, 45_000, 60_000, 90_000, 120_000, 150_000]
+        : [0, 15_000, 30_000, 45_000, 60_000, 90_000]
     const started = Date.now()
 
     for (const delay of delays) {

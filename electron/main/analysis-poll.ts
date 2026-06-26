@@ -2,6 +2,7 @@ import type { BrowserWindow } from 'electron'
 import type { UploadManager } from './upload-manager'
 import { asCompletedPollStatus, isTerminalPollSuccess } from './analysis-completion'
 import { clearPendingJob } from './upload-manager'
+import { formatAnalysisFailureMessage } from './analysis-failure-messages'
 
 /** Keep polling while the server job is still queued/processing (matches long VOD runs). */
 export const ANALYSIS_POLL_MAX_MS = 90 * 60 * 1000
@@ -219,8 +220,7 @@ export function startAnalysisPoll(opts: StartAnalysisPollOptions): { stop: () =>
         stop()
         clearPendingJob()
         const rawError = status.error || 'Analysis failed. Please try again.'
-        const isTimeout = /timed? ?out|curl error 28|operation timed/i.test(rawError)
-        const userMessage = isTimeout ? 'Analysis timed out on the server.' : rawError
+        const userMessage = formatAnalysisFailureMessage(rawError)
         opts.onPollEnded?.('failed')
         opts.onFailed(userMessage, rawError)
       } else if (status.status === 'queued' || status.status === 'processing') {

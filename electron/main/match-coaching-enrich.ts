@@ -4,6 +4,7 @@
 import type { AxiosInstance } from 'axios'
 import type { RiotLocalApi } from './riot-local-api'
 import type { MatchData } from './riot-types'
+import { MATCH_DETAILS_ENRICH_MAX_MS } from './match-data-quality'
 import { applySpatialEnrichment } from './spatial/enrich'
 import { refreshMatchPopulationBenchmarks } from './spatial/enrich-population'
 
@@ -27,7 +28,7 @@ export async function enrichTimelineForCoaching(
   if (timeline.game !== 'valorant') return false
 
   const enriched = await riot.enrichTimelineMatchDetails(timeline, {
-    maxWaitMs: options?.maxWaitMs ?? 90_000,
+    maxWaitMs: options?.maxWaitMs ?? MATCH_DETAILS_ENRICH_MAX_MS,
     onStatus: options?.onStatus,
   })
 

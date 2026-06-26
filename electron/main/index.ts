@@ -135,6 +135,7 @@ import { duelMomentsForUpload } from './moment-picker'
 import { buildAndUploadScoutMoments } from './scout-moments'
 import { requestPregameBrief as _requestPregameBrief, requestPostGameDebrief as _requestPostGameDebrief } from './post-game-api'
 import { enrichTimelineForCoaching } from './match-coaching-enrich'
+import { hasRichMatchData, MATCH_DETAILS_ENRICH_MAX_MS } from './match-data-quality'
 import {
   buildCoachingSubmissionExtras,
   topSkillFocus,
@@ -1075,6 +1076,7 @@ async function prepareTimelineForCoaching(
   if (!timeline || game !== 'valorant') return { extras: undefined }
 
   await enrichTimelineForCoaching(riotLocalApi, timeline, {
+    maxWaitMs: MATCH_DETAILS_ENRICH_MAX_MS,
     onStatus: (msg) => logActivity(msg),
     api: authManager.getToken() ? authManager.getApi() : null,
   })
@@ -1615,10 +1617,8 @@ function setupGameDetection(): void {
       }
 
       const matchId = timeline?.matchId
-      const hasRichMatchData = (timeline?.roundSummaries?.length ?? 0) > 0
-        || (timeline?.killEvents?.length ?? 0) > 0
-        || (timeline?.playerKills?.length ?? 0) > 0
-      const lateRetryScheduled = !hasRichMatchData && !!matchId
+      const richMatchData = hasRichMatchData(timeline)
+      const lateRetryScheduled = !richMatchData && !!matchId
 
       const doAutoDelete = () => {
         if (settingsManager?.get().autoDelete) {
@@ -2862,11 +2862,18 @@ async function doUploadAndAnalyse(
       }
       if (lastMatchDiagnostic) {
         lastMatchDiagnostic.killsInTimeline = timeline.playerKills?.length ?? 0
-        lastMatchDiagnostic.matchDetailsStatus = 'fetched'
+        const rich = hasRichMatchData(timeline)
+        lastMatchDiagnostic.matchDetailsStatus = rich
+          ? 'fetched'
+          : (timeline.matchId ? 'fetch_failed' : 'no_match_id')
       }
-      logActivity(
-        `Riot match stats loaded (${timeline.roundSummaries?.length ?? 0} rounds, ${timeline.playerKills?.length ?? 0} kills)`,
-      )
+      if (hasRichMatchData(timeline)) {
+        logActivity(
+          `Riot match stats loaded (${timeline.roundSummaries?.length ?? 0} rounds, ${timeline.playerKills?.length ?? 0} kills)`,
+        )
+      } else if (timeline.matchId) {
+        logActivity('Riot match stats not ready yet — server will wait for stats before coaching')
+      }
     } catch (err) {
       log.warn('[Upload] Match details enrichment failed:', err)
     }
@@ -2886,6 +2893,27 @@ async function doUploadAndAnalyse(
       agent,
       timeline,
       coachingExtras,
+      beforeComplete: timeline && game === 'valorant'
+        ? async () => {
+            if (hasRichMatchData(timeline)) return
+            logActivity('Still waiting for Riot match stats…')
+            await enrichTimelineForCoaching(riotLocalApi, timeline, {
+              maxWaitMs: MATCH_DETAILS_ENRICH_MAX_MS,
+              onStatus: (msg) => logActivity(msg),
+            })
+            if (recordingId) {
+              recordingsStore.updateTimeline(recordingId, timeline)
+              mainWindow?.webContents.send('recordings:updated')
+            }
+            const rrHistory = await authManager.fetchRRHistory().catch(() => [])
+            coachingExtras = buildCoachingSubmissionExtras(
+              timeline,
+              settingsManager.get(),
+              rrHistory,
+              riotLocalApi.getDiagnostics().clientVersion,
+            )
+          }
+        : undefined,
       onProgress: (pct) => {
         send('post-game:upload-progress', pct)
         if (recordingId) {
