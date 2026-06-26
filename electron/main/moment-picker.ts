@@ -1,6 +1,6 @@
 /**
  * Select high-value duel/death windows for moment-based vision coaching.
- * Manifest is timestamp-only — AI service clips from the uploaded full VOD.
+ * Manifest includes duel windows; desktop may attach clip_s3_key after local extract.
  */
 import type { KillEvent, MatchData } from './riot-types'
 
@@ -14,6 +14,8 @@ export interface DuelMomentManifest {
   isolated: boolean
   trigger: 'player_death'
   weight: number
+  /** S3 key when desktop pre-uploads the duel window MP4. */
+  clip_s3_key?: string
 }
 
 export const DUEL_WINDOW_BEFORE_MS = 8000

@@ -133,6 +133,7 @@ import {
 import { ClipPipeline } from './clip-pipeline'
 import { duelMomentsForUpload } from './moment-picker'
 import { buildAndUploadScoutMoments } from './scout-moments'
+import { extractAndUploadDuelClips } from './duel-clip-uploader'
 import { requestPregameBrief as _requestPregameBrief, requestPostGameDebrief as _requestPostGameDebrief } from './post-game-api'
 import { enrichTimelineForCoaching } from './match-coaching-enrich'
 import { hasRichMatchData, MATCH_DETAILS_ENRICH_MAX_MS } from './match-data-quality'
@@ -2809,7 +2810,7 @@ async function doUploadAndAnalyse(
         logActivity(`Recording is ${sizeGB} GB — compressing for upload…`)
       }
       send('post-game:compress-start', { sizeGB })
-    })
+    }, { forAnalysis: true })
     effectivePath = resolved.path
     if (resolved.compressed) {
       const newGB = (resolved.sizeBytes / (1024 ** 3)).toFixed(2)
@@ -2850,7 +2851,7 @@ async function doUploadAndAnalyse(
   }
 
   let coachingExtras: CoachingSubmissionExtras | undefined
-  const runEnrich = async (): Promise<void> => {
+  const enrichTask = (async (): Promise<void> => {
     if (!timeline || game !== 'valorant') return
     try {
       if (enrichPromise) {
@@ -2877,12 +2878,18 @@ async function doUploadAndAnalyse(
     } catch (err) {
       log.warn('[Upload] Match details enrichment failed:', err)
     }
-  }
+  })()
+
+  // Run Riot enrich in parallel with S3 upload — stats are awaited in beforeComplete.
+  void enrichTask
 
   try {
-    logActivity(`Uploading recording${map ? ` (${map}${agent ? ` · ${agent}` : ''})` : ''}`)
+    const duelMoments = timeline && game === 'valorant' ? duelMomentsForUpload(timeline) : []
+    if (duelMoments.length > 0) {
+      logActivity(`Preparing ${duelMoments.length} duel clips for AI review`)
+    }
 
-    await runEnrich()
+    logActivity(`Uploading recording${map ? ` (${map}${agent ? ` · ${agent}` : ''})` : ''}`)
 
     const result = await uploadManager.upload({
       videoPath: effectivePath,
@@ -2893,8 +2900,21 @@ async function doUploadAndAnalyse(
       agent,
       timeline,
       coachingExtras,
+      duelMoments: duelMoments.length > 0 ? duelMoments : undefined,
+      prepareDuelClips: duelMoments.length > 0
+        ? (jobId, path) => extractAndUploadDuelClips({
+            uploadManager,
+            jobId,
+            videoPath: path,
+            moments: duelMoments,
+            clipExtractor,
+          })
+        : undefined,
+      deferMatchDataOnPresign: game === 'valorant',
+      getCoachingExtras: () => coachingExtras,
       beforeComplete: timeline && game === 'valorant'
         ? async () => {
+            await enrichTask
             if (hasRichMatchData(timeline)) return
             logActivity('Still waiting for Riot match stats…')
             await enrichTimelineForCoaching(riotLocalApi, timeline, {

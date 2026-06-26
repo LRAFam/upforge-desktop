@@ -12,6 +12,7 @@ export interface DuelMomentManifest {
   isolated: boolean
   trigger?: 'player_death'
   weight?: number
+  clip_s3_key?: string
 }
 
 export interface DuelMomentObservation {

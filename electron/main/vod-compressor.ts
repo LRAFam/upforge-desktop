@@ -40,11 +40,15 @@ export function recordingPathVariants(filePath: string): string[] {
   return [...variants]
 }
 
-/** Compress when the raw OBS file exceeds ~1.5 GB (expected ~1.3 GB at preset). */
+/** Archive / cloud-save — compress only when clearly oversized. */
 export const COMPRESS_IF_LARGER_THAN_BYTES = Math.round(1.5 * 1024 * 1024 * 1024)
 
-export function shouldCompressVod(sizeBytes: number): boolean {
-  return sizeBytes > COMPRESS_IF_LARGER_THAN_BYTES
+/** Analysis upload — re-encode sooner; smaller files beat slow home uplink. */
+export const ANALYSIS_COMPRESS_IF_LARGER_THAN_BYTES = Math.round(0.4 * 1024 * 1024 * 1024)
+
+export function shouldCompressVod(sizeBytes: number, forAnalysis = false): boolean {
+  const threshold = forAnalysis ? ANALYSIS_COMPRESS_IF_LARGER_THAN_BYTES : COMPRESS_IF_LARGER_THAN_BYTES
+  return sizeBytes > threshold
 }
 
 /** OBS often records `.mkv` — S3 keys are `.mp4`, so transcode before cloud upload. */
@@ -60,10 +64,17 @@ export interface CompressVodResult {
   error?: string
 }
 
+export interface ResolveUploadVideoPathOptions {
+  /** Re-encode to coaching preset above {@link ANALYSIS_COMPRESS_IF_LARGER_THAN_BYTES}. */
+  forAnalysis?: boolean
+}
+
 export async function resolveUploadVideoPath(
   sourcePath: string,
   onCompressStart?: (sizeGB: string) => void,
+  options?: ResolveUploadVideoPathOptions,
 ): Promise<{ path: string; sizeBytes: number; compressed: boolean }> {
+  const forAnalysis = options?.forAnalysis === true
   if (!existsSync(sourcePath)) {
     throw new Error(`Recording file not found: ${sourcePath}`)
   }
@@ -78,11 +89,11 @@ export async function resolveUploadVideoPath(
   }
 
   const mustTranscode = needsTranscodeForCloudUpload(sourcePath)
-  if (!shouldCompressVod(sizeBytes) && !mustTranscode) {
+  if (!shouldCompressVod(sizeBytes, forAnalysis) && !mustTranscode) {
     return { path: sourcePath, sizeBytes, compressed: false }
   }
 
-  onCompressStart?.(mustTranscode && !shouldCompressVod(sizeBytes)
+  onCompressStart?.(mustTranscode && !shouldCompressVod(sizeBytes, forAnalysis)
     ? 'transcode'
     : (sizeBytes / (1024 ** 3)).toFixed(1))
   const result = await compressVodForUpload(sourcePath)

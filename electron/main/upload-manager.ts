@@ -1,6 +1,7 @@
 import fs from 'fs'
 import http from 'http'
 import https from 'https'
+import type { ClientRequest } from 'http'
 import path from 'path'
 import { app } from 'electron'
 import { AuthManager } from './auth-manager'
@@ -8,6 +9,7 @@ import { MatchData } from './riot-local-api'
 import { UpgradeRequiredError } from './errors'
 import { prepareMatchDataForUpload, submissionContextFromTimeline, gameModeForApi } from './match-data-payload'
 import type { CoachingSubmissionExtras } from './match-coaching-context'
+import type { DuelMomentManifest } from './moment-picker'
 
 export interface UploadOptions {
   videoPath: string
@@ -24,10 +26,50 @@ export interface UploadOptions {
   trainingConsent?: boolean
   /** Skill profile, rank snapshot, etc. for coaching continuity. */
   coachingExtras?: CoachingSubmissionExtras
+  /** Skip heavy match_data on presign — sent at complete() instead. */
+  deferMatchDataOnPresign?: boolean
+  /** Latest coaching extras (e.g. after parallel Riot enrich). Used at complete(). */
+  getCoachingExtras?: () => CoachingSubmissionExtras | undefined
+  /** Duel windows for coaching — may gain clip_s3_key after prepareDuelClips. */
+  duelMoments?: DuelMomentManifest[]
+  /** Runs after presign, in parallel with full VOD upload. */
+  prepareDuelClips?: (jobId: string, videoPath: string) => Promise<DuelMomentManifest[]>
+}
+
+export interface DuelClipPresign {
+  moment_id: string
+  s3_key: string
+  upload_url: string
+}
+
+/** Larger read buffer for S3 PUT streaming (default fs stream is 64 KB). */
+const S3_UPLOAD_READ_HIGH_WATER_MARK = 1024 * 1024
+
+/** Parallel part uploads — balances throughput vs home-router bufferbloat. */
+const S3_MULTIPART_CONCURRENCY = 4
+
+interface PresignMultipartPart {
+  part_number: number
+  upload_url: string
+}
+
+interface PresignResponse {
+  job_id: string
+  multipart?: boolean
+  upload_url?: string
+  upload_id?: string
+  part_size?: number
+  parts?: PresignMultipartPart[]
+}
+
+interface UploadedPart {
+  part_number: number
+  etag: string
 }
 
 export interface UploadResult {
   job_id: string
+  duel_moments?: DuelMomentManifest[]
 }
 
 export interface ArchiveUploadResult {
@@ -98,7 +140,9 @@ export function readPendingJobForUser(
 }
 
 export class UploadManager {
-  private _s3Request: ReturnType<typeof http.request> | null = null
+  private _s3Request: ClientRequest | null = null
+  private _s3PartRequests = new Set<ClientRequest>()
+  private _uploadAborted = false
   /** Recently completed upload hashes (videoPath hash) to detect double-submits */
   private _recentUploads = new Set<string>()
 
@@ -106,8 +150,13 @@ export class UploadManager {
 
   /** Abort any in-progress S3 upload immediately. */
   abort(): void {
+    this._uploadAborted = true
     this._s3Request?.destroy(new Error('Upload aborted'))
     this._s3Request = null
+    for (const req of this._s3PartRequests) {
+      req.destroy(new Error('Upload aborted'))
+    }
+    this._s3PartRequests.clear()
   }
 
   /**
@@ -168,12 +217,12 @@ export class UploadManager {
       rank_snapshot: ctx.rank_snapshot,
     })
 
-    const { job_id } = await this._apiPost(
+    const response = await this._apiPost(
       `${apiUrl}/api/recordings/archive/${archiveId}/analyse`,
       body,
       token,
     )
-    return { job_id }
+    return { job_id: String(response.job_id) }
   }
 
   private async _doUpload(opts: UploadOptions): Promise<UploadResult> {
@@ -185,6 +234,7 @@ export class UploadManager {
       throw new Error(`Recording file not found: ${opts.videoPath}`)
     }
     const totalBytes = fs.statSync(opts.videoPath).size
+    this._uploadAborted = false
 
     // ── Step 1: get presigned URL ──────────────────────────────────────────
     opts.onProgress(3)
@@ -196,26 +246,48 @@ export class UploadManager {
       map:        submissionCtx.map ?? opts.map,
       agent:      submissionCtx.agent ?? opts.agent,
       game_mode:  submissionCtx.game_mode,
-      match_data: submissionCtx.match_data,
-      duel_moments: submissionCtx.duel_moments,
-      ally_agents: submissionCtx.ally_agents,
-      enemy_agents: submissionCtx.enemy_agents,
-      skill_profile: submissionCtx.skill_profile,
-      rank_snapshot: submissionCtx.rank_snapshot,
+      file_size_bytes: totalBytes,
+      ...(opts.deferMatchDataOnPresign ? {} : {
+        match_data: submissionCtx.match_data,
+        duel_moments: submissionCtx.duel_moments,
+        ally_agents: submissionCtx.ally_agents,
+        enemy_agents: submissionCtx.enemy_agents,
+        skill_profile: submissionCtx.skill_profile,
+        rank_snapshot: submissionCtx.rank_snapshot,
+      }),
     })
-    const { job_id, upload_url } = await this._apiPost(
+    const presign = await this._apiPost(
       `${apiUrl}/api/desktop-submissions/presign`,
       presignBody,
-      token
-    )
+      token,
+    ) as PresignResponse
+    const job_id = String(presign.job_id ?? '')
+    if (!job_id) throw new Error('Presign response missing job_id')
 
     // Persist job_id immediately — if the app crashes during upload or
     // analysis, the user can resume polling from the next launch.
     savePendingJob(job_id, { agent: opts.agent ?? undefined, map: opts.map ?? undefined, game: opts.game })
 
+    const clipTask = opts.prepareDuelClips && opts.duelMoments?.length
+      ? opts.prepareDuelClips(job_id, opts.videoPath)
+      : null
+
     // ── Step 2: stream file directly to S3 ────────────────────────────────
     opts.onProgress(8)
-    await this._putToS3(upload_url, opts.videoPath, totalBytes, opts.onProgress)
+    let uploadParts: UploadedPart[] | undefined
+    if (presign.multipart && presign.parts?.length && presign.part_size) {
+      uploadParts = await this._putToS3Multipart(
+        opts.videoPath,
+        totalBytes,
+        presign.parts,
+        presign.part_size,
+        opts.onProgress,
+      )
+    } else if (presign.upload_url) {
+      await this._putToS3(presign.upload_url, opts.videoPath, totalBytes, opts.onProgress)
+    } else {
+      throw new Error('Presign response missing upload_url or multipart parts')
+    }
 
     if (opts.beforeComplete) {
       await opts.beforeComplete()
@@ -224,7 +296,17 @@ export class UploadManager {
     // ── Step 3: confirm and queue analysis ────────────────────────────────
     // Re-send match context at complete() time so it can override/supplement
     // presign-time data (e.g. if Riot MatchDetails arrived late).
-    const completeCtx = submissionContextFromTimeline(opts.timeline ?? null, opts.coachingExtras)
+    const completeExtras = opts.getCoachingExtras?.() ?? opts.coachingExtras
+    const completeCtx = submissionContextFromTimeline(opts.timeline ?? null, completeExtras)
+    let duelMomentsPayload = opts.duelMoments
+    if (clipTask) {
+      try {
+        duelMomentsPayload = await clipTask
+      } catch (err) {
+        console.error('[UploadManager] Duel clip upload failed:', err)
+        throw err
+      }
+    }
     await this._apiPost(
       `${apiUrl}/api/desktop-submissions/complete`,
       JSON.stringify({
@@ -232,18 +314,19 @@ export class UploadManager {
         agent:      completeCtx.agent ?? opts.agent ?? undefined,
         map:        completeCtx.map ?? opts.map ?? undefined,
         game_mode:  completeCtx.game_mode ?? gameModeForApi(opts.timeline?.gameMode) ?? undefined,
-        match_data: completeCtx.match_data ?? prepareMatchDataForUpload(opts.timeline ?? null, opts.coachingExtras),
-        duel_moments: completeCtx.duel_moments,
+        match_data: completeCtx.match_data ?? prepareMatchDataForUpload(opts.timeline ?? null, completeExtras),
+        duel_moments: duelMomentsPayload ?? completeCtx.duel_moments,
         ally_agents: completeCtx.ally_agents,
         enemy_agents: completeCtx.enemy_agents,
         skill_profile: completeCtx.skill_profile,
         rank_snapshot: completeCtx.rank_snapshot,
+        ...(uploadParts ? { upload_parts: uploadParts } : {}),
       }),
       token
     )
     opts.onProgress(100)
 
-    return { job_id }
+    return { job_id, duel_moments: duelMomentsPayload }
   }
 
   private async _doArchiveUpload(opts: UploadOptions): Promise<ArchiveUploadResult> {
@@ -271,11 +354,16 @@ export class UploadManager {
       skill_profile: submissionCtx.skill_profile,
       rank_snapshot: submissionCtx.rank_snapshot,
     })
-    const { archive_id, upload_url } = await this._apiPost(
+    const archivePresign = await this._apiPost(
       `${apiUrl}/api/recordings/archive/presign`,
       presignBody,
       token,
     )
+    const archive_id = String(archivePresign.archive_id ?? '')
+    const upload_url = String(archivePresign.upload_url ?? '')
+    if (!archive_id || !upload_url) {
+      throw new Error('Archive presign response missing archive_id or upload_url')
+    }
 
     opts.onProgress(8)
     await this._putToS3(upload_url, opts.videoPath, totalBytes, opts.onProgress)
@@ -302,7 +390,7 @@ export class UploadManager {
 
     return {
       archive_id,
-      playback_url: complete.playback_url,
+      playback_url: typeof complete.playback_url === 'string' ? complete.playback_url : undefined,
     }
   }
 
@@ -333,6 +421,29 @@ export class UploadManager {
     )
   }
 
+  /** Presigned PUT URLs for pre-extracted duel clip MP4s. */
+  async presignDuelClips(jobId: string, momentIds: string[]): Promise<DuelClipPresign[]> {
+    const token = this.auth.getToken()
+    if (!token) throw new Error('Not authenticated')
+    const apiUrl = process.env['VITE_API_URL'] || 'https://api.upforge.gg'
+    const response = await this._apiPost(
+      `${apiUrl}/api/desktop-submissions/${jobId}/duel-clips/presign`,
+      JSON.stringify({ moments: momentIds.map((moment_id) => ({ moment_id })) }),
+      token,
+    )
+    const clips = response.clips
+    if (!Array.isArray(clips) || clips.length === 0) {
+      throw new Error('Duel clip presign returned no clips')
+    }
+    return clips as DuelClipPresign[]
+  }
+
+  /** PUT a small file (duel clip) to a presigned S3 URL. */
+  putFileToS3(uploadUrl: string, filePath: string): Promise<void> {
+    const totalBytes = fs.statSync(filePath).size
+    return this._putToS3(uploadUrl, filePath, totalBytes, () => {})
+  }
+
   /** Upload pre-extracted scout moment thumbnails for fast Smart Review. */
   async uploadScoutMoments(
     jobId: string,
@@ -355,7 +466,7 @@ export class UploadManager {
   }
 
   /** POST JSON to an API endpoint with Bearer auth. Returns parsed response body. */
-  private _apiPost(url: string, body: string, token: string): Promise<Record<string, string>> {
+  private _apiPost(url: string, body: string, token: string): Promise<Record<string, unknown>> {
     return new Promise((resolve, reject) => {
       const parsed = new URL(url)
       const proto = parsed.protocol === 'https:' ? https : http
@@ -447,7 +558,7 @@ export class UploadManager {
         }
       }, 5_000)
 
-      const stream = fs.createReadStream(filePath)
+      const stream = fs.createReadStream(filePath, { highWaterMark: S3_UPLOAD_READ_HIGH_WATER_MARK })
       stream.on('data', (chunk: Buffer | string) => {
         uploaded += typeof chunk === 'string' ? chunk.length : chunk.length
         lastProgressAt = Date.now()
@@ -456,6 +567,116 @@ export class UploadManager {
       stream.on('error', (err) => { clearInterval(stallCheck); reject(err) })
       stream.pipe(req)
     })
+  }
+
+  private async _readFileSlice(filePath: string, start: number, length: number): Promise<Buffer> {
+    const fd = await fs.promises.open(filePath, 'r')
+    try {
+      const buffer = Buffer.alloc(length)
+      const { bytesRead } = await fd.read(buffer, 0, length, start)
+      return bytesRead === length ? buffer : buffer.subarray(0, bytesRead)
+    } finally {
+      await fd.close()
+    }
+  }
+
+  private _putPartToS3(uploadUrl: string, body: Buffer): Promise<string> {
+    if (this._uploadAborted) {
+      return Promise.reject(new Error('Upload aborted'))
+    }
+
+    return new Promise((resolve, reject) => {
+      const parsed = new URL(uploadUrl)
+      const proto = parsed.protocol === 'https:' ? https : http
+      const req = proto.request({
+        method:   'PUT',
+        hostname: parsed.hostname,
+        port:     parsed.port || (parsed.protocol === 'https:' ? 443 : 80),
+        path:     parsed.pathname + parsed.search,
+        headers:  { 'Content-Length': body.length },
+      }, (res) => {
+        let responseBody = ''
+        res.on('data', (c) => { responseBody += c })
+        res.on('end', () => {
+          this._s3PartRequests.delete(req)
+          const status = res.statusCode ?? 0
+          const etag = res.headers.etag
+          if (status >= 200 && status < 300 && etag) {
+            resolve(String(etag).replace(/"/g, ''))
+          } else {
+            reject(new Error(`S3 part upload failed (HTTP ${status}): ${responseBody.slice(0, 200)}`))
+          }
+        })
+      })
+
+      req.on('error', (err) => {
+        this._s3PartRequests.delete(req)
+        reject(err)
+      })
+      req.setTimeout(30 * 60 * 1000, () => {
+        req.destroy(new Error('S3 part upload timed out after 30 minutes'))
+      })
+
+      this._s3PartRequests.add(req)
+      req.write(body)
+      req.end()
+    })
+  }
+
+  private async _putToS3Multipart(
+    filePath: string,
+    totalBytes: number,
+    parts: PresignMultipartPart[],
+    partSize: number,
+    onProgress: (pct: number) => void,
+  ): Promise<UploadedPart[]> {
+    const sortedParts = [...parts].sort((a, b) => a.part_number - b.part_number)
+    const results: UploadedPart[] = new Array(sortedParts.length)
+    let uploaded = 0
+    let nextIndex = 0
+    let lastProgressAt = Date.now()
+
+    const STALL_TIMEOUT_MS = 60_000
+    const stallCheck = setInterval(() => {
+      if (Date.now() - lastProgressAt > STALL_TIMEOUT_MS) {
+        this.abort()
+      }
+    }, 5_000)
+
+    const uploadOne = async (index: number): Promise<void> => {
+      const part = sortedParts[index]!
+      const offset = (part.part_number - 1) * partSize
+      const length = Math.min(partSize, totalBytes - offset)
+      const buffer = await this._readFileSlice(filePath, offset, length)
+      const etag = await this._putPartToS3(part.upload_url, buffer)
+      results[index] = { part_number: part.part_number, etag }
+      uploaded += length
+      lastProgressAt = Date.now()
+      onProgress(Math.min(8 + Math.round((uploaded / totalBytes) * 91), 99))
+    }
+
+    try {
+      const workers = Array.from(
+        { length: Math.min(S3_MULTIPART_CONCURRENCY, sortedParts.length) },
+        async () => {
+          while (nextIndex < sortedParts.length) {
+            if (this._uploadAborted) {
+              throw new Error('Upload aborted')
+            }
+            const index = nextIndex++
+            await uploadOne(index)
+          }
+        },
+      )
+      await Promise.all(workers)
+      return results
+    } catch (err) {
+      if (!this._uploadAborted) this.abort()
+      throw err
+    } finally {
+      clearInterval(stallCheck)
+      this._s3PartRequests.clear()
+    }
   }
 
   async pollStatus(jobId: string): Promise<{
