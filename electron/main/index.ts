@@ -961,11 +961,8 @@ function dispatchAnalysisFailure(
 
   if (opts.recordingId) {
     const existing = recordingsStore.getById(opts.recordingId)
-    if (
-      existing?.lastAnalysisError === payload.message
-      && !existing.pipelineStatus
-      && !existing.jobId
-    ) {
+    // Skip duplicate dispatches when this recording already failed (reconciler / poll retries).
+    if (existing?.lastAnalysisError && !existing.pipelineStatus && !existing.jobId) {
       return payload
     }
   }
@@ -988,10 +985,16 @@ function dispatchAnalysisFailure(
   mainWindow?.webContents.send('recordings:updated')
 
   if (opts.notify !== false) {
-    const notifyKey = `${opts.recordingId ?? 'global'}:${payload.kind}:${payload.title}`
+    const existing = opts.recordingId ? recordingsStore.getById(opts.recordingId) : null
+    const alreadyNotifiedThisRecording = Boolean(existing?.analysisFailureNotifiedAt)
+    // Refunded / integrity failures share one global toast — backlog must not spam one per VOD.
+    const notifyKey = payload.creditRefunded || payload.kind === 'integrity'
+      ? `global:${payload.kind}:${payload.title}`
+      : `${opts.recordingId ?? 'global'}:${payload.kind}:${payload.title}`
     const now = Date.now()
     const lastNotified = recentFailureNotifications.get(notifyKey)
-    if (!lastNotified || now - lastNotified >= FAILURE_NOTIFY_COOLDOWN_MS) {
+    const cooldownOk = !lastNotified || now - lastNotified >= FAILURE_NOTIFY_COOLDOWN_MS
+    if (!alreadyNotifiedThisRecording && cooldownOk) {
       recentFailureNotifications.set(notifyKey, now)
       const notifBody = payload.hint
         ? `${payload.message} ${payload.hint}`
@@ -1001,6 +1004,7 @@ function dispatchAnalysisFailure(
         body: notifBody.length > 220 ? `${notifBody.slice(0, 217)}…` : notifBody,
         silent: notifySilent(),
       })
+      if (opts.recordingId) recordingsStore.markAnalysisFailureNotified(opts.recordingId)
     }
   }
 
@@ -2702,7 +2706,7 @@ async function handleOrphanedJobAtStartup(
   if (decision.action === 'failed') {
     clearPendingJob()
     const rec = recordingsStore.getByJobId(orphanedJob.job_id)
-    dispatchAnalysisFailure(decision.error, { recordingId: rec?.id ?? null })
+    dispatchAnalysisFailure(decision.error, { recordingId: rec?.id ?? null, notify: false })
     logActivity(`Previous analysis failed: ${decision.error}`)
     tray?.setToolTip(idleTooltip(context.game))
     return
@@ -2773,7 +2777,7 @@ async function resumePollForJob(
     },
     onFailed: (userMessage, rawError) => {
       const rec = recordingsStore.getByJobId(jobId)
-      dispatchAnalysisFailure(rawError || userMessage, { recordingId: rec?.id ?? null })
+      dispatchAnalysisFailure(rawError || userMessage, { recordingId: rec?.id ?? null, notify: false })
       logActivity(`Resumed analysis failed: ${rawError || userMessage}`)
       tray?.setToolTip(idleTooltip(game))
       mainWindow?.webContents.send('dashboard:refresh')

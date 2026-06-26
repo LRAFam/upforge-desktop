@@ -54,6 +54,8 @@ export interface PendingRecording {
   lastAnalysisError?: string | null
   lastAnalysisErrorHint?: string | null
   lastAnalysisCreditRefunded?: boolean
+  /** When we last showed an OS notification for this recording's analysis failure. */
+  analysisFailureNotifiedAt?: number
   /** Upload queued but paused while OBS is recording. */
   pipelineDeferReason?: PipelineDeferReason | null
   /** True when an in-flight upload is archive-only (no analysis quota). */
@@ -239,6 +241,14 @@ export class RecordingsStore {
     rec.lastAnalysisError = message
     rec.lastAnalysisErrorHint = meta?.hint ?? null
     rec.lastAnalysisCreditRefunded = meta?.creditRefunded ?? false
+    rec.analysisFailureNotifiedAt = undefined
+    this.persist()
+  }
+
+  markAnalysisFailureNotified(id: string): void {
+    const rec = this.recordings.find(r => r.id === id)
+    if (!rec) return
+    rec.analysisFailureNotifiedAt = Date.now()
     this.persist()
   }
 
@@ -248,6 +258,7 @@ export class RecordingsStore {
     rec.lastAnalysisError = undefined
     rec.lastAnalysisErrorHint = undefined
     rec.lastAnalysisCreditRefunded = undefined
+    rec.analysisFailureNotifiedAt = undefined
     this.persist()
   }
 
