@@ -28,7 +28,7 @@ export interface StuckAnalysisReconcilerDeps {
   reconcileOrphanedAnalyses?: () => Promise<void>
   fetchRecentAnalyses?: () => Promise<AnalysisListRow[]>
   onCompleted: (ctx: ReconciledAnalysisContext) => void
-  onFailed: (ctx: { jobId: string; error: string; recordingId: string | null }) => void
+  onFailed: (ctx: { jobId: string; error: string; recordingId: string | null; status?: AnalysisPollStatus }) => void
   resumePoll: (jobId: string, context: { agent?: string; map?: string; game?: string }) => void
 }
 
@@ -129,6 +129,7 @@ export async function reconcileStuckAnalysisJobs(deps: StuckAnalysisReconcilerDe
           jobId,
           error: status.error || 'Analysis failed',
           recordingId,
+          status,
         })
         reconciled++
         continue

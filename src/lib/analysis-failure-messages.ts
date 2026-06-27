@@ -3,6 +3,8 @@
  * most analysis pipeline failures (integrity gate, timeout, bad data).
  */
 
+import type { DuelFailureDiagnostics } from './duel-diagnostics'
+
 export type AnalysisFailureKind =
   | 'refunded_quality'
   | 'refunded_timeout'
@@ -34,6 +36,7 @@ export interface AnalysisErrorPayload {
   upgradeUrl?: string
   ppaUrl?: string
   clipsOnly?: boolean
+  failureDiagnostics?: DuelFailureDiagnostics | null
 }
 
 function extractXmlErrorParts(raw: string): { code?: string; message?: string } {
@@ -170,8 +173,8 @@ export function classifyAnalysisFailure(rawError: string): AnalysisFailurePresen
     return {
       kind: 'integrity',
       title: 'Could not verify fight footage',
-      message: 'We could not get clear enough video insight from your duel clips to publish coaching.',
-      hint: 'This often happens when recording started late or the death moment was unclear. Your credit was refunded — try Analyse again, or play another match with recording from the start.',
+      message: 'Your match stats synced, but coaching could not be verified from the duel clips Gemini reviewed.',
+      hint: 'See clip review details below. If seeks look wrong in VOD review, sync may be off. Your credit was refunded — try again after checking death timestamps.',
       creditRefunded: true,
       canRetry: true,
     }

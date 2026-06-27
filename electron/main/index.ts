@@ -76,10 +76,11 @@ import {
 } from './user-session'
 import { resolveRecordingSavePath } from './user-data-paths'
 import { extractAnalysisIdFromPollResult } from './analysis-completion'
-import { startAnalysisPoll, stopActiveAnalysisPoll, reconcileOrphanedJob, getActiveAnalysisPollJobId } from './analysis-poll'
+import { startAnalysisPoll, stopActiveAnalysisPoll, reconcileOrphanedJob, getActiveAnalysisPollJobId, type AnalysisPollStatus } from './analysis-poll'
 import { buildAnalysisPipelineDiagnostics } from './analysis-pipeline-diagnostics'
 import { reconcileStuckAnalysisJobs, type ReconciledAnalysisContext } from './stuck-analysis-reconciler'
 import { buildAnalysisErrorPayload, type AnalysisErrorPayload } from './analysis-failure-messages'
+import { parseDuelFailureDiagnostics, type DuelFailureDiagnostics } from '../../src/lib/duel-diagnostics'
 import { AuthManager } from './auth-manager'
 import { SettingsManager } from './settings-manager'
 import { setupIpcHandlers, setupClipHandlers, cancelAllPollingTimers } from './ipc-handlers'
@@ -956,6 +957,13 @@ function dispatchReconciledAnalysisReady(ctx: ReconciledAnalysisContext): void {
   tray?.setToolTip(idleTooltip(ctx.game))
 }
 
+function extractFailureDiagnostics(status?: AnalysisPollStatus | null): DuelFailureDiagnostics | null {
+  if (!status) return null
+  const fromTop = status.failure_diagnostics
+  const fromResult = status.result?.failure_diagnostics
+  return parseDuelFailureDiagnostics(fromTop ?? fromResult)
+}
+
 function dispatchAnalysisFailure(
   rawError: string,
   opts: {
@@ -966,6 +974,7 @@ function dispatchAnalysisFailure(
     upgradeUrl?: string
     ppaUrl?: string
     clipsOnly?: boolean
+    failureDiagnostics?: DuelFailureDiagnostics | null
   } = {},
 ): AnalysisErrorPayload {
   const payload = buildAnalysisErrorPayload(rawError, {
@@ -974,6 +983,7 @@ function dispatchAnalysisFailure(
     upgradeUrl: opts.upgradeUrl,
     ppaUrl: opts.ppaUrl,
     clipsOnly: opts.clipsOnly,
+    failureDiagnostics: opts.failureDiagnostics ?? null,
   })
 
   if (opts.recordingId) {
@@ -1072,8 +1082,12 @@ function runStuckAnalysisReconcile(): Promise<number> {
       return rows.map((a) => ({ id: a.id, job_id: a.job_id, overall_score: a.overall_score }))
     },
     onCompleted: dispatchReconciledAnalysisReady,
-    onFailed: ({ error, recordingId }) => {
-      const presentation = dispatchAnalysisFailure(error, { recordingId, notify: false })
+    onFailed: ({ error, recordingId, status }) => {
+      const presentation = dispatchAnalysisFailure(error, {
+        recordingId,
+        notify: false,
+        failureDiagnostics: extractFailureDiagnostics(status),
+      })
       logActivity(`Analysis failed: ${presentation.message}`)
       mainWindow?.webContents.send('dashboard:refresh')
     },
@@ -3130,9 +3144,13 @@ async function resumePollForJob(
         silent: notifySilent(),
       })
     },
-    onFailed: (userMessage, rawError) => {
+    onFailed: (userMessage, rawError, status) => {
       const rec = recordingsStore.getByJobId(jobId)
-      dispatchAnalysisFailure(rawError || userMessage, { recordingId: rec?.id ?? null, notify: false })
+      dispatchAnalysisFailure(rawError || userMessage, {
+        recordingId: rec?.id ?? null,
+        notify: false,
+        failureDiagnostics: extractFailureDiagnostics(status),
+      })
       logActivity(`Resumed analysis failed: ${rawError || userMessage}`)
       tray?.setToolTip(idleTooltip(game))
       mainWindow?.webContents.send('dashboard:refresh')
@@ -3638,10 +3656,11 @@ async function doUploadAndAnalyse(
           } catch { /* non-fatal */ }
         })()
       },
-      onFailed: (userMessage, rawError) => {
+      onFailed: (userMessage, rawError, status) => {
         dispatchAnalysisFailure(rawError || userMessage, {
           recordingId,
           targetWindow,
+          failureDiagnostics: extractFailureDiagnostics(status),
         })
         logActivity(`Analysis failed: ${rawError || userMessage}`)
         tray?.setToolTip(idleTooltip(game))
@@ -4181,10 +4200,11 @@ async function startApp(): Promise<void> {
               if (analysisId != null) recordingsStore.setAnalysisId(recording.id, analysisId)
               mainWindow?.webContents.send('dashboard:refresh')
             },
-            onFailed: (userMessage, rawError) => {
+            onFailed: (userMessage, rawError, status) => {
               dispatchAnalysisFailure(rawError || userMessage, {
                 recordingId: recording.id,
                 targetWindow: win,
+                failureDiagnostics: extractFailureDiagnostics(status),
               })
             },
             onConnectionLost: () => {},

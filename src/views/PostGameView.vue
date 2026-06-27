@@ -1006,6 +1006,12 @@
             <p v-if="errorHint" class="text-[11px] text-gray-500 leading-relaxed">{{ errorHint }}</p>
           </div>
 
+          <PostGameDuelDiagnostics
+            v-if="errorDiagnostics"
+            class="mt-3"
+            :diagnostics="errorDiagnostics"
+          />
+
           <div class="mt-3 flex gap-2">
             <button
               v-if="canRetryAnalysis && !clipsOnlyError"
@@ -1114,6 +1120,7 @@ import type { MatchHighlight } from '../lib/match-highlights'
 import type { ClipRecord } from '../env.d.ts'
 import { canSpatialVodSeek } from '../lib/tier-features'
 import { buildAnalysisErrorPayload, type AnalysisErrorPayload } from '../lib/analysis-failure-messages'
+import PostGameDuelDiagnostics from '../components/post-game/PostGameDuelDiagnostics.vue'
 import type { CategoryScoreItem } from '../components/PostGameIntelHero.vue'
 
 type State = 'preparing' | 'uploading' | 'analysing' | 'ready' | 'error' | 'pending' | 'archived'
@@ -1232,6 +1239,7 @@ const errorTitle = computed(() => {
   return 'Upload failed'
 })
 const errorHint = computed(() => errorDetails.value?.hint ?? null)
+const errorDiagnostics = computed(() => errorDetails.value?.failureDiagnostics ?? null)
 const creditRefunded = computed(() => errorDetails.value?.creditRefunded ?? /refunded/i.test(errorMessage.value))
 const canRetryAnalysis = computed(() => errorDetails.value?.canRetry ?? (!clipsOnlyError.value && !needsUpgrade.value))
 const pendingRecordingId = ref<string | null>(null)

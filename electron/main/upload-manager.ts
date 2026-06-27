@@ -683,6 +683,7 @@ export class UploadManager {
     result?: Record<string, unknown>
     error?: string | null
     job_id?: string
+    failure_diagnostics?: Record<string, unknown> | null
   }> {
     const apiUrl = process.env['VITE_API_URL'] || 'https://api.upforge.gg'
     const token = this.auth.getToken()

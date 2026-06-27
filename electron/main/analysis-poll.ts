@@ -17,6 +17,7 @@ export interface AnalysisPollStatus {
   result?: Record<string, unknown>
   error?: string | null
   job_id?: string
+  failure_diagnostics?: Record<string, unknown> | null
 }
 
 export interface AnalysisProgressPayload {
@@ -35,7 +36,7 @@ export interface StartAnalysisPollOptions {
   onProgress?: (status: AnalysisPollStatus, elapsedMs: number) => void
   onLongRunning?: () => void
   onCompleted: (status: AnalysisPollStatus) => void
-  onFailed: (userMessage: string, rawError: string) => void
+  onFailed: (userMessage: string, rawError: string, status?: AnalysisPollStatus) => void
   onConnectionLost: () => void
   onPollEnded?: (reason: 'completed' | 'failed' | 'connection_lost' | 'max_duration') => void
 }
@@ -222,7 +223,7 @@ export function startAnalysisPoll(opts: StartAnalysisPollOptions): { stop: () =>
         const rawError = status.error || 'Analysis failed. Please try again.'
         const userMessage = formatAnalysisFailureMessage(rawError)
         opts.onPollEnded?.('failed')
-        opts.onFailed(userMessage, rawError)
+        opts.onFailed(userMessage, rawError, status)
       } else if (status.status === 'queued' || status.status === 'processing') {
         uploadingPolls = 0
         schedulePoll()
