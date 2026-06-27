@@ -47,6 +47,9 @@ const {
   openRecordingReview,
   recInFlight,
   recIsDeferred,
+  recAnalysisReady,
+  recAnalysisBlockedLabel,
+  recAnalysisStatusShort,
   recUploadProgress,
   recPipelineLabel,
   recRowStats,
@@ -58,7 +61,7 @@ function failureHint(rec: PendingRecording): string | null {
   if (rec.lastAnalysisErrorHint) return rec.lastAnalysisErrorHint
   const message = rec.lastAnalysisError
   if (!message) return null
-  if (/late|unclear|sync/i.test(message)) return 'Tip: wait ~30s after the game ends, then try again.'
+  if (/late|unclear|sync/i.test(message)) return 'Tip: UpForge will enable Analyse once Riot stats finish syncing.'
   if (/timed out/i.test(message)) return 'Tip: try again — off-peak hours are usually faster.'
   if (/throttled|slow down/i.test(message)) return 'Tip: wait a minute, then tap Retry.'
   if (/incomplete|moov|finished saving/i.test(message)) return 'Tip: let OBS finish writing after the match ends.'
@@ -230,7 +233,7 @@ function pendingRowClass(rec: PendingRecording): string {
               {{ analysingIds.has(rec.id) ? '…' : 'Retry' }}
             </button>
             <button
-              v-else-if="!rec.clipsOnly && !recInFlight(rec) && !rec.lastAnalysisError"
+              v-else-if="!rec.clipsOnly && !recInFlight(rec) && !rec.lastAnalysisError && recAnalysisReady(rec)"
               :disabled="analysingIds.has(rec.id)"
               class="px-2 py-1 text-[10px] font-medium text-white bg-red-500 hover:bg-red-600 disabled:opacity-60 rounded-lg transition-colors flex items-center gap-1"
               @click="analyseRecording(rec.id)"
@@ -238,6 +241,19 @@ function pendingRowClass(rec: PendingRecording): string {
               <svg v-if="analysingIds.has(rec.id)" class="w-3 h-3 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
               {{ analysingIds.has(rec.id) ? '…' : 'Analyse' }}
             </button>
+            <span
+              v-else-if="!rec.clipsOnly && !recInFlight(rec) && !rec.lastAnalysisError && !recAnalysisReady(rec)"
+              class="px-2 py-1 text-[10px] font-medium text-blue-300/90 flex items-center gap-1 max-w-[9rem] truncate"
+              :title="recAnalysisBlockedLabel(rec)"
+            >
+              <svg
+                v-if="rec.analysisReadiness?.state === 'syncing' || rec.analysisReadiness?.state === 'finalizing'"
+                class="w-3 h-3 animate-spin flex-shrink-0 text-blue-400"
+                fill="none"
+                viewBox="0 0 24 24"
+              ><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
+              {{ recAnalysisStatusShort(rec) }}
+            </span>
             <span v-if="recInFlight(rec) || recIsDeferred(rec)" class="px-2 py-1 text-[10px] font-medium flex items-center gap-1" :class="recIsDeferred(rec) ? 'text-amber-300/90' : rec.pipelineArchiveOnly ? 'text-emerald-300/90' : 'text-blue-300/90'">
               <svg v-if="!recIsDeferred(rec)" class="w-3 h-3 animate-spin" :class="rec.pipelineArchiveOnly ? 'text-emerald-400' : 'text-blue-400'" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
               <svg v-else class="w-3 h-3 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 9v6m4-6v6m7-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>

@@ -192,8 +192,8 @@ export function classifyAnalysisFailure(rawError: string): AnalysisFailurePresen
     return {
       kind: 'refunded_data',
       title: 'No reviewable moments',
-      message: 'We could not find duel moments to review in this recording.',
-      hint: 'Your coaching credit was refunded. Make sure the full match recorded with timeline sync.',
+      message: 'We could not find death moments to review in this recording.',
+      hint: 'Coaching reviews your deaths (not kill highlights). UpForge enables Analyse automatically once Riot stats sync — usually within a minute after the game.',
       creditRefunded: true,
       canRetry: true,
     }

@@ -211,6 +211,7 @@ export class UploadManager {
       agent: ctx.agent,
       game_mode: ctx.game_mode,
       match_data: ctx.match_data,
+      duel_moments: ctx.duel_moments,
       ally_agents: ctx.ally_agents,
       enemy_agents: ctx.enemy_agents,
       skill_profile: ctx.skill_profile,
@@ -295,7 +296,7 @@ export class UploadManager {
     const completeExtras = opts.getCoachingExtras?.() ?? opts.coachingExtras
     const completeCtx = submissionContextFromTimeline(opts.timeline ?? null, completeExtras)
     let duelMomentsPayload = opts.duelMoments
-    if (opts.prepareDuelClips && opts.duelMoments?.length) {
+    if (opts.prepareDuelClips) {
       try {
         duelMomentsPayload = await opts.prepareDuelClips(job_id, opts.videoPath)
       } catch (err) {

@@ -142,6 +142,13 @@ import { buildAndUploadScoutMoments } from './scout-moments'
 import { extractAndUploadDuelClips } from './duel-clip-uploader'
 import { requestPregameBrief as _requestPregameBrief, requestPostGameDebrief as _requestPostGameDebrief } from './post-game-api'
 import { enrichTimelineForCoaching } from './match-coaching-enrich'
+import {
+  getAnalysisReadiness,
+  isTerminalAnalysisReadinessState,
+  refreshVodProbe,
+  withAnalysisReadiness,
+  type AnalysisReadiness,
+} from './analysis-readiness'
 import { hasRichMatchData, MATCH_DETAILS_ENRICH_MAX_MS } from './match-data-quality'
 import {
   buildCoachingSubmissionExtras,
@@ -1236,6 +1243,167 @@ async function prepareTimelineForCoaching(
   return { extras }
 }
 
+function sendAnalysisReadinessUpdate(
+  targetWindow: BrowserWindow | null | undefined,
+  readiness: AnalysisReadiness,
+): void {
+  mainWindow?.webContents.send('recordings:updated')
+  if (targetWindow && !targetWindow.isDestroyed()) {
+    targetWindow.webContents.send('post-game:analysis-readiness', readiness)
+  }
+}
+
+async function refreshRecordingVodProbe(
+  rec: NonNullable<ReturnType<RecordingsStore['getById']>>,
+): Promise<void> {
+  if (!rec.path || rec.clipsOnly || (rec.cloudArchived && rec.archiveId)) return
+  if (!fs.existsSync(rec.path)) return
+  await refreshVodProbe(rec.path, (p) => clipExtractor.probe(p))
+}
+
+/** Poll Riot + VOD probe until analyse is unblocked — keeps dashboard Analyse disabled until ready. */
+function scheduleAnalysisReadinessRefresh(recordingId: string, game: string): void {
+  const startedAt = Date.now()
+
+  const tick = async (): Promise<void> => {
+    const rec = recordingsStore.getById(recordingId)
+    if (!rec || rec.analysed || rec.pipelineStatus === 'uploading' || rec.pipelineStatus === 'analysing') {
+      return
+    }
+
+    await refreshRecordingVodProbe(rec)
+
+    let readiness = getAnalysisReadiness(rec)
+    if (isTerminalAnalysisReadinessState(readiness.state)) {
+      mainWindow?.webContents.send('recordings:updated')
+      return
+    }
+
+    if (Date.now() - startedAt >= MATCH_DETAILS_ENRICH_MAX_MS) {
+      mainWindow?.webContents.send('recordings:updated')
+      return
+    }
+
+    if (readiness.state === 'syncing' && rec.game === 'valorant' && rec.timeline) {
+      try {
+        await enrichTimelineForCoaching(riotLocalApi, rec.timeline, {
+          maxWaitMs: 20_000,
+          api: authManager.getToken() ? authManager.getApi() : null,
+        })
+        recordingsStore.updateTimeline(recordingId, rec.timeline)
+      } catch { /* retry on next tick */ }
+      readiness = getAnalysisReadiness(rec)
+    }
+
+    mainWindow?.webContents.send('recordings:updated')
+    if (!isTerminalAnalysisReadinessState(readiness.state)) {
+      setTimeout(() => { void tick() }, 10_000)
+    }
+  }
+
+  setTimeout(() => { void tick() }, 5_000)
+}
+
+async function ensureAnalysisReadinessForAnalyse(
+  recordingId: string,
+): Promise<
+  | { ok: true; recording: NonNullable<ReturnType<RecordingsStore['getById']>> }
+  | { ok: false; error: string; state: string }
+> {
+  let rec = recordingsStore.getById(recordingId)
+  if (!rec) return { ok: false, error: 'Recording not found', state: 'unavailable' }
+
+  await refreshRecordingVodProbe(rec)
+
+  let readiness = getAnalysisReadiness(rec)
+  if (readiness.ready) return { ok: true, recording: rec }
+
+  if (readiness.state === 'finalizing' && rec.path && fs.existsSync(rec.path)) {
+    for (let attempt = 0; attempt < 6 && readiness.state === 'finalizing'; attempt++) {
+      await new Promise((resolve) => setTimeout(resolve, 2_000))
+      await refreshRecordingVodProbe(rec)
+      rec = recordingsStore.getById(recordingId)
+      if (!rec) return { ok: false, error: 'Recording not found', state: 'unavailable' }
+      readiness = getAnalysisReadiness(rec)
+    }
+  }
+
+  if (readiness.ready) return { ok: true, recording: rec }
+
+  if (readiness.state === 'syncing' && rec.game === 'valorant' && rec.timeline) {
+    logActivity(readiness.message)
+    await prepareTimelineForCoaching(rec.timeline, rec.game, recordingId)
+    rec = recordingsStore.getById(recordingId)
+    if (!rec) return { ok: false, error: 'Recording not found', state: 'unavailable' }
+    await refreshRecordingVodProbe(rec)
+    readiness = getAnalysisReadiness(rec)
+    mainWindow?.webContents.send('recordings:updated')
+  }
+
+  if (!readiness.ready) {
+    return { ok: false, error: readiness.message, state: readiness.state }
+  }
+  return { ok: true, recording: rec }
+}
+
+async function waitUntilAnalysisReady(
+  recordingId: string,
+  targetWindow: BrowserWindow | null | undefined,
+  maxWaitMs = MATCH_DETAILS_ENRICH_MAX_MS,
+): Promise<{ ready: boolean; readiness: AnalysisReadiness }> {
+  const startedAt = Date.now()
+
+  while (Date.now() - startedAt < maxWaitMs) {
+    let rec = recordingsStore.getById(recordingId)
+    if (!rec) {
+      return {
+        ready: false,
+        readiness: {
+          ready: false,
+          state: 'unavailable',
+          message: 'Recording not found',
+          duelMomentCount: 0,
+        },
+      }
+    }
+
+    await refreshRecordingVodProbe(rec)
+    let readiness = getAnalysisReadiness(rec)
+    sendAnalysisReadinessUpdate(targetWindow, readiness)
+
+    if (readiness.ready) return { ready: true, readiness }
+    if (isTerminalAnalysisReadinessState(readiness.state) && !readiness.ready) {
+      return { ready: false, readiness }
+    }
+
+    if (readiness.state === 'syncing' && rec.game === 'valorant' && rec.timeline) {
+      await prepareTimelineForCoaching(rec.timeline, rec.game, recordingId)
+      rec = recordingsStore.getById(recordingId)
+      if (rec) {
+        await refreshRecordingVodProbe(rec)
+        readiness = getAnalysisReadiness(rec)
+        sendAnalysisReadinessUpdate(targetWindow, readiness)
+        if (readiness.ready) return { ready: true, readiness }
+        if (isTerminalAnalysisReadinessState(readiness.state) && !readiness.ready) {
+          return { ready: false, readiness }
+        }
+      }
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, 5_000))
+  }
+
+  const rec = recordingsStore.getById(recordingId)
+  const readiness = rec ? getAnalysisReadiness(rec) : {
+    ready: false,
+    state: 'unavailable' as const,
+    message: 'Timed out waiting for match data',
+    duelMomentCount: 0,
+  }
+  sendAnalysisReadinessUpdate(targetWindow, readiness)
+  return { ready: readiness.ready, readiness }
+}
+
 const DEBRIEF_SKIP_MODES = new Set(['DEATHMATCH', 'TEAMDEATHMATCH'])
 
 function shouldRequestDebrief(timeline: MatchData | null, mode: string | null | undefined): boolean {
@@ -1303,11 +1471,19 @@ function createTray(): void {
     getInFlightCount: () => recordingsStore?.listInFlightPipelines().length ?? 0,
     getAnalysablePendingCount: () => {
       const pending = recordingsStore?.getPending(linkedRiotFromAuth()) ?? []
-      return pending.filter((r) => !r.clipsOnly && !r.cloudArchived && r.pipelineStatus !== 'uploading' && r.pipelineStatus !== 'analysing').length
+      return pending.filter((r) => {
+        if (r.clipsOnly || r.cloudArchived) return false
+        if (r.pipelineStatus === 'uploading' || r.pipelineStatus === 'analysing') return false
+        return getAnalysisReadiness(r).ready
+      }).length
     },
     onAnalyseOldest: () => {
       const pending = recordingsStore?.getPending(linkedRiotFromAuth()) ?? []
-      const oldest = pending.find((r) => !r.clipsOnly && !r.cloudArchived && r.pipelineStatus !== 'uploading' && r.pipelineStatus !== 'analysing')
+      const oldest = pending.find((r) => {
+        if (r.clipsOnly || r.cloudArchived) return false
+        if (r.pipelineStatus === 'uploading' || r.pipelineStatus === 'analysing') return false
+        return getAnalysisReadiness(r).ready
+      })
       if (!oldest) return
       focusMainWindow()
       mainWindow?.webContents.send('dashboard:analyse-recording', { id: oldest.id })
@@ -1842,7 +2018,6 @@ function setupGameDetection(): void {
       }
 
       const { path: readyPath, sizeBytes: readySize } = ready
-      sendToWindow('post-game:prep-step', { game, map, agent })
 
       if (readySize < MIN_FILE_SIZE_BYTES) {
         const sizeMB = (readySize / (1024 * 1024)).toFixed(2)
@@ -1881,6 +2056,7 @@ function setupGameDetection(): void {
       logActivity(
         `Recording saved (${(readySize / (1024 ** 3)).toFixed(2)} GB) — visible on dashboard`,
       )
+      scheduleAnalysisReadinessRefresh(savedRecording.id, game)
 
       let coachingExtras: CoachingSubmissionExtras | undefined
       const enrichPromise = prepareTimelineForCoaching(timeline, game, savedRecording.id)
@@ -1944,11 +2120,14 @@ function setupGameDetection(): void {
       }
 
       if (!autoAnalyse) {
+        await refreshRecordingVodProbe(savedRecording)
+        const pendingReadiness = getAnalysisReadiness(recordingsStore.getById(savedRecording.id) ?? savedRecording)
         sendToWindow('post-game:pending', {
           recordingId: savedRecording.id,
           game,
           map,
-          agent
+          agent,
+          analysisReadiness: pendingReadiness,
         })
 
         {
@@ -1990,6 +2169,56 @@ function setupGameDetection(): void {
         return
       }
 
+      const { ready: analysisReady, readiness: autoReadiness } = await waitUntilAnalysisReady(
+        savedRecording.id,
+        thisPostGameWindow,
+      )
+      if (!analysisReady) {
+        logActivity(autoReadiness.message || 'Auto-analyse skipped — recording not ready')
+        sendToWindow('post-game:pending', {
+          recordingId: savedRecording.id,
+          game,
+          map,
+          agent,
+          analysisReadiness: autoReadiness,
+        })
+        {
+          const agentLabel = agent ?? gameLabel(game)
+          const mapLabel = map ? ` · ${map}` : ''
+          showAppNotification({
+            title: 'Match recorded',
+            body: `${agentLabel}${mapLabel} — ${autoReadiness.message || 'review when ready from your dashboard.'}`,
+            silent: notifySilent(),
+          })
+        }
+        extractMatchClips(readyPath, timeline, null, game)
+          .catch(err => log.warn('[ClipExtract] Clip extraction (auto-analyse skipped) error:', err))
+        await enrichPromise.catch(() => {})
+        if (lateRetryScheduled) {
+          log.info('[HandleMatchEnd] No kills (auto-analyse skipped) — scheduling late retry in 90s')
+          setTimeout(async () => {
+            try {
+              log.info('[LateClipExtract] Fetching match details for', matchId)
+              const details = await riotLocalApi.fetchMatchDetailsLate(matchId!)
+              if (!details) { log.warn('[LateClipExtract] Match details still unavailable'); return }
+              if (timeline) {
+                timeline.matchDetails = details
+                riotLocalApi.populateMatchDataFromDetails(timeline, details)
+                recordingsStore.updateTimeline(savedRecording.id, timeline)
+                mainWindow?.webContents.send('recordings:updated')
+              }
+              if ((timeline?.playerKills?.length ?? 0) === 0) { log.warn('[LateClipExtract] No kills after retry'); return }
+              log.info(`[LateClipExtract] Got ${timeline!.playerKills.length} kills — extracting clips`)
+              await extractKillClipsOnly(readyPath, timeline!, null, game)
+            } catch (err) {
+              log.warn('[LateClipExtract] Error (auto-analyse skipped path):', err)
+            }
+          }, 90_000)
+        }
+        return
+      }
+
+      sendToWindow('post-game:prep-step', { game, map, agent })
       tray?.setToolTip('UpForge — Uploading...')
 
       const uploadResult = await doUploadAndAnalyse(
@@ -3182,11 +3411,6 @@ async function doUploadAndAnalyse(
   void enrichTask
 
   try {
-    const duelMoments = timeline && game === 'valorant' ? duelMomentsForUpload(timeline) : []
-    if (duelMoments.length > 0) {
-      logActivity(`Preparing ${duelMoments.length} duel clips for AI review`)
-    }
-
     logActivity(`Uploading recording${map ? ` (${map}${agent ? ` · ${agent}` : ''})` : ''}`)
 
     const result = await uploadManager.upload({
@@ -3198,15 +3422,29 @@ async function doUploadAndAnalyse(
       agent,
       timeline,
       coachingExtras,
-      duelMoments: duelMoments.length > 0 ? duelMoments : undefined,
-      prepareDuelClips: duelMoments.length > 0
-        ? (jobId, path) => extractAndUploadDuelClips({
-            uploadManager,
-            jobId,
-            videoPath: path,
-            moments: duelMoments,
-            clipExtractor,
-          })
+      prepareDuelClips: timeline && game === 'valorant'
+        ? async (jobId, path) => {
+            const moments = duelMomentsForUpload(timeline)
+            if (moments.length === 0) {
+              const kills = timeline.playerKills?.length ?? 0
+              const deaths = timeline.playerDeaths?.length ?? 0
+              log.warn(`[Upload] No duel moments after enrich (kills=${kills} deaths=${deaths})`)
+              if (deaths === 0) {
+                logActivity('No deaths in match stats — duel coaching needs your death moments from Riot')
+              } else {
+                logActivity('Death timestamps missing — wait ~30s after the game and try Analyse again')
+              }
+              return []
+            }
+            logActivity(`Preparing ${moments.length} duel clips for AI review`)
+            return extractAndUploadDuelClips({
+              uploadManager,
+              jobId,
+              videoPath: path,
+              moments,
+              clipExtractor,
+            })
+          }
         : undefined,
       deferMatchDataOnPresign: game === 'valorant',
       getCoachingExtras: () => coachingExtras,
@@ -3875,7 +4113,9 @@ async function startApp(): Promise<void> {
 
   ipcMain.handle('recordings:get', async () => {
     scanForOrphanedRecordings()
-    return recordingsStore.getPending(linkedRiotFromAuth())
+    const pending = recordingsStore.getPending(linkedRiotFromAuth())
+    await Promise.all(pending.map((rec) => refreshRecordingVodProbe(rec)))
+    return pending.map(withAnalysisReadiness)
   })
 
   ipcMain.handle('analysis:reconcile-stuck', async () => {
@@ -3884,8 +4124,11 @@ async function startApp(): Promise<void> {
   })
 
   ipcMain.handle('recordings:analyse', async (_e, { id }: { id: string }) => {
-    const recording = recordingsStore.getById(id)
-    if (!recording) return { error: 'Recording not found' }
+    const readinessCheck = await ensureAnalysisReadinessForAnalyse(id)
+    if (!readinessCheck.ok) {
+      return { error: readinessCheck.error, code: 'not_ready', state: readinessCheck.state }
+    }
+    const recording = readinessCheck.recording
 
     // Dashboard analyse is unrelated to live match capture — don't block on lobby wait.
     dismissMatchWaitUi()

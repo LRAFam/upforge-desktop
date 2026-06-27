@@ -5,6 +5,7 @@ import type { AxiosInstance } from 'axios'
 import type { RiotLocalApi } from './riot-local-api'
 import type { MatchData } from './riot-types'
 import { MATCH_DETAILS_ENRICH_MAX_MS } from './match-data-quality'
+import { duelMomentsForUpload } from './moment-picker'
 import { applySpatialEnrichment } from './spatial/enrich'
 import { refreshMatchPopulationBenchmarks } from './spatial/enrich-population'
 
@@ -35,6 +36,8 @@ export async function enrichTimelineForCoaching(
   if ((timeline.killEvents?.length ?? 0) > 0 || timeline.matchDetails) {
     try {
       applySpatialEnrichment(timeline)
+      const moments = duelMomentsForUpload(timeline)
+      if (moments.length) timeline.duelMoments = moments
     } catch {
       /* spatial is best-effort */
     }

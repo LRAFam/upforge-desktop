@@ -305,7 +305,8 @@ function createDashboard() {
     pendingRecordings.value.filter((r) =>
       !r.clipsOnly
       && !isRecordingInFlight(r, uploadProgressByRecordingId.value)
-      && !isRecordingDeferred(r),
+      && !isRecordingDeferred(r)
+      && (r.analysisReadiness?.ready ?? false),
     ),
   )
 
@@ -717,8 +718,39 @@ function createDashboard() {
     return isRecordingDeferred(rec)
   }
 
+  function recAnalysisReady(rec: PendingRecording) {
+    return rec.analysisReadiness?.ready === true
+  }
+
+  function recAnalysisBlockedLabel(rec: PendingRecording) {
+    if (rec.analysisReadiness?.message) return rec.analysisReadiness.message
+    const state = rec.analysisReadiness?.state
+    if (state === 'syncing') return 'Syncing match stats…'
+    if (state === 'finalizing') return 'Finalizing recording…'
+    if (state === 'file_missing') return 'Recording file missing'
+    if (state === 'mode_unsupported') return 'Mode not supported for coaching'
+    if (state === 'file_unreadable') return 'Recording unreadable'
+    return 'Not ready to analyse'
+  }
+
+  function recAnalysisStatusShort(rec: PendingRecording) {
+    const state = rec.analysisReadiness?.state
+    if (state === 'syncing') return 'Syncing stats…'
+    if (state === 'finalizing') return 'Finalizing…'
+    if (state === 'no_deaths' || state === 'mode_unsupported' || state === 'file_missing' || state === 'file_unreadable' || state === 'unavailable') {
+      return 'Not ready'
+    }
+    return recAnalysisBlockedLabel(rec)
+  }
+
   async function analyseRecording(id: string) {
     if (analysingIds.value.has(id)) return
+    const rec = pendingRecordings.value.find((r) => r.id === id)
+    if (rec && !recAnalysisReady(rec)) {
+      warning.value = recAnalysisBlockedLabel(rec)
+      setTimeout(() => { warning.value = null }, 12000)
+      return
+    }
     const user = profile.value?.user
     if (user && !hasAnalysisQuotaRemaining(user.analysis_stats, user.tier, user.is_admin)) {
       warning.value = 'No analyses remaining this month.'
@@ -728,7 +760,10 @@ function createDashboard() {
     analysingIds.value.add(id)
     analysingIds.value = new Set(analysingIds.value)
     try {
-      await window.api.recordings.analyse(id)
+      const result = await window.api.recordings.analyse(id) as { ok?: boolean; error?: string; code?: string }
+      if (result?.error) {
+        throw new Error(result.error)
+      }
       pendingRecordings.value = pendingRecordings.value.filter(r => r.id !== id)
     } catch (e) {
       analysingIds.value.delete(id)
@@ -1363,6 +1398,9 @@ function createDashboard() {
     refreshProfile,
     recInFlight,
     recIsDeferred,
+    recAnalysisReady,
+    recAnalysisBlockedLabel,
+    recAnalysisStatusShort,
     recUploadProgress,
     recPipelineLabel,
     recRowStats,

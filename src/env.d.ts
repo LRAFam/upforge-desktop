@@ -188,6 +188,12 @@ export interface PendingRecording {
   clipOnlyReason?: 'clips_only_mode' | 'no_recording'
   clipCount?: number
   matchId?: string | null
+  analysisReadiness?: {
+    ready: boolean
+    state: 'ready' | 'syncing' | 'no_deaths' | 'unavailable' | 'file_missing' | 'finalizing' | 'mode_unsupported' | 'file_unreadable'
+    message: string
+    duelMomentCount: number
+  }
   timeline?: {
     playerKills?: Array<{ killerName: string; victimName: string; weapon?: string; videoOffsetMs?: number; round?: number }>
     playerDeaths?: Array<{ killerName: string; victimName: string; weapon?: string; videoOffsetMs?: number; round?: number }>

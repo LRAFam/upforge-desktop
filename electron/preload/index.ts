@@ -254,6 +254,7 @@ const api = {
       'dashboard:open-latest-analysis',
       'dashboard:analyse-recording',
       'post-game:pending',
+      'post-game:analysis-readiness',
       'dashboard:refresh',
       'dashboard:last-insight',
       'recordings:updated',

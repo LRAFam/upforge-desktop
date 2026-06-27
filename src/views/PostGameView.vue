@@ -60,7 +60,7 @@
             <div class="flex items-end justify-between gap-3">
               <div class="text-left">
                 <p class="text-[10px] font-semibold uppercase tracking-[0.24em] text-gray-600">{{ state === 'preparing' ? 'Preparing' : compressing ? 'Compression' : 'Upload progress' }}</p>
-                <p class="mt-1 text-xs text-gray-500">{{ state === 'preparing' ? 'Saving your match recording and getting it ready to upload' : compressing ? compressHint : archiveOnlyUpload ? 'Saving your recording to cloud for playback — no analysis quota used' : 'Sending your recording to UpForge for analysis' }}</p>
+                <p class="mt-1 text-xs text-gray-500">{{ state === 'preparing' ? (preparingSyncMessage || 'Saving your match recording and getting it ready to upload') : compressing ? compressHint : archiveOnlyUpload ? 'Saving your recording to cloud for playback — no analysis quota used' : 'Sending your recording to UpForge for analysis' }}</p>
               </div>
               <div class="text-right">
                 <p class="text-lg font-black tabular-nums text-white upload-stat-in">{{ uploadProgress }}%</p>
@@ -806,7 +806,10 @@
 
         <div class="mt-4 text-center">
           <p class="text-sm font-semibold text-gray-200">What would you like to do?</p>
-          <p class="mt-1 text-[11px] leading-relaxed text-gray-500">
+          <p v-if="!pendingAnalysisReady" class="mt-1 text-[11px] leading-relaxed text-blue-300/80">
+            {{ pendingAnalysisMessage }}
+          </p>
+          <p v-else class="mt-1 text-[11px] leading-relaxed text-gray-500">
             Save to cloud frees disk space. Analyse uses your coaching quota when you are ready.
           </p>
         </div>
@@ -815,7 +818,7 @@
           <GamingButton
             variant="primary-sm"
             block
-            :disabled="analysing || savingToCloud"
+            :disabled="analysing || savingToCloud || !pendingAnalysisReady"
             @click="analyseNow"
           >
             <svg v-if="analysing" class="h-4 w-4 animate-spin" fill="none" viewBox="0 0 24 24">
@@ -825,7 +828,7 @@
             <svg v-else class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"/>
             </svg>
-            {{ analysing ? 'Starting…' : 'Analyse now' }}
+            {{ analysing ? 'Starting…' : (pendingAnalysisReady ? 'Analyse now' : pendingAnalyseButtonLabel) }}
           </GamingButton>
           <GamingButton
             variant="secondary-sm"
@@ -1140,6 +1143,26 @@ const errorHint = computed(() => errorDetails.value?.hint ?? null)
 const creditRefunded = computed(() => errorDetails.value?.creditRefunded ?? /refunded/i.test(errorMessage.value))
 const canRetryAnalysis = computed(() => errorDetails.value?.canRetry ?? (!clipsOnlyError.value && !needsUpgrade.value))
 const pendingRecordingId = ref<string | null>(null)
+const pendingAnalysisReady = ref(false)
+const pendingAnalysisMessage = ref('Syncing match stats…')
+const pendingAnalysisState = ref<string | null>(null)
+const preparingSyncMessage = ref<string | null>(null)
+const pendingAnalyseButtonLabel = computed(() => {
+  if (pendingAnalysisState.value === 'finalizing') return 'Finalizing…'
+  if (pendingAnalysisState.value === 'syncing') return 'Syncing stats…'
+  return 'Not ready'
+})
+
+function applyAnalysisReadiness(readiness: { ready: boolean; state: string; message: string }) {
+  pendingAnalysisReady.value = readiness.ready
+  pendingAnalysisState.value = readiness.state
+  pendingAnalysisMessage.value = readiness.message
+    || (readiness.state === 'syncing'
+      ? 'Syncing match stats…'
+      : readiness.state === 'finalizing'
+        ? 'Finalizing recording…'
+        : 'Not ready to analyse')
+}
 const sessionRecordingId = ref<string | null>(null)
 const analysing = ref(false)
 const savingToCloud = ref(false)
@@ -1217,7 +1240,9 @@ const analysisElapsedDisplay = computed(() => {
 })
 
 const uploadStatusLabel = computed(() => {
-  if (state.value === 'preparing') return 'Finishing recording'
+  if (state.value === 'preparing') {
+    return preparingSyncMessage.value ? 'Syncing match data' : 'Finishing recording'
+  }
   if (compressing.value) {
     if (compressKind.value === 'remux') return 'Wrapping replay'
     if (compressKind.value === 'transcode') return 'Converting replay format'
@@ -1704,11 +1729,39 @@ onMounted(() => {
     if (summary?.events?.length) localSpatialSummary.value = summary
   }))
   ipcCleanup.push(window.api.on('post-game:pending', (...args: unknown[]) => {
-    const data = args[0] as { recordingId: string; game: string; map: string | null; agent: string | null }
+    const data = args[0] as {
+      recordingId: string
+      game: string
+      map: string | null
+      agent: string | null
+      analysisReadiness?: { ready: boolean; state: string; message: string }
+    }
     pendingRecordingId.value = data.recordingId
     gameInfo.value = { game: data.game, map: data.map, agent: data.agent }
+    if (data.analysisReadiness) {
+      applyAnalysisReadiness(data.analysisReadiness)
+    } else {
+      void refreshPendingReadiness()
+    }
     state.value = 'pending'
     void refreshLocalSpatialSummary()
+  }))
+  ipcCleanup.push(window.api.on('post-game:analysis-readiness', (...args: unknown[]) => {
+    const readiness = args[0] as { ready: boolean; state: string; message: string }
+    if (state.value === 'preparing' || state.value === 'uploading') {
+      preparingSyncMessage.value = readiness.message
+        || (readiness.state === 'syncing'
+          ? 'Syncing match stats from Riot…'
+          : readiness.state === 'finalizing'
+            ? 'Finalizing recording…'
+            : 'Preparing your match for analysis')
+    }
+    if (state.value === 'pending') {
+      applyAnalysisReadiness(readiness)
+    }
+  }))
+  ipcCleanup.push(window.api.on('recordings:updated', () => {
+    if (state.value === 'pending') void refreshPendingReadiness()
   }))
   ipcCleanup.push(window.api.on('post-game:upload-error', (...args: unknown[]) => {
     const payload = args[0] as string | AnalysisErrorPayload & { needsUpgrade?: boolean; upgradeUrl?: string; ppaUrl?: string; clipsOnly?: boolean; recordingId?: string }
@@ -1815,8 +1868,21 @@ async function saveToCloudNow() {
   }
 }
 
+async function refreshPendingReadiness() {
+  if (!pendingRecordingId.value) return
+  const list = await window.api.recordings.get().catch(() => [])
+  const rec = list.find((r) => r.id === pendingRecordingId.value)
+  if (rec?.analysisReadiness) {
+    applyAnalysisReadiness(rec.analysisReadiness)
+  }
+}
+
 async function analyseNow() {
   if (!pendingRecordingId.value || analysing.value) return
+  if (!pendingAnalysisReady.value) {
+    errorMessage.value = pendingAnalysisMessage.value
+    return
+  }
   analysing.value = true
   state.value = 'uploading'
   uploadProgress.value = 0
