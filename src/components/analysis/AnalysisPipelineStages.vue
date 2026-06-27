@@ -1,12 +1,16 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { pipelineStagesFromStep } from '../../lib/duel-moments'
+import PostGamePipelineIcon from '../post-game/PostGamePipelineIcon.vue'
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   progress: number
   step?: string | null
   momentCount?: number
-}>()
+  layout?: 'horizontal' | 'vertical'
+}>(), {
+  layout: 'horizontal',
+})
 
 const parsed = computed(() =>
   pipelineStagesFromStep(props.step, props.progress, props.momentCount ?? 0),
@@ -20,7 +24,55 @@ function stageState(index: number): 'done' | 'active' | 'pending' {
 </script>
 
 <template>
-  <div class="overflow-x-auto scroll-col -mx-1 px-1 pb-0.5">
+  <!-- Vertical — compact coaching pipeline -->
+  <div v-if="layout === 'vertical'" class="flow-pipeline-vertical space-y-0">
+    <div
+      v-for="(stage, index) in parsed.stages"
+      :key="stage.id"
+      class="flex gap-2.5"
+    >
+      <div class="flex flex-col items-center">
+        <span
+          class="flex h-6 w-6 shrink-0 items-center justify-center rounded-full transition-all duration-300"
+          :class="{
+            'bg-emerald-500/20 text-emerald-300 ring-1 ring-emerald-500/35': stageState(index) === 'done',
+            'bg-[#ff4655]/20 text-[#ff8a94] ring-1 ring-[#ff4655]/45 shadow-[0_0_14px_rgba(255,70,85,0.28)] scale-110': stageState(index) === 'active',
+            'bg-white/[0.04] text-gray-600 ring-1 ring-white/[0.08]': stageState(index) === 'pending',
+          }"
+        >
+          <svg v-if="stageState(index) === 'done'" class="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"/>
+          </svg>
+          <PostGamePipelineIcon
+            v-else
+            :stage="stage.id"
+            :state="stageState(index)"
+            :class="stageState(index) === 'active' ? 'animate-pulse' : ''"
+          />
+        </span>
+        <div
+          v-if="index < parsed.stages.length - 1"
+          class="my-0.5 w-px flex-1 min-h-[10px] transition-colors"
+          :class="stageState(index) === 'done' ? 'bg-emerald-500/35' : 'bg-white/[0.08]'"
+        />
+      </div>
+      <div
+        class="min-w-0 flex-1 pb-2.5"
+        :class="{ 'opacity-45': stageState(index) === 'pending' }"
+      >
+        <p
+          class="text-[10px] font-bold uppercase tracking-[0.14em] leading-tight"
+          :class="stageState(index) === 'active' ? 'text-white' : stageState(index) === 'done' ? 'text-gray-300' : 'text-gray-600'"
+        >
+          {{ stage.label }}
+        </p>
+        <p class="mt-0.5 text-[10px] leading-snug text-gray-500">{{ stage.detail }}</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Horizontal — scrollable stage chips -->
+  <div v-else class="overflow-x-auto scroll-col -mx-1 px-1 pb-0.5">
     <div class="flex gap-1.5 w-max min-w-full">
       <div
         v-for="(stage, index) in parsed.stages"

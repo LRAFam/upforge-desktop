@@ -68,7 +68,8 @@ const api = {
   window: {
     minimize: () => ipcRenderer.invoke('window:minimize'),
     close: () => ipcRenderer.invoke('window:close'),
-    openPostGame: () => ipcRenderer.invoke('window:open-post-game')
+    openPostGame: () => ipcRenderer.invoke('window:open-post-game'),
+    setContentHeight: (height: number) => ipcRenderer.invoke('window:set-content-height', height),
   },
   postGame: {
     retryDemoScan: () => ipcRenderer.invoke('post-game:retry-demo-scan'),

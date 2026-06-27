@@ -3,7 +3,7 @@
  * IPC handlers for app state, settings, storage, dialog, dev tools, updater, and window controls.
  */
 
-import { IpcMain, BrowserWindow, app, dialog, shell } from 'electron'
+import { IpcMain, BrowserWindow, app, dialog, shell, screen } from 'electron'
 import { is } from '@electron-toolkit/utils'
 import { autoUpdater } from 'electron-updater'
 import log from 'electron-log'
@@ -191,5 +191,25 @@ export function setupAppHandlers(
 
   ipcMain.handle('window:open-post-game', () => {
     if (openPostGameFn) openPostGameFn()
+  })
+
+  /** Resize the calling window to fit compact post-game content (title bar is added automatically). */
+  ipcMain.handle('window:set-content-height', (e, contentHeight: number) => {
+    const win = BrowserWindow.fromWebContents(e.sender)
+    if (!win || win.isDestroyed()) return
+    const { height: workH } = screen.getPrimaryDisplay().workAreaSize
+    const titleBarPx = 44
+    const desiredHeight = Math.min(
+      workH - 32,
+      Math.max(260, Math.round(Number(contentHeight) + titleBarPx)),
+    )
+    const bounds = win.getBounds()
+    if (Math.abs(bounds.height - desiredHeight) < 6) return
+    win.setBounds({
+      x: bounds.x,
+      y: workH - desiredHeight - 20,
+      width: bounds.width,
+      height: desiredHeight,
+    })
   })
 }

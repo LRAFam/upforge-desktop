@@ -1,16 +1,27 @@
 <template>
-  <div class="flex flex-col h-full bg-[#161616] relative overflow-hidden">
+  <div
+    ref="contentRoot"
+    class="flex flex-col bg-[#111111] relative overflow-hidden"
+    :class="isCompactFlowState ? 'h-auto' : 'h-full'"
+  >
+    <!-- Branded forge texture -->
+    <div
+      class="absolute inset-0 pointer-events-none opacity-[0.35]"
+      :style="{ backgroundImage: `url(${forgePanelTexture})`, backgroundSize: '256px 256px' }"
+    />
     <!-- Subtle glow bg — uses agent accent colour when available -->
     <div class="absolute inset-0 pointer-events-none">
       <div
-        class="absolute top-0 left-1/2 -translate-x-1/2 w-48 h-24 rounded-full blur-3xl transition-all duration-700 opacity-60"
+        class="absolute top-0 left-1/2 -translate-x-1/2 w-56 h-28 rounded-full blur-3xl transition-all duration-700 opacity-70"
         :style="glowBgStyle"
       />
     </div>
 
     <div
-      class="flex-1 flex flex-col min-h-0 relative z-10 overflow-y-auto overflow-x-hidden px-6 py-5"
-      :class="state === 'ready' ? '' : 'items-center'"
+      class="relative z-10 overflow-x-hidden"
+      :class="isCompactFlowState
+        ? 'px-4 py-3'
+        : 'flex-1 flex flex-col min-h-0 overflow-y-auto px-6 py-5'"
     >
       <div
         v-if="copiedLinkToast"
@@ -23,170 +34,191 @@
       </div>
 
       <!-- Uploading -->
-      <div v-if="state === 'preparing' || state === 'uploading'" class="w-full max-w-sm mx-auto space-y-3 text-center">
-        <!-- Dismiss during upload -->
-        <button
-          class="absolute top-2 right-2 w-6 h-6 flex items-center justify-center rounded-full text-gray-600 hover:text-gray-300 hover:bg-white/[0.06] transition-colors"
-          title="Dismiss"
-          @click="dismiss"
+      <div v-if="state === 'preparing' || state === 'uploading'" class="flow-panel w-full">
+        <div
+          class="flow-hero relative overflow-hidden rounded-2xl border border-white/[0.10] text-left"
+          :style="agentAccentColor ? { '--flow-glow': agentAccentColor + '35' } : undefined"
         >
-          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
-          </svg>
-        </button>
-        <div class="space-y-3">
-          <div class="flex items-center justify-center">
-            <div class="inline-flex items-center gap-3 rounded-2xl border border-white/[0.07] bg-white/[0.03] px-4 py-3 shadow-[0_0_30px_rgba(239,68,68,0.08)]">
+          <PostGameFlowHeroBackdrop :art-url="uploadHeroArt" :map-url="mapSplashUrl" tone="vivid" />
+          <PostGameHeroEffects variant="uplink" />
+
+          <button
+            class="absolute top-2.5 right-2.5 z-10 w-7 h-7 flex items-center justify-center rounded-full text-gray-500 hover:text-gray-200 hover:bg-white/[0.08] transition-colors"
+            title="Dismiss"
+            @click="dismiss"
+          >
+            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+            </svg>
+          </button>
+
+          <div class="relative px-4 pt-4 pb-3.5">
+            <div class="mb-3 inline-flex items-center gap-1.5 rounded-full border border-[#ff4655]/30 bg-[#ff4655]/12 px-2.5 py-1 backdrop-blur-sm">
+              <span class="relative flex h-2 w-2">
+                <span class="absolute inline-flex h-full w-full animate-ping rounded-full bg-[#ff4655] opacity-50" />
+                <span class="relative inline-flex h-2 w-2 rounded-full bg-[#ff4655]" />
+              </span>
+              <span class="text-[10px] font-bold uppercase tracking-[0.16em] text-[#ff8a94]">
+                {{ state === 'preparing' ? 'Preparing replay' : compressing ? 'Optimising file' : 'Uploading' }}
+              </span>
+            </div>
+
+            <div class="flex items-end gap-3">
               <div
-                class="w-11 h-11 rounded-2xl overflow-hidden flex items-center justify-center transition-all flex-shrink-0"
-                :class="agentImageUrl ? '' : 'bg-red-500/10 border border-red-500/20'"
-                :style="agentImageUrl ? { border: `1px solid ${agentAccentColor}50`, background: agentAccentColor + '20' } : {}"
+                class="h-14 w-14 flex-shrink-0 overflow-hidden rounded-xl flex items-center justify-center shadow-lg"
+                :class="agentImageUrl ? '' : 'border border-[#ff4655]/25 bg-[#ff4655]/10'"
+                :style="agentImageUrl ? { border: `1px solid ${agentAccentColor}66`, background: agentAccentColor + '28', boxShadow: `0 8px 24px ${agentAccentColor}25` } : undefined"
               >
-                <img v-if="agentImageUrl" :src="agentImageUrl" class="w-9 h-9 object-contain" />
-                <svg v-else class="w-5 h-5 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <img v-if="agentImageUrl" :src="agentImageUrl" class="h-12 w-12 object-contain" />
+                <svg v-else class="h-6 w-6 text-[#ff4655]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M15 10l4.553-2.069A1 1 0 0121 8.882v6.236a1 1 0 01-1.447.894L15 14M3 8a2 2 0 012-2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V8z"/>
                 </svg>
               </div>
-              <div class="text-left">
-                <p class="text-sm font-bold text-white">{{ state === 'preparing' ? 'Getting replay ready' : compressing ? (uploadStatusLabel === 'Converting replay format' ? 'Converting replay' : 'Compressing replay') : 'Uploading replay' }}</p>
-                <div class="mt-1 flex items-center gap-2 text-[11px]">
-                  <span class="font-semibold text-gray-200">{{ gameInfo.agent || gameLabel }}</span>
-                  <span v-if="gameInfo.map" class="text-gray-500">{{ gameInfo.map }}</span>
-                </div>
+              <div class="min-w-0 flex-1 pb-0.5">
+                <p class="text-base font-bold leading-tight text-white">
+                  {{ state === 'preparing' ? 'Getting replay ready' : compressing ? (uploadStatusLabel === 'Converting replay format' ? 'Converting replay' : 'Compressing replay') : 'Sending to coach' }}
+                </p>
+                <p class="mt-0.5 text-xs font-medium text-gray-400">
+                  {{ gameInfo.agent || gameLabel }}<span v-if="gameInfo.map" class="text-gray-600"> · {{ gameInfo.map }}</span>
+                </p>
+              </div>
+              <div class="text-right pb-0.5">
+                <p class="text-2xl font-black tabular-nums leading-none text-white upload-stat-in">{{ uploadProgress }}<span class="text-sm text-gray-500">%</span></p>
               </div>
             </div>
           </div>
-          <div class="w-full space-y-2.5">
-            <div class="flex items-end justify-between gap-3">
-              <div class="text-left">
-                <p class="text-[10px] font-semibold uppercase tracking-[0.24em] text-gray-600">{{ state === 'preparing' ? 'Preparing' : compressing ? 'Compression' : 'Upload progress' }}</p>
-                <p class="mt-1 text-xs text-gray-500">{{ state === 'preparing' ? (preparingSyncMessage || 'Saving your match recording and getting it ready to upload') : compressing ? compressHint : archiveOnlyUpload ? 'Saving your recording to cloud for playback — no analysis quota used' : 'Sending your recording to UpForge for analysis' }}</p>
-              </div>
-              <div class="text-right">
-                <p class="text-lg font-black tabular-nums text-white upload-stat-in">{{ uploadProgress }}%</p>
-                <p class="text-[10px] text-gray-600">Complete</p>
-              </div>
+        </div>
+
+        <div class="mt-3 flow-card rounded-xl border border-white/[0.08] px-3.5 py-3 space-y-2.5">
+          <p class="text-[11px] leading-relaxed text-gray-500">
+            {{ state === 'preparing' ? (preparingSyncMessage || 'Saving your match recording and getting it ready to upload') : compressing ? compressHint : archiveOnlyUpload ? 'Saving your recording to cloud for playback — no analysis quota used' : 'Sending your recording to UpForge for analysis' }}
+          </p>
+          <div class="relative h-2 w-full overflow-hidden rounded-full bg-white/[0.04]">
+            <div
+              class="relative h-full overflow-hidden rounded-full upload-bar-fill transition-all duration-300"
+              :style="{ width: `${Math.max(uploadProgress, uploadProgress > 0 ? 3 : 6)}%` }"
+            >
+              <div class="absolute inset-0 upload-bar-shimmer" />
             </div>
-            <div class="relative h-3 w-full overflow-hidden rounded-full border border-white/[0.07] bg-white/[0.05]">
-              <div class="absolute inset-0 upload-bar-track" />
-              <div
-                class="relative h-full overflow-hidden rounded-full upload-bar-fill transition-all duration-300"
-                :style="{ width: `${uploadProgress}%` }"
-              >
-                <div class="absolute inset-0 upload-bar-shimmer" />
-              </div>
+          </div>
+          <div class="flex items-center justify-between gap-3 text-[10px]">
+            <div class="flex items-center gap-2 font-semibold text-gray-300">
+              <svg class="h-3 w-3 animate-spin text-[#ff4655]" fill="none" viewBox="0 0 20 20">
+                <circle class="opacity-20" cx="10" cy="10" r="7" stroke="currentColor" stroke-width="2"/>
+                <path class="opacity-90" fill="currentColor" d="M10 3a7 7 0 0 1 7 7h-2a5 5 0 0 0-5-5V3Z"/>
+              </svg>
+              <span>{{ uploadStatusLabel }}</span>
             </div>
-            <div class="grid grid-cols-2 gap-2">
-              <div class="rounded-xl border border-white/[0.09] bg-white/[0.03] px-3 py-2 text-left">
-                <p class="text-[10px] uppercase tracking-[0.2em] text-gray-600">Status</p>
-                <div class="mt-1 flex items-center gap-2 text-xs font-semibold text-gray-300">
-                  <svg class="h-3.5 w-3.5 animate-spin text-red-400" fill="none" viewBox="0 0 20 20">
-                    <circle class="opacity-20" cx="10" cy="10" r="7" stroke="currentColor" stroke-width="2"/>
-                    <path class="opacity-90" fill="currentColor" d="M10 3a7 7 0 0 1 7 7h-2a5 5 0 0 0-5-5V3Z"/>
-                  </svg>
-                  <span>{{ uploadStatusLabel }}</span>
-                </div>
-              </div>
-              <div class="rounded-xl border border-white/[0.09] bg-white/[0.03] px-3 py-2 text-right">
-                <p class="text-[10px] uppercase tracking-[0.2em] text-gray-600">ETA</p>
-                <p class="mt-1 text-xs font-semibold text-gray-300">{{ uploadEta || 'Calculating…' }}</p>
-              </div>
-            </div>
+            <span class="tabular-nums text-gray-500">{{ uploadEta || 'Calculating…' }}</span>
           </div>
         </div>
       </div>
 
       <!-- Analysing -->
-      <div v-else-if="state === 'analysing'" class="w-full max-w-sm mx-auto space-y-3 text-center">
-        <button
-          class="absolute top-2 right-2 w-6 h-6 flex items-center justify-center rounded-full text-gray-600 hover:text-gray-300 hover:bg-white/[0.06] transition-colors"
-          title="Close — analysis continues in background"
-          @click="dismiss"
+      <div v-else-if="state === 'analysing'" class="flow-panel w-full">
+        <div
+          class="flow-hero relative overflow-hidden rounded-2xl border border-white/[0.10] text-left"
+          :style="agentAccentColor ? { '--flow-glow': agentAccentColor + '35' } : undefined"
         >
-          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
-          </svg>
-        </button>
-        <div class="space-y-3">
-          <div class="flex items-center justify-center">
-            <div class="inline-flex items-center gap-3 rounded-2xl border border-white/[0.07] bg-white/[0.03] px-4 py-3 shadow-[0_0_30px_rgba(249,115,22,0.08)]">
+          <PostGameFlowHeroBackdrop :art-url="coachHeroArt" :map-url="mapSplashUrl" />
+          <PostGameHeroEffects variant="crosshair" />
+
+          <button
+            class="absolute top-2.5 right-2.5 z-10 w-7 h-7 flex items-center justify-center rounded-full text-gray-500 hover:text-gray-200 hover:bg-white/[0.08] transition-colors"
+            title="Close — analysis continues in background"
+            @click="dismiss"
+          >
+            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+            </svg>
+          </button>
+
+          <div class="relative px-4 pt-4 pb-3.5">
+            <div class="mb-3 inline-flex items-center gap-1.5 rounded-full border border-orange-500/30 bg-orange-500/12 px-2.5 py-1 backdrop-blur-sm">
+              <span class="relative flex h-2 w-2">
+                <span class="absolute inline-flex h-full w-full animate-ping rounded-full bg-orange-400 opacity-50" />
+                <span class="relative inline-flex h-2 w-2 rounded-full bg-orange-400" />
+              </span>
+              <span class="text-[10px] font-bold uppercase tracking-[0.16em] text-orange-300">AI coaching</span>
+            </div>
+
+            <div class="flex items-end gap-3">
               <div
-                class="w-11 h-11 rounded-2xl overflow-hidden flex items-center justify-center flex-shrink-0"
-                :class="agentImageUrl ? '' : 'bg-orange-500/10 border border-orange-500/20'"
-                :style="agentImageUrl ? { border: `1px solid ${agentAccentColor}50`, background: agentAccentColor + '20' } : {}"
+                class="h-14 w-14 flex-shrink-0 overflow-hidden rounded-xl flex items-center justify-center shadow-lg"
+                :class="agentImageUrl ? '' : 'border border-orange-500/25 bg-orange-500/10'"
+                :style="agentImageUrl ? { border: `1px solid ${agentAccentColor}66`, background: agentAccentColor + '28', boxShadow: `0 8px 24px ${agentAccentColor}25` } : undefined"
               >
-                <img v-if="agentImageUrl" :src="agentImageUrl" class="w-9 h-9 object-contain" />
-                <svg v-else class="w-5 h-5 text-orange-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <img v-if="agentImageUrl" :src="agentImageUrl" class="h-12 w-12 object-contain" />
+                <svg v-else class="h-6 w-6 text-orange-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"/>
                 </svg>
               </div>
-              <div class="text-left">
-                <p class="text-sm font-bold text-white">Analysing gameplay</p>
-                <div class="mt-1 flex items-center gap-2 text-[11px]">
-                  <span class="font-semibold text-gray-200">{{ gameInfo.agent || gameLabel }}</span>
-                  <span v-if="gameInfo.map" class="text-gray-500">{{ gameInfo.map }}</span>
-                </div>
+              <div class="min-w-0 flex-1 pb-0.5">
+                <p class="text-base font-bold leading-tight text-white">Reviewing your duels</p>
+                <p class="mt-0.5 text-xs font-medium text-gray-400">
+                  {{ gameInfo.agent || gameLabel }}<span v-if="gameInfo.map" class="text-gray-600"> · {{ gameInfo.map }}</span>
+                </p>
+              </div>
+              <div class="text-right pb-0.5">
+                <p class="text-2xl font-black tabular-nums leading-none text-white upload-stat-in">{{ analysisProgress }}<span class="text-sm text-gray-500">%</span></p>
               </div>
             </div>
           </div>
-          <div class="w-full space-y-2.5">
-            <div class="flex items-end justify-between gap-3">
-              <div class="text-left">
-                <p class="text-[10px] font-semibold uppercase tracking-[0.24em] text-gray-600">Pipeline progress</p>
-                <p class="mt-1 text-xs text-gray-500">{{ analysisStep || 'Running AI analysis on your recording' }}</p>
-              </div>
-              <div class="text-right">
-                <p class="text-lg font-black tabular-nums text-white upload-stat-in">{{ analysisProgress }}%</p>
-                <p class="text-[10px] text-gray-600">Complete</p>
-              </div>
-            </div>
-            <div class="relative h-3 w-full overflow-hidden rounded-full border border-white/[0.07] bg-white/[0.05]">
-              <div class="absolute inset-0 upload-bar-track" />
-              <div
-                class="relative h-full overflow-hidden rounded-full transition-all duration-500"
-                :class="analysisProgress > 0 ? 'upload-bar-fill' : 'bg-orange-500/30'"
-                :style="{ width: `${Math.max(analysisProgress, analysisProgress > 0 ? 4 : 8)}%` }"
-              >
-                <div v-if="analysisProgress > 0" class="absolute inset-0 upload-bar-shimmer" />
-              </div>
-            </div>
-            <div class="grid grid-cols-2 gap-2">
-              <div class="rounded-xl border border-white/[0.09] bg-white/[0.03] px-3 py-2 text-left">
-                <p class="text-[10px] uppercase tracking-[0.2em] text-gray-600">Status</p>
-                <div class="mt-1 flex items-center gap-2 text-xs font-semibold text-orange-300">
-                  <span class="relative flex h-2 w-2">
-                    <span class="absolute inline-flex h-full w-full animate-ping rounded-full bg-orange-400 opacity-60" />
-                    <span class="relative inline-flex h-2 w-2 rounded-full bg-orange-500" />
-                  </span>
-                  <span>{{ analysisStatusLabel }}</span>
-                </div>
-              </div>
-              <div class="rounded-xl border border-white/[0.09] bg-white/[0.03] px-3 py-2 text-right">
-                <p class="text-[10px] uppercase tracking-[0.2em] text-gray-600">Elapsed</p>
-                <p class="mt-1 text-xs font-semibold text-gray-300 tabular-nums">{{ analysisElapsedDisplay }}</p>
-              </div>
-            </div>
-            <AnalysisPipelineStages
-              v-if="pendingDuelMoments.length"
-              :progress="analysisProgress"
-              :step="analysisStep"
-              :moment-count="pendingDuelMoments.length"
-            />
-            <p
-              v-if="pendingDuelMoments.length"
-              class="text-[10px] text-left text-gray-500"
+        </div>
+
+        <div class="mt-3 flow-card rounded-xl border border-white/[0.08] px-3.5 py-3 space-y-3">
+          <div>
+            <p class="text-[10px] font-bold uppercase tracking-[0.18em] text-gray-600">Current step</p>
+            <p class="mt-1 text-xs font-medium text-gray-300">{{ analysisStep || 'Running AI analysis on your recording' }}</p>
+          </div>
+          <div class="relative h-2 w-full overflow-hidden rounded-full bg-white/[0.04]">
+            <div
+              class="relative h-full overflow-hidden rounded-full transition-all duration-500"
+              :class="analysisProgress > 0 ? 'upload-bar-fill' : 'bg-orange-500/30'"
+              :style="{ width: `${Math.max(analysisProgress, analysisProgress > 0 ? 3 : 6)}%` }"
             >
-              {{ pendingDuelMoments.length }} duel windows queued from your deaths — studying peek &amp; crosshair on each clip.
-            </p>
+              <div v-if="analysisProgress > 0" class="absolute inset-0 upload-bar-shimmer" />
+            </div>
           </div>
+          <div class="flex items-center justify-between gap-3 text-[10px]">
+            <div class="flex items-center gap-2 font-semibold text-orange-300">
+              <span class="relative flex h-2 w-2">
+                <span class="absolute inline-flex h-full w-full animate-ping rounded-full bg-orange-400 opacity-60" />
+                <span class="relative inline-flex h-2 w-2 rounded-full bg-orange-500" />
+              </span>
+              <span>{{ analysisStatusLabel }}</span>
+            </div>
+            <span class="tabular-nums text-gray-500">{{ analysisElapsedDisplay }} elapsed</span>
+          </div>
+
+          <AnalysisPipelineStages
+            v-if="pendingDuelMoments.length"
+            layout="vertical"
+            :progress="analysisProgress"
+            :step="analysisStep"
+            :moment-count="pendingDuelMoments.length"
+          />
+          <p
+            v-if="pendingDuelMoments.length"
+            class="text-[10px] text-gray-500 leading-relaxed"
+          >
+            {{ pendingDuelMoments.length }} duel window{{ pendingDuelMoments.length !== 1 ? 's' : '' }} from your deaths — studying peek timing and crosshair on each clip.
+          </p>
         </div>
-        <div class="px-3 py-2.5 bg-white/[0.02] border border-white/[0.09] rounded-xl text-left">
-          <p class="text-xs font-semibold uppercase tracking-wider text-gray-600 mb-1">Did you know?</p>
-          <p class="text-xs text-gray-400 leading-relaxed">{{ currentTip }}</p>
+
+        <div class="mt-2.5 flow-card flow-card-accent rounded-xl border border-white/[0.07] px-3.5 py-2.5 text-left">
+          <div class="mb-1 flex items-center gap-1.5">
+            <svg class="h-3.5 w-3.5 text-[#ff4655]" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+              <path d="M8 14c2.5-2 3.5-4 3.5-6.2C11.5 4.5 9.8 3 8 3S4.5 4.5 4.5 7.8C4.5 10 5.5 12 8 14z" stroke="currentColor" stroke-width="1.2" />
+            </svg>
+            <p class="text-[10px] font-bold uppercase tracking-[0.16em] text-[#ff4655]/80">Coach insight</p>
+          </div>
+          <p class="text-[11px] text-gray-400 leading-relaxed">{{ currentTip }}</p>
         </div>
+
         <div
           v-if="analysisLongRunning || analysisDeferredReason"
-          class="flex items-start gap-2 px-3 py-2.5 rounded-xl text-left"
+          class="mt-2.5 flex items-start gap-2 px-3 py-2.5 rounded-xl text-left"
           :class="analysisDeferredReason === 'recording' ? 'bg-amber-500/[0.07] border border-amber-500/20' : analysisDeferredReason === 'server' ? 'bg-amber-500/[0.07] border border-amber-500/20' : 'bg-blue-500/[0.06] border border-blue-500/20'"
         >
           <svg
@@ -225,7 +257,7 @@
             >Close &amp; continue in background</button>
           </div>
         </div>
-        <div v-else-if="analysisStuck" class="flex items-start gap-2 px-3 py-2.5 bg-white/[0.03] border border-white/[0.10] rounded-xl text-left">
+        <div v-else-if="analysisStuck" class="mt-2.5 flex items-start gap-2 px-3 py-2.5 bg-white/[0.03] border border-white/[0.10] rounded-xl text-left">
           <svg class="w-3.5 h-3.5 text-gray-500 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
           </svg>
@@ -242,44 +274,52 @@
 
       <!-- Ready -->
       <div v-else-if="state === 'ready'" class="w-full space-y-3 transition-all duration-500 ready-state-in">
+        <div
+          class="flow-hero ready-hero relative overflow-hidden rounded-2xl border border-emerald-500/20 text-left"
+          :style="agentAccentColor ? { '--flow-glow': 'rgba(34,197,94,0.25)' } : undefined"
+        >
+          <PostGameFlowHeroBackdrop :art-url="scoreRevealHeroArt" :map-url="mapSplashUrl" tone="reveal" />
+          <PostGameHeroEffects variant="reveal" />
 
-        <!-- ✓ Analysis Complete badge -->
-        <div class="flex justify-center">
-          <div class="flex items-center gap-1.5 px-3 py-1 bg-green-500/10 border border-green-500/20 rounded-full complete-badge-in">
-            <svg class="w-3 h-3 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"/>
-            </svg>
-            <span class="text-xs font-semibold text-green-400">Analysis Complete</span>
-          </div>
-        </div>
+          <div class="relative px-4 pt-4 pb-3.5">
+            <div class="mb-3 inline-flex items-center gap-1.5 rounded-full border border-emerald-500/30 bg-emerald-500/12 px-2.5 py-1 backdrop-blur-sm complete-badge-in">
+              <svg class="w-3 h-3 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"/>
+              </svg>
+              <span class="text-[10px] font-bold uppercase tracking-[0.16em] text-emerald-300">Coaching ready</span>
+            </div>
 
-        <!-- Compact match header -->
-        <div class="flex items-center gap-3 px-1">
-          <div
-            class="w-11 h-11 rounded-lg overflow-hidden flex-shrink-0 flex items-center justify-center"
-            :class="agentImageUrl && !agentImageBroken ? '' : 'bg-red-500/10 border border-red-500/20'"
-            :style="agentImageUrl && !agentImageBroken ? { border: `1px solid ${agentAccentColor}45`, background: agentAccentColor + '20' } : { border: '1px solid rgba(255,255,255,0.1)' }"
-          >
-            <img
-              v-if="agentImageUrl && !agentImageBroken"
-              :src="agentImageUrl"
-              class="w-full h-full object-cover object-top"
-              @error="agentImageBroken = true"
-            />
-            <span v-else-if="gameInfo.agent" class="text-sm font-black text-red-300">{{ gameInfo.agent.charAt(0) }}</span>
-            <svg v-else class="w-5 h-5 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M15 10l4.553-2.069A1 1 0 0121 8.882v6.236a1 1 0 01-1.447.894L15 14M3 8a2 2 0 012-2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V8z"/>
-            </svg>
+            <div class="flex items-end gap-3">
+              <div
+                class="h-14 w-14 flex-shrink-0 overflow-hidden rounded-xl flex items-center justify-center shadow-lg"
+                :class="agentImageUrl && !agentImageBroken ? '' : 'border border-emerald-500/25 bg-emerald-500/10'"
+                :style="agentImageUrl && !agentImageBroken ? { border: `1px solid ${agentAccentColor}66`, background: agentAccentColor + '28', boxShadow: `0 8px 24px ${agentAccentColor}25` } : undefined"
+              >
+                <img
+                  v-if="agentImageUrl && !agentImageBroken"
+                  :src="agentImageUrl"
+                  class="h-12 w-12 object-contain"
+                  @error="agentImageBroken = true"
+                />
+                <span v-else-if="gameInfo.agent" class="text-lg font-black text-emerald-300">{{ gameInfo.agent.charAt(0) }}</span>
+                <svg v-else class="h-6 w-6 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 12l2 2 4-4m5-2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                </svg>
+              </div>
+              <div class="min-w-0 flex-1 pb-0.5">
+                <p class="text-base font-bold leading-tight text-white">Your debrief is ready</p>
+                <p class="mt-0.5 text-xs font-medium text-gray-400">
+                  {{ gameInfo.agent || gameLabel }}<span v-if="gameInfo.map" class="text-gray-600"> · {{ gameInfo.map }}</span>
+                </p>
+              </div>
+              <div v-if="result?.overall_score && !spatialSummary?.events?.length" class="text-right pb-0.5 score-reveal">
+                <p class="text-2xl font-black tabular-nums leading-none" :class="scoreClass(result.overall_score)">
+                  {{ result.overall_score * 10 }}
+                </p>
+                <p class="text-[10px] text-gray-600">/ 1000</p>
+              </div>
+            </div>
           </div>
-          <div class="flex-1 min-w-0">
-            <p class="text-sm font-black text-white">Your debrief is ready</p>
-            <p class="text-[11px] text-gray-500">{{ [gameInfo.agent, gameInfo.map].filter(Boolean).join(' · ') }}</p>
-          </div>
-          <span
-            v-if="result?.overall_score && !spatialSummary?.events?.length"
-            class="text-xl font-black tabular-nums"
-            :class="scoreClass(result.overall_score)"
-          >{{ result.overall_score * 10 }}</span>
         </div>
 
         <PostGameFocusHero
@@ -762,14 +802,7 @@
           class="pending-hero relative overflow-hidden rounded-2xl border border-white/[0.10] text-left"
           :style="agentAccentColor ? { '--pending-glow': agentAccentColor + '30' } : undefined"
         >
-          <div v-if="mapSplashUrl" class="absolute inset-0 pointer-events-none">
-            <img :src="mapSplashUrl" alt="" class="h-full w-full object-cover opacity-40 scale-105" />
-            <div class="absolute inset-0 bg-gradient-to-t from-[#141414] via-[#141414]/88 to-[#141414]/55" />
-          </div>
-          <div
-            v-else
-            class="absolute inset-0 pointer-events-none bg-gradient-to-br from-white/[0.04] to-transparent"
-          />
+          <PostGameFlowHeroBackdrop :art-url="coachHeroArt" :map-url="mapSplashUrl" />
 
           <div class="relative px-4 pt-4 pb-3.5">
             <div class="mb-3 inline-flex items-center gap-1.5 rounded-full border border-emerald-500/25 bg-emerald-500/12 px-2.5 py-1 backdrop-blur-sm">
@@ -868,93 +901,124 @@
       </div>
 
       <!-- Error -->
-      <div v-else-if="state === 'error'" class="w-full max-w-sm mx-auto space-y-3 text-center">
+      <div v-else-if="state === 'error'" class="flow-panel w-full">
         <!-- Quota exceeded -->
         <template v-if="needsUpgrade">
-          <div class="w-11 h-11 mx-auto rounded-full bg-amber-500/10 border border-amber-500/20 flex items-center justify-center">
-            <svg class="w-5 h-5 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M13 10V3L4 14h7v7l9-11h-7z"/>
-            </svg>
+          <div class="flow-hero relative overflow-hidden rounded-2xl border border-amber-500/20 bg-amber-500/[0.04] px-4 py-4 text-center">
+            <div class="w-11 h-11 mx-auto rounded-full bg-amber-500/10 border border-amber-500/20 flex items-center justify-center">
+              <svg class="w-5 h-5 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M13 10V3L4 14h7v7l9-11h-7z"/>
+              </svg>
+            </div>
+            <div class="mt-3">
+              <p class="text-sm font-semibold text-amber-400">{{ needsArchiveUpgrade ? 'Cloud storage limit reached' : 'Analysis limit reached' }}</p>
+              <template v-if="needsArchiveUpgrade">
+                <p class="text-xs text-gray-400 mt-1">You have used all your cloud VOD slots. Upgrade for more storage or remove old cloud-backed locals in Settings.</p>
+              </template>
+              <template v-else-if="userTier === 'free'">
+                <p class="text-xs text-gray-400 mt-1">You've used your 3 starter analyses. Upgrade for monthly coaching or pay per analysis on the web.</p>
+                <p class="text-xs text-gray-600 mt-1">Plus $14.99/mo · Pro $24.99/mo</p>
+              </template>
+              <template v-else>
+                <p class="text-xs text-gray-400 mt-1">You've used all your {{ userTier }} plan analyses for this month. Resets in {{ daysUntilReset() }} day{{ daysUntilReset() === 1 ? '' : 's' }}.</p>
+              </template>
+            </div>
           </div>
-          <div>
-            <p class="text-sm font-semibold text-amber-400">{{ needsArchiveUpgrade ? 'Cloud storage limit reached' : 'Analysis limit reached' }}</p>
-            <template v-if="needsArchiveUpgrade">
-              <p class="text-xs text-gray-400 mt-1">You have used all your cloud VOD slots. Upgrade for more storage or remove old cloud-backed locals in Settings.</p>
-            </template>
-            <template v-else-if="userTier === 'free'">
-              <p class="text-xs text-gray-400 mt-1">You've used your 3 starter analyses. Upgrade for monthly coaching or pay per analysis on the web.</p>
-              <p class="text-xs text-gray-600 mt-1">Plus $14.99/mo · Pro $24.99/mo</p>
-            </template>
-            <template v-else>
-              <p class="text-xs text-gray-400 mt-1">You've used all your {{ userTier }} plan analyses for this month. Resets in {{ daysUntilReset() }} day{{ daysUntilReset() === 1 ? '' : 's' }}.</p>
-            </template>
-          </div>
-          <div class="flex gap-2 pt-1">
+          <div class="mt-3 flex gap-2">
             <button
               v-if="userTier === 'free'"
-              class="flex-1 py-2 text-xs font-semibold bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white rounded-lg transition-all shadow-sm shadow-amber-500/20"
+              class="flex-1 py-2.5 text-xs font-semibold bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white rounded-xl transition-all shadow-sm shadow-amber-500/20"
               @click="openUpgrade"
             >View Plans →</button>
             <button
               v-if="userTier === 'free'"
-              class="flex-1 py-2 text-xs font-semibold border border-white/10 bg-white/[0.04] hover:bg-white/[0.08] text-gray-200 rounded-lg transition-colors"
+              class="flex-1 py-2.5 text-xs font-semibold border border-white/10 bg-white/[0.04] hover:bg-white/[0.08] text-gray-200 rounded-xl transition-colors"
               @click="openPpa"
             >Pay per analysis</button>
-            <button class="px-3 py-2 text-xs text-gray-500 hover:text-gray-300 bg-white/[0.03] hover:bg-white/[0.06] border border-white/[0.10] rounded-lg transition-colors" @click="dismiss">Dismiss</button>
+            <button class="px-3 py-2.5 text-xs text-gray-500 hover:text-gray-300 bg-white/[0.03] hover:bg-white/[0.06] border border-white/[0.10] rounded-xl transition-colors" @click="dismiss">Dismiss</button>
           </div>
         </template>
 
         <!-- Generic upload / analysis error -->
         <template v-else>
           <div
-            class="w-11 h-11 mx-auto rounded-full flex items-center justify-center border"
-            :class="creditRefunded
-              ? 'bg-amber-500/10 border-amber-500/25'
-              : 'bg-red-500/10 border-red-500/20'"
+            class="flow-hero relative overflow-hidden rounded-2xl border text-left"
+            :class="creditRefunded ? 'border-amber-500/20' : 'border-red-500/20'"
+            :style="agentAccentColor ? { '--flow-glow': agentAccentColor + '25' } : undefined"
           >
-            <svg
-              v-if="creditRefunded"
-              class="w-5 h-5 text-amber-400"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 12l2 2 4-4m5-2a9 9 0 11-18 0 9 9 0 0118 0z"/>
-            </svg>
-            <svg
-              v-else
-              class="w-5 h-5 text-red-400"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
-            </svg>
+            <PostGameFlowHeroBackdrop
+              :art-url="creditRefunded ? refundHeroArt : uploadHeroArt"
+              :map-url="mapSplashUrl"
+              tone="muted"
+            />
+
+            <div class="relative px-4 pt-4 pb-3.5">
+              <div
+                class="mb-3 inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 backdrop-blur-sm"
+                :class="creditRefunded
+                  ? 'border-amber-500/30 bg-amber-500/12'
+                  : 'border-red-500/30 bg-red-500/12'"
+              >
+                <span
+                  class="w-2 h-2 rounded-full"
+                  :class="creditRefunded ? 'bg-amber-400' : 'bg-red-400'"
+                />
+                <span
+                  class="text-[10px] font-bold uppercase tracking-[0.16em]"
+                  :class="creditRefunded ? 'text-amber-300' : 'text-red-300'"
+                >
+                  {{ creditRefunded ? 'Credit refunded' : 'Analysis failed' }}
+                </span>
+              </div>
+
+              <div class="flex items-start gap-3">
+                <div
+                  class="h-12 w-12 flex-shrink-0 overflow-hidden rounded-xl flex items-center justify-center"
+                  :class="agentImageUrl ? '' : (creditRefunded ? 'border border-amber-500/25 bg-amber-500/10' : 'border border-red-500/25 bg-red-500/10')"
+                  :style="agentImageUrl ? { border: `1px solid ${agentAccentColor}55`, background: agentAccentColor + '22' } : undefined"
+                >
+                  <img v-if="agentImageUrl" :src="agentImageUrl" class="h-10 w-10 object-contain opacity-80" />
+                  <svg
+                    v-else
+                    class="w-5 h-5"
+                    :class="creditRefunded ? 'text-amber-400' : 'text-red-400'"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                  </svg>
+                </div>
+                <div class="min-w-0 flex-1">
+                  <p class="text-sm font-bold leading-snug" :class="creditRefunded ? 'text-amber-200' : 'text-red-300'">
+                    {{ errorTitle }}
+                  </p>
+                  <p class="mt-1 text-[11px] text-gray-400">
+                    {{ gameInfo.agent || gameLabel }}<span v-if="gameInfo.map" class="text-gray-600"> · {{ gameInfo.map }}</span>
+                  </p>
+                </div>
+              </div>
+            </div>
           </div>
-          <div class="space-y-2">
-            <p class="text-sm font-semibold" :class="creditRefunded ? 'text-amber-300' : 'text-red-400'">
-              {{ errorTitle }}
-            </p>
-            <p v-if="creditRefunded" class="inline-flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wide text-emerald-400/90">
-              <span class="w-1.5 h-1.5 rounded-full bg-emerald-400" />
-              Coaching credit refunded
-            </p>
+
+          <div class="mt-3 flow-card rounded-xl border border-white/[0.08] px-3.5 py-3 text-left space-y-2">
             <p class="text-xs text-gray-400 leading-relaxed">{{ errorMessage }}</p>
             <p v-if="errorHint" class="text-[11px] text-gray-500 leading-relaxed">{{ errorHint }}</p>
           </div>
-          <div class="flex gap-2 pt-1">
+
+          <div class="mt-3 flex gap-2">
             <button
               v-if="canRetryAnalysis && !clipsOnlyError"
               :disabled="!pendingRecordingId"
-              class="flex-1 py-2 text-xs font-semibold bg-gradient-to-r from-red-500 to-orange-600 hover:from-red-600 hover:to-orange-700 text-white rounded-lg transition-all shadow-sm shadow-red-500/20 disabled:opacity-40 disabled:cursor-not-allowed"
+              class="flex-1 py-2.5 text-xs font-bold bg-gradient-to-r from-[#ff4655] to-orange-600 hover:from-[#e63e4c] hover:to-orange-700 text-white rounded-xl transition-all shadow-[0_4px_16px_rgba(255,70,85,0.25)] disabled:opacity-40 disabled:cursor-not-allowed"
               @click="retryUpload"
             >{{ creditRefunded ? 'Try again' : 'Retry' }}</button>
             <button
               v-else-if="clipsOnlyError"
-              class="flex-1 py-2 text-xs font-semibold bg-gradient-to-r from-red-500 to-orange-600 hover:from-red-600 hover:to-orange-700 text-white rounded-lg transition-all shadow-sm shadow-red-500/20"
+              class="flex-1 py-2.5 text-xs font-bold bg-gradient-to-r from-[#ff4655] to-orange-600 text-white rounded-xl transition-all"
               @click="dismiss"
             >View clips in dashboard</button>
-            <button class="px-3 py-2 text-xs text-gray-500 hover:text-gray-300 bg-white/[0.03] hover:bg-white/[0.06] border border-white/[0.10] rounded-lg transition-colors" @click="dismiss">
+            <button class="px-3 py-2.5 text-xs text-gray-500 hover:text-gray-300 bg-white/[0.03] hover:bg-white/[0.06] border border-white/[0.10] rounded-xl transition-colors" @click="dismiss">
               {{ canRetryAnalysis && !clipsOnlyError ? 'Dismiss' : 'Close' }}
             </button>
           </div>
@@ -1017,7 +1081,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
+import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
 import { openAnalysisVodReview } from '../lib/open-vod-review'
 import { getAgentImage, getAgentColor, getMapImage, getMapMinimap } from '../lib/valorant'
@@ -1033,6 +1097,13 @@ import CategoryPercentilesStrip from '../components/CategoryPercentilesStrip.vue
 import type { CategoryPercentileEntry } from '../components/CategoryPercentilesStrip.vue'
 import PostGameFocusHero from '../components/PostGameFocusHero.vue'
 import AnalysisPipelineStages from '../components/analysis/AnalysisPipelineStages.vue'
+import PostGameFlowHeroBackdrop from '../components/post-game/PostGameFlowHeroBackdrop.vue'
+import PostGameHeroEffects from '../components/post-game/PostGameHeroEffects.vue'
+import uploadHeroArt from '../assets/post-game/upload-beam-hero.webp'
+import coachHeroArt from '../assets/post-game/coach-synthesis-hero.webp'
+import refundHeroArt from '../assets/post-game/refund-hero.webp'
+import scoreRevealHeroArt from '../assets/post-game/score-reveal-hero.webp'
+import forgePanelTexture from '../assets/post-game/forge-panel-texture.webp'
 import DuelMomentCards from '../components/analysis/DuelMomentCards.vue'
 import { type DuelMoment, type DuelMomentManifest } from '../lib/duel-moments'
 import { buildFocusHeroCopy } from '../lib/skill-profile'
@@ -1058,6 +1129,27 @@ const COACHING_TIPS = [
 ]
 
 const state = ref<State>('preparing')
+const contentRoot = ref<HTMLElement | null>(null)
+const isCompactFlowState = computed(() =>
+  ['preparing', 'uploading', 'analysing', 'error', 'pending', 'archived'].includes(state.value),
+)
+let fitHeightTimer: ReturnType<typeof setTimeout> | null = null
+let contentResizeObserver: ResizeObserver | null = null
+
+function scheduleFitWindow(): void {
+  if (fitHeightTimer) clearTimeout(fitHeightTimer)
+  fitHeightTimer = setTimeout(() => {
+    void nextTick(() => {
+      if (!contentRoot.value || !window.api.window.setContentHeight) return
+      if (state.value === 'ready') {
+        void window.api.window.setContentHeight(Math.min(680, window.innerHeight))
+        return
+      }
+      if (!isCompactFlowState.value) return
+      void window.api.window.setContentHeight(contentRoot.value.scrollHeight)
+    })
+  }, 60)
+}
 const uploadProgress = ref(0)
 const compressing = ref(false)
 const compressKind = ref<'remux' | 'transcode' | 'shrink' | null>(null)
@@ -1596,17 +1688,24 @@ const hasMatchResult = computed(() =>
 )
 const glowBgStyle = computed(() => {
   if (agentAccentColor.value) {
-    return { background: `radial-gradient(ellipse, ${agentAccentColor.value}25 0%, transparent 70%)` }
+    return { background: `radial-gradient(ellipse, ${agentAccentColor.value}28 0%, transparent 70%)` }
   }
   const fallbacks: Record<string, string> = {
     ready: 'rgba(34,197,94,0.10)',
-    pending: 'rgba(59,130,246,0.10)',
-    error: 'rgba(239,68,68,0.10)',
-    uploading: 'rgba(239,68,68,0.07)',
-    analysing: 'rgba(239,68,68,0.07)',
+    pending: 'rgba(255,70,85,0.08)',
+    error: 'rgba(255,70,85,0.10)',
+    uploading: 'rgba(255,70,85,0.08)',
+    analysing: 'rgba(255,70,85,0.08)',
   }
-  return { background: fallbacks[state.value] ?? 'transparent' }
+  return { background: fallbacks[state.value] ?? 'rgba(255,70,85,0.06)' }
 })
+
+watch(
+  [state, uploadProgress, analysisProgress, analysisStep, analysisLongRunning, analysisDeferredReason, analysisStuck, errorMessage, pendingAnalysisReady],
+  scheduleFitWindow,
+)
+
+watch(isReady, (ready) => { if (ready) scheduleFitWindow() })
 
 onMounted(() => {
   window.api.discord.setState('reviewing').catch(() => {})
@@ -1615,6 +1714,13 @@ onMounted(() => {
   setTimeout(() => {
     isReady.value = true
   }, 40)
+  if (typeof ResizeObserver !== 'undefined') {
+    contentResizeObserver = new ResizeObserver(scheduleFitWindow)
+    void nextTick(() => {
+      if (contentRoot.value) contentResizeObserver?.observe(contentRoot.value)
+    })
+  }
+  scheduleFitWindow()
   const ipcCleanup: (() => void)[] = []
   ipcCleanup.push(window.api.on('post-game:preparing', (...args: unknown[]) => {
     const data = args[0] as { game: string; map: string | null; agent: string | null }
@@ -1835,6 +1941,9 @@ onUnmounted(() => {
   window.api.discord.setState('idle').catch(() => {})
   clearStuckTimer()
   if (copiedLinkTimer) clearTimeout(copiedLinkTimer)
+  if (fitHeightTimer) clearTimeout(fitHeightTimer)
+  contentResizeObserver?.disconnect()
+  contentResizeObserver = null
   const cleanup = (window as Window & { _postGameIpcCleanup?: (() => void)[] })._postGameIpcCleanup
   cleanup?.forEach(fn => fn())
   delete (window as Window & { _postGameIpcCleanup?: (() => void)[] })._postGameIpcCleanup
@@ -2537,8 +2646,40 @@ function scoreBarClass(score: number): string {
 }
 
 .upload-bar-fill {
-  background: linear-gradient(90deg, rgba(239, 68, 68, 0.95), rgba(249, 115, 22, 0.95));
-  box-shadow: 0 0 18px rgba(239, 68, 68, 0.35);
+  background: linear-gradient(90deg, rgba(255, 70, 85, 0.95), rgba(249, 115, 22, 0.95));
+  box-shadow: 0 0 18px rgba(255, 70, 85, 0.35);
+}
+
+.flow-panel {
+  animation: readyFadeIn 0.4s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.flow-hero {
+  background: #111111;
+  box-shadow:
+    0 16px 40px rgba(0, 0, 0, 0.4),
+    0 0 0 1px rgba(255, 255, 255, 0.04) inset,
+    0 0 36px var(--flow-glow, rgba(255, 70, 85, 0.1));
+}
+
+.flow-card {
+  background-color: rgba(255, 255, 255, 0.02);
+  background-image: url('../assets/post-game/forge-panel-texture.webp');
+  background-size: 256px 256px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
+.flow-card-accent {
+  background-image:
+    linear-gradient(135deg, rgba(255, 70, 85, 0.06), transparent 55%),
+    url('../assets/post-game/forge-panel-texture.webp');
+}
+
+.ready-hero {
+  box-shadow:
+    0 16px 40px rgba(0, 0, 0, 0.4),
+    0 0 0 1px rgba(34, 197, 94, 0.12) inset,
+    0 0 40px var(--flow-glow, rgba(34, 197, 94, 0.12));
 }
 
 .upload-bar-shimmer {

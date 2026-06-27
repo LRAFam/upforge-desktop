@@ -94,14 +94,14 @@ export function createMainWindow(
 export function createPostGameWindow(): BrowserWindow {
   const display = screen.getPrimaryDisplay()
   const { width: workW, height: workH } = display.workAreaSize
-  const winHeight = Math.min(720, Math.max(520, workH - 80))
+  const winHeight = Math.min(480, Math.max(340, workH - 80))
 
   const win = new BrowserWindow({
     width: 400,
     height: winHeight,
     minWidth: 360,
-    minHeight: 420,
-    maxHeight: workH - 40,
+    minHeight: 260,
+    maxHeight: workH - 32,
     resizable: true,
     frame: false,
     alwaysOnTop: true,

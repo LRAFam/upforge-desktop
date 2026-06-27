@@ -615,6 +615,7 @@ declare global {
         minimize: () => Promise<void>
         close: () => Promise<void>
         openPostGame?: () => Promise<void>
+        setContentHeight?: (height: number) => Promise<void>
       }
       postGame: {
         retryDemoScan: () => Promise<{ ok: boolean; error?: string }>
