@@ -205,7 +205,7 @@ export function prepareMatchDataForUpload(
     region: timeline.region,
     queueId: timeline.queueId,
     map: timeline.map,
-    agent: timeline.agent,
+    agent: resolvePlayerAgent(timeline) ?? timeline.agent,
     gameMode: timeline.gameMode,
     playerName: timeline.playerName,
     playerTag: timeline.playerTag,
@@ -242,6 +242,20 @@ export function prepareMatchDataForUpload(
   return upload
 }
 
+/** Resolve the player's agent from timeline fields (live overlay, match details, scoreboard). */
+export function resolvePlayerAgent(timeline: MatchData | null): string | undefined {
+  if (!timeline) return undefined
+  if (timeline.agent) return timeline.agent
+  const fromFinal = timeline.finalStats?.agent
+  if (fromFinal) return fromFinal
+  const puuid = timeline.puuid?.toLowerCase()
+  if (puuid) {
+    const row = timeline.teamSnapshot?.find((p) => (p.puuid ?? '').toLowerCase() === puuid)
+    if (row?.agent) return row.agent
+  }
+  return undefined
+}
+
 /** Top-level job fields derived from timeline (avoids null game_mode on params). */
 export function submissionContextFromTimeline(
   timeline: MatchData | null,
@@ -264,7 +278,7 @@ export function submissionContextFromTimeline(
   const duel_moments = duelMomentsForUpload(timeline)
   return {
     map: timeline.map ?? undefined,
-    agent: timeline.agent ?? undefined,
+    agent: resolvePlayerAgent(timeline),
     game_mode: game_mode ?? undefined,
     match_data,
     duel_moments: duel_moments.length ? duel_moments : undefined,
