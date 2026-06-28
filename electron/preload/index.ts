@@ -46,6 +46,7 @@ const api = {
     saveToCloud: (id: string) => ipcRenderer.invoke('recordings:save-to-cloud', { id }),
     dismiss: (id: string, opts?: { deleteLocal?: boolean }) =>
       ipcRenderer.invoke('recordings:dismiss', { id, deleteLocal: opts?.deleteLocal }),
+    abortInFlight: (id: string) => ipcRenderer.invoke('recordings:abort-in-flight', { id }),
     getTimeline: (id: string) => ipcRenderer.invoke('recordings:get-timeline', { id }),
     refreshPlayback: (id: string) => ipcRenderer.invoke('recordings:refresh-playback', { id }),
         nudgeSync: (id: string, deltaMs: number) => ipcRenderer.invoke('recordings:nudge-sync', { id, deltaMs }),

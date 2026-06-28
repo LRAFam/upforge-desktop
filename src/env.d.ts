@@ -526,6 +526,7 @@ declare global {
         analyse: (id: string) => Promise<{ ok?: boolean; error?: string }>
         saveToCloud: (id: string) => Promise<{ ok: boolean; archiveId?: string; alreadySaved?: boolean; error?: string }>
         dismiss: (id: string, opts?: { deleteLocal?: boolean }) => Promise<{ ok: boolean; deletedLocal?: boolean }>
+        abortInFlight: (id: string) => Promise<{ ok: boolean; error?: string }>
         getTimeline: (id: string) => Promise<RecordingTimeline | null>
         refreshPlayback: (id: string) => Promise<string | null>
         nudgeSync: (id: string, deltaMs: number) => Promise<{ ok: boolean; videoSyncOffsetMs?: number }>

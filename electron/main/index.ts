@@ -77,6 +77,7 @@ import {
 import { resolveRecordingSavePath } from './user-data-paths'
 import { extractAnalysisIdFromPollResult } from './analysis-completion'
 import { startAnalysisPoll, stopActiveAnalysisPoll, reconcileOrphanedJob, getActiveAnalysisPollJobId, type AnalysisPollStatus } from './analysis-poll'
+import { abortInFlightAnalysis } from './abort-in-flight-analysis'
 import { buildAnalysisPipelineDiagnostics } from './analysis-pipeline-diagnostics'
 import { reconcileStuckAnalysisJobs, type ReconciledAnalysisContext } from './stuck-analysis-reconciler'
 import { buildAnalysisErrorPayload, formatAnalysisFailureMessage, type AnalysisErrorPayload } from './analysis-failure-messages'
@@ -585,6 +586,21 @@ const FAILURE_NOTIFY_COOLDOWN_MS = 5 * 60 * 1000
 const recentFailureNotifications = new Map<string, number>()
 
 let lastActivityToast = { message: '', at: 0 }
+
+function abortInFlightAnalysisForRecording(recordingId: string): { ok: boolean; error?: string } {
+  const result = abortInFlightAnalysis(
+    { recordingsStore, uploadManager, activeUploadRecordingIds },
+    recordingId,
+  )
+  if (result.ok) {
+    mainWindow?.webContents.send('recordings:updated')
+    postGameWindow?.webContents.send('post-game:analysis-deferred', { reason: 'cancelled' })
+    const rec = recordingsStore.getById(recordingId)
+    tray?.setToolTip(idleTooltip(rec?.game ?? 'valorant'))
+    logActivity('Stopped waiting on upload/analysis — you can record again')
+  }
+  return result
+}
 
 function logActivity(message: string): void {
   const entry = { time: Date.now(), message }
@@ -3210,6 +3226,11 @@ async function resumePollForJob(
     },
     onPollEnded: (reason) => {
       if (reason === 'max_duration') {
+        const rec = recordingsStore.getByJobId(jobId)
+        if (rec?.id) {
+          recordingsStore.clearAnalysisPipeline(rec.id)
+          mainWindow?.webContents.send('recordings:updated')
+        }
         logActivity('Resumed analysis poll stopped after 90 minutes — job may still be processing')
         tray?.setToolTip('UpForge — Analysis still running…')
         void runStuckAnalysisReconcile()
@@ -3735,6 +3756,10 @@ async function doUploadAndAnalyse(
       },
       onPollEnded: (reason) => {
         if (reason === 'max_duration') {
+          if (recordingId) {
+            recordingsStore.clearAnalysisPipeline(recordingId)
+            mainWindow?.webContents.send('recordings:updated')
+          }
           logActivity('Analysis poll reached 90 minute cap — job may still be processing on server')
           send('post-game:analysis-deferred', { jobId: result.job_id, reason: 'server' })
           tray?.setToolTip('UpForge — Analysis still running…')
@@ -4565,14 +4590,18 @@ async function startApp(): Promise<void> {
     return { ok: true as const, uploaded, failed, stoppedEarly, stopReason }
   })
 
+  ipcMain.handle('recordings:abort-in-flight', (_e, { id }: { id: string }) => {
+    return abortInFlightAnalysisForRecording(id)
+  })
+
   ipcMain.handle('recordings:dismiss', (_e, { id, deleteLocal = true }: { id: string; deleteLocal?: boolean }) => {
     const recording = recordingsStore.getById(id)
     if (
       recording
-      && deleteLocal
-      && (recording.pipelineStatus === 'uploading' || recording.pipelineStatus === 'analysing')
+      && (recording.pipelineStatus === 'uploading' || recording.pipelineStatus === 'analysing'
+        || (recording.analysed && recording.analysisId == null && !recording.lastAnalysisError))
     ) {
-      return { ok: false as const, error: 'Wait for upload or analysis to finish before removing the local file' }
+      abortInFlightAnalysisForRecording(id)
     }
     const wasLocalOnly = !!(
       recording

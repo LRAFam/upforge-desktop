@@ -320,9 +320,7 @@ function createDashboard() {
   )
 
   const inFlightAnalysisCount = computed(() =>
-    pendingRecordings.value.filter((r) =>
-      r.pipelineStatus === 'analysing' || (!!r.analysed && r.analysisId == null),
-    ).length,
+    pendingRecordings.value.filter((r) => r.pipelineStatus === 'analysing').length,
   )
 
   const deferredUploadCount = computed(() =>
@@ -820,6 +818,16 @@ function createDashboard() {
     if (rec && !window.confirm(msg)) return
     await window.api.recordings.dismiss(id, { deleteLocal: true }).catch(() => {})
     pendingRecordings.value = pendingRecordings.value.filter(r => r.id !== id)
+  }
+
+  async function abortInFlightRecording(id: string) {
+    const result = await window.api.recordings.abortInFlight(id).catch(() => ({ ok: false as const }))
+    if (!result?.ok) {
+      warning.value = 'Could not stop — try again or restart UpForge.'
+      setTimeout(() => { warning.value = null }, 8000)
+      return
+    }
+    await loadPendingRecordings()
   }
 
   async function connectObs() {
@@ -1411,6 +1419,7 @@ function createDashboard() {
     analyseRecording,
     dismissMacPreviewBanner,
     dismissRecording,
+    abortInFlightRecording,
     connectObs,
     launchAndConnectObs,
     stopRecording,

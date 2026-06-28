@@ -70,13 +70,12 @@ export function recordingRowStats(rec: PendingRecording): MatchRowStats {
 
 export function isRecordingInFlight(
   rec: PendingRecording,
-  uploadProgressByRecordingId: Record<string, number>,
+  _uploadProgressByRecordingId: Record<string, number>,
 ): boolean {
   if (rec.clipsOnly) return false
   if (rec.pipelineDeferReason === 'recording') return false
-  return rec.pipelineStatus === 'uploading'
-    || rec.pipelineStatus === 'analysing'
-    || (!!rec.analysed && rec.analysisId == null)
+  if (rec.lastAnalysisError) return false
+  return rec.pipelineStatus === 'uploading' || rec.pipelineStatus === 'analysing'
 }
 
 export function isRecordingDeferred(rec: PendingRecording): boolean {
@@ -99,7 +98,7 @@ export function recordingPipelineLabel(
     const prefix = rec.pipelineArchiveOnly ? 'Saving to cloud' : 'Uploading'
     return pct != null ? `${prefix} ${pct}%` : `${prefix}…`
   }
-  if (rec.pipelineStatus === 'analysing' || (rec.analysed && !rec.analysisId)) {
+  if (rec.pipelineStatus === 'analysing') {
     return rec.analysisStep?.trim() || 'Analysing…'
   }
   return null

@@ -44,6 +44,7 @@ const {
   analyseRecording,
   retryRecording,
   dismissRecording,
+  abortInFlightRecording,
   openAnalysisRow,
   openCoachNotesVod,
   openClipsForSession,
@@ -276,6 +277,12 @@ function toggleFootageDebug(rec: PendingRecording) {
               ><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
               {{ recAnalysisStatusShort(rec) }}
             </span>
+            <button
+              v-if="recInFlight(rec) && !recIsDeferred(rec)"
+              class="px-2 py-1 text-[10px] font-medium text-gray-300 bg-white/[0.06] hover:bg-white/[0.1] border border-white/[0.08] rounded-lg transition-colors"
+              title="Stop waiting locally — your cloud recording stays safe"
+              @click="abortInFlightRecording(rec.id)"
+            >Stop waiting</button>
             <span v-if="recInFlight(rec) || recIsDeferred(rec)" class="px-2 py-1 text-[10px] font-medium flex items-center gap-1" :class="recIsDeferred(rec) ? 'text-amber-300/90' : rec.pipelineArchiveOnly ? 'text-emerald-300/90' : 'text-blue-300/90'">
               <svg v-if="!recIsDeferred(rec)" class="w-3 h-3 animate-spin" :class="rec.pipelineArchiveOnly ? 'text-emerald-400' : 'text-blue-400'" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
               <svg v-else class="w-3 h-3 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 9v6m4-6v6m7-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
