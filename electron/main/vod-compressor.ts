@@ -29,7 +29,13 @@ export function compressedPathFor(sourcePath: string): string {
 export function sourcePathForCompressed(compressedPath: string): string | null {
   const stem = basename(compressedPath, '.mp4')
   if (!stem.endsWith('_upforge')) return null
-  return join(dirname(compressedPath), `${stem.slice(0, -'_upforge'.length)}.mp4`)
+  const base = stem.slice(0, -'_upforge'.length)
+  const dir = dirname(compressedPath)
+  for (const ext of ['.mkv', '.mp4', '.webm', '.mov', '.m4v']) {
+    const candidate = join(dir, `${base}${ext}`)
+    if (existsSync(candidate)) return candidate
+  }
+  return join(dir, `${base}.mp4`)
 }
 
 /** Raw + compressed paths for the same match recording. */

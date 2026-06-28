@@ -321,7 +321,8 @@ export class UploadManager {
           videoPath: opts.videoPath,
           stack: err instanceof Error ? err.stack?.slice(0, 2000) : undefined,
         })
-        throw err
+        // Full VOD is already on S3 — queue analysis without per-duel clip keys.
+        duelMomentsPayload = completeCtx.duel_moments ?? opts.duelMoments
       }
     }
     await this._apiPost(

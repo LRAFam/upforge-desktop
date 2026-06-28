@@ -11,7 +11,7 @@ import type { ClipExtractor } from './clip-extractor'
 import type { DuelMomentManifest } from './moment-picker'
 import type { UploadManager } from './upload-manager'
 import { preferredRecordingPath } from './recording-path-resolver'
-import { needsTranscodeForCloudUpload, remuxVodForUpload } from './vod-compressor'
+import { needsTranscodeForCloudUpload, recordingPathVariants, remuxVodForUpload } from './vod-compressor'
 import { reportPipelineError } from './pipeline-errors'
 
 const EXTRACT_CONCURRENCY = 2
@@ -41,7 +41,8 @@ async function resolveDuelClipSourcePath(
   clipExtractor: ClipExtractor,
 ): Promise<string> {
   const preferred = preferredRecordingPath(videoPath)
-  for (const candidate of [preferred, videoPath]) {
+  const candidates = [...new Set([preferred, videoPath, ...recordingPathVariants(videoPath)])]
+  for (const candidate of candidates) {
     if (!candidate || !existsSync(candidate)) continue
     const probe = await clipExtractor.probe(candidate)
     if (probe.ok) return candidate
@@ -115,7 +116,9 @@ export async function extractAndUploadDuelClips(opts: {
   if (moments.length === 0) return []
 
   const sourcePath = await resolveDuelClipSourcePath(videoPath, clipExtractor)
-  const durationMs = await clipExtractor.probeDurationMs(sourcePath)
+  const workDir = await mkdtemp(join(tmpdir(), 'upforge-duel-clips-'))
+  const extractSource = await ensurePlayableExtractSource(sourcePath, workDir)
+  const durationMs = await clipExtractor.probeDurationMs(extractSource)
   if (durationMs != null) {
     const maxWindowEnd = Math.max(...moments.map((m) => m.window_end_ms))
     if (maxWindowEnd > durationMs + 2000) {
@@ -126,7 +129,6 @@ export async function extractAndUploadDuelClips(opts: {
     }
   }
 
-  const workDir = await mkdtemp(join(tmpdir(), 'upforge-duel-clips-'))
   const localPaths = new Map<string, string>()
   let skippedTooSmall = 0
   let extractFailed = 0
@@ -138,7 +140,7 @@ export async function extractAndUploadDuelClips(opts: {
       const outPath = join(workDir, `${safeId}.mp4`)
       try {
         await clipExtractor.extract({
-          sourcePath,
+          sourcePath: extractSource,
           startOffsetMs: moment.window_start_ms,
           durationMs,
           outputPath: outPath,

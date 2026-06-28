@@ -3406,11 +3406,21 @@ async function doUploadAndAnalyse(
       send('post-game:compress-start', { sizeGB })
     }, { forAnalysis: true })
     effectivePath = resolved.path
+    if (effectivePath !== videoPath) {
+      const siblingProbe = await clipExtractor.probe(effectivePath)
+      if (!siblingProbe.ok) {
+        log.warn(
+          `[Upload] Remux/compressed path unreadable (${siblingProbe.reason}) — using original:`,
+          videoPath,
+        )
+        effectivePath = videoPath
+      }
+    }
     if (recordingId) {
       recordingsStore.updatePath(recordingId, effectivePath)
       mainWindow?.webContents.send('recordings:updated')
     }
-    if (resolved.compressed) {
+    if (resolved.compressed && effectivePath !== videoPath) {
       const newGB = (resolved.sizeBytes / (1024 ** 3)).toFixed(2)
       logActivity(`Compressed recording to ${newGB} GB — uploading`)
     }
@@ -4557,6 +4567,13 @@ async function startApp(): Promise<void> {
 
   ipcMain.handle('recordings:dismiss', (_e, { id, deleteLocal = true }: { id: string; deleteLocal?: boolean }) => {
     const recording = recordingsStore.getById(id)
+    if (
+      recording
+      && deleteLocal
+      && (recording.pipelineStatus === 'uploading' || recording.pipelineStatus === 'analysing')
+    ) {
+      return { ok: false as const, error: 'Wait for upload or analysis to finish before removing the local file' }
+    }
     const wasLocalOnly = !!(
       recording
       && deleteLocal
