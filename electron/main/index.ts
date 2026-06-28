@@ -213,6 +213,8 @@ let tray: Tray | null = null
 let mainWindow: BrowserWindow | null = null
 let postGameWindow: BrowserWindow | null = null
 let isQuitting = false
+/** False until setupIpcHandlers runs — windows must not load before IPC is wired. */
+let ipcHandlersReady = false
 let trayRefreshInterval: ReturnType<typeof setInterval> | null = null
 let updateTrayMenuFn: (() => void) | null = null
 let ffmpegOk = true // clip extraction preflight only
@@ -358,6 +360,7 @@ function focusMainWindow(): void {
     mainWindow.focus()
     return
   }
+  if (!ipcHandlersReady) return
   mainWindow = createMainWindow(authManager?.isAuthenticated() ?? false)
 }
 
@@ -3777,6 +3780,71 @@ async function startApp(): Promise<void> {
     optimizer.watchWindowShortcuts(window)
   })
 
+  uploadManager = new UploadManager(authManager)
+  settingsManager = new SettingsManager()
+  initFunnelEvents(authManager, app.getVersion())
+  trackedPrimaryGame = normalizePrimaryGame(settingsManager.get().primaryGame)
+  recordingsStore = new RecordingsStore()
+
+  // Register IPC before any BrowserWindow loads (dev updater, macOS activate, second instance).
+  setupIpcHandlers(ipcMain, authManager, () => obsRecorder, gameDetector, settingsManager, () => {
+    postGameWindow = createPostGameWindow()
+    postGameWindow.webContents.once('did-finish-load', () => {
+      postGameWindow?.webContents.send('post-game:upload-start', { game: 'valorant', map: 'Bind', agent: 'Jett' })
+      setTimeout(() => postGameWindow?.webContents.send('post-game:upload-progress', 45), 800)
+      setTimeout(() => postGameWindow?.webContents.send('post-game:upload-progress', 100), 1600)
+      setTimeout(() => postGameWindow?.webContents.send('post-game:upload-complete', {}), 2000)
+      setTimeout(() => postGameWindow?.webContents.send('post-game:analysis-ready', {
+        overall_score: 72,
+        analysis_id: 999,
+        session_start: Date.now() - 60 * 60 * 1000,
+        top_issue: 'Positioning during post-plant — you were caught in the open on 4 of 6 clutch attempts.',
+        priority_improvements: [
+          'Positioning during post-plant — caught in the open on 4 of 6 clutch attempts.',
+          'Crosshair placement — pre-aiming head height on B site entries.',
+          'Economy — force-buying after pistol loss reduced overall round win rate.'
+        ]
+      }), 5500)
+    })
+  }, () => ffmpegOk, () => waitingForMatch, () => activityLog.slice(), uploadManager, () => {
+    // Show main window and navigate to clips tab
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.show()
+      mainWindow.focus()
+      mainWindow.webContents.send('app:navigate', '/clips')
+    }
+  }, performanceManager, obsRecorder, trainerBridge,
+  async (game: string) => {
+    if (manualEndMatchRecording) return manualEndMatchRecording(game)
+    if (!obsRecorder.isRecording()) return { ok: false, reason: 'not_recording' }
+    try {
+      await obsRecorder.stop()
+      return { ok: true }
+    } catch (err) {
+      return { ok: false, reason: err instanceof Error ? err.message : String(err) }
+    }
+  },
+  getRecordingBackendForStatus,
+  () => riotLocalApi.getLastGameMode(),
+  undefined,
+  () => obsRecorder.isConnected(),
+  onSettingsSaved,
+  () => {
+    syncUserSessionFromAuth()
+    trackLogin()
+    trackAppOpened()
+    refreshCoachNotificationPoller()
+  },
+  () => {
+    stopCoachNotificationPoller()
+    clearUserSession(userSessionDeps())
+  },
+  (jobId: string) => recordingsStore?.getPathByJobId(jobId) ?? null,
+  )
+
+  setupClipHandlers(ipcMain, clipStore, clipExtractor, authManager, hotkeyManager, recordingsStore, settingsManager)
+  ipcHandlersReady = true
+
   // When a second instance is launched, bring the existing window to the front.
   app.on('second-instance', () => {
     focusMainWindow()
@@ -3785,12 +3853,6 @@ async function startApp(): Promise<void> {
   stopInstanceCoordinator = startInstanceCoordinator(() => {
     focusMainWindow()
   })
-
-  uploadManager = new UploadManager(authManager)
-  settingsManager = new SettingsManager()
-  initFunnelEvents(authManager, app.getVersion())
-  trackedPrimaryGame = normalizePrimaryGame(settingsManager.get().primaryGame)
-  recordingsStore = new RecordingsStore()
 
   // Restore auth session from keychain before creating window
   try {
@@ -3887,63 +3949,6 @@ async function startApp(): Promise<void> {
 
   wireObsConnectionEvents()
   stopObsHealthMonitor = startObsHealthMonitor(obsRecorder, () => mainWindow, { logActivity })
-
-  setupIpcHandlers(ipcMain, authManager, () => obsRecorder, gameDetector, settingsManager, () => {
-    postGameWindow = createPostGameWindow()
-    postGameWindow.webContents.once('did-finish-load', () => {
-      postGameWindow?.webContents.send('post-game:upload-start', { game: 'valorant', map: 'Bind', agent: 'Jett' })
-      setTimeout(() => postGameWindow?.webContents.send('post-game:upload-progress', 45), 800)
-      setTimeout(() => postGameWindow?.webContents.send('post-game:upload-progress', 100), 1600)
-      setTimeout(() => postGameWindow?.webContents.send('post-game:upload-complete', {}), 2000)
-      setTimeout(() => postGameWindow?.webContents.send('post-game:analysis-ready', {
-        overall_score: 72,
-        analysis_id: 999,
-        session_start: Date.now() - 60 * 60 * 1000,
-        top_issue: 'Positioning during post-plant — you were caught in the open on 4 of 6 clutch attempts.',
-        priority_improvements: [
-          'Positioning during post-plant — caught in the open on 4 of 6 clutch attempts.',
-          'Crosshair placement — pre-aiming head height on B site entries.',
-          'Economy — force-buying after pistol loss reduced overall round win rate.'
-        ]
-      }), 5500)
-    })
-  }, () => ffmpegOk, () => waitingForMatch, () => activityLog.slice(), uploadManager, () => {
-    // Show main window and navigate to clips tab
-    if (mainWindow && !mainWindow.isDestroyed()) {
-      mainWindow.show()
-      mainWindow.focus()
-      mainWindow.webContents.send('app:navigate', '/clips')
-    }
-  }, performanceManager, obsRecorder, trainerBridge,
-  async (game: string) => {
-    if (manualEndMatchRecording) return manualEndMatchRecording(game)
-    if (!obsRecorder.isRecording()) return { ok: false, reason: 'not_recording' }
-    try {
-      await obsRecorder.stop()
-      return { ok: true }
-    } catch (err) {
-      return { ok: false, reason: err instanceof Error ? err.message : String(err) }
-    }
-  },
-  getRecordingBackendForStatus,
-  () => riotLocalApi.getLastGameMode(),
-  undefined,
-  () => obsRecorder.isConnected(),
-  onSettingsSaved,
-  () => {
-    syncUserSessionFromAuth()
-    trackLogin()
-    trackAppOpened()
-    refreshCoachNotificationPoller()
-  },
-  () => {
-    stopCoachNotificationPoller()
-    clearUserSession(userSessionDeps())
-  },
-  (jobId: string) => recordingsStore?.getPathByJobId(jobId) ?? null,
-  )
-
-  setupClipHandlers(ipcMain, clipStore, clipExtractor, authManager, hotkeyManager, recordingsStore, settingsManager)
 
   // Discord Rich Presence — renderer can push state changes (e.g. when reviewing coaching)
   ipcMain.handle('discord:set-state', (_e, state: string) => {
@@ -4612,6 +4617,7 @@ async function startApp(): Promise<void> {
 
 // Re-show window when clicking dock icon on Mac
 app.on('activate', () => {
+  if (!ipcHandlersReady) return
   if (!mainWindow) {
     mainWindow = createMainWindow()
   } else {
