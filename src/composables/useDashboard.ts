@@ -298,7 +298,12 @@ function createDashboard() {
   })
 
   const bulkUploadablePending = computed(() =>
-    pendingRecordings.value.filter(r => !r.clipsOnly && !isRecordingInFlight(r, uploadProgressByRecordingId.value) && !r.cloudArchived),
+    pendingRecordings.value.filter(r =>
+      !r.clipsOnly
+      && !isRecordingInFlight(r, uploadProgressByRecordingId.value)
+      && !r.cloudArchived
+      && !r.jobId,
+    ),
   )
 
   const bulkAnalysablePending = computed(() =>
@@ -766,9 +771,12 @@ function createDashboard() {
     if (analysingIds.value.has(id)) return
     const rec = pendingRecordings.value.find((r) => r.id === id)
     if (rec && !recAnalysisReady(rec)) {
-      warning.value = recAnalysisBlockedLabel(rec)
-      setTimeout(() => { warning.value = null }, 12000)
-      return
+      const canRetryFromCloud = Boolean(rec.lastAnalysisError && rec.jobId)
+      if (!canRetryFromCloud) {
+        warning.value = recAnalysisBlockedLabel(rec)
+        setTimeout(() => { warning.value = null }, 12000)
+        return
+      }
     }
     const user = profile.value?.user
     if (user && !hasAnalysisQuotaRemaining(user.analysis_stats, user.tier, user.is_admin)) {
@@ -778,12 +786,17 @@ function createDashboard() {
     }
     analysingIds.value.add(id)
     analysingIds.value = new Set(analysingIds.value)
+    const isCloudRetry = Boolean(rec?.lastAnalysisError && rec?.jobId)
     try {
       const result = await window.api.recordings.analyse(id) as { ok?: boolean; error?: string; code?: string }
       if (result?.error) {
         throw new Error(result.error)
       }
-      pendingRecordings.value = pendingRecordings.value.filter(r => r.id !== id)
+      if (isCloudRetry) {
+        await loadPendingRecordings()
+      } else {
+        pendingRecordings.value = pendingRecordings.value.filter(r => r.id !== id)
+      }
     } catch (e) {
       analysingIds.value.delete(id)
       analysingIds.value = new Set(analysingIds.value)
@@ -801,7 +814,9 @@ function createDashboard() {
     const rec = pendingRecordings.value.find(r => r.id === id)
     const msg = rec?.clipsOnly
       ? 'Remove this match from your dashboard? Your clips will stay in the Clips library.'
-      : 'Remove this recording from your dashboard and delete the local file?'
+      : (rec?.cloudUploaded || rec?.jobId || rec?.archiveId)
+        ? 'Remove this session from your dashboard? Your cloud copy stays available.'
+        : 'Remove this recording from your dashboard and delete the local file?'
     if (rec && !window.confirm(msg)) return
     await window.api.recordings.dismiss(id, { deleteLocal: true }).catch(() => {})
     pendingRecordings.value = pendingRecordings.value.filter(r => r.id !== id)

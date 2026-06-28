@@ -10,6 +10,7 @@ const {
   avgKD,
   avgScore,
   chartData,
+  clearSelection,
   coachReviewSummary,
   detailLoading,
   displayAcs,
@@ -46,15 +47,15 @@ const {
 <template>
 <!-- Right: overview or session detail -->
       <div
-        class="history-detail flex flex-1 flex-col min-h-0 min-w-0 bg-[#0e0e0e]"
-        :class="selectedId == null ? 'hidden lg:flex' : undefined"
+        class="history-detail flex min-h-0 flex-1 flex-col bg-[#0e0e0e]"
+        :class="selectedId == null ? 'max-lg:hidden' : ''"
       >
         <!-- Mobile back -->
         <div v-if="selectedId" class="lg:hidden flex-shrink-0 px-3 py-2 border-b border-white/[0.08]">
           <button
             type="button"
             class="flex items-center gap-1.5 text-xs text-gray-400 hover:text-white"
-            @click="selectedId = null"
+            @click="clearSelection"
           >
             <svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/>

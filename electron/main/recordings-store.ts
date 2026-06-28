@@ -73,10 +73,20 @@ export type NewRecording = Omit<PendingRecording, 'id' | 'recordedAt' | 'analyse
 
 function isLocalOnlyRecording(rec: PendingRecording): boolean {
   if (rec.clipsOnly) return false
-  const onCloud =
-    (rec.analysed && rec.analysisId != null)
-    || (rec.cloudArchived && rec.archiveId != null)
-  return !onCloud
+  return !hasCloudRecording(rec)
+}
+
+/** True when a full-match VOD exists on S3 (analysis upload, archive, or completed analysis). */
+function hasCloudRecording(rec: Pick<
+  PendingRecording,
+  'jobId' | 'analysisId' | 'cloudArchived' | 'archiveId' | 'clipsOnly'
+>): boolean {
+  if (rec.clipsOnly) return false
+  return Boolean(
+    rec.jobId
+    || rec.analysisId != null
+    || (rec.cloudArchived && rec.archiveId != null),
+  )
 }
 
 function matchesLinkedAccount(r: PendingRecording, linkedRiot?: LinkedRiotId | null): boolean {
@@ -116,8 +126,7 @@ export class RecordingsStore {
       const pruned = all.filter(r => {
         if (r.clipsOnly) return true
         if (r.path && fs.existsSync(r.path)) return true
-        if (r.analysed && r.analysisId != null) return true
-        if (r.cloudArchived && r.archiveId != null) return true
+        if (hasCloudRecording(r)) return true
         if (r.analysed && r.pipelineStatus === 'analysing' && r.analysisId == null) return true
         return false
       })
@@ -246,7 +255,6 @@ export class RecordingsStore {
     rec.pipelineDeferReason = undefined
     rec.pipelineArchiveOnly = undefined
     rec.uploadProgress = undefined
-    rec.jobId = undefined
     rec.lastAnalysisError = message
     rec.lastAnalysisErrorHint = meta?.hint ?? null
     rec.lastAnalysisCreditRefunded = meta?.creditRefunded ?? false
@@ -437,11 +445,13 @@ export class RecordingsStore {
 
       if (r.analysed) {
         if (r.analysisId != null) return false
+        // In-flight or failed — VOD may be on S3 via jobId.
+        if (r.jobId) return true
         return r.pipelineStatus === 'analysing' || r.pipelineStatus === 'uploading'
       }
 
       const hasLocal = r.path ? fs.existsSync(r.path) : false
-      const hasCloud = r.cloudArchived && r.archiveId != null
+      const hasCloud = hasCloudRecording(r)
       if (!hasLocal && !hasCloud) return false
       return true
     })
@@ -451,8 +461,7 @@ export class RecordingsStore {
   getCloudBackedLocal(linkedRiot?: LinkedRiotId | null): PendingRecording[] {
     return this.recordings.filter(r => {
       if (r.clipsOnly) return false
-      const onCloud = (r.analysed && r.analysisId != null) || (r.cloudArchived && r.archiveId != null)
-      if (!onCloud || !r.path || !fs.existsSync(r.path)) return false
+      if (!hasCloudRecording(r) || !r.path || !fs.existsSync(r.path)) return false
       return matchesLinkedAccount(r, linkedRiot)
     })
   }
@@ -508,4 +517,4 @@ export class RecordingsStore {
   }
 }
 
-export { isLocalOnlyRecording }
+export { isLocalOnlyRecording, hasCloudRecording }

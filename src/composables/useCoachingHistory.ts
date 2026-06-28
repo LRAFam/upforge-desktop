@@ -127,11 +127,16 @@ function createCoachingHistory() {
   async function reloadAnalyses() {
     loading.value = true
     activeMap.value = null
-    allAnalyses.value = await loadGameAnalyses(primaryGame.value, 100)
-    coachReviewByAnalysisId.value = await loadCoachReviewSummaries(
-      allAnalyses.value.slice(0, 24).map(a => a.id),
-    )
-    loading.value = false
+    try {
+      allAnalyses.value = await loadGameAnalyses(primaryGame.value, 100)
+    } catch {
+      allAnalyses.value = []
+    } finally {
+      loading.value = false
+    }
+    void loadCoachReviewSummaries(allAnalyses.value.slice(0, 24).map(a => a.id))
+      .then((summaries) => { coachReviewByAnalysisId.value = summaries })
+      .catch(() => {})
   }
   
   onUnmounted(() => {
@@ -321,7 +326,12 @@ function createCoachingHistory() {
   async function openCoachNotes(id: number) {
     await openTimeline(id, { coachNotes: true })
   }
-  
+
+  function clearSelection() {
+    selectedId.value = null
+    expandedDetail.value = null
+    coachReviewSummary.value = null
+  }
 
   return {
     RESULT_FILTERS,
@@ -332,6 +342,7 @@ function createCoachingHistory() {
     avgKD,
     avgScore,
     chartData,
+    clearSelection,
     coachReviewByAnalysisId,
     coachReviewSummary,
     detailLoading,

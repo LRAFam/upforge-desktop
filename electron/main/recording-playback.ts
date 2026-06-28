@@ -56,24 +56,47 @@ export async function fetchRecordingPlaybackUrl(
   }
 }
 
+/** Fetch a fresh presigned S3 URL for a desktop submission job (failed or in-progress). */
+export async function fetchJobPlaybackUrl(
+  auth: AuthManager,
+  jobId: string,
+): Promise<string | null> {
+  try {
+    const api = auth.getApi()
+    if (!api) return null
+    const res = await api.get(`/api/desktop-submissions/${jobId}/playback`)
+    const body = res.data as { playback_url?: unknown; url?: unknown } | undefined
+    const url = parseHttpsUrl(body?.playback_url) ?? parseHttpsUrl(body?.url)
+    if (url) return url
+    return null
+  } catch (err) {
+    log.warn(`[Playback] Failed to fetch job playback URL (${jobId}):`, err)
+    return null
+  }
+}
+
 /** Prefer cloud HTTPS playback; only use local path when Chromium can play it. */
 export async function resolveCloudFirstPlaybackUrl(opts: {
   auth: AuthManager
+  jobId?: string | null
   analysisId?: number | null
   archiveId?: string | null
   inlineRecordingUrl?: unknown
   localPath?: string | null
 }): Promise<{ url: string | null; archiveId: string | null }> {
-  const { auth, analysisId, archiveId, inlineRecordingUrl, localPath } = opts
+  const { auth, jobId, analysisId, archiveId, inlineRecordingUrl, localPath } = opts
   let url: string | null = null
   let resolvedArchiveId = typeof archiveId === 'string' && archiveId ? archiveId : null
 
   url = parseHttpsUrl(inlineRecordingUrl)
+  if (!url && analysisId != null) {
+    url = await fetchRecordingPlaybackUrl(auth, analysisId)
+  }
   if (!url && resolvedArchiveId) {
     url = await fetchArchivePlaybackUrl(auth, resolvedArchiveId)
   }
-  if (!url && analysisId != null) {
-    url = await fetchRecordingPlaybackUrl(auth, analysisId)
+  if (!url && jobId) {
+    url = await fetchJobPlaybackUrl(auth, jobId)
   }
   if (!url && localPath) {
     url = resolveLocalRecordingFile(localPath)

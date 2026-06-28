@@ -185,6 +185,7 @@ export function setupAuthHandlers(
         : null
       const playback = await resolveCloudFirstPlaybackUrl({
         auth,
+        jobId: typeof analysis.job_id === 'string' ? analysis.job_id : null,
         analysisId: id,
         archiveId: jobArchiveId,
         inlineRecordingUrl: analysis.recording_url,
@@ -257,6 +258,7 @@ export function setupAuthHandlers(
       if (!analysis) return fetchRecordingPlaybackUrl(auth, id)
       const playback = await resolveCloudFirstPlaybackUrl({
         auth,
+        jobId: typeof analysis.job_id === 'string' ? analysis.job_id : null,
         analysisId: id,
         archiveId: typeof analysis.archive_id === 'string' ? analysis.archive_id : null,
         inlineRecordingUrl: analysis.recording_url,

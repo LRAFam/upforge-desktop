@@ -8,15 +8,11 @@ provideCoachingHistory()
 </script>
 
 <template>
-  <div class="h-full text-white flex flex-col overflow-hidden bg-[#111111]">
+  <div class="flex flex-1 min-h-0 flex-col overflow-hidden bg-[#111111] text-white">
     <CoachingHistoryToolbar />
-    <div class="flex flex-1 min-h-0 flex-col lg:flex-row">
+    <div class="flex min-h-0 flex-1 flex-col lg:flex-row">
       <CoachingHistoryList />
       <CoachingHistoryDetail />
     </div>
   </div>
 </template>
-
-<style scoped>
-@import '../components/coaching-history/coaching-history.css';
-</style>

@@ -190,6 +190,10 @@ export interface PendingRecording {
   clipOnlyReason?: 'clips_only_mode' | 'no_recording'
   clipCount?: number
   matchId?: string | null
+  /** Present on recordings:get — file still on disk. */
+  hasLocalFile?: boolean
+  /** Present on recordings:get — full VOD uploaded to S3. */
+  cloudUploaded?: boolean
   analysisReadiness?: {
     ready: boolean
     state: 'ready' | 'syncing' | 'no_deaths' | 'unavailable' | 'file_missing' | 'finalizing' | 'mode_unsupported' | 'file_unreadable'
@@ -221,8 +225,11 @@ export interface RecordingTimeline {
   videoPath: string | null
   /** True when the local file (and remux sibling) is gone from disk. */
   localFileMissing?: boolean
+  /** True when a playable local file exists on disk. */
+  hasLocalFile?: boolean
   /** True when the VOD was uploaded for analysis or saved to cloud. */
   uploadedToCloud?: boolean
+  cloudUploaded?: boolean
   map: string | null
   agent: string | null
   game: string

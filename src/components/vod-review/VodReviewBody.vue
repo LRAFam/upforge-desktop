@@ -134,15 +134,10 @@ const noVideoHint = computed((): string => {
   }
   if (timeline.value?.videoPath) return ''
   if (timeline.value?.localFileMissing && timeline.value?.uploadedToCloud) {
-    if (timeline.value.analysisId || timeline.value.archiveId) {
-      return 'Local file removed — cloud copy unavailable or expired. Try Retry cloud playback.'
-    }
-    if (timeline.value.jobId) {
-      return 'Recording was uploaded but local file is gone — cloud playback is only available after analysis completes.'
-    }
+    return 'Playing from cloud — local file was removed after upload.'
   }
-  if (timeline.value?.uploadedToCloud || timeline.value?.jobId) {
-    return 'Recording uploaded to cloud — local file should still be on disk. Try reopening from the dashboard.'
+  if (timeline.value?.uploadedToCloud && timeline.value?.jobId && !timeline.value?.videoPath) {
+    return 'Cloud recording found but playback URL unavailable — try Retry cloud playback.'
   }
   return 'No playable recording found for this session — check Settings → Recording save folder.'
 })

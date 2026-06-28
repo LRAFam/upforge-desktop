@@ -188,7 +188,9 @@ function toggleFootageDebug(rec: PendingRecording) {
               {{ rec.map || '—' }} · {{ formatRelativeTime(new Date(rec.recordedAt).toISOString()) }}
               <span v-if="rec.clipsOnly && rec.clipCount != null" class="text-orange-400/80"> · {{ rec.clipCount }} clip{{ rec.clipCount === 1 ? '' : 's' }}</span>
               <span v-else-if="rec.fileSizeBytes" class="text-gray-700"> · {{ formatFileSize(rec.fileSizeBytes) }}</span>
-              <span v-if="rec.cloudArchived" class="text-emerald-500/80"> · In cloud</span>
+              <span v-if="rec.cloudArchived || rec.jobId || rec.analysisId" class="text-emerald-500/80"> · Cloud</span>
+              <span v-if="rec.hasLocalFile" class="text-sky-400/80"> · Local</span>
+              <span v-else-if="(rec.cloudArchived || rec.jobId || rec.analysisId) && !rec.clipsOnly" class="text-gray-600"> · Cloud only</span>
               <span v-if="isDisplayableGameMode(rec.gameMode)" class="text-gray-700"> · {{ formatMode(rec.gameMode) }}</span>
               <span v-if="recPipelineLabel(rec)" class="text-blue-400/90"> · {{ recPipelineLabel(rec) }}</span>
             </p>
@@ -236,9 +238,9 @@ function toggleFootageDebug(rec: PendingRecording) {
           </div>
           <div class="flex items-center gap-1.5 flex-shrink-0 ml-1">
             <button v-if="rec.clipsOnly" class="px-2 py-1 text-[10px] font-medium text-orange-300 bg-orange-500/10 hover:bg-orange-500/20 border border-orange-500/20 rounded-lg transition-colors" @click="openClipsForSession(rec)">View clips</button>
-            <button v-else-if="rec.timeline?.playerKills?.length || rec.timeline?.playerDeaths?.length" class="px-2 py-1 text-[10px] font-medium text-gray-300 bg-white/[0.06] hover:bg-white/[0.1] border border-white/[0.08] rounded-lg transition-colors" @click="openRecordingReview(rec)">Review</button>
+            <button v-else-if="rec.timeline?.playerKills?.length || rec.timeline?.playerDeaths?.length || rec.jobId || rec.analysisId || rec.archiveId || rec.cloudUploaded" class="px-2 py-1 text-[10px] font-medium text-gray-300 bg-white/[0.06] hover:bg-white/[0.1] border border-white/[0.08] rounded-lg transition-colors" @click="openRecordingReview(rec)">Review</button>
             <button
-              v-if="!rec.clipsOnly && !rec.cloudArchived && !recInFlight(rec)"
+              v-if="!rec.clipsOnly && !rec.cloudArchived && !rec.jobId && !recInFlight(rec)"
               :disabled="savingIds.has(rec.id)"
               class="px-2 py-1 text-[10px] font-medium text-emerald-300 bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/20 disabled:opacity-60 rounded-lg transition-colors"
               @click="saveRecording(rec.id)"

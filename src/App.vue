@@ -217,10 +217,15 @@
 
     <!-- Content — key forces remount when the signed-in account changes -->
     <main
-      class="main-content flex-1 min-h-0"
+      class="main-content flex flex-1 min-h-0 flex-col"
       :class="isFullHeightView ? 'overflow-hidden' : 'overflow-y-auto'"
     >
-      <RouterView :key="sessionUserKey" />
+      <RouterView v-slot="{ Component }" :key="sessionUserKey">
+        <component
+          :is="Component"
+          :class="isFullHeightView ? 'flex flex-1 min-h-0 flex-col' : undefined"
+        />
+      </RouterView>
     </main>
 
     <!-- First-run onboarding wizard -->

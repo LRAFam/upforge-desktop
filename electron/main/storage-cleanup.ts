@@ -4,7 +4,8 @@ import path from 'path'
 import log from 'electron-log'
 import type { AuthManager } from './auth-manager'
 import type { PendingRecording, RecordingsStore } from './recordings-store'
-import { fetchArchivePlaybackUrl, fetchRecordingPlaybackUrl } from './recording-playback'
+import { hasCloudRecording } from './recordings-store'
+import { fetchArchivePlaybackUrl, fetchJobPlaybackUrl, fetchRecordingPlaybackUrl } from './recording-playback'
 import { deleteLocalRecordingFiles, recordingPathVariants } from './vod-compressor'
 import {
   legacyGlobalRecordingsDir,
@@ -55,13 +56,10 @@ function fileSizeBytes(filePath: string): number {
 
 export function isLocalOnlyRecording(rec: Pick<
   PendingRecording,
-  'analysed' | 'analysisId' | 'cloudArchived' | 'archiveId' | 'clipsOnly'
+  'jobId' | 'analysed' | 'analysisId' | 'cloudArchived' | 'archiveId' | 'clipsOnly'
 >): boolean {
   if (rec.clipsOnly) return false
-  const onCloud =
-    (rec.analysed && rec.analysisId != null)
-    || (rec.cloudArchived && rec.archiveId != null)
-  return !onCloud
+  return !hasCloudRecording(rec)
 }
 
 function scanMp4Directory(dir: string): { bytes: number; count: number; files: string[] } {
@@ -377,6 +375,8 @@ export async function purgeCloudBackedLocals(
       url = await fetchRecordingPlaybackUrl(auth, rec.analysisId)
     } else if (rec.archiveId) {
       url = await fetchArchivePlaybackUrl(auth, rec.archiveId)
+    } else if (rec.jobId) {
+      url = await fetchJobPlaybackUrl(auth, rec.jobId)
     } else {
       skipped++
       continue

@@ -23,8 +23,8 @@ const {
 
 <template>
 <div
-        class="history-list flex flex-col min-h-0 border-b border-white/[0.08] lg:border-b-0 lg:border-r lg:w-[min(400px,38%)] xl:w-[min(440px,36%)] flex-shrink-0"
-        :class="selectedId != null ? 'hidden lg:flex' : undefined"
+        class="history-list flex h-full min-h-0 flex-col flex-shrink-0 border-b border-white/[0.08] lg:h-auto lg:w-[min(400px,38%)] lg:border-b-0 lg:border-r xl:w-[min(440px,36%)]"
+        :class="selectedId != null ? 'max-lg:hidden' : ''"
       >
         <div class="flex-1 overflow-y-auto px-3 py-3 scrollbar-hide">
           <div v-if="loading" class="space-y-2">

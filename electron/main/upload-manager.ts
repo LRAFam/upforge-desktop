@@ -227,6 +227,19 @@ export class UploadManager {
     return { job_id: String(response.job_id) }
   }
 
+  /** Re-queue analysis for a failed desktop submission (VOD already on S3). */
+  async retrySubmission(jobId: string): Promise<void> {
+    const apiUrl = process.env['VITE_API_URL'] || 'https://api.upforge.gg'
+    const token = this.auth.getToken()
+    if (!token) throw new Error('Not authenticated')
+
+    await this._apiPost(
+      `${apiUrl}/api/desktop-submissions/${jobId}/retry`,
+      '{}',
+      token,
+    )
+  }
+
   private async _doUpload(opts: UploadOptions): Promise<UploadResult> {
     const apiUrl = process.env['VITE_API_URL'] || 'https://api.upforge.gg'
     const token = this.auth.getToken()

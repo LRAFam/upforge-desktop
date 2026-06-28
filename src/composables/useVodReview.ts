@@ -94,7 +94,9 @@ interface RecordingTimeline {
   archiveId?: string | null
   videoPath: string | null
   localFileMissing?: boolean
+  hasLocalFile?: boolean
   uploadedToCloud?: boolean
+  cloudUploaded?: boolean
   map: string | null
   agent: string | null
   game: string

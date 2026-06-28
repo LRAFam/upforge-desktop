@@ -118,6 +118,7 @@ import { setupMainProcessErrorHandlers, reportError } from './error-reporter'
 import { reportPipelineError } from './pipeline-errors'
 import {
   fetchArchivePlaybackUrl,
+  fetchJobPlaybackUrl,
   fetchRecordingPlaybackUrl,
   resolveLocalRecordingFile,
 } from './recording-playback'
@@ -1017,7 +1018,7 @@ function dispatchAnalysisFailure(
   if (opts.recordingId) {
     const existing = recordingsStore.getById(opts.recordingId)
     // Skip duplicate dispatches when this recording already failed (reconciler / poll retries).
-    if (existing?.lastAnalysisError && !existing.pipelineStatus && !existing.jobId) {
+    if (existing?.lastAnalysisError && !existing.pipelineStatus) {
       return payload
     }
   }
@@ -4195,7 +4196,11 @@ async function startApp(): Promise<void> {
     scanForOrphanedRecordings()
     const pending = recordingsStore.getPending(linkedRiotFromAuth())
     await Promise.all(pending.map((rec) => refreshRecordingVodProbe(rec)))
-    return pending.map(withAnalysisReadiness)
+    return pending.map((rec) => ({
+      ...withAnalysisReadiness(rec),
+      hasLocalFile: Boolean(rec.path && fs.existsSync(rec.path)),
+      cloudUploaded: Boolean(rec.jobId || rec.analysisId || rec.archiveId),
+    }))
   })
 
   ipcMain.handle('analysis:reconcile-stuck', async () => {
@@ -4204,11 +4209,89 @@ async function startApp(): Promise<void> {
   })
 
   ipcMain.handle('recordings:analyse', async (_e, { id }: { id: string }) => {
+    let recording = recordingsStore.getById(id)
+    if (!recording) {
+      return { error: 'Recording not found', code: 'not_found' }
+    }
+
+    // Failed analysis with VOD already on S3 — retry without re-upload.
+    if (recording.jobId && recording.lastAnalysisError) {
+      dismissMatchWaitUi()
+      recordingsStore.clearAnalysisFailure(id)
+      recordingsStore.markAnalysed(id, recording.jobId)
+
+      const user = authManager.getUser()
+      const triggerRetry = async (win: BrowserWindow) => {
+        stopActiveAnalysisPoll()
+        win.webContents.send('post-game:upload-start', {
+          game: recording!.game,
+          map: recording!.map,
+          agent: recording!.agent,
+        })
+        try {
+          await uploadManager.retrySubmission(recording!.jobId!)
+          win.webContents.send('post-game:upload-complete', { jobId: recording!.jobId })
+          logActivity('Retrying analysis from cloud recording')
+          tray?.setToolTip('UpForge — Analysing...')
+          startAnalysisPoll({
+            uploadManager,
+            jobId: recording!.jobId!,
+            targetWindow: win,
+            mainWindow,
+            onProgress: (status) => {
+              const raw = status.progress
+              const progress = typeof raw === 'number' && !Number.isNaN(raw)
+                ? Math.min(100, Math.max(0, Math.round(raw)))
+                : status.status === 'queued' ? 0 : 5
+              recordingsStore.setAnalysisProgress(id, progress, status.current_step ?? null)
+            },
+            onCompleted: (status) => {
+              const analysisId = extractAnalysisIdFromPollResult(status.result as Record<string, unknown> | undefined)
+              if (analysisId != null) {
+                recordingsStore.setAnalysisId(id, analysisId)
+                const rec = recordingsStore.getById(id)
+                if (rec?.path) {
+                  maybeDeleteLocalRecordingAfterAnalysis(rec.path, {})
+                }
+              }
+              mainWindow?.webContents.send('dashboard:refresh')
+            },
+            onFailed: (userMessage, rawError, status) => {
+              dispatchAnalysisFailure(rawError || userMessage, {
+                recordingId: id,
+                targetWindow: win,
+                failureDiagnostics: extractFailureDiagnostics(status),
+              })
+            },
+            onConnectionLost: () => {},
+            onPollEnded: () => {},
+          })
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : 'Failed to retry analysis'
+          sendUploadFailure(msg, {
+            targetWindow: win,
+            recordingId: id,
+            notify: false,
+          })
+        }
+      }
+
+      if (!postGameWindow || postGameWindow.isDestroyed()) {
+        postGameWindow = createPostGameWindow()
+        whenWebContentsReady(postGameWindow, () => void triggerRetry(postGameWindow!))
+      } else {
+        postGameWindow.show()
+        postGameWindow.focus()
+        void triggerRetry(postGameWindow)
+      }
+      return { ok: true }
+    }
+
     const readinessCheck = await ensureAnalysisReadinessForAnalyse(id)
     if (!readinessCheck.ok) {
       return { error: readinessCheck.error, code: 'not_ready', state: readinessCheck.state }
     }
-    const recording = readinessCheck.recording
+    recording = readinessCheck.recording
 
     // Dashboard analyse is unrelated to live match capture — don't block on lobby wait.
     dismissMatchWaitUi()
@@ -4594,7 +4677,11 @@ async function startApp(): Promise<void> {
       if (url) return url
     }
     if (recording.archiveId) {
-      return fetchArchivePlaybackUrl(authManager, recording.archiveId)
+      const url = await fetchArchivePlaybackUrl(authManager, recording.archiveId)
+      if (url) return url
+    }
+    if (recording.jobId) {
+      return fetchJobPlaybackUrl(authManager, recording.jobId)
     }
     return null
   })
@@ -4638,8 +4725,9 @@ async function startApp(): Promise<void> {
     }
     const localPath = resolveLocalRecordingFile(recording.path)
     const cloudBacked = Boolean(
-      (recording.cloudArchived && recording.archiveId)
-      || recording.analysisId != null,
+      recording.jobId
+      || recording.analysisId != null
+      || (recording.cloudArchived && recording.archiveId),
     )
 
     let videoPath: string | null = null
@@ -4649,6 +4737,9 @@ async function startApp(): Promise<void> {
       }
       if (!videoPath && recording.archiveId) {
         videoPath = await fetchArchivePlaybackUrl(authManager, recording.archiveId)
+      }
+      if (!videoPath && recording.jobId) {
+        videoPath = await fetchJobPlaybackUrl(authManager, recording.jobId)
       }
     }
     if (!videoPath && localPath) {
@@ -4661,7 +4752,9 @@ async function startApp(): Promise<void> {
       archiveId: recording.archiveId ?? null,
       videoPath,
       localFileMissing: !localPath,
-      uploadedToCloud: Boolean(recording.jobId || recording.analysisId),
+      hasLocalFile: Boolean(localPath),
+      cloudUploaded: cloudBacked,
+      uploadedToCloud: cloudBacked,
       map: recording.map,
       agent: recording.agent,
       game: recording.game,
