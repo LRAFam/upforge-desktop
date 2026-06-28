@@ -20,6 +20,51 @@ export interface LaunchObsOptions {
   allowWingetInstall?: boolean
 }
 
+/** Spawn a detached process and resolve only after spawn succeeds or error is emitted. */
+function spawnDetached(
+  exe: string,
+  args: string[],
+  opts: { shell?: boolean } = {},
+): Promise<{ ok: boolean; error?: string; code?: string }> {
+  return new Promise((resolve) => {
+    let settled = false
+    const finish = (result: { ok: boolean; error?: string; code?: string }) => {
+      if (settled) return
+      settled = true
+      resolve(result)
+    }
+
+    try {
+      const child = spawn(exe, args, {
+        detached: true,
+        stdio: 'ignore',
+        windowsHide: true,
+        shell: opts.shell ?? false,
+      })
+      child.once('error', (err: NodeJS.ErrnoException) => {
+        log.warn('[OBS Launcher] spawn error event:', err.message)
+        finish({ ok: false, error: err.message, code: err.code })
+      })
+      child.once('spawn', () => {
+        child.unref()
+        finish({ ok: true })
+      })
+    } catch (err) {
+      const e = err as NodeJS.ErrnoException
+      finish({ ok: false, error: e.message, code: e.code })
+    }
+  })
+}
+
+/** Windows fallback when direct spawn is blocked (EACCES / antivirus / Program Files ACL). */
+async function launchObsViaCmdStart(candidate: string, wsArgs: string[]): Promise<{ ok: boolean; error?: string }> {
+  const args = ['--minimize-to-tray', ...wsArgs]
+  log.info('[OBS Launcher] Trying cmd start fallback:', candidate)
+  const result = await spawnDetached('cmd.exe', ['/c', 'start', '""', '/min', candidate, ...args])
+  if (result.ok) return { ok: true }
+  return { ok: false, error: result.error ?? 'cmd start failed' }
+}
+
 /** Open OBS Studio if installed — passes WebSocket CLI overrides for reliable first connect. */
 export async function launchObsStudio(opts: LaunchObsOptions = {}): Promise<{ ok: boolean; error?: string }> {
   const password = opts.password ?? UPFORGE_OBS_DEFAULT_PASSWORD
@@ -41,32 +86,29 @@ export async function launchObsStudio(opts: LaunchObsOptions = {}): Promise<{ ok
     for (const candidate of candidateObsPaths()) {
       if (!existsSync(candidate)) continue
       log.info('[OBS Launcher] Spawning:', candidate, wsArgs.join(' '))
-      try {
-        const child = spawn(candidate, ['--minimize-to-tray', ...wsArgs], {
-          detached: true,
-          stdio: 'ignore',
-          windowsHide: true,
-        })
-        child.unref()
-        return { ok: true }
-      } catch (err) {
-        log.warn('[OBS Launcher] spawn failed:', err)
-        return { ok: false, error: err instanceof Error ? err.message : String(err) }
+
+      let result = await spawnDetached(candidate, ['--minimize-to-tray', ...wsArgs])
+      if (!result.ok && (result.code === 'EACCES' || result.code === 'EPERM')) {
+        result = await launchObsViaCmdStart(candidate, wsArgs)
+      }
+      if (result.ok) return { ok: true }
+
+      log.warn('[OBS Launcher] spawn failed for', candidate, result.error)
+      if (result.code === 'EACCES' || result.code === 'EPERM') {
+        return {
+          ok: false,
+          error:
+            'Windows blocked UpForge from launching OBS. Open OBS manually, or allow UpForge in your antivirus / run UpForge as administrator.',
+        }
       }
     }
   }
 
   if (process.platform === 'darwin') {
     if (existsSync('/Applications/OBS.app')) {
-      try {
-        spawn('open', ['-a', 'OBS', '--args', ...wsArgs], {
-          detached: true,
-          stdio: 'ignore',
-        }).unref()
-        return { ok: true }
-      } catch (err) {
-        log.warn('[OBS Launcher] open -a OBS failed:', err)
-      }
+      const result = await spawnDetached('open', ['-a', 'OBS', '--args', ...wsArgs])
+      if (result.ok) return { ok: true }
+      log.warn('[OBS Launcher] open -a OBS failed:', result.error)
     }
   }
 
