@@ -52,6 +52,6 @@ describe('duel-diagnostics', () => {
       window_end_ms: undefined as unknown as number,
       callout: null,
       isolated: false,
-    })).toEqual({ startMs: 112_000, endMs: 120_500 })
+    })).toEqual({ startMs: 112_000, endMs: 122_000 })
   })
 })

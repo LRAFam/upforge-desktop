@@ -86,7 +86,7 @@ export function duelWindowForMoment(moment: DuelMoment): { startMs: number; endM
   const offset = moment.video_offset_ms ?? 0
   return {
     startMs: moment.window_start_ms ?? Math.max(0, offset - 8000),
-    endMs: moment.window_end_ms ?? offset + 500,
+    endMs: moment.window_end_ms ?? offset + 2000,
   }
 }
 
