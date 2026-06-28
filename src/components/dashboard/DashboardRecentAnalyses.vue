@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { ref } from 'vue'
 import type { PendingRecording } from '../../env.d.ts'
 import { useDashboard } from '../../composables/useDashboard'
 import {
@@ -16,6 +17,8 @@ import {
 } from '../../lib/dashboard-match-row'
 import { scoreGrade, scoreLabel } from '../../lib/analysis-scoring'
 import { formatAnalysisFailureMessage } from '../../lib/analysis-failure-messages'
+import PostGameDuelDiagnostics from '../post-game/PostGameDuelDiagnostics.vue'
+import { parseDuelFailureDiagnostics } from '../../lib/duel-diagnostics'
 
 const {
   router,
@@ -79,6 +82,16 @@ function pendingRowClass(rec: PendingRecording): string {
   if (rec.pipelineArchiveOnly && rec.pipelineStatus === 'uploading') return 'pending-row-archive'
   if (rec.pipelineStatus === 'analysing' || (rec.analysed && !rec.analysisId)) return 'pending-row-analyse'
   return 'pending-row-default'
+}
+
+const footageDebugId = ref<string | null>(null)
+
+function footageDiagnostics(rec: PendingRecording) {
+  return parseDuelFailureDiagnostics(rec.lastAnalysisFailureDiagnostics)
+}
+
+function toggleFootageDebug(rec: PendingRecording) {
+  footageDebugId.value = footageDebugId.value === rec.id ? null : rec.id
 }
 </script>
 
@@ -155,9 +168,8 @@ function pendingRowClass(rec: PendingRecording): string {
             @click="uploadAllPending"
           >{{ bulkUploading ? 'Saving…' : 'Save all to cloud' }}</button>
         </div>
+        <template v-for="rec in pendingRecordings" :key="rec.id">
         <div
-          v-for="rec in pendingRecordings"
-          :key="rec.id"
           class="pending-row relative flex items-center gap-2 sm:gap-3 px-3 py-2.5 rounded-xl transition-all"
           :class="pendingRowClass(rec)"
         >
@@ -193,6 +205,14 @@ function pendingRowClass(rec: PendingRecording): string {
             >
               {{ failureHint(rec) }}
             </p>
+            <button
+              v-if="footageDiagnostics(rec) && !recInFlight(rec)"
+              type="button"
+              class="mt-1 text-[10px] font-semibold text-amber-400/90 hover:text-amber-300 transition-colors"
+              @click="toggleFootageDebug(rec)"
+            >
+              {{ footageDebugId === rec.id ? 'Hide fight footage debug' : 'Show fight footage debug' }}
+            </button>
             <div
               v-if="recUploadProgress(rec) != null"
               class="mt-1.5 h-1 w-full max-w-[12rem] overflow-hidden rounded-full bg-white/[0.06]"
@@ -264,8 +284,14 @@ function pendingRowClass(rec: PendingRecording): string {
             </button>
           </div>
         </div>
+        <PostGameDuelDiagnostics
+          v-if="footageDebugId === rec.id && footageDiagnostics(rec)"
+          class="mb-2 mx-1"
+          :diagnostics="footageDiagnostics(rec)!"
+          :recording-id="rec.id"
+        />
         <div class="my-1 h-px bg-gradient-to-r from-transparent via-white/[0.1] to-transparent" />
-      </template>
+        </template>
 
       <template v-if="analysesLoading">
         <div v-for="i in 6" :key="i" class="h-14 bg-white/[0.02] rounded-xl animate-pulse border border-white/[0.07]" />

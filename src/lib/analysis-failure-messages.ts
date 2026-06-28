@@ -174,7 +174,7 @@ export function classifyAnalysisFailure(rawError: string): AnalysisFailurePresen
       kind: 'integrity',
       title: 'Could not verify fight footage',
       message: 'Your match stats synced, but coaching could not be verified from the duel clips Gemini reviewed.',
-      hint: 'See clip review details below. If seeks look wrong in VOD review, sync may be off. Your credit was refunded — try again after checking death timestamps.',
+      hint: 'Open fight footage debug on the post-game screen or dashboard — each death shows clip upload status and what Gemini saw. Your credit was refunded.',
       creditRefunded: true,
       canRetry: true,
     }

@@ -19,7 +19,8 @@ export interface DuelMomentManifest {
 }
 
 export const DUEL_WINDOW_BEFORE_MS = 8000
-export const DUEL_WINDOW_AFTER_MS = 2000
+/** Keep POV through the kill — long spectator tail confuses Gemini vision. */
+export const DUEL_WINDOW_AFTER_MS = 500
 export const MAX_DUEL_MOMENTS = 8
 const MIN_MOMENT_GAP_MS = 4000
 

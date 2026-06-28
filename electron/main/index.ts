@@ -998,6 +998,10 @@ function dispatchAnalysisFailure(
     recordingsStore.setAnalysisFailure(opts.recordingId, payload.message, {
       hint: payload.hint,
       creditRefunded: payload.creditRefunded,
+      failureDiagnostics: (opts.failureDiagnostics ?? payload.failureDiagnostics ?? null) as
+        | Record<string, unknown>
+        | null
+        | undefined,
     })
   }
 

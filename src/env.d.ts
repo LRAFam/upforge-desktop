@@ -182,6 +182,8 @@ export interface PendingRecording {
   lastAnalysisError?: string | null
   lastAnalysisErrorHint?: string | null
   lastAnalysisCreditRefunded?: boolean
+  lastAnalysisFailureDiagnostics?: Record<string, unknown> | null
+  lastAnalysisCreditRefunded?: boolean
   pipelineDeferReason?: 'recording' | null
   pipelineArchiveOnly?: boolean
   clipsOnly?: boolean

@@ -1010,6 +1010,7 @@
             v-if="errorDiagnostics"
             class="mt-3"
             :diagnostics="errorDiagnostics"
+            :recording-id="vodRecordingId"
           />
 
           <div class="mt-3 flex gap-2">

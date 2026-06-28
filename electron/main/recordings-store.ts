@@ -54,6 +54,8 @@ export interface PendingRecording {
   lastAnalysisError?: string | null
   lastAnalysisErrorHint?: string | null
   lastAnalysisCreditRefunded?: boolean
+  /** Per-moment Gemini / clip debug when fight-footage verification fails. */
+  lastAnalysisFailureDiagnostics?: Record<string, unknown> | null
   /** When we last showed an OS notification for this recording's analysis failure. */
   analysisFailureNotifiedAt?: number
   /** Upload queued but paused while OBS is recording. */
@@ -210,6 +212,9 @@ export class RecordingsStore {
       rec.analysisProgress = undefined
       rec.analysisStep = undefined
       rec.lastAnalysisError = undefined
+      rec.lastAnalysisErrorHint = undefined
+      rec.lastAnalysisCreditRefunded = undefined
+      rec.lastAnalysisFailureDiagnostics = undefined
       this.persist()
     }
   }
@@ -227,7 +232,11 @@ export class RecordingsStore {
   setAnalysisFailure(
     id: string,
     message: string,
-    meta?: { hint?: string | null; creditRefunded?: boolean },
+    meta?: {
+      hint?: string | null
+      creditRefunded?: boolean
+      failureDiagnostics?: Record<string, unknown> | null
+    },
   ): void {
     const rec = this.recordings.find(r => r.id === id)
     if (!rec) return
@@ -241,6 +250,7 @@ export class RecordingsStore {
     rec.lastAnalysisError = message
     rec.lastAnalysisErrorHint = meta?.hint ?? null
     rec.lastAnalysisCreditRefunded = meta?.creditRefunded ?? false
+    rec.lastAnalysisFailureDiagnostics = meta?.failureDiagnostics ?? null
     rec.analysisFailureNotifiedAt = undefined
     this.persist()
   }
@@ -258,6 +268,7 @@ export class RecordingsStore {
     rec.lastAnalysisError = undefined
     rec.lastAnalysisErrorHint = undefined
     rec.lastAnalysisCreditRefunded = undefined
+    rec.lastAnalysisFailureDiagnostics = undefined
     rec.analysisFailureNotifiedAt = undefined
     this.persist()
   }
