@@ -292,6 +292,7 @@ function toggleFootageDebug(rec: PendingRecording) {
         />
         <div class="my-1 h-px bg-gradient-to-r from-transparent via-white/[0.1] to-transparent" />
         </template>
+      </template>
 
       <template v-if="analysesLoading">
         <div v-for="i in 6" :key="i" class="h-14 bg-white/[0.02] rounded-xl animate-pulse border border-white/[0.07]" />
