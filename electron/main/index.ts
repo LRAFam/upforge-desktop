@@ -79,8 +79,8 @@ import { extractAnalysisIdFromPollResult } from './analysis-completion'
 import { startAnalysisPoll, stopActiveAnalysisPoll, reconcileOrphanedJob, getActiveAnalysisPollJobId, type AnalysisPollStatus } from './analysis-poll'
 import { buildAnalysisPipelineDiagnostics } from './analysis-pipeline-diagnostics'
 import { reconcileStuckAnalysisJobs, type ReconciledAnalysisContext } from './stuck-analysis-reconciler'
-import { buildAnalysisErrorPayload, type AnalysisErrorPayload } from './analysis-failure-messages'
-import { parseDuelFailureDiagnostics, type DuelFailureDiagnostics } from '../../src/lib/duel-diagnostics'
+import { buildAnalysisErrorPayload, formatAnalysisFailureMessage, type AnalysisErrorPayload } from './analysis-failure-messages'
+import { parseDuelFailureDiagnostics, diagnosticsSummary, type DuelFailureDiagnostics } from '../../src/lib/duel-diagnostics'
 import { AuthManager } from './auth-manager'
 import { SettingsManager } from './settings-manager'
 import { setupIpcHandlers, setupClipHandlers, cancelAllPollingTimers } from './ipc-handlers'
@@ -957,6 +957,14 @@ function dispatchReconciledAnalysisReady(ctx: ReconciledAnalysisContext): void {
   tray?.setToolTip(idleTooltip(ctx.game))
 }
 
+function logAnalysisFailureActivity(rawError: string, diagnostics: DuelFailureDiagnostics | null): void {
+  if (diagnostics) {
+    logActivity(`Analysis failed: ${diagnosticsSummary(diagnostics)}`)
+    return
+  }
+  logActivity(`Analysis failed: ${formatAnalysisFailureMessage(rawError)}`)
+}
+
 function extractFailureDiagnostics(status?: AnalysisPollStatus | null): DuelFailureDiagnostics | null {
   if (!status) return null
   const fromTop = status.failure_diagnostics
@@ -1087,12 +1095,12 @@ function runStuckAnalysisReconcile(): Promise<number> {
     },
     onCompleted: dispatchReconciledAnalysisReady,
     onFailed: ({ error, recordingId, status }) => {
-      const presentation = dispatchAnalysisFailure(error, {
+      dispatchAnalysisFailure(error, {
         recordingId,
         notify: false,
         failureDiagnostics: extractFailureDiagnostics(status),
       })
-      logActivity(`Analysis failed: ${presentation.message}`)
+      logAnalysisFailureActivity(error, extractFailureDiagnostics(status))
       mainWindow?.webContents.send('dashboard:refresh')
     },
     resumePoll: (jobId, context) => {
@@ -3459,13 +3467,16 @@ async function doUploadAndAnalyse(
               return []
             }
             logActivity(`Preparing ${moments.length} duel clips for AI review`)
-            return extractAndUploadDuelClips({
+            const withKeys = await extractAndUploadDuelClips({
               uploadManager,
               jobId,
               videoPath: path,
               moments,
               clipExtractor,
             })
+            const uploaded = withKeys.filter((m) => m.clip_s3_key).length
+            logActivity(`Uploaded ${uploaded}/${moments.length} duel clips for AI review`)
+            return withKeys
           }
         : undefined,
       deferMatchDataOnPresign: game === 'valorant',
@@ -3666,7 +3677,7 @@ async function doUploadAndAnalyse(
           targetWindow,
           failureDiagnostics: extractFailureDiagnostics(status),
         })
-        logActivity(`Analysis failed: ${rawError || userMessage}`)
+        logAnalysisFailureActivity(rawError || userMessage, extractFailureDiagnostics(status))
         tray?.setToolTip(idleTooltip(game))
       },
       onConnectionLost: () => {
