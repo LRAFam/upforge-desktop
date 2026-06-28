@@ -58,6 +58,7 @@ export async function extractAndUploadDuelClips(opts: {
         startOffsetMs: moment.window_start_ms,
         durationMs,
         outputPath: outPath,
+        accurateSeek: true,
       })
       localPaths.set(moment.moment_id, outPath)
     })

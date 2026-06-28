@@ -31,6 +31,11 @@ export interface ExtractOptions {
   durationMs: number
   /** Output file path (mp4) */
   outputPath: string
+  /**
+   * Frame-accurate seek (decode-then-trim). Slower on long VODs but required for
+   * duel windows where death timestamps must land inside the clip.
+   */
+  accurateSeek?: boolean
 }
 
 export interface ThumbnailOptions {
@@ -57,6 +62,10 @@ export class ClipExtractor {
     const startSec = Math.max(0, opts.startOffsetMs / 1000)
     const durSec = opts.durationMs / 1000
 
+    const inputArgs = opts.accurateSeek
+      ? ['-i', opts.sourcePath, '-ss', String(startSec)]
+      : ['-ss', String(startSec), '-i', opts.sourcePath]
+
     // Always transcode to H.264/AAC for maximum player compatibility.
     // Our source recordings are VP9-in-MP4 (remuxed from WebM) or raw WebM — neither
     // streams-copies cleanly into MP4 on all platforms. For short clips (8–30s),
@@ -66,8 +75,7 @@ export class ClipExtractor {
       await this._run(
         [
           '-y',
-          '-ss', String(startSec),
-          '-i', opts.sourcePath,
+          ...inputArgs,
           '-t', String(durSec),
           '-map', '0:v:0',
           '-map', '0:a:0?',

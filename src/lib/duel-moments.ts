@@ -89,9 +89,9 @@ export function pipelineStagesFromStep(
   const text = (step ?? '').toLowerCase()
   let activeIndex = 0
 
-  if (/synthesi|coach|generat|finaliz|calculat|insight/.test(text) || progress >= 72) {
+  if (/synthesi|coach|generat|finaliz|calculat|insight/.test(text)) {
     activeIndex = 3
-  } else if (/duel moment|analysing.*moment|observ|clip/.test(text) || progress >= 50) {
+  } else if (/duel moment|analysing.*moment|observ|clip/.test(text) || (progress >= 50 && progress < 72)) {
     activeIndex = 2
   } else if (/download|recording|prepar|handoff|upload/.test(text) || progress >= 25) {
     activeIndex = 1
