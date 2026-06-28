@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { ref } from 'vue'
 import { useDashboard } from '../../composables/useDashboard'
 import { getAgentImage, getAgentColor } from '../../lib/valorant'
 import { formatRelativeTime } from '../../lib/dashboard-match-row'
@@ -37,7 +38,17 @@ const {
   formatLogTime,
   logEntryColor,
   clearLog,
+  copyActivityLog,
 } = useDashboard()
+
+const logCopied = ref(false)
+
+async function copyLog() {
+  const ok = await copyActivityLog()
+  if (!ok) return
+  logCopied.value = true
+  setTimeout(() => { logCopied.value = false }, 2000)
+}
 </script>
 
 <template>
@@ -167,9 +178,23 @@ const {
   <div v-if="activityLog.length" class="bg-white/[0.02] border border-white/[0.10] rounded-xl overflow-hidden flex-shrink-0">
     <div class="flex items-center justify-between px-3 py-1.5 border-b border-white/[0.07]">
       <span class="text-[9px] font-bold uppercase tracking-widest text-gray-600">Activity</span>
-      <button class="w-4 h-4 flex items-center justify-center text-gray-700 hover:text-gray-400 transition-colors" @click="clearLog">
-        <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
-      </button>
+      <div class="flex items-center gap-1.5">
+        <button
+          type="button"
+          class="text-[9px] font-semibold text-gray-600 hover:text-gray-300 transition-colors"
+          @click="copyLog"
+        >
+          {{ logCopied ? 'Copied' : 'Copy' }}
+        </button>
+        <button
+          type="button"
+          class="w-4 h-4 flex items-center justify-center text-gray-700 hover:text-gray-400 transition-colors"
+          title="Clear log"
+          @click="clearLog"
+        >
+          <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+        </button>
+      </div>
     </div>
     <div class="py-1 max-h-32 overflow-y-auto scroll-col">
       <div v-for="entry in [...activityLog].reverse().slice(0, 8)" :key="entry.time" class="flex items-start gap-2 px-3 py-1">

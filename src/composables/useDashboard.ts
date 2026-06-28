@@ -462,6 +462,25 @@ function createDashboard() {
     activityLog.value = []
   }
 
+  function formatActivityLogText(entries = activityLog.value): string {
+    if (entries.length === 0) return ''
+    const lines = entries.map(
+      (entry) => `[${new Date(entry.time).toISOString()}] ${entry.message}`,
+    )
+    return ['UpForge Activity Log', ...lines].join('\n')
+  }
+
+  async function copyActivityLog(): Promise<boolean> {
+    const text = formatActivityLogText()
+    if (!text) return false
+    try {
+      await navigator.clipboard.writeText(text)
+      return true
+    } catch {
+      return false
+    }
+  }
+
   async function loadClipCount() {
     clipCount.value = (await window.api.clips.get({ game: primaryGame.value }).catch(() => [] as ClipRecord[])).length
   }
@@ -1362,6 +1381,8 @@ function createDashboard() {
     formatLogTime,
     logEntryColor,
     clearLog,
+    formatActivityLogText,
+    copyActivityLog,
     forgeRankColor,
     forgeRankGradient,
     forgeRankInitial,
