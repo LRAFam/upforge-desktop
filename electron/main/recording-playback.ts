@@ -1,10 +1,34 @@
+import fs from 'fs'
 import log from 'electron-log'
 import { AuthManager } from './auth-manager'
+import { MIN_RECORDING_FILE_BYTES } from './recording-limits'
+import { recordingPathVariants } from './vod-compressor'
 
 function parseHttpsUrl(value: unknown): string | null {
   if (typeof value !== 'string') return null
   const trimmed = value.trim()
   return /^https?:\/\//i.test(trimmed) ? trimmed : null
+}
+
+/**
+ * Best on-disk recording for local VOD playback — prefers remuxed `_upforge.mp4` siblings
+ * when the store still points at raw OBS `.mkv`.
+ */
+export function resolveLocalRecordingFile(storedPath: string | null | undefined): string | null {
+  if (!storedPath?.trim()) return null
+  let fallback: string | null = null
+  for (const candidate of recordingPathVariants(storedPath)) {
+    try {
+      if (!fs.existsSync(candidate)) continue
+      const size = fs.statSync(candidate).size
+      if (size < MIN_RECORDING_FILE_BYTES) continue
+      if (isLikelyBrowserPlayableLocal(candidate)) return candidate
+      if (!fallback) fallback = candidate
+    } catch {
+      continue
+    }
+  }
+  return fallback
 }
 
 /** Chromium/Electron `<video>` reliably plays these local extensions; OBS often writes `.mkv`. */
@@ -51,8 +75,8 @@ export async function resolveCloudFirstPlaybackUrl(opts: {
   if (!url && analysisId != null) {
     url = await fetchRecordingPlaybackUrl(auth, analysisId)
   }
-  if (!url && localPath && isLikelyBrowserPlayableLocal(localPath)) {
-    url = localPath
+  if (!url && localPath) {
+    url = resolveLocalRecordingFile(localPath)
   }
 
   return { url, archiveId: resolvedArchiveId }

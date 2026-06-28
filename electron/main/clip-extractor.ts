@@ -225,6 +225,27 @@ export class ClipExtractor {
     }
   }
 
+  /** Container duration in milliseconds (null when ffmpeg cannot parse it). */
+  async probeDurationMs(filePath: string): Promise<number | null> {
+    return new Promise((resolve) => {
+      const proc = spawn(ffmpegPath(), ['-i', filePath], { stdio: ['ignore', 'ignore', 'pipe'] })
+      let stderr = ''
+      proc.stderr?.on('data', (d: Buffer) => { stderr += d.toString() })
+      proc.on('close', () => {
+        const match = stderr.match(/Duration:\s*(\d+):(\d+):(\d+(?:\.\d+)?)/)
+        if (!match) {
+          resolve(null)
+          return
+        }
+        const hours = parseInt(match[1], 10)
+        const minutes = parseInt(match[2], 10)
+        const seconds = parseFloat(match[3])
+        resolve(Math.round((hours * 3600 + minutes * 60 + seconds) * 1000))
+      })
+      proc.on('error', () => resolve(null))
+    })
+  }
+
   /** Concatenate multiple H.264 MP4 segments into one recap file. */
   async concat(segmentPaths: string[], outputPath: string): Promise<void> {
     if (segmentPaths.length === 0) {

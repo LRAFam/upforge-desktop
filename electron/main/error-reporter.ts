@@ -57,7 +57,7 @@ export async function reportError(payload: {
   try {
     const controller = new AbortController()
     const timeout = setTimeout(() => controller.abort(), 5000)
-    await fetch(`${API_URL}/api/errors`, {
+    const response = await fetch(`${API_URL}/api/errors`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -68,8 +68,14 @@ export async function reportError(payload: {
       signal: controller.signal,
     })
     clearTimeout(timeout)
-  } catch {
-    // Never throw from error reporter
+    if (!response.ok) {
+      log.warn(
+        `[ErrorReporter] API rejected report (${response.status}) — ` +
+        `${ERROR_KEY ? 'check ERROR_REPORTING_KEY' : 'VITE_ERROR_REPORTING_KEY missing at build time'}`,
+      )
+    }
+  } catch (err) {
+    log.debug('[ErrorReporter] Failed to POST error report:', err)
   }
 }
 

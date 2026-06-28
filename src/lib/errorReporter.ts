@@ -47,7 +47,7 @@ export async function reportError(payload: {
   }
 
   try {
-    await fetch(`${API_URL}/api/errors`, {
+    const response = await fetch(`${API_URL}/api/errors`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -57,6 +57,11 @@ export async function reportError(payload: {
       body: JSON.stringify(body),
       signal: AbortSignal.timeout(5000),
     })
+    if (!response.ok && import.meta.env.DEV) {
+      console.warn(
+        `[ErrorReporter] API rejected report (${response.status})`,
+      )
+    }
   } catch { /* never throw from reporter */ }
 }
 

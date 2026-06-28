@@ -252,6 +252,7 @@ export class RecordingsStore {
     rec.lastAnalysisCreditRefunded = meta?.creditRefunded ?? false
     rec.lastAnalysisFailureDiagnostics = meta?.failureDiagnostics ?? null
     rec.analysisFailureNotifiedAt = undefined
+    // Keep jobId — cloud upload succeeded; needed for retry and support diagnostics.
     this.persist()
   }
 

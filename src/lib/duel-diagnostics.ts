@@ -81,6 +81,15 @@ export function duelSeekMs(moment: DuelMoment): number | null {
   return Math.max(0, offset - 4000)
 }
 
+/** Death window sent for Gemini review (manifest fields or desktop defaults). */
+export function duelWindowForMoment(moment: DuelMoment): { startMs: number; endMs: number } {
+  const offset = moment.video_offset_ms ?? 0
+  return {
+    startMs: moment.window_start_ms ?? Math.max(0, offset - 8000),
+    endMs: moment.window_end_ms ?? offset + 500,
+  }
+}
+
 export function formatDebugReport(d: DuelFailureDiagnostics): string {
   const lines = [diagnosticsSummary(d)]
   if (d.integrity_reason) lines.push(`Reason: ${d.integrity_reason}`)

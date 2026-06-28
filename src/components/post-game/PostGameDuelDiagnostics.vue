@@ -4,6 +4,7 @@ import type { DuelFailureDiagnostics } from '../../lib/duel-diagnostics'
 import {
   diagnosticsSummary,
   duelSeekMs,
+  duelWindowForMoment,
   formatDebugReport,
   formatMomentVisionLine,
   momentClipUploaded,
@@ -16,6 +17,10 @@ const props = defineProps<{
 }>()
 
 const copied = ref(false)
+const previewLoadingKey = ref<string | null>(null)
+const previewError = ref<string | null>(null)
+const previewPath = ref<string | null>(null)
+const previewLabel = ref<string | null>(null)
 
 const summary = computed(() => diagnosticsSummary(props.diagnostics))
 
@@ -28,14 +33,46 @@ const rows = computed(() =>
     hasVision: momentHasVisionSignal(moment),
     hasClip: momentClipUploaded(moment),
     seekMs: duelSeekMs(moment),
+    window: duelWindowForMoment(moment),
     line: formatMomentVisionLine(moment),
     moment,
   })),
 )
 
+function previewVideoSrc(path: string): string {
+  const normalized = path.replace(/\\/g, '/')
+  return normalized.startsWith('/')
+    ? encodeURI(`file://${normalized}`)
+    : encodeURI(`file:///${normalized}`)
+}
+
 async function viewInVod(seekMs: number | null) {
   if (!props.recordingId) return
   await window.api.app.openVodReview(props.recordingId, seekMs ?? undefined)
+}
+
+async function previewDuelClip(row: (typeof rows.value)[number]) {
+  if (!props.recordingId) return
+  previewLoadingKey.value = row.key
+  previewError.value = null
+  previewPath.value = null
+  previewLabel.value = `R${row.round}${row.callout ? ` · ${row.callout}` : ''}`
+  try {
+    const result = await window.api.recordings.previewDuelWindow(props.recordingId, {
+      windowStartMs: row.window.startMs,
+      windowEndMs: row.window.endMs,
+      momentId: row.moment.moment_id ?? row.key,
+    })
+    if (!result.ok) {
+      previewError.value = result.error
+      return
+    }
+    previewPath.value = result.path
+  } catch (err) {
+    previewError.value = err instanceof Error ? err.message : 'Could not extract duel preview'
+  } finally {
+    previewLoadingKey.value = null
+  }
 }
 
 async function copyDebugReport() {
@@ -68,8 +105,28 @@ async function copyDebugReport() {
     </p>
     <p class="mt-1 text-[10px] text-gray-500 leading-relaxed">
       Timeline sync can look correct while Gemini still rejects a clip (spectator cam, blank extract, or no peek/crosshair read).
-      Use <span class="text-gray-400">View in VOD</span> to check each death window matches what was sent for review.
+      Use <span class="text-gray-400">Preview duel clip</span> to see the exact window we try to send for review.
     </p>
+
+    <div
+      v-if="previewPath || previewError"
+      class="mt-3 rounded-lg border border-white/[0.08] bg-black/30 px-2.5 py-2"
+    >
+      <p v-if="previewLabel" class="text-[10px] font-semibold text-gray-400 mb-1.5">
+        Duel clip preview — {{ previewLabel }}
+      </p>
+      <video
+        v-if="previewPath"
+        :src="previewVideoSrc(previewPath)"
+        class="w-full rounded-md bg-black aspect-video"
+        controls
+        autoplay
+        playsinline
+      />
+      <p v-if="previewError" class="text-[11px] text-amber-400/90 leading-snug">
+        {{ previewError }}
+      </p>
+    </div>
 
     <ul class="mt-3 space-y-2 max-h-56 overflow-y-auto pr-0.5">
       <li
@@ -102,14 +159,24 @@ async function copyDebugReport() {
         <p class="mt-1 text-[11px] leading-snug" :class="row.hasVision ? 'text-gray-300' : 'text-gray-500'">
           {{ row.line }}
         </p>
-        <button
-          v-if="recordingId && row.seekMs != null"
-          type="button"
-          class="mt-1.5 text-[10px] font-semibold text-cyan-400/90 hover:text-cyan-300 transition-colors"
-          @click="viewInVod(row.seekMs)"
-        >
-          View in VOD
-        </button>
+        <div v-if="recordingId" class="mt-1.5 flex flex-wrap items-center gap-3">
+          <button
+            v-if="row.seekMs != null"
+            type="button"
+            class="text-[10px] font-semibold text-cyan-400/90 hover:text-cyan-300 transition-colors"
+            @click="viewInVod(row.seekMs)"
+          >
+            View in VOD
+          </button>
+          <button
+            type="button"
+            class="text-[10px] font-semibold text-amber-400/90 hover:text-amber-300 transition-colors disabled:opacity-50"
+            :disabled="previewLoadingKey === row.key"
+            @click="previewDuelClip(row)"
+          >
+            {{ previewLoadingKey === row.key ? 'Extracting…' : 'Preview duel clip' }}
+          </button>
+        </div>
       </li>
     </ul>
   </div>

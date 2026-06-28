@@ -52,6 +52,10 @@ const api = {
         resetSync: (id: string) => ipcRenderer.invoke('recordings:reset-sync', { id }),
         trim: (id: string, startSec: number, endSec: number) =>
           ipcRenderer.invoke('recordings:trim', { id, startSec, endSec }),
+    previewDuelWindow: (
+      id: string,
+      opts: { windowStartMs: number; windowEndMs: number; momentId: string },
+    ) => ipcRenderer.invoke('recordings:preview-duel-window', { id, ...opts }),
   },
   settings: {
     get: () => ipcRenderer.invoke('settings:get'),

@@ -89,9 +89,12 @@ interface TeamPlayerSnapshot {
 
 interface RecordingTimeline {
   id: string
+  jobId?: string | null
   analysisId?: number | null
   archiveId?: string | null
   videoPath: string | null
+  localFileMissing?: boolean
+  uploadedToCloud?: boolean
   map: string | null
   agent: string | null
   game: string

@@ -14,8 +14,8 @@ import { cancelAllPollingTimers } from './api-helpers'
 import { normalizeToAcs } from '../combat-score'
 import {
   fetchRecordingPlaybackUrl,
-  isLikelyBrowserPlayableLocal,
   resolveCloudFirstPlaybackUrl,
+  resolveLocalRecordingFile,
 } from '../recording-playback'
 import {
   effectiveVideoSyncOffsetMs,
@@ -181,14 +181,14 @@ export function setupAuthHandlers(
       })) ?? []
       const jobArchiveId = typeof analysis.archive_id === 'string' ? analysis.archive_id : null
       const localFallback = analysis.job_id && getLocalRecordingPathByJobId
-        ? getLocalRecordingPathByJobId(analysis.job_id)
+        ? resolveLocalRecordingFile(getLocalRecordingPathByJobId(analysis.job_id))
         : null
       const playback = await resolveCloudFirstPlaybackUrl({
         auth,
         analysisId: id,
         archiveId: jobArchiveId,
         inlineRecordingUrl: analysis.recording_url,
-        localPath: localFallback && isLikelyBrowserPlayableLocal(localFallback) ? localFallback : null,
+        localPath: localFallback,
       })
       const videoPath = playback.url
 

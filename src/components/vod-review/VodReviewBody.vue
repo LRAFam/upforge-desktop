@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { computed } from 'vue'
 import { useVodReview } from '../../composables/useVodReview'
 import MatchSpatialMinimap from '../MatchSpatialMinimap.vue'
 import TacticalIntelBrief from '../TacticalIntelBrief.vue'
@@ -126,6 +127,25 @@ const {
   videoSyncOffsetMs,
   visibleRoundEvents,
 } = useVodReview()
+
+const noVideoHint = computed((): string => {
+  if (!recordingId.value) {
+    return 'Recording unavailable — it may have been deleted locally or expired from cloud storage.'
+  }
+  if (timeline.value?.videoPath) return ''
+  if (timeline.value?.localFileMissing && timeline.value?.uploadedToCloud) {
+    if (timeline.value.analysisId || timeline.value.archiveId) {
+      return 'Local file removed — cloud copy unavailable or expired. Try Retry cloud playback.'
+    }
+    if (timeline.value.jobId) {
+      return 'Recording was uploaded but local file is gone — cloud playback is only available after analysis completes.'
+    }
+  }
+  if (timeline.value?.uploadedToCloud || timeline.value?.jobId) {
+    return 'Recording uploaded to cloud — local file should still be on disk. Try reopening from the dashboard.'
+  }
+  return 'No playable recording found for this session — check Settings → Recording save folder.'
+})
 </script>
 
 <template>
@@ -428,14 +448,7 @@ const {
             <span class="text-xs text-gray-600">No video for this session</span>
             <span class="text-[10px] text-gray-700 text-center max-w-xs">
               <template v-if="playbackRefreshing">Refreshing cloud playback…</template>
-              <template v-else-if="recordingId">
-                {{ timeline?.analysisId || timeline?.archiveId
-                  ? 'Local file removed — cloud copy unavailable or expired.'
-                  : 'OBS was not recording when this match was captured.' }}
-              </template>
-              <template v-else>
-                Recording unavailable — it may have been deleted locally or expired from cloud storage.
-              </template>
+              <template v-else>{{ noVideoHint }}</template>
             </span>
             <button
               v-if="canRefreshCloudPlayback && !playbackRefreshing"

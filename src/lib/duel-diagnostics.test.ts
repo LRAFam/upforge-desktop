@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   diagnosticsSummary,
+  duelWindowForMoment,
   formatDebugReport,
   momentHasVisionSignal,
   parseDuelFailureDiagnostics,
@@ -40,5 +41,17 @@ describe('duel-diagnostics', () => {
     expect(d).not.toBeNull()
     expect(diagnosticsSummary(d!)).toContain('1/2 duel clips uploaded')
     expect(formatDebugReport(d!)).toContain('clip=yes')
+  })
+
+  it('derives duel window from death offset when manifest fields missing', () => {
+    expect(duelWindowForMoment({
+      moment_id: 'd1',
+      round: 2,
+      video_offset_ms: 120_000,
+      window_start_ms: undefined as unknown as number,
+      window_end_ms: undefined as unknown as number,
+      callout: null,
+      isolated: false,
+    })).toEqual({ startMs: 112_000, endMs: 120_500 })
   })
 })

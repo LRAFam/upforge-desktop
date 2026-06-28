@@ -215,9 +215,14 @@ export interface PendingRecording {
 
 export interface RecordingTimeline {
   id: string
+  jobId?: string | null
   analysisId?: number | null
   archiveId?: string | null
   videoPath: string | null
+  /** True when the local file (and remux sibling) is gone from disk. */
+  localFileMissing?: boolean
+  /** True when the VOD was uploaded for analysis or saved to cloud. */
+  uploadedToCloud?: boolean
   map: string | null
   agent: string | null
   game: string
@@ -524,6 +529,10 @@ declare global {
           newDurationSec?: number
           cloudStale?: boolean
         }>
+        previewDuelWindow: (
+          id: string,
+          opts: { windowStartMs: number; windowEndMs: number; momentId: string },
+        ) => Promise<{ ok: true; path: string; bytes: number } | { ok: false; error: string }>
       }
       settings: {
         get: () => Promise<AppSettings>

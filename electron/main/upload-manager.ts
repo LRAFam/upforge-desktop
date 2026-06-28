@@ -10,6 +10,7 @@ import { UpgradeRequiredError } from './errors'
 import { prepareMatchDataForUpload, submissionContextFromTimeline, gameModeForApi } from './match-data-payload'
 import type { CoachingSubmissionExtras } from './match-coaching-context'
 import type { DuelMomentManifest } from './moment-picker'
+import { reportPipelineError } from './pipeline-errors'
 
 export interface UploadOptions {
   videoPath: string
@@ -300,7 +301,13 @@ export class UploadManager {
       try {
         duelMomentsPayload = await opts.prepareDuelClips(job_id, opts.videoPath)
       } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err)
         console.error('[UploadManager] Duel clip upload failed:', err)
+        reportPipelineError('duel-clips', `Duel clip upload failed during complete(): ${msg}`, {
+          jobId: job_id,
+          videoPath: opts.videoPath,
+          stack: err instanceof Error ? err.stack?.slice(0, 2000) : undefined,
+        })
         throw err
       }
     }

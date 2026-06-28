@@ -115,10 +115,11 @@ import { TrainerBridge } from './trainer-bridge'
 import type { MatchData } from './riot-types'
 import log from 'electron-log'
 import { setupMainProcessErrorHandlers, reportError } from './error-reporter'
+import { reportPipelineError } from './pipeline-errors'
 import {
   fetchArchivePlaybackUrl,
   fetchRecordingPlaybackUrl,
-  isLikelyBrowserPlayableLocal,
+  resolveLocalRecordingFile,
 } from './recording-playback'
 import {
   CRITICAL_FREE_DISK_BYTES,
@@ -140,7 +141,7 @@ import {
 import { ClipPipeline } from './clip-pipeline'
 import { duelMomentsForUpload } from './moment-picker'
 import { buildAndUploadScoutMoments } from './scout-moments'
-import { extractAndUploadDuelClips } from './duel-clip-uploader'
+import { extractAndUploadDuelClips, extractDuelPreviewClip } from './duel-clip-uploader'
 import { requestPregameBrief as _requestPregameBrief, requestPostGameDebrief as _requestPostGameDebrief } from './post-game-api'
 import { enrichTimelineForCoaching } from './match-coaching-enrich'
 import {
@@ -617,6 +618,22 @@ function notifyRecordingUx(message: string, notificationTitle = 'UpForge — Rec
   })
 }
 
+function maybeDeleteLocalRecordingAfterAnalysis(
+  recordingPath: string,
+  opts: { deleteLocalAfterUpload?: boolean; skipAutoDelete?: boolean },
+): void {
+  if (opts.deleteLocalAfterUpload) {
+    const freed = deleteLocalRecordingFiles(recordingPath)
+    if (freed > 0) logActivity('Local recording removed after cloud save')
+    return
+  }
+  if (opts.skipAutoDelete) return
+  if (!settingsManager?.get().autoDelete) return
+  log.info('[App] Auto-deleting local recording after successful analysis:', recordingPath)
+  const freed = deleteLocalRecordingFiles(recordingPath)
+  if (freed > 0) logActivity('Local recording removed — VOD available in cloud')
+}
+
 /** Backend that will be used for the next (or current) match capture. */
 function getRecordingBackendForStatus(): RecordingBackend {
   return 'obs'
@@ -1026,8 +1043,24 @@ function dispatchAnalysisFailure(
   mainWindow?.webContents.send('dashboard:analysis-failed', payload)
   mainWindow?.webContents.send('recordings:updated')
 
+  const failureRecording = opts.recordingId ? recordingsStore.getById(opts.recordingId) : null
+  if (payload.kind !== 'quota') {
+    reportPipelineError('analysis', payload.title, {
+      kind: payload.kind,
+      message: payload.message,
+      recordingId: opts.recordingId ?? null,
+      jobId: failureRecording?.jobId ?? null,
+      map: failureRecording?.map ?? null,
+      agent: failureRecording?.agent ?? null,
+      integrityReason: opts.failureDiagnostics?.integrity_reason ?? null,
+      clipsUploaded: opts.failureDiagnostics?.clips_uploaded ?? null,
+      clipsRequested: opts.failureDiagnostics?.clips_requested ?? null,
+      rawError: rawError.slice(0, 500),
+    })
+  }
+
   if (opts.notify !== false) {
-    const existing = opts.recordingId ? recordingsStore.getById(opts.recordingId) : null
+    const existing = failureRecording
     const alreadyNotifiedThisRecording = Boolean(existing?.analysisFailureNotifiedAt)
     // Refunded / integrity failures share one global toast — backlog must not spam one per VOD.
     const notifyKey = payload.creditRefunded || payload.kind === 'integrity'
@@ -3372,13 +3405,13 @@ async function doUploadAndAnalyse(
       send('post-game:compress-start', { sizeGB })
     }, { forAnalysis: true })
     effectivePath = resolved.path
+    if (recordingId) {
+      recordingsStore.updatePath(recordingId, effectivePath)
+      mainWindow?.webContents.send('recordings:updated')
+    }
     if (resolved.compressed) {
       const newGB = (resolved.sizeBytes / (1024 ** 3)).toFixed(2)
       logActivity(`Compressed recording to ${newGB} GB — uploading`)
-      if (recordingId && effectivePath !== videoPath) {
-        recordingsStore.updatePath(recordingId, effectivePath)
-        mainWindow?.webContents.send('recordings:updated')
-      }
     }
     if (resolved.sizeBytes > MAX_RECORDING_FILE_BYTES) {
       const sizeGB = (resolved.sizeBytes / (1024 ** 3)).toFixed(1)
@@ -3541,15 +3574,7 @@ async function doUploadAndAnalyse(
       mainWindow?.webContents.send('dashboard:refresh')
     }
 
-    // Auto-delete after upload if configured (skip when called from handleMatchEnd —
-    // deletion is deferred until after clip extraction so clips aren't skipped)
-    if ((!skipAutoDelete && settingsManager?.get().autoDelete) || deleteLocalAfterUpload) {
-      log.info('[App] Auto-deleting recording after upload:', videoPath)
-      obsRecorder.deleteRecording(videoPath)
-      deleteCompressedSibling(videoPath)
-      logActivity('Local recording removed — VOD saved to cloud and available for review')
-    }
-
+    // Keep local file until analysis finishes — needed for VOD review, duel-clip debug, and retry on failure.
     startAnalysisPoll({
       uploadManager,
       jobId: result.job_id,
@@ -3567,8 +3592,15 @@ async function doUploadAndAnalyse(
         const score = (status.result as Record<string, unknown>).overall_score as number | undefined
         const analysisId = extractAnalysisIdFromPollResult(status.result as Record<string, unknown> | undefined)
         if (recordingId) {
-          if (analysisId != null) recordingsStore.setAnalysisId(recordingId, analysisId)
-          else recordingsStore.clearAnalysisPipeline(recordingId)
+          if (analysisId != null) {
+            recordingsStore.setAnalysisId(recordingId, analysisId)
+            const rec = recordingsStore.getById(recordingId)
+            if (rec?.path) {
+              maybeDeleteLocalRecordingAfterAnalysis(rec.path, { deleteLocalAfterUpload, skipAutoDelete })
+            }
+          } else {
+            recordingsStore.clearAnalysisPipeline(recordingId)
+          }
           mainWindow?.webContents.send('recordings:updated')
         }
         const improvements = (status.result as Record<string, unknown>).priority_improvements as string[] | undefined
@@ -3681,6 +3713,7 @@ async function doUploadAndAnalyse(
           failureDiagnostics: extractFailureDiagnostics(status),
         })
         logAnalysisFailureActivity(rawError || userMessage, extractFailureDiagnostics(status))
+        logActivity('Local recording kept on disk — use fight footage debug or VOD review to inspect duel windows')
         tray?.setToolTip(idleTooltip(game))
       },
       onConnectionLost: () => {
@@ -3733,6 +3766,14 @@ async function doUploadAndAnalyse(
       })
       return null
     }
+
+    reportPipelineError('upload', msg, {
+      recordingId: recordingId ?? null,
+      game,
+      map,
+      agent,
+      stack: err instanceof Error ? err.stack?.slice(0, 2000) : undefined,
+    })
 
     // Try to ensure the recording is saved to the pending store so the user can retry.
     // If this is the first attempt (no recordingId yet) and the file still exists, save now.
@@ -4217,7 +4258,13 @@ async function startApp(): Promise<void> {
             },
             onCompleted: (status) => {
               const analysisId = extractAnalysisIdFromPollResult(status.result as Record<string, unknown> | undefined)
-              if (analysisId != null) recordingsStore.setAnalysisId(recording.id, analysisId)
+              if (analysisId != null) {
+                recordingsStore.setAnalysisId(recording.id, analysisId)
+                const rec = recordingsStore.getById(recording.id)
+                if (rec?.path) {
+                  maybeDeleteLocalRecordingAfterAnalysis(rec.path, {})
+                }
+              }
               mainWindow?.webContents.send('dashboard:refresh')
             },
             onFailed: (userMessage, rawError, status) => {
@@ -4552,6 +4599,34 @@ async function startApp(): Promise<void> {
     return null
   })
 
+  ipcMain.handle('recordings:preview-duel-window', async (_e, {
+    id,
+    windowStartMs,
+    windowEndMs,
+    momentId,
+  }: {
+    id: string
+    windowStartMs: number
+    windowEndMs: number
+    momentId: string
+  }) => {
+    const recording = recordingsStore.getById(id)
+    if (!recording?.path) {
+      return { ok: false as const, error: 'Recording not found' }
+    }
+    const local = resolveLocalRecordingFile(recording.path) ?? recording.path
+    if (!local || !fs.existsSync(local)) {
+      return { ok: false as const, error: 'Local recording file missing — try Retry cloud playback' }
+    }
+    return extractDuelPreviewClip({
+      videoPath: local,
+      windowStartMs,
+      windowEndMs,
+      momentId,
+      clipExtractor,
+    })
+  })
+
   ipcMain.handle('recordings:get-timeline', async (_e, { id }: { id: string }) => {
     const recording = recordingsStore.getById(id)
     if (!recording) return null
@@ -4561,7 +4636,7 @@ async function startApp(): Promise<void> {
       enrichTimelineSpatial(tl)
       recordingsStore.updateTimeline(id, tl)
     }
-    const localPath = recording.path && fs.existsSync(recording.path) ? recording.path : null
+    const localPath = resolveLocalRecordingFile(recording.path)
     const cloudBacked = Boolean(
       (recording.cloudArchived && recording.archiveId)
       || recording.analysisId != null,
@@ -4576,16 +4651,17 @@ async function startApp(): Promise<void> {
         videoPath = await fetchArchivePlaybackUrl(authManager, recording.archiveId)
       }
     }
-    if (!videoPath && localPath && isLikelyBrowserPlayableLocal(localPath)) {
-      videoPath = localPath
-    } else if (!videoPath && localPath && !cloudBacked) {
+    if (!videoPath && localPath) {
       videoPath = localPath
     }
     return {
       id: recording.id,
+      jobId: recording.jobId ?? null,
       analysisId: recording.analysisId ?? null,
       archiveId: recording.archiveId ?? null,
       videoPath,
+      localFileMissing: !localPath,
+      uploadedToCloud: Boolean(recording.jobId || recording.analysisId),
       map: recording.map,
       agent: recording.agent,
       game: recording.game,
