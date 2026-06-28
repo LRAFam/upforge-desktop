@@ -2,7 +2,7 @@
  * Extract duel windows locally and upload small MP4s for AI review
  * (avoids downloading the full match VOD on the AI service).
  */
-import { mkdtemp, rm, unlink } from 'fs/promises'
+import { mkdtemp, rm, stat, unlink } from 'fs/promises'
 import { join } from 'path'
 import { tmpdir } from 'os'
 import log from 'electron-log'
@@ -12,6 +12,8 @@ import type { UploadManager } from './upload-manager'
 
 const EXTRACT_CONCURRENCY = 2
 const UPLOAD_CONCURRENCY = 4
+/** Clips smaller than this are usually corrupt or empty extractions — skip upload. */
+const MIN_DUEL_CLIP_BYTES = 12 * 1024
 
 async function mapPool<T, R>(
   items: T[],
@@ -53,35 +55,56 @@ export async function extractAndUploadDuelClips(opts: {
       const durationMs = Math.max(500, moment.window_end_ms - moment.window_start_ms)
       const safeId = moment.moment_id.replace(/[^a-zA-Z0-9._-]/g, '_')
       const outPath = join(workDir, `${safeId}.mp4`)
-      await clipExtractor.extract({
-        sourcePath: videoPath,
-        startOffsetMs: moment.window_start_ms,
-        durationMs,
-        outputPath: outPath,
-        accurateSeek: true,
+      try {
+        await clipExtractor.extract({
+          sourcePath: videoPath,
+          startOffsetMs: moment.window_start_ms,
+          durationMs,
+          outputPath: outPath,
+          accurateSeek: true,
+        })
+        const { size } = await stat(outPath)
+        if (size < MIN_DUEL_CLIP_BYTES) {
+          log.warn(
+            `[DuelClips] Skipping ${moment.moment_id}: clip too small (${size} bytes)`,
+          )
+          await unlink(outPath).catch(() => {})
+          return
+        }
+        localPaths.set(moment.moment_id, outPath)
+      } catch (err) {
+        log.warn(`[DuelClips] Extract failed for ${moment.moment_id}:`, err)
+      }
+    })
+
+    const uploadableIds = moments
+      .map((m) => m.moment_id)
+      .filter((id) => localPaths.has(id))
+
+    if (uploadableIds.length > 0) {
+      const presigned = await uploadManager.presignDuelClips(jobId, uploadableIds)
+
+      await mapPool(presigned, UPLOAD_CONCURRENCY, async (clip) => {
+        const local = localPaths.get(clip.moment_id)
+        if (!local) return
+        await uploadManager.putFileToS3(clip.upload_url, local)
       })
-      localPaths.set(moment.moment_id, outPath)
-    })
 
-    const presigned = await uploadManager.presignDuelClips(
-      jobId,
-      moments.map((m) => m.moment_id),
-    )
+      const keyById = new Map(presigned.map((c) => [c.moment_id, c.s3_key]))
+      const withKeys = moments.map((m) => ({
+        ...m,
+        clip_s3_key: keyById.get(m.moment_id),
+      }))
 
-    await mapPool(presigned, UPLOAD_CONCURRENCY, async (clip) => {
-      const local = localPaths.get(clip.moment_id)
-      if (!local) throw new Error(`Missing local clip for ${clip.moment_id}`)
-      await uploadManager.putFileToS3(clip.upload_url, local)
-    })
+      log.info(
+        `[DuelClips] Uploaded ${uploadableIds.length}/${moments.length} duel clips for job ${jobId}`,
+      )
+      return withKeys
+    }
 
-    const keyById = new Map(presigned.map((c) => [c.moment_id, c.s3_key]))
-    const withKeys = moments.map((m) => ({
-      ...m,
-      clip_s3_key: keyById.get(m.moment_id),
-    }))
+    log.warn(`[DuelClips] No duel clips extracted for job ${jobId} — AI will use full recording`)
+    return moments
 
-    log.info(`[DuelClips] Uploaded ${withKeys.length} duel clips for job ${jobId}`)
-    return withKeys
   } finally {
     for (const p of localPaths.values()) {
       await unlink(p).catch(() => {})
