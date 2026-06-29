@@ -9,6 +9,11 @@ import type { PendingRecording } from './recordings-store'
 
 export const COACHING_UNSUPPORTED_MODES = new Set(['DEATHMATCH', 'TEAMDEATHMATCH'])
 
+/** Max wait for OBS mux / ffprobe before post-game upload proceeds. */
+export const VOD_FILE_READY_MAX_MS = 60_000
+
+export type VodFileReadiness = 'ready' | 'finalizing' | 'missing' | 'unreadable' | 'not_required'
+
 export type AnalysisReadinessState =
   | 'ready'
   | 'syncing'
@@ -99,6 +104,81 @@ function vodFileGates(rec: ReadinessRecording): AnalysisReadiness | null {
   }
 
   return null
+}
+
+export function getVodFileReadiness(rec: ReadinessRecording): VodFileReadiness {
+  if (!localVodPathRequired(rec)) return 'not_required'
+
+  const gate = vodFileGates(rec)
+  if (!gate) return 'ready'
+  if (gate.state === 'finalizing') return 'finalizing'
+  if (gate.state === 'file_missing') return 'missing'
+  return 'unreadable'
+}
+
+export async function waitUntilVodFileReady(
+  getRecording: (id: string) => ReadinessRecording | undefined,
+  recordingId: string,
+  refreshProbe: (rec: ReadinessRecording) => Promise<void>,
+  opts?: {
+    maxWaitMs?: number
+    onReadiness?: (readiness: AnalysisReadiness) => void
+    pollMs?: number
+  },
+): Promise<{ ok: boolean; readiness: AnalysisReadiness }> {
+  const maxWaitMs = opts?.maxWaitMs ?? VOD_FILE_READY_MAX_MS
+  const pollMs = opts?.pollMs ?? 1500
+  const startedAt = Date.now()
+
+  while (Date.now() - startedAt < maxWaitMs) {
+    const rec = getRecording(recordingId)
+    if (!rec) {
+      return {
+        ok: false,
+        readiness: {
+          ready: false,
+          state: 'unavailable',
+          message: 'Recording not found',
+          duelMomentCount: 0,
+        },
+      }
+    }
+
+    await refreshProbe(rec)
+    const current = getRecording(recordingId) ?? rec
+    const readiness = getAnalysisReadiness(current)
+    opts?.onReadiness?.(readiness)
+
+    const vodState = getVodFileReadiness(current)
+    if (vodState === 'not_required' || vodState === 'ready') {
+      return { ok: true, readiness }
+    }
+    if (vodState === 'missing' || vodState === 'unreadable') {
+      return { ok: false, readiness }
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, pollMs))
+  }
+
+  const rec = getRecording(recordingId)
+  if (!rec) {
+    return {
+      ok: false,
+      readiness: {
+        ready: false,
+        state: 'unavailable',
+        message: 'Recording not found',
+        duelMomentCount: 0,
+      },
+    }
+  }
+
+  const readiness = getAnalysisReadiness(rec)
+  const vodState = getVodFileReadiness(rec)
+  return {
+    ok: vodState === 'not_required' || vodState === 'ready',
+    readiness,
+  }
 }
 
 export async function refreshVodProbe(

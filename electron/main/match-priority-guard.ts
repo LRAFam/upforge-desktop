@@ -33,8 +33,10 @@ export function shouldDeferHeavyBackgroundWork(deps: MatchPriorityDeps): boolean
 
 export async function waitUntilBackgroundWorkAllowed(
   deps: MatchPriorityDeps,
-  opts?: { logActivity?: (msg: string) => void; intervalMs?: number },
+  opts?: { logActivity?: (msg: string) => void; intervalMs?: number; skipDefer?: boolean },
 ): Promise<void> {
+  if (opts?.skipDefer) return
+
   const intervalMs = opts?.intervalMs ?? 2000
   let loggedWait = false
   while (shouldDeferHeavyBackgroundWork(deps)) {

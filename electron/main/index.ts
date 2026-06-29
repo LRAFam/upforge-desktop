@@ -39,7 +39,7 @@ import {
 } from './vod-trimmer'
 import {
   waitUntilBackgroundWorkAllowed,
-  pauseHeavyBackgroundWork,
+  abortVodCompression,
   registerDeferredUploadRetry,
   clearDeferredUploadRetry,
   flushDeferredUploadRetries,
@@ -150,6 +150,7 @@ import {
   getAnalysisReadiness,
   isTerminalAnalysisReadinessState,
   refreshVodProbe,
+  waitUntilVodFileReady,
   withAnalysisReadiness,
   type AnalysisReadiness,
 } from './analysis-readiness'
@@ -506,23 +507,10 @@ function matchPriorityDeps() {
 }
 
 function interruptBackgroundWorkForMatch(): void {
-  pauseHeavyBackgroundWork(
-    matchPriorityDeps(),
-    () => uploadManager?.abort(),
-    (ids) => {
-      for (const id of ids) {
-        recordingsStore?.setPipelineDeferReason(id, 'recording')
-      }
-      if ([...ids].length > 0) {
-        logActivity('Upload paused for match — will retry when recording finishes')
-        mainWindow?.webContents.send('recordings:updated')
-        if (postGameWindow && !postGameWindow.isDestroyed()) {
-          postGameWindow.webContents.send('post-game:upload-deferred', { reason: 'recording' })
-        }
-      }
-    },
-    activeUploadRecordingIds,
-  )
+  if (!shouldDeferHeavyBackgroundWork(matchPriorityDeps())) return
+  if (abortVodCompression()) {
+    log.info('[MatchPriority] Aborted in-flight VOD compression — OBS recording active')
+  }
 }
 
 function maybeResumeDeferredUploads(): void {
@@ -2251,11 +2239,34 @@ function setupGameDetection(): void {
         return
       }
 
-      const { ready: analysisReady, readiness: autoReadiness } = await waitUntilAnalysisReady(
+      const { ok: vodReady, readiness: vodReadiness } = await waitUntilVodFileReady(
+        (id) => recordingsStore.getById(id),
         savedRecording.id,
-        thisPostGameWindow,
+        async () => {
+          const rec = recordingsStore.getById(savedRecording.id)
+          if (rec) await refreshRecordingVodProbe(rec)
+        },
+        {
+          onReadiness: (readiness) => sendAnalysisReadinessUpdate(thisPostGameWindow, readiness),
+        },
       )
-      if (!analysisReady) {
+      if (!vodReady) {
+        logActivity(vodReadiness.message || 'Recording file not ready for upload')
+        sendToWindow('post-game:pending', {
+          recordingId: savedRecording.id,
+          game,
+          map,
+          agent,
+          analysisReadiness: vodReadiness,
+        })
+        extractMatchClips(readyPath, timeline, null, game)
+          .catch(err => log.warn('[ClipExtract] Clip extraction (vod not ready) error:', err))
+        await enrichPromise.catch(() => {})
+        return
+      }
+
+      const autoReadiness = getAnalysisReadiness(recordingsStore.getById(savedRecording.id) ?? savedRecording)
+      if (isTerminalAnalysisReadinessState(autoReadiness.state) && !autoReadiness.ready) {
         logActivity(autoReadiness.message || 'Auto-analyse skipped — recording not ready')
         sendToWindow('post-game:pending', {
           recordingId: savedRecording.id,
@@ -2307,6 +2318,7 @@ function setupGameDetection(): void {
         savedRecording.id, readyPath, user?.riot_name ?? '', user?.riot_tag ?? '',
         game, map, agent, timeline, thisPostGameWindow, matchSessionStart,
         /* skipAutoDelete= */ true, /* deleteLocalAfterUpload= */ false, enrichPromise,
+        { prioritizePostGameUpload: true },
       )
 
       const jobId = uploadResult ?? null
@@ -3399,6 +3411,8 @@ async function doUploadAndAnalyse(
   deleteLocalAfterUpload = false,
   /** Shared enrich from handleMatchEnd — avoids duplicate Riot polling. */
   enrichPromise?: Promise<{ extras: CoachingSubmissionExtras | undefined }>,
+  /** Post-game auto path — don't wait on the next match's OBS session. */
+  uploadOpts?: { prioritizePostGameUpload?: boolean },
 ): Promise<string | null> {
   const send = (channel: string, payload?: unknown) => {
     try {
@@ -3407,13 +3421,16 @@ async function doUploadAndAnalyse(
   }
   stopActiveAnalysisPoll()
 
-  if (recordingId && shouldDeferHeavyBackgroundWork(matchPriorityDeps())) {
+  const skipMatchDefer = uploadOpts?.prioritizePostGameUpload === true
+  const deferOpts = { skipDefer: skipMatchDefer }
+
+  if (!skipMatchDefer && recordingId && shouldDeferHeavyBackgroundWork(matchPriorityDeps())) {
     recordingsStore.setPipelineDeferReason(recordingId, 'recording')
     mainWindow?.webContents.send('recordings:updated')
     send('post-game:upload-deferred', { reason: 'recording' })
   }
 
-  await waitUntilBackgroundWorkAllowed(matchPriorityDeps(), { logActivity })
+  await waitUntilBackgroundWorkAllowed(matchPriorityDeps(), { logActivity, ...deferOpts })
 
   if (recordingId) {
     recordingsStore.clearPipelineDeferReason(recordingId)

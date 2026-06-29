@@ -66,6 +66,14 @@ export class OBSRecorder {
   private _recording = false
   /** True only when UpForge called start() — ignores manual OBS recordings for promo/streaming. */
   private _matchOwnedRecording = false
+  /** Blocks reclaiming OBS output briefly after stop — avoids mux tail being treated as a new match. */
+  private _reclaimBlockedUntil = 0
+
+  private static readonly POST_STOP_RECLAIM_COOLDOWN_MS = 45_000
+
+  private _noteRecordingStopped(): void {
+    this._reclaimBlockedUntil = Date.now() + OBSRecorder.POST_STOP_RECLAIM_COOLDOWN_MS
+  }
   private _replayBufferActive = false
   private _startedAt: number | null = null
   private _outputPath: string | null = null
@@ -367,6 +375,10 @@ export class OBSRecorder {
    */
   async reclaimActiveRecording(): Promise<boolean> {
     if (this._matchOwnedRecording) return true
+    if (Date.now() < this._reclaimBlockedUntil) {
+      log.info('[OBSRecorder] Reclaim skipped — recent recording stop (mux may still be settling)')
+      return false
+    }
     if (!(await this.isObsOutputActive())) return false
     try {
       const status = await this._obs.call('GetRecordStatus') as {
@@ -694,6 +706,7 @@ export class OBSRecorder {
       this._clipsOnlySession = false
       this._startedAt = null
       this._disconnectedDuringRecording = false
+      this._noteRecordingStopped()
       this.onStatusChange?.(false)
       log.info('[OBSRecorder] Recording stopped (was idle). Output:', this._outputPath)
       return this._outputPath
@@ -705,6 +718,7 @@ export class OBSRecorder {
       this._clipsOnlySession = false
       this._startedAt = null
       this._disconnectedDuringRecording = false
+      this._noteRecordingStopped()
       this.onStatusChange?.(false)
       return this._outputPath
     }
@@ -721,6 +735,7 @@ export class OBSRecorder {
         this._clipsOnlySession = false
         this._disconnectedDuringRecording = false
         this._outputPath = null
+        this._noteRecordingStopped()
         this.onStatusChange?.(false)
         log.info('[OBSRecorder] Clips-only session ended')
         return null
@@ -731,6 +746,7 @@ export class OBSRecorder {
       this._matchOwnedRecording = false
       this._startedAt = null
       this._disconnectedDuringRecording = false
+      this._noteRecordingStopped()
       if (response.outputPath) this._outputPath = response.outputPath
       await this._resolveOutputPath()
       if (this._outputPath) {
@@ -747,6 +763,7 @@ export class OBSRecorder {
       this._matchOwnedRecording = false
       this._startedAt = null
       this.onStatusChange?.(false, msg)
+      this._noteRecordingStopped()
       return this._outputPath
     }
   }
@@ -760,6 +777,7 @@ export class OBSRecorder {
     this._recording = false
     this._matchOwnedRecording = false
     this._startedAt = null
+    this._noteRecordingStopped()
     this._obs.call('StopRecord').catch(() => {})
     this._obs.call('StopReplayBuffer').catch(() => {})
     // Skip UI callbacks during app shutdown — windows/tray may already be destroyed.
