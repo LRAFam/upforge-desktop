@@ -156,6 +156,8 @@ export class OBSRecorder {
           this._stopLiveKillPoll()
           this.onStatusChange?.(false, 'OBS disconnected during recording')
         }
+        // If OBS actually stopped, drop stale ownership so the next match can start.
+        setTimeout(() => { void this.releaseStaleMatchOwnership() }, 5_000)
       }
       if (wasConnected) {
         this.onConnectionChange?.(false, 'OBS disconnected')
@@ -341,6 +343,22 @@ export class OBSRecorder {
   /** True when UpForge or OBS still has an active match recording to finalize. */
   async isCaptureActive(): Promise<boolean> {
     return this.isRecording() || await this.isObsOutputActive()
+  }
+
+  /**
+   * Clear match ownership when OBS is idle but UpForge still thinks a session is active
+   * (common after WebSocket disconnect). Returns true if ownership was released.
+   */
+  async releaseStaleMatchOwnership(): Promise<boolean> {
+    if (!this._matchOwnedRecording || this._recording) return false
+    if (await this.isObsOutputActive()) return false
+    log.info('[OBSRecorder] Released stale match ownership — OBS output is idle')
+    this._matchOwnedRecording = false
+    this._startedAt = null
+    this._disconnectedDuringRecording = false
+    this._clipsOnlySession = false
+    this.onStatusChange?.(false)
+    return true
   }
 
   /**

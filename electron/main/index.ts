@@ -1730,6 +1730,9 @@ function setupGameDetection(): void {
     if (game !== 'valorant') return
     const emitNextMatchWatch = async () => {
       await new Promise((r) => setTimeout(r, 5000))
+      if (await obsRecorder.releaseStaleMatchOwnership()) {
+        logActivity('Cleared stale recording state — watching for next match')
+      }
       if (!(await gameDetector.isMatchProcessRunning())) return
 
       // Avoid stop/start loops: a false early match-end while still INGAME must not
@@ -2404,6 +2407,9 @@ function setupGameDetection(): void {
   }
 
   gameDetector.on('game-started', async (game: string) => {
+    if (await obsRecorder.releaseStaleMatchOwnership()) {
+      logActivity('Cleared stale recording state — ready for next match')
+    }
     if (obsRecorder.isRecording()) {
       console.log('[GameDetector] game-started ignored — capture already active')
       return
@@ -2443,6 +2449,7 @@ function setupGameDetection(): void {
       logActivity('No game modes selected — recording disabled')
       notifyRecordingUx('Select at least one game mode in Settings → Recording to record matches.')
       tray?.setToolTip(idleTooltip(game))
+      await rearmGameDetection(game, true)
       return
     }
 
@@ -2652,6 +2659,7 @@ function setupGameDetection(): void {
       // Wait up to 25 minutes for INGAME (handles long Agent Select)
       const PRESENCE_TIMEOUT_MS = 25 * 60 * 1000
       const deadline = Date.now() + PRESENCE_TIMEOUT_MS
+      let lastCoreGameCheckAt = 0
       while (Date.now() < deadline && !cancelled) {
         if (abortIfStale(isStale, game)) return
         await new Promise((r) => setTimeout(r, 1000))
@@ -2742,6 +2750,25 @@ function setupGameDetection(): void {
               }
             }
             break
+          }
+
+          // Presence can flake (circuit breaker / empty private payload) while core-game is live.
+          const now = Date.now()
+          if (now - lastCoreGameCheckAt >= 3000) {
+            lastCoreGameCheckAt = now
+            const coreActive = await riotLocalApi.isCoreGameSessionActive()
+            if (coreActive === true) {
+              console.log('[GameDetector] core-game session active — treating as INGAME (presence fallback)')
+              matchStartTime = Date.now()
+              if (!gameMode) {
+                const mode = await riotLocalApi.getGameMode()
+                if (mode) {
+                  gameMode = mode
+                  modeConfident = true
+                }
+              }
+              break
+            }
           }
         } catch { /* presence endpoint not yet up — keep waiting */ }
       }
