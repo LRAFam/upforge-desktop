@@ -19,6 +19,10 @@ const UPLOAD_CONCURRENCY = 4
 /** Clips smaller than this are usually corrupt or empty extractions — skip upload. */
 const MIN_DUEL_CLIP_BYTES = 12 * 1024
 
+export function countMomentsWithClipKeys(moments: DuelMomentManifest[]): number {
+  return moments.filter((m) => Boolean(m.clip_s3_key?.trim())).length
+}
+
 async function mapPool<T, R>(
   items: T[],
   concurrency: number,
@@ -66,6 +70,44 @@ async function ensurePlayableExtractSource(
   return outPath
 }
 
+async function extractMomentClip(
+  clipExtractor: ClipExtractor,
+  extractSource: string,
+  moment: DuelMomentManifest,
+  outPath: string,
+): Promise<{ ok: true; bytes: number } | { ok: false; reason: string }> {
+  const durationMs = Math.max(500, moment.window_end_ms - moment.window_start_ms)
+  const attempts = [true, false] as const
+  let lastReason = 'unknown extract error'
+
+  for (const accurateSeek of attempts) {
+    try {
+      await unlink(outPath).catch(() => {})
+      await clipExtractor.extract({
+        sourcePath: extractSource,
+        startOffsetMs: moment.window_start_ms,
+        durationMs,
+        outputPath: outPath,
+        accurateSeek,
+      })
+      const { size } = await stat(outPath)
+      if (size >= MIN_DUEL_CLIP_BYTES) {
+        return { ok: true, bytes: size }
+      }
+      lastReason = `clip too small (${size} bytes)`
+      log.warn(
+        `[DuelClips] ${moment.moment_id} ${lastReason} accurateSeek=${accurateSeek} ` +
+        `@ ${moment.window_start_ms}-${moment.window_end_ms}ms`,
+      )
+    } catch (err) {
+      lastReason = err instanceof Error ? err.message : String(err)
+      log.warn(`[DuelClips] Extract failed for ${moment.moment_id} (accurateSeek=${accurateSeek}):`, err)
+    }
+  }
+
+  return { ok: false, reason: lastReason }
+}
+
 export async function extractDuelPreviewClip(opts: {
   videoPath: string
   windowStartMs: number
@@ -78,24 +120,25 @@ export async function extractDuelPreviewClip(opts: {
   try {
     const sourcePath = await resolveDuelClipSourcePath(videoPath, clipExtractor)
     const extractSource = await ensurePlayableExtractSource(sourcePath, workDir)
-    const durationMs = Math.max(500, windowEndMs - windowStartMs)
     const safeId = momentId.replace(/[^a-zA-Z0-9._-]/g, '_')
     const outPath = join(workDir, `${safeId}.mp4`)
-    await clipExtractor.extract({
-      sourcePath: extractSource,
-      startOffsetMs: windowStartMs,
-      durationMs,
-      outputPath: outPath,
-      accurateSeek: true,
-    })
-    const { size } = await stat(outPath)
-    if (size < MIN_DUEL_CLIP_BYTES) {
-      return {
-        ok: false,
-        error: `Extracted clip is empty or corrupt (${size} bytes) — check sync or recording path`,
-      }
+    const result = await extractMomentClip(
+      clipExtractor,
+      extractSource,
+      {
+        moment_id: momentId,
+        round: 0,
+        video_offset_ms: windowEndMs,
+        window_start_ms: windowStartMs,
+        window_end_ms: windowEndMs,
+        isolated: false,
+      },
+      outPath,
+    )
+    if (!result.ok) {
+      return { ok: false, error: result.reason }
     }
-    return { ok: true, path: outPath, bytes: size }
+    return { ok: true, path: outPath, bytes: result.bytes }
   } catch (err) {
     await rm(workDir, { recursive: true, force: true }).catch(() => {})
     return {
@@ -103,6 +146,46 @@ export async function extractDuelPreviewClip(opts: {
       error: err instanceof Error ? err.message : String(err),
     }
   }
+}
+
+async function uploadLocalClips(
+  uploadManager: UploadManager,
+  jobId: string,
+  moments: DuelMomentManifest[],
+  localPaths: Map<string, string>,
+): Promise<DuelMomentManifest[]> {
+  const uploadableIds = moments
+    .map((m) => m.moment_id)
+    .filter((id) => localPaths.has(id))
+
+  if (uploadableIds.length === 0) {
+    return moments
+  }
+
+  const presigned = await uploadManager.presignDuelClips(jobId, uploadableIds)
+  const uploadedIds = new Set<string>()
+
+  await mapPool(presigned, UPLOAD_CONCURRENCY, async (clip) => {
+    const local = localPaths.get(clip.moment_id)
+    if (!local) return
+    try {
+      await uploadManager.putFileToS3(clip.upload_url, local)
+      uploadedIds.add(clip.moment_id)
+    } catch (err) {
+      log.warn(`[DuelClips] S3 PUT failed for ${clip.moment_id}:`, err)
+    }
+  })
+
+  const keyById = new Map(
+    presigned
+      .filter((c) => uploadedIds.has(c.moment_id))
+      .map((c) => [c.moment_id, c.s3_key]),
+  )
+
+  return moments.map((m) => ({
+    ...m,
+    clip_s3_key: keyById.get(m.moment_id) ?? m.clip_s3_key,
+  }))
 }
 
 export async function extractAndUploadDuelClips(opts: {
@@ -135,71 +218,43 @@ export async function extractAndUploadDuelClips(opts: {
 
   try {
     await mapPool(moments, EXTRACT_CONCURRENCY, async (moment) => {
-      const durationMs = Math.max(500, moment.window_end_ms - moment.window_start_ms)
       const safeId = moment.moment_id.replace(/[^a-zA-Z0-9._-]/g, '_')
       const outPath = join(workDir, `${safeId}.mp4`)
-      try {
-        await clipExtractor.extract({
-          sourcePath: extractSource,
-          startOffsetMs: moment.window_start_ms,
-          durationMs,
-          outputPath: outPath,
-          accurateSeek: true,
-        })
-        const { size } = await stat(outPath)
-        if (size < MIN_DUEL_CLIP_BYTES) {
-          skippedTooSmall++
-          log.warn(
-            `[DuelClips] Skipping ${moment.moment_id}: clip too small (${size} bytes) ` +
-            `@ ${moment.window_start_ms}-${moment.window_end_ms}ms from ${sourcePath}`,
-          )
-          await unlink(outPath).catch(() => {})
-          return
-        }
+      const result = await extractMomentClip(clipExtractor, extractSource, moment, outPath)
+      if (result.ok) {
         localPaths.set(moment.moment_id, outPath)
-      } catch (err) {
+      } else if (result.reason.includes('too small')) {
+        skippedTooSmall++
+      } else {
         extractFailed++
-        log.warn(`[DuelClips] Extract failed for ${moment.moment_id}:`, err)
       }
     })
 
-    const uploadableIds = moments
-      .map((m) => m.moment_id)
-      .filter((id) => localPaths.has(id))
+    let withKeys = await uploadLocalClips(uploadManager, jobId, moments, localPaths)
+    let uploaded = countMomentsWithClipKeys(withKeys)
 
-    if (uploadableIds.length > 0) {
-      const presigned = await uploadManager.presignDuelClips(jobId, uploadableIds)
-
-      await mapPool(presigned, UPLOAD_CONCURRENCY, async (clip) => {
-        const local = localPaths.get(clip.moment_id)
-        if (!local) return
-        await uploadManager.putFileToS3(clip.upload_url, local)
-      })
-
-      const keyById = new Map(presigned.map((c) => [c.moment_id, c.s3_key]))
-      const withKeys = moments.map((m) => ({
-        ...m,
-        clip_s3_key: keyById.get(m.moment_id),
-      }))
-
+    if (uploaded > 0 && uploaded < moments.length) {
       log.info(
-        `[DuelClips] Uploaded ${uploadableIds.length}/${moments.length} duel clips for job ${jobId}`,
+        `[DuelClips] Uploaded ${uploaded}/${moments.length} duel clips for job ${jobId}`,
       )
-      if (uploadableIds.length < moments.length) {
-        reportPipelineError(
-          'duel-clips',
-          `Partial duel clip upload: ${uploadableIds.length}/${moments.length} for job ${jobId}`,
-          {
-            jobId,
-            sourcePath,
-            durationMs,
-            skippedTooSmall,
-            extractFailed,
-            requested: moments.length,
-            uploaded: uploadableIds.length,
-          },
-        )
-      }
+      reportPipelineError(
+        'duel-clips',
+        `Partial duel clip upload: ${uploaded}/${moments.length} for job ${jobId}`,
+        {
+          jobId,
+          sourcePath,
+          durationMs,
+          skippedTooSmall,
+          extractFailed,
+          requested: moments.length,
+          uploaded,
+        },
+      )
+      return withKeys
+    }
+
+    if (uploaded === moments.length) {
+      log.info(`[DuelClips] Uploaded ${uploaded}/${moments.length} duel clips for job ${jobId}`)
       return withKeys
     }
 
@@ -215,9 +270,8 @@ export async function extractAndUploadDuelClips(opts: {
         requested: moments.length,
       },
     )
-    log.warn(`[DuelClips] No duel clips extracted for job ${jobId} — AI will use full recording`)
-    return moments
-
+    log.warn(`[DuelClips] No duel clips extracted for job ${jobId} — server will backfill from VOD`)
+    return withKeys
   } finally {
     for (const p of localPaths.values()) {
       await unlink(p).catch(() => {})

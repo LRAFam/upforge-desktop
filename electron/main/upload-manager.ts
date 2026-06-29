@@ -283,6 +283,10 @@ export class UploadManager {
     // analysis, the user can resume polling from the next launch.
     savePendingJob(job_id, { agent: opts.agent ?? undefined, map: opts.map ?? undefined, game: opts.game })
 
+    const duelClipsTask = opts.prepareDuelClips
+      ? opts.prepareDuelClips(job_id, opts.videoPath)
+      : null
+
     // ── Step 2: stream file directly to S3 ────────────────────────────────
     opts.onProgress(8)
     let uploadParts: UploadedPart[] | undefined
@@ -310,9 +314,27 @@ export class UploadManager {
     const completeExtras = opts.getCoachingExtras?.() ?? opts.coachingExtras
     const completeCtx = submissionContextFromTimeline(opts.timeline ?? null, completeExtras)
     let duelMomentsPayload = opts.duelMoments
-    if (opts.prepareDuelClips) {
+
+    const resolveDuelMoments = async (): Promise<DuelMomentManifest[] | undefined> => {
+      if (!opts.prepareDuelClips) {
+        return duelMomentsPayload
+      }
+
+      const runPrepare = async (): Promise<DuelMomentManifest[]> => {
+        if (duelClipsTask) {
+          return duelClipsTask
+        }
+        return opts.prepareDuelClips!(job_id, opts.videoPath)
+      }
+
       try {
-        duelMomentsPayload = await opts.prepareDuelClips(job_id, opts.videoPath)
+        let payload = await runPrepare()
+        const uploaded = payload.filter((m) => m.clip_s3_key?.trim()).length
+        if (payload.length > 0 && uploaded === 0) {
+          console.warn('[UploadManager] Duel clip upload returned 0 keys — retrying once')
+          payload = await opts.prepareDuelClips!(job_id, opts.videoPath)
+        }
+        return payload
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err)
         console.error('[UploadManager] Duel clip upload failed:', err)
@@ -321,10 +343,16 @@ export class UploadManager {
           videoPath: opts.videoPath,
           stack: err instanceof Error ? err.stack?.slice(0, 2000) : undefined,
         })
-        // Full VOD is already on S3 — queue analysis without per-duel clip keys.
-        duelMomentsPayload = completeCtx.duel_moments ?? opts.duelMoments
+        try {
+          return await opts.prepareDuelClips!(job_id, opts.videoPath)
+        } catch (retryErr) {
+          console.error('[UploadManager] Duel clip retry failed:', retryErr)
+          return completeCtx.duel_moments ?? opts.duelMoments
+        }
       }
     }
+
+    duelMomentsPayload = await resolveDuelMoments()
     await this._apiPost(
       `${apiUrl}/api/desktop-submissions/complete`,
       JSON.stringify({

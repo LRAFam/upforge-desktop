@@ -143,7 +143,7 @@ import {
 import { ClipPipeline } from './clip-pipeline'
 import { duelMomentsForUpload } from './moment-picker'
 import { buildAndUploadScoutMoments } from './scout-moments'
-import { extractAndUploadDuelClips, extractDuelPreviewClip } from './duel-clip-uploader'
+import { extractAndUploadDuelClips, extractDuelPreviewClip, countMomentsWithClipKeys } from './duel-clip-uploader'
 import { requestPregameBrief as _requestPregameBrief, requestPostGameDebrief as _requestPostGameDebrief } from './post-game-api'
 import { enrichTimelineForCoaching } from './match-coaching-enrich'
 import {
@@ -3569,8 +3569,11 @@ async function doUploadAndAnalyse(
               moments,
               clipExtractor,
             })
-            const uploaded = withKeys.filter((m) => m.clip_s3_key).length
+            const uploaded = countMomentsWithClipKeys(withKeys)
             logActivity(`Uploaded ${uploaded}/${moments.length} duel clips for AI review`)
+            if (uploaded === 0 && moments.length > 0) {
+              logActivity('Duel clips not cut locally — server will extract from your recording')
+            }
             return withKeys
           }
         : undefined,
