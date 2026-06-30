@@ -272,527 +272,99 @@
         </div>
       </div>
 
-      <!-- Ready -->
-      <div v-else-if="state === 'ready'" class="w-full space-y-3 transition-all duration-500 ready-state-in">
+      <!-- Ready — compact carousel toast (full report on web) -->
+      <div v-else-if="state === 'ready'" class="w-full space-y-2.5 transition-all duration-500 ready-state-in">
         <div
-          class="flow-hero ready-hero relative overflow-hidden rounded-2xl border border-emerald-500/20 text-left"
+          class="flow-hero ready-hero relative overflow-hidden rounded-xl border border-emerald-500/20 text-left"
           :style="agentAccentColor ? { '--flow-glow': 'rgba(34,197,94,0.25)' } : undefined"
         >
           <PostGameFlowHeroBackdrop :art-url="scoreRevealHeroArt" :map-url="mapSplashUrl" tone="reveal" />
-          <PostGameHeroEffects variant="reveal" />
-
-          <div class="relative px-4 pt-4 pb-3.5">
-            <div class="mb-3 inline-flex items-center gap-1.5 rounded-full border border-emerald-500/30 bg-emerald-500/12 px-2.5 py-1 backdrop-blur-sm complete-badge-in">
-              <svg class="w-3 h-3 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"/>
-              </svg>
-              <span class="text-[10px] font-bold uppercase tracking-[0.16em] text-emerald-300">Coaching ready</span>
-            </div>
-
-            <div class="flex items-end gap-3">
+          <div class="relative px-3.5 py-3">
+            <div class="flex items-center gap-2.5">
               <div
-                class="h-14 w-14 flex-shrink-0 overflow-hidden rounded-xl flex items-center justify-center shadow-lg"
+                class="h-10 w-10 flex-shrink-0 overflow-hidden rounded-lg flex items-center justify-center"
                 :class="agentImageUrl && !agentImageBroken ? '' : 'border border-emerald-500/25 bg-emerald-500/10'"
-                :style="agentImageUrl && !agentImageBroken ? { border: `1px solid ${agentAccentColor}66`, background: agentAccentColor + '28', boxShadow: `0 8px 24px ${agentAccentColor}25` } : undefined"
+                :style="agentImageUrl && !agentImageBroken ? { border: `1px solid ${agentAccentColor}66`, background: agentAccentColor + '28' } : undefined"
               >
                 <img
                   v-if="agentImageUrl && !agentImageBroken"
                   :src="agentImageUrl"
-                  class="h-12 w-12 object-contain"
+                  class="h-8 w-8 object-contain"
                   @error="agentImageBroken = true"
                 />
-                <span v-else-if="gameInfo.agent" class="text-lg font-black text-emerald-300">{{ gameInfo.agent.charAt(0) }}</span>
-                <svg v-else class="h-6 w-6 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 12l2 2 4-4m5-2a9 9 0 11-18 0 9 9 0 0118 0z"/>
-                </svg>
+                <span v-else-if="gameInfo.agent" class="text-sm font-black text-emerald-300">{{ gameInfo.agent.charAt(0) }}</span>
               </div>
-              <div class="min-w-0 flex-1 pb-0.5">
-                <p class="text-base font-bold leading-tight text-white">Your debrief is ready</p>
-                <p class="mt-0.5 text-xs font-medium text-gray-400">
-                  {{ gameInfo.agent || gameLabel }}<span v-if="gameInfo.map" class="text-gray-600"> · {{ gameInfo.map }}</span>
+              <div class="min-w-0 flex-1">
+                <div class="flex items-center gap-1.5">
+                  <svg class="w-3 h-3 text-emerald-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"/>
+                  </svg>
+                  <span class="text-[10px] font-bold uppercase tracking-[0.14em] text-emerald-300">Analysis ready</span>
+                </div>
+                <p class="text-sm font-bold text-white leading-tight mt-0.5 truncate">
+                  {{ gameInfo.agent || gameLabel }}<span v-if="gameInfo.map" class="text-gray-500 font-medium"> · {{ gameInfo.map }}</span>
                 </p>
               </div>
-              <div v-if="result?.overall_score && !spatialSummary?.events?.length" class="text-right pb-0.5 score-reveal">
-                <p class="text-2xl font-black tabular-nums leading-none" :class="scoreClass(result.overall_score)">
+              <div v-if="result?.overall_score != null" class="text-right flex-shrink-0 pl-2">
+                <p class="text-xl font-black tabular-nums leading-none" :class="scoreClass(result.overall_score)">
                   {{ result.overall_score * 10 }}
                 </p>
-                <p class="text-[10px] text-gray-600">/ 1000</p>
+                <p class="text-[9px] font-bold text-gray-500">{{ scoreGrade(result.overall_score) }}</p>
               </div>
             </div>
           </div>
         </div>
 
-        <PostGameFocusHero
-          v-if="focusHero"
+        <PostGameDebriefCarousel
           :focus="focusHero"
-          :match-label="[gameInfo.agent, gameInfo.map].filter(Boolean).join(' · ') || null"
-        />
-
-        <!-- Visual-first: Match Intel (map hero) -->
-        <PostGameIntelHero
-          v-if="spatialSummary?.events?.length"
-          ref="intelHeroRef"
-          :summary="spatialSummary"
-          :map-name="gameInfo.map"
-          :game="gameInfo.game"
-          :agent-accent="agentAccentColor"
           :overall-score="result?.overall_score ?? null"
-          :match-result="result?.match_result ?? null"
           :kills="result?.kills ?? null"
           :deaths="result?.deaths ?? null"
-          :primary-insight="primaryInsight"
-          :category-scores="categoryScores"
-          :active-spatial-index="activeSpatialIndex"
-          @update:active-spatial-index="activeSpatialIndex = $event"
-          @copy-map="copySpatialMapImage"
+          :assists="result?.assists ?? null"
+          :match-result="hasMatchResult ? (result?.match_result ?? null) : null"
+          :ally-score="result?.ally_score ?? null"
+          :enemy-score="result?.enemy_score ?? null"
+          :top-highlight="topCarouselHighlight"
+          :debrief-text="debriefFailed ? null : debriefText"
+          :debrief-loading="debriefLoading"
+          :debrief-failed="debriefFailed"
+          :session-clip-count="sessionClipCount"
+          :score-grade="scoreGrade"
+          :score-label="scoreLabel"
+          @open-clips="openClips"
         />
 
-        <MatchRecapPanel
-          :priority-improvements="improvements"
-          :top-issue="topIssue"
-          :coaching-tags="result?.coaching_tags"
-          :overall-score="result?.overall_score ?? null"
-          :spatial-summary="spatialSummary"
-          :session-clips="sessionClips"
-          :api-highlights="result?.match_highlights ?? null"
-          :recording-id="vodRecordingId"
-          @seek="seekRecapMoment"
-          @open-clip="openRecapClip"
-        />
+        <p v-if="carouselPanelsHint" class="text-[9px] text-center text-gray-600 tracking-wide">
+          {{ carouselPanelsHint }}
+        </p>
 
-        <DuelMomentCards
-          v-if="duelMoments.length"
-          :moments="duelMoments"
-          compact
-          @seek="(ms) => seekRecapMoment(Math.max(0, ms - 3000))"
-        />
-
-        <TimingComparisonPanel
-          v-if="timingComparisons.length"
-          :comparisons="timingComparisons"
-          @seek="seekRecapMoment"
-        />
-
-        <SkillProfileBars
-          v-if="result?.skill_profile"
-          :profile="result.skill_profile"
-          :compact="true"
-        />
-
-        <CategoryPercentilesStrip
-          v-if="Object.keys(categoryPercentiles).length"
-          :percentiles="categoryPercentiles"
-          :tier="percentileTier"
-        />
-
-        <CoachMemoryCard
-          v-if="result?.skill_profile"
-          :profile="result.skill_profile"
-        />
-
-        <div v-if="vodRecordingId" class="space-y-2">
-          <div class="flex gap-2">
-            <button
-              v-if="activeDeathSeekMs != null && canSeekFromSpatial"
-              type="button"
-              class="flex-1 flex items-center justify-center gap-2 py-2.5 text-xs font-bold rounded-xl border border-red-500/30 bg-red-500/10 text-red-200 hover:bg-red-500/15 transition-colors"
-              @click="reviewSelectedDeathInVod"
-            >
-              <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"/>
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
-              </svg>
-              Review death in VOD
-            </button>
-            <button
-              type="button"
-              :class="activeDeathSeekMs != null && canSeekFromSpatial ? 'flex-1' : 'w-full'"
-              class="py-2.5 text-xs font-semibold rounded-xl border border-white/10 bg-white/[0.03] text-gray-300 hover:bg-white/[0.06] hover:text-white transition-colors"
-              @click="openVodReview"
-            >Open full VOD</button>
-          </div>
-          <p
-            v-if="activeDeathSeekMs != null && !canSeekFromSpatial"
-            class="text-[10px] text-center text-gray-500"
-          >
-            Death heatmap preview is free.
-            <button type="button" class="text-amber-400 hover:text-amber-300 font-semibold" @click="openUpgrade">Plus</button>
-            unlocks click-to-seek.
-          </p>
-        </div>
-
-        <!-- No spatial data fallback -->
-        <div v-else class="space-y-3">
-          <div v-if="result?.overall_score" class="w-full h-1.5 bg-white/[0.06] rounded-full overflow-hidden">
-            <div class="h-full rounded-full" :class="scoreBarClass(result.overall_score)" :style="{ width: `${result.overall_score}%` }" />
-          </div>
-        </div>
-
-        <!-- Collapsed text wall — optional deep dive -->
-        <button
-          v-if="hasDeepDiveContent"
-          type="button"
-          class="w-full flex items-center justify-between px-3 py-2.5 rounded-xl border border-white/10 bg-white/[0.02] text-left hover:bg-white/[0.04] transition-colors"
-          @click="showFullDetails = !showFullDetails"
-        >
-          <span class="text-xs font-semibold text-gray-400">
-            {{ showFullDetails ? 'Hide' : 'Read' }} full AI breakdown
-          </span>
-          <svg class="w-4 h-4 text-gray-500 transition-transform" :class="showFullDetails ? 'rotate-180' : ''" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
-          </svg>
-        </button>
-
-        <div v-if="showFullDetails && hasDeepDiveContent" class="space-y-2.5 rounded-xl border border-white/10 bg-white/[0.02] p-3">
-          <div v-if="result?.verdict" class="text-[11px] text-gray-400 italic leading-relaxed">{{ result.verdict }}</div>
-          <div
-            v-if="result?.kills != null && (result.kills > 0 || result.deaths != null)"
-            class="grid grid-cols-3 gap-2"
-          >
-            <div class="rounded-lg border border-green-500/20 bg-green-500/[0.08] px-2 py-2 text-center">
-              <p class="text-[9px] uppercase text-green-300/70">K</p>
-              <p class="text-lg font-black text-green-400">{{ result.kills }}</p>
-            </div>
-            <div class="rounded-lg border border-red-500/20 bg-red-500/[0.08] px-2 py-2 text-center">
-              <p class="text-[9px] uppercase text-red-300/70">D</p>
-              <p class="text-lg font-black text-red-400">{{ result.deaths ?? '?' }}</p>
-            </div>
-            <div class="rounded-lg border border-blue-500/20 bg-blue-500/[0.08] px-2 py-2 text-center">
-              <p class="text-[9px] uppercase text-blue-300/70">A</p>
-              <p class="text-lg font-black text-blue-400">{{ result.assists ?? '?' }}</p>
-            </div>
-          </div>
-          <div v-if="improvements.length" class="space-y-1.5">
-            <p class="text-[10px] font-semibold uppercase tracking-wider text-gray-600">Also focus on</p>
-            <p v-for="(imp, i) in improvements.slice(0, 3)" :key="i" class="text-[11px] text-gray-400 leading-relaxed">{{ imp }}</p>
-          </div>
-          <div v-if="result?.coaching_tags?.length" class="flex flex-wrap gap-1">
-            <span
-              v-for="tag in result.coaching_tags"
-              :key="tag"
-              class="text-[9px] px-2 py-0.5 rounded-full bg-red-500/10 text-red-400/80 border border-red-500/20 capitalize"
-            >{{ tag.replace(/_/g, ' ') }}</span>
-          </div>
-        </div>
-
-        <!-- Train This Now CTA — maps top weakness to a drill scenario -->
-        <button
-          v-if="improvements.length || topIssue"
-          :disabled="trainerLaunching"
-          class="w-full flex items-center justify-center gap-2 py-2.5 text-xs font-bold rounded-xl transition-all disabled:opacity-50 text-white"
-          style="background: linear-gradient(135deg, #f97316, #dc2626); box-shadow: 0 4px 14px rgba(249,115,22,0.25);"
-          @click="launchTrainer"
-        >
-          <svg class="w-3.5 h-3.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <circle cx="12" cy="12" r="10" stroke-width="1.5"/>
-            <circle cx="12" cy="12" r="4" stroke-width="1.5"/>
-            <line x1="12" y1="2" x2="12" y2="6" stroke-width="1.5"/>
-            <line x1="12" y1="18" x2="12" y2="22" stroke-width="1.5"/>
-            <line x1="2" y1="12" x2="6" y2="12" stroke-width="1.5"/>
-            <line x1="18" y1="12" x2="22" y2="12" stroke-width="1.5"/>
-          </svg>
-          <span>{{ trainerLaunching ? 'Launching trainer…' : `Train Now · ${SCENARIO_LABELS[trainScenario]}` }}</span>
-        </button>
-
-        <!-- Match data warning: shown when Riot capture failed -->
         <div
           v-if="matchDataWarning"
-          class="flex items-start gap-2.5 px-3 py-2.5 bg-amber-500/[0.07] border border-amber-500/20 rounded-xl"
+          class="flex items-start gap-2 px-2.5 py-2 bg-amber-500/[0.07] border border-amber-500/20 rounded-lg"
         >
-          <svg class="w-3.5 h-3.5 text-amber-400 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
-          </svg>
-          <div class="space-y-0.5">
-            <p class="text-xs text-amber-300/90 leading-relaxed">{{ matchDataWarning.message }}</p>
-            <p class="text-xs text-gray-500 leading-relaxed">{{ matchDataWarning.tip }}</p>
-          </div>
+          <p class="text-[10px] text-amber-300/90 leading-relaxed">{{ matchDataWarning.message }}</p>
         </div>
 
-        <!-- Coaching feedback -->
-        <div
-          v-if="result?.analysis_id && feedbackSubmitted"
-          class="flex items-center gap-2 rounded-xl border border-green-500/20 bg-green-500/[0.06] px-3 py-2"
-        >
-          <svg class="h-3.5 w-3.5 flex-shrink-0 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"/>
-          </svg>
-          <p class="text-xs text-green-300/90">Thanks — your feedback helps improve future coaching.</p>
-        </div>
-        <div
-          v-else-if="result?.analysis_id"
-          class="rounded-xl border border-white/[0.08] bg-white/[0.02] px-3 py-2.5 space-y-2"
-        >
-          <p class="text-[10px] font-semibold uppercase tracking-wider text-gray-500">Was this coaching helpful?</p>
-          <div class="flex gap-2">
-            <button
-              type="button"
-              class="flex-1 rounded-lg border px-3 py-2 text-xs font-semibold transition-colors disabled:opacity-50"
-              :class="feedbackRating === 'thumbs_up'
-                ? 'border-green-500/40 bg-green-500/15 text-green-200'
-                : 'border-white/[0.08] bg-white/[0.03] text-gray-300 hover:border-white/[0.14] hover:text-white'"
-              :disabled="feedbackSubmitting"
-              @click="submitAnalysisFeedback('thumbs_up')"
-            >
-              {{ feedbackSubmitting && feedbackRating === 'thumbs_up' ? 'Sending…' : 'Yes, helpful' }}
-            </button>
-            <button
-              type="button"
-              class="flex-1 rounded-lg border px-3 py-2 text-xs font-semibold transition-colors disabled:opacity-50"
-              :class="feedbackRating === 'thumbs_down'
-                ? 'border-amber-500/40 bg-amber-500/15 text-amber-200'
-                : 'border-white/[0.08] bg-white/[0.03] text-gray-300 hover:border-white/[0.14] hover:text-white'"
-              :disabled="feedbackSubmitting"
-              @click="feedbackRating = 'thumbs_down'"
-            >
-              Not quite
-            </button>
-          </div>
-          <div v-if="feedbackRating === 'thumbs_down'" class="space-y-2">
-            <textarea
-              v-model="feedbackText"
-              rows="2"
-              maxlength="500"
-              placeholder="Anything we missed? (optional)"
-              class="w-full resize-none rounded-lg border border-white/[0.08] bg-black/30 px-2.5 py-2 text-xs text-gray-300 placeholder:text-gray-600 focus:border-white/[0.14] focus:outline-none"
-            />
-            <button
-              type="button"
-              class="w-full rounded-lg border border-white/[0.10] bg-white/[0.04] py-2 text-xs font-semibold text-gray-200 transition-colors hover:bg-white/[0.08] disabled:opacity-50"
-              :disabled="feedbackSubmitting"
-              @click="submitAnalysisFeedback('thumbs_down')"
-            >
-              {{ feedbackSubmitting ? 'Sending…' : 'Send feedback' }}
-            </button>
-          </div>
-        </div>
-
-        <!-- Ask my coach (roster) -->
-        <div
-          v-if="result?.analysis_id && liveCoaches.length && !coachReviewSent"
-          class="rounded-xl border border-white/[0.08] bg-white/[0.02] px-3 py-2.5 space-y-2"
-        >
-          <p class="text-[10px] font-semibold uppercase tracking-wider text-gray-400">Ask my coach</p>
-          <template v-if="!coachAskExpanded">
-            <button
-              type="button"
-              class="w-full rounded-lg border border-white/[0.12] bg-white/[0.04] py-2.5 text-xs font-semibold text-white transition-colors hover:bg-white/[0.07] disabled:opacity-50"
-              :disabled="coachReviewSubmitting || !selectedCoachId"
-              @click="submitCoachReview"
-            >
-              {{ coachReviewSubmitting ? 'Sending…' : `Send to ${selectedCoachName}` }}
-            </button>
-            <button
-              type="button"
-              class="w-full text-[10px] text-gray-500 hover:text-gray-300"
-              @click="coachAskExpanded = true; coachSelectedRounds = coachSuggestedRounds.length ? [coachSuggestedRounds[0]!] : []"
-            >
-              Add focus question or change coach
-            </button>
-          </template>
-          <template v-else>
-            <select
-              v-if="liveCoaches.length > 1"
-              v-model="selectedCoachId"
-              class="w-full rounded-lg border border-white/[0.08] bg-black/30 px-2.5 py-2 text-xs text-gray-200 focus:border-white/[0.14] focus:outline-none"
-            >
-              <option v-for="c in liveCoaches" :key="c.coach_id" :value="c.coach_id">{{ c.display_name }}</option>
-            </select>
-            <textarea
-              v-model="coachQuestion"
-              rows="2"
-              maxlength="1000"
-              placeholder="Optional: what should your coach focus on?"
-              class="w-full resize-none rounded-lg border border-white/[0.08] bg-black/30 px-2.5 py-2 text-xs text-gray-300 placeholder:text-gray-600 focus:border-white/[0.14] focus:outline-none"
-            />
-            <div v-if="coachSuggestedRounds.length" class="space-y-1">
-              <p class="text-[10px] font-semibold uppercase tracking-wide text-gray-500">Focus rounds</p>
-              <div class="flex flex-wrap gap-1">
-                <button
-                  v-for="round in coachSuggestedRounds"
-                  :key="round"
-                  type="button"
-                  class="text-[10px] font-semibold px-2 py-0.5 rounded-full border transition-colors"
-                  :class="coachSelectedRounds.includes(round) ? 'border-violet-500/50 bg-violet-500/20 text-violet-200' : 'border-white/[0.08] text-gray-500 hover:text-violet-200'"
-                  @click="toggleCoachRound(round)"
-                >
-                  R{{ round }}
-                </button>
-              </div>
-            </div>
-            <button
-              type="button"
-              class="w-full rounded-lg border border-white/[0.12] bg-white/[0.06] py-2 text-xs font-semibold text-white transition-colors hover:bg-white/[0.09] disabled:opacity-50"
-              :disabled="coachReviewSubmitting || !selectedCoachId"
-              @click="submitCoachReview"
-            >
-              {{ coachReviewSubmitting ? 'Sending…' : 'Send review request' }}
-            </button>
-          </template>
-        </div>
-        <div
-          v-else-if="result?.analysis_id && coachesLoaded && myCoaches.length && !liveCoaches.length && !coachReviewSent"
-          class="rounded-xl border border-white/[0.08] bg-white/[0.02] px-3 py-2.5 space-y-2"
-        >
-          <p class="text-[10px] font-semibold uppercase tracking-wider text-gray-500">Ask my coach</p>
-          <p class="text-xs text-gray-400 leading-relaxed">
-            Your coach hasn't opened their community roster yet — book a paid review on the web for priority feedback.
-          </p>
-        </div>
-        <div
-          v-else-if="result?.analysis_id && coachesLoaded && !myCoaches.length && !coachReviewSent"
-          class="rounded-xl border border-white/[0.08] bg-white/[0.02] px-3 py-2.5 space-y-2"
-        >
-          <p class="text-[10px] font-semibold uppercase tracking-wider text-gray-500">Coaching</p>
-          <p class="text-xs text-gray-400 leading-relaxed">
-            Join a coach's roster on the web to send this match for human feedback.
-          </p>
+        <div class="flex gap-2 pt-0.5">
           <button
-            type="button"
-            class="w-full rounded-lg border border-orange-500/25 py-2 text-xs font-semibold text-orange-200 transition-colors hover:bg-orange-500/10"
-            @click="openFindCoaches"
+            class="flex-1 flex items-center justify-center gap-1.5 py-2.5 text-xs font-bold rounded-xl transition-all shadow-lg"
+            :style="{ background: `linear-gradient(135deg, ${agentAccentColor || '#dc2626'}, ${agentAccentColor ? agentAccentColor + 'cc' : '#ea580c'})`, boxShadow: `0 4px 14px ${agentAccentColor || '#dc2626'}40` }"
+            @click="viewFullAnalysis"
           >
-            Find a coach →
-          </button>
-        </div>
-        <div
-          v-else-if="result?.analysis_id && coachReviewSent"
-          class="rounded-xl border px-3 py-2.5 space-y-1"
-          :class="
-            coachReviewStatus === 'completed'
-              ? 'border-emerald-500/25 bg-emerald-500/[0.06]'
-              : coachReviewStatus === 'in_progress'
-                ? 'border-violet-500/25 bg-violet-500/[0.06]'
-                : 'border-orange-500/25 bg-orange-500/[0.06]'
-          "
-        >
-          <div class="flex items-center gap-2">
-            <svg class="h-3.5 w-3.5 flex-shrink-0" :class="coachReviewStatus === 'completed' ? 'text-emerald-400' : coachReviewStatus === 'in_progress' ? 'text-violet-400' : 'text-orange-400'" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"/>
-            </svg>
-            <p class="text-xs" :class="coachReviewStatus === 'completed' ? 'text-emerald-200/90' : coachReviewStatus === 'in_progress' ? 'text-violet-200/90' : 'text-orange-200/90'">
-              <template v-if="coachReviewStatus === 'completed'">
-                Coach feedback is ready — open VOD Review and check the violet markers on the timeline.
-              </template>
-              <template v-else-if="coachReviewStatus === 'in_progress'">
-                Your coach is reviewing this match — notes will appear on your timeline soon.
-              </template>
-              <template v-else>
-                Review request sent — your coach will annotate this match on the timeline.
-              </template>
-            </p>
-          </div>
-          <button
-            v-if="coachReviewStatus === 'completed' && result?.analysis_id"
-            type="button"
-            class="w-full rounded-xl border border-violet-500/30 bg-violet-500/10 py-2.5 text-xs font-bold text-violet-100 transition-colors hover:border-violet-400/40 hover:bg-violet-500/15 disabled:opacity-50"
-            :disabled="coachNotesOpening"
-            @click="openCoachNotesFromPostGame"
-          >
-            {{ coachNotesOpening ? 'Opening coach notes…' : 'View coach notes in VOD →' }}
-          </button>
-        </div>
-
-        <div class="space-y-2 pt-1">
-          <div class="flex gap-2">
-            <button
-              class="flex-1 flex items-center justify-center gap-2 py-2.5 text-xs font-bold rounded-xl transition-all shadow-lg"
-              :style="{ background: `linear-gradient(135deg, ${agentAccentColor || '#dc2626'}, ${agentAccentColor ? agentAccentColor + 'cc' : '#ea580c'})`, boxShadow: `0 4px 14px ${agentAccentColor || '#dc2626'}40` }"
-              @click="viewFullAnalysis"
-            >
-              <span>Open full report</span>
-              <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.5 4.5L21 12m0 0l-7.5 7.5M21 12H3"/>
-              </svg>
-            </button>
-            <button
-              v-if="result?.overall_score"
-              :title="cardExportDone ? 'Saved!' : 'Save coaching card as PNG'"
-              :disabled="cardExporting"
-              class="flex-1 flex items-center justify-center gap-2 rounded-xl border border-orange-500/20 bg-gradient-to-r from-red-500/10 to-orange-500/10 px-3 py-2.5 text-xs font-bold text-orange-100 transition-all hover:from-red-500/15 hover:to-orange-500/15 hover:border-orange-400/30 disabled:opacity-50"
-              @click="exportAnalysis"
-            >
-              <svg v-if="cardExporting" class="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24">
-                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
-                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
-              </svg>
-              <svg v-else-if="cardExportDone" class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"/>
-              </svg>
-              <svg v-else class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/>
-              </svg>
-              <span>{{ cardExporting ? 'Saving…' : cardExportDone ? 'Saved!' : 'Export Card' }}</span>
-            </button>
-          </div>
-          <div class="flex gap-2">
-            <button
-              v-if="analysisUrl"
-              class="flex-1 flex items-center justify-center gap-2 rounded-xl border border-white/[0.08] bg-white/[0.03] px-3 py-2.5 text-xs font-semibold text-gray-300 transition-colors hover:border-white/[0.14] hover:bg-white/[0.08] hover:text-white"
-              @click="copyAnalysisLink"
-            >
-              <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 20 20">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" d="M11.25 5.5h1.75a3 3 0 1 1 0 6h-1.75m-2.5 3H7a3 3 0 1 1 0-6h1.75m-1.5 3h5.5"/>
-              </svg>
-              <span>Copy Link</span>
-            </button>
-            <button
-              v-if="result?.overall_score"
-              title="Copy score to clipboard"
-              class="px-3 py-2.5 text-xs text-gray-400 hover:text-gray-200 bg-white/[0.03] hover:bg-white/[0.06] border border-white/[0.10] rounded-xl transition-colors"
-              @click="copyScore"
-            >
-              <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/>
-              </svg>
-            </button>
-            <button
-              class="flex-1 px-3 py-2.5 text-xs font-medium text-gray-500 hover:text-gray-300 bg-white/[0.03] hover:bg-white/[0.06] border border-white/[0.10] rounded-xl transition-colors"
-              @click="dismiss"
-            >Close panel</button>
-          </div>
-
-          <div class="rounded-xl border border-red-500/20 bg-red-500/[0.06] px-4 py-3">
-            <p class="text-xs font-bold text-white">Queue your next match</p>
-            <p class="text-[11px] text-gray-500 mt-1 leading-relaxed">
-              UpForge runs in the background — play another game and you&apos;ll get a fresh coaching report automatically.
-            </p>
-          </div>
-        </div>
-
-        <!-- Session clips row -->
-        <button
-          v-if="sessionClipCount > 0"
-          class="w-full flex items-center gap-2 px-3 py-2 bg-white/[0.03] hover:bg-white/[0.05] border border-white/[0.10] rounded-xl transition-colors text-left"
-          @click="openClips"
-        >
-          <svg class="w-3.5 h-3.5 text-red-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.069A1 1 0 0121 8.882v6.236a1 1 0 01-1.447.894L15 14M3 8a2 2 0 012-2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V8z"/>
-          </svg>
-          <span class="text-xs text-gray-400 flex-1">
-            <span class="text-white font-semibold">{{ sessionClipCount }} clip{{ sessionClipCount !== 1 ? 's' : '' }}</span> saved from this match
-          </span>
-          <svg class="w-3 h-3 text-gray-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
-          </svg>
-        </button>
-
-        <!-- Instant debrief — collapsed by default (text-heavy) -->
-        <div v-if="debriefLoading || debriefText || debriefFailed" class="rounded-xl border border-white/10 overflow-hidden">
-          <button
-            type="button"
-            class="w-full flex items-center justify-between px-3 py-2.5 bg-purple-500/5 hover:bg-purple-500/10 transition-colors"
-            @click="showDebrief = !showDebrief"
-          >
-            <span class="text-xs font-semibold text-purple-300">Instant debrief</span>
-            <svg class="w-4 h-4 text-gray-500" :class="showDebrief ? 'rotate-180' : ''" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+            <span>Open full report</span>
+            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.5 4.5L21 12m0 0l-7.5 7.5M21 12H3"/>
             </svg>
           </button>
-          <div v-if="showDebrief" class="px-3 py-2.5 border-t border-white/10">
-            <div v-if="debriefLoading && !debriefText" class="text-xs text-gray-500">Generating…</div>
-            <p v-else-if="debriefFailed" class="text-xs text-gray-500 italic">Debrief unavailable.</p>
-            <p v-else class="text-xs text-gray-400 leading-relaxed whitespace-pre-wrap max-h-40 overflow-y-auto">{{ debriefText }}</p>
-          </div>
+          <button
+            v-if="vodRecordingId"
+            class="px-3 py-2.5 text-xs font-semibold rounded-xl border border-white/10 bg-white/[0.03] text-gray-300 hover:bg-white/[0.06] hover:text-white transition-colors"
+            @click="openVodReview"
+          >VOD</button>
+          <button
+            class="px-3 py-2.5 text-xs font-medium text-gray-500 hover:text-gray-300 bg-white/[0.03] hover:bg-white/[0.06] border border-white/[0.10] rounded-xl transition-colors"
+            @click="dismiss"
+          >Close</button>
         </div>
       </div>
 
@@ -1093,16 +665,8 @@ import { useRouter } from 'vue-router'
 import { openAnalysisVodReview } from '../lib/open-vod-review'
 import { getAgentImage, getAgentColor, getMapImage, getMapMinimap } from '../lib/valorant'
 import { analysisResultsUrl, isPrimaryGame, normalizePrimaryGame, recordingGameLabel, type PrimaryGame } from '../lib/games'
-import PostGameIntelHero from '../components/PostGameIntelHero.vue'
+import PostGameDebriefCarousel from '../components/post-game/PostGameDebriefCarousel.vue'
 import GamingButton from '../components/GamingButton.vue'
-import MatchRecapPanel from '../components/MatchRecapPanel.vue'
-import TimingComparisonPanel from '../components/TimingComparisonPanel.vue'
-import type { TimingComparison } from '../components/TimingComparisonPanel.vue'
-import SkillProfileBars from '../components/SkillProfileBars.vue'
-import CoachMemoryCard from '../components/CoachMemoryCard.vue'
-import CategoryPercentilesStrip from '../components/CategoryPercentilesStrip.vue'
-import type { CategoryPercentileEntry } from '../components/CategoryPercentilesStrip.vue'
-import PostGameFocusHero from '../components/PostGameFocusHero.vue'
 import AnalysisPipelineStages from '../components/analysis/AnalysisPipelineStages.vue'
 import PostGameFlowHeroBackdrop from '../components/post-game/PostGameFlowHeroBackdrop.vue'
 import PostGameHeroEffects from '../components/post-game/PostGameHeroEffects.vue'
@@ -1111,18 +675,18 @@ import coachHeroArt from '../assets/post-game/coach-synthesis-hero.webp'
 import refundHeroArt from '../assets/post-game/refund-hero.webp'
 import scoreRevealHeroArt from '../assets/post-game/score-reveal-hero.webp'
 import forgePanelTexture from '../assets/post-game/forge-panel-texture.webp'
-import DuelMomentCards from '../components/analysis/DuelMomentCards.vue'
 import { type DuelMoment, type DuelMomentManifest } from '../lib/duel-moments'
 import { buildFocusHeroCopy } from '../lib/skill-profile'
-import { pickTrainingScenario, SCENARIO_LABELS } from '../lib/training-drills'
 import type { MatchSpatialSummary } from '../lib/spatial-types'
 import type { SkillProfileSnapshot } from '../lib/skill-profile'
 import type { MatchHighlight } from '../lib/match-highlights'
+import { buildMatchHighlights } from '../lib/match-highlights'
+import { filterSessionClips } from '../lib/session-clips'
 import type { ClipRecord } from '../env.d.ts'
+import type { CategoryPercentileEntry } from '../components/CategoryPercentilesStrip.vue'
 import { canSpatialVodSeek } from '../lib/tier-features'
 import { buildAnalysisErrorPayload, type AnalysisErrorPayload } from '../lib/analysis-failure-messages'
 import PostGameDuelDiagnostics from '../components/post-game/PostGameDuelDiagnostics.vue'
-import type { CategoryScoreItem } from '../components/PostGameIntelHero.vue'
 
 type State = 'preparing' | 'uploading' | 'analysing' | 'ready' | 'error' | 'pending' | 'archived'
 
@@ -1139,7 +703,7 @@ const COACHING_TIPS = [
 const state = ref<State>('preparing')
 const contentRoot = ref<HTMLElement | null>(null)
 const isCompactFlowState = computed(() =>
-  ['preparing', 'uploading', 'analysing', 'error', 'pending', 'archived'].includes(state.value),
+  ['preparing', 'uploading', 'analysing', 'ready', 'error', 'pending', 'archived'].includes(state.value),
 )
 let fitHeightTimer: ReturnType<typeof setTimeout> | null = null
 let contentResizeObserver: ResizeObserver | null = null
@@ -1149,10 +713,6 @@ function scheduleFitWindow(): void {
   fitHeightTimer = setTimeout(() => {
     void nextTick(() => {
       if (!contentRoot.value || !window.api.window.setContentHeight) return
-      if (state.value === 'ready') {
-        void window.api.window.setContentHeight(Math.min(680, window.innerHeight))
-        return
-      }
       if (!isCompactFlowState.value) return
       void window.api.window.setContentHeight(contentRoot.value.scrollHeight)
     })
@@ -1179,14 +739,15 @@ const result = ref<{
   top_issue?: string | null
   priority_improvements?: string[]
   spatial_summary?: MatchSpatialSummary | null
-  category_scores?: CategoryScoreItem[]
+  category_scores?: Array<{ category: string; score: number; reasoning?: string }>
   match_highlights?: MatchHighlight[] | null
   skill_profile?: SkillProfileSnapshot | null
-  timing_comparisons?: TimingComparison[]
+  timing_comparisons?: Array<{ label: string }>
   duel_moments?: DuelMoment[] | null
   pipeline?: string | null
 } | null>(null)
 const sessionClips = ref<ClipRecord[]>([])
+const matchId = ref<string | null>(null)
 const categoryPercentiles = ref<Record<string, CategoryPercentileEntry>>({})
 const percentileTier = ref<string | null>(null)
 
@@ -1204,15 +765,6 @@ async function loadCategoryPercentiles(): Promise<void> {
   } catch { /* non-fatal */ }
 }
 
-const timingComparisons = computed((): TimingComparison[] => {
-  const raw = result.value?.timing_comparisons
-  if (!Array.isArray(raw)) return []
-  return raw.filter((x) => x && typeof x.label === 'string')
-})
-const intelHeroRef = ref<InstanceType<typeof PostGameIntelHero> | null>(null)
-const activeSpatialIndex = ref<number | null>(null)
-const showFullDetails = ref(false)
-const showDebrief = ref(false)
 const errorMessage = ref('')
 const errorDetails = ref<AnalysisErrorPayload | null>(null)
 const clipsOnlyError = ref(false)
@@ -1461,11 +1013,7 @@ const improvements = computed<string[]>(() => {
   return []
 })
 
-// --- Training CTA ---
-const trainScenario = computed(() =>
-  pickTrainingScenario(...improvements.value, topIssue.value),
-)
-const trainerLaunching = ref(false)
+// --- Training CTA removed from compact toast — available in full report ---
 const cardExporting = ref(false)
 const cardExportDone = ref(false)
 const copiedLinkToast = ref(false)
@@ -1495,23 +1043,6 @@ async function retryDemoScan() {
   }
 }
 let copiedLinkTimer: ReturnType<typeof setTimeout> | null = null
-
-async function launchTrainer() {
-  if (trainerLaunching.value) return
-  trainerLaunching.value = true
-  try {
-    await window.api.trainer.launch({
-      scenario: trainScenario.value,
-      difficulty: 'medium',
-      duration: 60,
-    })
-  } catch (e) {
-    console.error('[PostGame] Trainer launch failed:', e)
-  } finally {
-    trainerLaunching.value = false
-  }
-}
-// --- End Training CTA ---
 
 function scoreGrade(score: number): string {
   if (score >= 90) return 'S'
@@ -1581,12 +1112,6 @@ const spatialSummary = computed((): MatchSpatialSummary | null => {
 
 const pendingDuelMoments = computed(() => localDuelManifest.value)
 
-const duelMoments = computed((): DuelMoment[] => {
-  const fromApi = result.value?.duel_moments
-  if (fromApi?.length) return fromApi
-  return localDuelManifest.value
-})
-
 const coachSuggestedRounds = computed(() => {
   const events = spatialSummary.value?.events ?? []
   const rounds = new Set<number>()
@@ -1610,40 +1135,12 @@ function toggleCoachRound(round: number) {
 
 const vodRecordingId = computed(() => sessionRecordingId.value ?? pendingRecordingId.value)
 
-const activeDeathSeekMs = computed((): number | null => {
-  const idx = activeSpatialIndex.value
-  const events = spatialSummary.value?.events
-  if (idx == null || !events?.[idx] || events[idx].type !== 'death') return null
-  const offset = events[idx].videoOffsetMs
-  if (offset == null || isNaN(offset)) return null
-  return Math.max(0, offset - 4000)
-})
-
-async function reviewSelectedDeathInVod() {
-  const id = vodRecordingId.value
-  const seekMs = activeDeathSeekMs.value
-  if (!id) return
-  await window.api.app.openVodReview(id, seekMs ?? undefined)
-  dismiss()
-}
-
 async function openVodReview() {
   const id = vodRecordingId.value
   if (!id) return
   await window.api.app.openVodReview(id)
   dismiss()
 }
-
-watch(spatialSummary, (summary) => {
-  if (activeSpatialIndex.value != null || !summary?.events?.length) return
-  const firstDeath = summary.events.findIndex((e) => e.type === 'death')
-  if (firstDeath >= 0) activeSpatialIndex.value = firstDeath
-})
-
-const categoryScores = computed((): CategoryScoreItem[] => {
-  const raw = (result.value as { category_scores?: CategoryScoreItem[] } | null)?.category_scores
-  return Array.isArray(raw) ? raw : []
-})
 
 /** One glanceable line — never a paragraph above the fold. */
 const focusHero = computed(() =>
@@ -1657,35 +1154,33 @@ const focusHero = computed(() =>
   }),
 )
 
-const primaryInsight = computed((): string | null => focusHero.value?.headline ?? null)
+const topCarouselHighlight = computed((): MatchHighlight | null => {
+  const recap = buildMatchHighlights({
+    priorityImprovements: improvements.value,
+    topIssue: topIssue.value,
+    coachingTags: result.value?.coaching_tags,
+    overallScore: result.value?.overall_score ?? null,
+    spatialSummary: spatialSummary.value,
+    sessionClips: sessionClips.value,
+    apiHighlights: result.value?.match_highlights ?? null,
+  })
+  return recap.featured[0] ?? null
+})
 
-const hasDeepDiveContent = computed(() =>
-  Boolean(
-    result.value?.verdict
-    || improvements.value.length
-    || (result.value?.coaching_tags?.length ?? 0) > 0
-    || (result.value?.match_highlights?.length ?? 0) > 0
-    || timingComparisons.value.length > 0
-    || (result.value?.kills != null),
-  ),
+const carouselPanelCount = computed(() => {
+  let n = 0
+  if (focusHero.value?.headline) n++
+  if (result.value?.overall_score != null) n++
+  if (topCarouselHighlight.value) n++
+  if (debriefLoading.value || debriefText.value || debriefFailed.value) n++
+  if (sessionClipCount.value > 0) n++
+  return n
+})
+
+const carouselPanelsHint = computed(() =>
+  carouselPanelCount.value > 1 ? 'Insights rotate automatically · hover to pause' : '',
 )
 
-async function copySpatialMapImage() {
-  const dataUrl = intelHeroRef.value?.exportPng()
-  if (!dataUrl) return
-  try {
-    const res = await fetch(dataUrl)
-    const blob = await res.blob()
-    await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })])
-    flashToast('Map copied — paste into Discord or X')
-  } catch {
-    const a = document.createElement('a')
-    a.href = dataUrl
-    a.download = `upforge-map-${(gameInfo.value.map || 'match').toLowerCase()}.png`
-    a.click()
-    flashToast('Map saved as PNG')
-  }
-}
 /** True when we have a real tracked score (not 0-0 fallback) */
 const hasTrackedScore = computed(() =>
   result.value != null &&
@@ -1823,10 +1318,11 @@ onMounted(() => {
   }))
   ipcCleanup.push(window.api.on('post-game:analysis-ready', (...args: unknown[]) => {
     clearStuckTimer()
-    const r = args[0] as typeof result.value & { session_start?: number; recording_id?: string | null }
+    const r = args[0] as typeof result.value & { session_start?: number; recording_id?: string | null; match_id?: string | null }
     result.value = r
     if (r?.recording_id) sessionRecordingId.value = r.recording_id
-    sessionStart = r?.session_start ?? (Date.now() - 2 * 60 * 60 * 1000)
+    matchId.value = r?.match_id ?? null
+    sessionStart = r?.session_start ?? 0
     state.value = 'ready'
     loadSessionClips()
     void refreshLocalSpatialSummary()
@@ -1926,23 +1422,45 @@ onMounted(() => {
     demoProgress.value = args[0] as number
   }))
 
-  // Dev preview: show a mock ready state
-  if (window.location.hash.includes('post-game-preview')) {
-    setTimeout(() => {
-      gameInfo.value = { game: 'valorant', map: 'Bind', agent: 'Jett' }
-      state.value = 'uploading'
-      let p = 0
-      const iv = setInterval(() => {
-        p += 12
-        uploadProgress.value = Math.min(p, 100)
-        if (p >= 100) { clearInterval(iv); setTimeout(() => { state.value = 'analysing' }, 600) }
-      }, 200)
-      setTimeout(() => {
-        result.value = { overall_score: 72, analysis_id: 999 }
-        ;(result.value as Record<string, unknown>).top_issue = 'Positioning during post-plant — you were caught in the open on 4 of 6 clutch attempts.'
-        state.value = 'ready'
-      }, 5000)
-    }, 300)
+  // Dev preview: rich mock ready state (skip upload wait)
+  if (window.location.hash.includes('post-game-preview') || window.location.pathname.includes('post-game-preview')) {
+    const previewSessionStart = Date.now() - 35 * 60 * 1000
+    sessionStart = previewSessionStart
+    matchId.value = 'preview-match-id'
+    gameInfo.value = { game: 'valorant', map: 'Bind', agent: 'Jett' }
+    debriefText.value = 'You won key duels on A site but gave up map control after losing mid. Next game: default B until you have info on rotate timing.'
+    debriefLoading.value = false
+    result.value = {
+      overall_score: 72,
+      analysis_id: 999,
+      kills: 18,
+      deaths: 14,
+      assists: 6,
+      match_result: 'win',
+      ally_score: 13,
+      enemy_score: 11,
+      top_issue: 'Positioning during post-plant — caught in the open on 4 of 6 clutch attempts.',
+      priority_improvements: [
+        'Hold off-angles after plant instead of wide peeking.',
+        'Pre-aim head height on B site entries.',
+        'Avoid force-buying after pistol loss.',
+      ],
+      verdict: 'Solid fragging with fixable post-plant habits.',
+      coaching_tags: ['positioning', 'post_plant'],
+      match_highlights: [{
+        id: 'preview-h1',
+        kind: 'mistake',
+        title: 'Wide swing after plant',
+        reason: 'You peeked A main alone with 20s left — traded 1 for 1 but lost the round win condition.',
+        round: 11,
+        videoOffsetMs: 312000,
+        clipId: null,
+        rank: 90,
+      }],
+    }
+    sessionClipCount.value = 3
+    state.value = 'ready'
+    scheduleFitWindow()
   }
 })
 
@@ -2040,24 +1558,17 @@ function retryUpload() {
 async function loadSessionClips() {
   try {
     const clips = await window.api.clips.get({ game: gameInfo.value.game })
-    const session = clips.filter((c) => c.savedAt >= sessionStart)
+    const session = filterSessionClips(clips, {
+      matchId: matchId.value,
+      agent: gameInfo.value.agent,
+      sessionStart,
+    })
     sessionClips.value = session
     sessionClipCount.value = session.length
   } catch {
     sessionClips.value = []
     sessionClipCount.value = 0
   }
-}
-
-async function seekRecapMoment(seekMs: number) {
-  const id = vodRecordingId.value
-  if (!id) return
-  await window.api.app.openVodReview(id, seekMs)
-  dismiss()
-}
-
-async function openRecapClip(clipId: string) {
-  await window.api.clips.revealFile(clipId).catch(() => {})
 }
 
 async function openClips() {

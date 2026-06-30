@@ -955,6 +955,7 @@ function dispatchReconciledAnalysisReady(ctx: ReconciledAnalysisContext): void {
     ),
     category_scores: result?.category_scores ?? [],
     session_start: rec?.recordedAt ?? Date.now(),
+    match_id: timeline?.matchId ?? null,
     kills: timeline?.finalStats?.kills ?? result?.kills ?? null,
     deaths: timeline?.finalStats?.deaths ?? result?.deaths ?? null,
     assists: timeline?.finalStats?.assists ?? result?.assists ?? null,
@@ -1207,7 +1208,7 @@ function countSessionClips(
   const windowStart = sessionStart > 0 ? sessionStart - 60_000 : Date.now() - 4 * 60 * 60 * 1000
   return clipStore.getAll().filter(c => {
     if (!c.path || !fs.existsSync(c.path)) return false
-    if (matchId && c.matchId === matchId) return true
+    if (matchId) return c.matchId === matchId
     if (agent && c.agent === agent && c.savedAt >= windowStart) return true
     return false
   }).length
@@ -3745,6 +3746,7 @@ async function doUploadAndAnalyse(
           ),
           category_scores: (status.result as Record<string, unknown>).category_scores ?? [],
           session_start: sessionStart,
+          match_id: timeline?.matchId ?? null,
           kills: timeline?.finalStats?.kills ?? null,
           deaths: timeline?.finalStats?.deaths ?? null,
           assists: timeline?.finalStats?.assists ?? null,
@@ -3921,13 +3923,29 @@ async function startApp(): Promise<void> {
       setTimeout(() => postGameWindow?.webContents.send('post-game:analysis-ready', {
         overall_score: 72,
         analysis_id: 999,
-        session_start: Date.now() - 60 * 60 * 1000,
+        session_start: Date.now() - 35 * 60 * 1000,
+        match_id: 'dev-preview-match',
+        kills: 18,
+        deaths: 14,
+        assists: 6,
+        match_result: 'win',
+        ally_score: 13,
+        enemy_score: 11,
         top_issue: 'Positioning during post-plant — you were caught in the open on 4 of 6 clutch attempts.',
         priority_improvements: [
-          'Positioning during post-plant — caught in the open on 4 of 6 clutch attempts.',
-          'Crosshair placement — pre-aiming head height on B site entries.',
-          'Economy — force-buying after pistol loss reduced overall round win rate.'
-        ]
+          'Hold off-angles after plant instead of wide peeking.',
+          'Pre-aim head height on B site entries.',
+        ],
+        match_highlights: [{
+          id: 'dev-h1',
+          kind: 'mistake',
+          title: 'Wide swing after plant',
+          reason: 'Peeked A main alone with 20s left — lost the round win condition.',
+          round: 11,
+          videoOffsetMs: 312000,
+          clipId: null,
+          rank: 90,
+        }],
       }), 5500)
     })
   }, () => ffmpegOk, () => waitingForMatch, () => activityLog.slice(), uploadManager, () => {
