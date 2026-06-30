@@ -150,6 +150,7 @@ import {
   getAnalysisReadiness,
   isTerminalAnalysisReadinessState,
   refreshVodProbe,
+  clearVodProbeCache,
   waitUntilVodFileReady,
   withAnalysisReadiness,
   type AnalysisReadiness,
@@ -1311,6 +1312,13 @@ async function prepareTimelineForCoaching(
   return { extras }
 }
 
+/** Max wait for ffprobe before post-game upload proceeds (OBS already muxed the file). */
+const POST_GAME_VOD_PROBE_MAX_MS = 10_000
+
+function isBlockingVodReadiness(state: AnalysisReadiness['state']): boolean {
+  return state === 'file_missing' || state === 'file_unreadable' || state === 'unavailable'
+}
+
 function sendAnalysisReadinessUpdate(
   targetWindow: BrowserWindow | null | undefined,
   readiness: AnalysisReadiness,
@@ -1999,6 +2007,7 @@ function setupGameDetection(): void {
 
     // Close any existing post-game window first (consecutive match scenario —
     // match 2 can end before match 1's window is dismissed).
+    clearVodProbeCache()
     postGameWindow?.close()
     const thisPostGameWindow = createPostGameWindow()
     postGameWindow = thisPostGameWindow
@@ -2129,6 +2138,13 @@ function setupGameDetection(): void {
       )
       scheduleAnalysisReadinessRefresh(savedRecording.id, game)
 
+      sendToWindow('post-game:analysis-readiness', {
+        ready: false,
+        state: 'finalizing',
+        message: 'Finalizing recording…',
+        duelMomentCount: 0,
+      })
+
       let coachingExtras: CoachingSubmissionExtras | undefined
       const enrichPromise = prepareTimelineForCoaching(timeline, game, savedRecording.id)
         .then((result) => {
@@ -2248,10 +2264,12 @@ function setupGameDetection(): void {
           if (rec) await refreshRecordingVodProbe(rec)
         },
         {
-          onReadiness: (readiness) => sendAnalysisReadinessUpdate(thisPostGameWindow, readiness),
+          maxWaitMs: POST_GAME_VOD_PROBE_MAX_MS,
+          pollMs: 750,
+          onReadiness: (readiness) => sendToWindow('post-game:analysis-readiness', readiness),
         },
       )
-      if (!vodReady) {
+      if (!vodReady && isBlockingVodReadiness(vodReadiness.state)) {
         logActivity(vodReadiness.message || 'Recording file not ready for upload')
         sendToWindow('post-game:pending', {
           recordingId: savedRecording.id,
@@ -2264,6 +2282,9 @@ function setupGameDetection(): void {
           .catch(err => log.warn('[ClipExtract] Clip extraction (vod not ready) error:', err))
         await enrichPromise.catch(() => {})
         return
+      }
+      if (!vodReady) {
+        log.info('[PostGame] VOD probe still finalizing — proceeding with upload (OBS mux complete)')
       }
 
       const autoReadiness = getAnalysisReadiness(recordingsStore.getById(savedRecording.id) ?? savedRecording)

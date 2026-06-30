@@ -854,6 +854,7 @@ const selectedCoachName = computed(() =>
   myCoaches.value.find(c => c.coach_id === selectedCoachId.value)?.display_name ?? 'coach',
 )
 let sessionStart = 0
+let preparingStuckTimer: ReturnType<typeof setTimeout> | null = null
 let stuckTimer: ReturnType<typeof setTimeout> | null = null
 let reconcileKickTimer: ReturnType<typeof setTimeout> | null = null
 let tipTimer: ReturnType<typeof setInterval> | null = null
@@ -894,7 +895,7 @@ const analysisElapsedDisplay = computed(() => {
 
 const uploadStatusLabel = computed(() => {
   if (state.value === 'preparing') {
-    return preparingSyncMessage.value ? 'Syncing match data' : 'Finishing recording'
+    return preparingSyncMessage.value || 'Finishing recording'
   }
   if (compressing.value) {
     if (compressKind.value === 'remux') return 'Wrapping replay'
@@ -945,6 +946,21 @@ const roundTimelineCells = computed(() => {
     ...Array.from({ length: enemy }, (_, index) => ({ key: `loss-${index}`, type: 'loss' as const, label: ally + index + 1 })),
   ]
 })
+
+function clearPreparingStuckTimer() {
+  if (preparingStuckTimer) {
+    clearTimeout(preparingStuckTimer)
+    preparingStuckTimer = null
+  }
+}
+
+function startPreparingStuckTimer() {
+  clearPreparingStuckTimer()
+  preparingStuckTimer = setTimeout(() => {
+    if (state.value !== 'preparing') return
+    preparingSyncMessage.value = 'Upload is taking longer than expected — still working…'
+  }, 45_000)
+}
 
 function resetAnalysisUi() {
   analysisProgress.value = 0
@@ -1230,16 +1246,19 @@ onMounted(() => {
     const data = args[0] as { game: string; map: string | null; agent: string | null }
     gameInfo.value = { game: data.game, map: data.map, agent: data.agent }
     if (state.value === 'uploading' || state.value === 'analysing') return
+    preparingSyncMessage.value = null
     state.value = 'preparing'
     uploadProgress.value = 0
     compressing.value = false
     compressKind.value = null
+    startPreparingStuckTimer()
   }))
   ipcCleanup.push(window.api.on('post-game:prep-step', (...args: unknown[]) => {
     const data = args[0] as { game?: string; map?: string | null; agent?: string | null }
     if (data?.game) {
       gameInfo.value = { game: data.game, map: data.map ?? null, agent: data.agent ?? null }
     }
+    clearPreparingStuckTimer()
     state.value = 'uploading'
     compressing.value = false
     compressKind.value = null
@@ -1467,6 +1486,7 @@ onMounted(() => {
 onUnmounted(() => {
   window.api.discord.setState('idle').catch(() => {})
   clearStuckTimer()
+  clearPreparingStuckTimer()
   if (copiedLinkTimer) clearTimeout(copiedLinkTimer)
   if (fitHeightTimer) clearTimeout(fitHeightTimer)
   contentResizeObserver?.disconnect()
