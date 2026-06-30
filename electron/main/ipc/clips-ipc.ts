@@ -104,6 +104,33 @@ export function setupClipHandlers(
     return { ok: true }
   })
 
+  ipcMain.handle('clips:delete-many', (_e, { ids }: { ids: string[] }) => {
+    const blocked = ids.filter(id => _clipInFlight.has(id))
+    if (blocked.length > 0) {
+      return { ok: false, error: 'Cannot delete while an operation is in progress', blocked }
+    }
+    const removed = clipStore.removeMany(ids)
+    for (const clip of removed) {
+      for (const p of [clip.path, clip.thumbPath]) {
+        if (p && fs.existsSync(p)) {
+          try { fs.unlinkSync(p) } catch { /* ignore */ }
+        }
+      }
+    }
+    return { ok: true, count: removed.length }
+  })
+
+  ipcMain.handle('clips:bulk-favorite', (_e, { ids, favorited }: { ids: string[]; favorited: boolean }) => {
+    let count = 0
+    for (const id of ids) {
+      const clip = clipStore.getById(id)
+      if (!clip || clip.favorited === favorited) continue
+      clipStore.update(id, { favorited })
+      count++
+    }
+    return { ok: true, count }
+  })
+
   ipcMain.handle('clips:update-title', (_e, { id, title }: { id: string; title: string }) => {
     clipStore.update(id, { title })
     return { ok: true }

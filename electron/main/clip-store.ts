@@ -5,6 +5,9 @@ import { randomUUID } from 'crypto'
 import { userDataRoot } from './user-data-paths'
 import type { ClipGame } from './clip-game'
 import { clipMatchesGame } from './clip-game'
+import { clipRetentionScore } from '../../src/lib/clip-priority'
+
+export const MAX_CLIPS = 200
 
 export type ClipTrigger = 'manual' | 'kill' | 'ace' | 'multikill' | 'clutch' | 'hotkey'
 export type ClipUploadStatus = 'local' | 'uploading' | 'uploaded' | 'failed'
@@ -164,10 +167,31 @@ export class ClipStore {
       favorited: false,
     }
     this.clips.unshift(clip)
-    // Keep last 200 clips in the store
-    if (this.clips.length > 200) this.clips = this.clips.slice(0, 200)
+    this._enforceCap()
     this._persist()
     return clip
+  }
+
+  private _deleteClipFiles(clip: ClipRecord): void {
+    for (const p of [clip.path, clip.thumbPath]) {
+      if (p) try { if (fs.existsSync(p)) fs.unlinkSync(p) } catch { /* ignore */ }
+    }
+  }
+
+  private _enforceCap(): void {
+    while (this.clips.length > MAX_CLIPS) {
+      let lowestIdx = 0
+      let lowestScore = clipRetentionScore(this.clips[0])
+      for (let i = 1; i < this.clips.length; i++) {
+        const score = clipRetentionScore(this.clips[i])
+        if (score < lowestScore || (score === lowestScore && this.clips[i].savedAt < this.clips[lowestIdx].savedAt)) {
+          lowestIdx = i
+          lowestScore = score
+        }
+      }
+      const [removed] = this.clips.splice(lowestIdx, 1)
+      this._deleteClipFiles(removed)
+    }
   }
 
   update(id: string, patch: Partial<ClipRecord>): void {
@@ -183,6 +207,18 @@ export class ClipStore {
     if (idx === -1) return null
     const [removed] = this.clips.splice(idx, 1)
     this._persist()
+    return removed
+  }
+
+  removeMany(ids: string[]): ClipRecord[] {
+    const idSet = new Set(ids)
+    const removed: ClipRecord[] = []
+    this.clips = this.clips.filter(c => {
+      if (!idSet.has(c.id)) return true
+      removed.push(c)
+      return false
+    })
+    if (removed.length > 0) this._persist()
     return removed
   }
 
@@ -205,16 +241,29 @@ export class ClipStore {
     })
   }
 
-  /** Delete local-only clips older than `days` days and persist. */
+  /** Delete local-only clips older than `days` days and persist. Favorites are kept. */
   pruneByAge(days: number): number {
     if (days <= 0) return 0
     const cutoff = Date.now() - days * 24 * 60 * 60 * 1000
     const before = this.clips.length
     this.clips = this.clips.filter(c => {
-      if (c.apiClipId != null || c.savedAt >= cutoff) return true
-      for (const p of [c.path, c.thumbPath]) {
-        if (p) try { if (fs.existsSync(p)) fs.unlinkSync(p) } catch { /* ignore */ }
-      }
+      if (c.favorited || c.apiClipId != null || c.savedAt >= cutoff) return true
+      this._deleteClipFiles(c)
+      return false
+    })
+    if (this.clips.length !== before) this._persist()
+    return before - this.clips.length
+  }
+
+  /** Delete local-only routine kill clips older than `days`. Favorites and high-value triggers kept. */
+  pruneKillClipsByAge(days: number): number {
+    if (days <= 0) return 0
+    const cutoff = Date.now() - days * 24 * 60 * 60 * 1000
+    const before = this.clips.length
+    this.clips = this.clips.filter(c => {
+      if (c.trigger !== 'kill') return true
+      if (c.favorited || c.apiClipId != null || c.savedAt >= cutoff) return true
+      this._deleteClipFiles(c)
       return false
     })
     if (this.clips.length !== before) this._persist()

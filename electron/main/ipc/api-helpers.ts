@@ -159,6 +159,9 @@ export function pollClipAnalysis(
           coachingTags: (result.coaching_tags as string[]) ?? [],
           overallScore: result.overall_score as number ?? null,
         })
+        BrowserWindow.getAllWindows().forEach(w => {
+          if (!w.isDestroyed()) w.webContents.send('clips:updated')
+        })
       } else if (status === 'failed') {
         clipStore.update(localClipId, { analysisStatus: 'failed' })
       } else {

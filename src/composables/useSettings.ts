@@ -345,6 +345,7 @@ function createSettings() {
     captureMonitor: 'auto',
     pregameKillList: [],
     clipRetentionDays: 0,
+    clipKillRetentionDays: 0,
     recordingRetentionDays: 14,
     fullMatchRecording: true,
     notificationSound: true,

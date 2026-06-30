@@ -87,6 +87,8 @@ export interface AppSettings {
   pregameKillList: string[]
   /** Auto-delete clips older than this many days (0 = disabled) */
   clipRetentionDays: number
+  /** Auto-delete routine kill clips after N days (0 = off). Favorites and highlight triggers kept. */
+  clipKillRetentionDays: number
   /** Auto-delete local-only match recordings after this many days (0 = disabled) */
   recordingRetentionDays: number
   /** When false, only replay-buffer highlight clips are saved (no full-match VOD). */
@@ -710,6 +712,8 @@ declare global {
         get: (opts?: { game?: string; allGames?: boolean }) => Promise<ClipRecord[]>
         getThumbnail: (id: string) => Promise<string | null>
         delete: (id: string) => Promise<{ ok: boolean }>
+        deleteMany: (ids: string[]) => Promise<{ ok: boolean; count?: number; error?: string }>
+        bulkFavorite: (ids: string[], favorited: boolean) => Promise<{ ok: boolean; count?: number }>
         updateTitle: (id: string, title: string) => Promise<{ ok: boolean }>
         openFolder: (id: string) => Promise<void>
         revealFile: (id: string) => Promise<void>

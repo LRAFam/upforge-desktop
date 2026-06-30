@@ -38,6 +38,8 @@ export interface AppSettings {
   pregameKillList: string[]
   /** Auto-delete local-only clips older than this many days (0 = disabled) */
   clipRetentionDays: number
+  /** Auto-delete routine kill clips older than this many days (0 = disabled). Clutches, aces, bookmarks, and favorites are kept. */
+  clipKillRetentionDays: number
   /** Auto-delete local-only match recordings older than this many days (0 = disabled) */
   recordingRetentionDays: number
   /** When false, only save replay-buffer highlight clips (no full-match VOD). */
@@ -147,6 +149,7 @@ const DEFAULTS: AppSettings = {
   captureMonitor: 'auto',
   pregameKillList: [],
   clipRetentionDays: 0,
+  clipKillRetentionDays: 0,
   recordingRetentionDays: 14,
   fullMatchRecording: true,
   notificationSound: true,

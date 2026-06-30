@@ -1,4 +1,5 @@
 import type { MatchSpatialSummary } from './spatial-types'
+import { clipRank as rankClip } from './clip-priority'
 
 /** Minimal clip fields used for highlight curation */
 export interface HighlightClipSource {
@@ -87,12 +88,7 @@ function clipReason(clip: HighlightClipSource): string {
 }
 
 function clipRank(clip: HighlightClipSource): number {
-  const scoreBoost = (clip.overallScore ?? 5) * 10
-  if (clip.trigger === 'ace') return 90 + scoreBoost
-  if (clip.trigger === 'clutch') return 85 + scoreBoost
-  if (clip.trigger === 'multikill') return 75 + scoreBoost
-  if (clip.favorited) return 70
-  return 50 + scoreBoost
+  return rankClip(clip)
 }
 
 function highlightFromClip(clip: HighlightClipSource, kind: HighlightKind): MatchHighlight {

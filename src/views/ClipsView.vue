@@ -66,6 +66,18 @@
         </button>
       </div>
       <div class="flex items-center gap-2">
+        <label class="text-[11px] font-medium uppercase tracking-[0.18em] text-gray-600">Group</label>
+        <select
+          v-model="groupMode"
+          class="rounded-xl border border-white/[0.08] bg-white/[0.04] px-3 py-2 text-xs font-medium text-gray-200 outline-none transition-colors focus:border-red-500/30"
+        >
+          <option value="match">By match</option>
+          <option value="date">By date</option>
+        </select>
+        <template v-if="groupMode === 'match' && matchGroups.length > 1">
+          <button type="button" class="text-[10px] text-gray-600 hover:text-gray-400" @click="expandAllMatches">Expand all</button>
+          <button type="button" class="text-[10px] text-gray-600 hover:text-gray-400" @click="collapseAllMatches">Collapse</button>
+        </template>
         <label class="text-[11px] font-medium uppercase tracking-[0.18em] text-gray-600">Sort</label>
         <select
           v-model="sortOrder"
@@ -74,6 +86,20 @@
           <option v-for="option in sortOptions" :key="option.value" :value="option.value">{{ option.label }}</option>
         </select>
       </div>
+    </div>
+
+    <div
+      v-if="hasSessionFilter"
+      class="flex flex-shrink-0 items-center justify-between gap-2 rounded-xl border border-cyan-500/25 bg-cyan-500/10 px-3 py-2"
+    >
+      <p class="text-xs text-cyan-200/90">Showing clips from this match only</p>
+      <button
+        type="button"
+        class="rounded-lg border border-cyan-500/30 px-2.5 py-1 text-[10px] font-semibold text-cyan-200 hover:bg-cyan-500/15 transition-colors"
+        @click="clearSessionFilter"
+      >
+        Clear
+      </button>
     </div>
 
     <p v-if="!hasProAccess" class="flex-shrink-0 text-[11px] text-gray-600">
@@ -159,16 +185,88 @@
 
     <!-- Clip collection -->
     <div v-else class="flex-1 overflow-y-auto">
-      <template v-for="group in groupedClips" :key="group.label">
-        <!-- Date group header -->
-        <div class="mb-2 mt-1 flex items-center gap-2 px-1 first:mt-0">
-          <span class="text-[10px] font-semibold uppercase tracking-[0.18em] text-gray-700">{{ group.label }}</span>
-          <div class="h-px flex-1 bg-white/[0.05]" />
-          <span class="text-[10px] text-gray-700">{{ group.clips.length }}</span>
+      <template v-for="section in librarySections" :key="section.key">
+        <!-- Section header -->
+        <div
+          class="mb-2 mt-1 flex items-center gap-2 px-1 first:mt-0"
+          :class="{ 'cursor-pointer': section.matchKey }"
+          @click="section.matchKey && toggleMatchSection(section.matchKey)"
+        >
+          <svg
+            v-if="section.matchKey"
+            class="h-3 w-3 flex-shrink-0 text-gray-600 transition-transform"
+            :class="isMatchExpanded(section.matchKey) ? 'rotate-90' : ''"
+            fill="none" stroke="currentColor" viewBox="0 0 24 24"
+          >
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+          </svg>
+          <div class="min-w-0 flex-1">
+            <span class="text-[10px] font-semibold uppercase tracking-[0.12em] text-gray-500">{{ section.label }}</span>
+            <p v-if="section.sublabel" class="text-[10px] text-gray-600 mt-0.5">{{ section.sublabel }}</p>
+          </div>
+          <div class="h-px flex-1 bg-white/[0.05] hidden sm:block" />
+          <span class="text-[10px] text-gray-700">{{ section.clips.length }}</span>
         </div>
+
+        <!-- Match triage + top moments -->
+        <div
+          v-if="section.matchKey && isMatchExpanded(section.matchKey)"
+          class="mb-3 mx-1 space-y-2"
+        >
+          <div v-if="section.topMoments.length" class="flex flex-wrap gap-2">
+            <button
+              v-for="moment in section.topMoments"
+              :key="moment.id"
+              type="button"
+              class="flex items-center gap-2 rounded-xl border border-white/[0.10] bg-white/[0.03] px-2.5 py-1.5 text-left transition-colors hover:border-white/[0.16] hover:bg-white/[0.05]"
+              @click="openPlayer(moment)"
+            >
+              <span class="inline-flex rounded-full px-1.5 py-0.5 text-[9px] font-bold uppercase" :class="triggerClass(moment.trigger)">
+                {{ triggerLabel(moment.trigger) }}
+              </span>
+              <span class="text-[11px] font-medium text-gray-300 truncate max-w-[140px]">{{ moment.title || defaultTitle(moment) }}</span>
+            </button>
+          </div>
+          <div class="flex flex-wrap gap-2">
+            <button
+              type="button"
+              class="rounded-lg border border-white/[0.08] px-2.5 py-1 text-[10px] font-medium text-gray-500 hover:text-gray-300 transition-colors"
+              @click="matchGroupForKey(section.matchKey!) && selectRoutineKillsInMatch(matchGroupForKey(section.matchKey!)!)"
+            >
+              Select routine kills
+            </button>
+            <button
+              type="button"
+              class="rounded-lg border border-yellow-500/25 bg-yellow-500/10 px-2.5 py-1 text-[10px] font-medium text-yellow-200/90 hover:bg-yellow-500/15 transition-colors"
+              @click="matchGroupForKey(section.matchKey!) && keepHighlightsInMatch(matchGroupForKey(section.matchKey!)!)"
+            >
+              Keep highlights
+            </button>
+            <template v-if="confirmKeepHighlightsKey === section.matchKey">
+              <span class="text-[10px] text-gray-500 self-center">Delete unstarred kills?</span>
+              <button type="button" class="text-[10px] text-red-400 font-semibold" @click="matchGroupForKey(section.matchKey!) && confirmKeepHighlightsDelete(matchGroupForKey(section.matchKey!)!)">Yes</button>
+              <button type="button" class="text-[10px] text-gray-500" @click="confirmKeepHighlightsKey = null">No</button>
+            </template>
+            <template v-if="confirmMatchDeleteKey === section.matchKey">
+              <span class="text-[10px] text-red-400/80 self-center">Delete all {{ section.clips.length }}?</span>
+              <button type="button" class="text-[10px] font-semibold text-red-300" @click="matchGroupForKey(section.matchKey!) && deleteMatchClips(matchGroupForKey(section.matchKey!)!)">Confirm</button>
+              <button type="button" class="text-[10px] text-gray-500" @click="confirmMatchDeleteKey = null">Cancel</button>
+            </template>
+            <button
+              v-else
+              type="button"
+              class="rounded-lg border border-red-500/20 px-2.5 py-1 text-[10px] font-medium text-red-400/80 hover:text-red-300 transition-colors"
+              @click="confirmMatchDeleteKey = section.matchKey"
+            >
+              Delete match clips
+            </button>
+          </div>
+        </div>
+
+        <template v-if="!section.matchKey || isMatchExpanded(section.matchKey)">
       <div v-if="viewMode === 'grid'" class="mb-4 grid gap-3" style="grid-template-columns: repeat(auto-fill, minmax(260px, 1fr))">
         <div
-          v-for="clip in group.clips"
+          v-for="clip in section.clips"
           :key="clip.id"
           class="group relative cursor-pointer overflow-hidden rounded-2xl border transition-all"
           :class="[
@@ -338,7 +436,7 @@
 
       <div v-else class="mb-4 space-y-3">
         <div
-          v-for="clip in group.clips"
+          v-for="clip in section.clips"
           :key="clip.id"
           class="group flex cursor-pointer gap-4 rounded-2xl border p-3 transition-all"
           :class="[
@@ -494,6 +592,7 @@
           </div>
         </div>
       </div>
+        </template>
       </template>
     </div>
 
@@ -855,7 +954,7 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import type { ClipRecord } from '../env.d'
 import { loadSaveClipHotkey } from '../lib/hotkeys'
 import { usePrimaryGame } from '../composables/usePrimaryGame'
@@ -863,8 +962,15 @@ import { useGameTheme } from '../composables/useGameTheme'
 import { primaryGameLabel } from '../lib/games'
 import { hasProAccess as proAccessForUser } from '../lib/subscription'
 import { formatAnalysisFailureMessage } from '../lib/analysis-failure-messages'
+import {
+  buildClipMatchGroups,
+  formatMatchGroupLabel,
+  formatTriggerBreakdown,
+  type ClipMatchGroup,
+} from '../lib/clip-match-groups'
 
 const route = useRoute()
+const router = useRouter()
 const { primaryGame, isValorant } = usePrimaryGame()
 const { theme } = useGameTheme()
 const showAllGames = ref(false)
@@ -967,6 +1073,10 @@ const sortOptions = [
 
 const sortOrder = ref<(typeof sortOptions)[number]['value']>('newest')
 const viewMode = ref<'grid' | 'list'>('grid')
+const groupMode = ref<'match' | 'date'>('match')
+const collapsedMatchKeys = ref<Set<string>>(new Set())
+const confirmMatchDeleteKey = ref<string | null>(null)
+const confirmKeepHighlightsKey = ref<string | null>(null)
 
 const filteredClips = computed(() => {
   let list = clips.value
@@ -987,6 +1097,132 @@ const displayedClips = computed(() => {
     return b.savedAt - a.savedAt
   })
 })
+
+const hasSessionFilter = computed(() =>
+  Boolean(sessionMatchIdFilter.value || sessionAgentFilter.value),
+)
+
+function clearSessionFilter() {
+  sessionMatchIdFilter.value = null
+  sessionAgentFilter.value = null
+  void router.replace({ path: route.path, query: {} })
+}
+
+const matchGroups = computed((): ClipMatchGroup[] => buildClipMatchGroups(displayedClips.value))
+
+watch(matchGroups, (groups) => {
+  if (groupMode.value !== 'match') return
+  const next = new Set<string>()
+  groups.slice(1).forEach(g => next.add(g.key))
+  collapsedMatchKeys.value = next
+}, { immediate: true })
+
+interface LibrarySection {
+  key: string
+  label: string
+  sublabel: string
+  clips: ClipRecord[]
+  topMoments: ClipRecord[]
+  matchKey: string | null
+}
+
+const librarySections = computed((): LibrarySection[] => {
+  if (groupMode.value === 'date') {
+    return groupedClips.value.map(g => ({
+      key: `date:${g.label}`,
+      label: g.label,
+      sublabel: '',
+      clips: g.clips,
+      topMoments: [],
+      matchKey: null,
+    }))
+  }
+  return matchGroups.value.map(g => ({
+    key: g.key,
+    label: formatMatchGroupLabel(g),
+    sublabel: formatTriggerBreakdown(g.triggerCounts),
+    clips: g.clips,
+    topMoments: g.topMoments,
+    matchKey: g.key,
+  }))
+})
+
+function toggleMatchSection(key: string) {
+  const next = new Set(collapsedMatchKeys.value)
+  if (next.has(key)) next.delete(key)
+  else next.add(key)
+  collapsedMatchKeys.value = next
+}
+
+function isMatchExpanded(key: string): boolean {
+  return !collapsedMatchKeys.value.has(key)
+}
+
+function expandAllMatches() {
+  collapsedMatchKeys.value = new Set()
+}
+
+function collapseAllMatches() {
+  collapsedMatchKeys.value = new Set(matchGroups.value.map(g => g.key))
+}
+
+function matchGroupForKey(key: string): ClipMatchGroup | null {
+  return matchGroups.value.find(g => g.key === key) ?? null
+}
+
+function selectRoutineKillsInMatch(group: ClipMatchGroup) {
+  bulkMode.value = true
+  const kills = group.clips.filter(c => c.trigger === 'kill').map(c => c.id)
+  selectedIds.value = new Set(kills)
+}
+
+async function keepHighlightsInMatch(group: ClipMatchGroup) {
+  const topIds = group.topMoments.map(c => c.id)
+  await window.api.clips.bulkFavorite(topIds, true)
+  for (const id of topIds) {
+    const idx = clips.value.findIndex(c => c.id === id)
+    if (idx !== -1) clips.value[idx] = { ...clips.value[idx], favorited: true }
+  }
+  const routineKillIds = group.clips
+    .filter(c => c.trigger === 'kill' && !topIds.includes(c.id))
+    .map(c => c.id)
+  if (routineKillIds.length === 0) {
+    showToastMsg(`Starred ${topIds.length} highlight${topIds.length !== 1 ? 's' : ''}`, 'success')
+    confirmKeepHighlightsKey.value = null
+    return
+  }
+  confirmKeepHighlightsKey.value = group.key
+}
+
+async function confirmKeepHighlightsDelete(group: ClipMatchGroup) {
+  const topIds = new Set(group.topMoments.map(c => c.id))
+  const toDelete = group.clips.filter(c => c.trigger === 'kill' && !topIds.has(c.id)).map(c => c.id)
+  if (toDelete.length > 0) await deleteClipIds(toDelete)
+  confirmKeepHighlightsKey.value = null
+  showToastMsg(`Kept highlights, removed ${toDelete.length} routine kill${toDelete.length !== 1 ? 's' : ''}`, 'success')
+}
+
+async function deleteMatchClips(group: ClipMatchGroup) {
+  const ids = group.clips.map(c => c.id)
+  await deleteClipIds(ids)
+  confirmMatchDeleteKey.value = null
+  showToastMsg(`Deleted ${ids.length} clip${ids.length !== 1 ? 's' : ''} from match`, 'success')
+}
+
+async function deleteClipIds(ids: string[]) {
+  const result = await window.api.clips.deleteMany(ids)
+  if (!result.ok) {
+    for (const id of ids) {
+      await window.api.clips.delete(id)
+    }
+  }
+  const idSet = new Set(ids)
+  clips.value = clips.value.filter(c => !idSet.has(c.id))
+  for (const id of ids) delete thumbnails.value[id]
+  selectedIds.value = new Set()
+  bulkMode.value = false
+  confirmBulkDelete.value = false
+}
 
 const removeListener = ref<(() => void) | null>(null)
 
@@ -1310,14 +1546,7 @@ function selectAll() {
 
 async function bulkDelete() {
   const ids = Array.from(selectedIds.value)
-  for (const id of ids) {
-    await window.api.clips.delete(id)
-    clips.value = clips.value.filter(c => c.id !== id)
-    delete thumbnails.value[id]
-  }
-  selectedIds.value = new Set()
-  bulkMode.value = false
-  confirmBulkDelete.value = false
+  await deleteClipIds(ids)
   showToastMsg(`Deleted ${ids.length} clip${ids.length !== 1 ? 's' : ''}`, 'success')
 }
 

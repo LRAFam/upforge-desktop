@@ -347,7 +347,18 @@ const {
                 <option :value="30">After 30 days</option>
                 <option :value="60">After 60 days</option>
               </select>
-              <p class="mt-1 text-xs text-gray-600">Local-only clips older than this are deleted on startup.</p>
+              <p class="mt-1 text-xs text-gray-600">Local-only clips older than this are deleted on startup. Favorites are kept.</p>
+            </div>
+
+            <div>
+              <label class="mb-1 block text-xs text-gray-400">Auto-delete routine kill clips</label>
+              <select v-model.number="settings.clipKillRetentionDays" class="w-full rounded-xl border border-white/[0.08] bg-white/[0.04] px-3 py-2 text-xs text-white focus:border-red-500/30 focus:outline-none" @change="debouncedSave">
+                <option :value="0">Never</option>
+                <option :value="7">After 7 days</option>
+                <option :value="14">After 14 days</option>
+                <option :value="30">After 30 days</option>
+              </select>
+              <p class="mt-1 text-xs text-gray-600">Removes old 1K kill clips only. Clutches, aces, multikills, bookmarks, and favorites are kept.</p>
             </div>
 
             <div>

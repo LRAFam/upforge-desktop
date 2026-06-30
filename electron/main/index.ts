@@ -4051,6 +4051,11 @@ async function startApp(): Promise<void> {
     const pruned = clipStore.pruneByAge(retentionDays)
     if (pruned > 0) log.info(`[App] Pruned ${pruned} clips older than ${retentionDays} days`)
   }
+  const killRetentionDays = settingsManager.get().clipKillRetentionDays
+  if (killRetentionDays > 0) {
+    const prunedKills = clipStore.pruneKillClipsByAge(killRetentionDays)
+    if (prunedKills > 0) log.info(`[App] Pruned ${prunedKills} routine kill clips older than ${killRetentionDays} days`)
+  }
   clipStore.pruneOrphanedThumbnails()
 
   runStorageMaintenanceIfReady(false)
