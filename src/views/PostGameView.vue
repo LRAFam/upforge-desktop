@@ -958,8 +958,8 @@ function startPreparingStuckTimer() {
   clearPreparingStuckTimer()
   preparingStuckTimer = setTimeout(() => {
     if (state.value !== 'preparing') return
-    preparingSyncMessage.value = 'Upload is taking longer than expected — still working…'
-  }, 45_000)
+    preparingSyncMessage.value = 'Still preparing — if this persists, close and use the dashboard to upload.'
+  }, 20_000)
 }
 
 function resetAnalysisUi() {

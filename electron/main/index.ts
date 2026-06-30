@@ -1313,7 +1313,7 @@ async function prepareTimelineForCoaching(
 }
 
 /** Max wait for ffprobe before post-game upload proceeds (OBS already muxed the file). */
-const POST_GAME_VOD_PROBE_MAX_MS = 10_000
+const POST_GAME_VOD_PROBE_MAX_MS = 3_000
 
 function isBlockingVodReadiness(state: AnalysisReadiness['state']): boolean {
   return state === 'file_missing' || state === 'file_unreadable' || state === 'unavailable'
@@ -1352,11 +1352,20 @@ function scheduleAnalysisReadinessRefresh(recordingId: string, game: string): vo
     let readiness = getAnalysisReadiness(rec)
     if (isTerminalAnalysisReadinessState(readiness.state)) {
       mainWindow?.webContents.send('recordings:updated')
+      const pg = postGameWindow
+      if (pg && !pg.isDestroyed()) {
+        pg.webContents.send('post-game:analysis-readiness', readiness)
+      }
       return
     }
 
     if (Date.now() - startedAt >= MATCH_DETAILS_ENRICH_MAX_MS) {
       mainWindow?.webContents.send('recordings:updated')
+      readiness = getAnalysisReadiness(rec)
+      const pg = postGameWindow
+      if (pg && !pg.isDestroyed()) {
+        pg.webContents.send('post-game:analysis-readiness', readiness)
+      }
       return
     }
 
@@ -1373,6 +1382,10 @@ function scheduleAnalysisReadinessRefresh(recordingId: string, game: string): vo
 
     mainWindow?.webContents.send('recordings:updated')
     if (!isTerminalAnalysisReadinessState(readiness.state)) {
+      const pg = postGameWindow
+      if (pg && !pg.isDestroyed()) {
+        pg.webContents.send('post-game:analysis-readiness', readiness)
+      }
       setTimeout(() => { void tick() }, 10_000)
     }
   }
@@ -2145,6 +2158,9 @@ function setupGameDetection(): void {
         duelMomentCount: 0,
       })
 
+      // Leave "preparing" immediately — don't block UI on ffprobe / Riot sync.
+      sendToWindow('post-game:prep-step', { game, map, agent })
+
       let coachingExtras: CoachingSubmissionExtras | undefined
       const enrichPromise = prepareTimelineForCoaching(timeline, game, savedRecording.id)
         .then((result) => {
@@ -2207,7 +2223,7 @@ function setupGameDetection(): void {
       }
 
       if (!autoAnalyse) {
-        await refreshRecordingVodProbe(savedRecording)
+        void refreshRecordingVodProbe(savedRecording).catch(() => {})
         const pendingReadiness = getAnalysisReadiness(recordingsStore.getById(savedRecording.id) ?? savedRecording)
         sendToWindow('post-game:pending', {
           recordingId: savedRecording.id,
@@ -2256,7 +2272,8 @@ function setupGameDetection(): void {
         return
       }
 
-      const { ok: vodReady, readiness: vodReadiness } = await waitUntilVodFileReady(
+      const recForProbe = recordingsStore.getById(savedRecording.id) ?? savedRecording
+      void waitUntilVodFileReady(
         (id) => recordingsStore.getById(id),
         savedRecording.id,
         async () => {
@@ -2268,26 +2285,15 @@ function setupGameDetection(): void {
           pollMs: 750,
           onReadiness: (readiness) => sendToWindow('post-game:analysis-readiness', readiness),
         },
-      )
-      if (!vodReady && isBlockingVodReadiness(vodReadiness.state)) {
-        logActivity(vodReadiness.message || 'Recording file not ready for upload')
-        sendToWindow('post-game:pending', {
-          recordingId: savedRecording.id,
-          game,
-          map,
-          agent,
-          analysisReadiness: vodReadiness,
-        })
-        extractMatchClips(readyPath, timeline, null, game)
-          .catch(err => log.warn('[ClipExtract] Clip extraction (vod not ready) error:', err))
-        await enrichPromise.catch(() => {})
-        return
-      }
-      if (!vodReady) {
-        log.info('[PostGame] VOD probe still finalizing — proceeding with upload (OBS mux complete)')
-      }
+      ).then(({ ok: vodReady, readiness: vodReadiness }) => {
+        if (!vodReady && isBlockingVodReadiness(vodReadiness.state)) {
+          log.warn('[PostGame] VOD probe reported blocking state after upload started:', vodReadiness.state)
+        }
+      }).catch((err) => {
+        log.warn('[PostGame] Background VOD probe failed:', err)
+      })
 
-      const autoReadiness = getAnalysisReadiness(recordingsStore.getById(savedRecording.id) ?? savedRecording)
+      const autoReadiness = getAnalysisReadiness(recForProbe)
       if (isTerminalAnalysisReadinessState(autoReadiness.state) && !autoReadiness.ready) {
         logActivity(autoReadiness.message || 'Auto-analyse skipped — recording not ready')
         sendToWindow('post-game:pending', {
@@ -2333,7 +2339,6 @@ function setupGameDetection(): void {
         return
       }
 
-      sendToWindow('post-game:prep-step', { game, map, agent })
       tray?.setToolTip('UpForge — Uploading...')
 
       const uploadResult = await doUploadAndAnalyse(
@@ -3476,7 +3481,16 @@ async function doUploadAndAnalyse(
 
   let effectivePath = videoPath
   try {
-    const readable = await clipExtractor.probe(videoPath)
+    let readable = await clipExtractor.probe(videoPath)
+    if (!readable.ok) {
+      const moovMissing = readable.reason?.includes('moov atom') ?? false
+      if (moovMissing) {
+        for (let attempt = 0; attempt < 5 && !readable.ok; attempt++) {
+          await new Promise((resolve) => setTimeout(resolve, 2_000))
+          readable = await clipExtractor.probe(videoPath)
+        }
+      }
+    }
     if (!readable.ok) {
       throw new Error(readable.reason ?? 'Recording file is incomplete')
     }
