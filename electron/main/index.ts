@@ -15,6 +15,7 @@ import {
   stopCoachNotificationPoller,
 } from './coach-notification-poller'
 import { setupAutoUpdater, markStartupComplete } from './updater'
+import { pingDesktopOnboarding, resetDesktopOnboardingPing } from './onboarding-ping'
 import { GameDetector } from './game-detector'
 import { Recorder } from './recorder'
 import { OBSRecorder } from './obs-recorder'
@@ -811,6 +812,7 @@ function syncUserSessionFromAuth(): void {
   const user = authManager.getUser()
   if (user?.id) {
     activateUserSession(user.id, userSessionDeps())
+    void pingDesktopOnboarding(authManager)
     reconcileInterruptedUploads()
     runStorageMaintenanceIfReady(true)
     syncPrimaryGameFromUser()
@@ -4014,6 +4016,7 @@ async function startApp(): Promise<void> {
   },
   () => {
     stopCoachNotificationPoller()
+    resetDesktopOnboardingPing()
     clearUserSession(userSessionDeps())
   },
   (jobId: string) => recordingsStore?.getPathByJobId(jobId) ?? null,

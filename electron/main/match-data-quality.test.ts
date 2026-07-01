@@ -58,4 +58,10 @@ describe('hasRichMatchData', () => {
     }
     expect(hasRichMatchData(tl)).toBe(true)
   })
+
+  it('returns false when only roundSummaries exist (no kills)', () => {
+    const tl = sparseTimeline()
+    tl.roundSummaries = [{ roundNumber: 1, winningTeam: 'Blue', spikePlanted: false, spikeDefused: false }]
+    expect(hasRichMatchData(tl)).toBe(false)
+  })
 })

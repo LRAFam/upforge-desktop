@@ -40,6 +40,25 @@ export function getUpdateState(): UpdateState {
 
 export function markStartupComplete(): void {
   startupComplete = true
+  startPeriodicUpdateChecks()
+}
+
+const PERIODIC_UPDATE_INTERVAL_MS = 6 * 60 * 60 * 1000 // 6 hours
+let periodicCheckTimer: ReturnType<typeof setInterval> | null = null
+
+export function startPeriodicUpdateChecks(): void {
+  if (!app.isPackaged || periodicCheckTimer) return
+
+  periodicCheckTimer = setInterval(() => {
+    if (state.phase === 'downloading' || state.phase === 'checking') return
+    log.info('[Updater] Periodic update check')
+    void autoUpdater.checkForUpdates().catch((err: unknown) => {
+      const msg = err instanceof Error ? err.message : String(err)
+      if (!isTransientUpdateError(msg)) {
+        log.warn('[Updater] Periodic check failed:', msg)
+      }
+    })
+  }, PERIODIC_UPDATE_INTERVAL_MS)
 }
 
 export function installUpdate(beforeQuit?: () => void): void {

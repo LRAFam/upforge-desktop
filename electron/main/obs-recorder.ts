@@ -93,6 +93,8 @@ export class OBSRecorder {
   private _savingReplay = false
   /** Debounce transient RecordStateChanged outputActive=false while OBS is still muxing. */
   private _recordInactiveSettleTimer: ReturnType<typeof setTimeout> | null = null
+  /** Retry WebSocket connect while a match-owned session lost OBS control. */
+  private _reconnectTimer: ReturnType<typeof setInterval> | null = null
 
   private _disconnectedDuringRecording = false
   private _clipsOnlySession = false
@@ -164,6 +166,7 @@ export class OBSRecorder {
           this._stopLiveKillPoll()
           this.onStatusChange?.(false, 'OBS disconnected during recording')
         }
+        this._startReconnectLoop()
         // If OBS actually stopped, drop stale ownership so the next match can start.
         setTimeout(() => { void this.releaseStaleMatchOwnership() }, 5_000)
       }
@@ -242,6 +245,11 @@ export class OBSRecorder {
         }
 
         this.onConnectionChange?.(true)
+        if (this._disconnectedDuringRecording && this._matchOwnedRecording) {
+          this._disconnectedDuringRecording = false
+          void this.reclaimActiveRecording()
+          this._stopReconnectLoop()
+        }
         return { ok: true, version: obsWebSocketVersion, setup }
       } catch (err) {
         lastRawError = err instanceof Error ? err.message : String(err)
@@ -625,6 +633,37 @@ export class OBSRecorder {
     }
   }
 
+  private _startReconnectLoop(): void {
+    if (this._reconnectTimer) return
+    this._reconnectTimer = setInterval(() => {
+      void this._attemptReconnectDuringRecording()
+    }, 15_000)
+    void this._attemptReconnectDuringRecording()
+  }
+
+  private _stopReconnectLoop(): void {
+    if (!this._reconnectTimer) return
+    clearInterval(this._reconnectTimer)
+    this._reconnectTimer = null
+  }
+
+  private async _attemptReconnectDuringRecording(): Promise<void> {
+    if (!this._matchOwnedRecording) {
+      this._stopReconnectLoop()
+      return
+    }
+    if (this._connected && !this._disconnectedDuringRecording) {
+      this._stopReconnectLoop()
+      return
+    }
+    const result = await this.connect()
+    if (!result.ok) return
+    log.info('[OBSRecorder] Reconnected to OBS during match')
+    if (await this.isObsOutputActive()) {
+      await this.reclaimActiveRecording()
+    }
+  }
+
   private async _confirmRecordingInactive(): Promise<void> {
     if (!this._matchOwnedRecording) return
     if (this._connected) {
@@ -645,6 +684,7 @@ export class OBSRecorder {
   }
 
   async stop(): Promise<string | null> {
+    this._stopReconnectLoop()
     if (this._recordInactiveSettleTimer) {
       clearTimeout(this._recordInactiveSettleTimer)
       this._recordInactiveSettleTimer = null
@@ -769,6 +809,7 @@ export class OBSRecorder {
   }
 
   forceStop(): void {
+    this._stopReconnectLoop()
     if (this._recordInactiveSettleTimer) {
       clearTimeout(this._recordInactiveSettleTimer)
       this._recordInactiveSettleTimer = null
