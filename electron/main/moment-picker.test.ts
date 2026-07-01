@@ -3,7 +3,10 @@ import {
   DUEL_WINDOW_AFTER_MS,
   DUEL_WINDOW_BEFORE_MS,
   MAX_DUEL_MOMENTS,
+  MAX_WIN_DUEL_MOMENTS,
+  duelMomentsForUpload,
   pickDuelMoments,
+  pickWinDuelMoments,
 } from './moment-picker'
 import type { MatchData } from './riot-types'
 
@@ -12,6 +15,15 @@ function death(round: number, offsetMs: number, isolated = false, callout = 'A S
     round,
     videoOffsetMs: offsetMs,
     spatial: { isolated, callout, alliesNearby: isolated ? 0 : 2 },
+  }
+}
+
+function kill(round: number, offsetMs: number, weapon = 'Vandal', callout = 'A Main') {
+  return {
+    round,
+    videoOffsetMs: offsetMs,
+    weapon,
+    spatial: { isolated: false, callout, alliesNearby: 1 },
   }
 }
 
@@ -44,5 +56,35 @@ describe('moment-picker', () => {
     const moments = pickDuelMoments(timeline, 2)
     expect(moments.map((m) => m.video_offset_ms)).toContain(50_000)
     expect(moments.map((m) => m.video_offset_ms)).toContain(90_000)
+  })
+
+  it('picks win duel moments from player kills', () => {
+    const timeline = {
+      playerKills: [
+        kill(0, 20_000, 'Vandal', 'A Main'),
+        kill(0, 55_000, 'Operator', 'Mid'),
+        kill(1, 95_000, 'Vandal', 'B Site'),
+      ],
+      playerDeaths: [death(0, 12_000, false, 'A Main')],
+    } as unknown as MatchData
+
+    const wins = pickWinDuelMoments(timeline)
+    expect(wins.length).toBeGreaterThan(0)
+    expect(wins.length).toBeLessThanOrEqual(MAX_WIN_DUEL_MOMENTS)
+    expect(wins.every((m) => m.trigger === 'player_kill')).toBe(true)
+    expect(wins.every((m) => m.polarity === 'positive')).toBe(true)
+  })
+
+  it('merges death and win moments for upload', () => {
+    const timeline = {
+      game: 'valorant',
+      playerDeaths: [death(0, 40_000, true, 'A Site')],
+      playerKills: [kill(0, 20_000)],
+    } as unknown as MatchData
+
+    const moments = duelMomentsForUpload(timeline)
+    expect(moments.some((m) => m.trigger === 'player_death')).toBe(true)
+    expect(moments.some((m) => m.trigger === 'player_kill')).toBe(true)
+    expect(moments[0].video_offset_ms).toBeLessThan(moments[moments.length - 1].video_offset_ms)
   })
 })
