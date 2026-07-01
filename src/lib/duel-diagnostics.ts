@@ -1,5 +1,5 @@
 import type { DuelMoment } from './duel-moments'
-import { formatPeekSequence } from './duel-moments'
+import { formatPeekSequence, normalizePeekSequence } from './duel-moments'
 
 export interface DuelFailureDiagnostics {
   integrity_reason?: string
@@ -36,7 +36,7 @@ export function parseDuelFailureDiagnostics(raw: unknown): DuelFailureDiagnostic
 
 export function momentHasVisionSignal(moment: DuelMoment): boolean {
   if ((moment.key_observation ?? '').trim()) return true
-  if (Array.isArray(moment.peek_sequence) && moment.peek_sequence.some(structuredFieldHasSignal)) {
+  if (normalizePeekSequence(moment.peek_sequence).some(structuredFieldHasSignal)) {
     return true
   }
   if (structuredFieldHasSignal(moment.crosshair_on_commit)) return true

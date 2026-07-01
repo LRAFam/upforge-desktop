@@ -21,7 +21,8 @@ export interface DuelMomentObservation {
   callout?: string | null
   video_offset_ms?: number
   isolated?: boolean
-  peek_sequence?: string[]
+  /** Gemini may return a single enum string or an array depending on model/version. */
+  peek_sequence?: string | string[]
   crosshair_on_commit?: string
   movement_on_commit?: string
   confidence?: MomentConfidence | string
@@ -52,9 +53,19 @@ export function duelMomentWeightReasons(moment: DuelMomentManifest): string[] {
   return reasons
 }
 
-export function formatPeekSequence(seq: string[] | undefined): string | null {
-  if (!seq?.length) return null
-  return seq.map((s) => s.replace(/_/g, ' ')).join(' → ')
+export function normalizePeekSequence(seq: string | string[] | undefined | null): string[] {
+  if (seq == null) return []
+  if (Array.isArray(seq)) {
+    return seq.map((s) => String(s).trim()).filter(Boolean)
+  }
+  const single = String(seq).trim()
+  return single ? [single] : []
+}
+
+export function formatPeekSequence(seq: string | string[] | undefined | null): string | null {
+  const items = normalizePeekSequence(seq)
+  if (!items.length) return null
+  return items.map((s) => s.replace(/_/g, ' ')).join(' → ')
 }
 
 export function confidenceTone(confidence: string | undefined): 'high' | 'medium' | 'low' {
