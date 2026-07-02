@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 /**
- * Batch-tune displayTransform + fine-tune fields in maps-manifest.json
- * using zone anchor positions (same pipeline as map-display-norm.ts).
+ * Batch-tune displayTransform + fine-tune fields in maps-manifest.json.
+ * Scores callouts against gray playable pixels on the displayicon PNG
+ * (same approach as generate-spatial-zones.mjs + map-display-norm.ts pipeline).
  *
  * Usage: node scripts/calibrate-manifest-display.mjs [--write]
  */
@@ -32,10 +33,9 @@ const CANDIDATE_TRANSFORMS = [
   'swapFlipX',
   'flipY',
   'flipX',
+  'swap',
   'identity',
 ]
-
-const SKIP_IF_OK = new Set(['fracture', 'ascent'])
 
 function mapKey(name) {
   return (name || '').trim().toLowerCase().replace(/\s+/g, '')
@@ -74,6 +74,13 @@ function pngPlayableBounds(png) {
   }
 }
 
+function pngLuminance(png, nx, ny) {
+  const x = Math.max(0, Math.min(png.width - 1, Math.floor(nx * png.width)))
+  const y = Math.max(0, Math.min(png.height - 1, Math.floor(ny * png.height)))
+  const i = (y * png.width + x) * 4
+  return (png.data[i] + png.data[i + 1] + png.data[i + 2]) / 3
+}
+
 async function fetchPng(url) {
   const res = await fetch(url)
   if (!res.ok) throw new Error(`HTTP ${res.status} for ${url}`)
@@ -81,13 +88,16 @@ async function fetchPng(url) {
 }
 
 function hasCrop(bounds) {
-  return bounds
+  return (
+    bounds
     && bounds.maxX > bounds.minX
     && bounds.maxY > bounds.minY
     && (bounds.minX > 0.001 || bounds.minY > 0.001 || bounds.maxX < 0.999 || bounds.maxY < 0.999)
+  )
 }
 
-function toDisplay(norm, bounds, transform, scale, ox, oy) {
+/** Stored norm → full-PNG coords after fine-tune + bounds expand + symmetry. */
+function toPngNorm(norm, bounds, transform, scale, ox, oy) {
   let p = { x: (norm.x - 0.5) * scale + 0.5 + ox, y: (norm.y - 0.5) * scale + 0.5 + oy }
   const tf = TRANSFORM_TO[transform] ?? TRANSFORM_TO.identity
   if (hasCrop(bounds)) {
@@ -95,42 +105,77 @@ function toDisplay(norm, bounds, transform, scale, ox, oy) {
       x: bounds.minX + p.x * (bounds.maxX - bounds.minX),
       y: bounds.minY + p.y * (bounds.maxY - bounds.minY),
     }
-    p = tf(p)
-    const w = bounds.maxX - bounds.minX
-    const h = bounds.maxY - bounds.minY
-    p = { x: (p.x - bounds.minX) / w, y: (p.y - bounds.minY) / h }
-  } else {
-    p = tf(p)
+    return tf(p)
   }
-  return p
+  return tf(p)
 }
 
-function scoreCallouts(callouts, bounds, transform, scale, ox, oy) {
-  let ok = 0
-  let pen = 0
-  for (const z of callouts) {
-    const d = toDisplay({ x: z.x, y: z.y }, bounds, transform, scale, ox, oy)
-    if (d.x >= 0.06 && d.x <= 0.94 && d.y >= 0.06 && d.y <= 0.94) ok++
-    pen += Math.max(0, 0.06 - d.x) + Math.max(0, d.x - 0.94)
-    pen += Math.max(0, 0.06 - d.y) + Math.max(0, d.y - 0.94)
-    if (d.x < -0.1 || d.x > 1.1 || d.y < -0.1 || d.y > 1.1) pen += 8
+function siteSeparationBonus(callouts, project) {
+  const siteNames = ['A Site', 'B Site', 'C Site']
+  const positions = siteNames
+    .map((name) => {
+      const c = callouts.find((x) => x.name === name)
+      if (!c) return null
+      return project(c.x, c.y)
+    })
+    .filter(Boolean)
+  if (positions.length < 2) return 0
+  let maxDist = 0
+  for (let i = 0; i < positions.length; i++) {
+    for (let j = i + 1; j < positions.length; j++) {
+      maxDist = Math.max(
+        maxDist,
+        Math.hypot(positions[i].x - positions[j].x, positions[i].y - positions[j].y),
+      )
+    }
   }
-  return { ok, score: ok - pen * 15, total: callouts.length }
+  return maxDist * 500
 }
 
-function optimize(callouts, bounds, preferTransform) {
+function scoreOnPng(png, callouts, bounds, transform, scale, ox, oy) {
+  const project = (x, y) => {
+    const p = toPngNorm({ x, y }, bounds, transform, scale, ox, oy)
+    return [p.x, p.y]
+  }
+  let onMap = 0
+  let sitesOnMap = 0
+  let siteCount = 0
+  for (const c of callouts) {
+    const [x, y] = project(c.x, c.y)
+    const lum = pngLuminance(png, x, y)
+    if (lum >= 50 && lum < 210) onMap++
+    if (c.name === 'A Site' || c.name === 'B Site' || c.name === 'C Site') {
+      siteCount++
+      if (lum >= 50 && lum < 210) sitesOnMap++
+    }
+  }
+  const separation = siteSeparationBonus(callouts, project)
+  const score = sitesOnMap * 10000 + onMap * 100 + separation
+  return { onMap, sitesOnMap, siteCount, score, total: callouts.length }
+}
+
+function optimize(png, callouts, bounds, preferTransform, current) {
   const transforms = preferTransform
     ? [preferTransform, ...CANDIDATE_TRANSFORMS.filter((t) => t !== preferTransform)]
     : CANDIDATE_TRANSFORMS
-  let best = { score: -9999 }
+  let best = {
+    ...current,
+    transform: current.transform,
+    scale: current.scale,
+    ox: current.ox,
+    oy: current.oy,
+  }
   for (const transform of transforms) {
-    for (let scale = 0.68; scale <= 0.92; scale += 0.002) {
-      for (let ox = -0.1; ox <= 0.12; ox += 0.002) {
-        for (let oy = -0.1; oy <= 0.12; oy += 0.002) {
-          const r = scoreCallouts(callouts, bounds, transform, scale, ox, oy)
-          if (r.score > best.score) {
+    for (let scale = 0.68; scale <= 0.92; scale += 0.004) {
+      for (let ox = -0.1; ox <= 0.12; ox += 0.004) {
+        for (let oy = -0.1; oy <= 0.12; oy += 0.004) {
+          const r = scoreOnPng(png, callouts, bounds, transform, scale, ox, oy)
+          const sitePenalty = (r.siteCount - r.sitesOnMap) * 8000
+          const totalScore = r.score - sitePenalty
+          if (totalScore > best.score) {
             best = {
               ...r,
+              score: totalScore,
               transform,
               scale: round4(scale),
               ox: round4(ox),
@@ -171,9 +216,10 @@ for (const entry of manifest) {
   }
 
   const callouts = JSON.parse(fs.readFileSync(zonePath, 'utf8')).callouts ?? []
+  const png = await fetchPng(entry.displayIcon)
+
   let bounds = entry.displayBounds
   if (!bounds) {
-    const png = await fetchPng(entry.displayIcon)
     bounds = pngPlayableBounds(png)
     entry.displayBounds = {
       minX: round4(bounds.minX),
@@ -184,7 +230,8 @@ for (const entry of manifest) {
   }
 
   const curTransform = entry.displayTransform ?? 'identity'
-  const cur = scoreCallouts(
+  const cur = scoreOnPng(
+    png,
     callouts,
     entry.displayBounds,
     curTransform,
@@ -192,17 +239,26 @@ for (const entry of manifest) {
     entry.displayOffsetX ?? 0,
     entry.displayOffsetY ?? 0,
   )
+  const curScore =
+    cur.score - (cur.siteCount - cur.sitesOnMap) * 8000
 
-  if (SKIP_IF_OK.has(key) && cur.ok >= cur.total - 1) {
-    delete entry.displayRotation
-    report.push({ map: entry.displayName, action: 'kept', curOk: `${cur.ok}/${cur.total}` })
-    continue
-  }
+  const best = optimize(png, callouts, entry.displayBounds, curTransform, {
+    ...cur,
+    score: curScore,
+    transform: curTransform,
+    scale: entry.displayCoordScale ?? 1,
+    ox: entry.displayOffsetX ?? 0,
+    oy: entry.displayOffsetY ?? 0,
+  })
 
-  const best = optimize(callouts, entry.displayBounds, curTransform)
-  if (best.ok < cur.ok && cur.ok >= cur.total - 2) {
+  if (best.score <= curScore || !best.transform) {
     delete entry.displayRotation
-    report.push({ map: entry.displayName, action: 'kept (current better)', curOk: `${cur.ok}/${cur.total}` })
+    report.push({
+      map: entry.displayName,
+      action: 'kept',
+      onMap: `${cur.onMap}/${cur.total}`,
+      sites: `${cur.sitesOnMap}/${cur.siteCount}`,
+    })
     continue
   }
 
@@ -210,8 +266,9 @@ for (const entry of manifest) {
   report.push({
     map: entry.displayName,
     action: 'updated',
-    from: `${cur.ok}/${cur.total}`,
-    to: `${best.ok}/${best.total}`,
+    from: `${cur.onMap}/${cur.total}`,
+    to: `${best.onMap}/${best.total}`,
+    sites: `${best.sitesOnMap}/${best.siteCount}`,
     transform: best.transform,
     scale: best.scale,
     ox: best.ox,

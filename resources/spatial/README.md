@@ -42,8 +42,8 @@ Regenerate after API updates (also syncs to `upforge-frontend`):
 npm run spatial:sync
 ```
 
-Then copy `zones/*.json` to `upforge-ai-service/resources/spatial/zones/`.
+Then `npm run spatial:sync` copies manifest, zones, plants, and benchmarks to `upforge-frontend` and `upforge-ai-service`.
 
-**Standard maps through 2026 (12/12):** Ascent, Abyss, Bind, Breeze, Corrode, Fracture, Haven, Icebox, Lotus, Pearl, Split, Sunset.
+**Standard maps through 2026 (13/13):** Ascent, Abyss, Bind, Breeze, Corrode, Fracture, Haven, Icebox, Lotus, Pearl, Split, Summit, Sunset.
 
 See `coverage.json` after running the sync script. TDM maps (District, Kasbah, Drift, Glitch, Piazza) are excluded — Riot/valorant-api do not publish world→minimap transforms for those modes.

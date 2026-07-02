@@ -1,7 +1,7 @@
 /**
- * Copy desktop spatial assets → upforge-frontend (manifest, zones, plants, benchmarks).
+ * Copy desktop spatial assets → upforge-frontend + upforge-ai-service.
  */
-import { existsSync, mkdirSync, cpSync } from 'fs'
+import { existsSync, mkdirSync, cpSync, readFileSync, writeFileSync } from 'fs'
 import { join, dirname } from 'path'
 import { fileURLToPath } from 'url'
 
@@ -9,46 +9,72 @@ const __dirname = dirname(fileURLToPath(import.meta.url))
 const root = join(__dirname, '..')
 const spatialDir = join(root, 'resources/spatial')
 const frontendRoot = join(root, '..', 'upforge-frontend')
+const aiRoot = join(root, '..', 'upforge-ai-service')
 
-if (!existsSync(frontendRoot)) {
-  console.warn('upforge-frontend not found — skipping spatial sync')
+const targets = [
+  { name: 'upforge-frontend', root: frontendRoot },
+  { name: 'upforge-ai-service', root: aiRoot },
+].filter((t) => existsSync(t.root))
+
+if (!targets.length) {
+  console.warn('No sync targets found (upforge-frontend / upforge-ai-service)')
   process.exit(0)
 }
 
-const copies = [
+const manifestCopies = [
   {
     from: join(spatialDir, 'maps-manifest.json'),
-    to: join(frontendRoot, 'app/data/spatial/maps-manifest.json'),
+    rel: 'app/data/spatial/maps-manifest.json',
+    aiRel: 'resources/spatial/maps-manifest.json',
   },
   {
     from: join(root, 'src/lib/map-display-norm.ts'),
-    to: join(frontendRoot, 'app/lib/map-display-norm.ts'),
+    rel: 'app/lib/map-display-norm.ts',
+    aiRel: null,
   },
   {
     from: join(spatialDir, 'zones'),
-    to: join(frontendRoot, 'public/spatial/zones'),
+    rel: 'public/spatial/zones',
+    aiRel: 'resources/spatial/zones',
     recursive: true,
   },
   {
     from: join(spatialDir, 'plants'),
-    to: join(frontendRoot, 'public/spatial/plants'),
+    rel: 'public/spatial/plants',
+    aiRel: 'resources/spatial/plants',
     recursive: true,
   },
   {
     from: join(spatialDir, 'benchmarks'),
-    to: join(frontendRoot, 'public/spatial/benchmarks'),
+    rel: 'public/spatial/benchmarks',
+    aiRel: 'resources/spatial/benchmarks',
     recursive: true,
   },
 ]
 
-for (const { from, to, recursive } of copies) {
-  if (!existsSync(from)) {
-    console.warn(`Skip missing: ${from}`)
-    continue
+for (const target of targets) {
+  for (const { from, rel, aiRel, recursive } of manifestCopies) {
+    if (!existsSync(from)) {
+      console.warn(`Skip missing: ${from}`)
+      continue
+    }
+    const destRel = target.name === 'upforge-ai-service' ? aiRel : rel
+    if (!destRel) continue
+    const to = join(target.root, destRel)
+    mkdirSync(dirname(to), { recursive: true })
+    cpSync(from, to, { recursive: !!recursive, force: true })
+    if (
+      target.name === 'upforge-frontend' &&
+      destRel === 'app/lib/map-display-norm.ts'
+    ) {
+      const content = readFileSync(to, 'utf8').replace(
+        "import mapsManifest from '../../resources/spatial/maps-manifest.json'",
+        "import mapsManifest from '~/data/spatial/maps-manifest.json'",
+      )
+      writeFileSync(to, content)
+    }
+    console.log(`Synced ${from.replace(root, '.')} → ${target.name}`)
   }
-  mkdirSync(dirname(to), { recursive: true })
-  cpSync(from, to, { recursive: !!recursive, force: true })
-  console.log(`Synced ${from.replace(root, '.')} → upforge-frontend`)
 }
 
-console.log('✅ Spatial assets synced to upforge-frontend')
+console.log(`✅ Spatial assets synced to ${targets.map((t) => t.name).join(', ')}`)

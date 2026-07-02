@@ -29,7 +29,7 @@ const coveragePath = join(spatialDir, 'coverage.json')
 /** All standard competitive maps released through Corrode (v11.00, 2025). */
 const STANDARD_MAPS_2026 = [
   'Ascent', 'Bind', 'Haven', 'Split', 'Icebox', 'Breeze', 'Fracture',
-  'Pearl', 'Lotus', 'Sunset', 'Abyss', 'Corrode',
+  'Pearl', 'Lotus', 'Sunset', 'Abyss', 'Corrode', 'Summit',
 ]
 
 function normalizeKey(name) {

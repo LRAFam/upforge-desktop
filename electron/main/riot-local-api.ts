@@ -1214,6 +1214,7 @@ export class RiotLocalApi {
           (k.finishingDamage as Record<string, unknown>)?.damageType as string | undefined,
           (k.finishingDamage as Record<string, unknown>)?.damageItem as string | undefined,
         )
+        const rawFinishing = k.finishingDamage as Record<string, unknown> | undefined
         const ev: KillEvent = {
           EventID: eventId++,
           EventName: 'ChampionKill',
@@ -1225,6 +1226,12 @@ export class RiotLocalApi {
           videoOffsetMs,
           weapon: finishing.weapon ?? undefined,
           abilitySlot: finishing.abilitySlot ?? undefined,
+          finishingDamage: rawFinishing?.damageType
+            ? {
+                damageType: rawFinishing.damageType as string,
+                damageItem: rawFinishing.damageItem as string | undefined,
+              }
+            : undefined,
           killerPuuid,
           victimPuuid,
           round: (k.round as number) ?? 0,

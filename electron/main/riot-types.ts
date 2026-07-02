@@ -24,6 +24,14 @@ export interface KillEvent extends GameEvent {
   weapon?: string
   /** valorant-api ability slot when weapon is Ability/Ultimate (grenade, ability1, ability2, ultimate) */
   abilitySlot?: 'grenade' | 'ability1' | 'ability2' | 'ultimate'
+  /** Raw Riot finishingDamage — kept for ability resolution and Henrik overlay */
+  finishingDamage?: {
+    damageType?: string
+    damageItem?: string
+  }
+  /** Denormalized agent names (Henrik overlay / teamSnapshot) */
+  killerAgent?: string
+  victimAgent?: string
   /** Raw PUUIDs for backend resolution */
   killerPuuid?: string
   victimPuuid?: string

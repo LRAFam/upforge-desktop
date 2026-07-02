@@ -21,10 +21,7 @@
       "maxX": 0.9668,
       "maxY": 0.9844
     },
-    "displayTransform": "swapFlipXY",
-    "displayCoordScale": 0.68,
-    "displayOffsetX": -0.1,
-    "displayOffsetY": -0.082
+    "displayTransform": "swapFlipXY"
   },
   {
     "displayName": "Ascent",
@@ -48,9 +45,7 @@
       "maxX": 0.9668,
       "maxY": 0.9141
     },
-    "displayTransform": "swapFlipXY",
-    "displayCoordScale": 0.75,
-    "displayOffsetY": -0.02
+    "displayTransform": "swapFlipXY"
   },
   {
     "displayName": "Bind",
@@ -74,10 +69,7 @@
       "maxX": 0.9854,
       "maxY": 0.9561
     },
-    "displayTransform": "swapFlipY",
-    "displayCoordScale": 0.68,
-    "displayOffsetX": -0.1,
-    "displayOffsetY": -0.02
+    "displayTransform": "swapFlipY"
   },
   {
     "displayName": "Breeze",
@@ -101,10 +93,7 @@
       "maxX": 0.9658,
       "maxY": 0.9482
     },
-    "displayTransform": "swapFlipXY",
-    "displayCoordScale": 0.68,
-    "displayOffsetX": -0.08,
-    "displayOffsetY": -0.096
+    "displayTransform": "swapFlipXY"
   },
   {
     "displayName": "Corrode",
@@ -128,10 +117,7 @@
       "maxX": 0.9844,
       "maxY": 0.918
     },
-    "displayTransform": "swapFlipX",
-    "displayCoordScale": 0.68,
-    "displayOffsetX": -0.056,
-    "displayOffsetY": -0.1
+    "displayTransform": "swapFlipX"
   },
   {
     "displayName": "Fracture",
@@ -154,11 +140,7 @@
       "minY": 0.0674,
       "maxX": 0.9219,
       "maxY": 0.9248
-    },
-    "displayTransform": "swapFlipXY",
-    "displayCoordScale": 0.805,
-    "displayOffsetX": 0.06,
-    "displayOffsetY": 0.055
+    }
   },
   {
     "displayName": "Haven",
@@ -176,9 +158,6 @@
       "minY": 0.8409374374999999,
       "maxY": 1.596331025
     },
-    "displayCoordScale": 0.68,
-    "displayOffsetX": -0.098,
-    "displayOffsetY": -0.098,
     "displayBounds": {
       "minX": 0.0342,
       "minY": 0.083,
@@ -202,9 +181,6 @@
       "minY": -0.20471299999999998,
       "maxY": 0.625087
     },
-    "displayCoordScale": 0.68,
-    "displayOffsetX": -0.098,
-    "displayOffsetY": -0.098,
     "displayBounds": {
       "minX": 0.0635,
       "minY": 0.0762,
@@ -234,10 +210,7 @@
       "maxX": 0.9287,
       "maxY": 0.8945
     },
-    "displayTransform": "swapFlipXY",
-    "displayCoordScale": 0.68,
-    "displayOffsetX": -0.05,
-    "displayOffsetY": -0.1
+    "displayTransform": "swapFlipXY"
   },
   {
     "displayName": "Pearl",
@@ -261,10 +234,7 @@
       "maxX": 0.9922,
       "maxY": 0.96
     },
-    "displayTransform": "flipY",
-    "displayCoordScale": 0.68,
-    "displayOffsetX": -0.098,
-    "displayOffsetY": -0.096
+    "displayTransform": "flipY"
   },
   {
     "displayName": "Split",
@@ -282,16 +252,13 @@
       "minY": 0.6929300683740001,
       "maxY": 1.396845582
     },
-    "displayTransform": "swapFlipXY",
-    "displayCoordScale": 0.68,
-    "displayOffsetX": -0.1,
-    "displayOffsetY": -0.07,
     "displayBounds": {
       "minX": 0.0537,
       "minY": 0.0469,
       "maxX": 0.9238,
       "maxY": 0.9727
-    }
+    },
+    "displayTransform": "swapFlipXY"
   },
   {
     "displayName": "Summit",
@@ -315,10 +282,7 @@
       "maxX": 0.9951,
       "maxY": 0.9805
     },
-    "displayTransform": "swapFlipXY",
-    "displayCoordScale": 0.68,
-    "displayOffsetX": -0.1,
-    "displayOffsetY": -0.1
+    "displayTransform": "swapFlipXY"
   },
   {
     "displayName": "Sunset",
@@ -336,9 +300,6 @@
       "minY": 0.188025,
       "maxY": 0.9719249999999999
     },
-    "displayCoordScale": 0.68,
-    "displayOffsetX": -0.098,
-    "displayOffsetY": -0.098,
     "displayBounds": {
       "minX": 0.0449,
       "minY": 0.0088,

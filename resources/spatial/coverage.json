@@ -1,5 +1,5 @@
 {
-  "updatedAt": "2026-06-23T15:27:47.643Z",
+  "updatedAt": "2026-07-02T14:37:40.182Z",
   "standardMapsThrough2026": [
     "Ascent",
     "Bind",
@@ -12,7 +12,8 @@
     "Lotus",
     "Sunset",
     "Abyss",
-    "Corrode"
+    "Corrode",
+    "Summit"
   ],
   "mapsInManifest": [
     "Abyss",
@@ -31,9 +32,7 @@
   ],
   "complete": true,
   "missingFromValorantApi": [],
-  "newMapsNotInChecklist": [
-    "Summit"
-  ],
+  "newMapsNotInChecklist": [],
   "zones": [
     {
       "map": "Abyss",
