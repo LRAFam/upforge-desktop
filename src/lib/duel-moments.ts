@@ -10,7 +10,7 @@ export interface DuelMomentManifest {
   window_end_ms: number
   callout: string | null
   isolated: boolean
-  trigger?: 'player_death'
+  trigger?: 'player_death' | 'player_kill'
   weight?: number
   clip_s3_key?: string
 }
@@ -23,11 +23,14 @@ export interface DuelMomentObservation {
   isolated?: boolean
   /** Gemini may return a single enum string or an array depending on model/version. */
   peek_sequence?: string | string[]
+  hold_geometry?: string
   crosshair_on_commit?: string
+  crosshair_note?: string
   movement_on_commit?: string
   confidence?: MomentConfidence | string
   key_observation?: string
-  caveats?: string[]
+  /** May arrive as a single string from malformed JSON. */
+  caveats?: string | string[]
   death_timestamp?: string
 }
 
@@ -42,7 +45,28 @@ export function mergeDuelMoments(
   for (const obs of observations ?? []) {
     if (obs.moment_id) byId.set(obs.moment_id, obs)
   }
-  return manifest.map((m) => ({ ...m, ...(byId.get(m.moment_id) ?? {}) }))
+  return manifest.map((m) => normalizeDuelMoment({ ...m, ...(byId.get(m.moment_id) ?? {}) }))
+}
+
+export function normalizeStringList(value: string | string[] | undefined | null): string[] {
+  if (value == null) return []
+  if (Array.isArray(value)) {
+    return value.map((s) => String(s).trim()).filter(Boolean)
+  }
+  const single = String(value).trim()
+  return single ? [single] : []
+}
+
+export function normalizeDuelMoment<T extends DuelMoment>(moment: T): T {
+  return {
+    ...moment,
+    peek_sequence: normalizePeekSequence(moment.peek_sequence),
+    caveats: normalizeStringList(moment.caveats),
+  }
+}
+
+export function normalizeDuelMoments<T extends DuelMoment>(moments: T[]): T[] {
+  return moments.map(normalizeDuelMoment)
 }
 
 export function duelMomentWeightReasons(moment: DuelMomentManifest): string[] {

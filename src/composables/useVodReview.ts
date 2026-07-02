@@ -6,6 +6,7 @@ import { buildTacticalIntelBrief } from '../lib/coaching-brief'
 import type { CoachingEvidence } from '../lib/coaching-brief'
 import type { MatchSpatialSummary, SpatialTimelineEvent } from '../lib/spatial-types'
 import type { DuelMoment, DuelMomentManifest } from '../lib/duel-moments'
+import { normalizeDuelMoments } from '../lib/duel-moments'
 import {
   buildReplaySpatialSummary,
   findSpatialEventAtPlayback,
@@ -873,9 +874,9 @@ function createVodReview() {
 
   const duelMoments = computed((): DuelMoment[] => {
     const fromDetail = coachingDetail.value?.duel_moments
-    if (fromDetail?.length) return fromDetail
+    if (fromDetail?.length) return normalizeDuelMoments(fromDetail)
     const manifest = timeline.value?.duelMoments ?? []
-    return manifest
+    return normalizeDuelMoments(manifest as DuelMoment[])
   })
 
   const hasDuelMoments = computed(() => duelMoments.value.length > 0)

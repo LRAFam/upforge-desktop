@@ -1,4 +1,5 @@
 import type { DuelMoment } from './duel-moments'
+import { normalizeDuelMoment, normalizeDuelMoments } from './duel-moments'
 import { parseMatchHighlightsFromApi, type MatchHighlight } from './match-highlights'
 import type { SkillProfileSnapshot } from './skill-profile'
 import type { MatchSpatialSummary } from './spatial-types'
@@ -159,7 +160,7 @@ export function enrichAnalysisDetail(analysis: Record<string, unknown>): Analysi
       ? (md.finalScore as { enemyScore?: number }).enemyScore ?? null
       : (typeof analysis.enemy_score === 'number' ? analysis.enemy_score : null),
     duel_moments: Array.isArray(analysis.duel_moments)
-      ? analysis.duel_moments as DuelMoment[]
+      ? normalizeDuelMoments(analysis.duel_moments as DuelMoment[])
       : null,
     match_highlights: matchHighlights,
     timing_comparisons: parseTimingComparisons(analysis.timing_comparisons),

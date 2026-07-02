@@ -1,5 +1,5 @@
 import type { DuelMoment } from './duel-moments'
-import { formatPeekSequence, normalizePeekSequence } from './duel-moments'
+import { formatPeekSequence, normalizePeekSequence, normalizeStringList } from './duel-moments'
 
 export interface DuelFailureDiagnostics {
   integrity_reason?: string
@@ -59,7 +59,7 @@ export function formatMomentVisionLine(moment: DuelMoment): string {
   }
   if (moment.key_observation?.trim()) return moment.key_observation.trim()
   if (parts.length) return parts.join(' · ')
-  const caveat = moment.caveats?.find((c) => c.trim())
+  const caveat = normalizeStringList(moment.caveats).find((c) => c.trim())
   if (caveat) return caveat
   if (!momentClipUploaded(moment)) return 'No duel clip uploaded — AI used full recording window'
   return 'Gemini returned no peek/crosshair signal from this clip'

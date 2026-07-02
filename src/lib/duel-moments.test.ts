@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest'
-import { formatPeekSequence, normalizePeekSequence } from './duel-moments'
+import {
+  formatPeekSequence,
+  normalizeDuelMoment,
+  normalizePeekSequence,
+} from './duel-moments'
 
 describe('duel-moments', () => {
   it('formats array peek sequences', () => {
@@ -16,5 +20,19 @@ describe('duel-moments', () => {
     expect(formatPeekSequence(null)).toBeNull()
     expect(formatPeekSequence([])).toBeNull()
     expect(formatPeekSequence('')).toBeNull()
+  })
+
+  it('normalizes caveats when string', () => {
+    const normalized = normalizeDuelMoment({
+      moment_id: 'death-r1-1',
+      round: 1,
+      video_offset_ms: 1000,
+      window_start_ms: 0,
+      window_end_ms: 2000,
+      callout: null,
+      isolated: false,
+      caveats: 'Spectator cam after death',
+    })
+    expect(normalized.caveats).toEqual(['Spectator cam after death'])
   })
 })
