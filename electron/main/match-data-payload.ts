@@ -9,6 +9,7 @@ import { riotStatsToAcs } from './combat-score'
 import { logPlantCoordStats } from './match-plant-telemetry'
 import { resolvePlantLocationFromRound } from './plant-location'
 import { buildCoachingFacts, type CoachingFacts } from './coaching-facts'
+import { buildMatchRoundReplay, type MatchRoundReplay } from './round-replay'
 import { duelMomentsForUpload, type DuelMomentManifest } from './moment-picker'
 import {
   buildTeamComp,
@@ -70,6 +71,8 @@ export type UploadMatchData = Omit<MatchData, 'events' | 'matchDetails'> & {
   rankSnapshot?: RankSnapshot | null
   /** Valorant client build when captured. */
   gameClientVersion?: string | null
+  /** Round-by-round minimap replay keyframes (10-player positions at kills/plant/defuse). */
+  roundReplay?: MatchRoundReplay | null
 }
 
 function slimMatchDetails(raw: Record<string, unknown> | null | undefined): MatchDetailsLite | null {
@@ -234,6 +237,7 @@ export function prepareMatchDataForUpload(
     skillProfile: extras?.skillProfile ?? undefined,
     rankSnapshot: extras?.rankSnapshot ?? undefined,
     gameClientVersion: extras?.gameClientVersion ?? undefined,
+    roundReplay: buildMatchRoundReplay(timeline) ?? undefined,
     startTime: timeline.startTime,
     endTime: timeline.endTime,
   }
