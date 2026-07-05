@@ -3007,6 +3007,12 @@ function setupGameDetection(): void {
     logActivity(`Recording started (${gameMode ?? 'unknown mode'}${obsRecorder.wasNoAudio() ? ' — no audio' : ''})`)
     trackFirstRecording(game)
 
+    if (game === 'valorant') {
+      setTimeout(() => {
+        void obsRecorder.refitCaptureForGameplay('post-loading settle')
+      }, 12_000)
+    }
+
     // Poll overlay/session state — drives Valorant match-end detection via pollActiveMatch.
     const pollOverlaySession = async () => {
       try {
@@ -3024,11 +3030,16 @@ function setupGameDetection(): void {
         }
         if (state?.sessionLoopState === 'INGAME') {
           riotLocalApi.setGameplayStartTime(Date.now())
-          const round = (state.allyScore ?? 0) + (state.enemyScore ?? 0) + 1
+          const ally = state.allyScore ?? 0
+          const enemy = state.enemyScore ?? 0
+          if (ally + enemy > 0) {
+            void obsRecorder.refitCaptureForGameplay('scoreboard active')
+          }
+          const round = ally + enemy + 1
           sendOverlayData('overlay:data', {
             round,
-            allyScore: state.allyScore ?? 0,
-            enemyScore: state.enemyScore ?? 0,
+            allyScore: ally,
+            enemyScore: enemy,
             yourCredits: null,
             enemyEstimate: null,
             recording: true,

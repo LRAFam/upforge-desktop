@@ -9,7 +9,14 @@ import {
   WARN_FREE_DISK_BYTES,
   getFreeDiskSpace,
 } from './disk-space'
-import { setupUpForgeScene, retargetUpForgeCapture, fitUpForgeCaptureToCanvas, type ObsSetupResult, type ObsSceneSwitchOptions } from './obs-setup'
+import {
+  setupUpForgeScene,
+  retargetUpForgeCapture,
+  fitUpForgeCaptureToCanvas,
+  refitCaptureWithSettle,
+  type ObsSetupResult,
+  type ObsSceneSwitchOptions,
+} from './obs-setup'
 import { findObsWindowString } from './game-window-finder'
 import { formatObsConnectError, obsConnectHosts } from './obs-connect'
 import {
@@ -76,6 +83,7 @@ export class OBSRecorder {
   }
   private _replayBufferActive = false
   private _startedAt: number | null = null
+  private _gameplayRefitDone = false
   private _outputPath: string | null = null
   private _lastError: string | null = null
   private _obsVersion: string | null = null
@@ -448,6 +456,18 @@ export class OBSRecorder {
     return applyObsRecordingSettings(this._obs, config)
   }
 
+  /** Re-fit capture once the Valorant viewport is stable (after loading / agent select). */
+  async refitCaptureForGameplay(reason: string): Promise<void> {
+    if (!this._connected || !this._recording || this._gameplayRefitDone) return
+    this._gameplayRefitDone = true
+    log.info('[OBSRecorder] Refitting capture for gameplay:', reason)
+    try {
+      await refitCaptureWithSettle(this._obs, [1000, 4000, 10000, 18000])
+    } catch (err) {
+      log.warn('[OBSRecorder] Gameplay capture refit failed:', err instanceof Error ? err.message : err)
+    }
+  }
+
   /** Point OBS capture at the active title (no-op while recording). */
   async retargetCapture(game?: string): Promise<{ ok: boolean; captureWindow?: string }> {
     if (!this._connected || this._recording) {
@@ -607,6 +627,7 @@ export class OBSRecorder {
         await this._obs.call('StartRecord')
       }
       this._matchOwnedRecording = true
+      this._gameplayRefitDone = false
       this._startedAt = Date.now()
       this._recording = true
       this.onStatusChange?.(true)

@@ -273,7 +273,9 @@ export async function fitUpForgeCaptureToCanvas(obs: OBSWebSocket): Promise<void
         scaleX: 1,
         scaleY: 1,
         alignment: 5,
-        boundsType: 'OBS_BOUNDS_SCALE_OUTER',
+        // SCALE_INNER = full game view (letterbox if needed). SCALE_OUTER crops edges and
+        // can zoom HUD when capture dimensions settle late after the loading screen.
+        boundsType: 'OBS_BOUNDS_SCALE_INNER',
         boundsAlignment: 0,
         boundsWidth,
         boundsHeight,
