@@ -401,27 +401,29 @@ export class AuthManager {
     }
   }
 
-  async fetchSquad(): Promise<{ team: unknown; activity: unknown[]; presence: Record<number, { online: boolean; is_recording: boolean }>; error?: string } | null> {
+  async fetchSquad(): Promise<{ team: unknown; activity: unknown[]; presence: Record<number, { online: boolean; is_recording: boolean; game?: string | null }>; stats: unknown[]; leaderboard: unknown[]; error?: string } | null> {
     try {
-      // Fetch my-team first to detect auth errors vs no-team
       const teamRes = await this._api.get('/api/teams/my-team')
       if (!teamRes?.data?.team) return null
 
-      // Fetch activity and presence in parallel (non-critical, swallow errors)
-      const [activityRes, presenceRes] = await Promise.all([
+      const [activityRes, presenceRes, statsRes, leaderboardRes] = await Promise.all([
         this._api.get('/api/teams/activity?limit=20').catch(() => null),
         this._api.get('/api/teams/presence').catch(() => null),
+        this._api.get('/api/teams/stats').catch(() => null),
+        this._api.get('/api/teams/leaderboard').catch(() => null),
       ])
 
       return {
         team: teamRes.data.team,
         activity: activityRes?.data?.activity ?? [],
         presence: presenceRes?.data?.presence ?? {},
+        stats: statsRes?.data?.stats ?? [],
+        leaderboard: leaderboardRes?.data?.leaderboard ?? [],
       }
     } catch (err: unknown) {
       const status = (err as { response?: { status?: number } })?.response?.status
       if (status === 401 || status === 403) throw err
-      return { team: null, activity: [], presence: {}, error: 'Failed to load squad data' }
+      return { team: null, activity: [], presence: {}, stats: [], leaderboard: [], error: 'Failed to load squad data' }
     }
   }
 

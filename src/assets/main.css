@@ -193,6 +193,15 @@ kbd {
     0 12px 40px rgba(0, 0, 0, 0.22);
 }
 
+.dash-panel {
+  background: linear-gradient(165deg, rgba(255, 255, 255, 0.04) 0%, rgba(255, 255, 255, 0.015) 48%, rgba(0, 0, 0, 0.12) 100%);
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  border-radius: 16px;
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.05) inset,
+    0 16px 48px rgba(0, 0, 0, 0.26);
+}
+
 .panel-inset {
   background: rgba(0, 0, 0, 0.18);
   border: 1px solid rgba(255, 255, 255, 0.07);

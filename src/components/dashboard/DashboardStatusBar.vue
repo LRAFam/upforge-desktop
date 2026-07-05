@@ -8,7 +8,6 @@ const {
   recordingElapsed,
   stopping,
   obsConnecting,
-  dashboardHeadline,
   clipCount,
   totalSessionsAnalysed,
   dashboardRankLabel,
@@ -28,7 +27,7 @@ const { features } = useGameTheme()
 <template>
   <div
     :class="[
-      'flex-shrink-0 mx-4 mt-3 panel-elevated overflow-hidden text-xs transition-all',
+      'flex-shrink-0 mx-4 mt-2 panel-elevated overflow-hidden text-xs transition-all',
       !status.obsConnected && !status.recording ? 'ring-1 ring-amber-500/15' :
       !status.ffmpegOk ? 'ring-1 ring-yellow-500/15' :
       status.recording ? 'ring-1 ring-red-500/20' : ''
@@ -110,7 +109,6 @@ const { features } = useGameTheme()
             {{ deferredUploadCount }} paused for recording
           </span>
         </div>
-        <p class="text-sm font-bold text-white leading-snug">{{ dashboardHeadline }}</p>
       </div>
       <div class="flex flex-shrink-0 divide-x divide-white/[0.07] bg-white/[0.015]">
         <div class="flex flex-col items-center justify-center py-2 px-3.5 gap-0.5 min-w-[4.25rem]">

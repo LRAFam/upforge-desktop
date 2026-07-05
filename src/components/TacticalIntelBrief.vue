@@ -62,13 +62,13 @@ const dedupedImprovements = computed(() => {
     <div class="px-3 py-2.5 space-y-2.5">
       <p
         v-if="brief.headline"
-        class="text-[12px] font-semibold text-gray-100 leading-relaxed"
-        :class="compact ? 'text-[11px]' : ''"
+        class="font-semibold text-gray-100 leading-relaxed"
+        :class="compact ? 'text-[11px]' : 'text-[13px]'"
       >{{ brief.headline }}</p>
 
       <div v-if="brief.evidence.length" class="space-y-1.5">
         <p class="text-[9px] font-semibold uppercase tracking-[0.18em] text-gray-600">Evidence</p>
-        <ul class="space-y-1.5 max-h-44 overflow-y-auto scrollbar-hide pr-0.5">
+        <ul class="space-y-1.5 overflow-y-auto scrollbar-hide pr-0.5" :class="compact ? 'max-h-44' : 'max-h-none'">
           <li
             v-for="(item, index) in brief.evidence"
             :key="`${item.roundLabel}-${item.timeLabel}-${index}`"
@@ -97,7 +97,7 @@ const dedupedImprovements = computed(() => {
         class="rounded-lg border border-emerald-500/20 bg-emerald-500/[0.06] px-2.5 py-2"
       >
         <p class="text-[9px] font-bold uppercase tracking-[0.16em] text-emerald-400/90 mb-1">Fix</p>
-        <p class="text-[11px] text-emerald-100/90 leading-snug">{{ brief.fix }}</p>
+        <p class="text-[12px] text-emerald-100/90 leading-snug">{{ brief.fix }}</p>
       </div>
 
       <div v-if="dedupedImprovements.length" class="space-y-1">
@@ -106,7 +106,8 @@ const dedupedImprovements = computed(() => {
           <li
             v-for="(item, index) in dedupedImprovements.slice(0, compact ? 2 : 3)"
             :key="`${index}-${item.slice(0, 24)}`"
-            class="flex gap-2 text-[11px] text-gray-500 leading-snug"
+            class="flex gap-2 text-gray-500 leading-snug"
+            :class="compact ? 'text-[11px]' : 'text-[12px]'"
           >
             <span class="text-gray-700 flex-shrink-0">·</span>
             <span>{{ item }}</span>

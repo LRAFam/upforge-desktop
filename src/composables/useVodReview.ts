@@ -13,16 +13,16 @@ import {
   spatialEventToastLabel,
 } from '../lib/spatial-replay-sync'
 import { canSpatialVodSeek } from '../lib/tier-features'
+import { roundOutcomeIcon as resolveRoundOutcomeIcon } from '../lib/valorant-round-icons'
+import {
+  isAbilityKill,
+  killSourceImage,
+  killSourceLabel,
+  resolveKillSourceFields,
+} from '../lib/match-kill-display'
+import { isWeaponName } from '../lib/valorant-ability-images'
 
-// Round outcome icons — bundled locally to avoid CSP/CDN issues
-import iconDiffuseWin from '../assets/round-icons/diffusewin1.png'
-import iconDiffuseLoss from '../assets/round-icons/diffuseloss1.png'
-import iconTimeWin from '../assets/round-icons/timewin1.png'
-import iconTimeLoss from '../assets/round-icons/timeloss1.png'
-import iconEliminationWin from '../assets/round-icons/eliminationwin1.png'
-import iconEliminationLoss from '../assets/round-icons/eliminationloss1.png'
-import iconExplosionWin from '../assets/round-icons/explosionwin1.png'
-import iconExplosionLoss from '../assets/round-icons/explosionloss1.png'
+// Round outcome icons — re-exported via valorant-round-icons.ts (src/assets/round-icons)
 
 interface KillEvent {
   killerName: string
@@ -30,6 +30,10 @@ interface KillEvent {
   assistants?: string[]
   weapon?: string
   abilitySlot?: 'grenade' | 'ability1' | 'ability2' | 'ultimate'
+  finishingDamage?: {
+    damageType?: string
+    damageItem?: string
+  }
   videoOffsetMs?: number
   round?: number
   type?: 'kill' | 'death'
@@ -210,7 +214,7 @@ function createVodReview() {
   const PLAYBACK_POS_PREFIX = 'upforge_vod_pos:'
   const PLAYBACK_MUTE_KEY = 'upforge_vod_muted'
   
-  const spatialMapVisible = ref(true)
+  const spatialMapVisible = ref(false)
   const spatialMapLarge = ref(false)
   const spatialHudVisible = ref(true)
   const spatialReplaySync = ref(true)
@@ -367,11 +371,65 @@ function createVodReview() {
   /** Returns an ability icon URL for a kill event where weapon is Ability/Ultimate. */
   function getAbilityKillIcon(event: TimelineEvent): string {
     const killerAgent = agentByPuuid(event.killerPuuid)
-    if (!killerAgent) return ''
-    const slot =
-      event.abilitySlot
-      ?? (event.weapon === 'Ultimate' ? 'ultimate' : 'ability2')
-    return getAbilityIcon(killerAgent, slot)
+    return killSourceImage(
+      {
+        weapon: event.weapon,
+        abilitySlot: event.abilitySlot,
+        killerAgent,
+        finishingDamage: event.finishingDamage,
+      },
+      getWeaponImage,
+    )
+  }
+
+  function getEventSourceImage(event: TimelineEvent): string | undefined {
+    if (event.type !== 'kill' && event.type !== 'death') return undefined
+    const killerAgent = agentByPuuid(event.killerPuuid)
+    const resolved = resolveKillSourceFields({
+      weapon: event.weapon,
+      abilitySlot: event.abilitySlot,
+      killerAgent,
+      finishingDamage: event.finishingDamage,
+    })
+    if (resolved.weapon && isWeaponName(resolved.weapon)) {
+      const gun = getWeaponImage(resolved.weapon)
+      if (gun) return gun
+    }
+    if (isAbilityKill({ weapon: event.weapon, abilitySlot: event.abilitySlot, killerAgent, finishingDamage: event.finishingDamage })) {
+      const ability = getAbilityKillIcon(event)
+      if (ability) return ability
+    }
+    return undefined
+  }
+
+  function getKillSourceLabel(event: TimelineEvent): string | null {
+    return killSourceLabel({
+      weapon: event.weapon,
+      abilitySlot: event.abilitySlot,
+      killerAgent: agentByPuuid(event.killerPuuid),
+      finishingDamage: event.finishingDamage,
+    })
+  }
+
+  function nearEventHighlightClass(event: TimelineEvent): string {
+    if (!isNearEvent(event)) return ''
+    if (event.type === 'kill') return 'bg-emerald-500/[0.08] ring-1 ring-inset ring-emerald-500/25'
+    if (event.type === 'death') return 'bg-red-500/[0.08] ring-1 ring-inset ring-red-500/25'
+    if (event.type === 'plant') return 'bg-orange-500/[0.08] ring-1 ring-inset ring-orange-500/25'
+    if (event.type === 'defuse') return 'bg-cyan-500/[0.08] ring-1 ring-inset ring-cyan-500/25'
+    return 'bg-white/[0.06] ring-1 ring-inset ring-white/15'
+  }
+
+  const lastScrolledEventKey = ref<string | null>(null)
+
+  function scrollActiveEventIntoView(event: TimelineEvent | null) {
+    if (event?.videoOffsetMs == null) return
+    nextTick(() => {
+      const el = document.querySelector(
+        `[data-round-event="${event.round ?? expandedRoundNumber.value}-${event.videoOffsetMs}"]`,
+      ) as HTMLElement | null
+      el?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+    })
   }
   
   /** Returns whether a timeline event is a spike-related event type. */
@@ -431,17 +489,7 @@ function createVodReview() {
   })
   
   function roundOutcomeIcon(round: RoundGroup): string | null {
-    const c = round.ceremony?.toLowerCase() ?? ''
-    if (c.includes('bombdefused') || c.includes('defus'))
-      return round.won ? iconDiffuseWin : iconDiffuseLoss
-    if (c.includes('timer') || c.includes('time'))
-      return round.won ? iconTimeWin : iconTimeLoss
-    if (c.includes('detonat') || c.includes('explos') || round.spikeDetonated)
-      return round.won ? iconExplosionWin : iconExplosionLoss
-    if (c.includes('elim') || c.includes('roundceremon'))
-      return round.won ? iconEliminationWin : iconEliminationLoss
-    // Fallback by win/loss if no ceremony match
-    return round.won ? iconEliminationWin : iconEliminationLoss
+    return resolveRoundOutcomeIcon(round)
   }
   
   function roundOutcomeLabel(round: RoundGroup): string {
@@ -1171,6 +1219,51 @@ function createVodReview() {
     )
   })
 
+  const notesAutoOpened = ref(false)
+
+  type SidePanelTab = 'notes' | 'map'
+
+  const sidePanelOpen = computed(() => showInsightsPanel.value || spatialMapVisible.value)
+
+  function setSidePanelTab(tab: SidePanelTab | null) {
+    if (tab === null) {
+      showInsightsPanel.value = false
+      spatialMapVisible.value = false
+    } else if (tab === 'notes') {
+      showInsightsPanel.value = true
+      spatialMapVisible.value = false
+    } else {
+      spatialMapVisible.value = true
+      showInsightsPanel.value = false
+    }
+    nextTick(() => updateVideoFrameSize())
+  }
+
+  function toggleSidePanelTab(tab: SidePanelTab) {
+    const isOpen = tab === 'notes' ? showInsightsPanel.value : spatialMapVisible.value
+    setSidePanelTab(isOpen ? null : tab)
+  }
+
+  watch(showInsightsPanel, (open) => {
+    if (open && spatialMapVisible.value) spatialMapVisible.value = false
+  })
+  watch(spatialMapVisible, (open) => {
+    if (open && showInsightsPanel.value) showInsightsPanel.value = false
+  })
+  watch([showInsightsPanel, spatialMapVisible, roundLogCollapsed], () => {
+    nextTick(() => updateVideoFrameSize())
+  })
+
+  watch(
+    () => Boolean(tacticalIntelBrief.value) || hasCoachFeedback.value,
+    (shouldShow) => {
+      if (shouldShow && !notesAutoOpened.value) {
+        setSidePanelTab('notes')
+        notesAutoOpened.value = true
+      }
+    },
+  )
+
   const coachProgressMarkers = computed((): ProgressMarker[] => {
     if (!duration.value || !coachReview.value?.annotations?.length) return []
     return coachReview.value.annotations
@@ -1283,7 +1376,7 @@ function createVodReview() {
   function seekCoachAnnotation(offsetMs: number | null, noteId?: number) {
     if (offsetMs == null) return
     if (noteId != null) activeCoachNoteId.value = noteId
-    showInsightsPanel.value = true
+    setSidePanelTab('notes')
     seekToTime(Math.max(0, offsetMs / 1000 - COACH_ANNOTATION_PRE_ROLL_SECONDS))
     nextTick(() => scrollActiveCoachNoteIntoView(noteId ?? null))
   }
@@ -1350,14 +1443,14 @@ function createVodReview() {
   }
 
   function toggleCoachNotesPanel() {
-    showInsightsPanel.value = true
+    setSidePanelTab('notes')
     if (sortedCoachAnnotations.value.length) {
       nextTick(() => scrollActiveCoachNoteIntoView(activeCoachNoteId.value))
     }
   }
 
   function jumpToCoachMarker(marker: ProgressMarker) {
-    showInsightsPanel.value = true
+    setSidePanelTab('notes')
     seekToTime(Math.max(0, marker.timeSeconds - COACH_ANNOTATION_PRE_ROLL_SECONDS))
   }
   
@@ -1400,6 +1493,13 @@ function createVodReview() {
     if (!videoEl.value || round.firstVideoOffsetMs == null) return
     const wasPlaying = !videoEl.value.paused
     seekToTime(Math.max(0, round.firstVideoOffsetMs / 1000 - 2), { autoPlay: wasPlaying })
+  }
+
+  function toggleRoundExpanded(round: RoundGroup) {
+    expandedRoundNumber.value = expandedRoundNumber.value === round.roundNumber
+      ? null
+      : round.roundNumber
+    scrollActiveRoundIntoView(round.roundNumber)
   }
   
   function seekPrevEvent() {
@@ -1448,6 +1548,17 @@ function createVodReview() {
       activeEventNotif.value = near
       if (notifTimer) clearTimeout(notifTimer)
       notifTimer = setTimeout(() => { activeEventNotif.value = null }, 2500)
+    }
+
+    const playbackNear = allTimelineEvents.value.find(e => isNearEvent(e))
+    if (playbackNear && expandedRoundNumber.value === playbackNear.round) {
+      const scrollKey = `${playbackNear.type}-${playbackNear.videoOffsetMs}`
+      if (scrollKey !== lastScrolledEventKey.value) {
+        lastScrolledEventKey.value = scrollKey
+        scrollActiveEventIntoView(playbackNear)
+      }
+    } else if (!playbackNear) {
+      lastScrolledEventKey.value = null
     }
   
     const playbackEvents = spatialEventList.value.map(x => x.ev)
@@ -1568,7 +1679,7 @@ function createVodReview() {
   
   function applyCoachReviewUiState() {
     if (!hasCoachFeedback.value) return
-    showInsightsPanel.value = true
+    setSidePanelTab('notes')
     const routeSeekMs = Number(route.query.seekMs)
     if (!Number.isNaN(routeSeekMs) && routeSeekMs >= 0) return
     const firstNote = coachReview.value?.annotations?.find(
@@ -1850,7 +1961,7 @@ function createVodReview() {
       case 'M':
         if (hasSpatialIntel.value) {
           e.preventDefault()
-          spatialMapVisible.value = !spatialMapVisible.value
+          toggleSidePanelTab('map')
         }
         break
       case 'b':
@@ -1863,7 +1974,7 @@ function createVodReview() {
       case 'n':
       case 'N':
         e.preventDefault()
-        showInsightsPanel.value = !showInsightsPanel.value
+        toggleSidePanelTab('notes')
         break
       case 'c':
       case 'C':
@@ -1985,6 +2096,8 @@ function createVodReview() {
     formatSeconds,
     getAbilityIcon,
     getAbilityKillIcon,
+    getKillSourceLabel,
+    getEventSourceImage,
     getAgentImage,
     getRankColor,
     getSavedPlaybackPosition,
@@ -2007,6 +2120,7 @@ function createVodReview() {
     loadSpatialUiPrefs,
     loadTimeline,
     mapPosterUrl,
+    nearEventHighlightClass,
     markSpatialPreviewUsed,
     matchScoreline,
     needsCloudPlaybackRefresh,
@@ -2051,6 +2165,7 @@ function createVodReview() {
     router,
     savePlaybackPosition,
     scoreboardGroups,
+    scrollActiveEventIntoView,
     scrollActiveRoundIntoView,
     seekCoachAnnotation,
     seekFirstCoachNote,
@@ -2064,6 +2179,8 @@ function createVodReview() {
     seekToTime,
     selectedRound,
     shortcutLegend,
+    setSidePanelTab,
+    sidePanelOpen,
     showInsightsPanel,
     showScoreboard,
     showShortcuts,
@@ -2095,6 +2212,8 @@ function createVodReview() {
     toggleFullscreen,
     toggleMute,
     togglePlay,
+    toggleRoundExpanded,
+    toggleSidePanelTab,
     toggleTheaterMode,
     tryInitialGameplaySeek,
     updateVideoFrameSize,

@@ -22,6 +22,7 @@ import {
   recomputeTimelineVideoOffsets,
 } from '../riot-local-api'
 import type { MatchData } from '../riot-types'
+import { applyLayoutForRoute } from '../window-layouts'
 
 export function setupAuthHandlers(
   ipcMain: IpcMain,
@@ -45,10 +46,7 @@ export function setupAuthHandlers(
         onLoginSuccess?.()
         const win = BrowserWindow.fromWebContents(_e.sender)
         if (win) {
-          win.setResizable(true)
-          win.setMinimumSize(860, 580)
-          win.setSize(980, 660)
-          win.maximize()
+          applyLayoutForRoute(win, '/dashboard', { maximize: true })
         }
       }
       return result
@@ -275,7 +273,7 @@ export function setupAuthHandlers(
     try {
       return auth.fetchSquad()
     } catch {
-      return { team: null, activity: [], presence: {}, error: 'Authentication error — please re-login' }
+      return { team: null, activity: [], presence: {}, stats: [], leaderboard: [], error: 'Authentication error — please re-login' }
     }
   })
 

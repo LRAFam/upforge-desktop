@@ -21,7 +21,9 @@ const CONNECT_RETRY_MS = 300
 const CONNECT_MAX_ATTEMPTS = 20
 
 export interface DrillConfig {
-  scenario: 'flick' | 'tracking' | 'microadjust' | 'switching'
+  scenario:
+    | 'flick' | 'tracking' | 'microadjust' | 'switching' | 'duel'
+    | 'gridshot' | 'sixshot' | 'microflick' | 'strafe_track' | 'strafe_aim'
   duration_seconds: number
   difficulty: 'easy' | 'medium' | 'hard' | 'pro'
   target_size_override?: number
@@ -68,6 +70,10 @@ export interface SessionResult {
   targets_missed: number
   heatmap: Array<{ x: number; y: number; hit: boolean }>
   completed_at: string
+  max_streak?: number
+  min_reaction_ms?: number
+  max_reaction_ms?: number
+  targets_per_minute?: number
 }
 
 export class TrainerBridge {

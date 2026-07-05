@@ -1427,6 +1427,7 @@ function createDashboard() {
     openAnalysis,
     openAnalysisRow,
     openCoachNotesVod,
+    openClipsForSession,
     openTimeline,
     timelineLoadingId,
     trainLastInsight,

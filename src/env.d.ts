@@ -29,7 +29,20 @@ export interface TrainingBenchmark {
     percentile: number | null
     label: string | null
     peers: number
+    global_rank: number | null
+    total_ranked: number
   }
+}
+
+export interface TrainerLeaderboardEntry {
+  rank: number
+  user_id: number
+  name: string
+  tag: string | null
+  score: number
+  accuracy_pct: number
+  avg_reaction_ms: number
+  is_current_user?: boolean
 }
 
 
@@ -56,9 +69,17 @@ export interface CoachingDrill {
   instructions: string | null
   success_metric: string | null
   practice_mode: string | null
+  trainer_scenario?: string | null
+  trainer_difficulty?: string | null
+  trainer_duration_seconds?: number | null
   baseline_score: number
   target_score: number
   status: string
+  godot_config?: {
+    scenario?: string
+    difficulty?: string
+    duration_seconds?: number
+  } | null
 }
 
 export type PrimaryGame = 'valorant' | 'cs2' | 'deadlock'
@@ -637,6 +658,7 @@ declare global {
         close: () => Promise<void>
         openPostGame?: () => Promise<void>
         setContentHeight?: (height: number) => Promise<void>
+        applyLayout?: (routePath: string) => Promise<{ ok: boolean }>
       }
       postGame: {
         retryDemoScan: () => Promise<{ ok: boolean; error?: string }>
@@ -737,9 +759,11 @@ declare global {
       }
       squad: {
         getTeam: () => Promise<{
-          team: { name: string; plan?: string; max_members?: number; members: { id: number; name: string; riot_name?: string; riot_tag?: string }[] } | null
-          activity: { id: number; user_id: number; map?: string; agent?: string; result?: string; kills?: number | null; deaths?: number | null; assists?: number | null; created_at?: string }[]
+          team: { name: string; plan?: string; max_members?: number; credits_remaining?: number; credits_total?: number; invite_code?: string; members: { id: number; name: string; riot_name?: string; riot_tag?: string; role?: string }[] } | null
+          activity: { id: number; user_id: number; user_name?: string; map?: string; agent?: string; result?: string; kills?: number | null; deaths?: number | null; assists?: number | null; share_token?: string; created_at?: string }[]
           presence: Record<number, { online: boolean; is_recording: boolean; game?: string | null }>
+          stats?: { user_id: number; name: string; current_rank?: string | null; rr?: number | null; kd_ratio?: number | null; win_rate?: number | null; headshot_percentage?: number | null; most_played_agent?: string | null; has_stats?: boolean }[]
+          leaderboard?: { user_id: number; name: string; analyses_count?: number; role?: string }[]
           error?: string
         } | null>
         sendPresence: (recording: boolean, game: string | null) => Promise<{ ok: boolean }>
@@ -880,6 +904,7 @@ declare global {
           tips: string[]
           encouragement: string
         } | null>
+        getLeaderboard: (scenario: string, period?: 'week' | 'month' | 'all') => Promise<TrainerLeaderboardEntry[]>
       }
       deadlock: {
         listReplays: () => Promise<{

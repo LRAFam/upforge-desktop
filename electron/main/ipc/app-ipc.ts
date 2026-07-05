@@ -18,6 +18,7 @@ import { hasProAccess } from '../subscription'
 import { getActiveUserId } from '../user-session'
 import { resolveRecordingSavePath } from '../user-data-paths'
 import { trackOnboardingComplete } from '../funnel-events'
+import { applyLayoutForRoute } from '../window-layouts'
 
 export function setupAppHandlers(
   ipcMain: IpcMain,
@@ -191,6 +192,13 @@ export function setupAppHandlers(
 
   ipcMain.handle('window:open-post-game', () => {
     if (openPostGameFn) openPostGameFn()
+  })
+
+  ipcMain.handle('window:apply-layout', (e, routePath: string) => {
+    const win = BrowserWindow.fromWebContents(e.sender)
+    if (!win || win.isDestroyed()) return { ok: false }
+    applyLayoutForRoute(win, typeof routePath === 'string' ? routePath : '/dashboard')
+    return { ok: true }
   })
 
   /** Resize the calling window to fit compact post-game content (title bar is added automatically). */

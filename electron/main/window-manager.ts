@@ -9,6 +9,11 @@ import { join } from 'path'
 import { is } from '@electron-toolkit/utils'
 import log from 'electron-log'
 import { ClipExtractor } from './clip-extractor'
+import {
+  DEFAULT_APP_LAYOUT,
+  LOGIN_LAYOUT,
+  applyWindowLayout,
+} from './window-layouts'
 
 // ── Main window ───────────────────────────────────────────────────────────────
 
@@ -16,12 +21,14 @@ export function createMainWindow(
   startAuthenticated: boolean,
   isQuitting: () => boolean,
 ): BrowserWindow {
+  const initial = startAuthenticated ? DEFAULT_APP_LAYOUT : LOGIN_LAYOUT
+
   const win = new BrowserWindow({
-    width: startAuthenticated ? 1280 : 860,
-    height: startAuthenticated ? 800 : 580,
-    minWidth: 980,
-    minHeight: 660,
-    resizable: true,
+    width: initial.width,
+    height: initial.height,
+    minWidth: initial.minWidth,
+    minHeight: initial.minHeight,
+    resizable: initial.resizable !== false,
     show: false,
     frame: false,
     titleBarStyle: 'hidden',
@@ -37,7 +44,11 @@ export function createMainWindow(
 
   win.on('ready-to-show', () => {
     win.show()
-    if (startAuthenticated) win.maximize()
+    if (startAuthenticated) {
+      applyWindowLayout(win, DEFAULT_APP_LAYOUT, { maximize: true })
+    } else {
+      win.center()
+    }
   })
 
   let rendererCrashCount = 0

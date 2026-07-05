@@ -21,6 +21,31 @@ import { SourceReplayUploader } from '../source-replay-uploader'
 import { getDeadlockDetectionStatus } from '../deadlock-log-watcher'
 import { ensureDeadlockSteamLaunchOptions } from '../deadlock-steam-setup'
 
+/** Last launched drill config — used to attach difficulty to session sync payload */
+let lastTrainerLaunch: Pick<DrillConfig, 'scenario' | 'difficulty' | 'duration_seconds'> & { user_drill_id?: number } | null = null
+
+function buildTrainingSessionPayload(result: import('../trainer-bridge').SessionResult): Record<string, unknown> {
+  const {
+    max_streak,
+    min_reaction_ms,
+    max_reaction_ms,
+    targets_per_minute,
+    ...core
+  } = result
+  const metadata: Record<string, unknown> = {}
+  if (max_streak != null) metadata.max_streak = max_streak
+  if (min_reaction_ms != null) metadata.min_reaction_ms = min_reaction_ms
+  if (max_reaction_ms != null) metadata.max_reaction_ms = max_reaction_ms
+  if (targets_per_minute != null) metadata.targets_per_minute = targets_per_minute
+  if (lastTrainerLaunch?.difficulty) metadata.difficulty = lastTrainerLaunch.difficulty
+  if (lastTrainerLaunch?.user_drill_id) metadata.user_drill_id = lastTrainerLaunch.user_drill_id
+
+  return {
+    ...core,
+    ...(Object.keys(metadata).length > 0 ? { metadata } : {}),
+  }
+}
+
 // ── Crosshair helper ──────────────────────────────────────────────────────────
 
 /** Valorant colour palette — indices match CrosshairConfig.gd VALORANT_COLORS */
@@ -122,10 +147,12 @@ export function setupGamingHandlers(
     sendOverlayData('overlay:trainer-result', result)
     const token = auth.getToken()
     if (token) {
-      apiPost(apiBase, '/api/training/sessions', JSON.stringify(result), token)
+      const payload = buildTrainingSessionPayload(result)
+      apiPost(apiBase, '/api/training/sessions', JSON.stringify(payload), token)
         .then(() => log.info('[Trainer] Session synced to API'))
         .catch((err) => log.warn('[Trainer] Failed to sync session to API:', (err as Error)?.message))
     }
+    lastTrainerLaunch = null
   })
 
   ipcMain.handle('trainer:launch', async (_e, config: DrillConfig) => {
@@ -145,6 +172,12 @@ export function setupGamingHandlers(
           trainer_volume: (ms.trainerVolume ?? 80) / 100,
         },
         crosshair_settings: crosshairSettingsToGodot(cs),
+      }
+      lastTrainerLaunch = {
+        scenario: enrichedConfig.scenario,
+        difficulty: enrichedConfig.difficulty,
+        duration_seconds: enrichedConfig.duration_seconds,
+        user_drill_id: (config as DrillConfig & { user_drill_id?: number }).user_drill_id,
       }
       await trainerBridge.launch(enrichedConfig)
       sendOverlayData('overlay:trainer-started', {
@@ -224,6 +257,20 @@ export function setupGamingHandlers(
     } catch (err: any) {
       log.warn('[Trainer] Failed to fetch AI coaching:', err?.message)
       return null
+    }
+  })
+
+  ipcMain.handle('trainer:get-leaderboard', async (_e, scenario: string, period = 'week') => {
+    const token = auth.getToken()
+    if (!token) return []
+    try {
+      const res = await auth.getApi().get('/api/leaderboard/trainer', {
+        params: { scenario, period, limit: 50 },
+      })
+      return Array.isArray(res.data?.leaderboard) ? res.data.leaderboard : []
+    } catch (err: any) {
+      log.warn('[Trainer] Failed to fetch leaderboard:', err?.message)
+      return []
     }
   })
 

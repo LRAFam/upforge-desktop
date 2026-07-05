@@ -100,7 +100,7 @@ function toggleFootageDebug(rec: PendingRecording) {
   <div class="flex-1 min-h-0 flex flex-col panel-elevated overflow-hidden">
     <div class="flex items-center justify-between flex-shrink-0 px-3 pt-2.5 pb-2 border-b border-white/[0.07]">
       <div class="flex items-center gap-2.5 min-w-0">
-        <h2 class="text-xs font-bold text-gray-400 uppercase tracking-widest">Recent Analyses</h2>
+        <h2 class="text-xs font-bold text-gray-400 uppercase tracking-widest">Recent matches</h2>
         <span v-if="analyses.length || pendingRecordings.length" class="text-[10px] text-gray-700">{{ analyses.length + pendingRecordings.length }} sessions</span>
       </div>
       <button v-if="analyses.length > 0" class="text-xs text-gray-600 hover:text-gray-300 transition-colors flex-shrink-0" @click="router.push('/history')">View all →</button>

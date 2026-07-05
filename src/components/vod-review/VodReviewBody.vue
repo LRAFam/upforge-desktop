@@ -6,9 +6,9 @@ import TacticalIntelBrief from '../TacticalIntelBrief.vue'
 import DuelMomentScrubberBands from '../analysis/DuelMomentScrubberBands.vue'
 import DuelMomentCards from '../analysis/DuelMomentCards.vue'
 import { getAgentImage, getAbilityIcon } from '../../lib/valorant'
-import iconDiffuseWin from '../../assets/round-icons/diffusewin1.png'
-import iconExplosionWin from '../../assets/round-icons/explosionwin1.png'
-import iconExplosionLoss from '../../assets/round-icons/explosionloss1.png'
+import VodRoundLogSidebar from './VodRoundLogSidebar.vue'
+import VodTimelineEventIcon from './VodTimelineEventIcon.vue'
+import { spikeEventIcon } from '../../lib/valorant-round-icons'
 
 const {
   abilityCastSlots,
@@ -36,11 +36,12 @@ const {
   seekDuelMoment,
   onDuelMomentBandSelect,
   hasDuelMoments,
-  expandedRoundNumber,
   formatMs,
   formatPlayerLabel,
   formatSeconds,
   getAbilityKillIcon,
+  getEventSourceImage,
+  getKillSourceLabel,
   getRankColor,
   getWeaponIcon,
   hasSpatialIntel,
@@ -80,7 +81,6 @@ const {
   roundDetailExpanded,
   roundGroups,
   roundLogCollapsed,
-  roundLogFilter,
   roundOutcomeIcon,
   roundOutcomeLabel,
   roundRecord,
@@ -91,12 +91,12 @@ const {
   seekNextEvent,
   seekPrevEvent,
   seekToEvent,
-  seekToRound,
   selectedRound,
+  setSidePanelTab,
   showInsightsPanel,
   showScoreboard,
   showShortcuts,
-  sidebarEl,
+  sidePanelOpen,
   skip,
   sortedTeamSnapshot,
   spatialDeathChips,
@@ -125,7 +125,6 @@ const {
   videoBuffering,
   videoSrc,
   videoSyncOffsetMs,
-  visibleRoundEvents,
 } = useVodReview()
 
 const noVideoHint = computed((): string => {
@@ -146,224 +145,7 @@ const noVideoHint = computed((): string => {
 <template>
   <div class="flex flex-1 min-h-0">
 <!-- Left sidebar: round log -->
-      <div
-        v-if="!theaterMode && !roundLogCollapsed"
-        class="vod-round-log w-48 xl:w-56 flex-shrink-0 border-r border-white/[0.09] flex flex-col overflow-hidden"
-      >
-        <div class="px-3 py-2.5 border-b border-white/[0.09] flex flex-col gap-2">
-          <div class="flex items-center justify-between gap-2">
-            <div>
-              <p class="text-[10px] font-black uppercase tracking-[0.2em] text-gray-500">Round Log</p>
-              <p v-if="roundRecord" class="text-[10px] text-gray-600 mt-0.5 tabular-nums">{{ roundRecord.total }} rounds</p>
-            </div>
-            <div v-if="roundRecord" class="flex items-center gap-1 text-[10px] font-bold tabular-nums">
-              <span class="text-green-400">{{ roundRecord.wins }}W</span>
-              <span class="text-gray-700">·</span>
-              <span class="text-red-400">{{ roundRecord.losses }}L</span>
-            </div>
-          </div>
-          <div class="flex items-center gap-1 p-0.5 rounded-lg bg-black/30 border border-white/[0.06]">
-            <button
-              type="button"
-              class="flex-1 rounded-md px-2 py-1 text-[9px] font-bold uppercase tracking-wide transition-colors"
-              :class="roundLogFilter === 'mine'
-                ? 'bg-red-500/20 text-red-200'
-                : 'text-gray-500 hover:text-gray-300'"
-              @click="roundLogFilter = 'mine'"
-            >My moments</button>
-            <button
-              type="button"
-              class="flex-1 rounded-md px-2 py-1 text-[9px] font-bold uppercase tracking-wide transition-colors"
-              :class="roundLogFilter === 'all'
-                ? 'bg-white/[0.08] text-gray-200'
-                : 'text-gray-500 hover:text-gray-300'"
-              @click="roundLogFilter = 'all'"
-            >Full feed</button>
-          </div>
-        </div>
-        <div ref="sidebarEl" class="flex-1 overflow-y-auto scrollbar-hide scroll-smooth space-y-1 px-1.5 py-2">
-          <template v-for="round in roundGroups" :key="round.roundNumber">
-            <!-- Round header -->
-            <button
-              :data-round-anchor="round.roundNumber"
-              class="vod-round-card w-full rounded-xl border px-2.5 py-2 text-left transition-all"
-              :class="activeRoundNumber === round.roundNumber
-                ? 'border-white/[0.16] bg-white/[0.08] shadow-[0_8px_24px_rgba(0,0,0,0.28)]'
-                : 'border-transparent bg-transparent hover:border-white/[0.08] hover:bg-white/[0.04]'"
-              :style="activeRoundNumber === round.roundNumber
-                ? { borderLeftColor: round.won ? 'rgba(52, 211, 153, 0.65)' : 'rgba(248, 113, 113, 0.65)' }
-                : undefined"
-              @click="seekToRound(round)"
-            >
-              <div class="flex items-center gap-2">
-                <span
-                  class="inline-flex h-7 min-w-7 items-center justify-center rounded-lg border border-white/[0.08] bg-black/30 px-1.5 text-[10px] font-black tabular-nums"
-                  :class="round.won ? 'text-emerald-300' : 'text-red-300'"
-                >
-                  {{ round.roundNumber + 1 }}
-                </span>
-                <div class="min-w-0 flex-1">
-                  <p class="text-[11px] font-semibold text-gray-200 leading-tight">{{ roundOutcomeLabel(round) }}</p>
-                  <p class="text-[9px] text-gray-600">
-                    {{ visibleRoundEvents(round).length }} {{ roundLogFilter === 'mine' ? 'moments' : 'events' }}
-                  </p>
-                </div>
-                <svg
-                  v-if="visibleRoundEvents(round).length"
-                  class="h-3.5 w-3.5 flex-shrink-0 text-gray-600 transition-transform"
-                  :class="expandedRoundNumber === round.roundNumber ? 'rotate-180' : ''"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
-                </svg>
-                <img
-                  v-if="roundOutcomeIcon(round)"
-                  :src="roundOutcomeIcon(round)!"
-                  class="h-5 w-5 object-contain opacity-85 flex-shrink-0"
-                />
-              </div>
-            </button>
-
-            <!-- Kill/death events in this round (accordion) -->
-            <template v-if="expandedRoundNumber === round.roundNumber">
-            <button
-              v-for="event in visibleRoundEvents(round)"
-              :key="`${event.type}-${event.videoOffsetMs}`"
-              class="w-full flex items-center gap-1.5 px-2 py-1.5 pl-3 hover:bg-white/[0.05] transition-colors text-left group"
-              :class="isNearEvent(event) ? 'bg-red-500/[0.08] ring-1 ring-inset ring-red-500/20' : ''"
-              @click="seekToEvent(event)"
-            >
-              <!-- Spike plant/defuse events -->
-              <template v-if="isSpikeEvent(event)">
-                <div class="w-4 h-4 flex-shrink-0 flex items-center justify-center rounded overflow-hidden"
-                     :class="event.type === 'plant' ? 'bg-orange-500/20' : event.type === 'defuse' ? 'bg-cyan-500/20' : 'bg-yellow-500/20'">
-                  <img
-                    :src="event.type === 'plant' ? iconExplosionWin : event.type === 'defuse' ? iconDiffuseWin : iconExplosionLoss"
-                    class="w-3.5 h-3.5 object-contain"
-                    :class="event.type === 'plant' ? 'opacity-90' : event.type === 'defuse' ? 'opacity-90' : 'opacity-90'"
-                  />
-                </div>
-                <div class="flex-1 min-w-0">
-                  <p class="text-[10px] font-bold leading-tight"
-                     :class="event.type === 'plant' ? 'text-orange-400' : event.type === 'defuse' ? 'text-cyan-400' : 'text-yellow-400'">
-                    {{ event.type === 'plant' ? (event.site ? `PLANT ${event.site}` : 'PLANT') : event.type === 'defuse' ? 'DEFUSE' : 'DETONATE' }}
-                  </p>
-                  <p v-if="event.planter || event.defuser" class="text-[8px] text-gray-600 truncate">{{ formatPlayerLabel(event.planter || event.defuser) }}</p>
-                </div>
-                <span class="text-[8px] text-gray-700 flex-shrink-0 tabular-nums">{{ formatMs(event.videoOffsetMs) }}</span>
-              </template>
-
-              <!-- Neutral events: neither the player as killer nor victim -->
-              <template v-else-if="event.type === 'neutral'">
-                <!-- Killer agent portrait -->
-                <div class="w-5 h-5 flex-shrink-0 rounded overflow-hidden bg-white/[0.03] ring-1 ring-white/10">
-                  <img v-if="agentByPuuid(event.killerPuuid)" :src="getAgentImage(agentByPuuid(event.killerPuuid))" class="w-full h-full object-contain opacity-50" />
-                  <div v-else class="w-full h-full flex items-center justify-center text-[8px] text-gray-700">?</div>
-                </div>
-                <!-- Arrow -->
-                <svg class="w-2.5 h-2.5 text-gray-700 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M9 5l7 7-7 7"/>
-                </svg>
-                <!-- Victim agent portrait -->
-                <div class="w-5 h-5 flex-shrink-0 rounded overflow-hidden bg-white/[0.03] ring-1 ring-white/10">
-                  <img v-if="agentByPuuid(event.victimPuuid)" :src="getAgentImage(agentByPuuid(event.victimPuuid))" class="w-full h-full object-contain opacity-40" />
-                  <div v-else class="w-full h-full flex items-center justify-center text-[8px] text-gray-700">?</div>
-                </div>
-                <!-- Name -->
-                <div class="flex-1 min-w-0">
-                  <p class="text-[9px] text-gray-600 truncate leading-tight">
-                    {{ event.killerName || '?' }} → {{ event.victimName || '?' }}
-                  </p>
-                  <p v-if="event.weapon && !['Ability','Ultimate','Fall'].includes(event.weapon)" class="text-[8px] text-gray-700 truncate">{{ event.weapon }}</p>
-                </div>
-                <span class="text-[8px] text-gray-800 flex-shrink-0 tabular-nums">{{ formatMs(event.videoOffsetMs) }}</span>
-              </template>
-
-              <!-- Player kill or death events -->
-              <template v-else>
-                <!-- Kill/Death badge pill -->
-                <div class="w-5 flex-shrink-0 flex flex-col items-center gap-px">
-                  <span class="text-[7px] font-black leading-none px-0.5 rounded"
-                        :class="event.type === 'kill' ? 'text-teal-300 bg-teal-500/20' : 'text-red-300 bg-red-500/20'">
-                    {{ event.type === 'kill' ? 'KILL' : 'DIED' }}
-                  </span>
-                  <span v-if="event.isFirstBlood" class="text-[6px] font-bold text-yellow-400 leading-none">FB</span>
-                </div>
-
-                <!-- Agent portrait of the other player -->
-                <div class="w-6 h-6 flex-shrink-0 rounded overflow-hidden bg-white/[0.04] ring-1"
-                     :class="event.type === 'kill' ? 'ring-teal-500/30' : 'ring-red-500/30'">
-                  <img
-                    v-if="event.type === 'kill' && agentByPuuid(event.victimPuuid)"
-                    :src="getAgentImage(agentByPuuid(event.victimPuuid))"
-                    class="w-full h-full object-contain opacity-80 group-hover:opacity-100 transition-opacity"
-                  />
-                  <img
-                    v-else-if="event.type === 'death' && agentByPuuid(event.killerPuuid)"
-                    :src="getAgentImage(agentByPuuid(event.killerPuuid))"
-                    class="w-full h-full object-contain opacity-80 group-hover:opacity-100 transition-opacity"
-                  />
-                  <div v-else class="w-full h-full flex items-center justify-center">
-                    <svg v-if="event.type === 'kill'" class="w-3.5 h-3.5 text-teal-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4.5"/><circle cx="12" cy="12" r="1.2" fill="currentColor" stroke="none"/></svg>
-                    <svg v-else class="w-3.5 h-3.5 text-red-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-                  </div>
-                </div>
-
-                <!-- Weapon / ability icon -->
-                <div class="w-7 flex-shrink-0 flex items-center justify-center">
-                  <img
-                    v-if="event.weapon && !['Ability', 'Ultimate', 'Spike', 'Fall'].includes(event.weapon) && getWeaponIcon(event.weapon)"
-                    :src="getWeaponIcon(event.weapon)"
-                    class="w-7 h-3.5 object-contain"
-                    :class="event.type === 'kill' ? 'opacity-90' : 'opacity-40'"
-                    :title="event.weapon"
-                  />
-                  <div v-else-if="event.weapon === 'Ability' || event.weapon === 'Ultimate'"
-                       class="w-5 h-5 rounded flex items-center justify-center"
-                       :class="event.weapon === 'Ultimate' ? 'bg-yellow-500/20' : 'bg-purple-500/20'">
-                    <img v-if="getAbilityKillIcon(event)" :src="getAbilityKillIcon(event)" class="w-4 h-4 object-contain" />
-                    <template v-else-if="event.weapon === 'Ultimate'">
-                      <span class="text-[8px]" :class="'text-yellow-400'">X</span>
-                    </template>
-                    <svg v-else class="w-3.5 h-3.5 text-purple-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2 4.09 12.96A1 1 0 0 0 5 14.5h6.5L10 22l10-11h-7z"/></svg>
-                  </div>
-                  <span v-else-if="event.weapon === 'Spike'" class="text-orange-400"><svg class="w-3 h-3" viewBox="0 0 24 24" fill="currentColor"><polygon points="12,2 20,12 12,22 4,12"/></svg></span>
-                  <svg v-else-if="event.weapon === 'Fall'" class="w-3.5 h-3.5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 20 20">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" d="M10 4.5v9m0 0-3-3m3 3 3-3"/>
-                  </svg>
-                  <svg v-else class="w-3 h-3 text-gray-700" viewBox="0 0 16 16" fill="currentColor">
-                    <circle cx="8" cy="6" r="4"/><path d="M6 11h4v4H6z"/>
-                  </svg>
-                </div>
-
-                <!-- Name + weapon label -->
-                <div class="flex-1 min-w-0">
-                  <p class="text-[11px] leading-tight truncate transition-colors"
-                     :class="event.type === 'kill' ? 'text-gray-300 group-hover:text-white' : 'text-gray-500 group-hover:text-gray-300'">
-                    {{ event.type === 'kill' ? event.victimName : event.killerName }}
-                  </p>
-                  <p v-if="event.weapon && !['Ability', 'Ultimate', 'Fall'].includes(event.weapon)" class="text-[8px] text-gray-600 truncate">{{ event.weapon }}</p>
-                  <p v-else-if="event.weapon === 'Ultimate'" class="text-[8px] text-yellow-600 truncate">Ultimate</p>
-                  <p v-else-if="event.weapon === 'Ability'" class="text-[8px] text-purple-600 truncate">Ability</p>
-                </div>
-                <span class="text-[8px] text-gray-700 flex-shrink-0 tabular-nums">{{ formatMs(event.videoOffsetMs) }}</span>
-              </template>
-            </button>
-            <p
-              v-if="!visibleRoundEvents(round).length"
-              class="px-3 py-2 text-[10px] text-gray-600 text-center"
-            >No {{ roundLogFilter === 'mine' ? 'personal moments' : 'events' }} this round</p>
-            </template>
-          </template>
-
-          <!-- No events -->
-          <div v-if="!roundGroups.length" class="px-3 py-4 text-center">
-            <p class="text-xs text-gray-600">No timeline data</p>
-          </div>
-        </div>
-      </div>
+      <VodRoundLogSidebar v-if="!theaterMode && !roundLogCollapsed" />
 
       <!-- Video + intel + timeline -->
       <div class="flex flex-1 min-w-0 min-h-0">
@@ -372,7 +154,7 @@ const noVideoHint = computed((): string => {
 
         <!-- Coach feedback banner -->
         <div
-          v-if="hasCoachFeedback && coachReview?.status === 'completed'"
+          v-if="hasCoachFeedback && coachReview?.status === 'completed' && !sidePanelOpen"
           class="flex-shrink-0 border-b border-violet-500/20 bg-gradient-to-r from-violet-500/[0.12] to-transparent px-3 py-2"
         >
           <div class="flex flex-wrap items-center gap-2">
@@ -386,7 +168,7 @@ const noVideoHint = computed((): string => {
             <button
               type="button"
               class="ml-auto text-[10px] font-semibold text-violet-200 hover:text-white transition-colors"
-              @click="showInsightsPanel = true"
+              @click="setSidePanelTab('notes')"
             >
               Open coach notes →
             </button>
@@ -619,7 +401,7 @@ const noVideoHint = computed((): string => {
         <div
           v-if="hasSpatialIntel && !theaterMode"
           class="flex-shrink-0 border-b border-white/[0.08] bg-[#131313] px-3 py-2"
-          :class="spatialMapVisible ? 'md:hidden' : ''"
+          :class="sidePanelOpen ? 'md:hidden' : ''"
           @click.stop
         >
           <div class="flex flex-col sm:flex-row gap-3 min-h-0">
@@ -668,17 +450,17 @@ const noVideoHint = computed((): string => {
                   v-if="spatialMapVisible"
                   type="button"
                   class="ml-auto text-[9px] font-semibold text-gray-500 hover:text-gray-300 md:hidden"
-                  @click="spatialMapVisible = false"
+                  @click="setSidePanelTab(null)"
                 >Hide</button>
                 <button
                   v-else
                   type="button"
                   class="ml-auto hidden md:flex text-[9px] font-semibold text-gray-500 hover:text-gray-300"
-                  @click="spatialMapVisible = true"
+                  @click="setSidePanelTab('map')"
                 >Dock to side</button>
               </div>
               <TacticalIntelBrief
-                v-if="tacticalIntelBrief"
+                v-if="tacticalIntelBrief && !sidePanelOpen"
                 :brief="tacticalIntelBrief"
                 compact
                 @seek-evidence="seekCoachingEvidence"
@@ -905,11 +687,11 @@ const noVideoHint = computed((): string => {
             </span>
             <div class="flex items-center gap-1.5 ml-1">
               <span v-if="selectedRound.spikePlanted" class="inline-flex items-center gap-1 text-[9px] font-semibold text-orange-400 bg-orange-500/10 px-1.5 py-px rounded">
-                <img :src="iconExplosionWin" class="w-2.5 h-2.5 object-contain" alt="" />PLANTED</span>
+                <img :src="spikeEventIcon('plant')" class="w-2.5 h-2.5 object-contain" alt="">PLANTED</span>
               <span v-if="selectedRound.spikeDefused" class="inline-flex items-center gap-1 text-[9px] font-semibold text-cyan-400 bg-cyan-500/10 px-1.5 py-px rounded">
-                <img :src="iconDiffuseWin" class="w-2.5 h-2.5 object-contain" alt="" />DEFUSED</span>
+                <img :src="spikeEventIcon('defuse')" class="w-2.5 h-2.5 object-contain" alt="">DEFUSED</span>
               <span v-if="selectedRound.spikeDetonated" class="inline-flex items-center gap-1 text-[9px] font-semibold text-red-400 bg-red-500/10 px-1.5 py-px rounded">
-                <img :src="iconExplosionLoss" class="w-2.5 h-2.5 object-contain" alt="" />DETONATED</span>
+                <img :src="spikeEventIcon('detonation')" class="w-2.5 h-2.5 object-contain" alt="">DETONATED</span>
             </div>
             <div class="flex-1" />
             <button
@@ -931,15 +713,7 @@ const noVideoHint = computed((): string => {
             >
               <!-- Spike events in round detail -->
               <template v-if="isSpikeEvent(event)">
-                <div class="w-1 h-6 rounded-full flex-shrink-0"
-                     :class="event.type === 'plant' ? 'bg-orange-500/70' : event.type === 'defuse' ? 'bg-cyan-500/70' : 'bg-yellow-500/70'" />
-                <div class="w-7 h-7 rounded flex items-center justify-center flex-shrink-0 overflow-hidden"
-                     :class="event.type === 'plant' ? 'bg-orange-500/20' : event.type === 'defuse' ? 'bg-cyan-500/20' : 'bg-yellow-500/20'">
-                  <img
-                    :src="event.type === 'plant' ? iconExplosionWin : event.type === 'defuse' ? iconDiffuseWin : iconExplosionLoss"
-                    class="w-5 h-5 object-contain"
-                  />
-                </div>
+                <VodTimelineEventIcon :type="event.type" size="md" />
                 <div class="flex-1 min-w-0">
                   <p class="text-xs font-semibold"
                      :class="event.type === 'plant' ? 'text-orange-300' : event.type === 'defuse' ? 'text-cyan-300' : 'text-yellow-300'">
@@ -978,86 +752,44 @@ const noVideoHint = computed((): string => {
 
               <!-- Player kill/death in round detail -->
               <template v-else>
-                <!-- Kill/death type indicator -->
-                <div class="w-1 h-6 rounded-full flex-shrink-0"
-                     :class="event.type === 'kill' ? 'bg-teal-500/60' : 'bg-red-500/40'" />
+                <VodTimelineEventIcon
+                  :type="event.type"
+                  :first-blood="event.isFirstBlood"
+                  :source-image="getEventSourceImage(event)"
+                  size="md"
+                />
 
-                <!-- First blood badge -->
-                <div v-if="event.isFirstBlood" class="flex-shrink-0 text-[7px] font-black text-yellow-400 bg-yellow-500/20 px-1 py-px rounded leading-none">FB</div>
-
-                <!-- Attacker agent portrait -->
-                <div class="w-7 h-7 rounded overflow-hidden bg-white/[0.04] flex-shrink-0 ring-1"
-                     :class="event.type === 'kill' ? 'ring-teal-500/20' : 'ring-red-500/20'">
+                <div
+                  class="w-7 h-7 rounded overflow-hidden bg-white/[0.04] flex-shrink-0 ring-1"
+                  :class="event.type === 'kill' ? 'ring-teal-500/20' : 'ring-red-500/20'"
+                >
                   <img
-                    v-if="agentByPuuid(event.killerPuuid)"
-                    :src="getAgentImage(agentByPuuid(event.killerPuuid))"
-                    class="w-full h-full object-contain"
-                  />
-                  <div v-else class="w-full h-full flex items-center justify-center text-xs">
-                    <svg v-if="event.type === 'kill'" class="w-3.5 h-3.5 text-teal-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4.5"/><circle cx="12" cy="12" r="1.2" fill="currentColor" stroke="none"/></svg>
-                    <svg v-else class="w-3.5 h-3.5 text-red-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-                  </div>
-                </div>
-
-                <!-- Weapon / ability icon -->
-                <div class="w-10 flex-shrink-0 flex items-center justify-center">
-                  <!-- Regular weapon -->
-                  <img
-                    v-if="event.weapon && !['Ability', 'Ultimate', 'Spike', 'Fall'].includes(event.weapon) && getWeaponIcon(event.weapon)"
-                    :src="getWeaponIcon(event.weapon)"
-                    class="h-3.5 w-auto object-contain"
-                    :class="event.type === 'kill' ? 'opacity-90' : 'opacity-40'"
-                  />
-                  <!-- Ability kill -->
-                  <div v-else-if="event.weapon === 'Ability' || event.weapon === 'Ultimate'"
-                       class="w-6 h-6 rounded flex items-center justify-center"
-                       :class="event.weapon === 'Ultimate' ? 'bg-yellow-500/20' : 'bg-purple-500/20'"
-                       :title="event.weapon">
-                    <img
-                      v-if="getAbilityKillIcon(event)"
-                      :src="getAbilityKillIcon(event)"
-                      class="w-5 h-5 object-contain"
-                    />
-                    <template v-else-if="event.weapon === 'Ultimate'">
-                      <span class="text-xs text-yellow-400">X</span>
-                    </template>
-                    <svg v-else class="w-4 h-4 text-purple-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2 4.09 12.96A1 1 0 0 0 5 14.5h6.5L10 22l10-11h-7z"/></svg>
-                  </div>
-                  <span v-else-if="event.weapon === 'Spike'" class="text-orange-400"><svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="currentColor"><polygon points="12,2 20,12 12,22 4,12"/></svg></span>
-                  <svg v-else class="w-3 h-3 text-gray-600" viewBox="0 0 16 16" fill="currentColor"><circle cx="8" cy="6" r="3"/><path d="M5 11h6v4H5z"/></svg>
-                </div>
-
-                <!-- Arrow separator -->
-                <svg class="w-3 h-3 text-gray-700 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
-                </svg>
-
-                <!-- Victim agent portrait -->
-                <div class="w-7 h-7 rounded overflow-hidden bg-white/[0.04] flex-shrink-0 ring-1"
-                     :class="event.type === 'kill' ? 'ring-red-500/20' : 'ring-teal-500/20'">
-                  <img
-                    v-if="agentByPuuid(event.victimPuuid)"
+                    v-if="event.type === 'kill' && agentByPuuid(event.victimPuuid)"
                     :src="getAgentImage(agentByPuuid(event.victimPuuid))"
-                    class="w-full h-full object-contain opacity-75"
-                  />
-                  <div v-else class="w-full h-full flex items-center justify-center text-xs">
-                    <svg class="w-3.5 h-3.5 text-red-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-                  </div>
+                    class="w-full h-full object-contain opacity-85"
+                    alt=""
+                  >
+                  <img
+                    v-else-if="event.type === 'death' && agentByPuuid(event.killerPuuid)"
+                    :src="getAgentImage(agentByPuuid(event.killerPuuid))"
+                    class="w-full h-full object-contain opacity-85"
+                    alt=""
+                  >
                 </div>
 
-                <!-- Victim name + kill context -->
                 <div class="flex-1 min-w-0">
-                  <p class="text-xs font-semibold truncate" :class="event.type === 'kill' ? 'text-gray-300 group-hover:text-white' : 'text-gray-500 group-hover:text-gray-300'">
-                    {{ event.victimName }}
+                  <p
+                    class="text-xs font-semibold truncate"
+                    :class="event.type === 'kill' ? 'text-gray-300 group-hover:text-white' : 'text-gray-500 group-hover:text-gray-300'"
+                  >
+                    {{ event.type === 'kill' ? event.victimName : event.killerName }}
                   </p>
-                  <p class="text-[9px] truncate"
-                     :class="event.weapon === 'Ultimate' ? 'text-yellow-700' : event.weapon === 'Ability' ? 'text-purple-700' : 'text-gray-600'">
-                    {{ event.weapon === 'Ultimate' ? 'Ultimate' : event.weapon === 'Ability' ? 'Ability' : (event.weapon || '') }}
-                    <span v-if="event.assistants?.length" class="text-gray-700 ml-1">+ {{ event.assistants.length }} assist</span>
+                  <p v-if="getKillSourceLabel(event)" class="text-[9px] text-gray-600 truncate capitalize">
+                    {{ getKillSourceLabel(event) }}
+                    <span v-if="event.assistants?.length" class="text-gray-700 ml-1">· {{ event.assistants.length }} assist</span>
                   </p>
                 </div>
 
-                <!-- Timestamp -->
                 <span class="text-[10px] text-gray-600 font-mono tabular-nums flex-shrink-0">{{ formatMs(event.videoOffsetMs) }}</span>
               </template>
             </button>
@@ -1150,28 +882,40 @@ const noVideoHint = computed((): string => {
           </template>
         </div>
       </div>
-<!-- Desktop intel side panel -->
+
+      <!-- Right rail: coach notes OR map intel (one panel — keeps video wide) -->
       <aside
-        v-if="hasSpatialIntel && spatialMapVisible && !theaterMode"
-        class="vod-intel-panel hidden md:flex w-[min(340px,30vw)] xl:w-[min(380px,32vw)] flex-shrink-0 flex-col min-h-0 border-l border-white/[0.09]"
+        v-if="sidePanelOpen && !theaterMode"
+        class="vod-side-panel hidden md:flex w-[min(440px,34vw)] xl:w-[min(480px,32vw)] flex-shrink-0 flex-col min-h-0 border-l border-white/[0.09]"
         @click.stop
       >
-        <div class="flex items-center gap-2 px-3 py-2 border-b border-white/[0.08] flex-shrink-0 bg-gradient-to-r from-red-500/[0.06] to-transparent">
-          <div class="flex-1 min-w-0">
-            <p class="text-[9px] font-black uppercase tracking-[0.24em] text-red-400">Tactical Intel</p>
-            <p class="text-[10px] text-gray-600 mt-0.5">Map sync · death heat · coach notes</p>
-          </div>
+        <div class="flex items-center gap-1.5 px-2 py-2 border-b border-white/[0.08] flex-shrink-0 bg-gradient-to-r from-red-500/[0.05] to-transparent">
           <button
             type="button"
-            class="flex h-7 w-7 items-center justify-center rounded-md border border-white/[0.08] bg-white/[0.03] text-gray-500 hover:text-gray-200"
-            :title="spatialMapLarge ? 'Standard size' : 'Larger map'"
+            class="vod-side-tab"
+            :class="showInsightsPanel ? 'vod-side-tab--active' : ''"
+            @click="setSidePanelTab('notes')"
+          >Coach notes</button>
+          <button
+            v-if="hasSpatialIntel"
+            type="button"
+            class="vod-side-tab"
+            :class="spatialMapVisible ? 'vod-side-tab--active' : ''"
+            @click="setSidePanelTab('map')"
+          >Map intel</button>
+          <button
+            v-if="spatialMapVisible && hasSpatialIntel"
+            type="button"
+            class="ml-auto flex h-7 w-7 items-center justify-center rounded-md border border-white/[0.08] bg-white/[0.03] text-gray-500 hover:text-gray-200"
+            :title="spatialMapLarge ? 'Standard map size' : 'Larger map'"
             @click="spatialMapLarge = !spatialMapLarge"
           >{{ spatialMapLarge ? '−' : '+' }}</button>
           <button
             type="button"
-            class="flex h-7 w-7 items-center justify-center rounded-md border border-white/[0.08] bg-white/[0.03] text-gray-500 hover:text-gray-200"
-            title="Hide intel panel"
-            @click="spatialMapVisible = false"
+            class="flex h-7 w-7 items-center justify-center rounded-md border border-white/[0.08] bg-white/[0.03] text-gray-500 transition-colors hover:border-white/[0.14] hover:text-gray-200"
+            :class="spatialMapVisible && hasSpatialIntel ? '' : 'ml-auto'"
+            title="Close panel (N / M)"
+            @click="setSidePanelTab(null)"
           >
             <svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 20 20">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" d="m12.5 5.5-5 4.5 5 4.5"/>
@@ -1179,22 +923,84 @@ const noVideoHint = computed((): string => {
           </button>
         </div>
 
-        <div class="flex-1 min-h-0 overflow-y-auto scrollbar-hide px-3 py-3 space-y-3">
-          <div v-if="tacticalIntelBrief" class="sticky top-0 z-10 -mx-1 px-1 pb-1 bg-gradient-to-b from-[#101010] via-[#101010] to-transparent">
-            <TacticalIntelBrief
-              :brief="tacticalIntelBrief"
-              @seek-evidence="seekCoachingEvidence"
-            />
-          </div>
-
-          <DuelMomentCards
-            v-if="hasDuelMoments"
-            :moments="duelMoments"
-            :active-moment-id="activeDuelMomentId"
-            compact
-            @seek="seekDuelMoment"
+        <div v-if="showInsightsPanel" class="vod-notes-panel flex-1 min-h-0 overflow-y-auto scrollbar-hide px-4 py-4 space-y-4">
+          <TacticalIntelBrief
+            v-if="tacticalIntelBrief"
+            :brief="tacticalIntelBrief"
+            @seek-evidence="seekCoachingEvidence"
           />
 
+          <div
+            v-if="coachReview?.annotations?.length || coachReview?.coach_perspective"
+            class="rounded-lg border border-violet-500/25 bg-violet-500/[0.06] px-3 py-2.5 space-y-2.5"
+          >
+            <div class="flex items-center justify-between gap-2">
+              <p class="text-[10px] font-bold uppercase tracking-[0.16em] text-violet-300/90">
+                Human coach
+                <span v-if="coachReview.coach?.display_name" class="normal-case font-medium text-violet-200/80">
+                  · {{ coachReview.coach.display_name }}
+                </span>
+              </p>
+              <span
+                class="text-[9px] font-semibold uppercase tracking-wide"
+                :class="coachReview.status === 'completed' ? 'text-emerald-400' : 'text-amber-400'"
+              >{{ coachReview.status.replace('_', ' ') }}</span>
+            </div>
+            <p v-if="coachReview.student_question" class="text-[11px] text-gray-500 italic leading-relaxed">
+              You asked: {{ coachReview.student_question }}
+            </p>
+            <p
+              v-if="coachReview.coach_perspective"
+              class="text-[12px] text-emerald-200/90 leading-relaxed rounded-md border border-emerald-500/20 bg-emerald-500/[0.06] px-2.5 py-2"
+            >
+              {{ coachReview.coach_perspective }}
+            </p>
+            <button
+              v-for="(note, noteIndex) in coachReview.annotations"
+              :key="note.id"
+              :data-coach-note="note.id"
+              type="button"
+              class="w-full text-left rounded-md border px-2.5 py-2 transition-colors"
+              :class="activeCoachNoteId === note.id
+                ? 'border-violet-400/45 bg-violet-500/[0.14] ring-1 ring-violet-400/20'
+                : 'border-white/[0.06] bg-black/20 hover:border-violet-500/30 hover:bg-violet-500/[0.08]'"
+              @click="seekCoachAnnotation(note.video_offset_ms, note.id)"
+            >
+              <div class="flex items-center justify-between gap-2 mb-0.5">
+                <p v-if="note.round_number != null" class="text-[10px] font-semibold text-violet-300/80">
+                  Round {{ note.round_number }}
+                </p>
+                <span
+                  v-if="noteIndex < 9"
+                  class="text-[8px] font-mono text-gray-600 tabular-nums"
+                  title="Press number key to jump"
+                >{{ noteIndex + 1 }}</span>
+              </div>
+              <p class="text-[12px] leading-relaxed text-gray-300">{{ note.body }}</p>
+            </button>
+          </div>
+
+          <div
+            v-for="(note, index) in supplementalCoachingNotes"
+            :key="`${index}-${note}`"
+            class="rounded-lg border border-white/[0.08] bg-white/[0.02] px-3 py-2.5"
+          >
+            <div class="flex items-start gap-2">
+              <span class="mt-1.5 h-1.5 w-1.5 flex-shrink-0 rounded-full bg-red-400/80" />
+              <p class="text-[12px] leading-relaxed text-gray-400">{{ note }}</p>
+            </div>
+          </div>
+
+          <div
+            v-if="!tacticalIntelBrief && !supplementalCoachingNotes.length && !coachReview?.annotations?.length"
+            class="rounded-xl border border-dashed border-white/[0.08] px-3 py-8 text-center"
+          >
+            <p class="text-[12px] font-medium text-gray-500">No coaching analysis yet</p>
+            <p class="mt-1.5 text-[11px] text-gray-600 leading-relaxed">Run match analysis from the dashboard to unlock structured review notes here.</p>
+          </div>
+        </div>
+
+        <div v-else-if="spatialMapVisible && hasSpatialIntel" class="vod-intel-panel flex-1 min-h-0 overflow-y-auto scrollbar-hide px-4 py-4 space-y-3">
           <div class="mx-auto w-fit" @mousedown.stop @click.stop>
             <MatchSpatialMinimap
               panel-hud
@@ -1213,30 +1019,36 @@ const noVideoHint = computed((): string => {
             />
           </div>
 
-          <div class="flex items-center gap-0.5 p-0.5 rounded-lg bg-black/25 border border-white/[0.06] w-fit">
-            <button
-              v-for="mode in spatialModes"
-              :key="mode.id"
-              type="button"
-              class="px-2.5 py-1 rounded-md text-[10px] font-bold uppercase tracking-wide transition-colors"
-              :class="spatialViewMode === mode.id
-                ? 'bg-red-500/20 text-red-200'
-                : 'text-gray-500 hover:text-gray-300'"
-              @click="spatialViewMode = mode.id"
-            >{{ mode.label }}</button>
-          </div>
+          <DuelMomentCards
+            v-if="hasDuelMoments"
+            :moments="duelMoments"
+            :active-moment-id="activeDuelMomentId"
+            compact
+            @seek="seekDuelMoment"
+          />
 
-          <button
-            type="button"
-            class="text-[10px] font-bold uppercase tracking-wide px-2.5 py-1 rounded-md border transition-colors w-fit"
-            :class="spatialReplaySync
-              ? 'bg-red-500/15 border-red-500/30 text-red-200'
-              : 'border-white/10 text-gray-500 hover:text-gray-300'"
-            @click="spatialReplaySync = !spatialReplaySync"
-          >{{ spatialReplaySync ? 'Replay sync on' : 'Full match map' }}</button>
-          <p v-if="spatialReplaySync" class="text-[10px] text-gray-500 leading-relaxed -mt-1">
-            Dots and heat appear as the VOD reaches each moment. Use video sync if markers are early or late.
-          </p>
+          <div class="flex flex-wrap items-center gap-2">
+            <div class="flex items-center gap-0.5 p-0.5 rounded-lg bg-black/25 border border-white/[0.06]">
+              <button
+                v-for="mode in spatialModes"
+                :key="mode.id"
+                type="button"
+                class="px-2.5 py-1 rounded-md text-[10px] font-bold uppercase tracking-wide transition-colors"
+                :class="spatialViewMode === mode.id
+                  ? 'bg-red-500/20 text-red-200'
+                  : 'text-gray-500 hover:text-gray-300'"
+                @click="spatialViewMode = mode.id"
+              >{{ mode.label }}</button>
+            </div>
+            <button
+              type="button"
+              class="text-[10px] font-bold uppercase tracking-wide px-2.5 py-1 rounded-md border transition-colors"
+              :class="spatialReplaySync
+                ? 'bg-red-500/15 border-red-500/30 text-red-200'
+                : 'border-white/10 text-gray-500 hover:text-gray-300'"
+              @click="spatialReplaySync = !spatialReplaySync"
+            >{{ spatialReplaySync ? 'Replay sync' : 'Full map' }}</button>
+          </div>
 
           <div v-if="spatialDeathChips.length" class="space-y-1.5">
             <p class="text-[9px] font-semibold uppercase tracking-wider text-gray-600">Death locations</p>
@@ -1275,113 +1087,6 @@ const noVideoHint = computed((): string => {
         </div>
       </aside>
 
-      </div>
-
-      <div
-        v-if="showInsightsPanel && !theaterMode"
-        class="vod-notes-panel w-60 xl:w-64 flex-shrink-0 border-l border-white/[0.09] flex flex-col min-h-0"
-      >
-        <div class="flex items-center gap-2 px-3 py-2.5 border-b border-white/[0.09] bg-gradient-to-r from-red-500/[0.05] to-transparent">
-          <p class="flex-1 text-[10px] font-black uppercase tracking-[0.2em] text-gray-500">Review Notes</p>
-          <button
-            class="flex h-7 w-7 items-center justify-center rounded-md border border-white/[0.08] bg-white/[0.03] text-gray-500 transition-colors hover:border-white/[0.14] hover:text-gray-200"
-            title="Hide notes (N)"
-            @click="showInsightsPanel = false"
-          >
-            <svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 20 20">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" d="m12.5 5.5-5 4.5 5 4.5"/>
-            </svg>
-          </button>
-        </div>
-
-        <div class="flex-1 overflow-y-auto scrollbar-hide px-2.5 py-2.5 space-y-2.5">
-          <TacticalIntelBrief
-            v-if="tacticalIntelBrief"
-            :brief="tacticalIntelBrief"
-            compact
-            @seek-evidence="seekCoachingEvidence"
-          />
-
-          <div
-            v-if="coachReview?.annotations?.length || coachReview?.coach_perspective"
-            class="rounded-lg border border-violet-500/25 bg-violet-500/[0.06] px-2.5 py-2 space-y-2"
-          >
-            <div class="flex items-center justify-between gap-2">
-              <p class="text-[9px] font-bold uppercase tracking-[0.16em] text-violet-300/90">
-                Coach notes
-                <span v-if="coachReview.coach?.display_name" class="normal-case font-medium text-violet-200/80">
-                  · {{ coachReview.coach.display_name }}
-                </span>
-              </p>
-              <span
-                class="text-[9px] font-semibold uppercase tracking-wide"
-                :class="coachReview.status === 'completed' ? 'text-emerald-400' : 'text-amber-400'"
-              >{{ coachReview.status.replace('_', ' ') }}</span>
-            </div>
-            <p v-if="coachReview.student_question" class="text-[10px] text-gray-500 italic leading-relaxed">
-              You asked: {{ coachReview.student_question }}
-            </p>
-            <p
-              v-if="coachReview.coach_perspective"
-              class="text-[11px] text-emerald-200/90 leading-relaxed rounded-md border border-emerald-500/20 bg-emerald-500/[0.06] px-2 py-1.5"
-            >
-              {{ coachReview.coach_perspective }}
-            </p>
-            <button
-              v-for="(note, noteIndex) in coachReview.annotations"
-              :key="note.id"
-              :data-coach-note="note.id"
-              type="button"
-              class="w-full text-left rounded-md border px-2 py-1.5 transition-colors"
-              :class="activeCoachNoteId === note.id
-                ? 'border-violet-400/45 bg-violet-500/[0.14] ring-1 ring-violet-400/20'
-                : 'border-white/[0.06] bg-black/20 hover:border-violet-500/30 hover:bg-violet-500/[0.08]'"
-              @click="seekCoachAnnotation(note.video_offset_ms, note.id)"
-            >
-              <div class="flex items-center justify-between gap-2 mb-0.5">
-                <p v-if="note.round_number != null" class="text-[9px] font-semibold text-violet-300/80">
-                  Round {{ note.round_number }}
-                </p>
-                <span
-                  v-if="noteIndex < 9"
-                  class="text-[8px] font-mono text-gray-600 tabular-nums"
-                  title="Press number key to jump"
-                >{{ noteIndex + 1 }}</span>
-              </div>
-              <p class="text-[11px] leading-relaxed text-gray-300">{{ note.body }}</p>
-            </button>
-          </div>
-
-          <div
-            v-for="(note, index) in supplementalCoachingNotes"
-            :key="`${index}-${note}`"
-            class="rounded-lg border border-white/[0.08] bg-white/[0.02] px-2.5 py-2"
-          >
-            <div class="flex items-start gap-2">
-              <span class="mt-1.5 h-1.5 w-1.5 flex-shrink-0 rounded-full bg-red-400/80" />
-              <p class="text-[11px] leading-relaxed text-gray-400">{{ note }}</p>
-            </div>
-          </div>
-
-          <div
-            v-if="!tacticalIntelBrief && !supplementalCoachingNotes.length"
-            class="rounded-xl border border-dashed border-white/[0.08] px-3 py-6 text-center"
-          >
-            <p class="text-[11px] font-medium text-gray-500">No coaching analysis yet</p>
-            <p class="mt-1 text-[10px] text-gray-600 leading-relaxed">Run match analysis from the dashboard to unlock structured review notes here.</p>
-          </div>
-
-          <div class="rounded-lg border border-white/[0.06] bg-black/20 px-2.5 py-2">
-            <p class="text-[9px] font-semibold uppercase tracking-[0.18em] text-gray-600">Workflow</p>
-            <ul class="mt-1.5 space-y-1 text-[10px] text-gray-600 leading-relaxed">
-              <li v-if="hasCoachFeedback">· <kbd class="text-[9px] px-1 rounded bg-violet-500/15 border border-violet-500/25 text-violet-200/90">C</kbd> coach notes · <kbd class="text-[9px] px-1 rounded bg-violet-500/15 border border-violet-500/25 text-violet-200/90">G</kbd> first note</li>
-              <li v-if="hasCoachFeedback">· <kbd class="text-[9px] px-1 rounded bg-violet-500/15 border border-violet-500/25 text-violet-200/90">Shift+J/L</kbd> prev/next coach note · <kbd class="text-[9px] px-1 rounded bg-violet-500/15 border border-violet-500/25 text-violet-200/90">1–9</kbd> jump to note</li>
-              <li>· Use <kbd class="text-[9px] px-1 rounded bg-white/[0.06] border border-white/10">J</kbd>/<kbd class="text-[9px] px-1 rounded bg-white/[0.06] border border-white/10">L</kbd> to hop between moments</li>
-              <li>· Toggle <span class="text-gray-500">My moments</span> in the round log for self-review</li>
-              <li>· Press <kbd class="text-[9px] px-1 rounded bg-white/[0.06] border border-white/10">?</kbd> for all shortcuts</li>
-            </ul>
-          </div>
-        </div>
       </div>
   </div>
 </template>

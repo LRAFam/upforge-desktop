@@ -10,7 +10,6 @@ const {
   getAgentColor,
   getAgentImage,
   getMapImage,
-  getRankHexColor,
   getRankIconUrl,
   groupedAnalyses,
   loading,
@@ -23,12 +22,12 @@ const {
 
 <template>
 <div
-        class="history-list flex h-full min-h-0 flex-col flex-shrink-0 border-b border-white/[0.08] lg:h-auto lg:w-[min(400px,38%)] lg:border-b-0 lg:border-r xl:w-[min(440px,36%)]"
+        class="history-list flex h-full min-h-0 flex-col flex-shrink-0 border-b border-white/[0.08] lg:h-auto lg:w-[min(320px,30%)] lg:border-b-0 lg:border-r xl:w-[min(340px,28%)]"
         :class="selectedId != null ? 'max-lg:hidden' : ''"
       >
-        <div class="flex-1 overflow-y-auto px-3 py-3 scrollbar-hide">
+        <div class="flex-1 overflow-y-auto px-2.5 py-2.5 scrollbar-hide">
           <div v-if="loading" class="space-y-2">
-            <div v-for="i in 6" :key="i" class="h-16 rounded-xl bg-white/[0.02] animate-pulse border border-white/[0.07]" />
+            <div v-for="i in 6" :key="i" class="h-14 rounded-xl bg-white/[0.02] animate-pulse border border-white/[0.07]" />
           </div>
 
           <div v-else-if="filteredAnalyses.length === 0" class="flex items-center justify-center py-12 px-2">
@@ -38,89 +37,78 @@ const {
             </div>
           </div>
 
-          <div v-else class="space-y-4">
-            <section v-for="group in groupedAnalyses" :key="group.label" class="space-y-1.5">
+          <div v-else class="space-y-3">
+            <section v-for="group in groupedAnalyses" :key="group.label" class="space-y-1">
               <div class="flex items-center gap-2 px-1 py-0.5">
-                <span class="text-[9px] font-bold uppercase tracking-[0.2em] text-gray-600">{{ group.label }}</span>
-                <span class="text-[9px] text-gray-700">{{ group.items.length }}</span>
-                <div class="flex-1 h-px bg-white/[0.05]" />
+                <span class="text-[9px] font-bold uppercase tracking-[0.18em] text-gray-600">{{ group.label }}</span>
+                <span class="text-[9px] text-gray-700 tabular-nums">{{ group.items.length }}</span>
               </div>
 
               <button
                 v-for="a in group.items"
                 :key="a.id"
                 type="button"
-                class="history-list-row w-full text-left rounded-xl border px-2.5 py-2 transition-all"
+                class="history-list-row w-full text-left rounded-xl border px-2 py-2 transition-all"
                 :class="[
                   selectedId === a.id
                     ? 'border-red-500/35 bg-red-500/[0.08] shadow-[0_0_0_1px_rgba(239,68,68,0.12)]'
-                    : 'border-white/[0.08] bg-white/[0.02] hover:border-white/[0.14] hover:bg-white/[0.04]',
+                    : 'border-white/[0.07] bg-white/[0.02] hover:border-white/[0.12] hover:bg-white/[0.04]',
                   a.won === true ? 'history-list-row--won' : a.won === false ? 'history-list-row--lost' : '',
                 ]"
                 @click="selectSession(a)"
               >
-                <div class="flex items-center gap-2.5">
+                <div class="flex items-center gap-2">
                   <div
-                    class="history-list-thumb relative h-12 w-[54px] flex-shrink-0 rounded-lg overflow-hidden border border-white/10 bg-black/50"
+                    class="history-list-thumb relative h-11 w-11 flex-shrink-0 rounded-lg overflow-hidden border border-white/10 bg-black/50"
                     :style="a.agent ? { boxShadow: `inset 0 0 0 1px ${getAgentColor(a.agent)}33` } : {}"
                   >
                     <img
-                      v-if="a.map && getMapImage(a.map)"
-                      :src="getMapImage(a.map)"
-                      class="absolute inset-0 h-full w-full object-cover opacity-55"
-                      alt=""
-                    />
-                    <div class="absolute inset-0 bg-gradient-to-t from-black/85 via-black/35 to-black/10" />
-                    <img
                       v-if="a.agent && getAgentImage(a.agent)"
                       :src="getAgentImage(a.agent)"
-                      class="relative mx-auto mt-1 h-8 w-8 object-contain drop-shadow-md"
+                      class="relative h-full w-full object-contain p-1 drop-shadow-md"
+                      alt=""
+                    />
+                    <img
+                      v-else-if="a.map && getMapImage(a.map)"
+                      :src="getMapImage(a.map)"
+                      class="absolute inset-0 h-full w-full object-cover opacity-60"
                       alt=""
                     />
                   </div>
 
                   <div class="min-w-0 flex-1">
                     <div class="flex items-center gap-1 min-w-0">
-                      <span class="text-xs font-bold text-white truncate">{{ a.agent || 'Unknown' }}</span>
-                      <span class="text-gray-700">·</span>
-                      <span class="text-xs text-gray-400 truncate">{{ formatMapLabel(a.map) || '—' }}</span>
+                      <span class="text-[12px] font-bold text-white truncate">{{ a.agent || 'Unknown' }}</span>
+                      <span class="text-gray-700 flex-shrink-0">·</span>
+                      <span class="text-[11px] text-gray-400 truncate">{{ formatMapLabel(a.map) || '—' }}</span>
                     </div>
-                    <div class="mt-0.5 flex flex-wrap items-center gap-1.5 text-[10px] text-gray-600">
-                      <span>{{ formatDate(a.created_at) }}</span>
-                      <span
-                        v-if="a.rank && getRankIconUrl(a.rank)"
-                        class="inline-flex items-center gap-0.5 rounded border border-white/[0.08] bg-white/[0.03] px-1 py-px"
-                        :title="a.rank"
-                      >
-                        <img :src="getRankIconUrl(a.rank)!" class="h-3.5 w-3.5 object-contain" :alt="a.rank" />
-                        <span class="text-[9px] font-semibold" :style="{ color: getRankHexColor(a.rank) }">{{ a.rank }}</span>
-                      </span>
+                    <div class="mt-0.5 flex items-center gap-1.5 text-[10px] text-gray-600 min-w-0">
+                      <span class="flex-shrink-0">{{ formatDate(a.created_at) }}</span>
                       <span
                         v-if="a.won != null"
-                        class="font-bold"
+                        class="font-bold flex-shrink-0"
                         :class="a.won ? 'text-green-500/80' : 'text-red-500/70'"
                       >{{ a.won ? 'W' : 'L' }}</span>
-                      <span v-if="a.rounds_won != null && a.rounds_lost != null" class="tabular-nums">{{ a.rounds_won }}–{{ a.rounds_lost }}</span>
-                      <span v-if="a.kills != null" class="tabular-nums font-mono text-gray-500">{{ a.kills }}/{{ a.deaths }}/{{ a.assists }}</span>
+                      <span v-if="a.rounds_won != null && a.rounds_lost != null" class="tabular-nums flex-shrink-0">{{ a.rounds_won }}–{{ a.rounds_lost }}</span>
+                      <img
+                        v-if="a.rank && getRankIconUrl(a.rank)"
+                        :src="getRankIconUrl(a.rank)!"
+                        class="h-3.5 w-3.5 object-contain flex-shrink-0 opacity-80"
+                        :title="a.rank"
+                        :alt="a.rank"
+                      />
+                      <span
+                        v-if="coachReviewByAnalysisId[a.id]?.status === 'completed'"
+                        class="inline-flex h-1.5 w-1.5 rounded-full bg-violet-400 flex-shrink-0"
+                        title="Coach notes"
+                      />
                     </div>
                   </div>
 
-                  <div class="flex flex-shrink-0 flex-col items-end gap-0.5">
-                    <span
-                      v-if="coachReviewByAnalysisId[a.id]?.status === 'completed'"
-                      class="inline-flex items-center gap-0.5 rounded-full border border-violet-500/30 bg-violet-500/10 px-1.5 py-px text-[8px] font-semibold text-violet-300/90"
-                      title="Coach feedback ready"
-                    >
-                      <span class="h-1 w-1 rounded-full bg-violet-400" />
-                      Coach
-                    </span>
-                    <span
-                      v-else-if="coachReviewByAnalysisId[a.id]?.status === 'in_progress'"
-                      class="text-[8px] font-medium text-amber-400/80"
-                    >Reviewing</span>
+                  <div class="flex flex-shrink-0 flex-col items-end justify-center gap-0.5 pl-1">
                     <span
                       v-if="a.overall_score != null"
-                      class="text-sm font-black tabular-nums leading-none"
+                      class="text-[13px] font-black tabular-nums leading-none"
                       :class="a.overall_score >= 78 ? 'text-green-400' : a.overall_score >= 50 ? 'text-yellow-400' : 'text-red-400'"
                     >{{ a.overall_score * 10 }}</span>
                     <span
@@ -129,7 +117,7 @@ const {
                     >…</span>
                     <span
                       v-if="a.overall_score != null"
-                      class="rounded px-1 py-px text-[8px] font-bold"
+                      class="rounded px-1 py-px text-[8px] font-bold leading-none"
                       :class="scoreGradeBadgeClass(a.overall_score)"
                     >{{ scoreGrade(a.overall_score) }}</span>
                   </div>

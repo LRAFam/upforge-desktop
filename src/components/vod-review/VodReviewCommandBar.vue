@@ -21,6 +21,7 @@ const {
   spatialMapVisible,
   theaterMode,
   timeline,
+  toggleSidePanelTab,
   toggleTheaterMode,
 } = useVodReview()
 </script>
@@ -73,32 +74,25 @@ const {
         </div>
 
         <div
-          v-if="matchScoreline"
-          class="hidden sm:flex items-center gap-2 flex-shrink-0 rounded-xl border border-white/[0.08] bg-black/30 px-3 py-1.5"
+          v-if="matchScoreline || timeline?.finalStats"
+          class="hidden sm:flex items-center gap-2.5 flex-shrink-0 rounded-xl border border-white/[0.08] bg-black/30 px-3 py-1.5"
         >
-          <span class="text-lg font-black tabular-nums" :class="matchScoreline.ally > matchScoreline.enemy ? 'text-green-400' : 'text-white'">{{ matchScoreline.ally }}</span>
-          <span class="text-[10px] font-bold text-gray-600">—</span>
-          <span class="text-lg font-black tabular-nums" :class="matchScoreline.enemy > matchScoreline.ally ? 'text-green-400' : 'text-gray-400'">{{ matchScoreline.enemy }}</span>
-        </div>
-
-        <div v-if="timeline?.finalStats" class="flex items-center gap-2 flex-shrink-0 rounded-xl border border-white/[0.08] bg-white/[0.03] px-2.5 py-1.5">
-          <div class="flex items-center gap-1 text-xs tabular-nums">
+          <template v-if="matchScoreline">
+            <span class="text-lg font-black tabular-nums" :class="matchScoreline.ally > matchScoreline.enemy ? 'text-green-400' : 'text-white'">{{ matchScoreline.ally }}</span>
+            <span class="text-[10px] font-bold text-gray-600">—</span>
+            <span class="text-lg font-black tabular-nums" :class="matchScoreline.enemy > matchScoreline.ally ? 'text-green-400' : 'text-gray-400'">{{ matchScoreline.enemy }}</span>
+          </template>
+          <span v-if="matchScoreline && timeline?.finalStats" class="h-4 w-px bg-white/[0.08]" />
+          <div v-if="timeline?.finalStats" class="flex items-center gap-1.5 text-xs tabular-nums">
             <span class="font-bold text-green-400">{{ timeline.finalStats.kills }}</span>
             <span class="text-gray-700">/</span>
             <span class="font-bold text-red-400">{{ timeline.finalStats.deaths }}</span>
             <span class="text-gray-700">/</span>
             <span class="font-bold text-blue-400">{{ timeline.finalStats.assists }}</span>
           </div>
-          <div
-            v-if="timeline.finalStats.won !== undefined"
-            class="text-[10px] font-black px-1.5 py-0.5 rounded"
-            :class="timeline.finalStats.won ? 'text-green-400 bg-green-500/15' : 'text-red-400 bg-red-500/15'"
-          >
-            {{ timeline.finalStats.won ? 'WIN' : 'LOSS' }}
-          </div>
         </div>
 
-        <div class="flex items-center gap-1.5 flex-shrink-0 flex-wrap justify-end">
+        <div class="flex items-center gap-1.5 flex-shrink-0 flex-wrap justify-end ml-auto">
           <button
             v-if="!theaterMode && roundGroups.length"
             type="button"
@@ -114,9 +108,9 @@ const {
             type="button"
             class="vod-toolbar-btn"
             :class="spatialMapVisible ? 'vod-toolbar-btn--active' : ''"
-            @click="spatialMapVisible = !spatialMapVisible"
+            @click="toggleSidePanelTab('map')"
           >
-            {{ spatialMapVisible ? 'Intel on' : 'Intel' }}
+            {{ spatialMapVisible ? 'Map on' : 'Map' }}
           </button>
           <span
             v-if="activeRoundNumber != null"
@@ -147,9 +141,9 @@ const {
             class="vod-toolbar-btn relative"
             :class="showInsightsPanel ? 'vod-toolbar-btn--active' : ''"
             :title="hasCoachFeedback ? 'Coach notes (C) · Review notes (N)' : 'Review notes (N)'"
-            @click="showInsightsPanel = !showInsightsPanel"
+            @click="toggleSidePanelTab('notes')"
           >
-            {{ showInsightsPanel ? 'Notes on' : (hasCoachFeedback ? 'Coach' : 'Notes') }}
+            {{ showInsightsPanel ? 'Notes on' : 'Notes' }}
             <span
               v-if="hasCoachFeedback && !showInsightsPanel"
               class="absolute -top-0.5 -right-0.5 h-2 w-2 rounded-full bg-violet-400 shadow-[0_0_8px_rgba(167,139,250,0.8)]"

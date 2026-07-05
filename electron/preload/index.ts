@@ -75,6 +75,7 @@ const api = {
     close: () => ipcRenderer.invoke('window:close'),
     openPostGame: () => ipcRenderer.invoke('window:open-post-game'),
     setContentHeight: (height: number) => ipcRenderer.invoke('window:set-content-height', height),
+    applyLayout: (routePath: string) => ipcRenderer.invoke('window:apply-layout', routePath),
   },
   postGame: {
     retryDemoScan: () => ipcRenderer.invoke('post-game:retry-demo-scan'),
@@ -212,6 +213,8 @@ const api = {
     getCorrelation: () => ipcRenderer.invoke('trainer:get-correlation'),
     getBenchmark: () => ipcRenderer.invoke('trainer:get-benchmark'),
     getAiCoaching: () => ipcRenderer.invoke('trainer:get-ai-coaching'),
+    getLeaderboard: (scenario: string, period?: 'week' | 'month' | 'all') =>
+      ipcRenderer.invoke('trainer:get-leaderboard', scenario, period),
   },
       deadlock: {
         listReplays: () => ipcRenderer.invoke('deadlock:list-replays'),

@@ -4,6 +4,31 @@ import { useRouter } from 'vue-router'
 import type { TrainingHistory, CoachingDrill, TrainingBenchmark } from '../env'
 import { ACHIEVEMENTS, useAchievements } from '../composables/useAchievements'
 import { type CrosshairSettings, CROSSHAIR_PALETTE_HEX, resolveColor } from '../lib/crosshair'
+import {
+  type TrainerScenarioKey,
+  type TrainerDifficulty,
+  RADAR_SCENARIO_KEYS,
+  resolveTrainerScenario,
+  resolveTrainerDifficulty,
+  resolveTrainerDuration,
+} from '../lib/trainer-scenarios'
+import {
+  buildStructuredSessionPlan,
+  buildSessionSummary,
+  coachingDrillToSessionDrill,
+  applyProgressionToDrill,
+  SESSION_AUTO_ADVANCE_SEC,
+  type SessionDrill,
+  type SessionStep,
+  type SessionSummary,
+} from '../lib/structured-session'
+import { TRAINER_SCENARIOS } from '../lib/trainer-scenarios'
+import { scenarioIconUrl, TRAINING_TAB_ICONS, TRAINING_CATEGORY_ICONS, TRAINING_ARTWORK } from '../lib/training-icons'
+import TrainingGuidedSessionHero from '../components/training/TrainingGuidedSessionHero.vue'
+import TrainingVodStrip, { type VodDrill } from '../components/training/TrainingVodStrip.vue'
+import TrainingScenarioCard from '../components/training/TrainingScenarioCard.vue'
+import TrainingLeaderboardsTab from '../components/training/TrainingLeaderboardsTab.vue'
+import TrainingLoadoutsTab from '../components/training/TrainingLoadoutsTab.vue'
 
 const ICON_LOCK = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" class="w-4 h-4"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>`
 const ICON_TROPHY_SM = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" class="w-4 h-4"><path d="M6 9H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h2"/><path d="M18 9h2a2 2 0 0 0 2-2V5a2 2 0 0 0-2-2h-2"/><path d="M4 22h16"/><path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22"/><path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22"/><path d="M18 2H6v7a6 6 0 0 0 12 0V2z"/></svg>`
@@ -23,7 +48,7 @@ interface SessionResult {
   completed_at: string
 }
 
-type ScenarioKey = 'flick' | 'tracking' | 'microadjust' | 'switching' | 'duel'
+type ScenarioKey = TrainerScenarioKey
 type ScenarioCategory = 'all' | 'aim' | 'reaction' | 'precision' | 'duel'
 
 interface AssignedDrill {
@@ -33,6 +58,7 @@ interface AssignedDrill {
   weakness: string
   weakness_score: number
   reason: string
+  user_drill_id?: number
 }
 
 // ── State ─────────────────────────────────────────────────────────────────────
@@ -57,7 +83,7 @@ const correlationInsights = ref<string[]>([])
 const benchmarkData = ref<TrainingBenchmark | null>(null)
 const loadingHistory = ref(false)
 const heatmapCanvas = ref<HTMLCanvasElement | null>(null)
-const activeTab = ref<'drills' | 'progress' | 'coaching'>('drills')
+const activeTab = ref<'train' | 'analytics' | 'leaderboards' | 'loadouts'>('train')
 const activeDrillCategory = ref<ScenarioCategory>('all')
 
 // ── Trainer settings (crosshair + mouse) ─────────────────────────────────────
@@ -212,6 +238,66 @@ const SCENARIO_META: Record<string, {
     dot: 'bg-emerald-400',
     ring: 'ring-emerald-500/30',
   },
+  gridshot: {
+    label: 'Gridshot',
+    description: 'Six targets on screen — pure clicking speed.',
+    tip: 'Eyes lead — find the next target before your click lands.',
+    category: 'aim',
+    color: 'text-orange-400',
+    bg: 'bg-orange-500/[0.08]',
+    border: 'border-orange-500/20',
+    band: 'bg-orange-500',
+    dot: 'bg-orange-400',
+    ring: 'ring-orange-500/30',
+  },
+  sixshot: {
+    label: 'Sixshot',
+    description: 'Clustered burst targets. Speed and rhythm.',
+    tip: 'Stay relaxed between bursts — tension kills rhythm.',
+    category: 'aim',
+    color: 'text-rose-400',
+    bg: 'bg-rose-500/[0.08]',
+    border: 'border-rose-500/20',
+    band: 'bg-rose-500',
+    dot: 'bg-rose-400',
+    ring: 'ring-rose-500/30',
+  },
+  microflick: {
+    label: 'Micro Flick',
+    description: 'Tiny targets, short window. Precision flicks.',
+    tip: 'Micro-corrections only — no full arm flicks.',
+    category: 'precision',
+    color: 'text-lime-400',
+    bg: 'bg-lime-500/[0.08]',
+    border: 'border-lime-500/20',
+    band: 'bg-lime-500',
+    dot: 'bg-lime-400',
+    ring: 'ring-lime-500/30',
+  },
+  strafe_track: {
+    label: 'Strafe Track',
+    description: 'Strafing target — hold and track.',
+    tip: 'Mirror their movement with smooth horizontal input.',
+    category: 'reaction',
+    color: 'text-cyan-400',
+    bg: 'bg-cyan-500/[0.08]',
+    border: 'border-cyan-500/20',
+    band: 'bg-cyan-500',
+    dot: 'bg-cyan-400',
+    ring: 'ring-cyan-500/30',
+  },
+  strafe_aim: {
+    label: 'Strafe Aim',
+    description: 'Counter-strafe before each shot.',
+    tip: 'Release A/D before clicking — full stop first.',
+    category: 'duel',
+    color: 'text-teal-400',
+    bg: 'bg-teal-500/[0.08]',
+    border: 'border-teal-500/20',
+    band: 'bg-teal-500',
+    dot: 'bg-teal-400',
+    ring: 'ring-teal-500/30',
+  },
 }
 
 const DIFFICULTY_COLORS: Record<string, string> = {
@@ -231,37 +317,17 @@ const DIFFICULTY_BG: Record<string, string> = {
 const DRILL_CATEGORY_FILTERS: Array<{
   id: ScenarioCategory
   label: string
-  icon: string
+  iconSrc: string | null
 }> = [
-  {
-    id: 'all',
-    label: 'All',
-    icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" class="w-4 h-4"><rect x="4" y="4" width="6" height="6" rx="1.5"/><rect x="14" y="4" width="6" height="6" rx="1.5"/><rect x="4" y="14" width="6" height="6" rx="1.5"/><rect x="14" y="14" width="6" height="6" rx="1.5"/></svg>`,
-  },
-  {
-    id: 'aim',
-    label: 'Aim',
-    icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" class="w-4 h-4"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3.5"/><circle cx="12" cy="12" r="1" fill="currentColor" stroke="none"/></svg>`,
-  },
-  {
-    id: 'reaction',
-    label: 'Reaction',
-    icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" class="w-4 h-4"><path d="M13 3 6 14h7l-2 7 8-11h-7z"/></svg>`,
-  },
-  {
-    id: 'precision',
-    label: 'Precision',
-    icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" class="w-4 h-4"><circle cx="12" cy="12" r="5"/><line x1="12" y1="2" x2="12" y2="7"/><line x1="12" y1="17" x2="12" y2="22"/><line x1="2" y1="12" x2="7" y2="12"/><line x1="17" y1="12" x2="22" y2="12"/></svg>`,
-  },
-  {
-    id: 'duel',
-    label: 'Duel',
-    icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" class="w-4 h-4"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>`,
-  },
+  { id: 'all', label: 'All', iconSrc: null },
+  { id: 'aim', label: 'Aim', iconSrc: TRAINING_CATEGORY_ICONS.aim },
+  { id: 'reaction', label: 'Reaction', iconSrc: TRAINING_CATEGORY_ICONS.reaction },
+  { id: 'precision', label: 'Precision', iconSrc: TRAINING_CATEGORY_ICONS.precision },
+  { id: 'duel', label: 'Duel', iconSrc: TRAINING_CATEGORY_ICONS.duel },
 ]
 
 // ── Radar chart constants ─────────────────────────────────────────────────────
-const RADAR_SCENARIOS = ['flick', 'tracking', 'microadjust', 'switching', 'duel'] as const
+const RADAR_SCENARIOS = RADAR_SCENARIO_KEYS
 const RADAR_COLORS: Record<string, string> = {
   flick: '#f87171',
   tracking: '#38bdf8',
@@ -269,16 +335,20 @@ const RADAR_COLORS: Record<string, string> = {
   switching: '#a78bfa',
   duel: '#34d399',
 }
-// Map coaching drill category → trainable scenario
-const CATEGORY_TO_SCENARIO: Record<string, AssignedDrill['scenario']> = {
-  mechanics: 'flick',
-  crosshair_placement: 'microadjust',
-  tracking: 'tracking',
-  switching: 'switching',
-  duel: 'duel',
-  game_sense: 'flick',
-  positioning: 'microadjust',
-  default: 'flick',
+// Map coaching drill → trainable scenario (prefer explicit trainer_scenario from VOD)
+function drillToScenario(drill: CoachingDrill): ScenarioKey {
+  return resolveTrainerScenario(drill)
+}
+
+function drillToAssigned(drill: CoachingDrill): AssignedDrill {
+  return {
+    scenario: drillToScenario(drill),
+    difficulty: resolveTrainerDifficulty(drill),
+    duration_seconds: resolveTrainerDuration(drill),
+    weakness: drill.category,
+    weakness_score: drill.baseline_score,
+    reason: drill.title,
+  }
 }
 
 // ── Score helpers ─────────────────────────────────────────────────────────────
@@ -388,6 +458,37 @@ const recommendedDrills = computed(() => {
   return (picks.length ? picks : assignedDrills.value).slice(0, 3)
 })
 
+function drillForScenario(scenario: ScenarioKey): AssignedDrill {
+  return assignedDrills.value.find(d => d.scenario === scenario) ?? {
+    scenario,
+    difficulty: 'medium',
+    duration_seconds: 60,
+    weakness: '',
+    weakness_score: 0,
+    reason: '',
+  }
+}
+
+const scenarioCards = computed(() =>
+  TRAINER_SCENARIOS
+    .filter(def => matchesScenarioCategory(def.key, activeDrillCategory.value))
+    .map(def => {
+      const scenario = def.key
+      return {
+        scenario,
+        drill: drillForScenario(scenario),
+        pb: benchmarkData.value?.[scenario]?.user_best ?? apiHistory.value?.by_scenario[scenario]?.best_score ?? null,
+        rank: benchmarkData.value?.[scenario]?.global_rank ?? null,
+        progress: scenarioProgress(scenario),
+        completed: completedDrills.value.has(scenario),
+      }
+    }),
+)
+
+function launchScenarioCard(scenario: ScenarioKey) {
+  void launchDrill(drillForScenario(scenario))
+}
+
 function improvementRoom(scenario: ScenarioKey): number {
   return 100 - scenarioProgress(scenario)
 }
@@ -466,6 +567,7 @@ async function launchDrill(drill: AssignedDrill) {
       difficulty: drill.difficulty,
       context: { weakness: drill.weakness, score: drill.weakness_score },
     }
+    if (drill.user_drill_id) payload.user_drill_id = drill.user_drill_id
     if (Object.keys(trainerMouseSettings).length > 0) {
       payload.mouse_settings = trainerMouseSettings
     }
@@ -482,6 +584,18 @@ async function launchDrill(drill: AssignedDrill) {
   } finally {
     launching.value = false
   }
+}
+
+function launchVodDrill(drill: VodDrill) {
+  const full = assignedDrills.value.find(d => d.scenario === drill.scenario)
+  void launchDrill(full ?? {
+    scenario: drill.scenario,
+    difficulty: drill.difficulty,
+    duration_seconds: 60,
+    weakness: 'vod',
+    weakness_score: drill.weakness_score,
+    reason: drill.reason,
+  })
 }
 
 // ── IPC listener ──────────────────────────────────────────────────────────────
@@ -522,27 +636,14 @@ onMounted(async () => {
     activeDrill.value = null
     drillRunning.value = false
 
-    if (warmupActive.value) {
-      warmupResults.value.push(r)
-      const nextStep = warmupStep.value + 1
-      warmupStep.value = nextStep
-      if (nextStep < WARMUP_SEQUENCE.length) {
-        // Count down 5s then auto-advance to next step
-        warmupCountdown.value = 5
-        warmupCountdownInterval = setInterval(() => {
-          warmupCountdown.value--
-          if (warmupCountdown.value <= 0) {
-            clearWarmupTimer()
-            launchWarmupStep(nextStep)
-          }
-        }, 1000)
+    if (structuredSession.value?.active) {
+      structuredSession.value.results.push(r)
+      const nextStep = structuredSession.value.stepIndex + 1
+      structuredSession.value.stepIndex = nextStep
+      if (nextStep < structuredSession.value.plan.length) {
+        startSessionCountdown(nextStep)
       } else {
-        warmupActive.value = false
-        warmupStep.value = 0
-        // All steps done — navigate to results view
-        const prevBest = apiHistory.value?.by_scenario[r.scenario]?.best_score ?? null
-        trainerResultStore.setResult(r, currentLaunchConfig, prevBest)
-        router.push('/trainer-results')
+        finishStructuredSession()
       }
     } else {
       const prevBest = apiHistory.value?.by_scenario[r.scenario]?.best_score ?? null
@@ -584,17 +685,14 @@ onMounted(async () => {
     startPBCarousel()
     // If API returned coaching drills that map to scenarios, populate Today's Drills
     if (drillList.length > 0) {
+      const sessions = history?.sessions ?? []
       const mapped: AssignedDrill[] = drillList
-        .filter((d: CoachingDrill) => CATEGORY_TO_SCENARIO[d.category])
         .slice(0, 4)
-        .map((d: CoachingDrill) => ({
-          scenario: CATEGORY_TO_SCENARIO[d.category] ?? 'flick',
-          difficulty: 'medium' as const,
-          duration_seconds: 60,
-          weakness: d.category,
-          weakness_score: d.baseline_score,
-          reason: d.title,
-        }))
+        .map((d: CoachingDrill) => {
+          const assigned = drillToAssigned(d)
+          const progressed = applyProgressionToDrill(assignedToSessionDrill(assigned), sessions)
+          return { ...assigned, difficulty: progressed.difficulty }
+        })
       if (mapped.length > 0) assignedDrills.value = mapped
     }
   } finally {
@@ -605,13 +703,13 @@ onMounted(async () => {
 
 onUnmounted(() => {
   removeListener?.()
-  clearWarmupTimer()
+  clearSessionTimer()
   stopPBCarousel()
 })
 
 // ── Free play ──────────────────────────────────────────────────────────────────
-const freePlayScenario = ref<'flick' | 'tracking' | 'microadjust' | 'switching' | 'duel'>('flick')
-const freePlayDifficulty = ref<'easy' | 'medium' | 'hard' | 'pro'>('medium')
+const freePlayScenario = ref<ScenarioKey>('flick')
+const freePlayDifficulty = ref<TrainerDifficulty>('medium')
 const freePlayDuration = ref(60)
 
 // PB Carousel
@@ -669,14 +767,7 @@ function sanitizeInstructions(text: string | null): string | null {
 }
 
 async function launchCoachingDrill(drill: CoachingDrill) {
-  await launchDrill({
-    scenario: CATEGORY_TO_SCENARIO[drill.category] ?? 'flick',
-    difficulty: 'medium',
-    duration_seconds: 60,
-    weakness: drill.category,
-    weakness_score: drill.baseline_score,
-    reason: drill.title,
-  })
+  await launchDrill({ ...drillToAssigned(drill), user_drill_id: drill.id })
 }
 
 const averageScore = computed(() => {
@@ -1076,71 +1167,135 @@ const dailyChallenge = computed(() => {
   return { scenario, target, completed }
 })
 
-// ── Warm-up routine ───────────────────────────────────────────────────────────
-const WARMUP_SEQUENCE: Array<{ scenario: AssignedDrill['scenario']; difficulty: AssignedDrill['difficulty']; duration_seconds: number }> = [
-  { scenario: 'flick', difficulty: 'easy', duration_seconds: 30 },
-  { scenario: 'tracking', difficulty: 'easy', duration_seconds: 30 },
-  { scenario: 'microadjust', difficulty: 'easy', duration_seconds: 30 },
-  { scenario: 'switching', difficulty: 'easy', duration_seconds: 30 },
-  { scenario: 'duel', difficulty: 'easy', duration_seconds: 30 },
-]
-const warmupActive = ref(false)
-const warmupStep = ref(0)
-const warmupResults = ref<SessionResult[]>([])
-const warmupCountdown = ref(0)
-let warmupAdvanceTimer: ReturnType<typeof setTimeout> | null = null
-let warmupCountdownInterval: ReturnType<typeof setInterval> | null = null
+// ── Guided session (warmup → focus → cooldown) ───────────────────────────────
+const structuredSession = ref<{
+  active: boolean
+  stepIndex: number
+  plan: SessionStep[]
+  results: SessionResult[]
+} | null>(null)
 
-function clearWarmupTimer() {
-  if (warmupAdvanceTimer) { clearTimeout(warmupAdvanceTimer); warmupAdvanceTimer = null }
-  if (warmupCountdownInterval) { clearInterval(warmupCountdownInterval); warmupCountdownInterval = null }
-  warmupCountdown.value = 0
+const sessionCountdown = ref(0)
+const showSessionSummary = ref(false)
+const sessionSummary = ref<SessionSummary | null>(null)
+let sessionAdvanceTimer: ReturnType<typeof setInterval> | null = null
+
+const structuredSessionActive = computed(() => structuredSession.value?.active === true)
+const structuredSessionPlan = computed(() => structuredSession.value?.plan ?? [])
+const structuredSessionStepIndex = computed(() => structuredSession.value?.stepIndex ?? 0)
+const structuredSessionWaiting = computed(
+  () => structuredSessionActive.value && !drillRunning.value && structuredSessionStepIndex.value < structuredSessionPlan.value.length,
+)
+
+function clearSessionTimer() {
+  if (sessionAdvanceTimer) {
+    clearInterval(sessionAdvanceTimer)
+    sessionAdvanceTimer = null
+  }
+  sessionCountdown.value = 0
 }
 
-async function launchWarmupStep(step: number) {
-  clearWarmupTimer()
-  const s = WARMUP_SEQUENCE[step]
-  if (!s) return
+function assignedToSessionDrill(d: AssignedDrill): SessionDrill {
+  return {
+    scenario: d.scenario,
+    difficulty: d.difficulty,
+    duration_seconds: d.duration_seconds,
+    weakness: d.weakness,
+    weakness_score: d.weakness_score,
+    reason: d.reason,
+    user_drill_id: d.user_drill_id,
+  }
+}
+
+async function launchStructuredStep(stepIndex: number) {
+  clearSessionTimer()
+  const step = structuredSession.value?.plan[stepIndex]
+  if (!step) return
   await launchDrill({
-    scenario: s.scenario,
-    difficulty: s.difficulty,
-    duration_seconds: s.duration_seconds,
-    weakness: 'warmup',
-    weakness_score: 0,
-    reason: `Warm-up step ${step + 1}/${WARMUP_SEQUENCE.length}`,
+    scenario: step.scenario,
+    difficulty: step.difficulty,
+    duration_seconds: step.duration_seconds,
+    weakness: step.weakness,
+    weakness_score: step.weakness_score,
+    reason: step.reason,
+    user_drill_id: step.user_drill_id,
   })
 }
 
-async function startWarmup() {
-  warmupActive.value = true
-  warmupStep.value = 0
-  warmupResults.value = []
-  await launchWarmupStep(0)
+async function startStructuredSession() {
+  const recent = apiHistory.value?.sessions ?? sessionHistory.value
+  const focusAssigned = recommendedDrills.value[0] ?? assignedDrills.value[0] ?? null
+  let focusDrill: SessionDrill | null = focusAssigned ? assignedToSessionDrill(focusAssigned) : null
+  if (!focusDrill && coachingDrills.value[0]) {
+    focusDrill = coachingDrillToSessionDrill(coachingDrills.value[0])
+  }
+
+  const plan = buildStructuredSessionPlan({
+    focusDrill,
+    aiFocusArea: aiCoaching.value?.focus_area ?? null,
+    recentSessions: recent,
+  })
+
+  structuredSession.value = { active: true, stepIndex: 0, plan, results: [] }
+  showSessionSummary.value = false
+  sessionSummary.value = null
+  await launchStructuredStep(0)
 }
 
-function cancelWarmup() {
-  clearWarmupTimer()
-  warmupActive.value = false
-  warmupStep.value = 0
-  warmupResults.value = []
+function startSessionCountdown(nextStep: number) {
+  sessionCountdown.value = SESSION_AUTO_ADVANCE_SEC
+  sessionAdvanceTimer = setInterval(() => {
+    sessionCountdown.value--
+    if (sessionCountdown.value <= 0) {
+      clearSessionTimer()
+      launchStructuredStep(nextStep)
+    }
+  }, 1000)
+}
+
+function finishStructuredSession() {
+  if (!structuredSession.value) return
+  const { plan, results } = structuredSession.value
+  sessionSummary.value = buildSessionSummary(plan, results)
+  structuredSession.value = null
+  showSessionSummary.value = true
+  clearSessionTimer()
+}
+
+function cancelStructuredSession() {
+  clearSessionTimer()
+  structuredSession.value = null
   window.api.trainer.kill()
 }
 
-// SVG icon paths for scenario types
-const SCENARIO_ICON: Record<string, string> = {
-  // Lightning bolt — quick snap
-  flick: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" class="w-4 h-4"><path d="M13 3 6 14h7l-2 7 8-11h-7z"/></svg>`,
-  // Bullseye — stay on target
-  tracking: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" class="w-4 h-4"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4.5"/><circle cx="12" cy="12" r="1.2" fill="currentColor" stroke="none"/></svg>`,
-  // Crosshair — precision
-  microadjust: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" class="w-4 h-4"><circle cx="12" cy="12" r="5"/><line x1="12" y1="2" x2="12" y2="7"/><line x1="12" y1="17" x2="12" y2="22"/><line x1="2" y1="12" x2="7" y2="12"/><line x1="17" y1="12" x2="22" y2="12"/></svg>`,
-  // Double arrows — multi-target switching
-  switching: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" class="w-4 h-4"><path d="M7 16V4m0 0L4 7m3-3 3 3M17 8v12m0 0 3-3m-3 3-3-3"/></svg>`,
-  // 3D cube — first-person duel
-  duel: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" class="w-4 h-4"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>`,
+function dismissSessionSummary() {
+  showSessionSummary.value = false
+  sessionSummary.value = null
 }
 
-// SVG icon HTML for coaching drill categories
+async function startWarmup() {
+  await startStructuredSession()
+}
+
+function cancelWarmup() {
+  cancelStructuredSession()
+}
+
+function sessionPhaseBorder(phase: string): string {
+  if (phase === 'warmup') return 'border-amber-500/30 bg-amber-500/[0.08] text-amber-300'
+  if (phase === 'focus') return 'border-red-500/30 bg-red-500/[0.08] text-red-300'
+  return 'border-sky-500/30 bg-sky-500/[0.08] text-sky-300'
+}
+
+const guidedSessionPreview = computed(() =>
+  buildStructuredSessionPlan({
+    focusDrill: recommendedDrills.value[0] ? assignedToSessionDrill(recommendedDrills.value[0]) : null,
+    aiFocusArea: aiCoaching.value?.focus_area ?? null,
+    recentSessions: apiHistory.value?.sessions ?? sessionHistory.value,
+  }),
+)
+
+// SVG icon HTML for coaching drill categories (analytics tab)
 const CATEGORY_ICON: Record<string, string> = {
   mechanics: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" class="w-4 h-4"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3.5"/><circle cx="12" cy="12" r="1" fill="currentColor" stroke="none"/></svg>`,
   crosshair_placement: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" class="w-4 h-4"><circle cx="12" cy="12" r="4.5"/><line x1="12" y1="2" x2="12" y2="7.5"/><line x1="12" y1="16.5" x2="12" y2="22"/><line x1="2" y1="12" x2="7.5" y2="12"/><line x1="16.5" y1="12" x2="22" y2="12"/></svg>`,
@@ -1153,7 +1308,7 @@ const CATEGORY_ICON: Record<string, string> = {
 </script>
 
 <template>
-  <div class="h-full text-white flex flex-col overflow-hidden relative bg-[#111111]">
+  <div class="h-full text-white flex flex-col overflow-hidden relative bg-[#0a0a0a]">
 
     <!-- ── DRILL RUNNING BANNER ──────────────────────────────────────────── -->
     <Transition name="result-in">
@@ -1186,7 +1341,7 @@ const CATEGORY_ICON: Record<string, string> = {
     <!-- ── WARMUP BETWEEN-STEPS BANNER ──────────────────────────────────── -->
     <Transition name="result-in">
       <div
-        v-if="warmupActive && !drillRunning && warmupStep < WARMUP_SEQUENCE.length"
+        v-if="structuredSessionWaiting"
         class="flex-shrink-0 mx-3 mt-3 rounded-xl border border-amber-500/30 bg-amber-500/[0.07] overflow-hidden"
       >
         <div class="flex items-center justify-between px-4 py-2.5">
@@ -1194,29 +1349,30 @@ const CATEGORY_ICON: Record<string, string> = {
             <div class="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
             <div>
               <span class="text-[11px] font-bold text-amber-300 uppercase tracking-wider">
-                Warm-Up {{ warmupStep }}/{{ WARMUP_SEQUENCE.length }} ·
-                Next: {{ SCENARIO_META[WARMUP_SEQUENCE[warmupStep]?.scenario ?? 'flick']?.label }}
+                Guided Session · Step {{ structuredSessionStepIndex + 1 }}/{{ structuredSessionPlan.length }} ·
+                Next: {{ SCENARIO_META[structuredSessionPlan[structuredSessionStepIndex]?.scenario ?? 'flick']?.label }}
+                ({{ structuredSessionPlan[structuredSessionStepIndex]?.phaseLabel }})
               </span>
-              <span class="ml-2 text-[10px] text-gray-500">Auto-starting in {{ warmupCountdown }}s…</span>
+              <span class="ml-2 text-[10px] text-gray-500">Auto-starting in {{ sessionCountdown }}s…</span>
             </div>
           </div>
           <div class="flex items-center gap-2">
             <button
               class="text-[10px] font-bold text-amber-400 border border-amber-500/30 hover:bg-amber-500/[0.1] rounded-lg px-2.5 py-1 transition-all"
-              @click="clearWarmupTimer(); launchWarmupStep(warmupStep)"
+              @click="clearSessionTimer(); launchStructuredStep(structuredSessionStepIndex)"
             >Start Now</button>
             <button
               class="text-[10px] font-bold text-gray-600 hover:text-red-400 border border-white/[0.07] hover:border-red-500/30 rounded-lg px-2.5 py-1 transition-all"
-              @click="cancelWarmup"
+              @click="cancelStructuredSession"
             >Cancel</button>
           </div>
         </div>
         <div class="h-px bg-gradient-to-r from-transparent via-amber-500/40 to-transparent" />
-        <!-- Step progress dots -->
         <div class="flex items-center justify-center gap-1.5 py-2">
           <div
-            v-for="(step, si) in WARMUP_SEQUENCE" :key="si"
-            :class="['w-1.5 h-1.5 rounded-full transition-all', si < warmupStep ? 'bg-amber-400' : si === warmupStep ? 'bg-amber-400/50 ring-1 ring-amber-400/50' : 'bg-white/10']"
+            v-for="(step, si) in structuredSessionPlan" :key="si"
+            :class="['w-1.5 h-1.5 rounded-full transition-all', si < structuredSessionStepIndex ? 'bg-amber-400' : si === structuredSessionStepIndex ? 'bg-amber-400/50 ring-1 ring-amber-400/50' : 'bg-white/10']"
+            :title="step.phaseLabel"
           />
         </div>
       </div>
@@ -1332,15 +1488,88 @@ const CATEGORY_ICON: Record<string, string> = {
       </div>
     </Transition>
 
+    <!-- ── GUIDED SESSION SUMMARY ─────────────────────────────────────────── -->
+    <Transition name="modal-fade">
+      <div
+        v-if="showSessionSummary && sessionSummary"
+        class="absolute inset-0 z-50 flex items-center justify-center"
+        style="background: rgba(10,10,10,0.88); backdrop-filter: blur(8px)"
+        @click.self="dismissSessionSummary"
+      >
+        <div class="w-[calc(100%-2rem)] max-w-md rounded-2xl border border-white/[0.10] bg-[#141414] overflow-hidden shadow-[0_24px_80px_rgba(0,0,0,0.9)]">
+          <div class="h-px bg-gradient-to-r from-transparent via-red-500/40 to-transparent" />
+          <div class="px-5 pt-4 pb-2 flex items-center justify-between">
+            <div>
+              <p class="text-[10px] font-black uppercase tracking-[0.22em] text-red-400/80">Session Complete</p>
+              <h2 class="text-lg font-black text-white">Guided Session Summary</h2>
+            </div>
+            <button
+              class="text-gray-600 hover:text-gray-400 w-6 h-6 flex items-center justify-center rounded-lg hover:bg-white/[0.06]"
+              @click="dismissSessionSummary"
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" class="w-3.5 h-3.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
+          </div>
+
+          <div class="px-5 py-3 flex items-end gap-4">
+            <div>
+              <span class="text-5xl font-black tabular-nums text-white">{{ sessionSummary.avgScore }}</span>
+              <p class="text-[10px] text-gray-500 uppercase tracking-widest mt-1">Session avg</p>
+            </div>
+            <div v-if="sessionSummary.focusScore !== null" class="flex-1">
+              <p class="text-[10px] text-gray-500 uppercase tracking-wide">Focus drill</p>
+              <p class="text-2xl font-black tabular-nums" :class="scoreColor(sessionSummary.focusScore)">
+                {{ sessionSummary.focusScore }}
+              </p>
+              <p class="text-[10px] text-gray-600">
+                {{ SCENARIO_META[sessionSummary.focusScenario ?? 'flick']?.label ?? sessionSummary.focusScenario }}
+                <span v-if="sessionSummary.improvementVsWarmup !== null" :class="sessionSummary.improvementVsWarmup >= 0 ? 'text-green-400' : 'text-red-400'">
+                  · {{ sessionSummary.improvementVsWarmup >= 0 ? '+' : '' }}{{ sessionSummary.improvementVsWarmup }} vs warm-up
+                </span>
+              </p>
+            </div>
+          </div>
+
+          <div class="px-5 pb-2 grid grid-cols-3 gap-2">
+            <div
+              v-for="(step, i) in sessionSummary.steps"
+              :key="i"
+              class="rounded-xl border px-2 py-2 text-center"
+              :class="sessionPhaseBorder(step.phase)"
+            >
+              <p class="text-[8px] font-bold uppercase tracking-wide opacity-80">{{ step.phaseLabel }}</p>
+              <p class="text-lg font-black tabular-nums">{{ sessionSummary.results[i]?.score ?? '—' }}</p>
+              <p class="text-[8px] opacity-70 truncate">{{ SCENARIO_META[step.scenario]?.label }}</p>
+            </div>
+          </div>
+
+          <p v-if="sessionSummary.aimBias" class="mx-5 mb-3 text-[11px] text-amber-200/90 bg-amber-500/[0.08] border border-amber-500/20 rounded-lg px-3 py-2">
+            {{ sessionSummary.aimBias }}
+          </p>
+
+          <div class="flex gap-2 px-5 pb-5">
+            <button
+              class="flex-1 py-2.5 rounded-xl border border-white/[0.08] bg-white/[0.04] text-[12px] font-semibold text-gray-400 hover:bg-white/[0.08]"
+              @click="dismissSessionSummary"
+            >Done</button>
+            <button
+              class="flex-1 py-2.5 rounded-xl border border-red-500/30 bg-red-500/10 text-[12px] font-semibold text-red-400 hover:bg-red-500/20"
+              @click="dismissSessionSummary(); startStructuredSession()"
+            >Run Again</button>
+          </div>
+        </div>
+      </div>
+    </Transition>
+
     <!-- Header -->
-    <div class="flex-shrink-0 px-4 pt-4 pb-2">
-      <div class="panel-elevated relative overflow-hidden px-4 py-3.5">
+    <div class="flex-shrink-0 px-5 pt-4 pb-2">
+      <div class="dash-panel relative overflow-hidden px-4 py-3.5">
         <div class="absolute -right-10 top-0 h-28 w-28 rounded-full bg-red-500/10 blur-3xl pointer-events-none" />
         <div class="relative flex items-start justify-between gap-3">
           <div class="min-w-0">
             <p class="text-[10px] font-black uppercase tracking-[0.28em] text-red-400/80">Aim Lab</p>
             <h1 class="text-lg font-black tracking-tight text-white">Training Hub</h1>
-            <p class="text-[11px] text-gray-500 mt-0.5">Drills, progress tracking, and coaching assignments</p>
+            <p class="text-[11px] text-gray-500 mt-0.5">Guided sessions, analytics, leaderboards, and loadouts</p>
           </div>
           <div v-if="trainingStats.streak > 0" class="flex items-center gap-2 rounded-xl border border-orange-500/20 bg-orange-500/10 px-3 py-2">
             <svg viewBox="0 0 24 24" fill="currentColor" class="w-4 h-4 text-orange-400"><path d="M12 2S6.5 9 6.5 13.5a5.5 5.5 0 0 0 11 0C17.5 9 12 2 12 2zm0 14.5a3 3 0 0 1-3-3c0-2.5 3-6 3-6s3 3.5 3 6a3 3 0 0 1-3 3z"/></svg>
@@ -1353,35 +1582,29 @@ const CATEGORY_ICON: Record<string, string> = {
       </div>
     </div>
 
+    <div class="mx-5 mt-3 h-px bg-gradient-to-r from-transparent via-white/[0.08] to-transparent flex-shrink-0" />
+
     <!-- Tab nav -->
-    <div class="flex px-4 pt-2 pb-0 gap-1 flex-shrink-0 overflow-x-auto scrollbar-hide">
+    <div class="flex px-5 pt-3 gap-6 flex-shrink-0 border-b border-white/[0.08]">
       <button
-        v-for="tab in (['drills', 'progress', 'coaching'] as const)"
+        v-for="tab in (['train', 'analytics', 'leaderboards', 'loadouts'] as const)"
         :key="tab"
-        class="px-3 py-1.5 rounded-lg text-[11px] font-bold uppercase tracking-wider transition-all border"
-        :class="
-          activeTab === tab
-            ? 'bg-red-500/15 border-red-500/30 text-red-400'
-            : 'border-transparent text-gray-600 hover:text-gray-400 hover:bg-white/[0.03]'
-        "
+        type="button"
+        class="relative pb-3 text-[12px] font-black uppercase tracking-[0.08em] transition-colors flex items-center gap-2"
+        :class="activeTab === tab ? 'text-white' : 'text-gray-600 hover:text-gray-400'"
         @click="activeTab = tab"
       >
-        <span class="flex items-center gap-1.5">
-          <svg v-if="tab === 'drills'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" class="w-3.5 h-3.5"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4.5"/><circle cx="12" cy="12" r="1.2" fill="currentColor" stroke="none"/></svg>
-          <svg v-else-if="tab === 'progress'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" class="w-3.5 h-3.5"><polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/><polyline points="16 7 22 7 22 13"/></svg>
-          <svg v-else viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" class="w-3.5 h-3.5"><line x1="9" y1="6" x2="20" y2="6"/><line x1="9" y1="12" x2="20" y2="12"/><line x1="9" y1="18" x2="20" y2="18"/><circle cx="4" cy="6" r="1.5" fill="currentColor" stroke="none"/><circle cx="4" cy="12" r="1.5" fill="currentColor" stroke="none"/><circle cx="4" cy="18" r="1.5" fill="currentColor" stroke="none"/></svg>
-          {{ tab === 'drills' ? 'Train' : tab === 'progress' ? 'Progress' : 'Coaching' }}
-        </span>
+        <img :src="TRAINING_TAB_ICONS[tab]" alt="" aria-hidden="true" class="w-4 h-4 opacity-80" />
+        {{ tab === 'train' ? 'Train' : tab === 'analytics' ? 'Analytics' : tab === 'leaderboards' ? 'Leaderboards' : 'Loadouts' }}
         <span
-          v-if="tab === 'coaching' && coachingDrills.length"
-          class="ml-1 text-[9px] bg-red-500/20 text-red-400 rounded-full px-1.5 py-px border border-red-500/30"
-          >{{ coachingDrills.length }}</span
-        >
+          v-if="activeTab === tab"
+          class="absolute inset-x-0 -bottom-px h-[2px] rounded-full bg-gradient-to-r from-red-500 to-red-500/30"
+        />
       </button>
     </div>
 
-    <!-- Stats strip (streak / this week / improvement) — always visible -->
-    <div class="panel-elevated flex mx-4 mt-3 overflow-hidden flex-shrink-0">
+    <!-- Stats strip -->
+    <div class="dash-panel flex mx-5 mt-3 overflow-hidden flex-shrink-0">
       <div class="flex-1 flex flex-col items-center py-2.5 gap-0.5">
         <span class="text-sm font-black tabular-nums" :class="trainingStats.streak > 0 ? 'text-orange-400' : 'text-gray-700'">
           {{ trainingStats.streak > 0 ? trainingStats.streak : '—' }}
@@ -1410,502 +1633,148 @@ const CATEGORY_ICON: Record<string, string> = {
     </div>
 
     <!-- Divider -->
-    <div class="mx-4 mt-3 h-px bg-gradient-to-r from-transparent via-white/[0.08] to-transparent flex-shrink-0" />
+    <div class="mx-5 mt-3 h-px bg-gradient-to-r from-transparent via-white/[0.08] to-transparent flex-shrink-0" />
 
     <!-- Scrollable content -->
     <div class="flex-1 scroll-col">
 
-      <!-- ── DRILLS TAB ──────────────────────────────────────────────── -->
-      <template v-if="activeTab === 'drills'">
-        <div class="grid grid-cols-[270px_1fr] gap-3 p-3 items-start">
+      <!-- ── TRAIN TAB ──────────────────────────────────────────────── -->
+      <template v-if="activeTab === 'train'">
+        <div class="p-5 space-y-4">
+          <TrainingGuidedSessionHero
+            :steps="guidedSessionPreview"
+            :focus-reason="recommendedDrills[0]?.reason ?? null"
+            :disabled="launching || drillRunning || structuredSessionActive"
+            :phase-border="sessionPhaseBorder"
+            :scenario-label="(k) => SCENARIO_META[k]?.label ?? k"
+            @start="startStructuredSession"
+          />
 
-          <!-- LEFT sidebar -->
-          <div class="flex flex-col gap-3">
-
-            <!-- Personal Bests Carousel -->
-            <div v-if="apiHistory && apiHistory.total && currentPBScenario" class="rounded-xl border border-white/[0.09] overflow-hidden" style="min-height: 110px;">
-              <Transition name="pb-slide" mode="out-in">
-                <div
-                  :key="currentPBScenario"
-                  class="flex flex-col px-4 pt-3 pb-2"
-                  :style="`background: linear-gradient(135deg, ${RADAR_COLORS[currentPBScenario]}18 0%, transparent 70%); min-height: 110px;`"
-                >
-                  <!-- Top row: label + trend -->
-                  <div class="flex items-center justify-between mb-1">
-                    <span class="text-[9px] font-black uppercase tracking-[0.18em]" :class="SCENARIO_META[currentPBScenario]?.color">{{ SCENARIO_META[currentPBScenario]?.label }}</span>
-                    <span
-                      v-if="(apiHistory?.by_scenario[currentPBScenario]?.trend ?? null) !== null"
-                      class="text-[10px] font-bold"
-                      :class="trendColor(apiHistory!.by_scenario[currentPBScenario].trend ?? null)"
-                    >{{ trendIcon(apiHistory!.by_scenario[currentPBScenario].trend ?? null) }} {{ Math.abs(apiHistory!.by_scenario[currentPBScenario].trend!).toFixed(1) }}</span>
-                  </div>
-                  <!-- Score -->
-                  <div class="flex items-end gap-2 mb-1">
-                    <span class="text-5xl font-black tabular-nums leading-none" :class="scoreColor(apiHistory!.by_scenario[currentPBScenario].best_score!)">
-                      {{ apiHistory!.by_scenario[currentPBScenario].best_score }}
-                    </span>
-                    <span class="text-[10px] text-gray-600 mb-1.5 uppercase tracking-wide">PB</span>
-                  </div>
-                  <!-- Description -->
-                  <p class="text-[9px] text-gray-600 leading-snug">{{ SCENARIO_META[currentPBScenario]?.description }}</p>
-                  <!-- Dot nav -->
-                  <div class="flex items-center gap-1 mt-auto pt-2">
-                    <button
-                      v-for="(ds, di) in pbCarouselScenarios" :key="ds"
-                      class="rounded-full transition-all duration-300"
-                      :class="di === pbCarouselIndex ? `w-4 h-1.5 ${SCENARIO_META[ds]?.band}` : 'w-1.5 h-1.5 bg-white/20 hover:bg-white/40'"
-                      @click="pbCarouselIndex = di; stopPBCarousel(); startPBCarousel()"
-                    />
-                  </div>
-                </div>
-              </Transition>
-            </div>
-
-            <!-- Daily Challenge -->
-            <div
-              class="rounded-xl border overflow-hidden"
-              :class="dailyChallenge.completed ? 'border-green-500/30 bg-green-500/[0.05]' : 'border-red-500/20 bg-red-500/[0.04]'"
-            >
-              <div class="flex items-center gap-3 px-3 py-2">
-                <div :class="['w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0', dailyChallenge.completed ? 'bg-green-500/10 text-green-400' : 'bg-red-500/10 text-red-400']">
-                  <svg v-if="dailyChallenge.completed" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="w-3.5 h-3.5"><polyline points="20 6 9 17 4 12"/></svg>
-                  <svg v-else viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" class="w-3.5 h-3.5"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4"/><circle cx="12" cy="12" r="1" fill="currentColor" stroke="none"/><line x1="12" y1="2" x2="12" y2="8"/><line x1="12" y1="16" x2="12" y2="22"/><line x1="2" y1="12" x2="8" y2="12"/><line x1="16" y1="12" x2="22" y2="12"/></svg>
-                </div>
-                <div class="flex-1 min-w-0">
-                  <div class="flex items-center gap-2 mb-0.5">
-                    <span class="text-[9px] font-black uppercase tracking-[0.18em]" :class="dailyChallenge.completed ? 'text-green-400' : 'text-red-400'">Daily Challenge</span>
-                    <span v-if="dailyChallenge.completed" class="text-[9px] font-bold text-green-400">Complete!</span>
-                  </div>
-                  <p class="text-xs font-bold text-white">
-                    Score <span :class="dailyChallenge.completed ? 'text-green-300' : 'text-red-400'">{{ dailyChallenge.target }}+</span>
-                    on {{ SCENARIO_META[dailyChallenge.scenario]?.label }}
-                  </p>
-                </div>
-                <button
-                  v-if="!dailyChallenge.completed"
-                  :disabled="launching || drillRunning"
-                  class="flex-shrink-0 flex items-center gap-1.5 text-[10px] font-bold text-red-400 border border-red-500/30 hover:bg-red-500/[0.08] rounded-lg px-3 py-1.5 transition-all disabled:opacity-40"
-                  @click="launchDrill({ scenario: dailyChallenge.scenario, difficulty: 'medium', duration_seconds: 60, weakness: 'challenge', weakness_score: 0, reason: `Daily challenge: score ${dailyChallenge.target}+` })"
-                >
-                  <svg viewBox="0 0 24 24" fill="currentColor" class="w-2.5 h-2.5"><polygon points="5 3 19 12 5 21 5 3"/></svg>
-                  Go
-                </button>
-              </div>
-            </div>
-
-            <!-- Warm-Up Routine -->
-            <div class="rounded-xl border border-white/[0.07] bg-white/[0.02] overflow-hidden">
-              <div class="flex items-center gap-3 px-3 py-2">
-                <div class="w-7 h-7 rounded-lg bg-red-500/10 border border-red-500/20 flex items-center justify-center flex-shrink-0 text-red-400">
-                  <svg viewBox="0 0 24 24" fill="currentColor" stroke="none" class="w-3.5 h-3.5"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
-                </div>
-                <div class="flex-1 min-w-0">
-                  <div class="flex items-center gap-2 mb-0.5">
-                    <span class="text-[9px] font-black uppercase tracking-[0.18em] text-red-400">Quick Warm-Up</span>
-                    <span class="text-[9px] text-gray-600">5 exercises · ~2.5 min</span>
-                  </div>
-                  <!-- Step pills -->
-                  <div class="flex gap-1 flex-wrap mt-1">
-                    <span
-                      v-for="(step, si) in WARMUP_SEQUENCE" :key="si"
-                      class="text-[8px] font-bold px-1.5 py-px rounded-full border whitespace-nowrap"
-                      :class="[SCENARIO_META[step.scenario]?.bg, SCENARIO_META[step.scenario]?.border, SCENARIO_META[step.scenario]?.color]"
-                    >{{ SCENARIO_META[step.scenario]?.label }}</span>
-                  </div>
-                </div>
-                <button
-                  :disabled="launching || drillRunning || warmupActive"
-                  class="flex-shrink-0 flex items-center gap-1.5 text-[10px] font-bold text-red-400 border border-red-500/30 hover:bg-red-500/[0.08] rounded-lg px-3 py-1.5 transition-all disabled:opacity-40"
-                  @click="startWarmup"
-                >
-                  <svg viewBox="0 0 24 24" fill="currentColor" class="w-2.5 h-2.5"><polygon points="5 3 19 12 5 21 5 3"/></svg>
-                  Start
-                </button>
-              </div>
-            </div>
-
-            <!-- Last result card -->
-            <Transition name="result-in">
-              <div
-                v-if="lastResult"
-                class="rounded-xl border overflow-hidden"
-                :class="scoreBg(lastResult.score)"
-              >
-            <div class="flex items-stretch">
-              <!-- Score block -->
-              <div class="flex flex-col items-center justify-center px-5 py-4 min-w-[80px]">
-                <span
-                  :class="['text-3xl font-black tabular-nums leading-none', scoreColor(lastResult.score)]"
-                  >{{ lastResult.score }}</span
-                >
-                <span class="text-[9px] font-bold text-gray-500 uppercase tracking-wide mt-1">{{
-                  scoreLabel(lastResult.score)
-                }}</span>
-                <!-- Delta vs last API session -->
-                <div
-                  v-if="scoreDelta(lastResult) !== null"
-                  :class="['text-[10px] font-bold mt-1', scoreDelta(lastResult)! > 0 ? 'text-green-400' : scoreDelta(lastResult)! < 0 ? 'text-red-400' : 'text-gray-500']"
-                >
-                  {{ scoreDelta(lastResult)! > 0 ? '+' : '' }}{{ scoreDelta(lastResult) }} vs last
-                </div>
-              </div>
-
-              <!-- Stats -->
-              <div class="flex-1 flex items-center px-4 gap-4 border-l border-white/[0.07]">
-                <div class="text-center">
-                  <div class="text-base font-black text-white tabular-nums">
-                    {{ lastResult.accuracy_pct.toFixed(1)
-                    }}<span class="text-gray-500 text-xs font-normal">%</span>
-                  </div>
-                  <div class="text-[9px] text-gray-500 uppercase tracking-wide mt-0.5">Acc</div>
-                </div>
-                <div class="text-center">
-                  <div class="text-base font-black text-white tabular-nums">
-                    {{ Math.round(lastResult.avg_reaction_ms)
-                    }}<span class="text-gray-500 text-xs font-normal">ms</span>
-                  </div>
-                  <div class="text-[9px] text-gray-500 uppercase tracking-wide mt-0.5">React</div>
-                </div>
-                <div class="text-center">
-                  <div class="text-base font-black text-white tabular-nums">
-                    {{ lastResult.targets_hit
-                    }}<span class="text-gray-500 text-xs font-normal"
-                      >/{{ lastResult.targets_hit + lastResult.targets_missed }}</span
-                    >
-                  </div>
-                  <div class="text-[9px] text-gray-500 uppercase tracking-wide mt-0.5">Hits</div>
-                </div>
-                <div class="text-center">
-                  <div class="text-base font-black text-white tabular-nums">
-                    {{ Math.round(lastResult.consistency_score) }}
-                  </div>
-                  <div class="text-[9px] text-gray-500 uppercase tracking-wide mt-0.5">Cons.</div>
-                </div>
-              </div>
-
-              <!-- Heatmap -->
-              <div
-                v-if="lastResult.heatmap?.length"
-                class="flex items-center px-3 border-l border-white/[0.07]"
-              >
-                <div>
-                  <canvas
-                    ref="heatmapCanvas"
-                    width="96"
-                    height="64"
-                    class="rounded-md"
-                    style="image-rendering: pixelated"
-                  />
-                  <div class="flex items-center justify-center gap-2 mt-1">
-                    <span class="flex items-center gap-0.5 text-[8px] text-gray-600"
-                      ><span class="w-1.5 h-1.5 rounded-full bg-green-400 inline-block" /> Hit</span
-                    >
-                    <span class="flex items-center gap-0.5 text-[8px] text-gray-600"
-                      ><span class="w-1.5 h-1.5 rounded-full bg-red-400 inline-block" /> Miss</span
-                    >
-                  </div>
-                </div>
-              </div>
-
-              <!-- Scenario label -->
-              <div
-                class="flex flex-col items-center justify-center px-3 border-l border-white/[0.07] gap-1"
-              >
-                <div :class="['w-2 h-2 rounded-full', SCENARIO_META[lastResult.scenario]?.dot]" />
-                <span
-                  :class="['text-[9px] font-bold uppercase tracking-widest', SCENARIO_META[lastResult.scenario]?.color]"
-                  >{{ SCENARIO_META[lastResult.scenario]?.label ?? lastResult.scenario }}</span
-                >
-              </div>
-            </div>
-            <!-- Score bar -->
-            <div class="h-[2px] bg-white/[0.06]">
-              <div
-                :class="['h-full transition-all duration-700', scoreBarColor(lastResult.score)]"
-                :style="{ width: lastResult.score + '%' }"
-              />
-            </div>
-          </div>
-            </Transition>
-
-            <!-- Session history (in-memory) -->
-            <div v-if="sessionHistory.length">
-              <div class="flex items-center gap-2 mb-2">
-                <span class="text-[9px] font-black uppercase tracking-[0.18em] text-gray-500"
-                  >This Session</span
-                >
-                <div class="flex-1 h-px bg-white/[0.05]" />
-              </div>
-              <div class="space-y-px">
-                <div
-                  v-for="(s, i) in sessionHistory"
-                  :key="i"
-                  class="flex items-center gap-3 px-3 py-2 rounded-lg border border-white/[0.09] bg-white/[0.02]"
-                >
-                  <div :class="['w-2 h-2 rounded-full flex-shrink-0', SCENARIO_META[s.scenario]?.dot]" />
-                  <span class="text-[10px] font-bold text-gray-400 uppercase w-14 truncate">{{
-                    SCENARIO_META[s.scenario]?.label ?? s.scenario
-                  }}</span>
-                  <span :class="['text-sm font-black tabular-nums w-8', scoreColor(s.score)]">{{
-                    s.score
-                  }}</span>
-                  <div class="flex-1 bg-white/[0.05] rounded-full h-px">
-                    <div
-                      :class="['h-px rounded-full', scoreBarColor(s.score)]"
-                      :style="{ width: s.score + '%' }"
-                    />
-                  </div>
-                  <span class="text-[10px] text-gray-600 tabular-nums font-mono"
-                    >{{ s.accuracy_pct.toFixed(0) }}%</span
-                  >
-                  <span class="text-[10px] text-gray-600 tabular-nums font-mono"
-                    >{{ Math.round(s.avg_reaction_ms) }}ms</span
-                  >
-                </div>
-              </div>
-            </div>
-
-            <!-- Free Play -->
-            <div class="rounded-xl border border-white/[0.09] bg-white/[0.02] overflow-hidden">
-              <div class="flex items-center gap-2 px-3 py-2 border-b border-white/[0.07]">
-                <span class="text-[9px] font-black uppercase tracking-[0.18em] text-gray-500">Free Play</span>
-              </div>
-              <!-- Scenario vertical list -->
-              <div class="divide-y divide-white/[0.06]">
-                <button
-                  v-for="(meta, key) in SCENARIO_META"
-                  :key="key"
-                  class="w-full flex items-center gap-3 px-3 py-2 transition-all text-left"
-                  :class="freePlayScenario === key ? `${meta.bg} border-l-2 ${meta.border}` : 'hover:bg-white/[0.03] border-l-2 border-transparent'"
-                  @click="freePlayScenario = key as typeof freePlayScenario"
-                >
-                  <span
-                    class="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg border transition-all"
-                    :class="freePlayScenario === key ? `${meta.bg} ${meta.border} ${meta.color}` : 'border-white/[0.07] text-gray-600'"
-                    v-html="SCENARIO_ICON[key] ?? SCENARIO_ICON['flick']"
-                  />
-                  <div class="flex-1 min-w-0">
-                    <p class="text-[11px] font-bold leading-tight" :class="freePlayScenario === key ? meta.color : 'text-gray-400'">{{ meta.label }}</p>
-                    <p class="text-[9px] text-gray-600 leading-tight truncate">{{ meta.description }}</p>
-                  </div>
-                  <span
-                    v-if="apiHistory?.by_scenario?.[key]?.best_score != null"
-                    class="text-[10px] font-black tabular-nums flex-shrink-0"
-                    :class="freePlayScenario === key ? scoreColor(apiHistory!.by_scenario[key].best_score!) : 'text-gray-700'"
-                  >{{ apiHistory!.by_scenario[key].best_score }}</span>
-                </button>
-              </div>
-              <!-- Difficulty -->
-              <div class="flex border-t border-white/[0.07]">
-                <button
-                  v-for="diff in (['easy', 'medium', 'hard', 'pro'] as const)"
-                  :key="diff"
-                  class="flex-1 py-1.5 text-[9px] font-bold uppercase transition-all border-r border-white/[0.07] last:border-0"
-                  :class="freePlayDifficulty === diff ? `${DIFFICULTY_COLORS[diff]} bg-white/[0.06]` : 'text-gray-600 hover:text-gray-400'"
-                  @click="freePlayDifficulty = diff"
-                >{{ diff }}</button>
-              </div>
-              <!-- Duration -->
-              <div class="flex border-t border-white/[0.07]">
-                <button
-                  v-for="dur in [30, 60, 120]"
-                  :key="dur"
-                  class="flex-1 py-1.5 text-[9px] font-bold transition-all border-r border-white/[0.07] last:border-0"
-                  :class="freePlayDuration === dur ? 'text-white bg-white/[0.06]' : 'text-gray-600 hover:text-gray-400'"
-                  @click="freePlayDuration = dur"
-                >{{ dur < 60 ? dur + 's' : dur / 60 + 'm' }}</button>
-              </div>
-              <!-- Tip -->
-              <div class="px-3 py-2 border-t border-white/[0.07]">
-                <p class="text-[9px] text-gray-500 italic leading-relaxed">{{ SCENARIO_META[freePlayScenario]?.tip }}</p>
-              </div>
-              <!-- Launch -->
+          <div class="grid grid-cols-[248px_minmax(0,1fr)] gap-4 items-start">
+            <aside class="flex flex-col gap-3">
               <button
-                :disabled="launching || drillRunning"
-                class="w-full py-2 text-[11px] font-bold transition-all disabled:opacity-40 flex items-center justify-center gap-2 text-red-400 hover:bg-red-500/[0.06] border-t border-white/[0.07]"
-                @click="launchFreePlay"
+                type="button"
+                class="rounded-xl border border-white/[0.09] bg-white/[0.02] px-3 py-2.5 text-left hover:bg-white/[0.04] transition-colors"
+                @click="activeTab = 'loadouts'"
               >
-                <svg v-if="launching || drillRunning" class="w-3 h-3 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/></svg>
-                <svg v-else viewBox="0 0 24 24" fill="currentColor" class="w-3 h-3"><polygon points="5 3 19 12 5 21 5 3"/></svg>
-                {{ launching ? 'Launching…' : drillRunning ? 'Running…' : 'Launch Free Play' }}
+                <p class="text-[9px] font-black uppercase tracking-[0.16em] text-gray-500">Active loadout</p>
+                <p class="text-[12px] font-bold text-white mt-0.5">Competitive preset</p>
+                <p class="text-[10px] text-gray-600 mt-0.5">Crosshair + sens → trainer</p>
               </button>
-            </div>
 
-          </div><!-- end LEFT sidebar -->
-
-          <!-- RIGHT column -->
-          <div class="flex flex-col gap-3">
-
-            <!-- Section: AI Drills -->
-            <div>
-              <!-- Compact Recommended strip -->
-              <div v-if="recommendedDrills.length" class="mb-3 rounded-xl border border-amber-500/20 bg-amber-500/[0.05] overflow-hidden">
-                <div class="flex items-center gap-2 px-3 py-2 border-b border-amber-500/10">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" class="w-3 h-3 text-amber-400 flex-shrink-0"><path d="M8.25 18.75 12 15l3.75 3.75M12 15V3.75"/><path d="M4.5 14.25c0 3.314 3.358 6 7.5 6s7.5-2.686 7.5-6"/></svg>
-                  <span class="text-[9px] font-black uppercase tracking-[0.18em] text-amber-400">Recommended for You</span>
-                  <div class="flex-1 h-px bg-amber-500/10" />
-                  <span class="text-[9px] text-amber-400/50">Based on your VODs</span>
-                </div>
-                <div class="divide-y divide-amber-500/[0.07]">
+              <div
+                class="rounded-xl border overflow-hidden"
+                :class="dailyChallenge.completed ? 'border-green-500/30 bg-green-500/[0.05]' : 'border-red-500/20 bg-red-500/[0.04]'"
+              >
+                <div class="flex items-center gap-3 px-3 py-2.5">
+                  <img
+                    v-if="!dailyChallenge.completed"
+                    :src="TRAINING_ARTWORK.dailyChallenge"
+                    alt=""
+                    aria-hidden="true"
+                    class="w-7 h-7 rounded-lg flex-shrink-0 object-cover"
+                  />
+                  <div v-else :class="['w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0 bg-green-500/10 text-green-400']">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="w-3.5 h-3.5"><polyline points="20 6 9 17 4 12"/></svg>
+                  </div>
+                  <div class="flex-1 min-w-0">
+                    <span class="text-[9px] font-black uppercase tracking-[0.16em]" :class="dailyChallenge.completed ? 'text-green-400' : 'text-red-400'">Daily challenge</span>
+                    <p class="text-[11px] font-bold text-white mt-0.5">Score {{ dailyChallenge.target }}+ · {{ SCENARIO_META[dailyChallenge.scenario]?.label }}</p>
+                  </div>
                   <button
-                    v-for="drill in recommendedDrills"
-                    :key="`recommended-${drill.scenario}`"
-                    class="w-full flex items-center gap-3 px-3 py-2.5 hover:bg-amber-500/[0.06] transition-all text-left"
-                    @click="!launching && !drillRunning && launchDrill(drill)"
+                    v-if="!dailyChallenge.completed"
+                    type="button"
+                    :disabled="launching || drillRunning"
+                    class="text-[10px] font-bold text-red-400 border border-red-500/30 rounded-lg px-2.5 py-1 disabled:opacity-40"
+                    @click="launchDrill({ scenario: dailyChallenge.scenario, difficulty: 'medium', duration_seconds: 60, weakness: 'challenge', weakness_score: 0, reason: `Daily challenge: score ${dailyChallenge.target}+` })"
+                  >Go</button>
+                </div>
+              </div>
+
+              <div class="rounded-xl border border-white/[0.09] bg-white/[0.02] overflow-hidden">
+                <div class="px-3 py-2 border-b border-white/[0.07]">
+                  <span class="text-[9px] font-black uppercase tracking-[0.16em] text-gray-500">Free play</span>
+                </div>
+                <div class="max-h-[200px] overflow-y-auto scroll-col divide-y divide-white/[0.06]">
+                  <button
+                    v-for="(meta, key) in SCENARIO_META"
+                    :key="key"
+                    type="button"
+                    class="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-white/[0.03]"
+                    :class="freePlayScenario === key ? meta.bg : ''"
+                    @click="freePlayScenario = key as typeof freePlayScenario"
                   >
-                    <span class="flex h-7 w-7 items-center justify-center rounded-lg border border-amber-400/15 bg-amber-500/10 text-amber-300 flex-shrink-0" v-html="SCENARIO_ICON[drill.scenario] ?? SCENARIO_ICON['flick']" />
-                    <div class="flex-1 min-w-0">
-                      <p class="text-xs font-bold text-white">{{ SCENARIO_META[drill.scenario]?.label }}</p>
-                      <p class="text-[10px] text-amber-100/50">{{ SCENARIO_META[drill.scenario]?.description }}</p>
-                    </div>
-                    <div class="flex-shrink-0 text-right">
-                      <p class="text-[10px] font-black tabular-nums text-amber-300">{{ improvementRoom(drill.scenario) }}%</p>
-                      <p class="text-[8px] text-amber-400/50 uppercase tracking-wide">to improve</p>
-                    </div>
-                    <svg viewBox="0 0 24 24" fill="currentColor" class="w-2.5 h-2.5 text-amber-400/60 flex-shrink-0"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                    <img :src="scenarioIconUrl(key as string)" alt="" aria-hidden="true" class="w-5 h-5 rounded flex-shrink-0 object-cover" />
+                    <span class="text-[10px] font-bold truncate" :class="freePlayScenario === key ? meta.color : 'text-gray-400'">{{ meta.label }}</span>
                   </button>
                 </div>
+                <button
+                  type="button"
+                  class="w-full py-2 text-[10px] font-bold text-red-400 border-t border-white/[0.07] hover:bg-red-500/[0.06] disabled:opacity-40"
+                  :disabled="launching || drillRunning"
+                  @click="launchFreePlay"
+                >Launch {{ SCENARIO_META[freePlayScenario]?.label }}</button>
               </div>
+            </aside>
 
-              <div class="mb-3 flex flex-wrap gap-2">
+            <div class="space-y-4 min-w-0">
+              <TrainingVodStrip
+                :drills="recommendedDrills"
+                :label="(k) => SCENARIO_META[k]?.label ?? k"
+                :description="(k) => SCENARIO_META[k]?.description ?? ''"
+                :improvement-pct="improvementRoom"
+                :icon-src="scenarioIconUrl"
+                :disabled="launching || drillRunning"
+                @play="launchVodDrill"
+              />
+
+              <div class="flex flex-wrap gap-2">
                 <button
                   v-for="category in DRILL_CATEGORY_FILTERS"
                   :key="category.id"
-                  class="group flex items-center gap-2 rounded-full border px-3 py-2 text-[11px] font-semibold transition-all"
+                  type="button"
+                  class="rounded-full border px-3 py-1.5 text-[11px] font-semibold transition-all inline-flex items-center gap-1.5"
                   :class="categoryFilterClass(category.id)"
                   @click="activeDrillCategory = category.id"
                 >
-                  <span class="flex h-7 w-7 items-center justify-center rounded-full border border-white/10 bg-black/20" v-html="category.icon" />
-                  <span>{{ category.label }}</span>
+                  <img v-if="category.iconSrc" :src="category.iconSrc" alt="" aria-hidden="true" class="w-3.5 h-3.5" />
+                  {{ category.label }}
                 </button>
               </div>
 
-              <div class="space-y-2">
-                <div
-                  v-for="drill in filteredAssignedDrills"
-                  :key="drill.scenario"
-                  class="group rounded-xl border overflow-hidden transition-all duration-200"
-                  :class="
-                    completedDrills.has(drill.scenario)
-                      ? 'border-green-500/20 bg-green-500/[0.04] opacity-60'
-                      : 'border-white/[0.07] bg-white/[0.02] cursor-pointer hover:-translate-y-0.5 hover:bg-white/[0.04] hover:border-white/[0.18] hover:shadow-lg hover:shadow-black/30'
-                  "
-                  @click="!launching && !drillRunning && !completedDrills.has(drill.scenario) && launchDrill(drill)"
-                >
-                  <div class="flex items-stretch">
-                    <div :class="['w-1 self-stretch flex-shrink-0', SCENARIO_META[drill.scenario]?.band]" />
-
-                    <div class="flex-1 flex items-center gap-3 px-3 py-3 min-w-0">
-                      <div
-                        class="w-8 h-8 rounded-lg flex-shrink-0 flex items-center justify-center border"
-                        :class="[SCENARIO_META[drill.scenario]?.bg, SCENARIO_META[drill.scenario]?.border]"
-                      >
-                        <span v-html="SCENARIO_ICON[drill.scenario] ?? SCENARIO_ICON['flick']" :class="SCENARIO_META[drill.scenario]?.color" />
-                      </div>
-
-                      <div class="flex-1 min-w-0">
-                        <div class="flex items-center gap-2 mb-0.5">
-                          <span class="text-xs font-bold text-white">{{
-                            SCENARIO_META[drill.scenario]?.label
-                          }}</span>
-                          <span
-                            class="text-[9px] font-bold uppercase border px-1.5 py-px rounded-full"
-                            :class="[DIFFICULTY_COLORS[drill.difficulty], DIFFICULTY_BG[drill.difficulty]]"
-                            >{{ drill.difficulty }}</span
-                          >
-                          <span class="text-[9px] text-gray-600">{{ drill.duration_seconds }}s</span>
-                          <span
-                            v-if="scenarioBestScore(drill.scenario) !== null"
-                            class="rounded-full border border-white/[0.08] bg-white/[0.04] px-1.5 py-px text-[9px] font-bold tabular-nums text-gray-400"
-                          >PB {{ scenarioBestScore(drill.scenario) }}</span>
-                        </div>
-                        <p class="text-[11px] text-gray-500 leading-relaxed line-clamp-2">{{ drill.reason }}</p>
-                      </div>
-
-                      <div class="flex flex-col items-center gap-1 flex-shrink-0">
-                        <div class="w-10 bg-white/[0.06] rounded-full h-1">
-                          <div
-                            class="h-1 rounded-full bg-red-500/70"
-                            :style="{ width: drill.weakness_score + '%' }"
-                          />
-                        </div>
-                        <span class="text-[9px] tabular-nums text-gray-600">{{
-                          drill.weakness_score
-                        }}/100</span>
-                      </div>
-                    </div>
-
-                    <div class="flex-shrink-0 border-l border-white/[0.10]">
-                      <button
-                        v-if="completedDrills.has(drill.scenario)"
-                        class="h-full px-4 text-[10px] font-bold text-green-400 flex items-center gap-1"
-                        disabled
-                      >
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="w-3 h-3"><polyline points="20 6 9 17 4 12"/></svg>
-                        Done
-                      </button>
-                      <button
-                        v-else-if="drillRunning && activeDrill?.scenario === drill.scenario"
-                        class="h-full px-4 text-[10px] font-bold text-red-400 flex items-center gap-1.5"
-                        disabled
-                      >
-                        <div class="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" />
-                        Running
-                      </button>
-                      <button
-                        v-else
-                        :disabled="launching || drillRunning"
-                        class="h-full px-4 text-gray-500 hover:text-white hover:bg-white/[0.06] transition-all disabled:opacity-40 flex items-center justify-center"
-                        @click.stop="launchDrill(drill)"
-                      >
-                        <svg
-                          v-if="activeDrill?.scenario === drill.scenario && launching"
-                          class="w-3.5 h-3.5 animate-spin"
-                          fill="none"
-                          viewBox="0 0 24 24"
-                        >
-                          <circle
-                            class="opacity-25"
-                            cx="12"
-                            cy="12"
-                            r="10"
-                            stroke="currentColor"
-                            stroke-width="4"
-                          />
-                          <path
-                            class="opacity-75"
-                            fill="currentColor"
-                            d="M4 12a8 8 0 018-8v8z"
-                          />
-                        </svg>
-                        <svg v-else viewBox="0 0 24 24" fill="currentColor" class="w-3.5 h-3.5"><polygon points="5 3 19 12 5 21 5 3"/></svg>
-                      </button>
-                    </div>
-                  </div>
-                  <div class="h-[3px] bg-white/[0.05]">
-                    <div
-                      class="h-full rounded-r-full transition-all duration-300"
-                      :class="scenarioBestScore(drill.scenario) !== null ? SCENARIO_META[drill.scenario]?.band : 'bg-white/[0.10]'"
-                      :style="{ width: scenarioBestScore(drill.scenario) !== null ? `${scenarioProgress(drill.scenario)}%` : '0%' }"
-                    />
-                  </div>
-                </div>
-
-                <div
-                  v-if="filteredAssignedDrills.length === 0"
-                  class="rounded-xl border border-white/[0.10] bg-white/[0.02] px-4 py-6 text-center"
-                >
-                  <p class="text-xs font-semibold text-white">No drills in this category yet.</p>
-                  <p class="mt-1 text-[11px] text-gray-500">Try another filter to see all of your VOD-based recommendations.</p>
-                </div>
+              <div class="grid grid-cols-2 gap-3">
+                <TrainingScenarioCard
+                  v-for="card in scenarioCards"
+                  :key="card.scenario"
+                  :scenario="card.scenario"
+                  :label="SCENARIO_META[card.scenario]?.label ?? card.scenario"
+                  :description="SCENARIO_META[card.scenario]?.description ?? ''"
+                  :difficulty="card.drill.difficulty"
+                  :duration-seconds="card.drill.duration_seconds"
+                  :personal-best="card.pb"
+                  :global-rank="card.rank"
+                  :progress="card.progress"
+                  :reason="card.drill.reason || null"
+                  :icon-src="scenarioIconUrl(card.scenario)"
+                  :accent="{
+                    color: SCENARIO_META[card.scenario]?.color ?? 'text-gray-400',
+                    bg: SCENARIO_META[card.scenario]?.bg ?? 'bg-white/[0.04]',
+                    border: SCENARIO_META[card.scenario]?.border ?? 'border-white/[0.08]',
+                    band: SCENARIO_META[card.scenario]?.band ?? 'bg-white/20',
+                  }"
+                  :completed="card.completed"
+                  :running="drillRunning && activeDrill?.scenario === card.scenario"
+                  :disabled="launching || drillRunning"
+                  @play="launchScenarioCard(card.scenario)"
+                />
               </div>
             </div>
-          </div><!-- end RIGHT column -->
-        </div><!-- end grid -->
+          </div>
+        </div>
       </template>
 
-      <!-- ── PROGRESS TAB ────────────────────────────────────────────────── -->
-      <template v-if="activeTab === 'progress'">
+      <!-- ── ANALYTICS TAB ─────────────────────────────────────────────── -->
+      <template v-if="activeTab === 'analytics'">
         <div class="grid grid-cols-[340px_1fr] gap-4 p-3 items-start">
 
           <!-- LEFT column -->
@@ -2197,167 +2066,14 @@ const CATEGORY_ICON: Record<string, string> = {
         </div><!-- end grid -->
       </template>
 
-      <!-- ── COACHING TAB ────────────────────────────────────────────── -->
-      <template v-if="activeTab === 'coaching'">
-        <div class="grid grid-cols-[280px_1fr] gap-4 p-3 items-start">
+      <!-- ── LEADERBOARDS TAB ───────────────────────────────────────── -->
+      <template v-if="activeTab === 'leaderboards'">
+        <TrainingLeaderboardsTab />
+      </template>
 
-          <!-- LEFT column -->
-          <div class="flex flex-col gap-3">
-
-            <!-- AI Coaching context card -->
-            <div class="rounded-xl border border-white/[0.07] bg-white/[0.02] overflow-hidden">
-              <div class="flex items-center gap-2 px-4 py-2.5 border-b border-white/[0.09]">
-                <div class="w-1.5 h-1.5 rounded-full bg-red-500 flex-shrink-0" />
-                <span class="text-[9px] font-black uppercase tracking-[0.18em] text-gray-400">AI Coaching</span>
-              </div>
-              <!-- Loading -->
-              <div v-if="loadingAiCoaching" class="px-4 py-3 space-y-2">
-                <div class="h-3 w-3/4 rounded bg-white/[0.05] animate-pulse" />
-                <div class="h-2.5 w-full rounded bg-white/[0.05] animate-pulse" />
-                <div class="h-2.5 w-5/6 rounded bg-white/[0.05] animate-pulse" />
-              </div>
-              <!-- AI response -->
-              <div v-else-if="aiCoaching" class="px-4 py-3 space-y-2.5">
-                <p class="text-[11px] font-semibold text-white leading-snug">{{ aiCoaching.headline }}</p>
-                <p class="text-[10px] text-gray-400 leading-relaxed">{{ aiCoaching.message }}</p>
-                <ul class="space-y-1.5 pt-0.5">
-                  <li
-                    v-for="(tip, i) in aiCoaching.tips"
-                    :key="i"
-                    class="flex items-start gap-1.5 text-[10px] text-gray-400 leading-relaxed"
-                  >
-                    <span class="w-1 h-1 rounded-full bg-red-400/60 flex-shrink-0 mt-1.5" />
-                    {{ tip }}
-                  </li>
-                </ul>
-                <p class="text-[10px] italic text-gray-500 pt-0.5">{{ aiCoaching.encouragement }}</p>
-              </div>
-              <!-- Fallback -->
-              <div v-else class="px-4 py-3 space-y-2">
-                <p class="text-[11px] text-gray-400 leading-relaxed">VOD analysis identifies your weak areas and assigns targeted drills to fix them.</p>
-                <div class="flex items-center gap-1.5 text-[10px] text-gray-500">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" class="w-3 h-3 text-red-400/70 flex-shrink-0"><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2"/><rect x="9" y="3" width="6" height="4" rx="1"/></svg>
-                  <span>{{ coachingDrills.length }} drill{{ coachingDrills.length !== 1 ? 's' : '' }} assigned</span>
-                </div>
-              </div>
-            </div>
-
-            <!-- Session Progress card -->
-            <div v-if="coachingDrills.length" class="rounded-xl border border-white/[0.07] bg-white/[0.02] overflow-hidden">
-              <div class="px-4 py-3">
-                <div class="text-[9px] font-black uppercase tracking-[0.15em] text-gray-500 mb-2">Session Progress</div>
-                <div class="flex items-center gap-2">
-                  <div class="flex-1 bg-white/[0.05] rounded-full h-1.5 overflow-hidden">
-                    <div class="h-full bg-red-500/70 rounded-full transition-all duration-500" :style="{ width: coachingDrills.length ? (completedDrills.size / coachingDrills.length * 100) + '%' : '0%' }" />
-                  </div>
-                  <span class="text-[10px] font-bold text-gray-400 tabular-nums">{{ completedDrills.size }}/{{ coachingDrills.length }}</span>
-                </div>
-              </div>
-            </div>
-
-            <!-- Training ↔ Game Correlation Insights -->
-            <div v-if="correlationInsights.length" class="rounded-xl border border-white/[0.07] bg-white/[0.02] overflow-hidden">
-              <div class="flex items-center gap-2 px-4 py-2.5 border-b border-white/[0.09]">
-                <svg class="w-3 h-3 text-red-400/70 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>
-                </svg>
-                <span class="text-[9px] font-black uppercase tracking-[0.18em] text-gray-400">Impact on Game</span>
-              </div>
-              <ul class="px-4 py-3 space-y-2">
-                <li
-                  v-for="(insight, i) in correlationInsights"
-                  :key="i"
-                  class="flex items-start gap-2 text-[10px] text-gray-400 leading-relaxed"
-                >
-                  <span class="w-1 h-1 rounded-full bg-red-400/50 flex-shrink-0 mt-1.5" />
-                  {{ insight }}
-                </li>
-              </ul>
-            </div>
-
-          </div><!-- end LEFT column -->
-
-          <!-- RIGHT column -->
-          <div class="flex flex-col gap-3">
-
-            <div v-if="loadingHistory" class="flex items-center justify-center py-8 gap-2">
-              <svg class="w-4 h-4 animate-spin text-gray-600" fill="none" viewBox="0 0 24 24">
-                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" />
-                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
-              </svg>
-            </div>
-
-            <div
-              v-else-if="!coachingDrills.length"
-              class="py-8 text-center rounded-xl border border-white/[0.10]"
-             
-            >
-              <div class="flex items-center justify-center mb-3">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" class="w-8 h-8 text-gray-700"><path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2"/><rect x="9" y="3" width="6" height="4" rx="1"/><line x1="9" y1="12" x2="15" y2="12"/><line x1="9" y1="16" x2="13" y2="16"/></svg>
-              </div>
-              <p class="text-xs text-gray-500">No coaching drills assigned yet.</p>
-              <p class="text-[10px] text-gray-600 mt-1">Analyse a VOD to get personalised drills.</p>
-            </div>
-
-            <div v-else class="space-y-2">
-              <div
-                v-for="drill in coachingDrills"
-                :key="drill.id"
-                class="rounded-xl border border-white/[0.07] overflow-hidden"
-               
-              >
-                <div class="flex items-start gap-3 px-4 py-3">
-                  <!-- Category icon -->
-                  <div
-                    class="w-8 h-8 rounded-lg bg-red-500/10 border border-red-500/20 flex items-center justify-center flex-shrink-0 text-red-400/70"
-                    v-html="CATEGORY_ICON[drill.category] ?? CATEGORY_ICON['default']"
-                  />
-                  <div class="flex-1 min-w-0">
-                    <div class="flex items-center gap-2 mb-1">
-                      <span class="text-xs font-bold text-white">{{ drill.title }}</span>
-                      <span
-                        class="text-[8px] font-bold uppercase bg-red-500/10 text-red-400/80 border border-red-500/20 px-1.5 py-px rounded-full"
-                        >{{ drill.category.replace('_', ' ') }}</span
-                      >
-                    </div>
-                    <p v-if="drill.instructions" class="text-[10px] text-gray-500 leading-relaxed mb-1.5">
-                      {{ sanitizeInstructions(drill.instructions) }}
-                    </p>
-                    <!-- VOD source attribution: which weakness drove this drill -->
-                    <div class="flex items-center gap-1 mb-1.5">
-                      <svg class="w-2.5 h-2.5 text-gray-700 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" d="M15 10l4.553-2.069A1 1 0 0121 8.87V15.13a1 1 0 01-1.447.9L15 14M3 8h12a2 2 0 012 2v4a2 2 0 01-2 2H3a2 2 0 01-2-2v-4a2 2 0 012-2z"/>
-                      </svg>
-                      <span class="text-[9px] text-gray-700 italic">From VOD analysis · <span class="text-gray-600 capitalize">{{ drill.category.replace(/_/g, ' ') }}</span> weakness</span>
-                    </div>
-                    <!-- Progress bar: baseline → target -->
-                    <div class="flex items-center gap-2">
-                      <div class="flex-1 bg-white/[0.05] rounded-full h-1 relative">
-                        <div
-                          class="absolute left-0 top-0 h-1 rounded-full bg-red-500/60"
-                          :style="{ width: (drill.baseline_score / 10) * 100 + '%' }"
-                        />
-                        <div
-                          class="absolute top-0 h-1 w-px bg-yellow-400/60"
-                          :style="{ left: (drill.target_score / 10) * 100 + '%' }"
-                        />
-                      </div>
-                      <span class="text-[9px] text-gray-600 tabular-nums flex-shrink-0">
-                        {{ drill.baseline_score }}/10 → {{ drill.target_score }}/10
-                      </span>
-                    </div>
-                    <p v-if="drill.success_metric" class="text-[9px] text-gray-600 mt-1.5 italic flex items-center gap-1">
-                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="w-2.5 h-2.5 text-red-400/60 flex-shrink-0"><polyline points="20 6 9 17 4 12"/></svg>
-                      {{ drill.success_metric }}
-                    </p>
-                  </div>
-                </div>
-                <!-- End coaching drill card content -->
-                </div>
-              </div>
-
-          </div><!-- end RIGHT column -->
-        </div><!-- end grid -->
+      <!-- ── LOADOUTS TAB ────────────────────────────────────────────── -->
+      <template v-if="activeTab === 'loadouts'">
+        <TrainingLoadoutsTab />
       </template>
 
     </div>

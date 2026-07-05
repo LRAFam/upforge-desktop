@@ -156,77 +156,23 @@
       </div>
     </Transition>
 
-    <!-- Navigation (hidden on post-game / login) -->
-    <nav
-      v-if="showNav"
-      class="relative flex items-center gap-2 px-3 py-1.5 flex-shrink-0 border-b border-white/[0.09] bg-[#161616]/90 backdrop-blur-md"
-    >
-      <div class="pointer-events-none absolute inset-x-0 bottom-0 h-px bg-gradient-to-r" :class="theme.chromeGradient" />
-      <GameSwitcher />
-      <div class="h-5 w-px flex-shrink-0 bg-white/[0.10]" />
-      <div class="flex min-w-0 flex-1 items-center gap-2 overflow-x-auto scrollbar-hide">
-        <RouterLink
-          v-for="link in visibleNavLinks"
-          :key="link.to"
-          :to="link.to"
-          class="relative flex flex-shrink-0 items-center gap-1.5 rounded-lg px-2.5 py-2 text-[11px] font-semibold transition-all duration-150"
-          :class="
-            $route.path === link.to
-              ? theme.navActiveClass
-              : 'text-gray-500 hover:text-gray-300 hover:bg-white/[0.04]'
-          "
+    <!-- App shell: sidebar + content (replaces top nav) -->
+    <div class="relative z-10 flex flex-1 min-h-0">
+      <AppSidebar v-if="showNav" />
+      <div class="flex flex-1 min-h-0 flex-col min-w-0">
+        <main
+          class="main-content flex flex-1 min-h-0 flex-col"
+          :class="isFullHeightView ? 'overflow-hidden' : 'overflow-y-auto'"
         >
-          <component :is="'svg'" class="w-3.5 h-3.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" v-html="link.iconPath" />
-          <span class="inline-flex items-center gap-1.5 whitespace-nowrap">
-            <span>{{ link.label }}</span>
-            <span v-if="link.to === '/clips' && clipCountAvailable && clipCount > 0" class="inline-flex min-w-[18px] items-center justify-center rounded-full px-1.5 py-0.5 text-[9px] font-bold" :class="[theme.accentBg, theme.accentBorder, theme.accentText, 'border']">{{ clipCount }}</span>
-            <span v-else-if="link.to === '/clips' && hasClipIndicator" class="h-1.5 w-1.5 rounded-full" :style="{ backgroundColor: theme.hexColor, boxShadow: `0 0 10px rgba(${theme.rgb}, 0.8)` }" />
-          </span>
-        </RouterLink>
+          <RouterView v-slot="{ Component }" :key="sessionUserKey">
+            <component
+              :is="Component"
+              :class="isFullHeightView ? 'flex flex-1 min-h-0 flex-col' : undefined"
+            />
+          </RouterView>
+        </main>
       </div>
-
-      <div class="flex flex-shrink-0 items-center gap-2 border-l border-white/[0.10] pl-2">
-        <RouterLink
-          v-if="devNavLink"
-          :to="devNavLink.to"
-          class="rounded-lg px-2.5 py-2 text-[11px] font-medium transition-all duration-150"
-          :class="
-            $route.path === devNavLink.to
-              ? 'text-amber-300 bg-amber-500/10'
-              : 'text-amber-600 hover:text-amber-400 hover:bg-white/[0.03]'
-          "
-        >
-          {{ devNavLink.label }}
-        </RouterLink>
-        <RouterLink
-          to="/settings"
-          class="flex items-center gap-2 rounded-full border border-white/[0.08] bg-white/[0.03] px-2 py-1.5 transition-colors hover:border-white/[0.14] hover:bg-white/[0.05]"
-          title="Account settings"
-        >
-          <div class="flex h-7 w-7 items-center justify-center overflow-hidden rounded-full ring-1" :style="{ boxShadow: `inset 0 0 0 1px rgba(${theme.rgb}, 0.2)` }">
-            <img v-if="userAvatarUrl" :src="userAvatarUrl" :alt="userDisplayName" class="h-full w-full object-cover" @error="userAvatarUrl = ''" />
-            <div v-else class="flex h-full w-full items-center justify-center text-[10px] font-bold" :class="[theme.accentBg, theme.accentText]">{{ userInitial }}</div>
-          </div>
-          <div class="hidden sm:flex flex-col leading-none">
-            <span class="text-[10px] font-semibold text-gray-300 truncate max-w-[120px]">{{ userDisplayName }}</span>
-            <span class="text-[9px] text-gray-600">Settings</span>
-          </div>
-        </RouterLink>
-      </div>
-    </nav>
-
-    <!-- Content — key forces remount when the signed-in account changes -->
-    <main
-      class="main-content flex flex-1 min-h-0 flex-col"
-      :class="isFullHeightView ? 'overflow-hidden' : 'overflow-y-auto'"
-    >
-      <RouterView v-slot="{ Component }" :key="sessionUserKey">
-        <component
-          :is="Component"
-          :class="isFullHeightView ? 'flex flex-1 min-h-0 flex-col' : undefined"
-        />
-      </RouterView>
-    </main>
+    </div>
 
     <!-- First-run onboarding wizard -->
     <OnboardingWizard
@@ -239,7 +185,7 @@
     <AchievementManager />
 
     <!-- Dev toolbar (dev mode only, always visible) -->
-    <div v-if="isDev" class="flex items-center gap-2 px-3 py-1.5 border-t border-yellow-500/20 bg-yellow-500/[0.03] flex-shrink-0">
+    <div v-if="isDev && route.path !== '/login'" class="flex items-center gap-2 px-3 py-1.5 border-t border-yellow-500/20 bg-yellow-500/[0.03] flex-shrink-0">
       <span class="text-[10px] text-yellow-500/60 font-mono uppercase tracking-wider">Dev</span>
       <button
         class="px-2 py-0.5 text-[10px] text-yellow-400/80 hover:text-yellow-300 bg-yellow-500/10 hover:bg-yellow-500/20 rounded border border-yellow-500/20 transition-colors"
@@ -259,7 +205,7 @@ import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import OnboardingWizard from './components/OnboardingWizard.vue'
 import AchievementManager from './components/AchievementManager.vue'
-import GameSwitcher from './components/GameSwitcher.vue'
+import AppSidebar from './components/AppSidebar.vue'
 import { usePrimaryGame } from './composables/usePrimaryGame'
 import { useGameTheme } from './composables/useGameTheme'
 import { gameNavRoutes } from './lib/game-modules'
@@ -310,12 +256,12 @@ const showObsBanner = computed(() =>
 )
 
 const showTitleBar = computed(() =>
-  route.path !== '/overlay' && route.path !== '/splash'
+  route.path !== '/overlay' && route.path !== '/splash' && route.path !== '/login'
 )
 
 const isPostGameRoute = computed(() => route.path.startsWith('/post-game'))
 const isFullHeightView = computed(() =>
-  ['/vod-review', '/dashboard', '/training', '/history', '/clips', '/stats', '/squad', '/performance', '/settings'].includes(route.path),
+  ['/vod-review', '/dashboard', '/training', '/history', '/clips', '/stats', '/squad', '/performance', '/settings', '/login'].includes(route.path),
 )
 
 const showNav = computed(() =>
@@ -325,22 +271,6 @@ const showNav = computed(() =>
   route.path !== '/splash' &&
   route.path !== '/overlay'
 )
-
-const navLinks = [
-  { to: '/dashboard', label: 'Dashboard', iconPath: '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"/>' },
-  { to: '/training', label: 'Training', iconPath: '<circle cx="12" cy="12" r="10" stroke-width="1.5"/><circle cx="12" cy="12" r="4" stroke-width="1.5"/><line x1="12" y1="2" x2="12" y2="6" stroke-width="1.5"/><line x1="12" y1="18" x2="12" y2="22" stroke-width="1.5"/><line x1="2" y1="12" x2="6" y2="12" stroke-width="1.5"/><line x1="18" y1="12" x2="22" y2="12" stroke-width="1.5"/>' },
-  { to: '/clips', label: 'Clips', iconPath: '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.069A1 1 0 0121 8.882v6.236a1 1 0 01-1.447.894L15 14M3 8a2 2 0 012-2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V8z"/>' },
-  { to: '/squad', label: 'Squad', iconPath: '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"/>' },
-  { to: '/stats', label: 'Stats', iconPath: '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>' },
-  { to: '/history', label: 'History', iconPath: '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>' },
-  { to: '/performance', label: 'Performance', iconPath: '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"/>' },
-  { to: '/settings', label: 'Settings', iconPath: '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>' },
-]
-
-const visibleNavLinks = computed(() => {
-  const allowed = new Set(gameNavRoutes(primaryGame.value))
-  return navLinks.filter(link => allowed.has(link.to))
-})
 
 const devNavLink = computed(() =>
   (isAdmin.value || devModeEnabled.value) ? { to: '/dev', label: 'Developer' } : null
@@ -435,10 +365,13 @@ router.beforeEach((to, from, next) => {
   next()
 })
 
-router.afterEach(() => {
+router.afterEach((to) => {
   if (navBusyTimer) clearTimeout(navBusyTimer)
   navBusyTimer = setTimeout(() => { isNavigating.value = false }, 220)
   loadClipSummary().catch(() => {})
+  if (to.path !== '/overlay' && to.path !== '/splash' && window.api?.window?.applyLayout) {
+    window.api.window.applyLayout(to.path).catch(() => {})
+  }
 })
 
 watch(primaryGame, () => {

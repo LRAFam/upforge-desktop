@@ -41,6 +41,14 @@
   border-left: 2px solid transparent;
 }
 
+.vod-round-moment-strip {
+  padding-top: 0.125rem;
+}
+
+.vod-round-event + .vod-round-event {
+  border-top: 1px solid rgba(255, 255, 255, 0.03);
+}
+
 .vod-cinema {
   background:
     radial-gradient(ellipse at center, rgba(255, 255, 255, 0.03), transparent 65%),
@@ -65,6 +73,35 @@
   background: rgba(0, 0, 0, 0.35);
   padding: 0.625rem 0.75rem;
   box-shadow: 0 12px 40px rgba(0, 0, 0, 0.35);
+}
+
+.vod-side-panel {
+  background: linear-gradient(180deg, rgba(14, 14, 14, 0.98), rgba(10, 10, 10, 0.98));
+  box-shadow: inset 1px 0 0 rgba(255, 255, 255, 0.05);
+}
+
+.vod-side-tab {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 0.5rem;
+  border: 1px solid transparent;
+  background: transparent;
+  padding: 0.375rem 0.75rem;
+  font-size: 0.6875rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: rgb(107, 114, 128);
+  transition: color 0.15s, background 0.15s, border-color 0.15s;
+}
+.vod-side-tab:hover {
+  color: rgb(209, 213, 219);
+  background: rgba(255, 255, 255, 0.04);
+}
+.vod-side-tab--active {
+  border-color: rgba(255, 70, 85, 0.28);
+  background: rgba(255, 70, 85, 0.1);
+  color: rgb(254, 202, 202);
 }
 
 .vod-intel-panel {
