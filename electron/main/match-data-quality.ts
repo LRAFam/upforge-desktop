@@ -7,12 +7,14 @@ import type { MatchData } from './riot-types'
 export function hasRichMatchData(timeline: MatchData | null | undefined): boolean {
   if (!timeline) return false
 
-  const finalStats = timeline.finalStats
-  if (finalStats && finalStats.kills != null) return true
+  if ((timeline.killEvents?.length ?? 0) > 0 || (timeline.playerKills?.length ?? 0) > 0) {
+    return true
+  }
 
-  // Align with API MatchDataQualityService + AI desktop_has_rich_match_data (kills required).
-  return (timeline.killEvents?.length ?? 0) > 0
-    || (timeline.playerKills?.length ?? 0) > 0
+  const fs = timeline.finalStats
+  if (!fs) return false
+
+  return ((fs.kills ?? 0) + (fs.deaths ?? 0) + (fs.assists ?? 0)) > 0
 }
 
 /** Desktop waits up to this long for Riot MatchDetails before upload (ms). */

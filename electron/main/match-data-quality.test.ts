@@ -59,6 +59,24 @@ describe('hasRichMatchData', () => {
     expect(hasRichMatchData(tl)).toBe(true)
   })
 
+  it('returns false when finalStats are all zero', () => {
+    const tl = sparseTimeline()
+    tl.finalStats = {
+      kills: 0,
+      deaths: 0,
+      assists: 0,
+      score: 0,
+      summonerName: 'at19',
+      agent: 'Chamber',
+      team: 'Blue',
+      level: 100,
+      headshotPct: 0,
+      adr: 0,
+      accountLevel: 200,
+    }
+    expect(hasRichMatchData(tl)).toBe(false)
+  })
+
   it('returns false when only roundSummaries exist (no kills)', () => {
     const tl = sparseTimeline()
     tl.roundSummaries = [{ roundNumber: 1, winningTeam: 'Blue', spikePlanted: false, spikeDefused: false }]
