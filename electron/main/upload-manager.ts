@@ -283,10 +283,6 @@ export class UploadManager {
     // analysis, the user can resume polling from the next launch.
     savePendingJob(job_id, { agent: opts.agent ?? undefined, map: opts.map ?? undefined, game: opts.game })
 
-    const duelClipsTask = opts.prepareDuelClips
-      ? opts.prepareDuelClips(job_id, opts.videoPath)
-      : null
-
     // ── Step 2: stream file directly to S3 ────────────────────────────────
     opts.onProgress(8)
     let uploadParts: UploadedPart[] | undefined
@@ -317,24 +313,20 @@ export class UploadManager {
 
     const resolveDuelMoments = async (): Promise<DuelMomentManifest[] | undefined> => {
       if (!opts.prepareDuelClips) {
-        return duelMomentsPayload
-      }
-
-      const runPrepare = async (): Promise<DuelMomentManifest[]> => {
-        if (duelClipsTask) {
-          return duelClipsTask
-        }
-        return opts.prepareDuelClips!(job_id, opts.videoPath)
+        return duelMomentsPayload ?? completeCtx.duel_moments ?? opts.duelMoments
       }
 
       try {
-        let payload = await runPrepare()
+        let payload = await opts.prepareDuelClips(job_id, opts.videoPath)
+        if (payload.length === 0) {
+          payload = completeCtx.duel_moments ?? []
+        }
         const uploaded = payload.filter((m) => m.clip_s3_key?.trim()).length
         if (payload.length > 0 && uploaded === 0) {
           console.warn('[UploadManager] Duel clip upload returned 0 keys — retrying once')
-          payload = await opts.prepareDuelClips!(job_id, opts.videoPath)
+          payload = await opts.prepareDuelClips(job_id, opts.videoPath)
         }
-        return payload
+        return payload.length > 0 ? payload : (completeCtx.duel_moments ?? opts.duelMoments)
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err)
         console.error('[UploadManager] Duel clip upload failed:', err)
@@ -344,7 +336,8 @@ export class UploadManager {
           stack: err instanceof Error ? err.stack?.slice(0, 2000) : undefined,
         })
         try {
-          return await opts.prepareDuelClips!(job_id, opts.videoPath)
+          const retry = await opts.prepareDuelClips!(job_id, opts.videoPath)
+          return retry.length > 0 ? retry : (completeCtx.duel_moments ?? opts.duelMoments)
         } catch (retryErr) {
           console.error('[UploadManager] Duel clip retry failed:', retryErr)
           return completeCtx.duel_moments ?? opts.duelMoments
@@ -353,6 +346,9 @@ export class UploadManager {
     }
 
     duelMomentsPayload = await resolveDuelMoments()
+    const duelMomentsForComplete = duelMomentsPayload?.length
+      ? duelMomentsPayload
+      : (completeCtx.duel_moments ?? opts.duelMoments)
     await this._apiPost(
       `${apiUrl}/api/desktop-submissions/complete`,
       JSON.stringify({
@@ -361,7 +357,7 @@ export class UploadManager {
         map:        completeCtx.map ?? opts.map ?? undefined,
         game_mode:  completeCtx.game_mode ?? gameModeForApi(opts.timeline?.gameMode) ?? undefined,
         match_data: completeCtx.match_data ?? prepareMatchDataForUpload(opts.timeline ?? null, completeExtras),
-        duel_moments: duelMomentsPayload ?? completeCtx.duel_moments,
+        duel_moments: duelMomentsForComplete,
         ally_agents: completeCtx.ally_agents,
         enemy_agents: completeCtx.enemy_agents,
         skill_profile: completeCtx.skill_profile,
