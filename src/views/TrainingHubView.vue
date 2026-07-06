@@ -580,6 +580,7 @@ async function launchDrill(drill: AssignedDrill) {
     } else {
       console.error('[TrainingHub] Launch failed:', result.error)
       activeDrill.value = null
+      window.alert(result.error ?? 'Failed to launch aim trainer. Try restarting UpForge.')
     }
   } finally {
     launching.value = false
