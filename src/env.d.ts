@@ -1013,6 +1013,14 @@ declare global {
       }
       discord: {
         setState: (state: 'idle' | 'reviewing') => Promise<void>
+        getStatus: () => Promise<{
+          connected: boolean
+          enabled: boolean
+          buttonsRegistered: boolean
+          buttonLabels: string[]
+          details: string | null
+          state: string | null
+        }>
       }
       on: (channel: string, callback: (...args: unknown[]) => void) => (() => void)
     }

@@ -421,7 +421,7 @@ const trainerBridge = new TrainerBridge(() => mainWindow)
 let settingsManager: SettingsManager
 let trackedPrimaryGame: ReturnType<typeof normalizePrimaryGame> = 'valorant'
 const discordRPC = new DiscordRPC(
-  () => settingsManager?.get().discordRichPresence !== false,
+  () => settingsManager?.get()?.discordRichPresence !== false,
 )
 const riotLocalApi = new RiotLocalApi()
 const authManager = new AuthManager()
@@ -3953,6 +3953,7 @@ async function startApp(): Promise<void> {
 
   uploadManager = new UploadManager(authManager)
   settingsManager = new SettingsManager()
+  discordRPC.start()
   initFunnelEvents(authManager, app.getVersion())
   trackedPrimaryGame = normalizePrimaryGame(settingsManager.get().primaryGame)
   recordingsStore = new RecordingsStore()
@@ -4148,6 +4149,7 @@ async function startApp(): Promise<void> {
     if (state === 'reviewing') discordRPC.setReviewing()
     else discordRPC.setIdle()
   })
+  ipcMain.handle('discord:get-status', () => discordRPC.getStatus())
 
   // Developer diagnostics — full internal state snapshot for the admin panel
   ipcMain.handle('dev:get-diagnostics', async () => {

@@ -408,7 +408,7 @@ function createSettings() {
     { key: 'autoAnalyse', label: 'Auto-analyse after game', hint: 'Upload and run AI coaching automatically when a match ends (uses analysis quota)' },
     { key: 'autoOpenBrowser', label: 'Open results in browser', hint: 'Opens the full web report when analysis completes — review in-app first with this off' },
     { key: 'notificationSound', label: 'Notification sound', hint: 'Play a sound with system notifications' },
-    { key: 'discordRichPresence', label: 'Show status in Discord', hint: 'Friends see when you\'re recording or reviewing coaching — requires Discord desktop and Activity Status enabled' },
+    { key: 'discordRichPresence', label: 'Show status in Discord', hint: 'Advertises UpForge on your profile. Buttons only appear when someone else opens your full profile — not on your own.' },
   ]
   
   const inGameFeedbackOptions: Array<{ value: AppSettings['inGameFeedback']; label: string; hint: string }> = [

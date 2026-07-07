@@ -245,6 +245,14 @@ const api = {
   },
   discord: {
     setState: (state: 'idle' | 'reviewing') => ipcRenderer.invoke('discord:set-state', state),
+    getStatus: () => ipcRenderer.invoke('discord:get-status') as Promise<{
+      connected: boolean
+      enabled: boolean
+      buttonsRegistered: boolean
+      buttonLabels: string[]
+      details: string | null
+      state: string | null
+    }>,
   },
   on: (channel: string, callback: (...args: unknown[]) => void): (() => void) => {
     const allowed = [

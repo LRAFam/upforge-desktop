@@ -1,22 +1,24 @@
 import { Client } from 'discord-rpc'
+import log from 'electron-log'
 
-// UpForge Discord application — Rich Presence art assets must be uploaded at:
-// https://discord.com/developers/applications → Art Assets
+// UpForge Discord application (same app as upforge-discord-bot / DISCORD_CLIENT_ID).
+// Rich Presence art assets: https://discord.com/developers/applications → Art Assets
 // Keys: upforge_logo, valorant_icon, cs2_icon, deadlock_icon
-const CLIENT_ID = '1374432218801086504'
+const CLIENT_ID = '1435393708546592939'
 
 const DOWNLOAD_URL = 'https://upforge.gg/desktop'
-const COACHING_URL = 'https://upforge.gg/valorant/analyze'
+const DISCORD_URL = 'https://discord.com/invite/ZntUrewgzx'
 const DASHBOARD_URL = 'https://upforge.gg/dashboard'
 
+/** Medal-style CTAs — visible on every presence card. */
 const DEFAULT_BUTTONS = [
+  { label: 'Join on Discord', url: DISCORD_URL },
   { label: 'Download UpForge', url: DOWNLOAD_URL },
-  { label: 'Get coached', url: COACHING_URL },
 ] as const
 
 const REVIEW_BUTTONS = [
-  { label: 'View dashboard', url: DASHBOARD_URL },
-  { label: 'Get coached', url: COACHING_URL },
+  { label: 'View coaching', url: DASHBOARD_URL },
+  { label: 'Download UpForge', url: DOWNLOAD_URL },
 ] as const
 
 export type MatchPresenceContext = {
@@ -30,16 +32,47 @@ type PresenceState =
   | { type: 'recording'; game: string; startTimestamp: Date; context?: MatchPresenceContext }
   | { type: 'reviewing' }
 
+export type DiscordRpcStatus = {
+  connected: boolean
+  enabled: boolean
+  buttonsRegistered: boolean
+  buttonLabels: string[]
+  details: string | null
+  state: string | null
+}
+
 export class DiscordRPC {
   private client: Client | null = null
   private ready = false
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null
   private destroyed = false
+  private started = false
   private currentState: PresenceState = { type: 'idle' }
   private lastPayloadKey = ''
+  private lastStatus: DiscordRpcStatus = {
+    connected: false,
+    enabled: true,
+    buttonsRegistered: false,
+    buttonLabels: [],
+    details: null,
+    state: null,
+  }
 
-  constructor(private readonly isEnabled: () => boolean) {
+  constructor(private readonly isEnabled: () => boolean) {}
+
+  /** Call after settings are loaded so presence respects the user toggle. */
+  start(): void {
+    if (this.started || this.destroyed) return
+    this.started = true
     this.connect()
+  }
+
+  getStatus(): DiscordRpcStatus {
+    return { ...this.lastStatus, enabled: this.enabled() }
+  }
+
+  private updateStatus(patch: Partial<DiscordRpcStatus>): void {
+    this.lastStatus = { ...this.lastStatus, ...patch }
   }
 
   private connect(): void {
@@ -49,23 +82,41 @@ export class DiscordRPC {
       this.client = new Client({ transport: 'ipc' })
 
       this.client.on('ready', () => {
-        console.log('[DiscordRPC] Connected')
+        log.info('[DiscordRPC] Connected')
         this.ready = true
         this.lastPayloadKey = ''
+        this.updateStatus({ connected: true })
         this.applyState(this.currentState)
       })
 
       this.client.on('disconnected', () => {
-        console.log('[DiscordRPC] Disconnected — will retry in 30s')
+        log.info('[DiscordRPC] Disconnected — will retry in 30s')
         this.ready = false
+        this.updateStatus({ connected: false, buttonsRegistered: false, buttonLabels: [] })
         this.scheduleReconnect()
       })
 
-      this.client.login({ clientId: CLIENT_ID }).catch(() => {
+      this.client.on('error', (err: Error) => {
+        log.warn('[DiscordRPC] Client error:', err?.message ?? err)
+      })
+
+      this.client.login({ clientId: CLIENT_ID }).catch((err: Error) => {
+        const msg = err?.message ?? String(err)
+        if (msg === 'connection closed') {
+          log.warn(
+            '[DiscordRPC] Login failed — Discord rejected the application ID. '
+              + 'Check CLIENT_ID matches your Discord developer application.',
+          )
+        } else {
+          log.debug('[DiscordRPC] Login failed (Discord may be closed):', msg)
+        }
         this.ready = false
+        this.updateStatus({ connected: false, buttonsRegistered: false, buttonLabels: [] })
         this.scheduleReconnect()
       })
-    } catch {
+    } catch (err) {
+      log.warn('[DiscordRPC] Connect threw:', err)
+      this.updateStatus({ connected: false, buttonsRegistered: false, buttonLabels: [] })
       this.scheduleReconnect()
     }
   }
@@ -81,7 +132,12 @@ export class DiscordRPC {
   }
 
   private enabled(): boolean {
-    return this.isEnabled()
+    try {
+      return this.isEnabled()
+    } catch (err) {
+      log.warn('[DiscordRPC] isEnabled check failed:', err)
+      return true
+    }
   }
 
   private matchSubtitle(context?: MatchPresenceContext): string | undefined {
@@ -91,13 +147,17 @@ export class DiscordRPC {
     return parts.length ? parts.join(' · ') : undefined
   }
 
+  private brandedGameLine(game: string): string {
+    return `${this.gameLabel(game)} with UpForge`
+  }
+
   private buildActivity(state: PresenceState): Record<string, unknown> | null {
     if (!this.enabled()) return null
 
     if (state.type === 'idle') {
       return {
-        details: 'In the dashboard',
-        state: 'Fill the gap between games and coaching',
+        details: 'UpForge',
+        state: 'Free AI coaching · Record your matches',
         largeImageKey: 'upforge_logo',
         largeImageText: 'UpForge — AI Coaching',
         buttons: [...DEFAULT_BUTTONS],
@@ -109,8 +169,8 @@ export class DiscordRPC {
       const gameLabel = this.gameLabel(state.game)
       const subtitle = this.matchSubtitle(state.context)
       return {
-        details: `In ${gameLabel} with UpForge`,
-        state: subtitle ?? 'Waiting for match',
+        details: this.brandedGameLine(state.game),
+        state: subtitle ?? `Playing ${gameLabel}`,
         largeImageKey: this.gameIcon(state.game),
         largeImageText: gameLabel,
         smallImageKey: 'upforge_logo',
@@ -124,13 +184,14 @@ export class DiscordRPC {
       const gameLabel = this.gameLabel(state.game)
       const subtitle = this.matchSubtitle(state.context)
       return {
-        details: `Recording ${gameLabel} with UpForge`,
-        state: subtitle ?? 'Match in progress',
+        details: this.brandedGameLine(state.game),
+        state: subtitle ?? `Recording ${gameLabel}`,
         largeImageKey: this.gameIcon(state.game),
         largeImageText: gameLabel,
         smallImageKey: 'upforge_logo',
         smallImageText: 'UpForge',
-        startTimestamp: state.startTimestamp,
+        // Discord expects Unix seconds; discord-rpc wrongly converts Date → ms.
+        startTimestamp: Math.floor(state.startTimestamp.getTime() / 1000),
         buttons: [...DEFAULT_BUTTONS],
         instance: false,
       }
@@ -138,8 +199,8 @@ export class DiscordRPC {
 
     if (state.type === 'reviewing') {
       return {
-        details: 'Reviewing coaching report',
-        state: 'UpForge desktop',
+        details: 'UpForge',
+        state: 'Reviewing AI coaching report',
         largeImageKey: 'upforge_logo',
         largeImageText: 'UpForge — AI Coaching',
         buttons: [...REVIEW_BUTTONS],
@@ -157,13 +218,18 @@ export class DiscordRPC {
 
     if (!this.enabled()) {
       this.lastPayloadKey = ''
-      this.client.clearActivity().catch(() => {})
+      this.updateStatus({ buttonsRegistered: false, buttonLabels: [], details: null, state: null })
+      this.client.clearActivity().catch((err: Error) => {
+        log.debug('[DiscordRPC] clearActivity failed:', err?.message ?? err)
+      })
       return
     }
 
     const activity = this.buildActivity(state)
     if (!activity) {
-      this.client.clearActivity().catch(() => {})
+      this.client.clearActivity().catch((err: Error) => {
+        log.debug('[DiscordRPC] clearActivity failed:', err?.message ?? err)
+      })
       return
     }
 
@@ -171,7 +237,48 @@ export class DiscordRPC {
     if (payloadKey === this.lastPayloadKey) return
     this.lastPayloadKey = payloadKey
 
-    this.client.setActivity(activity).catch(() => {})
+    void this.pushActivity(activity)
+  }
+
+  private async pushActivity(activity: Record<string, unknown>): Promise<void> {
+    if (!this.client) return
+    const buttonLabels = Array.isArray(activity.buttons)
+      ? activity.buttons.map((b) => (typeof b === 'object' && b && 'label' in b ? String(b.label) : '')).filter(Boolean)
+      : []
+    try {
+      const result = await this.client.setActivity(activity)
+      const registered = Boolean(result?.metadata?.button_urls?.length || result?.buttons?.length)
+      this.updateStatus({
+        buttonsRegistered: registered,
+        buttonLabels: registered
+          ? (result?.buttons as string[] | undefined) ?? buttonLabels
+          : buttonLabels,
+        details: typeof activity.details === 'string' ? activity.details : null,
+        state: typeof activity.state === 'string' ? activity.state : null,
+      })
+      if (buttonLabels.length) {
+        log.info('[DiscordRPC] Presence updated with buttons:', buttonLabels.join(' · '))
+      }
+      if (result?.metadata?.button_urls?.length) {
+        log.debug('[DiscordRPC] Button URLs registered:', result.metadata.button_urls)
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err)
+      const code = err instanceof Error && 'code' in err ? (err as Error & { code?: number }).code : undefined
+      // Only drop buttons when Discord rejects the button payload itself.
+      if ('buttons' in activity && code === 5000) {
+        log.warn('[DiscordRPC] Buttons rejected by Discord, retrying without:', message)
+        const { buttons: _buttons, ...withoutButtons } = activity
+        try {
+          await this.client.setActivity(withoutButtons)
+          return
+        } catch (retryErr) {
+          log.warn('[DiscordRPC] setActivity failed:', retryErr instanceof Error ? retryErr.message : retryErr)
+          return
+        }
+      }
+      log.warn('[DiscordRPC] setActivity failed:', message, code != null ? `(code ${code})` : '')
+    }
   }
 
   private gameLabel(game: string): string {

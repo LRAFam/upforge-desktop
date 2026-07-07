@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { onMounted, onUnmounted, ref } from 'vue'
 import { useSettings } from '../../composables/useSettings'
 import PaymentFailedAlert from '../../components/PaymentFailedAlert.vue'
 
@@ -36,6 +37,30 @@ const {
   usagePercent,
   user,
 } = useSettings()
+
+const discordStatus = ref<Awaited<ReturnType<typeof window.api.discord.getStatus>> | null>(null)
+let discordStatusTimer: ReturnType<typeof setInterval> | null = null
+
+async function refreshDiscordStatus(): Promise<void> {
+  if (!settings.discordRichPresence) {
+    discordStatus.value = null
+    return
+  }
+  try {
+    discordStatus.value = await window.api.discord.getStatus()
+  } catch {
+    discordStatus.value = null
+  }
+}
+
+onMounted(() => {
+  void refreshDiscordStatus()
+  discordStatusTimer = setInterval(() => { void refreshDiscordStatus() }, 10_000)
+})
+
+onUnmounted(() => {
+  if (discordStatusTimer) clearInterval(discordStatusTimer)
+})
 </script>
 
 <template>
@@ -220,18 +245,37 @@ const {
             </svg>
           </button>
           <div v-if="sectionOpen.behavior" class="divide-y divide-white/[0.05] border-t border-white/[0.09]">
-            <div v-for="toggle in toggles" :key="toggle.key" class="flex items-center justify-between gap-4 px-4 py-3">
-              <div>
-                <p class="text-sm text-gray-200">{{ toggle.label }}</p>
-                <p v-if="toggle.hint" class="mt-1 text-xs text-gray-500">{{ toggle.hint }}</p>
+            <div v-for="toggle in toggles" :key="toggle.key" class="px-4 py-3">
+              <div class="flex items-center justify-between gap-4">
+                <div>
+                  <p class="text-sm text-gray-200">{{ toggle.label }}</p>
+                  <p v-if="toggle.hint" class="mt-1 text-xs text-gray-500">{{ toggle.hint }}</p>
+                </div>
+                <button
+                  class="relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors"
+                  :class="settings[toggle.key] ? 'bg-red-500' : 'bg-white/20'"
+                  @click="toggle.key === 'launchOnStartup' ? toggleLaunchOnStartup() : toggleKey(toggle.key)"
+                >
+                  <span class="inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform" :class="settings[toggle.key] ? 'translate-x-4' : 'translate-x-0.5'" />
+                </button>
               </div>
-              <button
-                class="relative inline-flex h-5 w-9 items-center rounded-full transition-colors"
-                :class="settings[toggle.key] ? 'bg-red-500' : 'bg-white/20'"
-                @click="toggle.key === 'launchOnStartup' ? toggleLaunchOnStartup() : toggleKey(toggle.key)"
+              <div
+                v-if="toggle.key === 'discordRichPresence' && settings.discordRichPresence && discordStatus"
+                class="mt-2 rounded-lg border border-white/[0.06] bg-white/[0.03] px-3 py-2 text-xs text-gray-400"
               >
-                <span class="inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform" :class="settings[toggle.key] ? 'translate-x-4' : 'translate-x-0.5'" />
-              </button>
+                <p>
+                  <span :class="discordStatus.connected ? 'text-emerald-400' : 'text-amber-400'">
+                    {{ discordStatus.connected ? 'Connected to Discord' : 'Waiting for Discord…' }}
+                  </span>
+                  <span v-if="discordStatus.buttonsRegistered"> · Buttons registered</span>
+                </p>
+                <p v-if="discordStatus.details" class="mt-1 text-gray-500">
+                  Showing: {{ discordStatus.details }}
+                </p>
+                <p class="mt-1 text-gray-500">
+                  You cannot see buttons on your own profile. Test on Discord mobile, or ask a friend to click your avatar and open the full profile popup.
+                </p>
+              </div>
             </div>
           </div>
         </div>
