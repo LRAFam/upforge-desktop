@@ -251,14 +251,12 @@ export class UploadManager {
   private async _doUpload(opts: UploadOptions): Promise<UploadResult> {
     let lastErr: unknown
     for (let fullAttempt = 1; fullAttempt <= UploadManager.FULL_UPLOAD_MAX_ATTEMPTS; fullAttempt++) {
-      if (this._uploadAborted) {
-        throw new Error('Upload aborted')
-      }
+      this._uploadAborted = false
       try {
         return await this._doUploadOnce(opts, fullAttempt)
       } catch (err) {
         lastErr = err
-        const retryable = this._isRetryableUploadError(err)
+        const retryable = this._isRetryableUploadError(err) || this._isExpiredUploadSessionError(err)
         if (!retryable || fullAttempt >= UploadManager.FULL_UPLOAD_MAX_ATTEMPTS) {
           throw err
         }
@@ -576,7 +574,14 @@ export class UploadManager {
               json.upgrade_url || 'https://upforge.gg/pricing',
               json.ppa_url || 'https://upforge.gg/valorant/analyze',
             ))
-            else if (status >= 400) reject(new Error(json.message || `Request failed (${status})`))
+            else if (status >= 400) {
+              const code = typeof json.code === 'string' ? json.code : ''
+              if (status === 409 && code === 'upload_session_expired') {
+                reject(new Error('Upload session expired. Please retry the upload from the desktop app.'))
+              } else {
+                reject(new Error(json.message || `Request failed (${status})`))
+              }
+            }
             else resolve(json)
           } catch {
             const preview = data.slice(0, 200).replace(/\n/g, ' ').trim()
@@ -596,6 +601,12 @@ export class UploadManager {
   private _isRetryableUploadError(err: unknown): boolean {
     const msg = err instanceof Error ? err.message : String(err)
     return /socket hang up|ECONNRESET|ECONNABORTED|ETIMEDOUT|EPIPE|ENOTFOUND|EAI_AGAIN|network/i.test(msg)
+  }
+
+  /** S3 multipart session or presigned URL is no longer valid — need a fresh presign, not part-level retry. */
+  private _isExpiredUploadSessionError(err: unknown): boolean {
+    const msg = err instanceof Error ? err.message : String(err)
+    return /NoSuchUpload|upload session expired|upload_session_expired|Request has expired|ExpiredToken|Signature has expired|AuthorizationQueryParametersError/i.test(msg)
   }
 
   private async _withUploadRetry<T>(label: string, fn: () => Promise<T>): Promise<T> {

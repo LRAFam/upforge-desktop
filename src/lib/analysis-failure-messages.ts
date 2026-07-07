@@ -138,6 +138,17 @@ export function classifyAnalysisFailure(rawError: string): AnalysisFailurePresen
     }
   }
 
+  if (/NoSuchUpload|upload session expired|upload_session_expired/i.test(lower)) {
+    return {
+      kind: 'upload',
+      title: 'Upload session expired',
+      message: 'The cloud upload link timed out before the replay finished sending.',
+      hint: 'Your recording is still on the dashboard — tap Analyse to start a fresh upload.',
+      creditRefunded: false,
+      canRetry: true,
+    }
+  }
+
   if (/s3 upload failed|service unavailable|http 503|http 502|http 500/i.test(lower) || err.includes('<?xml')) {
     const friendly = xml.message || (xml.code ? `Cloud storage error (${xml.code})` : null)
     return {

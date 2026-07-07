@@ -61,6 +61,15 @@ describe('formatAnalysisFailureMessage', () => {
     expect(p.message).not.toContain('socket hang up')
     expect(p.canRetry).toBe(true)
   })
+
+  it('maps NoSuchUpload to expired session copy', () => {
+    const raw = 'S3 part upload failed (HTTP 404): <?xml version="1.0"?><Error><Code>NoSuchUpload</Code><Message>The specified upload does not exist.</Message></Error>'
+    const p = classifyAnalysisFailure(raw)
+    expect(p.kind).toBe('upload')
+    expect(p.title).toBe('Upload session expired')
+    expect(p.message).not.toContain('NoSuchUpload')
+    expect(p.canRetry).toBe(true)
+  })
 })
 
 describe('buildAnalysisErrorPayload', () => {
