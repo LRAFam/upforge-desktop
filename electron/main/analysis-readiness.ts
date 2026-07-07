@@ -272,10 +272,19 @@ export function getAnalysisReadiness(rec: ReadinessRecording): AnalysisReadiness
         duelMomentCount: 0,
       }
     }
+    // Match id known but Riot stats still sparse — allow analyse; API holds and retries Henrik enrich.
+    if (hasMatchId) {
+      return {
+        ready: true,
+        state: 'ready',
+        message: '',
+        duelMomentCount: duelMomentsForUpload(timeline).length,
+      }
+    }
     return {
       ready: false,
       state: 'unavailable',
-      message: 'Riot match stats are not available for this recording',
+      message: 'Could not link this recording to a Riot match — keep UpForge open while you play',
       duelMomentCount: 0,
     }
   }

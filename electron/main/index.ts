@@ -1425,9 +1425,14 @@ async function ensureAnalysisReadinessForAnalyse(
 
   if (readiness.ready) return { ok: true, recording: rec }
 
-  if (readiness.state === 'syncing' && rec.game === 'valorant' && rec.timeline) {
-    logActivity(readiness.message)
-    await prepareTimelineForCoaching(rec.timeline, rec.game, recordingId)
+  const shouldRetryRiotEnrich =
+    rec.game === 'valorant'
+    && rec.timeline
+    && (readiness.state === 'syncing' || readiness.state === 'unavailable')
+
+  if (shouldRetryRiotEnrich) {
+    logActivity(readiness.state === 'syncing' ? readiness.message : 'Fetching match stats from Riot…')
+    await prepareTimelineForCoaching(rec.timeline!, rec.game, recordingId)
     rec = recordingsStore.getById(recordingId)
     if (!rec) return { ok: false, error: 'Recording not found', state: 'unavailable' }
     await refreshRecordingVodProbe(rec)
