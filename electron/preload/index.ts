@@ -78,6 +78,7 @@ const api = {
     applyLayout: (routePath: string) => ipcRenderer.invoke('window:apply-layout', routePath),
   },
   postGame: {
+    sync: () => ipcRenderer.invoke('post-game:sync'),
     retryDemoScan: () => ipcRenderer.invoke('post-game:retry-demo-scan'),
   },
   recorder: {

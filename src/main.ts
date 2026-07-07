@@ -23,6 +23,7 @@ import CoachingHistoryView from './views/CoachingHistoryView.vue'
 import TrainerResultsView from './views/TrainerResultsView.vue'
 import StatsView from './views/StatsView.vue'
 import DevView from './views/DevView.vue'
+import DashboardNeedsYouPreviewView from './views/DashboardNeedsYouPreviewView.vue'
 
 const PUBLIC_ROUTES = ['/login', '/welcome', '/splash', '/overlay']
 
@@ -34,6 +35,7 @@ const router = createRouter({
     { path: '/welcome', component: WelcomeView },
     { path: '/login', component: LoginView },
     { path: '/dashboard', component: DashboardView },
+    { path: '/dashboard-needs-you-preview', component: DashboardNeedsYouPreviewView },
     { path: '/post-game', component: PostGameView },
     { path: '/post-game-preview', component: PostGameView },
     { path: '/settings', component: SettingsView },

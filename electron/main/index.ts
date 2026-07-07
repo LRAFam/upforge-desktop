@@ -156,6 +156,12 @@ import {
   withAnalysisReadiness,
   type AnalysisReadiness,
 } from './analysis-readiness'
+import {
+  clearPostGameSession,
+  getPostGameSessionSnapshot,
+  resetPostGameSession,
+  sendPostGameEvent,
+} from './post-game-session'
 import { hasRichMatchData, MATCH_DETAILS_ENRICH_MAX_MS } from './match-data-quality'
 import {
   buildCoachingSubmissionExtras,
@@ -973,7 +979,7 @@ function dispatchReconciledAnalysisReady(ctx: ReconciledAnalysisContext): void {
   }
 
   if (postGameWindow && !postGameWindow.isDestroyed()) {
-    postGameWindow.webContents.send('post-game:analysis-ready', payload)
+    sendPostGameEvent(postGameWindow, 'post-game:analysis-ready', payload)
   }
   mainWindow?.webContents.send('dashboard:refresh')
 
@@ -1046,7 +1052,7 @@ function dispatchAnalysisFailure(
   if (opts.targetWindow && !opts.targetWindow.isDestroyed()) windows.add(opts.targetWindow)
   if (postGameWindow && !postGameWindow.isDestroyed()) windows.add(postGameWindow)
   for (const win of windows) {
-    win.webContents.send('post-game:upload-error', payload)
+    sendPostGameEvent(win, 'post-game:upload-error', payload)
   }
 
   mainWindow?.webContents.send('dashboard:analysis-failed', payload)
@@ -1326,9 +1332,7 @@ function sendAnalysisReadinessUpdate(
   readiness: AnalysisReadiness,
 ): void {
   mainWindow?.webContents.send('recordings:updated')
-  if (targetWindow && !targetWindow.isDestroyed()) {
-    targetWindow.webContents.send('post-game:analysis-readiness', readiness)
-  }
+  sendPostGameEvent(targetWindow, 'post-game:analysis-readiness', readiness)
 }
 
 async function refreshRecordingVodProbe(
@@ -1356,7 +1360,7 @@ function scheduleAnalysisReadinessRefresh(recordingId: string, game: string): vo
       mainWindow?.webContents.send('recordings:updated')
       const pg = postGameWindow
       if (pg && !pg.isDestroyed()) {
-        pg.webContents.send('post-game:analysis-readiness', readiness)
+        sendPostGameEvent(pg, 'post-game:analysis-readiness', readiness)
       }
       return
     }
@@ -1366,7 +1370,7 @@ function scheduleAnalysisReadinessRefresh(recordingId: string, game: string): vo
       readiness = getAnalysisReadiness(rec)
       const pg = postGameWindow
       if (pg && !pg.isDestroyed()) {
-        pg.webContents.send('post-game:analysis-readiness', readiness)
+        sendPostGameEvent(pg, 'post-game:analysis-readiness', readiness)
       }
       return
     }
@@ -1386,7 +1390,7 @@ function scheduleAnalysisReadinessRefresh(recordingId: string, game: string): vo
     if (!isTerminalAnalysisReadinessState(readiness.state)) {
       const pg = postGameWindow
       if (pg && !pg.isDestroyed()) {
-        pg.webContents.send('post-game:analysis-readiness', readiness)
+        sendPostGameEvent(pg, 'post-game:analysis-readiness', readiness)
       }
       setTimeout(() => { void tick() }, 10_000)
     }
@@ -2024,16 +2028,18 @@ function setupGameDetection(): void {
     // match 2 can end before match 1's window is dismissed).
     clearVodProbeCache()
     postGameWindow?.close()
+    resetPostGameSession(game, map, agent)
     const thisPostGameWindow = createPostGameWindow()
     postGameWindow = thisPostGameWindow
     thisPostGameWindow.on('closed', () => {
       if (postGameWindow === thisPostGameWindow) postGameWindow = null
+      clearPostGameSession()
     })
     // Show without stealing focus from fullscreen Valorant — user can alt-tab when ready.
     whenWebContentsReady(thisPostGameWindow, () => {
       if (thisPostGameWindow.isDestroyed()) return
       try {
-        thisPostGameWindow.webContents.send('post-game:preparing', { game, map, agent })
+        sendPostGameEvent(thisPostGameWindow, 'post-game:preparing', { game, map, agent })
       } catch { /* window may have closed */ }
       if (process.platform === 'win32') {
         thisPostGameWindow.showInactive()
@@ -2081,19 +2087,7 @@ function setupGameDetection(): void {
 
     const runPostGameUpload = async () => {
         const sendToWindow = (channel: string, payload?: unknown) => {
-          const deliver = () => {
-            try {
-              if (!thisPostGameWindow.isDestroyed()) {
-                thisPostGameWindow.webContents.send(channel, payload)
-              }
-            } catch { /* destroyed between check and send */ }
-          }
-          if (thisPostGameWindow.isDestroyed()) return
-          if (thisPostGameWindow.webContents.isLoading()) {
-            thisPostGameWindow.webContents.once('did-finish-load', deliver)
-          } else {
-            deliver()
-          }
+          sendPostGameEvent(thisPostGameWindow, channel, payload)
         }
 
       const savePath = recordingSavePath()
@@ -3455,9 +3449,7 @@ async function doUploadAndAnalyse(
   uploadOpts?: { prioritizePostGameUpload?: boolean },
 ): Promise<string | null> {
   const send = (channel: string, payload?: unknown) => {
-    try {
-      if (!targetWindow.isDestroyed()) targetWindow.webContents.send(channel, payload)
-    } catch { /* destroyed between isDestroyed check and send */ }
+    sendPostGameEvent(targetWindow, channel, payload)
   }
   stopActiveAnalysisPoll()
 
@@ -4326,6 +4318,8 @@ async function startApp(): Promise<void> {
     return { portOpen, gameMode, logGameMode, processRunning }
   })
 
+
+  ipcMain.handle('post-game:sync', () => getPostGameSessionSnapshot())
 
   ipcMain.handle('post-game:retry-demo-scan', async () => {
     if (!lastReplayRetryContext) {

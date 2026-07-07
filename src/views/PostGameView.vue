@@ -816,6 +816,53 @@ function applyAnalysisReadiness(readiness: { ready: boolean; state: string; mess
         ? 'Finalizing recording…'
         : 'Not ready to analyse')
 }
+
+type PostGameSessionSnapshot = NonNullable<Awaited<ReturnType<NonNullable<typeof window.api.postGame>['sync']>>>
+
+function applyPostGameSnapshot(snapshot: PostGameSessionSnapshot): void {
+  if (snapshot.game) {
+    gameInfo.value = {
+      game: snapshot.game,
+      map: snapshot.map ?? null,
+      agent: snapshot.agent ?? null,
+    }
+  }
+  uploadProgress.value = snapshot.uploadProgress
+  compressing.value = snapshot.compressing
+  compressKind.value = snapshot.compressKind
+  archiveOnlyUpload.value = snapshot.archiveOnly
+  if (snapshot.recordingId) pendingRecordingId.value = snapshot.recordingId
+  if (snapshot.matchDataStatus) {
+    matchDataStatus.value = snapshot.matchDataStatus as typeof matchDataStatus.value
+  }
+  if (snapshot.killsInTimeline > 0) killsCapured.value = snapshot.killsInTimeline
+  if (snapshot.preparingSyncMessage) preparingSyncMessage.value = snapshot.preparingSyncMessage
+  if (snapshot.analysisReadiness) applyAnalysisReadiness(snapshot.analysisReadiness)
+
+  const next = snapshot.phase as State
+  if (next === 'preparing') {
+    state.value = 'preparing'
+    startPreparingStuckTimer()
+    return
+  }
+  clearPreparingStuckTimer()
+  state.value = next
+  if (next === 'uploading' && uploadStartedAt.value === 0) uploadStartedAt.value = Date.now()
+  if (next === 'analysing') startStuckTimer()
+  if (next === 'pending') {
+    pendingAnalysisReady.value = snapshot.pendingAnalysisReady
+    pendingAnalysisMessage.value = snapshot.pendingAnalysisMessage ?? pendingAnalysisMessage.value
+    pendingAnalysisState.value = snapshot.pendingAnalysisState
+    void refreshLocalSpatialSummary()
+  }
+}
+
+async function syncPostGameSession(): Promise<void> {
+  try {
+    const snapshot = await window.api.postGame.sync()
+    if (snapshot) applyPostGameSnapshot(snapshot)
+  } catch { /* non-fatal */ }
+}
 const sessionRecordingId = ref<string | null>(null)
 const analysing = ref(false)
 const savingToCloud = ref(false)
@@ -958,7 +1005,10 @@ function startPreparingStuckTimer() {
   clearPreparingStuckTimer()
   preparingStuckTimer = setTimeout(() => {
     if (state.value !== 'preparing') return
-    preparingSyncMessage.value = 'Still preparing — if this persists, close and use the dashboard to upload.'
+    void syncPostGameSession().then(() => {
+      if (state.value !== 'preparing') return
+      preparingSyncMessage.value = 'Still preparing — if this persists, close and use the dashboard to upload.'
+    })
   }, 20_000)
 }
 
@@ -1440,6 +1490,8 @@ onMounted(() => {
   ipcCleanup.push(window.api.on('post-game:demo-progress', (...args: unknown[]) => {
     demoProgress.value = args[0] as number
   }))
+
+  void syncPostGameSession()
 
   // Dev preview: rich mock ready state (skip upload wait)
   if (window.location.hash.includes('post-game-preview') || window.location.pathname.includes('post-game-preview')) {

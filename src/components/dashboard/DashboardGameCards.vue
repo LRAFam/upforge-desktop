@@ -42,10 +42,14 @@ function rankBlock(game: PrimaryGame): {
   const brand = gameBrand(game)
   if (game === 'valorant') {
     const rank = profile.value?.latest_stats?.current_rank
+    const riotName = profile.value?.user?.riot_name
+    const riotTag = profile.value?.user?.riot_tag
     return {
-      main: rank ?? 'Link Riot ID',
-      sub: profile.value?.latest_stats?.rr != null ? `${profile.value.latest_stats.rr} RR` : undefined,
-      color: getRankHexColor(rank),
+      main: rank ?? (riotName ? `${riotName}#${riotTag ?? 'NA1'}` : 'Link Riot ID'),
+      sub: rank
+        ? (profile.value?.latest_stats?.rr != null ? `${profile.value.latest_stats.rr} RR` : undefined)
+        : (riotName ? 'Linked' : undefined),
+      color: rank ? getRankHexColor(rank) : brand.accent,
     }
   }
   if (game === 'cs2') {

@@ -661,6 +661,25 @@ declare global {
         applyLayout?: (routePath: string) => Promise<{ ok: boolean }>
       }
       postGame: {
+        sync: () => Promise<{
+          phase: 'preparing' | 'uploading' | 'analysing' | 'ready' | 'error' | 'pending' | 'archived'
+          game?: string
+          map?: string | null
+          agent?: string | null
+          uploadProgress: number
+          compressing: boolean
+          compressKind: 'remux' | 'transcode' | 'shrink' | null
+          preparingSyncMessage: string | null
+          recordingId: string | null
+          archiveOnly: boolean
+          analysisReadiness: { ready: boolean; state: string; message: string } | null
+          pendingAnalysisReady: boolean
+          pendingAnalysisMessage: string | null
+          pendingAnalysisState: string | null
+          matchDataStatus: string | null
+          killsInTimeline: number
+          updatedAt: number
+        } | null>
         retryDemoScan: () => Promise<{ ok: boolean; error?: string }>
       }
       recorder: {
@@ -826,14 +845,33 @@ declare global {
       progress: {
         playstyleProfile: () => Promise<{
           matches_tracked: number
+          vods_analyzed?: number
+          profile_milestone?: {
+            level: number
+            label: string
+            vods: number
+            next_level_vods: number | null
+          }
           last_match_at: string | null
-          metrics: Record<string, unknown>
+          metrics: Record<string, unknown> & {
+            combat?: {
+              untraded_death_rate_pct?: number
+              death_hotspots?: Array<{ callout: string; count: number }>
+              duel_win_rate_pct?: number
+            }
+          }
           focus_areas: Array<{
             id: string
             category: string
             text: string
             severity: 'low' | 'medium' | 'high'
             agent?: string
+          }>
+          brain_habits?: Array<{
+            id: string
+            category: string
+            text: string
+            severity: 'low' | 'medium' | 'high'
           }>
           agent_pool: Record<string, number>
         } | null>
