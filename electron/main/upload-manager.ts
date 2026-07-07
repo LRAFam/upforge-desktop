@@ -46,8 +46,11 @@ export interface DuelClipPresign {
 /** Larger read buffer for S3 PUT streaming (default fs stream is 64 KB). */
 const S3_UPLOAD_READ_HIGH_WATER_MARK = 1024 * 1024
 
-/** Parallel part uploads — balances throughput vs home-router bufferbloat. */
-const S3_MULTIPART_CONCURRENCY = 4
+/** Parallel part uploads — lower concurrency is more reliable on home WiFi. */
+const S3_MULTIPART_CONCURRENCY = 2
+
+/** Shared HTTPS agent — keep-alive reduces TLS handshakes on multipart retries. */
+const s3UploadAgent = new https.Agent({ keepAlive: true, maxSockets: 4 })
 
 interface PresignMultipartPart {
   part_number: number
@@ -141,6 +144,11 @@ export function readPendingJobForUser(
 }
 
 export class UploadManager {
+  private static readonly S3_UPLOAD_MAX_ATTEMPTS = 4
+  private static readonly S3_UPLOAD_RETRY_BASE_MS = 2_000
+  /** Full presign → S3 → complete cycles when the connection keeps dropping. */
+  private static readonly FULL_UPLOAD_MAX_ATTEMPTS = 3
+
   private _s3Request: ClientRequest | null = null
   private _s3PartRequests = new Set<ClientRequest>()
   private _uploadAborted = false
@@ -241,6 +249,32 @@ export class UploadManager {
   }
 
   private async _doUpload(opts: UploadOptions): Promise<UploadResult> {
+    let lastErr: unknown
+    for (let fullAttempt = 1; fullAttempt <= UploadManager.FULL_UPLOAD_MAX_ATTEMPTS; fullAttempt++) {
+      if (this._uploadAborted) {
+        throw new Error('Upload aborted')
+      }
+      try {
+        return await this._doUploadOnce(opts, fullAttempt)
+      } catch (err) {
+        lastErr = err
+        const retryable = this._isRetryableUploadError(err)
+        if (!retryable || fullAttempt >= UploadManager.FULL_UPLOAD_MAX_ATTEMPTS) {
+          throw err
+        }
+        const delay = UploadManager.S3_UPLOAD_RETRY_BASE_MS * fullAttempt * 3
+        const msg = err instanceof Error ? err.message : String(err)
+        console.warn(
+          `[UploadManager] Full upload failed (cycle ${fullAttempt}/${UploadManager.FULL_UPLOAD_MAX_ATTEMPTS}): ${msg} — fresh presign in ${delay}ms`,
+        )
+        opts.onProgress(Math.max(3, 8 - fullAttempt))
+        await new Promise((resolve) => setTimeout(resolve, delay))
+      }
+    }
+    throw lastErr
+  }
+
+  private async _doUploadOnce(opts: UploadOptions, fullAttempt: number): Promise<UploadResult> {
     const apiUrl = process.env['VITE_API_URL'] || 'https://api.upforge.gg'
     const token = this.auth.getToken()
     if (!token) throw new Error('Not authenticated')
@@ -287,12 +321,14 @@ export class UploadManager {
     opts.onProgress(8)
     let uploadParts: UploadedPart[] | undefined
     if (presign.multipart && presign.parts?.length && presign.part_size) {
+      const concurrency = fullAttempt >= 2 ? 1 : S3_MULTIPART_CONCURRENCY
       uploadParts = await this._putToS3Multipart(
         opts.videoPath,
         totalBytes,
         presign.parts,
         presign.part_size,
         opts.onProgress,
+        concurrency,
       )
     } else if (presign.upload_url) {
       await this._putToS3(presign.upload_url, opts.videoPath, totalBytes, opts.onProgress)
@@ -509,6 +545,10 @@ export class UploadManager {
 
   /** POST JSON to an API endpoint with Bearer auth. Returns parsed response body. */
   private _apiPost(url: string, body: string, token: string): Promise<Record<string, unknown>> {
+    return this._withUploadRetry('API upload step', () => this._apiPostOnce(url, body, token))
+  }
+
+  private _apiPostOnce(url: string, body: string, token: string): Promise<Record<string, unknown>> {
     return new Promise((resolve, reject) => {
       const parsed = new URL(url)
       const proto = parsed.protocol === 'https:' ? https : http
@@ -553,8 +593,49 @@ export class UploadManager {
     })
   }
 
+  private _isRetryableUploadError(err: unknown): boolean {
+    const msg = err instanceof Error ? err.message : String(err)
+    return /socket hang up|ECONNRESET|ECONNABORTED|ETIMEDOUT|EPIPE|ENOTFOUND|EAI_AGAIN|network/i.test(msg)
+  }
+
+  private async _withUploadRetry<T>(label: string, fn: () => Promise<T>): Promise<T> {
+    let lastErr: unknown
+    for (let attempt = 1; attempt <= UploadManager.S3_UPLOAD_MAX_ATTEMPTS; attempt++) {
+      if (this._uploadAborted) {
+        throw new Error('Upload aborted')
+      }
+      try {
+        return await fn()
+      } catch (err) {
+        lastErr = err
+        const retryable = this._isRetryableUploadError(err)
+        if (!retryable || attempt >= UploadManager.S3_UPLOAD_MAX_ATTEMPTS) {
+          throw err
+        }
+        const delay = UploadManager.S3_UPLOAD_RETRY_BASE_MS * attempt
+        const msg = err instanceof Error ? err.message : String(err)
+        console.warn(
+          `[UploadManager] ${label} failed (attempt ${attempt}/${UploadManager.S3_UPLOAD_MAX_ATTEMPTS}): ${msg} — retrying in ${delay}ms`,
+        )
+        await new Promise((resolve) => setTimeout(resolve, delay))
+      }
+    }
+    throw lastErr
+  }
+
   /** Stream a local file via HTTP PUT to a presigned S3 URL. */
   private _putToS3(
+    uploadUrl: string,
+    filePath: string,
+    totalBytes: number,
+    onProgress: (pct: number) => void
+  ): Promise<void> {
+    return this._withUploadRetry('S3 upload', () =>
+      this._putToS3Once(uploadUrl, filePath, totalBytes, onProgress),
+    )
+  }
+
+  private _putToS3Once(
     uploadUrl: string,
     filePath: string,
     totalBytes: number,
@@ -568,6 +649,7 @@ export class UploadManager {
         hostname: parsed.hostname,
         port:     parsed.port || (parsed.protocol === 'https:' ? 443 : 80),
         path:     parsed.pathname + parsed.search,
+        agent:    parsed.protocol === 'https:' ? s3UploadAgent : undefined,
         headers: {
           'Content-Type':   'video/mp4',
           'Content-Length': totalBytes,
@@ -592,11 +674,11 @@ export class UploadManager {
 
       let uploaded = 0
       let lastProgressAt = Date.now()
-      const STALL_TIMEOUT_MS = 60_000
+      const STALL_TIMEOUT_MS = 120_000
       const stallCheck = setInterval(() => {
         if (Date.now() - lastProgressAt > STALL_TIMEOUT_MS) {
           clearInterval(stallCheck)
-          req.destroy(new Error('S3 upload stalled — no progress for 60 seconds'))
+          req.destroy(new Error('S3 upload stalled — no progress for 120 seconds'))
         }
       }, 5_000)
 
@@ -627,6 +709,14 @@ export class UploadManager {
       return Promise.reject(new Error('Upload aborted'))
     }
 
+    return this._withUploadRetry('S3 part upload', () => this._putPartToS3Once(uploadUrl, body))
+  }
+
+  private _putPartToS3Once(uploadUrl: string, body: Buffer): Promise<string> {
+    if (this._uploadAborted) {
+      return Promise.reject(new Error('Upload aborted'))
+    }
+
     return new Promise((resolve, reject) => {
       const parsed = new URL(uploadUrl)
       const proto = parsed.protocol === 'https:' ? https : http
@@ -635,6 +725,7 @@ export class UploadManager {
         hostname: parsed.hostname,
         port:     parsed.port || (parsed.protocol === 'https:' ? 443 : 80),
         path:     parsed.pathname + parsed.search,
+        agent:    parsed.protocol === 'https:' ? s3UploadAgent : undefined,
         headers:  { 'Content-Length': body.length },
       }, (res) => {
         let responseBody = ''
@@ -671,6 +762,7 @@ export class UploadManager {
     parts: PresignMultipartPart[],
     partSize: number,
     onProgress: (pct: number) => void,
+    concurrency = S3_MULTIPART_CONCURRENCY,
   ): Promise<UploadedPart[]> {
     const sortedParts = [...parts].sort((a, b) => a.part_number - b.part_number)
     const results: UploadedPart[] = new Array(sortedParts.length)
@@ -678,7 +770,7 @@ export class UploadManager {
     let nextIndex = 0
     let lastProgressAt = Date.now()
 
-    const STALL_TIMEOUT_MS = 60_000
+    const STALL_TIMEOUT_MS = 120_000
     const stallCheck = setInterval(() => {
       if (Date.now() - lastProgressAt > STALL_TIMEOUT_MS) {
         this.abort()
@@ -699,7 +791,7 @@ export class UploadManager {
 
     try {
       const workers = Array.from(
-        { length: Math.min(S3_MULTIPART_CONCURRENCY, sortedParts.length) },
+        { length: Math.min(concurrency, sortedParts.length) },
         async () => {
           while (nextIndex < sortedParts.length) {
             if (this._uploadAborted) {

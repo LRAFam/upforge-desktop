@@ -115,18 +115,41 @@ async function copyLog() {
     <template #default="{ panel }">
       <template v-if="panel">
         <div v-if="panel.id === 'playstyle' && playstyleProfile" class="space-y-2 pt-0.5">
-          <div class="flex items-center justify-between">
-            <span class="text-[9px] text-gray-600 tabular-nums">{{ playstyleProfile.matches_tracked }} matches</span>
-            <button type="button" class="text-[9px] text-gray-600 hover:text-gray-300" @click="openPlaystyleProfile">View →</button>
+          <div class="flex items-center justify-between gap-2">
+            <span
+              v-if="playstyleProfile.profile_milestone?.label"
+              class="text-[9px] font-bold uppercase tracking-wider text-violet-300/90"
+            >
+              {{ playstyleProfile.profile_milestone.label }}
+            </span>
+            <span class="text-[9px] text-gray-600 tabular-nums">
+              {{ playstyleProfile.vods_analyzed ?? 0 }} VODs
+              <template v-if="playstyleProfile.matches_tracked > 0">
+                · {{ playstyleProfile.matches_tracked }}m
+              </template>
+            </span>
+            <button type="button" class="text-[9px] text-gray-600 hover:text-gray-300 shrink-0" @click="openPlaystyleProfile">View →</button>
           </div>
-          <ul v-if="playstyleProfile.focus_areas?.length" class="space-y-1.5">
-            <li v-for="area in playstyleProfile.focus_areas.slice(0, 2)" :key="area.id" class="flex items-start gap-1.5">
+          <p
+            v-if="playstyleProfile.metrics?.combat?.death_hotspots?.[0]"
+            class="text-[10px] text-gray-500 leading-snug"
+          >
+            Top death zone:
+            <span class="text-gray-300">{{ playstyleProfile.metrics.combat.death_hotspots[0].callout }}</span>
+            ({{ playstyleProfile.metrics.combat.death_hotspots[0].count }}×)
+          </p>
+          <ul v-if="(playstyleProfile.brain_habits ?? playstyleProfile.focus_areas)?.length" class="space-y-1.5">
+            <li
+              v-for="area in (playstyleProfile.brain_habits ?? playstyleProfile.focus_areas).slice(0, 2)"
+              :key="area.id"
+              class="flex items-start gap-1.5"
+            >
               <span class="mt-1 w-1 h-1 rounded-full flex-shrink-0" :class="area.severity === 'high' ? 'bg-red-400' : area.severity === 'medium' ? 'bg-yellow-400' : 'bg-gray-500'" />
-              <p class="text-[10px] text-gray-400 leading-snug">{{ area.text }}</p>
+              <p class="text-[10px] text-gray-400 leading-snug line-clamp-3">{{ area.text }}</p>
             </li>
           </ul>
           <p v-else class="text-[10px] text-gray-500 leading-snug">
-            {{ playstyleProfile.matches_tracked < 3 ? `${3 - playstyleProfile.matches_tracked} more games for focus areas` : 'View economy & util trends on web' }}
+            {{ playstyleProfile.matches_tracked < 3 ? `${3 - playstyleProfile.matches_tracked} more desktop games for habits` : 'Analyse more VODs to sharpen habits' }}
           </p>
         </div>
 

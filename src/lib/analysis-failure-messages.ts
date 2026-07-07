@@ -51,6 +51,7 @@ export function isTechnicalErrorMessage(raw: string): boolean {
   if (!err) return false
   if (err.includes('<?xml') || err.includes('<Error>')) return true
   if (/ffmpeg exited|moov atom|invalid data found when processing/i.test(err)) return true
+  if (/socket hang up|econnreset|epipe|enotfound|econnaborted|etimedout/i.test(err)) return true
   if (err.length > 160) return true
   return false
 }
@@ -94,6 +95,19 @@ export function classifyAnalysisFailure(rawError: string): AnalysisFailurePresen
       hint: 'Let recording finish after the match ends (UpForge stops OBS automatically). Play another match, or retry from the dashboard only if the file on disk plays in a media player.',
       creditRefunded: /credit.*refund|refunded/i.test(lower),
       canRetry: false,
+    }
+  }
+
+  if (
+    /socket hang up|econnreset|epipe|ehostunreach|enetunreach/i.test(lower)
+  ) {
+    return {
+      kind: 'upload',
+      title: 'Upload connection dropped',
+      message: 'Your network connection was interrupted while sending the replay.',
+      hint: 'Your recording is still on the dashboard — tap Retry. Use wired internet if you can, turn off VPN, and keep UpForge open until upload hits 100%.',
+      creditRefunded: false,
+      canRetry: true,
     }
   }
 

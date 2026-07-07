@@ -53,6 +53,14 @@ describe('formatAnalysisFailureMessage', () => {
     expect(p.title).toBe('Upload temporarily throttled')
     expect(p.message).not.toContain('<?xml')
   })
+
+  it('maps socket hang up to upload connection dropped copy', () => {
+    const p = classifyAnalysisFailure('socket hang up')
+    expect(p.kind).toBe('upload')
+    expect(p.title).toBe('Upload connection dropped')
+    expect(p.message).not.toContain('socket hang up')
+    expect(p.canRetry).toBe(true)
+  })
 })
 
 describe('buildAnalysisErrorPayload', () => {

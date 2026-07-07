@@ -17,6 +17,26 @@ import { SettingsManager } from '../settings-manager'
 import { setPendingCaptureSource } from './api-helpers'
 import { reportRecordingError } from '../recording-errors'
 
+const OBS_IPC_TIMEOUT_MS = 45_000
+
+function withIpcTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      reject(new Error(`${label} timed out after ${Math.round(ms / 1000)}s — is OBS running?`))
+    }, ms)
+    promise.then(
+      (value) => {
+        clearTimeout(timer)
+        resolve(value)
+      },
+      (err) => {
+        clearTimeout(timer)
+        reject(err)
+      },
+    )
+  })
+}
+
 export function setupMediaHandlers(
   ipcMain: IpcMain,
   getActiveRecorder: () => MatchRecorder,
@@ -218,8 +238,20 @@ export function setupMediaHandlers(
   })
 
   ipcMain.handle('obs:setup-scene', async () => {
-    if (!obsRecorder) return { ok: false, sceneCreated: false, inputCreated: false, error: 'OBS recorder not available' }
+    if (!obsRecorder) {
+      return { ok: false, sceneCreated: false, inputCreated: false, error: 'OBS recorder not available' }
+    }
     const game = settingsManager.get().primaryGame ?? 'valorant'
-    return obsRecorder.setupScene(game, true)
+    try {
+      return await withIpcTimeout(
+        obsRecorder.setupScene(game, true),
+        OBS_IPC_TIMEOUT_MS,
+        'OBS scene setup',
+      )
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err)
+      log.warn('[IPC] obs:setup-scene failed:', message)
+      return { ok: false, sceneCreated: false, inputCreated: false, error: message }
+    }
   })
 }

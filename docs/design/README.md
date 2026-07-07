@@ -97,3 +97,18 @@ Current view: large per-member cards, invite row, activity + analyses columns (~
 | `squads/concepts/squad-concept-8-multi-game-combined.png` | Multi-Game Combined | #6 adapted — mixed-game activity + neutral match cards |
 
 **Built (Jul 2026):** Universal lineup + multi-game combined layout in `SquadView.vue` + `src/components/squad/*`.
+
+## Player Brain — concepts (Jul 2026)
+
+Unified web hub for cross-game identity, VOD progression, combat patterns, and coach memory. Route today: `/valorant/playstyle` (planned: game-agnostic `/brain` or `/profile`).
+
+| File | Name | Vibe |
+|------|------|------|
+| `player-brain/concepts/player-brain-concept-1-command-nexus.png` | Command Nexus | Central brain + milestone ring, game orbs, combat hotspots |
+| `player-brain/concepts/player-brain-concept-2-multi-game-hub.png` | Multi-Game Hub | VAL / CS2 / DL cards, unified coach memory |
+| `player-brain/concepts/player-brain-concept-3-neural-identity-sheet.png` | Neural Identity Sheet | RPG profile sheet, radar + habit panels |
+| `player-brain/concepts/player-brain-concept-4-progression-timeline.png` | Progression Timeline | Milestone spine + chronological VOD memory cards |
+| `player-brain/concepts/player-brain-concept-5-combined-command-brief.png` | Combined Command Brief | Immersive hero + intel panels (dashboard briefing vibe) |
+| `player-brain/concepts/player-brain-dashboard-v2-reference.png` | Dashboard v2 (built ref) | Full command center — sidebar, brain nexus, combat/economy/habits grid |
+
+**Built (Jul 2026):** `/brain` web page follows dashboard v2 reference — see `upforge-frontend/app/pages/brain.vue`.

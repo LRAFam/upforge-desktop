@@ -187,9 +187,22 @@ function createDashboard() {
   const correlationInsights = ref<string[]>([])
   const playstyleProfile = ref<{
     matches_tracked: number
+    vods_analyzed?: number
+    profile_milestone?: {
+      level: number
+      label: string
+      vods: number
+      next_level_vods: number | null
+    }
     last_match_at: string | null
-    metrics: Record<string, unknown>
+    metrics: Record<string, unknown> & {
+      combat?: {
+        untraded_death_rate_pct?: number
+        death_hotspots?: Array<{ callout: string; count: number }>
+      }
+    }
     focus_areas: Array<{ id: string; category: string; text: string; severity: 'low' | 'medium' | 'high' }>
+    brain_habits?: Array<{ id: string; category: string; text: string; severity: 'low' | 'medium' | 'high' }>
     agent_pool: Record<string, number>
   } | null>(null)
   const skillProfile = ref<SkillProfileSnapshot | null>(null)
@@ -216,8 +229,8 @@ function createDashboard() {
 
   const rightInsightPanels = computed<CarouselPanel[]>(() => {
     const panels: CarouselPanel[] = []
-    if (isValorant.value && playstyleProfile.value && playstyleProfile.value.matches_tracked > 0) {
-      panels.push({ id: 'playstyle', label: 'Playstyle', accent: 'bg-violet-500' })
+    if (isValorant.value && playstyleProfile.value && (playstyleProfile.value.matches_tracked > 0 || (playstyleProfile.value.vods_analyzed ?? 0) > 0)) {
+      panels.push({ id: 'playstyle', label: 'Player brain', accent: 'bg-violet-500' })
     }
     if (isValorant.value && skillProfile.value) {
       panels.push({ id: 'skills', label: 'Skills', accent: 'bg-emerald-500' })
