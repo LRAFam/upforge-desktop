@@ -576,10 +576,14 @@ export class UploadManager {
             ))
             else if (status >= 400) {
               const code = typeof json.code === 'string' ? json.code : ''
+              const apiMessage =
+                (typeof json.error === 'string' && json.error) ||
+                (typeof json.message === 'string' && json.message) ||
+                ''
               if (status === 409 && code === 'upload_session_expired') {
-                reject(new Error('Upload session expired. Please retry the upload from the desktop app.'))
+                reject(new Error('upload_session_expired: multipart upload no longer valid on S3'))
               } else {
-                reject(new Error(json.message || `Request failed (${status})`))
+                reject(new Error(apiMessage || `Request failed (${status})`))
               }
             }
             else resolve(json)
@@ -619,6 +623,9 @@ export class UploadManager {
         return await fn()
       } catch (err) {
         lastErr = err
+        if (this._isExpiredUploadSessionError(err)) {
+          throw err
+        }
         const retryable = this._isRetryableUploadError(err)
         if (!retryable || attempt >= UploadManager.S3_UPLOAD_MAX_ATTEMPTS) {
           throw err

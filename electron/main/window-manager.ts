@@ -9,6 +9,7 @@ import { join } from 'path'
 import { is } from '@electron-toolkit/utils'
 import log from 'electron-log'
 import { ClipExtractor } from './clip-extractor'
+import { openPathSafe } from './shell-open'
 import {
   DEFAULT_APP_LAYOUT,
   LOGIN_LAYOUT,
@@ -248,7 +249,7 @@ export function createTray(deps: TrayDeps): TrayResult {
 
     template.push(
       { type: 'separator' },
-      { label: 'Open Clips Folder', click: () => shell.openPath(ClipExtractor.clipsDir()) },
+      { label: 'Open Clips Folder', click: () => { void openPathSafe(ClipExtractor.clipsDir(), { createIfMissing: true }) } },
       { label: 'Quit UpForge completely', click: () => { require('electron').app.quit() } }
     )
 

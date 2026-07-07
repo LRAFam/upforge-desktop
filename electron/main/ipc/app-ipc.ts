@@ -17,6 +17,7 @@ import { buildRecorderConfig } from '../obs-output-settings'
 import { hasProAccess } from '../subscription'
 import { getActiveUserId } from '../user-session'
 import { resolveRecordingSavePath } from '../user-data-paths'
+import { openPathSafe } from '../shell-open'
 import { trackOnboardingComplete } from '../funnel-events'
 import { applyLayoutForRoute } from '../window-layouts'
 
@@ -125,9 +126,11 @@ export function setupAppHandlers(
 
   // ── Storage (usage/open-folder handlers live in index.ts where recordingsStore is available) ──
 
-  ipcMain.handle('storage:open-folder', () => {
+  ipcMain.handle('storage:open-folder', async () => {
     const settings = settingsManager.get()
-    shell.openPath(resolveRecordingSavePath(settings.savePath, getActiveUserId()))
+    return openPathSafe(resolveRecordingSavePath(settings.savePath, getActiveUserId()), {
+      createIfMissing: true,
+    })
   })
 
   // ── Dialog ────────────────────────────────────────────────────────────────

@@ -138,6 +138,9 @@ export async function resolveUploadVideoPath(
 
   if (mustTranscode || shouldCompressVod(sizeBytes, forAnalysis)) {
     const detail = result.error ?? ''
+    if (/compression cancelled/i.test(detail)) {
+      throw new Error(detail)
+    }
     if (/moov atom|invalid data/i.test(detail)) {
       throw new Error('Recording file is incomplete — OBS may have stopped before the file finished saving.')
     }

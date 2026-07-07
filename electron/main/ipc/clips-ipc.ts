@@ -13,6 +13,7 @@ import { AuthManager } from '../auth-manager'
 import { ClipStore } from '../clip-store'
 import { clipMatchesGame, normalizeClipGame } from '../clip-game'
 import { ClipExtractor, FREE_CLIP_UPLOAD_MAX_HEIGHT } from '../clip-extractor'
+import { openPathSafe } from '../shell-open'
 import { HotkeyManager } from '../hotkey-manager'
 import { UpgradeRequiredError } from '../errors'
 import { _clipInFlight, apiPost, pollClipAnalysis } from './api-helpers'
@@ -136,14 +137,14 @@ export function setupClipHandlers(
     return { ok: true }
   })
 
-  ipcMain.handle('clips:open-folder', () => {
-    shell.openPath(ClipExtractor.clipsDir())
-  })
+  ipcMain.handle('clips:open-folder', () =>
+    openPathSafe(ClipExtractor.clipsDir(), { createIfMissing: true }),
+  )
 
   ipcMain.handle('clips:reveal-file', (_e, { id }: { id: string }) => {
     const clip = clipStore.getById(id)
     if (clip && fs.existsSync(clip.path)) shell.showItemInFolder(clip.path)
-    else shell.openPath(ClipExtractor.clipsDir())
+    return openPathSafe(ClipExtractor.clipsDir(), { createIfMissing: true })
   })
 
   ipcMain.handle('clips:toggle-favorite', (_e, { id }: { id: string }) => {

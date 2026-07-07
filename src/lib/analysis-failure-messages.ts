@@ -87,7 +87,7 @@ export function classifyAnalysisFailure(rawError: string): AnalysisFailurePresen
     }
   }
 
-  if (/moov atom|invalid data found when processing|error opening input file|recording is incomplete/i.test(lower)) {
+  if (/moov atom|invalid data found when processing|error opening input file|recording file is incomplete|recording is incomplete|cannot extract duel clips/i.test(lower)) {
     return {
       kind: 'upload',
       title: 'Recording file is incomplete',
@@ -143,6 +143,17 @@ export function classifyAnalysisFailure(rawError: string): AnalysisFailurePresen
       kind: 'upload',
       title: 'Upload session expired',
       message: 'The cloud upload link timed out before the replay finished sending.',
+      hint: 'Your recording is still on the dashboard — tap Analyse to start a fresh upload.',
+      creditRefunded: false,
+      canRetry: true,
+    }
+  }
+
+  if (/job not found|not in uploading state/i.test(lower)) {
+    return {
+      kind: 'upload',
+      title: 'Upload session expired',
+      message: 'The server no longer had this upload open — usually the link timed out or the app was closed too long.',
       hint: 'Your recording is still on the dashboard — tap Analyse to start a fresh upload.',
       creditRefunded: false,
       canRetry: true,

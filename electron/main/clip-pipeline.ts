@@ -18,6 +18,12 @@ import type { MatchData, KillEvent } from './riot-types'
 import { detectClutchRoundsForGame } from './demo-clutch'
 import type { ClipGame } from './clip-game'
 
+function reportClipExtractError(prefix: string, err: unknown, component: string): void {
+  const msg = err instanceof Error ? err.message : String(err)
+  if (msg.includes('ffmpeg timed out')) return
+  reportError({ message: `${prefix}: ${msg}`, stack: (err as Error)?.stack, component })
+}
+
 function clipMatchMeta(
   timeline: MatchData | null,
   kill?: KillEvent | null,
@@ -132,7 +138,7 @@ export class ClipPipeline {
         logActivity(`Saved hotkey clip (${map ?? 'unknown map'})`)
       } catch (err) {
         log.warn('[ClipExtract] Hotkey clip failed:', err)
-        reportError({ message: `[ClipExtract] Hotkey clip failed: ${(err as Error)?.message}`, stack: (err as Error)?.stack, component: 'desktop:ClipExtract' })
+        reportClipExtractError('[ClipExtract] Hotkey clip failed', err, 'desktop:ClipExtract')
       }
     }
 
@@ -179,7 +185,7 @@ export class ClipPipeline {
           const msg = err instanceof Error ? err.message : String(err)
           log.warn('[ClipExtract] Kill clip failed:', msg)
           logActivity(`Clip extraction error (kill): ${msg.slice(0, 120)}`)
-          reportError({ message: `[ClipExtract] Kill clip failed: ${msg}`, stack: (err as Error)?.stack, component: 'desktop:ClipExtract' })
+          reportClipExtractError('[ClipExtract] Kill clip failed', err, 'desktop:ClipExtract')
         }
       }
 
@@ -206,7 +212,7 @@ export class ClipPipeline {
           logActivity(`${trigger === 'ace' ? 'Ace' : `${killCount}K`} clip saved — Round ${round + 1} (${map ?? 'unknown'})`)
         } catch (err) {
           log.warn(`[ClipExtract] ${trigger} clip failed:`, err)
-          reportError({ message: `[ClipExtract] ${trigger} clip failed: ${(err as Error)?.message}`, stack: (err as Error)?.stack, component: 'desktop:ClipExtract' })
+          reportClipExtractError(`[ClipExtract] ${trigger} clip failed`, err, 'desktop:ClipExtract')
         }
       }
 
@@ -231,7 +237,7 @@ export class ClipPipeline {
           logActivity(`Clutch clip saved — Round ${round + 1} (${map ?? 'unknown'})`)
         } catch (err) {
           log.warn('[ClipExtract] Clutch clip failed:', err)
-          reportError({ message: `[ClipExtract] Clutch clip failed: ${(err as Error)?.message}`, stack: (err as Error)?.stack, component: 'desktop:ClipExtract' })
+          reportClipExtractError('[ClipExtract] Clutch clip failed', err, 'desktop:ClipExtract')
         }
       }
     }
@@ -315,7 +321,7 @@ export class ClipPipeline {
         logActivity(`${trigger === 'ace' ? 'Ace' : `${killCount}K`} clip saved (late extract) — Round ${round + 1} (${map ?? 'unknown'})`)
       } catch (err) {
         log.warn(`[LateClipExtract] ${trigger} clip failed:`, err)
-        reportError({ message: `[LateClipExtract] ${trigger} clip failed: ${(err as Error)?.message}`, stack: (err as Error)?.stack, component: 'desktop:LateClipExtract' })
+        reportClipExtractError(`[LateClipExtract] ${trigger} clip failed`, err, 'desktop:LateClipExtract')
       }
     }
 
@@ -340,7 +346,7 @@ export class ClipPipeline {
         logActivity(`Clutch clip saved (late extract) — Round ${round + 1} (${map ?? 'unknown'})`)
       } catch (err) {
         log.warn('[LateClipExtract] Clutch clip failed:', err)
-        reportError({ message: `[LateClipExtract] Clutch clip failed: ${(err as Error)?.message}`, stack: (err as Error)?.stack, component: 'desktop:LateClipExtract' })
+        reportClipExtractError('[LateClipExtract] Clutch clip failed', err, 'desktop:LateClipExtract')
       }
     }
 

@@ -71,6 +71,7 @@ export class ClipExtractor {
     // streams-copies cleanly into MP4 on all platforms. For short clips (8–30s),
     // veryfast H.264 transcoding is near-instant. Optional audio map handles
     // recordings where audio capture was unavailable.
+    const extractTimeoutMs = Math.min(600_000, Math.max(120_000, Math.ceil(durSec * 5) * 1000))
     try {
       await this._run(
         [
@@ -85,7 +86,7 @@ export class ClipExtractor {
           '-movflags', '+faststart',
           opts.outputPath,
         ],
-        120_000,
+        extractTimeoutMs,
       )
     } catch (err) {
       try { if (fs.existsSync(opts.outputPath)) fs.unlinkSync(opts.outputPath) } catch { /* ignore */ }

@@ -11,6 +11,7 @@ import log from 'electron-log'
 import { AuthManager } from '../auth-manager'
 import { GameDetector } from '../game-detector'
 import { SettingsManager } from '../settings-manager'
+import { openPathSafe } from '../shell-open'
 import { PerformanceManager } from '../performance-manager'
 import { TrainerBridge, type DrillConfig } from '../trainer-bridge'
 import { sendOverlayData } from '../overlay-window'
@@ -301,11 +302,9 @@ export function setupGamingHandlers(
     const dirs = await resolveDeadlockReplayDirs()
     const dir = dirs.find((d) => fs.existsSync(d)) ?? dirs[0]
     if (dir && fs.existsSync(dir)) {
-      await shell.openPath(dir)
-    } else if (dirs[0]) {
-      await shell.openPath(path.dirname(dirs[0]))
+      return openPathSafe(dir)
     }
-    return { ok: true }
+    return { ok: false, error: 'Deadlock replays folder not found' }
   })
 
   ipcMain.handle('deadlock:open-analyze', () => {
@@ -404,10 +403,9 @@ export function setupGamingHandlers(
     const custom = settingsManager.get().cs2DemoDir
     const dir = custom ?? (await detectCS2DemoDir())
     if (dir && fs.existsSync(dir)) {
-      shell.openPath(dir)
-      return { ok: true }
+      return openPathSafe(dir)
     }
-    return { ok: false }
+    return { ok: false, error: 'CS2 demo folder not found' }
   })
 
   ipcMain.handle('cs2:open-analyze', () => {

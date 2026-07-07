@@ -46,6 +46,15 @@ describe('formatAnalysisFailureMessage', () => {
     expect(p.canRetry).toBe(false)
   })
 
+  it('maps duel clip extractor missing-file errors to incomplete recording copy', () => {
+    const p = classifyAnalysisFailure(
+      'Recording file is incomplete or missing — cannot extract duel clips',
+    )
+    expect(p.kind).toBe('upload')
+    expect(p.title).toBe('Recording file is incomplete')
+    expect(p.canRetry).toBe(false)
+  })
+
   it('maps S3 SlowDown XML to throttled upload copy', () => {
     const raw = 'S3 upload failed (HTTP 503): <?xml version="1.0"?><Error><Code>SlowDown</Code><Message>Please reduce your request rate.</Message></Error>'
     const p = classifyAnalysisFailure(raw)

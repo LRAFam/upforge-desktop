@@ -68,6 +68,7 @@ import { applySpatialEnrichment } from './spatial/enrich'
 import { refreshMatchPopulationBenchmarks } from './spatial/enrich-population'
 import { applyDemoSpatialEnrichment } from './spatial/demo-enrich'
 import { UploadManager, savePendingJob, clearPendingJob } from './upload-manager'
+import { resolveUploadPlayerIdentity } from './upload-player-identity'
 import {
   activateUserSession,
   clearUserSession,
@@ -1059,7 +1060,7 @@ function dispatchAnalysisFailure(
   mainWindow?.webContents.send('recordings:updated')
 
   const failureRecording = opts.recordingId ? recordingsStore.getById(opts.recordingId) : null
-  if (payload.kind !== 'quota') {
+  if (payload.kind !== 'quota' && payload.kind !== 'clips_only') {
     reportPipelineError('analysis', payload.title, {
       kind: payload.kind,
       message: payload.message,
@@ -1984,7 +1985,6 @@ function setupGameDetection(): void {
 
     const MIN_DURATION_SECONDS = MIN_RECORDING_DURATION_SECONDS
     const MIN_FILE_SIZE_BYTES = MIN_RECORDING_FILE_BYTES
-    const MAX_FILE_SIZE_BYTES = MAX_RECORDING_FILE_BYTES
 
     if (durationForGate > 0 && durationForGate < MIN_DURATION_SECONDS) {
       console.log(`[GameDetector] Recording too short (${durationForGate}s) — ignoring`)
@@ -2183,45 +2183,6 @@ function setupGameDetection(): void {
           },
         }).catch((err) => log.warn('[Debrief] Background debrief failed:', err))
       }).catch((err) => log.warn('[Enrich] Match coaching enrich failed:', err))
-
-      if (readySize > MAX_FILE_SIZE_BYTES) {
-        const sizeGB = (readySize / (1024 * 1024 * 1024)).toFixed(1)
-        const errorMsg = formatRecordingTooLargeMessage(readySize, true)
-        log.warn(`[GameDetector] Recording too large to upload: ${sizeGB} GB — extracting clips only`)
-        logActivity(`Recording too large (${sizeGB} GB) — full upload skipped, saving clips`)
-
-        extractMatchClips(readyPath, timeline, null, game)
-          .catch(err => log.warn('[ClipExtract] Clip extraction (oversized) error:', err))
-
-        if (lateRetryScheduled) {
-          log.info('[HandleMatchEnd] No kills (oversized) — scheduling late retry in 90s')
-          setTimeout(async () => {
-            try {
-              log.info('[LateClipExtract] Fetching match details for', matchId)
-              const details = await riotLocalApi.fetchMatchDetailsLate(matchId!)
-              if (!details) { log.warn('[LateClipExtract] Match details still unavailable'); return }
-              if (timeline) {
-                timeline.matchDetails = details
-                riotLocalApi.populateMatchDataFromDetails(timeline, details)
-                recordingsStore.updateTimeline(savedRecording.id, timeline)
-                mainWindow?.webContents.send('recordings:updated')
-              }
-              if ((timeline?.playerKills?.length ?? 0) === 0) { log.warn('[LateClipExtract] No kills after retry'); return }
-              log.info(`[LateClipExtract] Got ${timeline!.playerKills.length} kills — extracting clips`)
-              await extractKillClipsOnly(readyPath, timeline!, null, game)
-            } catch (err) {
-              log.warn('[LateClipExtract] Error (oversized path):', err)
-            }
-          }, 90_000)
-        }
-
-        sendUploadFailure(errorMsg, {
-          targetWindow: thisPostGameWindow,
-          recordingId: savedRecording.id,
-          clipsOnly: true,
-        })
-        return
-      }
 
       if (!autoAnalyse) {
         void refreshRecordingVodProbe(savedRecording).catch(() => {})
@@ -3458,6 +3419,15 @@ async function doUploadAndAnalyse(
   }
   stopActiveAnalysisPoll()
 
+  const user = authManager.getUser()
+  const storedRecording = recordingId ? recordingsStore.getById(recordingId) : null
+  const identity = resolveUploadPlayerIdentity(game, timeline, user, {
+    riotName: storedRecording?.riotName ?? riotName,
+    riotTag: storedRecording?.riotTag ?? riotTag,
+  })
+  riotName = identity.riotName
+  riotTag = identity.riotTag
+
   const skipMatchDefer = uploadOpts?.prioritizePostGameUpload === true
   const deferOpts = { skipDefer: skipMatchDefer }
 
@@ -3537,17 +3507,28 @@ async function doUploadAndAnalyse(
     }
     if (resolved.sizeBytes > MAX_RECORDING_FILE_BYTES) {
       const sizeGB = (resolved.sizeBytes / (1024 ** 3)).toFixed(1)
-      const errorMsg = formatRecordingTooLargeMessage(resolved.sizeBytes, false)
-      sendUploadFailure(errorMsg, { targetWindow, recordingId, notify: false })
-      logActivity(`Recording still too large after compression (${sizeGB} GB)`)
+      const errorMsg = formatRecordingTooLargeMessage(resolved.sizeBytes, true)
+      log.warn(`[Upload] Still too large after compression (${sizeGB} GB) — clips only`)
+      logActivity(`Recording still too large (${sizeGB} GB) — saving highlight clips only`)
+      extractMatchClips(effectivePath, timeline, null, game)
+        .catch((err) => log.warn('[ClipExtract] Clip extraction (oversized) error:', err))
+      sendUploadFailure(errorMsg, { targetWindow, recordingId, clipsOnly: true, notify: false })
       return null
     }
   } catch (prepErr) {
+    const prepMsg = prepErr instanceof Error ? prepErr.message : 'Could not prepare recording for upload'
+    if (wasBackgroundWorkInterrupted(prepErr)) {
+      if (recordingId) {
+        recordingsStore.setPipelineDeferReason(recordingId, 'recording')
+        recordingsStore.setPipelineStatus(recordingId, 'pending')
+        mainWindow?.webContents.send('recordings:updated')
+      }
+      logActivity('Compress/upload paused for your next match — will retry when recording ends')
+      send('post-game:upload-deferred', { reason: 'recording' })
+      return null
+    }
     log.error('[Upload] Failed to prepare video path:', prepErr)
-    sendUploadFailure(
-      prepErr instanceof Error ? prepErr.message : 'Could not prepare recording for upload',
-      { targetWindow, recordingId, notify: false },
-    )
+    sendUploadFailure(prepMsg, { targetWindow, recordingId, notify: false })
     return null
   }
 
@@ -3873,11 +3854,17 @@ async function doUploadAndAnalyse(
     logActivity(`Upload failed: ${msg}`)
     tray?.setToolTip(idleTooltip(game))
     if (recordingId) {
+      if (wasBackgroundWorkInterrupted(err)) {
+        recordingsStore.setPipelineDeferReason(recordingId, 'recording')
+        recordingsStore.setPipelineStatus(recordingId, 'pending')
+        mainWindow?.webContents.send('recordings:updated')
+        logActivity('Upload paused for your next match — will retry when recording ends')
+        send('post-game:upload-deferred', { reason: 'recording' })
+        return null
+      }
       recordingsStore.setPipelineStatus(recordingId, 'pending')
       mainWindow?.webContents.send('recordings:updated')
-      if (!wasBackgroundWorkInterrupted(err)) {
-        clearDeferredUploadRetry(recordingId)
-      }
+      clearDeferredUploadRetry(recordingId)
     }
 
     // Quota exceeded — send upgrade prompt (no retry makes sense here)
