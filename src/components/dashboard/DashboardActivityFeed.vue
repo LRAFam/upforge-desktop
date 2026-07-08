@@ -4,12 +4,15 @@ import { useDashboard } from '../../composables/useDashboard'
 import { gameBrand } from '../../lib/game-branding'
 import GameBrandIcon from './GameBrandIcon.vue'
 import type { PrimaryGame } from '../../lib/games'
+import upforgeIcon from '../../assets/upforge-icon.png'
 
 const { activityLog, pendingRecordings, formatLogTime, dashboardAnalyses, openAnalysisRow } = useDashboard()
 
+type FeedScope = PrimaryGame | 'system'
+
 type FeedEntry = {
   id: string
-  game: PrimaryGame
+  scope: FeedScope
   title: string
   subtitle: string
   badge?: string
@@ -27,17 +30,44 @@ const TONE_CLASS = {
   red: 'bg-red-500/12 text-red-300 border-red-500/20',
 } as const
 
-function inferGame(msg: string): PrimaryGame {
-  if (/cs2|demo|mirage|de_|faceit|premier/i.test(msg)) return 'cs2'
-  if (/deadlock|replay|hero|oracle/i.test(msg)) return 'deadlock'
-  return 'valorant'
-}
-
 function entryTimeMs(t: number | string | undefined): number {
   if (t == null) return 0
   if (typeof t === 'number') return t
   const ms = new Date(t).getTime()
   return Number.isNaN(ms) ? 0 : ms
+}
+
+function classifyActivityScope(msg: string): FeedScope {
+  const lower = msg.toLowerCase()
+  if (/\bcs2\b|counter-strike|\bde_[a-z0-9_]+\b|faceit|demo recording|gsi/.test(lower)) return 'cs2'
+  if (/\bdeadlock\b|-condebug|replay saving/.test(lower)) return 'deadlock'
+  if (/\bvalorant\b|riot|premier queue|spikerush|vandal|pregame brief/.test(lower)) return 'valorant'
+  return 'system'
+}
+
+function activityTag(msg: string): string | undefined {
+  const lower = msg.toLowerCase()
+  if (/update|install|restart upforge|version/.test(lower)) return 'Update'
+  if (/obs|capture|recording|match detected|watching for|reopen|window capture/.test(lower)) return 'Recording'
+  if (/analysis|upload|debrief|coaching|score:/.test(lower)) return 'Coaching'
+  if (/clip|demo|highlight/.test(lower)) return 'Clips'
+  if (classifyActivityScope(msg) === 'system') return 'App'
+  return undefined
+}
+
+function activitySubtitle(msg: string): string {
+  const dash = msg.match(/^[—–-]\s*(.+)$/)
+  if (dash?.[1]) return dash[1].trim()
+  const split = msg.split(' — ')
+  if (split.length > 1) return split.slice(1).join(' — ').trim()
+  return ''
+}
+
+function inferRecordingGame(map: string, agent: string): PrimaryGame {
+  const blob = `${map} ${agent}`.toLowerCase()
+  if (/de_|mirage|inferno|nuke|dust|anubis|ancient|overpass|vertigo/.test(blob)) return 'cs2'
+  if (/deadlock|hero|oracle|lash|vindicta/.test(blob)) return 'deadlock'
+  return 'valorant'
 }
 
 const entries = computed<FeedEntry[]>(() => {
@@ -47,10 +77,10 @@ const entries = computed<FeedEntry[]>(() => {
 
   for (const r of pendingRecordings.value) {
     if (r.pipelineStatus !== 'uploading' && r.pipelineStatus !== 'analysing') continue
-    const game = inferGame(`${r.map} ${r.agent}`)
+    const game = inferRecordingGame(r.map ?? '', r.agent ?? '')
     merged.push({
       id: `p-${r.id}`,
-      game,
+      scope: game,
       title: r.pipelineStatus === 'analysing'
         ? `${gameBrand(game).wordmark} analysis running`
         : `${gameBrand(game).wordmark} upload in progress`,
@@ -65,15 +95,15 @@ const entries = computed<FeedEntry[]>(() => {
   }
 
   for (const a of dashboardAnalyses.value) {
-    const game = inferGame(`${a.game_mode ?? ''} ${a.map ?? ''} ${a.agent ?? ''}`)
+    const game = inferRecordingGame(a.map ?? '', `${a.game_mode ?? ''} ${a.agent ?? ''}`)
     merged.push({
       id: `a-${a.id}`,
-      game,
+      scope: game,
       title: `${gameBrand(game).wordmark} analysis complete`,
       subtitle: `Analyzed match on ${a.map || 'unknown map'}`,
       badge: a.overall_score != null ? `+${Math.round(a.overall_score * 2)} RR` : undefined,
       badgeTone: 'green',
-      tag: 'Performance',
+      tag: 'Coaching',
       time: a.created_at,
       sortTime: entryTimeMs(a.created_at),
       analysisId: a.id,
@@ -81,13 +111,15 @@ const entries = computed<FeedEntry[]>(() => {
   }
 
   for (const [i, e] of activityLog.value.entries()) {
+    const scope = classifyActivityScope(e.message)
+    const tag = activityTag(e.message)
     merged.push({
       id: `l-${e.time}-${i}`,
-      game: inferGame(e.message),
-      title: e.message.split('·')[0]?.trim() || e.message,
-      subtitle: e.message.includes('·') ? e.message.split('·').slice(1).join('·').trim() : 'System update',
-      tag: 'Update',
-      badgeTone: 'gray',
+      scope,
+      title: e.message.split(' — ')[0]?.trim() || e.message,
+      subtitle: activitySubtitle(e.message),
+      tag,
+      badgeTone: tag === 'Update' ? 'gold' : tag === 'Recording' ? 'blue' : 'gray',
       time: e.time,
       sortTime: entryTimeMs(e.time),
     })
@@ -99,7 +131,7 @@ const entries = computed<FeedEntry[]>(() => {
       if (!a.pinned && b.pinned) return 1
       return b.sortTime - a.sortTime
     })
-    .slice(0, 6)
+    .slice(0, 8)
     .map(({ sortTime: _sortTime, pinned: _pinned, ...entry }) => entry)
 })
 
@@ -125,7 +157,7 @@ function openEntry(e: FeedEntry) {
 <template>
   <div class="dash-panel overflow-hidden flex flex-col h-full min-h-0">
     <div class="px-4 py-2.5 border-b border-white/[0.07] flex items-center justify-between flex-shrink-0">
-      <span class="text-[11px] font-bold uppercase tracking-[0.18em] text-gray-400">Cross-game activity</span>
+      <span class="text-[11px] font-bold uppercase tracking-[0.18em] text-gray-400">Activity</span>
       <span v-if="entries.length" class="text-[10px] font-semibold text-gray-600 tabular-nums">{{ entries.length }} recent</span>
     </div>
 
@@ -141,12 +173,18 @@ function openEntry(e: FeedEntry) {
           class="w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0 border bg-black/30"
           :class="e.tag === 'Live' ? 'border-blue-500/25' : 'border-white/[0.08]'"
         >
-          <GameBrandIcon :game="e.game" :active="true" size="md" />
+          <img
+            v-if="e.scope === 'system'"
+            :src="upforgeIcon"
+            alt=""
+            class="h-[18px] w-[18px] object-contain"
+          />
+          <GameBrandIcon v-else :game="e.scope" :active="true" size="md" />
         </div>
 
         <div class="flex-1 min-w-0">
           <p class="text-[12px] font-semibold text-gray-100 leading-snug truncate">{{ e.title }}</p>
-          <p class="text-[10px] text-gray-500 mt-0.5 truncate">{{ e.subtitle }}</p>
+          <p v-if="e.subtitle" class="text-[10px] text-gray-500 mt-0.5 truncate">{{ e.subtitle }}</p>
           <div v-if="e.badge || e.tag" class="flex flex-wrap items-center gap-1 mt-1">
             <span
               v-if="e.badge"
@@ -158,7 +196,9 @@ function openEntry(e: FeedEntry) {
               class="text-[9px] font-semibold px-2 py-0.5 rounded-full border"
               :class="e.tag === 'Live'
                 ? 'bg-blue-500/10 text-blue-300 border-blue-500/20'
-                : 'bg-white/[0.04] text-gray-500 border-white/[0.06]'"
+                : e.tag === 'Update'
+                  ? 'bg-amber-500/10 text-amber-300 border-amber-500/20'
+                  : 'bg-white/[0.04] text-gray-500 border-white/[0.06]'"
             >{{ e.tag }}</span>
           </div>
         </div>
@@ -168,7 +208,7 @@ function openEntry(e: FeedEntry) {
     </ul>
 
     <p v-else class="flex-1 flex items-center justify-center px-4 text-[12px] text-gray-600">
-      Activity will show here after matches and uploads.
+      Activity will show here after matches, uploads, and app events.
     </p>
   </div>
 </template>

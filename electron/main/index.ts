@@ -484,6 +484,8 @@ let matchHandled = false
 let deadlockSessionStartAt: number | null = null
 /** Bumped on each game-started so superseded lobby-wait loops exit cleanly. */
 let matchFlowGeneration = 0
+/** Prevents parallel CS2/Deadlock re-watch loops after a process restart. */
+let rearmWatchInFlight: string | null = null
 /** Serializes handleMatchEnd — prevents double upload/post-game from concurrent end signals. */
 let matchFinalizeInFlight: Promise<boolean> | null = null
 // Overlay polling timer — cleared when match ends or game stops
@@ -1826,24 +1828,34 @@ function setupGameDetection(): void {
     await emitNextMatchWatch()
   }
 
-  /** Re-arm lobby watch when a title stays open between matches. */
+  /** Re-arm lobby watch when a title stays open between matches (or reopens after restart). */
   async function rearmGameDetection(game: string, waitForMatchEnd = false): Promise<void> {
     if (game === 'valorant') {
       return rearmValorantDetection(game, waitForMatchEnd)
     }
     if (game !== 'cs2' && game !== 'deadlock') return
+    if (rearmWatchInFlight === game) return
+    rearmWatchInFlight = game
 
     if (game === 'cs2') resetSteamGsiSession()
     if (game === 'deadlock') resetDeadlockLogSession()
-    const emitNextMatchWatch = async () => {
-      await new Promise((r) => setTimeout(r, 5000))
-      if (await gameDetector.isGameProcessRunning(game)) {
-        console.log(`[GameDetector] ${game} still running — watching for next match`)
-        logActivity('Watching for next match...')
+    gameDetector.resetActiveGame(game)
+
+    try {
+      const REWATCH_MS = 15 * 60 * 1000
+      const deadline = Date.now() + REWATCH_MS
+      while (Date.now() < deadline) {
+        await new Promise((r) => setTimeout(r, 3000))
+        if (!await gameDetector.isGameProcessRunning(game)) continue
+        console.log(`[GameDetector] ${game} running — watching for next match`)
+        logActivity(`${gameLabel(game)} detected — waiting for a live match to start recording`)
+        gameDetector.resetActiveGame(game)
         gameDetector.emit('game-started', game)
+        return
       }
+    } finally {
+      if (rearmWatchInFlight === game) rearmWatchInFlight = null
     }
-    await emitNextMatchWatch()
   }
 
   let handleMatchEndRunning = false
@@ -2918,9 +2930,11 @@ function setupGameDetection(): void {
     }
 
     if ((game === 'cs2' || game === 'deadlock') && cancelled) {
-      logActivity('Game quit before match started — nothing recorded')
-      console.log('[GameDetector] Game quit before match — no recording')
+      logActivity(`${gameLabel(game)} closed before a match — watching for the game to reopen`)
+      console.log('[GameDetector] Game closed during match wait — re-arming detection')
       tray?.setToolTip(idleTooltip(game))
+      gameDetector.resetActiveGame(game)
+      await rearmGameDetection(game)
       return
     }
 
@@ -3170,7 +3184,12 @@ function setupGameDetection(): void {
       mainWindow?.webContents.send('recording:waiting-for-match', { waiting: false })
       tray?.setToolTip(idleTooltip(game))
       console.log('[GameDetector] Game quit before match — no recording to save')
-      logActivity('Game quit before match started — nothing recorded')
+      if (game === 'cs2' || game === 'deadlock') {
+        gameDetector.resetActiveGame(game)
+        if (rearmWatchInFlight !== game) void rearmGameDetection(game)
+      } else {
+        logActivity('Game quit before match started — nothing recorded')
+      }
       // Restore main window now that game is gone
       if (mainWindow && !mainWindow.isDestroyed() && mainWindow.isMinimized()) mainWindow.restore()
       destroyOverlay()

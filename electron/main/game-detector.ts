@@ -56,6 +56,17 @@ export class GameDetector extends EventEmitter {
   }
 
   /**
+   * Clear tracked active game without emitting game-stopped.
+   * Use when the process exited but poll streak has not caught up yet (e.g. CS2 restart).
+   */
+  resetActiveGame(game: string): void {
+    if (this._activeGame === game) {
+      this._activeGame = null
+      this._missedPollStreak = 0
+    }
+  }
+
+  /**
    * Sync with settings.primaryGame — clears stale active state when the user
    * picks a different game in Settings. All supported games are always polled.
    */
