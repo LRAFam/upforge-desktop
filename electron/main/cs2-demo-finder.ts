@@ -56,18 +56,58 @@ async function getSteamPath(): Promise<string | null> {
   return null
 }
 
+const CS2_GAME_CSGO_REL = path.join(
+  'steamapps',
+  'common',
+  'Counter-Strike Global Offensive',
+  'game',
+  'csgo',
+)
+const CS2_LEGACY_CSGO_REL = path.join(
+  'steamapps',
+  'common',
+  'Counter-Strike Global Offensive',
+  'csgo',
+)
+
+function cs2CsgoDirsForSteamRoot(steamRoot: string): string[] {
+  return [
+    path.join(steamRoot, CS2_GAME_CSGO_REL),
+    path.join(steamRoot, CS2_LEGACY_CSGO_REL),
+  ]
+}
+
 /** Build the list of candidate CS2 demo directories across all Steam libraries. */
 async function getCandidateDemoDirs(steamPath: string): Promise<string[]> {
-  const cs2RelPath = path.join('steamapps', 'common', 'Counter-Strike Global Offensive', 'game', 'csgo')
-  const dirs: string[] = [path.join(steamPath, cs2RelPath)]
+  const dirs = cs2CsgoDirsForSteamRoot(steamPath)
 
   const vdfPath = path.join(steamPath, 'steamapps', 'libraryfolders.vdf')
   const extraLibs = parseLibraryFolders(vdfPath)
   for (const lib of extraLibs) {
-    dirs.push(path.join(lib, cs2RelPath))
+    dirs.push(...cs2CsgoDirsForSteamRoot(lib))
   }
 
   return dirs
+}
+
+/**
+ * All CS2 csgo roots that exist on disk (game/csgo and legacy csgo).
+ * GSI cfg must be installed in each cfg/ folder — some installs only load one path.
+ */
+export async function getCandidateCS2CsgoDirs(): Promise<string[]> {
+  if (!IS_WIN) return []
+
+  const steamPath = await getSteamPath()
+  if (!steamPath) return []
+
+  const seen = new Set<string>()
+  const existing: string[] = []
+  for (const dir of await getCandidateDemoDirs(steamPath)) {
+    if (seen.has(dir) || !fs.existsSync(dir)) continue
+    seen.add(dir)
+    existing.push(dir)
+  }
+  return existing
 }
 
 /**

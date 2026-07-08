@@ -6,7 +6,7 @@ import http from 'http'
 import fs from 'fs'
 import path from 'path'
 import log from 'electron-log'
-import { detectCS2DemoDir } from './cs2-demo-finder'
+import { getCandidateCS2CsgoDirs } from './cs2-demo-finder'
 
 export const STEAM_GSI_PORT = 3001
 const GSI_CFG_NAME = 'gamestate_integration_upforge.cfg'
@@ -21,6 +21,8 @@ let server: http.Server | null = null
 let latestPayload: SteamGsiPayload | null = null
 let latestAt = 0
 let sawLiveMatch = false
+let serverListening = false
+let serverPortBlocked = false
 
 export function startSteamGsiServer(): void {
   if (server) return
@@ -48,11 +50,27 @@ export function startSteamGsiServer(): void {
   })
 
   server.listen(STEAM_GSI_PORT, '127.0.0.1', () => {
+    serverListening = true
+    serverPortBlocked = false
     log.info('[SteamGSI] Listening on 127.0.0.1:' + STEAM_GSI_PORT)
   })
-  server.on('error', (err) => {
-    log.warn('[SteamGSI] Server error:', err)
+  server.on('error', (err: NodeJS.ErrnoException) => {
+    serverListening = false
+    if (err.code === 'EADDRINUSE') {
+      serverPortBlocked = true
+      log.warn('[SteamGSI] Port', STEAM_GSI_PORT, 'already in use — CS2 match detection will not work')
+    } else {
+      log.warn('[SteamGSI] Server error:', err)
+    }
   })
+}
+
+export function isGsiServerReady(): boolean {
+  return serverListening
+}
+
+export function isGsiPortBlocked(): boolean {
+  return serverPortBlocked
 }
 
 export function resetSteamGsiSession(): void {
@@ -64,6 +82,16 @@ export function isGsiReceiving(maxAgeMs = 10_000): boolean {
   return Date.now() - latestAt < maxAgeMs
 }
 
+const LIVE_MAP_PHASES = new Set([
+  'live',
+  'warmup',
+  'intermission',
+  'freezetime',
+  'paused',
+])
+
+const LIVE_ROUND_PHASES = new Set(['live', 'freezetime'])
+
 export function isGsiMatchLive(payload: SteamGsiPayload | null = latestPayload): boolean {
   if (!payload?.map?.name) return false
   const mapName = payload.map.name.toLowerCase()
@@ -71,14 +99,11 @@ export function isGsiMatchLive(payload: SteamGsiPayload | null = latestPayload):
 
   const phase = (payload.map.phase ?? '').toLowerCase()
   if (phase === 'gameover') return false
+  if (LIVE_MAP_PHASES.has(phase)) return true
 
-  return (
-    phase === 'live'
-    || phase === 'warmup'
-    || phase === 'intermission'
-    || phase === 'freezetime'
-    || phase === 'paused'
-  )
+  // Some CS2 builds omit map.phase briefly; round.phase is a reliable fallback.
+  const roundPhase = (payload.round?.phase ?? '').toLowerCase()
+  return LIVE_ROUND_PHASES.has(roundPhase)
 }
 
 export function getLatestGsiMap(): string | null {
@@ -115,55 +140,61 @@ function gsiCfgContents(): string {
     "heartbeat" "30.0"
     "data"
     {
-        "map"               "1"
-        "map_phase"         "1"
-        "player_activity"   "1"
-        "round"             "1"
+        "provider"      "1"
+        "map"           "1"
+        "round"         "1"
+        "player_id"     "1"
     }
 }
 `
 }
 
-async function resolveGsiCfgPath(game: 'cs2' | 'deadlock'): Promise<string | null> {
+async function resolveGsiCfgPaths(game: 'cs2' | 'deadlock'): Promise<string[]> {
   if (game === 'cs2') {
-    const csgoDir = await detectCS2DemoDir()
-    if (!csgoDir) return null
-    return path.join(csgoDir, 'cfg', GSI_CFG_NAME)
+    const csgoDirs = await getCandidateCS2CsgoDirs()
+    return csgoDirs.map((dir) => path.join(dir, 'cfg', GSI_CFG_NAME))
   }
   const local = process.env.LOCALAPPDATA
-  if (!local) return null
-  return path.join(local, 'Deadlock', 'game', 'deadlock', 'cfg', GSI_CFG_NAME)
+  if (!local) return []
+  return [path.join(local, 'Deadlock', 'game', 'deadlock', 'cfg', GSI_CFG_NAME)]
+}
+
+function writeGsiCfg(cfgPath: string, contents: string): boolean {
+  const cfgDir = path.dirname(cfgPath)
+  if (!fs.existsSync(cfgDir)) fs.mkdirSync(cfgDir, { recursive: true })
+
+  if (fs.existsSync(cfgPath)) {
+    const existing = fs.readFileSync(cfgPath, 'utf-8')
+    if (existing.trim() === contents.trim()) return false
+  }
+
+  fs.writeFileSync(cfgPath, contents, 'utf-8')
+  return true
 }
 
 /** Install GSI cfg so the game POSTs state to UpForge. Requires game restart to load. */
 export async function installSteamGsiConfig(
   game: 'cs2' | 'deadlock',
-): Promise<{ ok: boolean; cfgPath?: string; needsRestart?: boolean }> {
-  const cfgPath = await resolveGsiCfgPath(game)
-  if (!cfgPath) {
+): Promise<{ ok: boolean; cfgPaths?: string[]; needsRestart?: boolean }> {
+  const cfgPaths = await resolveGsiCfgPaths(game)
+  if (!cfgPaths.length) {
     log.warn('[SteamGSI] Could not resolve cfg path for', game)
     return { ok: false }
   }
 
   try {
     const contents = gsiCfgContents()
-    const cfgDir = path.dirname(cfgPath)
-    if (!fs.existsSync(cfgDir)) fs.mkdirSync(cfgDir, { recursive: true })
-
     let needsRestart = false
-    if (fs.existsSync(cfgPath)) {
-      const existing = fs.readFileSync(cfgPath, 'utf-8')
-      if (existing.trim() !== contents.trim()) {
-        fs.writeFileSync(cfgPath, contents, 'utf-8')
-        needsRestart = true
-      }
-    } else {
-      fs.writeFileSync(cfgPath, contents, 'utf-8')
-      needsRestart = true
+    const written: string[] = []
+
+    for (const cfgPath of cfgPaths) {
+      const changed = writeGsiCfg(cfgPath, contents)
+      if (changed) needsRestart = true
+      written.push(cfgPath)
+      log.info('[SteamGSI] GSI config ready at', cfgPath)
     }
 
-    log.info('[SteamGSI] GSI config ready at', cfgPath)
-    return { ok: true, cfgPath, needsRestart }
+    return { ok: true, cfgPaths: written, needsRestart }
   } catch (err) {
     log.warn('[SteamGSI] Failed to write cfg:', err)
     return { ok: false }

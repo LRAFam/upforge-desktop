@@ -174,10 +174,13 @@ import {
   startSteamGsiServer,
   resetSteamGsiSession,
   installSteamGsiConfig,
+  isGsiServerReady,
+  isGsiPortBlocked,
   isGsiMatchLive,
   isGsiMatchEnded,
   isGsiReceiving,
   getLatestGsiMap,
+  STEAM_GSI_PORT,
 } from './steam-gsi-server'
 import {
   startDeadlockLogWatcher,
@@ -2536,15 +2539,25 @@ function setupGameDetection(): void {
     let authOk = false
     if (game === 'cs2') {
       resetSteamGsiSession()
+      if (isGsiPortBlocked()) {
+        logActivity(`CS2 match detection blocked — port ${STEAM_GSI_PORT} is in use (close other apps using it, e.g. Discord bot dev server)`)
+        notifyRecordingUx(
+          `UpForge cannot listen for CS2 match events — port ${STEAM_GSI_PORT} is already in use. Close the other app and restart UpForge.`,
+          'UpForge — CS2 detection blocked',
+        )
+      }
       const gsiInstall = await installSteamGsiConfig('cs2')
       if (gsiInstall.needsRestart) {
         logActivity('Restart CS2 once so UpForge can detect when a match starts')
+      } else if (!gsiInstall.ok) {
+        logActivity('Could not install CS2 match detection — check Steam/CS2 is installed')
       }
       logActivity('CS2 running — waiting for match')
 
       const MATCH_TIMEOUT_MS = 25 * 60 * 1000
       const loopStart = Date.now()
       let gsiHintShown = false
+      let gsiServerHintShown = false
       const deadline = Date.now() + MATCH_TIMEOUT_MS
       while (Date.now() < deadline && !cancelled) {
         if (abortIfStale(isStale, game)) return
@@ -2552,9 +2565,18 @@ function setupGameDetection(): void {
         if (cancelled) break
         if (!await gameDetector.isGameProcessRunning(game)) { cancelled = true; break }
 
+        if (
+          !gsiServerHintShown
+          && Date.now() - loopStart > 5_000
+          && !isGsiServerReady()
+        ) {
+          gsiServerHintShown = true
+          logActivity(`CS2 match detection server not running — port ${STEAM_GSI_PORT} may be blocked`)
+        }
+
         if (!gsiHintShown && Date.now() - loopStart > 45_000 && !isGsiReceiving()) {
           gsiHintShown = true
-          logActivity('CS2 match detection inactive — restart the game if recording never starts on its own')
+          logActivity('CS2 match detection inactive — restart CS2 after UpForge installs its config file')
         }
 
         if (isGsiMatchLive()) {
