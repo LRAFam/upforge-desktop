@@ -61,6 +61,8 @@ export interface AppSettings {
   cachedUseDdagrab: boolean | null
   /** Override path for the CS2 demo directory (undefined = auto-detect via Steam registry) */
   cs2DemoDir?: string
+  /** Override Steam/in-game name for CS2 demo kill matching (undefined = auto-detect) */
+  cs2SteamName?: string
   /** Developer / admin mode — unlocked by tapping the version number 5 times in Settings */
   devModeEnabled: boolean
   /** OBS WebSocket recording — always on; kept for settings migration */

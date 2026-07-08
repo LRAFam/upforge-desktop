@@ -97,7 +97,18 @@ const {
             <div v-else-if="settings.primaryGame === 'cs2'" class="rounded-2xl border border-orange-500/20 bg-orange-500/[0.05] p-4 space-y-3">
               <div>
                 <p class="text-sm font-semibold text-white">CS2 demo recording</p>
-                <p class="mt-1 text-xs text-gray-500 leading-relaxed">Add <code class="font-mono text-orange-300/90">cl_demo_auto_recording 1</code> to your CS2 autoexec. UpForge uploads the demo when a match ends.</p>
+                <p class="mt-1 text-xs text-gray-500 leading-relaxed">UpForge auto-installs demo recording when CS2 launches. Restart CS2 once after first setup. Highlight clips (3K/ace/clutch) are cut from your VOD using the demo.</p>
+              </div>
+              <div>
+                <label class="mb-1 block text-xs text-gray-400">Steam / in-game name (for clip matching)</label>
+                <input
+                  v-model="settings.cs2SteamName"
+                  type="text"
+                  placeholder="Auto-detect from Steam"
+                  class="w-full rounded-xl border border-white/[0.10] bg-black/30 px-3 py-2 text-xs text-gray-200 placeholder:text-gray-600 focus:border-orange-500/40 focus:outline-none"
+                  @change="debouncedSave()"
+                />
+                <p class="mt-1 text-[11px] text-gray-600">Only needed if clips miss your kills — must match your CS2 name.</p>
               </div>
               <div>
                 <label class="mb-1 block text-xs text-gray-400">Demo folder</label>

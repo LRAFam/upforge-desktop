@@ -148,6 +148,7 @@ export interface AppSettings {
   obsPreserveActiveScene: boolean
   /** Override path for CS2 demo directory (undefined = auto-detect via Steam) */
   cs2DemoDir?: string
+  cs2SteamName?: string
   /** Mouse & trainer sensitivity settings */
   trainerMouse: {
     dpi: number

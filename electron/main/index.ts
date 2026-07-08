@@ -196,7 +196,8 @@ import {
   getDeadlockDetectionStatus,
   buildDeadlockTimelineFromLogSession,
 } from './deadlock-log-watcher'
-import { ensureDeadlockSteamLaunchOptions } from './deadlock-steam-setup'
+import { ensureCs2DemoRecordingConfig } from './cs2-steam-setup'
+import { resolveCs2LocalPlayerName } from './cs2-player-identity'
 
 /** Human-readable label for a game identifier. */
 function gameLabel(game?: string | null): string {
@@ -1212,6 +1213,37 @@ async function extractMatchClips(
   return clipPipeline.extractMatchClips(videoPath, timeline, analysisJobId, normalizePrimaryGame(game))
 }
 
+/** Re-poll CS2 demo after match end when the first parse had no kill data for clips. */
+async function retryCs2DemoClips(opts: {
+  readyPath: string
+  savedRecordingId: string
+  timeline: MatchData | null
+  matchSessionStart: number
+  analysisJobId: string | null
+}): Promise<void> {
+  if (!settingsManager) return
+  const replayCtx = {
+    game: 'cs2' as const,
+    matchSessionStart: opts.matchSessionStart,
+    matchStartTime: opts.timeline?.matchStartTime ?? opts.matchSessionStart,
+    recordingStartTime: opts.timeline?.gameplayStartTime ?? opts.matchSessionStart,
+    gsiMap: opts.timeline?.map ?? getLatestGsiMap(),
+    customReplayDir: settingsManager.get().cs2DemoDir,
+    localPlayerName: await resolveCs2LocalPlayerName(settingsManager, authManager),
+  }
+  const parsed = await buildTimelineFromReplay(replayCtx)
+  if (!parsed.timeline?.playerKills?.length) {
+    log.warn('[LateClipExtract] CS2 demo still has no kills for clip extraction')
+    logActivity('CS2 highlight clips skipped — demo missing or player not matched (check Settings → Recording → CS2 name)')
+    return
+  }
+  recordingsStore.updateTimeline(opts.savedRecordingId, parsed.timeline)
+  mainWindow?.webContents.send('recordings:updated')
+  log.info(`[LateClipExtract] CS2 demo retry — ${parsed.timeline.playerKills.length} kills, extracting clips`)
+  logActivity(`CS2 demo loaded — extracting ${parsed.timeline.playerKills.length} kill(s) for highlight clips`)
+  await extractKillClipsOnly(opts.readyPath, parsed.timeline, opts.analysisJobId, 'cs2')
+}
+
 function countSessionClips(
   timeline: MatchData | null,
   agent: string | null,
@@ -1613,6 +1645,9 @@ function setupGameDetection(): void {
     void ensureDeadlockSteamLaunchOptions()
     startDeadlockLogWatcher()
   }
+  if (normalizePrimaryGame(settingsManager.get().primaryGame) === 'cs2') {
+    void ensureCs2DemoRecordingConfig()
+  }
 
   onRecordingLost = (error: string) => {
     const game = gameDetector.currentGame() ?? 'valorant'
@@ -1843,6 +1878,9 @@ function setupGameDetection(): void {
     ])
 
     if ((game === 'cs2' || game === 'deadlock') && !timeline) {
+      const cs2PlayerName = game === 'cs2'
+        ? await resolveCs2LocalPlayerName(settingsManager, authManager)
+        : null
       const replayCtx = {
         game: game as 'cs2' | 'deadlock',
         matchSessionStart,
@@ -1850,7 +1888,7 @@ function setupGameDetection(): void {
         recordingStartTime: currentRecordingStartTime ?? matchSessionStart,
         gsiMap: currentGsiMapName ?? (game === 'deadlock' ? getDeadlockMap() : getLatestGsiMap()),
         customReplayDir: game === 'cs2' ? config?.cs2DemoDir : undefined,
-        localPlayerName: null as string | null,
+        localPlayerName: cs2PlayerName,
       }
       const parsed = await buildTimelineFromReplay(replayCtx)
       if (parsed.timeline) timeline = parsed.timeline
@@ -1865,6 +1903,11 @@ function setupGameDetection(): void {
       }
       if (timeline) {
         log.info(`[HandleMatchEnd] ${game} demo timeline — kills=${timeline.playerKills.length}`)
+        if (game === 'cs2' && timeline.playerKills.length === 0) {
+          logActivity('CS2 demo parsed but no kills matched — set your Steam name in Settings → Recording if clips are missing')
+        }
+      } else if (game === 'cs2') {
+        logActivity('No CS2 demo found — highlight clips need cl_demo_auto_recording (UpForge installs this on launch)')
       }
     }
 
@@ -2127,7 +2170,7 @@ function setupGameDetection(): void {
 
       const matchId = timeline?.matchId
       const richMatchData = hasRichMatchData(timeline)
-      const lateRetryScheduled = !richMatchData && !!matchId
+      const lateRetryScheduled = !richMatchData && (!!matchId || game === 'cs2')
 
       const doAutoDelete = () => {
         if (settingsManager?.get().autoDelete) {
@@ -2217,6 +2260,16 @@ function setupGameDetection(): void {
           log.info('[HandleMatchEnd] No kills (no-analyse) — scheduling late retry in 90s')
           setTimeout(async () => {
             try {
+              if (game === 'cs2') {
+                await retryCs2DemoClips({
+                  readyPath,
+                  savedRecordingId: savedRecording.id,
+                  timeline,
+                  matchSessionStart,
+                  analysisJobId: null,
+                })
+                return
+              }
               log.info('[LateClipExtract] Fetching match details for', matchId)
               const details = await riotLocalApi.fetchMatchDetailsLate(matchId)
               if (!details) { log.warn('[LateClipExtract] Match details still unavailable'); return }
@@ -2284,6 +2337,16 @@ function setupGameDetection(): void {
           log.info('[HandleMatchEnd] No kills (auto-analyse skipped) — scheduling late retry in 90s')
           setTimeout(async () => {
             try {
+              if (game === 'cs2') {
+                await retryCs2DemoClips({
+                  readyPath,
+                  savedRecordingId: savedRecording.id,
+                  timeline,
+                  matchSessionStart,
+                  analysisJobId: null,
+                })
+                return
+              }
               log.info('[LateClipExtract] Fetching match details for', matchId)
               const details = await riotLocalApi.fetchMatchDetailsLate(matchId!)
               if (!details) { log.warn('[LateClipExtract] Match details still unavailable'); return }
@@ -2326,6 +2389,17 @@ function setupGameDetection(): void {
         log.info('[HandleMatchEnd] No kills in timeline — scheduling late match details retry in 90s (auto-delete deferred)')
         setTimeout(async () => {
           try {
+            if (game === 'cs2') {
+              await retryCs2DemoClips({
+                readyPath,
+                savedRecordingId: savedRecording.id,
+                timeline,
+                matchSessionStart,
+                analysisJobId: jobId,
+              })
+              doAutoDelete()
+              return
+            }
             log.info('[LateClipExtract] Fetching match details for', matchId)
             const details = await riotLocalApi.fetchMatchDetailsLate(matchId)
             if (!details) {
@@ -2551,6 +2625,12 @@ function setupGameDetection(): void {
         logActivity('Restart CS2 once so UpForge can detect when a match starts')
       } else if (!gsiInstall.ok) {
         logActivity('Could not install CS2 match detection — check Steam/CS2 is installed')
+      }
+      const demoSetup = await ensureCs2DemoRecordingConfig()
+      if (demoSetup.needsRestart) {
+        logActivity('Restart CS2 once — UpForge enabled automatic demo recording for highlight clips')
+      } else if (!demoSetup.ok && demoSetup.error) {
+        log.warn('[CS2Setup] Demo recording cfg failed:', demoSetup.error)
       }
       logActivity('CS2 running — waiting for match')
 

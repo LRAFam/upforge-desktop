@@ -32,7 +32,7 @@ export async function findLatestReplay(
       return { found: false, demoPath: null, demoDir: null, error: 'CS2 demo directory not found' }
     }
     log.info(`[Replay] CS2 — polling ${dir}`)
-    return pollForLatestDemo(dir, matchStartTime)
+    return pollForLatestDemo(dir, matchStartTime, 90_000)
   }
 
   const dirs = await resolveDeadlockReplayDirs(customDir)

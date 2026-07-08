@@ -37,6 +37,9 @@ export interface KillEvent extends GameEvent {
   victimPuuid?: string
   /** Which round this kill occurred in (0-indexed) */
   round?: number
+  /** Source-engine demo user ids (CS2 / Deadlock) */
+  attackerUserId?: number
+  victimUserId?: number
   /** Minimap position + callout (from Riot victimLocation + zone pack). */
   spatial?: import('./spatial/types').KillSpatial
 }

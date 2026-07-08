@@ -5,6 +5,7 @@ import type { KillEvent, MatchData, RoundSummary } from './riot-types'
 import { emptyMatchData, gameTimeToVideoOffsetMs } from './recording-sync'
 import { cs2WorldToNorm, getCs2MapTransform } from './spatial/cs2-transforms'
 import { applyDemoSpatialEnrichment, resolveCs2Callout } from './spatial/demo-enrich'
+import { inferLocalPlayerFromDemoKills } from './demo-local-player'
 
 export interface DemoTimelineOptions {
   game: 'cs2' | 'deadlock'
@@ -147,6 +148,8 @@ export async function buildTimelineFromDemo(opts: DemoTimelineOptions): Promise<
         videoOffsetMs,
         weapon: e.weapon,
         round,
+        attackerUserId: attackerUserId > 0 ? attackerUserId : undefined,
+        victimUserId,
       }
 
       if (opts.game === 'cs2') {
@@ -178,6 +181,30 @@ export async function buildTimelineFromDemo(opts: DemoTimelineOptions): Promise<
       if (parseFailed) {
         resolve(null)
         return
+      }
+
+      if (localUserId == null && roundKills.length > 0) {
+        const inferred = inferLocalPlayerFromDemoKills(roundKills, resolveName)
+        if (inferred) {
+          localUserId = inferred.userId
+          localTeam = inferred.team
+          localName = inferred.name
+          playerKills.length = 0
+          playerDeaths.length = 0
+          for (const ev of killEvents) {
+            const isKill = ev.attackerUserId === localUserId
+            const isDeath = ev.victimUserId === localUserId
+            if (isKill) {
+              ev.killerName = 'You'
+              playerKills.push(ev)
+            }
+            if (isDeath) {
+              ev.victimName = 'You'
+              playerDeaths.push(ev)
+            }
+          }
+          log.info('[DemoTimeline] Inferred local player from demo kills:', localName)
+        }
       }
 
       const header = demo.header
