@@ -209,6 +209,8 @@ export async function requestPostGameDebrief(opts: PostGameDebriefOptions): Prom
       resolve()
     })
     req.setTimeout(120_000, () => {
+      log.warn('[Debrief] Request timed out after 120s')
+      sendToWindow('post-game:debrief', null)
       req.destroy(new Error('Debrief request timed out after 120s'))
     })
     req.write(body)

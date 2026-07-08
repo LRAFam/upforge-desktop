@@ -679,6 +679,10 @@ declare global {
           pendingAnalysisState: string | null
           matchDataStatus: string | null
           killsInTimeline: number
+          debriefLoading: boolean
+          debriefText: string | null
+          debriefFailed: boolean
+          debriefDiscordLinked: boolean
           updatedAt: number
         } | null>
         retryDemoScan: () => Promise<{ ok: boolean; error?: string }>

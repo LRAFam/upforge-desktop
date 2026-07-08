@@ -77,9 +77,13 @@ export function resetSteamGsiSession(): void {
   sawLiveMatch = false
 }
 
-export function isGsiReceiving(maxAgeMs = 10_000): boolean {
+export function isGsiReceiving(maxAgeMs = 35_000): boolean {
   if (!latestAt) return false
   return Date.now() - latestAt < maxAgeMs
+}
+
+export function hasEverReceivedGsi(): boolean {
+  return latestAt > 0
 }
 
 const LIVE_MAP_PHASES = new Set([

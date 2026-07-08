@@ -6,7 +6,7 @@
     <!-- Subtle branded background texture -->
     <img src="./assets/upforge-bg.webp" alt="" class="pointer-events-none absolute inset-0 z-0 h-full w-full object-cover opacity-[0.045] select-none" />
     <Transition name="busy-bar">
-      <div v-if="busyActive" class="pointer-events-none absolute inset-x-0 top-0 z-50 h-[2px] bg-white/[0.04]">
+      <div v-if="busyActive && route.path !== '/splash'" class="pointer-events-none absolute inset-x-0 top-0 z-50 h-[2px] bg-white/[0.04]">
         <div
           class="h-full rounded-full bg-[length:200%_100%] animate-[busy-shimmer_1.2s_linear_infinite] transition-all duration-300"
           :class="`shadow-[0_0_14px_rgba(${theme.rgb},0.45)]`"
@@ -72,7 +72,7 @@
     <!-- Update banner (download progress + ready to install) -->
     <Transition name="update-banner">
       <div
-        v-if="appUpdatePhase === 'available' || appUpdatePhase === 'downloading' || appUpdatePhase === 'ready'"
+        v-if="route.path !== '/splash' && (appUpdatePhase === 'available' || appUpdatePhase === 'downloading' || appUpdatePhase === 'ready')"
         :class="[
           'flex items-center justify-between px-3 py-1.5 flex-shrink-0 text-xs',
           appUpdatePhase === 'ready'

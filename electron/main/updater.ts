@@ -1,6 +1,7 @@
 import { autoUpdater } from 'electron-updater'
 import { BrowserWindow, app } from 'electron'
 import log from 'electron-log'
+import { showAppNotification } from './app-notifications'
 
 autoUpdater.logger = log
 autoUpdater.autoDownload = false
@@ -41,23 +42,42 @@ export function getUpdateState(): UpdateState {
 export function markStartupComplete(): void {
   startupComplete = true
   startPeriodicUpdateChecks()
+  // Catch updates that finished downloading while splash was still open.
+  if (state.phase === 'ready' && state.version) {
+    notifyUpdateReady(state.version)
+  } else if (state.phase !== 'downloading' && state.phase !== 'checking') {
+    checkForUpdatesIfIdle()
+  }
 }
 
-const PERIODIC_UPDATE_INTERVAL_MS = 6 * 60 * 60 * 1000 // 6 hours
+const PERIODIC_UPDATE_INTERVAL_MS = 2 * 60 * 60 * 1000 // 2 hours
 let periodicCheckTimer: ReturnType<typeof setInterval> | null = null
+
+function notifyUpdateReady(version: string): void {
+  showAppNotification({
+    title: 'UpForge update ready',
+    body: `v${version} downloaded — click Restart now in UpForge to install.`,
+    silent: false,
+  })
+}
+
+export function checkForUpdatesIfIdle(): void {
+  if (!app.isPackaged) return
+  if (state.phase === 'downloading' || state.phase === 'checking') return
+  log.info('[Updater] Background update check')
+  void autoUpdater.checkForUpdates().catch((err: unknown) => {
+    const msg = err instanceof Error ? err.message : String(err)
+    if (!isTransientUpdateError(msg)) {
+      log.warn('[Updater] Background check failed:', msg)
+    }
+  })
+}
 
 export function startPeriodicUpdateChecks(): void {
   if (!app.isPackaged || periodicCheckTimer) return
 
   periodicCheckTimer = setInterval(() => {
-    if (state.phase === 'downloading' || state.phase === 'checking') return
-    log.info('[Updater] Periodic update check')
-    void autoUpdater.checkForUpdates().catch((err: unknown) => {
-      const msg = err instanceof Error ? err.message : String(err)
-      if (!isTransientUpdateError(msg)) {
-        log.warn('[Updater] Periodic check failed:', msg)
-      }
-    })
+    checkForUpdatesIfIdle()
   }, PERIODIC_UPDATE_INTERVAL_MS)
 }
 
@@ -149,6 +169,8 @@ export function setupAutoUpdater(
         })
         autoUpdater.quitAndInstall(true, true)
       }, 1500)
+    } else {
+      notifyUpdateReady(info.version)
     }
   })
 
@@ -174,7 +196,7 @@ export function setupAutoUpdater(
 
   const MAX_ATTEMPTS = 8
   const RETRY_BASE_MS = 10_000
-  const INITIAL_DELAY_MS = 8_000
+  const INITIAL_DELAY_MS = 2_000
 
   void (async () => {
     await sleep(INITIAL_DELAY_MS)

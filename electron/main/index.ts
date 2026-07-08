@@ -14,7 +14,7 @@ import {
   startCoachNotificationPoller,
   stopCoachNotificationPoller,
 } from './coach-notification-poller'
-import { setupAutoUpdater, markStartupComplete } from './updater'
+import { setupAutoUpdater, markStartupComplete, checkForUpdatesIfIdle } from './updater'
 import { pingDesktopOnboarding, resetDesktopOnboardingPing } from './onboarding-ping'
 import { GameDetector } from './game-detector'
 import { Recorder } from './recorder'
@@ -178,7 +178,7 @@ import {
   isGsiPortBlocked,
   isGsiMatchLive,
   isGsiMatchEnded,
-  isGsiReceiving,
+  hasEverReceivedGsi,
   getLatestGsiMap,
   STEAM_GSI_PORT,
 } from './steam-gsi-server'
@@ -791,7 +791,7 @@ async function ensureObsCaptureForGame(game: string): Promise<void> {
     intervalMs: 2000,
   })
 
-  if (result.ok && (result.liveWindow || !processRunning)) {
+  if (result.ok) {
     if (processRunning) {
       logActivity(`OBS capture ready for ${gameLabel(game)}`)
     } else if (needsLiveWindow) {
@@ -803,9 +803,9 @@ async function ensureObsCaptureForGame(game: string): Promise<void> {
   }
 
   if (needsLiveWindow && processRunning) {
-    logActivity(`${gameLabel(game)} window not found — use borderless windowed mode for OBS`)
+    logActivity(`${gameLabel(game)} detected — OBS window capture setup failed. Borderless windowed mode usually fixes this.`)
     mainWindow?.webContents.send('app:warning', {
-      message: `${gameLabel(game)} uses OBS Window Capture. Run the game in borderless windowed mode, then reconnect OBS in Settings → Recording if capture stays black.`,
+      message: `${gameLabel(game)} is running but OBS could not lock onto the game window. Use borderless windowed mode, then reconnect OBS in Settings → Recording if capture stays black.`,
       actionLabel: 'Recording settings',
       actionRoute: '/settings?tab=recording',
     })
@@ -2217,6 +2217,7 @@ function setupGameDetection(): void {
 
       void enrichPromise.then(() => {
         if (!user?.riot_name || !timeline || !shouldRequestDebrief(timeline, gameMode)) return
+        sendPostGameEvent(thisPostGameWindow, 'post-game:debrief-loading')
         void requestPostGameDebrief({
           riotName: user.riot_name,
           riotTag: user.riot_tag ?? 'NA1',
@@ -2225,7 +2226,7 @@ function setupGameDetection(): void {
           timeline,
           coachingExtras,
           sendToWindow: (channel, payload) => {
-            if (!thisPostGameWindow.isDestroyed()) thisPostGameWindow.webContents.send(channel, payload)
+            sendPostGameEvent(thisPostGameWindow, channel, payload)
           },
         }).catch((err) => log.warn('[Debrief] Background debrief failed:', err))
       }).catch((err) => log.warn('[Enrich] Match coaching enrich failed:', err))
@@ -2621,18 +2622,20 @@ function setupGameDetection(): void {
         )
       }
       const gsiInstall = await installSteamGsiConfig('cs2')
+      let gsiNeedsRestart = gsiInstall.needsRestart
       if (gsiInstall.needsRestart) {
-        logActivity('Restart CS2 once so UpForge can detect when a match starts')
+        logActivity('CS2 detected — restart CS2 once so UpForge can auto-start recording when a match begins')
       } else if (!gsiInstall.ok) {
-        logActivity('Could not install CS2 match detection — check Steam/CS2 is installed')
+        logActivity('CS2 detected — could not install match auto-record config (check Steam/CS2 is installed)')
       }
       const demoSetup = await ensureCs2DemoRecordingConfig()
       if (demoSetup.needsRestart) {
-        logActivity('Restart CS2 once — UpForge enabled automatic demo recording for highlight clips')
+        gsiNeedsRestart = true
+        logActivity('CS2 detected — restart CS2 once for automatic demo recording (highlight clips)')
       } else if (!demoSetup.ok && demoSetup.error) {
         log.warn('[CS2Setup] Demo recording cfg failed:', demoSetup.error)
       }
-      logActivity('CS2 running — waiting for match')
+      logActivity('CS2 detected — waiting for a live match to start recording')
 
       const MATCH_TIMEOUT_MS = 25 * 60 * 1000
       const loopStart = Date.now()
@@ -2654,9 +2657,9 @@ function setupGameDetection(): void {
           logActivity(`CS2 match detection server not running — port ${STEAM_GSI_PORT} may be blocked`)
         }
 
-        if (!gsiHintShown && Date.now() - loopStart > 45_000 && !isGsiReceiving()) {
+        if (!gsiHintShown && Date.now() - loopStart > 45_000 && !hasEverReceivedGsi() && !gsiNeedsRestart) {
           gsiHintShown = true
-          logActivity('CS2 match detection inactive — restart CS2 after UpForge installs its config file')
+          logActivity('CS2 detected — match auto-record inactive. Restart CS2 so UpForge\'s config file loads.')
         }
 
         if (isGsiMatchLive()) {
@@ -4189,6 +4192,7 @@ async function startApp(): Promise<void> {
     const openMain = () => {
       mainWindow = createMainWindow(authManager.isAuthenticated())
       markStartupComplete()
+      mainWindow.on('focus', () => { checkForUpdatesIfIdle() })
       setupGameDetection()
       scheduleObsProbeOnWindowLoad(mainWindow, true)
       // Small delay so main window is loaded before splash closes

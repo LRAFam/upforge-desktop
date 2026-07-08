@@ -94,14 +94,14 @@ onMounted(async () => {
     showProgress.value = false
   })
 
-  on('updater:available', (_e: unknown, info: unknown) => {
+  on('updater:available', (info: unknown) => {
     const v = (info as { version?: string })?.version
-    statusText.value = `Downloading update${v ? ` ${v}` : ''}…`
+    statusText.value = `Downloading update${v ? ` v${v}` : ''}…`
     showProgress.value = true
     progress.value = 0
   })
 
-  on('updater:progress', (_e: unknown, pct: unknown) => {
+  on('updater:progress', (pct: unknown) => {
     const n = Math.round(Number(pct))
     progress.value = Number.isFinite(n) ? n : 0
     const display = progress.value > 0 ? `${progress.value}%` : '…'

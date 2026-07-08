@@ -267,6 +267,8 @@ const api = {
       'post-game:analysis-deferred',
       'post-game:upload-deferred',
       'post-game:analysis-ready',
+      'post-game:debrief',
+      'post-game:debrief-loading',
       'post-game:upload-error',
       'dashboard:analysis-progress',
       'dashboard:analysis-failed',

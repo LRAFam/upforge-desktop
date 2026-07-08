@@ -32,6 +32,10 @@ export type PostGameSessionSnapshot = {
   pendingAnalysisState: string | null
   matchDataStatus: string | null
   killsInTimeline: number
+  debriefLoading: boolean
+  debriefText: string | null
+  debriefFailed: boolean
+  debriefDiscordLinked: boolean
   updatedAt: number
 }
 
@@ -52,6 +56,10 @@ function baseSession(overrides?: Partial<PostGameSessionSnapshot>): PostGameSess
     pendingAnalysisState: null,
     matchDataStatus: null,
     killsInTimeline: 0,
+    debriefLoading: false,
+    debriefText: null,
+    debriefFailed: false,
+    debriefDiscordLinked: false,
     updatedAt: Date.now(),
     ...overrides,
   }
@@ -195,6 +203,30 @@ export function applyPostGameChannelEvent(channel: string, payload: unknown): vo
             }
           : {}),
       })
+      break
+    }
+    case 'post-game:debrief-loading':
+      patch({ debriefLoading: true, debriefFailed: false, debriefText: null })
+      break
+    case 'post-game:debrief': {
+      const data = payload as {
+        debrief?: string
+        discordLinked?: boolean
+      } | null
+      if (data?.debrief) {
+        patch({
+          debriefText: data.debrief,
+          debriefLoading: false,
+          debriefFailed: false,
+          debriefDiscordLinked: data.discordLinked ?? false,
+        })
+      } else {
+        patch({
+          debriefLoading: false,
+          debriefFailed: true,
+          debriefText: null,
+        })
+      }
       break
     }
     default:

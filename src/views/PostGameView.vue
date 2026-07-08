@@ -838,6 +838,16 @@ function applyPostGameSnapshot(snapshot: PostGameSessionSnapshot): void {
   if (snapshot.killsInTimeline > 0) killsCapured.value = snapshot.killsInTimeline
   if (snapshot.preparingSyncMessage) preparingSyncMessage.value = snapshot.preparingSyncMessage
   if (snapshot.analysisReadiness) applyAnalysisReadiness(snapshot.analysisReadiness)
+  if (snapshot.debriefLoading) debriefLoading.value = true
+  if (snapshot.debriefText) {
+    debriefText.value = snapshot.debriefText
+    debriefLoading.value = false
+  }
+  if (snapshot.debriefFailed) {
+    debriefFailed.value = true
+    debriefLoading.value = false
+  }
+  if (snapshot.debriefDiscordLinked) debriefDiscordLinked.value = snapshot.debriefDiscordLinked
 
   const next = snapshot.phase as State
   if (next === 'preparing') {
@@ -900,6 +910,24 @@ const liveCoaches = computed(() =>
 const selectedCoachName = computed(() =>
   myCoaches.value.find(c => c.coach_id === selectedCoachId.value)?.display_name ?? 'coach',
 )
+let debriefTimeoutTimer: ReturnType<typeof setTimeout> | null = null
+
+function clearDebriefTimeout(): void {
+  if (debriefTimeoutTimer) {
+    clearTimeout(debriefTimeoutTimer)
+    debriefTimeoutTimer = null
+  }
+}
+
+function startDebriefTimeout(): void {
+  clearDebriefTimeout()
+  debriefTimeoutTimer = setTimeout(() => {
+    if (debriefLoading.value && !debriefText.value) {
+      debriefFailed.value = true
+      debriefLoading.value = false
+    }
+  }, 130_000)
+}
 let sessionStart = 0
 let preparingStuckTimer: ReturnType<typeof setTimeout> | null = null
 let stuckTimer: ReturnType<typeof setTimeout> | null = null
@@ -1470,8 +1498,14 @@ onMounted(() => {
   ;(window as Window & { _postGameIpcCleanup?: (() => void)[] })._postGameIpcCleanup = ipcCleanup
 
   // Debrief arrives asynchronously — show it when ready
+  ipcCleanup.push(window.api.on('post-game:debrief-loading', () => {
+    debriefLoading.value = true
+    debriefFailed.value = false
+    startDebriefTimeout()
+  }))
   ipcCleanup.push(window.api.on('post-game:debrief', (...args: unknown[]) => {
     const data = args[0] as { debrief: string; agent: string | null; map: string | null; discordLinked?: boolean } | null
+    clearDebriefTimeout()
     if (data?.debrief) {
       debriefText.value = data.debrief
       debriefDiscordLinked.value = data.discordLinked ?? false
@@ -1480,8 +1514,6 @@ onMounted(() => {
     }
     debriefLoading.value = false
   }))
-  // Show loading state immediately so the user knows debrief is coming
-  debriefLoading.value = true
 
   // CS2 demo status listeners
   ipcCleanup.push(window.api.on('post-game:demo-status', (...args: unknown[]) => {
@@ -1491,7 +1523,9 @@ onMounted(() => {
     demoProgress.value = args[0] as number
   }))
 
-  void syncPostGameSession()
+  void syncPostGameSession().then(() => {
+    if (debriefLoading.value) startDebriefTimeout()
+  })
 
   // Dev preview: rich mock ready state (skip upload wait)
   if (window.location.hash.includes('post-game-preview') || window.location.pathname.includes('post-game-preview')) {
@@ -1537,6 +1571,7 @@ onMounted(() => {
 
 onUnmounted(() => {
   window.api.discord.setState('idle').catch(() => {})
+  clearDebriefTimeout()
   clearStuckTimer()
   clearPreparingStuckTimer()
   if (copiedLinkTimer) clearTimeout(copiedLinkTimer)

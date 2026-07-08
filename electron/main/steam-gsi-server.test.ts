@@ -31,3 +31,11 @@ describe('isGsiMatchLive', () => {
     })).toBe(false)
   })
 })
+
+describe('hasEverReceivedGsi', () => {
+  it('is exported for cfg-loaded detection', async () => {
+    const mod = await import('./steam-gsi-server')
+    expect(typeof mod.hasEverReceivedGsi).toBe('function')
+    expect(mod.hasEverReceivedGsi()).toBe(false)
+  })
+})
