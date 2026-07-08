@@ -11,6 +11,7 @@ export function resolveUploadPlayerIdentity(
   timeline: MatchData | null,
   user: { riot_name?: string | null; riot_tag?: string | null; name?: string | null } | null,
   recording?: { riotName?: string | null; riotTag?: string | null },
+  cs2SteamName?: string | null,
 ): UploadPlayerIdentity {
   if (game === 'valorant') {
     return {
@@ -31,6 +32,7 @@ export function resolveUploadPlayerIdentity(
     riotName:
       recording?.riotName?.trim()
       || timeline?.playerName?.trim()
+      || cs2SteamName?.trim()
       || user?.name?.trim()
       || 'Player',
     riotTag: recording?.riotTag?.trim() || 'NA',

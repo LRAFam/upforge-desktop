@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useDashboard } from '../../composables/useDashboard'
 import { usePrimaryGame } from '../../composables/usePrimaryGame'
@@ -14,12 +14,27 @@ const {
   profile,
   weeklyFocus,
   cs2FaceitConnection,
+  cs2Profile,
   deadlockLinked,
   deadlockStats,
   dashboardAnalyses,
 } = useDashboard()
 
 const launchBusy = ref(false)
+const cs2SteamName = ref('')
+
+onMounted(async () => {
+  const saved = await window.api.settings.get().catch(() => null)
+  cs2SteamName.value = saved?.cs2SteamName?.trim() ?? ''
+})
+
+function cs2Linked(): boolean {
+  return Boolean(
+    cs2FaceitConnection.value?.connected
+    || cs2Profile.value?.identity?.linked
+    || cs2SteamName.value,
+  )
+}
 
 function lastMatch(game: PrimaryGame): { prefix: string; result: string; muted: boolean } {
   if (game !== primaryGame.value) {
@@ -53,16 +68,19 @@ function rankBlock(game: PrimaryGame): {
     }
   }
   if (game === 'cs2') {
-    if (cs2FaceitConnection.value?.connected) {
-      const l = cs2FaceitConnection.value.level
-      const n = cs2FaceitConnection.value.nickname
+    const valve = cs2Profile.value?.valve_stats
+    const steamName = cs2Profile.value?.identity?.steam_display_name || cs2SteamName.value
+    if (valve?.matches_tracked) {
       return {
-        main: l != null ? `Level ${l}` : n ?? 'Linked',
-        sub: n ? `#${n}` : undefined,
+        main: valve.avg_kd != null ? `${valve.avg_kd} K/D avg` : `${valve.matches_tracked} matches`,
+        sub: steamName ? steamName : `${valve.matches_tracked} tracked in UpForge`,
         color: brand.accent,
       }
     }
-    return { main: 'Link FACEIT', color: brand.accent }
+    if (steamName) {
+      return { main: steamName, sub: 'Steam name set', color: brand.accent }
+    }
+    return { main: 'Set Steam name', sub: 'Settings → Recording', color: brand.accent }
   }
   if (deadlockStats.value?.current_rank) {
     const r = deadlockStats.value.current_rank
@@ -82,6 +100,11 @@ async function selectGame(game: PrimaryGame) {
 async function primaryAction(game: PrimaryGame, e: Event) {
   e.stopPropagation()
   await setPrimaryGame(game)
+  if (game === 'cs2' && !cs2Linked()) {
+    await window.api.cs2.openConnectFaceit().catch(() => {})
+    router.push('/settings?tab=recording')
+    return
+  }
   if (game === 'valorant') {
     const plan = weeklyFocus.value
     if (!plan) {
@@ -105,18 +128,39 @@ async function primaryAction(game: PrimaryGame, e: Event) {
   openGameAnalyze(game)
 }
 
+function cs2FaceitRank(): { main: string; sub?: string; color: string } {
+  const brand = gameBrand('cs2')
+  if (!cs2FaceitConnection.value?.connected) {
+    return { main: 'Not linked', sub: 'Optional third-party rank', color: brand.accent }
+  }
+  const l = cs2FaceitConnection.value.level
+  const n = cs2FaceitConnection.value.nickname
+  return {
+    main: l != null ? `Level ${l}` : n ?? 'Linked',
+    sub: n ? `#${n}` : cs2FaceitConnection.value.elo != null ? `${cs2FaceitConnection.value.elo} ELO` : undefined,
+    color: '#f97316',
+  }
+}
+
 const cards = computed(() =>
   PRIMARY_GAMES.map(g => {
     const brand = gameBrand(g.id)
     const rank = rankBlock(g.id)
+    const faceitRank = g.id === 'cs2' ? cs2FaceitRank() : null
     const match = lastMatch(g.id)
+    const ctaLabel = g.id === 'cs2' && !cs2Linked() ? 'Link CS2' : brand.ctaLabel
+    const ctaIcon = g.id === 'cs2' && !cs2Linked() ? 'target' as const : brand.ctaIcon
     return {
       id: g.id,
       brand,
       rank,
+      faceitRank,
       match,
       art: PRIMARY_GAME_ARTWORK[g.id],
       active: primaryGame.value === g.id,
+      ctaLabel,
+      ctaIcon,
+      ctaSolid: g.id === 'cs2' && !cs2Linked() ? true : brand.ctaSolid,
     }
   }),
 )
@@ -145,11 +189,25 @@ const cards = computed(() =>
         </div>
 
         <div class="flex-1 min-w-0 space-y-1">
-          <p class="text-[11px] text-gray-500">
-            {{ c.brand.rankLabel }}:
-            <span class="font-bold text-[13px]" :style="{ color: c.rank.color }">{{ c.rank.main }}</span>
-          </p>
-          <p v-if="c.rank.sub" class="text-[12px] font-semibold text-gray-300 tabular-nums">{{ c.rank.sub }}</p>
+          <template v-if="c.id === 'cs2'">
+            <p class="text-[11px] text-gray-500">
+              {{ c.brand.valveRankLabel }}:
+              <span class="font-bold text-[13px]" :style="{ color: c.rank.color }">{{ c.rank.main }}</span>
+            </p>
+            <p v-if="c.rank.sub" class="text-[12px] font-semibold text-gray-300 tabular-nums">{{ c.rank.sub }}</p>
+            <p class="text-[11px] text-gray-500 pt-1">
+              {{ c.brand.faceitRankLabel }}:
+              <span class="font-bold text-[13px]" :style="{ color: c.faceitRank?.color }">{{ c.faceitRank?.main }}</span>
+            </p>
+            <p v-if="c.faceitRank?.sub" class="text-[12px] font-semibold text-gray-300 tabular-nums">{{ c.faceitRank.sub }}</p>
+          </template>
+          <template v-else>
+            <p class="text-[11px] text-gray-500">
+              {{ c.brand.rankLabel }}:
+              <span class="font-bold text-[13px]" :style="{ color: c.rank.color }">{{ c.rank.main }}</span>
+            </p>
+            <p v-if="c.rank.sub" class="text-[12px] font-semibold text-gray-300 tabular-nums">{{ c.rank.sub }}</p>
+          </template>
           <p class="text-[11px] pt-1">
             <span class="text-gray-600">{{ c.match.prefix }}</span>
             <span class="font-semibold" :class="c.match.muted ? 'text-gray-600' : 'text-gray-300'"> {{ c.match.result }}</span>
@@ -159,19 +217,19 @@ const cards = computed(() =>
         <button
           type="button"
           class="mt-4 w-full py-2.5 rounded-lg text-[12px] font-bold flex items-center justify-center gap-2 transition-all disabled:opacity-50"
-          :class="c.brand.ctaSolid
+          :class="c.ctaSolid
             ? 'text-white shadow-[0_8px_24px_rgba(var(--accent-rgb),0.35)]'
             : 'border bg-black/20 hover:bg-black/30'"
-          :style="c.brand.ctaSolid
+          :style="c.ctaSolid
             ? { background: `linear-gradient(180deg, ${c.brand.accent}, ${c.brand.accent}dd)` }
             : { borderColor: `${c.brand.accent}66`, color: c.brand.accent }"
           :disabled="c.id === 'valorant' && launchBusy"
           @click="primaryAction(c.id, $event)"
         >
-          <svg v-if="c.brand.ctaIcon === 'target'" class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8" stroke-width="1.75"/><circle cx="12" cy="12" r="2" stroke-width="1.75"/></svg>
-          <svg v-else-if="c.brand.ctaIcon === 'upload'" class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6H16a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/></svg>
+          <svg v-if="c.ctaIcon === 'target'" class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8" stroke-width="1.75"/><circle cx="12" cy="12" r="2" stroke-width="1.75"/></svg>
+          <svg v-else-if="c.ctaIcon === 'upload'" class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6H16a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/></svg>
           <svg v-else class="h-4 w-4" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
-          {{ c.id === 'valorant' && launchBusy ? 'Launching…' : c.brand.ctaLabel }}
+          {{ c.id === 'valorant' && launchBusy ? 'Launching…' : c.ctaLabel }}
         </button>
       </div>
     </button>

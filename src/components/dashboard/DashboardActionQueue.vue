@@ -2,6 +2,7 @@
 import { computed, ref } from 'vue'
 import type { PendingRecording } from '../../env.d.ts'
 import { useDashboard } from '../../composables/useDashboard'
+import { usePrimaryGame } from '../../composables/usePrimaryGame'
 import { MOCK_NEEDS_YOU_RECORDINGS } from '../../lib/dashboard-needs-you-mock'
 import {
   formatRelativeTime,
@@ -9,15 +10,17 @@ import {
   recordingRowStats,
 } from '../../lib/dashboard-match-row'
 import {
-  getAgentImage,
-  getAgentColor,
-  getMapImage,
-  formatMapLabel,
-  isDisplayableGameMode,
-} from '../../lib/valorant'
+  recordingMapImage,
+  recordingMapLabel,
+  recordingPlayerAccent,
+  recordingPlayerImage,
+  recordingPlayerLabel,
+} from '../../lib/recording-display'
+import { isDisplayableGameMode } from '../../lib/valorant'
 
 const props = defineProps<{ preview?: boolean }>()
 
+const { primaryGame } = usePrimaryGame()
 const {
   pendingRecordings,
   analysingIds,
@@ -39,9 +42,10 @@ const {
 
 const showDemoMatches = ref(!!props.preview)
 
-const rows = computed(() =>
-  showDemoMatches.value ? MOCK_NEEDS_YOU_RECORDINGS : pendingRecordings.value,
-)
+const rows = computed(() => {
+  const source = showDemoMatches.value ? MOCK_NEEDS_YOU_RECORDINGS : pendingRecordings.value
+  return source.filter((rec) => rec.game === primaryGame.value)
+})
 
 function scoreLine(rec: PendingRecording): string {
   const ally = rec.timeline?.finalScore?.allyScore
@@ -139,14 +143,14 @@ function toggleDemoMatches() {
         class="needs-you-card relative overflow-hidden rounded-2xl border border-white/[0.09]"
       >
         <img
-          v-if="rec.map && getMapImage(rec.map)"
-          :src="getMapImage(rec.map)"
+          v-if="recordingMapImage(rec)"
+          :src="recordingMapImage(rec)"
           alt=""
           class="absolute inset-0 w-full h-full object-cover object-center scale-105"
         />
         <div
           class="absolute inset-0 opacity-40"
-          :style="rec.agent ? { background: `radial-gradient(ellipse at 72% 38%, ${getAgentColor(rec.agent)}55, transparent 58%)` } : undefined"
+          :style="recordingPlayerAccent(rec) ? { background: `radial-gradient(ellipse at 72% 38%, ${recordingPlayerAccent(rec)}55, transparent 58%)` } : undefined"
         />
         <div class="absolute inset-0 bg-gradient-to-r from-[#0a0a0a]/96 via-[#0a0a0a]/82 to-[#0a0a0a]/55" />
         <div class="absolute inset-0 bg-gradient-to-b from-[#0a0a0a]/50 via-transparent to-[#0a0a0a]/94" />
@@ -156,7 +160,7 @@ function toggleDemoMatches() {
             <div class="flex items-start justify-between gap-2">
               <div>
                 <p class="text-[9px] font-bold uppercase tracking-[0.16em] text-gray-500">
-                  {{ formatMapLabel(rec.map) || 'Unknown map' }}
+                  {{ recordingMapLabel(rec) }}
                   <span v-if="isDisplayableGameMode(rec.gameMode)" class="text-gray-600"> · {{ formatMode(rec.gameMode) }}</span>
                 </p>
                 <p class="text-3xl font-black text-white tabular-nums leading-none mt-1">{{ scoreLine(rec) }}</p>
@@ -170,13 +174,13 @@ function toggleDemoMatches() {
 
             <div class="flex items-end gap-3 mt-3">
               <img
-                v-if="rec.agent && getAgentImage(rec.agent)"
-                :src="getAgentImage(rec.agent)"
+                v-if="recordingPlayerImage(rec)"
+                :src="recordingPlayerImage(rec)"
                 alt=""
                 class="w-[72px] h-[80px] object-cover object-top drop-shadow-[0_8px_20px_rgba(0,0,0,0.55)] flex-shrink-0"
               />
               <div class="min-w-0 pb-1">
-                <p class="text-base font-black text-white truncate">{{ rec.agent || 'Unknown agent' }}</p>
+                <p class="text-base font-black text-white truncate">{{ recordingPlayerLabel(rec) }}</p>
                 <p class="text-[10px] text-gray-500 mt-0.5">
                   {{ formatRelativeTime(new Date(rec.recordedAt).toISOString()) }}
                   <span v-if="rec.fileSizeBytes" class="text-gray-600"> · {{ formatFileSize(rec.fileSizeBytes) }}</span>

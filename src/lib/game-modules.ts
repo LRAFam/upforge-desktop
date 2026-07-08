@@ -8,6 +8,7 @@ import { mapCs2ToAnalysisItem } from './cs2-analyses'
 import { pendingTimeline } from '../stores/pendingTimeline'
 import { isAnalysisProcessing } from './dashboard-match-row'
 import CS2StatsPanel from '../components/CS2StatsPanel.vue'
+import Cs2ValveStatsPanel from '../components/Cs2ValveStatsPanel.vue'
 import CS2SetupPanel from '../components/CS2SetupPanel.vue'
 import DeadlockStatsPanel from '../components/DeadlockStatsPanel.vue'
 import DeadlockDemoPanel from '../components/DeadlockDemoPanel.vue'
@@ -86,7 +87,7 @@ export const GAME_MODULES: Record<PrimaryGame, GameModule> = {
   },
   cs2: {
     id: 'cs2',
-    centerPanels: [CS2StatsPanel, CS2SetupPanel],
+    centerPanels: [Cs2ValveStatsPanel, CS2StatsPanel, CS2SetupPanel],
     navRoutes: DEMO_GAME_NAV,
     features: DEMO_GAME_FEATURES,
     loadAnalyses: loadCs2Analyses,
@@ -130,9 +131,21 @@ export async function openGameAnalysis(
     void window.api.deadlock.openResults(item.job_id)
     return
   }
-  if (game === 'cs2' && item.job_id) {
-    window.open(analysisResultsUrl('cs2', item.job_id), '_blank')
-    return
+  if (game === 'cs2') {
+    if (item.cs2_source === 'desktop_vod' && item.id) {
+      try {
+        const data = await window.api.analyses.getTimeline(item.id)
+        if (data) {
+          pendingTimeline.value = data
+          await router.push({ path: '/vod-review', query: { timelineId: String(item.id) } })
+          return
+        }
+      } catch { /* fall through to web */ }
+    }
+    if (item.job_id) {
+      window.open(analysisResultsUrl('cs2', item.job_id), '_blank')
+      return
+    }
   }
   if (game === 'valorant' && !isAnalysisProcessing(item)) {
     try {

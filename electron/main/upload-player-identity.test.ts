@@ -20,6 +20,11 @@ describe('resolveUploadPlayerIdentity', () => {
     expect(identity).toEqual({ riotName: 'csgo_ninja', riotTag: 'NA' })
   })
 
+  it('prefers cs2 steam name from settings when timeline missing', () => {
+    const identity = resolveUploadPlayerIdentity('cs2', null, { name: 'Dizer' }, undefined, 'csgo_ninja')
+    expect(identity).toEqual({ riotName: 'csgo_ninja', riotTag: 'NA' })
+  })
+
   it('falls back to account name for cs2 when timeline name missing', () => {
     const identity = resolveUploadPlayerIdentity('cs2', null, { name: 'Dizer' })
     expect(identity).toEqual({ riotName: 'Dizer', riotTag: 'NA' })

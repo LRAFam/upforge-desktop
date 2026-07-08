@@ -427,6 +427,15 @@ export function setupGamingHandlers(
     return auth.fetchCs2Analyses(limit)
   })
 
+  ipcMain.handle('cs2:get-profile', async () => {
+    return auth.fetchCs2Profile()
+  })
+
+  ipcMain.handle('cs2:sync-identity', async (_event, steamDisplayName: string) => {
+    await auth.syncCs2Identity(steamDisplayName)
+    return { ok: true }
+  })
+
   ipcMain.handle('cs2:get-faceit-connection', async () => {
     try {
       const api = auth.getApi()

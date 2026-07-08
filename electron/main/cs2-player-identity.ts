@@ -14,6 +14,17 @@ export async function resolveCs2LocalPlayerName(
   try {
     const api = auth.getApi()
     if (api) {
+      const identityRes = await api.get('/api/cs2/identity')
+      const apiName = (identityRes.data as { identity?: { steam_display_name?: string | null } })?.identity?.steam_display_name?.trim()
+      if (apiName) return apiName
+    }
+  } catch {
+    /* optional */
+  }
+
+  try {
+    const api = auth.getApi()
+    if (api) {
       const res = await api.get('/api/cs2/faceit/connection')
       const nickname = (res.data as { nickname?: string | null })?.nickname?.trim()
       if (nickname) return nickname

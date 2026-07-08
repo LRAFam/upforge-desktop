@@ -106,7 +106,7 @@ export function createMainWindow(
 export function createPostGameWindow(): BrowserWindow {
   const display = screen.getPrimaryDisplay()
   const { width: workW, height: workH } = display.workAreaSize
-  const winHeight = Math.min(420, Math.max(320, workH - 80))
+  const winHeight = Math.min(300, Math.max(240, workH - 80))
 
   const win = new BrowserWindow({
     width: 400,

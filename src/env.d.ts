@@ -225,6 +225,7 @@ export interface PendingRecording {
     duelMomentCount: number
   }
   timeline?: {
+    playerName?: string | null
     playerKills?: Array<{ killerName: string; victimName: string; weapon?: string; videoOffsetMs?: number; round?: number }>
     playerDeaths?: Array<{ killerName: string; victimName: string; weapon?: string; videoOffsetMs?: number; round?: number }>
     roundSummaries?: Array<{ roundNumber: number; winningTeam?: string | null }>
@@ -402,11 +403,13 @@ export interface AnalysisItem {
   hs_pct: number | null
   rank: string | null
   created_at: string
+  /** CS2 only — demo upload, FACEIT cloud, or desktop VOD coaching. */
+  cs2_source?: 'demo_upload' | 'faceit_api' | 'desktop_vod'
 }
 
 export interface Cs2AnalysisItem {
   id: number
-  job_id: string
+  job_id: string | null
   status: string
   player_name: string | null
   map: string | null
@@ -416,6 +419,8 @@ export interface Cs2AnalysisItem {
   overall_rating: number | null
   created_at: string
   completed_at: string | null
+  source?: 'demo_upload' | 'faceit_api' | 'desktop_vod'
+  unified_id?: string
 }
 
 export interface DeadlockAnalysisItem {
@@ -1004,6 +1009,24 @@ declare global {
         openDashboard: () => Promise<{ ok: boolean }>
         openConnectFaceit: () => Promise<{ ok: boolean }>
         getAnalyses: (limit?: number) => Promise<Cs2AnalysisItem[]>
+        getProfile: () => Promise<{
+          identity: { steam_display_name: string | null; steam_id: string | null; linked: boolean }
+          valve_stats: {
+            matches_tracked: number
+            avg_kd: number | null
+            premier_rating: number | null
+            map_breakdown: Array<{ map: string; matches: number }>
+            source: string
+          }
+          faceit: {
+            connected: boolean
+            nickname?: string
+            elo?: number | null
+            level?: number | null
+            synced_at?: string | null
+          }
+        } | null>
+        syncIdentity: (steamDisplayName: string) => Promise<{ ok: boolean }>
         getFaceitConnection: () => Promise<{
           connected: boolean
           nickname?: string

@@ -64,6 +64,11 @@ import {
   effectiveVideoSyncOffsetMs,
   defaultVideoSyncOffsetMs,
 } from './riot-local-api'
+import {
+  resolveMatchSessionStartMs,
+  timelineDeathsForVod,
+  timelineKillsForVod,
+} from './recording-sync'
 import { applySpatialEnrichment } from './spatial/enrich'
 import { refreshMatchPopulationBenchmarks } from './spatial/enrich-population'
 import { applyDemoSpatialEnrichment } from './spatial/demo-enrich'
@@ -1215,6 +1220,47 @@ async function extractMatchClips(
   return clipPipeline.extractMatchClips(videoPath, timeline, analysisJobId, normalizePrimaryGame(game))
 }
 
+/** Re-poll CS2 / Deadlock demo and merge stats into the dashboard recording. */
+async function refreshReplayTimelineForRecording(
+  recordingId: string,
+  options?: { notifyActivity?: boolean },
+): Promise<boolean> {
+  if (!settingsManager) return false
+  const rec = recordingsStore.getById(recordingId)
+  if (!rec || (rec.game !== 'cs2' && rec.game !== 'deadlock')) return false
+
+  const matchStartMs = resolveMatchSessionStartMs(rec.timeline, rec.recordedAt)
+  const recordingStartMs = rec.timeline?.recordingStartTime
+    ?? rec.timeline?.gameplayStartTime
+    ?? matchStartMs
+
+  const replayCtx = {
+    game: rec.game as 'cs2' | 'deadlock',
+    matchSessionStart: matchStartMs,
+    matchStartTime: rec.timeline?.matchStartTime ?? null,
+    recordingStartTime: recordingStartMs,
+    gsiMap: rec.map ?? rec.timeline?.map ?? null,
+    customReplayDir: rec.game === 'cs2' ? settingsManager.get().cs2DemoDir : undefined,
+    localPlayerName: rec.game === 'cs2'
+      ? await resolveCs2LocalPlayerName(settingsManager, authManager)
+      : null,
+  }
+
+  const parsed = await buildTimelineFromReplay(replayCtx)
+  if (!parsed.timeline || !hasRichMatchData(parsed.timeline)) return false
+
+  recordingsStore.updateTimeline(recordingId, parsed.timeline)
+  mainWindow?.webContents.send('recordings:updated')
+  if (options?.notifyActivity) {
+    if (rec.game === 'cs2') {
+      logActivity('CS2 demo synced — match stats ready for analysis')
+    } else {
+      logActivity('Deadlock replay synced — match stats ready')
+    }
+  }
+  return true
+}
+
 /** Re-poll CS2 demo after match end when the first parse had no kill data for clips. */
 async function retryCs2DemoClips(opts: {
   readyPath: string
@@ -1386,7 +1432,7 @@ function scheduleAnalysisReadinessRefresh(recordingId: string, game: string): vo
   const startedAt = Date.now()
 
   const tick = async (): Promise<void> => {
-    const rec = recordingsStore.getById(recordingId)
+    let rec = recordingsStore.getById(recordingId)
     if (!rec || rec.analysed || rec.pipelineStatus === 'uploading' || rec.pipelineStatus === 'analysing') {
       return
     }
@@ -1424,12 +1470,18 @@ function scheduleAnalysisReadinessRefresh(recordingId: string, game: string): vo
       readiness = getAnalysisReadiness(rec)
     }
 
+    if (readiness.state === 'syncing' && (rec.game === 'cs2' || rec.game === 'deadlock')) {
+      await refreshReplayTimelineForRecording(recordingId, { notifyActivity: true })
+      rec = recordingsStore.getById(recordingId)
+      if (rec) readiness = getAnalysisReadiness(rec)
+    }
+
     mainWindow?.webContents.send('recordings:updated')
+    const pg = postGameWindow
+    if (pg && !pg.isDestroyed()) {
+      sendPostGameEvent(pg, 'post-game:analysis-readiness', readiness)
+    }
     if (!isTerminalAnalysisReadinessState(readiness.state)) {
-      const pg = postGameWindow
-      if (pg && !pg.isDestroyed()) {
-        sendPostGameEvent(pg, 'post-game:analysis-readiness', readiness)
-      }
       setTimeout(() => { void tick() }, 10_000)
     }
   }
@@ -1476,6 +1528,15 @@ async function ensureAnalysisReadinessForAnalyse(
     await refreshRecordingVodProbe(rec)
     readiness = getAnalysisReadiness(rec)
     mainWindow?.webContents.send('recordings:updated')
+  } else if (
+    (rec.game === 'cs2' || rec.game === 'deadlock')
+    && readiness.state === 'syncing'
+  ) {
+    await refreshReplayTimelineForRecording(recordingId, { notifyActivity: true })
+    rec = recordingsStore.getById(recordingId)
+    if (!rec) return { ok: false, error: 'Recording not found', state: 'unavailable' }
+    readiness = getAnalysisReadiness(rec)
+    mainWindow?.webContents.send('recordings:updated')
   }
 
   if (!readiness.ready) {
@@ -1519,6 +1580,19 @@ async function waitUntilAnalysisReady(
       rec = recordingsStore.getById(recordingId)
       if (rec) {
         await refreshRecordingVodProbe(rec)
+        readiness = getAnalysisReadiness(rec)
+        sendAnalysisReadinessUpdate(targetWindow, readiness)
+        if (readiness.ready) return { ready: true, readiness }
+        if (isTerminalAnalysisReadinessState(readiness.state) && !readiness.ready) {
+          return { ready: false, readiness }
+        }
+      }
+    }
+
+    if (readiness.state === 'syncing' && (rec.game === 'cs2' || rec.game === 'deadlock')) {
+      await refreshReplayTimelineForRecording(recordingId, { notifyActivity: true })
+      rec = recordingsStore.getById(recordingId)
+      if (rec) {
         readiness = getAnalysisReadiness(rec)
         sendAnalysisReadinessUpdate(targetWindow, readiness)
         if (readiness.ready) return { ready: true, readiness }
@@ -1914,12 +1988,15 @@ function setupGameDetection(): void {
           : undefined,
       }
       if (timeline) {
-        log.info(`[HandleMatchEnd] ${game} demo timeline — kills=${timeline.playerKills.length}`)
-        if (game === 'cs2' && timeline.playerKills.length === 0) {
-          logActivity('CS2 demo parsed but no kills matched — set your Steam name in Settings → Recording if clips are missing')
+        const killCount = timeline.killEvents?.length ?? timeline.playerKills.length
+        log.info(`[HandleMatchEnd] ${game} demo timeline — kills=${killCount} matched=${timeline.playerKills.length}`)
+        if (game === 'cs2' && timeline.playerKills.length === 0 && killCount > 0) {
+          logActivity('CS2 demo loaded — set your Steam name in Settings → Recording to tag your kills (full match timeline still available)')
+        } else if (game === 'cs2' && timeline.playerKills.length === 0) {
+          logActivity('CS2 demo parsed but no kills matched — set your Steam name in Settings → Recording')
         }
       } else if (game === 'cs2') {
-        logActivity('No CS2 demo found — highlight clips need cl_demo_auto_recording (UpForge installs this on launch)')
+        logActivity('No CS2 demo found — check Settings → Recording for demo folder and ensure cl_demo_auto_recording is enabled')
       }
     }
 
@@ -2208,6 +2285,11 @@ function setupGameDetection(): void {
       logActivity(
         `Recording saved (${(readySize / (1024 ** 3)).toFixed(2)} GB) — visible on dashboard`,
       )
+      if (game === 'cs2' && !richMatchData) {
+        logActivity('CS2 match recorded — waiting for demo file from game')
+      } else if (game === 'deadlock' && !richMatchData) {
+        logActivity('Deadlock match recorded — waiting for replay data')
+      }
       scheduleAnalysisReadinessRefresh(savedRecording.id, game)
 
       sendToWindow('post-game:analysis-readiness', {
@@ -3548,7 +3630,7 @@ async function doUploadAndAnalyse(
   const identity = resolveUploadPlayerIdentity(game, timeline, user, {
     riotName: storedRecording?.riotName ?? riotName,
     riotTag: storedRecording?.riotTag ?? riotTag,
-  })
+  }, settingsManager?.get()?.cs2SteamName)
   riotName = identity.riotName
   riotTag = identity.riotTag
 
@@ -5038,8 +5120,8 @@ async function startApp(): Promise<void> {
       game: recording.game,
       gameMode: recording.gameMode,
       recordedAt: recording.recordedAt,
-      kills: tl?.playerKills ?? [],
-      deaths: tl?.playerDeaths ?? [],
+      kills: timelineKillsForVod(tl),
+      deaths: timelineDeathsForVod(tl),
       roundSummaries: tl?.roundSummaries ?? [],
       finalStats: tl?.finalStats ?? null,
       teamSnapshot: tl?.teamSnapshot ?? [],

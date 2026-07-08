@@ -16,6 +16,8 @@ export interface GameBrand {
   logo: string
   wordmark: string
   rankLabel: string
+  valveRankLabel?: string
+  faceitRankLabel?: string
   accent: string
   accentMuted: string
   accentRgb: string
@@ -39,7 +41,9 @@ export const GAME_BRAND: Record<PrimaryGame, GameBrand> = {
   cs2: {
     logo: cs2Logo,
     wordmark: 'CS2',
-    rankLabel: 'Premier Rating',
+    rankLabel: 'CS2 Stats',
+    valveRankLabel: 'Steam / MM',
+    faceitRankLabel: 'FACEIT Level',
     accent: '#3b82f6',
     accentMuted: '#3b82f688',
     accentRgb: '59, 130, 246',

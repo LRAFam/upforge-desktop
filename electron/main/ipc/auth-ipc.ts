@@ -21,6 +21,7 @@ import {
   effectiveVideoSyncOffsetMs,
   recomputeTimelineVideoOffsets,
 } from '../riot-local-api'
+import { timelineDeathsForVod, timelineKillsForVod } from '../recording-sync'
 import type { MatchData } from '../riot-types'
 import { applyLayoutForRoute } from '../window-layouts'
 
@@ -224,12 +225,8 @@ export function setupAuthHandlers(
         game,
         gameMode: md.gameMode ?? md.game_mode ?? null,
         recordedAt: new Date(analysis.created_at).getTime(),
-        kills: timelineForSync.playerKills?.length
-          ? timelineForSync.playerKills
-          : md.killEvents?.filter((k: { killerName?: string; type?: string }) => k.killerName === 'You' || k.type === 'kill') ?? [],
-        deaths: timelineForSync.playerDeaths?.length
-          ? timelineForSync.playerDeaths
-          : md.killEvents?.filter((k: { victimName?: string; type?: string }) => k.victimName === 'You' || k.type === 'death') ?? [],
+        kills: timelineKillsForVod(timelineForSync),
+        deaths: timelineDeathsForVod(timelineForSync),
         roundSummaries: timelineForSync.roundSummaries ?? [],
         finalStats,
         teamSnapshot,

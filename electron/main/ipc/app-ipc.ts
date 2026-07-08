@@ -113,6 +113,9 @@ export function setupAppHandlers(
     if (partial.onboardingComplete === true && !prev.onboardingComplete) {
       trackOnboardingComplete()
     }
+    if ('cs2SteamName' in partial && partial.cs2SteamName !== prev.cs2SteamName && auth.isAuthenticated()) {
+      void auth.syncCs2Identity(String(partial.cs2SteamName ?? ''))
+    }
     return {
       ...result,
       creatorPresetRequiresPro: wantsCreator && !allowCreator,
@@ -212,7 +215,8 @@ export function setupAppHandlers(
     const titleBarPx = 44
     const desiredHeight = Math.min(
       workH - 32,
-      Math.max(260, Math.round(Number(contentHeight) + titleBarPx)),
+      380,
+      Math.max(240, Math.round(Number(contentHeight) + titleBarPx)),
     )
     const bounds = win.getBounds()
     if (Math.abs(bounds.height - desiredHeight) < 6) return

@@ -245,10 +245,15 @@ export function getAnalysisReadiness(rec: ReadinessRecording): AnalysisReadiness
       return { ready: true, state: 'ready', message: '', duelMomentCount: 0 }
     }
     if (withinSyncWindow) {
+      const demoMessage = rec.game === 'cs2'
+        ? 'Waiting for CS2 demo file — UpForge syncs it automatically after the match'
+        : rec.game === 'deadlock'
+          ? 'Waiting for Deadlock replay data…'
+          : 'Waiting for match replay data…'
       return {
         ready: false,
         state: 'syncing',
-        message: 'Waiting for match replay data…',
+        message: demoMessage,
         duelMomentCount: 0,
       }
     }

@@ -15,7 +15,7 @@ import { gameTheme, type GameTheme } from '../lib/game-themes'
 import { loadGameAnalyses, openGameAnalysis, openGameHistoryWeb, openGameAnalyze } from '../lib/game-modules'
 import { loadCoachReviewSummaries, type CoachReviewSummary } from '../lib/coach-review-cache'
 import { openAnalysisVodReview } from '../lib/open-vod-review'
-import { getFaceitLevelIconUrl, type Cs2FaceitConnection } from '../lib/cs2'
+import { getFaceitLevelIconUrl, type Cs2FaceitConnection, type Cs2ProfilePayload } from '../lib/cs2'
 import {
   displayAcs,
   isAnalysisProcessing,
@@ -53,6 +53,7 @@ function createDashboard() {
   const onboardingTargetRank = ref<string | null>(null)
   const onboardingWeaknesses = ref<string[]>([])
   const cs2FaceitConnection = ref<Cs2FaceitConnection | null>(null)
+  const cs2Profile = ref<Cs2ProfilePayload | null>(null)
   const deadlockLinked = ref(false)
   const deadlockStats = ref<DeadlockProfileStats | null>(null)
   const playerCardUrl = ref('')
@@ -118,11 +119,17 @@ function createDashboard() {
   })
   const dashboardRankLabel = computed(() => {
     if (isCs2.value) {
+      const valve = cs2Profile.value?.valve_stats
+      if (valve?.matches_tracked && valve.avg_kd != null) {
+        return `${valve.avg_kd} K/D · ${valve.matches_tracked} matches`
+      }
+      const steam = cs2Profile.value?.identity?.steam_display_name
+      if (steam) return steam
       if (cs2FaceitConnection.value?.connected) {
         const nick = cs2FaceitConnection.value.nickname
         const lvl = cs2FaceitConnection.value.level
-        if (nick && lvl != null) return `${nick} · Lv ${lvl}`
-        if (nick) return nick
+        if (nick && lvl != null) return `${nick} · FACEIT Lv ${lvl}`
+        if (nick) return `${nick} · FACEIT`
       }
       return theme.value.rankFallback
     }
@@ -571,6 +578,14 @@ function createDashboard() {
     }
   }
 
+  async function loadCs2Profile() {
+    try {
+      cs2Profile.value = await window.api.cs2.getProfile()
+    } catch {
+      cs2Profile.value = null
+    }
+  }
+
   async function loadDeadlockProfile() {
     try {
       const result = await window.api.deadlock.getStats()
@@ -605,7 +620,9 @@ function createDashboard() {
         playstyleProfile.value = await window.api.progress.playstyleProfile().catch(() => null)
         rrHistory.value = await window.api.stats.rrHistory().catch(() => [])
       }
-      if (isCs2.value) await loadCs2Faceit()
+      if (isCs2.value) {
+        await Promise.all([loadCs2Faceit(), loadCs2Profile()])
+      }
       if (isDeadlock.value) await loadDeadlockProfile()
       await syncAuthUserFields()
     } catch { /* ignore */ } finally {
@@ -770,7 +787,12 @@ function createDashboard() {
 
   function recAnalysisStatusShort(rec: PendingRecording) {
     const state = rec.analysisReadiness?.state
-    if (state === 'syncing') return 'Syncing stats…'
+    if (state === 'syncing') {
+      if (rec.analysisReadiness?.message) return rec.analysisReadiness.message
+      if (rec.game === 'cs2') return 'Waiting for CS2 demo…'
+      if (rec.game === 'deadlock') return 'Waiting for replay…'
+      return 'Syncing stats…'
+    }
     if (state === 'finalizing') return 'Finalizing…'
     if (state === 'no_deaths' || state === 'mode_unsupported' || state === 'file_missing' || state === 'file_unreadable' || state === 'unavailable') {
       return 'Not ready'
@@ -1101,7 +1123,9 @@ function createDashboard() {
     if (isValorant.value) {
       rrHistory.value = await window.api.stats.rrHistory().catch(() => [])
     }
-    if (isCs2.value) await loadCs2Faceit()
+    if (isCs2.value) {
+      await Promise.all([loadCs2Faceit(), loadCs2Profile()])
+    }
     if (isDeadlock.value) await loadDeadlockProfile()
 
     activityLog.value = await window.api.app.getActivityLog().catch(() => [])
@@ -1183,7 +1207,7 @@ function createDashboard() {
           playstyleProfile.value = await window.api.progress.playstyleProfile().catch(() => null)
           rrHistory.value = await window.api.stats.rrHistory().catch(() => [])
         } else if (isCs2.value) {
-          await loadCs2Faceit()
+          await Promise.all([loadCs2Faceit(), loadCs2Profile()])
         } else if (isDeadlock.value) {
           await loadDeadlockProfile()
         }
@@ -1336,6 +1360,7 @@ function createDashboard() {
     onboardingTargetRank,
     onboardingWeaknesses,
     cs2FaceitConnection,
+    cs2Profile,
     deadlockLinked,
     deadlockStats,
     playerCardUrl,

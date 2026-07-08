@@ -2,6 +2,7 @@
 import { computed } from 'vue'
 import { useDashboard } from '../../composables/useDashboard'
 import { gameBrand } from '../../lib/game-branding'
+import { recordingMapLabel, recordingPlayerLabel } from '../../lib/recording-display'
 import GameBrandIcon from './GameBrandIcon.vue'
 import type { PrimaryGame } from '../../lib/games'
 import upforgeIcon from '../../assets/upforge-icon.png'
@@ -76,22 +77,47 @@ const entries = computed<FeedEntry[]>(() => {
   const merged: Sortable[] = []
 
   for (const r of pendingRecordings.value) {
-    if (r.pipelineStatus !== 'uploading' && r.pipelineStatus !== 'analysing') continue
-    const game = inferRecordingGame(r.map ?? '', r.agent ?? '')
-    merged.push({
-      id: `p-${r.id}`,
-      scope: game,
-      title: r.pipelineStatus === 'analysing'
-        ? `${gameBrand(game).wordmark} analysis running`
-        : `${gameBrand(game).wordmark} upload in progress`,
-      subtitle: `${r.agent || 'Match'} · ${r.map || 'Unknown map'}`,
-      badge: r.pipelineStatus === 'analysing' ? 'Processing' : 'Uploading',
-      badgeTone: 'blue',
-      tag: 'Live',
-      time: r.recordedAt ?? Date.now(),
-      sortTime: entryTimeMs(r.recordedAt) || Date.now(),
-      pinned: true,
-    })
+    const game = (r.game ?? inferRecordingGame(r.map ?? '', r.agent ?? '')) as PrimaryGame
+    const syncing = r.analysisReadiness?.state === 'syncing' || r.analysisReadiness?.state === 'finalizing'
+
+    if (r.pipelineStatus === 'uploading' || r.pipelineStatus === 'analysing') {
+      merged.push({
+        id: `p-${r.id}`,
+        scope: game,
+        title: r.pipelineStatus === 'analysing'
+          ? `${gameBrand(game).wordmark} analysis running`
+          : `${gameBrand(game).wordmark} upload in progress`,
+        subtitle: `${recordingPlayerLabel(r)} · ${recordingMapLabel(r)}`,
+        badge: r.pipelineStatus === 'analysing' ? 'Processing' : 'Uploading',
+        badgeTone: 'blue',
+        tag: 'Live',
+        time: r.recordedAt ?? Date.now(),
+        sortTime: entryTimeMs(r.recordedAt) || Date.now(),
+        pinned: true,
+      })
+      continue
+    }
+
+    if (syncing) {
+      const title = game === 'cs2'
+        ? 'CS2 match recorded — waiting for demo'
+        : game === 'deadlock'
+          ? 'Deadlock match recorded — waiting for replay'
+          : `${gameBrand(game).wordmark} match recorded — syncing stats`
+      merged.push({
+        id: `sync-${r.id}`,
+        scope: game,
+        title,
+        subtitle: r.analysisReadiness?.message
+          || `${recordingPlayerLabel(r)} · ${recordingMapLabel(r)}`,
+        badge: r.analysisReadiness?.state === 'finalizing' ? 'Finalizing' : 'Syncing',
+        badgeTone: 'blue',
+        tag: 'Recording',
+        time: r.recordedAt ?? Date.now(),
+        sortTime: entryTimeMs(r.recordedAt) || Date.now(),
+        pinned: true,
+      })
+    }
   }
 
   for (const a of dashboardAnalyses.value) {

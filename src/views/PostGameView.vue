@@ -76,10 +76,10 @@
               </div>
               <div class="min-w-0 flex-1 pb-0.5">
                 <p class="text-base font-bold leading-tight text-white">
-                  {{ state === 'preparing' ? 'Getting replay ready' : compressing ? (uploadStatusLabel === 'Converting replay format' ? 'Converting replay' : 'Compressing replay') : 'Sending to coach' }}
+                  {{ preparingTitle }}
                 </p>
                 <p class="mt-0.5 text-xs font-medium text-gray-400">
-                  {{ gameInfo.agent || gameLabel }}<span v-if="gameInfo.map" class="text-gray-600"> · {{ gameInfo.map }}</span>
+                  {{ matchHeadline }}<span v-if="gameInfo.game === 'valorant' && gameInfo.map" class="text-gray-600"> · {{ gameInfo.map }}</span>
                 </p>
               </div>
               <div class="text-right pb-0.5">
@@ -156,7 +156,7 @@
               <div class="min-w-0 flex-1 pb-0.5">
                 <p class="text-base font-bold leading-tight text-white">Reviewing your duels</p>
                 <p class="mt-0.5 text-xs font-medium text-gray-400">
-                  {{ gameInfo.agent || gameLabel }}<span v-if="gameInfo.map" class="text-gray-600"> · {{ gameInfo.map }}</span>
+                  {{ matchHeadline }}<span v-if="gameInfo.game === 'valorant' && gameInfo.map" class="text-gray-600"> · {{ gameInfo.map }}</span>
                 </p>
               </div>
               <div class="text-right pb-0.5">
@@ -302,7 +302,7 @@
                   <span class="text-[10px] font-bold uppercase tracking-[0.14em] text-emerald-300">Analysis ready</span>
                 </div>
                 <p class="text-sm font-bold text-white leading-tight mt-0.5 truncate">
-                  {{ gameInfo.agent || gameLabel }}<span v-if="gameInfo.map" class="text-gray-500 font-medium"> · {{ gameInfo.map }}</span>
+                  {{ matchHeadline }}<span v-if="gameInfo.game === 'valorant' && gameInfo.map" class="text-gray-500 font-medium"> · {{ gameInfo.map }}</span>
                 </p>
               </div>
               <div v-if="result?.overall_score != null" class="text-right flex-shrink-0 pl-2">
@@ -398,7 +398,7 @@
               </div>
               <div class="min-w-0 flex-1 pb-0.5">
                 <p class="text-base font-bold leading-tight text-white">
-                  {{ gameInfo.agent || gameLabel }}
+                  {{ matchHeadline }}
                 </p>
                 <p v-if="gameInfo.map" class="mt-0.5 text-xs font-medium text-gray-400">
                   {{ gameInfo.map }}
@@ -566,7 +566,7 @@
                     {{ errorTitle }}
                   </p>
                   <p class="mt-1 text-[11px] text-gray-400">
-                    {{ gameInfo.agent || gameLabel }}<span v-if="gameInfo.map" class="text-gray-600"> · {{ gameInfo.map }}</span>
+                    {{ matchHeadline }}<span v-if="gameInfo.game === 'valorant' && gameInfo.map" class="text-gray-600"> · {{ gameInfo.map }}</span>
                   </p>
                 </div>
               </div>
@@ -665,6 +665,7 @@ import { useRouter } from 'vue-router'
 import { openAnalysisVodReview } from '../lib/open-vod-review'
 import { getAgentImage, getAgentColor, getMapImage, getMapMinimap } from '../lib/valorant'
 import { analysisResultsUrl, isPrimaryGame, normalizePrimaryGame, recordingGameLabel, type PrimaryGame } from '../lib/games'
+import { cs2MapDisplayName } from '../lib/cs2-maps'
 import PostGameDebriefCarousel from '../components/post-game/PostGameDebriefCarousel.vue'
 import GamingButton from '../components/GamingButton.vue'
 import AnalysisPipelineStages from '../components/analysis/AnalysisPipelineStages.vue'
@@ -714,7 +715,8 @@ function scheduleFitWindow(): void {
     void nextTick(() => {
       if (!contentRoot.value || !window.api.window.setContentHeight) return
       if (!isCompactFlowState.value) return
-      void window.api.window.setContentHeight(contentRoot.value.scrollHeight)
+      const height = Math.min(340, contentRoot.value.scrollHeight)
+      void window.api.window.setContentHeight(height)
     })
   }, 60)
 }
@@ -1088,6 +1090,28 @@ function clearStuckTimer() {
 
 const gameLabel = computed(() => recordingGameLabel(gameInfo.value.game))
 
+const matchHeadline = computed(() => {
+  if (gameInfo.value.game === 'cs2') {
+    return gameInfo.value.map ? cs2MapDisplayName(gameInfo.value.map) : 'CS2 match'
+  }
+  if (gameInfo.value.game === 'deadlock') {
+    return gameInfo.value.agent || gameInfo.value.map || 'Deadlock match'
+  }
+  return gameInfo.value.agent || gameLabel.value
+})
+
+const preparingTitle = computed(() => {
+  if (state.value !== 'preparing') {
+    return compressing.value
+      ? (uploadStatusLabel.value === 'Converting replay format' ? 'Converting replay' : 'Compressing replay')
+      : 'Sending to coach'
+  }
+  if (gameInfo.value.game === 'cs2' && preparingSyncMessage.value?.includes('demo')) {
+    return 'Waiting for CS2 demo'
+  }
+  return 'Getting replay ready'
+})
+
 const replayNotFoundHint = computed(() => {
   if (gameInfo.value.game === 'deadlock') {
     return 'No replay found — enable replay saving in Deadlock settings'
@@ -1457,12 +1481,15 @@ onMounted(() => {
   ipcCleanup.push(window.api.on('post-game:analysis-readiness', (...args: unknown[]) => {
     const readiness = args[0] as { ready: boolean; state: string; message: string }
     if (state.value === 'preparing' || state.value === 'uploading') {
+      const cs2DemoWait = gameInfo.value.game === 'cs2' && readiness.state === 'syncing'
       preparingSyncMessage.value = readiness.message
-        || (readiness.state === 'syncing'
-          ? 'Syncing match stats from Riot…'
-          : readiness.state === 'finalizing'
-            ? 'Finalizing recording…'
-            : 'Preparing your match for analysis')
+        || (cs2DemoWait
+          ? 'Waiting for CS2 demo file — UpForge syncs it automatically after the match'
+          : readiness.state === 'syncing'
+            ? 'Syncing match stats…'
+            : readiness.state === 'finalizing'
+              ? 'Finalizing recording…'
+              : 'Preparing your match for analysis')
     }
     if (state.value === 'pending') {
       applyAnalysisReadiness(readiness)

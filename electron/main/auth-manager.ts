@@ -382,7 +382,7 @@ export class AuthManager {
 
   async fetchCs2Analyses(limit = 10): Promise<Array<{
     id: number
-    job_id: string
+    job_id: string | null
     status: string
     player_name: string | null
     map: string | null
@@ -392,12 +392,34 @@ export class AuthManager {
     overall_rating: number | null
     created_at: string
     completed_at: string | null
+    source?: 'demo_upload' | 'faceit_api' | 'desktop_vod'
+    unified_id?: string
   }>> {
     try {
       const res = await this._api.get(`/api/cs2/analyses?per_page=${limit}`)
       return res.data?.analyses ?? []
     } catch {
       return []
+    }
+  }
+
+  async fetchCs2Profile(): Promise<import('../../src/lib/cs2').Cs2ProfilePayload | null> {
+    try {
+      const res = await this._api.get('/api/cs2/profile')
+      return res.data?.profile ?? null
+    } catch {
+      return null
+    }
+  }
+
+  async syncCs2Identity(steamDisplayName: string): Promise<void> {
+    if (!this._api) return
+    try {
+      await this._api.put('/api/cs2/identity', {
+        steam_display_name: steamDisplayName.trim() || null,
+      })
+    } catch {
+      /* best-effort */
     }
   }
 

@@ -238,6 +238,8 @@ const api = {
     openDashboard: () => ipcRenderer.invoke('cs2:open-dashboard'),
     openConnectFaceit: () => ipcRenderer.invoke('cs2:open-connect-faceit'),
     getAnalyses: (limit?: number) => ipcRenderer.invoke('cs2:get-analyses', limit),
+    getProfile: () => ipcRenderer.invoke('cs2:get-profile'),
+    syncIdentity: (steamDisplayName: string) => ipcRenderer.invoke('cs2:sync-identity', steamDisplayName),
     getFaceitConnection: () => ipcRenderer.invoke('cs2:get-faceit-connection'),
   },
   forgeRank: {

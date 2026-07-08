@@ -7,6 +7,26 @@ export interface Cs2FaceitConnection {
   has_auto_sync?: boolean
 }
 
+export interface Cs2PlayerIdentity {
+  steam_display_name: string | null
+  steam_id: string | null
+  linked: boolean
+}
+
+export interface Cs2ValveStats {
+  matches_tracked: number
+  avg_kd: number | null
+  premier_rating: number | null
+  map_breakdown: Array<{ map: string; matches: number }>
+  source: string
+}
+
+export interface Cs2ProfilePayload {
+  identity: Cs2PlayerIdentity
+  valve_stats: Cs2ValveStats
+  faceit: Cs2FaceitConnection & { connected: boolean }
+}
+
 const CS2_RANK_IMAGE_IDS: Record<string, number> = {
   'Silver I': 1,
   'Silver II': 2,
