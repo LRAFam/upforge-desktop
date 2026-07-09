@@ -117,18 +117,11 @@ export async function getCandidateCS2CsgoDirs(): Promise<string[]> {
 export async function detectCS2DemoDir(): Promise<string | null> {
   if (!IS_WIN) return null
 
-  const steamPath = await getSteamPath()
-  if (!steamPath) {
-    log.info('[CS2Demo] Steam installation not found in registry')
-    return null
-  }
-
-  const candidates = await getCandidateDemoDirs(steamPath)
-  for (const dir of candidates) {
-    if (fs.existsSync(dir)) {
-      log.info(`[CS2Demo] Detected demo dir: ${dir}`)
-      return dir
-    }
+  const { getCs2PreferredOpenFolder } = await import('./cs2-demo-dirs')
+  const dir = await getCs2PreferredOpenFolder()
+  if (dir) {
+    log.info(`[CS2Demo] Detected demo folder: ${dir}`)
+    return dir
   }
 
   log.info('[CS2Demo] No CS2 demo directory found across Steam libraries')
@@ -149,32 +142,19 @@ export async function findLatestCS2Demo(
 
   const notBefore = matchStartTime - 60_000 // 60s buffer
 
-  let demoDir: string | null = null
-
-  if (customDemoDir) {
-    demoDir = customDemoDir
-    log.info(`[CS2Demo] Using custom demo dir: ${demoDir}`)
-  } else {
-    const steamPath = await getSteamPath()
-    if (!steamPath) {
-      log.warn('[CS2Demo] Steam not found — cannot locate demo dir')
-      return { found: false, demoPath: null, demoDir: null, error: 'Steam not found' }
-    }
-
-    const candidates = await getCandidateDemoDirs(steamPath)
-    log.info(`[CS2Demo] Checking ${candidates.length} candidate demo dirs`)
-    for (const dir of candidates) {
-      if (fs.existsSync(dir)) {
-        demoDir = dir
-        log.info(`[CS2Demo] Using demo dir: ${demoDir}`)
-        break
-      }
-    }
-  }
+  const { getCs2DemoSearchDirs, getCs2PreferredOpenFolder } = await import('./cs2-demo-dirs')
+  const searchDirs = await getCs2DemoSearchDirs(customDemoDir)
+  const demoDir = await getCs2PreferredOpenFolder(customDemoDir)
 
   if (!demoDir) {
     log.warn('[CS2Demo] CS2 demo directory not found')
     return { found: false, demoPath: null, demoDir: null, error: 'CS2 directory not found' }
+  }
+
+  if (customDemoDir) {
+    log.info(`[CS2Demo] Using custom demo search dirs: ${searchDirs.join(', ')}`)
+  } else {
+    log.info(`[CS2Demo] Checking ${searchDirs.length} demo search dirs`)
   }
 
   // Poll for up to 15 seconds (2s intervals) for a .dem file to appear
@@ -185,7 +165,7 @@ export async function findLatestCS2Demo(
   log.info(`[CS2Demo] Polling for .dem files modified after ${new Date(notBefore).toISOString()}`)
 
   while (Date.now() < deadline) {
-    const demo = findNewestDem(demoDir, notBefore)
+    const demo = findNewestDemInDirs(searchDirs, notBefore)
     if (demo) {
       log.info(`[CS2Demo] Found demo: ${demo}`)
       return { found: true, demoPath: demo, demoDir }
@@ -223,6 +203,23 @@ function findNewestDem(dir: string, notBefore: number): string | null {
   }
 }
 
+function findNewestDemInDirs(dirs: string[], notBefore: number): string | null {
+  let newest: { path: string; mtimeMs: number } | null = null
+  for (const dir of dirs) {
+    const found = findNewestDem(dir, notBefore)
+    if (!found) continue
+    try {
+      const mtimeMs = fs.statSync(found).mtimeMs
+      if (!newest || mtimeMs > newest.mtimeMs) {
+        newest = { path: found, mtimeMs }
+      }
+    } catch {
+      // Skip unreadable files
+    }
+  }
+  return newest?.path ?? null
+}
+
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms))
 }
@@ -234,7 +231,7 @@ export interface CS2DemoFile {
   modifiedAt: number
 }
 
-/** List the most recent .dem files in the CS2 demo directory. */
+/** List the most recent .dem files across csgo root and `replays/`. */
 export async function listRecentCS2Demos(
   customDemoDir?: string,
   limit = 8,
@@ -243,43 +240,39 @@ export async function listRecentCS2Demos(
     return { files: [], dir: null, exists: false }
   }
 
-  let demoDir: string | null = customDemoDir ?? null
-  if (!demoDir) {
-    const steamPath = await getSteamPath()
-    if (steamPath) {
-      const candidates = await getCandidateDemoDirs(steamPath)
-      for (const dir of candidates) {
-        if (fs.existsSync(dir)) {
-          demoDir = dir
-          break
-        }
-      }
-    }
-  }
+  const { getCs2DemoSearchDirs, getCs2PreferredOpenFolder } = await import('./cs2-demo-dirs')
+  const searchDirs = await getCs2DemoSearchDirs(customDemoDir)
+  const demoDir = await getCs2PreferredOpenFolder(customDemoDir)
+  const existingDirs = searchDirs.filter((dir) => fs.existsSync(dir))
 
-  if (!demoDir || !fs.existsSync(demoDir)) {
+  if (!demoDir || existingDirs.length === 0) {
     return { files: [], dir: demoDir, exists: false }
   }
 
   const files: CS2DemoFile[] = []
-  try {
-    for (const entry of fs.readdirSync(demoDir)) {
-      if (!entry.toLowerCase().endsWith('.dem')) continue
-      const fullPath = path.join(demoDir, entry)
-      try {
-        const stat = fs.statSync(fullPath)
-        files.push({
-          name: entry,
-          path: fullPath,
-          sizeBytes: stat.size,
-          modifiedAt: stat.mtimeMs,
-        })
-      } catch {
-        // skip unreadable
+  const seenPaths = new Set<string>()
+  for (const dir of existingDirs) {
+    try {
+      for (const entry of fs.readdirSync(dir)) {
+        if (!entry.toLowerCase().endsWith('.dem')) continue
+        const fullPath = path.join(dir, entry)
+        if (seenPaths.has(fullPath)) continue
+        seenPaths.add(fullPath)
+        try {
+          const stat = fs.statSync(fullPath)
+          files.push({
+            name: entry,
+            path: fullPath,
+            sizeBytes: stat.size,
+            modifiedAt: stat.mtimeMs,
+          })
+        } catch {
+          // skip unreadable
+        }
       }
+    } catch {
+      // skip unreadable dirs
     }
-  } catch {
-    return { files: [], dir: demoDir, exists: true }
   }
 
   files.sort((a, b) => b.modifiedAt - a.modifiedAt)

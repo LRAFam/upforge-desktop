@@ -613,10 +613,11 @@ function createSettings() {
   async function detectCs2DemoDir(): Promise<void> {
     cs2Detecting.value = true
     try {
-      const { dir } = await window.api.cs2.detectDemoDir()
-      if (dir) {
-        settings.cs2DemoDir = dir
-        await window.api.settings.save({ cs2DemoDir: dir })
+      const { dir, root } = await window.api.cs2.detectDemoDir()
+      const settingsDir = root ?? dir
+      if (settingsDir) {
+        settings.cs2DemoDir = settingsDir
+        await window.api.settings.save({ cs2DemoDir: settingsDir })
         showSaved()
       } else {
         showToast('Could not find CS2 demo folder')

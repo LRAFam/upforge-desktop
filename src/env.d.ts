@@ -1023,7 +1023,7 @@ declare global {
         }>
       }
       cs2: {
-        detectDemoDir: () => Promise<{ dir: string | null }>
+        detectDemoDir: () => Promise<{ dir: string | null; root: string | null }>
         listDemos: () => Promise<{
           files: Array<{ name: string; path: string; sizeBytes: number; modifiedAt: number }>
           dir: string | null

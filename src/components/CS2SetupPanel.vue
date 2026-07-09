@@ -35,7 +35,7 @@
         >{{ detecting ? 'Detecting…' : 'Detect demo folder' }}</button>
       </div>
       <p v-if="demoDir" class="text-[10px] text-gray-600 font-mono truncate" :title="demoDir">
-        Demo folder: {{ demoDir }}
+        Replays folder: {{ demoDir }}
       </p>
       <p v-else-if="detectError" class="text-[10px] text-amber-400/80">{{ detectError }}</p>
     </div>
@@ -55,7 +55,7 @@
     </div>
 
     <div v-else-if="result.files.length === 0" class="px-3.5 py-4">
-      <p class="text-xs text-gray-500">No .dem files yet. Play a match with auto-recording enabled, then come back.</p>
+      <p class="text-xs text-gray-500">No .dem files yet. Download from Watch or enable auto-recording, then come back.</p>
     </div>
 
     <div v-else class="divide-y divide-white/[0.03]">
@@ -124,11 +124,11 @@ async function detectFolder() {
   detecting.value = true
   detectError.value = ''
   try {
-    const { dir } = await window.api.cs2.detectDemoDir()
-    if (dir) {
-      demoDir.value = dir
-      const current = await window.api.settings.get()
-      await window.api.settings.save({ cs2DemoDir: dir })
+    const { dir, root } = await window.api.cs2.detectDemoDir()
+    const settingsDir = root ?? dir
+    if (settingsDir) {
+      demoDir.value = dir ?? settingsDir
+      await window.api.settings.save({ cs2DemoDir: settingsDir })
       await refresh()
     } else {
       detectError.value = 'Could not find CS2 — is Steam installed on this PC?'

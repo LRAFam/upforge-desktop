@@ -20,6 +20,8 @@ export function demoAttachGuideTitle(game: DemoAttachGame): string {
   return game === 'cs2' ? 'How to get your CS2 demo' : 'How to get your Deadlock replay'
 }
 
+export const CS2_REPLAYS_FOLDER_HINT = 'Steam/…/game/csgo/replays/'
+
 export function demoAttachGuideSteps(game: DemoAttachGame): DemoAttachGuideStep[] {
   if (game === 'cs2') {
     return [
@@ -33,16 +35,23 @@ export function demoAttachGuideSteps(game: DemoAttachGame): DemoAttachGuideStep[
       },
       {
         parts: [
+          { text: 'Download saves to ' },
+          { text: CS2_REPLAYS_FOLDER_HINT, mono: true },
+          { text: ' — extra .dem files from auto-record or other matches are normal' },
+        ],
+      },
+      {
+        parts: [
           { text: 'Or add ' },
           { text: CS2_AUTOEXEC_LINE, mono: true },
-          { text: ' to autoexec — demos land in your Steam folder after each game' },
+          { text: ' to autoexec — demos may also land in the csgo folder after each game' },
         ],
       },
       {
         parts: [
           { text: 'In UpForge: ' },
           { text: 'Attach demo', emphasis: true },
-          { text: ' (pick the .dem) or ' },
+          { text: ' (pick the .dem from after your match) or ' },
           { text: 'Scan replay folder', emphasis: true },
         ],
       },

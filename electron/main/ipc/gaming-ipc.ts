@@ -399,9 +399,11 @@ export function setupGamingHandlers(
   // ── CS2 ───────────────────────────────────────────────────────────────────
 
   ipcMain.handle('cs2:detect-demo-dir', async () => {
-    const { detectCS2DemoDir } = await import('../cs2-demo-finder')
-    const dir = await detectCS2DemoDir()
-    return { dir }
+    const { getCs2CsgoRoot, getCs2PreferredOpenFolder } = await import('../cs2-demo-dirs')
+    const custom = settingsManager.get().cs2DemoDir
+    const root = await getCs2CsgoRoot(custom)
+    const dir = await getCs2PreferredOpenFolder(custom)
+    return { dir, root }
   })
 
   ipcMain.handle('cs2:list-demos', async () => {
@@ -411,9 +413,9 @@ export function setupGamingHandlers(
   })
 
   ipcMain.handle('cs2:open-demos-folder', async () => {
-    const { detectCS2DemoDir } = await import('../cs2-demo-finder')
+    const { getCs2PreferredOpenFolder } = await import('../cs2-demo-dirs')
     const custom = settingsManager.get().cs2DemoDir
-    const dir = custom ?? (await detectCS2DemoDir())
+    const dir = await getCs2PreferredOpenFolder(custom)
     if (dir && fs.existsSync(dir)) {
       return openPathSafe(dir)
     }
