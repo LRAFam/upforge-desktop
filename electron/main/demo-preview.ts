@@ -2,6 +2,11 @@ import fs from 'fs'
 import log from 'electron-log'
 import { peekDemoHeader } from './demo-header-peek'
 import { buildTimelineFromDemo } from './demo-timeline'
+import {
+  isDemoLikelyIncomplete,
+  sanitizeDemoClientName,
+  sanitizeDemoMapName,
+} from './demo-text-sanitize'
 import { cs2PlayerIdentityMismatch } from './match-data-quality'
 import type { KillEvent, MatchData } from './riot-types'
 import type { SourceGame } from './source-replay-finder'
@@ -175,14 +180,18 @@ export async function buildDemoPreviewSummary(opts: {
 
     if (!timeline) {
       const peek = await peekDemoHeader(normalized)
-      if (peek?.mapName) {
+      const map = sanitizeDemoMapName(peek?.mapName, opts.mapHint)
+      const incomplete = isDemoLikelyIncomplete(normalized, peek)
+      if (map || peek || opts.mapHint) {
         return {
           ...empty,
           ok: true,
           partialParse: true,
-          map: peek.mapName,
-          playerName: peek.clientName,
-          error: 'Could only read the replay header — Steam may still be downloading this file',
+          map,
+          playerName: sanitizeDemoClientName(peek?.clientName),
+          error: incomplete
+            ? 'Steam may still be downloading this replay — open CS2 → Watch → Your Matches, then rescan'
+            : 'Could not fully parse this replay — try Rescan or pick another file',
         }
       }
       return {

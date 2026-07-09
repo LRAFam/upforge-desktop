@@ -55,10 +55,11 @@ const vodHintLabel = computed(() => {
 const recommended = computed(() => candidates.value.find((c) => c.recommended) ?? null)
 
 const previewMapLabel = computed(() => {
-  if (!preview.value?.map) return 'Unknown map'
+  const map = preview.value?.map ?? props.map
+  if (!map) return 'Unknown map'
   return props.game === 'cs2'
-    ? (cs2MapDisplayName(preview.value.map) || preview.value.map)
-    : preview.value.map
+    ? (cs2MapDisplayName(map) || map)
+    : map
 })
 
 const assessmentTone = computed(() => {

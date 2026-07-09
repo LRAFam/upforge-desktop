@@ -1,6 +1,7 @@
 import fs from 'fs'
 import { DemoFile } from 'demofile'
 import log from 'electron-log'
+import { sanitizeDemoClientName, sanitizeDemoMapName } from './demo-text-sanitize'
 
 export interface DemoHeaderPeek {
   mapName: string | null
@@ -24,11 +25,13 @@ export function peekDemoHeader(demoPath: string): Promise<DemoHeaderPeek | null>
 
     const fromHeader = (): DemoHeaderPeek | null => {
       const header = demo.header
-      if (!header?.mapName && !header?.clientName) return null
+      const mapName = sanitizeDemoMapName(header?.mapName)
+      const clientName = sanitizeDemoClientName(header?.clientName)
+      if (!mapName && !clientName && !header?.playbackTime) return null
       return {
-        mapName: header.mapName?.trim() || null,
-        clientName: header.clientName?.trim() || null,
-        playbackTime: header.playbackTime ?? null,
+        mapName,
+        clientName,
+        playbackTime: header?.playbackTime ?? null,
       }
     }
 

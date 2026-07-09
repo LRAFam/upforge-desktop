@@ -5,6 +5,7 @@
 import fs from 'fs'
 import log from 'electron-log'
 import { peekDemoHeader } from './demo-header-peek'
+import { sanitizeDemoMapName } from './demo-text-sanitize'
 import { buildTimelineFromDemo } from './demo-timeline'
 import { cs2PlayerIdentityMismatch, hasRichMatchData } from './match-data-quality'
 import { resolveMatchSessionStartMs } from './recording-sync'
@@ -58,7 +59,8 @@ export async function attachDemoFileToRecording(opts: {
 
   if (!timeline || !hasRichMatchData(timeline)) {
     const peek = !timeline ? await peekDemoHeader(normalized) : null
-    if (peek?.mapName) {
+    const peekMap = sanitizeDemoMapName(peek?.mapName)
+    if (peekMap || peek?.playbackTime) {
       return {
         ok: false,
         error: 'Replay file looks incomplete — wait for Steam to finish downloading in CS2, then rescan.',

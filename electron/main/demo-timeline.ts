@@ -3,8 +3,9 @@ import { DemoFile } from 'demofile'
 import log from 'electron-log'
 import type { KillEvent, MatchData, RoundSummary } from './riot-types'
 import { emptyMatchData, gameTimeToVideoOffsetMs } from './recording-sync'
-import { cs2WorldToNorm, getCs2MapTransform } from './spatial/cs2-transforms'
+import { cs2WorldToNorm, getCs2MapTransform, normalizeCs2MapKey } from './spatial/cs2-transforms'
 import { applyDemoSpatialEnrichment, resolveCs2Callout } from './spatial/demo-enrich'
+import { sanitizeDemoClientName } from './demo-text-sanitize'
 import { inferLocalPlayerFromDemoKills } from './demo-local-player'
 
 export interface DemoTimelineOptions {
@@ -213,8 +214,8 @@ export async function buildTimelineFromDemo(opts: DemoTimelineOptions): Promise<
       }
 
       const header = demo.header
-      timeline.map = opts.map ?? header?.mapName ?? null
-      timeline.playerName = localName ?? header?.clientName ?? null
+      timeline.map = opts.map ?? normalizeCs2MapKey(header?.mapName) ?? null
+      timeline.playerName = localName ?? sanitizeDemoClientName(header?.clientName) ?? null
       timeline.endTime = Date.now()
 
       const roundsPlayed = Math.max(currentRound, roundWinners.size)
