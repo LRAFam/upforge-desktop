@@ -34,6 +34,16 @@ export const CS2_DEMO_SYNC_MAX_MS = 35 * 60 * 1000
 /** Short blocking poll at match end — background sync continues up to CS2_DEMO_SYNC_MAX_MS. */
 export const CS2_DEMO_POST_MATCH_QUICK_POLL_MS = 120_000
 
+/** Background demo poll cadence — backs off as GOTV wait lengthens. */
+export function cs2DemoSyncPollIntervalMs(elapsedMs: number, recordingActive = false): number {
+  if (recordingActive) return 30_000
+  const elapsedMin = elapsedMs / 60_000
+  if (elapsedMin < 5) return 5_000
+  if (elapsedMin < 15) return 10_000
+  if (elapsedMin < 30) return 20_000
+  return 30_000
+}
+
 export function demoSyncMaxMsForGame(game: string | null | undefined): number {
   if (game === 'cs2') return CS2_DEMO_SYNC_MAX_MS
   return MATCH_DETAILS_ENRICH_MAX_MS
@@ -55,7 +65,7 @@ export function cs2DemoSyncMessage(elapsedMs: number): string {
 }
 
 export function cs2DemoUnavailableMessage(): string {
-  return 'CS2 demo not found after 35 minutes — download the GOTV replay in-game or restart Steam and rescan. Demo timing is controlled by Steam, not UpForge.'
+  return 'CS2 demo not found — make sure Steam is running and logged in, then tap Scan for replay. Valve demos expire after ~30 days.'
 }
 
 /** CS2 / Deadlock match ended before replay/demo stats linked — skip interrupting post-game UI. */
@@ -69,10 +79,10 @@ export function shouldDeferPostGameForDemoSync(
 
 export function cs2RecordingSavedDashboardMessage(map: string | null | undefined): string {
   const mapLabel = map ? ` on ${map}` : ''
-  return `CS2 recording saved${mapLabel}. GOTV demos come from Steam (usually 5–15 min) — we'll notify you when the timeline links.`
+  return `CS2 recording saved${mapLabel}. UpForge will download the GOTV demo from Valve when Steam is available.`
 }
 
 export function deadlockRecordingSavedDashboardMessage(map: string | null | undefined): string {
   const mapLabel = map ? ` on ${map}` : ''
-  return `Deadlock recording saved${mapLabel}. Replay data syncs separately — check the dashboard when ready.`
+  return `Deadlock recording saved${mapLabel}. UpForge will sync replay data from Steam when the match ends.`
 }

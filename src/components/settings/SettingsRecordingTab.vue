@@ -129,7 +129,7 @@ const {
               <div>
                 <p class="text-sm font-semibold text-white">Deadlock recording</p>
                 <p class="mt-1 text-xs text-gray-500 leading-relaxed">
-                  UpForge reads <code class="font-mono text-teal-300/90">-condebug</code> console logs to detect matches and builds a timeline from the log (and replay when available). Use borderless windowed mode for OBS capture.
+                  UpForge watches Steam&apos;s local cache for match data and downloads replays from Valve when available. Use borderless windowed mode for OBS capture.
                 </p>
               </div>
               <SettingsDeadlockDiagnostics />

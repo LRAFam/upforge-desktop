@@ -86,17 +86,17 @@ export function demoPendingElapsedLabel(recordedAt: number): string {
 /** One-line explainer for compact UI (cards, post-game). */
 export function demoSyncExplainerShort(game: string | null | undefined): string {
   if (game === 'cs2') return 'Demos come from Steam — UpForge watches for them but cannot speed them up.'
-  if (game === 'deadlock') return 'Replay data syncs from the game client — timing is outside UpForge.'
+  if (game === 'deadlock') return 'Replay data syncs from Steam — keep Steam open while you play.'
   return ''
 }
 
 /** Longer explainer for side panels and help text. */
 export function demoSyncExplainer(game: string | null | undefined): string {
   if (game === 'cs2') {
-    return 'GOTV demo files are written by Steam/Valve after each match. UpForge scans your demo folder in the background — we cannot create or rush them.'
+    return 'GOTV demos are stored on Valve servers after ranked matches. UpForge downloads them via Steam when a local file is missing.'
   }
   if (game === 'deadlock') {
-    return 'Deadlock replay data syncs from the game client. UpForge polls for it — timing is outside our control.'
+    return 'Deadlock replay data syncs from Steam. UpForge downloads from Valve when the match ends.'
   }
   return ''
 }

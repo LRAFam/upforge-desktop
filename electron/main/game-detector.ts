@@ -1,6 +1,7 @@
 import { EventEmitter } from 'events'
 import { exec } from 'child_process'
 import { promisify } from 'util'
+import { isGsiMatchLive, isGsiReceiving } from './steam-gsi-server'
 
 const execAsync = promisify(exec)
 const IS_WIN = process.platform === 'win32'
@@ -35,6 +36,22 @@ export function pickGameToTrack(
   if (!runningGames.length) return null
   if (watchGame && runningGames.includes(watchGame)) return watchGame
   return GAME_DETECTION_ORDER.find((game) => runningGames.includes(game)) ?? runningGames[0] ?? null
+}
+
+/**
+ * CS2 often stays open in the menu after a match while the user plays another title.
+ * Yield tracking when GSI shows CS2 is not in a live map.
+ */
+export function pickHandoffGameWhenIdleInMenu(
+  activeGame: string,
+  runningGames: string[],
+  watchGame: string | null,
+): string | null {
+  if (activeGame !== 'cs2') return null
+  if (isGsiReceiving() && isGsiMatchLive()) return null
+  const others = runningGames.filter((g) => g !== 'cs2')
+  if (!others.length) return null
+  return pickGameToTrack(others, watchGame)
 }
 
 export class GameDetector extends EventEmitter {
@@ -177,13 +194,24 @@ export class GameDetector extends EventEmitter {
 
       const active = this._activeGame
 
-      // Stick to the active game until its process is gone — ignore other running games.
-      if (active) {
-        if (runningGames.includes(active)) {
+      // CS2 stays open in menu after a match — hand off when Valorant/Deadlock starts.
+      if (active && runningGames.includes(active)) {
+        const handoff = pickHandoffGameWhenIdleInMenu(active, runningGames, this._watchGame)
+        if (handoff) {
           this._missedPollStreak = 0
+          this._activeGame = null
+          this.emit('game-stopped', active)
+          console.log(`[GameDetector] ${active} idle in menu — handing off to ${handoff}`)
+          this._activeGame = handoff
+          this.emit('game-started', handoff)
           return
         }
+        this._missedPollStreak = 0
+        return
+      }
 
+      // Stick to the active game until its process is gone — ignore other running games.
+      if (active) {
         this._missedPollStreak++
         if (this._missedPollStreak < GameDetector.MISSED_POLLS_BEFORE_STOP) {
           console.log(

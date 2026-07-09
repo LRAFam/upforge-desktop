@@ -1005,6 +1005,10 @@ declare global {
           liveDeaths: number
           lobbyMatchId: number | null
           logCandidates: Array<{ path: string; size: number; exists: boolean }>
+          steamCacheDir?: string | null
+          activeMatchId?: number | null
+          hasReplaySalt?: boolean
+          knownMatchCount?: number
         }>
         ensureCondebug: () => Promise<{
           ok: boolean

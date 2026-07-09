@@ -1,6 +1,6 @@
 {
   "name": "upforge-desktop",
-  "version": "2.9.3",
+  "version": "2.9.4",
   "description": "UpForge Desktop — Automatic Valorant gameplay recording and AI coaching",
   "main": "./out/main/index.js",
   "author": "UpForge",
@@ -25,9 +25,12 @@
     "prepare": "husky"
   },
   "dependencies": {
+    "@akiver/boiler-writter": "^1.7.0",
     "@electron-toolkit/preload": "^3.0.0",
     "@electron-toolkit/utils": "^3.0.0",
     "axios": "^1.6.0",
+    "csgo-protobuf": "^4.1.9",
+    "csgo-sharecode": "^5.0.0",
     "demofile": "^2.10.0",
     "discord-rpc": "^4.0.1",
     "electron-log": "^5.4.3",
@@ -36,6 +39,7 @@
     "obs-websocket-js": "^5.0.8",
     "pinia": "^2.1.7",
     "ps-list": "^8.1.1",
+    "unbzip2-stream": "^1.4.3",
     "vue": "^3.5.0",
     "vue-router": "^4.5.0"
   },
@@ -121,8 +125,22 @@
         ]
       },
       {
-        "from": "resources/obs",
-        "to": "obs",
+        "from": "node_modules/@akiver/boiler-writter/dist/bin/win32-x64",
+        "to": "boiler-writter/win32-x64",
+        "filter": [
+          "**/*"
+        ]
+      },
+      {
+        "from": "node_modules/@akiver/boiler-writter/dist/bin/darwin-arm64",
+        "to": "boiler-writter/darwin-arm64",
+        "filter": [
+          "**/*"
+        ]
+      },
+      {
+        "from": "node_modules/@akiver/boiler-writter/dist/bin/darwin-x64",
+        "to": "boiler-writter/darwin-x64",
         "filter": [
           "**/*"
         ]

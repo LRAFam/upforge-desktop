@@ -19,7 +19,7 @@ import type { AppSettings } from '../settings-manager'
 import { apiPost } from './api-helpers'
 import { listRecentDemosInDir } from '../demo-finder'
 import { SourceReplayUploader } from '../source-replay-uploader'
-import { getDeadlockDetectionStatus } from '../deadlock-log-watcher'
+import { getDeadlockDetectionStatus } from '../deadlock-match-watcher'
 import { ensureDeadlockSteamLaunchOptions } from '../deadlock-steam-setup'
 
 /** Last launched drill config — used to attach difficulty to session sync payload */

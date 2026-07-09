@@ -168,7 +168,7 @@ import {
   resetPostGameSession,
   sendPostGameEvent,
 } from './post-game-session'
-import { hasRichMatchData, MATCH_DETAILS_ENRICH_MAX_MS, CS2_DEMO_POST_MATCH_QUICK_POLL_MS, demoSyncMaxMsForGame, shouldDeferPostGameForDemoSync, cs2RecordingSavedDashboardMessage, deadlockRecordingSavedDashboardMessage } from './match-data-quality'
+import { hasRichMatchData, MATCH_DETAILS_ENRICH_MAX_MS, CS2_DEMO_POST_MATCH_QUICK_POLL_MS, cs2DemoSyncPollIntervalMs, demoSyncMaxMsForGame, shouldDeferPostGameForDemoSync, cs2RecordingSavedDashboardMessage, deadlockRecordingSavedDashboardMessage } from './match-data-quality'
 import {
   buildCoachingSubmissionExtras,
   topSkillFocus,
@@ -191,6 +191,7 @@ import {
   startDeadlockLogWatcher,
   stopDeadlockLogWatcher,
   resetDeadlockLogSession,
+  noteDeadlockWaitStarted,
   isDeadlockReadyToRecord,
   isDeadlockMatchEnded,
   isDeadlockDetectionActive,
@@ -198,11 +199,14 @@ import {
   getDeadlockHero,
   getDeadlockLobbyMatchId,
   getDeadlockMatchStartedAt,
+  getDeadlockMatchSalts,
   getDeadlockDetectionStatus,
   buildDeadlockTimelineFromLogSession,
-} from './deadlock-log-watcher'
+} from './deadlock-match-watcher'
+import { downloadDeadlockValveReplay } from './deadlock-valve-replay'
 import { ensureCs2DemoRecordingConfig } from './cs2-steam-setup'
 import { resolveCs2LocalPlayerName } from './cs2-player-identity'
+import { downloadCs2ValveDemoForSession } from './cs2-valve-demo-downloader'
 
 /** Human-readable label for a game identifier. */
 function gameLabel(game?: string | null): string {
@@ -775,7 +779,6 @@ function handlePrimaryGameSwitch(
   void ensureObsCaptureForGame(game)
 
   if (game === 'deadlock') {
-    void ensureDeadlockSteamLaunchOptions()
     startDeadlockLogWatcher()
   } else {
     stopDeadlockLogWatcher()
@@ -1249,7 +1252,43 @@ async function refreshReplayTimelineForRecording(
       : null,
   }
 
-  const parsed = await buildTimelineFromReplay(replayCtx, { pollOnce: true })
+  let parsed = await buildTimelineFromReplay(replayCtx, { pollOnce: true })
+
+  if (
+    rec.game === 'cs2'
+    && (!parsed.timeline || !hasRichMatchData(parsed.timeline))
+    && !shouldDeferHeavyBackgroundWork(matchPriorityDeps())
+  ) {
+    const valve = await downloadCs2ValveDemoForSession({
+      matchSessionStartMs: matchStartMs,
+      gsiMap: replayCtx.gsiMap,
+      customReplayDir: replayCtx.customReplayDir,
+    })
+    if (valve.ok) {
+      log.info('[Replay] CS2 Valve demo downloaded:', valve.demoPath)
+      parsed = await buildTimelineFromReplay(replayCtx, { pollOnce: true })
+    } else if (valve.code !== 'gc_failed' && valve.code !== 'steam_offline') {
+      log.info('[CS2ValveDemo]', valve.error)
+    }
+  }
+
+  if (
+    rec.game === 'deadlock'
+    && (!parsed.timeline || !hasRichMatchData(parsed.timeline))
+    && !shouldDeferHeavyBackgroundWork(matchPriorityDeps())
+  ) {
+    const salts = getDeadlockMatchSalts()
+    if (salts?.replaySalt != null) {
+      const valve = await downloadDeadlockValveReplay(salts)
+      if (valve.ok) {
+        log.info('[Replay] Deadlock Valve replay downloaded:', valve.demoPath)
+        parsed = await buildTimelineFromReplay(replayCtx, { pollOnce: true })
+      } else if (valve.code !== 'no_salt') {
+        log.info('[DeadlockValve]', valve.error)
+      }
+    }
+  }
+
   if (!parsed.timeline || !hasRichMatchData(parsed.timeline)) return false
 
   recordingsStore.updateTimeline(recordingId, parsed.timeline)
@@ -1292,6 +1331,7 @@ async function retryCs2DemoClips(opts: {
   analysisJobId: string | null
 }): Promise<void> {
   if (!settingsManager) return
+  await waitUntilBackgroundWorkAllowed(matchPriorityDeps(), { logActivity })
   const replayCtx = {
     game: 'cs2' as const,
     matchSessionStart: opts.matchSessionStart,
@@ -1459,7 +1499,12 @@ function scheduleAnalysisReadinessRefresh(recordingId: string, game: string): vo
       return
     }
 
-    await refreshRecordingVodProbe(rec)
+    const elapsed = Date.now() - startedAt
+    const deferring = shouldDeferHeavyBackgroundWork(matchPriorityDeps())
+
+    if (!deferring) {
+      await refreshRecordingVodProbe(rec)
+    }
 
     let readiness = getAnalysisReadiness(rec)
     if (isTerminalAnalysisReadinessState(readiness.state)) {
@@ -1492,7 +1537,7 @@ function scheduleAnalysisReadinessRefresh(recordingId: string, game: string): vo
       readiness = getAnalysisReadiness(rec)
     }
 
-    if (readiness.state === 'syncing' && (rec.game === 'cs2' || rec.game === 'deadlock')) {
+    if (readiness.state === 'syncing' && (rec.game === 'cs2' || rec.game === 'deadlock') && !deferring) {
       await refreshReplayTimelineForRecording(recordingId, { notifyActivity: true })
       rec = recordingsStore.getById(recordingId)
       if (rec) readiness = getAnalysisReadiness(rec)
@@ -1504,7 +1549,9 @@ function scheduleAnalysisReadinessRefresh(recordingId: string, game: string): vo
       sendPostGameEvent(pg, 'post-game:analysis-readiness', readiness)
     }
     if (!isTerminalAnalysisReadinessState(readiness.state)) {
-      const pollMs = rec?.game === 'cs2' ? 5_000 : 10_000
+      const pollMs = rec?.game === 'cs2'
+        ? cs2DemoSyncPollIntervalMs(elapsed, deferring)
+        : deferring ? 30_000 : 10_000
       setTimeout(() => { void tick() }, pollMs)
     }
   }
@@ -1741,7 +1788,6 @@ function setupGameDetection(): void {
   startSteamGsiServer()
   gameDetector.setWatchGame(normalizePrimaryGame(settingsManager.get().primaryGame))
   if (normalizePrimaryGame(settingsManager.get().primaryGame) === 'deadlock') {
-    void ensureDeadlockSteamLaunchOptions()
     startDeadlockLogWatcher()
   }
   if (normalizePrimaryGame(settingsManager.get().primaryGame) === 'cs2') {
@@ -2022,7 +2068,42 @@ function setupGameDetection(): void {
           logActivity('CS2 demo parsed but no kills matched — set your Steam name in Settings → Recording')
         }
       } else if (game === 'cs2') {
-        logActivity('No CS2 demo yet — GOTV replays usually appear in 5–15 minutes (up to 30 at peak)')
+        logActivity('No local CS2 demo yet — downloading from Valve servers…')
+        if (!shouldDeferHeavyBackgroundWork(matchPriorityDeps())) {
+          const valve = await downloadCs2ValveDemoForSession({
+            matchSessionStartMs: matchSessionStart,
+            gsiMap: replayCtx.gsiMap,
+            customReplayDir: replayCtx.customReplayDir,
+          })
+          if (valve.ok) {
+            const retry = await buildTimelineFromReplay(replayCtx, { pollOnce: true })
+            if (retry.timeline) {
+              timeline = retry.timeline
+              pendingReplayPath = retry.demoPath
+              logActivity('CS2 demo downloaded from Valve — syncing match stats')
+            }
+          } else {
+            logActivity(valve.error)
+          }
+        }
+      } else if (game === 'deadlock') {
+        logActivity('No local Deadlock replay yet — downloading from Valve when available…')
+        if (!shouldDeferHeavyBackgroundWork(matchPriorityDeps())) {
+          const salts = getDeadlockMatchSalts()
+          if (salts?.replaySalt != null) {
+            const valve = await downloadDeadlockValveReplay(salts)
+            if (valve.ok) {
+              const retry = await buildTimelineFromReplay(replayCtx, { pollOnce: true })
+              if (retry.timeline) {
+                timeline = retry.timeline
+                pendingReplayPath = retry.demoPath
+                logActivity('Deadlock replay downloaded from Valve — syncing match stats')
+              }
+            } else {
+              logActivity(valve.error)
+            }
+          }
+        }
       }
     }
 
@@ -2748,7 +2829,7 @@ function setupGameDetection(): void {
       !([...ALL_MODES].every(m => recordedModes.includes(m)))
 
     // CS2 — GSI live match (process open ≠ in a match).
-    // Deadlock — console.log tailing (-condebug); no Valve GSI support.
+    // Deadlock — Steam httpcache match signals; no Valve GSI.
     let authOk = false
     if (game === 'cs2') {
       resetSteamGsiSession()
@@ -2810,26 +2891,15 @@ function setupGameDetection(): void {
         }
       }
     } else if (game === 'deadlock') {
-      const steamSetup = await ensureDeadlockSteamLaunchOptions()
       resetDeadlockLogSession()
+      noteDeadlockWaitStarted()
       startDeadlockLogWatcher()
-      if (!steamSetup.ok && steamSetup.error) {
-        log.warn('[Deadlock] Steam launch options:', steamSetup.error)
-        logActivity('Deadlock: add -condebug to Steam launch options manually (Properties → Launch Options)')
-      } else if (steamSetup.needsGameRestart) {
-        logActivity('Restart Deadlock once — UpForge added -condebug for match detection')
-        notifyRecordingUx(
-          'Close and reopen Deadlock so match detection works (-condebug was just added to Steam launch options).',
-          'UpForge — Restart Deadlock',
-        )
-      }
-      logActivity('Deadlock running — waiting for match')
+      logActivity('Deadlock running — watching Steam for match data')
 
       const MATCH_TIMEOUT_MS = 25 * 60 * 1000
       const loopStart = Date.now()
-      let reopenHintShown = false
+      let steamHintShown = false
       let detectionHintShown = false
-      let condebugHintShown = false
       const deadline = Date.now() + MATCH_TIMEOUT_MS
       while (Date.now() < deadline && !cancelled) {
         if (abortIfStale(isStale, game)) return
@@ -2840,44 +2910,29 @@ function setupGameDetection(): void {
         const dlStatus = getDeadlockDetectionStatus()
 
         if (
-          !reopenHintShown
-          && steamSetup.needsGameRestart
+          !steamHintShown
           && Date.now() - loopStart > 20_000
-          && !isDeadlockDetectionActive()
-        ) {
-          reopenHintShown = true
-          logActivity('Reopen Deadlock so UpForge can detect matches (-condebug)')
-          notifyRecordingUx(
-            'Restart Deadlock once so UpForge can detect when a match starts. Recording waits until you are in-game.',
-          )
-        }
-
-        if (
-          !condebugHintShown
-          && !steamSetup.needsGameRestart
-          && Date.now() - loopStart > 30_000
           && !dlStatus.logReceiving
           && !dlStatus.replayLive
         ) {
-          condebugHintShown = true
-          logActivity('Deadlock console.log not updating — verify -condebug in Steam launch options')
+          steamHintShown = true
+          logActivity('Keep Steam open while playing Deadlock — UpForge reads match data from Steam\'s cache')
           notifyRecordingUx(
-            'UpForge is not seeing Deadlock match logs. In Steam: Deadlock → Properties → Launch Options, add -condebug, then restart the game.',
-            'UpForge — Match detection',
+            'UpForge watches Steam\'s local cache for Deadlock match data. Keep Steam running and logged in while you play.',
+            'UpForge — Deadlock detection',
           )
         }
 
         if (
           !detectionHintShown
-          && !steamSetup.needsGameRestart
-          && Date.now() - loopStart > 45_000
+          && Date.now() - loopStart > 60_000
           && !isDeadlockDetectionActive()
         ) {
           detectionHintShown = true
           const replayHint = dlStatus.replayDir
             ? ` Replays folder: ${dlStatus.replayDir}`
             : ''
-          logActivity(`Deadlock match detection inactive — check -condebug and replay saving.${replayHint}`)
+          logActivity(`Deadlock match data not seen yet — keep Steam open.${replayHint}`)
         }
 
         if (isDeadlockReadyToRecord()) {

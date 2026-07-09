@@ -1,7 +1,7 @@
 import fs from 'fs'
 import log from 'electron-log'
 import { findNewestDemoInDir } from './demo-finder'
-import { getCandidateCS2CsgoDirs } from './cs2-demo-finder'
+import { getCs2DemoSearchDirs } from './cs2-demo-dirs'
 import { CS2_DEMO_POST_MATCH_QUICK_POLL_MS } from './match-data-quality'
 import { getDeadlockReplayDirsSync, resolveDeadlockReplayDirs } from './deadlock-paths'
 
@@ -86,8 +86,8 @@ export async function findLatestReplay(
 ): Promise<{ found: boolean; demoPath: string | null; demoDir: string | null; error?: string }> {
   if (game === 'cs2') {
     const dirs = customDir?.trim()
-      ? [customDir.trim()]
-      : await getCandidateCS2CsgoDirs()
+      ? await getCs2DemoSearchDirs(customDir)
+      : await getCs2DemoSearchDirs()
     if (!dirs.length) {
       return { found: false, demoPath: null, demoDir: null, error: 'CS2 demo directory not found' }
     }
