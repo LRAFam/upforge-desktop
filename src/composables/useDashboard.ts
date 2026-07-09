@@ -26,6 +26,7 @@ import {
   recordingUploadProgress,
 } from '../lib/dashboard-match-row'
 import { buildAnalysisErrorPayload, type AnalysisErrorPayload } from '../lib/analysis-failure-messages'
+import { canOpenTimeline, canWatchRawRecording } from '../lib/recording-demo-status'
 
 export const DASHBOARD_KEY: InjectionKey<ReturnType<typeof createDashboard>> = Symbol('dashboard')
 
@@ -972,9 +973,19 @@ function createDashboard() {
     window.open('https://upforge.gg/valorant/playstyle', '_blank')
   }
 
-  function openRecordingReview(rec: PendingRecording) {
-    if (rec.analysisId) {
+  function openRecordingReview(rec: PendingRecording, mode: 'raw' | 'timeline' = 'timeline') {
+    if (mode === 'timeline' && rec.analysisId) {
       void openTimeline(rec.analysisId)
+      return
+    }
+    if (mode === 'timeline' && !canOpenTimeline(rec)) {
+      warning.value = recAnalysisBlockedLabel(rec)
+      setTimeout(() => { warning.value = null }, 10_000)
+      return
+    }
+    if (!canWatchRawRecording(rec)) {
+      warning.value = 'Recording file not available — check Settings → Recording.'
+      setTimeout(() => { warning.value = null }, 10_000)
       return
     }
     router.push({ path: '/vod-review', query: { id: rec.id } })

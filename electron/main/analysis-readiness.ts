@@ -2,7 +2,7 @@
  * Whether a pending recording can be analysed (VOD integrity + Riot stats + duel moments).
  */
 import fs from 'fs'
-import { hasRichMatchData, MATCH_DETAILS_ENRICH_MAX_MS } from './match-data-quality'
+import { hasRichMatchData, cs2PlayerIdentityMismatch, demoSyncMaxMsForGame, cs2DemoSyncMessage, cs2DemoUnavailableMessage } from './match-data-quality'
 import { duelMomentsForUpload } from './moment-picker'
 import { MIN_RECORDING_FILE_BYTES } from './recording-limits'
 import type { PendingRecording } from './recordings-store'
@@ -238,17 +238,25 @@ export function getAnalysisReadiness(rec: ReadinessRecording): AnalysisReadiness
   if (vodGate) return vodGate
 
   const ageMs = Date.now() - rec.recordedAt
-  const withinSyncWindow = ageMs < MATCH_DETAILS_ENRICH_MAX_MS
+  const withinSyncWindow = ageMs < demoSyncMaxMsForGame(rec.game)
 
   if (rec.game !== 'valorant') {
     if (hasRichMatchData(rec.timeline)) {
+      if (rec.game === 'cs2' && cs2PlayerIdentityMismatch(rec.timeline)) {
+        return {
+          ready: true,
+          state: 'ready',
+          message: 'Demo synced — set your CS2 Steam name in Settings → Recording to tag your kills',
+          duelMomentCount: 0,
+        }
+      }
       return { ready: true, state: 'ready', message: '', duelMomentCount: 0 }
     }
     if (withinSyncWindow) {
       const demoMessage = rec.game === 'cs2'
-        ? 'Waiting for CS2 demo file — UpForge syncs it automatically after the match'
+        ? cs2DemoSyncMessage(ageMs)
         : rec.game === 'deadlock'
-          ? 'Waiting for Deadlock replay data…'
+          ? `Waiting for Deadlock replay (${Math.floor(ageMs / 1000)}s)…`
           : 'Waiting for match replay data…'
       return {
         ready: false,
@@ -260,7 +268,9 @@ export function getAnalysisReadiness(rec: ReadinessRecording): AnalysisReadiness
     return {
       ready: false,
       state: 'unavailable',
-      message: 'Match replay data not available for this recording',
+      message: rec.game === 'cs2'
+        ? cs2DemoUnavailableMessage()
+        : 'Match replay data not available for this recording',
       duelMomentCount: 0,
     }
   }

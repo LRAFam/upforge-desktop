@@ -558,6 +558,10 @@ declare global {
         abortInFlight: (id: string) => Promise<{ ok: boolean; error?: string }>
         getTimeline: (id: string) => Promise<RecordingTimeline | null>
         refreshPlayback: (id: string) => Promise<string | null>
+        refreshDemoTimeline: (id: string) => Promise<{
+          ok: boolean
+          analysisReadiness: PendingRecording['analysisReadiness'] | null
+        }>
         nudgeSync: (id: string, deltaMs: number) => Promise<{ ok: boolean; videoSyncOffsetMs?: number }>
         resetSync: (id: string) => Promise<{ ok: boolean; videoSyncOffsetMs?: number }>
         trim: (id: string, startSec: number, endSec: number) => Promise<{

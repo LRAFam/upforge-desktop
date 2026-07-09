@@ -168,7 +168,7 @@ import {
   resetPostGameSession,
   sendPostGameEvent,
 } from './post-game-session'
-import { hasRichMatchData, MATCH_DETAILS_ENRICH_MAX_MS } from './match-data-quality'
+import { hasRichMatchData, MATCH_DETAILS_ENRICH_MAX_MS, CS2_DEMO_POST_MATCH_QUICK_POLL_MS, demoSyncMaxMsForGame, shouldDeferPostGameForDemoSync, cs2RecordingSavedDashboardMessage, deadlockRecordingSavedDashboardMessage } from './match-data-quality'
 import {
   buildCoachingSubmissionExtras,
   topSkillFocus,
@@ -506,6 +506,7 @@ let lastReplayRetryContext: {
   matchSessionStart: number
   customReplayDir?: string
   meta?: import('./post-match-replay').ReplayUploadMeta
+  recordingId?: string
 } | null = null
 
 /** Recording ids with an active S3 upload in this process — excludes them from stale-upload reset. */
@@ -623,6 +624,8 @@ function logActivity(message: string): void {
     || lower.includes('upload continues')
     || lower.includes('saved to cloud')
     || lower.includes('coaching ready')
+    || lower.includes('gotv demos come from steam')
+    || lower.includes('replay data syncs separately')
   ) {
     const now = Date.now()
     if (message !== lastActivityToast.message || now - lastActivityToast.at > FAILURE_NOTIFY_COOLDOWN_MS) {
@@ -630,6 +633,11 @@ function logActivity(message: string): void {
       mainWindow?.webContents.send('app:activity-toast', { message })
     }
   }
+}
+
+/** In-app dashboard toast only — no OS notification. */
+function notifyDashboardToast(message: string): void {
+  logActivity(message)
 }
 
 /** Dashboard banner + optional OS notification for recording outcomes. */
@@ -747,16 +755,11 @@ function syncPrimaryGameFromDetection(game: string): void {
   if (!settingsManager) return
   const detected = normalizePrimaryGame(game)
   const primary = normalizePrimaryGame(settingsManager.get().primaryGame)
-  if (detected === primary) return
-
-  const current = settingsManager.get()
-  settingsManager.save({
-    primaryGame: detected,
-    trainerMouse: { ...current.trainerMouse, game: detected },
-  })
-  mainWindow?.webContents.send('settings:changed', settingsManager.get())
-  handlePrimaryGameSwitch(detected, primary)
-  trackedPrimaryGame = detected
+  if (detected !== primary) {
+    console.log(
+      `[GameDetector] Tracking ${detected} — settings primary is ${primary} (not auto-switching)`,
+    )
+  }
 }
 
 function handlePrimaryGameSwitch(
@@ -1246,16 +1249,35 @@ async function refreshReplayTimelineForRecording(
       : null,
   }
 
-  const parsed = await buildTimelineFromReplay(replayCtx)
+  const parsed = await buildTimelineFromReplay(replayCtx, { pollOnce: true })
   if (!parsed.timeline || !hasRichMatchData(parsed.timeline)) return false
 
   recordingsStore.updateTimeline(recordingId, parsed.timeline)
   mainWindow?.webContents.send('recordings:updated')
   if (options?.notifyActivity) {
+    const mapLabel = rec.map ?? parsed.timeline.map ?? 'Your match'
     if (rec.game === 'cs2') {
       logActivity('CS2 demo synced — match stats ready for analysis')
+      showAppNotification({
+        title: 'CS2 demo ready',
+        body: `${mapLabel} — timeline linked. Review kills or run AI coaching from the dashboard.`,
+        silent: notifySilent(),
+        onClick: () => {
+          mainWindow?.show()
+          mainWindow?.focus()
+        },
+      })
     } else {
       logActivity('Deadlock replay synced — match stats ready')
+      showAppNotification({
+        title: 'Deadlock replay ready',
+        body: `${mapLabel} — timeline linked. Review from the dashboard when ready.`,
+        silent: notifySilent(),
+        onClick: () => {
+          mainWindow?.show()
+          mainWindow?.focus()
+        },
+      })
     }
   }
   return true
@@ -1279,7 +1301,7 @@ async function retryCs2DemoClips(opts: {
     customReplayDir: settingsManager.get().cs2DemoDir,
     localPlayerName: await resolveCs2LocalPlayerName(settingsManager, authManager),
   }
-  const parsed = await buildTimelineFromReplay(replayCtx)
+  const parsed = await buildTimelineFromReplay(replayCtx, { pollOnce: true })
   if (!parsed.timeline?.playerKills?.length) {
     log.warn('[LateClipExtract] CS2 demo still has no kills for clip extraction')
     logActivity('CS2 highlight clips skipped — demo missing or player not matched (check Settings → Recording → CS2 name)')
@@ -1449,7 +1471,7 @@ function scheduleAnalysisReadinessRefresh(recordingId: string, game: string): vo
       return
     }
 
-    if (Date.now() - startedAt >= MATCH_DETAILS_ENRICH_MAX_MS) {
+    if (Date.now() - startedAt >= demoSyncMaxMsForGame(game)) {
       mainWindow?.webContents.send('recordings:updated')
       readiness = getAnalysisReadiness(rec)
       const pg = postGameWindow
@@ -1482,11 +1504,12 @@ function scheduleAnalysisReadinessRefresh(recordingId: string, game: string): vo
       sendPostGameEvent(pg, 'post-game:analysis-readiness', readiness)
     }
     if (!isTerminalAnalysisReadinessState(readiness.state)) {
-      setTimeout(() => { void tick() }, 10_000)
+      const pollMs = rec?.game === 'cs2' ? 5_000 : 10_000
+      setTimeout(() => { void tick() }, pollMs)
     }
   }
 
-  setTimeout(() => { void tick() }, 5_000)
+  setTimeout(() => { void tick() }, 3_000)
 }
 
 async function ensureAnalysisReadinessForAnalyse(
@@ -1976,7 +1999,10 @@ function setupGameDetection(): void {
         customReplayDir: game === 'cs2' ? config?.cs2DemoDir : undefined,
         localPlayerName: cs2PlayerName,
       }
-      const parsed = await buildTimelineFromReplay(replayCtx)
+      const parsed = await buildTimelineFromReplay(
+        replayCtx,
+        game === 'cs2' ? { maxWaitMs: CS2_DEMO_POST_MATCH_QUICK_POLL_MS } : undefined,
+      )
       if (parsed.timeline) timeline = parsed.timeline
       pendingReplayPath = parsed.demoPath
       lastReplayRetryContext = {
@@ -1996,7 +2022,7 @@ function setupGameDetection(): void {
           logActivity('CS2 demo parsed but no kills matched — set your Steam name in Settings → Recording')
         }
       } else if (game === 'cs2') {
-        logActivity('No CS2 demo found — check Settings → Recording for demo folder and ensure cl_demo_auto_recording is enabled')
+        logActivity('No CS2 demo yet — GOTV replays usually appear in 5–15 minutes (up to 30 at peak)')
       }
     }
 
@@ -2169,27 +2195,36 @@ function setupGameDetection(): void {
     clearVodProbeCache()
     postGameWindow?.close()
     resetPostGameSession(game, map, agent)
-    const thisPostGameWindow = createPostGameWindow()
-    postGameWindow = thisPostGameWindow
-    thisPostGameWindow.on('closed', () => {
-      if (postGameWindow === thisPostGameWindow) postGameWindow = null
-      clearPostGameSession()
-    })
-    // Show without stealing focus from fullscreen Valorant — user can alt-tab when ready.
-    whenWebContentsReady(thisPostGameWindow, () => {
-      if (thisPostGameWindow.isDestroyed()) return
-      try {
-        sendPostGameEvent(thisPostGameWindow, 'post-game:preparing', { game, map, agent })
-      } catch { /* window may have closed */ }
-      if (process.platform === 'win32') {
-        thisPostGameWindow.showInactive()
-      } else {
-        thisPostGameWindow.show()
-      }
-    })
+
+    const deferPostGameUi = shouldDeferPostGameForDemoSync(game, timeline)
+    let thisPostGameWindow: BrowserWindow | null = null
+    if (!deferPostGameUi) {
+      thisPostGameWindow = createPostGameWindow()
+      postGameWindow = thisPostGameWindow
+      thisPostGameWindow.on('closed', () => {
+        if (postGameWindow === thisPostGameWindow) postGameWindow = null
+        clearPostGameSession()
+      })
+      // Show without stealing focus from fullscreen Valorant — user can alt-tab when ready.
+      whenWebContentsReady(thisPostGameWindow, () => {
+        if (thisPostGameWindow!.isDestroyed()) return
+        try {
+          sendPostGameEvent(thisPostGameWindow!, 'post-game:preparing', { game, map, agent })
+        } catch { /* window may have closed */ }
+        if (process.platform === 'win32') {
+          thisPostGameWindow!.showInactive()
+        } else {
+          thisPostGameWindow!.show()
+        }
+      })
+    } else if (game === 'cs2') {
+      notifyDashboardToast(cs2RecordingSavedDashboardMessage(map))
+    } else if (game === 'deadlock') {
+      notifyDashboardToast(deadlockRecordingSavedDashboardMessage(map))
+    }
 
     // Notify the user that the match recording has finished and upload is starting
-    {
+    if (!deferPostGameUi) {
       const agentLabel = agent ?? gameLabel(game)
       const mapLabel = map ? ` on ${map}` : ''
       showAppNotification({
@@ -2199,6 +2234,10 @@ function setupGameDetection(): void {
         allowDuringRecording: true,
       })
     }
+
+    const postGameNotifyWindow = thisPostGameWindow
+      ?? (mainWindow && !mainWindow.isDestroyed() ? mainWindow : null)
+    const uploadTargetWindow = postGameNotifyWindow
 
     // CS2 / Deadlock replay upload — runs asynchronously and never blocks VOD upload
     if (game === 'cs2' || game === 'deadlock') {
@@ -2213,20 +2252,19 @@ function setupGameDetection(): void {
           game as 'cs2' | 'deadlock',
           pendingReplayPath,
           authManager,
-          thisPostGameWindow,
+          postGameNotifyWindow,
           replayMeta,
         ).catch(() => { /* logged inside */ })
-      } else {
+      } else if (postGameNotifyWindow && !postGameNotifyWindow.isDestroyed()) {
         try {
-          if (!thisPostGameWindow.isDestroyed()) {
-            thisPostGameWindow.webContents.send('post-game:demo-status', { status: 'not-found' })
-          }
+          postGameNotifyWindow.webContents.send('post-game:demo-status', { status: 'not-found' })
         } catch { /* window closed */ }
       }
     }
 
     const runPostGameUpload = async () => {
         const sendToWindow = (channel: string, payload?: unknown) => {
+          if (!thisPostGameWindow || thisPostGameWindow.isDestroyed()) return
           sendPostGameEvent(thisPostGameWindow, channel, payload)
         }
 
@@ -2242,7 +2280,7 @@ function setupGameDetection(): void {
         const backend = getRecordingBackendForStatus()
         const errorMsg = formatRecordingFailure(backend, obsRecorder.getLastError())
         logActivity('Recording file not found at expected path — check save folder in Settings')
-        sendUploadFailure(errorMsg, { targetWindow: thisPostGameWindow })
+        sendUploadFailure(errorMsg, { targetWindow: uploadTargetWindow })
         return
       }
 
@@ -2253,7 +2291,7 @@ function setupGameDetection(): void {
         const errorMsg = formatCorruptRecordingMessage(getRecordingBackendForStatus(), sizeMB)
         log.error(`[GameDetector] ${errorMsg}`)
         logActivity(`Recording file too small (${sizeMB} MB) — upload skipped`)
-        sendUploadFailure(errorMsg, { targetWindow: thisPostGameWindow })
+        sendUploadFailure(errorMsg, { targetWindow: uploadTargetWindow })
         return
       }
 
@@ -2286,11 +2324,14 @@ function setupGameDetection(): void {
         `Recording saved (${(readySize / (1024 ** 3)).toFixed(2)} GB) — visible on dashboard`,
       )
       if (game === 'cs2' && !richMatchData) {
-        logActivity('CS2 match recorded — waiting for demo file from game')
+        logActivity('CS2 match recorded — waiting for GOTV demo (usually 5–15 min, keep UpForge open)')
       } else if (game === 'deadlock' && !richMatchData) {
         logActivity('Deadlock match recorded — waiting for replay data')
       }
       scheduleAnalysisReadinessRefresh(savedRecording.id, game)
+      if (lastReplayRetryContext && lastReplayRetryContext.game === game) {
+        lastReplayRetryContext.recordingId = savedRecording.id
+      }
 
       sendToWindow('post-game:analysis-readiness', {
         ready: false,
@@ -2310,6 +2351,7 @@ function setupGameDetection(): void {
         })
 
       void enrichPromise.then(() => {
+        if (!thisPostGameWindow || thisPostGameWindow.isDestroyed()) return
         if (!user?.riot_name || !timeline || !shouldRequestDebrief(timeline, gameMode)) return
         sendPostGameEvent(thisPostGameWindow, 'post-game:debrief-loading')
         void requestPostGameDebrief({
@@ -2320,7 +2362,9 @@ function setupGameDetection(): void {
           timeline,
           coachingExtras,
           sendToWindow: (channel, payload) => {
-            sendPostGameEvent(thisPostGameWindow, channel, payload)
+            if (thisPostGameWindow && !thisPostGameWindow.isDestroyed()) {
+              sendPostGameEvent(thisPostGameWindow, channel, payload)
+            }
           },
         }).catch((err) => log.warn('[Debrief] Background debrief failed:', err))
       }).catch((err) => log.warn('[Enrich] Match coaching enrich failed:', err))
@@ -2336,7 +2380,7 @@ function setupGameDetection(): void {
           analysisReadiness: pendingReadiness,
         })
 
-        {
+        if (!deferPostGameUi) {
           const agentLabel = agent ?? gameLabel(game)
           const mapLabel = map ? ` · ${map}` : ''
           showAppNotification({
@@ -2416,7 +2460,7 @@ function setupGameDetection(): void {
           agent,
           analysisReadiness: autoReadiness,
         })
-        {
+        if (!deferPostGameUi) {
           const agentLabel = agent ?? gameLabel(game)
           const mapLabel = map ? ` · ${map}` : ''
           showAppNotification({
@@ -2466,7 +2510,7 @@ function setupGameDetection(): void {
 
       const uploadResult = await doUploadAndAnalyse(
         savedRecording.id, readyPath, user?.riot_name ?? '', user?.riot_tag ?? '',
-        game, map, agent, timeline, thisPostGameWindow, matchSessionStart,
+        game, map, agent, timeline, uploadTargetWindow!, matchSessionStart,
         /* skipAutoDelete= */ true, /* deleteLocalAfterUpload= */ false, enrichPromise,
         { prioritizePostGameUpload: true },
       )
@@ -2543,8 +2587,8 @@ function setupGameDetection(): void {
       log.error('[HandleMatchEnd] Post-game upload failed:', err)
       logActivity(`Upload failed to start: ${msg}`)
       try {
-        if (!thisPostGameWindow.isDestroyed()) {
-          sendUploadFailure(`Upload failed to start: ${msg}`, { targetWindow: thisPostGameWindow })
+        if (uploadTargetWindow && !uploadTargetWindow.isDestroyed()) {
+          sendUploadFailure(`Upload failed to start: ${msg}`, { targetWindow: uploadTargetWindow })
         }
       } catch { /* window closed */ }
     })
@@ -4529,6 +4573,22 @@ async function startApp(): Promise<void> {
     const notifyWin = postGameWindow && !postGameWindow.isDestroyed()
       ? postGameWindow
       : (mainWindow && !mainWindow.isDestroyed() ? mainWindow : null)
+
+    const recordingId = lastReplayRetryContext.recordingId
+    if (recordingId) {
+      const synced = await refreshReplayTimelineForRecording(recordingId, { notifyActivity: true })
+      if (synced) {
+        const rec = recordingsStore.getById(recordingId)
+        if (rec) {
+          const readiness = getAnalysisReadiness(rec)
+          mainWindow?.webContents.send('recordings:updated')
+          if (notifyWin) {
+            sendPostGameEvent(notifyWin, 'post-game:analysis-readiness', readiness)
+          }
+        }
+      }
+    }
+
     await tryAutoUploadSourceReplay({
       game: lastReplayRetryContext.game,
       demoPath: null,
@@ -5027,6 +5087,15 @@ async function startApp(): Promise<void> {
   ipcMain.handle('archives:refresh-playback', async (_e, { archiveId }: { archiveId: string }) => {
     if (!archiveId) return null
     return fetchArchivePlaybackUrl(authManager, archiveId)
+  })
+
+  ipcMain.handle('recordings:refresh-demo-timeline', async (_e, { id }: { id: string }) => {
+    const ok = await refreshReplayTimelineForRecording(id, { notifyActivity: true })
+    const rec = recordingsStore.getById(id)
+    return {
+      ok,
+      analysisReadiness: rec ? getAnalysisReadiness(rec) : null,
+    }
   })
 
   ipcMain.handle('recordings:refresh-playback', async (_e, { id }: { id: string }) => {

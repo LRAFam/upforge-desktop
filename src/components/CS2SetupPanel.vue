@@ -24,7 +24,7 @@
     <!-- Setup checklist -->
     <div class="px-3.5 py-3 border-b border-orange-500/10 space-y-2.5">
       <p class="text-[11px] text-gray-400 leading-relaxed">
-        UpForge uploads your match demo automatically after each game. Enable demo recording in CS2 first:
+        UpForge reads your match demo after each game. Enable auto-record or download the GOTV replay in CS2 — demos usually appear in <span class="text-gray-300">5–15 minutes</span> (up to 30 at peak).
       </p>
       <div class="rounded-lg border border-white/[0.08] bg-black/25 px-3 py-2.5">
         <p class="text-[10px] font-semibold uppercase tracking-wider text-gray-500 mb-1.5">Add to autoexec.cfg</p>

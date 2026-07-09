@@ -16,10 +16,26 @@ const GAME_PROCESSES: Record<string, string[]> = {
   deadlock: ['deadlock.exe'],
 }
 
+/** Stable priority when multiple games run — user's primary wins if it is running. */
+export const GAME_DETECTION_ORDER = ['valorant', 'cs2', 'deadlock'] as const
+
 // Poll interval when no game is running (check for game start)
 const POLL_IDLE_MS = 5000
 // Poll interval while a game is active (check for game stop) — less frequent to reduce in-game overhead
 const POLL_ACTIVE_MS = 10000
+
+/**
+ * Pick which game to track when several are open.
+ * Prefers settings.primaryGame when its process is running; otherwise first in stable order.
+ */
+export function pickGameToTrack(
+  runningGames: string[],
+  watchGame: string | null,
+): string | null {
+  if (!runningGames.length) return null
+  if (watchGame && runningGames.includes(watchGame)) return watchGame
+  return GAME_DETECTION_ORDER.find((game) => runningGames.includes(game)) ?? runningGames[0] ?? null
+}
 
 export class GameDetector extends EventEmitter {
   private _polling = false
@@ -29,7 +45,7 @@ export class GameDetector extends EventEmitter {
   /** Consecutive tasklist misses before emitting game-stopped (avoids flake mid-match). */
   private _missedPollStreak = 0
   private static readonly MISSED_POLLS_BEFORE_STOP = 2
-  /** Last primary game from settings — used to clear stale active state on manual switch. */
+  /** Last primary game from settings — preferred when multiple games are running. */
   private _watchGame: string | null = null
 
   start(): void {
@@ -68,7 +84,7 @@ export class GameDetector extends EventEmitter {
 
   /**
    * Sync with settings.primaryGame — clears stale active state when the user
-   * picks a different game in Settings. All supported games are always polled.
+   * picks a different game in Settings while not recording.
    */
   setWatchGame(
     game: string | null,
@@ -151,37 +167,52 @@ export class GameDetector extends EventEmitter {
     if (!IS_WIN) return
 
     try {
+      const runningGames: string[] = []
       for (const [game, processNames] of this._gamesToPoll()) {
         const running = (
           await Promise.all(processNames.map((n) => this._isProcessRunning(n)))
         ).some(Boolean)
+        if (running) runningGames.push(game)
+      }
 
-        if (running && this._activeGame !== game) {
-          const previous = this._activeGame
-          this._activeGame = game
+      const active = this._activeGame
+
+      // Stick to the active game until its process is gone — ignore other running games.
+      if (active) {
+        if (runningGames.includes(active)) {
           this._missedPollStreak = 0
-          if (previous) {
-            this.emit('game-stopped', previous)
-            console.log(`[GameDetector] ${previous} stopped (switched to ${game})`)
-          }
-          this.emit('game-started', game)
-          console.log(`[GameDetector] ${game} started`)
-        } else if (running && this._activeGame === game) {
-          this._missedPollStreak = 0
-        } else if (!running && this._activeGame === game) {
-          this._missedPollStreak++
-          if (this._missedPollStreak < GameDetector.MISSED_POLLS_BEFORE_STOP) {
-            console.log(
-              `[GameDetector] ${game} process miss ${this._missedPollStreak}/` +
-              `${GameDetector.MISSED_POLLS_BEFORE_STOP} — waiting before game-stopped`,
-            )
-            continue
-          }
-          this._missedPollStreak = 0
-          this._activeGame = null
-          this.emit('game-stopped', game)
-          console.log(`[GameDetector] ${game} stopped`)
+          return
         }
+
+        this._missedPollStreak++
+        if (this._missedPollStreak < GameDetector.MISSED_POLLS_BEFORE_STOP) {
+          console.log(
+            `[GameDetector] ${active} process miss ${this._missedPollStreak}/` +
+            `${GameDetector.MISSED_POLLS_BEFORE_STOP} — waiting before game-stopped`,
+          )
+          return
+        }
+
+        this._missedPollStreak = 0
+        this._activeGame = null
+        this.emit('game-stopped', active)
+        console.log(`[GameDetector] ${active} stopped`)
+      }
+
+      if (!runningGames.length) return
+
+      const next = pickGameToTrack(runningGames, this._watchGame)
+      if (!next) return
+
+      this._activeGame = next
+      this._missedPollStreak = 0
+      this.emit('game-started', next)
+      if (runningGames.length > 1) {
+        console.log(
+          `[GameDetector] ${next} started (${runningGames.length} games running — tracking ${next} per primary/first-until-close)`,
+        )
+      } else {
+        console.log(`[GameDetector] ${next} started`)
       }
     } catch (err) {
       console.error('[GameDetector] Poll error:', err)
@@ -196,7 +227,7 @@ export class GameDetector extends EventEmitter {
     try {
       const { stdout } = await execAsync(
         `tasklist /fi "IMAGENAME eq ${processName}" /fo csv /nh`,
-        { windowsHide: true, timeout: 4000 }
+        { windowsHide: true, timeout: 4000 },
       )
       return stdout.toLowerCase().includes(processName.toLowerCase())
     } catch {

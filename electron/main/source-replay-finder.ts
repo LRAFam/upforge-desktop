@@ -2,9 +2,17 @@ import fs from 'fs'
 import log from 'electron-log'
 import { findNewestDemoInDir } from './demo-finder'
 import { getCandidateCS2CsgoDirs } from './cs2-demo-finder'
+import { CS2_DEMO_POST_MATCH_QUICK_POLL_MS } from './match-data-quality'
 import { getDeadlockReplayDirsSync, resolveDeadlockReplayDirs } from './deadlock-paths'
 
 export type SourceGame = 'cs2' | 'deadlock'
+
+export interface FindLatestReplayOptions {
+  /** Max time to poll before giving up (ms). */
+  maxWaitMs?: number
+  /** Single directory scan — for background refresh ticks. */
+  pollOnce?: boolean
+}
 
 /** @deprecated Prefer resolveDeadlockReplayDirs — kept for sync hot paths. */
 export function getDeadlockReplayDirs(customDir?: string): string[] {
@@ -47,10 +55,34 @@ function findNewestDemoAcrossDirs(
   return newest ? { demoPath: newest.path, demoDir: newest.dir } : null
 }
 
+async function pollReplayDirs(
+  game: SourceGame,
+  dirs: string[],
+  matchStartTime: number,
+  options?: FindLatestReplayOptions,
+): Promise<{ found: boolean; demoPath: string | null; demoDir: string | null }> {
+  const maxWaitMs = options?.maxWaitMs ?? (game === 'cs2' ? CS2_DEMO_POST_MATCH_QUICK_POLL_MS : 90_000)
+  const pollOnce = options?.pollOnce === true
+  const deadline = pollOnce ? Date.now() : Date.now() + maxWaitMs
+
+  do {
+    const found = findNewestDemoAcrossDirs(dirs, matchStartTime)
+    if (found) {
+      log.info(`[Replay] ${game} — found ${found.demoPath}`)
+      return { found: true, demoPath: found.demoPath, demoDir: found.demoDir }
+    }
+    if (pollOnce || Date.now() >= deadline) break
+    await sleep(2_000)
+  } while (Date.now() < deadline)
+
+  return { found: false, demoPath: null, demoDir: dirs[0] ?? null }
+}
+
 export async function findLatestReplay(
   game: SourceGame,
   matchStartTime: number,
   customDir?: string,
+  options?: FindLatestReplayOptions,
 ): Promise<{ found: boolean; demoPath: string | null; demoDir: string | null; error?: string }> {
   if (game === 'cs2') {
     const dirs = customDir?.trim()
@@ -60,19 +92,12 @@ export async function findLatestReplay(
       return { found: false, demoPath: null, demoDir: null, error: 'CS2 demo directory not found' }
     }
 
-    log.info(`[Replay] CS2 — polling ${dirs.length} demo dir(s)`)
-    const deadline = Date.now() + 90_000
-    while (Date.now() < deadline) {
-      const found = findNewestDemoAcrossDirs(dirs, matchStartTime)
-      if (found) {
-        log.info(`[Replay] CS2 — found ${found.demoPath}`)
-        return { found: true, demoPath: found.demoPath, demoDir: found.demoDir }
-      }
-      await sleep(2_000)
+    log.info(`[Replay] CS2 — scanning ${dirs.length} demo dir(s)${options?.pollOnce ? ' (once)' : ''}`)
+    const result = await pollReplayDirs(game, dirs, matchStartTime, options)
+    if (!result.found) {
+      log.info(`[Replay] CS2 — no demo in ${dirs.join(', ')}`)
     }
-
-    log.info(`[Replay] CS2 — no demo in ${dirs.join(', ')}`)
-    return { found: false, demoPath: null, demoDir: dirs[0] ?? null }
+    return { ...result }
   }
 
   const dirs = await resolveDeadlockReplayDirs(customDir)
@@ -81,18 +106,9 @@ export async function findLatestReplay(
   }
 
   log.info(`[Replay] Deadlock — polling ${dirs.length} replay dirs`)
-
-  // Deadlock can take a minute+ to finalize .dem files after match end.
-  const deadline = Date.now() + 90_000
-  while (Date.now() < deadline) {
-    const found = findNewestDemoAcrossDirs(dirs, matchStartTime)
-    if (found) {
-      log.info(`[Replay] Deadlock — found ${found.demoPath}`)
-      return { found: true, demoPath: found.demoPath, demoDir: found.demoDir }
-    }
-    await sleep(2_000)
+  const result = await pollReplayDirs(game, dirs, matchStartTime, options)
+  if (!result.found) {
+    log.info(`[Replay] Deadlock — no replay in ${dirs.join(', ')}`)
   }
-
-  log.info(`[Replay] Deadlock — no replay in ${dirs.join(', ')}`)
-  return { found: false, demoPath: null, demoDir: dirs[0] ?? null }
+  return result
 }

@@ -49,6 +49,7 @@ const api = {
     abortInFlight: (id: string) => ipcRenderer.invoke('recordings:abort-in-flight', { id }),
     getTimeline: (id: string) => ipcRenderer.invoke('recordings:get-timeline', { id }),
     refreshPlayback: (id: string) => ipcRenderer.invoke('recordings:refresh-playback', { id }),
+    refreshDemoTimeline: (id: string) => ipcRenderer.invoke('recordings:refresh-demo-timeline', { id }),
         nudgeSync: (id: string, deltaMs: number) => ipcRenderer.invoke('recordings:nudge-sync', { id, deltaMs }),
         resetSync: (id: string) => ipcRenderer.invoke('recordings:reset-sync', { id }),
         trim: (id: string, startSec: number, endSec: number) =>

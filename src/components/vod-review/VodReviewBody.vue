@@ -7,8 +7,10 @@ import DuelMomentScrubberBands from '../analysis/DuelMomentScrubberBands.vue'
 import DuelMomentCards from '../analysis/DuelMomentCards.vue'
 import { getAgentImage, getAbilityIcon } from '../../lib/valorant'
 import VodRoundLogSidebar from './VodRoundLogSidebar.vue'
+import VodDemoPendingPanel from './VodDemoPendingPanel.vue'
 import VodTimelineEventIcon from './VodTimelineEventIcon.vue'
 import { spikeEventIcon } from '../../lib/valorant-round-icons'
+import { recordingTimelineReady, usesAsyncDemoSync } from '../../lib/recording-demo-status'
 
 const {
   abilityCastSlots,
@@ -78,6 +80,7 @@ const {
   recordingId,
   refreshPlaybackUrl,
   resetTimelineSync,
+  reloadTimelineFromStore,
   roundDetailExpanded,
   roundGroups,
   roundLogCollapsed,
@@ -127,6 +130,16 @@ const {
   videoSyncOffsetMs,
 } = useVodReview()
 
+const showDemoPendingPanel = computed(() => {
+  if (!timeline.value || !recordingId.value) return false
+  if (!usesAsyncDemoSync(timeline.value.game)) return false
+  return !recordingTimelineReady({
+    kills: timeline.value.kills,
+    deaths: timeline.value.deaths,
+    finalStats: timeline.value.finalStats,
+  })
+})
+
 const noVideoHint = computed((): string => {
   if (!recordingId.value) {
     return 'Recording unavailable — it may have been deleted locally or expired from cloud storage.'
@@ -144,8 +157,16 @@ const noVideoHint = computed((): string => {
 
 <template>
   <div class="flex flex-1 min-h-0">
-<!-- Left sidebar: round log -->
-      <VodRoundLogSidebar v-if="!theaterMode && !roundLogCollapsed" />
+<!-- Left sidebar: round log or demo-pending panel -->
+      <VodDemoPendingPanel
+        v-if="showDemoPendingPanel && !theaterMode && !roundLogCollapsed"
+        :game="timeline!.game"
+        :map="timeline!.map"
+        :recorded-at="timeline!.recordedAt"
+        :recording-id="recordingId"
+        @demo-linked="reloadTimelineFromStore"
+      />
+      <VodRoundLogSidebar v-else-if="!theaterMode && !roundLogCollapsed" />
 
       <!-- Video + intel + timeline -->
       <div class="flex flex-1 min-w-0 min-h-0">

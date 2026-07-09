@@ -39,8 +39,14 @@ function sendToWindow(win: BrowserWindow, channel: string, payload?: unknown): v
 /** Find replay on disk and parse into MatchData for clips and VOD review. */
 export async function buildTimelineFromReplay(
   ctx: PostMatchReplayContext,
+  options?: import('./source-replay-finder').FindLatestReplayOptions,
 ): Promise<{ timeline: MatchData | null; demoPath: string | null }> {
-  const demoResult = await findLatestReplay(ctx.game, ctx.matchSessionStart, ctx.customReplayDir)
+  const demoResult = await findLatestReplay(
+    ctx.game,
+    ctx.matchSessionStart,
+    ctx.customReplayDir,
+    options,
+  )
 
   if (!demoResult.found || !demoResult.demoPath) {
     log.info(`[Replay] No ${ctx.game} replay found`)

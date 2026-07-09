@@ -17,6 +17,14 @@ import {
   recordingPlayerLabel,
 } from '../../lib/recording-display'
 import { isDisplayableGameMode } from '../../lib/valorant'
+import {
+  canOpenTimeline,
+  canWatchRawRecording,
+  recordingDemoBadge,
+  recordingDemoPending,
+  demoPendingSectionHint,
+  demoPendingSectionTitle,
+} from '../../lib/recording-demo-status'
 
 const props = defineProps<{ preview?: boolean }>()
 
@@ -47,6 +55,31 @@ const rows = computed(() => {
   return source.filter((rec) => rec.game === primaryGame.value)
 })
 
+const readyNowRows = computed(() => rows.value.filter((rec) => !recordingDemoPending(rec)))
+const demoPendingRows = computed(() => rows.value.filter((rec) => recordingDemoPending(rec)))
+
+const sectionedRows = computed(() => {
+  const sections: Array<{ key: string; title: string; hint?: string; tone: string; rows: PendingRecording[] }> = []
+  if (readyNowRows.value.length) {
+    sections.push({
+      key: 'ready',
+      title: 'Ready now',
+      tone: 'text-emerald-400/90',
+      rows: readyNowRows.value.slice(0, 2),
+    })
+  }
+  if (demoPendingRows.value.length) {
+    sections.push({
+      key: 'demo',
+      title: demoPendingSectionTitle(primaryGame.value),
+      hint: demoPendingSectionHint(primaryGame.value),
+      tone: 'text-blue-300/90',
+      rows: demoPendingRows.value.slice(0, 2),
+    })
+  }
+  return sections
+})
+
 function scoreLine(rec: PendingRecording): string {
   const ally = rec.timeline?.finalScore?.allyScore
   const enemy = rec.timeline?.finalScore?.enemyScore
@@ -55,16 +88,17 @@ function scoreLine(rec: PendingRecording): string {
 }
 
 function canReviewVod(rec: PendingRecording): boolean {
-  return Boolean(
-    rec.clipsOnly
-    || rec.timeline?.playerKills?.length
-    || rec.timeline?.playerDeaths?.length
-    || rec.jobId
-    || rec.analysisId
-    || rec.archiveId
-    || rec.cloudUploaded
-    || rec.hasLocalFile,
-  )
+  return canWatchRawRecording(rec)
+}
+
+function onWatchRecording(rec: PendingRecording) {
+  if (props.preview) return
+  openRecordingReview(rec, 'raw')
+}
+
+function onOpenTimeline(rec: PendingRecording) {
+  if (props.preview) return
+  openRecordingReview(rec, 'timeline')
 }
 
 function showSaveToCloud(rec: PendingRecording): boolean {
@@ -75,6 +109,7 @@ function statusLabel(rec: PendingRecording): string {
   if (recInFlight(rec) || recIsDeferred(rec)) return recPipelineLabel(rec) || 'Working…'
   if (rec.lastAnalysisError) return 'Analysis failed — retry or review VOD'
   if (recAnalysisReady(rec)) return 'Ready for AI coaching'
+  if (recordingDemoPending(rec)) return recAnalysisStatusShort(rec)
   return recAnalysisStatusShort(rec)
 }
 
@@ -98,11 +133,6 @@ function onSave(rec: PendingRecording) {
   void saveRecording(rec.id)
 }
 
-function onReview(rec: PendingRecording) {
-  if (props.preview) return
-  openRecordingReview(rec)
-}
-
 function toggleDemoMatches() {
   showDemoMatches.value = !showDemoMatches.value
 }
@@ -117,7 +147,8 @@ function toggleDemoMatches() {
           <p class="text-[10px] font-bold uppercase tracking-[0.14em] text-amber-300">Needs you</p>
         </div>
         <p class="text-[11px] text-gray-500 mt-1 leading-snug max-w-xl">
-          Matches waiting on your desk. <span class="text-gray-400">Watch the VOD with timeline</span>, run AI coaching, or back up to cloud without analysing.
+          Matches waiting on your desk.
+          <span class="text-gray-400">Watch the recording anytime</span> — open the kill timeline once stats link.
         </p>
       </div>
       <span class="text-[10px] text-gray-500 flex-shrink-0 pt-0.5">{{ rows.length }} pending</span>
@@ -125,8 +156,8 @@ function toggleDemoMatches() {
 
     <div v-if="rows.length === 0" class="px-4 py-5 text-[11px] text-gray-500 border-t border-white/[0.05]">
       No matches need action right now. Your next recorded match will appear here with
-      <span class="text-gray-400">Watch VOD</span>, <span class="text-gray-400">Run AI analysis</span>, and
-      <span class="text-gray-400">Save to cloud</span>.
+      <span class="text-gray-400">Watch recording</span>, <span class="text-gray-400">Open timeline</span>, and
+      <span class="text-gray-400">Run AI analysis</span>.
       <div class="mt-3">
         <button
           type="button"
@@ -136,12 +167,18 @@ function toggleDemoMatches() {
       </div>
     </div>
 
-    <ul v-else class="divide-y divide-white/[0.05] p-3 space-y-3">
-      <li
-        v-for="rec in rows.slice(0, 3)"
-        :key="rec.id"
-        class="needs-you-card relative overflow-hidden rounded-2xl border border-white/[0.09]"
-      >
+    <template v-else>
+      <div v-for="section in sectionedRows" :key="section.key">
+        <div class="px-4 pt-3 pb-1">
+          <p class="text-[9px] font-bold uppercase tracking-[0.14em]" :class="section.tone">{{ section.title }}</p>
+          <p v-if="section.hint" class="text-[10px] text-gray-600 mt-1 leading-snug max-w-xl">{{ section.hint }}</p>
+        </div>
+        <ul class="divide-y divide-white/[0.05] p-3 pt-2 space-y-3">
+          <li
+            v-for="rec in section.rows"
+            :key="rec.id"
+            class="needs-you-card relative overflow-hidden rounded-2xl border border-white/[0.09]"
+          >
         <img
           v-if="recordingMapImage(rec)"
           :src="recordingMapImage(rec)"
@@ -187,6 +224,13 @@ function toggleDemoMatches() {
                   <span v-if="rec.hasLocalFile" class="text-sky-400/80"> · Local file</span>
                 </p>
                 <div class="flex flex-wrap items-center gap-2 mt-2">
+                  <span
+                    v-if="recordingDemoBadge(rec)"
+                    class="text-[9px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-md border"
+                    :class="recordingDemoPending(rec)
+                      ? 'text-blue-300/90 border-blue-500/25 bg-blue-500/10'
+                      : 'text-emerald-300/90 border-emerald-500/25 bg-emerald-500/10'"
+                  >{{ recordingDemoBadge(rec) }}</span>
                   <span v-if="recordingRowStats(rec).kills != null" class="text-[11px] font-mono font-bold tabular-nums text-gray-200">
                     {{ recordingRowStats(rec).kills }}<span class="text-gray-600 font-semibold">/</span>{{ recordingRowStats(rec).deaths }}<span class="text-gray-600 font-semibold">/</span>{{ recordingRowStats(rec).assists }}
                     <span class="text-[9px] font-bold text-gray-600 ml-1 uppercase">K/D/A</span>
@@ -224,12 +268,29 @@ function toggleDemoMatches() {
             <button
               v-if="canReviewVod(rec)"
               type="button"
-              class="flex-1 min-w-[140px] px-3 py-2 rounded-lg text-[11px] font-semibold text-white bg-[#1b1d22] hover:bg-[#252831] border border-white/20 transition-colors text-left shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]"
+              class="flex-1 min-w-[120px] px-3 py-2 rounded-lg text-[11px] font-semibold text-white bg-[#1b1d22] hover:bg-[#252831] border border-white/20 transition-colors text-left shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]"
               :disabled="preview"
-              @click="onReview(rec)"
+              @click="onWatchRecording(rec)"
             >
-              <span class="block">Watch VOD</span>
-              <span class="block text-[9px] font-medium text-gray-300/85 mt-0.5">Timeline + kills</span>
+              <span class="block">Watch recording</span>
+              <span class="block text-[9px] font-medium text-gray-300/85 mt-0.5">Video only</span>
+            </button>
+
+            <button
+              v-if="canReviewVod(rec)"
+              type="button"
+              class="flex-1 min-w-[120px] px-3 py-2 rounded-lg text-[11px] font-semibold transition-colors text-left disabled:opacity-50 disabled:cursor-not-allowed"
+              :class="canOpenTimeline(rec)
+                ? 'text-white bg-[#1b1d22] hover:bg-[#252831] border border-white/20 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]'
+                : 'text-gray-400 bg-[#14161a] border border-white/10'"
+              :disabled="preview || !canOpenTimeline(rec)"
+              :title="canOpenTimeline(rec) ? 'Kill timeline + map intel' : recAnalysisBlockedLabel(rec)"
+              @click="onOpenTimeline(rec)"
+            >
+              <span class="block">Open timeline</span>
+              <span class="block text-[9px] font-medium mt-0.5" :class="canOpenTimeline(rec) ? 'text-gray-300/85' : 'text-gray-600'">
+                {{ canOpenTimeline(rec) ? 'Kills + rounds' : 'Needs demo' }}
+              </span>
             </button>
 
             <button
@@ -265,7 +326,9 @@ function toggleDemoMatches() {
           </div>
         </div>
       </li>
-    </ul>
+        </ul>
+      </div>
+    </template>
 
     <div v-if="showDemoMatches" class="px-3 pb-3">
       <button

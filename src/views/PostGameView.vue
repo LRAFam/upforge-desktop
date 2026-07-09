@@ -154,9 +154,10 @@
                 </svg>
               </div>
               <div class="min-w-0 flex-1 pb-0.5">
-                <p class="text-base font-bold leading-tight text-white">Reviewing your duels</p>
+                <p class="text-base font-bold leading-tight text-white">{{ analysisHeroTitle }}</p>
                 <p class="mt-0.5 text-xs font-medium text-gray-400">
                   {{ matchHeadline }}<span v-if="gameInfo.game === 'valorant' && gameInfo.map" class="text-gray-600"> · {{ gameInfo.map }}</span>
+                  <span v-else-if="gameInfo.game === 'cs2' && gameInfo.map" class="text-gray-600"> · {{ cs2MapDisplayName(gameInfo.map) }}</span>
                 </p>
               </div>
               <div class="text-right pb-0.5">
@@ -192,17 +193,23 @@
           </div>
 
           <AnalysisPipelineStages
-            v-if="pendingDuelMoments.length"
+            v-if="pendingDuelMoments.length && gameInfo.game === 'valorant'"
             layout="vertical"
             :progress="analysisProgress"
             :step="analysisStep"
             :moment-count="pendingDuelMoments.length"
           />
           <p
-            v-if="pendingDuelMoments.length"
+            v-if="pendingDuelMoments.length && gameInfo.game === 'valorant'"
             class="text-[10px] text-gray-500 leading-relaxed"
           >
             {{ pendingDuelMoments.length }} duel window{{ pendingDuelMoments.length !== 1 ? 's' : '' }} from your deaths — studying peek timing and crosshair on each clip.
+          </p>
+          <p
+            v-else-if="gameInfo.game === 'cs2'"
+            class="text-[10px] text-gray-500 leading-relaxed"
+          >
+            Matching your demo kills to the VOD and building round-by-round coaching from the recording.
           </p>
         </div>
 
@@ -377,12 +384,25 @@
           <PostGameFlowHeroBackdrop :art-url="coachHeroArt" :map-url="mapSplashUrl" />
 
           <div class="relative px-4 pt-4 pb-3.5">
-            <div class="mb-3 inline-flex items-center gap-1.5 rounded-full border border-emerald-500/25 bg-emerald-500/12 px-2.5 py-1 backdrop-blur-sm">
+            <div class="mb-3 inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 backdrop-blur-sm"
+              :class="isDemoWaitFlow
+                ? 'border-blue-500/25 bg-blue-500/12'
+                : 'border-emerald-500/25 bg-emerald-500/12'"
+            >
               <span class="relative flex h-2 w-2">
-                <span class="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-50" />
-                <span class="relative inline-flex h-2 w-2 rounded-full bg-emerald-400" />
+                <span
+                  class="absolute inline-flex h-full w-full animate-ping rounded-full opacity-50"
+                  :class="isDemoWaitFlow ? 'bg-blue-400' : 'bg-emerald-400'"
+                />
+                <span
+                  class="relative inline-flex h-2 w-2 rounded-full"
+                  :class="isDemoWaitFlow ? 'bg-blue-400' : 'bg-emerald-400'"
+                />
               </span>
-              <span class="text-[10px] font-bold uppercase tracking-[0.14em] text-emerald-300">Recording saved</span>
+              <span
+                class="text-[10px] font-bold uppercase tracking-[0.14em]"
+                :class="isDemoWaitFlow ? 'text-blue-300' : 'text-emerald-300'"
+              >{{ isDemoWaitFlow ? 'Demo on the way' : 'Recording saved' }}</span>
             </div>
 
             <div class="flex items-end gap-3">
@@ -398,10 +418,13 @@
               </div>
               <div class="min-w-0 flex-1 pb-0.5">
                 <p class="text-base font-bold leading-tight text-white">
-                  {{ matchHeadline }}
+                  {{ pendingHeroTitle }}
                 </p>
                 <p v-if="gameInfo.map" class="mt-0.5 text-xs font-medium text-gray-400">
                   {{ gameInfo.map }}
+                </p>
+                <p v-else-if="isDemoWaitFlow" class="mt-0.5 text-xs text-gray-500">
+                  We’ll notify you when the demo links — play your next game or head back to the dashboard.
                 </p>
                 <p v-else class="mt-0.5 text-xs text-gray-500">Match ready for coaching</p>
               </div>
@@ -410,8 +433,16 @@
         </div>
 
         <div class="mt-4 text-center">
-          <p class="text-sm font-semibold text-gray-200">What would you like to do?</p>
-          <p v-if="!pendingAnalysisReady" class="mt-1 text-[11px] leading-relaxed text-blue-300/80">
+          <p class="text-sm font-semibold text-gray-200">
+            {{ isDemoWaitFlow ? 'You’re all set for now' : 'What would you like to do?' }}
+          </p>
+          <p v-if="isDemoWaitFlow" class="mt-1 text-[11px] leading-relaxed text-blue-300/80">
+            {{ pendingAnalysisMessage }}
+          </p>
+          <p v-if="isDemoWaitFlow" class="mt-1 text-[10px] leading-relaxed text-gray-500">
+            {{ demoSyncExplainerShort(gameInfo.game) }} We'll notify you when the timeline links.
+          </p>
+          <p v-else-if="!pendingAnalysisReady" class="mt-1 text-[11px] leading-relaxed text-blue-300/80">
             {{ pendingAnalysisMessage }}
           </p>
           <p v-else class="mt-1 text-[11px] leading-relaxed text-gray-500">
@@ -421,21 +452,15 @@
 
         <div class="mt-4 flex flex-col gap-2.5">
           <GamingButton
+            v-if="isDemoWaitFlow"
             variant="primary-sm"
             block
-            :disabled="analysing || savingToCloud || !pendingAnalysisReady"
-            @click="analyseNow"
+            @click="dismissPending"
           >
-            <svg v-if="analysing" class="h-4 w-4 animate-spin" fill="none" viewBox="0 0 24 24">
-              <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
-              <path class="opacity-90" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
-            </svg>
-            <svg v-else class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"/>
-            </svg>
-            {{ analysing ? 'Starting…' : (pendingAnalysisReady ? 'Analyse now' : pendingAnalyseButtonLabel) }}
+            Back to dashboard
           </GamingButton>
           <GamingButton
+            v-if="isDemoWaitFlow"
             variant="secondary-sm"
             block
             :disabled="analysing || savingToCloud"
@@ -451,6 +476,39 @@
             {{ savingToCloud ? 'Saving…' : 'Save to cloud only' }}
           </GamingButton>
           <GamingButton
+            v-if="!isDemoWaitFlow"
+            variant="primary-sm"
+            block
+            :disabled="analysing || savingToCloud || !pendingAnalysisReady"
+            @click="analyseNow"
+          >
+            <svg v-if="analysing" class="h-4 w-4 animate-spin" fill="none" viewBox="0 0 24 24">
+              <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+              <path class="opacity-90" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+            </svg>
+            <svg v-else class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"/>
+            </svg>
+            {{ analysing ? 'Starting…' : (pendingAnalysisReady ? 'Analyse now' : pendingAnalyseButtonLabel) }}
+          </GamingButton>
+          <GamingButton
+            v-if="!isDemoWaitFlow"
+            variant="secondary-sm"
+            block
+            :disabled="analysing || savingToCloud"
+            @click="saveToCloudNow"
+          >
+            <svg v-if="savingToCloud" class="h-4 w-4 animate-spin" fill="none" viewBox="0 0 24 24">
+              <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+              <path class="opacity-90" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+            </svg>
+            <svg v-else class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/>
+            </svg>
+            {{ savingToCloud ? 'Saving…' : 'Save to cloud only' }}
+          </GamingButton>
+          <GamingButton
+            v-if="!isDemoWaitFlow"
             variant="secondary-sm"
             block
             @click="dismissPending"
@@ -634,7 +692,7 @@
         <span v-if="demoStatus.status === 'uploading'" class="text-xs text-cyan-300/80">Replay uploading… {{ demoProgress }}%</span>
         <span v-else-if="demoStatus.status === 'analysing'" class="text-xs text-cyan-300/80">Replay analysing…</span>
         <span v-else-if="demoStatus.status === 'complete'" class="text-xs text-cyan-300/80">Replay analysis ready</span>
-        <span v-else-if="demoStatus.status === 'not-found'" class="text-xs text-cyan-700/80">Replay not found</span>
+        <span v-else-if="demoStatus.status === 'not-found'" class="text-xs text-cyan-700/80">Demo not found yet</span>
         <span v-else-if="demoStatus.status === 'error'" class="text-xs text-cyan-700/80">Replay upload failed</span>
         </div>
         <div
@@ -643,9 +701,10 @@
         >
           <p class="text-[11px] text-gray-400 leading-relaxed">{{ replayNotFoundHint }}</p>
           <ul class="text-[10px] text-gray-500 space-y-1 list-disc pl-4">
-            <li v-if="gameInfo.game === 'cs2'">Add <code class="text-cyan-400/80">cl_demo_auto_recording 1</code> to your autoexec and restart CS2</li>
+            <li v-if="gameInfo.game === 'cs2'">GOTV replays usually appear in <strong class="text-gray-400">5–15 minutes</strong> (up to 30 at peak)</li>
+            <li v-if="gameInfo.game === 'cs2'">Enable auto-record (<code class="text-cyan-400/80">cl_demo_auto_recording 1</code>) or download the replay in CS2</li>
             <li v-if="gameInfo.game === 'deadlock'">Enable replay saving in Deadlock settings, then play another match</li>
-            <li>Wait ~1 minute after the match ends before the replay file appears</li>
+            <li v-if="gameInfo.game === 'cs2'">If still missing after 30 minutes, restart Steam and tap Scan again</li>
           </ul>
           <button
             type="button"
@@ -665,7 +724,7 @@ import { useRouter } from 'vue-router'
 import { openAnalysisVodReview } from '../lib/open-vod-review'
 import { getAgentImage, getAgentColor, getMapImage, getMapMinimap } from '../lib/valorant'
 import { analysisResultsUrl, isPrimaryGame, normalizePrimaryGame, recordingGameLabel, type PrimaryGame } from '../lib/games'
-import { cs2MapDisplayName } from '../lib/cs2-maps'
+import { cs2MapDisplayName, getCs2RadarUrl, isCs2Map } from '../lib/cs2-maps'
 import PostGameDebriefCarousel from '../components/post-game/PostGameDebriefCarousel.vue'
 import GamingButton from '../components/GamingButton.vue'
 import AnalysisPipelineStages from '../components/analysis/AnalysisPipelineStages.vue'
@@ -687,6 +746,7 @@ import type { ClipRecord } from '../env.d.ts'
 import type { CategoryPercentileEntry } from '../components/CategoryPercentilesStrip.vue'
 import { canSpatialVodSeek } from '../lib/tier-features'
 import { buildAnalysisErrorPayload, type AnalysisErrorPayload } from '../lib/analysis-failure-messages'
+import { usesAsyncDemoSync, demoSyncExplainerShort } from '../lib/recording-demo-status'
 import PostGameDuelDiagnostics from '../components/post-game/PostGameDuelDiagnostics.vue'
 
 type State = 'preparing' | 'uploading' | 'analysing' | 'ready' | 'error' | 'pending' | 'archived'
@@ -804,8 +864,33 @@ const pendingAnalysisState = ref<string | null>(null)
 const preparingSyncMessage = ref<string | null>(null)
 const pendingAnalyseButtonLabel = computed(() => {
   if (pendingAnalysisState.value === 'finalizing') return 'Finalizing…'
-  if (pendingAnalysisState.value === 'syncing') return 'Syncing stats…'
+  if (pendingAnalysisState.value === 'syncing') {
+    return gameInfo.value.game === 'cs2' ? 'Waiting for demo…' : 'Syncing stats…'
+  }
   return 'Not ready'
+})
+
+const analysisHeroTitle = computed(() => {
+  if (gameInfo.value.game === 'cs2') return 'Analysing your CS2 match'
+  if (gameInfo.value.game === 'deadlock') return 'Analysing your match'
+  return 'Reviewing your duels'
+})
+
+const isCs2Game = computed(() => gameInfo.value.game === 'cs2')
+
+const isDemoWaitFlow = computed(() =>
+  usesAsyncDemoSync(gameInfo.value.game)
+  && !pendingAnalysisReady.value
+  && (pendingAnalysisState.value === 'syncing' || pendingAnalysisState.value === 'finalizing'),
+)
+
+const pendingHeroTitle = computed(() => {
+  if (isDemoWaitFlow.value) {
+    return gameInfo.value.game === 'cs2'
+      ? 'Recording saved — demo on the way'
+      : 'Recording saved — replay on the way'
+  }
+  return matchHeadline.value
 })
 
 function applyAnalysisReadiness(readiness: { ready: boolean; state: string; message: string }) {
@@ -940,6 +1025,22 @@ let elapsedInterval: ReturnType<typeof setInterval> | null = null
 const currentTip = computed(() => COACHING_TIPS[tipIndex.value])
 
 const matchDataWarning = computed<{ message: string; tip: string } | null>(() => {
+  if (gameInfo.value.game === 'cs2') {
+    if (killsCapured.value > 0) return null
+    if (pendingAnalysisState.value === 'syncing') {
+      return {
+        message: 'CS2 demo still syncing — GOTV replays usually land in 5–15 minutes after the match.',
+        tip: 'Keep UpForge open. Enable cl_demo_auto_recording or download the replay in CS2. Restart Steam if it takes over 30 minutes.',
+      }
+    }
+    if (pendingAnalysisState.value === 'unavailable') {
+      return {
+        message: 'No CS2 demo found after the wait window.',
+        tip: 'Download the GOTV replay in CS2, confirm the demo folder in Settings → Recording, then tap Scan for replay again.',
+      }
+    }
+    return null
+  }
   if (killsCapured.value > 0) return null // Data captured successfully
   const status = matchDataStatus.value
   if (status === 'fetched') return null
@@ -1116,7 +1217,7 @@ const replayNotFoundHint = computed(() => {
   if (gameInfo.value.game === 'deadlock') {
     return 'No replay found — enable replay saving in Deadlock settings'
   }
-  return 'No demo found — add cl_demo_auto_recording 1 to your CS2 autoexec'
+  return 'No demo yet — GOTV replays usually take 5–15 minutes (download in CS2 or enable auto-record)'
 })
 
 const topIssue = computed(() => {
@@ -1153,6 +1254,9 @@ async function retryDemoScan() {
     const res = await window.api.postGame.retryDemoScan()
     if (!res.ok) {
       demoStatus.value = { status: 'not-found' }
+    } else if (gameInfo.value.game === 'cs2') {
+      demoStatus.value = { status: 'uploading' }
+      await syncPostGameSession()
     }
   } catch {
     demoStatus.value = { status: 'error', error: 'Scan failed' }
@@ -1189,11 +1293,26 @@ function scoreGradeBadgeClass(score: number): string {
   return 'bg-red-500/20 text-red-400 border border-red-500/30'
 }
 
-const agentImageUrl = computed(() => gameInfo.value.agent ? getAgentImage(gameInfo.value.agent) : '')
+const agentImageUrl = computed(() => {
+  if (isCs2Game.value && gameInfo.value.map && isCs2Map(gameInfo.value.map)) {
+    return getCs2RadarUrl(gameInfo.value.map)
+  }
+  return gameInfo.value.agent ? getAgentImage(gameInfo.value.agent) : ''
+})
 const agentImageBroken = ref(false)
 watch(() => gameInfo.value.agent, () => { agentImageBroken.value = false })
-const agentAccentColor = computed(() => gameInfo.value.agent ? getAgentColor(gameInfo.value.agent) : '')
-const mapSplashUrl = computed(() => gameInfo.value.map ? getMapImage(gameInfo.value.map) : '')
+watch(() => gameInfo.value.map, () => { agentImageBroken.value = false })
+const agentAccentColor = computed(() => {
+  if (isCs2Game.value) return '#3b82f6'
+  if (gameInfo.value.game === 'deadlock') return '#eab308'
+  return gameInfo.value.agent ? getAgentColor(gameInfo.value.agent) : ''
+})
+const mapSplashUrl = computed(() => {
+  if (isCs2Game.value && gameInfo.value.map && isCs2Map(gameInfo.value.map)) {
+    return getCs2RadarUrl(gameInfo.value.map)
+  }
+  return gameInfo.value.map ? getMapImage(gameInfo.value.map) : ''
+})
 const mapMinimapUrl = computed(() => gameInfo.value.map ? getMapMinimap(gameInfo.value.map) : '')
 
 const localSpatialSummary = ref<MatchSpatialSummary | null>(null)
@@ -1484,7 +1603,7 @@ onMounted(() => {
       const cs2DemoWait = gameInfo.value.game === 'cs2' && readiness.state === 'syncing'
       preparingSyncMessage.value = readiness.message
         || (cs2DemoWait
-          ? 'Waiting for CS2 demo file — UpForge syncs it automatically after the match'
+        ? 'Waiting for CS2 demo — GOTV replays usually take 5–15 minutes'
           : readiness.state === 'syncing'
             ? 'Syncing match stats…'
             : readiness.state === 'finalizing'
