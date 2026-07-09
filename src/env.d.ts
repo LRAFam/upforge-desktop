@@ -597,6 +597,11 @@ declare global {
           preview: {
             ok: boolean
             error?: string
+            identityWarning?: string
+            configuredPlayerName?: string | null
+            partialParse?: boolean
+            totalKillEvents: number
+            matchKillSample: boolean
             map: string | null
             playerName: string | null
             kills: number | null

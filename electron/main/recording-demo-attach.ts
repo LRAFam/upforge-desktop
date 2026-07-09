@@ -4,8 +4,9 @@
 
 import fs from 'fs'
 import log from 'electron-log'
+import { peekDemoHeader } from './demo-header-peek'
 import { buildTimelineFromDemo } from './demo-timeline'
-import { hasRichMatchData } from './match-data-quality'
+import { cs2PlayerIdentityMismatch, hasRichMatchData } from './match-data-quality'
 import { resolveMatchSessionStartMs } from './recording-sync'
 import type { RecordingsStore } from './recordings-store'
 import type { MatchData } from './riot-types'
@@ -56,10 +57,29 @@ export async function attachDemoFileToRecording(opts: {
   })
 
   if (!timeline || !hasRichMatchData(timeline)) {
+    const peek = !timeline ? await peekDemoHeader(normalized) : null
+    if (peek?.mapName) {
+      return {
+        ok: false,
+        error: 'Replay file looks incomplete — wait for Steam to finish downloading in CS2, then rescan.',
+      }
+    }
+    if (!timeline) {
+      return {
+        ok: false,
+        error: 'Could not parse this replay — try another file or check it finished downloading in CS2.',
+      }
+    }
     return {
       ok: false,
-      error: 'Could not read kills from this demo — check your Steam name in Settings → Recording (CS2)',
+      error: 'No kills found in this replay — it may be the wrong match file.',
     }
+  }
+
+  if (rec.game === 'cs2' && cs2PlayerIdentityMismatch(timeline)) {
+    log.warn(
+      `[AttachDemo] CS2 identity mismatch for ${opts.recordingId} — attaching with match kills only`,
+    )
   }
 
   opts.store.updateTimeline(opts.recordingId, timeline)

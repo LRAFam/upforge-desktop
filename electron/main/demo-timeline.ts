@@ -180,9 +180,12 @@ export async function buildTimelineFromDemo(opts: DemoTimelineOptions): Promise<
     })
 
     demo.on('end', () => {
-      if (parseFailed) {
+      if (parseFailed && killEvents.length === 0 && currentRound === 0) {
         resolve(null)
         return
+      }
+      if (parseFailed) {
+        log.warn('[DemoTimeline] Parse had errors — using partial timeline data')
       }
 
       if (localUserId == null && roundKills.length > 0) {
@@ -272,6 +275,7 @@ export async function buildTimelineFromDemo(opts: DemoTimelineOptions): Promise<
         localTeam: localTeam ?? undefined,
         playbackTicks: header?.playbackTicks,
         playbackTime: header?.playbackTime,
+        partialParse: parseFailed || undefined,
       }
 
       log.info(

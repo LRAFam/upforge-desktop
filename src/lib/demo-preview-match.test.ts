@@ -17,4 +17,41 @@ describe('assessDemoPreviewMatch', () => {
     )
     expect(result.confidence).toBe('strong')
   })
+
+  it('handles identity warning with map match', () => {
+    const result = assessDemoPreviewMatch(
+      {
+        ok: true,
+        map: 'de_dust2',
+        kills: null,
+        deaths: null,
+        allyScore: 13,
+        enemyScore: 11,
+        won: true,
+        identityWarning: 'Set Steam name',
+        totalKillEvents: 42,
+      },
+      { map: 'de_dust2', kills: null, deaths: null, allyScore: null, enemyScore: null },
+    )
+    expect(result.confidence).toBe('possible')
+    expect(result.headline).toContain('Steam name')
+  })
+
+  it('flags partial header-only preview', () => {
+    const result = assessDemoPreviewMatch(
+      {
+        ok: true,
+        map: 'de_dust2',
+        kills: null,
+        deaths: null,
+        allyScore: 0,
+        enemyScore: 0,
+        won: null,
+        partialParse: true,
+      },
+      { map: 'de_dust2', kills: null, deaths: null, allyScore: null, enemyScore: null },
+    )
+    expect(result.confidence).toBe('weak')
+    expect(result.headline).toContain('downloading')
+  })
 })

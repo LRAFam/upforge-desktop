@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
+import { useRouter } from 'vue-router'
 import { formatRelativeTime } from '../../lib/dashboard-match-row'
 import { cs2MapDisplayName } from '../../lib/cs2-maps'
 import {
@@ -23,6 +24,8 @@ const emit = defineEmits<{
   close: []
   attached: []
 }>()
+
+const router = useRouter()
 
 const loading = ref(false)
 const attaching = ref(false)
@@ -65,6 +68,20 @@ const assessmentTone = computed(() => {
   if (confidence === 'mismatch') return 'border-red-500/25 bg-red-500/10 text-red-200'
   return 'border-white/10 bg-white/[0.04] text-gray-300'
 })
+
+const previewWarning = computed(() =>
+  preview.value?.identityWarning
+  ?? (preview.value?.ok && preview.value?.error ? preview.value.error : null),
+)
+
+const killListTitle = computed(() =>
+  preview.value?.matchKillSample ? 'Match kills (sample)' : 'Your kills (sample)',
+)
+
+function openRecordingSettings() {
+  emit('close')
+  void router.push('/settings?tab=recording')
+}
 
 async function loadCandidates() {
   loading.value = true
@@ -274,6 +291,21 @@ function rowClass(fit: RankedDemoCandidate['fit'], selected: boolean): string {
             </div>
 
             <div v-else-if="preview?.ok" class="space-y-3">
+              <div
+                v-if="previewWarning"
+                class="rounded-xl border border-amber-500/25 bg-amber-500/10 px-3.5 py-3 space-y-2"
+              >
+                <p class="text-[11px] text-amber-100 leading-relaxed">{{ previewWarning }}</p>
+                <button
+                  v-if="preview.identityWarning && game === 'cs2'"
+                  type="button"
+                  class="text-[10px] font-semibold text-amber-200 hover:text-white underline underline-offset-2"
+                  @click="openRecordingSettings"
+                >
+                  Open Settings → Recording
+                </button>
+              </div>
+
               <div class="rounded-xl border border-white/[0.08] bg-white/[0.03] px-3.5 py-3">
                 <p class="text-sm font-bold text-white">{{ previewMapLabel }}</p>
                 <p class="text-[11px] text-gray-400 mt-1">
@@ -303,7 +335,7 @@ function rowClass(fit: RankedDemoCandidate['fit'], selected: boolean): string {
               </div>
 
               <div v-if="preview.killHighlights.length" class="rounded-xl border border-white/[0.08] bg-white/[0.02] px-3.5 py-3">
-                <p class="text-[10px] font-semibold uppercase tracking-wide text-gray-500 mb-2">Your kills (sample)</p>
+                <p class="text-[10px] font-semibold uppercase tracking-wide text-gray-500 mb-2">{{ killListTitle }}</p>
                 <ul class="space-y-1">
                   <li
                     v-for="(kill, index) in preview.killHighlights"
@@ -314,9 +346,19 @@ function rowClass(fit: RankedDemoCandidate['fit'], selected: boolean): string {
               </div>
             </div>
 
-            <div v-else class="py-8 text-center space-y-2">
+            <div v-else class="py-8 text-center space-y-3">
               <p class="text-sm text-amber-300/90">{{ previewError || preview?.error || 'Could not preview this replay' }}</p>
-              <p class="text-[10px] text-gray-600">Check your Steam name in Settings → Recording, or try another file.</p>
+              <p class="text-[10px] text-gray-600 leading-relaxed">
+                Try another file, or wait for Steam to finish downloading the replay in CS2.
+              </p>
+              <button
+                v-if="game === 'cs2'"
+                type="button"
+                class="text-[10px] font-semibold text-blue-300 hover:text-blue-200 underline underline-offset-2"
+                @click="openRecordingSettings"
+              >
+                Check CS2 Steam name in Settings → Recording
+              </button>
             </div>
           </div>
         </div>

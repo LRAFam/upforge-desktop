@@ -17,6 +17,9 @@ export interface DemoPreviewInput {
   allyScore: number
   enemyScore: number
   won: boolean | null
+  partialParse?: boolean
+  totalKillEvents?: number
+  identityWarning?: string
 }
 
 export type DemoPreviewConfidence = 'strong' | 'possible' | 'weak' | 'mismatch'
@@ -66,6 +69,35 @@ export function assessDemoPreviewMatch(
       confidence: 'weak',
       headline: 'Could not preview this replay',
       details: [],
+    }
+  }
+
+  if (preview.partialParse) {
+    const details: string[] = []
+    if (preview.map) {
+      details.push(`Header map: ${cs2MapDisplayName(preview.map) || preview.map}`)
+    }
+    details.push('Wait for Steam to finish downloading, then rescan')
+    return {
+      confidence: 'weak',
+      headline: 'Replay still downloading or damaged',
+      details,
+    }
+  }
+
+  if (preview.identityWarning) {
+    const details: string[] = [preview.identityWarning]
+    if (preview.totalKillEvents && preview.totalKillEvents > 0) {
+      details.push(`${preview.totalKillEvents} kills in replay — match kills shown below`)
+    }
+    const mapMatch = mapsMatch(hint.map, preview.map)
+    if (mapMatch) {
+      details.unshift(`Map matches (${cs2MapDisplayName(preview.map ?? '') || preview.map})`)
+    }
+    return {
+      confidence: mapMatch ? 'possible' : 'weak',
+      headline: 'Replay parsed — set your Steam name for your stats',
+      details,
     }
   }
 
