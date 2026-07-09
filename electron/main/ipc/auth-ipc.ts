@@ -82,6 +82,14 @@ export function setupAuthHandlers(
     return auth.fetchUser()
   })
 
+  ipcMain.handle('auth:update-riot-account', async (_e, payload: {
+    riot_name: string
+    riot_tag: string
+    riot_region?: string
+  }) => {
+    return auth.updateRiotAccount(payload)
+  })
+
   ipcMain.handle('auth:load-stored', async () => {
     return auth.loadStoredToken()
   })

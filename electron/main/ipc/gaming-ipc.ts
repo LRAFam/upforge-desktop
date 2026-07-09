@@ -323,12 +323,24 @@ export function setupGamingHandlers(
   })
 
   ipcMain.handle('deadlock:open-connect-steam', () => {
-    shell.openExternal('https://upforge.gg/onboarding')
+    shell.openExternal('https://upforge.gg/profile?tab=games')
     return { ok: true }
   })
 
   ipcMain.handle('deadlock:get-analyses', async (_event, limit = 10) => {
     return auth.fetchDeadlockAnalyses(limit)
+  })
+
+  ipcMain.handle('deadlock:search-players', async (_event, query: string) => {
+    return auth.searchDeadlockPlayers(query)
+  })
+
+  ipcMain.handle('deadlock:lookup-player', async (_event, accountId: number) => {
+    return auth.lookupDeadlockPlayer(accountId)
+  })
+
+  ipcMain.handle('deadlock:connect-account', async (_event, accountId: number) => {
+    return auth.connectDeadlockAccount(accountId)
   })
 
   ipcMain.handle('deadlock:upload-demo', async (event, demoPath: string) => {
@@ -419,8 +431,12 @@ export function setupGamingHandlers(
   })
 
   ipcMain.handle('cs2:open-connect-faceit', () => {
-    shell.openExternal('https://upforge.gg/onboarding')
+    shell.openExternal('https://upforge.gg/profile?tab=games')
     return { ok: true }
+  })
+
+  ipcMain.handle('cs2:connect-faceit', async (_event, nickname: string) => {
+    return auth.connectCs2Faceit(nickname)
   })
 
   ipcMain.handle('cs2:get-analyses', async (_event, limit = 10) => {

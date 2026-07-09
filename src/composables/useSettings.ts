@@ -109,6 +109,7 @@ function createSettings() {
   let saveTimer: ReturnType<typeof setTimeout> | null = null
   let toastTimer: ReturnType<typeof setTimeout> | null = null
   const toastMessage = ref('')
+  const accountLinkFocus = ref<PrimaryGame | null>(null)
   
   // ── Dev mode unlock (tap version 5×) ─────────────────────────────────────────
   const devModeActive = ref(false)
@@ -145,8 +146,24 @@ function createSettings() {
     obsVersion: string | null
   }
   const obsStatus = ref<OBSStatus | null>(null)
+  const obsProcessState = ref<{ installed: boolean; processRunning: boolean; connected: boolean } | null>(null)
   const obsConnecting = ref(false)
   const obsSetupRunning = ref(false)
+
+  async function refreshObsProcessState(): Promise<void> {
+    try {
+      obsProcessState.value = await window.api.obs.getProcessState()
+    } catch { /* non-critical */ }
+  }
+
+  const obsDisconnectedHint = computed(() => {
+    if (obsStatus.value?.connected) return null
+    if (obsStatus.value?.lastError) return obsStatus.value.lastError
+    if (obsProcessState.value?.processRunning) {
+      return 'OBS is open but not responding — likely stuck after a crash. Click Launch OBS + Connect to restart it.'
+    }
+    return null
+  })
   
   async function obsConnect() {
     obsConnecting.value = true
@@ -171,8 +188,9 @@ function createSettings() {
           showToast(`Connected to OBS v${result.version ?? '?'}`)
         }
       } else {
-        showToast(`OBS connection failed: ${result.error ?? 'Unknown error'}`)
+        showToast(result.error ?? 'OBS connection failed')
       }
+      await refreshObsProcessState()
     } finally {
       obsConnecting.value = false
     }
@@ -195,6 +213,7 @@ function createSettings() {
       } else {
         showToast(result.error ?? 'Could not launch or connect to OBS')
       }
+      await refreshObsProcessState()
     } finally {
       obsConnecting.value = false
     }
@@ -447,10 +466,6 @@ function createSettings() {
   const deadlockLinked = ref(false)
 
   async function loadDeadlockLink(): Promise<void> {
-    if (settings.primaryGame !== 'deadlock') {
-      deadlockLinked.value = false
-      return
-    }
     try {
       await window.api.auth.refreshUser().catch(() => null)
       const result = await window.api.deadlock.getStats()
@@ -462,6 +477,19 @@ function createSettings() {
     } catch {
       deadlockLinked.value = false
     }
+  }
+
+  async function reloadAccountLinks(): Promise<void> {
+    try {
+      const authUser = await window.api.auth.refreshUser() as UserWithUsage | null
+      if (authUser) user.value = { ...(user.value ?? authUser), ...authUser }
+    } catch { /* optional */ }
+    try {
+      const faceit = await window.api.cs2.getFaceitConnection()
+      cs2FaceitLinked.value = !!faceit?.connected
+      cs2FaceitNickname.value = faceit?.nickname ?? null
+    } catch { /* optional */ }
+    await loadDeadlockLink()
   }
 
   const accountSteamLinked = computed(
@@ -562,6 +590,7 @@ function createSettings() {
       if (typeof st?.ffmpegOk === 'boolean') ffmpegOk.value = st.ffmpegOk
       const obs = await window.api.obs.getStatus()
       obsStatus.value = obs
+      await refreshObsProcessState()
     } catch { /* non-critical */ }
   }
   
@@ -896,6 +925,10 @@ function createSettings() {
     if (tabQuery === 'recording' || tabQuery === 'general' || tabQuery === 'trainer' || tabQuery === 'system') {
       activeTab.value = tabQuery
     }
+    const linkQuery = route.query.link
+    if (linkQuery === 'valorant' || linkQuery === 'cs2' || linkQuery === 'deadlock') {
+      accountLinkFocus.value = linkQuery
+    }
     window.addEventListener('keydown', handleKeydown)
     try {
       const [s, savedSettings] = await Promise.all([
@@ -1080,8 +1113,10 @@ function createSettings() {
     loadStorageUsage,
     obsConnect,
     obsConnecting,
+    obsDisconnectedHint,
     obsDisconnect,
     obsLaunchAndConnect,
+    obsProcessState,
     obsSetupRunning,
     obsSetupScene,
     installObsProfile,
@@ -1097,11 +1132,14 @@ function createSettings() {
     purgeUntrackedRecordings,
     rebinding,
     recordingBackend,
+    refreshObsProcessState,
     refreshObsStatus,
     refreshRecordingBackendStatus,
     riotApiResult,
     saveTimer,
     savedToast,
+    accountLinkFocus,
+    reloadAccountLinks,
     sectionOpen,
     selectPrimaryGame,
     setInGameFeedback,

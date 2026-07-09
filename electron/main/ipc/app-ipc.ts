@@ -77,6 +77,13 @@ export function setupAppHandlers(
     return { ok: true }
   })
 
+  ipcMain.handle('app:refresh-dashboard', () => {
+    BrowserWindow.getAllWindows().forEach(w => {
+      if (!w.isDestroyed()) w.webContents.send('dashboard:refresh')
+    })
+    return { ok: true }
+  })
+
   // ── Settings ──────────────────────────────────────────────────────────────
 
   ipcMain.handle('settings:get', () => {

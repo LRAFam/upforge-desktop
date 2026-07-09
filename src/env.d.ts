@@ -492,6 +492,7 @@ declare global {
         logout: () => Promise<void>
         getUser: () => Promise<unknown>
         refreshUser: () => Promise<unknown>
+        updateRiotAccount: (payload: { riot_name: string; riot_tag: string; riot_region?: string }) => Promise<{ ok: boolean; error?: string }>
         loadStored: () => Promise<{ ok: boolean; user?: unknown }>
       }
       app: {
@@ -521,6 +522,8 @@ declare global {
         }>
         getActivityLog: () => Promise<{ time: number; message: string }[]>
         showClips: () => Promise<{ ok: boolean }>
+        openUrl: (url: string) => Promise<{ ok: boolean }>
+        refreshDashboard: () => Promise<{ ok: boolean }>
         openVodReview: (id: string, seekMs?: number) => Promise<{ ok: boolean }>
       }
       profile: {
@@ -922,13 +925,19 @@ declare global {
           ok: boolean
           error?: string
           version?: string
+          processRunning?: boolean
           setup?: { ok: boolean; sceneCreated: boolean; inputCreated: boolean; error?: string }
         }>
         launchAndConnect: () => Promise<
-          | { ok: true; alreadyConnected?: boolean; launched?: boolean }
-          | { ok: false; error?: string; launched?: boolean }
+          | { ok: true; alreadyConnected?: boolean; alreadyRunning?: boolean; launched?: boolean; processRunning?: boolean }
+          | { ok: false; error?: string; launched?: boolean; processRunning?: boolean; needsManualRestart?: boolean }
         >
         disconnect: () => Promise<void>
+        getProcessState: () => Promise<{
+          installed: boolean
+          processRunning: boolean
+          connected: boolean
+        }>
         getStatus: () => Promise<{
           connected: boolean
           recording: boolean
@@ -969,6 +978,9 @@ declare global {
         openResults: (jobId: string) => Promise<{ ok: boolean }>
         openDashboard: () => Promise<{ ok: boolean }>
         openConnectSteam: () => Promise<{ ok: boolean }>
+        searchPlayers: (query: string) => Promise<Array<{ account_id: number; personaname: string }>>
+        lookupPlayer: (accountId: number) => Promise<{ account_id: number; personaname: string } | null>
+        connectAccount: (accountId: number) => Promise<{ ok: boolean; error?: string }>
         getStats: (opts?: { fresh?: boolean }) => Promise<{
           stats: DeadlockProfileStats | null
           linked: boolean
@@ -1012,6 +1024,7 @@ declare global {
         openAnalyze: () => Promise<{ ok: boolean }>
         openDashboard: () => Promise<{ ok: boolean }>
         openConnectFaceit: () => Promise<{ ok: boolean }>
+        connectFaceit: (nickname: string) => Promise<{ ok: boolean; error?: string }>
         getAnalyses: (limit?: number) => Promise<Cs2AnalysisItem[]>
         getProfile: () => Promise<{
           identity: { steam_display_name: string | null; steam_id: string | null; linked: boolean }

@@ -1,5 +1,25 @@
 /** User-facing OBS WebSocket connection helpers. */
 
+export function explainObsConnectionFailure(opts: {
+  processRunning: boolean
+  connectError?: string | null
+  launched?: boolean
+}): string {
+  const raw = opts.connectError?.trim()
+  if (!opts.processRunning) {
+    if (opts.launched) {
+      return 'OBS did not finish starting. Open OBS Studio manually from your apps menu, wait until it fully loads, then click Connect.'
+    }
+    return 'OBS is not running. Click Launch OBS + Connect, or open OBS Studio yourself first.'
+  }
+
+  if (raw && /authentication|password|401/i.test(raw)) {
+    return formatObsConnectError(raw)
+  }
+
+  return 'OBS is open but not responding — it may have crashed. Click Launch OBS + Connect to restart it, or close OBS in Task Manager (obs64.exe) and open it manually.'
+}
+
 export function formatObsConnectError(raw: string): string {
   const msg = raw.toLowerCase()
   if (msg.includes('authentication') || msg.includes('password') || msg.includes('401')) {

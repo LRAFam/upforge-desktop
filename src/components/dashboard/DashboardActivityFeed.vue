@@ -5,6 +5,7 @@ import { gameBrand } from '../../lib/game-branding'
 import { recordingMapLabel, recordingPlayerLabel } from '../../lib/recording-display'
 import GameBrandIcon from './GameBrandIcon.vue'
 import type { PrimaryGame } from '../../lib/games'
+import { analysisCompleteBadge, inferAnalysisGame } from '../../lib/analysis-display'
 import upforgeIcon from '../../assets/upforge-icon.png'
 
 const { activityLog, pendingRecordings, formatLogTime, dashboardAnalyses, openAnalysisRow } = useDashboard()
@@ -121,13 +122,13 @@ const entries = computed<FeedEntry[]>(() => {
   }
 
   for (const a of dashboardAnalyses.value) {
-    const game = inferRecordingGame(a.map ?? '', `${a.game_mode ?? ''} ${a.agent ?? ''}`)
+    const game = inferAnalysisGame(a)
     merged.push({
       id: `a-${a.id}`,
       scope: game,
       title: `${gameBrand(game).wordmark} analysis complete`,
       subtitle: `Analyzed match on ${a.map || 'unknown map'}`,
-      badge: a.overall_score != null ? `+${Math.round(a.overall_score * 2)} RR` : undefined,
+      badge: analysisCompleteBadge(game, a.overall_score),
       badgeTone: 'green',
       tag: 'Coaching',
       time: a.created_at,

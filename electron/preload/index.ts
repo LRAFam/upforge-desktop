@@ -7,6 +7,8 @@ const api = {
     logout: () => ipcRenderer.invoke('auth:logout'),
     getUser: () => ipcRenderer.invoke('auth:get-user'),
     refreshUser: () => ipcRenderer.invoke('auth:refresh-user'),
+    updateRiotAccount: (payload: { riot_name: string; riot_tag: string; riot_region?: string }) =>
+      ipcRenderer.invoke('auth:update-riot-account', payload) as Promise<{ ok: boolean; error?: string }>,
     loadStored: () => ipcRenderer.invoke('auth:load-stored')
   },
   app: {
@@ -14,6 +16,7 @@ const api = {
     getActivityLog: () => ipcRenderer.invoke('app:get-activity-log'),
     showClips: () => ipcRenderer.invoke('app:show-clips'),
     openUrl: (url: string) => ipcRenderer.invoke('app:open-url', { url }),
+    refreshDashboard: () => ipcRenderer.invoke('app:refresh-dashboard'),
     openVodReview: (id: string, seekMs?: number) =>
       ipcRenderer.invoke('app:open-vod-review', { id, seekMs }),
   },
@@ -202,6 +205,7 @@ const api = {
     launchAndConnect: () => ipcRenderer.invoke('obs:launch-and-connect'),
     disconnect: () => ipcRenderer.invoke('obs:disconnect'),
     getStatus: () => ipcRenderer.invoke('obs:get-status'),
+    getProcessState: () => ipcRenderer.invoke('obs:get-process-state'),
     setupScene: () => ipcRenderer.invoke('obs:setup-scene'),
         saveReplayClip: () => ipcRenderer.invoke('obs:save-replay-clip'),
     installProfile: () => ipcRenderer.invoke('obs:install-profile'),
@@ -225,6 +229,9 @@ const api = {
         openResults: (jobId: string) => ipcRenderer.invoke('deadlock:open-results', jobId),
         openDashboard: () => ipcRenderer.invoke('deadlock:open-dashboard'),
         openConnectSteam: () => ipcRenderer.invoke('deadlock:open-connect-steam'),
+        searchPlayers: (query: string) => ipcRenderer.invoke('deadlock:search-players', query),
+        lookupPlayer: (accountId: number) => ipcRenderer.invoke('deadlock:lookup-player', accountId),
+        connectAccount: (accountId: number) => ipcRenderer.invoke('deadlock:connect-account', accountId),
         getStats: (opts?: { fresh?: boolean }) => ipcRenderer.invoke('deadlock:get-stats', opts),
         getAnalyses: (limit?: number) => ipcRenderer.invoke('deadlock:get-analyses', limit),
         uploadDemo: (demoPath: string) => ipcRenderer.invoke('deadlock:upload-demo', demoPath),
@@ -238,6 +245,7 @@ const api = {
     openAnalyze: () => ipcRenderer.invoke('cs2:open-analyze'),
     openDashboard: () => ipcRenderer.invoke('cs2:open-dashboard'),
     openConnectFaceit: () => ipcRenderer.invoke('cs2:open-connect-faceit'),
+    connectFaceit: (nickname: string) => ipcRenderer.invoke('cs2:connect-faceit', nickname) as Promise<{ ok: boolean; error?: string }>,
     getAnalyses: (limit?: number) => ipcRenderer.invoke('cs2:get-analyses', limit),
     getProfile: () => ipcRenderer.invoke('cs2:get-profile'),
     syncIdentity: (steamDisplayName: string) => ipcRenderer.invoke('cs2:sync-identity', steamDisplayName),

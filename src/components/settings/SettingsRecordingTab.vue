@@ -16,8 +16,10 @@ const {
   hasProAccess,
   obsConnect,
   obsConnecting,
+  obsDisconnectedHint,
   obsDisconnect,
   obsLaunchAndConnect,
+  obsProcessState,
   obsSetupRunning,
   obsSetupScene,
   installObsProfile,
@@ -219,6 +221,7 @@ const {
                   <p class="text-sm font-semibold text-white">OBS recording</p>
                   <p class="mt-1 text-xs" :class="obsStatus?.connected ? 'text-green-300/80' : 'text-amber-300/80'">
                     <template v-if="obsStatus?.connected">Connected — OBS v{{ obsStatus.obsVersion ?? '?' }}</template>
+                    <template v-else-if="obsProcessState?.processRunning">OBS is running but not connected — likely stuck after a crash</template>
                     <template v-else>Required — install OBS 28+, enable WebSocket, then connect below</template>
                   </p>
                 </div>
@@ -278,7 +281,7 @@ const {
                 </span>
               </label>
               <p class="text-xs text-gray-500">UpForge starts/stops OBS and applies the recording preset on connect and before each match.</p>
-              <p v-if="obsStatus?.lastError" class="rounded-xl border border-red-500/20 bg-red-500/6 px-3 py-2 text-xs text-red-300">{{ obsStatus.lastError }}</p>
+              <p v-if="obsDisconnectedHint" class="rounded-xl border border-red-500/20 bg-red-500/6 px-3 py-2 text-xs text-red-300">{{ obsDisconnectedHint }}</p>
             </div>
 
             <div>

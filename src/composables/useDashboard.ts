@@ -12,7 +12,7 @@ import { buildWeeklyFocusPlan } from '../lib/weekly-focus'
 import { isPaymentPastDue, openBillingPortal as requestBillingPortal } from '../lib/billing'
 import { usePrimaryGame } from './usePrimaryGame'
 import { gameTheme, type GameTheme } from '../lib/game-themes'
-import { loadGameAnalyses, openGameAnalysis, openGameHistoryWeb, openGameAnalyze } from '../lib/game-modules'
+import { openAccountLinkSettings } from '../lib/account-link-navigation'
 import { loadCoachReviewSummaries, type CoachReviewSummary } from '../lib/coach-review-cache'
 import { openAnalysisVodReview } from '../lib/open-vod-review'
 import { getFaceitLevelIconUrl, type Cs2FaceitConnection, type Cs2ProfilePayload } from '../lib/cs2'
@@ -55,8 +55,11 @@ function createDashboard() {
   const onboardingWeaknesses = ref<string[]>([])
   const cs2FaceitConnection = ref<Cs2FaceitConnection | null>(null)
   const cs2Profile = ref<Cs2ProfilePayload | null>(null)
+  const cs2SteamName = ref('')
+  const cs2LinksLoading = ref(true)
   const deadlockLinked = ref(false)
   const deadlockStats = ref<DeadlockProfileStats | null>(null)
+  const deadlockLinksLoading = ref(true)
   const playerCardUrl = ref('')
   const analyses = ref<AnalysisItem[]>([])
   const analysesLoading = ref(true)
@@ -598,6 +601,23 @@ function createDashboard() {
     }
   }
 
+  async function loadAllGameLinkStates() {
+    cs2LinksLoading.value = true
+    deadlockLinksLoading.value = true
+    try {
+      const settings = await window.api.settings.get().catch(() => null)
+      cs2SteamName.value = settings?.cs2SteamName?.trim() ?? ''
+      await Promise.all([
+        loadCs2Faceit(),
+        loadCs2Profile(),
+        loadDeadlockProfile(),
+      ])
+    } finally {
+      cs2LinksLoading.value = false
+      deadlockLinksLoading.value = false
+    }
+  }
+
   async function syncAuthUserFields() {
     const authUser = await window.api.auth.refreshUser().catch(() => null) as {
       onboarding_target_rank?: string | null
@@ -621,10 +641,7 @@ function createDashboard() {
         playstyleProfile.value = await window.api.progress.playstyleProfile().catch(() => null)
         rrHistory.value = await window.api.stats.rrHistory().catch(() => [])
       }
-      if (isCs2.value) {
-        await Promise.all([loadCs2Faceit(), loadCs2Profile()])
-      }
-      if (isDeadlock.value) await loadDeadlockProfile()
+      await loadAllGameLinkStates()
       await syncAuthUserFields()
     } catch { /* ignore */ } finally {
       profileLoading.value = false
@@ -1007,8 +1024,8 @@ function createDashboard() {
     }
   }
 
-  function openRiotSettings() { window.open('https://upforge.gg/settings/profile', '_blank') }
-  function openAccountSetup() { window.open('https://upforge.gg/onboarding', '_blank') }
+  function openRiotSettings() { void openAccountLinkSettings(router, 'valorant') }
+  function openAccountSetup() { void openAccountLinkSettings(router, primaryGame.value) }
 
   function openEmptyCoachingAction() {
     if (isCs2.value || isDeadlock.value) openGameAnalyze(primaryGame.value)
@@ -1134,10 +1151,7 @@ function createDashboard() {
     if (isValorant.value) {
       rrHistory.value = await window.api.stats.rrHistory().catch(() => [])
     }
-    if (isCs2.value) {
-      await Promise.all([loadCs2Faceit(), loadCs2Profile()])
-    }
-    if (isDeadlock.value) await loadDeadlockProfile()
+    void loadAllGameLinkStates()
 
     activityLog.value = await window.api.app.getActivityLog().catch(() => [])
 
@@ -1214,13 +1228,10 @@ function createDashboard() {
       applyFromSettings(s)
       if (s.primaryGame && s.primaryGame !== prevGame) {
         await Promise.all([loadAnalyses(), loadClipCount()])
+        void loadAllGameLinkStates()
         if (isValorant.value) {
           playstyleProfile.value = await window.api.progress.playstyleProfile().catch(() => null)
           rrHistory.value = await window.api.stats.rrHistory().catch(() => [])
-        } else if (isCs2.value) {
-          await Promise.all([loadCs2Faceit(), loadCs2Profile()])
-        } else if (isDeadlock.value) {
-          await loadDeadlockProfile()
         }
       }
     }))
@@ -1372,8 +1383,11 @@ function createDashboard() {
     onboardingWeaknesses,
     cs2FaceitConnection,
     cs2Profile,
+    cs2SteamName,
+    cs2LinksLoading,
     deadlockLinked,
     deadlockStats,
+    deadlockLinksLoading,
     playerCardUrl,
     analyses,
     analysesLoading,

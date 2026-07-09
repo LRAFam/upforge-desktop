@@ -423,6 +423,78 @@ export class AuthManager {
     }
   }
 
+  async updateRiotAccount(payload: {
+    riot_name: string
+    riot_tag: string
+    riot_region?: string
+  }): Promise<{ ok: boolean; error?: string }> {
+    if (!this._api) return { ok: false, error: 'Not logged in' }
+    try {
+      const res = await this._api.post('/api/profile/update-riot-account', payload)
+      const account = res.data?.riot_account as {
+        riot_name?: string
+        riot_tag?: string
+        riot_region?: string | null
+      } | undefined
+      if (this._user && account?.riot_name && account?.riot_tag) {
+        this._user.riot_name = account.riot_name
+        this._user.riot_tag = account.riot_tag
+        if (account.riot_region != null) this._user.riot_region = account.riot_region
+        this._user.riot_verified = false
+      } else {
+        await this.fetchUser()
+      }
+      return { ok: true }
+    } catch (err: unknown) {
+      const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message
+      return { ok: false, error: msg || 'Failed to link Riot account' }
+    }
+  }
+
+  async connectCs2Faceit(nickname: string): Promise<{ ok: boolean; error?: string }> {
+    if (!this._api) return { ok: false, error: 'Not logged in' }
+    try {
+      await this._api.post('/api/cs2/faceit/connect', { nickname: nickname.trim() })
+      return { ok: true }
+    } catch (err: unknown) {
+      const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message
+      return { ok: false, error: msg || 'FACEIT player not found' }
+    }
+  }
+
+  async searchDeadlockPlayers(query: string): Promise<Array<{ account_id: number; personaname: string }>> {
+    if (!this._api) return []
+    try {
+      const res = await this._api.get('/api/deadlock/search', { params: { query: query.trim() } })
+      return res.data?.results ?? []
+    } catch {
+      return []
+    }
+  }
+
+  async lookupDeadlockPlayer(accountId: number): Promise<{ account_id: number; personaname: string } | null> {
+    if (!this._api) return null
+    try {
+      const res = await this._api.get(`/api/deadlock/player/${accountId}`)
+      return res.data ?? null
+    } catch {
+      return null
+    }
+  }
+
+  async connectDeadlockAccount(accountId: number): Promise<{ ok: boolean; error?: string }> {
+    if (!this._api) return { ok: false, error: 'Not logged in' }
+    try {
+      await this._api.post('/api/deadlock/connect', { account_id: accountId })
+      if (this._user) this._user.deadlock_account_id = accountId
+      await this.fetchUser()
+      return { ok: true }
+    } catch (err: unknown) {
+      const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message
+      return { ok: false, error: msg || 'Failed to connect Steam account' }
+    }
+  }
+
   async fetchSquad(): Promise<{ team: unknown; activity: unknown[]; presence: Record<number, { online: boolean; is_recording: boolean; game?: string | null }>; stats: unknown[]; leaderboard: unknown[]; error?: string } | null> {
     try {
       const teamRes = await this._api.get('/api/teams/my-team')

@@ -584,7 +584,7 @@ const features = [
     iconColor: '#14b8a6',
     glow: 'rgba(20,184,166,0.12)',
     title: 'Progress tracking',
-    text: 'RR history, score trends and session summaries over time',
+    text: 'Score trends and session summaries over time',
     shortcut: null
   }
 ]

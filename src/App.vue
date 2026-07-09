@@ -133,8 +133,8 @@
       >
         <div class="flex items-center gap-2 min-w-0">
           <span class="h-2 w-2 rounded-full bg-amber-400 flex-shrink-0 animate-pulse" />
-          <span class="text-amber-100/90 truncate" :title="obsError ?? undefined">
-            {{ obsError || 'OBS not connected — matches won\'t record until you set it up.' }}
+          <span class="text-amber-100/90 truncate" :title="obsBannerMessage">
+            {{ obsBannerMessage }}
           </span>
         </div>
         <div class="flex items-center gap-2 flex-shrink-0">
@@ -244,6 +244,7 @@ const onboardingWasComplete = ref(false)
 const obsConnected = ref<boolean | null>(null)
 const obsConnecting = ref(false)
 const obsError = ref<string | null>(null)
+const obsProcessRunning = ref<boolean | null>(null)
 /** Bumps on login/logout/account switch so route views reload user-scoped data. */
 const sessionUserKey = ref('guest')
 
@@ -254,6 +255,14 @@ const showObsBanner = computed(() =>
   obsConnected.value === false &&
   !status.value.recording
 )
+
+const obsBannerMessage = computed(() => {
+  if (obsError.value) return obsError.value
+  if (obsProcessRunning.value === true) {
+    return 'OBS is open but not connected — it may have crashed. Click Launch OBS to restart it.'
+  }
+  return 'OBS not connected — matches won\'t record until you set it up.'
+})
 
 const showTitleBar = computed(() =>
   route.path !== '/overlay' && route.path !== '/splash' && route.path !== '/login'
@@ -418,6 +427,11 @@ onMounted(async () => {
     const obs = await window.api.obs.getStatus()
     obsConnected.value = obs.connected
     if (!obs.connected && obs.lastError) obsError.value = obs.lastError
+    const proc = await window.api.obs.getProcessState()
+    obsProcessRunning.value = proc.processRunning
+    if (!obs.connected && proc.processRunning && !obs.lastError && !obsError.value) {
+      obsError.value = null
+    }
   } catch { /* ignore */ }
 
   const api = getDesktopApi()
@@ -429,6 +443,9 @@ onMounted(async () => {
       obsConnected.value = data.connected
       obsConnecting.value = false
       obsError.value = data.connected ? null : (data.error ?? obsError.value)
+      void window.api.obs.getProcessState()
+        .then((proc) => { obsProcessRunning.value = proc.processRunning })
+        .catch(() => {})
     }
   })
   ;(window as Window & { _obsCleanup?: () => void })._obsCleanup = obsCleanup
@@ -568,6 +585,8 @@ async function connectObsFromBanner() {
     } else {
       obsError.value = result.error ?? 'Could not connect to OBS'
     }
+    const proc = await window.api.obs.getProcessState().catch(() => null)
+    if (proc) obsProcessRunning.value = proc.processRunning
   } catch (e) {
     obsError.value = e instanceof Error ? e.message : 'Could not connect to OBS'
   } finally {
@@ -586,6 +605,8 @@ async function launchObsFromBanner() {
     } else {
       obsError.value = result.error ?? 'Could not launch or connect to OBS'
     }
+    const proc = await window.api.obs.getProcessState().catch(() => null)
+    if (proc) obsProcessRunning.value = proc.processRunning
   } catch (e) {
     obsError.value = e instanceof Error ? e.message : 'Could not launch OBS'
   } finally {

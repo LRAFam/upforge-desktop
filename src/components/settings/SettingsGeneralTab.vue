@@ -2,12 +2,14 @@
 import { onMounted, onUnmounted, ref } from 'vue'
 import { useSettings } from '../../composables/useSettings'
 import PaymentFailedAlert from '../../components/PaymentFailedAlert.vue'
+import SettingsAccountLinks from './SettingsAccountLinks.vue'
 
 const {
   BADGE_PREVIEW_ITEMS,
   PRIMARY_GAMES,
   accountCs2Hint,
   accountInitial,
+  accountLinkFocus,
   accountRiotId,
   accountSteamLinked,
   accountSteamStatus,
@@ -65,6 +67,8 @@ onUnmounted(() => {
 
 <template>
 <section class="space-y-4">
+<SettingsAccountLinks :focus="accountLinkFocus" />
+
 <div class="panel-elevated overflow-hidden p-4">
           <p class="text-sm font-semibold text-white">Your game</p>
           <p class="mt-1 text-xs text-gray-500">Switches dashboard, settings, and web links — same as upforge.gg.</p>

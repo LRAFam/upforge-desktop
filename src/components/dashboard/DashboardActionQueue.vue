@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, ref, onMounted, onUnmounted } from 'vue'
 import type { PendingRecording } from '../../env.d.ts'
 import { useDashboard } from '../../composables/useDashboard'
 import { usePrimaryGame } from '../../composables/usePrimaryGame'
@@ -49,6 +49,22 @@ const {
 } = useDashboard()
 
 const showDemoMatches = ref(!!props.preview)
+const badgeTick = ref(Date.now())
+let badgeTimer: ReturnType<typeof setInterval> | undefined
+
+onMounted(() => {
+  badgeTimer = setInterval(() => { badgeTick.value = Date.now() }, 60_000)
+})
+
+onUnmounted(() => {
+  if (badgeTimer) clearInterval(badgeTimer)
+})
+
+/** Re-evaluate demo-pending badges every minute. */
+function demoBadge(rec: PendingRecording): string | null {
+  void badgeTick.value
+  return recordingDemoBadge(rec)
+}
 
 const rows = computed(() => {
   const source = showDemoMatches.value ? MOCK_NEEDS_YOU_RECORDINGS : pendingRecordings.value
@@ -225,12 +241,12 @@ function toggleDemoMatches() {
                 </p>
                 <div class="flex flex-wrap items-center gap-2 mt-2">
                   <span
-                    v-if="recordingDemoBadge(rec)"
+                    v-if="demoBadge(rec)"
                     class="text-[9px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-md border"
                     :class="recordingDemoPending(rec)
                       ? 'text-blue-300/90 border-blue-500/25 bg-blue-500/10'
                       : 'text-emerald-300/90 border-emerald-500/25 bg-emerald-500/10'"
-                  >{{ recordingDemoBadge(rec) }}</span>
+                  >{{ demoBadge(rec) }}</span>
                   <span v-if="recordingRowStats(rec).kills != null" class="text-[11px] font-mono font-bold tabular-nums text-gray-200">
                     {{ recordingRowStats(rec).kills }}<span class="text-gray-600 font-semibold">/</span>{{ recordingRowStats(rec).deaths }}<span class="text-gray-600 font-semibold">/</span>{{ recordingRowStats(rec).assists }}
                     <span class="text-[9px] font-bold text-gray-600 ml-1 uppercase">K/D/A</span>

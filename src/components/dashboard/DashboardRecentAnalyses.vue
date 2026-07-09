@@ -1,12 +1,9 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, onMounted, onUnmounted } from 'vue'
 import type { PendingRecording } from '../../env.d.ts'
 import { useDashboard } from '../../composables/useDashboard'
 import {
-  getAgentImage,
   getAgentRole,
-  getAgentColor,
-  getMapMinimap,
   getRoleColor,
   isDisplayableGameMode,
 } from '../../lib/valorant'
@@ -17,6 +14,20 @@ import {
 } from '../../lib/dashboard-match-row'
 import { scoreGrade, scoreLabel } from '../../lib/analysis-scoring'
 import { formatAnalysisFailureMessage } from '../../lib/analysis-failure-messages'
+import { pendingRecordingFailureHint } from '../../lib/analysis-display'
+import {
+  recordingMapImage,
+  recordingMapLabel,
+  recordingPlayerAccent,
+  recordingPlayerImage,
+  recordingPlayerLabel,
+} from '../../lib/recording-display'
+import {
+  canOpenTimeline,
+  canWatchRawRecording,
+  recordingDemoBadge,
+  recordingDemoPending,
+} from '../../lib/recording-demo-status'
 import PostGameDuelDiagnostics from '../post-game/PostGameDuelDiagnostics.vue'
 import { parseDuelFailureDiagnostics } from '../../lib/duel-diagnostics'
 
@@ -38,6 +49,7 @@ const {
   bulkUploading,
   timelineLoadingId,
   formatMode,
+  isValorant,
   uploadAllPending,
   analyseOldestPending,
   saveRecording,
@@ -61,16 +73,28 @@ const {
   isAnalysisProcessing,
 } = useDashboard()
 
+const badgeTick = ref(Date.now())
+let badgeTimer: ReturnType<typeof setInterval> | undefined
+
+onMounted(() => {
+  badgeTimer = setInterval(() => { badgeTick.value = Date.now() }, 60_000)
+})
+
+onUnmounted(() => {
+  if (badgeTimer) clearInterval(badgeTimer)
+})
+
+function demoBadge(rec: PendingRecording): string | null {
+  void badgeTick.value
+  return recordingDemoBadge(rec)
+}
+
 function failureHint(rec: PendingRecording): string | null {
-  if (rec.lastAnalysisErrorHint) return rec.lastAnalysisErrorHint
-  const message = rec.lastAnalysisError
-  if (!message) return null
-  if (/late|unclear|sync/i.test(message)) return 'Tip: UpForge will enable Analyse once Riot stats finish syncing.'
-  if (/timed out/i.test(message)) return 'Tip: try again — off-peak hours are usually faster.'
-  if (/throttled|slow down/i.test(message)) return 'Tip: wait a minute, then tap Retry.'
-  if (/incomplete|moov|finished saving/i.test(message)) return 'Tip: let OBS finish writing after the match ends.'
-  if (rec.lastAnalysisCreditRefunded) return 'Your coaching credit was refunded — you can try again.'
-  return null
+  return pendingRecordingFailureHint(rec)
+}
+
+function canReviewVod(rec: PendingRecording): boolean {
+  return canWatchRawRecording(rec)
 }
 
 function displayAnalysisError(rec: PendingRecording): string {
@@ -122,7 +146,7 @@ function toggleFootageDebug(rec: PendingRecording) {
         <span class="text-[10px] tabular-nums text-gray-500"><span class="text-green-400 font-bold">{{ lastFivePerf.wins }}W</span> · <span class="text-red-400 font-bold">{{ lastFivePerf.losses }}L</span></span>
       </template>
       <div class="flex-1" />
-      <template v-if="lastFivePerf.avgAcs != null">
+      <template v-if="lastFivePerf.avgAcs != null && isValorant">
         <span class="text-[10px] text-gray-600">ACS <span class="font-bold text-gray-300">{{ lastFivePerf.avgAcs }}</span></span>
       </template>
       <template v-if="lastFivePerf.avgScore != null">
@@ -175,18 +199,32 @@ function toggleFootageDebug(rec: PendingRecording) {
           :class="pendingRowClass(rec)"
         >
           <div v-if="recRowStats(rec).won != null" class="absolute left-0 top-2 bottom-2 w-[3px] rounded-full" :class="recRowStats(rec).won ? 'bg-green-500' : 'bg-red-500'" />
-          <div class="w-9 h-9 rounded-lg overflow-hidden flex-shrink-0 flex items-center justify-center relative" :style="rec.agent ? { backgroundColor: getAgentColor(rec.agent) + '22' } : { backgroundColor: 'rgba(59,130,246,0.1)' }">
-            <img v-if="rec.map && getMapMinimap(rec.map)" :src="getMapMinimap(rec.map)" class="absolute inset-0 w-full h-full object-cover opacity-20" />
-            <img v-if="rec.agent && getAgentImage(rec.agent)" :src="getAgentImage(rec.agent)" class="relative w-8 h-8 object-contain" />
+          <div
+            class="w-9 h-9 rounded-lg overflow-hidden flex-shrink-0 flex items-center justify-center relative"
+            :style="{ backgroundColor: (recordingPlayerAccent(rec) ?? '#3b82f6') + '22' }"
+          >
+            <img v-if="recordingMapImage(rec)" :src="recordingMapImage(rec)" class="absolute inset-0 w-full h-full object-cover opacity-20" />
+            <img v-if="recordingPlayerImage(rec)" :src="recordingPlayerImage(rec)" class="relative w-8 h-8 object-contain" />
             <svg v-else class="w-4 h-4 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M15 10l4.553-2.069A1 1 0 0121 8.882v6.236a1 1 0 01-1.447.894L15 14M3 8a2 2 0 012-2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V8z"/></svg>
           </div>
           <div class="flex-1 min-w-0">
-            <div class="flex items-center gap-1">
-              <span class="text-xs font-semibold truncate text-gray-200">{{ rec.agent || 'Unknown' }}</span>
-              <span v-if="rec.agent" class="flex-shrink-0 text-[8px] font-bold px-1 py-px rounded" :style="{ color: getRoleColor(getAgentRole(rec.agent)), backgroundColor: getRoleColor(getAgentRole(rec.agent)) + '20' }">{{ getAgentRole(rec.agent) }}</span>
+            <div class="flex items-center gap-1 flex-wrap">
+              <span class="text-xs font-semibold truncate text-gray-200">{{ recordingPlayerLabel(rec) }}</span>
+              <span
+                v-if="rec.game === 'valorant' && rec.agent"
+                class="flex-shrink-0 text-[8px] font-bold px-1 py-px rounded"
+                :style="{ color: getRoleColor(getAgentRole(rec.agent)), backgroundColor: getRoleColor(getAgentRole(rec.agent)) + '20' }"
+              >{{ getAgentRole(rec.agent) }}</span>
+              <span
+                v-if="demoBadge(rec)"
+                class="flex-shrink-0 text-[8px] font-bold uppercase tracking-wide px-1.5 py-px rounded border"
+                :class="recordingDemoPending(rec)
+                  ? 'text-blue-300/90 border-blue-500/25 bg-blue-500/10'
+                  : 'text-emerald-300/90 border-emerald-500/25 bg-emerald-500/10'"
+              >{{ demoBadge(rec) }}</span>
             </div>
             <p class="text-[10px] text-gray-600 mt-0.5 truncate">
-              {{ rec.map || '—' }} · {{ formatRelativeTime(new Date(rec.recordedAt).toISOString()) }}
+              {{ recordingMapLabel(rec) }} · {{ formatRelativeTime(new Date(rec.recordedAt).toISOString()) }}
               <span v-if="rec.clipsOnly && rec.clipCount != null" class="text-orange-400/80"> · {{ rec.clipCount }} clip{{ rec.clipCount === 1 ? '' : 's' }}</span>
               <span v-else-if="rec.fileSizeBytes" class="text-gray-700"> · {{ formatFileSize(rec.fileSizeBytes) }}</span>
               <span v-if="rec.cloudArchived || rec.jobId || rec.analysisId" class="text-emerald-500/80"> · Cloud</span>
@@ -237,9 +275,23 @@ function toggleFootageDebug(rec: PendingRecording) {
             <span v-if="recRowStats(rec).hs_pct != null" class="w-10 text-xs font-bold tabular-nums text-center" :class="recRowStats(rec).hs_pct! >= 25 ? 'text-orange-400' : 'text-gray-400'">{{ recRowStats(rec).hs_pct }}%</span>
             <span v-else class="w-10 text-[10px] text-gray-700 text-center">—</span>
           </div>
-          <div class="flex items-center gap-1.5 flex-shrink-0 ml-1">
+          <div class="flex items-center gap-1.5 flex-shrink-0 ml-1 flex-wrap justify-end">
             <button v-if="rec.clipsOnly" class="px-2 py-1 text-[10px] font-medium text-orange-300 bg-orange-500/10 hover:bg-orange-500/20 border border-orange-500/20 rounded-lg transition-colors" @click="openClipsForSession(rec)">View clips</button>
-            <button v-else-if="rec.timeline?.playerKills?.length || rec.timeline?.playerDeaths?.length || rec.jobId || rec.analysisId || rec.archiveId || rec.cloudUploaded" class="px-2 py-1 text-[10px] font-medium text-gray-300 bg-white/[0.06] hover:bg-white/[0.1] border border-white/[0.08] rounded-lg transition-colors" @click="openRecordingReview(rec)">Review</button>
+            <template v-else-if="canReviewVod(rec)">
+              <button
+                class="px-2 py-1 text-[10px] font-medium text-gray-300 bg-white/[0.06] hover:bg-white/[0.1] border border-white/[0.08] rounded-lg transition-colors"
+                @click="openRecordingReview(rec, 'raw')"
+              >Watch</button>
+              <button
+                class="px-2 py-1 text-[10px] font-medium rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                :class="canOpenTimeline(rec)
+                  ? 'text-gray-300 bg-white/[0.06] hover:bg-white/[0.1] border border-white/[0.08]'
+                  : 'text-gray-500 bg-white/[0.03] border border-white/[0.06]'"
+                :disabled="!canOpenTimeline(rec)"
+                :title="canOpenTimeline(rec) ? 'Kill timeline + map intel' : recAnalysisBlockedLabel(rec)"
+                @click="openRecordingReview(rec, 'timeline')"
+              >Timeline</button>
+            </template>
             <button
               v-if="!rec.clipsOnly && !rec.cloudArchived && !rec.jobId && !recInFlight(rec)"
               :disabled="savingIds.has(rec.id)"
