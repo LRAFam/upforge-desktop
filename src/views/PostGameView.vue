@@ -701,10 +701,9 @@
         >
           <p class="text-[11px] text-gray-400 leading-relaxed">{{ replayNotFoundHint }}</p>
           <ul class="text-[10px] text-gray-500 space-y-1 list-disc pl-4">
-            <li v-if="gameInfo.game === 'cs2'">GOTV replays usually appear in <strong class="text-gray-400">5–15 minutes</strong> (up to 30 at peak)</li>
-            <li v-if="gameInfo.game === 'cs2'">Enable auto-record (<code class="text-cyan-400/80">cl_demo_auto_recording 1</code>) or download the replay in CS2</li>
-            <li v-if="gameInfo.game === 'deadlock'">Enable replay saving in Deadlock settings, then play another match</li>
-            <li v-if="gameInfo.game === 'cs2'">If still missing after 30 minutes, restart Steam and tap Scan again</li>
+            <li v-if="gameInfo.game === 'cs2'">Download the GOTV replay in CS2 (Watch → Your Matches)</li>
+            <li v-if="gameInfo.game === 'cs2'">Attach the <code class="text-cyan-400/80">.dem</code> file from the dashboard for kills and clips</li>
+            <li v-if="gameInfo.game === 'deadlock'">Download the replay from Deadlock match history, then attach the .dem file</li>
           </ul>
           <button
             type="button"
@@ -878,11 +877,7 @@ const analysisHeroTitle = computed(() => {
 
 const isCs2Game = computed(() => gameInfo.value.game === 'cs2')
 
-const isDemoWaitFlow = computed(() =>
-  usesAsyncDemoSync(gameInfo.value.game)
-  && !pendingAnalysisReady.value
-  && (pendingAnalysisState.value === 'syncing' || pendingAnalysisState.value === 'finalizing'),
-)
+const isDemoWaitFlow = computed(() => false)
 
 const pendingHeroTitle = computed(() => {
   if (isDemoWaitFlow.value) {
@@ -1027,19 +1022,10 @@ const currentTip = computed(() => COACHING_TIPS[tipIndex.value])
 const matchDataWarning = computed<{ message: string; tip: string } | null>(() => {
   if (gameInfo.value.game === 'cs2') {
     if (killsCapured.value > 0) return null
-    if (pendingAnalysisState.value === 'syncing') {
-      return {
-        message: 'CS2 demo still syncing — GOTV replays usually land in 5–15 minutes after the match.',
-        tip: 'Keep UpForge open. Enable cl_demo_auto_recording or download the replay in CS2. Restart Steam if it takes over 30 minutes.',
-      }
+    return {
+      message: 'No demo attached yet — VOD analysis still works.',
+      tip: 'Download the GOTV replay in CS2 and attach the .dem from the dashboard for kill timeline and highlight clips.',
     }
-    if (pendingAnalysisState.value === 'unavailable') {
-      return {
-        message: 'No CS2 demo found after the wait window.',
-        tip: 'Download the GOTV replay in CS2, confirm the demo folder in Settings → Recording, then tap Scan for replay again.',
-      }
-    }
-    return null
   }
   if (killsCapured.value > 0) return null // Data captured successfully
   const status = matchDataStatus.value
@@ -1215,9 +1201,9 @@ const preparingTitle = computed(() => {
 
 const replayNotFoundHint = computed(() => {
   if (gameInfo.value.game === 'deadlock') {
-    return 'No replay found — enable replay saving in Deadlock settings'
+    return 'No replay attached — download from Deadlock match history and attach the .dem file'
   }
-  return 'No demo yet — GOTV replays usually take 5–15 minutes (download in CS2 or enable auto-record)'
+  return 'No demo attached — download the GOTV replay in CS2 and attach the .dem file'
 })
 
 const topIssue = computed(() => {
@@ -1600,11 +1586,8 @@ onMounted(() => {
   ipcCleanup.push(window.api.on('post-game:analysis-readiness', (...args: unknown[]) => {
     const readiness = args[0] as { ready: boolean; state: string; message: string }
     if (state.value === 'preparing' || state.value === 'uploading') {
-      const cs2DemoWait = gameInfo.value.game === 'cs2' && readiness.state === 'syncing'
       preparingSyncMessage.value = readiness.message
-        || (cs2DemoWait
-        ? 'Waiting for CS2 demo — GOTV replays usually take 5–15 minutes'
-          : readiness.state === 'syncing'
+        || (readiness.state === 'syncing'
             ? 'Syncing match stats…'
             : readiness.state === 'finalizing'
               ? 'Finalizing recording…'

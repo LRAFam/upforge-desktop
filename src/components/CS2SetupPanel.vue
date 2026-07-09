@@ -24,17 +24,10 @@
     <!-- Setup checklist -->
     <div class="px-3.5 py-3 border-b border-orange-500/10 space-y-2.5">
       <p class="text-[11px] text-gray-400 leading-relaxed">
-        UpForge reads your match demo after each game. Enable auto-record or download the GOTV replay in CS2 — demos usually appear in <span class="text-gray-300">5–15 minutes</span> (up to 30 at peak).
+        Record your match in UpForge, then attach the GOTV demo for kill timeline and highlight clips.
       </p>
-      <div class="rounded-lg border border-white/[0.08] bg-black/25 px-3 py-2.5">
-        <p class="text-[10px] font-semibold uppercase tracking-wider text-gray-500 mb-1.5">Add to autoexec.cfg</p>
-        <code class="block text-[11px] font-mono text-orange-200/90 leading-relaxed">cl_demo_auto_recording 1</code>
-      </div>
+      <DemoAttachGuide game="cs2" default-open />
       <div class="flex flex-wrap gap-2">
-        <button
-          class="text-[10px] font-semibold px-2.5 py-1 rounded-lg border border-white/[0.10] bg-white/[0.04] text-gray-300 hover:text-white hover:bg-white/[0.07] transition-colors"
-          @click="copyAutoexec"
-        >{{ copied ? 'Copied!' : 'Copy command' }}</button>
         <button
           :disabled="detecting"
           class="text-[10px] font-semibold px-2.5 py-1 rounded-lg border border-orange-500/20 bg-orange-500/10 text-orange-300 hover:bg-orange-500/20 transition-colors disabled:opacity-50"
@@ -85,7 +78,7 @@
 
     <div v-if="result.exists && result.files.length > 0" class="px-3.5 py-2 border-t border-white/[0.03]">
       <p class="text-[10px] text-gray-700">
-        Demos upload automatically when a match ends. Full reports live at
+        Attach demos from the dashboard after each match, or upload manually at
         <span class="text-orange-600">upforge.gg/cs2</span>
       </p>
     </div>
@@ -94,6 +87,7 @@
 
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
+import DemoAttachGuide from './DemoAttachGuide.vue'
 
 interface DemFile {
   name: string
@@ -102,11 +96,8 @@ interface DemFile {
   modifiedAt: number
 }
 
-const AUTOEXEC_LINE = 'cl_demo_auto_recording 1'
-
 const loading = ref(true)
 const detecting = ref(false)
-const copied = ref(false)
 const demoDir = ref<string | null>(null)
 const detectError = ref('')
 const result = ref<{ files: DemFile[]; dir: string | null; exists: boolean }>({
@@ -144,16 +135,6 @@ async function detectFolder() {
     }
   } finally {
     detecting.value = false
-  }
-}
-
-async function copyAutoexec() {
-  try {
-    await navigator.clipboard.writeText(AUTOEXEC_LINE)
-    copied.value = true
-    setTimeout(() => { copied.value = false }, 2000)
-  } catch {
-    detectError.value = 'Could not copy — select the command manually.'
   }
 }
 

@@ -26,6 +26,10 @@
       </div>
     </div>
 
+    <div class="px-3.5 py-3 border-b border-white/[0.09]">
+      <DemoAttachGuide game="deadlock" default-open />
+    </div>
+
     <!-- Loading -->
     <div v-if="loading" class="px-3.5 py-4 flex items-center gap-2">
       <div class="w-3 h-3 rounded-full border border-teal-500/30 border-t-teal-400 animate-spin" />
@@ -76,8 +80,7 @@
     <!-- Footer note -->
     <div v-if="result.exists && result.files.length > 0" class="px-3.5 py-2 border-t border-white/[0.03]">
       <p class="text-[10px] text-gray-700">
-        Replays auto-upload after matches when <strong class="text-gray-500 font-semibold">Auto-analyse</strong> is on.
-        Manual uploads use your Deadlock analysis quota.
+        Attach replays from the dashboard after each match for kill timeline and highlight clips.
       </p>
     </div>
   </div>
@@ -85,6 +88,7 @@
 
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted } from 'vue'
+import DemoAttachGuide from './DemoAttachGuide.vue'
 
 interface DemFile {
   name: string

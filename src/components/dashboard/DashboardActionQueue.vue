@@ -25,6 +25,7 @@ import {
   demoPendingSectionHint,
   demoPendingSectionTitle,
 } from '../../lib/recording-demo-status'
+import DemoAttachGuide from '../DemoAttachGuide.vue'
 
 const props = defineProps<{ preview?: boolean }>()
 
@@ -139,6 +140,18 @@ function statusTone(rec: PendingRecording): string {
   return 'text-gray-400'
 }
 
+const attachingIds = ref(new Set<string>())
+
+async function attachDemo(rec: PendingRecording) {
+  if (props.preview || attachingIds.value.has(rec.id)) return
+  attachingIds.value.add(rec.id)
+  try {
+    await window.api.recordings.attachDemo(rec.id)
+  } finally {
+    attachingIds.value.delete(rec.id)
+  }
+}
+
 function onAnalyse(rec: PendingRecording) {
   if (props.preview) return
   void analyseRecording(rec.id)
@@ -164,7 +177,7 @@ function toggleDemoMatches() {
         </div>
         <p class="text-[11px] text-gray-500 mt-1 leading-snug max-w-xl">
           Matches waiting on your desk.
-          <span class="text-gray-400">Watch the recording anytime</span> — open the kill timeline once stats link.
+          <span class="text-gray-400">Watch the recording anytime</span> — attach a demo for kill timeline and clips.
         </p>
       </div>
       <span class="text-[10px] text-gray-500 flex-shrink-0 pt-0.5">{{ rows.length }} pending</span>
@@ -278,6 +291,13 @@ function toggleDemoMatches() {
                 :style="{ width: recUploadProgress(rec)! + '%' }"
               />
             </div>
+
+            <DemoAttachGuide
+              v-if="recordingDemoPending(rec)"
+              :game="rec.game"
+              compact
+              class="mt-3"
+            />
           </div>
 
           <div class="flex flex-wrap gap-2 rounded-xl border border-white/12 bg-black/28 backdrop-blur-sm p-2">
@@ -307,6 +327,17 @@ function toggleDemoMatches() {
               <span class="block text-[9px] font-medium mt-0.5" :class="canOpenTimeline(rec) ? 'text-gray-300/85' : 'text-gray-600'">
                 {{ canOpenTimeline(rec) ? 'Kills + rounds' : 'Needs demo' }}
               </span>
+            </button>
+
+            <button
+              v-if="recordingDemoPending(rec)"
+              type="button"
+              class="flex-1 min-w-[120px] px-3 py-2 rounded-lg text-[11px] font-semibold text-blue-100 bg-blue-500/15 hover:bg-blue-500/25 border border-blue-400/25 transition-colors text-left disabled:opacity-50"
+              :disabled="preview || attachingIds.has(rec.id)"
+              @click="attachDemo(rec)"
+            >
+              <span class="block">{{ attachingIds.has(rec.id) ? 'Attaching…' : 'Attach demo' }}</span>
+              <span class="block text-[9px] font-medium text-blue-200/70 mt-0.5">Kills + clips</span>
             </button>
 
             <button

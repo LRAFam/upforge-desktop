@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { getAnalysisReadiness } from './analysis-readiness'
-import { CS2_DEMO_SYNC_MAX_MS, cs2DemoSyncMessage, cs2DemoSyncPollIntervalMs, shouldDeferPostGameForDemoSync } from './match-data-quality'
+import { shouldDeferPostGameForDemoSync, demoAttachHint } from './match-data-quality'
 import type { PendingRecording } from './recordings-store'
 
 function cs2Recording(overrides: Partial<PendingRecording> = {}): PendingRecording {
@@ -17,59 +17,37 @@ function cs2Recording(overrides: Partial<PendingRecording> = {}): PendingRecordi
     clipsOnly: false,
     cloudArchived: true,
     archiveId: 'arch-1',
-    path: '',
     ...overrides,
   } as PendingRecording
 }
 
-describe('cs2DemoSyncMessage', () => {
-  it('mentions 5–15 minute window early on', () => {
-    expect(cs2DemoSyncMessage(60_000)).toContain('5–15')
-  })
-
-  it('mentions Steam timing', () => {
-    expect(cs2DemoSyncMessage(60_000)).toMatch(/steam/i)
-  })
-
-  it('warns about peak times after 15 minutes', () => {
-    expect(cs2DemoSyncMessage(20 * 60_000)).toContain('30 min')
-  })
-})
-
-describe('cs2DemoSyncPollIntervalMs', () => {
-  it('slows polling while another match is recording', () => {
-    expect(cs2DemoSyncPollIntervalMs(60_000, true)).toBe(30_000)
-  })
-
-  it('backs off as demo wait lengthens', () => {
-    expect(cs2DemoSyncPollIntervalMs(2 * 60_000)).toBe(5_000)
-    expect(cs2DemoSyncPollIntervalMs(10 * 60_000)).toBe(10_000)
-    expect(cs2DemoSyncPollIntervalMs(20 * 60_000)).toBe(20_000)
-    expect(cs2DemoSyncPollIntervalMs(32 * 60_000)).toBe(30_000)
-  })
-})
-
 describe('shouldDeferPostGameForDemoSync', () => {
-  it('defers CS2 when demo stats are missing', () => {
-    expect(shouldDeferPostGameForDemoSync('cs2', null)).toBe(true)
-  })
-
-  it('does not defer Valorant', () => {
+  it('never defers post-game for demo sync', () => {
+    expect(shouldDeferPostGameForDemoSync('cs2', null)).toBe(false)
+    expect(shouldDeferPostGameForDemoSync('deadlock', null)).toBe(false)
     expect(shouldDeferPostGameForDemoSync('valorant', null)).toBe(false)
   })
 })
 
-describe('getAnalysisReadiness cs2 demo window', () => {
-  it('stays syncing at 8 minutes', () => {
+describe('demoAttachHint', () => {
+  it('mentions attach for CS2', () => {
+    expect(demoAttachHint('cs2')).toMatch(/attach/i)
+  })
+})
+
+describe('getAnalysisReadiness cs2 without demo', () => {
+  it('is ready for VOD analysis without a demo', () => {
     const readiness = getAnalysisReadiness(cs2Recording())
-    expect(readiness.state).toBe('syncing')
-    expect(readiness.message).toContain('5–15')
+    expect(readiness.state).toBe('ready')
+    expect(readiness.ready).toBe(true)
+    expect(readiness.message).toMatch(/attach/i)
   })
 
-  it('becomes unavailable after 35 minutes', () => {
+  it('stays ready after long elapsed time', () => {
     const readiness = getAnalysisReadiness(cs2Recording({
-      recordedAt: Date.now() - CS2_DEMO_SYNC_MAX_MS - 60_000,
+      recordedAt: Date.now() - 40 * 60 * 1000,
     }))
-    expect(readiness.state).toBe('unavailable')
+    expect(readiness.state).toBe('ready')
+    expect(readiness.ready).toBe(true)
   })
 })

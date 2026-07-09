@@ -30,12 +30,10 @@ export function usesAsyncDemoSync(game: string | null | undefined): boolean {
   return game === 'cs2' || game === 'deadlock'
 }
 
-/** CS2 / Deadlock recording still waiting on demo file. */
-export function recordingDemoPending(rec: Pick<PendingRecording, 'game' | 'timeline' | 'analysisReadiness'>): boolean {
+/** CS2 / Deadlock recording without demo attached — optional attach for timeline/clips. */
+export function recordingDemoPending(rec: Pick<PendingRecording, 'game' | 'timeline'>): boolean {
   if (!usesAsyncDemoSync(rec.game)) return false
-  if (recordingTimelineReady(rec.timeline)) return false
-  const state = rec.analysisReadiness?.state
-  return state === 'syncing' || state === 'finalizing'
+  return !recordingTimelineReady(rec.timeline)
 }
 
 export function canWatchRawRecording(
@@ -62,47 +60,35 @@ export function canOpenTimeline(
   )
 }
 
-/** Short badge for match cards — e.g. "Demo pending · 8m". */
+/** Short badge for match cards. */
 export function recordingDemoBadge(
-  rec: Pick<PendingRecording, 'game' | 'timeline' | 'analysisReadiness' | 'recordedAt'>,
+  rec: Pick<PendingRecording, 'game' | 'timeline'>,
 ): string | null {
-  if (!recordingDemoPending(rec)) {
-    if (usesAsyncDemoSync(rec.game) && recordingTimelineReady(rec.timeline)) {
-      return 'Demo linked'
-    }
-    return null
-  }
-  const elapsedMin = Math.max(0, Math.floor((Date.now() - rec.recordedAt) / 60_000))
-  return elapsedMin > 0 ? `Demo pending · ${elapsedMin}m` : 'Demo pending'
-}
-
-export function demoPendingElapsedLabel(recordedAt: number): string {
-  const elapsedMin = Math.max(0, Math.floor((Date.now() - recordedAt) / 60_000))
-  if (elapsedMin < 1) return 'just now'
-  if (elapsedMin === 1) return '1 minute'
-  return `${elapsedMin} minutes`
+  if (!usesAsyncDemoSync(rec.game)) return null
+  if (recordingTimelineReady(rec.timeline)) return 'Demo linked'
+  return 'Attach demo'
 }
 
 /** One-line explainer for compact UI (cards, post-game). */
 export function demoSyncExplainerShort(game: string | null | undefined): string {
-  if (game === 'cs2') return 'Demos come from Steam — UpForge watches for them but cannot speed them up.'
-  if (game === 'deadlock') return 'Replay data syncs from Steam — keep Steam open while you play.'
+  if (game === 'cs2') return 'Attach a GOTV .dem when ready for kills and highlight clips.'
+  if (game === 'deadlock') return 'Attach a replay .dem when ready for stats and highlight clips.'
   return ''
 }
 
 /** Longer explainer for side panels and help text. */
 export function demoSyncExplainer(game: string | null | undefined): string {
   if (game === 'cs2') {
-    return 'GOTV demos are stored on Valve servers after ranked matches. UpForge downloads them via Steam when a local file is missing.'
+    return 'Download the GOTV demo in CS2 (Watch → Your Matches), then attach the .dem file for kill timeline and auto-clips.'
   }
   if (game === 'deadlock') {
-    return 'Deadlock replay data syncs from Steam. UpForge downloads from Valve when the match ends.'
+    return 'Download the replay from Deadlock match history, then attach the .dem file for stats and auto-clips.'
   }
   return ''
 }
 
 export function demoPendingSectionTitle(game: string): string {
-  return game === 'deadlock' ? 'Waiting on replay' : 'Waiting on demo'
+  return game === 'deadlock' ? 'Attach replay' : 'Attach demo'
 }
 
 export function demoPendingSectionHint(game: string): string {

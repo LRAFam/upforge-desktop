@@ -5,6 +5,7 @@ import {
   ipcMain,
   shell,
   globalShortcut,
+  dialog,
 } from 'electron'
 import { join } from 'path'
 import fs from 'fs'
@@ -168,7 +169,7 @@ import {
   resetPostGameSession,
   sendPostGameEvent,
 } from './post-game-session'
-import { hasRichMatchData, MATCH_DETAILS_ENRICH_MAX_MS, CS2_DEMO_POST_MATCH_QUICK_POLL_MS, cs2DemoSyncPollIntervalMs, demoSyncMaxMsForGame, shouldDeferPostGameForDemoSync, cs2RecordingSavedDashboardMessage, deadlockRecordingSavedDashboardMessage } from './match-data-quality'
+import { hasRichMatchData, MATCH_DETAILS_ENRICH_MAX_MS, demoSyncMaxMsForGame, shouldDeferPostGameForDemoSync, cs2RecordingSavedDashboardMessage, deadlockRecordingSavedDashboardMessage } from './match-data-quality'
 import {
   buildCoachingSubmissionExtras,
   topSkillFocus,
@@ -207,6 +208,7 @@ import { downloadDeadlockValveReplay } from './deadlock-valve-replay'
 import { ensureCs2DemoRecordingConfig } from './cs2-steam-setup'
 import { resolveCs2LocalPlayerName } from './cs2-player-identity'
 import { downloadCs2ValveDemoForSession } from './cs2-valve-demo-downloader'
+import { attachDemoFileToRecording } from './recording-demo-attach'
 
 /** Human-readable label for a game identifier. */
 function gameLabel(game?: string | null): string {
@@ -1489,9 +1491,29 @@ async function refreshRecordingVodProbe(
   await refreshVodProbe(rec.path, (p) => clipExtractor.probe(p))
 }
 
-/** Poll Riot + VOD probe until analyse is unblocked — keeps dashboard Analyse disabled until ready. */
+/** Poll Riot + VOD probe until analyse is unblocked — Valorant only; CS2/Deadlock are VOD-ready without demo. */
 function scheduleAnalysisReadinessRefresh(recordingId: string, game: string): void {
   const startedAt = Date.now()
+
+  const finish = (readiness: AnalysisReadiness) => {
+    mainWindow?.webContents.send('recordings:updated')
+    const pg = postGameWindow
+    if (pg && !pg.isDestroyed()) {
+      sendPostGameEvent(pg, 'post-game:analysis-readiness', readiness)
+    }
+  }
+
+  if (game !== 'valorant') {
+    setTimeout(() => {
+      void (async () => {
+        const rec = recordingsStore.getById(recordingId)
+        if (!rec || rec.analysed) return
+        await refreshRecordingVodProbe(rec)
+        finish(getAnalysisReadiness(rec))
+      })()
+    }, 3_000)
+    return
+  }
 
   const tick = async (): Promise<void> => {
     let rec = recordingsStore.getById(recordingId)
@@ -1499,7 +1521,6 @@ function scheduleAnalysisReadinessRefresh(recordingId: string, game: string): vo
       return
     }
 
-    const elapsed = Date.now() - startedAt
     const deferring = shouldDeferHeavyBackgroundWork(matchPriorityDeps())
 
     if (!deferring) {
@@ -1508,25 +1529,16 @@ function scheduleAnalysisReadinessRefresh(recordingId: string, game: string): vo
 
     let readiness = getAnalysisReadiness(rec)
     if (isTerminalAnalysisReadinessState(readiness.state)) {
-      mainWindow?.webContents.send('recordings:updated')
-      const pg = postGameWindow
-      if (pg && !pg.isDestroyed()) {
-        sendPostGameEvent(pg, 'post-game:analysis-readiness', readiness)
-      }
+      finish(readiness)
       return
     }
 
     if (Date.now() - startedAt >= demoSyncMaxMsForGame(game)) {
-      mainWindow?.webContents.send('recordings:updated')
-      readiness = getAnalysisReadiness(rec)
-      const pg = postGameWindow
-      if (pg && !pg.isDestroyed()) {
-        sendPostGameEvent(pg, 'post-game:analysis-readiness', readiness)
-      }
+      finish(getAnalysisReadiness(rec))
       return
     }
 
-    if (readiness.state === 'syncing' && rec.game === 'valorant' && rec.timeline) {
+    if (readiness.state === 'syncing' && rec.timeline) {
       try {
         await enrichTimelineForCoaching(riotLocalApi, rec.timeline, {
           maxWaitMs: 20_000,
@@ -1537,21 +1549,9 @@ function scheduleAnalysisReadinessRefresh(recordingId: string, game: string): vo
       readiness = getAnalysisReadiness(rec)
     }
 
-    if (readiness.state === 'syncing' && (rec.game === 'cs2' || rec.game === 'deadlock') && !deferring) {
-      await refreshReplayTimelineForRecording(recordingId, { notifyActivity: true })
-      rec = recordingsStore.getById(recordingId)
-      if (rec) readiness = getAnalysisReadiness(rec)
-    }
-
-    mainWindow?.webContents.send('recordings:updated')
-    const pg = postGameWindow
-    if (pg && !pg.isDestroyed()) {
-      sendPostGameEvent(pg, 'post-game:analysis-readiness', readiness)
-    }
+    finish(readiness)
     if (!isTerminalAnalysisReadinessState(readiness.state)) {
-      const pollMs = rec?.game === 'cs2'
-        ? cs2DemoSyncPollIntervalMs(elapsed, deferring)
-        : deferring ? 30_000 : 10_000
+      const pollMs = deferring ? 30_000 : 10_000
       setTimeout(() => { void tick() }, pollMs)
     }
   }
@@ -1598,15 +1598,6 @@ async function ensureAnalysisReadinessForAnalyse(
     await refreshRecordingVodProbe(rec)
     readiness = getAnalysisReadiness(rec)
     mainWindow?.webContents.send('recordings:updated')
-  } else if (
-    (rec.game === 'cs2' || rec.game === 'deadlock')
-    && readiness.state === 'syncing'
-  ) {
-    await refreshReplayTimelineForRecording(recordingId, { notifyActivity: true })
-    rec = recordingsStore.getById(recordingId)
-    if (!rec) return { ok: false, error: 'Recording not found', state: 'unavailable' }
-    readiness = getAnalysisReadiness(rec)
-    mainWindow?.webContents.send('recordings:updated')
   }
 
   if (!readiness.ready) {
@@ -1650,19 +1641,6 @@ async function waitUntilAnalysisReady(
       rec = recordingsStore.getById(recordingId)
       if (rec) {
         await refreshRecordingVodProbe(rec)
-        readiness = getAnalysisReadiness(rec)
-        sendAnalysisReadinessUpdate(targetWindow, readiness)
-        if (readiness.ready) return { ready: true, readiness }
-        if (isTerminalAnalysisReadinessState(readiness.state) && !readiness.ready) {
-          return { ready: false, readiness }
-        }
-      }
-    }
-
-    if (readiness.state === 'syncing' && (rec.game === 'cs2' || rec.game === 'deadlock')) {
-      await refreshReplayTimelineForRecording(recordingId, { notifyActivity: true })
-      rec = recordingsStore.getById(recordingId)
-      if (rec) {
         readiness = getAnalysisReadiness(rec)
         sendAnalysisReadinessUpdate(targetWindow, readiness)
         if (readiness.ready) return { ready: true, readiness }
@@ -2045,10 +2023,7 @@ function setupGameDetection(): void {
         customReplayDir: game === 'cs2' ? config?.cs2DemoDir : undefined,
         localPlayerName: cs2PlayerName,
       }
-      const parsed = await buildTimelineFromReplay(
-        replayCtx,
-        game === 'cs2' ? { maxWaitMs: CS2_DEMO_POST_MATCH_QUICK_POLL_MS } : undefined,
-      )
+      const parsed = await buildTimelineFromReplay(replayCtx, { pollOnce: true })
       if (parsed.timeline) timeline = parsed.timeline
       pendingReplayPath = parsed.demoPath
       lastReplayRetryContext = {
@@ -2066,43 +2041,6 @@ function setupGameDetection(): void {
           logActivity('CS2 demo loaded — set your Steam name in Settings → Recording to tag your kills (full match timeline still available)')
         } else if (game === 'cs2' && timeline.playerKills.length === 0) {
           logActivity('CS2 demo parsed but no kills matched — set your Steam name in Settings → Recording')
-        }
-      } else if (game === 'cs2') {
-        logActivity('No local CS2 demo yet — downloading from Valve servers…')
-        if (!shouldDeferHeavyBackgroundWork(matchPriorityDeps())) {
-          const valve = await downloadCs2ValveDemoForSession({
-            matchSessionStartMs: matchSessionStart,
-            gsiMap: replayCtx.gsiMap,
-            customReplayDir: replayCtx.customReplayDir,
-          })
-          if (valve.ok) {
-            const retry = await buildTimelineFromReplay(replayCtx, { pollOnce: true })
-            if (retry.timeline) {
-              timeline = retry.timeline
-              pendingReplayPath = retry.demoPath
-              logActivity('CS2 demo downloaded from Valve — syncing match stats')
-            }
-          } else {
-            logActivity(valve.error)
-          }
-        }
-      } else if (game === 'deadlock') {
-        logActivity('No local Deadlock replay yet — downloading from Valve when available…')
-        if (!shouldDeferHeavyBackgroundWork(matchPriorityDeps())) {
-          const salts = getDeadlockMatchSalts()
-          if (salts?.replaySalt != null) {
-            const valve = await downloadDeadlockValveReplay(salts)
-            if (valve.ok) {
-              const retry = await buildTimelineFromReplay(replayCtx, { pollOnce: true })
-              if (retry.timeline) {
-                timeline = retry.timeline
-                pendingReplayPath = retry.demoPath
-                logActivity('Deadlock replay downloaded from Valve — syncing match stats')
-              }
-            } else {
-              logActivity(valve.error)
-            }
-          }
         }
       }
     }
@@ -2405,9 +2343,9 @@ function setupGameDetection(): void {
         `Recording saved (${(readySize / (1024 ** 3)).toFixed(2)} GB) — visible on dashboard`,
       )
       if (game === 'cs2' && !richMatchData) {
-        logActivity('CS2 match recorded — waiting for GOTV demo (usually 5–15 min, keep UpForge open)')
+        logActivity('CS2 match recorded — attach a demo from the dashboard for kill timeline and clips')
       } else if (game === 'deadlock' && !richMatchData) {
-        logActivity('Deadlock match recorded — waiting for replay data')
+        logActivity('Deadlock match recorded — attach a replay from the dashboard for stats and clips')
       }
       scheduleAnalysisReadinessRefresh(savedRecording.id, game)
       if (lastReplayRetryContext && lastReplayRetryContext.game === game) {
@@ -5150,6 +5088,48 @@ async function startApp(): Promise<void> {
     return {
       ok,
       analysisReadiness: rec ? getAnalysisReadiness(rec) : null,
+    }
+  })
+
+  ipcMain.handle('recordings:attach-demo', async (_e, { id, demoPath }: { id: string; demoPath?: string }) => {
+    let chosen = demoPath?.trim()
+    if (!chosen) {
+      const win = BrowserWindow.getFocusedWindow() ?? mainWindow
+      const result = await dialog.showOpenDialog(win!, {
+        title: 'Attach match demo',
+        filters: [{ name: 'Demo replay', extensions: ['dem'] }],
+        properties: ['openFile'],
+      })
+      if (result.canceled || !result.filePaths[0]) {
+        return { ok: false as const, error: 'Cancelled', analysisReadiness: null }
+      }
+      chosen = result.filePaths[0]
+    }
+
+    const rec = recordingsStore.getById(id)
+    const localPlayerName = rec?.game === 'cs2'
+      ? await resolveCs2LocalPlayerName(settingsManager, authManager)
+      : null
+
+    const attachResult = await attachDemoFileToRecording({
+      store: recordingsStore,
+      recordingId: id,
+      demoPath: chosen,
+      localPlayerName,
+      logActivity,
+      onClipsExtracted: (videoPath, timeline, sourceGame) =>
+        extractMatchClips(videoPath, timeline, null, sourceGame),
+    })
+
+    if (attachResult.ok) {
+      mainWindow?.webContents.send('recordings:updated')
+    }
+
+    const updated = recordingsStore.getById(id)
+    return {
+      ok: attachResult.ok,
+      error: attachResult.error,
+      analysisReadiness: updated ? getAnalysisReadiness(updated) : null,
     }
   })
 

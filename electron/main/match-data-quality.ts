@@ -68,21 +68,30 @@ export function cs2DemoUnavailableMessage(): string {
   return 'CS2 demo not found — make sure Steam is running and logged in, then tap Scan for replay. Valve demos expire after ~30 days.'
 }
 
-/** CS2 / Deadlock match ended before replay/demo stats linked — skip interrupting post-game UI. */
+/** CS2 / Deadlock — demo is optional; user attaches when ready. */
 export function shouldDeferPostGameForDemoSync(
   game: string | null | undefined,
-  timeline: MatchData | null | undefined,
+  _timeline: MatchData | null | undefined,
 ): boolean {
-  if (game !== 'cs2' && game !== 'deadlock') return false
-  return !hasRichMatchData(timeline)
+  return false
+}
+
+export function demoAttachHint(game: string | null | undefined): string {
+  if (game === 'cs2') {
+    return 'Download the GOTV demo in CS2 (Watch → Your Matches), then attach the .dem file here for kills and clips.'
+  }
+  if (game === 'deadlock') {
+    return 'Download the replay in Deadlock match history, then attach the .dem file here for stats and clips.'
+  }
+  return ''
 }
 
 export function cs2RecordingSavedDashboardMessage(map: string | null | undefined): string {
   const mapLabel = map ? ` on ${map}` : ''
-  return `CS2 recording saved${mapLabel}. UpForge will download the GOTV demo from Valve when Steam is available.`
+  return `CS2 recording saved${mapLabel}. Attach a demo when ready for kill timeline and highlight clips.`
 }
 
 export function deadlockRecordingSavedDashboardMessage(map: string | null | undefined): string {
   const mapLabel = map ? ` on ${map}` : ''
-  return `Deadlock recording saved${mapLabel}. UpForge will sync replay data from Steam when the match ends.`
+  return `Deadlock recording saved${mapLabel}. Attach a replay when ready for stats and highlight clips.`
 }

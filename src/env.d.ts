@@ -565,6 +565,11 @@ declare global {
           ok: boolean
           analysisReadiness: PendingRecording['analysisReadiness'] | null
         }>
+        attachDemo: (id: string, demoPath?: string) => Promise<{
+          ok: boolean
+          error?: string
+          analysisReadiness: PendingRecording['analysisReadiness'] | null
+        }>
         nudgeSync: (id: string, deltaMs: number) => Promise<{ ok: boolean; videoSyncOffsetMs?: number }>
         resetSync: (id: string) => Promise<{ ok: boolean; videoSyncOffsetMs?: number }>
         trim: (id: string, startSec: number, endSec: number) => Promise<{

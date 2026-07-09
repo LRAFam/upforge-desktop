@@ -2,7 +2,7 @@
  * Whether a pending recording can be analysed (VOD integrity + Riot stats + duel moments).
  */
 import fs from 'fs'
-import { hasRichMatchData, cs2PlayerIdentityMismatch, demoSyncMaxMsForGame, cs2DemoSyncMessage, cs2DemoUnavailableMessage } from './match-data-quality'
+import { hasRichMatchData, cs2PlayerIdentityMismatch, demoSyncMaxMsForGame } from './match-data-quality'
 import { duelMomentsForUpload } from './moment-picker'
 import { MIN_RECORDING_FILE_BYTES } from './recording-limits'
 import type { PendingRecording } from './recordings-store'
@@ -246,31 +246,19 @@ export function getAnalysisReadiness(rec: ReadinessRecording): AnalysisReadiness
         return {
           ready: true,
           state: 'ready',
-          message: 'Demo synced — set your CS2 Steam name in Settings → Recording to tag your kills',
+          message: 'Demo linked — set your CS2 Steam name in Settings → Recording to tag your kills',
           duelMomentCount: 0,
         }
       }
       return { ready: true, state: 'ready', message: '', duelMomentCount: 0 }
     }
-    if (withinSyncWindow) {
-      const demoMessage = rec.game === 'cs2'
-        ? cs2DemoSyncMessage(ageMs)
-        : rec.game === 'deadlock'
-          ? `Waiting for Deadlock replay (${Math.floor(ageMs / 1000)}s)…`
-          : 'Waiting for match replay data…'
-      return {
-        ready: false,
-        state: 'syncing',
-        message: demoMessage,
-        duelMomentCount: 0,
-      }
-    }
+    const hint = rec.game === 'cs2' || rec.game === 'deadlock'
+      ? 'VOD ready — attach a demo for kill timeline and highlight clips'
+      : 'Match replay not linked'
     return {
-      ready: false,
-      state: 'unavailable',
-      message: rec.game === 'cs2'
-        ? cs2DemoUnavailableMessage()
-        : 'Match replay data not available for this recording',
+      ready: true,
+      state: 'ready',
+      message: hint,
       duelMomentCount: 0,
     }
   }

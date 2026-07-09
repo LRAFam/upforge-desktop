@@ -30,7 +30,7 @@ export function pendingRecordingFailureHint(rec: PendingRecording): string | nul
 
   if (usesAsyncDemoSync(rec.game)) {
     if (/demo|replay|sync|gotv|steam/i.test(message)) {
-      return 'Tip: demos come from Steam — keep UpForge open or rescan from the dashboard after 5–15 min.'
+      return 'Tip: download the replay and attach the .dem from the dashboard for kills and clips.'
     }
     if (/timed out/i.test(message)) return 'Tip: try again — off-peak hours are usually faster.'
     if (rec.lastAnalysisCreditRefunded) return 'Your coaching credit was refunded — you can try again.'
