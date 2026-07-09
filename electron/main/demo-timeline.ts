@@ -16,6 +16,8 @@ export interface DemoTimelineOptions {
   recordingStartTime: number
   /** Optional hint — FACEIT nickname or Steam display name */
   localPlayerName?: string | null
+  /** Skip spatial enrichment (faster demo preview). */
+  skipSpatial?: boolean
 }
 
 interface RoundKillMeta {
@@ -276,12 +278,14 @@ export async function buildTimelineFromDemo(opts: DemoTimelineOptions): Promise<
         `[DemoTimeline] Parsed ${opts.game} demo — map=${timeline.map} rounds=${roundSummaries.length} ` +
         `kills=${playerKills.length} deaths=${playerDeaths.length} local=${localName ?? 'unknown'}`,
       )
-      applyDemoSpatialEnrichment(timeline)
-      if (timeline.spatialSummary) {
-        log.info(
-          `[DemoTimeline] Spatial — ${timeline.spatialSummary.events.length} radar events ` +
-          `(${timeline.spatialSummary.deathHotspots.length} death hotspots)`,
-        )
+      if (!opts.skipSpatial) {
+        applyDemoSpatialEnrichment(timeline)
+        if (timeline.spatialSummary) {
+          log.info(
+            `[DemoTimeline] Spatial — ${timeline.spatialSummary.events.length} radar events ` +
+            `(${timeline.spatialSummary.deathHotspots.length} death hotspots)`,
+          )
+        }
       }
       resolve(timeline)
     })

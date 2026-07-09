@@ -49,10 +49,9 @@ export function demoAttachGuideSteps(game: DemoAttachGame): DemoAttachGuideStep[
       },
       {
         parts: [
-          { text: 'In UpForge: ' },
-          { text: 'Attach demo', emphasis: true },
-          { text: ' (pick the .dem from after your match) or ' },
-          { text: 'Scan replay folder', emphasis: true },
+          { text: 'In UpForge: open this match → ' },
+          { text: 'Match replay', emphasis: true },
+          { text: ' and pick the file saved closest to your game time' },
         ],
       },
     ]
@@ -75,10 +74,9 @@ export function demoAttachGuideSteps(game: DemoAttachGame): DemoAttachGuideStep[
     },
     {
       parts: [
-        { text: 'In UpForge: ' },
-        { text: 'Attach demo', emphasis: true },
-        { text: ' or ' },
-        { text: 'Scan replay folder', emphasis: true },
+        { text: 'In UpForge: open this match → ' },
+        { text: 'Match replay', emphasis: true },
+        { text: ' and pick the file saved closest to your game time' },
       ],
     },
   ]

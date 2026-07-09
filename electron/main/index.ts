@@ -5082,6 +5082,35 @@ async function startApp(): Promise<void> {
     return fetchArchivePlaybackUrl(authManager, archiveId)
   })
 
+  ipcMain.handle('recordings:list-demo-candidates', async (_e, { id }: { id: string }) => {
+    const { listDemoCandidatesForRecording } = await import('./demo-recording-candidates')
+    return listDemoCandidatesForRecording(recordingsStore, settingsManager, id)
+  })
+
+  ipcMain.handle('recordings:preview-demo', async (_e, { recordingId, demoPath }: { recordingId: string; demoPath: string }) => {
+    const rec = recordingsStore.getById(recordingId)
+    if (!rec || (rec.game !== 'cs2' && rec.game !== 'deadlock')) {
+      return { preview: null, assessment: null, recordingHint: null, error: 'Recording not found' }
+    }
+
+    const { buildDemoPreviewSummary } = await import('./demo-preview')
+    const { buildRecordingDemoHint, assessDemoPreviewMatch } = await import('../../src/lib/demo-preview-match')
+    const localPlayerName = rec.game === 'cs2'
+      ? await resolveCs2LocalPlayerName(settingsManager, authManager)
+      : null
+
+    const preview = await buildDemoPreviewSummary({
+      game: rec.game,
+      demoPath,
+      localPlayerName,
+      mapHint: rec.map ?? rec.timeline?.map ?? null,
+    })
+    const recordingHint = buildRecordingDemoHint(rec)
+    const assessment = assessDemoPreviewMatch(preview, recordingHint)
+
+    return { preview, assessment, recordingHint, error: preview.ok ? undefined : preview.error }
+  })
+
   ipcMain.handle('recordings:refresh-demo-timeline', async (_e, { id }: { id: string }) => {
     const ok = await refreshReplayTimelineForRecording(id, { notifyActivity: true })
     const rec = recordingsStore.getById(id)

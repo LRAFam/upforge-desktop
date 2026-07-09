@@ -565,6 +565,63 @@ declare global {
           ok: boolean
           analysisReadiness: PendingRecording['analysisReadiness'] | null
         }>
+        listDemoCandidates: (id: string) => Promise<{
+          candidates: Array<{
+            name: string
+            path: string
+            sizeBytes: number
+            modifiedAt: number
+            score: number
+            recommended: boolean
+            fit: 'best' | 'possible' | 'unlikely'
+            timingLabel: string
+            timingDetail: string
+          }>
+          recording: {
+            id: string
+            game: string
+            map: string | null
+            recordedAt: number
+            matchStartTime: number | null
+          } | null
+          recordingHint: {
+            map: string | null
+            kills: number | null
+            deaths: number | null
+            allyScore: number | null
+            enemyScore: number | null
+          } | null
+          error?: string
+        }>
+        previewDemo: (recordingId: string, demoPath: string) => Promise<{
+          preview: {
+            ok: boolean
+            error?: string
+            map: string | null
+            playerName: string | null
+            kills: number | null
+            deaths: number | null
+            assists: number
+            rounds: number
+            allyScore: number
+            enemyScore: number
+            won: boolean | null
+            killHighlights: Array<{ round: number; label: string }>
+          } | null
+          assessment: {
+            confidence: 'strong' | 'possible' | 'weak' | 'mismatch'
+            headline: string
+            details: string[]
+          } | null
+          recordingHint: {
+            map: string | null
+            kills: number | null
+            deaths: number | null
+            allyScore: number | null
+            enemyScore: number | null
+          } | null
+          error?: string
+        }>
         attachDemo: (id: string, demoPath?: string) => Promise<{
           ok: boolean
           error?: string

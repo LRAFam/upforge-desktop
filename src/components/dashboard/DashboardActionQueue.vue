@@ -26,6 +26,7 @@ import {
   demoPendingSectionTitle,
 } from '../../lib/recording-demo-status'
 import DemoAttachGuide from '../DemoAttachGuide.vue'
+import DemoAttachPickerModal from '../shared/DemoAttachPickerModal.vue'
 
 const props = defineProps<{ preview?: boolean }>()
 
@@ -140,16 +141,19 @@ function statusTone(rec: PendingRecording): string {
   return 'text-gray-400'
 }
 
-const attachingIds = ref(new Set<string>())
+const demoPickerRec = ref<PendingRecording | null>(null)
 
-async function attachDemo(rec: PendingRecording) {
-  if (props.preview || attachingIds.value.has(rec.id)) return
-  attachingIds.value.add(rec.id)
-  try {
-    await window.api.recordings.attachDemo(rec.id)
-  } finally {
-    attachingIds.value.delete(rec.id)
-  }
+function openDemoPicker(rec: PendingRecording) {
+  if (props.preview) return
+  demoPickerRec.value = rec
+}
+
+function closeDemoPicker() {
+  demoPickerRec.value = null
+}
+
+async function onDemoAttached() {
+  demoPickerRec.value = null
 }
 
 function onAnalyse(rec: PendingRecording) {
@@ -333,11 +337,11 @@ function toggleDemoMatches() {
               v-if="recordingDemoPending(rec)"
               type="button"
               class="flex-1 min-w-[120px] px-3 py-2 rounded-lg text-[11px] font-semibold text-blue-100 bg-blue-500/15 hover:bg-blue-500/25 border border-blue-400/25 transition-colors text-left disabled:opacity-50"
-              :disabled="preview || attachingIds.has(rec.id)"
-              @click="attachDemo(rec)"
+              :disabled="preview"
+              @click="openDemoPicker(rec)"
             >
-              <span class="block">{{ attachingIds.has(rec.id) ? 'Attaching…' : 'Attach demo' }}</span>
-              <span class="block text-[9px] font-medium text-blue-200/70 mt-0.5">Kills + clips</span>
+              <span class="block">Match replay</span>
+              <span class="block text-[9px] font-medium text-blue-200/70 mt-0.5">Pick the right .dem</span>
             </button>
 
             <button
@@ -391,6 +395,17 @@ function toggleDemoMatches() {
       class="w-full py-2.5 text-[10px] font-semibold text-red-400/90 border-t border-white/[0.06] hover:bg-white/[0.02]"
       @click="analyseOldestPending"
     >Analyse next in queue</button>
+
+    <DemoAttachPickerModal
+      v-if="demoPickerRec"
+      :show="!!demoPickerRec"
+      :recording-id="demoPickerRec.id"
+      :game="demoPickerRec.game"
+      :map="demoPickerRec.map"
+      :recorded-at="demoPickerRec.recordedAt"
+      @close="closeDemoPicker"
+      @attached="onDemoAttached"
+    />
   </div>
 </template>
 

@@ -53,6 +53,9 @@ const api = {
     getTimeline: (id: string) => ipcRenderer.invoke('recordings:get-timeline', { id }),
     refreshPlayback: (id: string) => ipcRenderer.invoke('recordings:refresh-playback', { id }),
     refreshDemoTimeline: (id: string) => ipcRenderer.invoke('recordings:refresh-demo-timeline', { id }),
+    listDemoCandidates: (id: string) => ipcRenderer.invoke('recordings:list-demo-candidates', { id }),
+    previewDemo: (recordingId: string, demoPath: string) =>
+      ipcRenderer.invoke('recordings:preview-demo', { recordingId, demoPath }),
     attachDemo: (id: string, demoPath?: string) =>
       ipcRenderer.invoke('recordings:attach-demo', { id, demoPath }),
         nudgeSync: (id: string, deltaMs: number) => ipcRenderer.invoke('recordings:nudge-sync', { id, deltaMs }),
