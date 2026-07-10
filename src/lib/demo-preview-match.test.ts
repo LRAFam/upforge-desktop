@@ -37,7 +37,7 @@ describe('assessDemoPreviewMatch', () => {
     expect(result.headline).toContain('Steam name')
   })
 
-  it('flags partial header-only preview', () => {
+  it('flags partial header-only preview when still downloading', () => {
     const result = assessDemoPreviewMatch(
       {
         ok: true,
@@ -48,10 +48,31 @@ describe('assessDemoPreviewMatch', () => {
         enemyScore: 0,
         won: null,
         partialParse: true,
+        likelyIncomplete: true,
       },
       { map: 'de_dust2', kills: null, deaths: null, allyScore: null, enemyScore: null },
     )
     expect(result.confidence).toBe('weak')
     expect(result.headline).toContain('downloading')
+  })
+
+  it('flags parse failure on a complete-looking file', () => {
+    const result = assessDemoPreviewMatch(
+      {
+        ok: true,
+        map: 'de_dust2',
+        kills: null,
+        deaths: null,
+        allyScore: 0,
+        enemyScore: 0,
+        won: null,
+        partialParse: true,
+        likelyIncomplete: false,
+        error: 'Could not fully parse this replay',
+      },
+      { map: 'de_dust2', kills: null, deaths: null, allyScore: null, enemyScore: null },
+    )
+    expect(result.headline).toContain('Could not read')
+    expect(result.headline).not.toContain('downloading')
   })
 })

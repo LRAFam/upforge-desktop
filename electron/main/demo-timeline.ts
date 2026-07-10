@@ -1,6 +1,7 @@
 import fs from 'fs'
 import { DemoFile } from 'demofile'
 import log from 'electron-log'
+import { buildCs2TimelineFromDemo } from './cs2-demo-parser'
 import type { KillEvent, MatchData, RoundSummary } from './riot-types'
 import { emptyMatchData, gameTimeToVideoOffsetMs } from './recording-sync'
 import { cs2WorldToNorm, getCs2MapTransform, normalizeCs2MapKey } from './spatial/cs2-transforms'
@@ -37,6 +38,10 @@ export async function buildTimelineFromDemo(opts: DemoTimelineOptions): Promise<
   if (!fs.existsSync(opts.demoPath)) {
     log.warn('[DemoTimeline] Demo not found:', opts.demoPath)
     return null
+  }
+
+  if (opts.game === 'cs2') {
+    return buildCs2TimelineFromDemo(opts)
   }
 
   return new Promise((resolve) => {

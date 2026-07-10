@@ -600,6 +600,7 @@ declare global {
             identityWarning?: string
             configuredPlayerName?: string | null
             partialParse?: boolean
+            likelyIncomplete?: boolean
             totalKillEvents: number
             matchKillSample: boolean
             map: string | null

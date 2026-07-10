@@ -24,7 +24,9 @@ import {
   recordingDemoPending,
   demoPendingSectionHint,
   demoPendingSectionTitle,
+  recordingTimelineReady,
 } from '../../lib/recording-demo-status'
+import { demoDownloadProgressLabel, demoDownloadBadgeLabel } from '../../lib/demo-download-progress'
 import DemoAttachGuide from '../DemoAttachGuide.vue'
 import DemoAttachPickerModal from '../shared/DemoAttachPickerModal.vue'
 
@@ -48,6 +50,7 @@ const {
   recUploadProgress,
   recPipelineLabel,
   formatMode,
+  demoDownloadProgress,
 } = useDashboard()
 
 const showDemoMatches = ref(!!props.preview)
@@ -65,6 +68,16 @@ onUnmounted(() => {
 /** Re-evaluate demo-pending badges every minute. */
 function demoBadge(rec: PendingRecording): string | null {
   void badgeTick.value
+  if (
+    (rec.game === 'cs2' || rec.game === 'deadlock')
+    && demoDownloadProgress.value
+    && recordingDemoPending(rec)
+  ) {
+    return demoDownloadBadgeLabel(
+      demoDownloadProgress.value,
+      rec.game as 'cs2' | 'deadlock',
+    ) ?? recordingDemoBadge(rec)
+  }
   return recordingDemoBadge(rec)
 }
 
@@ -75,6 +88,16 @@ const rows = computed(() => {
 
 const readyNowRows = computed(() => rows.value.filter((rec) => !recordingDemoPending(rec)))
 const demoPendingRows = computed(() => rows.value.filter((rec) => recordingDemoPending(rec)))
+
+const demoSectionHint = computed(() => {
+  if (demoDownloadProgress.value) {
+    return demoDownloadProgressLabel(
+      demoDownloadProgress.value,
+      primaryGame.value === 'deadlock' ? 'deadlock' : primaryGame.value === 'cs2' ? 'cs2' : undefined,
+    )
+  }
+  return demoPendingSectionHint(primaryGame.value)
+})
 
 const sectionedRows = computed(() => {
   const sections: Array<{ key: string; title: string; hint?: string; tone: string; rows: PendingRecording[] }> = []
@@ -90,7 +113,7 @@ const sectionedRows = computed(() => {
     sections.push({
       key: 'demo',
       title: demoPendingSectionTitle(primaryGame.value),
-      hint: demoPendingSectionHint(primaryGame.value),
+      hint: demoSectionHint.value,
       tone: 'text-blue-300/90',
       rows: demoPendingRows.value.slice(0, 2),
     })

@@ -350,7 +350,7 @@ function rowClass(fit: RankedDemoCandidate['fit'], selected: boolean): string {
             <div v-else class="py-8 text-center space-y-3">
               <p class="text-sm text-amber-300/90">{{ previewError || preview?.error || 'Could not preview this replay' }}</p>
               <p class="text-[10px] text-gray-600 leading-relaxed">
-                Try another file, or wait for Steam to finish downloading the replay in CS2.
+                Try Rescan, pick another file, or set your CS2 Steam name in Settings → Recording.
               </p>
               <button
                 v-if="game === 'cs2'"

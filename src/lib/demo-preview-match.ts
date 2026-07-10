@@ -18,6 +18,8 @@ export interface DemoPreviewInput {
   enemyScore: number
   won: boolean | null
   partialParse?: boolean
+  likelyIncomplete?: boolean
+  error?: string
   totalKillEvents?: number
   identityWarning?: string
 }
@@ -77,10 +79,19 @@ export function assessDemoPreviewMatch(
     if (preview.map) {
       details.push(`Header map: ${cs2MapDisplayName(preview.map) || preview.map}`)
     }
-    details.push('Wait for Steam to finish downloading, then rescan')
+    if (preview.likelyIncomplete) {
+      details.push('Wait for Steam to finish downloading, then rescan')
+      return {
+        confidence: 'weak',
+        headline: 'Replay still downloading or damaged',
+        details,
+      }
+    }
+    if (preview.error) details.push(preview.error)
+    else details.push('Try Rescan or pick another .dem from Watch → Your Matches')
     return {
       confidence: 'weak',
-      headline: 'Replay still downloading or damaged',
+      headline: 'Could not read full replay stats',
       details,
     }
   }

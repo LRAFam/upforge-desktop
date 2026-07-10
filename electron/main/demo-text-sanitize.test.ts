@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { sanitizeDemoClientName, sanitizeDemoMapName } from './demo-text-sanitize'
+import { sanitizeDemoClientName, sanitizeDemoMapName, isDemoLikelyIncomplete } from './demo-text-sanitize'
 
 describe('sanitizeDemoMapName', () => {
   it('accepts valid map ids', () => {
@@ -20,5 +20,19 @@ describe('sanitizeDemoClientName', () => {
 
   it('rejects corrupted header bytes', () => {
     expect(sanitizeDemoClientName('(\u0275\u015dA\u06d9')).toBeNull()
+  })
+})
+
+describe('isDemoLikelyIncomplete', () => {
+  it('treats stable files as complete even when parse fails heuristics would apply to fresh writes', () => {
+    const fs = require('fs') as typeof import('fs')
+    const os = require('os') as typeof import('os')
+    const path = require('path') as typeof import('path')
+    const tmp = path.join(os.tmpdir(), `upforge-demo-${Date.now()}.dem`)
+    fs.writeFileSync(tmp, Buffer.alloc(200 * 1024))
+    const old = Date.now() - 15 * 60 * 1000
+    fs.utimesSync(tmp, old / 1000, old / 1000)
+    expect(isDemoLikelyIncomplete(tmp, { playbackTime: 900 })).toBe(false)
+    fs.unlinkSync(tmp)
   })
 })

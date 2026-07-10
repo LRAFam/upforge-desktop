@@ -208,6 +208,7 @@ import { downloadDeadlockValveReplay } from './deadlock-valve-replay'
 import { ensureCs2DemoRecordingConfig } from './cs2-steam-setup'
 import { resolveCs2LocalPlayerName } from './cs2-player-identity'
 import { downloadCs2ValveDemoForSession } from './cs2-valve-demo-downloader'
+import { clearDemoDownloadProgress, sendDemoDownloadProgress } from './demo-download-notify'
 import { attachDemoFileToRecording } from './recording-demo-attach'
 
 /** Human-readable label for a game identifier. */
@@ -1237,6 +1238,14 @@ async function refreshReplayTimelineForRecording(
   const rec = recordingsStore.getById(recordingId)
   if (!rec || (rec.game !== 'cs2' && rec.game !== 'deadlock')) return false
 
+  const notifyWindows = () => [
+    mainWindow,
+    postGameWindow,
+  ]
+  const onDownloadProgress = (progress: Parameters<typeof sendDemoDownloadProgress>[1]) => {
+    sendDemoDownloadProgress(notifyWindows(), progress)
+  }
+
   const matchStartMs = resolveMatchSessionStartMs(rec.timeline, rec.recordedAt)
   const recordingStartMs = rec.timeline?.recordingStartTime
     ?? rec.timeline?.gameplayStartTime
@@ -1261,16 +1270,21 @@ async function refreshReplayTimelineForRecording(
     && (!parsed.timeline || !hasRichMatchData(parsed.timeline))
     && !shouldDeferHeavyBackgroundWork(matchPriorityDeps())
   ) {
-    const valve = await downloadCs2ValveDemoForSession({
-      matchSessionStartMs: matchStartMs,
-      gsiMap: replayCtx.gsiMap,
-      customReplayDir: replayCtx.customReplayDir,
-    })
-    if (valve.ok) {
-      log.info('[Replay] CS2 Valve demo downloaded:', valve.demoPath)
-      parsed = await buildTimelineFromReplay(replayCtx, { pollOnce: true })
-    } else if (valve.code !== 'gc_failed' && valve.code !== 'steam_offline') {
-      log.info('[CS2ValveDemo]', valve.error)
+    try {
+      const valve = await downloadCs2ValveDemoForSession({
+        matchSessionStartMs: matchStartMs,
+        gsiMap: replayCtx.gsiMap,
+        customReplayDir: replayCtx.customReplayDir,
+        onProgress: onDownloadProgress,
+      })
+      if (valve.ok) {
+        log.info('[Replay] CS2 Valve demo downloaded:', valve.demoPath)
+        parsed = await buildTimelineFromReplay(replayCtx, { pollOnce: true })
+      } else if (valve.code !== 'gc_failed' && valve.code !== 'steam_offline') {
+        log.info('[CS2ValveDemo]', valve.error)
+      }
+    } finally {
+      clearDemoDownloadProgress(notifyWindows())
     }
   }
 
@@ -1281,12 +1295,16 @@ async function refreshReplayTimelineForRecording(
   ) {
     const salts = getDeadlockMatchSalts()
     if (salts?.replaySalt != null) {
-      const valve = await downloadDeadlockValveReplay(salts)
-      if (valve.ok) {
-        log.info('[Replay] Deadlock Valve replay downloaded:', valve.demoPath)
-        parsed = await buildTimelineFromReplay(replayCtx, { pollOnce: true })
-      } else if (valve.code !== 'no_salt') {
-        log.info('[DeadlockValve]', valve.error)
+      try {
+        const valve = await downloadDeadlockValveReplay(salts, replayCtx.customReplayDir, onDownloadProgress)
+        if (valve.ok) {
+          log.info('[Replay] Deadlock Valve replay downloaded:', valve.demoPath)
+          parsed = await buildTimelineFromReplay(replayCtx, { pollOnce: true })
+        } else if (valve.code !== 'no_salt') {
+          log.info('[DeadlockValve]', valve.error)
+        }
+      } finally {
+        clearDemoDownloadProgress(notifyWindows())
       }
     }
   }
@@ -2343,9 +2361,15 @@ function setupGameDetection(): void {
         `Recording saved (${(readySize / (1024 ** 3)).toFixed(2)} GB) — visible on dashboard`,
       )
       if (game === 'cs2' && !richMatchData) {
-        logActivity('CS2 match recorded — attach a demo from the dashboard for kill timeline and clips')
+        logActivity('CS2 match recorded — syncing demo from Steam for kill timeline and clips')
+        sendToWindow('post-game:demo-status', { status: 'gc_lookup' })
+        mainWindow?.webContents.send('post-game:demo-status', { status: 'gc_lookup' })
+        void refreshReplayTimelineForRecording(savedRecording.id, { notifyActivity: true })
       } else if (game === 'deadlock' && !richMatchData) {
-        logActivity('Deadlock match recorded — attach a replay from the dashboard for stats and clips')
+        logActivity('Deadlock match recorded — syncing replay from Steam for stats and clips')
+        sendToWindow('post-game:demo-status', { status: 'downloading' })
+        mainWindow?.webContents.send('post-game:demo-status', { status: 'downloading' })
+        void refreshReplayTimelineForRecording(savedRecording.id, { notifyActivity: true })
       }
       scheduleAnalysisReadinessRefresh(savedRecording.id, game)
       if (lastReplayRetryContext && lastReplayRetryContext.game === game) {

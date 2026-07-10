@@ -21,12 +21,19 @@ export function sanitizeDemoClientName(raw: string | null | undefined): string |
 }
 
 const MIN_DEMO_BYTES = 96 * 1024
+/** Steam GOTV writes grow for minutes; unchanged files older than this are treated as complete. */
+const DEMO_STABLE_MS = 10 * 60 * 1000
 
 /** Heuristic: Steam GOTV downloads grow over time; tiny files rarely parse fully. */
 export function isDemoLikelyIncomplete(demoPath: string, peek?: DemoHeaderPeek | null): boolean {
   try {
-    const size = fs.statSync(demoPath).size
+    const stat = fs.statSync(demoPath)
+    const size = stat.size
     if (size < MIN_DEMO_BYTES) return true
+
+    const ageSinceWriteMs = Date.now() - stat.mtimeMs
+    if (ageSinceWriteMs >= DEMO_STABLE_MS && size >= MIN_DEMO_BYTES) return false
+
     const durationSec = peek?.playbackTime ?? 0
     if (durationSec > 120 && size < 512 * 1024) return true
     if (durationSec > 600 && size < 2 * 1024 * 1024) return true

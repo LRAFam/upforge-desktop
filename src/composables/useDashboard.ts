@@ -28,6 +28,8 @@ import {
 } from '../lib/dashboard-match-row'
 import { buildAnalysisErrorPayload, type AnalysisErrorPayload } from '../lib/analysis-failure-messages'
 import { canOpenTimeline, canWatchRawRecording } from '../lib/recording-demo-status'
+import { type DemoDownloadProgress, demoDownloadProgressLabel } from '../lib/demo-download-progress'
+import { recordingTimelineReady } from '../lib/recording-demo-status'
 
 export const DASHBOARD_KEY: InjectionKey<ReturnType<typeof createDashboard>> = Symbol('dashboard')
 
@@ -181,6 +183,7 @@ function createDashboard() {
 
   const upgradeNeeded = ref(false)
   const activityLog = ref<{ time: number; message: string }[]>([])
+  const demoDownloadProgress = ref<DemoDownloadProgress | null>(null)
   const lastInsight = ref<{ text: string; score: number; agent: string | null; analysisId: number | null; date: string } | null>(null)
   const lastInsightTraining = ref(false)
   const trainerLastSession = ref<{ score: number; scenario: string; date: string } | null>(null)
@@ -805,6 +808,16 @@ function createDashboard() {
   }
 
   function recAnalysisStatusShort(rec: PendingRecording) {
+    if (
+      (rec.game === 'cs2' || rec.game === 'deadlock')
+      && demoDownloadProgress.value
+      && !recordingTimelineReady(rec.timeline)
+    ) {
+      return demoDownloadProgressLabel(
+        demoDownloadProgress.value,
+        rec.game as 'cs2' | 'deadlock',
+      )
+    }
     const state = rec.analysisReadiness?.state
     if (state === 'syncing') {
       if (rec.analysisReadiness?.message) return rec.analysisReadiness.message
@@ -1295,6 +1308,9 @@ function createDashboard() {
       const payload = args[0] as { status?: string }
       if (payload?.status === 'complete' && isDeadlock.value) void loadAnalyses()
     }))
+    ipcCleanup.push(window.api.on('post-game:demo-download-progress', (...args: unknown[]) => {
+      demoDownloadProgress.value = (args[0] as DemoDownloadProgress | null) ?? null
+    }))
     ipcCleanup.push(window.api.on('app:activity-toast', (...args: unknown[]) => {
       const data = args[0] as { message?: string }
       if (!data?.message) return
@@ -1514,6 +1530,7 @@ function createDashboard() {
     recUploadProgress,
     recPipelineLabel,
     recRowStats,
+    demoDownloadProgress,
     displayAcs,
     isAnalysisProcessing,
   }

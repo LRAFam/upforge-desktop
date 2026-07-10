@@ -4,37 +4,22 @@
 
 import fs from 'fs'
 import path from 'path'
-import { createWriteStream } from 'fs'
-import { pipeline } from 'stream/promises'
-import { Readable } from 'stream'
-import b2 from 'unbzip2-stream'
 import log from 'electron-log'
 import { buildDeadlockReplayUrl, type DeadlockMatchSalts } from './deadlock-steam-cache'
 import { resolveDeadlockReplayDirs } from './deadlock-paths'
+import {
+  downloadValveDemoArchive,
+  type ValveDemoDownloadProgressHandler,
+} from './valve-demo-download'
 
 export type DeadlockValveReplayResult =
   | { ok: true; demoPath: string; salts: DeadlockMatchSalts }
   | { ok: false; error: string; code?: string }
 
-async function downloadBz2Demo(url: string, destPath: string): Promise<void> {
-  const res = await fetch(url, { redirect: 'follow' })
-  if (res.status === 404) {
-    throw new Error('Valve replay not on CDN yet — try again in a few minutes.')
-  }
-  if (!res.ok || !res.body) {
-    throw new Error(`Replay download failed (${res.status}).`)
-  }
-
-  const tmpPath = `${destPath}.part`
-  const out = createWriteStream(tmpPath)
-  const nodeStream = Readable.fromWeb(res.body as import('stream/web').ReadableStream)
-  await pipeline(nodeStream, b2(), out)
-  fs.renameSync(tmpPath, destPath)
-}
-
 export async function downloadDeadlockValveReplay(
   salts: DeadlockMatchSalts,
   customDir?: string,
+  onProgress?: ValveDemoDownloadProgressHandler,
 ): Promise<DeadlockValveReplayResult> {
   const url = buildDeadlockReplayUrl(salts)
   if (!url) {
@@ -55,7 +40,7 @@ export async function downloadDeadlockValveReplay(
 
   try {
     log.info('[DeadlockValve] Downloading', url, '→', demoPath)
-    await downloadBz2Demo(url, demoPath)
+    await downloadValveDemoArchive(url, demoPath, onProgress)
     return { ok: true, demoPath, salts }
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)

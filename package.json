@@ -1,6 +1,6 @@
 {
   "name": "upforge-desktop",
-  "version": "2.9.9",
+  "version": "2.10.0",
   "description": "UpForge Desktop — Automatic Valorant gameplay recording and AI coaching",
   "main": "./out/main/index.js",
   "author": "UpForge",
@@ -28,6 +28,7 @@
     "@akiver/boiler-writter": "^1.7.0",
     "@electron-toolkit/preload": "^3.0.0",
     "@electron-toolkit/utils": "^3.0.0",
+    "@laihoe/demoparser2": "^0.41.3",
     "axios": "^1.6.0",
     "csgo-protobuf": "^4.1.9",
     "csgo-sharecode": "^5.0.0",
@@ -68,6 +69,10 @@
   "build": {
     "appId": "gg.upforge.desktop",
     "productName": "UpForge",
+    "asarUnpack": [
+      "**/node_modules/@laihoe/demoparser2/**/*.node",
+      "**/node_modules/@laihoe/demoparser2-*/**/*.node"
+    ],
     "directories": {
       "output": "dist"
     },

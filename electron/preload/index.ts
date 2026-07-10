@@ -331,6 +331,7 @@ const api = {
       'trainer:session-result',
       'post-game:demo-status',
       'post-game:demo-progress',
+      'post-game:demo-download-progress',
       'deadlock:upload-progress',
       'spatial:population-updated',
     ]

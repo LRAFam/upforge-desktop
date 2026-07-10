@@ -672,7 +672,7 @@
       >
         <div class="flex items-center gap-2 px-3 py-2">
         <!-- uploading spinner -->
-        <svg v-if="demoStatus.status === 'uploading'" class="w-3 h-3 text-cyan-400 flex-shrink-0 animate-spin" fill="none" viewBox="0 0 24 24">
+        <svg v-if="demoStatus.status === 'uploading' || demoStatus.status === 'downloading' || demoStatus.status === 'gc_lookup'" class="w-3 h-3 text-cyan-400 flex-shrink-0 animate-spin" fill="none" viewBox="0 0 24 24">
           <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
           <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
         </svg>
@@ -690,10 +690,22 @@
         </svg>
 
         <span v-if="demoStatus.status === 'uploading'" class="text-xs text-cyan-300/80">Replay uploading… {{ demoProgress }}%</span>
+        <span v-else-if="demoStatus.status === 'downloading' || demoStatus.status === 'gc_lookup'" class="text-xs text-cyan-300/80">{{ demoDownloadLabel }}</span>
         <span v-else-if="demoStatus.status === 'analysing'" class="text-xs text-cyan-300/80">Replay analysing…</span>
         <span v-else-if="demoStatus.status === 'complete'" class="text-xs text-cyan-300/80">Replay analysis ready</span>
         <span v-else-if="demoStatus.status === 'not-found'" class="text-xs text-cyan-700/80">Demo not found yet</span>
         <span v-else-if="demoStatus.status === 'error'" class="text-xs text-cyan-700/80">Replay upload failed</span>
+        </div>
+        <div
+          v-if="demoStatus.status === 'downloading' && demoProgress > 0"
+          class="border-t border-cyan-500/10 px-3 pb-2"
+        >
+          <div class="h-1 rounded-full bg-cyan-950/80 overflow-hidden">
+            <div
+              class="h-full rounded-full bg-cyan-400/80 transition-all duration-300"
+              :style="{ width: `${demoProgress}%` }"
+            />
+          </div>
         </div>
         <div
           v-if="demoStatus.status === 'not-found'"
@@ -746,6 +758,7 @@ import type { CategoryPercentileEntry } from '../components/CategoryPercentilesS
 import { canSpatialVodSeek } from '../lib/tier-features'
 import { buildAnalysisErrorPayload, type AnalysisErrorPayload } from '../lib/analysis-failure-messages'
 import { usesAsyncDemoSync, demoSyncExplainerShort } from '../lib/recording-demo-status'
+import { demoDownloadProgressLabel, type DemoDownloadProgress } from '../lib/demo-download-progress'
 import PostGameDuelDiagnostics from '../components/post-game/PostGameDuelDiagnostics.vue'
 
 type State = 'preparing' | 'uploading' | 'analysing' | 'ready' | 'error' | 'pending' | 'archived'
@@ -864,6 +877,9 @@ const preparingSyncMessage = ref<string | null>(null)
 const pendingAnalyseButtonLabel = computed(() => {
   if (pendingAnalysisState.value === 'finalizing') return 'Finalizing…'
   if (pendingAnalysisState.value === 'syncing') {
+    if (demoStatus.value?.status === 'downloading' || demoStatus.value?.status === 'gc_lookup') {
+      return demoDownloadLabel.value
+    }
     return gameInfo.value.game === 'cs2' ? 'Waiting for demo…' : 'Syncing stats…'
   }
   return 'Not ready'
@@ -1230,12 +1246,18 @@ const debriefFailed = ref(false)
 const debriefDiscordLinked = ref(true)
 const demoStatus = ref<{ status: string; jobId?: string; error?: string } | null>(null)
 const demoProgress = ref(0)
+const demoDownloadDetail = ref<DemoDownloadProgress | null>(null)
+const demoDownloadLabel = computed(() =>
+  demoDownloadProgressLabel(demoDownloadDetail.value, gameInfo.value.game as 'cs2' | 'deadlock' | undefined),
+)
 const demoRescanning = ref(false)
 
 async function retryDemoScan() {
   if (demoRescanning.value) return
   demoRescanning.value = true
-  demoStatus.value = { status: 'uploading' }
+  demoStatus.value = { status: 'gc_lookup' }
+  demoDownloadDetail.value = null
+  demoProgress.value = 0
   try {
     const res = await window.api.postGame.retryDemoScan()
     if (!res.ok) {
@@ -1650,6 +1672,10 @@ onMounted(() => {
   }))
   ipcCleanup.push(window.api.on('post-game:demo-progress', (...args: unknown[]) => {
     demoProgress.value = args[0] as number
+  }))
+  ipcCleanup.push(window.api.on('post-game:demo-download-progress', (...args: unknown[]) => {
+    demoDownloadDetail.value = (args[0] as DemoDownloadProgress | null) ?? null
+    if (!demoDownloadDetail.value) demoProgress.value = 0
   }))
 
   void syncPostGameSession().then(() => {

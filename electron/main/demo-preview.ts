@@ -22,6 +22,8 @@ export interface DemoPreviewSummary {
   identityWarning?: string
   configuredPlayerName?: string | null
   partialParse?: boolean
+  /** True when file size / age heuristics suggest Steam is still writing the .dem */
+  likelyIncomplete?: boolean
   totalKillEvents: number
   map: string | null
   playerName: string | null
@@ -179,7 +181,7 @@ export async function buildDemoPreviewSummary(opts: {
     })
 
     if (!timeline) {
-      const peek = await peekDemoHeader(normalized)
+      const peek = await peekDemoHeader(normalized, opts.game)
       const map = sanitizeDemoMapName(peek?.mapName, opts.mapHint)
       const incomplete = isDemoLikelyIncomplete(normalized, peek)
       if (map || peek || opts.mapHint) {
@@ -187,6 +189,7 @@ export async function buildDemoPreviewSummary(opts: {
           ...empty,
           ok: true,
           partialParse: true,
+          likelyIncomplete: incomplete,
           map,
           playerName: sanitizeDemoClientName(peek?.clientName),
           error: incomplete
@@ -207,6 +210,9 @@ export async function buildDemoPreviewSummary(opts: {
       localPlayerName: opts.localPlayerName,
       partialParse,
     })
+    if (partialParse) {
+      summary.likelyIncomplete = isDemoLikelyIncomplete(normalized)
+    }
 
     log.info(
       `[DemoPreview] ${opts.game} ${normalized} map=${summary.map} ` +

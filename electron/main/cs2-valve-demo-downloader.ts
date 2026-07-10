@@ -3,11 +3,11 @@ import { exec, spawn } from 'child_process'
 import fs from 'fs'
 import path from 'path'
 import { promisify } from 'util'
-import { pipeline } from 'stream/promises'
-import { createWriteStream } from 'fs'
-import { Readable } from 'stream'
-import b2 from 'unbzip2-stream'
 import log from 'electron-log'
+import {
+  downloadValveDemoArchive,
+  type ValveDemoDownloadProgressHandler,
+} from './valve-demo-download'
 import {
   CMsgGCCStrike15_v2_MatchListSchema,
   fromBinary,
@@ -171,28 +171,6 @@ export async function listRecentValveMatches(): Promise<ValveMatchSummary[]> {
     .filter((m): m is ValveMatchSummary => m !== null)
 }
 
-async function downloadDemoArchive(demoUrl: string, destPath: string): Promise<void> {
-  const res = await fetch(demoUrl, { redirect: 'follow' })
-  if (res.status === 404) {
-    throw new Error('Valve demo download link expired — download the replay in CS2 Watch tab.')
-  }
-  if (!res.ok || !res.body) {
-    throw new Error(`Demo download failed (${res.status}).`)
-  }
-
-  const tmpPath = `${destPath}.part`
-  const out = createWriteStream(tmpPath)
-  const nodeStream = Readable.fromWeb(res.body as import('stream/web').ReadableStream)
-
-  if (demoUrl.endsWith('.bz2')) {
-    await pipeline(nodeStream, b2(), out)
-  } else {
-    await pipeline(nodeStream, out)
-  }
-
-  fs.renameSync(tmpPath, destPath)
-}
-
 /**
  * Download the best-matching Valve MM demo for a session via Steam Game Coordinator.
  * Requires Steam running + logged in on Windows.
@@ -201,6 +179,7 @@ export async function downloadCs2ValveDemoForSession(opts: {
   matchSessionStartMs: number
   gsiMap?: string | null
   customReplayDir?: string
+  onProgress?: ValveDemoDownloadProgressHandler
 }): Promise<ValveDemoDownloadResult> {
   if (!IS_WIN) {
     return { ok: false, error: 'Valve demo download is only supported on Windows.', code: 'unsupported' }
@@ -218,6 +197,7 @@ export async function downloadCs2ValveDemoForSession(opts: {
 
   let matches: ValveMatchSummary[]
   try {
+    opts.onProgress?.({ phase: 'gc_lookup', bytesDone: 0, bytesTotal: null, pct: null })
     matches = await listRecentValveMatches()
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
@@ -241,7 +221,7 @@ export async function downloadCs2ValveDemoForSession(opts: {
 
   try {
     log.info('[CS2ValveDemo] Downloading', match.demoUrl, '→', demoPath)
-    await downloadDemoArchive(match.demoUrl, demoPath)
+    await downloadValveDemoArchive(match.demoUrl, demoPath, opts.onProgress)
     return { ok: true, demoPath, match }
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)

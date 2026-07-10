@@ -315,39 +315,11 @@ export class UploadManager {
     // analysis, the user can resume polling from the next launch.
     savePendingJob(job_id, { agent: opts.agent ?? undefined, map: opts.map ?? undefined, game: opts.game })
 
-    // ── Step 2: stream file directly to S3 ────────────────────────────────
-    opts.onProgress(8)
-    let uploadParts: UploadedPart[] | undefined
-    if (presign.multipart && presign.parts?.length && presign.part_size) {
-      const concurrency = fullAttempt >= 2 ? 1 : S3_MULTIPART_CONCURRENCY
-      uploadParts = await this._putToS3Multipart(
-        opts.videoPath,
-        totalBytes,
-        presign.parts,
-        presign.part_size,
-        opts.onProgress,
-        concurrency,
-      )
-    } else if (presign.upload_url) {
-      await this._putToS3(presign.upload_url, opts.videoPath, totalBytes, opts.onProgress)
-    } else {
-      throw new Error('Presign response missing upload_url or multipart parts')
-    }
-
-    if (opts.beforeComplete) {
-      await opts.beforeComplete()
-    }
-
-    // ── Step 3: confirm and queue analysis ────────────────────────────────
-    // Re-send match context at complete() time so it can override/supplement
-    // presign-time data (e.g. if Riot MatchDetails arrived late).
-    const completeExtras = opts.getCoachingExtras?.() ?? opts.coachingExtras
-    const completeCtx = submissionContextFromTimeline(opts.timeline ?? null, completeExtras)
-    let duelMomentsPayload = opts.duelMoments
-
+    const completeExtras = () => opts.getCoachingExtras?.() ?? opts.coachingExtras
     const resolveDuelMoments = async (): Promise<DuelMomentManifest[] | undefined> => {
+      const completeCtx = submissionContextFromTimeline(opts.timeline ?? null, completeExtras())
       if (!opts.prepareDuelClips) {
-        return duelMomentsPayload ?? completeCtx.duel_moments ?? opts.duelMoments
+        return opts.duelMoments ?? completeCtx.duel_moments
       }
 
       try {
@@ -379,7 +351,44 @@ export class UploadManager {
       }
     }
 
-    duelMomentsPayload = await resolveDuelMoments()
+    /** Extract + upload duel clips while the full VOD streams to S3. */
+    let duelClipPrep: Promise<DuelMomentManifest[] | undefined> | null = null
+    if (opts.prepareDuelClips) {
+      duelClipPrep = resolveDuelMoments()
+    }
+
+    // ── Step 2: stream file directly to S3 ────────────────────────────────
+    opts.onProgress(8)
+    let uploadParts: UploadedPart[] | undefined
+    if (presign.multipart && presign.parts?.length && presign.part_size) {
+      const concurrency = fullAttempt >= 2 ? 1 : S3_MULTIPART_CONCURRENCY
+      uploadParts = await this._putToS3Multipart(
+        opts.videoPath,
+        totalBytes,
+        presign.parts,
+        presign.part_size,
+        opts.onProgress,
+        concurrency,
+      )
+    } else if (presign.upload_url) {
+      await this._putToS3(presign.upload_url, opts.videoPath, totalBytes, opts.onProgress)
+    } else {
+      throw new Error('Presign response missing upload_url or multipart parts')
+    }
+
+    if (opts.beforeComplete) {
+      await opts.beforeComplete()
+    }
+
+    // ── Step 3: confirm and queue analysis ────────────────────────────────
+    // Re-send match context at complete() time so it can override/supplement
+    // presign-time data (e.g. if Riot MatchDetails arrived late).
+    const completeCtx = submissionContextFromTimeline(opts.timeline ?? null, completeExtras())
+    let duelMomentsPayload = opts.duelMoments
+
+    duelMomentsPayload = duelClipPrep
+      ? await duelClipPrep
+      : await resolveDuelMoments()
     const duelMomentsForComplete = duelMomentsPayload?.length
       ? duelMomentsPayload
       : (completeCtx.duel_moments ?? opts.duelMoments)

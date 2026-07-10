@@ -5,7 +5,7 @@
 import fs from 'fs'
 import log from 'electron-log'
 import { peekDemoHeader } from './demo-header-peek'
-import { sanitizeDemoMapName } from './demo-text-sanitize'
+import { isDemoLikelyIncomplete, sanitizeDemoMapName } from './demo-text-sanitize'
 import { buildTimelineFromDemo } from './demo-timeline'
 import { cs2PlayerIdentityMismatch, hasRichMatchData } from './match-data-quality'
 import { resolveMatchSessionStartMs } from './recording-sync'
@@ -58,23 +58,32 @@ export async function attachDemoFileToRecording(opts: {
   })
 
   if (!timeline || !hasRichMatchData(timeline)) {
-    const peek = !timeline ? await peekDemoHeader(normalized) : null
-    const peekMap = sanitizeDemoMapName(peek?.mapName)
-    if (peekMap || peek?.playbackTime) {
+    const peek = !timeline ? await peekDemoHeader(normalized, rec.game as SourceGame) : null
+    const incomplete = isDemoLikelyIncomplete(normalized, peek)
+    const hasHeader = Boolean(sanitizeDemoMapName(peek?.mapName) || peek?.playbackTime)
+
+    if (!timeline) {
+      if (incomplete && hasHeader) {
+        return {
+          ok: false,
+          error: 'Replay file looks incomplete — wait for Steam to finish downloading in CS2, then rescan.',
+        }
+      }
+      return {
+        ok: false,
+        error: 'Could not parse this replay — try Rescan, pick another file, or set your CS2 Steam name in Settings → Recording.',
+      }
+    }
+
+    if (incomplete && hasHeader) {
       return {
         ok: false,
         error: 'Replay file looks incomplete — wait for Steam to finish downloading in CS2, then rescan.',
       }
     }
-    if (!timeline) {
-      return {
-        ok: false,
-        error: 'Could not parse this replay — try another file or check it finished downloading in CS2.',
-      }
-    }
     return {
       ok: false,
-      error: 'No kills found in this replay — it may be the wrong match file.',
+      error: 'No kills found in this replay — it may be the wrong match file. Set your CS2 Steam name in Settings → Recording.',
     }
   }
 

@@ -1,7 +1,9 @@
 import fs from 'fs'
 import { DemoFile } from 'demofile'
 import log from 'electron-log'
+import { peekCs2DemoHeader } from './cs2-demo-parser'
 import { sanitizeDemoClientName, sanitizeDemoMapName } from './demo-text-sanitize'
+import type { SourceGame } from './source-replay-finder'
 
 export interface DemoHeaderPeek {
   mapName: string | null
@@ -10,8 +12,15 @@ export interface DemoHeaderPeek {
 }
 
 /** Read map / client from demo header without a full timeline parse. */
-export function peekDemoHeader(demoPath: string): Promise<DemoHeaderPeek | null> {
+export function peekDemoHeader(
+  demoPath: string,
+  game: SourceGame = 'cs2',
+): Promise<DemoHeaderPeek | null> {
   if (!fs.existsSync(demoPath)) return Promise.resolve(null)
+
+  if (game === 'cs2') {
+    return Promise.resolve(peekCs2DemoHeader(demoPath))
+  }
 
   return new Promise((resolve) => {
     const demo = new DemoFile()
