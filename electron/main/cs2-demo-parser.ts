@@ -63,6 +63,24 @@ function normalizeTeamId(raw: unknown): number | null {
   return null
 }
 
+/** CS2 round_end reason → ceremony label for timeline icons (demoinfocs RoundEndReason). */
+function ceremonyFromRoundEndReason(reason: number | null): string | null {
+  if (reason == null) return null
+  switch (reason) {
+    case 1:
+      return 'detonation'
+    case 7:
+      return 'bombdefused'
+    case 8:
+    case 12:
+      return 'timer'
+    case 9:
+      return 'elimination'
+    default:
+      return 'elimination'
+  }
+}
+
 function steamIdKey(raw: unknown): string | null {
   if (raw == null) return null
   const text = String(raw).trim()
@@ -162,7 +180,12 @@ export function buildCs2TimelineFromDemo(opts: DemoTimelineOptions): MatchData |
       ['user_X', 'user_Y'],
       ['total_rounds_played'],
     )
-    const roundEnds = safeParseEvent(opts.demoPath, 'round_end', [], ['total_rounds_played'])
+    const roundEnds = safeParseEvent(
+      opts.demoPath,
+      'round_end',
+      ['reason', 'round_win_reason'],
+      ['total_rounds_played'],
+    )
     const roundStarts = safeParseEvent(opts.demoPath, 'round_start', [], ['total_rounds_played'])
     const roundFreezeEnds = safeParseEvent(opts.demoPath, 'round_freeze_end', [], ['total_rounds_played'])
     const bombPlants = safeParseEvent(opts.demoPath, 'bomb_planted', [], ['total_rounds_played'])
@@ -384,10 +407,14 @@ export function buildCs2TimelineFromDemo(opts: DemoTimelineOptions): MatchData |
 
     const roundWinners = new Map<number, number>()
     const roundEndTimes = new Map<number, number>()
+    const roundCeremonies = new Map<number, string>()
     roundEnds.forEach((row, index) => {
       const winner = normalizeTeamId(row.winner)
-      const roundNum = rowNumber(row, 'total_rounds_played') ?? index
-      if (winner != null) roundWinners.set(roundNum + 1, winner)
+      const roundNum = index
+      if (winner != null) roundWinners.set(roundNum, winner)
+      const reason = rowNumber(row, 'reason', 'round_win_reason')
+      const ceremony = ceremonyFromRoundEndReason(reason)
+      if (ceremony) roundCeremonies.set(roundNum, ceremony)
       const tick = rowNumber(row, 'tick')
       if (tick != null) {
         roundEndTimes.set(roundNum, alignedGameTimeForTick(tick, demoAnchorTick, tickRate) / 1000)
@@ -442,20 +469,32 @@ export function buildCs2TimelineFromDemo(opts: DemoTimelineOptions): MatchData |
       }
     })
 
-    const roundsPlayed = Math.max(roundWinners.size, ...killEvents.map((k) => (k.round ?? 0) + 1), 0)
+    const roundsPlayed = roundEnds.length > 0
+      ? roundEnds.length
+      : Math.max(0, ...killEvents.map((k) => (k.round ?? 0) + 1), 0)
     const roundSummaries: RoundSummary[] = []
     let allyWins = 0
     let enemyWins = 0
 
     for (let r = 0; r < roundsPlayed; r++) {
-      const winnerTeam = roundWinners.get(r + 1)
+      const winnerTeam = roundWinners.get(r)
       const won = localTeam != null && winnerTeam === localTeam
       if (won) allyWins++
       else if (winnerTeam != null) enemyWins++
+      const planted = spikePlants.some((p) => p.round === r)
+      const defused = spikeDefuses.some((d) => d.round === r)
+      const detonated = spikeDetonations.some((d) => d.round === r)
+      let ceremony = roundCeremonies.get(r) ?? null
+      if (!ceremony) {
+        if (defused) ceremony = 'bombdefused'
+        else if (detonated) ceremony = 'detonation'
+        else if (planted && !defused) ceremony = 'detonation'
+        else ceremony = 'elimination'
+      }
       roundSummaries.push({
         roundNumber: r,
         winningTeam: won ? 'ALLY' : winnerTeam != null ? 'ENEMY' : null,
-        ceremony: null,
+        ceremony,
         endTime: roundEndTimes.get(r) ?? 0,
         playerStats: null,
         spikePlanted: spikePlants.some((p) => p.round === r),

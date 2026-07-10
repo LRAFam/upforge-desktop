@@ -91,6 +91,8 @@ describe('buildCs2TimelineFromDemo', () => {
     expect(timeline?.matchDetails?.parser).toBe('demoparser2')
     expect(timeline?.killEvents?.[0]?.timeSinceGameStartMillis).toBeGreaterThan(0)
     expect(timeline?.firstBloods).toHaveLength(1)
+    expect(timeline?.roundSummaries).toHaveLength(3)
+    expect(timeline?.finalScore).toEqual({ allyScore: 2, enemyScore: 1 })
   })
 
   it('subtracts demo anchor tick from kill timestamps', () => {

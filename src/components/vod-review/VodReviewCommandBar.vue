@@ -68,7 +68,8 @@ const {
                 v-if="displayGameMode"
                 class="text-[9px] font-bold px-1.5 py-px rounded border border-white/[0.08] bg-white/[0.04] text-gray-500 uppercase tracking-wide"
               >{{ displayGameMode }}</span>
-              <span v-if="roundRecord" class="text-[9px] text-gray-600 tabular-nums">{{ roundRecord.wins }}W · {{ roundRecord.losses }}L</span>
+              <span v-if="matchScoreline" class="text-[9px] text-gray-600 tabular-nums">{{ matchScoreline.ally }}–{{ matchScoreline.enemy }}</span>
+              <span v-else-if="roundRecord" class="text-[9px] text-gray-600 tabular-nums">{{ roundRecord.wins }}W · {{ roundRecord.losses }}L</span>
             </div>
           </div>
         </div>

@@ -13,7 +13,7 @@ import {
   spatialEventToastLabel,
 } from '../lib/spatial-replay-sync'
 import { canSpatialVodSeek } from '../lib/tier-features'
-import { roundOutcomeIcon as resolveRoundOutcomeIcon } from '../lib/valorant-round-icons'
+import { roundOutcomeIcon as resolveRoundOutcomeIcon, timelineEventIcon as resolveTimelineEventIcon, spikeEventIcon as resolveSpikeEventIcon } from '../lib/timeline-event-icons'
 import {
   isAbilityKill,
   killSourceImage,
@@ -22,7 +22,7 @@ import {
 } from '../lib/match-kill-display'
 import { isWeaponName } from '../lib/valorant-ability-images'
 
-// Round outcome icons — re-exported via valorant-round-icons.ts (src/assets/round-icons)
+// Round outcome icons — game-aware via timeline-event-icons.ts
 
 interface KillEvent {
   killerName: string
@@ -111,6 +111,7 @@ interface RecordingTimeline {
   deaths: KillEvent[]
   roundSummaries: RoundSummary[]
   finalStats: FinalStats | null
+  finalScore?: { allyScore: number; enemyScore: number } | null
   teamSnapshot: TeamPlayerSnapshot[]
   spikePlants?: Array<{ videoOffsetMs?: number; round?: number; planter?: string; site?: string }>
   spikeDefuses?: Array<{ videoOffsetMs?: number; round?: number; defuser?: string }>
@@ -167,6 +168,8 @@ function createVodReview() {
   let videoAreaObserver: ResizeObserver | null = null
   
   const timeline = ref<RecordingTimeline | null>(null)
+  const reviewGame = computed(() => timeline.value?.game ?? null)
+  const isCs2Review = computed(() => reviewGame.value === 'cs2')
   const timelineLoading = ref(true)
   const timelineError = ref<string | null>(null)
   const showShortcuts = ref(false)
@@ -489,7 +492,11 @@ function createVodReview() {
   })
   
   function roundOutcomeIcon(round: RoundGroup): string | null {
-    return resolveRoundOutcomeIcon(round)
+    return resolveRoundOutcomeIcon(round, reviewGame.value)
+  }
+
+  function spikeEventIcon(kind: 'plant' | 'defuse' | 'detonation'): string {
+    return resolveSpikeEventIcon(kind, reviewGame.value)
   }
   
   function roundOutcomeLabel(round: RoundGroup): string {
@@ -766,9 +773,14 @@ function createVodReview() {
   
     const summaries = timeline.value.roundSummaries ?? []
     for (const s of summaries) {
+      const won = isCs2Review.value
+        ? s.winningTeam === 'ALLY'
+        : ownTeam.value
+          ? s.winningTeam === ownTeam.value
+          : s.winningTeam === 'ALLY'
       roundMap.set(s.roundNumber, {
         roundNumber: s.roundNumber,
-        won: ownTeam.value ? s.winningTeam === ownTeam.value : s.winningTeam !== null,
+        won,
         spikePlanted: s.spikePlanted,
         spikeDefused: s.spikeDefused,
         spikeDetonated: (s as RoundSummary).spikeDetonated ?? false,
@@ -780,6 +792,7 @@ function createVodReview() {
   
     for (const event of allTimelineEvents.value) {
       const r = event.round ?? 0
+      if (isCs2Review.value && summaries.length > 0 && r >= summaries.length) continue
       if (!roundMap.has(r)) {
         roundMap.set(r, { roundNumber: r, won: false, spikePlanted: false, spikeDefused: false, spikeDetonated: false, ceremony: null, firstVideoOffsetMs: null, events: [] })
       }
@@ -799,11 +812,15 @@ function createVodReview() {
     const wins = rounds.filter(r => r.won).length
     return { wins, losses: rounds.length - wins, total: rounds.length }
   })
-  
+
   const matchScoreline = computed(() => {
     const d = coachingDetail.value
     if (d?.ally_score != null && d?.enemy_score != null) {
       return { ally: d.ally_score, enemy: d.enemy_score }
+    }
+    const fs = timeline.value?.finalScore
+    if (fs) {
+      return { ally: fs.allyScore, enemy: fs.enemyScore }
     }
     const rec = roundRecord.value
     if (!rec) return null
@@ -2160,6 +2177,7 @@ function createVodReview() {
     roundOutcomeIcon,
     roundOutcomeLabel,
     roundRecord,
+    spikeEventIcon,
     roundSeparators,
     route,
     router,

@@ -1,9 +1,10 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import { timelineEventIcon, type TimelineEventKind } from '../../lib/valorant-round-icons'
+import { timelineEventIcon, type TimelineEventKind } from '../../lib/timeline-event-icons'
 
 const props = withDefaults(defineProps<{
   type: TimelineEventKind
+  game?: string | null
   size?: 'xs' | 'sm' | 'md'
   firstBlood?: boolean
   /** Weapon / ability image overrides kill & death badges when provided. */
@@ -46,16 +47,16 @@ const toneClass = computed(() => {
 
 const iconSrc = computed(() => {
   if (props.sourceImage) return props.sourceImage
-  return timelineEventIcon(props.type)
+  return timelineEventIcon(props.type, props.game)
 })
 
 const alt = computed(() => {
   switch (props.type) {
     case 'kill': return 'Kill'
     case 'death': return 'Death'
-    case 'plant': return 'Spike plant'
-    case 'defuse': return 'Spike defuse'
-    case 'detonation': return 'Spike detonation'
+    case 'plant': return 'Bomb plant'
+    case 'defuse': return 'Bomb defuse'
+    case 'detonation': return 'Bomb explosion'
     default: return 'Team kill'
   }
 })

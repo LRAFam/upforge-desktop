@@ -9,7 +9,6 @@ import { getAgentImage, getAbilityIcon } from '../../lib/valorant'
 import VodRoundLogSidebar from './VodRoundLogSidebar.vue'
 import VodDemoPendingPanel from './VodDemoPendingPanel.vue'
 import VodTimelineEventIcon from './VodTimelineEventIcon.vue'
-import { spikeEventIcon } from '../../lib/valorant-round-icons'
 import { recordingTimelineReady, usesAsyncDemoSync } from '../../lib/recording-demo-status'
 
 const {
@@ -88,6 +87,8 @@ const {
   roundOutcomeLabel,
   roundRecord,
   roundSeparators,
+  spikeEventIcon,
+  timeline,
   scoreboardGroups,
   seekCoachAnnotation,
   seekCoachingEvidence,
@@ -115,7 +116,6 @@ const {
   syncOffsetLabel,
   tacticalIntelBrief,
   theaterMode,
-  timeline,
   toggleFullscreen,
   toggleMute,
   togglePlay,
@@ -734,7 +734,7 @@ const noVideoHint = computed((): string => {
             >
               <!-- Spike events in round detail -->
               <template v-if="isSpikeEvent(event)">
-                <VodTimelineEventIcon :type="event.type" size="md" />
+                <VodTimelineEventIcon :type="event.type" :game="timeline?.game" size="md" />
                 <div class="flex-1 min-w-0">
                   <p class="text-xs font-semibold"
                      :class="event.type === 'plant' ? 'text-orange-300' : event.type === 'defuse' ? 'text-cyan-300' : 'text-yellow-300'">
@@ -775,6 +775,7 @@ const noVideoHint = computed((): string => {
               <template v-else>
                 <VodTimelineEventIcon
                   :type="event.type"
+                  :game="timeline?.game"
                   :first-blood="event.isFirstBlood"
                   :source-image="getEventSourceImage(event)"
                   size="md"

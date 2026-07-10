@@ -12,6 +12,7 @@ const {
   getEventSourceImage,
   getKillSourceLabel,
   isSpikeEvent,
+  matchScoreline,
   nearEventHighlightClass,
   roundGroups,
   roundLogCollapsed,
@@ -22,6 +23,7 @@ const {
   seekToEvent,
   seekToRound,
   sidebarEl,
+  timeline,
   toggleRoundExpanded,
   visibleRoundEvents,
 } = useVodReview()
@@ -56,10 +58,16 @@ function opponentName(event: { type: string; killerName?: string; victimName?: s
         <div class="min-w-0 flex-1">
           <p class="text-[10px] font-black uppercase tracking-[0.2em] text-gray-500">Round log</p>
           <p v-if="roundRecord" class="text-[10px] text-gray-600 mt-0.5 tabular-nums">
-            {{ roundRecord.total }} rounds ·
-            <span class="text-emerald-400">{{ roundRecord.wins }}W</span>
-            <span class="text-gray-700"> / </span>
-            <span class="text-red-400">{{ roundRecord.losses }}L</span>
+            {{ roundRecord.total }} rounds
+            <template v-if="matchScoreline">
+              · <span class="text-white">{{ matchScoreline.ally }}–{{ matchScoreline.enemy }}</span>
+            </template>
+            <template v-else>
+              ·
+              <span class="text-emerald-400">{{ roundRecord.wins }}W</span>
+              <span class="text-gray-700"> / </span>
+              <span class="text-red-400">{{ roundRecord.losses }}L</span>
+            </template>
           </p>
         </div>
         <button
@@ -169,6 +177,7 @@ function opponentName(event: { type: string; killerName?: string; victimName?: s
             >
               <VodTimelineEventIcon
                 :type="event.type"
+                :game="timeline?.game"
                 :first-blood="event.isFirstBlood"
                 :source-image="getEventSourceImage(event)"
                 size="xs"
@@ -191,6 +200,7 @@ function opponentName(event: { type: string; killerName?: string; victimName?: s
             >
               <VodTimelineEventIcon
                 :type="event.type"
+                :game="timeline?.game"
                 :first-blood="event.isFirstBlood"
                 :source-image="getEventSourceImage(event)"
                 size="sm"
