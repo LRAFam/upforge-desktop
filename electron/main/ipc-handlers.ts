@@ -113,7 +113,7 @@ export function setupIpcHandlers(
   openPostGameFn?: () => void,
   getFFmpegOk?: () => boolean,
   getWaitingForMatch?: () => boolean,
-  getActivityLog?: () => { time: number; message: string }[],
+  getActivityLog?: () => { time: number; message: string; game?: string }[],
   uploadManager?: UploadManager,
   showClipsFn?: () => void,
   performanceManager?: PerformanceManager,

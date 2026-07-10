@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { useDashboard } from '../../composables/useDashboard'
 import { useGameTheme } from '../../composables/useGameTheme'
+import { recordingGameLabel } from '../../lib/games'
 
 const {
   status,
@@ -22,6 +23,12 @@ const {
 } = useDashboard()
 
 const { features } = useGameTheme()
+
+function detectedGameLabel(): string {
+  const g = status.value.currentGame
+  if (g === 'valorant' || g === 'cs2' || g === 'deadlock') return recordingGameLabel(g)
+  return g ? g.charAt(0).toUpperCase() + g.slice(1) : 'Game'
+}
 </script>
 
 <template>
@@ -52,14 +59,14 @@ const { features } = useGameTheme()
             </template>
             <template v-else-if="status.recording">
               <span class="font-black tracking-widest uppercase text-red-400 rec-pulse flex-shrink-0">● REC</span>
-              <span class="font-semibold capitalize flex-shrink-0">{{ status.currentGame || 'Valorant' }}</span>
+              <span class="font-semibold flex-shrink-0">{{ detectedGameLabel() }}</span>
               <span v-if="recordingElapsed" class="font-mono tabular-nums text-red-400/80 flex-shrink-0">{{ recordingElapsed }}</span>
             </template>
             <template v-else-if="status.recordingStarting">
               <span class="font-semibold text-yellow-300">Starting recorder…</span>
             </template>
             <template v-else-if="status.waitingForMatch">
-              <span class="font-semibold text-orange-300 flex-shrink-0">{{ status.currentGame || 'Valorant' }}</span>
+              <span class="font-semibold text-orange-300 flex-shrink-0">{{ detectedGameLabel() }}</span>
               <span class="text-orange-500/70 truncate">Watching for match…</span>
             </template>
             <template v-else-if="status.currentGame">

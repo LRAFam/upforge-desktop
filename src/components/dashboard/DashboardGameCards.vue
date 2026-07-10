@@ -5,7 +5,10 @@ import { useDashboard } from '../../composables/useDashboard'
 import { usePrimaryGame } from '../../composables/usePrimaryGame'
 import { PRIMARY_GAMES, PRIMARY_GAME_ARTWORK, type PrimaryGame } from '../../lib/games'
 import { gameBrand } from '../../lib/game-branding'
-import { getRankHexColor } from '../../lib/valorant'
+import { getRankHexColor, getRankIconUrl } from '../../lib/valorant'
+import { getFaceitLevelIconUrl } from '../../lib/cs2'
+import { getDeadlockRankIconUrl } from '../../lib/deadlock'
+import cs2Emblem from '../../assets/games/cs2-emblem.png'
 import { openGameAnalyze } from '../../lib/game-modules'
 import { openAccountLinkSettings } from '../../lib/account-link-navigation'
 import { canOpenTimeline, canWatchRawRecording } from '../../lib/recording-demo-status'
@@ -123,6 +126,7 @@ function rankBlock(game: PrimaryGame): {
   main: string
   sub?: string
   color: string
+  iconUrl?: string | null
 } {
   const brand = gameBrand(game)
   if (game === 'valorant') {
@@ -133,21 +137,38 @@ function rankBlock(game: PrimaryGame): {
       main: rank ?? 'Unranked',
       sub: rr != null ? `${rr} RR` : undefined,
       color: rank ? getRankHexColor(rank) : brand.accent,
+      iconUrl: rank ? getRankIconUrl(rank) : null,
     }
   }
   if (game === 'cs2') {
     const valve = cs2Profile.value?.valve_stats
     const steamName = cs2Profile.value?.identity?.steam_display_name || cs2SteamName.value
+    if (valve?.premier_rating != null) {
+      return {
+        label: 'Premier rating',
+        main: String(valve.premier_rating),
+        sub: steamName || `${valve.matches_tracked ?? 0} matches tracked`,
+        color: brand.accent,
+        iconUrl: cs2Emblem,
+      }
+    }
     if (valve?.matches_tracked) {
       return {
         label: brand.valveRankLabel ?? brand.rankLabel,
         main: valve.avg_kd != null ? `${valve.avg_kd} K/D avg` : `${valve.matches_tracked} matches`,
         sub: steamName || `${valve.matches_tracked} tracked`,
         color: brand.accent,
+        iconUrl: cs2Emblem,
       }
     }
     if (steamName) {
-      return { label: brand.valveRankLabel ?? brand.rankLabel, main: steamName, sub: 'Steam name set', color: brand.accent }
+      return {
+        label: brand.valveRankLabel ?? brand.rankLabel,
+        main: steamName,
+        sub: 'Steam name set',
+        color: brand.accent,
+        iconUrl: cs2Emblem,
+      }
     }
     if (cs2FaceitConnection.value?.connected) {
       const l = cs2FaceitConnection.value.level
@@ -155,8 +176,9 @@ function rankBlock(game: PrimaryGame): {
       return {
         label: brand.faceitRankLabel ?? 'FACEIT',
         main: l != null ? `Level ${l}` : n ?? 'Connected',
-        sub: n && l != null ? `#${n}` : cs2FaceitConnection.value.elo != null ? `${cs2FaceitConnection.value.elo} ELO` : undefined,
+        sub: n && l != null ? n : cs2FaceitConnection.value.elo != null ? `${cs2FaceitConnection.value.elo} ELO` : undefined,
         color: '#f97316',
+        iconUrl: getFaceitLevelIconUrl(l),
       }
     }
     return { label: brand.rankLabel, main: 'Syncing…', color: brand.accent }
@@ -168,12 +190,16 @@ function rankBlock(game: PrimaryGame): {
       main: r.subtier != null ? `${r.name} ${r.subtier}` : r.name,
       sub: deadlockStats.value.summary?.win_rate != null ? `${deadlockStats.value.summary.win_rate}% WR` : undefined,
       color: brand.accent,
+      iconUrl: getDeadlockRankIconUrl(r.name, r.subtier),
     }
+  }
+  if (deadlockLinked.value || profile.value?.user?.deadlock_account_id) {
+    return { label: brand.rankLabel, main: 'Rank syncing…', color: brand.accent }
   }
   return { label: brand.rankLabel, main: 'Syncing stats…', color: brand.accent }
 }
 
-function cs2FaceitRank(): { label: string; main: string; sub?: string; color: string } | null {
+function cs2FaceitRank(): { label: string; main: string; sub?: string; color: string; iconUrl?: string | null } | null {
   if (!cs2FaceitConnection.value?.connected) return null
   const hasSteamLine = Boolean(
     cs2Profile.value?.identity?.steam_display_name
@@ -186,8 +212,9 @@ function cs2FaceitRank(): { label: string; main: string; sub?: string; color: st
   return {
     label: gameBrand('cs2').faceitRankLabel ?? 'FACEIT',
     main: l != null ? `Level ${l}` : n ?? 'Connected',
-    sub: n && l != null ? `#${n}` : cs2FaceitConnection.value.elo != null ? `${cs2FaceitConnection.value.elo} ELO` : undefined,
+    sub: n && l != null ? n : cs2FaceitConnection.value.elo != null ? `${cs2FaceitConnection.value.elo} ELO` : undefined,
     color: '#f97316',
+    iconUrl: getFaceitLevelIconUrl(l),
   }
 }
 
@@ -345,26 +372,50 @@ const cards = computed(() =>
             <p v-if="c.account" class="text-[11px] font-semibold text-gray-300 truncate">{{ c.account }}</p>
 
             <template v-if="c.id === 'cs2' && c.rank">
-              <p class="text-[11px] text-gray-500">
-                {{ c.rank.label }}:
-                <span class="font-bold text-[13px]" :style="{ color: c.rank.color }">{{ c.rank.main }}</span>
-              </p>
-              <p v-if="c.rank.sub" class="text-[12px] font-semibold text-gray-300 tabular-nums">{{ c.rank.sub }}</p>
-              <template v-if="c.faceitRank">
-                <p class="text-[11px] text-gray-500 pt-0.5">
-                  {{ c.faceitRank.label }}:
-                  <span class="font-bold text-[13px]" :style="{ color: c.faceitRank.color }">{{ c.faceitRank.main }}</span>
+              <div class="flex items-center gap-1.5">
+                <img
+                  v-if="c.rank.iconUrl"
+                  :src="c.rank.iconUrl"
+                  alt=""
+                  class="w-5 h-5 object-contain flex-shrink-0"
+                />
+                <p class="text-[11px] text-gray-500 min-w-0">
+                  {{ c.rank.label }}:
+                  <span class="font-bold text-[13px]" :style="{ color: c.rank.color }">{{ c.rank.main }}</span>
                 </p>
-                <p v-if="c.faceitRank.sub" class="text-[12px] font-semibold text-gray-300 tabular-nums">{{ c.faceitRank.sub }}</p>
+              </div>
+              <p v-if="c.rank.sub" class="text-[12px] font-semibold text-gray-300 tabular-nums pl-[26px]">{{ c.rank.sub }}</p>
+              <template v-if="c.faceitRank">
+                <div class="flex items-center gap-1.5 pt-0.5">
+                  <img
+                    v-if="c.faceitRank.iconUrl"
+                    :src="c.faceitRank.iconUrl"
+                    alt=""
+                    class="w-5 h-5 object-contain flex-shrink-0"
+                  />
+                  <p class="text-[11px] text-gray-500 min-w-0">
+                    {{ c.faceitRank.label }}:
+                    <span class="font-bold text-[13px]" :style="{ color: c.faceitRank.color }">{{ c.faceitRank.main }}</span>
+                  </p>
+                </div>
+                <p v-if="c.faceitRank.sub" class="text-[12px] font-semibold text-gray-300 tabular-nums pl-[26px]">{{ c.faceitRank.sub }}</p>
               </template>
             </template>
 
             <template v-else-if="c.rank">
-              <p class="text-[11px] text-gray-500">
-                {{ c.rank.label }}:
-                <span class="font-bold text-[13px]" :style="{ color: c.rank.color }">{{ c.rank.main }}</span>
-              </p>
-              <p v-if="c.rank.sub" class="text-[12px] font-semibold text-gray-300 tabular-nums">{{ c.rank.sub }}</p>
+              <div class="flex items-center gap-1.5">
+                <img
+                  v-if="c.rank.iconUrl"
+                  :src="c.rank.iconUrl"
+                  alt=""
+                  class="w-5 h-5 object-contain flex-shrink-0"
+                />
+                <p class="text-[11px] text-gray-500 min-w-0">
+                  {{ c.rank.label }}:
+                  <span class="font-bold text-[13px]" :style="{ color: c.rank.color }">{{ c.rank.main }}</span>
+                </p>
+              </div>
+              <p v-if="c.rank.sub" class="text-[12px] font-semibold text-gray-300 tabular-nums pl-[26px]">{{ c.rank.sub }}</p>
             </template>
 
             <p v-if="c.match" class="text-[11px] pt-0.5">

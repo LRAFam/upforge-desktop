@@ -30,7 +30,7 @@ export function setupAppHandlers(
   openPostGameFn?: () => void,
   getFFmpegOk?: () => boolean,
   getWaitingForMatch?: () => boolean,
-  getActivityLog?: () => { time: number; message: string }[],
+  getActivityLog?: () => { time: number; message: string; game?: string }[],
   showClipsFn?: () => void,
   getRecordingBackend?: () => 'obs',
   getCurrentQueueMode?: () => string | null,

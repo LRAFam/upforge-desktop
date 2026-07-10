@@ -27,8 +27,6 @@ type DeadlockPhase = 'idle' | 'waiting' | 'in_match' | 'post_match'
 const POLL_MS = 3_000
 const REPLAY_STABLE_MS = 20_000
 const MIN_PARTIAL_BYTES = 1024
-/** Start recording if Steam cache never signals — avoids missing the whole match. */
-const WAIT_FALLBACK_MS = 45_000
 
 let pollTimer: ReturnType<typeof setInterval> | null = null
 let sessionStartAt = 0
@@ -46,6 +44,8 @@ let trackedPartialPath: string | null = null
 let trackedPartialSize = 0
 let partialStableSince: number | null = null
 let sawPartialLive = false
+/** After manual stop — ignore the current lobby/match until Steam reports a new match_id. */
+let suppressAutoRecordUntilNewMatch = false
 
 const knownMatchIds = new Set<number>()
 const saltsByMatch = new Map<number, DeadlockMatchSalts>()
@@ -101,7 +101,13 @@ function applyCacheSalts(salts: DeadlockMatchSalts): void {
   saltsByMatch.set(salts.matchId, merged)
 
   const isNew = !knownMatchIds.has(salts.matchId)
-  if (isNew) knownMatchIds.add(salts.matchId)
+  if (isNew) {
+    knownMatchIds.add(salts.matchId)
+    if (suppressAutoRecordUntilNewMatch) {
+      suppressAutoRecordUntilNewMatch = false
+      log.info('[DeadlockMatch] New match_id — auto-record re-enabled')
+    }
+  }
 
   if (salts.metadataSalt != null && (isNew || activeMatchId == null)) {
     markMatchStarted(salts.matchId)
@@ -231,10 +237,18 @@ export function isDeadlockMatchLive(): boolean {
   return false
 }
 
+export function suppressDeadlockAutoRecordUntilNewMatch(): void {
+  suppressAutoRecordUntilNewMatch = true
+  log.info('[DeadlockMatch] Auto-record suppressed until next match')
+}
+
+export function isDeadlockAutoRecordSuppressed(): boolean {
+  return suppressAutoRecordUntilNewMatch
+}
+
 export function isDeadlockReadyToRecord(): boolean {
-  if (phase === 'in_match' && activeMatchId != null) return true
-  if (waitStartedAt > 0 && Date.now() - waitStartedAt >= WAIT_FALLBACK_MS) return true
-  return false
+  if (suppressAutoRecordUntilNewMatch) return false
+  return phase === 'in_match' && activeMatchId != null
 }
 
 export function isDeadlockMatchEnded(): boolean {

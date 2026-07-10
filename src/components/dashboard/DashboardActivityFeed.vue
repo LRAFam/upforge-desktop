@@ -8,9 +8,18 @@ import type { PrimaryGame } from '../../lib/games'
 import { analysisCompleteBadge, inferAnalysisGame } from '../../lib/analysis-display'
 import upforgeIcon from '../../assets/upforge-icon.png'
 
-const { activityLog, pendingRecordings, formatLogTime, dashboardAnalyses, openAnalysisRow } = useDashboard()
+const { activityLog, pendingRecordings, formatLogTime, dashboardAnalyses, openAnalysisRow, status } = useDashboard()
 
 type FeedScope = PrimaryGame | 'system'
+
+function normalizeGameScope(value: string | null | undefined): FeedScope | null {
+  if (value === 'valorant' || value === 'cs2' || value === 'deadlock') return value
+  return null
+}
+
+function activeDetectedGame(): PrimaryGame | null {
+  return normalizeGameScope(status.value.currentGame)
+}
 
 type FeedEntry = {
   id: string
@@ -39,11 +48,20 @@ function entryTimeMs(t: number | string | undefined): number {
   return Number.isNaN(ms) ? 0 : ms
 }
 
-function classifyActivityScope(msg: string): FeedScope {
+function classifyActivityScope(msg: string, hintedGame?: string): FeedScope {
+  const fromHint = normalizeGameScope(hintedGame)
+  if (fromHint) return fromHint
+
   const lower = msg.toLowerCase()
   if (/\bcs2\b|counter-strike|\bde_[a-z0-9_]+\b|faceit|demo recording|gsi/.test(lower)) return 'cs2'
   if (/\bdeadlock\b|-condebug|replay saving/.test(lower)) return 'deadlock'
-  if (/\bvalorant\b|riot|premier queue|spikerush|vandal|pregame brief/.test(lower)) return 'valorant'
+  if (/\bvalorant\b|riot client|premier queue|spikerush|vandal|pregame brief/.test(lower)) return 'valorant'
+
+  const active = activeDetectedGame()
+  if (active && /match detected|recording started|recording stopped|match ended|waiting for match|upload|analysis/.test(lower)) {
+    return active
+  }
+
   return 'system'
 }
 
@@ -65,10 +83,21 @@ function activitySubtitle(msg: string): string {
   return ''
 }
 
-function inferRecordingGame(map: string, agent: string): PrimaryGame {
+function inferRecordingGame(
+  map: string,
+  agent: string,
+  explicit?: string | null,
+): PrimaryGame {
+  const fromExplicit = normalizeGameScope(explicit)
+  if (fromExplicit) return fromExplicit
+
   const blob = `${map} ${agent}`.toLowerCase()
   if (/de_|mirage|inferno|nuke|dust|anubis|ancient|overpass|vertigo/.test(blob)) return 'cs2'
   if (/deadlock|hero|oracle|lash|vindicta/.test(blob)) return 'deadlock'
+
+  const active = activeDetectedGame()
+  if (active) return active
+
   return 'valorant'
 }
 
@@ -78,7 +107,7 @@ const entries = computed<FeedEntry[]>(() => {
   const merged: Sortable[] = []
 
   for (const r of pendingRecordings.value) {
-    const game = (r.game ?? inferRecordingGame(r.map ?? '', r.agent ?? '')) as PrimaryGame
+    const game = (r.game ?? inferRecordingGame(r.map ?? '', r.agent ?? '', r.game)) as PrimaryGame
     const syncing = r.analysisReadiness?.state === 'syncing' || r.analysisReadiness?.state === 'finalizing'
 
     if (r.pipelineStatus === 'uploading' || r.pipelineStatus === 'analysing') {
@@ -138,7 +167,7 @@ const entries = computed<FeedEntry[]>(() => {
   }
 
   for (const [i, e] of activityLog.value.entries()) {
-    const scope = classifyActivityScope(e.message)
+    const scope = classifyActivityScope(e.message, e.game)
     const tag = activityTag(e.message)
     merged.push({
       id: `l-${e.time}-${i}`,

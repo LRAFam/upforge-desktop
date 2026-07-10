@@ -195,7 +195,9 @@ import {
   noteDeadlockWaitStarted,
   isDeadlockReadyToRecord,
   isDeadlockMatchEnded,
+  isDeadlockMatchLive,
   isDeadlockDetectionActive,
+  suppressDeadlockAutoRecordUntilNewMatch,
   getDeadlockMap,
   getDeadlockHero,
   getDeadlockLobbyMatchId,
@@ -554,7 +556,7 @@ function wasBackgroundWorkInterrupted(err: unknown): boolean {
 
 // Activity log — recent events shown on dashboard for user visibility
 const MAX_LOG_ENTRIES = 30
-const activityLog: { time: number; message: string }[] = []
+const activityLog: { time: number; message: string; game?: string }[] = []
 
 // Hotkey bookmarks — timestamps (ms) relative to recording start pressed during a match
 const hotkeyBookmarks: number[] = []
@@ -618,8 +620,12 @@ function abortInFlightAnalysisForRecording(recordingId: string): { ok: boolean; 
   return result
 }
 
-function logActivity(message: string): void {
-  const entry = { time: Date.now(), message }
+function logActivity(message: string, explicitGame?: string): void {
+  const entry = {
+    time: Date.now(),
+    message,
+    game: explicitGame ?? gameDetector.currentGame() ?? undefined,
+  }
   activityLog.push(entry)
   if (activityLog.length > MAX_LOG_ENTRIES) activityLog.shift()
   mainWindow?.webContents.send('app:activity-log', activityLog.slice())
@@ -1976,18 +1982,32 @@ function setupGameDetection(): void {
     if (rearmWatchInFlight === game) return
     rearmWatchInFlight = game
 
-    if (game === 'cs2') resetSteamGsiSession()
-    if (game === 'deadlock') resetDeadlockLogSession()
     gameDetector.resetActiveGame(game)
 
     try {
       const REWATCH_MS = 15 * 60 * 1000
       const deadline = Date.now() + REWATCH_MS
+      let waitingForLobbyClear = false
       while (Date.now() < deadline) {
         await new Promise((r) => setTimeout(r, 3000))
         if (!await gameDetector.isGameProcessRunning(game)) continue
+
+        if (game === 'deadlock' && (isDeadlockMatchLive() || isDeadlockReadyToRecord())) {
+          if (!waitingForLobbyClear) {
+            waitingForLobbyClear = true
+            logActivity(
+              `${gameLabel(game)} still in match — waiting for post-game before next recording`,
+              game,
+            )
+          }
+          continue
+        }
+
+        if (game === 'cs2') resetSteamGsiSession()
+        if (game === 'deadlock') resetDeadlockLogSession()
+
         console.log(`[GameDetector] ${game} running — watching for next match`)
-        logActivity(`${gameLabel(game)} detected — waiting for a live match to start recording`)
+        logActivity(`${gameLabel(game)} detected — waiting for a live match to start recording`, game)
         gameDetector.resetActiveGame(game)
         gameDetector.emit('game-started', game)
         return
@@ -2650,7 +2670,8 @@ function setupGameDetection(): void {
     if (matchHandled) {
       return { ok: false, reason: 'already_handled' }
     }
-    logActivity('Recording stopped manually — finishing match')
+    logActivity('Recording stopped manually — finishing match', game)
+    if (game === 'deadlock') suppressDeadlockAutoRecordUntilNewMatch()
     try {
       const didFinalize = await finalizeMatchOnce(game, 'manual')
       if (!didFinalize) return { ok: false, reason: 'already_handled' }

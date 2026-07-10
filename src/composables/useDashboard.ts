@@ -187,7 +187,7 @@ function createDashboard() {
   })
 
   const upgradeNeeded = ref(false)
-  const activityLog = ref<{ time: number; message: string }[]>([])
+  const activityLog = ref<{ time: number; message: string; game?: string }[]>([])
   const demoDownloadProgress = ref<DemoDownloadProgress | null>(null)
   const lastInsight = ref<{ text: string; score: number; agent: string | null; analysisId: number | null; date: string } | null>(null)
   const lastInsightTraining = ref(false)
@@ -1307,7 +1307,7 @@ function createDashboard() {
       void loadPendingRecordings()
     }))
     ipcCleanup.push(window.api.on('app:activity-log', (...args: unknown[]) => {
-      activityLog.value = args[0] as { time: number; message: string }[]
+      activityLog.value = args[0] as { time: number; message: string; game?: string }[]
     }))
     ipcCleanup.push(window.api.on('post-game:demo-status', (...args: unknown[]) => {
       const payload = args[0] as { status?: string }

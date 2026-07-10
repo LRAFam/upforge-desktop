@@ -520,7 +520,7 @@ declare global {
             riot_tag: string | null
           } | null
         }>
-        getActivityLog: () => Promise<{ time: number; message: string }[]>
+        getActivityLog: () => Promise<{ time: number; message: string; game?: string }[]>
         showClips: () => Promise<{ ok: boolean }>
         openUrl: (url: string) => Promise<{ ok: boolean }>
         refreshDashboard: () => Promise<{ ok: boolean }>
