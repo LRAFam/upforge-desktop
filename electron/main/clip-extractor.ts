@@ -291,6 +291,7 @@ export class ClipExtractor {
       const proc = spawn(bin, args, { stdio: ['ignore', 'ignore', 'pipe'] })
       let stderr = ''
       let settled = false
+      let timer: ReturnType<typeof setTimeout>
       const settle = (fn: () => void) => { if (!settled) { settled = true; clearTimeout(timer); fn() } }
 
       proc.stderr?.on('data', (d: Buffer) => { stderr += d.toString() })
@@ -318,7 +319,7 @@ export class ClipExtractor {
       }
 
       // Hard cap — clips should never take this long
-      const timer = setTimeout(() => { proc.kill(); settle(() => reject(new Error('ffmpeg timed out'))) }, timeoutMs)
+      timer = setTimeout(() => { proc.kill(); settle(() => reject(new Error('ffmpeg timed out'))) }, timeoutMs)
     })
   }
 
