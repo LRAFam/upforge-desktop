@@ -121,6 +121,17 @@ export interface SquadCompareRow {
   analysesCount: number
 }
 
+export function coerceNullableNumber(value: unknown): number | null {
+  if (value == null || value === '') return null
+  const n = typeof value === 'number' ? value : Number(value)
+  return Number.isFinite(n) ? n : null
+}
+
+export function formatDecimalStat(value: unknown, decimals = 2): string {
+  const n = coerceNullableNumber(value)
+  return n == null ? '—' : n.toFixed(decimals)
+}
+
 export function buildSquadCompareRows(
   stats: Array<{ user_id: number; name: string; win_rate?: number | null; kd_ratio?: number | null }>,
   leaderboard: Array<{ user_id: number; name: string; analyses_count?: number }>,
@@ -132,8 +143,8 @@ export function buildSquadCompareRows(
     byId.set(s.user_id, {
       userId: s.user_id,
       name: s.name,
-      winRate: s.win_rate ?? null,
-      kdRatio: s.kd_ratio ?? null,
+      winRate: coerceNullableNumber(s.win_rate),
+      kdRatio: coerceNullableNumber(s.kd_ratio),
       analysesCount: lbMap[s.user_id] ?? 0,
     })
   }

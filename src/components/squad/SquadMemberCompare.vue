@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import type { SquadCompareRow } from '../../lib/squad-ui'
-import { squadMemberColor, squadMemberInitials } from '../../lib/squad-ui'
+import { formatDecimalStat, squadMemberColor, squadMemberInitials } from '../../lib/squad-ui'
 
 const props = defineProps<{
   rows: SquadCompareRow[]
@@ -33,7 +33,7 @@ function barValue(row: SquadCompareRow): number {
 
 function barLabel(row: SquadCompareRow): string {
   if (metric.value === 'winRate') return row.winRate != null ? `${Math.round(row.winRate)}%` : '—'
-  if (metric.value === 'kd') return row.kdRatio?.toFixed(2) ?? '—'
+  if (metric.value === 'kd') return formatDecimalStat(row.kdRatio)
   return String(row.analysesCount)
 }
 

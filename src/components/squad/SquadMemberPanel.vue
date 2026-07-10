@@ -6,6 +6,7 @@ import {
   squadStatusLabel,
   normalizePresenceGame,
   squadGamePillLabel,
+  formatDecimalStat,
 } from '../../lib/squad-ui'
 import { gameBrand } from '../../lib/game-branding'
 import type { SquadLineupMember, SquadPresenceEntry } from './SquadLineupRow.vue'
@@ -82,7 +83,7 @@ const status = squadMemberStatus(props.presence)
       </div>
       <div class="rounded-lg border border-white/[0.08] bg-black/20 px-2 py-2 text-center">
         <p class="text-[9px] text-gray-600 uppercase">K/D</p>
-        <p class="text-[11px] font-bold text-white mt-0.5 tabular-nums">{{ stats.kd_ratio?.toFixed(2) ?? '—' }}</p>
+        <p class="text-[11px] font-bold text-white mt-0.5 tabular-nums">{{ formatDecimalStat(stats.kd_ratio) }}</p>
       </div>
       <div class="rounded-lg border border-white/[0.08] bg-black/20 px-2 py-2 text-center">
         <p class="text-[9px] text-gray-600 uppercase">HS%</p>
