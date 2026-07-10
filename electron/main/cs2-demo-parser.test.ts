@@ -49,6 +49,9 @@ describe('buildCs2TimelineFromDemo', () => {
       { name: 'Enemy', steamid: '76561198000000002', team_number: 2 },
     ])
     vi.mocked(parseEvent).mockImplementation((_path, eventName) => {
+      if (eventName === 'round_start') {
+        return [{ tick: 0, total_rounds_played: 1 }]
+      }
       if (eventName === 'player_death') {
         return [{
           tick: 6400,
@@ -64,7 +67,7 @@ describe('buildCs2TimelineFromDemo', () => {
         }]
       }
       if (eventName === 'round_end') {
-        return [{ winner: 'CT' }, { winner: 'T' }, { winner: 'CT' }]
+        return [{ winner: 'CT', tick: 12800 }, { winner: 'T', tick: 19200 }, { winner: 'CT', tick: 25600 }]
       }
       return []
     })
@@ -86,6 +89,50 @@ describe('buildCs2TimelineFromDemo', () => {
     expect(timeline?.playerKills?.[0]?.killerName).toBe('You')
     expect(timeline?.finalStats?.kills).toBe(1)
     expect(timeline?.matchDetails?.parser).toBe('demoparser2')
+    expect(timeline?.killEvents?.[0]?.timeSinceGameStartMillis).toBeGreaterThan(0)
+    expect(timeline?.firstBloods).toHaveLength(1)
+  })
+
+  it('subtracts demo anchor tick from kill timestamps', () => {
+    vi.mocked(parseHeader).mockReturnValue({
+      map_name: 'de_dust2',
+      playback_ticks: 128000,
+      playback_time: 2000,
+    })
+    vi.mocked(parsePlayerInfo).mockReturnValue([])
+    vi.mocked(parseEvent).mockImplementation((_path, eventName) => {
+      if (eventName === 'round_start') {
+        return [{ tick: 1600, total_rounds_played: 1 }]
+      }
+      if (eventName === 'player_death') {
+        return [{
+          tick: 8000,
+          total_rounds_played: 1,
+          attacker_name: 'CHEWI',
+          attacker_steamid: '76561198000000001',
+          user_name: 'Enemy',
+          user_steamid: '76561198000000002',
+          weapon: 'ak47',
+        }]
+      }
+      if (eventName === 'round_end') {
+        return [{ winner: 'CT', tick: 12000 }]
+      }
+      return []
+    })
+
+    const timeline = buildCs2TimelineFromDemo({
+      game: 'cs2',
+      demoPath: '/tmp/anchored.dem',
+      map: null,
+      matchStartTime: 1_000,
+      recordingStartTime: 1_000,
+      localPlayerName: 'CHEWI',
+      skipSpatial: true,
+    })
+
+    expect(timeline?.matchDetails?.demoAnchorTick).toBe(1600)
+    expect(timeline?.killEvents?.[0]?.timeSinceGameStartMillis).toBe(100_000)
   })
 
   it('returns null when no events are found', () => {

@@ -7,11 +7,11 @@ import log from 'electron-log'
 import { parseEvent, parseHeader, parsePlayerInfo } from '@laihoe/demoparser2'
 import type { DemoTimelineOptions } from './demo-timeline'
 import { inferLocalPlayerFromDemoKills, type RoundKillMeta } from './demo-local-player'
-import { emptyMatchData, gameTimeToVideoOffsetMs } from './recording-sync'
+import { cs2AlignedGameTimeMs, emptyMatchData, gameTimeToVideoOffsetMs, tickToMsFromTick } from './recording-sync'
 import { cs2WorldToNorm, getCs2MapTransform, normalizeCs2MapKey } from './spatial/cs2-transforms'
 import { applyDemoSpatialEnrichment, resolveCs2Callout } from './spatial/demo-enrich'
 import { sanitizeDemoClientName, sanitizeDemoMapName } from './demo-text-sanitize'
-import type { KillEvent, MatchData, RoundSummary } from './riot-types'
+import type { FirstBloodEvent, KillEvent, MatchData, RoundSummary, SpikeDefusedEvent, SpikeDetonatedEvent, SpikePlantedEvent } from './riot-types'
 import type { DemoHeaderPeek } from './demo-header-peek'
 
 const DEFAULT_TICK_RATE = 64
@@ -70,7 +70,61 @@ function steamIdKey(raw: unknown): string | null {
 }
 
 function tickToMs(tick: number, tickRate: number): number {
-  return Math.round((tick / tickRate) * 1000)
+  return tickToMsFromTick(tick, tickRate)
+}
+
+function safeParseEvent(
+  demoPath: string,
+  eventName: string,
+  extraFields: string[] = [],
+  playerExtra: string[] = [],
+): JsonRow[] {
+  try {
+    return asRows(parseEvent(demoPath, eventName, extraFields, playerExtra))
+  } catch {
+    return []
+  }
+}
+
+/** Demo tick 0 includes connect/warmup — anchor to first gun round_start. */
+function resolveCs2DemoAnchorTick(
+  roundStarts: JsonRow[],
+  roundFreezeEnds: JsonRow[],
+  deaths: JsonRow[],
+  tickRate: number,
+): number {
+  const sortedStarts = roundStarts
+    .map((row) => ({
+      tick: rowNumber(row, 'tick') ?? 0,
+      round: rowNumber(row, 'total_rounds_played') ?? -1,
+    }))
+    .filter((row) => row.tick > 0)
+    .sort((a, b) => a.tick - b.tick)
+
+  if (sortedStarts.length > 0) {
+    const gunRound = sortedStarts.find((row) => row.round === 1)
+      ?? sortedStarts.find((row) => row.round === 0)
+      ?? sortedStarts[0]
+    return gunRound.tick
+  }
+
+  const freezeTick = roundFreezeEnds
+    .map((row) => rowNumber(row, 'tick') ?? 0)
+    .filter((tick) => tick > 0)
+    .sort((a, b) => a - b)[0]
+  if (freezeTick != null) return freezeTick
+
+  const firstDeathTick = deaths
+    .map((row) => rowNumber(row, 'tick') ?? 0)
+    .filter((tick) => tick > 0)
+    .sort((a, b) => a - b)[0]
+  if (firstDeathTick != null) return Math.max(0, firstDeathTick - tickRate * 10)
+
+  return 0
+}
+
+function alignedGameTimeForTick(tick: number, anchorTick: number, tickRate: number): number {
+  return cs2AlignedGameTimeMs(tick, anchorTick, tickRate)
 }
 
 /** CS2 demo header via demoparser2 — replaces demofile header peek for CS2. */
@@ -102,18 +156,29 @@ export function buildCs2TimelineFromDemo(opts: DemoTimelineOptions): MatchData |
   try {
     const header = parseHeader(opts.demoPath) as JsonRow
     const tickRate = resolveTickRate(header)
-    const deaths = asRows(parseEvent(
+    const deaths = safeParseEvent(
       opts.demoPath,
       'player_death',
       ['user_X', 'user_Y'],
       ['total_rounds_played'],
-    ))
-    const roundEnds = asRows(parseEvent(opts.demoPath, 'round_end'))
+    )
+    const roundEnds = safeParseEvent(opts.demoPath, 'round_end', [], ['total_rounds_played'])
+    const roundStarts = safeParseEvent(opts.demoPath, 'round_start', [], ['total_rounds_played'])
+    const roundFreezeEnds = safeParseEvent(opts.demoPath, 'round_freeze_end', [], ['total_rounds_played'])
+    const bombPlants = safeParseEvent(opts.demoPath, 'bomb_planted', [], ['total_rounds_played'])
+    const bombDefuses = safeParseEvent(opts.demoPath, 'bomb_defused', [], ['total_rounds_played'])
+    const bombExplodes = safeParseEvent(opts.demoPath, 'bomb_exploded', [], ['total_rounds_played'])
     const players = asRows(parsePlayerInfo(opts.demoPath))
 
     if (!deaths.length && !roundEnds.length) {
       log.warn('[CS2DemoParser] No player_death or round_end events — wrong file or unsupported demo')
       return null
+    }
+
+    const demoAnchorTick = resolveCs2DemoAnchorTick(roundStarts, roundFreezeEnds, deaths, tickRate)
+    const anchorMs = tickToMs(demoAnchorTick, tickRate)
+    if (demoAnchorTick > 0) {
+      log.info(`[CS2DemoParser] Demo anchor tick=${demoAnchorTick} (~${Math.round(anchorMs / 1000)}s pre-round trim)`)
     }
 
     const steamToUserId = new Map<string, number>()
@@ -175,16 +240,21 @@ export function buildCs2TimelineFromDemo(opts: DemoTimelineOptions): MatchData |
     const killEvents: KillEvent[] = []
     const playerKills: KillEvent[] = []
     const playerDeaths: KillEvent[] = []
+    const firstBloods: FirstBloodEvent[] = []
+    const firstBloodRound = new Set<number>()
+    let localAssists = 0
     let eventId = 1
+    let spikeEventId = 1
 
     for (const death of deaths) {
       const tick = rowNumber(death, 'tick') ?? 0
-      const gameTimeMs = tickToMs(tick, tickRate)
+      const gameTimeMs = alignedGameTimeForTick(tick, demoAnchorTick, tickRate)
       const videoOffsetMs = gameTimeToVideoOffsetMs(gameTimeMs, timeline)
       const round = Math.max(0, rowNumber(death, 'total_rounds_played') ?? 0)
 
       const victimName = rowString(death, 'user_name', 'victim_name') ?? 'Unknown'
       const killerNameRaw = rowString(death, 'attacker_name') ?? 'World'
+      const assisterName = rowString(death, 'assister_name', 'assistername')
       const victimUserId = userIdForSteam(death.user_steamid ?? death.user_steam_id, victimName)
       const attackerUserId = userIdForSteam(death.attacker_steamid ?? death.attacker_steam_id, killerNameRaw)
 
@@ -223,6 +293,16 @@ export function buildCs2TimelineFromDemo(opts: DemoTimelineOptions): MatchData |
       const isLocalKill = localUserId != null && attackerUserId === localUserId
       const isLocalDeath = localUserId != null && victimId === localUserId
       const weapon = rowString(death, 'weapon') ?? undefined
+      const assistants: string[] = []
+      if (assisterName) {
+        const assisterUserId = userIdForSteam(death.assister_steamid ?? death.assister_steam_id, assisterName)
+        const label = assisterUserId != null && assisterUserId === localUserId ? 'You' : assisterName
+        assistants.push(label)
+        if (label === 'You') localAssists++
+      }
+      if (rowBool(death, 'headshot') && weapon && !weapon.includes('headshot')) {
+        // demoparser2 exposes headshot as a bool — keep weapon string clean
+      }
 
       const ev: KillEvent = {
         EventID: eventId++,
@@ -230,7 +310,7 @@ export function buildCs2TimelineFromDemo(opts: DemoTimelineOptions): MatchData |
         EventTime: gameTimeMs / 1000,
         killerName: isLocalKill ? 'You' : killerNameRaw,
         victimName: isLocalDeath ? 'You' : victimName,
-        assistants: [],
+        assistants,
         timeSinceGameStartMillis: gameTimeMs,
         videoOffsetMs,
         weapon,
@@ -259,13 +339,23 @@ export function buildCs2TimelineFromDemo(opts: DemoTimelineOptions): MatchData |
         }
       }
 
-      if (rowBool(death, 'headshot')) {
-        // preserved on weapon string in some demos; no dedicated field on KillEvent
-      }
-
       killEvents.push(ev)
       if (isLocalKill) playerKills.push(ev)
       if (isLocalDeath) playerDeaths.push(ev)
+
+      if (!firstBloodRound.has(round)) {
+        firstBloodRound.add(round)
+        firstBloods.push({
+          EventID: eventId++,
+          EventName: 'FirstBlood',
+          EventTime: gameTimeMs / 1000,
+          killerName: isLocalKill ? 'You' : killerNameRaw,
+          victimName: isLocalDeath ? 'You' : victimName,
+          round,
+          timeSinceGameStartMillis: gameTimeMs,
+          videoOffsetMs,
+        })
+      }
     }
 
     if (localUserId == null && roundKills.length > 0) {
@@ -293,9 +383,63 @@ export function buildCs2TimelineFromDemo(opts: DemoTimelineOptions): MatchData |
     }
 
     const roundWinners = new Map<number, number>()
+    const roundEndTimes = new Map<number, number>()
     roundEnds.forEach((row, index) => {
       const winner = normalizeTeamId(row.winner)
-      if (winner != null) roundWinners.set(index + 1, winner)
+      const roundNum = rowNumber(row, 'total_rounds_played') ?? index
+      if (winner != null) roundWinners.set(roundNum + 1, winner)
+      const tick = rowNumber(row, 'tick')
+      if (tick != null) {
+        roundEndTimes.set(roundNum, alignedGameTimeForTick(tick, demoAnchorTick, tickRate) / 1000)
+      }
+    })
+
+    const spikePlants: SpikePlantedEvent[] = bombPlants.map((row) => {
+      const tick = rowNumber(row, 'tick') ?? 0
+      const gameTimeMs = alignedGameTimeForTick(tick, demoAnchorTick, tickRate)
+      const round = Math.max(0, rowNumber(row, 'total_rounds_played') ?? 0)
+      const site = rowString(row, 'site', 'bombsite') ?? 'A'
+      const planter = rowString(row, 'user_name', 'player_name') ?? 'Unknown'
+      return {
+        EventID: spikeEventId++,
+        EventName: 'SpikePlanted',
+        EventTime: gameTimeMs / 1000,
+        planter: localName && planter.toLowerCase() === localName.toLowerCase() ? 'You' : planter,
+        site,
+        round,
+        gameTimeMs,
+        videoOffsetMs: gameTimeToVideoOffsetMs(gameTimeMs, timeline),
+      }
+    })
+
+    const spikeDefuses: SpikeDefusedEvent[] = bombDefuses.map((row) => {
+      const tick = rowNumber(row, 'tick') ?? 0
+      const gameTimeMs = alignedGameTimeForTick(tick, demoAnchorTick, tickRate)
+      const round = Math.max(0, rowNumber(row, 'total_rounds_played') ?? 0)
+      const defuser = rowString(row, 'user_name', 'player_name') ?? 'Unknown'
+      return {
+        EventID: spikeEventId++,
+        EventName: 'SpikeDefused',
+        EventTime: gameTimeMs / 1000,
+        defuser: localName && defuser.toLowerCase() === localName.toLowerCase() ? 'You' : defuser,
+        round,
+        gameTimeMs,
+        videoOffsetMs: gameTimeToVideoOffsetMs(gameTimeMs, timeline),
+      }
+    })
+
+    const spikeDetonations: SpikeDetonatedEvent[] = bombExplodes.map((row) => {
+      const tick = rowNumber(row, 'tick') ?? 0
+      const gameTimeMs = alignedGameTimeForTick(tick, demoAnchorTick, tickRate)
+      const round = Math.max(0, rowNumber(row, 'total_rounds_played') ?? 0)
+      return {
+        EventID: spikeEventId++,
+        EventName: 'SpikeDetonated',
+        EventTime: gameTimeMs / 1000,
+        round,
+        gameTimeMs,
+        videoOffsetMs: gameTimeToVideoOffsetMs(gameTimeMs, timeline),
+      }
     })
 
     const roundsPlayed = Math.max(roundWinners.size, ...killEvents.map((k) => (k.round ?? 0) + 1), 0)
@@ -312,14 +456,14 @@ export function buildCs2TimelineFromDemo(opts: DemoTimelineOptions): MatchData |
         roundNumber: r,
         winningTeam: won ? 'ALLY' : winnerTeam != null ? 'ENEMY' : null,
         ceremony: null,
-        endTime: 0,
+        endTime: roundEndTimes.get(r) ?? 0,
         playerStats: null,
-        spikePlanted: false,
-        spikeSite: null,
-        spikePlanter: null,
-        spikeDefused: false,
-        spikeDefuser: null,
-        spikeDetonated: false,
+        spikePlanted: spikePlants.some((p) => p.round === r),
+        spikeSite: spikePlants.find((p) => p.round === r)?.site ?? null,
+        spikePlanter: spikePlants.find((p) => p.round === r)?.planter ?? null,
+        spikeDefused: spikeDefuses.some((d) => d.round === r),
+        spikeDefuser: spikeDefuses.find((d) => d.round === r)?.defuser ?? null,
+        spikeDetonated: spikeDetonations.some((d) => d.round === r),
         playerGold: null,
         playerAbilities: null,
         playerGotFirstBlood: false,
@@ -338,10 +482,14 @@ export function buildCs2TimelineFromDemo(opts: DemoTimelineOptions): MatchData |
     timeline.killEvents = killEvents
     timeline.playerKills = playerKills
     timeline.playerDeaths = playerDeaths
+    timeline.spikePlants = spikePlants
+    timeline.spikeDefuses = spikeDefuses
+    timeline.spikeDetonations = spikeDetonations
+    timeline.firstBloods = firstBloods
     timeline.finalStats = localUserId != null ? {
       kills: playerKills.length,
       deaths: playerDeaths.length,
-      assists: 0,
+      assists: localAssists,
       score: 0,
       summonerName: localName,
       agent: null,
@@ -365,6 +513,11 @@ export function buildCs2TimelineFromDemo(opts: DemoTimelineOptions): MatchData |
       playbackTicks: rowNumber(header, 'playback_ticks', 'playbackTicks') ?? undefined,
       playbackTime: rowNumber(header, 'playback_time', 'playbackTime') ?? undefined,
       parser: 'demoparser2',
+      demoAnchorTick,
+      demoAnchorMs: anchorMs,
+      roundStartCount: roundStarts.length,
+      bombPlants: spikePlants.length,
+      bombDefuses: spikeDefuses.length,
     }
 
     log.info(

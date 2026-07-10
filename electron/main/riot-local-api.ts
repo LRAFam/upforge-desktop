@@ -1864,8 +1864,7 @@ function gameTimeToEventVideoOffsetMs(timeline: MatchData, gameTimeMs: number): 
   if (isValorantTimeline(timeline)) {
     return Math.max(0, totalRecordingOffsetMs(timeline) + gameTimeMs)
   }
-  const syncNudge = timeline.videoSyncOffsetMs ?? 0
-  return Math.max(0, gameTimeToVideoOffsetMs(gameTimeMs, timeline) + syncNudge)
+  return Math.max(0, gameTimeToVideoOffsetMs(gameTimeMs, timeline) + effectiveVideoSyncOffsetMs(timeline))
 }
 
 /** Shift all event timestamps by deltaMs and persist on the timeline object. */

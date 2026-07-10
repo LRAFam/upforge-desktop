@@ -2,7 +2,7 @@ import type { KillEvent, MatchData } from './riot-types'
 
 /**
  * Map in-game time (ms from match/demo start) to offset in the local recording file.
- * Simplified vs Valorant's loading-screen skew — suitable for GSI + demo tick alignment.
+ * For CS2, pass gameTimeMs already aligned to round_start (see cs2-demo-parser demo anchor).
  */
 export function gameTimeToVideoOffsetMs(
   gameTimeMs: number,
@@ -14,6 +14,19 @@ export function gameTimeToVideoOffsetMs(
   }
   const recordingLagMs = Math.max(0, recordingStartTime - matchStartTime)
   return Math.max(0, gameTimeMs - recordingLagMs)
+}
+
+/** CS2 demo ticks before first gun round — subtract so game clock matches the VOD. */
+export function cs2AlignedGameTimeMs(
+  tick: number,
+  anchorTick: number,
+  tickRate: number,
+): number {
+  return Math.max(0, tickToMsFromTick(tick - anchorTick, tickRate))
+}
+
+export function tickToMsFromTick(tick: number, tickRate: number): number {
+  return Math.round((tick / tickRate) * 1000)
 }
 
 /** Normalize matchStartTime to epoch ms (handles legacy seconds values). */

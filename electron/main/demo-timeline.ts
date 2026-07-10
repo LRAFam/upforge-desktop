@@ -41,7 +41,12 @@ export async function buildTimelineFromDemo(opts: DemoTimelineOptions): Promise<
   }
 
   if (opts.game === 'cs2') {
-    return buildCs2TimelineFromDemo(opts)
+    const timeline = buildCs2TimelineFromDemo(opts)
+    if (timeline) {
+      const { recomputeTimelineVideoOffsets } = await import('./riot-local-api')
+      recomputeTimelineVideoOffsets(timeline)
+    }
+    return timeline
   }
 
   return new Promise((resolve) => {

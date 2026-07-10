@@ -8,6 +8,7 @@ import { peekDemoHeader } from './demo-header-peek'
 import { isDemoLikelyIncomplete, sanitizeDemoMapName } from './demo-text-sanitize'
 import { buildTimelineFromDemo } from './demo-timeline'
 import { cs2PlayerIdentityMismatch, hasRichMatchData } from './match-data-quality'
+import { recomputeTimelineVideoOffsets } from './riot-local-api'
 import { resolveMatchSessionStartMs } from './recording-sync'
 import type { RecordingsStore } from './recordings-store'
 import type { MatchData } from './riot-types'
@@ -44,15 +45,21 @@ export async function attachDemoFileToRecording(opts: {
   }
 
   const matchSessionStart = resolveMatchSessionStartMs(rec.timeline, rec.recordedAt)
+  const peekHeader = await peekDemoHeader(normalized, rec.game as SourceGame)
+  const demoDurationMs = (peekHeader?.playbackTime ?? 0) > 0
+    ? Math.round((peekHeader!.playbackTime as number) * 1000)
+    : null
   const recordingStartMs = rec.timeline?.recordingStartTime
     ?? rec.timeline?.gameplayStartTime
     ?? matchSessionStart
+  const inferredMatchStart = rec.timeline?.matchStartTime
+    ?? (demoDurationMs != null ? Math.max(0, rec.recordedAt - demoDurationMs) : matchSessionStart)
 
   const timeline = await buildTimelineFromDemo({
     game: rec.game as SourceGame,
     demoPath: normalized,
     map: rec.map ?? rec.timeline?.map ?? null,
-    matchStartTime: rec.timeline?.matchStartTime ?? matchSessionStart,
+    matchStartTime: inferredMatchStart,
     recordingStartTime: recordingStartMs,
     localPlayerName: opts.localPlayerName ?? null,
   })
@@ -93,6 +100,7 @@ export async function attachDemoFileToRecording(opts: {
     )
   }
 
+  recomputeTimelineVideoOffsets(timeline)
   opts.store.updateTimeline(opts.recordingId, timeline)
   log.info(`[AttachDemo] Linked ${rec.game} demo to recording ${opts.recordingId}:`, normalized)
   opts.logActivity?.(`${rec.game === 'cs2' ? 'CS2 demo' : 'Deadlock replay'} linked — building timeline`)
