@@ -13,7 +13,12 @@ import { isPaymentPastDue, openBillingPortal as requestBillingPortal } from '../
 import { usePrimaryGame } from './usePrimaryGame'
 import { gameTheme, type GameTheme } from '../lib/game-themes'
 import { openAccountLinkSettings } from '../lib/account-link-navigation'
-import { loadGameAnalyses } from '../lib/game-modules'
+import {
+  loadGameAnalyses,
+  openGameAnalysis,
+  openGameHistoryWeb,
+  openGameAnalyze,
+} from '../lib/game-modules'
 import { loadCoachReviewSummaries, type CoachReviewSummary } from '../lib/coach-review-cache'
 import { openAnalysisVodReview } from '../lib/open-vod-review'
 import { getFaceitLevelIconUrl, type Cs2FaceitConnection, type Cs2ProfilePayload } from '../lib/cs2'
