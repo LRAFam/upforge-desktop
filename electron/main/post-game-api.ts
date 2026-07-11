@@ -156,6 +156,38 @@ export async function requestPostGameDebrief(opts: PostGameDebriefOptions): Prom
   const parsedUrl = new URL(`${apiBase}/api/desktop-submissions/debrief`)
   const proto = parsedUrl.protocol === 'https:' ? await import('https') : await import('http')
 
+  const maxAttempts = 2
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    const result = await postDebriefOnce(
+      proto,
+      parsedUrl,
+      body,
+      token,
+      riotName,
+      riotTag,
+      agent,
+      map,
+      sendToWindow,
+      attempt >= maxAttempts,
+    )
+    if (result !== 'retry' || attempt >= maxAttempts) return
+    log.warn(`[Debrief] Retrying after transient API failure (attempt ${attempt + 1}/${maxAttempts})`)
+    await new Promise((resolve) => setTimeout(resolve, 2000 * attempt))
+  }
+}
+
+function postDebriefOnce(
+  proto: typeof import('https') | typeof import('http'),
+  parsedUrl: URL,
+  body: string,
+  token: string,
+  riotName: string,
+  riotTag: string,
+  agent: string | null,
+  map: string | null,
+  sendToWindow: PostGameDebriefOptions['sendToWindow'],
+  reportFailures: boolean,
+): Promise<'ok' | 'retry'> {
   return new Promise((resolve) => {
     const req = proto.default.request({
       method:   'POST',
@@ -177,15 +209,18 @@ export async function requestPostGameDebrief(opts: PostGameDebriefOptions): Prom
           if ((res.statusCode ?? 0) >= 400) {
             const errMsg = json.message ?? json.error ?? `HTTP ${res.statusCode}`
             log.warn('[Debrief] API error:', res.statusCode, errMsg)
+            const status = res.statusCode ?? 0
+            const retryable = status === 502 || status === 503 || status === 504
             // Weekly debrief cap (429) is tier gating — not a product error.
-            if (res.statusCode !== 429) {
+            if (status !== 429 && !retryable && reportFailures) {
               reportError({
-                message: `[Debrief] API error ${res.statusCode}: ${errMsg}`,
+                message: `[Debrief] API error ${status}: ${errMsg}`,
                 component: 'desktop:Debrief',
-                extra: { statusCode: res.statusCode },
+                extra: { statusCode: status },
               })
             }
             sendToWindow('post-game:debrief', null)
+            resolve(retryable ? 'retry' : 'ok')
           } else {
             log.info(`[Debrief] Generated for ${riotName}#${riotTag} cost=$${json.estimated_cost_usd ?? 0}`)
             sendToWindow('post-game:debrief', {
@@ -194,24 +229,28 @@ export async function requestPostGameDebrief(opts: PostGameDebriefOptions): Prom
               map,
               discordLinked: json.discord_linked ?? false,
             })
+            resolve('ok')
           }
         } catch {
           log.warn('[Debrief] Non-JSON response:', data.slice(0, 200))
           sendToWindow('post-game:debrief', null)
+          resolve('retry')
         }
-        resolve()
       })
     })
     req.on('error', (err: Error) => {
       log.warn('[Debrief] Request error:', err.message)
-      reportError({ message: `[Debrief] Request error: ${err.message}`, stack: err.stack, component: 'desktop:Debrief' })
+      if (reportFailures) {
+        reportError({ message: `[Debrief] Request error: ${err.message}`, stack: err.stack, component: 'desktop:Debrief' })
+      }
       sendToWindow('post-game:debrief', null)
-      resolve()
+      resolve('retry')
     })
     req.setTimeout(120_000, () => {
       log.warn('[Debrief] Request timed out after 120s')
       sendToWindow('post-game:debrief', null)
       req.destroy(new Error('Debrief request timed out after 120s'))
+      resolve('retry')
     })
     req.write(body)
     req.end()

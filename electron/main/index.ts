@@ -4172,6 +4172,14 @@ async function doUploadAndAnalyse(
       return null
     }
 
+    if (/ENOENT|Recording file not found/i.test(msg)) {
+      sendUploadFailure(
+        'Recording file was removed before upload finished. If auto-delete is on, wait until upload completes — or retry from dashboard if the file is still saved.',
+        { targetWindow, recordingId, notify: false },
+      )
+      return null
+    }
+
     reportPipelineError('upload', msg, {
       recordingId: recordingId ?? null,
       game,

@@ -95,6 +95,7 @@ export function setupRendererErrorReporter(app: App): void {
     const message = reason instanceof Error ? reason.message : String(reason?.message || reason)
     if (message.includes('AbortError')) return
     if (/Object Not Found Matching Id/i.test(message)) return
+    if (/ENOENT|Recording file not found/i.test(message)) return
     reportError({
       message: `Unhandled rejection: ${message}`,
       stack: reason instanceof Error ? reason.stack : undefined,

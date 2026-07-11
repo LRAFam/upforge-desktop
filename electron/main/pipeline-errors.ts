@@ -33,6 +33,9 @@ const SKIP_PATTERNS = [
   /epipe/i,
   /enotfound/i,
   /eai_again/i,
+  /enoent/i,
+  /recording file not found/i,
+  /recording file was removed/i,
   /request failed \(5\d\d\)/i,
 ]
 

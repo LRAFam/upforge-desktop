@@ -709,6 +709,12 @@ export class UploadManager {
         }
       }, 5_000)
 
+      if (!fs.existsSync(filePath)) {
+        clearInterval(stallCheck)
+        reject(new Error(`Recording file not found: ${filePath}`))
+        return
+      }
+
       const stream = fs.createReadStream(filePath, { highWaterMark: S3_UPLOAD_READ_HIGH_WATER_MARK })
       stream.on('data', (chunk: Buffer | string) => {
         uploaded += typeof chunk === 'string' ? chunk.length : chunk.length
@@ -721,6 +727,9 @@ export class UploadManager {
   }
 
   private async _readFileSlice(filePath: string, start: number, length: number): Promise<Buffer> {
+    if (!fs.existsSync(filePath)) {
+      throw new Error(`Recording file not found: ${filePath}`)
+    }
     const fd = await fs.promises.open(filePath, 'r')
     try {
       const buffer = Buffer.alloc(length)
