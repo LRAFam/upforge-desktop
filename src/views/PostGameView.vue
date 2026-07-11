@@ -734,7 +734,7 @@ import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
 import { openAnalysisVodReview } from '../lib/open-vod-review'
 import { getAgentImage, getAgentColor, getMapImage, getMapMinimap } from '../lib/valorant'
-import { analysisResultsUrl, isPrimaryGame, normalizePrimaryGame, recordingGameLabel, type PrimaryGame } from '../lib/games'
+import { analysisResultsUrl, desktopVodResultsUrl, isPrimaryGame, normalizePrimaryGame, recordingGameLabel, type PrimaryGame } from '../lib/games'
 import { cs2MapDisplayName, getCs2RadarUrl, isCs2Map } from '../lib/cs2-maps'
 import PostGameDebriefCarousel from '../components/post-game/PostGameDebriefCarousel.vue'
 import GamingButton from '../components/GamingButton.vue'
@@ -1841,7 +1841,7 @@ async function openClips() {
 const analysisUrl = computed(() => {
   if (!result.value?.analysis_id) return ''
   const game = isPrimaryGame(gameInfo.value.game) ? gameInfo.value.game : normalizePrimaryGame(gameInfo.value.game)
-  return analysisResultsUrl(game as PrimaryGame, result.value.analysis_id)
+  return desktopVodResultsUrl(game as PrimaryGame, result.value.analysis_id)
 })
 
 function viewFullAnalysis() {

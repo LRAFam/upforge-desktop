@@ -1,7 +1,7 @@
 import type { Router } from 'vue-router'
 import type { AnalysisItem } from '../env.d.ts'
 import type { PrimaryGame } from './games'
-import { analysisResultsUrl } from './games'
+import { analysisResultsUrl, desktopVodResultsUrl } from './games'
 import { pendingTimeline } from '../stores/pendingTimeline'
 import { isAnalysisProcessing } from './dashboard-match-row'
 
@@ -25,6 +25,8 @@ export async function openGameAnalysis(
           return
         }
       } catch { /* fall through to web */ }
+      window.open(desktopVodResultsUrl('cs2', item.id), '_blank')
+      return
     }
     if (item.job_id) {
       window.open(analysisResultsUrl('cs2', item.job_id), '_blank')
