@@ -1,8 +1,8 @@
 /** Game context stored on each local clip. */
-export type ClipGame = 'valorant' | 'cs2' | 'deadlock'
+export type ClipGame = 'valorant' | 'cs2' | 'deadlock' | 'lol'
 
 export function normalizeClipGame(value: string | null | undefined): ClipGame {
-  if (value === 'cs2' || value === 'deadlock') return value
+  if (value === 'cs2' || value === 'deadlock' || value === 'lol') return value
   return 'valorant'
 }
 

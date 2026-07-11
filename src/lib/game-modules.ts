@@ -3,11 +3,13 @@ import type { AnalysisItem } from '../env.d.ts'
 import type { PrimaryGame } from './games'
 import { mapDeadlockToAnalysisItem } from './deadlock-analyses'
 import { mapCs2ToAnalysisItem } from './cs2-analyses'
+import { mapLolToAnalysisItem } from './lol-analyses'
 import CS2StatsPanel from '../components/CS2StatsPanel.vue'
 import Cs2ValveStatsPanel from '../components/Cs2ValveStatsPanel.vue'
 import CS2SetupPanel from '../components/CS2SetupPanel.vue'
 import DeadlockStatsPanel from '../components/DeadlockStatsPanel.vue'
 import DeadlockDemoPanel from '../components/DeadlockDemoPanel.vue'
+import LolStatsPanel from '../components/LolStatsPanel.vue'
 
 export interface GameFeatures {
   /** Valorant VOD timeline in-app */
@@ -82,6 +84,13 @@ async function loadCs2Analyses(limit = 10): Promise<AnalysisItem[]> {
     .map(mapCs2ToAnalysisItem)
 }
 
+async function loadLolAnalyses(limit = 10): Promise<AnalysisItem[]> {
+  const items = await window.api.lol.getAnalyses(limit).catch(() => [])
+  return items
+    .filter(a => a.status === 'completed')
+    .map(mapLolToAnalysisItem)
+}
+
 export const GAME_MODULES: Record<PrimaryGame, GameModule> = {
   valorant: {
     id: 'valorant',
@@ -109,6 +118,15 @@ export const GAME_MODULES: Record<PrimaryGame, GameModule> = {
     loadAnalyses: loadDeadlockAnalyses,
     openAnalyze: () => { void window.api.deadlock.openAnalyze() },
     openHistoryWeb: () => { window.open('https://upforge.gg/deadlock/history', '_blank') },
+  },
+  lol: {
+    id: 'lol',
+    centerPanels: [LolStatsPanel],
+    navRoutes: DEMO_GAME_NAV,
+    features: DEMO_GAME_FEATURES,
+    loadAnalyses: loadLolAnalyses,
+    openAnalyze: () => { window.open('https://upforge.gg/lol/analyze', '_blank') },
+    openHistoryWeb: () => { window.open('https://upforge.gg/lol/history', '_blank') },
   },
 }
 
@@ -143,4 +161,5 @@ export const DASHBOARD_CENTER_PANELS = {
   get valorant() { return GAME_MODULES.valorant.centerPanels },
   get cs2() { return GAME_MODULES.cs2.centerPanels },
   get deadlock() { return GAME_MODULES.deadlock.centerPanels },
+  get lol() { return GAME_MODULES.lol.centerPanels },
 }

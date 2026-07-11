@@ -256,6 +256,14 @@ const api = {
     syncIdentity: (steamDisplayName: string) => ipcRenderer.invoke('cs2:sync-identity', steamDisplayName),
     getFaceitConnection: () => ipcRenderer.invoke('cs2:get-faceit-connection'),
   },
+  lol: {
+    getAnalyses: (limit?: number) => ipcRenderer.invoke('lol:get-analyses', limit),
+    getRecentMatches: (_force?: boolean) => ipcRenderer.invoke('lol:get-recent-matches'),
+    openAnalyze: () => ipcRenderer.invoke('lol:open-analyze'),
+    openHistory: () => ipcRenderer.invoke('lol:open-history'),
+    openResults: (analysisId: number | string) => ipcRenderer.invoke('lol:open-results', analysisId),
+    openConnectRiot: () => ipcRenderer.invoke('lol:open-connect-riot'),
+  },
   forgeRank: {
     prestige: () => ipcRenderer.invoke('forge-rank:prestige'),
   },

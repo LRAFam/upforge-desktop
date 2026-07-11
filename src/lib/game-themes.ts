@@ -98,6 +98,29 @@ export const GAME_THEMES: Record<PrimaryGame, GameTheme> = {
     historyFilterActiveClass: 'bg-teal-500/15 text-teal-400 border-teal-500/30',
     historyRowActiveClass: 'border-teal-500/35 bg-teal-500/[0.08] shadow-[0_0_0_1px_rgba(20,184,166,0.12)]',
   },
+  lol: {
+    id: 'lol',
+    name: 'League of Legends',
+    shortName: 'LoL',
+    hexColor: '#c89b3c',
+    rgb: '200,155,60',
+    artwork: PRIMARY_GAME_ARTWORK.lol,
+    accentText: 'text-amber-400',
+    accentMuted: 'text-amber-400/60',
+    accentBg: 'bg-amber-500/10',
+    accentBorder: 'border-amber-500/20',
+    navActiveClass: 'text-white bg-amber-500/[0.10] shadow-[inset_0_0_0_1px_rgba(200,155,60,0.22)]',
+    chromeGradient: 'from-transparent via-amber-500/70 to-yellow-600/60',
+    coachingEmptyTitle: 'No LoL coaching yet',
+    coachingEmptyMessage: () =>
+      'Play a Ranked Solo/Duo match with the desktop app running — stats debrief appears after the game',
+    coachingEmptyAction: () => 'Link Riot →',
+    accountLinkLabel: 'Link Riot ID →',
+    goalRankClass: 'text-amber-300',
+    rankFallback: 'Unranked',
+    historyFilterActiveClass: 'bg-amber-500/15 text-amber-400 border-amber-500/30',
+    historyRowActiveClass: 'border-amber-500/35 bg-amber-500/[0.08] shadow-[0_0_0_1px_rgba(200,155,60,0.12)]',
+  },
 }
 
 export function gameTheme(game: PrimaryGame): GameTheme {

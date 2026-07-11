@@ -478,6 +478,36 @@ export function setupGamingHandlers(
     }
   })
 
+  // ── League of Legends ─────────────────────────────────────────────────────
+
+  ipcMain.handle('lol:get-analyses', async (_event, limit = 10) => {
+    return auth.fetchLolAnalyses(limit)
+  })
+
+  ipcMain.handle('lol:get-recent-matches', async () => {
+    return auth.fetchLolRecentMatches()
+  })
+
+  ipcMain.handle('lol:open-analyze', () => {
+    shell.openExternal('https://upforge.gg/lol/analyze')
+    return { ok: true }
+  })
+
+  ipcMain.handle('lol:open-history', () => {
+    shell.openExternal('https://upforge.gg/lol/history')
+    return { ok: true }
+  })
+
+  ipcMain.handle('lol:open-results', (_event, analysisId: number | string) => {
+    shell.openExternal(`https://upforge.gg/lol/results/${analysisId}`)
+    return { ok: true }
+  })
+
+  ipcMain.handle('lol:open-connect-riot', () => {
+    shell.openExternal('https://upforge.gg/profile?tab=games')
+    return { ok: true }
+  })
+
   // ── ForgeRank ─────────────────────────────────────────────────────────────
 
   ipcMain.handle('forge-rank:prestige', async () => {

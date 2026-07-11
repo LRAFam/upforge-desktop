@@ -742,6 +742,7 @@ import { openAnalysisVodReview } from '../lib/open-vod-review'
 import { getAgentImage, getAgentColor, getMapImage, getMapMinimap } from '../lib/valorant'
 import { analysisResultsUrl, desktopVodResultsUrl, isPrimaryGame, normalizePrimaryGame, recordingGameLabel, type PrimaryGame } from '../lib/games'
 import { cs2MapDisplayName, getCs2RadarUrl, isCs2Map } from '../lib/cs2-maps'
+import { championIconUrl } from '../lib/lol'
 import PostGameDebriefCarousel from '../components/post-game/PostGameDebriefCarousel.vue'
 import GamingButton from '../components/GamingButton.vue'
 import AnalysisPipelineStages from '../components/analysis/AnalysisPipelineStages.vue'
@@ -892,7 +893,7 @@ const pendingAnalyseButtonLabel = computed(() => {
     if (demoStatus.value?.status === 'downloading' || demoStatus.value?.status === 'gc_lookup') {
       return demoDownloadLabel.value
     }
-    return gameInfo.value.game === 'cs2' ? 'Waiting for demo…' : 'Syncing stats…'
+    return gameInfo.value.game === 'cs2' ? 'Waiting for demo…' : gameInfo.value.game === 'lol' ? 'Waiting for match stats…' : 'Syncing stats…'
   }
   return 'Not ready'
 })
@@ -900,10 +901,12 @@ const pendingAnalyseButtonLabel = computed(() => {
 const analysisHeroTitle = computed(() => {
   if (gameInfo.value.game === 'cs2') return 'Analysing your CS2 match'
   if (gameInfo.value.game === 'deadlock') return 'Analysing your match'
+  if (gameInfo.value.game === 'lol') return 'Analysing your League match'
   return 'Reviewing your duels'
 })
 
 const isCs2Game = computed(() => gameInfo.value.game === 'cs2')
+const isLolGame = computed(() => gameInfo.value.game === 'lol')
 
 const isDemoWaitFlow = computed(() => false)
 
@@ -1212,6 +1215,9 @@ const matchHeadline = computed(() => {
   if (gameInfo.value.game === 'deadlock') {
     return gameInfo.value.agent || gameInfo.value.map || 'Deadlock match'
   }
+  if (gameInfo.value.game === 'lol') {
+    return gameInfo.value.agent || "Summoner's Rift"
+  }
   return gameInfo.value.agent || gameLabel.value
 })
 
@@ -1317,6 +1323,9 @@ const agentImageUrl = computed(() => {
   if (isCs2Game.value && gameInfo.value.map && isCs2Map(gameInfo.value.map)) {
     return getCs2RadarUrl(gameInfo.value.map)
   }
+  if (isLolGame.value && gameInfo.value.agent) {
+    return championIconUrl(gameInfo.value.agent)
+  }
   return gameInfo.value.agent ? getAgentImage(gameInfo.value.agent) : ''
 })
 const agentImageBroken = ref(false)
@@ -1325,6 +1334,7 @@ watch(() => gameInfo.value.map, () => { agentImageBroken.value = false })
 const agentAccentColor = computed(() => {
   if (isCs2Game.value) return '#3b82f6'
   if (gameInfo.value.game === 'deadlock') return '#eab308'
+  if (isLolGame.value) return '#c89b3c'
   return gameInfo.value.agent ? getAgentColor(gameInfo.value.agent) : ''
 })
 const mapSplashUrl = computed(() => {

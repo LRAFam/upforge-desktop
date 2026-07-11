@@ -90,6 +90,17 @@ describe('getAnalysisReadiness', () => {
     expect(readiness.state).toBe('unavailable')
     expect(readiness.message).toContain('Could not link')
   })
+
+  it('waits for riot match stats on fresh lol recordings', () => {
+    const rec = baseRecording({
+      game: 'lol',
+      recordedAt: Date.now() - 30_000,
+      timeline: { ...sparseTimeline('900000042'), game: 'lol', agent: 'Ahri' },
+    })
+    const readiness = getAnalysisReadiness(rec)
+    expect(readiness.ready).toBe(false)
+    expect(readiness.state).toBe('waiting_match_data')
+  })
 })
 
 describe('getVodFileReadiness', () => {

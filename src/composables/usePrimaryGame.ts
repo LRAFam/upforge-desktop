@@ -13,6 +13,7 @@ export function usePrimaryGame() {
   const isValorant = computed(() => primaryGame.value === 'valorant')
   const isCs2 = computed(() => primaryGame.value === 'cs2')
   const isDeadlock = computed(() => primaryGame.value === 'deadlock')
+  const isLol = computed(() => primaryGame.value === 'lol')
 
   async function loadFromSettings(): Promise<PrimaryGame> {
     try {
@@ -49,6 +50,7 @@ export function usePrimaryGame() {
     isValorant,
     isCs2,
     isDeadlock,
+    isLol,
     loadFromSettings,
     setPrimaryGame,
     applyFromSettings,

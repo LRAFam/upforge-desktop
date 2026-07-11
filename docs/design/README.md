@@ -40,9 +40,12 @@ design/
 | `dashboard/artwork/valorant-card-bg.png` | Valorant card background |
 | `dashboard/artwork/cs2-card-bg.png` | CS2 card background |
 | `dashboard/artwork/deadlock-card-bg.png` | Deadlock card background |
+| `dashboard/artwork/lol-card-bg.png` | LoL card background (gold/blue Summoner's Rift mood) |
 | `dashboard/artwork/*-emblem.png` | Fallback rank emblem when account not linked |
 
 Runtime copies: `src/assets/games/`.
+
+**LoL artwork prompt (placeholder v1):** UpForge-branded League hub card — deep navy base, gold `#c89b3c` accents, subtle Summoner's Rift lane/map silhouette, no Riot logos. Replace placeholder PNGs when final art is generated.
 
 ## Dashboard — concepts (Jul 2026)
 

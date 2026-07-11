@@ -6,7 +6,7 @@ import {
   type RecordingPresetId,
 } from './recording-preset'
 
-export type PrimaryGame = 'valorant' | 'cs2' | 'deadlock'
+export type PrimaryGame = 'valorant' | 'cs2' | 'deadlock' | 'lol'
 
 export interface AppSettings {
   /** Active game context — drives dashboard copy, settings sections, and web links. */
@@ -80,7 +80,7 @@ export interface AppSettings {
   /** Mouse & trainer sensitivity settings */
   trainerMouse: {
     dpi: number
-    game: 'valorant' | 'cs2' | 'deadlock' | 'apex' | 'overwatch2' | 'custom'
+    game: 'valorant' | 'cs2' | 'deadlock' | 'lol' | 'apex' | 'overwatch2' | 'custom'
     sensitivity: number
     fov: number
     rawInput: boolean

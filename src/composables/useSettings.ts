@@ -424,7 +424,7 @@ function createSettings() {
   const toggles: Array<{ key: keyof Pick<AppSettings, 'launchOnStartup' | 'autoDelete' | 'autoAnalyse' | 'notificationSound' | 'autoOpenBrowser' | 'discordRichPresence'>; label: string; hint: string | null }> = [
     { key: 'launchOnStartup', label: 'Launch on startup', hint: null },
     { key: 'autoDelete', label: 'Auto-delete after analysis', hint: 'Removes the local file once coaching finishes successfully — kept on failure for review and retry' },
-    { key: 'autoAnalyse', label: 'Auto-analyse after game', hint: 'Upload and run AI coaching automatically when a match ends (uses analysis quota)' },
+    { key: 'autoAnalyse', label: 'Auto-analyse after game', hint: 'Upload and run AI coaching automatically when a match ends (uses your shared analysis pool across all games)' },
     { key: 'autoOpenBrowser', label: 'Open results in browser', hint: 'Opens the full web report when analysis completes — review in-app first with this off' },
     { key: 'notificationSound', label: 'Notification sound', hint: 'Play a sound with system notifications' },
     { key: 'discordRichPresence', label: 'Show status in Discord', hint: 'Advertises UpForge on your profile. Buttons only appear when someone else opens your full profile — not on your own.' },

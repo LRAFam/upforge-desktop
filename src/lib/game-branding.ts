@@ -9,6 +9,7 @@
 import valorantLogo from '../assets/games/valorant-logo.png'
 import cs2Logo from '../assets/games/cs2-icon.png'
 import deadlockLogo from '../assets/games/deadlock-icon.png'
+import lolLogo from '../assets/games/lol-icon.png'
 import type { PrimaryGame } from './games'
 
 export interface GameBrand {
@@ -60,6 +61,17 @@ export const GAME_BRAND: Record<PrimaryGame, GameBrand> = {
     accentRgb: '234, 179, 8',
     ctaSolid: false,
     ctaLabel: 'Review replay',
+    ctaIcon: 'play',
+  },
+  lol: {
+    logo: lolLogo,
+    wordmark: 'LEAGUE',
+    rankLabel: 'Ranked Solo/Duo',
+    accent: '#c89b3c',
+    accentMuted: '#c89b3c88',
+    accentRgb: '200, 155, 60',
+    ctaSolid: false,
+    ctaLabel: 'Analyze match',
     ctaIcon: 'play',
   },
 }

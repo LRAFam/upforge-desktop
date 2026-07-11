@@ -82,7 +82,7 @@ export interface CoachingDrill {
   } | null
 }
 
-export type PrimaryGame = 'valorant' | 'cs2' | 'deadlock'
+export type PrimaryGame = 'valorant' | 'cs2' | 'deadlock' | 'lol'
 
 export interface AppSettings {
   /** Active game context — drives dashboard, settings sections, and web links. */
@@ -152,7 +152,7 @@ export interface AppSettings {
   /** Mouse & trainer sensitivity settings */
   trainerMouse: {
     dpi: number
-    game: 'valorant' | 'cs2' | 'deadlock' | 'apex' | 'overwatch2' | 'custom'
+    game: 'valorant' | 'cs2' | 'deadlock' | 'lol' | 'apex' | 'overwatch2' | 'custom'
     sensitivity: number
     fov: number
     rawInput: boolean
@@ -437,6 +437,35 @@ export interface DeadlockAnalysisItem {
   deaths: number | null
   assists: number | null
   created_at: string
+  completed_at: string | null
+}
+
+export interface LolMatchSummary {
+  match_id: string
+  queue_id: number
+  champion: string
+  role: string
+  lane: string
+  win: boolean
+  kills: number
+  deaths: number
+  assists: number
+  game_duration_seconds: number
+  game_creation: number
+}
+
+export interface LolAnalysisItem {
+  id: number
+  job_id: string | null
+  match_id: string
+  status: string
+  readiness_state: string | null
+  champion: string | null
+  role: string | null
+  lane: string | null
+  queue_id: number | null
+  source: string | null
+  created_at: string | null
   completed_at: string | null
 }
 
@@ -1124,6 +1153,14 @@ declare global {
           synced_at?: string | null
           has_auto_sync?: boolean
         }>
+      }
+      lol: {
+        getAnalyses: (limit?: number) => Promise<LolAnalysisItem[]>
+        getRecentMatches: (force?: boolean) => Promise<LolMatchSummary[]>
+        openAnalyze: () => Promise<{ ok: boolean }>
+        openHistory: () => Promise<{ ok: boolean }>
+        openResults: (analysisId: number | string) => Promise<{ ok: boolean }>
+        openConnectRiot: () => Promise<{ ok: boolean }>
       }
       forgeRank: {
         prestige: () => Promise<{ success: boolean; forge_rank?: ForgeRankInfo; message?: string }>

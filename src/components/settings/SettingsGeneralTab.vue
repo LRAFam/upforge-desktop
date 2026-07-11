@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { onMounted, onUnmounted, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useSettings } from '../../composables/useSettings'
+import { sharedAnalysesPoolHint } from '../../lib/quota-display'
 import PaymentFailedAlert from '../../components/PaymentFailedAlert.vue'
 import SettingsAccountLinks from './SettingsAccountLinks.vue'
 
@@ -63,6 +64,10 @@ onMounted(() => {
 onUnmounted(() => {
   if (discordStatusTimer) clearInterval(discordStatusTimer)
 })
+
+const analysesPoolHint = computed(() =>
+  sharedAnalysesPoolHint(user.value?.analyses_used, user.value?.analyses_limit),
+)
 </script>
 
 <template>
@@ -72,7 +77,7 @@ onUnmounted(() => {
 <div class="panel-elevated overflow-hidden p-4">
           <p class="text-sm font-semibold text-white">Your game</p>
           <p class="mt-1 text-xs text-gray-500">Switches dashboard, settings, and web links — same as upforge.gg.</p>
-          <div class="mt-3 grid grid-cols-3 gap-2">
+          <div class="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
             <button
               v-for="game in PRIMARY_GAMES"
               :key="game.id"
@@ -188,6 +193,7 @@ onUnmounted(() => {
                 <div class="h-full rounded-full bg-gradient-to-r from-red-500 to-orange-500 transition-all" :style="{ width: usagePercent + '%' }" />
               </div>
               <p class="mt-2 text-[11px] text-gray-600">Used when you run full-match AI coaching.</p>
+              <p class="mt-1 text-[10px] text-gray-500">{{ analysesPoolHint }}</p>
             </div>
             <div v-if="user.archive_limit != null" class="rounded-2xl border border-white/[0.10] bg-black/20 p-4">
               <div class="flex items-center justify-between text-xs">

@@ -15,10 +15,11 @@ const GAME_PROCESSES: Record<string, string[]> = {
   valorant: ['VALORANT-Win64-Shipping.exe'],
   cs2: ['cs2.exe'],
   deadlock: ['deadlock.exe'],
+  lol: ['League of Legends.exe'],
 }
 
 /** Stable priority when multiple games run — user's primary wins if it is running. */
-export const GAME_DETECTION_ORDER = ['valorant', 'cs2', 'deadlock'] as const
+export const GAME_DETECTION_ORDER = ['valorant', 'cs2', 'deadlock', 'lol'] as const
 
 // Poll interval when no game is running (check for game start)
 const POLL_IDLE_MS = 5000

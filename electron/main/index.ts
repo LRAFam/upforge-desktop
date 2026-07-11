@@ -65,6 +65,7 @@ import {
   effectiveVideoSyncOffsetMs,
   defaultVideoSyncOffsetMs,
 } from './riot-local-api'
+import { LoLLiveClientApi } from './lol-live-client-api'
 import {
   resolveMatchSessionStartMs,
   timelineDeathsForVod,
@@ -217,6 +218,7 @@ import { attachDemoFileToRecording } from './recording-demo-attach'
 function gameLabel(game?: string | null): string {
   if (game === 'cs2') return 'CS2'
   if (game === 'deadlock') return 'Deadlock'
+  if (game === 'lol') return 'League of Legends'
   return 'Valorant'
 }
 
@@ -443,6 +445,7 @@ const discordRPC = new DiscordRPC(
   () => settingsManager?.get()?.discordRichPresence !== false,
 )
 const riotLocalApi = new RiotLocalApi()
+const lolLiveClientApi = new LoLLiveClientApi()
 const authManager = new AuthManager()
 
 // Set up crash/error reporting now that authManager is available
@@ -746,8 +749,8 @@ function mergeSpatialSummary(
   return api ?? localSpatial ?? null
 }
 
-function normalizePrimaryGame(value: string | null | undefined): 'valorant' | 'cs2' | 'deadlock' {
-  if (value === 'cs2' || value === 'deadlock' || value === 'valorant') return value
+function normalizePrimaryGame(value: string | null | undefined): 'valorant' | 'cs2' | 'deadlock' | 'lol' {
+  if (value === 'cs2' || value === 'deadlock' || value === 'valorant' || value === 'lol') return value
   return 'valorant'
 }
 
@@ -806,7 +809,7 @@ async function ensureObsCaptureForGame(game: string): Promise<void> {
   }
   if (!obsRecorder.isConnected()) return
 
-  const needsLiveWindow = game === 'cs2' || game === 'deadlock'
+  const needsLiveWindow = game === 'cs2' || game === 'deadlock' || game === 'lol'
   const processRunning =
     gameDetector.currentGame() === game || await gameDetector.isGameProcessRunning(game)
 
@@ -1868,6 +1871,7 @@ function setupGameDetection(): void {
     matchHandled = true
     clearOverlayPolling()
     riotLocalApi.onMatchEnded = null
+    lolLiveClientApi.onMatchEnded = null
     mainWindow?.webContents.send('recording:starting', { starting: false })
 
     const run = async (): Promise<boolean> => {
@@ -1925,6 +1929,7 @@ function setupGameDetection(): void {
     console.log(`[MatchEnd] ${source} — stopping recording (${elapsedSec}s captured)`)
     logActivity(`Match ended (${source}) — stopping recording (${durationLabel})`)
     riotLocalApi.onMatchEnded = null
+    lolLiveClientApi.onMatchEnded = null
 
     const didFinalize = await finalizeMatchOnce(game, source)
     if (!didFinalize) return
@@ -2046,7 +2051,10 @@ function setupGameDetection(): void {
     let pendingReplayPath: string | null = null
 
     await Promise.all([
-      (async () => { timeline = await riotLocalApi.stop() })(),
+      (async () => {
+        if (game === 'valorant') timeline = await riotLocalApi.stop()
+        else if (game === 'lol') timeline = await lolLiveClientApi.stop()
+      })(),
       obsRecorder.stop(),
     ])
 
@@ -2131,7 +2139,9 @@ function setupGameDetection(): void {
     const agent = timeline?.agent ?? (game === 'deadlock' ? getDeadlockHero() : null) ?? null
     const gameMode = game === 'valorant'
       ? (riotLocalApi.getLastGameMode() ?? 'UNKNOWN')
-      : (timeline?.gameMode ?? 'COMPETITIVE')
+      : game === 'lol'
+        ? (timeline?.gameMode ?? 'RANKED_SOLO')
+        : (timeline?.gameMode ?? 'COMPETITIVE')
     const autoAnalyse = config?.autoAnalyse !== false
 
     async function maybeUploadDemoOnly(reason: string): Promise<void> {
@@ -2930,6 +2940,34 @@ function setupGameDetection(): void {
           break
         }
       }
+    } else if (game === 'lol') {
+      logActivity('League of Legends detected — waiting for live match (Live Client API)')
+
+      const MATCH_TIMEOUT_MS = 25 * 60 * 1000
+      const loopStart = Date.now()
+      let apiHintShown = false
+      const deadline = Date.now() + MATCH_TIMEOUT_MS
+      while (Date.now() < deadline && !cancelled) {
+        if (abortIfStale(isStale, game)) return
+        await new Promise((r) => setTimeout(r, 1500))
+        if (cancelled) break
+        if (!await gameDetector.isGameProcessRunning(game)) { cancelled = true; break }
+
+        const probe = await lolLiveClientApi.probeActiveMatch()
+        if (!probe?.inMatch && !apiHintShown && Date.now() - loopStart > 45_000) {
+          apiHintShown = true
+          logActivity('In a loading screen or lobby — UpForge starts recording when the Live Client API sees an active game')
+        }
+
+        if (probe?.inMatch) {
+          matchStartTime = Date.now()
+          currentMatchStartTime = matchStartTime
+          gameMode = probe.gameMode ?? 'RANKED_SOLO'
+          modeConfident = true
+          currentGsiMapName = probe.mapName
+          break
+        }
+      }
     } else if (game === 'valorant') {
     // ── Presence-based match detection ────────────────────────────────────
     // Try to use the Riot Local API to detect when the match actually goes
@@ -3095,7 +3133,7 @@ function setupGameDetection(): void {
       return
     }
 
-    if ((game === 'cs2' || game === 'deadlock') && cancelled) {
+    if ((game === 'cs2' || game === 'deadlock' || game === 'lol') && cancelled) {
       logActivity(`${gameLabel(game)} closed before a match — watching for the game to reopen`)
       console.log('[GameDetector] Game closed during match wait — re-arming detection')
       tray?.setToolTip(idleTooltip(game))
@@ -3104,7 +3142,7 @@ function setupGameDetection(): void {
       return
     }
 
-    if ((game === 'cs2' || game === 'deadlock') && matchStartTime === null) {
+    if ((game === 'cs2' || game === 'deadlock' || game === 'lol') && matchStartTime === null) {
       logActivity('No match started — returning to idle')
       console.log(`[GameDetector] ${game} match wait timed out without live match — not recording`)
       tray?.setToolTip(idleTooltip(game))
@@ -3179,6 +3217,9 @@ function setupGameDetection(): void {
       riotLocalApi.cancelMenuWatch()
       riotLocalApi.onMatchEnded = () => finishActiveMatch(game, 'presence')
       riotLocalApi.start(game, matchStartTime ?? undefined)
+    } else if (game === 'lol') {
+      lolLiveClientApi.onMatchEnded = () => finishActiveMatch(game, 'live-client')
+      lolLiveClientApi.start(matchStartTime ?? undefined)
     } else if (game === 'cs2' || game === 'deadlock') {
       gsiPollTimer = setInterval(() => {
         void (async () => {
@@ -3220,7 +3261,8 @@ function setupGameDetection(): void {
       // Accurate videoOffsetMs: offset = (loadSkew − recordingLag) + timeSinceGameStart.
       if (!reclaimedExistingCapture) {
         const recStartTime = Date.now()
-        riotLocalApi.setRecordingStartTime(recStartTime)
+        if (game === 'valorant') riotLocalApi.setRecordingStartTime(recStartTime)
+        else if (game === 'lol') lolLiveClientApi.setRecordingStartTime(recStartTime)
         currentRecordingStartTime = recStartTime
         hotkeyBookmarks.length = 0 // clear any stale bookmarks from previous match
       } else {
@@ -3228,7 +3270,8 @@ function setupGameDetection(): void {
           ?? currentRecordingStartTime
           ?? currentMatchStartTime
           ?? Date.now()
-        riotLocalApi.setRecordingStartTime(recStartTime)
+        if (game === 'valorant') riotLocalApi.setRecordingStartTime(recStartTime)
+        else if (game === 'lol') lolLiveClientApi.setRecordingStartTime(recStartTime)
         currentRecordingStartTime = recStartTime
       }
       // Push recording=true to the overlay immediately — don't wait for the poll cycle
@@ -3240,7 +3283,11 @@ function setupGameDetection(): void {
       logActivity(`Recording failed to start: ${msg}`)
       matchHandled = false
       riotLocalApi.onMatchEnded = null
-      try { await riotLocalApi.stop() } catch { /* ignore */ }
+      lolLiveClientApi.onMatchEnded = null
+      try {
+        if (game === 'valorant') await riotLocalApi.stop()
+        else if (game === 'lol') await lolLiveClientApi.stop()
+      } catch { /* ignore */ }
       destroyOverlay()
       mainWindow?.webContents.send('recording:starting', { starting: false })
       notifyRecordingUx(`Could not start recording: ${msg}`, 'UpForge — Recording Failed')
@@ -3261,8 +3308,24 @@ function setupGameDetection(): void {
     // Poll overlay/session state — drives Valorant match-end detection via pollActiveMatch.
     const pollOverlaySession = async () => {
       try {
+        if (game === 'lol' && obsRecorder.isRecording() && !matchHandled) {
+          const ctx = lolLiveClientApi.getLiveMatchContext()
+          if (ctx?.champion || ctx?.map) {
+            discordRPC.setInGame(game, { map: ctx.map, agent: ctx.champion })
+          }
+        }
+
+        if (game !== 'valorant') {
+          if (obsRecorder.isRecording()) {
+            const start =
+              currentRecordingStartTime != null ? new Date(currentRecordingStartTime) : new Date()
+            discordRPC.setRecording(game, start, discordMatchContext())
+          }
+          return
+        }
+
         const state = await riotLocalApi.getSessionState()
-        if (game === 'valorant' && obsRecorder.isRecording() && !matchHandled) {
+        if (obsRecorder.isRecording() && !matchHandled) {
           const now = Date.now()
           if (now - lastShippingProcessCheckAt >= SHIPPING_PROCESS_CHECK_MS) {
             lastShippingProcessCheckAt = now
@@ -3336,6 +3399,7 @@ function setupGameDetection(): void {
     discordRPC.setIdle()
     riotLocalApi.cancelMenuWatch()
     riotLocalApi.onMatchEnded = null
+    lolLiveClientApi.cancel()
 
     try {
     // Game quit while still in lobby (before match started).
@@ -3350,7 +3414,7 @@ function setupGameDetection(): void {
       mainWindow?.webContents.send('recording:waiting-for-match', { waiting: false })
       tray?.setToolTip(idleTooltip(game))
       console.log('[GameDetector] Game quit before match — no recording to save')
-      if (game === 'cs2' || game === 'deadlock') {
+      if (game === 'cs2' || game === 'deadlock' || game === 'lol') {
         gameDetector.resetActiveGame(game)
         if (rearmWatchInFlight !== game) void rearmGameDetection(game)
       } else {

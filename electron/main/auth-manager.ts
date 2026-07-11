@@ -403,6 +403,49 @@ export class AuthManager {
     }
   }
 
+  async fetchLolAnalyses(limit = 10): Promise<Array<{
+    id: number
+    job_id: string | null
+    match_id: string
+    status: string
+    readiness_state: string | null
+    champion: string | null
+    role: string | null
+    lane: string | null
+    queue_id: number | null
+    source: string | null
+    created_at: string | null
+    completed_at: string | null
+  }>> {
+    try {
+      const res = await this._api.get(`/api/lol/analyses?per_page=${limit}`)
+      return res.data?.data ?? []
+    } catch {
+      return []
+    }
+  }
+
+  async fetchLolRecentMatches(): Promise<Array<{
+    match_id: string
+    queue_id: number
+    champion: string
+    role: string
+    lane: string
+    win: boolean
+    kills: number
+    deaths: number
+    assists: number
+    game_duration_seconds: number
+    game_creation: number
+  }>> {
+    try {
+      const res = await this._api.get('/api/lol/matches/recent')
+      return res.data?.matches ?? []
+    } catch {
+      return []
+    }
+  }
+
   async fetchCs2Profile(): Promise<import('../../src/lib/cs2').Cs2ProfilePayload | null> {
     try {
       const res = await this._api.get('/api/cs2/profile')
