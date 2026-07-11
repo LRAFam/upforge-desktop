@@ -242,15 +242,16 @@ export function getAnalysisReadiness(rec: ReadinessRecording): AnalysisReadiness
 
   if (rec.game !== 'valorant') {
     if (hasRichMatchData(rec.timeline)) {
+      const duelMomentCount = duelMomentsForUpload(rec.timeline ?? null).length
       if (rec.game === 'cs2' && cs2PlayerIdentityMismatch(rec.timeline)) {
         return {
           ready: true,
           state: 'ready',
           message: 'Demo linked — set your CS2 Steam name in Settings → Recording to tag your kills',
-          duelMomentCount: 0,
+          duelMomentCount,
         }
       }
-      return { ready: true, state: 'ready', message: '', duelMomentCount: 0 }
+      return { ready: true, state: 'ready', message: '', duelMomentCount }
     }
     const hint = rec.game === 'cs2' || rec.game === 'deadlock'
       ? 'VOD ready — attach a demo for kill timeline and highlight clips'

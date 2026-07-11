@@ -193,23 +193,29 @@
           </div>
 
           <AnalysisPipelineStages
-            v-if="pendingDuelMoments.length && gameInfo.game === 'valorant'"
+            v-if="pendingDuelMoments.length"
             layout="vertical"
             :progress="analysisProgress"
             :step="analysisStep"
             :moment-count="pendingDuelMoments.length"
           />
           <p
-            v-if="pendingDuelMoments.length && gameInfo.game === 'valorant'"
+            v-if="pendingDuelMoments.length"
             class="text-[10px] text-gray-500 leading-relaxed"
           >
-            {{ pendingDuelMoments.length }} duel window{{ pendingDuelMoments.length !== 1 ? 's' : '' }} from your deaths — studying peek timing and crosshair on each clip.
+            {{ pendingDuelMomentsSummary }}
           </p>
           <p
             v-else-if="gameInfo.game === 'cs2'"
             class="text-[10px] text-gray-500 leading-relaxed"
           >
             Matching your demo kills to the VOD and building round-by-round coaching from the recording.
+          </p>
+          <p
+            v-else-if="gameInfo.game === 'deadlock'"
+            class="text-[10px] text-gray-500 leading-relaxed"
+          >
+            Building coaching from your match timeline — attach a demo for richer kill windows and highlight clips.
           </p>
         </div>
 
@@ -746,7 +752,13 @@ import coachHeroArt from '../assets/post-game/coach-synthesis-hero.webp'
 import refundHeroArt from '../assets/post-game/refund-hero.webp'
 import scoreRevealHeroArt from '../assets/post-game/score-reveal-hero.webp'
 import forgePanelTexture from '../assets/post-game/forge-panel-texture.webp'
-import { type DuelMoment, type DuelMomentManifest } from '../lib/duel-moments'
+import {
+  duelMomentKillCount,
+  formatKillStreakLabel,
+  isWinDuelMoment,
+  type DuelMoment,
+  type DuelMomentManifest,
+} from '../lib/duel-moments'
 import { buildFocusHeroCopy } from '../lib/skill-profile'
 import type { MatchSpatialSummary } from '../lib/spatial-types'
 import type { SkillProfileSnapshot } from '../lib/skill-profile'
@@ -1356,6 +1368,31 @@ const spatialSummary = computed((): MatchSpatialSummary | null => {
 })
 
 const pendingDuelMoments = computed(() => localDuelManifest.value)
+
+const pendingDuelMomentsSummary = computed(() => {
+  const moments = pendingDuelMoments.value
+  const count = moments.length
+  if (!count) return ''
+  const multi = moments.filter((m) => duelMomentKillCount(m) > 1).length
+  const game = gameInfo.value.game
+
+  if (game === 'cs2') {
+    if (multi > 0) {
+      return `${count} duel window${count !== 1 ? 's' : ''} (${multi} multi-kill) — Gemini reviews aim and positioning on each clip.`
+    }
+    return `${count} duel window${count !== 1 ? 's' : ''} from your demo — studying trades and deaths on each clip.`
+  }
+  if (game === 'deadlock') {
+    if (multi > 0) {
+      return `${count} fight window${count !== 1 ? 's' : ''} (${multi} multi-kill) — reviewing positioning and ability usage.`
+    }
+    return `${count} fight window${count !== 1 ? 's' : ''} — studying deaths and picks on each clip.`
+  }
+  if (multi > 0) {
+    return `${count} duel window${count !== 1 ? 's' : ''} (${multi} multi-kill) — studying peek timing and crosshair on each clip.`
+  }
+  return `${count} duel window${count !== 1 ? 's' : ''} from your deaths — studying peek timing and crosshair on each clip.`
+})
 
 const coachSuggestedRounds = computed(() => {
   const events = spatialSummary.value?.events ?? []

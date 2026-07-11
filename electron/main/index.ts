@@ -718,6 +718,8 @@ function enrichTimelineSpatial(timeline: MatchData): void {
     schedulePopulationRefresh(timeline)
   } else if (timeline.game === 'cs2' || timeline.game === 'deadlock') {
     applyDemoSpatialEnrichment(timeline)
+    const moments = duelMomentsForUpload(timeline)
+    if (moments.length) timeline.duelMoments = moments
   }
 }
 
@@ -3870,6 +3872,7 @@ async function doUploadAndAnalyse(
   try {
     logActivity(`Uploading recording${map ? ` (${map}${agent ? ` · ${agent}` : ''})` : ''}`)
 
+    const duelClipGames = new Set(['valorant', 'cs2', 'deadlock'])
     const result = await uploadManager.upload({
       videoPath: effectivePath,
       riotName,
@@ -3879,7 +3882,7 @@ async function doUploadAndAnalyse(
       agent,
       timeline,
       coachingExtras,
-      prepareDuelClips: timeline && game === 'valorant'
+      prepareDuelClips: timeline && duelClipGames.has(game)
         ? async (jobId, path) => {
             const moments = duelMomentsForUpload(timeline)
             if (moments.length === 0) {
@@ -3887,9 +3890,12 @@ async function doUploadAndAnalyse(
               const deaths = timeline.playerDeaths?.length ?? 0
               log.warn(`[Upload] No duel moments after enrich (kills=${kills} deaths=${deaths})`)
               if (deaths === 0) {
-                logActivity('No deaths in match stats — duel coaching needs your death moments from Riot')
+                const noDeathMsg = game === 'valorant'
+                  ? 'No deaths in match stats — duel coaching needs your death moments from Riot'
+                  : 'No deaths in demo timeline — attach a demo with your player kills/deaths'
+                logActivity(noDeathMsg)
               } else {
-                logActivity('Death timestamps missing — wait ~30s after the game and try Analyse again')
+                logActivity('Death timestamps missing — wait for demo sync, then try Analyse again')
               }
               return []
             }

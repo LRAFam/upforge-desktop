@@ -1,6 +1,11 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import type { DuelMomentManifest } from '../../lib/duel-moments'
+import {
+  duelMomentScrubberBandClass,
+  duelMomentScrubberMarkerClass,
+  duelMomentScrubberTitle,
+  type DuelMomentManifest,
+} from '../../lib/duel-moments'
 
 const props = defineProps<{
   moments: DuelMomentManifest[]
@@ -23,14 +28,14 @@ const bands = computed(() => {
         moment: m,
         left: (start / props.durationSec) * 100,
         width: ((end - start) / props.durationSec) * 100,
-        deathLeft: (m.video_offset_ms / 1000 / props.durationSec) * 100,
+        markerLeft: (m.video_offset_ms / 1000 / props.durationSec) * 100,
       }
     })
     .filter(Boolean) as Array<{
       moment: DuelMomentManifest
       left: number
       width: number
-      deathLeft: number
+      markerLeft: number
     }>
 })
 </script>
@@ -39,15 +44,16 @@ const bands = computed(() => {
   <template v-for="band in bands" :key="band.moment.moment_id">
     <button
       type="button"
-      class="absolute top-0 h-full rounded-sm border border-orange-400/30 bg-orange-500/20 pointer-events-auto z-[5] transition-colors hover:bg-orange-500/35"
-      :class="activeMomentId === band.moment.moment_id ? 'bg-orange-500/40 ring-1 ring-orange-300/50' : ''"
+      class="absolute top-0 h-full rounded-sm border pointer-events-auto z-[5] transition-colors"
+      :class="duelMomentScrubberBandClass(band.moment, activeMomentId === band.moment.moment_id)"
       :style="{ left: band.left + '%', width: Math.max(band.width, 0.4) + '%' }"
-      :title="`R${band.moment.round} duel window${band.moment.callout ? ' · ' + band.moment.callout : ''}`"
+      :title="duelMomentScrubberTitle(band.moment)"
       @click.stop="emit('select', band.moment)"
     />
     <span
-      class="absolute top-1/2 -translate-y-1/2 -translate-x-1/2 h-2 w-2 rounded-full bg-orange-300 shadow-[0_0_8px_rgba(251,146,60,0.6)] pointer-events-none z-[6]"
-      :style="{ left: band.deathLeft + '%' }"
+      class="absolute top-1/2 -translate-y-1/2 -translate-x-1/2 h-2 w-2 rounded-full pointer-events-none z-[6]"
+      :class="duelMomentScrubberMarkerClass(band.moment)"
+      :style="{ left: band.markerLeft + '%' }"
     />
   </template>
 </template>

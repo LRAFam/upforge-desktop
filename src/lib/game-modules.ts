@@ -55,6 +55,17 @@ const DEMO_GAME_FEATURES: GameFeatures = {
   rankStreak: false,
 }
 
+const CS2_FEATURES: GameFeatures = {
+  ...DEMO_GAME_FEATURES,
+  vodReviewTimeline: true,
+  coachingDetail: true,
+}
+
+const DEADLOCK_FEATURES: GameFeatures = {
+  ...DEMO_GAME_FEATURES,
+  coachingDetail: true,
+}
+
 async function loadValorantAnalyses(limit = 10): Promise<AnalysisItem[]> {
   return window.api.analyses.get(limit).catch(() => [])
 }
@@ -85,7 +96,7 @@ export const GAME_MODULES: Record<PrimaryGame, GameModule> = {
     id: 'cs2',
     centerPanels: [Cs2ValveStatsPanel, CS2StatsPanel, CS2SetupPanel],
     navRoutes: DEMO_GAME_NAV,
-    features: DEMO_GAME_FEATURES,
+    features: CS2_FEATURES,
     loadAnalyses: loadCs2Analyses,
     openAnalyze: () => { void window.api.cs2.openAnalyze() },
     openHistoryWeb: () => { window.open('https://upforge.gg/cs2/history', '_blank') },
@@ -94,7 +105,7 @@ export const GAME_MODULES: Record<PrimaryGame, GameModule> = {
     id: 'deadlock',
     centerPanels: [DeadlockStatsPanel, DeadlockDemoPanel],
     navRoutes: DEMO_GAME_NAV,
-    features: DEMO_GAME_FEATURES,
+    features: DEADLOCK_FEATURES,
     loadAnalyses: loadDeadlockAnalyses,
     openAnalyze: () => { void window.api.deadlock.openAnalyze() },
     openHistoryWeb: () => { window.open('https://upforge.gg/deadlock/history', '_blank') },

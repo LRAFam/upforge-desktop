@@ -10,6 +10,7 @@ import {
   momentClipUploaded,
   momentHasVisionSignal,
 } from '../../lib/duel-diagnostics'
+import { duelMomentKindLabel } from '../../lib/duel-moments'
 
 const props = defineProps<{
   diagnostics: DuelFailureDiagnostics
@@ -139,7 +140,7 @@ async function copyDebugReport() {
       >
         <div class="flex items-center justify-between gap-2">
           <span class="text-[10px] font-semibold text-gray-300">
-            R{{ row.round }}<span v-if="row.callout" class="text-gray-500"> · {{ row.callout }}</span>
+            R{{ row.round }}<span v-if="row.callout" class="text-gray-500"> · {{ row.callout }}</span><span class="text-gray-500"> · {{ duelMomentKindLabel(row.moment) }}</span>
           </span>
           <div class="flex items-center gap-2 flex-shrink-0">
             <span
