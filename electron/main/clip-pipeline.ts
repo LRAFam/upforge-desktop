@@ -13,15 +13,17 @@ import log from 'electron-log'
 import { showAppNotification } from './app-notifications'
 import { ClipStore } from './clip-store'
 import { ClipExtractor } from './clip-extractor'
+import type { ExtractOptions } from './clip-extractor'
 import { reportError } from './error-reporter'
+import { shouldReportClipProbeFailure } from './ffmpeg-probe'
 import type { MatchData, KillEvent } from './riot-types'
 import { detectClutchRoundsForGame } from './demo-clutch'
 import type { ClipGame } from './clip-game'
 
-function reportClipExtractError(prefix: string, err: unknown, component: string): void {
+function reportClipExtractError(prefix: string, err: unknown): void {
   const msg = err instanceof Error ? err.message : String(err)
-  if (msg.includes('ffmpeg timed out')) return
-  reportError({ message: `${prefix}: ${msg}`, stack: (err as Error)?.stack, component })
+  // Per-clip failures are expected (bad seek, one kill off-timeline) — log locally only.
+  log.warn(`${prefix}:`, msg)
 }
 
 function clipMatchMeta(
@@ -65,6 +67,31 @@ export interface ClipPipelineContext {
 export class ClipPipeline {
   constructor(private ctx: ClipPipelineContext) {}
 
+  /** Extract a clip, clamping to VOD length and retrying with frame-accurate seek on failure. */
+  private async safeExtract(
+    opts: ExtractOptions,
+    vodDurationMs: number | null,
+  ): Promise<void> {
+    const startMs = opts.startOffsetMs
+    let durationMs = opts.durationMs
+    if (vodDurationMs != null) {
+      const remaining = vodDurationMs - startMs
+      if (remaining <= 500) {
+        throw new Error('Clip window is past end of recording')
+      }
+      durationMs = Math.min(durationMs, remaining)
+    }
+
+    const base = { ...opts, startOffsetMs: startMs, durationMs }
+    try {
+      await this.ctx.clipExtractor.extract(base)
+    } catch (firstErr) {
+      if (base.accurateSeek) throw firstErr
+      log.info('[ClipExtract] Fast seek failed — retrying with accurate seek')
+      await this.ctx.clipExtractor.extract({ ...base, accurateSeek: true })
+    }
+  }
+
   /** Extract a thumbnail, falling back to an alternative offset on failure. */
   private async safeThumb(
     sourcePath: string,
@@ -102,13 +129,20 @@ export class ClipPipeline {
       return
     }
 
-    const probe = await clipExtractor.probe(videoPath)
+    const probe = await clipExtractor.probeWithRetry(videoPath)
     if (!probe.ok) {
       log.warn('[ClipExtract] Recording is unreadable — skipping all clip extraction:', probe.reason)
       logActivity('Clip extraction skipped — recording was incomplete (app or ffmpeg quit before the file was finalised)')
-      reportError({ message: `[ClipExtract] Recording unreadable, skipping extraction: ${probe.reason}`, component: 'desktop:ClipExtract' })
+      if (shouldReportClipProbeFailure(probe.reason)) {
+        reportError({
+          message: `[ClipExtract] Recording unreadable, skipping extraction: ${probe.reason}`,
+          component: 'desktop:ClipExtract',
+        })
+      }
       return
     }
+
+    const vodDurationMs = await clipExtractor.probeDurationMs(videoPath)
 
     const recordingStart = this.ctx.getRecordingStartTime() ?? 0
     const map = timeline?.map ?? null
@@ -131,14 +165,13 @@ export class ClipPipeline {
         const rec = clipStore.add({ path: '', thumbPath: null, trigger: 'hotkey', map, agent, durationSeconds: 30, round: null, killCount: null, analysisJobId, game, ...baseMeta })
         const clipPath = ClipExtractor.clipPath(rec.id)
         const thumbPath = ClipExtractor.thumbPath(rec.id)
-        await clipExtractor.extract({ sourcePath: videoPath, startOffsetMs: startMs, durationMs: 30_000, outputPath: clipPath })
+        await this.safeExtract({ sourcePath: videoPath, startOffsetMs: startMs, durationMs: 30_000, outputPath: clipPath }, vodDurationMs)
         const resolvedThumb = await this.safeThumb(videoPath, offsetMs, startMs, thumbPath)
         clipStore.update(rec.id, { path: clipPath, thumbPath: resolvedThumb, momentOffsetMs: offsetMs })
         extractedClipIds.push(rec.id)
         logActivity(`Saved hotkey clip (${map ?? 'unknown map'})`)
       } catch (err) {
-        log.warn('[ClipExtract] Hotkey clip failed:', err)
-        reportClipExtractError('[ClipExtract] Hotkey clip failed', err, 'desktop:ClipExtract')
+        reportClipExtractError('[ClipExtract] Hotkey clip failed', err)
       }
     }
 
@@ -177,15 +210,12 @@ export class ClipPipeline {
           })
           const clipPath = ClipExtractor.clipPath(rec.id)
           const thumbPath = ClipExtractor.thumbPath(rec.id)
-          await clipExtractor.extract({ sourcePath: videoPath, startOffsetMs: startMs, durationMs: 13_000, outputPath: clipPath })
+          await this.safeExtract({ sourcePath: videoPath, startOffsetMs: startMs, durationMs: 13_000, outputPath: clipPath }, vodDurationMs)
           const resolvedThumb = await this.safeThumb(videoPath, offsetMs, startMs, thumbPath)
           clipStore.update(rec.id, { path: clipPath, thumbPath: resolvedThumb, momentOffsetMs: offsetMs })
           extractedClipIds.push(rec.id)
         } catch (err) {
-          const msg = err instanceof Error ? err.message : String(err)
-          log.warn('[ClipExtract] Kill clip failed:', msg)
-          logActivity(`Clip extraction error (kill): ${msg.slice(0, 120)}`)
-          reportClipExtractError('[ClipExtract] Kill clip failed', err, 'desktop:ClipExtract')
+          reportClipExtractError('[ClipExtract] Kill clip failed', err)
         }
       }
 
@@ -205,14 +235,13 @@ export class ClipPipeline {
           })
           const clipPath = ClipExtractor.clipPath(rec.id)
           const thumbPath = ClipExtractor.thumbPath(rec.id)
-          await clipExtractor.extract({ sourcePath: videoPath, startOffsetMs: startMs, durationMs, outputPath: clipPath })
+          await this.safeExtract({ sourcePath: videoPath, startOffsetMs: startMs, durationMs, outputPath: clipPath }, vodDurationMs)
           const resolvedThumb = await this.safeThumb(videoPath, first.videoOffsetMs!, startMs, thumbPath)
           clipStore.update(rec.id, { path: clipPath, thumbPath: resolvedThumb, momentOffsetMs: first.videoOffsetMs! })
           extractedClipIds.push(rec.id)
           logActivity(`${trigger === 'ace' ? 'Ace' : `${killCount}K`} clip saved — Round ${round + 1} (${map ?? 'unknown'})`)
         } catch (err) {
-          log.warn(`[ClipExtract] ${trigger} clip failed:`, err)
-          reportClipExtractError(`[ClipExtract] ${trigger} clip failed`, err, 'desktop:ClipExtract')
+          reportClipExtractError(`[ClipExtract] ${trigger} clip failed`, err)
         }
       }
 
@@ -230,14 +259,13 @@ export class ClipPipeline {
           })
           const clipPath = ClipExtractor.clipPath(rec.id)
           const thumbPath = ClipExtractor.thumbPath(rec.id)
-          await clipExtractor.extract({ sourcePath: videoPath, startOffsetMs: startMs, durationMs, outputPath: clipPath })
+          await this.safeExtract({ sourcePath: videoPath, startOffsetMs: startMs, durationMs, outputPath: clipPath }, vodDurationMs)
           const resolvedThumb = await this.safeThumb(videoPath, first.videoOffsetMs!, startMs, thumbPath)
           clipStore.update(rec.id, { path: clipPath, thumbPath: resolvedThumb, momentOffsetMs: first.videoOffsetMs! })
           extractedClipIds.push(rec.id)
           logActivity(`Clutch clip saved — Round ${round + 1} (${map ?? 'unknown'})`)
         } catch (err) {
-          log.warn('[ClipExtract] Clutch clip failed:', err)
-          reportClipExtractError('[ClipExtract] Clutch clip failed', err, 'desktop:ClipExtract')
+          reportClipExtractError('[ClipExtract] Clutch clip failed', err)
         }
       }
     }
@@ -266,11 +294,16 @@ export class ClipPipeline {
       return
     }
 
-    const probe = await clipExtractor.probe(videoPath)
+    const probe = await clipExtractor.probeWithRetry(videoPath)
     if (!probe.ok) {
       log.warn('[LateClipExtract] Recording is unreadable — skipping all clip extraction:', probe.reason)
       logActivity('Late clip extraction skipped — recording was incomplete (app or ffmpeg quit before the file was finalised)')
-      reportError({ message: `[LateClipExtract] Recording unreadable, skipping extraction: ${probe.reason}`, component: 'desktop:ClipExtract' })
+      if (shouldReportClipProbeFailure(probe.reason)) {
+        reportError({
+          message: `[LateClipExtract] Recording unreadable, skipping extraction: ${probe.reason}`,
+          component: 'desktop:ClipExtract',
+        })
+      }
       return
     }
 
@@ -278,6 +311,8 @@ export class ClipPipeline {
       log.warn('[LateClipExtract] No player kills in timeline — nothing to clip')
       return
     }
+
+    const vodDurationMs = await clipExtractor.probeDurationMs(videoPath)
 
     const map = timeline.map ?? null
     const agent = timeline.agent ?? null
@@ -314,14 +349,13 @@ export class ClipPipeline {
         })
         const clipPath = ClipExtractor.clipPath(rec.id)
         const thumbPath = ClipExtractor.thumbPath(rec.id)
-        await clipExtractor.extract({ sourcePath: videoPath, startOffsetMs: startMs, durationMs, outputPath: clipPath })
+        await this.safeExtract({ sourcePath: videoPath, startOffsetMs: startMs, durationMs, outputPath: clipPath }, vodDurationMs)
         const resolvedThumb = await this.safeThumb(videoPath, first.videoOffsetMs!, startMs, thumbPath)
         clipStore.update(rec.id, { path: clipPath, thumbPath: resolvedThumb, momentOffsetMs: first.videoOffsetMs! })
         extractedClipIds.push(rec.id)
         logActivity(`${trigger === 'ace' ? 'Ace' : `${killCount}K`} clip saved (late extract) — Round ${round + 1} (${map ?? 'unknown'})`)
       } catch (err) {
-        log.warn(`[LateClipExtract] ${trigger} clip failed:`, err)
-        reportClipExtractError(`[LateClipExtract] ${trigger} clip failed`, err, 'desktop:LateClipExtract')
+        reportClipExtractError(`[LateClipExtract] ${trigger} clip failed`, err)
       }
     }
 
@@ -339,14 +373,13 @@ export class ClipPipeline {
         })
         const clipPath = ClipExtractor.clipPath(rec.id)
         const thumbPath = ClipExtractor.thumbPath(rec.id)
-        await clipExtractor.extract({ sourcePath: videoPath, startOffsetMs: startMs, durationMs, outputPath: clipPath })
+        await this.safeExtract({ sourcePath: videoPath, startOffsetMs: startMs, durationMs, outputPath: clipPath }, vodDurationMs)
         const resolvedThumb = await this.safeThumb(videoPath, first.videoOffsetMs!, startMs, thumbPath)
         clipStore.update(rec.id, { path: clipPath, thumbPath: resolvedThumb, momentOffsetMs: first.videoOffsetMs! })
         extractedClipIds.push(rec.id)
         logActivity(`Clutch clip saved (late extract) — Round ${round + 1} (${map ?? 'unknown'})`)
       } catch (err) {
-        log.warn('[LateClipExtract] Clutch clip failed:', err)
-        reportClipExtractError('[LateClipExtract] Clutch clip failed', err, 'desktop:LateClipExtract')
+        reportClipExtractError('[LateClipExtract] Clutch clip failed', err)
       }
     }
 

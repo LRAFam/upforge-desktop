@@ -125,7 +125,7 @@ import { TrainerBridge } from './trainer-bridge'
 import type { MatchData } from './riot-types'
 import log from 'electron-log'
 import { setupMainProcessErrorHandlers, reportError } from './error-reporter'
-import { reportPipelineError } from './pipeline-errors'
+import { reportPipelineError, shouldReportAnalysisPipelineError } from './pipeline-errors'
 import {
   fetchArchivePlaybackUrl,
   fetchJobPlaybackUrl,
@@ -1091,9 +1091,10 @@ function dispatchAnalysisFailure(
   mainWindow?.webContents.send('recordings:updated')
 
   const failureRecording = opts.recordingId ? recordingsStore.getById(opts.recordingId) : null
-  if (payload.kind !== 'quota' && payload.kind !== 'clips_only') {
-    reportPipelineError('analysis', payload.title, {
+  if (shouldReportAnalysisPipelineError(payload.kind, rawError)) {
+    reportPipelineError('analysis', rawError.slice(0, 500) || payload.title, {
       kind: payload.kind,
+      title: payload.title,
       message: payload.message,
       recordingId: opts.recordingId ?? null,
       jobId: failureRecording?.jobId ?? null,
@@ -1102,7 +1103,6 @@ function dispatchAnalysisFailure(
       integrityReason: opts.failureDiagnostics?.integrity_reason ?? null,
       clipsUploaded: opts.failureDiagnostics?.clips_uploaded ?? null,
       clipsRequested: opts.failureDiagnostics?.clips_requested ?? null,
-      rawError: rawError.slice(0, 500),
     })
   }
 
@@ -3815,16 +3815,7 @@ async function doUploadAndAnalyse(
 
   let effectivePath = videoPath
   try {
-    let readable = await clipExtractor.probe(videoPath)
-    if (!readable.ok) {
-      const moovMissing = readable.reason?.includes('moov atom') ?? false
-      if (moovMissing) {
-        for (let attempt = 0; attempt < 5 && !readable.ok; attempt++) {
-          await new Promise((resolve) => setTimeout(resolve, 2_000))
-          readable = await clipExtractor.probe(videoPath)
-        }
-      }
-    }
+    const readable = await clipExtractor.probeWithRetry(videoPath)
     if (!readable.ok) {
       throw new Error(readable.reason ?? 'Recording file is incomplete')
     }

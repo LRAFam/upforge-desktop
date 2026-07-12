@@ -5,6 +5,11 @@ import { app } from 'electron'
 import { existsSync, mkdirSync } from 'fs'
 import { is } from '@electron-toolkit/utils'
 import log from 'electron-log'
+import {
+  isRetryableProbeFailure,
+  parseFfmpegProbeStderr,
+  probeTimeoutMs,
+} from './ffmpeg-probe'
 
 const IS_WIN = process.platform === 'win32'
 
@@ -207,23 +212,75 @@ export class ClipExtractor {
 
   /**
    * Quickly probe a source file to check it is a valid, readable MP4.
-   * Returns ok:false (with a reason) when the moov atom is missing, which
-   * happens when ffmpeg was SIGKILL'd or crashed before finalising the file.
-   * Call this before attempting extraction to surface one clear error rather
-   * than one error per clip type.
+   * Uses metadata-only ffmpeg (`-i`) — no frame decode — so long VODs do not
+   * hit the old 10s decode timeout on slow disks.
    */
   async probe(filePath: string): Promise<{ ok: boolean; reason?: string }> {
     try {
-      // Read only 1 video frame — fails immediately if the container is unreadable.
-      await this._run(['-v', 'error', '-i', filePath, '-frames:v', '1', '-f', 'null', '-'], 10_000)
-      return { ok: true }
+      if (!existsSync(filePath)) {
+        return { ok: false, reason: 'Recording file not found.' }
+      }
+      const sizeBytes = fs.statSync(filePath).size
+      if (sizeBytes < 1024) {
+        return { ok: false, reason: 'Recording file is empty or too small.' }
+      }
+      const stderr = await this._probeMetadataStderr(filePath, probeTimeoutMs(sizeBytes))
+      return parseFfmpegProbeStderr(stderr)
     } catch (err) {
       const msg = String(err)
-      if (msg.includes('moov atom not found') || msg.includes('Invalid data')) {
-        return { ok: false, reason: 'Recording is incomplete — moov atom not found. ffmpeg likely exited before finalising the file.' }
+      if (msg.includes('ffmpeg timed out')) {
+        return {
+          ok: false,
+          reason: 'Recording probe timed out — file may still be finalising or disk is slow.',
+        }
       }
       return { ok: false, reason: msg.slice(0, 200) }
     }
+  }
+
+  /** Retry probe when the file may still be finalising (moov atom) or disk is slow. */
+  async probeWithRetry(
+    filePath: string,
+    opts: { attempts?: number; delayMs?: number } = {},
+  ): Promise<{ ok: boolean; reason?: string }> {
+    const attempts = opts.attempts ?? 5
+    const delayMs = opts.delayMs ?? 2_000
+    let last = await this.probe(filePath)
+    for (let i = 1; i < attempts && !last.ok && isRetryableProbeFailure(last.reason); i++) {
+      log.info(`[ClipExtractor] Probe retry ${i}/${attempts - 1} for ${filePath}`)
+      await new Promise((resolve) => setTimeout(resolve, delayMs))
+      last = await this.probe(filePath)
+    }
+    return last
+  }
+
+  private _probeMetadataStderr(filePath: string, timeoutMs: number): Promise<string> {
+    return new Promise((resolve, reject) => {
+      const proc = spawn(ffmpegPath(), ['-hide_banner', '-v', 'error', '-i', filePath], {
+        stdio: ['ignore', 'ignore', 'pipe'],
+      })
+      let stderr = ''
+      let settled = false
+      let timer: ReturnType<typeof setTimeout>
+      const settle = (fn: () => void) => {
+        if (!settled) {
+          settled = true
+          clearTimeout(timer)
+          fn()
+        }
+      }
+
+      proc.stderr?.on('data', (d: Buffer) => {
+        stderr += d.toString()
+      })
+      proc.on('error', (err) => settle(() => reject(new Error(`ffmpeg error: ${err.message}`))))
+      proc.on('exit', () => settle(() => resolve(stderr)))
+
+      timer = setTimeout(() => {
+        proc.kill()
+        settle(() => reject(new Error('ffmpeg timed out')))
+      }, timeoutMs)
+    })
   }
 
   /** Container duration in milliseconds (null when ffmpeg cannot parse it). */

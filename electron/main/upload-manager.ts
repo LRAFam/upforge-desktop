@@ -144,10 +144,10 @@ export function readPendingJobForUser(
 }
 
 export class UploadManager {
-  private static readonly S3_UPLOAD_MAX_ATTEMPTS = 4
+  private static readonly S3_UPLOAD_MAX_ATTEMPTS = 5
   private static readonly S3_UPLOAD_RETRY_BASE_MS = 2_000
   /** Full presign → S3 → complete cycles when the connection keeps dropping. */
-  private static readonly FULL_UPLOAD_MAX_ATTEMPTS = 3
+  private static readonly FULL_UPLOAD_MAX_ATTEMPTS = 4
 
   private _s3Request: ClientRequest | null = null
   private _s3PartRequests = new Set<ClientRequest>()
@@ -614,6 +614,8 @@ export class UploadManager {
   private _isRetryableUploadError(err: unknown): boolean {
     const msg = err instanceof Error ? err.message : String(err)
     return /socket hang up|ECONNRESET|ECONNABORTED|ETIMEDOUT|EPIPE|ENOTFOUND|EAI_AGAIN|network/i.test(msg)
+      || /S3 upload failed \(HTTP 5\d\d\)|S3 part upload failed \(HTTP 5\d\d\)|Request failed \(5\d\d\)/i.test(msg)
+      || /temporarily unavailable|service unavailable|slowdown|please reduce your request rate/i.test(msg)
   }
 
   /** S3 multipart session or presigned URL is no longer valid — need a fresh presign, not part-level retry. */
