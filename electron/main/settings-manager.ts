@@ -8,6 +8,25 @@ import {
 
 export type PrimaryGame = 'valorant' | 'cs2' | 'deadlock' | 'lol'
 
+/** Toggle which highlight clip types are auto-extracted from a match recording. */
+export interface ClipCaptureSettings {
+  /** Single-kill highlights (routine frags). */
+  singleKills: boolean
+  /** Multi-kills — 3K and 4K rounds. */
+  multiKills: boolean
+  /** Aces — 5K rounds. */
+  aces: boolean
+  /** Clutch rounds (1vX won). */
+  clutches: boolean
+}
+
+export const DEFAULT_CLIP_CAPTURE: ClipCaptureSettings = {
+  singleKills: true,
+  multiKills: true,
+  aces: true,
+  clutches: true,
+}
+
 export interface AppSettings {
   /** Active game context — drives dashboard copy, settings sections, and web links. */
   primaryGame: PrimaryGame
@@ -40,6 +59,11 @@ export interface AppSettings {
   clipRetentionDays: number
   /** Auto-delete routine kill clips older than this many days (0 = disabled). Clutches, aces, bookmarks, and favorites are kept. */
   clipKillRetentionDays: number
+  /**
+   * Which auto-extracted highlight clips to keep after a match.
+   * Manual hotkey bookmarks are always saved regardless of these toggles.
+   */
+  clipCapture: ClipCaptureSettings
   /** Auto-delete local-only match recordings older than this many days (0 = disabled) */
   recordingRetentionDays: number
   /** When false, only save replay-buffer highlight clips (no full-match VOD). */
@@ -152,6 +176,7 @@ const DEFAULTS: AppSettings = {
   pregameKillList: [],
   clipRetentionDays: 0,
   clipKillRetentionDays: 0,
+  clipCapture: { ...DEFAULT_CLIP_CAPTURE },
   recordingRetentionDays: 14,
   fullMatchRecording: true,
   notificationSound: true,
@@ -239,6 +264,8 @@ export class SettingsManager {
         }
       }
       const merged = { ...DEFAULTS, ...parsed, obsEnabled: true }
+      // Nested object — deep-merge so partial/legacy saves keep sensible defaults.
+      merged.clipCapture = { ...DEFAULT_CLIP_CAPTURE, ...(parsed.clipCapture ?? {}) }
       if (!String(merged.savePath ?? '').trim()) {
         merged.savePath = DEFAULTS.savePath
       }

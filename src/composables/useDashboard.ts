@@ -36,6 +36,39 @@ import { canOpenTimeline, canWatchRawRecording } from '../lib/recording-demo-sta
 import { type DemoDownloadProgress, demoDownloadProgressLabel } from '../lib/demo-download-progress'
 import { recordingTimelineReady } from '../lib/recording-demo-status'
 
+export interface LolRecentMatch {
+  match_id: string
+  queue_id: number
+  champion: string
+  role: string
+  lane: string
+  win: boolean
+  kills: number
+  deaths: number
+  assists: number
+  game_duration_seconds: number
+  game_creation: number
+}
+
+const HIDDEN_ANALYSES_KEY = 'upforge:hiddenAnalysisIds'
+
+function loadHiddenAnalyses(): Set<number> {
+  try {
+    const raw = localStorage.getItem(HIDDEN_ANALYSES_KEY)
+    if (!raw) return new Set()
+    const arr = JSON.parse(raw) as unknown
+    return new Set(Array.isArray(arr) ? arr.filter((n): n is number => typeof n === 'number') : [])
+  } catch {
+    return new Set()
+  }
+}
+
+function saveHiddenAnalyses(ids: Set<number>): void {
+  try {
+    localStorage.setItem(HIDDEN_ANALYSES_KEY, JSON.stringify([...ids]))
+  } catch { /* ignore */ }
+}
+
 export const DASHBOARD_KEY: InjectionKey<ReturnType<typeof createDashboard>> = Symbol('dashboard')
 
 export function provideDashboard() {
@@ -53,7 +86,7 @@ export function useDashboard() {
 function createDashboard() {
   const router = useRouter()
   const achievements = useAchievements()
-  const { primaryGame, isValorant, isCs2, isDeadlock, loadFromSettings, applyFromSettings } = usePrimaryGame()
+  const { primaryGame, isValorant, isCs2, isDeadlock, isLol, loadFromSettings, applyFromSettings } = usePrimaryGame()
 
   const theme = computed<GameTheme>(() => gameTheme(primaryGame.value))
 
@@ -68,9 +101,12 @@ function createDashboard() {
   const deadlockLinked = ref(false)
   const deadlockStats = ref<DeadlockProfileStats | null>(null)
   const deadlockLinksLoading = ref(true)
+  const lolRecentMatches = ref<LolRecentMatch[]>([])
+  const lolLinksLoading = ref(true)
   const playerCardUrl = ref('')
   const analyses = ref<AnalysisItem[]>([])
   const analysesLoading = ref(true)
+  const hiddenAnalysisIds = ref<Set<number>>(loadHiddenAnalyses())
   const coachingSnippets = ref<Record<number, string>>({})
   const coachReviewByAnalysisId = ref<Record<number, CoachReviewSummary>>({})
   const pendingRecordings = ref<PendingRecording[]>([])
@@ -146,6 +182,11 @@ function createDashboard() {
       return theme.value.rankFallback
     }
     if (isDeadlock.value) return theme.value.rankFallback
+    if (isLol.value) {
+      const last = lolRecentMatches.value[0]
+      if (last) return `${last.champion} · ${last.win ? 'W' : 'L'} ${last.kills}/${last.deaths}/${last.assists}`
+      return theme.value.rankFallback
+    }
     return profile.value?.latest_stats?.current_rank || theme.value.rankFallback
   })
   const totalSessionsAnalysed = computed(() => {
@@ -327,8 +368,19 @@ function createDashboard() {
     const inFlightJobIds = new Set(
       pendingRecordings.value.map(r => r.jobId).filter((id): id is string => !!id),
     )
-    return analyses.value.filter(a => !a.job_id || !inFlightJobIds.has(a.job_id))
+    return analyses.value.filter(a =>
+      !hiddenAnalysisIds.value.has(a.id)
+      && (!a.job_id || !inFlightJobIds.has(a.job_id)),
+    )
   })
+
+  async function removeAnalysis(a: AnalysisItem) {
+    const result = await window.api.analyses.remove(a.id, a.job_id).catch(() => null)
+    if (!result?.removed) return
+    hiddenAnalysisIds.value = new Set(hiddenAnalysisIds.value).add(a.id)
+    saveHiddenAnalyses(hiddenAnalysisIds.value)
+    analyses.value = analyses.value.filter(x => x.id !== a.id)
+  }
 
   const bulkUploadablePending = computed(() =>
     pendingRecordings.value.filter(r =>
@@ -610,9 +662,23 @@ function createDashboard() {
     }
   }
 
+  async function loadLolProfile() {
+    // LoL shares Riot linkage with Valorant — only fetch matches when a Riot ID is set.
+    if (!profile.value?.user?.riot_name?.trim()) {
+      lolRecentMatches.value = []
+      return
+    }
+    try {
+      lolRecentMatches.value = await window.api.lol.getRecentMatches()
+    } catch {
+      lolRecentMatches.value = []
+    }
+  }
+
   async function loadAllGameLinkStates() {
     cs2LinksLoading.value = true
     deadlockLinksLoading.value = true
+    lolLinksLoading.value = true
     try {
       const settings = await window.api.settings.get().catch(() => null)
       cs2SteamName.value = settings?.cs2SteamName?.trim() ?? ''
@@ -620,10 +686,12 @@ function createDashboard() {
         loadCs2Faceit(),
         loadCs2Profile(),
         loadDeadlockProfile(),
+        loadLolProfile(),
       ])
     } finally {
       cs2LinksLoading.value = false
       deadlockLinksLoading.value = false
+      lolLinksLoading.value = false
     }
   }
 
@@ -1398,6 +1466,7 @@ function createDashboard() {
     isValorant,
     isCs2,
     isDeadlock,
+    isLol,
     theme,
     profile,
     profileLoading,
@@ -1410,6 +1479,8 @@ function createDashboard() {
     deadlockLinked,
     deadlockStats,
     deadlockLinksLoading,
+    lolRecentMatches,
+    lolLinksLoading,
     playerCardUrl,
     analyses,
     analysesLoading,
@@ -1504,6 +1575,7 @@ function createDashboard() {
     analyseRecording,
     dismissMacPreviewBanner,
     dismissRecording,
+    removeAnalysis,
     abortInFlightRecording,
     connectObs,
     launchAndConnectObs,

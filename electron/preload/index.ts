@@ -28,6 +28,8 @@ const api = {
   },
   analyses: {
     get: (limit?: number) => ipcRenderer.invoke('analyses:get', { limit }),
+    remove: (analysisId: number, jobId?: string | null) =>
+      ipcRenderer.invoke('analyses:remove', { analysisId, jobId }),
     getTimeline: (id: number) => ipcRenderer.invoke('analyses:get-timeline', { id }),
     refreshPlayback: (id: number) => ipcRenderer.invoke('analyses:refresh-playback', { id }),
     getDetail: (id: number) => ipcRenderer.invoke('analyses:get-detail', { id }),

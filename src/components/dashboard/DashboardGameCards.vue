@@ -27,6 +27,7 @@ const {
   deadlockLinked,
   deadlockStats,
   deadlockLinksLoading,
+  lolRecentMatches,
   dashboardAnalyses,
   pendingRecordings,
   openAnalysisRow,
@@ -45,12 +46,13 @@ function authUser() {
   } | null
 }
 
+function riotLinked(): boolean {
+  return Boolean(profile.value?.user?.riot_name?.trim() || authUser()?.riot_name?.trim())
+}
+
 function gameLinked(game: PrimaryGame): boolean {
-  if (game === 'valorant') {
-    return Boolean(
-      profile.value?.user?.riot_name?.trim()
-      || authUser()?.riot_name?.trim(),
-    )
+  if (game === 'valorant' || game === 'lol') {
+    return riotLinked()
   }
   if (game === 'cs2') {
     return Boolean(
@@ -69,7 +71,7 @@ function gameLinked(game: PrimaryGame): boolean {
 
 function gameLinkState(game: PrimaryGame): GameLinkState {
   if (gameLinked(game)) return 'linked'
-  if (game === 'valorant' && profileLoading.value) return 'loading'
+  if ((game === 'valorant' || game === 'lol') && profileLoading.value) return 'loading'
   if (game === 'cs2' && cs2LinksLoading.value) return 'loading'
   if (game === 'deadlock' && deadlockLinksLoading.value) return 'loading'
   return 'unlinked'
@@ -77,18 +79,20 @@ function gameLinkState(game: PrimaryGame): GameLinkState {
 
 function linkHint(game: PrimaryGame): string {
   if (game === 'valorant') return 'Link your Riot ID to sync rank and match stats.'
+  if (game === 'lol') return 'Link your Riot ID to sync League matches and coaching.'
   if (game === 'cs2') return 'Add your Steam name or connect FACEIT to track matches.'
   return 'Link Steam to sync Deadlock rank and stats.'
 }
 
 function linkLabel(game: PrimaryGame): string {
   if (game === 'valorant') return 'Link Valorant'
+  if (game === 'lol') return 'Link Riot ID'
   if (game === 'cs2') return 'Link CS2'
   return 'Link Deadlock'
 }
 
 function linkedAccountLabel(game: PrimaryGame): string | null {
-  if (game === 'valorant') {
+  if (game === 'valorant' || game === 'lol') {
     const name = profile.value?.user?.riot_name?.trim() || authUser()?.riot_name?.trim()
     if (!name) return null
     const tag = profile.value?.user?.riot_tag?.trim() || authUser()?.riot_tag?.trim() || 'NA1'
@@ -182,6 +186,19 @@ function rankBlock(game: PrimaryGame): {
       }
     }
     return { label: brand.rankLabel, main: 'Syncing…', color: brand.accent }
+  }
+  if (game === 'lol') {
+    const last = lolRecentMatches.value[0]
+    if (last) {
+      return {
+        label: 'Last game',
+        main: last.champion,
+        sub: `${last.win ? 'Win' : 'Loss'} · ${last.kills}/${last.deaths}/${last.assists}`,
+        color: last.win ? '#22c55e' : brand.accent,
+        iconUrl: null,
+      }
+    }
+    return { label: brand.rankLabel, main: 'Riot linked', color: brand.accent }
   }
   if (deadlockStats.value?.current_rank) {
     const r = deadlockStats.value.current_rank
@@ -285,7 +302,7 @@ const cards = computed(() =>
       account: linked ? linkedAccountLabel(g.id) : null,
       rank: linked ? rankBlock(g.id) : null,
       faceitRank: linked && g.id === 'cs2' ? cs2FaceitRank() : null,
-      match: linked ? lastMatch(g.id) : null,
+      match: linked && g.id !== 'lol' ? lastMatch(g.id) : null,
       linkHint: linkHint(g.id),
       linkLabel: linkLabel(g.id),
       art: PRIMARY_GAME_ARTWORK[g.id],

@@ -56,6 +56,7 @@ const {
   analyseRecording,
   retryRecording,
   dismissRecording,
+  removeAnalysis,
   abortInFlightRecording,
   openAnalysisRow,
   openCoachNotesVod,
@@ -451,6 +452,14 @@ function toggleFootageDebug(rec: PendingRecording) {
               </template>
             </div>
             <div class="match-list-actions">
+              <button
+                type="button"
+                class="p-1 -mr-0.5 text-gray-700 hover:text-red-400 transition-colors rounded-lg hover:bg-white/[0.04]"
+                title="Remove from dashboard"
+                @click.stop="removeAnalysis(a)"
+              >
+                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+              </button>
               <svg class="w-3.5 h-3.5 text-gray-700 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
             </div>
           </div>
@@ -463,7 +472,7 @@ function toggleFootageDebug(rec: PendingRecording) {
 <style scoped>
 .match-list-grid {
   display: grid;
-  grid-template-columns: 32px minmax(0, 1fr) auto 16px;
+  grid-template-columns: 32px minmax(0, 1fr) auto auto;
   column-gap: 10px;
   align-items: center;
 }

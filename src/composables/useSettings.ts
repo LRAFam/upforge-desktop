@@ -365,6 +365,7 @@ function createSettings() {
     pregameKillList: [],
     clipRetentionDays: 0,
     clipKillRetentionDays: 0,
+    clipCapture: { singleKills: true, multiKills: true, aces: true, clutches: true },
     recordingRetentionDays: 14,
     fullMatchRecording: true,
     notificationSound: true,
@@ -658,6 +659,14 @@ function createSettings() {
   
   function toggleKey(key: keyof Pick<AppSettings, 'launchOnStartup' | 'autoDelete' | 'autoAnalyse' | 'notificationSound' | 'autoOpenBrowser' | 'discordRichPresence'>): void {
     settings[key] = !settings[key]
+    debouncedSave()
+  }
+
+  function toggleClipCapture(key: keyof AppSettings['clipCapture']): void {
+    if (!settings.clipCapture) {
+      settings.clipCapture = { singleKills: true, multiKills: true, aces: true, clutches: true }
+    }
+    settings.clipCapture[key] = !settings.clipCapture[key]
     debouncedSave()
   }
   
@@ -1170,6 +1179,7 @@ function createSettings() {
     toggleAudio,
     toggleFullMatchRecording,
     toggleKey,
+    toggleClipCapture,
     toggleLaunchOnStartup,
     toggleMode,
     toggleSection,

@@ -19,6 +19,7 @@ import { shouldReportClipProbeFailure } from './ffmpeg-probe'
 import type { MatchData, KillEvent } from './riot-types'
 import { detectClutchRoundsForGame } from './demo-clutch'
 import type { ClipGame } from './clip-game'
+import type { ClipCaptureSettings } from './settings-manager'
 
 function reportClipExtractError(prefix: string, err: unknown): void {
   const msg = err instanceof Error ? err.message : String(err)
@@ -54,6 +55,8 @@ export interface ClipPipelineContext {
   /** Mutable array — pipeline reads and resets this after extracting hotkey clips. */
   hotkeyBookmarks: number[]
   getRecordingStartTime: () => number | null
+  /** User preferences for which highlight clip types to auto-extract. */
+  getClipCapture: () => ClipCaptureSettings
   logActivity: (msg: string) => void
   notifySilent: () => boolean
   /** Send an IPC event to the main window (null when window is not available). */
@@ -122,6 +125,7 @@ export class ClipPipeline {
     game: ClipGame = 'valorant',
   ): Promise<void> {
     const { clipStore, clipExtractor, hotkeyBookmarks, logActivity, notifySilent } = this.ctx
+    const capture = this.ctx.getClipCapture()
 
     if (!fs.existsSync(videoPath)) {
       log.warn('[ClipExtract] Source video not found — skipping:', videoPath)
@@ -193,12 +197,14 @@ export class ClipPipeline {
         else if (kills.length >= 3) combinedRounds.set(round, { kills, trigger: 'multikill', killCount: kills.length })
       }
 
-      const topKills = timeline.playerKills
-        .filter(k => {
-          const r = k.round ?? -1
-          return !clutchRounds.has(r) && !combinedRounds.has(r) && k.videoOffsetMs != null
-        })
-        .slice(0, 6)
+      const topKills = capture.singleKills
+        ? timeline.playerKills
+            .filter(k => {
+              const r = k.round ?? -1
+              return !clutchRounds.has(r) && !combinedRounds.has(r) && k.videoOffsetMs != null
+            })
+            .slice(0, 6)
+        : []
 
       for (const kill of topKills) {
         const offsetMs = kill.videoOffsetMs!
@@ -220,6 +226,7 @@ export class ClipPipeline {
       }
 
       for (const [round, { kills: roundKills, trigger, killCount }] of combinedRounds.entries()) {
+        if (trigger === 'ace' ? !capture.aces : !capture.multiKills) continue
         const validKills = roundKills.filter(k => k.videoOffsetMs != null)
         if (validKills.length === 0) continue
         const first = validKills.reduce((a, b) => a.videoOffsetMs! < b.videoOffsetMs! ? a : b)
@@ -245,27 +252,29 @@ export class ClipPipeline {
         }
       }
 
-      for (const round of clutchRounds) {
-        const clutchKills = timeline.playerKills.filter(k => (k.round ?? -1) === round && k.videoOffsetMs != null)
-        if (clutchKills.length === 0) continue
-        const first = clutchKills.reduce((a, b) => a.videoOffsetMs! < b.videoOffsetMs! ? a : b)
-        const last  = clutchKills.reduce((a, b) => a.videoOffsetMs! > b.videoOffsetMs! ? a : b)
-        const startMs    = Math.max(0, first.videoOffsetMs! - 15_000)
-        const durationMs = Math.min(last.videoOffsetMs! - first.videoOffsetMs! + 20_000, 120_000)
-        try {
-          const rec = clipStore.add({
-            path: '', thumbPath: null, trigger: 'clutch', map, agent, durationSeconds: durationMs / 1000, round,
-            killCount: clutchKills.length, analysisJobId, game, ...clipMatchMeta(timeline, first),
-          })
-          const clipPath = ClipExtractor.clipPath(rec.id)
-          const thumbPath = ClipExtractor.thumbPath(rec.id)
-          await this.safeExtract({ sourcePath: videoPath, startOffsetMs: startMs, durationMs, outputPath: clipPath }, vodDurationMs)
-          const resolvedThumb = await this.safeThumb(videoPath, first.videoOffsetMs!, startMs, thumbPath)
-          clipStore.update(rec.id, { path: clipPath, thumbPath: resolvedThumb, momentOffsetMs: first.videoOffsetMs! })
-          extractedClipIds.push(rec.id)
-          logActivity(`Clutch clip saved — Round ${round + 1} (${map ?? 'unknown'})`)
-        } catch (err) {
-          reportClipExtractError('[ClipExtract] Clutch clip failed', err)
+      if (capture.clutches) {
+        for (const round of clutchRounds) {
+          const clutchKills = timeline.playerKills.filter(k => (k.round ?? -1) === round && k.videoOffsetMs != null)
+          if (clutchKills.length === 0) continue
+          const first = clutchKills.reduce((a, b) => a.videoOffsetMs! < b.videoOffsetMs! ? a : b)
+          const last  = clutchKills.reduce((a, b) => a.videoOffsetMs! > b.videoOffsetMs! ? a : b)
+          const startMs    = Math.max(0, first.videoOffsetMs! - 15_000)
+          const durationMs = Math.min(last.videoOffsetMs! - first.videoOffsetMs! + 20_000, 120_000)
+          try {
+            const rec = clipStore.add({
+              path: '', thumbPath: null, trigger: 'clutch', map, agent, durationSeconds: durationMs / 1000, round,
+              killCount: clutchKills.length, analysisJobId, game, ...clipMatchMeta(timeline, first),
+            })
+            const clipPath = ClipExtractor.clipPath(rec.id)
+            const thumbPath = ClipExtractor.thumbPath(rec.id)
+            await this.safeExtract({ sourcePath: videoPath, startOffsetMs: startMs, durationMs, outputPath: clipPath }, vodDurationMs)
+            const resolvedThumb = await this.safeThumb(videoPath, first.videoOffsetMs!, startMs, thumbPath)
+            clipStore.update(rec.id, { path: clipPath, thumbPath: resolvedThumb, momentOffsetMs: first.videoOffsetMs! })
+            extractedClipIds.push(rec.id)
+            logActivity(`Clutch clip saved — Round ${round + 1} (${map ?? 'unknown'})`)
+          } catch (err) {
+            reportClipExtractError('[ClipExtract] Clutch clip failed', err)
+          }
         }
       }
     }
@@ -287,6 +296,7 @@ export class ClipPipeline {
     game: ClipGame = 'valorant',
   ): Promise<void> {
     const { clipStore, clipExtractor, logActivity, notifySilent } = this.ctx
+    const capture = this.ctx.getClipCapture()
 
     if (!fs.existsSync(videoPath)) {
       log.warn('[LateClipExtract] Source video not found — skipping:', videoPath)
@@ -334,6 +344,7 @@ export class ClipPipeline {
     }
 
     for (const [round, { kills: roundKills, trigger, killCount }] of combinedRounds.entries()) {
+      if (trigger === 'ace' ? !capture.aces : !capture.multiKills) continue
       const validKills = roundKills.filter(k => k.videoOffsetMs != null)
       if (validKills.length === 0) continue
       const first = validKills.reduce((a, b) => a.videoOffsetMs! < b.videoOffsetMs! ? a : b)
@@ -359,7 +370,7 @@ export class ClipPipeline {
       }
     }
 
-    for (const round of clutchRounds) {
+    for (const round of capture.clutches ? clutchRounds : []) {
       const clutchKills = timeline.playerKills.filter(k => (k.round ?? -1) === round && k.videoOffsetMs != null)
       if (clutchKills.length === 0) continue
       const first = clutchKills.reduce((a, b) => a.videoOffsetMs! < b.videoOffsetMs! ? a : b)

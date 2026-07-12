@@ -41,11 +41,19 @@ const {
   storageUploadProgress,
   storageUsagePercent,
   toggleAudio,
+  toggleClipCapture,
   toggleFullMatchRecording,
   toggleMode,
   toggleSection,
   uploadPendingToCloud,
 } = useSettings()
+
+const clipCaptureOptions = [
+  { key: 'singleKills', label: 'Single kills', hint: 'Routine 1-kill highlights from each round' },
+  { key: 'multiKills', label: 'Multi-kills (3K / 4K)', hint: 'Triple and quadra kill rounds' },
+  { key: 'aces', label: 'Aces (5K)', hint: 'Full-team wipe rounds' },
+  { key: 'clutches', label: 'Clutches', hint: '1vX rounds you won' },
+] as const
 </script>
 
 <template>
@@ -350,6 +358,31 @@ const {
                 Legacy duplicate recordings ({{ formatBytes(storageBreakdown.legacyDuplicateBytes) }}) are removed automatically on launch.
               </p>
               <p v-if="storageMessage" class="mt-2 text-[11px]" :class="storageMessageError ? 'text-red-400' : 'text-green-400'">{{ storageMessage }}</p>
+            </div>
+
+            <div>
+              <label class="mb-1 block text-xs text-gray-400">Highlight clips to capture</label>
+              <p class="mb-2 text-[11px] text-gray-600">Choose which moments UpForge auto-saves after each match. Manual hotkey clips ({{ '\u2318' }}/F9) are always saved.</p>
+              <div class="space-y-1.5">
+                <button
+                  v-for="opt in clipCaptureOptions"
+                  :key="opt.key"
+                  type="button"
+                  class="flex w-full items-center justify-between gap-3 rounded-xl border border-white/[0.08] bg-white/[0.03] px-3 py-2 text-left transition-colors hover:border-white/[0.16]"
+                  @click="toggleClipCapture(opt.key)"
+                >
+                  <span class="min-w-0">
+                    <span class="block text-xs font-medium text-gray-200">{{ opt.label }}</span>
+                    <span class="block text-[11px] text-gray-600">{{ opt.hint }}</span>
+                  </span>
+                  <span
+                    class="relative inline-flex h-5 w-9 flex-shrink-0 items-center rounded-full transition-colors"
+                    :class="settings.clipCapture?.[opt.key] ? 'bg-red-500' : 'bg-white/20'"
+                  >
+                    <span class="inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform" :class="settings.clipCapture?.[opt.key] ? 'translate-x-4' : 'translate-x-0.5'" />
+                  </span>
+                </button>
+              </div>
             </div>
 
             <div>

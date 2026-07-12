@@ -84,6 +84,17 @@ export interface CoachingDrill {
 
 export type PrimaryGame = 'valorant' | 'cs2' | 'deadlock' | 'lol'
 
+export interface ClipCaptureSettings {
+  /** Single-kill highlights (routine frags). */
+  singleKills: boolean
+  /** Multi-kills — 3K and 4K rounds. */
+  multiKills: boolean
+  /** Aces — 5K rounds. */
+  aces: boolean
+  /** Clutch rounds (1vX won). */
+  clutches: boolean
+}
+
 export interface AppSettings {
   /** Active game context — drives dashboard, settings sections, and web links. */
   primaryGame: PrimaryGame
@@ -110,6 +121,8 @@ export interface AppSettings {
   clipRetentionDays: number
   /** Auto-delete routine kill clips after N days (0 = off). Favorites and highlight triggers kept. */
   clipKillRetentionDays: number
+  /** Which auto-extracted highlight clip types to keep. Manual hotkey clips are always saved. */
+  clipCapture: ClipCaptureSettings
   /** Auto-delete local-only match recordings after this many days (0 = disabled) */
   recordingRetentionDays: number
   /** When false, only replay-buffer highlight clips are saved (no full-match VOD). */
@@ -563,6 +576,7 @@ declare global {
       }
       analyses: {
         get: (limit?: number) => Promise<AnalysisItem[]>
+        remove: (analysisId: number, jobId?: string | null) => Promise<{ ok: boolean; removed: boolean; deletedLocal: boolean }>
         getTimeline: (id: number) => Promise<RecordingTimeline | null>
         refreshPlayback: (id: number) => Promise<string | null>
         getDetail: (id: number) => Promise<import('./lib/analysis-enrichment').AnalysisDetailEnriched | null>

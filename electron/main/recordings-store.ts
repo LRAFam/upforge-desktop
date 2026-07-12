@@ -417,6 +417,10 @@ export class RecordingsStore {
     return this.recordings.find(r => r.jobId === jobId)
   }
 
+  getByAnalysisId(analysisId: number): PendingRecording | undefined {
+    return this.recordings.find(r => r.analysisId === analysisId)
+  }
+
   /** Local file path for a desktop upload job, if the recording still exists on disk. */
   getPathByJobId(jobId: string): string | null {
     const recording = this.recordings.find(r => r.jobId === jobId && r.path && fs.existsSync(r.path))

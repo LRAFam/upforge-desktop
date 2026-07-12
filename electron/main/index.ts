@@ -92,7 +92,7 @@ import { reconcileStuckAnalysisJobs, type ReconciledAnalysisContext } from './st
 import { buildAnalysisErrorPayload, formatAnalysisFailureMessage, type AnalysisErrorPayload } from './analysis-failure-messages'
 import { parseDuelFailureDiagnostics, diagnosticsSummary, type DuelFailureDiagnostics } from '../../src/lib/duel-diagnostics'
 import { AuthManager } from './auth-manager'
-import { SettingsManager } from './settings-manager'
+import { SettingsManager, DEFAULT_CLIP_CAPTURE } from './settings-manager'
 import { setupIpcHandlers, setupClipHandlers, cancelAllPollingTimers } from './ipc-handlers'
 import {
   initFunnelEvents,
@@ -1210,6 +1210,7 @@ const clipPipeline = new ClipPipeline({
   clipExtractor,
   hotkeyBookmarks,
   getRecordingStartTime: () => currentRecordingStartTime,
+  getClipCapture: () => settingsManager?.get().clipCapture ?? DEFAULT_CLIP_CAPTURE,
   logActivity: (msg) => logActivity(msg),
   notifySilent: () => notifySilent(),
   notifyMainWindow: (channel, data) => mainWindow?.webContents.send(channel, data),
@@ -5100,6 +5101,47 @@ async function startApp(): Promise<void> {
     recordingsStore.remove(id)
     mainWindow?.webContents.send('recordings:updated')
     return { ok: true as const, deletedLocal: wasLocalOnly }
+  })
+
+  ipcMain.handle('analyses:remove', async (_e, { analysisId, jobId }: { analysisId: number; jobId?: string | null }) => {
+    // A completed analysis may still have its source VOD on disk (auto-delete off, or kept after upload).
+    const rec = recordingsStore.getByAnalysisId(analysisId)
+      ?? (jobId ? recordingsStore.getByJobId(jobId) : undefined)
+    const localPath = rec?.path && fs.existsSync(rec.path) ? rec.path : null
+
+    const buttons = localPath
+      ? ['Cancel', 'Remove from dashboard', 'Remove & delete local file']
+      : ['Cancel', 'Remove from dashboard']
+    const win = mainWindow && !mainWindow.isDestroyed() ? mainWindow : null
+    const detail = localPath
+      ? 'Hide this match from your dashboard on this PC. You can also delete the local video file to free up space — your cloud copy (if saved) stays available.'
+      : 'Hide this match from your dashboard on this PC. Your cloud copy (if saved) stays available.'
+
+    const { response } = win
+      ? await dialog.showMessageBox(win, {
+          type: 'question',
+          buttons,
+          defaultId: 1,
+          cancelId: 0,
+          title: 'Remove recording',
+          message: 'Remove this match?',
+          detail,
+        })
+      : { response: 1 }
+
+    if (response === 0) return { ok: false as const, removed: false, deletedLocal: false }
+
+    let deletedLocal = false
+    if (response === 2 && localPath) {
+      const freed = deleteLocalRecordingFiles(localPath)
+      deletedLocal = freed > 0
+      if (deletedLocal) {
+        log.info(`[Analyses] Removed local file (${freed} bytes) for analysis ${analysisId}: ${localPath}`)
+      }
+    }
+    if (rec) recordingsStore.remove(rec.id)
+    mainWindow?.webContents.send('recordings:updated')
+    return { ok: true as const, removed: true, deletedLocal }
   })
 
   ipcMain.handle('app:open-vod-review', (_e, { id, seekMs }: { id: string; seekMs?: number }) => {

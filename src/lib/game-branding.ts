@@ -5,11 +5,12 @@
  * - Valorant V mark: Riot Games via Wikimedia Commons → exported PNG
  * - CS2: Counter-Strike emblem from game files (Juknum/counter-strike-icons, csgologo.svg)
  * - Deadlock: Valve Steam store logo (app 1422450)
+ * - League of Legends: official Riot Games "L" logomark (full-colour hextech mark)
  */
 import valorantLogo from '../assets/games/valorant-logo.png'
 import cs2Logo from '../assets/games/cs2-icon.png'
 import deadlockLogo from '../assets/games/deadlock-icon.png'
-import lolLogo from '../assets/games/lol-icon.png'
+import lolLogo from '../assets/games/lol-icon.webp'
 import type { PrimaryGame } from './games'
 
 export interface GameBrand {
