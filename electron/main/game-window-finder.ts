@@ -12,6 +12,8 @@ const GAME_PROCESS: Record<string, { exe: string; processName: string }> = {
   valorant: { exe: 'VALORANT-Win64-Shipping.exe', processName: 'VALORANT-Win64-Shipping' },
   cs2: { exe: 'cs2.exe', processName: 'cs2' },
   deadlock: { exe: 'deadlock.exe', processName: 'deadlock' },
+  // In-game client only (not the LeagueClientUx.exe lobby). Runs during a match.
+  lol: { exe: 'League of Legends.exe', processName: 'League of Legends' },
 }
 
 /** Static fallbacks when the game process has no visible window yet. */
@@ -19,6 +21,7 @@ export const OBS_WINDOW_FALLBACKS: Record<string, string> = {
   valorant: 'VALORANT  :UnrealWindow:VALORANT-Win64-Shipping.exe',
   cs2: 'Counter-Strike 2:SDL_app:cs2.exe',
   deadlock: 'Deadlock:SDL_app:deadlock.exe',
+  lol: 'League of Legends (TM) Client:RiotWindowClass:League of Legends.exe',
 }
 
 /**
