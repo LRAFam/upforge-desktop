@@ -4,6 +4,8 @@
  */
 import https from 'https'
 import type { FinalPlayerStats, KillEvent, MatchData } from './riot-types'
+import { resolveLolMapLabel } from '../../src/lib/lol-maps'
+import { assignKillSpreeRounds } from './kill-clip-grouping'
 
 const LIVE_CLIENT_HOST = '127.0.0.1'
 const LIVE_CLIENT_PORT = 2999
@@ -102,6 +104,14 @@ export function normalizeLolGameMode(raw: string | null | undefined): string | n
   return upper
 }
 
+/** @deprecated Use resolveLolMapLabel from src/lib/lol-maps — kept for existing imports. */
+export const resolveLolMapName = resolveLolMapLabel
+
+/** @deprecated Use assignKillSpreeRounds from kill-clip-grouping.ts */
+export function assignLolKillSpreeRounds(killEvents: KillEvent[]): void {
+  assignKillSpreeRounds(killEvents)
+}
+
 /** Exported for unit tests — map live client snapshot to MatchData. */
 export function buildMatchDataFromLolSnapshot(
   data: LolAllGameData,
@@ -137,30 +147,41 @@ export function buildMatchDataFromLolSnapshot(
     accountLevel: null,
   }
 
+  const localName = (local?.summonerName ?? active?.summonerName ?? '').toLowerCase()
+  const localRiotName = (active?.riotId ?? local?.riotId ?? '').split('#', 1)[0]?.toLowerCase() ?? ''
+  const isLocal = (name: string): boolean => {
+    const lower = name.toLowerCase()
+    if (localName && lower.includes(localName)) return true
+    if (localRiotName && lower.includes(localRiotName)) return true
+    return false
+  }
+
   const killEvents: KillEvent[] = []
   for (const evt of data.events?.Events ?? []) {
-    if (evt.EventName !== 'ChampionKill' && evt.EventName !== 'Multikill') continue
     if (evt.EventName !== 'ChampionKill') continue
     const gameTimeMs = Math.round(evt.EventTime * 1000)
+    const rawKiller = evt.KillerName ?? ''
+    const rawVictim = evt.VictimName ?? ''
+    // Tag the local player as "You" so the VOD viewer highlights their kills/deaths.
     killEvents.push({
       EventID: evt.EventID,
       EventName: 'ChampionKill',
       EventTime: evt.EventTime,
-      killerName: evt.KillerName ?? '',
-      victimName: evt.VictimName ?? '',
+      killerName: isLocal(rawKiller) ? 'You' : rawKiller,
+      victimName: isLocal(rawVictim) ? 'You' : rawVictim,
       assistants: evt.Assisters ?? [],
       timeSinceGameStartMillis: gameTimeMs,
       videoOffsetMs: Math.max(0, gameTimeMs - Math.max(0, recordingStart - (opts.gameplayStartTime ?? matchStart))),
     })
   }
 
-  const localName = (local?.summonerName ?? active?.summonerName ?? '').toLowerCase()
-  const playerKills = killEvents.filter((k) =>
-    localName && k.killerName.toLowerCase().includes(localName),
-  )
-  const playerDeaths = killEvents.filter((k) =>
-    localName && k.victimName.toLowerCase().includes(localName),
-  )
+  // LoL has no rounds. Group the player's kills into sprees by time proximity so
+  // the clip pipeline (which buckets by `round`) can build single / multi / penta
+  // kill clips. Each spree gets its own synthetic round number.
+  assignKillSpreeRounds(killEvents)
+
+  const playerKills = killEvents.filter((k) => k.killerName === 'You')
+  const playerDeaths = killEvents.filter((k) => k.victimName === 'You')
 
   return {
     game: 'lol',
@@ -168,7 +189,7 @@ export function buildMatchDataFromLolSnapshot(
     puuid: null,
     region: null,
     queueId: '420',
-    map: gameData?.mapName ?? "Summoner's Rift",
+    map: resolveLolMapLabel(gameData?.mapName),
     agent: local?.championName ?? null,
     gameMode: normalizeLolGameMode(gameData?.gameMode),
     playerName: riotParts.name ?? local?.summonerName ?? null,
@@ -287,7 +308,7 @@ export class LoLLiveClientApi {
     const local = findLocalPlayer(data)
     return {
       champion: local?.championName ?? null,
-      map: data.gameData?.mapName ?? null,
+      map: data.gameData?.mapName ? resolveLolMapLabel(data.gameData.mapName) : null,
       kills: local?.scores.kills ?? 0,
       deaths: local?.scores.deaths ?? 0,
       assists: local?.scores.assists ?? 0,

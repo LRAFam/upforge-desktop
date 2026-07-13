@@ -46,8 +46,11 @@ type VodKillSource = Pick<MatchData, 'game' | 'playerKills' | 'playerDeaths' | '
 /** Kills for the VOD round log — falls back to all demo kills when local player wasn't matched. */
 export function timelineKillsForVod(timeline: VodKillSource | null | undefined): KillEvent[] {
   if (!timeline) return []
-  if (timeline.playerKills?.length) return timeline.playerKills
   const game = timeline.game ?? 'valorant'
+  // LoL uses the live-client event feed — every ChampionKill lands in killEvents;
+  // the player's own kills are tagged "You" so the viewer can classify them.
+  if (game === 'lol') return timeline.killEvents ?? timeline.playerKills ?? []
+  if (timeline.playerKills?.length) return timeline.playerKills
   if (game === 'cs2' || game === 'deadlock') {
     return timeline.killEvents ?? []
   }
@@ -57,8 +60,13 @@ export function timelineKillsForVod(timeline: VodKillSource | null | undefined):
 /** Deaths for the VOD round log — player deaths only; demo fallback uses killEvents tagged "You". */
 export function timelineDeathsForVod(timeline: VodKillSource | null | undefined): KillEvent[] {
   if (!timeline) return []
-  if (timeline.playerDeaths?.length) return timeline.playerDeaths
   const game = timeline.game ?? 'valorant'
+  if (game === 'lol') {
+    return timeline.playerDeaths?.length
+      ? timeline.playerDeaths
+      : (timeline.killEvents ?? []).filter((k) => k.victimName === 'You')
+  }
+  if (timeline.playerDeaths?.length) return timeline.playerDeaths
   if (game === 'cs2' || game === 'deadlock') {
     return (timeline.killEvents ?? []).filter((k) => k.victimName === 'You')
   }

@@ -7,6 +7,7 @@ import { isBenignObsWebSocketError } from './obs-errors'
 import type OBSWebSocket from 'obs-websocket-js'
 import log from 'electron-log'
 import { resolveObsCaptureWindow } from './game-window-finder'
+import { obsCaptureConfig } from './game-config'
 
 export const UPFORGE_SCENE_NAME = 'UpForge'
 export const UPFORGE_INPUT_NAME = 'UpForge Capture'
@@ -63,26 +64,6 @@ export interface ObsSetupResult {
 
 const DESKTOP_CAPTURE_KINDS = new Set(['monitor_capture', 'display_capture', 'screen_capture'])
 
-/**
- * Games where OBS game-capture hooks are blocked or unreliable — use window capture instead.
- * - CS2 / Deadlock: Source 2 titles block the game-capture hook.
- * - League of Legends: Vanguard anti-cheat blocks the hook, producing a black VOD.
- */
-function usesWindowCapture(game: string): boolean {
-  const g = game.toLowerCase()
-  return g === 'cs2' || g === 'deadlock' || g === 'lol'
-}
-
-/**
- * OBS window_capture method:
- *   0 = Automatic (usually BitBlt — black screen for GPU-accelerated/anti-cheat games)
- *   2 = Windows Graphics Capture (WGC) — reliable for hardware-accelerated + anti-cheat titles.
- * League with Vanguard needs WGC to avoid a black recording.
- */
-function windowCaptureMethod(game: string): number {
-  return game.toLowerCase() === 'lol' ? 2 : 0
-}
-
 export function getUpForgeCaptureConfig(
   game: string,
   window: string,
@@ -90,14 +71,14 @@ export function getUpForgeCaptureConfig(
   inputKind: string
   inputSettings: Record<string, string | number | boolean>
 } {
-  const normalized = game.toLowerCase()
+  const capture = obsCaptureConfig(game)
 
-  if (process.platform === 'win32' && usesWindowCapture(normalized)) {
+  if (process.platform === 'win32' && capture.useWindowCapture) {
     return {
       inputKind: 'window_capture',
       inputSettings: {
         window,
-        method: windowCaptureMethod(normalized),
+        method: capture.windowCaptureMethod,
         priority: 0,
         cursor: false,
         compatibility: false,

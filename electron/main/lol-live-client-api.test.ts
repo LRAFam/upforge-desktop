@@ -1,10 +1,13 @@
 import { describe, expect, it } from 'vitest'
 import {
+  assignLolKillSpreeRounds,
   buildMatchDataFromLolSnapshot,
   isLolLiveMatchActive,
   normalizeLolGameMode,
+  resolveLolMapName,
   type LolAllGameData,
 } from './lol-live-client-api'
+import type { KillEvent } from './riot-types'
 
 const SAMPLE_SNAPSHOT: LolAllGameData = {
   activePlayer: {
@@ -85,6 +88,61 @@ describe('buildMatchDataFromLolSnapshot', () => {
     expect(timeline.finalStats?.deaths).toBe(1)
     expect(timeline.finalStats?.assists).toBe(5)
     expect(timeline.playerKills).toHaveLength(1)
-    expect(timeline.playerKills[0]?.killerName).toBe('TestPlayer')
+    // Local player is tagged "You" so the VOD viewer can highlight their kills.
+    expect(timeline.playerKills[0]?.killerName).toBe('You')
+    expect(timeline.playerKills[0]?.victimName).toBe('EnemyMid')
+  })
+
+  it('translates the Live Client raw map codename to Summoner\'s Rift', () => {
+    const timeline = buildMatchDataFromLolSnapshot(
+      { ...SAMPLE_SNAPSHOT, gameData: { ...SAMPLE_SNAPSHOT.gameData!, mapName: 'Map11' } },
+      { recordingStartTime: 1_700_000_000_000 },
+    )
+    expect(timeline.map).toBe("Summoner's Rift")
+  })
+})
+
+describe('assignLolKillSpreeRounds', () => {
+  function killAt(ms: number, killer = 'You'): KillEvent {
+    return {
+      EventName: 'ChampionKill',
+      killerName: killer,
+      victimName: 'Enemy',
+      assistants: [],
+      timeSinceGameStartMillis: ms,
+    } as KillEvent
+  }
+
+  it('groups the player kills into time-proximity sprees', () => {
+    // A triple (rapid), then a lone kill much later.
+    const kills = [
+      killAt(60_000),
+      killAt(63_000),
+      killAt(65_000),
+      killAt(300_000),
+      killAt(64_000, 'Teammate'), // not the player — should stay ungrouped
+    ]
+    assignLolKillSpreeRounds(kills)
+
+    const mine = kills.filter((k) => k.killerName === 'You')
+    // First three are one spree (round 0), the late kill is its own spree (round 1).
+    expect(mine[0]?.round).toBe(0)
+    expect(mine[1]?.round).toBe(0)
+    expect(mine[2]?.round).toBe(0)
+    expect(mine[3]?.round).toBe(1)
+    // Non-player kill is untouched.
+    expect(kills[4]?.round).toBeUndefined()
+  })
+})
+
+describe('resolveLolMapName', () => {
+  it('maps Riot codenames to readable names', () => {
+    expect(resolveLolMapName('Map11')).toBe("Summoner's Rift")
+    expect(resolveLolMapName('Map12')).toBe('Howling Abyss')
+  })
+
+  it('falls back to Summoner\'s Rift for unknown codenames', () => {
+    expect(resolveLolMapName('Map99')).toBe("Summoner's Rift")
+    expect(resolveLolMapName(null)).toBe("Summoner's Rift")
   })
 })

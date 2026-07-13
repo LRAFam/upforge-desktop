@@ -6,7 +6,11 @@ import {
   getAgentRole,
   getRoleColor,
   isDisplayableGameMode,
+  getAgentImage,
+  getAgentColor,
+  getMapMinimap,
 } from '../../lib/valorant'
+import { getChampionImage, resolveLolMapLabel } from '../../lib/lol'
 import {
   formatRelativeTime,
   formatDate,
@@ -96,6 +100,34 @@ function failureHint(rec: PendingRecording): string | null {
 
 function canReviewVod(rec: PendingRecording): boolean {
   return canWatchRawRecording(rec)
+}
+
+type AnalysisRow = { game?: string | null; agent?: string | null; map?: string | null }
+
+function analysisIconImage(a: AnalysisRow): string {
+  if (!a.agent) return ''
+  if (a.game === 'lol') return getChampionImage(a.agent) ?? ''
+  if (a.game === 'valorant') return getAgentImage(a.agent) ?? ''
+  return ''
+}
+
+function analysisMapImage(a: AnalysisRow): string {
+  if (a.game === 'lol') return ''
+  return a.map ? (getMapMinimap(a.map) ?? '') : ''
+}
+
+function analysisAccent(a: AnalysisRow): string {
+  if (a.game === 'lol') return '#c89b3c'
+  return a.agent ? (getAgentColor(a.agent) ?? '') : ''
+}
+
+function analysisMapLabel(a: AnalysisRow): string {
+  if (a.game === 'lol') return resolveLolMapLabel(a.map)
+  return a.map || '—'
+}
+
+function showAnalysisRole(a: AnalysisRow): boolean {
+  return a.game === 'valorant' && !!a.agent
 }
 
 function displayAnalysisError(rec: PendingRecording): string {
@@ -383,9 +415,9 @@ function toggleFootageDebug(rec: PendingRecording) {
             :title="coachingSnippets[a.id] || undefined"
             @click="openAnalysisRow(a)"
           >
-            <div class="match-list-cell-icon w-8 h-8 rounded-lg overflow-hidden flex items-center justify-center relative flex-shrink-0" :style="a.agent ? { backgroundColor: getAgentColor(a.agent) + '22' } : {}">
-              <img v-if="a.map && getMapMinimap(a.map)" :src="getMapMinimap(a.map)" class="absolute inset-0 w-full h-full object-cover opacity-20" />
-              <img v-if="a.agent && getAgentImage(a.agent)" :src="getAgentImage(a.agent)" class="relative w-8 h-8 object-contain" />
+            <div class="match-list-cell-icon w-8 h-8 rounded-lg overflow-hidden flex items-center justify-center relative flex-shrink-0" :style="analysisAccent(a) ? { backgroundColor: analysisAccent(a) + '22' } : {}">
+              <img v-if="analysisMapImage(a)" :src="analysisMapImage(a)" class="absolute inset-0 w-full h-full object-cover opacity-20" />
+              <img v-if="analysisIconImage(a)" :src="analysisIconImage(a)" class="relative w-8 h-8 object-contain" />
               <template v-else>
                 <svg v-if="a.job_id" class="w-4 h-4 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8" stroke-width="1.5"/><circle cx="12" cy="12" r="3" fill="currentColor" stroke="none"/></svg>
                 <svg v-else class="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
@@ -394,14 +426,14 @@ function toggleFootageDebug(rec: PendingRecording) {
             <div class="min-w-0 match-list-col-match">
               <div class="flex items-center gap-1 min-w-0">
                 <span class="text-xs font-semibold truncate">{{ a.agent || 'Unknown' }}</span>
-                <span v-if="a.agent" class="flex-shrink-0 text-[8px] font-bold px-1 py-px rounded" :style="{ color: getRoleColor(getAgentRole(a.agent)), backgroundColor: getRoleColor(getAgentRole(a.agent)) + '20' }">{{ getAgentRole(a.agent) }}</span>
+                <span v-if="showAnalysisRole(a)" class="flex-shrink-0 text-[8px] font-bold px-1 py-px rounded" :style="{ color: getRoleColor(getAgentRole(a.agent)), backgroundColor: getRoleColor(getAgentRole(a.agent)) + '20' }">{{ getAgentRole(a.agent) }}</span>
                 <span
                   v-if="isDisplayableGameMode(a.game_mode)"
                   class="flex-shrink-0 rounded-full border border-white/[0.10] bg-white/[0.05] px-1.5 py-px text-[8px] font-semibold text-gray-600"
                 >{{ formatMode(a.game_mode) }}</span>
               </div>
               <p class="text-[10px] text-gray-600 mt-0.5 truncate">
-                {{ a.map || '—' }} · {{ formatDate(a.created_at) }}
+                {{ analysisMapLabel(a) }} · {{ formatDate(a.created_at) }}
                 <span v-if="a.rank" class="text-gray-700"> · {{ a.rank }}</span>
                 <span v-if="a.rounds_won != null && a.rounds_lost != null" class="text-gray-700"> · {{ a.rounds_won }}–{{ a.rounds_lost }}</span>
               </p>

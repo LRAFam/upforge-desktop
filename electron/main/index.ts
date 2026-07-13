@@ -35,11 +35,6 @@ import {
   deleteLocalRecordingFiles,
 } from './vod-compressor'
 import {
-  applyVodTrimToTimeline,
-  swapMediaFileInPlace,
-  trimmedOutputPath,
-} from './vod-trimmer'
-import {
   waitUntilBackgroundWorkAllowed,
   abortVodCompression,
   registerDeferredUploadRetry,
@@ -61,15 +56,18 @@ import {
 import {
   RiotLocalApi,
   recomputeTimelineVideoOffsets,
-  nudgeTimelineSyncOffset,
-  effectiveVideoSyncOffsetMs,
-  defaultVideoSyncOffsetMs,
 } from './riot-local-api'
 import { LoLLiveClientApi } from './lol-live-client-api'
 import {
+  gameLabel,
+  idleTooltip,
+  normalizeGameId as normalizePrimaryGame,
+  resolveGameMode,
+  resolveMapLabel,
+  type GameId,
+} from './game-config'
+import {
   resolveMatchSessionStartMs,
-  timelineDeathsForVod,
-  timelineKillsForVod,
 } from './recording-sync'
 import { applySpatialEnrichment } from './spatial/enrich'
 import { refreshMatchPopulationBenchmarks } from './spatial/enrich-population'
@@ -127,19 +125,14 @@ import log from 'electron-log'
 import { setupMainProcessErrorHandlers, reportError } from './error-reporter'
 import { reportPipelineError, shouldReportAnalysisPipelineError } from './pipeline-errors'
 import {
-  fetchArchivePlaybackUrl,
-  fetchJobPlaybackUrl,
-  fetchRecordingPlaybackUrl,
-  resolveLocalRecordingFile,
-} from './recording-playback'
-import {
   CRITICAL_FREE_DISK_BYTES,
   LOW_FREE_DISK_BYTES,
   formatFreeDiskLabel,
   getFreeDiskSpace,
 } from './disk-space'
-import { getStorageBreakdown, purgeCloudBackedLocals, runRecordingStorageMaintenance, buildStorageUsage, purgeUntrackedRecordingFiles, isLocalOnlyRecording } from './storage-cleanup'
-import { buildStorageEstimate } from './storage-stats'
+import { runRecordingStorageMaintenance } from './storage-cleanup'
+import { setupStorageHandlers } from './ipc/storage-ipc'
+import { setupRecordingsHandlers } from './ipc/recordings-ipc'
 import { buildTimelineFromReplay, tryAutoUploadSourceReplay, uploadReplayInBackground } from './post-match-replay'
 import { DiscordRPC } from './discord-rpc'
 import {
@@ -152,7 +145,7 @@ import {
 import { ClipPipeline } from './clip-pipeline'
 import { duelMomentsForUpload } from './moment-picker'
 import { buildAndUploadScoutMoments } from './scout-moments'
-import { extractAndUploadDuelClips, extractDuelPreviewClip, countMomentsWithClipKeys } from './duel-clip-uploader'
+import { extractAndUploadDuelClips, countMomentsWithClipKeys } from './duel-clip-uploader'
 import { requestPregameBrief as _requestPregameBrief, requestPostGameDebrief as _requestPostGameDebrief } from './post-game-api'
 import { enrichTimelineForCoaching } from './match-coaching-enrich'
 import {
@@ -205,28 +198,26 @@ import {
   getDeadlockMatchStartedAt,
   getDeadlockMatchSalts,
   getDeadlockDetectionStatus,
-  buildDeadlockTimelineFromLogSession,
 } from './deadlock-match-watcher'
 import { downloadDeadlockValveReplay } from './deadlock-valve-replay'
 import { ensureCs2DemoRecordingConfig } from './cs2-steam-setup'
 import { resolveCs2LocalPlayerName } from './cs2-player-identity'
+import {
+  uploadsSourceReplay,
+  usesDemoReplay,
+  gameNeedsLiveMatchWindow,
+} from './game-capabilities'
+import {
+  buildMatchEndTimeline,
+  fetchLiveClientTimeline,
+  type ReplayRetryContext,
+} from './match-end-timeline'
+import {
+  scheduleLateClipRetry,
+  type LateClipRetryDeps,
+} from './late-clip-retry'
 import { downloadCs2ValveDemoForSession } from './cs2-valve-demo-downloader'
 import { clearDemoDownloadProgress, sendDemoDownloadProgress } from './demo-download-notify'
-import { attachDemoFileToRecording } from './recording-demo-attach'
-
-/** Human-readable label for a game identifier. */
-function gameLabel(game?: string | null): string {
-  if (game === 'cs2') return 'CS2'
-  if (game === 'deadlock') return 'Deadlock'
-  if (game === 'lol') return 'League of Legends'
-  return 'Valorant'
-}
-
-/** Idle tray tooltip for a given game (or generic if unknown). */
-function idleTooltip(game?: string | null): string {
-  return `UpForge — ${gameLabel(game)} AI Coaching`
-}
-
 // Disable GPU acceleration in dev to prevent GPU process crashes on macOS
 if (!app.isPackaged) {
   app.disableHardwareAcceleration()
@@ -440,7 +431,7 @@ const clipStore = new ClipStore()
 const hotkeyManager = new HotkeyManager()
 const trainerBridge = new TrainerBridge(() => mainWindow)
 let settingsManager: SettingsManager
-let trackedPrimaryGame: ReturnType<typeof normalizePrimaryGame> = 'valorant'
+let trackedPrimaryGame: GameId = 'valorant'
 const discordRPC = new DiscordRPC(
   () => settingsManager?.get()?.discordRichPresence !== false,
 )
@@ -513,13 +504,7 @@ let lastShippingProcessCheckAt = 0
 const SHIPPING_PROCESS_CHECK_MS = 5_000
 let gsiPollTimer: ReturnType<typeof setInterval> | null = null
 
-let lastReplayRetryContext: {
-  game: 'cs2' | 'deadlock'
-  matchSessionStart: number
-  customReplayDir?: string
-  meta?: import('./post-match-replay').ReplayUploadMeta
-  recordingId?: string
-} | null = null
+let lastReplayRetryContext: ReplayRetryContext | null = null
 
 /** Recording ids with an active S3 upload in this process — excludes them from stale-upload reset. */
 const activeUploadRecordingIds = new Set<string>()
@@ -749,11 +734,6 @@ function mergeSpatialSummary(
   return api ?? localSpatial ?? null
 }
 
-function normalizePrimaryGame(value: string | null | undefined): 'valorant' | 'cs2' | 'deadlock' | 'lol' {
-  if (value === 'cs2' || value === 'deadlock' || value === 'valorant' || value === 'lol') return value
-  return 'valorant'
-}
-
 function syncPrimaryGameFromUser(): void {
   const user = authManager.getUser()
   const apiGame = user?.primary_game
@@ -781,8 +761,8 @@ function syncPrimaryGameFromDetection(game: string): void {
 }
 
 function handlePrimaryGameSwitch(
-  game: ReturnType<typeof normalizePrimaryGame>,
-  previousGame?: ReturnType<typeof normalizePrimaryGame>,
+  game: GameId,
+  previousGame?: GameId,
 ): void {
   if (previousGame === game) return
 
@@ -809,7 +789,7 @@ async function ensureObsCaptureForGame(game: string): Promise<void> {
   }
   if (!obsRecorder.isConnected()) return
 
-  const needsLiveWindow = game === 'cs2' || game === 'deadlock' || game === 'lol'
+  const needsLiveWindow = gameNeedsLiveMatchWindow(game)
   const processRunning =
     gameDetector.currentGame() === game || await gameDetector.isGameProcessRunning(game)
 
@@ -1469,6 +1449,22 @@ async function syncScoutMomentsForJob(
   })
 }
 
+function lateClipRetryDeps(): LateClipRetryDeps {
+  return {
+    retryCs2DemoClips,
+    riotLocalApi,
+    recordingsStore,
+    mainWindow,
+    extractKillClipsOnly,
+    syncScoutMomentsForJob,
+    enrichTimelineSpatial,
+    authManager,
+    settingsManager,
+    uploadManager,
+    buildCoachingSubmissionExtras,
+  }
+}
+
 async function prepareTimelineForCoaching(
   timeline: MatchData | null,
   game: string,
@@ -1986,7 +1982,7 @@ function setupGameDetection(): void {
     if (game === 'valorant') {
       return rearmValorantDetection(game, waitForMatchEnd)
     }
-    if (game !== 'cs2' && game !== 'deadlock') return
+    if (!usesDemoReplay(game)) return
     if (rearmWatchInFlight === game) return
     rearmWatchInFlight = game
 
@@ -2051,70 +2047,34 @@ function setupGameDetection(): void {
     let timeline: MatchData | null = null
     let pendingReplayPath: string | null = null
 
-    await Promise.all([
-      (async () => {
-        if (game === 'valorant') timeline = await riotLocalApi.stop()
-        else if (game === 'lol') timeline = await lolLiveClientApi.stop()
-      })(),
+    const [liveTimeline] = await Promise.all([
+      fetchLiveClientTimeline(game, {
+        stopValorantTimeline: () => riotLocalApi.stop(),
+        stopLolTimeline: () => lolLiveClientApi.stop(),
+      }),
       obsRecorder.stop(),
     ])
 
-    if ((game === 'cs2' || game === 'deadlock') && !timeline) {
-      const cs2PlayerName = game === 'cs2'
-        ? await resolveCs2LocalPlayerName(settingsManager, authManager)
-        : null
-      const replayCtx = {
-        game: game as 'cs2' | 'deadlock',
+    const timelineBuilt = await buildMatchEndTimeline(
+      {
+        game,
         matchSessionStart,
-        matchStartTime: currentMatchStartTime,
-        recordingStartTime: currentRecordingStartTime ?? matchSessionStart,
-        gsiMap: currentGsiMapName ?? (game === 'deadlock' ? getDeadlockMap() : getLatestGsiMap()),
-        customReplayDir: game === 'cs2' ? config?.cs2DemoDir : undefined,
-        localPlayerName: cs2PlayerName,
-      }
-      const parsed = await buildTimelineFromReplay(replayCtx, { pollOnce: true })
-      if (parsed.timeline) timeline = parsed.timeline
-      pendingReplayPath = parsed.demoPath
-      lastReplayRetryContext = {
-        game: game as 'cs2' | 'deadlock',
-        matchSessionStart,
-        customReplayDir: game === 'cs2' ? config?.cs2DemoDir : undefined,
-        meta: game === 'deadlock'
-          ? { matchStartedAt: Math.floor(matchSessionStart / 1000) }
-          : undefined,
-      }
-      if (timeline) {
-        const killCount = timeline.killEvents?.length ?? timeline.playerKills.length
-        log.info(`[HandleMatchEnd] ${game} demo timeline — kills=${killCount} matched=${timeline.playerKills.length}`)
-        if (game === 'cs2' && timeline.playerKills.length === 0 && killCount > 0) {
-          logActivity('CS2 demo loaded — set your Steam name in Settings → Recording to tag your kills (full match timeline still available)')
-        } else if (game === 'cs2' && timeline.playerKills.length === 0) {
-          logActivity('CS2 demo parsed but no kills matched — set your Steam name in Settings → Recording')
-        }
-      }
-    }
-
-    if (game === 'deadlock') {
-      const logTimeline = buildDeadlockTimelineFromLogSession(
-        currentRecordingStartTime ?? matchSessionStart,
         currentMatchStartTime,
-      )
-      if (logTimeline && !timeline) {
-        timeline = logTimeline
-        log.info(
-          `[HandleMatchEnd] deadlock log timeline — kills=${logTimeline.playerKills.length} hero=${logTimeline.agent ?? '?'}`,
-        )
-      } else if (logTimeline && timeline) {
-        if (!timeline.agent && logTimeline.agent) timeline.agent = logTimeline.agent
-        if (!timeline.map && logTimeline.map) timeline.map = logTimeline.map
-        if (timeline.playerKills.length === 0 && logTimeline.playerKills.length > 0) {
-          timeline.playerKills = logTimeline.playerKills
-          timeline.playerDeaths = logTimeline.playerDeaths
-          timeline.killEvents = logTimeline.killEvents
-          log.info(`[HandleMatchEnd] merged ${logTimeline.playerKills.length} kills from console log`)
-        }
-      }
-    }
+        currentRecordingStartTime,
+        currentGsiMapName,
+        cs2DemoDir: config?.cs2DemoDir,
+      },
+      {
+        resolveCs2LocalPlayerName: () => resolveCs2LocalPlayerName(settingsManager, authManager),
+        getDeadlockMap,
+        getLatestGsiMap,
+        logActivity,
+      },
+      liveTimeline,
+    )
+    timeline = timelineBuilt.timeline
+    pendingReplayPath = timelineBuilt.pendingReplayPath
+    lastReplayRetryContext = timelineBuilt.replayRetryContext
 
     const resolvedFile = resolveReadyRecordingPath(
       obsRecorder.getLastRecordingPath(),
@@ -2136,17 +2096,17 @@ function setupGameDetection(): void {
     const durationForGate = Math.max(recordingDuration, effectiveDuration)
 
     const user = authManager.getUser()
-    const map = timeline?.map ?? currentGsiMapName ?? null
+    const mapRaw = timeline?.map ?? currentGsiMapName ?? null
+    const map = mapRaw ? resolveMapLabel(game, mapRaw) : null
     const agent = timeline?.agent ?? (game === 'deadlock' ? getDeadlockHero() : null) ?? null
-    const gameMode = game === 'valorant'
-      ? (riotLocalApi.getLastGameMode() ?? 'UNKNOWN')
-      : game === 'lol'
-        ? (timeline?.gameMode ?? 'RANKED_SOLO')
-        : (timeline?.gameMode ?? 'COMPETITIVE')
+    const gameMode = resolveGameMode(game, {
+      timelineMode: timeline?.gameMode,
+      valorantLiveMode: riotLocalApi.getLastGameMode(),
+    })
     const autoAnalyse = config?.autoAnalyse !== false
 
     async function maybeUploadDemoOnly(reason: string): Promise<void> {
-      if (!autoAnalyse || (game !== 'cs2' && game !== 'deadlock')) return
+      if (!autoAnalyse || !usesDemoReplay(game)) return
       if (!authManager.isAuthenticated()) return
       logActivity(`${gameLabel(game)} replay uploading (${reason})`)
       showAppNotification({
@@ -2202,7 +2162,7 @@ function setupGameDetection(): void {
       clipsExtracted: 0, // updated after extractMatchClips completes
       matchDetailsStatus: timeline?.matchId
         ? (killsInTimeline > 0 ? 'fetched' : (riotDiag.region ? 'fetch_failed' : 'no_region'))
-        : (game === 'cs2' || game === 'deadlock')
+        : usesDemoReplay(game)
           ? (killsInTimeline > 0 ? 'fetched' : 'fetch_failed')
           : (riotDiag.accessTokenPresent ? 'no_match_id' : 'no_auth'),
     }
@@ -2310,7 +2270,7 @@ function setupGameDetection(): void {
     const uploadTargetWindow = postGameNotifyWindow
 
     // CS2 / Deadlock replay upload — runs asynchronously and never blocks VOD upload
-    if (game === 'cs2' || game === 'deadlock') {
+    if (uploadsSourceReplay(game)) {
       if (pendingReplayPath) {
         const replayMeta = game === 'deadlock'
           ? {
@@ -2473,34 +2433,18 @@ function setupGameDetection(): void {
 
         if (lateRetryScheduled) {
           log.info('[HandleMatchEnd] No kills (no-analyse) — scheduling late retry in 90s')
-          setTimeout(async () => {
-            try {
-              if (game === 'cs2') {
-                await retryCs2DemoClips({
-                  readyPath,
-                  savedRecordingId: savedRecording.id,
-                  timeline,
-                  matchSessionStart,
-                  analysisJobId: null,
-                })
-                return
-              }
-              log.info('[LateClipExtract] Fetching match details for', matchId)
-              const details = await riotLocalApi.fetchMatchDetailsLate(matchId)
-              if (!details) { log.warn('[LateClipExtract] Match details still unavailable'); return }
-              if (timeline) {
-                timeline.matchDetails = details
-                riotLocalApi.populateMatchDataFromDetails(timeline, details)
-                recordingsStore.updateTimeline(savedRecording.id, timeline)
-                mainWindow?.webContents.send('recordings:updated')
-              }
-              if ((timeline?.playerKills?.length ?? 0) === 0) { log.warn('[LateClipExtract] No kills after retry'); return }
-              log.info(`[LateClipExtract] Got ${timeline!.playerKills.length} kills — extracting clips`)
-              await extractKillClipsOnly(readyPath, timeline!, null, game)
-            } catch (err) {
-              log.warn('[LateClipExtract] Error (no-analyse path):', err)
-            }
-          }, 90_000)
+          scheduleLateClipRetry(
+            {
+              game,
+              readyPath,
+              savedRecordingId: savedRecording.id,
+              timeline,
+              matchSessionStart,
+              matchId: matchId ?? null,
+            },
+            lateClipRetryDeps(),
+            { analysisJobId: null },
+          )
         }
         return
       }
@@ -2550,34 +2494,18 @@ function setupGameDetection(): void {
         await enrichPromise.catch(() => {})
         if (lateRetryScheduled) {
           log.info('[HandleMatchEnd] No kills (auto-analyse skipped) — scheduling late retry in 90s')
-          setTimeout(async () => {
-            try {
-              if (game === 'cs2') {
-                await retryCs2DemoClips({
-                  readyPath,
-                  savedRecordingId: savedRecording.id,
-                  timeline,
-                  matchSessionStart,
-                  analysisJobId: null,
-                })
-                return
-              }
-              log.info('[LateClipExtract] Fetching match details for', matchId)
-              const details = await riotLocalApi.fetchMatchDetailsLate(matchId!)
-              if (!details) { log.warn('[LateClipExtract] Match details still unavailable'); return }
-              if (timeline) {
-                timeline.matchDetails = details
-                riotLocalApi.populateMatchDataFromDetails(timeline, details)
-                recordingsStore.updateTimeline(savedRecording.id, timeline)
-                mainWindow?.webContents.send('recordings:updated')
-              }
-              if ((timeline?.playerKills?.length ?? 0) === 0) { log.warn('[LateClipExtract] No kills after retry'); return }
-              log.info(`[LateClipExtract] Got ${timeline!.playerKills.length} kills — extracting clips`)
-              await extractKillClipsOnly(readyPath, timeline!, null, game)
-            } catch (err) {
-              log.warn('[LateClipExtract] Error (auto-analyse skipped path):', err)
-            }
-          }, 90_000)
+          scheduleLateClipRetry(
+            {
+              game,
+              readyPath,
+              savedRecordingId: savedRecording.id,
+              timeline,
+              matchSessionStart,
+              matchId: matchId ?? null,
+            },
+            lateClipRetryDeps(),
+            { analysisJobId: null },
+          )
         }
         return
       }
@@ -2602,59 +2530,23 @@ function setupGameDetection(): void {
 
       if (lateRetryScheduled) {
         log.info('[HandleMatchEnd] No kills in timeline — scheduling late match details retry in 90s (auto-delete deferred)')
-        setTimeout(async () => {
-          try {
-            if (game === 'cs2') {
-              await retryCs2DemoClips({
-                readyPath,
-                savedRecordingId: savedRecording.id,
-                timeline,
-                matchSessionStart,
-                analysisJobId: jobId,
-              })
-              doAutoDelete()
-              return
-            }
-            log.info('[LateClipExtract] Fetching match details for', matchId)
-            const details = await riotLocalApi.fetchMatchDetailsLate(matchId)
-            if (!details) {
-              log.warn('[LateClipExtract] Match details still unavailable after delay')
-              return
-            }
-            if (timeline) timeline.matchDetails = details
-            if (timeline) riotLocalApi.populateMatchDataFromDetails(timeline, details)
-            if (timeline) {
-              recordingsStore.updateTimeline(savedRecording.id, timeline)
-              mainWindow?.webContents.send('recordings:updated')
-            }
-            const gotData = (timeline?.roundSummaries?.length ?? 0) > 0
-              || (timeline?.playerKills?.length ?? 0) > 0
-            if (!gotData) {
-              log.warn('[LateClipExtract] Match details fetched but no round/kill data for this player')
-              return
-            }
-            if (jobId && timeline) {
-              enrichTimelineSpatial(timeline)
-              const rrHistory = await authManager.fetchRRHistory().catch(() => [])
-              const lateExtras = buildCoachingSubmissionExtras(
-                timeline,
-                settingsManager.get(),
-                rrHistory,
-                riotLocalApi.getDiagnostics().clientVersion,
-              )
-              await uploadManager.patchMatchData(jobId, timeline, lateExtras).catch((err) => {
-                log.warn('[LateClipExtract] Failed to patch job match_data:', err)
-              })
-            }
-            log.info(`[LateClipExtract] Got ${timeline!.playerKills.length} kills — extracting clips`)
-            await extractKillClipsOnly(readyPath, timeline!, jobId, game)
-            await syncScoutMomentsForJob(jobId, readyPath, timeline!)
-          } catch (err) {
-            log.warn('[LateClipExtract] Error:', err)
-          } finally {
-            doAutoDelete()
-          }
-        }, 90_000)
+        scheduleLateClipRetry(
+          {
+            game,
+            readyPath,
+            savedRecordingId: savedRecording.id,
+            timeline,
+            matchSessionStart,
+            matchId: matchId ?? null,
+          },
+          lateClipRetryDeps(),
+          {
+            analysisJobId: jobId,
+            patchJobWhenReady: true,
+            onAfterCs2Retry: doAutoDelete,
+            onFinally: doAutoDelete,
+          },
+        )
       }
     }
 
@@ -3134,7 +3026,7 @@ function setupGameDetection(): void {
       return
     }
 
-    if ((game === 'cs2' || game === 'deadlock' || game === 'lol') && cancelled) {
+    if (gameNeedsLiveMatchWindow(game) && cancelled) {
       logActivity(`${gameLabel(game)} closed before a match — watching for the game to reopen`)
       console.log('[GameDetector] Game closed during match wait — re-arming detection')
       tray?.setToolTip(idleTooltip(game))
@@ -3143,7 +3035,7 @@ function setupGameDetection(): void {
       return
     }
 
-    if ((game === 'cs2' || game === 'deadlock' || game === 'lol') && matchStartTime === null) {
+    if (gameNeedsLiveMatchWindow(game) && matchStartTime === null) {
       logActivity('No match started — returning to idle')
       console.log(`[GameDetector] ${game} match wait timed out without live match — not recording`)
       tray?.setToolTip(idleTooltip(game))
@@ -3221,7 +3113,7 @@ function setupGameDetection(): void {
     } else if (game === 'lol') {
       lolLiveClientApi.onMatchEnded = () => finishActiveMatch(game, 'live-client')
       lolLiveClientApi.start(matchStartTime ?? undefined)
-    } else if (game === 'cs2' || game === 'deadlock') {
+    } else if (usesDemoReplay(game)) {
       gsiPollTimer = setInterval(() => {
         void (async () => {
           if (!obsRecorder.isRecording() || matchHandled) return
@@ -3415,7 +3307,7 @@ function setupGameDetection(): void {
       mainWindow?.webContents.send('recording:waiting-for-match', { waiting: false })
       tray?.setToolTip(idleTooltip(game))
       console.log('[GameDetector] Game quit before match — no recording to save')
-      if (game === 'cs2' || game === 'deadlock' || game === 'lol') {
+      if (gameNeedsLiveMatchWindow(game)) {
         gameDetector.resetActiveGame(game)
         if (rearmWatchInFlight !== game) void rearmGameDetection(game)
       } else {
@@ -4264,7 +4156,10 @@ async function doUploadAndAnalyse(
           game,
           map,
           agent,
-          gameMode: riotLocalApi.getLastGameMode() ?? 'UNKNOWN',
+          gameMode: resolveGameMode(game, {
+            timelineMode: timeline?.gameMode,
+            valorantLiveMode: riotLocalApi.getLastGameMode(),
+          }),
           timeline
         })
         effectiveRecordingId = saved.id
@@ -4951,477 +4846,29 @@ async function startApp(): Promise<void> {
     return { ok: true as const, archiveId }
   })
 
-  let bulkPendingUploadRunning = false
-
-  ipcMain.handle('storage:get-breakdown', () => {
-    return getStorageBreakdown(
-      recordingsStore,
-      linkedRiotFromAuth(),
-      recordingSavePath(),
-    )
+  setupStorageHandlers(ipcMain, {
+    recordingsStore,
+    authManager,
+    settingsManager,
+    getMainWindow: () => mainWindow,
+    getActiveUserId,
+    linkedRiotFromAuth,
+    recordingSavePath,
+    logActivity,
+    doUploadArchiveOnly,
   })
 
-  ipcMain.handle('storage:get-usage', async () => {
-    const savePath = recordingSavePath()
-    return buildStorageUsage(savePath, getActiveUserId(), recordingsStore)
-  })
-
-  ipcMain.handle('storage:get-estimate', () => {
-    const savePath = recordingSavePath()
-    const settings = settingsManager?.get()
-    if (!settings) {
-      return buildStorageEstimate(savePath, {
-        recordingPreset: 'coaching',
-        recordingBitrate: 5,
-        fullMatchRecording: true,
-      })
-    }
-    return buildStorageEstimate(savePath, settings)
-  })
-
-  ipcMain.handle('storage:purge-orphans', () => {
-    const result = purgeUntrackedRecordingFiles(recordingsStore, recordingSavePath(), 0)
-    mainWindow?.webContents.send('recordings:updated')
-    mainWindow?.webContents.send('dashboard:refresh')
-    return result
-  })
-
-  ipcMain.handle('storage:purge-cloud-backed', async () => {
-    const result = await purgeCloudBackedLocals(
-      recordingsStore,
-      authManager,
-      linkedRiotFromAuth(),
-    )
-    mainWindow?.webContents.send('recordings:updated')
-    mainWindow?.webContents.send('dashboard:refresh')
-    return result
-  })
-
-  ipcMain.handle('storage:upload-pending', async () => {
-    if (bulkPendingUploadRunning) {
-      return { ok: false as const, error: 'Upload already in progress' }
-    }
-    if (!mainWindow || mainWindow.isDestroyed()) {
-      return { ok: false as const, error: 'App window unavailable' }
-    }
-
-    const pending = recordingsStore.getPending(linkedRiotFromAuth())
-    if (pending.length === 0) {
-      return { ok: true as const, uploaded: 0, failed: 0, stoppedEarly: false }
-    }
-
-    bulkPendingUploadRunning = true
-    const user = authManager.getUser()
-    let uploaded = 0
-    let failed = 0
-    let stoppedEarly = false
-    let stopReason: string | undefined
-
-    try {
-      for (let i = 0; i < pending.length; i++) {
-        const rec = pending[i]!
-        mainWindow.webContents.send('storage:upload-progress', {
-          current: i + 1,
-          total: pending.length,
-          map: rec.map,
-          agent: rec.agent,
-        })
-        logActivity(`Uploading pending recording ${i + 1}/${pending.length}${rec.map ? ` (${rec.map})` : ''}…`)
-
-        try {
-          const archiveId = await doUploadArchiveOnly(
-            rec.id,
-            rec.path,
-            rec.riotName || user?.riot_name || '',
-            rec.riotTag || user?.riot_tag || '',
-            rec.game,
-            rec.map,
-            rec.agent,
-            rec.timeline,
-            mainWindow,
-            true,
-          )
-          if (archiveId) {
-            uploaded++
-          } else {
-            failed++
-          }
-        } catch (err) {
-          const isUpgrade = err instanceof UpgradeRequiredError
-            || (err instanceof Error && /archive.limit.reached|archive_limit_reached|analysis.limit.reached/i.test(err.message))
-          if (isUpgrade) {
-            stoppedEarly = true
-            stopReason = err instanceof Error ? err.message : 'Cloud storage limit reached'
-            break
-          }
-          failed++
-          log.warn('[StorageUpload] Pending archive failed:', err)
-        }
-      }
-    } finally {
-      bulkPendingUploadRunning = false
-      mainWindow?.webContents.send('storage:upload-progress', null)
-      mainWindow?.webContents.send('recordings:updated')
-      mainWindow?.webContents.send('dashboard:refresh')
-    }
-
-    if (uploaded > 0) {
-      logActivity(`Saved ${uploaded} recording(s) to cloud — local copies removed`)
-    }
-
-    return { ok: true as const, uploaded, failed, stoppedEarly, stopReason }
-  })
-
-  ipcMain.handle('recordings:abort-in-flight', (_e, { id }: { id: string }) => {
-    return abortInFlightAnalysisForRecording(id)
-  })
-
-  ipcMain.handle('recordings:dismiss', (_e, { id, deleteLocal = true }: { id: string; deleteLocal?: boolean }) => {
-    const recording = recordingsStore.getById(id)
-    if (
-      recording
-      && (recording.pipelineStatus === 'uploading' || recording.pipelineStatus === 'analysing'
-        || (recording.analysed && recording.analysisId == null && !recording.lastAnalysisError))
-    ) {
-      abortInFlightAnalysisForRecording(id)
-    }
-    const wasLocalOnly = !!(
-      recording
-      && deleteLocal
-      && !recording.clipsOnly
-      && recording.path
-      && isLocalOnlyRecording(recording)
-    )
-    if (wasLocalOnly) {
-      const freed = deleteLocalRecordingFiles(recording!.path)
-      if (freed > 0) {
-        log.info(`[Recordings] Dismiss removed local file (${freed} bytes): ${recording!.path}`)
-      }
-    }
-    recordingsStore.remove(id)
-    mainWindow?.webContents.send('recordings:updated')
-    return { ok: true as const, deletedLocal: wasLocalOnly }
-  })
-
-  ipcMain.handle('analyses:remove', async (_e, { analysisId, jobId }: { analysisId: number; jobId?: string | null }) => {
-    // A completed analysis may still have its source VOD on disk (auto-delete off, or kept after upload).
-    const rec = recordingsStore.getByAnalysisId(analysisId)
-      ?? (jobId ? recordingsStore.getByJobId(jobId) : undefined)
-    const localPath = rec?.path && fs.existsSync(rec.path) ? rec.path : null
-
-    const buttons = localPath
-      ? ['Cancel', 'Remove from dashboard', 'Remove & delete local file']
-      : ['Cancel', 'Remove from dashboard']
-    const win = mainWindow && !mainWindow.isDestroyed() ? mainWindow : null
-    const detail = localPath
-      ? 'Hide this match from your dashboard on this PC. You can also delete the local video file to free up space — your cloud copy (if saved) stays available.'
-      : 'Hide this match from your dashboard on this PC. Your cloud copy (if saved) stays available.'
-
-    const { response } = win
-      ? await dialog.showMessageBox(win, {
-          type: 'question',
-          buttons,
-          defaultId: 1,
-          cancelId: 0,
-          title: 'Remove recording',
-          message: 'Remove this match?',
-          detail,
-        })
-      : { response: 1 }
-
-    if (response === 0) return { ok: false as const, removed: false, deletedLocal: false }
-
-    let deletedLocal = false
-    if (response === 2 && localPath) {
-      const freed = deleteLocalRecordingFiles(localPath)
-      deletedLocal = freed > 0
-      if (deletedLocal) {
-        log.info(`[Analyses] Removed local file (${freed} bytes) for analysis ${analysisId}: ${localPath}`)
-      }
-    }
-    if (rec) recordingsStore.remove(rec.id)
-    mainWindow?.webContents.send('recordings:updated')
-    return { ok: true as const, removed: true, deletedLocal }
-  })
-
-  ipcMain.handle('app:open-vod-review', (_e, { id, seekMs }: { id: string; seekMs?: number }) => {
-    if (mainWindow && !mainWindow.isDestroyed()) {
-      mainWindow.show()
-      mainWindow.focus()
-      const query: Record<string, string> = { id }
-      if (seekMs != null && !isNaN(seekMs)) query.seekMs = String(Math.round(seekMs))
-      mainWindow.webContents.send('app:navigate', { path: '/vod-review', query })
-    }
-    return { ok: true }
-  })
-
-  ipcMain.handle('recordings:nudge-sync', (_e, { id, deltaMs }: { id: string; deltaMs: number }) => {
-    const recording = recordingsStore.getById(id)
-    if (!recording?.timeline) return { ok: false as const }
-    nudgeTimelineSyncOffset(recording.timeline, deltaMs)
-    recordingsStore.updateTimeline(id, recording.timeline)
-    return {
-      ok: true as const,
-      videoSyncOffsetMs: effectiveVideoSyncOffsetMs(recording.timeline),
-    }
-  })
-
-  ipcMain.handle('recordings:reset-sync', (_e, { id }: { id: string }) => {
-    const recording = recordingsStore.getById(id)
-    if (!recording?.timeline) return { ok: false as const }
-    const resetOffset = defaultVideoSyncOffsetMs(recording.timeline)
-    recording.timeline.videoSyncOffsetMs = resetOffset
-    recomputeTimelineVideoOffsets(recording.timeline)
-    enrichTimelineSpatial(recording.timeline)
-    recordingsStore.updateTimeline(id, recording.timeline)
-    return { ok: true as const, videoSyncOffsetMs: resetOffset }
-  })
-
-  const _vodTrimInFlight = new Set<string>()
-
-  ipcMain.handle('recordings:trim', async (_e, { id, startSec, endSec }: {
-    id: string
-    startSec: number
-    endSec: number
-  }) => {
-    const recording = recordingsStore.getById(id)
-    if (!recording?.path || !fs.existsSync(recording.path)) {
-      return { ok: false as const, error: 'Local recording file not found on disk' }
-    }
-    if (recording.pipelineStatus === 'uploading' || recording.pipelineStatus === 'analysing') {
-      return { ok: false as const, error: 'Wait for upload or analysis to finish before trimming' }
-    }
-    if (!Number.isFinite(startSec) || !Number.isFinite(endSec) || endSec <= startSec) {
-      return { ok: false as const, error: 'End time must be after start time' }
-    }
-    if (endSec - startSec < 5) {
-      return { ok: false as const, error: 'Trimmed VOD must be at least 5 seconds long' }
-    }
-    if (_vodTrimInFlight.has(id)) {
-      return { ok: false as const, error: 'Trim already in progress for this recording' }
-    }
-
-    _vodTrimInFlight.add(id)
-    const trimmedPath = trimmedOutputPath(recording.path)
-    const cloudStale = Boolean(recording.analysisId || recording.archiveId)
-    try {
-      await clipExtractor.trimVod({
-        sourcePath: recording.path,
-        startSec,
-        endSec,
-        outputPath: trimmedPath,
-      })
-      swapMediaFileInPlace(recording.path, trimmedPath)
-      if (recording.timeline) {
-        applyVodTrimToTimeline(recording.timeline, { startSec, endSec })
-        enrichTimelineSpatial(recording.timeline)
-        recordingsStore.updateTimeline(id, recording.timeline)
-      }
-      recordingsStore.updatePath(id, recording.path)
-      mainWindow?.webContents.send('recordings:updated')
-      return {
-        ok: true as const,
-        newDurationSec: endSec - startSec,
-        cloudStale,
-      }
-    } catch (err) {
-      try { if (fs.existsSync(trimmedPath)) fs.unlinkSync(trimmedPath) } catch { /* ignore */ }
-      const msg = err instanceof Error ? err.message : String(err)
-      return { ok: false as const, error: msg }
-    } finally {
-      _vodTrimInFlight.delete(id)
-    }
-  })
-
-  ipcMain.handle('archives:refresh-playback', async (_e, { archiveId }: { archiveId: string }) => {
-    if (!archiveId) return null
-    return fetchArchivePlaybackUrl(authManager, archiveId)
-  })
-
-  ipcMain.handle('recordings:list-demo-candidates', async (_e, { id }: { id: string }) => {
-    const { listDemoCandidatesForRecording } = await import('./demo-recording-candidates')
-    return listDemoCandidatesForRecording(recordingsStore, settingsManager, id)
-  })
-
-  ipcMain.handle('recordings:preview-demo', async (_e, { recordingId, demoPath }: { recordingId: string; demoPath: string }) => {
-    const rec = recordingsStore.getById(recordingId)
-    if (!rec || (rec.game !== 'cs2' && rec.game !== 'deadlock')) {
-      return { preview: null, assessment: null, recordingHint: null, error: 'Recording not found' }
-    }
-
-    const { buildDemoPreviewSummary } = await import('./demo-preview')
-    const { buildRecordingDemoHint, assessDemoPreviewMatch } = await import('../../src/lib/demo-preview-match')
-    const localPlayerName = rec.game === 'cs2'
-      ? await resolveCs2LocalPlayerName(settingsManager, authManager)
-      : null
-
-    const preview = await buildDemoPreviewSummary({
-      game: rec.game,
-      demoPath,
-      localPlayerName,
-      mapHint: rec.map ?? rec.timeline?.map ?? null,
-    })
-    const recordingHint = buildRecordingDemoHint(rec)
-    const assessment = assessDemoPreviewMatch(preview, recordingHint)
-
-    return { preview, assessment, recordingHint, error: preview.ok ? undefined : preview.error }
-  })
-
-  ipcMain.handle('recordings:refresh-demo-timeline', async (_e, { id }: { id: string }) => {
-    const ok = await refreshReplayTimelineForRecording(id, { notifyActivity: true })
-    const rec = recordingsStore.getById(id)
-    return {
-      ok,
-      analysisReadiness: rec ? getAnalysisReadiness(rec) : null,
-    }
-  })
-
-  ipcMain.handle('recordings:attach-demo', async (_e, { id, demoPath }: { id: string; demoPath?: string }) => {
-    let chosen = demoPath?.trim()
-    if (!chosen) {
-      const win = BrowserWindow.getFocusedWindow() ?? mainWindow
-      const result = await dialog.showOpenDialog(win!, {
-        title: 'Attach match demo',
-        filters: [{ name: 'Demo replay', extensions: ['dem'] }],
-        properties: ['openFile'],
-      })
-      if (result.canceled || !result.filePaths[0]) {
-        return { ok: false as const, error: 'Cancelled', analysisReadiness: null }
-      }
-      chosen = result.filePaths[0]
-    }
-
-    const rec = recordingsStore.getById(id)
-    const localPlayerName = rec?.game === 'cs2'
-      ? await resolveCs2LocalPlayerName(settingsManager, authManager)
-      : null
-
-    const attachResult = await attachDemoFileToRecording({
-      store: recordingsStore,
-      recordingId: id,
-      demoPath: chosen,
-      localPlayerName,
-      logActivity,
-      onClipsExtracted: (videoPath, timeline, sourceGame) =>
-        extractMatchClips(videoPath, timeline, null, sourceGame),
-    })
-
-    if (attachResult.ok) {
-      mainWindow?.webContents.send('recordings:updated')
-    }
-
-    const updated = recordingsStore.getById(id)
-    return {
-      ok: attachResult.ok,
-      error: attachResult.error,
-      analysisReadiness: updated ? getAnalysisReadiness(updated) : null,
-    }
-  })
-
-  ipcMain.handle('recordings:refresh-playback', async (_e, { id }: { id: string }) => {
-    const recording = recordingsStore.getById(id)
-    if (!recording) return null
-    if (recording.analysisId != null) {
-      const url = await fetchRecordingPlaybackUrl(authManager, recording.analysisId)
-      if (url) return url
-    }
-    if (recording.archiveId) {
-      const url = await fetchArchivePlaybackUrl(authManager, recording.archiveId)
-      if (url) return url
-    }
-    if (recording.jobId) {
-      return fetchJobPlaybackUrl(authManager, recording.jobId)
-    }
-    return null
-  })
-
-  ipcMain.handle('recordings:preview-duel-window', async (_e, {
-    id,
-    windowStartMs,
-    windowEndMs,
-    momentId,
-  }: {
-    id: string
-    windowStartMs: number
-    windowEndMs: number
-    momentId: string
-  }) => {
-    const recording = recordingsStore.getById(id)
-    if (!recording?.path) {
-      return { ok: false as const, error: 'Recording not found' }
-    }
-    const local = resolveLocalRecordingFile(recording.path) ?? recording.path
-    if (!local || !fs.existsSync(local)) {
-      return { ok: false as const, error: 'Local recording file missing — try Retry cloud playback' }
-    }
-    return extractDuelPreviewClip({
-      videoPath: local,
-      windowStartMs,
-      windowEndMs,
-      momentId,
-      clipExtractor,
-    })
-  })
-
-  ipcMain.handle('recordings:get-timeline', async (_e, { id }: { id: string }) => {
-    const recording = recordingsStore.getById(id)
-    if (!recording) return null
-    const tl = recording.timeline
-    if (tl) {
-      recomputeTimelineVideoOffsets(tl)
-      enrichTimelineSpatial(tl)
-      recordingsStore.updateTimeline(id, tl)
-    }
-    const localPath = resolveLocalRecordingFile(recording.path)
-    const cloudBacked = Boolean(
-      recording.jobId
-      || recording.analysisId != null
-      || (recording.cloudArchived && recording.archiveId),
-    )
-
-    let videoPath: string | null = null
-    if (cloudBacked) {
-      if (recording.analysisId != null) {
-        videoPath = await fetchRecordingPlaybackUrl(authManager, recording.analysisId)
-      }
-      if (!videoPath && recording.archiveId) {
-        videoPath = await fetchArchivePlaybackUrl(authManager, recording.archiveId)
-      }
-      if (!videoPath && recording.jobId) {
-        videoPath = await fetchJobPlaybackUrl(authManager, recording.jobId)
-      }
-    }
-    if (!videoPath && localPath) {
-      videoPath = localPath
-    }
-    return {
-      id: recording.id,
-      jobId: recording.jobId ?? null,
-      analysisId: recording.analysisId ?? null,
-      archiveId: recording.archiveId ?? null,
-      videoPath,
-      localFileMissing: !localPath,
-      hasLocalFile: Boolean(localPath),
-      cloudUploaded: cloudBacked,
-      uploadedToCloud: cloudBacked,
-      map: recording.map,
-      agent: recording.agent,
-      game: recording.game,
-      gameMode: recording.gameMode,
-      recordedAt: recording.recordedAt,
-      kills: timelineKillsForVod(tl),
-      deaths: timelineDeathsForVod(tl),
-      roundSummaries: tl?.roundSummaries ?? [],
-      finalStats: tl?.finalStats ?? null,
-      teamSnapshot: tl?.teamSnapshot ?? [],
-      spikePlants: tl?.spikePlants ?? [],
-      spikeDefuses: tl?.spikeDefuses ?? [],
-      spikeDetonations: tl?.spikeDetonations ?? [],
-      firstBloods: tl?.firstBloods ?? [],
-      spatialSummary: tl?.spatialSummary ?? null,
-      duelMoments: tl?.duelMoments ?? [],
-      videoSyncOffsetMs: tl ? effectiveVideoSyncOffsetMs(tl) : 0,
-    }
+  setupRecordingsHandlers(ipcMain, {
+    recordingsStore,
+    authManager,
+    settingsManager,
+    clipExtractor,
+    getMainWindow: () => mainWindow,
+    logActivity,
+    abortInFlightAnalysisForRecording,
+    refreshReplayTimelineForRecording,
+    extractMatchClips,
+    enrichTimelineSpatial,
   })
 
   // Register global shortcut to show/focus window

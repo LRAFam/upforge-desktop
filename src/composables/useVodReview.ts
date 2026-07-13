@@ -1,6 +1,7 @@
 import { ref, computed, watch, onMounted, onUnmounted, nextTick, inject, provide, type InjectionKey } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { getWeaponImage, getAgentImage, getAbilityIcon, getMapImage, getAgentColor, formatGameMode, normalizeGameModeId } from '../lib/valorant'
+import { getChampionImage, getMapImage as getLolMapImage } from '../lib/lol'
 import { pendingTimeline } from '../stores/pendingTimeline'
 import { buildTacticalIntelBrief } from '../lib/coaching-brief'
 import type { CoachingEvidence } from '../lib/coaching-brief'
@@ -527,6 +528,7 @@ function createVodReview() {
   
   const agentImageUrl = computed(() => {
     if (!timeline.value?.agent) return null
+    if (timeline.value.game === 'lol') return getChampionImage(timeline.value.agent) || null
     return getAgentImage(timeline.value.agent) || null
   })
   
@@ -542,7 +544,10 @@ function createVodReview() {
     return mode ? formatGameMode(mode) : ''
   })
   
-  const mapPosterUrl = computed(() => getMapImage(timeline.value?.map) || '')
+  const mapPosterUrl = computed(() => {
+    if (timeline.value?.game === 'lol') return getLolMapImage() || ''
+    return getMapImage(timeline.value?.map) || ''
+  })
   
   const videoFrameStyle = computed(() => {
     const { width, height } = videoFrameSize.value

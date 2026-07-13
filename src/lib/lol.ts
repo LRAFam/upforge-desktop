@@ -84,6 +84,8 @@ export function getMapImage(): string {
   return summonersRiftMapUrl()
 }
 
+export { resolveLolMapLabel } from './lol-maps'
+
 export function lolQueueLabel(queueId: number | null | undefined): string {
   if (queueId === 420) return 'Ranked Solo/Duo'
   if (queueId == null) return "Summoner's Rift"

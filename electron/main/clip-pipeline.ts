@@ -20,6 +20,7 @@ import type { MatchData, KillEvent } from './riot-types'
 import { detectClutchRoundsForGame } from './demo-clutch'
 import type { ClipGame } from './clip-game'
 import type { ClipCaptureSettings } from './settings-manager'
+import { ensureClipKillRounds } from './kill-clip-grouping'
 
 function reportClipExtractError(prefix: string, err: unknown): void {
   const msg = err instanceof Error ? err.message : String(err)
@@ -147,6 +148,8 @@ export class ClipPipeline {
     }
 
     const vodDurationMs = await clipExtractor.probeDurationMs(videoPath)
+
+    ensureClipKillRounds(timeline)
 
     const recordingStart = this.ctx.getRecordingStartTime() ?? 0
     const map = timeline?.map ?? null
@@ -323,6 +326,8 @@ export class ClipPipeline {
     }
 
     const vodDurationMs = await clipExtractor.probeDurationMs(videoPath)
+
+    ensureClipKillRounds(timeline)
 
     const map = timeline.map ?? null
     const agent = timeline.agent ?? null
