@@ -26,7 +26,7 @@ import { deriveMatchScore } from './match-score'
 import { riotStatsToAcs } from './combat-score'
 import { resolvePlantLocationFromRound } from './plant-location'
 import { logPlantCoordStats } from './match-plant-telemetry'
-import { gameTimeToVideoOffsetMs } from './recording-sync'
+import { gameTimeToVideoOffsetMs, lolGameTimeToVideoOffsetMs } from './recording-sync'
 import {
   shouldApplyMatchDetails,
   shouldUseMatchHistoryFallback,
@@ -1864,6 +1864,15 @@ function gameTimeToEventVideoOffsetMs(timeline: MatchData, gameTimeMs: number): 
   if (isValorantTimeline(timeline)) {
     return Math.max(0, totalRecordingOffsetMs(timeline) + gameTimeMs)
   }
+  if (timeline.game === 'lol') {
+    // LoL anchors to the in-game clock zero (stored on matchStartTime), so the
+    // loading-screen gap is added back and events land at the right video time.
+    return lolGameTimeToVideoOffsetMs(gameTimeMs, {
+      gameClockZeroEpoch: timeline.matchStartTime,
+      recordingStartTime: timeline.recordingStartTime,
+      syncOffset: effectiveVideoSyncOffsetMs(timeline),
+    })
+  }
   return Math.max(0, gameTimeToVideoOffsetMs(gameTimeMs, timeline) + effectiveVideoSyncOffsetMs(timeline))
 }
 
@@ -1901,6 +1910,14 @@ export function recomputeTimelineVideoOffsets(timeline: MatchData): void {
   for (const p of timeline.spikePlants ?? []) patchSpike(p)
   for (const d of timeline.spikeDefuses ?? []) patchSpike(d)
   for (const d of timeline.spikeDetonations ?? []) patchSpike(d)
+
+  for (const obj of timeline.objectiveEvents ?? []) {
+    const tsgm = obj.timeSinceGameStartMillis
+      ?? (obj.EventTime > 0 ? Math.round(obj.EventTime * 1000) : null)
+    if (tsgm != null && !isNaN(tsgm)) {
+      obj.videoOffsetMs = gameTimeToEventVideoOffsetMs(timeline, tsgm)
+    }
+  }
 
   syncSpatialVideoOffsets(timeline)
 }

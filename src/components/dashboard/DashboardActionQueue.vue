@@ -41,6 +41,7 @@ const {
   analyseOldestPending,
   analyseRecording,
   saveRecording,
+  dismissRecording,
   openRecordingReview,
   recAnalysisReady,
   recInFlight,
@@ -187,6 +188,11 @@ function onAnalyse(rec: PendingRecording) {
 function onSave(rec: PendingRecording) {
   if (props.preview) return
   void saveRecording(rec.id)
+}
+
+function onRemove(rec: PendingRecording) {
+  if (props.preview) return
+  void dismissRecording(rec.id)
 }
 
 function toggleDemoMatches() {
@@ -396,6 +402,17 @@ function toggleDemoMatches() {
             >
               <span class="block">{{ savingIds.has(rec.id) ? 'Saving…' : 'Save to cloud' }}</span>
               <span class="block text-[9px] font-medium text-emerald-100/70 mt-0.5">Backup only — no AI</span>
+            </button>
+
+            <button
+              type="button"
+              class="px-3 py-2 rounded-lg text-[11px] font-semibold text-gray-400 bg-[#16181c] hover:bg-red-500/15 hover:text-red-300 border border-white/10 hover:border-red-500/30 transition-colors text-left disabled:opacity-50"
+              :disabled="preview || recInFlight(rec)"
+              title="Remove this match from your dashboard (and delete the local file)"
+              @click="onRemove(rec)"
+            >
+              <span class="block">Remove</span>
+              <span class="block text-[9px] font-medium text-gray-600 mt-0.5">Delete footage</span>
             </button>
           </div>
         </div>

@@ -83,6 +83,33 @@ export interface SpikeDetonatedEvent extends GameEvent {
   videoOffsetMs?: number
 }
 
+/** Non kill/death match objective (LoL: dragon, baron, herald, tower, inhibitor, ace, multikill). */
+export type ObjectiveKind =
+  | 'dragon'
+  | 'baron'
+  | 'herald'
+  | 'tower'
+  | 'inhibitor'
+  | 'ace'
+  | 'multikill'
+
+/** A neutral/structure objective or team highlight — currently sourced from the LoL live client. */
+export interface ObjectiveEvent extends GameEvent {
+  kind: ObjectiveKind
+  /** Champion/summoner who secured it — 'You' when it's the local player. */
+  killerName?: string
+  /** Team that benefited ('ORDER' | 'CHAOS') when the live client reports it. */
+  team?: string | null
+  /** Subtype detail (dragon element, multikill size, structure code). */
+  detail?: string | null
+  /** True when the objective was stolen (smited from the enemy). */
+  stolen?: boolean
+  /** Milliseconds since Riot's in-game clock zero. */
+  timeSinceGameStartMillis?: number
+  /** Offset from recording start in ms — use this to seek the VOD to the objective. */
+  videoOffsetMs?: number
+}
+
 /** First blood event */
 export interface FirstBloodEvent extends GameEvent {
   EventName: 'FirstBlood'
@@ -302,6 +329,8 @@ export interface MatchData {
   /** Slim plant coords preserved on upload when raw matchDetails is stripped. */
   roundPlants?: RoundPlantSnapshot[]
   firstBloods: FirstBloodEvent[]
+  /** Neutral/structure objectives + team highlights (LoL live client). */
+  objectiveEvents?: ObjectiveEvent[]
   roundSummaries: RoundSummary[]
   finalStats: FinalPlayerStats | null
   teamSnapshot: TeamPlayerSnapshot[]

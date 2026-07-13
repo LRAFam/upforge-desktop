@@ -7,6 +7,7 @@ import DuelMomentScrubberBands from '../analysis/DuelMomentScrubberBands.vue'
 import DuelMomentCards from '../analysis/DuelMomentCards.vue'
 import { getAgentImage, getAbilityIcon } from '../../lib/valorant'
 import VodRoundLogSidebar from './VodRoundLogSidebar.vue'
+import VodMatchTimelineSidebar from './VodMatchTimelineSidebar.vue'
 import VodDemoPendingPanel from './VodDemoPendingPanel.vue'
 import VodTimelineEventIcon from './VodTimelineEventIcon.vue'
 import { recordingTimelineReady, usesAsyncDemoSync } from '../../lib/recording-demo-status'
@@ -37,6 +38,9 @@ const {
   seekDuelMoment,
   onDuelMomentBandSelect,
   hasDuelMoments,
+  isRoundBased,
+  vodAdapter,
+  eventOpponentImage,
   formatMs,
   formatPlayerLabel,
   formatSeconds,
@@ -166,7 +170,8 @@ const noVideoHint = computed((): string => {
         :recording-id="recordingId"
         @demo-linked="reloadTimelineFromStore"
       />
-      <VodRoundLogSidebar v-else-if="!theaterMode && !roundLogCollapsed" />
+      <VodRoundLogSidebar v-else-if="!theaterMode && !roundLogCollapsed && isRoundBased" />
+      <VodMatchTimelineSidebar v-else-if="!theaterMode && !roundLogCollapsed" />
 
       <!-- Video + intel + timeline -->
       <div class="flex flex-1 min-w-0 min-h-0">
@@ -338,13 +343,8 @@ const noVideoHint = computed((): string => {
                    :class="activeEventNotif.type === 'kill' ? 'ring-green-500/30' : 'ring-red-500/30'"
               >
                 <img
-                  v-if="activeEventNotif.type === 'kill' && agentByPuuid(activeEventNotif.victimPuuid)"
-                  :src="getAgentImage(agentByPuuid(activeEventNotif.victimPuuid))"
-                  class="w-full h-full object-contain"
-                />
-                <img
-                  v-else-if="activeEventNotif.type === 'death' && agentByPuuid(activeEventNotif.killerPuuid)"
-                  :src="getAgentImage(agentByPuuid(activeEventNotif.killerPuuid))"
+                  v-if="eventOpponentImage(activeEventNotif)"
+                  :src="eventOpponentImage(activeEventNotif)"
                   class="w-full h-full object-contain"
                 />
                 <div v-else class="w-full h-full flex items-center justify-center text-base">
@@ -530,7 +530,7 @@ const noVideoHint = computed((): string => {
             <div class="relative group cursor-pointer h-6 flex items-center" @click="onScrubberClick" @mousemove="onScrubberHover" @mouseleave="hoverTime = null">
               <div class="w-full h-2 rounded-full bg-white/[0.08] ring-1 ring-white/[0.04] relative overflow-visible">
                 <div
-                  v-if="activeRoundSegment"
+                  v-if="activeRoundSegment && isRoundBased"
                   class="absolute top-0 h-full rounded-full bg-white/[0.07] pointer-events-none"
                   :style="{ left: activeRoundSegment.left + '%', width: activeRoundSegment.width + '%' }"
                 />
@@ -545,12 +545,14 @@ const noVideoHint = computed((): string => {
                   :active-moment-id="activeDuelMomentId"
                   @select="onDuelMomentBandSelect"
                 />
-                <div
-                  v-for="sep in roundSeparators"
-                  :key="sep.percent"
-                  class="absolute top-1/2 h-4 w-px -translate-y-1/2 bg-white/18 pointer-events-none"
-                  :style="{ left: sep.percent + '%' }"
-                />
+                <template v-if="isRoundBased">
+                  <div
+                    v-for="sep in roundSeparators"
+                    :key="sep.percent"
+                    class="absolute top-1/2 h-4 w-px -translate-y-1/2 bg-white/18 pointer-events-none"
+                    :style="{ left: sep.percent + '%' }"
+                  />
+                </template>
                 <button
                   v-for="marker in coachProgressMarkers"
                   :key="marker.key"
@@ -559,9 +561,9 @@ const noVideoHint = computed((): string => {
                   :title="`Coach note: ${marker.label}`"
                   @click.stop="jumpToCoachMarker(marker)"
                 />
+                <template v-for="marker in progressMarkers" :key="marker.key">
                 <button
-                  v-for="marker in progressMarkers"
-                  :key="marker.key"
+                  v-if="marker.kind !== 'round' || isRoundBased"
                   class="absolute top-1/2 -translate-y-1/2 -translate-x-1/2 transition-transform duration-150 hover:scale-125"
                   :class="marker.kind === 'round'
                     ? 'h-4 w-1 rounded-full bg-white/35 shadow-[0_0_8px_rgba(255,255,255,0.18)]'
@@ -578,6 +580,7 @@ const noVideoHint = computed((): string => {
                   :title="marker.label"
                   @click.stop="jumpToMarker(marker)"
                 />
+                </template>
                 <div
                   v-if="hoverTime !== null"
                   class="absolute top-1/2 h-5 w-0.5 -translate-y-1/2 bg-white/70 pointer-events-none"
@@ -660,7 +663,7 @@ const noVideoHint = computed((): string => {
               </span>
 
               <button
-                v-if="selectedRound"
+                v-if="selectedRound && isRoundBased"
                 class="hidden sm:flex items-center gap-1.5 rounded-xl border px-3 py-2 text-xs transition-all"
                 :class="roundDetailExpanded
                   ? 'border-red-500/30 bg-red-500/10 text-red-200 hover:border-red-500/40'
@@ -682,17 +685,16 @@ const noVideoHint = computed((): string => {
               </button>
 
               <div class="hidden xl:flex items-center gap-2 ml-1 flex-wrap justify-end text-[9px] text-gray-600">
-                <span class="inline-flex items-center gap-1"><span class="h-2 w-2 rounded-full bg-emerald-500" />Kill</span>
-                <span class="inline-flex items-center gap-1"><span class="h-2 w-2 rounded-full bg-red-500" />Death</span>
-                <span class="inline-flex items-center gap-1"><span class="h-2.5 w-1.5 rounded-full bg-orange-500" />Plant</span>
-                <span class="inline-flex items-center gap-1"><span class="h-2.5 w-1.5 rounded-full bg-cyan-500" />Defuse</span>
+                <span v-for="item in vodAdapter.legend" :key="item.kind" class="inline-flex items-center gap-1">
+                  <span class="h-2 w-2 rounded-full" :class="item.dotClass" />{{ item.label }}
+                </span>
                 <button type="button" class="ml-1 text-gray-500 hover:text-gray-300 underline-offset-2 hover:underline" @click="showShortcuts = true">Shortcuts</button>
               </div>
             </div>
           </div>
         </div>
         <div
-          v-if="roundDetailExpanded && selectedRound && !theaterMode"
+          v-if="roundDetailExpanded && selectedRound && !theaterMode && isRoundBased"
           class="flex-shrink-0 bg-[#1a1a1a] border-t border-white/[0.10] max-h-28 overflow-y-auto scrollbar-hide"
         >
           <!-- Round header -->

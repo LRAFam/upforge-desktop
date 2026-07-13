@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { assignKillSpreeRounds, ensureClipKillRounds } from './kill-clip-grouping'
+import { assignKillSpreeRounds, buildClipKills, ensureClipKillRounds } from './kill-clip-grouping'
 import type { KillEvent, MatchData } from './riot-types'
 
 function killAt(ms: number, killer = 'You'): KillEvent {
@@ -61,5 +61,39 @@ describe('ensureClipKillRounds', () => {
     expect(k1.round).toBe(0)
     expect(k2.round).toBe(0)
     expect(k3.round).toBe(1)
+  })
+})
+
+describe('buildClipKills', () => {
+  it('returns spree-grouped COPIES without mutating the stored LoL timeline', () => {
+    const k1 = killAt(60_000)
+    const k2 = killAt(63_000)
+    const k3 = killAt(300_000)
+    const timeline = lolTimeline([k1, k2, k3])
+
+    const clipKills = buildClipKills(timeline)
+
+    // Copies carry spree rounds for grouping…
+    expect(clipKills[0]?.round).toBe(0)
+    expect(clipKills[1]?.round).toBe(0)
+    expect(clipKills[2]?.round).toBe(1)
+    // …but the stored timeline stays round-free (continuous match view).
+    expect(k1.round).toBeUndefined()
+    expect(k2.round).toBeUndefined()
+    expect(k3.round).toBeUndefined()
+  })
+
+  it('returns round-based kills untouched for Valorant', () => {
+    const k = killAt(10_000)
+    k.round = 4
+    const timeline = { game: 'valorant', playerKills: [k] } as MatchData
+    const clipKills = buildClipKills(timeline)
+    expect(clipKills[0]).toBe(k)
+    expect(clipKills[0]?.round).toBe(4)
+  })
+
+  it('returns [] when there are no player kills', () => {
+    expect(buildClipKills({ game: 'lol', playerKills: [] } as unknown as MatchData)).toEqual([])
+    expect(buildClipKills(null)).toEqual([])
   })
 })

@@ -22,6 +22,8 @@ import {
   resolveKillSourceFields,
 } from '../lib/match-kill-display'
 import { isWeaponName } from '../lib/valorant-ability-images'
+import { getVodAdapter } from '../lib/vod-games'
+import { useVodPortraits } from './vod/useVodPortraits'
 
 // Round outcome icons — game-aware via timeline-event-icons.ts
 
@@ -42,13 +44,19 @@ interface KillEvent {
   victimPuuid?: string
 }
 
+type ObjectiveEventKind = 'dragon' | 'baron' | 'herald' | 'tower' | 'inhibitor' | 'ace' | 'multikill'
+
 interface TimelineEvent extends Omit<KillEvent, 'type'> {
-  type: 'kill' | 'death' | 'neutral' | 'plant' | 'defuse' | 'detonation'
+  type: 'kill' | 'death' | 'neutral' | 'plant' | 'defuse' | 'detonation' | ObjectiveEventKind
   isFirstBlood?: boolean
   // Spike-specific fields
   planter?: string
   defuser?: string
   site?: string
+  // Objective-specific fields (LoL)
+  detail?: string | null
+  stolen?: boolean
+  team?: string | null
 }
 
 interface RoundGroup {
@@ -118,6 +126,7 @@ interface RecordingTimeline {
   spikeDefuses?: Array<{ videoOffsetMs?: number; round?: number; defuser?: string }>
   spikeDetonations?: Array<{ videoOffsetMs?: number; round?: number }>
   firstBloods?: Array<{ killerName: string; victimName: string; killerPuuid?: string; victimPuuid?: string; round?: number }>
+  objectives?: Array<{ kind: ObjectiveEventKind; killerName?: string; team?: string | null; detail?: string | null; stolen?: boolean; videoOffsetMs?: number; timeSinceGameStartMillis?: number }>
   spatialSummary?: MatchSpatialSummary | null
   duelMoments?: DuelMomentManifest[]
   videoSyncOffsetMs?: number
@@ -135,7 +144,7 @@ interface AnalysisDetail {
 
 interface ProgressMarker {
   key: string
-  kind: 'round' | 'kill' | 'death' | 'neutral' | 'plant' | 'defuse' | 'detonation'
+  kind: 'round' | 'kill' | 'death' | 'neutral' | 'plant' | 'defuse' | 'detonation' | ObjectiveEventKind
   label: string
   percent: number
   timeSeconds: number
@@ -171,6 +180,17 @@ function createVodReview() {
   const timeline = ref<RecordingTimeline | null>(null)
   const reviewGame = computed(() => timeline.value?.game ?? null)
   const isCs2Review = computed(() => reviewGame.value === 'cs2')
+
+  // Per-game adapter: portraits (agent-by-puuid vs champion-by-name), round
+  // support, legend, sync defaults. Keeps the viewer game-agnostic.
+  const {
+    vodAdapter,
+    isRoundBased,
+    portraitForRef,
+    eventKillerImage,
+    eventVictimImage,
+    eventOpponentImage,
+  } = useVodPortraits(timeline)
   const timelineLoading = ref(true)
   const timelineError = ref<string | null>(null)
   const showShortcuts = ref(false)
@@ -442,7 +462,7 @@ function createVodReview() {
   }
   
   function defaultSyncMsForGame(game: string | undefined): number {
-    return game === 'valorant' ? -8000 : 0
+    return getVodAdapter(game).defaultSyncMs
   }
   
   /** Looks up the agent name for a player by puuid from the team snapshot. */
@@ -768,7 +788,19 @@ function createVodReview() {
         round: d.round,
       }))
   
-    return [...classified, ...extraDeaths, ...plants, ...defuses, ...detonations]
+    const objectives: TimelineEvent[] = (timeline.value.objectives ?? [])
+      .filter(o => o.videoOffsetMs != null && !isNaN(o.videoOffsetMs))
+      .map(o => ({
+        type: o.kind,
+        killerName: o.killerName ?? '',
+        victimName: '',
+        detail: o.detail ?? null,
+        stolen: o.stolen ?? false,
+        team: o.team ?? null,
+        videoOffsetMs: o.videoOffsetMs,
+      }))
+
+    return [...classified, ...extraDeaths, ...plants, ...defuses, ...detonations, ...objectives]
       .sort((a, b) => (a.videoOffsetMs ?? 0) - (b.videoOffsetMs ?? 0))
   })
   
@@ -917,16 +949,22 @@ function createVodReview() {
       })
     }
   
+    const markerKinds = ['kill', 'death', 'plant', 'defuse', 'detonation', 'dragon', 'baron', 'herald', 'tower', 'inhibitor', 'ace', 'multikill']
     for (const event of allTimelineEvents.value) {
       if (event.videoOffsetMs == null) continue
-      if (!['kill', 'death', 'plant', 'defuse', 'detonation'].includes(event.type)) continue
-  
+      if (!markerKinds.includes(event.type)) continue
+
       let label = 'Event'
       if (event.type === 'kill') label = `Kill · ${event.victimName || 'Unknown'}`
-      if (event.type === 'death') label = `Death · ${event.killerName || 'Unknown'}`
-      if (event.type === 'plant') label = event.site ? `Plant · Site ${event.site}` : 'Spike Plant'
-      if (event.type === 'defuse') label = 'Spike Defuse'
-      if (event.type === 'detonation') label = 'Spike Detonation'
+      else if (event.type === 'death') label = `Death · ${event.killerName || 'Unknown'}`
+      else if (event.type === 'plant') label = event.site ? `Plant · Site ${event.site}` : 'Spike Plant'
+      else if (event.type === 'defuse') label = 'Spike Defuse'
+      else if (event.type === 'detonation') label = 'Spike Detonation'
+      else {
+        const name = event.type.charAt(0).toUpperCase() + event.type.slice(1)
+        label = event.detail ? `${name} · ${event.detail}` : name
+        if (event.stolen) label += ' (Stolen)'
+      }
   
       markers.push({
         key: `${event.type}-${event.videoOffsetMs}-${event.round ?? 'na'}-${event.killerName ?? event.planter ?? event.defuser ?? 'event'}`,
@@ -2101,6 +2139,12 @@ function createVodReview() {
     activeDuelMomentId,
     seekDuelMoment,
     onDuelMomentBandSelect,
+    vodAdapter,
+    isRoundBased,
+    portraitForRef,
+    eventKillerImage,
+    eventVictimImage,
+    eventOpponentImage,
     dockChipsEl,
     duration,
     trimEndSec,

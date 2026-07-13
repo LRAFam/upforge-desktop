@@ -16,6 +16,33 @@ export function gameTimeToVideoOffsetMs(
   return Math.max(0, gameTimeMs - recordingLagMs)
 }
 
+/**
+ * Map a LoL Live Client game-clock time to a position in the recording.
+ *
+ * LoL `EventTime` is measured from Riot's in-game clock zero (when the match
+ * simulation starts), NOT from when OBS started nor from when the map finished
+ * loading. Loading duration varies per lobby (every player must connect and
+ * ready up), so we anchor to the observed `gameClockZeroEpoch` and convert to a
+ * video offset via wall-clock time:
+ *   eventEpoch    = gameClockZeroEpoch + gameTimeMs
+ *   videoOffsetMs = eventEpoch - recordingStartTime (+ manual sync nudge)
+ */
+export function lolGameTimeToVideoOffsetMs(
+  gameTimeMs: number,
+  opts: {
+    gameClockZeroEpoch: number | null | undefined
+    recordingStartTime: number | null | undefined
+    syncOffset?: number
+  },
+): number {
+  const sync = opts.syncOffset ?? 0
+  if (opts.gameClockZeroEpoch == null || opts.recordingStartTime == null) {
+    return Math.max(0, gameTimeMs + sync)
+  }
+  const eventEpoch = opts.gameClockZeroEpoch + gameTimeMs
+  return Math.max(0, eventEpoch - opts.recordingStartTime + sync)
+}
+
 /** CS2 demo ticks before first gun round — subtract so game clock matches the VOD. */
 export function cs2AlignedGameTimeMs(
   tick: number,

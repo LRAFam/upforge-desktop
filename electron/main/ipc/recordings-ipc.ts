@@ -423,6 +423,7 @@ export function setupRecordingsHandlers(ipcMain: IpcMain, deps: RecordingsIpcDep
       spikeDefuses: tl?.spikeDefuses ?? [],
       spikeDetonations: tl?.spikeDetonations ?? [],
       firstBloods: tl?.firstBloods ?? [],
+      objectives: tl?.objectiveEvents ?? [],
       spatialSummary: tl?.spatialSummary ?? null,
       duelMoments: tl?.duelMoments ?? [],
       videoSyncOffsetMs: tl ? effectiveVideoSyncOffsetMs(tl) : 0,

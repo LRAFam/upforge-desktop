@@ -20,7 +20,7 @@ import type { MatchData, KillEvent } from './riot-types'
 import { detectClutchRoundsForGame } from './demo-clutch'
 import type { ClipGame } from './clip-game'
 import type { ClipCaptureSettings } from './settings-manager'
-import { ensureClipKillRounds } from './kill-clip-grouping'
+import { buildClipKills } from './kill-clip-grouping'
 
 function reportClipExtractError(prefix: string, err: unknown): void {
   const msg = err instanceof Error ? err.message : String(err)
@@ -149,7 +149,9 @@ export class ClipPipeline {
 
     const vodDurationMs = await clipExtractor.probeDurationMs(videoPath)
 
-    ensureClipKillRounds(timeline)
+    // Player kills prepared for grouping (spree rounds for round-less games) —
+    // a COPY so the stored timeline stays round-free for a continuous match view.
+    const clipKills = buildClipKills(timeline)
 
     const recordingStart = this.ctx.getRecordingStartTime() ?? 0
     const map = timeline?.map ?? null
@@ -157,11 +159,11 @@ export class ClipPipeline {
     const baseMeta = clipMatchMeta(timeline)
     const extractedClipIds: string[] = []
 
-    if (timeline?.playerKills && timeline.playerKills.length > 0) {
-      const sample = timeline.playerKills.slice(0, 5).map(k =>
+    if (clipKills.length > 0) {
+      const sample = clipKills.slice(0, 5).map(k =>
         `R${(k.round ?? -1) + 1}@${k.videoOffsetMs != null ? `${(k.videoOffsetMs / 1000).toFixed(1)}s` : 'null'}`
       ).join(', ')
-      log.info(`[ClipExtract] kills=${timeline.playerKills.length} first5_offsets=[${sample}] videoPath=${videoPath}`)
+      log.info(`[ClipExtract] kills=${clipKills.length} first5_offsets=[${sample}] videoPath=${videoPath}`)
     }
 
     // ── Hotkey bookmarks → 30s manual clips ───────────────────────────────
@@ -183,9 +185,9 @@ export class ClipPipeline {
     }
 
     // ── Kill clips from timeline ───────────────────────────────────────────
-    if (timeline?.playerKills && timeline.playerKills.length > 0) {
-      const killsByRound = new Map<number, typeof timeline.playerKills>()
-      for (const kill of timeline.playerKills) {
+    if (clipKills.length > 0 && timeline) {
+      const killsByRound = new Map<number, KillEvent[]>()
+      for (const kill of clipKills) {
         const r = kill.round ?? -1
         if (!killsByRound.has(r)) killsByRound.set(r, [])
         killsByRound.get(r)!.push(kill)
@@ -193,7 +195,7 @@ export class ClipPipeline {
 
       const clutchRounds = detectClutchRoundsForGame(timeline)
 
-      const combinedRounds = new Map<number, { kills: typeof timeline.playerKills; trigger: 'ace' | 'multikill'; killCount: number }>()
+      const combinedRounds = new Map<number, { kills: KillEvent[]; trigger: 'ace' | 'multikill'; killCount: number }>()
       for (const [round, kills] of killsByRound.entries()) {
         if (clutchRounds.has(round)) continue
         if (kills.length >= 5) combinedRounds.set(round, { kills, trigger: 'ace', killCount: kills.length })
@@ -201,7 +203,7 @@ export class ClipPipeline {
       }
 
       const topKills = capture.singleKills
-        ? timeline.playerKills
+        ? clipKills
             .filter(k => {
               const r = k.round ?? -1
               return !clutchRounds.has(r) && !combinedRounds.has(r) && k.videoOffsetMs != null
@@ -257,7 +259,7 @@ export class ClipPipeline {
 
       if (capture.clutches) {
         for (const round of clutchRounds) {
-          const clutchKills = timeline.playerKills.filter(k => (k.round ?? -1) === round && k.videoOffsetMs != null)
+          const clutchKills = clipKills.filter(k => (k.round ?? -1) === round && k.videoOffsetMs != null)
           if (clutchKills.length === 0) continue
           const first = clutchKills.reduce((a, b) => a.videoOffsetMs! < b.videoOffsetMs! ? a : b)
           const last  = clutchKills.reduce((a, b) => a.videoOffsetMs! > b.videoOffsetMs! ? a : b)
@@ -327,14 +329,15 @@ export class ClipPipeline {
 
     const vodDurationMs = await clipExtractor.probeDurationMs(videoPath)
 
-    ensureClipKillRounds(timeline)
+    // Copy with spree rounds — never mutate the stored timeline (keeps LoL match-based).
+    const clipKills = buildClipKills(timeline)
 
     const map = timeline.map ?? null
     const agent = timeline.agent ?? null
     const extractedClipIds: string[] = []
 
-    const killsByRound = new Map<number, typeof timeline.playerKills>()
-    for (const kill of timeline.playerKills) {
+    const killsByRound = new Map<number, KillEvent[]>()
+    for (const kill of clipKills) {
       const r = kill.round ?? -1
       if (!killsByRound.has(r)) killsByRound.set(r, [])
       killsByRound.get(r)!.push(kill)
@@ -376,7 +379,7 @@ export class ClipPipeline {
     }
 
     for (const round of capture.clutches ? clutchRounds : []) {
-      const clutchKills = timeline.playerKills.filter(k => (k.round ?? -1) === round && k.videoOffsetMs != null)
+      const clutchKills = clipKills.filter(k => (k.round ?? -1) === round && k.videoOffsetMs != null)
       if (clutchKills.length === 0) continue
       const first = clutchKills.reduce((a, b) => a.videoOffsetMs! < b.videoOffsetMs! ? a : b)
       const last  = clutchKills.reduce((a, b) => a.videoOffsetMs! > b.videoOffsetMs! ? a : b)

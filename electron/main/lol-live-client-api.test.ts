@@ -1,11 +1,13 @@
 import { describe, expect, it } from 'vitest'
 import {
   assignLolKillSpreeRounds,
+  buildLolObjectiveEvents,
   buildMatchDataFromLolSnapshot,
   isLolLiveMatchActive,
   normalizeLolGameMode,
   resolveLolMapName,
   type LolAllGameData,
+  type LolLiveGameEvent,
 } from './lol-live-client-api'
 import type { KillEvent } from './riot-types'
 
@@ -93,6 +95,20 @@ describe('buildMatchDataFromLolSnapshot', () => {
     expect(timeline.playerKills[0]?.victimName).toBe('EnemyMid')
   })
 
+  it('anchors event videoOffsetMs to the in-game clock zero (loading gap added back)', () => {
+    // Game clock zero was 30s after recording started (loading screen).
+    const recordingStartTime = 1_700_000_000_000
+    const gameClockZeroEpoch = recordingStartTime + 30_000
+    const timeline = buildMatchDataFromLolSnapshot(SAMPLE_SNAPSHOT, {
+      recordingStartTime,
+      gameClockZeroEpoch,
+    })
+    // Event at 125.5s of game clock -> 125.5s + 30s loading = 155.5s into the VOD.
+    expect(timeline.playerKills[0]?.videoOffsetMs).toBe(155_500)
+    // Clock-zero epoch is stored as matchStartTime so recompute stays correct.
+    expect(timeline.matchStartTime).toBe(gameClockZeroEpoch)
+  })
+
   it('translates the Live Client raw map codename to Summoner\'s Rift', () => {
     const timeline = buildMatchDataFromLolSnapshot(
       { ...SAMPLE_SNAPSHOT, gameData: { ...SAMPLE_SNAPSHOT.gameData!, mapName: 'Map11' } },
@@ -132,6 +148,55 @@ describe('assignLolKillSpreeRounds', () => {
     expect(mine[3]?.round).toBe(1)
     // Non-player kill is untouched.
     expect(kills[4]?.round).toBeUndefined()
+  })
+})
+
+describe('buildLolObjectiveEvents', () => {
+  const events: LolLiveGameEvent[] = [
+    { EventID: 10, EventName: 'ChampionKill', EventTime: 60, KillerName: 'TestPlayer', VictimName: 'Zed' },
+    { EventID: 11, EventName: 'DragonKill', EventTime: 300, KillerName: 'TestPlayer', DragonType: 'Fire', Stolen: 'False' },
+    { EventID: 12, EventName: 'BaronKill', EventTime: 1500, KillerName: 'EnemyJgl', Stolen: 'True' },
+    { EventID: 13, EventName: 'TurretKilled', EventTime: 500, KillerName: 'TestPlayer', TurretKilled: 'Turret_T1_C_07_A' },
+    { EventID: 14, EventName: 'Multikill', EventTime: 62, KillerName: 'TestPlayer', KillStreak: 3 },
+    { EventID: 15, EventName: 'Ace', EventTime: 610, Acer: 'TestPlayer', AcingTeam: 'ORDER' },
+  ]
+
+  const isLocal = (name: string): boolean => name === 'TestPlayer'
+
+  it('extracts only objective/highlight events and skips kills', () => {
+    const objectives = buildLolObjectiveEvents(events, {
+      isLocal,
+      gameClockZeroEpoch: 1_700_000_000_000,
+      recordingStartTime: 1_700_000_000_000,
+    })
+    expect(objectives.map((o) => o.kind)).toEqual([
+      'dragon', 'baron', 'tower', 'multikill', 'ace',
+    ])
+  })
+
+  it('tags the local player as "You", parses stolen + detail, and anchors offsets', () => {
+    const objectives = buildLolObjectiveEvents(events, {
+      isLocal,
+      gameClockZeroEpoch: 1_700_000_000_000,
+      recordingStartTime: 1_700_000_000_000,
+    })
+    const dragon = objectives.find((o) => o.kind === 'dragon')!
+    expect(dragon.killerName).toBe('You')
+    expect(dragon.detail).toBe('Fire')
+    expect(dragon.stolen).toBe(false)
+    // 300s of game clock with zero loading gap -> 300s into the VOD.
+    expect(dragon.videoOffsetMs).toBe(300_000)
+
+    const baron = objectives.find((o) => o.kind === 'baron')!
+    expect(baron.killerName).toBe('EnemyJgl')
+    expect(baron.stolen).toBe(true)
+
+    const multi = objectives.find((o) => o.kind === 'multikill')!
+    expect(multi.detail).toBe('Triple Kill')
+
+    const ace = objectives.find((o) => o.kind === 'ace')!
+    expect(ace.killerName).toBe('You')
+    expect(ace.team).toBe('ORDER')
   })
 })
 
