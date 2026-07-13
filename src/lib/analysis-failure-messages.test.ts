@@ -55,6 +55,17 @@ describe('formatAnalysisFailureMessage', () => {
     expect(p.canRetry).toBe(false)
   })
 
+  it('maps demo match-stats errors to demo-specific copy (not Riot)', () => {
+    const p = classifyAnalysisFailure(
+      'Match stats from the demo were not available in time. Wait until the demo finishes downloading after the game, then try Analyse again.',
+    )
+    expect(p.kind).toBe('refunded_data')
+    expect(p.title).toBe('Match stats were not ready')
+    expect(p.message).not.toContain('Riot')
+    expect(p.message).toContain('demo')
+    expect(p.canRetry).toBe(true)
+  })
+
   it('maps S3 SlowDown XML to throttled upload copy', () => {
     const raw = 'S3 upload failed (HTTP 503): <?xml version="1.0"?><Error><Code>SlowDown</Code><Message>Please reduce your request rate.</Message></Error>'
     const p = classifyAnalysisFailure(raw)

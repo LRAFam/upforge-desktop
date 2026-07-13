@@ -238,6 +238,17 @@ export function classifyAnalysisFailure(rawError: string): AnalysisFailurePresen
     }
   }
 
+  if (/demo/i.test(lower) && /match stats|match data|kill/i.test(lower)) {
+    return {
+      kind: 'refunded_data',
+      title: 'Match stats were not ready',
+      message: 'The match demo had not finished downloading when analysis ran.',
+      hint: 'Your credit was refunded. Wait until the demo finishes after the game, then tap Analyse on the dashboard.',
+      creditRefunded: true,
+      canRetry: true,
+    }
+  }
+
   if (/match_data|match data|kill events/i.test(lower)) {
     return {
       kind: 'refunded_data',
