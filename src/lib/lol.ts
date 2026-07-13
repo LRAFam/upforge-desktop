@@ -1,7 +1,8 @@
 /** Desktop LoL CDN + rank helpers (mirrors web lol-cdn / lol-ranks). */
 
 const DDRAGON_BASE = 'https://ddragon.leagueoflegends.com/cdn'
-const FALLBACK_VERSION = '14.24.1'
+/** Keep current so new champions don't 404 when versions.json isn't fetched. */
+const FALLBACK_VERSION = '16.13.1'
 
 const EMBLEM_BASE =
   'https://raw.communitydragon.org/latest/plugins/rcp-be-lol-game-data/global/default/v1/ranked-emblems'
@@ -9,12 +10,27 @@ const EMBLEM_BASE =
 const ROLE_ICON_BASE =
   'https://raw.communitydragon.org/latest/plugins/rcp-fe-lol-clash/global/default/assets/images/position-selector/positions'
 
+const CHAMPION_KEY_ALIASES: Record<string, string> = {
+  fiddlesticks: 'Fiddlesticks',
+  chogath: 'Chogath',
+  kaisa: 'Kaisa',
+  khazix: 'Khazix',
+  velkoz: 'Velkoz',
+  belveth: 'Belveth',
+  leblanc: 'Leblanc',
+  nunuwillump: 'Nunu',
+  nunu: 'Nunu',
+  monkeyking: 'MonkeyKing',
+  renataglasc: 'Renata',
+  wukong: 'MonkeyKing',
+}
+
 function normalizeChampionKey(name: string): string {
-  const trimmed = name.trim()
-  if (!trimmed) return ''
-  return trimmed
-    .replace(/[^a-zA-Z0-9]/g, '')
-    .replace(/^(.)/, (m) => m.toUpperCase())
+  const raw = name.trim().replace(/[^a-zA-Z0-9]/g, '')
+  if (!raw) return ''
+  const alias = CHAMPION_KEY_ALIASES[raw.toLowerCase()]
+  if (alias) return alias
+  return raw.replace(/^(.)/, (m) => m.toUpperCase())
 }
 
 export function championIconUrl(championName: string, version = FALLBACK_VERSION): string {

@@ -26,6 +26,16 @@ describe('parseFfmpegProbeStderr', () => {
     expect(result.ok).toBe(false)
     expect(result.reason).toMatch(/moov atom/i)
   })
+
+  it('treats empty stderr as ok (null-muxer probe)', () => {
+    expect(parseFfmpegProbeStderr('')).toEqual({ ok: true })
+  })
+
+  it('ignores "At least one output file must be specified"', () => {
+    expect(parseFfmpegProbeStderr('At least one output file must be specified')).toEqual({
+      ok: true,
+    })
+  })
 })
 
 describe('probe helpers', () => {

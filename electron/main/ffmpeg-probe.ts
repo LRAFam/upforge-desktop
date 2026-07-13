@@ -1,7 +1,18 @@
-/** Parse ffmpeg stderr from a metadata-only `-i` probe (no frame decode). */
+/**
+ * Parse ffmpeg stderr from a metadata-only probe.
+ *
+ * Prefer probing with `-f null -` so healthy files produce empty error output
+ * (or only Duration/Video lines when verbosity is higher). With `-i` alone,
+ * ffmpeg always ends with "At least one output file must be specified" — treat
+ * that as noise, not a failure.
+ */
 
 export function parseFfmpegProbeStderr(stderr: string): { ok: boolean; reason?: string } {
-  const text = stderr.trim()
+  // ffmpeg complains when no output muxer is given — that is not a media error.
+  const text = stderr
+    .replace(/At least one output file must be specified\.?/gi, '')
+    .trim()
+
   if (/moov atom not found/i.test(text)) {
     return {
       ok: false,
@@ -15,13 +26,10 @@ export function parseFfmpegProbeStderr(stderr: string): { ok: boolean; reason?: 
   if (/no such file or directory/i.test(text)) {
     return { ok: false, reason: 'Recording file not found.' }
   }
-  if (/Video:\s/.test(text) || /Duration:\s*\d+:\d+/.test(text)) {
+  if (!text || /Video:\s/.test(text) || /Duration:\s*\d+:\d+/.test(text)) {
     return { ok: true }
   }
-  if (text) {
-    return { ok: false, reason: text.slice(0, 200) }
-  }
-  return { ok: false, reason: 'Could not read video from recording.' }
+  return { ok: false, reason: text.slice(0, 200) }
 }
 
 export function isRetryableProbeFailure(reason: string | undefined): boolean {

@@ -256,9 +256,13 @@ export class ClipExtractor {
 
   private _probeMetadataStderr(filePath: string, timeoutMs: number): Promise<string> {
     return new Promise((resolve, reject) => {
-      const proc = spawn(ffmpegPath(), ['-hide_banner', '-v', 'error', '-i', filePath], {
-        stdio: ['ignore', 'ignore', 'pipe'],
-      })
+      // Null muxer keeps stderr free of the "At least one output file" noise
+      // while still surfacing real container errors (moov atom, invalid data).
+      const proc = spawn(
+        ffmpegPath(),
+        ['-hide_banner', '-v', 'error', '-i', filePath, '-f', 'null', '-'],
+        { stdio: ['ignore', 'ignore', 'pipe'] },
+      )
       let stderr = ''
       let settled = false
       let timer: ReturnType<typeof setTimeout>
