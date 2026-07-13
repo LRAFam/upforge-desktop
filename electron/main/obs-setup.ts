@@ -8,6 +8,7 @@ import type OBSWebSocket from 'obs-websocket-js'
 import log from 'electron-log'
 import { resolveObsCaptureWindow } from './game-window-finder'
 import { obsCaptureConfig } from './game-config'
+import { applyCrashSafeObsRecFormat } from './obs-rec-format'
 
 export const UPFORGE_SCENE_NAME = 'UpForge'
 export const UPFORGE_INPUT_NAME = 'UpForge Capture'
@@ -361,8 +362,14 @@ export async function setupUpForgeScene(
 
     await fitUpForgeCaptureToCanvas(obs)
 
+    try {
+      const versionInfo = await obs.call('GetVersion') as { obsVersion?: string }
+      await applyCrashSafeObsRecFormat(obs, versionInfo.obsVersion)
+    } catch {
+      await applyCrashSafeObsRecFormat(obs, null)
+    }
+
     const profileParams: Array<[string, string, string]> = [
-      ['SimpleOutput', 'RecFormat', 'mp4'],
       ['SimpleOutput', 'ReplayBufferEnable', 'true'],
     ]
     for (const [parameterCategory, parameterName, parameterValue] of profileParams) {

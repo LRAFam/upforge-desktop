@@ -17,6 +17,7 @@ import {
   type ObsSetupResult,
   type ObsSceneSwitchOptions,
 } from './obs-setup'
+import { applyCrashSafeObsRecFormat } from './obs-rec-format'
 import { findObsWindowString } from './game-window-finder'
 import { formatObsConnectError, obsConnectHosts } from './obs-connect'
 import {
@@ -58,7 +59,7 @@ interface LiveKillEvent {
  *
  * Provides two complementary recording modes running simultaneously:
  *   1. Full match VOD: StartRecord on game start, StopRecord on game end.
- *      Output is a native H.264/NVENC MP4 — no transcoding needed for clip extraction.
+ *      Output is H.264 in a crash-safe container (Hybrid MP4 on OBS 30.2+, MKV otherwise).
  *   2. Replay buffer: A rolling N-second buffer. SaveReplayBuffer is triggered
  *      automatically on each player kill detected via the Riot Live Client API,
  *      giving near-instant clips during the match.
@@ -87,6 +88,8 @@ export class OBSRecorder {
   private _outputPath: string | null = null
   private _lastError: string | null = null
   private _obsVersion: string | null = null
+  /** OBS Studio version from GetVersion — used for crash-safe recording format. */
+  private _obsStudioVersion: string | null = null
   private _noAudio = false
   private _startupWarning: string | null = null
 
@@ -229,6 +232,17 @@ export class OBSRecorder {
         this._lastError = null
         log.info('[OBSRecorder] Connected to OBS WebSocket', obsWebSocketVersion, 'via', tryHost)
 
+        try {
+          const versionInfo = await this._obs.call('GetVersion') as { obsVersion?: string }
+          this._obsStudioVersion = versionInfo.obsVersion ?? null
+          if (this._obsStudioVersion) {
+            log.info('[OBSRecorder] OBS Studio version:', this._obsStudioVersion)
+          }
+        } catch (err) {
+          log.warn('[OBSRecorder] GetVersion failed (non-fatal):', err)
+          this._obsStudioVersion = null
+        }
+
         if (replayBufferSeconds > 0) {
           this._obs.call('SetProfileParameter', {
             parameterCategory: 'SimpleOutput',
@@ -249,7 +263,7 @@ export class OBSRecorder {
 
         const recConfig = this.getRecordingConfig?.()
         if (recConfig) {
-          await applyObsRecordingSettings(this._obs, recConfig)
+          await applyObsRecordingSettings(this._obs, recConfig, this._obsStudioVersion)
         }
 
         this.onConnectionChange?.(true)
@@ -453,7 +467,7 @@ export class OBSRecorder {
 
   async applyRecordingSettings(config: RecorderConfig): Promise<ObsApplyResult | null> {
     if (!this._connected) return null
-    return applyObsRecordingSettings(this._obs, config)
+    return applyObsRecordingSettings(this._obs, config, this._obsStudioVersion)
   }
 
   /** Re-fit capture once the Valorant viewport is stable (after loading / agent select). */
@@ -610,7 +624,7 @@ export class OBSRecorder {
       this._lastCaptureGame = game
 
       if (config) {
-        const applyResult = await applyObsRecordingSettings(this._obs, config)
+        const applyResult = await applyObsRecordingSettings(this._obs, config, this._obsStudioVersion)
         this._startupWarning = applyResult.warnings[0] ?? null
       } else {
         const savePath = join(app.getPath('userData'), 'recordings')

@@ -14,6 +14,13 @@ describe('parseFfmpegProbeStderr', () => {
     expect(parseFfmpegProbeStderr(stderr)).toEqual({ ok: true })
   })
 
+  it('accepts matroska metadata', () => {
+    const stderr = `Input #0, matroska,webm, from 'match.mkv':
+  Duration: 00:42:10.00, start: 0.000000, bitrate: 4500 kb/s
+  Stream #0:0: Video: h264, yuv420p, 1920x1080`
+    expect(parseFfmpegProbeStderr(stderr)).toEqual({ ok: true })
+  })
+
   it('detects missing moov atom', () => {
     const result = parseFfmpegProbeStderr('[mov,mp4] moov atom not found')
     expect(result.ok).toBe(false)

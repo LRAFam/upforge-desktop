@@ -8,6 +8,7 @@
 
 import log from 'electron-log'
 import type OBSWebSocket from 'obs-websocket-js'
+import { applyCrashSafeObsRecFormat } from './obs-rec-format'
 import type { RecorderConfig } from './recorder'
 import type { AppSettings } from './settings-manager'
 import { getRecordingPresetValues, formatRecordingLabel } from './recording-preset'
@@ -77,6 +78,7 @@ async function setProfileParam(
 export async function applyObsRecordingSettings(
   obs: OBSWebSocket,
   config: RecorderConfig,
+  obsStudioVersion?: string | null,
 ): Promise<ObsApplyResult> {
   const { cx, cy } = config.quality === '1080p'
     ? { cx: 1920, cy: 1080 }
@@ -95,7 +97,7 @@ export async function applyObsRecordingSettings(
   }
 
   await setProfileParam(obs, 'Output', 'Mode', 'Simple')
-  await setProfileParam(obs, 'SimpleOutput', 'RecFormat', 'mp4')
+  const recFormat = await applyCrashSafeObsRecFormat(obs, obsStudioVersion)
   await setProfileParam(obs, 'SimpleOutput', 'RecQuality', 'Small')
   await setProfileParam(obs, 'SimpleOutput', 'RecRB', String(bitrateKbps))
 
@@ -148,7 +150,7 @@ export async function applyObsRecordingSettings(
   const label = formatRecordingLabel(config.quality, config.bitrate, fps)
   log.info(
     `[OBS Output] Applied ${label}${config.manageObsVideo === false ? ' (OBS video settings unchanged)' : ''} → ${savePath} ` +
-    `(mode=${outputMode ?? '?'}, ${outputWidth ?? '?'}×${outputHeight ?? '?'}, RecRB=${recRb ?? '?'} kbps)`,
+    `(mode=${outputMode ?? '?'}, ${outputWidth ?? '?'}×${outputHeight ?? '?'}, RecRB=${recRb ?? '?'} kbps, format=${recFormat})`,
   )
 
   if (warnings.length) {

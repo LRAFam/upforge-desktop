@@ -137,7 +137,7 @@ export class ClipPipeline {
     const probe = await clipExtractor.probeWithRetry(videoPath)
     if (!probe.ok) {
       log.warn('[ClipExtract] Recording is unreadable — skipping all clip extraction:', probe.reason)
-      logActivity('Clip extraction skipped — recording was incomplete (app or ffmpeg quit before the file was finalised)')
+      logActivity('Clip extraction skipped — recording file could not be read (interrupted or still finalising)')
       if (shouldReportClipProbeFailure(probe.reason)) {
         reportError({
           message: `[ClipExtract] Recording unreadable, skipping extraction: ${probe.reason}`,
@@ -312,7 +312,7 @@ export class ClipPipeline {
     const probe = await clipExtractor.probeWithRetry(videoPath)
     if (!probe.ok) {
       log.warn('[LateClipExtract] Recording is unreadable — skipping all clip extraction:', probe.reason)
-      logActivity('Late clip extraction skipped — recording was incomplete (app or ffmpeg quit before the file was finalised)')
+      logActivity('Late clip extraction skipped — recording file could not be read (interrupted or still finalising)')
       if (shouldReportClipProbeFailure(probe.reason)) {
         reportError({
           message: `[LateClipExtract] Recording unreadable, skipping extraction: ${probe.reason}`,

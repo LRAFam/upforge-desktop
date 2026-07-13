@@ -13,7 +13,7 @@ export const UPFORGE_OBS_DEFAULT_PORT = 4455
 
 const INSTALL_MARKER = '.upforge-installed'
 /** Bump when bundled basic.ini changes materially — forces merge into existing installs. */
-const PROFILE_SYNC_VERSION = '2'
+const PROFILE_SYNC_VERSION = '3'
 
 function obsAppDataDir(): string | null {
   if (process.platform === 'win32') {
@@ -57,7 +57,7 @@ function copyFileIfMissing(src: string, dest: string): boolean {
 function mergeBundledProfileKeys(bundledIni: string, destIni: string): boolean {
   if (!fs.existsSync(destIni)) return false
   const keysToSync: Array<[string, string, string]> = [
-    ['SimpleOutput', 'RecFormat', 'mp4'],
+    ['SimpleOutput', 'RecFormat', 'mkv'],
     ['SimpleOutput', 'RecQuality', 'Small'],
     ['Output', 'Mode', 'Simple'],
   ]
