@@ -2377,7 +2377,11 @@ function setupGameDetection(): void {
       })
 
       // Leave "preparing" immediately — don't block UI on ffprobe / Riot sync.
-      sendToWindow('post-game:prep-step', { game, map, agent })
+      // Auto-analyse off: skip the upload flow entirely and drop straight to the
+      // manual "pending" card below (no preparing → uploading flash).
+      if (autoAnalyse) {
+        sendToWindow('post-game:prep-step', { game, map, agent })
+      }
 
       let coachingExtras: CoachingSubmissionExtras | undefined
       const enrichPromise = prepareTimelineForCoaching(timeline, game, savedRecording.id)
@@ -2550,6 +2554,25 @@ function setupGameDetection(): void {
       }
     }
 
+    // Hard safety net: "preparing" is a transient state — the upload flow must
+    // always advance it (to uploading/pending/error). If it's still preparing
+    // after this window, runPostGameUpload bailed or hung before emitting a
+    // phase change, so surface a manual fallback instead of an endless spinner.
+    const PREPARING_SAFETY_MS = 45_000
+    const preparingSafetyTimer = setTimeout(() => {
+      if (getPostGameSessionSnapshot()?.phase !== 'preparing') return
+      log.error('[HandleMatchEnd] Post-game stuck in preparing — surfacing manual fallback')
+      logActivity('Post-game preparation did not complete — upload this match from the dashboard.')
+      try {
+        if (uploadTargetWindow && !uploadTargetWindow.isDestroyed()) {
+          sendUploadFailure(
+            'Preparing is taking longer than expected — open the dashboard to upload this match manually.',
+            { targetWindow: uploadTargetWindow },
+          )
+        }
+      } catch { /* window closed */ }
+    }, PREPARING_SAFETY_MS)
+
     void runPostGameUpload().catch((err) => {
       const msg = err instanceof Error ? err.message : String(err)
       log.error('[HandleMatchEnd] Post-game upload failed:', err)
@@ -2559,6 +2582,23 @@ function setupGameDetection(): void {
           sendUploadFailure(`Upload failed to start: ${msg}`, { targetWindow: uploadTargetWindow })
         }
       } catch { /* window closed */ }
+    }).finally(() => {
+      // Settled: if the flow never left preparing (silent early return), don't
+      // leave the toast spinning — the timer above will still catch a true hang.
+      if (getPostGameSessionSnapshot()?.phase === 'preparing') {
+        clearTimeout(preparingSafetyTimer)
+        log.error('[HandleMatchEnd] runPostGameUpload settled while still preparing — surfacing fallback')
+        try {
+          if (uploadTargetWindow && !uploadTargetWindow.isDestroyed()) {
+            sendUploadFailure(
+              'Preparing did not complete — open the dashboard to upload this match manually.',
+              { targetWindow: uploadTargetWindow },
+            )
+          }
+        } catch { /* window closed */ }
+      } else {
+        clearTimeout(preparingSafetyTimer)
+      }
     })
     } finally {
       handleMatchEndRunning = false
