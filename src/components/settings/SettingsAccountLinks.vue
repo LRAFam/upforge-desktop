@@ -40,6 +40,7 @@ const panelRefs: Partial<Record<PrimaryGame, HTMLElement | null>> = {
   valorant: null,
   cs2: null,
   deadlock: null,
+  lol: null,
 }
 
 const valorantLinked = computed(() => Boolean(user.value?.riot_name?.trim()))
@@ -48,6 +49,30 @@ const cs2Linked = computed(() => Boolean(
   || cs2FaceitLinked.value,
 ))
 const deadlockLinked = computed(() => Boolean(user.value?.deadlock_account_id))
+const lolLinked = computed(() => Boolean(user.value?.lol_riot_name?.trim() && user.value?.lol_riot_tag?.trim()))
+
+const lolName = ref('')
+const lolTag = ref('')
+const lolPlatform = ref('EUW1')
+const lolBusy = ref(false)
+const lolError = ref('')
+const lolSuccess = ref('')
+const lolUnlinking = ref(false)
+const lolEditing = ref(false)
+
+const LOL_PLATFORMS = [
+  { value: 'EUW1', label: 'EUW' },
+  { value: 'EUN1', label: 'EUNE' },
+  { value: 'NA1', label: 'NA' },
+  { value: 'KR', label: 'KR' },
+  { value: 'BR1', label: 'BR' },
+  { value: 'LA1', label: 'LAN' },
+  { value: 'LA2', label: 'LAS' },
+  { value: 'OC1', label: 'OCE' },
+  { value: 'JP1', label: 'JP' },
+  { value: 'TR1', label: 'TR' },
+  { value: 'RU', label: 'RU' },
+] as const
 
 const activeFocus = computed(() => props.focus ?? accountLinkFocus.value)
 
@@ -172,6 +197,72 @@ async function connectDeadlock(accountId: number, name: string) {
     await afterLinked()
   } finally {
     steamBusy.value = false
+  }
+}
+
+function startLolEdit() {
+  lolEditing.value = true
+  lolError.value = ''
+  lolSuccess.value = ''
+  lolName.value = user.value?.lol_riot_name ?? ''
+  lolTag.value = user.value?.lol_riot_tag ?? ''
+  lolPlatform.value = user.value?.lol_platform ?? 'EUW1'
+}
+
+function cancelLolEdit() {
+  lolEditing.value = false
+  lolName.value = ''
+  lolTag.value = ''
+  lolError.value = ''
+  lolSuccess.value = ''
+}
+
+async function linkLol() {
+  lolError.value = ''
+  lolSuccess.value = ''
+  if (!lolName.value.trim() || !lolTag.value.trim()) {
+    lolError.value = 'Enter your Riot name and tag (e.g. Name + TAG).'
+    return
+  }
+  if (!lolPlatform.value) {
+    lolError.value = 'Select your League server.'
+    return
+  }
+  lolBusy.value = true
+  try {
+    const result = await window.api.auth.linkLolAccount({
+      riot_name: lolName.value.trim(),
+      riot_tag: lolTag.value.trim().replace(/^#/, ''),
+      lol_platform: lolPlatform.value,
+    })
+    if (!result.ok) {
+      lolError.value = result.error || 'Could not link League account'
+      return
+    }
+    lolSuccess.value = 'League account linked.'
+    lolEditing.value = false
+    await afterLinked()
+  } finally {
+    lolBusy.value = false
+  }
+}
+
+async function unlinkLol() {
+  lolError.value = ''
+  lolSuccess.value = ''
+  lolUnlinking.value = true
+  try {
+    const result = await window.api.auth.unlinkLolAccount()
+    if (!result.ok) {
+      lolError.value = result.error || 'Could not unlink League account'
+      return
+    }
+    lolSuccess.value = 'League account unlinked.'
+    lolEditing.value = false
+    await reloadAccountLinks()
+    await window.api.app.refreshDashboard().catch(() => null)
+  } finally {
+    lolUnlinking.value = false
   }
 }
 </script>
@@ -302,6 +393,83 @@ async function connectDeadlock(accountId: number, name: string) {
         </template>
         <p v-if="steamError" class="mt-2 text-[11px] text-red-400">{{ steamError }}</p>
         <p v-if="steamSuccess" class="mt-2 text-[11px] text-emerald-400">{{ steamSuccess }}</p>
+      </div>
+
+      <!-- League of Legends -->
+      <div
+        :ref="(el) => setPanelRef('lol', el as Element | null)"
+        class="rounded-2xl border p-4 transition-colors"
+        :class="activeFocus === 'lol' ? 'border-amber-500/30 bg-amber-500/[0.06]' : 'border-white/[0.10] bg-black/20'"
+      >
+        <div class="flex items-center justify-between gap-2 mb-2">
+          <p class="text-xs font-bold uppercase tracking-wider text-gray-300">{{ gameBrand('lol').wordmark }}</p>
+          <span v-if="lolLinked" class="text-[9px] font-bold uppercase tracking-wide text-emerald-300/90">Linked</span>
+        </div>
+
+        <template v-if="lolLinked && !lolEditing">
+          <p class="text-sm font-semibold text-gray-200 mb-1">
+            {{ user?.lol_riot_name }}<span class="text-amber-400">#{{ user?.lol_riot_tag }}</span>
+          </p>
+          <p v-if="user?.lol_platform" class="text-[11px] text-gray-500 mb-3">
+            Server: {{ user.lol_platform }}
+          </p>
+          <div class="flex gap-2">
+            <button
+              type="button"
+              class="flex-1 rounded-xl border border-white/[0.10] bg-white/[0.04] px-3 py-2 text-xs font-semibold text-gray-200 hover:bg-white/[0.07]"
+              @click="startLolEdit"
+            >Update</button>
+            <button
+              type="button"
+              class="flex-1 rounded-xl border border-red-500/25 bg-red-500/10 px-3 py-2 text-xs font-semibold text-red-300 hover:bg-red-500/15 disabled:opacity-50"
+              :disabled="lolUnlinking"
+              @click="unlinkLol"
+            >{{ lolUnlinking ? '…' : 'Unlink' }}</button>
+          </div>
+        </template>
+
+        <template v-else>
+          <p class="text-xs text-gray-500 mb-3">
+            Can be a different Riot ID than Valorant. Use the Riot ID from the League client.
+          </p>
+          <div class="grid grid-cols-1 sm:grid-cols-3 gap-2">
+            <input
+              v-model="lolName"
+              type="text"
+              placeholder="Name"
+              class="rounded-xl border border-white/[0.10] bg-black/30 px-3 py-2 text-xs text-gray-200 placeholder:text-gray-600 focus:border-amber-500/40 focus:outline-none"
+            />
+            <input
+              v-model="lolTag"
+              type="text"
+              placeholder="Tag"
+              class="rounded-xl border border-white/[0.10] bg-black/30 px-3 py-2 text-xs text-gray-200 placeholder:text-gray-600 focus:border-amber-500/40 focus:outline-none"
+            />
+            <select
+              v-model="lolPlatform"
+              class="rounded-xl border border-white/[0.10] bg-black/30 px-3 py-2 text-xs text-gray-200 focus:border-amber-500/40 focus:outline-none"
+            >
+              <option v-for="p in LOL_PLATFORMS" :key="p.value" :value="p.value">{{ p.label }}</option>
+            </select>
+          </div>
+          <div class="mt-3 flex gap-2">
+            <button
+              v-if="lolEditing"
+              type="button"
+              class="rounded-xl border border-white/[0.10] bg-white/[0.04] px-3 py-2 text-xs font-semibold text-gray-200"
+              @click="cancelLolEdit"
+            >Cancel</button>
+            <button
+              type="button"
+              class="flex-1 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 px-3 py-2 text-xs font-bold text-black disabled:opacity-50"
+              :disabled="lolBusy"
+              @click="linkLol"
+            >{{ lolBusy ? 'Linking…' : (lolEditing ? 'Save League account' : 'Link League account') }}</button>
+          </div>
+        </template>
+
+        <p v-if="lolError" class="mt-2 text-[11px] text-red-400">{{ lolError }}</p>
+        <p v-if="lolSuccess" class="mt-2 text-[11px] text-emerald-400">{{ lolSuccess }}</p>
       </div>
     </div>
   </div>

@@ -90,6 +90,18 @@ export function setupAuthHandlers(
     return auth.updateRiotAccount(payload)
   })
 
+  ipcMain.handle('auth:link-lol-account', async (_e, payload: {
+    riot_name: string
+    riot_tag: string
+    lol_platform: string
+  }) => {
+    return auth.linkLolAccount(payload)
+  })
+
+  ipcMain.handle('auth:unlink-lol-account', async () => {
+    return auth.unlinkLolAccount()
+  })
+
   ipcMain.handle('auth:load-stored', async () => {
     return auth.loadStoredToken()
   })

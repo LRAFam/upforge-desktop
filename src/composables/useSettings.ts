@@ -13,6 +13,9 @@ type UserWithUsage = {
   tier: string
   riot_name: string | null
   riot_tag: string | null
+  lol_riot_name?: string | null
+  lol_riot_tag?: string | null
+  lol_platform?: string | null
   deadlock_account_id?: number | null
   onboarding_target_rank?: string | null
   analyses_used?: number
@@ -1003,6 +1006,9 @@ function createSettings() {
           tier: prof.user.tier,
           riot_name: prof.user.riot_name,
           riot_tag: prof.user.riot_tag,
+          lol_riot_name: prof.user.lol_riot_name ?? user.value?.lol_riot_name ?? null,
+          lol_riot_tag: prof.user.lol_riot_tag ?? user.value?.lol_riot_tag ?? null,
+          lol_platform: prof.user.lol_platform ?? user.value?.lol_platform ?? null,
           deadlock_account_id: (prof.user as UserWithUsage).deadlock_account_id
             ?? user.value?.deadlock_account_id
             ?? null,

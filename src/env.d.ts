@@ -347,6 +347,9 @@ export interface ProfileData {
     riot_name: string | null
     riot_tag: string | null
     riot_region: string | null
+    lol_riot_name?: string | null
+    lol_riot_tag?: string | null
+    lol_platform?: string | null
     discord_username: string | null
     analysis_stats: {
       total: number
@@ -535,6 +538,8 @@ declare global {
         getUser: () => Promise<unknown>
         refreshUser: () => Promise<unknown>
         updateRiotAccount: (payload: { riot_name: string; riot_tag: string; riot_region?: string }) => Promise<{ ok: boolean; error?: string }>
+        linkLolAccount: (payload: { riot_name: string; riot_tag: string; lol_platform: string }) => Promise<{ ok: boolean; error?: string }>
+        unlinkLolAccount: () => Promise<{ ok: boolean; error?: string }>
         loadStored: () => Promise<{ ok: boolean; user?: unknown }>
       }
       app: {

@@ -663,8 +663,10 @@ function createDashboard() {
   }
 
   async function loadLolProfile() {
-    // LoL shares Riot linkage with Valorant — only fetch matches when a Riot ID is set.
-    if (!profile.value?.user?.riot_name?.trim()) {
+    // Prefer dedicated LoL account; fall back to shared Valorant Riot ID.
+    const hasLol = Boolean(profile.value?.user?.lol_riot_name?.trim())
+    const hasRiot = Boolean(profile.value?.user?.riot_name?.trim())
+    if (!hasLol && !hasRiot) {
       lolRecentMatches.value = []
       return
     }

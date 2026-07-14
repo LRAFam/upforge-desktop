@@ -9,6 +9,10 @@ const api = {
     refreshUser: () => ipcRenderer.invoke('auth:refresh-user'),
     updateRiotAccount: (payload: { riot_name: string; riot_tag: string; riot_region?: string }) =>
       ipcRenderer.invoke('auth:update-riot-account', payload) as Promise<{ ok: boolean; error?: string }>,
+    linkLolAccount: (payload: { riot_name: string; riot_tag: string; lol_platform: string }) =>
+      ipcRenderer.invoke('auth:link-lol-account', payload) as Promise<{ ok: boolean; error?: string }>,
+    unlinkLolAccount: () =>
+      ipcRenderer.invoke('auth:unlink-lol-account') as Promise<{ ok: boolean; error?: string }>,
     loadStored: () => ipcRenderer.invoke('auth:load-stored')
   },
   app: {

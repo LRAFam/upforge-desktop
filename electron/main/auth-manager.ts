@@ -51,6 +51,11 @@ export interface AuthUser {
   is_admin: boolean
   riot_name: string | null
   riot_tag: string | null
+  riot_region?: string | null
+  riot_verified?: boolean
+  lol_riot_name?: string | null
+  lol_riot_tag?: string | null
+  lol_platform?: string | null
   primary_game?: string | null
   games?: string[]
   deadlock_account_id?: number | null
@@ -88,6 +93,9 @@ export interface ProfileData {
     riot_name: string | null
     riot_tag: string | null
     riot_region: string | null
+    lol_riot_name?: string | null
+    lol_riot_tag?: string | null
+    lol_platform?: string | null
     discord_username: string | null
     analysis_stats: { total: number; limit: number | null; subscription_ends_at?: string | null }
     archive_stats?: {
@@ -491,6 +499,49 @@ export class AuthManager {
     } catch (err: unknown) {
       const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message
       return { ok: false, error: msg || 'Failed to link Riot account' }
+    }
+  }
+
+  async linkLolAccount(payload: {
+    riot_name: string
+    riot_tag: string
+    lol_platform: string
+  }): Promise<{ ok: boolean; error?: string }> {
+    if (!this._api) return { ok: false, error: 'Not logged in' }
+    try {
+      const res = await this._api.post('/api/profile/lol-account', payload)
+      const account = res.data?.lol_account as {
+        riot_name?: string
+        riot_tag?: string
+        lol_platform?: string | null
+      } | undefined
+      if (this._user && account?.riot_name && account?.riot_tag) {
+        this._user.lol_riot_name = account.riot_name
+        this._user.lol_riot_tag = account.riot_tag
+        this._user.lol_platform = account.lol_platform ?? null
+      } else {
+        await this.fetchUser()
+      }
+      return { ok: true }
+    } catch (err: unknown) {
+      const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message
+      return { ok: false, error: msg || 'Failed to link League account' }
+    }
+  }
+
+  async unlinkLolAccount(): Promise<{ ok: boolean; error?: string }> {
+    if (!this._api) return { ok: false, error: 'Not logged in' }
+    try {
+      await this._api.delete('/api/profile/lol-account')
+      if (this._user) {
+        this._user.lol_riot_name = null
+        this._user.lol_riot_tag = null
+        this._user.lol_platform = null
+      }
+      return { ok: true }
+    } catch (err: unknown) {
+      const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message
+      return { ok: false, error: msg || 'Failed to unlink League account' }
     }
   }
 
