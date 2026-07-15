@@ -17,6 +17,19 @@ export function hasRichMatchData(timeline: MatchData | null | undefined): boolea
   return ((fs.kills ?? 0) + (fs.deaths ?? 0) + (fs.assists ?? 0)) > 0
 }
 
+/**
+ * True when MatchDetails still needs to supply core kill/round stats.
+ *
+ * Do NOT gate on plantLocation or spatialSummary plants here — spatial enrichment
+ * runs after MatchDetails succeed. Requiring those caused endless "Waiting for Riot
+ * match stats" even when Riot had already returned full kill data.
+ */
+export function timelineNeedsEnrichRefresh(timeline: MatchData): boolean {
+  const hasCore = (timeline.killEvents?.length ?? 0) > 0
+    || (timeline.roundSummaries?.length ?? 0) > 0
+  return !hasCore
+}
+
 /** Demo has kills but none matched the configured CS2 Steam name. */
 export function cs2PlayerIdentityMismatch(timeline: MatchData | null | undefined): boolean {
   if (!timeline) return false

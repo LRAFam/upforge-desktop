@@ -31,6 +31,9 @@ import {
   shouldApplyMatchDetails,
   shouldUseMatchHistoryFallback,
 } from './match-details-validation'
+import { timelineNeedsEnrichRefresh } from './match-data-quality'
+export { timelineNeedsEnrichRefresh } from './match-data-quality'
+import { stashMatchIdFields } from './riot-match-id-stash'
 export type {
   GameEvent,
   KillEvent,
@@ -113,6 +116,12 @@ export class RiotLocalApi {
   private static readonly EXTERNAL_END_POLLS_LOADING = 15
   private currentMatchId: string | null = null
   private lastGameMode: string | null = null
+  /** Last MatchDetails HTTP outcome — surfaced in activity logs during enrich waits. */
+  private _lastMatchDetailsFetch: {
+    at: number
+    statusCode?: number
+    error?: string
+  } | null = null
   /** Counts how many times core-game agent fetch has been attempted this match. */
   private agentFetchAttempts = 0
   /** Max retries for agent fetch — covers ~3 mins of polling (every 3 s) during loading + early game. */
@@ -796,12 +805,7 @@ export class RiotLocalApi {
         await this._fetchAgentFromPreGame()
         return
       }
-      // Capture matchId while we have it — enables post-match MatchDetails fetch
-      if (!this.matchData.matchId && player.MatchID) {
-        this.matchData.matchId = player.MatchID
-        this.currentMatchId = player.MatchID
-        console.log(`[RiotLocalApi] Match ID from core-game REST: ${player.MatchID}`)
-      }
+      this._stashMatchId(player.MatchID, 'core-game REST')
       const match = await this._fetchLocal<{
         Players?: Array<{ Subject?: string; CharacterID?: string }>
       }>(`/core-game/v1/matches/${player.MatchID}`)
@@ -825,6 +829,20 @@ export class RiotLocalApi {
     }
   }
 
+  private _stashMatchId(matchId: string | null | undefined, source: string): void {
+    const stashed = stashMatchIdFields(matchId, {
+      timelineMatchId: this.matchData?.matchId ?? null,
+      currentMatchId: this.currentMatchId,
+    })
+    this.currentMatchId = stashed.currentMatchId
+    if (this.matchData && stashed.timelineMatchId) {
+      this.matchData.matchId = stashed.timelineMatchId
+    }
+    if (stashed.changed) {
+      console.log(`[RiotLocalApi] Match ID from ${source}: ${stashed.currentMatchId}`)
+    }
+  }
+
   /** Try pre-game API for agent during agent select / loading screen. */
   private async _fetchAgentFromPreGame(): Promise<void> {
     if (!this.matchData || !this.ownPuuid) return
@@ -833,6 +851,7 @@ export class RiotLocalApi {
         `/pregame/v1/players/${this.ownPuuid}`
       )
       if (!player?.MatchID) return
+      this._stashMatchId(player.MatchID, 'pre-game REST')
       const match = await this._fetchLocal<{
         AllyTeam?: { Players?: Array<{ Subject?: string; CharacterID?: string }> }
       }>(`/pregame/v1/matches/${player.MatchID}`)
@@ -849,6 +868,11 @@ export class RiotLocalApi {
     } catch { /* pre-game not available */ }
   }
 
+  /** Clear pre-match id captured during agent select before a new Valorant session starts. */
+  clearPendingMatchId(): void {
+    if (!this.matchData) this.currentMatchId = null
+  }
+
   /**
    * Start tracking a match.
    * @param game           'valorant' or 'cs2'
@@ -860,7 +884,7 @@ export class RiotLocalApi {
       return
     }
     this.matchEnded = false
-    this.currentMatchId = null
+    const earlyMatchId = this.currentMatchId
     this.agentFetchAttempts = 0
     this._seenIngameSinceStart = false
     this._consecutiveMenusPolls = 0
@@ -873,7 +897,7 @@ export class RiotLocalApi {
     this.lastSessionLoopState = 'MENUS'
     this.matchData = {
       game,
-      matchId: null,
+      matchId: earlyMatchId,
       puuid: this.ownPuuid,
       region: this.region,
       queueId: null,
@@ -997,6 +1021,7 @@ export class RiotLocalApi {
 
     const result = this.matchData
     this.matchData = null
+    this.currentMatchId = null
     console.log(
       `[RiotLocalApi] Stop complete — kills=${result.killEvents.length} ` +
       `rounds=${result.roundSummaries.length} matchId=${result.matchId} agent=${result.agent}`
@@ -1009,7 +1034,14 @@ export class RiotLocalApi {
   // ──────────────────────────────────────────────────────────────────────
 
   private async _fetchMatchDetails(matchId: string): Promise<Record<string, unknown> | null> {
-    if (!this.region || !this.accessToken || !this.entitlementsToken) return null
+    this._lastMatchDetailsFetch = { at: Date.now() }
+    if (!this.region || !this.accessToken || !this.entitlementsToken) {
+      this._lastMatchDetailsFetch = {
+        at: Date.now(),
+        error: !this.region ? 'missing_region' : 'missing_auth',
+      }
+      return null
+    }
     return new Promise((resolve) => {
       const req = https.get(
         {
@@ -1030,15 +1062,30 @@ export class RiotLocalApi {
           res.on('data', (chunk) => (body += chunk))
           res.on('end', () => {
             if (res.statusCode !== 200) {
+              this._lastMatchDetailsFetch = { at: Date.now(), statusCode: res.statusCode ?? undefined }
               console.log(`[RiotLocalApi] MatchDetails HTTP ${res.statusCode}`)
               resolve(null); return
             }
-            try { resolve(JSON.parse(body) as Record<string, unknown>) } catch { resolve(null) }
+            try {
+              this._lastMatchDetailsFetch = { at: Date.now(), statusCode: 200 }
+              resolve(JSON.parse(body) as Record<string, unknown>)
+            } catch {
+              this._lastMatchDetailsFetch = { at: Date.now(), error: 'invalid_json' }
+              resolve(null)
+            }
           })
         }
       )
-      req.on('error', (err: Error) => { console.log(`[RiotLocalApi] MatchDetails error: ${err.message}`); resolve(null) })
-      req.setTimeout(15000, () => { req.destroy(); resolve(null) })
+      req.on('error', (err: Error) => {
+        this._lastMatchDetailsFetch = { at: Date.now(), error: err.message }
+        console.log(`[RiotLocalApi] MatchDetails error: ${err.message}`)
+        resolve(null)
+      })
+      req.setTimeout(15000, () => {
+        this._lastMatchDetailsFetch = { at: Date.now(), error: 'timeout' }
+        req.destroy()
+        resolve(null)
+      })
     })
   }
 
@@ -1476,7 +1523,7 @@ export class RiotLocalApi {
   // ──────────────────────────────────────────────────────────────────────
 
   /**
-   * Keep retrying Riot MatchDetails until timeline has rounds/kills and plant coords, or delays exhaust.
+   * Keep retrying Riot MatchDetails until timeline has rounds/kills, or delays exhaust.
    * Call before upload — compression/upload time often covers Riot's post-match delay.
    */
   async enrichTimelineMatchDetails(
@@ -1509,7 +1556,23 @@ export class RiotLocalApi {
       }
     }
 
-    if (!timeline.matchId || !this.region) return false
+    if (!timeline.matchId || !this.region) {
+      const missing = [
+        !timeline.matchId ? 'match ID' : null,
+        !this.region ? 'region' : null,
+      ].filter(Boolean).join(' + ')
+      options?.onStatus?.(
+        `Cannot fetch Riot match stats — missing ${missing}. Keep Riot Client open next match.`,
+      )
+      return false
+    }
+
+    if (!this.accessToken || !this.entitlementsToken) {
+      options?.onStatus?.(
+        'Cannot fetch Riot match stats — Riot Client auth missing. Open Valorant / Riot Client and retry.',
+      )
+      return false
+    }
 
     const maxWaitMs = options?.maxWaitMs ?? 120_000
     const delays = hasCoreData
@@ -1520,35 +1583,85 @@ export class RiotLocalApi {
     const started = Date.now()
 
     for (const delay of delays) {
-      if (Date.now() - started > maxWaitMs) break
+      const elapsed = Date.now() - started
+      if (elapsed >= maxWaitMs) break
       if (delay > 0) {
-        options?.onStatus?.(`Waiting for Riot match stats (${Math.round(delay / 1000)}s)…`)
-        await new Promise((r) => setTimeout(r, delay))
+        const sleepMs = Math.min(delay, maxWaitMs - elapsed)
+        if (sleepMs <= 0) break
+        options?.onStatus?.(
+          `Waiting for Riot match stats (${Math.round(sleepMs / 1000)}s)…`,
+        )
+        await new Promise((r) => setTimeout(r, sleepMs))
       }
-      if (await this._fetchMatchDetailsWithRetries(timeline, [0])) {
+      if (await this._fetchMatchDetailsWithRetries(timeline, [0], options?.onStatus)) {
         return true
       }
     }
     const hasCore = (timeline.killEvents?.length ?? 0) > 0 || (timeline.roundSummaries?.length ?? 0) > 0
+    if (!hasCore) {
+      const last = this._lastMatchDetailsFetch
+      const detail = last?.statusCode != null
+        ? `HTTP ${last.statusCode}`
+        : (last?.error ?? 'no response')
+      options?.onStatus?.(
+        `Riot match stats still unavailable (${detail}). Retry Analyse with Riot Client open.`,
+      )
+    }
     return hasCore && !timelineNeedsEnrichRefresh(timeline)
+  }
+
+  private _matchDetailsFailureStatus(): string {
+    const last = this._lastMatchDetailsFetch
+    if (!last) return 'no response yet'
+    if (last.statusCode === 404) return 'HTTP 404 — Riot has not published this match yet'
+    if (last.statusCode === 401 || last.statusCode === 403) {
+      return `HTTP ${last.statusCode} — Riot auth expired`
+    }
+    if (last.statusCode != null) return `HTTP ${last.statusCode}`
+    if (last.error === 'missing_auth') return 'Riot Client auth missing'
+    if (last.error === 'missing_region') return 'region missing'
+    if (last.error) return last.error
+    return 'unknown error'
   }
 
   private async _fetchMatchDetailsWithRetries(
     timeline: MatchData,
     delaysMs: number[],
+    onStatus?: (message: string) => void,
   ): Promise<boolean> {
     const matchId = timeline.matchId
     if (!matchId || !this.region) return false
 
     for (const delay of delaysMs) {
       if (delay > 0) await new Promise((r) => setTimeout(r, delay))
+
+      // Re-auth when tokens drop mid-wait (common after long post-match idle).
+      if (!this.accessToken || !this.entitlementsToken) {
+        onStatus?.('Refreshing Riot Client auth…')
+        await this.initAuth()
+      } else {
+        try { await this._refreshTokens() } catch { /* best-effort */ }
+      }
+
       const details = await this._fetchMatchDetails(matchId)
-      if (!details) continue
+      if (!details) {
+        const reason = this._matchDetailsFailureStatus()
+        if (reason.includes('auth')) {
+          onStatus?.(`${reason} — retrying…`)
+          await this.initAuth()
+        } else if (reason.includes('404')) {
+          console.log(`[RiotLocalApi] MatchDetails not ready: ${reason}`)
+        } else {
+          onStatus?.(`Riot match stats fetch failed (${reason})`)
+        }
+        continue
+      }
       const validation = shouldApplyMatchDetails(timeline, details)
       if (!validation.apply) {
         console.warn(
           `[RiotLocalApi] Rejected MatchDetails for ${matchId}: ${validation.reason}`,
         )
+        onStatus?.(`Skipped Riot stats: ${validation.reason}`)
         continue
       }
       timeline.matchDetails = details
@@ -1562,11 +1675,15 @@ export class RiotLocalApi {
       if ((timeline.killEvents?.length ?? 0) > 0 || (timeline.roundSummaries?.length ?? 0) > 0) {
         if (!timelineNeedsEnrichRefresh(timeline)) {
           console.log(
-            `[RiotLocalApi] MatchDetails applied — kills=${timeline.killEvents.length} rounds=${timeline.roundSummaries.length}`,
+            `[RiotLocalApi] MatchDetails applied — kills=${timeline.killEvents.length} rounds=${timeline.roundSummaries.length} agent=${timeline.agent}`,
+          )
+          onStatus?.(
+            `Riot match stats ready — ${timeline.killEvents.length} kills`
+            + (timeline.agent ? ` · ${timeline.agent}` : ''),
           )
           return true
         }
-        console.log('[RiotLocalApi] MatchDetails partial — still waiting for plant coords/spatial')
+        console.log('[RiotLocalApi] MatchDetails partial — still waiting for core kill/round data')
         continue
       }
     }
@@ -1638,6 +1755,8 @@ export class RiotLocalApi {
         `/pregame/v1/players/${this.ownPuuid}`
       )
       if (!player?.MatchID) return null
+
+      this._stashMatchId(player.MatchID, 'pre-game context')
 
       const match = await this._fetchLocal<{
         MapID?: string
@@ -1795,22 +1914,10 @@ function buildRoundStartGameMs(
 }
 
 
-/** True when Riot refresh may add kills, plants, or plant coordinates. */
-export function timelineNeedsEnrichRefresh(timeline: MatchData): boolean {
-  const hasCore = (timeline.killEvents?.length ?? 0) > 0
-    || (timeline.roundSummaries?.length ?? 0) > 0
-  if (!hasCore) return true
-
-  const plantedRounds = (timeline.roundSummaries ?? []).filter((r) => r.spikePlanted).length
-  const spikePlants = timeline.spikePlants ?? []
-  if (plantedRounds > 0 && spikePlants.length === 0) return true
-  if (spikePlants.some((p) => !p.plantLocation)) return true
-
-  const spatialPlants = (timeline.spatialSummary?.events ?? []).filter((e) => e.type === 'plant').length
-  if (plantedRounds > 0 && spatialPlants === 0) return true
-
-  return false
-}
+/**
+ * True when MatchDetails still needs to supply core kill/round stats.
+ * Implementation lives in match-data-quality.ts (re-exported above).
+ */
 
 /** Keep spatial heatmap seek times aligned after offset recalculation. */
 function syncSpatialVideoOffsets(timeline: MatchData): void {

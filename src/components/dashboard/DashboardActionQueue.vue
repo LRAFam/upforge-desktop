@@ -25,6 +25,7 @@ import {
   demoPendingSectionHint,
   demoPendingSectionTitle,
   recordingTimelineReady,
+  timelineBlockedShortLabel,
 } from '../../lib/recording-demo-status'
 import { demoDownloadProgressLabel, demoDownloadBadgeLabel } from '../../lib/demo-download-progress'
 import DemoAttachGuide from '../DemoAttachGuide.vue'
@@ -358,7 +359,7 @@ function toggleDemoMatches() {
             >
               <span class="block">Open timeline</span>
               <span class="block text-[9px] font-medium mt-0.5" :class="canOpenTimeline(rec) ? 'text-gray-300/85' : 'text-gray-600'">
-                {{ canOpenTimeline(rec) ? 'Kills + rounds' : 'Needs demo' }}
+                {{ canOpenTimeline(rec) ? 'Kills + rounds' : timelineBlockedShortLabel(rec.game) }}
               </span>
             </button>
 

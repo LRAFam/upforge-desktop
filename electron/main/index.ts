@@ -2910,6 +2910,7 @@ function setupGameDetection(): void {
     authOk = await riotLocalApi.initAuth()
 
     if (authOk) {
+      riotLocalApi.clearPendingMatchId()
       logActivity('Riot Client API ready — waiting for INGAME presence')
       // Wait up to 25 minutes for INGAME (handles long Agent Select)
       const PRESENCE_TIMEOUT_MS = 25 * 60 * 1000

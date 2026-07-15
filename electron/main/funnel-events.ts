@@ -23,7 +23,6 @@ export type FunnelEventName =
   | 'desktop_first_recording'
   | 'desktop_first_analysis'
   | 'desktop_second_analysis'
-  | 'quota_limit_reached'
   | 'upgrade_clicked'
 
 export async function trackFunnelEvent(
@@ -74,9 +73,8 @@ export function trackSecondAnalysis(): void {
   void trackFunnelEvent('desktop_second_analysis')
 }
 
-export function trackQuotaLimitReached(kind: 'analysis' | 'archive'): void {
-  void trackFunnelEvent('quota_limit_reached', { kind })
-}
+// Note: `quota_limit_reached` is recorded server-side (DesktopSubmissionController)
+// so it's captured for every client version, not just up-to-date desktop apps.
 
 export function trackUpgradeClicked(source: string): void {
   void trackFunnelEvent('upgrade_clicked', { source })

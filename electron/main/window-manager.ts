@@ -10,11 +10,29 @@ import { is } from '@electron-toolkit/utils'
 import log from 'electron-log'
 import { ClipExtractor } from './clip-extractor'
 import { openPathSafe } from './shell-open'
+import { trackUpgradeClicked } from './funnel-events'
 import {
   DEFAULT_APP_LAYOUT,
   LOGIN_LAYOUT,
   applyWindowLayout,
 } from './window-layouts'
+
+/**
+ * Open external links in the user's browser and record upgrade intent.
+ *
+ * Every in-app link that leads to pricing/checkout goes through window.open →
+ * this handler, so it's the single choke point for the `upgrade_clicked` funnel
+ * event across the whole desktop app (post-game, dashboard, clips, settings).
+ */
+function attachExternalLinkHandler(win: BrowserWindow, source: string): void {
+  win.webContents.setWindowOpenHandler(({ url }) => {
+    if (/\/pricing|\/checkout|subscription=/i.test(url)) {
+      void trackUpgradeClicked(source)
+    }
+    shell.openExternal(url)
+    return { action: 'deny' }
+  })
+}
 
 // ── Main window ───────────────────────────────────────────────────────────────
 
@@ -87,10 +105,7 @@ export function createMainWindow(
     }
   })
 
-  win.webContents.setWindowOpenHandler(({ url }) => {
-    shell.openExternal(url)
-    return { action: 'deny' }
-  })
+  attachExternalLinkHandler(win, 'desktop_main')
 
   if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
     win.loadURL(process.env['ELECTRON_RENDERER_URL'])
@@ -130,6 +145,8 @@ export function createPostGameWindow(): BrowserWindow {
   })
 
   win.setPosition(workW - 420, workH - winHeight - 20)
+
+  attachExternalLinkHandler(win, 'desktop_post_game')
 
   if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
     win.loadURL(`${process.env['ELECTRON_RENDERER_URL']}#/post-game`)

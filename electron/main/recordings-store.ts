@@ -436,6 +436,13 @@ export class RecordingsStore {
     const rec = this.recordings.find(r => r.id === id)
     if (!rec) return false
     rec.timeline = timeline
+    // Late MatchDetails enrich fills timeline.agent/map first — keep card fields in sync.
+    const agent = timeline.agent?.trim()
+      || timeline.finalStats?.agent?.trim()
+      || null
+    if (agent) rec.agent = agent
+    if (timeline.map?.trim()) rec.map = timeline.map.trim()
+    if (timeline.gameMode?.trim()) rec.gameMode = timeline.gameMode.trim()
     this.persist()
     return true
   }

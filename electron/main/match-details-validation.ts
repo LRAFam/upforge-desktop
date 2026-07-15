@@ -88,7 +88,9 @@ export function shouldApplyMatchDetails(
     && recordingMs >= 60_000
   ) {
     const diff = Math.abs(gameLengthMs - recordingMs)
-    const tolerance = Math.max(120_000, Math.min(gameLengthMs, recordingMs) * 0.35)
+    // Riot gameLengthMillis excludes plenty of real VOD time (loading, buy phase,
+    // round-end downtime). Keep this as a wrong-match guard, not a strict clock sync.
+    const tolerance = Math.max(120_000, Math.min(gameLengthMs, recordingMs) * 0.75)
     if (diff > tolerance) {
       return {
         apply: false,

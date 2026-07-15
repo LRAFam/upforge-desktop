@@ -69,6 +69,11 @@ export function recordingDemoBadge(
   return 'Attach demo'
 }
 
+/** Button subtitle when timeline is blocked (Valorant ≠ demo). */
+export function timelineBlockedShortLabel(game: string | null | undefined): string {
+  return usesAsyncDemoSync(game) ? 'Needs demo' : 'Needs match stats'
+}
+
 /** One-line explainer for compact UI (cards, post-game). */
 export function demoSyncExplainerShort(game: string | null | undefined): string {
   if (game === 'cs2') return 'Attach a GOTV .dem when ready for kills and highlight clips.'

@@ -239,9 +239,12 @@ export interface PendingRecording {
   }
   timeline?: {
     playerName?: string | null
+    agent?: string | null
+    puuid?: string | null
     playerKills?: Array<{ killerName: string; victimName: string; weapon?: string; videoOffsetMs?: number; round?: number }>
     playerDeaths?: Array<{ killerName: string; victimName: string; weapon?: string; videoOffsetMs?: number; round?: number }>
     roundSummaries?: Array<{ roundNumber: number; winningTeam?: string | null }>
+    teamSnapshot?: Array<{ puuid?: string | null; agent?: string | null }>
     finalStats?: {
       kills: number
       deaths: number
@@ -249,6 +252,7 @@ export interface PendingRecording {
       score: number
       headshotPct: number | null
       won?: boolean
+      agent?: string | null
     } | null
     finalScore?: { allyScore: number; enemyScore: number } | null
     roundScores?: Array<{ allyScore: number; enemyScore: number }>
