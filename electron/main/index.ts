@@ -15,7 +15,13 @@ import {
   startCoachNotificationPoller,
   stopCoachNotificationPoller,
 } from './coach-notification-poller'
-import { setupAutoUpdater, markStartupComplete, checkForUpdatesIfIdle } from './updater'
+import {
+  setupAutoUpdater,
+  markStartupComplete,
+  checkForUpdatesIfIdle,
+  setUpdateActivityGuard,
+  resumeDeferredUpdateWork,
+} from './updater'
 import { pingDesktopOnboarding, resetDesktopOnboardingPing } from './onboarding-ping'
 import { GameDetector } from './game-detector'
 import { Recorder } from './recorder'
@@ -36,7 +42,7 @@ import {
 } from './vod-compressor'
 import {
   waitUntilBackgroundWorkAllowed,
-  abortVodCompression,
+  pauseHeavyBackgroundWork,
   registerDeferredUploadRetry,
   clearDeferredUploadRetry,
   flushDeferredUploadRetries,
@@ -115,8 +121,9 @@ import { RecordingsStore, type ClipOnlyReason } from './recordings-store'
 import { ClipExtractor } from './clip-extractor'
 import { ClipStore } from './clip-store'
 import { HotkeyManager } from './hotkey-manager'
-import { createOverlayWindow, toggleOverlay, destroyOverlay, sendOverlayData, isOverlayVisible, showOverlay, hideOverlay } from './overlay-window'
+import { createOverlayWindow, requestOverlayToggle, destroyOverlay, sendOverlayData, isOverlayVisible, showOverlay, hideOverlay } from './overlay-window'
 import { deliverInGameFeedback, usesOverlayFeedback } from './in-game-feedback'
+import { getSessionPollIntervalMs, isInGameOverlayEnabled } from './in-game-overlay'
 import { captureAndSaveScreenshot } from './screenshot-capture'
 import { PerformanceManager } from './performance-manager'
 import { TrainerBridge } from './trainer-bridge'
@@ -245,6 +252,7 @@ let updateTrayMenuFn: (() => void) | null = null
 let ffmpegOk = true // clip extraction preflight only
 
 const gameDetector = new GameDetector()
+let matchPerformanceModeActive = false
 /** Bundled ffmpeg — post-match clip extraction only (not used for live recording). */
 const clipFfmpegProbe = new Recorder()
 const obsRecorder = new OBSRecorder(
@@ -264,6 +272,7 @@ const obsRecorder = new OBSRecorder(
   },
   () => settingsManager?.get()?.primaryGame ?? 'valorant',
 )
+setUpdateActivityGuard(() => matchPerformanceModeActive || obsRecorder.isRecording())
 
 let stopObsHealthMonitor: (() => void) | null = null
 let obsWasConnected = false
@@ -271,22 +280,54 @@ let lastObsDisconnectNotifyAt = 0
 let lastObsPreQueueNotifyAt = 0
 const OBS_DISCONNECT_NOTIFY_COOLDOWN_MS = 10 * 60 * 1000
 const OBS_PREQUEUE_NOTIFY_COOLDOWN_MS = 20 * 60 * 1000
+/** Suppress repeated "recording failed / OBS down" toasts for the same live match. */
+let lastObsMatchFailNotifyAt = 0
+const OBS_MATCH_FAIL_NOTIFY_COOLDOWN_MS = 30 * 60 * 1000
+
+function isObsUnavailableError(message: string): boolean {
+  return /obs is not connected|obs not reachable|obs required|websocket|launch obs|tools → websocket/i.test(message)
+}
 
 function maybeNotifyObsNotReadyBeforeQueue(): void {
   if (obsRecorder.isConnected()) return
   const now = Date.now()
   if (now - lastObsPreQueueNotifyAt < OBS_PREQUEUE_NOTIFY_COOLDOWN_MS) return
   lastObsPreQueueNotifyAt = now
-  const body = 'OBS is not connected — matches will not record. Use Launch OBS in the dashboard or Settings → Recording before you queue.'
+  const body = 'OBS isn\'t running, so this match won\'t be recorded. Open UpForge → Launch OBS (or Settings → Recording) before you queue.'
   logActivity('OBS not connected — connect before your next match')
   showAppNotification({
-    title: 'UpForge — OBS not ready',
+    title: 'UpForge — OBS needed to record',
     body,
-    silent: notifySilent(),
+    silent: true,
   })
   mainWindow?.webContents.send('app:warning', {
     message: body,
-    actionLabel: 'Connect OBS',
+    actionLabel: 'Launch OBS',
+    actionRoute: '/settings?tab=recording',
+  })
+}
+
+/** One clear toast when a match couldn't start because OBS is down — no mid-match spam. */
+function notifyObsRecordingUnavailable(detail?: string): void {
+  const now = Date.now()
+  if (now - lastObsMatchFailNotifyAt < OBS_MATCH_FAIL_NOTIFY_COOLDOWN_MS) {
+    logActivity('OBS still unavailable — skipping repeat notification')
+    return
+  }
+  lastObsMatchFailNotifyAt = now
+  lastObsPreQueueNotifyAt = now
+  const body = detail?.trim()
+    ? `This match wasn't recorded — ${detail.trim()}`
+    : 'This match wasn\'t recorded because OBS isn\'t connected. Launch OBS from UpForge Settings → Recording, then play your next match.'
+  logActivity(body)
+  showAppNotification({
+    title: 'UpForge — Match not recorded',
+    body,
+    silent: true,
+  })
+  mainWindow?.webContents.send('app:warning', {
+    message: body,
+    actionLabel: 'Launch OBS',
     actionRoute: '/settings?tab=recording',
   })
 }
@@ -301,7 +342,7 @@ function maybeNotifyObsDisconnect(error: string | null | undefined): void {
     body: error === 'OBS disconnected'
       ? 'OBS closed or disconnected. Reopen OBS and connect in Settings → Recording.'
       : error,
-    silent: notifySilent(),
+    silent: true,
   })
 }
 
@@ -310,7 +351,10 @@ function wireObsConnectionEvents(): void {
     const newlyConnected = connected && !obsWasConnected
     const lostConnection = obsWasConnected && !connected
     obsWasConnected = connected
-    if (newlyConnected) trackObsConnected()
+    if (newlyConnected) {
+      trackObsConnected()
+      lastObsMatchFailNotifyAt = 0
+    }
     broadcastObsConnection(mainWindow, obsRecorder, error)
     updateTrayMenuFn?.()
     // Only notify when an established OBS session is lost — not on failed connect probes.
@@ -502,7 +546,7 @@ let overlayPollTimer: ReturnType<typeof setInterval> | null = null
 /** Cached Shipping.exe status — tasklist is expensive; check every 5s not every overlay tick. */
 let cachedShippingProcessUp = true
 let lastShippingProcessCheckAt = 0
-const SHIPPING_PROCESS_CHECK_MS = 5_000
+const SHIPPING_PROCESS_CHECK_MS = 10_000
 let gsiPollTimer: ReturnType<typeof setInterval> | null = null
 
 let lastReplayRetryContext: ReplayRetryContext | null = null
@@ -522,20 +566,43 @@ function reconcileInterruptedUploads(): void {
 function matchPriorityDeps() {
   return {
     isRecording: () => obsRecorder.isRecording(),
+    isGameActive: () => matchPerformanceModeActive,
   }
 }
 
 function interruptBackgroundWorkForMatch(): void {
-  if (!shouldDeferHeavyBackgroundWork(matchPriorityDeps())) return
-  if (abortVodCompression()) {
-    log.info('[MatchPriority] Aborted in-flight VOD compression — OBS recording active')
-  }
+  pauseHeavyBackgroundWork(
+    matchPriorityDeps(),
+    () => uploadManager.abort(),
+    (recordingIds) => {
+      for (const recordingId of recordingIds) {
+        recordingsStore.setPipelineDeferReason(recordingId, 'recording')
+      }
+      mainWindow?.webContents.send('recordings:updated')
+    },
+    activeUploadRecordingIds,
+  )
+  trainerBridge.kill()
 }
 
 function maybeResumeDeferredUploads(): void {
   if (!shouldDeferHeavyBackgroundWork(matchPriorityDeps())) {
     void flushDeferredUploadRetries()
   }
+}
+
+function beginMatchPerformanceMode(): void {
+  if (matchPerformanceModeActive) return
+  matchPerformanceModeActive = true
+  interruptBackgroundWorkForMatch()
+  stopCoachNotificationPoller()
+}
+
+function endMatchPerformanceMode(): void {
+  matchPerformanceModeActive = false
+  maybeResumeDeferredUploads()
+  resumeDeferredUpdateWork()
+  refreshCoachNotificationPoller()
 }
 
 function wasBackgroundWorkInterrupted(err: unknown): boolean {
@@ -648,7 +715,7 @@ function notifyRecordingUx(message: string, notificationTitle = 'UpForge — Rec
   showAppNotification({
     title: notificationTitle,
     body: message,
-    silent: notifySilent(),
+    silent: true,
     allowDuringRecording: true,
   })
 }
@@ -773,9 +840,7 @@ function handlePrimaryGameSwitch(
 
   void ensureObsCaptureForGame(game)
 
-  if (game === 'deadlock') {
-    startDeadlockLogWatcher()
-  } else {
+  if (game !== 'deadlock') {
     stopDeadlockLogWatcher()
   }
 
@@ -918,7 +983,9 @@ function scanForOrphanedRecordings(force = false): number {
 let manualEndMatchRecording: ((game: string) => Promise<{ ok: boolean; reason?: string }>) | null = null
 
 function notifySilent(): boolean {
-  return !(settingsManager?.get().notificationSound ?? true)
+  // Automated notifications are always silent. The notificationSound setting
+  // applies only to deliberate F8/F9 feedback beeps.
+  return true
 }
 
 function refreshCoachNotificationPoller(): void {
@@ -1146,6 +1213,7 @@ function notifyCoachingReady(body: string, analysisId?: number | null): void {
 
 function runStuckAnalysisReconcile(): Promise<number> {
   if (!authManager.isAuthenticated()) return Promise.resolve(0)
+  if (matchPerformanceModeActive || obsRecorder.isRecording()) return Promise.resolve(0)
   return reconcileStuckAnalysisJobs({
     uploadManager,
     recordingsStore,
@@ -1219,6 +1287,7 @@ async function extractMatchClips(
   analysisJobId: string | null,
   game: string = trackedPrimaryGame,
 ): Promise<void> {
+  await waitUntilBackgroundWorkAllowed(matchPriorityDeps(), { logActivity })
   return clipPipeline.extractMatchClips(videoPath, timeline, analysisJobId, normalizePrimaryGame(game))
 }
 
@@ -1452,6 +1521,7 @@ async function syncScoutMomentsForJob(
 
 function lateClipRetryDeps(): LateClipRetryDeps {
   return {
+    waitUntilAllowed: () => waitUntilBackgroundWorkAllowed(matchPriorityDeps(), { logActivity }),
     retryCs2DemoClips,
     riotLocalApi,
     recordingsStore,
@@ -1792,9 +1862,6 @@ function setupGameDetection(): void {
   setMatchRecordingGuard(() => obsRecorder.isRecording())
   startSteamGsiServer()
   gameDetector.setWatchGame(normalizePrimaryGame(settingsManager.get().primaryGame))
-  if (normalizePrimaryGame(settingsManager.get().primaryGame) === 'deadlock') {
-    startDeadlockLogWatcher()
-  }
   if (normalizePrimaryGame(settingsManager.get().primaryGame) === 'cs2') {
     void ensureCs2DemoRecordingConfig()
   }
@@ -1931,6 +1998,7 @@ function setupGameDetection(): void {
 
     const didFinalize = await finalizeMatchOnce(game, source)
     if (!didFinalize) return
+    endMatchPerformanceMode()
     if (game === 'deadlock') void refreshDeadlockProfile(true)
     if (mainWindow && !mainWindow.isDestroyed() && mainWindow.isMinimized()) mainWindow.restore()
     destroyOverlay()
@@ -1941,6 +2009,7 @@ function setupGameDetection(): void {
   async function rearmValorantDetection(game: string, waitForMatchEnd = false): Promise<void> {
     if (game !== 'valorant') return
     const emitNextMatchWatch = async () => {
+      endMatchPerformanceMode()
       await new Promise((r) => setTimeout(r, 5000))
       if (await obsRecorder.releaseStaleMatchOwnership()) {
         logActivity('Cleared stale recording state — watching for next match')
@@ -1955,15 +2024,35 @@ function setupGameDetection(): void {
           const state = await riotLocalApi.getSessionState()
           if (state?.sessionLoopState === 'INGAME') {
             const coreActive = await riotLocalApi.isCoreGameSessionActive()
-            if (coreActive === true) {
-              console.log('[GameDetector] Still INGAME with active core-game — waiting for menus before re-arm')
+            // coreActive null = API flake — treat as still in match while Shipping is up.
+            if (coreActive !== false) {
+              console.log('[GameDetector] Still INGAME — waiting for menus before re-arm')
               logActivity('Still in match — waiting for post-game lobby before next recording')
-              riotLocalApi.watchUntilMenus(emitNextMatchWatch)
+              riotLocalApi.watchUntilMenus(
+                emitNextMatchWatch,
+                () => gameDetector.isMatchProcessRunning(),
+              )
               return
             }
           }
+        } else if (await gameDetector.isMatchProcessRunning()) {
+          // Can't read presence — don't spam re-arm while the game process is up.
+          console.log('[GameDetector] Riot auth unavailable — waiting for menus before re-arm')
+          riotLocalApi.watchUntilMenus(
+            emitNextMatchWatch,
+            () => gameDetector.isMatchProcessRunning(),
+          )
+          return
         }
-      } catch { /* fall through to normal re-arm */ }
+      } catch {
+        if (await gameDetector.isMatchProcessRunning()) {
+          riotLocalApi.watchUntilMenus(
+            emitNextMatchWatch,
+            () => gameDetector.isMatchProcessRunning(),
+          )
+          return
+        }
+      }
 
       console.log('[GameDetector] Re-arming after skipped match — watching for next queue')
       logActivity('Watching for next match...')
@@ -1972,7 +2061,10 @@ function setupGameDetection(): void {
     if (waitForMatchEnd) {
       // onMatchEnded only fires when start() is running presence polls — skipped matches
       // never call start(), so watch menus directly until the player leaves the map.
-      riotLocalApi.watchUntilMenus(emitNextMatchWatch)
+      riotLocalApi.watchUntilMenus(
+        emitNextMatchWatch,
+        () => gameDetector.isMatchProcessRunning(),
+      )
       return
     }
     await emitNextMatchWatch()
@@ -1997,7 +2089,11 @@ function setupGameDetection(): void {
         await new Promise((r) => setTimeout(r, 3000))
         if (!await gameDetector.isGameProcessRunning(game)) continue
 
-        if (game === 'deadlock' && (isDeadlockMatchLive() || isDeadlockReadyToRecord())) {
+        const stillInMatch = game === 'deadlock'
+          ? (isDeadlockMatchLive() || isDeadlockReadyToRecord())
+          : (waitForMatchEnd && isGsiMatchLive())
+
+        if (stillInMatch) {
           if (!waitingForLobbyClear) {
             waitingForLobbyClear = true
             logActivity(
@@ -2008,6 +2104,7 @@ function setupGameDetection(): void {
           continue
         }
 
+        endMatchPerformanceMode()
         if (game === 'cs2') resetSteamGsiSession()
         if (game === 'deadlock') resetDeadlockLogSession()
 
@@ -2521,7 +2618,6 @@ function setupGameDetection(): void {
         savedRecording.id, readyPath, user?.riot_name ?? '', user?.riot_tag ?? '',
         game, map, agent, timeline, uploadTargetWindow!, matchSessionStart,
         /* skipAutoDelete= */ true, /* deleteLocalAfterUpload= */ false, enrichPromise,
-        { prioritizePostGameUpload: true },
       )
 
       const jobId = uploadResult ?? null
@@ -2652,6 +2748,7 @@ function setupGameDetection(): void {
     syncPrimaryGameFromDetection(game)
 
     const { isStale } = beginMatchFlow()
+    if (!usesDemoReplay(game)) beginMatchPerformanceMode()
     console.log(`[GameDetector] ${game} started (flow #${matchFlowGeneration})`)
     logActivity(`${gameLabel(game)} detected — waiting for match`)
     if (game === 'deadlock') deadlockSessionStartAt = Date.now()
@@ -3147,6 +3244,7 @@ function setupGameDetection(): void {
 
     logActivity(`Match detected (${gameMode}${modeConfident ? '' : '?'}) — starting recording`)
     console.log(`[GameDetector] Match confirmed! gameMode=${gameMode} confident=${modeConfident} matchStartTime=${matchStartTime}`)
+    beginMatchPerformanceMode()
 
     if (game === 'valorant') {
       riotLocalApi.cancelMenuWatch()
@@ -3187,12 +3285,11 @@ function setupGameDetection(): void {
     try {
       // Create the overlay window just before recording starts — deferred from startup
       // so it doesn't break Valorant's exclusive fullscreen before we actually need it.
-      createOverlayWindow()
+      if (isInGameOverlayEnabled()) createOverlayWindow()
       await ensureObsReady()
       if (!reclaimedExistingCapture) {
         await obsRecorder.start(game, recorderConfig)
       }
-      interruptBackgroundWorkForMatch()
       // Accurate videoOffsetMs: offset = (loadSkew − recordingLag) + timeSinceGameStart.
       if (!reclaimedExistingCapture) {
         const recStartTime = Date.now()
@@ -3210,7 +3307,9 @@ function setupGameDetection(): void {
         currentRecordingStartTime = recStartTime
       }
       // Push recording=true to the overlay immediately — don't wait for the poll cycle
-      sendOverlayData('overlay:data', { round: null, allyScore: null, enemyScore: null, yourCredits: null, enemyEstimate: null, recording: true })
+      if (isInGameOverlayEnabled()) {
+        sendOverlayData('overlay:data', { round: null, allyScore: null, enemyScore: null, yourCredits: null, enemyEstimate: null, recording: true })
+      }
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
       log.error('[Main] Failed to start recording:', msg)
@@ -3225,7 +3324,13 @@ function setupGameDetection(): void {
       } catch { /* ignore */ }
       destroyOverlay()
       mainWindow?.webContents.send('recording:starting', { starting: false })
-      notifyRecordingUx(`Could not start recording: ${msg}`, 'UpForge — Recording Failed')
+      if (isObsUnavailableError(msg)) {
+        notifyObsRecordingUnavailable(
+          'OBS isn\'t connected. Launch OBS from Settings → Recording — we\'ll record your next match.',
+        )
+      } else {
+        notifyRecordingUx(`Could not start recording: ${msg}`, 'UpForge — Recording Failed')
+      }
       tray?.setToolTip('UpForge — Recording failed!')
       setTimeout(() => tray?.setToolTip(idleTooltip(game)), 10_000)
       await rearmGameDetection(game, true)
@@ -3279,14 +3384,16 @@ function setupGameDetection(): void {
             void obsRecorder.refitCaptureForGameplay('scoreboard active')
           }
           const round = ally + enemy + 1
-          sendOverlayData('overlay:data', {
-            round,
-            allyScore: ally,
-            enemyScore: enemy,
-            yourCredits: null,
-            enemyEstimate: null,
-            recording: true,
-          })
+          if (isInGameOverlayEnabled()) {
+            sendOverlayData('overlay:data', {
+              round,
+              allyScore: ally,
+              enemyScore: enemy,
+              yourCredits: null,
+              enemyEstimate: null,
+              recording: true,
+            })
+          }
         }
         if (obsRecorder.isRecording()) {
           const start =
@@ -3299,7 +3406,10 @@ function setupGameDetection(): void {
     cachedShippingProcessUp = true
     lastShippingProcessCheckAt = 0
     void pollOverlaySession()
-    overlayPollTimer = setInterval(() => { void pollOverlaySession() }, 1_000)
+    overlayPollTimer = setInterval(
+      () => { void pollOverlaySession() },
+      getSessionPollIntervalMs(),
+    )
 
     if (obsRecorder.wasNoAudio()) {
       mainWindow?.webContents.send('app:warning', {
@@ -3323,14 +3433,24 @@ function setupGameDetection(): void {
     deliverInGameFeedback(inGameFeedbackDeps(), {
       kind: 'recording-started',
       title: 'Recording started',
-      body: `${gameLabelText} match for ${userLabel} — F9 clip · F8 screenshot · F10 overlay`,
-      beep: 'success',
+      body: `${gameLabelText} match for ${userLabel} — F9 clip · F8 screenshot${isInGameOverlayEnabled() ? ' · F10 overlay' : ''}`,
+      beep: 'none',
       flashOverlayMs: feedbackMode === 'notifications' ? 0 : 7000,
     })
   })
 
   gameDetector.on('game-stopped', async (game: string) => {
     console.log(`[GameDetector] ${game} stopped`)
+    const processStillRunning = game === 'valorant'
+      ? await gameDetector.isMatchProcessRunning()
+      : await gameDetector.isGameProcessRunning(game)
+    if (processStillRunning) {
+      console.log(`[GameDetector] game-stopped debounced — ${game} process still running`)
+      return
+    }
+
+    if (game === 'deadlock') stopDeadlockLogWatcher()
+    endMatchPerformanceMode()
     discordRPC.setIdle()
     riotLocalApi.cancelMenuWatch()
     riotLocalApi.onMatchEnded = null
@@ -3387,15 +3507,6 @@ function setupGameDetection(): void {
       tray?.setToolTip(idleTooltip(game))
       if (mainWindow && !mainWindow.isDestroyed() && mainWindow.isMinimized()) mainWindow.restore()
       destroyOverlay()
-      return
-    }
-
-    // Process died without a clean presence transition (crash, force-quit, etc.)
-    const processStillRunning = game === 'valorant'
-      ? await gameDetector.isMatchProcessRunning()
-      : await gameDetector.isGameProcessRunning(game)
-    if (processStillRunning) {
-      console.log(`[GameDetector] game-stopped debounced — ${game} process still running`)
       return
     }
 
@@ -3700,8 +3811,6 @@ async function doUploadAndAnalyse(
   deleteLocalAfterUpload = false,
   /** Shared enrich from handleMatchEnd — avoids duplicate Riot polling. */
   enrichPromise?: Promise<{ extras: CoachingSubmissionExtras | undefined }>,
-  /** Post-game auto path — don't wait on the next match's OBS session. */
-  uploadOpts?: { prioritizePostGameUpload?: boolean },
 ): Promise<string | null> {
   const send = (channel: string, payload?: unknown) => {
     sendPostGameEvent(targetWindow, channel, payload)
@@ -3717,16 +3826,13 @@ async function doUploadAndAnalyse(
   riotName = identity.riotName
   riotTag = identity.riotTag
 
-  const skipMatchDefer = uploadOpts?.prioritizePostGameUpload === true
-  const deferOpts = { skipDefer: skipMatchDefer }
-
-  if (!skipMatchDefer && recordingId && shouldDeferHeavyBackgroundWork(matchPriorityDeps())) {
+  if (recordingId && shouldDeferHeavyBackgroundWork(matchPriorityDeps())) {
     recordingsStore.setPipelineDeferReason(recordingId, 'recording')
     mainWindow?.webContents.send('recordings:updated')
     send('post-game:upload-deferred', { reason: 'recording' })
   }
 
-  await waitUntilBackgroundWorkAllowed(matchPriorityDeps(), { logActivity, ...deferOpts })
+  await waitUntilBackgroundWorkAllowed(matchPriorityDeps(), { logActivity })
 
   if (recordingId) {
     recordingsStore.clearPipelineDeferReason(recordingId)
@@ -4559,7 +4665,7 @@ async function startApp(): Promise<void> {
   hotkeyManager.on('toggle-overlay', () => {
     // If the auto-hide timer is running (from an F9 flash), cancel it — user is taking manual control
     if (overlayAutoHideTimer) { clearTimeout(overlayAutoHideTimer); overlayAutoHideTimer = null }
-    toggleOverlay()
+    requestOverlayToggle()
     // When overlay becomes visible, push current recording state immediately
     // so the user sees the correct status without waiting for the next poll cycle
     if (isOverlayVisible()) {

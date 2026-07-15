@@ -562,6 +562,7 @@ declare global {
           recordedModes: string[]
           recordingBackend: 'obs'
           currentQueueMode: string | null
+          inGameOverlayEnabled: boolean
           user: {
             name: string
             email: string

@@ -18,6 +18,44 @@ export interface UpdateState {
 
 let state: UpdateState = { phase: 'idle' }
 let startupComplete = false
+let isActivityBlockingUpdate = () => false
+let pendingUpdateCheck = false
+let pendingUpdateDownload = false
+
+export function setUpdateActivityGuard(guard: () => boolean): void {
+  isActivityBlockingUpdate = guard
+}
+
+export function shouldDeferUpdateWork(): boolean {
+  return isActivityBlockingUpdate()
+}
+
+function downloadAvailableUpdate(onError?: (message: string) => void): void {
+  if (shouldDeferUpdateWork()) {
+    pendingUpdateDownload = true
+    log.info('[Updater] Deferring update download while a game or recording is active')
+    return
+  }
+  pendingUpdateDownload = false
+  void autoUpdater.downloadUpdate().catch((err: Error) => {
+    log.error('[Updater] downloadUpdate failed:', err.message)
+    state = { phase: 'error', error: err.message }
+    if (onError) onError(err.message)
+    else broadcastToAll('updater:error', err.message)
+  })
+}
+
+export function resumeDeferredUpdateWork(): void {
+  if (shouldDeferUpdateWork()) return
+  if (pendingUpdateDownload && state.phase === 'available') {
+    downloadAvailableUpdate()
+    return
+  }
+  if (pendingUpdateCheck) {
+    pendingUpdateCheck = false
+    checkForUpdatesIfIdle()
+  }
+}
 
 /** CI may expose a release before latest.yml is on the CDN — treat as transient. */
 function isTransientUpdateError(message: string): boolean {
@@ -57,13 +95,19 @@ function notifyUpdateReady(version: string): void {
   showAppNotification({
     title: 'UpForge update ready',
     body: `v${version} downloaded — click Restart now in UpForge to install.`,
-    silent: false,
+    silent: true,
   })
 }
 
 export function checkForUpdatesIfIdle(): void {
   if (!app.isPackaged) return
+  if (shouldDeferUpdateWork()) {
+    pendingUpdateCheck = true
+    log.info('[Updater] Deferring update check while a game or recording is active')
+    return
+  }
   if (state.phase === 'downloading' || state.phase === 'checking') return
+  pendingUpdateCheck = false
   log.info('[Updater] Background update check')
   void autoUpdater.checkForUpdates().catch((err: unknown) => {
     const msg = err instanceof Error ? err.message : String(err)
@@ -141,10 +185,9 @@ export function setupAutoUpdater(
     state = { phase: 'available', version: info.version }
     log.info('[Updater] Update available:', info.version)
     send('updater:available', info)
-    void autoUpdater.downloadUpdate().catch((err: Error) => {
-      log.error('[Updater] downloadUpdate failed:', err.message)
-      state = { phase: 'error', error: err.message }
-      send('updater:error', err.message)
+    if (shouldDeferUpdateWork() && !startupComplete) finishStartupCheck()
+    downloadAvailableUpdate((message) => {
+      send('updater:error', message)
       if (!startupComplete) finishStartupCheck()
     })
   })
@@ -200,6 +243,12 @@ export function setupAutoUpdater(
 
   void (async () => {
     await sleep(INITIAL_DELAY_MS)
+    if (shouldDeferUpdateWork()) {
+      pendingUpdateCheck = true
+      log.info('[Updater] Startup update check deferred while game is active')
+      finishStartupCheck()
+      return
+    }
 
     for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
       try {

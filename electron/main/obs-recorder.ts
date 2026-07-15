@@ -246,10 +246,10 @@ export class OBSRecorder {
         if (replayBufferSeconds > 0) {
           this._obs.call('SetProfileParameter', {
             parameterCategory: 'SimpleOutput',
-            parameterName: 'ReplayBufferDuration',
+            parameterName: 'RecRBTime',
             parameterValue: String(replayBufferSeconds),
           }).catch((err) => {
-            log.warn('[OBSRecorder] Could not set ReplayBufferDuration (non-fatal):', err)
+            log.warn('[OBSRecorder] Could not set RecRBTime (non-fatal):', err)
           })
         }
 
@@ -650,10 +650,13 @@ export class OBSRecorder {
         game,
       )
 
-      // Start replay buffer alongside the recording
-      await this._obs.call('StartReplayBuffer').catch((err) => {
-        log.warn('[OBSRecorder] Replay buffer failed to start (non-fatal):', err)
-      })
+      // Full VOD sessions use timestamp bookmarks and post-game extraction, so
+      // running the replay buffer as well only adds memory/output overhead.
+      if (this._clipsOnlySession) {
+        await this._obs.call('StartReplayBuffer').catch((err) => {
+          log.warn('[OBSRecorder] Replay buffer failed to start (non-fatal):', err)
+        })
+      }
 
       // Begin polling Riot Live Client API for kill events
       this._startLiveKillPoll()

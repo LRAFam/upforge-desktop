@@ -113,6 +113,7 @@ function createSettings() {
   let toastTimer: ReturnType<typeof setTimeout> | null = null
   const toastMessage = ref('')
   const accountLinkFocus = ref<PrimaryGame | null>(null)
+  const inGameOverlayEnabled = ref(false)
   
   // ── Dev mode unlock (tap version 5×) ─────────────────────────────────────────
   const devModeActive = ref(false)
@@ -430,15 +431,21 @@ function createSettings() {
     { key: 'autoDelete', label: 'Auto-delete after analysis', hint: 'Removes the local file once coaching finishes successfully — kept on failure for review and retry' },
     { key: 'autoAnalyse', label: 'Auto-analyse after game', hint: 'Upload and run AI coaching automatically when a match ends (uses your shared analysis pool across all games)' },
     { key: 'autoOpenBrowser', label: 'Open results in browser', hint: 'Opens the full web report when analysis completes — review in-app first with this off' },
-    { key: 'notificationSound', label: 'Notification sound', hint: 'Play a sound with system notifications' },
+    { key: 'notificationSound', label: 'Notification sound', hint: 'Play a sound for F8/F9 hotkey actions' },
     { key: 'discordRichPresence', label: 'Show status in Discord', hint: 'Advertises UpForge on your profile. Buttons only appear when someone else opens your full profile — not on your own.' },
   ]
   
   const inGameFeedbackOptions: Array<{ value: AppSettings['inGameFeedback']; label: string; hint: string }> = [
-    { value: 'notifications', label: 'Notifications', hint: 'Toast + beep — works in fullscreen' },
+    { value: 'notifications', label: 'Notifications', hint: 'Toast on F9/F8 — works in fullscreen' },
     { value: 'overlay', label: 'Overlay only', hint: 'Needs Windowed Fullscreen' },
     { value: 'all', label: 'Both', hint: 'Overlay + notifications' },
   ]
+
+  const visibleInGameFeedbackOptions = computed(() =>
+    inGameOverlayEnabled.value
+      ? inGameFeedbackOptions
+      : inGameFeedbackOptions.filter((opt) => opt.value === 'notifications'),
+  )
   
   async function setInGameFeedback(mode: AppSettings['inGameFeedback']): Promise<void> {
     settings.inGameFeedback = mode
@@ -592,6 +599,7 @@ function createSettings() {
       const st = await window.api.app.getStatus()
       if (st?.recordingBackend) recordingBackend.value = st.recordingBackend
       if (typeof st?.ffmpegOk === 'boolean') ffmpegOk.value = st.ffmpegOk
+      if (typeof st?.inGameOverlayEnabled === 'boolean') inGameOverlayEnabled.value = st.inGameOverlayEnabled
       const obs = await window.api.obs.getStatus()
       obsStatus.value = obs
       await refreshObsProcessState()
@@ -1122,6 +1130,8 @@ function createSettings() {
     hotkeyStatus,
     hotkeys,
     inGameFeedbackOptions,
+    inGameOverlayEnabled,
+    visibleInGameFeedbackOptions,
     installUpdate,
     isDev,
     isMac,

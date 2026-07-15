@@ -92,6 +92,7 @@ export function setupMainProcessErrorHandlers(authManager: AuthManager): void {
         showAppNotification({
           title: 'UpForge — Disk Full',
           body: 'Your disk is full. Please free up space or recordings may not save correctly.',
+          silent: true,
         })
       } catch { /* notifications not available */ }
     }

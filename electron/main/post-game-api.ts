@@ -4,7 +4,6 @@
  * Extracted from index.ts to keep match-lifecycle orchestration focused.
  */
 
-import { shell } from 'electron'
 import log from 'electron-log'
 import { reportError } from './error-reporter'
 import type { MatchData } from './riot-types'
@@ -15,7 +14,7 @@ import type { CoachingSubmissionExtras } from './match-coaching-context'
 
 /**
  * Request the player's personalised pre-game coaching brief.
- * Sends to Discord DMs when linked; otherwise opens the web brief page.
+ * Sends to Discord DMs when linked; otherwise defers UI until after the match.
  * Fire-and-forget — never blocks the match-start flow.
  */
 export function requestPregameBrief(
@@ -49,20 +48,6 @@ export function requestPregameBrief(
   if (context?.skillFocus) params.set('skill_focus', context.skillFocus)
   const qs = params.toString() ? `?${params.toString()}` : ''
   const parsedUrl = new URL(`${apiBase}/api/progress/pregame-brief${qs}`)
-
-  const openBrowserBrief = (): void => {
-    const webParams = new URLSearchParams()
-    if (context?.agent) webParams.set('agent', context.agent)
-    if (context?.map) webParams.set('map', context.map)
-    if (context?.mode) webParams.set('mode', context.mode)
-    if (context?.allyAgents?.length) webParams.set('ally_agents', context.allyAgents.join(','))
-    if (context?.enemyAgents?.length) webParams.set('enemy_agents', context.enemyAgents.join(','))
-    if (context?.rank) webParams.set('rank', context.rank)
-    if (context?.skillFocus) webParams.set('skill_focus', context.skillFocus)
-    webParams.set('t', Date.now().toString())
-    shell.openExternal(`https://upforge.gg/valorant/pregame-brief?${webParams.toString()}`)
-    logActivity('Pre-game brief: opened in browser')
-  }
 
   void (async () => {
     try {
@@ -107,13 +92,18 @@ export function requestPregameBrief(
         return
       }
 
-      openBrowserBrief()
+      if (getPregameBriefFallback() === 'defer') {
+        logActivity('Pre-game brief skipped — Discord not linked (browser deferred during game)')
+      }
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
-      log.warn('[PregameBrief] API request failed, falling back to browser:', msg)
-      openBrowserBrief()
+      log.warn('[PregameBrief] API request failed; browser fallback suppressed during game:', msg)
     }
   })()
+}
+
+export function getPregameBriefFallback(): 'defer' {
+  return 'defer'
 }
 
 // ── Post-game debrief ─────────────────────────────────────────────────────────

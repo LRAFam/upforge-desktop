@@ -9,7 +9,7 @@
 import { IpcMain, BrowserWindow } from 'electron'
 import { is } from '@electron-toolkit/utils'
 import log from 'electron-log'
-import { toggleOverlay, isOverlayVisible, setOverlayInteractive } from './overlay-window'
+import { requestOverlayToggle, setOverlayInteractive } from './overlay-window'
 
 import { AuthManager } from './auth-manager'
 import type { MatchRecorder } from './match-recorder'
@@ -92,10 +92,7 @@ function setupDebugHandlers(ipcMain: IpcMain, gameDetector: GameDetector): void 
     }
   })
 
-  ipcMain.handle('overlay:toggle', () => {
-    toggleOverlay()
-    return { visible: isOverlayVisible() }
-  })
+  ipcMain.handle('overlay:toggle', () => requestOverlayToggle())
 
   ipcMain.on('overlay:set-interactive', (_e, interactive: boolean) => {
     setOverlayInteractive(interactive)

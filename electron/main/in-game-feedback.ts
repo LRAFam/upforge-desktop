@@ -5,6 +5,7 @@
 import { execFile } from 'child_process'
 import { platform } from 'os'
 import { showAppNotification } from './app-notifications'
+import { isInGameOverlayEnabled } from './in-game-overlay'
 import type { AppSettings, InGameFeedbackMode } from './settings-manager'
 
 export type InGameFeedbackKind =
@@ -37,10 +38,19 @@ export function getInGameFeedbackMode(settings: AppSettings): InGameFeedbackMode
 }
 
 export function usesOverlayFeedback(mode: InGameFeedbackMode): boolean {
+  if (!isInGameOverlayEnabled()) return false
   return mode === 'overlay' || mode === 'all'
 }
 
+const USER_INITIATED_FEEDBACK: ReadonlySet<InGameFeedbackKind> = new Set([
+  'clip-saved',
+  'clip-failed',
+  'not-recording',
+  'screenshot',
+])
+
 export function usesNotificationFeedback(mode: InGameFeedbackMode): boolean {
+  if (!isInGameOverlayEnabled()) return true
   return mode === 'notifications' || mode === 'all'
 }
 
@@ -75,10 +85,18 @@ export function deliverInGameFeedback(deps: InGameFeedbackDeps, opts: InGameFeed
         || opts.kind === 'not-recording'
         || opts.kind === 'clip-failed',
     })
-    if (opts.beep !== 'none' && settings.notificationSound) {
+    if (
+      opts.beep !== 'none'
+      && settings.notificationSound
+      && USER_INITIATED_FEEDBACK.has(opts.kind)
+    ) {
       playFeedbackBeep(opts.beep ?? 'success')
     }
-  } else if (opts.beep !== 'none' && settings.notificationSound) {
+  } else if (
+    opts.beep !== 'none'
+    && settings.notificationSound
+    && USER_INITIATED_FEEDBACK.has(opts.kind)
+  ) {
     playFeedbackBeep(opts.beep ?? 'success')
   }
 

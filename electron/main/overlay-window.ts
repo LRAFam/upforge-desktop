@@ -1,11 +1,13 @@
 import { BrowserWindow, screen } from 'electron'
 import { join } from 'path'
 import { is } from '@electron-toolkit/utils'
+import { isInGameOverlayEnabled, notifyOverlayUnavailable } from './in-game-overlay'
 
 let overlayWindow: BrowserWindow | null = null
 let isVisible = false
 
-export function createOverlayWindow(): BrowserWindow {
+export function createOverlayWindow(): BrowserWindow | null {
+  if (!isInGameOverlayEnabled()) return null
   // Guard: if an overlay already exists and isn't destroyed, return it.
   if (overlayWindow && !overlayWindow.isDestroyed()) return overlayWindow
 
@@ -54,6 +56,7 @@ export function createOverlayWindow(): BrowserWindow {
 }
 
 export function showOverlay(): void {
+  if (!isInGameOverlayEnabled()) return
   isVisible = true
   overlayWindow?.show()
 }
@@ -64,8 +67,18 @@ export function hideOverlay(): void {
 }
 
 export function toggleOverlay(): void {
+  if (!isInGameOverlayEnabled()) return
   if (isVisible) hideOverlay()
   else showOverlay()
+}
+
+export function requestOverlayToggle(): { visible: boolean } {
+  if (!isInGameOverlayEnabled()) {
+    notifyOverlayUnavailable()
+    return { visible: false }
+  }
+  toggleOverlay()
+  return { visible: isOverlayVisible() }
 }
 
 export function destroyOverlay(): void {

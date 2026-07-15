@@ -24,7 +24,7 @@ import type { MatchData } from './riot-types'
 
 type DeadlockPhase = 'idle' | 'waiting' | 'in_match' | 'post_match'
 
-const POLL_MS = 3_000
+export const DEADLOCK_CACHE_POLL_MS = 10_000
 const REPLAY_STABLE_MS = 20_000
 const MIN_PARTIAL_BYTES = 1024
 
@@ -189,9 +189,10 @@ async function refreshReplayDirsIfStale(): Promise<string[]> {
 }
 
 async function pollOnce(): Promise<void> {
+  const scanStartedAt = Date.now()
   const notBefore = Math.max(sessionStartAt, lastCacheScanAt)
   const hits = await scanSteamHttpCache(notBefore)
-  if (hits.length) lastCacheScanAt = Date.now()
+  lastCacheScanAt = nextDeadlockCacheScanAt(lastCacheScanAt, scanStartedAt)
   for (const hit of hits) applyCacheSalts(hit)
 
   const replayDirs = await refreshReplayDirsIfStale()
@@ -203,8 +204,12 @@ export function startDeadlockLogWatcher(): void {
   if (sessionStartAt === 0) resetDeadlockLogSession()
   void logSteamCacheDiagnostics()
   void pollOnce()
-  pollTimer = setInterval(() => { void pollOnce() }, POLL_MS)
+  pollTimer = setInterval(() => { void pollOnce() }, DEADLOCK_CACHE_POLL_MS)
   log.info('[DeadlockMatch] Watcher started (Steam httpcache)')
+}
+
+export function nextDeadlockCacheScanAt(previous: number, scanStartedAt: number): number {
+  return Math.max(previous, scanStartedAt)
 }
 
 export function stopDeadlockLogWatcher(): void {

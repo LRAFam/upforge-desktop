@@ -16,7 +16,9 @@ vi.mock('./deadlock-paths', () => ({
 }))
 
 import {
+  DEADLOCK_CACHE_POLL_MS,
   isDeadlockReadyToRecord,
+  nextDeadlockCacheScanAt,
   noteDeadlockWaitStarted,
   resetDeadlockLogSession,
   stopDeadlockLogWatcher,
@@ -25,6 +27,14 @@ import {
 import { scanSteamHttpCache } from './deadlock-steam-cache'
 
 describe('deadlock match readiness', () => {
+  it('advances the cache watermark even when a scan has no hits', () => {
+    expect(nextDeadlockCacheScanAt(100, 500)).toBe(500)
+  })
+
+  it('uses a low-overhead cache polling cadence', () => {
+    expect(DEADLOCK_CACHE_POLL_MS).toBe(10_000)
+  })
+
   beforeEach(() => {
     stopDeadlockLogWatcher()
     resetDeadlockLogSession()
@@ -63,7 +73,7 @@ describe('deadlock match readiness', () => {
 
     const { startDeadlockLogWatcher } = await import('./deadlock-match-watcher')
     startDeadlockLogWatcher()
-    await vi.advanceTimersByTimeAsync(3_500)
+    await vi.advanceTimersByTimeAsync(DEADLOCK_CACHE_POLL_MS + 500)
 
     expect(isDeadlockReadyToRecord()).toBe(true)
 
@@ -78,7 +88,7 @@ describe('deadlock match readiness', () => {
       sourcePath: '/cache/a',
       url: 'https://replay1.valve.net/1422450/101_42.meta.bz2',
     }])
-    await vi.advanceTimersByTimeAsync(3_500)
+    await vi.advanceTimersByTimeAsync(DEADLOCK_CACHE_POLL_MS + 500)
     expect(isDeadlockReadyToRecord()).toBe(false)
 
     vi.mocked(scanSteamHttpCache).mockResolvedValueOnce([{
@@ -89,7 +99,7 @@ describe('deadlock match readiness', () => {
       sourcePath: '/cache/b',
       url: 'https://replay1.valve.net/1422450/202_7.meta.bz2',
     }])
-    await vi.advanceTimersByTimeAsync(3_500)
+    await vi.advanceTimersByTimeAsync(DEADLOCK_CACHE_POLL_MS + 500)
 
     expect(isDeadlockReadyToRecord()).toBe(true)
     stopDeadlockLogWatcher()

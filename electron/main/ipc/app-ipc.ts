@@ -20,6 +20,7 @@ import { resolveRecordingSavePath } from '../user-data-paths'
 import { openPathSafe } from '../shell-open'
 import { trackOnboardingComplete } from '../funnel-events'
 import { applyLayoutForRoute } from '../window-layouts'
+import { isInGameOverlayEnabled } from '../in-game-overlay'
 
 export function setupAppHandlers(
   ipcMain: IpcMain,
@@ -60,6 +61,7 @@ export function setupAppHandlers(
       recordedModes: settings.recordedModes,
       recordingBackend: getRecordingBackend ? getRecordingBackend() : 'obs',
       currentQueueMode: recording && getCurrentQueueMode ? getCurrentQueueMode() : null,
+      inGameOverlayEnabled: isInGameOverlayEnabled(),
     }
   })
 

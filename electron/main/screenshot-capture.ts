@@ -1,4 +1,4 @@
-import { app, desktopCapturer } from 'electron'
+import { app, desktopCapturer, screen } from 'electron'
 import fs from 'fs'
 import path from 'path'
 import log from 'electron-log'
@@ -13,22 +13,23 @@ export interface ScreenshotCaptureResult {
 /** Capture primary screen and save to userData/screenshots (callable from main process hotkeys). */
 export async function captureAndSaveScreenshot(): Promise<ScreenshotCaptureResult> {
   try {
+    const display = screen.getPrimaryDisplay()
+    const width = Math.round(display.size.width * display.scaleFactor)
+    const height = Math.round(display.size.height * display.scaleFactor)
     const sources = await desktopCapturer.getSources({
       types: ['screen'],
-      thumbnailSize: { width: 3840, height: 2160 },
+      thumbnailSize: { width, height },
     })
     if (!sources.length) return { ok: false, error: 'no_sources' }
 
     const screenshotsDir = path.join(app.getPath('userData'), 'screenshots')
-    if (!fs.existsSync(screenshotsDir)) fs.mkdirSync(screenshotsDir, { recursive: true })
+    await fs.promises.mkdir(screenshotsDir, { recursive: true })
 
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-').replace('T', '_').slice(0, 19)
     const filename = `screenshot_${timestamp}.png`
     const filepath = path.join(screenshotsDir, filename)
 
-    const dataUrl = sources[0].thumbnail.toDataURL()
-    const base64 = dataUrl.replace(/^data:image\/png;base64,/, '')
-    fs.writeFileSync(filepath, Buffer.from(base64, 'base64'))
+    await fs.promises.writeFile(filepath, sources[0].thumbnail.toPNG())
     log.info('[Screenshots] Saved:', filepath)
     return { ok: true, filename, path: filepath }
   } catch (err) {

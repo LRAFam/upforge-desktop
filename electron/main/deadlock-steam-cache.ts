@@ -15,6 +15,10 @@ const IS_WIN = process.platform === 'win32'
 
 const VALVE_HOST_MARKER = '.valve.net'
 const MAX_BYTES_TO_READ = 512
+const CACHE_DIR_TTL_MS = 5 * 60 * 1000
+let cachedHttpCacheDir: string | null | undefined
+let cacheDirResolvedAt = 0
+let cacheDirResolution: Promise<string | null> | null = null
 
 export interface DeadlockMatchSalts {
   matchId: number
@@ -51,10 +55,24 @@ async function getSteamPath(): Promise<string | null> {
 
 /** Steam/appcache/httpcache — where Deadlock replay CDN URLs are cached. */
 export async function resolveSteamHttpCacheDir(): Promise<string | null> {
-  const steamPath = await getSteamPath()
-  if (!steamPath) return null
-  const dir = path.join(steamPath, 'appcache', 'httpcache')
-  return fs.existsSync(dir) ? dir : null
+  if (
+    cachedHttpCacheDir !== undefined
+    && Date.now() - cacheDirResolvedAt < CACHE_DIR_TTL_MS
+  ) {
+    return cachedHttpCacheDir
+  }
+  if (cacheDirResolution) return cacheDirResolution
+
+  cacheDirResolution = (async () => {
+    const steamPath = await getSteamPath()
+    const dir = steamPath ? path.join(steamPath, 'appcache', 'httpcache') : null
+    cachedHttpCacheDir = dir && fs.existsSync(dir) ? dir : null
+    cacheDirResolvedAt = Date.now()
+    return cachedHttpCacheDir
+  })().finally(() => {
+    cacheDirResolution = null
+  })
+  return cacheDirResolution
 }
 
 /** Parse a Valve CDN replay URL into match salts. */

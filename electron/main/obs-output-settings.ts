@@ -11,7 +11,7 @@ import type OBSWebSocket from 'obs-websocket-js'
 import { applyCrashSafeObsRecFormat } from './obs-rec-format'
 import type { RecorderConfig } from './recorder'
 import type { AppSettings } from './settings-manager'
-import { getRecordingPresetValues, formatRecordingLabel } from './recording-preset'
+import { getRecordingPresetValues } from './recording-preset'
 import { resolveRecordingSavePath } from './user-data-paths'
 import { fitUpForgeCaptureToCanvas } from './obs-setup'
 
@@ -83,7 +83,6 @@ export async function applyObsRecordingSettings(
   const { cx, cy } = config.quality === '1080p'
     ? { cx: 1920, cy: 1080 }
     : { cx: 1280, cy: 720 }
-  const bitrateKbps = Math.round(config.bitrate * 1000)
   const fps = config.fps ?? 30
   const savePath = config.savePath
   const warnings: string[] = []
@@ -99,7 +98,7 @@ export async function applyObsRecordingSettings(
   await setProfileParam(obs, 'Output', 'Mode', 'Simple')
   const recFormat = await applyCrashSafeObsRecFormat(obs, obsStudioVersion)
   await setProfileParam(obs, 'SimpleOutput', 'RecQuality', 'Small')
-  await setProfileParam(obs, 'SimpleOutput', 'RecRB', String(bitrateKbps))
+  await setProfileParam(obs, 'SimpleOutput', 'RecRB', String(config.clipsOnly === true))
 
   try {
     await obs.call('SetRecordDirectory', { recordDirectory: savePath })
@@ -147,10 +146,10 @@ export async function applyObsRecordingSettings(
   }
 
   const recRb = await getProfileParam(obs, 'SimpleOutput', 'RecRB')
-  const label = formatRecordingLabel(config.quality, config.bitrate, fps)
+  const label = `${config.quality} · ${fps} fps · OBS Simple/Small quality`
   log.info(
     `[OBS Output] Applied ${label}${config.manageObsVideo === false ? ' (OBS video settings unchanged)' : ''} → ${savePath} ` +
-    `(mode=${outputMode ?? '?'}, ${outputWidth ?? '?'}×${outputHeight ?? '?'}, RecRB=${recRb ?? '?'} kbps, format=${recFormat})`,
+    `(mode=${outputMode ?? '?'}, ${outputWidth ?? '?'}×${outputHeight ?? '?'}, replayBuffer=${recRb ?? '?'}, format=${recFormat})`,
   )
 
   if (warnings.length) {

@@ -32,6 +32,7 @@ export interface LateClipRetryOptions {
 }
 
 export interface LateClipRetryDeps {
+  waitUntilAllowed: () => Promise<void>
   retryCs2DemoClips: (opts: {
     readyPath: string
     savedRecordingId: string
@@ -70,6 +71,7 @@ export async function runLateClipRetry(
   deps: LateClipRetryDeps,
   opts: LateClipRetryOptions,
 ): Promise<void> {
+  await deps.waitUntilAllowed()
   const game = normalizeGameId(ctx.game)
 
   if (game === 'cs2') {

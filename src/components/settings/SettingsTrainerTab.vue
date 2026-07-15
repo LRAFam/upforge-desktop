@@ -12,7 +12,8 @@ const {
   hotkeyParts,
   hotkeyStatus,
   hotkeys,
-  inGameFeedbackOptions,
+  inGameOverlayEnabled,
+  visibleInGameFeedbackOptions,
   rebinding,
   sectionOpen,
   setInGameFeedback,
@@ -190,15 +191,18 @@ const {
             <div class="rounded-2xl border border-white/[0.10] bg-black/20 p-4 space-y-3">
               <div>
                 <p class="text-sm font-semibold text-white">In-game feedback</p>
-                <p class="mt-1 text-xs text-gray-500 leading-relaxed">
+                <p v-if="inGameOverlayEnabled" class="mt-1 text-xs text-gray-500 leading-relaxed">
                   Valorant blocks overlays in Exclusive Fullscreen. Use
                   <span class="text-gray-400">Notifications</span> for reliable clip confirmation, or set Valorant to
                   <span class="text-gray-400"> Windowed Fullscreen</span> if you want the overlay HUD.
                 </p>
+                <p v-else class="mt-1 text-xs text-gray-500 leading-relaxed">
+                  Overlay is temporarily off. Use <span class="text-gray-400">Notifications</span> — F9 confirms clips in fullscreen.
+                </p>
               </div>
               <div class="grid grid-cols-1 gap-2 sm:grid-cols-3">
                 <button
-                  v-for="opt in inGameFeedbackOptions"
+                  v-for="opt in visibleInGameFeedbackOptions"
                   :key="opt.value"
                   type="button"
                   class="rounded-xl border px-3 py-2.5 text-left transition-colors"
@@ -242,7 +246,7 @@ const {
                 </button>
               </div>
 
-              <div class="flex items-center justify-between gap-4">
+              <div v-if="inGameOverlayEnabled" class="flex items-center justify-between gap-4">
                 <div>
                   <p class="text-sm text-gray-200">Toggle overlay</p>
                   <p class="mt-1 text-xs" :class="hotkeyStatus['toggle-overlay'] === false ? 'text-yellow-400/80' : 'text-gray-500'">{{ hotkeyStatus['toggle-overlay'] === false ? 'Failed to register — key may be in use' : 'Show or hide the in-game overlay' }}</p>

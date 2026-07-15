@@ -34,6 +34,7 @@ import {
 import { timelineNeedsEnrichRefresh } from './match-data-quality'
 export { timelineNeedsEnrichRefresh } from './match-data-quality'
 import { stashMatchIdFields } from './riot-match-id-stash'
+import { applyMenuWatchTick } from './menu-watch'
 export type {
   GameEvent,
   KillEvent,
@@ -142,32 +143,41 @@ export class RiotLocalApi {
    * Poll presence until the player returns to menus after a skipped match.
    * Unlike onMatchEnded, this works without start() / matchData (recording was skipped).
    */
-  watchUntilMenus(onReturn: () => void | Promise<void>): void {
+  watchUntilMenus(
+    onReturn: () => void | Promise<void>,
+    isGameProcessRunning?: () => Promise<boolean>,
+  ): void {
     this.cancelMenuWatch()
     const gen = ++this.menuWatchGeneration
-    let lastLoop: string | null = null
-    let sawIngame = false
+    let watchState = { sawIngame: false, lastLoop: null as string | null }
+    let missingPresencePolls = 0
 
     const tick = async () => {
       if (gen !== this.menuWatchGeneration) return
       try {
         const state = await this.getSessionState()
-        const loop = state?.sessionLoopState ?? 'MENUS'
-
-        // Only fire after a real INGAME session ends — not PREGAME→MENUS (agent select back-out)
-        // and not a false positive on the first poll when loop is already MENUS.
-        if (sawIngame && lastLoop === 'INGAME' && loop === 'MENUS') {
+        // Missing presence must not default to MENUS — that re-arms mid-match.
+        if (!state?.sessionLoopState) {
+          missingPresencePolls++
+          if (missingPresencePolls % 5 === 0) await this.initAuth().catch(() => false)
+          if (
+            missingPresencePolls >= 3
+            && isGameProcessRunning
+            && !await isGameProcessRunning()
+          ) {
+            this.cancelMenuWatch()
+            console.log('[RiotLocalApi] Menu watch ended — game process exited')
+            await Promise.resolve(onReturn())
+          }
+          return
+        }
+        missingPresencePolls = 0
+        const result = applyMenuWatchTick(watchState, state.sessionLoopState)
+        watchState = result.state
+        if (result.returnedToMenus) {
           this.cancelMenuWatch()
           console.log('[RiotLocalApi] Skipped match ended — player returned to menus')
           await Promise.resolve(onReturn())
-          return
-        }
-
-        if (loop === 'INGAME') {
-          sawIngame = true
-          lastLoop = 'INGAME'
-        } else if (loop !== 'PREGAME') {
-          lastLoop = loop
         }
       } catch { /* Riot API flake — keep polling */ }
     }

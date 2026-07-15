@@ -8,6 +8,7 @@ import log from 'electron-log'
 
 export interface MatchPriorityDeps {
   isRecording: () => boolean
+  isGameActive?: () => boolean
 }
 
 let activeVodCompressionProc: ChildProcess | null = null
@@ -28,7 +29,7 @@ export function abortVodCompression(): boolean {
 }
 
 export function shouldDeferHeavyBackgroundWork(deps: MatchPriorityDeps): boolean {
-  return deps.isRecording()
+  return deps.isRecording() || (deps.isGameActive?.() ?? false)
 }
 
 export async function waitUntilBackgroundWorkAllowed(
@@ -83,5 +84,5 @@ export function pauseHeavyBackgroundWork(
   if (activeUploadIds && onUploadInterrupted) {
     onUploadInterrupted(activeUploadIds)
   }
-  log.info('[MatchPriority] Paused uploads/compression — OBS recording active')
+  log.info('[MatchPriority] Paused uploads/compression — match performance mode active')
 }

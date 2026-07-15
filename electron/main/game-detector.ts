@@ -39,6 +39,13 @@ export function pickGameToTrack(
   return GAME_DETECTION_ORDER.find((game) => runningGames.includes(game)) ?? runningGames[0] ?? null
 }
 
+export function runningGamesFromTasklist(stdout: string): string[] {
+  const lower = stdout.toLowerCase()
+  return GAME_DETECTION_ORDER.filter((game) =>
+    GAME_PROCESSES[game].some((processName) => lower.includes(`"${processName.toLowerCase()}"`)),
+  )
+}
+
 /**
  * CS2 often stays open in the menu after a match while the user plays another title.
  * Yield tracking when GSI shows CS2 is not in a live map.
@@ -176,22 +183,16 @@ export class GameDetector extends EventEmitter {
     }, durationMs)
   }
 
-  private _gamesToPoll(): Array<[string, string[]]> {
-    return Object.entries(GAME_PROCESSES)
-  }
-
   private async _poll(): Promise<void> {
     // Game detection only works on Windows — Valorant/CS2 don't run on Mac/Linux
     if (!IS_WIN) return
 
     try {
-      const runningGames: string[] = []
-      for (const [game, processNames] of this._gamesToPoll()) {
-        const running = (
-          await Promise.all(processNames.map((n) => this._isProcessRunning(n)))
-        ).some(Boolean)
-        if (running) runningGames.push(game)
-      }
+      const { stdout } = await execAsync(
+        'tasklist /fo csv /nh',
+        { windowsHide: true, timeout: 4000, maxBuffer: 2 * 1024 * 1024 },
+      )
+      const runningGames = runningGamesFromTasklist(stdout)
 
       const active = this._activeGame
 

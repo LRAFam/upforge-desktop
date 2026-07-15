@@ -1,5 +1,9 @@
 import { describe, expect, it, vi } from 'vitest'
-import { pickGameToTrack, pickHandoffGameWhenIdleInMenu } from './game-detector'
+import {
+  pickGameToTrack,
+  pickHandoffGameWhenIdleInMenu,
+  runningGamesFromTasklist,
+} from './game-detector'
 
 vi.mock('./steam-gsi-server', () => ({
   isGsiMatchLive: vi.fn(() => false),
@@ -21,6 +25,17 @@ describe('pickGameToTrack', () => {
 
   it('returns null when nothing is running', () => {
     expect(pickGameToTrack([], 'cs2')).toBeNull()
+  })
+})
+
+describe('runningGamesFromTasklist', () => {
+  it('detects all supported games from one process snapshot', () => {
+    const stdout = [
+      '"cs2.exe","123","Console","1","100,000 K"',
+      '"deadlock.exe","456","Console","1","100,000 K"',
+      '"explorer.exe","789","Console","1","100,000 K"',
+    ].join('\n')
+    expect(runningGamesFromTasklist(stdout)).toEqual(['cs2', 'deadlock'])
   })
 })
 
