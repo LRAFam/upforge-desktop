@@ -6,6 +6,7 @@ import {
   getAgentRole,
   getAgentColor,
   getMapImage,
+  getMapListViewImage,
   getRankIconUrl,
   getRankHexColor,
   getRoleColor,
@@ -135,7 +136,9 @@ function createCoachingHistory() {
     } finally {
       loading.value = false
     }
-    void loadCoachReviewSummaries(allAnalyses.value.slice(0, 24).map(a => a.id))
+    // Keep initial network work proportional to what can actually be visible.
+    // A selected row fetches its own cached summary on demand.
+    void loadCoachReviewSummaries(allAnalyses.value.slice(0, 12).map(a => a.id))
       .then((summaries) => { coachReviewByAnalysisId.value = summaries })
       .catch(() => {})
   }
@@ -361,6 +364,7 @@ function createCoachingHistory() {
     getAgentRole,
     getDateGroup,
     getMapImage,
+    getMapListViewImage,
     getRankHexColor,
     getRankIconUrl,
     getRoleColor,

@@ -6,7 +6,7 @@ import { recordingMapLabel, recordingPlayerLabel } from '../../lib/recording-dis
 import GameBrandIcon from './GameBrandIcon.vue'
 import type { PrimaryGame } from '../../lib/games'
 import { analysisCompleteBadge, inferAnalysisGame } from '../../lib/analysis-display'
-import upforgeIcon from '../../assets/upforge-icon.png'
+import upforgeIcon from '../../assets/upforge-icon.webp'
 
 const { activityLog, pendingRecordings, formatLogTime, dashboardAnalyses, openAnalysisRow, status } = useDashboard()
 

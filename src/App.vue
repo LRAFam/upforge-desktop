@@ -26,7 +26,7 @@
         <!-- Logo with red glow halo -->
         <div class="relative flex-shrink-0">
           <div class="absolute inset-0 rounded-full blur-md scale-150 pointer-events-none" :style="{ backgroundColor: `rgba(${theme.rgb}, 0.25)` }" />
-          <img src="./assets/upforge-logo.png" alt="UpForge" class="relative h-5 w-auto object-contain" />
+          <img src="./assets/upforge-logo.webp" alt="UpForge" class="relative h-5 w-auto object-contain" />
         </div>
         <div class="flex items-center gap-2">
           <div class="flex flex-col leading-none">

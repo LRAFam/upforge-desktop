@@ -7,6 +7,7 @@ export interface CoachReviewSummary {
 }
 
 const cache = new Map<number, CoachReviewSummary | null>()
+const inFlight = new Map<number, Promise<CoachReviewSummary | null>>()
 
 export function getCachedCoachReview(analysisId: number): CoachReviewSummary | null | undefined {
   return cache.get(analysisId)
@@ -18,28 +19,38 @@ export function setCachedCoachReview(analysisId: number, summary: CoachReviewSum
 
 export function clearCoachReviewCache(): void {
   cache.clear()
+  inFlight.clear()
 }
 
 /** Fetch roster coach review status for an analysis (cached). */
 export async function fetchCoachReviewSummary(analysisId: number): Promise<CoachReviewSummary | null> {
   if (cache.has(analysisId)) return cache.get(analysisId) ?? null
-  try {
-    const review = await window.api.coach.getAnalysisReview(analysisId)
-    if (!review?.id) {
+  const pending = inFlight.get(analysisId)
+  if (pending) return pending
+
+  const request = (async (): Promise<CoachReviewSummary | null> => {
+    try {
+      const review = await window.api.coach.getAnalysisReview(analysisId)
+      if (!review?.id) {
+        cache.set(analysisId, null)
+        return null
+      }
+      const summary: CoachReviewSummary = {
+        status: review.status as CoachReviewStatus,
+        annotationCount: review.annotations?.length ?? 0,
+        coachName: review.coach?.display_name ?? null,
+      }
+      cache.set(analysisId, summary)
+      return summary
+    } catch {
       cache.set(analysisId, null)
       return null
+    } finally {
+      inFlight.delete(analysisId)
     }
-    const summary: CoachReviewSummary = {
-      status: review.status as CoachReviewStatus,
-      annotationCount: review.annotations?.length ?? 0,
-      coachName: review.coach?.display_name ?? null,
-    }
-    cache.set(analysisId, summary)
-    return summary
-  } catch {
-    cache.set(analysisId, null)
-    return null
-  }
+  })()
+  inFlight.set(analysisId, request)
+  return request
 }
 
 /** Load coach review summaries for a list of analyses (skips cache hits). */

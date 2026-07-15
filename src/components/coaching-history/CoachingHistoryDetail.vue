@@ -25,6 +25,7 @@ const {
   getAgentImage,
   getAgentRole,
   getMapImage,
+  getMapListViewImage,
   getRankHexColor,
   getRankIconUrl,
   getRoleColor,
@@ -140,7 +141,7 @@ const statStrip = computed(() => {
             <div v-if="topAgent || topMap" class="grid sm:grid-cols-2 gap-2">
               <div v-if="topAgent" class="dash-panel flex items-center gap-3 px-3 py-3">
                 <div class="h-12 w-12 rounded-xl overflow-hidden border border-white/10 p-1" :style="{ background: `linear-gradient(145deg, ${getAgentColor(topAgent)}33, #111)` }">
-                  <img v-if="getAgentImage(topAgent)" :src="getAgentImage(topAgent)" class="h-full w-full object-contain" alt="" />
+                  <img v-if="getAgentImage(topAgent)" :src="getAgentImage(topAgent)" class="h-full w-full object-contain" alt="" loading="lazy" decoding="async" />
                 </div>
                 <div>
                   <p class="text-[8px] font-bold uppercase tracking-wider text-gray-600">Most played agent</p>
@@ -149,7 +150,7 @@ const statStrip = computed(() => {
               </div>
               <div v-if="topMap" class="dash-panel flex items-center gap-3 px-3 py-3">
                 <div class="h-14 w-20 flex-shrink-0 rounded-lg overflow-hidden border border-white/10">
-                  <img v-if="getMapImage(topMap)" :src="getMapImage(topMap)" class="h-full w-full object-cover" alt="" />
+                  <img v-if="getMapListViewImage(topMap)" :src="getMapListViewImage(topMap)" class="h-full w-full object-cover" alt="" loading="lazy" decoding="async" />
                 </div>
                 <div>
                   <p class="text-[8px] font-bold uppercase tracking-wider text-gray-600">Top map</p>
@@ -195,6 +196,7 @@ const statStrip = computed(() => {
                   :src="getMapImage(selectedAnalysis.map)"
                   class="h-full w-full object-cover"
                   alt=""
+                  decoding="async"
                 />
                 <div class="absolute inset-0 bg-gradient-to-r from-black/94 via-black/78 to-black/55" />
                 <div class="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-black/25" />
@@ -209,6 +211,7 @@ const statStrip = computed(() => {
                     :src="getAgentImage(selectedAnalysis.agent)"
                     class="h-full w-full object-contain p-1.5"
                     alt=""
+                    decoding="async"
                   />
                 </div>
 

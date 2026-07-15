@@ -43,5 +43,5 @@ export function getDeadlockRankIconUrl(
   if (tier === 0) {
     return deadlockRankAsset('rank0-sm.png')
   }
-  return deadlockRankAsset(`rank${tier}-lg.png`)
+  return deadlockRankAsset(`rank${tier}-lg.webp`)
 }

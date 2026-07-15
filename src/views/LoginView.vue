@@ -11,7 +11,7 @@
           <div class="story-top">
             <div class="brand-mark">
               <div class="logo-halo" />
-              <img src="../assets/upforge-icon.png" class="logo" alt="UpForge" />
+              <img src="../assets/upforge-icon.webp" class="logo" alt="UpForge" />
             </div>
             <p class="eyebrow">Stop Guessing. Start Climbing.</p>
             <h2 class="story-title">
@@ -134,9 +134,9 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
-import valorantImg from '../assets/games/valorant-card-bg.png'
-import deadlockImg from '../assets/games/deadlock-card-bg.png'
-import cs2Img from '../assets/games/cs2-card-bg.png'
+import valorantImg from '../assets/games/valorant-card-bg.webp'
+import deadlockImg from '../assets/games/deadlock-card-bg.webp'
+import cs2Img from '../assets/games/cs2-card-bg.webp'
 
 const router = useRouter()
 const email = ref('')

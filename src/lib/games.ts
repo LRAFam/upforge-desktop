@@ -1,7 +1,7 @@
-import valorantArtwork from '../assets/games/valorant-card-bg.png'
-import cs2Artwork from '../assets/games/cs2-card-bg.png'
-import deadlockArtwork from '../assets/games/deadlock-card-bg.png'
-import lolArtwork from '../assets/games/lol-card-bg.png'
+import valorantArtwork from '../assets/games/valorant-card-bg.webp'
+import cs2Artwork from '../assets/games/cs2-card-bg.webp'
+import deadlockArtwork from '../assets/games/deadlock-card-bg.webp'
+import lolArtwork from '../assets/games/lol-card-bg.webp'
 
 /** Games supported as a desktop "primary game" context (matches website switcher). */
 export type PrimaryGame = 'valorant' | 'cs2' | 'deadlock' | 'lol'

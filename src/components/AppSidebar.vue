@@ -3,7 +3,7 @@ import { computed } from 'vue'
 import { useRoute } from 'vue-router'
 import { usePrimaryGame } from '../composables/usePrimaryGame'
 import { gameNavRoutes } from '../lib/game-modules'
-import upforgeIcon from '../assets/upforge-icon.png'
+import upforgeIcon from '../assets/upforge-icon.webp'
 
 const route = useRoute()
 const { primaryGame } = usePrimaryGame()

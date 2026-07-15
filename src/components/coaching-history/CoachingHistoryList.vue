@@ -9,7 +9,7 @@ const {
   formatMapLabel,
   getAgentColor,
   getAgentImage,
-  getMapImage,
+  getMapListViewImage,
   getRankIconUrl,
   groupedAnalyses,
   loading,
@@ -67,12 +67,17 @@ const {
                       :src="getAgentImage(a.agent)"
                       class="relative h-full w-full object-contain p-1 drop-shadow-md"
                       alt=""
+                      loading="lazy"
+                      decoding="async"
                     />
                     <img
-                      v-else-if="a.map && getMapImage(a.map)"
-                      :src="getMapImage(a.map)"
+                      v-else-if="a.map && getMapListViewImage(a.map)"
+                      :src="getMapListViewImage(a.map)"
                       class="absolute inset-0 h-full w-full object-cover opacity-60"
                       alt=""
+                      loading="lazy"
+                      decoding="async"
+                      fetchpriority="low"
                     />
                   </div>
 
@@ -96,6 +101,8 @@ const {
                         class="h-3.5 w-3.5 object-contain flex-shrink-0 opacity-80"
                         :title="a.rank"
                         :alt="a.rank"
+                        loading="lazy"
+                        decoding="async"
                       />
                       <span
                         v-if="coachReviewByAnalysisId[a.id]?.status === 'completed'"

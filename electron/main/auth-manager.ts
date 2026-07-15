@@ -347,19 +347,10 @@ export class AuthManager {
     }
   }
 
-  private _lastReconcileAt = 0
-
   async fetchAnalyses(limit = 10): Promise<AnalysisItem[]> {
     try {
-      // Reconcile fixes stuck/orphaned jobs, but it doesn't need to run before
-      // EVERY read. Dashboard + Stats(100) + History(100) each used to fire it,
-      // adding a serial round-trip per view. Throttle to once/60s — stuck jobs
-      // still get picked up quickly, reads stop paying the double hop.
-      const now = Date.now()
-      if (now - this._lastReconcileAt > 60_000) {
-        this._lastReconcileAt = now
-        await this._api.post('/api/analysis/reconcile').catch(() => {})
-      }
+      // The recent-analyses endpoint already reconciles processing rows. Avoid
+      // a second blocking POST before every dashboard/history/stats read.
       const res = await this._api.get(`/api/analysis/recent?limit=${limit}`)
       const analyses: AnalysisItem[] = res.data?.analyses ?? []
       return analyses.map((a) => {

@@ -19,7 +19,7 @@
         <div class="logo-ring">
           <div class="logo-halo" />
           <div class="logo-shimmer" />
-          <img src="../assets/upforge-icon.png" alt="UpForge" class="logo-img" />
+          <img src="../assets/upforge-icon.webp" alt="UpForge" class="logo-img" />
         </div>
         <p class="tagline">Competitive coaching platform &amp; marketplace</p>
       </div>

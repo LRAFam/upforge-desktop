@@ -337,6 +337,16 @@ export function getMapImage(mapName: string | null | undefined): string {
   return MAP_SPLASH_URLS[key] ?? ''
 }
 
+/**
+ * Compact landscape artwork for chips and small list thumbnails.
+ * Valorant API splashes are commonly 1.5–7 MB; list-view icons are generally
+ * tens of KB and use the same map UUID/path.
+ */
+export function getMapListViewImage(mapName: string | null | undefined): string {
+  const splash = getMapImage(mapName)
+  return splash ? splash.replace('/splash.png', '/listviewicon.png') : ''
+}
+
 /** Returns the minimap / display-icon URL for a Valorant map. */
 export function getMapMinimap(mapName: string | null | undefined): string {
   const key = normalizeMapAssetKey(mapName)

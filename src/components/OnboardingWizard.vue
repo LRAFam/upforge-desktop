@@ -62,7 +62,7 @@
             <div v-if="step === 1" key="step1" class="px-7 pt-9 pb-7">
               <!-- Header -->
               <div class="flex items-center gap-3.5 mb-7">
-                <img src="../assets/upforge-logo.png" alt="UpForge" class="w-12 h-12 rounded-2xl ring-1 ring-[#ff4655]/25 shadow-[0_0_24px_rgba(255,70,85,0.2)]" />
+                <img src="../assets/upforge-logo.webp" alt="UpForge" class="w-12 h-12 rounded-2xl ring-1 ring-[#ff4655]/25 shadow-[0_0_24px_rgba(255,70,85,0.2)]" />
                 <div>
                   <h2 class="text-xl font-black text-white leading-tight">Welcome to <span class="text-[#ff4655]">UpForge</span></h2>
                   <p class="text-[11px] text-gray-500 mt-0.5">AI coaching for Valorant, CS2 &amp; Deadlock</p>

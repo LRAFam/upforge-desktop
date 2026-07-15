@@ -54,13 +54,13 @@ const SUBSCRIPTION_ICONS: Record<string, string> = {
 
 /** Forge mastery level (1–40) → icon URL. */
 const masteryModules = import.meta.glob<string>(
-  '../assets/ranks/mastery/levels/mastery-level-*.png',
+  '../assets/ranks/mastery/levels/mastery-level-*.webp',
   { eager: true, import: 'default' },
 )
 
 const MASTERY_ICONS: Record<number, string> = {}
 for (const [path, url] of Object.entries(masteryModules)) {
-  const match = path.match(/mastery-level-(\d+)\.png$/)
+  const match = path.match(/mastery-level-(\d+)\.webp$/)
   if (match) MASTERY_ICONS[Number(match[1])] = url
 }
 

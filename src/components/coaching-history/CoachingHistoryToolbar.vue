@@ -10,7 +10,7 @@ const {
   features,
   filteredAnalyses,
   formatMapLabel,
-  getMapImage,
+  getMapListViewImage,
   theme,
 } = useCoachingHistory()
 </script>
@@ -53,10 +53,13 @@ const {
           @click="activeMap = map"
         >
           <img
-            v-if="getMapImage(map)"
-            :src="getMapImage(map)"
+            v-if="getMapListViewImage(map)"
+            :src="getMapListViewImage(map)"
             class="history-map-pill__bg object-cover"
             alt=""
+            loading="lazy"
+            decoding="async"
+            fetchpriority="low"
           />
           <div class="history-map-pill__shade" />
           <span class="history-map-pill__label">{{ formatMapLabel(map) }}</span>

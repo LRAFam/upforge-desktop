@@ -15,7 +15,7 @@
         <!-- Logo + wordmark -->
         <div class="lp-brand">
           <div class="lp-logo-ring">
-            <img src="../assets/upforge-logo.png" alt="UpForge" class="lp-logo-img" />
+            <img src="../assets/upforge-logo.webp" alt="UpForge" class="lp-logo-img" />
           </div>
           <div>
             <div class="lp-wordmark"><span class="lp-up">UP</span><span class="lp-forge">FORGE</span></div>
@@ -36,7 +36,7 @@
         <p class="lp-section-label">Supported Games</p>
         <div class="lp-game-cards">
           <div class="lp-game-card lp-game-valorant">
-            <img src="../assets/games/valorant-card-bg.png" alt="Valorant" class="lp-game-img" />
+            <img src="../assets/games/valorant-card-bg.webp" alt="Valorant" class="lp-game-img" />
             <div class="lp-game-gradient" />
             <div class="lp-game-body">
               <span class="lp-game-name">Valorant</span>
@@ -44,7 +44,7 @@
             </div>
           </div>
           <div class="lp-game-card lp-game-deadlock">
-            <img src="../assets/games/deadlock-card-bg.png" alt="Deadlock" class="lp-game-img" />
+            <img src="../assets/games/deadlock-card-bg.webp" alt="Deadlock" class="lp-game-img" />
             <div class="lp-game-gradient" />
             <div class="lp-game-body">
               <span class="lp-game-name">Deadlock</span>
@@ -52,7 +52,7 @@
             </div>
           </div>
           <div class="lp-game-card lp-game-cs2">
-            <img src="../assets/games/cs2-card-bg.png" alt="CS2" class="lp-game-img" />
+            <img src="../assets/games/cs2-card-bg.webp" alt="CS2" class="lp-game-img" />
             <div class="lp-game-gradient" />
             <div class="lp-game-body">
               <span class="lp-game-name">CS2</span>
