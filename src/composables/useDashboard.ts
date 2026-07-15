@@ -677,24 +677,55 @@ function createDashboard() {
     }
   }
 
-  async function loadAllGameLinkStates() {
+  async function loadCs2LinkState() {
     cs2LinksLoading.value = true
-    deadlockLinksLoading.value = true
-    lolLinksLoading.value = true
     try {
       const settings = await window.api.settings.get().catch(() => null)
       cs2SteamName.value = settings?.cs2SteamName?.trim() ?? ''
-      await Promise.all([
-        loadCs2Faceit(),
-        loadCs2Profile(),
-        loadDeadlockProfile(),
-        loadLolProfile(),
-      ])
+      await Promise.all([loadCs2Faceit(), loadCs2Profile()])
     } finally {
       cs2LinksLoading.value = false
+    }
+  }
+
+  async function loadDeadlockLinkState() {
+    deadlockLinksLoading.value = true
+    try {
+      await loadDeadlockProfile()
+    } finally {
       deadlockLinksLoading.value = false
+    }
+  }
+
+  async function loadLolLinkState() {
+    lolLinksLoading.value = true
+    try {
+      await loadLolProfile()
+    } finally {
       lolLinksLoading.value = false
     }
+  }
+
+  function loadGameLinkState(game: string): Promise<void> {
+    if (game === 'cs2') return loadCs2LinkState()
+    if (game === 'deadlock') return loadDeadlockLinkState()
+    if (game === 'lol') return loadLolLinkState()
+    return Promise.resolve()
+  }
+
+  /**
+   * Load the ACTIVE game's account links first (awaited), then the other games
+   * in the background. Previously every game's link state (FACEIT, CS2 profile,
+   * Deadlock stats, LoL matches) was fetched on every dashboard mount and game
+   * switch, holding all loading flags until the slowest finished — Deadlock
+   * alone could take ~48s on a failed auth refresh. Only the active game's panel
+   * is visible, so the rest can settle lazily.
+   */
+  async function loadAllGameLinkStates() {
+    const active = primaryGame.value
+    await loadGameLinkState(active)
+    const others = ['cs2', 'deadlock', 'lol'].filter((g) => g !== active)
+    for (const g of others) void loadGameLinkState(g)
   }
 
   async function syncAuthUserFields() {

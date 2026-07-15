@@ -256,11 +256,15 @@ export class ClipExtractor {
 
   private _probeMetadataStderr(filePath: string, timeoutMs: number): Promise<string> {
     return new Promise((resolve, reject) => {
-      // Null muxer keeps stderr free of the "At least one output file" noise
-      // while still surfacing real container errors (moov atom, invalid data).
+      // Header-only probe: `-i` with NO output makes ffmpeg parse the container
+      // (moov atom, stream info) then exit with "At least one output file must
+      // be specified" — real container errors still surface. Crucially it does
+      // NOT decode frames. The old `-f null -` decoded the ENTIRE video, so long
+      // match VODs stalled the dashboard for 20–60s each. parseFfmpegProbeStderr
+      // strips the harmless missing-output message.
       const proc = spawn(
         ffmpegPath(),
-        ['-hide_banner', '-v', 'error', '-i', filePath, '-f', 'null', '-'],
+        ['-hide_banner', '-v', 'error', '-i', filePath],
         { stdio: ['ignore', 'ignore', 'pipe'] },
       )
       let stderr = ''

@@ -244,8 +244,8 @@ function openActivityItem(item: SquadActivityItem) {
 
 onMounted(() => {
   load()
+  // refresh() already calls syncPresence() — don't double up every 30s.
   pollTimer = setInterval(() => {
-    window.api.squad.syncPresence().catch(() => {})
     refresh()
   }, 30000)
 })

@@ -11,7 +11,7 @@ const { primaryGame } = usePrimaryGame()
 interface NavItem {
   to: string
   label: string
-  icon: 'home' | 'analytics' | 'drills' | 'demos' | 'matches' | 'cross'
+  icon: 'home' | 'analytics' | 'drills' | 'demos' | 'matches' | 'cross' | 'recordings'
   match?: (path: string) => boolean
 }
 
@@ -20,6 +20,7 @@ const mainNav: NavItem[] = [
   { to: '/stats', label: 'Analytics', icon: 'analytics', match: p => p === '/stats' || p === '/performance' },
   { to: '/training', label: 'Drills', icon: 'drills', match: p => p.startsWith('/training') },
   { to: '/history', label: 'Matches', icon: 'matches', match: p => p === '/history' },
+  { to: '/recordings', label: 'Recordings', icon: 'recordings', match: p => p === '/recordings' || p === '/vod-review' },
   { to: '/clips', label: 'Clips', icon: 'demos', match: p => p === '/clips' },
   { to: '/squad', label: 'Squad', icon: 'cross', match: p => p.startsWith('/squad') },
 ]
@@ -64,6 +65,7 @@ function isActive(item: NavItem): boolean {
           <svg v-else-if="item.icon === 'drills'" class="h-[18px] w-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8" stroke-width="1.75"/><circle cx="12" cy="12" r="2" stroke-width="1.75"/><path stroke-linecap="round" stroke-width="1.75" d="M12 4V2M12 22v-2M4 12H2M22 12h-2"/></svg>
           <svg v-else-if="item.icon === 'demos'" class="h-[18px] w-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6H16a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/></svg>
           <svg v-else-if="item.icon === 'matches'" class="h-[18px] w-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+          <svg v-else-if="item.icon === 'recordings'" class="h-[18px] w-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"/></svg>
           <svg v-else class="h-[18px] w-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"/></svg>
         </span>
         <span class="truncate">{{ item.label }}</span>

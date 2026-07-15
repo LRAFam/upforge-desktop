@@ -290,6 +290,7 @@ const appUpdateVersion = ref<string | undefined>(undefined)
 const appUpdatePercent = ref(0)
 let statusInterval: ReturnType<typeof setInterval> | null = null
 let navBusyTimer: ReturnType<typeof setTimeout> | null = null
+let lastClipSummaryAt = 0
 
 const userDisplayName = computed(() => userName.value || riotId.value || 'UpForge User')
 const userInitial = computed(() => userDisplayName.value.trim().charAt(0).toUpperCase() || 'U')
@@ -377,7 +378,13 @@ router.beforeEach((to, from, next) => {
 router.afterEach((to) => {
   if (navBusyTimer) clearTimeout(navBusyTimer)
   navBusyTimer = setTimeout(() => { isNavigating.value = false }, 220)
-  loadClipSummary().catch(() => {})
+  // The sidebar clip badge doesn't change between routes — re-listing every clip
+  // on each navigation taxed every tab switch. Throttle to once/15s; clip create
+  // still refreshes the count via its own listener below.
+  if (Date.now() - lastClipSummaryAt > 15_000) {
+    lastClipSummaryAt = Date.now()
+    loadClipSummary().catch(() => {})
+  }
   if (to.path !== '/overlay' && to.path !== '/splash' && window.api?.window?.applyLayout) {
     window.api.window.applyLayout(to.path).catch(() => {})
   }

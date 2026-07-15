@@ -14,6 +14,7 @@ import SettingsView from './views/SettingsView.vue'
 import WelcomeView from './views/WelcomeView.vue'
 import SplashView from './views/SplashView.vue'
 import ClipsView from './views/ClipsView.vue'
+import RecordingsView from './views/RecordingsView.vue'
 import OverlayView from './views/OverlayView.vue'
 import SquadView from './views/SquadView.vue'
 import PerformanceView from './views/PerformanceView.vue'
@@ -40,6 +41,7 @@ const router = createRouter({
     { path: '/post-game-preview', component: PostGameView },
     { path: '/settings', component: SettingsView },
     { path: '/clips', component: ClipsView },
+    { path: '/recordings', component: RecordingsView },
     { path: '/overlay', component: OverlayView },
     { path: '/squad', component: SquadView },
     { path: '/performance', component: PerformanceView },

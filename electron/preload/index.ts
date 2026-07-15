@@ -51,6 +51,7 @@ const api = {
   },
   recordings: {
     get: () => ipcRenderer.invoke('recordings:get'),
+    listAll: () => ipcRenderer.invoke('recordings:list-all'),
     analyse: (id: string) => ipcRenderer.invoke('recordings:analyse', { id }),
     saveToCloud: (id: string) => ipcRenderer.invoke('recordings:save-to-cloud', { id }),
     dismiss: (id: string, opts?: { deleteLocal?: boolean }) =>

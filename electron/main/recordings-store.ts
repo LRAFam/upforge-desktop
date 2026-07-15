@@ -468,6 +468,23 @@ export class RecordingsStore {
     })
   }
 
+  /**
+   * Full VOD library for the Recordings tab — every non-clip recording for the
+   * linked account (local, cloud-archived, or analysed), newest first. Unlike
+   * getPending() this keeps analysed matches so users can browse their whole
+   * history, not just the two actionable cards on the dashboard.
+   */
+  getAll(linkedRiot?: LinkedRiotId | null): PendingRecording[] {
+    return this.recordings
+      .filter(r => !r.clipsOnly && matchesLinkedAccount(r, linkedRiot))
+      .filter(r => {
+        const hasLocal = r.path ? fs.existsSync(r.path) : false
+        return hasLocal || hasCloudRecording(r) || r.analysisId != null || Boolean(r.jobId)
+      })
+      .slice()
+      .sort((a, b) => (b.recordedAt ?? 0) - (a.recordedAt ?? 0))
+  }
+
   /** Recordings on cloud (analysed or archive-only) that still have a local file. */
   getCloudBackedLocal(linkedRiot?: LinkedRiotId | null): PendingRecording[] {
     return this.recordings.filter(r => {

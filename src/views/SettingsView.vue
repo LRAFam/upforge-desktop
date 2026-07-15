@@ -62,10 +62,10 @@ const {
     </nav>
 
     <div class="flex-1 space-y-4 scroll-col px-4 py-4">
-      <SettingsGeneralTab v-show="activeTab === 'general'" />
-      <SettingsRecordingTab v-show="activeTab === 'recording'" />
-      <SettingsTrainerTab v-show="activeTab === 'trainer'" />
-      <SettingsSystemTab v-show="activeTab === 'system'" />
+      <SettingsGeneralTab v-if="activeTab === 'general'" />
+      <SettingsRecordingTab v-if="activeTab === 'recording'" />
+      <SettingsTrainerTab v-if="activeTab === 'trainer'" />
+      <SettingsSystemTab v-if="activeTab === 'system'" />
     </div>
 
     <SettingsFooter />

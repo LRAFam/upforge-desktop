@@ -150,6 +150,7 @@ import { requestPregameBrief as _requestPregameBrief, requestPostGameDebrief as 
 import { enrichTimelineForCoaching } from './match-coaching-enrich'
 import {
   getAnalysisReadiness,
+  getVodFileReadiness,
   isTerminalAnalysisReadinessState,
   refreshVodProbe,
   clearVodProbeCache,
@@ -4648,8 +4649,39 @@ async function startApp(): Promise<void> {
   ipcMain.handle('recordings:get', async () => {
     scanForOrphanedRecordings()
     const pending = recordingsStore.getPending(linkedRiotFromAuth())
-    await Promise.all(pending.map((rec) => refreshRecordingVodProbe(rec)))
+
+    // Return immediately with whatever probe state is already cached — never
+    // block the dashboard on ffmpeg. Any VOD whose probe is stale reads as
+    // "finalizing" for one render, then we re-probe in the background and push
+    // `recordings:updated` so the renderer refetches with real readiness.
+    const needsProbe = pending.filter(
+      (rec) => rec.path && !rec.clipsOnly && !(rec.cloudArchived && rec.archiveId),
+    )
+    if (needsProbe.length) {
+      void (async () => {
+        let changed = false
+        for (const rec of needsProbe) {
+          const before = getVodFileReadiness(rec)
+          await refreshRecordingVodProbe(rec)
+          if (getVodFileReadiness(rec) !== before) changed = true
+        }
+        if (changed) mainWindow?.webContents.send('recordings:updated')
+      })()
+    }
+
     return pending.map((rec) => ({
+      ...withAnalysisReadiness(rec),
+      hasLocalFile: Boolean(rec.path && fs.existsSync(rec.path)),
+      cloudUploaded: Boolean(rec.jobId || rec.analysisId || rec.archiveId),
+    }))
+  })
+
+  ipcMain.handle('recordings:list-all', async () => {
+    scanForOrphanedRecordings()
+    const all = recordingsStore.getAll(linkedRiotFromAuth())
+    // Cheap read: use cached probe/readiness only — the Recordings tab is for
+    // browsing, not the actionable dashboard queue, so never block on ffmpeg.
+    return all.map((rec) => ({
       ...withAnalysisReadiness(rec),
       hasLocalFile: Boolean(rec.path && fs.existsSync(rec.path)),
       cloudUploaded: Boolean(rec.jobId || rec.analysisId || rec.archiveId),
