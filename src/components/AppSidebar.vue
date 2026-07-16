@@ -3,6 +3,7 @@ import { computed } from 'vue'
 import { useRoute } from 'vue-router'
 import { usePrimaryGame } from '../composables/usePrimaryGame'
 import { gameNavRoutes } from '../lib/game-modules'
+import { WEB_EXPLORE_LINKS, openWebFeature } from '../lib/web-explore-links'
 import upforgeIcon from '../assets/upforge-icon.webp'
 
 const route = useRoute()
@@ -30,6 +31,10 @@ const bottomNav: NavItem[] = [
   { to: '/settings', label: 'Account', icon: 'analytics', match: p => p === '/settings' },
 ]
 
+const webNav = computed(() =>
+  WEB_EXPLORE_LINKS.filter(l => l.label === 'Roadmap' || l.label === 'Skill profile' || l.label === 'Guides'),
+)
+
 const visibleMainNav = computed(() => {
   const allowed = new Set(gameNavRoutes(primaryGame.value))
   return mainNav.filter(item => allowed.has(item.to))
@@ -38,6 +43,10 @@ const visibleMainNav = computed(() => {
 function isActive(item: NavItem): boolean {
   if (item.match) return item.match(route.path)
   return route.path === item.to
+}
+
+function openWeb(path: string, embed: boolean) {
+  void openWebFeature(path, embed)
 }
 </script>
 
@@ -70,6 +79,22 @@ function isActive(item: NavItem): boolean {
         </span>
         <span class="truncate">{{ item.label }}</span>
       </RouterLink>
+
+      <div class="pt-3 mt-2 border-t border-white/[0.06]">
+        <p class="px-3 mb-1.5 text-[9px] font-bold uppercase tracking-[0.14em] text-gray-600">On the web</p>
+        <button
+          v-for="link in webNav"
+          :key="link.path"
+          type="button"
+          class="sidebar-link w-full flex items-center gap-2.5 rounded-lg px-3 py-2 text-[12px] font-semibold text-violet-300/80 hover:text-violet-200 hover:bg-violet-500/[0.08] transition-colors text-left"
+          @click="openWeb(link.path, link.embed)"
+        >
+          <svg class="h-4 w-4 flex-shrink-0 opacity-70" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" d="M13.5 6H5.25A2.25 2.25 0 003 8.25v10.5A2.25 2.25 0 005.25 21h10.5A2.25 2.25 0 0018 18.75V10.5m-10.5 6L21 3m0 0h-5.25M21 3v5.25"/>
+          </svg>
+          <span class="truncate">{{ link.label }}</span>
+        </button>
+      </div>
     </nav>
 
     <div class="px-2 py-3 border-t border-white/[0.06] space-y-0.5">
