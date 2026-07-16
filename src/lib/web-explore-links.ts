@@ -20,6 +20,7 @@ export type WebExploreLink = {
 export const WEB_EXPLORE_LINKS: readonly WebExploreLink[] = [
   { label: 'Roadmap', path: '/improvement-roadmap', href: `${WEB_BASE}/improvement-roadmap`, hint: 'Prioritised improvement plan', embed: true, sidebar: true },
   { label: 'Skill profile', path: '/skill-profile', href: `${WEB_BASE}/skill-profile`, hint: 'Category scores over time', embed: true, sidebar: true },
+  { label: 'Playstyle', path: '/valorant/playstyle', href: `${WEB_BASE}/valorant/playstyle`, hint: 'How you play — role and tendencies', embed: true, sidebar: false },
   { label: 'Weekly goals', path: '/weekly-goals', href: `${WEB_BASE}/weekly-goals`, hint: 'This week’s coaching targets', embed: true, sidebar: true },
   { label: 'Progress', path: '/progress', href: `${WEB_BASE}/progress`, hint: 'Reports and improvement history', embed: true, sidebar: false },
   { label: 'Trends', path: '/performance-trends', href: `${WEB_BASE}/performance-trends`, hint: 'Score and rank trends over time', embed: true, sidebar: false },
