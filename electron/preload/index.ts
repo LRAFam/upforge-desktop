@@ -20,6 +20,7 @@ const api = {
     getActivityLog: () => ipcRenderer.invoke('app:get-activity-log'),
     showClips: () => ipcRenderer.invoke('app:show-clips'),
     openUrl: (url: string) => ipcRenderer.invoke('app:open-url', { url }),
+    openWebShell: (path: string) => ipcRenderer.invoke('app:open-web-shell', { path }),
     refreshDashboard: () => ipcRenderer.invoke('app:refresh-dashboard'),
     openVodReview: (id: string, seekMs?: number) =>
       ipcRenderer.invoke('app:open-vod-review', { id, seekMs }),

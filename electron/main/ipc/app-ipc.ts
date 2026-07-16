@@ -21,6 +21,7 @@ import { openPathSafe } from '../shell-open'
 import { trackOnboardingComplete } from '../funnel-events'
 import { applyLayoutForRoute } from '../window-layouts'
 import { isInGameOverlayEnabled } from '../in-game-overlay'
+import { closeWebShell, openWebShell } from '../web-shell'
 
 export function setupAppHandlers(
   ipcMain: IpcMain,
@@ -76,6 +77,16 @@ export function setupAppHandlers(
 
   ipcMain.handle('app:open-url', (_e, { url }: { url: string }) => {
     shell.openExternal(url)
+    return { ok: true }
+  })
+
+  ipcMain.handle('app:open-web-shell', async (e, { path }: { path: string }) => {
+    const parent = BrowserWindow.fromWebContents(e.sender)
+    return openWebShell(auth, path, parent)
+  })
+
+  ipcMain.handle('web-shell:close', () => {
+    closeWebShell()
     return { ok: true }
   })
 

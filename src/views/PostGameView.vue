@@ -799,6 +799,7 @@ import PostGameDuelDiagnostics from '../components/post-game/PostGameDuelDiagnos
 import {
   pickWebNextStep,
   tierDisplayLabel,
+  openWebFeature,
 } from '../lib/web-explore-links'
 
 type State = 'preparing' | 'uploading' | 'analysing' | 'ready' | 'error' | 'pending' | 'archived'
@@ -2052,7 +2053,7 @@ function openUpgrade() { window.open(upgradeUrl.value, '_blank') }
 function openPpa() { window.open(ppaUrl.value, '_blank') }
 function openBundles() { window.open('https://upforge.gg/pricing#bundles', '_blank') }
 function openWebNextStep() {
-  void window.api.app.openUrl(webNextStep.value.href)
+  void openWebFeature(webNextStep.value.path, true)
   dismiss()
 }
 

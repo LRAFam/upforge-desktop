@@ -5,7 +5,7 @@ import {
   getRankHexColor,
   getRankIconUrl,
 } from '../../lib/valorant'
-import { WEB_EXPLORE_LINKS } from '../../lib/web-explore-links'
+import { WEB_EXPLORE_LINKS, openWebFeature } from '../../lib/web-explore-links'
 import { isPlatformAdmin } from '../../lib/tier-features'
 
 const {
@@ -30,8 +30,8 @@ const isAdmin = computed(() =>
 const analysisUsed = computed(() => profile.value?.user?.analysis_stats?.total ?? 0)
 const analysisLimit = computed(() => profile.value?.user?.analysis_stats?.limit ?? null)
 
-function openWeb(url: string) {
-  void window.api.app.openUrl(url)
+function openWeb(url: string, embed = true) {
+  void openWebFeature(url, embed)
 }
 
 const launchBusy = ref(false)
@@ -238,7 +238,7 @@ async function runDrill() {
           <button
             type="button"
             class="w-full px-3.5 py-2 text-left hover:bg-white/[0.03] transition-colors"
-            @click="openWeb(link.href)"
+            @click="openWeb(link.href, link.embed)"
           >
             <span class="text-[11px] font-semibold text-gray-200">{{ link.label }}</span>
             <span class="block text-[10px] text-gray-600 mt-0.5">{{ link.hint }}</span>

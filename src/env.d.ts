@@ -575,6 +575,8 @@ declare global {
         getActivityLog: () => Promise<{ time: number; message: string; game?: string }[]>
         showClips: () => Promise<{ ok: boolean }>
         openUrl: (url: string) => Promise<{ ok: boolean }>
+        /** Open an upforge.gg path in the authenticated in-app web shell */
+        openWebShell: (path: string) => Promise<{ ok: boolean; error?: string }>
         refreshDashboard: () => Promise<{ ok: boolean }>
         openVodReview: (id: string, seekMs?: number) => Promise<{ ok: boolean }>
       }
