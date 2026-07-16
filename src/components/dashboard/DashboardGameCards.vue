@@ -312,7 +312,7 @@ const card = computed(() => {
 
 <template>
   <div
-    class="game-card game-card--active relative overflow-hidden rounded-xl text-left transition-all duration-200 min-h-[148px] flex flex-col flex-shrink-0"
+    class="game-card game-card--active relative overflow-hidden rounded-xl text-left transition-all duration-200 min-h-[168px] h-full flex flex-col flex-shrink-0"
     :style="{ '--accent': card.brand.accent, '--accent-rgb': card.brand.accentRgb }"
   >
     <img :src="card.art" alt="" class="absolute inset-0 w-full h-full object-cover object-[center_20%] scale-105" />
@@ -321,7 +321,7 @@ const card = computed(() => {
       :style="{ background: `linear-gradient(110deg, rgba(8,8,10,0.94) 0%, rgba(8,8,10,0.78) 48%, rgba(${card.brand.accentRgb}, 0.16) 100%)` }"
     />
 
-    <div class="relative z-10 flex flex-1 flex-col sm:flex-row sm:items-stretch gap-4 p-4">
+    <div class="relative z-10 flex flex-1 flex-col gap-3 p-4">
       <div class="flex-1 min-w-0 flex flex-col">
         <div class="mb-2 flex items-center justify-between gap-2">
           <span class="text-[12px] font-black tracking-[0.1em] text-white/90">{{ card.brand.wordmark }}</span>
@@ -410,7 +410,7 @@ const card = computed(() => {
         </template>
       </div>
 
-      <div class="sm:w-[200px] flex-shrink-0 flex flex-col justify-end">
+      <div class="flex-shrink-0">
         <button
           v-if="card.linkState === 'loading'"
           type="button"

@@ -36,7 +36,7 @@ async function runDrill() {
 </script>
 
 <template>
-  <div v-if="isValorant && weeklyFocus" class="dash-hero relative overflow-hidden rounded-2xl flex-shrink-0 min-h-[168px]">
+  <div v-if="isValorant && weeklyFocus" class="dash-hero relative overflow-hidden rounded-2xl flex-shrink-0 min-h-[168px] h-full">
     <div class="dash-hero-pattern absolute inset-0" />
     <div class="absolute inset-0 bg-gradient-to-r from-[#0d0d0f] via-[#0d0d0f]/92 to-transparent" />
     <div class="absolute inset-y-0 right-0 w-[55%] opacity-90 pointer-events-none">
