@@ -22,13 +22,14 @@ const showMatchCards = computed(() => dashboard.isValorant.value && dashboard.da
   <div class="h-full flex flex-col overflow-hidden dashboard-shell">
     <DashboardBanners />
 
-    <div class="flex-shrink-0 px-5 pt-4 space-y-4">
+    <div class="flex-shrink-0 px-5 pt-4">
       <DashboardGameTabs />
-      <DashboardGameCards />
     </div>
 
     <div class="flex-1 min-h-0 px-5 pb-4 pt-4 grid grid-cols-[minmax(0,1fr)_minmax(248px,280px)] gap-4">
       <div class="flex flex-col gap-3 min-h-0 overflow-y-auto overflow-x-hidden scroll-col">
+        <DashboardGameCards />
+
         <DashboardCoachHero v-if="showCoachHero" />
 
         <div class="grid grid-cols-[minmax(0,1.15fr)_minmax(260px,1fr)] gap-3 h-[288px] items-stretch flex-shrink-0">
