@@ -125,6 +125,10 @@ function attachShellMenu(win: BrowserWindow, frontendBase: string): void {
           click: () => void win.loadURL(`${frontendBase.replace(/\/$/, '')}/playbooks`),
         },
         {
+          label: 'Lineups',
+          click: () => void win.loadURL(`${frontendBase.replace(/\/$/, '')}/lineups`),
+        },
+        {
           label: 'Map insights',
           click: () => void win.loadURL(`${frontendBase.replace(/\/$/, '')}/map-insights`),
         },
