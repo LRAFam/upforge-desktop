@@ -354,6 +354,7 @@ export interface ProfileData {
     lol_riot_name?: string | null
     lol_riot_tag?: string | null
     lol_platform?: string | null
+    deadlock_account_id?: number | null
     discord_username: string | null
     analysis_stats: {
       total: number

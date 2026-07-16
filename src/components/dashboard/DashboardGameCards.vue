@@ -18,7 +18,6 @@ const { primaryGame, setPrimaryGame } = usePrimaryGame()
 const {
   profile,
   profileLoading,
-  status,
   weeklyFocus,
   cs2FaceitConnection,
   cs2Profile,
@@ -38,16 +37,8 @@ const launchBusy = ref(false)
 
 type GameLinkState = 'loading' | 'linked' | 'unlinked'
 
-function authUser() {
-  return status.value.user as {
-    riot_name?: string | null
-    riot_tag?: string | null
-    deadlock_account_id?: number | null
-  } | null
-}
-
 function riotLinked(): boolean {
-  return Boolean(profile.value?.user?.riot_name?.trim() || authUser()?.riot_name?.trim())
+  return Boolean(profile.value?.user?.riot_name?.trim())
 }
 
 function gameLinked(game: PrimaryGame): boolean {
@@ -64,7 +55,6 @@ function gameLinked(game: PrimaryGame): boolean {
   return Boolean(
     deadlockLinked.value
     || profile.value?.user?.deadlock_account_id
-    || authUser()?.deadlock_account_id
     || deadlockStats.value,
   )
 }
@@ -93,9 +83,9 @@ function linkLabel(game: PrimaryGame): string {
 
 function linkedAccountLabel(game: PrimaryGame): string | null {
   if (game === 'valorant' || game === 'lol') {
-    const name = profile.value?.user?.riot_name?.trim() || authUser()?.riot_name?.trim()
+    const name = profile.value?.user?.riot_name?.trim()
     if (!name) return null
-    const tag = profile.value?.user?.riot_tag?.trim() || authUser()?.riot_tag?.trim() || 'NA1'
+    const tag = profile.value?.user?.riot_tag?.trim() || 'NA1'
     return `${name}#${tag}`
   }
   if (game === 'cs2') {
@@ -106,7 +96,7 @@ function linkedAccountLabel(game: PrimaryGame): string | null {
     return steam || null
   }
   if (deadlockStats.value?.current_rank) return 'Steam linked'
-  if (deadlockLinked.value || profile.value?.user?.deadlock_account_id || authUser()?.deadlock_account_id) {
+  if (deadlockLinked.value || profile.value?.user?.deadlock_account_id) {
     return 'Steam linked'
   }
   return null
@@ -312,29 +302,33 @@ const card = computed(() => {
 
 <template>
   <div
-    class="game-card game-card--active relative overflow-hidden rounded-xl text-left transition-all duration-200 min-h-[168px] h-full flex flex-col flex-shrink-0"
+    class="game-card game-card--active relative overflow-hidden rounded-2xl text-left transition-all duration-200 min-h-[168px] h-full flex flex-col flex-shrink-0"
     :style="{ '--accent': card.brand.accent, '--accent-rgb': card.brand.accentRgb }"
   >
-    <img :src="card.art" alt="" class="absolute inset-0 w-full h-full object-cover object-[center_20%] scale-105" />
+    <div class="game-card-accent absolute inset-x-0 top-0 h-px z-20" />
+    <img :src="card.art" alt="" class="absolute inset-0 w-full h-full object-cover object-[center_22%] scale-110 opacity-70" />
     <div
       class="absolute inset-0"
-      :style="{ background: `linear-gradient(110deg, rgba(8,8,10,0.94) 0%, rgba(8,8,10,0.78) 48%, rgba(${card.brand.accentRgb}, 0.16) 100%)` }"
+      :style="{ background: `linear-gradient(155deg, rgba(10,10,12,0.96) 0%, rgba(10,10,12,0.82) 52%, rgba(${card.brand.accentRgb}, 0.14) 100%)` }"
     />
 
-    <div class="relative z-10 flex flex-1 flex-col gap-3 p-4">
-      <div class="flex-1 min-w-0 flex flex-col">
-        <div class="mb-2 flex items-center justify-between gap-2">
-          <span class="text-[12px] font-black tracking-[0.1em] text-white/90">{{ card.brand.wordmark }}</span>
+    <div class="relative z-10 flex flex-1 flex-col justify-between gap-3 p-4">
+      <div class="min-w-0 space-y-2.5">
+        <div class="flex items-center justify-between gap-2">
+          <div class="flex items-center gap-2 min-w-0">
+            <img :src="card.brand.logo" alt="" class="h-5 w-5 object-contain flex-shrink-0 opacity-90" />
+            <span class="text-[10px] font-black tracking-[0.14em] text-white/85 truncate">{{ card.brand.wordmark }}</span>
+          </div>
           <span
             v-if="card.linkState === 'loading'"
-            class="flex-shrink-0 inline-flex items-center gap-1 rounded-full border border-blue-500/25 bg-blue-500/10 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide text-blue-300/90"
+            class="flex-shrink-0 inline-flex items-center gap-1 rounded-full border border-blue-500/20 bg-blue-500/8 px-2 py-0.5 text-[8px] font-bold uppercase tracking-[0.08em] text-blue-300/90"
           >
-            <svg class="h-3 w-3 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
+            <svg class="h-2.5 w-2.5 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
             Syncing
           </span>
           <span
             v-else-if="card.linked"
-            class="flex-shrink-0 inline-flex items-center gap-1 rounded-full border border-emerald-500/25 bg-emerald-500/10 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide text-emerald-300/90"
+            class="flex-shrink-0 inline-flex items-center gap-1 rounded-full border border-emerald-500/20 bg-emerald-500/8 px-2 py-0.5 text-[8px] font-bold uppercase tracking-[0.08em] text-emerald-300/90"
           >
             <span class="h-1.5 w-1.5 rounded-full bg-emerald-400" />
             Linked
@@ -342,71 +336,55 @@ const card = computed(() => {
         </div>
 
         <template v-if="card.linkState === 'loading'">
-          <p class="flex-1 text-[12px] leading-relaxed text-gray-400 pr-1">
+          <p class="text-[11px] leading-relaxed text-gray-500">
             Checking your {{ card.brand.wordmark }} account…
           </p>
         </template>
 
         <template v-else-if="!card.linked">
-          <p class="flex-1 text-[12px] leading-relaxed text-gray-400 pr-1">{{ card.linkHint }}</p>
+          <p class="text-[11px] leading-relaxed text-gray-500">{{ card.linkHint }}</p>
         </template>
 
         <template v-else>
-          <div class="flex-1 min-w-0 space-y-1.5">
-            <p v-if="card.account" class="text-[11px] font-semibold text-gray-300 truncate">{{ card.account }}</p>
+          <p v-if="card.account" class="text-[12px] font-semibold text-gray-200 truncate">{{ card.account }}</p>
 
-            <template v-if="card.id === 'cs2' && card.rank">
-              <div class="flex items-center gap-1.5">
-                <img
-                  v-if="card.rank.iconUrl"
-                  :src="card.rank.iconUrl"
-                  alt=""
-                  class="w-5 h-5 object-contain flex-shrink-0"
-                />
-                <p class="text-[11px] text-gray-500 min-w-0">
-                  {{ card.rank.label }}:
-                  <span class="font-bold text-[13px]" :style="{ color: card.rank.color }">{{ card.rank.main }}</span>
-                </p>
+          <template v-if="card.id === 'cs2' && card.rank">
+            <div class="game-card-stat">
+              <img v-if="card.rank.iconUrl" :src="card.rank.iconUrl" alt="" class="game-card-stat__icon" />
+              <div class="min-w-0">
+                <p class="game-card-stat__label">{{ card.rank.label }}</p>
+                <p class="game-card-stat__value" :style="{ color: card.rank.color }">{{ card.rank.main }}</p>
+                <p v-if="card.rank.sub" class="game-card-stat__meta">{{ card.rank.sub }}</p>
               </div>
-              <p v-if="card.rank.sub" class="text-[12px] font-semibold text-gray-300 tabular-nums pl-[26px]">{{ card.rank.sub }}</p>
-              <template v-if="card.faceitRank">
-                <div class="flex items-center gap-1.5 pt-0.5">
-                  <img
-                    v-if="card.faceitRank.iconUrl"
-                    :src="card.faceitRank.iconUrl"
-                    alt=""
-                    class="w-5 h-5 object-contain flex-shrink-0"
-                  />
-                  <p class="text-[11px] text-gray-500 min-w-0">
-                    {{ card.faceitRank.label }}:
-                    <span class="font-bold text-[13px]" :style="{ color: card.faceitRank.color }">{{ card.faceitRank.main }}</span>
-                  </p>
-                </div>
-                <p v-if="card.faceitRank.sub" class="text-[12px] font-semibold text-gray-300 tabular-nums pl-[26px]">{{ card.faceitRank.sub }}</p>
-              </template>
-            </template>
-
-            <template v-else-if="card.rank">
-              <div class="flex items-center gap-1.5">
-                <img
-                  v-if="card.rank.iconUrl"
-                  :src="card.rank.iconUrl"
-                  alt=""
-                  class="w-5 h-5 object-contain flex-shrink-0"
-                />
-                <p class="text-[11px] text-gray-500 min-w-0">
-                  {{ card.rank.label }}:
-                  <span class="font-bold text-[13px]" :style="{ color: card.rank.color }">{{ card.rank.main }}</span>
-                </p>
+            </div>
+            <div v-if="card.faceitRank" class="game-card-stat game-card-stat--compact">
+              <img v-if="card.faceitRank.iconUrl" :src="card.faceitRank.iconUrl" alt="" class="game-card-stat__icon game-card-stat__icon--sm" />
+              <div class="min-w-0">
+                <p class="game-card-stat__label">{{ card.faceitRank.label }}</p>
+                <p class="game-card-stat__value game-card-stat__value--sm" :style="{ color: card.faceitRank.color }">{{ card.faceitRank.main }}</p>
+                <p v-if="card.faceitRank.sub" class="game-card-stat__meta">{{ card.faceitRank.sub }}</p>
               </div>
-              <p v-if="card.rank.sub" class="text-[12px] font-semibold text-gray-300 tabular-nums pl-[26px]">{{ card.rank.sub }}</p>
-            </template>
+            </div>
+          </template>
 
-            <p v-if="card.match" class="text-[11px] pt-0.5">
-              <span class="text-gray-600">{{ card.match.prefix }}</span>
-              <span class="font-semibold" :class="card.match.muted ? 'text-gray-600' : 'text-gray-300'"> · {{ card.match.result }}</span>
-            </p>
+          <div v-else-if="card.rank" class="game-card-stat">
+            <img v-if="card.rank.iconUrl" :src="card.rank.iconUrl" alt="" class="game-card-stat__icon" />
+            <div class="min-w-0">
+              <p class="game-card-stat__label">{{ card.rank.label }}</p>
+              <p class="game-card-stat__value" :style="{ color: card.rank.color }">{{ card.rank.main }}</p>
+              <p v-if="card.rank.sub" class="game-card-stat__meta">{{ card.rank.sub }}</p>
+            </div>
           </div>
+
+          <p v-if="card.match" class="flex items-center gap-1.5 text-[10px]">
+            <span class="text-gray-600 uppercase tracking-wide">{{ card.match.prefix }}</span>
+            <span
+              class="rounded-md border px-1.5 py-0.5 font-semibold tabular-nums"
+              :class="card.match.muted
+                ? 'border-white/[0.06] bg-white/[0.02] text-gray-600'
+                : 'border-white/[0.08] bg-white/[0.04] text-gray-300'"
+            >{{ card.match.result }}</span>
+          </p>
         </template>
       </div>
 
@@ -415,37 +393,31 @@ const card = computed(() => {
           v-if="card.linkState === 'loading'"
           type="button"
           disabled
-          class="w-full py-2.5 rounded-lg text-[12px] font-bold flex items-center justify-center gap-2 text-gray-500 border border-white/[0.08] bg-white/[0.03] cursor-not-allowed"
+          class="game-card-btn game-card-btn--muted w-full cursor-not-allowed"
         >
-          <svg class="h-4 w-4 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
+          <svg class="h-3.5 w-3.5 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
           Syncing…
         </button>
         <button
           v-else-if="!card.linked"
           type="button"
-          class="w-full py-2.5 rounded-lg text-[12px] font-bold flex items-center justify-center gap-2 text-white shadow-[0_8px_24px_rgba(var(--accent-rgb),0.35)] transition-all"
-          :style="{ background: `linear-gradient(180deg, ${card.brand.accent}, ${card.brand.accent}dd)` }"
+          class="game-card-btn game-card-btn--solid w-full"
           @click="linkGame(card.id, $event)"
         >
-          <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"/></svg>
+          <svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"/></svg>
           {{ card.linkLabel }}
         </button>
         <button
           v-else
           type="button"
-          class="w-full py-2.5 rounded-lg text-[12px] font-bold flex items-center justify-center gap-2 transition-all disabled:opacity-50"
-          :class="card.ctaSolid
-            ? 'text-white shadow-[0_8px_24px_rgba(var(--accent-rgb),0.35)]'
-            : 'border bg-black/20 hover:bg-black/30'"
-          :style="card.ctaSolid
-            ? { background: `linear-gradient(180deg, ${card.brand.accent}, ${card.brand.accent}dd)` }
-            : { borderColor: `${card.brand.accent}66`, color: card.brand.accent }"
+          class="game-card-btn w-full disabled:opacity-50"
+          :class="card.ctaSolid ? 'game-card-btn--solid' : 'game-card-btn--outline'"
           :disabled="card.id === 'valorant' && launchBusy"
           @click="primaryAction(card.id, $event)"
         >
-          <svg v-if="card.ctaIcon === 'target'" class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8" stroke-width="1.75"/><circle cx="12" cy="12" r="2" stroke-width="1.75"/></svg>
-          <svg v-else-if="card.ctaIcon === 'upload'" class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6H16a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/></svg>
-          <svg v-else class="h-4 w-4" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
+          <svg v-if="card.ctaIcon === 'target'" class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8" stroke-width="1.75"/><circle cx="12" cy="12" r="2" stroke-width="1.75"/></svg>
+          <svg v-else-if="card.ctaIcon === 'upload'" class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6H16a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/></svg>
+          <svg v-else class="h-3.5 w-3.5" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
           {{ card.id === 'valorant' && launchBusy ? 'Launching…' : card.ctaLabel }}
         </button>
       </div>
@@ -455,14 +427,94 @@ const card = computed(() => {
 
 <style scoped>
 .game-card {
-  border: 1px solid rgba(255, 255, 255, 0.09);
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.25);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.04) inset,
+    0 12px 36px rgba(0, 0, 0, 0.28);
 }
 .game-card--active {
-  border-color: rgba(var(--accent-rgb), 0.45);
+  border-color: rgba(var(--accent-rgb), 0.28);
   box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.05) inset,
     0 12px 36px rgba(0, 0, 0, 0.3),
-    0 0 0 1px rgba(var(--accent-rgb), 0.12),
-    inset 0 1px 0 rgba(255, 255, 255, 0.04);
+    0 0 40px rgba(var(--accent-rgb), 0.06);
+}
+.game-card-accent {
+  background: linear-gradient(90deg, transparent, rgba(var(--accent-rgb), 0.85), transparent);
+}
+.game-card-stat {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+.game-card-stat--compact {
+  margin-top: 2px;
+}
+.game-card-stat__icon {
+  width: 34px;
+  height: 34px;
+  object-fit: contain;
+  flex-shrink: 0;
+}
+.game-card-stat__icon--sm {
+  width: 26px;
+  height: 26px;
+}
+.game-card-stat__label {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: rgba(156, 163, 175, 0.9);
+}
+.game-card-stat__value {
+  margin-top: 1px;
+  font-size: 17px;
+  font-weight: 800;
+  line-height: 1.1;
+  letter-spacing: -0.02em;
+}
+.game-card-stat__value--sm {
+  font-size: 14px;
+}
+.game-card-stat__meta {
+  margin-top: 2px;
+  font-size: 11px;
+  font-weight: 600;
+  color: rgba(209, 213, 219, 0.85);
+  font-variant-numeric: tabular-nums;
+}
+.game-card-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 8px 12px;
+  border-radius: 10px;
+  font-size: 11px;
+  font-weight: 700;
+  transition: opacity 0.15s ease, transform 0.15s ease, background 0.15s ease;
+}
+.game-card-btn--solid {
+  color: #fff;
+  background: linear-gradient(180deg, var(--accent), color-mix(in srgb, var(--accent) 88%, #000));
+  box-shadow: 0 6px 20px rgba(var(--accent-rgb), 0.32);
+}
+.game-card-btn--solid:hover:not(:disabled) {
+  opacity: 0.92;
+  transform: translateY(-1px);
+}
+.game-card-btn--outline {
+  color: var(--accent);
+  border: 1px solid color-mix(in srgb, var(--accent) 40%, transparent);
+  background: rgba(0, 0, 0, 0.22);
+}
+.game-card-btn--outline:hover:not(:disabled) {
+  background: rgba(0, 0, 0, 0.32);
+}
+.game-card-btn--muted {
+  color: rgba(156, 163, 175, 0.9);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.03);
 }
 </style>

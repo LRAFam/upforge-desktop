@@ -53,48 +53,44 @@ function openWeb(path: string, embed: boolean) {
     </div>
 
     <nav class="flex-1 px-2 py-3 space-y-0.5 overflow-y-auto scroll-col">
-      <template v-for="(item, idx) in visibleMainNav" :key="`${item.to}-${item.label}`">
-        <RouterLink
-          :to="item.to"
-          class="sidebar-link group relative flex items-center gap-2.5 rounded-lg px-3 py-2.5 text-[12px] font-semibold transition-colors"
-          :class="isActive(item) ? 'text-white bg-red-500/[0.08]' : 'text-gray-500 hover:text-gray-300 hover:bg-white/[0.03]'"
-        >
-          <span
-            v-if="isActive(item)"
-            class="absolute left-0 top-2 bottom-2 w-[3px] rounded-full bg-red-500"
-          />
-          <span class="flex h-5 w-5 flex-shrink-0 items-center justify-center opacity-80">
-            <svg v-if="item.icon === 'home'" class="h-[18px] w-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"/></svg>
-            <svg v-else-if="item.icon === 'analytics'" class="h-[18px] w-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/></svg>
-            <svg v-else-if="item.icon === 'drills'" class="h-[18px] w-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8" stroke-width="1.75"/><circle cx="12" cy="12" r="2" stroke-width="1.75"/><path stroke-linecap="round" stroke-width="1.75" d="M12 4V2M12 22v-2M4 12H2M22 12h-2"/></svg>
-            <svg v-else-if="item.icon === 'demos'" class="h-[18px] w-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6H16a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/></svg>
-            <svg v-else-if="item.icon === 'matches'" class="h-[18px] w-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
-            <svg v-else-if="item.icon === 'recordings'" class="h-[18px] w-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"/></svg>
-            <svg v-else class="h-[18px] w-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"/></svg>
-          </span>
-          <span class="truncate">{{ item.label }}</span>
-        </RouterLink>
+      <RouterLink
+        v-for="item in visibleMainNav"
+        :key="`${item.to}-${item.label}`"
+        :to="item.to"
+        class="sidebar-link group relative flex items-center gap-2.5 rounded-lg px-3 py-2.5 text-[12px] font-semibold transition-colors"
+        :class="isActive(item) ? 'text-white bg-red-500/[0.08]' : 'text-gray-500 hover:text-gray-300 hover:bg-white/[0.03]'"
+      >
+        <span
+          v-if="isActive(item)"
+          class="absolute left-0 top-2 bottom-2 w-[3px] rounded-full bg-red-500"
+        />
+        <span class="flex h-5 w-5 flex-shrink-0 items-center justify-center opacity-80">
+          <svg v-if="item.icon === 'home'" class="h-[18px] w-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"/></svg>
+          <svg v-else-if="item.icon === 'analytics'" class="h-[18px] w-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/></svg>
+          <svg v-else-if="item.icon === 'drills'" class="h-[18px] w-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8" stroke-width="1.75"/><circle cx="12" cy="12" r="2" stroke-width="1.75"/><path stroke-linecap="round" stroke-width="1.75" d="M12 4V2M12 22v-2M4 12H2M22 12h-2"/></svg>
+          <svg v-else-if="item.icon === 'demos'" class="h-[18px] w-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6H16a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/></svg>
+          <svg v-else-if="item.icon === 'matches'" class="h-[18px] w-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+          <svg v-else-if="item.icon === 'recordings'" class="h-[18px] w-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"/></svg>
+          <svg v-else class="h-[18px] w-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"/></svg>
+        </span>
+        <span class="truncate">{{ item.label }}</span>
+      </RouterLink>
 
-        <!-- Key web features sit just under Home, level with the game cards -->
-        <div
-          v-if="idx === 0"
-          class="pt-2 pb-1 mt-1 mb-1 border-y border-white/[0.06]"
+      <div class="pt-3 mt-2 border-t border-white/[0.06]">
+        <p class="px-3 mb-1.5 text-[9px] font-bold uppercase tracking-[0.14em] text-gray-600">On the web</p>
+        <button
+          v-for="link in WEB_SIDEBAR_LINKS"
+          :key="link.path"
+          type="button"
+          class="sidebar-link w-full flex items-center gap-2.5 rounded-lg px-3 py-2 text-[12px] font-semibold text-violet-300/80 hover:text-violet-200 hover:bg-violet-500/[0.08] transition-colors text-left"
+          @click="openWeb(link.path, link.embed)"
         >
-          <p class="px-3 mb-1.5 text-[9px] font-bold uppercase tracking-[0.14em] text-gray-600">On the web</p>
-          <button
-            v-for="link in WEB_SIDEBAR_LINKS"
-            :key="link.path"
-            type="button"
-            class="sidebar-link w-full flex items-center gap-2.5 rounded-lg px-3 py-2 text-[12px] font-semibold text-violet-300/80 hover:text-violet-200 hover:bg-violet-500/[0.08] transition-colors text-left"
-            @click="openWeb(link.path, link.embed)"
-          >
-            <svg class="h-4 w-4 flex-shrink-0 opacity-70" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" d="M13.5 6H5.25A2.25 2.25 0 003 8.25v10.5A2.25 2.25 0 005.25 21h10.5A2.25 2.25 0 0018 18.75V10.5m-10.5 6L21 3m0 0h-5.25M21 3v5.25"/>
-            </svg>
-            <span class="truncate">{{ link.label }}</span>
-          </button>
-        </div>
-      </template>
+          <svg class="h-4 w-4 flex-shrink-0 opacity-70" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" d="M13.5 6H5.25A2.25 2.25 0 003 8.25v10.5A2.25 2.25 0 005.25 21h10.5A2.25 2.25 0 0018 18.75V10.5m-10.5 6L21 3m0 0h-5.25M21 3v5.25"/>
+          </svg>
+          <span class="truncate">{{ link.label }}</span>
+        </button>
+      </div>
     </nav>
 
     <div class="px-2 py-3 border-t border-white/[0.06] space-y-0.5">

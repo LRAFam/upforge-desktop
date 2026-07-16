@@ -12,3 +12,6 @@ resources/ffmpeg/
 resources/trainer/
 src/assets/preview.html
 scripts/.cache/
+**/__pycache__/
+.DS_Store
+/tmp-*.png

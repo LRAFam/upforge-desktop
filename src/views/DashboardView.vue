@@ -29,8 +29,8 @@ const showMatchCards = computed(() => dashboard.isValorant.value && dashboard.da
     <div class="flex-1 min-h-0 px-5 pb-4 pt-4 grid grid-cols-[minmax(0,1fr)_minmax(248px,280px)] gap-4">
       <div class="flex flex-col gap-3 min-h-0 overflow-y-auto overflow-x-hidden scroll-col">
         <div
-          class="grid gap-3 flex-shrink-0 items-stretch"
-          :class="showCoachHero ? 'grid-cols-1 xl:grid-cols-[minmax(240px,0.9fr)_minmax(0,1.4fr)]' : 'grid-cols-1'"
+          class="grid gap-2.5 flex-shrink-0 items-stretch"
+          :class="showCoachHero ? 'grid-cols-1 xl:grid-cols-[minmax(210px,0.78fr)_minmax(0,1.22fr)]' : 'grid-cols-1'"
         >
           <DashboardGameCards class="min-h-0 h-full" />
           <DashboardCoachHero v-if="showCoachHero" class="min-h-0 h-full" />
