@@ -69,8 +69,8 @@ export function classifyAnalysisFailure(rawError: string): AnalysisFailurePresen
     return {
       kind: 'quota',
       title: 'Analysis limit reached',
-      message: err.includes('remaining') ? err : 'You have used all your analyses for this period.',
-      hint: 'Upgrade for more monthly coaching or buy a one-off analysis on the web.',
+      message: err.includes('remaining') || err.includes('used all') ? err : 'You have used all your analyses for this period.',
+      hint: 'Buy extra analyses on the web, or wait for your monthly quota to reset.',
       creditRefunded: false,
       canRetry: false,
     }

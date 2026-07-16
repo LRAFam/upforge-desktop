@@ -5,6 +5,8 @@ import {
   getRankHexColor,
   getRankIconUrl,
 } from '../../lib/valorant'
+import { WEB_EXPLORE_LINKS } from '../../lib/web-explore-links'
+import { isPlatformAdmin } from '../../lib/tier-features'
 
 const {
   profile,
@@ -17,8 +19,20 @@ const {
   dashboardAnalyses,
   dashboardRankLabel,
   playerCardUrl,
+  quotaPercent,
   router,
 } = useDashboard()
+
+const isAdmin = computed(() =>
+  isPlatformAdmin(profile.value?.user?.tier, profile.value?.user?.is_admin),
+)
+
+const analysisUsed = computed(() => profile.value?.user?.analysis_stats?.total ?? 0)
+const analysisLimit = computed(() => profile.value?.user?.analysis_stats?.limit ?? null)
+
+function openWeb(url: string) {
+  void window.api.app.openUrl(url)
+}
 
 const launchBusy = ref(false)
 
@@ -98,6 +112,25 @@ async function runDrill() {
           {{ profile.latest_stats.current_rank }}
         </span>
         <span v-if="profile.latest_stats.rr != null" class="text-[11px] text-gray-500 tabular-nums">{{ profile.latest_stats.rr }} RR</span>
+      </div>
+      <div
+        v-if="profile.user.analysis_stats && !isAdmin && analysisLimit != null"
+        class="px-3.5 py-2 border-t border-white/[0.07] flex items-center gap-2"
+      >
+        <span class="text-[9px] text-gray-600 uppercase tracking-wide shrink-0">Analyses</span>
+        <div class="flex-1 h-1 bg-white/[0.06] rounded-full overflow-hidden">
+          <div
+            class="h-full rounded-full transition-all"
+            :class="quotaPercent >= 80 ? 'bg-red-500' : quotaPercent >= 50 ? 'bg-yellow-500' : 'bg-green-500'"
+            :style="{ width: `${100 - quotaPercent}%` }"
+          />
+        </div>
+        <span
+          class="text-[10px] tabular-nums shrink-0"
+          :class="analysisUsed >= analysisLimit ? 'text-red-400' : 'text-gray-400'"
+        >
+          {{ analysisUsed }}/{{ analysisLimit }}
+        </span>
       </div>
     </div>
     <div v-else-if="profileLoading" class="h-24 dash-panel animate-pulse" />
@@ -193,6 +226,25 @@ async function runDrill() {
     <div v-if="avgScore != null" class="dash-panel px-3.5 py-2.5 flex items-center justify-between flex-shrink-0">
       <span class="text-[10px] font-bold uppercase tracking-wide text-gray-500">Avg AI score</span>
       <span class="text-sm font-black tabular-nums text-gray-200">{{ avgScore * 10 }}</span>
+    </div>
+
+    <div class="dash-panel overflow-hidden flex-shrink-0">
+      <div class="px-3.5 py-2.5 border-b border-white/[0.07]">
+        <span class="text-[10px] font-bold uppercase tracking-[0.16em] text-gray-500">Explore on web</span>
+        <p class="text-[10px] text-gray-500 mt-1">Deep coaching lives on upforge.gg</p>
+      </div>
+      <ul class="divide-y divide-white/[0.05]">
+        <li v-for="link in WEB_EXPLORE_LINKS" :key="link.href">
+          <button
+            type="button"
+            class="w-full px-3.5 py-2 text-left hover:bg-white/[0.03] transition-colors"
+            @click="openWeb(link.href)"
+          >
+            <span class="text-[11px] font-semibold text-gray-200">{{ link.label }}</span>
+            <span class="block text-[10px] text-gray-600 mt-0.5">{{ link.hint }}</span>
+          </button>
+        </li>
+      </ul>
     </div>
   </div>
 </template>

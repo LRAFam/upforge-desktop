@@ -379,6 +379,24 @@
             @click="dismiss"
           >Close</button>
         </div>
+
+        <button
+          type="button"
+          class="w-full flex items-center justify-between gap-2 px-3 py-2 rounded-xl border border-violet-500/20 bg-violet-500/[0.06] hover:bg-violet-500/[0.1] transition-colors text-left"
+          @click="openWebNextStep"
+        >
+          <span class="min-w-0">
+            <span class="block text-[10px] font-bold uppercase tracking-wide text-violet-300/80">Continue on the web</span>
+            <span class="block text-[11px] font-semibold text-gray-200 truncate">{{ webNextStep.label }}</span>
+          </span>
+          <svg class="w-3.5 h-3.5 text-violet-300 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.5 4.5L21 12m0 0l-7.5 7.5M21 12H3"/>
+          </svg>
+        </button>
+
+        <p v-if="analysesRemainingLabel" class="text-[10px] text-center text-gray-500 tabular-nums">
+          {{ analysesRemainingLabel }}
+        </p>
       </div>
 
       <!-- Pending (auto-analyse off) -->
@@ -556,7 +574,7 @@
                 <p class="text-xs text-gray-600 mt-1">Plus $14.99/mo · Pro $24.99/mo</p>
               </template>
               <template v-else>
-                <p class="text-xs text-gray-400 mt-1">You've used all your {{ userTier }} plan analyses for this month. Resets in {{ daysUntilReset() }} day{{ daysUntilReset() === 1 ? '' : 's' }}.</p>
+                <p class="text-xs text-gray-400 mt-1">You've used all your {{ tierLabel }} analyses for this month. Resets in {{ daysUntilReset() }} day{{ daysUntilReset() === 1 ? '' : 's' }}.</p>
               </template>
             </div>
           </div>
@@ -571,6 +589,11 @@
               class="flex-1 py-2.5 text-xs font-semibold border border-white/10 bg-white/[0.04] hover:bg-white/[0.08] text-gray-200 rounded-xl transition-colors"
               @click="openPpa"
             >Pay per analysis</button>
+            <button
+              v-else
+              class="flex-1 py-2.5 text-xs font-semibold bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white rounded-xl transition-all shadow-sm shadow-amber-500/20"
+              @click="openBundles"
+            >Buy extra analyses →</button>
             <button class="px-3 py-2.5 text-xs text-gray-500 hover:text-gray-300 bg-white/[0.03] hover:bg-white/[0.06] border border-white/[0.10] rounded-xl transition-colors" @click="dismiss">Dismiss</button>
           </div>
         </template>
@@ -773,6 +796,10 @@ import { buildAnalysisErrorPayload, type AnalysisErrorPayload } from '../lib/ana
 import { usesAsyncDemoSync, demoSyncExplainerShort } from '../lib/recording-demo-status'
 import { demoDownloadProgressLabel, type DemoDownloadProgress } from '../lib/demo-download-progress'
 import PostGameDuelDiagnostics from '../components/post-game/PostGameDuelDiagnostics.vue'
+import {
+  pickWebNextStep,
+  tierDisplayLabel,
+} from '../lib/web-explore-links'
 
 type State = 'preparing' | 'uploading' | 'analysing' | 'ready' | 'error' | 'pending' | 'archived'
 
@@ -859,8 +886,17 @@ const needsUpgrade = ref(false)
 const upgradeUrl = ref('https://upforge.gg/pricing')
 const ppaUrl = ref('https://upforge.gg/valorant/analyze')
 const userTier = ref<string>('free')
+const analysesUsed = ref<number | null>(null)
+const analysesLimit = ref<number | null>(null)
 const canSeekFromSpatial = computed(() => canSpatialVodSeek(userTier.value))
 const subscriptionEndsAt = ref<string | null>(null)
+const tierLabel = computed(() => tierDisplayLabel(userTier.value))
+const webNextStep = computed(() => pickWebNextStep(result.value?.analysis_id ?? null))
+const analysesRemainingLabel = computed(() => {
+  if (analysesLimit.value == null || analysesUsed.value == null) return null
+  const left = Math.max(0, analysesLimit.value - analysesUsed.value)
+  return `${analysesUsed.value}/${analysesLimit.value} analyses used this month · ${left} left`
+})
 
 function daysUntilReset(): number {
   if (subscriptionEndsAt.value) {
@@ -1506,7 +1542,14 @@ watch(isReady, (ready) => { if (ready) scheduleFitWindow() })
 onMounted(() => {
   window.api.discord.setState('reviewing').catch(() => {})
   window.api.app.getStatus().then(s => { if (s.user?.tier) userTier.value = s.user.tier }).catch(() => {})
-  window.api.profile.get().then(p => { subscriptionEndsAt.value = p?.user?.analysis_stats?.subscription_ends_at ?? null }).catch(() => {})
+  window.api.profile.get().then(p => {
+    subscriptionEndsAt.value = p?.user?.analysis_stats?.subscription_ends_at ?? null
+    if (p?.user?.analysis_stats) {
+      analysesUsed.value = p.user.analysis_stats.total
+      analysesLimit.value = p.user.analysis_stats.limit
+    }
+    if (p?.user?.tier) userTier.value = p.user.tier
+  }).catch(() => {})
   setTimeout(() => {
     isReady.value = true
   }, 40)
@@ -1623,6 +1666,12 @@ onMounted(() => {
     void refreshLocalSpatialSummary()
     void loadMyCoaches()
     void loadCategoryPercentiles()
+    void window.api.profile.get().then(p => {
+      if (p?.user?.analysis_stats) {
+        analysesUsed.value = p.user.analysis_stats.total
+        analysesLimit.value = p.user.analysis_stats.limit
+      }
+    }).catch(() => {})
 
     // Browser launch is handled by the main process (index.ts) so it fires
     // even if this window was closed before analysis completed.
@@ -2001,6 +2050,11 @@ async function openCoachNotesFromPostGame() {
 }
 function openUpgrade() { window.open(upgradeUrl.value, '_blank') }
 function openPpa() { window.open(ppaUrl.value, '_blank') }
+function openBundles() { window.open('https://upforge.gg/pricing#bundles', '_blank') }
+function openWebNextStep() {
+  void window.api.app.openUrl(webNextStep.value.href)
+  dismiss()
+}
 
 async function copyAnalysisLink() {
   if (!analysisUrl.value) return

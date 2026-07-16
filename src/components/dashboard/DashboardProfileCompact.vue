@@ -110,7 +110,7 @@ const {
         />
       </div>
       <span class="text-[10px] tabular-nums text-gray-500 shrink-0">
-        {{ Math.max(0, (profile.user.analysis_stats.limit ?? 0) - profile.user.analysis_stats.total) }} left
+        {{ profile.user.analysis_stats.total }}/{{ profile.user.analysis_stats.limit }}
       </span>
     </div>
   </div>

@@ -234,7 +234,13 @@ function createDashboard() {
   const lastInsightTraining = ref(false)
   const trainerLastSession = ref<{ score: number; scenario: string; date: string } | null>(null)
   const trainerSessionCount = ref(0)
-  const analysisCompleteToast = ref<{ score: number; agent: string | null; analysisId?: number | null } | null>(null)
+  const analysisCompleteToast = ref<{
+    score: number
+    agent: string | null
+    analysisId?: number | null
+    remaining?: number | null
+    limit?: number | null
+  } | null>(null)
   const analysisFailure = ref<AnalysisErrorPayload | null>(null)
   const activityToast = ref<string | null>(null)
   const backgroundWorkBanner = ref(false)
@@ -765,6 +771,8 @@ function createDashboard() {
           score: newest.overall_score,
           agent: newest.agent ?? null,
           analysisId: newest.id,
+          remaining: quotaRemaining.value,
+          limit: profile.value?.user?.analysis_stats?.limit ?? null,
         }
         analysisToastTimer = setTimeout(() => { analysisCompleteToast.value = null }, 5000)
       }
@@ -1158,6 +1166,7 @@ function createDashboard() {
 
   function openUpgrade() { window.open('https://upforge.gg/pricing', '_blank') }
   function openPpa() { window.open('https://upforge.gg/valorant/analyze', '_blank') }
+  function openBundles() { window.open('https://upforge.gg/pricing#bundles', '_blank') }
 
   function showBillingError(message: string) {
     warning.value = message
@@ -1629,6 +1638,7 @@ function createDashboard() {
     openEmptyCoachingAction,
     openUpgrade,
     openPpa,
+    openBundles,
     showBillingError,
     openBillingPortal,
     refreshProfile,
