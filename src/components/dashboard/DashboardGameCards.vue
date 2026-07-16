@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, ref, onMounted, onUnmounted, nextTick, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useDashboard } from '../../composables/useDashboard'
 import { usePrimaryGame } from '../../composables/usePrimaryGame'
@@ -35,6 +35,38 @@ const {
 } = useDashboard()
 
 const launchBusy = ref(false)
+const trackEl = ref<HTMLElement | null>(null)
+const canScrollLeft = ref(false)
+const canScrollRight = ref(false)
+
+function updateScrollEdges() {
+  const el = trackEl.value
+  if (!el) {
+    canScrollLeft.value = false
+    canScrollRight.value = false
+    return
+  }
+  const max = el.scrollWidth - el.clientWidth
+  canScrollLeft.value = el.scrollLeft > 4
+  canScrollRight.value = max > 4 && el.scrollLeft < max - 4
+}
+
+function scrollByCards(dir: -1 | 1) {
+  const el = trackEl.value
+  if (!el) return
+  const card = el.querySelector('.game-card') as HTMLElement | null
+  const step = (card?.offsetWidth ?? 280) + 12
+  el.scrollBy({ left: dir * step, behavior: 'smooth' })
+}
+
+function onTrackWheel(e: WheelEvent) {
+  const el = trackEl.value
+  if (!el) return
+  if (Math.abs(e.deltaY) > Math.abs(e.deltaX) && el.scrollWidth > el.clientWidth) {
+    e.preventDefault()
+    el.scrollLeft += e.deltaY
+  }
+}
 
 type GameLinkState = 'loading' | 'linked' | 'unlinked'
 
@@ -313,16 +345,59 @@ const cards = computed(() =>
     }
   }),
 )
+
+onMounted(() => {
+  void nextTick(updateScrollEdges)
+  window.addEventListener('resize', updateScrollEdges)
+})
+
+onUnmounted(() => {
+  window.removeEventListener('resize', updateScrollEdges)
+})
+
+watch(
+  () => cards.value.length,
+  () => void nextTick(updateScrollEdges),
+)
 </script>
 
 <template>
-  <div class="grid grid-cols-3 gap-3 flex-shrink-0">
+  <div class="game-cards-slider relative flex-shrink-0">
+    <button
+      v-if="canScrollLeft"
+      type="button"
+      class="game-cards-chevron game-cards-chevron--left"
+      aria-label="Scroll games left"
+      @click="scrollByCards(-1)"
+    >
+      <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg>
+    </button>
+    <button
+      v-if="canScrollRight"
+      type="button"
+      class="game-cards-chevron game-cards-chevron--right"
+      aria-label="Scroll games right"
+      @click="scrollByCards(1)"
+    >
+      <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+    </button>
+
+    <div
+      ref="trackEl"
+      class="game-cards-track flex gap-3 overflow-x-auto overflow-y-hidden scroll-smooth"
+      :class="{
+        'game-cards-track--fade-left': canScrollLeft,
+        'game-cards-track--fade-right': canScrollRight,
+      }"
+      @scroll.passive="updateScrollEdges"
+      @wheel="onTrackWheel"
+    >
     <div
       v-for="c in cards"
       :key="c.id"
       role="button"
       tabindex="0"
-      class="game-card relative overflow-hidden rounded-xl text-left transition-all duration-200 min-h-[196px] flex flex-col cursor-pointer"
+      class="game-card relative overflow-hidden rounded-xl text-left transition-all duration-200 min-h-[196px] flex flex-col cursor-pointer flex-shrink-0 w-[min(280px,72vw)]"
       :class="c.active ? 'game-card--active' : 'hover:border-white/[0.16]'"
       :style="{ '--accent': c.brand.accent, '--accent-rgb': c.brand.accentRgb }"
       @click="selectGame(c.id)"
@@ -461,13 +536,60 @@ const cards = computed(() =>
         </template>
       </div>
     </div>
+    </div>
   </div>
 </template>
 
 <style scoped>
+.game-cards-track {
+  scroll-snap-type: x mandatory;
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+  padding-bottom: 2px;
+}
+.game-cards-track::-webkit-scrollbar {
+  display: none;
+}
+.game-cards-track--fade-left {
+  mask-image: linear-gradient(90deg, transparent 0, #000 28px, #000 100%);
+}
+.game-cards-track--fade-right {
+  mask-image: linear-gradient(90deg, #000 0, #000 calc(100% - 28px), transparent 100%);
+}
+.game-cards-track--fade-left.game-cards-track--fade-right {
+  mask-image: linear-gradient(90deg, transparent 0, #000 28px, #000 calc(100% - 28px), transparent 100%);
+}
+.game-cards-chevron {
+  position: absolute;
+  top: 50%;
+  z-index: 20;
+  transform: translateY(-50%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 9999px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(12, 12, 12, 0.85);
+  color: rgba(229, 231, 235, 0.9);
+  backdrop-filter: blur(8px);
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+.game-cards-chevron:hover {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.22);
+}
+.game-cards-chevron--left {
+  left: -6px;
+}
+.game-cards-chevron--right {
+  right: -6px;
+}
 .game-card {
   border: 1px solid rgba(255, 255, 255, 0.09);
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.25);
+  scroll-snap-align: start;
 }
 .game-card--active {
   border-color: rgba(var(--accent-rgb), 0.45);
