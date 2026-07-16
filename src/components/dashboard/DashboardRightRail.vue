@@ -138,7 +138,7 @@ async function runDrill() {
     <div class="dash-panel overflow-hidden flex-shrink-0 ring-1 ring-violet-500/20">
       <div class="px-3.5 py-2.5 border-b border-white/[0.07]">
         <span class="text-[10px] font-bold uppercase tracking-[0.16em] text-violet-300/80">On the web</span>
-        <p class="text-[10px] text-gray-500 mt-1">Roadmap, skill profile, guides</p>
+        <p class="text-[10px] text-gray-500 mt-1">Progression features on upforge.gg</p>
       </div>
       <ul class="divide-y divide-white/[0.05]">
         <li v-for="link in WEB_EXPLORE_LINKS" :key="link.href">

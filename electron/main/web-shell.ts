@@ -109,8 +109,28 @@ function attachShellMenu(win: BrowserWindow, frontendBase: string): void {
           click: () => void win.loadURL(`${frontendBase.replace(/\/$/, '')}/skill-profile`),
         },
         {
+          label: 'Weekly goals',
+          click: () => void win.loadURL(`${frontendBase.replace(/\/$/, '')}/weekly-goals`),
+        },
+        {
+          label: 'Progress',
+          click: () => void win.loadURL(`${frontendBase.replace(/\/$/, '')}/progress`),
+        },
+        {
           label: 'Guides',
           click: () => void win.loadURL(`${frontendBase.replace(/\/$/, '')}/guides`),
+        },
+        {
+          label: 'Playbooks',
+          click: () => void win.loadURL(`${frontendBase.replace(/\/$/, '')}/playbooks`),
+        },
+        {
+          label: 'Map insights',
+          click: () => void win.loadURL(`${frontendBase.replace(/\/$/, '')}/map-insights`),
+        },
+        {
+          label: 'Coaches',
+          click: () => void win.loadURL(`${frontendBase.replace(/\/$/, '')}/coaches`),
         },
         {
           label: 'Dashboard',

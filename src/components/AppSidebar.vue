@@ -3,7 +3,7 @@ import { computed } from 'vue'
 import { useRoute } from 'vue-router'
 import { usePrimaryGame } from '../composables/usePrimaryGame'
 import { gameNavRoutes } from '../lib/game-modules'
-import { WEB_EXPLORE_LINKS, openWebFeature } from '../lib/web-explore-links'
+import { WEB_SIDEBAR_LINKS, openWebFeature } from '../lib/web-explore-links'
 import upforgeIcon from '../assets/upforge-icon.webp'
 
 const route = useRoute()
@@ -30,10 +30,6 @@ const bottomNav: NavItem[] = [
   { to: '/settings', label: 'Settings', icon: 'home', match: p => p === '/settings' },
   { to: '/settings', label: 'Account', icon: 'analytics', match: p => p === '/settings' },
 ]
-
-const webNav = computed(() =>
-  WEB_EXPLORE_LINKS.filter(l => l.label === 'Roadmap' || l.label === 'Skill profile' || l.label === 'Guides'),
-)
 
 const visibleMainNav = computed(() => {
   const allowed = new Set(gameNavRoutes(primaryGame.value))
@@ -83,7 +79,7 @@ function openWeb(path: string, embed: boolean) {
       <div class="pt-3 mt-2 border-t border-white/[0.06]">
         <p class="px-3 mb-1.5 text-[9px] font-bold uppercase tracking-[0.14em] text-gray-600">On the web</p>
         <button
-          v-for="link in webNav"
+          v-for="link in WEB_SIDEBAR_LINKS"
           :key="link.path"
           type="button"
           class="sidebar-link w-full flex items-center gap-2.5 rounded-lg px-3 py-2 text-[12px] font-semibold text-violet-300/80 hover:text-violet-200 hover:bg-violet-500/[0.08] transition-colors text-left"
