@@ -40,7 +40,22 @@ jobs:
           GH_TOKEN: ${{ secrets.GH_TOKEN }}
         run: |
           New-Item -ItemType Directory -Force -Path "resources\trainer"
-          gh release download --repo LRAFam/upforge-trainer --pattern "upforge-trainer.exe" --dir "resources\trainer"
+          $trainerPath = "resources\trainer\upforge-trainer.exe"
+          $downloaded = $false
+          for ($attempt = 1; $attempt -le 5; $attempt++) {
+            Remove-Item $trainerPath -Force -ErrorAction SilentlyContinue
+            gh release download --repo LRAFam/upforge-trainer --pattern "upforge-trainer.exe" --dir "resources\trainer"
+            if ($LASTEXITCODE -eq 0 -and (Test-Path $trainerPath)) {
+              $downloaded = $true
+              break
+            }
+            if ($attempt -lt 5) {
+              $delay = 10 * $attempt
+              Write-Warning "Trainer download failed (attempt $attempt/5). Retrying in $delay seconds..."
+              Start-Sleep -Seconds $delay
+            }
+          }
+          if (-not $downloaded) { throw "Trainer download failed after 5 attempts" }
           $size = (Get-Item "resources\trainer\upforge-trainer.exe").Length
           Write-Host "Trainer binary downloaded: $size bytes"
           if ($size -lt 1MB) { throw "Trainer binary too small — download likely failed" }
