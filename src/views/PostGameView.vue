@@ -570,7 +570,7 @@
                 <p class="text-xs text-gray-400 mt-1">You have used all your cloud VOD slots. Upgrade for more storage or remove old cloud-backed locals in Settings.</p>
               </template>
               <template v-else-if="userTier === 'free'">
-                <p class="text-xs text-gray-400 mt-1">You've used your 3 starter analyses. Upgrade for monthly coaching or pay per analysis on the web.</p>
+                <p class="text-xs text-gray-400 mt-1">You've used your free coaching analysis. Plus unlocks ongoing monthly debriefs and keeps matches/clips in the cloud longer.</p>
                 <p class="text-xs text-gray-600 mt-1">Plus $14.99/mo · Pro $24.99/mo</p>
               </template>
               <template v-else>

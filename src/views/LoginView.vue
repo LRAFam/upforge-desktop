@@ -51,7 +51,7 @@
 
           <div class="story-bottom">
             <p class="pricing-line">
-              3 free reports · no card needed · Plus <strong>5/mo</strong> · Pro <strong>15/mo</strong>
+              1 free coaching analysis · no card needed · Plus unlocks ongoing debriefs + longer cloud keep
             </p>
             <div class="game-chips">
               <div v-for="g in games" :key="g.name" class="game-chip">
