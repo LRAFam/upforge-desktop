@@ -464,6 +464,23 @@ function createDashboard() {
     return Math.min(100, Math.round((stats.count / stats.limit) * 100))
   })
 
+  /** Free-tier cloud keep nudge — shown when user already has ≥1 archived VOD. */
+  const archiveRetentionDismissed = ref(false)
+  const archiveRetentionNudge = computed(() => {
+    if (archiveRetentionDismissed.value || isAdmin.value) return null
+    const u = profile.value?.user
+    if (!u || u.tier !== 'free') return null
+    const stats = u.archive_stats
+    if (!stats || (stats.count ?? 0) < 1) return null
+    const days = stats.retention_days
+    const max = stats.limit
+    if (days == null || max == null) return null
+    return `Free keeps cloud VODs for ${days} days (${max} max). Plus keeps them 90 days.`
+  })
+  function dismissArchiveRetentionNudge() {
+    archiveRetentionDismissed.value = true
+  }
+
   const avgScore = computed<number | null>(() => {
     const scored = analyses.value.filter(a => a.overall_score != null)
     if (!scored.length) return null
@@ -1568,6 +1585,8 @@ function createDashboard() {
     analysisFailure,
     activityToast,
     backgroundWorkBanner,
+    archiveRetentionNudge,
+    dismissArchiveRetentionNudge,
     correlationInsights,
     playstyleProfile,
     skillProfile,

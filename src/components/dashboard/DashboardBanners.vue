@@ -20,6 +20,8 @@ const {
   activityToast,
   backgroundWorkBanner,
   quotaLowWarning,
+  archiveRetentionNudge,
+  dismissArchiveRetentionNudge,
   openAnalysis,
   showMacPreviewBanner,
   dismissMacPreviewBanner,
@@ -78,6 +80,19 @@ function dismissWarning() {
         <span class="text-xs text-orange-300/90">{{ quotaLowWarning }}</span>
         <button class="flex-shrink-0 text-xs font-semibold text-orange-300 hover:text-orange-100 border border-orange-500/30 rounded-lg px-2 py-1" @click="userIsPaid ? openBundles() : openPpa()">{{ userIsPaid ? 'Buy extras' : 'Buy one' }}</button>
         <button v-if="!userIsPaid" class="flex-shrink-0 text-xs font-semibold text-orange-300 hover:text-orange-100 border border-orange-500/30 rounded-lg px-2 py-1" @click="openUpgrade">Upgrade</button>
+      </div>
+    </Transition>
+
+    <Transition name="banner-slide">
+      <div
+        v-if="archiveRetentionNudge && !warning && !quotaLowWarning"
+        class="banner-chip pointer-events-auto flex items-center gap-2.5 border-emerald-500/20 bg-emerald-500/[0.07]"
+      >
+        <span class="text-xs text-emerald-300/90">{{ archiveRetentionNudge }}</span>
+        <button class="flex-shrink-0 text-xs font-semibold text-emerald-300 hover:text-emerald-100 border border-emerald-500/30 rounded-lg px-2 py-1" @click="openUpgrade">Upgrade</button>
+        <button class="w-5 h-5 flex items-center justify-center text-emerald-500/50 hover:text-emerald-300 transition-colors rounded flex-shrink-0" @click="dismissArchiveRetentionNudge">
+          <svg class="w-3 h-3" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd"/></svg>
+        </button>
       </div>
     </Transition>
 
