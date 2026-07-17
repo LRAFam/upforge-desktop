@@ -284,35 +284,53 @@
                 </div>
               </div>
 
-              <div class="flex gap-2">
-                <button
-                  class="flex-1 py-3 rounded-xl border border-white/[0.08] bg-white/[0.03] text-gray-400 text-sm font-bold transition-all hover:border-white/[0.14] hover:text-gray-200"
-                  @click="nextStep"
-                >
-                  Skip for now
-                </button>
-                <button
-                  class="flex-1 py-3 rounded-xl bg-gradient-to-r from-[#ff4655] to-[#f97316] text-white text-sm font-bold transition-all hover:opacity-90 flex items-center justify-center gap-2 shadow-[0_4px_20px_rgba(255,70,85,0.3)]"
-                  :disabled="!obsConnected"
-                  @click="nextStep"
-                >
-                  Next
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="w-4 h-4"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
-                </button>
+              <div v-if="!obsConnected" class="rounded-xl border border-amber-500/30 bg-amber-500/[0.08] px-3.5 py-3 mb-3">
+                <p class="text-[11px] font-semibold text-amber-200 leading-snug">
+                  Skipping means matches will not record or analyze until OBS is connected.
+                </p>
+                <p class="text-[10px] text-amber-200/70 mt-1 leading-snug">
+                  You can finish OBS later in Settings → Recording.
+                </p>
               </div>
-              <p v-if="!obsConnected" class="text-center text-[10px] text-gray-600 mt-3">You can connect later in Settings — but matches won&apos;t record until OBS is connected.</p>
+
+              <button
+                class="w-full py-3 rounded-xl bg-gradient-to-r from-[#ff4655] to-[#f97316] text-white text-sm font-bold transition-all hover:opacity-90 flex items-center justify-center gap-2 shadow-[0_4px_20px_rgba(255,70,85,0.3)] disabled:opacity-40 disabled:shadow-none"
+                :disabled="!obsConnected"
+                @click="nextStep"
+              >
+                Next
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="w-4 h-4"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+              </button>
+              <button
+                v-if="!obsConnected"
+                class="w-full mt-2 py-2 text-[11px] font-semibold text-gray-600 hover:text-amber-300/90 transition-colors"
+                @click="nextStep"
+              >
+                Skip without OBS — matches won&apos;t record
+              </button>
             </div>
 
             <!-- Step 5: Ready -->
             <div v-else-if="step === 5" key="step5" class="px-7 pt-9 pb-7">
-              <!-- Success icon -->
-              <div class="w-14 h-14 rounded-2xl bg-gradient-to-br from-[#ff4655]/20 to-orange-500/10 border border-[#ff4655]/25 flex items-center justify-center mb-5 shadow-[0_0_32px_rgba(255,70,85,0.18)]">
-                <svg viewBox="0 0 24 24" fill="none" stroke="#ff4655" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="w-7 h-7">
+              <div
+                class="w-14 h-14 rounded-2xl flex items-center justify-center mb-5 border"
+                :class="obsConnected
+                  ? 'bg-gradient-to-br from-[#ff4655]/20 to-orange-500/10 border-[#ff4655]/25 shadow-[0_0_32px_rgba(255,70,85,0.18)]'
+                  : 'bg-amber-500/[0.08] border-amber-500/30'"
+              >
+                <svg v-if="obsConnected" viewBox="0 0 24 24" fill="none" stroke="#ff4655" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="w-7 h-7">
                   <polyline points="20 6 9 17 4 12"/>
                 </svg>
+                <span v-else class="text-2xl font-black text-amber-400 leading-none">!</span>
               </div>
-              <h2 class="text-xl font-black text-white mb-1 leading-tight">You're all set!</h2>
-              <p class="text-xs text-gray-500 mb-5">Here's what we configured for you:</p>
+              <h2 class="text-xl font-black text-white mb-1 leading-tight">
+                {{ obsConnected ? 'Ready for your first match' : 'OBS still needed' }}
+              </h2>
+              <p class="text-xs mb-5 leading-relaxed" :class="obsConnected ? 'text-gray-500' : 'text-amber-200/80'">
+                {{ obsConnected
+                  ? 'Queue one competitive match with UpForge open — we record and analyze automatically.'
+                  : 'Matches will not record or analyze until OBS is connected. Connect now, or finish later in Settings → Recording.' }}
+              </p>
 
               <!-- Configured summary -->
               <div class="space-y-2 mb-5">
@@ -333,13 +351,13 @@
                     <svg v-if="obsConnected" viewBox="0 0 24 24" fill="none" stroke="#4ade80" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round" class="w-2 h-2"><polyline points="20 6 9 17 4 12"/></svg>
                     <span v-else class="text-[9px] font-bold text-amber-400">!</span>
                   </div>
-                  <span class="text-xs text-gray-400">OBS: <span class="font-bold" :class="obsConnected ? 'text-white' : 'text-amber-300'">{{ obsConnected ? 'Connected' : 'Not connected — set up in Settings' }}</span></span>
+                  <span class="text-xs text-gray-400">OBS: <span class="font-bold" :class="obsConnected ? 'text-white' : 'text-amber-300'">{{ obsConnected ? 'Connected' : 'Not connected — matches won’t record or analyze' }}</span></span>
                 </div>
               </div>
 
               <!-- Hotkeys -->
               <p class="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-2">Hotkeys</p>
-              <div class="space-y-1.5 mb-7">
+              <div class="space-y-1.5 mb-5">
                 <div
                   v-for="hk in HOTKEYS"
                   :key="hk.key"
@@ -350,7 +368,7 @@
                 </div>
               </div>
 
-              <div v-if="gameTip" class="rounded-xl border px-4 py-3 mb-1" :class="gameTipBorderClass">
+              <div v-if="gameTip" class="rounded-xl border px-4 py-3 mb-5" :class="gameTipBorderClass">
                 <p class="text-[11px] leading-relaxed" :class="gameTipTextClass">
                   <span class="font-semibold">{{ gameTip.label }}</span>
                   {{ gameTip.body }}
@@ -367,8 +385,25 @@
                   <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
                 </svg>
                 <svg v-else viewBox="0 0 24 24" fill="currentColor" class="w-4 h-4"><polygon points="5 3 19 12 5 21 5 3"/></svg>
-                Start Training
+                {{ firstMatchCta }}
               </button>
+              <button
+                v-if="!obsConnected"
+                type="button"
+                class="w-full mt-2 py-2 text-[11px] font-semibold text-gray-500 hover:text-gray-300 transition-colors"
+                @click="prevStep"
+              >
+                Open OBS help — connect before playing
+              </button>
+              <a
+                v-else
+                href="https://obsproject.com/kb/quick-start-guide"
+                target="_blank"
+                rel="noopener noreferrer"
+                class="block w-full mt-2 py-2 text-center text-[11px] font-semibold text-gray-600 hover:text-gray-400 transition-colors"
+              >
+                OBS help
+              </a>
             </div>
           </Transition>
         </div>
@@ -406,6 +441,11 @@ const gameCaptureLabel = computed(() => {
   if (selectedGame.value === 'cs2') return 'CS2'
   if (selectedGame.value === 'deadlock') return 'Deadlock'
   return 'Valorant'
+})
+
+const firstMatchCta = computed(() => {
+  if (selectedGame.value === 'deadlock') return 'Play one ranked match'
+  return 'Play one competitive match'
 })
 
 const gameTip = computed(() => {
