@@ -24,6 +24,12 @@ export type FunnelEventName =
   | 'desktop_first_analysis'
   | 'desktop_second_analysis'
   | 'upgrade_clicked'
+  | 'account_linked'
+  | 'match_detected'
+  | 'recording_started'
+  | 'recording_failed'
+  | 'upload_started'
+  | 'upload_failed'
 
 export async function trackFunnelEvent(
   event: FunnelEventName,
@@ -78,4 +84,37 @@ export function trackSecondAnalysis(): void {
 
 export function trackUpgradeClicked(source: string): void {
   void trackFunnelEvent('upgrade_clicked', { source })
+}
+
+export function trackMatchDetected(game = 'valorant'): void {
+  void trackFunnelEvent('match_detected', { game })
+}
+
+export function trackRecordingStarted(game = 'valorant'): void {
+  void trackFunnelEvent('recording_started', { game })
+  // Keep legacy once-event for older admin queries during transition
+  void trackFunnelEvent('desktop_first_recording', { game })
+}
+
+export function trackRecordingFailed(
+  reason: string,
+  phase: 'obs' | 'capture' | 'record',
+  game = 'valorant',
+): void {
+  void trackFunnelEvent('recording_failed', {
+    game,
+    reason: reason.slice(0, 120),
+    phase,
+  })
+}
+
+export function trackUploadStarted(game = 'valorant'): void {
+  void trackFunnelEvent('upload_started', { game })
+}
+
+export function trackUploadFailed(reason: string, game = 'valorant'): void {
+  void trackFunnelEvent('upload_failed', {
+    game,
+    reason: reason.slice(0, 120),
+  })
 }

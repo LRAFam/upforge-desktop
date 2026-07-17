@@ -103,6 +103,11 @@ import {
   trackAppOpened,
   trackLogin,
   trackFirstRecording,
+  trackMatchDetected,
+  trackRecordingStarted,
+  trackRecordingFailed,
+  trackUploadStarted,
+  trackUploadFailed,
   trackObsConnected,
   trackFirstAnalysis,
   trackSecondAnalysis,
@@ -1192,8 +1197,12 @@ function sendUploadFailure(
     ppaUrl?: string
     clipsOnly?: boolean
     notify?: boolean
+    game?: string
   } = {},
 ): AnalysisErrorPayload {
+  if (opts.game === 'valorant') {
+    trackUploadFailed(rawError, 'valorant')
+  }
   return dispatchAnalysisFailure(rawError, { ...opts, notify: opts.notify ?? false })
 }
 
@@ -2408,7 +2417,7 @@ function setupGameDetection(): void {
         const backend = getRecordingBackendForStatus()
         const errorMsg = formatRecordingFailure(backend, obsRecorder.getLastError())
         logActivity('Recording file not found at expected path — check save folder in Settings')
-        sendUploadFailure(errorMsg, { targetWindow: uploadTargetWindow })
+        sendUploadFailure(errorMsg, { targetWindow: uploadTargetWindow, game })
         return
       }
 
@@ -2419,7 +2428,7 @@ function setupGameDetection(): void {
         const errorMsg = formatCorruptRecordingMessage(getRecordingBackendForStatus(), sizeMB)
         log.error(`[GameDetector] ${errorMsg}`)
         logActivity(`Recording file too small (${sizeMB} MB) — upload skipped`)
-        sendUploadFailure(errorMsg, { targetWindow: uploadTargetWindow })
+        sendUploadFailure(errorMsg, { targetWindow: uploadTargetWindow, game })
         return
       }
 
@@ -2664,7 +2673,7 @@ function setupGameDetection(): void {
         if (uploadTargetWindow && !uploadTargetWindow.isDestroyed()) {
           sendUploadFailure(
             'Preparing is taking longer than expected — open the dashboard to upload this match manually.',
-            { targetWindow: uploadTargetWindow },
+            { targetWindow: uploadTargetWindow, game },
           )
         }
       } catch { /* window closed */ }
@@ -2676,7 +2685,7 @@ function setupGameDetection(): void {
       logActivity(`Upload failed to start: ${msg}`)
       try {
         if (uploadTargetWindow && !uploadTargetWindow.isDestroyed()) {
-          sendUploadFailure(`Upload failed to start: ${msg}`, { targetWindow: uploadTargetWindow })
+          sendUploadFailure(`Upload failed to start: ${msg}`, { targetWindow: uploadTargetWindow, game })
         }
       } catch { /* window closed */ }
     }).finally(() => {
@@ -2689,7 +2698,7 @@ function setupGameDetection(): void {
           if (uploadTargetWindow && !uploadTargetWindow.isDestroyed()) {
             sendUploadFailure(
               'Preparing did not complete — open the dashboard to upload this match manually.',
-              { targetWindow: uploadTargetWindow },
+              { targetWindow: uploadTargetWindow, game },
             )
           }
         } catch { /* window closed */ }
@@ -3244,6 +3253,7 @@ function setupGameDetection(): void {
 
     logActivity(`Match detected (${gameMode}${modeConfident ? '' : '?'}) — starting recording`)
     console.log(`[GameDetector] Match confirmed! gameMode=${gameMode} confident=${modeConfident} matchStartTime=${matchStartTime}`)
+    if (game === 'valorant') trackMatchDetected('valorant')
     beginMatchPerformanceMode()
 
     if (game === 'valorant') {
@@ -3314,6 +3324,9 @@ function setupGameDetection(): void {
       const msg = err instanceof Error ? err.message : String(err)
       log.error('[Main] Failed to start recording:', msg)
       reportRecordingError('start', msg, { backend: getRecordingBackendForStatus() })
+      if (game === 'valorant') {
+        trackRecordingFailed(msg, isObsUnavailableError(msg) ? 'obs' : 'record')
+      }
       logActivity(`Recording failed to start: ${msg}`)
       matchHandled = false
       riotLocalApi.onMatchEnded = null
@@ -3337,7 +3350,8 @@ function setupGameDetection(): void {
       return
     }
     logActivity(`Recording started (${gameMode ?? 'unknown mode'}${obsRecorder.wasNoAudio() ? ' — no audio' : ''})`)
-    trackFirstRecording(game)
+    if (game === 'valorant') trackRecordingStarted('valorant')
+    else trackFirstRecording(game)
 
     if (game === 'valorant') {
       setTimeout(() => {
@@ -3717,13 +3731,13 @@ async function doUploadArchiveOnly(
     }
     if (resolved.sizeBytes > MAX_RECORDING_FILE_BYTES) {
       const errorMsg = formatRecordingTooLargeMessage(resolved.sizeBytes, false)
-      sendUploadFailure(errorMsg, { targetWindow, recordingId, notify: false })
+      sendUploadFailure(errorMsg, { targetWindow, recordingId, notify: false, game })
       return null
     }
   } catch (prepErr) {
     sendUploadFailure(
       prepErr instanceof Error ? prepErr.message : 'Could not prepare recording for upload',
-      { targetWindow, recordingId, notify: false },
+      { targetWindow, recordingId, notify: false, game },
     )
     return null
   }
@@ -3734,6 +3748,7 @@ async function doUploadArchiveOnly(
   }
 
   send('post-game:upload-start', { game, map, agent, archiveOnly: true })
+  if (game === 'valorant') trackUploadStarted('valorant')
   send('post-game:upload-progress', 3)
 
   let coachingExtras: CoachingSubmissionExtras | undefined
@@ -3784,6 +3799,7 @@ async function doUploadArchiveOnly(
       needsUpgrade: isUpgradeError,
       upgradeUrl: err instanceof UpgradeRequiredError ? err.upgradeUrl : 'https://upforge.gg/pricing',
       notify: false,
+      game,
     })
     return null
   } finally {
@@ -3898,7 +3914,7 @@ async function doUploadAndAnalyse(
       logActivity(`Recording still too large (${sizeGB} GB) — saving highlight clips only`)
       extractMatchClips(effectivePath, timeline, null, game)
         .catch((err) => log.warn('[ClipExtract] Clip extraction (oversized) error:', err))
-      sendUploadFailure(errorMsg, { targetWindow, recordingId, clipsOnly: true, notify: false })
+      sendUploadFailure(errorMsg, { targetWindow, recordingId, clipsOnly: true, notify: false, game })
       return null
     }
   } catch (prepErr) {
@@ -3914,7 +3930,7 @@ async function doUploadAndAnalyse(
       return null
     }
     log.error('[Upload] Failed to prepare video path:', prepErr)
-    sendUploadFailure(prepMsg, { targetWindow, recordingId, notify: false })
+    sendUploadFailure(prepMsg, { targetWindow, recordingId, notify: false, game })
     return null
   }
 
@@ -3926,6 +3942,7 @@ async function doUploadAndAnalyse(
     matchDetailsStatus: lastMatchDiagnostic?.matchDetailsStatus ?? 'pending',
     killsInTimeline: lastMatchDiagnostic?.killsInTimeline ?? 0,
   })
+  if (game === 'valorant') trackUploadStarted('valorant')
   send('post-game:upload-progress', 3)
   if (recordingId) {
     recordingsStore.setUploadProgress(recordingId, 3)
@@ -4270,6 +4287,7 @@ async function doUploadAndAnalyse(
         upgradeUrl: upgradeErr.upgradeUrl || 'https://upforge.gg/pricing',
         ppaUrl: upgradeErr.ppaUrl || 'https://upforge.gg/valorant/analyze',
         notify: false,
+        game,
       })
       return null
     }
@@ -4277,7 +4295,7 @@ async function doUploadAndAnalyse(
     if (/ENOENT|Recording file not found/i.test(msg)) {
       sendUploadFailure(
         'Recording file was removed before upload finished. If auto-delete is on, wait until upload completes — or retry from dashboard if the file is still saved.',
-        { targetWindow, recordingId, notify: false },
+        { targetWindow, recordingId, notify: false, game },
       )
       return null
     }
@@ -4320,7 +4338,7 @@ async function doUploadAndAnalyse(
 
     // Send the error with the recordingId (if we have one) so the renderer can offer retry.
     // The payload is either a plain string (legacy, for analysis polling errors) or an object.
-    sendUploadFailure(msg, { targetWindow, recordingId: effectiveRecordingId ?? undefined, notify: false })
+    sendUploadFailure(msg, { targetWindow, recordingId: effectiveRecordingId ?? undefined, notify: false, game })
     return null
   } finally {
     if (recordingId) activeUploadRecordingIds.delete(recordingId)
@@ -4863,6 +4881,7 @@ async function startApp(): Promise<void> {
             targetWindow: win,
             recordingId: id,
             notify: false,
+            game: recording!.game,
           })
         }
       }
@@ -4958,6 +4977,7 @@ async function startApp(): Promise<void> {
             recordingId: recording.id,
             needsUpgrade: err instanceof UpgradeRequiredError,
             notify: false,
+            game: recording.game,
           })
         }
         return
