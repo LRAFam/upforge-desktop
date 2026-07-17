@@ -207,7 +207,10 @@ const analysesPoolHint = computed(() =>
               </div>
               <p class="mt-2 text-[11px] text-gray-600">
                 Save recordings without using analysis quota.
-                <span v-if="user.archive_retention_days"> Retained {{ user.archive_retention_days }} days on your plan.</span>
+                <template v-if="user.tier === 'free' && user.archive_retention_days != null && user.archive_limit != null">
+                  Free keeps cloud VODs for {{ user.archive_retention_days }} days ({{ user.archive_limit }} max). Plus keeps them 90 days.
+                </template>
+                <span v-else-if="user.archive_retention_days"> Retained {{ user.archive_retention_days }} days on your plan.</span>
               </p>
             </div>
             <div class="flex items-center justify-between gap-4 rounded-2xl border border-white/[0.10] bg-black/20 p-4">

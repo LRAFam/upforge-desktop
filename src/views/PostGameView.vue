@@ -472,6 +472,10 @@
           <p v-else class="mt-1 text-[11px] leading-relaxed text-gray-500">
             Save to cloud frees disk space. Analyse uses your coaching quota when you are ready.
           </p>
+          <p v-if="freeArchiveRetentionHint && !isDemoWaitFlow" class="mt-1.5 text-[11px] leading-relaxed text-emerald-400/80">
+            {{ freeArchiveRetentionHint }}
+            <button type="button" class="ml-1 font-semibold text-emerald-300 hover:text-emerald-200 underline-offset-2 hover:underline" @click="openUpgrade">Upgrade</button>
+          </p>
         </div>
 
         <div class="mt-4 flex flex-col gap-2.5">
@@ -550,6 +554,10 @@
         <div>
           <p class="text-sm font-semibold text-emerald-300">Saved to cloud</p>
           <p class="text-xs text-gray-400 mt-1">Your VOD is backed up. Run AI coaching anytime from the dashboard — it uses analysis quota, not cloud storage.</p>
+          <p v-if="freeArchiveRetentionHint" class="text-xs text-emerald-400/80 mt-2">
+            {{ freeArchiveRetentionHint }}
+            <button type="button" class="ml-1 font-semibold text-emerald-300 hover:text-emerald-200 underline-offset-2 hover:underline" @click="openUpgrade">Upgrade</button>
+          </p>
         </div>
         <GamingButton variant="secondary-sm" block @click="dismiss">Done</GamingButton>
       </div>
@@ -889,9 +897,18 @@ const ppaUrl = ref('https://upforge.gg/valorant/analyze')
 const userTier = ref<string>('free')
 const analysesUsed = ref<number | null>(null)
 const analysesLimit = ref<number | null>(null)
+const archiveRetentionDays = ref<number | null>(null)
+const archiveLimit = ref<number | null>(null)
 const canSeekFromSpatial = computed(() => canSpatialVodSeek(userTier.value))
 const subscriptionEndsAt = ref<string | null>(null)
 const tierLabel = computed(() => tierDisplayLabel(userTier.value))
+const freeArchiveRetentionHint = computed(() => {
+  if (userTier.value !== 'free') return null
+  const days = archiveRetentionDays.value
+  const max = archiveLimit.value
+  if (days == null || max == null) return null
+  return `Free keeps cloud VODs for ${days} days (${max} max). Plus keeps them 90 days.`
+})
 const webNextStep = computed(() => pickWebNextStep(result.value?.analysis_id ?? null))
 const analysesRemainingLabel = computed(() => {
   if (analysesLimit.value == null || analysesUsed.value == null) return null
@@ -1548,6 +1565,10 @@ onMounted(() => {
     if (p?.user?.analysis_stats) {
       analysesUsed.value = p.user.analysis_stats.total
       analysesLimit.value = p.user.analysis_stats.limit
+    }
+    if (p?.user?.archive_stats) {
+      archiveRetentionDays.value = p.user.archive_stats.retention_days
+      archiveLimit.value = p.user.archive_stats.limit
     }
     if (p?.user?.tier) userTier.value = p.user.tier
   }).catch(() => {})
