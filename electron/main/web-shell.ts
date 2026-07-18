@@ -150,6 +150,60 @@ function attachShellMenu(win: BrowserWindow, frontendBase: string): void {
   win.setMenu(menu)
 }
 
+/**
+ * loadURL rejects with ERR_ABORTED (-3) when Chromium cancels a navigation —
+ * common for auth cookie redirects / SPA client navigations. If the shell
+ * still has a real page, treat that as success.
+ */
+async function loadShellUrl(win: BrowserWindow, target: string): Promise<void> {
+  try {
+    await win.loadURL(target)
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e)
+    const aborted = /ERR_ABORTED|\(-3\)/.test(msg)
+    if (!aborted || win.isDestroyed()) {
+      throw e instanceof Error ? e : new Error(msg)
+    }
+
+    const current = win.webContents.getURL()
+    if (current && current !== 'about:blank') {
+      return
+    }
+
+    await new Promise<void>((resolve, reject) => {
+      const timer = setTimeout(() => {
+        cleanup()
+        const url = win.isDestroyed() ? '' : win.webContents.getURL()
+        if (url && url !== 'about:blank') resolve()
+        else reject(e instanceof Error ? e : new Error(msg))
+      }, 4000)
+
+      const onFinish = () => {
+        cleanup()
+        resolve()
+      }
+      const onFail = (
+        _event: Electron.Event,
+        errorCode: number,
+        errorDescription: string,
+      ) => {
+        // Nested aborts during redirect chains — keep waiting for finish/timeout.
+        if (errorCode === -3) return
+        cleanup()
+        reject(new Error(errorDescription || `Load failed (${errorCode})`))
+      }
+      const cleanup = () => {
+        clearTimeout(timer)
+        win.webContents.removeListener('did-finish-load', onFinish)
+        win.webContents.removeListener('did-fail-load', onFail)
+      }
+
+      win.webContents.once('did-finish-load', onFinish)
+      win.webContents.on('did-fail-load', onFail)
+    })
+  }
+}
+
 export async function openWebShell(
   auth: AuthManager,
   pathOrUrl: string,
@@ -169,69 +223,78 @@ export async function openWebShell(
     return { ok: false, error: 'Not logged in' }
   }
 
-  if (shellWindow && !shellWindow.isDestroyed()) {
-    shellWindow.focus()
-    await shellWindow.webContents.loadURL(target)
-    return { ok: true }
-  }
+  try {
+    if (shellWindow && !shellWindow.isDestroyed()) {
+      shellWindow.focus()
+      await loadShellUrl(shellWindow, target)
+      if (!shellWindow.isVisible()) shellWindow.show()
+      return { ok: true }
+    }
 
-  shellWindow = new BrowserWindow({
-    width: 1100,
-    height: 760,
-    minWidth: 720,
-    minHeight: 480,
-    parent: parent && !parent.isDestroyed() ? parent : undefined,
-    modal: false,
-    show: false,
-    backgroundColor: '#0a0a0a',
-    title: 'UpForge — Web',
-    autoHideMenuBar: false,
-    webPreferences: {
-      partition: 'persist:upforge-web',
-      contextIsolation: true,
-      nodeIntegration: false,
-      sandbox: true,
-    },
-  })
+    shellWindow = new BrowserWindow({
+      width: 1100,
+      height: 760,
+      minWidth: 720,
+      minHeight: 480,
+      parent: parent && !parent.isDestroyed() ? parent : undefined,
+      modal: false,
+      show: false,
+      backgroundColor: '#0a0a0a',
+      title: 'UpForge — Web',
+      autoHideMenuBar: false,
+      webPreferences: {
+        partition: 'persist:upforge-web',
+        contextIsolation: true,
+        nodeIntegration: false,
+        sandbox: true,
+      },
+    })
 
-  attachShellMenu(shellWindow, frontendBase)
+    attachShellMenu(shellWindow, frontendBase)
 
-  shellWindow.on('closed', () => {
-    shellWindow = null
-  })
+    shellWindow.on('closed', () => {
+      shellWindow = null
+    })
 
-  shellWindow.webContents.setWindowOpenHandler(({ url }) => {
-    try {
-      const u = new URL(url)
-      if (allowedHost(u.hostname, frontendBase)) {
-        void shellWindow?.webContents.loadURL(url)
-      } else {
+    shellWindow.webContents.setWindowOpenHandler(({ url }) => {
+      try {
+        const u = new URL(url)
+        if (allowedHost(u.hostname, frontendBase)) {
+          void shellWindow?.webContents.loadURL(url).catch(() => {})
+        } else {
+          void shell.openExternal(url)
+        }
+      } catch {
         void shell.openExternal(url)
       }
-    } catch {
-      void shell.openExternal(url)
-    }
-    return { action: 'deny' }
-  })
+      return { action: 'deny' }
+    })
 
-  shellWindow.webContents.on('will-navigate', (event, url) => {
-    try {
-      const u = new URL(url)
-      if (!allowedHost(u.hostname, frontendBase)) {
+    shellWindow.webContents.on('will-navigate', (event, url) => {
+      try {
+        const u = new URL(url)
+        if (!allowedHost(u.hostname, frontendBase)) {
+          event.preventDefault()
+          void shell.openExternal(url)
+        }
+      } catch {
         event.preventDefault()
-        void shell.openExternal(url)
       }
-    } catch {
-      event.preventDefault()
+    })
+
+    shellWindow.on('ready-to-show', () => {
+      shellWindow?.show()
+    })
+
+    await loadShellUrl(shellWindow, target)
+    if (!shellWindow.isDestroyed() && !shellWindow.isVisible()) {
+      shellWindow.show()
     }
-  })
-
-  shellWindow.on('ready-to-show', () => {
-    shellWindow?.show()
-  })
-
-  await shellWindow.loadURL(target)
-  return { ok: true }
+    return { ok: true }
+  } catch (e) {
+    const message = e instanceof Error ? e.message : String(e)
+    return { ok: false, error: message }
+  }
 }
 
 export function closeWebShell(): void {

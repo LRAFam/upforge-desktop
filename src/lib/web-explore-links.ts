@@ -86,12 +86,17 @@ export async function openWebFeature(pathOrHref: string, embed = true): Promise<
   const path = pathOrHref.startsWith('http')
     ? new URL(pathOrHref).pathname + new URL(pathOrHref).search
     : pathOrHref
-  if (embed && window.api?.app?.openWebShell) {
-    const res = await window.api.app.openWebShell(path)
-    if (res.ok) return
-  }
   const href = pathOrHref.startsWith('http')
     ? pathOrHref
     : `${WEB_BASE}${path.startsWith('/') ? path : `/${path}`}`
+
+  if (embed && window.api?.app?.openWebShell) {
+    try {
+      const res = await window.api.app.openWebShell(path)
+      if (res.ok) return
+    } catch {
+      // IPC/load failures (e.g. ERR_ABORTED) — fall through to system browser.
+    }
+  }
   await window.api.app.openUrl(href)
 }

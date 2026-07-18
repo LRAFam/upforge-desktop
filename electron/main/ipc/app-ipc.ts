@@ -81,8 +81,15 @@ export function setupAppHandlers(
   })
 
   ipcMain.handle('app:open-web-shell', async (e, { path }: { path: string }) => {
-    const parent = BrowserWindow.fromWebContents(e.sender)
-    return openWebShell(auth, path, parent)
+    try {
+      const parent = BrowserWindow.fromWebContents(e.sender)
+      return await openWebShell(auth, path, parent)
+    } catch (err) {
+      return {
+        ok: false,
+        error: err instanceof Error ? err.message : String(err),
+      }
+    }
   })
 
   ipcMain.handle('web-shell:close', () => {
