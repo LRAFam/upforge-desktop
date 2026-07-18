@@ -51,12 +51,20 @@ export function buildClipUploadPayload(
 }
 
 export function resolveClipTimeline(
-  clip: { analysisJobId: string | null },
+  clip: { analysisJobId: string | null; matchId?: string | null },
   recordings: Array<{ jobId?: string; timeline: MatchData | null }>,
 ): MatchData | null {
-  if (!clip.analysisJobId) return null
-  const rec = recordings.find((r) => r.jobId === clip.analysisJobId)
-  return rec?.timeline ?? null
+  // Prefer the analysis-linked recording, but fall back to matching by Riot
+  // matchId so live (non-analysis) clips still carry their match timeline.
+  if (clip.analysisJobId) {
+    const byJob = recordings.find((r) => r.jobId === clip.analysisJobId)?.timeline
+    if (byJob) return byJob
+  }
+  if (clip.matchId) {
+    const byMatch = recordings.find((r) => r.timeline?.matchId === clip.matchId)?.timeline
+    if (byMatch) return byMatch
+  }
+  return null
 }
 
 export function coachingExtrasFromSettings(

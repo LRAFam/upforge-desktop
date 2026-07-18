@@ -35,12 +35,14 @@ export function setupClipHandlers(
 ): void {
   const apiBase = process.env['VITE_API_URL'] || 'https://api.upforge.gg'
 
-  async function clipCoachingExtras(clip: { analysisJobId: string | null }) {
-    const recordings = recordingsStore?.getAll().map((r) => ({ jobId: r.jobId, timeline: r.timeline })) ?? []
-    const timeline = resolveClipTimeline(
-      { analysisJobId: clip.analysisJobId } as import('../clip-store').ClipRecord,
-      recordings,
-    )
+  function clipTimeline(clip: import('../clip-store').ClipRecord) {
+    if (!recordingsStore) return null
+    const recordings = recordingsStore.getAll().map((r) => ({ jobId: r.jobId, timeline: r.timeline }))
+    return resolveClipTimeline(clip, recordings)
+  }
+
+  async function clipCoachingExtras(clip: import('../clip-store').ClipRecord) {
+    const timeline = clipTimeline(clip)
     if (!timeline || !settingsManager) return undefined
     const rrHistory = await auth.fetchRRHistory().catch(() => [])
     return buildCoachingSubmissionExtras(
@@ -49,11 +51,6 @@ export function setupClipHandlers(
       rrHistory,
       null,
     )
-  }
-
-  function clipTimeline(clip: import('../clip-store').ClipRecord) {
-    if (!clip.analysisJobId || !recordingsStore) return null
-    return recordingsStore.getTimelineByJobId(clip.analysisJobId)
   }
 
   async function resolveClipUploadPath(
