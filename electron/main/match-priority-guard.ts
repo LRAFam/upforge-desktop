@@ -1,14 +1,19 @@
 /**
  * Pauses heavy background work (VOD compression, S3 upload) while OBS is
  * actively recording — that's what contends with NVENC and gameplay FPS.
+ *
+ * The gate is deliberately tied to *actual recording* only. It must NOT defer merely
+ * because a game process is open (menu/lobby), or users see false "Upload paused — match
+ * recording" states when nothing is being recorded. Pass an OBS-confirmed recording signal
+ * (e.g. obsRecorder.isActivelyRecording()) as `isRecording`.
  */
 
 import type { ChildProcess } from 'child_process'
 import log from 'electron-log'
 
 export interface MatchPriorityDeps {
+  /** True only while OBS is confirmed to be actively recording a match. */
   isRecording: () => boolean
-  isGameActive?: () => boolean
 }
 
 let activeVodCompressionProc: ChildProcess | null = null
@@ -29,7 +34,7 @@ export function abortVodCompression(): boolean {
 }
 
 export function shouldDeferHeavyBackgroundWork(deps: MatchPriorityDeps): boolean {
-  return deps.isRecording() || (deps.isGameActive?.() ?? false)
+  return deps.isRecording()
 }
 
 export async function waitUntilBackgroundWorkAllowed(

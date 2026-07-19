@@ -569,9 +569,11 @@ function reconcileInterruptedUploads(): void {
 }
 
 function matchPriorityDeps() {
+  // Defer heavy background work (compression/upload) ONLY while OBS is actually recording —
+  // not merely because the game is open (menu/lobby) or ownership went stale. Prevents false
+  // "Upload paused — match recording" states when nothing is being recorded.
   return {
-    isRecording: () => obsRecorder.isRecording(),
-    isGameActive: () => matchPerformanceModeActive,
+    isRecording: () => obsRecorder.isActivelyRecording(),
   }
 }
 

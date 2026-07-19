@@ -350,6 +350,16 @@ export class OBSRecorder {
 
   /** True while UpForge owns an active match capture session (until stop() completes). */
   isRecording(): boolean { return this._matchOwnedRecording }
+
+  /**
+   * True only when OBS is *confirmed* to be writing a match recording right now.
+   *
+   * Stricter than {@link isRecording}: requires both match ownership AND an OBS-confirmed
+   * active output, so it stays false while the game merely sits in a menu/lobby or after a
+   * WebSocket disconnect left the ownership flag stale. This is the signal that should gate
+   * heavy background work (VOD compression/upload) — that's the real NVENC/FPS contention.
+   */
+  isActivelyRecording(): boolean { return this._matchOwnedRecording && this._recording }
   isClipsOnlySession(): boolean { return this._clipsOnlySession }
   getLastRecordingPath(): string | null { return this._outputPath }
   getLastError(): string | null { return this._lastError }
