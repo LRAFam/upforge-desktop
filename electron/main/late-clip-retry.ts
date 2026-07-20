@@ -40,7 +40,10 @@ export interface LateClipRetryDeps {
     matchSessionStart: number
     analysisJobId: string | null
   }) => Promise<void>
-  riotLocalApi: Pick<RiotLocalApi, 'fetchMatchDetailsLate' | 'populateMatchDataFromDetails' | 'getDiagnostics'>
+  riotLocalApi: Pick<
+    RiotLocalApi,
+    'fetchMatchDetailsLate' | 'populateMatchDataFromDetails' | 'getDiagnostics' | 'enrichTimelineMatchDetails'
+  >
   recordingsStore: Pick<RecordingsStore, 'updateTimeline'>
   mainWindow: BrowserWindow | null
   extractKillClipsOnly: (
@@ -86,41 +89,61 @@ export async function runLateClipRetry(
     return
   }
 
-  if (!ctx.matchId) {
+  const timeline = ctx.timeline
+  if (!timeline) {
+    log.warn('[LateClipExtract] No timeline — cannot fetch details')
+    return
+  }
+
+  // Recover matchId via Riot match history when the WS capture missed it.
+  if (!timeline.matchId) {
+    log.info('[LateClipExtract] No match id — trying Riot history fallback via enrich')
+    const recovered = await deps.riotLocalApi.enrichTimelineMatchDetails(timeline, {
+      forceRefresh: true,
+      maxWaitMs: 90_000,
+    })
+    if (timeline.matchId) {
+      deps.recordingsStore.updateTimeline(ctx.savedRecordingId, timeline)
+      deps.mainWindow?.webContents.send('recordings:updated')
+      log.info('[LateClipExtract] Recovered match id from history:', timeline.matchId)
+    } else if (!recovered) {
+      log.warn('[LateClipExtract] Still no match id after history fallback')
+      return
+    }
+  }
+
+  if (!timeline.matchId) {
     log.warn('[LateClipExtract] No match id — cannot fetch details')
     return
   }
 
-  log.info('[LateClipExtract] Fetching match details for', ctx.matchId)
-  const details = await deps.riotLocalApi.fetchMatchDetailsLate(ctx.matchId)
+  log.info('[LateClipExtract] Fetching match details for', timeline.matchId)
+  const details = await deps.riotLocalApi.fetchMatchDetailsLate(timeline.matchId)
   if (!details) {
     log.warn('[LateClipExtract] Match details still unavailable after delay')
     return
   }
 
-  const timeline = ctx.timeline
-  if (timeline) {
-    timeline.matchDetails = details
-    deps.riotLocalApi.populateMatchDataFromDetails(timeline, details)
-    deps.recordingsStore.updateTimeline(ctx.savedRecordingId, timeline)
-    deps.mainWindow?.webContents.send('recordings:updated')
-  }
+  timeline.matchDetails = details
+  deps.riotLocalApi.populateMatchDataFromDetails(timeline, details)
+  deps.recordingsStore.updateTimeline(ctx.savedRecordingId, timeline)
+  deps.mainWindow?.webContents.send('recordings:updated')
 
   if (opts.patchJobWhenReady) {
-    const gotData = (timeline?.roundSummaries?.length ?? 0) > 0
-      || (timeline?.playerKills?.length ?? 0) > 0
+    const gotData = (timeline.roundSummaries?.length ?? 0) > 0
+      || (timeline.playerKills?.length ?? 0) > 0
     if (!gotData) {
       log.warn('[LateClipExtract] Match details fetched but no round/kill data for this player')
       return
     }
   }
 
-  if ((timeline?.playerKills?.length ?? 0) === 0) {
+  if ((timeline.playerKills?.length ?? 0) === 0) {
     log.warn('[LateClipExtract] No kills after retry')
     return
   }
 
-  if (opts.patchJobWhenReady && opts.analysisJobId && timeline) {
+  if (opts.patchJobWhenReady && opts.analysisJobId) {
     deps.enrichTimelineSpatial(timeline)
     const rrHistory = await deps.authManager.fetchRRHistory().catch(() => [])
     const lateExtras = deps.buildCoachingSubmissionExtras(
@@ -134,8 +157,8 @@ export async function runLateClipRetry(
     })
   }
 
-  log.info(`[LateClipExtract] Got ${timeline!.playerKills.length} kills — extracting clips`)
-  await deps.extractKillClipsOnly(ctx.readyPath, timeline!, opts.analysisJobId, ctx.game)
+  log.info(`[LateClipExtract] Got ${timeline.playerKills.length} kills — extracting clips`)
+  await deps.extractKillClipsOnly(ctx.readyPath, timeline, opts.analysisJobId, ctx.game)
 
   if (opts.patchJobWhenReady) {
     await deps.syncScoutMomentsForJob(opts.analysisJobId, ctx.readyPath, timeline)

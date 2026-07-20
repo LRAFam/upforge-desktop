@@ -2436,7 +2436,11 @@ function setupGameDetection(): void {
 
       const matchId = timeline?.matchId
       const richMatchData = hasRichMatchData(timeline)
-      const lateRetryScheduled = !richMatchData && (!!matchId || game === 'cs2')
+      // Valorant: always late-retry when sparse (history can recover a missing matchId).
+      // CS2/Deadlock: demo/replay sync path.
+      const lateRetryScheduled =
+        !richMatchData &&
+        (game === 'valorant' || game === 'cs2' || game === 'deadlock' || !!matchId)
 
       const doAutoDelete = () => {
         if (settingsManager?.get().autoDelete) {
