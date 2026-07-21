@@ -40,6 +40,14 @@ export interface LateClipRetryDeps {
     matchSessionStart: number
     analysisJobId: string | null
   }) => Promise<void>
+  retryDemoClips?: (opts: {
+    game: 'cs2' | 'deadlock'
+    readyPath: string
+    savedRecordingId: string
+    timeline: MatchData | null
+    matchSessionStart: number
+    analysisJobId: string | null
+  }) => Promise<void>
   riotLocalApi: Pick<
     RiotLocalApi,
     'fetchMatchDetailsLate' | 'populateMatchDataFromDetails' | 'getDiagnostics' | 'enrichTimelineMatchDetails'
@@ -79,14 +87,25 @@ export async function runLateClipRetry(
   await deps.waitUntilAllowed()
   const game = normalizeGameId(ctx.game)
 
-  if (game === 'cs2') {
-    await deps.retryCs2DemoClips({
-      readyPath: ctx.readyPath,
-      savedRecordingId: ctx.savedRecordingId,
-      timeline: ctx.timeline,
-      matchSessionStart: ctx.matchSessionStart,
-      analysisJobId: opts.analysisJobId,
-    })
+  if (game === 'cs2' || game === 'deadlock') {
+    if (deps.retryDemoClips) {
+      await deps.retryDemoClips({
+        game,
+        readyPath: ctx.readyPath,
+        savedRecordingId: ctx.savedRecordingId,
+        timeline: ctx.timeline,
+        matchSessionStart: ctx.matchSessionStart,
+        analysisJobId: opts.analysisJobId,
+      })
+    } else {
+      await deps.retryCs2DemoClips({
+        readyPath: ctx.readyPath,
+        savedRecordingId: ctx.savedRecordingId,
+        timeline: ctx.timeline,
+        matchSessionStart: ctx.matchSessionStart,
+        analysisJobId: opts.analysisJobId,
+      })
+    }
     opts.onAfterCs2Retry?.()
     return
   }

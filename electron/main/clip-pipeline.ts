@@ -91,7 +91,8 @@ export interface ClipPipelineContext {
 export class ClipPipeline {
   constructor(private ctx: ClipPipelineContext) {}
 
-  /** Extract a clip, clamping to VOD length and retrying with frame-accurate seek on failure. */
+  /** Extract a clip, clamping to VOD length. Prefer frame-accurate seek so kills
+   *  are not shifted by OBS keyframe intervals (fast seek snaps to nearest keyframe). */
   private async safeExtract(
     opts: ExtractOptions,
     vodDurationMs: number | null,
@@ -106,13 +107,14 @@ export class ClipPipeline {
       durationMs = Math.min(durationMs, remaining)
     }
 
-    const base = { ...opts, startOffsetMs: startMs, durationMs }
+    const base = { ...opts, startOffsetMs: startMs, durationMs, accurateSeek: opts.accurateSeek ?? true }
     try {
       await this.ctx.clipExtractor.extract(base)
     } catch (firstErr) {
-      if (base.accurateSeek) throw firstErr
-      log.info('[ClipExtract] Fast seek failed — retrying with accurate seek')
-      await this.ctx.clipExtractor.extract({ ...base, accurateSeek: true })
+      // Rare: accurate seek failed (corrupt GOP) — try keyframe seek as last resort.
+      if (base.accurateSeek === false) throw firstErr
+      log.info('[ClipExtract] Accurate seek failed — retrying with keyframe seek')
+      await this.ctx.clipExtractor.extract({ ...base, accurateSeek: false })
     }
   }
 

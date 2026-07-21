@@ -64,6 +64,7 @@ import {
   recomputeTimelineVideoOffsets,
 } from './riot-local-api'
 import { applyLiveKillStampsToTimeline } from './live-kill-stamps'
+import { waitForLiveGameplayCue } from './live-gameplay-wait'
 import { LoLLiveClientApi } from './lol-live-client-api'
 import {
   gameLabel,
@@ -1427,11 +1428,31 @@ async function refreshReplayTimelineForRecording(
       })
     }
   }
+
+  // Demo sync often lands after the first clip extract (empty timeline) — cut clips now.
+  const videoPath = rec.path
+  if (
+    videoPath
+    && fs.existsSync(videoPath)
+    && (parsed.timeline.playerKills?.length ?? 0) > 0
+  ) {
+    const existing = clipStore.getAll().filter((c) =>
+      (parsed.timeline!.matchId && c.matchId === parsed.timeline!.matchId)
+      || (rec.jobId && c.analysisJobId === rec.jobId),
+    )
+    if (existing.length === 0) {
+      log.info(`[Replay] Extracting highlight clips after ${rec.game} demo sync`)
+      void extractKillClipsOnly(videoPath, parsed.timeline, rec.jobId ?? null, rec.game)
+        .catch((err) => log.warn('[Replay] Post-sync clip extraction failed:', err))
+    }
+  }
+
   return true
 }
 
-/** Re-poll CS2 demo after match end when the first parse had no kill data for clips. */
-async function retryCs2DemoClips(opts: {
+/** Re-poll CS2 / Deadlock demo after match end when the first parse had no kill data for clips. */
+async function retryDemoClips(opts: {
+  game: 'cs2' | 'deadlock'
   readyPath: string
   savedRecordingId: string
   timeline: MatchData | null
@@ -1440,26 +1461,44 @@ async function retryCs2DemoClips(opts: {
 }): Promise<void> {
   if (!settingsManager) return
   await waitUntilBackgroundWorkAllowed(matchPriorityDeps(), { logActivity })
+  const game = opts.game
   const replayCtx = {
-    game: 'cs2' as const,
+    game,
     matchSessionStart: opts.matchSessionStart,
     matchStartTime: opts.timeline?.matchStartTime ?? opts.matchSessionStart,
     recordingStartTime: opts.timeline?.gameplayStartTime ?? opts.matchSessionStart,
-    gsiMap: opts.timeline?.map ?? getLatestGsiMap(),
-    customReplayDir: settingsManager.get().cs2DemoDir,
-    localPlayerName: await resolveCs2LocalPlayerName(settingsManager, authManager),
+    gsiMap: opts.timeline?.map ?? (game === 'cs2' ? getLatestGsiMap() : getDeadlockMap()),
+    customReplayDir: game === 'cs2' ? settingsManager.get().cs2DemoDir : undefined,
+    localPlayerName: game === 'cs2'
+      ? await resolveCs2LocalPlayerName(settingsManager, authManager)
+      : null,
   }
   const parsed = await buildTimelineFromReplay(replayCtx, { pollOnce: true })
   if (!parsed.timeline?.playerKills?.length) {
-    log.warn('[LateClipExtract] CS2 demo still has no kills for clip extraction')
-    logActivity('CS2 highlight clips skipped — demo missing or player not matched (check Settings → Recording → CS2 name)')
+    log.warn(`[LateClipExtract] ${game} demo still has no kills for clip extraction`)
+    logActivity(
+      game === 'cs2'
+        ? 'CS2 highlight clips skipped — demo missing or player not matched (check Settings → Recording → CS2 name)'
+        : 'Deadlock highlight clips skipped — replay missing or still downloading',
+    )
     return
   }
   recordingsStore.updateTimeline(opts.savedRecordingId, parsed.timeline)
   mainWindow?.webContents.send('recordings:updated')
-  log.info(`[LateClipExtract] CS2 demo retry — ${parsed.timeline.playerKills.length} kills, extracting clips`)
-  logActivity(`CS2 demo loaded — extracting ${parsed.timeline.playerKills.length} kill(s) for highlight clips`)
-  await extractKillClipsOnly(opts.readyPath, parsed.timeline, opts.analysisJobId, 'cs2')
+  log.info(`[LateClipExtract] ${game} demo retry — ${parsed.timeline.playerKills.length} kills, extracting clips`)
+  logActivity(`${game === 'cs2' ? 'CS2' : 'Deadlock'} demo loaded — extracting ${parsed.timeline.playerKills.length} kill(s) for highlight clips`)
+  await extractKillClipsOnly(opts.readyPath, parsed.timeline, opts.analysisJobId, game)
+}
+
+/** @deprecated Use retryDemoClips */
+async function retryCs2DemoClips(opts: {
+  readyPath: string
+  savedRecordingId: string
+  timeline: MatchData | null
+  matchSessionStart: number
+  analysisJobId: string | null
+}): Promise<void> {
+  return retryDemoClips({ ...opts, game: 'cs2' })
 }
 
 function countSessionClips(
@@ -1564,6 +1603,7 @@ function lateClipRetryDeps(): LateClipRetryDeps {
       await waitUntilBackgroundWorkAllowed(matchPriorityDeps(), { logActivity })
     },
     retryCs2DemoClips,
+    retryDemoClips,
     riotLocalApi,
     recordingsStore,
     mainWindow,
@@ -3328,6 +3368,23 @@ function setupGameDetection(): void {
       mainWindow?.webContents.send('recording:waiting-for-match', { waiting: false })
       await rearmGameDetection(game, true)
       return
+    }
+
+    // Prefer guns-up over INGAME loading when Live Client is available — shrinks load-skew.
+    if (game === 'valorant' && !reclaimedExistingCapture) {
+      logActivity('Waiting for round start…')
+      tray?.setToolTip('UpForge — Waiting for round start…')
+      await waitForLiveGameplayCue({
+        maxMs: 60_000,
+        isCancelled: () => cancelled || isStale(),
+      })
+      if (abortIfStale(isStale, game)) return
+      if (cancelled) {
+        logActivity('Match ended during load — recording skipped')
+        tray?.setToolTip(idleTooltip(game))
+        await rearmGameDetection(game, true)
+        return
+      }
     }
 
     tray?.setToolTip('UpForge — Starting recorder...')
@@ -5103,6 +5160,7 @@ async function startApp(): Promise<void> {
 
   setupRecordingsHandlers(ipcMain, {
     recordingsStore,
+    clipStore,
     authManager,
     settingsManager,
     clipExtractor,

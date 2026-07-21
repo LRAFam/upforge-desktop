@@ -25,6 +25,7 @@ import {
   effectiveVideoSyncOffsetMs,
   defaultVideoSyncOffsetMs,
 } from '../riot-local-api'
+import { applySyncNudgeToMatchClips } from '../clip-sync-nudge'
 import { timelineDeathsForVod, timelineKillsForVod } from '../recording-sync'
 import {
   fetchArchivePlaybackUrl,
@@ -36,9 +37,11 @@ import { extractDuelPreviewClip } from '../duel-clip-uploader'
 import { resolveCs2LocalPlayerName } from '../cs2-player-identity'
 import { attachDemoFileToRecording } from '../recording-demo-attach'
 import { getAnalysisReadiness } from '../analysis-readiness'
+import type { ClipStore } from '../clip-store'
 
 export interface RecordingsIpcDeps {
   recordingsStore: RecordingsStore
+  clipStore: ClipStore
   authManager: AuthManager
   settingsManager: SettingsManager
   clipExtractor: ClipExtractor
@@ -61,6 +64,7 @@ export interface RecordingsIpcDeps {
 export function setupRecordingsHandlers(ipcMain: IpcMain, deps: RecordingsIpcDeps): void {
   const {
     recordingsStore,
+    clipStore,
     authManager,
     settingsManager,
     clipExtractor,
@@ -160,23 +164,48 @@ export function setupRecordingsHandlers(ipcMain: IpcMain, deps: RecordingsIpcDep
   ipcMain.handle('recordings:nudge-sync', (_e, { id, deltaMs }: { id: string; deltaMs: number }) => {
     const recording = recordingsStore.getById(id)
     if (!recording?.timeline) return { ok: false as const }
+    const before = effectiveVideoSyncOffsetMs(recording.timeline)
     nudgeTimelineSyncOffset(recording.timeline, deltaMs)
+    enrichTimelineSpatial(recording.timeline)
     recordingsStore.updateTimeline(id, recording.timeline)
+    const after = effectiveVideoSyncOffsetMs(recording.timeline)
+    const applied = after - before
+    const clipsUpdated = applySyncNudgeToMatchClips(clipStore, {
+      matchId: recording.timeline.matchId,
+      analysisJobId: recording.jobId ?? null,
+      deltaMs: applied,
+    })
+    if (clipsUpdated > 0) {
+      log.info(`[VodSync] Shifted ${clipsUpdated} local clip(s) by ${applied}ms`)
+      getMainWindow()?.webContents.send('clips:updated')
+    }
     return {
       ok: true as const,
-      videoSyncOffsetMs: effectiveVideoSyncOffsetMs(recording.timeline),
+      videoSyncOffsetMs: after,
+      clipsUpdated,
     }
   })
 
   ipcMain.handle('recordings:reset-sync', (_e, { id }: { id: string }) => {
     const recording = recordingsStore.getById(id)
     if (!recording?.timeline) return { ok: false as const }
+    const before = effectiveVideoSyncOffsetMs(recording.timeline)
     const resetOffset = defaultVideoSyncOffsetMs(recording.timeline)
     recording.timeline.videoSyncOffsetMs = resetOffset
     recomputeTimelineVideoOffsets(recording.timeline)
     enrichTimelineSpatial(recording.timeline)
     recordingsStore.updateTimeline(id, recording.timeline)
-    return { ok: true as const, videoSyncOffsetMs: resetOffset }
+    const applied = resetOffset - before
+    const clipsUpdated = applySyncNudgeToMatchClips(clipStore, {
+      matchId: recording.timeline.matchId,
+      analysisJobId: recording.jobId ?? null,
+      deltaMs: applied,
+    })
+    if (clipsUpdated > 0) {
+      log.info(`[VodSync] Reset shifted ${clipsUpdated} local clip(s) by ${applied}ms`)
+      getMainWindow()?.webContents.send('clips:updated')
+    }
+    return { ok: true as const, videoSyncOffsetMs: resetOffset, clipsUpdated }
   })
 
   const _vodTrimInFlight = new Set<string>()
