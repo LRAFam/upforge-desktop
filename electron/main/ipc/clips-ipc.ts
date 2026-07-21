@@ -11,6 +11,7 @@ import { tmpdir } from 'os'
 import { join } from 'path'
 import { AuthManager } from '../auth-manager'
 import { ClipStore } from '../clip-store'
+import { adjustMomentOffsetAfterTrim } from '../clip-timing'
 import { clipMatchesGame, normalizeClipGame } from '../clip-game'
 import { ClipExtractor, FREE_CLIP_UPLOAD_MAX_HEIGHT } from '../clip-extractor'
 import { openPathSafe } from '../shell-open'
@@ -337,7 +338,12 @@ export function setupClipHandlers(
         fs.renameSync(trimmedPath, clip.path)
       }
       const dur = endSec - startSec
-      clipStore.update(id, { durationSeconds: dur, uploadStatus: 'local' })
+      clipStore.update(id, {
+        durationSeconds: dur,
+        uploadStatus: 'local',
+        momentOffsetMs: adjustMomentOffsetAfterTrim(clip.momentOffsetMs, startSec),
+        clipStartMs: adjustMomentOffsetAfterTrim(clip.clipStartMs, startSec),
+      })
       return { ok: true }
     } catch (err) {
       try { if (fs.existsSync(trimmedPath)) fs.unlinkSync(trimmedPath) } catch { /* ignore */ }

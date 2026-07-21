@@ -496,17 +496,24 @@ trainerBridge.setAuthManager(authManager)
 wireRecorderStatus(obsRecorder, 'OBS')
 
 // When OBS saves a replay buffer clip during a live match, add it to the clip store immediately
-obsRecorder.onReplayClipSaved = (clipPath, _trigger) => {
-  log.info('[Main] OBS replay clip saved during match:', clipPath)
+obsRecorder.onReplayClipSaved = (clipPath, trigger, meta) => {
+  log.info('[Main] OBS replay clip saved during match:', clipPath, trigger)
   const live = riotLocalApi.getLiveMatchContext()
+  const momentOffsetMs = meta?.eventTimeSec != null
+    ? riotLocalApi.estimateLiveEventVideoOffsetMs(meta.eventTimeSec)
+    : null
+  const durationSeconds = settingsManager?.get().obsReplayBufferSeconds ?? 30
+  const clipStartMs = momentOffsetMs != null
+    ? Math.max(0, momentOffsetMs - Math.round(durationSeconds * 1000))
+    : null
   const rec = clipStore.add({
     path: clipPath,
     thumbPath: null,
     trigger: 'kill',
     map: live.map,
     agent: live.agent,
-    durationSeconds: settingsManager?.get().obsReplayBufferSeconds ?? 30,
-    round: null,
+    durationSeconds,
+    round: riotLocalApi.getLiveRoundIndex(),
     killCount: 1,
     analysisJobId: null,
     matchId: live.matchId,
@@ -514,6 +521,8 @@ obsRecorder.onReplayClipSaved = (clipPath, _trigger) => {
     weapon: null,
     abilitySlot: null,
     game: normalizePrimaryGame(gameDetector.currentGame() ?? trackedPrimaryGame),
+    momentOffsetMs,
+    clipStartMs,
   })
   logActivity('OBS kill clip saved')
   mainWindow?.webContents.send('clips:new', [rec.id])

@@ -32,6 +32,8 @@ export interface ClipRecord {
   round: number | null
   /** Video offset (ms) of the key moment — used for scout timeline sync */
   momentOffsetMs: number | null
+  /** Match timeline ms where this clip file begins (ffmpeg extract start). */
+  clipStartMs: number | null
   /** For multi-kill and clutch clips: number of kills in the round (3=3k, 4=4k, 5=ace etc.) */
   killCount: number | null
   /** Title set by user */
@@ -84,7 +86,7 @@ export type NewClip = Pick<ClipRecord,
   | 'game'
   | 'weapon'
   | 'abilitySlot'
-> & { momentOffsetMs?: number | null }
+> & { momentOffsetMs?: number | null; clipStartMs?: number | null }
 
 export class ClipStore {
   private clips: ClipRecord[] = []
@@ -146,6 +148,7 @@ export class ClipStore {
       durationSeconds: data.durationSeconds,
       round: data.round ?? null,
       momentOffsetMs: data.momentOffsetMs ?? null,
+      clipStartMs: data.clipStartMs ?? null,
       title: null,
       savedAt: Date.now(),
       analysisJobId: data.analysisJobId,

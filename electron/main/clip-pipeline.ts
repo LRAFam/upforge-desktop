@@ -176,7 +176,7 @@ export class ClipPipeline {
         const thumbPath = ClipExtractor.thumbPath(rec.id)
         await this.safeExtract({ sourcePath: videoPath, startOffsetMs: startMs, durationMs: 30_000, outputPath: clipPath }, vodDurationMs)
         const resolvedThumb = await this.safeThumb(videoPath, offsetMs, startMs, thumbPath)
-        clipStore.update(rec.id, { path: clipPath, thumbPath: resolvedThumb, momentOffsetMs: offsetMs })
+        clipStore.update(rec.id, { path: clipPath, thumbPath: resolvedThumb, momentOffsetMs: offsetMs, clipStartMs: startMs })
         extractedClipIds.push(rec.id)
         logActivity(`Saved hotkey clip (${map ?? 'unknown map'})`)
       } catch (err) {
@@ -223,7 +223,7 @@ export class ClipPipeline {
           const thumbPath = ClipExtractor.thumbPath(rec.id)
           await this.safeExtract({ sourcePath: videoPath, startOffsetMs: startMs, durationMs: 13_000, outputPath: clipPath }, vodDurationMs)
           const resolvedThumb = await this.safeThumb(videoPath, offsetMs, startMs, thumbPath)
-          clipStore.update(rec.id, { path: clipPath, thumbPath: resolvedThumb, momentOffsetMs: offsetMs })
+          clipStore.update(rec.id, { path: clipPath, thumbPath: resolvedThumb, momentOffsetMs: offsetMs, clipStartMs: startMs })
           extractedClipIds.push(rec.id)
         } catch (err) {
           reportClipExtractError('[ClipExtract] Kill clip failed', err)
@@ -249,7 +249,7 @@ export class ClipPipeline {
           const thumbPath = ClipExtractor.thumbPath(rec.id)
           await this.safeExtract({ sourcePath: videoPath, startOffsetMs: startMs, durationMs, outputPath: clipPath }, vodDurationMs)
           const resolvedThumb = await this.safeThumb(videoPath, first.videoOffsetMs!, startMs, thumbPath)
-          clipStore.update(rec.id, { path: clipPath, thumbPath: resolvedThumb, momentOffsetMs: first.videoOffsetMs! })
+          clipStore.update(rec.id, { path: clipPath, thumbPath: resolvedThumb, momentOffsetMs: first.videoOffsetMs!, clipStartMs: startMs })
           extractedClipIds.push(rec.id)
           logActivity(`${trigger === 'ace' ? 'Ace' : `${killCount}K`} clip saved — Round ${round + 1} (${map ?? 'unknown'})`)
         } catch (err) {
@@ -274,7 +274,7 @@ export class ClipPipeline {
             const thumbPath = ClipExtractor.thumbPath(rec.id)
             await this.safeExtract({ sourcePath: videoPath, startOffsetMs: startMs, durationMs, outputPath: clipPath }, vodDurationMs)
             const resolvedThumb = await this.safeThumb(videoPath, first.videoOffsetMs!, startMs, thumbPath)
-            clipStore.update(rec.id, { path: clipPath, thumbPath: resolvedThumb, momentOffsetMs: first.videoOffsetMs! })
+            clipStore.update(rec.id, { path: clipPath, thumbPath: resolvedThumb, momentOffsetMs: first.videoOffsetMs!, clipStartMs: startMs })
             extractedClipIds.push(rec.id)
             logActivity(`Clutch clip saved — Round ${round + 1} (${map ?? 'unknown'})`)
           } catch (err) {
@@ -370,7 +370,7 @@ export class ClipPipeline {
         const thumbPath = ClipExtractor.thumbPath(rec.id)
         await this.safeExtract({ sourcePath: videoPath, startOffsetMs: startMs, durationMs, outputPath: clipPath }, vodDurationMs)
         const resolvedThumb = await this.safeThumb(videoPath, first.videoOffsetMs!, startMs, thumbPath)
-        clipStore.update(rec.id, { path: clipPath, thumbPath: resolvedThumb, momentOffsetMs: first.videoOffsetMs! })
+        clipStore.update(rec.id, { path: clipPath, thumbPath: resolvedThumb, momentOffsetMs: first.videoOffsetMs!, clipStartMs: startMs })
         extractedClipIds.push(rec.id)
         logActivity(`${trigger === 'ace' ? 'Ace' : `${killCount}K`} clip saved (late extract) — Round ${round + 1} (${map ?? 'unknown'})`)
       } catch (err) {
@@ -394,7 +394,7 @@ export class ClipPipeline {
         const thumbPath = ClipExtractor.thumbPath(rec.id)
         await this.safeExtract({ sourcePath: videoPath, startOffsetMs: startMs, durationMs, outputPath: clipPath }, vodDurationMs)
         const resolvedThumb = await this.safeThumb(videoPath, first.videoOffsetMs!, startMs, thumbPath)
-        clipStore.update(rec.id, { path: clipPath, thumbPath: resolvedThumb, momentOffsetMs: first.videoOffsetMs! })
+        clipStore.update(rec.id, { path: clipPath, thumbPath: resolvedThumb, momentOffsetMs: first.videoOffsetMs!, clipStartMs: startMs })
         extractedClipIds.push(rec.id)
         logActivity(`Clutch clip saved (late extract) — Round ${round + 1} (${map ?? 'unknown'})`)
       } catch (err) {

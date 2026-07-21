@@ -209,6 +209,20 @@ export class RiotLocalApi {
     }
   }
 
+  /** 0-indexed round from live overlay scores (rounds completed = current round index). */
+  getLiveRoundIndex(): number | null {
+    const scores = this.matchData?.roundScores
+    if (!scores?.length) return null
+    const last = scores[scores.length - 1]!
+    return last.allyScore + last.enemyScore
+  }
+
+  /** Map live-client EventTime (seconds) to absolute recording offset ms. */
+  estimateLiveEventVideoOffsetMs(eventTimeSec: number): number | null {
+    if (!this.matchData || !Number.isFinite(eventTimeSec)) return null
+    return gameTimeToEventVideoOffsetMs(this.matchData, eventTimeSec * 1000)
+  }
+
   /** Return a snapshot of internal state for the developer diagnostics panel. */
   getDiagnostics(): {
     lockfileFound: boolean

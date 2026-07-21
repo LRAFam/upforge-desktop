@@ -34,6 +34,7 @@ export function buildClipUploadPayload(
     weapon: clip.weapon ?? undefined,
     ability_slot: clip.abilitySlot ?? undefined,
     moment_offset_ms: clip.momentOffsetMs ?? undefined,
+    clip_start_ms: clip.clipStartMs ?? undefined,
     ally_agents: allyAgents.length ? allyAgents : undefined,
     enemy_agents: enemyAgents.length ? enemyAgents : undefined,
     round_context: roundContext ?? undefined,

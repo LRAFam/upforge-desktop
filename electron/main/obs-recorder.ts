@@ -68,6 +68,11 @@ interface LiveKillEvent {
  * can use either without branching. OBS-specific extras (saveReplayClip,
  * connectOBS, getOBSStatus) are additive.
  */
+export interface ReplayClipSavedMeta {
+  eventTimeSec?: number
+  victimName?: string
+}
+
 export class OBSRecorder {
   private _obs = new OBSWebSocket()
   private _connected = false
@@ -100,6 +105,7 @@ export class OBSRecorder {
 
   // Replay clip save — resolves when ReplayBufferSaved fires
   private _pendingReplaySave: ((path: string) => void) | null = null
+  private _pendingReplayMeta: ReplayClipSavedMeta | undefined
   // Guard: only one SaveReplayBuffer in-flight at a time — prevents _pendingReplaySave clobber
   private _savingReplay = false
   /** Debounce transient RecordStateChanged outputActive=false while OBS is still muxing. */
@@ -114,7 +120,7 @@ export class OBSRecorder {
   private _lastCaptureGame: string | null = null
 
   onStatusChange?: (recording: boolean, error?: string) => void
-  onReplayClipSaved?: (path: string, trigger: string) => void
+  onReplayClipSaved?: (path: string, trigger: string, meta?: ReplayClipSavedMeta) => void
   /** Fired when connection state changes. `error` is set only for unexpected disconnects. */
   onConnectionChange?: (connected: boolean, error?: string | null) => void
 
@@ -134,7 +140,8 @@ export class OBSRecorder {
         this._pendingReplaySave = null
         resolve(savedReplayPath)
       }
-      this.onReplayClipSaved?.(savedReplayPath, 'replay-buffer')
+      this.onReplayClipSaved?.(savedReplayPath, 'replay-buffer', this._pendingReplayMeta)
+      this._pendingReplayMeta = undefined
     })
 
     this._obs.on('RecordStateChanged', ({ outputActive, outputPath }) => {
@@ -1016,9 +1023,15 @@ export class OBSRecorder {
         if (!evt.KillerName?.toLowerCase().includes(this._localPlayerName.toLowerCase())) continue
 
         log.info(`[OBSRecorder] Kill detected (EventID=${evt.EventID}) — saving replay buffer`)
+        this._pendingReplayMeta = {
+          eventTimeSec: evt.EventTime,
+          victimName: evt.VictimName,
+        }
         const clipPath = await this.saveReplayClip()
         if (clipPath) {
           log.info('[OBSRecorder] Replay clip saved:', clipPath)
+        } else {
+          this._pendingReplayMeta = undefined
         }
       }
     } catch {
