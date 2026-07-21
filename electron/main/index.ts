@@ -52,8 +52,8 @@ import {
   resolveReadyRecordingPath,
   listUnregisteredRecordingFiles,
 } from './recording-path-resolver'
-import { broadcastObsConnection, probeObsConnection, startObsHealthMonitor } from './obs-health'
-import { launchObsStudio, obsLaunchDelayMs, type LaunchObsOptions } from './obs-launcher'
+import { broadcastObsConnection, startObsHealthMonitor } from './obs-health'
+import { ensureObsConnected } from './obs-ensure'
 import {
   ensureObsProfileInstalled,
   resolveObsWebSocketPassword,
@@ -300,10 +300,10 @@ function maybeNotifyObsNotReadyBeforeQueue(): void {
   const now = Date.now()
   if (now - lastObsPreQueueNotifyAt < OBS_PREQUEUE_NOTIFY_COOLDOWN_MS) return
   lastObsPreQueueNotifyAt = now
-  const body = 'OBS isn\'t running, so this match won\'t be recorded. Open UpForge → Launch OBS (or Settings → Recording) before you queue.'
+  const body = 'Recording isn\'t ready yet — UpForge will keep trying to start OBS. You can also open Settings → Recording.'
   logActivity('OBS not connected — connect before your next match')
   showAppNotification({
-    title: 'UpForge — OBS needed to record',
+    title: 'UpForge — Recording not ready',
     body,
     silent: true,
   })
@@ -371,26 +371,8 @@ function wireObsConnectionEvents(): void {
   }
 }
 
-function scheduleObsProbeOnWindowLoad(win: BrowserWindow, notify: boolean): void {
-  win.webContents.once('did-finish-load', () => {
-    void probeObsConnection(obsRecorder, win, {
-      notify,
-      notifySilent,
-      logActivity,
-    }).then(() => {
-      if (!settingsManager) return
-      const game = normalizePrimaryGame(settingsManager.get().primaryGame)
-      void ensureObsCaptureForGame(game)
-    })
-  })
-}
-
-const OBS_SETUP_HINT =
-  'OBS is not connected. Enable WebSocket in OBS (Tools → WebSocket Server Settings), copy the password from Show Connect Info, then Connect in UpForge Settings → Recording.'
-
-async function ensureObsReady(): Promise<void> {
-  if (obsRecorder.isConnected()) return
-
+/** Resolve WebSocket credentials + install UpForge OBS profile if needed. */
+function prepareObsCredentials(): { password: string; port: number } {
   const settings = settingsManager?.get()
   const port = settings?.obsPort ?? 4455
   let password = resolveObsWebSocketPassword(settings?.obsPassword)
@@ -401,23 +383,58 @@ async function ensureObsReady(): Promise<void> {
   } else {
     ensureObsProfileInstalled(password, port)
   }
+  return { password, port }
+}
 
-  let result = await obsRecorder.connect()
-  if (result.ok) return
+/**
+ * Launch / reconnect OBS (kills hung process when idle).
+ * Used on startup, game detect, and before match recording.
+ */
+async function ensureObsReady(opts?: {
+  allowProcessRestart?: boolean
+  notifyOnFailure?: boolean
+}): Promise<boolean> {
+  if (obsRecorder.isConnected()) return true
 
-  const launchOpts: LaunchObsOptions = { password, port }
-  const launched = await launchObsStudio(launchOpts)
-  if (launched.ok) {
-    await new Promise((r) => setTimeout(r, obsLaunchDelayMs()))
-    result = await obsRecorder.connect()
-    if (result.ok) {
-      broadcastObsConnection(mainWindow, obsRecorder)
-      logActivity('OBS launched and connected — recording ready')
-      return
-    }
+  const { password, port } = prepareObsCredentials()
+  const allowProcessRestart = opts?.allowProcessRestart !== false
+    && !obsRecorder.isActivelyRecording()
+    && !matchPerformanceModeActive
+
+  const result = await ensureObsConnected(obsRecorder, {
+    password,
+    port,
+    allowProcessRestart,
+    getWindow: () => mainWindow,
+    onActivity: logActivity,
+  })
+
+  if (result.ok) return true
+
+  log.warn('[OBS] ensureObsReady failed:', result.error)
+  if (opts?.notifyOnFailure) {
+    maybeNotifyObsNotReadyBeforeQueue()
   }
+  return false
+}
 
-  throw new Error(`${OBS_SETUP_HINT}${result.error ? ` (${result.error})` : ''}`)
+function scheduleObsProbeOnWindowLoad(win: BrowserWindow, notify: boolean): void {
+  win.webContents.once('did-finish-load', () => {
+    void ensureObsReady({ notifyOnFailure: notify }).then((ok) => {
+      if (!ok || !settingsManager) return
+      const game = normalizePrimaryGame(settingsManager.get().primaryGame)
+      void ensureObsCaptureForGame(game)
+    })
+  })
+}
+
+const OBS_SETUP_HINT =
+  'OBS is not connected. UpForge will keep trying to start it — or click Launch OBS in Settings → Recording.'
+
+async function ensureObsReadyOrThrow(): Promise<void> {
+  const ok = await ensureObsReady({ allowProcessRestart: true })
+  if (ok) return
+  throw new Error(OBS_SETUP_HINT)
 }
 
 /** Set by setupGameDetection — handles unexpected mid-match capture loss. */
@@ -874,7 +891,7 @@ async function ensureObsCaptureForGame(game: string): Promise<void> {
   if (obsRecorder.isRecording()) return
 
   if (!obsRecorder.isConnected()) {
-    await probeObsConnection(obsRecorder, mainWindow, { notify: false, logActivity, quiet: true })
+    await ensureObsReady({ allowProcessRestart: true })
   }
   if (!obsRecorder.isConnected()) return
 
@@ -2878,10 +2895,7 @@ function setupGameDetection(): void {
     // Check disk space now so the warning shows while in lobby
     const savePath = recordingSavePath()
     if (!obsRecorder.isConnected()) {
-      await probeObsConnection(obsRecorder, mainWindow, { notify: false, logActivity })
-    }
-    if (!obsRecorder.isConnected()) {
-      maybeNotifyObsNotReadyBeforeQueue()
+      await ensureObsReady({ allowProcessRestart: true, notifyOnFailure: true })
     }
     void ensureObsCaptureForGame(game)
     if (recorderConfig) {
@@ -3393,7 +3407,7 @@ function setupGameDetection(): void {
       // Create the overlay window just before recording starts — deferred from startup
       // so it doesn't break Valorant's exclusive fullscreen before we actually need it.
       if (isInGameOverlayEnabled()) createOverlayWindow()
-      await ensureObsReady()
+      await ensureObsReadyOrThrow()
       if (!reclaimedExistingCapture) {
         await obsRecorder.start(game, recorderConfig)
       }
@@ -4650,7 +4664,11 @@ async function startApp(): Promise<void> {
   })
 
   wireObsConnectionEvents()
-  stopObsHealthMonitor = startObsHealthMonitor(obsRecorder, () => mainWindow, { logActivity })
+  stopObsHealthMonitor = startObsHealthMonitor(obsRecorder, () => mainWindow, {
+    logActivity,
+    canHardRecover: () => !obsRecorder.isActivelyRecording() && !matchPerformanceModeActive,
+    recover: () => ensureObsReady({ allowProcessRestart: true }),
+  })
 
   // Discord Rich Presence — renderer can push state changes (e.g. when reviewing coaching)
   ipcMain.handle('discord:set-state', (_e, state: string) => {

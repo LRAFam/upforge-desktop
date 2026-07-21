@@ -259,7 +259,7 @@ const showObsBanner = computed(() =>
 const obsBannerMessage = computed(() => {
   if (obsError.value) return obsError.value
   if (obsProcessRunning.value === true) {
-    return 'OBS is open but not connected — it may have crashed. Click Launch OBS to restart it.'
+    return 'OBS is open but not connected — it may have crashed. Click Launch OBS and UpForge will restart it.'
   }
   return 'OBS not connected — matches won\'t record until you set it up.'
 })

@@ -41,33 +41,38 @@ export async function terminateObsProcess(): Promise<{ ok: boolean; error?: stri
     return { ok: true }
   }
 
+  const manualHint = process.platform === 'win32'
+    ? 'Could not close OBS — end obs64.exe in Task Manager, then try again.'
+    : 'Could not close OBS — quit OBS manually, then try again.'
+
   try {
+    // /T kills the process tree (browser sources, crash helpers) that can block relaunch.
     if (process.platform === 'win32') {
-      await execAsync(`taskkill /IM ${OBS_WIN_IMAGE} /F`)
+      await execAsync(`taskkill /IM ${OBS_WIN_IMAGE} /F /T`).catch(() => undefined)
+      await sleep(800)
+      if (await isObsProcessRunning()) {
+        await execAsync(`taskkill /IM ${OBS_WIN_IMAGE} /F /T`).catch(() => undefined)
+      }
     } else if (process.platform === 'darwin') {
       await execAsync('pkill -x OBS || pkill -f "OBS.app" || true')
     } else {
       await execAsync('pkill -x obs || pkill -f obs-studio || true')
     }
-    await sleep(1200)
+    await sleep(1500)
     if (await isObsProcessRunning()) {
-      return {
-        ok: false,
-        error: process.platform === 'win32'
-          ? 'Could not close OBS — end obs64.exe in Task Manager, then try again.'
-          : 'Could not close OBS — quit OBS manually, then try again.',
-      }
+      log.warn('[OBS Process] Still running after terminate attempts')
+      return { ok: false, error: manualHint }
     }
+    log.info('[OBS Process] Terminated hung OBS process')
     return { ok: true }
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
     log.warn('[OBS Process] terminate failed:', message)
-    return {
-      ok: false,
-      error: process.platform === 'win32'
-        ? 'Could not close OBS — end obs64.exe in Task Manager, then try again.'
-        : 'Could not close OBS — quit OBS manually, then try again.',
+    // taskkill returns non-zero when the process already exited — treat as success.
+    if (!(await isObsProcessRunning())) {
+      return { ok: true }
     }
+    return { ok: false, error: manualHint }
   }
 }
 

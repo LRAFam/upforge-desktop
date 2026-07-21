@@ -11,7 +11,7 @@ describe('explainObsConnectionFailure', () => {
   })
 
   it('suggests crash recovery when process is running but not connected', () => {
-    expect(explainObsConnectionFailure({ processRunning: true, connectError: 'ECONNREFUSED' })).toMatch(/crashed|not responding/i)
+    expect(explainObsConnectionFailure({ processRunning: true, connectError: 'ECONNREFUSED' })).toMatch(/restart|not responding/i)
   })
 
   it('preserves auth errors when process is running', () => {

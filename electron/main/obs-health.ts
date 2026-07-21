@@ -1,5 +1,6 @@
 /**
  * Proactive OBS connection checks — surface setup issues at app open, not at match start.
+ * When idle, recovers hung/missing OBS via kill-then-relaunch (see ensureObsConnected).
  */
 
 import type { BrowserWindow } from 'electron'
@@ -82,19 +83,27 @@ export async function probeObsConnection(
   return payload
 }
 
-/** Retry OBS connect while disconnected — backs off to reduce log noise. */
+/** Retry OBS connect while disconnected — recovers hung/missing OBS when allowed. */
 export function startObsHealthMonitor(
   obsRecorder: OBSRecorder,
   getMainWindow: () => BrowserWindow | null | undefined,
-  opts?: { logActivity?: (msg: string) => void },
+  opts?: {
+    logActivity?: (msg: string) => void
+    /** Full launch/restart recovery (kill hung process). */
+    recover?: () => Promise<boolean>
+    /** False while a match is recording — only soft-reconnect then. */
+    canHardRecover?: () => boolean
+  },
 ): () => void {
   let intervalMs = 30_000
   let timer: ReturnType<typeof setTimeout> | null = null
+  let consecutiveFailures = 0
 
   const schedule = () => {
     timer = setTimeout(async () => {
       if (obsRecorder.isConnected()) {
         intervalMs = 30_000
+        consecutiveFailures = 0
         schedule()
         return
       }
@@ -103,11 +112,36 @@ export function startObsHealthMonitor(
         schedule()
         return
       }
-      await probeObsConnection(obsRecorder, mainWindow, {
-        notify: false,
-        quiet: true,
-        logActivity: opts?.logActivity,
-      })
+
+      const hardOk = opts?.canHardRecover?.() !== false
+      if (hardOk && opts?.recover && consecutiveFailures >= 1) {
+        // Soft probe failed once already — launch / kill-restart OBS.
+        const recovered = await opts.recover().catch((err) => {
+          log.warn('[OBS Health] Recovery failed:', err)
+          return false
+        })
+        if (recovered) {
+          consecutiveFailures = 0
+          intervalMs = 30_000
+          schedule()
+          return
+        }
+        consecutiveFailures++
+      } else {
+        await probeObsConnection(obsRecorder, mainWindow, {
+          notify: false,
+          quiet: true,
+          logActivity: opts?.logActivity,
+        })
+        if (obsRecorder.isConnected()) {
+          consecutiveFailures = 0
+          intervalMs = 30_000
+          schedule()
+          return
+        }
+        consecutiveFailures++
+      }
+
       intervalMs = Math.min(intervalMs * 1.5, 120_000)
       schedule()
     }, intervalMs)

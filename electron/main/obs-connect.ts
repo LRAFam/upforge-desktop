@@ -17,7 +17,7 @@ export function explainObsConnectionFailure(opts: {
     return formatObsConnectError(raw)
   }
 
-  return 'OBS is open but not responding — it may have crashed. Click Launch OBS + Connect to restart it, or close OBS in Task Manager (obs64.exe) and open it manually.'
+  return 'OBS is open but not responding — UpForge will try to restart it. If that fails, end obs64.exe in Task Manager, then click Launch OBS + Connect.'
 }
 
 export function formatObsConnectError(raw: string): string {

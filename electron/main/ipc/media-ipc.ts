@@ -8,8 +8,8 @@ import fs from 'fs'
 import path from 'path'
 import log from 'electron-log'
 import { broadcastObsConnection, probeObsConnection } from '../obs-health'
-import { launchObsStudio, obsLaunchDelayMs } from '../obs-launcher'
-import { isObsProcessRunning, terminateObsProcess, obsProcessSleep } from '../obs-process'
+import { ensureObsConnected } from '../obs-ensure'
+import { isObsProcessRunning } from '../obs-process'
 import { explainObsConnectionFailure } from '../obs-connect'
 import { installObsViaWinget, isObsInstalled } from '../obs-installer'
 import { ensureObsProfileInstalled, resolveObsWebSocketPassword } from '../obs-profile-installer'
@@ -188,9 +188,6 @@ export function setupMediaHandlers(
 
   ipcMain.handle('obs:launch-and-connect', async () => {
     if (!obsRecorder) return { ok: false, error: 'OBS recorder not available' }
-    if (obsRecorder.isConnected()) {
-      return { ok: true, alreadyConnected: true as const, processRunning: await isObsProcessRunning() }
-    }
 
     const cfg = settingsManager.get()
     const port = cfg.obsPort ?? 4455
@@ -200,61 +197,12 @@ export function setupMediaHandlers(
       settingsManager.save({ obsPassword: password })
     }
 
-    let processRunning = await isObsProcessRunning()
-    if (processRunning) {
-      const existing = await obsRecorder.connect()
-      if (existing.ok) {
-        const win = BrowserWindow.getAllWindows().find(w => !w.isDestroyed())
-        broadcastObsConnection(win, obsRecorder)
-        return { ok: true as const, alreadyRunning: true as const, processRunning: true }
-      }
-      log.warn('[OBS IPC] OBS process running but WebSocket failed — restarting OBS')
-      const killed = await terminateObsProcess()
-      if (!killed.ok) {
-        return {
-          ok: false as const,
-          processRunning: true,
-          needsManualRestart: true as const,
-          error: killed.error ?? explainObsConnectionFailure({
-            processRunning: true,
-            connectError: existing.error,
-          }),
-        }
-      }
-      processRunning = false
-    }
-
-    const launched = await launchObsStudio({ password, port })
-    if (!launched.ok) {
-      return { ok: false, error: launched.error ?? 'Could not launch OBS', processRunning: false }
-    }
-
-    const win = BrowserWindow.getAllWindows().find(w => !w.isDestroyed())
-    const connectDelays = [obsLaunchDelayMs(), 2000, 2500]
-    let lastError: string | undefined
-
-    for (const delayMs of connectDelays) {
-      await obsProcessSleep(delayMs)
-      const result = await obsRecorder.connect()
-      if (result.ok) {
-        broadcastObsConnection(win, obsRecorder)
-        return { ok: true as const, launched: true as const, processRunning: true }
-      }
-      lastError = result.error
-    }
-
-    processRunning = await isObsProcessRunning()
-    broadcastObsConnection(win, obsRecorder, lastError)
-    return {
-      ok: false as const,
-      launched: true as const,
-      processRunning,
-      error: explainObsConnectionFailure({
-        processRunning,
-        connectError: lastError,
-        launched: true,
-      }),
-    }
+    return ensureObsConnected(obsRecorder, {
+      password,
+      port,
+      allowProcessRestart: true,
+      getWindow: () => BrowserWindow.getAllWindows().find(w => !w.isDestroyed()),
+    })
   })
 
   ipcMain.handle('obs:disconnect', async () => {

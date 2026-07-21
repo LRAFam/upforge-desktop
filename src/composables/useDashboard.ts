@@ -840,11 +840,17 @@ function createDashboard() {
     void loadPendingRecordings()
   }
 
-  function goWarningAction() {
+  async function goWarningAction() {
     if (!warningAction.value) return
-    router.push(warningAction.value.route)
+    const action = warningAction.value
     warning.value = null
     warningAction.value = null
+    // OBS warnings: recover immediately instead of only opening Settings.
+    if (/launch obs/i.test(action.label)) {
+      await launchAndConnectObs()
+      return
+    }
+    router.push(action.route)
   }
 
   async function uploadAllPending() {
