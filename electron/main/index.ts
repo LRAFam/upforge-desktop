@@ -63,6 +63,7 @@ import {
   RiotLocalApi,
   recomputeTimelineVideoOffsets,
 } from './riot-local-api'
+import { applyLiveKillStampsToTimeline } from './live-kill-stamps'
 import { LoLLiveClientApi } from './lol-live-client-api'
 import {
   gameLabel,
@@ -176,7 +177,7 @@ import {
   resetPostGameSession,
   sendPostGameEvent,
 } from './post-game-session'
-import { hasRichMatchData, MATCH_DETAILS_ENRICH_MAX_MS, demoSyncMaxMsForGame, shouldDeferPostGameForDemoSync, cs2RecordingSavedDashboardMessage, deadlockRecordingSavedDashboardMessage } from './match-data-quality'
+import { hasRichMatchData, MATCH_DETAILS_ENRICH_MAX_MS, demoSyncMaxMsForGame, shouldDeferPostGameForDemoSync, shouldScheduleLateClipRetry, cs2RecordingSavedDashboardMessage, deadlockRecordingSavedDashboardMessage } from './match-data-quality'
 import {
   buildCoachingSubmissionExtras,
   topSkillFocus,
@@ -277,7 +278,7 @@ const obsRecorder = new OBSRecorder(
   },
   () => settingsManager?.get()?.primaryGame ?? 'valorant',
 )
-setUpdateActivityGuard(() => matchPerformanceModeActive || obsRecorder.isRecording())
+setUpdateActivityGuard(() => matchPerformanceModeActive || obsRecorder.isActivelyRecording())
 
 let stopObsHealthMonitor: (() => void) | null = null
 let obsWasConnected = false
@@ -602,9 +603,14 @@ function interruptBackgroundWorkForMatch(): void {
 }
 
 function maybeResumeDeferredUploads(): void {
-  if (!shouldDeferHeavyBackgroundWork(matchPriorityDeps())) {
-    void flushDeferredUploadRetries()
-  }
+  void obsRecorder.releaseStaleMatchOwnership().then((released) => {
+    if (released) {
+      log.info('[MatchPriority] Cleared stale OBS ownership before resume check')
+    }
+    if (!shouldDeferHeavyBackgroundWork(matchPriorityDeps())) {
+      void flushDeferredUploadRetries()
+    }
+  })
 }
 
 function beginMatchPerformanceMode(): void {
@@ -1233,7 +1239,7 @@ function notifyCoachingReady(body: string, analysisId?: number | null): void {
 
 function runStuckAnalysisReconcile(): Promise<number> {
   if (!authManager.isAuthenticated()) return Promise.resolve(0)
-  if (matchPerformanceModeActive || obsRecorder.isRecording()) return Promise.resolve(0)
+  if (matchPerformanceModeActive || obsRecorder.isActivelyRecording()) return Promise.resolve(0)
   return reconcileStuckAnalysisJobs({
     uploadManager,
     recordingsStore,
@@ -1539,9 +1545,24 @@ async function syncScoutMomentsForJob(
   })
 }
 
+/** Heuristic VOD offsets, then overwrite with live recorder stamps when available. */
+function finalizeTimelineOffsetsForClips(timeline: MatchData | null): void {
+  if (!timeline) return
+  recomputeTimelineVideoOffsets(timeline)
+  const stamps = obsRecorder.getLiveKillStamps()
+  if (stamps.length === 0) return
+  const applied = applyLiveKillStampsToTimeline(timeline, stamps)
+  if (applied > 0) {
+    log.info(`[LiveKillStamps] Applied ${applied}/${stamps.length} live recording stamp(s)`)
+  }
+}
+
 function lateClipRetryDeps(): LateClipRetryDeps {
   return {
-    waitUntilAllowed: () => waitUntilBackgroundWorkAllowed(matchPriorityDeps(), { logActivity }),
+    waitUntilAllowed: async () => {
+      await obsRecorder.releaseStaleMatchOwnership()
+      await waitUntilBackgroundWorkAllowed(matchPriorityDeps(), { logActivity })
+    },
     retryCs2DemoClips,
     riotLocalApi,
     recordingsStore,
@@ -1549,6 +1570,7 @@ function lateClipRetryDeps(): LateClipRetryDeps {
     extractKillClipsOnly,
     syncScoutMomentsForJob,
     enrichTimelineSpatial,
+    finalizeTimelineOffsetsForClips,
     authManager,
     settingsManager,
     uploadManager,
@@ -1843,7 +1865,7 @@ function createTray(): void {
   const result = _createTray({
     getMainWindow: () => mainWindow,
     setMainWindow: (win) => { mainWindow = win },
-    isRecording: () => obsRecorder.isRecording(),
+    isRecording: () => obsRecorder.isActivelyRecording(),
     getPendingCount: () => recordingsStore?.getPending(linkedRiotFromAuth()).length ?? 0,
     getInFlightCount: () => recordingsStore?.listInFlightPipelines().length ?? 0,
     getAnalysablePendingCount: () => {
@@ -1879,7 +1901,7 @@ async function refreshDeadlockProfile(fresh = true): Promise<void> {
 }
 
 function setupGameDetection(): void {
-  setMatchRecordingGuard(() => obsRecorder.isRecording())
+  setMatchRecordingGuard(() => obsRecorder.isActivelyRecording())
   startSteamGsiServer()
   gameDetector.setWatchGame(normalizePrimaryGame(settingsManager.get().primaryGame))
   if (normalizePrimaryGame(settingsManager.get().primaryGame) === 'cs2') {
@@ -2445,11 +2467,6 @@ function setupGameDetection(): void {
 
       const matchId = timeline?.matchId
       const richMatchData = hasRichMatchData(timeline)
-      // Valorant: always late-retry when sparse (history can recover a missing matchId).
-      // CS2/Deadlock: demo/replay sync path.
-      const lateRetryScheduled =
-        !richMatchData &&
-        (game === 'valorant' || game === 'cs2' || game === 'deadlock' || !!matchId)
 
       const doAutoDelete = () => {
         if (settingsManager?.get().autoDelete) {
@@ -2460,7 +2477,7 @@ function setupGameDetection(): void {
       }
 
       // Register on the dashboard immediately — before compression/upload can take minutes.
-      if (timeline) recomputeTimelineVideoOffsets(timeline)
+      finalizeTimelineOffsetsForClips(timeline)
       const savedRecording = recordingsStore.add({
         path: readyPath,
         riotName: timeline?.playerName?.trim() ?? '',
@@ -2552,13 +2569,15 @@ function setupGameDetection(): void {
           })
         }
 
+        // Wait for Riot enrich before cutting clips so videoOffsetMs exists.
+        await enrichPromise.catch(() => {})
+        finalizeTimelineOffsetsForClips(timeline)
+
         extractMatchClips(readyPath, timeline, null, game)
           .catch(err => log.warn('[ClipExtract] Clip extraction (no-analyse) error:', err))
 
-        await enrichPromise.catch(() => {})
-
-        if (lateRetryScheduled) {
-          log.info('[HandleMatchEnd] No kills (no-analyse) — scheduling late retry in 90s')
+        if (shouldScheduleLateClipRetry(game, timeline, matchId ?? null)) {
+          log.info('[HandleMatchEnd] Still sparse after enrich (no-analyse) — scheduling late retry in 90s')
           scheduleLateClipRetry(
             {
               game,
@@ -2566,7 +2585,7 @@ function setupGameDetection(): void {
               savedRecordingId: savedRecording.id,
               timeline,
               matchSessionStart,
-              matchId: matchId ?? null,
+              matchId: matchId ?? timeline?.matchId ?? null,
             },
             lateClipRetryDeps(),
             { analysisJobId: null },
@@ -2615,11 +2634,14 @@ function setupGameDetection(): void {
             silent: notifySilent(),
           })
         }
+        await enrichPromise.catch(() => {})
+        finalizeTimelineOffsetsForClips(timeline)
+
         extractMatchClips(readyPath, timeline, null, game)
           .catch(err => log.warn('[ClipExtract] Clip extraction (auto-analyse skipped) error:', err))
-        await enrichPromise.catch(() => {})
-        if (lateRetryScheduled) {
-          log.info('[HandleMatchEnd] No kills (auto-analyse skipped) — scheduling late retry in 90s')
+
+        if (shouldScheduleLateClipRetry(game, timeline, matchId ?? null)) {
+          log.info('[HandleMatchEnd] Still sparse after enrich (auto-analyse skipped) — scheduling late retry in 90s')
           scheduleLateClipRetry(
             {
               game,
@@ -2627,7 +2649,7 @@ function setupGameDetection(): void {
               savedRecordingId: savedRecording.id,
               timeline,
               matchSessionStart,
-              matchId: matchId ?? null,
+              matchId: matchId ?? timeline?.matchId ?? null,
             },
             lateClipRetryDeps(),
             { analysisJobId: null },
@@ -2645,16 +2667,19 @@ function setupGameDetection(): void {
       )
 
       const jobId = uploadResult ?? null
+      // Upload's beforeComplete already awaited enrich — decide late retry from current timeline.
+      const needLateRetry = shouldScheduleLateClipRetry(game, timeline, matchId ?? timeline?.matchId ?? null)
 
+      finalizeTimelineOffsetsForClips(timeline)
       extractMatchClips(readyPath, timeline, jobId, game)
         .then(() => syncScoutMomentsForJob(jobId, readyPath, timeline))
         .catch(err => log.warn('[ClipExtract] Background extraction error:', err))
         .finally(() => {
-          if (!lateRetryScheduled) doAutoDelete()
+          if (!needLateRetry) doAutoDelete()
         })
 
-      if (lateRetryScheduled) {
-        log.info('[HandleMatchEnd] No kills in timeline — scheduling late match details retry in 90s (auto-delete deferred)')
+      if (needLateRetry) {
+        log.info('[HandleMatchEnd] Still sparse after enrich — scheduling late match details retry in 90s (auto-delete deferred)')
         scheduleLateClipRetry(
           {
             game,
@@ -2662,7 +2687,7 @@ function setupGameDetection(): void {
             savedRecordingId: savedRecording.id,
             timeline,
             matchSessionStart,
-            matchId: matchId ?? null,
+            matchId: matchId ?? timeline?.matchId ?? null,
           },
           lateClipRetryDeps(),
           {
@@ -3927,6 +3952,10 @@ async function doUploadAndAnalyse(
       const errorMsg = formatRecordingTooLargeMessage(resolved.sizeBytes, true)
       log.warn(`[Upload] Still too large after compression (${sizeGB} GB) — clips only`)
       logActivity(`Recording still too large (${sizeGB} GB) — saving highlight clips only`)
+      if (enrichPromise) {
+        await enrichPromise.catch(() => {})
+        finalizeTimelineOffsetsForClips(timeline)
+      }
       extractMatchClips(effectivePath, timeline, null, game)
         .catch((err) => log.warn('[ClipExtract] Clip extraction (oversized) error:', err))
       sendUploadFailure(errorMsg, { targetWindow, recordingId, clipsOnly: true, notify: false, game })
@@ -4595,7 +4624,7 @@ async function startApp(): Promise<void> {
       },
       riot: riotLocalApi.getDiagnostics(),
       recording: {
-        active: obsRecorder.isRecording(),
+        active: obsRecorder.isActivelyRecording(),
         duration: obsRecorder.getRecordingDuration(),
         lastError: obsRecorder.getLastError() ?? null,
         lastPath: obsRecorder.getLastRecordingPath() ?? null,
@@ -4630,7 +4659,7 @@ async function startApp(): Promise<void> {
   // Presence heartbeat — update squad presence every 60s when authenticated
   const presenceInterval = setInterval(() => {
     if (!authManager.isAuthenticated()) return
-    authManager.sendPresence(obsRecorder.isRecording(), gameDetector.currentGame())
+    authManager.sendPresence(obsRecorder.isActivelyRecording(), gameDetector.currentGame())
       .catch(() => { /* ignore */ })
   }, 60000)
 
@@ -4708,7 +4737,7 @@ async function startApp(): Promise<void> {
         enemyScore: null,
         yourCredits: null,
         enemyEstimate: null,
-        recording: obsRecorder.isRecording(),
+        recording: obsRecorder.isActivelyRecording(),
       })
     }
   })

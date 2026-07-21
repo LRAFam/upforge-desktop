@@ -42,7 +42,13 @@ export function buildClipUploadPayload(
 
   if (timeline) {
     const matchData = prepareMatchDataForUpload(timeline, coachingExtras)
-    if (matchData) payload.match_data = matchData
+    if (matchData) {
+      payload.match_data = clip.clipEvents?.length
+        ? { ...matchData, clip_events: clip.clipEvents }
+        : matchData
+    }
+  } else if (clip.clipEvents?.length) {
+    payload.match_data = { clip_events: clip.clipEvents }
   }
 
   if (coachingExtras?.skillProfile) payload.skill_profile = coachingExtras.skillProfile

@@ -45,7 +45,7 @@ export function setupAppHandlers(
   ipcMain.handle('app:get-status', () => {
     const settings = settingsManager.get()
     const recorder = getActiveRecorder()
-    const recording = recorder.isRecording()
+    const recording = recorder.isActivelyRecording()
     return {
       recording,
       recordingStartedAt: recorder.getRecordingStartedAt(),

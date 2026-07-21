@@ -58,6 +58,8 @@ export interface LateClipRetryDeps {
     timeline: MatchData | null,
   ) => Promise<void>
   enrichTimelineSpatial: (timeline: MatchData) => void
+  /** Recompute heuristic offsets then apply live kill stamps. */
+  finalizeTimelineOffsetsForClips: (timeline: MatchData | null) => void
   authManager: Pick<AuthManager, 'fetchRRHistory'>
   settingsManager: SettingsManager
   uploadManager: Pick<UploadManager, 'patchMatchData'>
@@ -126,6 +128,7 @@ export async function runLateClipRetry(
 
   timeline.matchDetails = details
   deps.riotLocalApi.populateMatchDataFromDetails(timeline, details)
+  deps.finalizeTimelineOffsetsForClips(timeline)
   deps.recordingsStore.updateTimeline(ctx.savedRecordingId, timeline)
   deps.mainWindow?.webContents.send('recordings:updated')
 

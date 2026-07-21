@@ -21,11 +21,31 @@ import { detectClutchRoundsForGame } from './demo-clutch'
 import type { ClipGame } from './clip-game'
 import type { ClipCaptureSettings } from './settings-manager'
 import { buildClipKills } from './kill-clip-grouping'
+import { buildClipEventsFromKills } from './live-kill-stamps'
+import type { ClipRecord } from './clip-store'
 
 function reportClipExtractError(prefix: string, err: unknown): void {
   const msg = err instanceof Error ? err.message : String(err)
   // Per-clip failures are expected (bad seek, one kill off-timeline) — log locally only.
   log.warn(`${prefix}:`, msg)
+}
+
+function clipTimingPatch(
+  momentOffsetMs: number,
+  clipStartMs: number,
+  kills: Array<{
+    videoOffsetMs: number
+    victimAgent?: string | null
+    weapon?: string | null
+    round?: number | null
+  }>,
+  durationMs: number,
+): Pick<ClipRecord, 'momentOffsetMs' | 'clipStartMs' | 'clipEvents'> {
+  return {
+    momentOffsetMs,
+    clipStartMs,
+    clipEvents: buildClipEventsFromKills(kills, clipStartMs, durationMs),
+  }
 }
 
 function clipMatchMeta(
@@ -214,6 +234,7 @@ export class ClipPipeline {
       for (const kill of topKills) {
         const offsetMs = kill.videoOffsetMs!
         const startMs = Math.max(0, offsetMs - 8_000)
+        const durationMs = 13_000
         try {
           const rec = clipStore.add({
             path: '', thumbPath: null, trigger: 'kill', map, agent, durationSeconds: 13,
@@ -221,9 +242,18 @@ export class ClipPipeline {
           })
           const clipPath = ClipExtractor.clipPath(rec.id)
           const thumbPath = ClipExtractor.thumbPath(rec.id)
-          await this.safeExtract({ sourcePath: videoPath, startOffsetMs: startMs, durationMs: 13_000, outputPath: clipPath }, vodDurationMs)
+          await this.safeExtract({ sourcePath: videoPath, startOffsetMs: startMs, durationMs, outputPath: clipPath }, vodDurationMs)
           const resolvedThumb = await this.safeThumb(videoPath, offsetMs, startMs, thumbPath)
-          clipStore.update(rec.id, { path: clipPath, thumbPath: resolvedThumb, momentOffsetMs: offsetMs, clipStartMs: startMs })
+          clipStore.update(rec.id, {
+            path: clipPath,
+            thumbPath: resolvedThumb,
+            ...clipTimingPatch(offsetMs, startMs, [{
+              videoOffsetMs: offsetMs,
+              victimAgent: kill.victimAgent,
+              weapon: kill.weapon,
+              round: kill.round,
+            }], durationMs),
+          })
           extractedClipIds.push(rec.id)
         } catch (err) {
           reportClipExtractError('[ClipExtract] Kill clip failed', err)
@@ -249,7 +279,21 @@ export class ClipPipeline {
           const thumbPath = ClipExtractor.thumbPath(rec.id)
           await this.safeExtract({ sourcePath: videoPath, startOffsetMs: startMs, durationMs, outputPath: clipPath }, vodDurationMs)
           const resolvedThumb = await this.safeThumb(videoPath, first.videoOffsetMs!, startMs, thumbPath)
-          clipStore.update(rec.id, { path: clipPath, thumbPath: resolvedThumb, momentOffsetMs: first.videoOffsetMs!, clipStartMs: startMs })
+          clipStore.update(rec.id, {
+            path: clipPath,
+            thumbPath: resolvedThumb,
+            ...clipTimingPatch(
+              first.videoOffsetMs!,
+              startMs,
+              validKills.map(k => ({
+                videoOffsetMs: k.videoOffsetMs!,
+                victimAgent: k.victimAgent,
+                weapon: k.weapon,
+                round: k.round,
+              })),
+              durationMs,
+            ),
+          })
           extractedClipIds.push(rec.id)
           logActivity(`${trigger === 'ace' ? 'Ace' : `${killCount}K`} clip saved — Round ${round + 1} (${map ?? 'unknown'})`)
         } catch (err) {
@@ -274,7 +318,21 @@ export class ClipPipeline {
             const thumbPath = ClipExtractor.thumbPath(rec.id)
             await this.safeExtract({ sourcePath: videoPath, startOffsetMs: startMs, durationMs, outputPath: clipPath }, vodDurationMs)
             const resolvedThumb = await this.safeThumb(videoPath, first.videoOffsetMs!, startMs, thumbPath)
-            clipStore.update(rec.id, { path: clipPath, thumbPath: resolvedThumb, momentOffsetMs: first.videoOffsetMs!, clipStartMs: startMs })
+            clipStore.update(rec.id, {
+              path: clipPath,
+              thumbPath: resolvedThumb,
+              ...clipTimingPatch(
+                first.videoOffsetMs!,
+                startMs,
+                clutchKills.map(k => ({
+                  videoOffsetMs: k.videoOffsetMs!,
+                  victimAgent: k.victimAgent,
+                  weapon: k.weapon,
+                  round: k.round,
+                })),
+                durationMs,
+              ),
+            })
             extractedClipIds.push(rec.id)
             logActivity(`Clutch clip saved — Round ${round + 1} (${map ?? 'unknown'})`)
           } catch (err) {
@@ -291,7 +349,7 @@ export class ClipPipeline {
   }
 
   /**
-   * Extract only kill-based clips (3K/4K/ace/clutch) — used by the late-retry path
+   * Extract kill-based clips (single + 3K/4K/ace/clutch) — used by the late-retry path
    * when match details weren't available at match end.
    */
   async extractKillClipsOnly(
@@ -351,6 +409,45 @@ export class ClipPipeline {
       else if (kills.length >= 3) combinedRounds.set(round, { kills, trigger: 'multikill', killCount: kills.length })
     }
 
+    const topKills = capture.singleKills
+      ? clipKills
+          .filter(k => {
+            const r = k.round ?? -1
+            return !clutchRounds.has(r) && !combinedRounds.has(r) && k.videoOffsetMs != null
+          })
+          .slice(0, 6)
+      : []
+
+    for (const kill of topKills) {
+      const offsetMs = kill.videoOffsetMs!
+      const startMs = Math.max(0, offsetMs - 8_000)
+      const durationMs = 13_000
+      try {
+        const rec = clipStore.add({
+          path: '', thumbPath: null, trigger: 'kill', map, agent, durationSeconds: 13,
+          round: kill.round ?? null, killCount: null, analysisJobId, game, ...clipMatchMeta(timeline, kill),
+        })
+        const clipPath = ClipExtractor.clipPath(rec.id)
+        const thumbPath = ClipExtractor.thumbPath(rec.id)
+        await this.safeExtract({ sourcePath: videoPath, startOffsetMs: startMs, durationMs, outputPath: clipPath }, vodDurationMs)
+        const resolvedThumb = await this.safeThumb(videoPath, offsetMs, startMs, thumbPath)
+        clipStore.update(rec.id, {
+          path: clipPath,
+          thumbPath: resolvedThumb,
+          ...clipTimingPatch(offsetMs, startMs, [{
+            videoOffsetMs: offsetMs,
+            victimAgent: kill.victimAgent,
+            weapon: kill.weapon,
+            round: kill.round,
+          }], durationMs),
+        })
+        extractedClipIds.push(rec.id)
+        logActivity(`Kill clip saved (late extract) — Round ${(kill.round ?? -1) + 1} (${map ?? 'unknown'})`)
+      } catch (err) {
+        reportClipExtractError('[LateClipExtract] Kill clip failed', err)
+      }
+    }
+
     for (const [round, { kills: roundKills, trigger, killCount }] of combinedRounds.entries()) {
       if (trigger === 'ace' ? !capture.aces : !capture.multiKills) continue
       const validKills = roundKills.filter(k => k.videoOffsetMs != null)
@@ -370,7 +467,21 @@ export class ClipPipeline {
         const thumbPath = ClipExtractor.thumbPath(rec.id)
         await this.safeExtract({ sourcePath: videoPath, startOffsetMs: startMs, durationMs, outputPath: clipPath }, vodDurationMs)
         const resolvedThumb = await this.safeThumb(videoPath, first.videoOffsetMs!, startMs, thumbPath)
-        clipStore.update(rec.id, { path: clipPath, thumbPath: resolvedThumb, momentOffsetMs: first.videoOffsetMs!, clipStartMs: startMs })
+        clipStore.update(rec.id, {
+          path: clipPath,
+          thumbPath: resolvedThumb,
+          ...clipTimingPatch(
+            first.videoOffsetMs!,
+            startMs,
+            validKills.map(k => ({
+              videoOffsetMs: k.videoOffsetMs!,
+              victimAgent: k.victimAgent,
+              weapon: k.weapon,
+              round: k.round,
+            })),
+            durationMs,
+          ),
+        })
         extractedClipIds.push(rec.id)
         logActivity(`${trigger === 'ace' ? 'Ace' : `${killCount}K`} clip saved (late extract) — Round ${round + 1} (${map ?? 'unknown'})`)
       } catch (err) {
@@ -394,7 +505,21 @@ export class ClipPipeline {
         const thumbPath = ClipExtractor.thumbPath(rec.id)
         await this.safeExtract({ sourcePath: videoPath, startOffsetMs: startMs, durationMs, outputPath: clipPath }, vodDurationMs)
         const resolvedThumb = await this.safeThumb(videoPath, first.videoOffsetMs!, startMs, thumbPath)
-        clipStore.update(rec.id, { path: clipPath, thumbPath: resolvedThumb, momentOffsetMs: first.videoOffsetMs!, clipStartMs: startMs })
+        clipStore.update(rec.id, {
+          path: clipPath,
+          thumbPath: resolvedThumb,
+          ...clipTimingPatch(
+            first.videoOffsetMs!,
+            startMs,
+            clutchKills.map(k => ({
+              videoOffsetMs: k.videoOffsetMs!,
+              victimAgent: k.victimAgent,
+              weapon: k.weapon,
+              round: k.round,
+            })),
+            durationMs,
+          ),
+        })
         extractedClipIds.push(rec.id)
         logActivity(`Clutch clip saved (late extract) — Round ${round + 1} (${map ?? 'unknown'})`)
       } catch (err) {

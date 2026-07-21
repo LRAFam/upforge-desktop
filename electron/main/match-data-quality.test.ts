@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { hasRichMatchData, timelineNeedsEnrichRefresh } from './match-data-quality'
+import { hasRichMatchData, timelineNeedsEnrichRefresh, shouldScheduleLateClipRetry } from './match-data-quality'
 import type { MatchData } from './riot-types'
 
 function sparseTimeline(): MatchData {
@@ -146,5 +146,22 @@ describe('timelineNeedsEnrichRefresh', () => {
     const tl = sparseTimeline()
     tl.roundSummaries = [roundSummary()]
     expect(timelineNeedsEnrichRefresh(tl)).toBe(false)
+  })
+})
+
+describe('shouldScheduleLateClipRetry', () => {
+  it('returns false when timeline already has kills', () => {
+    const tl = sparseTimeline()
+    tl.playerKills = [{ EventID: 1, EventName: 'ChampionKill', EventTime: 1 } as MatchData['playerKills'][number]]
+    expect(shouldScheduleLateClipRetry('valorant', tl, 'match-1')).toBe(false)
+  })
+
+  it('returns true for sparse valorant timeline', () => {
+    expect(shouldScheduleLateClipRetry('valorant', sparseTimeline(), null)).toBe(true)
+  })
+
+  it('returns true for sparse cs2/deadlock timelines', () => {
+    expect(shouldScheduleLateClipRetry('cs2', sparseTimeline(), null)).toBe(true)
+    expect(shouldScheduleLateClipRetry('deadlock', sparseTimeline(), null)).toBe(true)
   })
 })

@@ -102,6 +102,13 @@ export class OBSRecorder {
   private _liveKillPollTimer: ReturnType<typeof setInterval> | null = null
   private _seenKillIds = new Set<number>()
   private _localPlayerName: string | null = null
+  /** Wall-clock recording offsets stamped when Live Client reports a kill. */
+  private _liveKillStamps: Array<{
+    eventTimeSec: number
+    recordingOffsetMs: number
+    victimName?: string
+    stampedAt: number
+  }> = []
 
   // Replay clip save — resolves when ReplayBufferSaved fires
   private _pendingReplaySave: ((path: string) => void) | null = null
@@ -278,6 +285,9 @@ export class OBSRecorder {
           this._disconnectedDuringRecording = false
           void this.reclaimActiveRecording()
           this._stopReconnectLoop()
+        } else {
+          // OBS just connected idle — drop leftover match-owned state from a prior session.
+          void this.releaseStaleMatchOwnership()
         }
         return { ok: true, version: obsWebSocketVersion, setup }
       } catch (err) {
@@ -381,6 +391,16 @@ export class OBSRecorder {
   hadDisconnectedDuringRecording(): boolean { return this._disconnectedDuringRecording }
   getRecordingStartedAt(): number | null { return this._startedAt }
 
+  /** Live kill stamps for this session (cleared on next start). */
+  getLiveKillStamps(): Array<{
+    eventTimeSec: number
+    recordingOffsetMs: number
+    victimName?: string
+    stampedAt: number
+  }> {
+    return this._liveKillStamps.map((s) => ({ ...s }))
+  }
+
   /** Query OBS directly — catches sessions where UpForge lost its recording flag. */
   async isObsOutputActive(): Promise<boolean> {
     if (!this._connected) {
@@ -402,16 +422,39 @@ export class OBSRecorder {
 
   /**
    * Clear match ownership when OBS is idle but UpForge still thinks a session is active
-   * (common after WebSocket disconnect). Returns true if ownership was released.
+   * (common after WebSocket disconnect, or when `_recording` stuck true while OBS stopped).
+   * Returns true if ownership was released.
    */
   async releaseStaleMatchOwnership(): Promise<boolean> {
-    if (!this._matchOwnedRecording || this._recording) return false
-    if (await this.isObsOutputActive()) return false
-    log.info('[OBSRecorder] Released stale match ownership — OBS output is idle')
+    if (!this._matchOwnedRecording) return false
+
+    // Prefer a live OBS query — don't trust stale `_recording` alone.
+    const recordActive = await this.isObsOutputActive()
+    if (recordActive) return false
+
+    // Clips-only sessions keep Replay Buffer running without GetRecordStatus=true.
+    if (this._clipsOnlySession) {
+      let replayActive = this._replayBufferActive
+      if (this._connected) {
+        try {
+          const rb = await this._obs.call('GetReplayBufferStatus') as { outputActive?: boolean }
+          replayActive = rb.outputActive === true
+          this._replayBufferActive = replayActive
+        } catch { /* ignore — fall back to cached flag */ }
+      }
+      if (replayActive) return false
+    }
+
+    log.info(
+      '[OBSRecorder] Released stale match ownership — OBS idle '
+      + `(was recordingFlag=${this._recording} clipsOnly=${this._clipsOnlySession})`,
+    )
     this._matchOwnedRecording = false
+    this._recording = false
     this._startedAt = null
     this._disconnectedDuringRecording = false
     this._clipsOnlySession = false
+    this._replayBufferActive = false
     this.onStatusChange?.(false)
     return true
   }
@@ -967,6 +1010,7 @@ export class OBSRecorder {
   private _startLiveKillPoll(): void {
     this._seenKillIds.clear()
     this._localPlayerName = null
+    this._liveKillStamps = []
 
     // Port 2999 Live Client API is deprecated in modern Valorant — probe once before polling.
     void this._riotGet<{ riotId?: string }>('/liveclientdata/activeplayer')
@@ -974,10 +1018,10 @@ export class OBSRecorder {
         this._fetchLocalPlayerName()
         this._liveKillPollTimer = setInterval(() => {
           this._pollKillEvents()
-        }, 4_000)
+        }, 2_000)
       })
       .catch(() => {
-        log.info('[OBSRecorder] Live Client API unavailable — OBS kill clips disabled; post-match extraction will still run')
+        log.info('[OBSRecorder] Live Client API unavailable — live kill stamps disabled; post-match extraction will still run')
       })
   }
 
@@ -988,6 +1032,7 @@ export class OBSRecorder {
     }
     this._seenKillIds.clear()
     this._localPlayerName = null
+    // Keep _liveKillStamps until the next start() so post-match extract can use them.
   }
 
   private _fetchLocalPlayerName(): void {
@@ -1002,7 +1047,8 @@ export class OBSRecorder {
   }
 
   private async _pollKillEvents(): Promise<void> {
-    if (!this._recording || !this._replayBufferActive) return
+    // Stamp kills whenever we own a recording session (full VOD or clips-only).
+    if (!this._matchOwnedRecording || !this._startedAt) return
 
     try {
       const data = await this._riotGet<{ Events: LiveKillEvent[] }>('/liveclientdata/eventdata')
@@ -1021,6 +1067,20 @@ export class OBSRecorder {
 
         // Only trigger on kills made BY the local player
         if (!evt.KillerName?.toLowerCase().includes(this._localPlayerName.toLowerCase())) continue
+
+        const recordingOffsetMs = Math.max(0, Date.now() - this._startedAt)
+        this._liveKillStamps.push({
+          eventTimeSec: evt.EventTime,
+          recordingOffsetMs,
+          victimName: evt.VictimName,
+          stampedAt: Date.now(),
+        })
+        log.info(
+          `[OBSRecorder] Kill stamped EventID=${evt.EventID} eventTime=${evt.EventTime.toFixed(1)}s recordingOffset=${recordingOffsetMs}ms`,
+        )
+
+        // Replay-buffer save only in clips-only mode.
+        if (!this._replayBufferActive) continue
 
         log.info(`[OBSRecorder] Kill detected (EventID=${evt.EventID}) — saving replay buffer`)
         this._pendingReplayMeta = {

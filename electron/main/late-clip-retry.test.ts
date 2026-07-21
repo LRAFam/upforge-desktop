@@ -54,6 +54,7 @@ describe('runLateClipRetry', () => {
       extractKillClipsOnly: vi.fn(),
       syncScoutMomentsForJob: vi.fn(),
       enrichTimelineSpatial: vi.fn(),
+      finalizeTimelineOffsetsForClips: vi.fn(),
       authManager: { fetchRRHistory: vi.fn(async () => []) },
       settingsManager: { get: () => ({}) },
       uploadManager: { patchMatchData: vi.fn() },

@@ -300,7 +300,7 @@ export function setupAuthHandlers(
   })
 
   ipcMain.handle('squad:sync-presence', async () => {
-    await auth.sendPresence(getActiveRecorder().isRecording(), gameDetector.currentGame())
+    await auth.sendPresence(getActiveRecorder().isActivelyRecording(), gameDetector.currentGame())
     return { ok: true }
   })
 

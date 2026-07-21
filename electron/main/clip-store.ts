@@ -34,6 +34,18 @@ export interface ClipRecord {
   momentOffsetMs: number | null
   /** Match timeline ms where this clip file begins (ffmpeg extract start). */
   clipStartMs: number | null
+  /**
+   * Kill events stamped relative to this clip file at extract time.
+   * Preferred by coached-video over recomputing from full match_data.
+   */
+  clipEvents: Array<{
+    event_type: 'kill'
+    clip_offset_ms: number
+    vod_offset_ms: number
+    victim_agent?: string | null
+    weapon?: string | null
+    round?: number | null
+  }> | null
   /** For multi-kill and clutch clips: number of kills in the round (3=3k, 4=4k, 5=ace etc.) */
   killCount: number | null
   /** Title set by user */
@@ -86,7 +98,11 @@ export type NewClip = Pick<ClipRecord,
   | 'game'
   | 'weapon'
   | 'abilitySlot'
-> & { momentOffsetMs?: number | null; clipStartMs?: number | null }
+> & {
+  momentOffsetMs?: number | null
+  clipStartMs?: number | null
+  clipEvents?: ClipRecord['clipEvents']
+}
 
 export class ClipStore {
   private clips: ClipRecord[] = []
@@ -149,6 +165,7 @@ export class ClipStore {
       round: data.round ?? null,
       momentOffsetMs: data.momentOffsetMs ?? null,
       clipStartMs: data.clipStartMs ?? null,
+      clipEvents: data.clipEvents ?? null,
       title: null,
       savedAt: Date.now(),
       analysisJobId: data.analysisJobId,

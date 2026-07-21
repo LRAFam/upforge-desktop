@@ -18,6 +18,19 @@ export function hasRichMatchData(timeline: MatchData | null | undefined): boolea
 }
 
 /**
+ * Schedule the ~90s late clip / MatchDetails retry only when the timeline is
+ * still sparse *after* enrich — not from the pre-enrich snapshot.
+ */
+export function shouldScheduleLateClipRetry(
+  game: string,
+  timeline: MatchData | null | undefined,
+  matchId?: string | null,
+): boolean {
+  if (hasRichMatchData(timeline)) return false
+  return game === 'valorant' || game === 'cs2' || game === 'deadlock' || !!matchId || !!timeline?.matchId
+}
+
+/**
  * True when MatchDetails still needs to supply core kill/round stats.
  *
  * Do NOT gate on plantLocation or spatialSummary plants here — spatial enrichment
