@@ -20,7 +20,7 @@ vi.mock('./obs-connect', () => ({
     processRunning ? `hung:${connectError ?? ''}` : 'not-running'),
 }))
 
-import { ensureObsConnected } from './obs-ensure'
+import { ensureObsConnected, resetObsLaunchCooldownForTests } from './obs-ensure'
 import { isObsProcessRunning, terminateObsProcess } from './obs-process'
 import { launchObsStudio } from './obs-launcher'
 
@@ -48,8 +48,11 @@ function mockRecorder(overrides: {
   }
 }
 
+const fail = (error = 'ECONNREFUSED'): { ok: false; error: string } => ({ ok: false, error })
+
 describe('ensureObsConnected', () => {
   beforeEach(() => {
+    resetObsLaunchCooldownForTests()
     vi.mocked(isObsProcessRunning).mockReset()
     vi.mocked(terminateObsProcess).mockReset()
     vi.mocked(launchObsStudio).mockReset()
@@ -62,15 +65,29 @@ describe('ensureObsConnected', () => {
     expect(launchObsStudio).not.toHaveBeenCalled()
   })
 
-  it('kills hung OBS then relaunches when process is up but WebSocket fails', async () => {
+  it('reconnects patiently when process is up before killing', async () => {
+    vi.mocked(isObsProcessRunning).mockResolvedValue(true)
+    const rec = mockRecorder({
+      connectResults: [fail(), fail(), fail(), { ok: true }],
+    })
+
+    const result = await ensureObsConnected(rec as never, { password: 'upforge', port: 4455 })
+
+    expect(terminateObsProcess).not.toHaveBeenCalled()
+    expect(launchObsStudio).not.toHaveBeenCalled()
+    expect(result.ok).toBe(true)
+  })
+
+  it('kills hung OBS then relaunches when process is up but WebSocket keeps failing', async () => {
     vi.mocked(isObsProcessRunning).mockResolvedValue(true)
     vi.mocked(terminateObsProcess).mockResolvedValue({ ok: true })
     vi.mocked(launchObsStudio).mockResolvedValue({ ok: true })
 
     const rec = mockRecorder({
       connectResults: [
-        { ok: false, error: 'ECONNREFUSED' },
-        { ok: true },
+        fail(),
+        fail(), fail(), fail(), fail(), // patient retries
+        { ok: true }, // after relaunch
       ],
     })
 
@@ -81,10 +98,33 @@ describe('ensureObsConnected', () => {
     expect(result.ok).toBe(true)
   })
 
+  it('does not kill during launch cooldown when WebSocket is still down', async () => {
+    vi.mocked(isObsProcessRunning).mockResolvedValueOnce(false).mockResolvedValue(true)
+    vi.mocked(launchObsStudio).mockResolvedValue({ ok: true })
+
+    // First call: launch OBS but never connect
+    const first = mockRecorder({
+      connectResults: [fail(), fail(), fail(), fail(), fail()],
+    })
+    const firstResult = await ensureObsConnected(first as never, { password: 'upforge', port: 4455 })
+    expect(firstResult.ok).toBe(false)
+    expect(terminateObsProcess).not.toHaveBeenCalled()
+
+    // Second call: process still up, WS still failing — cooldown blocks kill
+    const second = mockRecorder({
+      connectResults: [fail(), fail(), fail(), fail(), fail()],
+    })
+    const secondResult = await ensureObsConnected(second as never, { password: 'upforge', port: 4455 })
+
+    expect(terminateObsProcess).not.toHaveBeenCalled()
+    expect(secondResult.ok).toBe(false)
+    expect(secondResult.processRunning).toBe(true)
+  })
+
   it('does not kill hung process when allowProcessRestart is false', async () => {
     vi.mocked(isObsProcessRunning).mockResolvedValue(true)
     const rec = mockRecorder({
-      connectResults: [{ ok: false, error: 'ECONNREFUSED' }],
+      connectResults: [fail(), fail(), fail(), fail(), fail()],
     })
 
     const result = await ensureObsConnected(rec as never, {

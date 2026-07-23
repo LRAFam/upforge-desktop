@@ -3117,12 +3117,20 @@ function setupGameDetection(): void {
       const PRESENCE_TIMEOUT_MS = 25 * 60 * 1000
       const deadline = Date.now() + PRESENCE_TIMEOUT_MS
       let lastCoreGameCheckAt = 0
+      // Single tasklist miss is common mid-load; require a short streak before cancelling.
+      let processMissStreak = 0
+      const PROCESS_MISS_CANCEL = 3
       while (Date.now() < deadline && !cancelled) {
         if (abortIfStale(isStale, game)) return
         await new Promise((r) => setTimeout(r, 1000))
         if (cancelled) break
         const stillRunning = await gameDetector.isMatchProcessRunning()
-        if (!stillRunning) { cancelled = true; break }
+        if (!stillRunning) {
+          processMissStreak++
+          if (processMissStreak >= PROCESS_MISS_CANCEL) { cancelled = true; break }
+          continue
+        }
+        processMissStreak = 0
         try {
           const state = await riotLocalApi.getSessionState()
 
@@ -3234,12 +3242,19 @@ function setupGameDetection(): void {
       const LOADING_DELAY_MS = 90_000
       logActivity('Riot Client API unavailable — recording starts in 90s')
       const deadline = Date.now() + LOADING_DELAY_MS
+      let processMissStreak = 0
+      const PROCESS_MISS_CANCEL = 2
       while (Date.now() < deadline && !cancelled) {
         if (abortIfStale(isStale, game)) return
         await new Promise((r) => setTimeout(r, 5000))
         if (cancelled) break
         const stillRunning = await gameDetector.isMatchProcessRunning()
-        if (!stillRunning) { cancelled = true; break }
+        if (!stillRunning) {
+          processMissStreak++
+          if (processMissStreak >= PROCESS_MISS_CANCEL) { cancelled = true; break }
+        } else {
+          processMissStreak = 0
+        }
       }
     }
     }

@@ -1,6 +1,9 @@
 /**
  * Ensure OBS is running and WebSocket-connected.
  * When a hung obs64.exe is left after a crash, kill it then relaunch.
+ *
+ * Avoid kill-loops: if OBS was just launched (or is still booting), prefer
+ * patient WebSocket retries over treating a slow start as a crash.
  */
 
 import type { BrowserWindow } from 'electron'
@@ -39,6 +42,16 @@ export type EnsureObsConnectedResult =
       launched?: boolean
     }
 
+/** Skip kill-restart while OBS may still be booting after our last launch. */
+const OBS_LAUNCH_COOLDOWN_MS = 45_000
+
+let lastObsLaunchAt = 0
+
+/** Test helper — reset launch cooldown between specs. */
+export function resetObsLaunchCooldownForTests(): void {
+  lastObsLaunchAt = 0
+}
+
 async function connectWithRetries(
   obsRecorder: OBSRecorder,
   delaysMs: number[],
@@ -51,6 +64,10 @@ async function connectWithRetries(
     lastError = result.error
   }
   return { ok: false, error: lastError }
+}
+
+function recentlyLaunchedObs(): boolean {
+  return lastObsLaunchAt > 0 && Date.now() - lastObsLaunchAt < OBS_LAUNCH_COOLDOWN_MS
 }
 
 /**
@@ -75,13 +92,24 @@ export async function ensureObsConnected(
       return { ok: true, alreadyRunning: true, processRunning: true }
     }
 
-    if (!allowProcessRestart) {
+    // OBS process is up but WS failed — often still booting after a fresh launch.
+    const patient = await connectWithRetries(obsRecorder, [1500, 2000, 3000, 4000])
+    if (patient.ok) {
+      broadcastObsConnection(win(), obsRecorder)
+      return { ok: true, alreadyRunning: true, processRunning: true }
+    }
+
+    if (!allowProcessRestart || recentlyLaunchedObs()) {
+      if (recentlyLaunchedObs()) {
+        log.warn('[OBS Ensure] Process up but WebSocket still down during launch cooldown — not killing')
+        opts.onActivity?.('OBS still starting — waiting for connection…')
+      }
       return {
         ok: false,
         processRunning: true,
         error: explainObsConnectionFailure({
           processRunning: true,
-          connectError: existing.error,
+          connectError: patient.error ?? existing.error,
         }),
       }
     }
@@ -96,7 +124,7 @@ export async function ensureObsConnected(
         needsManualRestart: true,
         error: killed.error ?? explainObsConnectionFailure({
           processRunning: true,
-          connectError: existing.error,
+          connectError: patient.error ?? existing.error,
         }),
       }
     }
@@ -115,8 +143,15 @@ export async function ensureObsConnected(
     }
   }
 
+  lastObsLaunchAt = Date.now()
   opts.onActivity?.('Starting OBS — connecting…')
-  const connected = await connectWithRetries(obsRecorder, [obsLaunchDelayMs(), 2000, 2500])
+  const connected = await connectWithRetries(obsRecorder, [
+    obsLaunchDelayMs(),
+    2000,
+    2500,
+    3000,
+    4000,
+  ])
   if (connected.ok) {
     broadcastObsConnection(win(), obsRecorder)
     opts.onActivity?.('OBS connected — recording ready')
