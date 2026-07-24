@@ -1018,6 +1018,16 @@ function applyPostGameSnapshot(snapshot: PostGameSessionSnapshot): void {
 
   const next = snapshot.phase as State
   if (next === 'preparing') {
+    if (
+      state.value === 'uploading'
+      || state.value === 'analysing'
+      || state.value === 'pending'
+      || state.value === 'error'
+      || state.value === 'ready'
+      || state.value === 'archived'
+    ) {
+      return
+    }
     state.value = 'preparing'
     startPreparingStuckTimer()
     return
@@ -1586,7 +1596,17 @@ onMounted(() => {
   ipcCleanup.push(window.api.on('post-game:preparing', (...args: unknown[]) => {
     const data = args[0] as { game: string; map: string | null; agent: string | null }
     gameInfo.value = { game: data.game, map: data.map, agent: data.agent }
-    if (state.value === 'uploading' || state.value === 'analysing') return
+    // Ignore late preparing after the flow has already advanced (matches main-process session guard).
+    if (
+      state.value === 'uploading'
+      || state.value === 'analysing'
+      || state.value === 'pending'
+      || state.value === 'error'
+      || state.value === 'ready'
+      || state.value === 'archived'
+    ) {
+      return
+    }
     preparingSyncMessage.value = null
     state.value = 'preparing'
     uploadProgress.value = 0

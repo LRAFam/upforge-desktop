@@ -4,7 +4,16 @@
  */
 
 import type { BrowserWindow } from 'electron'
-import { whenWebContentsReady } from './window-manager'
+
+/** Local copy so this module stays free of window-manager/electron value imports (unit-testable). */
+function whenWebContentsReady(win: BrowserWindow, fn: () => void): void {
+  if (win.isDestroyed()) return
+  if (win.webContents.isLoading()) {
+    win.webContents.once('did-finish-load', fn)
+  } else {
+    fn()
+  }
+}
 
 export type PostGameUiPhase =
   | 'preparing'
@@ -77,6 +86,18 @@ export function getPostGameSessionSnapshot(): PostGameSessionSnapshot | null {
   return session ? { ...session } : null
 }
 
+/** True once upload flow has left the initial preparing phase. */
+export function isPostGamePastPreparing(phase: PostGameUiPhase | null | undefined): boolean {
+  return (
+    phase === 'uploading'
+    || phase === 'analysing'
+    || phase === 'ready'
+    || phase === 'error'
+    || phase === 'pending'
+    || phase === 'archived'
+  )
+}
+
 function patch(patch: Partial<PostGameSessionSnapshot>): void {
   if (!session) session = baseSession()
   Object.assign(session, patch, { updatedAt: Date.now() })
@@ -86,6 +107,16 @@ export function applyPostGameChannelEvent(channel: string, payload: unknown): vo
   switch (channel) {
     case 'post-game:preparing': {
       const data = payload as { game: string; map: string | null; agent: string | null }
+      // Late window-load "preparing" must not clobber a flow that already advanced
+      // (prep-step / pending / upload). That race falsely tripped upload_failed safety nets.
+      if (isPostGamePastPreparing(session?.phase)) {
+        patch({
+          game: data.game ?? session?.game,
+          map: data.map ?? session?.map ?? null,
+          agent: data.agent ?? session?.agent ?? null,
+        })
+        break
+      }
       patch({
         phase: 'preparing',
         game: data.game,

@@ -175,6 +175,7 @@ import {
 import {
   clearPostGameSession,
   getPostGameSessionSnapshot,
+  isPostGamePastPreparing,
   resetPostGameSession,
   sendPostGameEvent,
 } from './post-game-session'
@@ -1171,8 +1172,13 @@ function dispatchAnalysisFailure(
   const windows = new Set<BrowserWindow>()
   if (opts.targetWindow && !opts.targetWindow.isDestroyed()) windows.add(opts.targetWindow)
   if (postGameWindow && !postGameWindow.isDestroyed()) windows.add(postGameWindow)
-  for (const win of windows) {
-    sendPostGameEvent(win, 'post-game:upload-error', payload)
+  // Always advance session phase (even with no live window) so preparing safety nets do not false-fire.
+  if (windows.size === 0) {
+    sendPostGameEvent(null, 'post-game:upload-error', payload)
+  } else {
+    for (const win of windows) {
+      sendPostGameEvent(win, 'post-game:upload-error', payload)
+    }
   }
 
   mainWindow?.webContents.send('dashboard:analysis-failed', payload)
@@ -2436,7 +2442,12 @@ function setupGameDetection(): void {
       whenWebContentsReady(thisPostGameWindow, () => {
         if (thisPostGameWindow!.isDestroyed()) return
         try {
-          sendPostGameEvent(thisPostGameWindow!, 'post-game:preparing', { game, map, agent })
+          // Skip if upload already advanced — late load must not clobber session phase.
+          if (!isPostGamePastPreparing(getPostGameSessionSnapshot()?.phase)) {
+            sendPostGameEvent(thisPostGameWindow!, 'post-game:preparing', { game, map, agent })
+          } else {
+            log.info('[HandleMatchEnd] Skipping late post-game:preparing — phase already', getPostGameSessionSnapshot()?.phase)
+          }
         } catch { /* window may have closed */ }
         if (process.platform === 'win32') {
           thisPostGameWindow!.showInactive()
@@ -2490,10 +2501,18 @@ function setupGameDetection(): void {
     }
 
     const runPostGameUpload = async () => {
-        const sendToWindow = (channel: string, payload?: unknown) => {
-          if (!thisPostGameWindow || thisPostGameWindow.isDestroyed()) return
-          sendPostGameEvent(thisPostGameWindow, channel, payload)
-        }
+      const activationStep = (step: string, detail?: string) => {
+        const line = detail ? `[Activation:${step}] ${detail}` : `[Activation:${step}]`
+        log.info(line)
+      }
+      // Always update session state even if the post-game window is gone —
+      // otherwise phase stays "preparing" and safety nets fire false upload_failed.
+      const sendToWindow = (channel: string, payload?: unknown) => {
+        const win = thisPostGameWindow && !thisPostGameWindow.isDestroyed() ? thisPostGameWindow : null
+        sendPostGameEvent(win, channel, payload)
+      }
+
+      activationStep('match_end', `game=${game} autoAnalyse=${autoAnalyse}`)
 
       const savePath = recordingSavePath()
       const ready = resolveReadyRecordingPath(
@@ -2507,17 +2526,22 @@ function setupGameDetection(): void {
         const backend = getRecordingBackendForStatus()
         const errorMsg = formatRecordingFailure(backend, obsRecorder.getLastError())
         logActivity('Recording file not found at expected path — check save folder in Settings')
+        activationStep('file_ready', `failed: ${errorMsg}`)
+        reportPipelineError('upload', errorMsg, { step: 'file_ready', game, map, agent })
         sendUploadFailure(errorMsg, { targetWindow: uploadTargetWindow, game })
         return
       }
 
       const { path: readyPath, sizeBytes: readySize } = ready
+      activationStep('file_ready', `${(readySize / (1024 ** 2)).toFixed(1)} MB`)
 
       if (readySize < MIN_FILE_SIZE_BYTES) {
         const sizeMB = (readySize / (1024 * 1024)).toFixed(2)
         const errorMsg = formatCorruptRecordingMessage(getRecordingBackendForStatus(), sizeMB)
         log.error(`[GameDetector] ${errorMsg}`)
         logActivity(`Recording file too small (${sizeMB} MB) — upload skipped`)
+        activationStep('file_ready', `too_small: ${errorMsg}`)
+        reportPipelineError('upload', errorMsg, { step: 'file_ready', game, map, agent, sizeMB })
         sendUploadFailure(errorMsg, { targetWindow: uploadTargetWindow, game })
         return
       }
@@ -2576,6 +2600,7 @@ function setupGameDetection(): void {
       // Auto-analyse off: skip the upload flow entirely and drop straight to the
       // manual "pending" card below (no preparing → uploading flash).
       if (autoAnalyse) {
+        activationStep('prep', 'leaving preparing → uploading')
         sendToWindow('post-game:prep-step', { game, map, agent })
       }
 
@@ -2606,6 +2631,7 @@ function setupGameDetection(): void {
       }).catch((err) => log.warn('[Enrich] Match coaching enrich failed:', err))
 
       if (!autoAnalyse) {
+        activationStep('pending', 'autoAnalyse off — manual analyse')
         void refreshRecordingVodProbe(savedRecording).catch(() => {})
         const pendingReadiness = getAnalysisReadiness(recordingsStore.getById(savedRecording.id) ?? savedRecording)
         sendToWindow('post-game:pending', {
@@ -2674,6 +2700,7 @@ function setupGameDetection(): void {
 
       const autoReadiness = getAnalysisReadiness(recForProbe)
       if (isTerminalAnalysisReadinessState(autoReadiness.state) && !autoReadiness.ready) {
+        activationStep('pending', `readiness blocked: ${autoReadiness.state}`)
         logActivity(autoReadiness.message || 'Auto-analyse skipped — recording not ready')
         sendToWindow('post-game:pending', {
           recordingId: savedRecording.id,
@@ -2716,12 +2743,15 @@ function setupGameDetection(): void {
       }
 
       tray?.setToolTip('UpForge — Uploading...')
+      activationStep('upload', `recordingId=${savedRecording.id}`)
 
       const uploadResult = await doUploadAndAnalyse(
         savedRecording.id, readyPath, user?.riot_name ?? '', user?.riot_tag ?? '',
         game, map, agent, timeline, uploadTargetWindow!, matchSessionStart,
         /* skipAutoDelete= */ true, /* deleteLocalAfterUpload= */ false, enrichPromise,
       )
+
+      activationStep('upload', uploadResult ? `jobId=${uploadResult}` : 'no job id (failed or skipped)')
 
       const jobId = uploadResult ?? null
       // Upload's beforeComplete already awaited enrich — decide late retry from current timeline.
@@ -2764,15 +2794,19 @@ function setupGameDetection(): void {
     const PREPARING_SAFETY_MS = 45_000
     const preparingSafetyTimer = setTimeout(() => {
       if (getPostGameSessionSnapshot()?.phase !== 'preparing') return
+      const stuckMsg =
+        'Preparing is taking longer than expected — open the dashboard to upload this match manually.'
       log.error('[HandleMatchEnd] Post-game stuck in preparing — surfacing manual fallback')
       logActivity('Post-game preparation did not complete — upload this match from the dashboard.')
+      reportPipelineError('upload', stuckMsg, {
+        step: 'preparing_timeout',
+        game,
+        map,
+        agent,
+        phase: getPostGameSessionSnapshot()?.phase,
+      })
       try {
-        if (uploadTargetWindow && !uploadTargetWindow.isDestroyed()) {
-          sendUploadFailure(
-            'Preparing is taking longer than expected — open the dashboard to upload this match manually.',
-            { targetWindow: uploadTargetWindow, game },
-          )
-        }
+        sendUploadFailure(stuckMsg, { targetWindow: uploadTargetWindow, game })
       } catch { /* window closed */ }
     }, PREPARING_SAFETY_MS)
 
@@ -2780,24 +2814,32 @@ function setupGameDetection(): void {
       const msg = err instanceof Error ? err.message : String(err)
       log.error('[HandleMatchEnd] Post-game upload failed:', err)
       logActivity(`Upload failed to start: ${msg}`)
+      reportPipelineError('upload', `Upload failed to start: ${msg}`, {
+        step: 'run_post_game_upload',
+        game,
+        map,
+        agent,
+        stack: err instanceof Error ? err.stack?.slice(0, 2000) : undefined,
+      })
       try {
-        if (uploadTargetWindow && !uploadTargetWindow.isDestroyed()) {
-          sendUploadFailure(`Upload failed to start: ${msg}`, { targetWindow: uploadTargetWindow, game })
-        }
+        sendUploadFailure(`Upload failed to start: ${msg}`, { targetWindow: uploadTargetWindow, game })
       } catch { /* window closed */ }
     }).finally(() => {
       // Settled: if the flow never left preparing (silent early return), don't
       // leave the toast spinning — the timer above will still catch a true hang.
       if (getPostGameSessionSnapshot()?.phase === 'preparing') {
         clearTimeout(preparingSafetyTimer)
+        const settledMsg =
+          'Preparing did not complete — open the dashboard to upload this match manually.'
         log.error('[HandleMatchEnd] runPostGameUpload settled while still preparing — surfacing fallback')
+        reportPipelineError('upload', settledMsg, {
+          step: 'preparing_settled_stuck',
+          game,
+          map,
+          agent,
+        })
         try {
-          if (uploadTargetWindow && !uploadTargetWindow.isDestroyed()) {
-            sendUploadFailure(
-              'Preparing did not complete — open the dashboard to upload this match manually.',
-              { targetWindow: uploadTargetWindow, game },
-            )
-          }
+          sendUploadFailure(settledMsg, { targetWindow: uploadTargetWindow, game })
         } catch { /* window closed */ }
       } else {
         clearTimeout(preparingSafetyTimer)
