@@ -24,6 +24,17 @@ import {
 } from './updater'
 import { pingDesktopOnboarding, resetDesktopOnboardingPing } from './onboarding-ping'
 import { GameDetector } from './game-detector'
+import {
+  decideMatchWaitAfterProcessMiss,
+  formatMatchWaitCancelActivity,
+  formatMatchWaitMilestone,
+  MATCH_WAIT_MILESTONE_MS,
+  shouldAbortMatchWaitOnGameStopped,
+  shouldCancelGenericProcessMiss,
+  shouldSuppressFinalizeOnGameStopped,
+  shouldLogUnknownProbe,
+  shouldReauthAfterPresenceNulls,
+} from './match-wait-guard'
 import { Recorder } from './recorder'
 import { OBSRecorder } from './obs-recorder'
 import { buildRecorderConfig } from './obs-output-settings'
@@ -2075,6 +2086,39 @@ function setupGameDetection(): void {
     return false
   }
 
+  /**
+   * True when Riot still shows match flow (agent select / loading / live), even if
+   * Shipping.exe briefly disappears from tasklist (load restart, alt-tab flake).
+   * null = Riot unreachable — caller should not treat as confirmed quit.
+   */
+  async function isValorantMatchFlowActive(): Promise<boolean | null> {
+    try {
+      const state = await riotLocalApi.getSessionState()
+      const loop = state?.sessionLoopState
+      if (loop === 'PREGAME' || loop === 'INGAME') return true
+      if (loop === 'MENUS') {
+        const coreActive = await riotLocalApi.isCoreGameSessionActive()
+        if (coreActive === true) return true
+        const pregameActive = await riotLocalApi.isPregameSessionActive()
+        if (pregameActive === true) return true
+        if (coreActive === false && pregameActive === false) return false
+        return null
+      }
+      if (loop) {
+        // CUSTOM_GAME / other non-MENUS loops — treat as still in flow
+        return true
+      }
+      const coreActive = await riotLocalApi.isCoreGameSessionActive()
+      if (coreActive === true) return true
+      const pregameActive = await riotLocalApi.isPregameSessionActive()
+      if (pregameActive === true) return true
+      if (coreActive === false && pregameActive === false) return false
+      return null
+    } catch {
+      return null
+    }
+  }
+
   async function finishActiveMatch(game: string, source: string): Promise<void> {
     if (matchHandled) return
     if (!(await obsRecorder.isCaptureActive())) return
@@ -2991,6 +3035,8 @@ function setupGameDetection(): void {
     let matchStartTime: number | null = null
     let modeConfident = false
     let cancelled = false
+    /** Cancel detail for activity feed (Valorant / CS2 / Deadlock / LoL). */
+    let matchWaitCancelReason: string | null = null
     cancelMatchWait = () => { cancelled = true }
     waitingForMatch = true
 
@@ -3031,12 +3077,31 @@ function setupGameDetection(): void {
       const loopStart = Date.now()
       let gsiHintShown = false
       let gsiServerHintShown = false
+      let processMissStreak = 0
+      let lastUnknownProbeLogAt: number | null = null
       const deadline = Date.now() + MATCH_TIMEOUT_MS
       while (Date.now() < deadline && !cancelled) {
         if (abortIfStale(isStale, game)) return
         await new Promise((r) => setTimeout(r, 1000))
         if (cancelled) break
-        if (!await gameDetector.isGameProcessRunning(game)) { cancelled = true; break }
+        const processProbe = await gameDetector.probeGameProcess(game)
+        if (processProbe === 'unknown') {
+          const now = Date.now()
+          if (shouldLogUnknownProbe(lastUnknownProbeLogAt, now)) {
+            lastUnknownProbeLogAt = now
+            console.warn('[GameDetector] CS2 process probe unknown (tasklist timeout/error) — not cancelling')
+          }
+        } else if (processProbe === 'stopped') {
+          processMissStreak++
+          if (shouldCancelGenericProcessMiss(processMissStreak)) {
+            matchWaitCancelReason = 'CS2 process closed before a live match'
+            cancelled = true
+            break
+          }
+          continue
+        } else {
+          processMissStreak = 0
+        }
 
         if (
           !gsiServerHintShown
@@ -3071,12 +3136,31 @@ function setupGameDetection(): void {
       const loopStart = Date.now()
       let steamHintShown = false
       let detectionHintShown = false
+      let processMissStreak = 0
+      let lastUnknownProbeLogAt: number | null = null
       const deadline = Date.now() + MATCH_TIMEOUT_MS
       while (Date.now() < deadline && !cancelled) {
         if (abortIfStale(isStale, game)) return
         await new Promise((r) => setTimeout(r, 1000))
         if (cancelled) break
-        if (!await gameDetector.isGameProcessRunning(game)) { cancelled = true; break }
+        const processProbe = await gameDetector.probeGameProcess(game)
+        if (processProbe === 'unknown') {
+          const now = Date.now()
+          if (shouldLogUnknownProbe(lastUnknownProbeLogAt, now)) {
+            lastUnknownProbeLogAt = now
+            console.warn('[GameDetector] Deadlock process probe unknown (tasklist timeout/error) — not cancelling')
+          }
+        } else if (processProbe === 'stopped') {
+          processMissStreak++
+          if (shouldCancelGenericProcessMiss(processMissStreak)) {
+            matchWaitCancelReason = 'Deadlock process closed before a live match'
+            cancelled = true
+            break
+          }
+          continue
+        } else {
+          processMissStreak = 0
+        }
 
         const dlStatus = getDeadlockDetectionStatus()
 
@@ -3122,12 +3206,31 @@ function setupGameDetection(): void {
       const MATCH_TIMEOUT_MS = 25 * 60 * 1000
       const loopStart = Date.now()
       let apiHintShown = false
+      let processMissStreak = 0
+      let lastUnknownProbeLogAt: number | null = null
       const deadline = Date.now() + MATCH_TIMEOUT_MS
       while (Date.now() < deadline && !cancelled) {
         if (abortIfStale(isStale, game)) return
         await new Promise((r) => setTimeout(r, 1500))
         if (cancelled) break
-        if (!await gameDetector.isGameProcessRunning(game)) { cancelled = true; break }
+        const processProbe = await gameDetector.probeGameProcess(game)
+        if (processProbe === 'unknown') {
+          const now = Date.now()
+          if (shouldLogUnknownProbe(lastUnknownProbeLogAt, now)) {
+            lastUnknownProbeLogAt = now
+            console.warn('[GameDetector] LoL process probe unknown (tasklist timeout/error) — not cancelling')
+          }
+        } else if (processProbe === 'stopped') {
+          processMissStreak++
+          if (shouldCancelGenericProcessMiss(processMissStreak)) {
+            matchWaitCancelReason = 'League process closed before a live match'
+            cancelled = true
+            break
+          }
+          continue
+        } else {
+          processMissStreak = 0
+        }
 
         const probe = await lolLiveClientApi.probeActiveMatch()
         if (!probe?.inMatch && !apiHintShown && Date.now() - loopStart > 45_000) {
@@ -3157,24 +3260,85 @@ function setupGameDetection(): void {
       logActivity('Riot Client API ready — waiting for INGAME presence')
       // Wait up to 25 minutes for INGAME (handles long Agent Select)
       const PRESENCE_TIMEOUT_MS = 25 * 60 * 1000
-      const deadline = Date.now() + PRESENCE_TIMEOUT_MS
+      const waitStartedAt = Date.now()
+      const deadline = waitStartedAt + PRESENCE_TIMEOUT_MS
       let lastCoreGameCheckAt = 0
-      // Single tasklist miss is common mid-load; require a short streak before cancelling.
+      let lastMilestoneAt = waitStartedAt
+      let lastUnknownProbeLogAt: number | null = null
+      let presenceNullStreak = 0
+      // Shipping.exe can flake mid-load / exclusive-fullscreen alt-tab; only count
+      // confirmed "stopped" probes, then cross-check Riot before cancelling.
       let processMissStreak = 0
-      const PROCESS_MISS_CANCEL = 3
+      let loggedRiotKeepAlive = false
+      let lastLoopState: string | null = null
       while (Date.now() < deadline && !cancelled) {
         if (abortIfStale(isStale, game)) return
         await new Promise((r) => setTimeout(r, 1000))
         if (cancelled) break
-        const stillRunning = await gameDetector.isMatchProcessRunning()
-        if (!stillRunning) {
+        const now = Date.now()
+        const processProbe = await gameDetector.probeMatchProcess()
+        if (processProbe === 'unknown') {
+          if (shouldLogUnknownProbe(lastUnknownProbeLogAt, now)) {
+            lastUnknownProbeLogAt = now
+            console.warn('[GameDetector] Valorant process probe unknown (tasklist timeout/error) — not cancelling')
+          }
+          continue
+        }
+        if (processProbe === 'stopped') {
           processMissStreak++
-          if (processMissStreak >= PROCESS_MISS_CANCEL) { cancelled = true; break }
+          const riotActive = await isValorantMatchFlowActive()
+          const decision = decideMatchWaitAfterProcessMiss({
+            consecutiveStopped: processMissStreak,
+            riotMatchActive: riotActive,
+          })
+          if (decision.action === 'cancel') {
+            matchWaitCancelReason = decision.reason
+            console.log(`[GameDetector] Match wait cancel: ${decision.reason}`)
+            cancelled = true
+            break
+          }
+          if (decision.resetStreak) {
+            processMissStreak = 0
+            if (!loggedRiotKeepAlive) {
+              loggedRiotKeepAlive = true
+              logActivity('Game process briefly missing — Riot still in match, waiting')
+              console.log(`[GameDetector] ${decision.reason}`)
+            }
+          }
+          if (now - lastMilestoneAt >= MATCH_WAIT_MILESTONE_MS) {
+            lastMilestoneAt = now
+            logActivity(formatMatchWaitMilestone({
+              sessionLoopState: lastLoopState,
+              processMissStreak,
+              waitedSec: Math.round((now - waitStartedAt) / 1000),
+            }))
+          }
           continue
         }
         processMissStreak = 0
         try {
           const state = await riotLocalApi.getSessionState()
+
+          if (!state?.sessionLoopState) {
+            presenceNullStreak++
+            if (shouldReauthAfterPresenceNulls(presenceNullStreak)) {
+              console.warn(`[GameDetector] Presence null ×${presenceNullStreak} — re-init Riot auth`)
+              await riotLocalApi.initAuth().catch(() => false)
+              logActivity('Riot presence unavailable — refreshed client auth, still waiting')
+            }
+          } else {
+            presenceNullStreak = 0
+            lastLoopState = state.sessionLoopState
+          }
+
+          if (now - lastMilestoneAt >= MATCH_WAIT_MILESTONE_MS) {
+            lastMilestoneAt = now
+            logActivity(formatMatchWaitMilestone({
+              sessionLoopState: lastLoopState,
+              processMissStreak,
+              waitedSec: Math.round((now - waitStartedAt) / 1000),
+            }))
+          }
 
           // Resolve game mode from presence queueId (available from queue through agent select)
           if (state?.queueId) {
@@ -3260,7 +3424,6 @@ function setupGameDetection(): void {
           }
 
           // Presence can flake (circuit breaker / empty private payload) while core-game is live.
-          const now = Date.now()
           if (now - lastCoreGameCheckAt >= 3000) {
             lastCoreGameCheckAt = now
             const coreActive = await riotLocalApi.isCoreGameSessionActive()
@@ -3277,23 +3440,43 @@ function setupGameDetection(): void {
               break
             }
           }
-        } catch { /* presence endpoint not yet up — keep waiting */ }
+        } catch (err) {
+          presenceNullStreak++
+          if (shouldReauthAfterPresenceNulls(presenceNullStreak)) {
+            console.warn('[GameDetector] Presence poll error — re-init Riot auth:', err)
+            await riotLocalApi.initAuth().catch(() => false)
+            logActivity('Riot presence error — refreshed client auth, still waiting')
+          }
+        }
       }
     } else {
-      // Fallback: wait 90 s for the loading screen
+      // Fallback: wait 90 s for the loading screen (no Riot confirm available)
       const LOADING_DELAY_MS = 90_000
       logActivity('Riot Client API unavailable — recording starts in 90s')
       const deadline = Date.now() + LOADING_DELAY_MS
       let processMissStreak = 0
-      const PROCESS_MISS_CANCEL = 2
+      let lastUnknownProbeLogAt: number | null = null
+      const PROCESS_MISS_CANCEL = 4
       while (Date.now() < deadline && !cancelled) {
         if (abortIfStale(isStale, game)) return
         await new Promise((r) => setTimeout(r, 5000))
         if (cancelled) break
-        const stillRunning = await gameDetector.isMatchProcessRunning()
-        if (!stillRunning) {
+        const processProbe = await gameDetector.probeMatchProcess()
+        if (processProbe === 'unknown') {
+          const now = Date.now()
+          if (shouldLogUnknownProbe(lastUnknownProbeLogAt, now)) {
+            lastUnknownProbeLogAt = now
+            console.warn('[GameDetector] Valorant process probe unknown during 90s fallback — not cancelling')
+          }
+          continue
+        }
+        if (processProbe === 'stopped') {
           processMissStreak++
-          if (processMissStreak >= PROCESS_MISS_CANCEL) { cancelled = true; break }
+          if (processMissStreak >= PROCESS_MISS_CANCEL) {
+            matchWaitCancelReason = 'Shipping.exe gone during loading (Riot API unavailable)'
+            cancelled = true
+            break
+          }
         } else {
           processMissStreak = 0
         }
@@ -3307,9 +3490,20 @@ function setupGameDetection(): void {
 
     if (abortIfStale(isStale, game)) return
 
+    if (cancelled && matchWaitCancelReason) {
+      logActivity(formatMatchWaitCancelActivity(matchWaitCancelReason))
+      console.log('[GameDetector] Match wait cancelled — no recording:', matchWaitCancelReason)
+      tray?.setToolTip(idleTooltip(game))
+      if (gameNeedsLiveMatchWindow(game)) {
+        gameDetector.resetActiveGame(game)
+        await rearmGameDetection(game)
+      }
+      return
+    }
+
     if (game === 'valorant' && cancelled) {
-      logActivity('Match cancelled (game quit during loading)')
-      console.log('[GameDetector] Game quit during loading — no recording')
+      logActivity(formatMatchWaitCancelActivity('left loading / game closed'))
+      console.log('[GameDetector] Match wait cancelled — no recording')
       tray?.setToolTip(idleTooltip(game))
       return
     }
@@ -3645,6 +3839,18 @@ function setupGameDetection(): void {
     // isMatchProcessRunning() check inside the loop will cancel it naturally when Shipping.exe
     // is no longer running.
     if (cancelMatchWait && !matchHandled) {
+      if (game === 'valorant') {
+        const riotActive = await isValorantMatchFlowActive()
+        if (!shouldAbortMatchWaitOnGameStopped(riotActive)) {
+          // Process flake (common with exclusive fullscreen alt-tab) — keep waiting.
+          gameDetector.reviveActiveGame(game)
+          console.log(
+            `[GameDetector] game-stopped ignored during match wait — Riot match flow=${riotActive}`,
+          )
+          logActivity('Game process blip during loading — still waiting for match')
+          return
+        }
+      }
       cancelMatchWait()
       cancelMatchWait = null
       waitingForMatch = false
@@ -3692,20 +3898,26 @@ function setupGameDetection(): void {
       return
     }
 
+    let endActivity = 'Game process ended — stopping recording'
     if (game === 'valorant') {
       try {
-        const state = await riotLocalApi.getSessionState()
-        if (state?.sessionLoopState === 'INGAME') {
-          const coreActive = await riotLocalApi.isCoreGameSessionActive()
-          if (coreActive === true) {
-            console.log('[GameDetector] game-stopped ignored — still INGAME with core-game')
-            return
-          }
+        const riotActive = await isValorantMatchFlowActive()
+        if (shouldSuppressFinalizeOnGameStopped(riotActive)) {
+          gameDetector.reviveActiveGame(game)
+          console.log(
+            `[GameDetector] game-stopped ignored mid-record — Riot match flow=${riotActive}`,
+          )
+          logActivity('False match-end ignored — recording continues')
+          return
         }
-      } catch { /* process is gone — proceed with finalize */ }
+        if (riotActive === null) {
+          console.warn('[GameDetector] game-stopped with Riot unreachable — stopping recording')
+          endActivity = 'Game process ended (Riot status unclear) — stopping recording'
+        }
+      } catch { /* Riot unreachable and process gone — proceed with finalize */ }
     }
 
-    logActivity('Game process ended — stopping recording')
+    logActivity(endActivity)
     await finalizeMatchOnce(game, 'process-exit')
     // Restore main window now that game is gone
     if (mainWindow && !mainWindow.isDestroyed() && mainWindow.isMinimized()) mainWindow.restore()

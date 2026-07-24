@@ -2,6 +2,10 @@ import { EventEmitter } from 'events'
 import { exec } from 'child_process'
 import { promisify } from 'util'
 import { isGsiMatchLive, isGsiReceiving } from './steam-gsi-server'
+import {
+  interpretTasklistProcessStdout,
+  type ProcessProbeResult,
+} from './match-wait-guard'
 
 const execAsync = promisify(exec)
 const IS_WIN = process.platform === 'win32'
@@ -139,22 +143,48 @@ export class GameDetector extends EventEmitter {
    * Returns true if the Valorant *game* process is running (not just the launcher).
    * VALORANT-Win64-Shipping.exe only appears during actual match loading/play.
    * VALORANT.exe is the launcher — it runs from client open, not just during matches.
+   * Tasklist timeouts/errors are treated as still running (avoid false match cancels).
    */
   async isMatchProcessRunning(): Promise<boolean> {
     return this.isGameProcessRunning('valorant')
   }
 
-  /** Check whether a supported game's capture process is running. */
-  async isGameProcessRunning(game: string): Promise<boolean> {
-    if (!IS_WIN) return false
+  /** Tri-state probe for Valorant Shipping.exe (running / stopped / unknown). */
+  async probeMatchProcess(): Promise<ProcessProbeResult> {
+    return this.probeGameProcess('valorant')
+  }
+
+  /**
+   * Restore active-game tracking after a false game-stopped (process flake mid-load).
+   * Does not emit game-started.
+   */
+  reviveActiveGame(game: string): void {
+    if (!GAME_PROCESSES[game]) return
+    this._activeGame = game
+    this._missedPollStreak = 0
+  }
+
+  /**
+   * Tri-state process probe. Prefer this over boolean checks when deciding to cancel
+   * match-wait — `'unknown'` must not count as a process exit.
+   */
+  async probeGameProcess(game: string): Promise<ProcessProbeResult> {
+    if (!IS_WIN) return 'stopped'
     const processNames = GAME_PROCESSES[game]
-    if (!processNames?.length) return false
-    try {
-      const results = await Promise.all(processNames.map((n) => this._isProcessRunning(n)))
-      return results.some(Boolean)
-    } catch {
-      return false
-    }
+    if (!processNames?.length) return 'stopped'
+    const results = await Promise.all(processNames.map((n) => this._probeProcess(n)))
+    if (results.includes('running')) return 'running'
+    if (results.every((r) => r === 'stopped')) return 'stopped'
+    return 'unknown'
+  }
+
+  /**
+   * Check whether a supported game's capture process is running.
+   * `'unknown'` (tasklist timeout/error) counts as running so we do not false-cancel.
+   */
+  async isGameProcessRunning(game: string): Promise<boolean> {
+    const result = await this.probeGameProcess(game)
+    return result !== 'stopped'
   }
 
   private _scheduleNext(): void {
@@ -245,23 +275,30 @@ export class GameDetector extends EventEmitter {
         console.log(`[GameDetector] ${next} started`)
       }
     } catch (err) {
-      console.error('[GameDetector] Poll error:', err)
+      const msg = err instanceof Error ? err.message : String(err)
+      const timedOut = /ETIMEDOUT|timeout/i.test(msg)
+      console.warn(
+        timedOut
+          ? '[GameDetector] Full tasklist poll timed out — keeping active game state'
+          : '[GameDetector] Poll error:',
+        err,
+      )
     }
   }
 
   /**
-   * Check if a single named process is running using a filtered tasklist query.
-   * Much cheaper than listing all processes — Windows only returns the matched rows.
+   * Probe a single named process via filtered tasklist.
+   * Timeouts/errors → `'unknown'` (never treat as stopped).
    */
-  private async _isProcessRunning(processName: string): Promise<boolean> {
+  private async _probeProcess(processName: string): Promise<ProcessProbeResult> {
     try {
       const { stdout } = await execAsync(
         `tasklist /fi "IMAGENAME eq ${processName}" /fo csv /nh`,
         { windowsHide: true, timeout: 4000 },
       )
-      return stdout.toLowerCase().includes(processName.toLowerCase())
+      return interpretTasklistProcessStdout(stdout, processName)
     } catch {
-      return false
+      return 'unknown'
     }
   }
 }

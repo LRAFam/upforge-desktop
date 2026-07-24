@@ -240,6 +240,7 @@ const clipCaptureOptions = [
                 <li>Click <strong class="text-gray-300">Launch OBS + Connect</strong> — we install the UpForge profile and WebSocket defaults</li>
                 <li>Default password is <strong class="text-gray-300">upforge</strong> unless you changed it in OBS</li>
                 <li>Capture is <strong class="text-gray-300">game window only</strong> — alt-tab won&apos;t record other apps</li>
+                <li>Prefer <strong class="text-gray-300">borderless windowed</strong> in Valorant — exclusive fullscreen makes alt-tab flaky for capture</li>
               </ol>
               <div class="flex flex-wrap items-center gap-2">
                 <template v-if="!obsStatus?.connected">
