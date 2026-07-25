@@ -25,6 +25,10 @@ import {
   resolveObsWebSocketPassword,
 } from './obs-profile-installer'
 import { applyObsRecordingSettings, type ObsApplyResult } from './obs-output-settings'
+import {
+  shouldKeepMatchOwnershipWhileDisconnected,
+  shouldReleaseOwnershipAfterReconnect,
+} from './obs-disconnect-guard'
 import type { RecorderConfig } from './recorder'
 
 export interface OBSSettings {
@@ -130,6 +134,8 @@ export class OBSRecorder {
   onReplayClipSaved?: (path: string, trigger: string, meta?: ReplayClipSavedMeta) => void
   /** Fired when connection state changes. `error` is set only for unexpected disconnects. */
   onConnectionChange?: (connected: boolean, error?: string | null) => void
+  /** Fired when WebSocket reconnects mid-match and OBS output is reclaimed. */
+  onRecoveredDuringMatch?: () => void
 
   /** Suppress ConnectionClosed while we intentionally tear down before reconnecting. */
   private _suppressConnectionEvents = false
@@ -191,9 +197,9 @@ export class OBSRecorder {
           this._stopLiveKillPoll()
           this.onStatusChange?.(false, 'OBS disconnected during recording')
         }
+        // Do NOT release ownership here — "can't reach OBS" ≠ "OBS stopped".
+        // Reconnect loop reclaims if output is still active; match-end stop() finalizes.
         this._startReconnectLoop()
-        // If OBS actually stopped, drop stale ownership so the next match can start.
-        setTimeout(() => { void this.releaseStaleMatchOwnership() }, 5_000)
       }
       if (wasConnected) {
         this.onConnectionChange?.(false, 'OBS disconnected')
@@ -282,9 +288,9 @@ export class OBSRecorder {
 
         this.onConnectionChange?.(true)
         if (this._disconnectedDuringRecording && this._matchOwnedRecording) {
-          this._disconnectedDuringRecording = false
-          void this.reclaimActiveRecording()
-          this._stopReconnectLoop()
+          void this.reclaimActiveRecording().then((ok) => {
+            if (ok) this.onRecoveredDuringMatch?.()
+          })
         } else {
           // OBS just connected idle — drop leftover match-owned state from a prior session.
           void this.releaseStaleMatchOwnership()
@@ -428,6 +434,18 @@ export class OBSRecorder {
   async releaseStaleMatchOwnership(): Promise<boolean> {
     if (!this._matchOwnedRecording) return false
 
+    // WebSocket down mid-match: cannot confirm idle — keep ownership for reconnect / match-end.
+    if (shouldKeepMatchOwnershipWhileDisconnected({
+      matchOwned: this._matchOwnedRecording,
+      connected: this._connected,
+      disconnectedDuringRecording: this._disconnectedDuringRecording,
+    })) {
+      log.info(
+        '[OBSRecorder] Keeping match ownership — disconnected mid-recording, OBS state unknown',
+      )
+      return false
+    }
+
     // Prefer a live OBS query — don't trust stale `_recording` alone.
     const recordActive = await this.isObsOutputActive()
     if (recordActive) return false
@@ -464,10 +482,13 @@ export class OBSRecorder {
    * (e.g. transient outputActive=false during stop/start glitches).
    */
   async reclaimActiveRecording(): Promise<boolean> {
-    if (this._matchOwnedRecording) return true
     if (Date.now() < this._reclaimBlockedUntil) {
       log.info('[OBSRecorder] Reclaim skipped — recent recording stop (mux may still be settling)')
       return false
+    }
+    // Already owning a live session: restore recording flag after WebSocket drop.
+    if (this._matchOwnedRecording && this._recording && !this._disconnectedDuringRecording) {
+      return true
     }
     if (!(await this.isObsOutputActive())) return false
     try {
@@ -484,6 +505,7 @@ export class OBSRecorder {
     this._recording = true
     if (!this._startedAt) this._startedAt = Date.now()
     this._disconnectedDuringRecording = false
+    this._stopReconnectLoop()
     this.onStatusChange?.(true)
     log.info('[OBSRecorder] Reclaimed active OBS recording for current match')
     return true
@@ -757,8 +779,22 @@ export class OBSRecorder {
     const result = await this.connect()
     if (!result.ok) return
     log.info('[OBSRecorder] Reconnected to OBS during match')
-    if (await this.isObsOutputActive()) {
-      await this.reclaimActiveRecording()
+    const outputActive = await this.isObsOutputActive()
+    if (outputActive) {
+      const reclaimed = await this.reclaimActiveRecording()
+      if (reclaimed) {
+        this.onRecoveredDuringMatch?.()
+      }
+      return
+    }
+    if (shouldReleaseOwnershipAfterReconnect({
+      matchOwned: this._matchOwnedRecording,
+      disconnectedDuringRecording: this._disconnectedDuringRecording,
+      outputActive: false,
+    })) {
+      log.warn('[OBSRecorder] Reconnected but OBS output idle — releasing match ownership')
+      await this.releaseStaleMatchOwnership()
+      this._stopReconnectLoop()
     }
   }
 

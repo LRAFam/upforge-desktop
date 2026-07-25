@@ -490,21 +490,32 @@ function wireRecorderStatus(rec: OBSRecorder, label: string): void {
       log.warn(`[Main] ${label} recording stopped with error:`, error)
       reportRecordingError('mid-match', error, { label })
       onRecordingLost?.(error)
+      const obsLost = /obs disconnected/i.test(error)
       try {
-        if (tray && !tray.isDestroyed()) tray.setToolTip('UpForge — Recording stopped!')
+        if (tray && !tray.isDestroyed()) {
+          tray.setToolTip(obsLost ? 'UpForge — OBS disconnected' : 'UpForge — Recording stopped!')
+        }
       } catch { /* ignore */ }
-      showAppNotification({
-        title: 'UpForge — Recording Stopped',
-        body: 'Recording stopped unexpectedly. Open UpForge to see details.',
-        silent: notifySilent(),
-        allowDuringRecording: true,
-      })
+      // OBS disconnect is often recoverable (OBS keeps recording locally) — avoid a second
+      // scary "Recording Stopped" toast; onRecordingLost already notifies with the right copy.
+      if (!obsLost) {
+        showAppNotification({
+          title: 'UpForge — Recording Stopped',
+          body: 'Recording stopped unexpectedly. Open UpForge to see details.',
+          silent: notifySilent(),
+          allowDuringRecording: true,
+        })
+      }
       setTimeout(() => {
         try {
           if (!isQuitting && tray && !tray.isDestroyed()) tray.setToolTip(idleTooltip())
         } catch { /* ignore */ }
       }, 10_000)
     }
+  }
+  rec.onRecoveredDuringMatch = () => {
+    logActivity('OBS reconnected mid-match — recording continues')
+    tray?.setToolTip('UpForge — Recording')
   }
 }
 const clipExtractor = new ClipExtractor()
@@ -4935,7 +4946,11 @@ async function startApp(): Promise<void> {
   wireObsConnectionEvents()
   stopObsHealthMonitor = startObsHealthMonitor(obsRecorder, () => mainWindow, {
     logActivity,
-    canHardRecover: () => !obsRecorder.isActivelyRecording() && !matchPerformanceModeActive,
+    canHardRecover: () =>
+      !obsRecorder.isActivelyRecording()
+      && !obsRecorder.isRecording()
+      && !obsRecorder.hadDisconnectedDuringRecording()
+      && !matchPerformanceModeActive,
     recover: () => ensureObsReady({ allowProcessRestart: true }),
   })
 
