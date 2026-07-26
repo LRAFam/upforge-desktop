@@ -8,6 +8,10 @@ import {
   isObsInstalled,
 } from './obs-installer'
 import {
+  buildObsCmdStartArgs,
+  obsExecutableWorkingDirectory,
+} from './obs-launch-cwd'
+import {
   obsLaunchArgs,
   UPFORGE_OBS_DEFAULT_PORT,
   UPFORGE_OBS_DEFAULT_PASSWORD,
@@ -24,7 +28,7 @@ export interface LaunchObsOptions {
 function spawnDetached(
   exe: string,
   args: string[],
-  opts: { shell?: boolean } = {},
+  opts: { shell?: boolean; cwd?: string } = {},
 ): Promise<{ ok: boolean; error?: string; code?: string }> {
   return new Promise((resolve) => {
     let settled = false
@@ -40,6 +44,7 @@ function spawnDetached(
         stdio: 'ignore',
         windowsHide: true,
         shell: opts.shell ?? false,
+        cwd: opts.cwd,
       })
       child.once('error', (err: NodeJS.ErrnoException) => {
         log.warn('[OBS Launcher] spawn error event:', err.message)
@@ -60,7 +65,7 @@ function spawnDetached(
 async function launchObsViaCmdStart(candidate: string, wsArgs: string[]): Promise<{ ok: boolean; error?: string }> {
   const args = ['--minimize-to-tray', ...wsArgs]
   log.info('[OBS Launcher] Trying cmd start fallback:', candidate)
-  const result = await spawnDetached('cmd.exe', ['/c', 'start', '""', '/min', candidate, ...args])
+  const result = await spawnDetached('cmd.exe', buildObsCmdStartArgs(candidate, args))
   if (result.ok) return { ok: true }
   return { ok: false, error: result.error ?? 'cmd start failed' }
 }
@@ -85,9 +90,10 @@ export async function launchObsStudio(opts: LaunchObsOptions = {}): Promise<{ ok
   if (process.platform === 'win32') {
     for (const candidate of candidateObsPaths()) {
       if (!existsSync(candidate)) continue
-      log.info('[OBS Launcher] Spawning:', candidate, wsArgs.join(' '))
+      const cwd = obsExecutableWorkingDirectory(candidate)
+      log.info('[OBS Launcher] Spawning:', candidate, wsArgs.join(' '), `(cwd=${cwd})`)
 
-      let result = await spawnDetached(candidate, ['--minimize-to-tray', ...wsArgs])
+      let result = await spawnDetached(candidate, ['--minimize-to-tray', ...wsArgs], { cwd })
       if (!result.ok && (result.code === 'EACCES' || result.code === 'EPERM')) {
         result = await launchObsViaCmdStart(candidate, wsArgs)
       }
@@ -131,8 +137,9 @@ export async function launchObsStudio(opts: LaunchObsOptions = {}): Promise<{ ok
   }
 }
 
+/** First WebSocket probe after spawn — OBS needs time for plugins + websocket. */
 export function obsLaunchDelayMs(): number {
-  return app.isPackaged ? 4500 : 2500
+  return app.isPackaged ? 8000 : 3500
 }
 
 export { installObsViaWinget, isObsInstalled }

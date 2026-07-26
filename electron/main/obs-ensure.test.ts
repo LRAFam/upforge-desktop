@@ -20,7 +20,7 @@ vi.mock('./obs-connect', () => ({
     processRunning ? `hung:${connectError ?? ''}` : 'not-running'),
 }))
 
-import { ensureObsConnected, resetObsLaunchCooldownForTests } from './obs-ensure'
+import { ensureObsConnected, obsPostLaunchConnectDelaysMs, resetObsLaunchCooldownForTests } from './obs-ensure'
 import { isObsProcessRunning, terminateObsProcess } from './obs-process'
 import { launchObsStudio } from './obs-launcher'
 
@@ -104,7 +104,9 @@ describe('ensureObsConnected', () => {
 
     // First call: launch OBS but never connect
     const first = mockRecorder({
-      connectResults: [fail(), fail(), fail(), fail(), fail()],
+      connectResults: [
+        fail(), fail(), fail(), fail(), fail(), fail(), fail(),
+      ],
     })
     const firstResult = await ensureObsConnected(first as never, { password: 'upforge', port: 4455 })
     expect(firstResult.ok).toBe(false)
@@ -148,5 +150,10 @@ describe('ensureObsConnected', () => {
     expect(terminateObsProcess).not.toHaveBeenCalled()
     expect(launchObsStudio).toHaveBeenCalled()
     expect(result.ok).toBe(true)
+  })
+
+  it('uses a longer post-launch connect schedule', () => {
+    expect(obsPostLaunchConnectDelaysMs(8000).length).toBeGreaterThanOrEqual(6)
+    expect(obsPostLaunchConnectDelaysMs(8000)[0]).toBe(8000)
   })
 })

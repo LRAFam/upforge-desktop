@@ -37,6 +37,7 @@ import {
 } from './match-wait-guard'
 import { Recorder } from './recorder'
 import { OBSRecorder } from './obs-recorder'
+import { shouldResumeMatchDetectionOnObsConnect } from './obs-match-resume'
 import { buildRecorderConfig } from './obs-output-settings'
 import { hasProAccess } from './subscription'
 import {
@@ -393,6 +394,7 @@ function wireObsConnectionEvents(): void {
     if (newlyConnected) {
       trackObsConnected()
       lastObsMatchFailNotifyAt = 0
+      maybeResumeMatchDetectionAfterObsConnect()
     }
     broadcastObsConnection(mainWindow, obsRecorder, error)
     updateTrayMenuFn?.()
@@ -431,6 +433,8 @@ async function ensureObsReady(opts?: {
   const { password, port } = prepareObsCredentials()
   const allowProcessRestart = opts?.allowProcessRestart !== false
     && !obsRecorder.isActivelyRecording()
+    && !obsRecorder.isRecording()
+    && !obsRecorder.hadDisconnectedDuringRecording()
     && !matchPerformanceModeActive
 
   const result = await ensureObsConnected(obsRecorder, {
@@ -600,6 +604,42 @@ let postMatchWorker: PostMatchWorker
 // Set by setupGameDetection — cancel pending match-wait when game quits from lobby
 let cancelMatchWait: (() => void) | null = null
 let waitingForMatch = false
+/** Nested game-started handlers (beginMatchFlow → return). Blocks OBS-connect resume races. */
+let matchDetectInFlightDepth = 0
+
+/**
+ * When OBS comes back while a game is still tracked as active but we are not
+ * recording / waiting, re-emit game-started so match detect runs again.
+ */
+function maybeResumeMatchDetectionAfterObsConnect(): void {
+  const game = gameDetector.currentGame()
+  const snapshot = {
+    activeGame: game,
+    waitingForMatch,
+    isActivelyRecording: obsRecorder.isActivelyRecording(),
+    matchDetectInFlight: matchDetectInFlightDepth > 0,
+    matchOwnedRecording: obsRecorder.isRecording(),
+    disconnectedDuringRecording: obsRecorder.hadDisconnectedDuringRecording(),
+  }
+  if (!shouldResumeMatchDetectionOnObsConnect(snapshot)) return
+
+  log.info(`[OBS] Connected with active ${game} and no recording — scheduling match-detect resume`)
+  logActivity('OBS connected — resuming match detection')
+  // Defer so callers inside ensureObsReady/connect finish before a nested game-started.
+  setImmediate(() => {
+    const nextGame = gameDetector.currentGame()
+    if (!shouldResumeMatchDetectionOnObsConnect({
+      activeGame: nextGame,
+      waitingForMatch,
+      isActivelyRecording: obsRecorder.isActivelyRecording(),
+      matchDetectInFlight: matchDetectInFlightDepth > 0,
+      matchOwnedRecording: obsRecorder.isRecording(),
+      disconnectedDuringRecording: obsRecorder.hadDisconnectedDuringRecording(),
+    })) return
+    log.info(`[OBS] Resuming match detection for ${nextGame}`)
+    gameDetector.emit('game-started', nextGame as string)
+  })
+}
 
 /** Cancel lobby/match-wait loops — e.g. when the user starts a dashboard action instead. */
 function dismissMatchWaitUi(): void {
@@ -964,7 +1004,9 @@ function logActivity(message: string, explicitGame?: string): void {
   }
   activityLog.push(entry)
   if (activityLog.length > MAX_LOG_ENTRIES) activityLog.shift()
-  mainWindow?.webContents.send('app:activity-log', activityLog.slice())
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('app:activity-log', activityLog.slice())
+  }
   const lower = message.toLowerCase()
   if (
     lower.includes('analysis ready')
@@ -979,7 +1021,9 @@ function logActivity(message: string, explicitGame?: string): void {
     const now = Date.now()
     if (message !== lastActivityToast.message || now - lastActivityToast.at > FAILURE_NOTIFY_COOLDOWN_MS) {
       lastActivityToast = { message, at: now }
-      mainWindow?.webContents.send('app:activity-toast', { message })
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('app:activity-toast', { message })
+      }
     }
   }
 }
@@ -3223,6 +3267,8 @@ function setupGameDetection(): void {
 
     const { isStale } = beginMatchFlow()
     if (!usesDemoReplay(game)) beginMatchPerformanceMode()
+    matchDetectInFlightDepth++
+    try {
     console.log(`[GameDetector] ${game} started (flow #${matchFlowGeneration})`)
     logActivity(`${gameLabel(game)} detected — waiting for match`)
     if (game === 'deadlock') deadlockSessionStartAt = Date.now()
@@ -4007,11 +4053,15 @@ function setupGameDetection(): void {
       mainWindow?.webContents.send('recording:starting', { starting: false })
       if (isObsUnavailableError(msg)) {
         notifyObsRecordingUnavailable(
-          'OBS isn\'t connected. Launch OBS from Settings → Recording — we\'ll record your next match.',
+          'OBS isn\'t connected. UpForge will resume match detection when OBS connects.',
         )
-      } else {
-        notifyRecordingUx(`Could not start recording: ${msg}`, 'UpForge — Recording Failed')
+        endMatchPerformanceMode()
+        logActivity('Waiting for OBS — recording will resume when connected')
+        tray?.setToolTip('UpForge — Waiting for OBS…')
+        // Keep activeGame tracked; maybeResumeMatchDetectionAfterObsConnect re-enters detect.
+        return
       }
+      notifyRecordingUx(`Could not start recording: ${msg}`, 'UpForge — Recording Failed')
       tray?.setToolTip('UpForge — Recording failed!')
       setTimeout(() => tray?.setToolTip(idleTooltip(game)), 10_000)
       await rearmGameDetection(game, true)
@@ -4119,6 +4169,9 @@ function setupGameDetection(): void {
       beep: 'none',
       flashOverlayMs: feedbackMode === 'notifications' ? 0 : 7000,
     })
+    } finally {
+      matchDetectInFlightDepth = Math.max(0, matchDetectInFlightDepth - 1)
+    }
   })
 
   gameDetector.on('game-stopped', async (game: string) => {

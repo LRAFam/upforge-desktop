@@ -43,7 +43,7 @@ export type EnsureObsConnectedResult =
     }
 
 /** Skip kill-restart while OBS may still be booting after our last launch. */
-const OBS_LAUNCH_COOLDOWN_MS = 45_000
+const OBS_LAUNCH_COOLDOWN_MS = 90_000
 
 let lastObsLaunchAt = 0
 
@@ -68,6 +68,11 @@ async function connectWithRetries(
 
 function recentlyLaunchedObs(): boolean {
   return lastObsLaunchAt > 0 && Date.now() - lastObsLaunchAt < OBS_LAUNCH_COOLDOWN_MS
+}
+
+/** Post-spawn WebSocket probe schedule (ms between attempts). */
+export function obsPostLaunchConnectDelaysMs(firstDelayMs: number): number[] {
+  return [firstDelayMs, 2000, 2500, 3000, 4000, 5000, 6000]
 }
 
 /**
@@ -145,13 +150,10 @@ export async function ensureObsConnected(
 
   lastObsLaunchAt = Date.now()
   opts.onActivity?.('Starting OBS — connecting…')
-  const connected = await connectWithRetries(obsRecorder, [
-    obsLaunchDelayMs(),
-    2000,
-    2500,
-    3000,
-    4000,
-  ])
+  const connected = await connectWithRetries(
+    obsRecorder,
+    obsPostLaunchConnectDelaysMs(obsLaunchDelayMs()),
+  )
   if (connected.ok) {
     broadcastObsConnection(win(), obsRecorder)
     opts.onActivity?.('OBS connected — recording ready')
