@@ -1,7 +1,10 @@
 import type { SpatialTimelineEvent } from './spatial-types'
 
+type BombDeathFields = Pick<SpatialTimelineEvent, 'type'> &
+  Partial<Pick<SpatialTimelineEvent, 'cause' | 'weapon' | 'label' | 'isolated'>>
+
 /** Spike explosion death (Riot attributes killer=victim). Infer for older analyses too. */
-export function isBombDeathEvent(ev: Pick<SpatialTimelineEvent, 'type' | 'cause' | 'weapon' | 'label'>): boolean {
+export function isBombDeathEvent(ev: BombDeathFields): boolean {
   if (ev.type !== 'death') return false
   if (ev.cause === 'bomb') return true
   if (ev.weapon === 'Spike') return true
@@ -10,7 +13,7 @@ export function isBombDeathEvent(ev: Pick<SpatialTimelineEvent, 'type' | 'cause'
 }
 
 /** Badge copy for death chips — keep layout: always one short uppercase label. */
-export function deathTradeBadge(ev: Pick<SpatialTimelineEvent, 'type' | 'cause' | 'weapon' | 'label' | 'isolated'>): {
+export function deathTradeBadge(ev: BombDeathFields): {
   text: string
   tone: 'spike' | 'isolated' | 'traded'
 } {
