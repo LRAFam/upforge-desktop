@@ -21,6 +21,7 @@ export {
   resolveEconomyArmor,
 } from './riot-lookup-tables'
 import { applySpatialEnrichment } from './spatial/enrich'
+import { isCombatPlayerKill } from './is-combat-kill'
 import { parsePlayerAbilitiesFromRoundStats } from './player-abilities'
 import { deriveMatchScore } from './match-score'
 import { riotStatsToAcs } from './combat-score'
@@ -1311,7 +1312,13 @@ export class RiotLocalApi {
         // `events` is kept in-memory for legacy readers only; upload uses killEvents only.
         this.matchData.events.push(ev)
         // Case-insensitive PUUID comparison — Riot occasionally returns mixed-case UUIDs
-        if (killerPuuid?.toLowerCase() === ownLower) this.matchData.playerKills.push(ev)
+        // Spike / bomb self-kills are not combat kills (would inflate aces to "6-kill").
+        if (
+          killerPuuid?.toLowerCase() === ownLower
+          && isCombatPlayerKill(ev)
+        ) {
+          this.matchData.playerKills.push(ev)
+        }
         if (victimPuuid?.toLowerCase() === ownLower) this.matchData.playerDeaths.push(ev)
       }
     }

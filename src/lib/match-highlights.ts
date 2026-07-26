@@ -1,5 +1,6 @@
 import type { MatchSpatialSummary } from './spatial-types'
 import { clipRank as rankClip } from './clip-priority'
+import { isBombDeathEvent } from './spatial-bomb-death'
 
 /** Minimal clip fields used for highlight curation */
 export interface HighlightClipSource {
@@ -113,6 +114,21 @@ function deathHighlights(spatial: MatchSpatialSummary | null | undefined): Match
 
   const out: MatchHighlight[] = []
   for (const { ev, index } of deaths) {
+    const bomb = isBombDeathEvent(ev)
+    if (bomb) {
+      out.push({
+        id: `death-${index}`,
+        kind: 'mistake',
+        title: 'Died to spike',
+        reason: 'Spike explosion, not a combat death (does not count toward aces)',
+        round: ev.round,
+        videoOffsetMs: ev.videoOffsetMs ?? null,
+        clipId: null,
+        rank: 45,
+        benchmarkHint: null,
+      })
+      continue
+    }
     const kind: HighlightKind = ev.isolated ? 'avoidable_death' : 'mistake'
     const rank = ev.isolated ? 80 : 55
     out.push({

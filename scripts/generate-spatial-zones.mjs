@@ -37,39 +37,17 @@ function normalizeKey(name) {
 }
 
 function rawTransform(t, wx, wy) {
+  // Official valorant-api formula: swap game X/Y into multiplier axes.
   return {
-    x: wx * t.xMultiplier + t.xScalarToAdd,
-    y: wy * t.yMultiplier + t.yScalarToAdd,
+    x: wy * t.xMultiplier + t.xScalarToAdd,
+    y: wx * t.yMultiplier + t.yScalarToAdd,
   }
 }
 
-function computeViewport(rawPoints) {
-  const xs = rawPoints.map((p) => p.x)
-  const ys = rawPoints.map((p) => p.y)
+function transformToDisplayNorm(_t, raw) {
   return {
-    minX: Math.min(...xs),
-    maxX: Math.max(...xs),
-    minY: Math.min(...ys),
-    maxY: Math.max(...ys),
-  }
-}
-
-function transformToDisplayNorm(t, raw) {
-  const vp = t.viewport
-  if (!vp) {
-    return {
-      x: Math.max(0, Math.min(1, raw.x)),
-      y: Math.max(0, Math.min(1, raw.y)),
-    }
-  }
-  const pad = 0
-  const minX = vp.minX - pad
-  const maxX = vp.maxX + pad
-  const minY = vp.minY - pad
-  const maxY = vp.maxY + pad
-  return {
-    x: Math.max(0, Math.min(1, (raw.x - minX) / (maxX - minX))),
-    y: Math.max(0, Math.min(1, (raw.y - minY) / (maxY - minY))),
+    x: Math.max(0, Math.min(1, raw.x)),
+    y: Math.max(0, Math.min(1, raw.y)),
   }
 }
 
@@ -157,10 +135,8 @@ function round4(v) {
 
 function manifestEntry(map, viewport, calibration, existing) {
   const displayBounds = calibration?.displayBounds ?? existing?.displayBounds
-  const displayTransform =
-    calibration?.displayTransform && calibration.displayTransform !== 'identity'
-      ? calibration.displayTransform
-      : existing?.displayTransform
+  // Prefer fresh calibration; do not keep legacy swap* transforms that papered over missing XY swap.
+  const displayTransform = calibration?.displayTransform ?? 'identity'
 
   return {
     displayName: map.displayName,
@@ -172,7 +148,7 @@ function manifestEntry(map, viewport, calibration, existing) {
     displayIcon: map.displayIcon,
     tacticalDescription: map.tacticalDescription,
     mapUrl: map.mapUrl,
-    viewport,
+    ...(viewport ? { viewport } : {}),
     ...(displayBounds ? { displayBounds } : {}),
     ...(displayTransform && displayTransform !== 'identity'
       ? { displayTransform }
@@ -311,50 +287,24 @@ function scoreCalloutsOnPng(png, callouts, bounds, transformName, useInset) {
 async function calibrateDisplayTransform(displayIcon, callouts, mapKey) {
   const png = await fetchDisplayIconPng(displayIcon)
   const bounds = pngPlayableBounds(png)
-  let best = {
-    score: -1,
-    displayTransform: 'identity',
-    useInset: false,
-    onMap: 0,
-    sitesOnMap: 0,
-    siteCount: 0,
-  }
-
-  for (const useInset of [false, true]) {
-    for (const transformName of TRANSFORM_ORDER) {
-      const result = scoreCalloutsOnPng(png, callouts, bounds, transformName, useInset)
-      if (result.sitesOnMap < result.siteCount) continue
-      if (result.score > best.score) {
-        best = { ...result, displayTransform: transformName, useInset }
-      }
-    }
-  }
-
-  const fn = DISPLAY_TRANSFORMS[best.displayTransform]
-  const project = (x, y) => {
-    if (best.useInset) [x, y] = applyDisplayBounds(bounds, x, y)
-    return fn(x, y)
-  }
-
-  const displayRotation = inferDisplayRotation(mapKey, best.displayTransform, callouts, project)
+  // Official UV is already full-displayicon space — keep identity and crop UI to playable pixels.
+  const result = scoreCalloutsOnPng(png, callouts, bounds, 'identity', false)
 
   return {
-    displayTransform: best.displayTransform,
-    displayBounds: best.useInset
-      ? {
-          minX: round4(bounds.minX),
-          minY: round4(bounds.minY),
-          maxX: round4(bounds.maxX),
-          maxY: round4(bounds.maxY),
-        }
-      : null,
-    displayRotation,
+    displayTransform: 'identity',
+    displayBounds: {
+      minX: round4(bounds.minX),
+      minY: round4(bounds.minY),
+      maxX: round4(bounds.maxX),
+      maxY: round4(bounds.maxY),
+    },
+    displayRotation: 0,
     calibrationScore: {
-      onMap: best.onMap,
+      onMap: result.onMap,
       total: callouts.length,
-      sitesOnMap: best.sitesOnMap,
-      siteCount: best.siteCount,
-      useInset: best.useInset,
+      sitesOnMap: result.sitesOnMap,
+      siteCount: result.siteCount,
+      useInset: true,
     },
   }
 }
@@ -393,12 +343,8 @@ for (const entry of standard) {
   }
 
   const raw = mapData.callouts || []
-  const rawPoints = raw
-    .map((c) => c.location)
-    .filter((loc) => loc && loc.x != null && loc.y != null)
-    .map((loc) => rawTransform(t, loc.x, loc.y))
-  const viewport = rawPoints.length ? computeViewport(rawPoints) : null
-  if (viewport) t.viewport = viewport
+  // Official UV already lives on the full displayicon — no viewport stretch.
+  const viewport = null
 
   const seen = new Set()
   const callouts = []

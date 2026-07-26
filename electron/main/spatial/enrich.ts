@@ -1,4 +1,5 @@
 import type { KillEvent, MatchData } from '../riot-types'
+import { isBombKill } from '../is-combat-kill'
 import { worldToNorm } from './map-transforms'
 import { resolveCallout } from './callout-resolver'
 import { resolvePlantCallout, resolveSitePlantAnchor } from './plant-callout-resolver'
@@ -106,6 +107,7 @@ export function enrichKillFromRiotRow(
 function buildSiteHotspots(deaths: SpatialTimelineEvent[]): SiteHotspot[] {
   const bySite = new Map<string, { count: number; xs: number[]; ys: number[] }>()
   for (const d of deaths) {
+    if (d.cause === 'bomb') continue
     if (!d.site || d.site === 'Spawn') continue
     const bucket = bySite.get(d.site) ?? { count: 0, xs: [], ys: [] }
     bucket.count++
@@ -143,7 +145,7 @@ function buildPatterns(
   const patterns: string[] = []
   const byCallout = new Map<string, SpatialTimelineEvent[]>()
   for (const d of deaths) {
-    if (d.callout === 'Unknown') continue
+    if (d.callout === 'Unknown' || d.cause === 'bomb') continue
     const list = byCallout.get(d.callout) ?? []
     list.push(d)
     byCallout.set(d.callout, list)
@@ -165,6 +167,13 @@ function buildPatterns(
     } else if (list.length >= 3) {
       patterns.push(`${list.length} deaths @ ${callout}${roundSuffix} — mostly traded`)
     }
+  }
+
+  const bombDeaths = deaths.filter((d) => d.cause === 'bomb')
+  if (bombDeaths.length === 1) {
+    patterns.push(`Spike death @ ${bombDeaths[0].callout} (explosion, not a duel)`)
+  } else if (bombDeaths.length > 1) {
+    patterns.push(`${bombDeaths.length} spike deaths (explosion, not combat duels)`)
   }
 
   return patterns.slice(0, 6)
@@ -421,8 +430,16 @@ function buildHeatmapInsight(
   deaths: SpatialTimelineEvent[],
   roundCount?: number,
 ): string | null {
-  const known = deaths.filter((d) => d.callout !== 'Unknown')
-  if (!known.length) return null
+  const known = deaths.filter((d) => d.callout !== 'Unknown' && d.cause !== 'bomb')
+  if (!known.length) {
+    const bombOnly = deaths.filter((d) => d.cause === 'bomb')
+    if (bombOnly.length) {
+      return bombOnly.length === 1
+        ? '1 spike death (explosion, not a combat duel)'
+        : `${bombOnly.length} spike deaths (explosion, not combat duels)`
+    }
+    return null
+  }
 
   const isolated = known.filter((d) => d.isolated)
   const byCallout = new Map<string, SpatialTimelineEvent[]>()
@@ -502,12 +519,19 @@ export function buildMatchSpatialSummary(match: MatchData): MatchSpatialSummary 
     ev: KillEvent,
   ) => {
     if (!ev.spatial) return
-    const labelParts = [
-      type === 'death' ? `Died @ ${ev.spatial.callout}` : `Kill @ ${ev.spatial.callout}`,
-    ]
-    if (type === 'death' && ev.killerName) labelParts.push(`vs ${ev.killerName}`)
-    if (ev.weapon) labelParts.push(`(${ev.weapon})`)
-    if (ev.spatial.isolated) labelParts.push('— no trade')
+    const bomb = type === 'death' && isBombKill(ev)
+    const labelParts: string[] = []
+    if (bomb) {
+      labelParts.push(`Spike death @ ${ev.spatial.callout}`)
+      labelParts.push('(explosion, not a combat death)')
+    } else {
+      labelParts.push(
+        type === 'death' ? `Died @ ${ev.spatial.callout}` : `Kill @ ${ev.spatial.callout}`,
+      )
+      if (type === 'death' && ev.killerName) labelParts.push(`vs ${ev.killerName}`)
+      if (ev.weapon) labelParts.push(`(${ev.weapon})`)
+      if (ev.spatial.isolated) labelParts.push('— no trade')
+    }
 
     events.push({
       type,
@@ -518,8 +542,10 @@ export function buildMatchSpatialSummary(match: MatchData): MatchSpatialSummary 
       label: labelParts.join(' '),
       videoOffsetMs: ev.videoOffsetMs,
       weapon: ev.weapon,
-      isolated: ev.spatial.isolated,
-      killerDistance: ev.spatial.killerDistance,
+      // Bomb deaths are not "untraded peeks" — don't flag trade isolation.
+      isolated: bomb ? false : ev.spatial.isolated,
+      killerDistance: bomb ? null : ev.spatial.killerDistance,
+      cause: bomb ? 'bomb' : null,
     })
   }
 

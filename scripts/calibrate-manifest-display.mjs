@@ -28,13 +28,14 @@ const TRANSFORM_TO = {
 }
 
 const CANDIDATE_TRANSFORMS = [
-  'swapFlipXY',
-  'swapFlipY',
-  'swapFlipX',
+  'identity',
   'flipY',
   'flipX',
+  'flipXY',
   'swap',
-  'identity',
+  'swapFlipY',
+  'swapFlipX',
+  'swapFlipXY',
 ]
 
 function mapKey(name) {
@@ -96,17 +97,10 @@ function hasCrop(bounds) {
   )
 }
 
-/** Stored norm → full-PNG coords after fine-tune + bounds expand + symmetry. */
+/** Stored displayicon UV → PNG coords after fine-tune + optional symmetry. */
 function toPngNorm(norm, bounds, transform, scale, ox, oy) {
   let p = { x: (norm.x - 0.5) * scale + 0.5 + ox, y: (norm.y - 0.5) * scale + 0.5 + oy }
   const tf = TRANSFORM_TO[transform] ?? TRANSFORM_TO.identity
-  if (hasCrop(bounds)) {
-    p = {
-      x: bounds.minX + p.x * (bounds.maxX - bounds.minX),
-      y: bounds.minY + p.y * (bounds.maxY - bounds.minY),
-    }
-    return tf(p)
-  }
   return tf(p)
 }
 

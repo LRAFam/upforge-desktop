@@ -27,6 +27,7 @@ import {
   MINIMAP_PANEL_LARGE,
 } from '../lib/minimap-sizes'
 import type { MatchSpatialSummary, SpatialTimelineEvent } from '../lib/spatial-types'
+import { isBombDeathEvent } from '../lib/spatial-bomb-death'
 
 const props = withDefaults(defineProps<{
   summary: MatchSpatialSummary | null | undefined
@@ -93,11 +94,14 @@ const hasMapContext = computed(() => !!(minimapUrl.value && props.summary))
 const deathEvents = computed(() =>
   spatialEvents.value.filter((e) => e.type === 'death'),
 )
+const bombDeathEvents = computed(() => deathEvents.value.filter(isBombDeathEvent))
+
+const combatDeathEvents = computed(() => deathEvents.value.filter((e) => !isBombDeathEvent(e)))
 
 const useCalloutHeat = computed(() =>
   props.showHeatmap
   && props.heatmapLayer === 'callout'
-  && deathEvents.value.length >= 2,
+  && combatDeathEvents.value.length >= 2,
 )
 
 const useSiteHeat = computed(() =>
@@ -381,7 +385,7 @@ function draw() {
 
     if (!hasSpatialEvents.value) return
 
-    if (useCalloutHeat.value) drawDeathHeatmap(ctx, s, deathEvents.value)
+    if (useCalloutHeat.value) drawDeathHeatmap(ctx, s, combatDeathEvents.value)
     else if (useSiteHeat.value) drawSiteHeatmap(ctx, s)
     else if (usePeekHeat.value) drawPeekHeatmap(ctx, s)
 
@@ -393,6 +397,7 @@ function draw() {
       const px = d.x * s
       const py = d.y * s
       const isDeath = ev.type === 'death'
+      const isBombDeath = isBombDeathEvent(ev)
       const isPlant = ev.type === 'plant'
       const isDefuse = ev.type === 'defuse'
       const active = props.activeIndex === globalIdx
@@ -413,16 +418,27 @@ function draw() {
       ctx.fillStyle = active ? 'rgba(255,255,255,0.95)' : 'rgba(255,255,255,0.5)'
       ctx.fill()
 
-      ctx.beginPath()
-      ctx.arc(px, py, r, 0, Math.PI * 2)
-      ctx.fillStyle = isDeath
-        ? '#ef4444'
-        : isPlant
-          ? '#f97316'
-          : isDefuse
-            ? '#38bdf8'
-            : '#22c55e'
-      ctx.fill()
+      if (isBombDeath) {
+        ctx.beginPath()
+        ctx.moveTo(px, py - r)
+        ctx.lineTo(px + r, py)
+        ctx.lineTo(px, py + r)
+        ctx.lineTo(px - r, py)
+        ctx.closePath()
+        ctx.fillStyle = '#f59e0b'
+        ctx.fill()
+      } else {
+        ctx.beginPath()
+        ctx.arc(px, py, r, 0, Math.PI * 2)
+        ctx.fillStyle = isDeath
+          ? '#ef4444'
+          : isPlant
+            ? '#f97316'
+            : isDefuse
+              ? '#38bdf8'
+              : '#22c55e'
+        ctx.fill()
+      }
     })
 
     if (props.showLegend) {
@@ -430,7 +446,9 @@ function draw() {
       ctx.fillRect(0, s - 28, s, 28)
       ctx.fillStyle = '#fff'
       ctx.font = '11px system-ui, sans-serif'
-      let legend = '● Deaths   ● Kills   ● Plants   ● Defuses'
+      let legend = bombDeathEvents.value.length
+        ? '● Deaths   ● Kills   ◆ Spike   ● Plants'
+        : '● Deaths   ● Kills   ● Plants   ● Defuses'
       if (useSiteHeat.value) legend = 'Heat @ site anchors   ● Events'
       else if (usePeekHeat.value) legend = 'Blue = defender peeks @ callouts   ● Events'
       else if (useCalloutHeat.value) legend = 'Heat @ callout anchors   ● Events'
@@ -444,14 +462,19 @@ function draw() {
       if (!ad) return
       const ax = ad.x * s
       const ay = ad.y * s
+      const bomb = isBombDeathEvent(active)
       const label = active.type === 'plant'
         ? `Planted · ${active.callout}`
         : active.type === 'defuse'
           ? `Defused · ${active.callout}`
-          : `${active.type === 'death' ? 'Died' : 'Kill'} · ${active.callout}`
-      const sublabel = active.benchmarkHint
-        ? (active.type === 'plant' || active.type === 'death' ? active.benchmarkHint : null)
-        : null
+          : bomb
+            ? `Spike death · ${active.callout}`
+            : `${active.type === 'death' ? 'Died' : 'Kill'} · ${active.callout}`
+      const sublabel = bomb
+        ? 'Spike explosion, not a combat death'
+        : active.benchmarkHint
+          ? (active.type === 'plant' || active.type === 'death' ? active.benchmarkHint : null)
+          : null
       ctx.font = `bold ${props.panelHud || props.dockExpanded || props.large ? 12 : 10}px system-ui, sans-serif`
       const tw = ctx.measureText(label).width
       const pad = 8
@@ -461,17 +484,19 @@ function draw() {
       ctx.fillStyle = 'rgba(0,0,0,0.82)'
       roundRect(ctx, bx, by, tw + pad * 2, boxH, 6)
       ctx.fill()
-      ctx.fillStyle = active.type === 'death'
-        ? '#fca5a5'
-        : active.type === 'plant'
-          ? '#fdba74'
-          : active.type === 'defuse'
-            ? '#7dd3fc'
-            : '#86efac'
+      ctx.fillStyle = bomb
+        ? '#fcd34d'
+        : active.type === 'death'
+          ? '#fca5a5'
+          : active.type === 'plant'
+            ? '#fdba74'
+            : active.type === 'defuse'
+              ? '#7dd3fc'
+              : '#86efac'
       ctx.fillText(label, bx + pad, by + 15)
       if (sublabel) {
         ctx.font = '9px system-ui, sans-serif'
-        ctx.fillStyle = '#fed7aa'
+        ctx.fillStyle = bomb ? '#fde68a' : '#fed7aa'
         const words = sublabel.length > 48 ? `${sublabel.slice(0, 46)}…` : sublabel
         ctx.fillText(words, bx + pad, by + 30)
       }

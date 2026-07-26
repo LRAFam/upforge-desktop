@@ -1,188 +1,188 @@
 {
   "map": "Pearl",
   "source": "valorant-api.com callouts",
-  "generatedAt": "2026-07-02",
+  "generatedAt": "2026-07-26",
   "callouts": [
     {
       "name": "A Art",
       "site": "A",
-      "x": 0.4391,
-      "y": 0.2254,
+      "x": 0.7462,
+      "y": 0.5602,
       "radius": 0.075
     },
     {
       "name": "A Dugout",
       "site": "A",
-      "x": 0.7052,
-      "y": 0,
+      "x": 0.9371,
+      "y": 0.3185,
       "radius": 0.075
     },
     {
       "name": "A Flowers",
       "site": "A",
-      "x": 0.8429,
-      "y": 0.3083,
+      "x": 0.676,
+      "y": 0.1934,
       "radius": 0.075
     },
     {
       "name": "A Link",
       "site": "A",
-      "x": 0.5673,
-      "y": 0.1908,
+      "x": 0.7755,
+      "y": 0.4437,
       "radius": 0.075
     },
     {
       "name": "A Main",
       "site": "A",
-      "x": 0.5943,
-      "y": 0.1869,
+      "x": 0.7788,
+      "y": 0.4193,
       "radius": 0.085
     },
     {
       "name": "A Restaurant",
       "site": "A",
-      "x": 0.4278,
-      "y": 0.2801,
+      "x": 0.6999,
+      "y": 0.5704,
       "radius": 0.075
     },
     {
       "name": "A Secret",
       "site": "A",
-      "x": 0.9455,
-      "y": 0.1863,
+      "x": 0.7793,
+      "y": 0.1003,
       "radius": 0.075
     },
     {
       "name": "A Site",
       "site": "A",
-      "x": 0.6153,
-      "y": 0.0262,
+      "x": 0.9149,
+      "y": 0.4001,
       "radius": 0.09
     },
     {
       "name": "Attacker Spawn",
       "site": "Spawn",
-      "x": 0,
-      "y": 0.5946,
+      "x": 0.4337,
+      "y": 0.9589,
       "radius": 0.09
     },
     {
       "name": "B Club",
       "site": "B",
-      "x": 0.116,
-      "y": 0.6729,
+      "x": 0.3674,
+      "y": 0.8536,
       "radius": 0.075
     },
     {
       "name": "B Hall",
       "site": "B",
-      "x": 0.6911,
-      "y": 0.9957,
+      "x": 0.094,
+      "y": 0.3314,
       "radius": 0.075
     },
     {
       "name": "B Link",
       "site": "B",
-      "x": 0.434,
-      "y": 0.5938,
+      "x": 0.4343,
+      "y": 0.5648,
       "radius": 0.075
     },
     {
       "name": "B Main",
       "site": "B",
-      "x": 0.3951,
-      "y": 0.9423,
+      "x": 0.1392,
+      "y": 0.6001,
       "radius": 0.085
     },
     {
       "name": "B Ramp",
       "site": "B",
-      "x": 0.1976,
-      "y": 0.8894,
+      "x": 0.1841,
+      "y": 0.7795,
       "radius": 0.075
     },
     {
       "name": "B Screen",
       "site": "B",
-      "x": 0.585,
-      "y": 1,
+      "x": 0.0904,
+      "y": 0.4277,
       "radius": 0.075
     },
     {
       "name": "B Site",
       "site": "B",
-      "x": 0.5454,
-      "y": 0.8018,
+      "x": 0.2582,
+      "y": 0.4636,
       "radius": 0.09
     },
     {
       "name": "B Tower",
       "site": "B",
-      "x": 0.7802,
-      "y": 0.802,
+      "x": 0.2581,
+      "y": 0.2504,
       "radius": 0.075
     },
     {
       "name": "B Tunnel",
       "site": "B",
-      "x": 0.818,
-      "y": 0.7378,
+      "x": 0.3124,
+      "y": 0.2161,
       "radius": 0.075
     },
     {
       "name": "Connector",
       "site": "Mid",
-      "x": 0.5666,
-      "y": 0.3735,
+      "x": 0.6209,
+      "y": 0.4443,
       "radius": 0.075
     },
     {
       "name": "Defender Records",
       "site": "Spawn",
-      "x": 0.818,
-      "y": 0.6747,
+      "x": 0.3658,
+      "y": 0.2161,
       "radius": 0.075
     },
     {
       "name": "Defender Spawn",
       "site": "Spawn",
-      "x": 1,
-      "y": 0.5044,
+      "x": 0.51,
+      "y": 0.0508,
       "radius": 0.09
     },
     {
       "name": "Defender Water",
       "site": "Spawn",
-      "x": 0.7179,
-      "y": 0.3735,
+      "x": 0.6209,
+      "y": 0.307,
       "radius": 0.075
     },
     {
       "name": "Doors",
       "site": "Mid",
-      "x": 0.451,
-      "y": 0.4843,
+      "x": 0.5271,
+      "y": 0.5493,
       "radius": 0.075
     },
     {
       "name": "Plaza",
       "site": "Mid",
-      "x": 0.2834,
-      "y": 0.5692,
+      "x": 0.4551,
+      "y": 0.7015,
       "radius": 0.075
     },
     {
       "name": "Shops",
       "site": "Mid",
-      "x": 0.116,
-      "y": 0.6729,
+      "x": 0.3674,
+      "y": 0.8536,
       "radius": 0.075
     },
     {
       "name": "Top",
       "site": "Mid",
-      "x": 0.2255,
-      "y": 0.4725,
+      "x": 0.537,
+      "y": 0.7542,
       "radius": 0.075
     }
   ]

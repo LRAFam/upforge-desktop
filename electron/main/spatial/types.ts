@@ -70,6 +70,8 @@ export interface SpatialTimelineEvent {
   weapon?: string
   isolated?: boolean
   killerDistance?: number | null
+  /** Spike / bomb death (not a combat duel). */
+  cause?: 'bomb' | null
   /** Population benchmark line for plant spots (rank-bracketed). */
   benchmarkHint?: string | null
 }

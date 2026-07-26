@@ -1,125 +1,125 @@
 {
   "map": "Sunset",
   "source": "valorant-api.com callouts",
-  "generatedAt": "2026-07-02",
+  "generatedAt": "2026-07-26",
   "callouts": [
     {
       "name": "A Alley",
       "site": "A",
-      "x": 0.9588,
-      "y": 0.0597,
+      "x": 0.7808,
+      "y": 0.2504,
       "radius": 0.075
     },
     {
       "name": "A Elbow",
       "site": "A",
-      "x": 0.6332,
-      "y": 0,
+      "x": 0.8276,
+      "y": 0.5,
       "radius": 0.075
     },
     {
       "name": "A Link",
       "site": "A",
-      "x": 0.8367,
-      "y": 0.1194,
+      "x": 0.734,
+      "y": 0.344,
       "radius": 0.075
     },
     {
       "name": "A Lobby",
       "site": "A",
-      "x": 0.4298,
-      "y": 0.2189,
+      "x": 0.656,
+      "y": 0.656,
       "radius": 0.075
     },
     {
       "name": "A Main",
       "site": "A",
-      "x": 0.5722,
-      "y": 0.199,
+      "x": 0.6716,
+      "y": 0.5468,
       "radius": 0.085
     },
     {
       "name": "A Site",
       "site": "A",
-      "x": 0.7146,
-      "y": 0.0995,
+      "x": 0.7496,
+      "y": 0.4376,
       "radius": 0.09
     },
     {
       "name": "Attacker Spawn",
       "site": "Spawn",
-      "x": 0,
-      "y": 0.4577,
+      "x": 0.4688,
+      "y": 0.9856,
       "radius": 0.09
     },
     {
       "name": "B Boba",
       "site": "B",
-      "x": 0.8367,
-      "y": 0.8955,
+      "x": 0.1256,
+      "y": 0.344,
       "radius": 0.075
     },
     {
       "name": "B Lobby",
       "site": "B",
-      "x": 0.267,
-      "y": 0.6766,
+      "x": 0.2972,
+      "y": 0.7808,
       "radius": 0.075
     },
     {
       "name": "B Main",
       "site": "B",
-      "x": 0.4094,
-      "y": 0.9801,
+      "x": 0.0593,
+      "y": 0.6716,
       "radius": 0.085
     },
     {
       "name": "B Market",
       "site": "B",
-      "x": 0.5925,
-      "y": 0.7562,
+      "x": 0.2348,
+      "y": 0.5312,
       "radius": 0.075
     },
     {
       "name": "B Site",
       "site": "B",
-      "x": 0.5519,
-      "y": 1,
+      "x": 0.0437,
+      "y": 0.5624,
       "radius": 0.09
     },
     {
       "name": "Bottom",
       "site": "Mid",
-      "x": 0.4298,
-      "y": 0.6194,
+      "x": 0.342,
+      "y": 0.656,
       "radius": 0.075
     },
     {
       "name": "Courtyard",
       "site": "Mid",
-      "x": 0.5519,
-      "y": 0.5373,
+      "x": 0.4064,
+      "y": 0.5624,
       "radius": 0.075
     },
     {
       "name": "Defender Spawn",
       "site": "Spawn",
-      "x": 1,
-      "y": 0.6158,
+      "x": 0.3449,
+      "y": 0.2188,
       "radius": 0.09
     },
     {
       "name": "Tiles",
       "site": "Mid",
-      "x": 0.4298,
-      "y": 0.3781,
+      "x": 0.5312,
+      "y": 0.656,
       "radius": 0.075
     },
     {
       "name": "Top",
       "site": "Mid",
-      "x": 0.8163,
-      "y": 0.6169,
+      "x": 0.344,
+      "y": 0.3596,
       "radius": 0.075
     }
   ]

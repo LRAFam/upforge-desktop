@@ -9,19 +9,12 @@
     "displayIcon": "https://media.valorant-api.com/maps/224b0a95-48b9-f703-1bd8-67aca101a61f/displayicon.png",
     "tacticalDescription": "A/B Sites",
     "mapUrl": "/Game/Maps/Infinity/Infinity",
-    "viewport": {
-      "minX": 0.02614999999999995,
-      "maxX": 0.9617,
-      "minY": 0.09904999999999997,
-      "maxY": 0.9272750000000001
-    },
     "displayBounds": {
       "minX": 0.0313,
       "minY": 0.0156,
       "maxX": 0.9668,
       "maxY": 0.9844
-    },
-    "displayTransform": "swapFlipXY"
+    }
   },
   {
     "displayName": "Ascent",
@@ -33,19 +26,12 @@
     "displayIcon": "https://media.valorant-api.com/maps/7eaecc1b-4337-bbf6-6ab9-04b8f06b3319/displayicon.png",
     "tacticalDescription": "A/B Sites",
     "mapUrl": "/Game/Maps/Ascent/Ascent",
-    "viewport": {
-      "minX": 0.49996082000000003,
-      "maxX": 1.329006849,
-      "minY": 0.5697420000000001,
-      "maxY": 1.25538661
-    },
     "displayBounds": {
       "minX": 0.042,
       "minY": 0.0479,
       "maxX": 0.9668,
       "maxY": 0.9141
-    },
-    "displayTransform": "swapFlipXY"
+    }
   },
   {
     "displayName": "Bind",
@@ -57,19 +43,12 @@
     "displayIcon": "https://media.valorant-api.com/maps/2c9d57ec-4431-9c5e-2939-8f9ef6dd5cba/displayicon.png",
     "tacticalDescription": "A/B Sites",
     "mapUrl": "/Game/Maps/Duality/Duality",
-    "viewport": {
-      "minX": 0.58647825088,
-      "maxX": 1.4408141620000001,
-      "minY": 0.6209706770000001,
-      "maxY": 1.3937705894
-    },
     "displayBounds": {
       "minX": 0.0889,
       "minY": 0.0117,
       "maxX": 0.9854,
       "maxY": 0.9561
-    },
-    "displayTransform": "swapFlipY"
+    }
   },
   {
     "displayName": "Breeze",
@@ -81,19 +60,12 @@
     "displayIcon": "https://media.valorant-api.com/maps/2fb9a4fd-47b8-4e7d-a969-74b4046ebd53/displayicon.png",
     "tacticalDescription": "A/B Sites",
     "mapUrl": "/Game/Maps/Foxtrot/Foxtrot",
-    "viewport": {
-      "minX": 0.37762300000000004,
-      "maxX": 1.1231229999999999,
-      "minY": 0.390328,
-      "maxY": 1.230328
-    },
     "displayBounds": {
       "minX": 0.0332,
       "minY": 0.0332,
       "maxX": 0.9658,
       "maxY": 0.9482
-    },
-    "displayTransform": "swapFlipXY"
+    }
   },
   {
     "displayName": "Corrode",
@@ -105,19 +77,12 @@
     "displayIcon": "https://media.valorant-api.com/maps/1c18ab1f-420d-0d8b-71d0-77ad3c439115/displayicon.png",
     "tacticalDescription": "A/B Sites",
     "mapUrl": "/Game/Maps/Rook/Rook",
-    "viewport": {
-      "minX": 0.13473734800000003,
-      "maxX": 0.941487551,
-      "minY": 0.10275000000000001,
-      "maxY": 0.90246549
-    },
     "displayBounds": {
       "minX": 0.0332,
       "minY": 0.0811,
       "maxX": 0.9844,
       "maxY": 0.918
-    },
-    "displayTransform": "swapFlipX"
+    }
   },
   {
     "displayName": "Fracture",
@@ -129,12 +94,6 @@
     "displayIcon": "https://media.valorant-api.com/maps/b529448b-4d60-346e-e89e-00a4c527a405/displayicon.png",
     "tacticalDescription": "A/B Sites",
     "mapUrl": "/Game/Maps/Canyon/Canyon",
-    "viewport": {
-      "minX": 0.895905212,
-      "maxX": 1.5868639999999998,
-      "minY": 0.8867108157999999,
-      "maxY": 1.619362
-    },
     "displayBounds": {
       "minX": 0.0234,
       "minY": 0.0674,
@@ -152,12 +111,6 @@
     "displayIcon": "https://media.valorant-api.com/maps/2bee0dc9-4ffe-519b-1cbd-7fbe763a6047/displayicon.png",
     "tacticalDescription": "A/B/C Sites",
     "mapUrl": "/Game/Maps/Triad/Triad",
-    "viewport": {
-      "minX": 0.84168895,
-      "maxX": 1.5975553224999999,
-      "minY": 0.8409374374999999,
-      "maxY": 1.596331025
-    },
     "displayBounds": {
       "minX": 0.0342,
       "minY": 0.083,
@@ -175,12 +128,6 @@
     "displayIcon": "https://media.valorant-api.com/maps/e2ad5c54-4114-a870-9641-8ea21279579a/displayicon.png",
     "tacticalDescription": "A/B Sites",
     "mapUrl": "/Game/Maps/Port/Port",
-    "viewport": {
-      "minX": -0.05818599999999996,
-      "maxX": 0.622214,
-      "minY": -0.20471299999999998,
-      "maxY": 0.625087
-    },
     "displayBounds": {
       "minX": 0.0635,
       "minY": 0.0762,
@@ -198,19 +145,12 @@
     "displayIcon": "https://media.valorant-api.com/maps/2fe4ed3a-450a-948b-6d6b-e89a78e680a9/displayicon.png",
     "tacticalDescription": "A/B/C Sites",
     "mapUrl": "/Game/Maps/Jam/Jam",
-    "viewport": {
-      "minX": 0.555681988,
-      "maxX": 1.1522362240000001,
-      "minY": 0.47906366079999996,
-      "maxY": 1.298015644
-    },
     "displayBounds": {
       "minX": 0.0566,
       "minY": 0.1201,
       "maxX": 0.9287,
       "maxY": 0.8945
-    },
-    "displayTransform": "swapFlipXY"
+    }
   },
   {
     "displayName": "Pearl",
@@ -222,19 +162,12 @@
     "displayIcon": "https://media.valorant-api.com/maps/fd267378-4d1d-484f-ff52-77821ed10dc2/displayicon.png",
     "tacticalDescription": "A/B Sites",
     "mapUrl": "/Game/Maps/Pitt/Pitt",
-    "viewport": {
-      "minX": 0.437569,
-      "maxX": 1.345680724,
-      "minY": 0.4593988208000001,
-      "maxY": 1.306088774
-    },
     "displayBounds": {
       "minX": 0.0049,
       "minY": 0.0371,
       "maxX": 0.9922,
       "maxY": 0.96
-    },
-    "displayTransform": "flipY"
+    }
   },
   {
     "displayName": "Split",
@@ -246,19 +179,12 @@
     "displayIcon": "https://media.valorant-api.com/maps/d960549e-485c-e861-8d71-aa9d1aed12a2/displayicon.png",
     "tacticalDescription": "A/B Sites",
     "mapUrl": "/Game/Maps/Bonsai/Bonsai",
-    "viewport": {
-      "minX": 0.599827882,
-      "maxX": 1.415101822,
-      "minY": 0.6929300683740001,
-      "maxY": 1.396845582
-    },
     "displayBounds": {
       "minX": 0.0537,
       "minY": 0.0469,
       "maxX": 0.9238,
       "maxY": 0.9727
-    },
-    "displayTransform": "swapFlipXY"
+    }
   },
   {
     "displayName": "Summit",
@@ -270,19 +196,12 @@
     "displayIcon": "https://media.valorant-api.com/maps/756da597-416b-c0f2-f47b-afbdf28670bc/displayicon.png",
     "tacticalDescription": "A/B Sites",
     "mapUrl": "/Game/Maps/Plummet/Plummet",
-    "viewport": {
-      "minX": 0.129901,
-      "maxX": 0.9530259999999999,
-      "minY": 0.06951600000000002,
-      "maxY": 0.9863909999999999
-    },
     "displayBounds": {
       "minX": 0.04,
       "minY": 0.0166,
       "maxX": 0.9951,
       "maxY": 0.9805
-    },
-    "displayTransform": "swapFlipXY"
+    }
   },
   {
     "displayName": "Sunset",
@@ -294,12 +213,6 @@
     "displayIcon": "https://media.valorant-api.com/maps/92584fbe-486a-b1b2-9faa-39b0f486b498/displayicon.png",
     "tacticalDescription": "A/B Sites",
     "mapUrl": "/Game/Maps/Juliett/Juliett",
-    "viewport": {
-      "minX": 0.03005000000000002,
-      "maxX": 0.796827323,
-      "minY": 0.188025,
-      "maxY": 0.9719249999999999
-    },
     "displayBounds": {
       "minX": 0.0449,
       "minY": 0.0088,

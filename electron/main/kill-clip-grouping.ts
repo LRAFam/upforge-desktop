@@ -10,6 +10,7 @@
  */
 
 import { gameSupportsRounds } from './game-config'
+import { isCombatPlayerKill } from './is-combat-kill'
 import type { KillEvent, MatchData } from './riot-types'
 
 /** Max gap between two of the player's kills to count as the same multikill spree. */
@@ -75,7 +76,7 @@ export function ensureClipKillRounds(timeline: MatchData | null | undefined): vo
  *   the saved timeline stays round-free for a continuous match view.
  */
 export function buildClipKills(timeline: MatchData | null | undefined): KillEvent[] {
-  const kills = timeline?.playerKills ?? []
+  const kills = (timeline?.playerKills ?? []).filter(isCombatPlayerKill)
   if (!kills.length || !timeline) return []
   if (gameSupportsRounds(timeline.game)) return kills
   const clones = kills.map((k) => ({ ...k }))

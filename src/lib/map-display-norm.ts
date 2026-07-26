@@ -188,8 +188,8 @@ export function drawMinimapImage(
 }
 
 /**
- * Map stored viewport-normalized coords → canvas space.
- * Pairs with cropped draw: viewport 0–1 maps linearly to the playable region, then symmetry + rotation.
+ * Map stored displayicon UV (0–1) → cropped canvas space.
+ * Pairs with cropped draw: PNG coords project into the playable inset.
  */
 export function toMinimapDisplayNorm(
   mapName: string | null | undefined,
@@ -201,14 +201,10 @@ export function toMinimapDisplayNorm(
 
   let p = applyDisplayFineTune(norm, entry)
   const transform = entry.displayTransform ?? 'identity'
+  p = TRANSFORM_TO[transform](p)
   const bounds = entry.displayBounds
-
   if (hasDisplayCrop(bounds)) {
-    p = expandToPngBounds(p, bounds)
-    p = TRANSFORM_TO[transform](p)
     p = pngToCropCanvas(p, bounds)
-  } else {
-    p = TRANSFORM_TO[transform](p)
   }
 
   return ROTATION_TO[normalizeRotation(entry.displayRotation)](p)
@@ -228,17 +224,9 @@ export function fromMinimapDisplayNorm(
   const bounds = entry.displayBounds
 
   if (hasDisplayCrop(bounds)) {
-    let png = expandToPngBounds(p, bounds)
-    png = TRANSFORM_FROM[transform](png)
-    const w = bounds.maxX - bounds.minX
-    const h = bounds.maxY - bounds.minY
-    p = {
-      x: (png.x - bounds.minX) / w,
-      y: (png.y - bounds.minY) / h,
-    }
-  } else {
-    p = TRANSFORM_FROM[transform](p)
+    p = expandToPngBounds(p, bounds)
   }
+  p = TRANSFORM_FROM[transform](p)
 
   const scale = entry.displayCoordScale ?? 1
   const ox = entry.displayOffsetX ?? 0

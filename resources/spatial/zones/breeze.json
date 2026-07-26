@@ -1,167 +1,167 @@
 {
   "map": "Breeze",
   "source": "valorant-api.com callouts",
-  "generatedAt": "2026-07-02",
+  "generatedAt": "2026-07-26",
   "callouts": [
     {
       "name": "A Bridge",
       "site": "A",
-      "x": 0.9061,
-      "y": 0.2333,
+      "x": 0.7119,
+      "y": 0.2451,
       "radius": 0.075
     },
     {
       "name": "A Lobby",
       "site": "A",
-      "x": 0,
-      "y": 0.2437,
+      "x": 0.7031,
+      "y": 0.9206,
       "radius": 0.075
     },
     {
       "name": "A Pyramids",
       "site": "A",
-      "x": 0.6056,
-      "y": 0.0729,
+      "x": 0.8466,
+      "y": 0.4691,
       "radius": 0.075
     },
     {
       "name": "A Ramp",
       "site": "A",
-      "x": 0.8028,
-      "y": 0.3,
+      "x": 0.6559,
+      "y": 0.3221,
       "radius": 0.075
     },
     {
       "name": "A Shop",
       "site": "A",
-      "x": 0.3192,
-      "y": 0.1729,
+      "x": 0.7626,
+      "y": 0.6826,
       "radius": 0.075
     },
     {
       "name": "A Site",
       "site": "A",
-      "x": 0.5704,
-      "y": 0,
+      "x": 0.9079,
+      "y": 0.4953,
       "radius": 0.09
     },
     {
       "name": "Attacker Spawn",
       "site": "Spawn",
-      "x": 0.0634,
-      "y": 0.5646,
+      "x": 0.4336,
+      "y": 0.8733,
       "radius": 0.09
     },
     {
       "name": "B Back",
       "site": "B",
-      "x": 0.8263,
-      "y": 1,
+      "x": 0.0679,
+      "y": 0.3046,
       "radius": 0.075
     },
     {
       "name": "B Elbow",
       "site": "B",
-      "x": 0.5563,
-      "y": 0.7687,
+      "x": 0.2621,
+      "y": 0.5058,
       "radius": 0.075
     },
     {
       "name": "B Main",
       "site": "B",
-      "x": 0.4507,
-      "y": 0.8979,
+      "x": 0.1536,
+      "y": 0.5846,
       "radius": 0.085
     },
     {
       "name": "B Site",
       "site": "B",
-      "x": 0.723,
-      "y": 0.9979,
+      "x": 0.0696,
+      "y": 0.3816,
       "radius": 0.09
     },
     {
       "name": "B Tunnel",
       "site": "B",
-      "x": 0.723,
-      "y": 0.6479,
+      "x": 0.3636,
+      "y": 0.3816,
       "radius": 0.075
     },
     {
       "name": "B Wall",
       "site": "B",
-      "x": 0.9202,
-      "y": 0.7771,
+      "x": 0.2551,
+      "y": 0.2346,
       "radius": 0.075
     },
     {
       "name": "B Window",
       "site": "B",
-      "x": 0.3263,
-      "y": 0.875,
+      "x": 0.1729,
+      "y": 0.6773,
       "radius": 0.075
     },
     {
       "name": "Bottom",
       "site": "Mid",
-      "x": 0.2653,
-      "y": 0.4875,
+      "x": 0.4984,
+      "y": 0.7228,
       "radius": 0.075
     },
     {
       "name": "Cannon",
       "site": "Mid",
-      "x": 0.3897,
-      "y": 0.6812,
+      "x": 0.3356,
+      "y": 0.6301,
       "radius": 0.075
     },
     {
       "name": "Defender Arches",
       "site": "Spawn",
-      "x": 1,
-      "y": 0.6354,
+      "x": 0.3741,
+      "y": 0.1751,
       "radius": 0.075
     },
     {
       "name": "Defender Spawn",
       "site": "Spawn",
-      "x": 0.9531,
-      "y": 0.2333,
+      "x": 0.7119,
+      "y": 0.2101,
       "radius": 0.09
     },
     {
       "name": "Hall",
       "site": "Mid",
-      "x": 0.517,
-      "y": 0.3195,
+      "x": 0.6395,
+      "y": 0.5351,
       "radius": 0.075
     },
     {
       "name": "Nest",
       "site": "Mid",
-      "x": 0.9296,
-      "y": 0.5042,
+      "x": 0.4844,
+      "y": 0.2276,
       "radius": 0.075
     },
     {
       "name": "Pillar",
       "site": "Mid",
-      "x": 0.5094,
-      "y": 0.4875,
+      "x": 0.4984,
+      "y": 0.5408,
       "radius": 0.075
     },
     {
       "name": "Top",
       "site": "Mid",
-      "x": 0.6972,
-      "y": 0.4833,
+      "x": 0.5019,
+      "y": 0.4008,
       "radius": 0.075
     },
     {
       "name": "Wood Doors",
       "site": "Mid",
-      "x": 0.5704,
-      "y": 0.3146,
+      "x": 0.6436,
+      "y": 0.4953,
       "radius": 0.075
     }
   ]

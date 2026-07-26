@@ -16,6 +16,8 @@ export interface SpatialTimelineEvent {
   weapon?: string
   isolated?: boolean
   killerDistance?: number | null
+  /** Spike / bomb death (not a combat duel). */
+  cause?: 'bomb' | null
   benchmarkHint?: string | null
 }
 

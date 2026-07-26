@@ -41,30 +41,26 @@ export function getMapTransform(mapName: string | null | undefined): MapTransfor
   return loadManifest().find((m) => normalizeMapKey(m.displayName) === key) ?? null
 }
 
-function rawWorldToTransform(t: MapTransform, worldX: number, worldY: number): NormPoint | null {
-  const x = worldX * t.xMultiplier + t.xScalarToAdd
-  const y = worldY * t.yMultiplier + t.yScalarToAdd
+function clamp01(v: number): number {
+  return Math.max(0, Math.min(1, v))
+}
+
+/**
+ * Riot world (x,y) → valorant-api displayicon UV (0–1).
+ *
+ * Official formula swaps axes: multipliers apply to the opposite game axis.
+ * @see https://gist.github.com/faheem-s27/3f527cd2dbf88cfadd7bdb649092ccfa
+ */
+export function rawWorldToTransform(t: MapTransform, worldX: number, worldY: number): NormPoint | null {
+  const x = worldY * t.xMultiplier + t.xScalarToAdd
+  const y = worldX * t.yMultiplier + t.yScalarToAdd
   if (!Number.isFinite(x) || !Number.isFinite(y)) return null
   return { x, y }
 }
 
-/** Map raw transform coords to 0–1 using per-map viewport (valorant displayicon space). */
-export function transformToDisplayNorm(t: MapTransform, raw: NormPoint): NormPoint {
-  const vp = t.viewport
-  if (!vp || vp.maxX <= vp.minX || vp.maxY <= vp.minY) {
-    return {
-      x: Math.max(0, Math.min(1, raw.x)),
-      y: Math.max(0, Math.min(1, raw.y)),
-    }
-  }
-  const minX = vp.minX
-  const maxX = vp.maxX
-  const minY = vp.minY
-  const maxY = vp.maxY
-  return {
-    x: Math.max(0, Math.min(1, (raw.x - minX) / (maxX - minX))),
-    y: Math.max(0, Math.min(1, (raw.y - minY) / (maxY - minY))),
-  }
+/** Clamp raw transform UV to the displayicon. Viewport stretch is intentionally unused. */
+export function transformToDisplayNorm(_t: MapTransform, raw: NormPoint): NormPoint {
+  return { x: clamp01(raw.x), y: clamp01(raw.y) }
 }
 
 /** Riot world (x,y) → normalized minimap (0–1 on displayicon). */
