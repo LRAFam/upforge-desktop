@@ -11,6 +11,14 @@ import { prepareMatchDataForUpload, submissionContextFromTimeline, gameModeForAp
 import type { CoachingSubmissionExtras } from './match-coaching-context'
 import type { DuelMomentManifest } from './moment-picker'
 import { reportPipelineError } from './pipeline-errors'
+import {
+  clearMultipartState,
+  multipartStatePath,
+  readMultipartState,
+  withCompletedPart,
+  writeMultipartState,
+  type MultipartResumeState,
+} from './multipart-upload-state'
 
 export interface UploadOptions {
   videoPath: string
@@ -33,8 +41,10 @@ export interface UploadOptions {
   getCoachingExtras?: () => CoachingSubmissionExtras | undefined
   /** Duel windows for coaching — may gain clip_s3_key after prepareDuelClips. */
   duelMoments?: DuelMomentManifest[]
-  /** Runs after presign, in parallel with full VOD upload. */
+  /** Runs after VOD multipart completes (serialized). */
   prepareDuelClips?: (jobId: string, videoPath: string) => Promise<DuelMomentManifest[]>
+  /** Local recording id — enables multipart resume state on disk. */
+  recordingId?: string | null
 }
 
 export interface DuelClipPresign {
@@ -365,6 +375,11 @@ export class UploadManager {
         presign.part_size,
         opts.onProgress,
         concurrency,
+        {
+          recordingId: opts.recordingId ?? null,
+          jobId: job_id,
+          uploadId: presign.upload_id ?? null,
+        },
       )
     } else if (presign.upload_url) {
       await this._putToS3(presign.upload_url, opts.videoPath, totalBytes, opts.onProgress)
@@ -404,6 +419,9 @@ export class UploadManager {
       token
     )
     opts.onProgress(100)
+    if (opts.recordingId) {
+      clearMultipartState(multipartStatePath(app.getPath('userData'), opts.recordingId))
+    }
 
     return { job_id, duel_moments: duelMomentsPayload }
   }
@@ -795,12 +813,56 @@ export class UploadManager {
     partSize: number,
     onProgress: (pct: number) => void,
     concurrency = S3_MULTIPART_CONCURRENCY,
+    resume?: { recordingId: string | null; jobId: string; uploadId: string | null },
   ): Promise<UploadedPart[]> {
     const sortedParts = [...parts].sort((a, b) => a.part_number - b.part_number)
     const results: UploadedPart[] = new Array(sortedParts.length)
     let uploaded = 0
     let nextIndex = 0
     let lastProgressAt = Date.now()
+
+    const stateFile = resume?.recordingId
+      ? multipartStatePath(app.getPath('userData'), resume.recordingId)
+      : null
+    let resumeState: MultipartResumeState | null = null
+    if (stateFile && resume?.uploadId) {
+      const existing = readMultipartState(stateFile)
+      if (
+        existing
+        && existing.uploadId === resume.uploadId
+        && existing.jobId === resume.jobId
+        && existing.totalBytes === totalBytes
+        && existing.partSize === partSize
+      ) {
+        resumeState = existing
+        for (const done of existing.completedParts) {
+          const idx = sortedParts.findIndex((p) => p.part_number === done.part_number)
+          if (idx >= 0) {
+            results[idx] = { part_number: done.part_number, etag: done.etag }
+            const offset = (done.part_number - 1) * partSize
+            const length = Math.min(partSize, totalBytes - offset)
+            uploaded += length
+          }
+        }
+      } else if (existing) {
+        // Different S3 session — start clean
+        clearMultipartState(stateFile)
+      }
+    }
+
+    if (stateFile && resume?.uploadId && resume.recordingId) {
+      resumeState = resumeState ?? {
+        version: 1,
+        recordingId: resume.recordingId,
+        jobId: resume.jobId,
+        uploadId: resume.uploadId,
+        partSize,
+        totalBytes,
+        completedParts: [],
+        updatedAt: Date.now(),
+      }
+      writeMultipartState(stateFile, resumeState)
+    }
 
     const STALL_TIMEOUT_MS = 120_000
     const stallCheck = setInterval(() => {
@@ -810,6 +872,7 @@ export class UploadManager {
     }, 5_000)
 
     const uploadOne = async (index: number): Promise<void> => {
+      if (results[index]) return
       const part = sortedParts[index]!
       const offset = (part.part_number - 1) * partSize
       const length = Math.min(partSize, totalBytes - offset)
@@ -819,6 +882,10 @@ export class UploadManager {
       uploaded += length
       lastProgressAt = Date.now()
       onProgress(Math.min(8 + Math.round((uploaded / totalBytes) * 91), 99))
+      if (stateFile && resumeState) {
+        resumeState = withCompletedPart(resumeState, { part_number: part.part_number, etag })
+        writeMultipartState(stateFile, resumeState)
+      }
     }
 
     try {
@@ -835,8 +902,11 @@ export class UploadManager {
         },
       )
       await Promise.all(workers)
-      return results
+      return results as UploadedPart[]
     } catch (err) {
+      if (this._isExpiredUploadSessionError(err) && stateFile) {
+        clearMultipartState(stateFile)
+      }
       if (!this._uploadAborted) this.abort()
       throw err
     } finally {

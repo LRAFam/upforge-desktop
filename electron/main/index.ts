@@ -68,6 +68,12 @@ import {
   removeDeferredUploadId,
 } from './deferred-upload-queue'
 import {
+  getPostMatchJobStorePath,
+  PostMatchJobStore,
+  type PostMatchJob,
+} from './post-match-job-store'
+import { PostMatchWorker } from './post-match-worker'
+import {
   resolveReadyRecordingPath,
   resolveReadyRecordingPathDetailed,
   listUnregisteredRecordingFiles,
@@ -588,6 +594,8 @@ obsRecorder.onReplayClipSaved = (clipPath, trigger, meta) => {
 const performanceManager = new PerformanceManager()
 let uploadManager: UploadManager
 let recordingsStore: RecordingsStore
+let postMatchJobStore: PostMatchJobStore
+let postMatchWorker: PostMatchWorker
 
 // Set by setupGameDetection — cancel pending match-wait when game quits from lobby
 let cancelMatchWait: (() => void) | null = null
@@ -687,27 +695,109 @@ function restoreDeferredUploadsFromDisk(): void {
       unpersistDeferredUpload(recordingId)
       continue
     }
-    registerDeferredUploadRetry(recordingId, async () => {
+    const now = Date.now()
+    postMatchJobStore.upsert({
+      id: recordingId,
+      recordingId,
+      videoPath: rec.path,
+      game: rec.game,
+      matchCorrelationId: activeMatchTelemetry?.correlationId ?? null,
+      stage: 'queued',
+      attempts: 0,
+      lastError: null,
+      createdAt: now,
+      updatedAt: now,
+      riotName: rec.riotName,
+      riotTag: rec.riotTag,
+      map: rec.map,
+      agent: rec.agent,
+    })
+    unpersistDeferredUpload(recordingId)
+  }
+  if (ids.length) {
+    log.info('[DeferredUpload] Migrated', ids.length, 'deferred upload id(s) into post-match job store')
+  }
+  postMatchWorker.kick()
+}
+
+function enqueuePostMatchAnalyse(args: {
+  recordingId: string
+  videoPath: string
+  riotName: string
+  riotTag: string
+  game: string
+  map: string | null
+  agent: string | null
+  matchCorrelationId?: string | null
+}): void {
+  const now = Date.now()
+  const job: PostMatchJob = {
+    id: args.recordingId,
+    recordingId: args.recordingId,
+    videoPath: args.videoPath,
+    game: args.game,
+    matchCorrelationId: args.matchCorrelationId ?? activeMatchTelemetry?.correlationId ?? null,
+    stage: 'queued',
+    attempts: 0,
+    lastError: null,
+    createdAt: now,
+    updatedAt: now,
+    riotName: args.riotName,
+    riotTag: args.riotTag,
+    map: args.map,
+    agent: args.agent,
+  }
+  postMatchWorker.enqueue(job)
+  logActivity('Queued upload/analysis — will run when the match is not recording')
+}
+
+function initPostMatchWorker(): void {
+  postMatchJobStore = new PostMatchJobStore(getPostMatchJobStorePath(app.getPath('userData')))
+  postMatchWorker = new PostMatchWorker({
+    store: postMatchJobStore,
+    isRecording: () => obsRecorder.isActivelyRecording(),
+    log: (msg) => log.info('[PostMatchWorker]', msg),
+    runJob: async (job) => {
+      activeMatchTelemetry?.startSector('upload')
       const win = mainWindow && !mainWindow.isDestroyed()
         ? mainWindow
         : (postGameWindow && !postGameWindow.isDestroyed() ? postGameWindow : createPostGameWindow())
-      await doUploadAndAnalyse(
-        recordingId,
-        rec.path,
-        rec.riotName,
-        rec.riotTag,
-        rec.game,
-        rec.map,
-        rec.agent,
-        rec.timeline,
-        win,
-      )
-    })
-  }
-  if (ids.length) {
-    log.info('[DeferredUpload] Restored', ids.length, 'deferred upload id(s) from disk')
-    maybeResumeDeferredUploads()
-  }
+      const rec = recordingsStore.getById(job.recordingId)
+      try {
+        await doUploadAndAnalyse(
+          job.recordingId,
+          job.videoPath,
+          job.riotName || rec?.riotName || '',
+          job.riotTag || rec?.riotTag || '',
+          job.game,
+          job.map ?? rec?.map ?? null,
+          job.agent ?? rec?.agent ?? null,
+          rec?.timeline ?? null,
+          win,
+        )
+        activeMatchTelemetry?.endSector('upload')
+      } catch (err) {
+        activeMatchTelemetry?.endSector('upload')
+        const msg = err instanceof Error ? err.message : String(err)
+        if (/upload aborted/i.test(msg)) {
+          activeMatchTelemetry?.setDnf('upload_abort', msg)
+        }
+        throw err
+      }
+    },
+  })
+}
+
+function maybeResumeDeferredUploads(): void {
+  void obsRecorder.releaseStaleMatchOwnership().then((released) => {
+    if (released) {
+      log.info('[MatchPriority] Cleared stale OBS ownership before resume check')
+    }
+    if (!shouldDeferHeavyBackgroundWork(matchPriorityDeps())) {
+      void flushDeferredUploadRetries()
+      postMatchWorker?.kick()
+    }
+  })
 }
 
 function interruptBackgroundWorkForMatch(): void {
@@ -732,17 +822,6 @@ function abortBackgroundWorkOnGameStart(): void {
     abortVodCompression,
   })
   trainerBridge.kill()
-}
-
-function maybeResumeDeferredUploads(): void {
-  void obsRecorder.releaseStaleMatchOwnership().then((released) => {
-    if (released) {
-      log.info('[MatchPriority] Cleared stale OBS ownership before resume check')
-    }
-    if (!shouldDeferHeavyBackgroundWork(matchPriorityDeps())) {
-      void flushDeferredUploadRetries()
-    }
-  })
 }
 
 function beginMatchPerformanceMode(): void {
@@ -2988,16 +3067,19 @@ function setupGameDetection(): void {
       tray?.setToolTip('UpForge — Uploading...')
       activationStep('upload', `recordingId=${savedRecording.id}`)
 
-      const uploadResult = await doUploadAndAnalyse(
-        savedRecording.id, readyPath, user?.riot_name ?? '', user?.riot_tag ?? '',
-        game, map, agent, timeline, uploadTargetWindow!, matchSessionStart,
-        /* skipAutoDelete= */ true, /* deleteLocalAfterUpload= */ false, enrichPromise,
-      )
+      enqueuePostMatchAnalyse({
+        recordingId: savedRecording.id,
+        videoPath: readyPath,
+        riotName: user?.riot_name ?? '',
+        riotTag: user?.riot_tag ?? '',
+        game,
+        map,
+        agent,
+        matchCorrelationId: activeMatchTelemetry?.correlationId ?? null,
+      })
+      activationStep('upload', 'queued for post-match worker')
 
-      activationStep('upload', uploadResult ? `jobId=${uploadResult}` : 'no job id (failed or skipped)')
-
-      const jobId = uploadResult ?? null
-      // Upload's beforeComplete already awaited enrich — decide late retry from current timeline.
+      const jobId = null
       const needLateRetry = shouldScheduleLateClipRetry(game, timeline, matchId ?? timeline?.matchId ?? null)
 
       finalizeTimelineOffsetsForClips(timeline)
@@ -4481,6 +4563,7 @@ async function doUploadAndAnalyse(
       throw new Error(readable.reason ?? 'Recording file is incomplete')
     }
 
+    activeMatchTelemetry?.startSector('remux_compress')
     const resolved = await resolveUploadVideoPath(videoPath, (sizeGB) => {
       if (sizeGB === 'remux') {
         logActivity('Wrapping OBS recording for upload (no re-encode)…')
@@ -4492,6 +4575,7 @@ async function doUploadAndAnalyse(
       }
       send('post-game:compress-start', { sizeGB })
     }, { forAnalysis: true })
+    activeMatchTelemetry?.endSector('remux_compress')
     effectivePath = resolved.path
     if (effectivePath !== videoPath) {
       const siblingProbe = await clipExtractor.probe(effectivePath)
@@ -4603,6 +4687,7 @@ async function doUploadAndAnalyse(
       agent,
       timeline,
       coachingExtras,
+      recordingId,
       prepareDuelClips: timeline && duelClipGames.has(game)
         ? async (jobId, path) => {
             const moments = duelMomentsForUpload(timeline)
@@ -4971,6 +5056,7 @@ async function startApp(): Promise<void> {
   initFunnelEvents(authManager, app.getVersion())
   trackedPrimaryGame = normalizePrimaryGame(settingsManager.get().primaryGame)
   recordingsStore = new RecordingsStore()
+  initPostMatchWorker()
   restoreDeferredUploadsFromDisk()
 
   // Register IPC before any BrowserWindow loads (dev updater, macOS activate, second instance).

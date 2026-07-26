@@ -11,7 +11,8 @@ Lightweight system-tray app for automatic gameplay recording and AI coaching ana
 5. AI analysis completes — notification + post-game preview
 6. Open full results on upforge.gg
 
-Ops telemetry (sector times, hardware bucket, DNFs) is described in  
+Ops telemetry (sector times, hardware bucket, DNFs) and the durable post-match
+upload queue are described in  
 `docs/superpowers/specs/2026-07-26-desktop-recording-reliability-telemetry-design.md`.
 
 ## Stack

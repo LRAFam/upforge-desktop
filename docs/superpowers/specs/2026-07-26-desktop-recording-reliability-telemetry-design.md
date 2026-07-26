@@ -2,7 +2,7 @@
 
 **Date:** 2026-07-26  
 **Service:** `upforge-desktop` (with light API support for funnel/ops events)  
-**Status:** Phase 0–1 in progress (`feat/recording-telemetry-harden`)
+**Status:** Phase 2 in progress (`feat/recording-durable-queue`)
 
 ## 1. Problem
 
