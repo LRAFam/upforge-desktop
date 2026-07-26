@@ -58,9 +58,24 @@ import {
   clearDeferredUploadRetry,
   flushDeferredUploadRetries,
   shouldDeferHeavyBackgroundWork,
+  abortHeavyBackgroundWorkOnGameStart,
+  abortVodCompression,
 } from './match-priority-guard'
 import {
+  addDeferredUploadId,
+  getDeferredUploadQueuePath,
+  readDeferredUploadIds,
+  removeDeferredUploadId,
+} from './deferred-upload-queue'
+import {
+  getPostMatchJobStorePath,
+  PostMatchJobStore,
+  type PostMatchJob,
+} from './post-match-job-store'
+import { PostMatchWorker } from './post-match-worker'
+import {
   resolveReadyRecordingPath,
+  resolveReadyRecordingPathDetailed,
   listUnregisteredRecordingFiles,
 } from './recording-path-resolver'
 import { broadcastObsConnection, startObsHealthMonitor } from './obs-health'
@@ -124,7 +139,12 @@ import {
   trackObsConnected,
   trackFirstAnalysis,
   trackSecondAnalysis,
+  trackOpsRecordingLap,
 } from './funnel-events'
+import { collectMachineProfile } from './machine-profile'
+import { MatchTelemetrySession, type SectorName } from './match-telemetry'
+import { startObsStatsSampler } from './obs-stats-sampler'
+import { sha256File } from './recording-checksum'
 import {
   formatRecordingFailure,
   formatCorruptRecordingMessage,
@@ -574,6 +594,8 @@ obsRecorder.onReplayClipSaved = (clipPath, trigger, meta) => {
 const performanceManager = new PerformanceManager()
 let uploadManager: UploadManager
 let recordingsStore: RecordingsStore
+let postMatchJobStore: PostMatchJobStore
+let postMatchWorker: PostMatchWorker
 
 // Set by setupGameDetection — cancel pending match-wait when game quits from lobby
 let cancelMatchWait: (() => void) | null = null
@@ -628,19 +650,142 @@ function matchPriorityDeps() {
   }
 }
 
-function interruptBackgroundWorkForMatch(): void {
-  pauseHeavyBackgroundWork(
-    matchPriorityDeps(),
-    () => uploadManager.abort(),
-    (recordingIds) => {
-      for (const recordingId of recordingIds) {
-        recordingsStore.setPipelineDeferReason(recordingId, 'recording')
+function deferredUploadQueueFile(): string {
+  return getDeferredUploadQueuePath(app.getPath('userData'))
+}
+
+function persistDeferredUpload(recordingId: string): void {
+  try {
+    addDeferredUploadId(deferredUploadQueueFile(), recordingId)
+  } catch (err) {
+    log.warn('[DeferredUpload] Failed to persist defer id', recordingId, err)
+  }
+}
+
+function unpersistDeferredUpload(recordingId: string): void {
+  try {
+    removeDeferredUploadId(deferredUploadQueueFile(), recordingId)
+  } catch (err) {
+    log.warn('[DeferredUpload] Failed to remove defer id', recordingId, err)
+  }
+}
+
+function registerDeferredUploadRetryPersisted(
+  recordingId: string,
+  run: () => Promise<void>,
+): void {
+  persistDeferredUpload(recordingId)
+  registerDeferredUploadRetry(recordingId, run)
+}
+
+function clearDeferredUploadRetryPersisted(recordingId: string): void {
+  clearDeferredUploadRetry(recordingId)
+  unpersistDeferredUpload(recordingId)
+}
+
+function restoreDeferredUploadsFromDisk(): void {
+  const ids = readDeferredUploadIds(deferredUploadQueueFile())
+  for (const recordingId of ids) {
+    const rec = recordingsStore.getById(recordingId)
+    if (!rec || rec.analysed || rec.pipelineStatus === 'analysing') {
+      unpersistDeferredUpload(recordingId)
+      continue
+    }
+    if (!fs.existsSync(rec.path)) {
+      unpersistDeferredUpload(recordingId)
+      continue
+    }
+    const now = Date.now()
+    postMatchJobStore.upsert({
+      id: recordingId,
+      recordingId,
+      videoPath: rec.path,
+      game: rec.game,
+      matchCorrelationId: activeMatchTelemetry?.correlationId ?? null,
+      stage: 'queued',
+      attempts: 0,
+      lastError: null,
+      createdAt: now,
+      updatedAt: now,
+      riotName: rec.riotName,
+      riotTag: rec.riotTag,
+      map: rec.map,
+      agent: rec.agent,
+    })
+    unpersistDeferredUpload(recordingId)
+  }
+  if (ids.length) {
+    log.info('[DeferredUpload] Migrated', ids.length, 'deferred upload id(s) into post-match job store')
+  }
+  postMatchWorker.kick()
+}
+
+function enqueuePostMatchAnalyse(args: {
+  recordingId: string
+  videoPath: string
+  riotName: string
+  riotTag: string
+  game: string
+  map: string | null
+  agent: string | null
+  matchCorrelationId?: string | null
+}): void {
+  const now = Date.now()
+  const job: PostMatchJob = {
+    id: args.recordingId,
+    recordingId: args.recordingId,
+    videoPath: args.videoPath,
+    game: args.game,
+    matchCorrelationId: args.matchCorrelationId ?? activeMatchTelemetry?.correlationId ?? null,
+    stage: 'queued',
+    attempts: 0,
+    lastError: null,
+    createdAt: now,
+    updatedAt: now,
+    riotName: args.riotName,
+    riotTag: args.riotTag,
+    map: args.map,
+    agent: args.agent,
+  }
+  postMatchWorker.enqueue(job)
+  logActivity('Queued upload/analysis — will run when the match is not recording')
+}
+
+function initPostMatchWorker(): void {
+  postMatchJobStore = new PostMatchJobStore(getPostMatchJobStorePath(app.getPath('userData')))
+  postMatchWorker = new PostMatchWorker({
+    store: postMatchJobStore,
+    isRecording: () => obsRecorder.isActivelyRecording(),
+    log: (msg) => log.info('[PostMatchWorker]', msg),
+    runJob: async (job) => {
+      activeMatchTelemetry?.startSector('upload')
+      const win = mainWindow && !mainWindow.isDestroyed()
+        ? mainWindow
+        : (postGameWindow && !postGameWindow.isDestroyed() ? postGameWindow : createPostGameWindow())
+      const rec = recordingsStore.getById(job.recordingId)
+      try {
+        await doUploadAndAnalyse(
+          job.recordingId,
+          job.videoPath,
+          job.riotName || rec?.riotName || '',
+          job.riotTag || rec?.riotTag || '',
+          job.game,
+          job.map ?? rec?.map ?? null,
+          job.agent ?? rec?.agent ?? null,
+          rec?.timeline ?? null,
+          win,
+        )
+        activeMatchTelemetry?.endSector('upload')
+      } catch (err) {
+        activeMatchTelemetry?.endSector('upload')
+        const msg = err instanceof Error ? err.message : String(err)
+        if (/upload aborted/i.test(msg)) {
+          activeMatchTelemetry?.setDnf('upload_abort', msg)
+        }
+        throw err
       }
-      mainWindow?.webContents.send('recordings:updated')
     },
-    activeUploadRecordingIds,
-  )
-  trainerBridge.kill()
+  })
 }
 
 function maybeResumeDeferredUploads(): void {
@@ -650,8 +795,33 @@ function maybeResumeDeferredUploads(): void {
     }
     if (!shouldDeferHeavyBackgroundWork(matchPriorityDeps())) {
       void flushDeferredUploadRetries()
+      postMatchWorker?.kick()
     }
   })
+}
+
+function interruptBackgroundWorkForMatch(): void {
+  pauseHeavyBackgroundWork(
+    matchPriorityDeps(),
+    () => uploadManager.abort(),
+    (recordingIds) => {
+      for (const recordingId of recordingIds) {
+        recordingsStore.setPipelineDeferReason(recordingId, 'recording')
+        persistDeferredUpload(recordingId)
+      }
+      mainWindow?.webContents.send('recordings:updated')
+    },
+    activeUploadRecordingIds,
+  )
+  trainerBridge.kill()
+}
+
+function abortBackgroundWorkOnGameStart(): void {
+  abortHeavyBackgroundWorkOnGameStart({
+    abortUploads: () => uploadManager.abort(),
+    abortVodCompression,
+  })
+  trainerBridge.kill()
 }
 
 function beginMatchPerformanceMode(): void {
@@ -716,8 +886,55 @@ interface LastMatchDiagnostic {
   killsInTimeline: number
   clipsExtracted: number
   matchDetailsStatus: 'fetched' | 'no_match_id' | 'no_region' | 'no_auth' | 'fetch_failed' | 'pending'
+  correlationId: string | null
+  sectorsMs: Partial<Record<SectorName, number>>
+  dnf: string | null
+  endReason: string | null
+  pathFallback: boolean
+  machineBucket: string | null
+  obsSkippedFrames: number | null
+  audioTracks: number | null
+  outputMode: string | null
+  checksumPrefix: string | null
 }
 let lastMatchDiagnostic: LastMatchDiagnostic | null = null
+let activeMatchTelemetry: MatchTelemetrySession | null = null
+let stopActiveObsStatsSampler: (() => void) | null = null
+
+function stopObsStatsSampling(): void {
+  stopActiveObsStatsSampler?.()
+  stopActiveObsStatsSampler = null
+}
+
+function emitActiveOpsLap(): void {
+  const session = activeMatchTelemetry
+  if (!session || session.hasEmittedLap()) return
+  session.markLapEmitted()
+  stopObsStatsSampling()
+  try {
+    trackOpsRecordingLap(session.snapshot() as unknown as Record<string, unknown>)
+  } catch (err) {
+    log.warn('[OpsTelemetry] Failed to emit lap', err)
+  }
+}
+
+function beginMatchTelemetry(game: string): MatchTelemetrySession {
+  stopObsStatsSampling()
+  const settings = settingsManager?.get()
+  const profile = collectMachineProfile({
+    appVersion: app.getVersion(),
+    obsVersion: obsRecorder.getObsStudioVersion(),
+    encoder: settings?.cachedEncoder ?? null,
+  })
+  const session = new MatchTelemetrySession(game, {
+    bucket: profile.bucket,
+    encoder: profile.encoder,
+    obsVersion: profile.obsVersion,
+    appVersion: profile.appVersion,
+  })
+  activeMatchTelemetry = session
+  return session
+}
 
 const FAILURE_NOTIFY_COOLDOWN_MS = 5 * 60 * 1000
 const recentFailureNotifications = new Map<string, number>()
@@ -2346,13 +2563,19 @@ function setupGameDetection(): void {
     pendingReplayPath = timelineBuilt.pendingReplayPath
     lastReplayRetryContext = timelineBuilt.replayRetryContext
 
-    const resolvedFile = resolveReadyRecordingPath(
+    const pathResolve = resolveReadyRecordingPathDetailed(
       obsRecorder.getLastRecordingPath(),
       savePath,
       matchSessionStart,
     )
+    const resolvedFile = pathResolve.file
     const videoPath = resolvedFile?.path ?? obsRecorder.getLastRecordingPath()
     const fileSize = resolvedFile?.sizeBytes ?? obsRecorder.getLastRecordingSize()
+    activeMatchTelemetry?.startSector('end_to_file_ready')
+    activeMatchTelemetry?.endSector('end_to_file_ready')
+    if (pathResolve.usedFallback) {
+      activeMatchTelemetry?.setPathFallback(true)
+    }
 
     if (resolvedFile && obsRecorder.hadDisconnectedDuringRecording()) {
       log.info(`[HandleMatchEnd] Recovered recording after OBS disconnect: ${videoPath}`)
@@ -2420,6 +2643,23 @@ function setupGameDetection(): void {
     // Capture diagnostic state for the developer panel
     const riotDiag = riotLocalApi.getDiagnostics()
     const killsInTimeline = timeline?.playerKills?.length ?? 0
+    let checksumPrefix: string | null = null
+    if (videoPath && fs.existsSync(videoPath)) {
+      try {
+        const hash = await sha256File(videoPath)
+        checksumPrefix = hash.slice(0, 12)
+        activeMatchTelemetry?.setChecksumPrefix(checksumPrefix)
+      } catch (err) {
+        log.warn('[OpsTelemetry] checksum failed', err)
+      }
+    }
+    activeMatchTelemetry?.setRecordingFacts({
+      durationSec: recordingDuration,
+      fileSizeMb: fileSize / (1024 * 1024),
+    })
+    activeMatchTelemetry?.setDuelsAfterVod(true)
+    activeMatchTelemetry?.setEndReason('clean')
+    const lapSnap = activeMatchTelemetry?.snapshot()
     lastMatchDiagnostic = {
       timestamp: Date.now(),
       matchId: timeline?.matchId ?? null,
@@ -2435,7 +2675,18 @@ function setupGameDetection(): void {
         : usesDemoReplay(game)
           ? (killsInTimeline > 0 ? 'fetched' : 'fetch_failed')
           : (riotDiag.accessTokenPresent ? 'no_match_id' : 'no_auth'),
+      correlationId: lapSnap?.match_correlation_id ?? null,
+      sectorsMs: lapSnap?.sectors_ms ?? {},
+      dnf: lapSnap?.dnf ?? null,
+      endReason: lapSnap?.end_reason ?? null,
+      pathFallback: lapSnap?.path_fallback ?? false,
+      machineBucket: lapSnap?.machine_bucket ?? null,
+      obsSkippedFrames: lapSnap?.obs_skipped_frames_max ?? null,
+      audioTracks: lapSnap?.audio_tracks ?? null,
+      outputMode: lapSnap?.recording_facts?.outputMode ?? null,
+      checksumPrefix,
     }
+    emitActiveOpsLap()
 
     log.info(
       `[HandleMatchEnd] duration=${recordingDuration}s videoPath=${videoPath} fileSize=${fileSize} ` +
@@ -2450,6 +2701,9 @@ function setupGameDetection(): void {
     if (durationForGate > 0 && durationForGate < MIN_DURATION_SECONDS) {
       console.log(`[GameDetector] Recording too short (${durationForGate}s) — ignoring`)
       logActivity(`Recording too short (${durationForGate}s) — discarded`)
+      activeMatchTelemetry?.setDnf('too_short')
+      activeMatchTelemetry?.setEndReason('too_short')
+      emitActiveOpsLap()
       registerClipOnlySession({
         game,
         map,
@@ -2813,16 +3067,19 @@ function setupGameDetection(): void {
       tray?.setToolTip('UpForge — Uploading...')
       activationStep('upload', `recordingId=${savedRecording.id}`)
 
-      const uploadResult = await doUploadAndAnalyse(
-        savedRecording.id, readyPath, user?.riot_name ?? '', user?.riot_tag ?? '',
-        game, map, agent, timeline, uploadTargetWindow!, matchSessionStart,
-        /* skipAutoDelete= */ true, /* deleteLocalAfterUpload= */ false, enrichPromise,
-      )
+      enqueuePostMatchAnalyse({
+        recordingId: savedRecording.id,
+        videoPath: readyPath,
+        riotName: user?.riot_name ?? '',
+        riotTag: user?.riot_tag ?? '',
+        game,
+        map,
+        agent,
+        matchCorrelationId: activeMatchTelemetry?.correlationId ?? null,
+      })
+      activationStep('upload', 'queued for post-match worker')
 
-      activationStep('upload', uploadResult ? `jobId=${uploadResult}` : 'no job id (failed or skipped)')
-
-      const jobId = uploadResult ?? null
-      // Upload's beforeComplete already awaited enrich — decide late retry from current timeline.
+      const jobId = null
       const needLateRetry = shouldScheduleLateClipRetry(game, timeline, matchId ?? timeline?.matchId ?? null)
 
       finalizeTimelineOffsetsForClips(timeline)
@@ -2946,6 +3203,7 @@ function setupGameDetection(): void {
   }
 
   gameDetector.on('game-started', async (game: string) => {
+    abortBackgroundWorkOnGameStart()
     if (await obsRecorder.releaseStaleMatchOwnership()) {
       logActivity('Cleared stale recording state — ready for next match')
     }
@@ -3678,6 +3936,8 @@ function setupGameDetection(): void {
 
     tray?.setToolTip('UpForge — Starting recorder...')
     mainWindow?.webContents.send('recording:starting', { starting: true })
+    const telemetry = beginMatchTelemetry(game)
+    telemetry.startSector('detect_to_record_start')
     try {
       // Create the overlay window just before recording starts — deferred from startup
       // so it doesn't break Valorant's exclusive fullscreen before we actually need it.
@@ -3685,6 +3945,19 @@ function setupGameDetection(): void {
       await ensureObsReadyOrThrow()
       if (!reclaimedExistingCapture) {
         await obsRecorder.start(game, recorderConfig)
+      }
+      telemetry.endSector('detect_to_record_start')
+      telemetry.setAudioTracks(obsRecorder.wasNoAudio() ? 0 : 1)
+      telemetry.setRecordingFacts({
+        resolution: recorderConfig?.quality === '1080p' ? '1920x1080' : '1280x720',
+        targetFps: recorderConfig?.fps ?? 30,
+        encoder: settingsManager?.get()?.cachedEncoder ?? null,
+      })
+      stopObsStatsSampling()
+      if (obsRecorder.isConnected()) {
+        stopActiveObsStatsSampler = startObsStatsSampler(obsRecorder.getObsClient(), (sample) => {
+          activeMatchTelemetry?.addObsSample(sample)
+        })
       }
       // Accurate videoOffsetMs: offset = (loadSkew − recordingLag) + timeSinceGameStart.
       if (!reclaimedExistingCapture) {
@@ -3710,6 +3983,15 @@ function setupGameDetection(): void {
       const msg = err instanceof Error ? err.message : String(err)
       log.error('[Main] Failed to start recording:', msg)
       reportRecordingError('start', msg, { backend: getRecordingBackendForStatus() })
+      if (/Advanced/i.test(msg)) {
+        telemetry.setDnf('advanced_output', msg)
+      } else if (isObsUnavailableError(msg)) {
+        telemetry.setDnf('obs_not_ready', msg)
+      } else {
+        telemetry.setDnf('other', msg)
+      }
+      telemetry.setEndReason('start_failed')
+      emitActiveOpsLap()
       if (game === 'valorant') {
         trackRecordingFailed(msg, isObsUnavailableError(msg) ? 'obs' : 'record')
       }
@@ -4260,7 +4542,7 @@ async function doUploadAndAnalyse(
   }
 
   if (recordingId) {
-    registerDeferredUploadRetry(recordingId, async () => {
+    registerDeferredUploadRetryPersisted(recordingId, async () => {
       await doUploadAndAnalyse(
         recordingId, videoPath, riotName, riotTag, game, map, agent, timeline,
         targetWindow, sessionStart, skipAutoDelete, deleteLocalAfterUpload, enrichPromise,
@@ -4281,6 +4563,7 @@ async function doUploadAndAnalyse(
       throw new Error(readable.reason ?? 'Recording file is incomplete')
     }
 
+    activeMatchTelemetry?.startSector('remux_compress')
     const resolved = await resolveUploadVideoPath(videoPath, (sizeGB) => {
       if (sizeGB === 'remux') {
         logActivity('Wrapping OBS recording for upload (no re-encode)…')
@@ -4292,6 +4575,7 @@ async function doUploadAndAnalyse(
       }
       send('post-game:compress-start', { sizeGB })
     }, { forAnalysis: true })
+    activeMatchTelemetry?.endSector('remux_compress')
     effectivePath = resolved.path
     if (effectivePath !== videoPath) {
       const siblingProbe = await clipExtractor.probe(effectivePath)
@@ -4403,6 +4687,7 @@ async function doUploadAndAnalyse(
       agent,
       timeline,
       coachingExtras,
+      recordingId,
       prepareDuelClips: timeline && duelClipGames.has(game)
         ? async (jobId, path) => {
             const moments = duelMomentsForUpload(timeline)
@@ -4662,7 +4947,7 @@ async function doUploadAndAnalyse(
         }
       },
     })
-    if (recordingId) clearDeferredUploadRetry(recordingId)
+    if (recordingId) clearDeferredUploadRetryPersisted(recordingId)
     return result.job_id
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : 'Upload failed'
@@ -4679,7 +4964,7 @@ async function doUploadAndAnalyse(
       }
       recordingsStore.setPipelineStatus(recordingId, 'pending')
       mainWindow?.webContents.send('recordings:updated')
-      clearDeferredUploadRetry(recordingId)
+      clearDeferredUploadRetryPersisted(recordingId)
     }
 
     // Quota exceeded — send upgrade prompt (no retry makes sense here)
@@ -4771,6 +5056,8 @@ async function startApp(): Promise<void> {
   initFunnelEvents(authManager, app.getVersion())
   trackedPrimaryGame = normalizePrimaryGame(settingsManager.get().primaryGame)
   recordingsStore = new RecordingsStore()
+  initPostMatchWorker()
+  restoreDeferredUploadsFromDisk()
 
   // Register IPC before any BrowserWindow loads (dev updater, macOS activate, second instance).
   setupIpcHandlers(ipcMain, authManager, () => obsRecorder, gameDetector, settingsManager, () => {

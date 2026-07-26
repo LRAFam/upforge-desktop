@@ -41,4 +41,31 @@ describe('applyObsRecordingSettings replay configuration', () => {
       }],
     ])
   })
+
+  it('blocks start when Output Mode remains Advanced after Simple push', async () => {
+    const call = vi.fn(async (name: string, args?: Record<string, unknown>) => {
+      if (name === 'GetProfileParameter' && args?.parameterName === 'Mode') {
+        return { parameterValue: 'Advanced' }
+      }
+      if (name === 'GetProfileParameter') return { parameterValue: null }
+      if (name === 'GetVideoSettings') return { outputWidth: 1280, outputHeight: 720 }
+      return {}
+    })
+
+    const result = await applyObsRecordingSettings({ call } as never, {
+      quality: '720p',
+      bitrate: 5,
+      fps: 30,
+      manageObsVideo: false,
+      audioEnabled: true,
+      savePath: '/recordings',
+      captureMonitor: 'auto',
+      clipsOnly: false,
+    })
+
+    expect(result.blocking).toBe(true)
+    expect(result.ok).toBe(false)
+    expect(result.errors).toContain('advanced_output')
+    expect(result.outputMode).toBe('Advanced')
+  })
 })

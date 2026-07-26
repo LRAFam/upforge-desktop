@@ -22,7 +22,9 @@
     "spatial:fetch-cs2-radars": "node scripts/fetch-cs2-radars.mjs",
     "ranks:fetch": "node scripts/fetch-game-rank-assets.mjs",
     "assets:preview": "node scripts/open-asset-preview.mjs",
-    "prepare": "husky"
+    "prepare": "husky",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "dependencies": {
     "@akiver/boiler-writter": "^1.7.0",
@@ -64,6 +66,7 @@
     "postcss": "^8.4.33",
     "tailwindcss": "^4.2.2",
     "typescript": "^5.8.0",
+    "vitest": "^3.2.7",
     "vue-tsc": "^2.2.0"
   },
   "build": {

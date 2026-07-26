@@ -30,6 +30,7 @@ export type FunnelEventName =
   | 'recording_failed'
   | 'upload_started'
   | 'upload_failed'
+  | 'ops_recording_lap'
 
 export async function trackFunnelEvent(
   event: FunnelEventName,
@@ -118,3 +119,26 @@ export function trackUploadFailed(reason: string, game = 'valorant'): void {
     reason: reason.slice(0, 120),
   })
 }
+
+const ABS_PATH_RE = /(?:\/Users\/|[A-Za-z]:\\|\\\\)/
+
+/** Drop path-like keys/values before cloud ops events. */
+export function sanitizeOpsProperties(props: Record<string, unknown>): Record<string, unknown> {
+  const out: Record<string, unknown> = {}
+  for (const [key, value] of Object.entries(props)) {
+    if (/path|dir|filepath|file_path/i.test(key) && key !== 'path_fallback') continue
+    if (typeof value === 'string' && ABS_PATH_RE.test(value)) continue
+    if (value && typeof value === 'object' && !Array.isArray(value)) {
+      out[key] = sanitizeOpsProperties(value as Record<string, unknown>)
+      continue
+    }
+    out[key] = value
+  }
+  return out
+}
+
+export function trackOpsRecordingLap(lap: Record<string, unknown>): void {
+  const { event: _event, ...rest } = lap
+  void trackFunnelEvent('ops_recording_lap', sanitizeOpsProperties(rest))
+}
+

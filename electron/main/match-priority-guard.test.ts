@@ -1,5 +1,8 @@
-import { describe, expect, it } from 'vitest'
-import { shouldDeferHeavyBackgroundWork } from './match-priority-guard'
+import { describe, expect, it, vi } from 'vitest'
+import {
+  abortHeavyBackgroundWorkOnGameStart,
+  shouldDeferHeavyBackgroundWork,
+} from './match-priority-guard'
 
 describe('shouldDeferHeavyBackgroundWork', () => {
   it('does not defer when OBS is not actively recording', () => {
@@ -27,5 +30,15 @@ describe('waitUntilBackgroundWorkAllowed', () => {
       { skipDefer: true },
     )
     expect(Date.now() - started).toBeLessThan(50)
+  })
+})
+
+describe('abortHeavyBackgroundWorkOnGameStart', () => {
+  it('invokes upload and compression abort hooks', () => {
+    const abortUploads = vi.fn()
+    const abortVodCompression = vi.fn(() => true)
+    abortHeavyBackgroundWorkOnGameStart({ abortUploads, abortVodCompression })
+    expect(abortUploads).toHaveBeenCalledOnce()
+    expect(abortVodCompression).toHaveBeenCalledOnce()
   })
 })

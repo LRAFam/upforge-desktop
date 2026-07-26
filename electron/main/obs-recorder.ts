@@ -331,6 +331,8 @@ export class OBSRecorder {
   }
 
   isConnected(): boolean { return this._connected }
+  getObsStudioVersion(): string | null { return this._obsStudioVersion }
+  getObsClient(): OBSWebSocket { return this._obs }
 
   async setupScene(game = 'valorant', forceSwitchScene = false): Promise<ObsSetupResult> {
     if (!this._connected) {
@@ -707,6 +709,13 @@ export class OBSRecorder {
 
       if (config) {
         const applyResult = await applyObsRecordingSettings(this._obs, config, this._obsStudioVersion)
+        if (applyResult.blocking) {
+          const msg = applyResult.warnings[0]
+            ?? 'OBS Output Mode is Advanced — switch to Simple and restart OBS before recording.'
+          this._lastError = msg
+          this.onStatusChange?.(false, msg)
+          throw new Error(msg)
+        }
         this._startupWarning = applyResult.warnings[0] ?? null
       } else {
         const savePath = join(app.getPath('userData'), 'recordings')

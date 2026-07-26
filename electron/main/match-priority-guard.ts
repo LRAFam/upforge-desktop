@@ -91,3 +91,17 @@ export function pauseHeavyBackgroundWork(
   }
   log.info('[MatchPriority] Paused uploads/compression — match performance mode active')
 }
+
+/**
+ * Abort in-flight heavy work when a game process starts.
+ * Does NOT flip the defer-with-message gate (that stays recording-only).
+ */
+export function abortHeavyBackgroundWorkOnGameStart(deps: {
+  abortUploads: () => void
+  abortVodCompression?: () => boolean
+}): void {
+  deps.abortUploads()
+  deps.abortVodCompression?.()
+  log.info('[MatchPriority] Aborted uploads/compression on game start')
+}
+

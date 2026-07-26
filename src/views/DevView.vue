@@ -97,6 +97,21 @@
               <DevRow label="Clips extracted" :value="diag.lastMatch.clipsExtracted" />
               <DevRow label="Match ID" :value="diag.lastMatch.matchId ? diag.lastMatch.matchId.slice(0, 16) + '…' : null" />
               <DevRow label="Details status" :value="diag.lastMatch.matchDetailsStatus" class="col-span-2" />
+              <DevRow label="Correlation ID" :value="diag.lastMatch.correlationId ? diag.lastMatch.correlationId.slice(0, 12) + '…' : '—'" />
+              <DevRow label="Machine bucket" :value="diag.lastMatch.machineBucket ?? '—'" />
+              <DevRow label="End reason" :value="diag.lastMatch.endReason ?? '—'" />
+              <DevRow label="DNF" :value="diag.lastMatch.dnf ?? '—'" />
+              <DevRow label="Path fallback" :value="diag.lastMatch.pathFallback ? 'yes' : 'no'" />
+              <DevRow label="OBS skipped frames" :value="diag.lastMatch.obsSkippedFrames ?? '—'" />
+              <DevRow label="Audio tracks" :value="diag.lastMatch.audioTracks ?? '—'" />
+              <DevRow label="Checksum" :value="diag.lastMatch.checksumPrefix ?? '—'" />
+              <DevRow
+                label="Sectors (ms)"
+                class="col-span-2"
+                :value="Object.keys(diag.lastMatch.sectorsMs || {}).length
+                  ? Object.entries(diag.lastMatch.sectorsMs).map(([k, v]) => `${k}=${v}`).join(' · ')
+                  : '—'"
+              />
             </div>
             <div v-if="clipInterpretation" class="mt-2.5 px-3 py-2 rounded-lg bg-amber-500/[0.08] border border-amber-500/20 text-xs text-amber-400 leading-relaxed">
               ℹ️ {{ clipInterpretation }}
