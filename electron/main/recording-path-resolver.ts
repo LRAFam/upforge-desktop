@@ -54,7 +54,10 @@ function shouldSkipRawWhenCompressedExists(filePath: string): boolean {
   return statRecordingFile(compressed) != null
 }
 
-function listCandidateFiles(savePath: string, notBeforeMs: number): ResolvedRecordingFile[] {
+function listCandidateFilesDetailed(
+  savePath: string,
+  notBeforeMs: number,
+): Array<ResolvedRecordingFile & { mtimeMs: number }> {
   if (!fs.existsSync(savePath)) return []
 
   const candidates: Array<ResolvedRecordingFile & { mtimeMs: number }> = []
@@ -75,7 +78,67 @@ function listCandidateFiles(savePath: string, notBeforeMs: number): ResolvedReco
   }
 
   candidates.sort((a, b) => b.mtimeMs - a.mtimeMs)
-  return candidates.map(({ path: filePath, sizeBytes }) => ({ path: filePath, sizeBytes }))
+  return candidates
+}
+
+function listCandidateFiles(savePath: string, notBeforeMs: number): ResolvedRecordingFile[] {
+  return listCandidateFilesDetailed(savePath, notBeforeMs).map(({ path: filePath, sizeBytes }) => ({
+    path: filePath,
+    sizeBytes,
+  }))
+}
+
+export interface ResolveRecordingResult {
+  file: ResolvedRecordingFile | null
+  usedFallback: boolean
+}
+
+/**
+ * Resolve the finished match recording with an explicit fallback flag.
+ * Fallback only accepts files mtime-fresh within a tight window (notBefore - 15s),
+ * preferring newest mtime then largest size — avoids picking an old huge unrelated VOD.
+ */
+export function resolveReadyRecordingPathDetailed(
+  preferredPath: string | null | undefined,
+  savePath: string,
+  notBeforeMs: number,
+  opts?: { fallbackSlackMs?: number },
+): ResolveRecordingResult {
+  if (preferredPath) {
+    const direct = statRecordingFile(preferredPath)
+    if (direct) {
+      return {
+        file: { ...direct, path: preferredRecordingPath(direct.path) },
+        usedFallback: false,
+      }
+    }
+
+    const preferredSibling = statRecordingFile(preferredRecordingPath(preferredPath))
+    if (preferredSibling) {
+      return { file: preferredSibling, usedFallback: false }
+    }
+  }
+
+  const slackMs = opts?.fallbackSlackMs ?? 15_000
+  const candidates = listCandidateFilesDetailed(savePath, notBeforeMs - slackMs)
+  if (candidates.length === 0) return { file: null, usedFallback: Boolean(preferredPath) }
+
+  const best = [...candidates].sort((a, b) => {
+    if (b.mtimeMs !== a.mtimeMs) return b.mtimeMs - a.mtimeMs
+    return b.sizeBytes - a.sizeBytes
+  })[0]!
+
+  const resolvedPath = preferredRecordingPath(best.path)
+  const resolved = statRecordingFile(resolvedPath) ?? best
+
+  if (preferredPath) {
+    log.warn(
+      `[RecordingPath] Using fallback file ${resolved.path} (${(resolved.sizeBytes / (1024 ** 2)).toFixed(1)} MB, ` +
+      `OBS reported ${preferredPath})`,
+    )
+  }
+
+  return { file: resolved, usedFallback: true }
 }
 
 /**
@@ -87,29 +150,7 @@ export function resolveReadyRecordingPath(
   savePath: string,
   notBeforeMs: number,
 ): ResolvedRecordingFile | null {
-  if (preferredPath) {
-    const direct = statRecordingFile(preferredPath)
-    if (direct) return { ...direct, path: preferredRecordingPath(direct.path) }
-
-    const preferredSibling = statRecordingFile(preferredRecordingPath(preferredPath))
-    if (preferredSibling) return preferredSibling
-  }
-
-  const candidates = listCandidateFiles(savePath, notBeforeMs - 60_000)
-  if (candidates.length === 0) return null
-
-  // Fragmented stop/start leaves multiple files — prefer the largest valid capture.
-  const best = [...candidates].sort((a, b) => b.sizeBytes - a.sizeBytes)[0]!
-  const resolvedPath = preferredRecordingPath(best.path)
-  const resolved = statRecordingFile(resolvedPath) ?? best
-
-  if (preferredPath && resolved.path !== preferredPath) {
-    log.warn(
-      `[RecordingPath] Using fallback file ${resolved.path} (${(resolved.sizeBytes / (1024 ** 2)).toFixed(1)} MB, ` +
-      `OBS reported ${preferredPath ?? 'none'})`,
-    )
-  }
-  return resolved
+  return resolveReadyRecordingPathDetailed(preferredPath, savePath, notBeforeMs).file
 }
 
 /** Local MP4s on disk that are not already tracked in recordings.json. */

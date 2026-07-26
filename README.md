@@ -1,21 +1,26 @@
 # UpForge Desktop
 
-Lightweight Windows system-tray app for automatic Valorant gameplay recording and AI coaching analysis.
+Lightweight system-tray app for automatic gameplay recording and AI coaching analysis.
 
 ## How It Works
 
-1. Launches silently to system tray on startup
-2. Detects when Valorant launches — starts hardware-encoded recording (NVENC/VCE/QuickSync, ~0% game impact)
-3. Reads live match data from Riot's Local Game Client API (`localhost:2999`)
-4. When game ends — stops recording, uploads to UpForge API, shows post-game window with progress
-5. AI analysis completes — desktop notification + post-game window shows results preview
-6. Click "View Full Analysis" to open full results on upforge.gg
+1. Launches to system tray
+2. Detects supported games (Valorant, CS2, Deadlock, LoL)
+3. Records via **OBS Studio** (WebSocket) with crash-safe settings UpForge applies
+4. After the match: FFmpeg remux/compress/clip extract, then upload to the UpForge API
+5. AI analysis completes — notification + post-game preview
+6. Open full results on upforge.gg
+
+Ops telemetry (sector times, hardware bucket, DNFs) is described in  
+`docs/superpowers/specs/2026-07-26-desktop-recording-reliability-telemetry-design.md`.
 
 ## Stack
 
 - **Electron** + **Vue 3** + **Tailwind CSS**
+- **OBS Studio** + `obs-websocket-js` for live capture
+- Bundled **FFmpeg** for post-match probe / remux / clips (not live capture)
 - **electron-vite** for fast dev builds
-- **electron-builder** for Windows installer distribution
+- **electron-builder** for installers
 - Same auth as upforge.gg — one account, both clients
 
 ## Development
@@ -25,7 +30,7 @@ npm install
 npm run dev
 ```
 
-> Requires ffmpeg in PATH for dev. For recording to work, run on Windows with Valorant installed.
+> OBS Studio must be installed and connectable (Settings → Recording). Windows is the primary recording platform.
 
 ## Building for Windows
 

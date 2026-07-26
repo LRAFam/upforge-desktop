@@ -351,13 +351,9 @@ export class UploadManager {
       }
     }
 
-    /** Extract + upload duel clips while the full VOD streams to S3. */
-    let duelClipPrep: Promise<DuelMomentManifest[] | undefined> | null = null
-    if (opts.prepareDuelClips) {
-      duelClipPrep = resolveDuelMoments()
-    }
-
     // ── Step 2: stream file directly to S3 ────────────────────────────────
+    // Remux already finished before upload(). Run VOD multipart first, then duel
+    // extract/upload — avoids dual disk reads saturating the drive during post-match.
     opts.onProgress(8)
     let uploadParts: UploadedPart[] | undefined
     if (presign.multipart && presign.parts?.length && presign.part_size) {
@@ -386,9 +382,7 @@ export class UploadManager {
     const completeCtx = submissionContextFromTimeline(opts.timeline ?? null, completeExtras())
     let duelMomentsPayload = opts.duelMoments
 
-    duelMomentsPayload = duelClipPrep
-      ? await duelClipPrep
-      : await resolveDuelMoments()
+    duelMomentsPayload = await resolveDuelMoments()
     const duelMomentsForComplete = duelMomentsPayload?.length
       ? duelMomentsPayload
       : (completeCtx.duel_moments ?? opts.duelMoments)

@@ -37,10 +37,13 @@ export function buildRecorderConfig(
 
 export interface ObsApplyResult {
   ok: boolean
+  /** True when recording must not start (e.g. Advanced mode still active). */
+  blocking: boolean
   outputMode: string | null
   outputWidth: number | null
   outputHeight: number | null
   warnings: string[]
+  errors: string[]
 }
 
 async function getProfileParam(
@@ -86,6 +89,7 @@ export async function applyObsRecordingSettings(
   const fps = config.fps ?? 30
   const savePath = config.savePath
   const warnings: string[] = []
+  const errors: string[] = []
 
   const modeBefore = await getProfileParam(obs, 'Output', 'Mode')
   if (modeBefore === 'Advanced') {
@@ -128,6 +132,15 @@ export async function applyObsRecordingSettings(
   }
 
   const outputMode = await getProfileParam(obs, 'Output', 'Mode')
+  let blocking = false
+  if (outputMode === 'Advanced') {
+    blocking = true
+    errors.push('advanced_output')
+    warnings.push(
+      'OBS is still in Advanced Output Mode after UpForge requested Simple — refusing to start recording.',
+    )
+  }
+
   let outputWidth: number | null = null
   let outputHeight: number | null = null
 
@@ -157,10 +170,12 @@ export async function applyObsRecordingSettings(
   }
 
   return {
-    ok: warnings.length === 0,
+    ok: !blocking && warnings.length === 0,
+    blocking,
     outputMode,
     outputWidth,
     outputHeight,
     warnings,
+    errors,
   }
 }

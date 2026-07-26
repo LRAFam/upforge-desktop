@@ -741,6 +741,16 @@ declare global {
             killsInTimeline: number
             clipsExtracted: number
             matchDetailsStatus: string
+            correlationId: string | null
+            sectorsMs: Record<string, number>
+            dnf: string | null
+            endReason: string | null
+            pathFallback: boolean
+            machineBucket: string | null
+            obsSkippedFrames: number | null
+            audioTracks: number | null
+            outputMode: string | null
+            checksumPrefix: string | null
           } | null
           clips: { total: number }
           analysisPipeline: {

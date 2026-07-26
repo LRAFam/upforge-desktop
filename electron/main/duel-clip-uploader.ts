@@ -14,10 +14,11 @@ import { preferredRecordingPath } from './recording-path-resolver'
 import { needsTranscodeForCloudUpload, recordingPathVariants, remuxVodForUpload } from './vod-compressor'
 import { reportPipelineError } from './pipeline-errors'
 
-const EXTRACT_CONCURRENCY = 2
-const UPLOAD_CONCURRENCY = 4
+const EXTRACT_CONCURRENCY = 1
+const UPLOAD_CONCURRENCY = 2
 /** Clips smaller than this are usually corrupt or empty extractions — skip upload. */
 const MIN_DUEL_CLIP_BYTES = 12 * 1024
+/** Post-match order: remux → VOD multipart → duel extract (see UploadManager.upload). */
 
 export function countMomentsWithClipKeys(moments: DuelMomentManifest[]): number {
   return moments.filter((m) => Boolean(m.clip_s3_key?.trim())).length
