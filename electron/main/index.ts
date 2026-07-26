@@ -1762,7 +1762,7 @@ function scheduleAnalysisReadinessRefresh(recordingId: string, game: string): vo
       return
     }
 
-    if (readiness.state === 'syncing' && rec.timeline) {
+    if ((readiness.state === 'syncing' || readiness.state === 'waiting_match_data') && rec.timeline) {
       try {
         await enrichTimelineForCoaching(riotLocalApi, rec.timeline, {
           maxWaitMs: 20_000,
@@ -1812,10 +1812,18 @@ async function ensureAnalysisReadinessForAnalyse(
   const shouldRetryRiotEnrich =
     rec.game === 'valorant'
     && rec.timeline
-    && (readiness.state === 'syncing' || readiness.state === 'unavailable')
+    && (
+      readiness.state === 'syncing'
+      || readiness.state === 'waiting_match_data'
+      || readiness.state === 'unavailable'
+    )
 
   if (shouldRetryRiotEnrich) {
-    logActivity(readiness.state === 'syncing' ? readiness.message : 'Fetching match stats from Riot…')
+    logActivity(
+      readiness.state === 'syncing' || readiness.state === 'waiting_match_data'
+        ? readiness.message
+        : 'Fetching match stats from Riot…',
+    )
     await prepareTimelineForCoaching(rec.timeline!, rec.game, recordingId)
     rec = recordingsStore.getById(recordingId)
     if (!rec) return { ok: false, error: 'Recording not found', state: 'unavailable' }
@@ -1860,7 +1868,11 @@ async function waitUntilAnalysisReady(
       return { ready: false, readiness }
     }
 
-    if (readiness.state === 'syncing' && rec.game === 'valorant' && rec.timeline) {
+    if (
+      (readiness.state === 'syncing' || readiness.state === 'waiting_match_data')
+      && rec.game === 'valorant'
+      && rec.timeline
+    ) {
       await prepareTimelineForCoaching(rec.timeline, rec.game, recordingId)
       rec = recordingsStore.getById(recordingId)
       if (rec) {
@@ -2754,7 +2766,8 @@ function setupGameDetection(): void {
       })
 
       const autoReadiness = getAnalysisReadiness(recForProbe)
-      if (isTerminalAnalysisReadinessState(autoReadiness.state) && !autoReadiness.ready) {
+      // Require rich match readiness — do not auto-upload while syncing / waiting for Riot stats.
+      if (!autoReadiness.ready) {
         activationStep('pending', `readiness blocked: ${autoReadiness.state}`)
         logActivity(autoReadiness.message || 'Auto-analyse skipped — recording not ready')
         sendToWindow('post-game:pending', {

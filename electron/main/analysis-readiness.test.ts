@@ -70,14 +70,15 @@ describe('getAnalysisReadiness', () => {
     expect(readiness.state).toBe('syncing')
   })
 
-  it('allows analyse when match id exists but Riot stats are still sparse', () => {
+  it('keeps Analyse locked when match id exists but Riot stats are still sparse', () => {
     const rec = baseRecording({
       recordedAt: Date.now() - MATCH_DETAILS_ENRICH_MAX_MS - 60_000,
       timeline: sparseTimeline(),
     })
     const readiness = getAnalysisReadiness(rec)
-    expect(readiness.ready).toBe(true)
-    expect(readiness.state).toBe('ready')
+    expect(readiness.ready).toBe(false)
+    expect(readiness.state).toBe('waiting_match_data')
+    expect(readiness.message).toContain('Riot match stats')
   })
 
   it('blocks when no match id can be linked', () => {

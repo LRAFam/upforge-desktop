@@ -307,13 +307,15 @@ export function getAnalysisReadiness(rec: ReadinessRecording): AnalysisReadiness
         duelMomentCount: 0,
       }
     }
-    // Match id known but Riot stats still sparse — allow analyse; API holds and retries Henrik enrich.
+    // Keep Analyse locked until kills + final stats exist. Sparse matchId-only
+    // submissions were failing after API Henrik wait (missing_match_stats).
     if (hasMatchId) {
       return {
-        ready: true,
-        state: 'ready',
-        message: '',
-        duelMomentCount: duelMomentsForUpload(timeline).length,
+        ready: false,
+        state: 'waiting_match_data',
+        message:
+          'Waiting for Riot match stats — usually ready about a minute after the game ends. Analyse unlocks when kills and final stats load.',
+        duelMomentCount: 0,
       }
     }
     return {
