@@ -11,7 +11,7 @@ import {
   readPendingJobForUser,
   setPendingJobUserScope,
 } from './upload-manager'
-import { userDataRoot, userOverlayPath, userRecordingsDir } from './user-data-paths'
+import { userDataRoot, userOverlayPath, userRecordingsDir, legacyGlobalRecordingsDir } from './user-data-paths'
 import { normalizeLegacySavePath, scheduleLegacyUserDataMigration } from './legacy-migration'
 
 export { userDataRoot } from './user-data-paths'
@@ -69,11 +69,24 @@ export function activateUserSession(userId: number, deps: UserSessionDeps): void
 
   fs.mkdirSync(userRecordingsDir(userId), { recursive: true })
   deps.clipStore.setUserScope(userId)
-  deps.recordingsStore.setUserScope(userId)
+  const recordingSearchDirs = [
+    userRecordingsDir(userId),
+    legacyGlobalRecordingsDir(),
+    deps.settingsManager.get().savePath,
+  ].filter(Boolean)
+  deps.recordingsStore.setUserScope(userId, recordingSearchDirs)
   setClipsMediaDir(deps.clipStore.getClipsMediaDir())
   loadUserOverlay(userId, deps.settingsManager)
 
   scheduleLegacyUserDataMigration(userId, () => {
+    const healed = deps.recordingsStore.healMissingPaths([
+      userRecordingsDir(userId),
+      legacyGlobalRecordingsDir(),
+      deps.settingsManager.get().savePath,
+    ])
+    if (healed > 0) {
+      log.info(`[UserSession] Healed ${healed} recording path(s) after migration`)
+    }
     deps.onScopeChanged?.()
     deps.getMainWindow()?.webContents.send('recordings:updated')
   })

@@ -5,6 +5,7 @@ import { randomUUID } from 'crypto'
 import type { MatchData } from './riot-local-api'
 import { recordingPathVariants, sourcePathForCompressed, deleteLocalRecordingFiles } from './vod-compressor'
 import { recordingMatchesLinkedRiot, userDataRoot, type LinkedRiotId } from './user-data-paths'
+import { healRecordingPath } from './heal-recording-paths'
 
 function recordingStemKey(filePath: string): string {
   const stem = path.basename(filePath, '.mp4')
@@ -106,8 +107,11 @@ export class RecordingsStore {
     this.recordings = this.load()
   }
 
-  setUserScope(userId: number | null): void {
-    if (userId === this.userId) return
+  setUserScope(userId: number | null, searchDirs: string[] = []): void {
+    if (userId === this.userId) {
+      if (userId != null && searchDirs.length) this.healMissingPaths(searchDirs)
+      return
+    }
     this.userId = userId
     if (userId == null) {
       this.recordings = []
@@ -116,13 +120,46 @@ export class RecordingsStore {
     const root = userDataRoot(userId)
     fs.mkdirSync(root, { recursive: true })
     this.filePath = path.join(root, 'recordings.json')
-    this.recordings = this.load()
+    this.recordings = this.load(searchDirs)
   }
 
-  private load(): PendingRecording[] {
+  /**
+   * Rewrite stale absolute paths after legacy → per-user migration (or folder moves).
+   * Returns how many catalog rows were updated.
+   */
+  healMissingPaths(searchDirs: string[]): number {
+    let healed = 0
+    for (const rec of this.recordings) {
+      if (!rec.path || rec.clipsOnly) continue
+      if (fs.existsSync(rec.path)) continue
+      const fixed = healRecordingPath(rec.path, searchDirs)
+      if (!fixed) continue
+      rec.path = fixed
+      healed++
+    }
+    if (healed > 0) this.persist()
+    return healed
+  }
+
+  private load(searchDirs: string[] = []): PendingRecording[] {
     try {
       const raw = fs.readFileSync(this.filePath, 'utf-8')
       const all: PendingRecording[] = JSON.parse(raw)
+
+      // Heal before pruning — migration can move files while JSON still points at
+      // the old folder, which used to wipe pending matches from the dashboard.
+      let healedAny = false
+      if (searchDirs.length) {
+        for (const r of all) {
+          if (!r.path || r.clipsOnly || fs.existsSync(r.path)) continue
+          const fixed = healRecordingPath(r.path, searchDirs)
+          if (fixed) {
+            r.path = fixed
+            healedAny = true
+          }
+        }
+      }
+
       const pruned = all.filter(r => {
         if (r.clipsOnly) return true
         if (r.path && fs.existsSync(r.path)) return true
@@ -131,7 +168,7 @@ export class RecordingsStore {
         return false
       })
       const deduped = this.dedupeSiblingRecordings(pruned)
-      if (deduped.length !== all.length) {
+      if (deduped.length !== all.length || healedAny) {
         fs.mkdirSync(path.dirname(this.filePath), { recursive: true })
         fs.writeFileSync(this.filePath, JSON.stringify(deduped, null, 2))
       }

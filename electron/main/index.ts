@@ -116,7 +116,7 @@ import {
   clearActivePendingJob,
   getActiveUserId,
 } from './user-session'
-import { resolveRecordingSavePath } from './user-data-paths'
+import { resolveRecordingSavePath, userRecordingsDir, legacyGlobalRecordingsDir } from './user-data-paths'
 import { extractAnalysisIdFromPollResult } from './analysis-completion'
 import { startAnalysisPoll, stopActiveAnalysisPoll, reconcileOrphanedJob, getActiveAnalysisPollJobId, type AnalysisPollStatus } from './analysis-poll'
 import { abortInFlightAnalysis } from './abort-in-flight-analysis'
@@ -5596,6 +5596,15 @@ async function startApp(): Promise<void> {
   })
 
   ipcMain.handle('recordings:get', async () => {
+    const userId = getActiveUserId()
+    if (userId != null && recordingsStore) {
+      recordingsStore.healMissingPaths([
+        recordingSavePath(),
+        userRecordingsDir(userId),
+        legacyGlobalRecordingsDir(),
+        settingsManager?.get().savePath,
+      ].filter(Boolean) as string[])
+    }
     scanForOrphanedRecordings()
     const pending = recordingsStore.getPending(linkedRiotFromAuth())
 
