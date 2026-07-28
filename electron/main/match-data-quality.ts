@@ -51,8 +51,25 @@ export function cs2PlayerIdentityMismatch(timeline: MatchData | null | undefined
   return totalKills > 0 && playerKills === 0
 }
 
-/** Desktop waits up to this long for Riot MatchDetails before upload (ms). */
+/** Desktop waits up to this long for Riot MatchDetails before *blocking* upload (ms). */
 export const MATCH_DETAILS_ENRICH_MAX_MS = 180_000
+
+/**
+ * Background Valorant MatchDetails poll cadence while a pending VOD still lacks stats.
+ * Keeps trying for the life of the app session (no hard stop) with backoff so we
+ * do not hammer Riot while the user sits in MENUS.
+ */
+export function valorantMatchStatsPollIntervalMs(
+  elapsedMs: number,
+  recordingActive = false,
+): number {
+  if (recordingActive) return 60_000
+  const elapsedMin = elapsedMs / 60_000
+  if (elapsedMin < 3) return 15_000
+  if (elapsedMin < 10) return 30_000
+  if (elapsedMin < 30) return 60_000
+  return 120_000
+}
 
 /** CS2 GOTV replays often land 5–15 min after match end; up to ~30 min at peak. */
 export const CS2_DEMO_SYNC_MAX_MS = 35 * 60 * 1000

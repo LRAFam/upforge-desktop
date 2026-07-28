@@ -5,6 +5,7 @@ import type { PendingRecording } from '../env.d.ts'
 import { useGameTheme } from '../composables/useGameTheme'
 import { openAnalysisVodReview } from '../lib/open-vod-review'
 import { canOpenTimeline, canWatchRawRecording } from '../lib/recording-demo-status'
+import { canRetryRiotMatchStats } from '../lib/match-stats-retry'
 import {
   recordingGameTitle,
   recordingMapImage,
@@ -66,7 +67,7 @@ function statusBadge(rec: PendingRecording): StatusBadge {
   if (rec.pipelineStatus === 'uploading') return { label: 'Uploading', class: 'bg-blue-500/15 text-blue-300 ring-blue-500/25' }
   if (rec.lastAnalysisError) return { label: 'Failed', class: 'bg-red-500/15 text-red-300 ring-red-500/25' }
   const state = rec.analysisReadiness?.state
-  if (state === 'syncing' || state === 'finalizing') return { label: 'Syncing', class: 'bg-amber-500/15 text-amber-300 ring-amber-500/25' }
+  if (state === 'syncing' || state === 'waiting_match_data' || state === 'finalizing') return { label: 'Syncing', class: 'bg-amber-500/15 text-amber-300 ring-amber-500/25' }
   if (rec.cloudUploaded && !rec.hasLocalFile) return { label: 'In cloud', class: 'bg-white/10 text-gray-300 ring-white/15' }
   if (rec.hasLocalFile) return { label: 'On disk', class: 'bg-white/10 text-gray-300 ring-white/15' }
   return { label: 'Recording', class: 'bg-white/10 text-gray-300 ring-white/15' }
@@ -97,6 +98,17 @@ async function analyse(rec: PendingRecording) {
   busyId.value = rec.id
   message.value = null
   try {
+    if (!rec.analysisReadiness?.ready && canRetryRiotMatchStats(rec)) {
+      const sync = await window.api.recordings.retryMatchStats(rec.id)
+      await load()
+      if (!sync?.ok) {
+        message.value = sync?.error
+          ?? 'Could not load Riot match stats — open Riot Client / Valorant and try again.'
+        return
+      }
+      message.value = 'Match stats synced — tap Analyse again for coaching.'
+      return
+    }
     const result = await window.api.recordings.analyse(rec.id)
     if (result?.error) message.value = result.error
     else router.push('/dashboard')
@@ -110,7 +122,7 @@ async function analyse(rec: PendingRecording) {
 const canAnalyse = (rec: PendingRecording) =>
   rec.analysisId == null
   && !rec.pipelineStatus
-  && Boolean(rec.analysisReadiness?.ready)
+  && (Boolean(rec.analysisReadiness?.ready) || canRetryRiotMatchStats(rec))
 
 onMounted(() => {
   load()
@@ -210,7 +222,7 @@ onUnmounted(() => { cleanup?.() })
                 class="rounded-lg bg-white/[0.06] px-2.5 py-1 text-[11px] font-semibold text-gray-200 transition-colors hover:bg-white/[0.12] disabled:opacity-50"
                 :disabled="busyId === rec.id"
                 @click="analyse(rec)"
-              >Analyse</button>
+              >{{ rec.analysisReadiness?.ready ? 'Analyse' : 'Retry sync' }}</button>
               <button
                 class="rounded-lg px-2.5 py-1 text-[11px] font-bold transition-colors disabled:opacity-50"
                 :class="`${theme.accentBg} ${theme.accentText} ring-1 ${theme.accentBorder}`"

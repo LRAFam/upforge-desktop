@@ -211,7 +211,7 @@ import {
   resetPostGameSession,
   sendPostGameEvent,
 } from './post-game-session'
-import { hasRichMatchData, MATCH_DETAILS_ENRICH_MAX_MS, demoSyncMaxMsForGame, shouldDeferPostGameForDemoSync, shouldScheduleLateClipRetry, cs2RecordingSavedDashboardMessage, deadlockRecordingSavedDashboardMessage } from './match-data-quality'
+import { hasRichMatchData, MATCH_DETAILS_ENRICH_MAX_MS, demoSyncMaxMsForGame, shouldDeferPostGameForDemoSync, shouldScheduleLateClipRetry, cs2RecordingSavedDashboardMessage, deadlockRecordingSavedDashboardMessage, valorantMatchStatsPollIntervalMs } from './match-data-quality'
 import {
   buildCoachingSubmissionExtras,
   topSkillFocus,
@@ -1977,8 +1977,26 @@ async function refreshRecordingVodProbe(
 }
 
 /** Poll Riot + VOD probe until analyse is unblocked — Valorant only; CS2/Deadlock are VOD-ready without demo. */
-function scheduleAnalysisReadinessRefresh(recordingId: string, game: string): void {
-  const startedAt = Date.now()
+const analysisReadinessRefreshInFlight = new Set<string>()
+
+function scheduleAnalysisReadinessRefresh(
+  recordingId: string,
+  game: string,
+  opts?: { force?: boolean },
+): void {
+  if (analysisReadinessRefreshInFlight.has(recordingId) && !opts?.force) return
+
+  // Force (manual Retry / fresh save): drop any prior loop marker so we can re-arm.
+  if (opts?.force) {
+    analysisReadinessRefreshInFlight.delete(recordingId)
+  }
+  if (analysisReadinessRefreshInFlight.has(recordingId)) return
+
+  analysisReadinessRefreshInFlight.add(recordingId)
+
+  const release = () => {
+    analysisReadinessRefreshInFlight.delete(recordingId)
+  }
 
   const finish = (readiness: AnalysisReadiness) => {
     mainWindow?.webContents.send('recordings:updated')
@@ -1991,18 +2009,28 @@ function scheduleAnalysisReadinessRefresh(recordingId: string, game: string): vo
   if (game !== 'valorant') {
     setTimeout(() => {
       void (async () => {
-        const rec = recordingsStore.getById(recordingId)
-        if (!rec || rec.analysed) return
-        await refreshRecordingVodProbe(rec)
-        finish(getAnalysisReadiness(rec))
+        try {
+          const rec = recordingsStore.getById(recordingId)
+          if (!rec || rec.analysed) return
+          await refreshRecordingVodProbe(rec)
+          finish(getAnalysisReadiness(rec))
+        } finally {
+          release()
+        }
       })()
     }, 3_000)
     return
   }
 
+  let lastMilestoneLogAt = 0
+
   const tick = async (): Promise<void> => {
+    // Dropped from the in-flight set (e.g. force re-arm) — exit this loop.
+    if (!analysisReadinessRefreshInFlight.has(recordingId)) return
+
     let rec = recordingsStore.getById(recordingId)
     if (!rec || rec.analysed || rec.pipelineStatus === 'uploading' || rec.pipelineStatus === 'analysing') {
+      release()
       return
     }
 
@@ -2015,11 +2043,7 @@ function scheduleAnalysisReadinessRefresh(recordingId: string, game: string): vo
     let readiness = getAnalysisReadiness(rec)
     if (isTerminalAnalysisReadinessState(readiness.state)) {
       finish(readiness)
-      return
-    }
-
-    if (Date.now() - startedAt >= demoSyncMaxMsForGame(game)) {
-      finish(getAnalysisReadiness(rec))
+      release()
       return
     }
 
@@ -2035,13 +2059,55 @@ function scheduleAnalysisReadinessRefresh(recordingId: string, game: string): vo
     }
 
     finish(readiness)
-    if (!isTerminalAnalysisReadinessState(readiness.state)) {
-      const pollMs = deferring ? 30_000 : 10_000
-      setTimeout(() => { void tick() }, pollMs)
+    if (isTerminalAnalysisReadinessState(readiness.state)) {
+      release()
+      return
     }
+
+    // Soft-poll for the life of the session — no hard stop. Back off as the
+    // recording ages so sitting in MENUS does not hammer Riot.
+    const ageMs = Math.max(0, Date.now() - rec.recordedAt)
+    const pollMs = valorantMatchStatsPollIntervalMs(ageMs, deferring)
+
+    if (
+      (readiness.state === 'syncing' || readiness.state === 'waiting_match_data')
+      && ageMs >= MATCH_DETAILS_ENRICH_MAX_MS
+      && Date.now() - lastMilestoneLogAt >= 5 * 60_000
+    ) {
+      lastMilestoneLogAt = Date.now()
+      logActivity(
+        `Still fetching Riot match stats (${Math.round(ageMs / 60_000)}m) — keep Valorant open, or tap Retry sync`,
+      )
+    }
+
+    setTimeout(() => { void tick() }, pollMs)
   }
 
-  setTimeout(() => { void tick() }, 3_000)
+  setTimeout(() => { void tick() }, opts?.force ? 0 : 3_000)
+}
+
+/** Re-open path: resume Riot MatchDetails polling for pending VODs still missing stats. */
+function resumeStuckMatchStatsEnrichment(): void {
+  if (!recordingsStore) return
+  const pending = recordingsStore.getPending(linkedRiotFromAuth())
+  let resumed = 0
+  for (const rec of pending) {
+    if (rec.analysed) continue
+    if (rec.game !== 'valorant') continue
+    if (rec.pipelineStatus === 'uploading' || rec.pipelineStatus === 'analysing') continue
+    const readiness = getAnalysisReadiness(rec)
+    if (readiness.state !== 'waiting_match_data' && readiness.state !== 'syncing') continue
+    const before = analysisReadinessRefreshInFlight.has(rec.id)
+    scheduleAnalysisReadinessRefresh(rec.id, rec.game)
+    if (!before && analysisReadinessRefreshInFlight.has(rec.id)) resumed += 1
+  }
+  if (resumed > 0) {
+    logActivity(
+      resumed === 1
+        ? 'Retrying Riot match stats for 1 pending recording…'
+        : `Retrying Riot match stats for ${resumed} pending recordings…`,
+    )
+  }
 }
 
 async function ensureAnalysisReadinessForAnalyse(
@@ -2949,7 +3015,7 @@ function setupGameDetection(): void {
         mainWindow?.webContents.send('post-game:demo-status', { status: 'downloading' })
         void refreshReplayTimelineForRecording(savedRecording.id, { notifyActivity: true })
       }
-      scheduleAnalysisReadinessRefresh(savedRecording.id, game)
+      scheduleAnalysisReadinessRefresh(savedRecording.id, game, { force: true })
       if (lastReplayRetryContext && lastReplayRetryContext.game === game) {
         lastReplayRetryContext.recordingId = savedRecording.id
       }
@@ -5268,6 +5334,9 @@ async function startApp(): Promise<void> {
         if (orphanedJob) {
           void handleOrphanedJobAtStartup(orphanedJob)
         }
+        // Pending Valorant VODs can sit forever on "waiting for match stats" after the
+        // post-match poll window — resume enrich when the app opens again.
+        resumeStuckMatchStatsEnrichment()
       })
     }
 
@@ -5571,6 +5640,36 @@ async function startApp(): Promise<void> {
   ipcMain.handle('analysis:reconcile-stuck', async () => {
     const reconciled = await runStuckAnalysisReconcile()
     return { ok: true, reconciled }
+  })
+
+  ipcMain.handle('recordings:retry-match-stats', async (_e, { id }: { id: string }) => {
+    const recording = recordingsStore.getById(id)
+    if (!recording) {
+      return { ok: false as const, error: 'Recording not found', analysisReadiness: null }
+    }
+    if (recording.game !== 'valorant' && recording.game !== 'lol') {
+      return {
+        ok: false as const,
+        error: 'Match stats retry is only for Valorant and League',
+        analysisReadiness: getAnalysisReadiness(recording),
+      }
+    }
+
+    scheduleAnalysisReadinessRefresh(id, recording.game, { force: true })
+
+    const readinessCheck = await ensureAnalysisReadinessForAnalyse(id)
+    const updated = recordingsStore.getById(id)
+    const analysisReadiness = updated ? getAnalysisReadiness(updated) : null
+    mainWindow?.webContents.send('recordings:updated')
+
+    if (!readinessCheck.ok) {
+      return {
+        ok: false as const,
+        error: readinessCheck.error,
+        analysisReadiness,
+      }
+    }
+    return { ok: true as const, analysisReadiness }
   })
 
   ipcMain.handle('recordings:analyse', async (_e, { id }: { id: string }) => {

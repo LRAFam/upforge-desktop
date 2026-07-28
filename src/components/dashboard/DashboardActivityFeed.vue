@@ -108,7 +108,9 @@ const entries = computed<FeedEntry[]>(() => {
 
   for (const r of pendingRecordings.value) {
     const game = (r.game ?? inferRecordingGame(r.map ?? '', r.agent ?? '', r.game)) as PrimaryGame
-    const syncing = r.analysisReadiness?.state === 'syncing' || r.analysisReadiness?.state === 'finalizing'
+    const syncing = r.analysisReadiness?.state === 'syncing'
+      || r.analysisReadiness?.state === 'waiting_match_data'
+      || r.analysisReadiness?.state === 'finalizing'
 
     if (r.pipelineStatus === 'uploading' || r.pipelineStatus === 'analysing') {
       merged.push({

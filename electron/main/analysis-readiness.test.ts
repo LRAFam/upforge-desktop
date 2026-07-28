@@ -78,7 +78,7 @@ describe('getAnalysisReadiness', () => {
     const readiness = getAnalysisReadiness(rec)
     expect(readiness.ready).toBe(false)
     expect(readiness.state).toBe('waiting_match_data')
-    expect(readiness.message).toContain('Riot match stats')
+    expect(readiness.message).toMatch(/background|Retry sync/i)
   })
 
   it('blocks when no match id can be linked', () => {

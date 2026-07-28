@@ -69,6 +69,7 @@ const {
   recInFlight,
   recIsDeferred,
   recAnalysisReady,
+  recCanRetryMatchStats,
   recAnalysisBlockedLabel,
   recAnalysisStatusShort,
   recUploadProgress,
@@ -341,6 +342,16 @@ function toggleFootageDebug(rec: PendingRecording) {
               {{ analysingIds.has(rec.id) ? '…' : 'Retry' }}
             </button>
             <button
+              v-else-if="!rec.clipsOnly && !recInFlight(rec) && !rec.lastAnalysisError && recCanRetryMatchStats(rec)"
+              :disabled="analysingIds.has(rec.id)"
+              class="px-2 py-1 text-[10px] font-medium text-white bg-red-500 hover:bg-red-600 disabled:opacity-60 rounded-lg transition-colors flex items-center gap-1"
+              :title="recAnalysisBlockedLabel(rec)"
+              @click="analyseRecording(rec.id)"
+            >
+              <svg v-if="analysingIds.has(rec.id)" class="w-3 h-3 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
+              {{ analysingIds.has(rec.id) ? '…' : 'Retry sync' }}
+            </button>
+            <button
               v-else-if="!rec.clipsOnly && !recInFlight(rec) && !rec.lastAnalysisError && recAnalysisReady(rec)"
               :disabled="analysingIds.has(rec.id)"
               class="px-2 py-1 text-[10px] font-medium text-white bg-red-500 hover:bg-red-600 disabled:opacity-60 rounded-lg transition-colors flex items-center gap-1"
@@ -355,7 +366,7 @@ function toggleFootageDebug(rec: PendingRecording) {
               :title="recAnalysisBlockedLabel(rec)"
             >
               <svg
-                v-if="rec.analysisReadiness?.state === 'syncing' || rec.analysisReadiness?.state === 'finalizing'"
+                v-if="rec.analysisReadiness?.state === 'syncing' || rec.analysisReadiness?.state === 'waiting_match_data' || rec.analysisReadiness?.state === 'finalizing'"
                 class="w-3 h-3 animate-spin flex-shrink-0 text-blue-400"
                 fill="none"
                 viewBox="0 0 24 24"

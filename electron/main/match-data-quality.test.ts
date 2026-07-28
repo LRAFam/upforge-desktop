@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { hasRichMatchData, timelineNeedsEnrichRefresh, shouldScheduleLateClipRetry } from './match-data-quality'
+import { hasRichMatchData, timelineNeedsEnrichRefresh, shouldScheduleLateClipRetry, valorantMatchStatsPollIntervalMs } from './match-data-quality'
 import type { MatchData } from './riot-types'
 
 function sparseTimeline(): MatchData {
@@ -163,5 +163,18 @@ describe('shouldScheduleLateClipRetry', () => {
   it('returns true for sparse cs2/deadlock timelines', () => {
     expect(shouldScheduleLateClipRetry('cs2', sparseTimeline(), null)).toBe(true)
     expect(shouldScheduleLateClipRetry('deadlock', sparseTimeline(), null)).toBe(true)
+  })
+})
+
+describe('valorantMatchStatsPollIntervalMs', () => {
+  it('backs off as the recording ages', () => {
+    expect(valorantMatchStatsPollIntervalMs(60_000)).toBe(15_000)
+    expect(valorantMatchStatsPollIntervalMs(5 * 60_000)).toBe(30_000)
+    expect(valorantMatchStatsPollIntervalMs(15 * 60_000)).toBe(60_000)
+    expect(valorantMatchStatsPollIntervalMs(45 * 60_000)).toBe(120_000)
+  })
+
+  it('slows further while OBS is recording', () => {
+    expect(valorantMatchStatsPollIntervalMs(30_000, true)).toBe(60_000)
   })
 })

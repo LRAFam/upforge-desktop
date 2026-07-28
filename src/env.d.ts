@@ -613,6 +613,11 @@ declare global {
         get: () => Promise<PendingRecording[]>
         listAll: () => Promise<PendingRecording[]>
         analyse: (id: string) => Promise<{ ok?: boolean; error?: string }>
+        retryMatchStats: (id: string) => Promise<{
+          ok: boolean
+          error?: string
+          analysisReadiness: PendingRecording['analysisReadiness'] | null
+        }>
         saveToCloud: (id: string) => Promise<{ ok: boolean; archiveId?: string; alreadySaved?: boolean; error?: string }>
         dismiss: (id: string, opts?: { deleteLocal?: boolean }) => Promise<{ ok: boolean; deletedLocal?: boolean }>
         abortInFlight: (id: string) => Promise<{ ok: boolean; error?: string }>

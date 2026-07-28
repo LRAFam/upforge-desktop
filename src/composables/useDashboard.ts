@@ -35,6 +35,7 @@ import { buildAnalysisErrorPayload, type AnalysisErrorPayload } from '../lib/ana
 import { canOpenTimeline, canWatchRawRecording } from '../lib/recording-demo-status'
 import { type DemoDownloadProgress, demoDownloadProgressLabel } from '../lib/demo-download-progress'
 import { recordingTimelineReady } from '../lib/recording-demo-status'
+import { canRetryRiotMatchStats } from '../lib/match-stats-retry'
 
 export interface LolRecentMatch {
   match_id: string
@@ -933,6 +934,17 @@ function createDashboard() {
     return rec.analysisReadiness?.ready === true
   }
 
+  function recCanRetryMatchStats(rec: PendingRecording) {
+    return canRetryRiotMatchStats(rec)
+  }
+
+  function recAnalysisActionLabel(rec: PendingRecording) {
+    if (analysingIds.value.has(rec.id)) return 'Starting…'
+    if (recAnalysisReady(rec)) return 'Run AI analysis'
+    if (recCanRetryMatchStats(rec)) return 'Retry sync'
+    return 'Run AI analysis'
+  }
+
   function recAnalysisBlockedLabel(rec: PendingRecording) {
     if (rec.analysisReadiness?.message) return rec.analysisReadiness.message
     const state = rec.analysisReadiness?.state
@@ -956,11 +968,11 @@ function createDashboard() {
       )
     }
     const state = rec.analysisReadiness?.state
-    if (state === 'syncing') {
+    if (state === 'syncing' || state === 'waiting_match_data') {
       if (rec.analysisReadiness?.message) return rec.analysisReadiness.message
       if (rec.game === 'cs2') return 'Waiting for CS2 demo…'
       if (rec.game === 'deadlock') return 'Waiting for replay…'
-      return 'Syncing stats…'
+      return state === 'waiting_match_data' ? 'Still fetching match stats…' : 'Syncing stats…'
     }
     if (state === 'finalizing') return 'Finalizing…'
     if (state === 'no_deaths' || state === 'mode_unsupported' || state === 'file_missing' || state === 'file_unreadable' || state === 'unavailable') {
@@ -969,10 +981,38 @@ function createDashboard() {
     return recAnalysisBlockedLabel(rec)
   }
 
+  async function retryMatchStats(id: string) {
+    if (analysingIds.value.has(id)) return
+    analysingIds.value.add(id)
+    analysingIds.value = new Set(analysingIds.value)
+    try {
+      const result = await window.api.recordings.retryMatchStats(id)
+      await loadPendingRecordings()
+      if (!result?.ok) {
+        warning.value = result?.error
+          ?? 'Could not load Riot match stats — open Riot Client / Valorant and try again.'
+        setTimeout(() => { warning.value = null }, 12000)
+        return
+      }
+      warning.value = 'Match stats synced — you can run AI analysis now.'
+      setTimeout(() => { warning.value = null }, 8000)
+    } catch (e) {
+      warning.value = e instanceof Error ? e.message : 'Match stats sync failed — try again with Riot Client open.'
+      setTimeout(() => { warning.value = null }, 12000)
+    } finally {
+      analysingIds.value.delete(id)
+      analysingIds.value = new Set(analysingIds.value)
+    }
+  }
+
   async function analyseRecording(id: string) {
     if (analysingIds.value.has(id)) return
     const rec = pendingRecordings.value.find((r) => r.id === id)
     if (rec && !recAnalysisReady(rec)) {
+      if (recCanRetryMatchStats(rec)) {
+        await retryMatchStats(id)
+        return
+      }
       const canRetryFromCloud = Boolean(rec.lastAnalysisError && rec.jobId)
       if (!canRetryFromCloud) {
         warning.value = recAnalysisBlockedLabel(rec)
@@ -1670,6 +1710,8 @@ function createDashboard() {
     recInFlight,
     recIsDeferred,
     recAnalysisReady,
+    recCanRetryMatchStats,
+    recAnalysisActionLabel,
     recAnalysisBlockedLabel,
     recAnalysisStatusShort,
     recUploadProgress,
@@ -1678,5 +1720,6 @@ function createDashboard() {
     demoDownloadProgress,
     displayAcs,
     isAnalysisProcessing,
+    retryMatchStats,
   }
 }

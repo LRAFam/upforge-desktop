@@ -45,6 +45,8 @@ const {
   dismissRecording,
   openRecordingReview,
   recAnalysisReady,
+  recCanRetryMatchStats,
+  recAnalysisActionLabel,
   recInFlight,
   recIsDeferred,
   recAnalysisBlockedLabel,
@@ -160,7 +162,7 @@ function statusTone(rec: PendingRecording): string {
   if (recInFlight(rec)) return 'text-blue-300/90'
   if (rec.lastAnalysisError) return 'text-amber-300/90'
   if (recAnalysisReady(rec)) return 'text-emerald-300/90'
-  if (rec.analysisReadiness?.state === 'syncing' || rec.analysisReadiness?.state === 'finalizing') {
+  if (rec.analysisReadiness?.state === 'syncing' || rec.analysisReadiness?.state === 'waiting_match_data' || rec.analysisReadiness?.state === 'finalizing') {
     return 'text-blue-300/90'
   }
   return 'text-gray-400'
@@ -309,7 +311,7 @@ function toggleDemoMatches() {
 
             <p class="text-[11px] mt-3 leading-snug" :class="statusTone(rec)">
               <svg
-                v-if="recInFlight(rec) || rec.analysisReadiness?.state === 'syncing' || rec.analysisReadiness?.state === 'finalizing'"
+                v-if="recInFlight(rec) || rec.analysisReadiness?.state === 'syncing' || rec.analysisReadiness?.state === 'waiting_match_data' || rec.analysisReadiness?.state === 'finalizing'"
                 class="inline w-3 h-3 mr-1 -mt-px animate-spin"
                 fill="none"
                 viewBox="0 0 24 24"
@@ -378,19 +380,23 @@ function toggleDemoMatches() {
               v-if="!rec.clipsOnly"
               type="button"
               class="flex-1 min-w-[140px] px-3 py-2 rounded-lg text-[11px] font-bold text-white transition-colors text-left disabled:opacity-65"
-              :class="recAnalysisReady(rec) && !recInFlight(rec)
+              :class="(recAnalysisReady(rec) || recCanRetryMatchStats(rec)) && !recInFlight(rec)
                 ? 'bg-gradient-to-r from-[#ff4d55] to-[#ff6a3d] hover:from-[#ff5d65] hover:to-[#ff7b4f] border border-white/20 shadow-[0_8px_18px_rgba(255,85,85,0.35)]'
                 : 'bg-[#1c1f25] border border-white/15 text-gray-300/70 cursor-not-allowed'"
-              :disabled="preview || analysingIds.has(rec.id) || recInFlight(rec) || (!recAnalysisReady(rec) && !rec.lastAnalysisError)"
-              :title="!recAnalysisReady(rec) ? recAnalysisBlockedLabel(rec) : 'Upload + AI coaching report'"
+              :disabled="preview || analysingIds.has(rec.id) || recInFlight(rec) || (!recAnalysisReady(rec) && !rec.lastAnalysisError && !recCanRetryMatchStats(rec))"
+              :title="recAnalysisReady(rec)
+                ? 'Upload + AI coaching report'
+                : recCanRetryMatchStats(rec)
+                  ? 'Fetch Riot match stats again (keep Riot Client open)'
+                  : recAnalysisBlockedLabel(rec)"
               @click="onAnalyse(rec)"
             >
               <span class="flex items-center gap-1.5">
                 <svg v-if="analysingIds.has(rec.id)" class="w-3 h-3 animate-spin flex-shrink-0" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
-                {{ analysingIds.has(rec.id) ? 'Starting…' : 'Run AI analysis' }}
+                {{ analysingIds.has(rec.id) ? 'Syncing…' : recAnalysisActionLabel(rec) }}
               </span>
-              <span class="block text-[9px] font-medium mt-0.5" :class="recAnalysisReady(rec) ? 'text-white/70' : 'text-gray-600'">
-                {{ recAnalysisReady(rec) ? 'Full coaching report' : recAnalysisStatusShort(rec) }}
+              <span class="block text-[9px] font-medium mt-0.5" :class="recAnalysisReady(rec) || recCanRetryMatchStats(rec) ? 'text-white/70' : 'text-gray-600'">
+                {{ recAnalysisReady(rec) ? 'Full coaching report' : recCanRetryMatchStats(rec) ? 'Needs Riot Client open' : recAnalysisStatusShort(rec) }}
               </span>
             </button>
 

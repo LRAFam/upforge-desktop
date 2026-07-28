@@ -43,8 +43,8 @@ export const MOCK_NEEDS_YOU_RECORDINGS: PendingRecording[] = [
     cloudUploaded: false,
     analysisReadiness: {
       ready: false,
-      state: 'syncing',
-      message: 'Syncing match stats from Riot…',
+      state: 'waiting_match_data',
+      message: 'Still fetching Riot match stats in the background. Keep Riot Client open, or tap Retry sync.',
       duelMomentCount: 0,
     },
     timeline: {

@@ -309,12 +309,12 @@ export function getAnalysisReadiness(rec: ReadinessRecording): AnalysisReadiness
     }
     // Keep Analyse locked until kills + final stats exist. Sparse matchId-only
     // submissions were failing after API Henrik wait (missing_match_stats).
+    // This branch is past the auto-sync window — point users at Retry sync.
     if (hasMatchId) {
       return {
         ready: false,
         state: 'waiting_match_data',
-        message:
-          'Waiting for Riot match stats — usually ready about a minute after the game ends. Analyse unlocks when kills and final stats load.',
+        message: 'Still fetching Riot match stats in the background. Keep Riot Client open, or tap Retry sync.',
         duelMomentCount: 0,
       }
     }
