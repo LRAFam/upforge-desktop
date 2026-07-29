@@ -50,8 +50,10 @@ describe('hostnameFromUrl', () => {
 })
 
 describe('riotPdHostname', () => {
-  it('builds pd host from region', () => {
+  it('builds PD host from shard (br/latam → na)', () => {
     expect(riotPdHostname('na')).toBe('pd.na.a.pvp.net')
+    expect(riotPdHostname('br')).toBe('pd.na.a.pvp.net')
+    expect(riotPdHostname('latam')).toBe('pd.na.a.pvp.net')
     expect(riotPdHostname('EU')).toBe('pd.eu.a.pvp.net')
   })
 

@@ -4,6 +4,9 @@
  */
 import dns from 'dns'
 import { promisify } from 'util'
+import { riotPdHostname } from './riot-pd-shard'
+
+export { riotPdHostname } from './riot-pd-shard'
 
 const lookupAsync = promisify(dns.lookup)
 
@@ -76,11 +79,6 @@ export function hostnameFromUrl(url: string): string | null {
   } catch {
     return null
   }
-}
-
-export function riotPdHostname(region: string | null | undefined): string | null {
-  if (!region || !/^[a-z0-9_-]+$/i.test(region)) return null
-  return `pd.${region.toLowerCase()}.a.pvp.net`
 }
 
 export function isLikelyNetworkFailure(message: string): boolean {

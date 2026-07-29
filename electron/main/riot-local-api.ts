@@ -35,6 +35,7 @@ import {
 import { timelineNeedsEnrichRefresh } from './match-data-quality'
 export { timelineNeedsEnrichRefresh } from './match-data-quality'
 import { stashMatchIdFields } from './riot-match-id-stash'
+import { riotPdHostname } from './riot-pd-shard'
 import { applyMenuWatchTick } from './menu-watch'
 export type {
   GameEvent,
@@ -1075,10 +1076,15 @@ export class RiotLocalApi {
       }
       return null
     }
+    const pdHost = riotPdHostname(this.region)
+    if (!pdHost) {
+      this._lastMatchDetailsFetch = { at: Date.now(), error: 'missing_region' }
+      return Promise.resolve(null)
+    }
     return new Promise((resolve) => {
       const req = https.get(
         {
-          hostname: `pd.${this.region}.a.pvp.net`,
+          hostname: pdHost,
           port: 443,
           family: 4,
           path: `/match-details/v1/matches/${matchId}`,
@@ -1126,10 +1132,12 @@ export class RiotLocalApi {
   /** Fetch the most recent matchId from the Riot match-history API as a fallback. */
   private async _fetchLatestMatchId(): Promise<string | null> {
     if (!this.region || !this.ownPuuid || !this.accessToken || !this.entitlementsToken) return null
+    const pdHost = riotPdHostname(this.region)
+    if (!pdHost) return null
     return new Promise((resolve) => {
       const req = https.get(
         {
-          hostname: `pd.${this.region}.a.pvp.net`,
+          hostname: pdHost,
           port: 443,
           family: 4,
           path: `/match-history/v1/history/${this.ownPuuid}?startIndex=0&endIndex=1`,
@@ -2083,9 +2091,10 @@ export function recomputeTimelineVideoOffsets(timeline: MatchData): void {
 
 function _normalizeRegion(region: string): string {
   const r = region.replace(/\d+$/, '').toLowerCase()
-  // Map EU shards (euw, eun) to 'eu'; Korean shard 'kr' to 'ko' (Riot PVP API naming)
+  // Map EU affinity tags (euw, eun) to client region 'eu'. Keep br/latam as-is;
+  // PD host mapping (br/latam → na shard) lives in riot-pd-shard.ts.
   if (r.startsWith('eu')) return 'eu'
-  if (r === 'kr') return 'ko'
+  if (r === 'ko') return 'kr'
   return r
 }
 
