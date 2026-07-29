@@ -338,29 +338,37 @@ export class RiotLocalApi {
       return false
     }
 
-    // Player name + region from chat session
+    // Player name from chat; game region prefers ares-deployment (Valorant affinity)
+    // over chat session region (can be short codes like "la" or disagree with the account).
+    let chatRegion: string | null = null
     try {
       const sess = await this._fetchLocal<{
         game_name: string; game_tag: string; region: string; puuid: string
       }>('/chat/v1/session')
       if (sess.game_name) this.playerName = sess.game_name
       if (sess.game_tag) this.playerTag = sess.game_tag
-      if (sess.region) this.region = _normalizeRegion(sess.region)
-    } catch {
-      // Fallback: extract region from Valorant launch args
-      try {
-        const ext = await this._fetchLocal<
-          Record<string, { launchConfiguration?: { arguments?: string[] } }>
-        >('/product-session/v1/external-sessions')
-        for (const v of Object.values(ext)) {
-          for (const arg of v?.launchConfiguration?.arguments ?? []) {
-            const m = arg.match(/^-ares-deployment=(.+)$/)
-            if (m) { this.region = m[1]; break }
+      if (sess.region) chatRegion = sess.region
+    } catch { /* name/region filled from deployment fallback below */ }
+
+    let deploymentRegion: string | null = null
+    try {
+      const ext = await this._fetchLocal<
+        Record<string, { launchConfiguration?: { arguments?: string[] } }>
+      >('/product-session/v1/external-sessions')
+      for (const v of Object.values(ext)) {
+        for (const arg of v?.launchConfiguration?.arguments ?? []) {
+          const m = arg.match(/^-ares-deployment=(.+)$/)
+          if (m) {
+            deploymentRegion = m[1]
+            break
           }
-          if (this.region) break
         }
-      } catch { /* ignore */ }
-    }
+        if (deploymentRegion) break
+      }
+    } catch { /* ignore */ }
+
+    const chosenRegion = deploymentRegion ?? chatRegion
+    if (chosenRegion) this.region = _normalizeRegion(chosenRegion)
 
     console.log(
       `[RiotLocalApi] Auth ready — puuid=${this.ownPuuid?.slice(0, 8)}... ` +
@@ -2092,9 +2100,11 @@ export function recomputeTimelineVideoOffsets(timeline: MatchData): void {
 function _normalizeRegion(region: string): string {
   const r = region.replace(/\d+$/, '').toLowerCase()
   // Map EU affinity tags (euw, eun) to client region 'eu'. Keep br/latam as-is;
-  // PD host mapping (br/latam → na shard) lives in riot-pd-shard.ts.
+  // PD host mapping (br/latam/la → na shard) lives in riot-pd-shard.ts.
   if (r.startsWith('eu')) return 'eu'
   if (r === 'ko') return 'kr'
+  // Riot chat session occasionally returns "la" for Latin America.
+  if (r === 'la') return 'latam'
   return r
 }
 

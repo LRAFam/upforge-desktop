@@ -8,6 +8,8 @@ const PD_SHARD_BY_REGION: Record<string, string> = {
   na: 'na',
   pbe: 'na',
   latam: 'na',
+  // Riot chat session sometimes returns "la" instead of "latam".
+  la: 'na',
   br: 'na',
   eu: 'eu',
   euw: 'eu',
