@@ -239,6 +239,7 @@ export class RiotLocalApi {
     circuitBreakerOpen: boolean
     sessionStateFailures: number
     lastSessionLoopState: string
+    lastMatchDetailsFetch: { at: number; statusCode?: number; error?: string } | null
   } {
     return {
       lockfileFound: this.lockfileData !== null,
@@ -254,7 +255,14 @@ export class RiotLocalApi {
       circuitBreakerOpen: this._sessionStateCbOpen,
       sessionStateFailures: this._sessionStateFailures,
       lastSessionLoopState: this.lastSessionLoopState,
+      lastMatchDetailsFetch: this._lastMatchDetailsFetch
+        ? { ...this._lastMatchDetailsFetch }
+        : null,
     }
+  }
+
+  getLastMatchDetailsFetch(): { at: number; statusCode?: number; error?: string } | null {
+    return this._lastMatchDetailsFetch ? { ...this._lastMatchDetailsFetch } : null
   }
 
 
@@ -1072,6 +1080,7 @@ export class RiotLocalApi {
         {
           hostname: `pd.${this.region}.a.pvp.net`,
           port: 443,
+          family: 4,
           path: `/match-details/v1/matches/${matchId}`,
           headers: {
             Authorization: `Bearer ${this.accessToken}`,
@@ -1122,6 +1131,7 @@ export class RiotLocalApi {
         {
           hostname: `pd.${this.region}.a.pvp.net`,
           port: 443,
+          family: 4,
           path: `/match-history/v1/history/${this.ownPuuid}?startIndex=0&endIndex=1`,
           headers: {
             Authorization: `Bearer ${this.accessToken}`,
@@ -1627,15 +1637,14 @@ export class RiotLocalApi {
       if (await this._fetchMatchDetailsWithRetries(timeline, [0], options?.onStatus)) {
         return true
       }
+      // DNS will not heal by waiting — unlock Retry sync instead of burning the full window.
+      if (this._isMatchDetailsDnsFailure()) break
     }
     const hasCore = (timeline.killEvents?.length ?? 0) > 0 || (timeline.roundSummaries?.length ?? 0) > 0
     if (!hasCore) {
-      const last = this._lastMatchDetailsFetch
-      const detail = last?.statusCode != null
-        ? `HTTP ${last.statusCode}`
-        : (last?.error ?? 'no response')
+      const detail = this._matchDetailsFailureStatus()
       options?.onStatus?.(
-        `Riot match stats still unavailable (${detail}). Retry Analyse with Riot Client open.`,
+        `Riot match stats still unavailable (${detail}). Tap Retry sync when network DNS can reach Riot.`,
       )
     }
     return hasCore && !timelineNeedsEnrichRefresh(timeline)
@@ -1651,8 +1660,16 @@ export class RiotLocalApi {
     if (last.statusCode != null) return `HTTP ${last.statusCode}`
     if (last.error === 'missing_auth') return 'Riot Client auth missing'
     if (last.error === 'missing_region') return 'region missing'
+    if (last.error && /ENOTFOUND|EAI_AGAIN|getaddrinfo/i.test(last.error)) {
+      return 'DNS failed reaching Riot servers — try another network DNS (1.1.1.1) or disable Secure DNS'
+    }
     if (last.error) return last.error
     return 'unknown error'
+  }
+
+  private _isMatchDetailsDnsFailure(): boolean {
+    const err = this._lastMatchDetailsFetch?.error
+    return Boolean(err && /ENOTFOUND|EAI_AGAIN|getaddrinfo/i.test(err))
   }
 
   private async _fetchMatchDetailsWithRetries(
@@ -1677,6 +1694,10 @@ export class RiotLocalApi {
       const details = await this._fetchMatchDetails(matchId)
       if (!details) {
         const reason = this._matchDetailsFailureStatus()
+        if (this._isMatchDetailsDnsFailure()) {
+          onStatus?.(`Riot match stats fetch failed (${reason})`)
+          return false
+        }
         if (reason.includes('auth')) {
           onStatus?.(`${reason} — retrying…`)
           await this.initAuth()

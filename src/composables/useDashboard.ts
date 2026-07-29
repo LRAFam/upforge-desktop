@@ -113,6 +113,7 @@ function createDashboard() {
   const pendingRecordings = ref<PendingRecording[]>([])
   const uploadProgressByRecordingId = ref<Record<string, number>>({})
   const analysingIds = ref(new Set<string>())
+  const syncingMatchStatsIds = ref(new Set<string>())
   const savingIds = ref(new Set<string>())
   const status = ref({
     recording: false,
@@ -583,6 +584,15 @@ function createDashboard() {
   }
 
   async function copyActivityLog(): Promise<boolean> {
+    try {
+      const bundle = await window.api.app.getSupportBundle()
+      if (bundle?.trim()) {
+        await navigator.clipboard.writeText(bundle)
+        return true
+      }
+    } catch {
+      /* fall through to local activity-only copy */
+    }
     const text = formatActivityLogText()
     if (!text) return false
     try {
@@ -939,10 +949,15 @@ function createDashboard() {
   }
 
   function recAnalysisActionLabel(rec: PendingRecording) {
+    if (syncingMatchStatsIds.value.has(rec.id)) return 'Syncing…'
     if (analysingIds.value.has(rec.id)) return 'Starting…'
     if (recAnalysisReady(rec)) return 'Run AI analysis'
     if (recCanRetryMatchStats(rec)) return 'Retry sync'
     return 'Run AI analysis'
+  }
+
+  function recIsSyncingMatchStats(rec: PendingRecording) {
+    return syncingMatchStatsIds.value.has(rec.id)
   }
 
   function recAnalysisBlockedLabel(rec: PendingRecording) {
@@ -982,11 +997,21 @@ function createDashboard() {
   }
 
   async function retryMatchStats(id: string) {
-    if (analysingIds.value.has(id)) return
-    analysingIds.value.add(id)
-    analysingIds.value = new Set(analysingIds.value)
+    if (syncingMatchStatsIds.value.has(id) || analysingIds.value.has(id)) return
+    syncingMatchStatsIds.value.add(id)
+    syncingMatchStatsIds.value = new Set(syncingMatchStatsIds.value)
     try {
-      const result = await window.api.recordings.retryMatchStats(id)
+      const result = await Promise.race([
+        window.api.recordings.retryMatchStats(id),
+        new Promise<{ ok: false; error: string }>((resolve) => {
+          setTimeout(() => {
+            resolve({
+              ok: false,
+              error: 'Riot stats sync timed out — check DNS / network, then tap Retry sync again.',
+            })
+          }, 35_000)
+        }),
+      ])
       await loadPendingRecordings()
       if (!result?.ok) {
         warning.value = result?.error
@@ -1000,8 +1025,8 @@ function createDashboard() {
       warning.value = e instanceof Error ? e.message : 'Match stats sync failed — try again with Riot Client open.'
       setTimeout(() => { warning.value = null }, 12000)
     } finally {
-      analysingIds.value.delete(id)
-      analysingIds.value = new Set(analysingIds.value)
+      syncingMatchStatsIds.value.delete(id)
+      syncingMatchStatsIds.value = new Set(syncingMatchStatsIds.value)
     }
   }
 
@@ -1593,6 +1618,8 @@ function createDashboard() {
     coachReviewByAnalysisId,
     pendingRecordings,
     analysingIds,
+    syncingMatchStatsIds,
+    recIsSyncingMatchStats,
     savingIds,
     status,
     isDev,

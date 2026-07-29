@@ -195,6 +195,14 @@ import { extractAndUploadDuelClips, countMomentsWithClipKeys } from './duel-clip
 import { requestPregameBrief as _requestPregameBrief, requestPostGameDebrief as _requestPostGameDebrief } from './post-game-api'
 import { enrichTimelineForCoaching } from './match-coaching-enrich'
 import {
+  formatNetworkProbeSummary,
+  formatSupportBundle,
+  getLastUploadNetworkError,
+  isLikelyNetworkFailure,
+  noteUploadNetworkFailure,
+  runNetworkDiagnostics,
+} from './network-diagnostics'
+import {
   getAnalysisReadiness,
   getVodFileReadiness,
   isTerminalAnalysisReadinessState,
@@ -1028,6 +1036,35 @@ function logActivity(message: string, explicitGame?: string): void {
   }
 }
 
+/** Auto-capture Node DNS evidence when Riot/upload networking fails (cooldown). */
+let lastNetworkEvidenceAt = 0
+const NETWORK_EVIDENCE_COOLDOWN_MS = 3 * 60_000
+
+async function captureNetworkEvidence(trigger: string, force = false): Promise<void> {
+  const now = Date.now()
+  if (!force && now - lastNetworkEvidenceAt < NETWORK_EVIDENCE_COOLDOWN_MS) return
+  lastNetworkEvidenceAt = now
+  try {
+    const riotDiag = riotLocalApi.getDiagnostics()
+    const snapshot = await runNetworkDiagnostics({
+      trigger,
+      region: riotDiag.region,
+      apiBase: process.env['VITE_API_URL'] || 'https://api.upforge.gg',
+      lastRiotMatchDetails: riotLocalApi.getLastMatchDetailsFetch(),
+      lastUploadError: getLastUploadNetworkError(),
+    })
+    logActivity(`Network check: ${formatNetworkProbeSummary(snapshot)}`)
+  } catch (err) {
+    logActivity(`Network check failed: ${err instanceof Error ? err.message : String(err)}`)
+  }
+}
+
+function maybeCaptureRiotDnsEvidence(): void {
+  const last = riotLocalApi.getLastMatchDetailsFetch()
+  if (!last?.error || !isLikelyNetworkFailure(last.error)) return
+  void captureNetworkEvidence('riot-match-details')
+}
+
 /** In-app dashboard toast only — no OS notification. */
 function notifyDashboardToast(message: string): void {
   logActivity(message)
@@ -1526,6 +1563,10 @@ function sendUploadFailure(
 ): AnalysisErrorPayload {
   if (opts.game === 'valorant') {
     trackUploadFailed(rawError, 'valorant')
+  }
+  if (isLikelyNetworkFailure(rawError)) {
+    noteUploadNetworkFailure(rawError)
+    void captureNetworkEvidence('upload-failure')
   }
   return dispatchAnalysisFailure(rawError, { ...opts, notify: opts.notify ?? false })
 }
@@ -2054,6 +2095,7 @@ function scheduleAnalysisReadinessRefresh(
           api: authManager.getToken() ? authManager.getApi() : null,
         })
         recordingsStore.updateTimeline(recordingId, rec.timeline)
+        maybeCaptureRiotDnsEvidence()
       } catch { /* retry on next tick */ }
       readiness = getAnalysisReadiness(rec)
     }
@@ -5394,6 +5436,19 @@ async function startApp(): Promise<void> {
       localFileExists: (p) => fs.existsSync(p),
     })
 
+    let network = null as Awaited<ReturnType<typeof runNetworkDiagnostics>> | null
+    try {
+      network = await runNetworkDiagnostics({
+        trigger: 'dev-diagnostics',
+        region: riotLocalApi.getDiagnostics().region,
+        apiBase: process.env['VITE_API_URL'] || 'https://api.upforge.gg',
+        lastRiotMatchDetails: riotLocalApi.getLastMatchDetailsFetch(),
+        lastUploadError: getLastUploadNetworkError(),
+      })
+    } catch {
+      network = null
+    }
+
     return {
       app: {
         version: app.getVersion(),
@@ -5404,6 +5459,7 @@ async function startApp(): Promise<void> {
         isDev: is.dev,
       },
       riot: riotLocalApi.getDiagnostics(),
+      network,
       recording: {
         active: obsRecorder.isActivelyRecording(),
         duration: obsRecorder.getRecordingDuration(),
@@ -5419,6 +5475,23 @@ async function startApp(): Promise<void> {
       analysisPipeline,
       activityLog: activityLog.slice(),
     }
+  })
+
+  ipcMain.handle('app:get-support-bundle', async () => {
+    const riotDiag = riotLocalApi.getDiagnostics()
+    const network = await runNetworkDiagnostics({
+      trigger: 'support-bundle',
+      region: riotDiag.region,
+      apiBase: process.env['VITE_API_URL'] || 'https://api.upforge.gg',
+      lastRiotMatchDetails: riotLocalApi.getLastMatchDetailsFetch(),
+      lastUploadError: getLastUploadNetworkError(),
+    })
+    return formatSupportBundle({
+      version: app.getVersion(),
+      network,
+      activityLog: activityLog.slice(),
+      riot: riotDiag,
+    })
   })
 
 
@@ -5664,17 +5737,30 @@ async function startApp(): Promise<void> {
       }
     }
 
+    // Keep background soft-poll armed, but do a short blocking attempt so the
+    // dashboard Retry sync button is not locked for the full 3-minute enrich window.
     scheduleAnalysisReadinessRefresh(id, recording.game, { force: true })
 
-    const readinessCheck = await ensureAnalysisReadinessForAnalyse(id)
+    if (recording.timeline && recording.game === 'valorant') {
+      await enrichTimelineForCoaching(riotLocalApi, recording.timeline, {
+        maxWaitMs: 25_000,
+        onStatus: (msg) => logActivity(msg),
+        api: authManager.getToken() ? authManager.getApi() : null,
+        refreshPopulation: false,
+      })
+      recordingsStore.updateTimeline(id, recording.timeline)
+      maybeCaptureRiotDnsEvidence()
+    }
+
     const updated = recordingsStore.getById(id)
     const analysisReadiness = updated ? getAnalysisReadiness(updated) : null
     mainWindow?.webContents.send('recordings:updated')
 
-    if (!readinessCheck.ok) {
+    if (!analysisReadiness?.ready) {
       return {
         ok: false as const,
-        error: readinessCheck.error,
+        error: analysisReadiness?.message
+          ?? 'Could not load Riot match stats yet — check network DNS, then tap Retry sync again.',
         analysisReadiness,
       }
     }

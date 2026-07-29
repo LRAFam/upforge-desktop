@@ -71,6 +71,41 @@
           </div>
         </DevSection>
 
+        <!-- Network (Node DNS) -->
+        <DevSection title="Network (Node DNS)">
+          <div v-if="!diag.network" class="text-xs text-gray-600 italic">Probe unavailable.</div>
+          <template v-else>
+            <div class="grid grid-cols-2 gap-x-6 gap-y-1.5">
+              <DevRow label="Trigger" :value="diag.network.trigger" />
+              <DevRow label="Region" :value="diag.network.region" />
+              <DevRow label="API base" :value="diag.network.apiBase" class="col-span-2 truncate" />
+            </div>
+            <div
+              v-for="host in diag.network.hosts"
+              :key="host.hostname"
+              class="mt-2.5 px-3 py-2 rounded-lg bg-white/[0.03] border border-white/[0.08] text-xs space-y-1"
+            >
+              <div class="font-semibold text-gray-300">{{ host.role }} · {{ host.hostname }}</div>
+              <div :class="host.lookupV4.ok ? 'text-emerald-400' : 'text-red-400'">
+                v4: {{ host.lookupV4.ok ? host.lookupV4.address : host.lookupV4.error }}
+              </div>
+              <div :class="host.lookupAny.ok ? 'text-emerald-400' : 'text-red-400'">
+                any: {{ host.lookupAny.ok ? host.lookupAny.address : host.lookupAny.error }}
+              </div>
+            </div>
+            <div v-if="diag.network.lastRiotMatchDetails" class="mt-2 text-[11px] text-gray-500">
+              Last MatchDetails:
+              {{ diag.network.lastRiotMatchDetails.error
+                || (diag.network.lastRiotMatchDetails.statusCode != null
+                  ? `HTTP ${diag.network.lastRiotMatchDetails.statusCode}`
+                  : 'ok') }}
+            </div>
+            <div v-if="diag.network.lastUploadError" class="mt-1 text-[11px] text-red-400/90">
+              Last upload error: {{ diag.network.lastUploadError.message }}
+            </div>
+          </template>
+        </DevSection>
+
         <!-- Recording -->
         <DevSection title="Recording">
           <div class="grid grid-cols-2 gap-x-6 gap-y-1.5">
@@ -481,6 +516,15 @@ async function findHotkeyConflicts() {
 }
 
 async function copyReport() {
+  try {
+    const bundle = await window.api.app.getSupportBundle()
+    if (bundle?.trim()) {
+      await navigator.clipboard.writeText(bundle)
+      return
+    }
+  } catch {
+    /* fall through */
+  }
   if (!diag.value) return
   const report = buildReport()
   await navigator.clipboard.writeText(report)
@@ -490,7 +534,7 @@ function buildReport(): string {
   if (!diag.value) return 'No data'
   const d = diag.value
   const lines: string[] = [
-    `UpForge Desktop v${d.app.version} — Debug Report`,
+    `UpForge Desktop v${d.app.version} Debug Report`,
     `Generated: ${new Date().toISOString()}`,
     '',
     '=== APP ===',
@@ -509,13 +553,31 @@ function buildReport(): string {
     `Session state: ${d.riot.lastSessionLoopState}`,
     `Circuit breaker: ${d.riot.circuitBreakerOpen ? 'OPEN' : 'closed'} (failures: ${d.riot.sessionStateFailures})`,
     `Client version: ${d.riot.clientVersion}`,
+  ]
+  if (d.riot.lastMatchDetailsFetch) {
+    const last = d.riot.lastMatchDetailsFetch
+    lines.push(
+      `Last MatchDetails: ${last.error ?? (last.statusCode != null ? `HTTP ${last.statusCode}` : 'ok')}`,
+    )
+  }
+  if (d.network) {
+    lines.push('', '=== NETWORK (NODE DNS) ===', `Trigger: ${d.network.trigger}`, `Region: ${d.network.region ?? 'null'}`)
+    for (const host of d.network.hosts) {
+      lines.push(
+        `${host.hostname} [${host.role}]`,
+        `  v4: ${host.lookupV4.ok ? host.lookupV4.address : host.lookupV4.error}`,
+        `  any: ${host.lookupAny.ok ? host.lookupAny.address : host.lookupAny.error}`,
+      )
+    }
+  }
+  lines.push(
     '',
     '=== RECORDING ===',
     `Active: ${d.recording.active}`,
     `Last path: ${d.recording.lastPath ?? 'none'}`,
     `Last size: ${d.recording.lastSizeMb.toFixed(1)} MB`,
     `Last error: ${d.recording.lastError ?? 'none'}`,
-  ]
+  )
   if (d.lastMatch) {
     const m = d.lastMatch
     lines.push(

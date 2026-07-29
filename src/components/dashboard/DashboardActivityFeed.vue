@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import { useDashboard } from '../../composables/useDashboard'
 import { gameBrand } from '../../lib/game-branding'
 import { recordingMapLabel, recordingPlayerLabel } from '../../lib/recording-display'
@@ -8,7 +8,24 @@ import type { PrimaryGame } from '../../lib/games'
 import { analysisCompleteBadge, inferAnalysisGame } from '../../lib/analysis-display'
 import upforgeIcon from '../../assets/upforge-icon.webp'
 
-const { activityLog, pendingRecordings, formatLogTime, dashboardAnalyses, openAnalysisRow, status } = useDashboard()
+const {
+  activityLog,
+  pendingRecordings,
+  formatLogTime,
+  dashboardAnalyses,
+  openAnalysisRow,
+  status,
+  copyActivityLog,
+} = useDashboard()
+
+const logCopied = ref(false)
+
+async function copyLog() {
+  const ok = await copyActivityLog()
+  if (!ok) return
+  logCopied.value = true
+  setTimeout(() => { logCopied.value = false }, 2000)
+}
 
 type FeedScope = PrimaryGame | 'system'
 
@@ -216,7 +233,17 @@ function openEntry(e: FeedEntry) {
   <div class="dash-panel overflow-hidden flex flex-col h-full min-h-0">
     <div class="px-4 py-2.5 border-b border-white/[0.07] flex items-center justify-between flex-shrink-0">
       <span class="text-[11px] font-bold uppercase tracking-[0.18em] text-gray-400">Activity</span>
-      <span v-if="entries.length" class="text-[10px] font-semibold text-gray-600 tabular-nums">{{ entries.length }} recent</span>
+      <div class="flex items-center gap-2">
+        <button
+          type="button"
+          class="text-[10px] font-semibold text-gray-500 hover:text-gray-200 transition-colors"
+          title="Copy activity + network diagnostics for support"
+          @click="copyLog"
+        >
+          {{ logCopied ? 'Copied' : 'Copy' }}
+        </button>
+        <span v-if="entries.length" class="text-[10px] font-semibold text-gray-600 tabular-nums">{{ entries.length }} recent</span>
+      </div>
     </div>
 
     <ul v-if="entries.length" class="divide-y divide-white/[0.05] flex-1 min-h-0 overflow-y-auto scroll-col">

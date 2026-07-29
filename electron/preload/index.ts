@@ -18,6 +18,7 @@ const api = {
   app: {
     getStatus: () => ipcRenderer.invoke('app:get-status'),
     getActivityLog: () => ipcRenderer.invoke('app:get-activity-log'),
+    getSupportBundle: () => ipcRenderer.invoke('app:get-support-bundle') as Promise<string>,
     showClips: () => ipcRenderer.invoke('app:show-clips'),
     openUrl: (url: string) => ipcRenderer.invoke('app:open-url', { url }),
     openWebShell: (path: string) => ipcRenderer.invoke('app:open-web-shell', { path }),

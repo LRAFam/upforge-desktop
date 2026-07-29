@@ -574,6 +574,8 @@ declare global {
           } | null
         }>
         getActivityLog: () => Promise<{ time: number; message: string; game?: string }[]>
+        /** Activity log + live DNS probes for Riot PD / UpForge API (support paste). */
+        getSupportBundle: () => Promise<string>
         showClips: () => Promise<{ ok: boolean }>
         openUrl: (url: string) => Promise<{ ok: boolean }>
         /** Open an upforge.gg path in the authenticated in-app web shell */
@@ -733,7 +735,27 @@ declare global {
             circuitBreakerOpen: boolean
             sessionStateFailures: number
             lastSessionLoopState: string
+            lastMatchDetailsFetch: {
+              at: number
+              statusCode?: number
+              error?: string
+            } | null
           }
+          network: {
+            at: number
+            trigger: string
+            region: string | null
+            apiBase: string
+            hosts: Array<{
+              hostname: string
+              role: string
+              lookupAny: { ok: boolean; address?: string; family?: number; error?: string; ms: number }
+              lookupV4: { ok: boolean; address?: string; family?: number; error?: string; ms: number }
+            }>
+            lastRiotMatchDetails: { at: number; statusCode?: number; error?: string } | null
+            lastUploadError: { at: number; message: string } | null
+            node: { version: string; platform: string; arch: string }
+          } | null
           recording: { active: boolean; duration: number; lastError: string | null; lastPath: string | null; lastSizeMb: number }
           lastMatch: {
             timestamp: number
