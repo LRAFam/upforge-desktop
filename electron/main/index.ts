@@ -1255,6 +1255,7 @@ function onSettingsSaved(settings: ReturnType<SettingsManager['get']>): void {
 
 function syncUserSessionFromAuth(): void {
   const user = authManager.getUser()
+  riotLocalApi.setLinkedAccountRegion(user?.riot_region ?? null)
   if (user?.id) {
     activateUserSession(user.id, userSessionDeps())
     void pingDesktopOnboarding(authManager)
@@ -5289,6 +5290,7 @@ async function startApp(): Promise<void> {
     stopCoachNotificationPoller()
     resetDesktopOnboardingPing()
     clearUserSession(userSessionDeps())
+    riotLocalApi.setLinkedAccountRegion(null)
   },
   (jobId: string) => recordingsStore?.getPathByJobId(jobId) ?? null,
   )
@@ -5318,6 +5320,7 @@ async function startApp(): Promise<void> {
     log.warn('[App] Session expired — notifying renderer')
     stopCoachNotificationPoller()
     clearUserSession(userSessionDeps())
+    riotLocalApi.setLinkedAccountRegion(null)
     mainWindow?.webContents.send('auth:session-expired')
   }
 

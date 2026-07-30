@@ -740,6 +740,8 @@ declare global {
               statusCode?: number
               error?: string
             } | null
+            regionSource?: string | null
+            linkedAccountRegion?: string | null
           }
           network: {
             at: number

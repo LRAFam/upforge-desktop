@@ -180,6 +180,8 @@ export function formatSupportBundle(opts: {
   riot: {
     lockfileFound: boolean
     region: string | null
+    regionSource?: string | null
+    linkedAccountRegion?: string | null
     accessTokenPresent: boolean
     entitlementsTokenPresent: boolean
     currentMatchId: string | null
@@ -233,6 +235,8 @@ export function formatSupportBundle(opts: {
     '=== RIOT CLIENT ===',
     `Lockfile: ${riot.lockfileFound}`,
     `Region: ${riot.region ?? 'null'}`,
+    `Region source: ${riot.regionSource ?? 'null'}`,
+    `Linked account region: ${riot.linkedAccountRegion ?? 'null'}`,
     `Access token: ${riot.accessTokenPresent}`,
     `Entitlements: ${riot.entitlementsTokenPresent}`,
     `Match ID: ${riot.currentMatchId ?? 'null'}`,

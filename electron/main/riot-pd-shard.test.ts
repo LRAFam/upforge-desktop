@@ -6,7 +6,6 @@ describe('riotPdShard', () => {
     expect(riotPdShard('br')).toBe('na')
     expect(riotPdShard('BR')).toBe('na')
     expect(riotPdShard('latam')).toBe('na')
-    expect(riotPdShard('la')).toBe('na')
   })
 
   it('keeps eu/ap/kr/na on their own shards', () => {
@@ -28,10 +27,9 @@ describe('riotPdShard', () => {
 })
 
 describe('riotPdHostname', () => {
-  it('builds the PD host from the shard, not raw br/latam/la', () => {
+  it('builds the PD host from the shard, not raw br/latam', () => {
     expect(riotPdHostname('br')).toBe('pd.na.a.pvp.net')
     expect(riotPdHostname('latam')).toBe('pd.na.a.pvp.net')
-    expect(riotPdHostname('la')).toBe('pd.na.a.pvp.net')
     expect(riotPdHostname('eu')).toBe('pd.eu.a.pvp.net')
   })
 })

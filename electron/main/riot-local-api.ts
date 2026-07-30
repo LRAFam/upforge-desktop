@@ -36,6 +36,11 @@ import { timelineNeedsEnrichRefresh } from './match-data-quality'
 export { timelineNeedsEnrichRefresh } from './match-data-quality'
 import { stashMatchIdFields } from './riot-match-id-stash'
 import { riotPdHostname } from './riot-pd-shard'
+import {
+  normalizeValorantRegion,
+  resolveValorantGameRegion,
+  type ValorantRegionSource,
+} from './riot-region'
 import { applyMenuWatchTick } from './menu-watch'
 export type {
   GameEvent,
@@ -78,6 +83,10 @@ export class RiotLocalApi {
   private accessToken: string | null = null
   private entitlementsToken: string | null = null
   private region: string | null = null
+  /** How `region` was chosen — surfaced in support bundles. */
+  private regionSource: ValorantRegionSource | null = null
+  /** UpForge linked account region (eu/na/…) — preferred over chat affinity. */
+  private linkedAccountRegion: string | null = null
   private playerName: string | null = null
   private playerTag: string | null = null
   /** Current Riot client version — fetched from valorant-api.com at init, used in PVP API headers. */
@@ -230,6 +239,8 @@ export class RiotLocalApi {
     lockfileFound: boolean
     ownPuuid: string | null
     region: string | null
+    regionSource: ValorantRegionSource | null
+    linkedAccountRegion: string | null
     playerName: string | null
     playerTag: string | null
     accessTokenPresent: boolean
@@ -246,6 +257,8 @@ export class RiotLocalApi {
       lockfileFound: this.lockfileData !== null,
       ownPuuid: this.ownPuuid,
       region: this.region,
+      regionSource: this.regionSource,
+      linkedAccountRegion: this.linkedAccountRegion,
       playerName: this.playerName,
       playerTag: this.playerTag,
       accessTokenPresent: !!this.accessToken,
@@ -259,6 +272,18 @@ export class RiotLocalApi {
       lastMatchDetailsFetch: this._lastMatchDetailsFetch
         ? { ...this._lastMatchDetailsFetch }
         : null,
+    }
+  }
+
+  /** UpForge profile riot_region — used when Riot chat affinity disagrees with the game account. */
+  setLinkedAccountRegion(region: string | null | undefined): void {
+    this.linkedAccountRegion = normalizeValorantRegion(region)
+    if (!this.linkedAccountRegion) return
+    // Upgrade chat/unknown region to the linked account; never override ares-deployment.
+    if (this.regionSource === 'deployment') return
+    if (!this.region || this.regionSource === 'chat' || this.regionSource == null) {
+      this.region = this.linkedAccountRegion
+      this.regionSource = 'account'
     }
   }
 
@@ -367,16 +392,61 @@ export class RiotLocalApi {
       }
     } catch { /* ignore */ }
 
-    const chosenRegion = deploymentRegion ?? chatRegion
-    if (chosenRegion) this.region = _normalizeRegion(chosenRegion)
+    const resolved = resolveValorantGameRegion({
+      deploymentRegion,
+      accountRegion: this.linkedAccountRegion,
+      chatRegion,
+    })
+    if (resolved) {
+      this.region = resolved.region
+      this.regionSource = resolved.source
+    }
 
     console.log(
       `[RiotLocalApi] Auth ready — puuid=${this.ownPuuid?.slice(0, 8)}... ` +
-      `region=${this.region} player=${this.playerName}#${this.playerTag}`
+      `region=${this.region} source=${this.regionSource ?? 'none'} ` +
+      `account=${this.linkedAccountRegion ?? 'null'} ` +
+      `player=${this.playerName}#${this.playerTag}`
     )
     // Fetch current client version for Riot PVP API headers (non-blocking)
     this._fetchClientVersion().catch(() => {})
     return true
+  }
+
+  private async _refreshRegionFromClient(reason: string): Promise<void> {
+    let chatRegion: string | null = null
+    let deploymentRegion: string | null = null
+    try {
+      const sess = await this._fetchLocal<{ region: string }>('/chat/v1/session')
+      if (sess.region) chatRegion = sess.region
+    } catch { /* ignore */ }
+    try {
+      const ext = await this._fetchLocal<
+        Record<string, { launchConfiguration?: { arguments?: string[] } }>
+      >('/product-session/v1/external-sessions')
+      for (const v of Object.values(ext)) {
+        for (const arg of v?.launchConfiguration?.arguments ?? []) {
+          const m = arg.match(/^-ares-deployment=(.+)$/)
+          if (m) {
+            deploymentRegion = m[1]
+            break
+          }
+        }
+        if (deploymentRegion) break
+      }
+    } catch { /* ignore */ }
+
+    const resolved = resolveValorantGameRegion({
+      deploymentRegion,
+      accountRegion: this.linkedAccountRegion,
+      chatRegion,
+    })
+    if (!resolved) return
+    this.region = resolved.region
+    this.regionSource = resolved.source
+    console.log(
+      `[RiotLocalApi] Region recovered (${reason}): ${this.region} source=${this.regionSource}`,
+    )
   }
 
   private async _refreshTokens(): Promise<void> {
@@ -1017,17 +1087,9 @@ export class RiotLocalApi {
       await this.initAuth()
     }
 
-    // If region is still unknown, try fetching it from the chat session one more time.
-    // This handles the case where region wasn't available during initAuth() but is now
-    // (e.g. Riot Client connection was slow at game start).
+    // If region is still unknown, re-resolve from deployment / account / chat.
     if (!this.region && this.lockfileData) {
-      try {
-        const sess = await this._fetchLocal<{ region: string }>('/chat/v1/session')
-        if (sess.region) {
-          this.region = _normalizeRegion(sess.region)
-          console.log(`[RiotLocalApi] Region recovered at match-end: ${this.region}`)
-        }
-      } catch { /* ignore — proceed without region */ }
+      await this._refreshRegionFromClient('match-end')
     }
 
     // If we still don't have a matchId, look it up via match history (not for custom/practice).
@@ -1599,10 +1661,7 @@ export class RiotLocalApi {
       await this.initAuth()
     }
     if (!this.region && this.lockfileData) {
-      try {
-        const sess = await this._fetchLocal<{ region: string }>('/chat/v1/session')
-        if (sess.region) this.region = _normalizeRegion(sess.region)
-      } catch { /* ignore */ }
+      await this._refreshRegionFromClient('enrich')
     }
 
     if (!timeline.matchId && this.region && this.ownPuuid && shouldUseMatchHistoryFallback(timeline)) {
@@ -1773,13 +1832,7 @@ export class RiotLocalApi {
     }
     // Recover region if not yet set
     if (!this.region && this.lockfileData) {
-      try {
-        const sess = await this._fetchLocal<{ region: string }>('/chat/v1/session')
-        if (sess.region) {
-          this.region = _normalizeRegion(sess.region)
-          console.log(`[RiotLocalApi] Region recovered for late fetch: ${this.region}`)
-        }
-      } catch { /* ignore */ }
+      await this._refreshRegionFromClient('late-fetch')
     }
     if (!this.region || !this.accessToken || !this.entitlementsToken) {
       console.log(`[RiotLocalApi] fetchMatchDetailsLate — still no auth after retry (region=${this.region} token=${!!this.accessToken}) — clips cannot be extracted`)
@@ -2095,17 +2148,6 @@ export function recomputeTimelineVideoOffsets(timeline: MatchData): void {
   }
 
   syncSpatialVideoOffsets(timeline)
-}
-
-function _normalizeRegion(region: string): string {
-  const r = region.replace(/\d+$/, '').toLowerCase()
-  // Map EU affinity tags (euw, eun) to client region 'eu'. Keep br/latam as-is;
-  // PD host mapping (br/latam/la → na shard) lives in riot-pd-shard.ts.
-  if (r.startsWith('eu')) return 'eu'
-  if (r === 'ko') return 'kr'
-  // Riot chat session occasionally returns "la" for Latin America.
-  if (r === 'la') return 'latam'
-  return r
 }
 
 export function normalizeQueueId(queueId: string): string {
