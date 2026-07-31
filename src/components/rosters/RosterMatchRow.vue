@@ -16,6 +16,7 @@ import {
   rosterKdaLine,
   rosterMapUnderlay,
   rosterRoleMeta,
+  rosterScoreOutOf100,
 } from '../../lib/roster-match-display'
 
 const props = withDefaults(defineProps<{
@@ -46,6 +47,7 @@ const mapUnderlay = computed(() => rosterMapUnderlay(props.match))
 const accent = computed(() => rosterAgentAccent(props.match))
 const kda = computed(() => rosterKdaLine(props.match))
 const forge = computed(() => rosterForgeScore(props.match.overall_score))
+const score100 = computed(() => rosterScoreOutOf100(props.match.overall_score))
 </script>
 
 <template>
@@ -175,12 +177,12 @@ const forge = computed(() => rosterForgeScore(props.match.overall_score))
       >{{ match.combat_score }}</span>
       <span v-else class="roster-stat-empty">-</span>
       <div
-        v-if="match.overall_score != null && forge != null"
+        v-if="score100 != null && forge != null"
         class="roster-stat-score"
         :title="`Forge score ${forge}/1000`"
       >
-        <span :class="rosterScoreTone(match.overall_score)">{{ forge }}</span>
-        <span :class="scoreGradeBadgeClass(match.overall_score)">{{ scoreGrade(match.overall_score) }}</span>
+        <span :class="rosterScoreTone(score100)">{{ forge }}</span>
+        <span :class="scoreGradeBadgeClass(score100)">{{ scoreGrade(score100) }}</span>
       </div>
       <span v-else class="roster-stat-empty">-</span>
     </div>

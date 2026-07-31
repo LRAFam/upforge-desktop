@@ -65,12 +65,20 @@ export function rosterRoleMeta(row: RosterMatchVisual): { label: string; color: 
 
 export function rosterForgeScore(score: number | null | undefined): number | null {
   if (score == null) return null
-  return score * 10
+  // API may return 0–100 (raw) or 0–1000 (normalized * 10).
+  return score > 100 ? Math.round(score) : Math.round(score * 10)
+}
+
+/** Normalize API overall_score to 0–100 for grade helpers. */
+export function rosterScoreOutOf100(score: number | null | undefined): number | null {
+  if (score == null) return null
+  return score > 100 ? score / 10 : score
 }
 
 export function rosterScoreTone(score: number): string {
-  if (score >= 78) return 'text-green-400'
-  if (score >= 50) return 'text-yellow-400'
+  const outOf100 = rosterScoreOutOf100(score) ?? 0
+  if (outOf100 >= 78) return 'text-green-400'
+  if (outOf100 >= 50) return 'text-yellow-400'
   return 'text-red-400'
 }
 
