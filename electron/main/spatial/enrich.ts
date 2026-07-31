@@ -6,6 +6,12 @@ import { resolvePlantCallout, resolveSitePlantAnchor } from './plant-callout-res
 import { getPlantBenchmarkHint } from './plant-benchmarks'
 import { resolvePlayerRankTier } from './plant-benchmarks-helpers'
 import { getPeekBenchmarkHint, buildPeekHotspots } from './peek-benchmarks'
+import {
+  countAlliesAliveAtDeath,
+  deathWasTraded,
+  farFromTeam,
+  isUntradedDeath,
+} from './trade-flags'
 import type {
   KillSpatial,
   MatchSpatialSummary,
@@ -530,7 +536,8 @@ export function buildMatchSpatialSummary(match: MatchData): MatchSpatialSummary 
       )
       if (type === 'death' && ev.killerName) labelParts.push(`vs ${ev.killerName}`)
       if (ev.weapon) labelParts.push(`(${ev.weapon})`)
-      if (ev.spatial.isolated) labelParts.push('— no trade')
+      if (type === 'death' && isUntradedDeath(ev.spatial)) labelParts.push('- untraded')
+      else if (type === 'death' && farFromTeam(ev.spatial)) labelParts.push('- far from team')
     }
 
     events.push({
@@ -544,6 +551,9 @@ export function buildMatchSpatialSummary(match: MatchData): MatchSpatialSummary 
       weapon: ev.weapon,
       // Bomb deaths are not "untraded peeks" — don't flag trade isolation.
       isolated: bomb ? false : ev.spatial.isolated,
+      alliesNearby: bomb ? undefined : ev.spatial.alliesNearby,
+      alliesAlive: bomb ? undefined : ev.spatial.alliesAlive,
+      traded: bomb ? false : ev.spatial.traded,
       killerDistance: bomb ? null : ev.spatial.killerDistance,
       cause: bomb ? 'bomb' : null,
     })
@@ -634,5 +644,45 @@ export function applySpatialEnrichment(match: MatchData): void {
   enrichList(match.playerKills)
   enrichList(match.playerDeaths)
 
+  applyDeathTradeFlags(match, allyPuids)
+
   match.spatialSummary = buildMatchSpatialSummary(match) ?? undefined
+}
+
+/** Attach alliesAlive + traded on player deaths after base spatial enrich. */
+export function applyDeathTradeFlags(match: MatchData, allyPuids: Set<string>): void {
+  const own = match.puuid?.toLowerCase()
+  if (!own) return
+
+  const roundEvents = (match.killEvents ?? []).filter(
+    (ev) => typeof ev.round === 'number',
+  )
+
+  for (const death of match.playerDeaths ?? []) {
+    if (!death.spatial) continue
+    if (isBombKill(death)) {
+      death.spatial.traded = false
+      continue
+    }
+    if (death.round == null) continue
+
+    const sameRound = roundEvents.filter((ev) => ev.round === death.round)
+    const deathIndex = sameRound.findIndex(
+      (ev) =>
+        ev.victimPuuid?.toLowerCase() === death.victimPuuid?.toLowerCase()
+        && ev.videoOffsetMs === death.videoOffsetMs,
+    )
+    const idx = deathIndex >= 0
+      ? deathIndex
+      : sameRound.findIndex(
+        (ev) => ev.victimPuuid?.toLowerCase() === own,
+      )
+
+    const alliesAlive = idx >= 0
+      ? countAlliesAliveAtDeath(sameRound, idx, own, allyPuids)
+      : Math.max(0, allyPuids.size - 1)
+
+    death.spatial.alliesAlive = alliesAlive
+    death.spatial.traded = deathWasTraded(death, roundEvents, allyPuids)
+  }
 }

@@ -3,6 +3,7 @@
  * Death windows (teachable mistakes) + win windows (repeatable habits).
  */
 import type { KillEvent, MatchData } from './riot-types'
+import { farFromTeam, isUntradedDeath } from './spatial/trade-flags'
 
 export type DuelMomentTrigger = 'player_death' | 'player_kill'
 
@@ -14,6 +15,10 @@ export interface DuelMomentManifest {
   window_end_ms: number
   callout: string | null
   isolated: boolean
+  /** Living teammates at death (excl. self). */
+  allies_alive?: number
+  traded?: boolean
+  far_from_team?: boolean
   trigger: DuelMomentTrigger
   polarity: 'negative' | 'positive'
   weight: number
@@ -37,10 +42,18 @@ export const MAX_DUEL_WINDOW_MS = 45_000
 
 function deathWeight(death: KillEvent): number {
   let weight = 30
-  if (death.spatial?.isolated) weight += 35
-  if (death.spatial?.callout && death.spatial.callout !== 'Unknown') weight += 10
-  const allies = death.spatial?.alliesNearby ?? 0
-  if (allies === 0) weight += 10
+  const s = death.spatial
+  if (!s) return weight
+  const alliesAlive = s.alliesAlive ?? 0
+  // Clutch / last alive: do not boost "alone peek" teaching
+  if (alliesAlive === 0) {
+    if (s.callout && s.callout !== 'Unknown') weight += 10
+    return weight
+  }
+  if (isUntradedDeath(s) && farFromTeam(s)) weight += 35
+  else if (isUntradedDeath(s)) weight += 25
+  else if (farFromTeam(s)) weight += 15
+  if (s.callout && s.callout !== 'Unknown') weight += 10
   return weight
 }
 
@@ -92,6 +105,9 @@ function buildMomentManifest(
     window_end_ms: windowEnd,
     callout: event.spatial?.callout ?? null,
     isolated: event.spatial?.isolated ?? false,
+    allies_alive: event.spatial?.alliesAlive,
+    traded: event.spatial?.traded,
+    far_from_team: event.spatial ? farFromTeam(event.spatial) : undefined,
     trigger,
     polarity,
     weight,

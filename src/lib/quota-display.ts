@@ -18,3 +18,9 @@ export function sharedAnalysesPoolHint(
   const noun = remaining === 1 ? 'analysis' : 'analyses'
   return `${remaining} ${noun} left · shared across Valorant, CS2, Deadlock & LoL`
 }
+
+/** Clear used/limit/left label for settings and post-game. */
+export function analysesUsedLabel(used: number, limit: number): string {
+  const left = Math.max(0, limit - used)
+  return `${used} of ${limit} used · ${left} left`
+}

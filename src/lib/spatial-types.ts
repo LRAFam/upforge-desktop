@@ -15,6 +15,9 @@ export interface SpatialTimelineEvent {
   videoOffsetMs?: number
   weapon?: string
   isolated?: boolean
+  alliesNearby?: number
+  alliesAlive?: number
+  traded?: boolean
   killerDistance?: number | null
   /** Spike / bomb death (not a combat duel). */
   cause?: 'bomb' | null

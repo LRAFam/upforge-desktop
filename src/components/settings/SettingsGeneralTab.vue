@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useSettings } from '../../composables/useSettings'
-import { sharedAnalysesPoolHint } from '../../lib/quota-display'
+import { analysesUsedLabel, sharedAnalysesPoolHint } from '../../lib/quota-display'
 import PaymentFailedAlert from '../../components/PaymentFailedAlert.vue'
 import SettingsAccountLinks from './SettingsAccountLinks.vue'
 
@@ -68,6 +68,13 @@ onUnmounted(() => {
 const analysesPoolHint = computed(() =>
   sharedAnalysesPoolHint(user.value?.analyses_used, user.value?.analyses_limit),
 )
+
+const analysesUsageLabel = computed(() => {
+  const used = Math.max(0, user.value?.analyses_used ?? 0)
+  const limit = user.value?.analyses_limit
+  if (limit == null) return `${used} used · unlimited`
+  return analysesUsedLabel(used, limit)
+})
 </script>
 
 <template>
@@ -186,7 +193,7 @@ const analysesPoolHint = computed(() =>
               <div class="flex items-center justify-between text-xs">
                 <span class="text-gray-400">AI analyses</span>
                 <span class="font-medium tabular-nums text-gray-200">
-                  {{ Math.max(0, user.analyses_used ?? 0) }} / {{ user.analyses_limit == null ? '∞' : user.analyses_limit }}
+                  {{ analysesUsageLabel }}
                 </span>
               </div>
               <div v-if="user.analyses_limit" class="mt-3 h-2 overflow-hidden rounded-full bg-white/[0.06]">

@@ -10,11 +10,24 @@ import {
 } from './moment-picker'
 import type { MatchData } from './riot-types'
 
-function death(round: number, offsetMs: number, isolated = false, callout = 'A Site') {
+function death(
+  round: number,
+  offsetMs: number,
+  isolated = false,
+  callout = 'A Site',
+  opts: { alliesAlive?: number; traded?: boolean } = {},
+) {
+  const alliesAlive = opts.alliesAlive ?? (isolated ? 2 : 2)
   return {
     round,
     videoOffsetMs: offsetMs,
-    spatial: { isolated, callout, alliesNearby: isolated ? 0 : 2 },
+    spatial: {
+      isolated,
+      callout,
+      alliesNearby: isolated ? 0 : 2,
+      alliesAlive,
+      traded: opts.traded ?? false,
+    },
   }
 }
 
@@ -56,6 +69,33 @@ describe('moment-picker', () => {
     const moments = pickDuelMoments(timeline, 2)
     expect(moments.map((m) => m.video_offset_ms)).toContain(50_000)
     expect(moments.map((m) => m.video_offset_ms)).toContain(90_000)
+  })
+
+  it('does not boost last-alive deaths over untraded far deaths', () => {
+    const timeline = {
+      playerDeaths: [
+        death(0, 10_000, true, 'Mid', { alliesAlive: 0, traded: false }),
+        death(1, 50_000, true, 'A Site', { alliesAlive: 2, traded: false }),
+      ],
+    } as unknown as MatchData
+
+    const moments = pickDuelMoments(timeline, 1)
+    expect(moments[0].video_offset_ms).toBe(50_000)
+    expect(moments[0].far_from_team).toBe(true)
+    expect(moments[0].allies_alive).toBe(2)
+  })
+
+  it('down-ranks traded far deaths vs untraded', () => {
+    const timeline = {
+      playerDeaths: [
+        death(0, 10_000, true, 'Mid', { alliesAlive: 2, traded: true }),
+        death(1, 50_000, true, 'A Site', { alliesAlive: 2, traded: false }),
+      ],
+    } as unknown as MatchData
+
+    const moments = pickDuelMoments(timeline, 1)
+    expect(moments[0].video_offset_ms).toBe(50_000)
+    expect(moments[0].traded).toBe(false)
   })
 
   it('picks win duel moments from player kills', () => {

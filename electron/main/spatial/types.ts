@@ -56,6 +56,10 @@ export interface KillSpatial {
   killerDistance: number | null
   isolated: boolean
   alliesNearby: number
+  /** Living teammates (excl. self) just before this death. */
+  alliesAlive?: number
+  /** Ally traded this death within TRADE_AFTER_DEATH_MS. */
+  traded?: boolean
   killerCallout?: string | null
 }
 
@@ -69,6 +73,9 @@ export interface SpatialTimelineEvent {
   videoOffsetMs?: number
   weapon?: string
   isolated?: boolean
+  alliesNearby?: number
+  alliesAlive?: number
+  traded?: boolean
   killerDistance?: number | null
   /** Spike / bomb death (not a combat duel). */
   cause?: 'bomb' | null

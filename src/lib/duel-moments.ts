@@ -12,6 +12,9 @@ export interface DuelMomentManifest {
   window_end_ms: number
   callout: string | null
   isolated: boolean
+  allies_alive?: number
+  traded?: boolean
+  far_from_team?: boolean
   trigger?: DuelMomentTrigger
   polarity?: 'negative' | 'positive'
   weight?: number
@@ -180,8 +183,12 @@ export function duelMomentWeightReasons(moment: DuelMomentManifest): string[] {
     const streak = formatKillStreakLabel(duelMomentKillCount(moment))
     if (streak) reasons.push(streak)
     else reasons.push('Won duel')
-  } else if (moment.isolated) {
+  } else if (moment.traded === false && (moment.allies_alive ?? 0) >= 1) {
     reasons.push('Untraded death')
+  } else if (moment.far_from_team) {
+    reasons.push('Far from team')
+  } else if (moment.isolated && moment.allies_alive == null && moment.traded == null) {
+    reasons.push('Far from team')
   }
   if (moment.callout && moment.callout !== 'Unknown') reasons.push(`@${moment.callout}`)
   if (typeof moment.weight === 'number' && moment.weight >= 55) reasons.push('High coaching value')

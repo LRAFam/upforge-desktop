@@ -801,6 +801,7 @@ import type { ClipRecord } from '../env.d.ts'
 import type { CategoryPercentileEntry } from '../components/CategoryPercentilesStrip.vue'
 import { canSpatialVodSeek } from '../lib/tier-features'
 import { buildAnalysisErrorPayload, type AnalysisErrorPayload } from '../lib/analysis-failure-messages'
+import { analysesUsedLabel } from '../lib/quota-display'
 import { usesAsyncDemoSync, demoSyncExplainerShort } from '../lib/recording-demo-status'
 import { demoDownloadProgressLabel, type DemoDownloadProgress } from '../lib/demo-download-progress'
 import PostGameDuelDiagnostics from '../components/post-game/PostGameDuelDiagnostics.vue'
@@ -912,8 +913,7 @@ const freeArchiveRetentionHint = computed(() => {
 const webNextStep = computed(() => pickWebNextStep(result.value?.analysis_id ?? null))
 const analysesRemainingLabel = computed(() => {
   if (analysesLimit.value == null || analysesUsed.value == null) return null
-  const left = Math.max(0, analysesLimit.value - analysesUsed.value)
-  return `${analysesUsed.value}/${analysesLimit.value} analyses used this month · ${left} left`
+  return `${analysesUsedLabel(analysesUsed.value, analysesLimit.value)} this month`
 })
 
 function daysUntilReset(): number {
