@@ -167,6 +167,17 @@ const api = {
       ipcRenderer.invoke('coach:get-analysis-review', { analysisId }),
     getReviewAnnotations: (reviewId: number) =>
       ipcRenderer.invoke('coach:get-review-annotations', { reviewId }),
+    getStudentHub: () => ipcRenderer.invoke('coach:get-student-hub'),
+    getRoster: () => ipcRenderer.invoke('coach:get-roster'),
+    updateRosterSettings: (payload: {
+      roster_enabled?: boolean
+      roster_welcome_message?: string | null
+      roster_membership_mode?: 'free' | 'paid'
+      roster_membership_price_cents?: number
+      roster_included_reviews_per_month?: number
+    }) => ipcRenderer.invoke('coach:update-roster-settings', payload),
+    getReviewRequests: () => ipcRenderer.invoke('coach:get-review-requests'),
+    startReview: (reviewId: number) => ipcRenderer.invoke('coach:start-review', { reviewId }),
   },
   stats: {
     rrHistory: () => ipcRenderer.invoke('stats:rr-history')

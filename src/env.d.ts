@@ -978,6 +978,12 @@ declare global {
           specialties: string[]
           roster_is_live?: boolean
           can_request_review?: boolean
+          can_request_code?: string | null
+          can_request_reason?: string | null
+          open_review_count?: number
+          completed_review_count?: number
+          roster_membership_mode?: 'free' | 'paid'
+          membership_is_paid?: boolean
           review_limits?: {
             active_reviews: number
             active_reviews_limit: number
@@ -1019,6 +1025,33 @@ declare global {
             created_at: string
           }>
         } | null>
+        getStudentHub: () => Promise<{
+          success?: boolean
+          coaches: Array<Record<string, unknown>>
+          stats: {
+            coaches_count: number
+            pending_reviews: number
+            completed_reviews: number
+            actionable_matches: number
+          }
+          pending_reviews: Array<Record<string, unknown>>
+          recent_completed: Array<Record<string, unknown>>
+          actionable_analyses: Array<Record<string, unknown>>
+        }>
+        getRoster: () => Promise<{
+          coach: { id: number; display_name: string }
+          students: Array<Record<string, unknown>>
+          settings: Record<string, unknown>
+        } | null>
+        updateRosterSettings: (payload: {
+          roster_enabled?: boolean
+          roster_welcome_message?: string | null
+          roster_membership_mode?: 'free' | 'paid'
+          roster_membership_price_cents?: number
+          roster_included_reviews_per_month?: number
+        }) => Promise<{ ok: true; settings: Record<string, unknown> } | { ok: false; error: string }>
+        getReviewRequests: () => Promise<Array<Record<string, unknown>>>
+        startReview: (reviewId: number) => Promise<{ ok: boolean; review?: unknown; error?: string }>
       }
       stats: {
         rrHistory: () => Promise<Array<{ id: number; date: string; rank: string | null; rr: number; elo: number }>>

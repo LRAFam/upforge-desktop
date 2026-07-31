@@ -1,18 +1,20 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
 import { usePrimaryGame } from '../composables/usePrimaryGame'
+import { useRosterHubBadge } from '../composables/useRosterHubBadge'
 import { gameNavRoutes } from '../lib/game-modules'
 import { WEB_SIDEBAR_LINKS, openWebFeature } from '../lib/web-explore-links'
 import upforgeIcon from '../assets/upforge-icon.webp'
 
 const route = useRoute()
 const { primaryGame } = usePrimaryGame()
+const { pendingReviewCount, setPendingReviewCount } = useRosterHubBadge()
 
 interface NavItem {
   to: string
   label: string
-  icon: 'home' | 'analytics' | 'drills' | 'demos' | 'matches' | 'cross' | 'recordings'
+  icon: 'home' | 'analytics' | 'drills' | 'demos' | 'matches' | 'cross' | 'recordings' | 'rosters'
   match?: (path: string) => boolean
 }
 
@@ -23,6 +25,7 @@ const mainNav: NavItem[] = [
   { to: '/history', label: 'Matches', icon: 'matches', match: p => p === '/history' },
   { to: '/recordings', label: 'Recordings', icon: 'recordings', match: p => p === '/recordings' || p === '/vod-review' },
   { to: '/clips', label: 'Clips', icon: 'demos', match: p => p === '/clips' },
+  { to: '/rosters', label: 'Rosters', icon: 'rosters', match: p => p === '/rosters' },
   { to: '/squad', label: 'Squad', icon: 'cross', match: p => p.startsWith('/squad') },
 ]
 
@@ -44,6 +47,28 @@ function isActive(item: NavItem): boolean {
 function openWeb(path: string, embed: boolean) {
   void openWebFeature(path, embed)
 }
+
+function badgeFor(item: NavItem): number | null {
+  if (item.to !== '/rosters') return null
+  return pendingReviewCount.value > 0 ? pendingReviewCount.value : null
+}
+
+onMounted(() => {
+  if (!window.api?.coach?.getStudentHub) return
+  void Promise.all([
+    window.api.coach.getStudentHub().catch(() => null),
+    window.api.coach.getReviewRequests?.().catch(() => []),
+  ]).then(([hub, requests]) => {
+    const student = hub?.stats?.pending_reviews ?? 0
+    const coach = Array.isArray(requests)
+      ? requests.filter((r) => {
+          const status = (r as { status?: string }).status
+          return status === 'pending' || status === 'in_progress'
+        }).length
+      : 0
+    setPendingReviewCount(student + coach)
+  })
+})
 </script>
 
 <template>
@@ -71,9 +96,16 @@ function openWeb(path: string, embed: boolean) {
           <svg v-else-if="item.icon === 'demos'" class="h-[18px] w-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6H16a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/></svg>
           <svg v-else-if="item.icon === 'matches'" class="h-[18px] w-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
           <svg v-else-if="item.icon === 'recordings'" class="h-[18px] w-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"/></svg>
+          <svg v-else-if="item.icon === 'rosters'" class="h-[18px] w-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" d="M17 20v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2M9 10a4 4 0 100-8 4 4 0 000 8zM23 20v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75"/></svg>
           <svg v-else class="h-[18px] w-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"/></svg>
         </span>
-        <span class="truncate">{{ item.label }}</span>
+        <span class="truncate flex-1">{{ item.label }}</span>
+        <span
+          v-if="badgeFor(item)"
+          class="ml-auto min-w-[18px] h-[18px] px-1 rounded-md bg-amber-500/20 text-amber-300 text-[10px] font-bold tabular-nums flex items-center justify-center border border-amber-500/30"
+        >
+          {{ badgeFor(item) }}
+        </span>
       </RouterLink>
 
       <div class="pt-3 mt-2 border-t border-white/[0.06]">
@@ -86,7 +118,7 @@ function openWeb(path: string, embed: boolean) {
           @click="openWeb(link.path, link.embed)"
         >
           <svg class="h-4 w-4 flex-shrink-0 opacity-70" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" d="M13.5 6H5.25A2.25 2.25 0 003 8.25v10.5A2.25 2.25 0 005.25 21h10.5A2.25 2.25 0 0018 18.75V10.5m-10.5 6L21 3m0 0h-5.25M21 3v5.25"/>
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" d="M13.5 6H5.25A2.25 2.25 0 003 8.25v10.5A2.25 2.25 0 0018 18.75V10.5m-10.5 6L21 3m0 0h-5.25M21 3v5.25"/>
           </svg>
           <span class="truncate">{{ link.label }}</span>
         </button>

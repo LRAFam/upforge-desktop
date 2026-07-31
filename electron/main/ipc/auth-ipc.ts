@@ -335,4 +335,35 @@ export function setupAuthHandlers(
     if (!auth.getToken()) return null
     return auth.fetchCoachReviewAnnotations(reviewId)
   })
+
+  ipcMain.handle('coach:get-student-hub', async () => {
+    if (!auth.getToken()) throw new Error('Not logged in')
+    return auth.fetchStudentHub()
+  })
+
+  ipcMain.handle('coach:get-roster', async () => {
+    if (!auth.getToken()) return null
+    return auth.fetchCoachRoster()
+  })
+
+  ipcMain.handle('coach:update-roster-settings', async (_e, payload: {
+    roster_enabled?: boolean
+    roster_welcome_message?: string | null
+    roster_membership_mode?: 'free' | 'paid'
+    roster_membership_price_cents?: number
+    roster_included_reviews_per_month?: number
+  }) => {
+    if (!auth.getToken()) return { ok: false, error: 'Not logged in' }
+    return auth.updateCoachRosterSettings(payload)
+  })
+
+  ipcMain.handle('coach:get-review-requests', async () => {
+    if (!auth.getToken()) return []
+    return auth.fetchCoachReviewRequests()
+  })
+
+  ipcMain.handle('coach:start-review', async (_e, { reviewId }: { reviewId: number }) => {
+    if (!auth.getToken()) return { ok: false, error: 'Not logged in' }
+    return auth.startCoachReview(reviewId)
+  })
 }

@@ -702,6 +702,114 @@ export class AuthManager {
     }
   }
 
+  async fetchStudentHub(): Promise<{
+    coaches: Array<Record<string, unknown>>
+    stats: {
+      coaches_count: number
+      pending_reviews: number
+      completed_reviews: number
+      actionable_matches: number
+    }
+    pending_reviews: Array<Record<string, unknown>>
+    recent_completed: Array<Record<string, unknown>>
+    actionable_analyses: Array<Record<string, unknown>>
+  }> {
+    if (!this._token) throw new Error('Not logged in')
+    const res = await this._api.get('/api/coach/student-hub')
+    if (!res.data?.success) {
+      throw new Error(
+        (res.data?.message as string | undefined)
+          ?? (res.data?.error as string | undefined)
+          ?? 'Failed to load student hub',
+      )
+    }
+    return {
+      coaches: res.data.coaches ?? [],
+      stats: res.data.stats ?? {
+        coaches_count: 0,
+        pending_reviews: 0,
+        completed_reviews: 0,
+        actionable_matches: 0,
+      },
+      pending_reviews: res.data.pending_reviews ?? [],
+      recent_completed: res.data.recent_completed ?? [],
+      actionable_analyses: res.data.actionable_analyses ?? [],
+    }
+  }
+
+  async fetchCoachRoster(): Promise<{
+    coach: { id: number; display_name: string }
+    students: unknown[]
+    settings: Record<string, unknown>
+  } | null> {
+    if (!this._token) return null
+    try {
+      const res = await this._api.get('/api/coach/roster')
+      if (!res.data?.success) return null
+      return {
+        coach: res.data.coach,
+        students: res.data.students ?? [],
+        settings: res.data.settings ?? {},
+      }
+    } catch (err: unknown) {
+      const status = (err as { response?: { status?: number } })?.response?.status
+      if (status === 404 || status === 403) return null
+      throw err
+    }
+  }
+
+  async updateCoachRosterSettings(payload: {
+    roster_enabled?: boolean
+    roster_welcome_message?: string | null
+    roster_membership_mode?: 'free' | 'paid'
+    roster_membership_price_cents?: number
+    roster_included_reviews_per_month?: number
+  }): Promise<{ ok: true; settings: Record<string, unknown> } | { ok: false; error: string }> {
+    if (!this._token) return { ok: false, error: 'Not logged in' }
+    try {
+      const res = await this._api.patch('/api/coach/roster/settings', payload)
+      if (!res.data?.success) {
+        return {
+          ok: false,
+          error: (res.data?.message as string | undefined)
+            ?? (res.data?.error as string | undefined)
+            ?? 'Failed to update roster settings',
+        }
+      }
+      return { ok: true, settings: res.data.settings ?? {} }
+    } catch (err: unknown) {
+      const msg = (err as { response?: { data?: { message?: string; error?: string } } })?.response?.data?.message
+        ?? (err as { response?: { data?: { error?: string } } })?.response?.data?.error
+        ?? (err instanceof Error ? err.message : 'Failed to update roster settings')
+      return { ok: false, error: msg }
+    }
+  }
+
+  async fetchCoachReviewRequests(): Promise<unknown[]> {
+    if (!this._token) return []
+    try {
+      const res = await this._api.get('/api/coach/review-requests')
+      return res.data?.reviews ?? []
+    } catch (err: unknown) {
+      const status = (err as { response?: { status?: number } })?.response?.status
+      if (status === 404 || status === 403) return []
+      throw err
+    }
+  }
+
+  async startCoachReview(reviewId: number): Promise<{ ok: boolean; review?: unknown; error?: string }> {
+    if (!this._token) return { ok: false, error: 'Not logged in' }
+    try {
+      const res = await this._api.post(`/api/coach/reviews/${reviewId}/start`)
+      return { ok: true, review: res.data?.review }
+    } catch (err: unknown) {
+      const msg = (err as { response?: { data?: { message?: string; error?: string } } })?.response?.data?.message
+        ?? (err as { response?: { data?: { error?: string } } })?.response?.data?.error
+        ?? (err instanceof Error ? err.message : 'Failed to start review')
+      return { ok: false, error: msg }
+    }
+  }
+
   async createBillingPortalSession(): Promise<{ ok: true; url: string } | { ok: false; error: string }> {
     if (!this._token) return { ok: false, error: 'Not logged in' }
     try {

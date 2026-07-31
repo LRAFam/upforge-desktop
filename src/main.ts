@@ -25,6 +25,7 @@ import TrainerResultsView from './views/TrainerResultsView.vue'
 import StatsView from './views/StatsView.vue'
 import DevView from './views/DevView.vue'
 import DashboardNeedsYouPreviewView from './views/DashboardNeedsYouPreviewView.vue'
+import RostersView from './views/RostersView.vue'
 
 const PUBLIC_ROUTES = ['/login', '/welcome', '/splash', '/overlay']
 
@@ -50,6 +51,7 @@ const router = createRouter({
     { path: '/trainer-results', component: TrainerResultsView },
     { path: '/stats', component: StatsView },
     { path: '/history', component: CoachingHistoryView },
+    { path: '/rosters', component: RostersView },
     { path: '/dev', component: DevView },
   ]
 })
