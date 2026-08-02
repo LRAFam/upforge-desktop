@@ -82,6 +82,7 @@ export async function applyObsRecordingSettings(
   obs: OBSWebSocket,
   config: RecorderConfig,
   obsStudioVersion?: string | null,
+  options?: { outputsHot?: boolean },
 ): Promise<ObsApplyResult> {
   const { cx, cy } = config.quality === '1080p'
     ? { cx: 1920, cy: 1080 }
@@ -111,7 +112,14 @@ export async function applyObsRecordingSettings(
     await setProfileParam(obs, 'SimpleOutput', 'FilePath', savePath)
   }
 
-  if (config.manageObsVideo !== false) {
+  const allowVideoSettings = config.allowVideoSettings !== false && !options?.outputsHot
+  const manageVideo = config.manageObsVideo !== false && allowVideoSettings
+
+  if (config.manageObsVideo !== false && !allowVideoSettings) {
+    warnings.push('Skipped SetVideoSettings — OBS outputs hot or video mutation disallowed.')
+  }
+
+  if (manageVideo) {
     try {
       await obs.call('SetVideoSettings', {
         baseWidth: cx,

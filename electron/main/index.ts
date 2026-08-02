@@ -81,6 +81,8 @@ import {
 } from './recording-path-resolver'
 import { broadcastObsConnection, startObsHealthMonitor } from './obs-health'
 import { ensureObsConnected } from './obs-ensure'
+import { canHardRecoverObs, shouldRelaunchAfterFinalize, type ObsWatchdogSnapshot } from './obs-watchdog-policy'
+import { isObsProcessRunning } from './obs-process'
 import {
   ensureObsProfileInstalled,
   resolveObsWebSocketPassword,
@@ -428,6 +430,18 @@ function prepareObsCredentials(): { password: string; port: number } {
   return { password, port }
 }
 
+function obsWatchdogSnapshot(extra?: Partial<ObsWatchdogSnapshot>): ObsWatchdogSnapshot {
+  return {
+    processRunning: true,
+    matchOwned: obsRecorder.isRecording(),
+    activelyRecording: obsRecorder.isActivelyRecording(),
+    disconnectedDuringRecording: obsRecorder.hadDisconnectedDuringRecording(),
+    outputActive: false,
+    matchPerformanceModeActive,
+    ...extra,
+  }
+}
+
 /**
  * Launch / reconnect OBS (kills hung process when idle).
  * Used on startup, game detect, and before match recording.
@@ -440,10 +454,7 @@ async function ensureObsReady(opts?: {
 
   const { password, port } = prepareObsCredentials()
   const allowProcessRestart = opts?.allowProcessRestart !== false
-    && !obsRecorder.isActivelyRecording()
-    && !obsRecorder.isRecording()
-    && !obsRecorder.hadDisconnectedDuringRecording()
-    && !matchPerformanceModeActive
+    && canHardRecoverObs(obsWatchdogSnapshot({ processRunning: true }))
 
   const result = await ensureObsConnected(obsRecorder, {
     password,
@@ -483,6 +494,8 @@ async function ensureObsReadyOrThrow(): Promise<void> {
 
 /** Set by setupGameDetection — handles unexpected mid-match capture loss. */
 let onRecordingLost: ((error: string) => void) | null = null
+/** Set by setupGameDetection — OBS process exit during match-owned recording. */
+let finalizeAfterObsProcessDeath: (() => Promise<void>) | null = null
 
 function discordMatchContext(): { map: string | null; agent: string | null } {
   const game = gameDetector.currentGame()
@@ -523,14 +536,21 @@ function wireRecorderStatus(rec: OBSRecorder, label: string): void {
       reportRecordingError('mid-match', error, { label })
       onRecordingLost?.(error)
       const obsLost = /obs disconnected/i.test(error)
+      const obsProcessExited = /process exited/i.test(error)
       try {
         if (tray && !tray.isDestroyed()) {
-          tray.setToolTip(obsLost ? 'UpForge — OBS disconnected' : 'UpForge — Recording stopped!')
+          tray.setToolTip(
+            obsLost
+              ? 'UpForge — OBS disconnected'
+              : obsProcessExited
+                ? 'UpForge — OBS closed'
+                : 'UpForge — Recording stopped!',
+          )
         }
       } catch { /* ignore */ }
       // OBS disconnect is often recoverable (OBS keeps recording locally) — avoid a second
       // scary "Recording Stopped" toast; onRecordingLost already notifies with the right copy.
-      if (!obsLost) {
+      if (!obsLost && !obsProcessExited) {
         showAppNotification({
           title: 'UpForge — Recording Stopped',
           body: 'Recording stopped unexpectedly. Open UpForge to see details.',
@@ -548,6 +568,9 @@ function wireRecorderStatus(rec: OBSRecorder, label: string): void {
   rec.onRecoveredDuringMatch = () => {
     logActivity('OBS reconnected mid-match — recording continues')
     tray?.setToolTip('UpForge — Recording')
+  }
+  rec.onObsProcessDiedDuringMatch = () => {
+    void finalizeAfterObsProcessDeath?.()
   }
 }
 const clipExtractor = new ClipExtractor()
@@ -2378,18 +2401,33 @@ function setupGameDetection(): void {
   onRecordingLost = (error: string) => {
     const game = gameDetector.currentGame() ?? 'valorant'
     const obsLost = /obs disconnected/i.test(error)
-    logActivity(
-      obsLost
-        ? 'OBS disconnected mid-match — OBS may still be recording; will recover when the match ends'
-        : `Recording lost mid-match: ${error}`,
-    )
+    const obsProcessExited = /process exited/i.test(error)
+    if (!obsProcessExited) {
+      logActivity(
+        obsLost
+          ? 'OBS disconnected mid-match — OBS may still be recording; will recover when the match ends'
+          : `Recording lost mid-match: ${error}`,
+      )
+    }
     notifyRecordingUx(
       obsLost
         ? 'OBS disconnected from UpForge. Keep OBS open — your match should still save when it ends. Reconnect in Settings → Recording before the next game.'
-        : 'Recording stopped unexpectedly — the match continues but may not be saved. Check permissions and disk space.',
-      obsLost ? 'UpForge — OBS Disconnected' : 'UpForge — Recording Lost',
+        : obsProcessExited
+          ? 'OBS closed during the match — UpForge is reclaiming and saving your recording now.'
+          : 'Recording stopped unexpectedly — the match continues but may not be saved. Check permissions and disk space.',
+      obsLost
+        ? 'UpForge — OBS Disconnected'
+        : obsProcessExited
+          ? 'UpForge — OBS Closed'
+          : 'UpForge — Recording Lost',
     )
-    tray?.setToolTip(obsLost ? 'UpForge — OBS disconnected' : 'UpForge — Recording lost!')
+    tray?.setToolTip(
+      obsLost
+        ? 'UpForge — OBS disconnected'
+        : obsProcessExited
+          ? 'UpForge — OBS closed'
+          : 'UpForge — Recording lost!',
+    )
     setTimeout(() => tray?.setToolTip(idleTooltip(game)), 10_000)
   }
 
@@ -2462,6 +2500,28 @@ function setupGameDetection(): void {
     matchFinalizeInFlight = run().finally(() => { matchFinalizeInFlight = null })
     return matchFinalizeInFlight
   }
+
+  async function finalizeAfterObsProcessDeathImpl(): Promise<void> {
+    const game = normalizePrimaryGame(gameDetector.currentGame() ?? trackedPrimaryGame)
+    logActivity('OBS process exited — reclaiming recording file if present')
+
+    if (matchFinalizeInFlight) {
+      await matchFinalizeInFlight
+    } else if (!matchHandled) {
+      const didFinalize = await finalizeMatchOnce(game, 'obs-process-death')
+      if (!didFinalize) return
+      endMatchPerformanceMode()
+      if (game === 'deadlock') void refreshDeadlockProfile(true)
+      destroyOverlay()
+    }
+
+    const processRunning = await isObsProcessRunning()
+    if (shouldRelaunchAfterFinalize(obsWatchdogSnapshot({ processRunning }))) {
+      void ensureObsReady({ allowProcessRestart: true })
+    }
+  }
+
+  finalizeAfterObsProcessDeath = finalizeAfterObsProcessDeathImpl
 
   /** Shared path for presence / GSI / process-exit match-end signals. */
   async function isValorantStillInLiveMatch(): Promise<boolean> {
@@ -2733,6 +2793,18 @@ function setupGameDetection(): void {
     if (resolvedFile && obsRecorder.hadDisconnectedDuringRecording()) {
       log.info(`[HandleMatchEnd] Recovered recording after OBS disconnect: ${videoPath}`)
       logActivity('Recovered recording after OBS disconnect — continuing upload')
+    }
+
+    if (!resolvedFile && obsRecorder.hadObsProcessDiedDuringMatch()) {
+      logActivity('OBS exited — no recording file found on disk')
+    }
+
+    if (await obsRecorder.isObsOutputActive()) {
+      await new Promise((r) => setTimeout(r, 1500))
+      if (await obsRecorder.isObsOutputActive() && await isObsProcessRunning()) {
+        logActivity('OBS looks stuck recording. Stop recording in OBS after the match.')
+        notifyRecordingUx('OBS looks stuck recording. Stop recording in OBS after the match.')
+      }
     }
 
     if (recordingDuration === 0 && fileSize >= MIN_RECORDING_FILE_BYTES && currentRecordingStartTime) {
@@ -4138,10 +4210,14 @@ function setupGameDetection(): void {
       const msg = err instanceof Error ? err.message : String(err)
       log.error('[Main] Failed to start recording:', msg)
       reportRecordingError('start', msg, { backend: getRecordingBackendForStatus() })
-      if (/Advanced/i.test(msg)) {
+      if (/already recording/i.test(msg)) {
+        telemetry.setDnf('unowned_obs_recording', msg)
+      } else if (/Advanced/i.test(msg)) {
         telemetry.setDnf('advanced_output', msg)
       } else if (isObsUnavailableError(msg)) {
         telemetry.setDnf('obs_not_ready', msg)
+      } else if (/did not become active/i.test(msg)) {
+        telemetry.setDnf('start_verify_failed', msg)
       } else {
         telemetry.setDnf('other', msg)
       }
@@ -4150,7 +4226,14 @@ function setupGameDetection(): void {
       if (game === 'valorant') {
         trackRecordingFailed(msg, isObsUnavailableError(msg) ? 'obs' : 'record')
       }
-      logActivity(`Recording failed to start: ${msg}`)
+      const unownedBlocked = /already recording/i.test(msg)
+      const startVerifyFailed = /did not become active/i.test(msg)
+      const userFacingStartMsg = unownedBlocked
+        ? 'OBS is already recording — stop it in OBS, then UpForge can capture.'
+        : startVerifyFailed
+          ? 'OBS did not start recording — check OBS Output settings.'
+          : null
+      logActivity(userFacingStartMsg ?? `Recording failed to start: ${msg}`)
       matchHandled = false
       riotLocalApi.onMatchEnded = null
       lolLiveClientApi.onMatchEnded = null
@@ -4170,7 +4253,10 @@ function setupGameDetection(): void {
         // Keep activeGame tracked; maybeResumeMatchDetectionAfterObsConnect re-enters detect.
         return
       }
-      notifyRecordingUx(`Could not start recording: ${msg}`, 'UpForge — Recording Failed')
+      notifyRecordingUx(
+        userFacingStartMsg ?? `Could not start recording: ${msg}`,
+        'UpForge — Recording Failed',
+      )
       tray?.setToolTip('UpForge — Recording failed!')
       setTimeout(() => tray?.setToolTip(idleTooltip(game)), 10_000)
       await rearmGameDetection(game, true)
@@ -5413,11 +5499,7 @@ async function startApp(): Promise<void> {
   wireObsConnectionEvents()
   stopObsHealthMonitor = startObsHealthMonitor(obsRecorder, () => mainWindow, {
     logActivity,
-    canHardRecover: () =>
-      !obsRecorder.isActivelyRecording()
-      && !obsRecorder.isRecording()
-      && !obsRecorder.hadDisconnectedDuringRecording()
-      && !matchPerformanceModeActive,
+    canHardRecover: () => canHardRecoverObs(obsWatchdogSnapshot({ processRunning: true })),
     recover: () => ensureObsReady({ allowProcessRestart: true }),
   })
 

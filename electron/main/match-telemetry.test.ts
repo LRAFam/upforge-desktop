@@ -32,6 +32,17 @@ describe('MatchTelemetrySession', () => {
     expect(snap.sectors_ms.upload).toBe(250)
   })
 
+  it('stores start_verify_failed DNF', () => {
+    const session = new MatchTelemetrySession('valorant', {
+      bucket: 'mid',
+      encoder: 'h264_nvenc',
+      obsVersion: '30.0.0',
+      appVersion: '2.0.0',
+    })
+    session.setDnf('start_verify_failed', 'OBS StartRecord did not become active within 5s')
+    expect(session.snapshot().dnf).toBe('start_verify_failed')
+  })
+
   it('stores DNF and end reason', () => {
     const session = new MatchTelemetrySession('valorant', {
       bucket: 'low',

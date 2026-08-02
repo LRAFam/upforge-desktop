@@ -136,6 +136,8 @@ async function getCurrentCaptureWindow(obs: OBSWebSocket, inputName: string): Pr
 export type EnsureUpForgeCaptureOptions = {
   /** Tear down and recreate the capture source (resets resolution after game switches). */
   forceRecreate?: boolean
+  /** When false, never RemoveInput/CreateInput — prefer SetInputSettings in-place. Default true. */
+  allowRecreate?: boolean
   windowOverride?: string
 }
 
@@ -164,10 +166,11 @@ export async function ensureUpForgeCapture(
   game: string,
   options: EnsureUpForgeCaptureOptions = {},
 ): Promise<{ inputCreated: boolean; inputUpgraded: boolean; captureWindow: string }> {
+  const allowRecreate = options.allowRecreate !== false
   const captureWindow = options.windowOverride ?? await resolveObsCaptureWindow(game)
   const { inputKind, inputSettings } = getUpForgeCaptureConfig(game, captureWindow)
   let existingNames = await listUpForgeCaptureInputNames(obs)
-  if (existingNames.length !== 1 || existingNames[0] !== UPFORGE_INPUT_NAME) {
+  if (allowRecreate && (existingNames.length !== 1 || existingNames[0] !== UPFORGE_INPUT_NAME)) {
     if (existingNames.length > 0) {
       log.info('[OBS Setup] Cleaning', existingNames.length, 'stale UpForge capture source(s)')
       await pruneUpForgeCaptureSources(obs)
@@ -175,15 +178,15 @@ export async function ensureUpForgeCapture(
     existingNames = []
   }
   const hasCanonical = existingNames.includes(UPFORGE_INPUT_NAME)
-  const hasInput = hasCanonical
+  const hasInput = hasCanonical || existingNames.length > 0
 
-  if (hasInput && !options.forceRecreate) {
+  if (hasInput && (!options.forceRecreate || !allowRecreate)) {
     const targetName = hasCanonical ? UPFORGE_INPUT_NAME : existingNames[existingNames.length - 1]!
     const kind = await getInputKind(obs, targetName)
     const currentWindow = await getCurrentCaptureWindow(obs, targetName)
     const windowChanged = currentWindow !== captureWindow
 
-    if (kind === inputKind && !windowChanged) {
+    if (kind === inputKind && (!windowChanged || !allowRecreate)) {
       await obs.call('SetInputSettings', {
         inputName: targetName,
         inputSettings: inputSettings as never,
@@ -192,6 +195,19 @@ export async function ensureUpForgeCapture(
       log.info('[OBS Setup] Updated capture target for', game, '→', captureWindow)
       return { inputCreated: false, inputUpgraded: false, captureWindow }
     }
+
+    if (!allowRecreate) {
+      log.warn(
+        '[OBS Setup] Capture recreate blocked during hot session',
+        kind !== inputKind ? `(kind ${kind} → ${inputKind})` : '(window change needs recreate)',
+      )
+      return { inputCreated: false, inputUpgraded: false, captureWindow }
+    }
+  }
+
+  if (!allowRecreate) {
+    log.warn('[OBS Setup] No capture input during hot session — skipping create')
+    return { inputCreated: false, inputUpgraded: false, captureWindow }
   }
 
   if (options.forceRecreate || hasInput) {
@@ -307,6 +323,8 @@ export type ObsSceneSwitchOptions = {
   /** When false, update capture on the UpForge scene but leave the streamer's active scene alone. */
   switchScene?: boolean
   forceRecreate?: boolean
+  /** When false, never RemoveInput/CreateInput — prefer SetInputSettings in-place. Default true. */
+  allowRecreate?: boolean
   /** Refit after short delays so capture resolution matches the new game window. */
   refitAfterSettle?: boolean
 }
@@ -319,6 +337,7 @@ export async function retargetUpForgeCapture(
 ): Promise<{ captureWindow: string }> {
   const capture = await ensureUpForgeCapture(obs, game, {
     forceRecreate: options.forceRecreate,
+    allowRecreate: options.allowRecreate,
   })
   if (options.switchScene !== false) {
     await obs.call('SetCurrentProgramScene', { sceneName: UPFORGE_SCENE_NAME }).catch(() => { /* non-fatal */ })
@@ -351,7 +370,10 @@ export async function setupUpForgeScene(
       log.info('[OBS Setup] Created scene:', UPFORGE_SCENE_NAME)
     }
 
-    const capture = await ensureUpForgeCapture(obs, game)
+    const capture = await ensureUpForgeCapture(obs, game, {
+      forceRecreate: options.forceRecreate,
+      allowRecreate: options.allowRecreate,
+    })
     inputCreated = capture.inputCreated
     inputUpgraded = capture.inputUpgraded
     captureWindow = capture.captureWindow

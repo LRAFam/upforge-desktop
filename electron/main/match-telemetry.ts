@@ -30,6 +30,7 @@ export type RecordingDnfReason =
   | 'too_short'
   | 'capture_retarget_failed'
   | 'unowned_obs_recording'
+  | 'start_verify_failed'
   | 'other'
 
 export type SectorName =

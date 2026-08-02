@@ -29,6 +29,14 @@ import {
   shouldKeepMatchOwnershipWhileDisconnected,
   shouldReleaseOwnershipAfterReconnect,
 } from './obs-disconnect-guard'
+import { nextUnownedClearAction } from './obs-unowned-clear'
+import { waitForObsRecordArmed } from './obs-start-verify'
+import {
+  buildRetargetMutationFlags,
+  buildSetupMutationFlags,
+  shouldReclaimAfterProcessDeath,
+} from './obs-watchdog-policy'
+import { isObsProcessRunning } from './obs-process'
 import type { RecorderConfig } from './recorder'
 
 export interface OBSSettings {
@@ -125,6 +133,8 @@ export class OBSRecorder {
   private _reconnectTimer: ReturnType<typeof setInterval> | null = null
 
   private _disconnectedDuringRecording = false
+  /** Set when OBS process exits while match-owned — avoids double reclaim. */
+  private _obsProcessDiedDuringMatch = false
   private _clipsOnlySession = false
   private _lastConnectWarnAt = 0
   /** Last game OBS capture was pointed at — used to force refresh on game switches. */
@@ -136,6 +146,8 @@ export class OBSRecorder {
   onConnectionChange?: (connected: boolean, error?: string | null) => void
   /** Fired when WebSocket reconnects mid-match and OBS output is reclaimed. */
   onRecoveredDuringMatch?: () => void
+  /** Fired once when OBS process exits while match-owned (not mere WS drop). */
+  onObsProcessDiedDuringMatch?: () => void
 
   /** Suppress ConnectionClosed while we intentionally tear down before reconnecting. */
   private _suppressConnectionEvents = false
@@ -273,8 +285,11 @@ export class OBSRecorder {
           })
         }
 
+        const { allowRecreate, outputsHot } = await this.captureSetupMutationFlags()
+
         const setup = await setupUpForgeScene(this._obs, this.getPrimaryGame?.() ?? 'valorant', {
           switchScene: !this.getSettings().obsPreserveActiveScene,
+          allowRecreate,
         })
         if (!setup.ok) {
           log.warn('[OBSRecorder] Scene setup incomplete:', setup.error)
@@ -283,7 +298,12 @@ export class OBSRecorder {
 
         const recConfig = this.getRecordingConfig?.()
         if (recConfig) {
-          await applyObsRecordingSettings(this._obs, recConfig, this._obsStudioVersion)
+          await applyObsRecordingSettings(
+            this._obs,
+            recConfig,
+            this._obsStudioVersion,
+            { outputsHot },
+          )
         }
 
         this.onConnectionChange?.(true)
@@ -342,9 +362,29 @@ export class OBSRecorder {
       }
       return result.setup ?? { ok: true, sceneCreated: false, inputCreated: false }
     }
+    const { allowRecreate } = await this.captureSetupMutationFlags()
     return setupUpForgeScene(this._obs, game, {
       switchScene: forceSwitchScene || !this.getSettings().obsPreserveActiveScene,
+      allowRecreate,
     })
+  }
+
+  /** Hot-session guard for connect/setup — queries live OBS output when connected. */
+  private async captureSetupMutationFlags(): Promise<{ allowRecreate: boolean; outputsHot: boolean }> {
+    let outputActive = false
+    if (this._connected) {
+      try {
+        const status = await this._obs.call('GetRecordStatus') as { outputActive?: boolean }
+        outputActive = status.outputActive === true
+      } catch { /* non-fatal */ }
+    }
+    const { allowRecreate } = buildSetupMutationFlags({
+      matchOwned: this._matchOwnedRecording,
+      recording: this._recording,
+      disconnectedDuringRecording: this._disconnectedDuringRecording,
+      outputActive,
+    })
+    return { allowRecreate, outputsHot: !allowRecreate }
   }
 
   private obsSceneOptions(): ObsSceneSwitchOptions {
@@ -353,9 +393,16 @@ export class OBSRecorder {
 
   private retargetOptionsForGame(game: string, forRecording = false): ObsSceneSwitchOptions {
     const gameChanged = this._lastCaptureGame !== null && this._lastCaptureGame !== game
+    const { forceRecreate, allowRecreate } = buildRetargetMutationFlags({
+      gameChanged,
+      matchOwned: this._matchOwnedRecording,
+      recording: this._recording,
+      disconnectedDuringRecording: this._disconnectedDuringRecording,
+    })
     return {
       ...this.obsSceneOptions(),
-      forceRecreate: gameChanged,
+      forceRecreate,
+      allowRecreate,
       refitAfterSettle: gameChanged || forRecording,
     }
   }
@@ -397,6 +444,7 @@ export class OBSRecorder {
     return 0
   }
   hadDisconnectedDuringRecording(): boolean { return this._disconnectedDuringRecording }
+  hadObsProcessDiedDuringMatch(): boolean { return this._obsProcessDiedDuringMatch }
   getRecordingStartedAt(): number | null { return this._startedAt }
 
   /** Live kill stamps for this session (cleared on next start). */
@@ -551,7 +599,8 @@ export class OBSRecorder {
 
   async applyRecordingSettings(config: RecorderConfig): Promise<ObsApplyResult | null> {
     if (!this._connected) return null
-    return applyObsRecordingSettings(this._obs, config, this._obsStudioVersion)
+    const { outputsHot } = await this.captureSetupMutationFlags()
+    return applyObsRecordingSettings(this._obs, config, this._obsStudioVersion, { outputsHot })
   }
 
   /** Re-fit capture once the Valorant viewport is stable (after loading / agent select). */
@@ -638,28 +687,43 @@ export class OBSRecorder {
 
     if (!status.outputActive || this._matchOwnedRecording) return 'idle'
 
-    // Brief settle — OBS sometimes flips outputActive off moments after StopRecord.
-    await new Promise((r) => setTimeout(r, 400))
-    const recheck = await this._obs.call('GetRecordStatus') as RecordStatus
-    if (!recheck.outputActive) {
-      log.info('[OBSRecorder] OBS outputActive cleared after settle wait')
-      return 'idle'
-    }
-
     log.warn('[OBSRecorder] Unowned OBS outputActive — attempting StopRecord to clear stale state')
-    try {
-      await this._obs.call('StopRecord')
-      await new Promise((r) => setTimeout(r, 400))
-      const afterStop = await this._obs.call('GetRecordStatus') as RecordStatus
-      if (!afterStop.outputActive) {
-        log.info('[OBSRecorder] Cleared stale OBS record state')
-        return 'cleared'
-      }
-    } catch (err) {
-      log.warn('[OBSRecorder] StopRecord while clearing stale state failed:', err)
-    }
+    await new Promise((r) => setTimeout(r, 1000))
 
-    return 'blocked'
+    const maxStopAttempts = 2
+    let didStop = false
+    for (let attempt = 0; ; attempt++) {
+      let recheck: RecordStatus
+      try {
+        recheck = await this._obs.call('GetRecordStatus') as RecordStatus
+      } catch (err) {
+        log.warn('[OBSRecorder] GetRecordStatus while clearing stale state failed:', err)
+        return didStop ? 'blocked' : 'idle'
+      }
+
+      const action = nextUnownedClearAction({
+        attempt,
+        maxStopAttempts,
+        outputActive: !!recheck.outputActive,
+      })
+      if (action === 'cleared') {
+        if (didStop) {
+          log.info('[OBSRecorder] Cleared stale OBS record state')
+          return 'cleared'
+        }
+        log.info('[OBSRecorder] OBS outputActive cleared after settle wait')
+        return 'idle'
+      }
+      if (action === 'blocked') return 'blocked'
+
+      try {
+        await this._obs.call('StopRecord')
+      } catch (err) {
+        log.warn('[OBSRecorder] StopRecord while clearing stale state failed:', err)
+      }
+      didStop = true
+      await new Promise((r) => setTimeout(r, 800))
+    }
   }
 
   async start(game: string, config?: RecorderConfig): Promise<void> {
@@ -683,6 +747,7 @@ export class OBSRecorder {
     this._startupWarning = null
     this._outputPath = null
     this._disconnectedDuringRecording = false
+    this._obsProcessDiedDuringMatch = false
     this._clipsOnlySession = config?.clipsOnly === true
 
     const saveDir = config?.savePath ?? join(app.getPath('userData'), 'recordings')
@@ -730,6 +795,20 @@ export class OBSRecorder {
       // Start the full-match recording (skipped in clips-only mode)
       if (!this._clipsOnlySession) {
         await this._obs.call('StartRecord')
+        const armed = await waitForObsRecordArmed({
+          getOutputActive: async () => {
+            const s = await this._obs.call('GetRecordStatus') as { outputActive?: boolean }
+            return !!s.outputActive
+          },
+        })
+        if (!armed.armed) {
+          try {
+            await this._obs.call('StopRecord')
+          } catch (err) {
+            log.warn('[OBSRecorder] StopRecord after start-verify timeout failed:', err)
+          }
+          throw new Error('OBS StartRecord did not become active within 5s')
+        }
       }
       this._matchOwnedRecording = true
       this._gameplayRefitDone = false
@@ -785,6 +864,25 @@ export class OBSRecorder {
       this._stopReconnectLoop()
       return
     }
+
+    const processRunning = await isObsProcessRunning()
+    if (shouldReclaimAfterProcessDeath({
+      processRunning,
+      matchOwned: this._matchOwnedRecording,
+      activelyRecording: this._recording,
+      disconnectedDuringRecording: this._disconnectedDuringRecording,
+      outputActive: false,
+    })) {
+      if (!this._obsProcessDiedDuringMatch) {
+        this._obsProcessDiedDuringMatch = true
+        this._stopReconnectLoop()
+        log.warn('[OBSRecorder] OBS process exited during match — reclaiming')
+        this.onStatusChange?.(false, 'OBS process exited during recording')
+        this.onObsProcessDiedDuringMatch?.()
+      }
+      return
+    }
+
     const result = await this.connect()
     if (!result.ok) return
     log.info('[OBSRecorder] Reconnected to OBS during match')
@@ -838,6 +936,16 @@ export class OBSRecorder {
       const reconnect = await this.connect().catch(() => ({ ok: false as const }))
       if (!reconnect.ok) {
         log.warn('[OBSRecorder] Cannot reconnect to OBS — using last known output path')
+        const processRunning = await isObsProcessRunning()
+        if (this._obsProcessDiedDuringMatch || !processRunning) {
+          this._recording = false
+          this._matchOwnedRecording = false
+          this._clipsOnlySession = false
+          this._startedAt = null
+          this._disconnectedDuringRecording = false
+          this._noteRecordingStopped()
+          this.onStatusChange?.(false)
+        }
         return this._outputPath
       }
     }

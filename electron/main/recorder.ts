@@ -16,6 +16,8 @@ export interface RecorderConfig {
   captureMonitor?: 'auto' | number // which monitor to capture; 'auto' = detect from Valorant window
   /** When false, skip SetVideoSettings so OBS keeps the creator's stream/canvas config. */
   manageObsVideo?: boolean
+  /** When false, skip SetVideoSettings even when manageObsVideo is true (hot output guard). */
+  allowVideoSettings?: boolean
   /** Replay-buffer highlights only — no full-match OBS recording. */
   clipsOnly?: boolean
 }
