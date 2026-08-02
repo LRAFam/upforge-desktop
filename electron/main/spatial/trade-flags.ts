@@ -16,6 +16,15 @@ export type TradeTimelineEvent = {
   killerPuuid?: string
   videoOffsetMs?: number
   round?: number
+  spatial?: {
+    victimWorld?: { x: number; y: number }
+  }
+}
+
+function worldDistance(ax: number, ay: number, bx: number, by: number): number {
+  const dx = ax - bx
+  const dy = ay - by
+  return Math.sqrt(dx * dx + dy * dy)
 }
 
 /**
@@ -50,17 +59,19 @@ export function countAlliesAliveAtDeath(
 }
 
 /**
- * True when an ally kills the player's killer within TRADE_AFTER_DEATH_MS (same round).
+ * True when an ally kills the player's killer within TRADE_AFTER_DEATH_MS (same round),
+ * or kills any enemy who dies within trade radius of the death location (proximity fallback).
  */
 export function deathWasTraded(
   death: TradeTimelineEvent & { killerPuuid?: string },
   subsequentKills: TradeTimelineEvent[],
   allyPuids: Set<string>,
+  tradeRadiusWorld: number = 2500,
 ): boolean {
   const t0 = death.videoOffsetMs
   if (t0 == null || death.round == null) return false
   const killer = death.killerPuuid?.toLowerCase()
-  if (!killer) return false
+  const deathWorld = death.spatial?.victimWorld
 
   for (const k of subsequentKills) {
     if (k.round !== death.round || k.videoOffsetMs == null) continue
@@ -68,7 +79,16 @@ export function deathWasTraded(
     if (dt <= 0 || dt > TRADE_AFTER_DEATH_MS) continue
     const kKiller = k.killerPuuid?.toLowerCase()
     if (!kKiller || !allyPuids.has(kKiller)) continue
-    if (k.victimPuuid?.toLowerCase() === killer) return true
+    if (killer && k.victimPuuid?.toLowerCase() === killer) return true
+    if (deathWorld && k.spatial?.victimWorld) {
+      const dist = worldDistance(
+        deathWorld.x,
+        deathWorld.y,
+        k.spatial.victimWorld.x,
+        k.spatial.victimWorld.y,
+      )
+      if (dist <= tradeRadiusWorld) return true
+    }
   }
   return false
 }

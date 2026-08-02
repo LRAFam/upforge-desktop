@@ -107,6 +107,7 @@ export function enrichKillFromRiotRow(
     isolated,
     alliesNearby,
     killerCallout,
+    victimWorld: { x: vLoc.x, y: vLoc.y },
   }
 }
 
@@ -161,17 +162,22 @@ function buildPatterns(
 
   for (const [callout, list] of byCallout) {
     if (list.length < 2) continue
-    const isolatedCount = list.filter((d) => d.isolated).length
-    if (isolatedCount >= 2) {
+    const untradedCount = list.filter((d) => isUntradedDeath(d)).length
+    const farCount = list.filter((d) => farFromTeam(d)).length
+    if (untradedCount >= 2) {
       patterns.push(
-        `${isolatedCount} untraded deaths @ ${callout}${roundSuffix}`,
+        `${untradedCount} untraded deaths @ ${callout}${roundSuffix}`,
       )
-    } else if (isolatedCount === 1 && list.length >= 2) {
+    } else if (untradedCount === 1 && list.length >= 2) {
       patterns.push(
-        `${list.length} deaths @ ${callout}${roundSuffix} (1 without trade)`,
+        `${list.length} deaths @ ${callout}${roundSuffix} (1 untraded)`,
+      )
+    } else if (farCount >= 2) {
+      patterns.push(
+        `${farCount} far-from-team deaths @ ${callout}${roundSuffix}`,
       )
     } else if (list.length >= 3) {
-      patterns.push(`${list.length} deaths @ ${callout}${roundSuffix} — mostly traded`)
+      patterns.push(`${list.length} deaths @ ${callout}${roundSuffix} — mostly traded or with team`)
     }
   }
 
@@ -447,7 +453,8 @@ function buildHeatmapInsight(
     return null
   }
 
-  const isolated = known.filter((d) => d.isolated)
+  const untraded = known.filter((d) => isUntradedDeath(d))
+  const far = known.filter((d) => farFromTeam(d))
   const byCallout = new Map<string, SpatialTimelineEvent[]>()
   for (const d of known) {
     const list = byCallout.get(d.callout) ?? []
@@ -458,49 +465,51 @@ function buildHeatmapInsight(
   let topCallout: string | null = null
   let topScore = 0
   for (const [callout, list] of byCallout) {
-    const iso = list.filter((d) => d.isolated).length
+    const ut = list.filter((d) => isUntradedDeath(d)).length
     const rate = roundCount && roundCount > 0 ? list.length / roundCount : 0
-    const score = iso * 3 + (list.length - iso) * 0.4 + (rate >= 0.12 ? list.length : 0)
+    const score = ut * 3 + (list.length - ut) * 0.4 + (rate >= 0.12 ? list.length : 0)
     if (score > topScore) {
       topScore = score
       topCallout = callout
     }
   }
 
-  if (isolated.length >= 3) {
+  if (untraded.length >= 3) {
     const worst = [...byCallout.entries()]
-      .map(([callout, list]) => ({ callout, iso: list.filter((d) => d.isolated).length }))
-      .sort((a, b) => b.iso - a.iso)[0]
-    if (worst?.iso) {
-      return `${isolated.length} deaths with no trade support — worst @ ${worst.callout}`
+      .map(([callout, list]) => ({ callout, ut: list.filter((d) => isUntradedDeath(d)).length }))
+      .sort((a, b) => b.ut - a.ut)[0]
+    if (worst?.ut) {
+      return `${untraded.length} untraded deaths — worst @ ${worst.callout}`
     }
-    return `${isolated.length} deaths with no teammate in trade range`
+    return `${untraded.length} untraded deaths this match`
   }
 
   if (!topCallout) return null
   const topList = byCallout.get(topCallout) ?? []
-  const isoAtTop = topList.filter((d) => d.isolated).length
+  const utAtTop = topList.filter((d) => isUntradedDeath(d)).length
 
-  if (isoAtTop >= 2) {
-    return `${isoAtTop} untraded deaths @ ${topCallout}`
+  if (utAtTop >= 2) {
+    return `${utAtTop} untraded deaths @ ${topCallout}`
   }
-  if (topList.length >= 3 && isoAtTop >= 1) {
-    return `${topList.length} deaths @ ${topCallout}, ${isoAtTop} without trade`
+  if (topList.length >= 3 && utAtTop >= 1) {
+    return `${topList.length} deaths @ ${topCallout}, ${utAtTop} untraded`
   }
   if (topList.length >= 3) {
-    return `${topList.length} deaths @ ${topCallout} — mostly traded`
+    return `${topList.length} deaths @ ${topCallout} — mostly traded or with team`
   }
-  if (topList.length === 2 && isoAtTop === 2) {
+  if (topList.length === 2 && utAtTop === 2) {
     return `Both deaths @ ${topCallout} were untraded`
   }
 
   const areas = byCallout.size
-  if (isolated.length > 0) {
-    return `${known.length} deaths across ${areas} areas · ${isolated.length} untraded`
+  if (untraded.length > 0) {
+    return `${known.length} deaths across ${areas} areas · ${untraded.length} untraded`
+  }
+  if (far.length > 0) {
+    return `${known.length} deaths across ${areas} areas · ${far.length} far from team`
   }
   return `${known.length} deaths across ${areas} areas — no major untraded clusters`
 }
-
 export function buildMatchSpatialSummary(match: MatchData): MatchSpatialSummary | null {
   const map = match.map
   if (!map) return null
@@ -680,9 +689,11 @@ export function applyDeathTradeFlags(match: MatchData, allyPuids: Set<string>): 
 
     const alliesAlive = idx >= 0
       ? countAlliesAliveAtDeath(sameRound, idx, own, allyPuids)
-      : Math.max(0, allyPuids.size - 1)
+      : undefined
 
-    death.spatial.alliesAlive = alliesAlive
+    if (alliesAlive !== undefined) {
+      death.spatial.alliesAlive = alliesAlive
+    }
     death.spatial.traded = deathWasTraded(death, roundEvents, allyPuids)
   }
 }
