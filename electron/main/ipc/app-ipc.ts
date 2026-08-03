@@ -34,6 +34,7 @@ export function setupAppHandlers(
   getWaitingForMatch?: () => boolean,
   getActivityLog?: () => { time: number; message: string; game?: string }[],
   showClipsFn?: () => void,
+  focusNavigateFn?: (target: string | { path: string; query?: Record<string, string> }) => void,
   getRecordingBackend?: () => 'obs',
   getCurrentQueueMode?: () => string | null,
   getObsConnected?: () => boolean,
@@ -74,6 +75,14 @@ export function setupAppHandlers(
     showClipsFn?.()
     return { ok: true }
   })
+
+  ipcMain.handle(
+    'app:focus-navigate',
+    (_e, target: string | { path: string; query?: Record<string, string> }) => {
+      focusNavigateFn?.(target)
+      return { ok: true }
+    },
+  )
 
   ipcMain.handle('app:open-url', (_e, { url }: { url: string }) => {
     shell.openExternal(url)

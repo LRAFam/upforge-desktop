@@ -41,6 +41,8 @@ const api = {
     getActivityLog: () => ipcRenderer.invoke('app:get-activity-log'),
     getSupportBundle: () => ipcRenderer.invoke('app:get-support-bundle') as Promise<string>,
     showClips: () => ipcRenderer.invoke('app:show-clips'),
+    focusAndNavigate: (target: string | { path: string; query?: Record<string, string> }) =>
+      ipcRenderer.invoke('app:focus-navigate', target),
     openUrl: (url: string) => ipcRenderer.invoke('app:open-url', { url }),
     openWebShell: (path: string) => ipcRenderer.invoke('app:open-web-shell', { path }),
     refreshDashboard: () => ipcRenderer.invoke('app:refresh-dashboard'),

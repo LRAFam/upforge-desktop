@@ -5400,6 +5400,18 @@ async function startApp(): Promise<void> {
       mainWindow.focus()
       mainWindow.webContents.send('app:navigate', '/clips')
     }
+  }, (target: string | { path: string; query?: Record<string, string> }) => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      if (mainWindow.isMinimized()) mainWindow.restore()
+      mainWindow.show()
+      mainWindow.focus()
+      mainWindow.webContents.send('app:navigate', target)
+    } else {
+      focusMainWindow()
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('app:navigate', target)
+      }
+    }
   }, performanceManager, obsRecorder, trainerBridge,
   async (game: string) => {
     if (manualEndMatchRecording) return manualEndMatchRecording(game)
