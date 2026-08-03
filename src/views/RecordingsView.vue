@@ -170,7 +170,7 @@ onUnmounted(() => { cleanup?.() })
         <p class="text-sm font-semibold text-gray-400">No recordings yet</p>
         <p class="text-xs text-gray-600 max-w-sm">
           {{ obsConnected === false
-            ? 'OBS is not connected — set up recording so match VODs appear here.'
+            ? 'OBS is not connected. Set up recording so match VODs appear here.'
             : 'Play a match to capture a VOD.' }}
         </p>
         <button
