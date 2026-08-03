@@ -233,7 +233,7 @@ export interface PendingRecording {
   cloudUploaded?: boolean
   analysisReadiness?: {
     ready: boolean
-    state: 'ready' | 'syncing' | 'no_deaths' | 'unavailable' | 'file_missing' | 'finalizing' | 'mode_unsupported' | 'file_unreadable'
+    state: 'ready' | 'syncing' | 'waiting_match_data' | 'no_deaths' | 'unavailable' | 'file_missing' | 'finalizing' | 'mode_unsupported' | 'file_unreadable'
     message: string
     duelMomentCount: number
   }
