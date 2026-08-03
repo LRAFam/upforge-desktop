@@ -24,6 +24,6 @@ describe('quota-display', () => {
   })
 
   it('sidebar label unknown when limit missing', () => {
-    expect(analysesLeftSidebarLabel(2, null)).toBe('Analyses')
+    expect(analysesLeftSidebarLabel(2, null)).toBe('Unlimited analyses')
   })
 })

@@ -116,10 +116,10 @@ const canAnalyse = (rec: PendingRecording) =>
   && (Boolean(rec.analysisReadiness?.ready) || canRetryRiotMatchStats(rec))
 
 onMounted(async () => {
+  cleanup = window.api.on('recordings:updated', () => { void load() })
   const s = await window.api.app.getStatus().catch(() => null)
   obsConnected.value = s?.obsConnected ?? null
-  load()
-  cleanup = window.api.on('recordings:updated', () => { void load() })
+  void load()
 })
 
 onUnmounted(() => { cleanup?.() })

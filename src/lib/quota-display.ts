@@ -24,7 +24,7 @@ export function analysesLeftSidebarLabel(
   used: number | null | undefined,
   limit: number | null | undefined,
 ): string {
-  if (limit == null) return 'Analyses'
+  if (limit == null) return 'Unlimited analyses'
   if (isUnlimitedQuota(limit)) return 'Unlimited analyses'
   const remaining = Math.max(0, limit - (used ?? 0))
   const noun = remaining === 1 ? 'analysis' : 'analyses'

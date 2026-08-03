@@ -2074,8 +2074,11 @@ function openFindCoaches() {
 function dismiss() { window.close() }
 
 async function handoffToMain(target: string | { path: string; query?: Record<string, string> }) {
-  await window.api.app.focusAndNavigate(target)
-  window.close()
+  try {
+    await window.api.app.focusAndNavigate(target)
+  } finally {
+    window.close()
+  }
 }
 
 async function dismissWithHandoff() {
@@ -2083,16 +2086,15 @@ async function dismissWithHandoff() {
   const recordingId = vodRecordingId.value
 
   if (analysisId != null && recordingId) {
-    await window.api.app.openVodReview(recordingId)
-    window.close()
+    try {
+      await openVodReview()
+    } finally {
+      window.close()
+    }
     return
   }
 
   await handoffToMain('/dashboard')
-}
-
-async function dismissAfterCoachSuccess() {
-  await handoffToMain('/rosters')
 }
 
 async function openCoachNotesFromPostGame() {

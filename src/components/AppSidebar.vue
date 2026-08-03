@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { usePrimaryGame } from '../composables/usePrimaryGame'
 import { useRosterHubBadge } from '../composables/useRosterHubBadge'
@@ -91,15 +91,8 @@ function openSettings() {
   router.push('/settings').catch(() => {})
 }
 
-watch(() => route.fullPath, () => {
-  void refreshAccount()
-})
-
 onMounted(() => {
   void refreshAccount()
-
-  const offRecordings = window.api.on?.('recordings:updated', () => { void refreshAccount() })
-  onUnmounted(() => { offRecordings?.() })
 
   if (!window.api?.coach?.getStudentHub) return
   void Promise.all([
