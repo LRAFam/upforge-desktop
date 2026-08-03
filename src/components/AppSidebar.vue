@@ -1,15 +1,34 @@
 <script setup lang="ts">
-import { computed, onMounted } from 'vue'
-import { useRoute } from 'vue-router'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { usePrimaryGame } from '../composables/usePrimaryGame'
 import { useRosterHubBadge } from '../composables/useRosterHubBadge'
 import { gameNavRoutes } from '../lib/game-modules'
+import { analysesLeftSidebarLabel } from '../lib/quota-display'
 import { WEB_SIDEBAR_LINKS, openWebFeature } from '../lib/web-explore-links'
+import type { ProfileData } from '../env.d.ts'
 import upforgeIcon from '../assets/upforge-icon.webp'
 
 const route = useRoute()
+const router = useRouter()
 const { primaryGame } = usePrimaryGame()
 const { pendingReviewCount, setPendingReviewCount } = useRosterHubBadge()
+
+const profileUser = ref<ProfileData['user'] | null>(null)
+const signingOut = ref(false)
+
+const displayName = computed(() =>
+  profileUser.value?.name?.trim()
+  || profileUser.value?.email?.trim()
+  || 'Account',
+)
+
+const analysesLine = computed(() =>
+  analysesLeftSidebarLabel(
+    profileUser.value?.analysis_stats?.total,
+    profileUser.value?.analysis_stats?.limit,
+  ),
+)
 
 interface NavItem {
   to: string
@@ -31,7 +50,6 @@ const mainNav: NavItem[] = [
 
 const bottomNav: NavItem[] = [
   { to: '/settings', label: 'Settings', icon: 'home', match: p => p === '/settings' },
-  { to: '/settings', label: 'Account', icon: 'analytics', match: p => p === '/settings' },
 ]
 
 const visibleMainNav = computed(() => {
@@ -53,7 +71,36 @@ function badgeFor(item: NavItem): number | null {
   return pendingReviewCount.value > 0 ? pendingReviewCount.value : null
 }
 
+async function refreshAccount() {
+  const p = await window.api.profile.get().catch(() => null)
+  profileUser.value = p?.user ?? null
+}
+
+async function signOut() {
+  if (signingOut.value) return
+  signingOut.value = true
+  try {
+    await window.api.auth.logout()
+    router.push('/login').catch(() => {})
+  } finally {
+    signingOut.value = false
+  }
+}
+
+function openSettings() {
+  router.push('/settings').catch(() => {})
+}
+
+watch(() => route.fullPath, () => {
+  void refreshAccount()
+})
+
 onMounted(() => {
+  void refreshAccount()
+
+  const offRecordings = window.api.on?.('recordings:updated', () => { void refreshAccount() })
+  onUnmounted(() => { offRecordings?.() })
+
   if (!window.api?.coach?.getStudentHub) return
   void Promise.all([
     window.api.coach.getStudentHub().catch(() => null),
@@ -125,7 +172,7 @@ onMounted(() => {
       </div>
     </nav>
 
-    <div class="px-2 py-3 border-t border-white/[0.06] space-y-0.5">
+    <div class="px-2 py-3 border-t border-white/[0.06] space-y-2">
       <RouterLink
         v-for="item in bottomNav"
         :key="item.label"
@@ -133,10 +180,28 @@ onMounted(() => {
         class="sidebar-link flex items-center gap-2.5 rounded-lg px-3 py-2 text-[11px] font-medium transition-colors"
         :class="route.path === item.to ? 'text-gray-300 bg-white/[0.04]' : 'text-gray-600 hover:text-gray-400 hover:bg-white/[0.03]'"
       >
-        <svg v-if="item.label === 'Settings'" class="h-4 w-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
-        <svg v-else class="h-4 w-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/></svg>
+        <svg class="h-4 w-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
         {{ item.label }}
       </RouterLink>
+
+      <div class="rounded-lg border border-white/[0.06] bg-white/[0.02] px-2.5 py-2">
+        <button
+          type="button"
+          class="w-full text-left min-w-0"
+          @click="openSettings"
+        >
+          <p class="truncate text-[11px] font-semibold text-gray-200">{{ displayName }}</p>
+          <p class="truncate text-[10px] text-gray-500 tabular-nums mt-0.5">{{ analysesLine }}</p>
+        </button>
+        <button
+          type="button"
+          class="mt-2 w-full rounded-md border border-red-500/20 bg-red-500/10 px-2 py-1.5 text-[10px] font-semibold text-red-300 hover:bg-red-500/15 disabled:opacity-50"
+          :disabled="signingOut"
+          @click.stop="signOut"
+        >
+          Sign out
+        </button>
+      </div>
     </div>
   </aside>
 </template>
