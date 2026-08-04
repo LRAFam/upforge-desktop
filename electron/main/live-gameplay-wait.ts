@@ -1,6 +1,10 @@
 /**
  * Optional wait after INGAME presence until Live Client signals gameplay (guns-up).
  * Falls through quickly when Live Client is unavailable.
+ *
+ * Valorant no longer exposes the port-2999 Live Client API reliably; prefer starting
+ * at INGAME. This helper remains for callers that still want a best-effort cue, with
+ * a hard overall deadline so a hung localhost probe cannot stall match recording.
  */
 import https from 'https'
 import log from 'electron-log'
@@ -9,6 +13,8 @@ export interface LiveGameplayWaitOpts {
   maxMs?: number
   pollMs?: number
   isCancelled?: () => boolean
+  /** Test seam — defaults to localhost Live Client HTTPS GET. */
+  getJson?: <T>(path: string) => Promise<T>
 }
 
 type LiveEvent = { EventName?: string; EventTime?: number }
@@ -59,30 +65,49 @@ export function liveEventsIndicateGameplay(events: LiveEvent[] | null | undefine
 export async function waitForLiveGameplayCue(opts: LiveGameplayWaitOpts = {}): Promise<boolean> {
   const maxMs = opts.maxMs ?? 60_000
   const pollMs = opts.pollMs ?? 1_500
+  const getJson = opts.getJson ?? riotGet
   const deadline = Date.now() + maxMs
 
-  // Probe once — if Live Client is dead, don't burn the wait budget.
-  try {
-    await riotGet('/liveclientdata/activeplayer')
-  } catch {
-    log.info('[GameplayWait] Live Client unavailable — starting recording at INGAME')
+  const work = async (): Promise<boolean> => {
+    // Probe once — if Live Client is dead, don't burn the wait budget.
+    try {
+      await getJson('/liveclientdata/activeplayer')
+    } catch {
+      log.info('[GameplayWait] Live Client unavailable — starting recording at INGAME')
+      return false
+    }
+
+    while (Date.now() < deadline) {
+      if (opts.isCancelled?.()) return false
+      try {
+        const data = await getJson<{ Events?: LiveEvent[] }>('/liveclientdata/eventdata')
+        if (liveEventsIndicateGameplay(data?.Events)) {
+          log.info('[GameplayWait] Live Client gameplay cue — starting recording')
+          return true
+        }
+      } catch {
+        // transient — keep polling until deadline
+      }
+      await new Promise((r) => setTimeout(r, pollMs))
+    }
+
+    log.info('[GameplayWait] Timed out waiting for gameplay cue — starting recording anyway')
     return false
   }
 
-  while (Date.now() < deadline) {
-    if (opts.isCancelled?.()) return false
-    try {
-      const data = await riotGet<{ Events?: LiveEvent[] }>('/liveclientdata/eventdata')
-      if (liveEventsIndicateGameplay(data?.Events)) {
-        log.info('[GameplayWait] Live Client gameplay cue — starting recording')
-        return true
-      }
-    } catch {
-      // transient — keep polling until deadline
-    }
-    await new Promise((r) => setTimeout(r, pollMs))
+  // Hard cap: a hung GET must not block match start past maxMs.
+  let timer: ReturnType<typeof setTimeout> | undefined
+  try {
+    return await Promise.race([
+      work(),
+      new Promise<boolean>((resolve) => {
+        timer = setTimeout(() => {
+          log.info('[GameplayWait] Hard deadline reached — starting recording anyway')
+          resolve(false)
+        }, maxMs)
+      }),
+    ])
+  } finally {
+    if (timer !== undefined) clearTimeout(timer)
   }
-
-  log.info('[GameplayWait] Timed out waiting for gameplay cue — starting recording anyway')
-  return false
 }

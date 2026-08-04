@@ -94,7 +94,7 @@ import {
 } from './riot-local-api'
 import { decideRiotAccountSwitch } from './riot-account-switch'
 import { applyLiveKillStampsToTimeline } from './live-kill-stamps'
-import { waitForLiveGameplayCue } from './live-gameplay-wait'
+import { withTimeout } from './promise-timeout'
 import { LoLLiveClientApi } from './lol-live-client-api'
 import {
   gameLabel,
@@ -4194,35 +4194,37 @@ function setupGameDetection(): void {
       return
     }
 
-    // Prefer guns-up over INGAME loading when Live Client is available — shrinks load-skew.
-    if (game === 'valorant' && !reclaimedExistingCapture) {
-      logActivity('Waiting for round start…')
-      tray?.setToolTip('UpForge — Waiting for round start…')
-      await waitForLiveGameplayCue({
-        maxMs: 60_000,
-        isCancelled: () => cancelled || isStale(),
-      })
-      if (abortIfStale(isStale, game)) return
-      if (cancelled) {
-        logActivity('Match ended during load — recording skipped')
-        tray?.setToolTip(idleTooltip(game))
-        await rearmGameDetection(game, true)
-        return
-      }
+    // Valorant's port-2999 Live Client API is deprecated / often half-open; waiting on it
+    // stalled match start ("Waiting for round start…") with no recording. Start at INGAME.
+    if (abortIfStale(isStale, game)) return
+    if (cancelled) {
+      logActivity('Match ended during load — recording skipped')
+      tray?.setToolTip(idleTooltip(game))
+      await rearmGameDetection(game, true)
+      return
     }
 
     tray?.setToolTip('UpForge — Starting recorder...')
+    logActivity('Starting OBS recording…')
     mainWindow?.webContents.send('recording:starting', { starting: true })
     const telemetry = beginMatchTelemetry(game)
     telemetry.startSector('detect_to_record_start')
+    /** Hard cap so a hung OBS WebSocket call cannot block the whole game session. */
+    const OBS_RECORD_START_TIMEOUT_MS = 90_000
     try {
       // Create the overlay window just before recording starts — deferred from startup
       // so it doesn't break Valorant's exclusive fullscreen before we actually need it.
       if (isInGameOverlayEnabled()) createOverlayWindow()
-      await ensureObsReadyOrThrow()
-      if (!reclaimedExistingCapture) {
-        await obsRecorder.start(game, recorderConfig)
-      }
+      await withTimeout(
+        (async () => {
+          await ensureObsReadyOrThrow()
+          if (!reclaimedExistingCapture) {
+            await obsRecorder.start(game, recorderConfig)
+          }
+        })(),
+        OBS_RECORD_START_TIMEOUT_MS,
+        'OBS start timed out — OBS may be frozen. Restart OBS from Settings → Recording.',
+      )
       telemetry.endSector('detect_to_record_start')
       telemetry.setAudioTracks(obsRecorder.wasNoAudio() ? 0 : 1)
       telemetry.setRecordingFacts({
@@ -4268,6 +4270,8 @@ function setupGameDetection(): void {
         telemetry.setDnf('obs_not_ready', msg)
       } else if (/did not become active/i.test(msg)) {
         telemetry.setDnf('start_verify_failed', msg)
+      } else if (/OBS start timed out/i.test(msg)) {
+        telemetry.setDnf('start_timeout', msg)
       } else {
         telemetry.setDnf('other', msg)
       }
@@ -4278,11 +4282,14 @@ function setupGameDetection(): void {
       }
       const unownedBlocked = /already recording/i.test(msg)
       const startVerifyFailed = /did not become active/i.test(msg)
+      const startTimedOut = /OBS start timed out/i.test(msg)
       const userFacingStartMsg = unownedBlocked
         ? 'OBS is already recording — stop it in OBS, then UpForge can capture.'
         : startVerifyFailed
           ? 'OBS did not start recording — check OBS Output settings.'
-          : null
+          : startTimedOut
+            ? 'OBS start timed out — restart OBS from Settings → Recording, then queue again.'
+            : null
       logActivity(userFacingStartMsg ?? `Recording failed to start: ${msg}`)
       matchHandled = false
       riotLocalApi.onMatchEnded = null
