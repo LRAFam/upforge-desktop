@@ -6,6 +6,7 @@ import log from 'electron-log'
 import { withRetry } from './utils/retry'
 import { normalizeToAcs } from './combat-score'
 import { getApiBaseUrl } from './api-base'
+import { resolveMaxValorantAccounts } from './valorant-account-cap'
 
 const API_BASE = getApiBaseUrl()
 
@@ -502,14 +503,23 @@ export class AuthManager {
       const accounts = this._user?.riot_accounts ?? []
       return {
         accounts,
-        max: this._user?.max_valorant_accounts ?? 1,
+        max: resolveMaxValorantAccounts({
+          tier: this._user?.tier,
+          isAdmin: this._user?.is_admin,
+          userMax: this._user?.max_valorant_accounts,
+        }),
         active_id: accounts.find((a) => a.is_active)?.id ?? null,
       }
     }
     try {
       const res = await this._api.get('/api/riot-accounts')
       const accounts = (res.data?.accounts ?? []) as RiotAccount[]
-      const max = res.data?.max_valorant_accounts ?? this._user?.max_valorant_accounts ?? 1
+      const max = resolveMaxValorantAccounts({
+        apiMax: res.data?.max_valorant_accounts ?? res.data?.max,
+        tier: this._user?.tier,
+        isAdmin: this._user?.is_admin,
+        userMax: this._user?.max_valorant_accounts,
+      })
       const active_id = (res.data?.active_id as number | null | undefined)
         ?? accounts.find((a) => a.is_active)?.id
         ?? null
@@ -524,7 +534,11 @@ export class AuthManager {
       const accounts = this._user?.riot_accounts ?? []
       return {
         accounts,
-        max: this._user?.max_valorant_accounts ?? 1,
+        max: resolveMaxValorantAccounts({
+          tier: this._user?.tier,
+          isAdmin: this._user?.is_admin,
+          userMax: this._user?.max_valorant_accounts,
+        }),
         active_id: accounts.find((a) => a.is_active)?.id ?? null,
       }
     }
