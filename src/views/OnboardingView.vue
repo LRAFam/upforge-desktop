@@ -24,38 +24,38 @@
       </p>
     </div>
 
-      <div class="wiz-shell dash-panel w-full max-w-xl overflow-hidden relative">
-        <div class="flex items-center justify-between gap-3 px-6 pt-5 pb-4 border-b border-white/[0.07]">
-          <button
-            v-if="step > 1"
-            type="button"
-            class="w-8 h-8 flex items-center justify-center rounded-lg text-gray-500 hover:text-gray-200 hover:bg-white/[0.05] transition-colors"
-            aria-label="Back"
-            @click="prevStep"
-          >
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" class="w-4 h-4">
-              <polyline points="15 18 9 12 15 6" />
-            </svg>
-          </button>
-          <div v-else class="w-8" />
+    <div class="wiz-shell dash-panel w-full max-w-xl overflow-hidden relative">
+      <div class="flex items-center justify-between gap-3 px-6 pt-5 pb-4 border-b border-white/[0.07]">
+        <button
+          v-if="step > 1"
+          type="button"
+          class="w-8 h-8 flex items-center justify-center rounded-lg text-gray-500 hover:text-gray-200 hover:bg-white/[0.05] transition-colors"
+          aria-label="Back"
+          @click="prevStep"
+        >
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" class="w-4 h-4">
+            <polyline points="15 18 9 12 15 6" />
+          </svg>
+        </button>
+        <div v-else class="w-8" />
 
-          <div class="flex-1 min-w-0 px-2">
-            <div class="h-1 rounded-full bg-white/[0.06] overflow-hidden">
-              <div
-                class="h-full rounded-full bg-[#ff4655] transition-all duration-300 ease-out"
-                :style="{ width: `${(step / TOTAL_STEPS) * 100}%` }"
-              />
-            </div>
-            <p class="mt-2 text-[10px] font-bold uppercase tracking-[0.14em] text-gray-500 text-center">
-              {{ stepLabels[step - 1] }} · {{ step }} / {{ TOTAL_STEPS }}
-            </p>
+        <div class="flex-1 min-w-0 px-2">
+          <div class="h-1 rounded-full bg-white/[0.06] overflow-hidden">
+            <div
+              class="h-full rounded-full bg-[#ff4655] transition-all duration-300 ease-out"
+              :style="{ width: `${(step / TOTAL_STEPS) * 100}%` }"
+            />
           </div>
-
-          <div class="w-8" />
+          <p class="mt-2 text-[10px] font-bold uppercase tracking-[0.14em] text-gray-500 text-center">
+            {{ stepLabels[step - 1] }} · {{ step }} / {{ TOTAL_STEPS }}
+          </p>
         </div>
 
-        <div class="relative overflow-hidden max-h-[min(78vh,680px)] overflow-y-auto">
-          <Transition :name="slideDir">
+        <div class="w-8" />
+      </div>
+
+      <div class="relative overflow-hidden max-h-[min(78vh,720px)] overflow-y-auto">
+        <Transition :name="slideDir">
             <!-- 1 · Account -->
             <div v-if="step === 1" key="step1" class="wiz-step">
               <h2 class="text-[22px] font-black text-white tracking-tight">Sign in</h2>
@@ -75,6 +75,7 @@
                     placeholder="your@email.com"
                     autocomplete="email"
                     class="wiz-input"
+                    @keydown.enter.prevent="handleSignIn"
                   />
                 </div>
                 <div>
@@ -554,32 +555,6 @@
                 </p>
               </div>
 
-              <a
-                :href="DISCORD_INVITE_URL"
-                target="_blank"
-                rel="noopener noreferrer"
-                class="mb-2.5 flex w-full items-center justify-center gap-2.5 rounded-[10px] bg-[#5865F2] px-4 py-2.5 text-sm font-bold text-white transition-colors hover:bg-[#4752C4]"
-              >
-                <svg class="h-5 w-5 shrink-0" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-                  <path
-                    d="M20.317 4.37a19.791 19.791 0 0 0-4.885-1.515.074.074 0 0 0-.079.037c-.21.375-.444.864-.608 1.25a18.27 18.27 0 0 0-5.487 0 12.64 12.64 0 0 0-.617-1.25.077.077 0 0 0-.079-.037A19.736 19.736 0 0 0 3.677 4.37a.07.07 0 0 0-.032.027C.533 9.046-.32 13.58.099 18.057a.082.082 0 0 0 .031.057 19.9 19.9 0 0 0 5.993 3.03.078.078 0 0 0 .084-.028 14.09 14.09 0 0 0 1.226-1.994.076.076 0 0 0-.041-.106 13.107 13.107 0 0 1-1.872-.892.077.077 0 0 1-.008-.128a10.2 10.2 0 0 0 .372-.292.074.074 0 0 1 .077-.01c3.928 1.793 8.18 1.793 12.062 0a.074.074 0 0 1 .078.01c.12.098.246.198.373.292a.077.077 0 0 1-.006.127 12.299 12.299 0 0 1-1.873.892.077.077 0 0 0-.041.107c.36.698.772 1.362 1.225 1.993a.076.076 0 0 0 .084.028 19.839 19.839 0 0 0 6.002-3.03.077.077 0 0 0 .032-.054c.5-5.177-.838-9.674-3.549-13.66a.061.061 0 0 0-.031-.03zM8.02 15.33c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.956-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.956 2.418-2.157 2.418zm7.975 0c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.955-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.946 2.418-2.157 2.418z"
-                  />
-                </svg>
-                Join the UpForge Discord
-              </a>
-
-              <button
-                v-if="!discordLinked"
-                type="button"
-                class="mb-6 flex w-full items-center justify-center gap-2 rounded-[10px] border border-[#5865F2]/35 bg-[#5865F2]/10 px-4 py-2.5 text-xs font-semibold text-[#c9cdfb] transition-colors hover:bg-[#5865F2]/18"
-                @click="openDiscordLink"
-              >
-                Link Discord for notifications &amp; bot features
-              </button>
-              <p v-else class="mb-6 text-[12px] text-emerald-400/90 text-center">
-                Discord linked · still join the server above for support
-              </p>
-
               <div class="wiz-actions">
                 <button
                   type="button"
@@ -605,13 +580,44 @@
                 >
                   Back to OBS setup
                 </button>
+                <p v-if="completeError" class="text-[12px] text-red-400 text-center">{{ completeError }}</p>
+              </div>
+
+              <div class="mt-6 pt-5 border-t border-white/[0.06] space-y-2.5">
+                <p class="text-[10px] font-bold uppercase tracking-[0.14em] text-gray-500 text-center">
+                  Optional
+                </p>
+                <a
+                  :href="DISCORD_INVITE_URL"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  class="flex w-full items-center justify-center gap-2.5 rounded-[10px] bg-[#5865F2] px-4 py-2.5 text-sm font-bold text-white transition-colors hover:bg-[#4752C4]"
+                >
+                  <svg class="h-5 w-5 shrink-0" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                    <path
+                      d="M20.317 4.37a19.791 19.791 0 0 0-4.885-1.515.074.074 0 0 0-.079.037c-.21.375-.444.864-.608 1.25a18.27 18.27 0 0 0-5.487 0 12.64 12.64 0 0 0-.617-1.25.077.077 0 0 0-.079-.037A19.736 19.736 0 0 0 3.677 4.37a.07.07 0 0 0-.032.027C.533 9.046-.32 13.58.099 18.057a.082.082 0 0 0 .031.057 19.9 19.9 0 0 0 5.993 3.03.078.078 0 0 0 .084-.028 14.09 14.09 0 0 0 1.226-1.994.076.076 0 0 0-.041-.106 13.107 13.107 0 0 1-1.872-.892.077.077 0 0 1-.008-.128a10.2 10.2 0 0 0 .372-.292.074.074 0 0 1 .077-.01c3.928 1.793 8.18 1.793 12.062 0a.074.074 0 0 1 .078.01c.12.098.246.198.373.292a.077.077 0 0 1-.006.127 12.299 12.299 0 0 1-1.873.892.077.077 0 0 0-.041.107c.36.698.772 1.362 1.225 1.993a.076.076 0 0 0 .084.028 19.839 19.839 0 0 0 6.002-3.03.077.077 0 0 0 .032-.054c.5-5.177-.838-9.674-3.549-13.66a.061.061 0 0 0-.031-.03zM8.02 15.33c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.956-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.956 2.418-2.157 2.418zm7.975 0c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.955-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.946 2.418-2.157 2.418z"
+                    />
+                  </svg>
+                  Join the UpForge Discord
+                </a>
+
+                <button
+                  v-if="!discordLinked"
+                  type="button"
+                  class="flex w-full items-center justify-center gap-2 rounded-[10px] border border-[#5865F2]/35 bg-[#5865F2]/10 px-4 py-2.5 text-xs font-semibold text-[#c9cdfb] transition-colors hover:bg-[#5865F2]/18"
+                  @click="openDiscordLink"
+                >
+                  Link Discord for notifications &amp; bot features
+                </button>
+                <p v-else class="text-[12px] text-emerald-400/90 text-center">
+                  Discord linked · still join the server above for support
+                </p>
               </div>
             </div>
 
           </Transition>
         </div>
       </div>
-    </div>
   </div>
 </template>
 
@@ -619,6 +625,7 @@
 import { ref, computed, watch, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { PRIMARY_GAME_ARTWORK, isPrimaryGame, type PrimaryGame } from '../lib/games'
+import { resolveMaxValorantAccounts } from '../lib/valorant-account-cap'
 
 const DISCORD_INVITE_URL = 'https://discord.gg/MDD3WVRaEq'
 const OBS_DOWNLOAD_URL = 'https://obsproject.com/download'
@@ -646,6 +653,7 @@ const isAuthed = ref(false)
 const step = ref(1)
 const slideDir = ref<'slide-left' | 'slide-right'>('slide-left')
 const saving = ref(false)
+const completeError = ref('')
 const obsConnecting = ref(false)
 const obsConnected = ref(false)
 const obsError = ref('')
@@ -894,20 +902,32 @@ async function loadAccountState() {
       riot_region?: string | null
       riot_accounts?: RiotAccount[]
       max_valorant_accounts?: number
+      tier?: string | null
+      is_admin?: boolean
       deadlock_account_id?: number | null
       lol_riot_name?: string | null
       lol_riot_tag?: string | null
       lol_platform?: string | null
+      primary_game?: string | null
+      game_preference?: string | null
     } | null
 
     if (selectedGame.value === 'valorant') {
       let accounts: RiotAccount[] = []
-      let max = 1
+      let max = resolveMaxValorantAccounts({
+        tier: refreshed?.tier,
+        isAdmin: refreshed?.is_admin,
+        userMax: refreshed?.max_valorant_accounts,
+      })
       try {
         const result = await window.api.auth.listRiotAccounts()
         accounts = Array.isArray(result?.accounts) ? result.accounts : []
-        max = result?.max ?? 1
-        if (!Number.isFinite(max) || max < 1) max = 1
+        max = resolveMaxValorantAccounts({
+          apiMax: result?.max,
+          tier: refreshed?.tier,
+          isAdmin: refreshed?.is_admin,
+          userMax: refreshed?.max_valorant_accounts,
+        })
       } catch {
         accounts = []
       }
@@ -920,10 +940,17 @@ async function loadAccountState() {
           riot_region?: string | null
           riot_accounts?: RiotAccount[]
           max_valorant_accounts?: number
+          tier?: string | null
+          is_admin?: boolean
         } | null
         if (user?.riot_accounts?.length) {
           accounts = user.riot_accounts
-          max = user.max_valorant_accounts ?? max
+          max = resolveMaxValorantAccounts({
+            apiMax: max,
+            tier: user.tier ?? refreshed?.tier,
+            isAdmin: user.is_admin ?? refreshed?.is_admin,
+            userMax: user.max_valorant_accounts,
+          })
         } else if (user?.riot_name?.trim() && user?.riot_tag?.trim()) {
           accounts = [{
             id: 0,
@@ -932,6 +959,12 @@ async function loadAccountState() {
             riot_region: user.riot_region ?? null,
             is_active: true,
           }]
+          max = resolveMaxValorantAccounts({
+            apiMax: max,
+            tier: user.tier ?? refreshed?.tier,
+            isAdmin: user.is_admin ?? refreshed?.is_admin,
+            userMax: user.max_valorant_accounts,
+          })
         }
       }
 
@@ -1227,6 +1260,7 @@ function prevStep() {
 
 async function handleComplete() {
   if (saving.value) return
+  completeError.value = ''
   if (isPreview.value) {
     router.push('/dashboard')
     return
@@ -1243,12 +1277,13 @@ async function handleComplete() {
         game: selectedGame.value,
       },
     })
+    router.push('/dashboard')
   } catch (e) {
     console.error('[Onboarding] Failed to save settings:', e)
+    completeError.value = 'Could not save setup. Check your connection and try again.'
   } finally {
     saving.value = false
   }
-  router.push('/dashboard')
 }
 </script>
 

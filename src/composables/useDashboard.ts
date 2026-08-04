@@ -1570,7 +1570,14 @@ function createDashboard() {
       const data = args[0] as { waiting: boolean }
       status.value = { ...status.value, waitingForMatch: data.waiting }
     }))
-    ipcCleanup.push(window.api.on('auth:session-expired', () => { router.push('/login') }))
+    ipcCleanup.push(window.api.on('auth:session-expired', async () => {
+      try {
+        const settings = await window.api.settings.get()
+        router.push(resolveUnauthenticatedRoute(settings))
+      } catch {
+        router.push('/login')
+      }
+    }))
     ipcCleanup.push(window.api.on('app:hotkey-status', (...args: unknown[]) => {
       const data = args[0] as { saveClipRegistered: boolean }
       if (!data.saveClipRegistered) {

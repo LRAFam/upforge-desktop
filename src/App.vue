@@ -221,6 +221,7 @@ import { useGameTheme } from './composables/useGameTheme'
 import { gameNavRoutes } from './lib/game-modules'
 import { accountLinkSettingsPath } from './lib/account-link-navigation'
 import { getDesktopApi, hasDesktopApi } from './lib/desktop-api'
+import { resolveUnauthenticatedRoute } from './lib/onboarding-gate'
 import type { ClipRecord, ProfileData } from './env.d.ts'
 
 const route = useRoute()
@@ -592,7 +593,14 @@ onMounted(async () => {
 
   const authExpiredCleanup = api.on('auth:session-expired', () => {
     void applySessionUser(null)
-    router.push('/login').catch(() => {})
+    void (async () => {
+      try {
+        const s = await window.api.settings.get()
+        await router.push(resolveUnauthenticatedRoute(s))
+      } catch {
+        await router.push('/login')
+      }
+    })()
   })
   ;(window as Window & { _authExpiredCleanup?: () => void })._authExpiredCleanup = authExpiredCleanup
 
