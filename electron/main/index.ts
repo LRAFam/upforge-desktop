@@ -4131,7 +4131,7 @@ function setupGameDetection(): void {
         notifyRecordingUx(
           'This Riot ID is not linked. Link it in Settings before recording, or confirm the link prompt.',
         )
-        mainWindow?.webContents.send('riot:prompt-link', { name: riotSwitch.name, tag: riotSwitch.tag })
+        mainWindow?.webContents.send('riot:prompt-link', { name: riotSwitch.name, tag: riotSwitch.tag, atCap: false })
         tray?.setToolTip(idleTooltip(game))
         mainWindow?.webContents.send('recording:waiting-for-match', { waiting: false })
         await rearmGameDetection(game, true)
@@ -4142,6 +4142,7 @@ function setupGameDetection(): void {
         notifyRecordingUx(
           'This Riot ID is not linked and you are at your account limit. Open Settings to switch or upgrade.',
         )
+        mainWindow?.webContents.send('riot:prompt-link', { name: riotSwitch.name, tag: riotSwitch.tag, atCap: true })
         tray?.setToolTip(idleTooltip(game))
         mainWindow?.webContents.send('recording:waiting-for-match', { waiting: false })
         await rearmGameDetection(game, true)

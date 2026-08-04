@@ -367,6 +367,7 @@ const api = {
       'analysis:timeout',
       'auth:session-expired',
       'session:user-changed',
+      'riot:prompt-link',
       'clips:updated',
       'recordings:updated',
       'dashboard:refresh',

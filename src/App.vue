@@ -184,6 +184,19 @@
     <!-- Achievement toast manager -->
     <AchievementManager />
 
+    <RiotLinkPromptModal
+      :show="riotLinkPrompt.show"
+      :name="riotLinkPrompt.name"
+      :tag="riotLinkPrompt.tag"
+      :at-cap="riotLinkPrompt.atCap"
+      :linking="riotLinkPrompt.linking"
+      :error="riotLinkPrompt.error"
+      @close="closeRiotLinkPrompt"
+      @confirm="confirmRiotLinkPrompt"
+      @open-settings="openRiotLinkSettings"
+      @upgrade="openRiotLinkUpgrade"
+    />
+
     <!-- Dev toolbar (dev mode only, always visible) -->
     <div v-if="isDev && route.path !== '/login'" class="flex items-center gap-2 px-3 py-1.5 border-t border-yellow-500/20 bg-yellow-500/[0.03] flex-shrink-0">
       <span class="text-[10px] text-yellow-500/60 font-mono uppercase tracking-wider">Dev</span>
@@ -205,10 +218,12 @@ import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import OnboardingWizard from './components/OnboardingWizard.vue'
 import AchievementManager from './components/AchievementManager.vue'
+import RiotLinkPromptModal from './components/shared/RiotLinkPromptModal.vue'
 import AppSidebar from './components/AppSidebar.vue'
 import { usePrimaryGame } from './composables/usePrimaryGame'
 import { useGameTheme } from './composables/useGameTheme'
 import { gameNavRoutes } from './lib/game-modules'
+import { accountLinkSettingsPath } from './lib/account-link-navigation'
 import { getDesktopApi, hasDesktopApi } from './lib/desktop-api'
 import type { ClipRecord, ProfileData } from './env.d.ts'
 
@@ -247,6 +262,68 @@ const obsError = ref<string | null>(null)
 const obsProcessRunning = ref<boolean | null>(null)
 /** Bumps on login/logout/account switch so route views reload user-scoped data. */
 const sessionUserKey = ref('guest')
+
+const riotLinkPrompt = ref({
+  show: false,
+  name: '',
+  tag: '',
+  atCap: false,
+  linking: false,
+  error: null as string | null,
+})
+
+function closeRiotLinkPrompt() {
+  riotLinkPrompt.value = {
+    show: false,
+    name: '',
+    tag: '',
+    atCap: false,
+    linking: false,
+    error: null,
+  }
+}
+
+async function confirmRiotLinkPrompt() {
+  const prompt = riotLinkPrompt.value
+  if (prompt.atCap || !prompt.name || !prompt.tag) return
+  riotLinkPrompt.value = { ...prompt, linking: true, error: null }
+  try {
+    const result = await window.api.auth.linkRiotAccount({
+      riot_name: prompt.name,
+      riot_tag: prompt.tag,
+    })
+    if (!result.ok) {
+      riotLinkPrompt.value = {
+        ...riotLinkPrompt.value,
+        linking: false,
+        error: result.error || 'Could not link Riot account',
+      }
+      return
+    }
+    closeRiotLinkPrompt()
+    await window.api.app.refreshDashboard().catch(() => null)
+    try {
+      const s = await window.api.app.getStatus()
+      if (s.user?.riot_name) riotId.value = `${s.user.riot_name}#${s.user.riot_tag}`
+    } catch { /* ignore */ }
+  } catch {
+    riotLinkPrompt.value = {
+      ...riotLinkPrompt.value,
+      linking: false,
+      error: 'Could not link Riot account',
+    }
+  }
+}
+
+function openRiotLinkSettings() {
+  closeRiotLinkPrompt()
+  router.push(accountLinkSettingsPath('valorant')).catch(() => {})
+}
+
+function openRiotLinkUpgrade() {
+  closeRiotLinkPrompt()
+  window.open('https://upforge.gg/pricing', '_blank')
+}
 
 const showObsBanner = computed(() =>
   showNav.value &&
@@ -534,6 +611,20 @@ onMounted(async () => {
     }
   })
   ;(window as Window & { _appNavCleanup?: () => void })._appNavCleanup = navCleanup
+
+  const riotLinkCleanup = api.on('riot:prompt-link', (...args: unknown[]) => {
+    const payload = args[0] as { name?: string; tag?: string; atCap?: boolean } | undefined
+    if (!payload?.name || !payload?.tag) return
+    riotLinkPrompt.value = {
+      show: true,
+      name: payload.name,
+      tag: payload.tag,
+      atCap: !!payload.atCap,
+      linking: false,
+      error: null,
+    }
+  })
+  ;(window as Window & { _riotLinkCleanup?: () => void })._riotLinkCleanup = riotLinkCleanup
 })
 
 onUnmounted(() => {
@@ -542,6 +633,9 @@ onUnmounted(() => {
   const navCleanup = (window as Window & { _appNavCleanup?: () => void })._appNavCleanup
   navCleanup?.()
   delete (window as Window & { _appNavCleanup?: () => void })._appNavCleanup
+  const riotLinkCleanup = (window as Window & { _riotLinkCleanup?: () => void })._riotLinkCleanup
+  riotLinkCleanup?.()
+  delete (window as Window & { _riotLinkCleanup?: () => void })._riotLinkCleanup
   const settingsCleanup = (window as Window & { _settingsCleanup?: () => void })._settingsCleanup
   settingsCleanup?.()
   delete (window as Window & { _settingsCleanup?: () => void })._settingsCleanup
