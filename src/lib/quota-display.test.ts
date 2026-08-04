@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   analysesLeftSidebarLabel,
+  analysesLeftSidebarTone,
   analysesUsedLabel,
   sharedAnalysesPoolHint,
 } from './quota-display'
@@ -25,5 +26,12 @@ describe('quota-display', () => {
 
   it('sidebar label unknown when limit missing', () => {
     expect(analysesLeftSidebarLabel(2, null)).toBe('Unlimited analyses')
+  })
+
+  it('sidebar tone escalates near and at limit', () => {
+    expect(analysesLeftSidebarTone(2, 15)).toBe('ok')
+    expect(analysesLeftSidebarTone(13, 15)).toBe('low')
+    expect(analysesLeftSidebarTone(15, 15)).toBe('empty')
+    expect(analysesLeftSidebarTone(0, null)).toBe('unlimited')
   })
 })

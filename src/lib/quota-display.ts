@@ -31,6 +31,18 @@ export function analysesLeftSidebarLabel(
   return `${remaining} ${noun} left`
 }
 
+/** Visual tone for sidebar quota line. */
+export function analysesLeftSidebarTone(
+  used: number | null | undefined,
+  limit: number | null | undefined,
+): 'ok' | 'low' | 'empty' | 'unlimited' {
+  if (limit == null || isUnlimitedQuota(limit)) return 'unlimited'
+  const remaining = Math.max(0, limit - (used ?? 0))
+  if (remaining <= 0) return 'empty'
+  if (remaining <= 2) return 'low'
+  return 'ok'
+}
+
 /** Clear used/limit/left label for settings and post-game. */
 export function analysesUsedLabel(used: number, limit: number): string {
   const left = Math.max(0, limit - used)
