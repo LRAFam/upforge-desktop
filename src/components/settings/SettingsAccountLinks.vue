@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
-import { useSettings } from '../../composables/useSettings'
+import { useSettings, type RiotAccountRow } from '../../composables/useSettings'
 import { gameBrand } from '../../lib/game-branding'
 import type { PrimaryGame } from '../../lib/games'
 
@@ -13,6 +13,11 @@ const {
   settings,
   accountLinkFocus,
   reloadAccountLinks,
+  riotAccounts,
+  riotAccountsAtCap,
+  riotAccountsCanAdd,
+  riotAccountsCapLabel,
+  openUpgrade,
   showSaved,
   cs2FaceitLinked,
   cs2FaceitNickname,
@@ -24,6 +29,17 @@ const riotRegion = ref('na')
 const riotBusy = ref(false)
 const riotError = ref('')
 const riotSuccess = ref('')
+const riotActionError = ref('')
+const showRiotAddForm = ref(false)
+const riotActivatingId = ref<number | null>(null)
+const riotRemovingId = ref<number | null>(null)
+const riotConfirmRemoveId = ref<number | null>(null)
+const riotEditingId = ref<number | null>(null)
+const riotSavingId = ref<number | null>(null)
+const riotEditError = ref('')
+const riotEditName = ref('')
+const riotEditTag = ref('')
+const riotEditRegion = ref('na')
 
 const faceitNickname = ref('')
 const faceitBusy = ref(false)
@@ -43,7 +59,7 @@ const panelRefs: Partial<Record<PrimaryGame, HTMLElement | null>> = {
   lol: null,
 }
 
-const valorantLinked = computed(() => Boolean(user.value?.riot_name?.trim()))
+const valorantLinked = computed(() => riotAccounts.value.length > 0)
 const cs2Linked = computed(() => Boolean(
   settings.cs2SteamName?.trim()
   || cs2FaceitLinked.value,
@@ -95,10 +111,23 @@ async function scrollToFocus() {
 
 onMounted(async () => {
   await reloadAccountLinks()
-  if (user.value?.riot_name) riotName.value = user.value.riot_name
-  if (user.value?.riot_tag) riotTag.value = user.value.riot_tag
   void scrollToFocus()
 })
+
+function openRiotAddForm() {
+  riotError.value = ''
+  riotSuccess.value = ''
+  showRiotAddForm.value = true
+}
+
+function cancelRiotAddForm() {
+  showRiotAddForm.value = false
+  riotName.value = ''
+  riotTag.value = ''
+  riotRegion.value = 'na'
+  riotError.value = ''
+  riotSuccess.value = ''
+}
 
 watch(activeFocus, () => { void scrollToFocus() })
 
@@ -111,7 +140,7 @@ async function linkValorant() {
   }
   riotBusy.value = true
   try {
-    const result = await window.api.auth.updateRiotAccount({
+    const result = await window.api.auth.linkRiotAccount({
       riot_name: riotName.value.trim(),
       riot_tag: riotTag.value.trim().replace(/^#/, ''),
       riot_region: riotRegion.value,
@@ -120,10 +149,90 @@ async function linkValorant() {
       riotError.value = result.error || 'Could not link Riot account'
       return
     }
-    riotSuccess.value = 'Riot ID linked — syncing stats in the background.'
-    await afterLinked()
+    riotSuccess.value = 'Riot account linked. Syncing stats in the background.'
+    riotName.value = ''
+    riotTag.value = ''
+    riotRegion.value = 'na'
+    showRiotAddForm.value = false
+    await reloadAccountLinks()
+    await window.api.app.refreshDashboard().catch(() => null)
   } finally {
     riotBusy.value = false
+  }
+}
+
+async function activateRiotAccount(id: number) {
+  riotActionError.value = ''
+  riotActivatingId.value = id
+  try {
+    const result = await window.api.auth.activateRiotAccount(id)
+    if (!result.ok) {
+      riotActionError.value = result.error || 'Could not set active account'
+      return
+    }
+    await reloadAccountLinks()
+    await window.api.app.refreshDashboard().catch(() => null)
+  } finally {
+    riotActivatingId.value = null
+  }
+}
+
+function startRiotEdit(account: RiotAccountRow) {
+  riotEditingId.value = account.id
+  riotEditError.value = ''
+  riotConfirmRemoveId.value = null
+  riotEditName.value = account.riot_name
+  riotEditTag.value = account.riot_tag
+  riotEditRegion.value = account.riot_region ?? 'na'
+}
+
+function cancelRiotEdit() {
+  riotEditingId.value = null
+  riotEditError.value = ''
+  riotEditName.value = ''
+  riotEditTag.value = ''
+  riotEditRegion.value = 'na'
+}
+
+async function saveRiotRename(id: number) {
+  riotEditError.value = ''
+  if (!riotEditName.value.trim() || !riotEditTag.value.trim()) {
+    riotEditError.value = 'Enter your Riot name and tag (e.g. PlayerName + 1234).'
+    return
+  }
+  riotSavingId.value = id
+  try {
+    const result = await window.api.auth.renameRiotAccount(id, {
+      riot_name: riotEditName.value.trim(),
+      riot_tag: riotEditTag.value.trim().replace(/^#/, ''),
+      riot_region: riotEditRegion.value,
+    })
+    if (!result.ok) {
+      riotEditError.value = result.error || 'Could not update Riot account'
+      return
+    }
+    cancelRiotEdit()
+    await reloadAccountLinks()
+    await window.api.app.refreshDashboard().catch(() => null)
+  } finally {
+    riotSavingId.value = null
+  }
+}
+
+async function removeRiotAccount(id: number) {
+  riotActionError.value = ''
+  riotRemovingId.value = id
+  try {
+    const result = await window.api.auth.removeRiotAccount(id)
+    if (!result.ok) {
+      riotActionError.value = result.error || 'Could not remove Riot account'
+      return
+    }
+    riotConfirmRemoveId.value = null
+    await reloadAccountLinks()
+    await window.api.app.refreshDashboard().catch(() => null)
+  } finally {
+    riotRemovingId.value = null
   }
 }
 
@@ -283,33 +392,162 @@ async function unlinkLol() {
       >
         <div class="flex items-center justify-between gap-2 mb-2">
           <p class="text-xs font-bold uppercase tracking-wider text-gray-300">{{ gameBrand('valorant').wordmark }}</p>
-          <span v-if="valorantLinked" class="text-[9px] font-bold uppercase tracking-wide text-emerald-300/90">Linked</span>
+          <span v-if="valorantLinked" class="text-[9px] font-bold uppercase tracking-wide text-emerald-300/90">{{ riotAccounts.length }} linked</span>
         </div>
-        <p v-if="valorantLinked" class="text-sm font-semibold text-gray-200 mb-3">
-          {{ user?.riot_name }}<span class="text-red-400">#{{ user?.riot_tag }}</span>
-        </p>
-        <p v-else class="text-xs text-gray-500 mb-3">Your Riot ID from the Valorant home screen (Name#Tag).</p>
-        <div v-if="!valorantLinked" class="grid grid-cols-1 sm:grid-cols-3 gap-2">
-          <input v-model="riotName" type="text" placeholder="Name" class="rounded-xl border border-white/[0.10] bg-black/30 px-3 py-2 text-xs text-gray-200 placeholder:text-gray-600 focus:border-red-500/40 focus:outline-none" />
-          <input v-model="riotTag" type="text" placeholder="Tag" class="rounded-xl border border-white/[0.10] bg-black/30 px-3 py-2 text-xs text-gray-200 placeholder:text-gray-600 focus:border-red-500/40 focus:outline-none" />
-          <select v-model="riotRegion" class="rounded-xl border border-white/[0.10] bg-black/30 px-3 py-2 text-xs text-gray-200 focus:border-red-500/40 focus:outline-none">
-            <option value="na">NA</option>
-            <option value="eu">EU</option>
-            <option value="ap">AP</option>
-            <option value="kr">KR</option>
-            <option value="latam">LATAM</option>
-            <option value="br">BR</option>
-          </select>
+
+        <p v-if="valorantLinked" class="text-[11px] text-gray-500 mb-3">{{ riotAccountsCapLabel }}</p>
+        <p v-else class="text-xs text-gray-500 mb-3">Link Valorant accounts to track stats. One account is active at a time.</p>
+
+        <div v-if="valorantLinked" class="space-y-2 mb-3">
+          <div
+            v-for="account in riotAccounts"
+            :key="account.id"
+            class="rounded-xl border border-white/[0.08] bg-black/25 p-3"
+          >
+            <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+              <div class="min-w-0">
+                <div class="flex flex-wrap items-center gap-2">
+                  <p class="text-sm font-semibold text-gray-200 truncate">
+                    {{ account.riot_name }}<span class="text-red-400">#{{ account.riot_tag }}</span>
+                  </p>
+                  <span
+                    v-if="account.is_active"
+                    class="text-[9px] font-bold uppercase tracking-wide text-red-300/90 border border-red-500/25 bg-red-500/10 px-1.5 py-0.5 rounded"
+                  >Active</span>
+                </div>
+                <p v-if="account.riot_region" class="text-[10px] text-gray-500 mt-0.5">
+                  Region: {{ account.riot_region.toUpperCase() }}
+                </p>
+              </div>
+              <div class="flex flex-wrap gap-1.5 shrink-0">
+                <button
+                  v-if="!account.is_active"
+                  type="button"
+                  class="rounded-lg border border-white/[0.10] bg-white/[0.04] px-2.5 py-1.5 text-[10px] font-semibold text-gray-200 hover:bg-white/[0.07] disabled:opacity-50"
+                  :disabled="riotActivatingId === account.id"
+                  @click="activateRiotAccount(account.id)"
+                >{{ riotActivatingId === account.id ? 'Setting…' : 'Set active' }}</button>
+                <button
+                  v-if="riotEditingId !== account.id"
+                  type="button"
+                  class="rounded-lg border border-white/[0.10] bg-white/[0.04] px-2.5 py-1.5 text-[10px] font-semibold text-gray-200 hover:bg-white/[0.07]"
+                  title="Riot ID changed? Update the name and tag for this account."
+                  @click="startRiotEdit(account)"
+                >Update</button>
+                <template v-if="riotConfirmRemoveId === account.id">
+                  <button
+                    type="button"
+                    class="rounded-lg border border-red-500/30 bg-red-500/10 px-2.5 py-1.5 text-[10px] font-semibold text-red-300 hover:bg-red-500/15 disabled:opacity-50"
+                    :disabled="riotRemovingId === account.id"
+                    @click="removeRiotAccount(account.id)"
+                  >{{ riotRemovingId === account.id ? 'Removing…' : 'Confirm' }}</button>
+                  <button
+                    type="button"
+                    class="rounded-lg border border-white/[0.10] bg-white/[0.04] px-2.5 py-1.5 text-[10px] font-semibold text-gray-200"
+                    @click="riotConfirmRemoveId = null"
+                  >Cancel</button>
+                </template>
+                <button
+                  v-else
+                  type="button"
+                  class="rounded-lg border border-red-500/20 bg-red-500/[0.08] px-2.5 py-1.5 text-[10px] font-semibold text-red-300 hover:bg-red-500/12 disabled:opacity-50 disabled:cursor-not-allowed"
+                  :disabled="riotAccounts.length <= 1 || riotRemovingId === account.id"
+                  :title="riotAccounts.length <= 1 ? 'You must keep at least one Riot account' : undefined"
+                  @click="riotConfirmRemoveId = account.id"
+                >Remove</button>
+              </div>
+            </div>
+
+            <div v-if="riotEditingId === account.id" class="mt-3 border-t border-white/[0.06] pt-3 space-y-2">
+              <p class="text-[11px] text-gray-500">
+                Changed your Riot ID in Valorant? Update it here so recording and stats keep matching
+                this account.
+              </p>
+              <div class="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                <input v-model="riotEditName" type="text" placeholder="Name" class="rounded-xl border border-white/[0.10] bg-black/30 px-3 py-2 text-xs text-gray-200 placeholder:text-gray-600 focus:border-red-500/40 focus:outline-none" />
+                <input v-model="riotEditTag" type="text" placeholder="Tag" class="rounded-xl border border-white/[0.10] bg-black/30 px-3 py-2 text-xs text-gray-200 placeholder:text-gray-600 focus:border-red-500/40 focus:outline-none" />
+                <select v-model="riotEditRegion" class="rounded-xl border border-white/[0.10] bg-black/30 px-3 py-2 text-xs text-gray-200 focus:border-red-500/40 focus:outline-none">
+                  <option value="na">NA</option>
+                  <option value="eu">EU</option>
+                  <option value="ap">AP</option>
+                  <option value="kr">KR</option>
+                  <option value="latam">LATAM</option>
+                  <option value="br">BR</option>
+                </select>
+              </div>
+              <p v-if="riotEditError" class="text-[11px] text-red-400">{{ riotEditError }}</p>
+              <div class="flex gap-2">
+                <button
+                  type="button"
+                  class="rounded-xl border border-white/[0.10] bg-white/[0.04] px-3 py-2 text-xs font-semibold text-gray-200"
+                  @click="cancelRiotEdit"
+                >Cancel</button>
+                <button
+                  type="button"
+                  class="flex-1 rounded-xl border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs font-bold text-red-200 hover:bg-red-500/15 disabled:opacity-50"
+                  :disabled="riotSavingId === account.id"
+                  @click="saveRiotRename(account.id)"
+                >{{ riotSavingId === account.id ? 'Saving…' : 'Save changes' }}</button>
+              </div>
+            </div>
+          </div>
         </div>
+
+        <div
+          v-if="valorantLinked && riotAccountsAtCap"
+          class="rounded-xl border border-white/[0.06] bg-white/[0.03] p-3 text-[11px] text-gray-500 mb-3 flex flex-wrap items-center justify-between gap-2"
+        >
+          <span>Account limit reached on your current plan.</span>
+          <button
+            type="button"
+            class="text-[10px] font-bold uppercase tracking-wide text-red-400 hover:text-red-300"
+            @click="openUpgrade"
+          >Upgrade</button>
+        </div>
+
         <button
-          v-if="!valorantLinked"
+          v-if="valorantLinked && riotAccountsCanAdd && !showRiotAddForm"
           type="button"
-          class="mt-3 w-full rounded-xl bg-gradient-to-r from-red-500 to-red-600 px-3 py-2 text-xs font-bold text-white disabled:opacity-50"
-          :disabled="riotBusy"
-          @click="linkValorant"
-        >{{ riotBusy ? 'Linking…' : 'Link Riot ID' }}</button>
+          class="mb-3 w-full rounded-xl border border-white/[0.10] bg-white/[0.04] px-3 py-2 text-xs font-semibold text-gray-200 hover:bg-white/[0.07]"
+          @click="openRiotAddForm"
+        >Add account</button>
+
+        <div v-if="showRiotAddForm || !valorantLinked" class="space-y-2">
+          <p v-if="valorantLinked" class="text-[11px] text-gray-500">
+            Enter the Riot ID for the Valorant account you want to link.
+          </p>
+          <p v-else class="text-xs text-gray-500">Your Riot ID from the Valorant home screen (Name#Tag).</p>
+          <div class="grid grid-cols-1 sm:grid-cols-3 gap-2">
+            <input v-model="riotName" type="text" placeholder="Name" class="rounded-xl border border-white/[0.10] bg-black/30 px-3 py-2 text-xs text-gray-200 placeholder:text-gray-600 focus:border-red-500/40 focus:outline-none" />
+            <input v-model="riotTag" type="text" placeholder="Tag" class="rounded-xl border border-white/[0.10] bg-black/30 px-3 py-2 text-xs text-gray-200 placeholder:text-gray-600 focus:border-red-500/40 focus:outline-none" />
+            <select v-model="riotRegion" class="rounded-xl border border-white/[0.10] bg-black/30 px-3 py-2 text-xs text-gray-200 focus:border-red-500/40 focus:outline-none">
+              <option value="na">NA</option>
+              <option value="eu">EU</option>
+              <option value="ap">AP</option>
+              <option value="kr">KR</option>
+              <option value="latam">LATAM</option>
+              <option value="br">BR</option>
+            </select>
+          </div>
+          <div class="flex gap-2">
+            <button
+              v-if="valorantLinked"
+              type="button"
+              class="rounded-xl border border-white/[0.10] bg-white/[0.04] px-3 py-2 text-xs font-semibold text-gray-200"
+              @click="cancelRiotAddForm"
+            >Cancel</button>
+            <button
+              type="button"
+              class="flex-1 rounded-xl bg-gradient-to-r from-red-500 to-red-600 px-3 py-2 text-xs font-bold text-white disabled:opacity-50"
+              :disabled="riotBusy"
+              @click="linkValorant"
+            >{{ riotBusy ? 'Linking…' : 'Link Riot account' }}</button>
+          </div>
+        </div>
+
         <p v-if="riotError" class="mt-2 text-[11px] text-red-400">{{ riotError }}</p>
         <p v-if="riotSuccess" class="mt-2 text-[11px] text-emerald-400">{{ riotSuccess }}</p>
+        <p v-if="riotActionError" class="mt-2 text-[11px] text-red-400">{{ riotActionError }}</p>
       </div>
 
       <!-- CS2 -->

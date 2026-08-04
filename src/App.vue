@@ -174,15 +174,21 @@
       </div>
     </div>
 
-    <!-- First-run onboarding wizard -->
-    <OnboardingWizard
-      v-if="showOnboarding"
-      :already-completed="onboardingWasComplete"
-      @complete="handleOnboardingComplete"
-    />
-
     <!-- Achievement toast manager -->
     <AchievementManager />
+
+    <RiotLinkPromptModal
+      :show="riotLinkPrompt.show"
+      :name="riotLinkPrompt.name"
+      :tag="riotLinkPrompt.tag"
+      :at-cap="riotLinkPrompt.atCap"
+      :linking="riotLinkPrompt.linking"
+      :error="riotLinkPrompt.error"
+      @close="closeRiotLinkPrompt"
+      @confirm="confirmRiotLinkPrompt"
+      @open-settings="openRiotLinkSettings"
+      @upgrade="openRiotLinkUpgrade"
+    />
 
     <!-- Dev toolbar (dev mode only, always visible) -->
     <div v-if="isDev && route.path !== '/login'" class="flex items-center gap-2 px-3 py-1.5 border-t border-yellow-500/20 bg-yellow-500/[0.03] flex-shrink-0">
@@ -195,6 +201,10 @@
         class="px-2 py-0.5 text-[10px] text-yellow-400/80 hover:text-yellow-300 bg-yellow-500/10 hover:bg-yellow-500/20 rounded border border-yellow-500/20 transition-colors"
         @click="openPostGame"
       >Post-game UI</button>
+      <button
+        class="px-2 py-0.5 text-[10px] text-yellow-400/80 hover:text-yellow-300 bg-yellow-500/10 hover:bg-yellow-500/20 rounded border border-yellow-500/20 transition-colors"
+        @click="previewOnboarding"
+      >Onboarding</button>
       <span v-if="simStatus" class="text-[10px] text-yellow-500/50 ml-1">{{ simStatus }}</span>
     </div>
   </div>
@@ -203,13 +213,15 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import OnboardingWizard from './components/OnboardingWizard.vue'
 import AchievementManager from './components/AchievementManager.vue'
+import RiotLinkPromptModal from './components/shared/RiotLinkPromptModal.vue'
 import AppSidebar from './components/AppSidebar.vue'
 import { usePrimaryGame } from './composables/usePrimaryGame'
 import { useGameTheme } from './composables/useGameTheme'
 import { gameNavRoutes } from './lib/game-modules'
+import { accountLinkSettingsPath } from './lib/account-link-navigation'
 import { getDesktopApi, hasDesktopApi } from './lib/desktop-api'
+import { resolveUnauthenticatedRoute } from './lib/onboarding-gate'
 import type { ClipRecord, ProfileData } from './env.d.ts'
 
 const route = useRoute()
@@ -239,8 +251,6 @@ const clipCount = ref(0)
 const clipCountAvailable = ref(false)
 const hasClipIndicator = ref(false)
 const isNavigating = ref(false)
-const showOnboarding = ref(false)
-const onboardingWasComplete = ref(false)
 const obsConnected = ref<boolean | null>(null)
 const obsConnecting = ref(false)
 const obsError = ref<string | null>(null)
@@ -248,20 +258,88 @@ const obsProcessRunning = ref<boolean | null>(null)
 /** Bumps on login/logout/account switch so route views reload user-scoped data. */
 const sessionUserKey = ref('guest')
 
+const riotLinkPrompt = ref({
+  show: false,
+  name: '',
+  tag: '',
+  atCap: false,
+  linking: false,
+  error: null as string | null,
+})
+
+function closeRiotLinkPrompt() {
+  riotLinkPrompt.value = {
+    show: false,
+    name: '',
+    tag: '',
+    atCap: false,
+    linking: false,
+    error: null,
+  }
+}
+
+async function confirmRiotLinkPrompt() {
+  const prompt = riotLinkPrompt.value
+  if (prompt.atCap || !prompt.name || !prompt.tag) return
+  riotLinkPrompt.value = { ...prompt, linking: true, error: null }
+  try {
+    const result = await window.api.auth.linkRiotAccount({
+      riot_name: prompt.name,
+      riot_tag: prompt.tag,
+    })
+    if (!result.ok) {
+      riotLinkPrompt.value = {
+        ...riotLinkPrompt.value,
+        linking: false,
+        error: result.error || 'Could not link Riot account',
+      }
+      return
+    }
+    closeRiotLinkPrompt()
+    await window.api.app.refreshDashboard().catch(() => null)
+    try {
+      const s = await window.api.app.getStatus()
+      if (s.user?.riot_name) riotId.value = `${s.user.riot_name}#${s.user.riot_tag}`
+    } catch { /* ignore */ }
+  } catch {
+    riotLinkPrompt.value = {
+      ...riotLinkPrompt.value,
+      linking: false,
+      error: 'Could not link Riot account',
+    }
+  }
+}
+
+function openRiotLinkSettings() {
+  closeRiotLinkPrompt()
+  router.push(accountLinkSettingsPath('valorant')).catch(() => {})
+}
+
+function openRiotLinkUpgrade() {
+  closeRiotLinkPrompt()
+  window.open('https://upforge.gg/pricing', '_blank')
+}
+
 const showObsBanner = computed(() =>
   showNav.value &&
   route.path !== '/vod-review' &&
-  !showOnboarding.value &&
   obsConnected.value === false &&
   !status.value.recording
 )
 
 const obsBannerMessage = computed(() => {
   if (obsError.value) return obsError.value
+  let skippedOnboarding = false
+  try {
+    skippedOnboarding = localStorage.getItem('upforge_obs_onboarding_skipped') === '1'
+  } catch { /* ignore */ }
   if (obsProcessRunning.value === true) {
     return 'OBS is open but not connected — it may have crashed. Click Launch OBS and UpForge will restart it.'
   }
-  return 'OBS not connected — matches won\'t record until you set it up.'
+  if (skippedOnboarding) {
+    return 'Finish OBS setup to auto-record matches. You skipped this during onboarding.'
+  }
+  return "OBS not connected. Matches won't record until you set it up."
 })
 
 const showTitleBar = computed(() =>
@@ -277,6 +355,7 @@ const showNav = computed(() =>
   !route.path.startsWith('/post-game') &&
   route.path !== '/login' &&
   route.path !== '/welcome' &&
+  route.path !== '/onboarding' &&
   route.path !== '/splash' &&
   route.path !== '/overlay'
 )
@@ -419,11 +498,6 @@ onMounted(async () => {
     const settings = await window.api.settings.get()
     applyFromSettings(settings)
     devModeEnabled.value = settings.devModeEnabled ?? false
-    if (!settings.onboardingComplete && settings.firstRun === false) {
-      showOnboarding.value = true
-    } else {
-      onboardingWasComplete.value = true
-    }
   } catch { /* ignore */ }
 
   await Promise.all([loadClipSummary(), loadUserProfile(), loadFromSettings()])
@@ -519,7 +593,14 @@ onMounted(async () => {
 
   const authExpiredCleanup = api.on('auth:session-expired', () => {
     void applySessionUser(null)
-    router.push('/login').catch(() => {})
+    void (async () => {
+      try {
+        const s = await window.api.settings.get()
+        await router.push(resolveUnauthenticatedRoute(s))
+      } catch {
+        await router.push('/login')
+      }
+    })()
   })
   ;(window as Window & { _authExpiredCleanup?: () => void })._authExpiredCleanup = authExpiredCleanup
 
@@ -534,6 +615,20 @@ onMounted(async () => {
     }
   })
   ;(window as Window & { _appNavCleanup?: () => void })._appNavCleanup = navCleanup
+
+  const riotLinkCleanup = api.on('riot:prompt-link', (...args: unknown[]) => {
+    const payload = args[0] as { name?: string; tag?: string; atCap?: boolean } | undefined
+    if (!payload?.name || !payload?.tag) return
+    riotLinkPrompt.value = {
+      show: true,
+      name: payload.name,
+      tag: payload.tag,
+      atCap: !!payload.atCap,
+      linking: false,
+      error: null,
+    }
+  })
+  ;(window as Window & { _riotLinkCleanup?: () => void })._riotLinkCleanup = riotLinkCleanup
 })
 
 onUnmounted(() => {
@@ -542,6 +637,9 @@ onUnmounted(() => {
   const navCleanup = (window as Window & { _appNavCleanup?: () => void })._appNavCleanup
   navCleanup?.()
   delete (window as Window & { _appNavCleanup?: () => void })._appNavCleanup
+  const riotLinkCleanup = (window as Window & { _riotLinkCleanup?: () => void })._riotLinkCleanup
+  riotLinkCleanup?.()
+  delete (window as Window & { _riotLinkCleanup?: () => void })._riotLinkCleanup
   const settingsCleanup = (window as Window & { _settingsCleanup?: () => void })._settingsCleanup
   settingsCleanup?.()
   delete (window as Window & { _settingsCleanup?: () => void })._settingsCleanup
@@ -589,6 +687,7 @@ async function connectObsFromBanner() {
     if (result.ok) {
       obsConnected.value = true
       obsError.value = null
+      try { localStorage.removeItem('upforge_obs_onboarding_skipped') } catch { /* ignore */ }
     } else {
       obsError.value = result.error ?? 'Could not connect to OBS'
     }
@@ -609,6 +708,7 @@ async function launchObsFromBanner() {
     if (result.ok) {
       obsConnected.value = true
       obsError.value = null
+      try { localStorage.removeItem('upforge_obs_onboarding_skipped') } catch { /* ignore */ }
     } else {
       obsError.value = result.error ?? 'Could not launch or connect to OBS'
     }
@@ -625,12 +725,8 @@ function openObsSettings() {
   router.push({ path: '/settings', query: { tab: 'recording' } }).catch(() => {})
 }
 
-function handleOnboardingComplete() {
-  showOnboarding.value = false
-  window.api.obs.getStatus()
-    .then((obs) => { obsConnected.value = obs.connected })
-    .catch(() => {})
-  router.push('/dashboard').catch(() => {})
+function previewOnboarding() {
+  void router.push({ path: '/onboarding', query: { preview: '1' } })
 }
 </script>
 

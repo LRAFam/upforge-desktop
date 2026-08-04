@@ -7,6 +7,15 @@ import { hasProAccess as proAccessForUser } from '../lib/subscription'
 import { BADGE_PREVIEW_ITEMS, getBadgeIconUrl, getSubscriptionIconUrl } from '../lib/rank-assets'
 import { isPaymentPastDue, openBillingPortal as requestBillingPortal } from '../lib/billing'
 
+export type RiotAccountRow = {
+  id: number
+  riot_name: string
+  riot_tag: string
+  riot_region?: string | null
+  riot_platform?: string | null
+  is_active: boolean
+}
+
 type UserWithUsage = {
   name: string
   email: string
@@ -475,6 +484,25 @@ function createSettings() {
   const cs2FaceitLinked = ref(false)
   const cs2FaceitNickname = ref<string | null>(null)
   const deadlockLinked = ref(false)
+  const riotAccounts = ref<RiotAccountRow[]>([])
+  const riotAccountsMax = ref(1)
+
+  const riotAccountsCapLabel = computed(() =>
+    `${riotAccounts.value.length} of ${riotAccountsMax.value} accounts used`,
+  )
+  const riotAccountsAtCap = computed(() => riotAccounts.value.length >= riotAccountsMax.value)
+  const riotAccountsCanAdd = computed(() => riotAccounts.value.length < riotAccountsMax.value)
+
+  async function loadRiotAccounts(): Promise<void> {
+    try {
+      const result = await window.api.auth.listRiotAccounts()
+      riotAccounts.value = result.accounts
+      riotAccountsMax.value = result.max
+    } catch {
+      riotAccounts.value = []
+      riotAccountsMax.value = 1
+    }
+  }
 
   async function loadDeadlockLink(): Promise<void> {
     try {
@@ -501,6 +529,7 @@ function createSettings() {
       cs2FaceitNickname.value = faceit?.nickname ?? null
     } catch { /* optional */ }
     await loadDeadlockLink()
+    await loadRiotAccounts()
   }
 
   const accountSteamLinked = computed(
@@ -1165,7 +1194,13 @@ function createSettings() {
     saveTimer,
     savedToast,
     accountLinkFocus,
+    loadRiotAccounts,
     reloadAccountLinks,
+    riotAccounts,
+    riotAccountsAtCap,
+    riotAccountsCanAdd,
+    riotAccountsCapLabel,
+    riotAccountsMax,
     sectionOpen,
     selectPrimaryGame,
     setInGameFeedback,

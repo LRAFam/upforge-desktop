@@ -543,6 +543,22 @@ declare global {
         getUser: () => Promise<unknown>
         refreshUser: () => Promise<unknown>
         updateRiotAccount: (payload: { riot_name: string; riot_tag: string; riot_region?: string }) => Promise<{ ok: boolean; error?: string }>
+        listRiotAccounts: () => Promise<{
+          accounts: Array<{
+            id: number
+            riot_name: string
+            riot_tag: string
+            riot_region?: string | null
+            riot_platform?: string | null
+            is_active: boolean
+          }>
+          max: number
+          active_id: number | null
+        }>
+        activateRiotAccount: (id: number) => Promise<{ ok: boolean; error?: string }>
+        linkRiotAccount: (payload: { riot_name: string; riot_tag: string; riot_region?: string }) => Promise<{ ok: boolean; error?: string; code?: string }>
+        removeRiotAccount: (id: number) => Promise<{ ok: boolean; error?: string }>
+        renameRiotAccount: (id: number, payload: { riot_name: string; riot_tag: string; riot_region?: string }) => Promise<{ ok: boolean; error?: string; code?: string }>
         linkLolAccount: (payload: { riot_name: string; riot_tag: string; lol_platform: string }) => Promise<{ ok: boolean; error?: string }>
         unlinkLolAccount: () => Promise<{ ok: boolean; error?: string }>
         loadStored: () => Promise<{ ok: boolean; user?: unknown }>

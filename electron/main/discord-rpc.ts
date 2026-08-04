@@ -7,7 +7,7 @@ import log from 'electron-log'
 const CLIENT_ID = '1435393708546592939'
 
 const DOWNLOAD_URL = 'https://upforge.gg/desktop'
-const DISCORD_URL = 'https://discord.com/invite/ZntUrewgzx'
+const DISCORD_URL = 'https://discord.com/invite/MDD3WVRaEq'
 const DASHBOARD_URL = 'https://upforge.gg/dashboard'
 
 /** Medal-style CTAs — visible on every presence card. */

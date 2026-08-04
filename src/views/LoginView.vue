@@ -134,6 +134,7 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
+import { resolvePostAuthRoute } from '../lib/onboarding-gate'
 import valorantImg from '../assets/games/valorant-card-bg.webp'
 import deadlockImg from '../assets/games/deadlock-card-bg.webp'
 import cs2Img from '../assets/games/cs2-card-bg.webp'
@@ -160,8 +161,8 @@ async function handleLogin() {
   try {
     const result = await window.api.auth.login(email.value, password.value)
     if (result.ok) {
-      const s = await window.api.app.getStatus()
-      router.push(s.firstRun ? '/welcome' : '/dashboard')
+      const s = await window.api.settings.get()
+      router.push(resolvePostAuthRoute(s))
     } else {
       error.value = (result as { error?: string }).error || 'Invalid email or password.'
     }

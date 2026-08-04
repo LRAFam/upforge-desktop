@@ -1,5 +1,8 @@
 <script setup lang="ts">
+import { useRouter } from 'vue-router'
 import { useSettings } from '../../composables/useSettings'
+
+const router = useRouter()
 
 const {
   captureBackendDescription,
@@ -10,6 +13,10 @@ const {
   testingRiotApi,
   toggleSection,
 } = useSettings()
+
+function previewOnboarding() {
+  void router.push({ path: '/onboarding', query: { preview: '1' } })
+}
 </script>
 
 <template>
@@ -52,6 +59,22 @@ const {
                 </div>
                 <button class="rounded-xl border border-white/[0.08] bg-white/[0.04] px-3 py-2 text-xs font-medium text-gray-300 transition-colors hover:border-white/[0.14] hover:text-white" :disabled="testingRiotApi" @click="testRiotApi">{{ testingRiotApi ? 'Testing…' : 'Test' }}</button>
               </div>
+            </div>
+
+            <div class="flex items-center justify-between rounded-2xl border border-white/[0.10] bg-black/20 px-4 py-3">
+              <div class="min-w-0 flex-1">
+                <p class="text-sm text-gray-200">Preview onboarding</p>
+                <p class="mt-1 text-xs text-gray-500">
+                  Walk the unified onboarding flow without resetting your account.
+                </p>
+              </div>
+              <button
+                type="button"
+                class="rounded-xl border border-white/[0.08] bg-white/[0.04] px-3 py-2 text-xs font-medium text-gray-300 transition-colors hover:border-white/[0.14] hover:text-white"
+                @click="previewOnboarding"
+              >
+                Preview onboarding
+              </button>
             </div>
           </div>
         </div>

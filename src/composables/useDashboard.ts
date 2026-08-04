@@ -21,6 +21,7 @@ import {
 import { openGameAnalysis } from '../lib/open-game-analysis'
 import { loadCoachReviewSummaries, type CoachReviewSummary } from '../lib/coach-review-cache'
 import { openAnalysisVodReview } from '../lib/open-vod-review'
+import { resolveUnauthenticatedRoute } from '../lib/onboarding-gate'
 import { getFaceitLevelIconUrl, type Cs2FaceitConnection, type Cs2ProfilePayload } from '../lib/cs2'
 import {
   displayAcs,
@@ -1319,7 +1320,8 @@ function createDashboard() {
       isDev.value = s.isDev
       platform.value = s.platform ?? ''
       if (!s.authenticated) {
-        router.push(s.firstRun ? '/welcome' : '/login')
+        const settings = await window.api.settings.get()
+        router.push(resolveUnauthenticatedRoute(settings))
         return
       }
       status.value = {
@@ -1568,7 +1570,14 @@ function createDashboard() {
       const data = args[0] as { waiting: boolean }
       status.value = { ...status.value, waitingForMatch: data.waiting }
     }))
-    ipcCleanup.push(window.api.on('auth:session-expired', () => { router.push('/login') }))
+    ipcCleanup.push(window.api.on('auth:session-expired', async () => {
+      try {
+        const settings = await window.api.settings.get()
+        router.push(resolveUnauthenticatedRoute(settings))
+      } catch {
+        router.push('/login')
+      }
+    }))
     ipcCleanup.push(window.api.on('app:hotkey-status', (...args: unknown[]) => {
       const data = args[0] as { saveClipRegistered: boolean }
       if (!data.saveClipRegistered) {

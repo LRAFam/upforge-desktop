@@ -92,6 +92,7 @@ import {
   RiotLocalApi,
   recomputeTimelineVideoOffsets,
 } from './riot-local-api'
+import { decideRiotAccountSwitch } from './riot-account-switch'
 import { applyLiveKillStampsToTimeline } from './live-kill-stamps'
 import { waitForLiveGameplayCue } from './live-gameplay-wait'
 import { LoLLiveClientApi } from './lol-live-client-api'
@@ -4099,6 +4100,55 @@ function setupGameDetection(): void {
     if (!gameMode) gameMode = 'COMPETITIVE'
     matchHandled = false
     if (matchStartTime != null) currentMatchStartTime = matchStartTime
+
+    if (game === 'valorant' && authManager.isAuthenticated()) {
+      const riotUser = authManager.getUser()
+      const { playerName, playerTag } = riotLocalApi.getDiagnostics()
+      const riotSwitch = decideRiotAccountSwitch({
+        inGameName: playerName,
+        inGameTag: playerTag,
+        accounts: riotUser?.riot_accounts ?? [],
+        maxAccounts: riotUser?.max_valorant_accounts ?? 1,
+      })
+
+      if (riotSwitch.action === 'activate') {
+        const activated = await authManager.activateRiotAccount(riotSwitch.accountId)
+        if (!activated.ok) {
+          console.log(`[GameDetector] Riot account activate failed: ${activated.error ?? 'unknown'}`)
+          logActivity('Could not switch active Riot account. Recording skipped.')
+          notifyRecordingUx(
+            'Could not switch to the in-game Riot account. Open Settings to manage linked accounts.',
+          )
+          tray?.setToolTip(idleTooltip(game))
+          mainWindow?.webContents.send('recording:waiting-for-match', { waiting: false })
+          await rearmGameDetection(game, true)
+          return
+        }
+        riotLocalApi.setLinkedAccountRegion(authManager.getUser()?.riot_region ?? null)
+      } else if (riotSwitch.action === 'prompt_link') {
+        console.log(`[GameDetector] Unknown Riot ID ${riotSwitch.name}#${riotSwitch.tag}, prompting link`)
+        logActivity(`Unknown Riot ID ${riotSwitch.name}#${riotSwitch.tag}. Link it before recording.`)
+        notifyRecordingUx(
+          'This Riot ID is not linked. Link it in Settings before recording, or confirm the link prompt.',
+        )
+        mainWindow?.webContents.send('riot:prompt-link', { name: riotSwitch.name, tag: riotSwitch.tag, atCap: false })
+        tray?.setToolTip(idleTooltip(game))
+        mainWindow?.webContents.send('recording:waiting-for-match', { waiting: false })
+        await rearmGameDetection(game, true)
+        return
+      } else if (riotSwitch.action === 'prompt_manage') {
+        console.log(`[GameDetector] Unknown Riot ID at account cap: ${riotSwitch.name}#${riotSwitch.tag}`)
+        logActivity('Unknown Riot ID at account limit. Recording skipped.')
+        notifyRecordingUx(
+          'This Riot ID is not linked and you are at your account limit. Open Settings to switch or upgrade.',
+        )
+        mainWindow?.webContents.send('riot:prompt-link', { name: riotSwitch.name, tag: riotSwitch.tag, atCap: true })
+        tray?.setToolTip(idleTooltip(game))
+        mainWindow?.webContents.send('recording:waiting-for-match', { waiting: false })
+        await rearmGameDetection(game, true)
+        return
+      }
+    }
 
     if (game === 'valorant' && !pregameBriefFired && (gameMode === 'COMPETITIVE' || gameMode === 'PREMIER')) {
       requestPregameBrief({ agent: null, map: null, mode: gameMode })

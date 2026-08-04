@@ -2,6 +2,10 @@ import { app } from 'electron'
 import fs from 'fs'
 import path from 'path'
 import {
+  migrateOnboardingFlags,
+  withOnboardingComplete,
+} from './onboarding-settings'
+import {
   getRecordingPresetValues,
   type RecordingPresetId,
 } from './recording-preset'
@@ -237,7 +241,7 @@ export class SettingsManager {
   private load(): AppSettings {
     try {
       const raw = fs.readFileSync(this.filePath, 'utf-8')
-      const parsed = JSON.parse(raw)
+      let parsed = JSON.parse(raw)
       // Migrate from old recordingMode field
       if (parsed.recordingMode !== undefined && parsed.recordedModes === undefined) {
         const ALL_MODES = ['COMPETITIVE', 'PREMIER', 'CLASSIC', 'DEATHMATCH', 'SPIKERUSH', 'SWIFTPLAY']
@@ -252,10 +256,7 @@ export class SettingsManager {
       if (parsed.obsHost === 'localhost') {
         parsed.obsHost = '127.0.0.1'
       }
-      // Users who finished welcome before onboardingComplete existed
-      if (parsed.firstRun === false && parsed.onboardingComplete === undefined) {
-        parsed.onboardingComplete = true
-      }
+      parsed = migrateOnboardingFlags(parsed)
       // Migrate trainerMouse.game → primaryGame for existing installs
       if (!parsed.primaryGame && parsed.trainerMouse?.game) {
         const g = parsed.trainerMouse.game
@@ -281,10 +282,11 @@ export class SettingsManager {
 
   save(partial: Partial<AppSettings>, opts?: { allowCreator?: boolean }): AppSettings {
     const allowCreator = opts?.allowCreator ?? true
+    const normalizedPartial = withOnboardingComplete(partial)
     this.settings = {
       ...this.settings,
-      ...partial,
-      ...applyRecordingPresetFields({ ...this.settings, ...partial }, allowCreator),
+      ...normalizedPartial,
+      ...applyRecordingPresetFields({ ...this.settings, ...normalizedPartial }, allowCreator),
     }
     if (!String(this.settings.savePath ?? '').trim()) {
       this.settings.savePath = DEFAULTS.savePath

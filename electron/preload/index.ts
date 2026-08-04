@@ -9,6 +9,27 @@ const api = {
     refreshUser: () => ipcRenderer.invoke('auth:refresh-user'),
     updateRiotAccount: (payload: { riot_name: string; riot_tag: string; riot_region?: string }) =>
       ipcRenderer.invoke('auth:update-riot-account', payload) as Promise<{ ok: boolean; error?: string }>,
+    listRiotAccounts: () =>
+      ipcRenderer.invoke('auth:list-riot-accounts') as Promise<{
+        accounts: Array<{
+          id: number
+          riot_name: string
+          riot_tag: string
+          riot_region?: string | null
+          riot_platform?: string | null
+          is_active: boolean
+        }>
+        max: number
+        active_id: number | null
+      }>,
+    activateRiotAccount: (id: number) =>
+      ipcRenderer.invoke('auth:activate-riot-account', id) as Promise<{ ok: boolean; error?: string }>,
+    linkRiotAccount: (payload: { riot_name: string; riot_tag: string; riot_region?: string }) =>
+      ipcRenderer.invoke('auth:link-riot-account', payload) as Promise<{ ok: boolean; error?: string; code?: string }>,
+    removeRiotAccount: (id: number) =>
+      ipcRenderer.invoke('auth:remove-riot-account', id) as Promise<{ ok: boolean; error?: string }>,
+    renameRiotAccount: (id: number, payload: { riot_name: string; riot_tag: string; riot_region?: string }) =>
+      ipcRenderer.invoke('auth:rename-riot-account', id, payload) as Promise<{ ok: boolean; error?: string; code?: string }>,
     linkLolAccount: (payload: { riot_name: string; riot_tag: string; lol_platform: string }) =>
       ipcRenderer.invoke('auth:link-lol-account', payload) as Promise<{ ok: boolean; error?: string }>,
     unlinkLolAccount: () =>
@@ -348,6 +369,7 @@ const api = {
       'analysis:timeout',
       'auth:session-expired',
       'session:user-changed',
+      'riot:prompt-link',
       'clips:updated',
       'recordings:updated',
       'dashboard:refresh',
