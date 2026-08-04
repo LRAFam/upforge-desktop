@@ -28,6 +28,7 @@ import {
   timelineBlockedShortLabel,
 } from '../../lib/recording-demo-status'
 import { demoDownloadProgressLabel, demoDownloadBadgeLabel } from '../../lib/demo-download-progress'
+import { recordingStatusBadge } from '../../lib/recording-status'
 import DemoAttachGuide from '../DemoAttachGuide.vue'
 import DemoAttachPickerModal from '../shared/DemoAttachPickerModal.vue'
 
@@ -288,9 +289,14 @@ function toggleDemoMatches() {
                 <p class="text-[10px] text-gray-500 mt-0.5">
                   {{ formatRelativeTime(new Date(rec.recordedAt).toISOString()) }}
                   <span v-if="rec.fileSizeBytes" class="text-gray-600"> · {{ formatFileSize(rec.fileSizeBytes) }}</span>
-                  <span v-if="rec.hasLocalFile" class="text-sky-400/80"> · Local file</span>
                 </p>
                 <div class="flex flex-wrap items-center gap-2 mt-2">
+                  <template v-for="badge in [recordingStatusBadge(rec)]" :key="badge.label">
+                    <span
+                      class="inline-flex items-center rounded-md px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide ring-1"
+                      :class="badge.class"
+                    >{{ badge.label }}</span>
+                  </template>
                   <span
                     v-if="demoBadge(rec)"
                     class="text-[9px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-md border"

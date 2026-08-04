@@ -19,6 +19,30 @@ export function sharedAnalysesPoolHint(
   return `${remaining} ${noun} left · shared across Valorant, CS2, Deadlock & LoL`
 }
 
+/** Short line for sidebar footer. */
+export function analysesLeftSidebarLabel(
+  used: number | null | undefined,
+  limit: number | null | undefined,
+): string {
+  if (limit == null) return 'Unlimited analyses'
+  if (isUnlimitedQuota(limit)) return 'Unlimited analyses'
+  const remaining = Math.max(0, limit - (used ?? 0))
+  const noun = remaining === 1 ? 'analysis' : 'analyses'
+  return `${remaining} ${noun} left`
+}
+
+/** Visual tone for sidebar quota line. */
+export function analysesLeftSidebarTone(
+  used: number | null | undefined,
+  limit: number | null | undefined,
+): 'ok' | 'low' | 'empty' | 'unlimited' {
+  if (limit == null || isUnlimitedQuota(limit)) return 'unlimited'
+  const remaining = Math.max(0, limit - (used ?? 0))
+  if (remaining <= 0) return 'empty'
+  if (remaining <= 2) return 'low'
+  return 'ok'
+}
+
 /** Clear used/limit/left label for settings and post-game. */
 export function analysesUsedLabel(used: number, limit: number): string {
   const left = Math.max(0, limit - used)

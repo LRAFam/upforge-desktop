@@ -14,6 +14,7 @@ import {
   recordingPlayerImage,
   recordingPlayerLabel,
 } from '../lib/recording-display'
+import { recordingStatusBadge } from '../lib/recording-status'
 
 const router = useRouter()
 const { theme, cssVars } = useGameTheme()
@@ -23,6 +24,7 @@ const loading = ref(true)
 const busyId = ref<string | null>(null)
 const message = ref<string | null>(null)
 const gameFilter = ref<string>('all')
+const obsConnected = ref<boolean | null>(null)
 
 let cleanup: (() => void) | null = null
 
@@ -57,20 +59,6 @@ function relativeDate(ms: number): string {
   const days = Math.round(hours / 24)
   if (days < 7) return `${days}d ago`
   return new Date(ms).toLocaleDateString(undefined, { day: 'numeric', month: 'short' })
-}
-
-interface StatusBadge { label: string; class: string }
-
-function statusBadge(rec: PendingRecording): StatusBadge {
-  if (rec.analysisId != null) return { label: 'Analysed', class: 'bg-green-500/15 text-green-300 ring-green-500/25' }
-  if (rec.pipelineStatus === 'analysing') return { label: 'Analysing', class: 'bg-blue-500/15 text-blue-300 ring-blue-500/25' }
-  if (rec.pipelineStatus === 'uploading') return { label: 'Uploading', class: 'bg-blue-500/15 text-blue-300 ring-blue-500/25' }
-  if (rec.lastAnalysisError) return { label: 'Failed', class: 'bg-red-500/15 text-red-300 ring-red-500/25' }
-  const state = rec.analysisReadiness?.state
-  if (state === 'syncing' || state === 'waiting_match_data' || state === 'finalizing') return { label: 'Syncing', class: 'bg-amber-500/15 text-amber-300 ring-amber-500/25' }
-  if (rec.cloudUploaded && !rec.hasLocalFile) return { label: 'In cloud', class: 'bg-white/10 text-gray-300 ring-white/15' }
-  if (rec.hasLocalFile) return { label: 'On disk', class: 'bg-white/10 text-gray-300 ring-white/15' }
-  return { label: 'Recording', class: 'bg-white/10 text-gray-300 ring-white/15' }
 }
 
 async function openBest(rec: PendingRecording) {
@@ -111,7 +99,10 @@ async function analyse(rec: PendingRecording) {
     }
     const result = await window.api.recordings.analyse(rec.id)
     if (result?.error) message.value = result.error
-    else router.push('/dashboard')
+    else {
+      await window.api.app.refreshDashboard?.()
+      router.push('/dashboard')
+    }
   } catch {
     message.value = 'Could not start analysis — try again.'
   } finally {
@@ -124,9 +115,11 @@ const canAnalyse = (rec: PendingRecording) =>
   && !rec.pipelineStatus
   && (Boolean(rec.analysisReadiness?.ready) || canRetryRiotMatchStats(rec))
 
-onMounted(() => {
-  load()
+onMounted(async () => {
   cleanup = window.api.on('recordings:updated', () => { void load() })
+  const s = await window.api.app.getStatus().catch(() => null)
+  obsConnected.value = s?.obsConnected ?? null
+  void load()
 })
 
 onUnmounted(() => { cleanup?.() })
@@ -142,6 +135,9 @@ onUnmounted(() => { cleanup?.() })
             <p class="text-[10px] font-black uppercase tracking-[0.28em]" :class="theme.accentMuted">Library</p>
             <h1 class="text-lg font-black tracking-tight text-white">Recordings</h1>
             <p class="text-[11px] text-gray-500 mt-0.5">Every VOD you've captured — watch, review, or analyse</p>
+            <p class="text-[10px] text-gray-600 mt-1">
+              Local = on your PC · Cloud = backed up · Analysed = coaching ready
+            </p>
           </div>
           <span class="hidden sm:inline-flex rounded-xl border border-white/[0.08] bg-white/[0.03] px-3 py-2 text-xs font-semibold text-gray-300">
             {{ filtered.length }} {{ filtered.length === 1 ? 'recording' : 'recordings' }}
@@ -170,10 +166,21 @@ onUnmounted(() => { cleanup?.() })
 
       <div v-if="loading" class="flex h-40 items-center justify-center text-sm text-gray-500">Loading recordings…</div>
 
-      <div v-else-if="!filtered.length" class="flex h-56 flex-col items-center justify-center text-center">
-        <svg class="h-10 w-10 text-gray-700 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"/></svg>
+      <div v-else-if="!filtered.length" class="flex h-56 flex-col items-center justify-center text-center gap-2">
         <p class="text-sm font-semibold text-gray-400">No recordings yet</p>
-        <p class="text-xs text-gray-600 mt-1">Play a match with UpForge running and your VODs will appear here.</p>
+        <p class="text-xs text-gray-600 max-w-sm">
+          {{ obsConnected === false
+            ? 'OBS is not connected. Set up recording so match VODs appear here.'
+            : 'Play a match to capture a VOD.' }}
+        </p>
+        <button
+          v-if="obsConnected === false"
+          type="button"
+          class="mt-2 rounded-lg px-3 py-1.5 text-[11px] font-semibold text-gray-200 bg-white/[0.06] hover:bg-white/[0.1]"
+          @click="router.push('/settings?tab=recording')"
+        >
+          Open recording settings
+        </button>
       </div>
 
       <div v-else class="grid grid-cols-1 gap-2.5 sm:grid-cols-2 xl:grid-cols-3">
@@ -193,8 +200,8 @@ onUnmounted(() => { cleanup?.() })
             <div class="absolute left-3 top-3 flex items-center gap-2">
               <span
                 class="inline-flex items-center rounded-full px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider ring-1"
-                :class="statusBadge(rec).class"
-              >{{ statusBadge(rec).label }}</span>
+                :class="recordingStatusBadge(rec).class"
+              >{{ recordingStatusBadge(rec).label }}</span>
             </div>
             <div class="absolute right-3 top-3 rounded-full bg-black/50 px-2 py-0.5 text-[9px] font-medium text-gray-300 capitalize">
               {{ recordingGameTitle(rec) }}

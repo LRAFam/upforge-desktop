@@ -376,7 +376,7 @@
           >VOD</button>
           <button
             class="px-3 py-2.5 text-xs font-medium text-gray-500 hover:text-gray-300 bg-white/[0.03] hover:bg-white/[0.06] border border-white/[0.10] rounded-xl transition-colors"
-            @click="dismiss"
+            @click="dismissWithHandoff"
           >Close</button>
         </div>
 
@@ -559,7 +559,7 @@
             <button type="button" class="ml-1 font-semibold text-emerald-300 hover:text-emerald-200 underline-offset-2 hover:underline" @click="openUpgrade">Upgrade</button>
           </p>
         </div>
-        <GamingButton variant="secondary-sm" block @click="dismiss">Done</GamingButton>
+        <GamingButton variant="secondary-sm" block @click="handoffToMain('/dashboard')">Done</GamingButton>
       </div>
 
       <!-- Error -->
@@ -602,7 +602,7 @@
               class="flex-1 py-2.5 text-xs font-semibold bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white rounded-xl transition-all shadow-sm shadow-amber-500/20"
               @click="openBundles"
             >Buy extra analyses →</button>
-            <button class="px-3 py-2.5 text-xs text-gray-500 hover:text-gray-300 bg-white/[0.03] hover:bg-white/[0.06] border border-white/[0.10] rounded-xl transition-colors" @click="dismiss">Dismiss</button>
+            <button class="px-3 py-2.5 text-xs text-gray-500 hover:text-gray-300 bg-white/[0.03] hover:bg-white/[0.06] border border-white/[0.10] rounded-xl transition-colors" @click="handoffToMain('/dashboard')">Dismiss</button>
           </div>
         </template>
 
@@ -690,7 +690,7 @@
             <button
               v-else-if="clipsOnlyError"
               class="flex-1 py-2.5 text-xs font-bold bg-gradient-to-r from-[#ff4655] to-orange-600 text-white rounded-xl transition-all"
-              @click="dismiss"
+              @click="handoffToMain('/dashboard')"
             >View clips in dashboard</button>
             <button class="px-3 py-2.5 text-xs text-gray-500 hover:text-gray-300 bg-white/[0.03] hover:bg-white/[0.06] border border-white/[0.10] rounded-xl transition-colors" @click="dismiss">
               {{ canRetryAnalysis && !clipsOnlyError ? 'Dismiss' : 'Close' }}
@@ -1934,10 +1934,7 @@ async function analyseNow() {
 }
 
 async function dismissPending() {
-  if (pendingRecordingId.value) {
-    // Don't remove from store — user can still analyse later from the dashboard
-  }
-  window.close()
+  await handoffToMain('/dashboard')
 }
 
 function retryUpload() {
@@ -2075,6 +2072,30 @@ function openFindCoaches() {
 }
 
 function dismiss() { window.close() }
+
+async function handoffToMain(target: string | { path: string; query?: Record<string, string> }) {
+  try {
+    await window.api.app.focusAndNavigate(target)
+  } finally {
+    window.close()
+  }
+}
+
+async function dismissWithHandoff() {
+  const analysisId = result.value?.analysis_id
+  const recordingId = vodRecordingId.value
+
+  if (analysisId != null && recordingId) {
+    try {
+      await openVodReview()
+    } finally {
+      window.close()
+    }
+    return
+  }
+
+  await handoffToMain('/dashboard')
+}
 
 async function openCoachNotesFromPostGame() {
   const analysisId = result.value?.analysis_id

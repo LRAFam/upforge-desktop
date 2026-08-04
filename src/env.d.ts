@@ -233,7 +233,7 @@ export interface PendingRecording {
   cloudUploaded?: boolean
   analysisReadiness?: {
     ready: boolean
-    state: 'ready' | 'syncing' | 'no_deaths' | 'unavailable' | 'file_missing' | 'finalizing' | 'mode_unsupported' | 'file_unreadable'
+    state: 'ready' | 'syncing' | 'waiting_match_data' | 'no_deaths' | 'unavailable' | 'file_missing' | 'finalizing' | 'mode_unsupported' | 'file_unreadable'
     message: string
     duelMomentCount: number
   }
@@ -593,6 +593,9 @@ declare global {
         /** Activity log + live DNS probes for Riot PD / UpForge API (support paste). */
         getSupportBundle: () => Promise<string>
         showClips: () => Promise<{ ok: boolean }>
+        focusAndNavigate: (
+          target: string | { path: string; query?: Record<string, string> },
+        ) => Promise<{ ok: boolean }>
         openUrl: (url: string) => Promise<{ ok: boolean }>
         /** Open an upforge.gg path in the authenticated in-app web shell */
         openWebShell: (path: string) => Promise<{ ok: boolean; error?: string }>

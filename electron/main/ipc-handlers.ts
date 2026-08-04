@@ -113,6 +113,7 @@ export function setupIpcHandlers(
   getActivityLog?: () => { time: number; message: string; game?: string }[],
   uploadManager?: UploadManager,
   showClipsFn?: () => void,
+  focusNavigateFn?: (target: string | { path: string; query?: Record<string, string> }) => void,
   performanceManager?: PerformanceManager,
   obsRecorder?: OBSRecorder,
   trainerBridge?: TrainerBridge,
@@ -140,7 +141,7 @@ export function setupIpcHandlers(
 
   setupAppHandlers(
     ipcMain, auth, getActiveRecorder, gameDetector, settingsManager,
-    openPostGameFn, getFFmpegOk, getWaitingForMatch, getActivityLog, showClipsFn,
+    openPostGameFn, getFFmpegOk, getWaitingForMatch, getActivityLog, showClipsFn, focusNavigateFn,
     getRecordingBackend, getCurrentQueueMode, getObsConnected,
     obsRecorder, onSettingsSaved,
   )

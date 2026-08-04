@@ -31,8 +31,14 @@ const {
         <div class="relative flex items-center justify-between gap-3">
           <div class="min-w-0">
             <p class="text-[10px] font-black uppercase tracking-[0.28em]" :class="theme.accentMuted">Desktop App</p>
-            <h1 class="text-lg font-black tracking-tight text-white">Settings</h1>
-            <p class="text-[11px] text-gray-500 mt-0.5">Account, recording, hotkeys, and preferences</p>
+            <h1 class="text-lg font-black tracking-tight text-white">
+              {{ activeTab === 'general' ? 'Account' : 'Settings' }}
+            </h1>
+            <p class="text-[11px] text-gray-500 mt-0.5">
+              {{ activeTab === 'general'
+                ? 'Plan, linked games, and sign-in'
+                : 'Recording, trainer, and system preferences' }}
+            </p>
           </div>
           <div v-if="user" class="hidden sm:block rounded-xl border border-white/[0.08] bg-white/[0.03] px-3 py-2 text-right">
             <p class="text-[10px] font-semibold text-gray-300 truncate max-w-[140px]">{{ user.name }}</p>
