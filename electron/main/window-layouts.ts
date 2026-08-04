@@ -72,6 +72,7 @@ export const POST_GAME_PREVIEW_LAYOUT: WindowLayout = {
 export const ROUTE_LAYOUTS: Record<string, WindowLayout> = {
   '/login': LOGIN_LAYOUT,
   '/welcome': WELCOME_LAYOUT,
+  '/onboarding': WELCOME_LAYOUT,
   '/training': TRAINING_LAYOUT,
   '/vod-review': VOD_REVIEW_LAYOUT,
   '/trainer-results': TRAINER_RESULTS_LAYOUT,

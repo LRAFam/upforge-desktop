@@ -21,6 +21,7 @@ import {
 import { openGameAnalysis } from '../lib/open-game-analysis'
 import { loadCoachReviewSummaries, type CoachReviewSummary } from '../lib/coach-review-cache'
 import { openAnalysisVodReview } from '../lib/open-vod-review'
+import { resolveUnauthenticatedRoute } from '../lib/onboarding-gate'
 import { getFaceitLevelIconUrl, type Cs2FaceitConnection, type Cs2ProfilePayload } from '../lib/cs2'
 import {
   displayAcs,
@@ -1319,7 +1320,8 @@ function createDashboard() {
       isDev.value = s.isDev
       platform.value = s.platform ?? ''
       if (!s.authenticated) {
-        router.push(s.firstRun ? '/welcome' : '/login')
+        const settings = await window.api.settings.get()
+        router.push(resolveUnauthenticatedRoute(settings))
         return
       }
       status.value = {

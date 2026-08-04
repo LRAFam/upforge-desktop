@@ -174,13 +174,6 @@
       </div>
     </div>
 
-    <!-- First-run onboarding wizard -->
-    <OnboardingWizard
-      v-if="showOnboarding"
-      :already-completed="onboardingWasComplete"
-      @complete="handleOnboardingComplete"
-    />
-
     <!-- Achievement toast manager -->
     <AchievementManager />
 
@@ -208,6 +201,10 @@
         class="px-2 py-0.5 text-[10px] text-yellow-400/80 hover:text-yellow-300 bg-yellow-500/10 hover:bg-yellow-500/20 rounded border border-yellow-500/20 transition-colors"
         @click="openPostGame"
       >Post-game UI</button>
+      <button
+        class="px-2 py-0.5 text-[10px] text-yellow-400/80 hover:text-yellow-300 bg-yellow-500/10 hover:bg-yellow-500/20 rounded border border-yellow-500/20 transition-colors"
+        @click="previewOnboarding"
+      >Onboarding</button>
       <span v-if="simStatus" class="text-[10px] text-yellow-500/50 ml-1">{{ simStatus }}</span>
     </div>
   </div>
@@ -216,7 +213,6 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import OnboardingWizard from './components/OnboardingWizard.vue'
 import AchievementManager from './components/AchievementManager.vue'
 import RiotLinkPromptModal from './components/shared/RiotLinkPromptModal.vue'
 import AppSidebar from './components/AppSidebar.vue'
@@ -254,8 +250,6 @@ const clipCount = ref(0)
 const clipCountAvailable = ref(false)
 const hasClipIndicator = ref(false)
 const isNavigating = ref(false)
-const showOnboarding = ref(false)
-const onboardingWasComplete = ref(false)
 const obsConnected = ref<boolean | null>(null)
 const obsConnecting = ref(false)
 const obsError = ref<string | null>(null)
@@ -328,17 +322,23 @@ function openRiotLinkUpgrade() {
 const showObsBanner = computed(() =>
   showNav.value &&
   route.path !== '/vod-review' &&
-  !showOnboarding.value &&
   obsConnected.value === false &&
   !status.value.recording
 )
 
 const obsBannerMessage = computed(() => {
   if (obsError.value) return obsError.value
+  let skippedOnboarding = false
+  try {
+    skippedOnboarding = localStorage.getItem('upforge_obs_onboarding_skipped') === '1'
+  } catch { /* ignore */ }
   if (obsProcessRunning.value === true) {
     return 'OBS is open but not connected — it may have crashed. Click Launch OBS and UpForge will restart it.'
   }
-  return 'OBS not connected — matches won\'t record until you set it up.'
+  if (skippedOnboarding) {
+    return 'Finish OBS setup to auto-record matches. You skipped this during onboarding.'
+  }
+  return "OBS not connected. Matches won't record until you set it up."
 })
 
 const showTitleBar = computed(() =>
@@ -354,6 +354,7 @@ const showNav = computed(() =>
   !route.path.startsWith('/post-game') &&
   route.path !== '/login' &&
   route.path !== '/welcome' &&
+  route.path !== '/onboarding' &&
   route.path !== '/splash' &&
   route.path !== '/overlay'
 )
@@ -496,11 +497,6 @@ onMounted(async () => {
     const settings = await window.api.settings.get()
     applyFromSettings(settings)
     devModeEnabled.value = settings.devModeEnabled ?? false
-    if (!settings.onboardingComplete && settings.firstRun === false) {
-      showOnboarding.value = true
-    } else {
-      onboardingWasComplete.value = true
-    }
   } catch { /* ignore */ }
 
   await Promise.all([loadClipSummary(), loadUserProfile(), loadFromSettings()])
@@ -683,6 +679,7 @@ async function connectObsFromBanner() {
     if (result.ok) {
       obsConnected.value = true
       obsError.value = null
+      try { localStorage.removeItem('upforge_obs_onboarding_skipped') } catch { /* ignore */ }
     } else {
       obsError.value = result.error ?? 'Could not connect to OBS'
     }
@@ -703,6 +700,7 @@ async function launchObsFromBanner() {
     if (result.ok) {
       obsConnected.value = true
       obsError.value = null
+      try { localStorage.removeItem('upforge_obs_onboarding_skipped') } catch { /* ignore */ }
     } else {
       obsError.value = result.error ?? 'Could not launch or connect to OBS'
     }
@@ -719,12 +717,8 @@ function openObsSettings() {
   router.push({ path: '/settings', query: { tab: 'recording' } }).catch(() => {})
 }
 
-function handleOnboardingComplete() {
-  showOnboarding.value = false
-  window.api.obs.getStatus()
-    .then((obs) => { obsConnected.value = obs.connected })
-    .catch(() => {})
-  router.push('/dashboard').catch(() => {})
+function previewOnboarding() {
+  void router.push({ path: '/onboarding', query: { preview: '1' } })
 }
 </script>
 
