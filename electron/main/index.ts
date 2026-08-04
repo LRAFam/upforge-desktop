@@ -4115,7 +4115,7 @@ function setupGameDetection(): void {
         const activated = await authManager.activateRiotAccount(riotSwitch.accountId)
         if (!activated.ok) {
           console.log(`[GameDetector] Riot account activate failed: ${activated.error ?? 'unknown'}`)
-          logActivity('Could not switch active Riot account — recording skipped')
+          logActivity('Could not switch active Riot account. Recording skipped.')
           notifyRecordingUx(
             'Could not switch to the in-game Riot account. Open Settings to manage linked accounts.',
           )
@@ -4126,8 +4126,8 @@ function setupGameDetection(): void {
         }
         riotLocalApi.setLinkedAccountRegion(authManager.getUser()?.riot_region ?? null)
       } else if (riotSwitch.action === 'prompt_link') {
-        console.log(`[GameDetector] Unknown Riot ID ${riotSwitch.name}#${riotSwitch.tag} — prompting link`)
-        logActivity(`Unknown Riot ID ${riotSwitch.name}#${riotSwitch.tag} — link before recording`)
+        console.log(`[GameDetector] Unknown Riot ID ${riotSwitch.name}#${riotSwitch.tag}, prompting link`)
+        logActivity(`Unknown Riot ID ${riotSwitch.name}#${riotSwitch.tag}. Link it before recording.`)
         notifyRecordingUx(
           'This Riot ID is not linked. Link it in Settings before recording, or confirm the link prompt.',
         )
@@ -4137,8 +4137,8 @@ function setupGameDetection(): void {
         await rearmGameDetection(game, true)
         return
       } else if (riotSwitch.action === 'prompt_manage') {
-        console.log(`[GameDetector] Unknown Riot ID at account cap — ${riotSwitch.name}#${riotSwitch.tag}`)
-        logActivity('Unknown Riot ID at account limit — recording skipped')
+        console.log(`[GameDetector] Unknown Riot ID at account cap: ${riotSwitch.name}#${riotSwitch.tag}`)
+        logActivity('Unknown Riot ID at account limit. Recording skipped.')
         notifyRecordingUx(
           'This Riot ID is not linked and you are at your account limit. Open Settings to switch or upgrade.',
         )
