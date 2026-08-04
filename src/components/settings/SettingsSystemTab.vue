@@ -14,15 +14,7 @@ const {
   toggleSection,
 } = useSettings()
 
-function previewWelcome() {
-  void router.push({ path: '/onboarding', query: { preview: '1' } })
-}
-
-function previewSetupWizard() {
-  void router.push({ path: '/onboarding', query: { preview: '1' } })
-}
-
-function previewFullOnboarding() {
+function previewOnboarding() {
   void router.push({ path: '/onboarding', query: { preview: '1' } })
 }
 </script>
@@ -69,36 +61,20 @@ function previewFullOnboarding() {
               </div>
             </div>
 
-            <div class="rounded-2xl border border-white/[0.10] bg-black/20 px-4 py-3 space-y-3">
-              <div>
+            <div class="flex items-center justify-between rounded-2xl border border-white/[0.10] bg-black/20 px-4 py-3">
+              <div class="min-w-0 flex-1">
                 <p class="text-sm text-gray-200">Preview onboarding</p>
                 <p class="mt-1 text-xs text-gray-500">
-                  Walk the new-user Welcome flow and/or the setup wizard without resetting your account.
+                  Walk the unified onboarding flow without resetting your account.
                 </p>
               </div>
-              <div class="flex flex-wrap gap-2">
-                <button
-                  type="button"
-                  class="rounded-xl border border-white/[0.08] bg-white/[0.04] px-3 py-2 text-xs font-medium text-gray-300 transition-colors hover:border-white/[0.14] hover:text-white"
-                  @click="previewWelcome"
-                >
-                  Welcome steps
-                </button>
-                <button
-                  type="button"
-                  class="rounded-xl border border-white/[0.08] bg-white/[0.04] px-3 py-2 text-xs font-medium text-gray-300 transition-colors hover:border-white/[0.14] hover:text-white"
-                  @click="previewSetupWizard"
-                >
-                  Setup wizard
-                </button>
-                <button
-                  type="button"
-                  class="rounded-xl border border-amber-500/20 bg-amber-500/[0.08] px-3 py-2 text-xs font-medium text-amber-300/90 transition-colors hover:bg-amber-500/[0.14]"
-                  @click="previewFullOnboarding"
-                >
-                  Full new-user flow
-                </button>
-              </div>
+              <button
+                type="button"
+                class="rounded-xl border border-white/[0.08] bg-white/[0.04] px-3 py-2 text-xs font-medium text-gray-300 transition-colors hover:border-white/[0.14] hover:text-white"
+                @click="previewOnboarding"
+              >
+                Preview onboarding
+              </button>
             </div>
           </div>
         </div>
