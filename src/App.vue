@@ -28,11 +28,27 @@
           <div class="absolute inset-0 rounded-full blur-md scale-150 pointer-events-none" :style="{ backgroundColor: `rgba(${theme.rgb}, 0.25)` }" />
           <img src="./assets/upforge-logo.webp" alt="UpForge" class="relative h-5 w-auto object-contain" />
         </div>
-        <div class="flex items-center gap-2">
-          <div class="flex flex-col leading-none">
-            <span class="text-[11px] font-semibold tracking-[0.18em] text-gray-200 uppercase">UpForge</span>
-            <span class="text-[9px] text-gray-500 font-medium">{{ isPostGameRoute ? 'Post-game' : 'Desktop' }}</span>
-          </div>
+        <div class="flex items-center gap-2 -webkit-no-drag">
+          <button
+            type="button"
+            class="flex flex-col leading-none rounded-md px-1.5 py-0.5 -mx-1.5 text-left hover:bg-white/[0.05] transition-colors"
+            :title="versionCopied ? 'Copied' : 'Click to copy version'"
+            @click="copyAppVersion"
+          >
+            <span class="text-[11px] font-semibold tracking-wide text-gray-200 tabular-nums">
+              {{ versionCopied ? 'Copied' : `v${appVersion}` }}
+            </span>
+            <span v-if="isPostGameRoute" class="text-[9px] text-gray-500 font-medium">Post-game</span>
+          </button>
+          <span
+            v-if="showObsStatusChip"
+            class="inline-flex items-center gap-1.5 rounded-full border px-2 py-1"
+            :class="obsStatusChipClass"
+            :title="obsStatusChipTitle"
+          >
+            <span class="h-1.5 w-1.5 rounded-full" :class="obsStatusDotClass" />
+            <span class="text-[10px] font-semibold tracking-wide">{{ obsStatusChipLabel }}</span>
+          </span>
           <span v-if="status.recording" class="inline-flex items-center gap-1.5 rounded-full border border-red-500/25 bg-red-500/10 px-2 py-1 shadow-[0_0_16px_rgba(239,68,68,0.12)]">
             <span class="relative flex h-2.5 w-2.5 items-center justify-center">
               <span class="absolute inline-flex h-2.5 w-2.5 rounded-full bg-red-500/30 animate-ping" />
@@ -44,7 +60,7 @@
       </div>
 
       <!-- User identity (center when not recording) — hidden on compact post-game window -->
-      <div v-if="titleBarIdentity && !isMac && !isPostGameRoute" class="absolute left-1/2 -translate-x-1/2 flex items-center gap-1 pointer-events-none">
+      <div v-if="titleBarIdentity && !isPostGameRoute" class="absolute left-1/2 -translate-x-1/2 flex items-center gap-1 pointer-events-none">
         <span class="text-[10px] text-gray-500 font-medium">{{ titleBarIdentity }}</span>
       </div>
 
@@ -101,7 +117,7 @@
             class="text-gray-400 truncate"
           >Downloading update{{ appUpdateVersion ? ` v${appUpdateVersion}` : '' }}… {{ appUpdatePercent > 0 ? `${Math.round(appUpdatePercent)}%` : '' }}</span>
           <span v-else-if="appUpdatePhase === 'available'" class="text-gray-400 truncate">
-            Update{{ appUpdateVersion ? ` v${appUpdateVersion}` : '' }} available — downloading in background
+            Update{{ appUpdateVersion ? ` v${appUpdateVersion}` : '' }} available. Downloading in background.
           </span>
           <span v-else class="text-gray-300 truncate">
             UpForge{{ appUpdateVersion ? ` v${appUpdateVersion}` : '' }} is ready to install
@@ -243,6 +259,8 @@ const isDev = ref(false)
 const devModeEnabled = ref(false)
 const isAdmin = ref(false)
 const appVersion = ref(__APP_VERSION__)
+const versionCopied = ref(false)
+let versionCopiedTimer: ReturnType<typeof setTimeout> | null = null
 const simStatus = ref('')
 const riotId = ref<string | null>(null)
 const userName = ref<string | null>(null)
@@ -327,6 +345,31 @@ const showObsBanner = computed(() =>
   !status.value.recording
 )
 
+const showObsStatusChip = computed(() =>
+  showNav.value &&
+  !isPostGameRoute.value &&
+  !status.value.recording &&
+  obsConnected.value != null
+)
+
+const obsStatusChipLabel = computed(() =>
+  obsConnected.value ? 'OBS' : 'OBS off'
+)
+
+const obsStatusChipTitle = computed(() =>
+  obsConnected.value ? 'OBS connected' : obsBannerMessage.value
+)
+
+const obsStatusChipClass = computed(() =>
+  obsConnected.value
+    ? 'border-emerald-500/25 bg-emerald-500/10 text-emerald-300'
+    : 'border-amber-500/25 bg-amber-500/10 text-amber-200'
+)
+
+const obsStatusDotClass = computed(() =>
+  obsConnected.value ? 'bg-emerald-400' : 'bg-amber-400'
+)
+
 const obsBannerMessage = computed(() => {
   if (obsError.value) return obsError.value
   let skippedOnboarding = false
@@ -334,7 +377,7 @@ const obsBannerMessage = computed(() => {
     skippedOnboarding = localStorage.getItem('upforge_obs_onboarding_skipped') === '1'
   } catch { /* ignore */ }
   if (obsProcessRunning.value === true) {
-    return 'OBS is open but not connected — it may have crashed. Click Launch OBS and UpForge will restart it.'
+    return 'OBS is open but not connected. It may have crashed. Click Launch OBS and UpForge will restart it.'
   }
   if (skippedOnboarding) {
     return 'Finish OBS setup to auto-record matches. You skipped this during onboarding.'
@@ -634,6 +677,7 @@ onMounted(async () => {
 onUnmounted(() => {
   if (statusInterval) clearInterval(statusInterval)
   if (navBusyTimer) clearTimeout(navBusyTimer)
+  if (versionCopiedTimer) clearTimeout(versionCopiedTimer)
   const navCleanup = (window as Window & { _appNavCleanup?: () => void })._appNavCleanup
   navCleanup?.()
   delete (window as Window & { _appNavCleanup?: () => void })._appNavCleanup
@@ -677,6 +721,21 @@ function closeWindow() {
 
 function minimizeWindow() {
   getDesktopApi()?.window?.minimize()
+}
+
+async function copyAppVersion() {
+  const text = `UpForge Desktop v${appVersion.value}`
+  try {
+    await navigator.clipboard.writeText(text)
+  } catch {
+    return
+  }
+  versionCopied.value = true
+  if (versionCopiedTimer) clearTimeout(versionCopiedTimer)
+  versionCopiedTimer = setTimeout(() => {
+    versionCopied.value = false
+    versionCopiedTimer = null
+  }, 1200)
 }
 
 async function connectObsFromBanner() {
