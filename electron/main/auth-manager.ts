@@ -582,6 +582,31 @@ export class AuthManager {
     }
   }
 
+  /** Riot ID changed in game: rename an already linked account in place. */
+  async renameRiotAccount(id: number, payload: {
+    riot_name: string
+    riot_tag: string
+    riot_region?: string
+  }): Promise<{ ok: boolean; error?: string; code?: string }> {
+    if (!this._api) return { ok: false, error: 'Not logged in' }
+    try {
+      const res = await this._api.patch(`/api/riot-accounts/${id}`, payload)
+      const account = res.data?.account as RiotAccount | undefined
+      await this.listRiotAccounts()
+      if (account?.is_active) {
+        this.applyActiveRiotMirror(account)
+      }
+      return { ok: true }
+    } catch (err: unknown) {
+      const data = (err as { response?: { data?: { message?: string; error?: string } } })?.response?.data
+      return {
+        ok: false,
+        error: data?.message || 'Failed to update Riot account',
+        code: data?.error,
+      }
+    }
+  }
+
   async updateRiotAccount(payload: {
     riot_name: string
     riot_tag: string

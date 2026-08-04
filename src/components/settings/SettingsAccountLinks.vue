@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
-import { useSettings } from '../../composables/useSettings'
+import { useSettings, type RiotAccountRow } from '../../composables/useSettings'
 import { gameBrand } from '../../lib/game-branding'
 import type { PrimaryGame } from '../../lib/games'
 
@@ -34,6 +34,12 @@ const showRiotAddForm = ref(false)
 const riotActivatingId = ref<number | null>(null)
 const riotRemovingId = ref<number | null>(null)
 const riotConfirmRemoveId = ref<number | null>(null)
+const riotEditingId = ref<number | null>(null)
+const riotSavingId = ref<number | null>(null)
+const riotEditError = ref('')
+const riotEditName = ref('')
+const riotEditTag = ref('')
+const riotEditRegion = ref('na')
 
 const faceitNickname = ref('')
 const faceitBusy = ref(false)
@@ -168,6 +174,48 @@ async function activateRiotAccount(id: number) {
     await window.api.app.refreshDashboard().catch(() => null)
   } finally {
     riotActivatingId.value = null
+  }
+}
+
+function startRiotEdit(account: RiotAccountRow) {
+  riotEditingId.value = account.id
+  riotEditError.value = ''
+  riotConfirmRemoveId.value = null
+  riotEditName.value = account.riot_name
+  riotEditTag.value = account.riot_tag
+  riotEditRegion.value = account.riot_region ?? 'na'
+}
+
+function cancelRiotEdit() {
+  riotEditingId.value = null
+  riotEditError.value = ''
+  riotEditName.value = ''
+  riotEditTag.value = ''
+  riotEditRegion.value = 'na'
+}
+
+async function saveRiotRename(id: number) {
+  riotEditError.value = ''
+  if (!riotEditName.value.trim() || !riotEditTag.value.trim()) {
+    riotEditError.value = 'Enter your Riot name and tag (e.g. PlayerName + 1234).'
+    return
+  }
+  riotSavingId.value = id
+  try {
+    const result = await window.api.auth.renameRiotAccount(id, {
+      riot_name: riotEditName.value.trim(),
+      riot_tag: riotEditTag.value.trim().replace(/^#/, ''),
+      riot_region: riotEditRegion.value,
+    })
+    if (!result.ok) {
+      riotEditError.value = result.error || 'Could not update Riot account'
+      return
+    }
+    cancelRiotEdit()
+    await reloadAccountLinks()
+    await window.api.app.refreshDashboard().catch(() => null)
+  } finally {
+    riotSavingId.value = null
   }
 }
 
@@ -379,6 +427,13 @@ async function unlinkLol() {
                   :disabled="riotActivatingId === account.id"
                   @click="activateRiotAccount(account.id)"
                 >{{ riotActivatingId === account.id ? 'Setting…' : 'Set active' }}</button>
+                <button
+                  v-if="riotEditingId !== account.id"
+                  type="button"
+                  class="rounded-lg border border-white/[0.10] bg-white/[0.04] px-2.5 py-1.5 text-[10px] font-semibold text-gray-200 hover:bg-white/[0.07]"
+                  title="Riot ID changed? Update the name and tag for this account."
+                  @click="startRiotEdit(account)"
+                >Update</button>
                 <template v-if="riotConfirmRemoveId === account.id">
                   <button
                     type="button"
@@ -400,6 +455,39 @@ async function unlinkLol() {
                   :title="riotAccounts.length <= 1 ? 'You must keep at least one Riot account' : undefined"
                   @click="riotConfirmRemoveId = account.id"
                 >Remove</button>
+              </div>
+            </div>
+
+            <div v-if="riotEditingId === account.id" class="mt-3 border-t border-white/[0.06] pt-3 space-y-2">
+              <p class="text-[11px] text-gray-500">
+                Changed your Riot ID in Valorant? Update it here so recording and stats keep matching
+                this account.
+              </p>
+              <div class="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                <input v-model="riotEditName" type="text" placeholder="Name" class="rounded-xl border border-white/[0.10] bg-black/30 px-3 py-2 text-xs text-gray-200 placeholder:text-gray-600 focus:border-red-500/40 focus:outline-none" />
+                <input v-model="riotEditTag" type="text" placeholder="Tag" class="rounded-xl border border-white/[0.10] bg-black/30 px-3 py-2 text-xs text-gray-200 placeholder:text-gray-600 focus:border-red-500/40 focus:outline-none" />
+                <select v-model="riotEditRegion" class="rounded-xl border border-white/[0.10] bg-black/30 px-3 py-2 text-xs text-gray-200 focus:border-red-500/40 focus:outline-none">
+                  <option value="na">NA</option>
+                  <option value="eu">EU</option>
+                  <option value="ap">AP</option>
+                  <option value="kr">KR</option>
+                  <option value="latam">LATAM</option>
+                  <option value="br">BR</option>
+                </select>
+              </div>
+              <p v-if="riotEditError" class="text-[11px] text-red-400">{{ riotEditError }}</p>
+              <div class="flex gap-2">
+                <button
+                  type="button"
+                  class="rounded-xl border border-white/[0.10] bg-white/[0.04] px-3 py-2 text-xs font-semibold text-gray-200"
+                  @click="cancelRiotEdit"
+                >Cancel</button>
+                <button
+                  type="button"
+                  class="flex-1 rounded-xl border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs font-bold text-red-200 hover:bg-red-500/15 disabled:opacity-50"
+                  :disabled="riotSavingId === account.id"
+                  @click="saveRiotRename(account.id)"
+                >{{ riotSavingId === account.id ? 'Saving…' : 'Save changes' }}</button>
               </div>
             </div>
           </div>

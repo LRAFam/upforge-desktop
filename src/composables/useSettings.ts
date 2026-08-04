@@ -7,7 +7,7 @@ import { hasProAccess as proAccessForUser } from '../lib/subscription'
 import { BADGE_PREVIEW_ITEMS, getBadgeIconUrl, getSubscriptionIconUrl } from '../lib/rank-assets'
 import { isPaymentPastDue, openBillingPortal as requestBillingPortal } from '../lib/billing'
 
-type RiotAccountRow = {
+export type RiotAccountRow = {
   id: number
   riot_name: string
   riot_tag: string

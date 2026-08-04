@@ -116,6 +116,15 @@ export function setupAuthHandlers(
     return auth.removeRiotAccount(id)
   })
 
+  ipcMain.handle('auth:rename-riot-account', async (_e, id: number, payload: {
+    riot_name: string
+    riot_tag: string
+    riot_region?: string
+  }) => {
+    if (!auth.getToken()) return { ok: false, error: 'Not logged in' }
+    return auth.renameRiotAccount(id, payload)
+  })
+
   ipcMain.handle('auth:link-lol-account', async (_e, payload: {
     riot_name: string
     riot_tag: string
