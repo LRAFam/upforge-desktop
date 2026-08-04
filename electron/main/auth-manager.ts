@@ -43,6 +43,15 @@ function clearToken(): void {
   try { unlinkSync(tokenPath()) } catch { /* already gone */ }
 }
 
+export interface RiotAccount {
+  id: number
+  riot_name: string
+  riot_tag: string
+  riot_region?: string | null
+  riot_platform?: string | null
+  is_active: boolean
+}
+
 export interface AuthUser {
   id: number
   name: string
@@ -53,6 +62,8 @@ export interface AuthUser {
   riot_tag: string | null
   riot_region?: string | null
   riot_verified?: boolean
+  riot_accounts?: RiotAccount[]
+  max_valorant_accounts?: number
   lol_riot_name?: string | null
   lol_riot_tag?: string | null
   lol_platform?: string | null
@@ -472,6 +483,102 @@ export class AuthManager {
       })
     } catch {
       /* best-effort */
+    }
+  }
+
+  private applyActiveRiotMirror(account: RiotAccount): void {
+    if (!this._user || !account.is_active) return
+    this._user.riot_name = account.riot_name
+    this._user.riot_tag = account.riot_tag
+    if (account.riot_region != null) this._user.riot_region = account.riot_region
+  }
+
+  async listRiotAccounts(): Promise<{
+    accounts: RiotAccount[]
+    max: number
+    active_id: number | null
+  }> {
+    if (!this._api) {
+      const accounts = this._user?.riot_accounts ?? []
+      return {
+        accounts,
+        max: this._user?.max_valorant_accounts ?? 1,
+        active_id: accounts.find((a) => a.is_active)?.id ?? null,
+      }
+    }
+    try {
+      const res = await this._api.get('/api/riot-accounts')
+      const accounts = (res.data?.accounts ?? []) as RiotAccount[]
+      const max = res.data?.max_valorant_accounts ?? this._user?.max_valorant_accounts ?? 1
+      const active_id = (res.data?.active_id as number | null | undefined)
+        ?? accounts.find((a) => a.is_active)?.id
+        ?? null
+      if (this._user) {
+        this._user.riot_accounts = accounts
+        this._user.max_valorant_accounts = max
+        const active = accounts.find((a) => a.is_active)
+        if (active) this.applyActiveRiotMirror(active)
+      }
+      return { accounts, max, active_id }
+    } catch {
+      const accounts = this._user?.riot_accounts ?? []
+      return {
+        accounts,
+        max: this._user?.max_valorant_accounts ?? 1,
+        active_id: accounts.find((a) => a.is_active)?.id ?? null,
+      }
+    }
+  }
+
+  async activateRiotAccount(id: number): Promise<{ ok: boolean; error?: string }> {
+    if (!this._api) return { ok: false, error: 'Not logged in' }
+    try {
+      const res = await this._api.post(`/api/riot-accounts/${id}/activate`)
+      const account = res.data?.account as RiotAccount | undefined
+      if (account) {
+        this.applyActiveRiotMirror(account)
+      }
+      await this.listRiotAccounts()
+      return { ok: true }
+    } catch (err: unknown) {
+      const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message
+      return { ok: false, error: msg || 'Failed to activate Riot account' }
+    }
+  }
+
+  async linkRiotAccount(payload: {
+    riot_name: string
+    riot_tag: string
+    riot_region?: string
+  }): Promise<{ ok: boolean; error?: string; code?: string }> {
+    if (!this._api) return { ok: false, error: 'Not logged in' }
+    try {
+      const res = await this._api.post('/api/riot-accounts', payload)
+      const account = res.data?.account as RiotAccount | undefined
+      await this.listRiotAccounts()
+      if (account?.is_active) {
+        this.applyActiveRiotMirror(account)
+      }
+      return { ok: true }
+    } catch (err: unknown) {
+      const data = (err as { response?: { data?: { message?: string; error?: string } } })?.response?.data
+      return {
+        ok: false,
+        error: data?.message || 'Failed to link Riot account',
+        code: data?.error,
+      }
+    }
+  }
+
+  async removeRiotAccount(id: number): Promise<{ ok: boolean; error?: string }> {
+    if (!this._api) return { ok: false, error: 'Not logged in' }
+    try {
+      await this._api.delete(`/api/riot-accounts/${id}`)
+      await this.listRiotAccounts()
+      return { ok: true }
+    } catch (err: unknown) {
+      const data = (err as { response?: { data?: { message?: string; error?: string } } })?.response?.data
+      return { ok: false, error: data?.message || 'Failed to remove Riot account' }
     }
   }
 

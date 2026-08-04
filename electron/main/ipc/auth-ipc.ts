@@ -90,6 +90,32 @@ export function setupAuthHandlers(
     return auth.updateRiotAccount(payload)
   })
 
+  ipcMain.handle('auth:list-riot-accounts', async () => {
+    if (!auth.getToken()) {
+      return { accounts: [], max: 1, active_id: null }
+    }
+    return auth.listRiotAccounts()
+  })
+
+  ipcMain.handle('auth:activate-riot-account', async (_e, id: number) => {
+    if (!auth.getToken()) return { ok: false, error: 'Not logged in' }
+    return auth.activateRiotAccount(id)
+  })
+
+  ipcMain.handle('auth:link-riot-account', async (_e, payload: {
+    riot_name: string
+    riot_tag: string
+    riot_region?: string
+  }) => {
+    if (!auth.getToken()) return { ok: false, error: 'Not logged in' }
+    return auth.linkRiotAccount(payload)
+  })
+
+  ipcMain.handle('auth:remove-riot-account', async (_e, id: number) => {
+    if (!auth.getToken()) return { ok: false, error: 'Not logged in' }
+    return auth.removeRiotAccount(id)
+  })
+
   ipcMain.handle('auth:link-lol-account', async (_e, payload: {
     riot_name: string
     riot_tag: string
