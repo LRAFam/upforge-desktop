@@ -21,6 +21,8 @@ export {
   resolveEconomyArmor,
 } from './riot-lookup-tables'
 import { applySpatialEnrichment } from './spatial/enrich'
+import { normalizeQueueId } from './riot-queue-id'
+export { normalizeQueueId } from './riot-queue-id'
 import { isCombatPlayerKill } from './is-combat-kill'
 import { parsePlayerAbilitiesFromRoundStats } from './player-abilities'
 import { deriveMatchScore } from './match-score'
@@ -744,7 +746,7 @@ export class RiotLocalApi {
     }
     if (!this.matchData.queueId && queueId) {
       this.matchData.queueId = queueId
-      const normalized = _normalizeQueueId(queueId)
+      const normalized = normalizeQueueId(queueId)
       this.matchData.gameMode = normalized
       this.lastGameMode = normalized
       console.log(`[RiotLocalApi] Queue: ${queueId} -> ${normalized}`)
@@ -1270,7 +1272,7 @@ export class RiotLocalApi {
     if (matchInfo?.queueID && !this.matchData.queueId) {
       const queueId = matchInfo.queueID as string
       this.matchData.queueId = queueId
-      this.matchData.gameMode = _normalizeQueueId(queueId)
+      this.matchData.gameMode = normalizeQueueId(queueId)
       this.lastGameMode = this.matchData.gameMode
     }
 
@@ -1600,7 +1602,7 @@ export class RiotLocalApi {
   async getGameMode(): Promise<string | null> {
     const state = await this.getSessionState()
     if (state?.queueId) {
-      const mode = _normalizeQueueId(state.queueId)
+      const mode = normalizeQueueId(state.queueId)
       this.lastGameMode = mode
       return mode
     }
@@ -1887,7 +1889,7 @@ export class RiotLocalApi {
       }>(`/pregame/v1/matches/${player.MatchID}`)
 
       const mapName = match?.MapID ? resolveMapName(match.MapID) : null
-      const mode = match?.QueueID ? _normalizeQueueId(match.QueueID) : null
+      const mode = match?.QueueID ? normalizeQueueId(match.QueueID) : null
       const own = match?.AllyTeam?.Players?.find(
         (p) => p.Subject?.toLowerCase() === this.ownPuuid?.toLowerCase()
       )
@@ -2148,20 +2150,6 @@ export function recomputeTimelineVideoOffsets(timeline: MatchData): void {
   }
 
   syncSpatialVideoOffsets(timeline)
-}
-
-export function normalizeQueueId(queueId: string): string {
-  return _normalizeQueueId(queueId)
-}
-
-function _normalizeQueueId(queueId: string): string {
-  const map: Record<string, string> = {
-    competitive: 'COMPETITIVE', unrated: 'CLASSIC', deathmatch: 'DEATHMATCH',
-    spikerush: 'SPIKERUSH', swiftplay: 'SWIFTPLAY', snowball: 'SNOWBALL',
-    premier: 'PREMIER', custom: 'CUSTOM', ggteam: 'ESCALATION',
-    onefa: 'REPLICATION', hurm: 'TEAMDEATHMATCH', newmap: 'NEWMAP',
-  }
-  return map[queueId.toLowerCase()] ?? queueId.toUpperCase()
 }
 
 interface FirstBloodRound {

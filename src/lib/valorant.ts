@@ -470,7 +470,8 @@ const MODE_LABELS: Record<string, string> = {
   SPIKERUSH: 'Spike Rush',
   SWIFTPLAY: 'Swift Play',
   SNOWBALL: 'Snowball Fight',
-  RANGEV2: 'Range',
+  SHOOTING_RANGE: 'The Range',
+  RANGEV2: 'The Range',
 }
 
 const PLACEHOLDER_MODE_VALUES = new Set(['', 'null', 'undefined', 'unknown', 'none', 'n/a'])

@@ -516,7 +516,8 @@ function createSettings() {
     { value: 'SPIKERUSH', label: 'Spike Rush', hint: '' },
     { value: 'SWIFTPLAY', label: 'Swift Play', hint: '' },
     { value: 'DEATHMATCH', label: 'Deathmatch', hint: 'Warm-up & practice' },
-    { value: 'TEAMDEATHMATCH', label: 'Team Deathmatch', hint: 'HURM mode' }
+    { value: 'TEAMDEATHMATCH', label: 'Team Deathmatch', hint: 'HURM mode' },
+    { value: 'SHOOTING_RANGE', label: 'The Range', hint: 'Practice range' },
   ]
   
   const toggles: Array<{ key: keyof Pick<AppSettings, 'launchOnStartup' | 'autoDelete' | 'autoAnalyse' | 'notificationSound' | 'autoOpenBrowser' | 'discordRichPresence'>; label: string; hint: string | null }> = [
