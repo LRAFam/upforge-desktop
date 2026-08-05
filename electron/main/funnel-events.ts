@@ -4,6 +4,7 @@
 
 import log from 'electron-log'
 import type { AuthManager } from './auth-manager'
+import { classifyActivationError, isQuotaErrorCode } from './activation-error-codes'
 
 const SESSION_ID = `desktop-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`
 
@@ -28,8 +29,22 @@ export type FunnelEventName =
   | 'match_detected'
   | 'recording_started'
   | 'recording_failed'
+  | 'recording_setup_started'
+  | 'recording_setup_passed'
+  | 'recording_setup_failed'
+  | 'recording_test_started'
+  | 'recording_test_passed'
+  | 'preparation_started'
+  | 'preparation_completed'
+  | 'preparation_failed'
   | 'upload_started'
   | 'upload_failed'
+  | 'upload_resumed'
+  | 'quota_reached'
+  | 'upgrade_prompt_shown'
+  | 'pay_per_analysis_prompt_shown'
+  | 'report_opened'
+  | 'analysis_degraded'
   | 'ops_recording_lap'
 
 export async function trackFunnelEvent(
@@ -102,9 +117,11 @@ export function trackRecordingFailed(
   phase: 'obs' | 'capture' | 'record',
   game = 'valorant',
 ): void {
+  const classified = classifyActivationError(reason)
   void trackFunnelEvent('recording_failed', {
     game,
     reason: reason.slice(0, 120),
+    failure_code: classified.code,
     phase,
   })
 }
@@ -113,11 +130,85 @@ export function trackUploadStarted(game = 'valorant'): void {
   void trackFunnelEvent('upload_started', { game })
 }
 
-export function trackUploadFailed(reason: string, game = 'valorant'): void {
-  void trackFunnelEvent('upload_failed', {
+/**
+ * Technical upload/prep failures only. Quota walls use trackQuotaReached.
+ */
+export function trackUploadFailed(
+  reason: string,
+  game = 'valorant',
+  extras?: Record<string, unknown>,
+): void {
+  const classified = classifyActivationError(reason)
+  if (isQuotaErrorCode(classified.code)) {
+    trackQuotaReached(game, { reason: reason.slice(0, 120), ...extras })
+    return
+  }
+  const event =
+    classified.definition.category === 'preparation' ? 'preparation_failed' : 'upload_failed'
+  void trackFunnelEvent(event, {
     game,
     reason: reason.slice(0, 120),
+    failure_code: classified.code,
+    recovery_action: classified.definition.recoveryAction,
+    ...extras,
   })
+}
+
+export function trackQuotaReached(game = 'valorant', extras?: Record<string, unknown>): void {
+  void trackFunnelEvent('quota_reached', {
+    game,
+    failure_code: 'quota_required',
+    ...extras,
+  })
+}
+
+export function trackPreparationStarted(game = 'valorant'): void {
+  void trackFunnelEvent('preparation_started', { game })
+}
+
+export function trackPreparationCompleted(game = 'valorant'): void {
+  void trackFunnelEvent('preparation_completed', { game })
+}
+
+export function trackUpgradePromptShown(source: string, game = 'valorant'): void {
+  void trackFunnelEvent('upgrade_prompt_shown', { source, game })
+}
+
+export function trackPayPerAnalysisPromptShown(source: string, game = 'valorant'): void {
+  void trackFunnelEvent('pay_per_analysis_prompt_shown', { source, game })
+}
+
+export function trackReportOpened(props?: Record<string, unknown>): void {
+  void trackFunnelEvent('report_opened', props)
+}
+
+export function trackRecordingSetupStarted(game = 'valorant'): void {
+  void trackFunnelEvent('recording_setup_started', { game })
+}
+
+export function trackRecordingSetupPassed(game = 'valorant'): void {
+  void trackFunnelEvent('recording_setup_passed', { game })
+}
+
+export function trackRecordingSetupFailed(reason: string, game = 'valorant'): void {
+  const classified = classifyActivationError(reason)
+  void trackFunnelEvent('recording_setup_failed', {
+    game,
+    reason: reason.slice(0, 120),
+    failure_code: classified.code,
+  })
+}
+
+export function trackRecordingTestStarted(game = 'valorant'): void {
+  void trackFunnelEvent('recording_test_started', { game })
+}
+
+export function trackRecordingTestPassed(game = 'valorant'): void {
+  void trackFunnelEvent('recording_test_passed', { game })
+}
+
+export function trackAnalysisDegraded(props?: Record<string, unknown>): void {
+  void trackFunnelEvent('analysis_degraded', props)
 }
 
 const ABS_PATH_RE = /(?:\/Users\/|[A-Za-z]:\\|\\\\)/

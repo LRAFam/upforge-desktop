@@ -3,6 +3,8 @@ import {
   buildAnalysisErrorPayload,
   classifyAnalysisFailure,
   formatAnalysisFailureMessage,
+  getDegradedReportNotice,
+  isDegradedTelemetryResult,
 } from './analysis-failure-messages'
 
 describe('formatAnalysisFailureMessage', () => {
@@ -25,8 +27,22 @@ describe('formatAnalysisFailureMessage', () => {
 
   it('does not claim refund for quota errors', () => {
     const p = classifyAnalysisFailure('analysis.limit.reached')
-    expect(p.kind).toBe('quota')
+    expect(p.kind).toBe('quota_required')
     expect(p.creditRefunded).toBe(false)
+  })
+
+  it('classifies free analysis wall as quota_required', () => {
+    const p = classifyAnalysisFailure(
+      'You have used your free analysis. Upgrade to Plus or Pro for ongoing coaching, or pay per analysis on the web.',
+    )
+    expect(p.kind).toBe('quota_required')
+    expect(p.canRetry).toBe(false)
+  })
+
+  it('classifies preparing failures as preparation', () => {
+    const p = classifyAnalysisFailure('Preparing did not complete — open the dashboard')
+    expect(p.kind).toBe('preparation')
+    expect(p.canRetry).toBe(true)
   })
 
   it('maps API outage errors to temporary unavailable copy', () => {
@@ -97,5 +113,21 @@ describe('buildAnalysisErrorPayload', () => {
     const payload = buildAnalysisErrorPayload('Server error', { recordingId: 'rec-1' })
     expect(payload.recordingId).toBe('rec-1')
     expect(payload.title).toBeTruthy()
+  })
+})
+
+describe('degraded telemetry helpers', () => {
+  it('detects degraded telemetry results', () => {
+    expect(isDegradedTelemetryResult({ report_type: 'degraded_telemetry' })).toBe(true)
+    expect(isDegradedTelemetryResult({ coaching_source: 'telemetry_only' })).toBe(true)
+    expect(isDegradedTelemetryResult({ is_degraded: true })).toBe(true)
+    expect(isDegradedTelemetryResult({ is_degraded: true, telemetry_fallback_used: true })).toBe(true)
+    expect(isDegradedTelemetryResult(null)).toBe(false)
+  })
+
+  it('returns stats-based notice copy', () => {
+    const notice = getDegradedReportNotice()
+    expect(notice.title).toContain('Stats-based')
+    expect(notice.message.toLowerCase()).toContain('video')
   })
 })

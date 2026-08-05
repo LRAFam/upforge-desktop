@@ -23,6 +23,7 @@ export type PostGameUiPhase =
   | 'error'
   | 'pending'
   | 'archived'
+  | 'quota_required'
 
 export type PostGameSessionSnapshot = {
   phase: PostGameUiPhase
@@ -95,6 +96,7 @@ export function isPostGamePastPreparing(phase: PostGameUiPhase | null | undefine
     || phase === 'error'
     || phase === 'pending'
     || phase === 'archived'
+    || phase === 'quota_required'
   )
 }
 
@@ -214,9 +216,15 @@ export function applyPostGameChannelEvent(channel: string, payload: unknown): vo
       })
       break
     }
-    case 'post-game:upload-error':
-      patch({ phase: 'error', compressing: false })
+    case 'post-game:upload-error': {
+      const data = (payload ?? {}) as { needsUpgrade?: boolean; kind?: string }
+      const quota =
+        data.needsUpgrade === true
+        || data.kind === 'quota'
+        || data.kind === 'quota_required'
+      patch({ phase: quota ? 'quota_required' : 'error', compressing: false })
       break
+    }
     case 'post-game:analysis-readiness': {
       const readiness = payload as { ready: boolean; state: string; message: string }
       const inFlow = session?.phase === 'preparing' || session?.phase === 'uploading'

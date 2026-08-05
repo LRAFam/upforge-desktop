@@ -12,8 +12,10 @@ export type AnalysisFailureKind =
   | 'refunded_generic'
   | 'integrity'
   | 'quota'
+  | 'quota_required'
   | 'upload'
   | 'clips_only'
+  | 'preparation'
 
 export interface AnalysisFailurePresentation {
   kind: AnalysisFailureKind
@@ -37,6 +39,10 @@ export interface AnalysisErrorPayload {
   ppaUrl?: string
   clipsOnly?: boolean
   failureDiagnostics?: DuelFailureDiagnostics | null
+  /** Stable activation error code when classified (desktop pipeline). */
+  failureCode?: string
+  /** Suggested user recovery action from activation taxonomy. */
+  recoveryAction?: string
 }
 
 function extractXmlErrorParts(raw: string): { code?: string; message?: string } {
@@ -65,14 +71,27 @@ export function classifyAnalysisFailure(rawError: string): AnalysisFailurePresen
   const lower = err.toLowerCase()
   const xml = extractXmlErrorParts(err)
 
-  if (/analysis\.limit|upgrade\.required|no analyses remaining/i.test(lower)) {
+  if (/analysis\.limit|upgrade\.required|no analyses remaining|used your free analysis|analysis_limit_reached|quota_required/i.test(lower)) {
     return {
-      kind: 'quota',
-      title: 'Analysis limit reached',
-      message: err.includes('remaining') || err.includes('used all') ? err : 'You have used all your analyses for this period.',
-      hint: 'Buy extra analyses on the web, or wait for your monthly quota to reset.',
+      kind: 'quota_required',
+      title: 'Analysis credit needed',
+      message: err.includes('remaining') || err.includes('used all') || err.includes('free analysis')
+        ? err
+        : 'Your match is ready, but you need an analysis credit to unlock coaching.',
+      hint: 'Upgrade to Plus or Pro, or pay per analysis on the web. Your recording is preserved.',
       creditRefunded: false,
       canRetry: false,
+    }
+  }
+
+  if (/preparing (did not complete|is taking longer)|preparation_/i.test(lower)) {
+    return {
+      kind: 'preparation',
+      title: 'Preparation did not finish',
+      message: 'Your recording is saved. Resume preparation from the dashboard — you do not need to play another match.',
+      hint: 'Tap Resume Preparation on the recording row.',
+      creditRefunded: false,
+      canRetry: true,
     }
   }
 
@@ -298,5 +317,33 @@ export function buildAnalysisErrorPayload(
     canRetry: presentation.canRetry,
     kind: presentation.kind,
     ...extras,
+  }
+}
+
+export interface DegradedReportNotice {
+  title: string
+  message: string
+}
+
+export function isDegradedTelemetryResult(result: {
+  report_type?: string | null
+  coaching_source?: string | null
+  is_degraded?: boolean | null
+  telemetry_fallback_used?: boolean | null
+} | null | undefined): boolean {
+  if (!result) return false
+  return (
+    result.is_degraded === true
+    || result.telemetry_fallback_used === true
+    || result.report_type === 'degraded_telemetry'
+    || result.coaching_source === 'telemetry_only'
+  )
+}
+
+/** Short label when a completed report used stats-only telemetry fallback. */
+export function getDegradedReportNotice(): DegradedReportNotice {
+  return {
+    title: 'Stats-based report',
+    message: 'Video review was incomplete. Limitations are listed in the full report.',
   }
 }
