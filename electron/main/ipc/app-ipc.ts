@@ -18,7 +18,7 @@ import { hasProAccess } from '../subscription'
 import { getActiveUserId } from '../user-session'
 import { resolveRecordingSavePath } from '../user-data-paths'
 import { openPathSafe } from '../shell-open'
-import { trackOnboardingComplete } from '../funnel-events'
+import { trackOnboardingComplete, trackReportOpened } from '../funnel-events'
 import { applyLayoutForRoute } from '../window-layouts'
 import { isInGameOverlayEnabled } from '../in-game-overlay'
 import { closeWebShell, openWebShell } from '../web-shell'
@@ -65,6 +65,11 @@ export function setupAppHandlers(
       currentQueueMode: recording && getCurrentQueueMode ? getCurrentQueueMode() : null,
       inGameOverlayEnabled: isInGameOverlayEnabled(),
     }
+  })
+
+  ipcMain.handle('funnel:track-report-opened', (_e, props?: Record<string, unknown>) => {
+    trackReportOpened(props)
+    return { ok: true as const }
   })
 
   ipcMain.handle('app:get-activity-log', () => {

@@ -22,6 +22,10 @@ export async function openGameAnalysis(
         if (data) {
           pendingTimeline.value = data
           await router.push({ path: '/vod-review', query: { timelineId: String(item.id) } })
+          void window.api.funnel?.trackReportOpened?.({
+            analysis_id: item.id,
+            source: 'desktop_dashboard_cs2_vod',
+          })
           return
         }
       } catch { /* fall through to web */ }
@@ -39,9 +43,17 @@ export async function openGameAnalysis(
       if (data) {
         pendingTimeline.value = data
         await router.push({ path: '/vod-review', query: { timelineId: String(item.id) } })
+        void window.api.funnel?.trackReportOpened?.({
+          analysis_id: item.id,
+          source: 'desktop_dashboard_valorant',
+        })
         return
       }
     } catch { /* fall through to web */ }
   }
   window.open(analysisResultsUrl(game, item.id), '_blank')
+  void window.api.funnel?.trackReportOpened?.({
+    analysis_id: item.id,
+    source: `desktop_dashboard_${game}_web`,
+  })
 }
