@@ -1,7 +1,14 @@
-import { ref, computed, reactive, inject, provide, onMounted, onUnmounted, toRaw, type InjectionKey } from 'vue'
+import { ref, computed, reactive, inject, provide, onMounted, onUnmounted, toRaw, watch, type InjectionKey } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import type { AppSettings } from '../env.d.ts'
 import { PRIMARY_GAMES, type PrimaryGame } from '../lib/games'
+import {
+  SETTINGS_CATEGORY_META,
+  resolveSettingsCategory,
+  resolveSettingsSection,
+  type SettingsCategoryId,
+  type SettingsSectionId,
+} from '../lib/settings-nav'
 import { getTierBadgeClass, getTierBadgeLabel, formatGameMode } from '../lib/valorant'
 import { hasProAccess as proAccessForUser } from '../lib/subscription'
 import { BADGE_PREVIEW_ITEMS, getBadgeIconUrl, getSubscriptionIconUrl } from '../lib/rank-assets'
@@ -60,14 +67,18 @@ function createSettings() {
   
   const paymentPastDue = computed(() => isPaymentPastDue(user.value?.stripe_subscription_status))
   
-  const SETTINGS_TABS = [
-    { id: 'general',   label: 'Account',   icon: '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/>' },
-    { id: 'recording', label: 'Recording', icon: '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.069A1 1 0 0121 8.882v6.236a1 1 0 01-1.447.894L15 14M3 8a2 2 0 012-2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V8z"/>' },
-    { id: 'trainer',   label: 'Trainer',   icon: '<circle cx="12" cy="12" r="10" stroke-width="1.5"/><circle cx="12" cy="12" r="4" stroke-width="1.5"/><line x1="12" y1="2" x2="12" y2="6" stroke-width="1.5"/><line x1="12" y1="18" x2="12" y2="22" stroke-width="1.5"/><line x1="2" y1="12" x2="6" y2="12" stroke-width="1.5"/><line x1="18" y1="12" x2="22" y2="12" stroke-width="1.5"/>' },
-    { id: 'system',    label: 'System',    icon: '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>' },
-  ] as const
-  type SettingsTab = typeof SETTINGS_TABS[number]['id']
-  const activeTab = ref<SettingsTab>('general')
+  const SETTINGS_CATEGORIES = SETTINGS_CATEGORY_META
+  const activeCategory = ref<SettingsCategoryId>('account')
+  const highlightSection = ref<SettingsSectionId | null>(null)
+
+  function setActiveCategory(id: SettingsCategoryId): void {
+    activeCategory.value = id
+    const nextQuery: Record<string, string> = { tab: id }
+    const link = route.query.link
+    if (typeof link === 'string' && link) nextQuery.link = link
+    if (highlightSection.value) nextQuery.section = highlightSection.value
+    void router.replace({ path: '/settings', query: nextQuery })
+  }
   
   const appVersion = ref(__APP_VERSION__)
   const isDev = ref(false)
@@ -1043,10 +1054,32 @@ function createSettings() {
     window.removeEventListener('keydown', handleKeydown)
   })
   
+  watch(
+    () => route.query.tab,
+    (tab) => {
+      activeCategory.value = resolveSettingsCategory(tab)
+    },
+  )
+  watch(
+    () => route.query.section,
+    (section) => {
+      const resolved = resolveSettingsSection(section)
+      highlightSection.value = resolved
+      if (resolved) {
+        window.setTimeout(() => {
+          if (highlightSection.value === resolved) highlightSection.value = null
+        }, 1000)
+      }
+    },
+  )
+
   onMounted(async () => {
-    const tabQuery = route.query.tab
-    if (tabQuery === 'recording' || tabQuery === 'general' || tabQuery === 'trainer' || tabQuery === 'system') {
-      activeTab.value = tabQuery
+    activeCategory.value = resolveSettingsCategory(route.query.tab)
+    highlightSection.value = resolveSettingsSection(route.query.section)
+    if (highlightSection.value) {
+      window.setTimeout(() => {
+        highlightSection.value = null
+      }, 1000)
     }
     const linkQuery = route.query.link
     if (linkQuery === 'valorant' || linkQuery === 'cs2' || linkQuery === 'deadlock') {
@@ -1175,7 +1208,7 @@ function createSettings() {
     GAME_MODES,
     LOW_FREE_DISK_BYTES,
     PRIMARY_GAMES,
-    SETTINGS_TABS,
+    SETTINGS_CATEGORIES,
     getBadgeIconUrl,
     getSubscriptionIconUrl,
     getTierBadgeClass,
@@ -1186,7 +1219,9 @@ function createSettings() {
     accountRiotId,
     accountSteamLinked,
     accountSteamStatus,
-    activeTab,
+    activeCategory,
+    highlightSection,
+    setActiveCategory,
     appVersion,
     archiveUsagePercent,
     audioStatus,
