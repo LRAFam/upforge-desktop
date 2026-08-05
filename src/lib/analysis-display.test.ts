@@ -39,12 +39,12 @@ describe('inferAnalysisGame', () => {
 })
 
 describe('pendingRecordingFailureHint', () => {
-  it('suggests Steam demo wait for CS2 demo errors', () => {
+  it('suggests attaching the replay for CS2 demo errors', () => {
     const rec = {
       game: 'cs2',
       lastAnalysisError: 'Demo file not synced yet',
     } as PendingRecording
-    expect(pendingRecordingFailureHint(rec)).toMatch(/Steam/)
+    expect(pendingRecordingFailureHint(rec)).toMatch(/replay|\.dem/i)
   })
 
   it('suggests Riot sync for Valorant late stats', () => {

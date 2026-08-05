@@ -886,6 +886,7 @@ const matchId = ref<string | null>(null)
 const degradedReportNotice = computed(() => getDegradedReportNotice())
 const showDegradedReportNotice = computed(() => isDegradedTelemetryResult(result.value))
 
+const categoryPercentiles = ref<Record<string, CategoryPercentileEntry>>({})
 const percentileTier = ref<string | null>(null)
 
 async function loadCategoryPercentiles(): Promise<void> {
