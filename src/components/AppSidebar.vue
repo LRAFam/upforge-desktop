@@ -9,6 +9,7 @@ import {
   analysesLeftSidebarLabel,
   analysesLeftSidebarTone,
 } from '../lib/quota-display'
+import { resolveSettingsCategory } from '../lib/settings-nav'
 import { WEB_SIDEBAR_LINKS, openWebFeature } from '../lib/web-explore-links'
 import type { ProfileData } from '../env.d.ts'
 import upforgeIcon from '../assets/upforge-icon.webp'
@@ -77,14 +78,13 @@ const visibleMainNav = computed(() => {
 
 const settingsActive = computed(() => {
   if (route.path !== '/settings') return false
-  const tab = String(route.query.tab || 'general')
-  return tab !== 'general'
+  const tab = resolveSettingsCategory(route.query.tab)
+  return tab !== 'account'
 })
 
 const accountActive = computed(() => {
   if (route.path !== '/settings') return false
-  const tab = String(route.query.tab || 'general')
-  return tab === 'general'
+  return resolveSettingsCategory(route.query.tab) === 'account'
 })
 
 function isActive(item: NavItem): boolean {
@@ -132,7 +132,7 @@ async function signOut() {
 }
 
 function openAccount() {
-  router.push({ path: '/settings', query: { tab: 'general' } }).catch(() => {})
+  router.push({ path: '/settings', query: { tab: 'account' } }).catch(() => {})
 }
 
 function openSettings() {
