@@ -19,9 +19,17 @@ const {
   obsDisconnectedHint,
   obsDisconnect,
   obsLaunchAndConnect,
+  obsPreflightMessage,
+  obsPreflightMessageError,
+  obsPreflightRunning,
   obsProcessState,
+  obsRepairRunning,
+  obsRepairSetup,
+  obsRunPreflight,
   obsSetupRunning,
   obsSetupScene,
+  obsTestRecording,
+  obsTestRecordingRunning,
   installObsProfile,
   obsStatus,
   openCs2Analyze,
@@ -250,9 +258,22 @@ const clipCaptureOptions = [
                 </template>
                 <template v-else>
                   <button class="rounded-xl border border-white/[0.08] bg-white/[0.04] px-3 py-2 text-xs font-medium text-gray-300 transition-colors hover:border-white/[0.14] hover:text-white" @click="obsDisconnect">Disconnect</button>
+                  <button :disabled="obsRepairRunning" class="rounded-xl border border-white/[0.08] bg-white/[0.04] px-3 py-2 text-xs font-medium text-gray-300 transition-colors hover:border-white/[0.14] hover:text-white disabled:opacity-50" @click="obsRepairSetup">{{ obsRepairRunning ? 'Repairing…' : 'Repair Setup' }}</button>
+                  <button :disabled="obsTestRecordingRunning" class="rounded-xl border border-white/[0.08] bg-white/[0.04] px-3 py-2 text-xs font-medium text-gray-300 transition-colors hover:border-white/[0.14] hover:text-white disabled:opacity-50" @click="obsTestRecording">{{ obsTestRecordingRunning ? 'Testing…' : 'Test Recording' }}</button>
+                  <button :disabled="obsPreflightRunning" class="rounded-xl border border-white/[0.08] bg-white/[0.04] px-3 py-2 text-xs font-medium text-gray-300 transition-colors hover:border-white/[0.14] hover:text-white disabled:opacity-50" @click="obsRunPreflight">{{ obsPreflightRunning ? 'Checking…' : 'Verify Setup' }}</button>
                   <button :disabled="obsSetupRunning" class="rounded-xl border border-white/[0.08] bg-white/[0.04] px-3 py-2 text-xs font-medium text-gray-300 transition-colors hover:border-white/[0.14] hover:text-white disabled:opacity-50" @click="obsSetupScene">{{ obsSetupRunning ? 'Setting up…' : 'Recreate UpForge scene' }}</button>
                 </template>
               </div>
+              <p
+                v-if="obsPreflightMessage"
+                class="rounded-xl border px-3 py-2 text-xs"
+                :class="obsPreflightMessageError ? 'border-red-500/20 bg-red-500/6 text-red-300' : 'border-green-500/20 bg-green-500/6 text-green-300'"
+              >
+                {{ obsPreflightMessage }}
+              </p>
+              <p v-if="settings.obsSetupPassedAt" class="text-[11px] text-gray-600">
+                Last verified {{ new Date(settings.obsSetupPassedAt).toLocaleString() }}
+              </p>
               <div class="grid grid-cols-[1fr_96px] gap-3">
                 <div>
                   <label class="mb-1 block text-xs text-gray-400">WebSocket host</label>

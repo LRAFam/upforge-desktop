@@ -30,7 +30,8 @@ import {
   shouldReleaseOwnershipAfterReconnect,
 } from './obs-disconnect-guard'
 import { nextUnownedClearAction } from './obs-unowned-clear'
-import { waitForObsRecordArmed } from './obs-start-verify'
+import { resolveObsRecordVerifyMs, waitForObsRecordArmed } from './obs-start-verify'
+import { classifyActivationError } from './activation-error-codes'
 import {
   buildRetargetMutationFlags,
   buildSetupMutationFlags,
@@ -46,6 +47,8 @@ export interface OBSSettings {
   replayBufferSeconds: number
   /** When true, do not switch OBS to the UpForge scene on connect/record (for custom stream layouts). */
   obsPreserveActiveScene: boolean
+  /** Milliseconds to wait for outputActive after StartRecord. */
+  obsRecordVerifyMs?: number
 }
 
 export interface OBSStatus {
@@ -794,12 +797,17 @@ export class OBSRecorder {
 
       // Start the full-match recording (skipped in clips-only mode)
       if (!this._clipsOnlySession) {
+        log.info('[OBSRecorder] Sending StartRecord command')
         await this._obs.call('StartRecord')
+        const verifyMs = resolveObsRecordVerifyMs({
+          settingsMs: this.getSettings().obsRecordVerifyMs,
+        })
         const armed = await waitForObsRecordArmed({
           getOutputActive: async () => {
             const s = await this._obs.call('GetRecordStatus') as { outputActive?: boolean }
             return !!s.outputActive
           },
+          timeoutMs: verifyMs,
         })
         if (!armed.armed) {
           try {
@@ -807,8 +815,19 @@ export class OBSRecorder {
           } catch (err) {
             log.warn('[OBSRecorder] StopRecord after start-verify timeout failed:', err)
           }
-          throw new Error('OBS StartRecord did not become active within 5s')
+          const technical = `OBS StartRecord did not become active within ${Math.round(verifyMs / 1000)}s`
+          const classified = classifyActivationError(technical)
+          log.warn(
+            '[OBSRecorder] StartRecord sent but outputActive never armed within',
+            verifyMs,
+            'ms — code:',
+            classified.code,
+            'technical:',
+            classified.technicalMessage,
+          )
+          throw new Error(classified.userMessage)
         }
+        log.info('[OBSRecorder] StartRecord armed — outputActive=true after', verifyMs, 'ms budget')
       }
       this._matchOwnedRecording = true
       this._gameplayRefitDone = false
