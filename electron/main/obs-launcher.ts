@@ -11,6 +11,7 @@ import {
   buildObsCmdStartArgs,
   obsExecutableWorkingDirectory,
 } from './obs-launch-cwd'
+import { clearObsCrashSentinel } from './obs-crash-sentinel'
 import {
   obsLaunchArgs,
   UPFORGE_OBS_DEFAULT_PORT,
@@ -86,6 +87,10 @@ export async function launchObsStudio(opts: LaunchObsOptions = {}): Promise<{ ok
       await new Promise((r) => setTimeout(r, 2500))
     }
   }
+
+  // We launch minimised to tray, so a Safe Mode prompt would be invisible and
+  // would hold OBS before obs-websocket starts listening.
+  clearObsCrashSentinel()
 
   if (process.platform === 'win32') {
     for (const candidate of candidateObsPaths()) {
