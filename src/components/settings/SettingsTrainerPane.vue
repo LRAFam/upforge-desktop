@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { useSettings } from '../../composables/useSettings'
 import SettingsSection from './SettingsSection.vue'
+import SettingsToggle from './SettingsToggle.vue'
 
 const {
   conflictResults,
@@ -92,14 +93,15 @@ const {
         </div>
       </div>
 
-      <div class="flex items-center justify-between rounded-2xl border border-white/[0.10] bg-black/20 px-4 py-3">
+      <div class="flex items-center justify-between gap-4">
         <div>
           <p class="text-sm text-gray-200">Raw input</p>
           <p class="mt-1 text-xs text-gray-500">Bypass OS pointer acceleration</p>
         </div>
-        <button type="button" class="relative inline-flex h-5 w-9 items-center rounded-full transition-colors" :class="settings.trainerMouse.rawInput ? 'bg-red-500' : 'bg-white/20'" @click="settings.trainerMouse.rawInput = !settings.trainerMouse.rawInput; debouncedSave()">
-          <span class="inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform" :class="settings.trainerMouse.rawInput ? 'translate-x-4' : 'translate-x-0.5'" />
-        </button>
+        <SettingsToggle
+          :on="!!settings.trainerMouse.rawInput"
+          @click="settings.trainerMouse.rawInput = !settings.trainerMouse.rawInput; debouncedSave()"
+        />
       </div>
 
       <div>
