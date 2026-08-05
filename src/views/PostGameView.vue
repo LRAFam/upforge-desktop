@@ -1897,17 +1897,26 @@ async function saveToCloudNow() {
   archiveOnlyUpload.value = true
   try {
     const result = await window.api.recordings.saveToCloud(pendingRecordingId.value)
-    if (result.alreadySaved) {
-      state.value = 'archived'
-      return
-    }
     if (!result.ok) {
       state.value = 'error'
-      errorMessage.value = result.error ?? 'Could not save to cloud'
+      errorDetails.value = {
+        title: result.title ?? 'Could not save to cloud',
+        message: result.error,
+        hint: result.hint ?? 'Try again from the dashboard, or contact support if this keeps happening.',
+        creditRefunded: false,
+        canRetry: true,
+        kind: 'upload',
+        failureCode: result.failureCode,
+      }
+      errorMessage.value = result.error
       if (/archive.limit|cloud storage/i.test(result.error ?? '')) {
         needsUpgrade.value = true
         needsArchiveUpgrade.value = true
       }
+      return
+    }
+    if (result.alreadySaved) {
+      state.value = 'archived'
     }
   } catch {
     state.value = 'error'

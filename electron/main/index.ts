@@ -4797,7 +4797,7 @@ async function doUploadArchiveOnly(
   timeline: MatchData | null,
   targetWindow: BrowserWindow,
   deleteLocalAfterUpload = false,
-): Promise<string | null> {
+): Promise<{ archiveId: string | null; lastError: AnalysisErrorPayload | null }> {
   const send = (channel: string, payload?: unknown) => {
     try {
       if (!targetWindow.isDestroyed()) targetWindow.webContents.send(channel, payload)
@@ -4819,15 +4819,15 @@ async function doUploadArchiveOnly(
     }
     if (resolved.sizeBytes > MAX_RECORDING_FILE_BYTES) {
       const errorMsg = formatRecordingTooLargeMessage(resolved.sizeBytes, false)
-      sendUploadFailure(errorMsg, { targetWindow, recordingId, notify: false, game })
-      return null
+      const lastError = sendUploadFailure(errorMsg, { targetWindow, recordingId, notify: false, game })
+      return { archiveId: null, lastError }
     }
   } catch (prepErr) {
-    sendUploadFailure(
+    const lastError = sendUploadFailure(
       prepErr instanceof Error ? prepErr.message : 'Could not prepare recording for upload',
       { targetWindow, recordingId, notify: false, game },
     )
-    return null
+    return { archiveId: null, lastError }
   }
 
   if (recordingId) {
@@ -4875,13 +4875,13 @@ async function doUploadArchiveOnly(
       logActivity('Local recording removed — VOD available in cloud')
     }
 
-    return result.archive_id
+    return { archiveId: result.archive_id, lastError: null }
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : 'Cloud save failed'
     logActivity(`Cloud save failed: ${msg}`)
     const isUpgradeError = err instanceof UpgradeRequiredError
       || (err instanceof Error && /archive.limit.reached|archive_limit_reached/i.test(err.message))
-    sendUploadFailure(msg, {
+    const lastError = sendUploadFailure(msg, {
       targetWindow,
       recordingId,
       needsUpgrade: isUpgradeError,
@@ -4889,7 +4889,7 @@ async function doUploadArchiveOnly(
       notify: false,
       game,
     })
-    return null
+    return { archiveId: null, lastError }
   } finally {
     if (recordingId) {
       recordingsStore.setPipelineArchiveOnly(recordingId, false)
@@ -6247,7 +6247,7 @@ async function startApp(): Promise<void> {
     }
 
     const deleteLocal = settingsManager?.get().autoDelete ?? true
-    const archiveId = await doUploadArchiveOnly(
+    const { archiveId, lastError } = await doUploadArchiveOnly(
       recording.id,
       recording.path,
       recording.riotName || user?.riot_name || '',
@@ -6261,7 +6261,13 @@ async function startApp(): Promise<void> {
     )
 
     if (!archiveId) {
-      return { ok: false as const, error: 'Could not save recording to cloud' }
+      return {
+        ok: false as const,
+        error: lastError?.message ?? 'Could not save your recording to cloud. Try again from the dashboard.',
+        title: lastError?.title,
+        hint: lastError?.hint,
+        failureCode: lastError?.failureCode,
+      }
     }
     return { ok: true as const, archiveId }
   })

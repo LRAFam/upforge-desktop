@@ -34,6 +34,16 @@ export interface TrainingBenchmark {
   }
 }
 
+export type SaveToCloudResult =
+  | { ok: true; archiveId: string; alreadySaved?: boolean }
+  | {
+      ok: false
+      error: string
+      title?: string
+      hint?: string | null
+      failureCode?: string
+    }
+
 export interface TrainerLeaderboardEntry {
   rank: number
   user_id: number
@@ -648,7 +658,7 @@ declare global {
           error?: string
           analysisReadiness: PendingRecording['analysisReadiness'] | null
         }>
-        saveToCloud: (id: string) => Promise<{ ok: boolean; archiveId?: string; alreadySaved?: boolean; error?: string }>
+        saveToCloud: (id: string) => Promise<SaveToCloudResult>
         dismiss: (id: string, opts?: { deleteLocal?: boolean }) => Promise<{ ok: boolean; deletedLocal?: boolean }>
         abortInFlight: (id: string) => Promise<{ ok: boolean; error?: string }>
         getTimeline: (id: string) => Promise<RecordingTimeline | null>

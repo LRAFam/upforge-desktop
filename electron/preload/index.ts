@@ -83,7 +83,8 @@ const api = {
     listAll: () => ipcRenderer.invoke('recordings:list-all'),
     analyse: (id: string) => ipcRenderer.invoke('recordings:analyse', { id }),
     retryMatchStats: (id: string) => ipcRenderer.invoke('recordings:retry-match-stats', { id }),
-    saveToCloud: (id: string) => ipcRenderer.invoke('recordings:save-to-cloud', { id }),
+    saveToCloud: (id: string) =>
+      ipcRenderer.invoke('recordings:save-to-cloud', { id }) as Promise<import('../../src/env').SaveToCloudResult>,
     dismiss: (id: string, opts?: { deleteLocal?: boolean }) =>
       ipcRenderer.invoke('recordings:dismiss', { id, deleteLocal: opts?.deleteLocal }),
     abortInFlight: (id: string) => ipcRenderer.invoke('recordings:abort-in-flight', { id }),

@@ -42,7 +42,7 @@ export interface StorageIpcDeps {
     timeline: MatchData | null,
     targetWindow: BrowserWindow,
     deleteLocalAfterUpload?: boolean,
-  ) => Promise<string | null>
+  ) => Promise<{ archiveId: string | null; lastError: { message: string; title: string; hint: string | null; failureCode?: string } | null }>
 }
 
 export function setupStorageHandlers(ipcMain: IpcMain, deps: StorageIpcDeps): void {
@@ -139,7 +139,7 @@ export function setupStorageHandlers(ipcMain: IpcMain, deps: StorageIpcDeps): vo
         logActivity(`Uploading pending recording ${i + 1}/${pending.length}${rec.map ? ` (${rec.map})` : ''}…`)
 
         try {
-          const archiveId = await doUploadArchiveOnly(
+          const { archiveId } = await doUploadArchiveOnly(
             rec.id,
             rec.path,
             rec.riotName || user?.riot_name || '',
