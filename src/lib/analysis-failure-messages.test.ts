@@ -114,6 +114,22 @@ describe('buildAnalysisErrorPayload', () => {
     expect(payload.recordingId).toBe('rec-1')
     expect(payload.title).toBeTruthy()
   })
+
+  it('keeps explicit friendly message/title over technical classifier input', () => {
+    const payload = buildAnalysisErrorPayload(
+      'S3 upload failed (HTTP 503): <?xml version="1.0"?><Error><Code>ServiceUnavailable</Code><Message>Slow down</Message></Error>',
+      {
+        title: 'Upload did not finish',
+        message: 'Could not finish uploading your recording. Check your connection and try Resume upload.',
+        hint: 'Your match is still on the dashboard.',
+        failureCode: 'upload_stalled',
+      },
+    )
+    expect(payload.title).toBe('Upload did not finish')
+    expect(payload.message).toContain('Resume upload')
+    expect(payload.message).not.toMatch(/<\?xml/)
+    expect(payload.failureCode).toBe('upload_stalled')
+  })
 })
 
 describe('degraded telemetry helpers', () => {

@@ -1504,6 +1504,13 @@ function extractFailureDiagnostics(status?: AnalysisPollStatus | null): DuelFail
   return parseDuelFailureDiagnostics(fromTop ?? fromResult)
 }
 
+function titleForActivationCode(code: string, fallback: string): string {
+  if (code.startsWith('upload_')) return 'Upload failed'
+  if (code.startsWith('preparation_') || code.startsWith('recording_')) return 'Recording not ready'
+  if (code.startsWith('obs_')) return 'OBS needs attention'
+  return fallback
+}
+
 function dispatchAnalysisFailure(
   rawError: string,
   opts: {
@@ -1518,6 +1525,7 @@ function dispatchAnalysisFailure(
   } = {},
 ): AnalysisErrorPayload {
   const classified = classifyActivationError(rawError)
+  const presentation = classifyAnalysisFailure(rawError)
   const payload = buildAnalysisErrorPayload(rawError, {
     recordingId: opts.recordingId ?? undefined,
     needsUpgrade: opts.needsUpgrade,
@@ -1527,6 +1535,14 @@ function dispatchAnalysisFailure(
     failureDiagnostics: opts.failureDiagnostics ?? null,
     failureCode: classified.code,
     recoveryAction: classified.definition.recoveryAction,
+    ...(classified.code !== 'unknown'
+      ? {
+          message: classified.definition.userMessage,
+          title: presentation.title === 'Analysis could not complete'
+            ? titleForActivationCode(classified.code, presentation.title)
+            : presentation.title,
+        }
+      : {}),
   })
 
   if (opts.recordingId) {
