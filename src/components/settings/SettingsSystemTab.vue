@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { useRouter } from 'vue-router'
 import { useSettings } from '../../composables/useSettings'
+import { SCREENSHOT_MODE } from '../../lib/screenshot-mode'
 
 const router = useRouter()
 
@@ -61,7 +62,10 @@ function previewOnboarding() {
               </div>
             </div>
 
-            <div class="flex items-center justify-between rounded-2xl border border-white/[0.10] bg-black/20 px-4 py-3">
+            <div
+              v-if="!SCREENSHOT_MODE"
+              class="flex items-center justify-between rounded-2xl border border-white/[0.10] bg-black/20 px-4 py-3"
+            >
               <div class="min-w-0 flex-1">
                 <p class="text-sm text-gray-200">Preview onboarding</p>
                 <p class="mt-1 text-xs text-gray-500">

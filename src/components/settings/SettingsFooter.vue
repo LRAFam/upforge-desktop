@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { useSettings } from '../../composables/useSettings'
+import { SCREENSHOT_MODE } from '../../lib/screenshot-mode'
 
 const {
   appVersion,
@@ -22,8 +23,12 @@ const {
 <template>
   <div class="flex-shrink-0 space-y-2 border-t border-white/[0.07] bg-[#161616] px-3 pt-2 pb-3">
     <div class="flex items-center justify-between px-0.5">
-      <p class="cursor-default select-none text-xs text-gray-700" :class="{ 'text-amber-600': devTapCount > 0 && devTapCount < 5 }" @click="handleVersionTap">
-        UpForge Desktop v{{ appVersion }}<span v-if="devTapCount > 0 && devTapCount < 5" class="ml-1 text-amber-600/60">({{ 5 - devTapCount }} more)</span>
+      <p
+        class="cursor-default select-none text-xs text-gray-700"
+        :class="{ 'text-amber-600': !SCREENSHOT_MODE && devTapCount > 0 && devTapCount < 5 }"
+        @click="SCREENSHOT_MODE ? undefined : handleVersionTap()"
+      >
+        UpForge Desktop v{{ appVersion }}<span v-if="!SCREENSHOT_MODE && devTapCount > 0 && devTapCount < 5" class="ml-1 text-amber-600/60">({{ 5 - devTapCount }} more)</span>
       </p>
       <div class="flex items-center gap-3">
         <template v-if="!isDev">
@@ -35,7 +40,7 @@ const {
         <button class="text-xs text-gray-600 transition-colors hover:text-gray-400" @click="openSite">upforge.gg</button>
       </div>
     </div>
-    <div v-if="devModeActive" class="flex items-center justify-between rounded-lg border border-amber-500/20 bg-amber-500/6 px-3 py-2">
+    <div v-if="!SCREENSHOT_MODE && devModeActive" class="flex items-center justify-between rounded-lg border border-amber-500/20 bg-amber-500/6 px-3 py-2">
       <div class="flex items-center gap-2">
         <div class="h-1.5 w-1.5 animate-pulse rounded-full bg-amber-500" />
         <span class="text-xs font-medium text-amber-400/80">Developer mode enabled</span>

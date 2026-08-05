@@ -207,7 +207,7 @@
     />
 
     <!-- Dev toolbar (dev mode only, always visible) -->
-    <div v-if="isDev && route.path !== '/login'" class="flex items-center gap-2 px-3 py-1.5 border-t border-yellow-500/20 bg-yellow-500/[0.03] flex-shrink-0">
+    <div v-if="!screenshotMode && isDev && route.path !== '/login'" class="flex items-center gap-2 px-3 py-1.5 border-t border-yellow-500/20 bg-yellow-500/[0.03] flex-shrink-0">
       <span class="text-[10px] text-yellow-500/60 font-mono uppercase tracking-wider">Dev</span>
       <button
         class="px-2 py-0.5 text-[10px] text-yellow-400/80 hover:text-yellow-300 bg-yellow-500/10 hover:bg-yellow-500/20 rounded border border-yellow-500/20 transition-colors"
@@ -237,6 +237,7 @@ import { useGameTheme } from './composables/useGameTheme'
 import { gameNavRoutes } from './lib/game-modules'
 import { accountLinkSettingsPath } from './lib/account-link-navigation'
 import { getDesktopApi, hasDesktopApi } from './lib/desktop-api'
+import { SCREENSHOT_MODE } from './lib/screenshot-mode'
 import { resolveUnauthenticatedRoute } from './lib/onboarding-gate'
 import type { ClipRecord, ProfileData } from './env.d.ts'
 
@@ -254,6 +255,7 @@ const secondaryAccent = computed(() => {
 
 const isMac = navigator.platform.toUpperCase().includes('MAC')
 const desktopApiAvailable = hasDesktopApi()
+const screenshotMode = SCREENSHOT_MODE
 const status = ref({ recording: false, currentGame: null as string | null })
 const isDev = ref(false)
 const devModeEnabled = ref(false)

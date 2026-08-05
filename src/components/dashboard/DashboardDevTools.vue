@@ -1,5 +1,7 @@
 <script setup lang="ts">
+import { computed } from 'vue'
 import { useDashboard } from '../../composables/useDashboard'
+import { SCREENSHOT_MODE } from '../../lib/screenshot-mode'
 
 const {
   isDev,
@@ -9,10 +11,14 @@ const {
   simStatus,
   simulateGame,
 } = useDashboard()
+
+const showDevTools = computed(
+  () => !SCREENSHOT_MODE && (!!isDev.value || (!!platform.value && platform.value !== 'win32')),
+)
 </script>
 
 <template>
-  <div v-if="isDev || (platform && platform !== 'win32')" class="border border-dashed border-yellow-500/20 rounded-xl overflow-hidden flex-shrink-0">
+  <div v-if="showDevTools" class="border border-dashed border-yellow-500/20 rounded-xl overflow-hidden flex-shrink-0">
     <button class="w-full flex items-center justify-between px-3 py-2 text-xs text-yellow-600/60 hover:text-yellow-500/70 transition-colors" @click="devOpen = !devOpen">
       <span class="font-semibold uppercase tracking-wider">Dev Tools</span>
       <svg class="w-3 h-3 transition-transform" :class="devOpen ? 'rotate-180' : ''" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
