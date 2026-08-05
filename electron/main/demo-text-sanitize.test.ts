@@ -32,7 +32,7 @@ describe('isDemoLikelyIncomplete', () => {
     fs.writeFileSync(tmp, Buffer.alloc(200 * 1024))
     const old = Date.now() - 15 * 60 * 1000
     fs.utimesSync(tmp, old / 1000, old / 1000)
-    expect(isDemoLikelyIncomplete(tmp, { playbackTime: 900 })).toBe(false)
+    expect(isDemoLikelyIncomplete(tmp, { mapName: 'de_dust2', clientName: 'CHEWI', playbackTime: 900 })).toBe(false)
     fs.unlinkSync(tmp)
   })
 })

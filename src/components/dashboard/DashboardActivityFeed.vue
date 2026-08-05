@@ -29,7 +29,7 @@ async function copyLog() {
 
 type FeedScope = PrimaryGame | 'system'
 
-function normalizeGameScope(value: string | null | undefined): FeedScope | null {
+function normalizeGameScope(value: string | null | undefined): PrimaryGame | null {
   if (value === 'valorant' || value === 'cs2' || value === 'deadlock') return value
   return null
 }

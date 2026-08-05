@@ -10,6 +10,12 @@ import type { MatchData } from './riot-types'
 import { prepareMatchDataForUpload, submissionContextFromTimeline } from './match-data-payload'
 import type { CoachingSubmissionExtras } from './match-coaching-context'
 
+function loadHttpModule(url: URL) {
+  return url.protocol === 'https:' ? import('https') : import('http')
+}
+
+type HttpModule = Awaited<ReturnType<typeof loadHttpModule>>
+
 // ── Pre-game brief ────────────────────────────────────────────────────────────
 
 /**
@@ -51,7 +57,7 @@ export function requestPregameBrief(
 
   void (async () => {
     try {
-      const proto = parsedUrl.protocol === 'https:' ? await import('https') : await import('http')
+      const proto = await loadHttpModule(parsedUrl)
       const json = await new Promise<Record<string, unknown>>((resolve, reject) => {
         const req = proto.default.request({
           method:   'GET',
@@ -144,7 +150,7 @@ export async function requestPostGameDebrief(opts: PostGameDebriefOptions): Prom
     rank_snapshot: ctx.rank_snapshot,
   })
   const parsedUrl = new URL(`${apiBase}/api/desktop-submissions/debrief`)
-  const proto = parsedUrl.protocol === 'https:' ? await import('https') : await import('http')
+  const proto = await loadHttpModule(parsedUrl)
 
   const maxAttempts = 2
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
@@ -167,7 +173,7 @@ export async function requestPostGameDebrief(opts: PostGameDebriefOptions): Prom
 }
 
 function postDebriefOnce(
-  proto: typeof import('https') | typeof import('http'),
+  proto: HttpModule,
   parsedUrl: URL,
   body: string,
   token: string,

@@ -71,10 +71,12 @@ async function ensurePlayableExtractSource(
   return outPath
 }
 
+type ExtractableMoment = Pick<DuelMomentManifest, 'moment_id' | 'window_start_ms' | 'window_end_ms'>
+
 async function extractMomentClip(
   clipExtractor: ClipExtractor,
   extractSource: string,
-  moment: DuelMomentManifest,
+  moment: ExtractableMoment,
   outPath: string,
 ): Promise<{ ok: true; bytes: number } | { ok: false; reason: string }> {
   const durationMs = Math.max(500, moment.window_end_ms - moment.window_start_ms)
@@ -128,11 +130,8 @@ export async function extractDuelPreviewClip(opts: {
       extractSource,
       {
         moment_id: momentId,
-        round: 0,
-        video_offset_ms: windowEndMs,
         window_start_ms: windowStartMs,
         window_end_ms: windowEndMs,
-        isolated: false,
       },
       outPath,
     )

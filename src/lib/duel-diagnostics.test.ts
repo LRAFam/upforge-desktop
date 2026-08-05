@@ -15,6 +15,8 @@ describe('duel-diagnostics', () => {
       video_offset_ms: 1000,
       window_start_ms: 0,
       window_end_ms: 10000,
+      callout: null,
+      isolated: false,
       peek_sequence: ['unknown'],
       crosshair_on_commit: 'unknown',
     })).toBe(false)

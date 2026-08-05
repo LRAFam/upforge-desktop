@@ -326,10 +326,10 @@ export interface DegradedReportNotice {
 }
 
 export function isDegradedTelemetryResult(result: {
-  report_type?: string | null
-  coaching_source?: string | null
-  is_degraded?: boolean | null
-  telemetry_fallback_used?: boolean | null
+  report_type?: unknown
+  coaching_source?: unknown
+  is_degraded?: unknown
+  telemetry_fallback_used?: unknown
 } | null | undefined): boolean {
   if (!result) return false
   return (

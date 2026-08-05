@@ -81,6 +81,23 @@ interface UploadedPart {
   etag: string
 }
 
+function isPresignPart(value: unknown): value is PresignMultipartPart {
+  if (typeof value !== 'object' || value === null) return false
+  const part = value as Partial<PresignMultipartPart>
+  return typeof part.part_number === 'number' && typeof part.upload_url === 'string'
+}
+
+function parsePresignResponse(raw: Record<string, unknown>): PresignResponse {
+  return {
+    job_id: raw.job_id == null ? '' : String(raw.job_id),
+    multipart: raw.multipart === true,
+    upload_url: typeof raw.upload_url === 'string' ? raw.upload_url : undefined,
+    upload_id: typeof raw.upload_id === 'string' ? raw.upload_id : undefined,
+    part_size: typeof raw.part_size === 'number' ? raw.part_size : undefined,
+    parts: Array.isArray(raw.parts) ? raw.parts.filter(isPresignPart) : undefined,
+  }
+}
+
 export interface UploadResult {
   job_id: string
   duel_moments?: DuelMomentManifest[]
@@ -354,12 +371,12 @@ export class UploadManager {
         rank_snapshot: submissionCtx.rank_snapshot,
       }),
     })
-    const presign = await this._apiPost(
+    const presign = parsePresignResponse(await this._apiPost(
       `${apiUrl}/api/desktop-submissions/presign`,
       presignBody,
       token,
-    ) as PresignResponse
-    const job_id = String(presign.job_id ?? '')
+    ))
+    const job_id = presign.job_id
     if (!job_id) throw new Error('Presign response missing job_id')
 
     // Persist job_id immediately — if the app crashes during upload or
@@ -449,7 +466,7 @@ export class UploadManager {
         agent:      completeCtx.agent ?? opts.agent ?? undefined,
         map:        completeCtx.map ?? opts.map ?? undefined,
         game_mode:  completeCtx.game_mode ?? gameModeForApi(opts.timeline?.gameMode) ?? undefined,
-        match_data: completeCtx.match_data ?? prepareMatchDataForUpload(opts.timeline ?? null, completeExtras),
+        match_data: completeCtx.match_data ?? prepareMatchDataForUpload(opts.timeline ?? null, completeExtras()),
         duel_moments: duelMomentsForComplete,
         ally_agents: completeCtx.ally_agents,
         enemy_agents: completeCtx.enemy_agents,

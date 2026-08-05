@@ -4,21 +4,57 @@ import type { KillEvent, MatchData } from './riot-types'
 
 function killAt(ms: number, killer = 'You'): KillEvent {
   return {
+    EventID: 0,
     EventName: 'ChampionKill',
+    EventTime: ms / 1000,
     killerName: killer,
     victimName: 'Enemy',
     assistants: [],
     timeSinceGameStartMillis: ms,
-  } as KillEvent
+  }
+}
+
+function matchData(overrides: Partial<MatchData> = {}): MatchData {
+  return {
+    game: 'lol',
+    matchId: null,
+    puuid: null,
+    region: null,
+    queueId: null,
+    map: null,
+    agent: null,
+    gameMode: null,
+    playerName: null,
+    playerTag: null,
+    matchStartTime: null,
+    gameplayStartTime: null,
+    recordingStartTime: 0,
+    roundScores: [],
+    events: [],
+    killEvents: [],
+    playerKills: [],
+    playerDeaths: [],
+    spikePlants: [],
+    spikeDefuses: [],
+    spikeDetonations: [],
+    firstBloods: [],
+    roundSummaries: [],
+    finalStats: null,
+    teamSnapshot: [],
+    matchDetails: null,
+    startTime: 0,
+    endTime: null,
+    ...overrides,
+  }
 }
 
 function lolTimeline(killEvents: KillEvent[]): MatchData {
-  return {
+  return matchData({
     game: 'lol',
     killEvents,
     playerKills: killEvents.filter((k) => k.killerName === 'You'),
     playerDeaths: [],
-  } as MatchData
+  })
 }
 
 describe('assignKillSpreeRounds', () => {
@@ -41,10 +77,10 @@ describe('ensureClipKillRounds', () => {
   })
 
   it('skips round-based games', () => {
-    const timeline = {
+    const timeline = matchData({
       game: 'valorant',
       killEvents: [killAt(10_000)],
-    } as MatchData
+    })
     ensureClipKillRounds(timeline)
     expect(timeline.killEvents![0]?.round).toBeUndefined()
   })
@@ -86,14 +122,14 @@ describe('buildClipKills', () => {
   it('returns round-based kills untouched for Valorant', () => {
     const k = killAt(10_000)
     k.round = 4
-    const timeline = { game: 'valorant', playerKills: [k] } as MatchData
+    const timeline = matchData({ game: 'valorant', playerKills: [k] })
     const clipKills = buildClipKills(timeline)
     expect(clipKills[0]).toBe(k)
     expect(clipKills[0]?.round).toBe(4)
   })
 
   it('returns [] when there are no player kills', () => {
-    expect(buildClipKills({ game: 'lol', playerKills: [] } as unknown as MatchData)).toEqual([])
+    expect(buildClipKills(matchData({ game: 'lol', playerKills: [] }))).toEqual([])
     expect(buildClipKills(null)).toEqual([])
   })
 })
