@@ -4,6 +4,14 @@ import { pendingTimeline } from '../stores/pendingTimeline'
 export interface OpenAnalysisVodReviewOpts {
   coachNotes?: boolean
   seekMs?: number
+  source?: string
+}
+
+function trackDesktopReportOpened(analysisId: number, source: string): void {
+  void window.api.funnel?.trackReportOpened?.({
+    analysis_id: analysisId,
+    source,
+  })
 }
 
 /** Load analysis timeline and navigate to VOD review. */
@@ -21,5 +29,6 @@ export async function openAnalysisVodReview(
     query.seekMs = String(Math.round(opts.seekMs))
   }
   await router.push({ path: '/vod-review', query })
+  trackDesktopReportOpened(analysisId, opts?.source ?? 'desktop_vod_review')
   return true
 }

@@ -481,6 +481,34 @@
                     If Launch fails: download OBS, open it yourself, enable WebSocket, then use Connect only.
                   </p>
                 </div>
+
+                <div v-else class="space-y-2.5">
+                  <div class="grid grid-cols-2 gap-2.5">
+                    <button
+                      type="button"
+                      class="btn-secondary w-full"
+                      :disabled="obsRepairRunning"
+                      @click="repairObsSetup"
+                    >
+                      {{ obsRepairRunning ? 'Repairing…' : 'Repair Setup' }}
+                    </button>
+                    <button
+                      type="button"
+                      class="btn-secondary w-full"
+                      :disabled="obsTestRecordingRunning"
+                      @click="testObsRecording"
+                    >
+                      {{ obsTestRecordingRunning ? 'Testing…' : 'Test Recording' }}
+                    </button>
+                  </div>
+                  <p
+                    v-if="obsSetupMessage"
+                    class="text-[11px] leading-relaxed"
+                    :class="obsSetupMessageError ? 'text-red-400' : 'text-emerald-300/90'"
+                  >
+                    {{ obsSetupMessage }}
+                  </p>
+                </div>
               </div>
 
               <div
@@ -657,6 +685,10 @@ const completeError = ref('')
 const obsConnecting = ref(false)
 const obsConnected = ref(false)
 const obsError = ref('')
+const obsRepairRunning = ref(false)
+const obsTestRecordingRunning = ref(false)
+const obsSetupMessage = ref('')
+const obsSetupMessageError = ref(false)
 
 const selectedGame = ref<PrimaryGame>('valorant')
 
@@ -1227,6 +1259,49 @@ async function launchAndConnectObs() {
     obsError.value = e instanceof Error ? e.message : 'Launch failed'
   } finally {
     obsConnecting.value = false
+  }
+}
+
+async function repairObsSetup() {
+  obsRepairRunning.value = true
+  obsSetupMessage.value = ''
+  obsSetupMessageError.value = false
+  try {
+    const result = await window.api.obs.repairSetup()
+    if (result.ok) {
+      obsSetupMessage.value = result.sceneCreated || result.inputCreated
+        ? 'UpForge scene repaired in OBS'
+        : 'UpForge scene is already configured'
+    } else {
+      obsSetupMessage.value = result.error ?? result.userMessage ?? 'Repair setup failed'
+      obsSetupMessageError.value = true
+    }
+  } catch (e) {
+    obsSetupMessage.value = e instanceof Error ? e.message : 'Repair setup failed'
+    obsSetupMessageError.value = true
+  } finally {
+    obsRepairRunning.value = false
+  }
+}
+
+async function testObsRecording() {
+  obsTestRecordingRunning.value = true
+  obsSetupMessage.value = ''
+  obsSetupMessageError.value = false
+  try {
+    const result = await window.api.obs.testRecording()
+    if (result.ok) {
+      const sizeKb = result.fileSizeBytes ? Math.round(result.fileSizeBytes / 1024) : 0
+      obsSetupMessage.value = `Test recording passed (${sizeKb} KB)`
+    } else {
+      obsSetupMessage.value = result.error ?? result.userMessage ?? 'Test recording failed'
+      obsSetupMessageError.value = true
+    }
+  } catch (e) {
+    obsSetupMessage.value = e instanceof Error ? e.message : 'Test recording failed'
+    obsSetupMessageError.value = true
+  } finally {
+    obsTestRecordingRunning.value = false
   }
 }
 

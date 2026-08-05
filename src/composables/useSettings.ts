@@ -162,6 +162,11 @@ function createSettings() {
   const obsProcessState = ref<{ installed: boolean; processRunning: boolean; connected: boolean } | null>(null)
   const obsConnecting = ref(false)
   const obsSetupRunning = ref(false)
+  const obsPreflightRunning = ref(false)
+  const obsRepairRunning = ref(false)
+  const obsTestRecordingRunning = ref(false)
+  const obsPreflightMessage = ref('')
+  const obsPreflightMessageError = ref(false)
 
   async function refreshObsProcessState(): Promise<void> {
     try {
@@ -255,6 +260,74 @@ function createSettings() {
       }
     } finally {
       obsSetupRunning.value = false
+    }
+  }
+
+  async function obsRunPreflight() {
+    obsPreflightRunning.value = true
+    obsPreflightMessage.value = ''
+    obsPreflightMessageError.value = false
+    try {
+      const result = await window.api.obs.runPreflight()
+      if (result.ok) {
+        settings.obsPreflightPassed = true
+        settings.obsSetupPassedAt = result.obsSetupPassedAt ?? result.passedAt
+        obsPreflightMessage.value = 'Recording setup verified'
+        showToast('OBS recording setup passed')
+      } else {
+        obsPreflightMessage.value = result.error ?? result.userMessage ?? 'Recording setup check failed'
+        obsPreflightMessageError.value = true
+        showToast(obsPreflightMessage.value)
+      }
+      await refreshObsStatus()
+      return result
+    } finally {
+      obsPreflightRunning.value = false
+    }
+  }
+
+  async function obsRepairSetup() {
+    obsRepairRunning.value = true
+    obsPreflightMessage.value = ''
+    obsPreflightMessageError.value = false
+    try {
+      const result = await window.api.obs.repairSetup()
+      if (result.ok) {
+        obsPreflightMessage.value = result.sceneCreated || result.inputCreated
+          ? 'UpForge scene repaired in OBS'
+          : 'UpForge scene is already configured'
+        showToast(obsPreflightMessage.value)
+      } else {
+        obsPreflightMessage.value = result.error ?? result.userMessage ?? 'Repair setup failed'
+        obsPreflightMessageError.value = true
+        showToast(obsPreflightMessage.value)
+      }
+      await refreshObsStatus()
+      return result
+    } finally {
+      obsRepairRunning.value = false
+    }
+  }
+
+  async function obsTestRecording() {
+    obsTestRecordingRunning.value = true
+    obsPreflightMessage.value = ''
+    obsPreflightMessageError.value = false
+    try {
+      const result = await window.api.obs.testRecording()
+      if (result.ok) {
+        const sizeKb = result.fileSizeBytes ? Math.round(result.fileSizeBytes / 1024) : 0
+        obsPreflightMessage.value = `Test recording passed (${sizeKb} KB)`
+        showToast('Test recording passed')
+      } else {
+        obsPreflightMessage.value = result.error ?? result.userMessage ?? 'Test recording failed'
+        obsPreflightMessageError.value = true
+        showToast(obsPreflightMessage.value)
+      }
+      await refreshObsStatus()
+      return result
+    } finally {
+      obsTestRecordingRunning.value = false
     }
   }
 
@@ -1171,9 +1244,17 @@ function createSettings() {
     obsDisconnectedHint,
     obsDisconnect,
     obsLaunchAndConnect,
+    obsPreflightMessage,
+    obsPreflightMessageError,
+    obsPreflightRunning,
     obsProcessState,
+    obsRepairRunning,
+    obsRepairSetup,
+    obsRunPreflight,
     obsSetupRunning,
     obsSetupScene,
+    obsTestRecording,
+    obsTestRecordingRunning,
     installObsProfile,
     obsStatus,
     openBilling,

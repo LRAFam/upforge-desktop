@@ -159,6 +159,12 @@ export interface AppSettings {
   obsReplayBufferSeconds: number
   /** Keep active OBS scene when recording starts (for stream layouts with face cam) */
   obsPreserveActiveScene: boolean
+  /** Milliseconds to wait for OBS outputActive after StartRecord (1–15000, default 5000). */
+  obsRecordVerifyMs?: number
+  /** ISO timestamp when OBS preflight last passed. */
+  obsSetupPassedAt?: string
+  /** True when OBS scene/capture preflight last passed. */
+  obsPreflightPassed?: boolean
   /** Override path for CS2 demo directory (undefined = auto-detect via Steam) */
   cs2DemoDir?: string
   cs2SteamName?: string
@@ -218,9 +224,9 @@ export interface PendingRecording {
   analysisStep?: string | null
   lastAnalysisError?: string | null
   lastAnalysisErrorHint?: string | null
+  lastFailureCode?: string | null
   lastAnalysisCreditRefunded?: boolean
   lastAnalysisFailureDiagnostics?: Record<string, unknown> | null
-  lastAnalysisCreditRefunded?: boolean
   pipelineDeferReason?: 'recording' | null
   pipelineArchiveOnly?: boolean
   clipsOnly?: boolean
@@ -626,6 +632,9 @@ declare global {
           rating: 'thumbs_up' | 'thumbs_down'
           feedbackText?: string
         }) => Promise<{ ok: boolean; error?: string }>
+      }
+      funnel: {
+        trackReportOpened: (props?: Record<string, unknown>) => Promise<{ ok: boolean }>
       }
       archives: {
         refreshPlayback: (archiveId: string) => Promise<string | null>
@@ -1163,6 +1172,42 @@ declare global {
           obsVersion: string | null
         }>
         setupScene: () => Promise<{ ok: boolean; sceneCreated: boolean; inputCreated: boolean; error?: string }>
+        runPreflight: () => Promise<{
+          ok: boolean
+          steps: Array<{
+            step: string
+            ok: boolean
+            code?: string
+            userMessage?: string
+            technicalMessage?: string
+            optional?: boolean
+          }>
+          passedAt?: string
+          obsPreflightPassed?: boolean
+          obsSetupPassedAt?: string
+          errorCode?: string
+          error?: string
+          userMessage?: string
+          technicalMessage?: string
+        }>
+        repairSetup: () => Promise<{
+          ok: boolean
+          sceneCreated?: boolean
+          inputCreated?: boolean
+          errorCode?: string
+          error?: string
+          userMessage?: string
+          technicalMessage?: string
+        }>
+        testRecording: () => Promise<{
+          ok: boolean
+          filePath?: string
+          fileSizeBytes?: number
+          errorCode?: string
+          error?: string
+          userMessage?: string
+          technicalMessage?: string
+        }>
         installProfile: () => Promise<{ ok: boolean; installed: boolean; error?: string; profilePath?: string; websocketConfigured?: boolean }>
         installStudio: () => Promise<{ ok: boolean; installed?: boolean; alreadyInstalled?: boolean; error?: string }>
         saveReplayClip: () => Promise<{ path: string | null }>

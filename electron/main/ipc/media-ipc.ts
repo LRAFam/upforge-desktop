@@ -13,6 +13,19 @@ import { isObsProcessRunning } from '../obs-process'
 import { explainObsConnectionFailure } from '../obs-connect'
 import { installObsViaWinget, isObsInstalled } from '../obs-installer'
 import { ensureObsProfileInstalled, resolveObsWebSocketPassword } from '../obs-profile-installer'
+import {
+  repairObsSetup,
+  runObsPreflight,
+  runObsTestRecording,
+} from '../obs-preflight'
+import { resolveObsRecordVerifyMs } from '../obs-start-verify'
+import {
+  trackRecordingSetupFailed,
+  trackRecordingSetupPassed,
+  trackRecordingSetupStarted,
+  trackRecordingTestPassed,
+  trackRecordingTestStarted,
+} from '../funnel-events'
 import type { MatchRecorder } from '../match-recorder'
 import { OBSRecorder } from '../obs-recorder'
 import { SettingsManager } from '../settings-manager'
@@ -260,6 +273,127 @@ export function setupMediaHandlers(
       const message = err instanceof Error ? err.message : String(err)
       log.warn('[IPC] obs:setup-scene failed:', message)
       return { ok: false, sceneCreated: false, inputCreated: false, error: message }
+    }
+  })
+
+  ipcMain.handle('obs:run-preflight', async () => {
+    if (!obsRecorder) {
+      return { ok: false, steps: [], error: 'OBS recorder not available' }
+    }
+    const cfg = settingsManager.get()
+    const game = cfg.primaryGame ?? 'valorant'
+    const port = cfg.obsPort ?? 4455
+    const password = resolveObsWebSocketPassword(cfg.obsPassword)
+    ensureObsProfileInstalled(password, port)
+
+    trackRecordingSetupStarted(game)
+    try {
+      const result = await withIpcTimeout(
+        runObsPreflight({
+          obsRecorder,
+          game,
+          password,
+          port,
+          recordVerifyMs: resolveObsRecordVerifyMs({ settingsMs: cfg.obsRecordVerifyMs }),
+        }),
+        OBS_IPC_TIMEOUT_MS,
+        'OBS preflight',
+      )
+
+      if (result.ok) {
+        const passedAt = result.passedAt ?? new Date().toISOString()
+        settingsManager.save({
+          obsPreflightPassed: true,
+          obsSetupPassedAt: passedAt,
+        })
+        trackRecordingSetupPassed(game)
+        return { ...result, obsPreflightPassed: true, obsSetupPassedAt: passedAt }
+      }
+
+      trackRecordingSetupFailed(result.technicalMessage ?? result.userMessage ?? 'preflight failed', game)
+      return {
+        ...result,
+        error: result.userMessage,
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err)
+      log.warn('[IPC] obs:run-preflight failed:', message)
+      trackRecordingSetupFailed(message, game)
+      return { ok: false, steps: [], error: message }
+    }
+  })
+
+  ipcMain.handle('obs:repair-setup', async () => {
+    if (!obsRecorder) {
+      return { ok: false, error: 'OBS recorder not available' }
+    }
+    const game = settingsManager.get().primaryGame ?? 'valorant'
+    try {
+      const result = await withIpcTimeout(
+        repairObsSetup(obsRecorder, game),
+        OBS_IPC_TIMEOUT_MS,
+        'OBS repair setup',
+      )
+      if (!result.ok) {
+        return {
+          ...result,
+          error: result.userMessage,
+        }
+      }
+      return result
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err)
+      log.warn('[IPC] obs:repair-setup failed:', message)
+      return { ok: false, error: message, technicalMessage: message }
+    }
+  })
+
+  ipcMain.handle('obs:test-recording', async () => {
+    if (!obsRecorder) {
+      return { ok: false, error: 'OBS recorder not available' }
+    }
+    const cfg = settingsManager.get()
+    const game = cfg.primaryGame ?? 'valorant'
+    const port = cfg.obsPort ?? 4455
+    const password = resolveObsWebSocketPassword(cfg.obsPassword)
+
+    trackRecordingTestStarted(game)
+    try {
+      const ensure = await ensureObsConnected(obsRecorder, {
+        password,
+        port,
+        allowProcessRestart: false,
+        getWindow: () => BrowserWindow.getAllWindows().find(w => !w.isDestroyed()),
+      })
+      if (!ensure.ok) {
+        trackRecordingSetupFailed(ensure.error ?? 'OBS not connected', game)
+        return { ok: false, error: ensure.error ?? 'OBS is not connected' }
+      }
+
+      const result = await withIpcTimeout(
+        runObsTestRecording({
+          obs: obsRecorder.getObsClient(),
+          recordVerifyMs: resolveObsRecordVerifyMs({ settingsMs: cfg.obsRecordVerifyMs }),
+        }),
+        OBS_IPC_TIMEOUT_MS,
+        'OBS test recording',
+      )
+
+      if (result.ok) {
+        trackRecordingTestPassed(game)
+        return result
+      }
+
+      trackRecordingSetupFailed(result.technicalMessage ?? 'test recording failed', game)
+      return {
+        ...result,
+        error: result.userMessage,
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err)
+      log.warn('[IPC] obs:test-recording failed:', message)
+      trackRecordingSetupFailed(message, game)
+      return { ok: false, error: message, technicalMessage: message }
     }
   })
 }

@@ -18,6 +18,7 @@ import {
 } from '../../lib/dashboard-match-row'
 import { scoreGrade, scoreLabel } from '../../lib/analysis-scoring'
 import { formatAnalysisFailureMessage } from '../../lib/analysis-failure-messages'
+import { recordingRetryActionLabel } from '../../lib/activation-retry-label'
 import { pendingRecordingFailureHint } from '../../lib/analysis-display'
 import {
   recordingMapImage,
@@ -339,7 +340,7 @@ function toggleFootageDebug(rec: PendingRecording) {
               @click="retryRecording(rec.id)"
             >
               <svg v-if="analysingIds.has(rec.id)" class="w-3 h-3 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
-              {{ analysingIds.has(rec.id) ? '…' : 'Retry' }}
+              {{ analysingIds.has(rec.id) ? '…' : recordingRetryActionLabel(rec.lastAnalysisError, rec.lastFailureCode) }}
             </button>
             <button
               v-else-if="!rec.clipsOnly && !recInFlight(rec) && !rec.lastAnalysisError && recCanRetryMatchStats(rec)"

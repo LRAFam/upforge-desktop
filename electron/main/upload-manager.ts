@@ -6,7 +6,7 @@ import path from 'path'
 import { app } from 'electron'
 import { AuthManager } from './auth-manager'
 import { MatchData } from './riot-local-api'
-import { UpgradeRequiredError } from './errors'
+import { ActivationPipelineError, UpgradeRequiredError, activationPipelineMessage } from './errors'
 import { prepareMatchDataForUpload, submissionContextFromTimeline, gameModeForApi } from './match-data-payload'
 import type { CoachingSubmissionExtras } from './match-coaching-context'
 import type { DuelMomentManifest } from './moment-picker'
@@ -167,15 +167,56 @@ export class UploadManager {
 
   constructor(private auth: AuthManager) {}
 
-  /** Abort any in-progress S3 upload immediately. */
+  /** Abort any in-progress S3 upload immediately (user cancel, logout, app quit). */
   abort(): void {
     this._uploadAborted = true
-    this._s3Request?.destroy(new Error('Upload aborted'))
+    const err = new ActivationPipelineError(
+      'upload_aborted_by_user',
+      activationPipelineMessage('upload_aborted_by_user', 'Upload cancelled'),
+    )
+    this._destroyActiveUploads(err)
+  }
+
+  private _destroyActiveUploads(err: Error): void {
+    this._s3Request?.destroy(err)
     this._s3Request = null
     for (const req of this._s3PartRequests) {
-      req.destroy(new Error('Upload aborted'))
+      req.destroy(err)
     }
     this._s3PartRequests.clear()
+  }
+
+  private _stallUploadError(): ActivationPipelineError {
+    return new ActivationPipelineError(
+      'upload_stalled',
+      activationPipelineMessage('upload_stalled', 'S3 upload stalled — no progress for 120 seconds'),
+    )
+  }
+
+  private _normalizeUploadError(err: unknown): Error {
+    if (err instanceof ActivationPipelineError) return err
+    if (this._uploadAborted) {
+      return new ActivationPipelineError(
+        'upload_aborted_by_user',
+        activationPipelineMessage('upload_aborted_by_user', 'Upload cancelled'),
+      )
+    }
+    const msg = err instanceof Error ? err.message : String(err)
+    const lower = msg.toLowerCase()
+    if (/upload_stalled|upload stalled/i.test(lower)) {
+      return new ActivationPipelineError('upload_stalled', msg)
+    }
+    if (
+      /socket hang up|econnreset|epipe|enetunreach|ehostunreach|econnaborted|etimedout|enotfound|eai_again|network/i.test(
+        lower,
+      )
+    ) {
+      return new ActivationPipelineError(
+        'upload_network_interrupted',
+        activationPipelineMessage('upload_network_interrupted', msg),
+      )
+    }
+    return err instanceof Error ? err : new Error(msg)
   }
 
   /**
@@ -268,7 +309,7 @@ export class UploadManager {
         lastErr = err
         const retryable = this._isRetryableUploadError(err) || this._isExpiredUploadSessionError(err)
         if (!retryable || fullAttempt >= UploadManager.FULL_UPLOAD_MAX_ATTEMPTS) {
-          throw err
+          throw this._normalizeUploadError(err)
         }
         const delay = UploadManager.S3_UPLOAD_RETRY_BASE_MS * fullAttempt * 3
         const msg = err instanceof Error ? err.message : String(err)
@@ -279,7 +320,7 @@ export class UploadManager {
         await new Promise((resolve) => setTimeout(resolve, delay))
       }
     }
-    throw lastErr
+    throw this._normalizeUploadError(lastErr)
   }
 
   private async _doUploadOnce(opts: UploadOptions, fullAttempt: number): Promise<UploadResult> {
@@ -640,18 +681,21 @@ export class UploadManager {
     let lastErr: unknown
     for (let attempt = 1; attempt <= UploadManager.S3_UPLOAD_MAX_ATTEMPTS; attempt++) {
       if (this._uploadAborted) {
-        throw new Error('Upload aborted')
+        throw new ActivationPipelineError(
+          'upload_aborted_by_user',
+          activationPipelineMessage('upload_aborted_by_user', 'Upload cancelled'),
+        )
       }
       try {
         return await fn()
       } catch (err) {
         lastErr = err
         if (this._isExpiredUploadSessionError(err)) {
-          throw err
+          throw this._normalizeUploadError(err)
         }
         const retryable = this._isRetryableUploadError(err)
         if (!retryable || attempt >= UploadManager.S3_UPLOAD_MAX_ATTEMPTS) {
-          throw err
+          throw this._normalizeUploadError(err)
         }
         const delay = UploadManager.S3_UPLOAD_RETRY_BASE_MS * attempt
         const msg = err instanceof Error ? err.message : String(err)
@@ -661,7 +705,7 @@ export class UploadManager {
         await new Promise((resolve) => setTimeout(resolve, delay))
       }
     }
-    throw lastErr
+    throw this._normalizeUploadError(lastErr)
   }
 
   /** Stream a local file via HTTP PUT to a presigned S3 URL. */
@@ -719,7 +763,7 @@ export class UploadManager {
       const stallCheck = setInterval(() => {
         if (Date.now() - lastProgressAt > STALL_TIMEOUT_MS) {
           clearInterval(stallCheck)
-          req.destroy(new Error('S3 upload stalled — no progress for 120 seconds'))
+          req.destroy(this._stallUploadError())
         }
       }, 5_000)
 
@@ -756,7 +800,12 @@ export class UploadManager {
 
   private _putPartToS3(uploadUrl: string, body: Buffer): Promise<string> {
     if (this._uploadAborted) {
-      return Promise.reject(new Error('Upload aborted'))
+      return Promise.reject(
+        new ActivationPipelineError(
+          'upload_aborted_by_user',
+          activationPipelineMessage('upload_aborted_by_user', 'Upload cancelled'),
+        ),
+      )
     }
 
     return this._withUploadRetry('S3 part upload', () => this._putPartToS3Once(uploadUrl, body))
@@ -764,7 +813,12 @@ export class UploadManager {
 
   private _putPartToS3Once(uploadUrl: string, body: Buffer): Promise<string> {
     if (this._uploadAborted) {
-      return Promise.reject(new Error('Upload aborted'))
+      return Promise.reject(
+        new ActivationPipelineError(
+          'upload_aborted_by_user',
+          activationPipelineMessage('upload_aborted_by_user', 'Upload cancelled'),
+        ),
+      )
     }
 
     return new Promise((resolve, reject) => {
@@ -867,7 +921,12 @@ export class UploadManager {
     const STALL_TIMEOUT_MS = 120_000
     const stallCheck = setInterval(() => {
       if (Date.now() - lastProgressAt > STALL_TIMEOUT_MS) {
-        this.abort()
+        clearInterval(stallCheck)
+        const stallErr = this._stallUploadError()
+        for (const req of this._s3PartRequests) {
+          req.destroy(stallErr)
+        }
+        this._s3PartRequests.clear()
       }
     }, 5_000)
 
@@ -894,7 +953,10 @@ export class UploadManager {
         async () => {
           while (nextIndex < sortedParts.length) {
             if (this._uploadAborted) {
-              throw new Error('Upload aborted')
+              throw new ActivationPipelineError(
+                'upload_aborted_by_user',
+                activationPipelineMessage('upload_aborted_by_user', 'Upload cancelled'),
+              )
             }
             const index = nextIndex++
             await uploadOne(index)
@@ -907,8 +969,7 @@ export class UploadManager {
       if (this._isExpiredUploadSessionError(err) && stateFile) {
         clearMultipartState(stateFile)
       }
-      if (!this._uploadAborted) this.abort()
-      throw err
+      throw this._normalizeUploadError(err)
     } finally {
       clearInterval(stallCheck)
       this._s3PartRequests.clear()

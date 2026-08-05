@@ -70,6 +70,10 @@ const api = {
       feedbackText?: string
     }) => ipcRenderer.invoke('analyses:submit-feedback', opts),
   },
+  funnel: {
+    trackReportOpened: (props?: Record<string, unknown>) =>
+      ipcRenderer.invoke('funnel:track-report-opened', props) as Promise<{ ok: boolean }>,
+  },
   archives: {
     refreshPlayback: (archiveId: string) =>
       ipcRenderer.invoke('archives:refresh-playback', { archiveId }),
@@ -256,6 +260,9 @@ const api = {
     getStatus: () => ipcRenderer.invoke('obs:get-status'),
     getProcessState: () => ipcRenderer.invoke('obs:get-process-state'),
     setupScene: () => ipcRenderer.invoke('obs:setup-scene'),
+    runPreflight: () => ipcRenderer.invoke('obs:run-preflight'),
+    repairSetup: () => ipcRenderer.invoke('obs:repair-setup'),
+    testRecording: () => ipcRenderer.invoke('obs:test-recording'),
         saveReplayClip: () => ipcRenderer.invoke('obs:save-replay-clip'),
     installProfile: () => ipcRenderer.invoke('obs:install-profile'),
     installStudio: () => ipcRenderer.invoke('obs:install-studio'),

@@ -105,6 +105,12 @@ export interface AppSettings {
   obsReplayBufferSeconds: number
   /** Keep the streamer's active OBS scene when a match starts (do not auto-switch to UpForge). */
   obsPreserveActiveScene: boolean
+  /** Milliseconds to wait for OBS outputActive after StartRecord (env UPFORGE_OBS_RECORD_VERIFY_MS overrides). */
+  obsRecordVerifyMs?: number
+  /** ISO timestamp when OBS preflight last passed. */
+  obsSetupPassedAt?: string
+  /** True when OBS scene/capture preflight last passed. */
+  obsPreflightPassed?: boolean
   /** Mouse & trainer sensitivity settings */
   trainerMouse: {
     dpi: number
