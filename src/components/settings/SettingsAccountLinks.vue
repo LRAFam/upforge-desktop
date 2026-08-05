@@ -476,7 +476,7 @@ async function unlinkLol() {
                 </select>
               </div>
               <p v-if="riotEditError" class="text-[11px] text-red-400">{{ riotEditError }}</p>
-              <div class="flex gap-2">
+              <div class="flex justify-end gap-2">
                 <button
                   type="button"
                   class="btn-secondary"
@@ -484,7 +484,7 @@ async function unlinkLol() {
                 >Cancel</button>
                 <button
                   type="button"
-                  class="btn-primary flex-1"
+                  class="btn-primary"
                   :disabled="riotSavingId === account.id"
                   @click="saveRiotRename(account.id)"
                 >{{ riotSavingId === account.id ? 'Saving…' : 'Save changes' }}</button>
@@ -504,7 +504,7 @@ async function unlinkLol() {
         <button
           v-if="valorantLinked && riotAccountsCanAdd && !showRiotAddForm"
           type="button"
-          class="btn-secondary mb-3 w-full"
+          class="btn-secondary mb-3"
           @click="openRiotAddForm"
         >Add account</button>
 
@@ -525,7 +525,7 @@ async function unlinkLol() {
               <option value="br">BR</option>
             </select>
           </div>
-          <div class="flex gap-2">
+          <div class="flex justify-end gap-2">
             <button
               v-if="valorantLinked"
               type="button"
@@ -534,7 +534,7 @@ async function unlinkLol() {
             >Cancel</button>
             <button
               type="button"
-              class="btn-primary flex-1"
+              class="btn-primary"
               :disabled="riotBusy"
               @click="linkValorant"
             >{{ riotBusy ? 'Linking…' : 'Link Riot account' }}</button>
@@ -647,15 +647,15 @@ async function unlinkLol() {
           <p v-if="user?.lol_platform" class="text-[11px] text-gray-500 mb-3">
             Server: {{ user.lol_platform }}
           </p>
-          <div class="flex gap-2">
+          <div class="flex justify-end gap-2">
             <button
               type="button"
-              class="btn-secondary flex-1"
+              class="btn-secondary"
               @click="startLolEdit"
             >Update</button>
             <button
               type="button"
-              class="btn-danger flex-1"
+              class="btn-danger"
               :disabled="lolUnlinking"
               @click="unlinkLol"
             >{{ lolUnlinking ? '…' : 'Unlink' }}</button>
@@ -686,7 +686,7 @@ async function unlinkLol() {
               <option v-for="p in LOL_PLATFORMS" :key="p.value" :value="p.value">{{ p.label }}</option>
             </select>
           </div>
-          <div class="mt-3 flex gap-2">
+          <div class="mt-3 flex justify-end gap-2">
             <button
               v-if="lolEditing"
               type="button"
@@ -695,7 +695,7 @@ async function unlinkLol() {
             >Cancel</button>
             <button
               type="button"
-              class="btn-primary flex-1"
+              class="btn-primary"
               :disabled="lolBusy"
               @click="linkLol"
             >{{ lolBusy ? 'Linking…' : (lolEditing ? 'Save League account' : 'Link League account') }}</button>

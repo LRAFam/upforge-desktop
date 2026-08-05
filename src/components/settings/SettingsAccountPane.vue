@@ -212,13 +212,15 @@ const analysesUsageLabel = computed(() => {
         <p class="mt-1 text-xs" :class="theme.accentMuted">
           Upgrade for more analyses and full history access.
         </p>
-        <button
-          type="button"
-          class="btn-primary mt-3 w-full"
-          @click="openUpgrade"
-        >
-          Upgrade plan
-        </button>
+        <div class="mt-3 flex justify-end">
+          <button
+            type="button"
+            class="btn-primary"
+            @click="openUpgrade"
+          >
+            Upgrade plan
+          </button>
+        </div>
       </div>
     </SettingsSection>
   </div>

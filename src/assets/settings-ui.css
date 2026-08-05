@@ -1,0 +1,63 @@
+/* Settings product UI — denser, sharper, less marketing CTA */
+
+.settings-shell .btn-primary {
+  background: var(--game-accent, #ff4655);
+  box-shadow: none;
+  border-radius: 5px;
+  padding: 7px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.settings-shell .btn-primary:hover:not(:disabled) {
+  opacity: 1;
+  filter: brightness(1.1);
+  transform: none;
+  box-shadow: none;
+}
+
+.settings-shell .btn-primary:active:not(:disabled) {
+  transform: none;
+  filter: brightness(0.96);
+}
+
+.settings-shell .btn-secondary,
+.settings-shell .btn-danger {
+  border-radius: 5px;
+  padding: 7px 12px;
+  font-weight: 600;
+}
+
+.settings-shell .btn-sm {
+  border-radius: 4px;
+  padding: 5px 9px;
+  font-size: 11px;
+}
+
+.settings-shell .btn-ghost {
+  border-radius: 4px;
+}
+
+/* Tighten Tailwind radii inside Settings (keep rounded-full for toggles) */
+.settings-shell :where(.rounded-2xl) {
+  border-radius: 6px;
+}
+
+.settings-shell :where(.rounded-xl) {
+  border-radius: 5px;
+}
+
+.settings-shell :where(.rounded-lg) {
+  border-radius: 5px;
+}
+
+.settings-shell :where(.rounded-md) {
+  border-radius: 4px;
+}
+
+.settings-shell .panel-elevated {
+  border-radius: 6px;
+  box-shadow: none;
+}

@@ -37,7 +37,7 @@ function scrollIntoView() {
   <section
     :id="id ? `settings-section-${id}` : undefined"
     ref="root"
-    class="settings-section overflow-hidden rounded-lg border border-white/[0.08] bg-white/[0.015]"
+    class="settings-section overflow-hidden rounded-md border border-white/[0.08] bg-white/[0.015]"
     :class="highlighted ? 'settings-section--highlight' : ''"
   >
     <div class="border-b border-white/[0.07] px-4 py-2.5">
