@@ -14,6 +14,12 @@ describe('explainObsConnectionFailure', () => {
     expect(explainObsConnectionFailure({ processRunning: true, connectError: 'ECONNREFUSED' })).toMatch(/restart|not responding/i)
   })
 
+  it('points at the Safe Mode prompt instead of Task Manager', () => {
+    const message = explainObsConnectionFailure({ processRunning: true, connectError: 'ECONNREFUSED' })
+    expect(message).toMatch(/safe mode/i)
+    expect(message).not.toMatch(/obs64|task manager/i)
+  })
+
   it('preserves auth errors when process is running', () => {
     expect(explainObsConnectionFailure({ processRunning: true, connectError: 'authentication failed' })).toMatch(/password/i)
   })
