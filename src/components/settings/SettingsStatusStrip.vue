@@ -21,13 +21,14 @@ const toneDot: Record<StatusTone, string> = {
 </script>
 
 <template>
-  <div class="flex flex-wrap gap-x-4 gap-y-2 rounded-xl border border-white/[0.10] bg-black/20 px-3 py-2.5">
-    <div v-for="item in items" :key="item.id" class="flex min-w-0 items-center gap-2">
-      <span class="h-2 w-2 flex-shrink-0 rounded-full" :class="toneDot[item.tone]" />
-      <div class="min-w-0">
-        <p class="text-[11px] font-medium text-gray-300">{{ item.label }}</p>
-        <p class="truncate text-[11px] text-gray-500">{{ item.detail }}</p>
-      </div>
+  <div class="flex flex-wrap gap-x-5 gap-y-2 border-b border-white/[0.07] pb-3">
+    <div v-for="item in items" :key="item.id" class="flex min-w-0 max-w-full items-center gap-2">
+      <span class="h-1.5 w-1.5 flex-shrink-0 rounded-full" :class="toneDot[item.tone]" />
+      <p class="min-w-0 truncate text-[11px] text-gray-400">
+        <span class="font-medium text-gray-300">{{ item.label }}</span>
+        <span class="text-gray-600"> · </span>
+        {{ item.detail }}
+      </p>
     </div>
   </div>
 </template>

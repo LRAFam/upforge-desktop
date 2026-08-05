@@ -9,10 +9,10 @@ defineProps<{
   <div class="flex items-start justify-between gap-4">
     <div class="min-w-0 flex-1">
       <p class="text-sm text-gray-200">{{ label }}</p>
-      <p v-if="hint" class="mt-1 text-xs text-gray-500">{{ hint }}</p>
+      <p v-if="hint" class="mt-1 text-xs leading-relaxed text-gray-500">{{ hint }}</p>
       <slot name="below" />
     </div>
-    <div class="flex-shrink-0">
+    <div class="flex flex-shrink-0 items-center self-center">
       <slot />
     </div>
   </div>

@@ -3,8 +3,10 @@ import { computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { useSettings } from '../../composables/useSettings'
 import SettingsDeadlockDiagnostics from './SettingsDeadlockDiagnostics.vue'
+import SettingsRow from './SettingsRow.vue'
 import SettingsSection from './SettingsSection.vue'
 import SettingsStatusStrip from './SettingsStatusStrip.vue'
+import SettingsToggle from './SettingsToggle.vue'
 import type { StatusItem } from './SettingsStatusStrip.vue'
 
 const router = useRouter()
@@ -76,13 +78,15 @@ const statusItems = computed<StatusItem[]>(() => {
   <div class="space-y-4">
     <SettingsStatusStrip :items="statusItems" />
 
-    <button
-      type="button"
-      class="text-xs font-medium text-gray-400 underline-offset-2 hover:text-gray-200 hover:underline"
-      @click="router.push({ path: '/settings', query: { tab: 'advanced', section: 'obs' } })"
-    >
-      OBS &amp; capture setup
-    </button>
+    <div class="-mt-1">
+      <button
+        type="button"
+        class="text-xs font-medium text-gray-400 underline-offset-2 hover:text-gray-200 hover:underline"
+        @click="router.push({ path: '/settings', query: { tab: 'advanced', section: 'obs' } })"
+      >
+        OBS &amp; capture setup
+      </button>
+    </div>
 
     <SettingsSection
       id="capture"
@@ -162,18 +166,18 @@ const statusItems = computed<StatusItem[]>(() => {
         <p class="text-xs text-gray-500 leading-relaxed">Recording starts when your game is detected. Queue filters apply to Valorant only.</p>
       </div>
 
-      <div class="rounded-2xl border border-white/[0.10] bg-black/20 p-4 space-y-3">
+      <div class="space-y-3 border-t border-white/[0.06] pt-4">
         <div>
           <p class="text-sm font-semibold text-white">Recording format</p>
-          <p class="mt-1 text-xs text-gray-500">Choose a preset — applied to OBS automatically when a match starts.</p>
+          <p class="mt-1 text-xs text-gray-500">Preset applied to OBS when a match starts.</p>
         </div>
         <div class="grid grid-cols-1 gap-2 sm:grid-cols-2">
           <button
             type="button"
-            class="rounded-xl border px-3 py-3 text-left transition-all"
+            class="rounded-lg border px-3 py-3 text-left transition-colors"
             :class="settings.recordingPreset === 'coaching'
-              ? 'border-red-500/25 bg-red-500/10'
-              : 'border-white/[0.10] bg-white/[0.02] hover:border-white/[0.14]'"
+              ? 'border-white/[0.20] bg-white/[0.06]'
+              : 'border-white/[0.08] bg-transparent hover:border-white/[0.12]'"
             @click="setRecordingPreset('coaching')"
           >
             <p class="text-xs font-semibold text-gray-100">Coaching</p>
@@ -182,62 +186,38 @@ const statusItems = computed<StatusItem[]>(() => {
           </button>
           <button
             type="button"
-            class="rounded-xl border px-3 py-3 text-left transition-all"
+            class="rounded-lg border px-3 py-3 text-left transition-colors"
             :class="settings.recordingPreset === 'creator'
-              ? 'border-red-500/25 bg-red-500/10'
-              : hasProAccess
-                ? 'border-white/[0.10] bg-white/[0.02] hover:border-white/[0.14]'
-                : 'border-white/[0.08] bg-white/[0.01] hover:border-purple-500/20'"
+              ? 'border-white/[0.20] bg-white/[0.06]'
+              : 'border-white/[0.08] bg-transparent hover:border-white/[0.12]'"
             @click="setRecordingPreset('creator')"
           >
             <div class="flex items-center gap-2">
               <p class="text-xs font-semibold text-gray-100">Creator</p>
-              <span
-                v-if="!hasProAccess"
-                class="rounded-full bg-purple-500/15 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-purple-300"
-              >Pro</span>
+              <span v-if="!hasProAccess" class="text-[10px] font-semibold uppercase tracking-wide text-gray-500">Pro</span>
             </div>
             <p class="mt-1 text-[11px] font-medium text-gray-300">1080p · 10 Mbps · 60 fps</p>
             <p class="mt-1.5 text-[11px] text-gray-600">
               <template v-if="hasProAccess">Higher quality for streaming/content (~3 GB / match). Uses your OBS video settings.</template>
-              <template v-else>Pro feature — higher quality for streaming and content creation.</template>
+              <template v-else>Pro feature. Higher quality for streaming and content creation.</template>
             </p>
           </button>
         </div>
         <p v-if="settings.recordingPreset === 'creator'" class="text-[11px] text-gray-600">
-          Coaching uploads are compressed automatically — your local file stays at full quality.
+          Coaching uploads are compressed automatically. Your local file stays at full quality.
         </p>
-        <div class="flex items-center justify-between gap-3">
-          <div>
-            <p class="text-xs font-medium text-gray-300">Record game audio</p>
-            <p class="mt-0.5 text-[11px] text-gray-600">Includes in-game sound via OBS</p>
-          </div>
-          <button
-            type="button"
-            class="relative inline-flex h-5 w-9 items-center rounded-full transition-colors"
-            :class="settings.audioEnabled ? 'bg-red-500' : 'bg-white/20'"
-            @click="toggleAudio()"
-          >
-            <span class="inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform" :class="settings.audioEnabled ? 'translate-x-4' : 'translate-x-0.5'" />
-          </button>
-        </div>
-      </div>
-
-      <div class="panel-elevated overflow-hidden p-4">
-        <div class="flex items-center justify-between gap-3">
-          <div>
-            <p class="text-xs font-medium text-gray-300">Record full match VODs</p>
-            <p class="mt-0.5 text-[11px] text-gray-600">Off = replay-buffer kill clips only (~minimal disk use). No AI match coaching without a VOD.</p>
-          </div>
-          <button
-            type="button"
-            class="relative inline-flex h-5 w-9 flex-shrink-0 items-center rounded-full transition-colors"
-            :class="settings.fullMatchRecording !== false ? 'bg-red-500' : 'bg-white/20'"
-            @click="toggleFullMatchRecording()"
-          >
-            <span class="inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform" :class="settings.fullMatchRecording !== false ? 'translate-x-4' : 'translate-x-0.5'" />
-          </button>
-        </div>
+        <SettingsRow
+          label="Record game audio"
+          hint="Includes in-game sound via OBS"
+        >
+          <SettingsToggle :on="!!settings.audioEnabled" @click="toggleAudio()" />
+        </SettingsRow>
+        <SettingsRow
+          label="Record full match VODs"
+          hint="Off = replay-buffer kill clips only. No AI match coaching without a VOD."
+        >
+          <SettingsToggle :on="settings.fullMatchRecording !== false" @click="toggleFullMatchRecording()" />
+        </SettingsRow>
       </div>
     </SettingsSection>
 
@@ -255,20 +235,30 @@ const statusItems = computed<StatusItem[]>(() => {
         </div>
       </div>
 
-      <div class="rounded-2xl border p-4" :class="diskSpaceCritical ? 'border-red-500/30 bg-red-500/[0.06]' : diskSpaceLow ? 'border-orange-500/25 bg-orange-500/[0.05]' : 'border-white/[0.10] bg-black/20'">
+      <div
+        class="space-y-3 rounded-lg border p-3"
+        :class="diskSpaceCritical
+          ? 'border-red-500/25 bg-red-500/[0.04]'
+          : diskSpaceLow
+            ? 'border-orange-500/20 bg-orange-500/[0.04]'
+            : 'border-white/[0.08] bg-transparent'"
+      >
         <div class="flex items-center justify-between gap-3">
           <div>
             <p class="text-xs font-medium text-gray-300">Storage usage</p>
             <p class="mt-1 text-xs" :class="diskSpaceCritical ? 'text-red-300/90' : diskSpaceLow ? 'text-orange-300/90' : 'text-gray-500'">{{ storageSummary }}</p>
             <p v-if="storageEstimateLabel" class="mt-1 text-[11px] text-gray-600">{{ storageEstimateLabel }}</p>
           </div>
-          <button type="button" class="rounded-xl border border-white/[0.08] bg-white/[0.04] px-3 py-2 text-xs font-medium text-gray-300 transition-colors hover:border-white/[0.14] hover:text-white" @click="openRecordingsFolder">Open folder</button>
+          <button type="button" class="rounded-lg border border-white/[0.08] bg-white/[0.03] px-3 py-2 text-xs font-medium text-gray-300 transition-colors hover:border-white/[0.14] hover:text-white" @click="openRecordingsFolder">Open folder</button>
         </div>
-        <p v-if="diskSpaceLow" class="mt-2 text-[11px] leading-relaxed text-orange-300/80">
+        <p v-if="diskSpaceLow" class="text-[11px] leading-relaxed text-orange-300/80">
           Low disk space can cut recordings short. Upload pending VODs to the cloud, then remove local copies you no longer need.
         </p>
-        <div class="mt-3 h-2 overflow-hidden rounded-full bg-white/[0.06]">
-          <div class="h-full rounded-full bg-gradient-to-r from-red-500 to-orange-500 transition-all" :style="{ width: storageUsagePercent + '%' }" />
+        <div class="h-1.5 overflow-hidden rounded-full bg-white/[0.06]">
+          <div
+            class="h-full rounded-full transition-all"
+            :style="{ width: storageUsagePercent + '%', backgroundColor: 'var(--game-accent, #ef4444)' }"
+          />
         </div>
         <div class="mt-2 flex items-center justify-between text-[11px] text-gray-500">
           <span>Local budget</span>
@@ -330,12 +320,7 @@ const statusItems = computed<StatusItem[]>(() => {
               <span class="block text-xs font-medium text-gray-200">{{ opt.label }}</span>
               <span class="block text-[11px] text-gray-600">{{ opt.hint }}</span>
             </span>
-            <span
-              class="relative inline-flex h-5 w-9 flex-shrink-0 items-center rounded-full transition-colors"
-              :class="settings.clipCapture?.[opt.key] ? 'bg-red-500' : 'bg-white/20'"
-            >
-              <span class="inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform" :class="settings.clipCapture?.[opt.key] ? 'translate-x-4' : 'translate-x-0.5'" />
-            </span>
+            <SettingsToggle :on="!!settings.clipCapture?.[opt.key]" @click.stop="toggleClipCapture(opt.key)" />
           </button>
         </div>
       </div>

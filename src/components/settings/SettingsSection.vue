@@ -1,12 +1,16 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   id?: string
   title: string
   hint?: string
   highlightId?: string | null
-}>()
+  /** Row list: flush padding + dividers between children */
+  divided?: boolean
+}>(), {
+  divided: false,
+})
 
 const root = ref<HTMLElement | null>(null)
 const highlighted = computed(() => !!props.id && props.highlightId === props.id)
@@ -33,15 +37,37 @@ function scrollIntoView() {
   <section
     :id="id ? `settings-section-${id}` : undefined"
     ref="root"
-    class="rounded-xl border border-white/[0.10] bg-white/[0.02] overflow-hidden transition-shadow duration-500"
-    :class="highlighted ? 'ring-2 ring-[color:var(--game-accent,#ef4444)]/40' : ''"
+    class="settings-section overflow-hidden rounded-lg border border-white/[0.08] bg-white/[0.015]"
+    :class="highlighted ? 'settings-section--highlight' : ''"
   >
-    <div class="px-4 py-3 border-b border-white/[0.08]">
+    <div class="border-b border-white/[0.07] px-4 py-2.5">
       <p class="text-sm font-semibold text-white">{{ title }}</p>
       <p v-if="hint" class="mt-0.5 text-xs text-gray-500">{{ hint }}</p>
     </div>
-    <div class="p-4 space-y-4">
+    <div
+      :class="divided
+        ? 'divide-y divide-white/[0.06] [&>*]:px-4 [&>*]:py-3'
+        : 'space-y-4 p-4'"
+    >
       <slot />
     </div>
   </section>
 </template>
+
+<style scoped>
+.settings-section--highlight {
+  animation: settings-section-pulse 1s ease-out;
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--game-accent, #ef4444) 45%, transparent);
+}
+
+@keyframes settings-section-pulse {
+  0% {
+    box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--game-accent, #ef4444) 70%, transparent);
+    background-color: color-mix(in srgb, var(--game-accent, #ef4444) 8%, transparent);
+  }
+  100% {
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--game-accent, #ef4444) 45%, transparent);
+    background-color: transparent;
+  }
+}
+</style>
