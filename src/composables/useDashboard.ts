@@ -1067,6 +1067,8 @@ function createDashboard() {
         state?: string
       }
       if (result?.code === 'not_ready') {
+        analysingIds.value.delete(id)
+        analysingIds.value = new Set(analysingIds.value)
         warning.value = result.error ?? 'Match stats still syncing…'
         setTimeout(() => { warning.value = null }, 12000)
         await loadPendingRecordings()
