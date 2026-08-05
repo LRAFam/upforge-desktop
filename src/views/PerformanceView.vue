@@ -56,10 +56,9 @@
       <!-- Boost button -->
       <button
         v-if="!boosted"
+        type="button"
         :disabled="loading"
-        class="w-full py-2.5 rounded-xl font-semibold text-sm transition-all relative overflow-hidden
-               bg-gradient-to-r from-red-600 to-orange-500 hover:from-red-500 hover:to-orange-400
-               disabled:opacity-50 disabled:cursor-not-allowed text-white shadow-lg shadow-red-900/30"
+        class="btn-primary w-full"
         @click="runBoost"
       >
         <span v-if="loading" class="flex items-center justify-center gap-2">

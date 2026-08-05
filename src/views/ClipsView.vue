@@ -886,16 +886,18 @@
             </div>
             <p v-if="trimModal.error" class="text-xs text-red-400">{{ trimModal.error }}</p>
           </div>
-          <div class="flex gap-2">
+          <div class="flex justify-end gap-2">
             <button
-              :disabled="trimModal.loading"
-              class="flex-1 py-2 rounded-xl bg-gradient-to-r from-red-500 to-orange-500 hover:from-red-400 hover:to-orange-400 text-white text-[12px] font-bold transition-all disabled:opacity-50"
-              @click="confirmTrim"
-            >{{ trimModal.loading ? 'Trimming…' : 'Trim Clip' }}</button>
-            <button
-              class="flex-1 py-2 rounded-xl text-gray-600 hover:text-gray-400 text-[12px] transition-colors border border-white/[0.07]"
+              type="button"
+              class="btn-ghost"
               @click="trimModal.show = false"
             >Cancel</button>
+            <button
+              type="button"
+              :disabled="trimModal.loading"
+              class="btn-primary"
+              @click="confirmTrim"
+            >{{ trimModal.loading ? 'Trimming…' : 'Trim Clip' }}</button>
           </div>
         </div>
       </div>
@@ -930,16 +932,18 @@
               <template v-else>You've used all your {{ userTier }} plan analyses for this month. Resets in {{ daysUntilReset() }} day{{ daysUntilReset() === 1 ? '' : 's' }}.</template>
             </p>
 
-            <div class="flex flex-col gap-2">
+            <div class="flex flex-col items-stretch gap-2">
               <button
                 v-if="userTier === 'free'"
-                class="w-full py-2.5 rounded-xl bg-gradient-to-r from-red-500 to-orange-500 hover:from-red-400 hover:to-orange-400 text-white text-[12px] font-bold transition-all shadow-lg shadow-red-500/20 hover:shadow-red-500/30"
+                type="button"
+                class="btn-primary w-full"
                 @click="openUpgrade"
               >
-                View Plans →
+                View Plans
               </button>
               <button
-                class="w-full py-2 rounded-xl text-gray-600 hover:text-gray-400 text-[12px] transition-colors"
+                type="button"
+                class="btn-ghost w-full"
                 @click="upgradeModal.show = false"
               >
                 {{ userTier === 'free' ? 'Maybe later' : 'Dismiss' }}

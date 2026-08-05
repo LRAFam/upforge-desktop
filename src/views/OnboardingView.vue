@@ -1387,19 +1387,20 @@ async function handleComplete() {
 }
 
 .wiz-shell :deep(.btn-primary) {
-  box-shadow: 0 2px 10px rgba(255, 70, 85, 0.18);
+  box-shadow: none;
   padding: 10px 16px;
 }
 
 .wiz-shell :deep(.btn-primary:hover:not(:disabled)) {
-  box-shadow: 0 3px 14px rgba(255, 70, 85, 0.26);
+  box-shadow: none;
+  filter: brightness(1.1);
   transform: none;
 }
 
 .wiz-input {
   width: 100%;
   padding: 10px 12px;
-  border-radius: 10px;
+  border-radius: 5px;
   background: rgba(255, 255, 255, 0.03);
   border: 1px solid rgba(255, 255, 255, 0.08);
   color: #fff;

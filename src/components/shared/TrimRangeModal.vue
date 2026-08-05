@@ -135,18 +135,18 @@ function nudgeEnd(delta: number) {
           </div>
           <p v-if="error" class="text-xs text-red-400">{{ error }}</p>
         </div>
-        <div class="flex gap-2">
+        <div class="flex justify-end gap-2">
+          <button
+            type="button"
+            class="btn-ghost"
+            @click="emit('close')"
+          >Cancel</button>
           <button
             type="button"
             :disabled="loading"
-            class="flex-1 py-2 rounded-xl bg-gradient-to-r from-red-500 to-orange-500 hover:from-red-400 hover:to-orange-400 text-white text-[12px] font-bold transition-all disabled:opacity-50"
+            class="btn-primary"
             @click="emit('confirm')"
           >{{ loading ? 'Trimming…' : confirmLabel }}</button>
-          <button
-            type="button"
-            class="flex-1 py-2 rounded-xl text-gray-600 hover:text-gray-400 text-[12px] transition-colors border border-white/[0.07]"
-            @click="emit('close')"
-          >Cancel</button>
         </div>
       </div>
     </div>

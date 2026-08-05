@@ -49,7 +49,7 @@ const riotLabel = () => `${props.name}#${props.tag}`
         <div class="flex flex-wrap gap-2 justify-end">
           <button
             type="button"
-            class="rounded-xl border border-white/[0.10] bg-white/[0.04] px-3 py-2 text-xs font-semibold text-gray-200 hover:bg-white/[0.07] transition-colors"
+            class="btn-secondary"
             :disabled="linking"
             @click="emit('close')"
           >Cancel</button>
@@ -57,19 +57,19 @@ const riotLabel = () => `${props.name}#${props.tag}`
           <template v-if="atCap">
             <button
               type="button"
-              class="rounded-xl border border-white/[0.10] bg-white/[0.04] px-3 py-2 text-xs font-semibold text-gray-200 hover:bg-white/[0.07] transition-colors"
+              class="btn-secondary"
               @click="emit('openSettings')"
             >Open Settings</button>
             <button
               type="button"
-              class="rounded-xl bg-gradient-to-r from-red-500 to-red-600 px-3 py-2 text-xs font-bold text-white hover:from-red-400 hover:to-red-500 transition-colors"
+              class="btn-primary"
               @click="emit('upgrade')"
             >Upgrade</button>
           </template>
           <button
             v-else
             type="button"
-            class="rounded-xl bg-gradient-to-r from-red-500 to-red-600 px-3 py-2 text-xs font-bold text-white hover:from-red-400 hover:to-red-500 transition-colors disabled:opacity-50"
+            class="btn-primary"
             :disabled="linking"
             @click="emit('confirm')"
           >{{ linking ? 'Linking…' : `Link ${riotLabel()}` }}</button>

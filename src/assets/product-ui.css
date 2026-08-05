@@ -1,5 +1,6 @@
-/* Settings product UI — denser, sharper, less marketing CTA */
+/* Product UI — denser, sharper, solid actions (Settings + app shell) */
 
+.product-shell .btn-primary,
 .settings-shell .btn-primary {
   background: var(--game-accent, #ff4655);
   box-shadow: none;
@@ -11,6 +12,7 @@
   text-transform: none;
 }
 
+.product-shell .btn-primary:hover:not(:disabled),
 .settings-shell .btn-primary:hover:not(:disabled) {
   opacity: 1;
   filter: brightness(1.1);
@@ -18,11 +20,14 @@
   box-shadow: none;
 }
 
+.product-shell .btn-primary:active:not(:disabled),
 .settings-shell .btn-primary:active:not(:disabled) {
   transform: none;
   filter: brightness(0.96);
 }
 
+.product-shell .btn-secondary,
+.product-shell .btn-danger,
 .settings-shell .btn-secondary,
 .settings-shell .btn-danger {
   border-radius: 5px;
@@ -30,34 +35,45 @@
   font-weight: 600;
 }
 
+.product-shell .btn-sm,
 .settings-shell .btn-sm {
   border-radius: 4px;
   padding: 5px 9px;
   font-size: 11px;
 }
 
+.product-shell .btn-ghost,
 .settings-shell .btn-ghost {
   border-radius: 4px;
 }
 
-/* Tighten Tailwind radii inside Settings (keep rounded-full for toggles) */
+/* Tighten Tailwind radii (keep rounded-full for toggles / status dots) */
+.product-shell :where(.rounded-2xl),
 .settings-shell :where(.rounded-2xl) {
   border-radius: 6px;
 }
 
+.product-shell :where(.rounded-xl),
 .settings-shell :where(.rounded-xl) {
   border-radius: 5px;
 }
 
+.product-shell :where(.rounded-lg),
 .settings-shell :where(.rounded-lg) {
   border-radius: 5px;
 }
 
+.product-shell :where(.rounded-md),
 .settings-shell :where(.rounded-md) {
   border-radius: 4px;
 }
 
+.product-shell .panel-elevated,
 .settings-shell .panel-elevated {
   border-radius: 6px;
   box-shadow: none;
+}
+
+.product-shell .dash-panel {
+  border-radius: 6px;
 }

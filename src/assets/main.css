@@ -1,7 +1,7 @@
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
 @import "tailwindcss";
 @import "./gaming-buttons.css";
-@import "./settings-ui.css";
+@import "./product-ui.css";
 @import "../components/coaching-history/coaching-history.css";
 
 @theme {
@@ -16,36 +16,34 @@
   --brand-red-glow: rgba(255, 70, 85, 0.25);
 }
 
-/* Shared button patterns — matches upforge.gg CTA gradient */
+/* Shared button patterns — solid product CTAs */
 .btn-primary {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 6px;
-  padding: 8px 16px;
-  border-radius: 10px;
+  padding: 7px 12px;
+  border-radius: 5px;
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 600;
   color: #fff;
-  background: linear-gradient(135deg, #ff4655, #f97316);
-  box-shadow: 0 4px 18px rgba(255, 70, 85, 0.28);
-  transition: opacity 0.15s, transform 0.15s, box-shadow 0.15s;
+  background: var(--game-accent, #ff4655);
+  box-shadow: none;
+  transition: filter 0.15s, opacity 0.15s;
   border: none;
   cursor: pointer;
-  letter-spacing: 0.01em;
+  letter-spacing: 0;
 }
 .btn-primary:hover:not(:disabled) {
-  opacity: 0.92;
-  transform: translateY(-1px);
-  box-shadow: 0 6px 22px rgba(255, 70, 85, 0.38);
+  filter: brightness(1.1);
 }
-.btn-primary:active:not(:disabled) { transform: translateY(0); }
-.btn-primary:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+.btn-primary:active:not(:disabled) { filter: brightness(0.96); }
+.btn-primary:disabled { opacity: 0.5; cursor: not-allowed; filter: none; }
 
 .btn-primary--lg {
-  padding: 11px 20px;
+  padding: 10px 16px;
   font-size: 13px;
-  border-radius: 11px;
+  border-radius: 6px;
 }
 
 .btn-secondary {
@@ -53,8 +51,8 @@
   align-items: center;
   justify-content: center;
   gap: 6px;
-  padding: 8px 16px;
-  border-radius: 10px;
+  padding: 7px 12px;
+  border-radius: 5px;
   font-size: 12px;
   font-weight: 600;
   color: #d1d5db;
@@ -71,8 +69,8 @@
   align-items: center;
   justify-content: center;
   gap: 6px;
-  padding: 6px 12px;
-  border-radius: 8px;
+  padding: 6px 10px;
+  border-radius: 4px;
   font-size: 12px;
   font-weight: 500;
   color: #6b7280;
@@ -84,9 +82,9 @@
 .btn-ghost:hover { color: #d1d5db; background: rgba(255, 255, 255, 0.04); }
 
 .btn-sm {
-  padding: 6px 10px;
+  padding: 5px 9px;
   font-size: 11px;
-  border-radius: 8px;
+  border-radius: 4px;
   gap: 4px;
 }
 
@@ -95,8 +93,8 @@
   align-items: center;
   justify-content: center;
   gap: 6px;
-  padding: 8px 16px;
-  border-radius: 10px;
+  padding: 7px 12px;
+  border-radius: 5px;
   font-size: 12px;
   font-weight: 600;
   color: #fca5a5;
@@ -215,27 +213,23 @@ kbd {
 }
 
 .panel-elevated {
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.035) 0%, rgba(255, 255, 255, 0.018) 100%);
-  border: 1px solid rgba(255, 255, 255, 0.10);
-  border-radius: 16px;
-  box-shadow:
-    0 1px 0 rgba(255, 255, 255, 0.04) inset,
-    0 12px 40px rgba(0, 0, 0, 0.22);
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 6px;
+  box-shadow: none;
 }
 
 .dash-panel {
-  background: linear-gradient(165deg, rgba(255, 255, 255, 0.04) 0%, rgba(255, 255, 255, 0.015) 48%, rgba(0, 0, 0, 0.12) 100%);
-  border: 1px solid rgba(255, 255, 255, 0.10);
-  border-radius: 16px;
-  box-shadow:
-    0 1px 0 rgba(255, 255, 255, 0.05) inset,
-    0 16px 48px rgba(0, 0, 0, 0.26);
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 6px;
+  box-shadow: none;
 }
 
 .panel-inset {
   background: rgba(0, 0, 0, 0.18);
   border: 1px solid rgba(255, 255, 255, 0.07);
-  border-radius: 14px;
+  border-radius: 5px;
 }
 
 .scroll-col {

@@ -1,6 +1,6 @@
 <template>
   <div
-    class="relative h-screen bg-[#111111] text-white flex flex-col overflow-hidden select-none"
+    class="product-shell relative h-screen bg-[#111111] text-white flex flex-col overflow-hidden select-none"
     :style="cssVars"
   >
     <!-- Subtle branded background texture -->
