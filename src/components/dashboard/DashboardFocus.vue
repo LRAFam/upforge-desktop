@@ -12,6 +12,7 @@ const {
   lastInsightTraining,
   emptyCoachingTitle,
   emptyCoachingMessage,
+  emptyCoachingAction,
   openEmptyCoachingAction,
   openAnalysis,
   trainLastInsight,
