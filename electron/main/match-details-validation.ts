@@ -5,16 +5,7 @@
  */
 import type { MatchData } from './riot-types'
 import { resolveMapName } from './riot-lookup-tables'
-
-function normalizeQueueId(queueId: string): string {
-  const map: Record<string, string> = {
-    competitive: 'COMPETITIVE', unrated: 'CLASSIC', deathmatch: 'DEATHMATCH',
-    spikerush: 'SPIKERUSH', swiftplay: 'SWIFTPLAY', snowball: 'SNOWBALL',
-    premier: 'PREMIER', custom: 'CUSTOM', ggteam: 'ESCALATION',
-    onefa: 'REPLICATION', hurm: 'TEAMDEATHMATCH', newmap: 'NEWMAP',
-  }
-  return map[queueId.toLowerCase()] ?? queueId.toUpperCase()
-}
+import { normalizeQueueId } from './riot-queue-id'
 
 const PRACTICE_MODES = new Set(['CUSTOM', 'SHOOTING_RANGE', 'NEWMAP'])
 

@@ -93,6 +93,7 @@ import {
   recomputeTimelineVideoOffsets,
 } from './riot-local-api'
 import { decideRiotAccountSwitch } from './riot-account-switch'
+import { isValorantModeFilteredOut, VALORANT_RECORDABLE_MODES } from './recorded-modes-filter'
 import { applyLiveKillStampsToTimeline } from './live-kill-stamps'
 import { withTimeout } from './promise-timeout'
 import { LoLLiveClientApi } from './lol-live-client-api'
@@ -2491,7 +2492,7 @@ function setupGameDetection(): void {
   }
 
   // All known Valorant game modes returned by the Riot Local Client API
-  const ALL_MODES = new Set(['COMPETITIVE', 'PREMIER', 'CLASSIC', 'DEATHMATCH', 'TEAMDEATHMATCH', 'SPIKERUSH', 'SWIFTPLAY', 'SNOWBALL'])
+  // (includes The Range so "every chip selected" is the only all-modes path)
 
   /** Invalidate older game-started handlers and cancel their lobby-wait loops. */
   function beginMatchFlow(): { isStale: () => boolean } {
@@ -3631,7 +3632,7 @@ function setupGameDetection(): void {
     const recordedModes = config?.recordedModes ?? ['COMPETITIVE', 'PREMIER']
     // Empty list = record nothing (dashboard/settings copy). Non-empty partial list = filter.
     const filterByMode = game === 'valorant' && recordedModes.length > 0 &&
-      !([...ALL_MODES].every(m => recordedModes.includes(m)))
+      !VALORANT_RECORDABLE_MODES.every(m => recordedModes.includes(m))
 
     // CS2 — GSI live match (process open ≠ in a match).
     // Deadlock — Steam httpcache match signals; no Valve GSI.
@@ -4146,7 +4147,7 @@ function setupGameDetection(): void {
       return
     }
 
-    if (game === 'valorant' && filterByMode && gameMode && !recordedModes.includes(gameMode)) {
+    if (game === 'valorant' && isValorantModeFilteredOut(recordedModes, gameMode)) {
       console.log(`[GameDetector] Skipping recording — mode is ${gameMode} (recordedModes=${recordedModes.join(',')})`)
       logActivity(`Mode ${gameMode} not in recorded modes (${recordedModes.join(', ')}) — skipped`)
       notifyRecordingUx(

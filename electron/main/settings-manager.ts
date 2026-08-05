@@ -250,7 +250,10 @@ export class SettingsManager {
       let parsed = JSON.parse(raw)
       // Migrate from old recordingMode field
       if (parsed.recordingMode !== undefined && parsed.recordedModes === undefined) {
-        const ALL_MODES = ['COMPETITIVE', 'PREMIER', 'CLASSIC', 'DEATHMATCH', 'SPIKERUSH', 'SWIFTPLAY']
+        const ALL_MODES = [
+          'COMPETITIVE', 'PREMIER', 'CLASSIC', 'DEATHMATCH', 'SPIKERUSH',
+          'SWIFTPLAY', 'TEAMDEATHMATCH', 'SNOWBALL', 'SHOOTING_RANGE',
+        ]
         parsed.recordedModes = parsed.recordingMode === 'all' ? ALL_MODES : ['COMPETITIVE', 'PREMIER']
         delete parsed.recordingMode
       }
