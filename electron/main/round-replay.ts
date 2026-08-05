@@ -268,7 +268,7 @@ export function buildMatchRoundReplay(match: MatchData): MatchRoundReplay | null
       v: Math.max(0, recordingOffset + gameTime),
       k: 'kill',
       label,
-      abilitySlot: finishing.abilitySlot,
+      abilitySlot: finishing.abilitySlot ?? undefined,
       p: positions,
     })
     roundsMap.set(round, frames)

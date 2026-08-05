@@ -11,6 +11,7 @@ function clip(partial: Partial<ClipRecord> & Pick<ClipRecord, 'id' | 'savedAt'>)
     agent: 'Jett',
     durationSeconds: 12,
     round: 3,
+    momentOffsetMs: null,
     killCount: 1,
     title: null,
     analysisJobId: null,

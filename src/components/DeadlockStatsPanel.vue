@@ -65,7 +65,7 @@
     </div>
 
     <!-- Stats -->
-    <div v-else class="divide-y divide-white/[0.03]">
+    <div v-else-if="stats" class="divide-y divide-white/[0.03]">
       <!-- Rank + summary row -->
       <div class="flex items-center gap-3 px-3.5 py-3">
         <img

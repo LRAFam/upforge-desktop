@@ -1,6 +1,6 @@
 {
   "name": "upforge-desktop",
-  "version": "2.10.60",
+  "version": "2.10.61",
   "description": "UpForge Desktop — Automatic Valorant gameplay recording and AI coaching",
   "main": "./out/main/index.js",
   "author": "UpForge",
@@ -53,6 +53,7 @@
     "@tailwindcss/vite": "^4.2.2",
     "@types/discord-rpc": "^4.0.10",
     "@types/node": "^22.0.0",
+    "@types/unbzip2-stream": "^1.4.3",
     "@vitejs/plugin-vue": "^5.0.3",
     "@vue/eslint-config-typescript": "^13.0.0",
     "autoprefixer": "^10.4.17",

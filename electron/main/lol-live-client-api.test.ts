@@ -121,12 +121,14 @@ describe('buildMatchDataFromLolSnapshot', () => {
 describe('assignLolKillSpreeRounds', () => {
   function killAt(ms: number, killer = 'You'): KillEvent {
     return {
+      EventID: 0,
       EventName: 'ChampionKill',
+      EventTime: ms / 1000,
       killerName: killer,
       victimName: 'Enemy',
       assistants: [],
       timeSinceGameStartMillis: ms,
-    } as KillEvent
+    }
   }
 
   it('groups the player kills into time-proximity sprees', () => {

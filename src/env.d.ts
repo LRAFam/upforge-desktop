@@ -400,6 +400,8 @@ export interface ClipRecord {
   agent: string | null
   durationSeconds: number
   round: number | null
+  /** Video offset (ms) of the key moment — used for scout timeline sync */
+  momentOffsetMs: number | null
   killCount: number | null
   title: string | null
   savedAt: number
@@ -408,6 +410,10 @@ export interface ClipRecord {
   /** valorant | cs2 | deadlock — omitted on legacy clips (treated as valorant) */
   game?: 'valorant' | 'cs2' | 'deadlock' | null
   gameMode: string | null
+  /** Weapon used on the highlighted kill, when known */
+  weapon: string | null
+  /** Ability slot on the highlighted kill (grenade, ability1, etc.) */
+  abilitySlot: string | null
   uploadStatus: 'local' | 'uploading' | 'uploaded' | 'failed'
   apiClipId: number | null
   shareToken: string | null

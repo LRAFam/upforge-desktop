@@ -23,7 +23,7 @@ describe('analysisCompleteBadge', () => {
 
 describe('inferAnalysisGame', () => {
   it('detects CS2 from cs2_source', () => {
-    const a = { cs2_source: 'steam' } as AnalysisItem
+    const a = { cs2_source: 'demo_upload' } as AnalysisItem
     expect(inferAnalysisGame(a)).toBe('cs2')
   })
 

@@ -20,12 +20,17 @@ import type { MatchData } from './riot-types'
 function timelineWithKills(): MatchData {
   return {
     game: 'valorant',
+    matchId: 'match-1',
+    region: 'eu',
+    queueId: 'competitive',
     map: 'Haven',
     agent: 'Jett',
     gameMode: 'COMPETITIVE',
     playerName: 'You',
     playerTag: 'NA1',
     puuid: 'own-puuid',
+    matchStartTime: 1_000_000,
+    roundScores: [],
     events: [],
     killEvents: [],
     playerKills: [],
