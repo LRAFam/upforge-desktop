@@ -54,6 +54,7 @@ export interface PendingRecording {
   /** Last analysis failure message for dashboard retry UX. */
   lastAnalysisError?: string | null
   lastAnalysisErrorHint?: string | null
+  lastFailureCode?: string | null
   lastAnalysisCreditRefunded?: boolean
   /** Per-moment Gemini / clip debug when fight-footage verification fails. */
   lastAnalysisFailureDiagnostics?: Record<string, unknown> | null
@@ -281,6 +282,7 @@ export class RecordingsStore {
     meta?: {
       hint?: string | null
       creditRefunded?: boolean
+      failureCode?: string | null
       failureDiagnostics?: Record<string, unknown> | null
     },
   ): void {
@@ -294,6 +296,7 @@ export class RecordingsStore {
     rec.uploadProgress = undefined
     rec.lastAnalysisError = message
     rec.lastAnalysisErrorHint = meta?.hint ?? null
+    rec.lastFailureCode = meta?.failureCode ?? null
     rec.lastAnalysisCreditRefunded = meta?.creditRefunded ?? false
     rec.lastAnalysisFailureDiagnostics = meta?.failureDiagnostics ?? null
     rec.analysisFailureNotifiedAt = undefined
@@ -313,6 +316,7 @@ export class RecordingsStore {
     if (!rec?.lastAnalysisError) return
     rec.lastAnalysisError = undefined
     rec.lastAnalysisErrorHint = undefined
+    rec.lastFailureCode = undefined
     rec.lastAnalysisCreditRefunded = undefined
     rec.lastAnalysisFailureDiagnostics = undefined
     rec.analysisFailureNotifiedAt = undefined

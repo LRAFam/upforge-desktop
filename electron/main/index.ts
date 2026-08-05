@@ -125,7 +125,7 @@ import { startAnalysisPoll, stopActiveAnalysisPoll, reconcileOrphanedJob, getAct
 import { abortInFlightAnalysis } from './abort-in-flight-analysis'
 import { buildAnalysisPipelineDiagnostics } from './analysis-pipeline-diagnostics'
 import { reconcileStuckAnalysisJobs, type ReconciledAnalysisContext } from './stuck-analysis-reconciler'
-import { buildAnalysisErrorPayload, formatAnalysisFailureMessage, type AnalysisErrorPayload } from './analysis-failure-messages'
+import { buildAnalysisErrorPayload, classifyAnalysisFailure, formatAnalysisFailureMessage, isDegradedTelemetryResult, type AnalysisErrorPayload } from './analysis-failure-messages'
 import { parseDuelFailureDiagnostics, diagnosticsSummary, type DuelFailureDiagnostics } from '../../src/lib/duel-diagnostics'
 import { AuthManager } from './auth-manager'
 import { SettingsManager, DEFAULT_CLIP_CAPTURE } from './settings-manager'
@@ -140,10 +140,15 @@ import {
   trackRecordingFailed,
   trackUploadStarted,
   trackUploadFailed,
+  trackPreparationStarted,
+  trackPreparationCompleted,
+  trackQuotaReached,
+  trackUpgradePromptShown,
   trackObsConnected,
   trackFirstAnalysis,
   trackSecondAnalysis,
   trackOpsRecordingLap,
+  trackAnalysisDegraded,
 } from './funnel-events'
 import { collectMachineProfile } from './machine-profile'
 import { MatchTelemetrySession, type SectorName } from './match-telemetry'
@@ -156,6 +161,12 @@ import {
 } from './capture-backend'
 import { reportRecordingError } from './recording-errors'
 import { UpgradeRequiredError } from './errors'
+import { classifyActivationError } from './activation-error-codes'
+import {
+  estimateRecordingBytes,
+  exceedsRecordingSizeCap,
+  recommendSettingsUnderCap,
+} from './recording-size-estimate'
 import { mergeSkillProfileFromAnalysis } from '../../src/lib/skill-profile'
 import { parseMatchHighlightsFromApi } from '../../src/lib/match-highlights'
 import { extractSpatialFromAnalysisPayload } from '../../src/lib/analysis-enrichment'
@@ -215,6 +226,12 @@ import {
   withAnalysisReadiness,
   type AnalysisReadiness,
 } from './analysis-readiness'
+import {
+  beginPreparation,
+  setPrepStep,
+  completePreparation,
+  failPreparation,
+} from './preparation-instrumentation'
 import {
   clearPostGameSession,
   getPostGameSessionSnapshot,
@@ -315,6 +332,7 @@ const obsRecorder = new OBSRecorder(
       password: s?.obsPassword ?? '',
       replayBufferSeconds: s?.obsReplayBufferSeconds ?? 30,
       obsPreserveActiveScene: s?.obsPreserveActiveScene ?? true,
+      obsRecordVerifyMs: s?.obsRecordVerifyMs,
     }
   },
   () => {
@@ -1442,6 +1460,19 @@ function dispatchReconciledAnalysisReady(ctx: ReconciledAnalysisContext): void {
     timing_comparisons: Array.isArray(rawTiming) ? rawTiming : [],
     duel_moments: result?.duel_moments ?? timeline?.duelMoments ?? null,
     pipeline: result?.pipeline ?? result?.pipeline_type ?? null,
+    report_type: result?.report_type ?? null,
+    coaching_source: result?.coaching_source ?? null,
+    limitations: result?.limitations ?? [],
+    is_degraded: result?.is_degraded ?? false,
+    telemetry_fallback_used: result?.telemetry_fallback_used ?? false,
+  }
+
+  if (isDegradedTelemetryResult(payload)) {
+    trackAnalysisDegraded({
+      job_id: ctx.jobId,
+      recording_id: ctx.recordingId ?? undefined,
+      report_type: payload.report_type ?? 'degraded_telemetry',
+    })
   }
 
   if (postGameWindow && !postGameWindow.isDestroyed()) {
@@ -1486,6 +1517,7 @@ function dispatchAnalysisFailure(
     failureDiagnostics?: DuelFailureDiagnostics | null
   } = {},
 ): AnalysisErrorPayload {
+  const classified = classifyActivationError(rawError)
   const payload = buildAnalysisErrorPayload(rawError, {
     recordingId: opts.recordingId ?? undefined,
     needsUpgrade: opts.needsUpgrade,
@@ -1493,6 +1525,8 @@ function dispatchAnalysisFailure(
     ppaUrl: opts.ppaUrl,
     clipsOnly: opts.clipsOnly,
     failureDiagnostics: opts.failureDiagnostics ?? null,
+    failureCode: classified.code,
+    recoveryAction: classified.definition.recoveryAction,
   })
 
   if (opts.recordingId) {
@@ -1507,6 +1541,7 @@ function dispatchAnalysisFailure(
     recordingsStore.setAnalysisFailure(opts.recordingId, payload.message, {
       hint: payload.hint,
       creditRefunded: payload.creditRefunded,
+      failureCode: payload.failureCode,
       failureDiagnostics: (opts.failureDiagnostics ?? payload.failureDiagnostics ?? null) as
         | Record<string, unknown>
         | null
@@ -1589,11 +1624,18 @@ function sendUploadFailure(
   if (opts.game === 'valorant') {
     trackUploadFailed(rawError, 'valorant')
   }
+  // Ensure quota walls always carry needsUpgrade for UI + phase mapping
+  const classifiedKind = classifyAnalysisFailure(rawError).kind
+  const needsUpgrade = opts.needsUpgrade ?? (classifiedKind === 'quota' || classifiedKind === 'quota_required')
   if (isLikelyNetworkFailure(rawError)) {
     noteUploadNetworkFailure(rawError)
     void captureNetworkEvidence('upload-failure')
   }
-  return dispatchAnalysisFailure(rawError, { ...opts, notify: opts.notify ?? false })
+  return dispatchAnalysisFailure(rawError, {
+    ...opts,
+    needsUpgrade,
+    notify: opts.notify ?? false,
+  })
 }
 
 function notifyCoachingReady(body: string, analysisId?: number | null): void {
@@ -3060,8 +3102,10 @@ function setupGameDetection(): void {
       }
 
       activationStep('match_end', `game=${game} autoAnalyse=${autoAnalyse}`)
+      beginPreparation(game, null)
 
       const savePath = recordingSavePath()
+      setPrepStep('file_ready')
       const ready = resolveReadyRecordingPath(
         obsRecorder.getLastRecordingPath() ?? videoPath,
         savePath,
@@ -3074,8 +3118,9 @@ function setupGameDetection(): void {
         const errorMsg = formatRecordingFailure(backend, obsRecorder.getLastError())
         logActivity('Recording file not found at expected path — check save folder in Settings')
         activationStep('file_ready', `failed: ${errorMsg}`)
-        reportPipelineError('upload', errorMsg, { step: 'file_ready', game, map, agent })
-        sendUploadFailure(errorMsg, { targetWindow: uploadTargetWindow, game })
+        const failed = failPreparation(errorMsg || 'recording_file_missing', { step: 'file_ready' })
+        reportPipelineError('upload', failed.technicalMessage, { step: 'file_ready', game, map, agent, failure_code: failed.code })
+        sendUploadFailure(failed.userMessage, { targetWindow: uploadTargetWindow, game })
         return
       }
 
@@ -3088,8 +3133,9 @@ function setupGameDetection(): void {
         log.error(`[GameDetector] ${errorMsg}`)
         logActivity(`Recording file too small (${sizeMB} MB) — upload skipped`)
         activationStep('file_ready', `too_small: ${errorMsg}`)
-        reportPipelineError('upload', errorMsg, { step: 'file_ready', game, map, agent, sizeMB })
-        sendUploadFailure(errorMsg, { targetWindow: uploadTargetWindow, game })
+        const failed = failPreparation(errorMsg, { step: 'file_ready', sizeMB })
+        reportPipelineError('upload', failed.technicalMessage, { step: 'file_ready', game, map, agent, sizeMB, failure_code: failed.code })
+        sendUploadFailure(failed.userMessage, { targetWindow: uploadTargetWindow, game })
         return
       }
 
@@ -3105,6 +3151,7 @@ function setupGameDetection(): void {
       }
 
       // Register on the dashboard immediately — before compression/upload can take minutes.
+      setPrepStep('dashboard_row')
       finalizeTimelineOffsetsForClips(timeline)
       const savedRecording = recordingsStore.add({
         path: readyPath,
@@ -3116,6 +3163,7 @@ function setupGameDetection(): void {
         gameMode,
         timeline,
       })
+      setPrepStep('dashboard_row', savedRecording.id)
       mainWindow?.webContents.send('recordings:updated')
       logActivity(
         `Recording saved (${(readySize / (1024 ** 3)).toFixed(2)} GB) — visible on dashboard`,
@@ -3148,7 +3196,11 @@ function setupGameDetection(): void {
       // manual "pending" card below (no preparing → uploading flash).
       if (autoAnalyse) {
         activationStep('prep', 'leaving preparing → uploading')
+        setPrepStep('upload_dispatch', savedRecording.id)
+        completePreparation(game)
         sendToWindow('post-game:prep-step', { game, map, agent })
+      } else {
+        completePreparation(game)
       }
 
       let coachingExtras: CoachingSubmissionExtras | undefined
@@ -3348,16 +3400,19 @@ function setupGameDetection(): void {
       const stuckMsg =
         'Preparing is taking longer than expected — open the dashboard to upload this match manually.'
       log.error('[HandleMatchEnd] Post-game stuck in preparing — surfacing manual fallback')
-      logActivity('Post-game preparation did not complete — upload this match from the dashboard.')
-      reportPipelineError('upload', stuckMsg, {
+      logActivity('Post-game preparation did not complete — resume from the dashboard.')
+      const failed = failPreparation(stuckMsg, { step: 'preparing_timeout' })
+      reportPipelineError('upload', failed.technicalMessage, {
         step: 'preparing_timeout',
         game,
         map,
         agent,
         phase: getPostGameSessionSnapshot()?.phase,
+        failure_code: failed.code,
+        prep_step: failed.step,
       })
       try {
-        sendUploadFailure(stuckMsg, { targetWindow: uploadTargetWindow, game })
+        sendUploadFailure(failed.userMessage, { targetWindow: uploadTargetWindow, game })
       } catch { /* window closed */ }
     }, PREPARING_SAFETY_MS)
 
@@ -3365,15 +3420,17 @@ function setupGameDetection(): void {
       const msg = err instanceof Error ? err.message : String(err)
       log.error('[HandleMatchEnd] Post-game upload failed:', err)
       logActivity(`Upload failed to start: ${msg}`)
-      reportPipelineError('upload', `Upload failed to start: ${msg}`, {
+      const failed = failPreparation(msg, { step: 'run_post_game_upload' })
+      reportPipelineError('upload', failed.technicalMessage, {
         step: 'run_post_game_upload',
         game,
         map,
         agent,
+        failure_code: failed.code,
         stack: err instanceof Error ? err.stack?.slice(0, 2000) : undefined,
       })
       try {
-        sendUploadFailure(`Upload failed to start: ${msg}`, { targetWindow: uploadTargetWindow, game })
+        sendUploadFailure(failed.userMessage, { targetWindow: uploadTargetWindow, game })
       } catch { /* window closed */ }
     }).finally(() => {
       // Settled: if the flow never left preparing (silent early return), don't
@@ -3383,14 +3440,17 @@ function setupGameDetection(): void {
         const settledMsg =
           'Preparing did not complete — open the dashboard to upload this match manually.'
         log.error('[HandleMatchEnd] runPostGameUpload settled while still preparing — surfacing fallback')
-        reportPipelineError('upload', settledMsg, {
+        const failed = failPreparation(settledMsg, { step: 'preparing_settled_stuck' })
+        reportPipelineError('upload', failed.technicalMessage, {
           step: 'preparing_settled_stuck',
           game,
           map,
           agent,
+          failure_code: failed.code,
+          prep_step: failed.step,
         })
         try {
-          sendUploadFailure(settledMsg, { targetWindow: uploadTargetWindow, game })
+          sendUploadFailure(failed.userMessage, { targetWindow: uploadTargetWindow, game })
         } catch { /* window closed */ }
       } else {
         clearTimeout(preparingSafetyTimer)
@@ -4206,6 +4266,27 @@ function setupGameDetection(): void {
 
     tray?.setToolTip('UpForge — Starting recorder...')
     logActivity('Starting OBS recording…')
+    if (recorderConfig && settingsManager?.get().fullMatchRecording !== false) {
+      const estimateBytes = estimateRecordingBytes({
+        bitrateMbps: recorderConfig.bitrate,
+        fps: recorderConfig.fps ?? 30,
+        quality: recorderConfig.quality === '1080p' ? '1080p' : '720p',
+      })
+      if (exceedsRecordingSizeCap(estimateBytes)) {
+        const recommended = recommendSettingsUnderCap()
+        const estimateGb = (estimateBytes / (1024 ** 3)).toFixed(1)
+        const msg =
+          `Recording settings may exceed the upload limit (~${estimateGb} GB per match). ` +
+          `Try ${formatRecordingLabel(recommended.quality, recommended.bitrate, recommended.fps)} in Settings → Recording.`
+        log.warn(`[Recorder] ${msg}`)
+        logActivity(msg)
+        mainWindow?.webContents.send('app:warning', {
+          message: msg,
+          actionLabel: 'Open Recording settings',
+          actionRoute: '/settings?tab=recording',
+        })
+      }
+    }
     mainWindow?.webContents.send('recording:starting', { starting: true })
     const telemetry = beginMatchTelemetry(game)
     telemetry.startSector('detect_to_record_start')
@@ -5193,7 +5274,25 @@ async function doUploadAndAnalyse(
           pipeline: (status.result as Record<string, unknown>).pipeline
             ?? (status.result as Record<string, unknown>).pipeline_type
             ?? null,
+          report_type: (status.result as Record<string, unknown>).report_type ?? null,
+          coaching_source: (status.result as Record<string, unknown>).coaching_source ?? null,
+          limitations: (status.result as Record<string, unknown>).limitations ?? [],
+          is_degraded: (status.result as Record<string, unknown>).is_degraded ?? false,
+          telemetry_fallback_used: (status.result as Record<string, unknown>).telemetry_fallback_used ?? false,
         })
+        const readyPayload = {
+          report_type: (status.result as Record<string, unknown>).report_type,
+          coaching_source: (status.result as Record<string, unknown>).coaching_source,
+          is_degraded: (status.result as Record<string, unknown>).is_degraded,
+          telemetry_fallback_used: (status.result as Record<string, unknown>).telemetry_fallback_used,
+        }
+        if (isDegradedTelemetryResult(readyPayload)) {
+          trackAnalysisDegraded({
+            job_id: result.job_id,
+            recording_id: recordingId ?? undefined,
+            report_type: String(readyPayload.report_type ?? 'degraded_telemetry'),
+          })
+        }
         mainWindow?.webContents.send('dashboard:refresh')
         tray?.setToolTip(idleTooltip(game))
         const notifAgent = agent ?? gameLabel(game)
@@ -5278,6 +5377,8 @@ async function doUploadAndAnalyse(
       || (err instanceof Error && /analysis.limit.reached|upgrade.required/i.test(err.message))
     if (isUpgradeError) {
       const upgradeErr = err as UpgradeRequiredError
+      trackQuotaReached(game, { recording_id: recordingId ?? undefined })
+      trackUpgradePromptShown('post_game_upload', game)
       sendUploadFailure(msg, {
         targetWindow,
         recordingId,

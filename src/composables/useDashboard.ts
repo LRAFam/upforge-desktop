@@ -37,6 +37,7 @@ import { canOpenTimeline, canWatchRawRecording } from '../lib/recording-demo-sta
 import { type DemoDownloadProgress, demoDownloadProgressLabel } from '../lib/demo-download-progress'
 import { recordingTimelineReady } from '../lib/recording-demo-status'
 import { canRetryRiotMatchStats } from '../lib/match-stats-retry'
+import { recordingRetryActionLabel } from '../lib/activation-retry-label'
 
 export interface LolRecentMatch {
   match_id: string
@@ -952,6 +953,9 @@ function createDashboard() {
   function recAnalysisActionLabel(rec: PendingRecording) {
     if (syncingMatchStatsIds.value.has(rec.id)) return 'Syncing…'
     if (analysingIds.value.has(rec.id)) return 'Starting…'
+    if (rec.lastAnalysisError) {
+      return recordingRetryActionLabel(rec.lastAnalysisError, rec.lastFailureCode)
+    }
     if (recAnalysisReady(rec)) return 'Run AI analysis'
     if (recCanRetryMatchStats(rec)) return 'Retry sync'
     return 'Run AI analysis'

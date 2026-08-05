@@ -317,6 +317,12 @@
                 <p class="text-sm font-bold text-white leading-tight mt-0.5 truncate">
                   {{ matchHeadline }}<span v-if="gameInfo.game === 'valorant' && gameInfo.map" class="text-gray-500 font-medium"> · {{ gameInfo.map }}</span>
                 </p>
+                <p
+                  v-if="showDegradedReportNotice"
+                  class="mt-1 text-[11px] leading-snug text-amber-200/90"
+                >
+                  {{ degradedReportNotice.title }} — {{ degradedReportNotice.message }}
+                </p>
               </div>
               <div v-if="result?.overall_score != null" class="text-right flex-shrink-0 pl-2">
                 <p class="text-xl font-black tabular-nums leading-none" :class="scoreClass(result.overall_score)">
@@ -800,7 +806,7 @@ import { filterSessionClips } from '../lib/session-clips'
 import type { ClipRecord } from '../env.d.ts'
 import type { CategoryPercentileEntry } from '../components/CategoryPercentilesStrip.vue'
 import { canSpatialVodSeek } from '../lib/tier-features'
-import { buildAnalysisErrorPayload, type AnalysisErrorPayload } from '../lib/analysis-failure-messages'
+import { buildAnalysisErrorPayload, getDegradedReportNotice, isDegradedTelemetryResult, type AnalysisErrorPayload } from '../lib/analysis-failure-messages'
 import { analysesUsedLabel } from '../lib/quota-display'
 import { usesAsyncDemoSync, demoSyncExplainerShort } from '../lib/recording-demo-status'
 import { demoDownloadProgressLabel, type DemoDownloadProgress } from '../lib/demo-download-progress'
@@ -869,10 +875,17 @@ const result = ref<{
   timing_comparisons?: Array<{ label: string }>
   duel_moments?: DuelMoment[] | null
   pipeline?: string | null
+  report_type?: string | null
+  coaching_source?: string | null
+  limitations?: string[]
+  is_degraded?: boolean
+  telemetry_fallback_used?: boolean
 } | null>(null)
 const sessionClips = ref<ClipRecord[]>([])
 const matchId = ref<string | null>(null)
-const categoryPercentiles = ref<Record<string, CategoryPercentileEntry>>({})
+const degradedReportNotice = computed(() => getDegradedReportNotice())
+const showDegradedReportNotice = computed(() => isDegradedTelemetryResult(result.value))
+
 const percentileTier = ref<string | null>(null)
 
 async function loadCategoryPercentiles(): Promise<void> {
@@ -2102,7 +2115,10 @@ async function openCoachNotesFromPostGame() {
   if (!analysisId || coachNotesOpening.value) return
   coachNotesOpening.value = true
   try {
-    const ok = await openAnalysisVodReview(router, analysisId, { coachNotes: true })
+    const ok = await openAnalysisVodReview(router, analysisId, {
+      coachNotes: true,
+      source: 'desktop_post_game',
+    })
     if (ok) dismiss()
     else flashToast('Could not open coach notes — try from the dashboard')
   } catch {
