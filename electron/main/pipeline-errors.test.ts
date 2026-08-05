@@ -13,4 +13,18 @@ describe('shouldReportAnalysisPipelineError', () => {
       shouldReportAnalysisPipelineError('upload', 'S3 upload failed (HTTP 503): Service Unavailable'),
     ).toBe(false)
   })
+
+  it('reports unexpected upload technical failures', () => {
+    expect(
+      shouldReportAnalysisPipelineError(
+        'upload',
+        'Presign failed: signature mismatch xyz',
+      ),
+    ).toBe(true)
+  })
+
+  it('still skips quota / user-recoverable analysis kinds', () => {
+    expect(shouldReportAnalysisPipelineError('quota', 'analysis.limit.reached')).toBe(false)
+    expect(shouldReportAnalysisPipelineError('refunded_data', 'match data missing')).toBe(false)
+  })
 })

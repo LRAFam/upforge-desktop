@@ -17,7 +17,6 @@ const USER_RECOVERABLE_ANALYSIS_KINDS = new Set<AnalysisFailureKind>([
   'refunded_quality',
   'refunded_generic',
   'integrity',
-  'upload',
   'quota',
   'clips_only',
 ])
