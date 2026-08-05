@@ -956,11 +956,15 @@ const pendingAnalysisState = ref<string | null>(null)
 const preparingSyncMessage = ref<string | null>(null)
 const pendingAnalyseButtonLabel = computed(() => {
   if (pendingAnalysisState.value === 'finalizing') return 'Finalizing…'
-  if (pendingAnalysisState.value === 'syncing') {
-    if (demoStatus.value?.status === 'downloading' || demoStatus.value?.status === 'gc_lookup') {
-      return demoDownloadLabel.value
+  if (pendingAnalysisState.value === 'waiting_match_data' || pendingAnalysisState.value === 'syncing') {
+    if (gameInfo.value.game === 'valorant') return 'Waiting for match stats…'
+    if (pendingAnalysisState.value === 'syncing') {
+      if (demoStatus.value?.status === 'downloading' || demoStatus.value?.status === 'gc_lookup') {
+        return demoDownloadLabel.value
+      }
+      return gameInfo.value.game === 'cs2' ? 'Waiting for demo…' : gameInfo.value.game === 'lol' ? 'Waiting for match stats…' : 'Syncing stats…'
     }
-    return gameInfo.value.game === 'cs2' ? 'Waiting for demo…' : gameInfo.value.game === 'lol' ? 'Waiting for match stats…' : 'Syncing stats…'
+    if (gameInfo.value.game === 'lol') return 'Waiting for match stats…'
   }
   return 'Not ready'
 })
@@ -1938,15 +1942,29 @@ async function refreshPendingReadiness() {
 async function analyseNow() {
   if (!pendingRecordingId.value || analysing.value) return
   if (!pendingAnalysisReady.value) {
-    errorMessage.value = pendingAnalysisMessage.value
     return
   }
   analysing.value = true
   state.value = 'uploading'
-  uploadProgress.value = 0
   try {
-    await window.api.recordings.analyse(pendingRecordingId.value)
-    // The analysis events (upload-start, progress, etc.) will be received via IPC
+    const result = await window.api.recordings.analyse(pendingRecordingId.value) as {
+      ok?: boolean
+      error?: string
+      code?: string
+      state?: string
+    }
+    if (result?.code === 'not_ready') {
+      state.value = 'pending'
+      pendingAnalysisReady.value = false
+      if (result.state) pendingAnalysisState.value = result.state
+      if (result.error) pendingAnalysisMessage.value = result.error
+      return
+    }
+    if (result?.error) {
+      state.value = 'error'
+      errorMessage.value = result.error
+      return
+    }
   } catch {
     state.value = 'error'
     errorMessage.value = 'Could not start analysis. Please try from the dashboard.'
@@ -1959,18 +1977,34 @@ async function dismissPending() {
   await handoffToMain('/dashboard')
 }
 
-function retryUpload() {
-  // Reset to uploading state — the main process will re-emit the upload events
-  // if there's still a pending recording; otherwise prompt the user to use the dashboard
-  if (pendingRecordingId.value) {
-    state.value = 'uploading'
-    uploadProgress.value = 0
-    window.api.recordings.analyse(pendingRecordingId.value).catch(() => {
-      state.value = 'error'
-      errorMessage.value = 'Retry failed. Try analysing from the dashboard.'
-    })
-  } else {
+async function retryUpload() {
+  if (!pendingRecordingId.value) {
     errorMessage.value = 'Recording no longer available. Open the dashboard to retry.'
+    return
+  }
+  state.value = 'uploading'
+  uploadProgress.value = 0
+  try {
+    const result = await window.api.recordings.analyse(pendingRecordingId.value) as {
+      ok?: boolean
+      error?: string
+      code?: string
+      state?: string
+    }
+    if (result?.code === 'not_ready') {
+      state.value = 'pending'
+      pendingAnalysisReady.value = false
+      if (result.state) pendingAnalysisState.value = result.state
+      if (result.error) pendingAnalysisMessage.value = result.error
+      return
+    }
+    if (result?.error) {
+      state.value = 'error'
+      errorMessage.value = result.error
+    }
+  } catch {
+    state.value = 'error'
+    errorMessage.value = 'Retry failed. Try analysing from the dashboard.'
   }
 }
 

@@ -3210,7 +3210,9 @@ function setupGameDetection(): void {
       // Leave "preparing" immediately — don't block UI on ffprobe / Riot sync.
       // Auto-analyse off: skip the upload flow entirely and drop straight to the
       // manual "pending" card below (no preparing → uploading flash).
-      if (autoAnalyse) {
+      const recForEarlyReadiness = recordingsStore.getById(savedRecording.id) ?? savedRecording
+      const earlyAutoReadiness = getAnalysisReadiness(recForEarlyReadiness)
+      if (autoAnalyse && earlyAutoReadiness.ready) {
         activationStep('prep', 'leaving preparing → uploading')
         setPrepStep('upload_dispatch', savedRecording.id)
         completePreparation(game)

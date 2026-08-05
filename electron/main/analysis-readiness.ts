@@ -303,7 +303,7 @@ export function getAnalysisReadiness(rec: ReadinessRecording): AnalysisReadiness
       return {
         ready: false,
         state: 'syncing',
-        message: 'Syncing match stats from Riot…',
+        message: 'Still getting Riot match data. Analyse unlocks when ready (usually about a minute). Keep Valorant / Riot Client open.',
         duelMomentCount: 0,
       }
     }
@@ -314,7 +314,7 @@ export function getAnalysisReadiness(rec: ReadinessRecording): AnalysisReadiness
       return {
         ready: false,
         state: 'waiting_match_data',
-        message: 'Still fetching Riot match stats in the background. Keep Riot Client open, or tap Retry sync.',
+        message: 'Still getting Riot match data. Analyse unlocks when ready (usually about a minute). Keep Valorant / Riot Client open.',
         duelMomentCount: 0,
       }
     }

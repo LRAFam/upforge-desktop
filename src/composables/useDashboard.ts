@@ -1060,7 +1060,18 @@ function createDashboard() {
     analysingIds.value = new Set(analysingIds.value)
     const isCloudRetry = Boolean(rec?.lastAnalysisError && rec?.jobId)
     try {
-      const result = await window.api.recordings.analyse(id) as { ok?: boolean; error?: string; code?: string }
+      const result = await window.api.recordings.analyse(id) as {
+        ok?: boolean
+        error?: string
+        code?: string
+        state?: string
+      }
+      if (result?.code === 'not_ready') {
+        warning.value = result.error ?? 'Match stats still syncing…'
+        setTimeout(() => { warning.value = null }, 12000)
+        await loadPendingRecordings()
+        return
+      }
       if (result?.error) {
         throw new Error(result.error)
       }

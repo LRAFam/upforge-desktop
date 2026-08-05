@@ -97,7 +97,17 @@ async function analyse(rec: PendingRecording) {
       message.value = 'Match stats synced — tap Analyse again for coaching.'
       return
     }
-    const result = await window.api.recordings.analyse(rec.id)
+    const result = await window.api.recordings.analyse(rec.id) as {
+      ok?: boolean
+      error?: string
+      code?: string
+      state?: string
+    }
+    if (result?.code === 'not_ready') {
+      message.value = result.error ?? 'Match stats still syncing…'
+      await load()
+      return
+    }
     if (result?.error) message.value = result.error
     else {
       await window.api.app.refreshDashboard?.()

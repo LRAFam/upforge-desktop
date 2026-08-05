@@ -68,6 +68,7 @@ describe('getAnalysisReadiness', () => {
     const readiness = getAnalysisReadiness(rec)
     expect(readiness.ready).toBe(false)
     expect(readiness.state).toBe('syncing')
+    expect(readiness.message).toMatch(/Still getting Riot match data/i)
   })
 
   it('keeps Analyse locked when match id exists but Riot stats are still sparse', () => {
@@ -78,7 +79,7 @@ describe('getAnalysisReadiness', () => {
     const readiness = getAnalysisReadiness(rec)
     expect(readiness.ready).toBe(false)
     expect(readiness.state).toBe('waiting_match_data')
-    expect(readiness.message).toMatch(/background|Retry sync/i)
+    expect(readiness.message).toMatch(/Still getting Riot match data/i)
   })
 
   it('blocks when no match id can be linked', () => {
