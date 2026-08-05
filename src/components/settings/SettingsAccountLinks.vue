@@ -380,7 +380,7 @@ async function unlinkLol() {
   <div class="panel-elevated overflow-hidden">
     <div class="border-b border-white/[0.09] px-4 py-3">
       <p class="text-sm font-semibold text-white">Link game accounts</p>
-      <p class="mt-0.5 text-xs text-gray-500">Connect here in the app — no website onboarding loop.</p>
+      <p class="mt-0.5 text-xs text-gray-500">Connect here in the app. No website onboarding loop.</p>
     </div>
 
     <div class="space-y-3 p-4">
@@ -423,34 +423,34 @@ async function unlinkLol() {
                 <button
                   v-if="!account.is_active"
                   type="button"
-                  class="rounded-lg border border-white/[0.10] bg-white/[0.04] px-2.5 py-1.5 text-[10px] font-semibold text-gray-200 hover:bg-white/[0.07] disabled:opacity-50"
+                  class="btn-secondary btn-sm"
                   :disabled="riotActivatingId === account.id"
                   @click="activateRiotAccount(account.id)"
                 >{{ riotActivatingId === account.id ? 'Setting…' : 'Set active' }}</button>
                 <button
                   v-if="riotEditingId !== account.id"
                   type="button"
-                  class="rounded-lg border border-white/[0.10] bg-white/[0.04] px-2.5 py-1.5 text-[10px] font-semibold text-gray-200 hover:bg-white/[0.07]"
+                  class="btn-secondary btn-sm"
                   title="Riot ID changed? Update the name and tag for this account."
                   @click="startRiotEdit(account)"
                 >Update</button>
                 <template v-if="riotConfirmRemoveId === account.id">
                   <button
                     type="button"
-                    class="rounded-lg border border-red-500/30 bg-red-500/10 px-2.5 py-1.5 text-[10px] font-semibold text-red-300 hover:bg-red-500/15 disabled:opacity-50"
+                    class="btn-danger btn-sm"
                     :disabled="riotRemovingId === account.id"
                     @click="removeRiotAccount(account.id)"
                   >{{ riotRemovingId === account.id ? 'Removing…' : 'Confirm' }}</button>
                   <button
                     type="button"
-                    class="rounded-lg border border-white/[0.10] bg-white/[0.04] px-2.5 py-1.5 text-[10px] font-semibold text-gray-200"
+                    class="btn-ghost btn-sm"
                     @click="riotConfirmRemoveId = null"
                   >Cancel</button>
                 </template>
                 <button
                   v-else
                   type="button"
-                  class="rounded-lg border border-red-500/20 bg-red-500/[0.08] px-2.5 py-1.5 text-[10px] font-semibold text-red-300 hover:bg-red-500/12 disabled:opacity-50 disabled:cursor-not-allowed"
+                  class="btn-danger btn-sm"
                   :disabled="riotAccounts.length <= 1 || riotRemovingId === account.id"
                   :title="riotAccounts.length <= 1 ? 'You must keep at least one Riot account' : undefined"
                   @click="riotConfirmRemoveId = account.id"
@@ -479,12 +479,12 @@ async function unlinkLol() {
               <div class="flex gap-2">
                 <button
                   type="button"
-                  class="rounded-xl border border-white/[0.10] bg-white/[0.04] px-3 py-2 text-xs font-semibold text-gray-200"
+                  class="btn-secondary"
                   @click="cancelRiotEdit"
                 >Cancel</button>
                 <button
                   type="button"
-                  class="flex-1 rounded-xl border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs font-bold text-red-200 hover:bg-red-500/15 disabled:opacity-50"
+                  class="btn-primary flex-1"
                   :disabled="riotSavingId === account.id"
                   @click="saveRiotRename(account.id)"
                 >{{ riotSavingId === account.id ? 'Saving…' : 'Save changes' }}</button>
@@ -498,17 +498,13 @@ async function unlinkLol() {
           class="rounded-xl border border-white/[0.06] bg-white/[0.03] p-3 text-[11px] text-gray-500 mb-3 flex flex-wrap items-center justify-between gap-2"
         >
           <span>Account limit reached on your current plan.</span>
-          <button
-            type="button"
-            class="text-[10px] font-bold uppercase tracking-wide text-red-400 hover:text-red-300"
-            @click="openUpgrade"
-          >Upgrade</button>
+          <button type="button" class="text-[10px] font-bold uppercase tracking-wide text-red-400 hover:text-red-300" @click="openUpgrade">Upgrade</button>
         </div>
 
         <button
           v-if="valorantLinked && riotAccountsCanAdd && !showRiotAddForm"
           type="button"
-          class="mb-3 w-full rounded-xl border border-white/[0.10] bg-white/[0.04] px-3 py-2 text-xs font-semibold text-gray-200 hover:bg-white/[0.07]"
+          class="btn-secondary mb-3 w-full"
           @click="openRiotAddForm"
         >Add account</button>
 
@@ -533,12 +529,12 @@ async function unlinkLol() {
             <button
               v-if="valorantLinked"
               type="button"
-              class="rounded-xl border border-white/[0.10] bg-white/[0.04] px-3 py-2 text-xs font-semibold text-gray-200"
+              class="btn-secondary"
               @click="cancelRiotAddForm"
             >Cancel</button>
             <button
               type="button"
-              class="flex-1 rounded-xl bg-gradient-to-r from-red-500 to-red-600 px-3 py-2 text-xs font-bold text-white disabled:opacity-50"
+              class="btn-primary flex-1"
               :disabled="riotBusy"
               @click="linkValorant"
             >{{ riotBusy ? 'Linking…' : 'Link Riot account' }}</button>
@@ -579,10 +575,10 @@ async function unlinkLol() {
             />
             <button
               type="button"
-              class="rounded-xl border border-orange-500/25 bg-orange-500/10 px-3 py-2 text-xs font-semibold text-orange-300 hover:bg-orange-500/15 disabled:opacity-50"
+              class="btn-secondary shrink-0"
               :disabled="faceitBusy"
               @click="linkFaceit"
-            >{{ faceitBusy ? '…' : 'Link' }}</button>
+            >{{ faceitBusy ? '…' : 'Link FACEIT' }}</button>
           </div>
         </div>
         <p v-if="faceitError" class="mt-2 text-[11px] text-red-400">{{ faceitError }}</p>
@@ -612,7 +608,7 @@ async function unlinkLol() {
             />
             <button
               type="button"
-              class="rounded-xl border border-yellow-500/25 bg-yellow-500/10 px-3 py-2 text-xs font-semibold text-yellow-300 hover:bg-yellow-500/15 disabled:opacity-50"
+              class="btn-secondary shrink-0"
               :disabled="steamBusy"
               @click="searchDeadlock"
             >{{ steamBusy ? '…' : 'Search' }}</button>
@@ -654,12 +650,12 @@ async function unlinkLol() {
           <div class="flex gap-2">
             <button
               type="button"
-              class="flex-1 rounded-xl border border-white/[0.10] bg-white/[0.04] px-3 py-2 text-xs font-semibold text-gray-200 hover:bg-white/[0.07]"
+              class="btn-secondary flex-1"
               @click="startLolEdit"
             >Update</button>
             <button
               type="button"
-              class="flex-1 rounded-xl border border-red-500/25 bg-red-500/10 px-3 py-2 text-xs font-semibold text-red-300 hover:bg-red-500/15 disabled:opacity-50"
+              class="btn-danger flex-1"
               :disabled="lolUnlinking"
               @click="unlinkLol"
             >{{ lolUnlinking ? '…' : 'Unlink' }}</button>
@@ -694,12 +690,12 @@ async function unlinkLol() {
             <button
               v-if="lolEditing"
               type="button"
-              class="rounded-xl border border-white/[0.10] bg-white/[0.04] px-3 py-2 text-xs font-semibold text-gray-200"
+              class="btn-secondary"
               @click="cancelLolEdit"
             >Cancel</button>
             <button
               type="button"
-              class="flex-1 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 px-3 py-2 text-xs font-bold text-black disabled:opacity-50"
+              class="btn-primary flex-1"
               :disabled="lolBusy"
               @click="linkLol"
             >{{ lolBusy ? 'Linking…' : (lolEditing ? 'Save League account' : 'Link League account') }}</button>

@@ -106,7 +106,7 @@ const analysesUsageLabel = computed(() => {
         <div class="grid grid-cols-2 gap-2">
           <button
             type="button"
-            class="rounded-lg border border-white/[0.08] bg-white/[0.03] px-3 py-2 text-xs font-medium text-gray-300 transition-colors hover:border-white/[0.14] hover:text-white disabled:opacity-60"
+            class="btn-secondary"
             :disabled="billingPortalLoading"
             @click="openBilling"
           >
@@ -114,21 +114,21 @@ const analysesUsageLabel = computed(() => {
           </button>
           <button
             type="button"
-            class="rounded-lg border border-white/[0.08] bg-white/[0.03] px-3 py-2 text-xs font-medium text-gray-300 transition-colors hover:border-white/[0.14] hover:text-white"
+            class="btn-secondary"
             @click="openSite"
           >
             Open dashboard
           </button>
           <button
             type="button"
-            class="rounded-lg border border-white/[0.08] bg-white/[0.03] px-3 py-2 text-xs font-medium text-gray-300 transition-colors hover:border-white/[0.14] hover:text-white"
+            class="btn-secondary"
             @click="openHelp"
           >
             Support
           </button>
           <button
             type="button"
-            class="rounded-lg border border-white/[0.10] bg-transparent px-3 py-2 text-xs font-medium text-gray-400 transition-colors hover:border-red-500/30 hover:text-red-300"
+            class="btn-danger"
             @click="handleLogout"
           >
             Sign out
@@ -214,8 +214,7 @@ const analysesUsageLabel = computed(() => {
         </p>
         <button
           type="button"
-          class="mt-3 w-full rounded-lg py-2 text-xs font-semibold text-white transition-opacity hover:opacity-90"
-          :style="{ backgroundColor: 'var(--game-accent, #ef4444)' }"
+          class="btn-primary mt-3 w-full"
           @click="openUpgrade"
         >
           Upgrade plan
