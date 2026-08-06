@@ -108,7 +108,7 @@ function patch(patch: Partial<PostGameSessionSnapshot>): void {
 export function applyPostGameChannelEvent(channel: string, payload: unknown): void {
   switch (channel) {
     case 'post-game:preparing': {
-      const data = payload as { game: string; map: string | null; agent: string | null }
+      const data = payload as { game: string; map: string | null; agent: string | null; calmSave?: boolean }
       // Late window-load "preparing" must not clobber a flow that already advanced
       // (prep-step / pending / upload). That race falsely tripped upload_failed safety nets.
       if (isPostGamePastPreparing(session?.phase)) {
@@ -127,7 +127,9 @@ export function applyPostGameChannelEvent(channel: string, payload: unknown): vo
         uploadProgress: 0,
         compressing: false,
         compressKind: null,
-        preparingSyncMessage: null,
+        preparingSyncMessage: data.calmSave === false
+          ? null
+          : 'Saving your match recording…',
       })
       break
     }

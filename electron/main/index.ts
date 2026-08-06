@@ -54,14 +54,15 @@ import {
 } from './vod-compressor'
 import {
   waitUntilBackgroundWorkAllowed,
-  pauseHeavyBackgroundWork,
   registerDeferredUploadRetry,
   clearDeferredUploadRetry,
   flushDeferredUploadRetries,
   shouldDeferHeavyBackgroundWork,
-  abortHeavyBackgroundWorkOnGameStart,
+  abortHeavyBackgroundWork,
   abortVodCompression,
 } from './match-priority-guard'
+import { decidePostMatchNextStep, isWaitingMatchDataState } from './post-match-steps'
+import { POST_MATCH_COPY, matchDataReadyStartingUpload, matchDataReadyUploading, waitingMatchDataBeforeAnalyse, waitingMatchDataBeforeUpload } from '../../src/lib/post-match-copy'
 import {
   addDeferredUploadId,
   getDeferredUploadQueuePath,
@@ -322,6 +323,12 @@ let ffmpegOk = true // clip extraction preflight only
 
 const gameDetector = new GameDetector()
 let matchPerformanceModeActive = false
+/**
+ * True from match confirmed until performance mode ends. Holds the post-match
+ * worker so an abort at match detect cannot immediately re-claim before OBS starts.
+ * Lobby-only (game open, no match yet) does not set this.
+ */
+let matchCapturePriority = false
 /** Bundled ffmpeg — post-match clip extraction only (not used for live recording). */
 const clipFfmpegProbe = new Recorder()
 const obsRecorder = new OBSRecorder(
@@ -733,11 +740,10 @@ function reconcileInterruptedUploads(): void {
 }
 
 function matchPriorityDeps() {
-  // Defer heavy background work (compression/upload) ONLY while OBS is actually recording —
-  // not merely because the game is open (menu/lobby) or ownership went stale. Prevents false
-  // "Upload paused — match recording" states when nothing is being recorded.
+  // Hold while a confirmed match needs the GPU (matchCapturePriority), or while OBS
+  // is actively recording. Do NOT hold merely because Valorant is open in menus.
   return {
-    isRecording: () => obsRecorder.isActivelyRecording(),
+    isRecording: () => matchCapturePriority || obsRecorder.isActivelyRecording(),
   }
 }
 
@@ -839,14 +845,63 @@ function enqueuePostMatchAnalyse(args: {
     agent: args.agent,
   }
   postMatchWorker.enqueue(job)
-  logActivity('Queued upload/analysis — will run when the match is not recording')
+  logActivity(POST_MATCH_COPY.queuedUntilNotInMatch)
+}
+
+/** When auto-analyse is on and Riot stats flip to ready, start the upload job (unless in a match). */
+function maybeAutoEnqueueWhenReady(recordingId: string): void {
+  if (settingsManager?.get().autoAnalyse === false) return
+  if (matchCapturePriority || obsRecorder.isActivelyRecording()) return
+  if (!authManager.isAuthenticated()) return
+  const rec = recordingsStore.getById(recordingId)
+  if (!rec || rec.analysed || rec.clipsOnly) return
+  if (rec.pipelineStatus === 'uploading' || rec.pipelineStatus === 'analysing') return
+  if (!getAnalysisReadiness(rec).ready) return
+  const job = postMatchJobStore?.get(recordingId)
+  if (
+    job
+    && (job.stage === 'queued'
+      || job.stage === 'upload'
+      || job.stage === 'deferred'
+      || job.stage === 'remux'
+      || job.stage === 'duels'
+      || job.stage === 'complete_api'
+      || job.stage === 'polling')
+  ) {
+    return
+  }
+  const user = authManager.getUser()
+  logActivity(matchDataReadyStartingUpload(rec.game))
+  showAppNotification({
+    title: 'Starting analysis',
+    body: 'Match stats are ready — uploading your recording now.',
+    silent: notifySilent(),
+  })
+  enqueuePostMatchAnalyse({
+    recordingId: rec.id,
+    videoPath: rec.path,
+    riotName: rec.riotName || user?.riot_name || '',
+    riotTag: rec.riotTag || user?.riot_tag || '',
+    game: rec.game,
+    map: rec.map,
+    agent: rec.agent,
+  })
+}
+
+function maybeAutoEnqueueReadyPendings(): void {
+  if (!recordingsStore) return
+  if (settingsManager?.get().autoAnalyse === false) return
+  if (matchCapturePriority || obsRecorder.isActivelyRecording()) return
+  for (const rec of recordingsStore.getPending(linkedRiotFromAuth())) {
+    if (getAnalysisReadiness(rec).ready) maybeAutoEnqueueWhenReady(rec.id)
+  }
 }
 
 function initPostMatchWorker(): void {
   postMatchJobStore = new PostMatchJobStore(getPostMatchJobStorePath(app.getPath('userData')))
   postMatchWorker = new PostMatchWorker({
     store: postMatchJobStore,
-    isRecording: () => obsRecorder.isActivelyRecording(),
+    isRecording: () => matchCapturePriority || obsRecorder.isActivelyRecording(),
     log: (msg) => log.info('[PostMatchWorker]', msg),
     runJob: async (job) => {
       activeMatchTelemetry?.startSector('upload')
@@ -886,44 +941,79 @@ function maybeResumeDeferredUploads(): void {
     }
     if (!shouldDeferHeavyBackgroundWork(matchPriorityDeps())) {
       void flushDeferredUploadRetries()
+      maybeAutoEnqueueReadyPendings()
       postMatchWorker?.kick()
     }
   })
 }
 
 function interruptBackgroundWorkForMatch(): void {
-  pauseHeavyBackgroundWork(
-    matchPriorityDeps(),
-    () => uploadManager.abort(),
-    (recordingIds) => {
+  // Always abort at match confirm — OBS is not recording yet, so the recording-gated
+  // pauseHeavyBackgroundWork path is a no-op for consecutive Valorant matches.
+  const { interruptedCount } = abortHeavyBackgroundWork({
+    reason: 'match_capture',
+    abortUploads: () => uploadManager.abort(),
+    abortVodCompression,
+    activeUploadIds: activeUploadRecordingIds,
+    onUploadInterrupted: (recordingIds) => {
       for (const recordingId of recordingIds) {
         recordingsStore.setPipelineDeferReason(recordingId, 'recording')
+        recordingsStore.setPipelineStatus(recordingId, 'pending')
         persistDeferredUpload(recordingId)
       }
       mainWindow?.webContents.send('recordings:updated')
     },
-    activeUploadRecordingIds,
-  )
+  })
+  const workerBusy = postMatchWorker?.isBusy() === true
+  const queuedJobs = postMatchJobStore?.list().some(
+    (j) => j.stage === 'queued' || j.stage === 'upload' || j.stage === 'deferred' || j.stage === 'remux',
+  ) ?? false
+  if (interruptedCount > 0 || workerBusy || queuedJobs) {
+    logActivity(POST_MATCH_COPY.pausedUntilGameEnds)
+    const pg = postGameWindow
+    if (pg && !pg.isDestroyed()) {
+      try {
+        pg.webContents.send('post-game:upload-deferred', { reason: 'recording' })
+      } catch { /* window closed */ }
+    }
+  }
   trainerBridge.kill()
 }
 
 function abortBackgroundWorkOnGameStart(): void {
-  abortHeavyBackgroundWorkOnGameStart({
+  abortHeavyBackgroundWork({
+    reason: 'game_start',
     abortUploads: () => uploadManager.abort(),
     abortVodCompression,
   })
   trainerBridge.kill()
 }
 
-function beginMatchPerformanceMode(): void {
-  if (matchPerformanceModeActive) return
-  matchPerformanceModeActive = true
-  interruptBackgroundWorkForMatch()
+function beginMatchPerformanceMode(opts?: { holdPostMatch?: boolean }): void {
+  if (!matchPerformanceModeActive) {
+    matchPerformanceModeActive = true
+  }
+  if (opts?.holdPostMatch) {
+    matchCapturePriority = true
+    interruptBackgroundWorkForMatch()
+  }
   stopCoachNotificationPoller()
 }
 
 function endMatchPerformanceMode(): void {
+  const wasHolding = matchCapturePriority
+  matchCapturePriority = false
   matchPerformanceModeActive = false
+  if (wasHolding) {
+    const hasDeferredJobs = postMatchJobStore?.list().some(
+      (j) => j.stage === 'queued' || j.stage === 'deferred' || j.stage === 'failed',
+    ) ?? false
+    const hasDeferredUploads = activeUploadRecordingIds.size > 0
+      || (recordingsStore?.getPending(linkedRiotFromAuth()).some((r) => r.pipelineDeferReason === 'recording') ?? false)
+    if (hasDeferredJobs || hasDeferredUploads) {
+      logActivity(POST_MATCH_COPY.readyToResume)
+    }
+  }
   maybeResumeDeferredUploads()
   resumeDeferredUpdateWork()
   refreshCoachNotificationPoller()
@@ -1068,6 +1158,13 @@ function logActivity(message: string, explicitGame?: string): void {
     || lower.includes('coaching ready')
     || lower.includes('gotv demos come from steam')
     || lower.includes('replay data syncs separately')
+    || lower.includes('paused until you finish')
+    || lower.includes('ready to resume any paused')
+    || lower.includes('resuming paused')
+    || lower.includes('waiting for') && lower.includes('match stats')
+    || lower.includes('match stats ready')
+    || lower.includes('demo / match stats')
+    || lower.includes('auto-analyse is off')
   ) {
     const now = Date.now()
     if (message !== lastActivityToast.message || now - lastActivityToast.at > FAILURE_NOTIFY_COOLDOWN_MS) {
@@ -2168,6 +2265,7 @@ function scheduleAnalysisReadinessRefresh(
     let readiness = getAnalysisReadiness(rec)
     if (isTerminalAnalysisReadinessState(readiness.state)) {
       finish(readiness)
+      if (readiness.ready) maybeAutoEnqueueWhenReady(recordingId)
       release()
       return
     }
@@ -2185,6 +2283,9 @@ function scheduleAnalysisReadinessRefresh(
     }
 
     finish(readiness)
+    if (readiness.ready) {
+      maybeAutoEnqueueWhenReady(recordingId)
+    }
     if (isTerminalAnalysisReadinessState(readiness.state)) {
       release()
       return
@@ -3037,6 +3138,15 @@ function setupGameDetection(): void {
 
     const deferPostGameUi = shouldDeferPostGameForDemoSync(game, timeline)
     let thisPostGameWindow: BrowserWindow | null = null
+    const revealPostGame = () => {
+      if (!thisPostGameWindow || thisPostGameWindow.isDestroyed()) return
+      if (thisPostGameWindow.isVisible()) return
+      if (process.platform === 'win32') {
+        thisPostGameWindow.showInactive()
+      } else {
+        thisPostGameWindow.show()
+      }
+    }
     if (!deferPostGameUi) {
       thisPostGameWindow = createPostGameWindow()
       postGameWindow = thisPostGameWindow
@@ -3044,22 +3154,20 @@ function setupGameDetection(): void {
         if (postGameWindow === thisPostGameWindow) postGameWindow = null
         clearPostGameSession()
       })
-      // Show without stealing focus from fullscreen Valorant — user can alt-tab when ready.
+      // Keep hidden until pending / upload / error — avoids preparing → upload flash
+      // when auto-analyse is off or Riot stats are not ready yet.
       whenWebContentsReady(thisPostGameWindow, () => {
         if (thisPostGameWindow!.isDestroyed()) return
         try {
-          // Skip if upload already advanced — late load must not clobber session phase.
           if (!isPostGamePastPreparing(getPostGameSessionSnapshot()?.phase)) {
-            sendPostGameEvent(thisPostGameWindow!, 'post-game:preparing', { game, map, agent })
-          } else {
-            log.info('[HandleMatchEnd] Skipping late post-game:preparing — phase already', getPostGameSessionSnapshot()?.phase)
+            sendPostGameEvent(thisPostGameWindow!, 'post-game:preparing', {
+              game,
+              map,
+              agent,
+              calmSave: true,
+            })
           }
         } catch { /* window may have closed */ }
-        if (process.platform === 'win32') {
-          thisPostGameWindow!.showInactive()
-        } else {
-          thisPostGameWindow!.show()
-        }
       })
     } else if (game === 'cs2') {
       notifyDashboardToast(cs2RecordingSavedDashboardMessage(map))
@@ -3067,17 +3175,7 @@ function setupGameDetection(): void {
       notifyDashboardToast(deadlockRecordingSavedDashboardMessage(map))
     }
 
-    // Notify the user that the match recording has finished and upload is starting
-    if (!deferPostGameUi) {
-      const agentLabel = agent ?? gameLabel(game)
-      const mapLabel = map ? ` on ${map}` : ''
-      showAppNotification({
-        title: 'Uploading match',
-        body: `${agentLabel}${mapLabel} — coaching report on the way.`,
-        silent: notifySilent(),
-        allowDuringRecording: true,
-      })
-    }
+    // OS notification after we know auto-analyse / readiness — avoid false "Uploading match".
 
     const postGameNotifyWindow = thisPostGameWindow
       ?? (mainWindow && !mainWindow.isDestroyed() ? mainWindow : null)
@@ -3116,6 +3214,14 @@ function setupGameDetection(): void {
       const sendToWindow = (channel: string, payload?: unknown) => {
         const win = thisPostGameWindow && !thisPostGameWindow.isDestroyed() ? thisPostGameWindow : null
         sendPostGameEvent(win, channel, payload)
+        if (
+          channel === 'post-game:pending'
+          || channel === 'post-game:prep-step'
+          || channel === 'post-game:upload-start'
+          || channel === 'post-game:upload-error'
+        ) {
+          revealPostGame()
+        }
       }
 
       activationStep('match_end', `game=${game} autoAnalyse=${autoAnalyse}`)
@@ -3138,6 +3244,7 @@ function setupGameDetection(): void {
         const failed = failPreparation(errorMsg || 'recording_file_missing', { step: 'file_ready' })
         reportPipelineError('upload', failed.technicalMessage, { step: 'file_ready', game, map, agent, failure_code: failed.code })
         sendUploadFailure(failed.userMessage, { targetWindow: uploadTargetWindow, game })
+        revealPostGame()
         return
       }
 
@@ -3153,6 +3260,7 @@ function setupGameDetection(): void {
         const failed = failPreparation(errorMsg, { step: 'file_ready', sizeMB })
         reportPipelineError('upload', failed.technicalMessage, { step: 'file_ready', game, map, agent, sizeMB, failure_code: failed.code })
         sendUploadFailure(failed.userMessage, { targetWindow: uploadTargetWindow, game })
+        revealPostGame()
         return
       }
 
@@ -3209,11 +3317,16 @@ function setupGameDetection(): void {
       })
 
       // Leave "preparing" immediately — don't block UI on ffprobe / Riot sync.
-      // Auto-analyse off: skip the upload flow entirely and drop straight to the
-      // manual "pending" card below (no preparing → uploading flash).
-      const recForEarlyReadiness = recordingsStore.getById(savedRecording.id) ?? savedRecording
-      const earlyAutoReadiness = getAnalysisReadiness(recForEarlyReadiness)
-      if (autoAnalyse && earlyAutoReadiness.ready) {
+      void refreshRecordingVodProbe(savedRecording).catch(() => {})
+      const recForStep = recordingsStore.getById(savedRecording.id) ?? savedRecording
+      const stepReadiness = getAnalysisReadiness(recForStep)
+      const nextStep = decidePostMatchNextStep({
+        autoAnalyse,
+        readinessReady: stepReadiness.ready,
+        readinessState: stepReadiness.state,
+      })
+
+      if (nextStep === 'upload_analyse') {
         activationStep('prep', 'leaving preparing → uploading')
         setPrepStep('upload_dispatch', savedRecording.id)
         completePreparation(game)
@@ -3232,6 +3345,8 @@ function setupGameDetection(): void {
       void enrichPromise.then(() => {
         if (!thisPostGameWindow || thisPostGameWindow.isDestroyed()) return
         if (!user?.riot_name || !timeline || !shouldRequestDebrief(timeline, gameMode)) return
+        // Debrief needs rich match stats — do not request while still syncing.
+        if (!hasRichMatchData(timeline)) return
         sendPostGameEvent(thisPostGameWindow, 'post-game:debrief-loading')
         void requestPostGameDebrief({
           riotName: user.riot_name,
@@ -3248,54 +3363,6 @@ function setupGameDetection(): void {
         }).catch((err) => log.warn('[Debrief] Background debrief failed:', err))
       }).catch((err) => log.warn('[Enrich] Match coaching enrich failed:', err))
 
-      if (!autoAnalyse) {
-        activationStep('pending', 'autoAnalyse off — manual analyse')
-        void refreshRecordingVodProbe(savedRecording).catch(() => {})
-        const pendingReadiness = getAnalysisReadiness(recordingsStore.getById(savedRecording.id) ?? savedRecording)
-        sendToWindow('post-game:pending', {
-          recordingId: savedRecording.id,
-          game,
-          map,
-          agent,
-          analysisReadiness: pendingReadiness,
-        })
-
-        if (!deferPostGameUi) {
-          const agentLabel = agent ?? gameLabel(game)
-          const mapLabel = map ? ` · ${map}` : ''
-          showAppNotification({
-            title: 'Match recorded',
-            body: `${agentLabel}${mapLabel} — tap Analyse now in UpForge or review later from your dashboard.`,
-            silent: notifySilent(),
-          })
-        }
-
-        // Wait for Riot enrich before cutting clips so videoOffsetMs exists.
-        await enrichPromise.catch(() => {})
-        finalizeTimelineOffsetsForClips(timeline)
-
-        extractMatchClips(readyPath, timeline, null, game)
-          .catch(err => log.warn('[ClipExtract] Clip extraction (no-analyse) error:', err))
-
-        if (shouldScheduleLateClipRetry(game, timeline, matchId ?? null)) {
-          log.info('[HandleMatchEnd] Still sparse after enrich (no-analyse) — scheduling late retry in 90s')
-          scheduleLateClipRetry(
-            {
-              game,
-              readyPath,
-              savedRecordingId: savedRecording.id,
-              timeline,
-              matchSessionStart,
-              matchId: matchId ?? timeline?.matchId ?? null,
-            },
-            lateClipRetryDeps(),
-            { analysisJobId: null },
-          )
-        }
-        return
-      }
-
-      const recForProbe = recordingsStore.getById(savedRecording.id) ?? savedRecording
       void waitUntilVodFileReady(
         (id) => recordingsStore.getById(id),
         savedRecording.id,
@@ -3316,35 +3383,62 @@ function setupGameDetection(): void {
         log.warn('[PostGame] Background VOD probe failed:', err)
       })
 
-      const autoReadiness = getAnalysisReadiness(recForProbe)
-      // Require rich match readiness — do not auto-upload while syncing / waiting for Riot stats.
-      if (!autoReadiness.ready) {
-        activationStep('pending', `readiness blocked: ${autoReadiness.state}`)
-        logActivity(autoReadiness.message || 'Auto-analyse skipped — recording not ready')
+      // Re-evaluate after registering VOD — probe may still be finalizing.
+      const recAfterProbe = recordingsStore.getById(savedRecording.id) ?? savedRecording
+      const readiness = getAnalysisReadiness(recAfterProbe)
+      const step = decidePostMatchNextStep({
+        autoAnalyse,
+        readinessReady: readiness.ready,
+        readinessState: readiness.state,
+      })
+
+      if (step === 'pending_manual' || step === 'pending_waiting_stats') {
+        activationStep(
+          'pending',
+          step === 'pending_manual'
+            ? 'autoAnalyse off — manual analyse'
+            : `readiness blocked: ${readiness.state}`,
+        )
+        if (step === 'pending_manual') {
+          logActivity(POST_MATCH_COPY.matchSavedAutoOff)
+          if (isWaitingMatchDataState(readiness.state)) {
+            logActivity(waitingMatchDataBeforeAnalyse(game))
+          }
+        } else if (isWaitingMatchDataState(readiness.state)) {
+          logActivity(waitingMatchDataBeforeUpload(game))
+        } else {
+          logActivity(readiness.message || 'Auto-analyse skipped — recording not ready')
+        }
+
         sendToWindow('post-game:pending', {
           recordingId: savedRecording.id,
           game,
           map,
           agent,
-          analysisReadiness: autoReadiness,
+          analysisReadiness: readiness,
         })
+
         if (!deferPostGameUi) {
           const agentLabel = agent ?? gameLabel(game)
           const mapLabel = map ? ` · ${map}` : ''
+          const body = step === 'pending_manual'
+            ? `${agentLabel}${mapLabel} — tap Analyse now in UpForge or review later from your dashboard.`
+            : `${agentLabel}${mapLabel} — ${readiness.message || 'review when ready from your dashboard.'}`
           showAppNotification({
             title: 'Match recorded',
-            body: `${agentLabel}${mapLabel} — ${autoReadiness.message || 'review when ready from your dashboard.'}`,
+            body,
             silent: notifySilent(),
           })
         }
+
         await enrichPromise.catch(() => {})
         finalizeTimelineOffsetsForClips(timeline)
 
         extractMatchClips(readyPath, timeline, null, game)
-          .catch(err => log.warn('[ClipExtract] Clip extraction (auto-analyse skipped) error:', err))
+          .catch(err => log.warn('[ClipExtract] Clip extraction (pending) error:', err))
 
         if (shouldScheduleLateClipRetry(game, timeline, matchId ?? null)) {
-          log.info('[HandleMatchEnd] Still sparse after enrich (auto-analyse skipped) — scheduling late retry in 90s')
+          log.info('[HandleMatchEnd] Still sparse after enrich (pending) — scheduling late retry in 90s')
           scheduleLateClipRetry(
             {
               game,
@@ -3363,6 +3457,18 @@ function setupGameDetection(): void {
 
       tray?.setToolTip('UpForge — Uploading...')
       activationStep('upload', `recordingId=${savedRecording.id}`)
+      logActivity(matchDataReadyUploading(game))
+
+      if (!deferPostGameUi) {
+        const agentLabel = agent ?? gameLabel(game)
+        const mapLabel = map ? ` on ${map}` : ''
+        showAppNotification({
+          title: 'Uploading match',
+          body: `${agentLabel}${mapLabel} — coaching report on the way.`,
+          silent: notifySilent(),
+          allowDuringRecording: true,
+        })
+      }
 
       enqueuePostMatchAnalyse({
         recordingId: savedRecording.id,
@@ -3432,6 +3538,7 @@ function setupGameDetection(): void {
       })
       try {
         sendUploadFailure(failed.userMessage, { targetWindow: uploadTargetWindow, game })
+        revealPostGame()
       } catch { /* window closed */ }
     }, PREPARING_SAFETY_MS)
 
@@ -3450,6 +3557,7 @@ function setupGameDetection(): void {
       })
       try {
         sendUploadFailure(failed.userMessage, { targetWindow: uploadTargetWindow, game })
+        revealPostGame()
       } catch { /* window closed */ }
     }).finally(() => {
       // Settled: if the flow never left preparing (silent early return), don't
@@ -4237,7 +4345,7 @@ function setupGameDetection(): void {
     logActivity(`Match detected (${gameMode}${modeConfident ? '' : '?'}) — starting recording`)
     console.log(`[GameDetector] Match confirmed! gameMode=${gameMode} confident=${modeConfident} matchStartTime=${matchStartTime}`)
     if (game === 'valorant') trackMatchDetected('valorant')
-    beginMatchPerformanceMode()
+    beginMatchPerformanceMode({ holdPostMatch: true })
 
     if (game === 'valorant') {
       riotLocalApi.cancelMenuWatch()
@@ -5022,7 +5130,7 @@ async function doUploadAndAnalyse(
         recordingsStore.setPipelineStatus(recordingId, 'pending')
         mainWindow?.webContents.send('recordings:updated')
       }
-      logActivity('Compress/upload paused for your next match — will retry when recording ends')
+      logActivity(POST_MATCH_COPY.compressPaused)
       send('post-game:upload-deferred', { reason: 'recording' })
       return null
     }
@@ -5381,7 +5489,7 @@ async function doUploadAndAnalyse(
         recordingsStore.setPipelineDeferReason(recordingId, 'recording')
         recordingsStore.setPipelineStatus(recordingId, 'pending')
         mainWindow?.webContents.send('recordings:updated')
-        logActivity('Upload paused for your next match — will retry when recording ends')
+        logActivity(POST_MATCH_COPY.uploadPaused)
         send('post-game:upload-deferred', { reason: 'recording' })
         return null
       }
@@ -6124,6 +6232,17 @@ async function startApp(): Promise<void> {
     const readinessCheck = await ensureAnalysisReadinessForAnalyse(id)
     if (!readinessCheck.ok) {
       return { error: readinessCheck.error, code: 'not_ready', state: readinessCheck.state }
+    }
+    if (matchCapturePriority || obsRecorder.isActivelyRecording()) {
+      recordingsStore.setPipelineDeferReason(id, 'recording')
+      persistDeferredUpload(id)
+      mainWindow?.webContents.send('recordings:updated')
+      logActivity(POST_MATCH_COPY.pausedUntilGameEnds)
+      return {
+        error: POST_MATCH_COPY.pausedAnalyseBlocked,
+        code: 'not_ready',
+        state: 'deferred_recording',
+      }
     }
     recording = readinessCheck.recording
 

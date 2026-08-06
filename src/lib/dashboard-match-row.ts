@@ -1,5 +1,7 @@
 import type { AnalysisItem, PendingRecording } from '../env.d.ts'
 import { normalizeCombatScoreToAcs } from './valorant'
+import { isAnalyseDeferredForMatch } from './analyse-gate'
+import { POST_MATCH_COPY } from './post-match-copy'
 
 export interface MatchRowStats {
   won: boolean | null
@@ -79,7 +81,7 @@ export function isRecordingInFlight(
 }
 
 export function isRecordingDeferred(rec: PendingRecording): boolean {
-  return rec.pipelineDeferReason === 'recording' && !rec.clipsOnly
+  return isAnalyseDeferredForMatch(rec)
 }
 
 export function recordingPipelineLabel(
@@ -90,8 +92,8 @@ export function recordingPipelineLabel(
     if (rec.clipOnlyReason === 'clips_only_mode') return 'Highlights only'
     return 'Highlights saved'
   }
-  if (rec.pipelineDeferReason === 'recording') {
-    return 'Paused — match recording'
+  if (isAnalyseDeferredForMatch(rec)) {
+    return `Paused — ${POST_MATCH_COPY.pausedDashboardChip}`
   }
   if (rec.pipelineStatus === 'uploading') {
     const pct = uploadProgressByRecordingId[rec.id] ?? rec.uploadProgress

@@ -2,6 +2,7 @@
 import { useDashboard } from '../../composables/useDashboard'
 import { useGameTheme } from '../../composables/useGameTheme'
 import { recordingGameLabel } from '../../lib/games'
+import { POST_MATCH_COPY } from '../../lib/post-match-copy'
 
 const {
   status,
@@ -113,7 +114,7 @@ function detectedGameLabel(): string {
             v-if="deferredUploadCount"
             class="inline-flex items-center gap-1 rounded-full border border-amber-500/20 bg-amber-500/10 px-2 py-0.5 text-[10px] font-medium text-amber-300/90"
           >
-            {{ deferredUploadCount }} paused for recording
+            {{ deferredUploadCount }} {{ POST_MATCH_COPY.pausedDashboardChip }}
           </span>
         </div>
       </div>

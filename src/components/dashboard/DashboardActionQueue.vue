@@ -17,6 +17,7 @@ import {
   recordingPlayerLabel,
 } from '../../lib/recording-display'
 import { isDisplayableGameMode } from '../../lib/valorant'
+import { analyseDeferredTitle } from '../../lib/analyse-gate'
 import {
   canOpenTimeline,
   canWatchRawRecording,
@@ -391,8 +392,10 @@ function toggleDemoMatches() {
               :class="(recAnalysisReady(rec) || recCanRetryMatchStats(rec) || rec.lastAnalysisError) && !recInFlight(rec) && !recIsSyncingMatchStats(rec)
                 ? 'bg-gradient-to-r from-[#ff4d55] to-[#ff6a3d] hover:from-[#ff5d65] hover:to-[#ff7b4f] border border-white/20 shadow-[0_8px_18px_rgba(255,85,85,0.35)]'
                 : 'bg-[#1c1f25] border border-white/15 text-gray-300/70 cursor-not-allowed'"
-              :disabled="preview || analysingIds.has(rec.id) || recIsSyncingMatchStats(rec) || recInFlight(rec) || (!recAnalysisReady(rec) && !rec.lastAnalysisError && !recCanRetryMatchStats(rec))"
-              :title="recAnalysisReady(rec)
+              :disabled="preview || analysingIds.has(rec.id) || recIsSyncingMatchStats(rec) || recInFlight(rec) || recIsDeferred(rec) || (!recAnalysisReady(rec) && !rec.lastAnalysisError && !recCanRetryMatchStats(rec))"
+              :title="recIsDeferred(rec)
+                ? analyseDeferredTitle()
+                : recAnalysisReady(rec)
                 ? 'Upload + AI coaching report'
                 : recCanRetryMatchStats(rec)
                   ? 'Fetch Riot match stats again (keep Riot Client open)'
@@ -415,8 +418,8 @@ function toggleDemoMatches() {
               :disabled="preview || savingIds.has(rec.id)"
               @click="onSave(rec)"
             >
-              <span class="block">{{ savingIds.has(rec.id) ? 'Saving…' : 'Save to cloud' }}</span>
-              <span class="block text-[9px] font-medium text-emerald-100/70 mt-0.5">Backup only — no AI</span>
+              <span class="block">{{ savingIds.has(rec.id) ? 'Saving…' : 'Save VOD to cloud' }}</span>
+              <span class="block text-[9px] font-medium text-emerald-100/70 mt-0.5">Backup only — no AI analysis</span>
             </button>
 
             <button

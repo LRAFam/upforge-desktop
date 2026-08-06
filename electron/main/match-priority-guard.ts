@@ -2,19 +2,21 @@
  * Pauses heavy background work (VOD compression, S3 upload) while OBS is
  * actively recording — that's what contends with NVENC and gameplay FPS.
  *
- * The gate is deliberately tied to *actual recording* only. It must NOT defer merely
- * because a game process is open (menu/lobby), or users see false "Upload paused — match
- * recording" states when nothing is being recorded. Pass an OBS-confirmed recording signal
- * (e.g. obsRecorder.isActivelyRecording()) as `isRecording`.
+ * The wait/defer gate is deliberately tied to *actual recording* (or an explicit
+ * matchCapturePriority hold from the caller). It must NOT defer merely because a
+ * game process is open (menu/lobby).
  */
 
 import type { ChildProcess } from 'child_process'
 import log from 'electron-log'
+import { POST_MATCH_COPY } from '../../src/lib/post-match-copy'
 
 export interface MatchPriorityDeps {
-  /** True only while OBS is confirmed to be actively recording a match. */
+  /** True while OBS is recording, or while match-capture hold is active. */
   isRecording: () => boolean
 }
+
+export type HeavyWorkAbortReason = 'game_start' | 'match_capture' | 'performance_pause'
 
 let activeVodCompressionProc: ChildProcess | null = null
 const deferredRetries = new Map<string, () => Promise<void>>()
@@ -48,7 +50,7 @@ export async function waitUntilBackgroundWorkAllowed(
   while (shouldDeferHeavyBackgroundWork(deps)) {
     if (!loggedWait) {
       loggedWait = true
-      opts?.logActivity?.('Recording in progress — upload will resume when the match ends')
+      opts?.logActivity?.(POST_MATCH_COPY.pausedUntilGameEnds)
       log.info('[MatchPriority] Deferring heavy background work until recording ends')
     }
     await new Promise((r) => setTimeout(r, intervalMs))
@@ -77,6 +79,50 @@ export async function flushDeferredUploadRetries(): Promise<void> {
   }
 }
 
+/**
+ * Always abort in-flight upload/compression. Used on game start and match capture
+ * (before OBS is recording). Callers that need the post-match worker held must set
+ * their own hold flag — this only kills work in flight.
+ */
+export function abortHeavyBackgroundWork(deps: {
+  reason: HeavyWorkAbortReason
+  abortUploads: () => void
+  abortVodCompression?: () => boolean
+  activeUploadIds?: ReadonlySet<string>
+  onUploadInterrupted?: (recordingIds: Iterable<string>) => void
+}): { interruptedCount: number } {
+  deps.abortUploads()
+  deps.abortVodCompression?.()
+  const ids = deps.activeUploadIds ? [...deps.activeUploadIds] : []
+  if (ids.length && deps.onUploadInterrupted) {
+    deps.onUploadInterrupted(ids)
+  }
+  log.info(`[MatchPriority] Aborted uploads/compression (${deps.reason})`)
+  return { interruptedCount: ids.length }
+}
+
+/** @deprecated Prefer abortHeavyBackgroundWork({ reason: 'game_start', ... }) */
+export function abortHeavyBackgroundWorkOnGameStart(deps: {
+  abortUploads: () => void
+  abortVodCompression?: () => boolean
+}): void {
+  abortHeavyBackgroundWork({ reason: 'game_start', ...deps })
+}
+
+/** @deprecated Prefer abortHeavyBackgroundWork({ reason: 'match_capture', ... }) */
+export function abortHeavyBackgroundWorkForMatchCapture(deps: {
+  abortUploads: () => void
+  abortVodCompression?: () => boolean
+  activeUploadIds?: ReadonlySet<string>
+  onUploadInterrupted?: (recordingIds: Iterable<string>) => void
+}): { interruptedCount: number } {
+  return abortHeavyBackgroundWork({ reason: 'match_capture', ...deps })
+}
+
+/**
+ * Abort only while the defer gate is true (recording / match hold).
+ * Prefer abortHeavyBackgroundWork at match detect — this path is a no-op before OBS starts.
+ */
 export function pauseHeavyBackgroundWork(
   deps: MatchPriorityDeps,
   abortUpload: () => void,
@@ -84,24 +130,12 @@ export function pauseHeavyBackgroundWork(
   activeUploadIds?: ReadonlySet<string>,
 ): void {
   if (!shouldDeferHeavyBackgroundWork(deps)) return
-  abortUpload()
-  abortVodCompression()
-  if (activeUploadIds && onUploadInterrupted) {
-    onUploadInterrupted(activeUploadIds)
-  }
+  abortHeavyBackgroundWork({
+    reason: 'performance_pause',
+    abortUploads: abortUpload,
+    abortVodCompression,
+    activeUploadIds,
+    onUploadInterrupted,
+  })
   log.info('[MatchPriority] Paused uploads/compression — match performance mode active')
 }
-
-/**
- * Abort in-flight heavy work when a game process starts.
- * Does NOT flip the defer-with-message gate (that stays recording-only).
- */
-export function abortHeavyBackgroundWorkOnGameStart(deps: {
-  abortUploads: () => void
-  abortVodCompression?: () => boolean
-}): void {
-  deps.abortUploads()
-  deps.abortVodCompression?.()
-  log.info('[MatchPriority] Aborted uploads/compression on game start')
-}
-

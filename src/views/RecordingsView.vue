@@ -123,6 +123,7 @@ async function analyse(rec: PendingRecording) {
 const canAnalyse = (rec: PendingRecording) =>
   rec.analysisId == null
   && !rec.pipelineStatus
+  && rec.pipelineDeferReason !== 'recording'
   && (Boolean(rec.analysisReadiness?.ready) || canRetryRiotMatchStats(rec))
 
 onMounted(async () => {

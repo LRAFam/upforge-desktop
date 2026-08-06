@@ -38,6 +38,11 @@ import { type DemoDownloadProgress, demoDownloadProgressLabel } from '../lib/dem
 import { recordingTimelineReady } from '../lib/recording-demo-status'
 import { canRetryRiotMatchStats } from '../lib/match-stats-retry'
 import { recordingRetryActionLabel } from '../lib/activation-retry-label'
+import {
+  analyseBlockedMessage,
+  isAnalyseReady,
+} from '../lib/analyse-gate'
+import { POST_MATCH_COPY } from '../lib/post-match-copy'
 
 export interface LolRecentMatch {
   match_id: string
@@ -943,7 +948,7 @@ function createDashboard() {
   }
 
   function recAnalysisReady(rec: PendingRecording) {
-    return rec.analysisReadiness?.ready === true
+    return isAnalyseReady(rec)
   }
 
   function recCanRetryMatchStats(rec: PendingRecording) {
@@ -966,14 +971,7 @@ function createDashboard() {
   }
 
   function recAnalysisBlockedLabel(rec: PendingRecording) {
-    if (rec.analysisReadiness?.message) return rec.analysisReadiness.message
-    const state = rec.analysisReadiness?.state
-    if (state === 'syncing') return 'Syncing match stats…'
-    if (state === 'finalizing') return 'Finalizing recording…'
-    if (state === 'file_missing') return 'Recording file missing'
-    if (state === 'mode_unsupported') return 'Mode not supported for coaching'
-    if (state === 'file_unreadable') return 'Recording unreadable'
-    return 'Not ready to analyse'
+    return analyseBlockedMessage(rec)
   }
 
   function recAnalysisStatusShort(rec: PendingRecording) {
@@ -1038,6 +1036,11 @@ function createDashboard() {
   async function analyseRecording(id: string) {
     if (analysingIds.value.has(id)) return
     const rec = pendingRecordings.value.find((r) => r.id === id)
+    if (rec && recIsDeferred(rec)) {
+      warning.value = POST_MATCH_COPY.pausedAnalyseBlocked
+      setTimeout(() => { warning.value = null }, 12000)
+      return
+    }
     if (rec && !recAnalysisReady(rec)) {
       if (recCanRetryMatchStats(rec)) {
         await retryMatchStats(id)

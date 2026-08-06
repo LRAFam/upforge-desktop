@@ -59,7 +59,7 @@
                 <span class="relative inline-flex h-2 w-2 rounded-full bg-[#ff4655]" />
               </span>
               <span class="text-[10px] font-bold uppercase tracking-[0.16em] text-[#ff8a94]">
-                {{ state === 'preparing' ? 'Preparing replay' : compressing ? 'Optimising file' : 'Uploading' }}
+                {{ state === 'preparing' ? (calmPreparing ? 'Saving match' : 'Preparing replay') : compressing ? 'Optimising file' : 'Uploading' }}
               </span>
             </div>
 
@@ -91,7 +91,13 @@
 
         <div class="mt-3 flow-card rounded-xl border border-white/[0.08] px-3.5 py-3 space-y-2.5">
           <p class="text-[11px] leading-relaxed text-gray-500">
-            {{ state === 'preparing' ? (preparingSyncMessage || 'Saving your match recording and getting it ready to upload') : compressing ? compressHint : archiveOnlyUpload ? 'Saving your recording to cloud for playback — no analysis quota used' : 'Sending your recording to UpForge for analysis' }}
+            {{ state === 'preparing'
+              ? (preparingSyncMessage || (calmPreparing ? 'Saving your match recording…' : 'Saving your match recording and getting it ready to upload'))
+              : compressing
+                ? compressHint
+                : archiveOnlyUpload
+                  ? 'Saving your recording to cloud for playback — no analysis quota used'
+                  : 'Sending your recording to UpForge for analysis' }}
           </p>
           <div class="relative h-2 w-full overflow-hidden rounded-full bg-white/[0.04]">
             <div
@@ -245,13 +251,13 @@
           </svg>
           <div class="flex-1 min-w-0">
             <p class="text-xs font-medium" :class="analysisDeferredReason ? 'text-amber-300' : 'text-blue-300'">
-              <template v-if="analysisDeferredReason === 'recording'">Upload paused — match recording</template>
+              <template v-if="analysisDeferredReason === 'recording'">{{ analyseDeferredTitle() }}</template>
               <template v-else-if="analysisDeferredReason === 'server'">Still processing on our servers</template>
               <template v-else>Taking longer than usual</template>
             </p>
             <p class="text-xs text-gray-500 mt-0.5">
               <template v-if="analysisDeferredReason === 'recording'">
-                Your upload will resume automatically when you end the current match. You can close this panel — progress shows on your dashboard.
+                Your previous upload will resume automatically when this match ends. You can close this panel — progress shows on your dashboard.
               </template>
               <template v-else-if="analysisDeferredReason === 'server'">
                 Complex matches can run 15+ minutes. Close this panel — we'll notify you when your score is ready.
@@ -456,15 +462,31 @@
                 <p v-else-if="isDemoWaitFlow" class="mt-0.5 text-xs text-gray-500">
                   We’ll notify you when the demo links — play your next game or head back to the dashboard.
                 </p>
+                <p v-else-if="!pendingAnalysisReady" class="mt-0.5 text-xs text-gray-500">
+                  {{ pendingWaitingSubtitle }}
+                </p>
                 <p v-else class="mt-0.5 text-xs text-gray-500">Match ready for coaching</p>
               </div>
             </div>
           </div>
         </div>
 
+        <div
+          v-if="analysisDeferredReason === 'recording'"
+          class="mt-3 flex items-start gap-2 px-3 py-2.5 rounded-xl bg-amber-500/[0.07] border border-amber-500/20 text-left"
+        >
+          <svg class="w-3.5 h-3.5 text-amber-400 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+          </svg>
+          <div class="min-w-0">
+            <p class="text-xs font-medium text-amber-300">Previous analysis paused</p>
+            <p class="text-[11px] text-gray-500 mt-0.5">It will resume when you finish this game. Track it on the dashboard.</p>
+          </div>
+        </div>
+
         <div class="mt-4 text-center">
           <p class="text-sm font-semibold text-gray-200">
-            {{ isDemoWaitFlow ? 'You’re all set for now' : 'What would you like to do?' }}
+            {{ isDemoWaitFlow ? 'You’re all set for now' : (pendingAnalysisReady ? 'What would you like to do?' : 'Almost ready') }}
           </p>
           <p v-if="isDemoWaitFlow" class="mt-1 text-[11px] leading-relaxed text-blue-300/80">
             {{ pendingAnalysisMessage }}
@@ -476,7 +498,7 @@
             {{ pendingAnalysisMessage }}
           </p>
           <p v-else class="mt-1 text-[11px] leading-relaxed text-gray-500">
-            Save to cloud frees disk space. Analyse uses your coaching quota when you are ready.
+            {{ POST_MATCH_COPY.analyseVsSaveHint }}
           </p>
           <p v-if="freeArchiveRetentionHint && !isDemoWaitFlow" class="mt-1.5 text-[11px] leading-relaxed text-emerald-400/80">
             {{ freeArchiveRetentionHint }}
@@ -507,13 +529,16 @@
             <svg v-else class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/>
             </svg>
-            {{ savingToCloud ? 'Saving…' : 'Save to cloud only' }}
+            {{ savingToCloud ? 'Saving…' : POST_MATCH_COPY.saveVodNoAnalysis }}
           </GamingButton>
           <GamingButton
             v-if="!isDemoWaitFlow"
             variant="primary-sm"
             block
-            :disabled="analysing || savingToCloud || !pendingAnalysisReady"
+            :disabled="analysing || savingToCloud || !pendingAnalysisReady || analysisDeferredReason === 'recording'"
+            :title="analysisDeferredReason === 'recording'
+              ? analyseDeferredTitle()
+              : pendingAnalysisReady ? 'Upload and run AI coaching' : pendingAnalysisMessage"
             @click="analyseNow"
           >
             <svg v-if="analysing" class="h-4 w-4 animate-spin" fill="none" viewBox="0 0 24 24">
@@ -539,7 +564,7 @@
             <svg v-else class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/>
             </svg>
-            {{ savingToCloud ? 'Saving…' : 'Save to cloud only' }}
+            {{ savingToCloud ? 'Saving…' : POST_MATCH_COPY.saveVodNoAnalysis }}
           </GamingButton>
           <GamingButton
             v-if="!isDemoWaitFlow"
@@ -809,6 +834,8 @@ import { canSpatialVodSeek } from '../lib/tier-features'
 import { buildAnalysisErrorPayload, getDegradedReportNotice, isDegradedTelemetryResult, type AnalysisErrorPayload } from '../lib/analysis-failure-messages'
 import { analysesUsedLabel } from '../lib/quota-display'
 import { usesAsyncDemoSync, demoSyncExplainerShort } from '../lib/recording-demo-status'
+import { POST_MATCH_COPY, waitingMatchDataSubtitle } from '../lib/post-match-copy'
+import { analyseDeferredTitle } from '../lib/analyse-gate'
 import { demoDownloadProgressLabel, type DemoDownloadProgress } from '../lib/demo-download-progress'
 import PostGameDuelDiagnostics from '../components/post-game/PostGameDuelDiagnostics.vue'
 import {
@@ -955,6 +982,7 @@ const pendingAnalysisReady = ref(false)
 const pendingAnalysisMessage = ref('Syncing match stats…')
 const pendingAnalysisState = ref<string | null>(null)
 const preparingSyncMessage = ref<string | null>(null)
+const calmPreparing = ref(true)
 const pendingAnalyseButtonLabel = computed(() => {
   if (pendingAnalysisState.value === 'finalizing') return 'Finalizing…'
   if (pendingAnalysisState.value === 'waiting_match_data' || pendingAnalysisState.value === 'syncing') {
@@ -968,6 +996,14 @@ const pendingAnalyseButtonLabel = computed(() => {
     if (gameInfo.value.game === 'lol') return 'Waiting for match stats…'
   }
   return 'Not ready'
+})
+
+const pendingWaitingSubtitle = computed(() => {
+  if (pendingAnalysisState.value === 'finalizing') return 'Finalizing your recording…'
+  if (pendingAnalysisState.value === 'waiting_match_data' || pendingAnalysisState.value === 'syncing') {
+    return waitingMatchDataSubtitle(gameInfo.value.game)
+  }
+  return pendingAnalysisMessage.value || 'Not ready for coaching yet'
 })
 
 const analysisHeroTitle = computed(() => {
@@ -1312,7 +1348,7 @@ const preparingTitle = computed(() => {
   if (gameInfo.value.game === 'cs2' && preparingSyncMessage.value?.includes('demo')) {
     return 'Waiting for CS2 demo'
   }
-  return 'Getting replay ready'
+  return calmPreparing.value ? 'Saving your match' : 'Getting replay ready'
 })
 
 const replayNotFoundHint = computed(() => {
@@ -1612,8 +1648,9 @@ onMounted(() => {
   scheduleFitWindow()
   const ipcCleanup: (() => void)[] = []
   ipcCleanup.push(window.api.on('post-game:preparing', (...args: unknown[]) => {
-    const data = args[0] as { game: string; map: string | null; agent: string | null }
+    const data = args[0] as { game: string; map: string | null; agent: string | null; calmSave?: boolean }
     gameInfo.value = { game: data.game, map: data.map, agent: data.agent }
+    calmPreparing.value = data.calmSave !== false
     // Ignore late preparing after the flow has already advanced (matches main-process session guard).
     if (
       state.value === 'uploading'
@@ -1637,6 +1674,7 @@ onMounted(() => {
     if (data?.game) {
       gameInfo.value = { game: data.game, map: data.map ?? null, agent: data.agent ?? null }
     }
+    calmPreparing.value = false
     clearPreparingStuckTimer()
     state.value = 'uploading'
     compressing.value = false
