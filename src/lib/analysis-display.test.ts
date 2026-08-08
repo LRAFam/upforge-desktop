@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   analysisCompleteBadge,
+  filterAnalysesForPrimaryGame,
   inferAnalysisGame,
   pendingRecordingFailureHint,
 } from './analysis-display'
@@ -35,6 +36,24 @@ describe('inferAnalysisGame', () => {
   it('defaults to Valorant', () => {
     const a = { agent: 'Jett', map: 'Ascent' } as AnalysisItem
     expect(inferAnalysisGame(a)).toBe('valorant')
+  })
+})
+
+describe('filterAnalysesForPrimaryGame', () => {
+  const valorant = { id: 1, agent: 'Jett', map: 'Ascent' } as AnalysisItem
+  const cs2 = { id: 2, map: 'DE_VERTIGO', cs2_source: 'demo_upload' } as AnalysisItem
+  const deadlock = { id: 3, game_mode: 'DEADLOCK', map: 'Street' } as AnalysisItem
+
+  it('keeps only the selected game after a tab switch leaves mixed rows', () => {
+    const mixed = [valorant, cs2, deadlock]
+    expect(filterAnalysesForPrimaryGame(mixed, 'valorant').map(a => a.id)).toEqual([1])
+    expect(filterAnalysesForPrimaryGame(mixed, 'cs2').map(a => a.id)).toEqual([2])
+    expect(filterAnalysesForPrimaryGame(mixed, 'deadlock').map(a => a.id)).toEqual([3])
+  })
+
+  it('drops CS2 map rows when Valorant is selected', () => {
+    const staleCs2 = { id: 9, map: 'DE_DUST2', agent: 'HooXi' } as AnalysisItem
+    expect(filterAnalysesForPrimaryGame([staleCs2], 'valorant')).toEqual([])
   })
 })
 

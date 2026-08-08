@@ -22,6 +22,14 @@ export function inferAnalysisGame(a: AnalysisItem): PrimaryGame {
   return 'valorant'
 }
 
+/** Drop stale rows when tab switch leaves the wrong game in `analyses`. */
+export function filterAnalysesForPrimaryGame(
+  items: AnalysisItem[],
+  game: PrimaryGame,
+): AnalysisItem[] {
+  return items.filter(a => inferAnalysisGame(a) === game)
+}
+
 /** Contextual tip under a failed pending recording row. */
 export function pendingRecordingFailureHint(rec: PendingRecording): string | null {
   if (rec.lastAnalysisErrorHint) return rec.lastAnalysisErrorHint

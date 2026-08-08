@@ -1,4 +1,4 @@
-import { ref, computed, inject, provide, onMounted, onUnmounted, type InjectionKey } from 'vue'
+import { ref, computed, inject, provide, watch, onMounted, onUnmounted, type InjectionKey } from 'vue'
 import { useRouter } from 'vue-router'
 import type { ProfileData, AnalysisItem, PendingRecording, ClipRecord, DeadlockProfileStats } from '../env.d.ts'
 import { formatGameMode, getRankIconUrl } from '../lib/valorant'
@@ -43,6 +43,7 @@ import {
   isAnalyseReady,
 } from '../lib/analyse-gate'
 import { POST_MATCH_COPY } from '../lib/post-match-copy'
+import { filterAnalysesForPrimaryGame } from '../lib/analysis-display'
 
 export interface LolRecentMatch {
   match_id: string
@@ -383,7 +384,7 @@ function createDashboard() {
     const inFlightJobIds = new Set(
       pendingRecordings.value.map(r => r.jobId).filter((id): id is string => !!id),
     )
-    return analyses.value.filter(a =>
+    return filterAnalysesForPrimaryGame(analyses.value, primaryGame.value).filter(a =>
       !hiddenAnalysisIds.value.has(a.id)
       && (!a.job_id || !inFlightJobIds.has(a.job_id)),
     )
@@ -623,18 +624,24 @@ function createDashboard() {
     skillProfilePrevious.value = saved?.skillProfilePrevious ?? null
   }
 
+  let analysesLoadSeq = 0
   async function loadAnalyses() {
+    const seq = ++analysesLoadSeq
+    const game = primaryGame.value
     analysesLoading.value = true
     try {
-      analyses.value = await loadGameAnalyses(primaryGame.value, 10)
+      const next = await loadGameAnalyses(game, 10)
+      if (seq !== analysesLoadSeq) return
+      analyses.value = next
       coachingSnippets.value = {}
       coachReviewByAnalysisId.value = {}
       void loadCoachingSnippets(analyses.value)
       void loadCoachReviewBadges(analyses.value)
     } catch {
+      if (seq !== analysesLoadSeq) return
       analyses.value = []
     } finally {
-      analysesLoading.value = false
+      if (seq === analysesLoadSeq) analysesLoading.value = false
     }
   }
 
@@ -1334,6 +1341,24 @@ function createDashboard() {
     return recordingRowStats(rec)
   }
 
+  // Reload matches on tab switch via the ref (not settings:changed), so a late
+  // IPC event after setPrimaryGame cannot skip the reload and leave CS2 rows
+  // under the Valorant Recent Matches section.
+  const primaryGameWatchReady = ref(false)
+  watch(primaryGame, async () => {
+    if (!primaryGameWatchReady.value) return
+    analyses.value = []
+    await Promise.all([loadAnalyses(), loadClipCount()])
+    void loadAllGameLinkStates()
+    if (isValorant.value) {
+      playstyleProfile.value = await window.api.progress.playstyleProfile().catch(() => null)
+      rrHistory.value = await window.api.stats.rrHistory().catch(() => [])
+    } else {
+      playstyleProfile.value = null
+      rrHistory.value = []
+    }
+  })
+
   onMounted(async () => {
     try {
       const s = await window.api.app.getStatus()
@@ -1460,19 +1485,12 @@ function createDashboard() {
     durationInterval = setInterval(updateRecordingElapsed, 1000)
 
     const ipcCleanup: (() => void)[] = []
-    ipcCleanup.push(window.api.on('settings:changed', async (...args: unknown[]) => {
+    ipcCleanup.push(window.api.on('settings:changed', (...args: unknown[]) => {
       const s = args[0] as { primaryGame?: string } | undefined
       if (!s) return
-      const prevGame = primaryGame.value
+      // Analyses reload via watch(primaryGame). Do not gate on prevGame here:
+      // setPrimaryGame may update the ref before this IPC event arrives.
       applyFromSettings(s)
-      if (s.primaryGame && s.primaryGame !== prevGame) {
-        await Promise.all([loadAnalyses(), loadClipCount()])
-        void loadAllGameLinkStates()
-        if (isValorant.value) {
-          playstyleProfile.value = await window.api.progress.playstyleProfile().catch(() => null)
-          rrHistory.value = await window.api.stats.rrHistory().catch(() => [])
-        }
-      }
     }))
     ipcCleanup.push(window.api.on('dashboard:refresh', async () => {
       await refreshProfile()
@@ -1607,9 +1625,11 @@ function createDashboard() {
       }
     }))
     ;(window as Window & { _dashboardIpcCleanup?: (() => void)[] })._dashboardIpcCleanup = ipcCleanup
+    primaryGameWatchReady.value = true
   })
 
   onUnmounted(() => {
+    primaryGameWatchReady.value = false
     clearInterval(pollInterval)
     clearInterval(durationInterval)
     recordingStartedAt.value = null
