@@ -34,6 +34,7 @@ import {
 } from '../lib/dashboard-match-row'
 import { buildAnalysisErrorPayload, type AnalysisErrorPayload } from '../lib/analysis-failure-messages'
 import { canOpenTimeline, canWatchRawRecording } from '../lib/recording-demo-status'
+import { recordingHasCloudCopy } from '../lib/recording-library'
 import { type DemoDownloadProgress, demoDownloadProgressLabel } from '../lib/demo-download-progress'
 import { recordingTimelineReady } from '../lib/recording-demo-status'
 import { canRetryRiotMatchStats } from '../lib/match-stats-retry'
@@ -1112,11 +1113,17 @@ function createDashboard() {
 
   async function dismissRecording(id: string) {
     const rec = pendingRecordings.value.find(r => r.id === id)
-    const msg = rec?.clipsOnly
-      ? 'Remove this match from your dashboard? Your clips will stay in the Clips library.'
-      : (rec?.cloudUploaded || rec?.jobId || rec?.archiveId)
-        ? 'Remove this session from your dashboard? Your cloud copy stays available.'
-        : 'Remove this recording from your dashboard and delete the local file?'
+    let msg = 'Remove this session from your dashboard?'
+    if (rec) {
+      const hasLocal = Boolean(rec.hasLocalFile || (rec.path && rec.path.length > 0))
+      if (rec.clipsOnly) {
+        msg = 'Remove this match from your dashboard? Your clips will stay in the Clips library.'
+      } else if (recordingHasCloudCopy(rec)) {
+        msg = 'Remove from your library? Local video will be deleted if present. Cloud copy stays.'
+      } else if (hasLocal) {
+        msg = 'Remove from your library? Local video will be deleted.'
+      }
+    }
     if (rec && !window.confirm(msg)) return
     await window.api.recordings.dismiss(id, { deleteLocal: true }).catch(() => {})
     pendingRecordings.value = pendingRecordings.value.filter(r => r.id !== id)

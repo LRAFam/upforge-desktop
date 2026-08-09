@@ -3,6 +3,7 @@ import {
   groupRecordingsByDate,
   matchesRecordingLibraryChip,
   recordingDeleteOptions,
+  recordingHasCloudCopy,
   recordingNeedsAttention,
   visibleGroupItems,
   formatRecordingBytes,
@@ -73,12 +74,29 @@ describe('visibleGroupItems', () => {
   })
 })
 
+describe('recordingHasCloudCopy', () => {
+  it('matches main hasCloudRecording predicate', () => {
+    expect(recordingHasCloudCopy(rec({ jobId: 'j1' }))).toBe(true)
+    expect(recordingHasCloudCopy(rec({ analysisId: 9 }))).toBe(true)
+    expect(recordingHasCloudCopy(rec({ cloudArchived: true, archiveId: 'a1' }))).toBe(true)
+    expect(recordingHasCloudCopy(rec({ archiveId: 'a1' }))).toBe(false)
+    expect(recordingHasCloudCopy(rec({ cloudUploaded: true }))).toBe(false)
+    expect(recordingHasCloudCopy(rec({ clipsOnly: true, jobId: 'j1' }))).toBe(false)
+  })
+})
+
 describe('recordingDeleteOptions', () => {
   it('offers localOnly only when cloud-backed with local file', () => {
     expect(recordingDeleteOptions(rec({ hasLocalFile: true, cloudUploaded: false }))).toEqual(['remove'])
+    expect(recordingDeleteOptions(rec({ hasLocalFile: true, jobId: 'j1' }))).toEqual(['remove', 'localOnly'])
+    expect(recordingDeleteOptions(rec({ hasLocalFile: true, analysisId: 9 }))).toEqual(['remove', 'localOnly'])
+    expect(
+      recordingDeleteOptions(rec({ hasLocalFile: true, cloudArchived: true, archiveId: 'a1' })),
+    ).toEqual(['remove', 'localOnly'])
+    expect(recordingDeleteOptions(rec({ hasLocalFile: true, archiveId: 'a1' }))).toEqual(['remove'])
     expect(
       recordingDeleteOptions(rec({ hasLocalFile: true, cloudUploaded: true, archiveId: 'a1' })),
-    ).toEqual(['remove', 'localOnly'])
+    ).toEqual(['remove'])
     expect(
       recordingDeleteOptions(rec({ hasLocalFile: false, cloudUploaded: true, path: '' })),
     ).toEqual(['remove'])

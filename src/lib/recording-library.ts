@@ -68,10 +68,21 @@ export function visibleGroupItems<T>(items: T[], showAll: boolean, limit = 12): 
   return { shown: items.slice(0, limit), hiddenCount: items.length - limit }
 }
 
+/** True when a full-match VOD exists on S3 (matches main `hasCloudRecording`). */
+export function recordingHasCloudCopy(
+  rec: Pick<PendingRecording, 'jobId' | 'analysisId' | 'cloudArchived' | 'archiveId' | 'clipsOnly'>,
+): boolean {
+  if (rec.clipsOnly) return false
+  return Boolean(
+    rec.jobId
+    || rec.analysisId != null
+    || (rec.cloudArchived && rec.archiveId != null),
+  )
+}
+
 export function recordingDeleteOptions(rec: PendingRecording): Array<'remove' | 'localOnly'> {
   const hasLocal = Boolean(rec.hasLocalFile || (rec.path && rec.path.length > 0))
-  const cloud = Boolean(rec.cloudUploaded || rec.jobId || rec.analysisId != null || rec.archiveId)
-  if (hasLocal && cloud) return ['remove', 'localOnly']
+  if (hasLocal && recordingHasCloudCopy(rec)) return ['remove', 'localOnly']
   return ['remove']
 }
 
