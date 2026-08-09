@@ -1,0 +1,20 @@
+---
+description: Desktop Analyse readiness must match API match-data gates
+globs: electron/main/analysis-readiness.ts,electron/main/match-data-quality.ts
+alwaysApply: false
+---
+
+# Desktop ↔ API match-data contract
+
+## Hard rule
+
+Never mark CS2 or Deadlock Analyse `ready` without rich Valve demo/replay stats (`hasRichMatchData`).
+
+API `MatchDataQualityService::isReadyForCs2Desktop` rejects sparse jobs with `DEMO_NOT_READY` / `missing_coaching_inputs`.
+
+## Before changing readiness
+
+1. Keep desktop `getAnalysisReadiness` aligned with API readiness per game.
+2. Update `electron/main/desktop-api-match-data-contract.test.ts`.
+3. Run `npm test` (CI runs this on main / PRs).
+4. Do not encode "VOD ready, attach demo later" as `ready: true`.
