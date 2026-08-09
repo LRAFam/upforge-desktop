@@ -52,6 +52,9 @@ const modeHint = computed(() => {
   if (settings.primaryGame === 'lol') {
     return "Only selected modes are recorded. Summoner's Rift covers ranked and normals (Live Client cannot split them)."
   }
+  if (settings.primaryGame === 'deadlock') {
+    return 'Deadlock matchmaking is treated as Ranked until Steam exposes more queue types. Uncheck Ranked to skip all auto-recording.'
+  }
   return 'Only selected modes are recorded. If none are selected, nothing is recorded.'
 })
 
@@ -64,13 +67,21 @@ const clipCaptureOptions = [
 
 const statusItems = computed<StatusItem[]>(() => {
   const items: StatusItem[] = []
+  const applied = obsStatus.value?.lastApplied
+  const canvasDetail = applied?.outputWidth && applied.outputHeight
+    ? `${applied.outputWidth}×${applied.outputHeight} · ${applied.fps} fps`
+    : null
   items.push({
     id: 'obs',
     label: 'OBS',
     detail: obsStatus.value?.connected
-      ? `Connected · v${obsStatus.value.obsVersion ?? '?'}`
+      ? (canvasDetail
+        ? `Connected · ${canvasDetail}`
+        : `Connected · v${obsStatus.value.obsVersion ?? '?'}`)
       : 'Not connected',
-    tone: obsStatus.value?.connected ? 'ok' : 'warn',
+    tone: obsStatus.value?.connected
+      ? (applied && !applied.ok ? 'warn' : 'ok')
+      : 'warn',
   })
   items.push({
     id: 'disk',

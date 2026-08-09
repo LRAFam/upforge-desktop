@@ -797,6 +797,26 @@ declare global {
             regionSource?: string | null
             linkedAccountRegion?: string | null
           }
+          lolLcu: {
+            ok: boolean
+            platform: string
+            lockfileFound: boolean
+            lockfilePath: string | null
+            port: number | null
+            phase: string | null
+            queueId: number | null
+            queueLabel: string | null
+            gameMode: string | null
+            mapId: number | null
+            summonerName: string | null
+            liveClient: {
+              reachable: boolean
+              inMatch: boolean
+              gameMode: string | null
+            } | null
+            error: string | null
+            probedAt: number
+          }
           network: {
             at: number
             trigger: string
@@ -929,6 +949,26 @@ declare global {
       }
       debug: {
         testRiotApi: () => Promise<{ portOpen: boolean; gameMode: string | null; processRunning: boolean }>
+        probeLolLcu: () => Promise<{
+          ok: boolean
+          platform: string
+          lockfileFound: boolean
+          lockfilePath: string | null
+          port: number | null
+          phase: string | null
+          queueId: number | null
+          queueLabel: string | null
+          gameMode: string | null
+          mapId: number | null
+          summonerName: string | null
+          liveClient: {
+            reachable: boolean
+            inMatch: boolean
+            gameMode: string | null
+          } | null
+          error: string | null
+          probedAt: number
+        }>
         findHotkeyConflict: () => Promise<{ supported: boolean; found: Array<{ exe: string; name: string; fix: string }> }>
       }
       screenshots: {
@@ -1196,6 +1236,16 @@ declare global {
           outputPath: string | null
           lastError: string | null
           obsVersion: string | null
+          lastApplied?: {
+            at: number
+            quality: string
+            fps: number
+            outputWidth: number | null
+            outputHeight: number | null
+            manageObsVideo: boolean
+            ok: boolean
+            warnings: string[]
+          } | null
         }>
         setupScene: () => Promise<{ ok: boolean; sceneCreated: boolean; inputCreated: boolean; error?: string }>
         runPreflight: () => Promise<{

@@ -58,6 +58,17 @@ export interface OBSStatus {
   outputPath: string | null
   lastError: string | null
   obsVersion: string | null
+  /** Last UpForge → OBS recording sync (resolution / fps). */
+  lastApplied: {
+    at: number
+    quality: string
+    fps: number
+    outputWidth: number | null
+    outputHeight: number | null
+    manageObsVideo: boolean
+    ok: boolean
+    warnings: string[]
+  } | null
 }
 
 interface LiveKillEvent {
@@ -112,6 +123,7 @@ export class OBSRecorder {
   private _obsStudioVersion: string | null = null
   private _noAudio = false
   private _startupWarning: string | null = null
+  private _lastApplied: OBSStatus['lastApplied'] = null
 
   // Live kill polling state
   private _liveKillPollTimer: ReturnType<typeof setInterval> | null = null
@@ -301,12 +313,13 @@ export class OBSRecorder {
 
         const recConfig = this.getRecordingConfig?.()
         if (recConfig) {
-          await applyObsRecordingSettings(
+          const applyResult = await applyObsRecordingSettings(
             this._obs,
             recConfig,
             this._obsStudioVersion,
             { outputsHot },
           )
+          this._noteAppliedSettings(recConfig, applyResult)
         }
 
         this.onConnectionChange?.(true)
@@ -418,6 +431,7 @@ export class OBSRecorder {
       outputPath: this._outputPath,
       lastError: this._lastError,
       obsVersion: this._obsVersion,
+      lastApplied: this._lastApplied ? { ...this._lastApplied, warnings: [...this._lastApplied.warnings] } : null,
     }
   }
 
@@ -600,10 +614,25 @@ export class OBSRecorder {
     } catch {}
   }
 
+  private _noteAppliedSettings(config: RecorderConfig, result: ObsApplyResult): void {
+    this._lastApplied = {
+      at: Date.now(),
+      quality: config.quality,
+      fps: config.fps ?? 30,
+      outputWidth: result.outputWidth,
+      outputHeight: result.outputHeight,
+      manageObsVideo: config.manageObsVideo !== false,
+      ok: result.ok,
+      warnings: [...result.warnings],
+    }
+  }
+
   async applyRecordingSettings(config: RecorderConfig): Promise<ObsApplyResult | null> {
     if (!this._connected) return null
     const { outputsHot } = await this.captureSetupMutationFlags()
-    return applyObsRecordingSettings(this._obs, config, this._obsStudioVersion, { outputsHot })
+    const result = await applyObsRecordingSettings(this._obs, config, this._obsStudioVersion, { outputsHot })
+    this._noteAppliedSettings(config, result)
+    return result
   }
 
   /** Re-fit capture once the Valorant viewport is stable (after loading / agent select). */
@@ -777,6 +806,7 @@ export class OBSRecorder {
 
       if (config) {
         const applyResult = await applyObsRecordingSettings(this._obs, config, this._obsStudioVersion)
+        this._noteAppliedSettings(config, applyResult)
         if (applyResult.blocking) {
           const msg = applyResult.warnings[0]
             ?? 'OBS Output Mode is Advanced — switch to Simple and restart OBS before recording.'
@@ -785,6 +815,10 @@ export class OBSRecorder {
           throw new Error(msg)
         }
         this._startupWarning = applyResult.warnings[0] ?? null
+        const resLabel = applyResult.outputWidth && applyResult.outputHeight
+          ? `${applyResult.outputWidth}×${applyResult.outputHeight}`
+          : config.quality
+        log.info(`[OBSRecorder] Recording canvas synced: ${resLabel} @ ${config.fps ?? 30} fps (${config.quality})`)
       } else {
         const savePath = join(app.getPath('userData'), 'recordings')
         await this._obs.call('SetProfileParameter', {

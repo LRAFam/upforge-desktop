@@ -168,6 +168,16 @@ function createSettings() {
     outputPath: string | null
     lastError: string | null
     obsVersion: string | null
+    lastApplied?: {
+      at: number
+      quality: string
+      fps: number
+      outputWidth: number | null
+      outputHeight: number | null
+      manageObsVideo: boolean
+      ok: boolean
+      warnings: string[]
+    } | null
   }
   const obsStatus = ref<OBSStatus | null>(null)
   const obsProcessState = ref<{ installed: boolean; processRunning: boolean; connected: boolean } | null>(null)
@@ -540,7 +550,7 @@ function createSettings() {
       { value: 'DEATHMATCH', label: 'Deathmatch', hint: '' },
     ],
     deadlock: [
-      { value: 'COMPETITIVE', label: 'Ranked', hint: 'Standard matchmaking' },
+      { value: 'COMPETITIVE', label: 'Ranked', hint: 'Only detectable mode today' },
     ],
   }
 
@@ -1194,6 +1204,13 @@ function createSettings() {
       }
       loadStorageUsage()
       loadHotkeyStatus()
+      void window.api.obs.getStatus().then((s) => { obsStatus.value = s }).catch(() => {})
+      window.api.on('obs:status', (...args: unknown[]) => {
+        obsStatus.value = args[0] as OBSStatus
+      })
+      window.api.on('obs:connection-changed', () => {
+        void window.api.obs.getStatus().then((s) => { obsStatus.value = s }).catch(() => {})
+      })
       window.api.on('storage:upload-progress', (...args: unknown[]) => {
         const data = args[0] as { current: number; total: number } | null
         storageUploadProgress.value = data

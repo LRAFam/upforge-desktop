@@ -71,6 +71,38 @@
           </div>
         </DevSection>
 
+        <!-- League LCU -->
+        <DevSection title="League LCU (queue probe)">
+          <p class="mb-2 text-[11px] text-gray-500 leading-relaxed">
+            Reads the League Client lockfile and gameflow session. Best signal in champ select / loading. Windows only for real installs.
+          </p>
+          <div v-if="!diag.lolLcu" class="text-xs text-gray-600 italic">Probe unavailable.</div>
+          <template v-else>
+            <div class="grid grid-cols-2 gap-x-6 gap-y-1.5">
+              <DevRow label="OK" :value="diag.lolLcu.ok" badge />
+              <DevRow label="Lockfile" :value="diag.lolLcu.lockfileFound" badge />
+              <DevRow label="Port" :value="diag.lolLcu.port" />
+              <DevRow label="Phase" :value="diag.lolLcu.phase" />
+              <DevRow label="Queue ID" :value="diag.lolLcu.queueId" />
+              <DevRow label="Queue" :value="diag.lolLcu.queueLabel" />
+              <DevRow label="Mode key" :value="diag.lolLcu.gameMode" />
+              <DevRow label="Map ID" :value="diag.lolLcu.mapId" />
+              <DevRow label="Summoner" :value="diag.lolLcu.summonerName" />
+              <DevRow label="Live Client" :value="diag.lolLcu.liveClient?.reachable" badge />
+              <DevRow label="In match (LC)" :value="diag.lolLcu.liveClient?.inMatch" badge />
+              <DevRow label="LC mode" :value="diag.lolLcu.liveClient?.gameMode" />
+              <DevRow label="Lockfile path" :value="diag.lolLcu.lockfilePath" class="col-span-2 truncate" />
+              <DevRow
+                v-if="diag.lolLcu.error"
+                label="Error"
+                :value="diag.lolLcu.error"
+                :warn="true"
+                class="col-span-2"
+              />
+            </div>
+          </template>
+        </DevSection>
+
         <!-- Network (Node DNS) -->
         <DevSection title="Network (Node DNS)">
           <div v-if="!diag.network" class="text-xs text-gray-600 italic">Probe unavailable.</div>
@@ -293,6 +325,11 @@
             >{{ testingRiot ? 'Testing…' : 'Test Riot API' }}</button>
             <button
               class="px-3 py-1.5 rounded-lg text-xs bg-white/[0.05] hover:bg-white/[0.09] text-gray-300 hover:text-white transition-colors"
+              :disabled="probingLcu"
+              @click="probeLolLcu"
+            >{{ probingLcu ? 'Probing…' : 'Probe League LCU' }}</button>
+            <button
+              class="px-3 py-1.5 rounded-lg text-xs bg-white/[0.05] hover:bg-white/[0.09] text-gray-300 hover:text-white transition-colors"
               @click="findHotkeyConflicts"
             >Find Hotkey Conflicts</button>
           </div>
@@ -343,6 +380,7 @@ const loading = ref(false)
 const error = ref<string | null>(null)
 const lastRefreshed = ref('')
 const testingRiot = ref(false)
+const probingLcu = ref(false)
 const toolResult = ref<string | null>(null)
 let refreshInterval: ReturnType<typeof setInterval> | null = null
 
@@ -499,6 +537,22 @@ async function testRiotApi() {
   }
 }
 
+async function probeLolLcu() {
+  probingLcu.value = true
+  toolResult.value = null
+  try {
+    const result = await window.api.debug.probeLolLcu()
+    toolResult.value = JSON.stringify(result, null, 2)
+    if (diag.value) {
+      diag.value = { ...diag.value, lolLcu: result }
+    }
+  } catch (err: unknown) {
+    toolResult.value = `Error: ${err instanceof Error ? err.message : String(err)}`
+  } finally {
+    probingLcu.value = false
+  }
+}
+
 async function findHotkeyConflicts() {
   toolResult.value = 'Searching for conflicts…'
   try {
@@ -553,6 +607,17 @@ function buildReport(): string {
     `Session state: ${d.riot.lastSessionLoopState}`,
     `Circuit breaker: ${d.riot.circuitBreakerOpen ? 'OPEN' : 'closed'} (failures: ${d.riot.sessionStateFailures})`,
     `Client version: ${d.riot.clientVersion}`,
+    '',
+    '=== LEAGUE LCU ===',
+    `OK: ${d.lolLcu?.ok ?? 'n/a'}`,
+    `Lockfile: ${d.lolLcu?.lockfileFound ?? 'n/a'}`,
+    `Path: ${d.lolLcu?.lockfilePath ?? 'n/a'}`,
+    `Port: ${d.lolLcu?.port ?? 'n/a'}`,
+    `Phase: ${d.lolLcu?.phase ?? 'n/a'}`,
+    `Queue: ${d.lolLcu?.queueId ?? 'n/a'} (${d.lolLcu?.queueLabel ?? 'n/a'})`,
+    `Mode key: ${d.lolLcu?.gameMode ?? 'n/a'}`,
+    `Live Client: reachable=${d.lolLcu?.liveClient?.reachable ?? 'n/a'} inMatch=${d.lolLcu?.liveClient?.inMatch ?? 'n/a'} mode=${d.lolLcu?.liveClient?.gameMode ?? 'n/a'}`,
+    `Error: ${d.lolLcu?.error ?? 'none'}`,
   ]
   if (d.riot.lastMatchDetailsFetch) {
     const last = d.riot.lastMatchDetailsFetch

@@ -146,7 +146,11 @@ export function setupAppHandlers(
       app.setLoginItemSettings({ openAtLogin: !!partial.launchOnStartup })
     }
     if (obsRecorder?.isConnected()) {
-      void obsRecorder.applyRecordingSettings(buildRecorderConfig(result, allowCreator, getActiveUserId()))
+      void obsRecorder.applyRecordingSettings(buildRecorderConfig(result, allowCreator, getActiveUserId())).then(() => {
+        BrowserWindow.getAllWindows().forEach(w => {
+          if (!w.isDestroyed()) w.webContents.send('obs:status', obsRecorder.getOBSStatus())
+        })
+      })
     }
     BrowserWindow.getAllWindows().forEach(w => {
       if (!w.isDestroyed()) w.webContents.send('settings:changed', result)

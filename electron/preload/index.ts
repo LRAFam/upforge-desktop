@@ -140,6 +140,7 @@ const api = {
   },
   debug: {
     testRiotApi: () => ipcRenderer.invoke('debug:test-riot-api'),
+    probeLolLcu: () => ipcRenderer.invoke('debug:probe-lol-lcu'),
     findHotkeyConflict: () => ipcRenderer.invoke('debug:find-hotkey-conflict'),
   },
   storage: {
@@ -389,6 +390,7 @@ const api = {
       'desktop-recording:stop',
       'obs:replay-saved',
       'obs:connection-changed',
+      'obs:status',
       'trainer:session-result',
       'post-game:demo-status',
       'post-game:demo-progress',

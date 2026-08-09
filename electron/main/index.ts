@@ -98,6 +98,7 @@ import { isModeFilteredOut, getRecordedModesForGame, recordableModesForGame, nor
 import { applyLiveKillStampsToTimeline } from './live-kill-stamps'
 import { withTimeout } from './promise-timeout'
 import { LoLLiveClientApi } from './lol-live-client-api'
+import { probeLolLcu } from './lol-lcu-api'
 import {
   gameLabel,
   idleTooltip,
@@ -4540,6 +4541,10 @@ function setupGameDetection(): void {
       return
     }
     logActivity(`Recording started (${gameMode ?? 'unknown mode'}${obsRecorder.wasNoAudio() ? ' — no audio' : ''})`)
+    const applied = obsRecorder.getOBSStatus().lastApplied
+    if (applied?.outputWidth && applied.outputHeight) {
+      logActivity(`OBS canvas ${applied.outputWidth}×${applied.outputHeight} @ ${applied.fps} fps (${applied.quality})`)
+    }
     if (game === 'valorant') trackRecordingStarted('valorant')
     else trackFirstRecording(game)
 
@@ -5857,6 +5862,7 @@ async function startApp(): Promise<void> {
         isDev: is.dev,
       },
       riot: riotLocalApi.getDiagnostics(),
+      lolLcu: await probeLolLcu({ liveClient: lolLiveClientApi }),
       network,
       recording: {
         active: obsRecorder.isActivelyRecording(),
@@ -6026,6 +6032,10 @@ async function startApp(): Promise<void> {
     const logGameMode = await riotLocalApi.getGameModeFromLog()
     const processRunning = await gameDetector.isMatchProcessRunning()
     return { portOpen, gameMode, logGameMode, processRunning }
+  })
+
+  ipcMain.handle('debug:probe-lol-lcu', async () => {
+    return probeLolLcu({ liveClient: lolLiveClientApi })
   })
 
 
