@@ -4,6 +4,7 @@ import {
   normalizeLolQueueId,
   parseGameflowSession,
   parseLolLockfileContent,
+  resolveLolFilterMode,
 } from './lol-lcu-api'
 
 describe('parseLolLockfileContent', () => {
@@ -26,6 +27,25 @@ describe('normalizeLolQueueId', () => {
     expect(normalizeLolQueueId(450)).toEqual({ gameMode: 'ARAM', queueLabel: 'ARAM' })
     expect(normalizeLolQueueId(1700)).toEqual({ gameMode: 'ARENA', queueLabel: 'Arena' })
     expect(normalizeLolQueueId(400)).toEqual({ gameMode: 'NORMAL', queueLabel: 'Normal Draft' })
+  })
+
+  it('maps ARAM: Mayhem queues to ARAM', () => {
+    expect(normalizeLolQueueId(2400)).toEqual({ gameMode: 'ARAM', queueLabel: 'ARAM: Mayhem' })
+    expect(normalizeLolQueueId(2401).gameMode).toBe('ARAM')
+    expect(normalizeLolQueueId(2405).gameMode).toBe('ARAM')
+  })
+})
+
+describe('resolveLolFilterMode', () => {
+  it('maps KIWI / Mayhem + Howling Abyss to ARAM', () => {
+    expect(resolveLolFilterMode({ liveGameMode: 'KIWI', mapId: 12 })).toBe('ARAM')
+    expect(resolveLolFilterMode({ queueId: 2400, liveGameMode: 'KIWI' })).toBe('ARAM')
+    expect(resolveLolFilterMode({ queueId: 450 })).toBe('ARAM')
+  })
+
+  it('collapses ranked/normals to CLASSIC for settings filter', () => {
+    expect(resolveLolFilterMode({ queueId: 420 })).toBe('CLASSIC')
+    expect(resolveLolFilterMode({ queueId: 400 })).toBe('CLASSIC')
   })
 })
 

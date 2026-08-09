@@ -138,6 +138,8 @@ export function normalizeLolGameMode(raw: string | null | undefined): string | n
   const upper = raw.toUpperCase()
   if (upper.includes('TFT')) return upper
   if (upper.includes('ARAM')) return 'ARAM'
+  // Special / rotating ARAM-family Live Client modes (e.g. queue 2400).
+  if (upper === 'KIWI') return 'ARAM'
   // Arena (Cherry) — keep a stable filter key for settings.
   if (upper === 'CHERRY' || upper.includes('ARENA')) return 'ARENA'
   if (upper === 'PRACTICETOOL' || upper === 'TUTORIAL') return 'CUSTOM'

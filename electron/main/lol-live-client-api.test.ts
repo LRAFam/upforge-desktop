@@ -66,6 +66,10 @@ describe('normalizeLolGameMode', () => {
   it('maps Cherry / Arena to ARENA', () => {
     expect(normalizeLolGameMode('CHERRY')).toBe('ARENA')
   })
+
+  it('maps KIWI (ARAM variant) to ARAM', () => {
+    expect(normalizeLolGameMode('KIWI')).toBe('ARAM')
+  })
 })
 
 describe('isLolLiveMatchActive', () => {

@@ -98,7 +98,7 @@ import { isModeFilteredOut, getRecordedModesForGame, recordableModesForGame, nor
 import { applyLiveKillStampsToTimeline } from './live-kill-stamps'
 import { withTimeout } from './promise-timeout'
 import { LoLLiveClientApi } from './lol-live-client-api'
-import { probeLolLcu } from './lol-lcu-api'
+import { probeLolLcu, resolveLolFilterMode } from './lol-lcu-api'
 import {
   gameLabel,
   idleTooltip,
@@ -3951,9 +3951,27 @@ function setupGameDetection(): void {
         if (probe?.inMatch) {
           matchStartTime = Date.now()
           currentMatchStartTime = matchStartTime
-          gameMode = probe.gameMode ?? 'CLASSIC'
-          modeConfident = true
           currentGsiMapName = probe.mapName
+          let resolvedMode = probe.gameMode ?? 'CLASSIC'
+          try {
+            const lcu = await probeLolLcu({ liveClient: lolLiveClientApi })
+            const fromLcu = resolveLolFilterMode({
+              queueId: lcu.queueId,
+              lcuGameMode: lcu.gameMode,
+              liveGameMode: probe.gameMode,
+              mapId: lcu.mapId,
+            })
+            if (fromLcu) {
+              resolvedMode = fromLcu
+              if (lcu.queueId != null) {
+                log.info(`[GameDetector] LoL mode from LCU queue ${lcu.queueId} → ${fromLcu}`)
+              }
+            }
+          } catch (err) {
+            log.warn('[GameDetector] LoL LCU mode probe failed:', err instanceof Error ? err.message : err)
+          }
+          gameMode = resolvedMode
+          modeConfident = true
           break
         }
       }

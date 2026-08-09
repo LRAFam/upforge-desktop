@@ -538,7 +538,7 @@ function createSettings() {
     ],
     lol: [
       { value: 'CLASSIC', label: "Summoner's Rift", hint: 'Ranked + normals (Live Client cannot split them)' },
-      { value: 'ARAM', label: 'ARAM', hint: 'Howling Abyss' },
+      { value: 'ARAM', label: 'ARAM', hint: 'Includes ARAM: Mayhem' },
       { value: 'ARENA', label: 'Arena', hint: '2v2v2v2' },
       { value: 'CUSTOM', label: 'Custom / Practice', hint: 'Custom games and practice tool' },
     ],

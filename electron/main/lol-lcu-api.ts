@@ -110,6 +110,11 @@ export function normalizeLolQueueId(queueId: number | null | undefined): {
     430: { gameMode: 'NORMAL', queueLabel: 'Normal Blind' },
     440: { gameMode: 'RANKED_FLEX', queueLabel: 'Ranked Flex' },
     450: { gameMode: 'ARAM', queueLabel: 'ARAM' },
+    // ARAM: Mayhem (Live Client gameMode "KIWI"). Sibling IDs from CommunityDragon queues.json.
+    2400: { gameMode: 'ARAM', queueLabel: 'ARAM: Mayhem' },
+    2401: { gameMode: 'ARAM', queueLabel: 'ARAM: Mayhem' },
+    2403: { gameMode: 'ARAM', queueLabel: 'ARAM: Mayhem' },
+    2405: { gameMode: 'ARAM', queueLabel: 'ARAM: Mayhem' },
     700: { gameMode: 'CLASH', queueLabel: 'Clash' },
     900: { gameMode: 'URF', queueLabel: 'URF' },
     1020: { gameMode: 'ONE_FOR_ALL', queueLabel: 'One for All' },
@@ -120,6 +125,47 @@ export function normalizeLolQueueId(queueId: number | null | undefined): {
   const hit = map[queueId]
   if (hit) return hit
   return { gameMode: `QUEUE_${queueId}`, queueLabel: `Queue ${queueId}` }
+}
+
+/**
+ * Resolve a Settings recording-filter key for LoL.
+ * LCU queue IDs are preferred; Live Client modes and Howling Abyss map fill gaps.
+ * Ranked/normals collapse to CLASSIC until the UI splits them.
+ */
+export function resolveLolFilterMode(opts: {
+  queueId?: number | null
+  lcuGameMode?: string | null
+  liveGameMode?: string | null
+  mapId?: number | null
+}): string | null {
+  const fromQueue = normalizeLolQueueId(opts.queueId ?? null)
+  if (fromQueue.gameMode === 'ARAM' || fromQueue.gameMode === 'ARENA') {
+    return fromQueue.gameMode
+  }
+  if (
+    fromQueue.gameMode === 'RANKED_SOLO'
+    || fromQueue.gameMode === 'RANKED_FLEX'
+    || fromQueue.gameMode === 'NORMAL'
+    || fromQueue.gameMode === 'CLASH'
+  ) {
+    return 'CLASSIC'
+  }
+
+  const live = (opts.liveGameMode ?? opts.lcuGameMode ?? '').toUpperCase()
+  if (live === 'KIWI' || live.includes('ARAM')) return 'ARAM'
+  if (live === 'CHERRY' || live.includes('ARENA')) return 'ARENA'
+  if (live === 'CLASSIC') return 'CLASSIC'
+  if (live === 'PRACTICETOOL' || live === 'CUSTOM' || live === 'TUTORIAL') return 'CUSTOM'
+
+  // Howling Abyss (map 12) without a known queue → treat as ARAM-family.
+  if (opts.mapId === 12) return 'ARAM'
+
+  if (fromQueue.gameMode?.startsWith('QUEUE_')) {
+    if (opts.mapId === 12) return 'ARAM'
+    return fromQueue.gameMode
+  }
+
+  return opts.liveGameMode ?? opts.lcuGameMode ?? fromQueue.gameMode
 }
 
 function lcuGet<T>(lockfile: LolLcuLockfile, apiPath: string): Promise<T> {
