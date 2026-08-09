@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import type { PendingRecording } from '../env.d.ts'
 import { useGameTheme } from '../composables/useGameTheme'
@@ -14,6 +14,14 @@ import {
   recordingPlayerImage,
   recordingPlayerLabel,
 } from '../lib/recording-display'
+import {
+  formatRecordingBytes,
+  groupRecordingsByDate,
+  matchesRecordingLibraryChip,
+  type RecordingDateGroup,
+  type RecordingLibraryChip,
+  visibleGroupItems,
+} from '../lib/recording-library'
 import { recordingStatusBadge } from '../lib/recording-status'
 
 const router = useRouter()
@@ -25,8 +33,25 @@ const busyId = ref<string | null>(null)
 const message = ref<string | null>(null)
 const gameFilter = ref<string>('all')
 const obsConnected = ref<boolean | null>(null)
+const statusChip = ref<RecordingLibraryChip>('all')
+const recordingsBytes = ref(0)
+const collapsedGroups = ref<Set<string>>(new Set())
+const showAllByGroup = ref<Set<string>>(new Set())
+
+const statusChips: { label: string; value: RecordingLibraryChip }[] = [
+  { label: 'All', value: 'all' },
+  { label: 'Needs attention', value: 'needs_attention' },
+  { label: 'Ready', value: 'ready' },
+  { label: 'Analysed', value: 'analysed' },
+  { label: 'Cloud', value: 'cloud' },
+]
 
 let cleanup: (() => void) | null = null
+
+async function loadStorage() {
+  const usage = await window.api.storage.getUsage().catch(() => null)
+  recordingsBytes.value = usage?.recordingsBytes ?? 0
+}
 
 async function load() {
   loading.value = true
@@ -35,6 +60,7 @@ async function load() {
   } finally {
     loading.value = false
   }
+  void loadStorage()
 }
 
 const gamesPresent = computed(() => {
@@ -47,6 +73,43 @@ const filtered = computed(() => {
   if (gameFilter.value === 'all') return recordings.value
   return recordings.value.filter(r => r.game === gameFilter.value)
 })
+
+const chipFiltered = computed(() =>
+  filtered.value.filter(r => matchesRecordingLibraryChip(r, statusChip.value)),
+)
+
+const dateGroups = computed(() => groupRecordingsByDate(chipFiltered.value))
+
+watch(dateGroups, (groups) => {
+  const next = new Set<string>()
+  groups.slice(1).forEach(g => next.add(g.label))
+  collapsedGroups.value = next
+}, { immediate: true })
+
+function toggleGroup(label: string) {
+  const next = new Set(collapsedGroups.value)
+  if (next.has(label)) next.delete(label)
+  else next.add(label)
+  collapsedGroups.value = next
+}
+
+function isGroupExpanded(label: string): boolean {
+  return !collapsedGroups.value.has(label)
+}
+
+function showMoreInGroup(label: string) {
+  const next = new Set(showAllByGroup.value)
+  next.add(label)
+  showAllByGroup.value = next
+}
+
+function groupVisibility(group: RecordingDateGroup) {
+  return visibleGroupItems(group.items, showAllByGroup.value.has(group.label))
+}
+
+function openFolder() {
+  void window.api.storage.openFolder()
+}
 
 function relativeDate(ms: number): string {
   if (!ms) return ''
@@ -172,6 +235,37 @@ onUnmounted(() => { cleanup?.() })
       >{{ recordingGameTitle({ game: g }) }}</button>
     </nav>
 
+    <div
+      v-if="filtered.length > 0"
+      class="panel-elevated mx-4 mt-3 flex flex-shrink-0 flex-wrap items-center justify-between gap-3 px-3 py-2.5"
+    >
+      <div class="flex flex-wrap items-center gap-2">
+        <button
+          v-for="chip in statusChips"
+          :key="chip.value"
+          class="rounded-full border px-3 py-1 text-xs font-medium transition-all duration-150"
+          :class="statusChip === chip.value
+            ? `${theme.accentBorder} ${theme.accentBg} ${theme.accentText}`
+            : 'border-white/[0.10] text-gray-500 hover:border-white/[0.12] hover:text-gray-300'"
+          @click="statusChip = chip.value"
+        >
+          {{ chip.label }}
+        </button>
+      </div>
+      <div class="flex flex-wrap items-center gap-2 text-[11px] text-gray-500">
+        <span>{{ chipFiltered.length }} {{ chipFiltered.length === 1 ? 'recording' : 'recordings' }}</span>
+        <span class="text-gray-800">·</span>
+        <span>{{ formatRecordingBytes(recordingsBytes) }} local</span>
+        <button
+          type="button"
+          class="rounded-lg border border-white/[0.08] px-2.5 py-1 text-[10px] font-medium text-gray-400 transition-colors hover:border-white/[0.14] hover:text-gray-200"
+          @click="openFolder"
+        >
+          Open folder
+        </button>
+      </div>
+    </div>
+
     <div class="flex-1 scroll-col px-4 py-4">
       <p v-if="message" class="mb-3 rounded-lg border border-amber-500/20 bg-amber-500/[0.06] px-3 py-2 text-xs text-amber-200">{{ message }}</p>
 
@@ -194,62 +288,98 @@ onUnmounted(() => { cleanup?.() })
         </button>
       </div>
 
-      <div v-else class="grid grid-cols-1 gap-2.5 sm:grid-cols-2 xl:grid-cols-3">
-        <div
-          v-for="rec in filtered"
-          :key="rec.id"
-          class="group relative overflow-hidden rounded-xl border border-white/[0.08] bg-white/[0.02] transition-colors hover:border-white/[0.16]"
-        >
-          <div class="relative h-24 overflow-hidden bg-black/40">
-            <img
-              v-if="recordingMapImage(rec)"
-              :src="recordingMapImage(rec)"
-              :alt="recordingMapLabel(rec)"
-              class="absolute inset-0 h-full w-full object-cover opacity-40"
-            />
-            <div class="absolute inset-0 bg-gradient-to-t from-[#0f0f0f] via-[#0f0f0f]/40 to-transparent" />
-            <div class="absolute left-3 top-3 flex items-center gap-2">
-              <span
-                class="inline-flex items-center rounded-full px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider ring-1"
-                :class="recordingStatusBadge(rec).class"
-              >{{ recordingStatusBadge(rec).label }}</span>
-            </div>
-            <div class="absolute right-3 top-3 rounded-full bg-black/50 px-2 py-0.5 text-[9px] font-medium text-gray-300 capitalize">
-              {{ recordingGameTitle(rec) }}
-            </div>
-            <div class="absolute bottom-2 left-3 right-3 flex items-end gap-2">
-              <div
-                v-if="recordingPlayerImage(rec)"
-                class="h-9 w-9 flex-shrink-0 overflow-hidden rounded-lg ring-1 ring-white/10"
-                :style="{ backgroundColor: recordingPlayerAccent(rec) }"
-              >
-                <img :src="recordingPlayerImage(rec)" :alt="recordingPlayerLabel(rec)" class="h-full w-full object-cover" />
-              </div>
-              <div class="min-w-0">
-                <p class="truncate text-sm font-bold text-white">{{ recordingPlayerLabel(rec) }}</p>
-                <p class="truncate text-[11px] text-gray-400">{{ recordingMapLabel(rec) }}</p>
-              </div>
-            </div>
+      <div v-else-if="!chipFiltered.length" class="flex h-40 flex-col items-center justify-center text-center gap-1">
+        <p class="text-sm font-semibold text-gray-400">No recordings match this filter</p>
+        <p class="text-xs text-gray-600">Try another status chip or clear the game filter.</p>
+      </div>
+
+      <div v-else class="space-y-4">
+        <section v-for="group in dateGroups" :key="group.label">
+          <div
+            class="mb-2 flex cursor-pointer items-center gap-2 px-1"
+            @click="toggleGroup(group.label)"
+          >
+            <svg
+              class="h-3 w-3 flex-shrink-0 text-gray-600 transition-transform"
+              :class="isGroupExpanded(group.label) ? 'rotate-90' : ''"
+              fill="none" stroke="currentColor" viewBox="0 0 24 24"
+            >
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+            </svg>
+            <span class="text-[10px] font-semibold uppercase tracking-[0.12em] text-gray-500">{{ group.label }}</span>
+            <div class="hidden h-px flex-1 bg-white/[0.05] sm:block" />
+            <span class="text-[10px] text-gray-700">{{ group.items.length }}</span>
           </div>
 
-          <div class="flex items-center justify-between gap-2 px-3 py-2.5">
-            <span class="text-[11px] text-gray-500">{{ relativeDate(rec.recordedAt) }}</span>
-            <div class="flex items-center gap-1.5">
-              <button
-                v-if="canAnalyse(rec)"
-                class="rounded-lg bg-white/[0.06] px-2.5 py-1 text-[11px] font-semibold text-gray-200 transition-colors hover:bg-white/[0.12] disabled:opacity-50"
-                :disabled="busyId === rec.id"
-                @click="analyse(rec)"
-              >{{ rec.analysisReadiness?.ready ? 'Analyse' : 'Retry sync' }}</button>
-              <button
-                class="rounded-lg px-2.5 py-1 text-[11px] font-bold transition-colors disabled:opacity-50"
-                :class="`${theme.accentBg} ${theme.accentText} ring-1 ${theme.accentBorder}`"
-                :disabled="busyId === rec.id || (!canWatchRawRecording(rec) && rec.analysisId == null)"
-                @click="openBest(rec)"
-              >{{ rec.analysisId != null || canOpenTimeline(rec) ? 'Review' : 'Watch' }}</button>
+          <template v-if="isGroupExpanded(group.label)">
+            <div class="grid grid-cols-1 gap-2.5 sm:grid-cols-2 xl:grid-cols-3">
+              <div
+                v-for="rec in groupVisibility(group).shown"
+                :key="rec.id"
+                class="group relative overflow-hidden rounded-xl border border-white/[0.08] bg-white/[0.02] transition-colors hover:border-white/[0.16]"
+              >
+                <div class="relative h-24 overflow-hidden bg-black/40">
+                  <img
+                    v-if="recordingMapImage(rec)"
+                    :src="recordingMapImage(rec)"
+                    :alt="recordingMapLabel(rec)"
+                    class="absolute inset-0 h-full w-full object-cover opacity-40"
+                  />
+                  <div class="absolute inset-0 bg-gradient-to-t from-[#0f0f0f] via-[#0f0f0f]/40 to-transparent" />
+                  <div class="absolute left-3 top-3 flex items-center gap-2">
+                    <span
+                      class="inline-flex items-center rounded-full px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider ring-1"
+                      :class="recordingStatusBadge(rec).class"
+                    >{{ recordingStatusBadge(rec).label }}</span>
+                  </div>
+                  <div class="absolute right-3 top-3 rounded-full bg-black/50 px-2 py-0.5 text-[9px] font-medium text-gray-300 capitalize">
+                    {{ recordingGameTitle(rec) }}
+                  </div>
+                  <div class="absolute bottom-2 left-3 right-3 flex items-end gap-2">
+                    <div
+                      v-if="recordingPlayerImage(rec)"
+                      class="h-9 w-9 flex-shrink-0 overflow-hidden rounded-lg ring-1 ring-white/10"
+                      :style="{ backgroundColor: recordingPlayerAccent(rec) }"
+                    >
+                      <img :src="recordingPlayerImage(rec)" :alt="recordingPlayerLabel(rec)" class="h-full w-full object-cover" />
+                    </div>
+                    <div class="min-w-0">
+                      <p class="truncate text-sm font-bold text-white">{{ recordingPlayerLabel(rec) }}</p>
+                      <p class="truncate text-[11px] text-gray-400">{{ recordingMapLabel(rec) }}</p>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="flex items-center justify-between gap-2 px-3 py-2.5">
+                  <span class="text-[11px] text-gray-500">{{ relativeDate(rec.recordedAt) }}</span>
+                  <div class="flex items-center gap-1.5">
+                    <button
+                      v-if="canAnalyse(rec)"
+                      class="rounded-lg bg-white/[0.06] px-2.5 py-1 text-[11px] font-semibold text-gray-200 transition-colors hover:bg-white/[0.12] disabled:opacity-50"
+                      :disabled="busyId === rec.id"
+                      @click="analyse(rec)"
+                    >{{ rec.analysisReadiness?.ready ? 'Analyse' : 'Retry sync' }}</button>
+                    <button
+                      class="rounded-lg px-2.5 py-1 text-[11px] font-bold transition-colors disabled:opacity-50"
+                      :class="`${theme.accentBg} ${theme.accentText} ring-1 ${theme.accentBorder}`"
+                      :disabled="busyId === rec.id || (!canWatchRawRecording(rec) && rec.analysisId == null)"
+                      @click="openBest(rec)"
+                    >{{ rec.analysisId != null || canOpenTimeline(rec) ? 'Review' : 'Watch' }}</button>
+                  </div>
+                </div>
+              </div>
             </div>
-          </div>
-        </div>
+
+            <button
+              v-if="groupVisibility(group).hiddenCount > 0"
+              type="button"
+              class="mt-2 w-full rounded-lg border border-white/[0.08] px-3 py-2 text-[11px] font-medium text-gray-500 transition-colors hover:border-white/[0.14] hover:text-gray-300"
+              @click="showMoreInGroup(group.label)"
+            >
+              Show more ({{ groupVisibility(group).hiddenCount }})
+            </button>
+          </template>
+        </section>
       </div>
     </div>
   </div>
