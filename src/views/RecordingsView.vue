@@ -18,6 +18,8 @@ import {
   formatRecordingBytes,
   groupRecordingsByDate,
   matchesRecordingLibraryChip,
+  recordingDeleteOptions,
+  recordingNeedsAttention,
   type RecordingDateGroup,
   type RecordingLibraryChip,
   visibleGroupItems,
@@ -37,6 +39,9 @@ const statusChip = ref<RecordingLibraryChip>('all')
 const recordingsBytes = ref(0)
 const collapsedGroups = ref<Set<string>>(new Set())
 const showAllByGroup = ref<Set<string>>(new Set())
+const selecting = ref(false)
+const selectedIds = ref<Set<string>>(new Set())
+const pendingDelete = ref<{ rec: PendingRecording; variant: 'cloud' } | null>(null)
 
 const statusChips: { label: string; value: RecordingLibraryChip }[] = [
   { label: 'All', value: 'all' },
@@ -189,6 +194,96 @@ const canAnalyse = (rec: PendingRecording) =>
   && rec.pipelineDeferReason !== 'recording'
   && (Boolean(rec.analysisReadiness?.ready) || canRetryRiotMatchStats(rec))
 
+function attentionHint(rec: PendingRecording): string | null {
+  if (!recordingNeedsAttention(rec)) return null
+  if (rec.lastAnalysisError) return rec.lastAnalysisError
+  if (!canWatchRawRecording(rec) && rec.analysisId == null) return 'File missing'
+  if (rec.analysisReadiness?.message) return rec.analysisReadiness.message
+  const badge = recordingStatusBadge(rec)
+  if (badge.label === 'Failed' || badge.label === 'Syncing') return badge.label
+  return null
+}
+
+function toggleSelectMode() {
+  selecting.value = !selecting.value
+  selectedIds.value = new Set()
+}
+
+function toggleSelected(id: string) {
+  const next = new Set(selectedIds.value)
+  if (next.has(id)) next.delete(id)
+  else next.add(id)
+  selectedIds.value = next
+}
+
+async function deleteRecording(rec: PendingRecording) {
+  const options = recordingDeleteOptions(rec)
+  const inFlight = rec.pipelineStatus === 'uploading' || rec.pipelineStatus === 'analysing'
+
+  if (options.includes('localOnly')) {
+    pendingDelete.value = { rec, variant: 'cloud' }
+    return
+  }
+
+  const hasLocal = Boolean(rec.hasLocalFile || rec.path)
+  const label = inFlight
+    ? 'This recording is still uploading or analysing. Abort and delete it from this PC?'
+    : hasLocal
+      ? 'Delete this recording from your library and remove the local file?'
+      : 'Remove this recording from your library?'
+  if (!window.confirm(label)) return
+  await runDismiss(rec.id, 'remove')
+}
+
+async function runDismiss(id: string, mode: 'remove' | 'localOnly') {
+  busyId.value = id
+  message.value = null
+  try {
+    const result = await window.api.recordings.dismiss(id, { mode, deleteLocal: true })
+    if (!result?.ok) {
+      message.value = result?.error ?? 'Could not delete recording.'
+      return
+    }
+    const freed = result.freedBytes ?? 0
+    message.value = freed > 0
+      ? `Deleted — freed ${formatRecordingBytes(freed)}.`
+      : (mode === 'localOnly' ? 'Local file removed — still available from cloud.' : 'Removed from library.')
+    await load()
+  } catch {
+    message.value = 'Could not delete recording — try again.'
+  } finally {
+    busyId.value = null
+    pendingDelete.value = null
+  }
+}
+
+async function deleteSelected() {
+  const selected = recordings.value.filter(r => selectedIds.value.has(r.id))
+  if (!selected.length) return
+  const cloudBackedLocal = selected.filter(r => recordingDeleteOptions(r).includes('localOnly')).length
+  const ok = window.confirm(
+    cloudBackedLocal > 0
+      ? `Remove ${selected.length} recording(s) from your library? Local files will be deleted. Cloud copies stay (${cloudBackedLocal} cloud-backed).`
+      : `Delete ${selected.length} recording(s) from your library and remove local files?`,
+  )
+  if (!ok) return
+  let freed = 0
+  let failed = 0
+  busyId.value = '__bulk__'
+  for (const r of selected) {
+    const result = await window.api.recordings.dismiss(r.id, { mode: 'remove', deleteLocal: true }).catch(() => null)
+    if (!result?.ok) failed++
+    else freed += result.freedBytes ?? 0
+  }
+  message.value = failed
+    ? `Removed ${selected.length - failed}, ${failed} failed.${freed ? ` Freed ${formatRecordingBytes(freed)}.` : ''}`
+    : `Deleted ${selected.length}.${freed ? ` Freed ${formatRecordingBytes(freed)}.` : ''}`
+  selecting.value = false
+  selectedIds.value = new Set()
+  busyId.value = null
+  await load()
+}
+
 onMounted(async () => {
   cleanup = window.api.on('recordings:updated', () => { void load() })
   const s = await window.api.app.getStatus().catch(() => null)
@@ -214,7 +309,7 @@ onUnmounted(() => { cleanup?.() })
             </p>
           </div>
           <span class="hidden sm:inline-flex rounded-xl border border-white/[0.08] bg-white/[0.03] px-3 py-2 text-xs font-semibold text-gray-300">
-            {{ filtered.length }} {{ filtered.length === 1 ? 'recording' : 'recordings' }}
+            {{ chipFiltered.length }} {{ chipFiltered.length === 1 ? 'recording' : 'recordings' }}
           </span>
         </div>
       </div>
@@ -262,6 +357,16 @@ onUnmounted(() => { cleanup?.() })
           @click="openFolder"
         >
           Open folder
+        </button>
+        <button
+          type="button"
+          class="rounded-lg border px-2.5 py-1 text-[10px] font-medium transition-colors"
+          :class="selecting
+            ? 'border-red-500/30 bg-red-500/15 text-red-400'
+            : 'border-white/[0.08] text-gray-400 hover:border-white/[0.14] hover:text-gray-200'"
+          @click="toggleSelectMode"
+        >
+          {{ selecting ? 'Cancel' : 'Select' }}
         </button>
       </div>
     </div>
@@ -316,8 +421,21 @@ onUnmounted(() => { cleanup?.() })
               <div
                 v-for="rec in groupVisibility(group).shown"
                 :key="rec.id"
-                class="group relative overflow-hidden rounded-xl border border-white/[0.08] bg-white/[0.02] transition-colors hover:border-white/[0.16]"
+                class="group relative overflow-hidden rounded-xl border bg-white/[0.02] transition-colors"
+                :class="selecting && selectedIds.has(rec.id)
+                  ? 'border-red-500/40 ring-1 ring-red-500/20'
+                  : 'border-white/[0.08] hover:border-white/[0.16]'"
+                @click="selecting ? toggleSelected(rec.id) : undefined"
               >
+                <div
+                  v-if="selecting"
+                  class="absolute left-3 top-3 z-10 flex h-5 w-5 items-center justify-center rounded border"
+                  :class="selectedIds.has(rec.id) ? 'border-red-500 bg-red-500' : 'border-white/30 bg-black/50'"
+                >
+                  <svg v-if="selectedIds.has(rec.id)" class="h-3 w-3 text-white" fill="currentColor" viewBox="0 0 20 20">
+                    <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd" />
+                  </svg>
+                </div>
                 <div class="relative h-24 overflow-hidden bg-black/40">
                   <img
                     v-if="recordingMapImage(rec)"
@@ -350,21 +468,43 @@ onUnmounted(() => { cleanup?.() })
                   </div>
                 </div>
 
-                <div class="flex items-center justify-between gap-2 px-3 py-2.5">
-                  <span class="text-[11px] text-gray-500">{{ relativeDate(rec.recordedAt) }}</span>
-                  <div class="flex items-center gap-1.5">
-                    <button
-                      v-if="canAnalyse(rec)"
-                      class="rounded-lg bg-white/[0.06] px-2.5 py-1 text-[11px] font-semibold text-gray-200 transition-colors hover:bg-white/[0.12] disabled:opacity-50"
-                      :disabled="busyId === rec.id"
-                      @click="analyse(rec)"
-                    >{{ rec.analysisReadiness?.ready ? 'Analyse' : 'Retry sync' }}</button>
-                    <button
-                      class="rounded-lg px-2.5 py-1 text-[11px] font-bold transition-colors disabled:opacity-50"
-                      :class="`${theme.accentBg} ${theme.accentText} ring-1 ${theme.accentBorder}`"
-                      :disabled="busyId === rec.id || (!canWatchRawRecording(rec) && rec.analysisId == null)"
-                      @click="openBest(rec)"
-                    >{{ rec.analysisId != null || canOpenTimeline(rec) ? 'Review' : 'Watch' }}</button>
+                <div class="px-3 py-2.5">
+                  <div class="flex items-start justify-between gap-2">
+                    <div class="min-w-0">
+                      <span class="text-[11px] text-gray-500">{{ relativeDate(rec.recordedAt) }}</span>
+                      <p
+                        v-if="attentionHint(rec)"
+                        class="mt-0.5 truncate text-[10px] text-amber-400/90"
+                        :title="attentionHint(rec) ?? undefined"
+                      >
+                        {{ attentionHint(rec) }}
+                      </p>
+                    </div>
+                    <div v-if="!selecting" class="flex flex-shrink-0 items-center gap-1.5">
+                      <button
+                        v-if="canAnalyse(rec)"
+                        class="rounded-lg bg-white/[0.06] px-2.5 py-1 text-[11px] font-semibold text-gray-200 transition-colors hover:bg-white/[0.12] disabled:opacity-50"
+                        :disabled="busyId === rec.id"
+                        @click.stop="analyse(rec)"
+                      >{{ rec.analysisReadiness?.ready ? 'Analyse' : 'Retry sync' }}</button>
+                      <button
+                        class="rounded-lg px-2.5 py-1 text-[11px] font-bold transition-colors disabled:opacity-50"
+                        :class="`${theme.accentBg} ${theme.accentText} ring-1 ${theme.accentBorder}`"
+                        :disabled="busyId === rec.id || (!canWatchRawRecording(rec) && rec.analysisId == null)"
+                        @click.stop="openBest(rec)"
+                      >{{ rec.analysisId != null || canOpenTimeline(rec) ? 'Review' : 'Watch' }}</button>
+                      <button
+                        type="button"
+                        class="rounded-lg border border-white/[0.08] p-1.5 text-gray-500 transition-colors hover:border-red-500/30 hover:bg-red-500/10 hover:text-red-400 disabled:opacity-50"
+                        title="Delete recording"
+                        :disabled="busyId === rec.id"
+                        @click.stop="deleteRecording(rec)"
+                      >
+                        <svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                        </svg>
+                      </button>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -380,6 +520,68 @@ onUnmounted(() => { cleanup?.() })
             </button>
           </template>
         </section>
+      </div>
+    </div>
+
+    <div
+      v-if="selecting && selectedIds.size > 0"
+      class="flex flex-shrink-0 items-center justify-center gap-3 border-t border-white/[0.08] bg-[#121212]/95 px-4 py-3 backdrop-blur-sm"
+    >
+      <span class="text-xs font-medium text-gray-300">{{ selectedIds.size }} selected</span>
+      <span class="text-gray-700">·</span>
+      <button
+        type="button"
+        class="rounded-lg border border-red-500/30 bg-red-500/15 px-3 py-1.5 text-xs font-semibold text-red-400 transition-colors hover:bg-red-500/25 disabled:opacity-50"
+        :disabled="busyId === '__bulk__'"
+        @click="deleteSelected"
+      >
+        Delete
+      </button>
+      <button
+        type="button"
+        class="rounded-lg border border-white/[0.08] px-3 py-1.5 text-xs font-medium text-gray-400 transition-colors hover:border-white/[0.14] hover:text-gray-200"
+        @click="toggleSelectMode"
+      >
+        Cancel
+      </button>
+    </div>
+
+    <div
+      v-if="pendingDelete?.variant === 'cloud'"
+      class="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4 backdrop-blur-sm"
+      @click.self="pendingDelete = null"
+    >
+      <div class="panel-elevated w-full max-w-sm rounded-xl border border-white/[0.08] p-4">
+        <h2 class="text-sm font-bold text-white">Delete recording</h2>
+        <p class="mt-1.5 text-xs text-gray-400">
+          This recording is backed up to the cloud. Choose what to remove from this PC.
+        </p>
+        <div class="mt-4 flex flex-col gap-2">
+          <button
+            type="button"
+            class="rounded-lg border border-white/[0.08] px-3 py-2 text-xs font-medium text-gray-300 transition-colors hover:border-white/[0.14] hover:bg-white/[0.04]"
+            :disabled="busyId === pendingDelete.rec.id"
+            @click="runDismiss(pendingDelete.rec.id, 'localOnly')"
+          >
+            Delete local only
+          </button>
+          <button
+            type="button"
+            class="rounded-lg border border-red-500/30 bg-red-500/15 px-3 py-2 text-xs font-semibold text-red-400 transition-colors hover:bg-red-500/25"
+            :disabled="busyId === pendingDelete.rec.id"
+            @click="runDismiss(pendingDelete.rec.id, 'remove')"
+          >
+            Remove from library
+          </button>
+          <button
+            type="button"
+            class="rounded-lg px-3 py-2 text-xs font-medium text-gray-500 transition-colors hover:text-gray-300"
+            :disabled="busyId === pendingDelete.rec.id"
+            @click="pendingDelete = null"
+          >
+            Cancel
+          </button>
+        </div>
       </div>
     </div>
   </div>
