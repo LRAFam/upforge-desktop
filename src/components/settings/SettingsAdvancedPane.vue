@@ -281,15 +281,26 @@ function previewOnboarding(): void {
     <SettingsSection
       id="developer"
       title="Developer"
-      hint="Internal tools and asset previews"
+      hint="Diagnostics panel and asset previews"
       :highlight-id="highlightSection"
     >
       <button
         type="button"
-        class="text-xs font-medium text-gray-400 underline-offset-2 hover:text-gray-200 hover:underline"
+        class="rounded-xl border border-amber-500/25 bg-amber-500/10 px-3 py-2 text-xs font-semibold text-amber-200 hover:bg-amber-500/15 transition-colors"
+        @click="router.push('/dev')"
+      >
+        Open developer panel
+      </button>
+      <p class="mt-1.5 text-[11px] text-gray-600">
+        Riot / League LCU / OBS / analysis pipeline diagnostics. Also available from the sidebar when you are admin.
+      </p>
+
+      <button
+        type="button"
+        class="mt-3 text-xs font-medium text-gray-400 underline-offset-2 hover:text-gray-200 hover:underline"
         @click="developerOpen = !developerOpen"
       >
-        {{ developerOpen ? 'Hide developer tools' : 'Show developer tools' }}
+        {{ developerOpen ? 'Hide badge previews' : 'Show badge previews' }}
       </button>
 
       <div v-if="developerOpen" class="space-y-3">

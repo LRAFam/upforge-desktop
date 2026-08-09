@@ -56,7 +56,7 @@ const analysesToneClass = computed(() => {
 interface NavItem {
   to: string
   label: string
-  icon: 'home' | 'analytics' | 'drills' | 'demos' | 'matches' | 'cross' | 'recordings' | 'rosters'
+  icon: 'home' | 'analytics' | 'drills' | 'demos' | 'matches' | 'cross' | 'recordings' | 'rosters' | 'dev'
   match?: (path: string) => boolean
 }
 
@@ -71,10 +71,29 @@ const mainNav: NavItem[] = [
   { to: '/squad', label: 'Squad', icon: 'cross', match: p => p.startsWith('/squad') },
 ]
 
+const showDeveloperNav = computed(() => {
+  const user = profileUser.value
+  if (user?.is_admin || user?.tier === 'admin') return true
+  return false
+})
+
+const developerNavItem: NavItem = {
+  to: '/dev',
+  label: 'Developer',
+  icon: 'dev',
+  match: (p) => p === '/dev',
+}
+
 const visibleMainNav = computed(() => {
   const allowed = new Set(gameNavRoutes(primaryGame.value))
-  return mainNav.filter(item => allowed.has(item.to))
+  const items = mainNav.filter(item => allowed.has(item.to))
+  if (showDeveloperNav.value || settingsDevMode.value) {
+    items.push(developerNavItem)
+  }
+  return items
 })
+
+const settingsDevMode = ref(false)
 
 const settingsActive = computed(() => {
   if (route.path !== '/settings') return false
@@ -102,8 +121,12 @@ function badgeFor(item: NavItem): number | null {
 }
 
 async function refreshAccount() {
-  const p = await window.api.profile.get().catch(() => null)
+  const [p, settings] = await Promise.all([
+    window.api.profile.get().catch(() => null),
+    window.api.settings.get().catch(() => null),
+  ])
   profileUser.value = p?.user ?? null
+  settingsDevMode.value = !!(settings as { devModeEnabled?: boolean } | null)?.devModeEnabled
 }
 
 let refreshTimer: ReturnType<typeof setTimeout> | null = null
@@ -148,6 +171,7 @@ onMounted(() => {
   if (on) {
     ipcCleanups.push(on('dashboard:refresh', () => { scheduleRefreshAccount() }))
     ipcCleanups.push(on('recordings:updated', () => { scheduleRefreshAccount() }))
+    ipcCleanups.push(on('settings:changed', () => { scheduleRefreshAccount() }))
   }
 
   if (!window.api?.coach?.getStudentHub) return
@@ -198,6 +222,7 @@ onUnmounted(() => {
           <svg v-else-if="item.icon === 'matches'" class="h-[18px] w-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
           <svg v-else-if="item.icon === 'recordings'" class="h-[18px] w-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"/></svg>
           <svg v-else-if="item.icon === 'rosters'" class="h-[18px] w-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" d="M17 20v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2M9 10a4 4 0 100-8 4 4 0 000 8zM23 20v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75"/></svg>
+          <svg v-else-if="item.icon === 'dev'" class="h-[18px] w-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4"/></svg>
           <svg v-else class="h-[18px] w-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"/></svg>
         </span>
         <span class="truncate flex-1">{{ item.label }}</span>
