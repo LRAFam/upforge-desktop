@@ -456,6 +456,12 @@ function createSettings() {
     launchOnStartup: false,
     autoDelete: true,
     recordedModes: ['COMPETITIVE', 'PREMIER'],
+    recordedModesByGame: {
+      valorant: ['COMPETITIVE', 'PREMIER'],
+      lol: ['CLASSIC'],
+      cs2: ['COMPETITIVE', 'PREMIER'],
+      deadlock: ['COMPETITIVE'],
+    },
     autoAnalyse: true,
     firstRun: false,
     captureMonitor: 'auto',
@@ -509,16 +515,44 @@ function createSettings() {
     },
   })
   
-  const GAME_MODES = [
-    { value: 'COMPETITIVE', label: 'Competitive', hint: 'Ranked' },
-    { value: 'PREMIER', label: 'Premier', hint: 'Team queue' },
-    { value: 'CLASSIC', label: 'Unrated', hint: 'Casual 5v5' },
-    { value: 'SPIKERUSH', label: 'Spike Rush', hint: '' },
-    { value: 'SWIFTPLAY', label: 'Swift Play', hint: '' },
-    { value: 'DEATHMATCH', label: 'Deathmatch', hint: 'Warm-up & practice' },
-    { value: 'TEAMDEATHMATCH', label: 'Team Deathmatch', hint: 'HURM mode' },
-    { value: 'SHOOTING_RANGE', label: 'The Range', hint: 'Practice range' },
-  ]
+  const GAME_MODES_BY_GAME: Record<PrimaryGame, Array<{ value: string; label: string; hint: string }>> = {
+    valorant: [
+      { value: 'COMPETITIVE', label: 'Competitive', hint: 'Ranked' },
+      { value: 'PREMIER', label: 'Premier', hint: 'Team queue' },
+      { value: 'CLASSIC', label: 'Unrated', hint: 'Casual 5v5' },
+      { value: 'SPIKERUSH', label: 'Spike Rush', hint: '' },
+      { value: 'SWIFTPLAY', label: 'Swift Play', hint: '' },
+      { value: 'DEATHMATCH', label: 'Deathmatch', hint: 'Warm-up & practice' },
+      { value: 'TEAMDEATHMATCH', label: 'Team Deathmatch', hint: 'HURM mode' },
+      { value: 'SHOOTING_RANGE', label: 'The Range', hint: 'Practice range' },
+    ],
+    lol: [
+      { value: 'CLASSIC', label: "Summoner's Rift", hint: 'Ranked + normals (Live Client cannot split them)' },
+      { value: 'ARAM', label: 'ARAM', hint: 'Howling Abyss' },
+      { value: 'ARENA', label: 'Arena', hint: '2v2v2v2' },
+      { value: 'CUSTOM', label: 'Custom / Practice', hint: 'Custom games and practice tool' },
+    ],
+    cs2: [
+      { value: 'COMPETITIVE', label: 'Competitive', hint: 'Ranked' },
+      { value: 'PREMIER', label: 'Premier', hint: 'Team queue' },
+      { value: 'WINGMAN', label: 'Wingman', hint: '2v2' },
+      { value: 'CASUAL', label: 'Casual', hint: '' },
+      { value: 'DEATHMATCH', label: 'Deathmatch', hint: '' },
+    ],
+    deadlock: [
+      { value: 'COMPETITIVE', label: 'Ranked', hint: 'Standard matchmaking' },
+    ],
+  }
+
+  const GAME_MODES = computed(() => GAME_MODES_BY_GAME[settings.primaryGame] ?? GAME_MODES_BY_GAME.valorant)
+
+  const activeRecordedModes = computed(() => {
+    const byGame = settings.recordedModesByGame
+    const game = settings.primaryGame
+    if (byGame?.[game] && Array.isArray(byGame[game])) return byGame[game]
+    if (game === 'valorant') return settings.recordedModes
+    return [] as string[]
+  })
   
   const toggles: Array<{ key: keyof Pick<AppSettings, 'launchOnStartup' | 'autoDelete' | 'autoAnalyse' | 'notificationSound' | 'autoOpenBrowser' | 'discordRichPresence'>; label: string; hint: string | null }> = [
     { key: 'launchOnStartup', label: 'Launch on startup', hint: null },
@@ -796,11 +830,25 @@ function createSettings() {
   }
   
   function toggleMode(value: string): void {
-    const idx = settings.recordedModes.indexOf(value)
+    const game = settings.primaryGame
+    if (!settings.recordedModesByGame) {
+      settings.recordedModesByGame = {
+        valorant: [...settings.recordedModes],
+        lol: ['CLASSIC'],
+        cs2: ['COMPETITIVE', 'PREMIER'],
+        deadlock: ['COMPETITIVE'],
+      }
+    }
+    const list = settings.recordedModesByGame[game] ?? []
+    const idx = list.indexOf(value)
     if (idx === -1) {
-      settings.recordedModes.push(value)
+      list.push(value)
     } else {
-      settings.recordedModes.splice(idx, 1)
+      list.splice(idx, 1)
+    }
+    settings.recordedModesByGame[game] = list
+    if (game === 'valorant') {
+      settings.recordedModes = [...list]
     }
     debouncedSave()
   }
@@ -814,6 +862,28 @@ function createSettings() {
     }
     settings.recordingPreset = preset
     if (preset === 'coaching') {
+      settings.recordingQuality = '720p'
+      settings.recordingBitrate = 5
+      settings.recordingFps = 30
+    } else {
+      // Default Creator to 1080p; Pro can switch to 720p via setCreatorQuality
+      settings.recordingQuality = '1080p'
+      settings.recordingBitrate = 10
+      settings.recordingFps = 60
+    }
+    debouncedSave()
+  }
+
+  function setCreatorQuality(quality: '720p' | '1080p'): void {
+    if (!hasProAccess.value) {
+      showToast('Creator recording requires Pro — upgrade to unlock')
+      openUpgrade()
+      return
+    }
+    if (settings.recordingPreset !== 'creator') {
+      settings.recordingPreset = 'creator'
+    }
+    if (quality === '720p') {
       settings.recordingQuality = '720p'
       settings.recordingBitrate = 5
       settings.recordingFps = 30
@@ -1097,6 +1167,14 @@ function createSettings() {
       if (s.ffmpegOk !== undefined) ffmpegOk.value = s.ffmpegOk !== false
       if (s.recordingBackend) recordingBackend.value = s.recordingBackend
       Object.assign(settings, savedSettings)
+      if (!settings.recordedModesByGame) {
+        settings.recordedModesByGame = {
+          valorant: [...(settings.recordedModes ?? ['COMPETITIVE', 'PREMIER'])],
+          lol: ['CLASSIC'],
+          cs2: ['COMPETITIVE', 'PREMIER'],
+          deadlock: ['COMPETITIVE'],
+        }
+      }
       devModeActive.value = savedSettings.devModeEnabled ?? false
       // Use getStatus user as base
       if (s.user) user.value = { ...(s.user as UserWithUsage) }
@@ -1207,6 +1285,7 @@ function createSettings() {
     BADGE_PREVIEW_ITEMS,
     CRITICAL_FREE_DISK_BYTES,
     GAME_MODES,
+    activeRecordedModes,
     LOW_FREE_DISK_BYTES,
     PRIMARY_GAMES,
     SETTINGS_CATEGORIES,
@@ -1322,6 +1401,7 @@ function createSettings() {
     selectPrimaryGame,
     setInGameFeedback,
     setRecordingPreset,
+    setCreatorQuality,
     settings,
     showBillingError,
     showSaved,

@@ -472,6 +472,15 @@ const MODE_LABELS: Record<string, string> = {
   SNOWBALL: 'Snowball Fight',
   SHOOTING_RANGE: 'The Range',
   RANGEV2: 'The Range',
+  // League — CLASSIC is Summoner's Rift (ranked + normals share one Live Client mode)
+  ARAM: 'ARAM',
+  ARENA: 'Arena',
+  CUSTOM: 'Custom',
+  RANKED_SOLO: 'Ranked Solo/Duo',
+  RANKED_FLEX: 'Ranked Flex',
+  // CS2
+  WINGMAN: 'Wingman',
+  CASUAL: 'Casual',
 }
 
 const PLACEHOLDER_MODE_VALUES = new Set(['', 'null', 'undefined', 'unknown', 'none', 'n/a'])

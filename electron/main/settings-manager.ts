@@ -6,9 +6,14 @@ import {
   withOnboardingComplete,
 } from './onboarding-settings'
 import {
-  getRecordingPresetValues,
+  resolveRecordingOutput,
   type RecordingPresetId,
 } from './recording-preset'
+import {
+  defaultRecordedModesByGame,
+  migrateRecordedModesByGame,
+  type RecordedModesByGame,
+} from './recorded-modes-filter'
 
 export type PrimaryGame = 'valorant' | 'cs2' | 'deadlock' | 'lol'
 
@@ -43,8 +48,13 @@ export interface AppSettings {
   savePath: string
   launchOnStartup: boolean
   autoDelete: boolean // delete recording after successful upload
-  /** Game modes to record. Empty array means record nothing. */
+  /**
+   * Legacy Valorant-only mode list. Kept in sync with recordedModesByGame.valorant
+   * for older dashboard / IPC consumers.
+   */
   recordedModes: string[]
+  /** Per-game modes to record. Empty array for a game means record nothing for that game. */
+  recordedModesByGame: RecordedModesByGame
   autoAnalyse: boolean // automatically upload & analyse after game ends
   firstRun: boolean
   /** Set after welcome / onboarding wizard — avoids re-prompting on every launch */
@@ -159,16 +169,16 @@ function applyRecordingPresetFields(
   AppSettings,
   'recordingPreset' | 'recordingQuality' | 'recordingBitrate' | 'recordingFps'
 > {
-  let presetId: RecordingPresetId = settings.recordingPreset === 'creator' ? 'creator' : 'coaching'
-  if (presetId === 'creator' && !allowCreator) {
-    presetId = 'coaching'
-  }
-  const preset = getRecordingPresetValues(presetId)
+  const resolved = resolveRecordingOutput({
+    recordingPreset: settings.recordingPreset,
+    recordingQuality: settings.recordingQuality,
+    allowCreator,
+  })
   return {
-    recordingPreset: presetId,
-    recordingQuality: preset.quality,
-    recordingBitrate: preset.bitrate,
-    recordingFps: preset.fps,
+    recordingPreset: resolved.recordingPreset,
+    recordingQuality: resolved.quality,
+    recordingBitrate: resolved.bitrate,
+    recordingFps: resolved.fps,
   }
 }
 
@@ -180,6 +190,7 @@ const DEFAULTS: AppSettings = {
   launchOnStartup: false,
   autoDelete: true,
   recordedModes: ['COMPETITIVE', 'PREMIER'],
+  recordedModesByGame: defaultRecordedModesByGame(),
   autoAnalyse: true,
   firstRun: true,
   captureMonitor: 'auto',
@@ -276,6 +287,12 @@ export class SettingsManager {
       const merged = { ...DEFAULTS, ...parsed, obsEnabled: true }
       // Nested object — deep-merge so partial/legacy saves keep sensible defaults.
       merged.clipCapture = { ...DEFAULT_CLIP_CAPTURE, ...(parsed.clipCapture ?? {}) }
+      merged.recordedModesByGame = migrateRecordedModesByGame(
+        Array.isArray(parsed.recordedModes) ? parsed.recordedModes : merged.recordedModes,
+        parsed.recordedModesByGame,
+      )
+      // Keep legacy flat field aligned with Valorant for older UI/IPC.
+      merged.recordedModes = [...merged.recordedModesByGame.valorant]
       if (!String(merged.savePath ?? '').trim()) {
         merged.savePath = DEFAULTS.savePath
       }
@@ -292,10 +309,32 @@ export class SettingsManager {
   save(partial: Partial<AppSettings>, opts?: { allowCreator?: boolean }): AppSettings {
     const allowCreator = opts?.allowCreator ?? true
     const normalizedPartial = withOnboardingComplete(partial)
+    const prevByGame = this.settings.recordedModesByGame
     this.settings = {
       ...this.settings,
       ...normalizedPartial,
       ...applyRecordingPresetFields({ ...this.settings, ...normalizedPartial }, allowCreator),
+    }
+    // Deep-merge per-game modes when a partial map is saved.
+    if (normalizedPartial.recordedModesByGame) {
+      this.settings.recordedModesByGame = {
+        ...prevByGame,
+        ...normalizedPartial.recordedModesByGame,
+      }
+    } else if (!this.settings.recordedModesByGame) {
+      this.settings.recordedModesByGame = defaultRecordedModesByGame()
+    }
+    // Keep Valorant legacy list in sync either direction.
+    if (normalizedPartial.recordedModesByGame?.valorant) {
+      this.settings.recordedModes = [...normalizedPartial.recordedModesByGame.valorant]
+    } else if (Array.isArray(normalizedPartial.recordedModes)) {
+      this.settings.recordedModesByGame = {
+        ...this.settings.recordedModesByGame,
+        valorant: [...normalizedPartial.recordedModes],
+      }
+      this.settings.recordedModes = [...normalizedPartial.recordedModes]
+    } else {
+      this.settings.recordedModes = [...(this.settings.recordedModesByGame?.valorant ?? this.settings.recordedModes)]
     }
     if (!String(this.settings.savePath ?? '').trim()) {
       this.settings.savePath = DEFAULTS.savePath

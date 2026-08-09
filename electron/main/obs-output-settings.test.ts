@@ -68,4 +68,33 @@ describe('applyObsRecordingSettings replay configuration', () => {
     expect(result.errors).toContain('advanced_output')
     expect(result.outputMode).toBe('Advanced')
   })
+
+  it('pushes 1080p canvas when manageObsVideo is true', async () => {
+    const call = vi.fn(async (name: string, args?: Record<string, unknown>) => {
+      if (name === 'GetProfileParameter') {
+        if (args?.parameterName === 'Mode') return { parameterValue: 'Simple' }
+        return { parameterValue: null }
+      }
+      if (name === 'GetVideoSettings') return { outputWidth: 1920, outputHeight: 1080 }
+      return {}
+    })
+
+    await applyObsRecordingSettings({ call } as never, {
+      quality: '1080p',
+      bitrate: 10,
+      fps: 60,
+      manageObsVideo: true,
+      audioEnabled: true,
+      savePath: '/recordings',
+      captureMonitor: 'auto',
+      clipsOnly: false,
+    })
+
+    expect(call.mock.calls.some(([name, args]) =>
+      name === 'SetVideoSettings'
+      && args?.baseWidth === 1920
+      && args?.baseHeight === 1080
+      && args?.fpsNumerator === 60,
+    )).toBe(true)
+  })
 })

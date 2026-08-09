@@ -52,10 +52,10 @@ describe('resolveGameMode', () => {
 
   it('uses the timeline mode then per-game default for other games', () => {
     expect(resolveGameMode('lol', { timelineMode: 'ARAM' })).toBe('ARAM')
-    expect(resolveGameMode('lol', {})).toBe('RANKED_SOLO')
+    expect(resolveGameMode('lol', {})).toBe('CLASSIC')
     expect(resolveGameMode('cs2', {})).toBe('COMPETITIVE')
     // A stray Valorant live mode must never leak onto a LoL recording.
-    expect(resolveGameMode('lol', { valorantLiveMode: 'SWIFTPLAY' })).toBe('RANKED_SOLO')
+    expect(resolveGameMode('lol', { valorantLiveMode: 'SWIFTPLAY' })).toBe('CLASSIC')
   })
 })
 

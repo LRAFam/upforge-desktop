@@ -22,6 +22,7 @@ import { trackOnboardingComplete, trackReportOpened } from '../funnel-events'
 import { applyLayoutForRoute } from '../window-layouts'
 import { isInGameOverlayEnabled } from '../in-game-overlay'
 import { closeWebShell, openWebShell } from '../web-shell'
+import { getRecordedModesForGame } from '../recorded-modes-filter'
 
 export function setupAppHandlers(
   ipcMain: IpcMain,
@@ -60,7 +61,11 @@ export function setupAppHandlers(
       firstRun: settings.firstRun,
       ffmpegOk: getFFmpegOk ? getFFmpegOk() : true,
       obsConnected: getObsConnected ? getObsConnected() : false,
-      recordedModes: settings.recordedModes,
+      recordedModes: getRecordedModesForGame(
+        settings.recordedModesByGame,
+        settings.primaryGame ?? 'valorant',
+        settings.recordedModes,
+      ),
       recordingBackend: getRecordingBackend ? getRecordingBackend() : 'obs',
       currentQueueMode: recording && getCurrentQueueMode ? getCurrentQueueMode() : null,
       inGameOverlayEnabled: isInGameOverlayEnabled(),

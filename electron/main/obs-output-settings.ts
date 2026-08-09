@@ -11,7 +11,7 @@ import type OBSWebSocket from 'obs-websocket-js'
 import { applyCrashSafeObsRecFormat } from './obs-rec-format'
 import type { RecorderConfig } from './recorder'
 import type { AppSettings } from './settings-manager'
-import { getRecordingPresetValues } from './recording-preset'
+import { resolveRecordingOutput } from './recording-preset'
 import { resolveRecordingSavePath } from './user-data-paths'
 import { fitUpForgeCaptureToCanvas } from './obs-setup'
 
@@ -20,9 +20,11 @@ export function buildRecorderConfig(
   allowCreator = true,
   userId: number | null = null,
 ): RecorderConfig {
-  const preset = getRecordingPresetValues(
-    settings.recordingPreset === 'creator' && allowCreator ? 'creator' : 'coaching',
-  )
+  const preset = resolveRecordingOutput({
+    recordingPreset: settings.recordingPreset,
+    recordingQuality: settings.recordingQuality,
+    allowCreator,
+  })
   return {
     quality: preset.quality,
     bitrate: preset.bitrate,

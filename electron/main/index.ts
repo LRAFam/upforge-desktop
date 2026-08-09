@@ -94,7 +94,7 @@ import {
   recomputeTimelineVideoOffsets,
 } from './riot-local-api'
 import { decideRiotAccountSwitch } from './riot-account-switch'
-import { isValorantModeFilteredOut, VALORANT_RECORDABLE_MODES } from './recorded-modes-filter'
+import { isModeFilteredOut, getRecordedModesForGame, recordableModesForGame, normalizeCs2GameMode } from './recorded-modes-filter'
 import { applyLiveKillStampsToTimeline } from './live-kill-stamps'
 import { withTimeout } from './promise-timeout'
 import { LoLLiveClientApi } from './lol-live-client-api'
@@ -259,6 +259,7 @@ import {
   isGsiMatchEnded,
   hasEverReceivedGsi,
   getLatestGsiMap,
+  getLatestGsiPayload,
   STEAM_GSI_PORT,
 } from './steam-gsi-server'
 import {
@@ -3659,8 +3660,12 @@ function setupGameDetection(): void {
 
     const config = settingsManager?.get()
 
-    const recordedModesEarly = config?.recordedModes
-    if (game === 'valorant' && Array.isArray(recordedModesEarly) && recordedModesEarly.length === 0) {
+    const recordedModesEarly = getRecordedModesForGame(
+      config?.recordedModesByGame,
+      game,
+      config?.recordedModes,
+    )
+    if (Array.isArray(recordedModesEarly) && recordedModesEarly.length === 0) {
       logActivity('No game modes selected — recording disabled')
       notifyRecordingUx('Select at least one game mode in Settings → Recording to record matches.')
       tray?.setToolTip(idleTooltip(game))
@@ -3739,10 +3744,15 @@ function setupGameDetection(): void {
     cancelMatchWait = () => { cancelled = true }
     waitingForMatch = true
 
-    const recordedModes = config?.recordedModes ?? ['COMPETITIVE', 'PREMIER']
+    const recordedModes = getRecordedModesForGame(
+      config?.recordedModesByGame,
+      game,
+      config?.recordedModes,
+    )
+    const allRecordableModes = recordableModesForGame(game)
     // Empty list = record nothing (dashboard/settings copy). Non-empty partial list = filter.
-    const filterByMode = game === 'valorant' && recordedModes.length > 0 &&
-      !VALORANT_RECORDABLE_MODES.every(m => recordedModes.includes(m))
+    const filterByMode = recordedModes.length > 0 &&
+      !allRecordableModes.every(m => recordedModes.includes(m))
 
     // CS2 — GSI live match (process open ≠ in a match).
     // Deadlock — Steam httpcache match signals; no Valve GSI.
@@ -3820,7 +3830,7 @@ function setupGameDetection(): void {
           matchStartTime = Date.now()
           currentMatchStartTime = matchStartTime
           currentGsiMapName = getLatestGsiMap()
-          gameMode = 'COMPETITIVE'
+          gameMode = normalizeCs2GameMode(getLatestGsiPayload()?.map?.mode) ?? 'COMPETITIVE'
           modeConfident = true
           break
         }
@@ -3940,7 +3950,7 @@ function setupGameDetection(): void {
         if (probe?.inMatch) {
           matchStartTime = Date.now()
           currentMatchStartTime = matchStartTime
-          gameMode = probe.gameMode ?? 'RANKED_SOLO'
+          gameMode = probe.gameMode ?? 'CLASSIC'
           modeConfident = true
           currentGsiMapName = probe.mapName
           break
@@ -4246,7 +4256,7 @@ function setupGameDetection(): void {
       }
     }
 
-    if (game === 'valorant' && filterByMode && !modeConfident) {
+    if (filterByMode && !modeConfident) {
       console.log('[GameDetector] Skipping recording — queue mode unknown')
       logActivity('Queue mode unknown — recording skipped (select all modes or wait for queue)')
       notifyRecordingUx(
@@ -4257,7 +4267,7 @@ function setupGameDetection(): void {
       return
     }
 
-    if (game === 'valorant' && isValorantModeFilteredOut(recordedModes, gameMode)) {
+    if (isModeFilteredOut(recordedModes, gameMode, allRecordableModes)) {
       console.log(`[GameDetector] Skipping recording — mode is ${gameMode} (recordedModes=${recordedModes.join(',')})`)
       logActivity(`Mode ${gameMode} not in recorded modes (${recordedModes.join(', ')}) — skipped`)
       notifyRecordingUx(

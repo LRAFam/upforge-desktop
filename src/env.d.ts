@@ -119,8 +119,18 @@ export interface AppSettings {
   effectiveSavePath?: string
   launchOnStartup: boolean
   autoDelete: boolean
-  /** Game modes to record. Empty array means record all. */
+  /**
+   * Legacy Valorant mode list (synced with recordedModesByGame.valorant).
+   * Empty array means record nothing for Valorant.
+   */
   recordedModes: string[]
+  /** Per-game modes to record. Empty array for a game means record nothing for that game. */
+  recordedModesByGame: {
+    valorant: string[]
+    lol: string[]
+    cs2: string[]
+    deadlock: string[]
+  }
   autoAnalyse: boolean
   firstRun: boolean
   /** Which monitor to capture. 'auto' detects from game window; numbers are 0-based display index. */

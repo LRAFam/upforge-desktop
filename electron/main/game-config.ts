@@ -69,7 +69,7 @@ export const GAME_CONFIG: Record<GameId, GameConfig> = {
   lol: {
     id: 'lol',
     label: 'League of Legends',
-    defaultGameMode: 'RANKED_SOLO',
+    defaultGameMode: 'CLASSIC',
     supportsRounds: false,
     // Vanguard blocks the game-capture hook — WGC window capture avoids a black VOD.
     obsCapture: { useWindowCapture: true, windowCaptureMethod: 2 },

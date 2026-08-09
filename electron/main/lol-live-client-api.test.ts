@@ -55,12 +55,16 @@ const SAMPLE_SNAPSHOT: LolAllGameData = {
 }
 
 describe('normalizeLolGameMode', () => {
-  it('maps CLASSIC to ranked solo label', () => {
-    expect(normalizeLolGameMode('CLASSIC')).toBe('RANKED_SOLO')
+  it('keeps CLASSIC as Summoner\'s Rift (ranked + normals share one Live Client mode)', () => {
+    expect(normalizeLolGameMode('CLASSIC')).toBe('CLASSIC')
   })
 
   it('passes through ARAM', () => {
     expect(normalizeLolGameMode('ARAM')).toBe('ARAM')
+  })
+
+  it('maps Cherry / Arena to ARENA', () => {
+    expect(normalizeLolGameMode('CHERRY')).toBe('ARENA')
   })
 })
 

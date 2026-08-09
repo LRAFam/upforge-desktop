@@ -13,6 +13,7 @@ const router = useRouter()
 
 const {
   GAME_MODES,
+  activeRecordedModes,
   browseCs2DemoDir,
   changeSavePath,
   cs2Detecting,
@@ -21,7 +22,6 @@ const {
   diskSpaceCritical,
   diskSpaceLow,
   formatBytes,
-  formatGameMode,
   hasProAccess,
   highlightSection,
   obsStatus,
@@ -30,6 +30,7 @@ const {
   purgeCloudBackedLocals,
   purgeUntrackedRecordings,
   setRecordingPreset,
+  setCreatorQuality,
   settings,
   storageBreakdown,
   storageBusy,
@@ -46,6 +47,13 @@ const {
   toggleMode,
   uploadPendingToCloud,
 } = useSettings()
+
+const modeHint = computed(() => {
+  if (settings.primaryGame === 'lol') {
+    return "Only selected modes are recorded. Summoner's Rift covers ranked and normals (Live Client cannot split them)."
+  }
+  return 'Only selected modes are recorded. If none are selected, nothing is recorded.'
+})
 
 const clipCaptureOptions = [
   { key: 'singleKills', label: 'Single kills', hint: 'Routine 1-kill highlights from each round' },
@@ -94,7 +102,7 @@ const statusItems = computed<StatusItem[]>(() => {
       hint="Recording mode, quality, and format"
       :highlight-id="highlightSection"
     >
-      <div v-if="settings.primaryGame === 'valorant'">
+      <div>
         <label class="mb-2 block text-xs font-medium text-gray-400">Record game modes</label>
         <div class="grid grid-cols-2 gap-2">
           <button
@@ -102,28 +110,28 @@ const statusItems = computed<StatusItem[]>(() => {
             :key="mode.value"
             type="button"
             class="rounded-xl border px-3 py-2 text-left transition-all"
-            :class="settings.recordedModes.includes(mode.value)
+            :class="activeRecordedModes.includes(mode.value)
               ? 'border-red-500/25 bg-red-500/10 text-gray-100'
               : 'border-white/[0.10] bg-white/[0.02] text-gray-500 hover:border-white/[0.12] hover:text-gray-300'"
             @click="toggleMode(mode.value)"
           >
             <div class="flex items-center gap-2">
-              <div class="flex h-4 w-4 items-center justify-center rounded border" :class="settings.recordedModes.includes(mode.value) ? 'border-red-500 bg-red-500 text-white' : 'border-white/[0.18] bg-transparent text-transparent'">
+              <div class="flex h-4 w-4 items-center justify-center rounded border" :class="activeRecordedModes.includes(mode.value) ? 'border-red-500 bg-red-500 text-white' : 'border-white/[0.18] bg-transparent text-transparent'">
                 <svg class="h-2.5 w-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7" />
                 </svg>
               </div>
               <div class="min-w-0">
-                <p class="truncate text-xs font-semibold">{{ formatGameMode(mode.value) }}</p>
+                <p class="truncate text-xs font-semibold">{{ mode.label }}</p>
                 <p v-if="mode.hint" class="mt-0.5 text-[11px] text-gray-600">{{ mode.hint }}</p>
               </div>
             </div>
           </button>
         </div>
-        <p class="mt-2 text-xs text-gray-600">Only selected modes are recorded. If none are selected, nothing is recorded.</p>
+        <p class="mt-2 text-xs text-gray-600">{{ modeHint }}</p>
       </div>
 
-      <div v-else-if="settings.primaryGame === 'cs2'" class="rounded-2xl border border-orange-500/20 bg-orange-500/[0.05] p-4 space-y-3">
+      <div v-if="settings.primaryGame === 'cs2'" class="rounded-2xl border border-orange-500/20 bg-orange-500/[0.05] p-4 space-y-3">
         <div>
           <p class="text-sm font-semibold text-white">CS2 demo recording</p>
           <p class="mt-1 text-xs text-gray-500 leading-relaxed">UpForge auto-installs demo recording when CS2 launches. Restart CS2 once after first setup. Highlight clips (3K/ace/clutch) are cut from your VOD using the demo.</p>
@@ -162,10 +170,6 @@ const statusItems = computed<StatusItem[]>(() => {
         <SettingsDeadlockDiagnostics />
       </div>
 
-      <div v-else class="rounded-2xl border border-white/[0.10] bg-black/20 p-4">
-        <p class="text-xs text-gray-500 leading-relaxed">Recording starts when your game is detected. Queue filters apply to Valorant only.</p>
-      </div>
-
       <div class="space-y-3 border-t border-white/[0.06] pt-4">
         <div>
           <p class="text-sm font-semibold text-white">Recording format</p>
@@ -196,11 +200,42 @@ const statusItems = computed<StatusItem[]>(() => {
               <p class="text-xs font-semibold text-gray-100">Creator</p>
               <span v-if="!hasProAccess" class="text-[10px] font-semibold uppercase tracking-wide text-gray-500">Pro</span>
             </div>
-            <p class="mt-1 text-[11px] font-medium text-gray-300">1080p · 10 Mbps · 60 fps</p>
+            <p class="mt-1 text-[11px] font-medium text-gray-300">
+              {{ settings.recordingPreset === 'creator' && settings.recordingQuality === '720p'
+                ? '720p · 5 Mbps · 30 fps'
+                : '1080p · 10 Mbps · 60 fps' }}
+            </p>
             <p class="mt-1.5 text-[11px] text-gray-600">
-              <template v-if="hasProAccess">Higher quality for streaming/content (~3 GB / match). Uses your OBS video settings.</template>
+              <template v-if="hasProAccess">Higher quality local VODs. Resolution syncs to OBS.</template>
               <template v-else>Pro feature. Higher quality for streaming and content creation.</template>
             </p>
+          </button>
+        </div>
+        <div
+          v-if="hasProAccess && settings.recordingPreset === 'creator'"
+          class="grid grid-cols-2 gap-2"
+        >
+          <button
+            type="button"
+            class="rounded-lg border px-3 py-2 text-left transition-colors"
+            :class="settings.recordingQuality === '720p'
+              ? 'border-white/[0.20] bg-white/[0.06]'
+              : 'border-white/[0.08] bg-transparent hover:border-white/[0.12]'"
+            @click="setCreatorQuality('720p')"
+          >
+            <p class="text-xs font-semibold text-gray-100">720p</p>
+            <p class="mt-0.5 text-[11px] text-gray-500">5 Mbps · 30 fps</p>
+          </button>
+          <button
+            type="button"
+            class="rounded-lg border px-3 py-2 text-left transition-colors"
+            :class="settings.recordingQuality !== '720p'
+              ? 'border-white/[0.20] bg-white/[0.06]'
+              : 'border-white/[0.08] bg-transparent hover:border-white/[0.12]'"
+            @click="setCreatorQuality('1080p')"
+          >
+            <p class="text-xs font-semibold text-gray-100">1080p</p>
+            <p class="mt-0.5 text-[11px] text-gray-500">10 Mbps · 60 fps · ~3 GB / match</p>
           </button>
         </div>
         <p v-if="settings.recordingPreset === 'creator'" class="text-[11px] text-gray-600">

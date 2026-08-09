@@ -136,9 +136,13 @@ function findLocalPlayer(data: LolAllGameData): LolLivePlayer | null {
 export function normalizeLolGameMode(raw: string | null | undefined): string | null {
   if (!raw) return null
   const upper = raw.toUpperCase()
-  if (upper.includes('TFT') || upper.includes('ARAM')) return upper
-  // Live client reports CLASSIC for Summoner's Rift — desktop V1 targets ranked solo.
-  if (upper === 'CLASSIC') return 'RANKED_SOLO'
+  if (upper.includes('TFT')) return upper
+  if (upper.includes('ARAM')) return 'ARAM'
+  // Arena (Cherry) — keep a stable filter key for settings.
+  if (upper === 'CHERRY' || upper.includes('ARENA')) return 'ARENA'
+  if (upper === 'PRACTICETOOL' || upper === 'TUTORIAL') return 'CUSTOM'
+  // CLASSIC is all Summoner's Rift queues (ranked + normals). Live Client has no queue id.
+  if (upper === 'CLASSIC') return 'CLASSIC'
   return upper
 }
 
@@ -306,7 +310,7 @@ export function buildMatchDataFromLolSnapshot(
     matchId: gameData?.gameId != null ? String(gameData.gameId) : null,
     puuid: null,
     region: null,
-    queueId: '420',
+    queueId: null,
     map: resolveLolMapLabel(gameData?.mapName),
     agent: local?.championName ?? null,
     gameMode: normalizeLolGameMode(gameData?.gameMode),

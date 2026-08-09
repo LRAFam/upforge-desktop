@@ -537,7 +537,12 @@ function createDashboard() {
     return first ? streak : -streak
   })
 
-  const formatMode = formatGameMode
+  const formatMode = (mode: string | null | undefined): string => {
+    if (primaryGame.value === 'lol' && String(mode ?? '').toUpperCase() === 'CLASSIC') {
+      return "Summoner's Rift"
+    }
+    return formatGameMode(mode)
+  }
 
   let pollInterval: ReturnType<typeof setInterval>
   let durationInterval: ReturnType<typeof setInterval>
