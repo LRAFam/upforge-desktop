@@ -558,6 +558,16 @@ export class RecordingsStore {
     return true
   }
 
+  /** Drop the local file path after deleting cloud-backed locals; keep the catalog row. */
+  clearLocalPath(id: string): boolean {
+    const rec = this.recordings.find(r => r.id === id)
+    if (!rec) return false
+    rec.path = ''
+    delete rec.fileSizeBytes
+    this.persist()
+    return true
+  }
+
   private dedupeSiblingRecordings(all: PendingRecording[]): PendingRecording[] {
     const groups = new Map<string, PendingRecording[]>()
     for (const recording of all) {
