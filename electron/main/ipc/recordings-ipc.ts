@@ -17,7 +17,7 @@ import type { RecordingsStore } from '../recordings-store'
 import type { ClipExtractor } from '../clip-extractor'
 import type { MatchData } from '../riot-types'
 import { deleteLocalRecordingFiles } from '../vod-compressor'
-import { isLocalOnlyRecording } from '../storage-cleanup'
+import { applyRecordingDismiss } from '../recording-dismiss'
 import { applyVodTrimToTimeline, swapMediaFileInPlace, trimmedOutputPath } from '../vod-trimmer'
 import {
   recomputeTimelineVideoOffsets,
@@ -80,32 +80,40 @@ export function setupRecordingsHandlers(ipcMain: IpcMain, deps: RecordingsIpcDep
     return abortInFlightAnalysisForRecording(id)
   })
 
-  ipcMain.handle('recordings:dismiss', (_e, { id, deleteLocal = true }: { id: string; deleteLocal?: boolean }) => {
-    const recording = recordingsStore.getById(id)
-    if (
-      recording
-      && (recording.pipelineStatus === 'uploading' || recording.pipelineStatus === 'analysing'
-        || (recording.analysed && recording.analysisId == null && !recording.lastAnalysisError))
-    ) {
-      abortInFlightAnalysisForRecording(id)
-    }
-    const wasLocalOnly = !!(
-      recording
-      && deleteLocal
-      && !recording.clipsOnly
-      && recording.path
-      && isLocalOnlyRecording(recording)
-    )
-    if (wasLocalOnly) {
-      const freed = deleteLocalRecordingFiles(recording!.path)
-      if (freed > 0) {
-        log.info(`[Recordings] Dismiss removed local file (${freed} bytes): ${recording!.path}`)
+  ipcMain.handle(
+    'recordings:dismiss',
+    (
+      _e,
+      {
+        id,
+        deleteLocal = true,
+        mode = 'remove',
+      }: { id: string; deleteLocal?: boolean; mode?: 'remove' | 'localOnly' },
+    ) => {
+      const recording = recordingsStore.getById(id)
+      if (
+        recording
+        && (recording.pipelineStatus === 'uploading' || recording.pipelineStatus === 'analysing'
+          || (recording.analysed && recording.analysisId == null && !recording.lastAnalysisError))
+      ) {
+        abortInFlightAnalysisForRecording(id)
       }
-    }
-    recordingsStore.remove(id)
-    getMainWindow()?.webContents.send('recordings:updated')
-    return { ok: true as const, deletedLocal: wasLocalOnly }
-  })
+
+      const result = applyRecordingDismiss(recordingsStore, id, {
+        mode,
+        deleteLocalFiles: deleteLocal,
+        deleteFiles: (filePath) => deleteLocalRecordingFiles(filePath),
+      })
+
+      if (result.ok) {
+        if (result.freedBytes > 0) {
+          log.info(`[Recordings] Dismiss freed ${result.freedBytes} bytes (mode=${mode}) id=${id}`)
+        }
+        getMainWindow()?.webContents.send('recordings:updated')
+      }
+      return result
+    },
+  )
 
   ipcMain.handle('analyses:remove', async (_e, { analysisId, jobId }: { analysisId: number; jobId?: string | null }) => {
     // A completed analysis may still have its source VOD on disk (auto-delete off, or kept after upload).

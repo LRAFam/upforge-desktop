@@ -675,7 +675,16 @@ declare global {
           analysisReadiness: PendingRecording['analysisReadiness'] | null
         }>
         saveToCloud: (id: string) => Promise<SaveToCloudResult>
-        dismiss: (id: string, opts?: { deleteLocal?: boolean }) => Promise<{ ok: boolean; deletedLocal?: boolean }>
+        dismiss: (
+          id: string,
+          opts?: { deleteLocal?: boolean; mode?: 'remove' | 'localOnly' },
+        ) => Promise<{
+          ok: boolean
+          deletedLocal?: boolean
+          freedBytes?: number
+          removedFromLibrary?: boolean
+          error?: string
+        }>
         abortInFlight: (id: string) => Promise<{ ok: boolean; error?: string }>
         getTimeline: (id: string) => Promise<RecordingTimeline | null>
         refreshPlayback: (id: string) => Promise<string | null>

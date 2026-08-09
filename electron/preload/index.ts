@@ -85,8 +85,12 @@ const api = {
     retryMatchStats: (id: string) => ipcRenderer.invoke('recordings:retry-match-stats', { id }),
     saveToCloud: (id: string) =>
       ipcRenderer.invoke('recordings:save-to-cloud', { id }) as Promise<import('../../src/env').SaveToCloudResult>,
-    dismiss: (id: string, opts?: { deleteLocal?: boolean }) =>
-      ipcRenderer.invoke('recordings:dismiss', { id, deleteLocal: opts?.deleteLocal }),
+    dismiss: (id: string, opts?: { deleteLocal?: boolean; mode?: 'remove' | 'localOnly' }) =>
+      ipcRenderer.invoke('recordings:dismiss', {
+        id,
+        deleteLocal: opts?.deleteLocal,
+        mode: opts?.mode,
+      }),
     abortInFlight: (id: string) => ipcRenderer.invoke('recordings:abort-in-flight', { id }),
     getTimeline: (id: string) => ipcRenderer.invoke('recordings:get-timeline', { id }),
     refreshPlayback: (id: string) => ipcRenderer.invoke('recordings:refresh-playback', { id }),
