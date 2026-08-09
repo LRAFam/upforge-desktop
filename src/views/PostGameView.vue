@@ -221,7 +221,7 @@
             v-else-if="gameInfo.game === 'deadlock'"
             class="text-[10px] text-gray-500 leading-relaxed"
           >
-            Building coaching from your match timeline — attach a demo for richer kill windows and highlight clips.
+            Waiting for the Deadlock replay — Analyse unlocks when match stats are linked.
           </p>
         </div>
 

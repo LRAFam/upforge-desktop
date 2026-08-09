@@ -217,7 +217,7 @@ function toggleDemoMatches() {
         </div>
         <p class="text-[11px] text-gray-500 mt-1 leading-snug max-w-xl">
           Matches waiting on your desk.
-          <span class="text-gray-400">Watch the recording anytime</span> — attach a demo for kill timeline and clips.
+          <span class="text-gray-400">Watch the recording anytime</span>. Attach a demo to unlock Analyse.
         </p>
       </div>
       <span class="text-[10px] text-gray-500 flex-shrink-0 pt-0.5">{{ rows.length }} pending</span>

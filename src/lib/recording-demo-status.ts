@@ -30,7 +30,7 @@ export function usesAsyncDemoSync(game: string | null | undefined): boolean {
   return game === 'cs2' || game === 'deadlock'
 }
 
-/** CS2 / Deadlock recording without demo attached — optional attach for timeline/clips. */
+/** CS2 / Deadlock recording without demo attached — Analyse stays locked until linked. */
 export function recordingDemoPending(rec: Pick<PendingRecording, 'game' | 'timeline'>): boolean {
   if (!usesAsyncDemoSync(rec.game)) return false
   return !recordingTimelineReady(rec.timeline)
@@ -76,18 +76,18 @@ export function timelineBlockedShortLabel(game: string | null | undefined): stri
 
 /** One-line explainer for compact UI (cards, post-game). */
 export function demoSyncExplainerShort(game: string | null | undefined): string {
-  if (game === 'cs2') return 'Attach a GOTV .dem when ready for kills and highlight clips.'
-  if (game === 'deadlock') return 'Attach a replay .dem when ready for stats and highlight clips.'
+  if (game === 'cs2') return 'Attach a GOTV .dem to unlock Analyse (kills + highlight clips).'
+  if (game === 'deadlock') return 'Attach a replay .dem to unlock Analyse (stats + highlight clips).'
   return ''
 }
 
 /** Longer explainer for side panels and help text. */
 export function demoSyncExplainer(game: string | null | undefined): string {
   if (game === 'cs2') {
-    return 'Download the GOTV demo in CS2 (Watch → Your Matches), then attach the .dem file for kill timeline and auto-clips.'
+    return 'Download the GOTV demo in CS2 (Watch → Your Matches), then attach the .dem file. Analyse stays locked until the demo is linked.'
   }
   if (game === 'deadlock') {
-    return 'Download the replay from Deadlock match history, then attach the .dem file for stats and auto-clips.'
+    return 'Download the replay from Deadlock match history, then attach the .dem file. Analyse stays locked until the replay is linked.'
   }
   return ''
 }

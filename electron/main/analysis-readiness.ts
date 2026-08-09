@@ -1,8 +1,15 @@
 /**
- * Whether a pending recording can be analysed (VOD integrity + Riot stats + duel moments).
+ * Whether a pending recording can be analysed (VOD integrity + match stats + duel moments).
+ * CS2 / Deadlock require rich Valve demo/replay stats before Analyse unlocks.
  */
 import fs from 'fs'
-import { hasRichMatchData, cs2PlayerIdentityMismatch, demoSyncMaxMsForGame } from './match-data-quality'
+import {
+  hasRichMatchData,
+  cs2PlayerIdentityMismatch,
+  cs2DemoSyncMessage,
+  deadlockDemoSyncMessage,
+  demoSyncMaxMsForGame,
+} from './match-data-quality'
 import { duelMomentsForUpload } from './moment-picker'
 import { MIN_RECORDING_FILE_BYTES } from './recording-limits'
 import type { PendingRecording } from './recordings-store'
@@ -271,7 +278,7 @@ export function getAnalysisReadiness(rec: ReadinessRecording): AnalysisReadiness
     }
   }
 
-  if (rec.game !== 'valorant') {
+  if (rec.game === 'cs2' || rec.game === 'deadlock') {
     if (hasRichMatchData(rec.timeline)) {
       const duelMomentCount = duelMomentsForUpload(rec.timeline ?? null).length
       if (rec.game === 'cs2' && cs2PlayerIdentityMismatch(rec.timeline)) {
@@ -284,13 +291,35 @@ export function getAnalysisReadiness(rec: ReadinessRecording): AnalysisReadiness
       }
       return { ready: true, state: 'ready', message: '', duelMomentCount }
     }
-    const hint = rec.game === 'cs2' || rec.game === 'deadlock'
-      ? 'VOD ready — attach a demo for kill timeline and highlight clips'
-      : 'Match replay not linked'
+    if (withinSyncWindow) {
+      return {
+        ready: false,
+        state: 'syncing',
+        message: rec.game === 'deadlock'
+          ? deadlockDemoSyncMessage(ageMs)
+          : cs2DemoSyncMessage(ageMs),
+        duelMomentCount: 0,
+      }
+    }
     return {
-      ready: true,
-      state: 'ready',
-      message: hint,
+      ready: false,
+      state: 'waiting_match_data',
+      message: rec.game === 'deadlock'
+        ? 'Attach the Deadlock replay (.dem) to unlock Analyse. Coaching needs match stats from the replay.'
+        : 'Attach the CS2 GOTV demo (.dem) to unlock Analyse. Coaching needs kill timeline from the demo.',
+      duelMomentCount: 0,
+    }
+  }
+
+  if (rec.game !== 'valorant') {
+    // Other non-Valorant games (if any): require rich match data before Analyse.
+    if (hasRichMatchData(rec.timeline)) {
+      return { ready: true, state: 'ready', message: '', duelMomentCount: 0 }
+    }
+    return {
+      ready: false,
+      state: 'unavailable',
+      message: 'Match replay not linked. Analyse stays locked until match stats are available',
       duelMomentCount: 0,
     }
   }

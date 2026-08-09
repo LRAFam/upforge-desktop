@@ -88,7 +88,7 @@ export function cs2DemoSyncPollIntervalMs(elapsedMs: number, recordingActive = f
 }
 
 export function demoSyncMaxMsForGame(game: string | null | undefined): number {
-  if (game === 'cs2') return CS2_DEMO_SYNC_MAX_MS
+  if (game === 'cs2' || game === 'deadlock') return CS2_DEMO_SYNC_MAX_MS
   return MATCH_DETAILS_ENRICH_MAX_MS
 }
 
@@ -121,20 +121,35 @@ export function shouldDeferPostGameForDemoSync(
 
 export function demoAttachHint(game: string | null | undefined): string {
   if (game === 'cs2') {
-    return 'Download the GOTV demo in CS2 (Watch → Your Matches), then attach the .dem file here for kills and clips.'
+    return 'Download the GOTV demo in CS2 (Watch → Your Matches), then attach the .dem file. Analyse stays locked until the demo is linked.'
   }
   if (game === 'deadlock') {
-    return 'Download the replay in Deadlock match history, then attach the .dem file here for stats and clips.'
+    return 'Download the replay in Deadlock match history, then attach the .dem file. Analyse stays locked until the replay is linked.'
   }
   return ''
 }
 
+/** Deadlock Valve replay wait copy (same timing band as CS2 GOTV). */
+export function deadlockDemoSyncMessage(elapsedMs: number): string {
+  const elapsedMin = Math.max(0, Math.floor(elapsedMs / 60_000))
+  if (elapsedMin < 5) {
+    return `Waiting for Deadlock replay (${elapsedMin}m). Usually a few minutes after the match`
+  }
+  if (elapsedMin < 15) {
+    return `Still waiting for Deadlock replay (${elapsedMin}m). Keep Steam open, or attach the .dem`
+  }
+  if (elapsedMin < 30) {
+    return `Still waiting for Deadlock replay (${elapsedMin}m). Attach the .dem from match history if needed`
+  }
+  return `Deadlock replay not linked (${elapsedMin}m). Attach the .dem to unlock Analyse`
+}
+
 export function cs2RecordingSavedDashboardMessage(map: string | null | undefined): string {
   const mapLabel = map ? ` on ${map}` : ''
-  return `CS2 recording saved${mapLabel}. Attach a demo when ready for kill timeline and highlight clips.`
+  return `CS2 recording saved${mapLabel}. Analyse unlocks when the demo is linked.`
 }
 
 export function deadlockRecordingSavedDashboardMessage(map: string | null | undefined): string {
   const mapLabel = map ? ` on ${map}` : ''
-  return `Deadlock recording saved${mapLabel}. Attach a replay when ready for stats and highlight clips.`
+  return `Deadlock recording saved${mapLabel}. Analyse unlocks when the replay is linked.`
 }
