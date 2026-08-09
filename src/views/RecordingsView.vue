@@ -216,9 +216,16 @@ function toggleSelected(id: string) {
   selectedIds.value = next
 }
 
+function isRecordingInFlight(rec: PendingRecording): boolean {
+  return rec.pipelineStatus === 'uploading' || rec.pipelineStatus === 'analysing'
+}
+
+const inFlightAbortMessage = 'This recording is still uploading or analysing. Abort and delete it from this PC?'
+
 async function deleteRecording(rec: PendingRecording) {
   const options = recordingDeleteOptions(rec)
-  const inFlight = rec.pipelineStatus === 'uploading' || rec.pipelineStatus === 'analysing'
+
+  if (isRecordingInFlight(rec) && !window.confirm(inFlightAbortMessage)) return
 
   if (options.includes('localOnly')) {
     pendingDelete.value = { rec, variant: 'cloud' }
@@ -226,11 +233,9 @@ async function deleteRecording(rec: PendingRecording) {
   }
 
   const hasLocal = Boolean(rec.hasLocalFile || rec.path)
-  const label = inFlight
-    ? 'This recording is still uploading or analysing. Abort and delete it from this PC?'
-    : hasLocal
-      ? 'Delete this recording from your library and remove the local file?'
-      : 'Remove this recording from your library?'
+  const label = hasLocal
+    ? 'Delete this recording from your library and remove the local file?'
+    : 'Remove this recording from your library?'
   if (!window.confirm(label)) return
   await runDismiss(rec.id, 'remove')
 }
@@ -554,7 +559,12 @@ onUnmounted(() => { cleanup?.() })
       <div class="panel-elevated w-full max-w-sm rounded-xl border border-white/[0.08] p-4">
         <h2 class="text-sm font-bold text-white">Delete recording</h2>
         <p class="mt-1.5 text-xs text-gray-400">
-          This recording is backed up to the cloud. Choose what to remove from this PC.
+          <template v-if="isRecordingInFlight(pendingDelete.rec)">
+            This recording is still uploading or analysing. Deleting will abort the current process.
+          </template>
+          <template v-else>
+            This recording is backed up to the cloud. Choose what to remove from this PC.
+          </template>
         </p>
         <div class="mt-4 flex flex-col gap-2">
           <button
