@@ -4,6 +4,7 @@ import type { RecordingsStore } from './recordings-store'
 import {
   asCompletedPollStatus,
   extractAnalysisIdFromPollResult,
+  extractAnalysisIdFromPollStatus,
   findAnalysisIdForJob,
   isTerminalPollSuccess,
   type AnalysisListRow,
@@ -61,15 +62,15 @@ function enrichStatusWithAnalysisId(
   analyses: AnalysisListRow[],
   jobId: string,
 ): AnalysisPollStatus {
-  const result = (status.result ?? {}) as Record<string, unknown>
-  if (extractAnalysisIdFromPollResult(result) != null) return status
+  if (extractAnalysisIdFromPollStatus(status) != null) return status
 
   const fromHistory = findAnalysisIdForJob(analyses, jobId)
   if (fromHistory == null) return status
 
   return {
     ...status,
-    result: { ...result, analysis_id: fromHistory },
+    analysis_log_id: fromHistory,
+    result: { ...(status.result ?? {}), analysis_id: fromHistory },
   }
 }
 
@@ -95,6 +96,10 @@ export async function reconcileStuckAnalysisJobs(deps: StuckAnalysisReconcilerDe
 
   const activeJobId = getActiveAnalysisPollJobId()
   let reconciled = 0
+  // Only one resume poll may start per pass. resumePoll is async/fire-and-forget;
+  // without this guard every processing job would call startAnalysisPoll and
+  // supersede the previous one, leaving cards stuck on ANALYSING.
+  let resumedOne = false
 
   for (const [jobId, ctx] of jobs) {
     if (activeJobId === jobId) continue
@@ -144,6 +149,7 @@ export async function reconcileStuckAnalysisJobs(deps: StuckAnalysisReconcilerDe
             job_id: jobId,
             status: 'completed',
             progress: 100,
+            analysis_log_id: historyId,
             result: { analysis_id: historyId },
           },
           recordingId,
@@ -155,8 +161,13 @@ export async function reconcileStuckAnalysisJobs(deps: StuckAnalysisReconcilerDe
         continue
       }
 
-      if ((status.status === 'queued' || status.status === 'processing') && !activeJobId) {
+      if (
+        (status.status === 'queued' || status.status === 'processing')
+        && !activeJobId
+        && !resumedOne
+      ) {
         deps.resumePoll(jobId, ctx)
+        resumedOne = true
       }
     } catch (err) {
       log.debug('[StuckAnalysis] reconcile skipped for job', jobId, err instanceof Error ? err.message : err)

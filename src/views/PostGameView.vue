@@ -2023,6 +2023,10 @@ async function retryUpload() {
   }
   state.value = 'uploading'
   uploadProgress.value = 0
+  errorDetails.value = null
+  errorMessage.value = ''
+  needsUpgrade.value = false
+  clipsOnlyError.value = false
   try {
     const result = await window.api.recordings.analyse(pendingRecordingId.value) as {
       ok?: boolean

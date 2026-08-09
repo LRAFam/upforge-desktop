@@ -1040,6 +1040,9 @@ export class UploadManager {
               result?: Record<string, unknown>
               error?: string | null
               job_id?: string
+              analysis_id?: number | null
+              analysis_log_id?: number | null
+              failure_diagnostics?: Record<string, unknown> | null
             })
           } catch {
             reject(new Error(httpStatus >= 400 ? `Request failed (${httpStatus})` : 'Invalid JSON'))

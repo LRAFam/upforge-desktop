@@ -122,7 +122,8 @@ import {
   getActiveUserId,
 } from './user-session'
 import { resolveRecordingSavePath, userRecordingsDir, legacyGlobalRecordingsDir } from './user-data-paths'
-import { extractAnalysisIdFromPollResult } from './analysis-completion'
+import { extractAnalysisIdFromPollStatus, asCompletedPollStatus, isTerminalPollSuccess } from './analysis-completion'
+import { wasBackgroundWorkInterrupted } from './background-interrupt'
 import { startAnalysisPoll, stopActiveAnalysisPoll, reconcileOrphanedJob, getActiveAnalysisPollJobId, type AnalysisPollStatus } from './analysis-poll'
 import { abortInFlightAnalysis } from './abort-in-flight-analysis'
 import { buildAnalysisPipelineDiagnostics } from './analysis-pipeline-diagnostics'
@@ -1019,10 +1020,7 @@ function endMatchPerformanceMode(): void {
   refreshCoachNotificationPoller()
 }
 
-function wasBackgroundWorkInterrupted(err: unknown): boolean {
-  const msg = err instanceof Error ? err.message : String(err)
-  return /upload aborted|compression cancelled — match/i.test(msg)
-}
+
 
 // Activity log — recent events shown on dashboard for user visibility
 const MAX_LOG_ENTRIES = 30
@@ -1508,12 +1506,16 @@ let stuckAnalysisReconcileTimer: ReturnType<typeof setInterval> | null = null
 
 function dispatchReconciledAnalysisReady(ctx: ReconciledAnalysisContext): void {
   const result = ctx.status.result as Record<string, unknown> | undefined
-  const analysisId = extractAnalysisIdFromPollResult(result)
+  const analysisId = extractAnalysisIdFromPollStatus(ctx.status)
   const score = typeof result?.overall_score === 'number' ? result.overall_score : undefined
 
   if (ctx.recordingId) {
-    if (analysisId != null) recordingsStore.setAnalysisId(ctx.recordingId, analysisId)
-    else recordingsStore.clearAnalysisPipeline(ctx.recordingId)
+    if (analysisId != null) {
+      recordingsStore.markAnalysed(ctx.recordingId, ctx.jobId, analysisId)
+      recordingsStore.setAnalysisId(ctx.recordingId, analysisId)
+    } else {
+      recordingsStore.clearAnalysisPipeline(ctx.recordingId)
+    }
     mainWindow?.webContents.send('recordings:updated')
   }
 
@@ -4842,11 +4844,15 @@ async function resumePollForJob(
     },
     onCompleted: (status) => {
       const score = (status.result as Record<string, unknown> | undefined)?.overall_score as number | undefined
-      const analysisId = extractAnalysisIdFromPollResult(status.result as Record<string, unknown> | undefined)
+      const analysisId = extractAnalysisIdFromPollStatus(status)
       const rec = recordingsStore.getByJobId(jobId)
       if (rec) {
-        if (analysisId != null) recordingsStore.setAnalysisId(rec.id, analysisId)
-        else recordingsStore.clearAnalysisPipeline(rec.id)
+        if (analysisId != null) {
+          recordingsStore.markAnalysed(rec.id, jobId, analysisId)
+          recordingsStore.setAnalysisId(rec.id, analysisId)
+        } else {
+          recordingsStore.clearAnalysisPipeline(rec.id)
+        }
         mainWindow?.webContents.send('recordings:updated')
       }
       logActivity(`Resumed analysis ready${score != null ? ` — Score: ${score}/100` : ''}`)
@@ -5309,7 +5315,7 @@ async function doUploadAndAnalyse(
       },
       onCompleted: (status) => {
         const score = (status.result as Record<string, unknown>).overall_score as number | undefined
-        const analysisId = extractAnalysisIdFromPollResult(status.result as Record<string, unknown> | undefined)
+        const analysisId = extractAnalysisIdFromPollStatus(status)
         if (recordingId) {
           if (analysisId != null) {
             recordingsStore.setAnalysisId(recordingId, analysisId)
@@ -6156,12 +6162,53 @@ async function startApp(): Promise<void> {
     }
 
     // Failed analysis with VOD already on S3 — retry without re-upload.
+    // Upload-cancelled / interrupted jobs often never finished S3; fall through to re-upload.
     if (recording.jobId && recording.lastAnalysisError) {
+      const abortLike = /upload.?cancel|upload.?abort|upload_aborted/i.test(
+        `${recording.lastAnalysisError} ${recording.lastFailureCode ?? ''}`,
+      )
+      let serverStatus: Awaited<ReturnType<typeof uploadManager.pollStatus>> | null = null
+      try {
+        serverStatus = await uploadManager.pollStatus(recording.jobId)
+      } catch {
+        serverStatus = null
+      }
+
+      if (serverStatus && (serverStatus.status === 'completed' || isTerminalPollSuccess(serverStatus))) {
+        dismissMatchWaitUi()
+        recordingsStore.clearAnalysisFailure(id)
+        dispatchReconciledAnalysisReady({
+          jobId: recording.jobId,
+          status: asCompletedPollStatus(serverStatus),
+          recordingId: id,
+          agent: recording.agent ?? null,
+          map: recording.map ?? null,
+          game: recording.game ?? 'valorant',
+        })
+        return { ok: true }
+      }
+
+      if (serverStatus && (serverStatus.status === 'processing' || serverStatus.status === 'queued')) {
+        dismissMatchWaitUi()
+        recordingsStore.clearAnalysisFailure(id)
+        recordingsStore.markAnalysed(id, recording.jobId)
+        void resumePollForJob(recording.jobId, {
+          agent: recording.agent ?? undefined,
+          map: recording.map ?? undefined,
+          game: recording.game,
+        })
+        return { ok: true }
+      }
+
+      const canCloudRetry = serverStatus?.status === 'failed' && !abortLike
+      if (!canCloudRetry) {
+        // Incomplete upload or cancel — re-upload from local/cloud archive below.
+        recordingsStore.clearAnalysisFailure(id)
+      } else {
       dismissMatchWaitUi()
       recordingsStore.clearAnalysisFailure(id)
       recordingsStore.markAnalysed(id, recording.jobId)
 
-      const user = authManager.getUser()
       const triggerRetry = async (win: BrowserWindow) => {
         stopActiveAnalysisPoll()
         win.webContents.send('post-game:upload-start', {
@@ -6187,13 +6234,15 @@ async function startApp(): Promise<void> {
               recordingsStore.setAnalysisProgress(id, progress, status.current_step ?? null)
             },
             onCompleted: (status) => {
-              const analysisId = extractAnalysisIdFromPollResult(status.result as Record<string, unknown> | undefined)
+              const analysisId = extractAnalysisIdFromPollStatus(status)
               if (analysisId != null) {
                 recordingsStore.setAnalysisId(id, analysisId)
                 const rec = recordingsStore.getById(id)
                 if (rec?.path) {
                   maybeDeleteLocalRecordingAfterAnalysis(rec.path, {})
                 }
+              } else {
+                recordingsStore.clearAnalysisPipeline(id)
               }
               mainWindow?.webContents.send('dashboard:refresh')
             },
@@ -6227,6 +6276,7 @@ async function startApp(): Promise<void> {
         void triggerRetry(postGameWindow)
       }
       return { ok: true }
+      }
     }
 
     const readinessCheck = await ensureAnalysisReadinessForAnalyse(id)
@@ -6293,7 +6343,7 @@ async function startApp(): Promise<void> {
               recordingsStore.setAnalysisProgress(recording.id, progress, status.current_step ?? null)
             },
             onCompleted: (status) => {
-              const analysisId = extractAnalysisIdFromPollResult(status.result as Record<string, unknown> | undefined)
+              const analysisId = extractAnalysisIdFromPollStatus(status)
               if (analysisId != null) {
                 recordingsStore.setAnalysisId(recording.id, analysisId)
                 const rec = recordingsStore.getById(recording.id)
