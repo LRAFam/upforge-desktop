@@ -174,6 +174,7 @@ import {
 import { mergeSkillProfileFromAnalysis } from '../../src/lib/skill-profile'
 import { parseMatchHighlightsFromApi } from '../../src/lib/match-highlights'
 import { extractSpatialFromAnalysisPayload } from '../../src/lib/analysis-enrichment'
+import { desktopVodResultsUrl } from '../../src/lib/games'
 import { RecordingsStore, type ClipOnlyReason } from './recordings-store'
 import { ClipExtractor } from './clip-extractor'
 import { ClipStore } from './clip-store'
@@ -5472,11 +5473,7 @@ async function doUploadAndAnalyse(
           targetWindow.once('focus', () => targetWindow.flashFrame(false))
         }
         if (analysisId && settingsManager?.get()?.autoOpenBrowser !== false) {
-          const resultsPath =
-            game === 'cs2' || game === 'lol'
-              ? `https://upforge.gg/valorant/results/${analysisId}`
-              : `https://upforge.gg/${game}/results/${analysisId}`
-          shell.openExternal(resultsPath)
+          shell.openExternal(desktopVodResultsUrl(game, analysisId))
         }
         void (async () => {
           try {

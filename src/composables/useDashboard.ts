@@ -45,6 +45,7 @@ import {
 } from '../lib/analyse-gate'
 import { POST_MATCH_COPY } from '../lib/post-match-copy'
 import { filterAnalysesForPrimaryGame } from '../lib/analysis-display'
+import { desktopVodResultsUrl } from '../lib/games'
 
 export interface LolRecentMatch {
   match_id: string
@@ -1200,7 +1201,7 @@ function createDashboard() {
   }
 
   function openAnalysis(id: number) {
-    window.open(`https://upforge.gg/valorant/results/${id}`, '_blank')
+    window.open(desktopVodResultsUrl(primaryGame.value, id), '_blank')
   }
 
   async function openAnalysisRow(a: AnalysisItem) {
