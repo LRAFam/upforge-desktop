@@ -37,6 +37,14 @@ export async function openGameAnalysis(
       return
     }
   }
+  if (game === 'lol' && item.id) {
+    window.open(desktopVodResultsUrl('lol', item.id), '_blank')
+    void window.api.funnel?.trackReportOpened?.({
+      analysis_id: item.id,
+      source: 'desktop_dashboard_lol_vod',
+    })
+    return
+  }
   if (game === 'valorant' && !isAnalysisProcessing(item)) {
     try {
       const data = await window.api.analyses.getTimeline(item.id)

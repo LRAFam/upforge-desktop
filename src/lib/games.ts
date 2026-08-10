@@ -50,9 +50,9 @@ export function analysisResultsUrl(game: PrimaryGame, analysisId: number | strin
   return `${primaryGameWebBase(game)}/results/${analysisId}`
 }
 
-/** Desktop VOD analyses are stored in analysis_logs — CS2 uses the shared results viewer. */
+/** Desktop VOD analyses are stored in analysis_logs — use the shared results viewer. */
 export function desktopVodResultsUrl(game: PrimaryGame, analysisLogId: number | string): string {
-  if (game === 'cs2') {
+  if (game === 'cs2' || game === 'lol') {
     return `${primaryGameWebBase('valorant')}/results/${analysisLogId}`
   }
   return analysisResultsUrl(game, analysisLogId)

@@ -5472,7 +5472,11 @@ async function doUploadAndAnalyse(
           targetWindow.once('focus', () => targetWindow.flashFrame(false))
         }
         if (analysisId && settingsManager?.get()?.autoOpenBrowser !== false) {
-          shell.openExternal(`https://upforge.gg/${game}/results/${analysisId}`)
+          const resultsPath =
+            game === 'cs2' || game === 'lol'
+              ? `https://upforge.gg/valorant/results/${analysisId}`
+              : `https://upforge.gg/${game}/results/${analysisId}`
+          shell.openExternal(resultsPath)
         }
         void (async () => {
           try {

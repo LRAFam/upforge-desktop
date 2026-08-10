@@ -499,7 +499,8 @@ export function setupGamingHandlers(
   })
 
   ipcMain.handle('lol:open-results', (_event, analysisId: number | string) => {
-    shell.openExternal(`https://upforge.gg/lol/results/${analysisId}`)
+    // Desktop LoL coaching rows live in analysis_logs, not lol_analyses.
+    shell.openExternal(`https://upforge.gg/valorant/results/${analysisId}`)
     return { ok: true }
   })
 
