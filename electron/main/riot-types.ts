@@ -241,6 +241,12 @@ export interface FinalPlayerStats {
   accountLevel: number | null
   /** LoL creep score (CS) from Live Client — null when unknown */
   creepScore?: number | null
+  /** Match-V5 CS per minute when enriched */
+  cs_per_min?: number | null
+  /** Match-V5 vision score when enriched */
+  visionScore?: number | null
+  vision_score?: number | null
+  cs?: number | null
 }
 
 /** Round score snapshot captured from presence polling */
@@ -353,6 +359,16 @@ export interface MatchData {
   win?: boolean | null
   /** LoL: win/loss label when known from Live Client GameEnd */
   matchResult?: 'win' | 'loss' | null
+  /** LoL: Match-V5 team position (e.g. MIDDLE) */
+  role?: string | null
+  teamPosition?: string | null
+  lane?: string | null
+  champion?: string | null
+  cs?: number | null
+  cs_per_min?: number | null
+  vision_score?: number | null
+  /** LoL: desktop Match-V5 enrich outcome */
+  lolEnrichStatus?: 'fetched' | 'fetch_failed' | 'no_match_id' | 'no_auth'
 }
 
 /** @deprecated Use MatchData instead — kept for backwards compatibility */

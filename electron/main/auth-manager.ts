@@ -67,7 +67,10 @@ export interface AuthUser {
   max_valorant_accounts?: number
   lol_riot_name?: string | null
   lol_riot_tag?: string | null
+  lol_puuid?: string | null
   lol_platform?: string | null
+  lol_region?: string | null
+  riot_puuid?: string | null
   primary_game?: string | null
   games?: string[]
   deadlock_account_id?: number | null

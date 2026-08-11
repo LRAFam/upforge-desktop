@@ -213,6 +213,7 @@ import { buildAndUploadScoutMoments } from './scout-moments'
 import { extractAndUploadDuelClips, countMomentsWithClipKeys } from './duel-clip-uploader'
 import { requestPregameBrief as _requestPregameBrief, requestPostGameDebrief as _requestPostGameDebrief } from './post-game-api'
 import { enrichTimelineForCoaching } from './match-coaching-enrich'
+import { enrichLolTimelineForCoaching } from './lol-match-v5-enrich'
 import {
   formatNetworkProbeSummary,
   formatSupportBundle,
@@ -2156,7 +2157,25 @@ async function prepareTimelineForCoaching(
   game: string,
   recordingId?: string | null,
 ): Promise<{ extras: CoachingSubmissionExtras | undefined }> {
-  if (!timeline || game !== 'valorant') return { extras: undefined }
+  if (!timeline) return { extras: undefined }
+
+  if (game === 'lol') {
+    await enrichLolTimelineForCoaching(timeline, {
+      maxWaitMs: MATCH_DETAILS_ENRICH_MAX_MS,
+      onStatus: (msg) => logActivity(msg),
+      api: authManager.getToken() ? authManager.getApi() : null,
+      authUser: authManager.getUser(),
+    })
+
+    if (recordingId) {
+      recordingsStore.updateTimeline(recordingId, timeline)
+      mainWindow?.webContents.send('recordings:updated')
+    }
+
+    return { extras: undefined }
+  }
+
+  if (game !== 'valorant') return { extras: undefined }
 
   await enrichTimelineForCoaching(riotLocalApi, timeline, {
     maxWaitMs: MATCH_DETAILS_ENRICH_MAX_MS,
@@ -2233,7 +2252,7 @@ function scheduleAnalysisReadinessRefresh(
     }
   }
 
-  if (game !== 'valorant') {
+  if (game !== 'valorant' && game !== 'lol') {
     setTimeout(() => {
       void (async () => {
         try {
@@ -2277,10 +2296,19 @@ function scheduleAnalysisReadinessRefresh(
 
     if ((readiness.state === 'syncing' || readiness.state === 'waiting_match_data') && rec.timeline) {
       try {
-        await enrichTimelineForCoaching(riotLocalApi, rec.timeline, {
-          maxWaitMs: 20_000,
-          api: authManager.getToken() ? authManager.getApi() : null,
-        })
+        if (game === 'lol') {
+          await enrichLolTimelineForCoaching(rec.timeline, {
+            maxWaitMs: 20_000,
+            api: authManager.getToken() ? authManager.getApi() : null,
+            authUser: authManager.getUser(),
+            onStatus: (msg) => logActivity(msg),
+          })
+        } else {
+          await enrichTimelineForCoaching(riotLocalApi, rec.timeline, {
+            maxWaitMs: 20_000,
+            api: authManager.getToken() ? authManager.getApi() : null,
+          })
+        }
         recordingsStore.updateTimeline(recordingId, rec.timeline)
         maybeCaptureRiotDnsEvidence()
       } catch { /* retry on next tick */ }
