@@ -126,7 +126,7 @@ export async function enrichLolTimelineForCoaching(
   const api = options?.api ?? null
   if (!api) {
     applyLolEnrichPatch(timeline, {}, 'no_auth')
-    options?.onStatus?.('Cannot fetch LoL match stats — sign in to UpForge and retry.')
+    options?.onStatus?.('Cannot fetch LoL match stats. Sign in to UpForge and retry.')
     return false
   }
 
@@ -164,10 +164,10 @@ export async function enrichLolTimelineForCoaching(
         }
         break
       }
-      options?.onStatus?.('LoL match stats not published yet — retrying…')
+      options?.onStatus?.('LoL match stats not published yet. Retrying…')
     } catch {
       applyLolEnrichPatch(timeline, {}, 'fetch_failed')
-      options?.onStatus?.('LoL match stats request failed — retrying…')
+      options?.onStatus?.('LoL match stats request failed. Retrying…')
     }
   }
 
