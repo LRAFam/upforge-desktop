@@ -2,9 +2,9 @@
  * Desktop ↔ API readiness contract.
  *
  * API MatchDataQualityService::isReadyForCs2Desktop requires rich match_data
- * (kills / finalStats) for CS2 and Deadlock. Desktop must never mark Analyse
- * ready without the same bar, or jobs fail with DEMO_NOT_READY /
- * missing_coaching_inputs after upload.
+ * (kills / finalStats) for CS2 and Deadlock. LoL uses isReadyForLolDesktop
+ * (Match-V5 enrich + combat stats). Desktop must never mark Analyse ready
+ * without the same bar, or jobs fail after upload.
  *
  * Regression: v2.9.5–v2.10.64 allowed ready:true with "attach a demo" hint.
  */
@@ -14,15 +14,17 @@ import { hasRichMatchData } from './match-data-quality'
 import type { PendingRecording } from './recordings-store'
 import type { MatchData } from './riot-types'
 
-function baseRec(game: 'cs2' | 'deadlock', overrides: Partial<PendingRecording> = {}): PendingRecording {
+function baseRec(
+  game: 'cs2' | 'deadlock' | 'lol',
+  overrides: Partial<PendingRecording> = {},
+): PendingRecording {
   return {
     id: 'contract-rec',
     path: '/tmp/match.mkv',
     riotName: 'Player',
     riotTag: 'NA',
     game,
-    map: game === 'cs2' ? 'de_cache' : 'Avenue',
-    agent: null,
+    map: game === 'cs2' ? 'de_cache' : game === 'lol' ? "Summoner's Rift" : 'Avenue',
     recordedAt: Date.now() - 60_000,
     timeline: null,
     clipsOnly: false,
@@ -75,6 +77,50 @@ function richTimeline(game: 'cs2' | 'deadlock'): MatchData {
   }
 }
 
+function lolSparseLiveClientTimeline(): MatchData {
+  return {
+    game: 'lol',
+    matchId: 'EUW1_7123456789',
+    puuid: 'puuid-1',
+    region: 'europe',
+    queueId: '420',
+    map: "Summoner's Rift",
+    agent: 'Kindred',
+    gameMode: null,
+    playerName: 'Player',
+    playerTag: null,
+    matchStartTime: 1,
+    gameplayStartTime: 2,
+    recordingStartTime: 3,
+    roundScores: [],
+    events: [],
+    killEvents: [],
+    playerKills: [],
+    playerDeaths: [],
+    spikePlants: [],
+    spikeDefuses: [],
+    spikeDetonations: [],
+    firstBloods: [],
+    roundSummaries: [],
+    finalStats: { kills: 5, deaths: 3, assists: 1 } as MatchData['finalStats'],
+    teamSnapshot: [],
+    matchDetails: null,
+    startTime: 1,
+    endTime: 2,
+    videoSyncOffsetMs: 0,
+  }
+}
+
+function lolEnrichedTimeline(): MatchData {
+  return {
+    ...lolSparseLiveClientTimeline(),
+    lolEnrichStatus: 'fetched',
+    cs: 120,
+    vision_score: 15,
+    role: 'JUNGLE',
+  }
+}
+
 describe('desktop/API match-data readiness contract', () => {
   for (const game of ['cs2', 'deadlock'] as const) {
     it(`${game}: Analyse stays locked without rich demo stats (mirrors API isReadyForCs2Desktop)`, () => {
@@ -95,4 +141,22 @@ describe('desktop/API match-data readiness contract', () => {
       expect(readiness.state).toBe('ready')
     })
   }
+
+  it('lol: Analyse stays locked with Live Client stats only (mirrors API isReadyForLolDesktop)', () => {
+    const sparse = baseRec('lol', { timeline: lolSparseLiveClientTimeline() })
+    expect(hasRichMatchData(sparse.timeline)).toBe(true)
+
+    const readiness = getAnalysisReadiness(sparse)
+    expect(readiness.ready).toBe(false)
+    expect(['waiting_match_data', 'unavailable']).toContain(readiness.state)
+  })
+
+  it('lol: Analyse unlocks only when Match-V5 enrich is fetched', () => {
+    const enriched = baseRec('lol', { timeline: lolEnrichedTimeline() })
+    expect(hasRichMatchData(enriched.timeline)).toBe(true)
+
+    const readiness = getAnalysisReadiness(enriched)
+    expect(readiness.ready).toBe(true)
+    expect(readiness.state).toBe('ready')
+  })
 })
