@@ -151,6 +151,27 @@ describe('desktop/API match-data readiness contract', () => {
     expect(['waiting_match_data', 'unavailable']).toContain(readiness.state)
   })
 
+  it('lol: keeps waiting past Valorant 3m window while Match-V5 enrich is pending', () => {
+    const sparse = baseRec('lol', {
+      recordedAt: Date.now() - 4 * 60_000,
+      timeline: lolSparseLiveClientTimeline(),
+    })
+    const readiness = getAnalysisReadiness(sparse)
+    expect(readiness.ready).toBe(false)
+    expect(readiness.state).toBe('waiting_match_data')
+  })
+
+  it('lol: times out after API-aligned 12m window without enrich', () => {
+    const sparse = baseRec('lol', {
+      recordedAt: Date.now() - 13 * 60_000,
+      timeline: lolSparseLiveClientTimeline(),
+    })
+    const readiness = getAnalysisReadiness(sparse)
+    expect(readiness.ready).toBe(false)
+    expect(readiness.state).toBe('unavailable')
+    expect(readiness.message).toMatch(/not available in time|Retry sync/i)
+  })
+
   it('lol: Analyse unlocks only when Match-V5 enrich is fetched', () => {
     const enriched = baseRec('lol', { timeline: lolEnrichedTimeline() })
     expect(hasRichMatchData(enriched.timeline)).toBe(true)

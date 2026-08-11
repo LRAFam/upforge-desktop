@@ -5,6 +5,7 @@ import {
   demoAttachHint,
   demoSyncMaxMsForGame,
   CS2_DEMO_SYNC_MAX_MS,
+  LOL_MATCH_V5_SYNC_MAX_MS,
 } from './match-data-quality'
 import type { PendingRecording } from './recordings-store'
 import type { MatchData } from './riot-types'
@@ -80,6 +81,11 @@ describe('demoSyncMaxMsForGame', () => {
   it('gives Deadlock the same Valve demo window as CS2', () => {
     expect(demoSyncMaxMsForGame('cs2')).toBe(CS2_DEMO_SYNC_MAX_MS)
     expect(demoSyncMaxMsForGame('deadlock')).toBe(CS2_DEMO_SYNC_MAX_MS)
+  })
+
+  it('gives LoL the API-aligned Match-V5 window (12m)', () => {
+    expect(demoSyncMaxMsForGame('lol')).toBe(LOL_MATCH_V5_SYNC_MAX_MS)
+    expect(LOL_MATCH_V5_SYNC_MAX_MS).toBe(12 * 60_000)
   })
 })
 

@@ -1,15 +1,19 @@
-import { demoSyncMaxMsForGame, hasRichMatchData } from '../match-data-quality'
+import {
+  demoSyncMaxMsForGame,
+  hasRichMatchData,
+  MATCH_DETAILS_ENRICH_MAX_MS,
+} from '../match-data-quality'
 import type { AnalyseReadiness, GameAnalyseModule, ReadinessRecording } from './types'
 import { recordingAgeMs } from './types'
 
 const WAIT_MESSAGE =
-  'Waiting for Riot match stats — usually ready about a minute after the game ends.'
+  'Waiting for Riot match stats. Usually ready about a minute after the game ends.'
 
 const NO_MATCH_MESSAGE =
-  'Could not link this recording to a League match — keep UpForge open while you play'
+  'Could not link this recording to a League match. Keep UpForge open while you play.'
 
 const TIMEOUT_MESSAGE =
-  'Riot match stats were not available in time. Wait about a minute after the game ends, then try Analyse again.'
+  'Riot match stats were not available in time. Wait a bit after the game ends, then tap Retry sync.'
 
 const FETCH_FAILED_MESSAGE =
   'Riot match stats could not be loaded. Wait a minute after the game ends, then tap Retry sync.'
@@ -22,13 +26,16 @@ function isTerminalLolEnrichStatus(status: string | undefined): boolean {
 
 /**
  * LoL strict ready bar A: Match-V5 enrich required; Live Client combat alone is not enough.
+ * With matchId, wait up to LOL_MATCH_V5_SYNC_MAX_MS (~12m, API-aligned). Without matchId,
+ * settle sooner (MATCH_DETAILS_ENRICH_MAX_MS) then unavailable.
  */
 export const lolModule: GameAnalyseModule = {
   id: 'lol',
   isReady(rec: ReadinessRecording): AnalyseReadiness {
     const timeline = rec.timeline
     const ageMs = recordingAgeMs(rec)
-    const withinSyncWindow = ageMs < demoSyncMaxMsForGame(rec.game)
+    const enrichWaitMs = demoSyncMaxMsForGame(rec.game)
+    const matchIdSettleMs = MATCH_DETAILS_ENRICH_MAX_MS
     const hasMatchId = Boolean(timeline?.matchId ?? rec.matchId)
     const enrichStatus = timeline?.lolEnrichStatus
 
@@ -54,16 +61,24 @@ export const lolModule: GameAnalyseModule = {
       }
     }
 
-    if (withinSyncWindow && hasMatchId && !isTerminalLolEnrichStatus(enrichStatus)) {
+    if (hasMatchId && !isTerminalLolEnrichStatus(enrichStatus)) {
+      if (ageMs < enrichWaitMs) {
+        return {
+          ready: false,
+          state: 'waiting_match_data',
+          message: WAIT_MESSAGE,
+          duelMomentCount: 0,
+        }
+      }
       return {
         ready: false,
-        state: 'waiting_match_data',
-        message: WAIT_MESSAGE,
+        state: 'unavailable',
+        message: TIMEOUT_MESSAGE,
         duelMomentCount: 0,
       }
     }
 
-    if (withinSyncWindow && !hasMatchId && enrichStatus !== 'no_match_id') {
+    if (!hasMatchId && enrichStatus !== 'no_match_id' && ageMs < matchIdSettleMs) {
       return {
         ready: false,
         state: 'waiting_match_data',
