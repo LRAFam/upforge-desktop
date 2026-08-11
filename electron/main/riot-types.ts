@@ -239,6 +239,8 @@ export interface FinalPlayerStats {
   adr: number | null
   /** Player's Riot account level */
   accountLevel: number | null
+  /** LoL creep score (CS) from Live Client — null when unknown */
+  creepScore?: number | null
 }
 
 /** Round score snapshot captured from presence polling */
@@ -346,6 +348,11 @@ export interface MatchData {
 
   startTime: number
   endTime: number | null
+
+  /** LoL: local player won the match when known from Live Client GameEnd */
+  win?: boolean | null
+  /** LoL: win/loss label when known from Live Client GameEnd */
+  matchResult?: 'win' | 'loss' | null
 }
 
 /** @deprecated Use MatchData instead — kept for backwards compatibility */

@@ -98,7 +98,7 @@ import { isModeFilteredOut, getRecordedModesForGame, recordableModesForGame, nor
 import { applyLiveKillStampsToTimeline } from './live-kill-stamps'
 import { withTimeout } from './promise-timeout'
 import { LoLLiveClientApi } from './lol-live-client-api'
-import { probeLolLcu, resolveLolFilterMode } from './lol-lcu-api'
+import { probeLolLcu, resolveLolFilterMode, lolPlatformToMatchV5Region, lolLinkedPuuidFromAuth } from './lol-lcu-api'
 import {
   gameLabel,
   idleTooltip,
@@ -2941,6 +2941,27 @@ function setupGameDetection(): void {
     timeline = timelineBuilt.timeline
     pendingReplayPath = timelineBuilt.pendingReplayPath
     lastReplayRetryContext = timelineBuilt.replayRetryContext
+
+    if (normalizePrimaryGame(game) === 'lol' && timeline) {
+      try {
+        const lcu = await probeLolLcu({ liveClient: lolLiveClientApi })
+        if (lcu.queueId != null) {
+          timeline.queueId = String(lcu.queueId)
+        }
+      } catch (err) {
+        log.warn(
+          '[HandleMatchEnd] LoL LCU queue probe failed:',
+          err instanceof Error ? err.message : err,
+        )
+      }
+      const authUser = authManager.getUser()
+      const linkedPuuid = lolLinkedPuuidFromAuth(
+        authUser as { lol_puuid?: string | null; riot_puuid?: string | null } | null,
+      )
+      if (linkedPuuid) timeline.puuid = linkedPuuid
+      const linkedRegion = lolPlatformToMatchV5Region(authUser?.lol_platform)
+      if (linkedRegion) timeline.region = linkedRegion
+    }
 
     const pathResolve = resolveReadyRecordingPathDetailed(
       obsRecorder.getLastRecordingPath(),

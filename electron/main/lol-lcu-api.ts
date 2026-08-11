@@ -233,6 +233,36 @@ export function parseGameflowSession(session: GameflowSession | null | undefined
   return { phase, queueId, mapId }
 }
 
+/** Map LoL platform routing id (EUW1, NA1, …) to Match-V5 regional cluster. */
+export function lolPlatformToMatchV5Region(platform: string | null | undefined): string | null {
+  if (!platform?.trim()) return null
+  const map: Record<string, string> = {
+    BR1: 'americas',
+    LA1: 'americas',
+    LA2: 'americas',
+    NA1: 'americas',
+    OC1: 'asia',
+    JP1: 'asia',
+    KR: 'asia',
+    EUN1: 'europe',
+    EUW1: 'europe',
+    TR1: 'europe',
+    RU: 'europe',
+  }
+  return map[platform.trim().toUpperCase()] ?? null
+}
+
+/** Linked LoL puuid when the auth payload includes it (never invented). */
+export function lolLinkedPuuidFromAuth(user: {
+  lol_puuid?: string | null
+  riot_puuid?: string | null
+} | null | undefined): string | null {
+  const lol = user?.lol_puuid?.trim()
+  if (lol) return lol
+  const shared = user?.riot_puuid?.trim()
+  return shared || null
+}
+
 /**
  * Probe League LCU + Live Client. Safe for IPC (no password).
  * Run with League Client open; best signal in champ select / loading / in-game.
