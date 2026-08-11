@@ -98,7 +98,7 @@ import { isModeFilteredOut, getRecordedModesForGame, recordableModesForGame, nor
 import { applyLiveKillStampsToTimeline } from './live-kill-stamps'
 import { withTimeout } from './promise-timeout'
 import { LoLLiveClientApi } from './lol-live-client-api'
-import { probeLolLcu, resolveLolFilterMode } from './lol-lcu-api'
+import { probeLolLcu, resolveLolFilterMode, lolPlatformToMatchV5Region, lolLinkedPuuidFromAuth } from './lol-lcu-api'
 import {
   gameLabel,
   idleTooltip,
@@ -213,6 +213,7 @@ import { buildAndUploadScoutMoments } from './scout-moments'
 import { extractAndUploadDuelClips, countMomentsWithClipKeys } from './duel-clip-uploader'
 import { requestPregameBrief as _requestPregameBrief, requestPostGameDebrief as _requestPostGameDebrief } from './post-game-api'
 import { enrichTimelineForCoaching } from './match-coaching-enrich'
+import { enrichLolTimelineForCoaching } from './lol-match-v5-enrich'
 import {
   formatNetworkProbeSummary,
   formatSupportBundle,
@@ -2156,7 +2157,25 @@ async function prepareTimelineForCoaching(
   game: string,
   recordingId?: string | null,
 ): Promise<{ extras: CoachingSubmissionExtras | undefined }> {
-  if (!timeline || game !== 'valorant') return { extras: undefined }
+  if (!timeline) return { extras: undefined }
+
+  if (game === 'lol') {
+    await enrichLolTimelineForCoaching(timeline, {
+      maxWaitMs: MATCH_DETAILS_ENRICH_MAX_MS,
+      onStatus: (msg) => logActivity(msg),
+      api: authManager.getToken() ? authManager.getApi() : null,
+      authUser: authManager.getUser(),
+    })
+
+    if (recordingId) {
+      recordingsStore.updateTimeline(recordingId, timeline)
+      mainWindow?.webContents.send('recordings:updated')
+    }
+
+    return { extras: undefined }
+  }
+
+  if (game !== 'valorant') return { extras: undefined }
 
   await enrichTimelineForCoaching(riotLocalApi, timeline, {
     maxWaitMs: MATCH_DETAILS_ENRICH_MAX_MS,
@@ -2233,7 +2252,7 @@ function scheduleAnalysisReadinessRefresh(
     }
   }
 
-  if (game !== 'valorant') {
+  if (game !== 'valorant' && game !== 'lol') {
     setTimeout(() => {
       void (async () => {
         try {
@@ -2277,10 +2296,19 @@ function scheduleAnalysisReadinessRefresh(
 
     if ((readiness.state === 'syncing' || readiness.state === 'waiting_match_data') && rec.timeline) {
       try {
-        await enrichTimelineForCoaching(riotLocalApi, rec.timeline, {
-          maxWaitMs: 20_000,
-          api: authManager.getToken() ? authManager.getApi() : null,
-        })
+        if (game === 'lol') {
+          await enrichLolTimelineForCoaching(rec.timeline, {
+            maxWaitMs: 20_000,
+            api: authManager.getToken() ? authManager.getApi() : null,
+            authUser: authManager.getUser(),
+            onStatus: (msg) => logActivity(msg),
+          })
+        } else {
+          await enrichTimelineForCoaching(riotLocalApi, rec.timeline, {
+            maxWaitMs: 20_000,
+            api: authManager.getToken() ? authManager.getApi() : null,
+          })
+        }
         recordingsStore.updateTimeline(recordingId, rec.timeline)
         maybeCaptureRiotDnsEvidence()
       } catch { /* retry on next tick */ }
@@ -2325,7 +2353,7 @@ function resumeStuckMatchStatsEnrichment(): void {
   let resumed = 0
   for (const rec of pending) {
     if (rec.analysed) continue
-    if (rec.game !== 'valorant') continue
+    if (rec.game !== 'valorant' && rec.game !== 'lol') continue
     if (rec.pipelineStatus === 'uploading' || rec.pipelineStatus === 'analysing') continue
     const readiness = getAnalysisReadiness(rec)
     if (readiness.state !== 'waiting_match_data' && readiness.state !== 'syncing') continue
@@ -2369,7 +2397,7 @@ async function ensureAnalysisReadinessForAnalyse(
   if (readiness.ready) return { ok: true, recording: rec }
 
   const shouldRetryRiotEnrich =
-    rec.game === 'valorant'
+    (rec.game === 'valorant' || rec.game === 'lol')
     && rec.timeline
     && (
       readiness.state === 'syncing'
@@ -2429,7 +2457,7 @@ async function waitUntilAnalysisReady(
 
     if (
       (readiness.state === 'syncing' || readiness.state === 'waiting_match_data')
-      && rec.game === 'valorant'
+      && (rec.game === 'valorant' || rec.game === 'lol')
       && rec.timeline
     ) {
       await prepareTimelineForCoaching(rec.timeline, rec.game, recordingId)
@@ -2941,6 +2969,27 @@ function setupGameDetection(): void {
     timeline = timelineBuilt.timeline
     pendingReplayPath = timelineBuilt.pendingReplayPath
     lastReplayRetryContext = timelineBuilt.replayRetryContext
+
+    if (normalizePrimaryGame(game) === 'lol' && timeline) {
+      try {
+        const lcu = await probeLolLcu({ liveClient: lolLiveClientApi })
+        if (lcu.queueId != null) {
+          timeline.queueId = String(lcu.queueId)
+        }
+      } catch (err) {
+        log.warn(
+          '[HandleMatchEnd] LoL LCU queue probe failed:',
+          err instanceof Error ? err.message : err,
+        )
+      }
+      const authUser = authManager.getUser()
+      const linkedPuuid = lolLinkedPuuidFromAuth(
+        authUser as { lol_puuid?: string | null; riot_puuid?: string | null } | null,
+      )
+      if (linkedPuuid) timeline.puuid = linkedPuuid
+      const linkedRegion = lolPlatformToMatchV5Region(authUser?.lol_platform)
+      if (linkedRegion) timeline.region = linkedRegion
+    }
 
     const pathResolve = resolveReadyRecordingPathDetailed(
       obsRecorder.getLastRecordingPath(),
@@ -5196,7 +5245,7 @@ async function doUploadAndAnalyse(
 
   let coachingExtras: CoachingSubmissionExtras | undefined
   const enrichTask = (async (): Promise<void> => {
-    if (!timeline || game !== 'valorant') return
+    if (!timeline || (game !== 'valorant' && game !== 'lol')) return
     try {
       if (enrichPromise) {
         const result = await enrichPromise
@@ -5205,19 +5254,23 @@ async function doUploadAndAnalyse(
         const result = await prepareTimelineForCoaching(timeline, game, recordingId)
         coachingExtras = result.extras
       }
-      if (lastMatchDiagnostic) {
+      if (lastMatchDiagnostic && game === 'valorant') {
         lastMatchDiagnostic.killsInTimeline = timeline.playerKills?.length ?? 0
         const rich = hasRichMatchData(timeline)
         lastMatchDiagnostic.matchDetailsStatus = rich
           ? 'fetched'
           : (timeline.matchId ? 'fetch_failed' : 'no_match_id')
       }
-      if (hasRichMatchData(timeline)) {
+      if (game === 'valorant' && hasRichMatchData(timeline)) {
         logActivity(
           `Riot match stats loaded (${timeline.roundSummaries?.length ?? 0} rounds, ${timeline.playerKills?.length ?? 0} kills)`,
         )
-      } else if (timeline.matchId) {
+      } else if (game === 'valorant' && timeline.matchId) {
         logActivity('Riot match stats not ready yet — server will wait for stats before coaching')
+      } else if (game === 'lol' && timeline.lolEnrichStatus === 'fetched' && hasRichMatchData(timeline)) {
+        logActivity('LoL match stats loaded from Riot Match-V5')
+      } else if (game === 'lol' && timeline.matchId) {
+        logActivity('LoL match stats not ready yet — server will wait for stats before coaching')
       }
     } catch (err) {
       log.warn('[Upload] Match details enrichment failed:', err)
@@ -5276,26 +5329,32 @@ async function doUploadAndAnalyse(
         : undefined,
       deferMatchDataOnPresign: game === 'valorant',
       getCoachingExtras: () => coachingExtras,
-      beforeComplete: timeline && game === 'valorant'
+      beforeComplete: timeline && (game === 'valorant' || game === 'lol')
         ? async () => {
             await enrichTask
-            if (hasRichMatchData(timeline)) return
-            logActivity('Still waiting for Riot match stats…')
-            await enrichTimelineForCoaching(riotLocalApi, timeline, {
-              maxWaitMs: MATCH_DETAILS_ENRICH_MAX_MS,
-              onStatus: (msg) => logActivity(msg),
-            })
-            if (recordingId) {
-              recordingsStore.updateTimeline(recordingId, timeline)
-              mainWindow?.webContents.send('recordings:updated')
+            if (game === 'valorant') {
+              if (hasRichMatchData(timeline)) return
+              logActivity('Still waiting for Riot match stats…')
+              await enrichTimelineForCoaching(riotLocalApi, timeline, {
+                maxWaitMs: MATCH_DETAILS_ENRICH_MAX_MS,
+                onStatus: (msg) => logActivity(msg),
+              })
+              if (recordingId) {
+                recordingsStore.updateTimeline(recordingId, timeline)
+                mainWindow?.webContents.send('recordings:updated')
+              }
+              const rrHistory = await authManager.fetchRRHistory().catch(() => [])
+              coachingExtras = buildCoachingSubmissionExtras(
+                timeline,
+                settingsManager.get(),
+                rrHistory,
+                riotLocalApi.getDiagnostics().clientVersion,
+              )
+            } else if (game === 'lol') {
+              if (timeline.lolEnrichStatus === 'fetched' && hasRichMatchData(timeline)) return
+              logActivity('Still waiting for LoL match stats…')
+              await prepareTimelineForCoaching(timeline, game, recordingId)
             }
-            const rrHistory = await authManager.fetchRRHistory().catch(() => [])
-            coachingExtras = buildCoachingSubmissionExtras(
-              timeline,
-              settingsManager.get(),
-              rrHistory,
-              riotLocalApi.getDiagnostics().clientVersion,
-            )
           }
         : undefined,
       onProgress: (pct) => {
@@ -6168,15 +6227,24 @@ async function startApp(): Promise<void> {
     // dashboard Retry sync button is not locked for the full 3-minute enrich window.
     scheduleAnalysisReadinessRefresh(id, recording.game, { force: true })
 
-    if (recording.timeline && recording.game === 'valorant') {
-      await enrichTimelineForCoaching(riotLocalApi, recording.timeline, {
-        maxWaitMs: 25_000,
-        onStatus: (msg) => logActivity(msg),
-        api: authManager.getToken() ? authManager.getApi() : null,
-        refreshPopulation: false,
-      })
+    if (recording.timeline) {
+      if (recording.game === 'valorant') {
+        await enrichTimelineForCoaching(riotLocalApi, recording.timeline, {
+          maxWaitMs: 25_000,
+          onStatus: (msg) => logActivity(msg),
+          api: authManager.getToken() ? authManager.getApi() : null,
+          refreshPopulation: false,
+        })
+        maybeCaptureRiotDnsEvidence()
+      } else if (recording.game === 'lol') {
+        await enrichLolTimelineForCoaching(recording.timeline, {
+          maxWaitMs: 25_000,
+          onStatus: (msg) => logActivity(msg),
+          api: authManager.getToken() ? authManager.getApi() : null,
+          authUser: authManager.getUser(),
+        })
+      }
       recordingsStore.updateTimeline(id, recording.timeline)
-      maybeCaptureRiotDnsEvidence()
     }
 
     const updated = recordingsStore.getById(id)

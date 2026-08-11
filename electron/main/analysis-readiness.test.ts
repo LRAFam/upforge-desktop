@@ -93,6 +93,20 @@ describe('getAnalysisReadiness', () => {
     expect(readiness.message).toContain('Could not link')
   })
 
+  it('returns mode_unsupported for DM/TDM before VOD file gates', () => {
+    const rec = baseRecording({
+      gameMode: 'DEATHMATCH',
+      cloudArchived: false,
+      archiveId: undefined,
+      path: '/tmp/missing-deathmatch.mkv',
+      timeline: null,
+    })
+    const readiness = getAnalysisReadiness(rec)
+    expect(readiness.ready).toBe(false)
+    expect(readiness.state).toBe('mode_unsupported')
+    expect(readiness.message).toMatch(/Deathmatch or Team Deathmatch/i)
+  })
+
   it('waits for riot match stats on fresh lol recordings', () => {
     const rec = baseRecording({
       game: 'lol',

@@ -3,6 +3,7 @@
  * Separate from Valorant riot-local-api (same port, different JSON schema).
  */
 import https from 'https'
+import log from 'electron-log'
 import type { FinalPlayerStats, KillEvent, MatchData, ObjectiveEvent, ObjectiveKind } from './riot-types'
 import { resolveLolMapLabel } from '../../src/lib/lol-maps'
 import { assignKillSpreeRounds } from './kill-clip-grouping'
@@ -45,6 +46,10 @@ export interface LolLiveGameEvent {
   AcingTeam?: string
   KillStreak?: number
   Recipient?: string
+  /** GameEnd: "Win" | "Lose" for the local player (when present). */
+  Result?: string
+  /** GameEnd: winning team codename (ORDER / CHAOS). */
+  WinningTeam?: string
 }
 
 export interface LolLiveGameData {
@@ -225,6 +230,31 @@ export function buildLolObjectiveEvents(
   return objectives
 }
 
+function parseGameEndOutcome(
+  events: LolLiveGameEvent[],
+  localTeam: string | null | undefined,
+): { win: boolean | null; matchResult: 'win' | 'loss' | null } {
+  const gameEnd = [...events].reverse().find((e) => e.EventName === 'GameEnd')
+  if (!gameEnd) return { win: null, matchResult: null }
+
+  const result = gameEnd.Result?.trim().toLowerCase()
+  if (result === 'win' || result === 'victory' || result === 'won') {
+    return { win: true, matchResult: 'win' }
+  }
+  if (result === 'lose' || result === 'loss' || result === 'defeat' || result === 'lost') {
+    return { win: false, matchResult: 'loss' }
+  }
+
+  const winningTeam = gameEnd.WinningTeam?.trim().toUpperCase()
+  const team = localTeam?.trim().toUpperCase()
+  if (winningTeam && team) {
+    if (winningTeam === team) return { win: true, matchResult: 'win' }
+    return { win: false, matchResult: 'loss' }
+  }
+
+  return { win: null, matchResult: null }
+}
+
 /** Exported for unit tests — map live client snapshot to MatchData. */
 export function buildMatchDataFromLolSnapshot(
   data: LolAllGameData,
@@ -250,6 +280,7 @@ export function buildMatchDataFromLolSnapshot(
   const kills = local?.scores.kills ?? 0
   const deaths = local?.scores.deaths ?? 0
   const assists = local?.scores.assists ?? 0
+  const creepScore = local?.scores.creepScore
 
   const finalStats: FinalPlayerStats = {
     kills,
@@ -263,6 +294,7 @@ export function buildMatchDataFromLolSnapshot(
     headshotPct: null,
     adr: null,
     accountLevel: null,
+    creepScore: typeof creepScore === 'number' && Number.isFinite(creepScore) ? creepScore : null,
   }
 
   // Exact identity match (with the Riot #tag stripped) — substring matching caused
@@ -306,6 +338,8 @@ export function buildMatchDataFromLolSnapshot(
     gameClockZeroEpoch,
     recordingStartTime: recordingStart,
   })
+
+  const { win, matchResult } = parseGameEndOutcome(data.events?.Events ?? [], local?.team)
 
   return {
     game: 'lol',
@@ -352,6 +386,8 @@ export function buildMatchDataFromLolSnapshot(
     matchDetails: { liveClient: data },
     startTime: matchStart,
     endTime: Date.now(),
+    win,
+    matchResult,
   }
 }
 
@@ -481,6 +517,9 @@ export class LoLLiveClientApi {
     }
     if (!snapshot || !isLolLiveMatchActive(snapshot)) {
       if (snapshot) {
+        if (snapshot.gameData?.gameId == null) {
+          log.warn('[LoLLiveClient] stop: gameId missing from Live Client snapshot')
+        }
         return buildMatchDataFromLolSnapshot(snapshot, {
           recordingStartTime: this._recordingStartTime,
           matchStartTime: this._matchStartTime,
@@ -489,6 +528,10 @@ export class LoLLiveClientApi {
         })
       }
       return null
+    }
+
+    if (snapshot.gameData?.gameId == null) {
+      log.warn('[LoLLiveClient] stop: gameId missing from Live Client snapshot')
     }
 
     return buildMatchDataFromLolSnapshot(snapshot, {

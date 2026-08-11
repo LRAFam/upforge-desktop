@@ -97,6 +97,7 @@ describe('buildMatchDataFromLolSnapshot', () => {
     expect(timeline.finalStats?.kills).toBe(3)
     expect(timeline.finalStats?.deaths).toBe(1)
     expect(timeline.finalStats?.assists).toBe(5)
+    expect(timeline.finalStats?.creepScore).toBe(120)
     expect(timeline.playerKills).toHaveLength(1)
     // Local player is tagged "You" so the VOD viewer can highlight their kills.
     expect(timeline.playerKills[0]?.killerName).toBe('You')
@@ -123,6 +124,40 @@ describe('buildMatchDataFromLolSnapshot', () => {
       { recordingStartTime: 1_700_000_000_000 },
     )
     expect(timeline.map).toBe("Summoner's Rift")
+  })
+
+  it('maps GameEnd Result Win to timeline.win === true', () => {
+    const snapshot: LolAllGameData = {
+      ...SAMPLE_SNAPSHOT,
+      events: {
+        Events: [
+          ...(SAMPLE_SNAPSHOT.events?.Events ?? []),
+          { EventID: 2, EventName: 'GameEnd', EventTime: 840, Result: 'Win' },
+        ],
+      },
+    }
+    const timeline = buildMatchDataFromLolSnapshot(snapshot, {
+      recordingStartTime: 1_700_000_000_000,
+    })
+    expect(timeline.win).toBe(true)
+    expect(timeline.matchResult).toBe('win')
+  })
+
+  it('maps GameEnd WinningTeam for local ORDER team to a win', () => {
+    const snapshot: LolAllGameData = {
+      ...SAMPLE_SNAPSHOT,
+      events: {
+        Events: [
+          ...(SAMPLE_SNAPSHOT.events?.Events ?? []),
+          { EventID: 2, EventName: 'GameEnd', EventTime: 840, WinningTeam: 'ORDER' },
+        ],
+      },
+    }
+    const timeline = buildMatchDataFromLolSnapshot(snapshot, {
+      recordingStartTime: 1_700_000_000_000,
+    })
+    expect(timeline.win).toBe(true)
+    expect(timeline.matchResult).toBe('win')
   })
 })
 

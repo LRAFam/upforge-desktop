@@ -55,6 +55,12 @@ export function cs2PlayerIdentityMismatch(timeline: MatchData | null | undefined
 export const MATCH_DETAILS_ENRICH_MAX_MS = 180_000
 
 /**
+ * LoL Match-V5 wait window. Matches API hold budget:
+ * HOLD_MINUTES(4) + MATCH_DATA_MAX_WAIT_ATTEMPTS(4) * MATCH_DATA_RETRY_MINUTES(2) = 12m.
+ */
+export const LOL_MATCH_V5_SYNC_MAX_MS = 12 * 60_000
+
+/**
  * Background Valorant MatchDetails poll cadence while a pending VOD still lacks stats.
  * Keeps trying for the life of the app session (no hard stop) with backoff so we
  * do not hammer Riot while the user sits in MENUS.
@@ -89,6 +95,7 @@ export function cs2DemoSyncPollIntervalMs(elapsedMs: number, recordingActive = f
 
 export function demoSyncMaxMsForGame(game: string | null | undefined): number {
   if (game === 'cs2' || game === 'deadlock') return CS2_DEMO_SYNC_MAX_MS
+  if (game === 'lol') return LOL_MATCH_V5_SYNC_MAX_MS
   return MATCH_DETAILS_ENRICH_MAX_MS
 }
 
