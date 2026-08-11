@@ -5,10 +5,12 @@
 import fs from 'fs'
 import { getAnalyseModule } from './analyse-modules/registry'
 import type { AnalyseReadiness, AnalyseReadyState } from './analyse-modules/types'
+import { resolveGameMode } from './analyse-modules/types'
+import { COACHING_UNSUPPORTED_MODES } from './analyse-modules/valorant'
 import { MIN_RECORDING_FILE_BYTES } from './recording-limits'
 import type { PendingRecording } from './recordings-store'
 
-export { COACHING_UNSUPPORTED_MODES } from './analyse-modules/valorant'
+export { COACHING_UNSUPPORTED_MODES }
 
 /** Max wait for OBS mux / ffprobe before post-game upload proceeds. */
 export const VOD_FILE_READY_MAX_MS = 60_000
@@ -27,6 +29,12 @@ const vodProbeCache = new Map<string, { mtimeMs: number; ok: boolean; reason?: s
 
 export function clearVodProbeCache(): void {
   vodProbeCache.clear()
+}
+
+function coachingModeUnsupportedGate(rec: ReadinessRecording): AnalysisReadiness | null {
+  if (rec.game !== 'valorant') return null
+  if (!COACHING_UNSUPPORTED_MODES.has(resolveGameMode(rec))) return null
+  return getAnalyseModule('valorant').isReady(rec)
 }
 
 function localVodPathRequired(rec: ReadinessRecording): boolean {
@@ -207,6 +215,9 @@ export function getAnalysisReadiness(rec: ReadinessRecording): AnalysisReadiness
       duelMomentCount: 0,
     }
   }
+
+  const modeGate = coachingModeUnsupportedGate(rec)
+  if (modeGate) return modeGate
 
   const vodGate = vodFileGates(rec)
   if (vodGate) return vodGate
