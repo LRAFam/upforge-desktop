@@ -3,41 +3,20 @@
  * CS2 / Deadlock require rich Valve demo/replay stats before Analyse unlocks.
  */
 import fs from 'fs'
-import {
-  hasRichMatchData,
-  cs2PlayerIdentityMismatch,
-  cs2DemoSyncMessage,
-  deadlockDemoSyncMessage,
-  demoSyncMaxMsForGame,
-} from './match-data-quality'
-import { duelMomentsForUpload } from './moment-picker'
+import { getAnalyseModule } from './analyse-modules/registry'
+import type { AnalyseReadiness, AnalyseReadyState } from './analyse-modules/types'
 import { MIN_RECORDING_FILE_BYTES } from './recording-limits'
 import type { PendingRecording } from './recordings-store'
 
-export const COACHING_UNSUPPORTED_MODES = new Set(['DEATHMATCH', 'TEAMDEATHMATCH'])
+export { COACHING_UNSUPPORTED_MODES } from './analyse-modules/valorant'
 
 /** Max wait for OBS mux / ffprobe before post-game upload proceeds. */
 export const VOD_FILE_READY_MAX_MS = 60_000
 
 export type VodFileReadiness = 'ready' | 'finalizing' | 'missing' | 'unreadable' | 'not_required'
 
-export type AnalysisReadinessState =
-  | 'ready'
-  | 'syncing'
-  | 'waiting_match_data'
-  | 'no_deaths'
-  | 'unavailable'
-  | 'file_missing'
-  | 'finalizing'
-  | 'mode_unsupported'
-  | 'file_unreadable'
-
-export interface AnalysisReadiness {
-  ready: boolean
-  state: AnalysisReadinessState
-  message: string
-  duelMomentCount: number
-}
+export type AnalysisReadinessState = AnalyseReadyState
+export type AnalysisReadiness = AnalyseReadiness
 
 type ReadinessRecording = Pick<
   PendingRecording,
@@ -48,10 +27,6 @@ const vodProbeCache = new Map<string, { mtimeMs: number; ok: boolean; reason?: s
 
 export function clearVodProbeCache(): void {
   vodProbeCache.clear()
-}
-
-function resolveGameMode(rec: ReadinessRecording): string {
-  return (rec.gameMode ?? rec.timeline?.gameMode ?? '').toUpperCase()
 }
 
 function localVodPathRequired(rec: ReadinessRecording): boolean {
@@ -233,162 +208,10 @@ export function getAnalysisReadiness(rec: ReadinessRecording): AnalysisReadiness
     }
   }
 
-  if (rec.game === 'valorant' && COACHING_UNSUPPORTED_MODES.has(resolveGameMode(rec))) {
-    return {
-      ready: false,
-      state: 'mode_unsupported',
-      message: 'Duel coaching is not available for Deathmatch or Team Deathmatch',
-      duelMomentCount: 0,
-    }
-  }
-
   const vodGate = vodFileGates(rec)
   if (vodGate) return vodGate
 
-  const ageMs = Date.now() - rec.recordedAt
-  const withinSyncWindow = ageMs < demoSyncMaxMsForGame(rec.game)
-
-  if (rec.game === 'lol') {
-    const timeline = rec.timeline
-    if (hasRichMatchData(timeline)) {
-      return { ready: true, state: 'ready', message: '', duelMomentCount: 0 }
-    }
-    const hasMatchId = Boolean(timeline?.matchId ?? rec.matchId)
-    if (withinSyncWindow && hasMatchId) {
-      return {
-        ready: false,
-        state: 'waiting_match_data',
-        message: 'Waiting for Riot match stats — usually ready about a minute after the game ends.',
-        duelMomentCount: 0,
-      }
-    }
-    if (hasMatchId) {
-      return {
-        ready: true,
-        state: 'ready',
-        message: 'VOD ready — match stats may still be syncing on the server.',
-        duelMomentCount: 0,
-      }
-    }
-    return {
-      ready: false,
-      state: 'unavailable',
-      message: 'Could not link this recording to a League match — keep UpForge open while you play',
-      duelMomentCount: 0,
-    }
-  }
-
-  if (rec.game === 'cs2' || rec.game === 'deadlock') {
-    if (hasRichMatchData(rec.timeline)) {
-      const duelMomentCount = duelMomentsForUpload(rec.timeline ?? null).length
-      if (rec.game === 'cs2' && cs2PlayerIdentityMismatch(rec.timeline)) {
-        return {
-          ready: true,
-          state: 'ready',
-          message: 'Demo linked — set your CS2 Steam name in Settings → Recording to tag your kills',
-          duelMomentCount,
-        }
-      }
-      return { ready: true, state: 'ready', message: '', duelMomentCount }
-    }
-    if (withinSyncWindow) {
-      return {
-        ready: false,
-        state: 'syncing',
-        message: rec.game === 'deadlock'
-          ? deadlockDemoSyncMessage(ageMs)
-          : cs2DemoSyncMessage(ageMs),
-        duelMomentCount: 0,
-      }
-    }
-    return {
-      ready: false,
-      state: 'waiting_match_data',
-      message: rec.game === 'deadlock'
-        ? 'Attach the Deadlock replay (.dem) to unlock Analyse. Coaching needs match stats from the replay.'
-        : 'Attach the CS2 GOTV demo (.dem) to unlock Analyse. Coaching needs kill timeline from the demo.',
-      duelMomentCount: 0,
-    }
-  }
-
-  if (rec.game !== 'valorant') {
-    // Other non-Valorant games (if any): require rich match data before Analyse.
-    if (hasRichMatchData(rec.timeline)) {
-      return { ready: true, state: 'ready', message: '', duelMomentCount: 0 }
-    }
-    return {
-      ready: false,
-      state: 'unavailable',
-      message: 'Match replay not linked. Analyse stays locked until match stats are available',
-      duelMomentCount: 0,
-    }
-  }
-
-  const timeline = rec.timeline
-  const hasMatchId = Boolean(timeline?.matchId ?? rec.matchId)
-
-  if (!hasRichMatchData(timeline)) {
-    if (withinSyncWindow && hasMatchId) {
-      return {
-        ready: false,
-        state: 'syncing',
-        message: 'Still getting Riot match data. Analyse unlocks when ready (usually about a minute). Keep Valorant / Riot Client open.',
-        duelMomentCount: 0,
-      }
-    }
-    // Keep Analyse locked until kills + final stats exist. Sparse matchId-only
-    // submissions were failing after API Henrik wait (missing_match_stats).
-    // This branch is past the auto-sync window — point users at Retry sync.
-    if (hasMatchId) {
-      return {
-        ready: false,
-        state: 'waiting_match_data',
-        message: 'Still getting Riot match data. Analyse unlocks when ready (usually about a minute). Keep Valorant / Riot Client open.',
-        duelMomentCount: 0,
-      }
-    }
-    return {
-      ready: false,
-      state: 'unavailable',
-      message: 'Could not link this recording to a Riot match — keep UpForge open while you play',
-      duelMomentCount: 0,
-    }
-  }
-
-  const duelMomentCount = duelMomentsForUpload(timeline).length
-  if (duelMomentCount > 0) {
-    return { ready: true, state: 'ready', message: '', duelMomentCount }
-  }
-
-  const deaths = timeline?.playerDeaths?.length ?? 0
-  const deathsWithOffset = timeline?.playerDeaths?.filter(
-    (d) => d.videoOffsetMs != null && d.videoOffsetMs >= 0,
-  ).length ?? 0
-
-  if (deaths === 0) {
-    return {
-      ready: false,
-      state: 'no_deaths',
-      message: 'No deaths in this match — coaching reviews your death moments, not kills',
-      duelMomentCount: 0,
-    }
-  }
-
-  if (deathsWithOffset === 0 && withinSyncWindow) {
-    return {
-      ready: false,
-      state: 'syncing',
-      message: 'Syncing death timestamps for coaching…',
-      duelMomentCount: 0,
-    }
-  }
-
-  return {
-    ready: false,
-    state: 'unavailable',
-    message: 'Could not build reviewable death moments for this match',
-    duelMomentCount: 0,
-  }
+  return getAnalyseModule(rec.game).isReady(rec)
 }
 
 export function withAnalysisReadiness<T extends PendingRecording>(rec: T): T & { analysisReadiness: AnalysisReadiness } {
