@@ -165,7 +165,7 @@ function previewOnboarding(): void {
         <span>
           <span class="text-sm text-white">Keep my active OBS scene when a match starts</span>
           <span class="mt-0.5 block text-[11px] leading-relaxed text-gray-500">
-            Turn on if you stream with face cam and overlays. UpForge will still retarget game capture but will not force-switch to the UpForge scene.
+            Off by default so matches record the UpForge scene (gameplay). Turn on if you stream with face cam and overlays; UpForge still retargets game capture but will not force-switch scenes.
           </span>
         </span>
       </label>

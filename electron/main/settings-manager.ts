@@ -5,6 +5,7 @@ import {
   migrateOnboardingFlags,
   withOnboardingComplete,
 } from './onboarding-settings'
+import { migrateObsPreserveSceneDefaultV2 } from './obs-preserve-scene-migrate'
 import {
   resolveRecordingOutput,
   type RecordingPresetId,
@@ -115,6 +116,8 @@ export interface AppSettings {
   obsReplayBufferSeconds: number
   /** Keep the streamer's active OBS scene when a match starts (do not auto-switch to UpForge). */
   obsPreserveActiveScene: boolean
+  /** One-time migration: force UpForge scene switch default (v2). */
+  obsPreserveSceneDefaultV2?: boolean
   /** Milliseconds to wait for OBS outputActive after StartRecord (env UPFORGE_OBS_RECORD_VERIFY_MS overrides). */
   obsRecordVerifyMs?: number
   /** ISO timestamp when OBS preflight last passed. */
@@ -211,7 +214,7 @@ const DEFAULTS: AppSettings = {
   obsPort: 4455,
   obsPassword: '',
   obsReplayBufferSeconds: 30,
-  obsPreserveActiveScene: true,
+  obsPreserveActiveScene: false,
   trainerMouse: {
     dpi: 800,
     game: 'valorant',
@@ -277,6 +280,8 @@ export class SettingsManager {
         parsed.obsHost = '127.0.0.1'
       }
       parsed = migrateOnboardingFlags(parsed)
+      const beforeMigrate = parsed.obsPreserveSceneDefaultV2 === true
+      parsed = migrateObsPreserveSceneDefaultV2(parsed)
       // Migrate trainerMouse.game → primaryGame for existing installs
       if (!parsed.primaryGame && parsed.trainerMouse?.game) {
         const g = parsed.trainerMouse.game
@@ -296,9 +301,21 @@ export class SettingsManager {
       if (!String(merged.savePath ?? '').trim()) {
         merged.savePath = DEFAULTS.savePath
       }
-      return { ...merged, ...applyRecordingPresetFields(merged) }
+      const result = { ...merged, ...applyRecordingPresetFields(merged) }
+      if (!beforeMigrate) {
+        try {
+          fs.mkdirSync(path.dirname(this.filePath), { recursive: true })
+          fs.writeFileSync(this.filePath, JSON.stringify(result, null, 2))
+        } catch (err: unknown) {
+          console.error('[SettingsManager] Failed to persist obs preserve-scene migration:', err)
+        }
+      }
+      return result
     } catch {
-      return { ...DEFAULTS }
+      return {
+        ...DEFAULTS,
+        obsPreserveSceneDefaultV2: true,
+      }
     }
   }
 

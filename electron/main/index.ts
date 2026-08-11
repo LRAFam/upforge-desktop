@@ -343,7 +343,7 @@ const obsRecorder = new OBSRecorder(
       port: s?.obsPort ?? 4455,
       password: s?.obsPassword ?? '',
       replayBufferSeconds: s?.obsReplayBufferSeconds ?? 30,
-      obsPreserveActiveScene: s?.obsPreserveActiveScene ?? true,
+      obsPreserveActiveScene: s?.obsPreserveActiveScene ?? false,
       obsRecordVerifyMs: s?.obsRecordVerifyMs,
     }
   },

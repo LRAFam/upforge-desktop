@@ -492,7 +492,7 @@ function createSettings() {
     obsPort: 4455,
     obsPassword: '',
     obsReplayBufferSeconds: 30,
-    obsPreserveActiveScene: true,
+    obsPreserveActiveScene: false,
     trainerMouse: {
       dpi: 800,
       game: 'valorant',

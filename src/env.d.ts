@@ -179,6 +179,8 @@ export interface AppSettings {
   obsReplayBufferSeconds: number
   /** Keep active OBS scene when recording starts (for stream layouts with face cam) */
   obsPreserveActiveScene: boolean
+  /** One-time migration: force UpForge scene switch default (v2). */
+  obsPreserveSceneDefaultV2?: boolean
   /** Milliseconds to wait for OBS outputActive after StartRecord (1–15000, default 5000). */
   obsRecordVerifyMs?: number
   /** ISO timestamp when OBS preflight last passed. */
