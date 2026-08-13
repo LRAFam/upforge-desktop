@@ -23,6 +23,7 @@ import type { ClipCaptureSettings } from './settings-manager'
 import { buildClipKills } from './kill-clip-grouping'
 import { buildClipEventsFromKills } from './live-kill-stamps'
 import type { ClipRecord } from './clip-store'
+import { formatLolClipsSkippedActivity } from './lol-enrich-activity'
 
 function reportClipExtractError(prefix: string, err: unknown): void {
   const msg = err instanceof Error ? err.message : String(err)
@@ -562,6 +563,8 @@ export class ClipPipeline {
         this.ctx.logActivity('No clips extracted — no kills in timeline (MatchDetails may not be ready yet) and no hotkey bookmarks')
       } else if (killCount === 0) {
         this.ctx.logActivity('No kill clips extracted — no kills in timeline; hotkey clips may have been saved')
+      } else if (timeline?.game === 'lol') {
+        this.ctx.logActivity(formatLolClipsSkippedActivity(killCount))
       } else {
         this.ctx.logActivity('No clips extracted — all kills lacked video timestamps')
       }

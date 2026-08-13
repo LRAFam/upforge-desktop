@@ -223,6 +223,10 @@ import {
   runNetworkDiagnostics,
 } from './network-diagnostics'
 import {
+  formatLolLinkActivity,
+  formatLolMatchEndActivity,
+} from './lol-enrich-activity'
+import {
   getAnalysisReadiness,
   getVodFileReadiness,
   isTerminalAnalysisReadinessState,
@@ -1060,6 +1064,7 @@ const inGameFeedbackDeps = () => ({
 // Last match diagnostic — captured at handleMatchEnd for the developer panel
 interface LastMatchDiagnostic {
   timestamp: number
+  game: string
   matchId: string | null
   map: string | null
   agent: string | null
@@ -1069,6 +1074,8 @@ interface LastMatchDiagnostic {
   killsInTimeline: number
   clipsExtracted: number
   matchDetailsStatus: 'fetched' | 'no_match_id' | 'no_region' | 'no_auth' | 'fetch_failed' | 'pending'
+  lolEnrichStatus?: 'fetched' | 'fetch_failed' | 'no_match_id' | 'no_auth' | null
+  queueId?: string | null
   correlationId: string | null
   sectorsMs: Partial<Record<SectorName, number>>
   dnf: string | null
@@ -2167,6 +2174,22 @@ async function prepareTimelineForCoaching(
       authUser: authManager.getUser(),
     })
 
+    const status = timeline.lolEnrichStatus
+    if (status === 'fetched' || status === 'fetch_failed' || status === 'no_match_id' || status === 'no_auth') {
+      logActivity(formatLolLinkActivity({
+        status,
+        hasGameId: Boolean(timeline.matchId),
+        queueId: timeline.queueId,
+      }), 'lol')
+      if (lastMatchDiagnostic && lastMatchDiagnostic.game === 'lol') {
+        lastMatchDiagnostic.lolEnrichStatus = status
+        lastMatchDiagnostic.matchId = timeline.matchId ?? lastMatchDiagnostic.matchId
+        lastMatchDiagnostic.queueId = timeline.queueId != null
+          ? String(timeline.queueId)
+          : lastMatchDiagnostic.queueId
+      }
+    }
+
     if (recordingId) {
       recordingsStore.updateTimeline(recordingId, timeline)
       mainWindow?.webContents.send('recordings:updated')
@@ -2682,7 +2705,7 @@ function setupGameDetection(): void {
 
     const run = async (): Promise<boolean> => {
       try {
-        await handleMatchEnd(game)
+        await handleMatchEnd(game, source)
         return true
       } catch (err) {
         log.error(`[MatchEnd] handleMatchEnd failed (${source}):`, err)
@@ -2916,7 +2939,7 @@ function setupGameDetection(): void {
   }
 
   let handleMatchEndRunning = false
-  async function handleMatchEnd(game: string): Promise<void> {
+  async function handleMatchEnd(game: string, endSource = 'unknown'): Promise<void> {
     if (handleMatchEndRunning) {
       log.warn('[HandleMatchEnd] Re-entrant call blocked')
       return
@@ -2970,6 +2993,10 @@ function setupGameDetection(): void {
     pendingReplayPath = timelineBuilt.pendingReplayPath
     lastReplayRetryContext = timelineBuilt.replayRetryContext
 
+    if (usesDemoReplay(game) && !pendingReplayPath) {
+      logActivity(`${game === 'cs2' ? 'CS2' : 'Deadlock'} demo missing at match end`, game)
+    }
+
     if (normalizePrimaryGame(game) === 'lol' && timeline) {
       try {
         const lcu = await probeLolLcu({ liveClient: lolLiveClientApi })
@@ -2989,6 +3016,12 @@ function setupGameDetection(): void {
       if (linkedPuuid) timeline.puuid = linkedPuuid
       const linkedRegion = lolPlatformToMatchV5Region(authUser?.lol_platform)
       if (linkedRegion) timeline.region = linkedRegion
+
+      logActivity(formatLolMatchEndActivity({
+        source: endSource,
+        gameId: timeline.matchId ?? null,
+        queueId: timeline.queueId ?? null,
+      }), 'lol')
     }
 
     const pathResolve = resolveReadyRecordingPathDetailed(
@@ -3102,6 +3135,7 @@ function setupGameDetection(): void {
     const lapSnap = activeMatchTelemetry?.snapshot()
     lastMatchDiagnostic = {
       timestamp: Date.now(),
+      game,
       matchId: timeline?.matchId ?? null,
       map,
       agent,
@@ -3115,10 +3149,12 @@ function setupGameDetection(): void {
         : usesDemoReplay(game)
           ? (killsInTimeline > 0 ? 'fetched' : 'fetch_failed')
           : (riotDiag.accessTokenPresent ? 'no_match_id' : 'no_auth'),
+      lolEnrichStatus: game === 'lol' ? (timeline?.lolEnrichStatus ?? null) : null,
+      queueId: timeline?.queueId != null ? String(timeline.queueId) : null,
       correlationId: lapSnap?.match_correlation_id ?? null,
       sectorsMs: lapSnap?.sectors_ms ?? {},
       dnf: lapSnap?.dnf ?? null,
-      endReason: lapSnap?.end_reason ?? null,
+      endReason: endSource || lapSnap?.end_reason || null,
       pathFallback: lapSnap?.path_fallback ?? false,
       machineBucket: lapSnap?.machine_bucket ?? null,
       obsSkippedFrames: lapSnap?.obs_skipped_frames_max ?? null,
@@ -5968,11 +6004,64 @@ async function startApp(): Promise<void> {
       lastRiotMatchDetails: riotLocalApi.getLastMatchDetailsFetch(),
       lastUploadError: getLastUploadNetworkError(),
     })
+    const lcu = await probeLolLcu({ liveClient: lolLiveClientApi })
+    const authUser = authManager.getUser()
+    const lolPuuid = lolLinkedPuuidFromAuth(
+      authUser as { lol_puuid?: string | null; riot_puuid?: string | null } | null,
+    )
+    const dedicatedLolAccount = Boolean(
+      authUser && typeof (authUser as { lol_puuid?: string | null }).lol_puuid === 'string'
+        && String((authUser as { lol_puuid?: string | null }).lol_puuid).trim() !== '',
+    )
+    const last = lastMatchDiagnostic
+    const demo =
+      last && (last.game === 'cs2' || last.game === 'deadlock')
+        ? {
+            game: last.game as 'cs2' | 'deadlock',
+            demoPresent: last.killsInTimeline > 0 || last.matchDetailsStatus === 'fetched',
+            demoBasename: null as string | null,
+            syncStatus: last.matchDetailsStatus,
+          }
+        : null
+
     return formatSupportBundle({
       version: app.getVersion(),
       network,
       activityLog: activityLog.slice(),
       riot: riotDiag,
+      lastMatch: last
+        ? {
+            game: last.game,
+            timestamp: last.timestamp,
+            matchId: last.matchId,
+            map: last.map,
+            agent: last.agent,
+            gameMode: last.gameMode,
+            endReason: last.endReason,
+            matchDetailsStatus: last.matchDetailsStatus,
+            lolEnrichStatus: last.lolEnrichStatus ?? null,
+            queueId: last.queueId ?? null,
+            killsInTimeline: last.killsInTimeline,
+            clipsExtracted: last.clipsExtracted,
+            recordingDuration: last.recordingDuration,
+            fileSizeMb: last.fileSizeMb,
+          }
+        : null,
+      lol: {
+        lockfileFound: lcu.lockfileFound,
+        phase: lcu.phase,
+        queueId: lcu.queueId,
+        queueLabel: lcu.queueLabel,
+        gameMode: lcu.gameMode,
+        error: lcu.error,
+        liveClientReachable: lcu.liveClient?.reachable ?? false,
+        liveClientInMatch: lcu.liveClient?.inMatch ?? false,
+        liveClientGameMode: lcu.liveClient?.gameMode ?? null,
+        lolPlatform: (authUser as { lol_platform?: string | null } | null)?.lol_platform ?? null,
+        hasLolPuuid: Boolean(lolPuuid),
+        dedicatedLolAccount,
+      },
+      demo,
     })
   })
 

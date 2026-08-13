@@ -102,8 +102,61 @@ describe('formatSupportBundle', () => {
     expect(text).toContain('UpForge Support Bundle v2.10.43')
     expect(text).toContain('=== NETWORK ===')
     expect(text).toContain('pd.na.a.pvp.net')
+    expect(text).toContain('=== LAST MATCH ===')
+    expect(text).toContain('=== LEAGUE ===')
     expect(text).toContain('=== ACTIVITY LOG ===')
     expect(text).toContain('Riot match stats fetch failed')
     expect(text).not.toContain('—')
+  })
+
+  it('includes LAST MATCH and LEAGUE when provided', () => {
+    const text = formatSupportBundle({
+      version: '2.10.77',
+      network: sampleSnapshot(),
+      activityLog: [],
+      riot: {
+        lockfileFound: false,
+        region: 'na',
+        accessTokenPresent: false,
+        entitlementsTokenPresent: false,
+        currentMatchId: null,
+        lastSessionLoopState: 'MENUS',
+        clientVersion: 'release-x',
+      },
+      lastMatch: {
+        game: 'lol',
+        timestamp: 1_700_000_000_000,
+        matchId: null,
+        map: "Summoner's Rift",
+        agent: 'Mel',
+        gameMode: 'CLASSIC',
+        endReason: 'process',
+        matchDetailsStatus: 'no_match_id',
+        lolEnrichStatus: 'no_match_id',
+        queueId: null,
+        killsInTimeline: 2,
+        clipsExtracted: 0,
+        recordingDuration: 2100,
+        fileSizeMb: 950,
+      },
+      lol: {
+        lockfileFound: false,
+        phase: null,
+        queueId: null,
+        queueLabel: null,
+        gameMode: null,
+        error: 'League lockfile not found',
+        liveClientReachable: false,
+        liveClientInMatch: false,
+        liveClientGameMode: null,
+        lolPlatform: null,
+        hasLolPuuid: true,
+        dedicatedLolAccount: false,
+      },
+    })
+    expect(text).toContain('=== LAST MATCH ===')
+    expect(text).toContain('=== LEAGUE ===')
+    expect(text).toContain('=== RIOT CLIENT ===')
+    expect(text.indexOf('=== LAST MATCH ===')).toBeLessThan(text.indexOf('=== RIOT CLIENT ==='))
   })
 })

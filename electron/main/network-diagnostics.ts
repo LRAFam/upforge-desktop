@@ -5,8 +5,17 @@
 import dns from 'dns'
 import { promisify } from 'util'
 import { riotPdHostname } from './riot-pd-shard'
+import {
+  formatDemoSection,
+  formatLastMatchSection,
+  formatLeagueSection,
+  type SupportDemoSnapshot,
+  type SupportLastMatchSnapshot,
+  type SupportLolProbeSnapshot,
+} from './support-diagnostics'
 
 export { riotPdHostname } from './riot-pd-shard'
+export type { SupportDemoSnapshot, SupportLastMatchSnapshot, SupportLolProbeSnapshot }
 
 const lookupAsync = promisify(dns.lookup)
 
@@ -189,6 +198,9 @@ export function formatSupportBundle(opts: {
     clientVersion: string
     lastMatchDetailsFetch?: MatchDetailsFetchSnapshot | null
   }
+  lastMatch?: SupportLastMatchSnapshot | null
+  lol?: SupportLolProbeSnapshot | null
+  demo?: SupportDemoSnapshot | null
 }): string {
   const { version, network, activityLog, riot } = opts
   const lines: string[] = [
@@ -228,6 +240,19 @@ export function formatSupportBundle(opts: {
   } else {
     lines.push(`At: ${new Date(network.lastUploadError.at).toISOString()}`)
     lines.push(`Message: ${network.lastUploadError.message}`)
+  }
+
+  lines.push('', ...formatLastMatchSection(opts.lastMatch ?? null))
+
+  if (opts.lol) {
+    lines.push('', ...formatLeagueSection(opts.lol))
+  } else {
+    lines.push('', '=== LEAGUE ===', 'Not probed.')
+  }
+
+  const demoLines = formatDemoSection(opts.demo ?? null)
+  if (demoLines.length) {
+    lines.push('', ...demoLines)
   }
 
   lines.push(
