@@ -73,8 +73,7 @@ export function applyLolEnrichPatch(timeline: MatchData, patch: LolEnrichPatch, 
   if (patch.queueId) timeline.queueId = patch.queueId
 
   if (patch.finalStats) {
-    timeline.finalStats = {
-      ...(timeline.finalStats ?? {
+    const baseStats: FinalPlayerStats = timeline.finalStats ?? {
         kills: 0,
         deaths: 0,
         assists: 0,
@@ -83,11 +82,20 @@ export function applyLolEnrichPatch(timeline: MatchData, patch: LolEnrichPatch, 
         agent: null,
         team: null,
         level: 0,
-      }),
-      ...patch.finalStats,
+        headshotPct: null,
+        adr: null,
+        accountLevel: null,
+      }
+    const definedPatch = Object.fromEntries(
+      Object.entries(patch.finalStats).filter(([, value]) => value !== undefined),
+    ) as Partial<FinalPlayerStats>
+    const finalStats: FinalPlayerStats = {
+      ...baseStats,
+      ...definedPatch,
     }
+    timeline.finalStats = finalStats
     if (patch.finalStats.creepScore != null) {
-      timeline.finalStats.creepScore = patch.finalStats.creepScore
+      finalStats.creepScore = patch.finalStats.creepScore
     }
     if (patch.finalStats.cs != null) {
       timeline.cs = patch.finalStats.cs

@@ -174,7 +174,7 @@ import {
 import { mergeSkillProfileFromAnalysis } from '../../src/lib/skill-profile'
 import { parseMatchHighlightsFromApi } from '../../src/lib/match-highlights'
 import { extractSpatialFromAnalysisPayload } from '../../src/lib/analysis-enrichment'
-import { desktopVodResultsUrl } from '../../src/lib/games'
+import { desktopVodResultsUrl, isPrimaryGame } from '../../src/lib/games'
 import { RecordingsStore, type ClipOnlyReason } from './recordings-store'
 import { ClipExtractor } from './clip-extractor'
 import { ClipStore } from './clip-store'
@@ -5572,7 +5572,7 @@ async function doUploadAndAnalyse(
           targetWindow.flashFrame(true)
           targetWindow.once('focus', () => targetWindow.flashFrame(false))
         }
-        if (analysisId && settingsManager?.get()?.autoOpenBrowser !== false) {
+        if (analysisId && isPrimaryGame(game) && settingsManager?.get()?.autoOpenBrowser !== false) {
           shell.openExternal(desktopVodResultsUrl(game, analysisId))
         }
         void (async () => {
