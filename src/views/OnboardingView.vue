@@ -547,25 +547,64 @@
                   Admin test mode. This analysis is excluded from activation analytics.
                 </p>
                 <div class="rounded-xl border border-white/[0.08] bg-white/[0.02] px-4 py-4">
-                  <div class="flex items-center gap-3">
+                  <div class="flex items-start gap-3">
                     <span
-                      class="h-3 w-3 rounded-full shrink-0"
+                      class="mt-1 h-3 w-3 rounded-full shrink-0"
                       :class="missionStage === 'recording' ? 'bg-red-500 animate-pulse' : missionStage === 'ready' ? 'bg-emerald-400' : missionStage === 'failed' ? 'bg-amber-400' : 'bg-blue-400'"
                     />
-                    <div>
+                    <div class="min-w-0 flex-1">
                       <p class="text-sm font-bold text-white">{{ missionCopy.title }}</p>
                       <p class="text-[11px] text-gray-500 mt-1 leading-relaxed">{{ missionCopy.body }}</p>
                     </div>
+                    <p v-if="missionStage === 'recording'" class="font-mono text-sm font-black text-red-300">
+                      {{ missionRecordingDuration }}
+                    </p>
                   </div>
                 </div>
 
                 <div
-                  v-if="missionCapturePreview && (missionStage === 'game_detected' || missionStage === 'waiting_for_match')"
+                  v-if="missionIsCaptureStage"
+                  class="overflow-hidden rounded-xl border border-white/[0.08] bg-[#0b0e14]"
+                >
+                  <div class="grid grid-cols-3 divide-x divide-white/[0.06]">
+                    <div v-for="check in missionCaptureChecks" :key="check.label" class="px-3 py-3">
+                      <div class="flex items-center gap-2">
+                        <span
+                          class="h-2 w-2 shrink-0 rounded-full"
+                          :class="check.state === 'ok' ? 'bg-emerald-400' : check.state === 'active' ? 'bg-red-500 animate-pulse' : check.state === 'error' ? 'bg-amber-400' : 'bg-gray-600'"
+                        />
+                        <p class="truncate text-[10px] font-bold uppercase tracking-wide text-gray-500">{{ check.label }}</p>
+                      </div>
+                      <p class="mt-1.5 text-[11px] font-semibold" :class="check.state === 'error' ? 'text-amber-200' : check.state === 'pending' ? 'text-gray-500' : 'text-white'">
+                        {{ check.value }}
+                      </p>
+                    </div>
+                  </div>
+                  <div class="border-t border-white/[0.06] px-3 py-2.5">
+                    <p class="text-[11px] leading-relaxed" :class="missionCaptureMessageTone">
+                      {{ missionCaptureMessage }}
+                    </p>
+                  </div>
+                </div>
+
+                <div
+                  v-if="missionCapturePreview && missionIsCaptureStage"
                   class="overflow-hidden rounded-xl border border-white/[0.08] bg-black"
                 >
                   <img :src="missionCapturePreview" alt="Live OBS game capture preview" class="aspect-video w-full object-contain" />
-                  <p class="border-t border-white/[0.08] px-3 py-2 text-[10px] text-gray-500">
-                    Live OBS capture preview. This stays on your PC and is not uploaded.
+                  <div class="flex items-center justify-between gap-3 border-t border-white/[0.08] px-3 py-2">
+                    <p class="text-[10px] text-gray-500">This is what OBS can see. The preview stays on your PC.</p>
+                    <p class="shrink-0 text-[10px] font-bold text-emerald-300">Capture verified</p>
+                  </div>
+                </div>
+
+                <div
+                  v-else-if="missionIsCaptureStage && missionRuntime.currentGame === 'valorant'"
+                  class="rounded-xl border border-amber-400/20 bg-amber-400/[0.05] px-4 py-3"
+                >
+                  <p class="text-[12px] font-bold text-amber-200">UpForge cannot verify the Valorant picture yet</p>
+                  <p class="mt-1 text-[11px] leading-relaxed text-amber-200/70">
+                    Bring Valorant to the foreground. Do not queue until the preview appears above.
                   </p>
                 </div>
 
@@ -763,8 +802,19 @@ const missionActive = ref(false)
 const missionRecording = ref<PendingRecording | null>(null)
 const missionTimeline = ref<RecordingTimeline | null>(null)
 const missionCapturePreview = ref<string | null>(null)
-const missionRuntime = ref({ currentGame: null as string | null, waitingForMatch: false, recording: false })
+const missionPreviewError = ref<string | null>(null)
+const missionRuntime = ref({
+  currentGame: null as string | null,
+  waitingForMatch: false,
+  recording: false,
+  recordingStartedAt: null as number | null,
+  obsConnected: false,
+  obsRecording: false,
+  obsError: null as string | null,
+})
+const missionNow = ref(Date.now())
 let missionPollTimer: ReturnType<typeof setInterval> | null = null
+let missionClockTimer: ReturnType<typeof setInterval> | null = null
 let missionPreviewCapturedAt = 0
 
 const selectedGame = ref<PrimaryGame>('valorant')
@@ -773,6 +823,51 @@ const missionStage = computed<OnboardingMissionStage>(() =>
   deriveOnboardingMissionStage(missionRuntime.value, missionRecording.value),
 )
 const missionIsAdminTest = computed(() => isAdmin.value)
+const missionIsCaptureStage = computed(() =>
+  ['ready_for_game', 'game_detected', 'waiting_for_match', 'recording'].includes(missionStage.value),
+)
+const missionRecordingDuration = computed(() => {
+  const startedAt = missionRuntime.value.recordingStartedAt
+  if (!startedAt) return '00:00'
+  const seconds = Math.max(0, Math.floor((missionNow.value - startedAt) / 1000))
+  return `${String(Math.floor(seconds / 60)).padStart(2, '0')}:${String(seconds % 60).padStart(2, '0')}`
+})
+const missionCaptureChecks = computed(() => [
+  {
+    label: 'OBS',
+    value: missionRuntime.value.obsConnected ? 'Connected' : 'Disconnected',
+    state: missionRuntime.value.obsConnected ? 'ok' : 'error',
+  },
+  {
+    label: 'Valorant',
+    value: missionRuntime.value.currentGame === 'valorant' ? 'Window detected' : 'Not detected',
+    state: missionRuntime.value.currentGame === 'valorant' ? 'ok' : 'pending',
+  },
+  {
+    label: 'Recording',
+    value: missionRuntime.value.obsRecording ? `Recording ${missionRecordingDuration.value}` : 'Waiting for match',
+    state: missionRuntime.value.obsRecording ? 'active' : 'pending',
+  },
+])
+const missionCaptureMessage = computed(() => {
+  if (!missionRuntime.value.obsConnected) return missionRuntime.value.obsError || 'OBS disconnected. Reconnect it before playing.'
+  if (!missionRuntime.value.currentGame) return 'OBS is ready. Open Valorant and UpForge will verify the capture before you queue.'
+  if (!missionCapturePreview.value && !missionRuntime.value.recording) {
+    return missionPreviewError.value
+      ? 'Valorant is detected, but OBS has not returned a usable picture. Bring Valorant forward and UpForge will retry.'
+      : 'Valorant is detected. UpForge is checking the OBS picture before you queue.'
+  }
+  if (missionRuntime.value.obsRecording) return 'OBS has confirmed it is recording this match. You can keep playing.'
+  if (missionRuntime.value.waitingForMatch) return 'Capture verified. Queue Swiftplay, Competitive or Premier; recording starts automatically at match begin.'
+  return 'Valorant and its OBS capture are verified. UpForge is watching for the match hook.'
+})
+const missionCaptureMessageTone = computed(() =>
+  !missionRuntime.value.obsConnected || (missionRuntime.value.currentGame === 'valorant' && !missionCapturePreview.value)
+    ? 'text-amber-200/80'
+    : missionRuntime.value.obsRecording
+      ? 'text-red-200'
+      : 'text-emerald-200/80',
+)
 
 const missionCopy = computed(() => {
   const copy: Record<OnboardingMissionStage, { title: string; body: string }> = {
@@ -1013,10 +1108,12 @@ onMounted(async () => {
   await ensureAuthedOrStay()
   await refreshMissionState()
   missionPollTimer = setInterval(() => { void refreshMissionState() }, 2000)
+  missionClockTimer = setInterval(() => { missionNow.value = Date.now() }, 1000)
 })
 
 onUnmounted(() => {
   if (missionPollTimer) clearInterval(missionPollTimer)
+  if (missionClockTimer) clearInterval(missionClockTimer)
 })
 
 async function refreshAuthState() {
@@ -1051,8 +1148,9 @@ async function refreshMissionState() {
   if (!missionActive.value) return
 
   if (mission?.game) selectedGame.value = mission.game
-  const [status, recordings] = await Promise.all([
+  const [status, obsStatus, recordings] = await Promise.all([
     window.api.app.getStatus().catch(() => null),
+    window.api.obs.getStatus().catch(() => null),
     window.api.recordings.get().catch(() => [] as PendingRecording[]),
   ])
   if (status) {
@@ -1060,6 +1158,15 @@ async function refreshMissionState() {
       currentGame: status.currentGame,
       waitingForMatch: status.waitingForMatch,
       recording: status.recording,
+      recordingStartedAt: status.recordingStartedAt,
+      obsConnected: obsStatus?.connected ?? status.obsConnected,
+      obsRecording: obsStatus?.recording ?? status.recording,
+      obsError: obsStatus?.lastError ?? null,
+    }
+
+    if (status.currentGame !== 'valorant') {
+      missionCapturePreview.value = null
+      missionPreviewError.value = null
     }
 
     const shouldRefreshPreview = status.currentGame === 'valorant'
@@ -1068,7 +1175,12 @@ async function refreshMissionState() {
     if (shouldRefreshPreview) {
       missionPreviewCapturedAt = Date.now()
       const preview = await window.api.obs.capturePreview().catch(() => null)
-      if (preview?.ok) missionCapturePreview.value = preview.dataUrl
+      if (preview?.ok) {
+        missionCapturePreview.value = preview.dataUrl
+        missionPreviewError.value = null
+      } else {
+        missionPreviewError.value = preview?.error || 'capture_preview_failed'
+      }
     }
   }
   missionRecording.value = [...recordings]
