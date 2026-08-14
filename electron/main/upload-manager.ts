@@ -103,6 +103,31 @@ export interface UploadResult {
   duel_moments?: DuelMomentManifest[]
 }
 
+export function buildDesktopPresignBody(
+  opts: UploadOptions,
+  totalBytes: number,
+): Record<string, unknown> {
+  const submissionCtx = submissionContextFromTimeline(opts.timeline ?? null, opts.coachingExtras)
+  return {
+    riot_name: opts.riotName,
+    riot_tag: opts.riotTag,
+    game: opts.game,
+    map: submissionCtx.map ?? opts.map,
+    agent: submissionCtx.agent ?? opts.agent,
+    game_mode: submissionCtx.game_mode,
+    file_size_bytes: totalBytes,
+    ...(opts.recordingId ? { client_recording_id: opts.recordingId } : {}),
+    ...(opts.deferMatchDataOnPresign ? {} : {
+      match_data: submissionCtx.match_data,
+      duel_moments: submissionCtx.duel_moments,
+      ally_agents: submissionCtx.ally_agents,
+      enemy_agents: submissionCtx.enemy_agents,
+      skill_profile: submissionCtx.skill_profile,
+      rank_snapshot: submissionCtx.rank_snapshot,
+    }),
+  }
+}
+
 export interface ArchiveUploadResult {
   archive_id: string
   playback_url?: string
@@ -353,24 +378,7 @@ export class UploadManager {
 
     // ── Step 1: get presigned URL ──────────────────────────────────────────
     opts.onProgress(3)
-    const submissionCtx = submissionContextFromTimeline(opts.timeline ?? null, opts.coachingExtras)
-    const presignBody = JSON.stringify({
-      riot_name:  opts.riotName,
-      riot_tag:   opts.riotTag,
-      game:       opts.game,
-      map:        submissionCtx.map ?? opts.map,
-      agent:      submissionCtx.agent ?? opts.agent,
-      game_mode:  submissionCtx.game_mode,
-      file_size_bytes: totalBytes,
-      ...(opts.deferMatchDataOnPresign ? {} : {
-        match_data: submissionCtx.match_data,
-        duel_moments: submissionCtx.duel_moments,
-        ally_agents: submissionCtx.ally_agents,
-        enemy_agents: submissionCtx.enemy_agents,
-        skill_profile: submissionCtx.skill_profile,
-        rank_snapshot: submissionCtx.rank_snapshot,
-      }),
-    })
+    const presignBody = JSON.stringify(buildDesktopPresignBody(opts, totalBytes))
     const presign = parsePresignResponse(await this._apiPost(
       `${apiUrl}/api/desktop-submissions/presign`,
       presignBody,
@@ -1052,4 +1060,3 @@ export class UploadManager {
     })
   }
 }
-
