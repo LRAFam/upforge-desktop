@@ -40,4 +40,14 @@ describe('desktop presign contract', () => {
       .toHaveProperty('onboarding_bonus', true)
     expect(buildDesktopPresignBody(options(), 1234)).not.toHaveProperty('onboarding_bonus')
   })
+
+  it('marks admin onboarding tests explicitly', () => {
+    const opts = options('11111111-1111-4111-8111-111111111111', true)
+    opts.onboardingAdminTest = true
+
+    expect(buildDesktopPresignBody(opts, 1234)).toMatchObject({
+      onboarding_bonus: true,
+      onboarding_admin_test: true,
+    })
+  })
 })

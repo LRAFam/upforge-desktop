@@ -543,6 +543,9 @@
               </p>
 
               <div v-if="missionActive" class="space-y-4 mb-5">
+                <p v-if="isAdmin && missionIsAdminTest" class="rounded-lg border border-amber-400/25 bg-amber-400/[0.06] px-3 py-2 text-[11px] font-bold text-amber-200">
+                  Admin test mode. This analysis is excluded from activation analytics.
+                </p>
                 <div class="rounded-xl border border-white/[0.08] bg-white/[0.02] px-4 py-4">
                   <div class="flex items-center gap-3">
                     <span
@@ -743,6 +746,7 @@ const password = ref('')
 const signInError = ref('')
 const signInLoading = ref(false)
 const isAuthed = ref(false)
+const isAdmin = ref(false)
 
 const step = ref(1)
 const slideDir = ref<'slide-left' | 'slide-right'>('slide-left')
@@ -768,6 +772,7 @@ const selectedGame = ref<PrimaryGame>('valorant')
 const missionStage = computed<OnboardingMissionStage>(() =>
   deriveOnboardingMissionStage(missionRuntime.value, missionRecording.value),
 )
+const missionIsAdminTest = computed(() => isAdmin.value)
 
 const missionCopy = computed(() => {
   const copy: Record<OnboardingMissionStage, { title: string; body: string }> = {
@@ -1015,8 +1020,9 @@ onUnmounted(() => {
 })
 
 async function refreshAuthState() {
-  const user = await window.api.auth.getUser()
+  const user = await window.api.auth.getUser() as { is_admin?: boolean } | null
   isAuthed.value = Boolean(user)
+  isAdmin.value = user?.is_admin === true
 }
 
 async function ensureAuthedOrStay() {
@@ -1085,6 +1091,14 @@ async function startBonusMission() {
     return
   }
 
+  if (isAdmin.value) {
+    const reset = await window.api.auth.resetOnboardingBonusTest()
+    if (!reset.ok) {
+      completeError.value = reset.error || 'Could not prepare the admin onboarding test.'
+      return
+    }
+  }
+
   const bonus = await window.api.auth.getOnboardingBonus()
   if (!bonus.eligible) {
     completeError.value = bonus.claimed
@@ -1111,6 +1125,7 @@ async function startBonusMission() {
       previousValorantModes: previousModes,
       previousAutoAnalyse: settings.autoAnalyse,
       previousFullMatchRecording: settings.fullMatchRecording,
+      adminTest: isAdmin.value,
     },
   })
   missionActive.value = true
@@ -1174,6 +1189,7 @@ async function handleSignIn() {
     const result = await window.api.auth.login(email.value, password.value)
     if (result.ok) {
       isAuthed.value = true
+      await refreshAuthState()
       await prefillGameFromUser()
       nextStep()
     } else {
@@ -1206,6 +1222,7 @@ async function loadAccountState() {
       primary_game?: string | null
       game_preference?: string | null
     } | null
+    isAdmin.value = refreshed?.is_admin === true
 
     if (selectedGame.value === 'valorant') {
       let accounts: RiotAccount[] = []

@@ -92,6 +92,16 @@ export function setupAuthHandlers(
     }
   })
 
+  ipcMain.handle('auth:reset-onboarding-bonus-test', async () => {
+    if (!auth.getToken()) return { ok: false, error: 'Not logged in' }
+    try {
+      const response = await auth.getApi().post('/api/onboarding/desktop-bonus/admin-reset')
+      return { ok: response.data?.success === true }
+    } catch {
+      return { ok: false, error: 'Could not reset the admin onboarding test' }
+    }
+  })
+
   ipcMain.handle('auth:update-riot-account', async (_e, payload: {
     riot_name: string
     riot_tag: string

@@ -11,6 +11,11 @@ const api = {
       eligible: boolean
       claimed: boolean
       job_id: string | null
+      admin_test_allowed: boolean
+      error?: string
+    }>,
+    resetOnboardingBonusTest: () => ipcRenderer.invoke('auth:reset-onboarding-bonus-test') as Promise<{
+      ok: boolean
       error?: string
     }>,
     updateRiotAccount: (payload: { riot_name: string; riot_tag: string; riot_region?: string }) =>

@@ -141,6 +141,7 @@ export interface AppSettings {
     previousValorantModes?: string[]
     previousAutoAnalyse?: boolean
     previousFullMatchRecording?: boolean
+    adminTest?: boolean
   } | null
   /** Which monitor to capture. 'auto' detects from game window; numbers are 0-based display index. */
   captureMonitor: 'auto' | number
@@ -265,6 +266,7 @@ export interface PendingRecording {
   clipCount?: number
   matchId?: string | null
   onboardingBonus?: boolean
+  onboardingAdminTest?: boolean
   /** Present on recordings:get — file still on disk. */
   hasLocalFile?: boolean
   /** Present on recordings:get — full VOD uploaded to S3. */
@@ -590,8 +592,10 @@ declare global {
           eligible: boolean
           claimed: boolean
           job_id: string | null
+          admin_test_allowed: boolean
           error?: string
         }>
+        resetOnboardingBonusTest: () => Promise<{ ok: boolean; error?: string }>
         updateRiotAccount: (payload: { riot_name: string; riot_tag: string; riot_region?: string }) => Promise<{ ok: boolean; error?: string }>
         listRiotAccounts: () => Promise<{
           accounts: Array<{

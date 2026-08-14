@@ -3379,6 +3379,7 @@ function setupGameDetection(): void {
         timeline,
         onboardingBonus: settingsManager.get().onboardingMatchMission?.active === true
           && settingsManager.get().onboardingMatchMission?.game === game,
+        onboardingAdminTest: settingsManager.get().onboardingMatchMission?.adminTest === true,
       })
       setPrepStep('dashboard_row', savedRecording.id)
       mainWindow?.webContents.send('recordings:updated')
@@ -5333,6 +5334,7 @@ async function doUploadAndAnalyse(
       coachingExtras,
       recordingId,
       onboardingBonus: storedRecording?.onboardingBonus === true,
+      onboardingAdminTest: storedRecording?.onboardingAdminTest === true,
       prepareDuelClips: timeline && duelClipGames.has(game)
         ? async (jobId, path) => {
             const moments = duelMomentsForUpload(timeline)

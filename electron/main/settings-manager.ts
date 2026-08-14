@@ -68,6 +68,7 @@ export interface AppSettings {
     previousValorantModes?: string[]
     previousAutoAnalyse?: boolean
     previousFullMatchRecording?: boolean
+    adminTest?: boolean
   } | null
   /** Which monitor to capture. 'auto' detects from the game window; numbers are 0-based display index. */
   captureMonitor: 'auto' | number

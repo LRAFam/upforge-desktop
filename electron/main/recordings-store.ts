@@ -71,6 +71,7 @@ export interface PendingRecording {
   matchId?: string | null
   /** Exact recording claimed against the one-time onboarding bonus entitlement. */
   onboardingBonus?: boolean
+  onboardingAdminTest?: boolean
 }
 
 export type NewRecording = Omit<PendingRecording, 'id' | 'recordedAt' | 'analysed'>

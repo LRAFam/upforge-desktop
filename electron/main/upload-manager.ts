@@ -47,6 +47,7 @@ export interface UploadOptions {
   recordingId?: string | null
   /** Claim the one-time server onboarding entitlement for this exact recording. */
   onboardingBonus?: boolean
+  onboardingAdminTest?: boolean
 }
 
 export interface DuelClipPresign {
@@ -120,6 +121,7 @@ export function buildDesktopPresignBody(
     file_size_bytes: totalBytes,
     ...(opts.recordingId ? { client_recording_id: opts.recordingId } : {}),
     ...(opts.onboardingBonus ? { onboarding_bonus: true } : {}),
+    ...(opts.onboardingAdminTest ? { onboarding_admin_test: true } : {}),
     ...(opts.deferMatchDataOnPresign ? {} : {
       match_data: submissionCtx.match_data,
       duel_moments: submissionCtx.duel_moments,
