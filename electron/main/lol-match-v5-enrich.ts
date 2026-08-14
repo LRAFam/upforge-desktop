@@ -166,11 +166,14 @@ export async function enrichLolTimelineForCoaching(
         options?.onStatus?.('LoL match stats loaded from Riot Match-V5.')
         return true
       }
-      if (status === 'no_auth' || status === 'no_match_id') {
-        if (status === 'no_match_id') {
-          options?.onStatus?.('Could not link this recording to a League match yet.')
-        }
+      if (status === 'no_auth') {
         break
+      }
+      if (status === 'no_match_id') {
+        // Match-V5 history commonly lags behind the end-of-game event. Keep
+        // polling rather than making the user manually retry the first miss.
+        options?.onStatus?.('LoL match is not in Riot history yet. Retrying…')
+        continue
       }
       options?.onStatus?.('LoL match stats not published yet. Retrying…')
     } catch {

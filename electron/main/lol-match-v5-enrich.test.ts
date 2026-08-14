@@ -126,4 +126,32 @@ describe('enrichLolTimelineForCoaching', () => {
     expect(timeline.cs).toBe(150)
     expect(timeline.puuid).toBe('puuid-1')
   })
+
+  it('retries a history miss because Riot can publish a completed match late', async () => {
+    vi.useFakeTimers()
+    try {
+      const timeline = baseTimeline()
+      const api = {
+        post: vi.fn()
+          .mockResolvedValueOnce({
+            data: { success: false, lolEnrichStatus: 'no_match_id', patch: {} },
+          })
+          .mockResolvedValueOnce({
+            data: { success: true, lolEnrichStatus: 'fetched', patch: { matchId: 'BR1_456' } },
+          }),
+      }
+
+      const result = enrichLolTimelineForCoaching(timeline, {
+        api: api as never,
+        maxWaitMs: 20_000,
+      })
+      await vi.advanceTimersByTimeAsync(15_000)
+
+      await expect(result).resolves.toBe(true)
+      expect(api.post).toHaveBeenCalledTimes(2)
+      expect(timeline.matchId).toBe('BR1_456')
+    } finally {
+      vi.useRealTimers()
+    }
+  })
 })

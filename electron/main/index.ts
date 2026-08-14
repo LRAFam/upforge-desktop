@@ -2183,6 +2183,7 @@ async function prepareTimelineForCoaching(
       }), 'lol')
       if (lastMatchDiagnostic && lastMatchDiagnostic.game === 'lol') {
         lastMatchDiagnostic.lolEnrichStatus = status
+        lastMatchDiagnostic.matchDetailsStatus = status
         lastMatchDiagnostic.matchId = timeline.matchId ?? lastMatchDiagnostic.matchId
         lastMatchDiagnostic.queueId = timeline.queueId != null
           ? String(timeline.queueId)
@@ -3144,11 +3145,13 @@ function setupGameDetection(): void {
       fileSizeMb: fileSize / (1024 * 1024),
       killsInTimeline,
       clipsExtracted: 0, // updated after extractMatchClips completes
-      matchDetailsStatus: timeline?.matchId
-        ? (killsInTimeline > 0 ? 'fetched' : (riotDiag.region ? 'fetch_failed' : 'no_region'))
-        : usesDemoReplay(game)
-          ? (killsInTimeline > 0 ? 'fetched' : 'fetch_failed')
-          : (riotDiag.accessTokenPresent ? 'no_match_id' : 'no_auth'),
+      matchDetailsStatus: game === 'lol'
+        ? (timeline?.lolEnrichStatus ?? (timeline?.matchId ? 'pending' : 'no_match_id'))
+        : timeline?.matchId
+          ? (killsInTimeline > 0 ? 'fetched' : (riotDiag.region ? 'fetch_failed' : 'no_region'))
+          : usesDemoReplay(game)
+            ? (killsInTimeline > 0 ? 'fetched' : 'fetch_failed')
+            : (riotDiag.accessTokenPresent ? 'no_match_id' : 'no_auth'),
       lolEnrichStatus: game === 'lol' ? (timeline?.lolEnrichStatus ?? null) : null,
       queueId: timeline?.queueId != null ? String(timeline.queueId) : null,
       correlationId: lapSnap?.match_correlation_id ?? null,
