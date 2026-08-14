@@ -1279,7 +1279,7 @@ declare global {
           } | null
         }>
         setupScene: () => Promise<{ ok: boolean; sceneCreated: boolean; inputCreated: boolean; error?: string }>
-        runPreflight: () => Promise<{
+        runPreflight: (includeTestRecording?: boolean) => Promise<{
           ok: boolean
           steps: Array<{
             step: string
@@ -1315,7 +1315,19 @@ declare global {
           userMessage?: string
           technicalMessage?: string
         }>
-        capturePreview: () => Promise<{ ok: true; dataUrl: string } | { ok: false; error?: string }>
+        capturePreview: () => Promise<
+          | {
+              ok: true
+              dataUrl: string
+              quality: {
+                verified: boolean
+                reason: 'ok' | 'mostly_black' | 'flat_image' | 'empty_image'
+                darkPixelRatio: number
+                luminanceSpread: number
+              }
+            }
+          | { ok: false; error?: string }
+        >
         installProfile: () => Promise<{ ok: boolean; installed: boolean; error?: string; profilePath?: string; websocketConfigured?: boolean }>
         installStudio: () => Promise<{ ok: boolean; installed?: boolean; alreadyInstalled?: boolean; error?: string }>
         saveReplayClip: () => Promise<{ path: string | null }>

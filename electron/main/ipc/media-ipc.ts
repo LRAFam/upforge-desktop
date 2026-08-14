@@ -281,7 +281,7 @@ export function setupMediaHandlers(
     }
   })
 
-  ipcMain.handle('obs:run-preflight', async () => {
+  ipcMain.handle('obs:run-preflight', async (_event, options?: { includeTestRecording?: boolean }) => {
     if (!obsRecorder) {
       return { ok: false, steps: [], error: 'OBS recorder not available' }
     }
@@ -300,6 +300,7 @@ export function setupMediaHandlers(
           password,
           port,
           recordVerifyMs: resolveObsRecordVerifyMs({ settingsMs: cfg.obsRecordVerifyMs }),
+          includeTestRecording: options?.includeTestRecording === true,
         }),
         OBS_IPC_TIMEOUT_MS,
         'OBS preflight',

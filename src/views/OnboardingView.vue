@@ -566,7 +566,7 @@
                   v-if="missionIsCaptureStage"
                   class="overflow-hidden rounded-xl border border-white/[0.08] bg-[#0b0e14]"
                 >
-                  <div class="grid grid-cols-3 divide-x divide-white/[0.06]">
+                  <div class="grid grid-cols-4 divide-x divide-white/[0.06]">
                     <div v-for="check in missionCaptureChecks" :key="check.label" class="px-3 py-3">
                       <div class="flex items-center gap-2">
                         <span
@@ -594,7 +594,9 @@
                   <img :src="missionCapturePreview" alt="Live OBS game capture preview" class="aspect-video w-full object-contain" />
                   <div class="flex items-center justify-between gap-3 border-t border-white/[0.08] px-3 py-2">
                     <p class="text-[10px] text-gray-500">This is what OBS can see. The preview stays on your PC.</p>
-                    <p class="shrink-0 text-[10px] font-bold text-emerald-300">Capture verified</p>
+                    <p class="shrink-0 text-[10px] font-bold" :class="missionCaptureVerified ? 'text-emerald-300' : 'text-amber-300'">
+                      {{ missionCaptureVerified ? 'Capture verified' : 'Capture not ready' }}
+                    </p>
                   </div>
                 </div>
 
@@ -761,6 +763,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { PRIMARY_GAME_ARTWORK, isPrimaryGame, type PrimaryGame } from '../lib/games'
 import { resolveMaxValorantAccounts } from '../lib/valorant-account-cap'
 import { deriveOnboardingMissionStage, type OnboardingMissionStage } from '../lib/onboarding-match-mission'
+import { deriveCaptureReadiness } from '../lib/capture-readiness'
 import type { PendingRecording, RecordingTimeline } from '../env'
 
 const DISCORD_INVITE_URL = 'https://discord.gg/MDD3WVRaEq'
@@ -802,6 +805,7 @@ const missionActive = ref(false)
 const missionRecording = ref<PendingRecording | null>(null)
 const missionTimeline = ref<RecordingTimeline | null>(null)
 const missionCapturePreview = ref<string | null>(null)
+const missionCaptureVerified = ref(false)
 const missionPreviewError = ref<string | null>(null)
 const missionRuntime = ref({
   currentGame: null as string | null,
@@ -809,8 +813,10 @@ const missionRuntime = ref({
   recording: false,
   recordingStartedAt: null as number | null,
   obsConnected: false,
+  preflightPassed: false,
   obsRecording: false,
   obsError: null as string | null,
+  currentQueueMode: null as string | null,
 })
 const missionNow = ref(Date.now())
 let missionPollTimer: ReturnType<typeof setInterval> | null = null
@@ -832,11 +838,22 @@ const missionRecordingDuration = computed(() => {
   const seconds = Math.max(0, Math.floor((missionNow.value - startedAt) / 1000))
   return `${String(Math.floor(seconds / 60)).padStart(2, '0')}:${String(seconds % 60).padStart(2, '0')}`
 })
+const missionCaptureReadiness = computed(() => deriveCaptureReadiness({
+  obsConnected: missionRuntime.value.obsConnected,
+  preflightPassed: missionRuntime.value.preflightPassed,
+  gameDetected: missionRuntime.value.currentGame === 'valorant',
+  captureChecked: Boolean(missionCapturePreview.value || missionPreviewError.value),
+  captureVerified: missionCaptureVerified.value,
+  recording: missionRuntime.value.obsRecording,
+  error: missionPreviewError.value,
+}))
 const missionCaptureChecks = computed(() => [
   {
     label: 'OBS',
-    value: missionRuntime.value.obsConnected ? 'Connected' : 'Disconnected',
-    state: missionRuntime.value.obsConnected ? 'ok' : 'error',
+    value: missionRuntime.value.preflightPassed
+      ? 'Safety test passed'
+      : missionRuntime.value.obsConnected ? 'Check required' : 'Disconnected',
+    state: missionRuntime.value.preflightPassed ? 'ok' : missionRuntime.value.obsConnected ? 'pending' : 'error',
   },
   {
     label: 'Valorant',
@@ -844,25 +861,30 @@ const missionCaptureChecks = computed(() => [
     state: missionRuntime.value.currentGame === 'valorant' ? 'ok' : 'pending',
   },
   {
+    label: 'Capture',
+    value: missionCaptureVerified.value ? 'Picture verified' : 'Not verified',
+    state: missionCaptureVerified.value ? 'ok' : 'pending',
+  },
+  {
     label: 'Recording',
-    value: missionRuntime.value.obsRecording ? `Recording ${missionRecordingDuration.value}` : 'Waiting for match',
+    value: missionRuntime.value.obsRecording
+      ? `${missionRuntime.value.currentQueueMode || 'Match'} · ${missionRecordingDuration.value}`
+      : 'Waiting for match',
     state: missionRuntime.value.obsRecording ? 'active' : 'pending',
   },
 ])
 const missionCaptureMessage = computed(() => {
-  if (!missionRuntime.value.obsConnected) return missionRuntime.value.obsError || 'OBS disconnected. Reconnect it before playing.'
-  if (!missionRuntime.value.currentGame) return 'OBS is ready. Open Valorant and UpForge will verify the capture before you queue.'
-  if (!missionCapturePreview.value && !missionRuntime.value.recording) {
-    return missionPreviewError.value
-      ? 'Valorant is detected, but OBS has not returned a usable picture. Bring Valorant forward and UpForge will retry.'
-      : 'Valorant is detected. UpForge is checking the OBS picture before you queue.'
-  }
-  if (missionRuntime.value.obsRecording) return 'OBS has confirmed it is recording this match. You can keep playing.'
-  if (missionRuntime.value.waitingForMatch) return 'Capture verified. Queue Swiftplay, Competitive or Premier; recording starts automatically at match begin.'
-  return 'Valorant and its OBS capture are verified. UpForge is watching for the match hook.'
+  if (missionCaptureReadiness.value === 'obs_disconnected') return missionRuntime.value.obsError || 'OBS disconnected. Reconnect it before playing.'
+  if (missionCaptureReadiness.value === 'preflight_required') return 'OBS is connected, but the recording safety test needs to pass before you queue.'
+  if (missionCaptureReadiness.value === 'waiting_for_game') return 'OBS is ready. Open Valorant and UpForge will verify the capture before you queue.'
+  if (missionCaptureReadiness.value === 'checking_capture') return 'Valorant is detected. UpForge is checking the OBS picture before you queue.'
+  if (missionCaptureReadiness.value === 'capture_blocked') return 'Valorant is detected, but OBS has not returned a usable picture. Bring Valorant forward and UpForge will retry.'
+  if (missionCaptureReadiness.value === 'recording') return 'OBS has confirmed it is recording this match. You can keep playing.'
+  if (missionRuntime.value.waitingForMatch) return 'Safe to queue. Play Swiftplay, Competitive or Premier; recording starts automatically at match begin.'
+  return 'Safe to queue. Valorant and its OBS capture are verified, and UpForge is watching for the match hook.'
 })
 const missionCaptureMessageTone = computed(() =>
-  !missionRuntime.value.obsConnected || (missionRuntime.value.currentGame === 'valorant' && !missionCapturePreview.value)
+  !missionRuntime.value.obsConnected || (missionRuntime.value.currentGame === 'valorant' && !missionCaptureVerified.value)
     ? 'text-amber-200/80'
     : missionRuntime.value.obsRecording
       ? 'text-red-200'
@@ -1160,12 +1182,15 @@ async function refreshMissionState() {
       recording: status.recording,
       recordingStartedAt: status.recordingStartedAt,
       obsConnected: obsStatus?.connected ?? status.obsConnected,
+      preflightPassed: settings?.obsPreflightPassed === true,
       obsRecording: obsStatus?.recording ?? status.recording,
       obsError: obsStatus?.lastError ?? null,
+      currentQueueMode: status.currentQueueMode,
     }
 
     if (status.currentGame !== 'valorant') {
       missionCapturePreview.value = null
+      missionCaptureVerified.value = false
       missionPreviewError.value = null
     }
 
@@ -1177,8 +1202,10 @@ async function refreshMissionState() {
       const preview = await window.api.obs.capturePreview().catch(() => null)
       if (preview?.ok) {
         missionCapturePreview.value = preview.dataUrl
-        missionPreviewError.value = null
+        missionCaptureVerified.value = preview.quality.verified
+        missionPreviewError.value = preview.quality.verified ? null : preview.quality.reason
       } else {
+        missionCaptureVerified.value = false
         missionPreviewError.value = preview?.error || 'capture_preview_failed'
       }
     }
@@ -1203,45 +1230,58 @@ async function startBonusMission() {
     return
   }
 
-  if (isAdmin.value) {
-    const reset = await window.api.auth.resetOnboardingBonusTest()
-    if (!reset.ok) {
-      completeError.value = reset.error || 'Could not prepare the admin onboarding test.'
+  saving.value = true
+  try {
+    const preflight = await window.api.obs.runPreflight(true)
+    if (!preflight.ok) {
+      completeError.value = preflight.userMessage
+        || preflight.error
+        || 'OBS could not complete the recording safety check. Return to OBS setup and repair it.'
       return
     }
-  }
 
-  const bonus = await window.api.auth.getOnboardingBonus()
-  if (!bonus.eligible) {
-    completeError.value = bonus.claimed
-      ? 'This account has already used its free Pro onboarding analysis.'
-      : (bonus.error || 'This account is not eligible for the free Pro onboarding analysis.')
-    return
-  }
+    if (isAdmin.value) {
+      const reset = await window.api.auth.resetOnboardingBonusTest()
+      if (!reset.ok) {
+        completeError.value = reset.error || 'Could not prepare the admin onboarding test.'
+        return
+      }
+    }
 
-  const settings = await window.api.settings.get()
-  const previousModes = [...settings.recordedModesByGame.valorant]
-  const missionModes = Array.from(new Set([...previousModes, 'SWIFTPLAY']))
-  await window.api.settings.save({
-    autoAnalyse: true,
-    fullMatchRecording: true,
-    recordedModes: missionModes,
-    recordedModesByGame: {
-      ...settings.recordedModesByGame,
-      valorant: missionModes,
-    },
-    onboardingMatchMission: {
-      active: true,
-      game: 'valorant',
-      startedAt: Date.now(),
-      previousValorantModes: previousModes,
-      previousAutoAnalyse: settings.autoAnalyse,
-      previousFullMatchRecording: settings.fullMatchRecording,
-      adminTest: isAdmin.value,
-    },
-  })
-  missionActive.value = true
-  await refreshMissionState()
+    const bonus = await window.api.auth.getOnboardingBonus()
+    if (!bonus.eligible) {
+      completeError.value = bonus.claimed
+        ? 'This account has already used its free Pro onboarding analysis.'
+        : (bonus.error || 'This account is not eligible for the free Pro onboarding analysis.')
+      return
+    }
+
+    const settings = await window.api.settings.get()
+    const previousModes = [...settings.recordedModesByGame.valorant]
+    const missionModes = Array.from(new Set([...previousModes, 'SWIFTPLAY']))
+    await window.api.settings.save({
+      autoAnalyse: true,
+      fullMatchRecording: true,
+      recordedModes: missionModes,
+      recordedModesByGame: {
+        ...settings.recordedModesByGame,
+        valorant: missionModes,
+      },
+      onboardingMatchMission: {
+        active: true,
+        game: 'valorant',
+        startedAt: Date.now(),
+        previousValorantModes: previousModes,
+        previousAutoAnalyse: settings.autoAnalyse,
+        previousFullMatchRecording: settings.fullMatchRecording,
+        adminTest: isAdmin.value,
+      },
+    })
+    missionActive.value = true
+    await refreshMissionState()
+  } finally {
+    saving.value = false
+  }
 }
 
 async function restoreMissionSettings() {

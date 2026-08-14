@@ -1,5 +1,5 @@
 import { OBSWebSocket } from 'obs-websocket-js'
-import { app } from 'electron'
+import { app, nativeImage } from 'electron'
 import { existsSync, statSync } from 'fs'
 import { join } from 'path'
 import https from 'https'
@@ -40,6 +40,7 @@ import {
 } from './obs-watchdog-policy'
 import { isObsProcessRunning } from './obs-process'
 import type { RecorderConfig } from './recorder'
+import { assessCaptureFrame, type CaptureFrameQuality } from './capture-frame-quality'
 
 export interface OBSSettings {
   host: string
@@ -371,7 +372,10 @@ export class OBSRecorder {
   getObsStudioVersion(): string | null { return this._obsStudioVersion }
   getObsClient(): OBSWebSocket { return this._obs }
 
-  async captureSourcePreview(): Promise<{ ok: true; dataUrl: string } | { ok: false; error: string }> {
+  async captureSourcePreview(): Promise<
+    | { ok: true; dataUrl: string; quality: CaptureFrameQuality }
+    | { ok: false; error: string }
+  > {
     if (!this._connected) return { ok: false, error: 'obs_not_connected' }
     try {
       const result = await this._obs.call('GetSourceScreenshot', {
@@ -382,7 +386,10 @@ export class OBSRecorder {
         imageCompressionQuality: 72,
       }) as { imageData?: string }
       if (!result.imageData) return { ok: false, error: 'preview_missing' }
-      return { ok: true, dataUrl: result.imageData }
+      const image = nativeImage.createFromDataURL(result.imageData)
+      const size = image.getSize()
+      const quality = assessCaptureFrame(image.toBitmap(), size.width, size.height)
+      return { ok: true, dataUrl: result.imageData, quality }
     } catch (err) {
       return { ok: false, error: err instanceof Error ? err.message : String(err) }
     }

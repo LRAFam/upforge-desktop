@@ -277,7 +277,7 @@ const api = {
     getStatus: () => ipcRenderer.invoke('obs:get-status'),
     getProcessState: () => ipcRenderer.invoke('obs:get-process-state'),
     setupScene: () => ipcRenderer.invoke('obs:setup-scene'),
-    runPreflight: () => ipcRenderer.invoke('obs:run-preflight'),
+    runPreflight: (includeTestRecording = false) => ipcRenderer.invoke('obs:run-preflight', { includeTestRecording }),
     repairSetup: () => ipcRenderer.invoke('obs:repair-setup'),
     testRecording: () => ipcRenderer.invoke('obs:test-recording'),
     capturePreview: () => ipcRenderer.invoke('obs:capture-preview'),
