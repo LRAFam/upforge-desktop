@@ -133,6 +133,15 @@ export interface AppSettings {
   }
   autoAnalyse: boolean
   firstRun: boolean
+  onboardingComplete?: boolean
+  onboardingMatchMission?: {
+    active: boolean
+    game: PrimaryGame
+    startedAt: number
+    previousValorantModes?: string[]
+    previousAutoAnalyse?: boolean
+    previousFullMatchRecording?: boolean
+  } | null
   /** Which monitor to capture. 'auto' detects from game window; numbers are 0-based display index. */
   captureMonitor: 'auto' | number
   /** Process names to auto-kill when a game is detected starting */
@@ -255,6 +264,7 @@ export interface PendingRecording {
   clipOnlyReason?: 'clips_only_mode' | 'no_recording'
   clipCount?: number
   matchId?: string | null
+  onboardingBonus?: boolean
   /** Present on recordings:get — file still on disk. */
   hasLocalFile?: boolean
   /** Present on recordings:get — full VOD uploaded to S3. */
@@ -576,6 +586,12 @@ declare global {
         logout: () => Promise<void>
         getUser: () => Promise<unknown>
         refreshUser: () => Promise<unknown>
+        getOnboardingBonus: () => Promise<{
+          eligible: boolean
+          claimed: boolean
+          job_id: string | null
+          error?: string
+        }>
         updateRiotAccount: (payload: { riot_name: string; riot_tag: string; riot_region?: string }) => Promise<{ ok: boolean; error?: string }>
         listRiotAccounts: () => Promise<{
           accounts: Array<{
@@ -1295,6 +1311,7 @@ declare global {
           userMessage?: string
           technicalMessage?: string
         }>
+        capturePreview: () => Promise<{ ok: true; dataUrl: string } | { ok: false; error?: string }>
         installProfile: () => Promise<{ ok: boolean; installed: boolean; error?: string; profilePath?: string; websocketConfigured?: boolean }>
         installStudio: () => Promise<{ ok: boolean; installed?: boolean; alreadyInstalled?: boolean; error?: string }>
         saveReplayClip: () => Promise<{ path: string | null }>

@@ -11,6 +11,7 @@ import {
 } from './disk-space'
 import {
   setupUpForgeScene,
+  UPFORGE_SCENE_NAME,
   retargetUpForgeCapture,
   fitUpForgeCaptureToCanvas,
   refitCaptureWithSettle,
@@ -369,6 +370,23 @@ export class OBSRecorder {
   isConnected(): boolean { return this._connected }
   getObsStudioVersion(): string | null { return this._obsStudioVersion }
   getObsClient(): OBSWebSocket { return this._obs }
+
+  async captureSourcePreview(): Promise<{ ok: true; dataUrl: string } | { ok: false; error: string }> {
+    if (!this._connected) return { ok: false, error: 'obs_not_connected' }
+    try {
+      const result = await this._obs.call('GetSourceScreenshot', {
+        sourceName: UPFORGE_SCENE_NAME,
+        imageFormat: 'jpg',
+        imageWidth: 960,
+        imageHeight: 540,
+        imageCompressionQuality: 72,
+      }) as { imageData?: string }
+      if (!result.imageData) return { ok: false, error: 'preview_missing' }
+      return { ok: true, dataUrl: result.imageData }
+    } catch (err) {
+      return { ok: false, error: err instanceof Error ? err.message : String(err) }
+    }
+  }
 
   async setupScene(game = 'valorant', forceSwitchScene = false): Promise<ObsSetupResult> {
     if (!this._connected) {

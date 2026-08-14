@@ -82,6 +82,16 @@ export function setupAuthHandlers(
     return auth.fetchUser()
   })
 
+  ipcMain.handle('auth:get-onboarding-bonus', async () => {
+    if (!auth.getToken()) return { eligible: false, claimed: false, job_id: null, error: 'Not logged in' }
+    try {
+      const response = await auth.getApi().get('/api/onboarding/desktop-bonus')
+      return response.data
+    } catch {
+      return { eligible: false, claimed: false, job_id: null, error: 'Could not confirm bonus eligibility' }
+    }
+  })
+
   ipcMain.handle('auth:update-riot-account', async (_e, payload: {
     riot_name: string
     riot_tag: string

@@ -45,6 +45,8 @@ export interface UploadOptions {
   prepareDuelClips?: (jobId: string, videoPath: string) => Promise<DuelMomentManifest[]>
   /** Local recording id — enables multipart resume state on disk. */
   recordingId?: string | null
+  /** Claim the one-time server onboarding entitlement for this exact recording. */
+  onboardingBonus?: boolean
 }
 
 export interface DuelClipPresign {
@@ -117,6 +119,7 @@ export function buildDesktopPresignBody(
     game_mode: submissionCtx.game_mode,
     file_size_bytes: totalBytes,
     ...(opts.recordingId ? { client_recording_id: opts.recordingId } : {}),
+    ...(opts.onboardingBonus ? { onboarding_bonus: true } : {}),
     ...(opts.deferMatchDataOnPresign ? {} : {
       match_data: submissionCtx.match_data,
       duel_moments: submissionCtx.duel_moments,

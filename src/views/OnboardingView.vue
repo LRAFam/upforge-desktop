@@ -11,7 +11,7 @@
         <button
           type="button"
           class="text-[10px] font-semibold text-amber-200/80 hover:text-amber-100 transition-colors"
-          @click="handleComplete"
+          @click="handleComplete()"
         >
           Exit
         </button>
@@ -536,13 +536,77 @@
             <!-- 5 · Ready -->
             <div v-else-if="step === 5" key="step5" class="wiz-step">
               <h2 class="text-[22px] font-black text-white tracking-tight leading-tight">
-                {{ obsConnected ? 'You are set' : 'Almost set' }}
+                {{ missionActive ? missionCopy.title : (obsConnected ? 'You are set' : 'Almost set') }}
               </h2>
               <p class="text-sm mt-2 mb-6 leading-relaxed" :class="obsConnected ? 'text-gray-500' : 'text-amber-200/80'">
-                {{ readyBlurb }}
+                {{ missionActive ? missionCopy.body : readyBlurb }}
               </p>
 
-              <div class="rounded-xl border border-white/[0.08] overflow-hidden mb-5">
+              <div v-if="missionActive" class="space-y-4 mb-5">
+                <div class="rounded-xl border border-white/[0.08] bg-white/[0.02] px-4 py-4">
+                  <div class="flex items-center gap-3">
+                    <span
+                      class="h-3 w-3 rounded-full shrink-0"
+                      :class="missionStage === 'recording' ? 'bg-red-500 animate-pulse' : missionStage === 'ready' ? 'bg-emerald-400' : missionStage === 'failed' ? 'bg-amber-400' : 'bg-blue-400'"
+                    />
+                    <div>
+                      <p class="text-sm font-bold text-white">{{ missionCopy.title }}</p>
+                      <p class="text-[11px] text-gray-500 mt-1 leading-relaxed">{{ missionCopy.body }}</p>
+                    </div>
+                  </div>
+                </div>
+
+                <div
+                  v-if="missionCapturePreview && (missionStage === 'game_detected' || missionStage === 'waiting_for_match')"
+                  class="overflow-hidden rounded-xl border border-white/[0.08] bg-black"
+                >
+                  <img :src="missionCapturePreview" alt="Live OBS game capture preview" class="aspect-video w-full object-contain" />
+                  <p class="border-t border-white/[0.08] px-3 py-2 text-[10px] text-gray-500">
+                    Live OBS capture preview. This stays on your PC and is not uploaded.
+                  </p>
+                </div>
+
+                <div v-if="missionStage === 'ready' && missionStats" class="grid grid-cols-3 gap-2.5">
+                  <div class="rounded-lg border border-white/[0.08] px-3 py-3 text-center">
+                    <p class="text-[10px] uppercase tracking-wide text-gray-600">K / D / A</p>
+                    <p class="text-sm font-black text-white mt-1">{{ missionStats.kills }} / {{ missionStats.deaths }} / {{ missionStats.assists }}</p>
+                  </div>
+                  <div class="rounded-lg border border-white/[0.08] px-3 py-3 text-center">
+                    <p class="text-[10px] uppercase tracking-wide text-gray-600">Score</p>
+                    <p class="text-sm font-black text-white mt-1">{{ missionScore ? `${missionScore.allyScore} - ${missionScore.enemyScore}` : 'n/a' }}</p>
+                  </div>
+                  <div class="rounded-lg border border-white/[0.08] px-3 py-3 text-center">
+                    <p class="text-[10px] uppercase tracking-wide text-gray-600">Evidence</p>
+                    <p class="text-sm font-black text-white mt-1">{{ missionKills }} verified kills · {{ missionDuelClips }} duel clips</p>
+                  </div>
+                </div>
+
+                <p v-if="missionHasRiotStats" class="text-[11px] text-emerald-300/80">
+                  Riot match data matched to this recording.
+                </p>
+
+                <button
+                  v-if="missionStage === 'ready'"
+                  type="button"
+                  class="btn-primary w-full"
+                  @click="openBonusAnalysis"
+                >
+                  Open my Pro analysis
+                </button>
+                <button
+                  v-else-if="missionStage === 'failed'"
+                  type="button"
+                  class="btn-primary w-full"
+                  @click="skipBonusMission"
+                >
+                  Open dashboard to retry
+                </button>
+                <button type="button" class="btn-ghost w-full" @click="skipBonusMission">
+                  Skip and open dashboard
+                </button>
+              </div>
+
+              <div v-if="!missionActive" class="rounded-xl border border-white/[0.08] overflow-hidden mb-5">
                 <div
                   v-for="(row, idx) in summaryRows"
                   :key="row.label"
@@ -559,7 +623,7 @@
                 </div>
               </div>
 
-              <div class="mb-5">
+              <div v-if="!missionActive" class="mb-5">
                 <p class="text-[10px] font-bold uppercase tracking-[0.14em] text-gray-500 mb-2.5">Hotkeys</p>
                 <div class="grid grid-cols-3 gap-2.5">
                   <div
@@ -574,7 +638,7 @@
               </div>
 
               <div
-                v-if="gameTip"
+                v-if="!missionActive && gameTip"
                 class="rounded-xl border border-white/[0.08] bg-white/[0.02] px-4 py-3.5 mb-5"
               >
                 <p class="text-[12px] text-gray-400 leading-relaxed">
@@ -583,12 +647,12 @@
                 </p>
               </div>
 
-              <div class="wiz-actions">
+              <div v-if="!missionActive" class="wiz-actions">
                 <button
                   type="button"
                   class="btn-primary w-full"
                   :disabled="saving"
-                  @click="handleComplete"
+                  @click="selectedGame === 'valorant' && obsConnected ? startBonusMission() : handleComplete()"
                 >
                   <svg v-if="saving" class="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
                     <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" />
@@ -611,7 +675,7 @@
                 <p v-if="completeError" class="text-[12px] text-red-400 text-center">{{ completeError }}</p>
               </div>
 
-              <div class="mt-6 pt-5 border-t border-white/[0.06] space-y-2.5">
+              <div v-if="!missionActive" class="mt-6 pt-5 border-t border-white/[0.06] space-y-2.5">
                 <p class="text-[10px] font-bold uppercase tracking-[0.14em] text-gray-500 text-center">
                   Optional
                 </p>
@@ -650,10 +714,12 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, onMounted } from 'vue'
+import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { PRIMARY_GAME_ARTWORK, isPrimaryGame, type PrimaryGame } from '../lib/games'
 import { resolveMaxValorantAccounts } from '../lib/valorant-account-cap'
+import { deriveOnboardingMissionStage, type OnboardingMissionStage } from '../lib/onboarding-match-mission'
+import type { PendingRecording, RecordingTimeline } from '../env'
 
 const DISCORD_INVITE_URL = 'https://discord.gg/MDD3WVRaEq'
 const OBS_DOWNLOAD_URL = 'https://obsproject.com/download'
@@ -689,8 +755,73 @@ const obsRepairRunning = ref(false)
 const obsTestRecordingRunning = ref(false)
 const obsSetupMessage = ref('')
 const obsSetupMessageError = ref(false)
+const missionActive = ref(false)
+const missionRecording = ref<PendingRecording | null>(null)
+const missionTimeline = ref<RecordingTimeline | null>(null)
+const missionCapturePreview = ref<string | null>(null)
+const missionRuntime = ref({ currentGame: null as string | null, waitingForMatch: false, recording: false })
+let missionPollTimer: ReturnType<typeof setInterval> | null = null
+let missionPreviewCapturedAt = 0
 
 const selectedGame = ref<PrimaryGame>('valorant')
+
+const missionStage = computed<OnboardingMissionStage>(() =>
+  deriveOnboardingMissionStage(missionRuntime.value, missionRecording.value),
+)
+
+const missionCopy = computed(() => {
+  const copy: Record<OnboardingMissionStage, { title: string; body: string }> = {
+    ready_for_game: {
+      title: 'Open Valorant when you are ready',
+      body: 'Keep UpForge and OBS open, then play a Swiftplay, Competitive or Premier match.',
+    },
+    game_detected: {
+      title: 'Valorant detected',
+      body: 'UpForge can see the game. Queue a supported match and recording will start at match begin.',
+    },
+    waiting_for_match: {
+      title: 'Waiting for the match to begin',
+      body: 'Your game is detected. Recording has not started yet.',
+    },
+    recording: {
+      title: 'Recording your onboarding match',
+      body: 'Play normally. UpForge will stop safely when the match ends.',
+    },
+    processing: {
+      title: 'Preparing your recording',
+      body: 'UpForge is finalising the match file before upload.',
+    },
+    waiting_match_data: {
+      title: 'Waiting for Riot match data',
+      body: 'The recording is safe. Analysis starts only after Riot confirms the correct match and stats.',
+    },
+    uploading: {
+      title: 'Uploading your match',
+      body: 'Your recording is being sent securely to UpForge.',
+    },
+    analysing: {
+      title: 'Building your coaching report',
+      body: 'The real analysis pipeline is reviewing your gameplay and preparing evidence.',
+    },
+    failed: {
+      title: 'This match needs attention',
+      body: missionRecording.value?.lastAnalysisError || 'Open the dashboard to retry this recording.',
+    },
+    ready: {
+      title: 'Your free Pro analysis is ready',
+      body: 'This onboarding analysis was on us. Your normal free analysis is still available.',
+    },
+  }
+  return copy[missionStage.value]
+})
+
+const missionStats = computed(() => missionTimeline.value?.finalStats ?? missionRecording.value?.timeline?.finalStats ?? null)
+const missionScore = computed(() => missionRecording.value?.timeline?.finalScore ?? null)
+const missionKills = computed(() => missionTimeline.value?.kills?.length ?? 0)
+const missionDuelClips = computed(() =>
+  missionTimeline.value?.duelMoments?.filter((moment) => Boolean(moment.clip_s3_key?.trim())).length ?? 0,
+)
+const missionHasRiotStats = computed(() => Boolean(missionRecording.value?.matchId && missionStats.value))
 
 const riotAccounts = ref<RiotAccount[]>([])
 const riotAccountsMax = ref(1)
@@ -773,7 +904,11 @@ const accountLinked = computed(() => {
   return lolLinked.value
 })
 
-const firstMatchCta = 'Open dashboard'
+const firstMatchCta = computed(() =>
+  selectedGame.value === 'valorant' && obsConnected.value
+    ? 'Start my free Pro analysis'
+    : 'Open dashboard',
+)
 
 const readyBlurb = computed(() => {
   if (obsConnected.value) {
@@ -871,6 +1006,12 @@ watch(selectedGame, async () => {
 onMounted(async () => {
   await refreshAuthState()
   await ensureAuthedOrStay()
+  await refreshMissionState()
+  missionPollTimer = setInterval(() => { void refreshMissionState() }, 2000)
+})
+
+onUnmounted(() => {
+  if (missionPollTimer) clearInterval(missionPollTimer)
 })
 
 async function refreshAuthState() {
@@ -883,10 +1024,132 @@ async function ensureAuthedOrStay() {
   isAuthed.value = Boolean(user)
   if (user) {
     if (!isPreview.value) {
-      step.value = Math.max(step.value, 2)
+      const settings = await window.api.settings.get()
+      if (settings.onboardingMatchMission?.active) {
+        selectedGame.value = settings.onboardingMatchMission.game
+        missionActive.value = true
+        step.value = 5
+      } else {
+        step.value = Math.max(step.value, 2)
+      }
       await prefillGameFromUser()
     }
   }
+}
+
+async function refreshMissionState() {
+  if (isPreview.value) return
+  const settings = await window.api.settings.get().catch(() => null)
+  const mission = settings?.onboardingMatchMission
+  missionActive.value = mission?.active === true
+  if (!missionActive.value) return
+
+  if (mission?.game) selectedGame.value = mission.game
+  const [status, recordings] = await Promise.all([
+    window.api.app.getStatus().catch(() => null),
+    window.api.recordings.get().catch(() => [] as PendingRecording[]),
+  ])
+  if (status) {
+    missionRuntime.value = {
+      currentGame: status.currentGame,
+      waitingForMatch: status.waitingForMatch,
+      recording: status.recording,
+    }
+
+    const shouldRefreshPreview = status.currentGame === 'valorant'
+      && !status.recording
+      && Date.now() - missionPreviewCapturedAt >= 5000
+    if (shouldRefreshPreview) {
+      missionPreviewCapturedAt = Date.now()
+      const preview = await window.api.obs.capturePreview().catch(() => null)
+      if (preview?.ok) missionCapturePreview.value = preview.dataUrl
+    }
+  }
+  missionRecording.value = [...recordings]
+    .filter((recording) => recording.onboardingBonus === true)
+    .sort((a, b) => b.recordedAt - a.recordedAt)[0] ?? null
+
+  if (missionRecording.value?.analysisId != null) {
+    missionTimeline.value = await window.api.recordings.getTimeline(missionRecording.value.id).catch(() => null)
+  }
+}
+
+async function startBonusMission() {
+  completeError.value = ''
+  if (selectedGame.value !== 'valorant') {
+    completeError.value = 'The guided bonus match is launching with Valorant first. Other games are coming next.'
+    return
+  }
+  if (!obsConnected.value) {
+    step.value = 4
+    return
+  }
+
+  const bonus = await window.api.auth.getOnboardingBonus()
+  if (!bonus.eligible) {
+    completeError.value = bonus.claimed
+      ? 'This account has already used its free Pro onboarding analysis.'
+      : (bonus.error || 'This account is not eligible for the free Pro onboarding analysis.')
+    return
+  }
+
+  const settings = await window.api.settings.get()
+  const previousModes = [...settings.recordedModesByGame.valorant]
+  const missionModes = Array.from(new Set([...previousModes, 'SWIFTPLAY']))
+  await window.api.settings.save({
+    autoAnalyse: true,
+    fullMatchRecording: true,
+    recordedModes: missionModes,
+    recordedModesByGame: {
+      ...settings.recordedModesByGame,
+      valorant: missionModes,
+    },
+    onboardingMatchMission: {
+      active: true,
+      game: 'valorant',
+      startedAt: Date.now(),
+      previousValorantModes: previousModes,
+      previousAutoAnalyse: settings.autoAnalyse,
+      previousFullMatchRecording: settings.fullMatchRecording,
+    },
+  })
+  missionActive.value = true
+  await refreshMissionState()
+}
+
+async function restoreMissionSettings() {
+  const settings = await window.api.settings.get()
+  const mission = settings.onboardingMatchMission
+  const previousModes = mission?.previousValorantModes
+  await window.api.settings.save({
+    ...(previousModes
+      ? {
+          recordedModes: previousModes,
+          recordedModesByGame: {
+            ...settings.recordedModesByGame,
+            valorant: previousModes,
+          },
+        }
+      : {}),
+    ...(typeof mission?.previousAutoAnalyse === 'boolean' ? { autoAnalyse: mission.previousAutoAnalyse } : {}),
+    ...(typeof mission?.previousFullMatchRecording === 'boolean'
+      ? { fullMatchRecording: mission.previousFullMatchRecording }
+      : {}),
+    onboardingMatchMission: null,
+  })
+  missionActive.value = false
+}
+
+async function skipBonusMission() {
+  if (missionActive.value) await restoreMissionSettings()
+  await handleComplete()
+}
+
+async function openBonusAnalysis() {
+  const recording = missionRecording.value
+  if (!recording || recording.analysisId == null) return
+  await restoreMissionSettings()
+  await handleComplete({ destination: 'analysis', recordingId: recording.id })
 }
 
 async function prefillGameFromUser() {
@@ -1333,11 +1596,13 @@ function prevStep() {
   step.value = Math.max(step.value - 1, 1)
 }
 
-async function handleComplete() {
+async function handleComplete(opts?: { destination?: 'dashboard' | 'analysis'; recordingId?: string }) {
   if (saving.value) return
   completeError.value = ''
   if (isPreview.value) {
-    router.push('/dashboard')
+    router.push(opts?.destination === 'analysis' && opts.recordingId
+      ? { path: '/vod-review', query: { id: opts.recordingId } }
+      : '/dashboard')
     return
   }
   saving.value = true

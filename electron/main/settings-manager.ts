@@ -60,6 +60,15 @@ export interface AppSettings {
   firstRun: boolean
   /** Set after welcome / onboarding wizard — avoids re-prompting on every launch */
   onboardingComplete?: boolean
+  /** Resumable guided match that grants one server-authorised bonus analysis. */
+  onboardingMatchMission?: {
+    active: boolean
+    game: PrimaryGame
+    startedAt: number
+    previousValorantModes?: string[]
+    previousAutoAnalyse?: boolean
+    previousFullMatchRecording?: boolean
+  } | null
   /** Which monitor to capture. 'auto' detects from the game window; numbers are 0-based display index. */
   captureMonitor: 'auto' | number
   /** Last completed analysis insight — persisted for dashboard display */
@@ -196,6 +205,7 @@ const DEFAULTS: AppSettings = {
   recordedModesByGame: defaultRecordedModesByGame(),
   autoAnalyse: true,
   firstRun: true,
+  onboardingMatchMission: null,
   captureMonitor: 'auto',
   pregameKillList: [],
   clipRetentionDays: 0,

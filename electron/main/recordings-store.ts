@@ -69,6 +69,8 @@ export interface PendingRecording {
   clipOnlyReason?: ClipOnlyReason
   clipCount?: number
   matchId?: string | null
+  /** Exact recording claimed against the one-time onboarding bonus entitlement. */
+  onboardingBonus?: boolean
 }
 
 export type NewRecording = Omit<PendingRecording, 'id' | 'recordedAt' | 'analysed'>

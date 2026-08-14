@@ -176,6 +176,11 @@ export function setupMediaHandlers(
     }
   })
 
+  ipcMain.handle('obs:capture-preview', async () => {
+    if (!obsRecorder) return { ok: false, error: 'obs_unavailable' }
+    return obsRecorder.captureSourcePreview()
+  })
+
   ipcMain.handle('obs:connect', async () => {
     if (!obsRecorder) return { ok: false, error: 'OBS recorder not available' }
     const processRunning = await isObsProcessRunning()

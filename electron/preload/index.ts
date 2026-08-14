@@ -7,6 +7,12 @@ const api = {
     logout: () => ipcRenderer.invoke('auth:logout'),
     getUser: () => ipcRenderer.invoke('auth:get-user'),
     refreshUser: () => ipcRenderer.invoke('auth:refresh-user'),
+    getOnboardingBonus: () => ipcRenderer.invoke('auth:get-onboarding-bonus') as Promise<{
+      eligible: boolean
+      claimed: boolean
+      job_id: string | null
+      error?: string
+    }>,
     updateRiotAccount: (payload: { riot_name: string; riot_tag: string; riot_region?: string }) =>
       ipcRenderer.invoke('auth:update-riot-account', payload) as Promise<{ ok: boolean; error?: string }>,
     listRiotAccounts: () =>
@@ -269,6 +275,7 @@ const api = {
     runPreflight: () => ipcRenderer.invoke('obs:run-preflight'),
     repairSetup: () => ipcRenderer.invoke('obs:repair-setup'),
     testRecording: () => ipcRenderer.invoke('obs:test-recording'),
+    capturePreview: () => ipcRenderer.invoke('obs:capture-preview'),
         saveReplayClip: () => ipcRenderer.invoke('obs:save-replay-clip'),
     installProfile: () => ipcRenderer.invoke('obs:install-profile'),
     installStudio: () => ipcRenderer.invoke('obs:install-studio'),
