@@ -670,8 +670,23 @@
                   Open dashboard to retry
                 </button>
                 <button type="button" class="btn-ghost w-full" @click="skipBonusMission">
-                  Skip and open dashboard
+                  End free analysis setup
                 </button>
+              </div>
+
+              <div
+                v-if="!missionActive && selectedGame === 'valorant' && obsConnected"
+                class="mb-5 rounded-xl border border-emerald-500/20 bg-emerald-500/[0.05] px-4 py-4"
+              >
+                <p class="text-sm font-bold text-white">Your first Pro analysis is included</p>
+                <p class="mt-1.5 text-[11px] leading-relaxed text-gray-400">
+                  Play one supported Valorant match. UpForge will record it, match the Riot data, and build the same evidence-led report a Pro user receives.
+                </p>
+                <div class="mt-3 grid grid-cols-3 divide-x divide-white/[0.08] border-t border-white/[0.08] pt-3">
+                  <p class="px-2 text-center text-[10px] font-semibold text-emerald-200">Full coaching report</p>
+                  <p class="px-2 text-center text-[10px] font-semibold text-emerald-200">Matched Riot stats</p>
+                  <p class="px-2 text-center text-[10px] font-semibold text-emerald-200">Evidence clips</p>
+                </div>
               </div>
 
               <div v-if="!missionActive" class="rounded-xl border border-white/[0.08] overflow-hidden mb-5">
@@ -688,20 +703,6 @@
                   >
                     {{ row.value }}
                   </span>
-                </div>
-              </div>
-
-              <div v-if="!missionActive" class="mb-5">
-                <p class="text-[10px] font-bold uppercase tracking-[0.14em] text-gray-500 mb-2.5">Hotkeys</p>
-                <div class="grid grid-cols-3 gap-2.5">
-                  <div
-                    v-for="hk in HOTKEYS"
-                    :key="hk.key"
-                    class="rounded-lg border border-white/[0.08] bg-white/[0.02] px-2.5 py-2.5 text-center"
-                  >
-                    <kbd class="text-[11px] font-black font-mono text-white">{{ hk.key }}</kbd>
-                    <p class="text-[10px] text-gray-500 mt-1 leading-tight">{{ hk.action }}</p>
-                  </div>
                 </div>
               </div>
 
@@ -847,7 +848,7 @@ const missionNow = ref(Date.now())
 let missionPollTimer: ReturnType<typeof setInterval> | null = null
 let missionClockTimer: ReturnType<typeof setInterval> | null = null
 let missionPreviewCapturedAt = 0
-let missionObsConnectionCleanup: (() => void) | null = null
+const missionEventCleanups: Array<() => void> = []
 
 const selectedGame = ref<PrimaryGame>('valorant')
 
@@ -1060,7 +1061,9 @@ const firstMatchCta = computed(() =>
 
 const readyBlurb = computed(() => {
   if (obsConnected.value) {
-    return 'Queue a ranked or competitive match. Keep UpForge and OBS open.'
+    return selectedGame.value === 'valorant'
+      ? 'Your setup is ready. Complete one supported match to receive a free Pro-level coaching report.'
+      : 'Your setup is ready. Keep UpForge and OBS open when you play.'
   }
   return 'Connect OBS before you queue for auto-recording, or finish later in Settings → Recording. The dashboard will keep reminding you.'
 })
@@ -1089,12 +1092,6 @@ const gameTip = computed(() => {
     body: 'Exclusive Fullscreen can block overlays. Use Windowed Fullscreen for the in-game HUD. Extra accounts live under Settings.',
   }
 })
-
-const HOTKEYS = [
-  { key: 'F9', action: 'Save clip' },
-  { key: 'F10', action: 'Overlay' },
-  { key: 'F8', action: 'Screenshot' },
-]
 
 const summaryRows = computed(() => {
   const gameLabel =
@@ -1154,7 +1151,7 @@ watch(selectedGame, async () => {
 onMounted(async () => {
   await refreshAuthState()
   await ensureAuthedOrStay()
-  missionObsConnectionCleanup = window.api.on('obs:connection-changed', (...args: unknown[]) => {
+  missionEventCleanups.push(window.api.on('obs:connection-changed', (...args: unknown[]) => {
     const data = args[0] as { connected?: boolean; error?: string | null } | undefined
     if (typeof data?.connected !== 'boolean') return
 
@@ -1172,7 +1169,45 @@ onMounted(async () => {
     missionCaptureVerified.value = false
     missionPreviewError.value = null
     missionPreviewCapturedAt = 0
-  })
+  }))
+  missionEventCleanups.push(window.api.on('game:client-changed', (...args: unknown[]) => {
+    const data = args[0] as { game?: string; open?: boolean } | undefined
+    if (data?.game !== 'valorant' || typeof data.open !== 'boolean') return
+    missionRuntime.value = { ...missionRuntime.value, valorantClientOpen: data.open }
+    if (!data.open && missionRuntime.value.currentGame !== 'valorant') {
+      clearMissionCaptureProof()
+    } else if (data.open && missionActive.value) {
+      void refreshMissionState({ forceCapture: true })
+    }
+  }))
+  missionEventCleanups.push(window.api.on('game:status-changed', (...args: unknown[]) => {
+    const data = args[0] as { game?: string; active?: boolean } | undefined
+    if (data?.game !== 'valorant' || typeof data.active !== 'boolean') return
+    missionRuntime.value = {
+      ...missionRuntime.value,
+      currentGame: data.active ? 'valorant' : null,
+      waitingForMatch: data.active ? missionRuntime.value.waitingForMatch : false,
+    }
+    if (data.active && missionActive.value) void refreshMissionState({ forceCapture: true })
+  }))
+  missionEventCleanups.push(window.api.on('recording:waiting-for-match', (...args: unknown[]) => {
+    const data = args[0] as { waiting?: boolean } | undefined
+    if (typeof data?.waiting !== 'boolean') return
+    missionRuntime.value = { ...missionRuntime.value, waitingForMatch: data.waiting }
+  }))
+  missionEventCleanups.push(window.api.on('recording:status-changed', (...args: unknown[]) => {
+    const data = args[0] as { recording?: boolean; error?: string | null } | undefined
+    if (typeof data?.recording !== 'boolean') return
+    missionRuntime.value = {
+      ...missionRuntime.value,
+      recording: data.recording,
+      obsRecording: data.recording,
+      recordingStartedAt: data.recording
+        ? (missionRuntime.value.recordingStartedAt ?? Date.now())
+        : null,
+      obsError: data.error ?? missionRuntime.value.obsError,
+    }
+  }))
   await refreshMissionState()
   missionPollTimer = setInterval(() => { void refreshMissionState() }, 2000)
   missionClockTimer = setInterval(() => { missionNow.value = Date.now() }, 1000)
@@ -1181,9 +1216,15 @@ onMounted(async () => {
 onUnmounted(() => {
   if (missionPollTimer) clearInterval(missionPollTimer)
   if (missionClockTimer) clearInterval(missionClockTimer)
-  missionObsConnectionCleanup?.()
-  missionObsConnectionCleanup = null
+  for (const cleanup of missionEventCleanups.splice(0)) cleanup()
 })
+
+function clearMissionCaptureProof() {
+  missionCapturePreview.value = null
+  missionCaptureVerified.value = false
+  missionPreviewError.value = null
+  missionPreviewCapturedAt = 0
+}
 
 async function refreshAuthState() {
   const user = await window.api.auth.getUser() as { is_admin?: boolean } | null

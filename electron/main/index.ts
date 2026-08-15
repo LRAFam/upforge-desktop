@@ -182,6 +182,7 @@ import { HotkeyManager } from './hotkey-manager'
 import { createOverlayWindow, requestOverlayToggle, destroyOverlay, sendOverlayData, isOverlayVisible, showOverlay, hideOverlay } from './overlay-window'
 import { deliverInGameFeedback, usesOverlayFeedback } from './in-game-feedback'
 import { getSessionPollIntervalMs, isInGameOverlayEnabled } from './in-game-overlay'
+import { shouldMinimizeForDetectedGame } from './onboarding-window-policy'
 import { captureAndSaveScreenshot } from './screenshot-capture'
 import { PerformanceManager } from './performance-manager'
 import { TrainerBridge } from './trainer-bridge'
@@ -3714,7 +3715,12 @@ function setupGameDetection(): void {
     return { ok: true }
   }
 
+  gameDetector.on('valorant-client-changed', (open: boolean) => {
+    mainWindow?.webContents.send('game:client-changed', { game: 'valorant', open })
+  })
+
   gameDetector.on('game-started', async (game: string) => {
+    mainWindow?.webContents.send('game:status-changed', { game, active: true })
     abortBackgroundWorkOnGameStart()
     if (await obsRecorder.releaseStaleMatchOwnership()) {
       logActivity('Cleared stale recording state — ready for next match')
@@ -3748,13 +3754,19 @@ function setupGameDetection(): void {
       discordRPC.setInGame(game)
     }
 
-    // Minimize the main window while gaming to reduce Chromium GPU/CPU overhead.
-    // The user can restore it from the taskbar or tray if needed.
-    if (mainWindow && !mainWindow.isDestroyed() && mainWindow.isVisible()) {
+    const config = settingsManager?.get()
+    const onboardingMissionActive = config?.onboardingMatchMission?.active === true
+
+    // The onboarding mission is the user's live proof that capture works. Keep it
+    // visible; normal sessions still minimise to reduce Chromium GPU/CPU overhead.
+    if (
+      shouldMinimizeForDetectedGame(onboardingMissionActive)
+      && mainWindow
+      && !mainWindow.isDestroyed()
+      && mainWindow.isVisible()
+    ) {
       mainWindow.minimize()
     }
-
-    const config = settingsManager?.get()
 
     const recordedModesEarly = getRecordedModesForGame(
       config?.recordedModesByGame,
@@ -4773,6 +4785,7 @@ function setupGameDetection(): void {
       console.log(`[GameDetector] game-stopped debounced — ${game} process still running`)
       return
     }
+    mainWindow?.webContents.send('game:status-changed', { game, active: false })
 
     if (game === 'deadlock') stopDeadlockLogWatcher()
     endMatchPerformanceMode()

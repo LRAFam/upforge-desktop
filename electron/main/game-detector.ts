@@ -237,7 +237,11 @@ export class GameDetector extends EventEmitter {
         { windowsHide: true, timeout: 4000, maxBuffer: 2 * 1024 * 1024 },
       )
       const runningGames = runningGamesFromTasklist(stdout)
-      this._valorantClientOpen = isValorantClientOpenFromTasklist(stdout)
+      const valorantClientOpen = isValorantClientOpenFromTasklist(stdout)
+      if (valorantClientOpen !== this._valorantClientOpen) {
+        this._valorantClientOpen = valorantClientOpen
+        this.emit('valorant-client-changed', valorantClientOpen)
+      }
 
       const active = this._activeGame
 
