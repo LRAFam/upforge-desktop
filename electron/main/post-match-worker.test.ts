@@ -77,4 +77,33 @@ describe('PostMatchWorker', () => {
       await rm(dir, { recursive: true, force: true })
     }
   })
+
+  it('keeps a persisted automatic job pending while auto-analyse is disabled', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'upforge-worker-'))
+    try {
+      const store = new PostMatchJobStore(join(dir, 'jobs.json'))
+      const runJob = vi.fn(async () => {})
+      let autoAnalyseEnabled = false
+      const worker = new PostMatchWorker({
+        store,
+        isRecording: () => false,
+        canRunJob: () => autoAnalyseEnabled,
+        runJob,
+      })
+
+      store.upsert(job('saved-auto-job', 1))
+      worker.kick()
+      await new Promise((r) => setTimeout(r, 50))
+
+      expect(runJob).not.toHaveBeenCalled()
+      expect(store.get('saved-auto-job')?.stage).toBe('queued')
+
+      autoAnalyseEnabled = true
+      worker.kick()
+      await vi.waitFor(() => expect(store.get('saved-auto-job')?.stage).toBe('done'), { timeout: 2000 })
+      expect(runJob).toHaveBeenCalledTimes(1)
+    } finally {
+      await rm(dir, { recursive: true, force: true })
+    }
+  })
 })

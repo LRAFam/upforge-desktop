@@ -911,6 +911,9 @@ function initPostMatchWorker(): void {
   postMatchWorker = new PostMatchWorker({
     store: postMatchJobStore,
     isRecording: () => matchCapturePriority || obsRecorder.isActivelyRecording(),
+    // This queue only contains automatic post-match analyses. A persisted job
+    // must not resume on launch after the user has disabled Auto-analyse.
+    canRunJob: () => settingsManager?.get().autoAnalyse !== false,
     log: (msg) => log.info('[PostMatchWorker]', msg),
     runJob: async (job) => {
       activeMatchTelemetry?.startSector('upload')
