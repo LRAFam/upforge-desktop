@@ -3,6 +3,7 @@ import {
   pickGameToTrack,
   pickHandoffGameWhenIdleInMenu,
   runningGamesFromTasklist,
+  isValorantClientOpenFromTasklist,
 } from './game-detector'
 
 vi.mock('./steam-gsi-server', () => ({
@@ -36,6 +37,17 @@ describe('runningGamesFromTasklist', () => {
       '"explorer.exe","789","Console","1","100,000 K"',
     ].join('\n')
     expect(runningGamesFromTasklist(stdout)).toEqual(['cs2', 'deadlock'])
+  })
+})
+
+describe('isValorantClientOpenFromTasklist', () => {
+  it('recognises the lobby client without treating it as a recording game', () => {
+    expect(isValorantClientOpenFromTasklist('"VALORANT.exe","123"')).toBe(true)
+    expect(runningGamesFromTasklist('"VALORANT.exe","123"')).toEqual([])
+  })
+
+  it('recognises the in-game process too', () => {
+    expect(isValorantClientOpenFromTasklist('"VALORANT-Win64-Shipping.exe","456"')).toBe(true)
   })
 })
 

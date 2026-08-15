@@ -21,6 +21,7 @@ const GAME_PROCESSES: Record<string, string[]> = {
   deadlock: ['deadlock.exe'],
   lol: ['League of Legends.exe'],
 }
+const VALORANT_CLIENT_PROCESS = 'VALORANT.exe'
 
 /** Stable priority when multiple games run — user's primary wins if it is running. */
 export const GAME_DETECTION_ORDER = ['valorant', 'cs2', 'deadlock', 'lol'] as const
@@ -50,6 +51,13 @@ export function runningGamesFromTasklist(stdout: string): string[] {
   )
 }
 
+/** The launcher/client is safe for UI readiness, but never for match recording. */
+export function isValorantClientOpenFromTasklist(stdout: string): boolean {
+  const lower = stdout.toLowerCase()
+  return lower.includes(`"${VALORANT_CLIENT_PROCESS.toLowerCase()}"`)
+    || lower.includes('"valorant-win64-shipping.exe"')
+}
+
 /**
  * CS2 often stays open in the menu after a match while the user plays another title.
  * Yield tracking when GSI shows CS2 is not in a live map.
@@ -76,6 +84,7 @@ export class GameDetector extends EventEmitter {
   private static readonly MISSED_POLLS_BEFORE_STOP = 2
   /** Last primary game from settings — preferred when multiple games are running. */
   private _watchGame: string | null = null
+  private _valorantClientOpen = false
 
   start(): void {
     if (this._polling) return
@@ -98,6 +107,11 @@ export class GameDetector extends EventEmitter {
 
   currentGame(): string | null {
     return this._activeGame
+  }
+
+  /** True in the Valorant client/lobby or a live map. UI-only: never starts recording. */
+  isValorantClientOpen(): boolean {
+    return this._valorantClientOpen
   }
 
   /**
@@ -223,6 +237,7 @@ export class GameDetector extends EventEmitter {
         { windowsHide: true, timeout: 4000, maxBuffer: 2 * 1024 * 1024 },
       )
       const runningGames = runningGamesFromTasklist(stdout)
+      this._valorantClientOpen = isValorantClientOpenFromTasklist(stdout)
 
       const active = this._activeGame
 

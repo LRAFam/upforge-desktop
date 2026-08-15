@@ -601,7 +601,7 @@
                 </div>
 
                 <div
-                  v-else-if="missionIsCaptureStage && missionRuntime.currentGame === 'valorant'"
+                  v-else-if="missionIsCaptureStage && (missionRuntime.currentGame === 'valorant' || missionRuntime.valorantClientOpen)"
                   class="rounded-xl border border-amber-400/20 bg-amber-400/[0.05] px-4 py-3"
                 >
                   <p class="text-[12px] font-bold text-amber-200">UpForge cannot verify the Valorant picture yet</p>
@@ -833,6 +833,7 @@ const missionCaptureVerified = ref(false)
 const missionPreviewError = ref<string | null>(null)
 const missionRuntime = ref({
   currentGame: null as string | null,
+  valorantClientOpen: false,
   waitingForMatch: false,
   recording: false,
   recordingStartedAt: null as number | null,
@@ -866,7 +867,7 @@ const missionRecordingDuration = computed(() => {
 const missionCaptureReadiness = computed(() => deriveCaptureReadiness({
   obsConnected: missionRuntime.value.obsConnected,
   preflightPassed: missionRuntime.value.preflightPassed,
-  gameDetected: missionRuntime.value.currentGame === 'valorant',
+  gameDetected: missionRuntime.value.currentGame === 'valorant' || missionRuntime.value.valorantClientOpen,
   captureChecked: Boolean(missionCapturePreview.value || missionPreviewError.value),
   captureVerified: missionCaptureVerified.value,
   recording: missionRuntime.value.obsRecording,
@@ -882,8 +883,8 @@ const missionCaptureChecks = computed(() => [
   },
   {
     label: 'Valorant',
-    value: missionRuntime.value.currentGame === 'valorant' ? 'Window detected' : 'Not detected',
-    state: missionRuntime.value.currentGame === 'valorant' ? 'ok' : 'pending',
+    value: missionRuntime.value.currentGame === 'valorant' || missionRuntime.value.valorantClientOpen ? 'Client detected' : 'Not detected',
+    state: missionRuntime.value.currentGame === 'valorant' || missionRuntime.value.valorantClientOpen ? 'ok' : 'pending',
   },
   {
     label: 'Capture',
@@ -1224,6 +1225,7 @@ async function refreshMissionState(options: { forceCapture?: boolean } = {}) {
   const currentRuntime = missionRuntime.value
   missionRuntime.value = {
     currentGame: status?.currentGame ?? currentRuntime.currentGame,
+    valorantClientOpen: status?.valorantClientOpen ?? currentRuntime.valorantClientOpen,
     waitingForMatch: status?.waitingForMatch ?? currentRuntime.waitingForMatch,
     recording: status?.recording ?? currentRuntime.recording,
     recordingStartedAt: status?.recordingStartedAt ?? currentRuntime.recordingStartedAt,
@@ -1239,13 +1241,13 @@ async function refreshMissionState(options: { forceCapture?: boolean } = {}) {
 
   if (status) {
 
-    if (status.currentGame !== 'valorant') {
+    if (status.currentGame !== 'valorant' && !status.valorantClientOpen) {
       missionCapturePreview.value = null
       missionCaptureVerified.value = false
       missionPreviewError.value = null
     }
 
-    const shouldRefreshPreview = status.currentGame === 'valorant'
+    const shouldRefreshPreview = (status.currentGame === 'valorant' || status.valorantClientOpen)
       && !status.recording
       && (options.forceCapture || Date.now() - missionPreviewCapturedAt >= 5000)
     if (shouldRefreshPreview) {

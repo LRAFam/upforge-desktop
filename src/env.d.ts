@@ -630,6 +630,7 @@ declare global {
           version: string
           ffmpegOk: boolean
           obsConnected: boolean
+          valorantClientOpen: boolean
           recordedModes: string[]
           recordingBackend: 'obs'
           currentQueueMode: string | null

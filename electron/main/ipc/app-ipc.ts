@@ -39,6 +39,7 @@ export function setupAppHandlers(
   getRecordingBackend?: () => 'obs',
   getCurrentQueueMode?: () => string | null,
   getObsConnected?: () => boolean,
+  getValorantClientOpen?: () => boolean,
   obsRecorder?: OBSRecorder,
   onSettingsSaved?: (settings: ReturnType<SettingsManager['get']>) => void,
 ): void {
@@ -61,6 +62,7 @@ export function setupAppHandlers(
       firstRun: settings.firstRun,
       ffmpegOk: getFFmpegOk ? getFFmpegOk() : true,
       obsConnected: getObsConnected ? getObsConnected() : false,
+      valorantClientOpen: getValorantClientOpen ? getValorantClientOpen() : false,
       recordedModes: getRecordedModesForGame(
         settings.recordedModesByGame,
         settings.primaryGame ?? 'valorant',

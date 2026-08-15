@@ -122,6 +122,7 @@ export function setupIpcHandlers(
   getCurrentQueueMode?: () => string | null,
   getAudioDetectRecorder?: () => MatchRecorder,
   getObsConnected?: () => boolean,
+  getValorantClientOpen?: () => boolean,
   onSettingsSaved?: (settings: ReturnType<SettingsManager['get']>) => void,
   onLoginSuccess?: () => void,
   onLogout?: () => void,
@@ -142,7 +143,7 @@ export function setupIpcHandlers(
   setupAppHandlers(
     ipcMain, auth, getActiveRecorder, gameDetector, settingsManager,
     openPostGameFn, getFFmpegOk, getWaitingForMatch, getActivityLog, showClipsFn, focusNavigateFn,
-    getRecordingBackend, getCurrentQueueMode, getObsConnected,
+    getRecordingBackend, getCurrentQueueMode, getObsConnected, getValorantClientOpen,
     obsRecorder, onSettingsSaved,
   )
 

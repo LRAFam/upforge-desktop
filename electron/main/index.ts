@@ -5805,6 +5805,7 @@ async function startApp(): Promise<void> {
   () => riotLocalApi.getLastGameMode(),
   undefined,
   () => obsRecorder.isConnected(),
+  () => gameDetector.isValorantClientOpen(),
   onSettingsSaved,
   () => {
     syncUserSessionFromAuth()
