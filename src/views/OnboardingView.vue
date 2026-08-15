@@ -610,6 +610,30 @@
                   </p>
                 </div>
 
+                <div
+                  v-if="missionIsCaptureStage && (missionCaptureReadiness === 'obs_disconnected' || missionCaptureReadiness === 'capture_blocked')"
+                  class="grid grid-cols-1 gap-2"
+                >
+                  <button
+                    v-if="missionCaptureReadiness === 'obs_disconnected'"
+                    type="button"
+                    class="btn-primary w-full"
+                    :disabled="obsConnecting"
+                    @click="reconnectMissionObs"
+                  >
+                    {{ obsConnecting ? 'Reconnecting…' : 'Reconnect OBS' }}
+                  </button>
+                  <button
+                    v-if="missionCaptureReadiness === 'capture_blocked'"
+                    type="button"
+                    class="btn-secondary w-full"
+                    :disabled="saving"
+                    @click="refreshMissionState({ forceCapture: true })"
+                  >
+                    Recheck capture
+                  </button>
+                </div>
+
                 <div v-if="missionStage === 'ready' && missionStats" class="grid grid-cols-3 gap-2.5">
                   <div class="rounded-lg border border-white/[0.08] px-3 py-3 text-center">
                     <p class="text-[10px] uppercase tracking-wide text-gray-600">K / D / A</p>
@@ -822,6 +846,7 @@ const missionNow = ref(Date.now())
 let missionPollTimer: ReturnType<typeof setInterval> | null = null
 let missionClockTimer: ReturnType<typeof setInterval> | null = null
 let missionPreviewCapturedAt = 0
+let missionObsConnectionCleanup: (() => void) | null = null
 
 const selectedGame = ref<PrimaryGame>('valorant')
 
@@ -1128,6 +1153,25 @@ watch(selectedGame, async () => {
 onMounted(async () => {
   await refreshAuthState()
   await ensureAuthedOrStay()
+  missionObsConnectionCleanup = window.api.on('obs:connection-changed', (...args: unknown[]) => {
+    const data = args[0] as { connected?: boolean; error?: string | null } | undefined
+    if (typeof data?.connected !== 'boolean') return
+
+    // The mission is a continuation of the onboarding preflight, not a new OBS
+    // session. Keep both views on the same live connection signal.
+    obsConnected.value = data.connected
+    missionRuntime.value = {
+      ...missionRuntime.value,
+      obsConnected: data.connected,
+      obsError: data.connected ? null : (data.error ?? missionRuntime.value.obsError),
+    }
+    // A screenshot from before a reconnect is not proof that the newly-connected
+    // OBS session can still see Valorant. Require a fresh frame.
+    missionCapturePreview.value = null
+    missionCaptureVerified.value = false
+    missionPreviewError.value = null
+    missionPreviewCapturedAt = 0
+  })
   await refreshMissionState()
   missionPollTimer = setInterval(() => { void refreshMissionState() }, 2000)
   missionClockTimer = setInterval(() => { missionNow.value = Date.now() }, 1000)
@@ -1136,6 +1180,8 @@ onMounted(async () => {
 onUnmounted(() => {
   if (missionPollTimer) clearInterval(missionPollTimer)
   if (missionClockTimer) clearInterval(missionClockTimer)
+  missionObsConnectionCleanup?.()
+  missionObsConnectionCleanup = null
 })
 
 async function refreshAuthState() {
@@ -1162,7 +1208,7 @@ async function ensureAuthedOrStay() {
   }
 }
 
-async function refreshMissionState() {
+async function refreshMissionState(options: { forceCapture?: boolean } = {}) {
   if (isPreview.value) return
   const settings = await window.api.settings.get().catch(() => null)
   const mission = settings?.onboardingMatchMission
@@ -1175,18 +1221,23 @@ async function refreshMissionState() {
     window.api.obs.getStatus().catch(() => null),
     window.api.recordings.get().catch(() => [] as PendingRecording[]),
   ])
+  const currentRuntime = missionRuntime.value
+  missionRuntime.value = {
+    currentGame: status?.currentGame ?? currentRuntime.currentGame,
+    waitingForMatch: status?.waitingForMatch ?? currentRuntime.waitingForMatch,
+    recording: status?.recording ?? currentRuntime.recording,
+    recordingStartedAt: status?.recordingStartedAt ?? currentRuntime.recordingStartedAt,
+    // OBS status is independently authoritative. Do not turn a just-passed
+    // preflight into a false disconnect because app:get-status is momentarily unavailable.
+    obsConnected: obsStatus?.connected ?? status?.obsConnected ?? obsConnected.value,
+    preflightPassed: settings?.obsPreflightPassed === true,
+    obsRecording: obsStatus?.recording ?? status?.recording ?? currentRuntime.obsRecording,
+    obsError: obsStatus?.lastError ?? currentRuntime.obsError,
+    currentQueueMode: status?.currentQueueMode ?? currentRuntime.currentQueueMode,
+  }
+  obsConnected.value = missionRuntime.value.obsConnected
+
   if (status) {
-    missionRuntime.value = {
-      currentGame: status.currentGame,
-      waitingForMatch: status.waitingForMatch,
-      recording: status.recording,
-      recordingStartedAt: status.recordingStartedAt,
-      obsConnected: obsStatus?.connected ?? status.obsConnected,
-      preflightPassed: settings?.obsPreflightPassed === true,
-      obsRecording: obsStatus?.recording ?? status.recording,
-      obsError: obsStatus?.lastError ?? null,
-      currentQueueMode: status.currentQueueMode,
-    }
 
     if (status.currentGame !== 'valorant') {
       missionCapturePreview.value = null
@@ -1196,7 +1247,7 @@ async function refreshMissionState() {
 
     const shouldRefreshPreview = status.currentGame === 'valorant'
       && !status.recording
-      && Date.now() - missionPreviewCapturedAt >= 5000
+      && (options.forceCapture || Date.now() - missionPreviewCapturedAt >= 5000)
     if (shouldRefreshPreview) {
       missionPreviewCapturedAt = Date.now()
       const preview = await window.api.obs.capturePreview().catch(() => null)
@@ -1219,6 +1270,11 @@ async function refreshMissionState() {
   }
 }
 
+async function reconnectMissionObs() {
+  await launchAndConnectObs()
+  await refreshMissionState({ forceCapture: true })
+}
+
 async function startBonusMission() {
   completeError.value = ''
   if (selectedGame.value !== 'valorant') {
@@ -1238,6 +1294,16 @@ async function startBonusMission() {
         || preflight.error
         || 'OBS could not complete the recording safety check. Return to OBS setup and repair it.'
       return
+    }
+
+    // The preflight has just proved the exact OBS connection and recording path
+    // that this screen will show. Preserve that result while the live poll starts.
+    obsConnected.value = true
+    missionRuntime.value = {
+      ...missionRuntime.value,
+      obsConnected: true,
+      preflightPassed: true,
+      obsError: null,
     }
 
     if (isAdmin.value) {
