@@ -4,7 +4,7 @@
     :style="cssVars"
   >
     <!-- Subtle branded background texture -->
-    <img src="./assets/upforge-bg.webp" alt="" class="pointer-events-none absolute inset-0 z-0 h-full w-full object-cover opacity-[0.045] select-none" />
+    <img v-if="!isPostGameRoute" src="./assets/upforge-bg.webp" alt="" class="pointer-events-none absolute inset-0 z-0 h-full w-full object-cover opacity-[0.045] select-none" />
     <Transition name="busy-bar">
       <div v-if="busyActive && route.path !== '/splash'" class="pointer-events-none absolute inset-x-0 top-0 z-50 h-[2px] bg-white/[0.04]">
         <div
@@ -191,9 +191,10 @@
     </div>
 
     <!-- Achievement toast manager -->
-    <AchievementManager />
+    <AchievementManager v-if="!isPostGameRoute" />
 
     <RiotLinkPromptModal
+      v-if="!isPostGameRoute"
       :show="riotLinkPrompt.show"
       :name="riotLinkPrompt.name"
       :tag="riotLinkPrompt.tag"
@@ -207,7 +208,7 @@
     />
 
     <!-- Dev toolbar (dev mode only, always visible) -->
-    <div v-if="isDev && route.path !== '/login'" class="flex items-center gap-2 px-3 py-1.5 border-t border-yellow-500/20 bg-yellow-500/[0.03] flex-shrink-0">
+    <div v-if="!isPostGameRoute && isDev && route.path !== '/login'" class="flex items-center gap-2 px-3 py-1.5 border-t border-yellow-500/20 bg-yellow-500/[0.03] flex-shrink-0">
       <span class="text-[10px] text-yellow-500/60 font-mono uppercase tracking-wider">Dev</span>
       <button
         class="px-2 py-0.5 text-[10px] text-yellow-400/80 hover:text-yellow-300 bg-yellow-500/10 hover:bg-yellow-500/20 rounded border border-yellow-500/20 transition-colors"
@@ -238,6 +239,7 @@ import { gameNavRoutes } from './lib/game-modules'
 import { accountLinkSettingsPath } from './lib/account-link-navigation'
 import { getDesktopApi, hasDesktopApi } from './lib/desktop-api'
 import { resolveUnauthenticatedRoute } from './lib/onboarding-gate'
+import { isPostGameWindowRoute, shouldInitializeFullAppShell } from './lib/window-work-policy'
 import type { ClipRecord, ProfileData } from './env.d.ts'
 
 const route = useRoute()
@@ -389,7 +391,7 @@ const showTitleBar = computed(() =>
   route.path !== '/overlay' && route.path !== '/splash' && route.path !== '/login'
 )
 
-const isPostGameRoute = computed(() => route.path.startsWith('/post-game'))
+const isPostGameRoute = computed(() => isPostGameWindowRoute(route.path))
 const isFullHeightView = computed(() =>
   ['/vod-review', '/dashboard', '/training', '/history', '/clips', '/stats', '/squad', '/performance', '/settings', '/rosters', '/login', '/dev'].includes(route.path),
 )
@@ -526,6 +528,10 @@ router.onError(() => {
 })
 
 onMounted(async () => {
+  // The post-game BrowserWindow owns only PostGameView. Starting the full app
+  // shell here duplicates OBS/auth/profile/update polling beside onboarding.
+  if (!shouldInitializeFullAppShell(route.path)) return
+
   try {
     const s = await window.api.app.getStatus()
     status.value = s

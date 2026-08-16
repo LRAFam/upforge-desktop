@@ -71,16 +71,36 @@ export function createMainWindow(
   })
 
   let rendererCrashCount = 0
+  let rendererStableTimer: ReturnType<typeof setTimeout> | null = null
+  let unresponsiveRecoveryTimer: ReturnType<typeof setTimeout> | null = null
+
+  win.on('unresponsive', () => {
+    log.error('[Main] Main renderer became unresponsive')
+    if (unresponsiveRecoveryTimer) return
+    unresponsiveRecoveryTimer = setTimeout(() => {
+      unresponsiveRecoveryTimer = null
+      if (win.isDestroyed()) return
+      log.warn('[Main] Main renderer remained unresponsive for 15s — reloading')
+      win.webContents.reload()
+    }, 15_000)
+  })
+
+  win.on('responsive', () => {
+    log.info('[Main] Main renderer responsive again')
+    if (unresponsiveRecoveryTimer) clearTimeout(unresponsiveRecoveryTimer)
+    unresponsiveRecoveryTimer = null
+  })
+
   win.webContents.on('render-process-gone', (_event, details) => {
-    console.error('[Main] Renderer process gone:', details.reason)
+    log.error('[Main] Renderer process gone:', details.reason, details.exitCode)
+    if (unresponsiveRecoveryTimer) clearTimeout(unresponsiveRecoveryTimer)
+    unresponsiveRecoveryTimer = null
+    if (rendererStableTimer) clearTimeout(rendererStableTimer)
+    rendererStableTimer = null
     if (details.reason !== 'clean-exit') {
       rendererCrashCount++
-      if (rendererCrashCount > 3) {
-        console.error('[Main] Renderer crashed too many times — not reloading to prevent loop')
-        return
-      }
       const delay = Math.min(1000 * Math.pow(2, rendererCrashCount - 1), 15_000)
-      console.warn(`[Main] Reloading renderer (attempt ${rendererCrashCount}/3) in ${delay}ms`)
+      log.warn(`[Main] Reloading renderer (attempt ${rendererCrashCount}) in ${delay}ms`)
       setTimeout(() => {
         try {
           if (!win.isDestroyed()) {
@@ -89,10 +109,16 @@ export function createMainWindow(
             } else {
               win.loadFile(join(__dirname, '../renderer/index.html'))
             }
-            win.webContents.once('did-finish-load', () => { rendererCrashCount = 0 })
+            win.webContents.once('did-finish-load', () => {
+              if (rendererStableTimer) clearTimeout(rendererStableTimer)
+              rendererStableTimer = setTimeout(() => {
+                rendererCrashCount = 0
+                rendererStableTimer = null
+              }, 30_000)
+            })
           }
         } catch (e) {
-          console.error('[Main] Failed to reload renderer:', e)
+          log.error('[Main] Failed to reload renderer:', e)
         }
       }, delay)
     }

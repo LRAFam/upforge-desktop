@@ -41,6 +41,11 @@ import {
 import { isObsProcessRunning } from './obs-process'
 import type { RecorderConfig } from './recorder'
 import { assessCaptureFrame, type CaptureFrameQuality } from './capture-frame-quality'
+import { withTimeout } from './promise-timeout'
+
+type CapturePreviewResult =
+  | { ok: true; dataUrl: string; quality: CaptureFrameQuality }
+  | { ok: false; error: string }
 
 export interface OBSSettings {
   host: string
@@ -103,6 +108,7 @@ export interface ReplayClipSavedMeta {
 
 export class OBSRecorder {
   private _obs = new OBSWebSocket()
+  private _capturePreviewInFlight: Promise<CapturePreviewResult> | null = null
   private _connected = false
   private _recording = false
   /** True only when UpForge called start() — ignores manual OBS recordings for promo/streaming. */
@@ -372,11 +378,25 @@ export class OBSRecorder {
   getObsStudioVersion(): string | null { return this._obsStudioVersion }
   getObsClient(): OBSWebSocket { return this._obs }
 
-  async captureSourcePreview(): Promise<
-    | { ok: true; dataUrl: string; quality: CaptureFrameQuality }
-    | { ok: false; error: string }
-  > {
+  async captureSourcePreview(): Promise<CapturePreviewResult> {
     if (!this._connected) return { ok: false, error: 'obs_not_connected' }
+
+    if (!this._capturePreviewInFlight) {
+      const operation = this._captureSourcePreviewOnce()
+      this._capturePreviewInFlight = operation
+      void operation.finally(() => {
+        if (this._capturePreviewInFlight === operation) this._capturePreviewInFlight = null
+      })
+    }
+
+    try {
+      return await withTimeout(this._capturePreviewInFlight, 4_000, 'capture_preview_timeout')
+    } catch (err) {
+      return { ok: false, error: err instanceof Error ? err.message : String(err) }
+    }
+  }
+
+  private async _captureSourcePreviewOnce(): Promise<CapturePreviewResult> {
     try {
       const result = await this._obs.call('GetSourceScreenshot', {
         sourceName: UPFORGE_SCENE_NAME,

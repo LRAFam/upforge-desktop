@@ -6,9 +6,10 @@
     >
       <div class="flex items-center gap-3 rounded-lg border border-amber-500/25 bg-amber-500/[0.08] px-3 py-1.5">
         <span class="text-[10px] font-bold uppercase tracking-wider text-amber-300/90">
-          Preview · changes not saved
+          {{ missionActive ? 'Live admin onboarding test' : 'Preview · changes not saved' }}
         </span>
         <button
+          v-if="!missionActive"
           type="button"
           class="text-[10px] font-semibold text-amber-200/80 hover:text-amber-100 transition-colors"
           @click="handleComplete()"
@@ -789,6 +790,12 @@ import { PRIMARY_GAME_ARTWORK, isPrimaryGame, type PrimaryGame } from '../lib/ga
 import { resolveMaxValorantAccounts } from '../lib/valorant-account-cap'
 import { deriveOnboardingMissionStage, type OnboardingMissionStage } from '../lib/onboarding-match-mission'
 import { deriveCaptureReadiness } from '../lib/capture-readiness'
+import {
+  findLatestOnboardingRecording,
+  shouldMinimizeOnboardingForRecording,
+  shouldPollOnboardingMission,
+  shouldRequestOnboardingPreview,
+} from '../lib/onboarding-capture-preview'
 import type { PendingRecording, RecordingTimeline } from '../env'
 
 const DISCORD_INVITE_URL = 'https://discord.gg/MDD3WVRaEq'
@@ -848,6 +855,8 @@ const missionNow = ref(Date.now())
 let missionPollTimer: ReturnType<typeof setInterval> | null = null
 let missionClockTimer: ReturnType<typeof setInterval> | null = null
 let missionPreviewCapturedAt = 0
+let missionPreviewInFlight = false
+let missionWindowMinimizedForRecording = false
 const missionEventCleanups: Array<() => void> = []
 
 const selectedGame = ref<PrimaryGame>('valorant')
@@ -1207,10 +1216,20 @@ onMounted(async () => {
         : null,
       obsError: data.error ?? missionRuntime.value.obsError,
     }
+    minimizeOnboardingOnceRecordingConfirmed(data.recording)
   }))
   await refreshMissionState()
-  missionPollTimer = setInterval(() => { void refreshMissionState() }, 2000)
-  missionClockTimer = setInterval(() => { missionNow.value = Date.now() }, 1000)
+  const handleVisibilityChange = () => {
+    if (!document.hidden) void refreshMissionState()
+  }
+  document.addEventListener('visibilitychange', handleVisibilityChange)
+  missionEventCleanups.push(() => document.removeEventListener('visibilitychange', handleVisibilityChange))
+  missionPollTimer = setInterval(() => {
+    if (!document.hidden) void refreshMissionState()
+  }, 2000)
+  missionClockTimer = setInterval(() => {
+    if (!document.hidden) missionNow.value = Date.now()
+  }, 1000)
 })
 
 onUnmounted(() => {
@@ -1226,6 +1245,19 @@ function clearMissionCaptureProof() {
   missionPreviewCapturedAt = 0
 }
 
+function minimizeOnboardingOnceRecordingConfirmed(recording: boolean) {
+  if (!shouldMinimizeOnboardingForRecording({
+    missionActive: missionActive.value,
+    recording,
+    alreadyMinimized: missionWindowMinimizedForRecording,
+  })) return
+
+  missionWindowMinimizedForRecording = true
+  void window.api.window.minimize().catch(() => {
+    missionWindowMinimizedForRecording = false
+  })
+}
+
 async function refreshAuthState() {
   const user = await window.api.auth.getUser() as { is_admin?: boolean } | null
   isAuthed.value = Boolean(user)
@@ -1236,32 +1268,35 @@ async function ensureAuthedOrStay() {
   const user = await window.api.auth.getUser()
   isAuthed.value = Boolean(user)
   if (user) {
-    if (!isPreview.value) {
-      const settings = await window.api.settings.get()
-      if (settings.onboardingMatchMission?.active) {
-        selectedGame.value = settings.onboardingMatchMission.game
-        missionActive.value = true
-        step.value = 5
-      } else {
+    const settings = await window.api.settings.get()
+    if (settings.onboardingMatchMission?.active) {
+      selectedGame.value = settings.onboardingMatchMission.game
+      missionActive.value = true
+      step.value = 5
+    } else if (!isPreview.value) {
         step.value = Math.max(step.value, 2)
-      }
+    }
+    if (!isPreview.value) {
       await prefillGameFromUser()
     }
   }
 }
 
 async function refreshMissionState(options: { forceCapture?: boolean } = {}) {
-  if (isPreview.value) return
+  if (!shouldPollOnboardingMission(isPreview.value, missionActive.value)) return
   const settings = await window.api.settings.get().catch(() => null)
   const mission = settings?.onboardingMatchMission
   missionActive.value = mission?.active === true
   if (!missionActive.value) return
 
   if (mission?.game) selectedGame.value = mission.game
-  const [status, obsStatus, recordings] = await Promise.all([
+  const [status, obsStatus, recordings, postGameSession] = await Promise.all([
     window.api.app.getStatus().catch(() => null),
     window.api.obs.getStatus().catch(() => null),
-    window.api.recordings.get().catch(() => [] as PendingRecording[]),
+    // Completed analyses leave the pending dashboard list. The full library is
+    // required so a renderer reload cannot send onboarding back to capture setup.
+    window.api.recordings.listAll().catch(() => [] as PendingRecording[]),
+    window.api.postGame.sync().catch(() => null),
   ])
   const currentRuntime = missionRuntime.value
   missionRuntime.value = {
@@ -1279,6 +1314,9 @@ async function refreshMissionState(options: { forceCapture?: boolean } = {}) {
     currentQueueMode: status?.currentQueueMode ?? currentRuntime.currentQueueMode,
   }
   obsConnected.value = missionRuntime.value.obsConnected
+  minimizeOnboardingOnceRecordingConfirmed(missionRuntime.value.recording)
+
+  missionRecording.value = findLatestOnboardingRecording(recordings, mission?.startedAt)
 
   if (status) {
 
@@ -1288,25 +1326,35 @@ async function refreshMissionState(options: { forceCapture?: boolean } = {}) {
       missionPreviewError.value = null
     }
 
-    const shouldRefreshPreview = (status.currentGame === 'valorant' || status.valorantClientOpen)
-      && !status.recording
-      && (options.forceCapture || Date.now() - missionPreviewCapturedAt >= 5000)
+    const shouldRefreshPreview = shouldRequestOnboardingPreview({
+      missionActive: missionActive.value,
+      valorantDetected: status.currentGame === 'valorant' || status.valorantClientOpen,
+      recording: status.recording,
+      onboardingRecordingFound: missionRecording.value != null,
+      postGamePhase: postGameSession?.phase ?? null,
+      previewInFlight: missionPreviewInFlight,
+      force: options.forceCapture === true,
+      now: Date.now(),
+      lastCapturedAt: missionPreviewCapturedAt,
+    })
     if (shouldRefreshPreview) {
       missionPreviewCapturedAt = Date.now()
-      const preview = await window.api.obs.capturePreview().catch(() => null)
-      if (preview?.ok) {
-        missionCapturePreview.value = preview.dataUrl
-        missionCaptureVerified.value = preview.quality.verified
-        missionPreviewError.value = preview.quality.verified ? null : preview.quality.reason
-      } else {
-        missionCaptureVerified.value = false
-        missionPreviewError.value = preview?.error || 'capture_preview_failed'
+      missionPreviewInFlight = true
+      try {
+        const preview = await window.api.obs.capturePreview().catch(() => null)
+        if (preview?.ok) {
+          missionCapturePreview.value = preview.dataUrl
+          missionCaptureVerified.value = preview.quality.verified
+          missionPreviewError.value = preview.quality.verified ? null : preview.quality.reason
+        } else {
+          missionCaptureVerified.value = false
+          missionPreviewError.value = preview?.error || 'capture_preview_failed'
+        }
+      } finally {
+        missionPreviewInFlight = false
       }
     }
   }
-  missionRecording.value = [...recordings]
-    .filter((recording) => recording.onboardingBonus === true)
-    .sort((a, b) => b.recordedAt - a.recordedAt)[0] ?? null
 
   if (missionRecording.value?.analysisId != null) {
     missionTimeline.value = await window.api.recordings.getTimeline(missionRecording.value.id).catch(() => null)
@@ -1320,6 +1368,10 @@ async function reconnectMissionObs() {
 
 async function startBonusMission() {
   completeError.value = ''
+  if (isPreview.value && !isAdmin.value) {
+    completeError.value = 'A live onboarding test from Preview requires an admin account.'
+    return
+  }
   if (selectedGame.value !== 'valorant') {
     completeError.value = 'The guided bonus match is launching with Valorant first. Other games are coming next.'
     return
