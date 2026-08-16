@@ -5426,6 +5426,37 @@ async function doUploadAndAnalyse(
       },
     })
 
+    // The server has accepted and claimed this one-time bonus. End the local
+    // mission now so another match cannot inherit onboarding_bonus and be
+    // rejected as an already-claimed entitlement.
+    if (storedRecording?.onboardingBonus === true) {
+      const settings = settingsManager.get()
+      const mission = settings.onboardingMatchMission
+      if (mission?.active === true) {
+        const previousModes = mission.previousValorantModes
+        settingsManager.save({
+          ...(previousModes
+            ? {
+                recordedModes: previousModes,
+                recordedModesByGame: {
+                  ...settings.recordedModesByGame,
+                  valorant: previousModes,
+                },
+              }
+            : {}),
+          ...(typeof mission.previousAutoAnalyse === 'boolean'
+            ? { autoAnalyse: mission.previousAutoAnalyse }
+            : {}),
+          ...(typeof mission.previousFullMatchRecording === 'boolean'
+            ? { fullMatchRecording: mission.previousFullMatchRecording }
+            : {}),
+          onboardingMatchMission: null,
+        })
+        mainWindow?.webContents.send('settings:changed', settingsManager.get())
+        logActivity(`Onboarding bonus claimed for job ${result.job_id} — future recordings use your normal analysis quota`)
+      }
+    }
+
     if (timeline && game === 'valorant') {
       if (!coachingExtras) {
         const rrHistory = await authManager.fetchRRHistory().catch(() => [])
