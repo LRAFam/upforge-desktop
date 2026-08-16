@@ -69,6 +69,10 @@ export interface AppSettings {
     previousAutoAnalyse?: boolean
     previousFullMatchRecording?: boolean
     adminTest?: boolean
+    /** The player has confirmed that the live OBS preview shows Valorant. */
+    captureConfirmedAt?: number
+    /** Capture recovery attempts during this guided mission. */
+    captureRetryCount?: number
   } | null
   /** Which monitor to capture. 'auto' detects from the game window; numbers are 0-based display index. */
   captureMonitor: 'auto' | number

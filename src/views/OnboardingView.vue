@@ -599,6 +599,18 @@
                       {{ missionCaptureVerified ? 'Capture verified' : 'Capture not ready' }}
                     </p>
                   </div>
+                  <div v-if="!missionCaptureVerified" class="border-t border-white/[0.08] px-3 py-3">
+                    <p class="text-[11px] font-semibold text-white">Can you see Valorant in this preview?</p>
+                    <p class="mt-1 text-[10px] text-gray-500">Confirm only if this is the picture you want UpForge to record.</p>
+                    <div class="mt-3 grid grid-cols-2 gap-2">
+                      <button type="button" class="btn-primary py-2 text-xs" :disabled="saving" @click="confirmMissionCapture">
+                        Yes, I can see it
+                      </button>
+                      <button type="button" class="btn-secondary py-2 text-xs" :disabled="saving" @click="rejectMissionCapture">
+                        No, fix capture
+                      </button>
+                    </div>
+                  </div>
                 </div>
 
                 <div
@@ -629,10 +641,17 @@
                     type="button"
                     class="btn-secondary w-full"
                     :disabled="saving"
-                    @click="refreshMissionState({ forceCapture: true })"
+                    @click="retryMissionCapture()"
                   >
                     Recheck capture
                   </button>
+                  <div v-if="missionCaptureSupportNeeded" class="rounded-xl border border-amber-400/25 bg-amber-400/[0.05] px-4 py-3">
+                    <p class="text-[12px] font-bold text-amber-100">Still not working after {{ CAPTURE_RETRY_SUPPORT_THRESHOLD }} attempts?</p>
+                    <p class="mt-1 text-[11px] leading-relaxed text-amber-100/70">Join Discord to open a support ticket. We will copy a short diagnostic summary for you to paste.</p>
+                    <button type="button" class="btn-primary mt-3 w-full py-2 text-xs" @click="openCaptureSupport">
+                      Get help on Discord
+                    </button>
+                  </div>
                 </div>
 
                 <div v-if="missionStage === 'ready' && missionStats" class="grid grid-cols-3 gap-2.5">
@@ -793,6 +812,7 @@ import { deriveCaptureReadiness } from '../lib/capture-readiness'
 import {
   findLatestOnboardingRecording,
   shouldMinimizeOnboardingForRecording,
+  shouldOfferOnboardingCaptureSupport,
   shouldPollOnboardingMission,
   shouldRequestOnboardingPreview,
 } from '../lib/onboarding-capture-preview'
@@ -802,6 +822,7 @@ const DISCORD_INVITE_URL = 'https://discord.gg/MDD3WVRaEq'
 const OBS_DOWNLOAD_URL = 'https://obsproject.com/download'
 const OBS_SKIP_KEY = 'upforge_obs_onboarding_skipped'
 const TOTAL_STEPS = 5
+const CAPTURE_RETRY_SUPPORT_THRESHOLD = 3
 
 type RiotAccount = {
   id: number
@@ -838,6 +859,7 @@ const missionRecording = ref<PendingRecording | null>(null)
 const missionTimeline = ref<RecordingTimeline | null>(null)
 const missionCapturePreview = ref<string | null>(null)
 const missionCaptureVerified = ref(false)
+const missionCaptureRetryCount = ref(0)
 const missionPreviewError = ref<string | null>(null)
 const missionRuntime = ref({
   currentGame: null as string | null,
@@ -883,6 +905,9 @@ const missionCaptureReadiness = computed(() => deriveCaptureReadiness({
   recording: missionRuntime.value.obsRecording,
   error: missionPreviewError.value,
 }))
+const missionCaptureSupportNeeded = computed(() =>
+  shouldOfferOnboardingCaptureSupport(missionCaptureRetryCount.value, CAPTURE_RETRY_SUPPORT_THRESHOLD),
+)
 const missionCaptureChecks = computed(() => [
   {
     label: 'OBS',
@@ -913,11 +938,12 @@ const missionCaptureMessage = computed(() => {
   if (missionCaptureReadiness.value === 'obs_disconnected') return missionRuntime.value.obsError || 'OBS disconnected. Reconnect it before playing.'
   if (missionCaptureReadiness.value === 'preflight_required') return 'OBS is connected, but the recording safety test needs to pass before you queue.'
   if (missionCaptureReadiness.value === 'waiting_for_game') return 'OBS is ready. Open Valorant and UpForge will verify the capture before you queue.'
-  if (missionCaptureReadiness.value === 'checking_capture') return 'Valorant is detected. UpForge is checking the OBS picture before you queue.'
+  if (missionCaptureReadiness.value === 'checking_capture') return 'Valorant is detected. UpForge is requesting an OBS preview for you to confirm.'
+  if (missionCaptureSupportNeeded.value) return 'We could not get a confirmed capture after several tries. You can retry or get help on Discord.'
   if (missionCaptureReadiness.value === 'capture_blocked') return 'Valorant is detected, but OBS has not returned a usable picture. Bring Valorant forward and UpForge will retry.'
   if (missionCaptureReadiness.value === 'recording') return 'OBS has confirmed it is recording this match. You can keep playing.'
   if (missionRuntime.value.waitingForMatch) return 'Safe to queue. Play Swiftplay, Competitive or Premier; recording starts automatically at match begin.'
-  return 'Safe to queue. Valorant and its OBS capture are verified, and UpForge is watching for the match hook.'
+  return 'Safe to queue. You confirmed the OBS capture, and UpForge is watching for the match hook.'
 })
 const missionCaptureMessageTone = computed(() =>
   !missionRuntime.value.obsConnected || (missionRuntime.value.currentGame === 'valorant' && !missionCaptureVerified.value)
@@ -1175,7 +1201,7 @@ onMounted(async () => {
     // A screenshot from before a reconnect is not proof that the newly-connected
     // OBS session can still see Valorant. Require a fresh frame.
     missionCapturePreview.value = null
-    missionCaptureVerified.value = false
+    void clearMissionCaptureConfirmation()
     missionPreviewError.value = null
     missionPreviewCapturedAt = 0
   }))
@@ -1226,7 +1252,7 @@ onMounted(async () => {
   missionEventCleanups.push(() => document.removeEventListener('visibilitychange', handleVisibilityChange))
   missionPollTimer = setInterval(() => {
     if (!document.hidden) void refreshMissionState()
-  }, 2000)
+  }, 5_000)
   missionClockTimer = setInterval(() => {
     if (!document.hidden) missionNow.value = Date.now()
   }, 1000)
@@ -1243,6 +1269,17 @@ function clearMissionCaptureProof() {
   missionCaptureVerified.value = false
   missionPreviewError.value = null
   missionPreviewCapturedAt = 0
+  missionCaptureRetryCount.value = 0
+}
+
+async function clearMissionCaptureConfirmation() {
+  clearMissionCaptureProof()
+  const settings = await window.api.settings.get().catch(() => null)
+  const mission = settings?.onboardingMatchMission
+  if (!mission?.active || (mission.captureConfirmedAt == null && mission.captureRetryCount == null)) return
+  await window.api.settings.save({
+    onboardingMatchMission: { ...mission, captureConfirmedAt: undefined, captureRetryCount: 0 },
+  }).catch(() => undefined)
 }
 
 function minimizeOnboardingOnceRecordingConfirmed(recording: boolean) {
@@ -1287,7 +1324,10 @@ async function refreshMissionState(options: { forceCapture?: boolean } = {}) {
   const settings = await window.api.settings.get().catch(() => null)
   const mission = settings?.onboardingMatchMission
   missionActive.value = mission?.active === true
-  if (!missionActive.value) return
+  if (!mission?.active) return
+
+  missionCaptureVerified.value = mission.captureConfirmedAt != null
+  missionCaptureRetryCount.value = mission.captureRetryCount ?? 0
 
   if (mission?.game) selectedGame.value = mission.game
   const [status, obsStatus, recordings, postGameSession] = await Promise.all([
@@ -1321,9 +1361,7 @@ async function refreshMissionState(options: { forceCapture?: boolean } = {}) {
   if (status) {
 
     if (status.currentGame !== 'valorant' && !status.valorantClientOpen) {
-      missionCapturePreview.value = null
-      missionCaptureVerified.value = false
-      missionPreviewError.value = null
+      void clearMissionCaptureConfirmation()
     }
 
     const shouldRefreshPreview = shouldRequestOnboardingPreview({
@@ -1333,6 +1371,7 @@ async function refreshMissionState(options: { forceCapture?: boolean } = {}) {
       onboardingRecordingFound: missionRecording.value != null,
       postGamePhase: postGameSession?.phase ?? null,
       previewInFlight: missionPreviewInFlight,
+      captureConfirmed: missionCaptureVerified.value,
       force: options.forceCapture === true,
       now: Date.now(),
       lastCapturedAt: missionPreviewCapturedAt,
@@ -1344,8 +1383,9 @@ async function refreshMissionState(options: { forceCapture?: boolean } = {}) {
         const preview = await window.api.obs.capturePreview().catch(() => null)
         if (preview?.ok) {
           missionCapturePreview.value = preview.dataUrl
-          missionCaptureVerified.value = preview.quality.verified
-          missionPreviewError.value = preview.quality.verified ? null : preview.quality.reason
+          // A real OBS screenshot is shown to the player. They decide whether it
+          // is their Valorant capture; luminance heuristics must not reject it.
+          missionPreviewError.value = null
         } else {
           missionCaptureVerified.value = false
           missionPreviewError.value = preview?.error || 'capture_preview_failed'
@@ -1364,6 +1404,61 @@ async function refreshMissionState(options: { forceCapture?: boolean } = {}) {
 async function reconnectMissionObs() {
   await launchAndConnectObs()
   await refreshMissionState({ forceCapture: true })
+}
+
+async function confirmMissionCapture() {
+  const settings = await window.api.settings.get()
+  const mission = settings.onboardingMatchMission
+  if (!mission?.active || !missionCapturePreview.value) return
+  saving.value = true
+  try {
+    await window.api.settings.save({
+      onboardingMatchMission: { ...mission, captureConfirmedAt: Date.now(), captureRetryCount: 0 },
+    })
+    missionCaptureVerified.value = true
+    missionCaptureRetryCount.value = 0
+    missionPreviewError.value = null
+  } finally {
+    saving.value = false
+  }
+}
+
+async function rejectMissionCapture() {
+  await retryMissionCapture('capture_not_confirmed')
+}
+
+async function retryMissionCapture(error: string | null = null) {
+  const settings = await window.api.settings.get()
+  const mission = settings.onboardingMatchMission
+  if (!mission?.active) return
+  saving.value = true
+  try {
+    const captureRetryCount = (mission.captureRetryCount ?? 0) + 1
+    await window.api.settings.save({
+      onboardingMatchMission: { ...mission, captureConfirmedAt: undefined, captureRetryCount },
+    })
+    missionCaptureVerified.value = false
+    missionCaptureRetryCount.value = captureRetryCount
+    missionPreviewError.value = error
+    missionPreviewCapturedAt = 0
+    await refreshMissionState({ forceCapture: true })
+  } finally {
+    saving.value = false
+  }
+}
+
+async function openCaptureSupport() {
+  const status = await window.api.app.getStatus().catch(() => null)
+  const summary = [
+    'UpForge capture setup help',
+    `App version: ${status?.version ?? 'unknown'}`,
+    `Valorant detected: ${status?.currentGame === 'valorant' || status?.valorantClientOpen ? 'yes' : 'no'}`,
+    `OBS connected: ${missionRuntime.value.obsConnected ? 'yes' : 'no'}`,
+    `Capture retries: ${missionCaptureRetryCount.value}`,
+    `Last capture error: ${missionPreviewError.value ?? 'none'}`,
+  ].join('\n')
+  await navigator.clipboard.writeText(summary).catch(() => undefined)
+  await window.api.app.openUrl(DISCORD_INVITE_URL)
 }
 
 async function startBonusMission() {

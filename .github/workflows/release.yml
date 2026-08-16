@@ -188,6 +188,16 @@ jobs:
             gh release create "$TAG" --repo "${{ github.repository }}" --title "$VERSION" --notes "See commit history for changes."
           fi
 
+          # electron-updater resolves GitHub's single "Latest" release. Set it
+          # explicitly so a user can jump from any older installer directly to
+          # this version instead of following stale release metadata.
+          gh release edit "$TAG" --repo "${{ github.repository }}" --latest
+          LATEST_TAG=$(gh release view --repo "${{ github.repository }}" --json tagName --jq '.tagName')
+          if [ "$LATEST_TAG" != "$TAG" ]; then
+            echo "Expected $TAG to be GitHub's latest release, got $LATEST_TAG"
+            exit 1
+          fi
+
           echo "Uploading auto-update metadata first…"
           gh release upload "$TAG" --repo "${{ github.repository }}" dist/latest.yml dist/latest-mac.yml --clobber
 

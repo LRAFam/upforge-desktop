@@ -142,6 +142,8 @@ export interface AppSettings {
     previousAutoAnalyse?: boolean
     previousFullMatchRecording?: boolean
     adminTest?: boolean
+    captureConfirmedAt?: number
+    captureRetryCount?: number
   } | null
   /** Which monitor to capture. 'auto' detects from game window; numbers are 0-based display index. */
   captureMonitor: 'auto' | number

@@ -5,6 +5,7 @@ export type OnboardingPreviewDecision = {
   onboardingRecordingFound: boolean
   postGamePhase: string | null
   previewInFlight: boolean
+  captureConfirmed: boolean
   force: boolean
   now: number
   lastCapturedAt: number
@@ -17,6 +18,10 @@ const BUSY_POST_GAME_PHASES = new Set([
   'analysing',
   'pending',
 ])
+
+export function shouldOfferOnboardingCaptureSupport(retryCount: number, threshold = 3): boolean {
+  return retryCount >= threshold
+}
 
 /** Visual preview stays inert until an admin explicitly starts a real test mission. */
 export function shouldPollOnboardingMission(isPreview: boolean, missionActive: boolean): boolean {
@@ -41,7 +46,9 @@ export function shouldRequestOnboardingPreview(input: OnboardingPreviewDecision)
   if (isPostGameBusy(input.postGamePhase) || input.previewInFlight) return false
   if (input.force) return true
 
-  const refreshIntervalMs = input.refreshIntervalMs ?? 5_000
+  if (input.captureConfirmed) return false
+
+  const refreshIntervalMs = input.refreshIntervalMs ?? 15_000
   return input.now - input.lastCapturedAt >= refreshIntervalMs
 }
 

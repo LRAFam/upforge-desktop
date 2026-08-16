@@ -4,6 +4,7 @@ import {
   isPostGameBusy,
   shouldMinimizeOnboardingForRecording,
   shouldPollOnboardingMission,
+  shouldOfferOnboardingCaptureSupport,
   shouldRequestOnboardingPreview,
 } from './onboarding-capture-preview'
 
@@ -14,6 +15,7 @@ const ready = {
   onboardingRecordingFound: false,
   postGamePhase: null,
   previewInFlight: false,
+  captureConfirmed: false,
   force: false,
   now: 10_000,
   lastCapturedAt: 0,
@@ -45,12 +47,26 @@ describe('onboarding capture preview policy', () => {
   })
 
   it('allows a preview once Valorant is detected and the refresh interval elapsed', () => {
-    expect(shouldRequestOnboardingPreview(ready)).toBe(true)
+    expect(shouldRequestOnboardingPreview({ ...ready, now: 15_000 })).toBe(true)
   })
 
   it('does not overlap preview requests', () => {
     expect(shouldRequestOnboardingPreview({ ...ready, previewInFlight: true })).toBe(false)
     expect(shouldRequestOnboardingPreview({ ...ready, previewInFlight: true, force: true })).toBe(false)
+  })
+
+  it('stops automatic preview refreshes after the player confirms it', () => {
+    expect(shouldRequestOnboardingPreview({ ...ready, captureConfirmed: true, now: 30_000 })).toBe(false)
+  })
+
+  it('uses a restrained preview refresh interval', () => {
+    expect(shouldRequestOnboardingPreview({ ...ready, now: 14_999 })).toBe(false)
+    expect(shouldRequestOnboardingPreview({ ...ready, now: 15_000 })).toBe(true)
+  })
+
+  it('offers support after three unsuccessful capture recovery attempts', () => {
+    expect(shouldOfferOnboardingCaptureSupport(2)).toBe(false)
+    expect(shouldOfferOnboardingCaptureSupport(3)).toBe(true)
   })
 
   it('stops preview work during recording and post-match processing', () => {
