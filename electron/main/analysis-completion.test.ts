@@ -35,13 +35,12 @@ describe('extractAnalysisIdFromPollStatus', () => {
 })
 
 describe('isTerminalPollSuccess', () => {
-  it('treats completed + top-level analysis_log_id as done even without result id', () => {
+  it('treats completed + top-level analysis_log_id as done when result is absent', () => {
     expect(
       isTerminalPollSuccess({
         status: 'completed',
         progress: 100,
         analysis_log_id: 525,
-        result: {},
       }),
     ).toBe(true)
   })

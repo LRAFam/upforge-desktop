@@ -5498,7 +5498,11 @@ async function doUploadAndAnalyse(
         recordingsStore.setAnalysisProgress(recordingId, progress, status.current_step ?? null)
       },
       onCompleted: (status) => {
-        const score = (status.result as Record<string, unknown>).overall_score as number | undefined
+        // A completed job may expose its linked analysis_log_id before its
+        // denormalized result JSON is available. Completion must still clear
+        // the local ANALYSING state in that ordering window.
+        const completedResult = status.result ?? {}
+        const score = completedResult.overall_score as number | undefined
         const analysisId = extractAnalysisIdFromPollStatus(status)
         if (recordingId) {
           if (analysisId != null) {
@@ -5512,8 +5516,8 @@ async function doUploadAndAnalyse(
           }
           mainWindow?.webContents.send('recordings:updated')
         }
-        const improvements = (status.result as Record<string, unknown>).priority_improvements as string[] | undefined
-        const topIssue = (status.result as Record<string, unknown>).top_issue as string | undefined
+        const improvements = completedResult.priority_improvements as string[] | undefined
+        const topIssue = completedResult.top_issue as string | undefined
         const insightText = (improvements && improvements.length > 0) ? improvements[0] : (topIssue ?? null)
         logActivity(`Analysis ready${score != null ? ` — Score: ${score}/100` : ''}`)
         if (insightText) {
@@ -5540,10 +5544,10 @@ async function doUploadAndAnalyse(
           }
         }
 
-        const categoryScores = (status.result as Record<string, unknown>).category_scores as
+        const categoryScores = completedResult.category_scores as
           | Array<{ category: string; score: number }>
           | undefined
-        const coachingTags = (status.result as Record<string, unknown>).coaching_tags as string[] | undefined
+        const coachingTags = completedResult.coaching_tags as string[] | undefined
         const prevSkillProfile = settingsManager.get().skillProfile
         const nextSkillProfile = mergeSkillProfileFromAnalysis(prevSkillProfile, {
           categoryScores: categoryScores ?? [],
@@ -5556,24 +5560,24 @@ async function doUploadAndAnalyse(
           skillProfilePrevious: prevSkillProfile ?? undefined,
         })
 
-        const rawHighlights = (status.result as Record<string, unknown>).match_highlights
+        const rawHighlights = completedResult.match_highlights
         const matchHighlights = parseMatchHighlightsFromApi(rawHighlights)
 
-        const rawTiming = (status.result as Record<string, unknown>).timing_comparisons
+        const rawTiming = completedResult.timing_comparisons
 
         send('post-game:analysis-ready', {
           recording_id: recordingId,
-          overall_score: (status.result as Record<string, unknown>).overall_score,
-          analysis_id: (status.result as Record<string, unknown>).analysis_id,
-          top_issue: (status.result as Record<string, unknown>).top_issue,
-          priority_improvements: (status.result as Record<string, unknown>).priority_improvements,
-          verdict: (status.result as Record<string, unknown>).verdict ?? null,
-          coaching_tags: (status.result as Record<string, unknown>).coaching_tags ?? [],
+          overall_score: completedResult.overall_score,
+          analysis_id: completedResult.analysis_id ?? analysisId,
+          top_issue: completedResult.top_issue,
+          priority_improvements: completedResult.priority_improvements,
+          verdict: completedResult.verdict ?? null,
+          coaching_tags: completedResult.coaching_tags ?? [],
           spatial_summary: mergeSpatialSummary(
-            extractSpatialFromAnalysisPayload(status.result as Record<string, unknown>),
+            extractSpatialFromAnalysisPayload(completedResult),
             localSpatial,
           ),
-          category_scores: (status.result as Record<string, unknown>).category_scores ?? [],
+          category_scores: completedResult.category_scores ?? [],
           session_start: sessionStart,
           match_id: timeline?.matchId ?? null,
           kills: timeline?.finalStats?.kills ?? null,
@@ -5585,23 +5589,23 @@ async function doUploadAndAnalyse(
           match_highlights: matchHighlights,
           skill_profile: nextSkillProfile,
           timing_comparisons: Array.isArray(rawTiming) ? rawTiming : [],
-          duel_moments: (status.result as Record<string, unknown>).duel_moments
+          duel_moments: completedResult.duel_moments
             ?? timeline?.duelMoments
             ?? null,
-          pipeline: (status.result as Record<string, unknown>).pipeline
-            ?? (status.result as Record<string, unknown>).pipeline_type
+          pipeline: completedResult.pipeline
+            ?? completedResult.pipeline_type
             ?? null,
-          report_type: (status.result as Record<string, unknown>).report_type ?? null,
-          coaching_source: (status.result as Record<string, unknown>).coaching_source ?? null,
-          limitations: (status.result as Record<string, unknown>).limitations ?? [],
-          is_degraded: (status.result as Record<string, unknown>).is_degraded ?? false,
-          telemetry_fallback_used: (status.result as Record<string, unknown>).telemetry_fallback_used ?? false,
+          report_type: completedResult.report_type ?? null,
+          coaching_source: completedResult.coaching_source ?? null,
+          limitations: completedResult.limitations ?? [],
+          is_degraded: completedResult.is_degraded ?? false,
+          telemetry_fallback_used: completedResult.telemetry_fallback_used ?? false,
         })
         const readyPayload = {
-          report_type: (status.result as Record<string, unknown>).report_type,
-          coaching_source: (status.result as Record<string, unknown>).coaching_source,
-          is_degraded: (status.result as Record<string, unknown>).is_degraded,
-          telemetry_fallback_used: (status.result as Record<string, unknown>).telemetry_fallback_used,
+          report_type: completedResult.report_type,
+          coaching_source: completedResult.coaching_source,
+          is_degraded: completedResult.is_degraded,
+          telemetry_fallback_used: completedResult.telemetry_fallback_used,
         }
         if (isDegradedTelemetryResult(readyPayload)) {
           trackAnalysisDegraded({
