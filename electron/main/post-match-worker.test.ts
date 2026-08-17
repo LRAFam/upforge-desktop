@@ -46,6 +46,7 @@ describe('PostMatchWorker', () => {
       const worker = new PostMatchWorker({
         store,
         isRecording: () => false,
+        isJobReady: () => true,
         runJob,
       })
 
@@ -69,6 +70,7 @@ describe('PostMatchWorker', () => {
       const worker = new PostMatchWorker({
         store,
         isRecording: () => true,
+        isJobReady: () => true,
         runJob,
       })
       worker.enqueue(job('a', 1))
@@ -89,6 +91,7 @@ describe('PostMatchWorker', () => {
       const worker = new PostMatchWorker({
         store,
         isRecording: () => false,
+        isJobReady: () => true,
         canRunJob: () => autoAnalyseEnabled,
         runJob,
       })
@@ -109,6 +112,36 @@ describe('PostMatchWorker', () => {
     }
   })
 
+  it('keeps an automatic job queued until canonical match data is ready', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'upforge-worker-'))
+    try {
+      const store = new PostMatchJobStore(join(dir, 'jobs.json'))
+      const runJob = vi.fn(async () => {})
+      let matchDataReady = false
+      const worker = new PostMatchWorker({
+        store,
+        isRecording: () => false,
+        isJobReady: () => matchDataReady,
+        runJob,
+      })
+
+      worker.enqueue(job('waiting-for-stats', 1))
+      await new Promise((r) => setTimeout(r, 50))
+
+      expect(runJob).not.toHaveBeenCalled()
+      expect(store.get('waiting-for-stats')?.stage).toBe('queued')
+      expect(store.get('waiting-for-stats')?.attempts).toBe(0)
+
+      matchDataReady = true
+      worker.kick()
+
+      await vi.waitFor(() => expect(store.get('waiting-for-stats')?.stage).toBe('done'))
+      expect(runJob).toHaveBeenCalledTimes(1)
+    } finally {
+      await rm(dir, { recursive: true, force: true })
+    }
+  })
+
   it('does not immediately retry a failed job in a tight loop', async () => {
     const dir = await mkdtemp(join(tmpdir(), 'upforge-worker-'))
     try {
@@ -116,6 +149,7 @@ describe('PostMatchWorker', () => {
       const worker = new PostMatchWorker({
         store,
         isRecording: () => false,
+        isJobReady: () => true,
         runJob: vi.fn(async () => { throw new Error('network down') }),
       })
       worker.enqueue(job('failed-once', 1))

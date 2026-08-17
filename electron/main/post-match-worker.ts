@@ -7,6 +7,8 @@ import type { PostMatchJob, PostMatchJobStore } from './post-match-job-store'
 export interface PostMatchWorkerDeps {
   store: PostMatchJobStore
   isRecording: () => boolean
+  /** Canonical readiness gate. Missing match data keeps the job queued locally. */
+  isJobReady: (job: PostMatchJob) => boolean
   /** Whether this persisted job is owned by and allowed for the active user. */
   canRunJob?: (job: PostMatchJob) => boolean
   runJob: (job: PostMatchJob) => Promise<void>
@@ -40,7 +42,10 @@ export class PostMatchWorker {
     const job = this.deps.store.claimNextRunnable({
       deferIfRecording: true,
       isRecording: this.deps.isRecording,
-      isEligible: this.deps.canRunJob,
+      isEligible: (candidate) => (
+        this.deps.isJobReady(candidate)
+        && (this.deps.canRunJob?.(candidate) ?? true)
+      ),
     })
     if (!job) return
 

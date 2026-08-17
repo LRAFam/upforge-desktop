@@ -920,6 +920,7 @@ function maybeAutoEnqueueWhenReady(recordingId: string): void {
       || job.stage === 'complete_api'
       || job.stage === 'polling')
   ) {
+    postMatchWorker?.kick()
     return
   }
   const user = authManager.getUser()
@@ -960,6 +961,10 @@ function initPostMatchWorker(userId: number): void {
   postMatchWorker = new PostMatchWorker({
     store: postMatchJobStore,
     isRecording: () => matchCapturePriority || obsRecorder.isActivelyRecording(),
+    isJobReady: (job) => {
+      const rec = recordingsStore.getById(job.recordingId)
+      return rec != null && getAnalysisReadiness(rec).ready
+    },
     // Missing ownership or request origin is never inferred for legacy jobs.
     // Automatic jobs also require capture-time intent and the current toggle.
     canRunJob: (job) => {
