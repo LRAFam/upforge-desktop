@@ -1,5 +1,21 @@
 <template>
+  <div v-if="compactPostGameUi" ref="contentRoot" class="h-auto bg-[#111111] p-3">
+    <PostGameCompactStatus
+      :tone="compactTone"
+      :eyebrow="compactEyebrow"
+      :title="compactTitle"
+      :body="compactBody"
+      :progress="compactProgress"
+      :status="compactStatus"
+      :timing="compactTiming"
+      :primary-label="state === 'ready' ? 'Open report' : 'Open UpForge'"
+      :show-expectations="['preparing', 'uploading', 'analysing'].includes(state)"
+      @primary="handleCompactPrimary"
+      @close="dismiss"
+    />
+  </div>
   <div
+    v-else
     ref="contentRoot"
     class="flex flex-col bg-[#111111] relative overflow-hidden"
     :class="isCompactFlowState ? 'h-auto' : 'h-full'"
@@ -838,6 +854,7 @@ import { POST_MATCH_COPY, waitingMatchDataSubtitle } from '../lib/post-match-cop
 import { analyseDeferredTitle } from '../lib/analyse-gate'
 import { demoDownloadProgressLabel, type DemoDownloadProgress } from '../lib/demo-download-progress'
 import PostGameDuelDiagnostics from '../components/post-game/PostGameDuelDiagnostics.vue'
+import PostGameCompactStatus from '../components/post-game/PostGameCompactStatus.vue'
 import {
   pickWebNextStep,
   tierDisplayLabel,
@@ -845,6 +862,7 @@ import {
 } from '../lib/web-explore-links'
 
 type State = 'preparing' | 'uploading' | 'analysing' | 'ready' | 'error' | 'pending' | 'archived'
+const compactPostGameUi = true
 
 const COACHING_TIPS = [
   'Players who review their gameplay weekly improve 2x faster than those who don\'t.',
@@ -1338,6 +1356,65 @@ const uploadEta = computed(() => {
   return `~${Math.ceil(remaining / 60)}m remaining`
 })
 
+const compactProgress = computed(() => {
+  if (state.value === 'preparing' || state.value === 'uploading') return uploadProgress.value
+  if (state.value === 'analysing') return analysisProgress.value
+  return null
+})
+
+const compactTone = computed<'active' | 'paused' | 'success' | 'error' | 'neutral'>(() => {
+  if (analysisDeferredReason.value === 'recording') return 'paused'
+  if (state.value === 'ready' || state.value === 'archived') return 'success'
+  if (state.value === 'error') return 'error'
+  if (state.value === 'pending') return 'neutral'
+  return 'active'
+})
+
+const compactEyebrow = computed(() => {
+  if (analysisDeferredReason.value === 'recording') return 'Paused for your match'
+  if (state.value === 'ready') return 'Analysis ready'
+  if (state.value === 'error') return 'Needs attention'
+  if (state.value === 'pending' || state.value === 'archived') return 'Match saved'
+  return 'Post-match processing'
+})
+
+const compactTitle = computed(() => {
+  if (state.value === 'preparing') return 'Saving your match'
+  if (state.value === 'uploading') return compressing.value ? 'Optimising your recording' : 'Uploading your match'
+  if (state.value === 'analysing') return analysisDeferredReason.value === 'recording'
+    ? 'Background work will resume after your match'
+    : 'Building your coaching report'
+  if (state.value === 'ready') return 'Your coaching report is ready'
+  if (state.value === 'error') return errorTitle.value
+  if (state.value === 'archived') return 'Recording saved to cloud'
+  return 'Your match is saved'
+})
+
+const compactBody = computed(() => {
+  if (state.value === 'preparing') return 'UpForge is finalising the recording before upload.'
+  if (state.value === 'uploading') return compressing.value
+    ? compressHint.value
+    : 'Your recording is being sent securely for analysis.'
+  if (state.value === 'analysing') return analysisDeferredReason.value === 'recording'
+    ? 'Nothing is broken. UpForge pauses uploads and local video work while you play to protect performance.'
+    : (analysisStep.value || 'Your gameplay and match evidence are being reviewed.')
+  if (state.value === 'ready') return `${matchHeadline.value} is ready to review.`
+  if (state.value === 'error') return errorMessage.value || 'Open UpForge to review the problem and retry.'
+  if (state.value === 'archived') return 'The VOD is available from your dashboard.'
+  return pendingAnalysisMessage.value || 'Open UpForge when you are ready to continue.'
+})
+
+const compactStatus = computed(() => {
+  if (state.value === 'analysing') return analysisStatusLabel.value
+  if (state.value === 'preparing' || state.value === 'uploading') return uploadStatusLabel.value
+  return null
+})
+
+const compactTiming = computed(() => {
+  if (state.value === 'analysing') return `${analysisElapsedDisplay.value} elapsed`
+  return uploadEta.value
+})
+
 const roundTimelineCells = computed(() => {
   const ally = Math.max(0, result.value?.ally_score ?? 0)
   const enemy = Math.max(0, result.value?.enemy_score ?? 0)
@@ -1785,6 +1862,11 @@ onMounted(() => {
       errorMessage.value = ''
     }
   }))
+  ipcCleanup.push(window.api.on('post-game:compress-progress', (...args: unknown[]) => {
+    state.value = 'uploading'
+    compressing.value = true
+    uploadProgress.value = args[0] as number
+  }))
   ipcCleanup.push(window.api.on('post-game:upload-start', (...args: unknown[]) => {
     state.value = 'uploading'
     compressing.value = false
@@ -2125,6 +2207,14 @@ function viewFullAnalysis() {
     window.open(analysisUrl.value, '_blank')
   }
   dismiss()
+}
+
+async function handleCompactPrimary() {
+  if (state.value === 'ready') {
+    viewFullAnalysis()
+    return
+  }
+  await handoffToMain('/dashboard')
 }
 
 async function submitAnalysisFeedback(rating: 'thumbs_up' | 'thumbs_down') {

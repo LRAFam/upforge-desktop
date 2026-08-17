@@ -353,6 +353,7 @@ const api = {
       'post-game:prep-step',
       'post-game:upload-start',
       'post-game:compress-start',
+      'post-game:compress-progress',
       'post-game:upload-progress',
       'post-game:upload-complete',
       'post-game:analysis-progress',

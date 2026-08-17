@@ -154,8 +154,8 @@ export function createMainWindow(
 // ── Post-game window ──────────────────────────────────────────────────────────
 
 export function createPostGameWindow(): BrowserWindow {
-  const display = screen.getPrimaryDisplay()
-  const { width: workW, height: workH } = display.workAreaSize
+  const display = screen.getDisplayNearestPoint(screen.getCursorScreenPoint())
+  const { x: workX, y: workY, width: workW, height: workH } = display.workArea
   const winHeight = Math.min(300, Math.max(240, workH - 80))
 
   const win = new BrowserWindow({
@@ -164,7 +164,7 @@ export function createPostGameWindow(): BrowserWindow {
     minWidth: 360,
     minHeight: 260,
     maxHeight: workH - 32,
-    resizable: true,
+    resizable: false,
     frame: false,
     alwaysOnTop: true,
     skipTaskbar: false,
@@ -179,7 +179,7 @@ export function createPostGameWindow(): BrowserWindow {
     }
   })
 
-  win.setPosition(workW - 420, workH - winHeight - 20)
+  win.setPosition(workX + workW - 420, workY + workH - winHeight - 20)
 
   attachExternalLinkHandler(win, 'desktop_post_game')
 

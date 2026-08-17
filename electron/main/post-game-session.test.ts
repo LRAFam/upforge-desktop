@@ -69,6 +69,17 @@ describe('applyPostGameChannelEvent preparing race', () => {
     expect(getPostGameSessionSnapshot()?.uploadProgress).toBe(47)
   })
 
+  it('buffers compression progress without switching to upload state', () => {
+    resetPostGameSession('valorant', 'Haven', 'Jett', 7, 'onboarding-vod')
+    applyPostGameChannelEvent('post-game:compress-start', { sizeGB: '1.2' })
+    applyPostGameChannelEvent('post-game:compress-progress', 42)
+
+    const snap = getPostGameSessionSnapshot()
+    expect(snap?.phase).toBe('uploading')
+    expect(snap?.compressing).toBe(true)
+    expect(snap?.uploadProgress).toBe(42)
+  })
+
   it('rejects state changes from another recording or account', () => {
     resetPostGameSession('valorant', 'Haven', 'Jett', 7, 'current-vod')
 

@@ -10,6 +10,7 @@ import { is } from '@electron-toolkit/utils'
 import log from 'electron-log'
 import { UPLOAD_COMPRESSION_PRESET } from './recording-preset'
 import { registerVodCompressionProc } from './match-priority-guard'
+import { parseFfmpegProgress } from './ffmpeg-progress'
 
 const IS_WIN = process.platform === 'win32'
 
@@ -74,6 +75,8 @@ export interface CompressVodResult {
 export interface ResolveUploadVideoPathOptions {
   /** Re-encode to coaching preset above {@link ANALYSIS_COMPRESS_IF_LARGER_THAN_BYTES}. */
   forAnalysis?: boolean
+  /** Reports progress while FFmpeg prepares the recording. */
+  onProgress?: (percent: number) => void
 }
 
 export async function resolveUploadVideoPath(
@@ -103,7 +106,7 @@ export async function resolveUploadVideoPath(
   // MKV/MOV → MP4 via stream copy when codecs are already browser/S3 compatible (seconds, not minutes).
   if (mustTranscode && !shouldCompressVod(sizeBytes, forAnalysis)) {
     onCompressStart?.('remux')
-    const remuxed = await remuxVodForUpload(sourcePath)
+    const remuxed = await remuxVodForUpload(sourcePath, options?.onProgress)
     if (remuxed.ok) {
       return { path: remuxed.outputPath, sizeBytes: remuxed.outputSizeBytes, compressed: true }
     }
@@ -120,7 +123,7 @@ export async function resolveUploadVideoPath(
   let inputPath = sourcePath
   if (mustTranscode && shouldCompressVod(sizeBytes, forAnalysis)) {
     onCompressStart?.('remux')
-    const remuxed = await remuxVodForUpload(sourcePath)
+    const remuxed = await remuxVodForUpload(sourcePath, options?.onProgress)
     if (remuxed.ok) {
       inputPath = remuxed.outputPath
       sizeBytes = remuxed.outputSizeBytes
@@ -131,7 +134,7 @@ export async function resolveUploadVideoPath(
     }
   }
 
-  const result = await compressVodForUpload(inputPath)
+  const result = await compressVodForUpload(inputPath, options?.onProgress)
   if (result.ok) {
     return { path: result.outputPath, sizeBytes: result.outputSizeBytes, compressed: true }
   }
@@ -150,7 +153,10 @@ export async function resolveUploadVideoPath(
   return { path: sourcePath, sizeBytes, compressed: false }
 }
 
-export async function remuxVodForUpload(sourcePath: string): Promise<CompressVodResult> {
+export async function remuxVodForUpload(
+  sourcePath: string,
+  onProgress?: (percent: number) => void,
+): Promise<CompressVodResult> {
   const outputPath = compressedPathFor(sourcePath)
   mkdirSync(dirname(outputPath), { recursive: true })
 
@@ -168,7 +174,7 @@ export async function remuxVodForUpload(sourcePath: string): Promise<CompressVod
       '-c', 'copy',
       '-movflags', '+faststart',
       outputPath,
-    ])
+    ], onProgress)
     const outputSizeBytes = statSync(outputPath).size
     return { ok: true, outputPath, outputSizeBytes }
   } catch (err) {
@@ -180,7 +186,10 @@ export async function remuxVodForUpload(sourcePath: string): Promise<CompressVod
   }
 }
 
-export async function compressVodForUpload(sourcePath: string): Promise<CompressVodResult> {
+export async function compressVodForUpload(
+  sourcePath: string,
+  onProgress?: (percent: number) => void,
+): Promise<CompressVodResult> {
   const outputPath = compressedPathFor(sourcePath)
   mkdirSync(dirname(outputPath), { recursive: true })
 
@@ -222,7 +231,7 @@ export async function compressVodForUpload(sourcePath: string): Promise<Compress
         '-b:a', '128k',
         '-movflags', '+faststart',
         outputPath,
-      ])
+      ], onProgress)
       const outputSizeBytes = statSync(outputPath).size
       log.info(
         `[VodCompressor] Done: ${(statSync(sourcePath).size / (1024 ** 3)).toFixed(2)} GB → ` +
@@ -241,11 +250,12 @@ export async function compressVodForUpload(sourcePath: string): Promise<Compress
   return { ok: false, outputPath, outputSizeBytes: 0, error: lastError }
 }
 
-function runFfmpeg(args: string[]): Promise<void> {
+function runFfmpeg(args: string[], onProgress?: (percent: number) => void): Promise<void> {
   return new Promise((resolve, reject) => {
     const proc = spawn(ffmpegBin(), args, { stdio: ['ignore', 'ignore', 'pipe'] })
     registerVodCompressionProc(proc)
     let stderr = ''
+    let lastProgress = -1
     let settled = false
     const timeoutMs = 90 * 60 * 1000
     const timer = setTimeout(() => {
@@ -261,7 +271,14 @@ function runFfmpeg(args: string[]): Promise<void> {
       fn()
     }
 
-    proc.stderr?.on('data', (d: Buffer) => { stderr += d.toString() })
+    proc.stderr?.on('data', (d: Buffer) => {
+      stderr += d.toString()
+      const progress = parseFfmpegProgress(stderr)
+      if (progress != null && progress !== lastProgress) {
+        lastProgress = progress
+        onProgress?.(progress)
+      }
+    })
     proc.on('error', (err) => settle(() => reject(err)))
     proc.on('exit', (code, signal) => {
       if (code === 0) settle(() => resolve())

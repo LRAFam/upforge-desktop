@@ -275,18 +275,18 @@ export function setupAppHandlers(
   ipcMain.handle('window:set-content-height', (e, contentHeight: number) => {
     const win = BrowserWindow.fromWebContents(e.sender)
     if (!win || win.isDestroyed()) return
-    const { height: workH } = screen.getPrimaryDisplay().workAreaSize
+    const bounds = win.getBounds()
+    const workArea = screen.getDisplayMatching(bounds).workArea
     const titleBarPx = 44
     const desiredHeight = Math.min(
-      workH - 32,
+      workArea.height - 32,
       380,
       Math.max(240, Math.round(Number(contentHeight) + titleBarPx)),
     )
-    const bounds = win.getBounds()
     if (Math.abs(bounds.height - desiredHeight) < 6) return
     win.setBounds({
       x: bounds.x,
-      y: workH - desiredHeight - 20,
+      y: workArea.y + workArea.height - desiredHeight - 20,
       width: bounds.width,
       height: desiredHeight,
     })

@@ -194,7 +194,7 @@ import { HotkeyManager } from './hotkey-manager'
 import { createOverlayWindow, requestOverlayToggle, destroyOverlay, sendOverlayData, isOverlayVisible, showOverlay, hideOverlay } from './overlay-window'
 import { deliverInGameFeedback, usesOverlayFeedback } from './in-game-feedback'
 import { getSessionPollIntervalMs, isInGameOverlayEnabled } from './in-game-overlay'
-import { shouldMinimizeForDetectedGame } from './onboarding-window-policy'
+import { shouldMinimizeForDetectedGame, shouldOpenPostGameWindow } from './onboarding-window-policy'
 import { captureAndSaveScreenshot } from './screenshot-capture'
 import { PerformanceManager } from './performance-manager'
 import { TrainerBridge } from './trainer-bridge'
@@ -3389,6 +3389,7 @@ function setupGameDetection(): void {
     resetPostGameSession(game, map, agent, getActiveUserId())
 
     const deferPostGameUi = shouldDeferPostGameForDemoSync(game, timeline)
+    const onboardingMissionActive = settingsManager.get().onboardingMatchMission?.active === true
     let thisPostGameWindow: BrowserWindow | null = null
     const revealPostGame = () => {
       if (!thisPostGameWindow || thisPostGameWindow.isDestroyed()) return
@@ -3399,7 +3400,7 @@ function setupGameDetection(): void {
         thisPostGameWindow.show()
       }
     }
-    if (!deferPostGameUi) {
+    if (shouldOpenPostGameWindow(onboardingMissionActive, deferPostGameUi)) {
       thisPostGameWindow = createPostGameWindow()
       postGameWindow = thisPostGameWindow
       thisPostGameWindow.on('closed', () => {
@@ -5227,7 +5228,7 @@ async function doUploadArchiveOnly(
     const resolved = await resolveUploadVideoPath(videoPath, (sizeGB) => {
       logActivity(`Recording is ${sizeGB} GB — compressing for cloud upload…`)
       send('post-game:compress-start', { sizeGB })
-    })
+    }, { onProgress: (pct) => send('post-game:compress-progress', pct) })
     effectivePath = resolved.path
     if (resolved.compressed && recordingId && effectivePath !== videoPath) {
       recordingsStore.updatePath(recordingId, effectivePath)
@@ -5438,7 +5439,10 @@ async function performUploadAndAnalyse(
         logActivity(`Recording is ${sizeGB} GB — compressing for upload…`)
       }
       send('post-game:compress-start', { sizeGB })
-    }, { forAnalysis: true })
+    }, {
+      forAnalysis: true,
+      onProgress: (pct) => send('post-game:compress-progress', pct),
+    })
     activeMatchTelemetry?.endSector('remux_compress')
     effectivePath = resolved.path
     if (effectivePath !== videoPath) {

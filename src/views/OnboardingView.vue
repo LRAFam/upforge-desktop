@@ -564,6 +564,19 @@
                 </div>
 
                 <div
+                  v-if="['processing', 'waiting_match_data', 'uploading', 'analysing'].includes(missionStage)"
+                  class="rounded-xl border border-blue-400/20 bg-blue-400/[0.05] px-4 py-3"
+                >
+                  <p class="text-[12px] font-semibold text-blue-100">You can leave this running</p>
+                  <p class="mt-1 text-[11px] leading-relaxed text-gray-400">
+                    Analysis usually takes 20–30 minutes. We will email you when your report is ready.
+                  </p>
+                  <p class="mt-1 text-[11px] leading-relaxed text-gray-500">
+                    If you start another match, UpForge pauses uploads and local video processing to protect FPS and network performance. Work already running on our servers can continue safely.
+                  </p>
+                </div>
+
+                <div
                   v-if="missionIsCaptureStage"
                   class="overflow-hidden rounded-xl border border-white/[0.08] bg-[#0b0e14]"
                 >
@@ -701,6 +714,9 @@
                 <p class="text-sm font-bold text-white">Your first Pro analysis is included</p>
                 <p class="mt-1.5 text-[11px] leading-relaxed text-gray-400">
                   Play one supported Valorant match. UpForge will record it, match the Riot data, and build the same evidence-led report a Pro user receives.
+                </p>
+                <p class="mt-2 text-[11px] leading-relaxed text-gray-500">
+                  Reports usually take 20–30 minutes. We will email you when yours is ready. Uploads and local video processing pause during matches to protect FPS and network performance.
                 </p>
                 <div class="mt-3 grid grid-cols-3 divide-x divide-white/[0.08] border-t border-white/[0.08] pt-3">
                   <p class="px-2 text-center text-[10px] font-semibold text-emerald-200">Full coaching report</p>
@@ -985,7 +1001,7 @@ const missionCopy = computed(() => {
     },
     analysing: {
       title: 'Building your coaching report',
-      body: 'The real analysis pipeline is reviewing your gameplay and preparing evidence.',
+      body: 'Your match is safe. Analysis usually takes 20–30 minutes, and we will email you when it is ready.',
     },
     failed: {
       title: 'This match needs attention',

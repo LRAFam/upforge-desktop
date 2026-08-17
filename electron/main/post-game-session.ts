@@ -202,6 +202,13 @@ export function applyPostGameChannelEvent(channel: string, payload: unknown): vo
       patch({ phase: 'uploading', compressing: true, compressKind, uploadProgress: 0 })
       break
     }
+    case 'post-game:compress-progress':
+      patch({
+        phase: 'uploading',
+        uploadProgress: typeof payload === 'number' ? payload : session?.uploadProgress ?? 0,
+        compressing: true,
+      })
+      break
     case 'post-game:upload-start': {
       const data = payload as {
         game: string
