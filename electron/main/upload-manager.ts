@@ -419,7 +419,7 @@ export class UploadManager {
         console.error('[UploadManager] Duel clip upload failed:', err)
         reportPipelineError('duel-clips', `Duel clip upload failed during complete(): ${msg}`, {
           jobId: job_id,
-          videoPath: opts.videoPath,
+          videoFile: path.basename(opts.videoPath),
           stack: err instanceof Error ? err.stack?.slice(0, 2000) : undefined,
         })
         try {

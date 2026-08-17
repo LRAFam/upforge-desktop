@@ -15,6 +15,7 @@ import {
   migrateRecordedModesByGame,
   type RecordedModesByGame,
 } from './recorded-modes-filter'
+import { AUTO_ANALYSE_CONSENT_VERSION, migrateAutoAnalyseConsent } from './auto-analyse-consent'
 
 export type PrimaryGame = 'valorant' | 'cs2' | 'deadlock' | 'lol'
 
@@ -57,6 +58,8 @@ export interface AppSettings {
   /** Per-game modes to record. Empty array for a game means record nothing for that game. */
   recordedModesByGame: RecordedModesByGame
   autoAnalyse: boolean // automatically upload & analyse after game ends
+  /** Versioned proof that auto-analysis was chosen after the explicit-consent migration. */
+  autoAnalyseConsentVersion: 1
   firstRun: boolean
   /** Set after welcome / onboarding wizard — avoids re-prompting on every launch */
   onboardingComplete?: boolean
@@ -208,7 +211,8 @@ const DEFAULTS: AppSettings = {
   autoDelete: true,
   recordedModes: ['COMPETITIVE', 'PREMIER'],
   recordedModesByGame: defaultRecordedModesByGame(),
-  autoAnalyse: true,
+  autoAnalyse: false,
+  autoAnalyseConsentVersion: AUTO_ANALYSE_CONSENT_VERSION,
   firstRun: true,
   onboardingMatchMission: null,
   captureMonitor: 'auto',
@@ -295,6 +299,8 @@ export class SettingsManager {
         parsed.obsHost = '127.0.0.1'
       }
       parsed = migrateOnboardingFlags(parsed)
+      const autoAnalyseConsent = migrateAutoAnalyseConsent(parsed)
+      parsed = autoAnalyseConsent.settings
       const beforeMigrate = parsed.obsPreserveSceneDefaultV2 === true
       parsed = migrateObsPreserveSceneDefaultV2(parsed)
       // Migrate trainerMouse.game → primaryGame for existing installs
@@ -317,7 +323,7 @@ export class SettingsManager {
         merged.savePath = DEFAULTS.savePath
       }
       const result = { ...merged, ...applyRecordingPresetFields(merged) }
-      if (!beforeMigrate) {
+      if (!beforeMigrate || autoAnalyseConsent.migrated) {
         try {
           fs.mkdirSync(path.dirname(this.filePath), { recursive: true })
           fs.writeFileSync(this.filePath, JSON.stringify(result, null, 2))

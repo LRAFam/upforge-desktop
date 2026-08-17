@@ -26,20 +26,34 @@ function persistUserOverlay(userId: number, settings: SettingsManager): void {
   try {
     const root = userDataRoot(userId)
     fs.mkdirSync(root, { recursive: true })
-    const overlay = { lastInsight: settings.get().lastInsight ?? null }
+    const current = settings.get()
+    const overlay = {
+      lastInsight: current.lastInsight ?? null,
+      trainingConsent: current.trainingConsent === true,
+    }
     fs.writeFileSync(userOverlayPath(userId), JSON.stringify(overlay, null, 2))
   } catch (err) {
     log.warn('[UserSession] Failed to persist user overlay:', err)
   }
 }
 
+export function persistActiveUserOverlay(settings: SettingsManager): void {
+  if (activeUserId != null) persistUserOverlay(activeUserId, settings)
+}
+
 function loadUserOverlay(userId: number, settings: SettingsManager): void {
   try {
     const raw = fs.readFileSync(userOverlayPath(userId), 'utf-8')
-    const parsed = JSON.parse(raw) as { lastInsight?: import('./settings-manager').AppSettings['lastInsight'] }
-    settings.save({ lastInsight: parsed.lastInsight ?? null })
+    const parsed = JSON.parse(raw) as {
+      lastInsight?: import('./settings-manager').AppSettings['lastInsight']
+      trainingConsent?: boolean
+    }
+    settings.save({
+      lastInsight: parsed.lastInsight ?? null,
+      trainingConsent: parsed.trainingConsent === true,
+    })
   } catch {
-    settings.save({ lastInsight: null })
+    settings.save({ lastInsight: null, trainingConsent: false })
   }
 }
 
@@ -106,7 +120,7 @@ export function clearUserSession(deps: UserSessionDeps): void {
   deps.clipStore.setUserScope(null)
   deps.recordingsStore.setUserScope(null)
   setClipsMediaDir(null)
-  deps.settingsManager.save({ lastInsight: null })
+  deps.settingsManager.save({ lastInsight: null, trainingConsent: false })
 
   deps.onScopeChanged?.()
   deps.getMainWindow()?.webContents.send('session:user-changed', { userId: null })

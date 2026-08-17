@@ -18,6 +18,8 @@ export type PostMatchJobStage =
 
 export interface PostMatchJob {
   id: string
+  ownerUserId: number
+  requestKind: 'automatic' | 'manual'
   recordingId: string
   videoPath: string
   game: string
@@ -38,7 +40,7 @@ interface JobStoreFile {
   jobs: PostMatchJob[]
 }
 
-const RUNNABLE: PostMatchJobStage[] = ['queued', 'deferred', 'remux', 'upload', 'duels', 'complete_api', 'failed']
+const RUNNABLE: PostMatchJobStage[] = ['queued', 'deferred', 'remux', 'upload', 'duels', 'complete_api']
 
 export function getPostMatchJobStorePath(userDataPath: string): string {
   return path.join(userDataPath, 'post-match-jobs.json')
@@ -89,11 +91,12 @@ export class PostMatchJobStore {
   claimNextRunnable(opts: {
     deferIfRecording: boolean
     isRecording: () => boolean
+    isEligible?: (job: PostMatchJob) => boolean
   }): PostMatchJob | null {
     if (opts.deferIfRecording && opts.isRecording()) return null
     const data = this.read()
     const candidates = data.jobs
-      .filter((j) => RUNNABLE.includes(j.stage))
+      .filter((j) => RUNNABLE.includes(j.stage) && (opts.isEligible?.(j) ?? true))
       .sort((a, b) => a.createdAt - b.createdAt)
     return candidates[0] ?? null
   }

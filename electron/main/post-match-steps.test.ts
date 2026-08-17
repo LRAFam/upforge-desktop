@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest'
-import { decidePostMatchNextStep, isWaitingMatchDataState } from './post-match-steps'
+import {
+  canAutoEnqueueRecording,
+  decidePostMatchNextStep,
+  isWaitingMatchDataState,
+} from './post-match-steps'
 
 describe('decidePostMatchNextStep', () => {
   it('returns pending_manual when auto-analyse is off', () => {
@@ -26,5 +30,13 @@ describe('isWaitingMatchDataState', () => {
     expect(isWaitingMatchDataState('waiting_match_data')).toBe(true)
     expect(isWaitingMatchDataState('ready')).toBe(false)
     expect(isWaitingMatchDataState(null)).toBe(false)
+  })
+})
+
+describe('canAutoEnqueueRecording', () => {
+  it('requires explicit intent and keeps legacy recordings manual-only', () => {
+    expect(canAutoEnqueueRecording({ autoAnalyseRequested: true })).toBe(true)
+    expect(canAutoEnqueueRecording({ autoAnalyseRequested: false })).toBe(false)
+    expect(canAutoEnqueueRecording({})).toBe(false)
   })
 })

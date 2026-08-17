@@ -15,6 +15,14 @@ export interface PostMatchStepInput {
   readinessState?: string | null
 }
 
+/**
+ * Historical recordings predate explicit auto-analysis intent. Treat a missing
+ * value as manual-only so an app reopen or later match cannot opt them in.
+ */
+export function canAutoEnqueueRecording(recording: { autoAnalyseRequested?: boolean }): boolean {
+  return recording.autoAnalyseRequested === true
+}
+
 export function decidePostMatchNextStep(input: PostMatchStepInput): PostMatchNextStep {
   if (!input.autoAnalyse) return 'pending_manual'
   if (!input.readinessReady) return 'pending_waiting_stats'

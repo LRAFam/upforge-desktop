@@ -8,6 +8,8 @@ function baseJob(overrides: Partial<PostMatchJob> = {}): PostMatchJob {
   const now = Date.now()
   return {
     id: 'rec-1',
+    ownerUserId: 7,
+    requestKind: 'automatic',
     recordingId: 'rec-1',
     videoPath: '/tmp/a.mp4',
     game: 'valorant',
@@ -66,6 +68,21 @@ describe('PostMatchJobStore', () => {
         isRecording: () => true,
       })
       expect(claimed).toBeNull()
+    } finally {
+      await rm(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('does not claim jobs that fail the ownership or consent predicate', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'upforge-jobs-'))
+    try {
+      const store = new PostMatchJobStore(join(dir, 'jobs.json'))
+      store.upsert(baseJob({ ownerUserId: 7 }))
+      expect(store.claimNextRunnable({
+        deferIfRecording: false,
+        isRecording: () => false,
+        isEligible: (job) => job.ownerUserId === 8,
+      })).toBeNull()
     } finally {
       await rm(dir, { recursive: true, force: true })
     }

@@ -169,6 +169,8 @@ export interface AppSettings {
   autoOpenBrowser: boolean
   /** Opt-in: anonymised use of cloud-archived VODs for model training (separate from storage). */
   trainingConsent: boolean
+  /** Versioned proof of an explicit auto-analysis choice. */
+  autoAnalyseConsentVersion: 1
   /** Last detected hardware encoder — cached to skip detection on next launch */
   cachedEncoder: string | null
   /** Whether ddagrab was available last launch */

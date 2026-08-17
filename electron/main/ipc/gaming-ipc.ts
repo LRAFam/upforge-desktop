@@ -4,7 +4,7 @@
  * and ForgeRank prestige. Also holds the crosshair→Godot conversion helper.
  */
 
-import { IpcMain, shell } from 'electron'
+import { BrowserWindow, IpcMain, shell } from 'electron'
 import fs from 'fs'
 import path from 'path'
 import log from 'electron-log'
@@ -21,6 +21,9 @@ import { listRecentDemosInDir } from '../demo-finder'
 import { SourceReplayUploader } from '../source-replay-uploader'
 import { getDeadlockDetectionStatus } from '../deadlock-match-watcher'
 import { ensureDeadlockSteamLaunchOptions } from '../deadlock-steam-setup'
+import { resolveDeadlockReplayDirs } from '../deadlock-paths'
+import { validateReplayUploadPath } from '../replay-upload-path'
+import { isTrustedRendererUrl } from '../renderer-trust'
 
 /** Last launched drill config — used to attach difficulty to session sync payload */
 let lastTrainerLaunch: Pick<DrillConfig, 'scenario' | 'difficulty' | 'duration_seconds'> & { user_drill_id?: number } | null = null
@@ -345,8 +348,14 @@ export function setupGamingHandlers(
 
   ipcMain.handle('deadlock:upload-demo', async (event, demoPath: string) => {
     const sender = event.sender
-    if (!fs.existsSync(demoPath)) {
-      return { ok: false as const, error: 'Demo file not found' }
+    const senderWindow = BrowserWindow.fromWebContents(sender)
+    const senderUrl = event.senderFrame?.url
+    if (!senderWindow || senderWindow.isDestroyed() || !senderUrl || !isTrustedRendererUrl(senderUrl)) {
+      return { ok: false as const, error: 'Untrusted upload request' }
+    }
+    const validated = validateReplayUploadPath(demoPath, await resolveDeadlockReplayDirs())
+    if (!validated.ok) {
+      return { ok: false as const, error: validated.error }
     }
     try {
       const user = auth.getUser()
@@ -356,10 +365,10 @@ export function setupGamingHandlers(
       const uploader = new SourceReplayUploader(auth)
       const { jobId } = await uploader.upload({
         game: 'deadlock',
-        demoPath,
+        demoPath: validated.path,
         steamId,
         onProgress: (pct) => {
-          try { sender.send('deadlock:upload-progress', { demoPath, pct }) } catch { /* ignore */ }
+          try { sender.send('deadlock:upload-progress', { demoPath: validated.path, pct }) } catch { /* ignore */ }
         },
       })
       return { ok: true as const, jobId }

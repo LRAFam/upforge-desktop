@@ -11,6 +11,7 @@ import log from 'electron-log'
 import { showAppNotification } from './app-notifications'
 import type { AuthManager } from './auth-manager'
 import { isBenignObsWebSocketError } from './obs-errors'
+import { redactSensitiveString, redactSensitiveValue } from './error-redaction'
 
 const API_URL = process.env['VITE_API_URL'] || 'https://api.upforge.gg'
 const ERROR_KEY = process.env['VITE_ERROR_REPORTING_KEY'] || ''
@@ -30,7 +31,8 @@ export async function reportError(payload: {
   component?: string
   extra?: Record<string, unknown>
 }): Promise<void> {
-  const dedupeKey = `${payload.message}|${payload.component ?? ''}`
+  const safeMessage = redactSensitiveString(payload.message)
+  const dedupeKey = `${safeMessage}|${payload.component ?? ''}`
   if (reportedThisSession.has(dedupeKey)) return
   reportedThisSession.add(dedupeKey)
 
@@ -38,15 +40,15 @@ export async function reportError(payload: {
 
   const body = {
     platform: 'desktop',
-    message: payload.message.slice(0, 1000),
-    stack: payload.stack?.slice(0, 5000),
+    message: safeMessage.slice(0, 1000),
+    stack: payload.stack ? redactSensitiveString(payload.stack).slice(0, 5000) : undefined,
     component: payload.component,
     app_version: app.getVersion(),
     user_id: user?.id,
     user_email: user?.email,
     user_name: user?.name,
     extra: {
-      ...payload.extra,
+      ...(redactSensitiveValue(payload.extra) as Record<string, unknown> | undefined),
       os: process.platform,
       arch: process.arch,
       electron: process.versions.electron,

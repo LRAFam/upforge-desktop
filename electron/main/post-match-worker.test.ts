@@ -8,6 +8,8 @@ import { PostMatchWorker } from './post-match-worker'
 function job(id: string, createdAt: number): PostMatchJob {
   return {
     id,
+    ownerUserId: 7,
+    requestKind: 'automatic',
     recordingId: id,
     videoPath: `/tmp/${id}.mp4`,
     game: 'valorant',
@@ -102,6 +104,24 @@ describe('PostMatchWorker', () => {
       worker.kick()
       await vi.waitFor(() => expect(store.get('saved-auto-job')?.stage).toBe('done'), { timeout: 2000 })
       expect(runJob).toHaveBeenCalledTimes(1)
+    } finally {
+      await rm(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('does not immediately retry a failed job in a tight loop', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'upforge-worker-'))
+    try {
+      const store = new PostMatchJobStore(join(dir, 'jobs.json'))
+      const worker = new PostMatchWorker({
+        store,
+        isRecording: () => false,
+        runJob: vi.fn(async () => { throw new Error('network down') }),
+      })
+      worker.enqueue(job('failed-once', 1))
+      await vi.waitFor(() => expect(store.get('failed-once')?.stage).toBe('failed'))
+      await new Promise((resolve) => setTimeout(resolve, 50))
+      expect(store.get('failed-once')?.attempts).toBe(1)
     } finally {
       await rm(dir, { recursive: true, force: true })
     }

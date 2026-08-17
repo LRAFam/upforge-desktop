@@ -4,7 +4,7 @@
  */
 import { existsSync } from 'fs'
 import { mkdtemp, rm, stat, unlink } from 'fs/promises'
-import { join } from 'path'
+import { basename, join } from 'path'
 import { tmpdir } from 'os'
 import log from 'electron-log'
 import type { ClipExtractor } from './clip-extractor'
@@ -242,7 +242,7 @@ export async function extractAndUploadDuelClips(opts: {
         `Partial duel clip upload: ${uploaded}/${moments.length} for job ${jobId}`,
         {
           jobId,
-          sourcePath,
+          sourceFile: basename(sourcePath),
           durationMs,
           skippedTooSmall,
           extractFailed,
@@ -263,7 +263,7 @@ export async function extractAndUploadDuelClips(opts: {
       `No duel clips uploaded (${moments.length} requested) for job ${jobId}`,
       {
         jobId,
-        sourcePath,
+        sourceFile: basename(sourcePath),
         durationMs,
         skippedTooSmall,
         extractFailed,

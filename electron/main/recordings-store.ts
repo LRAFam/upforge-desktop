@@ -72,6 +72,10 @@ export interface PendingRecording {
   /** Exact recording claimed against the one-time onboarding bonus entitlement. */
   onboardingBonus?: boolean
   onboardingAdminTest?: boolean
+  /** Explicit capture-time consent for automatic upload and analysis. Missing means manual-only. */
+  autoAnalyseRequested?: boolean
+  /** Explicit user request to analyse this recording after active match capture releases resources. */
+  manualAnalyseRequested?: boolean
 }
 
 export type NewRecording = Omit<PendingRecording, 'id' | 'recordedAt' | 'analysed'>
@@ -241,6 +245,7 @@ export class RecordingsStore {
     if (rec) {
       rec.analysed = true
       rec.jobId = jobId
+      rec.manualAnalyseRequested = undefined
       rec.uploadProgress = undefined
       if (analysisId != null) {
         rec.analysisId = analysisId
@@ -332,6 +337,13 @@ export class RecordingsStore {
     rec.pipelineDeferReason = reason
     rec.pipelineStatus = 'pending'
     rec.uploadProgress = undefined
+    this.persist()
+  }
+
+  setManualAnalyseRequested(id: string, requested: boolean): void {
+    const rec = this.recordings.find(r => r.id === id)
+    if (!rec) return
+    rec.manualAnalyseRequested = requested || undefined
     this.persist()
   }
 

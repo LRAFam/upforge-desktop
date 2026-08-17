@@ -472,7 +472,8 @@ function createSettings() {
       cs2: ['COMPETITIVE', 'PREMIER'],
       deadlock: ['COMPETITIVE'],
     },
-    autoAnalyse: true,
+    autoAnalyse: false,
+    autoAnalyseConsentVersion: 1,
     firstRun: false,
     captureMonitor: 'auto',
     pregameKillList: [],
@@ -828,6 +829,7 @@ function createSettings() {
   
   function toggleKey(key: keyof Pick<AppSettings, 'launchOnStartup' | 'autoDelete' | 'autoAnalyse' | 'notificationSound' | 'autoOpenBrowser' | 'discordRichPresence'>): void {
     settings[key] = !settings[key]
+    if (key === 'autoAnalyse') settings.autoAnalyseConsentVersion = 1
     debouncedSave()
   }
 

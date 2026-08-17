@@ -61,7 +61,12 @@ import {
   abortHeavyBackgroundWork,
   abortVodCompression,
 } from './match-priority-guard'
-import { decidePostMatchNextStep, isWaitingMatchDataState } from './post-match-steps'
+import {
+  canAutoEnqueueRecording,
+  decidePostMatchNextStep,
+  isWaitingMatchDataState,
+} from './post-match-steps'
+import { RecordingPipelineSingleFlight } from './recording-pipeline-single-flight'
 import { POST_MATCH_COPY, matchDataReadyStartingUpload, matchDataReadyUploading, waitingMatchDataBeforeAnalyse, waitingMatchDataBeforeUpload } from '../../src/lib/post-match-copy'
 import {
   addDeferredUploadId,
@@ -121,8 +126,14 @@ import {
   readActivePendingJob,
   clearActivePendingJob,
   getActiveUserId,
+  persistActiveUserOverlay,
 } from './user-session'
-import { resolveRecordingSavePath, userRecordingsDir, legacyGlobalRecordingsDir } from './user-data-paths'
+import {
+  resolveRecordingSavePath,
+  userDataRoot,
+  userRecordingsDir,
+  legacyGlobalRecordingsDir,
+} from './user-data-paths'
 import { extractAnalysisIdFromPollStatus, asCompletedPollStatus, isTerminalPollSuccess } from './analysis-completion'
 import { wasBackgroundWorkInterrupted } from './background-interrupt'
 import { startAnalysisPoll, stopActiveAnalysisPoll, reconcileOrphanedJob, getActiveAnalysisPollJobId, type AnalysisPollStatus } from './analysis-poll'
@@ -666,8 +677,9 @@ obsRecorder.onReplayClipSaved = (clipPath, trigger, meta) => {
 const performanceManager = new PerformanceManager()
 let uploadManager: UploadManager
 let recordingsStore: RecordingsStore
-let postMatchJobStore: PostMatchJobStore
-let postMatchWorker: PostMatchWorker
+let postMatchJobStore: PostMatchJobStore | null = null
+let postMatchWorker: PostMatchWorker | null = null
+let postMatchQueueUserId: number | null = null
 
 // Set by setupGameDetection — cancel pending match-wait when game quits from lobby
 let cancelMatchWait: (() => void) | null = null
@@ -739,6 +751,7 @@ let lastReplayRetryContext: ReplayRetryContext | null = null
 
 /** Recording ids with an active S3 upload in this process — excludes them from stale-upload reset. */
 const activeUploadRecordingIds = new Set<string>()
+const analysisPipelineSingleFlight = new RecordingPipelineSingleFlight<string | null>()
 
 function reconcileInterruptedUploads(): void {
   if (!recordingsStore) return
@@ -757,21 +770,26 @@ function matchPriorityDeps() {
   }
 }
 
-function deferredUploadQueueFile(): string {
-  return getDeferredUploadQueuePath(app.getPath('userData'))
+function deferredUploadQueueFile(): string | null {
+  const userId = getActiveUserId()
+  return userId == null ? null : getDeferredUploadQueuePath(userDataRoot(userId))
 }
 
 function persistDeferredUpload(recordingId: string): void {
+  const queueFile = deferredUploadQueueFile()
+  if (!queueFile) return
   try {
-    addDeferredUploadId(deferredUploadQueueFile(), recordingId)
+    addDeferredUploadId(queueFile, recordingId)
   } catch (err) {
     log.warn('[DeferredUpload] Failed to persist defer id', recordingId, err)
   }
 }
 
 function unpersistDeferredUpload(recordingId: string): void {
+  const queueFile = deferredUploadQueueFile()
+  if (!queueFile) return
   try {
-    removeDeferredUploadId(deferredUploadQueueFile(), recordingId)
+    removeDeferredUploadId(queueFile, recordingId)
   } catch (err) {
     log.warn('[DeferredUpload] Failed to remove defer id', recordingId, err)
   }
@@ -791,8 +809,17 @@ function clearDeferredUploadRetryPersisted(recordingId: string): void {
 }
 
 function restoreDeferredUploadsFromDisk(): void {
-  const ids = readDeferredUploadIds(deferredUploadQueueFile())
+  const queueFile = deferredUploadQueueFile()
+  if (!queueFile || !postMatchJobStore || !postMatchWorker) return
+  const ownerUserId = getActiveUserId()
+  if (ownerUserId == null) return
+  const ids = readDeferredUploadIds(queueFile)
   for (const recordingId of ids) {
+    const existingJob = postMatchJobStore.get(recordingId)
+    if (existingJob?.ownerUserId === ownerUserId) {
+      unpersistDeferredUpload(recordingId)
+      continue
+    }
     const rec = recordingsStore.getById(recordingId)
     if (!rec || rec.analysed || rec.pipelineStatus === 'analysing') {
       unpersistDeferredUpload(recordingId)
@@ -805,6 +832,8 @@ function restoreDeferredUploadsFromDisk(): void {
     const now = Date.now()
     postMatchJobStore.upsert({
       id: recordingId,
+      ownerUserId,
+      requestKind: 'automatic',
       recordingId,
       videoPath: rec.path,
       game: rec.game,
@@ -836,10 +865,18 @@ function enqueuePostMatchAnalyse(args: {
   map: string | null
   agent: string | null
   matchCorrelationId?: string | null
+  requestKind?: 'automatic' | 'manual'
 }): void {
+  const ownerUserId = getActiveUserId()
+  if (ownerUserId == null || !postMatchWorker) {
+    log.warn('[PostMatchWorker] Refused enqueue without an active authenticated user')
+    return
+  }
   const now = Date.now()
   const job: PostMatchJob = {
     id: args.recordingId,
+    ownerUserId,
+    requestKind: args.requestKind ?? 'automatic',
     recordingId: args.recordingId,
     videoPath: args.videoPath,
     game: args.game,
@@ -865,6 +902,7 @@ function maybeAutoEnqueueWhenReady(recordingId: string): void {
   if (!authManager.isAuthenticated()) return
   const rec = recordingsStore.getById(recordingId)
   if (!rec || rec.analysed || rec.clipsOnly) return
+  if (!canAutoEnqueueRecording(rec)) return
   if (rec.pipelineStatus === 'uploading' || rec.pipelineStatus === 'analysing') return
   if (!getAnalysisReadiness(rec).ready) return
   const job = postMatchJobStore?.get(recordingId)
@@ -907,14 +945,26 @@ function maybeAutoEnqueueReadyPendings(): void {
   }
 }
 
-function initPostMatchWorker(): void {
-  postMatchJobStore = new PostMatchJobStore(getPostMatchJobStorePath(app.getPath('userData')))
+function initPostMatchWorker(userId: number): void {
+  if (postMatchQueueUserId === userId && postMatchJobStore && postMatchWorker) return
+  if (postMatchQueueUserId != null && postMatchQueueUserId !== userId) {
+    uploadManager.abort()
+    abortVodCompression()
+  }
+  postMatchQueueUserId = userId
+  postMatchJobStore = new PostMatchJobStore(getPostMatchJobStorePath(userDataRoot(userId)))
   postMatchWorker = new PostMatchWorker({
     store: postMatchJobStore,
     isRecording: () => matchCapturePriority || obsRecorder.isActivelyRecording(),
-    // This queue only contains automatic post-match analyses. A persisted job
-    // must not resume on launch after the user has disabled Auto-analyse.
-    canRunJob: () => settingsManager?.get().autoAnalyse !== false,
+    // Missing ownership or request origin is never inferred for legacy jobs.
+    // Automatic jobs also require capture-time intent and the current toggle.
+    canRunJob: (job) => {
+      if (job.ownerUserId !== getActiveUserId()) return false
+      const rec = recordingsStore.getById(job.recordingId)
+      if (!rec) return false
+      if (job.requestKind === 'manual') return rec.manualAnalyseRequested === true
+      return settingsManager?.get().autoAnalyse === true && canAutoEnqueueRecording(rec)
+    },
     log: (msg) => log.info('[PostMatchWorker]', msg),
     runJob: async (job) => {
       activeMatchTelemetry?.startSector('upload')
@@ -923,7 +973,7 @@ function initPostMatchWorker(): void {
         : (postGameWindow && !postGameWindow.isDestroyed() ? postGameWindow : createPostGameWindow())
       const rec = recordingsStore.getById(job.recordingId)
       try {
-        await doUploadAndAnalyse(
+        const result = await doUploadAndAnalyse(
           job.recordingId,
           job.videoPath,
           job.riotName || rec?.riotName || '',
@@ -934,6 +984,13 @@ function initPostMatchWorker(): void {
           rec?.timeline ?? null,
           win,
         )
+        if (!result) {
+          const current = recordingsStore.getById(job.recordingId)
+          if (current?.pipelineDeferReason === 'recording') {
+            throw new Error('upload aborted: match capture')
+          }
+          throw new Error(current?.lastAnalysisError || 'post-match pipeline did not complete')
+        }
         activeMatchTelemetry?.endSector('upload')
       } catch (err) {
         activeMatchTelemetry?.endSector('upload')
@@ -1400,6 +1457,7 @@ async function ensureObsCaptureForGame(game: string): Promise<void> {
 }
 
 function onSettingsSaved(settings: ReturnType<SettingsManager['get']>): void {
+  persistActiveUserOverlay(settingsManager)
   discordRPC.refresh()
   const game = normalizePrimaryGame(settings.primaryGame)
   handlePrimaryGameSwitch(game, trackedPrimaryGame)
@@ -1411,12 +1469,22 @@ function syncUserSessionFromAuth(): void {
   riotLocalApi.setLinkedAccountRegion(user?.riot_region ?? null)
   if (user?.id) {
     activateUserSession(user.id, userSessionDeps())
+    initPostMatchWorker(user.id)
+    restoreDeferredUploadsFromDisk()
     void pingDesktopOnboarding(authManager)
     reconcileInterruptedUploads()
     runStorageMaintenanceIfReady(true)
     syncPrimaryGameFromUser()
   }
   enforceRecordingPresetAccess()
+}
+
+function clearPostMatchQueueScope(): void {
+  uploadManager.abort()
+  abortVodCompression()
+  postMatchJobStore = null
+  postMatchWorker = null
+  postMatchQueueUserId = null
 }
 
 function runStorageMaintenanceIfReady(notify = false): void {
@@ -2251,25 +2319,21 @@ async function refreshRecordingVodProbe(
 }
 
 /** Poll Riot + VOD probe until analyse is unblocked — Valorant only; CS2/Deadlock are VOD-ready without demo. */
-const analysisReadinessRefreshInFlight = new Set<string>()
+const analysisReadinessRefreshGeneration = new Map<string, number>()
 
 function scheduleAnalysisReadinessRefresh(
   recordingId: string,
   game: string,
   opts?: { force?: boolean },
 ): void {
-  if (analysisReadinessRefreshInFlight.has(recordingId) && !opts?.force) return
-
-  // Force (manual Retry / fresh save): drop any prior loop marker so we can re-arm.
-  if (opts?.force) {
-    analysisReadinessRefreshInFlight.delete(recordingId)
-  }
-  if (analysisReadinessRefreshInFlight.has(recordingId)) return
-
-  analysisReadinessRefreshInFlight.add(recordingId)
+  if (analysisReadinessRefreshGeneration.has(recordingId) && !opts?.force) return
+  const generation = (analysisReadinessRefreshGeneration.get(recordingId) ?? 0) + 1
+  analysisReadinessRefreshGeneration.set(recordingId, generation)
 
   const release = () => {
-    analysisReadinessRefreshInFlight.delete(recordingId)
+    if (analysisReadinessRefreshGeneration.get(recordingId) === generation) {
+      analysisReadinessRefreshGeneration.delete(recordingId)
+    }
   }
 
   const finish = (readiness: AnalysisReadiness) => {
@@ -2284,6 +2348,7 @@ function scheduleAnalysisReadinessRefresh(
     setTimeout(() => {
       void (async () => {
         try {
+          if (analysisReadinessRefreshGeneration.get(recordingId) !== generation) return
           const rec = recordingsStore.getById(recordingId)
           if (!rec || rec.analysed) return
           await refreshRecordingVodProbe(rec)
@@ -2299,8 +2364,7 @@ function scheduleAnalysisReadinessRefresh(
   let lastMilestoneLogAt = 0
 
   const tick = async (): Promise<void> => {
-    // Dropped from the in-flight set (e.g. force re-arm) — exit this loop.
-    if (!analysisReadinessRefreshInFlight.has(recordingId)) return
+    if (analysisReadinessRefreshGeneration.get(recordingId) !== generation) return
 
     let rec = recordingsStore.getById(recordingId)
     if (!rec || rec.analysed || rec.pipelineStatus === 'uploading' || rec.pipelineStatus === 'analysing') {
@@ -2385,9 +2449,9 @@ function resumeStuckMatchStatsEnrichment(): void {
     if (rec.pipelineStatus === 'uploading' || rec.pipelineStatus === 'analysing') continue
     const readiness = getAnalysisReadiness(rec)
     if (readiness.state !== 'waiting_match_data' && readiness.state !== 'syncing') continue
-    const before = analysisReadinessRefreshInFlight.has(rec.id)
+    const before = analysisReadinessRefreshGeneration.has(rec.id)
     scheduleAnalysisReadinessRefresh(rec.id, rec.game)
-    if (!before && analysisReadinessRefreshInFlight.has(rec.id)) resumed += 1
+    if (!before && analysisReadinessRefreshGeneration.has(rec.id)) resumed += 1
   }
   if (resumed > 0) {
     logActivity(
@@ -3364,14 +3428,6 @@ function setupGameDetection(): void {
       const matchId = timeline?.matchId
       const richMatchData = hasRichMatchData(timeline)
 
-      const doAutoDelete = () => {
-        if (settingsManager?.get().autoDelete) {
-          log.info('[App] Auto-deleting recording after clip extraction:', readyPath)
-          obsRecorder.deleteRecording(readyPath)
-          deleteCompressedSibling(readyPath)
-        }
-      }
-
       // Register on the dashboard immediately — before compression/upload can take minutes.
       setPrepStep('dashboard_row')
       finalizeTimelineOffsetsForClips(timeline)
@@ -3387,6 +3443,7 @@ function setupGameDetection(): void {
         onboardingBonus: settingsManager.get().onboardingMatchMission?.active === true
           && settingsManager.get().onboardingMatchMission?.game === game,
         onboardingAdminTest: settingsManager.get().onboardingMatchMission?.adminTest === true,
+        autoAnalyseRequested: autoAnalyse,
       })
       setPrepStep('dashboard_row', savedRecording.id)
       mainWindow?.webContents.send('recordings:updated')
@@ -3589,12 +3646,9 @@ function setupGameDetection(): void {
       extractMatchClips(readyPath, timeline, jobId, game)
         .then(() => syncScoutMomentsForJob(jobId, readyPath, timeline))
         .catch(err => log.warn('[ClipExtract] Background extraction error:', err))
-        .finally(() => {
-          if (!needLateRetry) doAutoDelete()
-        })
 
       if (needLateRetry) {
-        log.info('[HandleMatchEnd] Still sparse after enrich — scheduling late match details retry in 90s (auto-delete deferred)')
+        log.info('[HandleMatchEnd] Still sparse after enrich — scheduling late match details retry in 90s')
         scheduleLateClipRetry(
           {
             game,
@@ -3608,8 +3662,6 @@ function setupGameDetection(): void {
           {
             analysisJobId: jobId,
             patchJobWhenReady: true,
-            onAfterCs2Retry: doAutoDelete,
-            onFinally: doAutoDelete,
           },
         )
       }
@@ -5157,7 +5209,43 @@ async function doUploadArchiveOnly(
 }
 
 /** Upload a recording and poll for the analysis result, sending IPC events to `targetWindow`. */
-async function doUploadAndAnalyse(
+function doUploadAndAnalyse(
+  recordingId: string | null,
+  videoPath: string,
+  riotName: string,
+  riotTag: string,
+  game: string,
+  map: string | null,
+  agent: string | null,
+  timeline: MatchData | null,
+  targetWindow: BrowserWindow,
+  sessionStart = 0,
+  skipAutoDelete = false,
+  deleteLocalAfterUpload = false,
+  enrichPromise?: Promise<{ extras: CoachingSubmissionExtras | undefined }>,
+): Promise<string | null> {
+  const start = () => performUploadAndAnalyse(
+    recordingId,
+    videoPath,
+    riotName,
+    riotTag,
+    game,
+    map,
+    agent,
+    timeline,
+    targetWindow,
+    sessionStart,
+    skipAutoDelete,
+    deleteLocalAfterUpload,
+    enrichPromise,
+  )
+  if (!recordingId) return start()
+  return analysisPipelineSingleFlight.run(recordingId, start, () => {
+    log.warn(`[Upload] Ignoring duplicate pipeline start for recording ${recordingId}`)
+  })
+}
+
+async function performUploadAndAnalyse(
   recordingId: string | null,
   videoPath: string,
   riotName: string,
@@ -5783,8 +5871,6 @@ async function startApp(): Promise<void> {
   initFunnelEvents(authManager, app.getVersion())
   trackedPrimaryGame = normalizePrimaryGame(settingsManager.get().primaryGame)
   recordingsStore = new RecordingsStore()
-  initPostMatchWorker()
-  restoreDeferredUploadsFromDisk()
 
   // Register IPC before any BrowserWindow loads (dev updater, macOS activate, second instance).
   setupIpcHandlers(ipcMain, authManager, () => obsRecorder, gameDetector, settingsManager, () => {
@@ -5867,6 +5953,7 @@ async function startApp(): Promise<void> {
   () => {
     stopCoachNotificationPoller()
     resetDesktopOnboardingPing()
+    clearPostMatchQueueScope()
     clearUserSession(userSessionDeps())
     riotLocalApi.setLinkedAccountRegion(null)
   },
@@ -5897,6 +5984,7 @@ async function startApp(): Promise<void> {
   authManager.onSessionExpired = () => {
     log.warn('[App] Session expired — notifying renderer')
     stopCoachNotificationPoller()
+    clearPostMatchQueueScope()
     clearUserSession(userSessionDeps())
     riotLocalApi.setLinkedAccountRegion(null)
     mainWindow?.webContents.send('auth:session-expired')
@@ -6539,9 +6627,22 @@ async function startApp(): Promise<void> {
     if (!readinessCheck.ok) {
       return { error: readinessCheck.error, code: 'not_ready', state: readinessCheck.state }
     }
-    if (matchCapturePriority || obsRecorder.isActivelyRecording()) {
+    const isCloudOnlyAnalysis = Boolean(
+      recording.archiveId && recording.cloudArchived && !recording.analysed,
+    )
+    if ((matchCapturePriority || obsRecorder.isActivelyRecording()) && !isCloudOnlyAnalysis) {
+      recordingsStore.setManualAnalyseRequested(id, true)
       recordingsStore.setPipelineDeferReason(id, 'recording')
-      persistDeferredUpload(id)
+      enqueuePostMatchAnalyse({
+        recordingId: recording.id,
+        videoPath: recording.path,
+        riotName: recording.riotName,
+        riotTag: recording.riotTag,
+        game: recording.game,
+        map: recording.map,
+        agent: recording.agent,
+        requestKind: 'manual',
+      })
       mainWindow?.webContents.send('recordings:updated')
       logActivity(POST_MATCH_COPY.pausedUntilGameEnds)
       return {
@@ -6632,17 +6733,17 @@ async function startApp(): Promise<void> {
         return
       }
 
-      await doUploadAndAnalyse(
-        recording.id,
-        recording.path,
-        recording.riotName || user?.riot_name || '',
-        recording.riotTag || user?.riot_tag || '',
-        recording.game,
-        recording.map,
-        recording.agent,
-        recording.timeline,
-        win
-      )
+      recordingsStore.setManualAnalyseRequested(recording.id, true)
+      enqueuePostMatchAnalyse({
+        recordingId: recording.id,
+        videoPath: recording.path,
+        riotName: recording.riotName || user?.riot_name || '',
+        riotTag: recording.riotTag || user?.riot_tag || '',
+        game: recording.game,
+        map: recording.map,
+        agent: recording.agent,
+        requestKind: 'manual',
+      })
     }
 
     if (!postGameWindow || postGameWindow.isDestroyed()) {

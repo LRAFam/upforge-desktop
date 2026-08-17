@@ -7,8 +7,8 @@ import type { PostMatchJob, PostMatchJobStore } from './post-match-job-store'
 export interface PostMatchWorkerDeps {
   store: PostMatchJobStore
   isRecording: () => boolean
-  /** Whether automatic post-match work is currently allowed to start. */
-  canRunJob?: () => boolean
+  /** Whether this persisted job is owned by and allowed for the active user. */
+  canRunJob?: (job: PostMatchJob) => boolean
   runJob: (job: PostMatchJob) => Promise<void>
   log?: (msg: string) => void
 }
@@ -37,10 +37,10 @@ export class PostMatchWorker {
 
   private async pump(): Promise<void> {
     if (this.busy) return
-    if (this.deps.canRunJob && !this.deps.canRunJob()) return
     const job = this.deps.store.claimNextRunnable({
       deferIfRecording: true,
       isRecording: this.deps.isRecording,
+      isEligible: this.deps.canRunJob,
     })
     if (!job) return
 
