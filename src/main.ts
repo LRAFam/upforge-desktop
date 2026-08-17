@@ -77,6 +77,15 @@ router.beforeEach(async (to) => {
     if (needsDesktopOnboarding(s) && to.path !== '/onboarding' && to.path !== '/splash' && to.path !== '/overlay') {
       return '/onboarding'
     }
+    if (to.path === '/dashboard') {
+      const campaign = await window.api.auth.getOnboardingCampaign()
+      if (!campaign.ok) {
+        // The campaign is a rollout gate; an API outage must not lock users out of the paid app.
+        console.warn('[Onboarding] Campaign gate unavailable:', campaign.error)
+      } else if (campaign.requires_onboarding) {
+        return '/onboarding'
+      }
+    }
   } catch {
     if (!PUBLIC_ROUTES.includes(to.path)) return '/login'
     return true

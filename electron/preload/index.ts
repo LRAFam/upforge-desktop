@@ -7,6 +7,9 @@ const api = {
     logout: () => ipcRenderer.invoke('auth:logout'),
     getUser: () => ipcRenderer.invoke('auth:get-user'),
     refreshUser: () => ipcRenderer.invoke('auth:refresh-user'),
+    getOnboardingCampaign: () => ipcRenderer.invoke('auth:get-onboarding-campaign'),
+    startOnboardingCampaign: () => ipcRenderer.invoke('auth:start-onboarding-campaign'),
+    completeOnboardingCampaign: () => ipcRenderer.invoke('auth:complete-onboarding-campaign'),
     getOnboardingBonus: () => ipcRenderer.invoke('auth:get-onboarding-bonus') as Promise<{
       eligible: boolean
       claimed: boolean

@@ -593,6 +593,9 @@ declare global {
         logout: () => Promise<void>
         getUser: () => Promise<unknown>
         refreshUser: () => Promise<unknown>
+        getOnboardingCampaign: () => Promise<import('./lib/desktop-onboarding-campaign').DesktopOnboardingCampaignResult>
+        startOnboardingCampaign: () => Promise<import('./lib/desktop-onboarding-campaign').DesktopOnboardingCampaignResult>
+        completeOnboardingCampaign: () => Promise<import('./lib/desktop-onboarding-campaign').DesktopOnboardingCampaignResult>
         getOnboardingBonus: () => Promise<{
           eligible: boolean
           claimed: boolean

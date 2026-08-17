@@ -18,6 +18,13 @@ describe('needsDesktopOnboarding', () => {
   it('is false when onboardingComplete is true', () => {
     expect(needsDesktopOnboarding({ firstRun: false, onboardingComplete: true })).toBe(false)
   })
+
+  it('is true for a server-owned campaign even when device onboarding is complete', () => {
+    expect(needsDesktopOnboarding(
+      { firstRun: false, onboardingComplete: true },
+      true,
+    )).toBe(true)
+  })
 })
 
 describe('resolvePostAuthRoute', () => {
@@ -27,6 +34,13 @@ describe('resolvePostAuthRoute', () => {
 
   it('sends complete users to dashboard', () => {
     expect(resolvePostAuthRoute({ firstRun: false, onboardingComplete: true })).toBe('/dashboard')
+  })
+
+  it('sends returning users into an account-owned campaign', () => {
+    expect(resolvePostAuthRoute(
+      { firstRun: false, onboardingComplete: true },
+      true,
+    )).toBe('/onboarding')
   })
 })
 

@@ -2,16 +2,16 @@
 export function needsDesktopOnboarding(settings: {
   firstRun?: boolean
   onboardingComplete?: boolean
-}): boolean {
-  return settings.onboardingComplete !== true
+}, campaignRequiresOnboarding = false): boolean {
+  return campaignRequiresOnboarding || settings.onboardingComplete !== true
 }
 
 /** After successful login. */
 export function resolvePostAuthRoute(settings: {
   firstRun?: boolean
   onboardingComplete?: boolean
-}): '/onboarding' | '/dashboard' {
-  return needsDesktopOnboarding(settings) ? '/onboarding' : '/dashboard'
+}, campaignRequiresOnboarding = false): '/onboarding' | '/dashboard' {
+  return needsDesktopOnboarding(settings, campaignRequiresOnboarding) ? '/onboarding' : '/dashboard'
 }
 
 /**

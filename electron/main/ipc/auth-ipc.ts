@@ -24,6 +24,7 @@ import {
 import { timelineDeathsForVod, timelineKillsForVod } from '../recording-sync'
 import type { MatchData } from '../riot-types'
 import { applyLayoutForRoute } from '../window-layouts'
+import { parseDesktopOnboardingCampaignState } from '../../../src/lib/desktop-onboarding-campaign'
 
 export function setupAuthHandlers(
   ipcMain: IpcMain,
@@ -81,6 +82,29 @@ export function setupAuthHandlers(
     // Profile refresh only — do not run login hooks (they overwrite local primaryGame from API).
     return auth.fetchUser()
   })
+
+  const requestDesktopCampaign = async (method: 'get' | 'post', path: string) => {
+    if (!auth.getToken()) return { ok: false, error: 'Not logged in' }
+    try {
+      const response = method === 'get'
+        ? await auth.getApi().get(path)
+        : await auth.getApi().post(path)
+      const state = parseDesktopOnboardingCampaignState(response.data)
+      if (!state) return { ok: false, error: 'Invalid onboarding campaign response' }
+      return { ok: true, ...state }
+    } catch {
+      return { ok: false, error: 'Could not load onboarding campaign' }
+    }
+  }
+
+  ipcMain.handle('auth:get-onboarding-campaign', () =>
+    requestDesktopCampaign('get', '/api/onboarding/desktop-campaign'))
+
+  ipcMain.handle('auth:start-onboarding-campaign', () =>
+    requestDesktopCampaign('post', '/api/onboarding/desktop-campaign/start'))
+
+  ipcMain.handle('auth:complete-onboarding-campaign', () =>
+    requestDesktopCampaign('post', '/api/onboarding/desktop-campaign/complete'))
 
   ipcMain.handle('auth:get-onboarding-bonus', async () => {
     if (!auth.getToken()) return { eligible: false, claimed: false, job_id: null, error: 'Not logged in' }

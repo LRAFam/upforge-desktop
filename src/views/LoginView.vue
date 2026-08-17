@@ -161,8 +161,15 @@ async function handleLogin() {
   try {
     const result = await window.api.auth.login(email.value, password.value)
     if (result.ok) {
-      const s = await window.api.settings.get()
-      router.push(resolvePostAuthRoute(s))
+      const [s, campaign] = await Promise.all([
+        window.api.settings.get(),
+        window.api.auth.getOnboardingCampaign(),
+      ])
+      if (!campaign.ok) {
+        // The campaign is a rollout gate; an API outage must not lock users out of the paid app.
+        console.warn('[Onboarding] Campaign gate unavailable after login:', campaign.error)
+      }
+      router.push(resolvePostAuthRoute(s, campaign.ok && campaign.requires_onboarding))
     } else {
       error.value = (result as { error?: string }).error || 'Invalid email or password.'
     }

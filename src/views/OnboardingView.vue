@@ -1330,6 +1330,10 @@ async function ensureAuthedOrStay() {
         step.value = Math.max(step.value, 2)
     }
     if (!isPreview.value) {
+      const campaign = await window.api.auth.startOnboardingCampaign()
+      if (!campaign.ok) {
+        completeError.value = campaign.error
+      }
       await prefillGameFromUser()
     }
   }
@@ -1614,6 +1618,11 @@ async function handleSignIn() {
     if (result.ok) {
       isAuthed.value = true
       await refreshAuthState()
+      const campaign = await window.api.auth.startOnboardingCampaign()
+      if (!campaign.ok) {
+        signInError.value = campaign.error
+        return
+      }
       await prefillGameFromUser()
       nextStep()
     } else {
@@ -2048,6 +2057,11 @@ async function handleComplete(opts?: { destination?: 'dashboard' | 'analysis'; r
   }
   saving.value = true
   try {
+    const campaign = await window.api.auth.completeOnboardingCampaign()
+    if (!campaign.ok) {
+      completeError.value = campaign.error
+      return
+    }
     const current = await window.api.settings.get()
     await window.api.settings.save({
       onboardingComplete: true,
