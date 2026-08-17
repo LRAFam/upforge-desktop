@@ -23,6 +23,7 @@ import { applyLayoutForRoute } from '../window-layouts'
 import { isInGameOverlayEnabled } from '../in-game-overlay'
 import { closeWebShell, openWebShell } from '../web-shell'
 import { getRecordedModesForGame } from '../recorded-modes-filter'
+import { isTrustedExternalUrl, isTrustedRendererUrl } from '../renderer-trust'
 
 export function setupAppHandlers(
   ipcMain: IpcMain,
@@ -96,8 +97,19 @@ export function setupAppHandlers(
     },
   )
 
-  ipcMain.handle('app:open-url', (_e, { url }: { url: string }) => {
-    shell.openExternal(url)
+  ipcMain.handle('app:open-url', async (event, { url }: { url: string }) => {
+    const senderWindow = BrowserWindow.fromWebContents(event.sender)
+    const senderUrl = event.senderFrame?.url
+    if (
+      !senderWindow
+      || senderWindow.isDestroyed()
+      || !senderUrl
+      || !isTrustedRendererUrl(senderUrl)
+      || !isTrustedExternalUrl(url)
+    ) {
+      return { ok: false, error: 'Untrusted external URL request' }
+    }
+    await shell.openExternal(url)
     return { ok: true }
   })
 

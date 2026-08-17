@@ -24,6 +24,15 @@ type MissionRecording = {
   analysisReadiness?: { state: string } | null
 }
 
+export function shouldUseOnboardingBonus(
+  mission: { active?: boolean; game?: string; bonusClaimedJobId?: string } | null | undefined,
+  game: string,
+): boolean {
+  return mission?.active === true
+    && mission.game === game
+    && !mission.bonusClaimedJobId
+}
+
 export function deriveOnboardingMissionStage(
   status: MissionRuntimeStatus,
   recording: MissionRecording | null,

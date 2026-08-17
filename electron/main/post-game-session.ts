@@ -4,6 +4,7 @@
  */
 
 import type { BrowserWindow } from 'electron'
+import type { AnalysisErrorPayload } from '../../src/lib/analysis-failure-messages'
 
 /** Local copy so this module stays free of window-manager/electron value imports (unit-testable). */
 function whenWebContentsReady(win: BrowserWindow, fn: () => void): void {
@@ -34,6 +35,7 @@ export type PostGameSessionSnapshot = {
   compressing: boolean
   compressKind: 'remux' | 'transcode' | 'shrink' | null
   preparingSyncMessage: string | null
+  ownerUserId: number | null
   recordingId: string | null
   archiveOnly: boolean
   analysisReadiness: { ready: boolean; state: string; message: string } | null
@@ -42,6 +44,14 @@ export type PostGameSessionSnapshot = {
   pendingAnalysisState: string | null
   matchDataStatus: string | null
   killsInTimeline: number
+  analysisResult: Record<string, unknown> | null
+  analysisError: string | AnalysisErrorPayload | null
+  analysisProgress: number
+  analysisStep: string | null
+  analysisJobStatus: string
+  analysisElapsedMs: number
+  analysisLongRunning: boolean
+  analysisDeferredReason: 'recording' | 'server' | null
   debriefLoading: boolean
   debriefText: string | null
   debriefFailed: boolean
@@ -58,6 +68,7 @@ function baseSession(overrides?: Partial<PostGameSessionSnapshot>): PostGameSess
     compressing: false,
     compressKind: null,
     preparingSyncMessage: null,
+    ownerUserId: null,
     recordingId: null,
     archiveOnly: false,
     analysisReadiness: null,
@@ -66,6 +77,14 @@ function baseSession(overrides?: Partial<PostGameSessionSnapshot>): PostGameSess
     pendingAnalysisState: null,
     matchDataStatus: null,
     killsInTimeline: 0,
+    analysisResult: null,
+    analysisError: null,
+    analysisProgress: 0,
+    analysisStep: null,
+    analysisJobStatus: 'processing',
+    analysisElapsedMs: 0,
+    analysisLongRunning: false,
+    analysisDeferredReason: null,
     debriefLoading: false,
     debriefText: null,
     debriefFailed: false,
@@ -75,8 +94,14 @@ function baseSession(overrides?: Partial<PostGameSessionSnapshot>): PostGameSess
   }
 }
 
-export function resetPostGameSession(game: string, map: string | null, agent: string | null): void {
-  session = baseSession({ game, map, agent, phase: 'preparing' })
+export function resetPostGameSession(
+  game: string,
+  map: string | null,
+  agent: string | null,
+  ownerUserId: number | null = null,
+  recordingId: string | null = null,
+): void {
+  session = baseSession({ game, map, agent, ownerUserId, recordingId, phase: 'preparing' })
 }
 
 export function clearPostGameSession(): void {
@@ -85,6 +110,15 @@ export function clearPostGameSession(): void {
 
 export function getPostGameSessionSnapshot(): PostGameSessionSnapshot | null {
   return session ? { ...session } : null
+}
+
+/** Only route live worker events into the modal that owns this recording. */
+export function isPostGameSessionForRecording(
+  recordingId: string,
+  ownerUserId?: number | null,
+): boolean {
+  return session?.recordingId === recordingId
+    && (ownerUserId == null || session.ownerUserId === ownerUserId)
 }
 
 /** True once upload flow has left the initial preparing phase. */
@@ -134,15 +168,29 @@ export function applyPostGameChannelEvent(channel: string, payload: unknown): vo
       break
     }
     case 'post-game:prep-step': {
-      const data = (payload ?? {}) as { game?: string; map?: string | null; agent?: string | null }
+      const data = (payload ?? {}) as {
+        recordingId?: string
+        game?: string
+        map?: string | null
+        agent?: string | null
+      }
       patch({
         phase: 'uploading',
+        recordingId: data.recordingId ?? session?.recordingId ?? null,
         game: data.game ?? session?.game,
         map: data.map ?? session?.map ?? null,
         agent: data.agent ?? session?.agent ?? null,
         uploadProgress: 0,
         compressing: false,
         compressKind: null,
+        analysisResult: null,
+        analysisError: null,
+        analysisProgress: 0,
+        analysisStep: null,
+        analysisJobStatus: 'processing',
+        analysisElapsedMs: 0,
+        analysisLongRunning: false,
+        analysisDeferredReason: null,
       })
       break
     }
@@ -174,6 +222,14 @@ export function applyPostGameChannelEvent(channel: string, payload: unknown): vo
         archiveOnly: !!data.archiveOnly,
         matchDataStatus: data.matchDetailsStatus ?? session?.matchDataStatus ?? null,
         killsInTimeline: data.killsInTimeline ?? session?.killsInTimeline ?? 0,
+        analysisResult: null,
+        analysisError: null,
+        analysisProgress: 0,
+        analysisStep: null,
+        analysisJobStatus: 'processing',
+        analysisElapsedMs: 0,
+        analysisLongRunning: false,
+        analysisDeferredReason: null,
       })
       break
     }
@@ -191,12 +247,69 @@ export function applyPostGameChannelEvent(channel: string, payload: unknown): vo
         uploadProgress: 100,
         compressing: false,
         archiveOnly: !!data.archiveOnly,
+        analysisProgress: 0,
+        analysisStep: null,
+        analysisJobStatus: 'processing',
+        analysisElapsedMs: 0,
+        analysisLongRunning: false,
+        analysisDeferredReason: null,
       })
       break
     }
-    case 'post-game:analysis-ready':
-      patch({ phase: 'ready', uploadProgress: 100, compressing: false })
+    case 'post-game:analysis-progress': {
+      const data = (payload ?? {}) as {
+        progress?: number
+        current_step?: string | null
+        status?: string
+        elapsed_ms?: number
+      }
+      patch({
+        phase: 'analysing',
+        analysisProgress: typeof data.progress === 'number'
+          ? Math.min(100, Math.max(0, Math.round(data.progress)))
+          : session?.analysisProgress ?? 0,
+        analysisStep: data.current_step ?? session?.analysisStep ?? null,
+        analysisJobStatus: data.status ?? session?.analysisJobStatus ?? 'processing',
+        analysisElapsedMs: typeof data.elapsed_ms === 'number'
+          ? Math.max(0, data.elapsed_ms)
+          : session?.analysisElapsedMs ?? 0,
+      })
       break
+    }
+    case 'post-game:analysis-long-running':
+      patch({ analysisLongRunning: true })
+      break
+    case 'post-game:analysis-deferred': {
+      const data = (payload ?? {}) as { reason?: 'recording' | 'server' }
+      patch({
+        analysisLongRunning: true,
+        analysisDeferredReason: data.reason ?? 'server',
+      })
+      break
+    }
+    case 'post-game:upload-deferred': {
+      const data = (payload ?? {}) as { reason?: 'recording' | 'server' }
+      patch({
+        analysisLongRunning: true,
+        analysisDeferredReason: data.reason ?? 'recording',
+      })
+      break
+    }
+    case 'post-game:analysis-ready': {
+      const data = (payload ?? {}) as Record<string, unknown> & { recording_id?: string | null }
+      patch({
+        phase: 'ready',
+        uploadProgress: 100,
+        compressing: false,
+        recordingId: data.recording_id ?? session?.recordingId ?? null,
+        analysisResult: data,
+        analysisError: null,
+        analysisProgress: 100,
+        analysisLongRunning: false,
+        analysisDeferredReason: null,
+      })
+      break
+    }
     case 'post-game:pending': {
       const data = payload as {
         recordingId: string
@@ -219,12 +332,16 @@ export function applyPostGameChannelEvent(channel: string, payload: unknown): vo
       break
     }
     case 'post-game:upload-error': {
-      const data = (payload ?? {}) as { needsUpgrade?: boolean; kind?: string }
-      const quota =
-        data.needsUpgrade === true
-        || data.kind === 'quota'
-        || data.kind === 'quota_required'
-      patch({ phase: quota ? 'quota_required' : 'error', compressing: false })
+      const data = (payload ?? {}) as AnalysisErrorPayload
+      patch({
+        // Upgrade/quota presentation is carried by the full error payload. The
+        // renderer has one error phase for both ordinary and upgrade failures.
+        phase: 'error',
+        recordingId: data.recordingId ?? session?.recordingId ?? null,
+        compressing: false,
+        analysisError: data,
+        analysisResult: null,
+      })
       break
     }
     case 'post-game:analysis-readiness': {
@@ -292,4 +409,20 @@ export function sendPostGameEvent(
       /* window destroyed between ready check and send */
     }
   })
+}
+
+/**
+ * Record and deliver an event only when the live modal owns this recording.
+ * Background jobs must not mutate the single buffered modal session.
+ */
+export function sendPostGameEventForRecording(
+  win: BrowserWindow | null | undefined,
+  recordingId: string,
+  channel: string,
+  payload?: unknown,
+  ownerUserId?: number | null,
+): boolean {
+  if (!isPostGameSessionForRecording(recordingId, ownerUserId)) return false
+  sendPostGameEvent(win, channel, payload)
+  return true
 }

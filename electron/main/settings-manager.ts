@@ -72,6 +72,8 @@ export interface AppSettings {
     previousAutoAnalyse?: boolean
     previousFullMatchRecording?: boolean
     adminTest?: boolean
+    /** Server accepted the one-time bonus; keep mission UI active while analysis finishes. */
+    bonusClaimedJobId?: string
     /** The player has confirmed that the live OBS preview shows Valorant. */
     captureConfirmedAt?: number
     /** Capture recovery attempts during this guided mission. */

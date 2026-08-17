@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { fetchLiveClientTimeline } from './match-end-timeline'
+import { fetchLiveClientTimeline, isReplayRetryContextEligible } from './match-end-timeline'
 
 describe('fetchLiveClientTimeline', () => {
   it('routes Valorant to the riot local API stop', async () => {
@@ -31,5 +31,21 @@ describe('fetchLiveClientTimeline', () => {
       stopLolTimeline: vi.fn(),
     })
     expect(result).toBeNull()
+  })
+})
+
+describe('isReplayRetryContextEligible', () => {
+  const context = {
+    ownerUserId: 7,
+    game: 'cs2' as const,
+    matchSessionStart: 1000,
+    recordingId: 'rec-1',
+  }
+
+  it('requires the active owner and a recording in the scoped store', () => {
+    expect(isReplayRetryContextEligible(context, 7, true)).toBe(true)
+    expect(isReplayRetryContextEligible(context, 8, true)).toBe(false)
+    expect(isReplayRetryContextEligible(context, 7, false)).toBe(false)
+    expect(isReplayRetryContextEligible({ ...context, ownerUserId: undefined }, 7, true)).toBe(false)
   })
 })

@@ -17,3 +17,22 @@ export function isTrustedRendererUrl(target: string, entry = rendererEntryUrl())
     return false
   }
 }
+
+const ALLOWED_EXTERNAL_HOSTS = new Set([
+  'upforge.gg',
+  'www.upforge.gg',
+  'discord.gg',
+])
+
+export function isTrustedExternalUrl(target: string): boolean {
+  if (/[\u0000-\u001f\u007f]/.test(target)) return false
+  try {
+    const candidate = new URL(target)
+    return candidate.protocol === 'https:'
+      && candidate.username === ''
+      && candidate.password === ''
+      && ALLOWED_EXTERNAL_HOSTS.has(candidate.hostname.toLowerCase())
+  } catch {
+    return false
+  }
+}

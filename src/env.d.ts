@@ -142,6 +142,7 @@ export interface AppSettings {
     previousAutoAnalyse?: boolean
     previousFullMatchRecording?: boolean
     adminTest?: boolean
+    bonusClaimedJobId?: string
     captureConfirmedAt?: number
     captureRetryCount?: number
   } | null
@@ -957,6 +958,7 @@ declare global {
           compressing: boolean
           compressKind: 'remux' | 'transcode' | 'shrink' | null
           preparingSyncMessage: string | null
+          ownerUserId: number | null
           recordingId: string | null
           archiveOnly: boolean
           analysisReadiness: { ready: boolean; state: string; message: string } | null
@@ -965,6 +967,14 @@ declare global {
           pendingAnalysisState: string | null
           matchDataStatus: string | null
           killsInTimeline: number
+          analysisResult: Record<string, unknown> | null
+          analysisError: string | import('./lib/analysis-failure-messages').AnalysisErrorPayload | null
+          analysisProgress: number
+          analysisStep: string | null
+          analysisJobStatus: string
+          analysisElapsedMs: number
+          analysisLongRunning: boolean
+          analysisDeferredReason: 'recording' | 'server' | null
           debriefLoading: boolean
           debriefText: string | null
           debriefFailed: boolean

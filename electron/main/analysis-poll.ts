@@ -3,6 +3,7 @@ import type { UploadManager } from './upload-manager'
 import { asCompletedPollStatus, isTerminalPollSuccess } from './analysis-completion'
 import { clearPendingJob } from './upload-manager'
 import { formatAnalysisFailureMessage } from './analysis-failure-messages'
+import { sendPostGameEvent, sendPostGameEventForRecording } from './post-game-session'
 
 /** Keep polling while the server job is still queued/processing (matches long VOD runs). */
 export const ANALYSIS_POLL_MAX_MS = 90 * 60 * 1000
@@ -33,6 +34,8 @@ export interface AnalysisProgressPayload {
 export interface StartAnalysisPollOptions {
   uploadManager: UploadManager
   jobId: string
+  recordingId?: string | null
+  ownerUserId?: number | null
   targetWindow?: BrowserWindow | null
   mainWindow?: BrowserWindow | null
   onProgress?: (status: AnalysisPollStatus, elapsedMs: number) => void
@@ -108,6 +111,25 @@ function sendToWindow(win: BrowserWindow | null | undefined, channel: string, pa
   try {
     win.webContents.send(channel, payload)
   } catch { /* window destroyed mid-send */ }
+}
+
+function sendPostGamePollEvent(
+  opts: StartAnalysisPollOptions,
+  channel: string,
+  payload?: unknown,
+): void {
+  if (opts.recordingId) {
+    sendPostGameEventForRecording(
+      opts.targetWindow,
+      opts.recordingId,
+      channel,
+      payload,
+      opts.ownerUserId,
+    )
+    return
+  }
+  if (!opts.targetWindow || opts.targetWindow.isDestroyed()) return
+  sendPostGameEvent(opts.targetWindow, channel, payload)
 }
 
 function normalizeProgress(status: AnalysisPollStatus): number {
@@ -190,7 +212,7 @@ export function startAnalysisPoll(opts: StartAnalysisPollOptions): { stop: () =>
     if (!longRunningSent && elapsedMs >= ANALYSIS_LONG_RUNNING_MS) {
       longRunningSent = true
       opts.onLongRunning?.()
-      sendToWindow(opts.targetWindow, 'post-game:analysis-long-running')
+      sendPostGamePollEvent(opts, 'post-game:analysis-long-running')
       sendToWindow(opts.mainWindow, 'post-game:analysis-long-running')
     }
 
@@ -199,7 +221,7 @@ export function startAnalysisPoll(opts: StartAnalysisPollOptions): { stop: () =>
       pollFailCount = 0
 
       const progressPayload = buildProgressPayload(opts.jobId, status, elapsedMs)
-      sendToWindow(opts.targetWindow, 'post-game:analysis-progress', progressPayload)
+      sendPostGamePollEvent(opts, 'post-game:analysis-progress', progressPayload)
       sendToWindow(opts.mainWindow, 'dashboard:analysis-progress', progressPayload)
       opts.onProgress?.(status, elapsedMs)
 

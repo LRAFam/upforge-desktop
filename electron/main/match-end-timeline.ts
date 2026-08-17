@@ -14,11 +14,24 @@ import {
 import { buildDeadlockTimelineFromLogSession } from './deadlock-match-watcher'
 
 export interface ReplayRetryContext {
+  ownerUserId?: number
   game: 'cs2' | 'deadlock'
   matchSessionStart: number
   customReplayDir?: string
   meta?: ReplayUploadMeta
   recordingId?: string
+}
+
+export function isReplayRetryContextEligible(
+  context: ReplayRetryContext | null,
+  activeUserId: number | null,
+  recordingExists: boolean,
+): context is ReplayRetryContext & { ownerUserId: number; recordingId: string } {
+  return context != null
+    && activeUserId != null
+    && context.ownerUserId === activeUserId
+    && Boolean(context.recordingId)
+    && recordingExists
 }
 
 export interface MatchEndTimelineInput {

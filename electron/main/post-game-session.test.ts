@@ -4,7 +4,9 @@ import {
   clearPostGameSession,
   getPostGameSessionSnapshot,
   isPostGamePastPreparing,
+  isPostGameSessionForRecording,
   resetPostGameSession,
+  sendPostGameEventForRecording,
 } from './post-game-session'
 
 describe('isPostGamePastPreparing', () => {
@@ -47,6 +49,79 @@ describe('applyPostGameChannelEvent preparing race', () => {
     const snap = getPostGameSessionSnapshot()
     expect(snap?.phase).toBe('uploading')
     expect(snap?.game).toBe('valorant')
+  })
+
+  it('binds an uploading modal to its recording for live worker progress', () => {
+    resetPostGameSession('valorant', 'Haven', 'Jett', 7)
+    applyPostGameChannelEvent('post-game:prep-step', {
+      recordingId: 'onboarding-vod',
+      game: 'valorant',
+      map: 'Haven',
+      agent: 'Jett',
+    })
+
+    expect(getPostGameSessionSnapshot()?.recordingId).toBe('onboarding-vod')
+    expect(isPostGameSessionForRecording('onboarding-vod')).toBe(true)
+    expect(isPostGameSessionForRecording('older-queued-vod')).toBe(false)
+
+    applyPostGameChannelEvent('post-game:upload-progress', 47)
+    expect(getPostGameSessionSnapshot()?.recordingId).toBe('onboarding-vod')
+    expect(getPostGameSessionSnapshot()?.uploadProgress).toBe(47)
+  })
+
+  it('rejects state changes from another recording or account', () => {
+    resetPostGameSession('valorant', 'Haven', 'Jett', 7, 'current-vod')
+
+    expect(sendPostGameEventForRecording(
+      null,
+      'older-vod',
+      'post-game:analysis-progress',
+      { progress: 88 },
+      7,
+    )).toBe(false)
+    expect(sendPostGameEventForRecording(
+      null,
+      'current-vod',
+      'post-game:analysis-progress',
+      { progress: 77 },
+      8,
+    )).toBe(false)
+    expect(getPostGameSessionSnapshot()?.analysisProgress).toBe(0)
+  })
+
+  it('buffers complete analysis progress, result, and error payloads', () => {
+    resetPostGameSession('valorant', 'Haven', 'Jett', 7, 'current-vod')
+    expect(sendPostGameEventForRecording(
+      null,
+      'current-vod',
+      'post-game:analysis-progress',
+      { progress: 63, current_step: 'Reviewing duels', status: 'processing', elapsed_ms: 12_000 },
+      7,
+    )).toBe(true)
+    let snap = getPostGameSessionSnapshot()
+    expect(snap?.analysisProgress).toBe(63)
+    expect(snap?.analysisStep).toBe('Reviewing duels')
+    expect(snap?.analysisElapsedMs).toBe(12_000)
+
+    const ready = { recording_id: 'current-vod', analysis_id: 91, overall_score: 74 }
+    sendPostGameEventForRecording(null, 'current-vod', 'post-game:analysis-ready', ready, 7)
+    snap = getPostGameSessionSnapshot()
+    expect(snap?.phase).toBe('ready')
+    expect(snap?.analysisResult).toEqual(ready)
+
+    const error = {
+      recordingId: 'current-vod',
+      title: 'Analysis failed',
+      message: 'Try again',
+      hint: null,
+      creditRefunded: true,
+      canRetry: true,
+      kind: 'refunded_generic' as const,
+    }
+    sendPostGameEventForRecording(null, 'current-vod', 'post-game:upload-error', error, 7)
+    snap = getPostGameSessionSnapshot()
+    expect(snap?.phase).toBe('error')
+    expect(snap?.analysisError).toEqual(error)
   })
 
   it('does not reset phase to preparing after pending', () => {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { deriveOnboardingMissionStage } from './onboarding-match-mission'
+import { deriveOnboardingMissionStage, shouldUseOnboardingBonus } from './onboarding-match-mission'
 
 describe('onboarding match mission state', () => {
   it('shows real capture states before a recording exists', () => {
@@ -33,5 +33,14 @@ describe('onboarding match mission state', () => {
       { currentGame: null, waitingForMatch: false, recording: false },
       { analysisId: 42 },
     )).toBe('ready')
+  })
+
+  it('keeps the mission active after upload without granting the bonus twice', () => {
+    expect(shouldUseOnboardingBonus({ active: true, game: 'valorant' }, 'valorant')).toBe(true)
+    expect(shouldUseOnboardingBonus({
+      active: true,
+      game: 'valorant',
+      bonusClaimedJobId: 'job-claimed',
+    }, 'valorant')).toBe(false)
   })
 })

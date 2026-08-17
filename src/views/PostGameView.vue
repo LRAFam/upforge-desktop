@@ -1039,6 +1039,82 @@ function applyAnalysisReadiness(readiness: { ready: boolean; state: string; mess
 }
 
 type PostGameSessionSnapshot = NonNullable<Awaited<ReturnType<NonNullable<typeof window.api.postGame>['sync']>>>
+type PostGameReadyPayload = NonNullable<typeof result.value> & {
+  session_start?: number
+  recording_id?: string | null
+  match_id?: string | null
+}
+
+function applyAnalysisProgressPayload(data: {
+  progress?: number
+  current_step?: string | null
+  status?: string
+  elapsed_ms?: number
+}) {
+  if (typeof data.progress === 'number') {
+    analysisProgress.value = Math.min(100, Math.max(0, Math.round(data.progress)))
+  }
+  if (data.current_step) analysisStep.value = data.current_step
+  if (data.status) analysisJobStatus.value = data.status
+  if (data.elapsed_ms && data.elapsed_ms > 0) {
+    const serverElapsed = Math.floor(data.elapsed_ms / 1000)
+    if (serverElapsed > analysisElapsedSecs.value) analysisElapsedSecs.value = serverElapsed
+  }
+}
+
+function applyAnalysisReadyPayload(r: PostGameReadyPayload) {
+  clearStuckTimer()
+  result.value = r
+  if (r?.recording_id) {
+    sessionRecordingId.value = r.recording_id
+    pendingRecordingId.value = r.recording_id
+  }
+  matchId.value = r?.match_id ?? null
+  sessionStart = r?.session_start ?? 0
+  state.value = 'ready'
+  loadSessionClips()
+  void refreshLocalSpatialSummary()
+  void loadMyCoaches()
+  void loadCategoryPercentiles()
+  void window.api.profile.get().then(p => {
+    if (p?.user?.analysis_stats) {
+      analysesUsed.value = p.user.analysis_stats.total
+      analysesLimit.value = p.user.analysis_stats.limit
+    }
+  }).catch(() => {})
+}
+
+function applyUploadErrorPayload(
+  payload: string | AnalysisErrorPayload & {
+    needsUpgrade?: boolean
+    upgradeUrl?: string
+    ppaUrl?: string
+    clipsOnly?: boolean
+    recordingId?: string
+  },
+) {
+  needsUpgrade.value = false
+  needsArchiveUpgrade.value = false
+  clipsOnlyError.value = false
+  savingToCloud.value = false
+  archiveOnlyUpload.value = false
+  if (typeof payload === 'string') {
+    errorDetails.value = buildAnalysisErrorPayload(payload)
+    errorMessage.value = errorDetails.value.message
+  } else {
+    errorDetails.value = buildAnalysisErrorPayload(payload.message, payload)
+    errorMessage.value = payload.message
+    if (payload.recordingId) pendingRecordingId.value = payload.recordingId
+    if (payload.clipsOnly) clipsOnlyError.value = true
+    if (payload.needsUpgrade) {
+      needsUpgrade.value = true
+      needsArchiveUpgrade.value = /archive.limit|cloud storage/i.test(payload.message)
+      upgradeUrl.value = payload.upgradeUrl || 'https://upforge.gg/pricing'
+      ppaUrl.value = payload.ppaUrl || 'https://upforge.gg/valorant/analyze'
+    }
+  }
+  state.value = 'error'
+}
 
 function applyPostGameSnapshot(snapshot: PostGameSessionSnapshot): void {
   if (snapshot.game) {
@@ -1095,6 +1171,19 @@ function applyPostGameSnapshot(snapshot: PostGameSessionSnapshot): void {
     pendingAnalysisMessage.value = snapshot.pendingAnalysisMessage ?? pendingAnalysisMessage.value
     pendingAnalysisState.value = snapshot.pendingAnalysisState
     void refreshLocalSpatialSummary()
+  }
+  applyAnalysisProgressPayload({
+    progress: snapshot.analysisProgress,
+    current_step: snapshot.analysisStep,
+    status: snapshot.analysisJobStatus,
+    elapsed_ms: snapshot.analysisElapsedMs,
+  })
+  analysisLongRunning.value = snapshot.analysisLongRunning
+  analysisDeferredReason.value = snapshot.analysisDeferredReason
+  if (snapshot.analysisResult) {
+    applyAnalysisReadyPayload(snapshot.analysisResult as PostGameReadyPayload)
+  } else if (snapshot.analysisError) {
+    applyUploadErrorPayload(snapshot.analysisError)
   }
 }
 
@@ -1670,7 +1759,8 @@ onMounted(() => {
     startPreparingStuckTimer()
   }))
   ipcCleanup.push(window.api.on('post-game:prep-step', (...args: unknown[]) => {
-    const data = args[0] as { game?: string; map?: string | null; agent?: string | null }
+    const data = args[0] as { recordingId?: string; game?: string; map?: string | null; agent?: string | null }
+    if (data?.recordingId) pendingRecordingId.value = data.recordingId
     if (data?.game) {
       gameInfo.value = { game: data.game, map: data.map ?? null, agent: data.agent ?? null }
     }
@@ -1721,23 +1811,12 @@ onMounted(() => {
     startStuckTimer()
   }))
   ipcCleanup.push(window.api.on('post-game:analysis-progress', (...args: unknown[]) => {
-    const data = args[0] as {
+    applyAnalysisProgressPayload(args[0] as {
       progress?: number
       current_step?: string | null
       status?: string
       elapsed_ms?: number
-    }
-    if (typeof data.progress === 'number') {
-      analysisProgress.value = Math.min(100, Math.max(0, Math.round(data.progress)))
-    }
-    if (data.current_step) analysisStep.value = data.current_step
-    if (data.status) analysisJobStatus.value = data.status
-    if (data.elapsed_ms && data.elapsed_ms > 0 && analysisStartedAt.value) {
-      const serverElapsed = Math.floor(data.elapsed_ms / 1000)
-      if (serverElapsed > analysisElapsedSecs.value) {
-        analysisElapsedSecs.value = serverElapsed
-      }
-    }
+    })
   }))
   ipcCleanup.push(window.api.on('post-game:analysis-long-running', () => {
     analysisLongRunning.value = true
@@ -1753,23 +1832,7 @@ onMounted(() => {
     analysisLongRunning.value = true
   }))
   ipcCleanup.push(window.api.on('post-game:analysis-ready', (...args: unknown[]) => {
-    clearStuckTimer()
-    const r = args[0] as typeof result.value & { session_start?: number; recording_id?: string | null; match_id?: string | null }
-    result.value = r
-    if (r?.recording_id) sessionRecordingId.value = r.recording_id
-    matchId.value = r?.match_id ?? null
-    sessionStart = r?.session_start ?? 0
-    state.value = 'ready'
-    loadSessionClips()
-    void refreshLocalSpatialSummary()
-    void loadMyCoaches()
-    void loadCategoryPercentiles()
-    void window.api.profile.get().then(p => {
-      if (p?.user?.analysis_stats) {
-        analysesUsed.value = p.user.analysis_stats.total
-        analysesLimit.value = p.user.analysis_stats.limit
-      }
-    }).catch(() => {})
+    applyAnalysisReadyPayload(args[0] as PostGameReadyPayload)
 
     // Browser launch is handled by the main process (index.ts) so it fires
     // even if this window was closed before analysis completed.
@@ -1817,28 +1880,7 @@ onMounted(() => {
     if (state.value === 'pending') void refreshPendingReadiness()
   }))
   ipcCleanup.push(window.api.on('post-game:upload-error', (...args: unknown[]) => {
-    const payload = args[0] as string | AnalysisErrorPayload & { needsUpgrade?: boolean; upgradeUrl?: string; ppaUrl?: string; clipsOnly?: boolean; recordingId?: string }
-    needsUpgrade.value = false
-    needsArchiveUpgrade.value = false
-    clipsOnlyError.value = false
-    savingToCloud.value = false
-    archiveOnlyUpload.value = false
-    if (typeof payload === 'string') {
-      errorDetails.value = buildAnalysisErrorPayload(payload)
-      errorMessage.value = errorDetails.value.message
-    } else {
-      errorDetails.value = buildAnalysisErrorPayload(payload.message, payload)
-      errorMessage.value = payload.message
-      if (payload.recordingId) pendingRecordingId.value = payload.recordingId
-      if (payload.clipsOnly) clipsOnlyError.value = true
-      if (payload.needsUpgrade) {
-        needsUpgrade.value = true
-        needsArchiveUpgrade.value = /archive.limit|cloud storage/i.test(payload.message)
-        upgradeUrl.value = payload.upgradeUrl || 'https://upforge.gg/pricing'
-        ppaUrl.value = payload.ppaUrl || 'https://upforge.gg/valorant/analyze'
-      }
-    }
-    state.value = 'error'
+    applyUploadErrorPayload(args[0] as Parameters<typeof applyUploadErrorPayload>[0])
   }))
   ;(window as Window & { _postGameIpcCleanup?: (() => void)[] })._postGameIpcCleanup = ipcCleanup
 

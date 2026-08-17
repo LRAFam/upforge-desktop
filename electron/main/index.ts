@@ -183,6 +183,7 @@ import {
   recommendSettingsUnderCap,
 } from './recording-size-estimate'
 import { mergeSkillProfileFromAnalysis } from '../../src/lib/skill-profile'
+import { shouldUseOnboardingBonus } from '../../src/lib/onboarding-match-mission'
 import { parseMatchHighlightsFromApi } from '../../src/lib/match-highlights'
 import { extractSpatialFromAnalysisPayload } from '../../src/lib/analysis-enrichment'
 import { desktopVodResultsUrl, isPrimaryGame } from '../../src/lib/games'
@@ -258,8 +259,10 @@ import {
   clearPostGameSession,
   getPostGameSessionSnapshot,
   isPostGamePastPreparing,
+  isPostGameSessionForRecording,
   resetPostGameSession,
   sendPostGameEvent,
+  sendPostGameEventForRecording,
 } from './post-game-session'
 import { hasRichMatchData, MATCH_DETAILS_ENRICH_MAX_MS, demoSyncMaxMsForGame, shouldDeferPostGameForDemoSync, shouldScheduleLateClipRetry, cs2RecordingSavedDashboardMessage, deadlockRecordingSavedDashboardMessage, valorantMatchStatsPollIntervalMs } from './match-data-quality'
 import {
@@ -310,6 +313,7 @@ import {
   buildMatchEndTimeline,
   fetchLiveClientTimeline,
   type ReplayRetryContext,
+  isReplayRetryContextEligible,
 } from './match-end-timeline'
 import {
   scheduleLateClipRetry,
@@ -968,9 +972,13 @@ function initPostMatchWorker(userId: number): void {
     log: (msg) => log.info('[PostMatchWorker]', msg),
     runJob: async (job) => {
       activeMatchTelemetry?.startSector('upload')
-      const win = mainWindow && !mainWindow.isDestroyed()
-        ? mainWindow
-        : (postGameWindow && !postGameWindow.isDestroyed() ? postGameWindow : createPostGameWindow())
+      const matchingPostGameWindow = postGameWindow
+        && !postGameWindow.isDestroyed()
+        && isPostGameSessionForRecording(job.recordingId, job.ownerUserId)
+        ? postGameWindow
+        : null
+      const win = matchingPostGameWindow
+        ?? (mainWindow && !mainWindow.isDestroyed() ? mainWindow : createPostGameWindow())
       const rec = recordingsStore.getById(job.recordingId)
       try {
         const result = await doUploadAndAnalyse(
@@ -1041,10 +1049,21 @@ function interruptBackgroundWorkForMatch(): void {
   if (interruptedCount > 0 || workerBusy || queuedJobs) {
     logActivity(POST_MATCH_COPY.pausedUntilGameEnds)
     const pg = postGameWindow
-    if (pg && !pg.isDestroyed()) {
-      try {
-        pg.webContents.send('post-game:upload-deferred', { reason: 'recording' })
-      } catch { /* window closed */ }
+    const modalSession = getPostGameSessionSnapshot()
+    const modalRecordingId = modalSession?.recordingId
+    if (
+      pg
+      && !pg.isDestroyed()
+      && modalRecordingId
+      && (modalSession.phase === 'uploading' || modalSession.phase === 'analysing')
+    ) {
+      sendPostGameEventForRecording(
+        pg,
+        modalRecordingId,
+        'post-game:upload-deferred',
+        { reason: 'recording' },
+        getActiveUserId(),
+      )
     }
   }
   trainerBridge.kill()
@@ -1199,7 +1218,13 @@ function abortInFlightAnalysisForRecording(recordingId: string): { ok: boolean; 
   )
   if (result.ok) {
     mainWindow?.webContents.send('recordings:updated')
-    postGameWindow?.webContents.send('post-game:analysis-deferred', { reason: 'cancelled' })
+    sendPostGameEventForRecording(
+      postGameWindow,
+      recordingId,
+      'post-game:analysis-deferred',
+      { reason: 'server' },
+      getActiveUserId(),
+    )
     const rec = recordingsStore.getById(recordingId)
     tray?.setToolTip(idleTooltip(rec?.game ?? 'valorant'))
     logActivity('Stopped waiting on upload/analysis — you can record again')
@@ -1468,6 +1493,10 @@ function syncUserSessionFromAuth(): void {
   const user = authManager.getUser()
   riotLocalApi.setLinkedAccountRegion(user?.riot_region ?? null)
   if (user?.id) {
+    const previousUserId = getActiveUserId()
+    if (previousUserId != null && previousUserId !== user.id) {
+      clearAccountScopedRuntimeState()
+    }
     activateUserSession(user.id, userSessionDeps())
     initPostMatchWorker(user.id)
     restoreDeferredUploadsFromDisk()
@@ -1485,6 +1514,18 @@ function clearPostMatchQueueScope(): void {
   postMatchJobStore = null
   postMatchWorker = null
   postMatchQueueUserId = null
+}
+
+function clearAccountScopedRuntimeState(): void {
+  stopActiveAnalysisPoll()
+  clearPostMatchQueueScope()
+  if (postGameWindow && !postGameWindow.isDestroyed()) {
+    postGameWindow.destroy()
+  }
+  postGameWindow = null
+  clearPostGameSession()
+  lastReplayRetryContext = null
+  lastMatchDiagnostic = null
 }
 
 function runStorageMaintenanceIfReady(notify = false): void {
@@ -1658,8 +1699,14 @@ function dispatchReconciledAnalysisReady(ctx: ReconciledAnalysisContext): void {
     })
   }
 
-  if (postGameWindow && !postGameWindow.isDestroyed()) {
-    sendPostGameEvent(postGameWindow, 'post-game:analysis-ready', payload)
+  if (ctx.recordingId && postGameWindow && !postGameWindow.isDestroyed()) {
+    sendPostGameEventForRecording(
+      postGameWindow,
+      ctx.recordingId,
+      'post-game:analysis-ready',
+      payload,
+      getActiveUserId(),
+    )
   }
   mainWindow?.webContents.send('dashboard:refresh')
 
@@ -1748,16 +1795,21 @@ function dispatchAnalysisFailure(
     })
   }
 
-  const windows = new Set<BrowserWindow>()
-  if (opts.targetWindow && !opts.targetWindow.isDestroyed()) windows.add(opts.targetWindow)
-  if (postGameWindow && !postGameWindow.isDestroyed()) windows.add(postGameWindow)
-  // Always advance session phase (even with no live window) so preparing safety nets do not false-fire.
-  if (windows.size === 0) {
-    sendPostGameEvent(null, 'post-game:upload-error', payload)
-  } else {
-    for (const win of windows) {
-      sendPostGameEvent(win, 'post-game:upload-error', payload)
-    }
+  if (opts.recordingId) {
+    const modal = postGameWindow
+      && !postGameWindow.isDestroyed()
+      && isPostGameSessionForRecording(opts.recordingId, getActiveUserId())
+      ? postGameWindow
+      : null
+    sendPostGameEventForRecording(
+      modal,
+      opts.recordingId,
+      'post-game:upload-error',
+      payload,
+      getActiveUserId(),
+    )
+  } else if (opts.targetWindow && !opts.targetWindow.isDestroyed()) {
+    sendPostGameEvent(opts.targetWindow, 'post-game:upload-error', payload)
   }
 
   mainWindow?.webContents.send('dashboard:analysis-failed', payload)
@@ -2303,11 +2355,18 @@ function isBlockingVodReadiness(state: AnalysisReadiness['state']): boolean {
 }
 
 function sendAnalysisReadinessUpdate(
+  recordingId: string,
   targetWindow: BrowserWindow | null | undefined,
   readiness: AnalysisReadiness,
 ): void {
   mainWindow?.webContents.send('recordings:updated')
-  sendPostGameEvent(targetWindow, 'post-game:analysis-readiness', readiness)
+  sendPostGameEventForRecording(
+    targetWindow,
+    recordingId,
+    'post-game:analysis-readiness',
+    readiness,
+    getActiveUserId(),
+  )
 }
 
 async function refreshRecordingVodProbe(
@@ -2340,7 +2399,13 @@ function scheduleAnalysisReadinessRefresh(
     mainWindow?.webContents.send('recordings:updated')
     const pg = postGameWindow
     if (pg && !pg.isDestroyed()) {
-      sendPostGameEvent(pg, 'post-game:analysis-readiness', readiness)
+      sendPostGameEventForRecording(
+        pg,
+        recordingId,
+        'post-game:analysis-readiness',
+        readiness,
+        getActiveUserId(),
+      )
     }
   }
 
@@ -2540,7 +2605,7 @@ async function waitUntilAnalysisReady(
 
     await refreshRecordingVodProbe(rec)
     let readiness = getAnalysisReadiness(rec)
-    sendAnalysisReadinessUpdate(targetWindow, readiness)
+    sendAnalysisReadinessUpdate(recordingId, targetWindow, readiness)
 
     if (readiness.ready) return { ready: true, readiness }
     if (isTerminalAnalysisReadinessState(readiness.state) && !readiness.ready) {
@@ -2557,7 +2622,7 @@ async function waitUntilAnalysisReady(
       if (rec) {
         await refreshRecordingVodProbe(rec)
         readiness = getAnalysisReadiness(rec)
-        sendAnalysisReadinessUpdate(targetWindow, readiness)
+        sendAnalysisReadinessUpdate(recordingId, targetWindow, readiness)
         if (readiness.ready) return { ready: true, readiness }
         if (isTerminalAnalysisReadinessState(readiness.state) && !readiness.ready) {
           return { ready: false, readiness }
@@ -2575,7 +2640,7 @@ async function waitUntilAnalysisReady(
     message: 'Timed out waiting for match data',
     duelMomentCount: 0,
   }
-  sendAnalysisReadinessUpdate(targetWindow, readiness)
+  sendAnalysisReadinessUpdate(recordingId, targetWindow, readiness)
   return { ready: readiness.ready, readiness }
 }
 
@@ -2635,6 +2700,27 @@ function createMainWindow(startAuthenticated: boolean = false): BrowserWindow {
 
 function createPostGameWindow(): BrowserWindow {
   return _createPostGameWindow()
+}
+
+function bindPostGameSessionToRecording(recording: {
+  id: string
+  game: string
+  map: string | null
+  agent: string | null
+}): void {
+  resetPostGameSession(
+    recording.game,
+    recording.map,
+    recording.agent,
+    getActiveUserId(),
+    recording.id,
+  )
+  sendPostGameEvent(null, 'post-game:prep-step', {
+    recordingId: recording.id,
+    game: recording.game,
+    map: recording.map,
+    agent: recording.agent,
+  })
 }
 
 function createTray(): void {
@@ -3061,6 +3147,11 @@ function setupGameDetection(): void {
     timeline = timelineBuilt.timeline
     pendingReplayPath = timelineBuilt.pendingReplayPath
     lastReplayRetryContext = timelineBuilt.replayRetryContext
+      ? {
+          ...timelineBuilt.replayRetryContext,
+          ownerUserId: getActiveUserId() ?? undefined,
+        }
+      : null
 
     if (usesDemoReplay(game) && !pendingReplayPath) {
       logActivity(`${game === 'cs2' ? 'CS2' : 'Deadlock'} demo missing at match end`, game)
@@ -3295,7 +3386,7 @@ function setupGameDetection(): void {
     // match 2 can end before match 1's window is dismissed).
     clearVodProbeCache()
     postGameWindow?.close()
-    resetPostGameSession(game, map, agent)
+    resetPostGameSession(game, map, agent, getActiveUserId())
 
     const deferPostGameUi = shouldDeferPostGameForDemoSync(game, timeline)
     let thisPostGameWindow: BrowserWindow | null = null
@@ -3440,8 +3531,10 @@ function setupGameDetection(): void {
         agent,
         gameMode,
         timeline,
-        onboardingBonus: settingsManager.get().onboardingMatchMission?.active === true
-          && settingsManager.get().onboardingMatchMission?.game === game,
+        onboardingBonus: shouldUseOnboardingBonus(
+          settingsManager.get().onboardingMatchMission,
+          game,
+        ),
         onboardingAdminTest: settingsManager.get().onboardingMatchMission?.adminTest === true,
         autoAnalyseRequested: autoAnalyse,
       })
@@ -3487,7 +3580,12 @@ function setupGameDetection(): void {
         activationStep('prep', 'leaving preparing → uploading')
         setPrepStep('upload_dispatch', savedRecording.id)
         completePreparation(game)
-        sendToWindow('post-game:prep-step', { game, map, agent })
+        sendToWindow('post-game:prep-step', {
+          recordingId: savedRecording.id,
+          game,
+          map,
+          agent,
+        })
       } else {
         completePreparation(game)
       }
@@ -5109,9 +5207,17 @@ async function doUploadArchiveOnly(
   deleteLocalAfterUpload = false,
 ): Promise<{ archiveId: string | null; lastError: AnalysisErrorPayload | null }> {
   const send = (channel: string, payload?: unknown) => {
-    try {
-      if (!targetWindow.isDestroyed()) targetWindow.webContents.send(channel, payload)
-    } catch { /* destroyed */ }
+    if (recordingId) {
+      sendPostGameEventForRecording(
+        targetWindow,
+        recordingId,
+        channel,
+        payload,
+        getActiveUserId(),
+      )
+    } else {
+      sendPostGameEvent(targetWindow, channel, payload)
+    }
   }
 
   await waitUntilBackgroundWorkAllowed(matchPriorityDeps(), { logActivity })
@@ -5263,7 +5369,17 @@ async function performUploadAndAnalyse(
   enrichPromise?: Promise<{ extras: CoachingSubmissionExtras | undefined }>,
 ): Promise<string | null> {
   const send = (channel: string, payload?: unknown) => {
-    sendPostGameEvent(targetWindow, channel, payload)
+    if (recordingId) {
+      sendPostGameEventForRecording(
+        targetWindow,
+        recordingId,
+        channel,
+        payload,
+        getActiveUserId(),
+      )
+    } else {
+      sendPostGameEvent(targetWindow, channel, payload)
+    }
   }
   stopActiveAnalysisPoll()
 
@@ -5514,9 +5630,9 @@ async function performUploadAndAnalyse(
       },
     })
 
-    // The server has accepted and claimed this one-time bonus. End the local
-    // mission now so another match cannot inherit onboarding_bonus and be
-    // rejected as an already-claimed entitlement.
+    // The server has accepted and claimed this one-time bonus. Restore normal
+    // capture settings now, but keep the mission active until analysis reaches
+    // ready/failed so onboarding can continue polling the claimed recording.
     if (storedRecording?.onboardingBonus === true) {
       const settings = settingsManager.get()
       const mission = settings.onboardingMatchMission
@@ -5538,10 +5654,13 @@ async function performUploadAndAnalyse(
           ...(typeof mission.previousFullMatchRecording === 'boolean'
             ? { fullMatchRecording: mission.previousFullMatchRecording }
             : {}),
-          onboardingMatchMission: null,
+          onboardingMatchMission: {
+            ...mission,
+            bonusClaimedJobId: result.job_id,
+          },
         })
         mainWindow?.webContents.send('settings:changed', settingsManager.get())
-        logActivity(`Onboarding bonus claimed for job ${result.job_id} — future recordings use your normal analysis quota`)
+        logActivity(`Onboarding bonus claimed for job ${result.job_id} — waiting for analysis to finish`)
       }
     }
 
@@ -5575,6 +5694,8 @@ async function performUploadAndAnalyse(
     startAnalysisPoll({
       uploadManager,
       jobId: result.job_id,
+      recordingId,
+      ownerUserId: getActiveUserId(),
       targetWindow,
       mainWindow,
       onProgress: (status) => {
@@ -5953,7 +6074,7 @@ async function startApp(): Promise<void> {
   () => {
     stopCoachNotificationPoller()
     resetDesktopOnboardingPing()
-    clearPostMatchQueueScope()
+    clearAccountScopedRuntimeState()
     clearUserSession(userSessionDeps())
     riotLocalApi.setLinkedAccountRegion(null)
   },
@@ -5984,7 +6105,7 @@ async function startApp(): Promise<void> {
   authManager.onSessionExpired = () => {
     log.warn('[App] Session expired — notifying renderer')
     stopCoachNotificationPoller()
-    clearPostMatchQueueScope()
+    clearAccountScopedRuntimeState()
     clearUserSession(userSessionDeps())
     riotLocalApi.setLinkedAccountRegion(null)
     mainWindow?.webContents.send('auth:session-expired')
@@ -6357,36 +6478,45 @@ async function startApp(): Promise<void> {
   ipcMain.handle('post-game:sync', () => getPostGameSessionSnapshot())
 
   ipcMain.handle('post-game:retry-demo-scan', async () => {
-    if (!lastReplayRetryContext) {
+    const activeUserId = getActiveUserId()
+    const context = lastReplayRetryContext
+    const recordingExists = Boolean(context?.recordingId && recordingsStore.getById(context.recordingId))
+    if (!isReplayRetryContextEligible(context, activeUserId, recordingExists)) {
       return { ok: false as const, error: 'No recent match to scan' }
     }
-    const notifyWin = postGameWindow && !postGameWindow.isDestroyed()
+    const notifyWin = postGameWindow
+      && !postGameWindow.isDestroyed()
+      && isPostGameSessionForRecording(context.recordingId, activeUserId)
       ? postGameWindow
       : (mainWindow && !mainWindow.isDestroyed() ? mainWindow : null)
 
-    const recordingId = lastReplayRetryContext.recordingId
-    if (recordingId) {
-      const synced = await refreshReplayTimelineForRecording(recordingId, { notifyActivity: true })
-      if (synced) {
-        const rec = recordingsStore.getById(recordingId)
-        if (rec) {
-          const readiness = getAnalysisReadiness(rec)
-          mainWindow?.webContents.send('recordings:updated')
-          if (notifyWin) {
-            sendPostGameEvent(notifyWin, 'post-game:analysis-readiness', readiness)
-          }
+    const recordingId = context.recordingId
+    const synced = await refreshReplayTimelineForRecording(recordingId, { notifyActivity: true })
+    if (synced) {
+      const rec = recordingsStore.getById(recordingId)
+      if (rec) {
+        const readiness = getAnalysisReadiness(rec)
+        mainWindow?.webContents.send('recordings:updated')
+        if (notifyWin) {
+          sendPostGameEventForRecording(
+            notifyWin,
+            recordingId,
+            'post-game:analysis-readiness',
+            readiness,
+            activeUserId,
+          )
         }
       }
     }
 
     await tryAutoUploadSourceReplay({
-      game: lastReplayRetryContext.game,
+      game: context.game,
       demoPath: null,
-      matchSessionStart: lastReplayRetryContext.matchSessionStart,
+      matchSessionStart: context.matchSessionStart,
       auth: authManager,
       notifyWindow: notifyWin,
-      customReplayDir: lastReplayRetryContext.customReplayDir,
-      meta: lastReplayRetryContext.meta,
+      customReplayDir: context.customReplayDir,
+      meta: context.meta,
     })
     return { ok: true as const }
   })
@@ -6552,22 +6682,31 @@ async function startApp(): Promise<void> {
       dismissMatchWaitUi()
       recordingsStore.clearAnalysisFailure(id)
       recordingsStore.markAnalysed(id, recording.jobId)
+      bindPostGameSessionToRecording(recording)
 
       const triggerRetry = async (win: BrowserWindow) => {
         stopActiveAnalysisPoll()
-        win.webContents.send('post-game:upload-start', {
+        sendPostGameEventForRecording(win, id, 'post-game:upload-start', {
           game: recording!.game,
           map: recording!.map,
           agent: recording!.agent,
-        })
+        }, getActiveUserId())
         try {
           await uploadManager.retrySubmission(recording!.jobId!)
-          win.webContents.send('post-game:upload-complete', { jobId: recording!.jobId })
+          sendPostGameEventForRecording(
+            win,
+            id,
+            'post-game:upload-complete',
+            { jobId: recording!.jobId },
+            getActiveUserId(),
+          )
           logActivity('Retrying analysis from cloud recording')
           tray?.setToolTip('UpForge — Analysing...')
           startAnalysisPoll({
             uploadManager,
             jobId: recording!.jobId!,
+            recordingId: id,
+            ownerUserId: getActiveUserId(),
             targetWindow: win,
             mainWindow,
             onProgress: (status) => {
@@ -6579,16 +6718,20 @@ async function startApp(): Promise<void> {
             },
             onCompleted: (status) => {
               const analysisId = extractAnalysisIdFromPollStatus(status)
+              const rec = recordingsStore.getById(id)
               if (analysisId != null) {
-                recordingsStore.setAnalysisId(id, analysisId)
-                const rec = recordingsStore.getById(id)
                 if (rec?.path) {
                   maybeDeleteLocalRecordingAfterAnalysis(rec.path, {})
                 }
-              } else {
-                recordingsStore.clearAnalysisPipeline(id)
               }
-              mainWindow?.webContents.send('dashboard:refresh')
+              dispatchReconciledAnalysisReady({
+                jobId: recording!.jobId!,
+                status,
+                recordingId: id,
+                agent: rec?.agent ?? recording!.agent ?? null,
+                map: rec?.map ?? recording!.map ?? null,
+                game: rec?.game ?? recording!.game,
+              })
             },
             onFailed: (userMessage, rawError, status) => {
               dispatchAnalysisFailure(rawError || userMessage, {
@@ -6658,15 +6801,16 @@ async function startApp(): Promise<void> {
     recordingsStore.clearAnalysisFailure(id)
 
     const user = authManager.getUser()
+    bindPostGameSessionToRecording(recording)
 
     const triggerAnalysis = async (win: BrowserWindow) => {
       if (recording.archiveId && recording.cloudArchived && !recording.analysed) {
         stopActiveAnalysisPoll()
-        win.webContents.send('post-game:upload-start', {
+        sendPostGameEventForRecording(win, recording.id, 'post-game:upload-start', {
           game: recording.game,
           map: recording.map,
           agent: recording.agent,
-        })
+        }, getActiveUserId())
         try {
           let timeline = recording.timeline
           let coachingExtras: CoachingSubmissionExtras | undefined
@@ -6684,12 +6828,20 @@ async function startApp(): Promise<void> {
           )
           recordingsStore.markAnalysed(recording.id, result.job_id)
           mainWindow?.webContents.send('recordings:updated')
-          win.webContents.send('post-game:upload-complete', { jobId: result.job_id })
+          sendPostGameEventForRecording(
+            win,
+            recording.id,
+            'post-game:upload-complete',
+            { jobId: result.job_id },
+            getActiveUserId(),
+          )
           logActivity('Analysis queued for cloud recording')
           tray?.setToolTip('UpForge — Analysing...')
           startAnalysisPoll({
             uploadManager,
             jobId: result.job_id,
+            recordingId: recording.id,
+            ownerUserId: getActiveUserId(),
             targetWindow: win,
             mainWindow,
             onProgress: (status) => {
@@ -6701,14 +6853,20 @@ async function startApp(): Promise<void> {
             },
             onCompleted: (status) => {
               const analysisId = extractAnalysisIdFromPollStatus(status)
+              const rec = recordingsStore.getById(recording.id)
               if (analysisId != null) {
-                recordingsStore.setAnalysisId(recording.id, analysisId)
-                const rec = recordingsStore.getById(recording.id)
                 if (rec?.path) {
                   maybeDeleteLocalRecordingAfterAnalysis(rec.path, {})
                 }
               }
-              mainWindow?.webContents.send('dashboard:refresh')
+              dispatchReconciledAnalysisReady({
+                jobId: result.job_id,
+                status,
+                recordingId: recording.id,
+                agent: rec?.agent ?? recording.agent ?? null,
+                map: rec?.map ?? recording.map ?? null,
+                game: rec?.game ?? recording.game,
+              })
             },
             onFailed: (userMessage, rawError, status) => {
               dispatchAnalysisFailure(rawError || userMessage, {
