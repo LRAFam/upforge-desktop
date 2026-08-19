@@ -42,6 +42,15 @@ export function queueFromMatchDetails(details: Record<string, unknown>): string 
 
 export type MatchDetailsValidation = { apply: boolean; reason: string }
 
+const RECOVERY_START_TOLERANCE_MS = 10 * 60_000
+const RECOVERY_END_TOLERANCE_MS = 15 * 60_000
+
+export function recoveredMatchStartAligns(recordingStartMs: number, matchStartMs: number): boolean {
+  return Number.isFinite(recordingStartMs)
+    && Number.isFinite(matchStartMs)
+    && Math.abs(matchStartMs - recordingStartMs) <= RECOVERY_START_TOLERANCE_MS
+}
+
 /**
  * Returns whether MatchDetails should be merged into this recording's timeline.
  */
@@ -91,6 +100,42 @@ export function shouldApplyMatchDetails(
   }
 
   return { apply: true, reason: 'aligned' }
+}
+
+/**
+ * Orphan recovery has no captured map/mode to cross-check, so require canonical
+ * Riot match timing to align with the filesystem recording interval.
+ */
+export function shouldApplyRecoveredMatchDetails(
+  matchData: MatchData,
+  details: Record<string, unknown>,
+): MatchDetailsValidation {
+  const recordingStartMs = matchData.recordingStartTime
+  const recordingEndMs = matchData.endTime
+  if (!Number.isFinite(recordingStartMs) || !Number.isFinite(recordingEndMs) || recordingEndMs == null) {
+    return { apply: false, reason: 'recording timing missing' }
+  }
+
+  const matchInfo = details.matchInfo as Record<string, unknown> | undefined
+  const matchStartMs = matchInfo?.gameStartMillis
+  const gameLengthMs = matchInfo?.gameLengthMillis
+  if (typeof matchStartMs !== 'number' || !Number.isFinite(matchStartMs)) {
+    return { apply: false, reason: 'Riot matchInfo.gameStartMillis missing' }
+  }
+  if (typeof gameLengthMs !== 'number' || !Number.isFinite(gameLengthMs) || gameLengthMs <= 0) {
+    return { apply: false, reason: 'Riot matchInfo.gameLengthMillis missing' }
+  }
+
+  if (!recoveredMatchStartAligns(recordingStartMs, matchStartMs)) {
+    return { apply: false, reason: 'match start does not align with recording' }
+  }
+
+  const matchEndMs = matchStartMs + gameLengthMs
+  if (Math.abs(matchEndMs - recordingEndMs) > RECOVERY_END_TOLERANCE_MS) {
+    return { apply: false, reason: 'match end does not align with recording' }
+  }
+
+  return shouldApplyMatchDetails(matchData, details)
 }
 
 /** Skip match-history fallback when local session already looks like practice. */

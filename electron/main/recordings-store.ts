@@ -72,6 +72,9 @@ export interface PendingRecording {
   /** Exact recording claimed against the one-time onboarding bonus entitlement. */
   onboardingBonus?: boolean
   onboardingAdminTest?: boolean
+  /** Imported from a finished OBS file after normal match finalisation was interrupted. */
+  orphanedImport?: boolean
+  orphanRecoveryError?: string | null
   /** Explicit capture-time consent for automatic upload and analysis. Missing means manual-only. */
   autoAnalyseRequested?: boolean
   /** Explicit user request to analyse this recording after active match capture releases resources. */
@@ -201,7 +204,7 @@ export class RecordingsStore {
     }
   }
 
-  add(data: NewRecording): PendingRecording {
+  add(data: NewRecording, recordedAt = Date.now()): PendingRecording {
     let fileSizeBytes: number | undefined
     if (data.path && !data.clipsOnly) {
       try {
@@ -212,7 +215,7 @@ export class RecordingsStore {
     const recording: PendingRecording = {
       ...data,
       id: randomUUID(),
-      recordedAt: Date.now(),
+      recordedAt,
       analysed: false,
       pipelineStatus: data.pipelineStatus ?? 'pending',
       fileSizeBytes,
@@ -229,6 +232,36 @@ export class RecordingsStore {
     }
     this.persist()
     return recording
+  }
+
+  prepareOrphanRecovery(
+    id: string,
+    input: {
+      timeline: MatchData
+      recordedAt: number
+      riotName: string
+      riotTag: string
+    },
+  ): boolean {
+    const rec = this.recordings.find(r => r.id === id)
+    if (!rec) return false
+    rec.timeline = input.timeline
+    rec.recordedAt = input.recordedAt
+    rec.riotName = input.riotName
+    rec.riotTag = input.riotTag
+    rec.orphanedImport = true
+    rec.orphanRecoveryError = null
+    rec.pipelineStatus = undefined
+    rec.uploadProgress = undefined
+    this.persist()
+    return true
+  }
+
+  setOrphanRecoveryError(id: string, error: string | null): void {
+    const rec = this.recordings.find(r => r.id === id)
+    if (!rec) return
+    rec.orphanRecoveryError = error
+    this.persist()
   }
 
   markArchived(id: string, archiveId: string): void {
@@ -499,6 +532,9 @@ export class RecordingsStore {
     if (agent) rec.agent = agent
     if (timeline.map?.trim()) rec.map = timeline.map.trim()
     if (timeline.gameMode?.trim()) rec.gameMode = timeline.gameMode.trim()
+    if (timeline.matchId?.trim()) rec.matchId = timeline.matchId.trim()
+    if (timeline.playerName?.trim()) rec.riotName = timeline.playerName.trim()
+    if (timeline.playerTag?.trim()) rec.riotTag = timeline.playerTag.trim()
     this.persist()
     return true
   }

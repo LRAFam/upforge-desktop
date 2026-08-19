@@ -31,7 +31,9 @@ import { resolvePlantLocationFromRound } from './plant-location'
 import { logPlantCoordStats } from './match-plant-telemetry'
 import { gameTimeToVideoOffsetMs, lolGameTimeToVideoOffsetMs } from './recording-sync'
 import {
+  recoveredMatchStartAligns,
   shouldApplyMatchDetails,
+  shouldApplyRecoveredMatchDetails,
   shouldUseMatchHistoryFallback,
 } from './match-details-validation'
 import { timelineNeedsEnrichRefresh } from './match-data-quality'
@@ -44,6 +46,7 @@ import {
   type ValorantRegionSource,
 } from './riot-region'
 import { applyMenuWatchTick } from './menu-watch'
+import { parseRiotMatchHistory, type RiotMatchHistoryEntry } from './riot-match-history'
 export type {
   GameEvent,
   KillEvent,
@@ -63,6 +66,11 @@ export type {
   MatchData,
   MatchTimeline,
 } from './riot-types'
+
+export type OrphanTimelineRecoveryResult =
+  | { status: 'recovered'; matchId: string }
+  | { status: 'missing'; reason: 'recording_timing_missing' | 'history_timing_missing' | 'no_aligned_match' }
+  | { status: 'unavailable'; reason: 'riot_auth_missing' | 'match_details_unavailable' }
 import type {
   GameEvent,
   KillEvent,
@@ -1201,8 +1209,10 @@ export class RiotLocalApi {
     })
   }
 
-  /** Fetch the most recent matchId from the Riot match-history API as a fallback. */
-  private async _fetchLatestMatchId(): Promise<string | null> {
+  /** Fetch recent Riot history with its canonical match start timestamp. */
+  private async _fetchRecentMatchHistory(
+    limit: number,
+  ): Promise<RiotMatchHistoryEntry[] | null> {
     if (!this.region || !this.ownPuuid || !this.accessToken || !this.entitlementsToken) return null
     const pdHost = riotPdHostname(this.region)
     if (!pdHost) return null
@@ -1212,7 +1222,7 @@ export class RiotLocalApi {
           hostname: pdHost,
           port: 443,
           family: 4,
-          path: `/match-history/v1/history/${this.ownPuuid}?startIndex=0&endIndex=1`,
+          path: `/match-history/v1/history/${this.ownPuuid}?startIndex=0&endIndex=${limit}`,
           headers: {
             Authorization: `Bearer ${this.accessToken}`,
             'X-Riot-Entitlements-JWT': this.entitlementsToken!,
@@ -1230,10 +1240,9 @@ export class RiotLocalApi {
               resolve(null); return
             }
             try {
-              const parsed = JSON.parse(body) as { History?: Array<{ MatchID: string }> }
-              const matchId = parsed.History?.[0]?.MatchID ?? null
-              console.log(`[RiotLocalApi] MatchHistory returned matchId=${matchId}`)
-              resolve(matchId)
+              const history = parseRiotMatchHistory(JSON.parse(body))
+              console.log(`[RiotLocalApi] MatchHistory returned ${history.length} match(es)`)
+              resolve(history)
             } catch { resolve(null) }
           })
         }
@@ -1241,6 +1250,87 @@ export class RiotLocalApi {
       req.on('error', (err: Error) => { console.log(`[RiotLocalApi] MatchHistory error: ${err.message}`); resolve(null) })
       req.setTimeout(15000, () => { req.destroy(); resolve(null) })
     })
+  }
+
+  /** Fetch the most recent matchId from Riot history for normal captured timelines. */
+  private async _fetchLatestMatchId(): Promise<string | null> {
+    const history = await this._fetchRecentMatchHistory(1)
+    return history?.[0]?.matchId ?? null
+  }
+
+  /**
+   * Recover a timeline for an orphaned VOD. Unlike the normal latest-match fallback,
+   * this requires Riot history and MatchDetails timing to align with the file interval.
+   */
+  async recoverOrphanedTimelineMatchDetails(
+    timeline: MatchData,
+  ): Promise<OrphanTimelineRecoveryResult> {
+    if (
+      !Number.isFinite(timeline.recordingStartTime)
+      || timeline.endTime == null
+      || !Number.isFinite(timeline.endTime)
+    ) {
+      return { status: 'missing', reason: 'recording_timing_missing' }
+    }
+
+    await this._refreshTokens()
+    if (!this.accessToken || !this.entitlementsToken) await this.initAuth()
+    if (!this.region && this.lockfileData) await this._refreshRegionFromClient('orphan-recovery')
+    if (!this.region || !this.ownPuuid || !this.accessToken || !this.entitlementsToken) {
+      return { status: 'unavailable', reason: 'riot_auth_missing' }
+    }
+
+    const history = await this._fetchRecentMatchHistory(10)
+    if (!history) return { status: 'unavailable', reason: 'match_details_unavailable' }
+    if (history.every((entry) => entry.gameStartTimeMs == null)) {
+      return { status: 'missing', reason: 'history_timing_missing' }
+    }
+
+    const aligned = history
+      .filter((entry): entry is { matchId: string; gameStartTimeMs: number } => (
+        entry.gameStartTimeMs != null
+        && recoveredMatchStartAligns(timeline.recordingStartTime, entry.gameStartTimeMs)
+      ))
+      .sort((a, b) => (
+        Math.abs(a.gameStartTimeMs - timeline.recordingStartTime)
+        - Math.abs(b.gameStartTimeMs - timeline.recordingStartTime)
+      ))
+
+    if (aligned.length === 0) return { status: 'missing', reason: 'no_aligned_match' }
+
+    let fetchedAnyDetails = false
+    for (const candidate of aligned) {
+      const details = await this._fetchMatchDetails(candidate.matchId)
+      if (!details) continue
+      fetchedAnyDetails = true
+
+      const validation = shouldApplyRecoveredMatchDetails(timeline, details)
+      if (!validation.apply) {
+        console.warn(
+          `[RiotLocalApi] Rejected orphan recovery candidate ${candidate.matchId}: ${validation.reason}`,
+        )
+        continue
+      }
+
+      timeline.matchId = candidate.matchId
+      timeline.matchDetails = details
+      const matchInfo = details.matchInfo as Record<string, unknown>
+      // Validation above requires this canonical Riot field to be a finite number.
+      timeline.matchStartTime = matchInfo.gameStartMillis as number
+      const previous = this.matchData
+      this.matchData = timeline
+      try {
+        this._populateFromMatchDetails(details)
+      } finally {
+        this.matchData = previous
+      }
+      console.log(`[RiotLocalApi] Recovered orphan recording as match ${candidate.matchId}`)
+      return { status: 'recovered', matchId: candidate.matchId }
+    }
+
+    return fetchedAnyDetails
+      ? { status: 'missing', reason: 'no_aligned_match' }
+      : { status: 'unavailable', reason: 'match_details_unavailable' }
   }
 
   /**

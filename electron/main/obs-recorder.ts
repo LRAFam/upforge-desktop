@@ -381,8 +381,9 @@ export class OBSRecorder {
   async captureSourcePreview(): Promise<CapturePreviewResult> {
     if (!this._connected) return { ok: false, error: 'obs_not_connected' }
 
-    if (!this._capturePreviewInFlight) {
-      const operation = this._captureSourcePreviewOnce()
+    let operation = this._capturePreviewInFlight
+    if (!operation) {
+      operation = this._captureSourcePreviewOnce()
       this._capturePreviewInFlight = operation
       void operation.finally(() => {
         if (this._capturePreviewInFlight === operation) this._capturePreviewInFlight = null
@@ -390,7 +391,11 @@ export class OBSRecorder {
     }
 
     try {
-      return await withTimeout(this._capturePreviewInFlight, 4_000, 'capture_preview_timeout')
+      return await withTimeout(operation, 4_000, 'capture_preview_timeout', () => {
+        // OBS WebSocket requests cannot be cancelled. Abandon a timed-out request so
+        // the onboarding retry starts a fresh screenshot instead of reusing it forever.
+        if (this._capturePreviewInFlight === operation) this._capturePreviewInFlight = null
+      })
     } catch (err) {
       return { ok: false, error: err instanceof Error ? err.message : String(err) }
     }

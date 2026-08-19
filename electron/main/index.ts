@@ -187,7 +187,11 @@ import { shouldUseOnboardingBonus } from '../../src/lib/onboarding-match-mission
 import { parseMatchHighlightsFromApi } from '../../src/lib/match-highlights'
 import { extractSpatialFromAnalysisPayload } from '../../src/lib/analysis-enrichment'
 import { desktopVodResultsUrl, isPrimaryGame } from '../../src/lib/games'
-import { RecordingsStore, type ClipOnlyReason } from './recordings-store'
+import { RecordingsStore, type ClipOnlyReason, type PendingRecording } from './recordings-store'
+import {
+  buildOrphanValorantTimeline,
+  inspectOrphanRecordingTiming,
+} from './orphan-recording-recovery'
 import { ClipExtractor } from './clip-extractor'
 import { ClipStore } from './clip-store'
 import { HotkeyManager } from './hotkey-manager'
@@ -1577,6 +1581,8 @@ function linkedRiotFromAuth() {
 /** Pick up recent local MP4s that never made it into recordings.json (e.g. post-game window closed early). */
 function scanForOrphanedRecordings(force = false): number {
   if (!settingsManager || !recordingsStore) return 0
+  // A growing OBS file is not an orphan yet. It will be eligible after recording stops.
+  if (obsRecorder.isRecording()) return 0
   if (orphanedRecordingsScanned && !force) return 0
   orphanedRecordingsScanned = true
 
@@ -1589,23 +1595,71 @@ function scanForOrphanedRecordings(force = false): number {
   )
   if (orphans.length === 0) return 0
 
+  const user = authManager.getUser()
   for (const file of orphans) {
     const orphanGame = normalizePrimaryGame(settingsManager.get().primaryGame)
-    recordingsStore.add({
+    const timing = inspectOrphanRecordingTiming(file.path)
+    const canRecoverValorant = orphanGame === 'valorant' && timing.status === 'ok'
+    const timeline = canRecoverValorant
+      ? buildOrphanValorantTimeline(timing, {
+          name: user?.riot_name ?? null,
+          tag: user?.riot_tag ?? null,
+        })
+      : null
+    const saved = recordingsStore.add({
       path: file.path, // already preferred (compressed when sibling exists)
-      riotName: '',
-      riotTag: '',
+      riotName: user?.riot_name?.trim() ?? '',
+      riotTag: user?.riot_tag?.trim() ?? '',
       game: orphanGame,
       map: null,
       agent: null,
       gameMode: 'UNKNOWN',
-      timeline: null,
-    })
+      timeline,
+      orphanedImport: true,
+      orphanRecoveryError: timing.status === 'missing' ? timing.reason : null,
+    }, timing.status === 'ok' ? timing.startTimeMs : Date.now())
+    recordingsStore.clearAnalysisPipeline(saved.id)
+    if (timeline) scheduleAnalysisReadinessRefresh(saved.id, orphanGame)
   }
   log.info(`[Recordings] Imported ${orphans.length} local file(s) into dashboard`)
   logActivity(`Found ${orphans.length} local recording(s) — added to dashboard`)
   mainWindow?.webContents.send('recordings:updated')
   return orphans.length
+}
+
+function isLegacyBareValorantOrphan(rec: PendingRecording): boolean {
+  return rec.game === 'valorant'
+    && rec.timeline == null
+    && rec.map == null
+    && rec.agent == null
+    && rec.gameMode === 'UNKNOWN'
+    && !rec.riotName.trim()
+    && !rec.riotTag.trim()
+    && Boolean(rec.path)
+}
+
+/** Upgrade rows imported by older builds so their existing local VOD can still recover. */
+function prepareLegacyOrphanRecoveryRows(): void {
+  const user = authManager.getUser()
+  for (const rec of recordingsStore.getAll()) {
+    if (!isLegacyBareValorantOrphan(rec)) continue
+    const timing = inspectOrphanRecordingTiming(rec.path)
+    if (timing.status === 'missing') {
+      recordingsStore.setOrphanRecoveryError(rec.id, timing.reason)
+      continue
+    }
+    const timeline = buildOrphanValorantTimeline(timing, {
+      name: user?.riot_name ?? null,
+      tag: user?.riot_tag ?? null,
+    })
+    recordingsStore.prepareOrphanRecovery(rec.id, {
+      timeline,
+      recordedAt: timing.startTimeMs,
+      riotName: user?.riot_name?.trim() ?? '',
+      riotTag: user?.riot_tag?.trim() ?? '',
+    })
+    log.info(`[Recordings] Prepared legacy orphan ${rec.id} for Riot metadata recovery`)
+  }
 }
 
 /** Set by setupGameDetection — ends the active match (upload/post-game) when user clicks Stop. */
@@ -2385,6 +2439,50 @@ async function refreshRecordingVodProbe(
 /** Poll Riot + VOD probe until analyse is unblocked — Valorant only; CS2/Deadlock are VOD-ready without demo. */
 const analysisReadinessRefreshGeneration = new Map<string, number>()
 
+async function recoverOrphanedValorantMetadata(rec: PendingRecording): Promise<boolean> {
+  if (rec.game !== 'valorant' || !rec.orphanedImport || !rec.timeline) return false
+  if (hasRichMatchData(rec.timeline)) return true
+
+  const result = await riotLocalApi.recoverOrphanedTimelineMatchDetails(rec.timeline)
+  if (result.status !== 'recovered') {
+    recordingsStore.setOrphanRecoveryError(rec.id, result.reason)
+    log.info(`[Recordings] Orphan metadata recovery ${result.status}: ${result.reason}`)
+    return false
+  }
+
+  recomputeTimelineVideoOffsets(rec.timeline)
+  recordingsStore.updateTimeline(rec.id, rec.timeline)
+  recordingsStore.setOrphanRecoveryError(rec.id, null)
+  recordingsStore.clearAnalysisFailure(rec.id)
+  logActivity(
+    `Recovered recording details${rec.timeline.map ? ` — ${rec.timeline.map}` : ''}`
+    + `${rec.timeline.agent ? ` · ${rec.timeline.agent}` : ''}`,
+    'valorant',
+  )
+  mainWindow?.webContents.send('recordings:updated')
+  return true
+}
+
+function orphanRecoveryMessage(reason: string | null | undefined): string | null {
+  switch (reason) {
+    case 'riot_auth_missing':
+      return 'Open Riot Client, then tap Retry sync so UpForge can read your recent match history.'
+    case 'history_timing_missing':
+      return 'Riot match history did not include the timing needed to safely link this recording.'
+    case 'no_aligned_match':
+      return 'No recent Riot match safely matched this recording’s time and duration.'
+    case 'match_details_unavailable':
+      return 'Riot match details are not available yet. Keep Riot Client open and retry shortly.'
+    case 'file_stat_failed':
+    case 'invalid_file_times':
+    case 'invalid_recording_duration':
+    case 'recording_timing_missing':
+      return 'The recording file does not contain reliable timing for safe Riot match recovery.'
+    default:
+      return null
+  }
+}
+
 function scheduleAnalysisReadinessRefresh(
   recordingId: string,
   game: string,
@@ -2446,6 +2544,11 @@ function scheduleAnalysisReadinessRefresh(
 
     if (!deferring) {
       await refreshRecordingVodProbe(rec)
+    }
+
+    if (rec.orphanedImport && rec.timeline && !hasRichMatchData(rec.timeline)) {
+      await recoverOrphanedValorantMetadata(rec)
+      rec = recordingsStore.getById(recordingId) ?? rec
     }
 
     let readiness = getAnalysisReadiness(rec)
@@ -6570,8 +6673,16 @@ async function startApp(): Promise<void> {
   })
 
   ipcMain.handle('recordings:list-all', async () => {
-    scanForOrphanedRecordings()
+    // The earlier dashboard scan may have run before OBS finished writing the file.
+    // Re-scan when the user opens the library so interrupted finalisation self-heals.
+    scanForOrphanedRecordings(true)
+    prepareLegacyOrphanRecoveryRows()
     const all = recordingsStore.getAll(linkedRiotFromAuth())
+    for (const rec of all) {
+      if (rec.orphanedImport && rec.timeline && !hasRichMatchData(rec.timeline)) {
+        scheduleAnalysisReadinessRefresh(rec.id, rec.game)
+      }
+    }
     // Cheap read: use cached probe/readiness only — the Recordings tab is for
     // browsing, not the actionable dashboard queue, so never block on ffmpeg.
     return all.map((rec) => ({
@@ -6599,11 +6710,16 @@ async function startApp(): Promise<void> {
       }
     }
 
-    // Keep background soft-poll armed, but do a short blocking attempt so the
-    // dashboard Retry sync button is not locked for the full 3-minute enrich window.
-    scheduleAnalysisReadinessRefresh(id, recording.game, { force: true })
+    if (recording.orphanedImport && recording.timeline) {
+      await refreshRecordingVodProbe(recording)
+      await recoverOrphanedValorantMetadata(recording)
+    } else {
+      // Keep background soft-poll armed, but do a short blocking attempt so the
+      // dashboard Retry sync button is not locked for the full 3-minute enrich window.
+      scheduleAnalysisReadinessRefresh(id, recording.game, { force: true })
+    }
 
-    if (recording.timeline) {
+    if (recording.timeline && !recording.orphanedImport) {
       if (recording.game === 'valorant') {
         await enrichTimelineForCoaching(riotLocalApi, recording.timeline, {
           maxWaitMs: 25_000,
@@ -6630,7 +6746,8 @@ async function startApp(): Promise<void> {
     if (!analysisReadiness?.ready) {
       return {
         ok: false as const,
-        error: analysisReadiness?.message
+        error: orphanRecoveryMessage(updated?.orphanRecoveryError)
+          ?? analysisReadiness?.message
           ?? 'Could not load Riot match stats yet — check network DNS, then tap Retry sync again.',
         analysisReadiness,
       }

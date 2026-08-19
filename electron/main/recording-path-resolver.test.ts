@@ -14,7 +14,10 @@ vi.mock('./vod-compressor', () => ({
 }))
 
 import { MIN_RECORDING_FILE_BYTES } from './recording-limits'
-import { resolveReadyRecordingPathDetailed } from './recording-path-resolver'
+import {
+  listUnregisteredRecordingFiles,
+  resolveReadyRecordingPathDetailed,
+} from './recording-path-resolver'
 
 async function writeSized(file: string, bytes: number, mtimeMs: number): Promise<void> {
   await writeFile(file, Buffer.alloc(bytes, 1))
@@ -66,6 +69,25 @@ describe('resolveReadyRecordingPathDetailed', () => {
       )
       expect(result.usedFallback).toBe(true)
       expect(result.file?.path).toContain('newer.mp4')
+    } finally {
+      await rm(dir, { recursive: true, force: true })
+    }
+  })
+})
+
+describe('listUnregisteredRecordingFiles', () => {
+  it('finds a finished recording that appeared after an earlier empty scan', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'upforge-orphan-'))
+    try {
+      const now = Date.now()
+      expect(listUnregisteredRecordingFiles(dir, new Set(), now - 60_000)).toEqual([])
+
+      const recording = join(dir, 'finished-match.mp4')
+      await writeSized(recording, MIN_RECORDING_FILE_BYTES + 10, now)
+
+      expect(listUnregisteredRecordingFiles(dir, new Set(), now - 60_000)).toEqual([
+        { path: recording, sizeBytes: MIN_RECORDING_FILE_BYTES + 10 },
+      ])
     } finally {
       await rm(dir, { recursive: true, force: true })
     }

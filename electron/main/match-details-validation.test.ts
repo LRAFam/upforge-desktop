@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest'
-import { shouldApplyMatchDetails } from './match-details-validation'
+import {
+  shouldApplyMatchDetails,
+  shouldApplyRecoveredMatchDetails,
+} from './match-details-validation'
 import type { MatchData } from './riot-types'
 
 function timeline(overrides: Partial<MatchData> = {}): MatchData {
@@ -37,12 +40,13 @@ function timeline(overrides: Partial<MatchData> = {}): MatchData {
   }
 }
 
-function details(gameLengthMillis: number): Record<string, unknown> {
+function details(gameLengthMillis: number, gameStartMillis?: number): Record<string, unknown> {
   return {
     matchInfo: {
       mapId: '/Game/Maps/Foxtrot/Foxtrot',
       queueID: 'competitive',
       gameLengthMillis,
+      ...(gameStartMillis == null ? {} : { gameStartMillis }),
     },
   }
 }
@@ -75,5 +79,61 @@ describe('shouldApplyMatchDetails', () => {
 
     expect(result.apply).toBe(false)
     expect(result.reason).toContain('duration mismatch')
+  })
+})
+
+describe('shouldApplyRecoveredMatchDetails', () => {
+  const recordingStartTime = 1_700_000_000_000
+  const recordingEndTime = recordingStartTime + 30 * 60_000
+
+  it('accepts Riot details whose canonical timing aligns with the VOD', () => {
+    const result = shouldApplyRecoveredMatchDetails(
+      timeline({
+        map: null,
+        gameMode: null,
+        matchStartTime: null,
+        gameplayStartTime: null,
+        recordingStartTime,
+        startTime: recordingStartTime,
+        endTime: recordingEndTime,
+      }),
+      details(25 * 60_000, recordingStartTime + 2 * 60_000),
+    )
+
+    expect(result).toEqual({ apply: true, reason: 'aligned' })
+  })
+
+  it('rejects a recent Riot match from a different time', () => {
+    const result = shouldApplyRecoveredMatchDetails(
+      timeline({
+        map: null,
+        gameMode: null,
+        matchStartTime: null,
+        gameplayStartTime: null,
+        recordingStartTime,
+        startTime: recordingStartTime,
+        endTime: recordingEndTime,
+      }),
+      details(25 * 60_000, recordingStartTime - 40 * 60_000),
+    )
+
+    expect(result).toEqual({ apply: false, reason: 'match start does not align with recording' })
+  })
+
+  it('rejects details without canonical Riot start timing', () => {
+    const result = shouldApplyRecoveredMatchDetails(
+      timeline({
+        map: null,
+        gameMode: null,
+        matchStartTime: null,
+        gameplayStartTime: null,
+        recordingStartTime,
+        startTime: recordingStartTime,
+        endTime: recordingEndTime,
+      }),
+      details(25 * 60_000),
+    )
+
+    expect(result).toEqual({ apply: false, reason: 'Riot matchInfo.gameStartMillis missing' })
   })
 })
