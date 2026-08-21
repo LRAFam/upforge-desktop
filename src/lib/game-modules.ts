@@ -10,6 +10,7 @@ import CS2SetupPanel from '../components/CS2SetupPanel.vue'
 import DeadlockStatsPanel from '../components/DeadlockStatsPanel.vue'
 import DeadlockDemoPanel from '../components/DeadlockDemoPanel.vue'
 import LolStatsPanel from '../components/LolStatsPanel.vue'
+import { BoundedListCache } from './bounded-list-cache'
 
 export interface GameFeatures {
   /** Valorant VOD timeline in-app */
@@ -69,23 +70,23 @@ const DEADLOCK_FEATURES: GameFeatures = {
 }
 
 async function loadValorantAnalyses(limit = 10): Promise<AnalysisItem[]> {
-  return window.api.analyses.get(limit).catch(() => [])
+  return window.api.analyses.get(limit)
 }
 
 async function loadDeadlockAnalyses(limit = 10): Promise<AnalysisItem[]> {
-  const items = await window.api.deadlock.getAnalyses(limit).catch(() => [])
+  const items = await window.api.deadlock.getAnalyses(limit)
   return items.map(mapDeadlockToAnalysisItem)
 }
 
 async function loadCs2Analyses(limit = 10): Promise<AnalysisItem[]> {
-  const items = await window.api.cs2.getAnalyses(limit).catch(() => [])
+  const items = await window.api.cs2.getAnalyses(limit)
   return items
     .filter(a => a.status === 'completed')
     .map(mapCs2ToAnalysisItem)
 }
 
 async function loadLolAnalyses(limit = 10): Promise<AnalysisItem[]> {
-  const items = await window.api.lol.getAnalyses(limit).catch(() => [])
+  const items = await window.api.lol.getAnalyses(limit)
   return items
     .filter(a => a.status === 'completed')
     .map(mapLolToAnalysisItem)
@@ -142,8 +143,14 @@ export function gameCenterPanels(game: PrimaryGame): Component[] {
   return gameModule(game).centerPanels
 }
 
+const analysisListCache = new BoundedListCache<AnalysisItem>(30_000)
+
 export async function loadGameAnalyses(game: PrimaryGame, limit = 10): Promise<AnalysisItem[]> {
-  return gameModule(game).loadAnalyses(limit)
+  return analysisListCache.load(game, limit, requestedLimit => gameModule(game).loadAnalyses(requestedLimit))
+}
+
+export function invalidateGameAnalysesCache(game?: PrimaryGame): void {
+  analysisListCache.invalidate(game)
 }
 
 export { openGameAnalysis } from './open-game-analysis'

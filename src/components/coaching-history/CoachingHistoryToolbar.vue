@@ -11,13 +11,24 @@ const {
   filteredAnalyses,
   formatMapLabel,
   getMapListViewImage,
+  pendingRecordings,
   theme,
 } = useCoachingHistory()
 </script>
 
 <template>
     <div class="flex-shrink-0 border-b border-white/[0.08] bg-[#111111]">
+      <div class="flex items-start justify-between gap-3 border-b border-white/[0.06] px-4 py-3">
+        <div>
+          <h1 class="text-sm font-bold text-white">Matches</h1>
+          <p class="mt-0.5 text-[10px] text-gray-500">Track each session from captured footage to completed coaching.</p>
+        </div>
+        <p class="flex-shrink-0 text-[10px] text-gray-500 tabular-nums">
+          {{ pendingRecordings.length }} before coaching · {{ allAnalyses.length }} coached
+        </p>
+      </div>
       <div class="flex flex-wrap items-center gap-2 px-4 py-2">
+        <span class="text-[9px] font-bold uppercase tracking-[0.14em] text-gray-600">Coached filters</span>
         <div class="flex gap-1 flex-wrap flex-1 min-w-0">
           <button
             v-for="f in RESULT_FILTERS"

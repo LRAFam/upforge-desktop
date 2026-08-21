@@ -40,6 +40,7 @@ describe('applyRecordingDismiss', () => {
       getById: (id: string) => (id === 'r1' ? rec : undefined),
       remove: (id: string) => { expect(id).toBe('r1'); (rec as { gone?: boolean }).gone = true },
       clearLocalPath: () => false,
+      setMatchStatsSyncPaused: () => false,
     }
     const result = applyRecordingDismiss(store, 'r1', {
       mode: 'remove',
@@ -67,6 +68,7 @@ describe('applyRecordingDismiss', () => {
       cloudArchived: true,
     } as PendingRecording
     let cleared = false
+    let syncPaused = false
     const store = {
       getById: () => rec,
       remove: () => { throw new Error('should not remove') },
@@ -74,6 +76,11 @@ describe('applyRecordingDismiss', () => {
         expect(id).toBe('r2')
         cleared = true
         rec.path = ''
+        return true
+      },
+      setMatchStatsSyncPaused: (id: string, paused: boolean) => {
+        expect(id).toBe('r2')
+        syncPaused = paused
         return true
       },
     }
@@ -90,6 +97,7 @@ describe('applyRecordingDismiss', () => {
       expect(result.deletedLocal).toBe(true)
     }
     expect(cleared).toBe(true)
+    expect(syncPaused).toBe(true)
   })
 
   it('localOnly rejects local-only recordings', () => {
@@ -97,6 +105,7 @@ describe('applyRecordingDismiss', () => {
       getById: () => ({ id: 'r3', path: '/x', clipsOnly: false } as PendingRecording),
       remove: () => {},
       clearLocalPath: () => false,
+      setMatchStatsSyncPaused: () => false,
     }
     const result = applyRecordingDismiss(store, 'r3', {
       mode: 'localOnly',

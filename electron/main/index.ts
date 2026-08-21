@@ -188,6 +188,7 @@ import { parseMatchHighlightsFromApi } from '../../src/lib/match-highlights'
 import { extractSpatialFromAnalysisPayload } from '../../src/lib/analysis-enrichment'
 import { desktopVodResultsUrl, isPrimaryGame } from '../../src/lib/games'
 import { RecordingsStore, type ClipOnlyReason, type PendingRecording } from './recordings-store'
+import { ProductionVodFixtureLibrary } from './production-vod-fixture'
 import {
   buildOrphanValorantTimeline,
   inspectOrphanRecordingTiming,
@@ -685,6 +686,7 @@ obsRecorder.onReplayClipSaved = (clipPath, trigger, meta) => {
 const performanceManager = new PerformanceManager()
 let uploadManager: UploadManager
 let recordingsStore: RecordingsStore
+const productionVodFixtures = new ProductionVodFixtureLibrary()
 let postMatchJobStore: PostMatchJobStore | null = null
 let postMatchWorker: PostMatchWorker | null = null
 let postMatchQueueUserId: number | null = null
@@ -2439,6 +2441,10 @@ async function refreshRecordingVodProbe(
 /** Poll Riot + VOD probe until analyse is unblocked — Valorant only; CS2/Deadlock are VOD-ready without demo. */
 const analysisReadinessRefreshGeneration = new Map<string, number>()
 
+function cancelAnalysisReadinessRefresh(recordingId: string): void {
+  analysisReadinessRefreshGeneration.delete(recordingId)
+}
+
 async function recoverOrphanedValorantMetadata(rec: PendingRecording): Promise<boolean> {
   if (rec.game !== 'valorant' || !rec.orphanedImport || !rec.timeline) return false
   if (hasRichMatchData(rec.timeline)) return true
@@ -2535,7 +2541,7 @@ function scheduleAnalysisReadinessRefresh(
     if (analysisReadinessRefreshGeneration.get(recordingId) !== generation) return
 
     let rec = recordingsStore.getById(recordingId)
-    if (!rec || rec.analysed || rec.pipelineStatus === 'uploading' || rec.pipelineStatus === 'analysing') {
+    if (!rec || rec.matchStatsSyncPaused || rec.analysed || rec.pipelineStatus === 'uploading' || rec.pipelineStatus === 'analysing') {
       release()
       return
     }
@@ -2546,9 +2552,23 @@ function scheduleAnalysisReadinessRefresh(
       await refreshRecordingVodProbe(rec)
     }
 
+    if (analysisReadinessRefreshGeneration.get(recordingId) !== generation) return
+    const refreshedAfterProbe = recordingsStore.getById(recordingId)
+    if (!refreshedAfterProbe || refreshedAfterProbe.matchStatsSyncPaused) {
+      release()
+      return
+    }
+    rec = refreshedAfterProbe
+
     if (rec.orphanedImport && rec.timeline && !hasRichMatchData(rec.timeline)) {
       await recoverOrphanedValorantMetadata(rec)
-      rec = recordingsStore.getById(recordingId) ?? rec
+      if (analysisReadinessRefreshGeneration.get(recordingId) !== generation) return
+      const refreshedAfterRecovery = recordingsStore.getById(recordingId)
+      if (!refreshedAfterRecovery || refreshedAfterRecovery.matchStatsSyncPaused) {
+        release()
+        return
+      }
+      rec = refreshedAfterRecovery
     }
 
     let readiness = getAnalysisReadiness(rec)
@@ -2573,6 +2593,12 @@ function scheduleAnalysisReadinessRefresh(
             maxWaitMs: 20_000,
             api: authManager.getToken() ? authManager.getApi() : null,
           })
+        }
+        if (analysisReadinessRefreshGeneration.get(recordingId) !== generation) return
+        const current = recordingsStore.getById(recordingId)
+        if (!current || current.matchStatsSyncPaused) {
+          release()
+          return
         }
         recordingsStore.updateTimeline(recordingId, rec.timeline)
         maybeCaptureRiotDnsEvidence()
@@ -2618,6 +2644,7 @@ function resumeStuckMatchStatsEnrichment(): void {
   let resumed = 0
   for (const rec of pending) {
     if (rec.analysed) continue
+    if (rec.matchStatsSyncPaused) continue
     if (rec.game !== 'valorant' && rec.game !== 'lol') continue
     if (rec.pipelineStatus === 'uploading' || rec.pipelineStatus === 'analysing') continue
     const readiness = getAnalysisReadiness(rec)
@@ -6586,6 +6613,47 @@ async function startApp(): Promise<void> {
     return probeLolLcu({ liveClient: lolLiveClientApi })
   })
 
+  const canUseProductionFixtures = () => Boolean(
+    is.dev
+    || settingsManager.get().devModeEnabled
+    || authManager.getUser()?.is_admin,
+  )
+  const productionFixtureError = (err: unknown): string => {
+    const apiMessage = (err as { response?: { data?: { message?: string } } })?.response?.data?.message
+    return apiMessage || (err instanceof Error ? err.message : 'Production fixture request failed')
+  }
+
+  ipcMain.handle('dev:production-vods:list', async () => {
+    if (!canUseProductionFixtures()) return { ok: false as const, error: 'Developer access required' }
+    try {
+      return { ok: true as const, archives: await productionVodFixtures.list(authManager) }
+    } catch (err) {
+      return { ok: false as const, error: productionFixtureError(err) }
+    }
+  })
+
+  ipcMain.handle('dev:production-vods:mount', async (_event, { archiveId }: { archiveId: string }) => {
+    if (!canUseProductionFixtures()) return { ok: false as const, error: 'Developer access required' }
+    try {
+      const fixture = await productionVodFixtures.mount(authManager, archiveId)
+      mainWindow?.webContents.send('recordings:updated')
+      return { ok: true as const, fixture }
+    } catch (err) {
+      return { ok: false as const, error: productionFixtureError(err) }
+    }
+  })
+
+  ipcMain.handle('dev:production-vods:active', () => ({
+    ok: true as const,
+    fixture: productionVodFixtures.getActive(),
+  }))
+
+  ipcMain.handle('dev:production-vods:unmount', () => {
+    const removed = productionVodFixtures.unmount()
+    if (removed) mainWindow?.webContents.send('recordings:updated')
+    return { ok: true as const, removed }
+  })
+
 
   ipcMain.handle('post-game:sync', () => getPostGameSessionSnapshot())
 
@@ -6645,6 +6713,8 @@ async function startApp(): Promise<void> {
     }
     scanForOrphanedRecordings()
     const pending = recordingsStore.getPending(linkedRiotFromAuth())
+    const fixture = productionVodFixtures.getActive()
+    if (fixture) pending.unshift(fixture)
 
     // Return immediately with whatever probe state is already cached — never
     // block the dashboard on ffmpeg. Any VOD whose probe is stale reads as
@@ -6678,6 +6748,8 @@ async function startApp(): Promise<void> {
     scanForOrphanedRecordings(true)
     prepareLegacyOrphanRecoveryRows()
     const all = recordingsStore.getAll(linkedRiotFromAuth())
+    const fixture = productionVodFixtures.getActive()
+    if (fixture) all.unshift(fixture)
     for (const rec of all) {
       if (rec.orphanedImport && rec.timeline && !hasRichMatchData(rec.timeline)) {
         scheduleAnalysisReadinessRefresh(rec.id, rec.game)
@@ -6698,6 +6770,13 @@ async function startApp(): Promise<void> {
   })
 
   ipcMain.handle('recordings:retry-match-stats', async (_e, { id }: { id: string }) => {
+    if (productionVodFixtures.getById(id)) {
+      return {
+        ok: false as const,
+        error: 'Production fixtures are read-only',
+        analysisReadiness: null,
+      }
+    }
     const recording = recordingsStore.getById(id)
     if (!recording) {
       return { ok: false as const, error: 'Recording not found', analysisReadiness: null }
@@ -6709,6 +6788,8 @@ async function startApp(): Promise<void> {
         analysisReadiness: getAnalysisReadiness(recording),
       }
     }
+
+    recordingsStore.setMatchStatsSyncPaused(id, false)
 
     if (recording.orphanedImport && recording.timeline) {
       await refreshRecordingVodProbe(recording)
@@ -6756,6 +6837,9 @@ async function startApp(): Promise<void> {
   })
 
   ipcMain.handle('recordings:analyse', async (_e, { id }: { id: string }) => {
+    if (productionVodFixtures.getById(id)) {
+      return { error: 'Production fixtures are read-only', code: 'production_fixture_read_only' }
+    }
     let recording = recordingsStore.getById(id)
     if (!recording) {
       return { error: 'Recording not found', code: 'not_found' }
@@ -7043,6 +7127,9 @@ async function startApp(): Promise<void> {
   })
 
   ipcMain.handle('recordings:save-to-cloud', async (e, { id }: { id: string }) => {
+    if (productionVodFixtures.getById(id)) {
+      return { ok: false as const, error: 'Production fixtures are already stored in production and are read-only' }
+    }
     const recording = recordingsStore.getById(id)
     if (!recording) return { ok: false as const, error: 'Recording not found' }
     if (recording.cloudArchived && recording.archiveId) {
@@ -7106,9 +7193,11 @@ async function startApp(): Promise<void> {
     getMainWindow: () => mainWindow,
     logActivity,
     abortInFlightAnalysisForRecording,
+    cancelMatchStatsSync: cancelAnalysisReadinessRefresh,
     refreshReplayTimelineForRecording,
     extractMatchClips,
     enrichTimelineSpatial,
+    productionVodFixtures,
   })
 
   // Register global shortcut to show/focus window

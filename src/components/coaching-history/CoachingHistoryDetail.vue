@@ -5,6 +5,12 @@ import TacticalIntelBrief from '../TacticalIntelBrief.vue'
 import MatchRecapPanel from '../MatchRecapPanel.vue'
 import TimingComparisonPanel from '../TimingComparisonPanel.vue'
 import DuelMomentCards from '../analysis/DuelMomentCards.vue'
+import { canWatchRawRecording } from '../../lib/recording-demo-status'
+import {
+  pendingMatchActionLabel,
+  pendingMatchLifecycleState,
+  pendingMatchStatusLabel,
+} from '../../lib/match-lifecycle'
 
 const {
   allAnalyses,
@@ -31,7 +37,12 @@ const {
   getRoleColor,
   isDisplayableGameMode,
   openCoachNotes,
+  openPendingFootage,
   openTimeline,
+  managePendingRecording,
+  pendingBusyId,
+  pendingMessage,
+  runPendingPrimaryAction,
   seekAnalysisMoment,
   scoreColor,
   scoreGrade,
@@ -39,11 +50,17 @@ const {
   scoreLabel,
   selectedAnalysis,
   selectedId,
+  selectedRecording,
+  selectedRecordingId,
   timelineLoadingId,
   topAgent,
   topMap,
   winRate,
 } = useCoachingHistory()
+
+const selectedRecordingCanPlay = computed(() =>
+  selectedRecording.value ? canWatchRawRecording(selectedRecording.value) : false,
+)
 
 const showAlternateScoreline = computed(() => {
   const a = selectedAnalysis.value
@@ -97,7 +114,7 @@ const statStrip = computed(() => {
         class="history-detail flex min-h-0 flex-1 flex-col bg-[#0e0e0e]"
         :class="selectedId == null ? 'max-lg:hidden' : ''"
       >
-        <div v-if="selectedId" class="lg:hidden flex-shrink-0 px-3 py-2 border-b border-white/[0.08]">
+        <div v-if="selectedId || selectedRecordingId" class="lg:hidden flex-shrink-0 px-3 py-2 border-b border-white/[0.08]">
           <button
             type="button"
             class="flex items-center gap-1.5 text-xs text-gray-400 hover:text-white"
@@ -112,8 +129,80 @@ const statStrip = computed(() => {
 
         <div class="flex-1 overflow-y-auto scrollbar-hide">
           <div class="w-full px-5 py-4 pb-24">
+          <div v-if="selectedRecording" class="space-y-3">
+            <div class="overflow-hidden rounded-xl border border-white/[0.10] bg-[#131313]">
+              <div class="flex items-start gap-4 border-b border-white/[0.07] p-4">
+                <div
+                  class="h-16 w-16 flex-shrink-0 overflow-hidden rounded-lg border border-white/10 bg-black/50"
+                  :style="selectedRecording.agent ? { boxShadow: `inset 0 0 0 1px ${getAgentColor(selectedRecording.agent)}33` } : {}"
+                >
+                  <img
+                    v-if="selectedRecording.agent && getAgentImage(selectedRecording.agent)"
+                    :src="getAgentImage(selectedRecording.agent)"
+                    class="h-full w-full object-contain p-1.5"
+                    alt=""
+                  />
+                  <img
+                    v-else-if="selectedRecording.map && getMapListViewImage(selectedRecording.map)"
+                    :src="getMapListViewImage(selectedRecording.map)"
+                    class="h-full w-full object-cover opacity-70"
+                    alt=""
+                  />
+                </div>
+                <div class="min-w-0 flex-1">
+                  <p class="text-[9px] font-bold uppercase tracking-[0.18em] text-amber-400/80">
+                    {{ selectedRecording.productionFixture ? 'Production fixture | Before coaching' : 'Before coaching' }}
+                  </p>
+                  <h2 class="mt-1 truncate text-lg font-black text-white">{{ selectedRecording.agent || 'Unknown player' }}</h2>
+                  <p class="truncate text-xs text-gray-400">{{ formatMapLabel(selectedRecording.map) || 'Unknown map' }}</p>
+                  <p class="mt-1 text-[10px] text-gray-600">{{ new Date(selectedRecording.recordedAt).toLocaleString() }}</p>
+                </div>
+              </div>
+
+              <div class="space-y-3 p-4">
+                <div>
+                  <p
+                    class="text-sm font-semibold"
+                    :class="pendingMatchLifecycleState(selectedRecording) === 'action_required' ? 'text-amber-300' : 'text-gray-300'"
+                  >{{ pendingMatchStatusLabel(selectedRecording) }}</p>
+                  <p class="mt-1 text-xs leading-relaxed text-gray-500">
+                    {{ selectedRecording.analysisReadiness?.message || 'UpForge is preparing this match for coaching.' }}
+                  </p>
+                  <p v-if="selectedRecording.productionFixture" class="mt-2 text-[10px] leading-relaxed text-amber-300/75">
+                    Read-only production data. Analyse, sync, and delete actions do not change production.
+                  </p>
+                </div>
+
+                <p v-if="pendingMessage" class="rounded-lg border border-white/[0.08] bg-white/[0.025] px-3 py-2 text-xs text-gray-300">
+                  {{ pendingMessage }}
+                </p>
+
+                <div class="flex flex-wrap gap-2 border-t border-white/[0.07] pt-3">
+                  <button
+                    v-if="pendingMatchActionLabel(selectedRecording)"
+                    type="button"
+                    class="rounded-lg bg-red-500 px-3 py-2 text-xs font-bold text-white transition-colors hover:bg-red-400 disabled:opacity-50"
+                    :disabled="pendingBusyId === selectedRecording.id"
+                    @click="runPendingPrimaryAction(selectedRecording)"
+                  >{{ pendingBusyId === selectedRecording.id ? 'Working…' : pendingMatchActionLabel(selectedRecording) }}</button>
+                  <button
+                    v-if="selectedRecordingCanPlay"
+                    type="button"
+                    class="rounded-lg border border-white/[0.12] bg-white/[0.03] px-3 py-2 text-xs font-semibold text-gray-300 transition-colors hover:bg-white/[0.06] hover:text-white"
+                    @click="openPendingFootage(selectedRecording)"
+                  >Watch footage</button>
+                  <button
+                    type="button"
+                    class="rounded-lg px-3 py-2 text-xs font-semibold text-gray-500 transition-colors hover:bg-white/[0.04] hover:text-gray-300"
+                    @click="managePendingRecording(selectedRecording)"
+                  >Manage footage</button>
+                </div>
+              </div>
+            </div>
+          </div>
+
           <!-- Overview when nothing selected (desktop) -->
-          <div v-if="!selectedAnalysis" class="space-y-4">
+          <div v-else-if="!selectedAnalysis" class="space-y-4">
             <div>
               <p class="text-[10px] font-black uppercase tracking-[0.24em] text-red-400/80">Archive overview</p>
               <p class="mt-1 text-sm text-gray-500">Select a session from the list to view coaching detail and open the VOD.</p>
@@ -129,7 +218,7 @@ const statStrip = computed(() => {
                 <div class="text-[8px] text-gray-600 mt-0.5 uppercase tracking-wide">Win rate</div>
               </div>
               <div class="dash-panel px-2 py-2.5 text-center">
-                <div class="text-sm font-black tabular-nums" :class="avgScore !== null ? scoreColor(avgScore) : 'text-gray-600'">{{ avgScore != null ? avgScore * 10 : '—' }}</div>
+                <div class="text-sm font-black tabular-nums" :class="avgScore !== null ? scoreColor(avgScore) : 'text-gray-600'">{{ avgScore != null ? avgScore * 10 : '-' }}</div>
                 <div class="text-[8px] text-gray-600 mt-0.5 uppercase tracking-wide">Avg score</div>
               </div>
               <div class="dash-panel px-2 py-2.5 text-center">

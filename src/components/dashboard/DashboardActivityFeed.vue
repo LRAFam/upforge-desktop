@@ -6,6 +6,7 @@ import { recordingMapLabel, recordingPlayerLabel } from '../../lib/recording-dis
 import GameBrandIcon from './GameBrandIcon.vue'
 import type { PrimaryGame } from '../../lib/games'
 import { analysisCompleteBadge, inferAnalysisGame } from '../../lib/analysis-display'
+import { isRecordingStatsSyncActive } from '../../lib/recording-stats-sync'
 import upforgeIcon from '../../assets/upforge-icon.webp'
 
 const {
@@ -125,9 +126,7 @@ const entries = computed<FeedEntry[]>(() => {
 
   for (const r of pendingRecordings.value) {
     const game = (r.game ?? inferRecordingGame(r.map ?? '', r.agent ?? '', r.game)) as PrimaryGame
-    const syncing = r.analysisReadiness?.state === 'syncing'
-      || r.analysisReadiness?.state === 'waiting_match_data'
-      || r.analysisReadiness?.state === 'finalizing'
+    const syncing = isRecordingStatsSyncActive(r)
 
     if (r.pipelineStatus === 'uploading' || r.pipelineStatus === 'analysing') {
       merged.push({

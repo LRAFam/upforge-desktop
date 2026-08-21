@@ -79,6 +79,15 @@ export interface PendingRecording {
   autoAnalyseRequested?: boolean
   /** Explicit user request to analyse this recording after active match capture releases resources. */
   manualAnalyseRequested?: boolean
+  /** User deleted the local footage, so automatic Riot stats polling stays paused until Retry sync. */
+  matchStatsSyncPaused?: boolean
+  /** Session-only, read-only archive mounted from the production API for developer testing. */
+  productionFixture?: {
+    source: 'production_archive'
+    readOnly: true
+    analysisState: 'not_analysed' | 'queued' | 'analysing' | 'failed' | 'analysed'
+    missingFields: string[]
+  }
 }
 
 export type NewRecording = Omit<PendingRecording, 'id' | 'recordedAt' | 'analysed'>
@@ -615,6 +624,15 @@ export class RecordingsStore {
     if (!rec) return false
     rec.path = ''
     delete rec.fileSizeBytes
+    this.persist()
+    return true
+  }
+
+  setMatchStatsSyncPaused(id: string, paused: boolean): boolean {
+    const rec = this.recordings.find(r => r.id === id)
+    if (!rec) return false
+    if (paused) rec.matchStatsSyncPaused = true
+    else delete rec.matchStatsSyncPaused
     this.persist()
     return true
   }

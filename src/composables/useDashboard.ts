@@ -14,6 +14,7 @@ import { usePrimaryGame } from './usePrimaryGame'
 import { gameTheme, type GameTheme } from '../lib/game-themes'
 import { openAccountLinkSettings } from '../lib/account-link-navigation'
 import {
+  invalidateGameAnalysesCache,
   loadGameAnalyses,
   openGameHistoryWeb,
   openGameAnalyze,
@@ -989,6 +990,7 @@ function createDashboard() {
   }
 
   function recAnalysisStatusShort(rec: PendingRecording) {
+    if (rec.matchStatsSyncPaused) return 'Stats sync paused'
     if (
       (rec.game === 'cs2' || rec.game === 'deadlock')
       && demoDownloadProgress.value
@@ -1506,9 +1508,10 @@ function createDashboard() {
       applyFromSettings(s)
     }))
     ipcCleanup.push(window.api.on('dashboard:refresh', async () => {
+      invalidateGameAnalysesCache(primaryGame.value)
       await refreshProfile()
       await loadSkillProfileFromSettings()
-      if (isDeadlock.value) await loadAnalyses()
+      await loadAnalyses()
     }))
     ipcCleanup.push(window.api.on('dashboard:last-insight', (...args: unknown[]) => {
       lastInsight.value = args[0] as typeof lastInsight.value

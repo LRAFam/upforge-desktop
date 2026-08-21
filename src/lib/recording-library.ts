@@ -1,9 +1,8 @@
 import type { PendingRecording } from '../env.d.ts'
-import { canWatchRawRecording } from './recording-demo-status'
-import { canRetryRiotMatchStats } from './match-stats-retry'
 import { recordingStatusBadge } from './recording-status'
+import { pendingMatchPrimaryAction } from './match-lifecycle'
 
-export type RecordingLibraryChip = 'all' | 'needs_attention' | 'ready' | 'analysed' | 'cloud'
+export type RecordingLibraryChip = 'all' | 'action_required' | 'ready' | 'analysed' | 'cloud'
 export type RecordingDateGroupLabel = 'Today' | 'Yesterday' | 'This Week' | 'This Month' | 'Older'
 export interface RecordingDateGroup {
   label: RecordingDateGroupLabel
@@ -11,26 +10,24 @@ export interface RecordingDateGroup {
 }
 export type RecordingDeleteChoice = 'remove' | 'localOnly' | 'cancel'
 
+/** True only when the user can take a useful action now. Background work is excluded. */
+export function recordingNeedsUserAction(rec: PendingRecording): boolean {
+  return pendingMatchPrimaryAction(rec) != null
+}
+
 export function recordingNeedsAttention(rec: PendingRecording): boolean {
-  if (rec.lastAnalysisError) return true
-  const badge = recordingStatusBadge(rec)
-  if (badge.label === 'Failed') return true
-  if (badge.label === 'Syncing') return true
-  if (!canWatchRawRecording(rec) && rec.analysisId == null) return true
-  if (canRetryRiotMatchStats(rec) && !rec.analysisReadiness?.ready) return true
-  return false
+  return recordingNeedsUserAction(rec)
 }
 
 export function matchesRecordingLibraryChip(rec: PendingRecording, chip: RecordingLibraryChip): boolean {
   if (chip === 'all') return true
-  if (chip === 'needs_attention') return recordingNeedsAttention(rec)
+  if (chip === 'action_required') return recordingNeedsUserAction(rec)
   if (chip === 'analysed') return recordingStatusBadge(rec).label === 'Analysed'
   if (chip === 'cloud') return recordingStatusBadge(rec).label === 'Cloud'
   if (chip === 'ready') {
     return (
       rec.analysisId == null
       && !rec.pipelineStatus
-      && !recordingNeedsAttention(rec)
       && Boolean(rec.analysisReadiness?.ready)
     )
   }

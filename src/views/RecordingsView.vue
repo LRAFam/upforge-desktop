@@ -1,11 +1,10 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import type { PendingRecording } from '../env.d.ts'
 import { useGameTheme } from '../composables/useGameTheme'
 import { openAnalysisVodReview } from '../lib/open-vod-review'
 import { canOpenTimeline, canWatchRawRecording } from '../lib/recording-demo-status'
-import { canRetryRiotMatchStats } from '../lib/match-stats-retry'
 import {
   recordingGameTitle,
   recordingMapImage,
@@ -27,6 +26,7 @@ import {
 import { recordingStatusBadge } from '../lib/recording-status'
 
 const router = useRouter()
+const route = useRoute()
 const { theme, cssVars } = useGameTheme()
 
 const recordings = ref<PendingRecording[]>([])
@@ -35,7 +35,13 @@ const busyId = ref<string | null>(null)
 const message = ref<string | null>(null)
 const gameFilter = ref<string>('all')
 const obsConnected = ref<boolean | null>(null)
-const statusChip = ref<RecordingLibraryChip>('all')
+const RECORDING_LIBRARY_CHIPS = new Set<RecordingLibraryChip>(['all', 'action_required', 'ready', 'analysed', 'cloud'])
+function routeStatusChip(value: unknown): RecordingLibraryChip {
+  return typeof value === 'string' && RECORDING_LIBRARY_CHIPS.has(value as RecordingLibraryChip)
+    ? value as RecordingLibraryChip
+    : 'all'
+}
+const statusChip = ref<RecordingLibraryChip>(routeStatusChip(route.query.status))
 const recordingsBytes = ref(0)
 const collapsedGroups = ref<Set<string>>(new Set())
 const showAllByGroup = ref<Set<string>>(new Set())
@@ -45,7 +51,7 @@ const pendingDelete = ref<{ rec: PendingRecording; variant: 'cloud' } | null>(nu
 
 const statusChips: { label: string; value: RecordingLibraryChip }[] = [
   { label: 'All', value: 'all' },
-  { label: 'Needs attention', value: 'needs_attention' },
+  { label: 'Action required', value: 'action_required' },
   { label: 'Ready', value: 'ready' },
   { label: 'Analysed', value: 'analysed' },
   { label: 'Cloud', value: 'cloud' },
@@ -90,6 +96,10 @@ watch(dateGroups, (groups) => {
   groups.slice(1).forEach(g => next.add(g.label))
   collapsedGroups.value = next
 }, { immediate: true })
+
+watch(() => route.query.status, (status) => {
+  statusChip.value = routeStatusChip(status)
+})
 
 function toggleGroup(label: string) {
   const next = new Set(collapsedGroups.value)
@@ -137,7 +147,7 @@ async function openBest(rec: PendingRecording) {
       const ok = await openAnalysisVodReview(router, rec.analysisId)
       if (!ok) message.value = 'Timeline data not available for this match.'
     } catch {
-      message.value = 'Could not open this recording — try again.'
+      message.value = 'Could not open this recording. Try again.'
     } finally {
       busyId.value = null
     }
@@ -150,49 +160,9 @@ async function openBest(rec: PendingRecording) {
   message.value = 'This recording is no longer available locally or in the cloud.'
 }
 
-async function analyse(rec: PendingRecording) {
-  busyId.value = rec.id
-  message.value = null
-  try {
-    if (!rec.analysisReadiness?.ready && canRetryRiotMatchStats(rec)) {
-      const sync = await window.api.recordings.retryMatchStats(rec.id)
-      await load()
-      if (!sync?.ok) {
-        message.value = sync?.error
-          ?? 'Could not load Riot match stats — open Riot Client / Valorant and try again.'
-        return
-      }
-      message.value = 'Match stats synced — tap Analyse again for coaching.'
-      return
-    }
-    const result = await window.api.recordings.analyse(rec.id) as {
-      ok?: boolean
-      error?: string
-      code?: string
-      state?: string
-    }
-    if (result?.code === 'not_ready') {
-      message.value = result.error ?? 'Match stats still syncing…'
-      await load()
-      return
-    }
-    if (result?.error) message.value = result.error
-    else {
-      await window.api.app.refreshDashboard?.()
-      router.push('/dashboard')
-    }
-  } catch {
-    message.value = 'Could not start analysis — try again.'
-  } finally {
-    busyId.value = null
-  }
+function continueInMatches(rec: PendingRecording) {
+  void router.push({ path: '/history', query: { recording: rec.id } })
 }
-
-const canAnalyse = (rec: PendingRecording) =>
-  rec.analysisId == null
-  && !rec.pipelineStatus
-  && rec.pipelineDeferReason !== 'recording'
-  && (Boolean(rec.analysisReadiness?.ready) || canRetryRiotMatchStats(rec))
 
 function attentionHint(rec: PendingRecording): string | null {
   if (!recordingNeedsAttention(rec)) return null
@@ -251,11 +221,11 @@ async function runDismiss(id: string, mode: 'remove' | 'localOnly') {
     }
     const freed = result.freedBytes ?? 0
     message.value = freed > 0
-      ? `Deleted — freed ${formatRecordingBytes(freed)}.`
-      : (mode === 'localOnly' ? 'Local file removed — still available from cloud.' : 'Removed from library.')
+      ? `Deleted. Freed ${formatRecordingBytes(freed)}.${mode === 'localOnly' ? ' Automatic stats sync paused.' : ''}`
+      : (mode === 'localOnly' ? 'Local file removed. Cloud copy kept and automatic stats sync paused.' : 'Removed from library.')
     await load()
   } catch {
-    message.value = 'Could not delete recording — try again.'
+    message.value = 'Could not delete recording. Try again.'
   } finally {
     busyId.value = null
     pendingDelete.value = null
@@ -306,12 +276,10 @@ onUnmounted(() => { cleanup?.() })
         <div class="absolute -right-8 top-0 h-24 w-24 rounded-full blur-3xl pointer-events-none" :class="theme.accentBg" />
         <div class="relative flex items-center justify-between gap-3">
           <div class="min-w-0">
-            <p class="text-[10px] font-black uppercase tracking-[0.28em]" :class="theme.accentMuted">Library</p>
-            <h1 class="text-lg font-black tracking-tight text-white">Recordings</h1>
-            <p class="text-[11px] text-gray-500 mt-0.5">Every VOD you've captured — watch, review, or analyse</p>
-            <p class="text-[10px] text-gray-600 mt-1">
-              Local = on your PC · Cloud = backed up · Analysed = coaching ready
-            </p>
+            <p class="text-[10px] font-black uppercase tracking-[0.28em]" :class="theme.accentMuted">Storage</p>
+            <h1 class="text-lg font-black tracking-tight text-white">Footage</h1>
+            <p class="text-[11px] text-gray-500 mt-0.5">Watch and manage the local or cloud video attached to your matches.</p>
+            <p class="text-[10px] text-gray-600 mt-1">Use Matches to track coaching status and run analysis.</p>
           </div>
           <span class="hidden sm:inline-flex rounded-xl border border-white/[0.08] bg-white/[0.03] px-3 py-2 text-xs font-semibold text-gray-300">
             {{ chipFiltered.length }} {{ chipFiltered.length === 1 ? 'recording' : 'recordings' }}
@@ -379,10 +347,10 @@ onUnmounted(() => { cleanup?.() })
     <div class="flex-1 scroll-col px-4 py-4">
       <p v-if="message" class="mb-3 rounded-lg border border-amber-500/20 bg-amber-500/[0.06] px-3 py-2 text-xs text-amber-200">{{ message }}</p>
 
-      <div v-if="loading" class="flex h-40 items-center justify-center text-sm text-gray-500">Loading recordings…</div>
+      <div v-if="loading" class="flex h-40 items-center justify-center text-sm text-gray-500">Loading footage…</div>
 
       <div v-else-if="!filtered.length" class="flex h-56 flex-col items-center justify-center text-center gap-2">
-        <p class="text-sm font-semibold text-gray-400">No recordings yet</p>
+        <p class="text-sm font-semibold text-gray-400">No footage yet</p>
         <p class="text-xs text-gray-600 max-w-sm">
           {{ obsConnected === false
             ? 'OBS is not connected. Set up recording so match VODs appear here.'
@@ -399,7 +367,7 @@ onUnmounted(() => { cleanup?.() })
       </div>
 
       <div v-else-if="!chipFiltered.length" class="flex h-40 flex-col items-center justify-center text-center gap-1">
-        <p class="text-sm font-semibold text-gray-400">No recordings match this filter</p>
+        <p class="text-sm font-semibold text-gray-400">No footage matches this filter</p>
         <p class="text-xs text-gray-600">Try another status chip or clear the game filter.</p>
       </div>
 
@@ -454,6 +422,10 @@ onUnmounted(() => { cleanup?.() })
                       class="inline-flex items-center rounded-full px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider ring-1"
                       :class="recordingStatusBadge(rec).class"
                     >{{ recordingStatusBadge(rec).label }}</span>
+                    <span
+                      v-if="rec.productionFixture"
+                      class="rounded-md border border-amber-500/30 bg-black/60 px-1.5 py-0.5 text-[8px] font-bold uppercase tracking-wider text-amber-300"
+                    >Production fixture</span>
                   </div>
                   <div class="absolute right-3 top-3 rounded-full bg-black/50 px-2 py-0.5 text-[9px] font-medium text-gray-300 capitalize">
                     {{ recordingGameTitle(rec) }}
@@ -487,11 +459,11 @@ onUnmounted(() => { cleanup?.() })
                     </div>
                     <div v-if="!selecting" class="flex flex-shrink-0 items-center gap-1.5">
                       <button
-                        v-if="canAnalyse(rec)"
+                        v-if="recordingNeedsAttention(rec)"
                         class="rounded-lg bg-white/[0.06] px-2.5 py-1 text-[11px] font-semibold text-gray-200 transition-colors hover:bg-white/[0.12] disabled:opacity-50"
                         :disabled="busyId === rec.id"
-                        @click.stop="analyse(rec)"
-                      >{{ rec.analysisReadiness?.ready ? 'Analyse' : 'Retry sync' }}</button>
+                        @click.stop="continueInMatches(rec)"
+                      >Continue in Matches</button>
                       <button
                         class="rounded-lg px-2.5 py-1 text-[11px] font-bold transition-colors disabled:opacity-50"
                         :class="`${theme.accentBg} ${theme.accentText} ring-1 ${theme.accentBorder}`"
@@ -563,7 +535,7 @@ onUnmounted(() => { cleanup?.() })
             This recording is still uploading or analysing. Deleting will abort the current process.
           </template>
           <template v-else>
-            This recording is backed up to the cloud. Choose what to remove from this PC.
+            This recording is backed up to the cloud. Deleting the local copy also pauses automatic stats sync; Retry sync can restart it later.
           </template>
         </p>
         <div class="mt-4 flex flex-col gap-2">

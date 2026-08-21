@@ -133,6 +133,11 @@ const api = {
   dev: {
     simulateGame: (game?: string, durationMs?: number) =>
       ipcRenderer.invoke('dev:simulate-game', { game, durationMs }),
+    listProductionVods: () => ipcRenderer.invoke('dev:production-vods:list'),
+    mountProductionVod: (archiveId: string) =>
+      ipcRenderer.invoke('dev:production-vods:mount', { archiveId }),
+    getActiveProductionVod: () => ipcRenderer.invoke('dev:production-vods:active'),
+    unmountProductionVod: () => ipcRenderer.invoke('dev:production-vods:unmount'),
     getDiagnostics: () => ipcRenderer.invoke('dev:get-diagnostics'),
   },
   window: {

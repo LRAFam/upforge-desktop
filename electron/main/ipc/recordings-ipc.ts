@@ -38,6 +38,7 @@ import { resolveCs2LocalPlayerName } from '../cs2-player-identity'
 import { attachDemoFileToRecording } from '../recording-demo-attach'
 import { getAnalysisReadiness } from '../analysis-readiness'
 import type { ClipStore } from '../clip-store'
+import type { ProductionVodFixtureLibrary } from '../production-vod-fixture'
 
 export interface RecordingsIpcDeps {
   recordingsStore: RecordingsStore
@@ -48,6 +49,7 @@ export interface RecordingsIpcDeps {
   getMainWindow: () => BrowserWindow | null
   logActivity: (message: string) => void
   abortInFlightAnalysisForRecording: (recordingId: string) => { ok: boolean; error?: string }
+  cancelMatchStatsSync: (recordingId: string) => void
   refreshReplayTimelineForRecording: (
     recordingId: string,
     options?: { notifyActivity?: boolean },
@@ -59,6 +61,7 @@ export interface RecordingsIpcDeps {
     game?: string,
   ) => Promise<void>
   enrichTimelineSpatial: (timeline: MatchData) => void
+  productionVodFixtures: ProductionVodFixtureLibrary
 }
 
 export function setupRecordingsHandlers(ipcMain: IpcMain, deps: RecordingsIpcDeps): void {
@@ -71,9 +74,11 @@ export function setupRecordingsHandlers(ipcMain: IpcMain, deps: RecordingsIpcDep
     getMainWindow,
     logActivity,
     abortInFlightAnalysisForRecording,
+    cancelMatchStatsSync,
     refreshReplayTimelineForRecording,
     extractMatchClips,
     enrichTimelineSpatial,
+    productionVodFixtures,
   } = deps
 
   ipcMain.handle('recordings:abort-in-flight', (_e, { id }: { id: string }) => {
@@ -90,6 +95,15 @@ export function setupRecordingsHandlers(ipcMain: IpcMain, deps: RecordingsIpcDep
         mode = 'remove',
       }: { id: string; deleteLocal?: boolean; mode?: 'remove' | 'localOnly' },
     ) => {
+      if (productionVodFixtures.unmount(id)) {
+        getMainWindow()?.webContents.send('recordings:updated')
+        return {
+          ok: true as const,
+          deletedLocal: false,
+          freedBytes: 0,
+          removedFromLibrary: true,
+        }
+      }
       const recording = recordingsStore.getById(id)
       if (
         recording
@@ -106,6 +120,7 @@ export function setupRecordingsHandlers(ipcMain: IpcMain, deps: RecordingsIpcDep
       })
 
       if (result.ok) {
+        cancelMatchStatsSync(id)
         if (result.freedBytes > 0) {
           log.info(`[Recordings] Dismiss freed ${result.freedBytes} bytes (mode=${mode}) id=${id}`)
         }
@@ -361,7 +376,7 @@ export function setupRecordingsHandlers(ipcMain: IpcMain, deps: RecordingsIpcDep
   })
 
   ipcMain.handle('recordings:refresh-playback', async (_e, { id }: { id: string }) => {
-    const recording = recordingsStore.getById(id)
+    const recording = recordingsStore.getById(id) ?? productionVodFixtures.getById(id)
     if (!recording) return null
     if (recording.analysisId != null) {
       const url = await fetchRecordingPlaybackUrl(authManager, recording.analysisId)
@@ -406,13 +421,13 @@ export function setupRecordingsHandlers(ipcMain: IpcMain, deps: RecordingsIpcDep
   })
 
   ipcMain.handle('recordings:get-timeline', async (_e, { id }: { id: string }) => {
-    const recording = recordingsStore.getById(id)
+    const recording = recordingsStore.getById(id) ?? productionVodFixtures.getById(id)
     if (!recording) return null
     const tl = recording.timeline
     if (tl) {
       recomputeTimelineVideoOffsets(tl)
       enrichTimelineSpatial(tl)
-      recordingsStore.updateTimeline(id, tl)
+      if (!recording.productionFixture) recordingsStore.updateTimeline(id, tl)
     }
     const localPath = resolveLocalRecordingFile(recording.path)
     const cloudBacked = Boolean(

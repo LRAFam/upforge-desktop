@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { useCoachingHistory } from '../../composables/useCoachingHistory'
+import { pendingMatchLifecycleState, pendingMatchStatusLabel } from '../../lib/match-lifecycle'
 
 const {
   allAnalyses,
@@ -13,10 +14,14 @@ const {
   getRankIconUrl,
   groupedAnalyses,
   loading,
+  pendingLoading,
+  pendingRecordings,
+  selectPendingRecording,
   scoreGrade,
   scoreGradeBadgeClass,
   selectSession,
   selectedId,
+  selectedRecordingId,
 } = useCoachingHistory()
 </script>
 
@@ -26,18 +31,76 @@ const {
         :class="selectedId != null ? 'max-lg:hidden' : ''"
       >
         <div class="flex-1 overflow-y-auto px-2.5 py-2.5 scrollbar-hide">
-          <div v-if="loading" class="space-y-2">
+          <div v-if="loading && pendingLoading" class="space-y-2">
             <div v-for="i in 6" :key="i" class="h-14 rounded-xl bg-white/[0.02] animate-pulse border border-white/[0.07]" />
           </div>
 
-          <div v-else-if="filteredAnalyses.length === 0" class="flex items-center justify-center py-12 px-2">
+          <div v-else-if="filteredAnalyses.length === 0 && pendingRecordings.length === 0" class="flex items-center justify-center py-12 px-2">
             <div class="text-center">
               <p class="text-sm font-semibold text-gray-300">{{ allAnalyses.length === 0 ? 'No sessions yet' : 'No matches for this filter' }}</p>
-              <p class="mt-1 text-xs text-gray-600">Record or upload a match to build your archive.</p>
+              <p class="mt-1 text-xs text-gray-600">Record a match to start its coaching journey.</p>
             </div>
           </div>
 
           <div v-else class="space-y-3">
+            <section v-if="pendingRecordings.length" class="space-y-1">
+              <div class="flex items-center gap-2 px-1 py-0.5">
+                <span class="text-[9px] font-bold uppercase tracking-[0.18em] text-amber-400/80">Before coaching</span>
+                <span class="text-[9px] text-gray-700 tabular-nums">{{ pendingRecordings.length }}</span>
+              </div>
+
+              <button
+                v-for="rec in pendingRecordings"
+                :key="rec.id"
+                type="button"
+                class="history-list-row w-full rounded-xl border px-2 py-2 text-left transition-colors"
+                :class="selectedRecordingId === rec.id
+                  ? 'border-amber-500/35 bg-amber-500/[0.07]'
+                  : 'border-white/[0.07] bg-white/[0.02] hover:border-white/[0.12] hover:bg-white/[0.04]'"
+                @click="selectPendingRecording(rec)"
+              >
+                <div class="flex items-center gap-2">
+                  <div class="history-list-thumb relative h-11 w-11 flex-shrink-0 overflow-hidden rounded-lg border border-white/10 bg-black/50">
+                    <img
+                      v-if="rec.agent && getAgentImage(rec.agent)"
+                      :src="getAgentImage(rec.agent)"
+                      class="h-full w-full object-contain p-1"
+                      alt=""
+                      loading="lazy"
+                      decoding="async"
+                    />
+                    <img
+                      v-else-if="rec.map && getMapListViewImage(rec.map)"
+                      :src="getMapListViewImage(rec.map)"
+                      class="absolute inset-0 h-full w-full object-cover opacity-60"
+                      alt=""
+                      loading="lazy"
+                      decoding="async"
+                    />
+                  </div>
+                  <div class="min-w-0 flex-1">
+                    <div class="flex min-w-0 items-center gap-1">
+                      <span class="truncate text-[12px] font-bold text-white">{{ rec.agent || 'Unknown' }}</span>
+                      <span class="flex-shrink-0 text-gray-700">·</span>
+                      <span class="truncate text-[11px] text-gray-400">{{ formatMapLabel(rec.map) || 'Unknown map' }}</span>
+                    </div>
+                    <p class="mt-0.5 truncate text-[10px]" :class="pendingMatchLifecycleState(rec) === 'action_required' ? 'text-amber-300/90' : 'text-gray-600'">
+                      {{ pendingMatchStatusLabel(rec) }}
+                      <span v-if="rec.productionFixture" class="text-amber-400/80"> | Production fixture</span>
+                    </p>
+                  </div>
+                  <span
+                    class="h-2 w-2 flex-shrink-0 rounded-full"
+                    :class="pendingMatchLifecycleState(rec) === 'action_required'
+                      ? 'bg-amber-400'
+                      : pendingMatchLifecycleState(rec) === 'analysing' || pendingMatchLifecycleState(rec) === 'uploading'
+                        ? 'bg-blue-400'
+                        : 'bg-gray-700'"
+                  />
+                </div>
+              </button>
+            </section>
+
             <section v-for="group in groupedAnalyses" :key="group.label" class="space-y-1">
               <div class="flex items-center gap-2 px-1 py-0.5">
                 <span class="text-[9px] font-bold uppercase tracking-[0.18em] text-gray-600">{{ group.label }}</span>
@@ -85,7 +148,7 @@ const {
                     <div class="flex items-center gap-1 min-w-0">
                       <span class="text-[12px] font-bold text-white truncate">{{ a.agent || 'Unknown' }}</span>
                       <span class="text-gray-700 flex-shrink-0">·</span>
-                      <span class="text-[11px] text-gray-400 truncate">{{ formatMapLabel(a.map) || '—' }}</span>
+                      <span class="text-[11px] text-gray-400 truncate">{{ formatMapLabel(a.map) || '-' }}</span>
                     </div>
                     <div class="mt-0.5 flex items-center gap-1.5 text-[10px] text-gray-600 min-w-0">
                       <span class="flex-shrink-0">{{ formatDate(a.created_at) }}</span>

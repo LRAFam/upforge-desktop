@@ -48,7 +48,7 @@
         </div>
         <div>
           <p class="text-sm font-semibold text-gray-400">No games in this range</p>
-          <p class="text-xs text-gray-600 mt-1">Play ranked and run analysis — your trends will show up here.</p>
+          <p class="text-xs text-gray-600 mt-1">Play ranked and run analysis. Your trends will show up here.</p>
         </div>
       </div>
 
@@ -66,7 +66,7 @@
             <p class="text-[8px] mt-1 font-semibold uppercase tracking-[0.14em]" :class="metricDeltaClass(statDeltas.winRate)">{{ metricDeltaLabel(statDeltas.winRate, '%') }}</p>
           </div>
           <div class="rounded-xl border border-white/[0.09] bg-white/[0.02] px-3 py-3 text-center">
-            <p class="text-xl font-black tabular-nums" :class="avgScore != null ? scoreColor(avgScore) : 'text-gray-600'">{{ avgScoreDisplay ?? '—' }}</p>
+            <p class="text-xl font-black tabular-nums" :class="avgScore != null ? scoreColor(avgScore) : 'text-gray-600'">{{ avgScoreDisplay ?? '-' }}</p>
             <p class="text-[9px] font-bold text-gray-600 mt-1 uppercase tracking-wider">AI score</p>
             <p class="text-[8px] mt-1 font-semibold uppercase tracking-[0.14em]" :class="metricDeltaClass(statDeltas.score)">{{ metricDeltaLabel(statDeltas.score) }}</p>
           </div>
@@ -76,7 +76,7 @@
             <p class="text-[8px] mt-1 font-semibold uppercase tracking-[0.14em]" :class="metricDeltaClass(statDeltas.kda)">{{ metricDeltaLabel(statDeltas.kda) }}</p>
           </div>
           <div class="rounded-xl border border-white/[0.09] bg-white/[0.02] px-3 py-3 text-center col-span-2 sm:col-span-1">
-            <p class="text-xl font-black tabular-nums text-orange-400">{{ avgHs !== null ? avgHs + '%' : '—' }}</p>
+            <p class="text-xl font-black tabular-nums text-orange-400">{{ avgHs !== null ? avgHs + '%' : '-' }}</p>
             <p class="text-[9px] font-bold text-gray-600 mt-1 uppercase tracking-wider">Headshot %</p>
             <p class="text-[8px] mt-1 font-semibold uppercase tracking-[0.14em]" :class="metricDeltaClass(statDeltas.hs)">{{ metricDeltaLabel(statDeltas.hs, '%') }}</p>
           </div>
@@ -274,11 +274,11 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import type { AnalysisItem } from '../env.d.ts'
 import { useGameTheme } from '../composables/useGameTheme'
-import { loadGameAnalyses } from '../lib/game-modules'
+import { invalidateGameAnalysesCache, loadGameAnalyses } from '../lib/game-modules'
 import {
   getAgentImage,
   getAgentColor,
@@ -332,7 +332,7 @@ const avgScoreDisplay = computed(() => (avgScore.value != null ? avgScore.value 
 
 const avgKda = computed((): string => {
   const withKd = filteredAnalyses.value.filter(a => a.kills != null && a.deaths != null)
-  if (!withKd.length) return '—'
+  if (!withKd.length) return '-'
   const total = withKd.reduce((s, a) => s + a.kills! / Math.max(1, a.deaths!), 0)
   return (total / withKd.length).toFixed(2)
 })
@@ -386,7 +386,7 @@ function metricDeltaLabel(value: number | null, suffix = ''): string {
 
 const recentForm = computed(() =>
   filteredAnalyses.value.slice(0, 15).map(a =>
-    a.won != null ? (a.won ? 'W' : 'L') : '—'
+    a.won != null ? (a.won ? 'W' : 'L') : '-'
   )
 )
 
@@ -490,8 +490,8 @@ function buildBreakdown(key: 'agent' | 'map'): BreakdownRow[] {
         games: e.games,
         wins: e.wins,
         wr: Math.round((e.wins / e.games) * 100),
-        kda: e.kdCount > 0 ? (e.kdSum / e.kdCount).toFixed(1) : '—',
-        roundWr: totalRounds > 0 ? `${Math.round((e.roundsWon / totalRounds) * 100)}%` : '—',
+        kda: e.kdCount > 0 ? (e.kdSum / e.kdCount).toFixed(1) : '-',
+        roundWr: totalRounds > 0 ? `${Math.round((e.roundsWon / totalRounds) * 100)}%` : '-',
       }
     })
     .sort((a, b) => b.games - a.games)
@@ -518,11 +518,8 @@ const worstMap = computed((): BreakdownRow | null => {
 
 // ── Data load ─────────────────────────────────────────────────────────────────
 
-onMounted(async () => {
-  if (!features.value.performanceStats) {
-    await router.replace('/dashboard')
-    return
-  }
+async function loadStatsData() {
+  loading.value = true
   try {
     const [analyses, rrHistory] = await Promise.all([
       loadGameAnalyses(primaryGame.value, 100),
@@ -535,5 +532,21 @@ onMounted(async () => {
     rankHistory.value = []
   }
   loading.value = false
+}
+
+let stopDashboardRefresh: (() => void) | null = null
+
+onMounted(async () => {
+  if (!features.value.performanceStats) {
+    await router.replace('/dashboard')
+    return
+  }
+  await loadStatsData()
+  stopDashboardRefresh = window.api.on('dashboard:refresh', () => {
+    invalidateGameAnalysesCache(primaryGame.value)
+    void loadStatsData()
+  })
 })
+
+onUnmounted(() => { stopDashboardRefresh?.() })
 </script>

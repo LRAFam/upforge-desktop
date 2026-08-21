@@ -25,11 +25,11 @@ import {
   recordingDemoPending,
   demoPendingSectionHint,
   demoPendingSectionTitle,
-  recordingTimelineReady,
   timelineBlockedShortLabel,
 } from '../../lib/recording-demo-status'
 import { demoDownloadProgressLabel, demoDownloadBadgeLabel } from '../../lib/demo-download-progress'
 import { recordingStatusBadge } from '../../lib/recording-status'
+import { recordingNeedsUserAction } from '../../lib/recording-library'
 import DemoAttachGuide from '../DemoAttachGuide.vue'
 import DemoAttachPickerModal from '../shared/DemoAttachPickerModal.vue'
 
@@ -39,7 +39,6 @@ const { primaryGame } = usePrimaryGame()
 const {
   pendingRecordings,
   analysingIds,
-  syncingMatchStatsIds,
   recIsSyncingMatchStats,
   savingIds,
   bulkAnalysablePending,
@@ -59,9 +58,9 @@ const {
   recPipelineLabel,
   formatMode,
   demoDownloadProgress,
+  router,
 } = useDashboard()
 
-const showDemoMatches = ref(!!props.preview)
 const badgeTick = ref(Date.now())
 let badgeTimer: ReturnType<typeof setInterval> | undefined
 
@@ -90,12 +89,13 @@ function demoBadge(rec: PendingRecording): string | null {
 }
 
 const rows = computed(() => {
-  const source = showDemoMatches.value ? MOCK_NEEDS_YOU_RECORDINGS : pendingRecordings.value
+  const source = props.preview ? MOCK_NEEDS_YOU_RECORDINGS : pendingRecordings.value
   return source.filter((rec) => rec.game === primaryGame.value)
 })
 
-const readyNowRows = computed(() => rows.value.filter((rec) => !recordingDemoPending(rec)))
-const demoPendingRows = computed(() => rows.value.filter((rec) => recordingDemoPending(rec)))
+const actionableRows = computed(() => rows.value.filter(recordingNeedsUserAction))
+const readyNowRows = computed(() => actionableRows.value.filter((rec) => !recordingDemoPending(rec)))
+const demoPendingRows = computed(() => actionableRows.value.filter((rec) => recordingDemoPending(rec)))
 
 const demoSectionHint = computed(() => {
   if (demoDownloadProgress.value) {
@@ -129,11 +129,21 @@ const sectionedRows = computed(() => {
   return sections
 })
 
+const shownActionCount = computed(() =>
+  sectionedRows.value.reduce((total, section) => total + section.rows.length, 0),
+)
+const hiddenActionCount = computed(() => Math.max(0, actionableRows.value.length - shownActionCount.value))
+
+function openAllActions() {
+  if (props.preview) return
+  void router.push('/history')
+}
+
 function scoreLine(rec: PendingRecording): string {
   const ally = rec.timeline?.finalScore?.allyScore
   const enemy = rec.timeline?.finalScore?.enemyScore
   if (ally != null && enemy != null) return `${ally} – ${enemy}`
-  return '—'
+  return '-'
 }
 
 function canReviewVod(rec: PendingRecording): boolean {
@@ -156,7 +166,7 @@ function showSaveToCloud(rec: PendingRecording): boolean {
 
 function statusLabel(rec: PendingRecording): string {
   if (recInFlight(rec) || recIsDeferred(rec)) return recPipelineLabel(rec) || 'Working…'
-  if (rec.lastAnalysisError) return 'Analysis failed — retry or review VOD'
+  if (rec.lastAnalysisError) return 'Analysis failed. Retry or review the VOD.'
   if (recAnalysisReady(rec)) return 'Ready for AI coaching'
   if (recordingDemoPending(rec)) return recAnalysisStatusShort(rec)
   return recAnalysisStatusShort(rec)
@@ -165,6 +175,7 @@ function statusLabel(rec: PendingRecording): string {
 function statusTone(rec: PendingRecording): string {
   if (recInFlight(rec)) return 'text-blue-300/90'
   if (rec.lastAnalysisError) return 'text-amber-300/90'
+  if (rec.matchStatsSyncPaused) return 'text-amber-300/90'
   if (recAnalysisReady(rec)) return 'text-emerald-300/90'
   if (rec.analysisReadiness?.state === 'syncing' || rec.analysisReadiness?.state === 'waiting_match_data' || rec.analysisReadiness?.state === 'finalizing') {
     return 'text-blue-300/90'
@@ -202,9 +213,6 @@ function onRemove(rec: PendingRecording) {
   void dismissRecording(rec.id)
 }
 
-function toggleDemoMatches() {
-  showDemoMatches.value = !showDemoMatches.value
-}
 </script>
 
 <template>
@@ -213,27 +221,19 @@ function toggleDemoMatches() {
       <div class="min-w-0">
         <div class="flex items-center gap-2">
           <span class="flex h-5 w-5 items-center justify-center rounded-md bg-amber-500/15 text-amber-300 text-[10px] font-black">!</span>
-          <p class="text-[10px] font-bold uppercase tracking-[0.14em] text-amber-300">Needs you</p>
+          <p class="text-[10px] font-bold uppercase tracking-[0.14em] text-amber-300">Action required</p>
         </div>
         <p class="text-[11px] text-gray-500 mt-1 leading-snug max-w-xl">
-          Matches waiting on your desk.
-          <span class="text-gray-400">Watch the recording anytime</span>. Attach a demo to unlock Analyse.
+          Sessions where you can take the next step now.
         </p>
       </div>
-      <span class="text-[10px] text-gray-500 flex-shrink-0 pt-0.5">{{ rows.length }} pending</span>
+      <span class="text-[10px] text-gray-500 flex-shrink-0 pt-0.5">
+        {{ hiddenActionCount > 0 ? `Showing ${shownActionCount} of ${actionableRows.length}` : `${actionableRows.length} ${actionableRows.length === 1 ? 'action' : 'actions'}` }}
+      </span>
     </div>
 
-    <div v-if="rows.length === 0" class="px-4 py-5 text-[11px] text-gray-500 border-t border-white/[0.05]">
-      No matches need action right now. Your next recorded match will appear here with
-      <span class="text-gray-400">Watch recording</span>, <span class="text-gray-400">Open timeline</span>, and
-      <span class="text-gray-400">Run AI analysis</span>.
-      <div class="mt-3">
-        <button
-          type="button"
-          class="px-3 py-1.5 rounded-lg text-[10px] font-semibold bg-amber-500/[0.12] text-amber-300 border border-amber-500/25 hover:bg-amber-500/[0.18] transition-colors"
-          @click="toggleDemoMatches"
-        >Show demo matches</button>
-      </div>
+    <div v-if="actionableRows.length === 0" class="px-4 py-5 text-[11px] text-gray-500 border-t border-white/[0.05]">
+      Nothing needs your attention. UpForge will surface a session here when it is ready for input.
     </div>
 
     <template v-else>
@@ -299,6 +299,10 @@ function toggleDemoMatches() {
                     >{{ badge.label }}</span>
                   </template>
                   <span
+                    v-if="rec.productionFixture"
+                    class="rounded-md border border-amber-500/30 bg-amber-500/[0.08] px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-amber-300"
+                  >Production fixture</span>
+                  <span
                     v-if="demoBadge(rec)"
                     class="text-[9px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-md border"
                     :class="recordingDemoPending(rec)
@@ -320,7 +324,7 @@ function toggleDemoMatches() {
 
             <p class="text-[11px] mt-3 leading-snug" :class="statusTone(rec)">
               <svg
-                v-if="recInFlight(rec) || rec.analysisReadiness?.state === 'syncing' || rec.analysisReadiness?.state === 'waiting_match_data' || rec.analysisReadiness?.state === 'finalizing'"
+                v-if="!rec.matchStatsSyncPaused && (recInFlight(rec) || rec.analysisReadiness?.state === 'syncing' || rec.analysisReadiness?.state === 'waiting_match_data' || rec.analysisReadiness?.state === 'finalizing')"
                 class="inline w-3 h-3 mr-1 -mt-px animate-spin"
                 fill="none"
                 viewBox="0 0 24 24"
@@ -419,7 +423,7 @@ function toggleDemoMatches() {
               @click="onSave(rec)"
             >
               <span class="block">{{ savingIds.has(rec.id) ? 'Saving…' : 'Save VOD to cloud' }}</span>
-              <span class="block text-[9px] font-medium text-emerald-100/70 mt-0.5">Backup only — no AI analysis</span>
+              <span class="block text-[9px] font-medium text-emerald-100/70 mt-0.5">Backup only. No AI analysis.</span>
             </button>
 
             <button
@@ -439,16 +443,16 @@ function toggleDemoMatches() {
       </div>
     </template>
 
-    <div v-if="showDemoMatches" class="px-3 pb-3">
+    <div v-if="!preview && hiddenActionCount > 0" class="border-t border-white/[0.06]">
       <button
         type="button"
-        class="text-[10px] text-gray-500 hover:text-gray-300 transition-colors"
-        @click="toggleDemoMatches"
-      >Hide demo matches</button>
+        class="w-full px-4 py-2.5 text-left text-[10px] font-semibold text-gray-400 hover:bg-white/[0.025] hover:text-white transition-colors"
+        @click="openAllActions"
+      >View all {{ actionableRows.length }} actions in Matches</button>
     </div>
 
     <button
-      v-if="!preview && !showDemoMatches && bulkAnalysablePending.length > 1"
+      v-if="!preview && hiddenActionCount === 0 && bulkAnalysablePending.length > 1"
       type="button"
       class="w-full py-2.5 text-[10px] font-semibold text-red-400/90 border-t border-white/[0.06] hover:bg-white/[0.02]"
       @click="analyseOldestPending"

@@ -272,6 +272,15 @@ export interface PendingRecording {
   matchId?: string | null
   onboardingBonus?: boolean
   onboardingAdminTest?: boolean
+  /** Automatic Riot stats polling was paused after local footage deletion. */
+  matchStatsSyncPaused?: boolean
+  /** Session-only, read-only archive mounted from the production API for developer testing. */
+  productionFixture?: {
+    source: 'production_archive'
+    readOnly: true
+    analysisState: 'not_analysed' | 'queued' | 'analysing' | 'failed' | 'analysed'
+    missingFields: string[]
+  }
   /** Present on recordings:get — file still on disk. */
   hasLocalFile?: boolean
   /** Present on recordings:get — full VOD uploaded to S3. */
@@ -302,6 +311,22 @@ export interface PendingRecording {
     finalScore?: { allyScore: number; enemyScore: number } | null
     roundScores?: Array<{ allyScore: number; enemyScore: number }>
   } | null
+}
+
+export interface ProductionArchiveSummary {
+  archive_id: string
+  analysis_state: 'not_analysed' | 'queued' | 'analysing' | 'failed' | 'analysed'
+  analysis_id: number | null
+  analysis_job_id: string | null
+  game: string
+  map: string | null
+  agent: string | null
+  game_mode: string | null
+  match_id: string | null
+  file_size_bytes: number | null
+  archived_at: string | null
+  retention_expires_at: string | null
+  has_match_data: boolean
 }
 
 export interface RecordingTimeline {
@@ -813,6 +838,16 @@ declare global {
       }
       dev: {
         simulateGame: (game?: string, durationMs?: number) => Promise<{ ok: boolean }>
+        listProductionVods: () => Promise<
+          { ok: true; archives: ProductionArchiveSummary[] }
+          | { ok: false; error: string }
+        >
+        mountProductionVod: (archiveId: string) => Promise<
+          { ok: true; fixture: PendingRecording }
+          | { ok: false; error: string }
+        >
+        getActiveProductionVod: () => Promise<{ ok: true; fixture: PendingRecording | null }>
+        unmountProductionVod: () => Promise<{ ok: true; removed: boolean }>
         getDiagnostics: () => Promise<{
           app: { version: string; platform: string; arch: string; electronVersion: string; nodeVersion: string; isDev: boolean }
           riot: {

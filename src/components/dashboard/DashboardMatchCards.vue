@@ -7,6 +7,7 @@ import {
   getMapImage,
 } from '../../lib/valorant'
 import { formatRelativeTime } from '../../lib/dashboard-match-row'
+import { analysisKdaLine, analysisScoreLine } from '../../lib/dashboard-analysis-summary'
 
 const {
   router,
@@ -25,11 +26,6 @@ const preview = computed(() =>
 
 function snippet(id: number): string {
   return coachingSnippets.value[id] ?? ''
-}
-
-function scoreLine(a: typeof preview.value[0]): string {
-  if (a.rounds_won != null && a.rounds_lost != null) return `${a.rounds_won} – ${a.rounds_lost}`
-  return '—'
 }
 
 const coachName = computed(() => profile.value?.user.name?.split(' ')[0] ?? 'Coach')
@@ -76,7 +72,8 @@ const coachName = computed(() => profile.value?.user.name?.split(' ')[0] ?? 'Coa
           <div class="flex items-start justify-between gap-2">
             <div>
               <p class="text-[9px] font-bold uppercase tracking-[0.14em] text-gray-500">Map · {{ a.map || 'Unknown' }}</p>
-              <p class="text-2xl font-black text-white tabular-nums mt-1 leading-none">{{ scoreLine(a) }}</p>
+              <p v-if="analysisScoreLine(a)" class="text-2xl font-black text-white tabular-nums mt-1 leading-none">{{ analysisScoreLine(a) }}</p>
+              <p v-else class="mt-1 text-[10px] font-semibold text-gray-500">Score unavailable</p>
             </div>
             <span
               v-if="a.won != null"
@@ -94,6 +91,10 @@ const coachName = computed(() => profile.value?.user.name?.split(' ')[0] ?? 'Coa
             />
             <p class="text-sm font-black text-white mt-1.5 text-center">{{ a.agent || 'Unknown agent' }}</p>
             <p class="text-[10px] text-gray-400">{{ formatRelativeTime(a.created_at) }}</p>
+            <p v-if="analysisKdaLine(a)" class="mt-1 text-[11px] font-semibold tabular-nums text-gray-300">
+              {{ analysisKdaLine(a) }} <span class="text-[8px] font-bold uppercase tracking-wide text-gray-600">K/D/A</span>
+            </p>
+            <p v-else class="mt-1 text-[9px] text-gray-600">K/D/A unavailable</p>
           </div>
 
           <div v-if="snippet(a.id)" class="relative z-10 mt-3 rounded-lg border border-white/[0.08] bg-black/40 px-3 py-2.5">

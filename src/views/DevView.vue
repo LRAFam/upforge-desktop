@@ -39,6 +39,8 @@
 
       <template v-if="diag">
 
+        <ProductionVodLibrary />
+
         <!-- App Info -->
         <DevSection title="App">
           <div class="grid grid-cols-2 gap-x-6 gap-y-1.5">
@@ -370,6 +372,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
+import ProductionVodLibrary from '../components/dev/ProductionVodLibrary.vue'
 
 const router = useRouter()
 

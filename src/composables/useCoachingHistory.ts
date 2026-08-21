@@ -1,6 +1,6 @@
 import { ref, computed, watch, onMounted, onUnmounted, inject, provide, type InjectionKey } from 'vue'
-import { useRouter } from 'vue-router'
-import type { AnalysisItem } from '../env.d.ts'
+import { useRoute, useRouter } from 'vue-router'
+import type { AnalysisItem, PendingRecording } from '../env.d.ts'
 import {
   getAgentImage,
   getAgentRole,
@@ -20,7 +20,7 @@ import {
 import { buildTacticalIntelBrief } from '../lib/coaching-brief'
 import type { TacticalIntelBrief as TacticalIntelBriefData } from '../lib/coaching-brief'
 import { useGameTheme } from '../composables/useGameTheme'
-import { loadGameAnalyses } from '../lib/game-modules'
+import { invalidateGameAnalysesCache, loadGameAnalyses } from '../lib/game-modules'
 import { openGameAnalysis } from '../lib/open-game-analysis'
 import { fetchCoachReviewSummary, loadCoachReviewSummaries, type CoachReviewSummary } from '../lib/coach-review-cache'
 import { openAnalysisVodReview } from '../lib/open-vod-review'
@@ -29,6 +29,7 @@ import {
   hasMomentHybridContent,
   type AnalysisDetailEnriched,
 } from '../lib/analysis-enrichment'
+import { pendingMatchPrimaryAction } from '../lib/match-lifecycle'
 
 export const COACHING_HISTORY_KEY: InjectionKey<ReturnType<typeof createCoachingHistory>> = Symbol('coachingHistory')
 
@@ -45,16 +46,22 @@ export function useCoachingHistory() {
 }
 
 function createCoachingHistory() {
+  const route = useRoute()
   const router = useRouter()
   const { theme, features, primaryGame } = useGameTheme()
   const RESULT_FILTERS = ['All', 'Wins', 'Losses', 'Scored'] as const
   const allAnalyses = ref<AnalysisItem[]>([])
+  const allPendingRecordings = ref<PendingRecording[]>([])
   const loading = ref(true)
+  const pendingLoading = ref(true)
+  const pendingBusyId = ref<string | null>(null)
+  const pendingMessage = ref<string | null>(null)
   const activeFilter = ref<(typeof RESULT_FILTERS)[number]>('All')
   const activeMap = ref<string | null>(null)
   const timelineLoadingId = ref<number | null>(null)
   
   const selectedId = ref<number | null>(null)
+  const selectedRecordingId = ref<string | null>(null)
   const detailLoading = ref(false)
   const expandedDetail = ref<AnalysisDetailEnriched | null>(null)
   const coachReviewSummary = ref<CoachReviewSummary | null>(null)
@@ -112,6 +119,20 @@ function createCoachingHistory() {
   const selectedAnalysis = computed(() =>
     allAnalyses.value.find(a => a.id === selectedId.value) ?? null,
   )
+
+  const pendingRecordings = computed(() =>
+    allPendingRecordings.value
+      .filter(rec => !rec.clipsOnly && rec.game === primaryGame.value)
+      .sort((a, b) => {
+        const aAction = pendingMatchPrimaryAction(a) ? 1 : 0
+        const bAction = pendingMatchPrimaryAction(b) ? 1 : 0
+        return bAction - aAction || b.recordedAt - a.recordedAt
+      }),
+  )
+
+  const selectedRecording = computed(() =>
+    pendingRecordings.value.find(rec => rec.id === selectedRecordingId.value) ?? null,
+  )
   
   function isWideLayout(): boolean {
     return typeof window !== 'undefined' && window.matchMedia('(min-width: 1024px)').matches
@@ -119,18 +140,34 @@ function createCoachingHistory() {
   
   onMounted(async () => {
     window.api.discord.setState('reviewing').catch(() => {})
-    await reloadAnalyses()
+    await Promise.all([reloadAnalyses(), reloadPendingRecordings()])
   })
   
   watch(primaryGame, () => {
     void reloadAnalyses()
+    void reloadPendingRecordings()
   })
+
+  const stopMatchUpdates = [
+    window.api.on('recordings:updated', () => { void reloadPendingRecordings() }),
+    window.api.on('dashboard:refresh', () => {
+      invalidateGameAnalysesCache(primaryGame.value)
+      void Promise.all([reloadAnalyses(), reloadPendingRecordings()])
+    }),
+  ]
   
   async function reloadAnalyses() {
     loading.value = true
     activeMap.value = null
     try {
       allAnalyses.value = await loadGameAnalyses(primaryGame.value, 100)
+      const requestedId = typeof route.query.analysis === 'string'
+        ? Number(route.query.analysis)
+        : null
+      const requested = Number.isInteger(requestedId)
+        ? allAnalyses.value.find(analysis => analysis.id === requestedId)
+        : null
+      if (requested && selectedId.value !== requested.id) await selectSession(requested)
     } catch {
       allAnalyses.value = []
     } finally {
@@ -142,8 +179,25 @@ function createCoachingHistory() {
       .then((summaries) => { coachReviewByAnalysisId.value = summaries })
       .catch(() => {})
   }
+
+  async function reloadPendingRecordings() {
+    pendingLoading.value = true
+    try {
+      allPendingRecordings.value = await window.api.recordings.get().catch(() => [])
+      const requestedId = typeof route.query.recording === 'string' ? route.query.recording : null
+      const requested = requestedId
+        ? allPendingRecordings.value.find(rec => rec.id === requestedId)
+        : null
+      if (requested && selectedRecordingId.value == null && selectedId.value == null) {
+        selectPendingRecording(requested)
+      }
+    } finally {
+      pendingLoading.value = false
+    }
+  }
   
   onUnmounted(() => {
+    for (const stop of stopMatchUpdates) stop()
     window.api.discord.setState('idle').catch(() => {})
   })
   
@@ -218,7 +272,7 @@ function createCoachingHistory() {
   
   const avgKD = computed<string>(() => {
     const withKD = allAnalyses.value.filter(a => a.kda != null)
-    if (!withKD.length) return '—'
+    if (!withKD.length) return '-'
     return (withKD.reduce((sum, a) => sum + (a.kda ?? 0), 0) / withKD.length).toFixed(2)
   })
   
@@ -286,6 +340,7 @@ function createCoachingHistory() {
   }
 
   async function selectSession(a: AnalysisItem) {
+    selectedRecordingId.value = null
     selectedId.value = a.id
     expandedDetail.value = null
     coachReviewSummary.value = null
@@ -307,6 +362,53 @@ function createCoachingHistory() {
       coachReviewSummary.value = coachReview
     } catch { /* ignore */ } finally {
       detailLoading.value = false
+    }
+  }
+
+
+  function selectPendingRecording(rec: PendingRecording) {
+    selectedId.value = null
+    selectedRecordingId.value = rec.id
+    expandedDetail.value = null
+    coachReviewSummary.value = null
+    pendingMessage.value = null
+  }
+
+  function openPendingFootage(rec: PendingRecording) {
+    void router.push({ path: '/vod-review', query: { id: rec.id } })
+  }
+
+  function managePendingRecording(rec: PendingRecording) {
+    void router.push({ path: '/recordings', query: { status: 'action_required', id: rec.id } })
+  }
+
+  async function runPendingPrimaryAction(rec: PendingRecording) {
+    const action = pendingMatchPrimaryAction(rec)
+    if (!action || pendingBusyId.value) return
+    if (action === 'attach_replay') {
+      openPendingFootage(rec)
+      return
+    }
+
+    pendingBusyId.value = rec.id
+    pendingMessage.value = null
+    try {
+      if (action === 'retry_stats') {
+        const result = await window.api.recordings.retryMatchStats(rec.id)
+        pendingMessage.value = result?.ok
+          ? 'Stats synced. This match is ready for coaching.'
+          : result?.error ?? 'Stats are not available yet. Keep Riot Client open and try again.'
+      } else {
+        const result = await window.api.recordings.analyse(rec.id) as { ok?: boolean; error?: string; code?: string }
+        pendingMessage.value = result?.error
+          ? result.error
+          : 'Analysis started. This match will update here as it progresses.'
+      }
+      await reloadPendingRecordings()
+    } catch {
+      pendingMessage.value = 'Could not update this match. Try again.'
+    } finally {
+      pendingBusyId.value = null
     }
   }
   
@@ -333,6 +435,7 @@ function createCoachingHistory() {
 
   function clearSelection() {
     selectedId.value = null
+    selectedRecordingId.value = null
     expandedDetail.value = null
     coachReviewSummary.value = null
   }
@@ -342,6 +445,7 @@ function createCoachingHistory() {
     activeFilter,
     activeMap,
     allAnalyses,
+    allPendingRecordings,
     availableMaps,
     avgKD,
     avgScore,
@@ -372,25 +476,36 @@ function createCoachingHistory() {
     isDisplayableGameMode,
     isWideLayout,
     loading,
+    managePendingRecording,
     openSession,
     openCoachNotes,
     openTimeline,
+    openPendingFootage,
+    pendingBusyId,
+    pendingLoading,
+    pendingMessage,
+    pendingRecordings,
     pickTopByCount,
     primaryGame,
     reloadAnalyses,
+    reloadPendingRecordings,
     router,
     scoreColor,
     scoreGrade,
     scoreGradeBadgeClass,
     scoreLabel,
     seekAnalysisMoment,
+    selectPendingRecording,
     selectSession,
     selectedAnalysis,
     selectedId,
+    selectedRecording,
+    selectedRecordingId,
     theme,
     timelineLoadingId,
     topAgent,
     topMap,
+    runPendingPrimaryAction,
     winRate,
   }
 }

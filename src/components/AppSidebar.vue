@@ -65,7 +65,7 @@ const mainNav: NavItem[] = [
   { to: '/stats', label: 'Analytics', icon: 'analytics', match: p => p === '/stats' || p === '/performance' },
   { to: '/training', label: 'Drills', icon: 'drills', match: p => p.startsWith('/training') },
   { to: '/history', label: 'Matches', icon: 'matches', match: p => p === '/history' },
-  { to: '/recordings', label: 'Recordings', icon: 'recordings', match: p => p === '/recordings' || p === '/vod-review' },
+  { to: '/recordings', label: 'Footage', icon: 'recordings', match: p => p === '/recordings' || p === '/vod-review' },
   { to: '/clips', label: 'Clips', icon: 'demos', match: p => p === '/clips' },
   { to: '/rosters', label: 'Rosters', icon: 'rosters', match: p => p === '/rosters' },
   { to: '/squad', label: 'Squad', icon: 'cross', match: p => p.startsWith('/squad') },

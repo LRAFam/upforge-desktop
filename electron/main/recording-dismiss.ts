@@ -7,6 +7,7 @@ export interface RecordingDismissStore {
   getById(id: string): PendingRecording | undefined
   remove(id: string): void
   clearLocalPath(id: string): boolean
+  setMatchStatsSyncPaused(id: string, paused: boolean): boolean
 }
 
 export type RecordingDismissResult =
@@ -35,6 +36,7 @@ export function applyRecordingDismiss(
     }
     const freedBytes = opts.deleteFiles(recording.path)
     store.clearLocalPath(id)
+    store.setMatchStatsSyncPaused(id, true)
     return { ok: true, deletedLocal: true, freedBytes, removedFromLibrary: false }
   }
 

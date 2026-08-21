@@ -5,6 +5,7 @@ import {
   recordingDeleteOptions,
   recordingHasCloudCopy,
   recordingNeedsAttention,
+  recordingNeedsUserAction,
   visibleGroupItems,
   formatRecordingBytes,
 } from './recording-library'
@@ -27,14 +28,22 @@ function rec(overrides: Partial<PendingRecording> = {}): PendingRecording {
 }
 
 describe('recordingNeedsAttention', () => {
-  it('flags failed, unavailable, stuck sync, and retryable stats', () => {
+  it('flags only sessions where the user can take a useful action', () => {
     expect(recordingNeedsAttention(rec({ lastAnalysisError: 'x' }))).toBe(true)
-    expect(recordingNeedsAttention(rec({ hasLocalFile: false, cloudUploaded: false, path: '' }))).toBe(true)
     expect(
       recordingNeedsAttention(
-        rec({ analysisReadiness: { ready: false, state: 'finalizing', message: '', duelMomentCount: 0 } }),
+        rec({ analysisReadiness: { ready: true, state: 'ready', message: '', duelMomentCount: 1 } }),
       ),
     ).toBe(true)
+    expect(recordingNeedsAttention(rec({
+      matchStatsSyncPaused: true,
+      analysisReadiness: { ready: false, state: 'waiting_match_data', message: '', duelMomentCount: 0 },
+    }))).toBe(true)
+    expect(recordingNeedsAttention(rec({
+      analysisReadiness: { ready: false, state: 'finalizing', message: '', duelMomentCount: 0 },
+    }))).toBe(false)
+    expect(recordingNeedsAttention(rec({ clipsOnly: true }))).toBe(false)
+    expect(recordingNeedsUserAction(rec({ pipelineStatus: 'analysing', lastAnalysisError: 'old' }))).toBe(false)
   })
 })
 
@@ -50,7 +59,7 @@ describe('matchesRecordingLibraryChip', () => {
     expect(matchesRecordingLibraryChip(analysed, 'analysed')).toBe(true)
     expect(matchesRecordingLibraryChip(cloud, 'cloud')).toBe(true)
     expect(matchesRecordingLibraryChip(ready, 'ready')).toBe(true)
-    expect(matchesRecordingLibraryChip(ready, 'needs_attention')).toBe(false)
+    expect(matchesRecordingLibraryChip(ready, 'action_required')).toBe(true)
   })
 })
 

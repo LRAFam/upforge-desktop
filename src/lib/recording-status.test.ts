@@ -52,6 +52,15 @@ describe('recordingStatusBadge', () => {
     ).toBe('Syncing')
   })
 
+  it('Paused when automatic stats sync was stopped by the user', () => {
+    expect(
+      recordingStatusBadge(rec({
+        matchStatsSyncPaused: true,
+        analysisReadiness: { ready: false, state: 'syncing', message: '', duelMomentCount: 0 },
+      })).label,
+    ).toBe('Paused')
+  })
+
   it('Cloud when cloud-backed and not analysed', () => {
     expect(
       recordingStatusBadge(rec({ cloudUploaded: true, hasLocalFile: false, analysisId: undefined })).label,
