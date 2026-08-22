@@ -659,10 +659,14 @@
                     Recheck capture
                   </button>
                   <div v-if="missionCaptureSupportNeeded" class="rounded-xl border border-amber-400/25 bg-amber-400/[0.05] px-4 py-3">
-                    <p class="text-[12px] font-bold text-amber-100">Still not working after {{ CAPTURE_RETRY_SUPPORT_THRESHOLD }} attempts?</p>
-                    <p class="mt-1 text-[11px] leading-relaxed text-amber-100/70">Join Discord to open a support ticket. We will copy a short diagnostic summary for you to paste.</p>
-                    <button type="button" class="btn-primary mt-3 w-full py-2 text-xs" @click="openCaptureSupport">
-                      Get help on Discord
+                    <p class="text-[12px] font-bold text-amber-100">OBS may need administrator access</p>
+                    <p class="mt-1 text-[11px] leading-relaxed text-amber-100/70">Some Valorant setups block the OBS game hook. Restart OBS with Windows administrator access, then UpForge will reconnect automatically.</p>
+                    <button type="button" class="btn-primary mt-3 w-full py-2 text-xs" :disabled="obsElevating" @click="restartMissionObsElevated">
+                      {{ obsElevating ? 'Waiting for Windows…' : 'Restart OBS as administrator' }}
+                    </button>
+                    <p v-if="obsElevationError" class="mt-2 text-[11px] leading-relaxed text-red-300">{{ obsElevationError }}</p>
+                    <button type="button" class="btn-secondary mt-2 w-full py-2 text-xs" :disabled="obsElevating" @click="openCaptureSupport">
+                      Still black? Get help on Discord
                     </button>
                   </div>
                 </div>
@@ -866,6 +870,8 @@ const completeError = ref('')
 const obsConnecting = ref(false)
 const obsConnected = ref(false)
 const obsError = ref('')
+const obsElevating = ref(false)
+const obsElevationError = ref('')
 const obsRepairRunning = ref(false)
 const obsTestRecordingRunning = ref(false)
 const obsSetupMessage = ref('')
@@ -1424,6 +1430,32 @@ async function refreshMissionState(options: { forceCapture?: boolean } = {}) {
 async function reconnectMissionObs() {
   await launchAndConnectObs()
   await refreshMissionState({ forceCapture: true })
+}
+
+async function restartMissionObsElevated() {
+  obsElevating.value = true
+  obsElevationError.value = ''
+  try {
+    const result = await window.api.obs.restartElevatedAndConnect()
+    if (!result.ok) {
+      obsElevationError.value = result.error ?? 'Windows could not restart OBS as administrator.'
+      return
+    }
+    obsConnected.value = true
+    missionRuntime.value = {
+      ...missionRuntime.value,
+      obsConnected: true,
+      obsError: null,
+    }
+    missionPreviewCapturedAt = 0
+    await refreshMissionState({ forceCapture: true })
+  } catch (error) {
+    obsElevationError.value = error instanceof Error
+      ? error.message
+      : 'Windows could not restart OBS as administrator.'
+  } finally {
+    obsElevating.value = false
+  }
 }
 
 async function confirmMissionCapture() {

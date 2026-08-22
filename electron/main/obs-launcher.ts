@@ -25,6 +25,46 @@ export interface LaunchObsOptions {
   allowWingetInstall?: boolean
 }
 
+function powershellSingleQuoted(value: string): string {
+  return `'${value.replace(/'/g, "''")}'`
+}
+
+/** Build the elevated child script separately so quoting is covered by unit tests. */
+export function buildElevatedObsScript(exe: string, args: string[]): string {
+  const cwd = obsExecutableWorkingDirectory(exe)
+  const argumentList = args.map(powershellSingleQuoted).join(', ')
+  return [
+    "$ErrorActionPreference = 'Stop'",
+    "Get-Process -Name 'obs64' -ErrorAction SilentlyContinue | Stop-Process -Force",
+    'Start-Sleep -Milliseconds 500',
+    `Start-Process -FilePath ${powershellSingleQuoted(exe)} -WorkingDirectory ${powershellSingleQuoted(cwd)} -ArgumentList @(${argumentList})`,
+  ].join('; ')
+}
+
+function runElevatedPowerShell(script: string): Promise<{ ok: boolean; error?: string }> {
+  return new Promise((resolve) => {
+    let settled = false
+    const finish = (result: { ok: boolean; error?: string }) => {
+      if (settled) return
+      settled = true
+      resolve(result)
+    }
+    const encodedScript = Buffer.from(script, 'utf16le').toString('base64')
+    const elevateCommand = [
+      "$ErrorActionPreference = 'Stop'",
+      `Start-Process -FilePath 'powershell.exe' -Verb RunAs -Wait -WindowStyle Hidden -ArgumentList @('-NoProfile', '-NonInteractive', '-EncodedCommand', '${encodedScript}')`,
+    ].join('; ')
+    const child = spawn('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', elevateCommand], {
+      stdio: 'ignore',
+      windowsHide: true,
+    })
+    child.once('error', (err) => finish({ ok: false, error: err.message }))
+    child.once('close', (code) => finish(code === 0
+      ? { ok: true }
+      : { ok: false, error: 'Administrator permission was cancelled or Windows could not restart OBS.' }))
+  })
+}
+
 /** Spawn a detached process and resolve only after spawn succeeds or error is emitted. */
 function spawnDetached(
   exe: string,
@@ -140,6 +180,25 @@ export async function launchObsStudio(opts: LaunchObsOptions = {}): Promise<{ ok
       ? 'OBS not found — install OBS Studio 28+ from obsproject.com'
       : 'OBS not found — install OBS Studio and try again',
   }
+}
+
+/** Restart OBS with a visible Windows UAC prompt. Used only after capture failure. */
+export async function restartObsStudioElevated(opts: LaunchObsOptions = {}): Promise<{ ok: boolean; error?: string }> {
+  if (process.platform !== 'win32') {
+    return { ok: false, error: 'Administrator restart is only available on Windows.' }
+  }
+
+  const password = opts.password ?? UPFORGE_OBS_DEFAULT_PASSWORD
+  const port = opts.port ?? UPFORGE_OBS_DEFAULT_PORT
+  const exe = candidateObsPaths().find(existsSync)
+  if (!exe) return { ok: false, error: 'OBS Studio is not installed.' }
+
+  clearObsCrashSentinel()
+  log.info('[OBS Launcher] Requesting elevated OBS restart:', exe)
+  return runElevatedPowerShell(buildElevatedObsScript(exe, [
+    '--minimize-to-tray',
+    ...obsLaunchArgs(password, port),
+  ]))
 }
 
 /** First WebSocket probe after spawn — OBS needs time for plugins + websocket. */

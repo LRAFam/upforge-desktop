@@ -12,6 +12,7 @@ import { ensureObsConnected } from '../obs-ensure'
 import { isObsProcessRunning } from '../obs-process'
 import { explainObsConnectionFailure } from '../obs-connect'
 import { installObsViaWinget, isObsInstalled } from '../obs-installer'
+import { restartObsStudioElevated } from '../obs-launcher'
 import { ensureObsProfileInstalled, resolveObsWebSocketPassword } from '../obs-profile-installer'
 import {
   repairObsSetup,
@@ -219,6 +220,39 @@ export function setupMediaHandlers(
       password,
       port,
       allowProcessRestart: true,
+      getWindow: () => BrowserWindow.getAllWindows().find(w => !w.isDestroyed()),
+    })
+  })
+
+  ipcMain.handle('obs:restart-elevated-and-connect', async () => {
+    if (!obsRecorder) return { ok: false, error: 'OBS recorder not available' }
+    if (obsRecorder.isRecording()) {
+      return { ok: false, error: 'A match recording is active. Finish it before restarting OBS.' }
+    }
+    if (obsRecorder.isConnected()) {
+      const [recordStatus, streamStatus] = await Promise.all([
+        obsRecorder.getObsClient().call('GetRecordStatus').catch(() => null) as Promise<{ outputActive?: boolean } | null>,
+        obsRecorder.getObsClient().call('GetStreamStatus').catch(() => null) as Promise<{ outputActive?: boolean } | null>,
+      ])
+      if (recordStatus?.outputActive || streamStatus?.outputActive) {
+        return { ok: false, error: 'OBS is recording or streaming. Stop the active output before restarting it.' }
+      }
+    }
+
+    const cfg = settingsManager.get()
+    const port = cfg.obsPort ?? 4455
+    const password = resolveObsWebSocketPassword(cfg.obsPassword)
+    ensureObsProfileInstalled(password, port)
+    if (!cfg.obsPassword?.trim()) settingsManager.save({ obsPassword: password })
+
+    await obsRecorder.disconnect()
+    const launched = await restartObsStudioElevated({ password, port })
+    if (!launched.ok) return { ok: false, error: launched.error }
+
+    return ensureObsConnected(obsRecorder, {
+      password,
+      port,
+      allowProcessRestart: false,
       getWindow: () => BrowserWindow.getAllWindows().find(w => !w.isDestroyed()),
     })
   })

@@ -281,6 +281,7 @@ const api = {
   obs: {
     connect: () => ipcRenderer.invoke('obs:connect'),
     launchAndConnect: () => ipcRenderer.invoke('obs:launch-and-connect'),
+    restartElevatedAndConnect: () => ipcRenderer.invoke('obs:restart-elevated-and-connect'),
     disconnect: () => ipcRenderer.invoke('obs:disconnect'),
     getStatus: () => ipcRenderer.invoke('obs:get-status'),
     getProcessState: () => ipcRenderer.invoke('obs:get-process-state'),

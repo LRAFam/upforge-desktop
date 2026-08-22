@@ -1307,6 +1307,10 @@ declare global {
           | { ok: true; alreadyConnected?: boolean; alreadyRunning?: boolean; launched?: boolean; processRunning?: boolean }
           | { ok: false; error?: string; launched?: boolean; processRunning?: boolean; needsManualRestart?: boolean }
         >
+        restartElevatedAndConnect: () => Promise<
+          | { ok: true; alreadyConnected?: boolean; alreadyRunning?: boolean; launched?: boolean; processRunning?: boolean }
+          | { ok: false; error?: string; launched?: boolean; processRunning?: boolean; needsManualRestart?: boolean }
+        >
         disconnect: () => Promise<void>
         getProcessState: () => Promise<{
           installed: boolean
