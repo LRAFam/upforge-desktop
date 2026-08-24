@@ -22,6 +22,57 @@ type MissionRecording = {
   pipelineStatus?: 'pending' | 'uploading' | 'analysing'
   lastAnalysisError?: string | null
   analysisReadiness?: { state: string } | null
+  matchId?: string | null
+  timeline?: {
+    playerKills?: unknown[]
+    playerDeaths?: unknown[]
+    finalStats?: { kills?: number; deaths?: number; assists?: number } | null
+  } | null
+}
+
+export type OnboardingProgressStep = {
+  key: 'recording' | 'riot' | 'upload' | 'analysis'
+  state: 'pending' | 'active' | 'complete'
+}
+
+export function hasUsableOnboardingRiotData(recording: MissionRecording | null): boolean {
+  if (!recording?.matchId || !recording.timeline) return false
+  const stats = recording.timeline.finalStats
+  const statEvents = (stats?.kills ?? 0) + (stats?.deaths ?? 0) + (stats?.assists ?? 0)
+  return statEvents > 0
+    || (recording.timeline.playerKills?.length ?? 0) > 0
+    || (recording.timeline.playerDeaths?.length ?? 0) > 0
+}
+
+export function deriveOnboardingMissionProgress(
+  stage: OnboardingMissionStage,
+  recording: MissionRecording | null,
+): OnboardingProgressStep[] {
+  let activeIndex = 0
+  let completedThrough = -1
+
+  if (stage === 'waiting_match_data') {
+    completedThrough = hasUsableOnboardingRiotData(recording) ? 1 : 0
+    activeIndex = completedThrough + 1
+  } else if (stage === 'uploading') {
+    completedThrough = 1
+    activeIndex = 2
+  } else if (stage === 'analysing') {
+    completedThrough = 2
+    activeIndex = 3
+  } else if (stage === 'ready') {
+    completedThrough = 3
+    activeIndex = -1
+  } else if (stage === 'failed') {
+    completedThrough = recording ? 0 : -1
+    activeIndex = -1
+  }
+
+  const keys: OnboardingProgressStep['key'][] = ['recording', 'riot', 'upload', 'analysis']
+  return keys.map((key, index) => ({
+    key,
+    state: index <= completedThrough ? 'complete' : index === activeIndex ? 'active' : 'pending',
+  }))
 }
 
 export function shouldUseOnboardingBonus(

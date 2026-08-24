@@ -565,15 +565,64 @@
 
                 <div
                   v-if="['processing', 'waiting_match_data', 'uploading', 'analysing'].includes(missionStage)"
-                  class="rounded-xl border border-blue-400/20 bg-blue-400/[0.05] px-4 py-3"
+                  class="overflow-hidden rounded-xl border border-white/[0.08] bg-[#0b0e14]"
                 >
-                  <p class="text-[12px] font-semibold text-blue-100">You can leave this running</p>
-                  <p class="mt-1 text-[11px] leading-relaxed text-gray-400">
-                    Analysis usually takes 20–30 minutes. We will email you when your report is ready.
-                  </p>
-                  <p class="mt-1 text-[11px] leading-relaxed text-gray-500">
-                    If you start another match, UpForge pauses uploads and local video processing to protect FPS and network performance. Work already running on our servers can continue safely.
-                  </p>
+                  <div class="border-b border-white/[0.06] px-4 py-3.5">
+                    <div class="flex items-center justify-between gap-3">
+                      <p class="text-[12px] font-bold text-white">Match progress</p>
+                      <p class="text-[10px] font-semibold text-gray-500">
+                        {{ missionElapsed || 'Starting' }}
+                      </p>
+                    </div>
+                    <div class="mt-3 h-1 overflow-hidden rounded-full bg-white/[0.08]">
+                      <div
+                        class="h-full rounded-full bg-blue-400 transition-[width] duration-500"
+                        :style="{ width: `${missionProgressPercent}%` }"
+                      />
+                    </div>
+                  </div>
+
+                  <div class="px-4 py-1.5">
+                    <div
+                      v-for="row in missionProgressRows"
+                      :key="row.key"
+                      class="flex items-center gap-3 border-b border-white/[0.05] py-2.5 last:border-b-0"
+                    >
+                      <span
+                        class="flex h-5 w-5 shrink-0 items-center justify-center rounded-full border"
+                        :class="row.state === 'complete'
+                          ? 'border-emerald-400/40 bg-emerald-400/10 text-emerald-300'
+                          : row.state === 'active'
+                            ? 'border-blue-400/40 bg-blue-400/10 text-blue-300'
+                            : 'border-white/[0.08] text-gray-700'"
+                      >
+                        <svg v-if="row.state === 'complete'" class="h-3 w-3" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+                          <path d="m5 10 3 3 7-7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+                        </svg>
+                        <span v-else-if="row.state === 'active'" class="h-2 w-2 animate-pulse rounded-full bg-current" />
+                        <span v-else class="h-1.5 w-1.5 rounded-full bg-current" />
+                      </span>
+                      <div class="min-w-0 flex-1">
+                        <p class="text-[11px] font-semibold" :class="row.state === 'pending' ? 'text-gray-600' : 'text-gray-200'">
+                          {{ row.label }}
+                        </p>
+                        <p class="mt-0.5 text-[10px]" :class="row.state === 'active' ? 'text-blue-200/80' : 'text-gray-600'">
+                          {{ row.detail }}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div class="border-t border-white/[0.06] bg-white/[0.02] px-4 py-3">
+                    <p class="text-[10px] font-bold uppercase tracking-wide text-gray-600">While you wait</p>
+                    <p class="mt-1.5 text-[11px] leading-relaxed text-gray-300">{{ missionTip }}</p>
+                  </div>
+
+                  <div class="border-t border-white/[0.06] px-4 py-3">
+                    <p class="text-[10px] leading-relaxed text-gray-500">
+                      You can close this screen. Processing continues safely, and we will email you when the report is ready. Starting another match pauses local upload work to protect performance.
+                    </p>
+                  </div>
                 </div>
 
                 <div
@@ -827,7 +876,12 @@ import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { PRIMARY_GAME_ARTWORK, isPrimaryGame, type PrimaryGame } from '../lib/games'
 import { resolveMaxValorantAccounts } from '../lib/valorant-account-cap'
-import { deriveOnboardingMissionStage, type OnboardingMissionStage } from '../lib/onboarding-match-mission'
+import {
+  deriveOnboardingMissionProgress,
+  deriveOnboardingMissionStage,
+  hasUsableOnboardingRiotData,
+  type OnboardingMissionStage,
+} from '../lib/onboarding-match-mission'
 import { deriveCaptureReadiness } from '../lib/capture-readiness'
 import {
   findLatestOnboardingRecording,
@@ -843,6 +897,13 @@ const OBS_DOWNLOAD_URL = 'https://obsproject.com/download'
 const OBS_SKIP_KEY = 'upforge_obs_onboarding_skipped'
 const TOTAL_STEPS = 5
 const CAPTURE_RETRY_SUPPORT_THRESHOLD = 3
+const VALORANT_WAITING_TIPS = [
+  'Set your crosshair at head height before you expose yourself to the next angle.',
+  'Trade close enough that you can challenge within a second of your teammate going down.',
+  'Check the minimap when you are safe. Teammate vision often reveals the next decision.',
+  'After losing a round, check both economies before deciding whether to buy or save.',
+  'Keep one piece of utility for the retake or post-plant instead of spending everything early.',
+]
 
 type RiotAccount = {
   id: number
@@ -908,6 +969,56 @@ const selectedGame = ref<PrimaryGame>('valorant')
 const missionStage = computed<OnboardingMissionStage>(() =>
   deriveOnboardingMissionStage(missionRuntime.value, missionRecording.value),
 )
+const missionHasRiotStats = computed(() => hasUsableOnboardingRiotData(missionRecording.value))
+const missionProgress = computed(() => deriveOnboardingMissionProgress(missionStage.value, missionRecording.value))
+const missionProgressPercent = computed(() => {
+  const complete = missionProgress.value.filter((item) => item.state === 'complete').length
+  const hasActive = missionProgress.value.some((item) => item.state === 'active')
+  return Math.min(100, Math.round(((complete + (hasActive ? 0.35 : 0)) / missionProgress.value.length) * 100))
+})
+const missionElapsed = computed(() => {
+  const startedAt = missionRecording.value?.recordedAt
+  if (!startedAt) return null
+  const minutes = Math.max(0, Math.floor((missionNow.value - startedAt) / 60_000))
+  return minutes < 1 ? 'Less than a minute' : `${minutes} min elapsed`
+})
+const missionTip = computed(() => {
+  const startedAt = missionRecording.value?.recordedAt ?? missionNow.value
+  const index = Math.floor(Math.max(0, missionNow.value - startedAt) / 12_000) % VALORANT_WAITING_TIPS.length
+  return VALORANT_WAITING_TIPS[index]
+})
+const missionProgressRows = computed(() => missionProgress.value.map((item) => {
+  const content = {
+    recording: {
+      label: 'Recording secured',
+      pending: 'Waiting for the match to end',
+      active: 'Finalising the video file',
+      complete: 'Saved safely on this PC',
+    },
+    riot: {
+      label: 'Riot match data',
+      pending: 'Starts after the recording is ready',
+      active: missionRecording.value?.matchId ? 'Match found, syncing full stats' : 'Finding the correct match',
+      complete: 'Matched to this recording',
+    },
+    upload: {
+      label: 'Secure upload',
+      pending: 'Waiting for match data',
+      active: missionStage.value === 'uploading'
+        ? `${Math.round(missionRecording.value?.uploadProgress ?? 0)}% uploaded`
+        : 'Running final checks before upload',
+      complete: 'Recording uploaded',
+    },
+    analysis: {
+      label: 'Coaching report',
+      pending: 'Starts after upload',
+      active: missionRecording.value?.analysisStep
+        || `${Math.round(missionRecording.value?.analysisProgress ?? 0)}% complete`,
+      complete: 'Ready to review',
+    },
+  }[item.key]
+  return { ...item, label: content.label, detail: content[item.state] }
+}))
 const missionIsAdminTest = computed(() => isAdmin.value)
 const missionIsCaptureStage = computed(() =>
   ['ready_for_game', 'game_detected', 'waiting_for_match', 'recording'].includes(missionStage.value),
@@ -998,8 +1109,10 @@ const missionCopy = computed(() => {
       body: 'UpForge is finalising the match file before upload.',
     },
     waiting_match_data: {
-      title: 'Waiting for Riot match data',
-      body: 'The recording is safe. Analysis starts only after Riot confirms the correct match and stats.',
+      title: missionHasRiotStats.value ? 'Preparing your match for upload' : 'Matching your Riot game',
+      body: missionHasRiotStats.value
+        ? 'Riot stats are linked. UpForge is finishing the checks that keep your recording and stats in sync.'
+        : 'Your recording is safe. UpForge is finding the correct match and waiting for the full stats.',
     },
     uploading: {
       title: 'Uploading your match',
@@ -1027,7 +1140,6 @@ const missionKills = computed(() => missionTimeline.value?.kills?.length ?? 0)
 const missionDuelClips = computed(() =>
   missionTimeline.value?.duelMoments?.filter((moment) => Boolean(moment.clip_s3_key?.trim())).length ?? 0,
 )
-const missionHasRiotStats = computed(() => Boolean(missionRecording.value?.matchId && missionStats.value))
 
 const riotAccounts = ref<RiotAccount[]>([])
 const riotAccountsMax = ref(1)

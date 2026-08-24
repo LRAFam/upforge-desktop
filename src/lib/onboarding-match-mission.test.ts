@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest'
-import { deriveOnboardingMissionStage, shouldUseOnboardingBonus } from './onboarding-match-mission'
+import {
+  deriveOnboardingMissionProgress,
+  deriveOnboardingMissionStage,
+  hasUsableOnboardingRiotData,
+  shouldUseOnboardingBonus,
+} from './onboarding-match-mission'
 
 describe('onboarding match mission state', () => {
   it('shows real capture states before a recording exists', () => {
@@ -42,5 +47,25 @@ describe('onboarding match mission state', () => {
       game: 'valorant',
       bonusClaimedJobId: 'job-claimed',
     }, 'valorant')).toBe(false)
+  })
+  it('does not call an empty Riot stats shell usable match data', () => {
+    expect(hasUsableOnboardingRiotData({
+      matchId: 'match-1',
+      timeline: { finalStats: { kills: 0, deaths: 0, assists: 0 } },
+    })).toBe(false)
+  })
+
+  it('moves progress beyond Riot matching once usable stats arrive', () => {
+    const progress = deriveOnboardingMissionProgress('waiting_match_data', {
+      matchId: 'match-1',
+      timeline: { finalStats: { kills: 14, deaths: 12, assists: 5 } },
+    })
+
+    expect(progress.map((step) => step.state)).toEqual([
+      'complete',
+      'complete',
+      'active',
+      'pending',
+    ])
   })
 })
