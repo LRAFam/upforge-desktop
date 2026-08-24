@@ -5,7 +5,7 @@ import { clearObsCrashSentinel } from './obs-crash-sentinel'
 
 const execAsync = promisify(exec)
 
-const OBS_WIN_IMAGE = 'obs64.exe'
+const OBS_WIN_FOUND_MARKER = 'UPFORGE_OBS_PROCESS_FOUND'
 
 /** How long OBS gets to shut itself down before we force it. */
 const GRACEFUL_EXIT_TIMEOUT_MS = 8000
@@ -22,15 +22,25 @@ export interface ObsTerminateCommands {
 }
 
 /**
+ * Match both known OBS executable names and the "OBS Studio" product/file
+ * description shown by Windows Task Manager. The metadata check also catches
+ * renamed or alternate OBS builds instead of assuming every task is obs64.exe.
+ */
+function windowsObsProcessesScript(action: string): string {
+  const findObs = "$obs = @(Get-Process -ErrorAction SilentlyContinue | Where-Object { $knownName = $_.ProcessName -in @('obs64','obs32'); $studioMetadata = $false; try { $info = $_.MainModule.FileVersionInfo; $studioMetadata = $info.ProductName -eq 'OBS Studio' -or $info.FileDescription -eq 'OBS Studio' } catch {}; $knownName -or $studioMetadata })"
+  return `powershell.exe -NoProfile -NonInteractive -Command "${findObs}; ${action}"`
+}
+
+/**
  * A graceful close lets OBS clear its crash sentinel, which keeps the next
  * launch from stalling on the Safe Mode prompt.
  */
 export function obsTerminateCommands(platform: NodeJS.Platform = process.platform): ObsTerminateCommands {
   if (platform === 'win32') {
-    // /T covers the process tree (browser sources, crash helpers) that can block relaunch.
+    // /T covers browser sources and crash helpers that can block relaunch.
     return {
-      graceful: `taskkill /IM ${OBS_WIN_IMAGE} /T`,
-      force: `taskkill /IM ${OBS_WIN_IMAGE} /F /T`,
+      graceful: windowsObsProcessesScript("$obs | ForEach-Object { & taskkill.exe /PID $_.Id /T }"),
+      force: windowsObsProcessesScript("$obs | ForEach-Object { & taskkill.exe /PID $_.Id /F /T }"),
     }
   }
   if (platform === 'darwin') {
@@ -48,8 +58,9 @@ export function obsTerminateCommands(platform: NodeJS.Platform = process.platfor
 export async function isObsProcessRunning(): Promise<boolean> {
   if (process.platform === 'win32') {
     try {
-      const { stdout } = await execAsync(`tasklist /fi "IMAGENAME eq ${OBS_WIN_IMAGE}" /fo csv /nh`)
-      return stdout.toLowerCase().includes(OBS_WIN_IMAGE)
+      const command = windowsObsProcessesScript(`if ($obs.Count -gt 0) { Write-Output '${OBS_WIN_FOUND_MARKER}' }`)
+      const { stdout } = await execAsync(command)
+      return stdout.includes(OBS_WIN_FOUND_MARKER)
     } catch {
       return false
     }
@@ -85,7 +96,7 @@ export async function terminateObsProcess(): Promise<{ ok: boolean; error?: stri
   }
 
   const manualHint = process.platform === 'win32'
-    ? 'Could not close OBS. Close OBS Studio yourself (check the system tray), then try again.'
+    ? 'Could not close OBS. End every OBS Studio task in Task Manager, including background tasks, then try again.'
     : 'Could not close OBS. Quit OBS manually, then try again.'
 
   const commands = obsTerminateCommands()

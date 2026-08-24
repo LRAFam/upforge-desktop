@@ -2,10 +2,13 @@ import { describe, expect, it } from 'vitest'
 import { obsTerminateCommands } from './obs-process'
 
 describe('obsTerminateCommands', () => {
-  it('asks Windows to close OBS before forcing it', () => {
+  it('targets Windows OBS processes by executable name and OBS Studio metadata', () => {
     const { graceful, force } = obsTerminateCommands('win32')
     expect(graceful).not.toContain('/F')
-    expect(graceful).toContain('obs64.exe')
+    expect(graceful).toContain("'obs64','obs32'")
+    expect(graceful).toContain("ProductName -eq 'OBS Studio'")
+    expect(graceful).toContain("FileDescription -eq 'OBS Studio'")
+    expect(graceful).toContain('taskkill.exe /PID $_.Id /T')
     expect(force).toContain('/F')
   })
 
