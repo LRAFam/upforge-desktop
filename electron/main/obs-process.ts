@@ -21,14 +21,24 @@ export interface ObsTerminateCommands {
   force: string
 }
 
+export interface ObsTerminateResult {
+  ok: boolean
+  error?: string
+  /** Windows kept OBS alive because the caller needs administrator rights. */
+  requiresElevation?: boolean
+}
+
 /**
  * Match both known OBS executable names and the "OBS Studio" product/file
  * description shown by Windows Task Manager. The metadata check also catches
  * renamed or alternate OBS builds instead of assuming every task is obs64.exe.
  */
+export function windowsObsProcessQuery(): string {
+  return "$obs = @(Get-Process -ErrorAction SilentlyContinue | Where-Object { $knownName = $_.ProcessName -in @('obs64','obs32'); $studioMetadata = $false; try { $info = $_.MainModule.FileVersionInfo; $studioMetadata = $info.ProductName -eq 'OBS Studio' -or $info.FileDescription -eq 'OBS Studio' } catch {}; $knownName -or $studioMetadata })"
+}
+
 function windowsObsProcessesScript(action: string): string {
-  const findObs = "$obs = @(Get-Process -ErrorAction SilentlyContinue | Where-Object { $knownName = $_.ProcessName -in @('obs64','obs32'); $studioMetadata = $false; try { $info = $_.MainModule.FileVersionInfo; $studioMetadata = $info.ProductName -eq 'OBS Studio' -or $info.FileDescription -eq 'OBS Studio' } catch {}; $knownName -or $studioMetadata })"
-  return `powershell.exe -NoProfile -NonInteractive -Command "${findObs}; ${action}"`
+  return `powershell.exe -NoProfile -NonInteractive -Command "${windowsObsProcessQuery()}; ${action}"`
 }
 
 /**
@@ -90,13 +100,13 @@ async function waitForObsExit(timeoutMs: number): Promise<boolean> {
   return !(await isObsProcessRunning())
 }
 
-export async function terminateObsProcess(): Promise<{ ok: boolean; error?: string }> {
+export async function terminateObsProcess(): Promise<ObsTerminateResult> {
   if (!(await isObsProcessRunning())) {
     return { ok: true }
   }
 
   const manualHint = process.platform === 'win32'
-    ? 'Could not close OBS. End every OBS Studio task in Task Manager, including background tasks, then try again.'
+    ? 'Windows administrator permission is required to restart OBS.'
     : 'Could not close OBS. Quit OBS manually, then try again.'
 
   const commands = obsTerminateCommands()
@@ -112,8 +122,8 @@ export async function terminateObsProcess(): Promise<{ ok: boolean; error?: stri
     await execAsync(commands.force).catch(() => undefined)
     await sleep(1500)
     if (await isObsProcessRunning()) {
-      log.warn('[OBS Process] Still running after terminate attempts')
-      return { ok: false, error: manualHint }
+      log.warn('[OBS Process] Still running after terminate attempts — elevation required')
+      return { ok: false, error: manualHint, requiresElevation: process.platform === 'win32' }
     }
     // A forced exit leaves the sentinel behind, which triggers OBS Safe Mode next launch.
     clearObsCrashSentinel()
@@ -126,7 +136,7 @@ export async function terminateObsProcess(): Promise<{ ok: boolean; error?: stri
     if (!(await isObsProcessRunning())) {
       return { ok: true }
     }
-    return { ok: false, error: manualHint }
+    return { ok: false, error: manualHint, requiresElevation: process.platform === 'win32' }
   }
 }
 

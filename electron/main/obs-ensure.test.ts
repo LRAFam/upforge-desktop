@@ -8,6 +8,7 @@ vi.mock('./obs-process', () => ({
 
 vi.mock('./obs-launcher', () => ({
   launchObsStudio: vi.fn(),
+  restartObsStudioElevated: vi.fn(),
   obsLaunchDelayMs: () => 0,
 }))
 
@@ -22,7 +23,7 @@ vi.mock('./obs-connect', () => ({
 
 import { ensureObsConnected, obsPostLaunchConnectDelaysMs, resetObsLaunchCooldownForTests } from './obs-ensure'
 import { isObsProcessRunning, terminateObsProcess } from './obs-process'
-import { launchObsStudio } from './obs-launcher'
+import { launchObsStudio, restartObsStudioElevated } from './obs-launcher'
 
 function mockRecorder(overrides: {
   isConnected?: boolean
@@ -56,6 +57,7 @@ describe('ensureObsConnected', () => {
     vi.mocked(isObsProcessRunning).mockReset()
     vi.mocked(terminateObsProcess).mockReset()
     vi.mocked(launchObsStudio).mockReset()
+    vi.mocked(restartObsStudioElevated).mockReset()
   })
 
   it('returns alreadyConnected when WebSocket is up', async () => {
@@ -96,6 +98,30 @@ describe('ensureObsConnected', () => {
     expect(terminateObsProcess).toHaveBeenCalled()
     expect(launchObsStudio).toHaveBeenCalledWith({ password: 'upforge', port: 4455 })
     expect(result.ok).toBe(true)
+  })
+
+  it('requests elevation and reconnects when Windows blocks the normal shutdown', async () => {
+    vi.mocked(isObsProcessRunning).mockResolvedValue(true)
+    vi.mocked(terminateObsProcess).mockResolvedValue({
+      ok: false,
+      requiresElevation: true,
+      error: 'Administrator permission is required to restart OBS.',
+    })
+    vi.mocked(restartObsStudioElevated).mockResolvedValue({ ok: true })
+
+    const rec = mockRecorder({
+      connectResults: [
+        fail(),
+        fail(), fail(), fail(), fail(), // patient retries
+        { ok: true }, // after elevated relaunch
+      ],
+    })
+
+    const result = await ensureObsConnected(rec as never, { password: 'upforge', port: 4455 })
+
+    expect(restartObsStudioElevated).toHaveBeenCalledWith({ password: 'upforge', port: 4455 })
+    expect(launchObsStudio).not.toHaveBeenCalled()
+    expect(result).toMatchObject({ ok: true, launched: true, processRunning: true })
   })
 
   it('does not kill during launch cooldown when WebSocket is still down', async () => {

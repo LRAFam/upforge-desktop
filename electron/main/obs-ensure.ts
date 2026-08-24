@@ -10,7 +10,7 @@ import type { BrowserWindow } from 'electron'
 import log from 'electron-log'
 import { explainObsConnectionFailure } from './obs-connect'
 import { broadcastObsConnection } from './obs-health'
-import { launchObsStudio, obsLaunchDelayMs } from './obs-launcher'
+import { launchObsStudio, obsLaunchDelayMs, restartObsStudioElevated } from './obs-launcher'
 import { isObsProcessRunning, obsProcessSleep, terminateObsProcess } from './obs-process'
 import type { OBSRecorder } from './obs-recorder'
 
@@ -85,11 +85,38 @@ export async function ensureObsConnected(
   const allowProcessRestart = opts.allowProcessRestart !== false
   const win = () => opts.getWindow?.() ?? null
 
+  const connectAfterLaunch = async (): Promise<EnsureObsConnectedResult> => {
+    lastObsLaunchAt = Date.now()
+    opts.onActivity?.('Starting OBS — connecting…')
+    const connected = await connectWithRetries(
+      obsRecorder,
+      obsPostLaunchConnectDelaysMs(obsLaunchDelayMs()),
+    )
+    if (connected.ok) {
+      broadcastObsConnection(win(), obsRecorder)
+      opts.onActivity?.('OBS connected — recording ready')
+      return { ok: true, launched: true, processRunning: true }
+    }
+
+    const running = await isObsProcessRunning()
+    broadcastObsConnection(win(), obsRecorder, connected.error)
+    return {
+      ok: false,
+      launched: true,
+      processRunning: running,
+      error: explainObsConnectionFailure({
+        processRunning: running,
+        connectError: connected.error,
+        launched: true,
+      }),
+    }
+  }
+
   if (obsRecorder.isConnected()) {
     return { ok: true, alreadyConnected: true, processRunning: true }
   }
 
-  let processRunning = await isObsProcessRunning()
+  const processRunning = await isObsProcessRunning()
   if (processRunning) {
     const existing = await obsRecorder.connect()
     if (existing.ok) {
@@ -123,6 +150,20 @@ export async function ensureObsConnected(
     opts.onActivity?.('OBS stuck after crash — restarting recording engine…')
     const killed = await terminateObsProcess()
     if (!killed.ok) {
+      if (killed.requiresElevation) {
+        log.warn('[OBS Ensure] Normal shutdown blocked — requesting administrator permission')
+        opts.onActivity?.('Windows permission needed — approve the OBS restart prompt…')
+        const elevated = await restartObsStudioElevated({
+          password: opts.password,
+          port: opts.port,
+        })
+        if (elevated.ok) return connectAfterLaunch()
+        return {
+          ok: false,
+          processRunning: true,
+          error: elevated.error ?? killed.error ?? 'Windows could not restart OBS as administrator.',
+        }
+      }
       return {
         ok: false,
         processRunning: true,
@@ -133,7 +174,6 @@ export async function ensureObsConnected(
         }),
       }
     }
-    processRunning = false
   }
 
   const launched = await launchObsStudio({
@@ -148,28 +188,5 @@ export async function ensureObsConnected(
     }
   }
 
-  lastObsLaunchAt = Date.now()
-  opts.onActivity?.('Starting OBS — connecting…')
-  const connected = await connectWithRetries(
-    obsRecorder,
-    obsPostLaunchConnectDelaysMs(obsLaunchDelayMs()),
-  )
-  if (connected.ok) {
-    broadcastObsConnection(win(), obsRecorder)
-    opts.onActivity?.('OBS connected — recording ready')
-    return { ok: true, launched: true, processRunning: true }
-  }
-
-  processRunning = await isObsProcessRunning()
-  broadcastObsConnection(win(), obsRecorder, connected.error)
-  return {
-    ok: false,
-    launched: true,
-    processRunning,
-    error: explainObsConnectionFailure({
-      processRunning,
-      connectError: connected.error,
-      launched: true,
-    }),
-  }
+  return connectAfterLaunch()
 }

@@ -8,7 +8,9 @@ describe('buildElevatedObsScript', () => {
       ['--minimize-to-tray', '--websocket_port=4455'],
     )
 
-    expect(script).toContain("Get-Process -Name 'obs64'")
+    expect(script).toContain("'obs64','obs32'")
+    expect(script).toContain("ProductName -eq 'OBS Studio'")
+    expect(script).toContain('Stop-Process -Force')
     expect(script).toContain("-FilePath 'C:\\Program Files\\obs-studio\\bin\\64bit\\obs64.exe'")
     expect(script).toContain("-WorkingDirectory 'C:\\Program Files\\obs-studio\\bin\\64bit'")
     expect(script).toContain("'--websocket_port=4455'")

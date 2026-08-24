@@ -17,6 +17,7 @@ import {
   UPFORGE_OBS_DEFAULT_PORT,
   UPFORGE_OBS_DEFAULT_PASSWORD,
 } from './obs-profile-installer'
+import { windowsObsProcessQuery } from './obs-process'
 
 export interface LaunchObsOptions {
   password?: string
@@ -35,7 +36,8 @@ export function buildElevatedObsScript(exe: string, args: string[]): string {
   const argumentList = args.map(powershellSingleQuoted).join(', ')
   return [
     "$ErrorActionPreference = 'Stop'",
-    "Get-Process -Name 'obs64' -ErrorAction SilentlyContinue | Stop-Process -Force",
+    windowsObsProcessQuery(),
+    '$obs | Stop-Process -Force -ErrorAction SilentlyContinue',
     'Start-Sleep -Milliseconds 500',
     `Start-Process -FilePath ${powershellSingleQuoted(exe)} -WorkingDirectory ${powershellSingleQuoted(cwd)} -ArgumentList @(${argumentList})`,
   ].join('; ')
@@ -52,7 +54,8 @@ function runElevatedPowerShell(script: string): Promise<{ ok: boolean; error?: s
     const encodedScript = Buffer.from(script, 'utf16le').toString('base64')
     const elevateCommand = [
       "$ErrorActionPreference = 'Stop'",
-      `Start-Process -FilePath 'powershell.exe' -Verb RunAs -Wait -WindowStyle Hidden -ArgumentList @('-NoProfile', '-NonInteractive', '-EncodedCommand', '${encodedScript}')`,
+      `$process = Start-Process -FilePath 'powershell.exe' -Verb RunAs -Wait -PassThru -WindowStyle Hidden -ArgumentList @('-NoProfile', '-NonInteractive', '-EncodedCommand', '${encodedScript}')`,
+      'if ($process.ExitCode -ne 0) { exit $process.ExitCode }',
     ].join('; ')
     const child = spawn('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', elevateCommand], {
       stdio: 'ignore',
