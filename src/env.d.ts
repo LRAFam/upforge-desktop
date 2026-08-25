@@ -72,6 +72,26 @@ export interface TrainingHistory {
   by_scenario: Record<string, TrainingScenarioStats>
 }
 
+export interface SharedTrainingPlanStep {
+  phase: 'warmup' | 'focus' | 'cooldown'
+  phase_label: string
+  scenario: string
+  scenario_label: string
+  difficulty: 'easy' | 'medium' | 'hard' | 'pro'
+  duration_seconds: number
+  category: string
+  reason: string
+  user_drill_id: number | null
+}
+
+export interface SharedTrainingPlan {
+  version: 1
+  source: { type: 'starter' | 'vod_drill'; drill_id: number | null }
+  focus: { scenario: string; label: string; category: string; reason: string }
+  total_duration_seconds: number
+  steps: SharedTrainingPlanStep[]
+}
+
 export interface CoachingDrill {
   id: number
   category: string
@@ -1393,6 +1413,7 @@ declare global {
         launch: (config: Record<string, unknown>) => Promise<{ ok: boolean; error?: string }>
         kill: () => Promise<{ ok: boolean }>
         getHistory: () => Promise<TrainingHistory | null>
+        getPlan: () => Promise<SharedTrainingPlan | null>
         getCoachingDrills: () => Promise<CoachingDrill[]>
         getCorrelation: () => Promise<string[]>
         getBenchmark: () => Promise<TrainingBenchmark | null>

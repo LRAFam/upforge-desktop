@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
-import type { TrainingHistory, CoachingDrill, TrainingBenchmark } from '../env'
+import type { TrainingHistory, CoachingDrill, TrainingBenchmark, SharedTrainingPlan } from '../env'
 import { ACHIEVEMENTS, useAchievements } from '../composables/useAchievements'
 import { type CrosshairSettings, CROSSHAIR_PALETTE_HEX, resolveColor } from '../lib/crosshair'
 import {
@@ -13,9 +13,7 @@ import {
   resolveTrainerDuration,
 } from '../lib/trainer-scenarios'
 import {
-  buildStructuredSessionPlan,
   buildSessionSummary,
-  coachingDrillToSessionDrill,
   applyProgressionToDrill,
   SESSION_AUTO_ADVANCE_SEC,
   type SessionDrill,
@@ -78,6 +76,7 @@ const sessionHistory = ref<SessionResult[]>([])
 const activeDrill = ref<AssignedDrill | null>(null)
 const completedDrills = ref<Set<string>>(new Set())
 const apiHistory = ref<TrainingHistory | null>(null)
+const sharedTrainingPlan = ref<SharedTrainingPlan | null>(null)
 const coachingDrills = ref<CoachingDrill[]>([])
 const correlationInsights = ref<string[]>([])
 const benchmarkData = ref<TrainingBenchmark | null>(null)
@@ -670,14 +669,16 @@ onMounted(async () => {
   loadingHistory.value = true
   loadingAiCoaching.value = true
   try {
-    const [history, drills, insights, benchmark, coaching] = await Promise.all([
+    const [history, plan, drills, insights, benchmark, coaching] = await Promise.all([
       window.api.trainer.getHistory(),
+      window.api.trainer.getPlan(),
       window.api.trainer.getCoachingDrills(),
       window.api.trainer.getCorrelation(),
       window.api.trainer.getBenchmark(),
       window.api.trainer.getAiCoaching(),
     ])
     apiHistory.value = history
+    sharedTrainingPlan.value = plan
     const drillList = Array.isArray(drills) ? drills : []
     coachingDrills.value = drillList
     correlationInsights.value = Array.isArray(insights) ? insights : []
@@ -1224,18 +1225,18 @@ async function launchStructuredStep(stepIndex: number) {
 }
 
 async function startStructuredSession() {
-  const recent = apiHistory.value?.sessions ?? sessionHistory.value
-  const focusAssigned = recommendedDrills.value[0] ?? assignedDrills.value[0] ?? null
-  let focusDrill: SessionDrill | null = focusAssigned ? assignedToSessionDrill(focusAssigned) : null
-  if (!focusDrill && coachingDrills.value[0]) {
-    focusDrill = coachingDrillToSessionDrill(coachingDrills.value[0])
-  }
-
-  const plan = buildStructuredSessionPlan({
-    focusDrill,
-    aiFocusArea: aiCoaching.value?.focus_area ?? null,
-    recentSessions: recent,
-  })
+  const plan = sharedTrainingPlan.value?.steps.map(step => ({
+    phase: step.phase,
+    phaseLabel: step.phase_label,
+    scenario: step.scenario as TrainerScenarioKey,
+    difficulty: step.difficulty,
+    duration_seconds: step.duration_seconds,
+    weakness: step.category,
+    weakness_score: 0,
+    reason: step.reason,
+    user_drill_id: step.user_drill_id ?? undefined,
+  }))
+  if (!plan?.length) return
 
   structuredSession.value = { active: true, stepIndex: 0, plan, results: [] }
   showSessionSummary.value = false
@@ -1289,11 +1290,17 @@ function sessionPhaseBorder(phase: string): string {
 }
 
 const guidedSessionPreview = computed(() =>
-  buildStructuredSessionPlan({
-    focusDrill: recommendedDrills.value[0] ? assignedToSessionDrill(recommendedDrills.value[0]) : null,
-    aiFocusArea: aiCoaching.value?.focus_area ?? null,
-    recentSessions: apiHistory.value?.sessions ?? sessionHistory.value,
-  }),
+  sharedTrainingPlan.value?.steps.map(step => ({
+    phase: step.phase,
+    phaseLabel: step.phase_label,
+    scenario: step.scenario as TrainerScenarioKey,
+    difficulty: step.difficulty,
+    duration_seconds: step.duration_seconds,
+    weakness: step.category,
+    weakness_score: 0,
+    reason: step.reason,
+    user_drill_id: step.user_drill_id ?? undefined,
+  })) ?? [],
 )
 
 // SVG icon HTML for coaching drill categories (analytics tab)
@@ -1644,8 +1651,8 @@ const CATEGORY_ICON: Record<string, string> = {
         <div class="p-5 space-y-4">
           <TrainingGuidedSessionHero
             :steps="guidedSessionPreview"
-            :focus-reason="recommendedDrills[0]?.reason ?? null"
-            :disabled="launching || drillRunning || structuredSessionActive"
+            :focus-reason="sharedTrainingPlan?.focus.reason ?? null"
+            :disabled="!sharedTrainingPlan || launching || drillRunning || structuredSessionActive"
             :phase-border="sessionPhaseBorder"
             :scenario-label="(k) => SCENARIO_META[k]?.label ?? k"
             @start="startStructuredSession"

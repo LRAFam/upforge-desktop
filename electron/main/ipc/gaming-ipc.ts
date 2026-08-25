@@ -213,6 +213,18 @@ export function setupGamingHandlers(
     }
   })
 
+  ipcMain.handle('trainer:get-plan', async () => {
+    const token = auth.getToken()
+    if (!token) return null
+    try {
+      const res = await auth.getApi().get('/api/training/plan')
+      return res.data?.plan ?? null
+    } catch (err: any) {
+      log.warn('[Trainer] Failed to fetch shared training plan:', err?.message)
+      return null
+    }
+  })
+
   ipcMain.handle('trainer:get-coaching-drills', async () => {
     const token = auth.getToken()
     if (!token) return []

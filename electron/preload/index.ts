@@ -298,6 +298,7 @@ const api = {
     launch: (config: Record<string, unknown>) => ipcRenderer.invoke('trainer:launch', config),
     kill: () => ipcRenderer.invoke('trainer:kill'),
     getHistory: () => ipcRenderer.invoke('trainer:get-history'),
+    getPlan: () => ipcRenderer.invoke('trainer:get-plan'),
     getCoachingDrills: () => ipcRenderer.invoke('trainer:get-coaching-drills'),
     getCorrelation: () => ipcRenderer.invoke('trainer:get-correlation'),
     getBenchmark: () => ipcRenderer.invoke('trainer:get-benchmark'),
