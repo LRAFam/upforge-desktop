@@ -371,6 +371,7 @@ const obsRecorder = new OBSRecorder(
       replayBufferSeconds: s?.obsReplayBufferSeconds ?? 30,
       obsPreserveActiveScene: s?.obsPreserveActiveScene ?? false,
       obsRecordVerifyMs: s?.obsRecordVerifyMs,
+      obsGameplayScene: s?.obsGameplayScene,
     }
   },
   () => {
@@ -378,6 +379,7 @@ const obsRecorder = new OBSRecorder(
     return s ? buildRecorderConfig(s, hasProAccess(authManager.getUser()), getActiveUserId()) : undefined
   },
   () => settingsManager?.get()?.primaryGame ?? 'valorant',
+  (identity) => { settingsManager?.save({ obsGameplayScene: identity }) },
 )
 setUpdateActivityGuard(() => matchPerformanceModeActive || obsRecorder.isActivelyRecording())
 
@@ -4015,14 +4017,6 @@ function setupGameDetection(): void {
       console.log('[GameDetector] game-started ignored — capture already active')
       return
     }
-    if (await obsRecorder.isObsOutputActive()) {
-      const reclaimed = await obsRecorder.reclaimActiveRecording()
-      if (reclaimed) {
-        console.log('[GameDetector] game-started reclaimed ongoing OBS capture')
-        return
-      }
-    }
-
     syncPrimaryGameFromDetection(game)
 
     const { isStale } = beginMatchFlow()
@@ -4794,7 +4788,7 @@ function setupGameDetection(): void {
     const gameProcessStillRunning = game === 'valorant'
       ? await gameDetector.isMatchProcessRunning()
       : await gameDetector.isGameProcessRunning(game)
-    if (!gameProcessStillRunning) {
+    if (!reclaimedExistingCapture && !gameProcessStillRunning) {
       log.warn('[GameDetector] Game process exited before recorder start — aborting')
       logActivity('Match ended before recording could start')
       tray?.setToolTip(idleTooltip(game))

@@ -9,6 +9,7 @@ import log from 'electron-log'
 import { resolveObsCaptureWindow } from './game-window-finder'
 import { obsCaptureConfig } from './game-config'
 import { applyCrashSafeObsRecFormat } from './obs-rec-format'
+import type { ObsSceneIdentity } from './obs-scene-identity'
 
 export const UPFORGE_SCENE_NAME = 'UpForge'
 export const UPFORGE_INPUT_NAME = 'UpForge Capture'
@@ -60,7 +61,32 @@ export interface ObsSetupResult {
   inputCreated: boolean
   inputUpgraded?: boolean
   captureWindow?: string
+  sceneIdentity?: ObsSceneIdentity
   error?: string
+}
+
+async function getSceneCollectionName(obs: OBSWebSocket): Promise<string | null> {
+  try {
+    const result = await obs.call('GetSceneCollectionList') as {
+      currentSceneCollectionName?: string
+    }
+    return result.currentSceneCollectionName ?? null
+  } catch {
+    return null
+  }
+}
+
+async function getUpForgeSceneIdentity(obs: OBSWebSocket): Promise<ObsSceneIdentity | null> {
+  const sceneList = await obs.call('GetSceneList') as unknown as {
+    scenes?: Array<{ sceneName: string; sceneUuid?: string }>
+  }
+  const scene = sceneList.scenes?.find((candidate) => candidate.sceneName === UPFORGE_SCENE_NAME)
+  if (!scene) return null
+  return {
+    collectionName: await getSceneCollectionName(obs),
+    sceneName: scene.sceneName,
+    sceneUuid: scene.sceneUuid ?? null,
+  }
 }
 
 const DESKTOP_CAPTURE_KINDS = new Set(['monitor_capture', 'display_capture', 'screen_capture'])
@@ -359,6 +385,7 @@ export async function setupUpForgeScene(
   let inputCreated = false
   let inputUpgraded = false
   let captureWindow: string | undefined
+  let sceneIdentity: ObsSceneIdentity | undefined
 
   try {
     const sceneList = await obs.call('GetSceneList') as unknown as { scenes?: { sceneName: string }[] }
@@ -369,6 +396,7 @@ export async function setupUpForgeScene(
       sceneCreated = true
       log.info('[OBS Setup] Created scene:', UPFORGE_SCENE_NAME)
     }
+    sceneIdentity = await getUpForgeSceneIdentity(obs) ?? undefined
 
     const capture = await ensureUpForgeCapture(obs, game, {
       forceRecreate: options.forceRecreate,
@@ -383,6 +411,7 @@ export async function setupUpForgeScene(
     }
 
     await fitUpForgeCaptureToCanvas(obs)
+    sceneIdentity = await getUpForgeSceneIdentity(obs) ?? sceneIdentity
 
     try {
       const versionInfo = await obs.call('GetVersion') as { obsVersion?: string }
@@ -402,10 +431,10 @@ export async function setupUpForgeScene(
       }).catch(() => { /* profile layout varies — non-fatal */ })
     }
 
-    return { ok: true, sceneCreated, inputCreated, inputUpgraded, captureWindow }
+    return { ok: true, sceneCreated, inputCreated, inputUpgraded, captureWindow, sceneIdentity }
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err)
     log.warn('[OBS Setup] setupUpForgeScene failed:', msg)
-    return { ok: false, sceneCreated, inputCreated, inputUpgraded, captureWindow, error: msg }
+    return { ok: false, sceneCreated, inputCreated, inputUpgraded, captureWindow, sceneIdentity, error: msg }
   }
 }

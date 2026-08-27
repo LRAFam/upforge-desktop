@@ -214,6 +214,12 @@ export interface AppSettings {
   obsReplayBufferSeconds: number
   /** Keep active OBS scene when recording starts (for stream layouts with face cam) */
   obsPreserveActiveScene: boolean
+  /** Stable identity of the UpForge-created gameplay scene, scoped to its OBS collection. */
+  obsGameplayScene?: {
+    collectionName: string | null
+    sceneName: string
+    sceneUuid: string | null
+  }
   /** One-time migration: force UpForge scene switch default (v2). */
   obsPreserveSceneDefaultV2?: boolean
   /** Milliseconds to wait for OBS outputActive after StartRecord (1–15000, default 5000). */

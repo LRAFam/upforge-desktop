@@ -42,6 +42,7 @@ import { isObsProcessRunning } from './obs-process'
 import type { RecorderConfig } from './recorder'
 import { assessCaptureFrame, type CaptureFrameQuality } from './capture-frame-quality'
 import { withTimeout } from './promise-timeout'
+import { isRegisteredObsScene, type ObsSceneIdentity } from './obs-scene-identity'
 
 type CapturePreviewResult =
   | { ok: true; dataUrl: string; quality: CaptureFrameQuality }
@@ -56,6 +57,7 @@ export interface OBSSettings {
   obsPreserveActiveScene: boolean
   /** Milliseconds to wait for outputActive after StartRecord. */
   obsRecordVerifyMs?: number
+  obsGameplayScene?: ObsSceneIdentity
 }
 
 export interface OBSStatus {
@@ -162,6 +164,9 @@ export class OBSRecorder {
   private _lastConnectWarnAt = 0
   /** Last game OBS capture was pointed at — used to force refresh on game switches. */
   private _lastCaptureGame: string | null = null
+  private _gameplaySceneIdentity: ObsSceneIdentity | null = null
+  /** Scene classification captured when an OBS-owned recording starts. */
+  private _unownedRecordingStartedOnGameplay: boolean | null = null
 
   onStatusChange?: (recording: boolean, error?: string) => void
   onReplayClipSaved?: (path: string, trigger: string, meta?: ReplayClipSavedMeta) => void
@@ -180,6 +185,7 @@ export class OBSRecorder {
     private getSettings: () => OBSSettings,
     private getRecordingConfig?: () => RecorderConfig | undefined,
     private getPrimaryGame?: () => string,
+    private onGameplaySceneIdentity?: (identity: ObsSceneIdentity) => void,
   ) {
     this._obs.on('ReplayBufferSaved', ({ savedReplayPath }) => {
       log.info('[OBSRecorder] Replay buffer saved:', savedReplayPath)
@@ -194,7 +200,17 @@ export class OBSRecorder {
 
     this._obs.on('RecordStateChanged', ({ outputActive, outputPath }) => {
       if (outputPath) this._outputPath = outputPath
-      if (!this._matchOwnedRecording) return
+      if (!this._matchOwnedRecording) {
+        if (outputActive) {
+          void this.isCurrentProgramSceneGameplay().then((isGameplay) => {
+            this._unownedRecordingStartedOnGameplay = isGameplay
+            log.info('[OBSRecorder] OBS-owned recording started on', isGameplay ? 'UpForge gameplay scene' : 'non-gameplay scene')
+          })
+        } else {
+          this._unownedRecordingStartedOnGameplay = null
+        }
+        return
+      }
 
       if (outputActive) {
         if (this._recordInactiveSettleTimer) {
@@ -310,10 +326,13 @@ export class OBSRecorder {
 
         const { allowRecreate, outputsHot } = await this.captureSetupMutationFlags()
 
+        this._gameplaySceneIdentity = this.getSettings().obsGameplayScene ?? null
         const setup = await setupUpForgeScene(this._obs, this.getPrimaryGame?.() ?? 'valorant', {
-          switchScene: !this.getSettings().obsPreserveActiveScene,
+          // Never switch a user's live recording away from its current scene.
+          switchScene: !outputsHot && !this.getSettings().obsPreserveActiveScene,
           allowRecreate,
         })
+        this._registerGameplayScene(setup.sceneIdentity)
         if (!setup.ok) {
           log.warn('[OBSRecorder] Scene setup incomplete:', setup.error)
         }
@@ -428,11 +447,53 @@ export class OBSRecorder {
       }
       return result.setup ?? { ok: true, sceneCreated: false, inputCreated: false }
     }
-    const { allowRecreate } = await this.captureSetupMutationFlags()
-    return setupUpForgeScene(this._obs, game, {
-      switchScene: forceSwitchScene || !this.getSettings().obsPreserveActiveScene,
+    const { allowRecreate, outputsHot } = await this.captureSetupMutationFlags()
+    const setup = await setupUpForgeScene(this._obs, game, {
+      switchScene: !outputsHot && (forceSwitchScene || !this.getSettings().obsPreserveActiveScene),
       allowRecreate,
     })
+    this._registerGameplayScene(setup.sceneIdentity)
+    return setup
+  }
+
+  private _registerGameplayScene(identity?: ObsSceneIdentity): void {
+    if (!identity) return
+    const previous = this._gameplaySceneIdentity
+    this._gameplaySceneIdentity = identity
+    if (
+      previous?.collectionName !== identity.collectionName
+      || previous?.sceneName !== identity.sceneName
+      || previous?.sceneUuid !== identity.sceneUuid
+    ) this.onGameplaySceneIdentity?.(identity)
+  }
+
+  private async _getCurrentProgramSceneIdentity(): Promise<ObsSceneIdentity | null> {
+    try {
+      const [program, collections] = await Promise.all([
+        this._obs.call('GetCurrentProgramScene') as Promise<{
+          currentProgramSceneName?: string
+          currentProgramSceneUuid?: string
+        }>,
+        (this._obs.call('GetSceneCollectionList') as Promise<{
+          currentSceneCollectionName?: string
+        }>).catch((): { currentSceneCollectionName?: string } => ({})),
+      ])
+      if (!program.currentProgramSceneName) return null
+      return {
+        collectionName: collections.currentSceneCollectionName ?? null,
+        sceneName: program.currentProgramSceneName,
+        sceneUuid: program.currentProgramSceneUuid ?? null,
+      }
+    } catch (err) {
+      log.warn('[OBSRecorder] Could not query current program scene:', err)
+      return null
+    }
+  }
+
+  /** Fail closed: only the registered UpForge gameplay scene may become a match session. */
+  async isCurrentProgramSceneGameplay(): Promise<boolean> {
+    const registered = this._gameplaySceneIdentity ?? this.getSettings().obsGameplayScene ?? null
+    return isRegisteredObsScene(await this._getCurrentProgramSceneIdentity(), registered)
   }
 
   /** Hot-session guard for connect/setup — queries live OBS output when connected. */
@@ -540,7 +601,9 @@ export class OBSRecorder {
 
   /** True when UpForge or OBS still has an active match recording to finalize. */
   async isCaptureActive(): Promise<boolean> {
-    return this.isRecording() || await this.isObsOutputActive()
+    if (this.isRecording()) return true
+    if (!(await this.isObsOutputActive())) return false
+    return this._unownedRecordingStartedOnGameplay ?? await this.isCurrentProgramSceneGameplay()
   }
 
   /**
@@ -608,6 +671,12 @@ export class OBSRecorder {
       return true
     }
     if (!(await this.isObsOutputActive())) return false
+    const startedOnGameplay = this._unownedRecordingStartedOnGameplay
+      ?? await this.isCurrentProgramSceneGameplay()
+    if (!startedOnGameplay) {
+      log.info('[OBSRecorder] Leaving active OBS recording unowned — it started on a non-gameplay scene')
+      return false
+    }
     try {
       const status = await this._obs.call('GetRecordStatus') as {
         outputActive?: boolean
@@ -622,6 +691,7 @@ export class OBSRecorder {
     this._recording = true
     if (!this._startedAt) this._startedAt = Date.now()
     this._disconnectedDuringRecording = false
+    this._unownedRecordingStartedOnGameplay = null
     this._stopReconnectLoop()
     this.onStatusChange?.(true)
     log.info('[OBSRecorder] Reclaimed active OBS recording for current match')
@@ -769,6 +839,13 @@ export class OBSRecorder {
 
     if (!status.outputActive || this._matchOwnedRecording) return 'idle'
 
+    const startedOnGameplay = this._unownedRecordingStartedOnGameplay
+      ?? await this.isCurrentProgramSceneGameplay()
+    if (!startedOnGameplay) {
+      log.info('[OBSRecorder] Active OBS recording belongs to a non-gameplay scene — leaving it untouched')
+      return 'blocked'
+    }
+
     log.warn('[OBSRecorder] Unowned OBS outputActive — attempting StopRecord to clear stale state')
     await new Promise((r) => setTimeout(r, 1000))
 
@@ -853,6 +930,9 @@ export class OBSRecorder {
       // Game/window capture only — never desktop (privacy / policy safe when alt-tabbing)
       await retargetUpForgeCapture(this._obs, game, this.retargetOptionsForGame(game, true))
       this._lastCaptureGame = game
+      if (!(await this.isCurrentProgramSceneGameplay())) {
+        throw new Error('Switch OBS to the registered UpForge gameplay scene before starting match capture.')
+      }
 
       if (config) {
         const applyResult = await applyObsRecordingSettings(this._obs, config, this._obsStudioVersion)

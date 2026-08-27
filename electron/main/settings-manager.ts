@@ -16,6 +16,7 @@ import {
   type RecordedModesByGame,
 } from './recorded-modes-filter'
 import { AUTO_ANALYSE_CONSENT_VERSION, migrateAutoAnalyseConsent } from './auto-analyse-consent'
+import type { ObsSceneIdentity } from './obs-scene-identity'
 
 export type PrimaryGame = 'valorant' | 'cs2' | 'deadlock' | 'lol'
 
@@ -135,6 +136,8 @@ export interface AppSettings {
   obsReplayBufferSeconds: number
   /** Keep the streamer's active OBS scene when a match starts (do not auto-switch to UpForge). */
   obsPreserveActiveScene: boolean
+  /** Stable identity of the UpForge-created gameplay scene, scoped to its OBS collection. */
+  obsGameplayScene?: ObsSceneIdentity
   /** One-time migration: force UpForge scene switch default (v2). */
   obsPreserveSceneDefaultV2?: boolean
   /** Milliseconds to wait for OBS outputActive after StartRecord (env UPFORGE_OBS_RECORD_VERIFY_MS overrides). */
