@@ -9,6 +9,7 @@ import {
 } from 'electron'
 import { join } from 'path'
 import fs from 'fs'
+import { addExcludedObsRecordingPath } from './obs-recording-exclusions'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import { showAppNotification, setMatchRecordingGuard } from './app-notifications'
 import {
@@ -380,6 +381,16 @@ const obsRecorder = new OBSRecorder(
   },
   () => settingsManager?.get()?.primaryGame ?? 'valorant',
   (identity) => { settingsManager?.save({ obsGameplayScene: identity }) },
+  (filePath) => {
+    const current = settingsManager?.get()
+    if (!current) return
+    settingsManager.save({
+      obsNonMatchRecordingPaths: addExcludedObsRecordingPath(
+        current.obsNonMatchRecordingPaths,
+        filePath,
+      ),
+    })
+  },
 )
 setUpdateActivityGuard(() => matchPerformanceModeActive || obsRecorder.isActivelyRecording())
 
@@ -1592,6 +1603,9 @@ function scanForOrphanedRecordings(force = false): number {
 
   const savePath = recordingSavePath()
   const known = recordingsStore.getKnownPaths()
+  for (const excludedPath of settingsManager.get().obsNonMatchRecordingPaths ?? []) {
+    known.add(excludedPath)
+  }
   const orphans = listUnregisteredRecordingFiles(
     savePath,
     known,

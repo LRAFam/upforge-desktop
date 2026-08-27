@@ -167,6 +167,8 @@ export class OBSRecorder {
   private _gameplaySceneIdentity: ObsSceneIdentity | null = null
   /** Scene classification captured when an OBS-owned recording starts. */
   private _unownedRecordingStartedOnGameplay: boolean | null = null
+  private _unownedRecordingSceneCheck: Promise<boolean> | null = null
+  private _unownedRecordingPath: string | null = null
 
   onStatusChange?: (recording: boolean, error?: string) => void
   onReplayClipSaved?: (path: string, trigger: string, meta?: ReplayClipSavedMeta) => void
@@ -186,6 +188,7 @@ export class OBSRecorder {
     private getRecordingConfig?: () => RecorderConfig | undefined,
     private getPrimaryGame?: () => string,
     private onGameplaySceneIdentity?: (identity: ObsSceneIdentity) => void,
+    private onNonGameplayRecordingPath?: (filePath: string) => void,
   ) {
     this._obs.on('ReplayBufferSaved', ({ savedReplayPath }) => {
       log.info('[OBSRecorder] Replay buffer saved:', savedReplayPath)
@@ -202,12 +205,32 @@ export class OBSRecorder {
       if (outputPath) this._outputPath = outputPath
       if (!this._matchOwnedRecording) {
         if (outputActive) {
-          void this.isCurrentProgramSceneGameplay().then((isGameplay) => {
+          this._unownedRecordingPath = outputPath ?? null
+          const sceneCheck = this.isCurrentProgramSceneGameplay()
+          this._unownedRecordingSceneCheck = sceneCheck
+          void sceneCheck.then((isGameplay) => {
+            if (this._unownedRecordingSceneCheck !== sceneCheck) return
             this._unownedRecordingStartedOnGameplay = isGameplay
             log.info('[OBSRecorder] OBS-owned recording started on', isGameplay ? 'UpForge gameplay scene' : 'non-gameplay scene')
+            if (!isGameplay && this._unownedRecordingPath) {
+              this.onNonGameplayRecordingPath?.(this._unownedRecordingPath)
+            }
           })
         } else {
+          const startedOnGameplay = this._unownedRecordingStartedOnGameplay
+          const sceneCheck = this._unownedRecordingSceneCheck
+          const finishedPath = outputPath ?? this._unownedRecordingPath
+          if (finishedPath && (startedOnGameplay === false || (startedOnGameplay == null && sceneCheck))) {
+            void Promise.resolve(startedOnGameplay ?? sceneCheck).then((isGameplay) => {
+              if (!isGameplay) {
+                log.info('[OBSRecorder] Excluding non-gameplay OBS recording from match recovery:', finishedPath)
+                this.onNonGameplayRecordingPath?.(finishedPath)
+              }
+            })
+          }
           this._unownedRecordingStartedOnGameplay = null
+          this._unownedRecordingSceneCheck = null
+          this._unownedRecordingPath = null
         }
         return
       }
@@ -692,6 +715,8 @@ export class OBSRecorder {
     if (!this._startedAt) this._startedAt = Date.now()
     this._disconnectedDuringRecording = false
     this._unownedRecordingStartedOnGameplay = null
+    this._unownedRecordingSceneCheck = null
+    this._unownedRecordingPath = null
     this._stopReconnectLoop()
     this.onStatusChange?.(true)
     log.info('[OBSRecorder] Reclaimed active OBS recording for current match')

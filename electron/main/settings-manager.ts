@@ -138,6 +138,8 @@ export interface AppSettings {
   obsPreserveActiveScene: boolean
   /** Stable identity of the UpForge-created gameplay scene, scoped to its OBS collection. */
   obsGameplayScene?: ObsSceneIdentity
+  /** OBS-owned, non-gameplay files that orphan recovery must not import as matches. */
+  obsNonMatchRecordingPaths?: string[]
   /** One-time migration: force UpForge scene switch default (v2). */
   obsPreserveSceneDefaultV2?: boolean
   /** Milliseconds to wait for OBS outputActive after StartRecord (env UPFORGE_OBS_RECORD_VERIFY_MS overrides). */

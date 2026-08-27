@@ -220,6 +220,8 @@ export interface AppSettings {
     sceneName: string
     sceneUuid: string | null
   }
+  /** OBS-owned, non-gameplay files that orphan recovery must not import as matches. */
+  obsNonMatchRecordingPaths?: string[]
   /** One-time migration: force UpForge scene switch default (v2). */
   obsPreserveSceneDefaultV2?: boolean
   /** Milliseconds to wait for OBS outputActive after StartRecord (1–15000, default 5000). */

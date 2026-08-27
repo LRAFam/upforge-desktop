@@ -92,4 +92,21 @@ describe('listUnregisteredRecordingFiles', () => {
       await rm(dir, { recursive: true, force: true })
     }
   })
+
+  it('does not import a persisted non-gameplay OBS recording', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'upforge-orphan-'))
+    try {
+      const now = Date.now()
+      const marketing = join(dir, 'marketing.mp4')
+      await writeSized(marketing, MIN_RECORDING_FILE_BYTES + 10, now)
+
+      expect(listUnregisteredRecordingFiles(
+        dir,
+        new Set([marketing]),
+        now - 60_000,
+      )).toEqual([])
+    } finally {
+      await rm(dir, { recursive: true, force: true })
+    }
+  })
 })
