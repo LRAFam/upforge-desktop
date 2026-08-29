@@ -6,6 +6,7 @@ import {
   formatKillStreakLabel,
   formatPeekSequence,
   isWinDuelMoment,
+  isUntradedDuelMoment,
   normalizeDuelMoment,
   normalizePeekSequence,
 } from './duel-moments'
@@ -70,5 +71,12 @@ describe('duel-moments', () => {
     expect(duelMomentScrubberTitle({ ...ace, callout: 'A Site' })).toBe(
       'R2 · Ace · A Site · 5 kills',
     )
+  })
+
+  it('does not treat isolated spacing as an untraded death by itself', () => {
+    expect(isUntradedDuelMoment({ allies_alive: undefined, traded: undefined })).toBe(false)
+    expect(isUntradedDuelMoment({ allies_alive: 2, traded: true })).toBe(false)
+    expect(isUntradedDuelMoment({ allies_alive: 0, traded: false })).toBe(false)
+    expect(isUntradedDuelMoment({ allies_alive: 2, traded: false })).toBe(true)
   })
 })

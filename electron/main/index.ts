@@ -277,6 +277,7 @@ import {
   type CoachingSubmissionExtras,
 } from './match-coaching-context'
 import { resolveInstanceLock, startInstanceCoordinator } from './instance-coordinator'
+import { decideValorantNextMatchRearm } from './valorant-next-match-rearm'
 import {
   startSteamGsiServer,
   resetSteamGsiSession,
@@ -3139,7 +3140,13 @@ function setupGameDetection(): void {
       if (await obsRecorder.releaseStaleMatchOwnership()) {
         logActivity('Cleared stale recording state — watching for next match')
       }
-      if (!(await gameDetector.isMatchProcessRunning())) return
+      const processRunning = await gameDetector.isMatchProcessRunning()
+      if (decideValorantNextMatchRearm(processRunning) === 'reset_and_wait_for_process') {
+        gameDetector.resetActiveGame(game)
+        console.log('[GameDetector] Valorant process ended — waiting for the next match process')
+        logActivity('Watching for next match...')
+        return
+      }
 
       // Avoid stop/start loops: a false early match-end while still INGAME must not
       // immediately start a second recording for the same live match.

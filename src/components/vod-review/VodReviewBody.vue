@@ -5,6 +5,7 @@ import MatchSpatialMinimap from '../MatchSpatialMinimap.vue'
 import TacticalIntelBrief from '../TacticalIntelBrief.vue'
 import DuelMomentScrubberBands from '../analysis/DuelMomentScrubberBands.vue'
 import DuelMomentCards from '../analysis/DuelMomentCards.vue'
+import AnalysisReviewDetails from '../analysis/AnalysisReviewDetails.vue'
 import { getAgentImage, getAbilityIcon } from '../../lib/valorant'
 import VodRoundLogSidebar from './VodRoundLogSidebar.vue'
 import VodMatchTimelineSidebar from './VodMatchTimelineSidebar.vue'
@@ -25,7 +26,10 @@ const {
   canRefreshCloudPlayback,
   canSeekFromSpatial,
   activeCoachNoteId,
+  aiCoachingMarkers,
+  analysisFeedbackStatus,
   coachReview,
+  coachingDetail,
   coachProgressMarkers,
   currentTime,
   cursorHidden,
@@ -96,6 +100,7 @@ const {
   scoreboardGroups,
   seekCoachAnnotation,
   seekCoachingEvidence,
+  reportCoachingEvidence,
   seekNextEvent,
   seekPrevEvent,
   seekToEvent,
@@ -485,6 +490,7 @@ const noVideoHint = computed((): string => {
                 :brief="tacticalIntelBrief"
                 compact
                 @seek-evidence="seekCoachingEvidence"
+                @report-evidence="reportCoachingEvidence"
               />
               <div ref="dockChipsEl" class="flex flex-wrap gap-1.5 max-h-24 overflow-y-auto scrollbar-hide">
                 <button
@@ -553,6 +559,14 @@ const noVideoHint = computed((): string => {
                     :style="{ left: sep.percent + '%' }"
                   />
                 </template>
+                <button
+                  v-for="marker in aiCoachingMarkers"
+                  :key="marker.key"
+                  class="absolute top-1/2 z-10 h-3 w-3 -translate-x-1/2 -translate-y-1/2 rotate-45 border border-amber-200 bg-amber-500 transition-transform duration-150 hover:scale-125"
+                  :style="{ left: marker.percent + '%' }"
+                  :title="`AI note: ${marker.label}`"
+                  @click.stop="seekCoachingEvidence(marker.evidence)"
+                />
                 <button
                   v-for="marker in coachProgressMarkers"
                   :key="marker.key"
@@ -669,9 +683,11 @@ const noVideoHint = computed((): string => {
                   ? 'border-red-500/30 bg-red-500/10 text-red-200 hover:border-red-500/40'
                   : 'border-white/[0.08] bg-white/[0.03] text-gray-400 hover:border-white/[0.14] hover:bg-white/[0.08] hover:text-gray-200'"
                 :title="roundDetailExpanded ? 'Hide round events' : 'Show round events'"
+                :aria-expanded="roundDetailExpanded"
                 @click="roundDetailExpanded = !roundDetailExpanded"
               >
                 R{{ selectedRound.roundNumber + 1 }} events
+                <span class="font-mono text-[10px] opacity-60">{{ selectedRound.events.length }}</span>
               </button>
 
               <button
@@ -685,6 +701,9 @@ const noVideoHint = computed((): string => {
               </button>
 
               <div class="hidden xl:flex items-center gap-2 ml-1 flex-wrap justify-end text-[9px] text-gray-600">
+                <span v-if="aiCoachingMarkers.length" class="inline-flex items-center gap-1">
+                  <span class="h-2 w-2 rotate-45 bg-amber-500" />AI note
+                </span>
                 <span v-for="item in vodAdapter.legend" :key="item.kind" class="inline-flex items-center gap-1">
                   <span class="h-2 w-2 rounded-full" :class="item.dotClass" />{{ item.label }}
                 </span>
@@ -695,7 +714,7 @@ const noVideoHint = computed((): string => {
         </div>
         <div
           v-if="roundDetailExpanded && selectedRound && !theaterMode && isRoundBased"
-          class="flex-shrink-0 bg-[#1a1a1a] border-t border-white/[0.10] max-h-28 overflow-y-auto scrollbar-hide"
+          class="flex h-[clamp(11rem,30vh,22rem)] min-h-0 flex-shrink-0 flex-col border-t border-white/[0.10] bg-[#1a1a1a]"
         >
           <!-- Round header -->
           <div class="flex items-center gap-2.5 px-3 py-2 sticky top-0 bg-[#1a1a1a] border-b border-white/[0.07] z-10">
@@ -707,6 +726,9 @@ const noVideoHint = computed((): string => {
             <span class="text-xs font-bold text-gray-200">ROUND {{ selectedRound.roundNumber + 1 }}</span>
             <span class="text-xs font-bold" :class="selectedRound.won ? 'text-teal-400' : 'text-red-400'">
               {{ roundOutcomeLabel(selectedRound) }}
+            </span>
+            <span class="text-[10px] text-gray-500">
+              {{ selectedRound.events.length }} {{ selectedRound.events.length === 1 ? 'event' : 'events' }} · select one to jump
             </span>
             <div class="flex items-center gap-1.5 ml-1">
               <span v-if="selectedRound.spikePlanted" class="inline-flex items-center gap-1 text-[9px] font-semibold text-orange-400 bg-orange-500/10 px-1.5 py-px rounded">
@@ -727,7 +749,7 @@ const noVideoHint = computed((): string => {
           </div>
 
           <!-- Event feed -->
-          <div v-if="selectedRound.events.length" class="divide-y divide-white/[0.025]">
+          <div v-if="selectedRound.events.length" class="scroll-col min-h-0 flex-1 divide-y divide-white/[0.025] overscroll-contain pr-0.5">
             <button
               v-for="event in selectedRound.events"
               :key="`detail-${event.videoOffsetMs}`"
@@ -818,7 +840,7 @@ const noVideoHint = computed((): string => {
               </template>
             </button>
           </div>
-          <div v-else class="px-3 py-3 text-center">
+          <div v-else class="flex min-h-0 flex-1 items-center justify-center px-3 py-3 text-center">
             <p class="text-xs text-gray-600">No recorded events this round</p>
           </div>
         </div>
@@ -952,6 +974,37 @@ const noVideoHint = computed((): string => {
             v-if="tacticalIntelBrief"
             :brief="tacticalIntelBrief"
             @seek-evidence="seekCoachingEvidence"
+            @report-evidence="reportCoachingEvidence"
+          />
+
+          <p
+            v-if="analysisFeedbackStatus !== 'idle'"
+            class="text-[10px] leading-relaxed"
+            :class="analysisFeedbackStatus === 'sent'
+              ? 'text-emerald-300/80'
+              : analysisFeedbackStatus === 'error'
+                ? 'text-red-300/80'
+                : 'text-gray-500'"
+          >
+            {{ analysisFeedbackStatus === 'sent'
+              ? 'Moment correction saved for future coaching review.'
+              : analysisFeedbackStatus === 'error'
+                ? 'Could not save this correction. Please try again.'
+                : 'Saving correction…' }}
+          </p>
+
+          <AnalysisReviewDetails
+            v-if="coachingDetail"
+            :detail="coachingDetail"
+            @seek-evidence="seekCoachingEvidence"
+          />
+
+          <DuelMomentCards
+            v-if="hasDuelMoments"
+            :moments="duelMoments"
+            :active-moment-id="activeDuelMomentId"
+            compact
+            @seek="seekDuelMoment"
           />
 
           <div
@@ -1042,14 +1095,6 @@ const noVideoHint = computed((): string => {
               @select="onSpatialSelect"
             />
           </div>
-
-          <DuelMomentCards
-            v-if="hasDuelMoments"
-            :moments="duelMoments"
-            :active-moment-id="activeDuelMomentId"
-            compact
-            @seek="seekDuelMoment"
-          />
 
           <div class="flex flex-wrap items-center gap-2">
             <div class="flex items-center gap-0.5 p-0.5 rounded-lg bg-black/25 border border-white/[0.06]">

@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import type { CoachingEvidence, TacticalIntelBrief } from '../lib/coaching-brief'
-import { severityLabel } from '../lib/coaching-brief'
+import { parseCoachingEvidence, severityLabel } from '../lib/coaching-brief'
 
 const props = defineProps<{
   brief: TacticalIntelBrief
@@ -10,7 +10,19 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   seekEvidence: [evidence: CoachingEvidence]
+  reportEvidence: [evidence: CoachingEvidence, reason: FeedbackReason]
 }>()
+
+type FeedbackReason = 'wrong_action' | 'wrong_player' | 'not_visible' | 'other'
+
+const reportTargetKey = ref<string | null>(null)
+
+const feedbackReasons: Array<{ id: FeedbackReason; label: string }> = [
+  { id: 'wrong_action', label: 'Wrong action' },
+  { id: 'wrong_player', label: 'Wrong player' },
+  { id: 'not_visible', label: 'Could not be seen' },
+  { id: 'other', label: 'Other issue' },
+]
 
 const hasStructuredContent = computed(
   () => Boolean(props.brief.headline || props.brief.evidence.length || props.brief.fix),
@@ -38,6 +50,25 @@ const dedupedImprovements = computed(() => {
     item => item && !headline.includes(item.toLowerCase().slice(0, 40)),
   )
 })
+
+const improvementRows = computed(() => dedupedImprovements.value.map((text) => ({
+  text,
+  parsed: parseCoachingEvidence(text),
+})))
+
+function evidenceKey(evidence: CoachingEvidence): string {
+  return `${evidence.roundLabel}-${evidence.timeSeconds}-${evidence.text}`
+}
+
+function toggleReport(evidence: CoachingEvidence): void {
+  const key = evidenceKey(evidence)
+  reportTargetKey.value = reportTargetKey.value === key ? null : key
+}
+
+function submitReport(evidence: CoachingEvidence, reason: FeedbackReason): void {
+  emit('reportEvidence', evidence, reason)
+  reportTargetKey.value = null
+}
 </script>
 
 <template>
@@ -56,7 +87,7 @@ const dedupedImprovements = computed(() => {
         v-else-if="brief.source === 'heatmap'"
         class="inline-flex items-center rounded-md border border-white/10 bg-white/[0.04] px-2 py-0.5 text-[9px] font-bold uppercase tracking-[0.16em] text-gray-500"
       >Pattern</span>
-      <span class="text-[9px] font-semibold uppercase tracking-[0.2em] text-gray-600">Coach note</span>
+      <span class="text-[9px] font-semibold uppercase tracking-[0.2em] text-gray-600">AI synthesis</span>
     </div>
 
     <div class="px-3 py-2.5 space-y-2.5">
@@ -73,21 +104,37 @@ const dedupedImprovements = computed(() => {
             v-for="(item, index) in brief.evidence"
             :key="`${item.roundLabel}-${item.timeLabel}-${index}`"
           >
-            <button
-              type="button"
-              class="group w-full text-left rounded-lg border border-white/[0.06] bg-white/[0.02] px-2.5 py-2 transition-colors hover:border-red-500/25 hover:bg-red-500/[0.06]"
-              :title="`Jump to ${item.roundLabel} @ ${item.timeLabel}`"
-              @click="emit('seekEvidence', item)"
-            >
-              <div class="flex items-center gap-2 mb-1">
-                <span class="inline-flex items-center gap-1 rounded-md border border-red-500/25 bg-red-500/10 px-1.5 py-px text-[10px] font-bold tabular-nums text-red-200">
-                  {{ item.roundLabel }}
-                  <span class="text-red-300/70 font-mono">{{ item.timeLabel }}</span>
-                </span>
-                <span class="text-[9px] text-gray-600 group-hover:text-gray-400">Jump</span>
+            <div class="rounded-lg border border-white/[0.06] bg-white/[0.02] px-2.5 py-2">
+              <button
+                type="button"
+                class="group w-full text-left"
+                :title="`Jump to ${item.roundLabel} @ ${item.timeLabel}`"
+                @click="emit('seekEvidence', item)"
+              >
+                <div class="flex items-center gap-2 mb-1">
+                  <span class="inline-flex items-center gap-1 rounded-md border border-red-500/25 bg-red-500/10 px-1.5 py-px text-[10px] font-bold tabular-nums text-red-200">
+                    {{ item.roundLabel }}
+                    <span class="text-red-300/70 font-mono">{{ item.timeLabel }}</span>
+                  </span>
+                  <span class="text-[9px] text-gray-600 group-hover:text-gray-400">Watch</span>
+                </div>
+                <p class="text-[11px] text-gray-400 leading-snug group-hover:text-gray-300">{{ item.text }}</p>
+              </button>
+              <button
+                type="button"
+                class="mt-1.5 text-[9px] text-gray-600 hover:text-amber-300"
+                @click="toggleReport(item)"
+              >{{ reportTargetKey === evidenceKey(item) ? 'Cancel' : 'Report inaccurate moment' }}</button>
+              <div v-if="reportTargetKey === evidenceKey(item)" class="mt-1.5 flex flex-wrap gap-1">
+                <button
+                  v-for="reason in feedbackReasons"
+                  :key="reason.id"
+                  type="button"
+                  class="rounded border border-white/10 px-1.5 py-1 text-[9px] text-gray-400 hover:border-amber-500/30 hover:text-amber-200"
+                  @click="submitReport(item, reason.id)"
+                >{{ reason.label }}</button>
               </div>
-              <p class="text-[11px] text-gray-400 leading-snug group-hover:text-gray-300">{{ item.text }}</p>
-            </button>
+            </div>
           </li>
         </ul>
       </div>
@@ -104,13 +151,41 @@ const dedupedImprovements = computed(() => {
         <p class="text-[9px] font-semibold uppercase tracking-[0.18em] text-gray-600">Also work on</p>
         <ul class="space-y-1">
           <li
-            v-for="(item, index) in dedupedImprovements.slice(0, compact ? 2 : 3)"
-            :key="`${index}-${item.slice(0, 24)}`"
-            class="flex gap-2 text-gray-500 leading-snug"
+            v-for="(row, index) in improvementRows.slice(0, compact ? 2 : 3)"
+            :key="`${index}-${row.text.slice(0, 24)}`"
+            class="text-gray-500 leading-snug"
             :class="compact ? 'text-[11px]' : 'text-[12px]'"
           >
-            <span class="text-gray-700 flex-shrink-0">·</span>
-            <span>{{ item }}</span>
+            <template v-if="row.parsed.evidence.length">
+              <div
+                v-for="evidence in row.parsed.evidence"
+                :key="evidenceKey(evidence)"
+                class="mb-1.5 border-l border-white/10 pl-2"
+              >
+                <button type="button" class="text-left hover:text-gray-300" @click="emit('seekEvidence', evidence)">
+                  <span class="font-mono font-semibold text-red-300/85">{{ evidence.roundLabel }} {{ evidence.timeLabel }}</span>
+                  <span> {{ evidence.text }}</span>
+                </button>
+                <button
+                  type="button"
+                  class="ml-2 text-[9px] text-gray-700 hover:text-amber-300"
+                  @click="toggleReport(evidence)"
+                >{{ reportTargetKey === evidenceKey(evidence) ? 'Cancel' : 'Report' }}</button>
+                <div v-if="reportTargetKey === evidenceKey(evidence)" class="mt-1 flex flex-wrap gap-1">
+                  <button
+                    v-for="reason in feedbackReasons"
+                    :key="reason.id"
+                    type="button"
+                    class="rounded border border-white/10 px-1.5 py-1 text-[9px] text-gray-400 hover:border-amber-500/30 hover:text-amber-200"
+                    @click="submitReport(evidence, reason.id)"
+                  >{{ reason.label }}</button>
+                </div>
+              </div>
+            </template>
+            <div v-else class="flex gap-2">
+              <span class="text-gray-700 flex-shrink-0">·</span>
+              <span>{{ row.text }}</span>
+            </div>
           </li>
         </ul>
       </div>

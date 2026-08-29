@@ -80,8 +80,14 @@ const api = {
     reconcileStuck: () => ipcRenderer.invoke('analysis:reconcile-stuck') as Promise<{ ok: boolean; reconciled: number }>,
     submitFeedback: (opts: {
       analysisId: number
-      rating: 'thumbs_up' | 'thumbs_down'
+      rating?: 'thumbs_up' | 'thumbs_down'
       feedbackText?: string
+      momentFeedback?: {
+        round: number
+        timestampSeconds: number
+        reason: 'wrong_action' | 'wrong_player' | 'not_visible' | 'other'
+        evidenceText: string
+      }
     }) => ipcRenderer.invoke('analyses:submit-feedback', opts),
   },
   funnel: {

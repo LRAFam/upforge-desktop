@@ -10,6 +10,8 @@ import {
   formatKillStreakLabel,
   formatPeekSequence,
   isWinDuelMoment,
+  isUntradedDuelMoment,
+  normalizeStringList,
   type DuelMoment,
 } from '../../lib/duel-moments'
 
@@ -65,7 +67,7 @@ function confidenceClass(conf: string | undefined): string {
               </span>
               <span v-if="moment.callout" class="text-[10px] text-gray-400">{{ moment.callout }}</span>
               <span
-                v-if="moment.isolated && !isWinDuelMoment(moment)"
+                v-if="isUntradedDuelMoment(moment) && !isWinDuelMoment(moment)"
                 class="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded border border-red-500/30 bg-red-500/10 text-red-300"
               >
                 Untraded
@@ -105,26 +107,46 @@ function confidenceClass(conf: string | undefined): string {
           {{ moment.key_observation }}
         </div>
 
+        <p
+          v-if="moment.player_action_visibility === 'obscured' || moment.movement_actor === 'enemy' || moment.movement_actor === 'uncertain'"
+          class="mt-2 text-[10px] leading-relaxed text-amber-300/80"
+        >
+          Mechanics limited: the player action was not clearly visible.
+        </p>
+
         <div v-if="formatPeekSequence(moment.peek_sequence) || moment.crosshair_on_commit" class="mt-2 flex flex-wrap gap-1">
           <span
             v-if="formatPeekSequence(moment.peek_sequence)"
             class="text-[10px] px-2 py-0.5 rounded-full border border-white/10 bg-white/[0.04] text-gray-300"
           >
-            Peek: {{ formatPeekSequence(moment.peek_sequence) }}
+            Peek: {{ formatPeekSequence(moment.peek_sequence) }}<template v-if="moment.mechanics_confidence?.peek"> · {{ moment.mechanics_confidence.peek }}</template>
           </span>
           <span
             v-if="moment.crosshair_on_commit && moment.crosshair_on_commit !== 'unknown'"
             class="text-[10px] px-2 py-0.5 rounded-full border border-white/10 bg-white/[0.04] text-gray-300"
           >
-            Crosshair: {{ moment.crosshair_on_commit.replace(/_/g, ' ') }}
+            Crosshair: {{ moment.crosshair_on_commit.replace(/_/g, ' ') }}<template v-if="moment.mechanics_confidence?.crosshair"> · {{ moment.mechanics_confidence.crosshair }}</template>
           </span>
           <span
             v-if="moment.movement_on_commit && moment.movement_on_commit !== 'unknown'"
             class="text-[10px] px-2 py-0.5 rounded-full border border-white/10 bg-white/[0.04] text-gray-300"
           >
-            Move: {{ moment.movement_on_commit.replace(/_/g, ' ') }}
+            Move: {{ moment.movement_on_commit.replace(/_/g, ' ') }}<template v-if="moment.mechanics_confidence?.movement"> · {{ moment.mechanics_confidence.movement }}</template>
           </span>
         </div>
+
+        <p v-if="moment.player_fix" class="mt-2 text-[11px] leading-relaxed text-emerald-200/85">
+          Try: {{ moment.player_fix }}
+        </p>
+
+        <details v-if="normalizeStringList(moment.caveats).length" class="mt-2">
+          <summary class="cursor-pointer text-[9px] text-gray-600 hover:text-gray-400">Observation limits</summary>
+          <ul class="mt-1 space-y-1 border-l border-white/10 pl-2">
+            <li v-for="caveat in normalizeStringList(moment.caveats)" :key="caveat" class="text-[9px] leading-relaxed text-gray-600">
+              {{ caveat }}
+            </li>
+          </ul>
+        </details>
 
         <button
           v-if="duelMomentWeightReasons(moment).length"

@@ -216,15 +216,28 @@ export function setupAuthHandlers(
     analysisId,
     rating,
     feedbackText,
+    momentFeedback,
   }: {
     analysisId: number
-    rating: 'thumbs_up' | 'thumbs_down'
+    rating?: 'thumbs_up' | 'thumbs_down'
     feedbackText?: string
+    momentFeedback?: {
+      round: number
+      timestampSeconds: number
+      reason: 'wrong_action' | 'wrong_player' | 'not_visible' | 'other'
+      evidenceText: string
+    }
   }) => {
     if (!auth.getToken()) return { ok: false, error: 'Not logged in' }
     return auth.submitAnalysisFeedback(analysisId, {
       rating,
       feedback_text: feedbackText?.trim() || undefined,
+      moment_feedback: momentFeedback ? {
+        round: momentFeedback.round,
+        timestamp_seconds: momentFeedback.timestampSeconds,
+        reason: momentFeedback.reason,
+        evidence_text: momentFeedback.evidenceText,
+      } : undefined,
     })
   })
 

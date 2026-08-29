@@ -3,8 +3,9 @@ import { useRoute, useRouter } from 'vue-router'
 import { getWeaponImage, getAgentImage, getAbilityIcon, getMapImage, getAgentColor, formatGameMode, normalizeGameModeId } from '../lib/valorant'
 import { getChampionImage, getMapImage as getLolMapImage } from '../lib/lol'
 import { pendingTimeline } from '../stores/pendingTimeline'
-import { buildTacticalIntelBrief } from '../lib/coaching-brief'
+import { buildTacticalIntelBrief, parseCoachingEvidence } from '../lib/coaching-brief'
 import type { CoachingEvidence } from '../lib/coaching-brief'
+import type { AnalysisDetailEnriched } from '../lib/analysis-enrichment'
 import type { MatchSpatialSummary, SpatialTimelineEvent } from '../lib/spatial-types'
 import type { DuelMoment, DuelMomentManifest } from '../lib/duel-moments'
 import { normalizeDuelMoments } from '../lib/duel-moments'
@@ -130,16 +131,6 @@ interface RecordingTimeline {
   spatialSummary?: MatchSpatialSummary | null
   duelMoments?: DuelMomentManifest[]
   videoSyncOffsetMs?: number
-}
-
-interface AnalysisDetail {
-  verdict: string | null
-  top_issue: string | null
-  priority_improvements: string[]
-  coaching_tags: string[]
-  ally_score: number | null
-  enemy_score: number | null
-  duel_moments?: DuelMoment[] | null
 }
 
 interface ProgressMarker {
@@ -343,7 +334,8 @@ function createVodReview() {
   const videoSyncOffsetMs = ref(0)
   const selectedRound = ref<RoundGroup | null>(null)
   const roundDetailExpanded = ref(false)
-  const coachingDetail = ref<AnalysisDetail | null>(null)
+  const coachingDetail = ref<AnalysisDetailEnriched | null>(null)
+  const analysisFeedbackStatus = ref<'idle' | 'sending' | 'sent' | 'error'>('idle')
   const activeDuelMomentId = ref<string | null>(null)
   const coachReview = ref<{
     id: number
@@ -1000,7 +992,7 @@ function createVodReview() {
   }
   const tacticalIntelBrief = computed(() => {
     const d = coachingDetail.value
-    const coachingRaw = d?.top_issue ?? d?.verdict ?? null
+    const coachingRaw = d?.top_issue ?? null
     if (coachingRaw) {
       return buildTacticalIntelBrief(coachingRaw, {
         improvements: d?.priority_improvements ?? [],
@@ -1013,6 +1005,32 @@ function createVodReview() {
       return buildTacticalIntelBrief(heat, { source: 'heatmap' })
     }
     return null
+  })
+  const aiCoachingEvidence = computed((): CoachingEvidence[] => {
+    const brief = tacticalIntelBrief.value
+    if (!brief) return []
+    const items = [
+      ...brief.evidence,
+      ...brief.improvements.flatMap(item => parseCoachingEvidence(item).evidence),
+    ]
+    const seen = new Set<string>()
+    return items.filter((item) => {
+      const key = `${item.roundNumber}:${item.timeSeconds}:${item.text}`
+      if (seen.has(key)) return false
+      seen.add(key)
+      return true
+    })
+  })
+  const aiCoachingMarkers = computed(() => {
+    if (!duration.value) return []
+    return aiCoachingEvidence.value
+      .map(evidence => ({
+        key: `ai-${evidence.roundNumber}-${evidence.timeSeconds}-${evidence.text.slice(0, 20)}`,
+        label: `${evidence.roundLabel} · ${evidence.text}`,
+        percent: (evidence.timeSeconds / duration.value) * 100,
+        evidence,
+      }))
+      .filter(marker => marker.percent >= 0 && marker.percent <= 100)
   })
   const hasSpatialIntel = computed(() => (spatialSummary.value?.events?.length ?? 0) > 0)
   
@@ -1544,6 +1562,28 @@ function createVodReview() {
       scrollActiveRoundIntoView(round.roundNumber)
     }
     seekToTime(Math.max(0, evidence.timeSeconds - 2))
+  }
+
+  async function reportCoachingEvidence(
+    evidence: CoachingEvidence,
+    reason: 'wrong_action' | 'wrong_player' | 'not_visible' | 'other',
+  ) {
+    const analysisId = Number(route.query.timelineId)
+    if (!Number.isFinite(analysisId) || analysisId <= 0) {
+      analysisFeedbackStatus.value = 'error'
+      return
+    }
+    analysisFeedbackStatus.value = 'sending'
+    const result = await window.api.analyses.submitFeedback({
+      analysisId,
+      momentFeedback: {
+        round: evidence.roundNumber + 1,
+        timestampSeconds: evidence.timeSeconds,
+        reason,
+        evidenceText: evidence.text,
+      },
+    }).catch(() => ({ ok: false }))
+    analysisFeedbackStatus.value = result.ok ? 'sent' : 'error'
   }
   
   function seekToRound(round: RoundGroup) {
@@ -2098,6 +2138,8 @@ function createVodReview() {
     THEATER_MODE_KEY,
     abilityCastSlots,
     activeCoachNoteId,
+    aiCoachingMarkers,
+    analysisFeedbackStatus,
     activeEventNotif,
     activePlaybackAnalysisId,
     activePlaybackArchiveId,
@@ -2239,6 +2281,7 @@ function createVodReview() {
     seekNextCoachNote,
     seekPrevCoachNote,
     seekCoachingEvidence,
+    reportCoachingEvidence,
     seekNextEvent,
     seekPrevEvent,
     seekToEvent,

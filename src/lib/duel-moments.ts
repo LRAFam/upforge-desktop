@@ -35,8 +35,19 @@ export interface DuelMomentObservation {
   crosshair_on_commit?: string
   crosshair_note?: string
   movement_on_commit?: string
+  player_action_visibility?: 'clear' | 'partial' | 'obscured' | string
+  movement_actor?: 'player' | 'enemy' | 'uncertain' | string
+  mechanics_confidence?: {
+    peek?: MomentConfidence | string
+    movement?: MomentConfidence | string
+    crosshair?: MomentConfidence | string
+  }
+  vision_trust?: 'full' | 'partial' | 'stats_only' | string
   confidence?: MomentConfidence | string
   key_observation?: string
+  player_fix?: string
+  death_cause?: string
+  utility_used_in_clip?: string[]
   /** May arrive as a single string from malformed JSON. */
   caveats?: string | string[]
   death_timestamp?: string
@@ -96,6 +107,14 @@ export function isWinDuelMoment(
 ): boolean {
   if (moment.trigger === 'player_kill' || moment.polarity === 'positive') return true
   return (moment.moment_id ?? '').startsWith('kill-')
+}
+
+export function isUntradedDuelMoment(
+  moment: Pick<DuelMomentManifest, 'allies_alive' | 'traded'>,
+): boolean {
+  return typeof moment.allies_alive === 'number'
+    && moment.allies_alive >= 1
+    && moment.traded === false
 }
 
 export function formatKillStreakLabel(count: number): string | null {

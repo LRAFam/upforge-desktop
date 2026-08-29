@@ -20,7 +20,7 @@ export interface TacticalIntelBrief {
 
 const SEVERITY_PATTERN = /^(CRITICAL|HIGH|MODERATE|LOW|WARNING)\s*[—–-]\s*/i
 const FIX_PATTERN = /\s+Fix:\s*(.+)$/i
-const EVIDENCE_PATTERN = /R(\d+)\s*\[(\d{1,2}):(\d{2})\]\s*[—–-]\s*/gi
+const EVIDENCE_PATTERN = /R(\d+)\s*\[(\d{1,3}):(\d{2})\]/gi
 
 function normalizeSeverity(raw: string): CoachingSeverity {
   const key = raw.toLowerCase()
@@ -35,7 +35,7 @@ function trimSentence(text: string): string {
   return text.trim().replace(/\.\s*$/, '')
 }
 
-function parseEvidenceSegments(text: string): { headline: string; evidence: CoachingEvidence[] } {
+export function parseCoachingEvidence(text: string): { headline: string; evidence: CoachingEvidence[] } {
   const matches = [...text.matchAll(new RegExp(EVIDENCE_PATTERN.source, 'gi'))]
   if (!matches.length) {
     return { headline: trimSentence(text), evidence: [] }
@@ -88,7 +88,7 @@ export function buildTacticalIntelBrief(
     text = text.slice(0, fixMatch.index).trim()
   }
 
-  const { headline, evidence } = parseEvidenceSegments(text)
+  const { headline, evidence } = parseCoachingEvidence(text)
   const improvements = (opts?.improvements ?? []).filter(Boolean)
 
   return {

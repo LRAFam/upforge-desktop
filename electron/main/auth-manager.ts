@@ -349,7 +349,16 @@ export class AuthManager {
 
   async submitAnalysisFeedback(
     analysisId: number,
-    payload: { rating: 'thumbs_up' | 'thumbs_down'; feedback_text?: string },
+    payload: {
+      rating?: 'thumbs_up' | 'thumbs_down'
+      feedback_text?: string
+      moment_feedback?: {
+        round: number
+        timestamp_seconds: number
+        reason: 'wrong_action' | 'wrong_player' | 'not_visible' | 'other'
+        evidence_text: string
+      }
+    },
   ): Promise<{ ok: boolean; error?: string }> {
     try {
       await this._api.post(`/api/analysis/${analysisId}/feedback`, payload)

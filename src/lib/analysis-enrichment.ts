@@ -3,6 +3,7 @@ import { normalizeDuelMoment, normalizeDuelMoments } from './duel-moments'
 import { parseMatchHighlightsFromApi, type MatchHighlight } from './match-highlights'
 import type { SkillProfileSnapshot } from './skill-profile'
 import type { MatchSpatialSummary } from './spatial-types'
+import { sanitizeUnsupportedRankClaimsForDisplay } from './coaching-copy-safety'
 
 export interface TimingComparisonRow {
   id: string
@@ -18,10 +19,37 @@ export interface TimingComparisonRow {
 }
 
 export interface AnalysisDetailEnriched {
+  summary: string | null
+  coaching_diagnosis: string | null
   verdict: string | null
   top_issue: string | null
+  key_strengths: string[]
   priority_improvements: string[]
   coaching_tags: string[]
+  category_scores: Array<{ category: string; score: number; reasoning?: string }>
+  drill_recommendations: Array<{
+    title?: string
+    category?: string
+    practice_mode?: string
+    instructions?: string
+    why_this_drill?: string
+    success_metric?: string
+  }>
+  pattern_insights: string[]
+  behaviours: Array<{
+    behaviour_id: string
+    title?: string
+    occurrences?: number
+    confidence?: string
+    evidence: string[]
+  }>
+  insights: Array<{
+    behaviour_id: string
+    verdict?: string
+    text?: string
+  }>
+  confidence: Record<string, string> | null
+  observation_confidence: string | null
   ally_score: number | null
   enemy_score: number | null
   duel_moments: DuelMoment[] | null
@@ -35,37 +63,6 @@ export interface AnalysisDetailEnriched {
 
 function asRecord(value: unknown): Record<string, unknown> | null {
   return value && typeof value === 'object' ? value as Record<string, unknown> : null
-}
-
-function parseEmbeddedAnalysisField(raw: unknown): {
-  priority_improvements: string[]
-  coaching_tags: string[]
-} {
-  if (typeof raw === 'string') {
-    try {
-      const parsed = JSON.parse(raw) as Record<string, unknown>
-      return {
-        priority_improvements: Array.isArray(parsed.priority_improvements)
-          ? parsed.priority_improvements.filter((x): x is string => typeof x === 'string')
-          : [],
-        coaching_tags: Array.isArray(parsed.coaching_tags)
-          ? parsed.coaching_tags.filter((x): x is string => typeof x === 'string')
-          : [],
-      }
-    } catch {
-      return { priority_improvements: [], coaching_tags: [] }
-    }
-  }
-  const row = asRecord(raw)
-  if (!row) return { priority_improvements: [], coaching_tags: [] }
-  return {
-    priority_improvements: Array.isArray(row.priority_improvements)
-      ? row.priority_improvements.filter((x): x is string => typeof x === 'string')
-      : [],
-    coaching_tags: Array.isArray(row.coaching_tags)
-      ? row.coaching_tags.filter((x): x is string => typeof x === 'string')
-      : [],
-  }
 }
 
 /** Pull spatial intel from poll payloads or full analysis objects (nested under match_data). */
@@ -122,37 +119,89 @@ function parseSkillProfile(raw: unknown): SkillProfileSnapshot | null {
   return row as unknown as SkillProfileSnapshot
 }
 
+function stringList(raw: unknown): string[] {
+  return Array.isArray(raw) ? raw.filter((item): item is string => typeof item === 'string') : []
+}
+
+function recordList(raw: unknown): Record<string, unknown>[] {
+  return Array.isArray(raw)
+    ? raw.filter((item): item is Record<string, unknown> => Boolean(asRecord(item)))
+    : []
+}
+
+function stringRecord(raw: unknown): Record<string, string> | null {
+  const row = asRecord(raw)
+  if (!row) return null
+  const entries = Object.entries(row).filter((entry): entry is [string, string] => (
+    typeof entry[1] === 'string'
+  ))
+  return entries.length ? Object.fromEntries(entries) : null
+}
+
 /** Normalize GET /api/analysis/{id} or poll result into desktop coaching detail. */
 export function enrichAnalysisDetail(analysis: Record<string, unknown>): AnalysisDetailEnriched {
   const md = asRecord(analysis.match_data) ?? {}
-  const embedded = parseEmbeddedAnalysisField(analysis.analysis)
-
-  const priorityImprovements = Array.isArray(analysis.priority_improvements)
-    && analysis.priority_improvements.length > 0
-    ? analysis.priority_improvements.filter((x): x is string => typeof x === 'string')
-    : embedded.priority_improvements
-
-  const coachingTags = Array.isArray(analysis.coaching_tags)
-    && analysis.coaching_tags.length > 0
-    ? analysis.coaching_tags.filter((x): x is string => typeof x === 'string')
-    : embedded.coaching_tags
+  const priorityImprovements = stringList(analysis.priority_improvements)
+  const coachingTags = stringList(analysis.coaching_tags)
 
   const spatial = extractSpatialFromAnalysisPayload(analysis)
   const matchHighlights = parseMatchHighlightsFromApi(analysis.match_highlights)
 
   return {
-    verdict: typeof analysis.verdict === 'string'
-      ? analysis.verdict
-      : (typeof analysis.summary === 'string' ? analysis.summary : null),
-    top_issue: typeof analysis.top_issue === 'string'
-      ? analysis.top_issue
-      : (typeof analysis.coaching_diagnosis === 'string' ? analysis.coaching_diagnosis : null),
-    priority_improvements: priorityImprovements,
-    coaching_tags: coachingTags.length > 0
-      ? coachingTags
-      : (Array.isArray(analysis.coaching_tags)
-        ? analysis.coaching_tags.filter((x): x is string => typeof x === 'string')
-        : embedded.coaching_tags),
+    summary: sanitizeUnsupportedRankClaimsForDisplay(
+      typeof analysis.summary === 'string' ? analysis.summary : null,
+    ),
+    coaching_diagnosis: sanitizeUnsupportedRankClaimsForDisplay(
+      typeof analysis.coaching_diagnosis === 'string' ? analysis.coaching_diagnosis : null,
+    ),
+    verdict: sanitizeUnsupportedRankClaimsForDisplay(
+      typeof analysis.verdict === 'string' ? analysis.verdict : null,
+    ),
+    top_issue: sanitizeUnsupportedRankClaimsForDisplay(
+      typeof analysis.top_issue === 'string' ? analysis.top_issue : null,
+    ),
+    key_strengths: stringList(analysis.key_strengths)
+      .map(item => sanitizeUnsupportedRankClaimsForDisplay(item) ?? ''),
+    priority_improvements: priorityImprovements
+      .map(item => sanitizeUnsupportedRankClaimsForDisplay(item) ?? ''),
+    coaching_tags: coachingTags,
+    category_scores: recordList(analysis.category_scores)
+      .filter(row => typeof row.category === 'string' && typeof row.score === 'number')
+      .map(row => ({
+        category: row.category as string,
+        score: row.score as number,
+        reasoning: typeof row.reasoning === 'string' ? row.reasoning : undefined,
+      })),
+    drill_recommendations: recordList(analysis.drill_recommendations).map(row => ({
+      title: typeof row.title === 'string' ? row.title : undefined,
+      category: typeof row.category === 'string' ? row.category : undefined,
+      practice_mode: typeof row.practice_mode === 'string' ? row.practice_mode : undefined,
+      instructions: typeof row.instructions === 'string' ? row.instructions : undefined,
+      why_this_drill: typeof row.why_this_drill === 'string' ? row.why_this_drill : undefined,
+      success_metric: typeof row.success_metric === 'string' ? row.success_metric : undefined,
+    })),
+    pattern_insights: stringList(analysis.pattern_insights)
+      .map(item => sanitizeUnsupportedRankClaimsForDisplay(item) ?? ''),
+    behaviours: recordList(analysis.behaviours)
+      .filter(row => typeof row.behaviour_id === 'string')
+      .map(row => ({
+        behaviour_id: row.behaviour_id as string,
+        title: typeof row.title === 'string' ? row.title : undefined,
+        occurrences: typeof row.occurrences === 'number' ? row.occurrences : undefined,
+        confidence: typeof row.confidence === 'string' ? row.confidence : undefined,
+        evidence: stringList(row.evidence),
+      })),
+    insights: recordList(analysis.insights)
+      .filter(row => typeof row.behaviour_id === 'string')
+      .map(row => ({
+        behaviour_id: row.behaviour_id as string,
+        verdict: typeof row.verdict === 'string' ? row.verdict : undefined,
+        text: typeof row.text === 'string' ? row.text : undefined,
+      })),
+    confidence: stringRecord(analysis.confidence),
+    observation_confidence: typeof analysis.observation_confidence === 'string'
+      ? analysis.observation_confidence
+      : null,
     ally_score: typeof md.finalScore === 'object' && md.finalScore
       ? (md.finalScore as { allyScore?: number }).allyScore ?? null
       : (typeof analysis.ally_score === 'number' ? analysis.ally_score : null),
