@@ -1,3 +1,4 @@
+import fs from 'fs'
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest'
 
 vi.mock('electron-log', () => ({
@@ -5,8 +6,11 @@ vi.mock('electron-log', () => ({
 }))
 
 vi.mock('./deadlock-steam-cache', () => ({
+  getResolvedSteamHttpCacheDir: vi.fn(() => null),
   logSteamCacheDiagnostics: vi.fn(),
   mergeSalts: vi.fn((prev, next) => ({ ...prev, ...next })),
+  resolveSteamHttpCacheDir: vi.fn(async () => null),
+  scanChangedSteamHttpCacheEntry: vi.fn(() => []),
   scanSteamHttpCache: vi.fn(async () => []),
 }))
 
@@ -21,10 +25,15 @@ import {
   nextDeadlockCacheScanAt,
   noteDeadlockWaitStarted,
   resetDeadlockLogSession,
+  startDeadlockLogWatcher,
   stopDeadlockLogWatcher,
   suppressDeadlockAutoRecordUntilNewMatch,
 } from './deadlock-match-watcher'
-import { scanSteamHttpCache } from './deadlock-steam-cache'
+import {
+  resolveSteamHttpCacheDir,
+  scanChangedSteamHttpCacheEntry,
+  scanSteamHttpCache,
+} from './deadlock-steam-cache'
 
 describe('deadlock match readiness', () => {
   it('advances the cache watermark even when a scan has no hits', () => {
@@ -38,11 +47,14 @@ describe('deadlock match readiness', () => {
   beforeEach(() => {
     stopDeadlockLogWatcher()
     resetDeadlockLogSession()
+    vi.mocked(resolveSteamHttpCacheDir).mockResolvedValue(null)
+    vi.mocked(scanChangedSteamHttpCacheEntry).mockReturnValue([])
     vi.mocked(scanSteamHttpCache).mockResolvedValue([])
   })
 
   afterEach(() => {
     stopDeadlockLogWatcher()
+    vi.restoreAllMocks()
   })
 
   it('does not record immediately when the game opens', () => {
@@ -71,7 +83,6 @@ describe('deadlock match readiness', () => {
       url: 'https://replay1.valve.net/1422450/101_42.meta.bz2',
     }])
 
-    const { startDeadlockLogWatcher } = await import('./deadlock-match-watcher')
     startDeadlockLogWatcher()
     await vi.advanceTimersByTimeAsync(DEADLOCK_CACHE_POLL_MS + 500)
 
@@ -104,5 +115,37 @@ describe('deadlock match readiness', () => {
     expect(isDeadlockReadyToRecord()).toBe(true)
     stopDeadlockLogWatcher()
     vi.useRealTimers()
+  })
+
+  it('starts recording when a new metadata cache file change is reported', async () => {
+    const changeEvent = { current: null as (() => void) | null }
+    const watcher = {
+      close: vi.fn(),
+      on: vi.fn().mockReturnThis(),
+    } as unknown as fs.FSWatcher
+    vi.spyOn(fs, 'watch').mockImplementation(((...args: unknown[]) => {
+      const listener = args[2] as ((eventType: 'rename' | 'change', filename: string) => void)
+      changeEvent.current = () => listener('change', 'Cache\\f_1')
+      return watcher
+    }) as typeof fs.watch)
+    vi.mocked(resolveSteamHttpCacheDir).mockResolvedValue('C:\\Steam\\appcache\\httpcache')
+    vi.mocked(scanChangedSteamHttpCacheEntry).mockReturnValue([{
+      matchId: 303,
+      clusterId: 4,
+      metadataSalt: 88,
+      replaySalt: null,
+      sourcePath: 'C:\\Steam\\appcache\\httpcache\\Cache\\f_1',
+      url: 'http://replay4.valve.net/1422450/303_88.meta.bz2',
+    }])
+
+    startDeadlockLogWatcher()
+    await vi.waitFor(() => expect(changeEvent.current).not.toBeNull())
+    changeEvent.current?.()
+
+    expect(isDeadlockReadyToRecord()).toBe(true)
+    expect(scanChangedSteamHttpCacheEntry).toHaveBeenCalledWith(
+      'C:\\Steam\\appcache\\httpcache',
+      'Cache\\f_1',
+    )
   })
 })

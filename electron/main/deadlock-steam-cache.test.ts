@@ -1,9 +1,19 @@
-import { describe, expect, it } from 'vitest'
+import fs from 'fs'
+import os from 'os'
+import path from 'path'
+import { afterEach, describe, expect, it } from 'vitest'
 import {
   buildDeadlockReplayUrl,
   mergeSalts,
   parseDeadlockValveUrl,
+  scanChangedSteamHttpCacheEntry,
 } from './deadlock-steam-cache'
+
+const tempDirs: string[] = []
+
+afterEach(() => {
+  for (const dir of tempDirs.splice(0)) fs.rmSync(dir, { recursive: true, force: true })
+})
 
 describe('parseDeadlockValveUrl', () => {
   it('parses metadata URLs', () => {
@@ -55,5 +65,34 @@ describe('buildDeadlockReplayUrl', () => {
       replaySalt: 428480166,
     })
     expect(url).toBe('http://replay183.valve.net/1422450/42476710_428480166.dem.bz2')
+  })
+})
+
+describe('scanChangedSteamHttpCacheEntry', () => {
+  it('parses the exact cache file reported by a filesystem change event', () => {
+    const cacheDir = fs.mkdtempSync(path.join(os.tmpdir(), 'upforge-deadlock-cache-'))
+    tempDirs.push(cacheDir)
+    const nestedDir = path.join(cacheDir, 'Cache')
+    fs.mkdirSync(nestedDir)
+    const cacheFile = path.join(nestedDir, 'f_000123')
+    fs.writeFileSync(
+      cacheFile,
+      Buffer.from('\0replay404.valve.net/1422450/37959196_937530290.meta.bz2\0'),
+    )
+
+    expect(scanChangedSteamHttpCacheEntry(cacheDir, path.join('Cache', 'f_000123'))).toEqual([
+      expect.objectContaining({
+        matchId: 37959196,
+        clusterId: 404,
+        metadataSalt: 937530290,
+      }),
+    ])
+  })
+
+  it('rejects change paths outside the watched cache directory', () => {
+    const cacheDir = fs.mkdtempSync(path.join(os.tmpdir(), 'upforge-deadlock-cache-'))
+    tempDirs.push(cacheDir)
+
+    expect(scanChangedSteamHttpCacheEntry(cacheDir, path.join('..', 'outside'))).toEqual([])
   })
 })

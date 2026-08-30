@@ -11,8 +11,11 @@ import {
   resolveDeadlockReplayDirs,
 } from './deadlock-paths'
 import {
+  getResolvedSteamHttpCacheDir,
   logSteamCacheDiagnostics,
   mergeSalts,
+  resolveSteamHttpCacheDir,
+  scanChangedSteamHttpCacheEntry,
   scanSteamHttpCache,
   type DeadlockMatchSalts,
 } from './deadlock-steam-cache'
@@ -29,6 +32,8 @@ const REPLAY_STABLE_MS = 20_000
 const MIN_PARTIAL_BYTES = 1024
 
 let pollTimer: ReturnType<typeof setInterval> | null = null
+let steamCacheWatcher: fs.FSWatcher | null = null
+let watchedSteamCacheDir: string | null = null
 let sessionStartAt = 0
 let waitStartedAt = 0
 let lastCacheScanAt = 0
@@ -189,6 +194,9 @@ async function refreshReplayDirsIfStale(): Promise<string[]> {
 }
 
 async function pollOnce(): Promise<void> {
+  // Retry watcher setup after transient Steam/cache discovery failures.
+  if (!steamCacheWatcher) void startSteamCacheWatcher()
+
   const scanStartedAt = Date.now()
   const notBefore = Math.max(sessionStartAt, lastCacheScanAt)
   const hits = await scanSteamHttpCache(notBefore)
@@ -199,10 +207,44 @@ async function pollOnce(): Promise<void> {
   pollPartialReplays(replayDirs.length ? replayDirs : getDeadlockReplayDirsSync())
 }
 
+async function startSteamCacheWatcher(): Promise<void> {
+  const cacheDir = await resolveSteamHttpCacheDir()
+  if (!cacheDir || steamCacheWatcher) return
+
+  try {
+    steamCacheWatcher = fs.watch(
+      cacheDir,
+      { recursive: true, persistent: false },
+      (_eventType, filename) => {
+        if (!filename) {
+          void pollOnce()
+          return
+        }
+        const hits = scanChangedSteamHttpCacheEntry(cacheDir, filename.toString())
+        for (const hit of hits) applyCacheSalts(hit)
+      },
+    )
+    watchedSteamCacheDir = cacheDir
+    steamCacheWatcher.on('error', (err) => {
+      log.warn('[DeadlockCache] Filesystem watcher failed; reconciliation polling remains active:', err.message)
+      steamCacheWatcher?.close()
+      steamCacheWatcher = null
+      watchedSteamCacheDir = null
+    })
+    log.info('[DeadlockCache] Watching file changes in', cacheDir)
+  } catch (err) {
+    log.warn(
+      '[DeadlockCache] Could not start filesystem watcher; reconciliation polling remains active:',
+      err instanceof Error ? err.message : String(err),
+    )
+  }
+}
+
 export function startDeadlockLogWatcher(): void {
   if (pollTimer) return
   if (sessionStartAt === 0) resetDeadlockLogSession()
   void logSteamCacheDiagnostics()
+  void startSteamCacheWatcher()
   void pollOnce()
   pollTimer = setInterval(() => { void pollOnce() }, DEADLOCK_CACHE_POLL_MS)
   log.info('[DeadlockMatch] Watcher started (Steam httpcache)')
@@ -217,6 +259,11 @@ export function stopDeadlockLogWatcher(): void {
     clearInterval(pollTimer)
     pollTimer = null
   }
+  if (steamCacheWatcher) {
+    steamCacheWatcher.close()
+    steamCacheWatcher = null
+  }
+  watchedSteamCacheDir = null
   resetState()
   sessionStartAt = 0
 }
@@ -364,7 +411,7 @@ export function getDeadlockDetectionStatus(): DeadlockDetectionDiagnostics {
     liveDeaths: 0,
     lobbyMatchId: activeMatchId,
     logCandidates: [],
-    steamCacheDir: null,
+    steamCacheDir: watchedSteamCacheDir ?? getResolvedSteamHttpCacheDir(),
     activeMatchId,
     hasReplaySalt: matchSalts?.replaySalt != null,
     knownMatchCount: knownMatchIds.size,

@@ -75,6 +75,11 @@ export async function resolveSteamHttpCacheDir(): Promise<string | null> {
   return cacheDirResolution
 }
 
+/** Last resolved cache directory for synchronous diagnostics. */
+export function getResolvedSteamHttpCacheDir(): string | null {
+  return cachedHttpCacheDir ?? null
+}
+
 /** Parse a Valve CDN replay URL into match salts. */
 export function parseDeadlockValveUrl(url: string): DeadlockMatchSalts | null {
   const base = url.split('?')[0] ?? url
@@ -185,6 +190,30 @@ export function scanHttpCacheFile(filePath: string): DeadlockCacheScanHit[] {
       try { fs.closeSync(fd) } catch { /* ignore */ }
     }
   }
+}
+
+/**
+ * Scan the exact file reported by Steam's cache filesystem watcher.
+ * Reject paths that escape the canonical Steam httpcache directory.
+ */
+export function scanChangedSteamHttpCacheEntry(
+  cacheDir: string,
+  changedPath: string,
+): DeadlockCacheScanHit[] {
+  if (!changedPath.trim()) return []
+
+  const base = path.resolve(cacheDir)
+  const candidate = path.resolve(base, changedPath)
+  const relative = path.relative(base, candidate)
+  if (!relative || relative.startsWith('..') || path.isAbsolute(relative)) return []
+
+  try {
+    if (!fs.statSync(candidate).isFile()) return []
+  } catch {
+    return []
+  }
+
+  return scanHttpCacheFile(candidate)
 }
 
 function walkCacheDir(dir: string, results: DeadlockCacheScanHit[], notBeforeMtimeMs: number): void {
