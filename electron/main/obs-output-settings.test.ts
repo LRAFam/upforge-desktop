@@ -97,4 +97,37 @@ describe('applyObsRecordingSettings replay configuration', () => {
       && args?.fpsNumerator === 60,
     )).toBe(true)
   })
+
+  it('does not reset OBS video when canvas and fps already match', async () => {
+    const call = vi.fn(async (name: string, args?: Record<string, unknown>) => {
+      if (name === 'GetProfileParameter') {
+        if (args?.parameterName === 'Mode') return { parameterValue: 'Simple' }
+        return { parameterValue: null }
+      }
+      if (name === 'GetVideoSettings') {
+        return {
+          baseWidth: 1280,
+          baseHeight: 720,
+          outputWidth: 1280,
+          outputHeight: 720,
+          fpsNumerator: 30,
+          fpsDenominator: 1,
+        }
+      }
+      return {}
+    })
+
+    await applyObsRecordingSettings({ call } as never, {
+      quality: '720p',
+      bitrate: 5,
+      fps: 30,
+      manageObsVideo: true,
+      audioEnabled: true,
+      savePath: '/recordings',
+      captureMonitor: 'auto',
+      clipsOnly: false,
+    })
+
+    expect(call.mock.calls.some(([name]) => name === 'SetVideoSettings')).toBe(false)
+  })
 })

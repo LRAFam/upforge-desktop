@@ -122,15 +122,39 @@ export async function applyObsRecordingSettings(
   }
 
   if (manageVideo) {
+    let videoSettingsMatch = false
     try {
-      await obs.call('SetVideoSettings', {
-        baseWidth: cx,
-        baseHeight: cy,
-        outputWidth: cx,
-        outputHeight: cy,
-        fpsNumerator: fps,
-        fpsDenominator: 1,
-      })
+      const current = await obs.call('GetVideoSettings') as {
+        baseWidth?: number
+        baseHeight?: number
+        outputWidth?: number
+        outputHeight?: number
+        fpsNumerator?: number
+        fpsDenominator?: number
+      }
+      videoSettingsMatch = current.baseWidth === cx
+        && current.baseHeight === cy
+        && current.outputWidth === cx
+        && current.outputHeight === cy
+        && current.fpsNumerator === fps
+        && current.fpsDenominator === 1
+    } catch (err) {
+      log.warn('[OBS Output] Could not check current video settings before applying:', err)
+    }
+
+    try {
+      if (videoSettingsMatch) {
+        log.info(`[OBS Output] Video already ${cx}×${cy} @ ${fps} fps — skipping reset`)
+      } else {
+        await obs.call('SetVideoSettings', {
+          baseWidth: cx,
+          baseHeight: cy,
+          outputWidth: cx,
+          outputHeight: cy,
+          fpsNumerator: fps,
+          fpsDenominator: 1,
+        })
+      }
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
       log.warn('[OBS Output] SetVideoSettings failed:', msg)
