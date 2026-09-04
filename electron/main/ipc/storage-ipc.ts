@@ -8,6 +8,7 @@
  */
 
 import type { BrowserWindow, IpcMain } from 'electron'
+import { backgroundWork } from '../background-work'
 import log from 'electron-log'
 import type { AuthManager } from '../auth-manager'
 import type { SettingsManager } from '../settings-manager'
@@ -126,15 +127,30 @@ export function setupStorageHandlers(ipcMain: IpcMain, deps: StorageIpcDeps): vo
     let failed = 0
     let stoppedEarly = false
     let stopReason: string | undefined
+    let current = 0
+    let paused = backgroundWork.blocked
+    const publishProgress = () => {
+      if (!mainWindow.isDestroyed()) mainWindow.webContents.send('storage:upload-progress', {
+        current, total: pending.length, paused,
+      })
+    }
+    const pauseStatusTimer = setInterval(() => {
+      if (paused === backgroundWork.blocked) return
+      paused = backgroundWork.blocked
+      publishProgress()
+    }, 250)
 
     try {
       for (let i = 0; i < pending.length; i++) {
         const rec = pending[i]!
+        current = i + 1
+        paused = backgroundWork.blocked
         mainWindow.webContents.send('storage:upload-progress', {
           current: i + 1,
           total: pending.length,
           map: rec.map,
           agent: rec.agent,
+          paused,
         })
         logActivity(`Uploading pending recording ${i + 1}/${pending.length}${rec.map ? ` (${rec.map})` : ''}…`)
 
@@ -169,6 +185,7 @@ export function setupStorageHandlers(ipcMain: IpcMain, deps: StorageIpcDeps): vo
         }
       }
     } finally {
+      clearInterval(pauseStatusTimer)
       bulkPendingUploadRunning = false
       const win = getMainWindow()
       win?.webContents.send('storage:upload-progress', null)

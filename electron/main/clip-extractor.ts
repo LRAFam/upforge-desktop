@@ -1,3 +1,5 @@
+import { backgroundWork } from './background-work'
+import { clipEncoders, isEncoderUnavailable, withClipEncoder } from './clip-encoding'
 import { spawn } from 'child_process'
 import { join, dirname } from 'path'
 import fs from 'fs'
@@ -37,8 +39,8 @@ export interface ExtractOptions {
   /** Output file path (mp4) */
   outputPath: string
   /**
-   * Frame-accurate seek (decode-then-trim). Slower on long VODs but required for
-   * duel windows where death timestamps must land inside the clip.
+   * Frame-accurate input seek: decode only from the preceding seek point so
+   * duel timestamps remain aligned without decoding the entire VOD prefix.
    */
   accurateSeek?: boolean
 }
@@ -60,6 +62,7 @@ export interface TrimOptions {
 }
 
 export class ClipExtractor {
+  private encoder: string | null = null
   /** Extract a clip from a source recording using FFmpeg seek + trim. */
   async extract(opts: ExtractOptions): Promise<void> {
     mkdirSync(dirname(opts.outputPath), { recursive: true })
@@ -68,14 +71,12 @@ export class ClipExtractor {
     const durSec = opts.durationMs / 1000
 
     const inputArgs = opts.accurateSeek
-      ? ['-i', opts.sourcePath, '-ss', String(startSec)]
-      : ['-ss', String(startSec), '-i', opts.sourcePath]
+      ? ['-ss', String(startSec), '-accurate_seek', '-threads', '2', '-i', opts.sourcePath]
+      : ['-ss', String(startSec), '-threads', '2', '-i', opts.sourcePath]
 
     // Always transcode to H.264/AAC for maximum player compatibility.
-    // Our source recordings are VP9-in-MP4 (remuxed from WebM) or raw WebM — neither
-    // streams-copies cleanly into MP4 on all platforms. For short clips (8–30s),
-    // veryfast H.264 transcoding is near-instant. Optional audio map handles
-    // recordings where audio capture was unavailable.
+    // Hardware encoding is preferred by _run, with software fallback. Optional
+    // audio mapping also supports recordings where audio capture was unavailable.
     const extractTimeoutMs = Math.min(600_000, Math.max(120_000, Math.ceil(durSec * 5) * 1000))
     try {
       await this._run(
@@ -170,7 +171,7 @@ export class ClipExtractor {
     return new Promise((resolve) => {
       const proc = spawn(ffmpegPath(), ['-i', filePath], { stdio: ['ignore', 'ignore', 'pipe'] })
       let stderr = ''
-      proc.stderr?.on('data', (d: Buffer) => { stderr += d.toString() })
+      proc.stderr?.on('data', (d: Buffer) => { stderr = (stderr + d.toString()).slice(-16_384) })
       proc.on('close', () => {
         const match = stderr.match(/,\s*(\d{2,5})x(\d{2,5})(?:\s|,|\[)/)
         if (match) {
@@ -279,7 +280,7 @@ export class ClipExtractor {
       }
 
       proc.stderr?.on('data', (d: Buffer) => {
-        stderr += d.toString()
+        stderr = (stderr + d.toString()).slice(-16_384)
       })
       proc.on('error', (err) => settle(() => reject(new Error(`ffmpeg error: ${err.message}`))))
       proc.on('exit', () => settle(() => resolve(stderr)))
@@ -296,7 +297,7 @@ export class ClipExtractor {
     return new Promise((resolve) => {
       const proc = spawn(ffmpegPath(), ['-i', filePath], { stdio: ['ignore', 'ignore', 'pipe'] })
       let stderr = ''
-      proc.stderr?.on('data', (d: Buffer) => { stderr += d.toString() })
+      proc.stderr?.on('data', (d: Buffer) => { stderr = (stderr + d.toString()).slice(-16_384) })
       proc.on('close', () => {
         const match = stderr.match(/Duration:\s*(\d+):(\d+):(\d+(?:\.\d+)?)/)
         if (!match) {
@@ -348,21 +349,44 @@ export class ClipExtractor {
     }
   }
 
-  private _run(args: string[], timeoutMs = 60_000): Promise<void> {
+  private async _run(args: string[], timeoutMs = 60_000): Promise<void> {
+    if (!args.includes('libx264')) {
+      return backgroundWork.run((signal) => this._runOnce(args, timeoutMs, signal))
+    }
+    const encoders = [...new Set([...(this.encoder ? [this.encoder] : []), ...clipEncoders(process.platform)])]
+    for (const encoder of encoders) {
+      try {
+        await backgroundWork.run((signal) => this._runOnce(withClipEncoder(args, encoder), timeoutMs, signal))
+        this.encoder = encoder
+        return
+      } catch (err) {
+        if (encoder === 'libx264' || !isEncoderUnavailable(err)) throw err
+        log.warn(`[ClipExtractor] ${encoder} unavailable; trying next encoder:`, err)
+      }
+    }
+  }
+
+  private _runOnce(args: string[], timeoutMs: number, signal: AbortSignal): Promise<void> {
     return new Promise((resolve, reject) => {
       const bin = ffmpegPath()
       const IS_WIN = process.platform === 'win32'
       const IS_MAC = process.platform === 'darwin'
-      const proc = spawn(bin, args, { stdio: ['ignore', 'ignore', 'pipe'] })
+      const proc = spawn(bin, ['-threads', '2', '-filter_threads', '2', '-filter_complex_threads', '2', ...args], {
+        stdio: ['ignore', 'ignore', 'pipe'], windowsHide: true,
+      })
       let stderr = ''
       let settled = false
       let timer: ReturnType<typeof setTimeout>
       const settle = (fn: () => void) => { if (!settled) { settled = true; clearTimeout(timer); fn() } }
 
-      proc.stderr?.on('data', (d: Buffer) => { stderr += d.toString() })
+      proc.stderr?.on('data', (d: Buffer) => { stderr = (stderr + d.toString()).slice(-16_384) })
       proc.on('error', (err) => settle(() => reject(new Error(`ffmpeg error: ${err.message}`))))
-      proc.on('exit', (code) => {
-        if (code === 0) settle(() => resolve())
+      const pause = () => proc.kill()
+      signal.addEventListener('abort', pause, { once: true })
+      proc.on('close', (code) => {
+        signal.removeEventListener('abort', pause)
+        if (signal.aborted) settle(() => reject(signal.reason))
+        else if (code === 0) settle(() => resolve())
         else settle(() => reject(new Error(`ffmpeg exited ${code}: ${stderr.slice(-300)}`)))
       })
 

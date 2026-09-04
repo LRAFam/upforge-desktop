@@ -136,6 +136,9 @@ export class OBSRecorder {
   private _lastApplied: OBSStatus['lastApplied'] = null
 
   // Live kill polling state
+  private _liveKillGeneration = 0
+  private _killPollInFlight: number | null = null
+  private _playerFetchInFlight: number | null = null
   private _liveKillPollTimer: ReturnType<typeof setInterval> | null = null
   private _seenKillIds = new Set<number>()
   private _localPlayerName: string | null = null
@@ -1369,14 +1372,17 @@ export class OBSRecorder {
   // ── Live kill detection via Riot Local Client API ────────────────────────────
 
   private _startLiveKillPoll(): void {
+    this._stopLiveKillPoll()
+    const generation = this._liveKillGeneration
     this._seenKillIds.clear()
     this._localPlayerName = null
     this._liveKillStamps = []
 
     // Port 2999 Live Client API is deprecated in modern Valorant — probe once before polling.
     void this._riotGet<{ riotId?: string }>('/liveclientdata/activeplayer')
-      .then(() => {
-        this._fetchLocalPlayerName()
+      .then((data) => {
+        if (generation !== this._liveKillGeneration) return
+        this._localPlayerName = data?.riotId?.split('#')[0] ?? null
         this._liveKillPollTimer = setInterval(() => {
           this._pollKillEvents()
         }, 2_000)
@@ -1387,6 +1393,9 @@ export class OBSRecorder {
   }
 
   private _stopLiveKillPoll(): void {
+    this._liveKillGeneration++
+    this._killPollInFlight = null
+    this._playerFetchInFlight = null
     if (this._liveKillPollTimer) {
       clearInterval(this._liveKillPollTimer)
       this._liveKillPollTimer = null
@@ -1397,22 +1406,31 @@ export class OBSRecorder {
   }
 
   private _fetchLocalPlayerName(): void {
+    const generation = this._liveKillGeneration
+    if (this._playerFetchInFlight === generation) return
+    this._playerFetchInFlight = generation
     this._riotGet<{ riotId: string }>('/liveclientdata/activeplayer')
       .then((data) => {
+        if (generation !== this._liveKillGeneration) return
         if (data?.riotId) {
           this._localPlayerName = data.riotId.split('#')[0]
           log.info('[OBSRecorder] Local player name:', this._localPlayerName)
         }
       })
       .catch(() => { /* pre-game — retry via poll loop */ })
+      .finally(() => { if (this._playerFetchInFlight === generation) this._playerFetchInFlight = null })
   }
 
   private async _pollKillEvents(): Promise<void> {
     // Stamp kills whenever we own a recording session (full VOD or clips-only).
     if (!this._matchOwnedRecording || !this._startedAt) return
+    const generation = this._liveKillGeneration
+    if (this._killPollInFlight === generation) return
+    this._killPollInFlight = generation
 
     try {
       const data = await this._riotGet<{ Events: LiveKillEvent[] }>('/liveclientdata/eventdata')
+      if (generation !== this._liveKillGeneration || !this._matchOwnedRecording || !this._startedAt) return
       if (!data?.Events) return
 
       // Resolve player name if we don't have it yet
@@ -1449,6 +1467,7 @@ export class OBSRecorder {
           victimName: evt.VictimName,
         }
         const clipPath = await this.saveReplayClip()
+        if (generation !== this._liveKillGeneration) return
         if (clipPath) {
           log.info('[OBSRecorder] Replay clip saved:', clipPath)
         } else {
@@ -1457,6 +1476,8 @@ export class OBSRecorder {
       }
     } catch {
       // Riot API not available between rounds / after match — normal, suppress
+    } finally {
+      if (this._killPollInFlight === generation) this._killPollInFlight = null
     }
   }
 

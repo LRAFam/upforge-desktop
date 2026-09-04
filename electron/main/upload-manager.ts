@@ -1,3 +1,4 @@
+import { backgroundWork } from './background-work'
 import fs from 'fs'
 import http from 'http'
 import https from 'https'
@@ -77,6 +78,11 @@ interface PresignResponse {
   upload_id?: string
   part_size?: number
   parts?: PresignMultipartPart[]
+}
+
+interface MultipartScope {
+  signal: AbortSignal
+  requests: Set<ClientRequest>
 }
 
 interface UploadedPart {
@@ -206,7 +212,8 @@ export class UploadManager {
   /** Full presign → S3 → complete cycles when the connection keeps dropping. */
   private static readonly FULL_UPLOAD_MAX_ATTEMPTS = 4
 
-  private _s3Request: ClientRequest | null = null
+  private _s3Requests = new Set<ClientRequest>()
+  private _abortGeneration = 0
   private _s3PartRequests = new Set<ClientRequest>()
   private _uploadAborted = false
   /** Recently completed upload hashes (videoPath hash) to detect double-submits */
@@ -216,6 +223,7 @@ export class UploadManager {
 
   /** Abort any in-progress S3 upload immediately (user cancel, logout, app quit). */
   abort(): void {
+    this._abortGeneration++
     this._uploadAborted = true
     const err = new ActivationPipelineError(
       'upload_aborted_by_user',
@@ -225,8 +233,8 @@ export class UploadManager {
   }
 
   private _destroyActiveUploads(err: Error): void {
-    this._s3Request?.destroy(err)
-    this._s3Request = null
+    for (const req of this._s3Requests) req.destroy(err)
+    this._s3Requests.clear()
     for (const req of this._s3PartRequests) {
       req.destroy(err)
     }
@@ -291,7 +299,21 @@ export class UploadManager {
     if (this._recentUploads.has(`archive:${opts.videoPath}`)) {
       throw new Error('This recording was already archived recently')
     }
-    const result = await this._doArchiveUpload(opts)
+    const generation = this._abortGeneration
+    this._uploadAborted = false
+    let result: ArchiveUploadResult | undefined
+    for (let attempt = 0; attempt < UploadManager.FULL_UPLOAD_MAX_ATTEMPTS; attempt++) {
+      this._checkCancelled(generation)
+      try {
+        result = await this._doArchiveUpload(opts)
+        break
+      } catch (err) {
+        this._checkCancelled(generation)
+        // Long matches can outlive a presigned URL. Obtain a new archive session.
+        if (!this._isExpiredUploadSessionError(err) || attempt === UploadManager.FULL_UPLOAD_MAX_ATTEMPTS - 1) throw err
+      }
+    }
+    if (!result) throw new Error('Cloud save failed')
     this._recentUploads.add(`archive:${opts.videoPath}`)
     if (this._recentUploads.size > 20) {
       const [first] = this._recentUploads
@@ -348,8 +370,10 @@ export class UploadManager {
 
   private async _doUpload(opts: UploadOptions): Promise<UploadResult> {
     let lastErr: unknown
+    const generation = this._abortGeneration
+    this._uploadAborted = false
     for (let fullAttempt = 1; fullAttempt <= UploadManager.FULL_UPLOAD_MAX_ATTEMPTS; fullAttempt++) {
-      this._uploadAborted = false
+      this._checkCancelled(generation)
       try {
         return await this._doUploadOnce(opts, fullAttempt)
       } catch (err) {
@@ -371,6 +395,8 @@ export class UploadManager {
   }
 
   private async _doUploadOnce(opts: UploadOptions, fullAttempt: number): Promise<UploadResult> {
+    const generation = this._abortGeneration
+    await backgroundWork.wait(() => this._checkCancelled(generation))
     const apiUrl = process.env['VITE_API_URL'] || 'https://api.upforge.gg'
     const token = this.auth.getToken()
     if (!token) throw new Error('Not authenticated')
@@ -379,7 +405,6 @@ export class UploadManager {
       throw new Error(`Recording file not found: ${opts.videoPath}`)
     }
     const totalBytes = fs.statSync(opts.videoPath).size
-    this._uploadAborted = false
 
     // ── Step 1: get presigned URL ──────────────────────────────────────────
     opts.onProgress(3)
@@ -436,6 +461,7 @@ export class UploadManager {
     // Remux already finished before upload(). Run VOD multipart first, then duel
     // extract/upload — avoids dual disk reads saturating the drive during post-match.
     opts.onProgress(8)
+    this._checkCancelled(generation)
     let uploadParts: UploadedPart[] | undefined
     if (presign.multipart && presign.parts?.length && presign.part_size) {
       const concurrency = fullAttempt >= 2 ? 1 : S3_MULTIPART_CONCURRENCY
@@ -469,6 +495,7 @@ export class UploadManager {
     let duelMomentsPayload = opts.duelMoments
 
     duelMomentsPayload = await resolveDuelMoments()
+    this._checkCancelled(generation)
     const duelMomentsForComplete = duelMomentsPayload?.length
       ? duelMomentsPayload
       : (completeCtx.duel_moments ?? opts.duelMoments)
@@ -498,6 +525,8 @@ export class UploadManager {
   }
 
   private async _doArchiveUpload(opts: UploadOptions): Promise<ArchiveUploadResult> {
+    const generation = this._abortGeneration
+    await backgroundWork.wait(() => this._checkCancelled(generation))
     const apiUrl = process.env['VITE_API_URL'] || 'https://api.upforge.gg'
     const token = this.auth.getToken()
     if (!token) throw new Error('Not authenticated')
@@ -527,6 +556,7 @@ export class UploadManager {
       presignBody,
       token,
     )
+    this._checkCancelled(generation)
     const archive_id = String(archivePresign.archive_id ?? '')
     const upload_url = String(archivePresign.upload_url ?? '')
     if (!archive_id || !upload_url) {
@@ -536,6 +566,7 @@ export class UploadManager {
     opts.onProgress(8)
     await this._putToS3(upload_url, opts.videoPath, totalBytes, opts.onProgress)
 
+    this._checkCancelled(generation)
     const completeCtx = submissionContextFromTimeline(opts.timeline ?? null, opts.coachingExtras)
     const complete = await this._apiPost(
       `${apiUrl}/api/recordings/archive/complete`,
@@ -707,9 +738,10 @@ export class UploadManager {
     return /NoSuchUpload|upload session expired|upload_session_expired|Request has expired|ExpiredToken|Signature has expired|AuthorizationQueryParametersError/i.test(msg)
   }
 
-  private async _withUploadRetry<T>(label: string, fn: () => Promise<T>): Promise<T> {
+  private async _withUploadRetry<T>(label: string, fn: () => Promise<T>, checkCancelled: () => void = () => {}): Promise<T> {
     let lastErr: unknown
     for (let attempt = 1; attempt <= UploadManager.S3_UPLOAD_MAX_ATTEMPTS; attempt++) {
+      checkCancelled()
       if (this._uploadAborted) {
         throw new ActivationPipelineError(
           'upload_aborted_by_user',
@@ -719,6 +751,7 @@ export class UploadManager {
       try {
         return await fn()
       } catch (err) {
+        checkCancelled()
         lastErr = err
         if (this._isExpiredUploadSessionError(err)) {
           throw this._normalizeUploadError(err)
@@ -745,16 +778,27 @@ export class UploadManager {
     totalBytes: number,
     onProgress: (pct: number) => void
   ): Promise<void> {
+    const generation = this._abortGeneration
     return this._withUploadRetry('S3 upload', () =>
-      this._putToS3Once(uploadUrl, filePath, totalBytes, onProgress),
+      backgroundWork.run(
+        (signal) => this._putToS3Once(uploadUrl, filePath, totalBytes, onProgress, signal),
+        () => this._checkCancelled(generation),
+      ),
     )
+  }
+
+  private _checkCancelled(generation: number): void {
+    if (this._uploadAborted || generation !== this._abortGeneration) {
+      throw new ActivationPipelineError('upload_aborted_by_user', 'Upload cancelled')
+    }
   }
 
   private _putToS3Once(
     uploadUrl: string,
     filePath: string,
     totalBytes: number,
-    onProgress: (pct: number) => void
+    onProgress: (pct: number) => void,
+    signal: AbortSignal,
   ): Promise<void> {
     return new Promise((resolve, reject) => {
       const parsed = new URL(uploadUrl)
@@ -774,7 +818,7 @@ export class UploadManager {
         res.on('data', (c) => body += c)
         res.on('end', () => {
           clearInterval(stallCheck)
-          this._s3Request = null
+          this._s3Requests.delete(req)
           const status = res.statusCode ?? 0
           if (status >= 200 && status < 300) resolve()
           else reject(new Error(`S3 upload failed (HTTP ${status}): ${body.slice(0, 200)}`))
@@ -785,7 +829,7 @@ export class UploadManager {
       // 60-minute cap — ~2.5 GB files at the fixed 720p preset
       req.setTimeout(60 * 60 * 1000, () => req.destroy(new Error('S3 upload timed out after 60 minutes')))
 
-      this._s3Request = req
+      this._s3Requests.add(req)
 
       let uploaded = 0
       let lastProgressAt = Date.now()
@@ -799,7 +843,7 @@ export class UploadManager {
 
       if (!fs.existsSync(filePath)) {
         clearInterval(stallCheck)
-        reject(new Error(`Recording file not found: ${filePath}`))
+        req.destroy(new Error(`Recording file not found: ${filePath}`))
         return
       }
 
@@ -809,7 +853,15 @@ export class UploadManager {
         lastProgressAt = Date.now()
         onProgress(Math.min(8 + Math.round((uploaded / totalBytes) * 91), 99))
       })
-      stream.on('error', (err) => { clearInterval(stallCheck); reject(err) })
+      const pause = () => req.destroy(signal.reason)
+      signal.addEventListener('abort', pause, { once: true })
+      req.on('close', () => {
+        clearInterval(stallCheck)
+        stream.destroy()
+        this._s3Requests.delete(req)
+        signal.removeEventListener('abort', pause)
+      })
+      stream.on('error', (err) => req.destroy(err))
       stream.pipe(req)
     })
   }
@@ -828,7 +880,7 @@ export class UploadManager {
     }
   }
 
-  private _putPartToS3(uploadUrl: string, body: Buffer): Promise<string> {
+  private _putPartToS3(uploadUrl: string, body: Buffer, scope?: MultipartScope): Promise<string> {
     if (this._uploadAborted) {
       return Promise.reject(
         new ActivationPipelineError(
@@ -838,10 +890,19 @@ export class UploadManager {
       )
     }
 
-    return this._withUploadRetry('S3 part upload', () => this._putPartToS3Once(uploadUrl, body))
+    const generation = this._abortGeneration
+    const checkCancelled = () => {
+      this._checkCancelled(generation)
+      scope?.signal.throwIfAborted()
+    }
+    return this._withUploadRetry('S3 part upload', () => backgroundWork.run(
+      (signal) => this._putPartToS3Once(uploadUrl, body, signal, scope),
+      checkCancelled,
+    ), checkCancelled)
   }
 
-  private _putPartToS3Once(uploadUrl: string, body: Buffer): Promise<string> {
+  private _putPartToS3Once(uploadUrl: string, body: Buffer, signal: AbortSignal, scope?: MultipartScope): Promise<string> {
+    scope?.signal.throwIfAborted()
     if (this._uploadAborted) {
       return Promise.reject(
         new ActivationPipelineError(
@@ -884,7 +945,18 @@ export class UploadManager {
         req.destroy(new Error('S3 part upload timed out after 30 minutes'))
       })
 
+      const pause = () => req.destroy(signal.reason)
+      const cancelPool = () => req.destroy(scope!.signal.reason)
+      signal.addEventListener('abort', pause, { once: true })
+      scope?.signal.addEventListener('abort', cancelPool, { once: true })
+      req.on('close', () => {
+        this._s3PartRequests.delete(req)
+        scope?.requests.delete(req)
+        signal.removeEventListener('abort', pause)
+        scope?.signal.removeEventListener('abort', cancelPool)
+      })
       this._s3PartRequests.add(req)
+      scope?.requests.add(req)
       req.write(body)
       req.end()
     })
@@ -899,6 +971,13 @@ export class UploadManager {
     concurrency = S3_MULTIPART_CONCURRENCY,
     resume?: { recordingId: string | null; jobId: string; uploadId: string | null },
   ): Promise<UploadedPart[]> {
+    const generation = this._abortGeneration
+    const pool = new AbortController()
+    const scope: MultipartScope = { signal: pool.signal, requests: new Set() }
+    const checkCancelled = () => {
+      this._checkCancelled(generation)
+      pool.signal.throwIfAborted()
+    }
     const sortedParts = [...parts].sort((a, b) => a.part_number - b.part_number)
     const results: UploadedPart[] = new Array(sortedParts.length)
     let uploaded = 0
@@ -950,13 +1029,10 @@ export class UploadManager {
 
     const STALL_TIMEOUT_MS = 120_000
     const stallCheck = setInterval(() => {
+      if (backgroundWork.blocked) { lastProgressAt = Date.now(); return }
       if (Date.now() - lastProgressAt > STALL_TIMEOUT_MS) {
         clearInterval(stallCheck)
-        const stallErr = this._stallUploadError()
-        for (const req of this._s3PartRequests) {
-          req.destroy(stallErr)
-        }
-        this._s3PartRequests.clear()
+        pool.abort(this._stallUploadError())
       }
     }, 5_000)
 
@@ -965,8 +1041,11 @@ export class UploadManager {
       const part = sortedParts[index]!
       const offset = (part.part_number - 1) * partSize
       const length = Math.min(partSize, totalBytes - offset)
+      await backgroundWork.wait(checkCancelled)
       const buffer = await this._readFileSlice(filePath, offset, length)
-      const etag = await this._putPartToS3(part.upload_url, buffer)
+      checkCancelled()
+      const etag = await this._putPartToS3(part.upload_url, buffer, scope)
+      checkCancelled()
       results[index] = { part_number: part.part_number, etag }
       uploaded += length
       lastProgressAt = Date.now()
@@ -981,19 +1060,22 @@ export class UploadManager {
       const workers = Array.from(
         { length: Math.min(concurrency, sortedParts.length) },
         async () => {
-          while (nextIndex < sortedParts.length) {
-            if (this._uploadAborted) {
-              throw new ActivationPipelineError(
-                'upload_aborted_by_user',
-                activationPipelineMessage('upload_aborted_by_user', 'Upload cancelled'),
-              )
+          try {
+            while (nextIndex < sortedParts.length) {
+              checkCancelled()
+              const index = nextIndex++
+              await uploadOne(index)
             }
-            const index = nextIndex++
-            await uploadOne(index)
+          } catch (err) {
+            // First failure owns the error and cancels only this upload's requests.
+            if (!pool.signal.aborted) pool.abort(err)
+            throw err
           }
         },
       )
-      await Promise.all(workers)
+      // Do not return to the outer retry while sibling workers are still running.
+      await Promise.allSettled(workers)
+      checkCancelled()
       return results as UploadedPart[]
     } catch (err) {
       if (this._isExpiredUploadSessionError(err) && stateFile) {
@@ -1002,7 +1084,11 @@ export class UploadManager {
       throw this._normalizeUploadError(err)
     } finally {
       clearInterval(stallCheck)
-      this._s3PartRequests.clear()
+      for (const req of scope.requests) {
+        req.destroy()
+        this._s3PartRequests.delete(req)
+      }
+      scope.requests.clear()
     }
   }
 

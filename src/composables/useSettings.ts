@@ -1,3 +1,4 @@
+import { CleanupScope } from '../lib/cleanup-scope'
 import { ref, computed, reactive, inject, provide, onMounted, onUnmounted, toRaw, watch, type InjectionKey } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import type { AppSettings } from '../env.d.ts'
@@ -58,6 +59,9 @@ export function useSettings() {
 }
 
 function createSettings() {
+  const ipcScope = new CleanupScope()
+  const subscribe = (channel: string, callback: (...args: unknown[]) => void) =>
+    ipcScope.add(window.api.on(channel, callback))
   const router = useRouter()
   const route = useRoute()
   const user = ref<UserWithUsage | null>(null)
@@ -109,7 +113,7 @@ function createSettings() {
   const storageBusy = ref(false)
   const storageMessage = ref('')
   const storageMessageError = ref(false)
-  const storageUploadProgress = ref<{ current: number; total: number } | null>(null)
+  const storageUploadProgress = ref<{ current: number; total: number; paused?: boolean } | null>(null)
   const ffmpegOk = ref(true)
   const recordingBackend = ref<'obs'>('obs')
   const sectionOpen = reactive({
@@ -1134,6 +1138,7 @@ function createSettings() {
   }
   
   onUnmounted(() => {
+    ipcScope.dispose()
     window.removeEventListener('keydown', handleKeydown)
   })
   
@@ -1174,6 +1179,7 @@ function createSettings() {
         window.api.app.getStatus(),
         window.api.settings.get()
       ])
+      if (ipcScope.disposed) return
       isDev.value = s.isDev
       if (s.version) appVersion.value = s.version
       if (s.ffmpegOk !== undefined) ffmpegOk.value = s.ffmpegOk !== false
@@ -1207,18 +1213,18 @@ function createSettings() {
       loadStorageUsage()
       loadHotkeyStatus()
       void window.api.obs.getStatus().then((s) => { obsStatus.value = s }).catch(() => {})
-      window.api.on('obs:status', (...args: unknown[]) => {
+      subscribe('obs:status', (...args: unknown[]) => {
         obsStatus.value = args[0] as OBSStatus
       })
-      window.api.on('obs:connection-changed', () => {
+      subscribe('obs:connection-changed', () => {
         void window.api.obs.getStatus().then((s) => { obsStatus.value = s }).catch(() => {})
       })
-      window.api.on('storage:upload-progress', (...args: unknown[]) => {
-        const data = args[0] as { current: number; total: number } | null
+      subscribe('storage:upload-progress', (...args: unknown[]) => {
+        const data = args[0] as { current: number; total: number; paused?: boolean } | null
         storageUploadProgress.value = data
       })
-      window.api.on('recordings:updated', () => { void loadStorageUsage() })
-      window.api.on('dashboard:refresh', () => { void loadDeadlockLink() })
+      subscribe('recordings:updated', () => { void loadStorageUsage() })
+      subscribe('dashboard:refresh', () => { void loadDeadlockLink() })
     } catch (err) {
       console.error('[Settings] Failed to load status:', err)
       try {
@@ -1278,26 +1284,25 @@ function createSettings() {
       updateVersion.value = us.version
       updatePercent.value = us.percent ?? 0
     } catch { /* ignore */ }
-    const updaterCleanups = [
-      window.api.on('updater:checking', () => { updatePhase.value = 'checking' }),
-      window.api.on('updater:available', (...args: unknown[]) => {
-        const info = args[0] as { version?: string } | undefined
-        updatePhase.value = 'available'
-        updateVersion.value = info?.version
-      }),
-      window.api.on('updater:progress', (...args: unknown[]) => {
-        updatePhase.value = 'downloading'
-        updatePercent.value = typeof args[0] === 'number' ? args[0] : 0
-      }),
-      window.api.on('updater:downloaded', (...args: unknown[]) => {
-        const info = args[0] as { version?: string } | undefined
-        updatePhase.value = 'ready'
-        updateVersion.value = info?.version
-      }),
-      window.api.on('updater:not-available', () => { updatePhase.value = 'idle' }),
-      window.api.on('updater:error', () => { updatePhase.value = 'idle' }),
-    ]
-    ;(window as Window & { _settingsUpdaterCleanups?: (() => void)[] })._settingsUpdaterCleanups = updaterCleanups
+    if (ipcScope.disposed) return
+    // All subscriptions belong to this Settings instance, including late registrations.
+    subscribe('updater:checking', () => { updatePhase.value = 'checking' })
+    subscribe('updater:available', (...args: unknown[]) => {
+      const info = args[0] as { version?: string } | undefined
+      updatePhase.value = 'available'
+      updateVersion.value = info?.version
+    })
+    subscribe('updater:progress', (...args: unknown[]) => {
+      updatePhase.value = 'downloading'
+      updatePercent.value = typeof args[0] === 'number' ? args[0] : 0
+    })
+    subscribe('updater:downloaded', (...args: unknown[]) => {
+      const info = args[0] as { version?: string } | undefined
+      updatePhase.value = 'ready'
+      updateVersion.value = info?.version
+    })
+    subscribe('updater:not-available', () => { updatePhase.value = 'idle' })
+    subscribe('updater:error', () => { updatePhase.value = 'idle' })
   })
 
   return {

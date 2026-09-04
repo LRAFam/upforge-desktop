@@ -464,18 +464,21 @@ export class RecordingsStore {
   setUploadProgress(id: string, progress: number): void {
     const rec = this.recordings.find(r => r.id === id)
     if (!rec) return
+    const percent = Math.min(100, Math.max(0, Math.round(progress)))
+    if (rec.pipelineStatus === 'uploading' && rec.uploadProgress === percent) return
     rec.pipelineStatus = 'uploading'
-    rec.uploadProgress = Math.min(100, Math.max(0, Math.round(progress)))
-    this.persist()
+    rec.uploadProgress = percent
+    // Transient UI state. Durable pipeline transitions already persist separately.
   }
 
   setAnalysisProgress(id: string, progress: number, step: string | null): void {
     const rec = this.recordings.find(r => r.id === id)
     if (!rec) return
+    const percent = Math.min(100, Math.max(0, Math.round(progress)))
+    if (rec.pipelineStatus === 'analysing' && rec.analysisProgress === percent && rec.analysisStep === step) return
     rec.pipelineStatus = 'analysing'
-    rec.analysisProgress = Math.min(100, Math.max(0, Math.round(progress)))
+    rec.analysisProgress = percent
     rec.analysisStep = step
-    this.persist()
   }
 
   updateClipOnlyMeta(

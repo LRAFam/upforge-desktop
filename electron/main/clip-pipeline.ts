@@ -92,8 +92,7 @@ export interface ClipPipelineContext {
 export class ClipPipeline {
   constructor(private ctx: ClipPipelineContext) {}
 
-  /** Extract a clip, clamping to VOD length. Prefer frame-accurate seek so kills
-   *  are not shifted by OBS keyframe intervals (fast seek snaps to nearest keyframe). */
+  /** Extract a clip, clamping to VOD length and accurately trimming after input seek. */
   private async safeExtract(
     opts: ExtractOptions,
     vodDurationMs: number | null,

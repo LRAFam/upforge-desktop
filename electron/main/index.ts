@@ -1,3 +1,5 @@
+import { backgroundWork } from './background-work'
+import { BackgroundMatchState } from './background-match-state'
 import {
   app,
   BrowserWindow,
@@ -59,7 +61,6 @@ import {
   clearDeferredUploadRetry,
   flushDeferredUploadRetries,
   shouldDeferHeavyBackgroundWork,
-  abortHeavyBackgroundWork,
   abortVodCompression,
 } from './match-priority-guard'
 import {
@@ -361,6 +362,7 @@ let matchPerformanceModeActive = false
  * Lobby-only (game open, no match yet) does not set this.
  */
 let matchCapturePriority = false
+const backgroundMatchState = new BackgroundMatchState()
 /** Bundled ffmpeg — post-match clip extraction only (not used for live recording). */
 const clipFfmpegProbe = new Recorder()
 const obsRecorder = new OBSRecorder(
@@ -790,7 +792,7 @@ function matchPriorityDeps() {
   // Hold while a confirmed match needs the GPU (matchCapturePriority), or while OBS
   // is actively recording. Do NOT hold merely because Valorant is open in menus.
   return {
-    isRecording: () => matchCapturePriority || obsRecorder.isActivelyRecording(),
+    isRecording: () => backgroundMatchState.active || matchCapturePriority || obsRecorder.isActivelyRecording(),
   }
 }
 
@@ -973,6 +975,7 @@ function maybeAutoEnqueueReadyPendings(): void {
 function initPostMatchWorker(userId: number): void {
   if (postMatchQueueUserId === userId && postMatchJobStore && postMatchWorker) return
   if (postMatchQueueUserId != null && postMatchQueueUserId !== userId) {
+    backgroundWork.cancel()
     uploadManager.abort()
     abortVodCompression()
   }
@@ -980,7 +983,7 @@ function initPostMatchWorker(userId: number): void {
   postMatchJobStore = new PostMatchJobStore(getPostMatchJobStorePath(userDataRoot(userId)))
   postMatchWorker = new PostMatchWorker({
     store: postMatchJobStore,
-    isRecording: () => matchCapturePriority || obsRecorder.isActivelyRecording(),
+    isRecording: () => matchPriorityDeps().isRecording(),
     isJobReady: (job) => {
       const rec = recordingsStore.getById(job.recordingId)
       return rec != null && getAnalysisReadiness(rec).ready
@@ -1043,6 +1046,8 @@ function maybeResumeDeferredUploads(): void {
       log.info('[MatchPriority] Cleared stale OBS ownership before resume check')
     }
     if (!shouldDeferHeavyBackgroundWork(matchPriorityDeps())) {
+      for (const recordingId of activeUploadRecordingIds) recordingsStore.clearPipelineDeferReason(recordingId)
+      mainWindow?.webContents.send('recordings:updated')
       void flushDeferredUploadRetries()
       maybeAutoEnqueueReadyPendings()
       postMatchWorker?.kick()
@@ -1051,22 +1056,13 @@ function maybeResumeDeferredUploads(): void {
 }
 
 function interruptBackgroundWorkForMatch(): void {
-  // Always abort at match confirm — OBS is not recording yet, so the recording-gated
-  // pauseHeavyBackgroundWork path is a no-op for consecutive Valorant matches.
-  const { interruptedCount } = abortHeavyBackgroundWork({
-    reason: 'match_capture',
-    abortUploads: () => uploadManager.abort(),
-    abortVodCompression,
-    activeUploadIds: activeUploadRecordingIds,
-    onUploadInterrupted: (recordingIds) => {
-      for (const recordingId of recordingIds) {
-        recordingsStore.setPipelineDeferReason(recordingId, 'recording')
-        recordingsStore.setPipelineStatus(recordingId, 'pending')
-        persistDeferredUpload(recordingId)
-      }
-      mainWindow?.webContents.send('recordings:updated')
-    },
-  })
+  // Interrupt the actual operations, keeping their promises alive for automatic resume.
+  backgroundWork.pause()
+  const interruptedCount = activeUploadRecordingIds.size
+  for (const recordingId of activeUploadRecordingIds) {
+    recordingsStore.setPipelineDeferReason(recordingId, 'recording')
+  }
+  mainWindow?.webContents.send('recordings:updated')
   const workerBusy = postMatchWorker?.isBusy() === true
   const queuedJobs = postMatchJobStore?.list().some(
     (j) => j.stage === 'queued' || j.stage === 'upload' || j.stage === 'deferred' || j.stage === 'remux',
@@ -1095,11 +1091,7 @@ function interruptBackgroundWorkForMatch(): void {
 }
 
 function abortBackgroundWorkOnGameStart(): void {
-  abortHeavyBackgroundWork({
-    reason: 'game_start',
-    abortUploads: () => uploadManager.abort(),
-    abortVodCompression,
-  })
+  backgroundWork.pause()
   trainerBridge.kill()
 }
 
@@ -1108,6 +1100,7 @@ function beginMatchPerformanceMode(opts?: { holdPostMatch?: boolean }): void {
     matchPerformanceModeActive = true
   }
   if (opts?.holdPostMatch) {
+    backgroundMatchState.observe(true)
     matchCapturePriority = true
     interruptBackgroundWorkForMatch()
   }
@@ -1534,6 +1527,7 @@ function syncUserSessionFromAuth(): void {
 }
 
 function clearPostMatchQueueScope(): void {
+  backgroundWork.cancel()
   uploadManager.abort()
   abortVodCompression()
   postMatchJobStore = null
@@ -4029,6 +4023,9 @@ function setupGameDetection(): void {
   })
 
   gameDetector.on('game-started', async (game: string) => {
+    // These game processes can first be detected while a map is already loading.
+    // Hold until the independent match probe confirms menus, even if OBS is unavailable.
+    if (game === 'valorant' || game === 'lol') backgroundMatchState.observe(true)
     mainWindow?.webContents.send('game:status-changed', { game, active: true })
     abortBackgroundWorkOnGameStart()
     if (await obsRecorder.releaseStaleMatchOwnership()) {
@@ -5345,7 +5342,19 @@ async function resumePollForJob(
 }
 
 /** Save a recording to cloud only (archive quota — no analysis). */
-async function doUploadArchiveOnly(
+async function doUploadArchiveOnly(...args: Parameters<typeof uploadArchiveOnlyImpl>): Promise<{ archiveId: string | null; lastError: AnalysisErrorPayload | null }> {
+  const recordingId = args[0]
+  if (recordingId) activeUploadRecordingIds.add(recordingId)
+  try { return await uploadArchiveOnlyImpl(...args) }
+  finally {
+    if (recordingId) {
+      activeUploadRecordingIds.delete(recordingId)
+      recordingsStore.clearPipelineDeferReason(recordingId)
+    }
+  }
+}
+
+async function uploadArchiveOnlyImpl(
   recordingId: string | null,
   videoPath: string,
   riotName: string,
@@ -6140,6 +6149,7 @@ async function startApp(): Promise<void> {
     optimizer.watchWindowShortcuts(window)
   })
 
+  backgroundWork.configure(() => matchPriorityDeps().isRecording())
   uploadManager = new UploadManager(authManager)
   settingsManager = new SettingsManager()
   discordRPC.start()
@@ -6503,6 +6513,54 @@ async function startApp(): Promise<void> {
     }
     return { ok: false, reason: 'not-recording' }
   })
+
+  // Protect gameplay even when recording is disabled, stopped manually, or OBS fails.
+  // Poll local match signals, not FPS or screen capture. Unknown state never releases a hold.
+  let matchProbeBusy = false
+  let lastMatchAuthAttempt = 0
+  const backgroundMatchInterval = setInterval(() => {
+    if (matchProbeBusy) return
+    matchProbeBusy = true
+    void (async () => {
+      const game = gameDetector.currentGame() ?? trackedPrimaryGame
+      let inMatch: boolean | null = null
+      if (game === 'valorant') {
+        let state = await riotLocalApi.getSessionState()
+        if (!state && Date.now() - lastMatchAuthAttempt > 30_000) {
+          lastMatchAuthAttempt = Date.now()
+          if (await riotLocalApi.initAuth()) state = await riotLocalApi.getSessionState()
+        }
+        if (state?.sessionLoopState === 'INGAME' || state?.sessionLoopState === 'PREGAME') inMatch = true
+        else if (state?.sessionLoopState === 'MENUS') {
+          const core = await riotLocalApi.isCoreGameSessionActive()
+          const pregame = await riotLocalApi.isPregameSessionActive()
+          if (core === false && pregame === false) inMatch = false
+          else if (core === true || pregame === true) inMatch = true
+        }
+      } else if (game === 'cs2') {
+        if (isGsiMatchLive()) inMatch = true
+        else if (isGsiMatchEnded()) inMatch = false
+      } else if (game === 'deadlock') {
+        if (isDeadlockMatchLive() || isDeadlockReadyToRecord()) inMatch = true
+        else if (isDeadlockMatchEnded()) inMatch = false
+      } else if (game === 'lol') {
+        inMatch = (await lolLiveClientApi.probeActiveMatch())?.inMatch ?? null
+      }
+      if (inMatch === null && backgroundMatchState.active) {
+        // A timed-out tasklist probe is unknown, not evidence that Valorant exited.
+        const stopped = game === 'valorant'
+          ? await gameDetector.probeMatchProcess() === 'stopped'
+          : !await gameDetector.isGameProcessRunning(game)
+        if (stopped) inMatch = false
+      }
+      const wasActive = backgroundMatchState.active
+      backgroundMatchState.observe(inMatch)
+      if (!wasActive && backgroundMatchState.active) interruptBackgroundWorkForMatch()
+      else if (wasActive && !backgroundMatchState.active) maybeResumeDeferredUploads()
+    })().catch((err) => log.debug('[MatchPriority] Match probe unavailable:', err))
+      .finally(() => { matchProbeBusy = false })
+  }, 2000)
+  app.on('before-quit', () => clearInterval(backgroundMatchInterval))
 
   // Presence heartbeat — update squad presence every 60s when authenticated
   const presenceInterval = setInterval(() => {
@@ -7244,6 +7302,7 @@ app.on('child-process-gone', (_event, details) => {
 })
 
 app.on('before-quit', () => {
+  backgroundWork.cancel()
   isQuitting = true
   stopObsHealthMonitor?.()
   stopInstanceCoordinator?.()

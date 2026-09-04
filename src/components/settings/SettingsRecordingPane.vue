@@ -323,7 +323,8 @@ const statusItems = computed<StatusItem[]>(() => {
             :disabled="storageBusy"
             @click="uploadPendingToCloud"
           >
-            <span v-if="storageUploadProgress">Uploading {{ storageUploadProgress.current }}/{{ storageUploadProgress.total }}…</span>
+            <span v-if="storageUploadProgress?.paused">Cloud backup paused — resumes after your match</span>
+            <span v-else-if="storageUploadProgress">Uploading {{ storageUploadProgress.current }}/{{ storageUploadProgress.total }}…</span>
             <span v-else>Save {{ storageBreakdown.pendingCount }} pending to cloud ({{ formatBytes(storageBreakdown.pendingBytes) }})</span>
           </button>
           <button

@@ -105,6 +105,7 @@ export class RiotLocalApi {
   /** Lightweight INGAME→MENUS watcher when recording was skipped (no matchData / no start()). */
   private menuWatchInterval: ReturnType<typeof setInterval> | null = null
   private menuWatchGeneration = 0
+  private wsGeneration = 0
   private wsSocket: tls.TLSSocket | null = null
   private wsReconnectTimer: ReturnType<typeof setTimeout> | null = null
   private lastSessionLoopState: string = 'MENUS'
@@ -546,8 +547,18 @@ export class RiotLocalApi {
   // WEBSOCKET (match-end signal + matchId detection)
   // ──────────────────────────────────────────────────────────────────────
 
+  private _disconnectWebSocket(): void {
+    this.wsGeneration++
+    if (this.wsReconnectTimer) clearTimeout(this.wsReconnectTimer)
+    this.wsReconnectTimer = null
+    const socket = this.wsSocket
+    this.wsSocket = null
+    socket?.destroy()
+  }
+
   private _connectWebSocket(): void {
-    if (!this.lockfileData) return
+    if (!this.lockfileData || this.wsSocket) return
+    const generation = this.wsGeneration
     const { port, password } = this.lockfileData
     const authHeader = `Basic ${Buffer.from(`riot:${password}`).toString('base64')}`
     const wsKey = Buffer.from(Math.random().toString(36)).toString('base64')
@@ -555,6 +566,7 @@ export class RiotLocalApi {
     const socket = tls.connect(
       { host: '127.0.0.1', port, rejectUnauthorized: false },
       () => {
+        if (generation !== this.wsGeneration || socket !== this.wsSocket) { socket.destroy(); return }
         socket.write(
           [`GET / HTTP/1.1`, `Host: 127.0.0.1:${port}`, `Upgrade: websocket`,
            `Connection: Upgrade`, `Sec-WebSocket-Key: ${wsKey}`, `Sec-WebSocket-Version: 13`,
@@ -568,6 +580,7 @@ export class RiotLocalApi {
     let handshakeDone = false
 
     socket.on('data', (chunk: Buffer) => {
+      if (generation !== this.wsGeneration || socket !== this.wsSocket) return
       wsBuffer = Buffer.concat([wsBuffer, chunk])
       if (!handshakeDone) {
         const headerEnd = wsBuffer.indexOf('\r\n\r\n')
@@ -604,9 +617,14 @@ export class RiotLocalApi {
 
     socket.on('error', (err: Error) => console.log('[RiotLocalApi] WS error:', err.message))
     socket.on('close', () => {
+      if (generation !== this.wsGeneration || socket !== this.wsSocket) return
+      this.wsSocket = null
       console.log('[RiotLocalApi] WS closed')
       if (this.matchData && !this.matchEnded) {
-        this.wsReconnectTimer = setTimeout(() => this._connectWebSocket(), 5000)
+        this.wsReconnectTimer = setTimeout(() => {
+          this.wsReconnectTimer = null
+          if (generation === this.wsGeneration && this.matchData && !this.matchEnded) this._connectWebSocket()
+        }, 5000)
       }
     })
   }
@@ -1005,6 +1023,7 @@ export class RiotLocalApi {
       console.warn('[RiotLocalApi] start() called while match already active — ignoring duplicate start')
       return
     }
+    this._disconnectWebSocket()
     this.matchEnded = false
     const earlyMatchId = this.currentMatchId
     this.agentFetchAttempts = 0
@@ -1077,8 +1096,7 @@ export class RiotLocalApi {
    * Fetches Riot MatchDetails API post-match if matchId + region are available.
    */
   async stop(): Promise<MatchData | null> {
-    if (this.wsReconnectTimer) { clearTimeout(this.wsReconnectTimer); this.wsReconnectTimer = null }
-    if (this.wsSocket) { this.wsSocket.destroy(); this.wsSocket = null }
+    this._disconnectWebSocket()
     if (!this.matchData) return null
     this.matchData.endTime = Date.now()
     if (!this.matchData.matchId && this.currentMatchId) this.matchData.matchId = this.currentMatchId

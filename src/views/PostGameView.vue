@@ -1863,6 +1863,10 @@ onMounted(() => {
     }
   }))
   ipcCleanup.push(window.api.on('post-game:compress-progress', (...args: unknown[]) => {
+    if (analysisDeferredReason.value === 'recording') {
+      analysisDeferredReason.value = null
+      analysisLongRunning.value = false
+    }
     state.value = 'uploading'
     compressing.value = true
     uploadProgress.value = args[0] as number
@@ -1879,7 +1883,13 @@ onMounted(() => {
     killsCapured.value = data.killsInTimeline ?? 0
     uploadStartedAt.value = Date.now()
   }))
-  ipcCleanup.push(window.api.on('post-game:upload-progress', (...args: unknown[]) => { uploadProgress.value = args[0] as number }))
+  ipcCleanup.push(window.api.on('post-game:upload-progress', (...args: unknown[]) => {
+    uploadProgress.value = args[0] as number
+    if (analysisDeferredReason.value === 'recording') {
+      analysisDeferredReason.value = null
+      analysisLongRunning.value = false
+    }
+  }))
   ipcCleanup.push(window.api.on('post-game:upload-complete', (...args: unknown[]) => {
     const data = args[0] as { archiveOnly?: boolean } | undefined
     if (data?.archiveOnly) {

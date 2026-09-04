@@ -1,3 +1,4 @@
+import { backgroundWork, BackgroundWorkCancelledError } from './background-work'
 /**
  * Re-encode oversized OBS recordings to the coaching preset before upload.
  * OBS profile parameters often do not apply (especially Advanced Output mode).
@@ -10,7 +11,7 @@ import { is } from '@electron-toolkit/utils'
 import log from 'electron-log'
 import { UPLOAD_COMPRESSION_PRESET } from './recording-preset'
 import { registerVodCompressionProc } from './match-priority-guard'
-import { parseFfmpegProgress } from './ffmpeg-progress'
+import { FfmpegProgressParser } from './ffmpeg-progress'
 
 const IS_WIN = process.platform === 'win32'
 
@@ -178,6 +179,7 @@ export async function remuxVodForUpload(
     const outputSizeBytes = statSync(outputPath).size
     return { ok: true, outputPath, outputSizeBytes }
   } catch (err) {
+    if (err instanceof BackgroundWorkCancelledError) throw err
     const msg = err instanceof Error ? err.message : String(err)
     if (existsSync(outputPath)) {
       try { unlinkSync(outputPath) } catch { /* ignore */ }
@@ -239,6 +241,7 @@ export async function compressVodForUpload(
       )
       return { ok: true, outputPath, outputSizeBytes }
     } catch (err) {
+      if (err instanceof BackgroundWorkCancelledError) throw err
       lastError = err instanceof Error ? err.message : String(err)
       log.warn(`[VodCompressor] ${encoder} failed:`, lastError)
       if (existsSync(outputPath)) {
@@ -251,10 +254,17 @@ export async function compressVodForUpload(
 }
 
 function runFfmpeg(args: string[], onProgress?: (percent: number) => void): Promise<void> {
+  return backgroundWork.run((signal) => runFfmpegOnce(args, signal, onProgress))
+}
+
+function runFfmpegOnce(args: string[], signal: AbortSignal, onProgress?: (percent: number) => void): Promise<void> {
   return new Promise((resolve, reject) => {
-    const proc = spawn(ffmpegBin(), args, { stdio: ['ignore', 'ignore', 'pipe'] })
+    const proc = spawn(ffmpegBin(), ['-threads', '2', '-filter_threads', '2', '-filter_complex_threads', '2', ...args], {
+      stdio: ['ignore', 'ignore', 'pipe'], windowsHide: true,
+    })
     registerVodCompressionProc(proc)
     let stderr = ''
+    const progressParser = new FfmpegProgressParser()
     let lastProgress = -1
     let settled = false
     const timeoutMs = 90 * 60 * 1000
@@ -272,17 +282,22 @@ function runFfmpeg(args: string[], onProgress?: (percent: number) => void): Prom
     }
 
     proc.stderr?.on('data', (d: Buffer) => {
-      stderr += d.toString()
-      const progress = parseFfmpegProgress(stderr)
+      const chunk = d.toString()
+      stderr = (stderr + chunk).slice(-16_384)
+      const progress = progressParser.push(chunk)
       if (progress != null && progress !== lastProgress) {
         lastProgress = progress
         onProgress?.(progress)
       }
     })
     proc.on('error', (err) => settle(() => reject(err)))
-    proc.on('exit', (code, signal) => {
-      if (code === 0) settle(() => resolve())
-      else if (signal === 'SIGKILL') settle(() => reject(new Error('Compression cancelled — match in progress')))
+    const pause = () => proc.kill('SIGKILL')
+    signal.addEventListener('abort', pause, { once: true })
+    proc.on('close', (code, exitSignal) => {
+      signal.removeEventListener('abort', pause)
+      if (signal.aborted) settle(() => reject(signal.reason))
+      else if (code === 0) settle(() => resolve())
+      else if (exitSignal === 'SIGKILL') settle(() => reject(new Error('Compression cancelled — match in progress')))
       else settle(() => reject(new Error(`ffmpeg exited ${code}: ${stderr.slice(-400)}`)))
     })
 
