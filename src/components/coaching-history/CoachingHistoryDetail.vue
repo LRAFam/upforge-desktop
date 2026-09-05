@@ -6,6 +6,7 @@ import MatchRecapPanel from '../MatchRecapPanel.vue'
 import TimingComparisonPanel from '../TimingComparisonPanel.vue'
 import DuelMomentCards from '../analysis/DuelMomentCards.vue'
 import { canWatchRawRecording } from '../../lib/recording-demo-status'
+import { recordingRowStats } from '../../lib/dashboard-match-row'
 import {
   pendingMatchActionLabel,
   pendingMatchLifecycleState,
@@ -61,6 +62,37 @@ const {
 const selectedRecordingCanPlay = computed(() =>
   selectedRecording.value ? canWatchRawRecording(selectedRecording.value) : false,
 )
+
+const pendingStatStrip = computed(() => {
+  const rec = selectedRecording.value
+  if (!rec) return []
+  const stats = recordingRowStats(rec)
+  const items: Array<{ label: string; value: string; class?: string }> = []
+
+  if (stats.won != null) {
+    items.push({
+      label: 'Result',
+      value: stats.won ? 'Win' : 'Loss',
+      class: stats.won ? 'text-emerald-400' : 'text-red-400',
+    })
+  }
+  if (stats.rounds_won != null && stats.rounds_lost != null) {
+    items.push({ label: 'Score', value: `${stats.rounds_won}–${stats.rounds_lost}` })
+  }
+  if (stats.kills != null) {
+    items.push({ label: 'K/D/A', value: `${stats.kills}/${stats.deaths}/${stats.assists}`, class: 'font-mono' })
+  }
+  if (stats.combat_score != null) items.push({ label: 'ACS', value: String(stats.combat_score) })
+  if (stats.hs_pct != null) {
+    items.push({
+      label: 'HS',
+      value: `${stats.hs_pct}%`,
+      class: stats.hs_pct >= 25 ? 'text-orange-400' : undefined,
+    })
+  }
+
+  return items
+})
 
 const showAlternateScoreline = computed(() => {
   const a = selectedAnalysis.value
@@ -157,6 +189,16 @@ const statStrip = computed(() => {
                   <p class="truncate text-xs text-gray-400">{{ formatMapLabel(selectedRecording.map) || 'Unknown map' }}</p>
                   <p class="mt-1 text-[10px] text-gray-600">{{ new Date(selectedRecording.recordedAt).toLocaleString() }}</p>
                 </div>
+              </div>
+
+              <div v-if="pendingStatStrip.length" class="flex flex-wrap items-center gap-x-4 gap-y-1 border-b border-white/[0.07] px-4 py-2.5">
+                <template v-for="(item, i) in pendingStatStrip" :key="item.label">
+                  <span v-if="i > 0" class="select-none text-[10px] text-gray-700">·</span>
+                  <span class="inline-flex items-baseline gap-1 text-[11px]">
+                    <span class="text-[9px] font-bold uppercase tracking-wide text-gray-600">{{ item.label }}</span>
+                    <span class="font-bold tabular-nums text-gray-200" :class="item.class">{{ item.value }}</span>
+                  </span>
+                </template>
               </div>
 
               <div class="space-y-3 p-4">

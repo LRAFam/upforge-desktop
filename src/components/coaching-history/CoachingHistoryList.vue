@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { useCoachingHistory } from '../../composables/useCoachingHistory'
 import { pendingMatchLifecycleState, pendingMatchStatusLabel } from '../../lib/match-lifecycle'
+import { recordingRowStats } from '../../lib/dashboard-match-row'
 
 const {
   allAnalyses,
@@ -83,6 +84,29 @@ const {
                       <span class="truncate text-[12px] font-bold text-white">{{ rec.agent || 'Unknown' }}</span>
                       <span class="flex-shrink-0 text-gray-700">·</span>
                       <span class="truncate text-[11px] text-gray-400">{{ formatMapLabel(rec.map) || 'Unknown map' }}</span>
+                    </div>
+                    <div
+                      v-if="recordingRowStats(rec).won != null || recordingRowStats(rec).kills != null || recordingRowStats(rec).hs_pct != null"
+                      class="mt-0.5 flex min-w-0 items-center gap-1.5 text-[10px] text-gray-500"
+                    >
+                      <span
+                        v-if="recordingRowStats(rec).won != null"
+                        class="flex-shrink-0 font-bold"
+                        :class="recordingRowStats(rec).won ? 'text-green-500/80' : 'text-red-500/70'"
+                      >{{ recordingRowStats(rec).won ? 'W' : 'L' }}</span>
+                      <span
+                        v-if="recordingRowStats(rec).rounds_won != null && recordingRowStats(rec).rounds_lost != null"
+                        class="flex-shrink-0 tabular-nums"
+                      >{{ recordingRowStats(rec).rounds_won }}–{{ recordingRowStats(rec).rounds_lost }}</span>
+                      <span v-if="recordingRowStats(rec).kills != null" class="flex-shrink-0 font-mono tabular-nums text-gray-400">
+                        {{ recordingRowStats(rec).kills }}/{{ recordingRowStats(rec).deaths }}/{{ recordingRowStats(rec).assists }}
+                        <span class="font-sans text-[8px] font-bold uppercase text-gray-700">K/D/A</span>
+                      </span>
+                      <span
+                        v-if="recordingRowStats(rec).hs_pct != null"
+                        class="flex-shrink-0 font-bold tabular-nums"
+                        :class="recordingRowStats(rec).hs_pct! >= 25 ? 'text-orange-400' : 'text-gray-500'"
+                      >{{ recordingRowStats(rec).hs_pct }}% HS</span>
                     </div>
                     <p class="mt-0.5 truncate text-[10px]" :class="pendingMatchLifecycleState(rec) === 'action_required' ? 'text-amber-300/90' : 'text-gray-600'">
                       {{ pendingMatchStatusLabel(rec) }}

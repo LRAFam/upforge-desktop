@@ -5,6 +5,8 @@ import { POST_MATCH_COPY } from './post-match-copy'
 
 export interface MatchRowStats {
   won: boolean | null
+  rounds_won: number | null
+  rounds_lost: number | null
   kills: number | null
   deaths: number | null
   assists: number | null
@@ -14,6 +16,8 @@ export interface MatchRowStats {
 
 const EMPTY_ROW_STATS: MatchRowStats = {
   won: null,
+  rounds_won: null,
+  rounds_lost: null,
   kills: null,
   deaths: null,
   assists: null,
@@ -57,11 +61,14 @@ export function isAnalysisProcessing(a: AnalysisItem): boolean {
 export function recordingRowStats(rec: PendingRecording): MatchRowStats {
   const fs = rec.timeline?.finalStats
   if (!fs) return EMPTY_ROW_STATS
+  const finalScore = rec.timeline?.finalScore
   const summaryRounds = rec.timeline?.roundSummaries?.length ?? 0
   const scoreRounds = (rec.timeline?.finalScore?.allyScore ?? 0) + (rec.timeline?.finalScore?.enemyScore ?? 0)
   const rounds = summaryRounds > 0 ? summaryRounds : (scoreRounds > 0 ? scoreRounds : null)
   return {
     won: resolveTimelineWon(rec.timeline),
+    rounds_won: finalScore?.allyScore ?? null,
+    rounds_lost: finalScore?.enemyScore ?? null,
     kills: fs.kills ?? null,
     deaths: fs.deaths ?? null,
     assists: fs.assists ?? null,
