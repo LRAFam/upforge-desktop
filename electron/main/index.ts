@@ -5456,7 +5456,7 @@ async function uploadArchiveOnlyImpl(
     send('post-game:upload-complete', { archiveId: result.archive_id, archiveOnly: true })
     logActivity('VOD saved to cloud — analyse later from your dashboard')
 
-    if (deleteLocalAfterUpload || settingsManager?.get().autoDelete) {
+    if (deleteLocalAfterUpload) {
       obsRecorder.deleteRecording(videoPath)
       deleteCompressedSibling(videoPath)
       logActivity('Local recording removed — VOD available in cloud')
@@ -6810,13 +6810,12 @@ async function startApp(): Promise<void> {
     )
     if (needsProbe.length) {
       void (async () => {
-        let changed = false
         for (const rec of needsProbe) {
           const before = getVodFileReadiness(rec)
           await refreshRecordingVodProbe(rec)
-          if (getVodFileReadiness(rec) !== before) changed = true
+          // Publish each result; one slow old VOD must not hold every row at "finalizing".
+          if (getVodFileReadiness(rec) !== before) mainWindow?.webContents.send('recordings:updated')
         }
-        if (changed) mainWindow?.webContents.send('recordings:updated')
       })()
     }
 

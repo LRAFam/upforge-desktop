@@ -9,6 +9,7 @@ import { resolveGameMode } from './analyse-modules/types'
 import { COACHING_UNSUPPORTED_MODES } from './analyse-modules/valorant'
 import { MIN_RECORDING_FILE_BYTES } from './recording-limits'
 import type { PendingRecording } from './recordings-store'
+import { withTimeout } from './promise-timeout'
 
 export { COACHING_UNSUPPORTED_MODES }
 
@@ -26,6 +27,7 @@ type ReadinessRecording = Pick<
 >
 
 const vodProbeCache = new Map<string, { mtimeMs: number; ok: boolean; reason?: string }>()
+const vodProbesInFlight = new Map<string, { mtimeMs: number; promise: Promise<{ ok: boolean; reason?: string }> }>()
 
 export function clearVodProbeCache(): void {
   vodProbeCache.clear()
@@ -192,9 +194,20 @@ export async function refreshVodProbe(
     return { ok: cached.ok, reason: cached.reason }
   }
 
-  const result = await probe(filePath)
-  vodProbeCache.set(filePath, { mtimeMs, ok: result.ok, reason: result.reason })
-  return result
+  const inFlight = vodProbesInFlight.get(filePath)
+  if (inFlight?.mtimeMs === mtimeMs) return inFlight.promise
+  const promise = withTimeout(probe(filePath), 45_000, 'Recording check timed out — retry when the disk is available')
+    .catch((err: unknown) => ({ ok: false, reason: err instanceof Error ? err.message : String(err) }))
+    .then((result) => {
+      // Do not cache an older probe over a newer file revision.
+      if (vodProbesInFlight.get(filePath)?.promise === promise) {
+        vodProbeCache.set(filePath, { mtimeMs, ok: result.ok, reason: result.reason })
+        vodProbesInFlight.delete(filePath)
+      }
+      return result
+    })
+  vodProbesInFlight.set(filePath, { mtimeMs, promise })
+  return promise
 }
 
 export function isTerminalAnalysisReadinessState(state: AnalysisReadinessState): boolean {

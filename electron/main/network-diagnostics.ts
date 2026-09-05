@@ -91,7 +91,7 @@ export function hostnameFromUrl(url: string): string | null {
 }
 
 export function isLikelyNetworkFailure(message: string): boolean {
-  return /ENOTFOUND|EAI_AGAIN|getaddrinfo|ECONNRESET|ECONNABORTED|ETIMEDOUT|EPIPE|socket hang up|network/i.test(
+  return /upload_stalled|upload stalled|ENOTFOUND|EAI_AGAIN|getaddrinfo|ECONNRESET|ECONNABORTED|ETIMEDOUT|EPIPE|socket hang up|network/i.test(
     message,
   )
 }

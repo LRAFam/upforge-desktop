@@ -11,6 +11,8 @@ import { UploadManager, type UploadOptions } from './upload-manager'
 type Internals = {
   _apiPost: (url: string, body: string, token: string) => Promise<Record<string, unknown>>
   _putToS3Multipart: (file: string, size: number, parts: { part_number: number; upload_url: string }[], partSize: number, progress: (n: number) => void, concurrency: number) => Promise<unknown>
+  _putPartToS3: (url: string, body: Buffer, scope?: { signal: AbortSignal; onProgress?: () => void }) => Promise<string>
+  _isRetryableUploadError: (err: Error) => boolean
 }
 let playing = false
 let dir: string
@@ -50,6 +52,40 @@ function setupArchive() {
   return { manager, internal, api, opts, file }
 }
 describe('VOD cloud transfer match protection', () => {
+  it('keeps a slow multipart upload alive while bytes are still flowing', async () => {
+    const { internal, file } = setupArchive()
+    vi.useFakeTimers()
+    try {
+      vi.spyOn(internal, '_putPartToS3').mockImplementation((_url, _body, scope) => new Promise((resolve, reject) => {
+        const heartbeat = setInterval(() => scope?.onProgress?.(), 20_000)
+        scope?.signal.addEventListener('abort', () => { clearInterval(heartbeat); reject(scope.signal.reason) })
+        setTimeout(() => { clearInterval(heartbeat); resolve('etag') }, 180_000)
+      }))
+      const result = internal._putToS3Multipart(file, 100, [{ part_number: 1, upload_url: url }], 100, vi.fn(), 1)
+      // Let the real file read settle before advancing the watchdog clock.
+      await vi.waitFor(() => expect(internal._putPartToS3).toHaveBeenCalled())
+      await vi.advanceTimersByTimeAsync(181_000)
+      await expect(result).resolves.toEqual([{ part_number: 1, etag: 'etag' }])
+    } finally { vi.useRealTimers() }
+  })
+
+  it('still aborts a multipart upload with no data progress', async () => {
+    const { internal, file } = setupArchive()
+    vi.useFakeTimers()
+    try {
+      vi.spyOn(internal, '_putPartToS3').mockImplementation((_url, _body, scope) => new Promise((_resolve, reject) => {
+        scope?.signal.addEventListener('abort', () => reject(scope.signal.reason))
+      }))
+      const result = internal._putToS3Multipart(file, 100, [{ part_number: 1, upload_url: url }], 100, vi.fn(), 1)
+      const rejection = expect(result).rejects.toThrow('upload_stalled')
+      await vi.waitFor(() => expect(internal._putPartToS3).toHaveBeenCalled())
+      await vi.advanceTimersByTimeAsync(130_000)
+      await rejection
+      expect(internal._isRetryableUploadError(new Error('upload_stalled'))).toBe(true)
+      expect(internal._isRetryableUploadError(new Error('Upload cancelled'))).toBe(false)
+    } finally { vi.useRealTimers() }
+  })
+
   it('cancels failed multipart siblings and preserves another upload on the same manager', async () => {
     const { internal, file } = setupArchive()
     const requests: string[] = []

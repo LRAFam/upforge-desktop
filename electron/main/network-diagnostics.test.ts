@@ -39,6 +39,9 @@ function sampleSnapshot(overrides: Partial<NetworkDiagnosticsSnapshot> = {}): Ne
 }
 
 describe('hostnameFromUrl', () => {
+  it('records upload stalls as network failures in support bundles', () => {
+    expect(isLikelyNetworkFailure('upload_stalled: S3 upload stalled — no progress for 120 seconds')).toBe(true)
+  })
   it('parses API hostnames', () => {
     expect(hostnameFromUrl('https://api.upforge.gg')).toBe('api.upforge.gg')
     expect(hostnameFromUrl('https://api.upforge.gg/api/x')).toBe('api.upforge.gg')

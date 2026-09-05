@@ -3,6 +3,7 @@ import fs from 'fs'
 import http from 'http'
 import https from 'https'
 import type { ClientRequest } from 'http'
+import { Readable } from 'stream'
 import path from 'path'
 import { app } from 'electron'
 import { AuthManager } from './auth-manager'
@@ -83,6 +84,7 @@ interface PresignResponse {
 interface MultipartScope {
   signal: AbortSignal
   requests: Set<ClientRequest>
+  onProgress?: () => void
 }
 
 interface UploadedPart {
@@ -310,7 +312,7 @@ export class UploadManager {
       } catch (err) {
         this._checkCancelled(generation)
         // Long matches can outlive a presigned URL. Obtain a new archive session.
-        if (!this._isExpiredUploadSessionError(err) || attempt === UploadManager.FULL_UPLOAD_MAX_ATTEMPTS - 1) throw err
+        if ((!this._isExpiredUploadSessionError(err) && !this._isRetryableUploadError(err)) || attempt === UploadManager.FULL_UPLOAD_MAX_ATTEMPTS - 1) throw err
       }
     }
     if (!result) throw new Error('Cloud save failed')
@@ -727,7 +729,7 @@ export class UploadManager {
 
   private _isRetryableUploadError(err: unknown): boolean {
     const msg = err instanceof Error ? err.message : String(err)
-    return /socket hang up|ECONNRESET|ECONNABORTED|ETIMEDOUT|EPIPE|ENOTFOUND|EAI_AGAIN|network/i.test(msg)
+    return /upload_stalled|upload stalled|socket hang up|ECONNRESET|ECONNABORTED|ETIMEDOUT|EPIPE|ENOTFOUND|EAI_AGAIN|network/i.test(msg)
       || /S3 upload failed \(HTTP 5\d\d\)|S3 part upload failed \(HTTP 5\d\d\)|Request failed \(5\d\d\)/i.test(msg)
       || /temporarily unavailable|service unavailable|slowdown|please reduce your request rate/i.test(msg)
   }
@@ -957,8 +959,17 @@ export class UploadManager {
       })
       this._s3PartRequests.add(req)
       scope?.requests.add(req)
-      req.write(body)
-      req.end()
+      // Respect backpressure and report progress while a part is being sent,
+      // not only after S3 acknowledges the entire part.
+      const stream = Readable.from((function* () {
+        for (let offset = 0; offset < body.length; offset += 64 * 1024) {
+          yield body.subarray(offset, offset + 64 * 1024)
+        }
+      })(), { objectMode: false, highWaterMark: 64 * 1024 })
+      stream.on('data', () => scope?.onProgress?.())
+      stream.on('error', (err) => req.destroy(err))
+      req.on('close', () => stream.destroy())
+      stream.pipe(req)
     })
   }
 
@@ -983,6 +994,8 @@ export class UploadManager {
     let uploaded = 0
     let nextIndex = 0
     let lastProgressAt = Date.now()
+
+    scope.onProgress = () => { lastProgressAt = Date.now() }
 
     const stateFile = resume?.recordingId
       ? multipartStatePath(app.getPath('userData'), resume.recordingId)

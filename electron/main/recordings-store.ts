@@ -278,6 +278,16 @@ export class RecordingsStore {
     if (rec) {
       rec.cloudArchived = true
       rec.archiveId = archiveId
+      rec.autoAnalyseRequested = undefined
+      rec.manualAnalyseRequested = undefined
+      rec.pipelineStatus = undefined
+      rec.uploadProgress = undefined
+      rec.lastAnalysisError = undefined
+      rec.lastAnalysisErrorHint = undefined
+      rec.lastFailureCode = undefined
+      rec.lastAnalysisCreditRefunded = undefined
+      rec.lastAnalysisFailureDiagnostics = undefined
+      rec.analysisFailureNotifiedAt = undefined
       this.persist()
     }
   }

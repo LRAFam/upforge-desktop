@@ -163,7 +163,8 @@ const entries = computed<FeedEntry[]>(() => {
         tag: 'Recording',
         time: r.recordedAt ?? Date.now(),
         sortTime: entryTimeMs(r.recordedAt) || Date.now(),
-        pinned: true,
+        // Old unresolved rows must not bury the real activity log indefinitely.
+        pinned: Date.now() - entryTimeMs(r.recordedAt) < 30 * 60_000,
       })
     }
   }

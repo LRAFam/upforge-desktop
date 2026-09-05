@@ -10,6 +10,7 @@
 import type { BrowserWindow, IpcMain } from 'electron'
 import { backgroundWork } from '../background-work'
 import log from 'electron-log'
+import fs from 'fs'
 import type { AuthManager } from '../auth-manager'
 import type { SettingsManager } from '../settings-manager'
 import type { RecordingsStore } from '../recordings-store'
@@ -116,7 +117,12 @@ export function setupStorageHandlers(ipcMain: IpcMain, deps: StorageIpcDeps): vo
       return { ok: false as const, error: 'App window unavailable' }
     }
 
-    const pending = recordingsStore.getPending(linkedRiotFromAuth())
+    const pending = recordingsStore.getPending(linkedRiotFromAuth()).filter((rec) =>
+      !rec.clipsOnly && !rec.analysed && !rec.archiveId && !rec.cloudArchived
+      && !rec.jobId && rec.analysisId == null
+      && rec.pipelineStatus !== 'uploading' && rec.pipelineStatus !== 'analysing'
+      && rec.path && fs.existsSync(rec.path),
+    )
     if (pending.length === 0) {
       return { ok: true as const, uploaded: 0, failed: 0, stoppedEarly: false }
     }
@@ -155,7 +161,7 @@ export function setupStorageHandlers(ipcMain: IpcMain, deps: StorageIpcDeps): vo
         logActivity(`Uploading pending recording ${i + 1}/${pending.length}${rec.map ? ` (${rec.map})` : ''}…`)
 
         try {
-          const { archiveId } = await doUploadArchiveOnly(
+          const { archiveId, lastError } = await doUploadArchiveOnly(
             rec.id,
             rec.path,
             rec.riotName || user?.riot_name || '',
@@ -165,12 +171,17 @@ export function setupStorageHandlers(ipcMain: IpcMain, deps: StorageIpcDeps): vo
             rec.agent,
             rec.timeline,
             mainWindow,
-            true,
+            false,
           )
           if (archiveId) {
             uploaded++
           } else {
             failed++
+            if (/archive.limit.reached|archive_limit_reached/i.test(`${lastError?.failureCode ?? ''} ${lastError?.message ?? ''}`)) {
+              stoppedEarly = true
+              stopReason = lastError?.message ?? 'Cloud storage limit reached'
+              break
+            }
           }
         } catch (err) {
           const isUpgrade = err instanceof UpgradeRequiredError
@@ -194,7 +205,7 @@ export function setupStorageHandlers(ipcMain: IpcMain, deps: StorageIpcDeps): vo
     }
 
     if (uploaded > 0) {
-      logActivity(`Saved ${uploaded} recording(s) to cloud — local copies removed`)
+      logActivity(`Saved ${uploaded} recording(s) to cloud — local copies kept`)
     }
 
     return { ok: true as const, uploaded, failed, stoppedEarly, stopReason }
