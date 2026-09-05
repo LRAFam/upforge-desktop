@@ -3279,6 +3279,14 @@ function setupGameDetection(): void {
       obsRecorder.stop(),
     ])
 
+    if (obsRecorder.hasRecordingFailure() && !usesDemoReplay(game)) {
+      const message = obsRecorder.getLastError() ?? 'OBS recording failed. Restart OBS before the next match.'
+      logActivity(message, game)
+      notifyRecordingUx(message)
+      // A growing/unfinished file must not be recovered by the path fallback and uploaded.
+      return
+    }
+
     const timelineBuilt = await buildMatchEndTimeline(
       {
         game,
@@ -4006,6 +4014,9 @@ function setupGameDetection(): void {
     try {
       const didFinalize = await finalizeMatchOnce(game, 'manual')
       if (!didFinalize) return { ok: false, reason: 'already_handled' }
+      if (obsRecorder.hasRecordingFailure()) {
+        return { ok: false, reason: obsRecorder.getLastError() ?? 'OBS recording failed' }
+      }
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
       logActivity(`Failed to finish match after stop: ${msg}`)
@@ -6218,6 +6229,7 @@ async function startApp(): Promise<void> {
     if (!obsRecorder.isRecording()) return { ok: false, reason: 'not_recording' }
     try {
       await obsRecorder.stop()
+      if (obsRecorder.hasRecordingFailure()) return { ok: false, reason: obsRecorder.getLastError() ?? 'OBS stop failed' }
       return { ok: true }
     } catch (err) {
       return { ok: false, reason: err instanceof Error ? err.message : String(err) }
