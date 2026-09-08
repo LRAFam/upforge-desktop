@@ -9,6 +9,9 @@ export type TrainerScenarioKey =
   | 'tracking'
   | 'strafe_track'
   | 'switching'
+  | 'angle_clearing'
+  | 'distance_switching'
+  | 'head_height'
   | 'strafe_aim'
   | 'duel'
 
@@ -26,6 +29,33 @@ export interface TrainerScenarioDef {
 }
 
 export const TRAINER_SCENARIOS: TrainerScenarioDef[] = [
+  {
+    key: 'angle_clearing',
+    label: 'Angle Clearing',
+    description: 'Clear cover before taking a headshot.',
+    tip: 'Move sideways until the head clears cover, then click.',
+    uiGroup: 'duel',
+    radar: false,
+    vodCategories: ['crosshair_placement'],
+  },
+  {
+    key: 'distance_switching',
+    label: 'Distance Switching',
+    description: 'Alternate between close and distant standing targets.',
+    tip: 'Keep your crosshair level while switching between near and far heads.',
+    uiGroup: 'duel',
+    radar: false,
+    vodCategories: ['crosshair_placement'],
+  },
+  {
+    key: 'head_height',
+    label: 'Head Height Corridor',
+    description: 'Clear corners against standing targets at 10m and 20m. Footage-based prototype.',
+    tip: 'Use A/D to clear each bay with your crosshair at head height.',
+    uiGroup: 'duel',
+    radar: false,
+    vodCategories: ['crosshair_placement'],
+  },
   {
     key: 'flick',
     label: 'Flick',

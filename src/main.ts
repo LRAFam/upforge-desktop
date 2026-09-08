@@ -50,6 +50,7 @@ const router = createRouter({
     { path: '/performance', component: PerformanceView },
     { path: '/vod-review', component: VODReviewView },
     { path: '/training', component: TrainingHubView },
+    { path: '/training/calibration', component: () => import('./views/ValorantCalibrationView.vue') },
     { path: '/trainer-results', component: TrainerResultsView },
     { path: '/stats', component: StatsView },
     { path: '/history', component: CoachingHistoryView },

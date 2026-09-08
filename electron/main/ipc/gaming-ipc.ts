@@ -34,9 +34,10 @@ function buildTrainingSessionPayload(result: import('../trainer-bridge').Session
     min_reaction_ms,
     max_reaction_ms,
     targets_per_minute,
+    metadata: scenarioMetadata,
     ...core
   } = result
-  const metadata: Record<string, unknown> = {}
+  const metadata: Record<string, unknown> = { ...scenarioMetadata }
   if (max_streak != null) metadata.max_streak = max_streak
   if (min_reaction_ms != null) metadata.min_reaction_ms = min_reaction_ms
   if (max_reaction_ms != null) metadata.max_reaction_ms = max_reaction_ms

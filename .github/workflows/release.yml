@@ -44,7 +44,7 @@ jobs:
           $downloaded = $false
           for ($attempt = 1; $attempt -le 5; $attempt++) {
             Remove-Item $trainerPath -Force -ErrorAction SilentlyContinue
-            gh release download --repo LRAFam/upforge-trainer --pattern "upforge-trainer.exe" --dir "resources\trainer"
+            gh release download v1.10.0 --repo LRAFam/upforge-trainer --pattern "upforge-trainer.exe" --dir "resources\trainer"
             if ($LASTEXITCODE -eq 0 -and (Test-Path $trainerPath)) {
               $downloaded = $true
               break
@@ -115,6 +115,15 @@ jobs:
           mkdir -p resources/ffmpeg
           cp "$(which ffmpeg)" resources/ffmpeg/ffmpeg
           echo "ffmpeg bundled: $(wc -c < resources/ffmpeg/ffmpeg) bytes"
+
+      - name: Download pinned Godot trainer for macOS
+        env:
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}
+        run: |
+          mkdir -p resources/trainer
+          gh release download v1.10.0 --repo LRAFam/upforge-trainer --pattern "upforge-trainer.zip" --dir "$RUNNER_TEMP"
+          unzip -q "$RUNNER_TEMP/upforge-trainer.zip" -d resources/trainer
+          test -x "resources/trainer/UpForge Trainer.app/Contents/MacOS/UpForge Trainer"
 
       - name: Build Mac installer (tag — publish in publish-release job)
         if: startsWith(github.ref, 'refs/tags/v')

@@ -285,6 +285,42 @@ const SCENARIO_META: Record<string, {
     dot: 'bg-cyan-400',
     ring: 'ring-cyan-500/30',
   },
+  angle_clearing: {
+    label: 'Angle Clearing',
+    description: 'Clear cover before taking a headshot.',
+    tip: 'Move sideways until the head clears cover, then click.',
+    category: 'duel',
+    color: 'text-teal-400',
+    bg: 'bg-teal-500/[0.08]',
+    border: 'border-teal-500/20',
+    band: 'bg-teal-500',
+    dot: 'bg-teal-400',
+    ring: 'ring-teal-500/30',
+  },
+  distance_switching: {
+    label: 'Distance Switching',
+    description: 'Alternate between close and distant standing targets.',
+    tip: 'Keep your crosshair level while switching between near and far heads.',
+    category: 'duel',
+    color: 'text-teal-400',
+    bg: 'bg-teal-500/[0.08]',
+    border: 'border-teal-500/20',
+    band: 'bg-teal-500',
+    dot: 'bg-teal-400',
+    ring: 'ring-teal-500/30',
+  },
+  head_height: {
+    label: 'Head Height Corridor',
+    description: 'Clear corners at 10m and 20m. Footage-based prototype.',
+    tip: 'Use A/D to clear each bay with your crosshair at head height.',
+    category: 'duel',
+    color: 'text-teal-400',
+    bg: 'bg-teal-500/[0.08]',
+    border: 'border-teal-500/20',
+    band: 'bg-teal-500',
+    dot: 'bg-teal-400',
+    ring: 'ring-teal-500/30',
+  },
   strafe_aim: {
     label: 'Strafe Aim',
     description: 'Counter-strafe before each shot.',
@@ -1577,6 +1613,7 @@ const CATEGORY_ICON: Record<string, string> = {
           <div class="min-w-0">
             <p class="text-[10px] font-black uppercase tracking-[0.28em] text-red-400/80">Aim Lab</p>
             <h1 class="text-lg font-black tracking-tight text-white">Training Hub</h1>
+            <RouterLink to="/training/calibration" class="inline-block mt-2 text-xs text-red-300 hover:text-red-200">Valorant calibration prototype →</RouterLink>
             <p class="text-[11px] text-gray-500 mt-0.5">Guided sessions, analytics, leaderboards, and loadouts</p>
           </div>
           <div v-if="trainingStats.streak > 0" class="flex items-center gap-2 rounded-xl border border-orange-500/20 bg-orange-500/10 px-3 py-2">

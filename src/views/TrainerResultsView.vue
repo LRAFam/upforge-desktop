@@ -22,6 +22,9 @@ let removeListener: (() => void) | null = null
 
 // ── Scenario metadata ─────────────────────────────────────────────────────────
 const SCENARIO_META: Record<string, { label: string; color: string; accent: string }> = {
+  angle_clearing: { label: 'Angle Clearing', color: 'text-teal-400', accent: '#2dd4bf' },
+  distance_switching: { label: 'Distance Switching', color: 'text-teal-400', accent: '#2dd4bf' },
+  head_height: { label: 'Head Height Corridor', color: 'text-teal-400', accent: '#2dd4bf' },
   flick:       { label: 'Flick',        color: 'text-red-400',    accent: '#f87171' },
   tracking:    { label: 'Tracking',     color: 'text-sky-400',    accent: '#38bdf8' },
   microadjust: { label: 'Micro-Adjust', color: 'text-amber-400',  accent: '#fbbf24' },
@@ -567,6 +570,15 @@ onUnmounted(() => {
               :stroke-width="dot.isCurrent ? 2 : 0"
             />
           </svg>
+        </div>
+
+        <div v-if="['head_height', 'angle_clearing', 'distance_switching'].includes(result.scenario)" class="border border-white/10 rounded-lg p-4 space-y-2 text-sm">
+          <p class="font-semibold text-white">Crosshair placement</p>
+          <p class="text-white/60">Average vertical correction when the head first became visible:</p>
+          <p class="text-lg tabular-nums text-teal-400">
+            {{ typeof result.metadata?.mean_vertical_error_deg === 'number' ? `${result.metadata.mean_vertical_error_deg.toFixed(2)}°` : 'No visible targets measured' }}
+          </p>
+          <p class="text-xs text-white/50">Lower is better. Standing target sizes are estimated from range footage.</p>
         </div>
 
         <!-- Stat breakdown -->

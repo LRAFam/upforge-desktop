@@ -23,7 +23,7 @@ const CONNECT_MAX_ATTEMPTS = 20
 export interface DrillConfig {
   scenario:
     | 'flick' | 'tracking' | 'microadjust' | 'switching' | 'duel'
-    | 'gridshot' | 'sixshot' | 'microflick' | 'strafe_track' | 'strafe_aim'
+    | 'gridshot' | 'sixshot' | 'microflick' | 'strafe_track' | 'strafe_aim' | 'head_height' | 'angle_clearing' | 'distance_switching'
   duration_seconds: number
   difficulty: 'easy' | 'medium' | 'hard' | 'pro'
   target_size_override?: number
@@ -73,6 +73,7 @@ export interface SessionResult {
   max_streak?: number
   min_reaction_ms?: number
   max_reaction_ms?: number
+  metadata?: Record<string, unknown>
   targets_per_minute?: number
 }
 
@@ -106,7 +107,7 @@ export class TrainerBridge {
       : path.join(app.getAppPath(), 'resources', 'trainer')
 
     if (process.platform === 'win32') return path.join(base, 'upforge-trainer.exe')
-    if (process.platform === 'darwin') return path.join(base, 'upforge-trainer.app', 'Contents', 'MacOS', 'upforge-trainer')
+    if (process.platform === 'darwin') return path.join(base, 'UpForge Trainer.app', 'Contents', 'MacOS', 'UpForge Trainer')
     return path.join(base, 'upforge-trainer')
   }
 

@@ -11,6 +11,7 @@ export interface SessionResult {
   targets_hit: number
   targets_missed: number
   heatmap?: Array<{ x: number; y: number; hit: boolean }>
+  metadata?: Record<string, unknown>
   completed_at: string
 }
 

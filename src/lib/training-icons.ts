@@ -36,6 +36,9 @@ export const TRAINING_SCENARIO_ICONS: Record<TrainerScenarioKey, string> = {
   tracking: trackingIcon,
   strafe_track: strafeTrackIcon,
   switching: switchingIcon,
+  angle_clearing: strafeAimIcon,
+  distance_switching: switchingIcon,
+  head_height: strafeAimIcon,
   strafe_aim: strafeAimIcon,
   duel: duelIcon,
 }
