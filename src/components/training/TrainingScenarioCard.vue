@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import type { TrainerScenarioKey, TrainerDifficulty } from '../../lib/trainer-scenarios'
-import DifficultyStars from './DifficultyStars.vue'
 import { formatTrainerRank } from '../../lib/training-ui'
 
 defineProps<{
@@ -31,58 +30,34 @@ const emit = defineEmits<{ play: [] }>()
 <template>
   <button
     type="button"
-    class="group relative rounded-xl border overflow-hidden text-left transition-all duration-200 disabled:opacity-50"
-    :class="completed
-      ? 'border-emerald-500/25 bg-emerald-500/[0.04] opacity-75'
-      : 'border-white/[0.09] bg-white/[0.02] hover:border-white/[0.16] hover:-translate-y-0.5 hover:shadow-lg hover:shadow-black/30'"
+    class="group flex h-full flex-col rounded-xl border bg-[#171719] p-5 text-left transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-400 disabled:cursor-not-allowed"
+    :class="completed ? 'border-emerald-500/25' : 'border-white/10 enabled:hover:border-white/25 enabled:hover:bg-[#1d1d20] disabled:opacity-50'"
     :disabled="disabled || completed"
+    :aria-label="`${completed ? 'Completed' : running ? 'Running' : 'Play'} ${label}`"
     @click="emit('play')"
   >
-    <div :class="['absolute left-0 top-0 bottom-0 w-1', accent.band]" />
-
-    <div class="p-3.5 pl-4">
-      <div class="flex items-start justify-between gap-2 mb-2">
-        <img
-          :src="iconSrc"
-          :alt="`${label} icon`"
-          class="w-9 h-9 rounded-lg flex-shrink-0 object-contain ring-1 ring-white/[0.06]"
-        />
-        <span
-          v-if="formatTrainerRank(globalRank)"
-          class="text-[9px] font-black tabular-nums px-2 py-1 rounded-md border border-white/[0.10] bg-black/30 text-gray-300"
-        >{{ formatTrainerRank(globalRank) }}</span>
-      </div>
-
-      <p class="text-[13px] font-bold text-white">{{ label }}</p>
-      <div class="flex items-center gap-2 mt-1">
-        <DifficultyStars :difficulty="difficulty" size="sm" />
-        <span class="text-[10px] text-gray-600 tabular-nums">{{ durationSeconds }}s</span>
-      </div>
-      <p v-if="reason" class="text-[10px] text-gray-500 mt-2 line-clamp-2 leading-snug italic">{{ reason }}</p>
-      <p v-else class="text-[10px] text-gray-600 mt-2 line-clamp-2 leading-snug">{{ description }}</p>
-
-      <div class="flex items-end justify-between gap-3 mt-3">
-        <div class="min-w-0 flex-1">
-          <p class="text-[9px] uppercase tracking-wide text-gray-600">Personal best</p>
-          <p class="text-xl font-black tabular-nums text-white leading-none mt-0.5">
-            {{ personalBest ?? '—' }}
-          </p>
+    <div class="flex w-full items-start gap-4">
+      <img :src="iconSrc" alt="" aria-hidden="true" class="h-14 w-14 shrink-0 object-contain" />
+      <div class="min-w-0 flex-1">
+        <h3 class="text-base font-semibold text-white">{{ label }}</h3>
+        <div class="mt-2 flex flex-wrap items-center gap-2 text-xs text-gray-400">
+          <span class="capitalize">{{ difficulty }}</span>
+          <span aria-hidden="true">·</span>
+          <span>{{ durationSeconds }} seconds</span>
         </div>
-        <span
-          class="flex h-9 w-9 items-center justify-center rounded-lg border transition-colors flex-shrink-0"
-          :class="running
-            ? 'border-red-500/30 bg-red-500/10 text-red-400'
-            : 'border-white/[0.10] bg-white/[0.04] text-gray-400 group-hover:text-red-400 group-hover:border-red-500/30'"
-        >
-          <svg v-if="running" class="w-2 h-2 animate-pulse" fill="currentColor" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/></svg>
-          <svg v-else-if="completed" class="w-4 h-4 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"/></svg>
-          <svg v-else viewBox="0 0 24 24" fill="currentColor" class="w-3.5 h-3.5"><polygon points="5 3 19 12 5 21 5 3"/></svg>
-        </span>
       </div>
-
-      <div class="mt-2.5 h-1 rounded-full bg-white/[0.06] overflow-hidden">
-        <div :class="['h-full rounded-full transition-all', accent.band]" :style="{ width: `${progress}%` }" />
+    </div>
+    <p class="mt-4 mb-5 text-sm leading-relaxed text-gray-400">{{ reason || description }}</p>
+    <div class="mt-auto flex w-full items-end justify-between gap-3 border-t border-white/10 pt-4">
+      <div>
+        <p class="text-xs text-gray-400">Personal best</p>
+        <p class="mt-1 text-lg font-semibold tabular-nums text-white">{{ personalBest ?? 'Not played' }}</p>
+        <p v-if="formatTrainerRank(globalRank)" class="mt-1 text-xs text-gray-400">{{ formatTrainerRank(globalRank) }} globally</p>
       </div>
+      <span class="flex items-center gap-2 rounded-md px-3 py-2 text-sm font-semibold" :class="completed ? 'text-emerald-400' : 'bg-white/[0.06] text-white group-hover:bg-white/10'">
+        {{ completed ? 'Completed' : running ? 'Running' : 'Play' }}
+        <svg v-if="!completed && !running" viewBox="0 0 24 24" fill="currentColor" class="h-3 w-3" aria-hidden="true"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+      </span>
     </div>
   </button>
 </template>

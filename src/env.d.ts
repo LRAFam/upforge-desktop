@@ -1330,6 +1330,10 @@ declare global {
         setPregameKillList: (list: string[]) => Promise<string[]>
       }
       obs: {
+        guidedSetup: (game: string) => Promise<
+          | { ok: true; studioVersion: string }
+          | { ok: false; error: string }
+        >
         connect: () => Promise<{
           ok: boolean
           error?: string

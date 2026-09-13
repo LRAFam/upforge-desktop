@@ -285,6 +285,7 @@ const api = {
     setPregameKillList: (list: string[]) => ipcRenderer.invoke('performance:set-pregame-kill-list', list),
   },
   obs: {
+    guidedSetup: (game: string) => ipcRenderer.invoke('obs:guided-setup', game),
     connect: () => ipcRenderer.invoke('obs:connect'),
     launchAndConnect: () => ipcRenderer.invoke('obs:launch-and-connect'),
     restartElevatedAndConnect: () => ipcRenderer.invoke('obs:restart-elevated-and-connect'),
@@ -425,6 +426,7 @@ const api = {
       'desktop-recording:stop',
       'obs:replay-saved',
       'obs:connection-changed',
+      'obs:setup-progress',
       'obs:status',
       'trainer:session-result',
       'post-game:demo-status',

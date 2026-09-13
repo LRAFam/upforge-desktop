@@ -114,6 +114,11 @@
     },
     "extraResources": [
       {
+        "from": "resources/obs",
+        "to": "obs",
+        "filter": ["**/*"]
+      },
+      {
         "from": "resources/ffmpeg",
         "to": "ffmpeg",
         "filter": [

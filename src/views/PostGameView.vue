@@ -8,10 +8,24 @@
       :progress="compactProgress"
       :status="compactStatus"
       :timing="compactTiming"
-      :primary-label="state === 'ready' ? 'Open report' : 'Open UpForge'"
+      :primary-label="state === 'ready' && result?.analysis_id ? 'Review coaching' : state === 'ready' ? 'Open report' : 'Open UpForge'"
+      :secondary-label="state === 'ready' && result?.analysis_id && analysisUrl ? 'Web report' : null"
       :show-expectations="['preparing', 'uploading', 'analysing'].includes(state)"
+      :score="compactScore"
+      :show-feedback="state === 'ready' && Boolean(result?.analysis_id)"
+      :feedback-rating="feedbackRating"
+      :feedback-text="feedbackText"
+      :feedback-submitting="feedbackSubmitting"
+      :feedback-submitted="feedbackSubmitted"
+      :feedback-error="feedbackError"
       @primary="handleCompactPrimary"
+      @secondary="viewFullAnalysis"
       @close="dismiss"
+      @feedback-positive="submitAnalysisFeedback('thumbs_up')"
+      @feedback-negative="selectNegativeFeedback"
+      @feedback-cancel="cancelNegativeFeedback"
+      @feedback-submit="submitAnalysisFeedback('thumbs_down')"
+      @update:feedback-text="feedbackText = $event"
     />
   </div>
   <div
@@ -1083,6 +1097,11 @@ function applyAnalysisProgressPayload(data: {
 function applyAnalysisReadyPayload(r: PostGameReadyPayload) {
   clearStuckTimer()
   result.value = r
+  feedbackRating.value = null
+  feedbackText.value = ''
+  feedbackSubmitting.value = false
+  feedbackSubmitted.value = false
+  feedbackError.value = null
   if (r?.recording_id) {
     sessionRecordingId.value = r.recording_id
     pendingRecordingId.value = r.recording_id
@@ -1230,6 +1249,7 @@ const feedbackRating = ref<'thumbs_up' | 'thumbs_down' | null>(null)
 const feedbackText = ref('')
 const feedbackSubmitting = ref(false)
 const feedbackSubmitted = ref(false)
+const feedbackError = ref<string | null>(null)
 const myCoaches = ref<Array<{ coach_id: number; display_name: string; roster_is_live?: boolean; can_request_review?: boolean }>>([])
 const coachesLoaded = ref(false)
 const selectedCoachId = ref<number | null>(null)
@@ -1398,7 +1418,10 @@ const compactBody = computed(() => {
   if (state.value === 'analysing') return analysisDeferredReason.value === 'recording'
     ? 'Nothing is broken. UpForge pauses uploads and local video work while you play to protect performance.'
     : (analysisStep.value || 'Your gameplay and match evidence are being reviewed.')
-  if (state.value === 'ready') return `${matchHeadline.value} is ready to review.`
+  if (state.value === 'ready') {
+    const focus = focusHero.value?.headline
+    return focus ? `Fix first: ${focus}` : `${matchHeadline.value} is ready to review.`
+  }
   if (state.value === 'error') return errorMessage.value || 'Open UpForge to review the problem and retry.'
   if (state.value === 'archived') return 'The VOD is available from your dashboard.'
   return pendingAnalysisMessage.value || 'Open UpForge when you are ready to continue.'
@@ -1413,6 +1436,12 @@ const compactStatus = computed(() => {
 const compactTiming = computed(() => {
   if (state.value === 'analysing') return `${analysisElapsedDisplay.value} elapsed`
   return uploadEta.value
+})
+
+const compactScore = computed(() => {
+  const score = result.value?.overall_score
+  if (state.value !== 'ready' || score == null) return null
+  return `Coaching score ${score * 10} / 1000 · ${scoreGrade(score)}`
 })
 
 const roundTimelineCells = computed(() => {
@@ -2221,10 +2250,27 @@ function viewFullAnalysis() {
 
 async function handleCompactPrimary() {
   if (state.value === 'ready') {
-    viewFullAnalysis()
+    if (result.value?.analysis_id) await openNativeAnalysisReview()
+    else viewFullAnalysis()
     return
   }
   await handoffToMain('/dashboard')
+}
+
+async function openNativeAnalysisReview(): Promise<void> {
+  const analysisId = result.value?.analysis_id
+  if (!analysisId) {
+    viewFullAnalysis()
+    return
+  }
+  void window.api.funnel?.trackReportOpened?.({
+    analysis_id: analysisId,
+    source: 'desktop_post_game',
+  })
+  await handoffToMain({
+    path: '/vod-review',
+    query: { timelineId: String(analysisId) },
+  })
 }
 
 async function submitAnalysisFeedback(rating: 'thumbs_up' | 'thumbs_down') {
@@ -2232,6 +2278,7 @@ async function submitAnalysisFeedback(rating: 'thumbs_up' | 'thumbs_down') {
   if (!analysisId || feedbackSubmitting.value || feedbackSubmitted.value) return
   feedbackRating.value = rating
   feedbackSubmitting.value = true
+  feedbackError.value = null
   try {
     const res = await window.api.analyses.submitFeedback({
       analysisId,
@@ -2240,10 +2287,27 @@ async function submitAnalysisFeedback(rating: 'thumbs_up' | 'thumbs_down') {
     })
     if (res.ok) {
       feedbackSubmitted.value = true
+    } else {
+      feedbackError.value = res.error || 'Could not save your feedback. Please try again.'
     }
+  } catch {
+    feedbackError.value = 'Could not save your feedback. Please try again.'
   } finally {
     feedbackSubmitting.value = false
   }
+}
+
+function selectNegativeFeedback(): void {
+  feedbackRating.value = 'thumbs_down'
+  feedbackError.value = null
+  scheduleFitWindow()
+}
+
+function cancelNegativeFeedback(): void {
+  feedbackRating.value = null
+  feedbackText.value = ''
+  feedbackError.value = null
+  scheduleFitWindow()
 }
 
 async function loadMyCoaches() {

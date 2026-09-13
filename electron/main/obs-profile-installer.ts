@@ -110,6 +110,10 @@ export function ensureObsProfileInstalled(
   const profileDest = path.join(profileDestDir, 'basic.ini')
   const markerPath = path.join(profileDestDir, INSTALL_MARKER)
 
+  if (!fs.existsSync(profileSrc)) {
+    return { ok: false, installed: false, error: 'The UpForge OBS profile is missing. Reinstall UpForge, then retry recording setup.' }
+  }
+
   try {
     if (copyFileIfMissing(profileSrc, profileDest)) {
       installed = true

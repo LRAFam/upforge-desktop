@@ -530,7 +530,7 @@ function improvementRoom(scenario: ScenarioKey): number {
 
 function categoryFilterClass(category: ScenarioCategory): string {
   if (activeDrillCategory.value === category) {
-    return 'border-red-500/30 bg-gradient-to-b from-red-500/15 to-orange-500/10 text-white shadow-[0_0_0_1px_rgba(239,68,68,0.14)]'
+    return 'border-red-500/40 bg-red-500/10 text-white'
   }
   return 'border-white/[0.10] bg-white/[0.02] text-gray-400 hover:border-white/[0.14] hover:bg-white/[0.05] hover:text-gray-200'
 }
@@ -1606,50 +1606,47 @@ const CATEGORY_ICON: Record<string, string> = {
     </Transition>
 
     <!-- Header -->
-    <div class="flex-shrink-0 px-5 pt-4 pb-2">
-      <div class="dash-panel relative overflow-hidden px-4 py-3.5">
-        <div class="absolute -right-10 top-0 h-28 w-28 rounded-full bg-red-500/10 blur-3xl pointer-events-none" />
-        <div class="relative flex items-start justify-between gap-3">
-          <div class="min-w-0">
-            <p class="text-[10px] font-black uppercase tracking-[0.28em] text-red-400/80">Aim Lab</p>
-            <h1 class="text-lg font-black tracking-tight text-white">Training Hub</h1>
-            <RouterLink to="/training/calibration" class="inline-block mt-2 text-xs text-red-300 hover:text-red-200">Valorant calibration prototype →</RouterLink>
-            <p class="text-[11px] text-gray-500 mt-0.5">Guided sessions, analytics, leaderboards, and loadouts</p>
-          </div>
-          <div v-if="trainingStats.streak > 0" class="flex items-center gap-2 rounded-xl border border-orange-500/20 bg-orange-500/10 px-3 py-2">
-            <svg viewBox="0 0 24 24" fill="currentColor" class="w-4 h-4 text-orange-400"><path d="M12 2S6.5 9 6.5 13.5a5.5 5.5 0 0 0 11 0C17.5 9 12 2 12 2zm0 14.5a3 3 0 0 1-3-3c0-2.5 3-6 3-6s3 3.5 3 6a3 3 0 0 1-3 3z"/></svg>
-            <div class="text-right leading-none">
-              <p class="text-base font-black tabular-nums text-orange-300">{{ trainingStats.streak }}</p>
-              <p class="text-[9px] font-semibold uppercase tracking-[0.18em] text-orange-400/70 mt-0.5">Day streak</p>
-            </div>
-          </div>
+    <header class="flex-shrink-0 px-6 pt-6 pb-2 flex flex-wrap items-start justify-between gap-4">
+      <div>
+        <p class="text-xs font-semibold uppercase tracking-[0.16em] text-red-400">Training hub</p>
+        <h1 class="mt-1 text-2xl font-bold tracking-tight text-white">{{ activeTab === 'train' ? 'Drills' : activeTab === 'analytics' ? 'Analytics' : activeTab === 'leaderboards' ? 'Leaderboards' : 'Loadouts' }}</h1>
+        <p class="mt-1 text-sm text-gray-400">Build a routine. Work on your next improvement.</p>
+        <RouterLink to="/training/calibration" class="inline-block mt-2 text-xs text-red-300 hover:text-red-200">Valorant calibration prototype →</RouterLink>
+      </div>
+      <div class="flex items-center gap-5 text-sm">
+        <div v-if="trainingStats.streak > 0" class="text-right">
+          <p class="font-semibold text-white tabular-nums">{{ trainingStats.streak }} days</p>
+          <p class="text-xs text-gray-400">Current streak</p>
+        </div>
+        <div class="text-right">
+          <p class="font-semibold text-white tabular-nums">{{ trainingStats.thisWeekCount }} sessions</p>
+          <p class="text-xs text-gray-400">This week</p>
         </div>
       </div>
-    </div>
-
-    <div class="mx-5 mt-3 h-px bg-gradient-to-r from-transparent via-white/[0.08] to-transparent flex-shrink-0" />
+    </header>
 
     <!-- Tab nav -->
-    <div class="flex px-5 pt-3 gap-6 flex-shrink-0 border-b border-white/[0.08]">
+    <div class="flex overflow-x-auto px-6 pt-3 gap-6 flex-shrink-0 border-b border-white/[0.08]">
       <button
         v-for="tab in (['train', 'analytics', 'leaderboards', 'loadouts'] as const)"
         :key="tab"
+        :aria-pressed="activeTab === tab"
         type="button"
         class="relative pb-3 text-[12px] font-black uppercase tracking-[0.08em] transition-colors flex items-center gap-2"
-        :class="activeTab === tab ? 'text-white' : 'text-gray-600 hover:text-gray-400'"
+        :class="activeTab === tab ? 'text-white' : 'text-gray-400 hover:text-white'"
         @click="activeTab = tab"
       >
         <img :src="TRAINING_TAB_ICONS[tab]" alt="" aria-hidden="true" class="w-4 h-4 opacity-80" />
         {{ tab === 'train' ? 'Train' : tab === 'analytics' ? 'Analytics' : tab === 'leaderboards' ? 'Leaderboards' : 'Loadouts' }}
         <span
           v-if="activeTab === tab"
-          class="absolute inset-x-0 -bottom-px h-[2px] rounded-full bg-gradient-to-r from-red-500 to-red-500/30"
+          class="absolute inset-x-0 -bottom-px h-[2px] rounded-full bg-red-500"
         />
       </button>
     </div>
 
     <!-- Stats strip -->
-    <div class="dash-panel flex mx-5 mt-3 overflow-hidden flex-shrink-0">
+    <div v-if="activeTab !== 'train'" class="dash-panel flex mx-5 mt-3 overflow-hidden flex-shrink-0">
       <div class="flex-1 flex flex-col items-center py-2.5 gap-0.5">
         <span class="text-sm font-black tabular-nums" :class="trainingStats.streak > 0 ? 'text-orange-400' : 'text-gray-700'">
           {{ trainingStats.streak > 0 ? trainingStats.streak : '—' }}
@@ -1677,15 +1674,12 @@ const CATEGORY_ICON: Record<string, string> = {
       </div>
     </div>
 
-    <!-- Divider -->
-    <div class="mx-5 mt-3 h-px bg-gradient-to-r from-transparent via-white/[0.08] to-transparent flex-shrink-0" />
-
     <!-- Scrollable content -->
     <div class="flex-1 scroll-col">
 
       <!-- ── TRAIN TAB ──────────────────────────────────────────────── -->
       <template v-if="activeTab === 'train'">
-        <div class="p-5 space-y-4">
+        <div class="p-4 sm:p-6 space-y-6">
           <TrainingGuidedSessionHero
             :steps="guidedSessionPreview"
             :focus-reason="sharedTrainingPlan?.focus.reason ?? null"
@@ -1695,74 +1689,10 @@ const CATEGORY_ICON: Record<string, string> = {
             @start="startStructuredSession"
           />
 
-          <div class="grid grid-cols-[248px_minmax(0,1fr)] gap-4 items-start">
-            <aside class="flex flex-col gap-3">
-              <button
-                type="button"
-                class="rounded-xl border border-white/[0.09] bg-white/[0.02] px-3 py-2.5 text-left hover:bg-white/[0.04] transition-colors"
-                @click="activeTab = 'loadouts'"
-              >
-                <p class="text-[9px] font-black uppercase tracking-[0.16em] text-gray-500">Active loadout</p>
-                <p class="text-[12px] font-bold text-white mt-0.5">Competitive preset</p>
-                <p class="text-[10px] text-gray-600 mt-0.5">Crosshair + sens → trainer</p>
-              </button>
+          <div class="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_240px] gap-6 items-start">
 
-              <div
-                class="rounded-xl border overflow-hidden"
-                :class="dailyChallenge.completed ? 'border-green-500/30 bg-green-500/[0.05]' : 'border-red-500/20 bg-red-500/[0.04]'"
-              >
-                <div class="flex items-center gap-3 px-3 py-2.5">
-                  <img
-                    v-if="!dailyChallenge.completed"
-                    :src="TRAINING_ARTWORK.dailyChallenge"
-                    alt=""
-                    aria-hidden="true"
-                    class="w-7 h-7 rounded-lg flex-shrink-0 object-cover"
-                  />
-                  <div v-else :class="['w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0 bg-green-500/10 text-green-400']">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="w-3.5 h-3.5"><polyline points="20 6 9 17 4 12"/></svg>
-                  </div>
-                  <div class="flex-1 min-w-0">
-                    <span class="text-[9px] font-black uppercase tracking-[0.16em]" :class="dailyChallenge.completed ? 'text-green-400' : 'text-red-400'">Daily challenge</span>
-                    <p class="text-[11px] font-bold text-white mt-0.5">Score {{ dailyChallenge.target }}+ · {{ SCENARIO_META[dailyChallenge.scenario]?.label }}</p>
-                  </div>
-                  <button
-                    v-if="!dailyChallenge.completed"
-                    type="button"
-                    :disabled="launching || drillRunning"
-                    class="text-[10px] font-bold text-red-400 border border-red-500/30 rounded-lg px-2.5 py-1 disabled:opacity-40"
-                    @click="launchDrill({ scenario: dailyChallenge.scenario, difficulty: 'medium', duration_seconds: 60, weakness: 'challenge', weakness_score: 0, reason: `Daily challenge: score ${dailyChallenge.target}+` })"
-                  >Go</button>
-                </div>
-              </div>
 
-              <div class="rounded-xl border border-white/[0.09] bg-white/[0.02] overflow-hidden">
-                <div class="px-3 py-2 border-b border-white/[0.07]">
-                  <span class="text-[9px] font-black uppercase tracking-[0.16em] text-gray-500">Free play</span>
-                </div>
-                <div class="max-h-[200px] overflow-y-auto scroll-col divide-y divide-white/[0.06]">
-                  <button
-                    v-for="(meta, key) in SCENARIO_META"
-                    :key="key"
-                    type="button"
-                    class="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-white/[0.03]"
-                    :class="freePlayScenario === key ? meta.bg : ''"
-                    @click="freePlayScenario = key as typeof freePlayScenario"
-                  >
-                    <img :src="scenarioIconUrl(key as string)" alt="" aria-hidden="true" class="w-5 h-5 rounded flex-shrink-0 object-cover" />
-                    <span class="text-[10px] font-bold truncate" :class="freePlayScenario === key ? meta.color : 'text-gray-400'">{{ meta.label }}</span>
-                  </button>
-                </div>
-                <button
-                  type="button"
-                  class="w-full py-2 text-[10px] font-bold text-red-400 border-t border-white/[0.07] hover:bg-red-500/[0.06] disabled:opacity-40"
-                  :disabled="launching || drillRunning"
-                  @click="launchFreePlay"
-                >Launch {{ SCENARIO_META[freePlayScenario]?.label }}</button>
-              </div>
-            </aside>
-
-            <div class="space-y-4 min-w-0">
+            <div class="space-y-5 min-w-0">
               <TrainingVodStrip
                 :drills="recommendedDrills"
                 :label="(k) => SCENARIO_META[k]?.label ?? k"
@@ -1773,21 +1703,28 @@ const CATEGORY_ICON: Record<string, string> = {
                 @play="launchVodDrill"
               />
 
-              <div class="flex flex-wrap gap-2">
-                <button
-                  v-for="category in DRILL_CATEGORY_FILTERS"
-                  :key="category.id"
-                  type="button"
-                  class="rounded-full border px-3 py-1.5 text-[11px] font-semibold transition-all inline-flex items-center gap-1.5"
-                  :class="categoryFilterClass(category.id)"
-                  @click="activeDrillCategory = category.id"
-                >
-                  <img v-if="category.iconSrc" :src="category.iconSrc" alt="" aria-hidden="true" class="w-3.5 h-3.5" />
-                  {{ category.label }}
-                </button>
+              <div>
+                <div class="flex items-baseline justify-between gap-3 mb-3">
+                  <h2 class="text-lg font-semibold text-white">Drill library</h2>
+                  <span class="text-xs text-gray-400">{{ scenarioCards.length }} drills</span>
+                </div>
+                <div class="flex flex-wrap gap-2" aria-label="Drill categories">
+                  <button
+                    v-for="category in DRILL_CATEGORY_FILTERS"
+                    :key="category.id"
+                    :aria-pressed="activeDrillCategory === category.id"
+                    type="button"
+                    class="rounded-md border px-3 py-2 text-xs font-semibold transition-all inline-flex items-center gap-1.5"
+                    :class="categoryFilterClass(category.id)"
+                    @click="activeDrillCategory = category.id"
+                  >
+                    <img v-if="category.iconSrc" :src="category.iconSrc" alt="" aria-hidden="true" class="w-3.5 h-3.5" />
+                    {{ category.label }}
+                  </button>
+                </div>
               </div>
 
-              <div class="grid grid-cols-2 gap-3">
+              <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <TrainingScenarioCard
                   v-for="card in scenarioCards"
                   :key="card.scenario"
@@ -1814,6 +1751,55 @@ const CATEGORY_ICON: Record<string, string> = {
                 />
               </div>
             </div>
+            <aside class="flex flex-col gap-4">
+              <button
+                type="button"
+                class="rounded-xl border border-white/[0.09] bg-white/[0.02] px-3 py-2.5 text-left hover:bg-white/[0.04] transition-colors"
+                @click="activeTab = 'loadouts'"
+              >
+                <p class="text-xs font-black uppercase tracking-[0.16em] text-gray-500">Active loadout</p>
+                <p class="text-sm font-bold text-white mt-0.5">Competitive preset</p>
+                <p class="text-xs text-gray-400 mt-0.5">Crosshair and sensitivity</p>
+              </button>
+
+              <div
+                class="rounded-xl border overflow-hidden"
+                :class="dailyChallenge.completed ? 'border-green-500/30 bg-green-500/[0.05]' : 'border-red-500/20 bg-red-500/[0.04]'"
+              >
+                <div class="flex items-center gap-3 px-3 py-2.5">
+                  <img
+                    v-if="!dailyChallenge.completed"
+                    :src="TRAINING_ARTWORK.dailyChallenge"
+                    alt=""
+                    aria-hidden="true"
+                    class="w-7 h-7 rounded-lg flex-shrink-0 object-cover"
+                  />
+                  <div v-else :class="['w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0 bg-green-500/10 text-green-400']">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="w-3.5 h-3.5"><polyline points="20 6 9 17 4 12"/></svg>
+                  </div>
+                  <div class="flex-1 min-w-0">
+                    <span class="text-xs font-black uppercase tracking-[0.16em]" :class="dailyChallenge.completed ? 'text-green-400' : 'text-red-400'">Daily challenge</span>
+                    <p class="text-sm font-bold text-white mt-0.5">Score {{ dailyChallenge.target }}+ · {{ SCENARIO_META[dailyChallenge.scenario]?.label }}</p>
+                  </div>
+                  <button
+                    v-if="!dailyChallenge.completed"
+                    type="button"
+                    :disabled="launching || drillRunning"
+                    class="text-xs font-bold text-red-400 border border-red-500/30 rounded-lg px-2.5 py-1 disabled:opacity-40"
+                    @click="launchDrill({ scenario: dailyChallenge.scenario, difficulty: 'medium', duration_seconds: 60, weakness: 'challenge', weakness_score: 0, reason: `Daily challenge: score ${dailyChallenge.target}+` })"
+                  >Play</button>
+                </div>
+              </div>
+
+              <div class="rounded-xl border border-white/10 bg-white/[0.02] p-4 space-y-3">
+                <label for="free-play-scenario" class="block text-sm font-semibold text-white">Quick play</label>
+                <select id="free-play-scenario" v-model="freePlayScenario" class="w-full rounded-md border border-white/15 bg-[#171719] p-2.5 text-sm text-gray-200 focus-visible:outline focus-visible:outline-2 focus-visible:outline-red-400">
+                  <option v-for="(meta, key) in SCENARIO_META" :key="key" :value="key">{{ meta.label }}</option>
+                </select>
+                <button type="button" class="w-full rounded-md border border-white/15 px-3 py-2.5 text-sm font-semibold text-white hover:bg-white/[0.06] disabled:opacity-40" :disabled="launching || drillRunning" @click="launchFreePlay">Launch drill</button>
+              </div>
+              <RouterLink to="/training/calibration" class="text-xs text-gray-400 hover:text-white">Valorant calibration prototype →</RouterLink>
+            </aside>
           </div>
         </div>
       </template>

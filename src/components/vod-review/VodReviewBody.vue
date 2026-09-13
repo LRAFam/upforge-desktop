@@ -973,25 +973,10 @@ const noVideoHint = computed((): string => {
           <TacticalIntelBrief
             v-if="tacticalIntelBrief"
             :brief="tacticalIntelBrief"
+            :feedback-status="analysisFeedbackStatus"
             @seek-evidence="seekCoachingEvidence"
             @report-evidence="reportCoachingEvidence"
           />
-
-          <p
-            v-if="analysisFeedbackStatus !== 'idle'"
-            class="text-[10px] leading-relaxed"
-            :class="analysisFeedbackStatus === 'sent'
-              ? 'text-emerald-300/80'
-              : analysisFeedbackStatus === 'error'
-                ? 'text-red-300/80'
-                : 'text-gray-500'"
-          >
-            {{ analysisFeedbackStatus === 'sent'
-              ? 'Moment correction saved for future coaching review.'
-              : analysisFeedbackStatus === 'error'
-                ? 'Could not save this correction. Please try again.'
-                : 'Saving correction…' }}
-          </p>
 
           <AnalysisReviewDetails
             v-if="coachingDetail"

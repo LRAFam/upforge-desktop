@@ -32,6 +32,7 @@
           type="button"
           class="w-8 h-8 flex items-center justify-center rounded-lg text-gray-500 hover:text-gray-200 hover:bg-white/[0.05] transition-colors"
           aria-label="Back"
+          :disabled="obsConnecting"
           @click="prevStep"
         >
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" class="w-4 h-4">
@@ -408,128 +409,44 @@
               </div>
             </div>
 
-            <!-- 4 · OBS -->
+            <!-- 4 · Automatic recording setup -->
             <div v-else-if="step === 4" key="step4" class="wiz-step">
-              <h2 class="text-[22px] font-black text-white tracking-tight leading-tight">Connect OBS</h2>
-              <p class="text-sm text-gray-500 mt-2 mb-6 leading-relaxed">
-                {{
-                  selectedGame === 'lol'
-                    ? 'OBS captures desktop matches. For League you can also upload VODs from the website later.'
-                    : `UpForge records ${gameCaptureLabel} through OBS. You can connect now or finish this in Settings.`
-                }}
+              <h2 class="text-[22px] font-black text-white tracking-tight">Set up recording</h2>
+              <p class="text-sm text-gray-400 mt-2 mb-6 leading-relaxed">
+                UpForge uses OBS to record {{ gameCaptureLabel }}. We will install it if needed,
+                check compatibility, configure game capture, and make a short local test recording.
               </p>
-
-              <div
-                class="rounded-xl border px-4 py-4 mb-5"
-                :class="
-                  obsConnected
-                    ? 'border-emerald-500/25 bg-emerald-500/[0.06]'
-                    : 'border-white/[0.08] bg-white/[0.02]'
-                "
-              >
-                <div class="flex items-center gap-2 mb-4">
-                  <span
-                    class="h-2 w-2 rounded-full shrink-0"
-                    :class="obsConnected ? 'bg-emerald-400' : 'bg-gray-500'"
-                  />
-                  <span
-                    class="text-sm font-semibold"
-                    :class="obsConnected ? 'text-emerald-300' : 'text-gray-300'"
-                  >
-                    {{ obsConnected ? 'OBS connected' : 'OBS not connected yet' }}
-                  </span>
-                </div>
-
-                <ol class="list-decimal list-inside space-y-2 text-[12px] text-gray-500 mb-5">
-                  <li>Install OBS Studio 28+ if it is not on this PC</li>
-                  <li>Open OBS (enable WebSocket in Tools → WebSocket Server Settings)</li>
-                  <li>
-                    Come back and connect. Default password is often
-                    <span class="text-gray-300 font-semibold">upforge</span>
-                  </li>
-                </ol>
-
-                <p v-if="obsError" class="text-[12px] text-red-400 mb-4 leading-relaxed">{{ obsError }}</p>
-
-                <div v-if="!obsConnected" class="space-y-2.5">
-                  <button
-                    type="button"
-                    class="btn-primary w-full"
-                    :disabled="obsConnecting"
-                    @click="launchAndConnectObs"
-                  >
-                    {{ obsConnecting ? 'Working…' : 'Launch OBS & Connect' }}
-                  </button>
-                  <div class="grid grid-cols-2 gap-2.5">
-                    <button
-                      type="button"
-                      class="btn-secondary w-full"
-                      :disabled="obsConnecting"
-                      @click="openObsDownload"
-                    >
-                      Download OBS
-                    </button>
-                    <button
-                      type="button"
-                      class="btn-secondary w-full"
-                      :disabled="obsConnecting"
-                      @click="connectObs"
-                    >
-                      Connect only
-                    </button>
-                  </div>
-                  <p class="text-[11px] text-gray-600 leading-relaxed pt-1">
-                    If Launch fails: download OBS, open it yourself, enable WebSocket, then use Connect only.
-                  </p>
-                </div>
-
-                <div v-else class="space-y-2.5">
-                  <div class="grid grid-cols-2 gap-2.5">
-                    <button
-                      type="button"
-                      class="btn-secondary w-full"
-                      :disabled="obsRepairRunning"
-                      @click="repairObsSetup"
-                    >
-                      {{ obsRepairRunning ? 'Repairing…' : 'Repair Setup' }}
-                    </button>
-                    <button
-                      type="button"
-                      class="btn-secondary w-full"
-                      :disabled="obsTestRecordingRunning"
-                      @click="testObsRecording"
-                    >
-                      {{ obsTestRecordingRunning ? 'Testing…' : 'Test Recording' }}
-                    </button>
-                  </div>
-                  <p
-                    v-if="obsSetupMessage"
-                    class="text-[11px] leading-relaxed"
-                    :class="obsSetupMessageError ? 'text-red-400' : 'text-emerald-300/90'"
-                  >
-                    {{ obsSetupMessage }}
-                  </p>
-                </div>
-              </div>
-
-              <div
-                v-if="!obsConnected"
-                class="rounded-xl border border-amber-500/20 bg-amber-500/[0.05] px-4 py-3.5 mb-5"
-              >
-                <p class="text-[12px] font-semibold text-amber-200/90 leading-snug">
-                  You can continue without OBS. Matches will not auto-record until it is connected.
+              <div class="rounded-xl border border-white/[0.08] px-4 py-4 mb-5">
+                <p class="text-sm font-semibold text-white" role="status" aria-live="polite">
+                  {{ guidedSetupPassed ? 'Recording test passed' : obsConnecting ? guidedSetupLabel : 'Ready to set up OBS' }}
                 </p>
-                <p class="text-[11px] text-amber-200/60 mt-1.5 leading-snug">
-                  We will remind you on the dashboard until OBS is connected.
+                <p v-if="guidedSetupPassed" class="text-xs text-gray-400 mt-2">
+                  OBS {{ guidedStudioVersion }} passed the compatibility and file checks.
+                  Next, open {{ gameCaptureLabel }} and confirm the capture preview before playing.
                 </p>
-              </div>
-
-              <div class="wiz-actions">
-                <button type="button" class="btn-primary w-full" @click="continueFromObs">
-                  Continue
+                <p v-else class="text-xs text-gray-400 mt-2 leading-relaxed">
+                  Your existing scenes stay in OBS. If a recording, stream, or replay buffer is active,
+                  setup pauses. Windows may ask you to approve the OBS installation.
+                </p>
+                <p v-if="obsError" role="alert" class="text-xs text-red-400 mt-4 leading-relaxed">{{ obsError }}</p>
+                <button v-if="!guidedSetupPassed" type="button" class="btn-primary w-full mt-5"
+                  :disabled="obsConnecting || isPreview" @click="setupRecordingAutomatically">
+                  {{ obsConnecting ? guidedSetupLabel : obsError ? 'Retry recording setup' : 'Set up recording' }}
                 </button>
-                <p v-if="!obsConnected" class="text-[11px] text-gray-600 text-center">
-                  OBS can be finished later in Settings → Recording
+                <p v-if="isPreview" class="text-xs text-gray-500 mt-3">Setup runs in the desktop app. This preview does not change OBS.</p>
+                <button v-if="obsError" type="button" class="btn-ghost w-full mt-2" :disabled="obsConnecting" @click="openObsDownload">
+                  Get a stable OBS release
+                </button>
+              </div>
+              <div class="wiz-actions">
+                <button v-if="guidedSetupPassed" type="button" class="btn-primary w-full" @click="continueFromObs">
+                  Continue to capture check
+                </button>
+                <button type="button" class="btn-ghost w-full" :disabled="obsConnecting" @click="continueFromObs">
+                  {{ guidedSetupPassed ? 'Continue later' : 'Set up later' }}
+                </button>
+                <p v-if="!guidedSetupPassed" class="text-xs text-gray-500 text-center">
+                  Recording is not verified yet. Finish setup before your first match.
                 </p>
               </div>
             </div>
@@ -930,13 +847,18 @@ const saving = ref(false)
 const completeError = ref('')
 const obsConnecting = ref(false)
 const obsConnected = ref(false)
+const guidedSetupPassed = ref(false)
+const guidedStudioVersion = ref('')
+const guidedSetupStage = ref('checking')
+const guidedSetupLabels: Record<string, string> = {
+  checking: 'Checking OBS…', installing: 'Installing OBS. This can take a few minutes…',
+  connecting: 'Starting and connecting OBS…', version: 'Checking OBS compatibility…',
+  capture: 'Configuring game capture…', testing: 'Testing a local recording…', complete: 'Recording test passed',
+}
+const guidedSetupLabel = computed(() => guidedSetupLabels[guidedSetupStage.value])
 const obsError = ref('')
 const obsElevating = ref(false)
 const obsElevationError = ref('')
-const obsRepairRunning = ref(false)
-const obsTestRecordingRunning = ref(false)
-const obsSetupMessage = ref('')
-const obsSetupMessageError = ref(false)
 const missionActive = ref(false)
 const missionRecording = ref<PendingRecording | null>(null)
 const missionTimeline = ref<RecordingTimeline | null>(null)
@@ -1308,6 +1230,7 @@ watch(step, async (s) => {
 })
 
 watch(selectedGame, async () => {
+  guidedSetupPassed.value = false
   accountError.value = ''
   accountSuccess.value = ''
   if (step.value === 3) {
@@ -1318,6 +1241,11 @@ watch(selectedGame, async () => {
 })
 
 onMounted(async () => {
+  if (isPreview.value && !window.api) return
+  if (window.api) missionEventCleanups.push(window.api.on('obs:setup-progress', (...args: unknown[]) => {
+    const stage = args[0]
+    if (typeof stage === 'string' && Object.hasOwn(guidedSetupLabels, stage)) guidedSetupStage.value = stage
+  }))
   await refreshAuthState()
   await ensureAuthedOrStay()
   missionEventCleanups.push(window.api.on('obs:connection-changed', (...args: unknown[]) => {
@@ -1327,6 +1255,7 @@ onMounted(async () => {
     // The mission is a continuation of the onboarding preflight, not a new OBS
     // session. Keep both views on the same live connection signal.
     obsConnected.value = data.connected
+    if (!data.connected) guidedSetupPassed.value = false
     missionRuntime.value = {
       ...missionRuntime.value,
       obsConnected: data.connected,
@@ -2079,21 +2008,24 @@ function openDiscordLink() {
   })
 }
 
-async function connectObs() {
+async function setupRecordingAutomatically() {
+  if (obsConnecting.value || isPreview.value) return
   obsConnecting.value = true
+  guidedSetupPassed.value = false
+  guidedSetupStage.value = 'checking'
   obsError.value = ''
   try {
-    const result = await window.api.obs.connect()
+    const result = await window.api.obs.guidedSetup(selectedGame.value)
     if (result.ok) {
       obsConnected.value = true
+      guidedStudioVersion.value = result.studioVersion
+      guidedSetupPassed.value = true
       clearObsSkipFlag()
     } else {
-      obsError.value =
-        result.error
-        ?? 'Could not connect. Install OBS, open it, enable WebSocket, then try Connect only.'
+      obsError.value = result.error
     }
-  } catch (e) {
-    obsError.value = e instanceof Error ? e.message : 'Connection failed'
+  } catch {
+    obsError.value = 'Recording setup could not finish. Retry setup.'
   } finally {
     obsConnecting.value = false
   }
@@ -2116,49 +2048,6 @@ async function launchAndConnectObs() {
     obsError.value = e instanceof Error ? e.message : 'Launch failed'
   } finally {
     obsConnecting.value = false
-  }
-}
-
-async function repairObsSetup() {
-  obsRepairRunning.value = true
-  obsSetupMessage.value = ''
-  obsSetupMessageError.value = false
-  try {
-    const result = await window.api.obs.repairSetup()
-    if (result.ok) {
-      obsSetupMessage.value = result.sceneCreated || result.inputCreated
-        ? 'UpForge scene repaired in OBS'
-        : 'UpForge scene is already configured'
-    } else {
-      obsSetupMessage.value = result.error ?? result.userMessage ?? 'Repair setup failed'
-      obsSetupMessageError.value = true
-    }
-  } catch (e) {
-    obsSetupMessage.value = e instanceof Error ? e.message : 'Repair setup failed'
-    obsSetupMessageError.value = true
-  } finally {
-    obsRepairRunning.value = false
-  }
-}
-
-async function testObsRecording() {
-  obsTestRecordingRunning.value = true
-  obsSetupMessage.value = ''
-  obsSetupMessageError.value = false
-  try {
-    const result = await window.api.obs.testRecording()
-    if (result.ok) {
-      const sizeKb = result.fileSizeBytes ? Math.round(result.fileSizeBytes / 1024) : 0
-      obsSetupMessage.value = `Test recording passed (${sizeKb} KB)`
-    } else {
-      obsSetupMessage.value = result.error ?? result.userMessage ?? 'Test recording failed'
-      obsSetupMessageError.value = true
-    }
-  } catch (e) {
-    obsSetupMessage.value = e instanceof Error ? e.message : 'Test recording failed'
-    obsSetupMessageError.value = true
-  } finally {
-    obsTestRecordingRunning.value = false
   }
 }
 

@@ -9,6 +9,7 @@ import path from 'path'
 import log from 'electron-log'
 import { broadcastObsConnection, probeObsConnection } from '../obs-health'
 import { ensureObsConnected } from '../obs-ensure'
+import { runGuidedObsSetup, type GuidedObsSetupResult } from '../obs-guided-setup'
 import { isObsProcessRunning } from '../obs-process'
 import { explainObsConnectionFailure } from '../obs-connect'
 import { installObsViaWinget, isObsInstalled } from '../obs-installer'
@@ -62,6 +63,60 @@ export function setupMediaHandlers(
   getCurrentGame?: () => string | null,
   getAudioDetectRecorder?: () => MatchRecorder,
 ): void {
+  let guidedSetup: Promise<GuidedObsSetupResult> | null = null
+  ipcMain.handle('obs:guided-setup', async (event, game: string) => {
+    if (!obsRecorder) return { ok: false, error: 'OBS recorder not available' }
+    if (!['valorant', 'cs2', 'deadlock', 'lol'].includes(game)) {
+      return { ok: false, error: 'Choose a supported game before setting up recording.' }
+    }
+    if (guidedSetup) return { ok: false, error: 'Recording setup is already running. Wait for it to finish.' }
+    const cfg = settingsManager.get()
+    const password = resolveObsWebSocketPassword(cfg.obsPassword)
+    const port = cfg.obsPort ?? 4455
+    settingsManager.save({ obsPreflightPassed: false })
+    const obs = obsRecorder.getObsClient()
+    guidedSetup = runGuidedObsSetup({
+      isRecording: () => obsRecorder.isRecording(),
+      isConnected: () => obsRecorder.isConnected(),
+      isRunning: isObsProcessRunning,
+      isInstalled: isObsInstalled,
+      install: installObsViaWinget,
+      configure: () => {
+        const result = ensureObsProfileInstalled(password, port)
+        if (result.ok && !cfg.obsPassword?.trim()) settingsManager.save({ obsPassword: password })
+        return result
+      },
+      connect: () => ensureObsConnected(obsRecorder, { password, port, allowProcessRestart: false }),
+      version: async () => {
+        const version = await obs.call('GetVersion')
+        return { obsVersion: version.obsVersion, obsWebSocketVersion: version.obsWebSocketVersion }
+      },
+      outputs: async () => {
+        const [record, stream, replay] = await Promise.all([
+          obs.call('GetRecordStatus'), obs.call('GetStreamStatus'), obs.call('GetReplayBufferStatus'),
+        ])
+        return { recording: record.outputActive, streaming: stream.outputActive, replayBuffer: replay.outputActive }
+      },
+      setupCapture: () => obsRecorder.setupScene(game, true),
+      testRecording: async () => {
+        const result = await runObsTestRecording({
+          obs, recordVerifyMs: resolveObsRecordVerifyMs({ settingsMs: cfg.obsRecordVerifyMs }),
+        })
+        return { ok: result.ok, error: result.userMessage }
+      },
+      progress: (stage) => {
+        if (!event.sender.isDestroyed()) event.sender.send('obs:setup-progress', stage)
+      },
+    })
+    try {
+      // A file test is not proof that the game is visible. The following
+      // onboarding capture preview still requires the player's confirmation.
+      return await guidedSetup
+    } finally {
+      guidedSetup = null
+    }
+  })
+
   // ── Recorder ──────────────────────────────────────────────────────────────
 
   ipcMain.handle('recorder:stop', async () => {

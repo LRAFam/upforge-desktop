@@ -1,11 +1,12 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import type { CoachingEvidence, TacticalIntelBrief } from '../lib/coaching-brief'
 import { parseCoachingEvidence, severityLabel } from '../lib/coaching-brief'
 
 const props = defineProps<{
   brief: TacticalIntelBrief
   compact?: boolean
+  feedbackStatus?: 'idle' | 'sending' | 'sent' | 'error'
 }>()
 
 const emit = defineEmits<{
@@ -16,6 +17,7 @@ const emit = defineEmits<{
 type FeedbackReason = 'wrong_action' | 'wrong_player' | 'not_visible' | 'other'
 
 const reportTargetKey = ref<string | null>(null)
+const submittedEvidenceKey = ref<string | null>(null)
 
 const feedbackReasons: Array<{ id: FeedbackReason; label: string }> = [
   { id: 'wrong_action', label: 'Wrong action' },
@@ -66,9 +68,18 @@ function toggleReport(evidence: CoachingEvidence): void {
 }
 
 function submitReport(evidence: CoachingEvidence, reason: FeedbackReason): void {
+  if (props.feedbackStatus === 'sending') return
   emit('reportEvidence', evidence, reason)
-  reportTargetKey.value = null
 }
+
+watch(
+  () => props.feedbackStatus,
+  (status) => {
+    if (status !== 'sent' || !reportTargetKey.value) return
+    submittedEvidenceKey.value = reportTargetKey.value
+    reportTargetKey.value = null
+  },
+)
 </script>
 
 <template>
@@ -122,18 +133,29 @@ function submitReport(evidence: CoachingEvidence, reason: FeedbackReason): void 
               </button>
               <button
                 type="button"
-                class="mt-1.5 text-[9px] text-gray-600 hover:text-amber-300"
+                class="mt-1.5 rounded-md px-2 py-1 text-[10px] font-medium transition-colors"
+                :class="submittedEvidenceKey === evidenceKey(item)
+                  ? 'bg-emerald-500/[0.08] text-emerald-300/80'
+                  : 'text-gray-500 hover:bg-white/[0.04] hover:text-amber-300'"
+                :disabled="submittedEvidenceKey === evidenceKey(item) || (feedbackStatus === 'sending' && reportTargetKey === evidenceKey(item))"
                 @click="toggleReport(item)"
-              >{{ reportTargetKey === evidenceKey(item) ? 'Cancel' : 'Report inaccurate moment' }}</button>
+              >{{ submittedEvidenceKey === evidenceKey(item)
+                ? 'Correction saved'
+                : reportTargetKey === evidenceKey(item)
+                  ? 'Cancel'
+                  : 'Flag this moment' }}</button>
               <div v-if="reportTargetKey === evidenceKey(item)" class="mt-1.5 flex flex-wrap gap-1">
                 <button
                   v-for="reason in feedbackReasons"
                   :key="reason.id"
                   type="button"
-                  class="rounded border border-white/10 px-1.5 py-1 text-[9px] text-gray-400 hover:border-amber-500/30 hover:text-amber-200"
+                  class="rounded-md border border-white/10 px-2 py-1.5 text-[10px] text-gray-400 hover:border-amber-500/30 hover:text-amber-200 disabled:opacity-50"
+                  :disabled="feedbackStatus === 'sending'"
                   @click="submitReport(item, reason.id)"
                 >{{ reason.label }}</button>
               </div>
+              <p v-if="reportTargetKey === evidenceKey(item) && feedbackStatus === 'sending'" class="mt-1.5 text-[10px] text-gray-500">Saving correction…</p>
+              <p v-else-if="reportTargetKey === evidenceKey(item) && feedbackStatus === 'error'" class="mt-1.5 text-[10px] text-red-300/80">Could not save this correction. Please try again.</p>
             </div>
           </li>
         </ul>
@@ -168,18 +190,29 @@ function submitReport(evidence: CoachingEvidence, reason: FeedbackReason): void 
                 </button>
                 <button
                   type="button"
-                  class="ml-2 text-[9px] text-gray-700 hover:text-amber-300"
+                  class="ml-2 rounded-md px-1.5 py-1 text-[10px] transition-colors"
+                  :class="submittedEvidenceKey === evidenceKey(evidence)
+                    ? 'text-emerald-300/80'
+                    : 'text-gray-600 hover:bg-white/[0.04] hover:text-amber-300'"
+                  :disabled="submittedEvidenceKey === evidenceKey(evidence) || (feedbackStatus === 'sending' && reportTargetKey === evidenceKey(evidence))"
                   @click="toggleReport(evidence)"
-                >{{ reportTargetKey === evidenceKey(evidence) ? 'Cancel' : 'Report' }}</button>
+                >{{ submittedEvidenceKey === evidenceKey(evidence)
+                  ? 'Saved'
+                  : reportTargetKey === evidenceKey(evidence)
+                    ? 'Cancel'
+                    : 'Flag' }}</button>
                 <div v-if="reportTargetKey === evidenceKey(evidence)" class="mt-1 flex flex-wrap gap-1">
                   <button
                     v-for="reason in feedbackReasons"
                     :key="reason.id"
                     type="button"
-                    class="rounded border border-white/10 px-1.5 py-1 text-[9px] text-gray-400 hover:border-amber-500/30 hover:text-amber-200"
+                    class="rounded-md border border-white/10 px-2 py-1.5 text-[10px] text-gray-400 hover:border-amber-500/30 hover:text-amber-200 disabled:opacity-50"
+                    :disabled="feedbackStatus === 'sending'"
                     @click="submitReport(evidence, reason.id)"
                   >{{ reason.label }}</button>
                 </div>
+                <p v-if="reportTargetKey === evidenceKey(evidence) && feedbackStatus === 'sending'" class="mt-1 text-[10px] text-gray-500">Saving correction…</p>
+                <p v-else-if="reportTargetKey === evidenceKey(evidence) && feedbackStatus === 'error'" class="mt-1 text-[10px] text-red-300/80">Could not save this correction. Please try again.</p>
               </div>
             </template>
             <div v-else class="flex gap-2">
