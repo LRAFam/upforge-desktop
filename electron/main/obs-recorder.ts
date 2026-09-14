@@ -179,7 +179,7 @@ export class OBSRecorder {
   private _unownedRecordingSceneCheck: Promise<boolean> | null = null
   private _unownedRecordingPath: string | null = null
 
-  onStatusChange?: (recording: boolean, error?: string) => void
+  onStatusChange?: (recording: boolean, error?: string, phase?: 'start') => void
   onReplayClipSaved?: (path: string, trigger: string, meta?: ReplayClipSavedMeta) => void
   /** Fired when connection state changes. `error` is set only for unexpected disconnects. */
   onConnectionChange?: (connected: boolean, error?: string | null) => void
@@ -429,6 +429,26 @@ export class OBSRecorder {
   }
 
   isConnected(): boolean { return this._connected }
+  private _startDiagnostics: {
+    game: string | null; stage: string | null; output_active: boolean | null;
+    output_bytes: number | null; verify_ms: number | null;
+  } = { game: null, stage: null, output_active: null, output_bytes: null, verify_ms: null }
+
+  resetRecordingDiagnostics(game: string): void {
+    this._startDiagnostics = { game, stage: 'preflight', output_active: null, output_bytes: null, verify_ms: null }
+  }
+
+  /** Whitelisted diagnostics only: no OBS password, output path, or arbitrary settings. */
+  getRecordingDiagnostics(): Record<string, unknown> {
+    return {
+      ...this._startDiagnostics,
+      backend: 'obs',
+      obs_studio_version: this._obsStudioVersion,
+      obs_websocket_version: this.getOBSStatus().obsVersion,
+      obs_connected: this._connected,
+    }
+  }
+
   getObsStudioVersion(): string | null { return this._obsStudioVersion }
   getObsClient(): OBSWebSocket { return this._obs }
 
@@ -936,6 +956,7 @@ export class OBSRecorder {
 
   async start(game: string, config?: RecorderConfig): Promise<void> {
     if (this._verifyingStart) throw new Error('OBS recording startup is still being verified.')
+    this.resetRecordingDiagnostics(game)
     if (!this._connected) {
       const result = await this.connect()
       if (!result.ok) throw new Error(`Cannot connect to OBS: ${result.error}`)
@@ -975,7 +996,7 @@ export class OBSRecorder {
       const freeMB = (freeBytes / (1024 * 1024)).toFixed(0)
       this._lastError = `Disk full: only ${freeMB} MB free. Free up disk space before recording.`
       log.error(`[OBSRecorder] ${this._lastError}`)
-      this.onStatusChange?.(false, this._lastError)
+      this.onStatusChange?.(false, this._lastError, 'start')
       throw new Error(this._lastError)
     }
     if (freeBytes < WARN_FREE_DISK_BYTES) {
@@ -988,6 +1009,7 @@ export class OBSRecorder {
 
     try {
       // Game/window capture only — never desktop (privacy / policy safe when alt-tabbing)
+      this._startDiagnostics.stage = 'capture_setup'
       await retargetUpForgeCapture(this._obs, game, this.retargetOptionsForGame(game, true))
       this._lastCaptureGame = game
       if (!(await this.isCurrentProgramSceneGameplay())) {
@@ -995,13 +1017,13 @@ export class OBSRecorder {
       }
 
       if (config) {
+        this._startDiagnostics.stage = 'output_settings'
         const applyResult = await applyObsRecordingSettings(this._obs, config, this._obsStudioVersion)
         this._noteAppliedSettings(config, applyResult)
         if (applyResult.blocking) {
           const msg = applyResult.warnings[0]
             ?? 'OBS Output Mode is Advanced — switch to Simple and restart OBS before recording.'
           this._lastError = msg
-          this.onStatusChange?.(false, msg)
           throw new Error(msg)
         }
         this._startupWarning = applyResult.warnings[0] ?? null
@@ -1027,14 +1049,19 @@ export class OBSRecorder {
         this._outputPath = null
         this._startedAt = Date.now()
         this._verifyingStart = true
+        this._startDiagnostics.stage = 'start_request'
         await withTimeout(this._obs.call('StartRecord'), 5000, 'OBS StartRecord timed out')
         const verifyMs = resolveObsRecordVerifyMs({
           settingsMs: this.getSettings().obsRecordVerifyMs,
         })
+        this._startDiagnostics.stage = 'wait_output_active'
+        this._startDiagnostics.verify_ms = verifyMs
         const armed = await waitForObsRecordArmed({
           getOutputActive: async () => {
             const s = await withTimeout(this._obs.call('GetRecordStatus'), 3000, 'OBS recording status timed out')
-            return !!s.outputActive
+            this._startDiagnostics.output_active = s.outputActive
+            this._startDiagnostics.output_bytes = typeof s.outputBytes === 'number' ? s.outputBytes : null
+            return s.outputActive
           },
           timeoutMs: verifyMs,
         })
@@ -1052,6 +1079,7 @@ export class OBSRecorder {
           throw new Error(classified.userMessage)
         }
         log.info('[OBSRecorder] StartRecord armed — outputActive=true after', verifyMs, 'ms budget')
+        this._startDiagnostics.stage = 'wait_output_progress'
         await waitForRecordingProgress(() => this._obs.call('GetRecordStatus'))
         if (this._stopInFlight || this._recordingFailure || !this._matchOwnedRecording) {
           throw new Error('OBS recording was stopped during startup verification.')
@@ -1062,6 +1090,7 @@ export class OBSRecorder {
       this._gameplayRefitDone = false
       this._startedAt ??= Date.now()
       this._recording = true
+      this._startDiagnostics.stage = 'recording'
       if (!this._clipsOnlySession) this._startProgressWatch()
       this.onStatusChange?.(true)
       log.info(
@@ -1084,8 +1113,8 @@ export class OBSRecorder {
       this._lastError = msg
       if (this._matchOwnedRecording) await this.stop()
       this._verifyingStart = false
-      if (!this._recordingFailure) this.onStatusChange?.(false, msg)
-      throw new Error(`OBS recording failed to start: ${msg}`)
+      if (!this._recordingFailure) this.onStatusChange?.(false, msg, 'start')
+      throw new Error(`OBS recording failed to start: ${msg}`, { cause: err })
     }
   }
 
@@ -1186,7 +1215,7 @@ export class OBSRecorder {
     this._recording = false
     log.error('[OBSRecorder]', message)
     // Preserve ownership while OBS may still be active; never announce a successful stop.
-    this.onStatusChange?.(false, message)
+    this.onStatusChange?.(false, message, this._verifyingStart ? 'start' : undefined)
   }
 
   private _startProgressWatch(): void {

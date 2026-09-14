@@ -588,7 +588,7 @@ function focusMainWindow(): void {
 }
 
 function wireRecorderStatus(rec: OBSRecorder, label: string): void {
-  rec.onStatusChange = (recording, error) => {
+  rec.onStatusChange = (recording, error, phase) => {
     if (isQuitting) return
     if (mainWindow && !mainWindow.isDestroyed()) {
       mainWindow.webContents.send('recording:status-changed', { recording, error: error ?? null })
@@ -604,9 +604,9 @@ function wireRecorderStatus(rec: OBSRecorder, label: string): void {
     } else {
       discordRPC.setIdle()
     }
-    if (!recording && error) {
+    if (!recording && error && phase !== 'start') {
       log.warn(`[Main] ${label} recording stopped with error:`, error)
-      reportRecordingError('mid-match', error, { label })
+      reportRecordingError('mid-match', error, { label, recording_context: rec.getRecordingDiagnostics() })
       onRecordingLost?.(error)
       const obsLost = /obs disconnected/i.test(error)
       const obsProcessExited = /process exited/i.test(error)
@@ -4866,6 +4866,7 @@ function setupGameDetection(): void {
     telemetry.startSector('detect_to_record_start')
     /** Hard cap so a hung OBS WebSocket call cannot block the whole game session. */
     const OBS_RECORD_START_TIMEOUT_MS = 90_000
+    obsRecorder.resetRecordingDiagnostics(game)
     try {
       // Create the overlay window just before recording starts — deferred from startup
       // so it doesn't break Valorant's exclusive fullscreen before we actually need it.
@@ -4916,7 +4917,7 @@ function setupGameDetection(): void {
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
       log.error('[Main] Failed to start recording:', msg)
-      reportRecordingError('start', msg, { backend: getRecordingBackendForStatus() })
+      reportRecordingError('start', err, { recording_context: obsRecorder.getRecordingDiagnostics() })
       if (/already recording/i.test(msg)) {
         telemetry.setDnf('unowned_obs_recording', msg)
       } else if (/Advanced/i.test(msg)) {

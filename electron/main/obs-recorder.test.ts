@@ -218,3 +218,22 @@ describe('recording progress verification', () => {
     await check
   })
 })
+
+
+describe('CS2 recording startup failure', () => {
+  it('labels a failed start as startup, not a lost mid-match recording', async () => {
+    mock.call.mockResolvedValue({ outputActive: false, outputBytes: 0 })
+    const rec = recorder()
+    Object.assign(rec, { _matchOwnedRecording: false, _recording: false, _startedAt: null })
+    vi.spyOn(rec, 'isCurrentProgramSceneGameplay').mockResolvedValue(true)
+    Object.assign(rec, { _obsStudioVersion: '32.2.1', _obsVersion: '5.6.3' })
+    const check = expect(rec.start('cs2')).rejects.toThrow('did not start recording in time')
+    await vi.advanceTimersByTimeAsync(10_000)
+    await check
+    expect(rec.onStatusChange).toHaveBeenCalledWith(false, expect.stringContaining('did not start recording in time'), 'start')
+    expect(rec.onStatusChange).not.toHaveBeenCalledWith(false, expect.any(String))
+    expect(rec.getRecordingDiagnostics()).toMatchObject({ game: 'cs2', obs_studio_version: '32.2.1', stage: 'wait_output_active', output_active: false, output_bytes: 0 })
+    rec.resetRecordingDiagnostics('valorant')
+    expect(rec.getRecordingDiagnostics()).toMatchObject({ game: 'valorant', stage: 'preflight', output_active: null, output_bytes: null })
+  })
+})

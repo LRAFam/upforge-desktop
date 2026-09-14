@@ -22,13 +22,15 @@ export function isExpectedRecordingConfigError(message: string): boolean {
 
 export function reportRecordingError(
   phase: 'start' | 'mid-match' | 'stop' | 'post-game',
-  message: string,
+  error: unknown,
   extra?: Record<string, unknown>,
 ): void {
+  const message = error instanceof Error ? error.message : String(error)
   log.warn(`[Recording:${phase}] ${message}`, extra ?? {})
   if (isExpectedRecordingConfigError(message)) return
   reportError({
     message: `[Recording:${phase}] ${message}`,
+    stack: error instanceof Error ? error.stack : undefined,
     component: 'desktop:Recording',
     extra: { phase, ...extra },
   })
