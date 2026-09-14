@@ -13,6 +13,7 @@ import type { UploadManager } from './upload-manager'
 import { preferredRecordingPath } from './recording-path-resolver'
 import { needsTranscodeForCloudUpload, recordingPathVariants, remuxVodForUpload } from './vod-compressor'
 import { reportPipelineError } from './pipeline-errors'
+import { redactSensitiveString } from './error-redaction'
 
 const EXTRACT_CONCURRENCY = 1
 const UPLOAD_CONCURRENCY = 2
@@ -153,6 +154,7 @@ async function uploadLocalClips(
   jobId: string,
   moments: DuelMomentManifest[],
   localPaths: Map<string, string>,
+  failures: string[],
 ): Promise<DuelMomentManifest[]> {
   const uploadableIds = moments
     .map((m) => m.moment_id)
@@ -172,6 +174,11 @@ async function uploadLocalClips(
       await uploadManager.putFileToS3(clip.upload_url, local)
       uploadedIds.add(clip.moment_id)
     } catch (err) {
+      if (failures.length < 5) {
+        failures.push(redactSensitiveString(
+          `Upload ${clip.moment_id}: ${err instanceof Error ? err.message : String(err)}`,
+        ).slice(0, 4000))
+      }
       log.warn(`[DuelClips] S3 PUT failed for ${clip.moment_id}:`, err)
     }
   })
@@ -213,6 +220,7 @@ export async function extractAndUploadDuelClips(opts: {
   }
 
   const localPaths = new Map<string, string>()
+  const failures: string[] = []
   let skippedTooSmall = 0
   let extractFailed = 0
 
@@ -223,14 +231,18 @@ export async function extractAndUploadDuelClips(opts: {
       const result = await extractMomentClip(clipExtractor, extractSource, moment, outPath)
       if (result.ok) {
         localPaths.set(moment.moment_id, outPath)
-      } else if (result.reason.includes('too small')) {
-        skippedTooSmall++
       } else {
-        extractFailed++
+        if (failures.length < 5) {
+          failures.push(redactSensitiveString(
+            `Extract ${moment.moment_id} @ ${moment.window_start_ms}-${moment.window_end_ms}ms: ${result.reason}`,
+          ).slice(0, 4000))
+        }
+        if (result.reason.includes('too small')) skippedTooSmall++
+        else extractFailed++
       }
     })
 
-    let withKeys = await uploadLocalClips(uploadManager, jobId, moments, localPaths)
+    let withKeys = await uploadLocalClips(uploadManager, jobId, moments, localPaths, failures)
     let uploaded = countMomentsWithClipKeys(withKeys)
 
     if (uploaded > 0 && uploaded < moments.length) {
@@ -246,6 +258,7 @@ export async function extractAndUploadDuelClips(opts: {
           durationMs,
           skippedTooSmall,
           extractFailed,
+          failure_details: failures,
           requested: moments.length,
           uploaded,
         },
@@ -267,6 +280,7 @@ export async function extractAndUploadDuelClips(opts: {
         durationMs,
         skippedTooSmall,
         extractFailed,
+        failure_details: failures,
         requested: moments.length,
       },
     )

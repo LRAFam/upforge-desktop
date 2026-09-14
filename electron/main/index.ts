@@ -208,6 +208,7 @@ import { TrainerBridge } from './trainer-bridge'
 import type { MatchData } from './riot-types'
 import log from 'electron-log'
 import { setupMainProcessErrorHandlers, reportError } from './error-reporter'
+import { recordErrorActivity, clearErrorActivity } from './error-activity'
 import { reportPipelineError, shouldReportAnalysisPipelineError } from './pipeline-errors'
 import {
   CRITICAL_FREE_DISK_BYTES,
@@ -1257,6 +1258,7 @@ function logActivity(message: string, explicitGame?: string): void {
     game: explicitGame ?? gameDetector.currentGame() ?? undefined,
   }
   activityLog.push(entry)
+  recordErrorActivity(message, entry.time)
   if (activityLog.length > MAX_LOG_ENTRIES) activityLog.shift()
   if (mainWindow && !mainWindow.isDestroyed()) {
     mainWindow.webContents.send('app:activity-log', activityLog.slice())
@@ -1366,6 +1368,7 @@ function userSessionDeps() {
     onScopeChanged: () => {
       orphanedRecordingsScanned = false
       activityLog.length = 0
+      clearErrorActivity()
       mainWindow?.webContents.send('app:activity-log', [])
       mainWindow?.webContents.send('recordings:updated')
       mainWindow?.webContents.send('clips:updated')

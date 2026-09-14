@@ -12,6 +12,7 @@ import { showAppNotification } from './app-notifications'
 import type { AuthManager } from './auth-manager'
 import { isBenignObsWebSocketError } from './obs-errors'
 import { redactSensitiveString, redactSensitiveValue } from './error-redaction'
+import { recentErrorActivity } from './error-activity'
 
 const API_URL = process.env['VITE_API_URL'] || 'https://api.upforge.gg'
 const ERROR_KEY = process.env['VITE_ERROR_REPORTING_KEY'] || ''
@@ -49,6 +50,7 @@ export async function reportError(payload: {
     user_name: user?.name,
     extra: {
       ...(redactSensitiveValue(payload.extra) as Record<string, unknown> | undefined),
+      recent_activity: recentErrorActivity(),
       os: process.platform,
       arch: process.arch,
       electron: process.versions.electron,

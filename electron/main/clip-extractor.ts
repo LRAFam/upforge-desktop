@@ -387,7 +387,7 @@ export class ClipExtractor {
         signal.removeEventListener('abort', pause)
         if (signal.aborted) settle(() => reject(signal.reason))
         else if (code === 0) settle(() => resolve())
-        else settle(() => reject(new Error(`ffmpeg exited ${code}: ${stderr.slice(-300)}`)))
+        else settle(() => reject(new Error(`ffmpeg exited ${code}: ${stderr.slice(-4000)}`)))
       })
 
       // Lower process priority so clip extraction doesn't compete with the game or system.

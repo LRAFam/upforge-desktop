@@ -10,6 +10,7 @@
 
 import type { App } from 'vue'
 import { hasDesktopApi } from './desktop-api'
+import { redactSensitiveString, redactSensitiveValue } from '../../electron/main/error-redaction'
 
 const API_URL = import.meta.env['VITE_API_URL'] || 'https://api.upforge.gg'
 const ERROR_KEY = import.meta.env['VITE_ERROR_REPORTING_KEY'] || ''
@@ -33,17 +34,28 @@ export async function reportError(payload: {
     user = result as { id?: number; email?: string; name?: string } | null
   } catch { /* not authenticated yet */ }
 
+  let recentActivity: Array<{ time: number; message: string }> | null = null
+  try {
+    const entries = await window.api.app.getActivityLog()
+    recentActivity = entries.slice(-50).map(({ time, message }) => ({
+      time, message: redactSensitiveString(message).slice(0, 500),
+    }))
+  } catch { /* null explicitly means activity could not be captured */ }
+
   const body = {
     platform: hasDesktopApi() ? 'desktop' : 'renderer',
-    message: payload.message.slice(0, 1000),
-    stack: payload.stack?.slice(0, 5000),
+    message: redactSensitiveString(payload.message).slice(0, 1000),
+    stack: payload.stack ? redactSensitiveString(payload.stack).slice(0, 5000) : undefined,
     component: payload.component,
     url: window.location.hash || window.location.pathname,
     app_version: APP_VERSION,
     user_id: user?.id,
     user_email: user?.email,
     user_name: user?.name,
-    extra: payload.extra,
+    extra: {
+      ...(redactSensitiveValue(payload.extra) as Record<string, unknown> | undefined),
+      recent_activity: recentActivity,
+    },
   }
 
   try {
