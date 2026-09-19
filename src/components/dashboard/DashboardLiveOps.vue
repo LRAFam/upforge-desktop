@@ -28,9 +28,22 @@ const uploadPct = computed(() => {
   return recUploadProgress(rec)
 })
 
+const activeAnalysis = computed(() => {
+  const recordings = pendingRecordings.value.filter(r => r.pipelineStatus === 'analysing')
+  return recordings.length === 1 ? recordings[0] : null
+})
+
 const analysisPct = computed(() => {
-  if (!inFlightAnalysisCount.value) return null
-  return Math.min(95, 15 + inFlightAnalysisCount.value * 12)
+  const progress = activeAnalysis.value?.analysisProgress
+  return typeof progress === 'number' && Number.isFinite(progress) && progress >= 0 && progress <= 100
+    ? Math.round(progress)
+    : null
+})
+
+const analysisStep = computed(() => {
+  if (inFlightAnalysisCount.value > 1) return 'View recordings for individual progress'
+  return activeAnalysis.value?.analysisStep?.trim()
+    || (analysisPct.value == null ? 'Awaiting progress' : 'Analysis in progress')
 })
 
 const pipelineSteps = computed(() => [
@@ -60,7 +73,7 @@ const pipelineSteps = computed(() => [
         : 'Waiting for match file',
     active: uploadPct.value != null || inFlightUploadCount.value > 0,
     done: false,
-    progress: uploadPct.value ?? (inFlightUploadCount.value ? 8 : 0),
+    progress: uploadPct.value,
   },
   {
     id: 'analysis',
@@ -71,7 +84,7 @@ const pipelineSteps = computed(() => [
       : 'Queued after upload',
     active: inFlightAnalysisCount.value > 0,
     done: false,
-    progress: analysisPct.value ?? 0,
+    progress: analysisPct.value,
   },
 ])
 </script>
@@ -145,18 +158,18 @@ const pipelineSteps = computed(() => [
           <div class="flex-1 min-w-0 pb-2.5">
             <p class="text-[12px] font-bold text-gray-200">{{ step.label }}</p>
             <p class="text-[10px] text-gray-500 mt-0.5 leading-snug">{{ step.detail }}</p>
-            <div v-if="step.id === 'upload' && step.progress" class="mt-2 h-1.5 rounded-full bg-white/[0.06] overflow-hidden">
+            <div v-if="step.id === 'upload' && step.progress != null" class="mt-2 h-1.5 rounded-full bg-white/[0.06] overflow-hidden">
               <div class="h-full rounded-full bg-gradient-to-r from-blue-600 to-blue-400 transition-all duration-500" :style="{ width: `${step.progress}%` }" />
             </div>
             <div v-else-if="step.id === 'analysis' && step.active" class="mt-2 flex items-center gap-2">
-              <div class="relative w-8 h-8">
+              <div v-if="step.progress != null" class="relative w-8 h-8 flex-shrink-0">
                 <svg viewBox="0 0 36 36" class="w-full h-full -rotate-90">
                   <circle cx="18" cy="18" r="14" fill="none" stroke="rgba(255,255,255,0.08)" stroke-width="3" />
-                  <circle cx="18" cy="18" r="14" fill="none" stroke="#ff4655" stroke-width="3" stroke-linecap="round" :stroke-dasharray="`${step.progress * 0.88} 100`" />
+                  <circle cx="18" cy="18" r="14" pathLength="100" fill="none" stroke="#ff4655" stroke-width="3" stroke-linecap="round" :stroke-dasharray="`${step.progress} 100`" />
                 </svg>
                 <span class="absolute inset-0 flex items-center justify-center text-[8px] font-bold text-gray-400">{{ step.progress }}%</span>
               </div>
-              <span class="text-[10px] text-gray-600">Processing rounds…</span>
+              <span class="text-[10px] text-gray-600">{{ analysisStep }}</span>
             </div>
           </div>
         </div>
