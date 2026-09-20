@@ -1,3 +1,4 @@
+import type { LolLocalReview } from './lol-local-review'
 /**
  * riot-types.ts
  * TypeScript interfaces for the Riot Local API data model.
@@ -282,6 +283,7 @@ export interface SessionState {
 
 /** Full enriched match data — superset of MatchTimeline */
 export interface MatchData {
+  lolLocalReview?: LolLocalReview | null
   game: string
 
   // Identity

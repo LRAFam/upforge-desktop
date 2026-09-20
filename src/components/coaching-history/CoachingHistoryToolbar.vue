@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { openGameHistoryWeb } from '../../lib/game-modules'
 import { useCoachingHistory } from '../../composables/useCoachingHistory'
 
 const {
@@ -12,6 +13,7 @@ const {
   formatMapLabel,
   getMapListViewImage,
   pendingRecordings,
+  primaryGame,
   theme,
 } = useCoachingHistory()
 </script>
@@ -26,6 +28,10 @@ const {
         <p class="flex-shrink-0 text-[10px] text-gray-500 tabular-nums">
           {{ pendingRecordings.length }} before coaching · {{ allAnalyses.length }} coached
         </p>
+      </div>
+      <div v-if="primaryGame === 'lol'" class="flex items-center justify-between gap-3 px-4 py-2 text-xs text-gray-400">
+        <span>Desktop recordings and coaching</span>
+        <button class="text-amber-400 hover:text-amber-300" @click="openGameHistoryWeb('lol')">Riot match reports on the website</button>
       </div>
       <div class="flex flex-wrap items-center gap-2 px-4 py-2">
         <span class="text-[9px] font-bold uppercase tracking-[0.14em] text-gray-600">Coached filters</span>

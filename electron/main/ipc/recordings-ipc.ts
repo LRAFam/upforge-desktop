@@ -32,6 +32,7 @@ import {
   fetchJobPlaybackUrl,
   fetchRecordingPlaybackUrl,
   resolveLocalRecordingFile,
+  isLikelyBrowserPlayableLocal,
 } from '../recording-playback'
 import { extractDuelPreviewClip } from '../duel-clip-uploader'
 import { resolveCs2LocalPlayerName } from '../cs2-player-identity'
@@ -436,8 +437,9 @@ export function setupRecordingsHandlers(ipcMain: IpcMain, deps: RecordingsIpcDep
       || (recording.cloudArchived && recording.archiveId),
     )
 
-    let videoPath: string | null = null
-    if (cloudBacked) {
+    // Watching an available local video must not wait for report/API access.
+    let videoPath: string | null = localPath && isLikelyBrowserPlayableLocal(localPath) ? localPath : null
+    if (!videoPath && cloudBacked) {
       if (recording.analysisId != null) {
         videoPath = await fetchRecordingPlaybackUrl(authManager, recording.analysisId)
       }

@@ -72,7 +72,7 @@ export const GAME_BRAND: Record<PrimaryGame, GameBrand> = {
     accentMuted: '#c89b3c88',
     accentRgb: '200, 155, 60',
     ctaSolid: false,
-    ctaLabel: 'Analyze match',
+    ctaLabel: 'Review recordings',
     ctaIcon: 'play',
   },
 }

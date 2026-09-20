@@ -33,7 +33,7 @@ const recordings = ref<PendingRecording[]>([])
 const loading = ref(true)
 const busyId = ref<string | null>(null)
 const message = ref<string | null>(null)
-const gameFilter = ref<string>('all')
+const gameFilter = ref<string>(route.query.game === 'lol' ? 'lol' : 'all')
 const obsConnected = ref<boolean | null>(null)
 const RECORDING_LIBRARY_CHIPS = new Set<RecordingLibraryChip>(['all', 'action_required', 'ready', 'analysed', 'cloud'])
 function routeStatusChip(value: unknown): RecordingLibraryChip {
@@ -97,6 +97,8 @@ watch(dateGroups, (groups) => {
   collapsedGroups.value = next
 }, { immediate: true })
 
+watch(() => route.query.game, game => { gameFilter.value = game === 'lol' ? 'lol' : 'all' })
+
 watch(() => route.query.status, (status) => {
   statusChip.value = routeStatusChip(status)
 })
@@ -137,6 +139,10 @@ function relativeDate(ms: number): string {
   const days = Math.round(hours / 24)
   if (days < 7) return `${days}d ago`
   return new Date(ms).toLocaleDateString(undefined, { day: 'numeric', month: 'short' })
+}
+
+function watchRecording(rec: PendingRecording) {
+  void router.push({ path: '/vod-review', query: { id: rec.id } })
 }
 
 async function openBest(rec: PendingRecording) {
@@ -288,6 +294,10 @@ onUnmounted(() => { cleanup?.() })
       </div>
     </div>
 
+    <div v-if="gameFilter === 'lol'" class="mx-4 mt-3 rounded-lg border border-white/10 px-4 py-3 text-sm text-gray-300">
+      <p>Watch your saved League recordings here without Riot account verification.</p>
+      <p class="mt-1 text-xs text-gray-400">Keep UpForge and OBS running while you play to capture gameplay. Captured-stat coaching uses only the local League snapshot, not video, rank or vision analysis. Older recordings without that snapshot remain watchable. Screenshots and .rofl replay imports are not supported.</p>
+    </div>
     <nav v-if="gamesPresent.length > 1" class="flex flex-shrink-0 gap-1 overflow-x-auto scrollbar-hide border-b border-white/[0.09] bg-[#161616]/80 px-4 py-2.5">
       <button
         class="rounded-xl px-3 py-1.5 text-xs font-medium transition-colors"
@@ -464,6 +474,11 @@ onUnmounted(() => { cleanup?.() })
                         :disabled="busyId === rec.id"
                         @click.stop="continueInMatches(rec)"
                       >Continue in Matches</button>
+                      <button
+                        v-if="rec.analysisId != null && canWatchRawRecording(rec)"
+                        class="rounded-lg px-2.5 py-1 text-[11px] font-semibold text-gray-200 hover:bg-white/10"
+                        @click.stop="watchRecording(rec)"
+                      >Watch</button>
                       <button
                         class="rounded-lg px-2.5 py-1 text-[11px] font-bold transition-colors disabled:opacity-50"
                         :class="`${theme.accentBg} ${theme.accentText} ring-1 ${theme.accentBorder}`"

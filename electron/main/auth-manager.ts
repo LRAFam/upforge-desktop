@@ -371,11 +371,11 @@ export class AuthManager {
     }
   }
 
-  async fetchAnalyses(limit = 10): Promise<AnalysisItem[]> {
+  async fetchAnalyses(limit = 10, game: 'valorant' | 'lol' = 'valorant'): Promise<AnalysisItem[]> {
     try {
       // The recent-analyses endpoint already reconciles processing rows. Avoid
       // a second blocking POST before every dashboard/history/stats read.
-      const res = await this._api.get(`/api/analysis/recent?limit=${limit}`)
+      const res = await this._api.get(`/api/analysis/recent?limit=${limit}&game=${game}`)
       const analyses: AnalysisItem[] = res.data?.analyses ?? []
       return analyses.map((a) => {
         const rounds = (a.rounds_won ?? 0) + (a.rounds_lost ?? 0)

@@ -43,6 +43,7 @@ const {
   managePendingRecording,
   pendingBusyId,
   pendingMessage,
+  primaryGame,
   runPendingPrimaryAction,
   seekAnalysisMoment,
   scoreColor,
@@ -395,6 +396,11 @@ const statStrip = computed(() => {
                   <span class="font-bold tabular-nums text-gray-200" :class="item.class">{{ item.value }}</span>
                 </span>
               </template>
+            </div>
+
+            <div v-if="primaryGame === 'lol' && expandedDetail?.summary" class="dash-panel px-4 py-3">
+              <p class="text-xs font-semibold text-gray-300 mb-2">League coaching summary</p>
+              <p class="text-sm leading-relaxed text-gray-400">{{ expandedDetail.summary }}</p>
             </div>
 
             <div v-if="detailLoading" class="flex items-center justify-center gap-2 py-10">

@@ -731,7 +731,7 @@ declare global {
         openPortal: () => Promise<{ ok: boolean; error?: string }>
       }
       analyses: {
-        get: (limit?: number) => Promise<AnalysisItem[]>
+        get: (limit?: number, game?: 'valorant' | 'lol') => Promise<AnalysisItem[]>
         remove: (analysisId: number, jobId?: string | null) => Promise<{ ok: boolean; removed: boolean; deletedLocal: boolean }>
         getTimeline: (id: number) => Promise<RecordingTimeline | null>
         refreshPlayback: (id: number) => Promise<string | null>

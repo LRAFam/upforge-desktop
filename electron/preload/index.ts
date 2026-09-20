@@ -76,7 +76,7 @@ const api = {
     openPortal: () => ipcRenderer.invoke('billing:open-portal') as Promise<{ ok: boolean; error?: string }>,
   },
   analyses: {
-    get: (limit?: number) => ipcRenderer.invoke('analyses:get', { limit }),
+    get: (limit?: number, game?: 'valorant' | 'lol') => ipcRenderer.invoke('analyses:get', { limit, game }),
     remove: (analysisId: number, jobId?: string | null) =>
       ipcRenderer.invoke('analyses:remove', { analysisId, jobId }),
     getTimeline: (id: number) => ipcRenderer.invoke('analyses:get-timeline', { id }),

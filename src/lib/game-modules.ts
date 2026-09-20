@@ -1,9 +1,9 @@
+import type { Router } from 'vue-router'
 import type { Component } from 'vue'
 import type { AnalysisItem } from '../env.d.ts'
 import type { PrimaryGame } from './games'
 import { mapDeadlockToAnalysisItem } from './deadlock-analyses'
 import { mapCs2ToAnalysisItem } from './cs2-analyses'
-import { mapLolToAnalysisItem } from './lol-analyses'
 import CS2StatsPanel from '../components/CS2StatsPanel.vue'
 import Cs2ValveStatsPanel from '../components/Cs2ValveStatsPanel.vue'
 import CS2SetupPanel from '../components/CS2SetupPanel.vue'
@@ -33,7 +33,7 @@ export interface GameModule {
   navRoutes: readonly string[]
   features: GameFeatures
   loadAnalyses: (limit?: number) => Promise<AnalysisItem[]>
-  openAnalyze: () => void
+  openAnalyze: (router: Pick<Router, 'push'>) => void
   openHistoryWeb: () => void
 }
 
@@ -86,10 +86,7 @@ async function loadCs2Analyses(limit = 10): Promise<AnalysisItem[]> {
 }
 
 async function loadLolAnalyses(limit = 10): Promise<AnalysisItem[]> {
-  const items = await window.api.lol.getAnalyses(limit)
-  return items
-    .filter(a => a.status === 'completed')
-    .map(mapLolToAnalysisItem)
+  return window.api.analyses.get(limit, 'lol')
 }
 
 export const GAME_MODULES: Record<PrimaryGame, GameModule> = {
@@ -124,9 +121,9 @@ export const GAME_MODULES: Record<PrimaryGame, GameModule> = {
     id: 'lol',
     centerPanels: [LolStatsPanel],
     navRoutes: DEMO_GAME_NAV,
-    features: DEMO_GAME_FEATURES,
+    features: { ...DEMO_GAME_FEATURES, coachingDetail: true },
     loadAnalyses: loadLolAnalyses,
-    openAnalyze: () => { window.open('https://upforge.gg/lol/analyze', '_blank') },
+    openAnalyze: (router) => { void router.push({ path: '/recordings', query: { game: 'lol' } }) },
     openHistoryWeb: () => { window.open('https://upforge.gg/lol/history', '_blank') },
   },
 }
@@ -159,8 +156,8 @@ export function openGameHistoryWeb(game: PrimaryGame): void {
   gameModule(game).openHistoryWeb()
 }
 
-export function openGameAnalyze(game: PrimaryGame): void {
-  gameModule(game).openAnalyze()
+export function openGameAnalyze(game: PrimaryGame, router: Pick<Router, 'push'>): void {
+  gameModule(game).openAnalyze(router)
 }
 
 /** @deprecated use gameCenterPanels */

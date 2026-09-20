@@ -343,6 +343,15 @@ export function buildMatchDataFromLolSnapshot(
 
   return {
     game: 'lol',
+    // Only observed local-player values; unknown ranked/vision/result data is excluded.
+    lolLocalReview: local && gameData && Number.isFinite(gameData.gameTime) ? {
+      source: 'live_client', version: 1,
+      champion: local.championName,
+      map: resolveLolMapLabel(gameData.mapName),
+      duration_seconds: gameData.gameTime,
+      kills: local.scores.kills, deaths: local.scores.deaths, assists: local.scores.assists,
+      cs: typeof creepScore === 'number' && Number.isFinite(creepScore) ? creepScore : null,
+    } : null,
     matchId: gameData?.gameId != null ? String(gameData.gameId) : null,
     puuid: null,
     region: null,

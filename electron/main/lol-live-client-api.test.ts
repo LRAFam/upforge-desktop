@@ -90,6 +90,10 @@ describe('buildMatchDataFromLolSnapshot', () => {
     })
 
     expect(timeline.game).toBe('lol')
+    expect(timeline.lolLocalReview).toEqual({
+      source: 'live_client', version: 1, champion: 'Ahri', map: "Summoner's Rift",
+      duration_seconds: 840, kills: 3, deaths: 1, assists: 5, cs: 120,
+    })
     expect(timeline.matchId).toBe('900000042')
     expect(timeline.agent).toBe('Ahri')
     expect(timeline.playerName).toBe('TestPlayer')

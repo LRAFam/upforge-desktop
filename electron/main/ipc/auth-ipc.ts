@@ -208,8 +208,8 @@ export function setupAuthHandlers(
 
   // ── Analyses ──────────────────────────────────────────────────────────────
 
-  ipcMain.handle('analyses:get', async (_e, { limit } = {}) => {
-    return auth.fetchAnalyses(limit ?? 10)
+  ipcMain.handle('analyses:get', async (_e, { limit, game } = {}) => {
+    return auth.fetchAnalyses(limit ?? 10, game === 'lol' ? 'lol' : 'valorant')
   })
 
   ipcMain.handle('analyses:submit-feedback', async (_e, {

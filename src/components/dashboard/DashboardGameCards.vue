@@ -272,7 +272,7 @@ async function primaryAction(game: PrimaryGame, e: Event) {
     await reviewDeadlock()
     return
   }
-  openGameAnalyze(game)
+  openGameAnalyze(game, router)
 }
 
 /** Only the tab-selected game — tabs own switching. */
@@ -390,7 +390,7 @@ const card = computed(() => {
 
       <div class="flex-shrink-0">
         <button
-          v-if="card.linkState === 'loading'"
+          v-if="card.linkState === 'loading' && card.id !== 'lol'"
           type="button"
           disabled
           class="game-card-btn game-card-btn--muted w-full cursor-not-allowed"
@@ -399,7 +399,7 @@ const card = computed(() => {
           Syncing…
         </button>
         <button
-          v-else-if="!card.linked"
+          v-else-if="!card.linked && card.id !== 'lol'"
           type="button"
           class="game-card-btn game-card-btn--solid w-full"
           @click="linkGame(card.id, $event)"

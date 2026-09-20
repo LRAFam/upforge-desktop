@@ -113,8 +113,8 @@ export const GAME_THEMES: Record<PrimaryGame, GameTheme> = {
     chromeGradient: 'from-transparent via-amber-500/70 to-yellow-600/60',
     coachingEmptyTitle: 'No LoL coaching yet',
     coachingEmptyMessage: () =>
-      'Play a Ranked Solo/Duo match with the desktop app running — stats debrief appears after the game',
-    coachingEmptyAction: () => 'Link Riot →',
+      'Open saved recordings and coaching from your captured League stats.',
+    coachingEmptyAction: () => 'Review recordings',
     accountLinkLabel: 'Link Riot ID →',
     goalRankClass: 'text-amber-300',
     rankFallback: 'Unranked',

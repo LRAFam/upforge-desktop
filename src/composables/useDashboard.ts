@@ -1287,7 +1287,7 @@ function createDashboard() {
   function openAccountSetup() { void openAccountLinkSettings(router, primaryGame.value) }
 
   function openEmptyCoachingAction() {
-    if (isCs2.value || isDeadlock.value) openGameAnalyze(primaryGame.value)
+    if (isCs2.value || isDeadlock.value || isLol.value) openGameAnalyze(primaryGame.value, router)
     else if (!status.value.obsConnected) router.push('/settings?tab=recording')
     else {
       warning.value = 'Launch Valorant — UpForge will auto-record your next match.'

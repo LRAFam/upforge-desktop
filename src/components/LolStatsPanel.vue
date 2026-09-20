@@ -123,7 +123,7 @@
       </div>
 
       <div v-if="analyses.length" class="px-3.5 py-2 pb-3">
-        <p class="text-[9px] font-bold uppercase tracking-widest text-gray-600 mb-1.5">Coaching</p>
+        <p class="text-[9px] font-bold uppercase tracking-widest text-gray-600 mb-1.5">Riot match reports</p>
         <div class="space-y-1">
           <button
             v-for="item in analyses.slice(0, 4)"
@@ -151,13 +151,13 @@
 
       <div v-else-if="!recentMatches.length" class="px-3.5 py-3 pb-3">
         <p class="text-[11px] text-gray-600 leading-relaxed">
-          No ranked Solo/Duo matches yet. Play a game with UpForge open, or analyse a match on the web.
+          No ranked matches loaded. You can still watch recordings saved on this computer.
         </p>
         <button
           class="mt-2 text-[10px] font-semibold text-[#c89b3c] hover:text-[#e0c068] transition-colors"
           @click="openAnalyze"
         >
-          Analyse on web →
+          Review recordings
         </button>
       </div>
     </div>
@@ -166,6 +166,8 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { useRouter } from 'vue-router'
+const router = useRouter()
 import type { LolAnalysisItem, LolMatchSummary } from '../env.d.ts'
 import { championIconUrl, lolRankEmblemUrl } from '../lib/lol'
 import { fmtLolDuration, fmtLolKda } from '../lib/lol-analyses'
@@ -250,7 +252,7 @@ function openWeb() {
 }
 
 function openAnalyze() {
-  window.api.lol.openAnalyze()
+  void router.push({ path: '/recordings', query: { game: 'lol' } })
 }
 
 function openConnect() {

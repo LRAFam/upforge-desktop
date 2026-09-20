@@ -1,3 +1,4 @@
+import { hasLolLocalReview } from '../lol-local-review'
 import {
   demoSyncMaxMsForGame,
   hasRichMatchData,
@@ -25,7 +26,7 @@ function isTerminalLolEnrichStatus(status: string | undefined): boolean {
 }
 
 /**
- * LoL strict ready bar A: Match-V5 enrich required; Live Client combat alone is not enough.
+ * Explicit local snapshots support bounded stat coaching. Older recordings require Match-V5.
  * With matchId, wait up to LOL_MATCH_V5_SYNC_MAX_MS (~12m, API-aligned). Without matchId,
  * settle sooner (MATCH_DETAILS_ENRICH_MAX_MS) then unavailable.
  */
@@ -33,6 +34,9 @@ export const lolModule: GameAnalyseModule = {
   id: 'lol',
   isReady(rec: ReadinessRecording): AnalyseReadiness {
     const timeline = rec.timeline
+    if (hasLolLocalReview(timeline)) {
+      return { ready: true, state: 'ready', message: 'Coaching from captured League stats. Video, rank and vision are not reviewed.', duelMomentCount: 0 }
+    }
     const ageMs = recordingAgeMs(rec)
     const enrichWaitMs = demoSyncMaxMsForGame(rec.game)
     const matchIdSettleMs = MATCH_DETAILS_ENRICH_MAX_MS
