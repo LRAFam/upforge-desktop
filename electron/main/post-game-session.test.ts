@@ -173,3 +173,17 @@ describe('applyPostGameChannelEvent preparing race', () => {
     expect(snap?.agent).toBe('Omen')
   })
 })
+
+
+describe('intentional coaching skips', () => {
+  it('clears loading without showing a failure and preserves the reason on remount', () => {
+    resetPostGameSession('valorant', 'Ascent', 'Omen')
+    applyPostGameChannelEvent('post-game:debrief-loading', undefined)
+    applyPostGameChannelEvent('post-game:debrief', { skipped: true, reason: 'daily_limit' })
+    expect(getPostGameSessionSnapshot()).toMatchObject({
+      debriefLoading: false, debriefFailed: false, debriefText: null, debriefSkipReason: 'daily_limit',
+    })
+    applyPostGameChannelEvent('post-game:debrief-loading', undefined)
+    expect(getPostGameSessionSnapshot()?.debriefSkipReason).toBeNull()
+  })
+})

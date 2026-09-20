@@ -641,6 +641,12 @@ export interface DeadlockProfileStats {
 declare global {
   interface Window {
     api: {
+      coaching: {
+        preferences: () => Promise<import('./lib/coaching-preferences').CoachingPreferences>
+        savePreferences: (value: import('./lib/coaching-preferences').CoachingPreferences) => Promise<import('./lib/coaching-preferences').CoachingPreferences>
+        pregame: () => Promise<{ discord_sent?: boolean; reason?: string }>
+        debrief: (id: string) => Promise<{ ok?: boolean; error?: string }>
+      }
       auth: {
         login: (email: string, password: string) => Promise<{ ok: boolean; user?: unknown; error?: string }>
         logout: () => Promise<void>
@@ -1049,6 +1055,7 @@ declare global {
           analysisDeferredReason: 'recording' | 'server' | null
           debriefLoading: boolean
           debriefText: string | null
+          debriefSkipReason: string | null
           debriefFailed: boolean
           debriefDiscordLinked: boolean
           updatedAt: number

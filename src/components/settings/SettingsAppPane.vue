@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { onMounted, onUnmounted, ref } from 'vue'
 import { useSettings } from '../../composables/useSettings'
+import SettingsCoachingBriefs from './SettingsCoachingBriefs.vue'
 import SettingsRow from './SettingsRow.vue'
 import SettingsSection from './SettingsSection.vue'
 import SettingsToggle from './SettingsToggle.vue'
@@ -50,6 +51,7 @@ function onToggle(key: (typeof toggles)[number]['key']): void {
 
 <template>
   <div class="space-y-4">
+    <SettingsCoachingBriefs />
     <SettingsSection
       title="Your game"
       hint="Switches dashboard, settings, and web links, same as upforge.gg."

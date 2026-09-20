@@ -1,6 +1,12 @@
 import { contextBridge, ipcRenderer } from 'electron'
 
 const api = {
+  coaching: {
+    preferences: () => ipcRenderer.invoke('coaching:preferences'),
+    savePreferences: (value: import('../../src/lib/coaching-preferences').CoachingPreferences) => ipcRenderer.invoke('coaching:save-preferences', value),
+    pregame: () => ipcRenderer.invoke('coaching:pregame'),
+    debrief: (id: string) => ipcRenderer.invoke('coaching:debrief', id),
+  },
   auth: {
     login: (email: string, password: string) =>
       ipcRenderer.invoke('auth:login', { email, password }),

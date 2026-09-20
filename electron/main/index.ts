@@ -2804,6 +2804,7 @@ function shouldRequestDebrief(timeline: MatchData | null, mode: string | null | 
 }
 
 function requestPregameBrief(context?: {
+  matchId?: string
   agent?: string | null
   map?: string | null
   mode?: string | null
@@ -4500,9 +4501,8 @@ function setupGameDetection(): void {
           const modeKnown = gameMode !== null
           const isCompBrief = gameMode === 'COMPETITIVE' || gameMode === 'PREMIER'
 
-          // Brief: once PREGAME starts, poll until the agent is locked in (CharacterID
-          // is only set after lock-in). Fire as soon as we have agent+map, or fall back
-          // to map-only/generic when INGAME is reached (loading screen).
+          // Wait for the selected agent and all five allied picks before briefing.
+          // During loading, the API skips a brief if match context is unavailable.
           if (!pregameBriefFired && state?.sessionLoopState === 'PREGAME') {
             const ctx = await riotLocalApi.getPregameContext().catch(() => null)
 
@@ -4516,8 +4516,8 @@ function setupGameDetection(): void {
             if (!resolvedIsComp && gameMode !== null) {
               // Non-competitive queue confirmed — skip brief
               pregameBriefFired = true
-            } else if (resolvedIsComp && ctx?.agent) {
-              // Competitive + agent locked in — fire with full context
+            } else if (resolvedIsComp && ctx?.agent && ctx.allyAgents.length === 5) {
+              // Competitive with the selected agent and a full allied roster.
               pregameBriefFired = true
               requestPregameBrief(ctx)
             }
@@ -6388,6 +6388,41 @@ async function startApp(): Promise<void> {
   ipcMain.handle('discord:set-state', (_e, state: string) => {
     if (state === 'reviewing') discordRPC.setReviewing()
     else discordRPC.setIdle()
+  })
+  ipcMain.handle('coaching:preferences', async () => {
+    return (await authManager.getApi().get('/api/user/coaching-preferences')).data
+  })
+  ipcMain.handle('coaching:save-preferences', async (_event, preferences: unknown) => {
+    return (await authManager.getApi().put('/api/user/coaching-preferences', preferences)).data
+  })
+  ipcMain.handle('coaching:pregame', async () => {
+    const context = await riotLocalApi.getPregameContext()
+    if (!context?.agent || !context.map) return { reason: 'missing_match_context' }
+    return (await authManager.getApi().post('/api/progress/pregame-brief', null, { params: {
+      manual: 1, match_id: context.matchId, agent: context.agent, map: context.map,
+      mode: context.mode, ally_agents: context.allyAgents.join(','), enemy_agents: context.enemyAgents.join(','),
+    } })).data
+  })
+  ipcMain.handle('coaching:debrief', async (event, id: string) => {
+    const ownerId = getActiveUserId()
+    if (ownerId === null) return { error: 'Please sign in first.' }
+    const recording = recordingsStore.getById(id)
+    if (!recording || recording.game !== 'valorant' || !recording.timeline) {
+      return { error: 'Match data is not ready yet.' }
+    }
+    const targetWindow = BrowserWindow.fromWebContents(event.sender)
+    sendPostGameEventForRecording(targetWindow, id, 'post-game:debrief-loading', undefined, ownerId)
+    await _requestPostGameDebrief({
+      riotName: recording.riotName, riotTag: recording.riotTag,
+      agent: recording.agent, map: recording.map, timeline: recording.timeline,
+      manual: true, getToken: () => authManager.getToken(),
+      apiUrl: process.env['VITE_API_URL'],
+      sendToWindow: (channel, payload) => {
+        const win = BrowserWindow.fromWebContents(event.sender)
+        if (win) sendPostGameEventForRecording(win, id, channel, payload, ownerId)
+      },
+    })
+    return { ok: true }
   })
   ipcMain.handle('discord:get-status', () => discordRPC.getStatus())
 

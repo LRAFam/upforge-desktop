@@ -370,6 +370,13 @@
           </div>
         </div>
 
+        <div v-if="gameInfo.game === 'valorant' && pendingRecordingId" class="text-xs text-gray-400">
+          <button v-if="!debriefText" type="button" :disabled="debriefLoading" class="rounded border border-white/15 px-3 py-2 disabled:opacity-50" @click="requestManualDebrief">
+            {{ debriefLoading ? 'Preparing debrief...' : 'Request AI debrief' }}
+          </button>
+          <p v-if="debriefNotice" role="status" class="mt-2">{{ debriefNotice }}</p>
+        </div>
+
         <PostGameDebriefCarousel
           :focus="focusHero"
           :overall-score="result?.overall_score ?? null"
@@ -835,6 +842,7 @@ import { getAgentImage, getAgentColor, getMapImage, getMapMinimap } from '../lib
 import { analysisResultsUrl, desktopVodResultsUrl, isPrimaryGame, normalizePrimaryGame, recordingGameLabel, type PrimaryGame } from '../lib/games'
 import { cs2MapDisplayName, getCs2RadarUrl, isCs2Map } from '../lib/cs2-maps'
 import { championIconUrl } from '../lib/lol'
+import { coachingSkipMessage } from '../lib/coaching-preferences'
 import PostGameDebriefCarousel from '../components/post-game/PostGameDebriefCarousel.vue'
 import GamingButton from '../components/GamingButton.vue'
 import AnalysisPipelineStages from '../components/analysis/AnalysisPipelineStages.vue'
@@ -1177,6 +1185,7 @@ function applyPostGameSnapshot(snapshot: PostGameSessionSnapshot): void {
     debriefText.value = snapshot.debriefText
     debriefLoading.value = false
   }
+  if (snapshot.debriefSkipReason) debriefNotice.value = coachingSkipMessage(snapshot.debriefSkipReason)
   if (snapshot.debriefFailed) {
     debriefFailed.value = true
     debriefLoading.value = false
@@ -1574,6 +1583,18 @@ const isReady = ref(false)
 const debriefText = ref<string | null>(null)
 const debriefLoading = ref(false)
 const debriefFailed = ref(false)
+const debriefNotice = ref('')
+async function requestManualDebrief() {
+  if (!pendingRecordingId.value) return
+  debriefLoading.value = true
+  debriefFailed.value = false
+  debriefNotice.value = ''
+  try {
+    const response = await window.api.coaching.debrief(pendingRecordingId.value)
+    if (response.error) debriefNotice.value = response.error
+  } catch { debriefNotice.value = 'Could not request a debrief. Try again later.' }
+  finally { debriefLoading.value = false }
+}
 const debriefDiscordLinked = ref(true)
 const demoStatus = ref<{ status: string; jobId?: string; error?: string } | null>(null)
 const demoProgress = ref(0)
@@ -2009,14 +2030,18 @@ onMounted(() => {
   ipcCleanup.push(window.api.on('post-game:debrief-loading', () => {
     debriefLoading.value = true
     debriefFailed.value = false
+    debriefNotice.value = ''
     startDebriefTimeout()
   }))
   ipcCleanup.push(window.api.on('post-game:debrief', (...args: unknown[]) => {
-    const data = args[0] as { debrief: string; agent: string | null; map: string | null; discordLinked?: boolean } | null
+    const data = args[0] as { debrief?: string; agent?: string | null; map?: string | null; discordLinked?: boolean; skipped?: boolean; reason?: string } | null
     clearDebriefTimeout()
     if (data?.debrief) {
       debriefText.value = data.debrief
       debriefDiscordLinked.value = data.discordLinked ?? false
+    } else if (data?.skipped) {
+      debriefFailed.value = false
+      debriefNotice.value = coachingSkipMessage(data.reason)
     } else if (!data) {
       debriefFailed.value = true
     }

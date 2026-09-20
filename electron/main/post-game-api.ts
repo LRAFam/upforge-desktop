@@ -27,6 +27,7 @@ export function requestPregameBrief(
   getToken: () => string | null,
   logActivity: (msg: string) => void,
   context?: {
+    matchId?: string
     agent?: string | null
     map?: string | null
     mode?: string | null
@@ -45,6 +46,7 @@ export function requestPregameBrief(
 
   const apiBase = apiUrl ?? process.env['VITE_API_URL'] ?? 'https://api.upforge.gg'
   const params = new URLSearchParams()
+  if (context?.matchId) params.set('match_id', context.matchId)
   if (context?.agent) params.set('agent', context.agent)
   if (context?.map) params.set('map', context.map)
   if (context?.mode) params.set('mode', context.mode)
@@ -60,7 +62,7 @@ export function requestPregameBrief(
       const proto = await loadHttpModule(parsedUrl)
       const json = await new Promise<Record<string, unknown>>((resolve, reject) => {
         const req = proto.default.request({
-          method:   'GET',
+          method:   'POST',
           hostname: parsedUrl.hostname,
           port:     parsedUrl.port || (parsedUrl.protocol === 'https:' ? 443 : 80),
           path:     `${parsedUrl.pathname}${parsedUrl.search}`,
@@ -124,6 +126,7 @@ export interface PostGameDebriefOptions {
   getToken: () => string | null
   apiUrl?: string
   coachingExtras?: CoachingSubmissionExtras
+  manual?: boolean
 }
 
 /**
@@ -138,6 +141,7 @@ export async function requestPostGameDebrief(opts: PostGameDebriefOptions): Prom
   const apiBase = apiUrl ?? process.env['VITE_API_URL'] ?? 'https://api.upforge.gg'
   const ctx = submissionContextFromTimeline(timeline ?? null, coachingExtras)
   const body = JSON.stringify({
+    manual: opts.manual === true,
     riot_name: riotName,
     riot_tag: riotTag,
     agent: ctx.agent ?? agent,
@@ -217,6 +221,9 @@ function postDebriefOnce(
             }
             sendToWindow('post-game:debrief', null)
             resolve(retryable ? 'retry' : 'ok')
+          } else if (json.skipped) {
+            sendToWindow('post-game:debrief', { skipped: true, reason: json.reason })
+            resolve('ok')
           } else {
             log.info(`[Debrief] Generated for ${riotName}#${riotTag} cost=$${json.estimated_cost_usd ?? 0}`)
             sendToWindow('post-game:debrief', {

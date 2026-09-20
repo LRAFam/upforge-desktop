@@ -1,3 +1,4 @@
+import { lockedPregamePlayers, type PregamePlayer } from './pregame-roster'
 import https from 'https'
 import tls from 'tls'
 import fs from 'fs'
@@ -1974,6 +1975,7 @@ export class RiotLocalApi {
    * Returns null if the pregame endpoint is not reachable (e.g. game hasn't loaded yet).
    */
   async getPregameContext(): Promise<{
+    matchId: string
     agent: string | null
     map: string | null
     mode: string | null
@@ -1992,20 +1994,21 @@ export class RiotLocalApi {
       const match = await this._fetchLocal<{
         MapID?: string
         QueueID?: string
-        AllyTeam?: { Players?: Array<{ Subject?: string; CharacterID?: string }> }
-        EnemyTeam?: { Players?: Array<{ Subject?: string; CharacterID?: string }> }
+        AllyTeam?: { Players?: PregamePlayer[] }
+        EnemyTeam?: { Players?: PregamePlayer[] }
       }>(`/pregame/v1/matches/${player.MatchID}`)
 
       const mapName = match?.MapID ? resolveMapName(match.MapID) : null
       const mode = match?.QueueID ? normalizeQueueId(match.QueueID) : null
-      const own = match?.AllyTeam?.Players?.find(
+      const lockedAllies = lockedPregamePlayers(match?.AllyTeam?.Players)
+      const own = lockedAllies.find(
         (p) => p.Subject?.toLowerCase() === this.ownPuuid?.toLowerCase()
       )
       const agentName = own?.CharacterID ? resolveAgentName(own.CharacterID) : null
-      const allyAgents = this._pregameAgentsFromTeam(match?.AllyTeam?.Players)
-      const enemyAgents = this._pregameAgentsFromTeam(match?.EnemyTeam?.Players)
+      const allyAgents = this._pregameAgentsFromTeam(lockedAllies)
+      const enemyAgents = this._pregameAgentsFromTeam(lockedPregamePlayers(match?.EnemyTeam?.Players))
 
-      return { agent: agentName, map: mapName, mode, allyAgents, enemyAgents }
+      return { matchId: player.MatchID, agent: agentName, map: mapName, mode, allyAgents, enemyAgents }
     } catch {
       return null
     }

@@ -55,6 +55,7 @@ export type PostGameSessionSnapshot = {
   debriefLoading: boolean
   debriefText: string | null
   debriefFailed: boolean
+  debriefSkipReason: string | null
   debriefDiscordLinked: boolean
   updatedAt: number
 }
@@ -88,6 +89,7 @@ function baseSession(overrides?: Partial<PostGameSessionSnapshot>): PostGameSess
     debriefLoading: false,
     debriefText: null,
     debriefFailed: false,
+    debriefSkipReason: null,
     debriefDiscordLinked: false,
     updatedAt: Date.now(),
     ...overrides,
@@ -371,16 +373,19 @@ export function applyPostGameChannelEvent(channel: string, payload: unknown): vo
       break
     }
     case 'post-game:debrief-loading':
-      patch({ debriefLoading: true, debriefFailed: false, debriefText: null })
+      patch({ debriefLoading: true, debriefFailed: false, debriefText: null, debriefSkipReason: null })
       break
     case 'post-game:debrief': {
       const data = payload as {
         debrief?: string
+        skipped?: boolean
+        reason?: string
         discordLinked?: boolean
       } | null
       if (data?.debrief) {
         patch({
           debriefText: data.debrief,
+          debriefSkipReason: null,
           debriefLoading: false,
           debriefFailed: false,
           debriefDiscordLinked: data.discordLinked ?? false,
@@ -388,7 +393,8 @@ export function applyPostGameChannelEvent(channel: string, payload: unknown): vo
       } else {
         patch({
           debriefLoading: false,
-          debriefFailed: true,
+          debriefFailed: !data?.skipped,
+          debriefSkipReason: data?.skipped ? (data.reason ?? 'skipped') : null,
           debriefText: null,
         })
       }
