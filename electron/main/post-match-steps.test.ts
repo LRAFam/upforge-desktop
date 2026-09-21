@@ -34,6 +34,17 @@ describe('isWaitingMatchDataState', () => {
 })
 
 describe('canAutoEnqueueRecording', () => {
+  it('does not automatically requeue a recording after a quota rejection', () => {
+    expect(canAutoEnqueueRecording({
+      autoAnalyseRequested: true,
+      lastAnalysisError: 'Your match is ready, but you need an analysis credit. Upgrade or pay per analysis to unlock coaching.',
+    })).toBe(false)
+  })
+
+  it('allows automatic work after the previous failure has been cleared', () => {
+    expect(canAutoEnqueueRecording({ autoAnalyseRequested: true, lastAnalysisError: null })).toBe(true)
+  })
+
   it('requires explicit intent and keeps legacy recordings manual-only', () => {
     expect(canAutoEnqueueRecording({ autoAnalyseRequested: true })).toBe(true)
     expect(canAutoEnqueueRecording({ autoAnalyseRequested: false })).toBe(false)

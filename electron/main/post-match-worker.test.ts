@@ -3,7 +3,7 @@ import { mkdtemp, rm } from 'fs/promises'
 import { join } from 'path'
 import { tmpdir } from 'os'
 import { PostMatchJobStore, type PostMatchJob } from './post-match-job-store'
-import { PostMatchWorker } from './post-match-worker'
+import { PostMatchDeferredError, PostMatchWorker } from './post-match-worker'
 
 function job(id: string, createdAt: number): PostMatchJob {
   return {
@@ -27,6 +27,95 @@ function job(id: string, createdAt: number): PostMatchJob {
 }
 
 describe('PostMatchWorker', () => {
+  it('stops on the displayed quota error, drains the next job, and permits an explicit retry', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'upforge-worker-'))
+    try {
+      const store = new PostMatchJobStore(join(dir, 'jobs.json'))
+      const quotaMessage = 'Your match is ready, but you need an analysis credit. Upgrade or pay per analysis to unlock coaching.'
+      let quotaReached = true
+      const runJob = vi.fn(async (candidate: PostMatchJob) => {
+        if (candidate.id === 'quota' && quotaReached) throw new Error(quotaMessage)
+      })
+      const worker = new PostMatchWorker({
+        store,
+        isRecording: () => false,
+        // Cap attempts so the old immediate retry loop fails safely.
+        isJobReady: (candidate) => candidate.attempts < 3,
+        runJob,
+      })
+      store.upsert(job('quota', 1))
+      store.upsert(job('next', 2))
+      worker.kick()
+      await vi.waitFor(() => expect(store.get('next')?.stage).toBe('done'))
+      expect(store.get('quota')).toMatchObject({ stage: 'failed', attempts: 1, lastError: quotaMessage })
+      expect(runJob).toHaveBeenCalledTimes(2)
+
+      worker.kick()
+      expect(runJob).toHaveBeenCalledTimes(2)
+
+      quotaReached = false
+      worker.enqueue({ ...store.get('quota')!, stage: 'queued', requestKind: 'manual' })
+      await vi.waitFor(() => expect(store.get('quota')?.stage).toBe('done'))
+      expect(store.get('quota')?.attempts).toBe(2)
+      expect(runJob).toHaveBeenCalledTimes(3)
+    } finally {
+      await rm(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('waits for a resume signal after capture deferral, then drains the queue', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'upforge-worker-'))
+    try {
+      const store = new PostMatchJobStore(join(dir, 'jobs.json'))
+      let shouldDefer = true
+      const runJob = vi.fn(async () => {
+        if (shouldDefer) throw new PostMatchDeferredError('upload aborted: match capture')
+      })
+      const worker = new PostMatchWorker({
+        store,
+        isRecording: () => false,
+        isJobReady: (candidate) => candidate.attempts < 2,
+        runJob,
+      })
+      store.upsert(job('a', 1))
+      store.upsert(job('b', 2))
+      worker.kick()
+      await vi.waitFor(() => expect(worker.isBusy()).toBe(false))
+      expect(runJob).toHaveBeenCalledTimes(1)
+      expect(store.get('a')?.stage).toBe('deferred')
+      expect(store.get('b')?.stage).toBe('queued')
+
+      shouldDefer = false
+      worker.kick()
+      await vi.waitFor(() => expect(store.get('b')?.stage).toBe('done'))
+      expect(store.get('a')?.stage).toBe('done')
+      expect(runJob).toHaveBeenCalledTimes(3)
+    } finally {
+      await rm(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('does not retry a permanent post-match error just because its message contains match', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'upforge-worker-'))
+    try {
+      const store = new PostMatchJobStore(join(dir, 'jobs.json'))
+      const runJob = vi.fn(async () => { throw new Error('post-match pipeline did not complete') })
+      const worker = new PostMatchWorker({
+        store,
+        isRecording: () => false,
+        // Bound the old retry loop so this regression can fail safely.
+        isJobReady: (candidate) => candidate.attempts < 2,
+        runJob,
+      })
+      worker.enqueue(job('failed-match', 1))
+      await vi.waitFor(() => expect(worker.isBusy()).toBe(false))
+      expect(runJob).toHaveBeenCalledTimes(1)
+      expect(store.get('failed-match')?.stage).toBe('failed')
+    } finally {
+      await rm(dir, { recursive: true, force: true })
+    }
+  })
+
   it('runs one job at a time then drains the next', async () => {
     const dir = await mkdtemp(join(tmpdir(), 'upforge-worker-'))
     try {

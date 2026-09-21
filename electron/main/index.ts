@@ -81,7 +81,7 @@ import {
   PostMatchJobStore,
   type PostMatchJob,
 } from './post-match-job-store'
-import { PostMatchWorker } from './post-match-worker'
+import { PostMatchDeferredError, PostMatchWorker } from './post-match-worker'
 import {
   resolveReadyRecordingPath,
   resolveReadyRecordingPathDetailed,
@@ -1024,7 +1024,7 @@ function initPostMatchWorker(userId: number): void {
         if (!result) {
           const current = recordingsStore.getById(job.recordingId)
           if (current?.pipelineDeferReason === 'recording') {
-            throw new Error('upload aborted: match capture')
+            throw new PostMatchDeferredError('upload aborted: match capture')
           }
           throw new Error(current?.lastAnalysisError || 'post-match pipeline did not complete')
         }
@@ -5519,7 +5519,15 @@ function doUploadAndAnalyse(
     skipAutoDelete,
     deleteLocalAfterUpload,
     enrichPromise,
-  )
+  ).finally(() => {
+    if (!recordingId) return
+    activeUploadRecordingIds.delete(recordingId)
+    // Preparation can return before the upload catch/finally. Only capture pauses
+    // retain a retry; permanent preparation failures must not restart on match end.
+    if (recordingsStore.getById(recordingId)?.pipelineDeferReason !== 'recording') {
+      clearDeferredUploadRetryPersisted(recordingId)
+    }
+  })
   if (!recordingId) return start()
   return analysisPipelineSingleFlight.run(recordingId, start, () => {
     log.warn(`[Upload] Ignoring duplicate pipeline start for recording ${recordingId}`)

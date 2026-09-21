@@ -18,9 +18,13 @@ export interface PostMatchStepInput {
 /**
  * Historical recordings predate explicit auto-analysis intent. Treat a missing
  * value as manual-only so an app reopen or later match cannot opt them in.
+ * A recorded failure requires an explicit retry; stats updates must not restart it.
  */
-export function canAutoEnqueueRecording(recording: { autoAnalyseRequested?: boolean }): boolean {
-  return recording.autoAnalyseRequested === true
+export function canAutoEnqueueRecording(recording: {
+  autoAnalyseRequested?: boolean
+  lastAnalysisError?: string | null
+}): boolean {
+  return recording.autoAnalyseRequested === true && !recording.lastAnalysisError
 }
 
 export function decidePostMatchNextStep(input: PostMatchStepInput): PostMatchNextStep {

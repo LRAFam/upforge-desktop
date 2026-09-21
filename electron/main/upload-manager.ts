@@ -1,4 +1,5 @@
 import { backgroundWork } from './background-work'
+import { parseRetryAfter, UploadRateLimitError, uploadRateLimitScope } from './upload-rate-limit'
 import fs from 'fs'
 import http from 'http'
 import https from 'https'
@@ -220,6 +221,7 @@ export class UploadManager {
   private _uploadAborted = false
   /** Recently completed upload hashes (videoPath hash) to detect double-submits */
   private _recentUploads = new Set<string>()
+  private _apiCooldowns = new Map<string, number>()
 
   constructor(private auth: AuthManager) {}
 
@@ -672,6 +674,12 @@ export class UploadManager {
   }
 
   private _apiPostOnce(url: string, body: string, token: string): Promise<Record<string, unknown>> {
+    const cooldownKey = `${token}|${uploadRateLimitScope(url)}`
+    const retryAt = this._apiCooldowns.get(cooldownKey)
+    if (retryAt != null && retryAt > Date.now()) {
+      return Promise.reject(new UploadRateLimitError(retryAt))
+    }
+    this._apiCooldowns.delete(cooldownKey)
     return new Promise((resolve, reject) => {
       const parsed = new URL(url)
       const proto = parsed.protocol === 'https:' ? https : http
@@ -691,6 +699,12 @@ export class UploadManager {
         res.on('data', (c) => data += c)
         res.on('end', () => {
           const status = res.statusCode ?? 0
+          if (status === 429) {
+            const retryAt = parseRetryAfter(res.headers['retry-after'])
+            if (retryAt !== null) this._apiCooldowns.set(cooldownKey, retryAt)
+            reject(new UploadRateLimitError(retryAt))
+            return
+          }
           try {
             const json = JSON.parse(data)
             if (status === 402) reject(new UpgradeRequiredError(

@@ -4,6 +4,9 @@
 
 import type { PostMatchJob, PostMatchJobStore } from './post-match-job-store'
 
+/** An explicit pause until match capture releases background work. */
+export class PostMatchDeferredError extends Error {}
+
 export interface PostMatchWorkerDeps {
   store: PostMatchJobStore
   isRecording: () => boolean
@@ -50,6 +53,7 @@ export class PostMatchWorker {
     if (!job) return
 
     this.busy = true
+    let deferred = false
     this.deps.log?.(`Post-match worker starting ${job.id} (${job.game})`)
     try {
       this.deps.store.update(job.id, { stage: 'upload', attempts: job.attempts + 1, lastError: null })
@@ -57,7 +61,7 @@ export class PostMatchWorker {
       this.deps.store.update(job.id, { stage: 'done', lastError: null })
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
-      const deferred = /upload aborted|match/i.test(msg)
+      deferred = err instanceof PostMatchDeferredError
       this.deps.store.update(job.id, {
         stage: deferred ? 'deferred' : 'failed',
         lastError: msg.slice(0, 500),
@@ -65,8 +69,8 @@ export class PostMatchWorker {
       this.deps.log?.(`Post-match worker ${deferred ? 'deferred' : 'failed'} ${job.id}: ${msg}`)
     } finally {
       this.busy = false
-      // Drain next job if any
-      this.kick()
+      // Capture resumption calls kick(). Do not immediately reclaim a deferred job.
+      if (!deferred) this.kick()
     }
   }
 }
