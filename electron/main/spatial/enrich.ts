@@ -80,7 +80,7 @@ export function enrichKillFromRiotRow(
   const norm = worldToNorm(mapName, vLoc.x, vLoc.y)
   if (!norm) return null
 
-  const { callout, site } = resolveCallout(mapName, norm)
+  const { callout, site, resolution } = resolveCallout(mapName, norm)
 
   const killerLoc = findPlayerLocation(row, row.killer)
   const killerDistance = killerLoc
@@ -88,9 +88,14 @@ export function enrichKillFromRiotRow(
     : null
 
   let killerCallout: string | null = null
+  let killerCalloutResolution: KillSpatial['killerCalloutResolution'] = 'unknown'
   if (killerLoc) {
     const kNorm = worldToNorm(mapName, killerLoc.x, killerLoc.y)
-    if (kNorm) killerCallout = resolveCallout(mapName, kNorm).callout
+    if (kNorm) {
+      const resolved = resolveCallout(mapName, kNorm)
+      killerCallout = resolved.callout
+      killerCalloutResolution = resolved.resolution
+    }
   }
 
   const victimIsPlayer = row.victim?.toLowerCase() === ownPuuid?.toLowerCase()
@@ -107,6 +112,8 @@ export function enrichKillFromRiotRow(
     isolated,
     alliesNearby,
     killerCallout,
+    calloutResolution: resolution,
+    killerCalloutResolution,
     victimWorld: { x: vLoc.x, y: vLoc.y },
   }
 }

@@ -1,7 +1,7 @@
 import { readFileSync, existsSync, readdirSync } from 'fs'
 import { normalizeMapKey } from './map-transforms'
 import { spatialResourcePath } from './paths'
-import type { CalloutAnchor, MapCalloutPack, NormPoint } from './types'
+import type { CalloutAnchor, MapCalloutPack, NormPoint, CalloutResolution } from './types'
 
 const packCache = new Map<string, MapCalloutPack | null>()
 
@@ -48,10 +48,16 @@ function pointInPolygon(p: NormPoint, polygon: NormPoint[]): boolean {
 export function resolveCallout(
   mapName: string | null | undefined,
   norm: NormPoint,
-): { callout: string; site: string | null } {
+): { callout: string; site: string | null; resolution: CalloutResolution } {
   const pack = loadCalloutPack(mapName)
   if (!pack) {
-    return { callout: 'Unknown', site: null }
+    return { callout: 'Unknown', site: null, resolution: 'unknown' }
+  }
+
+  for (const region of pack.regions ?? []) {
+    if (pointInPolygon(norm, region.polygon)) {
+      return { callout: region.name, site: region.site ?? null, resolution: 'callout_polygon' }
+    }
   }
 
   let best: CalloutAnchor | null = null
@@ -65,7 +71,7 @@ export function resolveCallout(
   }
 
   if (best) {
-    return { callout: best.name, site: best.site ?? null }
+    return { callout: best.name, site: best.site ?? null, resolution: 'anchor_radius' }
   }
 
   // Fallback: nearest anchor when strict radius misses (common before display calibration).
@@ -80,7 +86,7 @@ export function resolveCallout(
   }
   const fallbackMax = Math.max(0.16, (nearest?.radius ?? 0.075) * 2)
   if (nearest && nearestD <= fallbackMax) {
-    return { callout: nearest.name, site: nearest.site ?? null }
+    return { callout: nearest.name, site: nearest.site ?? null, resolution: 'nearest_anchor' }
   }
 
   const siteAnchors = ['A Site', 'B Site', 'C Site'] as const
@@ -88,19 +94,19 @@ export function resolveCallout(
     const anchor = pack.callouts.find((c) => c.name === siteName)
     if (!anchor) continue
     if (dist(norm, { x: anchor.x, y: anchor.y }) <= 0.22) {
-      return { callout: siteName, site: anchor.site ?? siteName.charAt(0) }
+      return { callout: siteName, site: anchor.site ?? siteName.charAt(0), resolution: 'site_anchor' }
     }
   }
 
   if (pack.sites?.length) {
     for (const z of pack.sites) {
       if (pointInPolygon(norm, z.polygon)) {
-        return { callout: `${z.site} Site`, site: z.site }
+        return { callout: `${z.site} Site`, site: z.site, resolution: 'site_polygon' }
       }
     }
   }
 
-  return { callout: 'Unknown', site: null }
+  return { callout: 'Unknown', site: null, resolution: 'unknown' }
 }
 
 export function listSupportedSpatialMaps(): string[] {

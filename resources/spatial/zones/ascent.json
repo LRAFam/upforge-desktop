@@ -157,5 +157,36 @@
       "y": 0.3805,
       "radius": 0.075
     }
+  ],
+  "regions": [
+    {
+      "name": "B Logs",
+      "site": "B",
+      "polygon": [
+        {
+          "x": 0.322265625,
+          "y": 0.6005859375
+        },
+        {
+          "x": 0.3359375,
+          "y": 0.6005859375
+        },
+        {
+          "x": 0.3359375,
+          "y": 0.6220703125
+        },
+        {
+          "x": 0.322265625,
+          "y": 0.6220703125
+        }
+      ],
+      "calibration": {
+        "coordinateSpace": "raw displayicon UV",
+        "displayIcon": "https://media.valorant-api.com/maps/7eaecc1b-4337-bbf6-6ab9-04b8f06b3319/displayicon.png",
+        "reference": "https://esportsdriven.com/valorant/guides/111/valorant-ascent-map-callouts-guide-with-images",
+        "reviewedAt": "2026-09-22",
+        "scope": "Conservative interior of the Logs recess (pixels 330\u2013344, 615\u2013637 on 1024px image). Cross-checked with repaired report 634 R8 footage at the stacked logs and Riot victim position (-442,-6964). Excludes uncertain edges; not the entire callout area. Does not establish movement or line of sight."
+      }
+    }
   ]
 }

@@ -9,6 +9,7 @@
  */
 import {
   writeFileSync,
+  existsSync,
   readFileSync,
   mkdirSync,
   readdirSync,
@@ -365,7 +366,12 @@ for (const entry of standard) {
     })
   }
 
+  // Hand-reviewed regions must survive regeneration of the upstream anchors.
+  const existingPackPath = join(zonesDir, `${key}.json`)
+  const existingPack = existsSync(existingPackPath)
+    ? JSON.parse(readFileSync(existingPackPath, 'utf8')) : null
   const pack = {
+    ...(existingPack?.regions ? { regions: existingPack.regions } : {}),
     map: entry.displayName,
     source: 'valorant-api.com callouts',
     generatedAt: new Date().toISOString().slice(0, 10),

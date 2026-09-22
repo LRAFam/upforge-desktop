@@ -1,3 +1,5 @@
+export type CalloutResolution = 'callout_polygon' | 'anchor_radius' | 'nearest_anchor' | 'site_anchor' | 'site_polygon' | 'unknown'
+
 /** Normalized minimap position (0–1, origin top-left of displayicon). */
 export interface NormPoint {
   x: number
@@ -45,6 +47,8 @@ export interface SiteZone {
 export interface MapCalloutPack {
   map: string
   callouts: CalloutAnchor[]
+  /** Visually calibrated interiors; take priority over approximate anchors. */
+  regions?: { name: string; site?: string; polygon: NormPoint[] }[]
   sites?: SiteZone[]
 }
 
@@ -62,6 +66,8 @@ export interface KillSpatial {
   traded?: boolean
   /** Riot world coords of victim at death (for proximity trade fallback). */
   victimWorld?: { x: number; y: number }
+  calloutResolution?: CalloutResolution
+  killerCalloutResolution?: CalloutResolution
   killerCallout?: string | null
 }
 
