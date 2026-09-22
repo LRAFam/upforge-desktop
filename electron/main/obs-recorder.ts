@@ -741,13 +741,25 @@ export class OBSRecorder {
       log.info('[OBSRecorder] Leaving active OBS recording unowned — it started on a non-gameplay scene')
       return false
     }
+    let recordingStartedAt = this._startedAt
     try {
       const status = await this._obs.call('GetRecordStatus') as {
         outputActive?: boolean
         outputPath?: string
+        outputDuration?: number
+        outputPaused?: boolean
       }
       if (status.outputPath) this._outputPath = status.outputPath
       if (!status.outputActive) return false
+      if (recordingStartedAt == null) {
+        // OBS reports elapsed output time in milliseconds. Reclaiming the file
+        // must retain its existing lead-in, not reset its origin to this instant.
+        if (!Number.isFinite(status.outputDuration) || status.outputDuration! < 0 || status.outputPaused) {
+          log.warn('[OBSRecorder] Cannot recover recording without a valid running output clock')
+          return false
+        }
+        recordingStartedAt = Date.now() - status.outputDuration!
+      }
       await waitForRecordingProgress(() => this._obs.call('GetRecordStatus'))
     } catch {
       this._markRecordingFailure('OBS recording could not be verified. Restart OBS before recording another match.')
@@ -755,7 +767,7 @@ export class OBSRecorder {
     }
     this._matchOwnedRecording = true
     this._recording = true
-    if (!this._startedAt) this._startedAt = Date.now()
+    this._startedAt = recordingStartedAt
     this._disconnectedDuringRecording = false
     this._unownedRecordingStartedOnGameplay = null
     this._unownedRecordingSceneCheck = null

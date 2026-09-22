@@ -7,6 +7,13 @@
  * that as noise, not a failure.
  */
 
+export function parseRecordingDurationMs(stderr: string): number | null {
+  const match = stderr.match(/Duration:\s*(\d+):(\d+):(\d+(?:\.\d+)?)/)
+  if (!match) return null
+  const duration = (Number(match[1]) * 3600 + Number(match[2]) * 60 + Number(match[3])) * 1000
+  return Number.isFinite(duration) && duration > 0 ? Math.round(duration) : null
+}
+
 export function parseFfmpegProbeStderr(stderr: string): { ok: boolean; reason?: string } {
   // ffmpeg complains when no output muxer is given — that is not a media error.
   const text = stderr

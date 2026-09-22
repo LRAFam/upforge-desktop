@@ -25,6 +25,48 @@ function recorder() {
 beforeEach(() => { vi.useFakeTimers(); vi.clearAllMocks(); mock.fileSize = 100 })
 afterEach(() => { vi.clearAllTimers(); vi.useRealTimers() })
 
+describe('recovered recording clock', () => {
+  it('keeps a known recording origin across a reconnect', async () => {
+    const start = Date.now() - 600_000
+    let bytes = 1000
+    mock.call.mockImplementation(async () => ({ outputActive: true, outputBytes: bytes += 100 }))
+    const rec = recorder()
+    Object.assign(rec, { _startedAt: start, _disconnectedDuringRecording: true })
+    vi.spyOn(rec, 'isCurrentProgramSceneGameplay').mockResolvedValue(true)
+    const reclaim = rec.reclaimActiveRecording()
+    await vi.advanceTimersByTimeAsync(1000)
+    expect(await reclaim).toBe(true)
+    expect(rec.getRecordingStartedAt()).toBe(start)
+  })
+
+  it('preserves the elapsed video when taking over an existing recording', async () => {
+    const now = Date.now()
+    const elapsedMs = 46 * 60_000
+    let bytes = 1000
+    mock.call.mockImplementation(async () => ({ outputActive: true, outputPaused: false, outputBytes: bytes += 100, outputDuration: elapsedMs + Date.now() - now }))
+    const rec = recorder()
+    Object.assign(rec, { _matchOwnedRecording: false, _recording: false, _startedAt: null })
+    vi.spyOn(rec, 'isCurrentProgramSceneGameplay').mockResolvedValue(true)
+    const reclaim = rec.reclaimActiveRecording()
+    await vi.advanceTimersByTimeAsync(1000)
+    expect(await reclaim).toBe(true)
+    expect(rec.getRecordingStartedAt()).toBe(now - elapsedMs)
+    expect(mock.call).not.toHaveBeenCalledWith('StartRecord')
+  })
+
+  it.each([undefined, NaN, -1])('refuses an unknown clock instead of inventing a start time (%s)', async (duration) => {
+    let bytes = 100
+    mock.call.mockImplementation(async () => ({ outputActive: true, outputBytes: bytes += 100, outputDuration: duration }))
+    const rec = recorder()
+    Object.assign(rec, { _matchOwnedRecording: false, _recording: false, _startedAt: null })
+    vi.spyOn(rec, 'isCurrentProgramSceneGameplay').mockResolvedValue(true)
+    const reclaim = rec.reclaimActiveRecording()
+    await vi.advanceTimersByTimeAsync(16_000)
+    expect(await reclaim).toBe(false)
+    expect(rec.getRecordingStartedAt()).toBeNull()
+  })
+})
+
 describe('OBS recording completion', () => {
   it('does not release ownership when the status query fails', async () => {
     mock.call.mockRejectedValue(new Error('connection lost'))

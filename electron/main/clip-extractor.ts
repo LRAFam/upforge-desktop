@@ -10,6 +10,7 @@ import log from 'electron-log'
 import {
   isRetryableProbeFailure,
   parseFfmpegProbeStderr,
+  parseRecordingDurationMs,
   probeTimeoutMs,
 } from './ffmpeg-probe'
 
@@ -216,7 +217,7 @@ export class ClipExtractor {
    * Uses metadata-only ffmpeg (`-i`) — no frame decode — so long VODs do not
    * hit the old 10s decode timeout on slow disks.
    */
-  async probe(filePath: string): Promise<{ ok: boolean; reason?: string }> {
+  async probe(filePath: string): Promise<{ ok: boolean; reason?: string; durationMs?: number | null }> {
     try {
       if (!existsSync(filePath)) {
         return { ok: false, reason: 'Recording file not found.' }
@@ -226,7 +227,7 @@ export class ClipExtractor {
         return { ok: false, reason: 'Recording file is empty or too small.' }
       }
       const stderr = await this._probeMetadataStderr(filePath, probeTimeoutMs(sizeBytes))
-      return parseFfmpegProbeStderr(stderr)
+      return { ...parseFfmpegProbeStderr(stderr), durationMs: parseRecordingDurationMs(stderr) }
     } catch (err) {
       const msg = String(err)
       if (msg.includes('ffmpeg timed out')) {
@@ -265,7 +266,7 @@ export class ClipExtractor {
       // strips the harmless missing-output message.
       const proc = spawn(
         ffmpegPath(),
-        ['-hide_banner', '-v', 'error', '-i', filePath],
+        ['-hide_banner', '-v', 'info', '-i', filePath],
         { stdio: ['ignore', 'ignore', 'pipe'] },
       )
       let stderr = ''

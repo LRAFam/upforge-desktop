@@ -2052,7 +2052,7 @@ function computeRecordingOffsetMeta(timeline: Pick<MatchData, 'gameplayStartTime
 } {
   const { gameplayStartTime, matchStartTime, recordingStartTime } = timeline
   const recordingLagMs = (matchStartTime != null && recordingStartTime != null)
-    ? Math.max(0, recordingStartTime - matchStartTime)
+    ? recordingStartTime - matchStartTime
     : 0
   const clockSkewMs = (gameplayStartTime != null && matchStartTime != null)
     ? gameplayStartTime - matchStartTime

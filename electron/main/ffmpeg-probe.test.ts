@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   isRetryableProbeFailure,
   parseFfmpegProbeStderr,
+  parseRecordingDurationMs,
   probeTimeoutMs,
   shouldReportClipProbeFailure,
 } from './ffmpeg-probe'
@@ -39,6 +40,10 @@ describe('parseFfmpegProbeStderr', () => {
 })
 
 describe('probe helpers', () => {
+  it('reads video duration without decoding frames', () => {
+    expect(parseRecordingDurationMs('Duration: 01:33:12.57, start: 0.000')).toBe(5_592_570)
+    expect(parseRecordingDurationMs('Duration: N/A')).toBeNull()
+  })
   it('marks moov and timeout as retryable', () => {
     expect(isRetryableProbeFailure('ffmpeg timed out')).toBe(true)
     expect(isRetryableProbeFailure('moov atom not found')).toBe(true)

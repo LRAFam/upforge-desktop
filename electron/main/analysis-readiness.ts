@@ -26,8 +26,9 @@ type ReadinessRecording = Pick<
   'game' | 'recordedAt' | 'timeline' | 'clipsOnly' | 'matchId' | 'path' | 'cloudArchived' | 'archiveId' | 'gameMode'
 >
 
-const vodProbeCache = new Map<string, { mtimeMs: number; ok: boolean; reason?: string }>()
-const vodProbesInFlight = new Map<string, { mtimeMs: number; promise: Promise<{ ok: boolean; reason?: string }> }>()
+type VodProbeResult = { ok: boolean; reason?: string; durationMs?: number | null }
+const vodProbeCache = new Map<string, VodProbeResult & { mtimeMs: number }>()
+const vodProbesInFlight = new Map<string, { mtimeMs: number; promise: Promise<VodProbeResult> }>()
 
 export function clearVodProbeCache(): void {
   vodProbeCache.clear()
@@ -41,7 +42,7 @@ function coachingModeUnsupportedGate(rec: ReadinessRecording): AnalysisReadiness
 
 function localVodPathRequired(rec: ReadinessRecording): boolean {
   if (rec.clipsOnly) return false
-  if (rec.cloudArchived && rec.archiveId) return false
+  if (rec.cloudArchived && rec.archiveId && (!rec.path || !fs.existsSync(rec.path))) return false
   return Boolean(rec.path)
 }
 
@@ -85,6 +86,26 @@ function vodFileGates(rec: ReadinessRecording): AnalysisReadiness | null {
         state: 'file_unreadable',
         message: cached.reason ?? 'Recording file is incomplete or unreadable',
         duelMomentCount: 0,
+      }
+    }
+    if (rec.game === 'valorant' && rec.timeline) {
+      const start = rec.timeline.recordingStartTime
+      const end = rec.timeline.endTime
+      const duration = cached.durationMs
+      const timingMissing = !Number.isFinite(start) || end == null || !Number.isFinite(end)
+        || end <= start || duration == null || !Number.isFinite(duration) || duration <= 0
+      // Allow normal mux/stop latency, but never accept minutes of unexplained
+      // footage: it would send unrelated windows to paid video analysis.
+      const mismatch = !timingMissing && Math.abs(duration! - (end! - start)) > Math.max(30_000, duration! * 0.02)
+      if (timingMissing || mismatch) {
+        return {
+          ready: false,
+          state: 'file_unreadable',
+          message: timingMissing
+            ? 'Recording timing could not be verified. Analysis is paused.'
+            : 'Recording duration does not match its timestamps. Repair video timing before analysis.',
+          duelMomentCount: 0,
+        }
       }
     }
   } catch {
@@ -176,8 +197,8 @@ export async function waitUntilVodFileReady(
 
 export async function refreshVodProbe(
   filePath: string,
-  probe: (path: string) => Promise<{ ok: boolean; reason?: string }>,
-): Promise<{ ok: boolean; reason?: string }> {
+  probe: (path: string) => Promise<VodProbeResult>,
+): Promise<VodProbeResult> {
   if (!filePath || !fs.existsSync(filePath)) {
     return { ok: false, reason: 'Recording file missing on disk' }
   }
@@ -191,7 +212,7 @@ export async function refreshVodProbe(
 
   const cached = vodProbeCache.get(filePath)
   if (cached && cached.mtimeMs === mtimeMs) {
-    return { ok: cached.ok, reason: cached.reason }
+    return { ok: cached.ok, reason: cached.reason, durationMs: cached.durationMs }
   }
 
   const inFlight = vodProbesInFlight.get(filePath)
@@ -201,7 +222,7 @@ export async function refreshVodProbe(
     .then((result) => {
       // Do not cache an older probe over a newer file revision.
       if (vodProbesInFlight.get(filePath)?.promise === promise) {
-        vodProbeCache.set(filePath, { mtimeMs, ok: result.ok, reason: result.reason })
+        vodProbeCache.set(filePath, { mtimeMs, ...result })
         vodProbesInFlight.delete(filePath)
       }
       return result

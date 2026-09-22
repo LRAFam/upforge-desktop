@@ -2447,7 +2447,7 @@ function sendAnalysisReadinessUpdate(
 async function refreshRecordingVodProbe(
   rec: NonNullable<ReturnType<RecordingsStore['getById']>>,
 ): Promise<void> {
-  if (!rec.path || rec.clipsOnly || (rec.cloudArchived && rec.archiveId)) return
+  if (!rec.path || rec.clipsOnly) return
   if (!fs.existsSync(rec.path)) return
   await refreshVodProbe(rec.path, (p) => clipExtractor.probe(p))
 }
