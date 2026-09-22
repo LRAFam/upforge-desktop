@@ -1183,6 +1183,7 @@ function applyPostGameSnapshot(snapshot: PostGameSessionSnapshot): void {
   if (snapshot.debriefLoading) debriefLoading.value = true
   if (snapshot.debriefText) {
     debriefText.value = snapshot.debriefText
+    debriefFailed.value = false
     debriefLoading.value = false
   }
   if (snapshot.debriefSkipReason) debriefNotice.value = coachingSkipMessage(snapshot.debriefSkipReason)
@@ -1288,12 +1289,13 @@ function clearDebriefTimeout(): void {
 
 function startDebriefTimeout(): void {
   clearDebriefTimeout()
+  // Allow both 120s attempts, the 2s retry delay, and IPC delivery.
   debriefTimeoutTimer = setTimeout(() => {
     if (debriefLoading.value && !debriefText.value) {
       debriefFailed.value = true
       debriefLoading.value = false
     }
-  }, 130_000)
+  }, 250_000)
 }
 let sessionStart = 0
 let preparingStuckTimer: ReturnType<typeof setTimeout> | null = null
@@ -2038,6 +2040,8 @@ onMounted(() => {
     clearDebriefTimeout()
     if (data?.debrief) {
       debriefText.value = data.debrief
+      debriefFailed.value = false
+      debriefNotice.value = ''
       debriefDiscordLinked.value = data.discordLinked ?? false
     } else if (data?.skipped) {
       debriefFailed.value = false
