@@ -1403,8 +1403,12 @@ function schedulePopulationRefresh(timeline: MatchData): void {
     timeline,
     token ? authManager.getApi() : null,
     (summary) => {
-      mainWindow?.webContents.send('spatial:population-updated', summary)
-      postGameWindow?.webContents.send('spatial:population-updated', summary)
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('spatial:population-updated', summary)
+      }
+      if (postGameWindow && !postGameWindow.isDestroyed()) {
+        postGameWindow.webContents.send('spatial:population-updated', summary)
+      }
     },
   )
 }

@@ -434,7 +434,7 @@ function createDashboard() {
   const quotaRemaining = computed(() => {
     const stats = profile.value?.user?.analysis_stats
     if (!stats || stats.limit == null || isAdmin.value) return null
-    return Math.max(0, stats.limit - stats.total)
+    return Math.max(0, stats.limit - stats.total) + (stats.purchased ?? 0)
   })
 
   const quotaLowWarning = computed(() => {

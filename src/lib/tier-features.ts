@@ -13,6 +13,7 @@ export function canSpatialVodSeek(tier: string | null | undefined): boolean {
 }
 
 export interface AnalysisQuotaStats {
+  purchased?: number
   total: number
   limit: number | null
 }
@@ -25,7 +26,7 @@ export function hasAnalysisQuotaRemaining(
 ): boolean {
   if (isPlatformAdmin(tier, isAdmin)) return true
   if (!stats || stats.limit == null) return false
-  return stats.total < stats.limit
+  return stats.total < stats.limit || (stats.purchased ?? 0) > 0
 }
 
 export interface ArchiveQuotaStats {

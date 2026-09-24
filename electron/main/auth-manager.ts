@@ -112,7 +112,7 @@ export interface ProfileData {
     lol_riot_tag?: string | null
     lol_platform?: string | null
     discord_username: string | null
-    analysis_stats: { total: number; limit: number | null; subscription_ends_at?: string | null }
+    analysis_stats: { purchased?: number; total: number; limit: number | null; subscription_ends_at?: string | null }
     archive_stats?: {
       count: number
       limit: number | null
@@ -310,6 +310,7 @@ export class AuthManager {
           analysis_stats: {
             // API field names: free_analyses_used + monthly_free_analyses
             total: stats.free_analyses_used ?? 0,
+            purchased: stats.purchased_reports_remaining ?? 0,
             limit: unlimited ? null : (stats.monthly_free_analyses ?? 1),
             subscription_ends_at: stats.subscription_ends_at ?? null,
           },

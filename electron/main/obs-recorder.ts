@@ -432,10 +432,11 @@ export class OBSRecorder {
   private _startDiagnostics: {
     game: string | null; stage: string | null; output_active: boolean | null;
     output_bytes: number | null; verify_ms: number | null;
-  } = { game: null, stage: null, output_active: null, output_bytes: null, verify_ms: null }
+    output_paused: boolean | null; no_progress_ms: number | null;
+  } = { game: null, stage: null, output_active: null, output_bytes: null, verify_ms: null, output_paused: null, no_progress_ms: null }
 
   resetRecordingDiagnostics(game: string): void {
-    this._startDiagnostics = { game, stage: 'preflight', output_active: null, output_bytes: null, verify_ms: null }
+    this._startDiagnostics = { game, stage: 'preflight', output_active: null, output_bytes: null, verify_ms: null, output_paused: null, no_progress_ms: null }
   }
 
   /** Whitelisted diagnostics only: no OBS password, output path, or arbitrary settings. */
@@ -966,7 +967,19 @@ export class OBSRecorder {
     }
   }
 
-  async start(game: string, config?: RecorderConfig): Promise<void> {
+  private _startInFlight: Promise<void> | null = null
+
+  start(game: string, config?: RecorderConfig): Promise<void> {
+    if (this._startInFlight) return this._startInFlight
+    // Own all asynchronous setup, not only StartRecord verification. A duplicate
+    // request must not fail and stop the recording started by the first caller.
+    this._startInFlight = this._startRecording(game, config).finally(() => {
+      this._startInFlight = null
+    })
+    return this._startInFlight
+  }
+
+  private async _startRecording(game: string, config?: RecorderConfig): Promise<void> {
     if (this._verifyingStart) throw new Error('OBS recording startup is still being verified.')
     this.resetRecordingDiagnostics(game)
     if (!this._connected) {
@@ -1244,7 +1257,16 @@ export class OBSRecorder {
           (lastBytes === undefined || status.outputBytes !== lastBytes))) {
           lastProgressAt = Date.now()
         }
-        lastBytes = status.outputBytes
+        // A missing sample must not reset the last known counter: seeing that
+        // same counter again is not evidence that the file grew.
+        if (Number.isFinite(status.outputBytes)) lastBytes = status.outputBytes
+        Object.assign(this._startDiagnostics, {
+          stage: 'recording',
+          output_active: typeof status.outputActive === 'boolean' ? status.outputActive : null,
+          output_bytes: Number.isFinite(status.outputBytes) ? status.outputBytes : null,
+          output_paused: typeof status.outputPaused === 'boolean' ? status.outputPaused : null,
+          no_progress_ms: Date.now() - lastProgressAt,
+        })
         if (!status.outputActive || Date.now() - lastProgressAt >= 60_000) {
           this._markRecordingFailure('OBS stopped producing recording data. Restart OBS before recording another match.')
           await this.stop()
@@ -1252,6 +1274,10 @@ export class OBSRecorder {
         }
       } catch {
         if (generation !== this._progressGeneration) return
+        Object.assign(this._startDiagnostics, {
+          stage: 'recording', output_active: null, output_bytes: null, output_paused: null,
+          no_progress_ms: Date.now() - lastProgressAt,
+        })
         // Connection recovery owns disconnects. A connected but unresponsive OBS is unhealthy.
         if (this._connected && Date.now() - lastProgressAt >= 60_000) {
           this._markRecordingFailure('OBS recording is unresponsive. Restart OBS before recording another match.')

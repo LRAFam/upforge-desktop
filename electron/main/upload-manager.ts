@@ -697,6 +697,7 @@ export class UploadManager {
       }, (res) => {
         let data = ''
         res.on('data', (c) => data += c)
+        res.on('error', reject)
         res.on('end', () => {
           const status = res.statusCode ?? 0
           if (status === 429) {
@@ -832,6 +833,10 @@ export class UploadManager {
       }, (res) => {
         let body = ''
         res.on('data', (c) => body += c)
+        res.on('error', (err) => {
+          req.destroy(err)
+          reject(err)
+        })
         res.on('end', () => {
           clearInterval(stallCheck)
           this._s3Requests.delete(req)
@@ -941,6 +946,10 @@ export class UploadManager {
       }, (res) => {
         let responseBody = ''
         res.on('data', (c) => { responseBody += c })
+        res.on('error', (err) => {
+          req.destroy(err)
+          reject(err)
+        })
         res.on('end', () => {
           this._s3PartRequests.delete(req)
           const status = res.statusCode ?? 0
@@ -1143,6 +1152,7 @@ export class UploadManager {
       }, (res) => {
         let body = ''
         res.on('data', (chunk) => body += chunk)
+        res.on('error', reject)
         res.on('end', () => {
           const httpStatus = res.statusCode ?? 0
           try {

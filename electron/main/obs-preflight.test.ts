@@ -1,4 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
+import { mkdtempSync, writeFileSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import {
   buildPreflightFailure,
   runObsPreflight,
@@ -135,6 +138,29 @@ describe('runObsPreflight', () => {
 })
 
 describe('runObsTestRecording', () => {
+  it.each([true, false])('requires confirmed stopped output before accepting the file (stuck=%s)', async (stuck) => {
+    vi.useFakeTimers()
+    const dir = mkdtempSync(join(tmpdir(), 'obs-test-stop-'))
+    try {
+      const outputPath = join(dir, 'test.mkv')
+      writeFileSync(outputPath, 'recorded video')
+      let active = false
+      const obs = { call: vi.fn(async (method: string) => {
+        if (method === 'StartRecord') active = true
+        if (method === 'StopRecord' && !stuck) active = false
+        return { outputActive: active, outputPath }
+      }) }
+      const pending = runObsTestRecording({ obs: obs as never, recordDurationMs: 1 })
+      await vi.advanceTimersByTimeAsync(20_000)
+      const result = await pending
+      expect(result.ok).toBe(!stuck)
+      if (stuck) expect(result.technicalMessage).toContain('did not stop recording')
+    } finally {
+      vi.useRealTimers()
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
   it('times out when output never arms', async () => {
     const obs = mockObsClient()
     vi.mocked(obs.call).mockImplementation(async (method: string) => {

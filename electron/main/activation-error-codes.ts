@@ -271,6 +271,15 @@ export const ACTIVATION_ERRORS: Record<string, ActivationErrorDefinition> = {
     userMessage: 'This match is still processing. Wait for it to finish, or open the dashboard for status.',
     recoveryAction: 'open_dashboard',
   },
+  onboarding_bonus_unavailable: {
+    code: 'onboarding_bonus_unavailable',
+    category: 'upload',
+    stage: 'uploading',
+    retryable: false,
+    userActionRequired: true,
+    userMessage: 'Your one-time onboarding bonus has already been claimed. Your recording is saved.',
+    recoveryAction: 'open_dashboard',
+  },
   quota_required: {
     code: 'quota_required',
     category: 'quota',
@@ -398,6 +407,7 @@ export function classifyActivationError(raw: string): ClassifiedActivationError 
 
 function matchActivationErrorCode(lower: string, raw: string): ActivationErrorCode {
   if (!lower) return 'unknown'
+  if (lower === 'onboarding_bonus_unavailable') return 'onboarding_bonus_unavailable'
 
   // Quota first — commercial, not upload
   if (

@@ -6,6 +6,15 @@ import {
 } from './activation-error-codes'
 
 describe('classifyActivationError', () => {
+  it('keeps an already-claimed onboarding bonus out of upload retries and upgrade prompts', () => {
+    const c = classifyActivationError('onboarding_bonus_unavailable')
+    expect(c.code).toBe('onboarding_bonus_unavailable')
+    expect(c.definition.retryable).toBe(false)
+    expect(c.definition.recoveryAction).toBe('open_dashboard')
+    expect(isQuotaErrorCode(c.code)).toBe(false)
+    expect(c.technicalMessage).toBe('onboarding_bonus_unavailable')
+  })
+
   it('maps OBS not connected', () => {
     const c = classifyActivationError(
       'OBS is not connected. UpForge will keep trying to start it, or the user can click Launch OBS in Settings → Recording.',

@@ -137,6 +137,7 @@ export async function extractDuelPreviewClip(opts: {
       outPath,
     )
     if (!result.ok) {
+      await rm(workDir, { recursive: true, force: true }).catch(() => {})
       return { ok: false, error: result.reason }
     }
     return { ok: true, path: outPath, bytes: result.bytes }
@@ -207,24 +208,24 @@ export async function extractAndUploadDuelClips(opts: {
 
   const sourcePath = await resolveDuelClipSourcePath(videoPath, clipExtractor)
   const workDir = await mkdtemp(join(tmpdir(), 'upforge-duel-clips-'))
-  const extractSource = await ensurePlayableExtractSource(sourcePath, workDir)
-  const durationMs = await clipExtractor.probeDurationMs(extractSource)
-  if (durationMs != null) {
-    const maxWindowEnd = Math.max(...moments.map((m) => m.window_end_ms))
-    if (maxWindowEnd > durationMs + 2000) {
-      log.warn(
-        `[DuelClips] Death windows extend past recording (${maxWindowEnd}ms > ${durationMs}ms) — ` +
-        `wrong file or timeline sync? source=${sourcePath}`,
-      )
-    }
-  }
-
   const localPaths = new Map<string, string>()
   const failures: string[] = []
   let skippedTooSmall = 0
   let extractFailed = 0
 
   try {
+    const extractSource = await ensurePlayableExtractSource(sourcePath, workDir)
+    const durationMs = await clipExtractor.probeDurationMs(extractSource)
+    if (durationMs != null) {
+      const maxWindowEnd = Math.max(...moments.map((m) => m.window_end_ms))
+      if (maxWindowEnd > durationMs + 2000) {
+        log.warn(
+          `[DuelClips] Death windows extend past recording (${maxWindowEnd}ms > ${durationMs}ms) — ` +
+          `wrong file or timeline sync? source=${sourcePath}`,
+        )
+      }
+    }
+
     await mapPool(moments, EXTRACT_CONCURRENCY, async (moment) => {
       const safeId = moment.moment_id.replace(/[^a-zA-Z0-9._-]/g, '_')
       const outPath = join(workDir, `${safeId}.mp4`)

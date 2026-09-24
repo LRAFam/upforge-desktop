@@ -8,6 +8,16 @@ import {
 } from './analysis-failure-messages'
 
 describe('formatAnalysisFailureMessage', () => {
+  it('explains an already-claimed onboarding bonus without claiming a refund or suggesting retry', () => {
+    const p = classifyAnalysisFailure('onboarding_bonus_unavailable')
+    expect(p.title).toBe('Bonus already claimed')
+    expect(p.message).toContain('already been claimed')
+    expect(p.hint).toContain('dashboard')
+    expect(p.creditRefunded).toBe(false)
+    expect(p.canRetry).toBe(false)
+    expect(p.kind).not.toBe('quota_required')
+  })
+
   it('maps insufficient duel observations to integrity kind with refund', () => {
     const p = classifyAnalysisFailure(
       'Insufficient duel observations — coaching was not generated from reviewed video clips.',

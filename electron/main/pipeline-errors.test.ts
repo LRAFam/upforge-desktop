@@ -2,6 +2,11 @@ import { describe, expect, it } from 'vitest'
 import { shouldReportAnalysisPipelineError } from './pipeline-errors'
 
 describe('shouldReportAnalysisPipelineError', () => {
+  it('skips the expected already-claimed bonus denial, but keeps unexpected bonus failures', () => {
+    expect(shouldReportAnalysisPipelineError('upload', 'onboarding_bonus_unavailable')).toBe(false)
+    expect(shouldReportAnalysisPipelineError('upload', 'onboarding bonus database failure')).toBe(true)
+  })
+
   it('skips user-recoverable refunded failures', () => {
     expect(shouldReportAnalysisPipelineError('refunded_generic', 'credit refunded')).toBe(false)
     expect(shouldReportAnalysisPipelineError('refunded_data', 'match data not ready')).toBe(false)
@@ -25,6 +30,10 @@ describe('shouldReportAnalysisPipelineError', () => {
 
   it('still skips quota / user-recoverable analysis kinds', () => {
     expect(shouldReportAnalysisPipelineError('quota', 'analysis.limit.reached')).toBe(false)
+    expect(shouldReportAnalysisPipelineError(
+      'quota_required',
+      'You have used your free analysis. Upgrade to Plus or Pro for ongoing coaching, or pay per analysis on the web.',
+    )).toBe(false)
     expect(shouldReportAnalysisPipelineError('refunded_data', 'match data missing')).toBe(false)
   })
 })

@@ -71,6 +71,17 @@ export function classifyAnalysisFailure(rawError: string): AnalysisFailurePresen
   const lower = err.toLowerCase()
   const xml = extractXmlErrorParts(err)
 
+  if (lower === 'onboarding_bonus_unavailable') {
+    return {
+      kind: 'upload',
+      title: 'Bonus already claimed',
+      message: 'Your one-time onboarding bonus has already been claimed. Your recording is saved.',
+      hint: 'Open the dashboard to check your existing analysis.',
+      creditRefunded: false,
+      canRetry: false,
+    }
+  }
+
   if (/analysis\.limit|upgrade\.required|no analyses remaining|used your free analysis|analysis_limit_reached|quota_required/i.test(lower)) {
     return {
       kind: 'quota_required',

@@ -163,6 +163,39 @@ describe('mid-match progress watchdog', () => {
     (rec as unknown as { _startProgressWatch(): void })._startProgressWatch()
   }
 
+  it('does not count an unchanged byte count after a missing sample as progress', async () => {
+    let samples = 0
+    mock.call.mockImplementation(async () => ({
+      outputActive: true,
+      outputBytes: ++samples % 2 ? 1000 : undefined,
+    }))
+    const rec = recorder()
+    vi.spyOn(rec, 'stop').mockResolvedValue(null)
+    watch(rec)
+    await vi.advanceTimersByTimeAsync(90_000)
+    expect(rec.hasRecordingFailure()).toBe(true)
+    expect(rec.stop).toHaveBeenCalledTimes(1)
+  })
+
+  it('captures the failing status rather than stale startup diagnostics', async () => {
+    const rec = recorder()
+    rec.resetRecordingDiagnostics('valorant')
+    mock.call.mockResolvedValue({ outputActive: true, outputPaused: false, outputBytes: 2500 })
+    vi.spyOn(rec, 'stop').mockResolvedValue(null)
+    let diagnostics: Record<string, unknown> | undefined
+    rec.onStatusChange = (_active, error) => {
+      if (error) diagnostics = rec.getRecordingDiagnostics()
+    }
+    watch(rec)
+    await vi.advanceTimersByTimeAsync(70_000)
+    expect(diagnostics).toMatchObject({
+      game: 'valorant', stage: 'recording', output_active: true,
+      output_bytes: 2500, output_paused: false, no_progress_ms: 60_000,
+    })
+    rec.resetRecordingDiagnostics('cs2')
+    expect(rec.getRecordingDiagnostics()).toMatchObject({ output_paused: null, no_progress_ms: null })
+  })
+
   it('attempts shutdown and blocks reuse after recording data stops advancing', async () => {
     mock.call.mockResolvedValue({ outputActive: true, outputPaused: false, outputBytes: 1000 })
     const rec = recorder()
@@ -194,6 +227,48 @@ describe('mid-match progress watchdog', () => {
 })
 
 describe('recording progress verification', () => {
+  it('allows a fresh startup after shared setup fails', async () => {
+    let active = false
+    let bytes = 0
+    mock.call.mockImplementation(async (method) => {
+      if (method === 'StartRecord') active = true
+      return { outputActive: active, outputBytes: active ? bytes += 100 : 0 }
+    })
+    const rec = recorder()
+    Object.assign(rec, { _matchOwnedRecording: false, _recording: false, _startedAt: null })
+    vi.spyOn(rec, 'isCurrentProgramSceneGameplay').mockResolvedValueOnce(false).mockResolvedValue(true)
+    vi.spyOn(rec as unknown as { _startLiveKillPoll(): void }, '_startLiveKillPoll').mockImplementation(() => {})
+    await expect(rec.start('cs2')).rejects.toThrow('registered UpForge gameplay scene')
+    const retry = rec.start('cs2')
+    await vi.advanceTimersByTimeAsync(1000)
+    await expect(retry).resolves.toBeUndefined()
+    expect(rec.isRecording()).toBe(true)
+  })
+
+  it('shares startup before asynchronous setup so duplicate match detection cannot start OBS twice', async () => {
+    let active = false
+    let bytes = 0
+    mock.call.mockImplementation(async (method) => {
+      if (method === 'StartRecord') {
+        if (active) throw new Error('Already recording')
+        active = true
+      }
+      return { outputActive: active, outputBytes: active ? bytes += 100 : 0 }
+    })
+    const rec = recorder()
+    Object.assign(rec, { _matchOwnedRecording: false, _recording: false, _startedAt: null })
+    vi.spyOn(rec, 'isCurrentProgramSceneGameplay').mockResolvedValue(true)
+    vi.spyOn(rec as unknown as { _startLiveKillPoll(): void }, '_startLiveKillPoll').mockImplementation(() => {})
+    const first = rec.start('cs2')
+    const second = rec.start('cs2')
+    const results = Promise.allSettled([first, second])
+    await vi.advanceTimersByTimeAsync(35_000)
+    expect(await results).toEqual([{ status: 'fulfilled', value: undefined }, { status: 'fulfilled', value: undefined }])
+    expect(mock.call.mock.calls.filter(([method]) => method === 'StartRecord')).toHaveLength(1)
+    expect(mock.call).not.toHaveBeenCalledWith('StopRecord')
+    expect(rec.isRecording()).toBe(true)
+  })
+
   it('does not announce start success when OBS is active but produces no bytes', async () => {
     let active = false
     mock.call.mockImplementation(async (method) => {

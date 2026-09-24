@@ -20,6 +20,8 @@ import {
   setupUpForgeScene,
 } from './obs-setup'
 import { resolveObsRecordVerifyMs, waitForObsRecordArmed } from './obs-start-verify'
+import { waitForRecordingStopped } from './obs-record-progress'
+import { withTimeout } from './promise-timeout'
 
 export type ObsPreflightStepId =
   | 'obs_installed'
@@ -258,8 +260,9 @@ export async function runObsTestRecording(opts: {
     log.info('[OBS Preflight] Test recording armed — capturing for', recordDurationMs, 'ms')
     await sleep(recordDurationMs)
 
-    const stopResponse = await opts.obs.call('StopRecord') as { outputPath?: string }
-    const recordStatus = await opts.obs.call('GetRecordStatus') as { outputPath?: string }
+    const stopResponse = await withTimeout(opts.obs.call('StopRecord'), 5000, 'OBS stop request timed out. Restart OBS.') as { outputPath?: string }
+    await waitForRecordingStopped(() => opts.obs.call('GetRecordStatus'))
+    const recordStatus = await withTimeout(opts.obs.call('GetRecordStatus'), 3000, 'OBS recording status timed out') as { outputPath?: string }
     const filePath = stopResponse.outputPath ?? recordStatus.outputPath
 
     if (!filePath) {

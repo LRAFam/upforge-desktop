@@ -1,3 +1,5 @@
+import { withTimeout } from './promise-timeout'
+
 const DEFAULT_TIMEOUT_MS = 5000
 const MIN_TIMEOUT_MS = 1000
 const MAX_TIMEOUT_MS = 15_000
@@ -39,8 +41,12 @@ export async function waitForObsRecordArmed(opts: {
   const deadline = now() + timeoutMs
 
   while (now() < deadline) {
-    if (await opts.getOutputActive()) {
-      return { armed: true }
+    try {
+      const active = await withTimeout(opts.getOutputActive(), deadline - now(), 'OBS recording verification timed out')
+      if (active && now() < deadline) return { armed: true }
+    } catch (err) {
+      if (now() >= deadline) break
+      throw err
     }
     const remaining = deadline - now()
     if (remaining <= 0) break

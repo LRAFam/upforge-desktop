@@ -1,7 +1,18 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { resolveObsRecordVerifyMs, waitForObsRecordArmed } from './obs-start-verify'
 
 describe('waitForObsRecordArmed', () => {
+  it('honours the deadline when the status request never settles', async () => {
+    vi.useFakeTimers()
+    try {
+      const result = waitForObsRecordArmed({ getOutputActive: () => new Promise(() => {}), timeoutMs: 1000 })
+      const settled = vi.fn()
+      void result.then(settled)
+      await vi.advanceTimersByTimeAsync(1000)
+      expect(settled).toHaveBeenCalledWith({ armed: false, timedOut: true })
+    } finally { vi.useRealTimers() }
+  })
+
   it('returns armed when output becomes active', async () => {
     let n = 0
     const result = await waitForObsRecordArmed({

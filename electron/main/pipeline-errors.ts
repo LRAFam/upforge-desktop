@@ -18,10 +18,12 @@ const USER_RECOVERABLE_ANALYSIS_KINDS = new Set<AnalysisFailureKind>([
   'refunded_generic',
   'integrity',
   'quota',
+  'quota_required',
   'clips_only',
 ])
 
 const SKIP_PATTERNS = [
+  /^onboarding_bonus_unavailable$/i,
   /analysis\.limit\.reached/i,
   /upgrade\.required/i,
   /archive\.limit\.reached/i,

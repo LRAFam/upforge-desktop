@@ -455,6 +455,7 @@ export interface ProfileData {
     deadlock_account_id?: number | null
     discord_username: string | null
     analysis_stats: {
+      purchased?: number
       total: number
       limit: number | null
       subscription_ends_at?: string | null

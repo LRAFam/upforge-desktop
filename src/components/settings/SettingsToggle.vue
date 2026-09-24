@@ -5,7 +5,7 @@ defineProps<{
 }>()
 
 defineEmits<{
-  click: []
+  click: [event: MouseEvent]
 }>()
 </script>
 
@@ -16,7 +16,7 @@ defineEmits<{
     :class="on ? '' : 'bg-white/20'"
     :style="on ? { backgroundColor: 'var(--game-accent, #ef4444)' } : undefined"
     :disabled="disabled"
-    @click="$emit('click')"
+    @click="$emit('click', $event)"
   >
     <span
       class="inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform"
