@@ -57,14 +57,24 @@ function runElevatedPowerShell(script: string): Promise<{ ok: boolean; error?: s
       `$process = Start-Process -FilePath 'powershell.exe' -Verb RunAs -Wait -PassThru -WindowStyle Hidden -ArgumentList @('-NoProfile', '-NonInteractive', '-EncodedCommand', '${encodedScript}')`,
       'if ($process.ExitCode -ne 0) { exit $process.ExitCode }',
     ].join('; ')
-    const child = spawn('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', elevateCommand], {
-      stdio: 'ignore',
-      windowsHide: true,
-    })
-    child.once('error', (err) => finish({ ok: false, error: err.message }))
-    child.once('close', (code) => finish(code === 0
-      ? { ok: true }
-      : { ok: false, error: 'Administrator permission was cancelled or Windows could not restart OBS.' }))
+    const spawnFailed = (err: unknown) => {
+      const error = err instanceof Error ? err.message : String(err)
+      log.warn('[OBS Launcher] Elevated PowerShell spawn failed:', error)
+      finish({ ok: false, error })
+    }
+    try {
+      const child = spawn('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', elevateCommand], {
+        stdio: 'ignore',
+        windowsHide: true,
+      })
+      child.once('error', spawnFailed)
+      child.once('close', (code) => finish(code === 0
+        ? { ok: true }
+        : { ok: false, error: 'Administrator permission was cancelled or Windows could not restart OBS.' }))
+    } catch (err) {
+      // spawn can throw before returning a child, so no error event is emitted.
+      spawnFailed(err)
+    }
   })
 }
 
