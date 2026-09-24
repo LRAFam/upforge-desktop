@@ -266,6 +266,7 @@ import {
 } from './preparation-instrumentation'
 import {
   clearPostGameSession,
+  capturePostGameSession,
   getPostGameSessionSnapshot,
   isPostGamePastPreparing,
   isPostGameSessionForRecording,
@@ -3556,6 +3557,7 @@ function setupGameDetection(): void {
     clearVodProbeCache()
     postGameWindow?.close()
     resetPostGameSession(game, map, agent, getActiveUserId())
+    const postMatchSession = capturePostGameSession()
 
     const deferPostGameUi = shouldDeferPostGameForDemoSync(game, timeline)
     const onboardingMissionActive = settingsManager.get().onboardingMatchMission?.active === true
@@ -3574,14 +3576,14 @@ function setupGameDetection(): void {
       postGameWindow = thisPostGameWindow
       thisPostGameWindow.on('closed', () => {
         if (postGameWindow === thisPostGameWindow) postGameWindow = null
-        clearPostGameSession()
+        postMatchSession.clear()
       })
       // Keep hidden until pending / upload / error — avoids preparing → upload flash
       // when auto-analyse is off or Riot stats are not ready yet.
       whenWebContentsReady(thisPostGameWindow, () => {
         if (thisPostGameWindow!.isDestroyed()) return
         try {
-          if (!isPostGamePastPreparing(getPostGameSessionSnapshot()?.phase)) {
+          if (postMatchSession.isCurrent() && !isPostGamePastPreparing(getPostGameSessionSnapshot()?.phase)) {
             sendPostGameEvent(thisPostGameWindow!, 'post-game:preparing', {
               game,
               map,
@@ -3636,7 +3638,8 @@ function setupGameDetection(): void {
       // otherwise phase stays "preparing" and safety nets fire false upload_failed.
       const sendToWindow = (channel: string, payload?: unknown) => {
         const win = thisPostGameWindow && !thisPostGameWindow.isDestroyed() ? thisPostGameWindow : null
-        sendPostGameEvent(win, channel, payload)
+        if (!postMatchSession.isCurrent()) return
+        postMatchSession.send(win, channel, payload)
         if (
           channel === 'post-game:pending'
           || channel === 'post-game:prep-step'
@@ -3774,7 +3777,8 @@ function setupGameDetection(): void {
         if (!user?.riot_name || !timeline || !shouldRequestDebrief(timeline, gameMode)) return
         // Debrief needs rich match stats — do not request while still syncing.
         if (!hasRichMatchData(timeline)) return
-        sendPostGameEvent(thisPostGameWindow, 'post-game:debrief-loading')
+        if (!postMatchSession.isCurrent()) return
+        postMatchSession.send(thisPostGameWindow, 'post-game:debrief-loading')
         void requestPostGameDebrief({
           riotName: user.riot_name,
           riotTag: user.riot_tag ?? 'NA1',
@@ -3784,7 +3788,7 @@ function setupGameDetection(): void {
           coachingExtras,
           sendToWindow: (channel, payload) => {
             if (thisPostGameWindow && !thisPostGameWindow.isDestroyed()) {
-              sendPostGameEvent(thisPostGameWindow, channel, payload)
+              postMatchSession.send(thisPostGameWindow, channel, payload)
             }
           },
         }).catch((err) => log.warn('[Debrief] Background debrief failed:', err))
@@ -3943,7 +3947,7 @@ function setupGameDetection(): void {
     // phase change, so surface a manual fallback instead of an endless spinner.
     const PREPARING_SAFETY_MS = 45_000
     const preparingSafetyTimer = setTimeout(() => {
-      if (getPostGameSessionSnapshot()?.phase !== 'preparing') return
+      if (!postMatchSession.isCurrent() || getPostGameSessionSnapshot()?.phase !== 'preparing') return
       const stuckMsg =
         'Preparing is taking longer than expected — open the dashboard to upload this match manually.'
       log.error('[HandleMatchEnd] Post-game stuck in preparing — surfacing manual fallback')
@@ -3978,13 +3982,15 @@ function setupGameDetection(): void {
         stack: err instanceof Error ? err.stack?.slice(0, 2000) : undefined,
       })
       try {
-        sendUploadFailure(failed.userMessage, { targetWindow: uploadTargetWindow, game })
-        revealPostGame()
+        if (postMatchSession.isCurrent()) {
+          sendUploadFailure(failed.userMessage, { targetWindow: uploadTargetWindow, game })
+          revealPostGame()
+        }
       } catch { /* window closed */ }
     }).finally(() => {
       // Settled: if the flow never left preparing (silent early return), don't
       // leave the toast spinning — the timer above will still catch a true hang.
-      if (getPostGameSessionSnapshot()?.phase === 'preparing') {
+      if (postMatchSession.isCurrent() && getPostGameSessionSnapshot()?.phase === 'preparing') {
         clearTimeout(preparingSafetyTimer)
         const settledMsg =
           'Preparing did not complete — open the dashboard to upload this match manually.'

@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it } from 'vitest'
 import {
   applyPostGameChannelEvent,
   clearPostGameSession,
+  capturePostGameSession,
   getPostGameSessionSnapshot,
   isPostGamePastPreparing,
   isPostGameSessionForRecording,
@@ -185,5 +186,36 @@ describe('intentional coaching skips', () => {
     })
     applyPostGameChannelEvent('post-game:debrief-loading', undefined)
     expect(getPostGameSessionSnapshot()?.debriefSkipReason).toBeNull()
+  })
+})
+
+
+describe('post-match async session ownership', () => {
+  it('does not recreate preparing after the user closes a saved manual match', () => {
+    resetPostGameSession('valorant', 'Ascent', 'Fade', 1)
+    const flow = capturePostGameSession()
+    flow.send(null, 'post-game:pending', { recordingId: 'saved', game: 'valorant' })
+    clearPostGameSession()
+    flow.send(null, 'post-game:analysis-readiness', { ready: true, state: 'ready', message: '' })
+    expect(getPostGameSessionSnapshot()).toBeNull()
+    expect(flow.isCurrent()).toBe(false)
+  })
+
+  it('ignores old readiness, failures and close callbacks after a new match starts', () => {
+    resetPostGameSession('valorant', 'Ascent', 'Fade', 1)
+    const oldFlow = capturePostGameSession()
+    resetPostGameSession('valorant', 'Haven', 'Jett', 1)
+    oldFlow.send(null, 'post-game:upload-error', 'old failure')
+    oldFlow.clear()
+    expect(oldFlow.isCurrent()).toBe(false)
+    expect(getPostGameSessionSnapshot()).toMatchObject({ phase: 'preparing', map: 'Haven', analysisError: null })
+  })
+
+  it('buffers current events even without a results window', () => {
+    resetPostGameSession('valorant', 'Ascent', 'Fade', 1)
+    const flow = capturePostGameSession()
+    flow.send(null, 'post-game:pending', { recordingId: 'saved', game: 'valorant' })
+    expect(flow.isCurrent()).toBe(true)
+    expect(getPostGameSessionSnapshot()).toMatchObject({ phase: 'pending', recordingId: 'saved' })
   })
 })

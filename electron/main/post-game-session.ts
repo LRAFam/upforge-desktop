@@ -110,6 +110,20 @@ export function clearPostGameSession(): void {
   session = null
 }
 
+/** Keep delayed match-end work tied to the session that started it. */
+export function capturePostGameSession() {
+  const captured = session
+  const isCurrent = () => captured !== null && session === captured
+  return {
+    isCurrent,
+    clear: () => { if (isCurrent()) clearPostGameSession() },
+    send: (win: BrowserWindow | null | undefined, channel: string, payload?: unknown) => {
+      if (!isCurrent()) return
+      sendPostGameEvent(win, channel, payload)
+    },
+  }
+}
+
 export function getPostGameSessionSnapshot(): PostGameSessionSnapshot | null {
   return session ? { ...session } : null
 }
