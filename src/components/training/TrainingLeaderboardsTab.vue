@@ -6,20 +6,22 @@ import type { TrainerLeaderboardEntry } from '../../env.d.ts'
 
 const activeScenario = ref<TrainerScenarioKey>('flick')
 const activePeriod = ref<'week' | 'month' | 'all'>('week')
+const difficulty = ref('medium')
+const durationSeconds = ref(60)
 const entries = ref<TrainerLeaderboardEntry[]>([])
 const loading = ref(false)
 
 async function load() {
   loading.value = true
   try {
-    entries.value = await window.api.trainer.getLeaderboard(activeScenario.value, activePeriod.value)
+    entries.value = await window.api.trainer.getLeaderboard(activeScenario.value, activePeriod.value, difficulty.value, durationSeconds.value)
   } finally {
     loading.value = false
   }
 }
 
 onMounted(load)
-watch([activeScenario, activePeriod], load)
+watch([activeScenario, activePeriod, difficulty, durationSeconds], load)
 </script>
 
 <template>
@@ -30,6 +32,12 @@ watch([activeScenario, activePeriod], load)
         class="rounded-lg border border-white/[0.10] bg-black/30 px-3 py-2 text-[12px] font-semibold text-white"
       >
         <option v-for="s in TRAINER_SCENARIOS" :key="s.key" :value="s.key">{{ s.label }}</option>
+      </select>
+      <select v-model="difficulty" aria-label="Difficulty" class="rounded-lg border border-white/10 bg-black/30 px-3 py-2 text-xs text-white">
+        <option v-for="d in ['easy', 'medium', 'hard', 'pro']" :key="d" :value="d">{{ d }}</option>
+      </select>
+      <select v-model="durationSeconds" aria-label="Drill duration" class="rounded-lg border border-white/10 bg-black/30 px-3 py-2 text-xs text-white">
+        <option v-for="seconds in [30, 60, 90, 120, 180]" :key="seconds" :value="seconds">{{ seconds }}s</option>
       </select>
       <div class="flex rounded-lg border border-white/[0.10] overflow-hidden">
         <button
@@ -43,6 +51,7 @@ watch([activeScenario, activePeriod], load)
       </div>
     </div>
 
+    <p class="text-xs text-gray-500">Updated scoring only. Legacy runs remain in your history.</p>
     <div v-if="loading" class="dash-panel py-12 text-center text-[12px] text-gray-500">Loading leaderboard…</div>
 
     <div v-else-if="!entries.length" class="dash-panel py-10 text-center">

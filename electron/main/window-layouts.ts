@@ -53,11 +53,10 @@ export const VOD_REVIEW_LAYOUT: WindowLayout = {
 }
 
 export const TRAINER_RESULTS_LAYOUT: WindowLayout = {
-  width: 520,
-  height: 720,
-  minWidth: 440,
-  minHeight: 580,
-  compact: true,
+  width: 1180,
+  height: 820,
+  minWidth: 980,
+  minHeight: 660,
 }
 
 export const POST_GAME_PREVIEW_LAYOUT: WindowLayout = {

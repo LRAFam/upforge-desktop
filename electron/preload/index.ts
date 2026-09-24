@@ -314,14 +314,14 @@ const api = {
   trainer: {
     launch: (config: Record<string, unknown>) => ipcRenderer.invoke('trainer:launch', config),
     kill: () => ipcRenderer.invoke('trainer:kill'),
-    getHistory: () => ipcRenderer.invoke('trainer:get-history'),
+    getHistory: (comparison?: import('../../src/lib/training-result-metrics').TrainingComparisonRequest) => ipcRenderer.invoke('trainer:get-history', comparison),
     getPlan: () => ipcRenderer.invoke('trainer:get-plan'),
     getCoachingDrills: () => ipcRenderer.invoke('trainer:get-coaching-drills'),
     getCorrelation: () => ipcRenderer.invoke('trainer:get-correlation'),
     getBenchmark: () => ipcRenderer.invoke('trainer:get-benchmark'),
     getAiCoaching: () => ipcRenderer.invoke('trainer:get-ai-coaching'),
-    getLeaderboard: (scenario: string, period?: 'week' | 'month' | 'all') =>
-      ipcRenderer.invoke('trainer:get-leaderboard', scenario, period),
+    getLeaderboard: (scenario: string, period?: 'week' | 'month' | 'all', difficulty?: string, durationSeconds?: number) =>
+      ipcRenderer.invoke('trainer:get-leaderboard', scenario, period, difficulty, durationSeconds),
   },
       deadlock: {
         listReplays: () => ipcRenderer.invoke('deadlock:list-replays'),

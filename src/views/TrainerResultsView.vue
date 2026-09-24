@@ -1,5 +1,8 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue'
+import { priorTrainingSessions, reactionMetricScore, isTrackingScenario, trainingComparisonRequest } from '../lib/training-result-metrics'
+import upforgeLogo from '../assets/upforge-logo.webp'
+import TrainingIcon from '../components/training/TrainingIcon.vue'
 import { useRouter } from 'vue-router'
 import { useTrainerResultStore } from '../stores/trainerResult'
 import type { TrainingHistory } from '../env'
@@ -36,7 +39,7 @@ const SCENARIO_ROTATION = ['flick', 'tracking', 'microadjust', 'switching']
 
 // ── Computed ─────────────────────────────────────────────────────────────────
 const result = computed(() => store.result!)
-const isPB   = computed(() => store.isPB)
+const isPB = computed(() => !!trainingComparisonRequest(result.value) && store.isPB)
 
 const scenarioMeta = computed(() =>
   SCENARIO_META[result.value?.scenario ?? ''] ?? { label: result.value?.scenario ?? '', color: 'text-gray-400', accent: '#9ca3af' }
@@ -56,17 +59,8 @@ function scoreLabel(s: number) {
   if (s >= 78) return 'A · Strong Game'
   if (s >= 65) return 'B · Solid'
   if (s >= 50) return 'C · Room to Improve'
-  if (s >= 35) return 'D · Below Average'
+  if (s >= 35) return 'D · Developing'
   return 'E · Lots to Work On'
-}
-
-function scoreGrade(s: number) {
-  if (s >= 90) return 'S'
-  if (s >= 78) return 'A'
-  if (s >= 65) return 'B'
-  if (s >= 50) return 'C'
-  if (s >= 35) return 'D'
-  return 'E'
 }
 
 function scoreAccent(s: number) {
@@ -76,22 +70,18 @@ function scoreAccent(s: number) {
   return '#f87171'
 }
 
-// Reaction time → 0-100 score (150ms = 100, 500ms = 0)
-function reactionScore(ms: number) {
-  return Math.max(0, Math.min(100, Math.round(((500 - ms) / 350) * 100)))
-}
-
-const scoreDelta = computed<number | null>(() => {
-  const sessions = history.value?.by_scenario?.[result.value?.scenario]?.sessions
-  if (!sessions?.length) return null
-  const prev = sessions[1]?.score ?? sessions[0]?.score ?? null
-  if (prev === null) return null
-  return result.value.score - prev
-})
+const reactionScore = reactionMetricScore
+const tracking = computed(() => isTrackingScenario(result.value.scenario))
+const hasReaction = computed(() => !tracking.value && result.value.targets_hit > 0)
+const hasConsistency = computed(() => !tracking.value && result.value.targets_hit >= 2)
+const priorSessions = computed(() => priorTrainingSessions(
+  history.value?.by_scenario?.[result.value.scenario]?.sessions ?? [], result.value,
+))
+const scoreDelta = computed(() => priorSessions.value.length ? (result.value.score - priorSessions.value[0].score) * 10 : null)
 
 // Top 5 sessions for this scenario (including current, sorted by score desc)
 const leaderboard = computed(() => {
-  const sessions = history.value?.by_scenario?.[result.value?.scenario]?.sessions ?? []
+  const sessions = priorSessions.value
   const current = {
     score: result.value.score,
     completed_at: result.value.completed_at,
@@ -109,7 +99,7 @@ const leaderboard = computed(() => {
 
 // Score history for chart (chronological, last 10 sessions + current)
 const chartScores = computed<number[]>(() => {
-  const sessions = history.value?.by_scenario?.[result.value?.scenario]?.sessions ?? []
+  const sessions = priorSessions.value
   const hist = [...sessions].reverse().slice(-9).map(s => s.score)
   return [...hist, result.value.score]
 })
@@ -122,7 +112,7 @@ const chartH = H - PAD.top - PAD.bottom
 
 const gridLines = [25, 50, 75].map(v => ({
   y: PAD.top + chartH - (v / 100) * chartH,
-  label: String(v),
+  label: String(v * 10),
 }))
 
 const chartPath = computed(() => {
@@ -161,29 +151,6 @@ const chartDots = computed(() => {
   }))
 })
 
-const breakdownMetrics = computed(() => {
-  const metrics: Array<{ key: string; label: string; value: number; color: string }> = []
-  const totalTargets = result.value.targets_hit + result.value.targets_missed
-
-  if (Number.isFinite(result.value.accuracy_pct)) {
-    metrics.push({ key: 'accuracy', label: 'Accuracy', value: Math.max(0, Math.min(100, Math.round(result.value.accuracy_pct))), color: '#38bdf8' })
-  }
-  if (Number.isFinite(result.value.avg_reaction_ms)) {
-    metrics.push({ key: 'reaction', label: 'Reaction', value: reactionScore(result.value.avg_reaction_ms), color: '#a78bfa' })
-  }
-  if (Number.isFinite(result.value.consistency_score)) {
-    metrics.push({ key: 'consistency', label: 'Consistency', value: Math.max(0, Math.min(100, Math.round(result.value.consistency_score))), color: '#34d399' })
-  }
-  if (totalTargets > 0) {
-    metrics.push({ key: 'targets', label: 'Targets Hit', value: Math.max(0, Math.min(100, Math.round((result.value.targets_hit / totalTargets) * 100))), color: '#f59e0b' })
-  }
-
-  return metrics
-})
-
-const scoreRingCircumference = 2 * Math.PI * 40
-const scoreRingOffset = computed(() => scoreRingCircumference - (Math.max(0, Math.min(100, result.value.score)) / 100) * scoreRingCircumference)
-
 // ── Coaching insight ─────────────────────────────────────────────────────────
 const coachingInsight = computed(() => {
   const r = result.value
@@ -203,23 +170,27 @@ const coachingInsight = computed(() => {
     lines.push('Excellent accuracy. Consider increasing difficulty or target speed to push your ceiling further.')
   }
 
-  if (rxn > 700) {
+  if (hasReaction.value && rxn > 700) {
     lines.push('High reaction time detected. Ensure you click promptly and aren\'t over-tracking. If this is a flick drill, check your sensitivity — too low causes slow swings.')
-  } else if (rxn > 350) {
+  } else if (hasReaction.value && rxn > 350) {
     lines.push('Reaction time has room to improve. Stay mentally engaged between targets — anticipate the next appearance zone rather than waiting for it.')
-  } else if (rxn < 150 && acc < 65) {
+  } else if (hasReaction.value && rxn < 150 && acc < 65) {
     lines.push('Very fast reactions but accuracy is suffering. Dial back speed slightly to find your precision floor.')
   }
 
-  if (cons < 35) {
+  if (hasConsistency.value && cons < 35) {
     lines.push('High variance detected. Warm up for 2–3 minutes before your next session — cold muscles amplify inconsistency significantly.')
-  } else if (cons < 55) {
+  } else if (hasConsistency.value && cons < 55) {
     lines.push('Moderate consistency. Identify your strongest few shots and try to replicate that mental state across the full drill.')
   }
 
-  if (total > 0 && r.targets_hit / total > 0.9 && cons < 60) {
+  if (hasConsistency.value && total > 0 && r.targets_hit / total > 0.9 && cons < 60) {
     lines.push('High hit rate but lower consistency suggests mechanical capability without full control yet. Deliberate repetition will lock this in.')
   }
+
+  if (!hasReaction.value && !tracking.value) lines.push('No successful hits recorded. Reaction time and consistency are not available for this run.')
+  if (tracking.value) return [r.scenario === 'strafe_track' ? 'Tracking accuracy measures time on target while firing. Reaction time and click consistency do not apply to this drill.' : 'Tracking accuracy measures time with the cursor on target. Reaction time and click consistency do not apply to this drill.']
+  if (hasReaction.value && !hasConsistency.value) lines.push('At least two successful hits are needed to measure consistency.')
 
   if (!lines.length) {
     lines.push('Strong performance across all metrics. Consistency is the key to translating trainer scores into real match impact. Stay on a daily cadence.')
@@ -242,7 +213,7 @@ const recommended = computed(() => {
   if (scenario === 'flick' && rxn > 400) {
     return { scenario: 'switching', reason: 'Train rapid target acquisition to reduce reaction time' }
   }
-  if (cons < 50) {
+  if (hasConsistency.value && cons < 50) {
     return { scenario, reason: 'Repeat for consistency — variance is still high' }
   }
   const idx = SCENARIO_ROTATION.indexOf(scenario)
@@ -328,23 +299,33 @@ function formatDate(iso: string) {
   }
 }
 
+async function loadComparison() {
+  const current = result.value
+  const comparison = trainingComparisonRequest(current)
+  store.setPB(false)
+  history.value = null
+  if (!comparison) return
+  const response = await window.api.trainer.getHistory(comparison)
+  if (store.result !== current) return
+  history.value = response
+  const best = response?.by_scenario?.[current.scenario]?.best_score
+  store.setPB(response !== null && best != null && current.score > best)
+}
+
 // ── Lifecycle ────────────────────────────────────────────────────────────────
 onMounted(async () => {
   if (!store.result) return
 
-  history.value = await window.api.trainer.getHistory()
+  await loadComparison()
   drawHeatmap()
 
   // Listen for results from Play Again (since TrainingHubView is unmounted)
   removeListener = window.api.on('trainer:session-result', async (raw: unknown) => {
     const r = raw as typeof store.result
     if (!r) return
-    const prevBest = history.value?.by_scenario?.[r!.scenario]?.best_score ?? null
-    store.setResult(r!, store.launchConfig, prevBest)
+    store.setResult(r, store.launchConfig, null)
     launched.value = false
-
-    history.value = await window.api.trainer.getHistory()
-    store.setPB(r!.score > 0 && (prevBest === null || r!.score > prevBest))
+    await loadComparison()
     drawHeatmap()
   })
 })
@@ -355,64 +336,41 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div v-if="result" class="fixed inset-0 bg-[#0b1219] flex flex-col overflow-hidden select-none">
+  <div v-if="result" class="results-shell fixed inset-0 flex flex-col overflow-hidden select-none">
 
-    <!-- ── Top bar ─────────────────────────────────────────────────────────── -->
-    <div class="flex items-center gap-3 px-7 py-3 border-b border-white/[0.10] flex-shrink-0">
-      <span class="text-[#ff4655] text-xs font-black tracking-widest">UPFORGE</span>
-      <span class="text-white/20 text-xs">·</span>
-      <span :class="['text-xs font-bold uppercase tracking-widest', scenarioMeta.color]">
-        {{ scenarioMeta.label }} Training
-      </span>
-      <span class="text-white/20 text-xs">·</span>
-      <span class="text-white/40 text-xs">{{ formatDate(result.completed_at) }}</span>
-      <div class="flex-1" />
-      <span
-        v-if="isPB"
-        class="flex items-center gap-1.5 text-xs font-bold text-yellow-400 bg-yellow-400/10 border border-yellow-400/20 px-2.5 py-1 rounded-full"
-      >
-        <svg class="w-3 h-3" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
-        NEW PERSONAL BEST
-      </span>
-      <span
-        v-else-if="scoreDelta !== null && scoreDelta > 0"
-        class="flex items-center gap-1 text-xs font-semibold text-green-400 bg-green-400/10 border border-green-400/20 px-2.5 py-1 rounded-full"
-      >
-        <svg class="w-3 h-3" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24"><polyline points="18 15 12 9 6 15"/></svg>
-        +{{ scoreDelta }} vs previous
-      </span>
-      <span
-        v-else-if="scoreDelta !== null && scoreDelta < 0"
-        class="flex items-center gap-1 text-xs font-semibold text-orange-400 bg-orange-400/10 border border-orange-400/20 px-2.5 py-1 rounded-full"
-      >
-        <svg class="w-3 h-3" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
-        {{ scoreDelta }} vs previous
-      </span>
-      <button
-        class="ml-2 w-7 h-7 flex items-center justify-center text-white/30 hover:text-white/60 hover:bg-white/[0.06] rounded-lg transition-colors"
-        @click="backToHub"
-      >
-        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-      </button>
-    </div>
+    <header class="results-header">
+      <div class="results-brand-row">
+        <img :src="upforgeLogo" alt="UpForge" class="h-9 w-auto" />
+        <span class="text-xs text-white/50">Training results</span>
+        <button type="button" aria-label="Back to training" class="results-close" @click="backToHub">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" class="h-5 w-5" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18" /></svg>
+        </button>
+      </div>
+      <div class="results-title-row">
+        <div class="flex min-w-0 items-center gap-3">
+          <div class="results-scenario-icon"><TrainingIcon :name="result.scenario" class="h-6 w-6" /></div>
+          <div class="min-w-0">
+            <h1 class="text-xl font-semibold tracking-tight text-white">{{ scenarioMeta.label }}</h1>
+            <p class="mt-1 text-xs text-white/50">Session complete · {{ formatDate(result.completed_at) }}<span v-if="store.launchConfig" class="capitalize"> · {{ store.launchConfig.difficulty }} · {{ store.launchConfig.duration_seconds }}s</span></p>
+          </div>
+        </div>
+        <span v-if="isPB" class="flex items-center gap-2 text-sm font-semibold text-amber-300"><TrainingIcon name="leaderboards" class="h-5 w-5" />New personal best</span>
+      </div>
+    </header>
 
-    <!-- ── Three-column layout ────────────────────────────────────────────── -->
-    <div class="flex-1 grid grid-cols-[260px_1fr_260px] gap-0 min-h-0 overflow-hidden">
+    <!-- ── Responsive results layout ────────────────────────────────────────────── -->
+    <div class="results-body flex-1 min-h-0 overflow-y-auto" tabindex="0" role="region" aria-label="Training results">
 
       <!-- ═══ LEFT PANEL ═══════════════════════════════════════════════════ -->
-      <div class="flex flex-col gap-4 p-5 border-r border-white/[0.09] overflow-y-auto scrollbar-none">
+      <div class="results-panel results-summary flex flex-col gap-4 p-5">
 
         <!-- Score -->
-        <div class="flex flex-col items-center pt-3 pb-1">
-          <!-- Grade letter badge -->
-          <div :class="['w-14 h-14 rounded-2xl flex items-center justify-center mb-3 border', scoreColor(result.score), result.score >= 90 ? 'bg-violet-500/10 border-violet-500/20' : result.score >= 78 ? 'bg-green-500/10 border-green-500/20' : result.score >= 65 ? 'bg-teal-500/10 border-teal-500/20' : result.score >= 50 ? 'bg-yellow-500/10 border-yellow-500/20' : result.score >= 35 ? 'bg-orange-500/10 border-orange-500/20' : 'bg-red-500/10 border-red-500/20']">
-            <span :class="['text-3xl font-black', scoreColor(result.score)]">{{ scoreGrade(result.score) }}</span>
-          </div>
-          <span class="text-[10px] font-bold uppercase tracking-widest text-white/30 mb-1">Score</span>
-          <span :class="['text-[72px] font-black leading-none tabular-nums', scoreColor(result.score)]">
+        <div class="results-score">
+          <span class="text-[10px] font-bold uppercase tracking-widest text-white/50 mb-1">Score</span>
+          <span :class="['text-[64px] font-bold leading-none tabular-nums', scoreColor(result.score)]">
             {{ result.score * 10 }}
           </span>
-          <span class="text-[11px] text-white/20 mt-1 font-medium">/ 1000 · {{ scoreLabel(result.score) }}</span>
+          <span class="text-[11px] text-white/50 mt-1 font-medium">/ 1000 <span class="mx-2 text-white/20">|</span> {{ scoreLabel(result.score) }}</span>
 
           <div v-if="scoreDelta !== null" class="mt-2 flex items-center gap-1">
             <svg v-if="scoreDelta > 0" class="w-3 h-3 text-green-400" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24"><polyline points="18 15 12 9 6 15"/></svg>
@@ -420,73 +378,33 @@ onUnmounted(() => {
             <span :class="['text-sm font-bold', scoreDelta > 0 ? 'text-green-400' : scoreDelta < 0 ? 'text-red-400' : 'text-gray-500']">
               {{ scoreDelta > 0 ? '+' : '' }}{{ scoreDelta }}
             </span>
-            <span class="text-xs text-white/30">vs previous</span>
+            <span class="text-xs text-white/50">vs previous</span>
           </div>
           <div v-else-if="history?.by_scenario?.[result.scenario]?.sessions?.length === 0" class="mt-2">
-            <span class="text-xs text-white/30 italic">First session — no comparison yet</span>
-          </div>
-        </div>
-
-        <div class="rounded-2xl border border-white/[0.10] bg-white/[0.03] p-3">
-          <div class="mb-3 flex items-center justify-between">
-            <div>
-              <div class="text-[9px] font-bold uppercase tracking-widest text-white/25">Score Breakdown</div>
-              <div class="mt-1 text-[10px] text-white/30">Mechanical drivers behind this run</div>
-            </div>
-            <div class="rounded-full border border-white/[0.08] bg-white/[0.04] px-2 py-1 text-[10px] font-semibold text-white/40">{{ breakdownMetrics.length > 1 ? 'Metrics' : 'Score' }}</div>
-          </div>
-
-          <svg v-if="breakdownMetrics.length > 1" viewBox="0 0 220 128" class="h-32 w-full">
-            <g v-for="(metric, index) in breakdownMetrics" :key="metric.key" :transform="`translate(0 ${index * 30})`">
-              <text x="0" y="12" fill="rgba(255,255,255,0.46)" font-size="9" font-weight="700" letter-spacing="0.08em">{{ metric.label.toUpperCase() }}</text>
-              <rect x="0" y="18" width="220" height="8" rx="4" fill="rgba(255,255,255,0.08)" />
-              <rect x="0" y="18" :width="metric.value * 2.2" height="8" rx="4" :fill="metric.color" />
-              <text x="220" y="12" text-anchor="end" :fill="metric.color" font-size="10" font-weight="700">{{ metric.value }}%</text>
-            </g>
-          </svg>
-
-          <div v-else class="relative flex items-center justify-center py-2">
-            <svg viewBox="0 0 100 100" class="h-28 w-28 -rotate-90">
-              <circle cx="50" cy="50" r="40" fill="none" stroke="rgba(255,255,255,0.08)" stroke-width="10" />
-              <circle
-                cx="50"
-                cy="50"
-                r="40"
-                fill="none"
-                :stroke="scoreAccent(result.score)"
-                stroke-width="10"
-                stroke-linecap="round"
-                :stroke-dasharray="scoreRingCircumference"
-                :stroke-dashoffset="scoreRingOffset"
-              />
-            </svg>
-            <div class="absolute text-center">
-              <div class="text-[10px] font-bold uppercase tracking-widest text-white/25">Score</div>
-              <div :class="['mt-1 text-2xl font-black', scoreColor(result.score)]">{{ result.score }}%</div>
-            </div>
+            <span class="text-xs text-white/50 italic">First session — no comparison yet</span>
           </div>
         </div>
 
         <!-- Quick stats -->
         <div class="bg-white/[0.03] border border-white/[0.10] rounded-lg p-3 grid grid-cols-2 gap-x-3 gap-y-2">
           <div>
-            <div class="text-[9px] font-bold uppercase tracking-widest text-white/25 mb-0.5">Duration</div>
+            <div class="text-[9px] font-bold uppercase tracking-widest text-white/50 mb-0.5">Duration</div>
             <div class="text-sm font-semibold text-white/80">{{ result.duration_seconds }}s</div>
           </div>
           <div>
-            <div class="text-[9px] font-bold uppercase tracking-widest text-white/25 mb-0.5">Targets</div>
+            <div class="text-[9px] font-bold uppercase tracking-widest text-white/50 mb-0.5">{{ tracking ? 'Tracking samples' : 'Targets' }}</div>
             <div class="text-sm font-semibold text-white/80">{{ result.targets_hit }}/{{ result.targets_hit + result.targets_missed }}</div>
           </div>
           <div>
-            <div class="text-[9px] font-bold uppercase tracking-widest text-white/25 mb-0.5">Hits/min</div>
+            <div class="text-[9px] font-bold uppercase tracking-widest text-white/50 mb-0.5">{{ tracking ? 'On-target time' : 'Hits/min' }}</div>
             <div class="text-sm font-semibold text-white/80">
-              {{ result.duration_seconds > 0 ? Math.round((result.targets_hit / result.duration_seconds) * 60) : 0 }}
+              {{ tracking ? (typeof result.metadata?.on_target_seconds === 'number' ? `${result.metadata.on_target_seconds.toFixed(1)}s` : 'Not recorded') : (result.duration_seconds > 0 ? Math.round((result.targets_hit / result.duration_seconds) * 60) : 0) }}
             </div>
           </div>
           <div>
-            <div class="text-[9px] font-bold uppercase tracking-widest text-white/25 mb-0.5">Miss rate</div>
+            <div class="text-[9px] font-bold uppercase tracking-widest text-white/50 mb-0.5">{{ tracking ? 'Off-target time' : 'Miss rate' }}</div>
             <div class="text-sm font-semibold text-white/80">
-              {{ result.targets_hit + result.targets_missed > 0
+              {{ tracking ? (100 - result.accuracy_pct).toFixed(1) : result.targets_hit + result.targets_missed > 0
                   ? Math.round((result.targets_missed / (result.targets_hit + result.targets_missed)) * 100)
                   : 0 }}%
             </div>
@@ -495,10 +413,10 @@ onUnmounted(() => {
 
         <!-- Leaderboard -->
         <div>
-          <div class="text-[9px] font-bold uppercase tracking-widest text-white/25 mb-2 px-0.5">This Scenario — Top Sessions</div>
+          <div class="text-[9px] font-bold uppercase tracking-widest text-white/50 mb-2 px-0.5">This Scenario — Top Sessions</div>
           <div
             v-if="leaderboard.length === 0"
-            class="text-xs text-white/25 italic px-0.5"
+            class="text-xs text-white/50 italic px-0.5"
           >
             No sessions on record yet.
           </div>
@@ -512,7 +430,7 @@ onUnmounted(() => {
                 : 'bg-white/[0.02] border border-transparent',
             ]"
           >
-            <span :class="['text-[10px] font-bold w-5 text-center', entry.rank === 1 ? 'text-yellow-400' : entry.rank === 2 ? 'text-gray-400' : entry.rank === 3 ? 'text-amber-600' : 'text-white/25']">
+            <span :class="['text-[10px] font-bold w-5 text-center', entry.rank === 1 ? 'text-yellow-400' : entry.rank === 2 ? 'text-gray-400' : entry.rank === 3 ? 'text-amber-600' : 'text-white/50']">
               <template v-if="entry.rank <= 3">
                 <svg class="w-3 h-3 inline" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
               </template>
@@ -521,7 +439,7 @@ onUnmounted(() => {
             <span :class="['text-sm font-bold tabular-nums', scoreColor(entry.score)]">
               {{ entry.score * 10 }}
             </span>
-            <span class="flex-1 text-[10px] text-white/30">
+            <span class="flex-1 text-[10px] text-white/50">
               {{ entry.isCurrent ? 'this run' : formatDate(entry.completed_at) }}
             </span>
           </div>
@@ -530,13 +448,16 @@ onUnmounted(() => {
       </div>
 
       <!-- ═══ CENTER PANEL ══════════════════════════════════════════════════ -->
-      <div class="flex flex-col gap-5 p-5 overflow-y-auto scrollbar-none border-r border-white/[0.09]">
+      <div class="results-panel flex flex-col gap-5 p-5">
 
+        <p class="text-[11px] text-white/50">
+          {{ trainingComparisonRequest(result) ? `${result.metadata?.difficulty} · ${result.duration_seconds}s · Updated scoring. Comparisons use matching settings.` : 'Legacy or incomplete settings. This score is saved separately from current comparisons.' }}
+        </p>
         <!-- Score trend chart -->
         <div>
-          <div class="text-[9px] font-bold uppercase tracking-widest text-white/25 mb-3">Score Trend</div>
+          <div class="text-[9px] font-bold uppercase tracking-widest text-white/50 mb-3">Score Trend</div>
           <div v-if="chartScores.length < 2" class="h-[100px] flex items-center justify-center">
-            <span class="text-xs text-white/25 italic">Need more sessions to show a trend</span>
+            <span class="text-xs text-white/50 italic">Complete another run with the same difficulty and duration to show a trend</span>
           </div>
           <svg v-else :viewBox="`0 0 ${W} ${H}`" class="w-full h-[100px]">
             <defs>
@@ -583,12 +504,12 @@ onUnmounted(() => {
 
         <!-- Stat breakdown -->
         <div>
-          <div class="text-[9px] font-bold uppercase tracking-widest text-white/25 mb-3">Performance Breakdown</div>
+          <div class="text-[9px] font-bold uppercase tracking-widest text-white/50 mb-3">Performance Breakdown</div>
           <div class="flex flex-col gap-3">
             <!-- Accuracy -->
             <div>
               <div class="flex items-center justify-between mb-1">
-                <span class="text-xs font-medium text-white/60">Accuracy</span>
+                <span class="text-xs font-medium text-white/60">{{ tracking ? 'Time on target' : 'Accuracy' }}</span>
                 <span :class="['text-xs font-bold tabular-nums', scoreColor(result.accuracy_pct)]">
                   {{ result.accuracy_pct.toFixed(1) }}%
                 </span>
@@ -603,20 +524,20 @@ onUnmounted(() => {
             <!-- Reaction -->
             <div>
               <div class="flex items-center justify-between mb-1">
-                <span class="text-xs font-medium text-white/60">Reaction Time</span>
+                <span class="text-xs font-medium text-white/60" title="Average time to a successful hit. The bar uses a fixed 150–400ms reference, not a player percentile.">Time to hit</span>
                 <span :class="['text-xs font-bold tabular-nums', scoreColor(reactionScore(result.avg_reaction_ms))]">
-                  {{ result.avg_reaction_ms }}ms
+                  {{ hasReaction ? `${result.avg_reaction_ms}ms` : 'Not measured' }}
                 </span>
               </div>
               <div class="h-1.5 bg-white/[0.06] rounded-full overflow-hidden">
                 <div
                   class="h-full rounded-full transition-all duration-700"
-                  :style="{ width: `${reactionScore(result.avg_reaction_ms)}%`, backgroundColor: scoreAccent(reactionScore(result.avg_reaction_ms)) }"
+                  :style="{ width: `${hasReaction ? reactionScore(result.avg_reaction_ms) : 0}%`, backgroundColor: scoreAccent(reactionScore(result.avg_reaction_ms)) }"
                 />
               </div>
               <div class="flex justify-between mt-0.5">
-                <span class="text-[9px] text-white/20">slow</span>
-                <span class="text-[9px] text-white/20">fast (≤150ms)</span>
+                <span class="text-[9px] text-white/50">slow</span>
+                <span class="text-[9px] text-white/50">fast (≤150ms)</span>
               </div>
             </div>
             <!-- Consistency -->
@@ -624,13 +545,13 @@ onUnmounted(() => {
               <div class="flex items-center justify-between mb-1">
                 <span class="text-xs font-medium text-white/60">Consistency</span>
                 <span :class="['text-xs font-bold tabular-nums', scoreColor(result.consistency_score)]">
-                  {{ result.consistency_score }}
+                  {{ hasConsistency ? result.consistency_score : 'Not measured' }}
                 </span>
               </div>
               <div class="h-1.5 bg-white/[0.06] rounded-full overflow-hidden">
                 <div
                   class="h-full rounded-full transition-all duration-700"
-                  :style="{ width: `${result.consistency_score}%`, backgroundColor: scoreAccent(result.consistency_score) }"
+                  :style="{ width: `${hasConsistency ? result.consistency_score : 0}%`, backgroundColor: scoreAccent(result.consistency_score) }"
                 />
               </div>
             </div>
@@ -639,7 +560,7 @@ onUnmounted(() => {
 
         <!-- Heatmap -->
         <div v-if="result.heatmap?.length">
-          <div class="text-[9px] font-bold uppercase tracking-widest text-white/25 mb-3">Shot Heatmap</div>
+          <div class="text-[9px] font-bold uppercase tracking-widest text-white/50 mb-3">Shot Heatmap</div>
           <div class="relative bg-white/[0.03] border border-white/[0.10] rounded-lg overflow-hidden" style="aspect-ratio: 16/9;">
             <canvas ref="heatmapCanvas" class="absolute inset-0 w-full h-full" width="640" height="360" />
             <div class="absolute bottom-2 right-2 flex items-center gap-3">
@@ -656,7 +577,7 @@ onUnmounted(() => {
       </div>
 
       <!-- ═══ RIGHT PANEL ══════════════════════════════════════════════════ -->
-      <div class="flex flex-col gap-4 p-5 overflow-y-auto scrollbar-none">
+      <div class="results-panel flex flex-col gap-4 p-5">
 
         <!-- AI Coaching insight -->
         <div>
@@ -664,13 +585,13 @@ onUnmounted(() => {
             <svg class="w-3 h-3 text-[#ff4655]" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
               <path stroke-linecap="round" stroke-linejoin="round" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.347.5A3.992 3.992 0 0112 18a3.992 3.992 0 01-2.79-1.115l-.347-.499z" />
             </svg>
-            <span class="text-[9px] font-bold uppercase tracking-widest text-white/40">AI Coaching</span>
+            <span class="text-[9px] font-bold uppercase tracking-widest text-white/40">Session feedback</span>
           </div>
-          <div class="space-y-3">
+          <div class="space-y-4">
             <p
               v-for="(line, i) in coachingInsight"
               :key="i"
-              class="text-xs leading-relaxed text-white/60"
+              class="text-sm leading-relaxed text-white/70"
             >
               {{ line }}
             </p>
@@ -682,16 +603,16 @@ onUnmounted(() => {
 
         <!-- Recommended next -->
         <div>
-          <div class="text-[9px] font-bold uppercase tracking-widest text-white/25 mb-3">Recommended Next</div>
-          <div :class="['rounded-lg border p-3.5', recommendedMeta.color === 'text-red-400' ? 'bg-red-500/[0.06] border-red-500/20' : recommendedMeta.color === 'text-sky-400' ? 'bg-sky-500/[0.06] border-sky-500/20' : recommendedMeta.color === 'text-amber-400' ? 'bg-amber-500/[0.06] border-amber-500/20' : recommendedMeta.color === 'text-violet-400' ? 'bg-violet-500/[0.06] border-violet-500/20' : 'bg-emerald-500/[0.06] border-emerald-500/20']">
-            <div :class="['text-sm font-bold mb-1', recommendedMeta.color]">{{ recommendedMeta.label }}</div>
+          <div class="text-[9px] font-bold uppercase tracking-widest text-white/50 mb-3">Your next drill</div>
+          <div class="results-next-drill">
+            <div class="text-base font-semibold text-white mb-1">{{ recommendedMeta.label }}</div>
             <div class="text-[10px] text-white/40 leading-relaxed mb-3">{{ recommended.reason }}</div>
             <button
               class="w-full text-xs font-semibold text-white/70 bg-white/[0.06] hover:bg-white/[0.1] border border-white/10 hover:border-white/20 rounded-md py-1.5 transition-colors"
               :disabled="launching"
               @click="tryRecommended"
             >
-              {{ launching ? 'Launching…' : '▶ Try it' }}
+              {{ launching ? 'Launching…' : 'Start drill' }}
             </button>
           </div>
         </div>
@@ -707,8 +628,8 @@ onUnmounted(() => {
 
         <!-- Tip -->
         <div class="mt-auto pt-2 border-t border-white/[0.07]">
-          <div class="text-[9px] font-bold uppercase tracking-widest text-white/20 mb-1.5">Tip</div>
-          <p class="text-[10px] leading-relaxed text-white/30 italic">
+          <div class="text-[9px] font-bold uppercase tracking-widest text-white/50 mb-1.5">Tip</div>
+          <p class="text-[10px] leading-relaxed text-white/50 italic">
             {{
               result.scenario === 'flick' ? 'Keep your arm loose — flicks are shoulder, not wrist.' :
               result.scenario === 'tracking' ? 'Match the target speed — don\'t overshoot then correct.' :
@@ -723,15 +644,15 @@ onUnmounted(() => {
     </div>
 
     <!-- ── Footer ──────────────────────────────────────────────────────────── -->
-    <div class="flex items-center justify-end gap-3 px-7 py-3 border-t border-white/[0.10] flex-shrink-0">
-      <span v-if="store.launchConfig" class="text-[10px] text-white/25 capitalize mr-auto">
+    <div class="results-footer flex flex-wrap items-center justify-end gap-3 px-5 py-3 border-t border-white/[0.10] flex-shrink-0">
+      <span v-if="store.launchConfig" class="text-[10px] text-white/50 capitalize mr-auto">
         {{ store.launchConfig.difficulty }} · {{ store.launchConfig.duration_seconds }}s
       </span>
       <button
         class="px-4 py-2 rounded-lg text-xs font-medium text-white/50 bg-white/[0.04] hover:bg-white/[0.08] border border-white/[0.08] hover:border-white/[0.14] transition-colors"
         @click="backToHub"
       >
-        ← Back to Training
+        Back to training
       </button>
       <button
         v-if="store.launchConfig"
@@ -740,9 +661,45 @@ onUnmounted(() => {
         @click="playAgain"
       >
         <span v-if="launching">Launching…</span>
-        <span v-else>▶ Play Again</span>
+        <span v-else>Play again</span>
       </button>
     </div>
 
   </div>
 </template>
+
+<style scoped>
+.results-shell { background: #101113; color: #e5e7eb; }
+.results-header { flex-shrink: 0; padding: 30px 24px 20px; border-bottom: 1px solid #ffffff14; border-top: 3px solid #ff4655; }
+.results-brand-row { display: flex; align-items: center; gap: 20px; }
+.results-close { margin-left: auto; padding: 8px; color: #9ca3af; border-radius: 6px; }
+.results-close:hover { background: #ffffff0a; color: white; }
+.results-title-row { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 16px; margin-top: 22px; }
+.results-scenario-icon { padding: 12px; border: 1px solid #ff465533; background: #ff46550a; color: #ff4655; border-radius: 8px; }
+.results-summary { background: #ffffff02; }
+.results-score { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; padding: 8px 0 20px; }
+.results-next-drill { background: #ffffff03; border: 1px solid #ffffff14; border-left: 3px solid #ff4655; padding: 16px; border-radius: 6px; }
+.results-footer { background: #141518; }
+.results-shell :deep(button:focus-visible) { outline: 2px solid #ff4655; outline-offset: 3px; }
+
+.results-body {
+  display: grid;
+  grid-template-columns: minmax(220px, 0.8fr) minmax(260px, 1fr) minmax(280px, 1.15fr);
+  align-content: start;
+  scrollbar-gutter: stable;
+}
+.results-panel {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.results-panel + .results-panel {
+  border-left: 1px solid rgb(255 255 255 / 9%);
+}
+@media (max-width: 900px) {
+  .results-body { grid-template-columns: minmax(0, 1fr); }
+  .results-panel + .results-panel {
+    border-left: 0;
+    border-top: 1px solid rgb(255 255 255 / 9%);
+  }
+}
+</style>

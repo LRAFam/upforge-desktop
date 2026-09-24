@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { priorTrainingSessions, comparableTrainingRuns, trainingComparisonRequest } from '../lib/training-result-metrics'
 import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
 import type { TrainingHistory, CoachingDrill, TrainingBenchmark, SharedTrainingPlan } from '../env'
@@ -21,7 +22,8 @@ import {
   type SessionSummary,
 } from '../lib/structured-session'
 import { TRAINER_SCENARIOS } from '../lib/trainer-scenarios'
-import { scenarioIconUrl, TRAINING_TAB_ICONS, TRAINING_CATEGORY_ICONS, TRAINING_ARTWORK } from '../lib/training-icons'
+import { scenarioIconUrl, TRAINING_CATEGORY_ICONS, TRAINING_ARTWORK } from '../lib/training-icons'
+import TrainingIcon from '../components/training/TrainingIcon.vue'
 import TrainingGuidedSessionHero from '../components/training/TrainingGuidedSessionHero.vue'
 import TrainingVodStrip, { type VodDrill } from '../components/training/TrainingVodStrip.vue'
 import TrainingScenarioCard from '../components/training/TrainingScenarioCard.vue'
@@ -42,6 +44,7 @@ interface SessionResult {
   consistency_score: number
   targets_hit: number
   targets_missed: number
+  metadata?: Record<string, unknown>
   heatmap?: Array<{ x: number; y: number; hit: boolean }>
   completed_at: string
 }
@@ -402,7 +405,7 @@ function scoreBarColor(score: number): string {
 function scoreLabel(score: number): string {
   if (score >= 90) return 'Excellent'
   if (score >= 75) return 'Good'
-  if (score >= 55) return 'Average'
+  if (score >= 55) return 'Developing'
   if (score >= 35) return 'Needs Work'
   return 'Critical'
 }
@@ -455,18 +458,9 @@ const radarData = computed(() => {
 })
 
 // ── Comparison vs last API session ───────────────────────────────────────────
-function lastApiScore(scenario: string): number | null {
-  const byScenario = apiHistory.value?.by_scenario?.[scenario]
-  const sessions = byScenario?.sessions
-  if (!sessions?.length) return null
-  // first entry is most recent; we want the one before the live session if available
-  return sessions[1]?.score ?? sessions[0]?.score ?? null
-}
-
 function scoreDelta(result: SessionResult): number | null {
-  const prev = lastApiScore(result.scenario)
-  if (prev === null) return null
-  return result.score - prev
+  const previous = priorTrainingSessions(apiHistory.value?.by_scenario?.[result.scenario]?.sessions ?? [], result)[0]
+  return previous ? result.score - previous.score : null
 }
 
 function scenarioBestScore(scenario: string): number | null {
@@ -682,12 +676,10 @@ onMounted(async () => {
         finishStructuredSession()
       }
     } else {
-      const prevBest = apiHistory.value?.by_scenario[r.scenario]?.best_score ?? null
-      trainerResultStore.setResult(r, currentLaunchConfig, prevBest)
+      trainerResultStore.setResult(r, currentLaunchConfig, null)
       router.push('/trainer-results')
     }
     window.api.trainer.getHistory().then(async h => {
-      const prevBest = apiHistory.value?.by_scenario[r.scenario]?.best_score ?? null
       apiHistory.value = h
       const newAchs = await achievements.check({
         totalDrills: h?.total ?? 0,
@@ -697,7 +689,6 @@ onMounted(async () => {
         lastReactionMs: r.avg_reaction_ms,
       })
       if (newAchs.length) window.__ufAchievementUnlocked?.(newAchs)
-      trainerResultStore.setPB(r.score > 0 && (prevBest === null || r.score > prevBest))
     })
   })
 
@@ -810,7 +801,9 @@ async function launchCoachingDrill(drill: CoachingDrill) {
 
 const averageScore = computed(() => {
   if (!sessionHistory.value.length) return null
-  return Math.round(sessionHistory.value.reduce((a, b) => a + b.score, 0) / sessionHistory.value.length)
+  const current = sessionHistory.value[0]
+  const matching = sessionHistory.value.filter(s => comparableTrainingRuns(s, current))
+  return matching.length ? Math.round(matching.reduce((a, b) => a + b.score, 0) / matching.length) : null
 })
 
 const hasAnyPersonalBest = computed(() =>
@@ -1154,8 +1147,10 @@ const trainingStats = computed(() => {
   const weekAgo = new Date(now.getTime() - 7 * msPerDay)
   const twoWeeksAgo = new Date(now.getTime() - 14 * msPerDay)
 
-  const thisWeek = sessions.filter(s => new Date(s.completed_at) >= weekAgo)
-  const prevWeek = sessions.filter(s => {
+  const comparisonRun = sessions.find(s => trainingComparisonRequest(s))
+  const comparable = comparisonRun ? sessions.filter(s => comparableTrainingRuns(s, comparisonRun)) : []
+  const thisWeek = comparable.filter(s => new Date(s.completed_at) >= weekAgo)
+  const prevWeek = comparable.filter(s => {
     const d = new Date(s.completed_at)
     return d >= twoWeeksAgo && d < weekAgo
   })
@@ -1180,12 +1175,13 @@ const trainingStats = computed(() => {
   }
 
   return {
-    thisWeekCount: thisWeek.length,
+    thisWeekCount: sessions.filter(s => new Date(s.completed_at) >= weekAgo).length,
+    comparisonLabel: comparisonRun ? `${SCENARIO_META[comparisonRun.scenario as ScenarioKey]?.label ?? comparisonRun.scenario} · ${comparisonRun.metadata?.difficulty} · ${comparisonRun.duration_seconds}s` : 'No matching runs',
     thisWeekBest: thisWeek.length ? Math.max(...thisWeek.map(s => s.score)) : null,
     thisWeekSessions: thisWeek,
     improvement,
     streak,
-    totalSessions: sessions.length,
+    totalSessions: apiHistory.value?.total ?? 0,
     thisWeekAvg,
   }
 })
@@ -1611,7 +1607,6 @@ const CATEGORY_ICON: Record<string, string> = {
         <p class="text-xs font-semibold uppercase tracking-[0.16em] text-red-400">Training hub</p>
         <h1 class="mt-1 text-2xl font-bold tracking-tight text-white">{{ activeTab === 'train' ? 'Drills' : activeTab === 'analytics' ? 'Analytics' : activeTab === 'leaderboards' ? 'Leaderboards' : 'Loadouts' }}</h1>
         <p class="mt-1 text-sm text-gray-400">Build a routine. Work on your next improvement.</p>
-        <RouterLink to="/training/calibration" class="inline-block mt-2 text-xs text-red-300 hover:text-red-200">Valorant calibration prototype →</RouterLink>
       </div>
       <div class="flex items-center gap-5 text-sm">
         <div v-if="trainingStats.streak > 0" class="text-right">
@@ -1626,17 +1621,17 @@ const CATEGORY_ICON: Record<string, string> = {
     </header>
 
     <!-- Tab nav -->
-    <div class="flex overflow-x-auto px-6 pt-3 gap-6 flex-shrink-0 border-b border-white/[0.08]">
+    <div class="flex flex-wrap px-6 pt-3 gap-x-6 gap-y-2 flex-shrink-0 border-b border-white/[0.08]">
       <button
         v-for="tab in (['train', 'analytics', 'leaderboards', 'loadouts'] as const)"
         :key="tab"
         :aria-pressed="activeTab === tab"
         type="button"
-        class="relative pb-3 text-[12px] font-black uppercase tracking-[0.08em] transition-colors flex items-center gap-2"
+        class="relative pb-3 text-sm font-semibold transition-colors flex items-center gap-2"
         :class="activeTab === tab ? 'text-white' : 'text-gray-400 hover:text-white'"
         @click="activeTab = tab"
       >
-        <img :src="TRAINING_TAB_ICONS[tab]" alt="" aria-hidden="true" class="w-4 h-4 opacity-80" />
+        <TrainingIcon :name="tab" class="h-5 w-5" />
         {{ tab === 'train' ? 'Train' : tab === 'analytics' ? 'Analytics' : tab === 'leaderboards' ? 'Leaderboards' : 'Loadouts' }}
         <span
           v-if="activeTab === tab"
@@ -1665,7 +1660,7 @@ const CATEGORY_ICON: Record<string, string> = {
         >
           {{ trainingStats.improvement === null ? '—' : (trainingStats.improvement > 0 ? '+' : '') + trainingStats.improvement }}
         </span>
-        <span class="text-[8px] text-gray-600 uppercase tracking-wide">vs last week</span>
+        <span :title="trainingStats.comparisonLabel" class="text-[8px] text-gray-600 uppercase tracking-wide">Matched runs vs last week</span>
       </div>
       <div class="w-px bg-white/[0.05]" />
       <div class="flex-1 flex flex-col items-center py-2.5 gap-0.5">
@@ -1689,7 +1684,7 @@ const CATEGORY_ICON: Record<string, string> = {
             @start="startStructuredSession"
           />
 
-          <div class="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_240px] gap-6 items-start">
+          <div class="grid grid-cols-1 2xl:grid-cols-[minmax(0,1fr)_240px] gap-6 items-start">
 
 
             <div class="space-y-5 min-w-0">
@@ -1714,17 +1709,17 @@ const CATEGORY_ICON: Record<string, string> = {
                     :key="category.id"
                     :aria-pressed="activeDrillCategory === category.id"
                     type="button"
-                    class="rounded-md border px-3 py-2 text-xs font-semibold transition-all inline-flex items-center gap-1.5"
+                    class="rounded-lg border px-4 py-2.5 text-sm font-medium transition-colors inline-flex items-center gap-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-red-400"
                     :class="categoryFilterClass(category.id)"
                     @click="activeDrillCategory = category.id"
                   >
-                    <img v-if="category.iconSrc" :src="category.iconSrc" alt="" aria-hidden="true" class="w-3.5 h-3.5" />
+                    <TrainingIcon :name="category.id" class="h-5 w-5" />
                     {{ category.label }}
                   </button>
                 </div>
               </div>
 
-              <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div class="grid grid-cols-[repeat(auto-fit,minmax(min(100%,260px),1fr))] gap-4">
                 <TrainingScenarioCard
                   v-for="card in scenarioCards"
                   :key="card.scenario"
@@ -1751,7 +1746,7 @@ const CATEGORY_ICON: Record<string, string> = {
                 />
               </div>
             </div>
-            <aside class="flex flex-col gap-4">
+            <aside class="grid grid-cols-1 sm:grid-cols-2 2xl:grid-cols-1 gap-4">
               <button
                 type="button"
                 class="rounded-xl border border-white/[0.09] bg-white/[0.02] px-3 py-2.5 text-left hover:bg-white/[0.04] transition-colors"
@@ -2040,7 +2035,7 @@ const CATEGORY_ICON: Record<string, string> = {
                         <span class="text-[8px] tabular-nums text-gray-500 w-5 shrink-0">{{ benchmarkData![scenario].global_avg ?? '—' }}</span>
                       </div>
                     </div>
-                    <p class="text-[8px] text-gray-700 mt-1">{{ benchmarkData![scenario].peers }} players compared</p>
+                    <p class="text-[8px] text-gray-700 mt-1">{{ benchmarkData![scenario].peers }} players · {{ benchmarkData![scenario].comparison?.difficulty }} · {{ benchmarkData![scenario].comparison?.duration_seconds }}s</p>
                   </div>
                 </div>
               </div>

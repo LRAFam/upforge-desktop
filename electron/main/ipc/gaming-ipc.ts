@@ -42,7 +42,7 @@ function buildTrainingSessionPayload(result: import('../trainer-bridge').Session
   if (min_reaction_ms != null) metadata.min_reaction_ms = min_reaction_ms
   if (max_reaction_ms != null) metadata.max_reaction_ms = max_reaction_ms
   if (targets_per_minute != null) metadata.targets_per_minute = targets_per_minute
-  if (lastTrainerLaunch?.difficulty) metadata.difficulty = lastTrainerLaunch.difficulty
+  if (metadata.scoring_version == null && lastTrainerLaunch?.difficulty) metadata.difficulty = lastTrainerLaunch.difficulty // Legacy trainer compatibility only; these runs are excluded from current comparisons.
   if (lastTrainerLaunch?.user_drill_id) metadata.user_drill_id = lastTrainerLaunch.user_drill_id
 
   return {
@@ -202,11 +202,11 @@ export function setupGamingHandlers(
     return { ok: true }
   })
 
-  ipcMain.handle('trainer:get-history', async () => {
+  ipcMain.handle('trainer:get-history', async (_event, comparison?: import('../../../src/lib/training-result-metrics').TrainingComparisonRequest) => {
     const token = auth.getToken()
     if (!token) return null
     try {
-      const res = await auth.getApi().get('/api/training/sessions?limit=50')
+      const res = await auth.getApi().get('/api/training/sessions', { params: { limit: 50, ...(comparison ? { scenario: comparison.scenario, difficulty: comparison.difficulty, duration_seconds: comparison.duration_seconds, scoring_version: comparison.scoring_version, before: comparison.before } : {}) } })
       return res.data ?? null
     } catch (err: any) {
       log.warn('[Trainer] Failed to fetch training history:', err?.message)
@@ -277,12 +277,12 @@ export function setupGamingHandlers(
     }
   })
 
-  ipcMain.handle('trainer:get-leaderboard', async (_e, scenario: string, period = 'week') => {
+  ipcMain.handle('trainer:get-leaderboard', async (_e, scenario: string, period = 'week', difficulty = 'medium', durationSeconds = 60) => {
     const token = auth.getToken()
     if (!token) return []
     try {
       const res = await auth.getApi().get('/api/leaderboard/trainer', {
-        params: { scenario, period, limit: 50 },
+        params: { scenario, period, difficulty, duration_seconds: durationSeconds, limit: 50 },
       })
       return Array.isArray(res.data?.leaderboard) ? res.data.leaderboard : []
     } catch (err: any) {

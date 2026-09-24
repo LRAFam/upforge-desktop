@@ -5,10 +5,13 @@ declare global {
 }
 
 export interface TrainingScenarioStats {
+  comparison?: { difficulty: string; duration_seconds: number; scoring_version: number } | null
   best_score: number | null
   trend: number | null
   sessions: Array<{
     id: number
+    duration_seconds: number
+    metadata?: Record<string, unknown>
     scenario: string
     score: number
     accuracy_pct: number
@@ -22,6 +25,7 @@ export interface TrainingScenarioStats {
 
 export interface TrainingBenchmark {
   [scenario: string]: {
+    comparison?: { difficulty: string; duration_seconds: number; scoring_version: number } | null
     user_best: number | null
     user_avg: number | null
     global_avg: number | null
@@ -60,6 +64,8 @@ export interface TrainingHistory {
   total: number
   sessions: Array<{
     id: number
+    duration_seconds: number
+    metadata?: Record<string, unknown>
     scenario: string
     score: number
     accuracy_pct: number
@@ -1441,7 +1447,7 @@ declare global {
       trainer: {
         launch: (config: Record<string, unknown>) => Promise<{ ok: boolean; error?: string }>
         kill: () => Promise<{ ok: boolean }>
-        getHistory: () => Promise<TrainingHistory | null>
+        getHistory: (comparison?: import('./lib/training-result-metrics').TrainingComparisonRequest) => Promise<TrainingHistory | null>
         getPlan: () => Promise<SharedTrainingPlan | null>
         getCoachingDrills: () => Promise<CoachingDrill[]>
         getCorrelation: () => Promise<string[]>
@@ -1453,7 +1459,7 @@ declare global {
           tips: string[]
           encouragement: string
         } | null>
-        getLeaderboard: (scenario: string, period?: 'week' | 'month' | 'all') => Promise<TrainerLeaderboardEntry[]>
+        getLeaderboard: (scenario: string, period?: 'week' | 'month' | 'all', difficulty?: string, durationSeconds?: number) => Promise<TrainerLeaderboardEntry[]>
       }
       deadlock: {
         listReplays: () => Promise<{

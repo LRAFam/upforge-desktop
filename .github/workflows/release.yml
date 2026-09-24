@@ -44,7 +44,7 @@ jobs:
           $downloaded = $false
           for ($attempt = 1; $attempt -le 5; $attempt++) {
             Remove-Item $trainerPath -Force -ErrorAction SilentlyContinue
-            gh release download v1.10.0 --repo LRAFam/upforge-trainer --pattern "upforge-trainer.exe" --dir "resources\trainer"
+            gh release download v1.11.0 --repo LRAFam/upforge-trainer --pattern "upforge-trainer.exe" --dir "resources\trainer"
             if ($LASTEXITCODE -eq 0 -and (Test-Path $trainerPath)) {
               $downloaded = $true
               break
@@ -121,7 +121,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GH_TOKEN }}
         run: |
           mkdir -p resources/trainer
-          gh release download v1.10.0 --repo LRAFam/upforge-trainer --pattern "upforge-trainer.zip" --dir "$RUNNER_TEMP"
+          gh release download v1.11.0 --repo LRAFam/upforge-trainer --pattern "upforge-trainer.zip" --dir "$RUNNER_TEMP"
           unzip -q "$RUNNER_TEMP/upforge-trainer.zip" -d resources/trainer
           test -x "resources/trainer/UpForge Trainer.app/Contents/MacOS/UpForge Trainer"
 

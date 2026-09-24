@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import TrainingIcon from './TrainingIcon.vue'
 import type { TrainerScenarioKey, TrainerDifficulty } from '../../lib/trainer-scenarios'
 import { formatTrainerRank } from '../../lib/training-ui'
 
@@ -30,14 +31,14 @@ const emit = defineEmits<{ play: [] }>()
 <template>
   <button
     type="button"
-    class="group flex h-full flex-col rounded-xl border bg-[#171719] p-5 text-left transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-400 disabled:cursor-not-allowed"
+    class="group flex h-full flex-col rounded-xl border bg-[#131619] p-5 text-left transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-400 disabled:cursor-not-allowed"
     :class="completed ? 'border-emerald-500/25' : 'border-white/10 enabled:hover:border-white/25 enabled:hover:bg-[#1d1d20] disabled:opacity-50'"
     :disabled="disabled || completed"
     :aria-label="`${completed ? 'Completed' : running ? 'Running' : 'Play'} ${label}`"
     @click="emit('play')"
   >
     <div class="flex w-full items-start gap-4">
-      <img :src="iconSrc" alt="" aria-hidden="true" class="h-14 w-14 shrink-0 object-contain" />
+      <div class="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border border-white/10 bg-white/[0.03]" :class="accent.color"><TrainingIcon :name="scenario" class="h-6 w-6" /></div>
       <div class="min-w-0 flex-1">
         <h3 class="text-base font-semibold text-white">{{ label }}</h3>
         <div class="mt-2 flex flex-wrap items-center gap-2 text-xs text-gray-400">
@@ -47,7 +48,7 @@ const emit = defineEmits<{ play: [] }>()
         </div>
       </div>
     </div>
-    <p class="mt-4 mb-5 text-sm leading-relaxed text-gray-400">{{ reason || description }}</p>
+    <p class="mt-4 mb-5 min-h-10 text-sm leading-relaxed text-gray-400">{{ reason || description }}</p>
     <div class="mt-auto flex w-full items-end justify-between gap-3 border-t border-white/10 pt-4">
       <div>
         <p class="text-xs text-gray-400">Personal best</p>
