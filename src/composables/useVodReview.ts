@@ -1,3 +1,4 @@
+import { PlaybackActivityMeter } from '../lib/playback-activity'
 import { ref, computed, watch, onMounted, onUnmounted, nextTick, inject, provide, type InjectionKey } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { getWeaponImage, getAgentImage, getAbilityIcon, getMapImage, getAgentColor, formatGameMode, normalizeGameModeId } from '../lib/valorant'
@@ -1635,8 +1636,18 @@ function createVodReview() {
     videoSeeking.value = false
   }
 
+  const activityMeter = new PlaybackActivityMeter()
   function onTimeUpdate() {
     if (!videoEl.value) return
+    const video = videoEl.value
+    if (activityMeter.sample({
+      key: `${new Date().toISOString().slice(0, 10)}|${video.currentSrc}`,
+      wallMs: performance.now(), mediaSeconds: video.currentTime,
+      playing: !video.paused && !video.ended && video.readyState >= 3,
+      visible: document.visibilityState === 'visible' && document.hasFocus(), seeking: video.seeking,
+    })) {
+      void window.api.productActivity.watched('replay_watched', timeline.value?.game ?? 'unknown').catch(() => {})
+    }
     currentTime.value = videoEl.value.currentTime
     savePlaybackPosition()
     // Popup when playback reaches the event (not when pre-roll seek lands early)

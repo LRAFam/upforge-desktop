@@ -105,6 +105,7 @@ export type NewClip = Pick<ClipRecord,
 }
 
 export class ClipStore {
+  onAdded?: (clip: ClipRecord, ownerId: number) => void
   private clips: ClipRecord[] = []
   private filePath: string
   private userId: number | null = null
@@ -189,6 +190,7 @@ export class ClipStore {
     this.clips.unshift(clip)
     this._enforceCap()
     this._persist()
+    if (this.userId !== null) this.onAdded?.(clip, this.userId)
     return clip
   }
 

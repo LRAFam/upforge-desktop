@@ -756,6 +756,9 @@ declare global {
           }
         }) => Promise<{ ok: boolean; error?: string }>
       }
+      productActivity: {
+        watched: (kind: 'clip_watched' | 'replay_watched', game: string) => Promise<{ ok: boolean }>
+      }
       funnel: {
         trackReportOpened: (props?: Record<string, unknown>) => Promise<{ ok: boolean }>
       }

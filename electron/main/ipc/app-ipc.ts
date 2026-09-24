@@ -1,3 +1,4 @@
+import { PRODUCT_ACTIVITY_GAMES, trackProductActivity } from '../product-activity'
 /**
  * app-ipc.ts
  * IPC handlers for app state, settings, storage, dialog, dev tools, updater, and window controls.
@@ -73,6 +74,16 @@ export function setupAppHandlers(
       currentQueueMode: recording && getCurrentQueueMode ? getCurrentQueueMode() : null,
       inGameOverlayEnabled: isInGameOverlayEnabled(),
     }
+  })
+
+  ipcMain.handle('product-activity:watched', (event, payload: unknown) => {
+    if (!isTrustedRendererUrl(event.senderFrame?.url ?? '')) return { ok: false }
+    if (typeof payload !== 'object' || payload === null) return { ok: false }
+    const { kind, game } = payload as { kind?: unknown; game?: unknown }
+    if (kind !== 'clip_watched' && kind !== 'replay_watched') return { ok: false }
+    if (typeof game !== 'string' || !PRODUCT_ACTIVITY_GAMES.includes(game as typeof PRODUCT_ACTIVITY_GAMES[number])) return { ok: false }
+    trackProductActivity(kind, game)
+    return { ok: true }
   })
 
   ipcMain.handle('funnel:track-report-opened', (_e, props?: Record<string, unknown>) => {

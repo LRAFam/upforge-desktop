@@ -647,7 +647,7 @@
               </template>
               <template v-else-if="userTier === 'free'">
                 <p class="text-xs text-gray-400 mt-1">You've used your free coaching analysis. Plus unlocks ongoing monthly debriefs and keeps matches/clips in the cloud longer.</p>
-                <p class="text-xs text-gray-600 mt-1">Plus $14.99/mo · Pro $24.99/mo</p>
+                <p class="text-xs text-gray-600 mt-1">See current plans and pricing on the web.</p>
               </template>
               <template v-else>
                 <p class="text-xs text-gray-400 mt-1">You've used all your {{ tierLabel }} analyses for this month. Resets in {{ daysUntilReset() }} day{{ daysUntilReset() === 1 ? '' : 's' }}.</p>

@@ -11,7 +11,7 @@ vi.mock('./vod-compressor', () => ({
 }))
 vi.mock('./pipeline-errors', () => ({ reportPipelineError: vi.fn() }))
 import { reportPipelineError } from './pipeline-errors'
-import { extractAndUploadDuelClips } from './duel-clip-uploader'
+import { extractAndUploadDuelClips, selectRecordedDuelMoments } from './duel-clip-uploader'
 import type { ClipExtractor } from './clip-extractor'
 import type { UploadManager } from './upload-manager'
 import type { DuelMomentManifest } from './moment-picker'
@@ -40,6 +40,29 @@ it('reports bounded underlying reasons when all 11 extractions fail without atte
     expect(details.failure_details).toHaveLength(5)
     expect(JSON.stringify(details.failure_details)).toContain('cannot initialise encoder')
     expect(JSON.stringify(details.failure_details)).not.toContain('user@example.com')
+  } finally {
+    await rm(dir, { recursive: true, force: true })
+  }
+})
+
+
+it('measures the selected source and only offers recorded moments', async () => {
+  const { emptyMatchData } = await import('./recording-sync')
+  const dir = await mkdtemp(join(tmpdir(), 'duel-coverage-test-'))
+  const videoPath = join(dir, 'source.mp4')
+  await writeFile(videoPath, 'source')
+  const timeline = emptyMatchData('cs2', 1_000_000)
+  timeline.playerDeaths = [{ round: 0, videoOffsetMs: 100_000 }, { round: 5, videoOffsetMs: 602_734 }] as typeof timeline.playerDeaths
+  const probeDurationMs = vi.fn().mockResolvedValue(498_530)
+  const extractor = { probe: async () => ({ ok: true }), probeDurationMs } as unknown as ClipExtractor
+  try {
+    const moments = await selectRecordedDuelMoments(videoPath, timeline, extractor)
+    expect(probeDurationMs).toHaveBeenCalledWith(videoPath)
+    expect(timeline.recordingDurationMs).toBe(498_530)
+    expect(timeline.playerDeaths).toHaveLength(2)
+    expect(moments).toHaveLength(1)
+    probeDurationMs.mockResolvedValue(null)
+    await expect(selectRecordedDuelMoments(videoPath, timeline, extractor)).rejects.toThrow('Could not measure')
   } finally {
     await rm(dir, { recursive: true, force: true })
   }

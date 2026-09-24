@@ -8,7 +8,8 @@ import { basename, join } from 'path'
 import { tmpdir } from 'os'
 import log from 'electron-log'
 import type { ClipExtractor } from './clip-extractor'
-import type { DuelMomentManifest } from './moment-picker'
+import { duelMomentsForUpload, type DuelMomentManifest } from './moment-picker'
+import type { MatchData } from './riot-types'
 import type { UploadManager } from './upload-manager'
 import { preferredRecordingPath } from './recording-path-resolver'
 import { needsTranscodeForCloudUpload, recordingPathVariants, remuxVodForUpload } from './vod-compressor'
@@ -55,6 +56,21 @@ async function resolveDuelClipSourcePath(
     log.warn(`[DuelClips] Unreadable source ${candidate}:`, probe.reason)
   }
   throw new Error('Recording file is incomplete or missing — cannot extract duel clips')
+}
+
+/** Use the same source-file resolution as extraction, so selection has a measured boundary. */
+export async function selectRecordedDuelMoments(
+  videoPath: string,
+  timeline: MatchData,
+  clipExtractor: ClipExtractor,
+): Promise<DuelMomentManifest[]> {
+  const sourcePath = await resolveDuelClipSourcePath(videoPath, clipExtractor)
+  const duration = await clipExtractor.probeDurationMs(sourcePath)
+  if (duration == null || !Number.isFinite(duration) || duration <= 0) {
+    throw new Error('Could not measure the recording duration for duel clips')
+  }
+  timeline.recordingDurationMs = duration
+  return duelMomentsForUpload(timeline)
 }
 
 async function ensurePlayableExtractSource(

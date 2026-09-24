@@ -1071,7 +1071,7 @@ function createDashboard() {
     }
     const user = profile.value?.user
     if (user && !hasAnalysisQuotaRemaining(user.analysis_stats, user.tier, user.is_admin)) {
-      warning.value = 'No analyses remaining this month.'
+      warning.value = 'No report credits remaining. View your plan and available options on the web.'
       upgradeNeeded.value = true
       return
     }

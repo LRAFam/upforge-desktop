@@ -215,6 +215,7 @@ export function prepareMatchDataForUpload(
     matchStartTime: timeline.matchStartTime,
     gameplayStartTime: timeline.gameplayStartTime,
     recordingStartTime: timeline.recordingStartTime,
+    recordingDurationMs: timeline.recordingDurationMs,
     videoSyncOffsetMs: effectiveVideoSyncOffsetMs(timeline),
     roundScores: timeline.roundScores,
     finalScore: timeline.finalScore ?? deriveMatchScore(timeline) ?? null,

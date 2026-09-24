@@ -177,3 +177,28 @@ describe('moment-picker', () => {
     expect(moments.every((m) => m.moment_id.startsWith('death-') || m.moment_id.startsWith('kill-'))).toBe(true)
   })
 })
+
+it('selects recorded events before ranking so unavailable high-value moments do not consume slots', () => {
+  const recorded = Array.from({ length: 8 }, (_, i) => death(i, 20_000 + i * 30_000, false, 'Unknown'))
+  const unavailable = Array.from({ length: 8 }, (_, i) => death(8 + i, 600_000 + i * 30_000, true))
+  const timeline = {
+    game: 'cs2', recordingDurationMs: 498_530,
+    playerDeaths: [...recorded, ...unavailable], playerKills: [],
+  } as unknown as MatchData
+  const moments = duelMomentsForUpload(timeline)
+  expect(moments).toHaveLength(8)
+  expect(moments.every(m => m.video_offset_ms < 498_530)).toBe(true)
+  expect(timeline.playerDeaths).toHaveLength(16)
+})
+
+it('clips the window at the file end and excludes events outside the recording', () => {
+  const timeline = {
+    game: 'valorant', recordingDurationMs: 1_766_570,
+    playerDeaths: [death(20, 1_793_958), death(19, 1_766_000), death(0, -1000)],
+    playerKills: [],
+  } as unknown as MatchData
+  const moments = duelMomentsForUpload(timeline)
+  expect(moments).toHaveLength(1)
+  expect(moments[0].video_offset_ms).toBe(1_766_000)
+  expect(moments[0].window_end_ms).toBe(1_766_570)
+})

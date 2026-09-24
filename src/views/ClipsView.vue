@@ -763,6 +763,7 @@
         controls
         autoplay
         :src="toFileUrl(playingClip.path)"
+        @timeupdate="trackClipWatch"
       />
       <div class="flex items-center justify-center gap-4 px-4 py-1.5 bg-black/40 border-t border-white/[0.07] flex-shrink-0">
         <span class="text-[9px] text-gray-700">Space: Play/Pause</span>
@@ -957,6 +958,7 @@
 </template>
 
 <script setup lang="ts">
+import { PlaybackActivityMeter } from '../lib/playback-activity'
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import type { ClipRecord } from '../env.d'
@@ -984,6 +986,20 @@ const activeFilter = ref<string>('all')
 const sessionAgentFilter = ref<string | null>(null)
 const sessionMatchIdFilter = ref<string | null>(null)
 const playingClip = ref<ClipRecord | null>(null)
+const activityMeter = new PlaybackActivityMeter()
+function trackClipWatch(event: Event) {
+  const video = event.target as HTMLVideoElement
+  const clip = playingClip.value
+  if (!clip) return
+  if (activityMeter.sample({
+    key: `${new Date().toISOString().slice(0, 10)}|${clip.id}`,
+    wallMs: performance.now(), mediaSeconds: video.currentTime,
+    playing: !video.paused && !video.ended && video.readyState >= 3,
+    visible: document.visibilityState === 'visible' && document.hasFocus(), seeking: video.seeking,
+  })) {
+    void window.api.productActivity.watched('clip_watched', clip.game ?? 'unknown').catch(() => {})
+  }
+}
 const videoEl = ref<HTMLVideoElement | null>(null)
 const upgradeModal = ref({ show: false, message: '' })
 const userTier = ref<string>('free')

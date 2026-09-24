@@ -317,6 +317,8 @@ export interface MatchData {
   gameplayStartTime: number | null
   /** Epoch ms when recorder.start() was called */
   recordingStartTime: number
+  /** Measured media duration from the file used for upload, not wall-clock match length. */
+  recordingDurationMs?: number
   /**
    * User- or auto-tuned ms added to the computed recording offset (negative = seek earlier).
    * Persisted so VOD review and uploads stay aligned after manual sync nudges.

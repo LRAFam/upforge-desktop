@@ -1,3 +1,4 @@
+import { trackProductActivity } from '../product-activity'
 /**
  * clips-ipc.ts
  * IPC handlers for clips: CRUD, upload, S3 streaming, analysis polling, trim, hotkeys.
@@ -277,6 +278,7 @@ export function setupClipHandlers(
   })
 
   ipcMain.handle('clips:share', async (_e, { id }: { id: string }) => {
+    const activityOwner = auth.getUser()?.id
     const clip = clipStore.getById(id)
     if (!clip?.apiClipId) return { ok: false, error: 'Upload clip first' }
 
@@ -288,6 +290,7 @@ export function setupClipHandlers(
       const shareToken = res.share_token
       const shareUrl = res.share_url
       if (shareToken) clipStore.update(id, { shareToken })
+      if (shareUrl && activityOwner !== undefined) trackProductActivity('clip_share_link_created', clip.game, activityOwner)
       return { ok: true, shareUrl, shareToken }
     } catch (err) {
       return { ok: false, error: err instanceof Error ? err.message : String(err) }

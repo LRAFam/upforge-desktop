@@ -96,6 +96,10 @@ const api = {
       }
     }) => ipcRenderer.invoke('analyses:submit-feedback', opts),
   },
+  productActivity: {
+    watched: (kind: 'clip_watched' | 'replay_watched', game: string) =>
+      ipcRenderer.invoke('product-activity:watched', { kind, game }) as Promise<{ ok: boolean }>,
+  },
   funnel: {
     trackReportOpened: (props?: Record<string, unknown>) =>
       ipcRenderer.invoke('funnel:track-report-opened', props) as Promise<{ ok: boolean }>,

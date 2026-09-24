@@ -1,3 +1,4 @@
+import { initProductActivity, trackProductActivity } from './product-activity'
 import { backgroundWork } from './background-work'
 import { BackgroundMatchState } from './background-match-state'
 import {
@@ -231,7 +232,7 @@ import {
 import { ClipPipeline } from './clip-pipeline'
 import { duelMomentsForUpload } from './moment-picker'
 import { buildAndUploadScoutMoments } from './scout-moments'
-import { extractAndUploadDuelClips, countMomentsWithClipKeys } from './duel-clip-uploader'
+import { extractAndUploadDuelClips, countMomentsWithClipKeys, selectRecordedDuelMoments } from './duel-clip-uploader'
 import { requestPregameBrief as _requestPregameBrief, requestPostGameDebrief as _requestPostGameDebrief } from './post-game-api'
 import { enrichTimelineForCoaching } from './match-coaching-enrich'
 import { enrichLolTimelineForCoaching } from './lol-match-v5-enrich'
@@ -3625,6 +3626,7 @@ function setupGameDetection(): void {
       }
     }
 
+    const activityRecordingOwner = getActiveUserId()
     const runPostGameUpload = async () => {
       const activationStep = (step: string, detail?: string) => {
         const line = detail ? `[Activation:${step}] ${detail}` : `[Activation:${step}]`
@@ -3707,6 +3709,7 @@ function setupGameDetection(): void {
         onboardingAdminTest: settingsManager.get().onboardingMatchMission?.adminTest === true,
         autoAnalyseRequested: autoAnalyse,
       })
+      if (activityRecordingOwner !== null) trackProductActivity('recording_saved', game, activityRecordingOwner)
       setPrepStep('dashboard_row', savedRecording.id)
       mainWindow?.webContents.send('recordings:updated')
       logActivity(
@@ -5750,18 +5753,18 @@ async function performUploadAndAnalyse(
       onboardingAdminTest: storedRecording?.onboardingAdminTest === true,
       prepareDuelClips: timeline && duelClipGames.has(game)
         ? async (jobId, path) => {
-            const moments = duelMomentsForUpload(timeline)
+            const moments = await selectRecordedDuelMoments(path, timeline, clipExtractor)
             if (moments.length === 0) {
               const kills = timeline.playerKills?.length ?? 0
               const deaths = timeline.playerDeaths?.length ?? 0
               log.warn(`[Upload] No duel moments after enrich (kills=${kills} deaths=${deaths})`)
-              if (deaths === 0) {
+              if (deaths > 0 || kills > 0) {
+                logActivity('No duel moments fit within this recording. It may cover only part of the match.')
+              } else {
                 const noDeathMsg = game === 'valorant'
                   ? 'No deaths in match stats — duel coaching needs your death moments from Riot'
                   : 'No deaths in demo timeline — attach a demo with your player kills/deaths'
                 logActivity(noDeathMsg)
-              } else {
-                logActivity('Death timestamps missing — wait for demo sync, then try Analyse again')
               }
               return []
             }
@@ -6181,6 +6184,18 @@ async function startApp(): Promise<void> {
   settingsManager = new SettingsManager()
   discordRPC.start()
   initFunnelEvents(authManager, app.getVersion())
+  initProductActivity(authManager, app.getVersion())
+  clipStore.onAdded = (clip, ownerId) => {
+    trackProductActivity('clip_created', clip.game, ownerId)
+    if (clip.trigger === 'manual' || clip.trigger === 'hotkey') {
+      trackProductActivity('manual_clip_created', clip.game, ownerId)
+    }
+  }
+  const activityPresenceTimer = setInterval(() => {
+    if (mainWindow && !mainWindow.isDestroyed() && mainWindow.isFocused() && !mainWindow.isMinimized()) trackProductActivity('app_foreground', 'unknown')
+  }, 300_000)
+  activityPresenceTimer.unref()
+  app.once('before-quit', () => clearInterval(activityPresenceTimer))
   trackedPrimaryGame = normalizePrimaryGame(settingsManager.get().primaryGame)
   recordingsStore = new RecordingsStore()
 
@@ -6344,7 +6359,10 @@ async function startApp(): Promise<void> {
     const openMain = () => {
       mainWindow = createMainWindow(authManager.isAuthenticated())
       markStartupComplete()
-      mainWindow.on('focus', () => { checkForUpdatesIfIdle() })
+      mainWindow.on('focus', () => {
+        checkForUpdatesIfIdle()
+        trackProductActivity('app_foreground', 'unknown')
+      })
       setupGameDetection()
       scheduleObsProbeOnWindowLoad(mainWindow, true)
       // Small delay so main window is loaded before splash closes

@@ -261,7 +261,22 @@ const DUEL_CLIP_GAMES = new Set<MatchData['game']>(['valorant', 'cs2', 'deadlock
 export function duelMomentsForUpload(timeline: MatchData | null): DuelMomentManifest[] {
   if (!timeline || !DUEL_CLIP_GAMES.has(timeline.game)) return []
 
-  return [...pickDuelMoments(timeline), ...pickWinDuelMoments(timeline)].sort(
-    (a, b) => a.video_offset_ms - b.video_offset_ms,
-  )
+  const duration = timeline.recordingDurationMs
+  if (duration != null && (!Number.isFinite(duration) || duration <= 0)) return []
+  const recorded = (event: KillEvent) => event.videoOffsetMs != null
+    && Number.isFinite(event.videoOffsetMs)
+    && event.videoOffsetMs >= 0
+    && (duration == null || event.videoOffsetMs < duration)
+  // Filter before ranking/grouping; keep the complete match stats on the original timeline.
+  const selection = {
+    ...timeline,
+    playerDeaths: timeline.playerDeaths?.filter(recorded),
+    playerKills: timeline.playerKills?.filter(recorded),
+  }
+  return [...pickDuelMoments(selection), ...pickWinDuelMoments(selection)]
+    .map(moment => duration == null ? moment : {
+      ...moment,
+      window_end_ms: Math.min(moment.window_end_ms, duration),
+    })
+    .sort((a, b) => a.video_offset_ms - b.video_offset_ms)
 }

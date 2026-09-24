@@ -434,15 +434,12 @@ export class UploadManager {
 
       try {
         let payload = await opts.prepareDuelClips(job_id, opts.videoPath)
-        if (payload.length === 0) {
-          payload = completeCtx.duel_moments ?? []
-        }
         const uploaded = payload.filter((m) => m.clip_s3_key?.trim()).length
         if (payload.length > 0 && uploaded === 0) {
           console.warn('[UploadManager] Duel clip upload returned 0 keys — retrying once')
           payload = await opts.prepareDuelClips(job_id, opts.videoPath)
         }
-        return payload.length > 0 ? payload : (completeCtx.duel_moments ?? opts.duelMoments)
+        return payload
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err)
         console.error('[UploadManager] Duel clip upload failed:', err)
@@ -453,7 +450,7 @@ export class UploadManager {
         })
         try {
           const retry = await opts.prepareDuelClips!(job_id, opts.videoPath)
-          return retry.length > 0 ? retry : (completeCtx.duel_moments ?? opts.duelMoments)
+          return retry
         } catch (retryErr) {
           console.error('[UploadManager] Duel clip retry failed:', retryErr)
           return completeCtx.duel_moments ?? opts.duelMoments
@@ -495,14 +492,12 @@ export class UploadManager {
     // ── Step 3: confirm and queue analysis ────────────────────────────────
     // Re-send match context at complete() time so it can override/supplement
     // presign-time data (e.g. if Riot MatchDetails arrived late).
-    const completeCtx = submissionContextFromTimeline(opts.timeline ?? null, completeExtras())
-    let duelMomentsPayload = opts.duelMoments
-
-    duelMomentsPayload = await resolveDuelMoments()
+    const duelMomentsPayload = await resolveDuelMoments()
     this._checkCancelled(generation)
-    const duelMomentsForComplete = duelMomentsPayload?.length
-      ? duelMomentsPayload
-      : (completeCtx.duel_moments ?? opts.duelMoments)
+    // Clip preparation adds the measured file duration; serialize it after preparation.
+    const completeCtx = submissionContextFromTimeline(opts.timeline ?? null, completeExtras())
+    // An empty selection is authoritative for a partial recording with no eligible events.
+    const duelMomentsForComplete = duelMomentsPayload ?? completeCtx.duel_moments ?? opts.duelMoments
     await this._apiPost(
       `${apiUrl}/api/desktop-submissions/complete`,
       JSON.stringify({

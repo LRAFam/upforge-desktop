@@ -2084,16 +2084,16 @@ function computeRecordingOffsetMeta(timeline: Pick<MatchData, 'gameplayStartTime
       loadSkewMs = clockSkewMs
       reference = 'pollLoad'
     }
-    const offset = Math.max(0, loadSkewMs - recordingLagMs)
+    const offset = loadSkewMs - recordingLagMs
     return { offset, recordingLagMs, clockSkewMs, loadSkewMs, reference }
   }
 
   if (gameplayStartTime != null) {
-    const offset = Math.max(0, gameplayStartTime - recordingStartTime)
+    const offset = gameplayStartTime - recordingStartTime
     return { offset, recordingLagMs, clockSkewMs, loadSkewMs, reference: 'gameplayStartTime' }
   }
 
-  return { offset: Math.max(0, -recordingLagMs), recordingLagMs, clockSkewMs, loadSkewMs, reference: 'recordingLag' }
+  return { offset: -recordingLagMs, recordingLagMs, clockSkewMs, loadSkewMs, reference: 'recordingLag' }
 }
 
 /** Estimate each round's gameplay-start ms from kill gameTime − roundTime. */
@@ -2203,7 +2203,8 @@ export function totalRecordingOffsetMs(timeline: MatchData): number {
 
 function gameTimeToEventVideoOffsetMs(timeline: MatchData, gameTimeMs: number): number {
   if (isValorantTimeline(timeline)) {
-    return Math.max(0, totalRecordingOffsetMs(timeline) + gameTimeMs)
+    // Negative offsets mean the event happened before recording; never map it to frame zero.
+    return totalRecordingOffsetMs(timeline) + gameTimeMs
   }
   if (timeline.game === 'lol') {
     // LoL anchors to the in-game clock zero (stored on matchStartTime), so the
