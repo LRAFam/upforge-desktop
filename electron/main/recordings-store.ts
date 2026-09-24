@@ -1,10 +1,9 @@
-import { app } from 'electron'
 import fs from 'fs'
 import path from 'path'
 import { randomUUID } from 'crypto'
 import type { MatchData } from './riot-local-api'
 import { recordingPathVariants, sourcePathForCompressed, deleteLocalRecordingFiles } from './vod-compressor'
-import { recordingMatchesLinkedRiot, userDataRoot, type LinkedRiotId } from './user-data-paths'
+import { recordingMatchesLinkedRiot, localMediaRoot, type LinkedRiotId } from './user-data-paths'
 import { healRecordingPath } from './heal-recording-paths'
 
 function recordingStemKey(filePath: string): string {
@@ -28,6 +27,10 @@ export type ClipOnlyReason = 'clips_only_mode' | 'no_recording'
 
 export interface PendingRecording {
   id: string
+  /** Saved while its capture account was unavailable; resume only in that account. */
+  savedOffline?: boolean
+  pendingClipBookmarks?: number[]
+  captureRecordingStartTime?: number | null
   path: string
   riotName: string
   riotTag: string
@@ -117,30 +120,41 @@ function matchesLinkedAccount(r: PendingRecording, linkedRiot?: LinkedRiotId | n
 }
 
 export class RecordingsStore {
-  private recordings: PendingRecording[] = []
-  private filePath: string
+  private libraries = new Map<number | null, PendingRecording[]>()
   private userId: number | null = null
 
+  private get recordings(): PendingRecording[] { return this.libraries.get(this.userId)! }
+  private set recordings(items: PendingRecording[]) { this.libraries.set(this.userId, items) }
+  private get filePath(): string { return path.join(localMediaRoot(this.userId), 'recordings.json') }
+
   constructor() {
-    const userDataPath = app.getPath('userData')
-    this.filePath = path.join(userDataPath, 'recordings.json')
     this.recordings = this.load()
   }
 
   setUserScope(userId: number | null, searchDirs: string[] = []): void {
-    if (userId === this.userId) {
-      if (userId != null && searchDirs.length) this.healMissingPaths(searchDirs)
-      return
-    }
     this.userId = userId
-    if (userId == null) {
-      this.recordings = []
-      return
-    }
-    const root = userDataRoot(userId)
-    fs.mkdirSync(root, { recursive: true })
-    this.filePath = path.join(root, 'recordings.json')
-    this.recordings = this.load(searchDirs)
+    if (!this.libraries.has(userId)) this.recordings = this.load(searchDirs)
+    if (searchDirs.length) this.healMissingPaths(searchDirs)
+  }
+
+  /** Pin local work to its capture owner, even if the visible account changes. */
+  forUser(userId: number | null): RecordingsStore {
+    const scoped = Object.create(this) as RecordingsStore
+    scoped.setUserScope(userId)
+    return scoped
+  }
+
+  /** Persist the destination before releasing the guest catalogue. Media stays in place. */
+  claimGuest(userId: number): number {
+    const guest = this.forUser(null)
+    const target = this.forUser(userId)
+    const ids = new Set(target.recordings.map(item => item.id))
+    const incoming = guest.recordings.filter(item => !ids.has(item.id))
+    target.recordings = [...incoming, ...target.recordings]
+    target.persist()
+    guest.recordings = []
+    guest.persist()
+    return incoming.length
   }
 
   /**
@@ -199,10 +213,10 @@ export class RecordingsStore {
   }
 
   private persist(): void {
-    if (this.userId == null) return
     try {
       fs.mkdirSync(path.dirname(this.filePath), { recursive: true })
-      fs.writeFileSync(this.filePath, JSON.stringify(this.recordings, null, 2))
+      fs.writeFileSync(`${this.filePath}.tmp`, JSON.stringify(this.recordings, null, 2))
+      fs.renameSync(`${this.filePath}.tmp`, this.filePath)
     } catch (err: unknown) {
       const code = (err as NodeJS.ErrnoException).code
       if (code === 'ENOSPC') {
@@ -210,6 +224,7 @@ export class RecordingsStore {
       } else {
         console.error('[RecordingsStore] Failed to persist recordings:', err)
       }
+      throw err
     }
   }
 
@@ -230,9 +245,9 @@ export class RecordingsStore {
       fileSizeBytes,
     }
     this.recordings.unshift(recording)
-    if (this.recordings.length > 50) {
-      const evicted = this.recordings.slice(50)
-      this.recordings = this.recordings.slice(0, 50)
+    if (this.userId != null && this.recordings.length > 50) {
+      const evicted = this.recordings.slice(50).filter(rec => !rec.savedOffline)
+      this.recordings = this.recordings.filter((rec, index) => index < 50 || rec.savedOffline)
       for (const rec of evicted) {
         if (!isLocalOnlyRecording(rec)) continue
         if (!rec.path || !fs.existsSync(rec.path)) continue
@@ -241,6 +256,20 @@ export class RecordingsStore {
     }
     this.persist()
     return recording
+  }
+
+  clearPendingClipBookmarks(id: string): void {
+    const recording = this.recordings.find(item => item.id === id)
+    if (!recording) return
+    delete recording.pendingClipBookmarks
+    this.persist()
+  }
+
+  markSavedOffline(id: string, savedOffline: boolean): void {
+    const recording = this.recordings.find(item => item.id === id)
+    if (!recording) return
+    recording.savedOffline = savedOffline
+    this.persist()
   }
 
   prepareOrphanRecovery(

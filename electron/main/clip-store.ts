@@ -1,8 +1,7 @@
-import { app } from 'electron'
 import fs from 'fs'
 import path from 'path'
 import { randomUUID } from 'crypto'
-import { userDataRoot } from './user-data-paths'
+import { localMediaRoot } from './user-data-paths'
 import type { ClipGame } from './clip-game'
 import { clipMatchesGame } from './clip-game'
 import { clipRetentionScore } from '../../src/lib/clip-priority'
@@ -106,35 +105,44 @@ export type NewClip = Pick<ClipRecord,
 
 export class ClipStore {
   onAdded?: (clip: ClipRecord, ownerId: number) => void
-  private clips: ClipRecord[] = []
-  private filePath: string
+  private libraries = new Map<number | null, ClipRecord[]>()
   private userId: number | null = null
 
+  private get clips(): ClipRecord[] { return this.libraries.get(this.userId)! }
+  private set clips(items: ClipRecord[]) { this.libraries.set(this.userId, items) }
+  private get filePath(): string { return path.join(localMediaRoot(this.userId), 'clips.json') }
+
   constructor() {
-    const userDataPath = app.getPath('userData')
-    this.filePath = path.join(userDataPath, 'clips.json')
     this.clips = this._load()
   }
 
   getClipsMediaDir(): string {
-    if (this.userId != null) {
-      return path.join(userDataRoot(this.userId), 'clips')
-    }
-    return path.join(path.dirname(this.filePath), 'clips')
+    return path.join(localMediaRoot(this.userId), 'clips')
   }
 
   setUserScope(userId: number | null): void {
-    if (userId === this.userId) return
     this.userId = userId
-    if (userId == null) {
-      this.clips = []
-      return
-    }
-    const root = userDataRoot(userId)
-    fs.mkdirSync(root, { recursive: true })
-    fs.mkdirSync(this.getClipsMediaDir(), { recursive: true })
-    this.filePath = path.join(root, 'clips.json')
-    this.clips = this._load()
+    if (!this.libraries.has(userId)) this.clips = this._load()
+  }
+
+  /** Pin local work to its capture owner, even if the visible account changes. */
+  forUser(userId: number | null): ClipStore {
+    const scoped = Object.create(this) as ClipStore
+    scoped.setUserScope(userId)
+    return scoped
+  }
+
+  /** Persist the destination before releasing the guest catalogue. Media stays in place. */
+  claimGuest(userId: number): number {
+    const guest = this.forUser(null)
+    const target = this.forUser(userId)
+    const ids = new Set(target.clips.map(item => item.id))
+    const incoming = guest.clips.filter(item => !ids.has(item.id))
+    target.clips = [...incoming, ...target.clips]
+    target._persist()
+    guest.clips = []
+    guest._persist()
+    return incoming.length
   }
 
   private _load(): ClipRecord[] {
@@ -149,9 +157,9 @@ export class ClipStore {
   }
 
   private _persist(): void {
-    if (this.userId == null) return
     fs.mkdirSync(path.dirname(this.filePath), { recursive: true })
-    fs.writeFileSync(this.filePath, JSON.stringify(this.clips, null, 2))
+    fs.writeFileSync(`${this.filePath}.tmp`, JSON.stringify(this.clips, null, 2))
+    fs.renameSync(`${this.filePath}.tmp`, this.filePath)
   }
 
   add(data: NewClip): ClipRecord {
@@ -188,7 +196,7 @@ export class ClipStore {
       favorited: false,
     }
     this.clips.unshift(clip)
-    this._enforceCap()
+    if (this.userId != null) this._enforceCap()
     this._persist()
     if (this.userId !== null) this.onAdded?.(clip, this.userId)
     return clip
@@ -265,7 +273,7 @@ export class ClipStore {
 
   /** Delete local-only clips older than `days` days and persist. Favorites are kept. */
   pruneByAge(days: number): number {
-    if (days <= 0) return 0
+    if (this.userId == null || days <= 0) return 0
     const cutoff = Date.now() - days * 24 * 60 * 60 * 1000
     const before = this.clips.length
     this.clips = this.clips.filter(c => {
@@ -279,7 +287,7 @@ export class ClipStore {
 
   /** Delete local-only routine kill clips older than `days`. Favorites and high-value triggers kept. */
   pruneKillClipsByAge(days: number): number {
-    if (days <= 0) return 0
+    if (this.userId == null || days <= 0) return 0
     const cutoff = Date.now() - days * 24 * 60 * 60 * 1000
     const before = this.clips.length
     this.clips = this.clips.filter(c => {
@@ -294,6 +302,8 @@ export class ClipStore {
 
   /** Remove thumbnail files that have no matching clip record. */
   pruneOrphanedThumbnails(): void {
+    // Claimed media can remain here; its catalogue now belongs to an account.
+    if (this.userId == null) return
     const clipsDir = path.join(path.dirname(this.filePath), 'clips')
     if (!fs.existsSync(clipsDir)) return
     const knownThumbs = new Set(this.clips.map(c => c.thumbPath).filter(Boolean))

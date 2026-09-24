@@ -59,15 +59,7 @@ export function setupAuthHandlers(
   })
 
   ipcMain.handle('auth:logout', async () => {
-    const recorder = getActiveRecorder()
-    if (recorder.isRecording()) {
-      const game = gameDetector.currentGame() ?? 'valorant'
-      if (endActiveMatch) {
-        try { await endActiveMatch(game) } catch { /* ignore */ }
-      } else {
-        try { await recorder.stop() } catch { /* ignore */ }
-      }
-    }
+    // Capture continues locally. Its owner is pinned independently of login state.
     uploadManager?.abort()
     cancelAllPollingTimers()
     onLogout?.()

@@ -1,3 +1,4 @@
+import path from 'path'
 /**
  * clip-pipeline.ts
  * Highlight clip extraction from match recordings.
@@ -146,14 +147,15 @@ export class ClipPipeline {
     timeline: MatchData | null,
     analysisJobId: string | null,
     game: ClipGame = 'valorant',
-  ): Promise<void> {
+  ): Promise<boolean> {
     const { clipStore, clipExtractor, hotkeyBookmarks, logActivity, notifySilent } = this.ctx
     const capture = this.ctx.getClipCapture()
+    let complete = true
 
     if (!fs.existsSync(videoPath)) {
       log.warn('[ClipExtract] Source video not found — skipping:', videoPath)
       logActivity('Clip extraction skipped — recording file not found')
-      return
+      return false
     }
 
     const probe = await clipExtractor.probeWithRetry(videoPath)
@@ -166,7 +168,7 @@ export class ClipPipeline {
           component: 'desktop:ClipExtract',
         })
       }
-      return
+      return false
     }
 
     const vodDurationMs = await clipExtractor.probeDurationMs(videoPath)
@@ -194,14 +196,15 @@ export class ClipPipeline {
       const startMs = Math.max(0, offsetMs - 25_000)
       try {
         const rec = clipStore.add({ path: '', thumbPath: null, trigger: 'hotkey', map, agent, durationSeconds: 30, round: null, killCount: null, analysisJobId, game, ...baseMeta })
-        const clipPath = ClipExtractor.clipPath(rec.id)
-        const thumbPath = ClipExtractor.thumbPath(rec.id)
+        const clipPath = path.join(clipStore.getClipsMediaDir(), `${rec.id}.mp4`)
+        const thumbPath = path.join(clipStore.getClipsMediaDir(), `${rec.id}_thumb.jpg`)
         await this.safeExtract({ sourcePath: videoPath, startOffsetMs: startMs, durationMs: 30_000, outputPath: clipPath }, vodDurationMs)
         const resolvedThumb = await this.safeThumb(videoPath, offsetMs, startMs, thumbPath)
         clipStore.update(rec.id, { path: clipPath, thumbPath: resolvedThumb, momentOffsetMs: offsetMs, clipStartMs: startMs })
         extractedClipIds.push(rec.id)
         logActivity(`Saved hotkey clip (${map ?? 'unknown map'})`)
       } catch (err) {
+        complete = false
         reportClipExtractError('[ClipExtract] Hotkey clip failed', err)
       }
     }
@@ -242,8 +245,8 @@ export class ClipPipeline {
             path: '', thumbPath: null, trigger: 'kill', map, agent, durationSeconds: 13,
             round: kill.round ?? null, killCount: null, analysisJobId, game, ...clipMatchMeta(timeline, kill),
           })
-          const clipPath = ClipExtractor.clipPath(rec.id)
-          const thumbPath = ClipExtractor.thumbPath(rec.id)
+          const clipPath = path.join(clipStore.getClipsMediaDir(), `${rec.id}.mp4`)
+          const thumbPath = path.join(clipStore.getClipsMediaDir(), `${rec.id}_thumb.jpg`)
           await this.safeExtract({ sourcePath: videoPath, startOffsetMs: startMs, durationMs, outputPath: clipPath }, vodDurationMs)
           const resolvedThumb = await this.safeThumb(videoPath, offsetMs, startMs, thumbPath)
           clipStore.update(rec.id, {
@@ -258,6 +261,7 @@ export class ClipPipeline {
           })
           extractedClipIds.push(rec.id)
         } catch (err) {
+          complete = false
           reportClipExtractError('[ClipExtract] Kill clip failed', err)
         }
       }
@@ -277,8 +281,8 @@ export class ClipPipeline {
             path: '', thumbPath: null, trigger, map, agent, durationSeconds: durationMs / 1000, round, killCount, analysisJobId, game,
             ...clipMatchMeta(timeline, first),
           })
-          const clipPath = ClipExtractor.clipPath(rec.id)
-          const thumbPath = ClipExtractor.thumbPath(rec.id)
+          const clipPath = path.join(clipStore.getClipsMediaDir(), `${rec.id}.mp4`)
+          const thumbPath = path.join(clipStore.getClipsMediaDir(), `${rec.id}_thumb.jpg`)
           await this.safeExtract({ sourcePath: videoPath, startOffsetMs: startMs, durationMs, outputPath: clipPath }, vodDurationMs)
           const resolvedThumb = await this.safeThumb(videoPath, first.videoOffsetMs!, startMs, thumbPath)
           clipStore.update(rec.id, {
@@ -299,6 +303,7 @@ export class ClipPipeline {
           extractedClipIds.push(rec.id)
           logActivity(`${trigger === 'ace' ? 'Ace' : `${killCount}K`} clip saved — Round ${round + 1} (${map ?? 'unknown'})`)
         } catch (err) {
+          complete = false
           reportClipExtractError(`[ClipExtract] ${trigger} clip failed`, err)
         }
       }
@@ -316,8 +321,8 @@ export class ClipPipeline {
               path: '', thumbPath: null, trigger: 'clutch', map, agent, durationSeconds: durationMs / 1000, round,
               killCount: clutchKills.length, analysisJobId, game, ...clipMatchMeta(timeline, first),
             })
-            const clipPath = ClipExtractor.clipPath(rec.id)
-            const thumbPath = ClipExtractor.thumbPath(rec.id)
+            const clipPath = path.join(clipStore.getClipsMediaDir(), `${rec.id}.mp4`)
+            const thumbPath = path.join(clipStore.getClipsMediaDir(), `${rec.id}_thumb.jpg`)
             await this.safeExtract({ sourcePath: videoPath, startOffsetMs: startMs, durationMs, outputPath: clipPath }, vodDurationMs)
             const resolvedThumb = await this.safeThumb(videoPath, first.videoOffsetMs!, startMs, thumbPath)
             clipStore.update(rec.id, {
@@ -338,6 +343,7 @@ export class ClipPipeline {
             extractedClipIds.push(rec.id)
             logActivity(`Clutch clip saved — Round ${round + 1} (${map ?? 'unknown'})`)
           } catch (err) {
+            complete = false
             reportClipExtractError('[ClipExtract] Clutch clip failed', err)
           }
         }
@@ -348,6 +354,7 @@ export class ClipPipeline {
 
     hotkeyBookmarks.length = 0
     this.ctx.onClipsExtracted?.(extractedClipIds.length)
+    return complete
   }
 
   /**
@@ -429,8 +436,8 @@ export class ClipPipeline {
           path: '', thumbPath: null, trigger: 'kill', map, agent, durationSeconds: 13,
           round: kill.round ?? null, killCount: null, analysisJobId, game, ...clipMatchMeta(timeline, kill),
         })
-        const clipPath = ClipExtractor.clipPath(rec.id)
-        const thumbPath = ClipExtractor.thumbPath(rec.id)
+        const clipPath = path.join(clipStore.getClipsMediaDir(), `${rec.id}.mp4`)
+        const thumbPath = path.join(clipStore.getClipsMediaDir(), `${rec.id}_thumb.jpg`)
         await this.safeExtract({ sourcePath: videoPath, startOffsetMs: startMs, durationMs, outputPath: clipPath }, vodDurationMs)
         const resolvedThumb = await this.safeThumb(videoPath, offsetMs, startMs, thumbPath)
         clipStore.update(rec.id, {
@@ -465,8 +472,8 @@ export class ClipPipeline {
           path: '', thumbPath: null, trigger, map, agent, durationSeconds: durationMs / 1000, round, killCount, analysisJobId, game,
           ...clipMatchMeta(timeline, first),
         })
-        const clipPath = ClipExtractor.clipPath(rec.id)
-        const thumbPath = ClipExtractor.thumbPath(rec.id)
+        const clipPath = path.join(clipStore.getClipsMediaDir(), `${rec.id}.mp4`)
+        const thumbPath = path.join(clipStore.getClipsMediaDir(), `${rec.id}_thumb.jpg`)
         await this.safeExtract({ sourcePath: videoPath, startOffsetMs: startMs, durationMs, outputPath: clipPath }, vodDurationMs)
         const resolvedThumb = await this.safeThumb(videoPath, first.videoOffsetMs!, startMs, thumbPath)
         clipStore.update(rec.id, {
@@ -503,8 +510,8 @@ export class ClipPipeline {
           path: '', thumbPath: null, trigger: 'clutch', map, agent, durationSeconds: durationMs / 1000, round,
           killCount: clutchKills.length, analysisJobId, game, ...clipMatchMeta(timeline, first),
         })
-        const clipPath = ClipExtractor.clipPath(rec.id)
-        const thumbPath = ClipExtractor.thumbPath(rec.id)
+        const clipPath = path.join(clipStore.getClipsMediaDir(), `${rec.id}.mp4`)
+        const thumbPath = path.join(clipStore.getClipsMediaDir(), `${rec.id}_thumb.jpg`)
         await this.safeExtract({ sourcePath: videoPath, startOffsetMs: startMs, durationMs, outputPath: clipPath }, vodDurationMs)
         const resolvedThumb = await this.safeThumb(videoPath, first.videoOffsetMs!, startMs, thumbPath)
         clipStore.update(rec.id, {

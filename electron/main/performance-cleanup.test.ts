@@ -119,10 +119,11 @@ describe('performance cleanup regressions', () => {
   it('keeps upload and analysis progress in memory without rewriting the catalogue', () => {
     const store = Object.create(RecordingsStore.prototype)
     store.userId = 1
-    store.filePath = path.join(os.tmpdir(), 'audit-recordings.json')
+    store.libraries = new Map()
     store.recordings = [{ id: 'target', timeline: { example: 'x'.repeat(1024 * 1024) } }]
     vi.spyOn(fs, 'mkdirSync').mockReturnValue(undefined)
     const write = vi.spyOn(fs, 'writeFileSync').mockImplementation(() => {})
+    vi.spyOn(fs, 'renameSync').mockImplementation(() => {})
     for (let i = 0; i < 10; i++) store.setUploadProgress('target', 50)
     expect(write).not.toHaveBeenCalled()
     expect(store.recordings[0].uploadProgress).toBe(50)

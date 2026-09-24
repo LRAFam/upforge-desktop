@@ -1,3 +1,4 @@
+import { registeredLocalRecordingPaths } from './local-media-paths'
 import { app } from 'electron'
 import fs from 'fs'
 import path from 'path'
@@ -262,6 +263,12 @@ export function purgeUntrackedRecordingFiles(
   maxAgeDays = 0,
 ): { removed: number; freedBytes: number } {
   const known = store.getKnownPaths()
+  try {
+    for (const registered of registeredLocalRecordingPaths()) known.add(registered)
+  } catch (err) {
+    log.warn('[StorageCleanup] Keeping files because a media catalogue could not be read:', err)
+    return { removed: 0, freedBytes: 0 }
+  }
   const cutoff = maxAgeDays > 0 ? Date.now() - maxAgeDays * 24 * 60 * 60 * 1000 : 0
   let removed = 0
   let freedBytes = 0
@@ -299,7 +306,7 @@ export function prunePendingRecordingsByAge(
   let freedBytes = 0
 
   for (const rec of store.getPending(linkedRiot)) {
-    if (!isLocalOnlyRecording(rec)) continue
+    if (!isLocalOnlyRecording(rec) || rec.savedOffline) continue
     if (rec.recordedAt >= cutoff) continue
     if (!fs.existsSync(rec.path)) {
       store.remove(rec.id)

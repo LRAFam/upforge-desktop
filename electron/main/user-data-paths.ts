@@ -5,6 +5,11 @@ export function userDataRoot(userId: number): string {
   return path.join(app.getPath('userData'), 'users', String(userId))
 }
 
+/** Durable, unclaimed captures are separate from legacy account migration. */
+export function localMediaRoot(userId: number | null): string {
+  return userId == null ? path.join(app.getPath('userData'), 'pending-local') : userDataRoot(userId)
+}
+
 export function legacyGlobalRecordingsDir(): string {
   return path.join(app.getPath('userData'), 'recordings')
 }
@@ -25,9 +30,14 @@ export function resolveRecordingSavePath(
 ): string {
   const legacyDefault = legacyGlobalRecordingsDir()
   const trimmed = String(settingsSavePath ?? '').trim()
-  const perUserDefault = userId != null ? userRecordingsDir(userId) : legacyDefault
+  const perUserDefault = userId != null ? userRecordingsDir(userId) : path.join(localMediaRoot(null), 'recordings')
 
-  if (!trimmed || path.normalize(trimmed) === path.normalize(legacyDefault)) {
+  const normalized = path.normalize(trimmed)
+  const managedUsers = path.join(app.getPath('userData'), 'users') + path.sep
+  const isManagedAccountDirectory = normalized.startsWith(managedUsers)
+    && path.basename(normalized) === 'recordings'
+  const isGuestDirectory = normalized === path.join(localMediaRoot(null), 'recordings')
+  if (!trimmed || normalized === path.normalize(legacyDefault) || isManagedAccountDirectory || isGuestDirectory) {
     return perUserDefault
   }
   return trimmed

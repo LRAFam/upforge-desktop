@@ -1,3 +1,5 @@
+import { registeredLocalRecordingPaths } from './local-media-paths'
+import { CaptureOwnership } from './capture-ownership'
 import { initProductActivity, trackProductActivity } from './product-activity'
 import { backgroundWork } from './background-work'
 import { BackgroundMatchState } from './background-match-state'
@@ -383,7 +385,7 @@ const obsRecorder = new OBSRecorder(
   },
   () => {
     const s = settingsManager?.get()
-    return s ? buildRecorderConfig(s, hasProAccess(authManager.getUser()), getActiveUserId()) : undefined
+    return s ? buildRecorderConfig(s, hasProAccess(authManager.getUser()), captureOwnerId()) : undefined
   },
   () => settingsManager?.get()?.primaryGame ?? 'valorant',
   (identity) => { settingsManager?.save({ obsGameplayScene: identity }) },
@@ -651,6 +653,15 @@ function wireRecorderStatus(rec: OBSRecorder, label: string): void {
 }
 const clipExtractor = new ClipExtractor()
 const clipStore = new ClipStore()
+const captureOwnership = new CaptureOwnership()
+let activeCapture: { ownerId: number | null } | null = null
+let replayCaptureOwnerId: number | null = captureOwnership.get()
+let localMediaWork = 0
+let guestClaimInFlight = false
+let guestClaimDeclinedFor: number | null = null
+function captureOwnerId(): number | null {
+  return activeCapture ? activeCapture.ownerId : captureOwnership.get()
+}
 const hotkeyManager = new HotkeyManager()
 const trainerBridge = new TrainerBridge(() => mainWindow)
 let settingsManager: SettingsManager
@@ -679,7 +690,7 @@ obsRecorder.onReplayClipSaved = (clipPath, trigger, meta) => {
   const clipStartMs = momentOffsetMs != null
     ? Math.max(0, momentOffsetMs - Math.round(durationSeconds * 1000))
     : null
-  const rec = clipStore.add({
+  const rec = clipStore.forUser(replayCaptureOwnerId).add({
     path: clipPath,
     thumbPath: null,
     trigger: 'kill',
@@ -1378,7 +1389,7 @@ function userSessionDeps() {
       const config = settingsManager?.get()
       if (config) {
         void obsRecorder.applyRecordingSettings(
-          buildRecorderConfig(config, hasProAccess(authManager.getUser()), getActiveUserId()),
+          buildRecorderConfig(config, hasProAccess(authManager.getUser()), captureOwnerId()),
         )
       }
     },
@@ -1524,6 +1535,7 @@ function syncUserSessionFromAuth(): void {
     if (previousUserId != null && previousUserId !== user.id) {
       clearAccountScopedRuntimeState()
     }
+    captureOwnership.set(user.id)
     activateUserSession(user.id, userSessionDeps())
     initPostMatchWorker(user.id)
     restoreDeferredUploadsFromDisk()
@@ -1531,8 +1543,73 @@ function syncUserSessionFromAuth(): void {
     reconcileInterruptedUploads()
     runStorageMaintenanceIfReady(true)
     syncPrimaryGameFromUser()
+    resumeSavedLocalMedia()
+    void offerGuestMediaClaim()
   }
   enforceRecordingPresetAccess()
+}
+
+function resumeSavedLocalMedia(): void {
+  const userId = getActiveUserId()
+  if (!recordingsStore || userId === null || !authManager.isAuthenticated()) return
+  if (localMediaWork > 0 || obsRecorder.isRecording()) return
+  for (const rec of recordingsStore.getPending()) {
+    if (!rec.savedOffline && !rec.pendingClipBookmarks?.length) continue
+    recordingsStore.markSavedOffline(rec.id, false)
+    if (rec.clipsOnly) continue
+    if (rec.game === 'cs2' || rec.game === 'deadlock') {
+      void refreshReplayTimelineForRecording(rec.id).catch(err => log.warn('[LocalCapture] Replay sync deferred:', err))
+    }
+    if (rec.game === 'valorant' || rec.game === 'lol') {
+      scheduleAnalysisReadinessRefresh(rec.id, rec.game, { force: true })
+    }
+    if (rec.pendingClipBookmarks?.length || (rec.timeline && !clipStore.getAll().some(clip =>
+      rec.timeline?.matchId != null && clip.matchId === rec.timeline.matchId,
+    ))) {
+      void extractMatchClips(rec.path, rec.timeline, rec.jobId ?? null, rec.game, userId, {
+        recordingStartTime: rec.captureRecordingStartTime ?? rec.timeline?.recordingStartTime ?? null,
+        bookmarks: rec.pendingClipBookmarks?.slice() ?? [],
+      })
+        .catch(err => log.warn('[LocalCapture] Clip recovery deferred:', err))
+    }
+    maybeAutoEnqueueWhenReady(rec.id)
+  }
+  mainWindow?.webContents.send('recordings:updated')
+}
+
+async function offerGuestMediaClaim(): Promise<void> {
+  const user = authManager.getUser()
+  if (!recordingsStore || !user || !authManager.isAuthenticated() || guestClaimInFlight) return
+  if (localMediaWork > 0 || obsRecorder.isRecording() || waitingForMatch) return
+  if (guestClaimDeclinedFor === user.id) return
+  const recordings = recordingsStore.forUser(null).getPending()
+  const clips = clipStore.forUser(null).getAll()
+  if (recordings.length === 0 && clips.length === 0) return
+  guestClaimInFlight = true
+  try {
+    const choice = await dialog.showMessageBox({
+      type: 'question',
+      title: 'Keep local recordings',
+      message: 'Add recordings from this computer to your account?',
+      detail: `${recordings.length} matches and ${clips.length} clips were saved without an UpForge account. Only add them if they are yours. They will appear in ${user.email}'s library and stay local until you choose to upload or analyse them.`,
+      buttons: ['Keep in my library', 'Not now'],
+      defaultId: 1,
+      cancelId: 1,
+      noLink: true,
+    })
+    if (choice.response !== 0) { guestClaimDeclinedFor = user.id; return }
+    if (!authManager.isAuthenticated() || getActiveUserId() !== user.id) return
+    if (localMediaWork > 0 || obsRecorder.isRecording() || waitingForMatch) return
+    recordingsStore.claimGuest(user.id)
+    clipStore.claimGuest(user.id)
+    mainWindow?.webContents.send('recordings:updated')
+    mainWindow?.webContents.send('clips:new', clips.map(clip => clip.id))
+    resumeSavedLocalMedia()
+  } catch (err) {
+    log.error('[LocalCapture] Could not claim local recordings:', err)
+  } finally {
+    guestClaimInFlight = false
+  }
 }
 
 function clearPostMatchQueueScope(): void {
@@ -1607,6 +1684,12 @@ function scanForOrphanedRecordings(force = false): number {
 
   const savePath = recordingSavePath()
   const known = recordingsStore.getKnownPaths()
+  try {
+    for (const registered of registeredLocalRecordingPaths()) known.add(registered)
+  } catch (err) {
+    log.warn('[LocalCapture] Orphan recovery paused because a media catalogue could not be read:', err)
+    return 0
+  }
   for (const excludedPath of settingsManager.get().obsNonMatchRecordingPaths ?? []) {
     known.add(excludedPath)
   }
@@ -2027,19 +2110,26 @@ function stopStuckAnalysisReconciler(): void {
   }
 }
 
-const clipPipeline = new ClipPipeline({
-  clipStore,
-  clipExtractor,
-  hotkeyBookmarks,
-  getRecordingStartTime: () => currentRecordingStartTime,
-  getClipCapture: () => settingsManager?.get().clipCapture ?? DEFAULT_CLIP_CAPTURE,
-  logActivity: (msg) => logActivity(msg),
-  notifySilent: () => notifySilent(),
-  notifyMainWindow: (channel, data) => mainWindow?.webContents.send(channel, data),
-  onClipsExtracted: (count) => {
-    if (lastMatchDiagnostic) lastMatchDiagnostic.clipsExtracted = (lastMatchDiagnostic.clipsExtracted ?? 0) + count
-  },
-})
+interface LocalClipContext {
+  recordingStartTime: number | null
+  bookmarks: number[]
+}
+
+function clipPipelineForOwner(ownerId: number | null, context: LocalClipContext): ClipPipeline {
+  return new ClipPipeline({
+    clipStore: clipStore.forUser(ownerId),
+    clipExtractor,
+    hotkeyBookmarks: context.bookmarks,
+    getRecordingStartTime: () => context.recordingStartTime,
+    getClipCapture: () => settingsManager?.get().clipCapture ?? DEFAULT_CLIP_CAPTURE,
+    logActivity: (msg) => logActivity(msg),
+    notifySilent: () => notifySilent(),
+    notifyMainWindow: (channel, data) => mainWindow?.webContents.send(channel, data),
+    onClipsExtracted: (count) => {
+      if (lastMatchDiagnostic) lastMatchDiagnostic.clipsExtracted = (lastMatchDiagnostic.clipsExtracted ?? 0) + count
+    },
+  })
+}
 
 async function extractKillClipsOnly(
   videoPath: string,
@@ -2047,7 +2137,7 @@ async function extractKillClipsOnly(
   analysisJobId: string | null,
   game: string = trackedPrimaryGame,
 ): Promise<void> {
-  return clipPipeline.extractKillClipsOnly(videoPath, timeline, analysisJobId, normalizePrimaryGame(game))
+  return clipPipelineForOwner(getActiveUserId(), { recordingStartTime: null, bookmarks: [] }).extractKillClipsOnly(videoPath, timeline, analysisJobId, normalizePrimaryGame(game))
 }
 
 /**
@@ -2059,9 +2149,26 @@ async function extractMatchClips(
   timeline: MatchData | null,
   analysisJobId: string | null,
   game: string = trackedPrimaryGame,
+  ownerId: number | null = getActiveUserId(),
+  context?: LocalClipContext,
 ): Promise<void> {
-  await waitUntilBackgroundWorkAllowed(matchPriorityDeps(), { logActivity })
-  return clipPipeline.extractMatchClips(videoPath, timeline, analysisJobId, normalizePrimaryGame(game))
+  localMediaWork++
+  const captureStore = recordingsStore.forUser(ownerId)
+  const recording = captureStore.getAll().find(item => item.path === videoPath)
+  if (!context) {
+    context = recording
+      ? { recordingStartTime: recording.captureRecordingStartTime ?? null, bookmarks: recording.pendingClipBookmarks?.slice() ?? [] }
+      : { recordingStartTime: currentRecordingStartTime, bookmarks: hotkeyBookmarks.splice(0) }
+  }
+  const pipeline = clipPipelineForOwner(ownerId, context)
+  try {
+    await waitUntilBackgroundWorkAllowed(matchPriorityDeps(), { logActivity })
+    const complete = await pipeline.extractMatchClips(videoPath, timeline, analysisJobId, normalizePrimaryGame(game))
+    if (complete && recording) captureStore.clearPendingClipBookmarks(recording.id)
+  } finally {
+    localMediaWork--
+    void offerGuestMediaClaim()
+  }
 }
 
 /** Re-poll CS2 / Deadlock demo and merge stats into the dashboard recording. */
@@ -2251,10 +2358,11 @@ function countSessionClips(
   timeline: MatchData | null,
   agent: string | null,
   sessionStart: number,
+  ownerId: number | null,
 ): number {
   const matchId = timeline?.matchId ?? null
   const windowStart = sessionStart > 0 ? sessionStart - 60_000 : Date.now() - 4 * 60 * 60 * 1000
-  return clipStore.getAll().filter(c => {
+  return clipStore.forUser(ownerId).getAll().filter(c => {
     if (!c.path || !fs.existsSync(c.path)) return false
     if (matchId) return c.matchId === matchId
     if (agent && c.agent === agent && c.savedAt >= windowStart) return true
@@ -2272,25 +2380,28 @@ function registerClipOnlySession(opts: {
   sessionStart: number
   reason: ClipOnlyReason
   requireClips?: boolean
+  ownerId?: number | null
 }): void {
   if (!recordingsStore) return
-  const clipCount = countSessionClips(opts.timeline, opts.agent, opts.sessionStart)
+  const ownerId = opts.ownerId === undefined ? captureOwnerId() : opts.ownerId
+  const clipCount = countSessionClips(opts.timeline, opts.agent, opts.sessionStart, ownerId)
   if (opts.requireClips && clipCount === 0) return
 
+  const captureStore = recordingsStore.forUser(ownerId)
   const user = authManager.getUser()
   const matchId = opts.timeline?.matchId ?? null
-  const existing = recordingsStore.findRecentClipOnly({
+  const existing = captureStore.findRecentClipOnly({
     matchId,
     agent: opts.agent,
     withinMs: 2 * 60 * 60 * 1000,
   })
   if (existing) {
-    recordingsStore.updateClipOnlyMeta(existing.id, { clipCount, timeline: opts.timeline })
+    captureStore.updateClipOnlyMeta(existing.id, { clipCount, timeline: opts.timeline })
     mainWindow?.webContents.send('recordings:updated')
     return
   }
 
-  recordingsStore.add({
+  captureStore.add({
     path: '',
     clipsOnly: true,
     clipOnlyReason: opts.reason,
@@ -2368,15 +2479,18 @@ async function prepareTimelineForCoaching(
   timeline: MatchData | null,
   game: string,
   recordingId?: string | null,
+  ownerId: number | null = getActiveUserId(),
 ): Promise<{ extras: CoachingSubmissionExtras | undefined }> {
+  const captureStore = recordingsStore.forUser(ownerId)
+  const ownsSession = () => ownerId !== null && getActiveUserId() === ownerId
   if (!timeline) return { extras: undefined }
 
   if (game === 'lol') {
     await enrichLolTimelineForCoaching(timeline, {
       maxWaitMs: MATCH_DETAILS_ENRICH_MAX_MS,
       onStatus: (msg) => logActivity(msg),
-      api: authManager.getToken() ? authManager.getApi() : null,
-      authUser: authManager.getUser(),
+      api: ownsSession() && authManager.getToken() ? authManager.getApi() : null,
+      authUser: ownsSession() ? authManager.getUser() : null,
     })
 
     const status = timeline.lolEnrichStatus
@@ -2397,7 +2511,7 @@ async function prepareTimelineForCoaching(
     }
 
     if (recordingId) {
-      recordingsStore.updateTimeline(recordingId, timeline)
+      captureStore.updateTimeline(recordingId, timeline)
       mainWindow?.webContents.send('recordings:updated')
     }
 
@@ -2409,10 +2523,10 @@ async function prepareTimelineForCoaching(
   await enrichTimelineForCoaching(riotLocalApi, timeline, {
     maxWaitMs: MATCH_DETAILS_ENRICH_MAX_MS,
     onStatus: (msg) => logActivity(msg),
-    api: authManager.getToken() ? authManager.getApi() : null,
+    api: ownsSession() && authManager.getToken() ? authManager.getApi() : null,
   })
 
-  const rrHistory = await authManager.fetchRRHistory().catch(() => [])
+  const rrHistory = ownsSession() ? await authManager.fetchRRHistory().catch(() => []) : []
   const extras = buildCoachingSubmissionExtras(
     timeline,
     settingsManager.get(),
@@ -2421,7 +2535,7 @@ async function prepareTimelineForCoaching(
   )
 
   if (recordingId) {
-    recordingsStore.updateTimeline(recordingId, timeline)
+    captureStore.updateTimeline(recordingId, timeline)
     mainWindow?.webContents.send('recordings:updated')
   }
 
@@ -3262,9 +3376,15 @@ function setupGameDetection(): void {
       return
     }
     handleMatchEndRunning = true
+    localMediaWork++
+    const ownerId = captureOwnerId()
+    const captureStore = recordingsStore.forUser(ownerId)
+    const captureClips = clipStore.forUser(ownerId)
+    const canUploadCapture = () => ownerId !== null
+      && authManager.isAuthenticated() && getActiveUserId() === ownerId
     try {
     const config = settingsManager?.get()
-    const savePath = recordingSavePath()
+    const savePath = resolveRecordingSavePath(settingsManager?.get().savePath, ownerId)
 
     // Duration from OBS clock, or wall clock if WebSocket dropped mid-match.
     let recordingDuration = obsRecorder.getRecordingDuration()
@@ -3403,7 +3523,7 @@ function setupGameDetection(): void {
 
     async function maybeUploadDemoOnly(reason: string): Promise<void> {
       if (!autoAnalyse || !usesDemoReplay(game)) return
-      if (!authManager.isAuthenticated()) return
+      if (!canUploadCapture()) return
       logActivity(`${gameLabel(game)} replay uploading (${reason})`)
       showAppNotification({
         title: `${gameLabel(game)} replay analysis`,
@@ -3422,6 +3542,52 @@ function setupGameDetection(): void {
       mainWindow?.webContents.send('dashboard:refresh', { fresh: true })
     }
     const clipsOnly = config?.fullMatchRecording === false || obsRecorder.isClipsOnlySession()
+
+    if (!canUploadCapture()) {
+      const localClipContext = { recordingStartTime: currentRecordingStartTime, bookmarks: hotkeyBookmarks.splice(0) }
+      finalizeTimelineOffsetsForClips(timeline)
+      const clipCount = captureClips.getAll().filter(clip =>
+        timeline?.matchId ? clip.matchId === timeline.matchId : clip.savedAt >= matchSessionStart,
+      ).length
+      if (resolvedFile || clipsOnly || clipCount > 0) {
+        const saved = captureStore.add({
+          path: resolvedFile?.path ?? '',
+          clipsOnly: !resolvedFile,
+          clipOnlyReason: !resolvedFile ? (clipsOnly ? 'clips_only_mode' : 'no_recording') : undefined,
+          clipCount,
+          matchId: timeline?.matchId ?? null,
+          riotName: timeline?.playerName?.trim() ?? '',
+          riotTag: timeline?.playerTag?.trim() ?? '',
+          game, map, agent, gameMode, timeline,
+          autoAnalyseRequested: ownerId !== null && autoAnalyse,
+          savedOffline: true,
+          pendingClipBookmarks: localClipContext.bookmarks.slice(),
+          captureRecordingStartTime: localClipContext.recordingStartTime,
+        }, matchSessionStart)
+        logActivity('Match and clips saved locally. Sign in to access them.')
+        mainWindow?.webContents.send('recordings:updated')
+        if (resolvedFile) {
+          localMediaWork++
+          void (async () => {
+            // Riot's local credentials remain usable when the UpForge session expires.
+            if (timeline && game === 'valorant') {
+              await enrichTimelineForCoaching(riotLocalApi, timeline, {
+                maxWaitMs: MATCH_DETAILS_ENRICH_MAX_MS,
+                api: null,
+                onStatus: (message) => logActivity(message),
+              }).catch(err => log.warn('[LocalCapture] Match enrichment deferred:', err))
+              captureStore.updateTimeline(saved.id, timeline)
+            }
+            await extractMatchClips(resolvedFile.path, timeline, null, game, ownerId, localClipContext)
+          })().catch(err => log.warn('[LocalCapture] Clip processing deferred:', err)).finally(() => {
+            localMediaWork--
+            resumeSavedLocalMedia()
+            void offerGuestMediaClaim()
+          })
+        }
+      }
+      return
+    }
 
     if (clipsOnly) {
       registerClipOnlySession({
@@ -3628,7 +3794,7 @@ function setupGameDetection(): void {
       }
     }
 
-    const activityRecordingOwner = getActiveUserId()
+    const activityRecordingOwner = ownerId
     const runPostGameUpload = async () => {
       const activationStep = (step: string, detail?: string) => {
         const line = detail ? `[Activation:${step}] ${detail}` : `[Activation:${step}]`
@@ -3653,7 +3819,7 @@ function setupGameDetection(): void {
       activationStep('match_end', `game=${game} autoAnalyse=${autoAnalyse}`)
       beginPreparation(game, null)
 
-      const savePath = recordingSavePath()
+      const savePath = resolveRecordingSavePath(settingsManager?.get().savePath, ownerId)
       setPrepStep('file_ready')
       const ready = resolveReadyRecordingPath(
         obsRecorder.getLastRecordingPath() ?? videoPath,
@@ -3696,7 +3862,7 @@ function setupGameDetection(): void {
       // Register on the dashboard immediately — before compression/upload can take minutes.
       setPrepStep('dashboard_row')
       finalizeTimelineOffsetsForClips(timeline)
-      const savedRecording = recordingsStore.add({
+      const savedRecording = captureStore.add({
         path: readyPath,
         riotName: timeline?.playerName?.trim() ?? '',
         riotTag: timeline?.playerTag?.trim() ?? '',
@@ -3711,6 +3877,9 @@ function setupGameDetection(): void {
         ),
         onboardingAdminTest: settingsManager.get().onboardingMatchMission?.adminTest === true,
         autoAnalyseRequested: autoAnalyse,
+        savedOffline: !canUploadCapture(),
+        captureRecordingStartTime: currentRecordingStartTime,
+        pendingClipBookmarks: hotkeyBookmarks.splice(0),
       })
       if (activityRecordingOwner !== null) trackProductActivity('recording_saved', game, activityRecordingOwner)
       setPrepStep('dashboard_row', savedRecording.id)
@@ -3743,7 +3912,7 @@ function setupGameDetection(): void {
 
       // Leave "preparing" immediately — don't block UI on ffprobe / Riot sync.
       void refreshRecordingVodProbe(savedRecording).catch(() => {})
-      const recForStep = recordingsStore.getById(savedRecording.id) ?? savedRecording
+      const recForStep = captureStore.getById(savedRecording.id) ?? savedRecording
       const stepReadiness = getAnalysisReadiness(recForStep)
       const nextStep = decidePostMatchNextStep({
         autoAnalyse,
@@ -3766,7 +3935,7 @@ function setupGameDetection(): void {
       }
 
       let coachingExtras: CoachingSubmissionExtras | undefined
-      const enrichPromise = prepareTimelineForCoaching(timeline, game, savedRecording.id)
+      const enrichPromise = prepareTimelineForCoaching(timeline, game, savedRecording.id, ownerId)
         .then((result) => {
           coachingExtras = result.extras
           return result
@@ -3795,10 +3964,10 @@ function setupGameDetection(): void {
       }).catch((err) => log.warn('[Enrich] Match coaching enrich failed:', err))
 
       void waitUntilVodFileReady(
-        (id) => recordingsStore.getById(id),
+        (id) => captureStore.getById(id),
         savedRecording.id,
         async () => {
-          const rec = recordingsStore.getById(savedRecording.id)
+          const rec = captureStore.getById(savedRecording.id)
           if (rec) await refreshRecordingVodProbe(rec)
         },
         {
@@ -3815,7 +3984,7 @@ function setupGameDetection(): void {
       })
 
       // Re-evaluate after registering VOD — probe may still be finalizing.
-      const recAfterProbe = recordingsStore.getById(savedRecording.id) ?? savedRecording
+      const recAfterProbe = captureStore.getById(savedRecording.id) ?? savedRecording
       const readiness = getAnalysisReadiness(recAfterProbe)
       const step = decidePostMatchNextStep({
         autoAnalyse,
@@ -3823,7 +3992,7 @@ function setupGameDetection(): void {
         readinessState: readiness.state,
       })
 
-      if (step === 'pending_manual' || step === 'pending_waiting_stats') {
+      if (!canUploadCapture() || step === 'pending_manual' || step === 'pending_waiting_stats') {
         activationStep(
           'pending',
           step === 'pending_manual'
@@ -3862,10 +4031,11 @@ function setupGameDetection(): void {
           })
         }
 
+        if (!canUploadCapture()) captureStore.markSavedOffline(savedRecording.id, true)
         await enrichPromise.catch(() => {})
         finalizeTimelineOffsetsForClips(timeline)
 
-        extractMatchClips(readyPath, timeline, null, game)
+        extractMatchClips(readyPath, timeline, null, game, ownerId)
           .catch(err => log.warn('[ClipExtract] Clip extraction (pending) error:', err))
 
         if (shouldScheduleLateClipRetry(game, timeline, matchId ?? null)) {
@@ -3886,6 +4056,10 @@ function setupGameDetection(): void {
         return
       }
 
+      if (!canUploadCapture()) {
+        captureStore.markSavedOffline(savedRecording.id, true)
+        return
+      }
       tray?.setToolTip('UpForge — Uploading...')
       activationStep('upload', `recordingId=${savedRecording.id}`)
       logActivity(matchDataReadyUploading(game))
@@ -4013,6 +4187,10 @@ function setupGameDetection(): void {
     })
     } finally {
       handleMatchEndRunning = false
+      localMediaWork--
+      activeCapture = null
+      resumeSavedLocalMedia()
+      void offerGuestMediaClaim()
       currentRecordingStartTime = null
       currentMatchStartTime = null
       currentGsiMapName = null
@@ -4065,6 +4243,8 @@ function setupGameDetection(): void {
     }
     syncPrimaryGameFromDetection(game)
 
+    activeCapture = { ownerId: captureOwnership.get() }
+    replayCaptureOwnerId = activeCapture.ownerId
     const { isStale } = beginMatchFlow()
     if (!usesDemoReplay(game)) beginMatchPerformanceMode()
     matchDetectInFlightDepth++
@@ -4114,7 +4294,7 @@ function setupGameDetection(): void {
       }
     }
 
-    const recorderConfig = config ? buildRecorderConfig(config, hasProAccess(authManager.getUser()), getActiveUserId()) : undefined
+    const recorderConfig = config ? buildRecorderConfig(config, hasProAccess(authManager.getUser()), captureOwnerId()) : undefined
 
     // Check disk space now so the warning shows while in lobby
     const savePath = recordingSavePath()
@@ -6287,6 +6467,8 @@ async function startApp(): Promise<void> {
   () => {
     stopCoachNotificationPoller()
     resetDesktopOnboardingPing()
+    captureOwnership.set(null)
+    guestClaimDeclinedFor = null
     clearAccountScopedRuntimeState()
     clearUserSession(userSessionDeps())
     riotLocalApi.setLinkedAccountRegion(null)
@@ -6385,6 +6567,8 @@ async function startApp(): Promise<void> {
         // Pending Valorant VODs can sit forever on "waiting for match stats" after the
         // post-match poll window — resume enrich when the app opens again.
         resumeStuckMatchStatsEnrichment()
+        resumeSavedLocalMedia()
+        void offerGuestMediaClaim()
       })
     }
 

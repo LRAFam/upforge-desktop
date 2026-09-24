@@ -119,7 +119,7 @@ export function clearUserSession(deps: UserSessionDeps): void {
   setPendingJobUserScope(null)
   deps.clipStore.setUserScope(null)
   deps.recordingsStore.setUserScope(null)
-  setClipsMediaDir(null)
+  setClipsMediaDir(deps.clipStore.getClipsMediaDir())
   deps.settingsManager.save({ lastInsight: null, trainingConsent: false })
 
   deps.onScopeChanged?.()
