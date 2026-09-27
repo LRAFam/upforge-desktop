@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { ReviewComparison, validComparisonLoop, type ComparisonMedia } from './review-comparison'
+import { ReviewComparison, validComparisonLoop, comparisonPlayerLabel, type ComparisonMedia } from './review-comparison'
 import { boundedMediaTime, reviewEventStart } from './review-media'
 
 function media(time = 0, duration = 120): ComparisonMedia {
@@ -137,5 +137,14 @@ describe('comparison start points and group transport', () => {
     expect(validComparisonLoop([20, 60], [100, 80], 8, 2)).toBe(false)
     expect(validComparisonLoop([20, 60], [100, 80], -1, 2)).toBe(false)
     expect(validComparisonLoop([20, 60], [100, Infinity], 0, 8)).toBe(false)
+  })
+})
+
+describe('comparison player identity', () => {
+  const players = [{ puuid: 'self', summonerName: 'Fade', agent: 'Fade' }, { puuid: 'enemy', summonerName: 'Fade', agent: 'Fade' }]
+  it('does not identify an enemy with the same agent name as the player', () => {
+    expect(comparisonPlayerLabel('Fade', 'enemy', 'self', players)).toBe('Fade')
+    expect(comparisonPlayerLabel('Fade', undefined, 'self', players)).toBe('Fade')
+    expect(comparisonPlayerLabel('Fade', 'self', 'self', players)).toBe('You')
   })
 })

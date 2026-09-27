@@ -2,7 +2,7 @@
 import { computed, nextTick, onBeforeUnmount, ref, watch, type ComponentPublicInstance } from 'vue'
 import { useVodReview, type RecordingTimeline } from '../../composables/useVodReview'
 import { reviewEventStart, reviewVideoUrl, parseReviewTime } from '../../lib/review-media'
-import { ReviewComparison, validComparisonLoop, type ComparisonSide } from '../../lib/review-comparison'
+import { ReviewComparison, validComparisonLoop, comparisonPlayerLabel, type ComparisonSide } from '../../lib/review-comparison'
 
 import { resolveNotebookFootage } from '../../lib/review-recovery'
 import VodWorkspaceDivider from './VodWorkspaceDivider.vue'
@@ -56,15 +56,10 @@ const pickerSide = ref<ComparisonSide | null>(null)
 const sourceCorrections = ref<Record<string, number>>({})
 const sourceRevision = ref<[number, number]>([0, 0])
 function shiftFor(side: ComparisonSide) { return sourceKeys.value[side] === 'current' ? comparisonEventShift.value : (sourceCorrections.value[sourceKeys.value[side]] ?? 0) }
-function playerLabel(side: ComparisonSide, name: string | null | undefined): string {
-  if (!name) return ''
-  if (name === 'You') return name
-  const player = sources.value[side].teamSnapshot.find(p => p.puuid === name || p.summonerName === name)
-  if (player?.puuid === ownPuuid.value && ownPuuid.value) return 'You'
-  if (player?.summonerName) return player.summonerName
-  if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(name)) return 'Unknown player'
-  return name
+function playerLabel(side: ComparisonSide, name: string | null | undefined, puuid?: string): string {
+  return comparisonPlayerLabel(name, puuid, ownPuuid.value, sources.value[side].teamSnapshot)
 }
+
 const markerWidths = ref<[number, number]>([0, 0])
 const markerResize = new ResizeObserver(entries => {
   for (const entry of entries) {
@@ -114,8 +109,8 @@ const momentsBySide = computed(() => ([0, 1] as const).map(side => buildReviewEv
   let description: string
   const details: string[] = []
   if (event.type === 'kill' || event.type === 'death' || event.type === 'neutral') {
-    const killer = playerLabel(side, event.killerName)
-    const victim = playerLabel(side, event.victimName)
+    const killer = playerLabel(side, event.killerName, event.killerPuuid)
+    const victim = playerLabel(side, event.victimName, event.victimPuuid)
     if (event.type === 'kill') description = victim ? `You killed ${victim}` : 'Your kill (opponent unavailable)'
     else if (event.type === 'death') description = killer ? `Killed by ${killer}` : 'Your death (opponent unavailable)'
     else description = `${killer || 'Unknown player'} killed ${victim || 'unknown player'}`

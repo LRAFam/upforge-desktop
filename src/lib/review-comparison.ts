@@ -94,3 +94,14 @@ export function validComparisonLoop(starts: [number, number], durations: [number
     && from >= 0 && to > from
     && to <= Math.min(durations[0] - starts[0], durations[1] - starts[1])
 }
+
+/** Agent names can repeat across teams; only a canonical player ID establishes identity. */
+export function comparisonPlayerLabel(name: string | null | undefined, puuid: string | undefined, ownPuuid: string | null, players: Array<{ puuid?: string | null; summonerName?: string; agent?: string | null }>): string {
+  if (puuid && puuid === ownPuuid) return 'You'
+  const player = puuid ? players.find(p => p.puuid === puuid) : undefined
+  if (player?.agent) return player.agent
+  if (player?.summonerName) return player.summonerName
+  if (!name) return ''
+  if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(name)) return 'Unknown player'
+  return name
+}

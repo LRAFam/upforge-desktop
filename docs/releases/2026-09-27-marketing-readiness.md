@@ -18,11 +18,11 @@
 
 ## Remaining release checks
 
-- Publish desktop v2.13.0 and confirm installers; new version is prepared locally.
-- Run a real Windows install, game detection, OBS recording, upload and review smoke check. macOS preview cannot prove this.
+- v2.13.0 Windows and macOS installers published and CI passed. Follow-up v2.13.1 corrects same-agent opponent labels; 16 comparison tests, type check and build pass. Confirm its installer publication.
+- Run a real Windows install, game detection, OBS recording, upload and review smoke check. User is unavailable to do this now. macOS preview cannot prove this.
 - Complete a real checkout/payment-to-entitlement check with user-controlled payment. Live Stripe prices are verified; existing admin account has an active subscription, and no duplicate subscription or real charge was created.
 - Enable the fixed comparison launch cutoff only after the new desktop/free notes flow is released and verified. Preview access remains enabled; existing accounts must remain grandfathered.
-- Refresh full-window capture assets with the corrected product version. Existing website compositions crop to the tool/footage area.
+- Refreshed comparison and coaching screenshots are saved as 06/07 with v2.13.0 and dev controls hidden. Existing website compositions preserve the real footage/tool pixels; old 01–05 files remain historical sources.
 
 ## Logs
 

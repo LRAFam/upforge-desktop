@@ -15,3 +15,7 @@ Generated compositions are in compositions/. They are art-direction drafts; gene
 API release 9581cb2 is pushed to main and auto-deployed. Account comparison and note creation, reload restoration and subsequent updates were verified live. API checks: 48 tests, 253 assertions passed. Desktop focused tests: 29 passed; type check and production build passed. Desktop player sizing and nested reactive notebook serialization fixes are local, not released to installers.
 
 Still unavailable for genuine populated captures in this preview: local Matches, Clips and Footage libraries are empty; workspace Ask AI coach endpoint is not deployed. No fabricated library contents or AI responses were used. Existing coaching report imagery is genuine and available.
+
+## Release verification update
+
+Fresh 06-comparison-v2.13.0.png and 07-review-v2.13.0.png captures show the corrected product version with development controls hidden. Earlier images remain historical. The website is deployed; live sample R1 and R12 clips both load without media errors. Workspace Ask AI coach is now deployed and real queued answers, history persistence and a failed-request allowance return were verified. Windows and Mac v2.13.0 installers published; Windows game capture still needs a real smoke check.
