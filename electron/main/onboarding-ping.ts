@@ -1,3 +1,4 @@
+import { APP_VERSION } from './app-version'
 import log from 'electron-log'
 import { app } from 'electron'
 import type { AuthManager } from './auth-manager'
@@ -14,7 +15,7 @@ export async function pingDesktopOnboarding(auth: AuthManager): Promise<void> {
   if (!user?.id || lastPingedUserId === user.id) return
 
   try {
-    const version = app.getVersion()
+    const version = APP_VERSION
     await auth.getApi().post('/api/onboarding/desktop-ping', { app_version: version })
     lastPingedUserId = user.id
     log.info('[Onboarding] Desktop launch pinged for user', user.id)

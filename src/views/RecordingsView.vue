@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import LibraryPageHeader from '../components/shared/LibraryPageHeader.vue'
+import CloudUsageNotice from '../components/shared/CloudUsageNotice.vue'
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import type { PendingRecording } from '../env.d.ts'
@@ -277,22 +279,11 @@ onUnmounted(() => { cleanup?.() })
 
 <template>
   <div class="flex h-full flex-col overflow-hidden text-white" :style="cssVars">
-    <div class="flex-shrink-0 px-4 pt-4 pb-2 border-b border-white/[0.08]">
-      <div class="panel-elevated relative overflow-hidden px-4 py-3.5">
-        <div class="absolute -right-8 top-0 h-24 w-24 rounded-full blur-3xl pointer-events-none" :class="theme.accentBg" />
-        <div class="relative flex items-center justify-between gap-3">
-          <div class="min-w-0">
-            <p class="text-[10px] font-black uppercase tracking-[0.28em]" :class="theme.accentMuted">Storage</p>
-            <h1 class="text-lg font-black tracking-tight text-white">Footage</h1>
-            <p class="text-[11px] text-gray-500 mt-0.5">Watch and manage the local or cloud video attached to your matches.</p>
-            <p class="text-[10px] text-gray-600 mt-1">Use Matches to track coaching status and run analysis.</p>
-          </div>
-          <span class="hidden sm:inline-flex rounded-xl border border-white/[0.08] bg-white/[0.03] px-3 py-2 text-xs font-semibold text-gray-300">
-            {{ chipFiltered.length }} {{ chipFiltered.length === 1 ? 'recording' : 'recordings' }}
-          </span>
-        </div>
-      </div>
-    </div>
+    <LibraryPageHeader title="Footage" description="Watch and manage your local recordings and cloud backups.">
+      <span>{{ chipFiltered.length }} {{ chipFiltered.length === 1 ? 'recording' : 'recordings' }}</span>
+      <button type="button" class="rounded-md border border-white/15 px-3 text-gray-300 hover:border-white/30" @click="openFolder">Open folder</button>
+    </LibraryPageHeader>
+    <CloudUsageNotice kind="footage" />
 
     <div v-if="gameFilter === 'lol'" class="mx-4 mt-3 rounded-lg border border-white/10 px-4 py-3 text-sm text-gray-300">
       <p>Watch your saved League recordings here without Riot account verification.</p>
@@ -321,10 +312,11 @@ onUnmounted(() => { cleanup?.() })
         <button
           v-for="chip in statusChips"
           :key="chip.value"
-          class="rounded-full border px-3 py-1 text-xs font-medium transition-all duration-150"
+          class="rounded-md border px-3 py-2 text-xs font-medium transition-colors"
           :class="statusChip === chip.value
             ? `${theme.accentBorder} ${theme.accentBg} ${theme.accentText}`
             : 'border-white/[0.10] text-gray-500 hover:border-white/[0.12] hover:text-gray-300'"
+          :aria-pressed="statusChip === chip.value"
           @click="statusChip = chip.value"
         >
           {{ chip.label }}
@@ -334,13 +326,7 @@ onUnmounted(() => { cleanup?.() })
         <span>{{ chipFiltered.length }} {{ chipFiltered.length === 1 ? 'recording' : 'recordings' }}</span>
         <span class="text-gray-800">·</span>
         <span>{{ formatRecordingBytes(recordingsBytes) }} local</span>
-        <button
-          type="button"
-          class="rounded-lg border border-white/[0.08] px-2.5 py-1 text-[10px] font-medium text-gray-400 transition-colors hover:border-white/[0.14] hover:text-gray-200"
-          @click="openFolder"
-        >
-          Open folder
-        </button>
+
         <button
           type="button"
           class="rounded-lg border px-2.5 py-1 text-[10px] font-medium transition-colors"

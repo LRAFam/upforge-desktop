@@ -1,11 +1,10 @@
 <script setup lang="ts">
-import { computed } from 'vue'
 import { useSettings } from '../../composables/useSettings'
 import { useGameTheme } from '../../composables/useGameTheme'
-import { analysesUsedLabel, sharedAnalysesPoolHint } from '../../lib/quota-display'
 import PaymentFailedAlert from '../../components/PaymentFailedAlert.vue'
 import SettingsAccountLinks from './SettingsAccountLinks.vue'
 import SettingsSection from './SettingsSection.vue'
+import AccountUsagePanel from './AccountUsagePanel.vue'
 import SettingsToggle from './SettingsToggle.vue'
 
 const { theme } = useGameTheme()
@@ -17,7 +16,6 @@ const {
   accountRiotId,
   accountSteamLinked,
   accountSteamStatus,
-  archiveUsagePercent,
   getSubscriptionIconUrl,
   getTierBadgeClass,
   getTierBadgeLabel,
@@ -34,20 +32,9 @@ const {
   settings,
   showBillingError,
   toggleTrainingConsent,
-  usagePercent,
   user,
 } = useSettings()
 
-const analysesPoolHint = computed(() =>
-  sharedAnalysesPoolHint(user.value?.analyses_used, user.value?.analyses_limit),
-)
-
-const analysesUsageLabel = computed(() => {
-  const used = Math.max(0, user.value?.analyses_used ?? 0)
-  const limit = user.value?.analyses_limit
-  if (limit == null) return `${used} used · unlimited`
-  return analysesUsedLabel(used, limit)
-})
 </script>
 
 <template>
@@ -143,48 +130,13 @@ const analysesUsageLabel = computed(() => {
     </SettingsSection>
 
     <SettingsSection
-      v-if="user && user.analyses_used !== undefined"
+      v-if="user"
       id="usage"
       title="Usage"
-      hint="Monthly coaching sessions and cloud VOD storage"
+      hint="Included allowances, purchased credits and cloud capacity"
       :highlight-id="highlightSection"
     >
-      <div class="space-y-1">
-        <div class="flex items-center justify-between text-xs">
-          <span class="text-gray-400">AI analyses</span>
-          <span class="font-medium tabular-nums text-gray-200">{{ analysesUsageLabel }}</span>
-        </div>
-        <div v-if="user.analyses_limit" class="h-1.5 overflow-hidden rounded-full bg-white/[0.06]">
-          <div
-            class="h-full rounded-full transition-all"
-            :style="{ width: usagePercent + '%', backgroundColor: 'var(--game-accent, #ef4444)' }"
-          />
-        </div>
-        <p class="text-[11px] text-gray-600">Used when you run full-match AI coaching.</p>
-        <p class="text-[10px] text-gray-500">{{ analysesPoolHint }}</p>
-      </div>
-
-      <div v-if="user.archive_limit != null" class="space-y-1 border-t border-white/[0.06] pt-4">
-        <div class="flex items-center justify-between text-xs">
-          <span class="text-gray-400">Cloud VODs saved</span>
-          <span class="font-medium tabular-nums text-gray-200">
-            {{ user.archive_count ?? 0 }} / {{ user.archive_limit }}
-          </span>
-        </div>
-        <div class="h-1.5 overflow-hidden rounded-full bg-white/[0.06]">
-          <div
-            class="h-full rounded-full bg-emerald-500 transition-all"
-            :style="{ width: archiveUsagePercent + '%' }"
-          />
-        </div>
-        <p class="text-[11px] text-gray-600">
-          Save recordings without using analysis quota.
-          <template v-if="user.tier === 'free' && user.archive_retention_days != null && user.archive_limit != null">
-            Free keeps cloud VODs for {{ user.archive_retention_days }} days ({{ user.archive_limit }} max). Plus keeps them 90 days.
-          </template>
-          <span v-else-if="user.archive_retention_days"> Retained {{ user.archive_retention_days }} days on your plan.</span>
-        </p>
-      </div>
+      <AccountUsagePanel @upgrade="openUpgrade" />
 
       <div class="flex items-center justify-between gap-4 border-t border-white/[0.06] pt-4">
         <div>
@@ -201,27 +153,6 @@ const analysesUsageLabel = computed(() => {
         <span class="text-gray-300">{{ getTierBadgeLabel(user.tier) || 'Free' }}</span>
       </div>
 
-      <div
-        v-if="usagePercent >= 80 && user.analyses_limit"
-        class="rounded-lg border p-3"
-        :class="[theme.accentBorder, theme.accentBg]"
-      >
-        <p class="text-xs font-medium" :class="theme.accentText">
-          {{ usagePercent >= 100 ? 'You have used all analyses for this month.' : 'You are getting close to your monthly analysis limit.' }}
-        </p>
-        <p class="mt-1 text-xs" :class="theme.accentMuted">
-          Upgrade for more analyses and full history access.
-        </p>
-        <div class="mt-3 flex justify-end">
-          <button
-            type="button"
-            class="btn-primary"
-            @click="openUpgrade"
-          >
-            Upgrade plan
-          </button>
-        </div>
-      </div>
     </SettingsSection>
   </div>
 </template>

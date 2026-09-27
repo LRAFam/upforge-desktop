@@ -1,3 +1,4 @@
+import { APP_VERSION } from './app-version'
 /**
  * trainer-bridge.ts
  * Electron main-process module that manages the Godot training process.
@@ -245,7 +246,7 @@ export class TrainerBridge {
         user_id: user?.id ?? null,
         user_email: user?.email ?? null,
         user_name: user?.name ?? null,
-        app_version: app.getVersion(),
+        app_version: APP_VERSION,
         error_key: process.env['VITE_ERROR_REPORTING_KEY'] ?? '',
       },
     }

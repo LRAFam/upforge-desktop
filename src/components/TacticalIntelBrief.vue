@@ -6,6 +6,7 @@ import { parseCoachingEvidence, severityLabel } from '../lib/coaching-brief'
 const props = defineProps<{
   brief: TacticalIntelBrief
   compact?: boolean
+  progressive?: boolean
   feedbackStatus?: 'idle' | 'sending' | 'sent' | 'error'
 }>()
 
@@ -169,11 +170,13 @@ watch(
         <p class="text-[12px] text-emerald-100/90 leading-snug">{{ brief.fix }}</p>
       </div>
 
-      <div v-if="dedupedImprovements.length" class="space-y-1">
-        <p class="text-[9px] font-semibold uppercase tracking-[0.18em] text-gray-600">Also work on</p>
+      <details v-if="dedupedImprovements.length" :open="!progressive" class="brief-improvements space-y-2">
+        <summary class="flex min-h-9 cursor-pointer items-center justify-between gap-2 text-xs font-semibold text-gray-300">
+          <span>More to work on</span><span class="text-gray-400">{{ improvementRows.length }} <span class="brief-disclosure" aria-hidden="true">⌄</span></span>
+        </summary>
         <ul class="space-y-1">
           <li
-            v-for="(row, index) in improvementRows.slice(0, compact ? 2 : 3)"
+            v-for="(row, index) in improvementRows"
             :key="`${index}-${row.text.slice(0, 24)}`"
             class="text-gray-500 leading-snug"
             :class="compact ? 'text-[11px]' : 'text-[12px]'"
@@ -221,7 +224,7 @@ watch(
             </div>
           </li>
         </ul>
-      </div>
+      </details>
 
       <div v-if="brief.tags.length" class="flex flex-wrap gap-1 pt-0.5">
         <span
@@ -233,3 +236,12 @@ watch(
     </div>
   </div>
 </template>
+
+<style scoped>
+.brief-improvements { border-top: 1px solid #ffffff14; padding-top: 6px; }
+.brief-improvements summary { list-style: none; }
+.brief-improvements summary::-webkit-details-marker { display: none; }
+.brief-disclosure { display: inline-block; margin-left: 6px; }
+.brief-improvements[open] .brief-disclosure { transform: rotate(180deg); }
+.vod-intel-brief :is(button, summary):focus-visible { outline: 2px solid #e11d48; outline-offset: 2px; border-radius: 3px; }
+</style>

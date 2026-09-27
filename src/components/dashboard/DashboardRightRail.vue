@@ -138,24 +138,6 @@ async function runDrill() {
     </div>
     <div v-else-if="profileLoading" class="h-24 dash-panel animate-pulse" />
 
-    <div class="dash-panel overflow-hidden flex-shrink-0 ring-1 ring-violet-500/20">
-      <div class="px-3.5 py-2.5 border-b border-white/[0.07]">
-        <span class="text-[10px] font-bold uppercase tracking-[0.16em] text-violet-300/80">More on the web</span>
-        <p class="text-[10px] text-gray-500 mt-1">Extra tools on upforge.gg</p>
-      </div>
-      <ul class="divide-y divide-white/[0.05]">
-        <li v-for="link in railLinks" :key="link.href">
-          <button
-            type="button"
-            class="w-full px-3.5 py-2 text-left hover:bg-violet-500/[0.06] transition-colors"
-            @click="openWeb(link.href, link.embed)"
-          >
-            <span class="text-[11px] font-semibold text-gray-200">{{ link.label }}</span>
-            <span class="block text-[10px] text-gray-600 mt-0.5">{{ link.hint }}</span>
-          </button>
-        </li>
-      </ul>
-    </div>
 
     <div v-if="isValorant && weeklyFocus" class="dash-panel overflow-hidden flex-shrink-0">
       <div class="px-3.5 py-2.5 border-b border-white/[0.07] flex items-center justify-between">
@@ -164,7 +146,7 @@ async function runDrill() {
       </div>
       <ul class="divide-y divide-white/[0.05]">
         <li class="px-3.5 py-2.5 flex items-start gap-2.5">
-          <span class="mt-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-red-500/20 text-red-400 text-[10px]">✓</span>
+          <span class="mt-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-red-500/20 text-red-400 text-[10px]" aria-hidden="true">•</span>
           <div class="flex-1 min-w-0">
             <p class="text-[11px] font-semibold text-gray-200">Weekly goal</p>
             <p class="text-[10px] text-gray-500 leading-snug mt-0.5">{{ weeklyFocus.goal }}</p>
@@ -247,7 +229,23 @@ async function runDrill() {
 
     <div v-if="avgScore != null" class="dash-panel px-3.5 py-2.5 flex items-center justify-between flex-shrink-0">
       <span class="text-[10px] font-bold uppercase tracking-wide text-gray-500">Avg AI score</span>
-      <span class="text-sm font-black tabular-nums text-gray-200">{{ avgScore * 10 }}</span>
+      <span class="text-sm font-black tabular-nums text-gray-200">{{ avgScore }}</span>
     </div>
+    <details class="dash-panel overflow-hidden flex-shrink-0 web-extras">
+      <summary class="px-3.5 py-3 text-xs font-semibold text-gray-300 cursor-pointer">Explore web tools</summary>
+      <ul class="divide-y divide-white/[0.05]">
+        <li v-for="link in railLinks" :key="link.href">
+          <button
+            type="button"
+            class="w-full px-3.5 py-2 text-left hover:bg-white/[0.04] transition-colors"
+            @click="openWeb(link.href, link.embed)"
+          >
+            <span class="text-[11px] font-semibold text-gray-200">{{ link.label }}</span>
+            <span class="block text-[10px] text-gray-600 mt-0.5">{{ link.hint }}</span>
+          </button>
+        </li>
+      </ul>
+    </details>
+
   </div>
 </template>

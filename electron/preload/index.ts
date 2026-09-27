@@ -1,6 +1,18 @@
 import { contextBridge, ipcRenderer } from 'electron'
 
 const api = {
+  workspaceCoach: {
+    history: (id: number) => ipcRenderer.invoke('workspace-coach:history', id),
+    ask: (id: number, body: import('../../src/lib/workspace-coach').CoachQuestion) => ipcRenderer.invoke('workspace-coach:ask', id, body),
+    credits: (pack: string) => ipcRenderer.invoke('workspace-coach:credits', pack),
+  },
+  personalReview: { get: (source: unknown) => ipcRenderer.invoke('personal-review:get', source), save: (document: unknown) => ipcRenderer.invoke('personal-review:save', document) },
+  accountUsage: { get: () => ipcRenderer.invoke('account:usage') },
+  reviewNotebook: {
+    remove: (id: string, revision: number) => ipcRenderer.invoke('review-notebook:remove', id, revision),
+    list: () => ipcRenderer.invoke('review-notebook:list'),
+    save: (id: string, document: import('../../src/lib/review-notebook').NotebookWrite) => ipcRenderer.invoke('review-notebook:save', id, document),
+  },
   coaching: {
     preferences: () => ipcRenderer.invoke('coaching:preferences'),
     savePreferences: (value: import('../../src/lib/coaching-preferences').CoachingPreferences) => ipcRenderer.invoke('coaching:save-preferences', value),

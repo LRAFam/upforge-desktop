@@ -648,6 +648,18 @@ export interface DeadlockProfileStats {
 declare global {
   interface Window {
     api: {
+      workspaceCoach: {
+        history: (id: number) => Promise<import('./lib/review-notebook').NotebookResult<import('./lib/workspace-coach').CoachHistory>>
+        ask: (id: number, body: import('./lib/workspace-coach').CoachQuestion) => Promise<import('./lib/review-notebook').NotebookResult<import('./lib/workspace-coach').CoachAnswer>>
+        credits: (pack: string) => Promise<import('./lib/review-notebook').NotebookResult<{ checkout_url: string }>>
+      }
+      personalReview: { get: (source: import('./lib/personal-review').PersonalReviewSource) => Promise<import('./lib/review-notebook').NotebookResult<unknown>>; save: (document: import('./lib/personal-review').PersonalReview) => Promise<import('./lib/review-notebook').NotebookResult<unknown>> }
+      accountUsage: { get: () => Promise<{ ok: true; data: unknown } | { ok: false; error: string }> }
+      reviewNotebook: {
+        remove: (id: string, revision: number) => Promise<import('./lib/review-notebook').NotebookResult<{ id: string; deleted: true }>>
+        list: () => Promise<import('./lib/review-notebook').NotebookResult<{ items: import('./lib/review-notebook').SavedComparison[] }>>
+        save: (id: string, document: import('./lib/review-notebook').NotebookWrite) => Promise<import('./lib/review-notebook').NotebookResult<import('./lib/review-notebook').SavedComparison>>
+      }
       coaching: {
         preferences: () => Promise<import('./lib/coaching-preferences').CoachingPreferences>
         savePreferences: (value: import('./lib/coaching-preferences').CoachingPreferences) => Promise<import('./lib/coaching-preferences').CoachingPreferences>

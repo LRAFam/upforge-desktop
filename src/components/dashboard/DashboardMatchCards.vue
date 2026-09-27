@@ -15,7 +15,6 @@ const {
   coachingSnippets,
   analysesLoading,
   openAnalysisRow,
-  profile,
 } = useDashboard()
 
 const preview = computed(() =>
@@ -28,7 +27,6 @@ function snippet(id: number): string {
   return coachingSnippets.value[id] ?? ''
 }
 
-const coachName = computed(() => profile.value?.user.name?.split(' ')[0] ?? 'Coach')
 </script>
 
 <template>
@@ -44,7 +42,7 @@ const coachName = computed(() => profile.value?.user.name?.split(' ')[0] ?? 'Coa
 
     <div v-else-if="preview.length === 0" class="dash-panel px-6 py-12 text-center">
       <p class="text-sm font-semibold text-gray-400">No analysed matches yet</p>
-      <p class="text-[12px] text-gray-600 mt-1.5">Play a ranked game — UpForge captures and coaches automatically</p>
+      <p class="text-[12px] text-gray-600 mt-1.5">Play a ranked game with recording enabled to start your first review.</p>
     </div>
 
     <div v-else class="grid grid-cols-3 gap-3">
@@ -99,15 +97,14 @@ const coachName = computed(() => profile.value?.user.name?.split(' ')[0] ?? 'Coa
 
           <div v-if="snippet(a.id)" class="relative z-10 mt-3 rounded-lg border border-white/[0.08] bg-black/40 px-3 py-2.5">
             <div class="flex gap-2">
-              <span class="text-lg leading-none font-serif" :class="a.won ? 'text-emerald-500/70' : 'text-red-500/70'">"</span>
               <div class="min-w-0">
-                <p class="text-[11px] text-gray-300 leading-relaxed line-clamp-3 italic">{{ snippet(a.id) }}</p>
-                <p class="text-[9px] text-gray-600 mt-1.5">— {{ coachName }}</p>
+                <p class="text-[11px] text-gray-300 leading-relaxed line-clamp-3">{{ snippet(a.id) }}</p>
+                <p class="text-[9px] text-gray-600 mt-1.5">AI coach</p>
               </div>
             </div>
           </div>
           <div v-else-if="a.overall_score != null" class="relative z-10 mt-3 flex items-baseline gap-1">
-            <span class="text-lg font-black tabular-nums text-gray-300">{{ a.overall_score * 10 }}</span>
+            <span class="text-lg font-black tabular-nums text-gray-300">{{ a.overall_score }}</span>
             <span class="text-[9px] font-bold text-gray-600 uppercase">AI score</span>
           </div>
         </div>

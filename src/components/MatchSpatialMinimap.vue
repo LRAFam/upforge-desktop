@@ -580,7 +580,7 @@ defineExpose({ exportPng })
   <div
     class="relative space-y-1.5"
     :class="(compact || floatHud || dockHud || panelHud || dockExpanded) ? '' : 'w-full'"
-    :style="(compact || floatHud || dockHud || panelHud || dockExpanded) ? canvasStyle : undefined"
+    :style="(compact || floatHud || dockHud || panelHud || dockExpanded) ? { width: canvasStyle.width } : undefined"
   >
     <canvas
       ref="canvasRef"

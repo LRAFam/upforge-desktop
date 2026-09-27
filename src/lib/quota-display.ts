@@ -11,10 +11,12 @@ export function sharedAnalysesPoolHint(
   used: number | null | undefined,
   limit: number | null | undefined,
 ): string {
-  if (limit == null || isUnlimitedQuota(limit)) {
+  if (limit === undefined) return 'Coaching usage unavailable'
+  if (limit === null || isUnlimitedQuota(limit)) {
     return 'Unlimited coaching analyses · shared across all games'
   }
-  const remaining = Math.max(0, (limit ?? 0) - (used ?? 0))
+  if (used == null) return 'Coaching usage unavailable'
+  const remaining = Math.max(0, limit - used)
   const noun = remaining === 1 ? 'analysis' : 'analyses'
   return `${remaining} ${noun} left · shared across Valorant, CS2, Deadlock & LoL`
 }
@@ -24,9 +26,11 @@ export function analysesLeftSidebarLabel(
   used: number | null | undefined,
   limit: number | null | undefined,
 ): string {
-  if (limit == null) return 'Unlimited analyses'
+  if (limit === undefined) return 'Usage unavailable'
+  if (limit === null) return 'Unlimited analyses'
   if (isUnlimitedQuota(limit)) return 'Unlimited analyses'
-  const remaining = Math.max(0, limit - (used ?? 0))
+  if (used == null) return 'Usage unavailable'
+  const remaining = Math.max(0, limit - used)
   const noun = remaining === 1 ? 'analysis' : 'analyses'
   return `${remaining} ${noun} left`
 }
@@ -35,9 +39,11 @@ export function analysesLeftSidebarLabel(
 export function analysesLeftSidebarTone(
   used: number | null | undefined,
   limit: number | null | undefined,
-): 'ok' | 'low' | 'empty' | 'unlimited' {
-  if (limit == null || isUnlimitedQuota(limit)) return 'unlimited'
-  const remaining = Math.max(0, limit - (used ?? 0))
+): 'ok' | 'low' | 'empty' | 'unlimited' | 'unknown' {
+  if (limit === undefined) return 'unknown'
+  if (limit === null || isUnlimitedQuota(limit)) return 'unlimited'
+  if (used == null) return 'unknown'
+  const remaining = Math.max(0, limit - used)
   if (remaining <= 0) return 'empty'
   if (remaining <= 2) return 'low'
   return 'ok'

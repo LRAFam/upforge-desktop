@@ -1,3 +1,5 @@
+import { APP_VERSION } from './app-version'
+import { setupReviewNotebookHandlers } from './ipc/review-notebook-ipc'
 import { registeredLocalRecordingPaths } from './local-media-paths'
 import { CaptureOwnership } from './capture-ownership'
 import { initProductActivity, trackProductActivity } from './product-activity'
@@ -334,9 +336,10 @@ import {
 } from './late-clip-retry'
 import { downloadCs2ValveDemoForSession } from './cs2-valve-demo-downloader'
 import { clearDemoDownloadProgress, sendDemoDownloadProgress } from './demo-download-notify'
-// Disable GPU acceleration in dev to prevent GPU process crashes on macOS
+// Keep software rendering as the dev default. Opt in to GPU rendering when
+// diagnosing stale software-composited video frames in the macOS preview.
 if (!app.isPackaged) {
-  app.disableHardwareAcceleration()
+  if (process.env.UPFORGE_DEV_GPU !== '1') app.disableHardwareAcceleration()
   app.commandLine.appendSwitch('no-sandbox')
   app.commandLine.appendSwitch('disable-features', 'OutOfProcessSystemDnsResolution')
   app.commandLine.appendSwitch('disable-renderer-backgrounding')
@@ -1224,7 +1227,7 @@ function beginMatchTelemetry(game: string): MatchTelemetrySession {
   stopObsStatsSampling()
   const settings = settingsManager?.get()
   const profile = collectMachineProfile({
-    appVersion: app.getVersion(),
+    appVersion: APP_VERSION,
     obsVersion: obsRecorder.getObsStudioVersion(),
     encoder: settings?.cachedEncoder ?? null,
   })
@@ -6369,8 +6372,8 @@ async function startApp(): Promise<void> {
   uploadManager = new UploadManager(authManager)
   settingsManager = new SettingsManager()
   discordRPC.start()
-  initFunnelEvents(authManager, app.getVersion())
-  initProductActivity(authManager, app.getVersion())
+  initFunnelEvents(authManager, APP_VERSION)
+  initProductActivity(authManager, APP_VERSION)
   clipStore.onAdded = (clip, ownerId) => {
     trackProductActivity('clip_created', clip.game, ownerId)
     if (clip.trigger === 'manual' || clip.trigger === 'hotkey') {
@@ -6609,6 +6612,7 @@ async function startApp(): Promise<void> {
     if (state === 'reviewing') discordRPC.setReviewing()
     else discordRPC.setIdle()
   })
+  setupReviewNotebookHandlers(ipcMain, authManager)
   ipcMain.handle('coaching:preferences', async () => {
     return (await authManager.getApi().get('/api/user/coaching-preferences')).data
   })
@@ -6672,7 +6676,7 @@ async function startApp(): Promise<void> {
 
     return {
       app: {
-        version: app.getVersion(),
+        version: APP_VERSION,
         platform: process.platform,
         arch: process.arch,
         electronVersion: process.versions.electron,
@@ -6729,7 +6733,7 @@ async function startApp(): Promise<void> {
         : null
 
     return formatSupportBundle({
-      version: app.getVersion(),
+      version: APP_VERSION,
       network,
       activityLog: activityLog.slice(),
       riot: riotDiag,

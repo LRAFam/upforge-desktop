@@ -1259,10 +1259,9 @@ function createSettings() {
           deadlock_account_id: (prof.user as UserWithUsage).deadlock_account_id
             ?? user.value?.deadlock_account_id
             ?? null,
-          analyses_used: prof.user.analysis_stats?.total ?? 0,
-          analyses_limit: prof.user.analysis_stats?.limit
-            ?? (prof.user.is_admin || prof.user.tier === 'admin' ? null : 1),
-          archive_count: prof.user.archive_stats?.count ?? 0,
+          analyses_used: prof.user.analysis_stats?.total,
+          analyses_limit: prof.user.analysis_stats?.limit,
+          archive_count: prof.user.archive_stats?.count,
           archive_limit: prof.user.archive_stats?.limit ?? null,
           archive_remaining: prof.user.archive_stats?.remaining ?? null,
           archive_retention_days: prof.user.archive_stats?.retention_days ?? null,

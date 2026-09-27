@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
+import VodPersonalReview from './VodPersonalReview.vue'
+import VodWorkspaceDivider from './VodWorkspaceDivider.vue'
 import { useVodReview } from '../../composables/useVodReview'
 import MatchSpatialMinimap from '../MatchSpatialMinimap.vue'
 import TacticalIntelBrief from '../TacticalIntelBrief.vue'
@@ -12,6 +14,9 @@ import VodMatchTimelineSidebar from './VodMatchTimelineSidebar.vue'
 import VodDemoPendingPanel from './VodDemoPendingPanel.vue'
 import VodTimelineEventIcon from './VodTimelineEventIcon.vue'
 import { recordingTimelineReady, usesAsyncDemoSync } from '../../lib/recording-demo-status'
+
+const props = defineProps<{ workspace?: boolean; roundsWidth?: number; detailsWidth?: number }>()
+const emit = defineEmits<{ 'update:roundsWidth': [value: number]; 'update:detailsWidth': [value: number] }>()
 
 const {
   abilityCastSlots,
@@ -130,6 +135,7 @@ const {
   togglePlay,
   toggleTheaterMode,
   videoAreaEl,
+  videoAspect,
   videoEl,
   videoFrameEl,
   videoFrameStyle,
@@ -165,7 +171,7 @@ const noVideoHint = computed((): string => {
 </script>
 
 <template>
-  <div class="flex flex-1 min-h-0">
+  <div class="vod-workspace-body flex flex-1 min-h-0" :class="{ 'workspace-enabled': props.workspace }" :style="props.workspace ? { '--rounds-width': `${props.roundsWidth}%`, '--details-width': `${props.detailsWidth}%` } : undefined">
 <!-- Left sidebar: round log or demo-pending panel -->
       <VodDemoPendingPanel
         v-if="showDemoPendingPanel && !theaterMode && !roundLogCollapsed"
@@ -178,8 +184,11 @@ const noVideoHint = computed((): string => {
       <VodRoundLogSidebar v-else-if="!theaterMode && !roundLogCollapsed && isRoundBased" />
       <VodMatchTimelineSidebar v-else-if="!theaterMode && !roundLogCollapsed" />
 
+      <VodWorkspaceDivider v-if="workspace && !theaterMode && !roundLogCollapsed"
+        label="Rounds panel width" :model-value="roundsWidth ?? 20" :min="16" :max="28"
+        @update:model-value="emit('update:roundsWidth', $event)" />
       <!-- Video + intel + timeline -->
-      <div class="flex flex-1 min-w-0 min-h-0">
+      <div class="vod-workspace-main flex flex-1 min-w-0 min-h-0">
 
       <div class="flex-1 flex flex-col min-w-0 min-h-0">
 
@@ -209,8 +218,9 @@ const noVideoHint = computed((): string => {
         <!-- Video area -->
         <div
           ref="videoAreaEl"
-          class="vod-cinema flex-1 relative min-h-[200px] flex items-center justify-center overflow-hidden"
-          :class="{ 'cursor-none': cursorHidden && !theaterMode }"
+          class="vod-cinema relative min-h-0 flex items-center justify-center overflow-hidden"
+          :class="{ 'cursor-none': cursorHidden && !theaterMode, 'vod-cinema--focus': theaterMode }"
+          :style="{ aspectRatio: videoAspect }"
           @mousemove="onVideoMouseMove"
         >
           <button
@@ -485,9 +495,11 @@ const noVideoHint = computed((): string => {
                   @click="setSidePanelTab('map')"
                 >Dock to side</button>
               </div>
-              <TacticalIntelBrief
+              <VodPersonalReview />
+          <TacticalIntelBrief
                 v-if="tacticalIntelBrief && !sidePanelOpen"
                 :brief="tacticalIntelBrief"
+            progressive
                 compact
                 @seek-evidence="seekCoachingEvidence"
                 @report-evidence="reportCoachingEvidence"
@@ -929,9 +941,12 @@ const noVideoHint = computed((): string => {
         </div>
       </div>
 
+      <VodWorkspaceDivider v-if="workspace && sidePanelOpen && !theaterMode"
+        label="Details panel width" :model-value="detailsWidth ?? 32" :min="24" :max="40" reverse
+        @update:model-value="emit('update:detailsWidth', $event)" />
       <!-- Right rail: coach notes OR map intel (one panel — keeps video wide) -->
       <aside
-        v-if="sidePanelOpen && !theaterMode"
+        v-show="sidePanelOpen && !theaterMode"
         class="vod-side-panel hidden md:flex w-[min(440px,34vw)] xl:w-[min(480px,32vw)] flex-shrink-0 flex-col min-h-0 border-l border-white/[0.09]"
         @click.stop
       >
@@ -940,6 +955,7 @@ const noVideoHint = computed((): string => {
             type="button"
             class="vod-side-tab"
             :class="showInsightsPanel ? 'vod-side-tab--active' : ''"
+            :aria-pressed="showInsightsPanel"
             @click="setSidePanelTab('notes')"
           >Coach notes</button>
           <button
@@ -947,6 +963,7 @@ const noVideoHint = computed((): string => {
             type="button"
             class="vod-side-tab"
             :class="spatialMapVisible ? 'vod-side-tab--active' : ''"
+            :aria-pressed="spatialMapVisible"
             @click="setSidePanelTab('map')"
           >Map intel</button>
           <button
@@ -969,10 +986,11 @@ const noVideoHint = computed((): string => {
           </button>
         </div>
 
-        <div v-if="showInsightsPanel" class="vod-notes-panel flex-1 min-h-0 overflow-y-auto scrollbar-hide px-4 py-4 space-y-4">
+        <div v-show="showInsightsPanel" class="vod-notes-panel flex-1 min-h-0 overflow-y-auto scrollbar-hide px-4 py-4 space-y-4">
           <TacticalIntelBrief
             v-if="tacticalIntelBrief"
             :brief="tacticalIntelBrief"
+            progressive
             :feedback-status="analysisFeedbackStatus"
             @seek-evidence="seekCoachingEvidence"
             @report-evidence="reportCoachingEvidence"
@@ -1062,7 +1080,7 @@ const noVideoHint = computed((): string => {
           </div>
         </div>
 
-        <div v-else-if="spatialMapVisible && hasSpatialIntel" class="vod-intel-panel flex-1 min-h-0 overflow-y-auto scrollbar-hide px-4 py-4 space-y-3">
+        <div v-if="!showInsightsPanel && spatialMapVisible && hasSpatialIntel" class="vod-intel-panel flex-1 min-h-0 overflow-y-auto scrollbar-hide px-4 py-4 space-y-3">
           <div class="mx-auto w-fit" @mousedown.stop @click.stop>
             <MatchSpatialMinimap
               panel-hud
@@ -1144,3 +1162,23 @@ const noVideoHint = computed((): string => {
       </div>
   </div>
 </template>
+
+<style scoped>
+.vod-cinema { width: 100%; flex: 0 1 auto; }
+.vod-cinema--focus { flex: 1 1 0%; }
+.vod-side-tab { min-height: 36px; padding: 6px 9px; border: 1px solid transparent; border-radius: 4px; color: #aab2bf; font-size: 12px; font-weight: 600; }
+.vod-side-tab:hover { color: white; background: #ffffff08; }
+.vod-side-tab--active { color: #fecdd3; border-color: #e11d4860; background: #e11d4812; }
+.vod-side-panel button:focus-visible { outline: 2px solid #e11d48; outline-offset: 2px; }
+
+.workspace-enabled > :deep(.vod-round-log),
+.workspace-enabled > :deep(.vod-demo-pending) { width: var(--rounds-width); min-width: 0; }
+.workspace-enabled .vod-side-panel { width: var(--details-width); display: flex; }
+@container review-workspace (max-width: 1000px) {
+  .workspace-enabled { overflow-x: auto; }
+  .workspace-enabled > :deep(.vod-round-log),
+  .workspace-enabled > :deep(.vod-demo-pending) { min-width: 180px; }
+  .workspace-enabled .vod-workspace-main { min-width: 580px; }
+  .workspace-enabled .vod-side-panel { min-width: 240px; }
+}
+</style>

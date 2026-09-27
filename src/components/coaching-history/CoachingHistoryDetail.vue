@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { useCoachingHistory } from '../../composables/useCoachingHistory'
+import MatchSavedReviews from './MatchSavedReviews.vue'
 import TacticalIntelBrief from '../TacticalIntelBrief.vue'
 import MatchRecapPanel from '../MatchRecapPanel.vue'
 import TimingComparisonPanel from '../TimingComparisonPanel.vue'
@@ -59,6 +60,12 @@ const {
   topMap,
   winRate,
 } = useCoachingHistory()
+
+const reportOpen = ref(false)
+watch(selectedId, () => { reportOpen.value = false })
+const hasPlayableMoments = computed(() => Boolean(
+  expandedDetail.value?.match_highlights?.length || expandedDetail.value?.timing_comparisons?.length || expandedDetail.value?.duel_moments?.length,
+))
 
 const selectedRecordingCanPlay = computed(() =>
   selectedRecording.value ? canWatchRawRecording(selectedRecording.value) : false,
@@ -145,23 +152,23 @@ const statStrip = computed(() => {
 <template>
       <div
         class="history-detail flex min-h-0 flex-1 flex-col bg-[#0e0e0e]"
-        :class="selectedId == null ? 'max-lg:hidden' : ''"
+        :class="selectedId == null && selectedRecordingId == null ? 'max-lg:hidden' : ''"
       >
         <div v-if="selectedId || selectedRecordingId" class="lg:hidden flex-shrink-0 px-3 py-2 border-b border-white/[0.08]">
           <button
             type="button"
-            class="flex items-center gap-1.5 text-xs text-gray-400 hover:text-white"
+            class="flex min-h-9 items-center gap-1.5 text-xs text-gray-300 hover:text-white"
             @click="clearSelection"
           >
             <svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/>
             </svg>
-            All sessions
+            All matches
           </button>
         </div>
 
         <div class="flex-1 overflow-y-auto scrollbar-hide">
-          <div class="w-full px-5 py-4 pb-24">
+          <div class="w-full px-5 py-4 pb-6">
           <div v-if="selectedRecording" class="space-y-3">
             <div class="overflow-hidden rounded-xl border border-white/[0.10] bg-[#131313]">
               <div class="flex items-start gap-4 border-b border-white/[0.07] p-4">
@@ -195,8 +202,8 @@ const statStrip = computed(() => {
               <div v-if="pendingStatStrip.length" class="flex flex-wrap items-center gap-x-4 gap-y-1 border-b border-white/[0.07] px-4 py-2.5">
                 <template v-for="(item, i) in pendingStatStrip" :key="item.label">
                   <span v-if="i > 0" class="select-none text-[10px] text-gray-700">·</span>
-                  <span class="inline-flex items-baseline gap-1 text-[11px]">
-                    <span class="text-[9px] font-bold uppercase tracking-wide text-gray-600">{{ item.label }}</span>
+                  <span class="inline-flex items-baseline gap-1.5 text-xs">
+                    <span class="text-[11px] font-medium text-gray-400">{{ item.label }}</span>
                     <span class="font-bold tabular-nums text-gray-200" :class="item.class">{{ item.value }}</span>
                   </span>
                 </template>
@@ -333,9 +340,9 @@ const statStrip = computed(() => {
                 <div class="absolute inset-0 bg-gradient-to-r from-black/94 via-black/78 to-black/55" />
                 <div class="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-black/25" />
               </div>
-              <div class="relative flex items-end gap-4 p-5 min-h-[160px] xl:min-h-[172px]">
+              <div class="relative flex items-center gap-4 p-4 min-h-[116px]">
                 <div
-                  class="relative h-20 w-20 flex-shrink-0 rounded-xl overflow-hidden border border-white/15 bg-black/50"
+                  class="relative h-16 w-16 flex-shrink-0 rounded-xl overflow-hidden border border-white/15 bg-black/50"
                   :style="selectedAnalysis.agent ? { boxShadow: `0 0 24px ${getAgentColor(selectedAnalysis.agent)}28` } : {}"
                 >
                   <img
@@ -348,7 +355,7 @@ const statStrip = computed(() => {
                 </div>
 
                 <div class="min-w-0 flex-1 pb-0.5">
-                  <p class="text-[9px] font-black uppercase tracking-[0.22em] text-red-400/90">Session review</p>
+                  <p class="text-[9px] font-black uppercase tracking-[0.22em] text-red-400/90">Match overview</p>
                   <h2 class="text-lg font-black text-white truncate leading-tight">{{ selectedAnalysis.agent || 'Unknown agent' }}</h2>
                   <p class="text-[13px] text-gray-300 font-medium truncate">{{ formatMapLabel(selectedAnalysis.map) || 'Unknown map' }}</p>
                   <div class="mt-1.5 flex flex-wrap items-center gap-1.5">
@@ -388,11 +395,36 @@ const statStrip = computed(() => {
               </div>
             </div>
 
+        <div
+          v-if="selectedAnalysis"
+          class="overview-actions"
+        >
+          <div class="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              class="rounded-lg border border-red-500 bg-red-600 px-5 py-2.5 text-sm font-bold text-white transition-colors hover:bg-red-500 disabled:opacity-50"
+              :disabled="timelineLoadingId === selectedAnalysis.id"
+              @click="openTimeline(selectedAnalysis.id)"
+            >
+              {{ timelineLoadingId === selectedAnalysis.id ? 'Opening VOD…' : 'Review match' }}
+            </button>
+            <button
+              v-if="coachReviewSummary?.status === 'completed'"
+              type="button"
+              class="rounded-lg border border-white/15 bg-white/[0.04] px-4 py-2.5 text-sm font-semibold text-gray-200 transition-colors hover:border-white/30 hover:bg-white/[0.08] disabled:opacity-50"
+              :disabled="timelineLoadingId === selectedAnalysis.id"
+              @click="openCoachNotes(selectedAnalysis.id)"
+            >
+              Coach notes
+            </button>
+          </div>
+        </div>
+
             <div v-if="statStrip.length" class="dash-panel flex flex-wrap items-center gap-x-4 gap-y-1 px-4 py-2.5">
               <template v-for="(item, i) in statStrip" :key="item.label">
                 <span v-if="i > 0" class="text-gray-700 text-[10px] select-none">·</span>
-                <span class="inline-flex items-baseline gap-1 text-[11px]">
-                  <span class="text-[9px] font-bold uppercase tracking-wide text-gray-600">{{ item.label }}</span>
+                <span class="inline-flex items-baseline gap-1.5 text-xs">
+                  <span class="text-[11px] font-medium text-gray-400">{{ item.label }}</span>
                   <span class="font-bold tabular-nums text-gray-200" :class="item.class">{{ item.value }}</span>
                 </span>
               </template>
@@ -412,8 +444,12 @@ const statStrip = computed(() => {
             </div>
 
             <template v-else>
-              <div class="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_minmax(280px,36%)] gap-4 items-start">
-                <div class="space-y-3 min-w-0">
+              <MatchSavedReviews :analysis-id="selectedAnalysis.id" />
+              <section class="overview-report">
+                <button type="button" class="report-toggle" :aria-expanded="reportOpen" aria-controls="match-coaching-report" @click="reportOpen = !reportOpen">
+                  <span>Coaching report</span><span class="text-xs font-normal text-gray-400">{{ reportOpen ? 'Hide report −' : 'Read report +' }}</span>
+                </button>
+                <div v-show="reportOpen" id="match-coaching-report" class="space-y-3 pt-3 pb-3">
               <TacticalIntelBrief v-if="expandedBrief" :brief="expandedBrief" />
 
               <div
@@ -456,12 +492,17 @@ const statStrip = computed(() => {
                 </div>
               </div>
 
-              <p v-if="!hasMomentContent && !expandedBrief && !detailLoading" class="text-sm text-gray-600 text-center py-4 lg:hidden">
-                No structured coaching notes for this session.
-              </p>
-                </div>
 
-                <div class="space-y-3 min-w-0">
+                  <p v-if="!hasMomentContent && !expandedBrief" class="text-sm text-gray-400">No structured coaching notes for this session.</p>
+                </div>
+              </section>
+              <section v-if="hasPlayableMoments" aria-labelledby="match-moments-title" class="space-y-3">
+                <div class="flex items-baseline justify-between gap-3">
+                  <h3 id="match-moments-title" class="text-sm font-bold text-white">Moments to revisit</h3>
+                  <span class="text-xs text-gray-400">Select a moment to open the footage</span>
+                </div>
+                <div class="overview-moments">
+
               <MatchRecapPanel
                 v-if="expandedDetail?.match_highlights?.length"
                 :priority-improvements="expandedDetail.priority_improvements"
@@ -478,45 +519,37 @@ const statStrip = computed(() => {
                 @seek="seekAnalysisMoment"
               />
 
-              <DuelMomentCards
-                v-if="expandedDetail?.duel_moments?.length"
-                :moments="expandedDetail.duel_moments"
-                @seek="(ms) => seekAnalysisMoment(Math.max(0, ms - 3000))"
-              />
+              <details v-if="expandedDetail?.duel_moments?.length" class="overview-duels">
+                <summary class="report-toggle">Duel analysis <span class="text-xs font-normal text-gray-400">{{ expandedDetail.duel_moments.length }} moments · Expand</span></summary>
+                <DuelMomentCards
+                  :moments="expandedDetail.duel_moments"
+                  @seek="(ms) => seekAnalysisMoment(Math.max(0, ms - 3000))"
+                />
+              </details>
 
-              <p v-if="!hasMomentContent && !expandedBrief && !detailLoading" class="text-sm text-gray-600 text-center py-4 hidden lg:block">
-                No structured coaching notes for this session.
-              </p>
+
                 </div>
+              </section>
+              <div v-else class="dash-panel px-4 py-4">
+                <p class="text-sm font-semibold text-gray-200">Review at your own pace</p>
+                <p class="mt-1 text-xs text-gray-400">No moment cards are available for this match. Open the review to explore the footage.</p>
               </div>
+
             </template>
           </div>
           </div>
         </div>
 
-        <div
-          v-if="selectedAnalysis"
-          class="flex-shrink-0 border-t border-white/[0.08] bg-[#0e0e0e]/95 backdrop-blur-md px-5 py-3"
-        >
-          <div class="flex gap-2 w-full">
-            <button
-              type="button"
-              class="flex-1 rounded-xl border border-red-500/30 bg-red-500/10 py-2.5 text-sm font-bold text-red-100 transition-colors hover:border-red-500/45 hover:bg-red-500/15 disabled:opacity-50"
-              :disabled="timelineLoadingId === selectedAnalysis.id"
-              @click="openTimeline(selectedAnalysis.id)"
-            >
-              {{ timelineLoadingId === selectedAnalysis.id ? 'Opening VOD…' : 'Open VOD review' }}
-            </button>
-            <button
-              v-if="coachReviewSummary?.status === 'completed'"
-              type="button"
-              class="rounded-xl border border-violet-500/30 bg-violet-500/10 px-4 py-2.5 text-sm font-semibold text-violet-100 transition-colors hover:border-violet-400/40 hover:bg-violet-500/15 disabled:opacity-50"
-              :disabled="timelineLoadingId === selectedAnalysis.id"
-              @click="openCoachNotes(selectedAnalysis.id)"
-            >
-              Coach notes
-            </button>
-          </div>
-        </div>
+
       </div>
 </template>
+
+<style scoped>
+.history-detail :is(button, summary):focus-visible { outline: 2px solid #f43f5e; outline-offset: 3px; }
+.overview-moments { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 330px), 1fr)); align-items: start; gap: 12px; }
+.overview-duels { grid-column: 1 / -1; border-top: 1px solid #ffffff14; padding-top: 8px; }
+.overview-report { border-top: 1px solid #ffffff14; padding-top: 12px; }
+.report-toggle { display: flex; align-items: center; justify-content: space-between; gap: 16px; width: 100%; min-height: 44px; color: #e5e7eb; font-size: 14px; font-weight: 700; text-align: left; }
+.report-toggle:hover { color: white; }
+.report-toggle:focus-visible { outline: 2px solid #f43f5e; outline-offset: 4px; border-radius: 4px; }
+</style>

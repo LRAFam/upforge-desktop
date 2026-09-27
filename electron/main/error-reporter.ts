@@ -1,3 +1,4 @@
+import { APP_VERSION } from './app-version'
 /**
  * Error reporter for the Electron main process.
  * Captures uncaught exceptions and unhandled rejections,
@@ -44,7 +45,7 @@ export async function reportError(payload: {
     message: safeMessage.slice(0, 1000),
     stack: payload.stack ? redactSensitiveString(payload.stack).slice(0, 5000) : undefined,
     component: payload.component,
-    app_version: app.getVersion(),
+    app_version: APP_VERSION,
     user_id: user?.id,
     user_email: user?.email,
     user_name: user?.name,

@@ -1,6 +1,7 @@
 import { backgroundWork } from './background-work'
 import { parseRetryAfter, UploadRateLimitError, uploadRateLimitScope } from './upload-rate-limit'
 import fs from 'fs'
+import { createHash } from 'crypto'
 import http from 'http'
 import https from 'https'
 import type { ClientRequest } from 'http'
@@ -537,7 +538,10 @@ export class UploadManager {
 
     opts.onProgress(3)
     const submissionCtx = submissionContextFromTimeline(opts.timeline ?? null, opts.coachingExtras)
+    const file = fs.statSync(opts.videoPath)
+    const uploadKey = createHash('sha256').update(JSON.stringify([path.resolve(opts.videoPath), file.size, file.mtimeMs, opts.game])).digest('hex')
     const presignBody = JSON.stringify({
+      upload_key: uploadKey,
       riot_name:  opts.riotName,
       riot_tag:   opts.riotTag,
       game:       opts.game,
@@ -557,6 +561,7 @@ export class UploadManager {
     )
     this._checkCancelled(generation)
     const archive_id = String(archivePresign.archive_id ?? '')
+    if (archive_id && archivePresign.status === 'archived') { opts.onProgress(100); return { archive_id } }
     const upload_url = String(archivePresign.upload_url ?? '')
     if (!archive_id || !upload_url) {
       throw new Error('Archive presign response missing archive_id or upload_url')

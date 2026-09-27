@@ -1,3 +1,4 @@
+import { APP_VERSION } from '../app-version'
 import { PRODUCT_ACTIVITY_GAMES, trackProductActivity } from '../product-activity'
 /**
  * app-ipc.ts
@@ -60,7 +61,7 @@ export function setupAppHandlers(
       user: auth.getUser(),
       platform: process.platform,
       isDev: is.dev,
-      version: app.getVersion(),
+      version: APP_VERSION,
       firstRun: settings.firstRun,
       ffmpegOk: getFFmpegOk ? getFFmpegOk() : true,
       obsConnected: getObsConnected ? getObsConnected() : false,
@@ -235,7 +236,7 @@ export function setupAppHandlers(
       const result = await autoUpdater.checkForUpdates()
       if (!result) return { status: 'up-to-date', message: 'You\'re on the latest version' }
       const newVersion = result.updateInfo?.version
-      if (newVersion && newVersion !== app.getVersion()) {
+      if (newVersion && newVersion !== APP_VERSION) {
         return { status: 'available', message: `v${newVersion} is downloading...` }
       }
       return { status: 'up-to-date', message: 'You\'re on the latest version' }

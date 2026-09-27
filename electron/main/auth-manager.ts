@@ -299,27 +299,27 @@ export class AuthManager {
       const p = res.data?.profile
       if (!p) return null
       const stats = p.user?.analysis_stats ?? {}
+      if (!Number.isFinite(stats.free_analyses_used) || stats.free_analyses_used < 0
+        || !(stats.monthly_free_analyses === null || (Number.isFinite(stats.monthly_free_analyses) && stats.monthly_free_analyses >= 0))) return null
       const archiveRaw = p.user?.archive_stats ?? {}
       const isAdmin = !!(p.user?.is_admin)
-      const tier = p.user?.tier ?? 'free'
-      const unlimited = isAdmin || tier === 'admin'
       return {
         user: {
           ...p.user,
           is_admin: isAdmin,
           analysis_stats: {
             // API field names: free_analyses_used + monthly_free_analyses
-            total: stats.free_analyses_used ?? 0,
-            purchased: stats.purchased_reports_remaining ?? 0,
-            limit: unlimited ? null : (stats.monthly_free_analyses ?? 1),
+            total: stats.free_analyses_used,
+            purchased: stats.purchased_reports_remaining,
+            limit: stats.monthly_free_analyses,
             subscription_ends_at: stats.subscription_ends_at ?? null,
           },
-          archive_stats: {
-            count: archiveRaw.archived_count ?? 0,
-            limit: unlimited ? null : (archiveRaw.archived_limit ?? null),
-            remaining: unlimited ? null : (archiveRaw.archived_remaining ?? null),
+          archive_stats: archiveRaw.archived_count == null ? undefined : {
+            count: archiveRaw.archived_count,
+            limit: archiveRaw.archived_limit,
+            remaining: archiveRaw.archived_remaining,
             retention_days: archiveRaw.retention_days ?? null,
-            storage_bytes_used: archiveRaw.storage_bytes_used ?? 0,
+            storage_bytes_used: archiveRaw.storage_bytes_used,
           },
           forge_rank: p.forge_rank ?? null,
         },

@@ -1,3 +1,6 @@
+import { createReviewSeek } from '../lib/review-seek'
+import { buildReviewEvents } from '../lib/review-timeline'
+import { boundedMediaTime, reviewVideoUrl, reviewEventStart, EVENT_PRE_ROLL_SECONDS, DEATH_PRE_ROLL_SECONDS } from '../lib/review-media'
 import { PlaybackActivityMeter } from '../lib/playback-activity'
 import { ref, computed, watch, onMounted, onUnmounted, nextTick, inject, provide, type InjectionKey } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
@@ -48,7 +51,7 @@ interface KillEvent {
 
 type ObjectiveEventKind = 'dragon' | 'baron' | 'herald' | 'tower' | 'inhibitor' | 'ace' | 'multikill'
 
-interface TimelineEvent extends Omit<KillEvent, 'type'> {
+export interface TimelineEvent extends Omit<KillEvent, 'type'> {
   type: 'kill' | 'death' | 'neutral' | 'plant' | 'defuse' | 'detonation' | ObjectiveEventKind
   isFirstBlood?: boolean
   // Spike-specific fields
@@ -103,7 +106,7 @@ interface TeamPlayerSnapshot {
   abilityCasts: { grenade: number; ability1: number; ability2: number; ultimate: number } | null
 }
 
-interface RecordingTimeline {
+export interface RecordingTimeline {
   id: string
   jobId?: string | null
   analysisId?: number | null
@@ -633,15 +636,7 @@ function createVodReview() {
     || !!recordingId.value,
   )
   
-  const videoSrc = computed(() => {
-    const path = timeline.value?.videoPath
-    if (!path) return ''
-    if (/^https?:\/\//i.test(path)) return path
-    const normalized = path.replace(/\\/g, '/')
-    return normalized.startsWith('/')
-      ? encodeURI(`file://${normalized}`)
-      : encodeURI(`file:///${normalized}`)
-  })
+  const videoSrc = computed(() => reviewVideoUrl(timeline.value?.videoPath))
 
   const isCloudVideo = computed(() => /^https?:\/\//i.test(timeline.value?.videoPath ?? ''))
 
@@ -717,86 +712,8 @@ function createVodReview() {
     return (currentTime.value / duration.value) * 100
   })
   
-  const allTimelineEvents = computed((): TimelineEvent[] => {
-    if (!timeline.value) return []
-  
-    const me = ownPuuid.value
-  
-    // Build set of first-blood killers per round for badge display
-    const firstBloodKeys = new Set(
-      (timeline.value.firstBloods ?? []).map(fb => `${fb.round ?? 0}:${fb.killerPuuid ?? fb.killerName}`)
-    )
-  
-    // Classify every kill event by comparing killer/victim to the local player.
-    // playerKills contains ALL match kill events (not just the player's) so we
-    // must inspect each event individually rather than assuming array = type.
-    const classified: TimelineEvent[] = (timeline.value.kills ?? [])
-      .filter(k => k.videoOffsetMs != null && !isNaN(k.videoOffsetMs))
-      .map(k => {
-        const isMyKill  = (me && k.killerPuuid === me) || k.killerName === 'You'
-        const isMyDeath = (me && k.victimPuuid === me) || k.victimName === 'You'
-        const type: TimelineEvent['type'] = isMyKill ? 'kill' : isMyDeath ? 'death' : 'neutral'
-        return {
-          ...k,
-          type,
-          isFirstBlood: firstBloodKeys.has(`${k.round ?? 0}:${k.killerPuuid ?? k.killerName}`)
-        }
-      })
-  
-    // Include any deaths from the deaths array that aren't already captured above
-    // (guard against double-counting if both arrays have the same event)
-    const seenOffsets = new Set(classified.map(e => e.videoOffsetMs))
-    const extraDeaths: TimelineEvent[] = (timeline.value.deaths ?? [])
-      .filter(d => d.videoOffsetMs != null && !isNaN(d.videoOffsetMs) && !seenOffsets.has(d.videoOffsetMs))
-      .map(d => ({ ...d, type: 'death' as const }))
-  
-    const plants: TimelineEvent[] = (timeline.value.spikePlants ?? [])
-      .filter(p => p.videoOffsetMs != null)
-      .map(p => ({
-        type: 'plant' as const,
-        killerName: p.planter ?? '',
-        victimName: '',
-        planter: p.planter,
-        site: p.site,
-        videoOffsetMs: p.videoOffsetMs,
-        round: p.round,
-      }))
-    const defuses: TimelineEvent[] = (timeline.value.spikeDefuses ?? [])
-      .filter(d => d.videoOffsetMs != null)
-      .map(d => ({
-        type: 'defuse' as const,
-        killerName: d.defuser ?? '',
-        victimName: '',
-        defuser: d.defuser,
-        videoOffsetMs: d.videoOffsetMs,
-        round: d.round,
-      }))
-    const detonations: TimelineEvent[] = (timeline.value.spikeDetonations ?? [])
-      .filter(d => d.videoOffsetMs != null)
-      .map(d => ({
-        type: 'detonation' as const,
-        killerName: '',
-        victimName: '',
-        videoOffsetMs: d.videoOffsetMs,
-        round: d.round,
-      }))
-  
-    const objectives: TimelineEvent[] = (timeline.value.objectives ?? [])
-      .filter(o => o.videoOffsetMs != null && !isNaN(o.videoOffsetMs))
-      .map(o => ({
-        type: o.kind,
-        killerName: o.killerName ?? '',
-        victimName: '',
-        detail: o.detail ?? null,
-        stolen: o.stolen ?? false,
-        team: o.team ?? null,
-        videoOffsetMs: o.videoOffsetMs,
-      }))
+  const allTimelineEvents = computed((): TimelineEvent[] => timeline.value ? buildReviewEvents(timeline.value, ownPuuid.value) : [])
 
-    return [...classified, ...extraDeaths, ...plants, ...defuses, ...detonations, ...objectives]
-      .sort((a, b) => (a.videoOffsetMs ?? 0) - (b.videoOffsetMs ?? 0))
-  })
-  
   const roundGroups = computed((): RoundGroup[] => {
     if (!timeline.value) return []
     const roundMap = new Map<number, RoundGroup>()
@@ -1284,8 +1201,6 @@ function createVodReview() {
   }
   
   /** Seconds to rewind before an event so the user sees lead-up (markers stay at true event time). */
-  const EVENT_PRE_ROLL_SECONDS = 2
-  const DEATH_PRE_ROLL_SECONDS = 4
   const COACH_ANNOTATION_PRE_ROLL_SECONDS = 5
 
   const hasCoachFeedback = computed(() => {
@@ -1383,6 +1298,9 @@ function createVodReview() {
     ]
   })
   
+  const comparisonActive = ref(false)
+  const comparisonEventShift = ref(0)
+
   function togglePlay() {
     if (!videoEl.value) return
     if (videoEl.value.paused) videoEl.value.play().catch(e => {
@@ -1393,7 +1311,8 @@ function createVodReview() {
   
   function skip(secs: number) {
     if (!videoEl.value) return
-    videoEl.value.currentTime = Math.max(0, Math.min(duration.value, videoEl.value.currentTime + secs))
+    const target = boundedMediaTime(videoEl.value.currentTime + secs, duration.value)
+    if (target != null) seekToTime(target, { autoPlay: true })
   }
   
   function cycleSpeed() {
@@ -1410,6 +1329,9 @@ function createVodReview() {
     if (videoEl.value) videoEl.value.playbackRate = playbackSpeed.value
   }
   
+  const reviewSeek = createReviewSeek()
+  watch(videoEl, () => { reviewSeek.cancel(); videoSeeking.value = false })
+
   function seekToTime(timeSeconds: number, options?: { autoPlay?: boolean }) {
     if (!videoEl.value) return
     const video = videoEl.value
@@ -1429,28 +1351,12 @@ function createVodReview() {
       }
     }
 
-    if (isCloudVideo.value) {
-      videoSeeking.value = true
-      const onSeeked = () => {
-        video.removeEventListener('seeked', onSeeked)
-        finishSeek()
-      }
-      video.addEventListener('seeked', onSeeked)
-      video.currentTime = target
-      window.setTimeout(() => {
-        if (videoSeeking.value) finishSeek()
-      }, 2500)
-      return
-    }
-
-    video.currentTime = target
-    currentTime.value = target
-    if (shouldResume) {
-      video.play().catch(e => {
-        if (e.name !== 'AbortError') console.error('[VOD] play() failed:', e)
-      })
-    }
+    videoSeeking.value = true
+    reviewSeek.seek(video, target, finishSeek, () => {
+      videoSeeking.value = false
+    })
   }
+
 
   function seekCoachAnnotation(offsetMs: number | null, noteId?: number) {
     if (offsetMs == null) return
@@ -1550,10 +1456,8 @@ function createVodReview() {
     const eventSec = eventVideoSeconds(event)
     if (!videoEl.value || eventSec == null) return
     const wasPlaying = !videoEl.value.paused
-    const preRoll = ['kill', 'death'].includes(event.type)
-      ? preRollSeconds(event.type)
-      : 0
-    seekToTime(Math.max(0, eventSec - preRoll), { autoPlay: wasPlaying })
+    const target = reviewEventStart(eventSec, event.type)
+    if (target != null) seekToTime(target, { autoPlay: wasPlaying })
   }
   
   function seekCoachingEvidence(evidence: CoachingEvidence) {
@@ -1819,6 +1723,8 @@ function createVodReview() {
   }
   
   async function loadTimeline() {
+    comparisonActive.value = false
+    comparisonEventShift.value = 0
     timelineLoading.value = true
     timelineError.value = null
     playbackError.value = null
@@ -1919,6 +1825,7 @@ function createVodReview() {
   })
   
   onUnmounted(() => {
+    reviewSeek.cancel()
     window.api.discord.setState('idle').catch(() => {})
     window.removeEventListener('keydown', handleKeyDown)
     document.removeEventListener('fullscreenchange', onFullscreenChange)
@@ -1974,6 +1881,7 @@ function createVodReview() {
   }
   
   function handleKeyDown(e: KeyboardEvent) {
+    if (comparisonActive.value) return
     // Don't capture keyboard events when user is typing in an input
     if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return
 
@@ -2136,6 +2044,8 @@ function createVodReview() {
   })
 
   return {
+    comparisonActive,
+    comparisonEventShift,
     DEATH_PRE_ROLL_SECONDS,
     EVENT_PRE_ROLL_SECONDS,
     PLAYBACK_MUTE_KEY,

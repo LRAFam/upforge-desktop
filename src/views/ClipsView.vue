@@ -1,22 +1,8 @@
 <template>
   <div class="flex flex-col h-full px-4 pt-4 pb-4 gap-3">
-    <!-- Header -->
-    <div class="flex items-start justify-between gap-3 flex-shrink-0">
-      <div class="flex items-center gap-2">
-        <h2 class="text-sm font-semibold text-white">Clip Library</h2>
-        <span
-          v-if="!showAllGames"
-          class="rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider"
-          :class="[theme.accentBg, theme.accentBorder, theme.accentText, 'border']"
-        >{{ theme.shortName }}</span>
-        <span v-else class="rounded-full border border-white/10 px-2 py-0.5 text-[10px] font-medium text-gray-500">All games</span>
-        <span
-          class="rounded-full px-2 py-0.5 text-[11px] font-semibold"
-          :class="theme.accentBg"
-          :style="{ color: theme.hexColor }"
-        >{{ clips.length }}</span>
-      </div>
-      <div class="flex items-center gap-2">
+    <LibraryPageHeader title="Clips" description="Find, edit and share the moments worth keeping.">
+      <span>{{ clips.length }} clips · {{ showAllGames ? 'All games' : theme.shortName }}</span>
+      <div class="flex flex-wrap items-center gap-2">
         <button
           class="rounded-lg border px-2.5 py-1 text-[10px] font-medium transition-colors"
           :class="showAllGames ? 'border-white/15 text-gray-300' : 'border-white/[0.08] text-gray-600 hover:text-gray-400'"
@@ -29,6 +15,7 @@
             class="flex h-8 w-8 items-center justify-center rounded-lg transition-colors"
             :class="viewMode === 'grid' ? 'bg-white/[0.08] text-white' : 'text-gray-500 hover:text-gray-300'"
             title="Grid view"
+            aria-label="Grid view" :aria-pressed="viewMode === 'grid'"
             @click="viewMode = 'grid'"
           >
             <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -39,6 +26,7 @@
             class="flex h-8 w-8 items-center justify-center rounded-lg transition-colors"
             :class="viewMode === 'list' ? 'bg-white/[0.08] text-white' : 'text-gray-500 hover:text-gray-300'"
             title="List view"
+            aria-label="List view" :aria-pressed="viewMode === 'list'"
             @click="viewMode = 'list'"
           >
             <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -46,9 +34,10 @@
             </svg>
           </button>
         </div>
-        <span class="text-xs text-gray-600"><kbd class="font-mono text-gray-400">{{ saveClipHotkey }}</kbd> to bookmark during match</span>
+        <span class="hidden xl:inline text-xs text-gray-500"><kbd class="font-mono text-gray-400">{{ saveClipHotkey }}</kbd> to bookmark during match</span>
       </div>
-    </div>
+    </LibraryPageHeader>
+    <CloudUsageNotice kind="clips" />
 
     <!-- Filter row -->
     <div class="panel-elevated flex flex-wrap items-center justify-between gap-3 px-3 py-2.5 flex-shrink-0">
@@ -56,10 +45,11 @@
         <button
           v-for="f in filters"
           :key="f.value"
-          class="rounded-full border px-3 py-1 text-xs font-medium transition-all duration-150"
+          class="rounded-md border px-3 py-2 text-xs font-medium transition-colors"
           :class="activeFilter === f.value
             ? filterActiveClass
             : 'border-white/[0.10] text-gray-500 hover:border-white/[0.12] hover:text-gray-300'"
+          :aria-pressed="activeFilter === f.value"
           @click="activeFilter = f.value"
         >
           {{ f.label }}
@@ -958,6 +948,8 @@
 </template>
 
 <script setup lang="ts">
+import LibraryPageHeader from '../components/shared/LibraryPageHeader.vue'
+import CloudUsageNotice from '../components/shared/CloudUsageNotice.vue'
 import { PlaybackActivityMeter } from '../lib/playback-activity'
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'

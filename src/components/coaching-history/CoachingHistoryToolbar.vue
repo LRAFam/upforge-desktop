@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import LibraryPageHeader from '../shared/LibraryPageHeader.vue'
 import { openGameHistoryWeb } from '../../lib/game-modules'
 import { useCoachingHistory } from '../../composables/useCoachingHistory'
 
@@ -20,15 +21,9 @@ const {
 
 <template>
     <div class="flex-shrink-0 border-b border-white/[0.08] bg-[#111111]">
-      <div class="flex items-start justify-between gap-3 border-b border-white/[0.06] px-4 py-3">
-        <div>
-          <h1 class="text-sm font-bold text-white">Matches</h1>
-          <p class="mt-0.5 text-[10px] text-gray-500">Track each session from captured footage to completed coaching.</p>
-        </div>
-        <p class="flex-shrink-0 text-[10px] text-gray-500 tabular-nums">
-          {{ pendingRecordings.length }} before coaching · {{ allAnalyses.length }} coached
-        </p>
-      </div>
+      <LibraryPageHeader title="Matches" description="Pick a match, revisit a moment, and build your next-match focus.">
+        <span>{{ pendingRecordings.length }} awaiting coaching · {{ allAnalyses.length }} reviewed</span>
+      </LibraryPageHeader>
       <div v-if="primaryGame === 'lol'" class="flex items-center justify-between gap-3 px-4 py-2 text-xs text-gray-400">
         <span>Desktop recordings and coaching</span>
         <button class="text-amber-400 hover:text-amber-300" @click="openGameHistoryWeb('lol')">Riot match reports on the website</button>
@@ -43,6 +38,7 @@ const {
             :class="activeFilter === f
               ? theme.historyFilterActiveClass
               : 'text-gray-500 border-white/[0.08] hover:text-gray-300 hover:bg-white/[0.03]'"
+            :aria-pressed="activeFilter === f"
             @click="activeFilter = f"
           >{{ f }}</button>
         </div>
@@ -50,13 +46,13 @@ const {
           <span class="font-bold text-gray-400">{{ filteredAnalyses.length }}</span><span class="text-gray-700">/{{ allAnalyses.length }}</span>
         </p>
       </div>
-      <div
-        v-if="features.mapFilters && availableMaps.length > 1"
-        class="history-map-grid px-4 pb-3 pt-0"
-      >
+      <details v-if="features.mapFilters && availableMaps.length > 1" class="map-filters">
+        <summary>Map <span>{{ activeMap ? formatMapLabel(activeMap) : 'All maps' }}</span></summary>
+        <div class="history-map-grid px-4 pb-3 pt-2">
         <button
           class="history-map-pill history-map-pill--all"
           :class="{ 'history-map-pill--active': activeMap === null }"
+          :aria-pressed="activeMap === null"
           @click="activeMap = null"
         >
           <div class="history-map-pill__shade history-map-pill__shade--all" />
@@ -67,6 +63,7 @@ const {
           :key="map"
           class="history-map-pill"
           :class="{ 'history-map-pill--active': activeMap === map }"
+          :aria-pressed="activeMap === map"
           @click="activeMap = map"
         >
           <img
@@ -81,6 +78,11 @@ const {
           <div class="history-map-pill__shade" />
           <span class="history-map-pill__label">{{ formatMapLabel(map) }}</span>
         </button>
-      </div>
+        </div>
+      </details>
     </div>
 </template>
+
+<style scoped>
+.map-filters{border-top:1px solid #ffffff0c}summary{cursor:pointer;min-height:40px;padding:10px 16px;color:#9ca3af;font-size:12px}summary span{margin-left:12px;color:#e5e7eb;font-weight:600}button:focus-visible,summary:focus-visible{outline:2px solid #f43f5e;outline-offset:-2px}
+</style>

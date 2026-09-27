@@ -2,6 +2,7 @@ import type { Router } from 'vue-router'
 import { pendingTimeline } from '../stores/pendingTimeline'
 
 export interface OpenAnalysisVodReviewOpts {
+  comparisonId?: string
   coachNotes?: boolean
   seekMs?: number
   source?: string
@@ -24,6 +25,7 @@ export async function openAnalysisVodReview(
   if (!data) return false
   pendingTimeline.value = data
   const query: Record<string, string> = { timelineId: String(analysisId) }
+  if (opts?.comparisonId) query.comparisonId = opts.comparisonId
   if (opts?.coachNotes) query.coachNotes = '1'
   if (opts?.seekMs != null && !Number.isNaN(opts.seekMs) && opts.seekMs >= 0) {
     query.seekMs = String(Math.round(opts.seekMs))
