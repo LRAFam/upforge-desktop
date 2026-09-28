@@ -26,3 +26,11 @@ it('requires explicit access decisions and supports a rolling API deployment wit
   expect(validAccountUsage(usage)).toBe(true)
   expect((usage as import('./account-usage').AccountUsage).review_access).toBeUndefined()
 })
+
+it('accepts the lifetime comparison trial and rejects malformed trial claims', () => {
+  const access = { version: 1, replay: true, personal_notes: true, next_match_focus: true, comparison: true, save_comparison: true, read_saved_comparisons: true, comparison_access_reason: 'free_trial', comparison_trial: true, free_comparison_id: null }
+  expect(validReviewAccess(access)).toBe(true)
+  expect(validReviewAccess({...access, comparison: false, save_comparison: false, comparison_access_reason: 'upgrade_required', free_comparison_id: '00000000-0000-4000-8000-000000000001'})).toBe(true)
+  expect(validReviewAccess({...access, free_comparison_id: 123})).toBe(false)
+  expect(validReviewAccess({...access, comparison_trial: 'yes'})).toBe(false)
+})

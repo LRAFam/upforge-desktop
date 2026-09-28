@@ -1,19 +1,23 @@
 export interface ReviewAccess {
   version: 1
+  free_comparison_id?: string | null
+  comparison_trial?: boolean
   replay: boolean
   personal_notes: boolean
   next_match_focus: boolean
   comparison: boolean
   save_comparison: boolean
   read_saved_comparisons: boolean
-  comparison_access_reason: 'preview' | 'plan' | 'existing_account' | 'upgrade_required'
+  comparison_access_reason: 'preview' | 'plan' | 'existing_account' | 'upgrade_required' | 'free_trial'
 }
 export function validReviewAccess(value: unknown): value is ReviewAccess {
   if (!value || typeof value !== 'object') return false
   const access = value as ReviewAccess
   return access.version === 1
+    && (access.comparison_trial === undefined || typeof access.comparison_trial === 'boolean')
+    && (access.free_comparison_id === undefined || access.free_comparison_id === null || (typeof access.free_comparison_id === 'string' && /^[0-9a-f-]{36}$/i.test(access.free_comparison_id)))
     && ['replay', 'personal_notes', 'next_match_focus', 'comparison', 'save_comparison', 'read_saved_comparisons'].every(key => typeof (access as unknown as Record<string, unknown>)[key] === 'boolean')
-    && ['preview', 'plan', 'existing_account', 'upgrade_required'].includes(access.comparison_access_reason)
+    && ['preview', 'plan', 'existing_account', 'upgrade_required', 'free_trial'].includes(access.comparison_access_reason)
 }
 export interface Capacity { used: number; limit: number | null; remaining: number | null }
 export interface AccountUsage {

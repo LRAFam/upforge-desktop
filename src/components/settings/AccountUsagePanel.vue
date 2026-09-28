@@ -15,10 +15,10 @@ const date = (value: string) => new Date(value).toLocaleDateString(undefined, { 
       <section class="review-access"><h3>Review tools</h3>
         <template v-if="usage.review_access">
           <p>Basic replay, personal notes and next-match focus stay free.</p>
-          <strong>{{ usage.review_access.comparison ? 'Comparison access included' : 'Comparison is included with Plus and Pro' }}</strong>
+          <strong>{{ usage.review_access.comparison_access_reason === 'free_trial' ? 'Your first comparison is free' : usage.review_access.comparison ? 'Comparison access included' : 'Create more comparisons with Plus or Pro' }}</strong>
           <p v-if="usage.review_access.comparison_access_reason === 'existing_account'">Your existing account keeps comparison access.</p>
           <p v-else-if="usage.review_access.comparison_access_reason === 'preview'">Comparison is available during the workspace preview.</p>
-          <p>Saved comparisons remain readable if your plan changes.</p>
+          <p>Saved comparisons remain readable if your plan changes. Your free trial comparison stays editable.</p>
           <button v-if="!usage.review_access.comparison" type="button" @click="emit('upgrade')">View comparison plans</button>
         </template>
         <p v-else>Review access is unavailable from this server.</p>

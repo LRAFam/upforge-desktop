@@ -16,7 +16,7 @@ import VodComparisonSourcePicker from './VodComparisonSourcePicker.vue'
 import { buildReviewEvents } from '../../lib/review-timeline'
 import { killSourceLabel } from '../../lib/match-kill-display'
 
-const props = defineProps<{ initialComparisonId?: string }>()
+const props = defineProps<{ initialComparisonId?: string; trial?: boolean }>()
 const emit = defineEmits<{ close: [] }>()
 const { comparisonEventShift, currentTime, ownPuuid, eventVideoSeconds, formatSeconds, timeline } = useVodReview()
 const notebookOpen = ref(true)
@@ -557,7 +557,7 @@ const cleanupAccount = [window.api.on('session:user-changed', () => { restoreGen
     <VodWorkspaceDivider v-if="notebookOpen" v-model="notebookWidth" :min="20" :max="36" reverse label="Resize review notebook" class="notebook-divider" />
     <div v-show="notebookOpen" class="review-side-panel"><nav aria-label="Review tools"><button type="button" :aria-pressed="sidePanel === 'notebook'" @click="sidePanel = 'notebook'">Notebook</button><button type="button" :aria-pressed="sidePanel === 'coach'" @click="openCoach">Ask AI coach</button></nav>
     <VodWorkspaceCoach v-if="coachOpened" v-show="sidePanel === 'coach'" ref="coach" :moments="coachMoments" />
-    <VodReviewNotebook :initial-comparison-id="props.initialComparisonId" v-show="sidePanel === 'notebook'" ref="notebook" :capture="captureContext" :restoring="restoring" @items-changed="notebookItems = $event" @restore="restoreContext" @close="notebookOpen = false" />
+    <VodReviewNotebook :trial="props.trial" :initial-comparison-id="props.initialComparisonId" v-show="sidePanel === 'notebook'" ref="notebook" :capture="captureContext" :restoring="restoring" @items-changed="notebookItems = $event" @restore="restoreContext" @close="notebookOpen = false" />
     </div>
     </div>
     <VodComparisonSourcePicker v-if="pickerSide !== null && timeline" :game="timeline.game" :current="timeline" @close="pickerSide = null; replacementSide = null" @select="changeSource" />

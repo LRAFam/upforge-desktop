@@ -60,7 +60,9 @@ function openComparison() {
   videoEl.value?.pause()
   accessOpen.value = true
 }
-function allowComparison() { accessOpen.value = false; comparisonActive.value = true }
+const activeComparisonId = ref<string>()
+const trialComparison = ref(false)
+function allowComparison(id?: string, trial = false) { activeComparisonId.value = id; trialComparison.value = trial; accessOpen.value = false; comparisonActive.value = true }
 async function closeComparison() {
   comparisonActive.value = false
   await nextTick()
@@ -83,8 +85,8 @@ function resetWorkspace() {
 
     <VodReviewBody v-else v-show="!comparisonActive && !accessOpen" :workspace="workspace" v-model:rounds-width="roundsWidth" v-model:details-width="detailsWidth" />
 
-    <VodComparisonAccess v-if="accessOpen" @allowed="allowComparison" @close="accessOpen = false" />
-    <VodReviewComparison v-if="comparisonActive" :initial-comparison-id="savedComparisonId" @close="closeComparison" />
+    <VodComparisonAccess v-if="accessOpen" :comparison-id="savedComparisonId" @allowed="allowComparison" @close="accessOpen = false" />
+    <VodReviewComparison v-if="comparisonActive" :initial-comparison-id="activeComparisonId" :trial="trialComparison" @close="closeComparison" />
 
     <VodReviewShortcuts v-if="!comparisonActive && !accessOpen" />
 

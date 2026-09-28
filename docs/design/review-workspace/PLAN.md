@@ -313,3 +313,9 @@ Verified 3 API tests / 30 assertions (including cross-account, same-game isolati
 
 ### Local HTTP integration verification
 Added opt-in personal-review-http.test.ts exercising the real desktop IPC handler over HTTP to a disposable Laravel SQLite instance on 127.0.0.1:18089. Verified initial review, timestamped note and focus save, same-game carryover to a second recording, check-in persistence after reopening, retry without revision duplication, and isolation after switching accounts. Passed (517ms) with sandbox localhost permission; initial restricted attempts could not reach localhost. Type-check and diff check passed. Temporary API stopped after test. Production and the user's account were untouched. This verifies bridge/API persistence, not Electron UI interaction or real-media playback.
+
+### Free comparison trial (2026-09-28)
+
+After the paid-tools cutoff, new free accounts can save one comparison using their own footage. Playback, linking, looping and notes are available in that comparison. The allowance is claimed only on a successful save, under the account write lock. Owners can reopen and edit the claimed comparison. Deletion does not reset the lifetime trial. Additional comparisons require Plus or Pro; Ask AI Coach keeps its separate entitlement.
+
+Preview and grandfathered accounts retain unrestricted comparison access. Deploy the API migration `2026_09_28_120000_add_free_comparison_to_users` before releasing the desktop changes. Leave `REVIEW_PAID_TOOLS_FROM` unchanged until the planned rollout verification is complete.

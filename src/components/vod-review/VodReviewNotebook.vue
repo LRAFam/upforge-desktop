@@ -3,7 +3,7 @@ import { onBeforeRouteLeave } from 'vue-router'
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { notebookWriteForIpc, validNotebookContext, validSavedComparison, relinkNotebook, type NotebookRelink, editNotebookNote, checkInFocus, type NotebookWrite, type FocusCheckIn, type NotebookContext, type NotebookNote, type SavedComparison } from '../../lib/review-notebook'
 
-const props = defineProps<{ initialComparisonId?: string;  capture: () => NotebookContext | null; restoring: boolean }>()
+const props = defineProps<{ initialComparisonId?: string; trial?: boolean;  capture: () => NotebookContext | null; restoring: boolean }>()
 const emit = defineEmits<{ restore: [context: NotebookContext, attachment: 'a' | 'b' | 'both', item: SavedComparison]; close: []; itemsChanged: [items: SavedComparison[]] }>()
 const notebookElement = ref<HTMLElement | null>(null)
 const items = ref<SavedComparison[]>([])
@@ -11,6 +11,7 @@ watch(items, value => emit('itemsChanged', value), { immediate: true })
 const selectedNoteId = ref<string | null>(null)
 let draftId = crypto.randomUUID()
 const active = ref<SavedComparison | null>(null)
+const trialUsed = ref(!!props.initialComparisonId)
 const title = ref('')
 const focus = ref('')
 const noteText = ref('')
@@ -64,6 +65,7 @@ function open(item: SavedComparison) {
   emit('restore', item.context, 'both', item)
 }
 function newComparison() {
+  if (props.trial && (trialUsed.value || items.value.length)) { void window.api.app.openUrl('https://upforge.gg/pricing'); return }
   if (!confirmDiscard()) return
   editing.value = null; revisiting.value = null
   draftId = crypto.randomUUID()
@@ -85,6 +87,7 @@ async function save(withNote = false) {
     if (!alive || current !== generation) return
     if (!result.ok) { error.value = result.error; return }
     if (!validSavedComparison(result.data)) { error.value = 'Save could not be verified. Refresh the list before retrying.'; return }
+    if (props.trial) trialUsed.value = true
     active.value = result.data; title.value = result.data.title; focus.value = result.data.focus
     items.value = [result.data, ...items.value.filter(i => i.id !== id)]
     if (withNote) noteText.value = ''
@@ -129,7 +132,7 @@ async function deleteNote(item: SavedComparison, note: NotebookNote) {
 }
 async function deleteComparison(item: SavedComparison) {
   if (busy.value || dirty.value) { error.value = 'Save or cancel your draft before deleting a comparison.'; return }
-  if (!window.confirm(`Delete “${item.title}” and its ${item.notes.length} notes from your account? Footage will be kept. This cannot be undone.`)) return
+  if (!window.confirm(`Delete “${item.title}” and its ${item.notes.length} notes from your account? Footage will be kept. This cannot be undone.${props.trial ? ' Deleting your free comparison does not reset your trial.' : ''}`)) return
   const current = generation
   busy.value = true; error.value = ''; status.value = ''
   try {
@@ -183,8 +186,9 @@ defineExpose({ canClose, saveRelink, openSavedNote })
   <aside ref="notebookElement" class="notebook" aria-label="Review notebook" @keydown.stop>
     <header><h2>Review notebook</h2><button type="button" aria-label="Collapse notebook" @click="emit('close')">Hide</button></header>
     <p class="privacy">Private · Account notebook</p>
+    <p v-if="props.trial" role="status">{{ trialUsed ? 'Your free comparison stays editable. Upgrade to Plus or Pro to create another.' : 'Your first comparison is free. The trial is used when you save, and you can return to edit it.' }}</p>
     <details><summary>Saved comparisons ({{ items.length }})</summary>
-      <button type="button" :disabled="busy" @click="newComparison">New comparison</button>
+      <button type="button" :disabled="busy" @click="newComparison">{{ props.trial && (trialUsed || items.length) ? 'Compare more with Plus' : 'New comparison' }}</button>
       <button type="button" :disabled="busy || loading" @click="load">{{ loading ? 'Loading…' : 'Refresh list' }}</button>
       <label>Find a comparison<input v-model="search" type="search" placeholder="Title, match or focus" /></label>
       <p v-if="items.length && !filteredItems.length">No matching comparisons.</p>

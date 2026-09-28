@@ -2,7 +2,9 @@
 import { ref, onMounted, onBeforeUnmount } from 'vue'
 import { validReviewAccess } from '../../lib/account-usage'
 import { validSavedComparison, type SavedComparison } from '../../lib/review-notebook'
-const emit = defineEmits<{ allowed: []; close: [] }>()
+const props = defineProps<{ comparisonId?: string }>()
+const trial = ref(false), trialId = ref<string | null>(null)
+const emit = defineEmits<{ allowed: [id?: string, trial?: boolean]; close: [] }>()
 const loading = ref(false), locked = ref(false), error = ref(''), savedError = ref('')
 const items = ref<SavedComparison[]>([])
 let generation = 0
@@ -15,7 +17,10 @@ async function load() {
     if (!result.ok) { error.value = result.error; return }
     const access = (result.data as { review_access?: unknown })?.review_access
     if (!validReviewAccess(access)) { error.value = 'Comparison access is unavailable from this server. Try again after the server update.'; return }
-    if (access.comparison) { emit('allowed'); return }
+    trial.value = access.comparison_trial === true
+    trialId.value = access.free_comparison_id ?? null
+    if (access.comparison_access_reason === 'free_trial') return
+    if (access.comparison || (trialId.value && props.comparisonId === trialId.value)) { emit('allowed', props.comparisonId, trial.value); return }
     locked.value = true
     const saved = await window.api.reviewNotebook.list()
     if (current !== generation) return
@@ -35,15 +40,20 @@ function stamp(value: number) { return `${Math.floor(value / 60)}:${Math.floor(v
     <header><button type="button" @click="emit('close')">Back to review</button><button type="button" :disabled="loading" @click="load">{{ loading ? 'Checking…' : 'Refresh access' }}</button></header>
     <p v-if="loading" role="status">Checking your account…</p>
     <p v-if="error" role="alert">{{ error }}</p>
+    <template v-if="trial && !locked && !loading && !error">
+      <h2>Your first comparison is free</h2><p>Use your own footage, link playback, loop moments and save timestamped notes. You can reopen and edit your saved comparison afterwards.</p>
+      <button class="primary" @click="emit('allowed', undefined, true)">Try comparison</button>
+      <p>Your trial is used only when you save. Creating another comparison requires Plus or Pro. Ask AI Coach is separate.</p>
+    </template>
     <template v-if="locked">
-      <h2>Compare moments with Plus or Pro</h2>
+      <h2>Compare more moments with Plus or Pro</h2>
       <p>Review two moments side by side, link playback and save comparisons to revisit.</p>
       <button type="button" class="primary" @click="plans">View plans</button>
       <p>Single-match replay, personal notes and next-match focus stay free.</p>
       <h3>Your saved comparisons</h3><p>Your existing work stays readable when your plan changes.</p>
       <p v-if="savedError" role="status">{{ savedError }}</p>
       <p v-else-if="!loading && !items.length">No saved comparisons.</p>
-      <details v-for="item in items" :key="item.id"><summary>{{ item.title }}</summary><p v-if="item.focus">Next-match focus: {{ item.focus }}</p>
+      <details v-for="item in items" :key="item.id"><summary>{{ item.title }}</summary><button v-if="item.id === trialId" class="primary" @click="emit('allowed', item.id, true)">Reopen your free comparison</button><p v-if="item.focus">Next-match focus: {{ item.focus }}</p>
         <article v-for="note in item.notes" :key="note.id"><p>{{ note.text }}</p><small v-for="(moment, index) in note.context.moments" :key="index">{{ index === 0 ? 'A' : 'B' }} · {{ moment.source.label || moment.source.id }} · {{ stamp(moment.position) }} </small></article>
       </details>
     </template>
