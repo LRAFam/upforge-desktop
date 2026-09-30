@@ -56,8 +56,8 @@ const pipelineSteps = computed(() => [
       : status.value.waitingForMatch
         ? 'Watching for match start'
         : status.value.obsConnected
-          ? '1080p · ready'
-          : 'Idle — connect OBS',
+          ? 'OBS connected'
+          : 'Connect OBS to record',
     active: status.value.recording || status.value.waitingForMatch,
     done: status.value.obsConnected && !status.value.recording && !status.value.waitingForMatch,
     progress: status.value.recording ? 100 : status.value.obsConnected ? 100 : 0,
@@ -81,7 +81,7 @@ const pipelineSteps = computed(() => [
     icon: 'brain',
     detail: inFlightAnalysisCount.value
       ? `Analyzing match data · ${inFlightAnalysisCount.value} running`
-      : 'Queued after upload',
+      : 'No analysis running',
     active: inFlightAnalysisCount.value > 0,
     done: false,
     progress: analysisPct.value,
@@ -100,7 +100,7 @@ const pipelineSteps = computed(() => [
             :class="status.recording ? 'bg-red-500' : status.obsConnected ? 'bg-emerald-500' : 'bg-amber-400'"
           />
         </span>
-        <span class="text-[11px] font-bold uppercase tracking-[0.18em] text-gray-400">Live ops</span>
+        <span class="text-[11px] font-bold uppercase tracking-[0.18em] text-gray-400">Recording status</span>
       </div>
       <span v-if="status.recording" class="text-[10px] font-black uppercase tracking-wider text-red-400 rec-pulse px-2 py-0.5 rounded-full bg-red-500/10 border border-red-500/20">REC</span>
     </div>
@@ -117,7 +117,7 @@ const pipelineSteps = computed(() => [
           <span
             class="text-[9px] font-black uppercase px-2 py-1 rounded-md"
             :class="status.obsConnected ? 'bg-blue-500/15 text-blue-300 border border-blue-500/25' : 'bg-amber-500/10 text-amber-300 border border-amber-500/20'"
-          >{{ status.obsConnected ? 'Live' : 'Offline' }}</span>
+          >{{ status.recording ? 'Recording' : status.obsConnected ? 'Connected' : 'Offline' }}</span>
         </div>
         <div v-if="!status.obsConnected && platform === 'win32'" class="p-3 flex gap-2">
           <button type="button" class="flex-1 py-2 rounded-lg text-[10px] font-bold border border-amber-500/30 bg-amber-500/10 text-amber-100 disabled:opacity-50" :disabled="obsConnecting" @click="launchAndConnectObs">
@@ -133,7 +133,7 @@ const pipelineSteps = computed(() => [
       >
         <div>
           <p class="text-[10px] font-bold uppercase tracking-wide text-red-400/80">Recording</p>
-          <p class="text-xs font-semibold text-red-200 mt-0.5">1080p · 60fps · {{ recordingElapsed || 'live' }}</p>
+          <p class="text-xs font-semibold text-red-200 mt-0.5">{{ recordingElapsed || 'live' }}</p>
         </div>
         <button type="button" class="px-3 py-1.5 rounded-lg text-[10px] font-bold bg-red-600 text-white disabled:opacity-50" :disabled="stopping" @click="stopRecording">
           {{ stopping ? '…' : 'Stop' }}
@@ -141,7 +141,7 @@ const pipelineSteps = computed(() => [
       </div>
 
       <div class="flex-1 min-h-0 flex flex-col">
-        <p class="text-[10px] font-bold uppercase tracking-[0.16em] text-gray-600 mb-2">Pipeline</p>
+        <p class="text-[10px] font-bold uppercase tracking-[0.16em] text-gray-600 mb-2">Activity</p>
         <div class="flex-1 flex flex-col justify-between min-h-[88px]">
         <div v-for="(step, i) in pipelineSteps" :key="step.id" class="flex gap-3">
           <div class="flex flex-col items-center flex-shrink-0 w-8">
@@ -178,7 +178,7 @@ const pipelineSteps = computed(() => [
     </div>
 
     <div class="px-4 py-2 border-t border-white/[0.07] flex items-center justify-between text-[9px] text-gray-600 flex-shrink-0">
-      <span class="flex items-center gap-1.5"><span class="w-1.5 h-1.5 rounded-full bg-emerald-500" /> Pipeline healthy</span>
+      <span>{{ status.recording ? 'Recording in progress' : status.obsConnected ? 'OBS connected' : 'Recording not connected' }}</span>
       <span v-if="platform === 'win32'">Desktop · Windows</span>
       <span v-else>Preview mode</span>
     </div>

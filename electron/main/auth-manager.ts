@@ -226,9 +226,11 @@ export class AuthManager {
       log.info('[Auth] login succeeded for user:', this._user?.name ?? user?.name)
       return { ok: true }
     } catch (err: unknown) {
-      const axiosErr = err as { code?: string; message?: string; response?: { status?: number; data?: { message?: string } } }
+      const axiosErr = err as { code?: string; message?: string; response?: { status?: number; data?: { success?: boolean; error?: string; message?: string } } }
       log.error('[Auth] login error:', axiosErr.code, axiosErr.message, axiosErr.response?.status, JSON.stringify(axiosErr.response?.data))
-      const message = axiosErr.response?.data?.message
+      // ErrorHelper uses success/error; Laravel validation uses message.
+      const data = axiosErr.response?.data
+      const message = (data?.success === false ? data.error : data?.message)
         || (axiosErr.code === 'ECONNABORTED' ? 'Request timed out — check your internet connection' : null)
         || (axiosErr.code === 'ENOTFOUND' ? 'Cannot reach UpForge servers — check your internet connection' : null)
         || axiosErr.message

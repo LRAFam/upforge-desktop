@@ -654,7 +654,10 @@ declare global {
         credits: (pack: string) => Promise<import('./lib/review-notebook').NotebookResult<{ checkout_url: string }>>
       }
       personalReview: { get: (source: import('./lib/personal-review').PersonalReviewSource) => Promise<import('./lib/review-notebook').NotebookResult<unknown>>; save: (document: import('./lib/personal-review').PersonalReview) => Promise<import('./lib/review-notebook').NotebookResult<unknown>> }
-      accountUsage: { get: () => Promise<{ ok: true; data: unknown } | { ok: false; error: string }> }
+      storageAddon: { request: (request: import('./lib/storage-addon').StorageAddonRequest) => Promise<{ ok: true; data: import('./lib/storage-addon').StorageAddonSnapshot | null } | { ok: false; error: string; unavailable?: boolean }> }
+      cloudClip: { review: (id: number, analyse?: boolean) => Promise<{ ok: true; data: import('./lib/cloud-clip-review').CloudClipReview } | { ok: false; error: string; needsUpgrade?: boolean }> }
+      cloudStorage: { download: (file: { kind: 'clip' | 'recording'; id: string }) => Promise<{ ok: true } | { ok: false; error: string }>; playback: (file: { kind: 'clip' | 'recording'; id: string }) => Promise<{ ok: true; url: string } | { ok: false; error: string }>; list: (query: import('./lib/cloud-storage').CloudQuery) => Promise<{ ok: true; data: unknown } | { ok: false; error: string }> }
+      accountUsage: { get: () => Promise<{ ok: true; data: unknown } | { ok: false; error: string }>; buyReports: () => Promise<import('./lib/review-notebook').NotebookResult<{ checkout_url: string }>> }
       reviewNotebook: {
         remove: (id: string, revision: number) => Promise<import('./lib/review-notebook').NotebookResult<{ id: string; deleted: true }>>
         list: () => Promise<import('./lib/review-notebook').NotebookResult<{ items: import('./lib/review-notebook').SavedComparison[] }>>
@@ -781,6 +784,8 @@ declare global {
         trackReportOpened: (props?: Record<string, unknown>) => Promise<{ ok: boolean }>
       }
       archives: {
+        review: (id: string, analyse?: boolean) => Promise<{ ok: true; timeline: import('./composables/useVodReview').RecordingTimeline } | { ok: false; error: string }>
+
         refreshPlayback: (archiveId: string) => Promise<string | null>
       }
       recordings: {

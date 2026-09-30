@@ -8,6 +8,7 @@ import VodReviewBody from '../components/vod-review/VodReviewBody.vue'
 import VodComparisonAccess from '../components/vod-review/VodComparisonAccess.vue'
 import VodReviewComparison from '../components/vod-review/VodReviewComparison.vue'
 import VodReviewShortcuts from '../components/vod-review/VodReviewShortcuts.vue'
+import CloudVodActions from '../components/vod-review/CloudVodActions.vue'
 import TrimRangeModal from '../components/shared/TrimRangeModal.vue'
 
 const {
@@ -81,6 +82,7 @@ function resetWorkspace() {
   <div class="vod-review flex flex-col h-full text-white overflow-hidden">
     <VodReviewCommandBar v-show="!comparisonActive && !accessOpen" :can-compare="workspace && !!videoSrc && !timelineLoading && !timelineError" @compare="openComparison" :workspace="workspace" @toggle-workspace="workspace = !workspace" @reset-layout="resetWorkspace" />
 
+    <CloudVodActions v-if="route.query.archiveId && !timelineLoading && !timelineError" v-show="!comparisonActive && !accessOpen" />
     <VodReviewStates v-if="timelineLoading || timelineError" />
 
     <VodReviewBody v-else v-show="!comparisonActive && !accessOpen" :workspace="workspace" v-model:rounds-width="roundsWidth" v-model:details-width="detailsWidth" />

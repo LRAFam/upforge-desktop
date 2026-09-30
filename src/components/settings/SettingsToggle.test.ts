@@ -18,8 +18,11 @@ it('forwards the click event so recording settings can stop bubbling and toggle 
 
   const toggle = vi.fn()
   const listener = withModifiers(toggle, ['stop'])
-  const render = exports.default.setup({ on: false }, { expose() {} })
+  const render = exports.default.setup({ on: false, label: 'Record game audio' }, { expose() {} })
   const button = render({ $emit: (_name: string, event: Event) => listener(event) }, [])
+  expect(button.props.role).toBe('switch')
+  expect(button.props['aria-label']).toBe('Record game audio')
+  expect(button.props['aria-checked']).toBe(false)
   const event = { stopPropagation: vi.fn() }
 
   expect(() => button.props.onClick(event)).not.toThrow()

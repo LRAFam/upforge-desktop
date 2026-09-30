@@ -56,7 +56,7 @@ const analysesToneClass = computed(() => {
 interface NavItem {
   to: string
   label: string
-  icon: 'home' | 'analytics' | 'drills' | 'demos' | 'matches' | 'cross' | 'recordings' | 'rosters' | 'dev'
+  icon: 'home' | 'analytics' | 'drills' | 'demos' | 'matches' | 'cross' | 'cloud' | 'recordings' | 'rosters' | 'dev'
   match?: (path: string) => boolean
 }
 
@@ -64,14 +64,14 @@ const mainNav: NavItem[] = [
   { to: '/dashboard', label: 'Home', icon: 'home', match: p => p === '/dashboard' },
   { to: '/stats', label: 'Analytics', icon: 'analytics', match: p => p === '/stats' || p === '/performance' },
   { to: '/training', label: 'Drills', icon: 'drills', match: p => p.startsWith('/training') },
-  { to: '/history', label: 'Matches', icon: 'matches', match: p => p === '/history' },
-  { to: '/recordings', label: 'Footage', icon: 'recordings', match: p => p === '/recordings' || p === '/vod-review' },
+  { to: '/recordings', label: 'Footage', icon: 'recordings', match: p => ['/matches', '/history', '/recordings', '/vod-review'].includes(p) },
   { to: '/clips', label: 'Clips', icon: 'demos', match: p => p === '/clips' },
   { to: '/rosters', label: 'Rosters', icon: 'rosters', match: p => p === '/rosters' },
   { to: '/squad', label: 'Squad', icon: 'cross', match: p => p.startsWith('/squad') },
 ]
 
 const showDeveloperNav = computed(() => {
+  if (!import.meta.env.DEV) return false
   const user = profileUser.value
   if (user?.is_admin || user?.tier === 'admin') return true
   return false
@@ -219,6 +219,7 @@ onUnmounted(() => {
           <svg v-else-if="item.icon === 'analytics'" class="h-[18px] w-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/></svg>
           <svg v-else-if="item.icon === 'drills'" class="h-[18px] w-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8" stroke-width="1.75"/><circle cx="12" cy="12" r="2" stroke-width="1.75"/><path stroke-linecap="round" stroke-width="1.75" d="M12 4V2M12 22v-2M4 12H2M22 12h-2"/></svg>
           <svg v-else-if="item.icon === 'demos'" class="h-[18px] w-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6H16a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/></svg>
+          <svg v-else-if="item.icon === 'cloud'" class="h-[18px] w-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" d="M6 18a4 4 0 01-1-7.87A7 7 0 0118.8 9 4.5 4.5 0 0119 18H6z"/></svg>
           <svg v-else-if="item.icon === 'matches'" class="h-[18px] w-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
           <svg v-else-if="item.icon === 'recordings'" class="h-[18px] w-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"/></svg>
           <svg v-else-if="item.icon === 'rosters'" class="h-[18px] w-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" d="M17 20v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2M9 10a4 4 0 100-8 4 4 0 000 8zM23 20v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75"/></svg>
@@ -234,8 +235,8 @@ onUnmounted(() => {
         </span>
       </RouterLink>
 
-      <div class="pt-3 mt-2 border-t border-white/[0.06]">
-        <p class="px-3 mb-1.5 text-[9px] font-bold uppercase tracking-[0.14em] text-gray-600">On the web</p>
+      <details class="pt-3 mt-2 border-t border-white/[0.06]">
+        <summary class="cursor-pointer px-3 py-2 text-xs font-semibold text-gray-400">Explore web tools</summary>
         <button
           v-for="link in WEB_SIDEBAR_LINKS"
           :key="link.path"
@@ -248,7 +249,7 @@ onUnmounted(() => {
           </svg>
           <span class="truncate">{{ link.label }}</span>
         </button>
-      </div>
+      </details>
     </nav>
 
     <div class="px-2 py-3 border-t border-white/[0.06] space-y-2">

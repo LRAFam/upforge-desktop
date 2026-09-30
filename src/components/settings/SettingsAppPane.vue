@@ -107,7 +107,7 @@ function onToggle(key: (typeof toggles)[number]['key']): void {
             </p>
           </div>
         </template>
-        <SettingsToggle :on="!!settings[toggle.key]" @click="onToggle(toggle.key)" />
+        <SettingsToggle :label="toggle.label" :on="!!settings[toggle.key]" @click="onToggle(toggle.key)" />
       </SettingsRow>
     </SettingsSection>
   </div>

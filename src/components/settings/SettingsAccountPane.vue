@@ -39,7 +39,6 @@ const {
 
 <template>
   <div class="space-y-4">
-    <SettingsAccountLinks :focus="accountLinkFocus" />
 
     <SettingsSection
       title="Profile"
@@ -145,7 +144,7 @@ const {
             Allow anonymised use of cloud-archived VODs for model training. Separate from saving to cloud. Off by default.
           </p>
         </div>
-        <SettingsToggle :on="!!settings.trainingConsent" @click="toggleTrainingConsent" />
+        <SettingsToggle label="Help improve UpForge AI" :on="!!settings.trainingConsent" @click="toggleTrainingConsent" />
       </div>
 
       <div class="flex items-center justify-between border-t border-white/[0.06] pt-4 text-[11px] text-gray-500">
@@ -154,5 +153,6 @@ const {
       </div>
 
     </SettingsSection>
+    <SettingsAccountLinks :focus="accountLinkFocus" />
   </div>
 </template>

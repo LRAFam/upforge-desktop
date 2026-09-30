@@ -37,3 +37,20 @@ it('keeps pre-recording events negative so they cannot masquerade as first-frame
   expect(timeline.playerDeaths[1].videoOffsetMs).toBe(30_000)
   expect(duelMomentsForUpload(timeline)).toHaveLength(1)
 })
+
+it('calibrates the reported Swiftplay offset without changing other recordings', async () => {
+  const { nudgeTimelineSyncOffset } = await import('./riot-local-api')
+  const timeline = {
+    game: 'valorant', matchStartTime: 1790765559189,
+    gameplayStartTime: 1790765567455, recordingStartTime: 1790765567176,
+    videoSyncOffsetMs: -8000,
+    playerKills: [{ timeSinceGameStartMillis: 71900, videoOffsetMs: 63900 }],
+    playerDeaths: [{ timeSinceGameStartMillis: 80798, videoOffsetMs: 72798 }],
+  } as MatchData
+  const untouched = structuredClone(timeline)
+  nudgeTimelineSyncOffset(timeline, -5000)
+  expect(timeline.playerKills[0].videoOffsetMs).toBe(58900)
+  expect(timeline.playerDeaths[0].videoOffsetMs).toBe(67798)
+  expect(timeline.videoSyncOffsetMs).toBe(-13000)
+  expect(totalRecordingOffsetMs(untouched)).toBe(-8000)
+})

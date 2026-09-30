@@ -205,7 +205,7 @@ function momentContext(side: ComparisonSide) {
   const selected = selectedLabel(side)
   if (selected) return `Selected: ${selected}`
   const restored = restoredPositions.value[side]
-  const nearby = nearbyReviewEvent(momentsBySide.value[side], restored ?? times.value[side])
+  const nearby = nearbyReviewEvent(momentsBySide.value[side], restored ?? times.value[side], restored === null ? 4 : 10)
   if (restored !== null) return `Saved: ${preciseTime(restored)}${nearby ? ` · Nearby: ${nearby.label}` : ''}`
   return nearby ? `Nearby: ${nearby.label}` : 'Choose an event or seek to a moment'
 }
@@ -496,7 +496,7 @@ const cleanupAccount = [window.api.on('session:user-changed', () => { restoreGen
         </div>
         <label class="moment-picker">Jump to event
           <select :value="selectedIds[side]" :disabled="!durations[side] || errors[side]" @change="selectMoment(side, ($event.target as HTMLSelectElement).value)">
-            <option value="">{{ filteredMoments[side].length ? 'Choose a moment' : 'No matching moments' }}</option>
+            <option value="">{{ restoredPositions[side] !== null ? `Saved position · ${preciseTime(restoredPositions[side]!)}` : filteredMoments[side].length ? 'Choose a moment' : 'No matching moments' }}</option>
             <option v-if="selectedIds[side] && !filteredMoments[side].some(m => String(m.id) === selectedIds[side])" :value="selectedIds[side]" disabled>{{ selectedLabel(side) }} (outside filters)</option>
             <option v-for="moment in filteredMoments[side]" :key="moment.id" :value="moment.id">{{ moment.label }}</option>
           </select>
@@ -513,10 +513,6 @@ const cleanupAccount = [window.api.on('session:user-changed', () => { restoreGen
           <div class="seek-controls" role="group" aria-label="Seek one second">
             <button type="button" :disabled="!durations[side] || errors[side]" title="Back one second" @click="seek(side, times[side] - 1)">−1s</button>
             <button type="button" :disabled="!durations[side] || errors[side]" title="Forward one second" @click="seek(side, times[side] + 1)">+1s</button>
-          </div>
-          <div class="seek-controls" role="group" aria-label="Fine seek one tenth of a second">
-            <button type="button" :disabled="!durations[side] || errors[side]" title="Back one tenth of a second" @click="seek(side, times[side] - 0.1)">−0.1s</button>
-            <button type="button" :disabled="!durations[side] || errors[side]" title="Forward one tenth of a second" @click="seek(side, times[side] + 0.1)">+0.1s</button>
           </div>
           <span class="playback-time">{{ preciseTime(times[side]) }} <span class="total-time">/ {{ formatSeconds(durations[side]) }}</span></span>
           <button type="button" class="icon-control" :aria-label="audio === side ? 'Mute this video' : 'Listen to this video'" :title="audio === side ? 'Mute' : 'Listen here'" :aria-pressed="audio === side" @click="audio = audio === side ? null : side">
@@ -543,12 +539,18 @@ const cleanupAccount = [window.api.on('session:user-changed', () => { restoreGen
           </button>
         </div>
         <input type="range" :aria-label="`Seek moment ${side === 0 ? 'A' : 'B'}`" min="0" :max="durations[side]" step="0.1" :value="times[side]" :disabled="!durations[side] || errors[side]" @input="seek(side, Number(($event.target as HTMLInputElement).value))" />
+        <details class="precision-controls"><summary>Precision controls</summary>
+          <div class="seek-controls" role="group" aria-label="Fine seek one tenth of a second">
+            <button type="button" :disabled="!durations[side] || errors[side]" title="Back one tenth of a second" @click="seek(side, times[side] - 0.1)">−0.1s</button>
+            <button type="button" :disabled="!durations[side] || errors[side]" title="Forward one tenth of a second" @click="seek(side, times[side] + 0.1)">+0.1s</button>
+          </div>
         <form class="time-jump" @submit.prevent="goToTime(side)">
           <label :for="`jump-time-${side}`">Go to time</label><input :id="`jump-time-${side}`" v-model="timeDrafts[side]" type="text" inputmode="decimal" placeholder="m:ss.mmm" :aria-invalid="!!timeErrors[side]" :aria-describedby="timeErrors[side] ? `time-error-${side}` : undefined" :disabled="!durations[side] || errors[side]" />
           <button type="submit" :disabled="!durations[side] || errors[side] || !timeDrafts[side].trim()">Go</button>
         </form>
         <p v-if="timeErrors[side]" :id="`time-error-${side}`" role="alert" class="time-error">{{ timeErrors[side] }}</p>
         <div class="start-controls"><span>Start: {{ preciseTime(starts[side]) }}</span><button type="button" :disabled="!durations[side] || errors[side]" @click="setStart(side)">Set start here</button></div>
+        </details>
         <p class="event-legend">Events: <span class="legend-kill">Kill</span> · <span class="legend-death">Death</span> · <span class="legend-objective">Objective</span> · Other</p>
       </article>
       <VodWorkspaceDivider v-if="index === 0 && expanded === null" v-model="videoSplit" :min="35" :max="65" label="Resize comparison videos" class="video-divider" />
@@ -577,6 +579,7 @@ button[aria-pressed="true"] { border-color: #e11d48; background: #e11d4818; }
 :is(button, select, input, summary):focus-visible { outline: 2px solid #e11d48; outline-offset: 2px; }
 .comparison-players { display: grid; grid-template-columns: var(--player-columns); gap: 0; }
 .comparison-players.expanded { grid-template-columns: minmax(0, 1fr); }
+.precision-controls { margin-top: 10px; }.precision-controls summary { cursor: pointer; margin-bottom: 8px; width: fit-content; }
 .comparison-player { min-width: 0; padding: 12px; border: 1px solid #ffffff18; border-radius: 6px; background: #15181e; }
 .moment-picker { display: flex; align-items: center; gap: 8px; margin: 8px 0; } .moment-picker select { min-width: 0; flex: 1; }
 video { display: block; width: 100%; aspect-ratio: 16 / 9; background: black; object-fit: contain; }

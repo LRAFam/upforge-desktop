@@ -724,6 +724,14 @@ const noVideoHint = computed((): string => {
             </div>
           </div>
         </div>
+        <div v-if="recordingId && timeline && !theaterMode" class="flex flex-wrap items-center gap-2 border-t border-white/10 px-3 py-2 text-xs">
+          <span class="font-semibold text-gray-300">Event timing</span>
+          <button type="button" class="rounded border border-white/15 px-2 py-1 text-gray-200 hover:bg-white/10" title="Move all events five seconds earlier in this recording" @click="nudgeTimelineSync(-5000)">−5s</button>
+          <button type="button" class="rounded border border-white/15 px-2 py-1 text-gray-200 hover:bg-white/10" title="Move all events one second earlier" @click="nudgeTimelineSync(-1000)">−1s</button>
+          <span class="tabular-nums text-gray-400">{{ syncOffsetLabel }}</span>
+          <button type="button" class="rounded border border-white/15 px-2 py-1 text-gray-200 hover:bg-white/10" title="Move all events one second later" @click="nudgeTimelineSync(1000)">+1s</button>
+          <span class="text-gray-500">Events late? Move them earlier. Saved for this recording.</span>
+        </div>
         <div
           v-if="roundDetailExpanded && selectedRound && !theaterMode && isRoundBased"
           class="flex h-[clamp(11rem,30vh,22rem)] min-h-0 flex-shrink-0 flex-col border-t border-white/[0.10] bg-[#1a1a1a]"

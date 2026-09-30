@@ -19,9 +19,9 @@ export function comparisonPanelWidths(value: unknown): { videos: number; noteboo
 }
 
 /** A nearby event is context, not a claim that sparse events define round boundaries. */
-export function nearbyReviewEvent<T extends { seconds: number }>(events: T[], time: number): T | null {
+export function nearbyReviewEvent<T extends { seconds: number }>(events: T[], time: number, radius = 4): T | null {
   if (!Number.isFinite(time)) return null
-  const nearby = events.filter(event => Number.isFinite(event.seconds) && Math.abs(event.seconds - time) <= 4)
+  const nearby = events.filter(event => Number.isFinite(event.seconds) && Math.abs(event.seconds - time) <= radius)
     .sort((a, b) => Math.abs(a.seconds - time) - Math.abs(b.seconds - time))
   if (!nearby.length || (nearby[1] && Math.abs(nearby[0].seconds - time) === Math.abs(nearby[1].seconds - time))) return null
   return nearby[0]

@@ -8,10 +8,11 @@ function setup() {
   let owner: number | null = 1
   const get = vi.fn().mockResolvedValue({ data: { items: [] } })
   const remove = vi.fn().mockResolvedValue({ data: { deleted: true } })
+  const post = vi.fn().mockResolvedValue({ data: { checkout_url: 'https://checkout.stripe.com/c/pay/test' } })
   const put = vi.fn().mockResolvedValue({ data: { revision: 1 } })
   setupReviewNotebookHandlers({ handle: (name: string, handler: (...args: unknown[]) => Promise<unknown>) => handlers.set(name, handler) } as unknown as IpcMain,
-    { getToken: () => owner ? `token-${owner}` : null, getUser: () => owner ? { id: owner } : null, getApi: () => ({ get, put, delete: remove }) } as unknown as AuthManager)
-  return { handlers, get, put, remove, setOwner: (id: number | null) => { owner = id } }
+    { getToken: () => owner ? `token-${owner}` : null, getUser: () => owner ? { id: owner } : null, getApi: () => ({ get, put, post, delete: remove }) } as unknown as AuthManager)
+  return { handlers, get, put, post, remove, setOwner: (id: number | null) => { owner = id } }
 }
 describe('account notebook bridge', () => {
   it('does not send requests while signed out', async () => {
@@ -65,4 +66,20 @@ it('personal review sends scoped requests and drops responses after account chan
   expect(JSON.stringify(result)).not.toContain('private')
   s.setOwner(null)
   expect(await s.handlers.get('personal-review:get')!({}, source)).toMatchObject({ ok: false })
+})
+
+it('report checkout is authenticated, uses the report pack, and rejects unsafe or stale destinations', async () => {
+  const s = setup()
+  s.setOwner(null)
+  expect(await s.handlers.get('account:report-checkout')!()).toMatchObject({ ok: false })
+  expect(s.post).not.toHaveBeenCalled()
+  s.setOwner(1)
+  expect(await s.handlers.get('account:report-checkout')!()).toMatchObject({ ok: true })
+  expect(s.post).toHaveBeenCalledWith('/api/payment/bundle-checkout', { bundle: '3-pack' })
+  s.post.mockResolvedValue({ data: { checkout_url: 'https://example.com/pay' } })
+  expect(await s.handlers.get('account:report-checkout')!()).toMatchObject({ ok: false })
+  s.post.mockImplementation(async () => { s.setOwner(2); return { data: { checkout_url: 'https://checkout.stripe.com/c/pay/private' } } })
+  const result = await s.handlers.get('account:report-checkout')!()
+  expect(result).toMatchObject({ ok: false })
+  expect(JSON.stringify(result)).not.toContain('private')
 })

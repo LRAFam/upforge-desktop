@@ -15,13 +15,11 @@ import OnboardingView from './views/OnboardingView.vue'
 import SplashView from './views/SplashView.vue'
 import { resolveUnauthenticatedRoute, needsDesktopOnboarding } from './lib/onboarding-gate'
 import ClipsView from './views/ClipsView.vue'
-import RecordingsView from './views/RecordingsView.vue'
 import OverlayView from './views/OverlayView.vue'
 import SquadView from './views/SquadView.vue'
 import PerformanceView from './views/PerformanceView.vue'
 import VODReviewView from './views/VODReviewView.vue'
 import TrainingHubView from './views/TrainingHubView.vue'
-import CoachingHistoryView from './views/CoachingHistoryView.vue'
 import TrainerResultsView from './views/TrainerResultsView.vue'
 import StatsView from './views/StatsView.vue'
 import DevView from './views/DevView.vue'
@@ -43,8 +41,9 @@ const router = createRouter({
     { path: '/post-game', component: PostGameView },
     { path: '/post-game-preview', component: PostGameView },
     { path: '/settings', component: SettingsView },
+    { path: '/cloud-storage', component: () => import('./views/CloudStorageView.vue') },
     { path: '/clips', component: ClipsView },
-    { path: '/recordings', component: RecordingsView },
+    { path: '/recordings', component: () => import('./views/MatchesView.vue') },
     { path: '/overlay', component: OverlayView },
     { path: '/squad', component: SquadView },
     { path: '/performance', component: PerformanceView },
@@ -53,7 +52,8 @@ const router = createRouter({
     { path: '/training/calibration', component: () => import('./views/ValorantCalibrationView.vue') },
     { path: '/trainer-results', component: TrainerResultsView },
     { path: '/stats', component: StatsView },
-    { path: '/history', component: CoachingHistoryView },
+    { path: '/history', redirect: to => ({ path: '/recordings', query: { ...to.query, view: 'coaching' } }) },
+    { path: '/matches', redirect: to => ({ path: '/recordings', query: to.query }) },
     { path: '/rosters', component: RostersView },
     { path: '/dev', component: DevView },
   ]

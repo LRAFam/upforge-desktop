@@ -104,7 +104,7 @@ function snippet(id: number): string {
             </div>
           </div>
           <div v-else-if="a.overall_score != null" class="relative z-10 mt-3 flex items-baseline gap-1">
-            <span class="text-lg font-black tabular-nums text-gray-300">{{ a.overall_score }}</span>
+            <span class="text-lg font-black tabular-nums text-gray-300">{{ a.overall_score * 10 }}</span>
             <span class="text-[9px] font-bold text-gray-600 uppercase">AI score</span>
           </div>
         </div>

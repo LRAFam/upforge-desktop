@@ -39,7 +39,7 @@ import { resolveCs2LocalPlayerName } from '../cs2-player-identity'
 import { attachDemoFileToRecording } from '../recording-demo-attach'
 import { getAnalysisReadiness } from '../analysis-readiness'
 import type { ClipStore } from '../clip-store'
-import type { ProductionVodFixtureLibrary } from '../production-vod-fixture'
+import { parseProductionArchiveDetail, type ProductionVodFixtureLibrary } from '../production-vod-fixture'
 
 export interface RecordingsIpcDeps {
   recordingsStore: RecordingsStore
@@ -421,14 +421,12 @@ export function setupRecordingsHandlers(ipcMain: IpcMain, deps: RecordingsIpcDep
     })
   })
 
-  ipcMain.handle('recordings:get-timeline', async (_e, { id }: { id: string }) => {
-    const recording = recordingsStore.getById(id) ?? productionVodFixtures.getById(id)
-    if (!recording) return null
+  async function reviewTimeline(recording: import('../recordings-store').PendingRecording) {
     const tl = recording.timeline
     if (tl) {
       recomputeTimelineVideoOffsets(tl)
       enrichTimelineSpatial(tl)
-      if (!recording.productionFixture) recordingsStore.updateTimeline(id, tl)
+      if (recordingsStore.getById(recording.id)) recordingsStore.updateTimeline(recording.id, tl)
     }
     const localPath = resolveLocalRecordingFile(recording.path)
     const cloudBacked = Boolean(
@@ -482,5 +480,47 @@ export function setupRecordingsHandlers(ipcMain: IpcMain, deps: RecordingsIpcDep
       duelMoments: tl?.duelMoments ?? [],
       videoSyncOffsetMs: tl ? effectiveVideoSyncOffsetMs(tl) : 0,
     }
+  }
+  ipcMain.handle('recordings:get-timeline', async (_e, { id }: { id: string }) => {
+    const recording = recordingsStore.getById(id) ?? productionVodFixtures.getById(id)
+    if (recording) return reviewTimeline(recording)
+    const cloud = await archiveReview(id)
+    return cloud.ok ? cloud.timeline : null
   })
+  async function archiveReview(archiveId: string, analyse = false): Promise<{ ok: true; timeline: Awaited<ReturnType<typeof reviewTimeline>> & { archiveAnalysisState: string; archiveAnalysisReady: boolean; archiveAnalysisMessage: string; matchDataAvailable: boolean } } | { ok: false; error: string }> {
+    if (typeof archiveId !== 'string' || !/^[0-9a-f-]{36}$/i.test(archiveId) || typeof analyse !== 'boolean') return { ok: false, error: 'Choose a valid cloud recording.' }
+    const token = authManager.getToken(), owner = authManager.getUser()?.id
+    if (!token || !owner) return { ok: false, error: 'Sign in to review cloud recordings.' }
+    const currentAccount = () => authManager.getToken() === token && authManager.getUser()?.id === owner
+    try {
+      const api = authManager.getApi()
+      if (!currentAccount()) return { ok: false, error: 'Your account changed. Reopen the recording.' }
+      const response = await api.get(`/api/recordings/archive/${archiveId}`)
+      const archive = parseProductionArchiveDetail(response.data.archive)
+      if (archive.archive_id !== archiveId) throw new Error('Archive mismatch')
+      if (!archive.archived_at || !Number.isFinite(Date.parse(archive.archived_at))) throw new Error('Missing archive date')
+      const recording: import('../recordings-store').PendingRecording = {
+        id: archive.archive_id, archiveId: archive.archive_id, path: '', riotName: '', riotTag: '',
+        game: archive.game, map: archive.map, agent: archive.agent, gameMode: archive.game_mode ?? '',
+        timeline: archive.match_data as MatchData | null, recordedAt: Date.parse(archive.archived_at),
+        analysed: archive.analysis_state === 'analysed', analysisId: archive.analysis_id ?? undefined,
+        cloudArchived: true, matchId: archive.match_id,
+      }
+      const readiness = getAnalysisReadiness(recording)
+      if (!currentAccount()) return { ok: false, error: 'Your account changed. Reopen the recording.' }
+      if (analyse) {
+        if (!readiness.ready) return { ok: false, error: readiness.message }
+        await api.post(`/api/recordings/archive/${archiveId}/analyse`, {})
+        if (!currentAccount()) return { ok: false, error: 'Your account changed. Reopen the recording.' }
+        return archiveReview(archiveId)
+      }
+      const timeline = await reviewTimeline(recording)
+      if (!currentAccount()) return { ok: false, error: 'Your account changed. Reopen the recording.' }
+      return { ok: true, timeline: { ...timeline, archiveAnalysisState: archive.analysis_state, archiveAnalysisReady: readiness.ready, archiveAnalysisMessage: readiness.message, matchDataAvailable: archive.has_match_data } }
+    } catch (error) {
+      const response = (error as { response?: { status?: number; data?: { message?: string } } }).response
+      return { ok: false, error: response?.status === 410 ? 'This cloud recording has expired.' : response?.status === 404 ? 'This cloud recording is unavailable.' : response?.data?.message ?? 'Cloud review could not be loaded. Please retry.' }
+    }
+  }
+  ipcMain.handle('archives:review', (_e, archiveId: string, analyse = false) => archiveReview(archiveId, analyse))
 }

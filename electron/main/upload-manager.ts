@@ -541,6 +541,7 @@ export class UploadManager {
     const file = fs.statSync(opts.videoPath)
     const uploadKey = createHash('sha256').update(JSON.stringify([path.resolve(opts.videoPath), file.size, file.mtimeMs, opts.game])).digest('hex')
     const presignBody = JSON.stringify({
+      file_size_bytes: totalBytes,
       upload_key: uploadKey,
       riot_name:  opts.riotName,
       riot_tag:   opts.riotTag,

@@ -31,7 +31,7 @@ const trendClass = computed(() => {
         </div>
         <div v-if="sessionReview.avgScore != null" class="text-right">
           <div class="flex items-baseline justify-end gap-1.5">
-            <span class="text-xl font-black tabular-nums text-white">{{ Math.round(sessionReview.avgScore) }}</span>
+            <span class="text-xl font-black tabular-nums text-white">{{ Math.round(sessionReview.avgScore * 10) }}</span>
             <span
               class="text-[9px] font-black px-1.5 py-0.5 rounded-full"
               :class="scoreGradeBadgeClass(sessionReview.avgScore)"

@@ -8,6 +8,7 @@ const history = ref<CoachHistory | null>(null)
 const error = ref('')
 const sending = ref(false)
 const checkoutBusy = ref(false)
+const checkoutNotice = ref('')
 const pending = ref<CoachQuestion | null>(null)
 let generation = 0
 let timer: ReturnType<typeof setTimeout> | undefined
@@ -60,14 +61,15 @@ async function credits(pack: string) {
     const url = new URL(result.data.checkout_url)
     if (url.protocol !== 'https:' || url.hostname !== 'checkout.stripe.com') throw new Error('Unsupported checkout')
     await window.api.app.openUrl(url.toString())
-  } catch { if (current === generation) error.value = 'Checkout unavailable. No purchase was made.' }
+    if (current === generation) checkoutNotice.value = 'Complete checkout in your browser, then return here. Your credit balance refreshes when you return. Use Refresh if payment is still processing.'
+  } catch { if (current === generation) error.value = 'Could not open checkout. Check your credit balance before retrying.' }
   finally { if (current === generation) checkoutBusy.value = false }
 }
 const cleanups = [window.api.on('session:user-changed', clear), window.api.on('auth:session-expired', clear)]
 function canClose() { return (!question.value.trim() && !pending.value) || window.confirm('Leave the coach? Your unsent draft will be lost. Submitted questions stay saved to your account.') }
 onBeforeRouteLeave(canClose)
 defineExpose({ canClose })
-function clear() { generation++; clearTimeout(timer); history.value = null; pending.value = null; question.value = ''; error.value = ''; sending.value = false }
+function clear() { checkoutNotice.value = ''; checkoutBusy.value = false; generation++; clearTimeout(timer); history.value = null; pending.value = null; question.value = ''; error.value = ''; sending.value = false }
 onMounted(() => window.addEventListener('focus', reload))
 onBeforeUnmount(() => { clear(); cleanups.forEach(fn => fn()); window.removeEventListener('focus', reload) })
 function stamp(n: number) { return `${Math.floor(n / 60)}:${Math.floor(n % 60).toString().padStart(2,'0')}` }
@@ -97,6 +99,7 @@ function stamp(n: number) { return `${Math.floor(n / 60)}:${Math.floor(n % 60).t
       </template>
       <article v-for="item in history?.items" :key="item.id"><p class="question">{{ item.question }}</p><p class="anchors">{{ item.moments.map((m,i) => `${i === 0 ? 'A' : 'B'} ${stamp(m.position)}${m.round === null ? '' : ` · R${m.round + 1}`}`).join(' / ') }}</p><p v-if="item.status === 'complete'" class="answer">{{ item.answer }}</p><p v-else role="status">{{ item.status === 'failed' ? 'Could not answer. Your allowance was returned.' : 'Preparing your answer…' }}</p></article>
     </template>
+    <p v-if="checkoutNotice" role="status">{{ checkoutNotice }}</p>
     <p v-if="error" class="error" role="alert">{{ error }}</p>
   </section>
 </template>

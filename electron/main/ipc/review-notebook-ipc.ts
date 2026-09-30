@@ -67,6 +67,17 @@ export function setupReviewNotebookHandlers(ipc: IpcMain, auth: AuthManager) {
   }
   ipc.handle('workspace-coach:history', (_event, id: number) => coachRequest('get', id))
   ipc.handle('workspace-coach:ask', (_event, id: number, body: unknown) => coachRequest('post', id, body))
+  ipc.handle('account:report-checkout', async () => {
+    const token = auth.getToken(), owner = auth.getUser()?.id
+    if (!token || !owner) return { ok: false, error: 'Sign in to buy report credits.' }
+    try {
+      const result = await auth.getApi().post('/api/payment/bundle-checkout', { bundle: '3-pack' })
+      if (auth.getToken() !== token || auth.getUser()?.id !== owner) return { ok: false, error: 'Your account changed.' }
+      const url = new URL(result.data.checkout_url)
+      if (url.protocol !== 'https:' || url.hostname !== 'checkout.stripe.com') throw new Error('Invalid checkout destination')
+      return { ok: true, data: { checkout_url: url.toString() } }
+    } catch { return { ok: false, error: 'Could not open checkout. Check your balance before retrying.' } }
+  })
   ipc.handle('workspace-coach:credits', async (_event, pack: string) => {
     if (!['starter', 'value', 'power'].includes(pack) || !auth.getToken()) return { ok: false, error: 'Choose a credit pack while signed in.' }
     const token = auth.getToken()

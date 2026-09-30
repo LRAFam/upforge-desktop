@@ -39,6 +39,7 @@
     </LibraryPageHeader>
     <CloudUsageNotice kind="clips" />
 
+
     <!-- Filter row -->
     <div class="panel-elevated flex flex-wrap items-center justify-between gap-3 px-3 py-2.5 flex-shrink-0">
       <div class="flex flex-wrap items-center gap-2">
@@ -160,8 +161,11 @@
       </template>
     </div>
 
+
     <!-- Empty state -->
-    <div v-if="displayedClips.length === 0" class="flex flex-1 items-center justify-center">
+    <div v-if="clipsLoading" role="status" class="py-10 text-center text-sm text-gray-400">Loading clips…</div>
+    <div v-else-if="clipsLoadError" role="alert" class="py-10 text-center text-sm text-amber-200"><p>{{ clipsLoadError }}</p><button class="mt-3 underline" @click="loadClips">Retry loading clips</button></div>
+    <div v-else-if="displayedClips.length === 0" class="flex flex-1 items-center justify-center">
       <div class="empty-state max-w-sm panel-elevated px-6 py-8">
         <div class="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl border mb-4" :class="[theme.accentBorder, theme.accentBg]">
           <svg class="h-6 w-6" :class="theme.accentText" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -395,7 +399,7 @@
           </div>
           <div class="space-y-2 p-3">
             <div class="flex items-start justify-between gap-2">
-              <p class="min-w-0 flex-1 truncate text-sm font-semibold text-gray-100">{{ clip.title || defaultTitle(clip) }}</p>
+              <p class="min-w-0 flex-1 truncate text-sm font-semibold text-gray-100">{{ clip.title || defaultTitle(clip) }}</p><StorageIndicator :cloud="clip.uploadStatus === 'uploaded'" :local="!clip.id.startsWith('cloud:')" />
               <span class="text-[11px] text-gray-600">{{ timeAgo(clip.savedAt) }}</span>
             </div>
             <div class="flex items-center gap-2 text-xs text-gray-500">
@@ -488,7 +492,7 @@
             <div class="space-y-2">
               <div class="flex items-start justify-between gap-3">
                 <div class="min-w-0 flex-1">
-                  <p class="truncate text-sm font-semibold text-white">{{ clip.title || defaultTitle(clip) }}</p>
+                  <p class="truncate text-sm font-semibold text-white">{{ clip.title || defaultTitle(clip) }}</p><StorageIndicator :cloud="clip.uploadStatus === 'uploaded'" :local="!clip.id.startsWith('cloud:')" />
                   <div class="mt-1 flex flex-wrap items-center gap-2 text-xs text-gray-500">
                     <span>{{ timeAgo(clip.savedAt) }}</span>
                     <span v-if="clip.map" class="text-gray-700">•</span>
@@ -586,6 +590,19 @@
       </template>
     </div>
 
+    <div v-if="cloudReviewLoading || cloudReviewError" class="fixed bottom-6 left-1/2 z-[70] -translate-x-1/2 rounded border border-white/20 bg-[#171b23] p-4 text-sm text-white" role="status">
+      {{ cloudReviewLoading ? 'Opening cloud clip…' : cloudReviewError }}
+      <button v-if="cloudReviewError" class="ml-3 underline" @click="openCloudClip">Retry</button>
+    </div>
+    <div v-if="pendingClipAnalysis" class="fixed inset-0 z-[80] flex items-center justify-center bg-black/80" role="dialog" aria-modal="true" aria-labelledby="clip-analysis-confirm-title">
+      <section class="max-w-md rounded-lg border border-white/20 bg-[#171b23] p-6 text-white">
+        <h2 id="clip-analysis-confirm-title" class="font-semibold">Analyse this clip?</h2>
+        <p class="my-3 text-sm text-gray-300">Uses 1 AI clip review. {{ pendingClipAnalysis.limit === null ? 'Your plan has unlimited clip reviews.' : `You have ${pendingClipAnalysis.remaining} of ${pendingClipAnalysis.limit} remaining this month.` }} This does not use a full-match report.</p>
+        <p class="mb-4 text-xs text-gray-400">Feedback covers what is visible in this clip. It is not a full-match assessment.</p>
+        <button class="rounded bg-rose-600 px-4 py-2" @click="confirmClipAnalysis">Use 1 clip review</button>
+        <button class="ml-3 px-3 py-2" @click="pendingClipAnalysis=null">Cancel</button>
+      </section>
+    </div>
     <!-- Video player modal -->
     <div
       v-if="playingClip"
@@ -618,7 +635,8 @@
             <p class="text-xs font-semibold text-white truncate">{{ playingClip.title || defaultTitle(playingClip) }}</p>
             <button
               class="opacity-0 group-hover/title:opacity-100 transition-opacity text-gray-600 hover:text-gray-300 flex-shrink-0"
-              title="Rename clip"
+              v-if="!cloudOnly"
+            title="Rename clip"
               @click="startTitleEdit"
             >
               <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -630,7 +648,7 @@
         </div>
         <div class="flex items-center gap-2 flex-shrink-0">
           <!-- Favourite toggle -->
-          <button
+          <button v-if="!cloudOnly"
             class="w-8 h-8 flex items-center justify-center rounded-lg transition-colors"
             :class="playingClip.favorited ? 'text-yellow-400 bg-yellow-400/10' : 'text-gray-600 hover:text-yellow-400 hover:bg-white/[0.07]'"
             :title="playingClip.favorited ? 'Unfavourite' : 'Favourite'"
@@ -643,6 +661,7 @@
           <!-- Copy file path -->
           <button
             class="w-8 h-8 flex items-center justify-center rounded-lg text-gray-600 hover:text-white hover:bg-white/[0.07] transition-colors"
+            v-if="!cloudOnly"
             title="Copy file path to clipboard"
             @click="copyClipPath(playingClip)"
           >
@@ -651,7 +670,7 @@
             </svg>
           </button>
           <!-- Reveal in file explorer -->
-          <button
+          <button v-if="!cloudOnly"
             class="w-8 h-8 flex items-center justify-center rounded-lg text-gray-600 hover:text-white hover:bg-white/[0.07] transition-colors"
             title="Show in file explorer"
             @click="revealInExplorer(playingClip)"
@@ -669,7 +688,7 @@
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 8V6a2 2 0 012-2h2M4 16v2a2 2 0 002 2h2m8-16h2a2 2 0 012 2v2m0 8v2a2 2 0 01-2 2h-2"/>
             </svg>
           </button>
-          <button
+          <button v-if="!cloudOnly"
             class="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-white/[0.06] hover:bg-white/[0.10] text-gray-300 border border-white/[0.10] rounded-lg transition-colors"
             @click="openTrim(playingClip)"
           >
@@ -697,7 +716,7 @@
             {{ analysingClipId === playingClip.id ? 'Analysing…' : 'Analyse' }}
           </button>
           <button
-            v-if="playingClip.uploadStatus === 'uploaded'"
+            v-if="!cloudOnly && playingClip.uploadStatus === 'uploaded'"
             class="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-white/[0.06] hover:bg-white/[0.10] text-gray-300 border border-white/[0.10] rounded-lg transition-colors"
             @click="shareClip(playingClip)"
           >
@@ -706,7 +725,7 @@
             </svg>
             Share
           </button>
-          <template v-else>
+          <template v-else-if="!cloudOnly">
             <button
               :disabled="!!uploadingClipId || !!analysingClipId"
               :title="uploadButtonTitle"
@@ -747,12 +766,18 @@
           </button>
         </div>
       </div>
+      <div v-if="cloudOnly" class="flex items-center justify-between gap-3 px-4 py-2 text-xs text-gray-400 bg-white/[0.03]">
+        <span>Cloud clip · Editing requires a downloaded copy.</span>
+        <button class="text-white underline" @click="downloadCloudClip">Download clip</button>
+      </div>
+      <p v-if="cloudOnly && ['queued', 'processing'].includes(playingClip.analysisStatus)" role="status" class="px-4 py-2 text-sm text-orange-300">AI coaching {{ playingClip.analysisStatus === 'queued' ? 'queued' : 'in progress' }}. Results will appear here.</p>
       <video
         ref="videoEl"
         class="flex-1 w-full object-contain"
         controls
         autoplay
-        :src="toFileUrl(playingClip.path)"
+        :src="cloudOnly ? playingClip.path : toFileUrl(playingClip.path)"
+        @error="cloudOnly && (cloudReviewError = 'Playback failed. Retry to renew access to this clip.')"
         @timeupdate="trackClipWatch"
       />
       <div class="flex items-center justify-center gap-4 px-4 py-1.5 bg-black/40 border-t border-white/[0.07] flex-shrink-0">
@@ -917,7 +942,7 @@
               </div>
             </div>
 
-            <h3 class="text-sm font-bold text-white mb-1.5">{{ userTier === 'free' ? 'Upgrade Required' : 'Monthly limit reached' }}</h3>
+            <h3 class="text-sm font-bold text-white mb-1.5">Check your allowance</h3>
             <p class="text-[12px] text-gray-500 mb-5 leading-relaxed">
               <template v-if="userTier === 'free'">{{ upgradeModal.message }}</template>
               <template v-else>You've used all your {{ userTier }} plan analyses for this month. Resets in {{ daysUntilReset() }} day{{ daysUntilReset() === 1 ? '' : 's' }}.</template>
@@ -948,6 +973,7 @@
 </template>
 
 <script setup lang="ts">
+import StorageIndicator from '../components/shared/StorageIndicator.vue'
 import LibraryPageHeader from '../components/shared/LibraryPageHeader.vue'
 import CloudUsageNotice from '../components/shared/CloudUsageNotice.vue'
 import { PlaybackActivityMeter } from '../lib/playback-activity'
@@ -973,10 +999,61 @@ const { primaryGame, isValorant } = usePrimaryGame()
 const { theme } = useGameTheme()
 const showAllGames = ref(false)
 const clips = ref<ClipRecord[]>([])
+const clipsLoading = ref(true)
+const clipsLoadError = ref('')
+let clipsLoadRequest = 0
 const thumbnails = ref<Record<string, string>>({})
 const activeFilter = ref<string>('all')
 const sessionAgentFilter = ref<string | null>(null)
 const sessionMatchIdFilter = ref<string | null>(null)
+const cloudReviewError = ref('')
+const cloudReviewLoading = ref(false)
+const pendingClipAnalysis = ref<{ clip: ClipRecord; remaining: number | null; limit: number | null } | null>(null)
+let cloudGeneration = 0
+let cloudPoll: ReturnType<typeof setTimeout> | undefined
+const cloudOnly = computed(() => playingClip.value?.id.startsWith('cloud:') === true)
+async function openCloudClip() {
+  const id = Number(route.query.cloudClip)
+  if (!Number.isSafeInteger(id) || id < 1) { if (cloudOnly.value) closePlayer(); return }
+  const generation = ++cloudGeneration
+  cloudReviewLoading.value = true; cloudReviewError.value = ''
+  try {
+    const result = await window.api.cloudClip.review(id)
+    if (generation !== cloudGeneration) return
+    if (!result.ok) { cloudReviewError.value = result.error; return }
+    openPlayer(result.data.clip)
+    scheduleCloudPoll(result.data.clip)
+  } catch { if (generation === cloudGeneration) cloudReviewError.value = 'Could not load cloud clip. Please retry.' }
+  finally { if (generation === cloudGeneration) cloudReviewLoading.value = false }
+}
+async function downloadCloudClip() {
+  const id = playingClip.value?.apiClipId
+  if (!id || !cloudOnly.value) return
+  try {
+    const result = await window.api.cloudStorage.download({ kind: 'clip', id: String(id) })
+    showToastMsg(result.ok ? 'Download started' : result.error, result.ok ? 'success' : 'error')
+  } catch { showToastMsg('Download could not start. Please retry.', 'error') }
+}
+function scheduleCloudPoll(clip: ClipRecord) {
+  clearTimeout(cloudPoll)
+  if (!clip.id.startsWith('cloud:') || !['queued','processing'].includes(clip.analysisStatus)) return
+  const generation = cloudGeneration
+  cloudPoll = setTimeout(async () => {
+    if (generation !== cloudGeneration || playingClip.value?.id !== clip.id) return
+    try {
+      const result = await window.api.cloudClip.review(clip.apiClipId!)
+      if (generation !== cloudGeneration || playingClip.value?.id !== clip.id) return
+      if (!result.ok) { cloudReviewError.value = result.error; return }
+      const { path: _path, ...patch } = result.data.clip
+      syncClipInState(clip.id, patch)
+      scheduleCloudPoll(result.data.clip)
+    } catch { if (generation === cloudGeneration) cloudReviewError.value = 'Coaching status could not be refreshed. Reopen the clip to retry.' }
+  }, 4000)
+}
+const cloudSessionCleanup = ['session:user-changed','auth:session-expired'].map(event => window.api.on(event, () => {
+  cloudGeneration++; clearTimeout(cloudPoll); pendingClipAnalysis.value = null; closePlayer(); cloudReviewError.value = ''
+}))
+watch(() => route.query.cloudClip, () => { void openCloudClip() })
 const playingClip = ref<ClipRecord | null>(null)
 const activityMeter = new PlaybackActivityMeter()
 function trackClipWatch(event: Event) {
@@ -1246,6 +1323,7 @@ onMounted(async () => {
 
   saveClipHotkey.value = await loadSaveClipHotkey()
   await loadClips()
+  if (route.query.cloudClip) await openCloudClip()
   window.api.app.getStatus().then(s => {
     if (s.user?.tier) userTier.value = s.user.tier
     appUser.value = s.user ?? null
@@ -1256,7 +1334,7 @@ onMounted(async () => {
     await loadClips()
   })
   const clipsUpdatedCleanup = window.api.on('clips:updated', async () => {
-    playingClip.value = null
+    if (!cloudOnly.value) closePlayer()
     trimModal.value = { show: false, clipId: '', startSec: 0, endSec: 10, duration: 10, loading: false, error: null }
     await loadClips()
   })
@@ -1278,6 +1356,7 @@ onMounted(async () => {
 })
 
 onUnmounted(() => {
+  cloudGeneration++; clearTimeout(cloudPoll); cloudSessionCleanup.forEach(fn => fn())
   removeListener.value?.()
   const clipsUpdatedCleanup = (window as Window & { _clipsUpdatedCleanup?: () => void })._clipsUpdatedCleanup
   clipsUpdatedCleanup?.()
@@ -1289,6 +1368,7 @@ onUnmounted(() => {
 })
 
 function handleKeyDown(e: KeyboardEvent) {
+  if (pendingClipAnalysis.value) { if (e.key === 'Escape') pendingClipAnalysis.value = null; return }
   if (!playingClip.value) return
   if (trimModal.value.show) return
   if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return
@@ -1360,15 +1440,22 @@ async function saveTitleEdit() {
 }
 
 async function loadClips() {
+  const request = ++clipsLoadRequest
+  clipsLoading.value = true
+  clipsLoadError.value = ''
   try {
-    clips.value = await window.api.clips.get(
+    const result = await window.api.clips.get(
       showAllGames.value ? { allGames: true } : { game: primaryGame.value },
     )
+    if (request !== clipsLoadRequest) return
+    clips.value = result
     for (const clip of clips.value) {
       loadThumbnail(clip.id)
     }
   } catch {
-    clips.value = []
+    if (request === clipsLoadRequest) clipsLoadError.value = 'Could not load clips. Your files have not been removed.'
+  } finally {
+    if (request === clipsLoadRequest) clipsLoading.value = false
   }
 }
 
@@ -1391,6 +1478,7 @@ function openPlayer(clip: ClipRecord) {
 }
 
 function closePlayer() {
+  cloudGeneration++; clearTimeout(cloudPoll); pendingClipAnalysis.value = null; cloudReviewLoading.value = false; cloudReviewError.value = ''
   if (videoEl.value) {
     videoEl.value.pause()
     videoEl.value.src = ''
@@ -1488,11 +1576,53 @@ async function uploadClip(clip: ClipRecord): Promise<boolean> {
 }
 
 async function analyseClip(clip: ClipRecord): Promise<boolean> {
+  if (!clip.apiClipId || analysingClipId.value || uploadingClipId.value) return false
+  analysingClipId.value = clip.id
+  const generation = cloudGeneration
+  try {
+    const result = await window.api.cloudClip.review(clip.apiClipId)
+    if (generation !== cloudGeneration) return false
+    if (!result.ok) { showToastMsg(result.error, 'error'); return false }
+    if (!['none', 'failed'].includes(result.data.clip.analysisStatus)) {
+      const { path: _path, ...patch } = result.data.clip
+      syncClipInState(clip.id, { analysisStatus: patch.analysisStatus, verdict: patch.verdict, suggestion: patch.suggestion, coachingTags: patch.coachingTags, overallScore: patch.overallScore })
+      if (clip.id.startsWith('cloud:')) scheduleCloudPoll(result.data.clip)
+      return false
+    }
+    if (result.data.quota.remaining === 0) {
+      upgradeModal.value = { show: true, message: 'No AI clip reviews remain in your current allowance. Review your plan before starting another.' }
+      return false
+    }
+    pendingClipAnalysis.value = { clip, remaining: result.data.quota.remaining, limit: result.data.quota.limit }
+    return false
+  } catch { showToastMsg('Could not check clip coaching allowance. Please retry.', 'error'); return false }
+  finally { analysingClipId.value = null }
+}
+async function confirmClipAnalysis() {
+  const pending = pendingClipAnalysis.value
+  pendingClipAnalysis.value = null
+  if (pending) await submitClipAnalysis(pending.clip)
+}
+async function submitClipAnalysis(clip: ClipRecord): Promise<boolean> {
   if (uploadingClipId.value || analysingClipId.value) return false
   if (!canAnalyseClip(clip)) return false
   uploadError.value = null
   analysingClipId.value = clip.id
   try {
+    if (clip.id.startsWith('cloud:')) {
+      const generation = cloudGeneration
+      const result = await window.api.cloudClip.review(clip.apiClipId!, true)
+      if (generation !== cloudGeneration) return false
+      if (!result.ok) {
+        if (result.needsUpgrade) upgradeModal.value = { show: true, message: result.error }
+        else showToastMsg(result.error, 'error')
+        return false
+      }
+      const { path: _path, ...patch } = result.data.clip
+      syncClipInState(clip.id, patch); scheduleCloudPoll(result.data.clip)
+      showToastMsg('AI clip coaching queued', 'success')
+      return true
+    }
     const analysisResult = await window.api.clips.requestAnalysis(clip.id)
     if (analysisResult.needsUpgrade) {
       upgradeModal.value = { show: true, message: analysisResult.message ?? 'Upgrade to get AI coaching on clips.' }
@@ -1507,7 +1637,7 @@ async function analyseClip(clip: ClipRecord): Promise<boolean> {
     syncClipInState(clip.id, { analysisStatus: 'queued' })
     showToastMsg('AI coaching queued', 'success')
     return true
-  } finally {
+  } catch { showToastMsg('Could not request clip coaching. Please retry.', 'error'); return false } finally {
     analysingClipId.value = null
   }
 }
@@ -1515,7 +1645,8 @@ async function analyseClip(clip: ClipRecord): Promise<boolean> {
 async function uploadAndAnalyseClip(clip: ClipRecord): Promise<void> {
   const uploaded = await uploadClip(clip)
   if (!uploaded) return
-  await analyseClip({ ...clip, uploadStatus: 'uploaded' })
+  const uploadedClip = clips.value.find(item => item.id === clip.id)
+  if (uploadedClip) await analyseClip(uploadedClip)
 }
 
 function openUpgrade() {

@@ -1,3 +1,5 @@
+import { getApiBaseUrl } from './api-base'
+import { setupCloudStorageHandlers } from './ipc/cloud-storage-ipc'
 import { APP_VERSION } from './app-version'
 import { setupReviewNotebookHandlers } from './ipc/review-notebook-ipc'
 import { registeredLocalRecordingPaths } from './local-media-paths'
@@ -336,6 +338,16 @@ import {
 } from './late-clip-retry'
 import { downloadCs2ValveDemoForSession } from './cs2-valve-demo-downloader'
 import { clearDemoDownloadProgress, sendDemoDownloadProgress } from './demo-download-notify'
+// Keep sandbox sessions separate from the normal desktop account and recordings.
+if (!app.isPackaged && process.env.UPFORGE_SANDBOX_USER_DATA) {
+  const api = new URL(getApiBaseUrl())
+  if (!['127.0.0.1', 'localhost'].includes(api.hostname)) {
+    throw new Error('Sandbox user data requires a localhost API')
+  }
+  fs.mkdirSync(process.env.UPFORGE_SANDBOX_USER_DATA, { recursive: true })
+  app.setPath('userData', process.env.UPFORGE_SANDBOX_USER_DATA)
+}
+
 // Keep software rendering as the dev default. Opt in to GPU rendering when
 // diagnosing stale software-composited video frames in the macOS preview.
 if (!app.isPackaged) {
@@ -6620,6 +6632,11 @@ async function startApp(): Promise<void> {
     else discordRPC.setIdle()
   })
   setupReviewNotebookHandlers(ipcMain, authManager)
+  setupCloudStorageHandlers(ipcMain, authManager, (file) => {
+    if (file.kind === 'clip') {
+      for (const clip of clipStore.getAll()) if (String(clip.apiClipId) === file.id) clipStore.update(clip.id, { apiClipId: null, uploadStatus: 'local' })
+    }
+  })
   ipcMain.handle('coaching:preferences', async () => {
     return (await authManager.getApi().get('/api/user/coaching-preferences')).data
   })

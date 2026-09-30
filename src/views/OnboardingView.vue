@@ -1,5 +1,5 @@
 <template>
-  <div class="wiz-root min-h-full h-full flex items-center justify-center px-4">
+  <div class="wiz-root min-h-0 h-full flex items-center justify-center p-4">
     <div
       v-if="isPreview"
       class="absolute top-4 left-1/2 -translate-x-1/2 z-20 flex flex-col items-center gap-1.5"
@@ -25,8 +25,8 @@
       </p>
     </div>
 
-    <div class="wiz-shell dash-panel w-full max-w-xl overflow-hidden relative">
-      <div class="flex items-center justify-between gap-3 px-6 pt-5 pb-4 border-b border-white/[0.07]">
+    <div class="wiz-shell dash-panel w-full max-w-xl max-h-full flex flex-col overflow-hidden relative">
+      <div class="shrink-0 flex items-center justify-between gap-3 px-6 pt-5 pb-4 border-b border-white/[0.07]">
         <button
           v-if="step > 1"
           type="button"
@@ -56,72 +56,83 @@
         <div class="w-8" />
       </div>
 
-      <div class="relative overflow-hidden max-h-[min(78vh,720px)] overflow-y-auto">
+      <div class="relative min-h-0 overflow-x-hidden overflow-y-auto">
         <Transition :name="slideDir">
             <!-- 1 · Account -->
             <div v-if="step === 1" key="step1" class="wiz-step">
-              <h2 class="text-[22px] font-black text-white tracking-tight">Sign in</h2>
-              <p class="text-sm text-gray-500 mt-2 mb-6">
-                Use your UpForge account. New here? Create one on the website, then come back.
-              </p>
-
-              <div class="space-y-3 mb-5">
-                <div>
-                  <label for="onboarding-email" class="text-[10px] font-bold uppercase tracking-[0.14em] text-gray-500 block mb-2">
-                    Email
-                  </label>
-                  <input
-                    id="onboarding-email"
-                    v-model="email"
-                    type="email"
-                    placeholder="your@email.com"
-                    autocomplete="email"
-                    class="wiz-input"
-                    @keydown.enter.prevent="handleSignIn"
-                  />
-                </div>
-                <div>
-                  <label for="onboarding-password" class="text-[10px] font-bold uppercase tracking-[0.14em] text-gray-500 block mb-2">
-                    Password
-                  </label>
-                  <input
-                    id="onboarding-password"
-                    v-model="password"
-                    type="password"
-                    placeholder="••••••••"
-                    autocomplete="current-password"
-                    class="wiz-input"
-                    @keydown.enter.prevent="handleSignIn"
-                  />
-                </div>
-              </div>
-
-              <p v-if="signInError" class="text-[12px] text-red-400 mb-4">{{ signInError }}</p>
-
-              <button
-                type="button"
-                class="btn-primary w-full"
-                :disabled="signInLoading"
-                @click="handleSignIn"
-              >
-                {{ signInLoading ? 'Signing in…' : 'Sign in' }}
-              </button>
-
-              <button
-                v-if="isPreview && !isAuthed"
-                type="button"
-                class="btn-ghost w-full mt-2.5"
-                @click="nextStep"
-              >
-                Continue without signing in
-              </button>
-
-              <p class="text-[11px] text-gray-600 text-center mt-4">
-                New to UpForge?
-                <button type="button" class="text-[#ff4655] font-semibold hover:underline" @click="openRegister">
-                  Create account
+              <template v-if="isAuthed">
+                <h2 class="text-[22px] font-black text-white tracking-tight">You’re signed in</h2>
+                <p class="text-sm text-gray-500 mt-2 mb-6">
+                  Your UpForge account is connected. Next, choose your primary game.
+                </p>
+                <button type="button" class="btn-primary w-full" @click="nextStep">
+                  Continue to game
                 </button>
-              </p>
+              </template>
+              <template v-else>
+                <h2 class="text-[22px] font-black text-white tracking-tight">Sign in</h2>
+                <p class="text-sm text-gray-500 mt-2 mb-6">
+                  Use your UpForge account. New here? Create one on the website, then come back.
+                </p>
+
+                <div class="space-y-3 mb-5">
+                  <div>
+                    <label for="onboarding-email" class="text-[10px] font-bold uppercase tracking-[0.14em] text-gray-500 block mb-2">
+                      Email
+                    </label>
+                    <input
+                      id="onboarding-email"
+                      v-model="email"
+                      type="email"
+                      placeholder="your@email.com"
+                      autocomplete="email"
+                      class="wiz-input"
+                      @keydown.enter.prevent="handleSignIn"
+                    />
+                  </div>
+                  <div>
+                    <label for="onboarding-password" class="text-[10px] font-bold uppercase tracking-[0.14em] text-gray-500 block mb-2">
+                      Password
+                    </label>
+                    <input
+                      id="onboarding-password"
+                      v-model="password"
+                      type="password"
+                      placeholder="••••••••"
+                      autocomplete="current-password"
+                      class="wiz-input"
+                      @keydown.enter.prevent="handleSignIn"
+                    />
+                  </div>
+                </div>
+
+                <p v-if="signInError" class="text-[12px] text-red-400 mb-4">{{ signInError }}</p>
+
+                <button
+                  type="button"
+                  class="btn-primary w-full"
+                  :disabled="signInLoading"
+                  @click="handleSignIn"
+                >
+                  {{ signInLoading ? 'Signing in…' : 'Sign in' }}
+                </button>
+
+                <button
+                  v-if="isPreview && !isAuthed"
+                  type="button"
+                  class="btn-ghost w-full mt-2.5"
+                  @click="nextStep"
+                >
+                  Continue without signing in
+                </button>
+
+                <p class="text-[11px] text-gray-600 text-center mt-4">
+                  New to UpForge?
+                  <button type="button" class="text-[#ff4655] font-semibold hover:underline" @click="openRegister">
+                    Create account
+                  </button>
+                </p>
+              </template>
             </div>
 
             <!-- 2 · Game -->
@@ -142,6 +153,7 @@
                       ? 'ring-2 ring-[#ff4655] ring-offset-2 ring-offset-[#111111]'
                       : 'ring-1 ring-white/[0.08] hover:ring-white/[0.16]'
                   "
+                  :aria-pressed="selectedGame === game.id"
                   @click="selectedGame = game.id"
                 >
                   <img :src="game.img" :alt="game.name" class="absolute inset-0 w-full h-full object-cover" />
@@ -176,9 +188,6 @@
                 </button>
               </div>
 
-              <button type="button" class="btn-primary w-full" @click="nextStep">
-                Continue
-              </button>
             </div>
 
             <!-- 3 · Account link -->
@@ -412,49 +421,43 @@
             <!-- 4 · Automatic recording setup -->
             <div v-else-if="step === 4" key="step4" class="wiz-step">
               <h2 class="text-[22px] font-black text-white tracking-tight">Set up recording</h2>
-              <p class="text-sm text-gray-400 mt-2 mb-6 leading-relaxed">
-                UpForge uses OBS to record {{ gameCaptureLabel }}. We will install it if needed,
-                check compatibility, configure game capture, and make a short local test recording.
+              <p class="text-sm text-gray-400 mt-2 mb-5 leading-relaxed">
+                Record {{ gameCaptureLabel }} with OBS, ready to review after your match.
               </p>
-              <div class="rounded-xl border border-white/[0.08] px-4 py-4 mb-5">
-                <p class="text-sm font-semibold text-white" role="status" aria-live="polite">
-                  {{ guidedSetupPassed ? 'Recording test passed' : obsConnecting ? guidedSetupLabel : 'Ready to set up OBS' }}
+              <div class="rounded-xl border px-4 py-4 mb-4"
+                :class="obsError ? 'border-red-400/30' : guidedSetupPassed ? 'border-emerald-400/30' : 'border-white/[0.08]'"
+                :aria-busy="obsConnecting">
+                <p class="text-sm font-semibold" role="status" aria-live="polite"
+                  :class="obsError ? 'text-red-300' : guidedSetupPassed ? 'text-emerald-300' : 'text-white'">
+                  {{ obsConnecting ? guidedSetupLabel : obsError ? 'Setup needs attention' : guidedSetupPassed ? 'Local recording test passed' : 'Ready to set up' }}
                 </p>
-                <p v-if="guidedSetupPassed" class="text-xs text-gray-400 mt-2">
-                  OBS {{ guidedStudioVersion }} passed the compatibility and file checks.
-                  Next, open {{ gameCaptureLabel }} and confirm the capture preview before playing.
+                <p v-if="obsError" role="alert" class="text-xs text-red-300 mt-2 leading-relaxed">{{ obsError }}</p>
+                <p v-else-if="guidedSetupPassed" class="text-xs text-gray-400 mt-2 leading-relaxed">
+                  OBS {{ guidedStudioVersion }} passed the local checks. Next, check that the preview shows your game.
                 </p>
-                <p v-else class="text-xs text-gray-400 mt-2 leading-relaxed">
-                  Your existing scenes stay in OBS. If a recording, stream, or replay buffer is active,
-                  setup pauses. Windows may ask you to approve the OBS installation.
+                <p v-else-if="obsConnecting" class="text-xs text-gray-400 mt-2">
+                  Keep UpForge open while setup finishes.
                 </p>
-                <p v-if="obsError" role="alert" class="text-xs text-red-400 mt-4 leading-relaxed">{{ obsError }}</p>
-                <button v-if="!guidedSetupPassed" type="button" class="btn-primary w-full mt-5"
-                  :disabled="obsConnecting || isPreview" @click="setupRecordingAutomatically">
-                  {{ obsConnecting ? guidedSetupLabel : obsError ? 'Retry recording setup' : 'Set up recording' }}
-                </button>
-                <p v-if="isPreview" class="text-xs text-gray-500 mt-3">Setup runs in the desktop app. This preview does not change OBS.</p>
-                <button v-if="obsError" type="button" class="btn-ghost w-full mt-2" :disabled="obsConnecting" @click="openObsDownload">
-                  Get a stable OBS release
-                </button>
+                <ol v-else class="text-xs text-gray-400 mt-3 space-y-2 list-decimal pl-4">
+                  <li>Check OBS and install it if needed on Windows.</li>
+                  <li>Configure capture for {{ gameCaptureLabel }}.</li>
+                  <li>Make a short test recording on this device.</li>
+                </ol>
               </div>
-              <div class="wiz-actions">
-                <button v-if="guidedSetupPassed" type="button" class="btn-primary w-full" @click="continueFromObs">
-                  Continue to capture check
-                </button>
-                <button type="button" class="btn-ghost w-full" :disabled="obsConnecting" @click="continueFromObs">
-                  {{ guidedSetupPassed ? 'Continue later' : 'Set up later' }}
-                </button>
-                <p v-if="!guidedSetupPassed" class="text-xs text-gray-500 text-center">
-                  Recording is not verified yet. Finish setup before your first match.
-                </p>
-              </div>
+              <details v-if="!guidedSetupPassed" class="text-xs text-gray-400 leading-relaxed">
+                <summary class="cursor-pointer py-2 text-gray-300">Already use OBS?</summary>
+                <p class="mt-1">Your existing scenes stay in OBS. Setup pauses if a recording, stream or replay buffer is active. Windows may ask you to approve installation.</p>
+              </details>
+              <p v-if="isPreview" class="text-xs text-gray-400 mt-3">This preview does not change OBS.</p>
+              <button v-if="obsError" type="button" class="btn-ghost w-full mt-3" :disabled="obsConnecting" @click="openObsDownload">
+                Download OBS
+              </button>
             </div>
 
             <!-- 5 · Ready -->
             <div v-else-if="step === 5" key="step5" class="wiz-step">
               <h2 class="text-[22px] font-black text-white tracking-tight leading-tight">
-                {{ missionActive ? missionCopy.title : (obsConnected ? 'You are set' : 'Almost set') }}
+                {{ missionActive ? missionCopy.title : (obsConnected ? 'Check your setup' : 'Recording setup pending') }}
               </h2>
               <p class="text-sm mt-2 mb-6 leading-relaxed" :class="obsConnected ? 'text-gray-500' : 'text-amber-200/80'">
                 {{ missionActive ? missionCopy.body : readyBlurb }}
@@ -722,33 +725,7 @@
                 </p>
               </div>
 
-              <div v-if="!missionActive" class="wiz-actions">
-                <button
-                  type="button"
-                  class="btn-primary w-full"
-                  :disabled="saving"
-                  @click="selectedGame === 'valorant' && obsConnected ? startBonusMission() : handleComplete()"
-                >
-                  <svg v-if="saving" class="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
-                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" />
-                    <path
-                      class="opacity-75"
-                      fill="currentColor"
-                      d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
-                    />
-                  </svg>
-                  <template v-else>{{ firstMatchCta }}</template>
-                </button>
-                <button
-                  v-if="!obsConnected"
-                  type="button"
-                  class="btn-ghost w-full"
-                  @click="prevStep"
-                >
-                  Back to OBS setup
-                </button>
-                <p v-if="completeError" class="text-[12px] text-red-400 text-center">{{ completeError }}</p>
-              </div>
+
 
               <div v-if="!missionActive" class="mt-6 pt-5 border-t border-white/[0.06] space-y-2.5">
                 <p class="text-[10px] font-bold uppercase tracking-[0.14em] text-gray-500 text-center">
@@ -783,6 +760,53 @@
             </div>
 
           </Transition>
+        </div>
+              <div v-if="step === 5 && !missionActive" class="shrink-0 px-7 py-4 border-t border-white/[0.07] space-y-2">
+                <button
+                  type="button"
+                  class="btn-primary w-full"
+                  :disabled="saving"
+                  @click="selectedGame === 'valorant' && obsConnected ? startBonusMission() : handleComplete()"
+                >
+                  <svg v-if="saving" class="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" />
+                    <path
+                      class="opacity-75"
+                      fill="currentColor"
+                      d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
+                    />
+                  </svg>
+                  <template v-else>{{ firstMatchCta }}</template>
+                </button>
+                <button
+                  v-if="!obsConnected"
+                  type="button"
+                  class="btn-ghost w-full"
+                  @click="prevStep"
+                >
+                  Back to OBS setup
+                </button>
+                <p v-if="completeError" class="text-[12px] text-red-400 text-center">{{ completeError }}</p>
+              </div>
+        <div v-if="step === 4" class="shrink-0 px-7 py-4 border-t border-white/[0.07] space-y-2">
+          <button v-if="guidedSetupPassed" type="button" class="btn-primary w-full" @click="continueFromObs">
+            Check game capture
+          </button>
+          <button v-else type="button" class="btn-primary w-full"
+            :disabled="obsConnecting || isPreview" @click="setupRecordingAutomatically">
+            {{ obsConnecting ? 'Setting up…' : obsError ? 'Retry setup' : 'Set up recording' }}
+          </button>
+          <button v-if="!guidedSetupPassed" type="button" class="btn-ghost w-full" :disabled="obsConnecting" @click="continueFromObs">
+            Set up later
+          </button>
+          <p v-if="!guidedSetupPassed && !obsConnecting" class="text-xs text-gray-400 text-center">
+            Finish setup before your first recording. You can still explore the app.
+          </p>
+        </div>
+        <div v-if="step === 2" class="shrink-0 px-7 py-4 border-t border-white/[0.07]">
+          <button type="button" class="btn-primary w-full" @click="nextStep">
+            Continue
+          </button>
         </div>
       </div>
   </div>
@@ -1091,7 +1115,7 @@ const accountError = ref('')
 const accountSuccess = ref('')
 const discordLinked = ref(false)
 
-const stepLabels = ['Account', 'Game', 'Link', 'OBS', 'Ready'] as const
+const stepLabels = ['Account', 'Game', 'Link', 'Recording', 'Ready'] as const
 
 const GAMES = [
   { id: 'valorant' as const, name: 'Valorant', img: PRIMARY_GAME_ARTWORK.valorant, desc: 'Full AI coaching and VOD analysis' },
@@ -1156,7 +1180,7 @@ const readyBlurb = computed(() => {
       ? 'Your setup is ready. Complete one supported match to receive a free Pro-level coaching report.'
       : 'Your setup is ready. Keep UpForge and OBS open when you play.'
   }
-  return 'Connect OBS before you queue for auto-recording, or finish later in Settings → Recording. The dashboard will keep reminding you.'
+  return 'You can explore UpForge now. Before recording a match, finish setup in Settings → Recording.'
 })
 
 const gameTip = computed(() => {
@@ -1218,7 +1242,6 @@ const summaryRows = computed(() => {
 })
 
 watch(step, async (s) => {
-  if (s === 2 || s === 3) await prefillGameFromUser()
   if (s === 3) await loadAccountState()
   if (s === 4 || s === 5) {
     try {
