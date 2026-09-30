@@ -29,17 +29,17 @@ const recordings = ref<PendingRecording[]>([]), clips = ref<ClipRecord[]>([]), q
 let generation = 0, queueGeneration = 0
 let updateTimer: ReturnType<typeof setTimeout> | undefined
 const filters: { value: CloudKind; label: string }[] = [{ value: 'all', label: 'All files' }, { value: 'recording', label: 'Recordings' }, { value: 'clip', label: 'Clips' }]
-const capacities = computed(() => usage.value ? [{ label: 'Cloud clips', ...usage.value.clips }, { label: 'Cloud recordings', ...usage.value.footage }] : [])
 const failedAgents = ref<Set<string>>(new Set())
 const retentionNow = ref(Date.now())
 const attentionCount = computed(() => library.value?.items.filter(file => ['expired', 'soon'].includes(cloudRetention(file.expires_at, retentionNow.value).state)).length ?? 0)
 const failedMapImages = ref<Set<string>>(new Set())
 function hideMapImage(map: string) { failedMapImages.value = new Set([...failedMapImages.value, map]) }
-const full = computed(() => capacities.value.some(c => c.remaining === 0))
+const full = computed(() => usage.value?.cloud_storage?.remaining_bytes === 0)
 const queue = computed(() => [
   ...recordings.value.filter(r => r.pipelineStatus === 'uploading' || !!r.lastAnalysisError).map(r => ({ id: `r:${r.id}`, title: `${r.map || 'Recording'}`, status: r.pipelineStatus === 'uploading' ? 'Uploading' : 'Needs attention', progress: r.pipelineStatus === 'uploading' && typeof r.uploadProgress === 'number' && Number.isFinite(r.uploadProgress) ? r.uploadProgress : null, path: '/recordings' })),
   ...clips.value.filter(c => c.uploadStatus === 'uploading' || c.uploadStatus === 'failed').map(c => ({ id: `c:${c.id}`, title: c.title || 'Clip', status: c.uploadStatus === 'uploading' ? 'Uploading' : 'Upload failed', progress: null, path: '/clips' })),
 ])
+let lastLoaded = 0
 async function load() {
   const request = ++generation
   retentionNow.value = Date.now()
@@ -51,6 +51,7 @@ async function load() {
     if (!validCloudPage(result.data)) { error.value = 'Cloud library could not be verified. Please retry.'; return }
     if (game.value !== 'all' && result.data.game_filter !== game.value) { error.value = 'Game filtering is not available on the server yet.'; return }
     library.value = result.data
+    lastLoaded = Date.now()
   } catch { if (request === generation) error.value = 'Cloud library is unavailable. Please retry.' }
   finally { if (request === generation) loading.value = false }
 }
@@ -62,6 +63,7 @@ async function loadQueue() {
     recordings.value = r; clips.value = c; queueError.value = ''
   } catch { if (request === queueGeneration) { recordings.value = []; clips.value = []; queueError.value = 'Upload activity could not be loaded.' } }
 }
+function focusRefresh() { if (!loading.value && Date.now() - lastLoaded > 30000) { void load(); void loadQueue() } }
 function refresh() { void load(); void loadUsage(); void loadQueue() }
 function resetAccount() { pendingRemoval.value = null; addon.value = null; keepError.value = ''; closePlayback(); clearTimeout(updateTimer); generation++; queueGeneration++; library.value = null; recordings.value = []; clips.value = []; loading.value = false; error.value = 'Sign in again to view cloud storage.' }
 const date = (value: string) => new Date(value).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' })
@@ -130,8 +132,8 @@ cleanups.push(...['recordings:updated', 'clips:updated', 'clips:new'].map(event 
   clearTimeout(updateTimer)
   updateTimer = setTimeout(() => { void load() }, 750)
 })))
-onMounted(() => { void load(); void loadQueue(); window.addEventListener('focus', refresh) })
-onBeforeUnmount(() => { closePlayback(); clearTimeout(updateTimer); generation++; queueGeneration++; cleanups.forEach(fn => fn()); window.removeEventListener('focus', refresh) })
+onMounted(() => { void load(); void loadQueue(); window.addEventListener('focus', focusRefresh) })
+onBeforeUnmount(() => { closePlayback(); clearTimeout(updateTimer); generation++; queueGeneration++; cleanups.forEach(fn => fn()); window.removeEventListener('focus', focusRefresh) })
 </script>
 
 <template>
@@ -166,13 +168,13 @@ onBeforeUnmount(() => { closePlayback(); clearTimeout(updateTimer); generation++
           <div class="library-heading"><h2>Saved to cloud · {{ gameLabel }}</h2><span v-if="library">{{ library.total }} files</span><span v-else>Clips &amp; recordings</span></div>
           <div class="file-toolbar"><label class="sort">Game <select v-model="game"><option v-for="option in cloudGames" :key="option.value" :value="option.value">{{ option.label }}</option></select></label><div class="filters" aria-label="File type"><button v-for="filter in filters" :key="filter.value" :aria-pressed="kind === filter.value" :class="{ selected: kind === filter.value }" @click="kind = filter.value">{{ filter.label }}</button></div><label class="sort">Sort <select v-model="sort"><option value="newest">Newest first</option><option value="largest">Largest first</option><option value="expiry">Expiring first</option></select></label></div>
           <p v-if="loading && !library" class="empty" role="status">Loading cloud files…</p><div v-else-if="error" class="empty" role="alert"><p>{{ error }}</p><button @click="load">Retry</button></div>
-          <template v-else-if="library"><div v-if="!library.items.length" class="empty"><h3>No {{ kind === 'all' ? 'cloud files' : kind === 'clip' ? 'cloud clips' : 'cloud recordings' }}{{ game === 'all' ? '' : ` for ${gameLabel}` }} yet</h3><p>Upload from Clips or Matches to keep your gameplay available on other devices.</p><button @click="router.push(kind === 'clip' ? '/clips' : '/recordings')">Open {{ kind === 'clip' ? 'Clips' : 'Matches' }}</button></div>
+          <template v-else-if="library"><div v-if="!library.items.length" class="empty"><h3>No {{ kind === 'all' ? 'cloud files' : kind === 'clip' ? 'cloud clips' : 'cloud recordings' }}{{ game === 'all' ? '' : ` for ${gameLabel}` }} yet</h3><p>Upload from Clips or Footage to keep your gameplay available on other devices.</p><button @click="router.push(kind === 'clip' ? '/clips' : '/recordings')">Open {{ kind === 'clip' ? 'Clips' : 'Footage' }}</button></div>
             <div v-for="file in library.items" :key="`${file.kind}:${file.id}`" class="file-row" :class="{ 'retention-ended': retention(file.expires_at).state === 'expired' }"><div class="file-icon" :style="{ backgroundImage: getMapListViewImage(file.map) ? `url(${getMapListViewImage(file.map)})` : undefined }" :class="[file.kind, { 'map-thumbnail': getMapListViewImage(file.map) && !failedMapImages.has(file.map!) }]" aria-hidden="true"><img v-if="getAgentImage(file.agent) && !failedAgents.has(file.agent!)" class="file-agent" :src="getAgentImage(file.agent)" alt="" loading="lazy" @error="failedAgents.add(file.agent!)" /><img v-else-if="getMapListViewImage(file.map) && !failedMapImages.has(file.map!)" :src="getMapListViewImage(file.map)" alt="" loading="lazy" @error="hideMapImage(file.map!)" /><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="m10 8 6 4-6 4z"/></svg></div><div class="file-description"><h3><button class="file-open" :disabled="file.status === 'uploading'" @click="openFile(file)">{{ cloudFileTitle(file) }}</button></h3><p>{{ cloudGames.find(item => item.value === file.game)?.label || 'Game not recorded' }} · {{ file.kind === 'clip' ? 'Clip' : 'Recording' }}<span v-if="file.agent"> · {{ file.agent }}</span> · {{ date(file.created_at) }}<span v-if="file.status === 'uploading'"> · Uploading</span><span v-if="file.status === 'failed'"> · Upload failed</span></p></div><div class="file-storage"><strong :title="file.bytes === null ? 'This older file has no verified size yet. Its size has not been counted as zero.' : undefined">{{ cloudBytes(file.bytes) }}</strong><p class="retention-label" :class="retention(file.expires_at).state" :title="file.expires_at ? `Retention date: ${date(file.expires_at)}` : undefined">{{ file.paid_storage && addon?.usage.active ? 'Kept in paid storage' : retention(file.expires_at).label }}</p><button @click="openFile(file)" :disabled="file.status === 'uploading'">{{ file.status === 'uploading' ? 'Uploading…' : retention(file.expires_at).state === 'expired' ? 'Recovery options' : 'Open file' }}</button><button v-if="addon?.usage.active && !file.paid_storage && ['stored','archived'].includes(file.status) && retention(file.expires_at).state !== 'expired'" :disabled="!!keeping" @click="keep(file)">{{ keeping === `${file.kind}:${file.id}` ? 'Moving…' : 'Keep in paid storage' }}</button><button v-if="file.paid_storage || usage?.cloud_storage" :disabled="!!keeping" @click="pendingRemoval=file">Remove cloud copy</button></div></div>
             <footer v-if="library.total" class="pagination"><span>{{ library.total }} files · Page {{ library.page }} of {{ library.last_page }}</span><div><button :disabled="page <= 1" @click="page--">Previous</button><button :disabled="page >= library.last_page" @click="page++">Next</button></div></footer>
           </template>
         </section>
       </div>
-      <aside class="side-column"><StorageAddonPicker :key="addonVersion" @changed="refresh" @loaded="addon=$event" /><section class="plan-panel"><p class="eyebrow">ROOM FOR YOUR NEXT MATCH</p><h2>{{ full ? 'Your cloud space is full' : 'Keep more of your gameplay' }}</h2><p>{{ full ? 'Your upload allowance is full. Existing files keep their current retention dates. Compare plans for more upload capacity.' : 'Review your plan for more cloud capacity and recording retention.' }}</p><button class="primary" @click="plans">Compare plans</button><p v-if="planError" role="alert">{{ planError }}</p><p class="fine-print">See the allowances available to your account before making a change.</p></section><section class="library-links"><h2>Manage your footage</h2><button @click="router.push('/recordings')">Open Matches <span aria-hidden="true">→</span></button><button @click="router.push('/clips')">Open Clips <span aria-hidden="true">→</span></button><p>Open files here to watch or download. Use Clips for editing and Matches for match review.</p></section><section class="storage-help"><h2>How storage works</h2><p>Cloud spaces are occupied until files are removed. They do not reset each month.</p><p>Files past their retention date may be removed during cleanup. Your saved notes and comparisons stay in your notebook even when footage is unavailable.</p></section></aside>
+      <aside class="side-column"><StorageAddonPicker :key="addonVersion" @changed="refresh" @loaded="addon=$event" /><section class="plan-panel"><p class="eyebrow">ROOM FOR YOUR NEXT MATCH</p><h2>{{ full ? 'Your cloud space is full' : 'Keep more of your gameplay' }}</h2><p>{{ full ? 'Your upload allowance is full. Existing files keep their current retention dates. Compare plans for more upload capacity.' : 'Review your plan for more cloud capacity and recording retention.' }}</p><button class="primary" @click="plans">Compare plans</button><p v-if="planError" role="alert">{{ planError }}</p><p class="fine-print">See the allowances available to your account before making a change.</p></section><section class="library-links"><h2>Manage your footage</h2><button @click="router.push('/recordings')">Open Footage <span aria-hidden="true">→</span></button><button @click="router.push('/clips')">Open Clips <span aria-hidden="true">→</span></button><p>Open files here to watch or download. Use Clips for editing and Footage for match review.</p></section><section class="storage-help"><h2>How storage works</h2><p>Cloud storage is used until files are removed. They do not reset each month.</p><p>Files past their retention date may be removed during cleanup. Your saved notes and comparisons stay in your notebook even when footage is unavailable.</p></section></aside>
     </div>
     <dialog v-if="selectedFile" ref="playerDialog" class="cloud-player" aria-labelledby="cloud-player-title" @cancel.prevent="closePlayback">
       <div class="cloud-player-body"><header><h2 id="cloud-player-title">{{ cloudFileTitle(selectedFile) }}</h2><button autofocus @click="closePlayback">Close player</button></header>
