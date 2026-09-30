@@ -3,7 +3,7 @@
  * CS2 / Deadlock block game-capture hooks — window_capture needs an accurate window id.
  */
 
-import { exec } from 'child_process'
+import { execFile } from 'child_process'
 import log from 'electron-log'
 
 const IS_WIN = process.platform === 'win32'
@@ -69,17 +69,21 @@ export async function findObsWindowString(game: string): Promise<string | null> 
     '    }, IntPtr.Zero);',
     '    return best;',
     '  }',
-    '}"@;',
+    '}',
+    '"@',
     `$procs = Get-Process -Name '${meta.processName}' -ErrorAction SilentlyContinue;`,
     'if (!$procs) { Write-Output ""; exit 0 };',
     '$pids = @($procs | ForEach-Object { [uint32]$_.Id });',
     `$result = [UpForgeWin]::Find($pids, '${meta.exe}');`,
     'if ($result) { Write-Output $result }',
-  ].join(' ')
+  ].join('\n')
 
   return new Promise((resolve) => {
-    exec(
-      `powershell -NoProfile -NonInteractive -Command "${script.replace(/"/g, '\\"')}"`,
+    // EncodedCommand preserves here-string newlines and avoids cmd.exe
+    // interpreting the C# quotes, redirection symbols, and PowerShell pipes.
+    execFile(
+      'powershell.exe',
+      ['-NoProfile', '-NonInteractive', '-EncodedCommand', Buffer.from(script, 'utf16le').toString('base64')],
       { windowsHide: true, timeout: 8000 },
       (err, stdout) => {
         if (err) {

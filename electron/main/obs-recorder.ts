@@ -1,3 +1,4 @@
+import { waitForObsReady } from './obs-readiness'
 import { OBSWebSocket } from 'obs-websocket-js'
 import { app, nativeImage } from 'electron'
 import { existsSync, statSync } from 'fs'
@@ -295,10 +296,10 @@ export class OBSRecorder {
   // ── Connection ──────────────────────────────────────────────────────────────
 
   async connect(): Promise<{ ok: boolean; error?: string; version?: string; setup?: ObsSetupResult }> {
+    if (this._connectInFlight) return this._connectInFlight
     if (this._connected) {
       return { ok: true, version: this._obsVersion ?? undefined }
     }
-    if (this._connectInFlight) return this._connectInFlight
 
     this._connectInFlight = this._connectOnce()
     try {
@@ -332,21 +333,12 @@ export class OBSRecorder {
           effectivePassword || undefined,
           { rpcVersion: 1 },
         )
+        const versionInfo = await waitForObsReady(() => this._obs.call('GetVersion'))
         this._connected = true
         this._obsVersion = obsWebSocketVersion
+        this._obsStudioVersion = versionInfo.obsVersion
         this._lastError = null
-        log.info('[OBSRecorder] Connected to OBS WebSocket', obsWebSocketVersion, 'via', tryHost)
-
-        try {
-          const versionInfo = await this._obs.call('GetVersion') as { obsVersion?: string }
-          this._obsStudioVersion = versionInfo.obsVersion ?? null
-          if (this._obsStudioVersion) {
-            log.info('[OBSRecorder] OBS Studio version:', this._obsStudioVersion)
-          }
-        } catch (err) {
-          log.warn('[OBSRecorder] GetVersion failed (non-fatal):', err)
-          this._obsStudioVersion = null
-        }
+        log.info('[OBSRecorder] OBS ready:', this._obsStudioVersion, 'via', tryHost)
 
         if (replayBufferSeconds > 0) {
           this._obs.call('SetProfileParameter', {

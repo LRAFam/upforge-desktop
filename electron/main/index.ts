@@ -1273,6 +1273,7 @@ function logActivity(message: string, explicitGame?: string): void {
     message,
     game: explicitGame ?? gameDetector.currentGame() ?? undefined,
   }
+  log.info('[Activity]', entry.game ?? 'app', message)
   activityLog.push(entry)
   recordErrorActivity(message, entry.time)
   if (activityLog.length > MAX_LOG_ENTRIES) activityLog.shift()
@@ -4277,18 +4278,8 @@ function setupGameDetection(): void {
       mainWindow.minimize()
     }
 
-    const recordedModesEarly = getRecordedModesForGame(
-      config?.recordedModesByGame,
-      game,
-      config?.recordedModes,
-    )
-    if (Array.isArray(recordedModesEarly) && recordedModesEarly.length === 0) {
-      logActivity('No game modes selected — recording disabled')
-      notifyRecordingUx('Select at least one game mode in Settings → Recording to record matches.')
-      tray?.setToolTip(idleTooltip(game))
-      await rearmGameDetection(game, true)
-      return
-    }
+    // Keep watching when no modes are selected: the user may enable a mode
+    // in the lobby. The saved selection is checked once the match is detected.
 
     // Auto-kill user-configured background apps before the game starts
     if (config?.pregameKillList?.length && performanceManager) {
@@ -4297,7 +4288,7 @@ function setupGameDetection(): void {
       }
     }
 
-    const recorderConfig = config ? buildRecorderConfig(config, hasProAccess(authManager.getUser()), captureOwnerId()) : undefined
+    let recorderConfig = config ? buildRecorderConfig(config, hasProAccess(authManager.getUser()), captureOwnerId()) : undefined
 
     // Check disk space now so the warning shows while in lobby
     const savePath = recordingSavePath()
@@ -4360,16 +4351,6 @@ function setupGameDetection(): void {
     let matchWaitCancelReason: string | null = null
     cancelMatchWait = () => { cancelled = true }
     waitingForMatch = true
-
-    const recordedModes = getRecordedModesForGame(
-      config?.recordedModesByGame,
-      game,
-      config?.recordedModes,
-    )
-    const allRecordableModes = recordableModesForGame(game)
-    // Empty list = record nothing (dashboard/settings copy). Non-empty partial list = filter.
-    const filterByMode = recordedModes.length > 0 &&
-      !allRecordableModes.every(m => recordedModes.includes(m))
 
     // CS2 — GSI live match (process open ≠ in a match).
     // Deadlock — Steam httpcache match signals; no Valve GSI.
@@ -4888,6 +4869,32 @@ function setupGameDetection(): void {
       } else if (gameMode) {
         modeConfident = true
       }
+    }
+
+    // Settings can change while we wait in the lobby. Decide from the saved
+    // selection at match start, rather than the earlier game-detection snapshot.
+    const matchStartSettings = settingsManager?.get()
+    recorderConfig = matchStartSettings
+      ? buildRecorderConfig(matchStartSettings, hasProAccess(authManager.getUser()), captureOwnerId())
+      : undefined
+    const recordedModes = getRecordedModesForGame(
+      matchStartSettings?.recordedModesByGame,
+      game,
+      matchStartSettings?.recordedModes,
+    )
+    const allRecordableModes = recordableModesForGame(game)
+    // Empty list = record nothing (dashboard/settings copy). Non-empty partial list = filter.
+    const filterByMode = recordedModes.length > 0 &&
+      !allRecordableModes.every(m => recordedModes.includes(m))
+
+    log.info('[RecordingDecision]', { game, gameMode, modeConfident, recordedModes, filterByMode })
+
+    if (recordedModes.length === 0) {
+      logActivity('No game modes selected — recording disabled')
+      notifyRecordingUx('Select at least one game mode in Settings → Recording to record matches.')
+      tray?.setToolTip(idleTooltip(game))
+      await rearmGameDetection(game, true)
+      return
     }
 
     if (filterByMode && !modeConfident) {
