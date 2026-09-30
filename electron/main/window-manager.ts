@@ -59,8 +59,9 @@ export function createMainWindow(
     resizable: initial.resizable !== false,
     show: false,
     frame: false,
-    titleBarStyle: 'hidden',
-    backgroundColor: '#0a0f1c',
+    // Login has a shaped silhouette; authenticated routes paint their own opaque shell.
+    transparent: true,
+    backgroundColor: '#00000000',
     icon: join(__dirname, '../../resources/icon.ico'),
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
