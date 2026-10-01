@@ -183,6 +183,25 @@ function statusTone(rec: PendingRecording): string {
   return 'text-gray-400'
 }
 
+const demoScans = ref(new Set<string>())
+const demoScanErrors = ref<Record<string, string>>({})
+
+async function checkSteam(rec: PendingRecording) {
+  if (props.preview || demoScans.value.has(rec.id)) return
+  demoScans.value.add(rec.id)
+  delete demoScanErrors.value[rec.id]
+  try {
+    const result = await window.api.recordings.refreshDemoTimeline(rec.id)
+    if (!result.ok) {
+      demoScanErrors.value[rec.id] = result.analysisReadiness?.message || 'Demo not found. Check Steam and try again.'
+    }
+  } catch {
+    demoScanErrors.value[rec.id] = 'Could not check Steam. Try again.'
+  } finally {
+    demoScans.value.delete(rec.id)
+  }
+}
+
 const demoPickerRec = ref<PendingRecording | null>(null)
 
 function openDemoPicker(rec: PendingRecording) {
@@ -324,7 +343,7 @@ function onRemove(rec: PendingRecording) {
 
             <p class="text-[11px] mt-3 leading-snug" :class="statusTone(rec)">
               <svg
-                v-if="!rec.matchStatsSyncPaused && (recInFlight(rec) || rec.analysisReadiness?.state === 'syncing' || rec.analysisReadiness?.state === 'waiting_match_data' || rec.analysisReadiness?.state === 'finalizing')"
+                v-if="!rec.matchStatsSyncPaused && (recInFlight(rec) || rec.analysisReadiness?.state === 'syncing' || (rec.game !== 'cs2' && rec.analysisReadiness?.state === 'waiting_match_data') || rec.analysisReadiness?.state === 'finalizing')"
                 class="inline w-3 h-3 mr-1 -mt-px animate-spin"
                 fill="none"
                 viewBox="0 0 24 24"
@@ -339,6 +358,16 @@ function onRemove(rec: PendingRecording) {
                 class="h-full rounded-full bg-blue-500/80 transition-all duration-300"
                 :style="{ width: recUploadProgress(rec)! + '%' }"
               />
+            </div>
+
+            <div v-if="rec.game === 'cs2' && recordingDemoPending(rec)" class="mt-2">
+              <button
+                type="button"
+                class="rounded border border-white/15 px-3 py-1.5 text-[11px] font-semibold text-blue-200 hover:bg-white/[0.05] disabled:opacity-50"
+                :disabled="preview || demoScans.has(rec.id) || rec.analysisReadiness?.state === 'syncing'"
+                @click="checkSteam(rec)"
+              >{{ demoScans.has(rec.id) ? 'Checking Steam…' : 'Check Steam' }}</button>
+              <p v-if="demoScanErrors[rec.id]" role="status" class="mt-1 text-[11px] text-amber-300">{{ demoScanErrors[rec.id] }}</p>
             </div>
 
             <DemoAttachGuide

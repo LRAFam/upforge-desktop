@@ -3,6 +3,7 @@
  * demofile is CS:GO-only and does not decode CS2 game events reliably.
  */
 import fs from 'fs'
+import { extractCs2MatchStats } from './cs2-match-stats'
 import log from 'electron-log'
 import { parseEvent, parseHeader, parsePlayerInfo } from '@laihoe/demoparser2'
 import type { DemoTimelineOptions } from './demo-timeline'
@@ -120,8 +121,10 @@ function resolveCs2DemoAnchorTick(
     .sort((a, b) => a.tick - b.tick)
 
   if (sortedStarts.length > 0) {
-    const gunRound = sortedStarts.find((row) => row.round === 1)
-      ?? sortedStarts.find((row) => row.round === 0)
+    // total_rounds_played counts completed rounds: 0 is round one, 1 is round two.
+    // Choosing 1 first erased the first round and shifted every later clip early.
+    const gunRound = sortedStarts.find((row) => row.round === 0)
+      ?? sortedStarts.find((row) => row.round === 1)
       ?? sortedStarts[0]
     return gunRound.tick
   }
@@ -539,10 +542,29 @@ export function buildCs2TimelineFromDemo(opts: DemoTimelineOptions): MatchData |
       accountLevel: null,
     } : null
 
+    const localSteamId = [...steamToUserId.entries()].find(([, id]) => id === localUserId)?.[0]
+    if (localSteamId) {
+      timeline.match_stats = extractCs2MatchStats(opts.demoPath, localSteamId, tickRate)
+      const measured = timeline.match_stats?.player_stats
+      if (timeline.finalStats && measured) {
+        // Keep the desktop scoreboard and uploaded statistics on the same live-round contract.
+        for (const key of ['kills', 'deaths', 'assists'] as const) {
+          if (typeof measured[key] === 'number') timeline.finalStats[key] = measured[key]
+        }
+        timeline.finalStats.adr = typeof measured.adr === 'number' ? measured.adr : null
+        timeline.finalStats.headshotPct = typeof measured.headshot_pct === 'number' ? measured.headshot_pct : null
+      }
+    }
+
     timeline.finalScore = roundsPlayed > 0 ? {
       allyScore: allyWins,
       enemyScore: enemyWins,
     } : undefined
+
+    if (timeline.match_stats) {
+      const [allyScore, enemyScore] = timeline.match_stats.score.split('-').map(Number)
+      timeline.finalScore = { allyScore: allyScore!, enemyScore: enemyScore! }
+    }
 
     timeline.matchDetails = {
       roundKills,

@@ -5,6 +5,7 @@ vi.mock('@laihoe/demoparser2', () => ({
   parseHeader: vi.fn(),
   parseEvent: vi.fn(),
   parsePlayerInfo: vi.fn(),
+  parseTicks: vi.fn(() => []),
 }))
 
 import { parseEvent, parseHeader, parsePlayerInfo } from '@laihoe/demoparser2'
@@ -135,6 +136,40 @@ describe('buildCs2TimelineFromDemo', () => {
 
     expect(timeline?.matchDetails?.demoAnchorTick).toBe(1600)
     expect(timeline?.killEvents?.[0]?.timeSinceGameStartMillis).toBe(100_000)
+  })
+
+  it('anchors to round zero so first-round deaths retain their actual timestamps', () => {
+    vi.mocked(parseHeader).mockReturnValue({
+      map_name: 'de_cache', playback_ticks: 128000, playback_time: 2000,
+    })
+    vi.mocked(parsePlayerInfo).mockReturnValue([])
+    vi.mocked(parseEvent).mockImplementation((_path, eventName) => {
+      if (eventName === 'round_start') {
+        return [
+          { tick: 1600, total_rounds_played: 0 },
+          { tick: 8000, total_rounds_played: 1 },
+        ]
+      }
+      if (eventName === 'player_death') {
+        return [3200, 4800, 9600].map((tick, index) => ({
+          tick,
+          total_rounds_played: index < 2 ? 0 : 1,
+          attacker_name: 'Enemy', attacker_steamid: '76561198000000002',
+          user_name: 'CHEWI', user_steamid: '76561198000000001', weapon: 'ak47',
+        }))
+      }
+      if (eventName === 'round_end') return [{ winner: 'CT', tick: 7000 }]
+      return []
+    })
+
+    const timeline = buildCs2TimelineFromDemo({
+      game: 'cs2', demoPath: '/tmp/round-zero.dem', map: null,
+      matchStartTime: 1_700_000_000_000, recordingStartTime: 1_700_000_000_000,
+      localPlayerName: 'CHEWI', skipSpatial: true,
+    })
+
+    expect(timeline?.matchDetails?.demoAnchorTick).toBe(1600)
+    expect(timeline?.playerDeaths.map(event => event.videoOffsetMs)).toEqual([25_000, 50_000, 125_000])
   })
 
   it('returns null when no events are found', () => {

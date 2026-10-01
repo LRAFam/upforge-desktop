@@ -75,8 +75,12 @@ export function trackLogin(): void {
   void trackFunnelEvent('desktop_login')
 }
 
-export function trackOnboardingComplete(): void {
-  void trackFunnelEvent('desktop_onboarding_complete')
+export function trackOnboardingComplete(recordingVerified?: boolean): void {
+  void trackFunnelEvent('desktop_onboarding_complete', {
+    recording_setup_status: recordingVerified === undefined
+      ? 'unknown'
+      : recordingVerified ? 'test_passed' : 'not_verified',
+  })
 }
 
 export function trackObsConnected(): void {
@@ -232,4 +236,3 @@ export function trackOpsRecordingLap(lap: Record<string, unknown>): void {
   const { event: _event, ...rest } = lap
   void trackFunnelEvent('ops_recording_lap', sanitizeOpsProperties(rest))
 }
-

@@ -79,32 +79,29 @@ async function isSteamRunning(): Promise<boolean> {
   }
 }
 
-async function killCs2Processes(): Promise<void> {
+async function ensureCs2Closed(): Promise<void> {
   if (!IS_WIN) return
-  try {
-    await execAsync('taskkill /IM cs2.exe /F', { windowsHide: true })
-    await sleep(800)
-  } catch {
-    /* not running */
+  const { stdout } = await execAsync('tasklist /fi "IMAGENAME eq cs2.exe" /fo csv /nh', {
+    windowsHide: true,
+    timeout: 5000,
+  })
+  if (stdout.toLowerCase().includes('cs2.exe')) {
+    throw new Error('Close CS2 to let UpForge fetch the demo, or download it in-game and attach it.')
   }
-}
-
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
 function boilerExitMessage(code: number): string {
   switch (code) {
     case BOILER_EXIT.SteamNotRunningOrLoggedIn:
-      return 'Steam is not running or not logged in — open Steam and try again.'
+      return 'Open Steam and sign in to allow demo retrieval.'
     case BOILER_EXIT.UserNotLoggedIn:
       return 'No Steam account is logged in.'
     case BOILER_EXIT.SteamRestartRequired:
       return 'Steam needs a restart before UpForge can fetch CS2 demos.'
     case BOILER_EXIT.AlreadyConnected:
-      return 'CS2 is still connected to Steam — close CS2 completely, then retry.'
+      return 'Close CS2 to allow Steam demo retrieval.'
     case BOILER_EXIT.CommunicationFailure:
-      return 'Could not reach the CS2 Game Coordinator — check Steam connection.'
+      return 'Could not reach the CS2 Game Coordinator. Check your Steam connection.'
     case BOILER_EXIT.NoMatchesFound:
       return 'No recent Valve matchmaking matches found on this Steam account.'
     default:
@@ -119,7 +116,7 @@ async function fetchRecentValveMatchesFromGc(): Promise<CMsgGCCStrike15_v2_Match
   }
 
   const infoPath = path.join(app.getPath('temp'), `upforge-matches-${Date.now()}.info`)
-  await killCs2Processes()
+  await ensureCs2Closed()
 
   return new Promise((resolve, reject) => {
     const child = spawn(exe, [infoPath], {
@@ -127,6 +124,18 @@ async function fetchRecentValveMatchesFromGc(): Promise<CMsgGCCStrike15_v2_Match
       cwd: path.dirname(exe),
       stdio: ['ignore', 'pipe', 'pipe'],
     })
+
+    let timedOut = false
+    const timer = setTimeout(() => {
+      timedOut = true
+      reject(new Error('Steam demo lookup timed out. Check that Steam is online.'))
+      child.kill()
+      cleanup()
+    }, 30_000)
+    const cleanup = () => {
+      clearTimeout(timer)
+      fs.unlink(infoPath, () => {})
+    }
 
     child.stdout?.on('data', (chunk: Buffer) => {
       const text = chunk.toString()
@@ -140,11 +149,14 @@ async function fetchRecentValveMatchesFromGc(): Promise<CMsgGCCStrike15_v2_Match
       if (text) log.info('[CS2ValveDemo] boiler:', text)
     })
 
-    child.on('error', (err) => reject(err))
+    child.on('error', (err) => { cleanup(); reject(err) })
 
     child.on('exit', (code) => {
+      clearTimeout(timer)
+      if (timedOut) { cleanup(); return }
       void (async () => {
         if (code !== BOILER_EXIT.Success) {
+          cleanup()
           reject(new Error(boilerExitMessage(code ?? BOILER_EXIT.Error)))
           return
         }
@@ -157,6 +169,7 @@ async function fetchRecentValveMatchesFromGc(): Promise<CMsgGCCStrike15_v2_Match
           fs.unlink(infoPath, () => {})
           resolve(fromBinary(CMsgGCCStrike15_v2_MatchListSchema, bytes))
         } catch (parseErr) {
+          cleanup()
           reject(parseErr instanceof Error ? parseErr : new Error(String(parseErr)))
         }
       })()
@@ -186,7 +199,7 @@ export async function downloadCs2ValveDemoForSession(opts: {
   }
 
   if (!(await isSteamRunning())) {
-    return { ok: false, error: 'Steam is not running — open Steam, then retry demo sync.', code: 'steam_offline' }
+    return { ok: false, error: 'Open Steam and sign in to allow demo retrieval.', code: 'steam_offline' }
   }
 
   const downloadDir = await getCs2ValveDemoDownloadDir(opts.customReplayDir)
@@ -209,7 +222,7 @@ export async function downloadCs2ValveDemoForSession(opts: {
   if (!match) {
     return {
       ok: false,
-      error: 'No matching Valve matchmaking demo in your last 8 games.',
+      error: 'Steam has not returned one unambiguous demo for this match. You can choose the matching .dem file manually.',
       code: 'no_match',
     }
   }
@@ -224,7 +237,9 @@ export async function downloadCs2ValveDemoForSession(opts: {
     await downloadValveDemoArchive(match.demoUrl, demoPath, opts.onProgress)
     return { ok: true, demoPath, match }
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err)
+    const message = err instanceof Error && err.name === 'TimeoutError'
+      ? 'Demo download timed out. Check your connection and try again.'
+      : err instanceof Error ? err.message : String(err)
     log.warn('[CS2ValveDemo] Download failed:', message)
     try { fs.unlinkSync(`${demoPath}.part`) } catch { /* ignore */ }
     try { fs.unlinkSync(demoPath) } catch { /* ignore */ }

@@ -9,6 +9,8 @@ import log from 'electron-log'
 const IS_WIN = process.platform === 'win32'
 
 const GAME_PROCESS: Record<string, { exe: string; processName: string }> = {
+  // The current Overstep playtest is packaged with clientconfig=Development.
+  overstep: { exe: 'Overstep.exe', processName: 'Overstep' },
   valorant: { exe: 'VALORANT-Win64-Shipping.exe', processName: 'VALORANT-Win64-Shipping' },
   cs2: { exe: 'cs2.exe', processName: 'cs2' },
   deadlock: { exe: 'deadlock.exe', processName: 'deadlock' },
@@ -79,27 +81,31 @@ export async function findObsWindowString(game: string): Promise<string | null> 
   ].join('\n')
 
   return new Promise((resolve) => {
-    // EncodedCommand preserves here-string newlines and avoids cmd.exe
-    // interpreting the C# quotes, redirection symbols, and PowerShell pipes.
-    execFile(
-      'powershell.exe',
-      ['-NoProfile', '-NonInteractive', '-EncodedCommand', Buffer.from(script, 'utf16le').toString('base64')],
-      { windowsHide: true, timeout: 8000 },
-      (err, stdout) => {
-        if (err) {
-          log.debug('[GameWindowFinder] Lookup failed for', game, err.message)
+    const failed = (err: unknown) => {
+      log.debug('[GameWindowFinder] Lookup failed for', game, err instanceof Error ? err.message : String(err))
+      resolve(null)
+    }
+    try {
+      // Direct launch preserves the PowerShell here-string and avoids cmd.exe quoting.
+      execFile(
+        'powershell.exe',
+        ['-NoProfile', '-NonInteractive', '-EncodedCommand', Buffer.from(script, 'utf16le').toString('base64')],
+        { windowsHide: true, timeout: 8000 },
+        (err, stdout) => {
+          if (err) { failed(err); return }
+          const line = stdout.trim()
+          if (line && line.includes(':')) {
+            log.info('[GameWindowFinder] Resolved window for', game, ':', line)
+            resolve(line)
+            return
+          }
           resolve(null)
-          return
-        }
-        const line = stdout.trim()
-        if (line && line.includes(':')) {
-          log.info('[GameWindowFinder] Resolved window for', game, ':', line)
-          resolve(line)
-          return
-        }
-        resolve(null)
-      },
-    )
+        },
+      )
+    } catch (err) {
+      // Windows can reject process creation synchronously (EPERM), before a callback exists.
+      failed(err)
+    }
   })
 }
 
@@ -108,5 +114,6 @@ export async function resolveObsCaptureWindow(game: string): Promise<string> {
   const normalized = game.toLowerCase()
   const live = await findObsWindowString(normalized)
   if (live) return live
+  if (normalized === 'overstep') throw new Error('The Overstep game window was not found.')
   return OBS_WINDOW_FALLBACKS[normalized] ?? OBS_WINDOW_FALLBACKS.valorant
 }

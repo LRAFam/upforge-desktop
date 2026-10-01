@@ -160,6 +160,7 @@ export interface AppSettings {
   autoAnalyse: boolean
   firstRun: boolean
   onboardingComplete?: boolean
+  onboardingRecordingVerified?: boolean
   onboardingMatchMission?: {
     active: boolean
     game: PrimaryGame
@@ -662,6 +663,14 @@ declare global {
         remove: (id: string, revision: number) => Promise<import('./lib/review-notebook').NotebookResult<{ id: string; deleted: true }>>
         list: () => Promise<import('./lib/review-notebook').NotebookResult<{ items: import('./lib/review-notebook').SavedComparison[] }>>
         save: (id: string, document: import('./lib/review-notebook').NotebookWrite) => Promise<import('./lib/review-notebook').NotebookResult<import('./lib/review-notebook').SavedComparison>>
+      }
+      overstep: {
+        policy: () => Promise<import('./lib/overstep-stats').OverstepRecordingPolicy>
+        savePolicy: (value: import('./lib/overstep-stats').OverstepRecordingPolicy) => Promise<import('./lib/overstep-stats').OverstepRecordingPolicy>
+        matches: () => Promise<ReturnType<typeof import('./lib/overstep-stats').matchStats>[]>
+        status: () => Promise<import('./lib/overstep').OverstepStatus>
+        enable: () => Promise<import('./lib/overstep').OverstepStatus>
+        disable: () => Promise<import('./lib/overstep').OverstepStatus>
       }
       coaching: {
         preferences: () => Promise<import('./lib/coaching-preferences').CoachingPreferences>

@@ -75,6 +75,7 @@ export function setupMediaHandlers(
     const port = cfg.obsPort ?? 4455
     settingsManager.save({ obsPreflightPassed: false })
     const obs = obsRecorder.getObsClient()
+    trackRecordingSetupStarted(game)
     guidedSetup = runGuidedObsSetup({
       isRecording: () => obsRecorder.isRecording(),
       isConnected: () => obsRecorder.isConnected(),
@@ -111,7 +112,13 @@ export function setupMediaHandlers(
     try {
       // A file test is not proof that the game is visible. The following
       // onboarding capture preview still requires the player's confirmation.
-      return await guidedSetup
+      const result = await guidedSetup
+      if (result.ok) trackRecordingSetupPassed(game)
+      else trackRecordingSetupFailed(result.error, game)
+      return result
+    } catch (error) {
+      trackRecordingSetupFailed(error instanceof Error ? error.message : 'Recording setup failed', game)
+      throw error
     } finally {
       guidedSetup = null
     }

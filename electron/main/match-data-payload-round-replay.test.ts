@@ -94,3 +94,10 @@ describe('prepareMatchDataForUpload roundReplay', () => {
     expect(upload?.matchDetails).toBeUndefined()
   })
 })
+
+it('carries versioned CS2 metrics through the upload without replacing null or zero', () => {
+  const timeline = timelineWithKills()
+  timeline.game = 'cs2'
+  timeline.match_stats = { schema_version: 1, rounds: 2, score: '1-1', player_stats: { adr: 75, kills: 0, headshot_pct: null }, round_stats: { ct_kd: 0 }, utility_stats: { enemies_flashed: null }, economy_stats: { avg_eq_t: 4200 } }
+  expect(prepareMatchDataForUpload(timeline)?.match_stats).toEqual(timeline.match_stats)
+})

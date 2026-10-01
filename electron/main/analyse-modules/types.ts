@@ -19,7 +19,7 @@ export interface AnalyseReadiness {
   missing?: string[]
 }
 
-export type ReadinessRecording = Pick<
+export type ReadinessRecording = { id?: string } & Pick<
   PendingRecording,
   'game' | 'recordedAt' | 'timeline' | 'clipsOnly' | 'matchId' | 'path' | 'cloudArchived' | 'archiveId' | 'gameMode'
 >

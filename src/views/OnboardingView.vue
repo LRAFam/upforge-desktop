@@ -457,9 +457,9 @@
             <!-- 5 · Ready -->
             <div v-else-if="step === 5" key="step5" class="wiz-step">
               <h2 class="text-[22px] font-black text-white tracking-tight leading-tight">
-                {{ missionActive ? missionCopy.title : (obsConnected ? 'Check your setup' : 'Recording setup pending') }}
+                {{ missionActive ? missionCopy.title : (recordingSetupReady ? 'Recording test passed' : 'Recording setup incomplete') }}
               </h2>
-              <p class="text-sm mt-2 mb-6 leading-relaxed" :class="obsConnected ? 'text-gray-500' : 'text-amber-200/80'">
+              <p class="text-sm mt-2 mb-6 leading-relaxed" :class="recordingSetupReady ? 'text-gray-500' : 'text-amber-200/80'">
                 {{ missionActive ? missionCopy.body : readyBlurb }}
               </p>
 
@@ -766,7 +766,7 @@
                   type="button"
                   class="btn-primary w-full"
                   :disabled="saving"
-                  @click="selectedGame === 'valorant' && obsConnected ? startBonusMission() : handleComplete()"
+                  @click="continueToFirstMatch"
                 >
                   <svg v-if="saving" class="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
                     <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" />
@@ -779,12 +779,13 @@
                   <template v-else>{{ firstMatchCta }}</template>
                 </button>
                 <button
-                  v-if="!obsConnected"
+                  v-if="!recordingSetupReady"
                   type="button"
                   class="btn-ghost w-full"
-                  @click="prevStep"
+                  :disabled="saving"
+                  @click="handleComplete()"
                 >
-                  Back to OBS setup
+                  Open dashboard and set up later
                 </button>
                 <p v-if="completeError" class="text-[12px] text-red-400 text-center">{{ completeError }}</p>
               </div>
@@ -824,6 +825,7 @@ import {
   type OnboardingMissionStage,
 } from '../lib/onboarding-match-mission'
 import { deriveCaptureReadiness } from '../lib/capture-readiness'
+import { hasVerifiedOnboardingRecording } from '../lib/onboarding-recording-readiness'
 import {
   findLatestOnboardingRecording,
   shouldMinimizeOnboardingForRecording,
@@ -1168,20 +1170,36 @@ const accountLinked = computed(() => {
   return lolLinked.value
 })
 
+const recordingSetupReady = computed(() => hasVerifiedOnboardingRecording({
+  connected: obsConnected.value,
+  testPassed: guidedSetupPassed.value,
+}))
+
 const firstMatchCta = computed(() =>
-  selectedGame.value === 'valorant' && obsConnected.value
+  !recordingSetupReady.value
+    ? (obsError.value ? 'Retry recording setup' : 'Finish recording setup')
+    : selectedGame.value === 'valorant'
     ? 'Start my free Pro analysis'
     : 'Open dashboard',
 )
 
 const readyBlurb = computed(() => {
-  if (obsConnected.value) {
+  if (recordingSetupReady.value) {
     return selectedGame.value === 'valorant'
-      ? 'Your setup is ready. Complete one supported match to receive a free Pro-level coaching report.'
-      : 'Your setup is ready. Keep UpForge and OBS open when you play.'
+      ? 'The recording test passed. Next, confirm your game in the capture preview before playing your first match.'
+      : 'The recording test passed. Check that OBS captures your game before playing.'
   }
-  return 'You can explore UpForge now. Before recording a match, finish setup in Settings → Recording.'
+  return 'Recording has not been verified. Finish setup and pass the recording test before playing. You can return to setup from Settings → Recording.'
 })
+
+function continueToFirstMatch() {
+  if (!recordingSetupReady.value) {
+    step.value = 4
+    return
+  }
+  if (selectedGame.value === 'valorant') void startBonusMission()
+  else void handleComplete()
+}
 
 const gameTip = computed(() => {
   if (selectedGame.value === 'cs2') {
@@ -1237,6 +1255,7 @@ const summaryRows = computed(() => {
     { label: 'Game', value: gameLabel, warn: false },
     { label: 'Account', value: accountValue, warn: !accountLinked.value },
     { label: 'OBS', value: obsConnected.value ? 'Connected' : 'Not connected', warn: !obsConnected.value },
+    { label: 'Recording test', value: recordingSetupReady.value ? 'Passed' : 'Not verified', warn: !recordingSetupReady.value },
     { label: 'Discord', value: discordLinked.value ? 'Linked' : 'Join / link', warn: !discordLinked.value },
   ]
 })
@@ -1247,6 +1266,7 @@ watch(step, async (s) => {
     try {
       const st = await window.api.obs.getStatus()
       obsConnected.value = st.connected
+      if (!st.connected) guidedSetupPassed.value = false
     } catch { /* ignore */ }
   }
   if (s === 5) await refreshDiscordStatus()
@@ -1596,9 +1616,11 @@ async function startBonusMission() {
   try {
     const preflight = await window.api.obs.runPreflight(true)
     if (!preflight.ok) {
-      completeError.value = preflight.userMessage
+      guidedSetupPassed.value = false
+      obsError.value = preflight.userMessage
         || preflight.error
         || 'OBS could not complete the recording safety check. Return to OBS setup and repair it.'
+      step.value = 4
       return
     }
 
@@ -2081,7 +2103,7 @@ function clearObsSkipFlag() {
 }
 
 function continueFromObs() {
-  if (!obsConnected.value) {
+  if (!recordingSetupReady.value) {
     try {
       localStorage.setItem(OBS_SKIP_KEY, '1')
     } catch { /* ignore */ }
@@ -2121,6 +2143,7 @@ async function handleComplete(opts?: { destination?: 'dashboard' | 'analysis'; r
     const current = await window.api.settings.get()
     await window.api.settings.save({
       onboardingComplete: true,
+      onboardingRecordingVerified: recordingSetupReady.value,
       firstRun: false,
       primaryGame: selectedGame.value,
       trainerMouse: {

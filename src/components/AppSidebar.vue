@@ -87,6 +87,7 @@ const developerNavItem: NavItem = {
 const visibleMainNav = computed(() => {
   const allowed = new Set(gameNavRoutes(primaryGame.value))
   const items = mainNav.filter(item => allowed.has(item.to))
+  items.push({ to: '/overstep', label: 'Overstep', icon: 'recordings', match: p => p === '/overstep' })
   if (showDeveloperNav.value || settingsDevMode.value) {
     items.push(developerNavItem)
   }

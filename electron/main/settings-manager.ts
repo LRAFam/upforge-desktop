@@ -64,6 +64,8 @@ export interface AppSettings {
   firstRun: boolean
   /** Set after welcome / onboarding wizard — avoids re-prompting on every launch */
   onboardingComplete?: boolean
+  /** Recording verification in this wizard session at completion; absent for older clients. */
+  onboardingRecordingVerified?: boolean
   /** Resumable guided match that grants one server-authorised bonus analysis. */
   onboardingMatchMission?: {
     active: boolean

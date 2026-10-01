@@ -107,29 +107,15 @@ export function pickValveMatchForSession(
   matchSessionStartMs: number,
   gsiMap: string | null | undefined,
 ): ValveMatchSummary | null {
-  if (!matches.length) return null
-
+  if (!Number.isFinite(matchSessionStartMs) || matchSessionStartMs <= 0) return null
   const sessionStartSec = Math.floor(matchSessionStartMs / 1000)
-  const notBeforeSec = sessionStartSec - 15 * 60
-  const notAfterSec = sessionStartSec + 3 * 60 * 60
   const wantedMap = normalizeMapName(gsiMap)
-
-  const candidates = matches.filter((m) => m.matchTimeSec >= notBeforeSec && m.matchTimeSec <= notAfterSec)
-  const pool = candidates.length ? candidates : matches
-
-  if (wantedMap) {
-    const mapMatch = pool.find((m) => normalizeMapName(m.mapName) === wantedMap)
-    if (mapMatch) return mapMatch
-  }
-
-  let best: ValveMatchSummary | null = null
-  let bestDelta = Number.POSITIVE_INFINITY
-  for (const m of pool) {
-    const delta = Math.abs(m.matchTimeSec - sessionStartSec)
-    if (delta < bestDelta) {
-      bestDelta = delta
-      best = m
-    }
-  }
-  return best
+  // Automatic attachment is conservative. Late capture or ambiguous matches
+  // require the existing manual picker instead of borrowing another game's stats.
+  const candidates = matches.filter((m) =>
+    Number.isFinite(m.matchTimeSec)
+    && Math.abs(m.matchTimeSec - sessionStartSec) <= 15 * 60
+    && (!wantedMap || normalizeMapName(m.mapName) === wantedMap),
+  )
+  return candidates.length === 1 ? candidates[0] : null
 }

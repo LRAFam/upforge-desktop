@@ -228,6 +228,7 @@ export function prepareMatchDataForUpload(
     firstBloods: timeline.firstBloods,
     roundSummaries: timeline.roundSummaries,
     finalStats,
+    match_stats: timeline.match_stats,
     lolLocalReview: timeline.lolLocalReview,
     teamSnapshot: timeline.teamSnapshot,
     matchDetailsLite: slimMatchDetails(timeline.matchDetails),

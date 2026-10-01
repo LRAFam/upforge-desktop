@@ -12,6 +12,7 @@ import {
   initFunnelEvents,
   sanitizeOpsProperties,
   trackOpsRecordingLap,
+  trackOnboardingComplete,
 } from './funnel-events'
 
 describe('sanitizeOpsProperties', () => {
@@ -37,6 +38,18 @@ describe('trackOpsRecordingLap', () => {
       { getToken: () => 'tok', getApi: () => ({ post }) } as never,
       '2.10.37',
     )
+  })
+
+  it.each([
+    [true, 'test_passed'],
+    [false, 'not_verified'],
+    [undefined, 'unknown'],
+  ] as const)('records onboarding verification %s as %s', async (verified, status) => {
+    trackOnboardingComplete(verified)
+    await vi.waitFor(() => expect(post).toHaveBeenCalled())
+    const body = post.mock.calls[0]![1]
+    expect(body.event).toBe('desktop_onboarding_complete')
+    expect(body.properties.recording_setup_status).toBe(status)
   })
 
   it('posts ops_recording_lap with sanitized properties', async () => {

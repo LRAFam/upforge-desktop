@@ -44,6 +44,7 @@ const router = createRouter({
     { path: '/cloud-storage', component: () => import('./views/CloudStorageView.vue') },
     { path: '/clips', component: ClipsView },
     { path: '/recordings', component: () => import('./views/MatchesView.vue') },
+    { path: '/overstep', component: () => import('./views/OverstepView.vue') },
     { path: '/overlay', component: OverlayView },
     { path: '/squad', component: SquadView },
     { path: '/performance', component: PerformanceView },

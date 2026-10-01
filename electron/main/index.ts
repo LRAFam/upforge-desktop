@@ -2,6 +2,10 @@ import { getApiBaseUrl } from './api-base'
 import { setupCloudStorageHandlers } from './ipc/cloud-storage-ipc'
 import { APP_VERSION } from './app-version'
 import { setupReviewNotebookHandlers } from './ipc/review-notebook-ipc'
+import { buildTimelineFromDemo } from './demo-timeline'
+import { Cs2DemoRetrieval, cs2DemoRetrievalStatus } from './cs2-demo-retrieval'
+import { setupOverstepIntegration } from './overstep-integration'
+import type { OverstepBridge } from './overstep-bridge'
 import { registeredLocalRecordingPaths } from './local-media-paths'
 import { CaptureOwnership } from './capture-ownership'
 import { initProductActivity, trackProductActivity } from './product-activity'
@@ -374,6 +378,7 @@ let trayRefreshInterval: ReturnType<typeof setInterval> | null = null
 let updateTrayMenuFn: (() => void) | null = null
 let ffmpegOk = true // clip extraction preflight only
 
+let overstepBridge: OverstepBridge | null = null
 const gameDetector = new GameDetector()
 let matchPerformanceModeActive = false
 /**
@@ -1560,6 +1565,7 @@ function syncUserSessionFromAuth(): void {
     runStorageMaintenanceIfReady(true)
     syncPrimaryGameFromUser()
     resumeSavedLocalMedia()
+    resumeStuckMatchStatsEnrichment()
     void offerGuestMediaClaim()
   }
   enforceRecordingPresetAccess()
@@ -1638,6 +1644,9 @@ function clearPostMatchQueueScope(): void {
 }
 
 function clearAccountScopedRuntimeState(): void {
+  replayScope++
+  cs2DemoRetrieval.clear()
+  replayAttempts.clear()
   stopActiveAnalysisPoll()
   clearPostMatchQueueScope()
   if (postGameWindow && !postGameWindow.isDestroyed()) {
@@ -2187,20 +2196,93 @@ async function extractMatchClips(
   }
 }
 
-/** Re-poll CS2 / Deadlock demo and merge stats into the dashboard recording. */
-async function refreshReplayTimelineForRecording(
+// Serialize replay work: Steam permits one coordinator lookup at a time.
+let replayScope = 0
+let replayWork: Promise<unknown> = Promise.resolve()
+const replayAttempts = new Map<string, Promise<boolean>>()
+const cs2DemoRetrieval = new Cs2DemoRetrieval({
+  getRecording: (id) => {
+    const rec = recordingsStore.getById(id)
+    return rec?.game === 'cs2'
+      ? { recordedAt: rec.recordedAt, complete: !!rec.analysed || hasRichMatchData(rec.timeline) }
+      : null
+  },
+  retrieve: (id) => refreshReplayTimelineForRecording(id, { notifyActivity: true }),
+  deferred: () => shouldDeferHeavyBackgroundWork(matchPriorityDeps()),
+  changed: (id) => {
+    const rec = recordingsStore.getById(id)
+    if (rec) sendAnalysisReadinessUpdate(id, postGameWindow, getAnalysisReadiness(rec))
+  },
+  ready: (id) => {
+    const rec = recordingsStore.getById(id)
+    const scope = replayScope
+    if (rec) void refreshRecordingVodProbe(rec).then(() => {
+      if (scope !== replayScope || recordingsStore.getById(id) !== rec) return
+      sendAnalysisReadinessUpdate(id, postGameWindow, getAnalysisReadiness(rec))
+      maybeAutoEnqueueWhenReady(id)
+    }).catch(err => log.warn('[Replay] VOD readiness:', err))
+  },
+})
+
+function refreshReplayTimelineForRecording(
   recordingId: string,
   options?: { notifyActivity?: boolean },
+): Promise<boolean> {
+  const existing = replayAttempts.get(recordingId)
+  if (existing) return existing
+  const scope = replayScope
+  const attempt = replayWork.then(async () => {
+    if (scope !== replayScope) return false
+    try {
+      return await retrieveReplayTimelineForRecording(recordingId, options, scope)
+    } catch (error) {
+      log.warn('[Replay] Demo retrieval failed:', error)
+      if (scope === replayScope && recordingsStore.getById(recordingId)?.game === 'cs2') {
+        cs2DemoRetrievalStatus.set(recordingId, {
+          state: 'waiting_match_data',
+          message: error instanceof Error ? error.message : 'Demo retrieval failed.',
+        })
+      }
+      return false
+    } finally {
+      if (scope === replayScope) mainWindow?.webContents.send('recordings:updated')
+    }
+  }).finally(() => {
+    if (replayAttempts.get(recordingId) === attempt) replayAttempts.delete(recordingId)
+  })
+  replayAttempts.set(recordingId, attempt)
+  replayWork = attempt
+  return attempt
+}
+
+/** Re-poll CS2 / Deadlock demo and merge stats into the dashboard recording. */
+async function retrieveReplayTimelineForRecording(
+  recordingId: string,
+  options: { notifyActivity?: boolean } | undefined,
+  scope: number,
 ): Promise<boolean> {
   if (!settingsManager) return false
   const rec = recordingsStore.getById(recordingId)
   if (!rec || (rec.game !== 'cs2' && rec.game !== 'deadlock')) return false
 
-  const notifyWindows = () => [
-    mainWindow,
-    postGameWindow,
-  ]
+  const valid = () => scope === replayScope && recordingsStore.getById(recordingId) != null
+  if (hasRichMatchData(rec.timeline)) return true
+  const setStatus = (state: 'syncing' | 'waiting_match_data', message: string) => {
+    if (rec.game !== 'cs2' || !valid()) return
+    cs2DemoRetrievalStatus.set(recordingId, { state, message })
+    sendAnalysisReadinessUpdate(recordingId, postGameWindow, getAnalysisReadiness(rec))
+  }
+  if (shouldDeferHeavyBackgroundWork(matchPriorityDeps())) {
+    setStatus('waiting_match_data', 'Demo checks paused during gameplay or recording. They resume automatically afterwards.')
+    return false
+  }
+  setStatus('syncing', 'Checking local demo files.')
+  const notifyWindows = () => valid() ? [mainWindow, postGameWindow] : []
   const onDownloadProgress = (progress: Parameters<typeof sendDemoDownloadProgress>[1]) => {
+    const message = progress.phase === 'gc_lookup' ? 'Checking Steam for the matching demo.'
+      : progress.phase === 'decompressing' ? 'Unpacking the demo.'
+        : `Downloading the demo${progress.pct == null ? '.' : ` (${progress.pct}%).`}`
+    if (cs2DemoRetrievalStatus.get(recordingId)?.message !== message) setStatus('syncing', message)
     sendDemoDownloadProgress(notifyWindows(), progress)
   }
 
@@ -2222,6 +2304,7 @@ async function refreshReplayTimelineForRecording(
   }
 
   let parsed = await buildTimelineFromReplay(replayCtx, { pollOnce: true })
+  if (!valid()) return false
 
   if (
     rec.game === 'cs2'
@@ -2236,9 +2319,15 @@ async function refreshReplayTimelineForRecording(
         onProgress: onDownloadProgress,
       })
       if (valve.ok) {
+        if (!valid()) return false
+        setStatus('syncing', 'Reading demo match stats.')
         log.info('[Replay] CS2 Valve demo downloaded:', valve.demoPath)
-        parsed = await buildTimelineFromReplay(replayCtx, { pollOnce: true })
-      } else if (valve.code !== 'gc_failed' && valve.code !== 'steam_offline') {
+        parsed = {
+          demoPath: valve.demoPath,
+          timeline: await buildTimelineFromDemo({ ...replayCtx, demoPath: valve.demoPath, map: replayCtx.gsiMap }),
+        }
+      } else {
+        setStatus('waiting_match_data', valve.error)
         log.info('[CS2ValveDemo]', valve.error)
       }
     } finally {
@@ -2267,7 +2356,14 @@ async function refreshReplayTimelineForRecording(
     }
   }
 
-  if (!parsed.timeline || !hasRichMatchData(parsed.timeline)) return false
+  if (!valid()) return false
+  if (!parsed.timeline || !hasRichMatchData(parsed.timeline)) {
+    if (cs2DemoRetrievalStatus.get(recordingId)?.state === 'syncing') {
+      setStatus('waiting_match_data', 'No usable match stats found in the demo. Check that it belongs to this recording.')
+    }
+    return false
+  }
+  cs2DemoRetrievalStatus.delete(recordingId)
 
   recordingsStore.updateTimeline(recordingId, parsed.timeline)
   mainWindow?.webContents.send('recordings:updated')
@@ -2593,6 +2689,7 @@ const analysisReadinessRefreshGeneration = new Map<string, number>()
 
 function cancelAnalysisReadinessRefresh(recordingId: string): void {
   analysisReadinessRefreshGeneration.delete(recordingId)
+  cs2DemoRetrieval.stop(recordingId)
 }
 
 async function recoverOrphanedValorantMetadata(rec: PendingRecording): Promise<boolean> {
@@ -2644,6 +2741,10 @@ function scheduleAnalysisReadinessRefresh(
   game: string,
   opts?: { force?: boolean },
 ): void {
+  if (game === 'cs2') {
+    cs2DemoRetrieval.start(recordingId)
+    return
+  }
   if (analysisReadinessRefreshGeneration.has(recordingId) && !opts?.force) return
   const generation = (analysisReadinessRefreshGeneration.get(recordingId) ?? 0) + 1
   analysisReadinessRefreshGeneration.set(recordingId, generation)
@@ -2795,6 +2896,10 @@ function resumeStuckMatchStatsEnrichment(): void {
   for (const rec of pending) {
     if (rec.analysed) continue
     if (rec.matchStatsSyncPaused) continue
+    if (rec.game === 'cs2') {
+      cs2DemoRetrieval.start(rec.id)
+      continue
+    }
     if (rec.game !== 'valorant' && rec.game !== 'lol') continue
     if (rec.pipelineStatus === 'uploading' || rec.pipelineStatus === 'analysing') continue
     const readiness = getAnalysisReadiness(rec)
@@ -3907,7 +4012,7 @@ function setupGameDetection(): void {
         logActivity('CS2 match recorded — syncing demo from Steam for kill timeline and clips')
         sendToWindow('post-game:demo-status', { status: 'gc_lookup' })
         mainWindow?.webContents.send('post-game:demo-status', { status: 'gc_lookup' })
-        void refreshReplayTimelineForRecording(savedRecording.id, { notifyActivity: true })
+        cs2DemoRetrieval.start(savedRecording.id)
       } else if (game === 'deadlock' && !richMatchData) {
         logActivity('Deadlock match recorded — syncing replay from Steam for stats and clips')
         sendToWindow('post-game:demo-status', { status: 'downloading' })
@@ -4245,6 +4350,7 @@ function setupGameDetection(): void {
   })
 
   gameDetector.on('game-started', async (game: string) => {
+    if (overstepBridge?.isBusy()) { gameDetector.resetActiveGame(game); return }
     // These game processes can first be detected while a map is already loading.
     // Hold until the independent match probe confirms menus, even if OBS is unavailable.
     if (game === 'valorant' || game === 'lol') backgroundMatchState.observe(true)
@@ -5305,6 +5411,7 @@ function setupGameDetection(): void {
   })
 
   gameDetector.on('game-stopped', async (game: string) => {
+    if (overstepBridge?.isBusy()) return
     console.log(`[GameDetector] ${game} stopped`)
     const processStillRunning = game === 'valorant'
       ? await gameDetector.isMatchProcessRunning()
@@ -6390,6 +6497,11 @@ async function startApp(): Promise<void> {
   backgroundWork.configure(() => matchPriorityDeps().isRecording())
   uploadManager = new UploadManager(authManager)
   settingsManager = new SettingsManager()
+  overstepBridge = setupOverstepIntegration(obsRecorder,
+    () => buildRecorderConfig(settingsManager.get(), hasProAccess(authManager.getUser()), captureOwnerId()),
+    () => waitingForMatch || matchDetectInFlightDepth > 0 || gameDetector.currentGame() !== null,
+    active => active ? beginMatchPerformanceMode({ holdPostMatch: true }) : endMatchPerformanceMode(),
+  )
   discordRPC.start()
   initFunnelEvents(authManager, APP_VERSION)
   initProductActivity(authManager, APP_VERSION)
@@ -7600,6 +7712,9 @@ app.on('child-process-gone', (_event, details) => {
 })
 
 app.on('before-quit', () => {
+  replayScope++
+  cs2DemoRetrieval.clear()
+  void overstepBridge?.disable()
   backgroundWork.cancel()
   isQuitting = true
   stopObsHealthMonitor?.()

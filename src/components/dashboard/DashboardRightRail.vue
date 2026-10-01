@@ -137,6 +137,24 @@ async function runDrill() {
     </div>
     <div v-else-if="profileLoading" class="h-24 dash-panel animate-pulse" />
 
+    <details class="dash-panel overflow-hidden flex-shrink-0">
+      <summary class="cursor-pointer px-3.5 py-3 text-gray-300 hover:bg-white/[0.03]">
+        <span class="text-[12px] font-bold uppercase tracking-[0.08em] text-gray-300">More on the web</span>
+        <p class="text-[12px] text-gray-400 mt-1">Extra tools on upforge.gg</p>
+      </summary>
+      <ul class="divide-y divide-white/[0.05]">
+        <li v-for="link in railLinks" :key="link.href">
+          <button
+            type="button"
+            class="w-full px-3.5 py-2 text-left hover:bg-white/[0.04] transition-colors"
+            @click="openWeb(link.href, link.embed)"
+          >
+            <span class="text-[13px] font-semibold text-gray-200">{{ link.label }}</span>
+            <span class="block text-[12px] text-gray-400 mt-0.5">{{ link.hint }}</span>
+          </button>
+        </li>
+      </ul>
+    </details>
 
     <div v-if="isValorant && weeklyFocus" class="dash-panel overflow-hidden flex-shrink-0">
       <div class="px-3.5 py-2.5 border-b border-white/[0.07] flex items-center justify-between">

@@ -19,7 +19,7 @@ import {
   type ObsSetupResult,
   type ObsSceneSwitchOptions,
 } from './obs-setup'
-import { applyCrashSafeObsRecFormat } from './obs-rec-format'
+import { applyCrashSafeObsRecFormat, supportsHybridMp4 } from './obs-rec-format'
 import { findObsWindowString } from './game-window-finder'
 import { formatObsConnectError, obsConnectHosts } from './obs-connect'
 import {
@@ -624,6 +624,16 @@ export class OBSRecorder {
   hadObsProcessDiedDuringMatch(): boolean { return this._obsProcessDiedDuringMatch }
   getRecordingStartedAt(): number | null { return this._startedAt }
 
+  /** Measure OBS output time, including round-trip uncertainty; never use startup request time. */
+  async measureVideoAnchor(): Promise<import('../../src/lib/overstep').VideoAnchor> {
+    if (!this.isActivelyRecording() || !this._connected || this._disconnectedDuringRecording || this._obsProcessDiedDuringMatch) throw new Error('OBS recording continuity is unavailable.')
+    const before = Date.now()
+    const status = await withTimeout(this._obs.call('GetRecordStatus'), 2000, 'OBS sync measurement timed out')
+    const after = Date.now()
+    if (!status.outputActive || status.outputPaused || !Number.isFinite(status.outputDuration) || after < before) throw new Error('OBS recording clock is unavailable or paused.')
+    return { epochMs: (before + after) / 2, videoMs: status.outputDuration, uncertaintyMs: (after - before) / 2 }
+  }
+
   /** Live kill stamps for this session (cleared on next start). */
   getLiveKillStamps(): Array<{
     eventTimeSec: number
@@ -1025,6 +1035,7 @@ export class OBSRecorder {
     }
 
     try {
+      if (game === 'overstep' && !supportsHybridMp4(this._obsStudioVersion)) throw new Error('Overstep playback requires OBS Studio 30.2 or later for crash-safe MP4 recording. Update OBS before starting a new match.')
       // Game/window capture only — never desktop (privacy / policy safe when alt-tabbing)
       this._startDiagnostics.stage = 'capture_setup'
       await retargetUpForgeCapture(this._obs, game, this.retargetOptionsForGame(game, true))
@@ -1124,7 +1135,7 @@ export class OBSRecorder {
       }
 
       // Begin polling Riot Live Client API for kill events
-      this._startLiveKillPoll()
+      if (game !== 'overstep') this._startLiveKillPoll()
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
       this._lastError = msg

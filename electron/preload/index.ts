@@ -16,6 +16,14 @@ const api = {
     list: () => ipcRenderer.invoke('review-notebook:list'),
     save: (id: string, document: import('../../src/lib/review-notebook').NotebookWrite) => ipcRenderer.invoke('review-notebook:save', id, document),
   },
+  overstep: {
+    policy: () => ipcRenderer.invoke('overstep:policy'),
+    savePolicy: (value: import('../../src/lib/overstep-stats').OverstepRecordingPolicy) => ipcRenderer.invoke('overstep:save-policy', value),
+    matches: () => ipcRenderer.invoke('overstep:matches'),
+    status: () => ipcRenderer.invoke('overstep:status'),
+    enable: () => ipcRenderer.invoke('overstep:enable'),
+    disable: () => ipcRenderer.invoke('overstep:disable'),
+  },
   coaching: {
     preferences: () => ipcRenderer.invoke('coaching:preferences'),
     savePreferences: (value: import('../../src/lib/coaching-preferences').CoachingPreferences) => ipcRenderer.invoke('coaching:save-preferences', value),

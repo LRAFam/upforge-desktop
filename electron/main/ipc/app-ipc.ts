@@ -187,7 +187,8 @@ export function setupAppHandlers(
       void auth.syncPrimaryGameToApi(game)
     }
     if (partial.onboardingComplete === true && !prev.onboardingComplete) {
-      trackOnboardingComplete()
+      trackOnboardingComplete(typeof partial.onboardingRecordingVerified === 'boolean'
+        ? partial.onboardingRecordingVerified : undefined)
     }
     if ('cs2SteamName' in partial && partial.cs2SteamName !== prev.cs2SteamName && auth.isAuthenticated()) {
       void auth.syncCs2Identity(String(partial.cs2SteamName ?? ''))

@@ -53,3 +53,23 @@ describe('pickValveMatchForSession', () => {
     expect(picked?.mapName).toBe('de_nuke')
   })
 })
+
+describe('safe automatic demo selection', () => {
+  const start = 1_700_000_000_000
+  it('rejects stale matches instead of falling back to all history', () => {
+    expect(pickValveMatchForSession([match({ matchTimeSec: start / 1000 - 86400 })], start, 'de_dust2')).toBeNull()
+  })
+  it('rejects a different map even when the timestamp matches', () => {
+    expect(pickValveMatchForSession([match({ mapName: 'de_nuke' })], start, 'de_dust2')).toBeNull()
+  })
+  it('does not select the next game just because its map matches', () => {
+    const correct = match({ matchId: 'correct' })
+    expect(pickValveMatchForSession([match({ matchId: 'next', matchTimeSec: start / 1000 + 3600 }), correct], start, 'de_dust2')).toBe(correct)
+  })
+  it('leaves ambiguous matches for manual selection', () => {
+    expect(pickValveMatchForSession([match({ matchId: 'one' }), match({ matchId: 'two', matchTimeSec: start / 1000 + 100 })], start, 'de_dust2')).toBeNull()
+  })
+  it('rejects invalid session times', () => {
+    expect(pickValveMatchForSession([match({})], NaN, 'de_dust2')).toBeNull()
+  })
+})

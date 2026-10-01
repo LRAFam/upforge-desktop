@@ -107,6 +107,8 @@ export function gameSupportsRounds(game: string | null | undefined): boolean {
 
 /** OBS capture policy (window vs game capture, and window-capture method) for a game. */
 export function obsCaptureConfig(game: string | null | undefined): GameConfig['obsCapture'] {
+  // Native Overstep capture is separate from the coaching game registry.
+  if (game === 'overstep') return { useWindowCapture: true, windowCaptureMethod: 2 }
   return gameConfig(game).obsCapture
 }
 
