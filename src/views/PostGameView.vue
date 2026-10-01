@@ -664,7 +664,7 @@
               v-if="userTier === 'free'"
               class="flex-1 py-2.5 text-xs font-semibold border border-white/10 bg-white/[0.04] hover:bg-white/[0.08] text-gray-200 rounded-xl transition-colors"
               @click="openPpa"
-            >Pay per analysis</button>
+            >View report packs</button>
             <button
               v-else
               class="flex-1 py-2.5 text-xs font-semibold bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white rounded-xl transition-all shadow-sm shadow-amber-500/20"
@@ -975,7 +975,6 @@ const errorDetails = ref<AnalysisErrorPayload | null>(null)
 const clipsOnlyError = ref(false)
 const needsUpgrade = ref(false)
 const upgradeUrl = ref('https://upforge.gg/pricing')
-const ppaUrl = ref('https://upforge.gg/valorant/analyze')
 const userTier = ref<string>('free')
 const analysesUsed = ref<number | null>(null)
 const analysesLimit = ref<number | null>(null)
@@ -1155,7 +1154,6 @@ function applyUploadErrorPayload(
       needsUpgrade.value = true
       needsArchiveUpgrade.value = /archive.limit|cloud storage/i.test(payload.message)
       upgradeUrl.value = payload.upgradeUrl || 'https://upforge.gg/pricing'
-      ppaUrl.value = payload.ppaUrl || 'https://upforge.gg/valorant/analyze'
     }
   }
   state.value = 'error'
@@ -2449,8 +2447,8 @@ async function openCoachNotesFromPostGame() {
   }
 }
 function openUpgrade() { window.open(upgradeUrl.value, '_blank') }
-function openPpa() { window.open(ppaUrl.value, '_blank') }
-function openBundles() { window.open('https://upforge.gg/pricing#bundles', '_blank') }
+function openPpa() { window.open('https://upforge.gg/pricing#reports', '_blank') }
+function openBundles() { window.open('https://upforge.gg/pricing#reports', '_blank') }
 function openWebNextStep() {
   void openWebFeature(webNextStep.value.path, true)
   dismiss()

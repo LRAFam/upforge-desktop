@@ -97,7 +97,7 @@ async function runDrill() {
         </div>
         <div class="flex-1 min-w-0">
           <p class="text-sm font-bold truncate">{{ profile.user.name }}</p>
-          <p class="text-[10px] text-gray-500 truncate">{{ dashboardRankLabel }}</p>
+          <p class="text-[12px] text-gray-400 truncate">{{ dashboardRankLabel }}</p>
         </div>
         <img
           v-if="isValorant && profile.latest_stats?.current_rank && getRankIconUrl(profile.latest_stats.current_rank)"
@@ -113,13 +113,13 @@ async function runDrill() {
         <span class="text-lg font-black" :style="{ color: getRankHexColor(profile.latest_stats.current_rank) }">
           {{ profile.latest_stats.current_rank }}
         </span>
-        <span v-if="profile.latest_stats.rr != null" class="text-[11px] text-gray-500 tabular-nums">{{ profile.latest_stats.rr }} RR</span>
+        <span v-if="profile.latest_stats.rr != null" class="text-[13px] text-gray-400 tabular-nums">{{ profile.latest_stats.rr }} RR</span>
       </div>
       <div
         v-if="profile.user.analysis_stats && !isAdmin && analysisLimit != null"
         class="px-3.5 py-2 border-t border-white/[0.07] flex items-center gap-2"
       >
-        <span class="text-[9px] text-gray-600 uppercase tracking-wide shrink-0">Analyses</span>
+        <span class="text-[12px] text-gray-400 uppercase tracking-wide shrink-0">Analyses</span>
         <div class="flex-1 h-1 bg-white/[0.06] rounded-full overflow-hidden">
           <div
             class="h-full rounded-full transition-all"
@@ -128,7 +128,7 @@ async function runDrill() {
           />
         </div>
         <span
-          class="text-[10px] tabular-nums shrink-0"
+          class="text-[12px] tabular-nums shrink-0"
           :class="analysisUsed >= analysisLimit ? 'text-red-400' : 'text-gray-400'"
         >
           {{ analysisUsed }}/{{ analysisLimit }}
@@ -140,34 +140,34 @@ async function runDrill() {
 
     <div v-if="isValorant && weeklyFocus" class="dash-panel overflow-hidden flex-shrink-0">
       <div class="px-3.5 py-2.5 border-b border-white/[0.07] flex items-center justify-between">
-        <span class="text-[10px] font-bold uppercase tracking-[0.16em] text-gray-500">This week</span>
-        <button type="button" class="text-[10px] text-gray-600 hover:text-gray-300" @click="router.push('/training')">Edit</button>
+        <span class="text-[12px] font-bold uppercase tracking-[0.08em] text-gray-400">This week</span>
+        <button type="button" class="text-[12px] text-gray-400 hover:text-gray-300" @click="router.push('/training')">Edit</button>
       </div>
       <ul class="divide-y divide-white/[0.05]">
         <li class="px-3.5 py-2.5 flex items-start gap-2.5">
           <span class="mt-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-red-500/20 text-red-400 text-[10px]" aria-hidden="true">•</span>
           <div class="flex-1 min-w-0">
-            <p class="text-[11px] font-semibold text-gray-200">Weekly goal</p>
-            <p class="text-[10px] text-gray-500 leading-snug mt-0.5">{{ weeklyFocus.goal }}</p>
+            <p class="text-[13px] font-semibold text-gray-200">Weekly goal</p>
+            <p class="text-[12px] text-gray-400 leading-snug mt-0.5">{{ weeklyFocus.goal }}</p>
           </div>
         </li>
         <li class="px-3.5 py-2.5 flex items-start gap-2.5">
-          <span class="mt-0.5 flex h-4 w-4 items-center justify-center rounded-full border border-white/15 text-[10px] text-gray-600" />
+          <span class="mt-0.5 flex h-4 w-4 items-center justify-center rounded-full border border-white/15 text-[12px] text-gray-400" />
           <div class="flex-1 min-w-0">
-            <p class="text-[11px] font-semibold text-gray-200">{{ weeklyFocus.drill.label }}</p>
+            <p class="text-[13px] font-semibold text-gray-200">{{ weeklyFocus.drill.label }}</p>
             <button
               type="button"
-              class="text-[10px] font-bold text-red-400 mt-1 disabled:opacity-50"
+              class="text-[12px] font-bold text-red-400 mt-1 disabled:opacity-50"
               :disabled="launchBusy"
               @click="runDrill"
             >{{ launchBusy ? 'Launching…' : 'Run in trainer →' }}</button>
           </div>
         </li>
         <li class="px-3.5 py-2.5 flex items-start gap-2.5">
-          <span class="mt-0.5 flex h-4 w-4 items-center justify-center rounded-full border border-white/15 text-[10px] text-gray-600" />
+          <span class="mt-0.5 flex h-4 w-4 items-center justify-center rounded-full border border-white/15 text-[12px] text-gray-400" />
           <div class="flex-1 min-w-0">
-            <p class="text-[11px] font-semibold text-gray-200">Track · {{ weeklyFocus.metric.label }}</p>
-            <p class="text-[10px] text-gray-500 mt-0.5">{{ weeklyFocus.metric.hint }}</p>
+            <p class="text-[13px] font-semibold text-gray-200">Track · {{ weeklyFocus.metric.label }}</p>
+            <p class="text-[12px] text-gray-400 mt-0.5">{{ weeklyFocus.metric.hint }}</p>
           </div>
         </li>
       </ul>
@@ -175,8 +175,8 @@ async function runDrill() {
 
     <div class="dash-panel overflow-hidden flex-shrink-0">
       <div class="px-3.5 py-2.5 border-b border-white/[0.07]">
-        <span class="text-[10px] font-bold uppercase tracking-[0.16em] text-gray-500">Weekly progress</span>
-        <p class="text-[11px] text-gray-400 mt-1">{{ Math.min(weeklyDone, 6) }} of 6 sessions this week</p>
+        <span class="text-[12px] font-bold uppercase tracking-[0.08em] text-gray-400">Weekly progress</span>
+        <p class="text-[13px] text-gray-400 mt-1">{{ Math.min(weeklyDone, 6) }} of 6 sessions this week</p>
       </div>
       <div class="px-3.5 py-3 flex gap-1.5">
         <span
@@ -190,20 +190,20 @@ async function runDrill() {
 
     <div class="dash-panel overflow-hidden flex-shrink-0">
       <div class="px-3.5 py-2.5 border-b border-white/[0.07]">
-        <span class="text-[10px] font-bold uppercase tracking-[0.16em] text-gray-500">Recent stats</span>
+        <span class="text-[12px] font-bold uppercase tracking-[0.08em] text-gray-400">Recent stats</span>
       </div>
       <div class="grid grid-cols-2 gap-px bg-white/[0.05]">
         <div class="bg-[#141414] px-3 py-2.5">
           <p class="text-lg font-black text-white tabular-nums">{{ winRate != null ? `${winRate}%` : '—' }}</p>
-          <p class="text-[9px] uppercase tracking-wide text-gray-600">Win rate</p>
+          <p class="text-[12px] uppercase tracking-wide text-gray-400">Win rate</p>
         </div>
         <div class="bg-[#141414] px-3 py-2.5">
           <p class="text-lg font-black text-white tabular-nums">{{ avgKd ?? '—' }}</p>
-          <p class="text-[9px] uppercase tracking-wide text-gray-600">K/D</p>
+          <p class="text-[12px] uppercase tracking-wide text-gray-400">K/D</p>
         </div>
         <div class="bg-[#141414] px-3 py-2.5">
           <p class="text-lg font-black text-white tabular-nums">{{ avgHs != null ? `${avgHs}%` : '—' }}</p>
-          <p class="text-[9px] uppercase tracking-wide text-gray-600">HS%</p>
+          <p class="text-[12px] uppercase tracking-wide text-gray-400">HS%</p>
         </div>
         <div class="bg-[#141414] px-3 py-2.5">
           <p class="text-lg font-black text-white tabular-nums">{{ dashboardAnalyses.length }}</p>
@@ -220,14 +220,14 @@ async function runDrill() {
     </div>
 
     <div v-if="currentStreak !== 0" class="dash-panel px-3.5 py-2.5 flex items-center justify-between flex-shrink-0">
-      <span class="text-[10px] font-bold uppercase tracking-wide text-gray-500">Rank streak</span>
+      <span class="text-[12px] font-bold uppercase tracking-wide text-gray-400">Rank streak</span>
       <span class="text-sm font-black tabular-nums" :class="currentStreak > 0 ? 'text-emerald-400' : 'text-red-400'">
         {{ currentStreak > 0 ? '+' : '' }}{{ currentStreak }}
       </span>
     </div>
 
     <div v-if="avgScore != null" class="dash-panel px-3.5 py-2.5 flex items-center justify-between flex-shrink-0">
-      <span class="text-[10px] font-bold uppercase tracking-wide text-gray-500">Avg AI score</span>
+      <span class="text-[12px] font-bold uppercase tracking-wide text-gray-400">Avg AI score</span>
       <span class="text-sm font-black tabular-nums text-gray-200">{{ avgScore * 10 }}</span>
     </div>
     <details class="dash-panel overflow-hidden flex-shrink-0 web-extras">

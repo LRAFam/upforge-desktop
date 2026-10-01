@@ -524,3 +524,9 @@ kbd {
 /* ── Error transition ────────────────────────────────────────────────────── */
 .err-enter-active, .err-leave-active { transition: opacity 0.2s, transform 0.2s; }
 .err-enter-from, .err-leave-to { opacity: 0; transform: translateY(-4px); }
+
+/* Keep keyboard navigation visible across recording and review controls. */
+button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible {
+  outline: 2px solid #fb923c;
+  outline-offset: 3px;
+}

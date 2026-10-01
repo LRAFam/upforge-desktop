@@ -78,7 +78,7 @@ function dismissWarning() {
         class="banner-chip pointer-events-auto flex items-center gap-2.5 border-orange-500/20 bg-orange-500/[0.07]"
       >
         <span class="text-xs text-orange-300/90">{{ quotaLowWarning }}</span>
-        <button class="flex-shrink-0 text-xs font-semibold text-orange-300 hover:text-orange-100 border border-orange-500/30 rounded-lg px-2 py-1" @click="userIsPaid ? openBundles() : openPpa()">{{ userIsPaid ? 'Buy extras' : 'Buy one' }}</button>
+        <button class="flex-shrink-0 text-xs font-semibold text-orange-300 hover:text-orange-100 border border-orange-500/30 rounded-lg px-2 py-1" @click="userIsPaid ? openBundles() : openPpa()">View report packs</button>
         <button v-if="!userIsPaid" class="flex-shrink-0 text-xs font-semibold text-orange-300 hover:text-orange-100 border border-orange-500/30 rounded-lg px-2 py-1" @click="openUpgrade">Upgrade</button>
       </div>
     </Transition>
@@ -154,7 +154,7 @@ function dismissWarning() {
           <p v-if="analysisFailure?.creditRefunded" class="text-[10px] font-semibold text-emerald-400/90 mt-1">Coaching credit refunded — try Analyse again when ready.</p>
         </div>
         <button v-if="warningAction" class="flex-shrink-0 text-xs font-semibold text-orange-300 hover:text-orange-100 transition-colors border border-orange-500/30 rounded-lg px-2 py-1" @click="goWarningAction">{{ warningAction.label }}</button>
-        <button v-if="upgradeNeeded" class="flex-shrink-0 text-xs font-semibold text-orange-300 hover:text-orange-100 transition-colors border border-orange-500/30 rounded-lg px-2 py-1" @click="userIsPaid ? openBundles() : openPpa()">{{ userIsPaid ? 'Buy extras' : 'Buy one' }}</button>
+        <button v-if="upgradeNeeded" class="flex-shrink-0 text-xs font-semibold text-orange-300 hover:text-orange-100 transition-colors border border-orange-500/30 rounded-lg px-2 py-1" @click="userIsPaid ? openBundles() : openPpa()">View report packs</button>
         <button v-if="upgradeNeeded && !userIsPaid" class="flex-shrink-0 text-xs font-semibold text-orange-300 hover:text-orange-100 transition-colors border border-orange-500/30 rounded-lg px-2 py-1" @click="openUpgrade">Upgrade</button>
         <button class="w-5 h-5 flex items-center justify-center text-orange-500/50 hover:text-orange-300/70 transition-colors rounded flex-shrink-0" :class="{ 'ml-auto': !upgradeNeeded && !warningAction }" @click="dismissWarning">
           <svg class="w-3 h-3" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd"/></svg>

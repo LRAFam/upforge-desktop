@@ -1,6 +1,6 @@
 <template>
   <div class="rounded-xl border border-orange-500/20 bg-orange-500/[0.04] overflow-hidden">
-    <div class="flex items-center justify-between px-3.5 py-2.5 border-b border-orange-500/15">
+    <div class="flex flex-wrap gap-3 items-center justify-between px-3.5 py-2.5 border-b border-orange-500/15">
       <div class="flex items-center gap-2">
         <div class="w-5 h-5 rounded-md flex items-center justify-center bg-orange-500/15">
           <svg class="w-3 h-3 text-orange-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -11,11 +11,11 @@
       </div>
       <div class="flex items-center gap-1.5">
         <button
-          class="text-[10px] font-medium text-gray-500 hover:text-gray-300 transition-colors px-2 py-0.5 rounded-md hover:bg-white/[0.05]"
+          class="text-[12px] font-medium text-gray-400 hover:text-gray-300 transition-colors px-2 py-0.5 rounded-md hover:bg-white/[0.05]"
           @click="openFolder"
         >Open folder</button>
         <button
-          class="text-[10px] font-semibold px-2.5 py-1 rounded-lg transition-all bg-orange-500/15 text-orange-300 border border-orange-500/25 hover:bg-orange-500/25"
+          class="text-[12px] font-semibold px-2.5 py-1 rounded-lg transition-all bg-orange-500/15 text-orange-300 border border-orange-500/25 hover:bg-orange-500/25"
           @click="openDashboard"
         >View on web →</button>
       </div>
@@ -23,30 +23,30 @@
 
     <!-- Setup checklist -->
     <div class="px-3.5 py-3 border-b border-orange-500/10 space-y-2.5">
-      <p class="text-[11px] text-gray-400 leading-relaxed">
-        Record your match in UpForge, then attach the GOTV demo for kill timeline and highlight clips.
+      <p class="text-[13px] text-gray-400 leading-relaxed">
+        Record your match, attach its CS2 demo, then start coaching. The demo supplies match stats; your recording supplies the footage.
       </p>
       <DemoAttachGuide game="cs2" default-open />
       <div class="flex flex-wrap gap-2">
         <button
           :disabled="detecting"
-          class="text-[10px] font-semibold px-2.5 py-1 rounded-lg border border-orange-500/20 bg-orange-500/10 text-orange-300 hover:bg-orange-500/20 transition-colors disabled:opacity-50"
+          class="text-[12px] font-semibold px-2.5 py-1 rounded-lg border border-orange-500/20 bg-orange-500/10 text-orange-300 hover:bg-orange-500/20 transition-colors disabled:opacity-50"
           @click="detectFolder"
         >{{ detecting ? 'Detecting…' : 'Detect demo folder' }}</button>
       </div>
-      <p v-if="demoDir" class="text-[10px] text-gray-600 font-mono truncate" :title="demoDir">
+      <p v-if="demoDir" class="text-[12px] text-gray-400 font-mono truncate" :title="demoDir">
         Replays folder: {{ demoDir }}
       </p>
-      <p v-else-if="detectError" class="text-[10px] text-amber-400/80">{{ detectError }}</p>
+      <p v-else-if="detectError" class="text-[12px] text-amber-400/80">{{ detectError }}</p>
     </div>
 
     <div v-if="loading" class="px-3.5 py-4 flex items-center gap-2">
       <div class="w-3 h-3 rounded-full border border-orange-500/30 border-t-orange-400 animate-spin" />
-      <span class="text-xs text-gray-600">Scanning for demos…</span>
+      <span class="text-xs text-gray-400">Scanning for demos…</span>
     </div>
 
     <div v-else-if="!result.exists" class="px-3.5 py-4">
-      <p class="text-xs text-gray-500 leading-relaxed">
+      <p class="text-xs text-gray-400 leading-relaxed">
         No CS2 demo folder found yet. Install CS2 via Steam on this PC, or set a custom path in Settings → Recording.
       </p>
       <button class="mt-3 text-xs font-medium text-orange-400 hover:text-orange-300 transition-colors" @click="openAnalyze">
@@ -55,7 +55,7 @@
     </div>
 
     <div v-else-if="result.files.length === 0" class="px-3.5 py-4">
-      <p class="text-xs text-gray-500">No .dem files yet. Download from Watch or enable auto-recording, then come back.</p>
+      <p class="text-xs text-gray-400">No demos found. Download the replay from your CS2 match history, then attach it to the matching recording.</p>
     </div>
 
     <div v-else class="divide-y divide-white/[0.03]">
@@ -66,18 +66,18 @@
       >
         <div class="w-1.5 h-1.5 rounded-full bg-orange-500/50 flex-shrink-0" />
         <div class="flex-1 min-w-0">
-          <p class="text-[11px] font-medium text-gray-300 truncate">{{ file.name }}</p>
-          <p class="text-[10px] text-gray-600">{{ formatSize(file.sizeBytes) }} · {{ formatAge(file.modifiedAt) }}</p>
+          <p class="text-[13px] font-medium text-gray-300 truncate">{{ file.name }}</p>
+          <p class="text-[12px] text-gray-400">{{ formatSize(file.sizeBytes) }} · {{ formatAge(file.modifiedAt) }}</p>
         </div>
         <button
-          class="opacity-0 group-hover:opacity-100 transition-opacity text-[10px] font-semibold text-orange-400 hover:text-orange-300 px-2 py-0.5 rounded border border-orange-500/20 hover:border-orange-500/40"
+          class="transition-opacity text-[12px] font-semibold text-orange-400 hover:text-orange-300 px-2 py-0.5 rounded border border-orange-500/20 hover:border-orange-500/40"
           @click="openAnalyze"
         >Analyze</button>
       </div>
     </div>
 
     <div v-if="result.exists && result.files.length > 0" class="px-3.5 py-2 border-t border-white/[0.03]">
-      <p class="text-[10px] text-gray-700">
+      <p class="text-[12px] text-gray-400">
         Attach demos from the dashboard after each match, or upload manually at
         <span class="text-orange-600">upforge.gg/cs2</span>
       </p>

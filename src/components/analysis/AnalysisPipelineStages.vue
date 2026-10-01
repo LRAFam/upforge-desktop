@@ -37,7 +37,7 @@ function stageState(index: number): 'done' | 'active' | 'pending' {
           :class="{
             'bg-emerald-500/20 text-emerald-300 ring-1 ring-emerald-500/35': stageState(index) === 'done',
             'bg-[#ff4655]/20 text-[#ff8a94] ring-1 ring-[#ff4655]/45 shadow-[0_0_14px_rgba(255,70,85,0.28)] scale-110': stageState(index) === 'active',
-            'bg-white/[0.04] text-gray-600 ring-1 ring-white/[0.08]': stageState(index) === 'pending',
+            'bg-white/[0.04] text-gray-400 ring-1 ring-white/[0.08]': stageState(index) === 'pending',
           }"
         >
           <svg v-if="stageState(index) === 'done'" class="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -61,12 +61,12 @@ function stageState(index: number): 'done' | 'active' | 'pending' {
         :class="{ 'opacity-45': stageState(index) === 'pending' }"
       >
         <p
-          class="text-[10px] font-bold uppercase tracking-[0.14em] leading-tight"
-          :class="stageState(index) === 'active' ? 'text-white' : stageState(index) === 'done' ? 'text-gray-300' : 'text-gray-600'"
+          class="text-[12px] font-bold uppercase tracking-[0.14em] leading-tight"
+          :class="stageState(index) === 'active' ? 'text-white' : stageState(index) === 'done' ? 'text-gray-300' : 'text-gray-400'"
         >
           {{ stage.label }}
         </p>
-        <p class="mt-0.5 text-[10px] leading-snug text-gray-500">{{ stage.detail }}</p>
+        <p class="mt-0.5 text-[12px] leading-snug text-gray-400">{{ stage.detail }}</p>
       </div>
     </div>
   </div>
@@ -86,11 +86,11 @@ function stageState(index: number): 'done' | 'active' | 'pending' {
       >
         <div class="flex items-center gap-1.5">
           <span
-            class="flex h-4 w-4 shrink-0 items-center justify-center rounded-full text-[9px] font-black"
+            class="flex h-4 w-4 shrink-0 items-center justify-center rounded-full text-[12px] font-black"
             :class="{
               'bg-emerald-500/25 text-emerald-300': stageState(index) === 'done',
               'bg-orange-500/30 text-orange-200': stageState(index) === 'active',
-              'bg-white/[0.06] text-gray-600': stageState(index) === 'pending',
+              'bg-white/[0.06] text-gray-400': stageState(index) === 'pending',
             }"
           >
             <svg v-if="stageState(index) === 'done'" class="h-2.5 w-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -99,13 +99,13 @@ function stageState(index: number): 'done' | 'active' | 'pending' {
             <span v-else>{{ index + 1 }}</span>
           </span>
           <p
-            class="text-[10px] font-bold uppercase tracking-[0.12em] leading-tight"
-            :class="stageState(index) === 'pending' ? 'text-gray-600' : 'text-gray-200'"
+            class="text-[12px] font-bold uppercase tracking-[0.12em] leading-tight"
+            :class="stageState(index) === 'pending' ? 'text-gray-400' : 'text-gray-200'"
           >
             {{ stage.label }}
           </p>
         </div>
-        <p class="mt-1 text-[9px] leading-snug text-gray-500">{{ stage.detail }}</p>
+        <p class="mt-1 text-[12px] leading-snug text-gray-400">{{ stage.detail }}</p>
       </div>
     </div>
   </div>

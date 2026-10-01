@@ -1296,8 +1296,8 @@ function createDashboard() {
   }
 
   function openUpgrade() { window.open('https://upforge.gg/pricing', '_blank') }
-  function openPpa() { window.open('https://upforge.gg/valorant/analyze', '_blank') }
-  function openBundles() { window.open('https://upforge.gg/pricing#bundles', '_blank') }
+  function openPpa() { window.open('https://upforge.gg/pricing#reports', '_blank') }
+  function openBundles() { window.open('https://upforge.gg/pricing#reports', '_blank') }
 
   function showBillingError(message: string) {
     warning.value = message

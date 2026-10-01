@@ -179,6 +179,7 @@ function createVodReview() {
   const timeline = ref<RecordingTimeline | null>(null)
   const reviewGame = computed(() => timeline.value?.game ?? null)
   const isCs2Review = computed(() => reviewGame.value === 'cs2')
+  const objectiveName = computed(() => isCs2Review.value ? 'Bomb' : 'Spike')
 
   // Per-game adapter: portraits (agent-by-puuid vs champion-by-name), round
   // support, legend, sync defaults. Keeps the viewer game-agnostic.
@@ -525,7 +526,7 @@ function createVodReview() {
     const result = round.won ? 'WIN' : 'LOSS'
     if (c.includes('bombdefused') || c.includes('defus')) return `DEFUSE ${result}`
     if (c.includes('timer') || c.includes('time')) return `TIME ${result}`
-    if (c.includes('detonat') || round.spikeDetonated) return `SPIKE ${result}`
+    if (c.includes('detonat') || round.spikeDetonated) return `${objectiveName.value.toUpperCase()} ${result}`
     if (c.includes('elim') || c.includes('roundceremon')) return `ELIM ${result}`
     return result
   }
@@ -871,9 +872,9 @@ function createVodReview() {
       let label = 'Event'
       if (event.type === 'kill') label = `Kill · ${event.victimName || 'Unknown'}`
       else if (event.type === 'death') label = `Death · ${event.killerName || 'Unknown'}`
-      else if (event.type === 'plant') label = event.site ? `Plant · Site ${event.site}` : 'Spike Plant'
-      else if (event.type === 'defuse') label = 'Spike Defuse'
-      else if (event.type === 'detonation') label = 'Spike Detonation'
+      else if (event.type === 'plant') label = event.site ? `${objectiveName.value} Plant · Site ${event.site}` : `${objectiveName.value} Plant`
+      else if (event.type === 'defuse') label = `${objectiveName.value} Defuse`
+      else if (event.type === 'detonation') label = `${objectiveName.value} Detonation`
       else {
         const name = event.type.charAt(0).toUpperCase() + event.type.slice(1)
         label = event.detail ? `${name} · ${event.detail}` : name
@@ -1106,7 +1107,7 @@ function createVodReview() {
       notes.push(`You were involved in ${firstBloodDeaths} first-blood deaths. Pause those rounds and check your spacing before the duel starts.`)
     }
     if (spikeRounds > 0) {
-      notes.push(`There are ${spikeRounds} spike-focused rounds marked in the timeline. Use those timestamps to review your post-plant positioning and timing.`)
+      notes.push(`There are ${spikeRounds} rounds with ${objectiveName.value.toLowerCase()} events marked in the timeline. Use those timestamps to review your post-plant positioning and timing.`)
     }
     if (!notes.length) {
       notes.push('Use the event markers below the video to jump between rounds, deaths, and clutch moments for a faster review workflow.')
@@ -2122,6 +2123,7 @@ function createVodReview() {
     seekDuelMoment,
     onDuelMomentBandSelect,
     vodAdapter,
+    objectiveName,
     isRoundBased,
     portraitForRef,
     eventKillerImage,

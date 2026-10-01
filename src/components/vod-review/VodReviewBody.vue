@@ -19,6 +19,7 @@ const props = defineProps<{ workspace?: boolean; roundsWidth?: number; detailsWi
 const emit = defineEmits<{ 'update:roundsWidth': [value: number]; 'update:detailsWidth': [value: number] }>()
 
 const {
+  objectiveName,
   abilityCastSlots,
   activeEventNotif,
   activeRoundNumber,
@@ -782,7 +783,7 @@ const noVideoHint = computed((): string => {
                 <div class="flex-1 min-w-0">
                   <p class="text-xs font-semibold"
                      :class="event.type === 'plant' ? 'text-orange-300' : event.type === 'defuse' ? 'text-cyan-300' : 'text-yellow-300'">
-                    {{ event.type === 'plant' ? (event.site ? `Spike Planted — Site ${event.site}` : 'Spike Planted') : event.type === 'defuse' ? 'Spike Defused' : 'Spike Detonated' }}
+                    {{ event.type === 'plant' ? (event.site ? `${objectiveName} Planted · Site ${event.site}` : `${objectiveName} Planted`) : event.type === 'defuse' ? `${objectiveName} Defused` : `${objectiveName} Detonated` }}
                   </p>
                   <p v-if="event.planter || event.defuser" class="text-[9px] text-gray-600">{{ formatPlayerLabel(event.planter || event.defuser) }}</p>
                 </div>

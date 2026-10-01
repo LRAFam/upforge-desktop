@@ -56,8 +56,8 @@ function opponentName(event: { type: string; killerName?: string; victimName?: s
     <div class="px-3 py-2.5 border-b border-white/[0.09] flex flex-col gap-2">
       <div class="flex items-center gap-2">
         <div class="min-w-0 flex-1">
-          <p class="text-[10px] font-black uppercase tracking-[0.2em] text-gray-500">Round log</p>
-          <p v-if="roundRecord" class="text-[10px] text-gray-600 mt-0.5 tabular-nums">
+          <p class="text-[12px] font-black uppercase tracking-[0.2em] text-gray-400">Round log</p>
+          <p v-if="roundRecord" class="text-[12px] text-gray-400 mt-0.5 tabular-nums">
             {{ roundRecord.total }} rounds
             <template v-if="matchScoreline">
               · <span class="text-white">{{ matchScoreline.ally }}–{{ matchScoreline.enemy }}</span>
@@ -65,14 +65,14 @@ function opponentName(event: { type: string; killerName?: string; victimName?: s
             <template v-else>
               ·
               <span class="text-emerald-400">{{ roundRecord.wins }}W</span>
-              <span class="text-gray-700"> / </span>
+              <span class="text-gray-400"> / </span>
               <span class="text-red-400">{{ roundRecord.losses }}L</span>
             </template>
           </p>
         </div>
         <button
           type="button"
-          class="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-md border border-white/[0.08] bg-white/[0.03] text-gray-500 transition-colors hover:border-white/[0.14] hover:text-gray-200"
+          class="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-md border border-white/[0.08] bg-white/[0.03] text-gray-400 transition-colors hover:border-white/[0.14] hover:text-gray-200"
           title="Hide round log (B)"
           @click="roundLogCollapsed = true"
         >
@@ -85,18 +85,18 @@ function opponentName(event: { type: string; killerName?: string; victimName?: s
       <div class="flex items-center gap-1 p-0.5 rounded-lg bg-black/30 border border-white/[0.06]">
         <button
           type="button"
-          class="flex-1 rounded-md px-2 py-1 text-[9px] font-bold uppercase tracking-wide transition-colors"
+          class="flex-1 rounded-md px-2 py-1 text-[12px] font-bold uppercase tracking-wide transition-colors"
           :class="roundLogFilter === 'mine'
             ? 'bg-red-500/20 text-red-200'
-            : 'text-gray-500 hover:text-gray-300'"
+            : 'text-gray-400 hover:text-gray-300'"
           @click="roundLogFilter = 'mine'"
         >My moments</button>
         <button
           type="button"
-          class="flex-1 rounded-md px-2 py-1 text-[9px] font-bold uppercase tracking-wide transition-colors"
+          class="flex-1 rounded-md px-2 py-1 text-[12px] font-bold uppercase tracking-wide transition-colors"
           :class="roundLogFilter === 'all'
             ? 'bg-white/[0.08] text-gray-200'
-            : 'text-gray-500 hover:text-gray-300'"
+            : 'text-gray-400 hover:text-gray-300'"
           @click="roundLogFilter = 'all'"
         >Full feed</button>
       </div>
@@ -124,7 +124,7 @@ function opponentName(event: { type: string; killerName?: string; victimName?: s
             >
             <button
               type="button"
-              class="inline-flex h-7 min-w-7 flex-shrink-0 items-center justify-center rounded-lg border border-white/[0.08] bg-black/30 px-1.5 text-[10px] font-black tabular-nums transition-colors hover:border-white/[0.16] hover:bg-white/[0.06]"
+              class="inline-flex h-7 min-w-7 flex-shrink-0 items-center justify-center rounded-lg border border-white/[0.08] bg-black/30 px-1.5 text-[12px] font-black tabular-nums transition-colors hover:border-white/[0.16] hover:bg-white/[0.06]"
               :class="round.won ? 'text-emerald-300' : 'text-red-300'"
               :title="`Jump to round ${round.roundNumber + 1}`"
               @click="seekToRound(round)"
@@ -136,10 +136,10 @@ function opponentName(event: { type: string; killerName?: string; victimName?: s
               class="min-w-0 flex-1 text-left"
               @click="toggleRoundExpanded(round)"
             >
-              <p class="text-[11px] font-semibold text-gray-200 leading-tight truncate">
+              <p class="text-[13px] font-semibold text-gray-200 leading-tight truncate">
                 {{ roundOutcomeLabel(round) }}
               </p>
-              <p class="text-[9px] text-gray-600">
+              <p class="text-[12px] text-gray-400">
                 {{ visibleRoundEvents(round).length }}
                 {{ roundLogFilter === 'mine' ? 'moments' : 'events' }}
               </p>
@@ -147,7 +147,7 @@ function opponentName(event: { type: string; killerName?: string; victimName?: s
             <button
               v-if="visibleRoundEvents(round).length"
               type="button"
-              class="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-md text-gray-600 transition-colors hover:bg-white/[0.06] hover:text-gray-300"
+              class="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-md text-gray-400 transition-colors hover:bg-white/[0.06] hover:text-gray-300"
               :title="expandedRoundNumber === round.roundNumber ? 'Collapse' : 'Expand moments'"
               @click.stop="toggleRoundExpanded(round)"
             >
@@ -185,7 +185,7 @@ function opponentName(event: { type: string; killerName?: string; victimName?: s
             </button>
             <span
               v-if="extraMomentCount(visibleRoundEvents(round))"
-              class="text-[8px] font-semibold text-gray-600 tabular-nums"
+              class="text-[13px] font-semibold text-gray-400 tabular-nums"
             >+{{ extraMomentCount(visibleRoundEvents(round)) }}</span>
           </div>
 
@@ -209,12 +209,12 @@ function opponentName(event: { type: string; killerName?: string; victimName?: s
               <template v-if="isSpikeEvent(event)">
                 <div class="min-w-0 flex-1">
                   <p
-                    class="text-[10px] font-semibold leading-tight truncate"
+                    class="text-[12px] font-semibold leading-tight truncate"
                     :class="event.type === 'plant' ? 'text-orange-400' : event.type === 'defuse' ? 'text-cyan-400' : 'text-amber-400'"
                   >
                     {{ event.type === 'plant' ? (event.site ? `Plant ${event.site}` : 'Plant') : event.type === 'defuse' ? 'Defuse' : 'Detonate' }}
                   </p>
-                  <p v-if="event.planter || event.defuser" class="text-[8px] text-gray-600 truncate">
+                  <p v-if="event.planter || event.defuser" class="text-[13px] text-gray-400 truncate">
                     {{ formatPlayerLabel(event.planter || event.defuser) }}
                   </p>
                 </div>
@@ -230,7 +230,7 @@ function opponentName(event: { type: string; killerName?: string; victimName?: s
                       alt=""
                     >
                   </div>
-                  <svg class="h-2 w-2 flex-shrink-0 text-gray-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <svg class="h-2 w-2 flex-shrink-0 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M9 5l7 7-7 7"/>
                   </svg>
                   <div class="h-5 w-5 flex-shrink-0 overflow-hidden rounded bg-white/[0.03] ring-1 ring-white/10">
@@ -241,7 +241,7 @@ function opponentName(event: { type: string; killerName?: string; victimName?: s
                       alt=""
                     >
                   </div>
-                  <p class="min-w-0 flex-1 text-[9px] text-gray-600 truncate">
+                  <p class="min-w-0 flex-1 text-[12px] text-gray-400 truncate">
                     {{ event.killerName || '?' }} → {{ event.victimName || '?' }}
                   </p>
                 </div>
@@ -261,23 +261,23 @@ function opponentName(event: { type: string; killerName?: string; victimName?: s
                 </div>
                 <div class="min-w-0 flex-1">
                   <p
-                    class="text-[11px] leading-tight truncate"
-                    :class="event.type === 'kill' ? 'text-gray-300 group-hover:text-white' : 'text-gray-500 group-hover:text-gray-300'"
+                    class="text-[13px] leading-tight truncate"
+                    :class="event.type === 'kill' ? 'text-gray-300 group-hover:text-white' : 'text-gray-400 group-hover:text-gray-300'"
                   >
                     {{ opponentName(event) }}
                   </p>
-                  <p v-if="getKillSourceLabel(event)" class="text-[8px] text-gray-600 truncate capitalize">
+                  <p v-if="getKillSourceLabel(event)" class="text-[13px] text-gray-400 truncate capitalize">
                     {{ getKillSourceLabel(event) }}
                   </p>
                 </div>
               </template>
 
-              <span class="flex-shrink-0 text-[9px] tabular-nums text-gray-600">{{ formatMs(event.videoOffsetMs) }}</span>
+              <span class="flex-shrink-0 text-[12px] tabular-nums text-gray-400">{{ formatMs(event.videoOffsetMs) }}</span>
             </button>
 
             <p
               v-if="!visibleRoundEvents(round).length"
-              class="px-3 py-2 text-center text-[10px] text-gray-600"
+              class="px-3 py-2 text-center text-[12px] text-gray-400"
             >
               No {{ roundLogFilter === 'mine' ? 'personal moments' : 'events' }} this round
             </p>
@@ -286,7 +286,7 @@ function opponentName(event: { type: string; killerName?: string; victimName?: s
       </template>
 
       <div v-if="!roundGroups.length" class="px-3 py-4 text-center">
-        <p class="text-xs text-gray-600">No timeline data</p>
+        <p class="text-xs text-gray-400">No timeline data</p>
       </div>
     </div>
   </div>

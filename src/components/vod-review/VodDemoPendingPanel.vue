@@ -27,7 +27,7 @@ function openPicker() {
 
 function onAttached() {
   pickerOpen.value = false
-  statusMessage.value = 'Replay linked — timeline and clips updated.'
+  statusMessage.value = 'Replay linked. The timeline and clips are updating.'
   emit('demo-linked')
 }
 
@@ -39,45 +39,45 @@ function openSettings() {
 <template>
   <aside class="vod-demo-pending flex w-72 flex-shrink-0 flex-col border-r border-white/[0.08] bg-[#0c0c0c]">
     <div class="border-b border-white/[0.06] px-4 py-3">
-      <p class="text-[10px] font-bold uppercase tracking-[0.16em] text-blue-300/90">Optional demo</p>
+      <p class="text-[12px] font-bold uppercase tracking-[0.08em] text-blue-300/90">Match data</p>
       <p class="mt-1 text-sm font-bold text-white leading-snug">
-        {{ game === 'cs2' ? 'Match CS2 replay' : 'Match replay' }}
+        {{ game === 'cs2' ? 'Attach your CS2 demo' : 'Match replay' }}
       </p>
-      <p v-if="map" class="mt-0.5 text-[11px] text-gray-500 uppercase">{{ cs2MapDisplayName(map) || map }}</p>
+      <p v-if="map" class="mt-0.5 text-[13px] text-gray-400 uppercase">{{ cs2MapDisplayName(map) || map }}</p>
     </div>
 
     <div class="flex-1 overflow-y-auto px-4 py-4 space-y-4">
-      <p class="text-[11px] text-gray-400 leading-relaxed">
-        Your recording plays normally on the right. {{ demoSyncExplainer(game) }}
+      <p class="text-[13px] text-gray-400 leading-relaxed">
+        You can watch your recording now. Attach the matching demo to enable AI coaching. {{ demoSyncExplainer(game) }}
       </p>
 
       <DemoAttachGuide :game="game" default-open />
 
       <div class="rounded-xl border border-blue-500/15 bg-blue-500/[0.06] px-3 py-3 space-y-2">
-        <p class="text-[10px] font-semibold uppercase tracking-wide text-blue-300/80">Why attach?</p>
-        <ul class="text-[10px] text-gray-500 space-y-1.5 list-disc pl-4 leading-relaxed">
+        <p class="text-[12px] font-semibold uppercase tracking-wide text-blue-300/80">Why attach?</p>
+        <ul class="text-[12px] text-gray-400 space-y-1.5 list-disc pl-4 leading-relaxed">
           <li>Kill timeline synced to your VOD</li>
-          <li>Auto highlight clips (multikills, clutches)</li>
-          <li v-if="game === 'cs2'">Set your CS2 Steam name in Settings → Recording</li>
+          <li>Event markers for reviewing your fights</li>
+          <li v-if="game === 'cs2'">Set your CS2 Steam name in Recording settings</li>
         </ul>
       </div>
 
       <button
         type="button"
-        class="w-full rounded-lg border border-blue-500/25 bg-blue-500/10 px-3 py-2.5 text-[11px] font-semibold text-blue-200 hover:bg-blue-500/20 transition-colors disabled:opacity-50"
+        class="w-full rounded-lg border border-blue-500/25 bg-blue-500/10 px-3 py-2.5 text-[13px] font-semibold text-blue-200 hover:bg-blue-500/20 transition-colors disabled:opacity-50"
         :disabled="!recordingId"
         @click="openPicker"
       >
-        Match replay to this VOD
+        Choose matching demo
       </button>
       <button
         type="button"
-        class="w-full rounded-lg border border-white/10 bg-white/[0.04] px-3 py-2.5 text-[11px] font-semibold text-gray-300 hover:bg-white/[0.07] transition-colors"
+        class="w-full rounded-lg border border-white/10 bg-white/[0.04] px-3 py-2.5 text-[13px] font-semibold text-gray-300 hover:bg-white/[0.07] transition-colors"
         @click="openSettings"
       >
-        Settings → Recording
+        Recording settings
       </button>
-      <p v-if="statusMessage" class="text-[10px] leading-relaxed text-emerald-400/90">
+      <p v-if="statusMessage" class="text-[12px] leading-relaxed text-emerald-400/90">
         {{ statusMessage }}
       </p>
     </div>

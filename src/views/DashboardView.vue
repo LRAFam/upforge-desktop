@@ -71,11 +71,11 @@ const showMatchCards = computed(() => dashboard.isValorant.value && dashboard.da
 .first-review h2{font-size:18px;font-weight:700;color:#f3f4f6}
 .first-review p{max-width:60ch;margin-top:8px;font-size:13px;line-height:1.6;color:#9ca3af}
 .first-review-actions{display:flex;flex-wrap:wrap;gap:10px;margin-top:16px}
-.home-content{display:grid;grid-template-columns:minmax(0,1fr) minmax(248px,280px);gap:16px}
+.home-content{display:grid;grid-template-columns:minmax(0,1fr) minmax(280px,320px);gap:20px}
 .home-main,.home-rail{display:flex;flex-direction:column;gap:14px;min-height:0;min-width:0;overflow-y:auto;overflow-x:hidden}
 .home-activity{flex-shrink:0;border:1px solid #ffffff18;border-radius:8px;background:#111317}
 .home-activity summary{cursor:pointer;padding:12px 14px;font-size:13px;font-weight:600;color:#d1d5db;min-height:44px}
 .home-activity summary span{margin-left:12px;color:#9ca3af;font-size:11px;font-weight:400}
 .home-activity summary:focus-visible{outline:2px solid #f43f5e;outline-offset:-2px;border-radius:8px}
-@container (max-width:900px){.home-content{display:flex;flex-direction:column;overflow-y:auto}.home-main,.home-rail{overflow:visible;flex-shrink:0}.home-rail{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,280px),1fr));align-items:start}}
+@container (max-width:1100px){.home-content{display:flex;flex-direction:column;overflow-y:auto}.home-main,.home-rail{overflow:visible;flex-shrink:0}.home-rail{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,280px),1fr));align-items:start}}
 </style>

@@ -61,7 +61,7 @@ async function copyAutoexec() {
   <div
     v-if="attachGame()"
     class="rounded-xl border border-white/[0.08] bg-black/20 overflow-hidden"
-    :class="compact ? 'text-[10px]' : 'text-[11px]'"
+    :class="compact ? 'text-[12px]' : 'text-[13px]'"
   >
     <button
       type="button"
@@ -73,7 +73,7 @@ async function copyAutoexec() {
         {{ demoAttachGuideTitle(attachGame()!) }}
       </span>
       <svg
-        class="w-3.5 h-3.5 text-gray-500 flex-shrink-0 transition-transform"
+        class="w-3.5 h-3.5 text-gray-400 flex-shrink-0 transition-transform"
         :class="expanded ? 'rotate-180' : ''"
         fill="none"
         stroke="currentColor"
@@ -93,13 +93,13 @@ async function copyAutoexec() {
           <span
             class="flex-shrink-0 font-bold tabular-nums rounded-md text-center"
             :class="compact
-              ? 'w-4 h-4 text-[9px] text-blue-300/90 bg-blue-500/10'
-              : 'w-5 h-5 text-[10px] text-blue-300/90 bg-blue-500/10'"
+              ? 'w-4 h-4 text-[12px] text-blue-300/90 bg-blue-500/10'
+              : 'w-5 h-5 text-[12px] text-blue-300/90 bg-blue-500/10'"
           >{{ index + 1 }}</span>
           <span class="pt-0.5">
             <template v-for="(part, partIndex) in step.parts" :key="partIndex">
               <strong v-if="part.emphasis" class="font-semibold text-gray-200">{{ part.text }}</strong>
-              <code v-else-if="part.mono" class="text-[10px] font-mono text-cyan-300/85">{{ part.text }}</code>
+              <code v-else-if="part.mono" class="text-[12px] font-mono text-cyan-300/85">{{ part.text }}</code>
               <span v-else>{{ part.text }}</span>
             </template>
           </span>
@@ -110,7 +110,7 @@ async function copyAutoexec() {
         <button
           type="button"
           class="rounded-lg border border-white/10 bg-white/[0.04] font-semibold text-gray-300 hover:bg-white/[0.07] transition-colors"
-          :class="compact ? 'px-2 py-1 text-[9px]' : 'px-2.5 py-1 text-[10px]'"
+          :class="compact ? 'px-2 py-1 text-[12px]' : 'px-2.5 py-1 text-[12px]'"
           @click="openDemoFolder"
         >
           Open {{ attachGame() === 'cs2' ? 'demo' : 'replays' }} folder
@@ -119,14 +119,14 @@ async function copyAutoexec() {
           v-if="attachGame() === 'cs2'"
           type="button"
           class="rounded-lg border border-orange-500/20 bg-orange-500/10 font-semibold text-orange-300 hover:bg-orange-500/20 transition-colors"
-          :class="compact ? 'px-2 py-1 text-[9px]' : 'px-2.5 py-1 text-[10px]'"
+          :class="compact ? 'px-2 py-1 text-[12px]' : 'px-2.5 py-1 text-[12px]'"
           @click="copyAutoexec"
         >
           {{ copied ? 'Copied!' : 'Copy autoexec line' }}
         </button>
       </div>
 
-      <p v-if="folderError" class="text-[10px] text-amber-300/90 leading-snug">{{ folderError }}</p>
+      <p v-if="folderError" class="text-[12px] text-amber-300/90 leading-snug">{{ folderError }}</p>
     </div>
   </div>
 </template>
