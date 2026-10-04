@@ -1,7 +1,8 @@
-import { afterEach, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 vi.mock('./desktop-api', () => ({ hasDesktopApi: () => true }))
 import { reportError } from './errorReporter'
 
+beforeEach(() => vi.stubGlobal('__APP_VERSION__', '2.14.3'))
 afterEach(() => vi.unstubAllGlobals())
 
 it('includes bounded and redacted activity for renderer errors', async () => {
@@ -14,6 +15,7 @@ it('includes bounded and redacted activity for renderer errors', async () => {
   })
   await reportError({ message: 'Renderer test' })
   const body = JSON.parse(fetchMock.mock.calls[0]![1].body)
+  expect(body.app_version).toBe('2.14.3')
   expect(body.extra.recent_activity).toHaveLength(50)
   expect(body.extra.recent_activity[0]).toEqual({ time: 10, message: '[redacted-email] [redacted-secret]' })
 })

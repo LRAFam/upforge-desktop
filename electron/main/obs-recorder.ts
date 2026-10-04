@@ -180,7 +180,7 @@ export class OBSRecorder {
   private _unownedRecordingSceneCheck: Promise<boolean> | null = null
   private _unownedRecordingPath: string | null = null
 
-  onStatusChange?: (recording: boolean, error?: string, phase?: 'start') => void
+  onStatusChange?: (recording: boolean, error?: string, phase?: 'start' | 'stop') => void
   onReplayClipSaved?: (path: string, trigger: string, meta?: ReplayClipSavedMeta) => void
   /** Fired when connection state changes. `error` is set only for unexpected disconnects. */
   onConnectionChange?: (connected: boolean, error?: string | null) => void
@@ -1236,14 +1236,14 @@ export class OBSRecorder {
     this._progressTimer = null
   }
 
-  private _markRecordingFailure(message: string): void {
+  private _markRecordingFailure(message: string, phase?: 'stop'): void {
     this._stopProgressWatch()
     this._recordingFailure = message
     this._lastError = message
     this._recording = false
     log.error('[OBSRecorder]', message)
     // Preserve ownership while OBS may still be active; never announce a successful stop.
-    this.onStatusChange?.(false, message, this._verifyingStart ? 'start' : undefined)
+    this.onStatusChange?.(false, message, this._verifyingStart ? 'start' : phase)
   }
 
   private _startProgressWatch(): void {
@@ -1339,11 +1339,11 @@ export class OBSRecorder {
       this._disconnectedDuringRecording = false
       this._noteRecordingStopped()
       if (this._outputPath) await this._waitForRecordingFile(this._outputPath)
-      this.onStatusChange?.(false, this._recordingFailure ?? undefined)
+      this.onStatusChange?.(false, this._recordingFailure ?? undefined, this._verifyingStart ? 'start' : 'stop')
       log.info('[OBSRecorder] Recording stop confirmed. Output:', this._outputPath)
       return this._outputPath
     } catch (err) {
-      this._markRecordingFailure(err instanceof Error ? err.message : String(err))
+      this._markRecordingFailure(err instanceof Error ? err.message : String(err), 'stop')
       return null
     }
   }

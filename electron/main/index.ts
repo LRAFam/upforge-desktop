@@ -631,7 +631,9 @@ function wireRecorderStatus(rec: OBSRecorder, label: string): void {
     }
     if (!recording && error && phase !== 'start') {
       log.warn(`[Main] ${label} recording stopped with error:`, error)
-      reportRecordingError('mid-match', error, { label, recording_context: rec.getRecordingDiagnostics() })
+      reportRecordingError(phase === 'stop' ? 'stop' : 'mid-match', error, { label, recording_context: rec.getRecordingDiagnostics() })
+      // The stop caller displays the failure. A requested stop is not a mid-match loss.
+      if (phase === 'stop') return
       onRecordingLost?.(error)
       const obsLost = /obs disconnected/i.test(error)
       const obsProcessExited = /process exited/i.test(error)

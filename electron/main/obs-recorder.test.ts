@@ -115,6 +115,7 @@ describe('OBS recording completion', () => {
     expect(rec.isRecording()).toBe(true)
     expect(rec.hasRecordingFailure()).toBe(true)
     expect(rec.onStatusChange).not.toHaveBeenCalledWith(false)
+    expect(rec.onStatusChange).toHaveBeenCalledWith(false, expect.stringContaining('did not stop'), 'stop')
     await vi.advanceTimersByTimeAsync(90_000)
     expect(await rec.reclaimActiveRecording()).toBe(false)
     await expect(rec.start('valorant')).rejects.toThrow('did not stop')
@@ -144,6 +145,7 @@ describe('OBS recording completion', () => {
     await vi.advanceTimersByTimeAsync(46_000)
     expect(await stopped).toBeNull()
     expect(rec.getLastError()).toMatch(/did not finalize/)
+    expect(rec.onStatusChange).toHaveBeenCalledWith(false, expect.stringContaining('did not finalize'), 'stop')
     expect(rec.onStatusChange).not.toHaveBeenCalledWith(false, undefined)
   })
 

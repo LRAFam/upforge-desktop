@@ -14,7 +14,6 @@ import { redactSensitiveString, redactSensitiveValue } from '../../electron/main
 
 const API_URL = import.meta.env['VITE_API_URL'] || 'https://api.upforge.gg'
 const ERROR_KEY = import.meta.env['VITE_ERROR_REPORTING_KEY'] || ''
-const APP_VERSION = import.meta.env['VITE_APP_VERSION'] || ''
 
 const reportedThisSession = new Set<string>()
 
@@ -48,7 +47,7 @@ export async function reportError(payload: {
     stack: payload.stack ? redactSensitiveString(payload.stack).slice(0, 5000) : undefined,
     component: payload.component,
     url: window.location.hash || window.location.pathname,
-    app_version: APP_VERSION,
+    app_version: __APP_VERSION__,
     user_id: user?.id,
     user_email: user?.email,
     user_name: user?.name,
