@@ -1,3 +1,28 @@
+import { OBSWebSocketError } from 'obs-websocket-js'
+import log from 'electron-log'
+
+type OutputStatusRequest = 'GetRecordStatus' | 'GetStreamStatus' | 'GetReplayBufferStatus'
+
+export async function readGuidedObsOutputs(obs: {
+  call(request: OutputStatusRequest): Promise<{ outputActive: boolean }>
+}): Promise<{ recording: boolean; streaming: boolean; replayBuffer: boolean }> {
+  const [record, stream, replay] = await Promise.all([
+    obs.call('GetRecordStatus'),
+    obs.call('GetStreamStatus'),
+    obs.call('GetReplayBufferStatus').catch((error: unknown) => {
+      // OBS returns InvalidResourceState (604) when no replay-buffer output exists.
+      // That output cannot be active; other status/transport failures remain unknown.
+      // https://github.com/obsproject/obs-websocket/blob/master/src/requesthandler/RequestHandler_Outputs.cpp
+      if (error instanceof OBSWebSocketError && error.code === 604 && error.message === 'Replay buffer is not available.') {
+        log.debug('[OBS Setup] Replay buffer unavailable; checking recording and streaming status')
+        return { outputActive: false }
+      }
+      throw error
+    }),
+  ])
+  return { recording: record.outputActive, streaming: stream.outputActive, replayBuffer: replay.outputActive }
+}
+
 export type ObsSetupStage = 'checking' | 'installing' | 'connecting' | 'version' | 'capture' | 'testing' | 'complete'
 
 export type GuidedObsSetupResult =

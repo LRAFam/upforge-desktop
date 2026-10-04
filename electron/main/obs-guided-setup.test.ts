@@ -1,6 +1,9 @@
 import { describe, expect, it, vi } from 'vitest'
 import { readFileSync, existsSync } from 'node:fs'
-import { isCompatibleObsVersion, runGuidedObsSetup, type GuidedObsSetupDependencies } from './obs-guided-setup'
+import { OBSWebSocketError } from 'obs-websocket-js'
+import { isCompatibleObsVersion, readGuidedObsOutputs, runGuidedObsSetup, type GuidedObsSetupDependencies } from './obs-guided-setup'
+
+vi.mock('electron-log', () => ({ default: { debug: vi.fn() } }))
 
 function fixture() {
   return {
@@ -16,6 +19,64 @@ function fixture() {
 }
 
 describe('guided OBS setup', () => {
+  function withOutputReader(overrides: Partial<Record<'GetRecordStatus' | 'GetStreamStatus' | 'GetReplayBufferStatus', boolean | Error>> = {}) {
+    const d = fixture()
+    d.isConnected.mockReturnValue(true)
+    const call = vi.fn(async (request: 'GetRecordStatus' | 'GetStreamStatus' | 'GetReplayBufferStatus') => {
+      const response = overrides[request] ?? false
+      if (response instanceof Error) throw response
+      return { outputActive: response }
+    })
+    d.outputs.mockImplementation(() => readGuidedObsOutputs({ call }))
+    return { d, call }
+  }
+
+  it('finishes setup when OBS explicitly reports that the replay buffer is unavailable', async () => {
+    const { d, call } = withOutputReader({
+      GetReplayBufferStatus: new OBSWebSocketError(604, 'Replay buffer is not available.'),
+    })
+    expect(await runGuidedObsSetup(d)).toEqual({ ok: true, studioVersion: '32.0.1' })
+    expect(d.setupCapture).toHaveBeenCalledOnce()
+    expect(d.testRecording).toHaveBeenCalledOnce()
+    expect(call.mock.calls.filter(([request]) => request === 'GetReplayBufferStatus')).toHaveLength(3)
+  })
+
+  it.each(['GetRecordStatus', 'GetStreamStatus'] as const)('still protects %s when the replay buffer is unavailable', async request => {
+    const { d } = withOutputReader({
+      GetReplayBufferStatus: new OBSWebSocketError(604, 'Replay buffer is not available.'),
+      [request]: true,
+    })
+    expect((await runGuidedObsSetup(d)).ok).toBe(false)
+    expect(d.setupCapture).not.toHaveBeenCalled()
+    expect(d.testRecording).not.toHaveBeenCalled()
+  })
+
+  it.each([
+    new OBSWebSocketError(604, 'Another resource is unavailable.'),
+    new OBSWebSocketError(500, 'Replay buffer is not available.'),
+    new OBSWebSocketError(1006, 'Connection closed'),
+    new Error('Replay buffer is not available.'),
+  ])('does not treat an unrecognised replay status error as idle: %s', async error => {
+    const { d } = withOutputReader({ GetReplayBufferStatus: error })
+    expect(await runGuidedObsSetup(d)).toEqual({ ok: false, error: error.message })
+    expect(d.setupCapture).not.toHaveBeenCalled()
+    expect(d.testRecording).not.toHaveBeenCalled()
+  })
+
+  it.each(['GetRecordStatus', 'GetStreamStatus'] as const)('does not suppress a failure from %s', async request => {
+    const error = new OBSWebSocketError(604, 'Replay buffer is not available.')
+    const { d } = withOutputReader({ [request]: error })
+    expect(await runGuidedObsSetup(d)).toEqual({ ok: false, error: error.message })
+    expect(d.setupCapture).not.toHaveBeenCalled()
+  })
+
+  it('protects an active replay buffer read from OBS', async () => {
+    const { d } = withOutputReader({ GetReplayBufferStatus: true })
+    expect((await runGuidedObsSetup(d)).ok).toBe(false)
+    expect(d.setupCapture).not.toHaveBeenCalled()
+    expect(d.testRecording).not.toHaveBeenCalled()
+  })
+
   it('installs, configures and tests a fresh installation in order', async () => {
     const d = fixture()
     expect(await runGuidedObsSetup(d)).toEqual({ ok: true, studioVersion: '32.0.1' })

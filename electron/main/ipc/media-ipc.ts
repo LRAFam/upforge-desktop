@@ -9,7 +9,7 @@ import path from 'path'
 import log from 'electron-log'
 import { broadcastObsConnection, probeObsConnection } from '../obs-health'
 import { ensureObsConnected } from '../obs-ensure'
-import { runGuidedObsSetup, type GuidedObsSetupResult } from '../obs-guided-setup'
+import { readGuidedObsOutputs, runGuidedObsSetup, type GuidedObsSetupResult } from '../obs-guided-setup'
 import { isObsProcessRunning } from '../obs-process'
 import { explainObsConnectionFailure } from '../obs-connect'
 import { installObsViaWinget, isObsInstalled } from '../obs-installer'
@@ -92,12 +92,7 @@ export function setupMediaHandlers(
         const version = await obs.call('GetVersion')
         return { obsVersion: version.obsVersion, obsWebSocketVersion: version.obsWebSocketVersion }
       },
-      outputs: async () => {
-        const [record, stream, replay] = await Promise.all([
-          obs.call('GetRecordStatus'), obs.call('GetStreamStatus'), obs.call('GetReplayBufferStatus'),
-        ])
-        return { recording: record.outputActive, streaming: stream.outputActive, replayBuffer: replay.outputActive }
-      },
+      outputs: () => readGuidedObsOutputs(obs),
       setupCapture: () => obsRecorder.setupScene(game, true),
       testRecording: async () => {
         const result = await runObsTestRecording({
