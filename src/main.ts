@@ -1,3 +1,4 @@
+import { setupProductUsage } from './lib/setup-product-usage'
 import { createApp } from 'vue'
 import { createPinia } from 'pinia'
 import { createRouter, createWebHashHistory } from 'vue-router'
@@ -102,3 +103,5 @@ app.use(pinia)
 app.use(router)
 setupRendererErrorReporter(app)
 app.mount('#app')
+const stopProductUsage = setupProductUsage(router)
+if (import.meta.hot) import.meta.hot.dispose(stopProductUsage)

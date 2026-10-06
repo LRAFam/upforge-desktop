@@ -1,3 +1,4 @@
+import { setupProductUsageHandlers, trackUsageAction } from './product-usage-ipc'
 import { APP_VERSION } from '../app-version'
 import { PRODUCT_ACTIVITY_GAMES, trackProductActivity } from '../product-activity'
 /**
@@ -46,6 +47,8 @@ export function setupAppHandlers(
   obsRecorder?: OBSRecorder,
   onSettingsSaved?: (settings: ReturnType<SettingsManager['get']>) => void,
 ): void {
+  setupProductUsageHandlers(ipcMain, auth)
+
   // ── App state ─────────────────────────────────────────────────────────────
 
   ipcMain.handle('app:get-status', () => {
@@ -84,10 +87,13 @@ export function setupAppHandlers(
     if (kind !== 'clip_watched' && kind !== 'replay_watched') return { ok: false }
     if (typeof game !== 'string' || !PRODUCT_ACTIVITY_GAMES.includes(game as typeof PRODUCT_ACTIVITY_GAMES[number])) return { ok: false }
     trackProductActivity(kind, game)
+    trackUsageAction(event.sender.id, kind === 'clip_watched' ? 'clips' : 'report')
     return { ok: true }
   })
 
   ipcMain.handle('funnel:track-report-opened', (_e, props?: Record<string, unknown>) => {
+    if (!isTrustedRendererUrl(_e.senderFrame?.url ?? '')) return { ok: false }
+    trackUsageAction(_e.sender.id, 'report')
     trackReportOpened(props)
     return { ok: true as const }
   })

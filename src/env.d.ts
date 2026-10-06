@@ -786,6 +786,9 @@ declare global {
           }
         }) => Promise<{ ok: boolean; error?: string }>
       }
+      productUsage: {
+        sample: (payload: { feature: string | null; active: boolean; visit: boolean }) => Promise<void>
+      }
       productActivity: {
         watched: (kind: 'clip_watched' | 'replay_watched', game: string) => Promise<{ ok: boolean }>
       }

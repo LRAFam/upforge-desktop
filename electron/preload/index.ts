@@ -119,6 +119,9 @@ const api = {
       }
     }) => ipcRenderer.invoke('analyses:submit-feedback', opts),
   },
+  productUsage: {
+    sample: (payload: { feature: string | null; active: boolean; visit: boolean }) => ipcRenderer.invoke('product-usage:sample', payload) as Promise<void>,
+  },
   productActivity: {
     watched: (kind: 'clip_watched' | 'replay_watched', game: string) =>
       ipcRenderer.invoke('product-activity:watched', { kind, game }) as Promise<{ ok: boolean }>,
