@@ -65,11 +65,98 @@ jobs:
         env:
           npm_config_msvs_version: "2022"
 
+      # ── Windows code signing (release tags only) ───────────────────────────
+      # Provider is chosen with the repo variable WIN_SIGNING_PROVIDER
+      # ("azure" or "sslcom"). Once it is set, every release MUST be signed:
+      # the "Verify Windows signature" step below blocks unsigned installers.
+      # Setup: docs/releases/WINDOWS-SIGNING.md
+      - name: Prepare Windows code signing (tag)
+        id: signing
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: bash
+        env:
+          PROVIDER: ${{ vars.WIN_SIGNING_PROVIDER }}
+          PUBLISHER: ${{ vars.WIN_SIGNING_PUBLISHER }}
+          HAS_AZURE: ${{ vars.AZURE_SIGNING_ENDPOINT != '' && vars.AZURE_SIGNING_ACCOUNT != '' && vars.AZURE_SIGNING_PROFILE != '' && secrets.AZURE_TENANT_ID != '' && secrets.AZURE_CLIENT_ID != '' && secrets.AZURE_CLIENT_SECRET != '' }}
+          HAS_SSLCOM: ${{ vars.SSLCOM_CODESIGNTOOL_URL != '' && vars.SSLCOM_CODESIGNTOOL_SHA256 != '' && secrets.ES_USERNAME != '' && secrets.ES_PASSWORD != '' && secrets.ES_CREDENTIAL_ID != '' && secrets.ES_TOTP_SECRET != '' }}
+        run: |
+          case "$PROVIDER" in
+            "")
+              echo "required=false" >> "$GITHUB_OUTPUT"
+              echo "::warning title=Unsigned Windows release::No signing provider is connected (WIN_SIGNING_PROVIDER is empty). See docs/releases/WINDOWS-SIGNING.md"
+              ;;
+            azure|sslcom)
+              [ -n "$PUBLISHER" ] || { echo "::error::WIN_SIGNING_PUBLISHER must be set to the certificate's name"; exit 1; }
+              if [ "$PROVIDER" = azure ] && [ "$HAS_AZURE" != true ]; then echo "::error::Azure signing selected but its variables/secrets are incomplete"; exit 1; fi
+              if [ "$PROVIDER" = sslcom ] && [ "$HAS_SSLCOM" != true ]; then echo "::error::SSL.com signing selected but its variables/secrets are incomplete"; exit 1; fi
+              echo "required=true" >> "$GITHUB_OUTPUT"
+              echo "Windows signing provider: $PROVIDER ($PUBLISHER)"
+              ;;
+            *)
+              echo "::error::Unknown WIN_SIGNING_PROVIDER '$PROVIDER' (use azure or sslcom)"; exit 1
+              ;;
+          esac
+
+      - name: Install SSL.com CodeSignTool (tag, sslcom only)
+        if: startsWith(github.ref, 'refs/tags/v') && vars.WIN_SIGNING_PROVIDER == 'sslcom'
+        shell: pwsh
+        env:
+          TOOL_URL: ${{ vars.SSLCOM_CODESIGNTOOL_URL }}
+          TOOL_SHA256: ${{ vars.SSLCOM_CODESIGNTOOL_SHA256 }}
+        run: |
+          $zip = "$env:RUNNER_TEMP\codesigntool.zip"
+          Invoke-WebRequest -Uri $env:TOOL_URL -OutFile $zip
+          $actual = (Get-FileHash $zip -Algorithm SHA256).Hash
+          if ($actual -ne $env:TOOL_SHA256.ToUpper()) { throw "CodeSignTool checksum mismatch ($actual)" }
+          $dir = "$env:RUNNER_TEMP\codesigntool"
+          Expand-Archive -Path $zip -DestinationPath $dir -Force
+          $root = (Get-ChildItem $dir -Recurse -Directory -Filter jar | Select-Object -First 1).Parent.FullName
+          if (-not $root) { throw "CodeSignTool jar folder not found in archive" }
+          "CODESIGNTOOL_DIR=$root" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
       - name: Build Windows installer (tag — publish in publish-release job)
         if: startsWith(github.ref, 'refs/tags/v')
         env:
           VITE_ERROR_REPORTING_KEY: ${{ secrets.ERROR_REPORTING_KEY }}
-        run: npm run build && npx electron-builder --win --publish never
+          WIN_SIGNING_PROVIDER: ${{ vars.WIN_SIGNING_PROVIDER }}
+          WIN_SIGNING_PUBLISHER: ${{ vars.WIN_SIGNING_PUBLISHER }}
+          AZURE_SIGNING_ENDPOINT: ${{ vars.AZURE_SIGNING_ENDPOINT }}
+          AZURE_SIGNING_ACCOUNT: ${{ vars.AZURE_SIGNING_ACCOUNT }}
+          AZURE_SIGNING_PROFILE: ${{ vars.AZURE_SIGNING_PROFILE }}
+          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+          ES_USERNAME: ${{ secrets.ES_USERNAME }}
+          ES_PASSWORD: ${{ secrets.ES_PASSWORD }}
+          ES_CREDENTIAL_ID: ${{ secrets.ES_CREDENTIAL_ID }}
+          ES_TOTP_SECRET: ${{ secrets.ES_TOTP_SECRET }}
+        run: npm run build && npx electron-builder --win --publish never --config build/electron-builder.release.cjs
+
+      - name: Verify Windows signature (tag)
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: pwsh
+        env:
+          SIGNING_REQUIRED: ${{ steps.signing.outputs.required }}
+          EXPECTED_PUBLISHER: ${{ vars.WIN_SIGNING_PUBLISHER }}
+        run: |
+          $required = $env:SIGNING_REQUIRED -eq 'true'
+          $files = @(Get-ChildItem dist\*.exe) + @(Get-ChildItem dist\win-unpacked\*.exe -ErrorAction SilentlyContinue)
+          if ($files.Count -eq 0) { throw "No Windows executables found in dist" }
+          $problems = @()
+          foreach ($f in $files) {
+            $sig = Get-AuthenticodeSignature -LiteralPath $f.FullName
+            $signer = if ($sig.SignerCertificate) { $sig.SignerCertificate.GetNameInfo('SimpleName', $false) } else { '-' }
+            Write-Host ("{0}: {1} (signer: {2})" -f $f.Name, $sig.Status, $signer)
+            if ($sig.Status -ne 'Valid') { $problems += "$($f.Name) is $($sig.Status)" }
+            elseif ($env:EXPECTED_PUBLISHER -and $signer -ne $env:EXPECTED_PUBLISHER) { $problems += "$($f.Name) signed by '$signer', expected '$env:EXPECTED_PUBLISHER'" }
+          }
+          if ($problems.Count -gt 0) {
+            if ($required) {
+              $problems | ForEach-Object { Write-Host "::error::$_" }
+              throw "Release blocked: every Windows release must be signed."
+            }
+            Write-Host "::warning title=Unsigned Windows release::Installer is not signed. Connect a signing provider to enforce signing."
+          }
 
       - name: Build Windows installer (dev artifact)
         if: "!startsWith(github.ref, 'refs/tags/v')"
