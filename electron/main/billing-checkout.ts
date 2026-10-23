@@ -62,8 +62,8 @@ export async function startCheckout(
   if (!deps.post) return pricing(DEFAULT_PRICING_PATH, 'logged_out')
 
   const [endpoint, body] = intent.kind === 'plan'
-    ? ['/payment/subscription-checkout', { tier: intent.tier }]
-    : ['/payment/bundle-checkout', { bundle: '3-pack' }]
+    ? ['/api/payment/subscription-checkout', { tier: intent.tier }]
+    : ['/api/payment/bundle-checkout', { bundle: '3-pack' }]
 
   let res: { status: number; data: unknown }
   try {

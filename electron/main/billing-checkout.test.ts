@@ -15,7 +15,7 @@ describe('startCheckout', () => {
     const post = vi.fn().mockResolvedValue({ status: 200, data: { checkout_url: 'https://checkout.stripe.com/c/pay/cs_test_1' } })
     const d = deps(post)
     const res = await startCheckout({ kind: 'plan', tier: 'plus' }, 'riot_link', d)
-    expect(post).toHaveBeenCalledWith('/payment/subscription-checkout', { tier: 'plus' })
+    expect(post).toHaveBeenCalledWith('/api/payment/subscription-checkout', { tier: 'plus' })
     expect(d.openExternal).toHaveBeenCalledWith('https://checkout.stripe.com/c/pay/cs_test_1')
     expect(d.openWebPath).not.toHaveBeenCalled()
     expect(d.trackUpgradeClicked).toHaveBeenCalledWith('riot_link')
@@ -26,7 +26,7 @@ describe('startCheckout', () => {
     const post = vi.fn().mockResolvedValue({ status: 200, data: { checkout_url: 'https://checkout.stripe.com/c/pay/cs_test_2' } })
     const d = deps(post)
     await startCheckout({ kind: 'pack' }, 'dashboard', d)
-    expect(post).toHaveBeenCalledWith('/payment/bundle-checkout', { bundle: '3-pack' })
+    expect(post).toHaveBeenCalledWith('/api/payment/bundle-checkout', { bundle: '3-pack' })
     expect(d.openExternal).toHaveBeenCalledOnce()
   })
 
