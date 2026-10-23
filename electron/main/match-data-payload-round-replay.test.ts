@@ -18,7 +18,7 @@ import { prepareMatchDataForUpload } from './match-data-payload'
 import type { MatchData } from './riot-types'
 
 function timelineWithKills(): MatchData {
-  return {
+  const timeline: MatchData = {
     game: 'valorant',
     matchId: 'match-1',
     region: 'eu',
@@ -40,7 +40,8 @@ function timelineWithKills(): MatchData {
     spikeDetonations: [],
     firstBloods: [],
     roundSummaries: [],
-    finalStats: null,
+    finalStats: { kills: 1, deaths: 0, assists: 0, score: 200, summonerName: 'You', agent: 'Jett',
+      team: 'Blue', level: 100, accountLevel: 100, headshotPct: null, adr: null },
     teamSnapshot: [
       {
         summonerName: 'You',
@@ -80,11 +81,16 @@ function timelineWithKills(): MatchData {
       ],
       roundResults: [{ roundNum: 0, winningTeam: 'Blue' }],
       players: [
-        { subject: 'own-puuid', gameName: 'You', characterId: 'add6443a-41bd-e414-f6ad-e58d267f4e95', teamId: 'Blue' },
+        { subject: 'own-puuid', gameName: 'You', characterId: 'add6443a-41bd-e414-f6ad-e58d267f4e95', teamId: 'Blue', stats: { kills: 1, deaths: 0, assists: 0, score: 200, roundsPlayed: 1 } },
         { subject: 'enemy-puuid', gameName: 'Enemy', characterId: '569fdd95-4d10-43ab-ca70-79becc718b46', teamId: 'Red' },
       ],
     },
   }
+  const event = { EventID: 1, EventName: 'ChampionKill' as const, EventTime: 45, timeSinceGameStartMillis: 45000,
+    killerPuuid: 'own-puuid', victimPuuid: 'enemy-puuid', killerName: 'You', victimName: 'Enemy', assistants: [], round: 0 }
+  timeline.killEvents = [event]
+  timeline.playerKills = [event]
+  return timeline
 }
 
 describe('prepareMatchDataForUpload roundReplay', () => {

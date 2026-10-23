@@ -25,6 +25,8 @@ const TRADE_RADIUS_WORLD = 2500
 
 interface RiotKillRow {
   round?: number
+  timeSinceGameStartMillis?: number
+  gameTime?: number
   killer?: string
   victim?: string
   victimLocation?: { x: number; y: number }
@@ -648,7 +650,10 @@ export function applySpatialEnrichment(match: MatchData): void {
       const row = rows.find(
         (k) => k.round === ev.round
           && k.victim?.toLowerCase() === ev.victimPuuid?.toLowerCase()
-          && k.killer?.toLowerCase() === ev.killerPuuid?.toLowerCase(),
+          && k.killer?.toLowerCase() === ev.killerPuuid?.toLowerCase()
+          // Respawn modes can have the same killer/victim pair repeatedly in round 0.
+          && ((k.timeSinceGameStartMillis || k.gameTime) == null
+            || (k.timeSinceGameStartMillis || k.gameTime) === ev.timeSinceGameStartMillis),
       )
       if (!row) continue
       const spatial = enrichKillFromRiotRow(ev, row, map, own, allyPuids)

@@ -205,8 +205,12 @@ const api = {
     install: () => ipcRenderer.invoke('updater:install'),
   },
   debug: {
+    recentMatchExportVersion: 3,
     testRiotApi: () => ipcRenderer.invoke('debug:test-riot-api'),
     probeLolLcu: () => ipcRenderer.invoke('debug:probe-lol-lcu'),
+    pocRecentMatches: (limit?: number) => ipcRenderer.invoke('debug:poc-recent-matches', limit),
+    openRecentMatchesFolder: () => ipcRenderer.invoke('debug:poc-open-folder'),
+    getRecentMatchesReport: () => ipcRenderer.invoke('debug:poc-latest-report'),
     findHotkeyConflict: () => ipcRenderer.invoke('debug:find-hotkey-conflict'),
   },
   storage: {

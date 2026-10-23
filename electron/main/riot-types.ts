@@ -8,7 +8,7 @@ import type { LolLocalReview } from './lol-local-review'
 export interface GameEvent {
   EventID: number
   EventName: string
-  EventTime: number
+  EventTime: number | null
 }
 
 /** A kill/death event — populated from Riot MatchDetails API post-match */
@@ -71,6 +71,7 @@ export interface SpikePlantedEvent extends GameEvent {
 export interface SpikeDefusedEvent extends GameEvent {
   EventName: 'SpikeDefused'
   defuser: string
+  defuserPuuid?: string
   round?: number
   gameTimeMs?: number
   videoOffsetMs?: number
@@ -160,8 +161,9 @@ export interface RoundSummary {
   winningTeam: string | null
   /** How the round ended: Elimination, BombDefused, BombDetonated, etc. */
   ceremony: string | null
-  endTime: number
-  /** Player's cumulative stats at the end of this round */
+  /** Null when the source does not supply a round-end timestamp. */
+  endTime: number | null
+  /** Player's stats for this round (not cumulative). */
   playerStats: RoundPlayerStats | null
   /** Was the spike planted this round? */
   spikePlanted: boolean
@@ -169,10 +171,12 @@ export interface RoundSummary {
   spikeSite: string | null
   /** Who planted the spike */
   spikePlanter: string | null
+  spikePlanterPuuid?: string | null
   /** Was the spike defused? */
   spikeDefused: boolean
   /** Who defused the spike */
   spikeDefuser: string | null
+  spikeDefuserPuuid?: string | null
   /** Did the spike detonate? */
   spikeDetonated: boolean
   /** Player's economy (credits) at round end */
@@ -197,14 +201,18 @@ export interface RoundSummary {
 
 /** Per-player stats snapshot for the full team — captured at match end */
 export interface TeamPlayerSnapshot {
-  summonerName: string
+  summonerName: string | null
+  displayLabel?: string
+  nameSource?: 'match_record' | 'current_account' | 'unavailable'
   agent: string | null
   team: string
   kills: number
   deaths: number
   assists: number
   /** Average combat score (ACS) for the match */
-  score: number
+  score: number | null
+  totalCombatScore?: number | null
+  scoreKind?: 'average_combat_score' | 'total_score'
   level: number
   /** Player's PUUID — used for "you" identification in renderer */
   puuid: string | null
@@ -227,7 +235,9 @@ export interface FinalPlayerStats {
   deaths: number
   assists: number
   /** Average combat score (ACS) for the match */
-  score: number
+  score: number | null
+  totalCombatScore?: number | null
+  scoreKind?: 'average_combat_score' | 'total_score'
   /** Riot display name (gameName#tagLine) */
   summonerName: string | null
   /** Agent played */

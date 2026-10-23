@@ -17,10 +17,12 @@ import {
   type RankSnapshot,
 } from './match-coaching-context'
 import type { SkillProfileSnapshot } from '../../src/lib/skill-profile'
+import { normalizeValorantCoachingStats, enforceValorantCoachingQuality, type CoachingDataQuality } from './valorant-coaching-quality'
 
 /** Slim Riot MatchDetails subset for coaching prompts (avoids multi‑MB raw JSON). */
 export interface MatchDetailsLite {
   matchInfo?: {
+    gameStartMillis?: number
     gameLengthMillis?: number
     mapId?: string
     queueID?: string
@@ -30,6 +32,7 @@ export interface MatchDetailsLite {
     subject?: string | null
     gameName?: string | null
     tagLine?: string | null
+    nameSource?: 'match_record' | 'current_account' | 'unavailable'
     teamId?: string | null
     characterId?: string | null
     competitiveTier?: number | null
@@ -38,7 +41,9 @@ export interface MatchDetailsLite {
       kills?: number
       deaths?: number
       assists?: number
-      score?: number
+      score?: number | null
+      totalCombatScore?: number | null
+      scoreKind?: 'average_combat_score' | 'total_score'
       abilityCasts?: {
         grenadeCasts?: number
         ability1Casts?: number
@@ -62,6 +67,7 @@ export type UploadMatchData = Omit<MatchData, 'events' | 'matchDetails'> & {
   roundPlants?: RoundPlantSnapshot[]
   /** Authoritative facts for AI coaching (ability casts, per-round damage, ability kills). */
   coachingFacts?: CoachingFacts
+  dataQuality?: CoachingDataQuality
   /** Explicit team comps for KB routing and comp-aware coaching. */
   allyAgents?: string[]
   enemyAgents?: string[]
@@ -84,6 +90,7 @@ function slimMatchDetails(raw: Record<string, unknown> | null | undefined): Matc
   return {
     matchInfo: matchInfo
       ? {
+          gameStartMillis: matchInfo.gameStartMillis as number | undefined,
           gameLengthMillis: matchInfo.gameLengthMillis as number | undefined,
           mapId: matchInfo.mapId as string | undefined,
           queueID: matchInfo.queueID as string | undefined,
@@ -150,6 +157,8 @@ function buildRoundPlants(timeline: MatchData): RoundPlantSnapshot[] {
       const existing = byRound.get(roundNum)
       if (existing?.plantLocation) continue
       const bombPlanter = (round.bombPlanter as string) ?? null
+      // Riot includes a default plantLocation even in rounds with no plant (and DM).
+      if (!bombPlanter && !existing) continue
       const plantLocation = resolvePlantLocationFromRound(round, bombPlanter)
       if (!plantLocation && !bombPlanter) continue
       byRound.set(roundNum, {
@@ -184,15 +193,19 @@ export function prepareMatchDataForUpload(
   extras?: CoachingSubmissionExtras,
 ): UploadMatchData | undefined {
   if (!timeline) return undefined
+  if (timeline.game === 'valorant') {
+    timeline = structuredClone(timeline)
+    normalizeValorantCoachingStats(timeline)
+  }
   recomputeTimelineVideoOffsets(timeline)
 
   const finalStats = timeline.finalStats
     ? {
         ...timeline.finalStats,
         summonerName:
-          timeline.finalStats.summonerName
-          ?? timeline.playerName
-          ?? null,
+          timeline.finalStats.summonerName?.trim()
+          || timeline.playerName
+          || null,
         agent: timeline.finalStats.agent ?? timeline.agent ?? null,
       }
     : null
@@ -246,6 +259,7 @@ export function prepareMatchDataForUpload(
   }
 
   logPlantCoordStats(timeline, 'upload')
+  if (timeline.game === 'valorant') upload.dataQuality = enforceValorantCoachingQuality(upload, timeline)
   return upload
 }
 

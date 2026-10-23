@@ -28,9 +28,10 @@ import { isCombatPlayerKill } from './is-combat-kill'
 import { parsePlayerAbilitiesFromRoundStats } from './player-abilities'
 import { deriveMatchScore } from './match-score'
 import { riotStatsToAcs } from './combat-score'
+import { observedRoundStarts } from './riot-event-time'
 import { resolvePlantLocationFromRound } from './plant-location'
 import { logPlantCoordStats } from './match-plant-telemetry'
-import { gameTimeToVideoOffsetMs, lolGameTimeToVideoOffsetMs } from './recording-sync'
+import { emptyMatchData, gameTimeToVideoOffsetMs, lolGameTimeToVideoOffsetMs } from './recording-sync'
 import {
   recoveredMatchStartAligns,
   shouldApplyMatchDetails,
@@ -48,6 +49,7 @@ import {
 } from './riot-region'
 import { applyMenuWatchTick } from './menu-watch'
 import { parseRiotMatchHistory, type RiotMatchHistoryEntry } from './riot-match-history'
+import type { RecentMatchFetchResult } from './recent-match-export'
 export type {
   GameEvent,
   KillEvent,
@@ -367,6 +369,11 @@ export class RiotLocalApi {
       const ent = await this._fetchLocal<{ subject: string; accessToken: string; token: string }>(
         '/entitlements/v1/token'
       )
+      if (this.ownPuuid?.toLowerCase() !== ent.subject?.toLowerCase()) {
+        this.playerName = null
+        this.playerTag = null
+        this.region = null
+      }
       this.ownPuuid = ent.subject
       this.accessToken = ent.accessToken
       this.entitlementsToken = ent.token
@@ -382,8 +389,10 @@ export class RiotLocalApi {
       const sess = await this._fetchLocal<{
         game_name: string; game_tag: string; region: string; puuid: string
       }>('/chat/v1/session')
-      if (sess.game_name) this.playerName = sess.game_name
-      if (sess.game_tag) this.playerTag = sess.game_tag
+      if (!sess.puuid || sess.puuid.toLowerCase() === this.ownPuuid?.toLowerCase()) {
+        if (sess.game_name?.trim()) this.playerName = sess.game_name.trim()
+        if (sess.game_tag?.trim()) this.playerTag = sess.game_tag.trim()
+      }
       if (sess.region) chatRegion = sess.region
     } catch { /* name/region filled from deployment fallback below */ }
 
@@ -1385,14 +1394,14 @@ export class RiotLocalApi {
       this.lastGameMode = this.matchData.gameMode
     }
 
-    const ownLower = this.ownPuuid?.toLowerCase()
+    const ownLower = (this.matchData.puuid ?? this.ownPuuid)?.toLowerCase()
     const ownPlayer = players?.find((p) => (p.subject as string)?.toLowerCase() === ownLower)
     const fallbackRounds = roundResults?.length ?? 1
 
     if (ownPlayer) {
       this.matchData.agent = resolveAgentName(ownPlayer.characterId as string) ?? this.matchData.agent
-      const gameName = (ownPlayer.gameName as string) ?? null
-      const tagLine = (ownPlayer.tagLine as string) ?? null
+      const gameName = (ownPlayer.gameName as string)?.trim() || this.matchData.playerName
+      const tagLine = (ownPlayer.tagLine as string)?.trim() || this.matchData.playerTag
       if (gameName) this.matchData.playerName = gameName
       if (tagLine) this.matchData.playerTag = tagLine
       const stats = ownPlayer.stats as Record<string, number> | undefined
@@ -1400,7 +1409,7 @@ export class RiotLocalApi {
         this.matchData.finalStats = {
           kills: stats.kills ?? 0, deaths: stats.deaths ?? 0, assists: stats.assists ?? 0,
           score: riotStatsToAcs(stats, fallbackRounds),
-          summonerName: gameName ?? this.matchData.playerName ?? null,
+          summonerName: gameName ? (tagLine ? `${gameName}#${tagLine}` : gameName) : null,
           agent: this.matchData.agent,
           team: (ownPlayer.teamId as string) ?? null,
           level: (ownPlayer.accountLevel as number) ?? 0,
@@ -1416,7 +1425,9 @@ export class RiotLocalApi {
         const stats = p.stats as Record<string, unknown> | undefined
         const casts = (stats?.abilityCasts) as Record<string, number> | undefined
         const agentName = resolveAgentName(p.characterId as string) ?? null
-        const gameName = (p.gameName as string) || null
+        const isOwnPlayer = (p.subject as string)?.toLowerCase() === ownLower
+        const gameName = (p.gameName as string)?.trim()
+          || (isOwnPlayer ? this.matchData!.playerName : null)
         const tier = (p.competitiveTier as number) ?? 0
         return {
           summonerName: gameName ?? agentName ?? `Player ${((p.subject as string) ?? '').slice(0, 6)}`,
@@ -1525,16 +1536,20 @@ export class RiotLocalApi {
     // TDM and Deathmatch have no rounds, no economy, no spike
     const isTDM = this.matchData.gameMode === 'TEAMDEATHMATCH'
     const isDM = this.matchData.gameMode === 'DEATHMATCH'
-    const roundStartGameMs = buildRoundStartGameMs(allKills, roundResults?.length)
+    const roundStartGameMs = observedRoundStarts(allKills)
 
     if (!isTDM && !isDM && roundResults && roundResults.length > 0) {
       // Pre-build a per-round death count for the own player from the top-level kills array.
       // roundResults.playerStats only has kills/assists — deaths must be cross-referenced here.
       const deathsPerRound = new Map<number, number>()
+      const assistsPerRound = new Map<number, number>()
       for (const k of (allKills ?? [])) {
+        const r = (k.round as number) ?? 0
         if ((k.victim as string)?.toLowerCase() === ownLower) {
-          const r = (k.round as number) ?? 0
           deathsPerRound.set(r, (deathsPerRound.get(r) ?? 0) + 1)
+        }
+        if ((k.assistants as string[] | undefined)?.some((id) => id.toLowerCase() === ownLower)) {
+          assistsPerRound.set(r, (assistsPerRound.get(r) ?? 0) + 1)
         }
       }
 
@@ -1544,12 +1559,14 @@ export class RiotLocalApi {
       let totalDamage = 0
       let totalHeadshots = 0
       let totalShotsLanded = 0
+      let hasDamageData = false
 
       for (const round of roundResults) {
         const prs = (round.playerStats as Array<Record<string, unknown>> | undefined)
           ?.find((ps) => (ps.subject as string)?.toLowerCase() === ownLower)
         const damage = prs?.damage as Array<Record<string, unknown>> | undefined
         if (damage) {
+          hasDamageData = true
           for (const d of damage) {
             const hs = (d.headshots as number) ?? 0
             const bs = (d.bodyshots as number) ?? 0
@@ -1563,7 +1580,7 @@ export class RiotLocalApi {
 
       const roundCount = roundResults.length
       if (this.matchData.finalStats) {
-        this.matchData.finalStats.adr = roundCount > 0
+        this.matchData.finalStats.adr = hasDamageData && roundCount > 0
           ? Math.round((totalDamage / roundCount) * 10) / 10
           : null
         this.matchData.finalStats.headshotPct = totalShotsLanded > 0
@@ -1578,6 +1595,8 @@ export class RiotLocalApi {
           ?? roundIndex
         const winningTeam = (round.winningTeam as string) ?? null
         const resultCode = (round.roundResultCode as string) ?? (round.roundResult as string) ?? null
+        const spikeDetonated = ['detonate', 'bombdetonated', 'bomb detonated']
+          .includes(resultCode?.toLowerCase() ?? '')
         const bombPlanterRaw = (round.bombPlanter as string) ?? null
         const bombDefuserRaw = (round.bombDefuser as string) ?? null
         const bombPlanter = bombPlanterRaw ? _resolveName(bombPlanterRaw) : null
@@ -1598,57 +1617,62 @@ export class RiotLocalApi {
         const fb = firstBloodByRound.get(roundNum)
         const fbKiller = fb?.killer?.toLowerCase()
         const fbVictim = fb?.victim?.toLowerCase()
+        const plantLocal = (round.plantRoundTime as number) ?? (round.plantRoundMsec as number)
+        const defuseLocal = (round.defuseRoundTime as number) ?? (round.defuseRoundMsec as number)
+        const detonateLocal = (round.detonateRoundTime as number) ?? (round.detonateRoundMsec as number)
+        const roundStart = roundStartGameMs.get(roundNum)
         this.matchData.roundSummaries.push({
           roundNumber: roundNum,
           winningTeam,
           ceremony: resultCode,
-          endTime: (round.defuseRoundMsec as number) || (round.plantRoundMsec as number) || 0,
+          // A plant is not the end of a round. Riot often omits its actual end time.
+          endTime: bombDefuser ? (defuseLocal ?? null) : spikeDetonated ? (detonateLocal ?? null) : null,
           playerStats: prs ? {
-            kills: (prs.kills as unknown[])?.length ?? 0,
+            kills: this.matchData.playerKills.filter((kill) => kill.round === roundNum).length,
             deaths: deathsPerRound.get(roundNum) ?? 0,
-            assists: (prs.assists as unknown[])?.length ?? 0,
+            assists: typeof prs.assists === 'number' ? prs.assists
+              : Array.isArray(prs.assists) ? prs.assists.length : assistsPerRound.get(roundNum) ?? 0,
             score: (prs.score as number) ?? 0,
           } : null,
-          spikePlanted: !!bombPlanter, spikeSite: plantSite, spikePlanter: bombPlanter,
-          spikeDefused: !!bombDefuser, spikeDefuser: bombDefuser,
-          spikeDetonated: resultCode === 'BombDetonated',
+          spikePlanted: !!bombPlanter, spikeSite: plantSite, spikePlanter: bombPlanter, spikePlanterPuuid: bombPlanterRaw,
+          spikeDefused: !!bombDefuser, spikeDefuser: bombDefuser, spikeDefuserPuuid: bombDefuserRaw,
+          spikeDetonated,
           playerGold: (economy?.remaining as number) ?? null,
           playerAbilities,
-          playerGotFirstBlood: fbKiller === ownLower,
-          playerWasFirstBlood: fbVictim === ownLower,
+          playerGotFirstBlood: !!ownLower && fbKiller === ownLower,
+          playerWasFirstBlood: !!ownLower && fbVictim === ownLower,
           playerSpent: (economy?.spent as number) ?? null,
           playerLoadoutValue: (economy?.loadoutValue as number) ?? null,
           playerWeapon: resolveEconomyWeapon(economy?.weapon) ?? null,
           playerArmor: resolveEconomyArmor(economy?.armor) ?? null,
-          playerDamageDealt: playerDamageDealt > 0 ? playerDamageDealt : null,
+          playerDamageDealt: Array.isArray(roundDamageRows) ? playerDamageDealt : null,
         })
         if (bombPlanter) {
-          const plantLocal = (round.plantRoundTime as number) ?? (round.plantRoundMsec as number) ?? 0
-          const gameTimeMs = (roundStartGameMs.get(roundNum) ?? 0) + plantLocal
+          const gameTimeMs = roundStart != null && plantLocal != null ? roundStart + plantLocal : undefined
           this.matchData.spikePlants.push({
             EventID: roundNum * 100 + 10, EventName: 'SpikePlanted',
-            EventTime: plantLocal, planter: bombPlanter, planterPuuid: bombPlanterRaw ?? undefined,
+            EventTime: gameTimeMs != null ? gameTimeMs / 1000 : null,
+            planter: bombPlanter, planterPuuid: bombPlanterRaw ?? undefined,
             site: plantSite ?? '', plantLocation,
             round: roundNum, gameTimeMs,
-            videoOffsetMs: Math.max(0, recordingOffset + gameTimeMs),
+            videoOffsetMs: gameTimeMs != null ? Math.max(0, recordingOffset + gameTimeMs) : undefined,
           })
         }
         if (bombDefuser) {
-          const defuseLocal = (round.defuseRoundTime as number) ?? (round.defuseRoundMsec as number) ?? 0
-          const gameTimeMs = (roundStartGameMs.get(roundNum) ?? 0) + defuseLocal
+          const gameTimeMs = roundStart != null && defuseLocal != null ? roundStart + defuseLocal : undefined
           this.matchData.spikeDefuses.push({
             EventID: roundNum * 100 + 20, EventName: 'SpikeDefused',
-            EventTime: defuseLocal, defuser: bombDefuser,
+            EventTime: gameTimeMs != null ? gameTimeMs / 1000 : null, defuser: bombDefuser, defuserPuuid: bombDefuserRaw ?? undefined,
             round: roundNum, gameTimeMs,
-            videoOffsetMs: Math.max(0, recordingOffset + gameTimeMs),
+            videoOffsetMs: gameTimeMs != null ? Math.max(0, recordingOffset + gameTimeMs) : undefined,
           })
         }
-        if (resultCode === 'BombDetonated') {
-          const detLocal = (round.defuseRoundTime as number) ?? (round.defuseRoundMsec as number) ?? 0
-          const gameTimeMs = (roundStartGameMs.get(roundNum) ?? 0) + detLocal
+        // Keep the round outcome even when Riot supplies no timed detonation event.
+        if (spikeDetonated && detonateLocal != null && roundStart != null) {
+          const gameTimeMs = roundStart + detonateLocal
           this.matchData.spikeDetonations.push({
             EventID: roundNum * 100 + 30, EventName: 'SpikeDetonated',
-            EventTime: detLocal, round: roundNum, gameTimeMs,
+            EventTime: gameTimeMs / 1000, round: roundNum, gameTimeMs,
             videoOffsetMs: Math.max(0, recordingOffset + gameTimeMs),
           })
         }
@@ -1688,7 +1712,7 @@ export class RiotLocalApi {
         this.matchData.roundScores.push({
           allyScore: derived.allyScore,
           enemyScore: derived.enemyScore,
-          detectedAt: Date.now(),
+          detectedAt: this.matchData.endTime ?? Date.now(),
         })
       }
     }
@@ -1953,6 +1977,92 @@ export class RiotLocalApi {
   }
 
   /**
+   * Dev proof of concept: build debrief-ready timelines for recent matches straight
+   * from Riot history, with no recording. Uses the same conversion as uploads.
+   */
+  async fetchRecentMatchTimelines(limit: number = 10): Promise<RecentMatchFetchResult> {
+    // Refresh the identity as well as tokens: the user may have switched Riot accounts.
+    const authenticated = await this.initAuth()
+    if (!this.region && this.lockfileData) await this._refreshRegionFromClient('poc-recent')
+    if (!authenticated || !this.region || !this.ownPuuid || !this.accessToken || !this.entitlementsToken) {
+      return { ok: false, reason: 'riot_auth_missing — open the Riot Client and sign in', matches: [] }
+    }
+
+    const count = typeof limit === 'number' && Number.isFinite(limit)
+      ? Math.max(1, Math.min(Math.floor(limit), 20)) : 10
+    const history = await this._fetchRecentMatchHistory(count)
+    if (!history) return { ok: false, reason: 'match_history_unavailable', matches: [] }
+    if (!history.length) return { ok: false, reason: 'no_recent_matches', matches: [] }
+
+    const identity = { puuid: this.ownPuuid, name: this.playerName, tag: this.playerTag, region: this.region }
+    const matches: RecentMatchFetchResult['matches'] = []
+    for (const entry of history.slice(0, count)) {
+      const started = Date.now()
+      let gameStartTimeMs = entry.gameStartTimeMs
+      try {
+        const details = await this._fetchMatchDetails(entry.matchId)
+        if (!details) throw new Error('match_details_unavailable')
+        const info = details.matchInfo as Record<string, unknown> | undefined
+        if (info?.matchId && String(info.matchId).toLowerCase() !== entry.matchId.toLowerCase()) {
+          throw new Error('match_id_mismatch')
+        }
+        if (info?.isCompleted === false) throw new Error('match_not_completed')
+        const own = (details.players as Array<Record<string, unknown>> | undefined)
+          ?.find((player) => (player.subject as string)?.toLowerCase() === identity.puuid.toLowerCase())
+        if (!own) throw new Error('player_missing_from_match')
+        const stats = own.stats as Record<string, unknown> | undefined
+        if (!stats || !['kills', 'deaths', 'assists'].every((key) => (
+          typeof stats[key] === 'number' && Number.isInteger(stats[key]) && (stats[key] as number) >= 0
+        ))) throw new Error('player_stats_missing')
+
+        // History can omit timing; MatchDetails contains the authoritative historical date.
+        const detailsStart = info?.gameStartMillis
+        if (typeof detailsStart === 'number' && Number.isFinite(detailsStart) && detailsStart > 0) {
+          gameStartTimeMs = detailsStart
+        }
+        if (gameStartTimeMs == null || !Number.isFinite(gameStartTimeMs) || gameStartTimeMs <= 0) {
+          throw new Error('match_start_time_missing')
+        }
+        const timeline = emptyMatchData('valorant', gameStartTimeMs)
+        timeline.matchId = entry.matchId
+        timeline.puuid = identity.puuid
+        timeline.region = identity.region
+        timeline.playerName = (own.gameName as string)?.trim() || identity.name
+        timeline.playerTag = (own.tagLine as string)?.trim() || identity.tag
+        timeline.matchStartTime = gameStartTimeMs
+        timeline.startTime = gameStartTimeMs
+        const duration = info?.gameLengthMillis
+        timeline.endTime = typeof duration === 'number' && Number.isFinite(duration) && duration > 0
+          ? gameStartTimeMs + duration : null
+        this.populateMatchDataFromDetails(timeline, details)
+        if (!timeline.playerName || !timeline.playerTag) throw new Error('player_identity_missing')
+        if (!timeline.finalStats) throw new Error('player_stats_missing')
+        if (!timeline.killEvents.length && !timeline.roundSummaries.length) throw new Error('conversion_empty')
+
+        const warnings: string[] = []
+        if (timeline.playerKills.length !== timeline.finalStats.kills) warnings.push('player_kill_event_count_mismatch')
+        if (timeline.playerDeaths.length !== timeline.finalStats.deaths) warnings.push('player_death_event_count_mismatch')
+        if (timeline.roundSummaries.length) {
+          const fields = ['kills', 'deaths', 'assists'] as const
+          if (fields.some((key) => timeline.roundSummaries.reduce((total, round) => (
+            total + (round.playerStats?.[key] ?? 0)
+          ), 0) !== timeline.finalStats![key])) warnings.push('player_round_totals_mismatch')
+        }
+        if (timeline.endTime == null) warnings.push('match_duration_missing')
+        matches.push({ matchId: entry.matchId, gameStartTimeMs, fetchMs: Date.now() - started, timeline, warnings })
+      } catch (err) {
+        // One unavailable/malformed match must not discard the rest of the batch.
+        matches.push({
+          matchId: entry.matchId, gameStartTimeMs, fetchMs: Date.now() - started, timeline: null,
+          error: err instanceof Error ? err.message : 'match_conversion_failed',
+        })
+      }
+    }
+    const ok = matches.every((match) => match.timeline !== null)
+    return { ok, reason: ok ? undefined : 'some_matches_failed', matches }
+  }
+
+  /**
    * Populate an existing MatchData's kills/rounds from a late-fetched MatchDetails response.
    * Used to backfill kill events after Riot has finished processing the match.
    */
@@ -1965,8 +2075,13 @@ export class RiotLocalApi {
       return
     }
     const prev = this.matchData
+    const prevMode = this.lastGameMode
+    matchData.matchDetails = details
     this.matchData = matchData
-    try { this._populateFromMatchDetails(details) } finally { this.matchData = prev }
+    try { this._populateFromMatchDetails(details) } finally {
+      this.matchData = prev
+      this.lastGameMode = prevMode
+    }
   }
 
   /**
@@ -2096,58 +2211,6 @@ function computeRecordingOffsetMeta(timeline: Pick<MatchData, 'gameplayStartTime
   return { offset: -recordingLagMs, recordingLagMs, clockSkewMs, loadSkewMs, reference: 'recordingLag' }
 }
 
-/** Estimate each round's gameplay-start ms from kill gameTime − roundTime. */
-function buildRoundStartGameMs(
-  allKills: Array<Record<string, unknown>> | undefined,
-  roundCount?: number,
-): Map<number, number> {
-  const map = new Map<number, number>()
-  for (const k of allKills ?? []) {
-    const r = (k.round as number) ?? 0
-    const gameTime = (k.timeSinceGameStartMillis as number) ?? (k.gameTime as number) ?? 0
-    const roundTime = (k.roundTime as number) ?? (k.timeSinceRoundStartMillis as number) ?? -1
-    if (gameTime <= 0 || roundTime < 0) continue
-    const start = gameTime - roundTime
-    const prev = map.get(r)
-    if (prev == null || start < prev) map.set(r, start)
-  }
-  if (map.size === 0) return map
-
-  const knownRounds = [...map.keys()].sort((a, b) => a - b)
-  const maxRound = roundCount != null && roundCount > 0
-    ? roundCount - 1
-    : knownRounds[knownRounds.length - 1]!
-
-  const durations: number[] = []
-  for (let i = 1; i < knownRounds.length; i++) {
-    const prevRound = knownRounds[i - 1]!
-    const currRound = knownRounds[i]!
-    const duration = map.get(currRound)! - map.get(prevRound)!
-    if (duration >= 30_000 && duration <= 180_000) durations.push(duration)
-  }
-  const avgRoundMs = durations.length > 0
-    ? Math.round(durations.reduce((sum, d) => sum + d, 0) / durations.length)
-    : 100_000
-
-  for (let round = 0; round <= maxRound; round++) {
-    if (map.has(round)) continue
-    let lowerRound = -1
-    for (const known of knownRounds) {
-      if (known < round) lowerRound = known
-      else break
-    }
-    if (lowerRound >= 0) {
-      map.set(round, map.get(lowerRound)! + (round - lowerRound) * avgRoundMs)
-      continue
-    }
-    const firstRound = knownRounds[0]!
-    map.set(round, Math.max(0, map.get(firstRound)! - (firstRound - round) * avgRoundMs))
-  }
-
-  return map
-}
-
-
 /**
  * True when MatchDetails still needs to supply core kill/round stats.
  * Implementation lives in match-data-quality.ts (re-exported above).
@@ -2238,7 +2301,7 @@ export function recomputeTimelineVideoOffsets(timeline: MatchData): void {
 
   for (const fb of timeline.firstBloods ?? []) {
     const tsgm = fb.timeSinceGameStartMillis
-      ?? (fb.EventTime > 0 ? Math.round(fb.EventTime * 1000) : null)
+      ?? (fb.EventTime != null && fb.EventTime > 0 ? Math.round(fb.EventTime * 1000) : null)
     if (tsgm != null && !isNaN(tsgm)) {
       fb.videoOffsetMs = gameTimeToEventVideoOffsetMs(timeline, tsgm)
     }
@@ -2255,7 +2318,7 @@ export function recomputeTimelineVideoOffsets(timeline: MatchData): void {
 
   for (const obj of timeline.objectiveEvents ?? []) {
     const tsgm = obj.timeSinceGameStartMillis
-      ?? (obj.EventTime > 0 ? Math.round(obj.EventTime * 1000) : null)
+      ?? (obj.EventTime != null && obj.EventTime > 0 ? Math.round(obj.EventTime * 1000) : null)
     if (tsgm != null && !isNaN(tsgm)) {
       obj.videoOffsetMs = gameTimeToEventVideoOffsetMs(timeline, tsgm)
     }
@@ -2279,6 +2342,10 @@ function buildFirstBloodByRound(
     const killer = (k.killer as string) ?? ''
     const victim = (k.victim as string) ?? ''
     if (!killer || !victim) continue
+    if (!isCombatPlayerKill({
+      killerPuuid: killer, victimPuuid: victim,
+      finishingDamage: k.finishingDamage as { damageType?: string } | undefined,
+    })) continue
     const round = (k.round as number) ?? 0
     const rawTsgm = k.timeSinceGameStartMillis as number | undefined
     const tsgm = (rawTsgm != null && rawTsgm > 0)

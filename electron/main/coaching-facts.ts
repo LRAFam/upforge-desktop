@@ -3,6 +3,7 @@
  * (e.g. claiming an ult was used when Riot reports ultimateCasts=0).
  */
 import type { KillEvent, MatchData } from './riot-types'
+import { reportedAbilityCasts } from './valorant-coaching-quality'
 
 export interface MatchAbilityCastTotals {
   grenade: number
@@ -17,13 +18,15 @@ export interface CoachingAbilityKillEvent {
   weapon: string | null
   abilitySlot: string | null
   victimName: string
+  victimPuuid?: string
+  timeSinceGameStartMillis?: number
 }
 
 export interface CoachingRoundFact {
   round: number
   damageDealt: number | null
-  playerKills: number
-  playerDeaths: number
+  playerKills: number | null
+  playerDeaths: number | null
   abilityKills: string[]
 }
 
@@ -35,28 +38,22 @@ export interface CoachingFacts {
 
 function ownAbilityCasts(timeline: MatchData): MatchAbilityCastTotals | null {
   const puuid = timeline.puuid?.toLowerCase()
+  const players = timeline.matchDetails?.players as Array<Record<string, unknown>> | undefined
+  if (players) {
+    const own = players.find(p => (p.subject as string)?.toLowerCase() === puuid)
+    return reportedAbilityCasts((own?.stats as Record<string, unknown> | undefined)?.abilityCasts)
+  }
   if (puuid && timeline.teamSnapshot?.length) {
     const row = timeline.teamSnapshot.find((p) => p.puuid?.toLowerCase() === puuid)
     if (row?.abilityCasts) return { ...row.abilityCasts }
   }
 
-  const players = timeline.matchDetails?.players as Array<Record<string, unknown>> | undefined
-  const own = players?.find((p) => (p.subject as string)?.toLowerCase() === puuid)
-  const casts = own?.stats as Record<string, unknown> | undefined
-  const ac = casts?.abilityCasts as Record<string, number> | undefined
-  if (!ac) return null
-
-  return {
-    grenade: ac.grenadeCasts ?? 0,
-    ability1: ac.ability1Casts ?? 0,
-    ability2: ac.ability2Casts ?? 0,
-    ultimate: ac.ultimateCasts ?? 0,
-  }
+  return null
 }
 
 function isOwnKill(k: KillEvent, timeline: MatchData): boolean {
   const puuid = timeline.puuid?.toLowerCase()
-  if (puuid && k.killerPuuid?.toLowerCase() === puuid) return true
+  if (puuid && k.killerPuuid) return k.killerPuuid.toLowerCase() === puuid
   const name = timeline.playerName?.toLowerCase()
   return !!name && k.killerName.toLowerCase() === name
 }
@@ -75,6 +72,8 @@ export function buildCoachingFacts(timeline: MatchData): CoachingFacts {
       weapon: k.weapon ?? null,
       abilitySlot: k.abilitySlot ?? null,
       victimName: k.victimName,
+      victimPuuid: k.victimPuuid,
+      timeSinceGameStartMillis: k.timeSinceGameStartMillis,
     })
   }
 
@@ -88,8 +87,8 @@ export function buildCoachingFacts(timeline: MatchData): CoachingFacts {
     return {
       round,
       damageDealt: rs.playerDamageDealt ?? null,
-      playerKills: rs.playerStats?.kills ?? 0,
-      playerDeaths: rs.playerStats?.deaths ?? 0,
+      playerKills: rs.playerStats?.kills ?? null,
+      playerDeaths: rs.playerStats?.deaths ?? null,
       abilityKills,
     }
   })

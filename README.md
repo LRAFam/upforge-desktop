@@ -33,6 +33,9 @@ npm run dev
 
 > OBS Studio must be installed and connectable (Settings → Recording). Windows is the primary recording platform.
 
+The [recent-match coaching PoC](docs/poc-recent-matches/README.md) includes a verified
+Bind export, an example coaching report, and an offline check you can run on macOS.
+
 ## Building for Windows
 
 ```bash

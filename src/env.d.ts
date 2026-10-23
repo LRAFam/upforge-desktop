@@ -338,7 +338,7 @@ export interface PendingRecording {
       kills: number
       deaths: number
       assists: number
-      score: number
+      score: number | null
       headshotPct: number | null
       won?: boolean
       agent?: string | null
@@ -1112,7 +1112,11 @@ declare global {
         install: () => Promise<void>
       }
       debug: {
+        recentMatchExportVersion: number
         testRiotApi: () => Promise<{ portOpen: boolean; gameMode: string | null; processRunning: boolean }>
+        pocRecentMatches: (limit?: number) => Promise<import('../electron/main/recent-match-export').RecentMatchReport>
+        openRecentMatchesFolder: () => Promise<string>
+        getRecentMatchesReport: () => Promise<import('../electron/main/recent-match-export').RecentMatchReport | null>
         probeLolLcu: () => Promise<{
           ok: boolean
           platform: string

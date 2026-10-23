@@ -327,6 +327,11 @@
             >{{ testingRiot ? 'Testing…' : 'Test Riot API' }}</button>
             <button
               class="px-3 py-1.5 rounded-lg text-xs bg-white/[0.05] hover:bg-white/[0.09] text-gray-300 hover:text-white transition-colors"
+              :disabled="fetchingRecent || !recentExporterReady"
+              @click="pocRecentMatches"
+            >{{ fetchingRecent ? 'Fetching…' : 'PoC: Save Recent Matches' }}</button>
+            <button
+              class="px-3 py-1.5 rounded-lg text-xs bg-white/[0.05] hover:bg-white/[0.09] text-gray-300 hover:text-white transition-colors"
               :disabled="probingLcu"
               @click="probeLolLcu"
             >{{ probingLcu ? 'Probing…' : 'Probe League LCU' }}</button>
@@ -335,7 +340,55 @@
               @click="findHotkeyConflicts"
             >Find Hotkey Conflicts</button>
           </div>
-          <div v-if="toolResult" class="mt-2 px-3 py-2 rounded-lg bg-gray-900 border border-white/[0.10] text-xs text-gray-300 font-mono whitespace-pre-wrap">{{ toolResult }}</div>
+          <p v-if="!recentExporterReady" class="mt-2 text-xs text-amber-300">Restart UpForge after your match to load the updated PoC exporter.</p>
+          <div v-if="recentMatchReport" class="mt-3 space-y-2 text-xs text-gray-300 select-text">
+            <div class="flex items-center justify-between gap-3">
+              <p>
+                Saved {{ recentMatchReport.successfulMatches }} of {{ recentMatchReport.matches.length }} matches
+                in {{ (recentMatchReport.totalMs / 1000).toFixed(1) }}s.
+                <span v-if="recentMatchReport.reason" class="text-amber-300">{{ recentMatchReport.reason }}</span>
+              </p>
+              <button class="text-amber-300 hover:text-amber-200" @click="openRecentMatchesFolder">Open saved files</button>
+            </div>
+            <p class="text-gray-400">K/D/A is your scoreboard total. Match events includes all players. Coaching uses verified fields; unavailable metrics remain unknown.</p>
+            <div class="overflow-x-auto rounded-lg border border-white/[0.10]">
+              <table class="w-full text-left">
+                <thead class="bg-white/[0.04] text-gray-400">
+                  <tr>
+                    <th class="p-2">Started (local)</th><th class="p-2">Player</th>
+                    <th class="p-2">Map / agent</th><th class="p-2">Mode</th>
+                    <th class="p-2">Your K/D/A</th><th class="p-2">Rounds</th>
+                    <th class="p-2">Match events</th><th class="p-2">Coaching data</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-for="match in recentMatchReport.matches" :key="match.matchId" class="border-t border-white/[0.07]">
+                    <td class="p-2 whitespace-nowrap">{{ match.startedAt ? new Date(match.startedAt).toLocaleString() : 'Unknown' }}</td>
+                    <td class="p-2">{{ match.playerName ? `${match.playerName}#${match.playerTag ?? '?'}` : 'Unknown' }}</td>
+                    <td class="p-2">{{ match.map ?? '—' }} / {{ match.agent ?? '—' }}</td>
+                    <td class="p-2">{{ match.mode ?? '—' }}</td>
+                    <td class="p-2 whitespace-nowrap font-mono">{{ match.kills ?? '—' }}/{{ match.deaths ?? '—' }}/{{ match.assists ?? '—' }}</td>
+                    <td class="p-2">{{ match.rounds }}</td><td class="p-2">{{ match.matchKillEvents }}</td>
+                    <td class="p-2" :class="match.coachingStatus === 'verified_fields_only' ? 'text-emerald-300' : 'text-amber-300'">
+                      {{ match.error || (match.coachingStatus === 'verified_fields_only' ? 'Verified fields only' : 'Blocked') }}
+                      <p v-if="match.ok" class="mt-1 text-gray-400">{{ unavailableMetrics(match.capabilities) }}</p>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <p class="break-all text-gray-500">{{ recentMatchReport.folder }}</p>
+          </div>
+          <div v-if="toolResult" class="mt-3 space-y-2">
+            <div class="flex items-center gap-3 text-xs">
+              <button class="text-amber-300 hover:text-amber-200" @click="copyToolResult">Copy result</button>
+              <span v-if="toolActionMessage" class="text-gray-400">{{ toolActionMessage }}</span>
+            </div>
+            <textarea
+              :value="toolResult" readonly aria-label="Tool result JSON" rows="10"
+              class="w-full select-text rounded-lg bg-gray-900 border border-white/[0.10] p-3 text-xs text-gray-300 font-mono"
+            />
+          </div>
         </DevSection>
 
         <!-- Activity Log -->
@@ -385,6 +438,8 @@ const lastRefreshed = ref('')
 const testingRiot = ref(false)
 const probingLcu = ref(false)
 const toolResult = ref<string | null>(null)
+const recentMatchReport = ref<Awaited<ReturnType<typeof window.api.debug.pocRecentMatches>> | null>(null)
+const toolActionMessage = ref('')
 let refreshInterval: ReturnType<typeof setInterval> | null = null
 
 // Guard — redirect if neither dev mode nor admin
@@ -401,6 +456,13 @@ onMounted(async () => {
     }
   } catch { /* allow through */ }
   await refresh()
+  try {
+    const saved = await window.api.debug.getRecentMatchesReport()
+    if (saved) {
+      recentMatchReport.value = saved
+      toolResult.value = JSON.stringify(saved, null, 2)
+    }
+  } catch { /* no previous PoC result */ }
   refreshInterval = setInterval(refresh, 5000)
 })
 
@@ -527,7 +589,54 @@ function formatTime(ts: number): string {
 
 // ── Tools ─────────────────────────────────────────────────────────────────────
 
+const fetchingRecent = ref(false)
+const recentExporterReady = window.api.debug.recentMatchExportVersion === 3
+
+function unavailableMetrics(capabilities: Record<string, string>) {
+  const labels: Record<string, string> = { averageDamagePerRound: 'ADR', headshotPercent: 'HS%',
+    economy: 'economy', abilityCastTotals: 'ability totals', eventPositionSnapshots: 'map snapshots' }
+  const missing = Object.entries(labels).filter(([key]) => capabilities[key] !== 'available').map(([, label]) => label)
+  return missing.length ? `Unavailable: ${missing.join(', ')}` : 'Stats and event snapshots available'
+}
+
+async function pocRecentMatches() {
+  if (!recentExporterReady) return
+  fetchingRecent.value = true
+  toolResult.value = null
+  recentMatchReport.value = null
+  toolActionMessage.value = ''
+  try {
+    const result = await window.api.debug.pocRecentMatches(10)
+    recentMatchReport.value = result
+    toolResult.value = JSON.stringify(result, null, 2)
+  } catch (err: unknown) {
+    toolResult.value = `Error: ${err instanceof Error ? err.message : String(err)}`
+  } finally {
+    fetchingRecent.value = false
+  }
+}
+
+async function copyToolResult() {
+  if (!toolResult.value) return
+  try {
+    await navigator.clipboard.writeText(toolResult.value)
+    toolActionMessage.value = 'Copied'
+  } catch {
+    toolActionMessage.value = 'Select the result text below and press Cmd+C on Mac or Ctrl+C on Windows.'
+  }
+}
+
+async function openRecentMatchesFolder() {
+  try {
+    toolActionMessage.value = await window.api.debug.openRecentMatchesFolder()
+  } catch (err: unknown) {
+    toolActionMessage.value = err instanceof Error ? err.message : String(err)
+  }
+}
+
 async function testRiotApi() {
+  recentMatchReport.value = null
+  toolActionMessage.value = ''
   testingRiot.value = true
   toolResult.value = null
   try {
@@ -541,6 +650,8 @@ async function testRiotApi() {
 }
 
 async function probeLolLcu() {
+  recentMatchReport.value = null
+  toolActionMessage.value = ''
   probingLcu.value = true
   toolResult.value = null
   try {
@@ -557,6 +668,8 @@ async function probeLolLcu() {
 }
 
 async function findHotkeyConflicts() {
+  recentMatchReport.value = null
+  toolActionMessage.value = ''
   toolResult.value = 'Searching for conflicts…'
   try {
     const result = await window.api.debug.findHotkeyConflict()

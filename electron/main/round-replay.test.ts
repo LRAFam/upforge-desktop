@@ -116,5 +116,51 @@ describe('buildMatchRoundReplay', () => {
     expect(replay!.rounds[0]!.frames).toHaveLength(1)
     expect(replay!.rounds[0]!.frames[0]!.k).toBe('kill')
     expect(replay!.rounds[0]!.frames[0]!.p.length).toBeGreaterThanOrEqual(2)
+    expect(replay!.rounds[0]!.frames[0]!.p.find(p => p.i === 0)).toMatchObject({ alive: true, aliveSource: 'event_actor' })
+    expect(replay!.rounds[0]!.frames[0]!.p.find(p => p.i === 1)).toMatchObject({ alive: false, aliveSource: 'event_victim' })
+    expect(replay!.rounds[0]!.endMs).toBeNull()
+  })
+
+  it('does not apply a future death to a plant or infer other players life state', () => {
+    const match = baseMatch()
+    const raw = match.matchDetails!
+    const kills = raw.kills as Array<Record<string, unknown>>
+    kills.push({ ...kills[0], gameTime: 60_000, timeSinceGameStartMillis: 60_000, roundTime: 27_000,
+      killer: 'enemy-puuid', victim: 'own-puuid' })
+    raw.roundResults = [{ roundNum: 0, bombPlanter: 'own-puuid', plantRoundTime: 20_000,
+      plantPlayerLocations: kills[0].playerLocations, plantLocation: { x: 100, y: 200 } }]
+    const frames = buildMatchRoundReplay(match)!.rounds[0].frames
+    expect(frames.map(f => f.k)).toEqual(['kill', 'plant', 'kill'])
+    const plant = frames[1]
+    expect(plant.p.find(p => p.i === 0)).toMatchObject({ alive: true, aliveSource: 'event_actor' })
+    expect(plant.p.find(p => p.i === 1)).toMatchObject({ alive: null, aliveSource: 'unknown' })
+  })
+
+  it.each(['DEATHMATCH', 'TEAMDEATHMATCH', 'COMPETITIVE'])('handles later weapon kills after a death in %s without inventing a respawn time', (gameMode) => {
+    const match = baseMatch({ gameMode })
+    const kills = match.matchDetails!.kills as Array<Record<string, unknown>>
+    kills.push({ ...kills[0], timeSinceGameStartMillis: 0, gameTime: 60_000, roundTime: 27_000,
+      killer: 'enemy-puuid', victim: 'own-puuid' })
+    const frames = buildMatchRoundReplay(match)!.rounds[0].frames
+    expect(frames[1].t).toBe(60_000)
+    expect(frames[1].p.find(p => p.i === 1)?.alive).toBe(true)
+    expect(frames[1].p.find(p => p.i === 0)?.alive).toBe(false)
+  })
+
+  it('does not treat a posthumous ability kill as proof the killer is alive', () => {
+    const match = baseMatch()
+    const kill = (match.matchDetails!.kills as Array<Record<string, unknown>>)[0]
+    kill.finishingDamage = { damageType: 'Ability', damageItem: 'Grenade' }
+    expect(buildMatchRoundReplay(match)!.rounds[0].frames[0].p.find(p => p.i === 0)?.alive).toBeNull()
+  })
+
+  it('keeps objective time unknown when the round has no observed clock anchor', () => {
+    const match = baseMatch()
+    const locs = (match.matchDetails!.kills as Array<Record<string, unknown>>)[0].playerLocations
+    match.matchDetails!.roundResults = [{ roundNum: 1, bombPlanter: 'own-puuid', plantRoundTime: 20_000, plantPlayerLocations: locs }]
+    const round = buildMatchRoundReplay(match)!.rounds.find(r => r.r === 1)!
+    expect(round.frames[0]).toMatchObject({ t: null, rt: 20_000 })
+    expect(round.frames[0].v).toBeUndefined()
+    expect(round.endMs).toBeNull()
   })
 })

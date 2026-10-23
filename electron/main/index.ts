@@ -111,6 +111,7 @@ import {
   RiotLocalApi,
   recomputeTimelineVideoOffsets,
 } from './riot-local-api'
+import { readRecentMatchReport, saveRecentMatchExports } from './recent-match-export'
 import { decideRiotAccountSwitch } from './riot-account-switch'
 import { isModeFilteredOut, getRecordedModesForGame, recordableModesForGame, normalizeCs2GameMode } from './recorded-modes-filter'
 import { applyLiveKillStampsToTimeline } from './live-kill-stamps'
@@ -7093,6 +7094,22 @@ async function startApp(): Promise<void> {
     const logGameMode = await riotLocalApi.getGameModeFromLog()
     const processRunning = await gameDetector.isMatchProcessRunning()
     return { portOpen, gameMode, logGameMode, processRunning }
+  })
+
+  let recentMatchesFolder = join(app.getPath('userData'), 'poc-recent-matches')
+  // Debug PoC: export coaching facts from Riot history without pretending a VOD exists.
+  ipcMain.handle('debug:poc-recent-matches', async (_e, limit: number = 10) => {
+    const started = Date.now()
+    const result = await riotLocalApi.fetchRecentMatchTimelines(limit)
+    const report = await saveRecentMatchExports(result, join(app.getPath('userData'), 'poc-recent-matches'), started)
+    recentMatchesFolder = report.folder
+    return report
+  })
+  ipcMain.handle('debug:poc-open-folder', () => shell.openPath(recentMatchesFolder))
+  ipcMain.handle('debug:poc-latest-report', async () => {
+    const report = await readRecentMatchReport(join(app.getPath('userData'), 'poc-recent-matches'))
+    if (report) recentMatchesFolder = report.folder
+    return report
   })
 
   ipcMain.handle('debug:probe-lol-lcu', async () => {
