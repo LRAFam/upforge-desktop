@@ -79,8 +79,10 @@ Windows paths. The other players' account names were not provided by Riot.
 - Ability casts are reported match totals. They do not establish cast timing,
   remaining charges or utility effectiveness. Missing round-end/objective times
   are not estimated.
-- Unverified trade, isolation, callout and population-benchmark claims are
-  removed from coaching submissions. Check `dataQuality.capabilities` and
+- Trade/untraded flags and death callouts (`event.spatial`, `spatialSummary`)
+  are kept: they come from Riot kill timing and positions (a teammate kills
+  your killer, or an enemy within 25 m of your death, within 3 s). Check
+  `dataQuality.capabilities` (e.g. `tradeAndIsolationJudgments`) and
   `limitations` before drawing conclusions. Inconsistent source facts block an
   export and are stripped from the shared coaching payload.
 
