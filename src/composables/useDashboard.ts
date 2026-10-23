@@ -1,3 +1,4 @@
+import { openUpgrade as startUpgrade } from '../lib/upgrade'
 import { ref, computed, inject, provide, watch, onMounted, onUnmounted, type InjectionKey } from 'vue'
 import { useRouter } from 'vue-router'
 import type { ProfileData, AnalysisItem, PendingRecording, ClipRecord, DeadlockProfileStats } from '../env.d.ts'
@@ -1295,9 +1296,9 @@ function createDashboard() {
     }
   }
 
-  function openUpgrade() { window.open('https://upforge.gg/pricing', '_blank') }
-  function openPpa() { window.open('https://upforge.gg/pricing#reports', '_blank') }
-  function openBundles() { window.open('https://upforge.gg/pricing#reports', '_blank') }
+  function openUpgrade() { startUpgrade('dashboard') }
+  function openPpa() { startUpgrade('dashboard_reports', { kind: 'pack' }) }
+  function openBundles() { startUpgrade('dashboard_reports', { kind: 'pack' }) }
 
   function showBillingError(message: string) {
     warning.value = message

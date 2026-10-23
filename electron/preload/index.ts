@@ -88,6 +88,10 @@ const api = {
       ipcRenderer.invoke('app:focus-navigate', target),
     openUrl: (url: string) => ipcRenderer.invoke('app:open-url', { url }),
     openWebShell: (path: string) => ipcRenderer.invoke('app:open-web-shell', { path }),
+    startCheckout: (
+      intent: { kind: 'plan'; tier: 'plus' | 'pro' } | { kind: 'pack' } | { kind: 'browse'; path?: string },
+      source: string,
+    ) => ipcRenderer.invoke('billing:start-checkout', { intent, source }),
     refreshDashboard: () => ipcRenderer.invoke('app:refresh-dashboard'),
     openVodReview: (id: string, seekMs?: number) =>
       ipcRenderer.invoke('app:open-vod-review', { id, seekMs }),

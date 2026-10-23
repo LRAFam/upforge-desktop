@@ -71,7 +71,7 @@ const retention = (value: string | null) => cloudRetention(value, retentionNow.v
 const planError = ref('')
 async function plans() {
   planError.value = ''
-  try { if (!(await window.api.app.openUrl('https://upforge.gg/pricing')).ok) planError.value = 'Could not open pricing. Please try again.' }
+  try { if (!(await window.api.app.startCheckout({ kind: 'browse' }, 'cloud_storage')).ok) planError.value = 'Could not open pricing. Please try again.' }
   catch { planError.value = 'Could not open pricing. Please try again.' }
 }
 const playerDialog = ref<HTMLDialogElement | null>(null)
