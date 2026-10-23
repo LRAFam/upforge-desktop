@@ -229,6 +229,7 @@
 </template>
 
 <script setup lang="ts">
+import { openUpgrade as startUpgrade } from './lib/upgrade'
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import AchievementManager from './components/AchievementManager.vue'
@@ -338,7 +339,7 @@ function openRiotLinkSettings() {
 
 function openRiotLinkUpgrade() {
   closeRiotLinkPrompt()
-  window.open('https://upforge.gg/pricing', '_blank')
+  startUpgrade('riot_alt_account', { kind: 'plan', tier: 'plus' })
 }
 
 const showObsBanner = computed(() =>

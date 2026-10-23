@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { openUpgrade as startUpgrade } from '../../lib/upgrade'
 import { computed, onMounted, onBeforeUnmount, ref, watch } from 'vue'
 import { onBeforeRouteLeave } from 'vue-router'
 import { coachAccessState, coachQuestionPayload, validCoachHistory, type CoachMoment, type CoachHistory, type CoachQuestion } from '../../lib/workspace-coach'
@@ -17,7 +18,7 @@ const working = computed(() => history.value?.items.some(item => item.status ===
 const remaining = computed(() => history.value ? Math.min(history.value.usage.analysis_remaining, history.value.usage.daily_remaining) : 0)
 const access = computed(() => coachAccessState(history.value))
 const canSubmit = computed(() => !!pending.value || access.value === 'included' || access.value === 'credit')
-function viewPlans() { void window.api.app.openUrl('https://upforge.gg/pricing') }
+function viewPlans() { startUpgrade('vod_coach') }
 const starters = ['What should I compare between these moments?', 'What does the evidence support here?', 'What should I focus on next match?']
 function reload() { clearTimeout(timer); void refresh() }
 async function refresh() {

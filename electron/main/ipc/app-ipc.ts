@@ -21,7 +21,9 @@ import { hasProAccess } from '../subscription'
 import { getActiveUserId } from '../user-session'
 import { resolveRecordingSavePath } from '../user-data-paths'
 import { openPathSafe } from '../shell-open'
-import { trackOnboardingComplete, trackReportOpened } from '../funnel-events'
+import { trackOnboardingComplete, trackReportOpened, trackUpgradeClicked } from '../funnel-events'
+import { startCheckout, type CheckoutIntent } from '../billing-checkout'
+import { getFrontendBaseUrl } from '../api-base'
 import { applyLayoutForRoute } from '../window-layouts'
 import { isInGameOverlayEnabled } from '../in-game-overlay'
 import { closeWebShell, openWebShell } from '../web-shell'
@@ -141,6 +143,26 @@ export function setupAppHandlers(
         error: err instanceof Error ? err.message : String(err),
       }
     }
+  })
+
+  // Upgrade buttons: Stripe checkout for the logged-in user, or the logged-in pricing page.
+  ipcMain.handle('billing:start-checkout', async (e, { intent, source }: { intent: CheckoutIntent; source: string }) => {
+    const parent = BrowserWindow.fromWebContents(e.sender)
+    const safeSource = typeof source === 'string' ? source.slice(0, 40) : 'unknown'
+    return startCheckout(intent, safeSource, {
+      post: auth.isAuthenticated()
+        ? async (path, body) => {
+            const res = await auth.getApi().post(path, body, { validateStatus: () => true })
+            return { status: res.status, data: res.data }
+          }
+        : null,
+      openExternal: url => shell.openExternal(url),
+      openWebPath: async path => {
+        const opened = await openWebShell(auth, path, parent).catch(() => ({ ok: false }))
+        if (!opened.ok) await shell.openExternal(`${getFrontendBaseUrl().replace(/\/$/, '')}${path}`)
+      },
+      trackUpgradeClicked,
+    })
   })
 
   ipcMain.handle('web-shell:close', () => {

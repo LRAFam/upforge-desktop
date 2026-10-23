@@ -1,3 +1,4 @@
+import { openUpgrade as startUpgrade } from '../lib/upgrade'
 import { CleanupScope } from '../lib/cleanup-scope'
 import { ref, computed, reactive, inject, provide, onMounted, onUnmounted, toRaw, watch, type InjectionKey } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
@@ -999,7 +1000,7 @@ function createSettings() {
   }
   
   function openUpgrade(): void {
-    window.open('https://upforge.gg/pricing', '_blank')
+    startUpgrade('settings')
   }
   
   function openSite(): void {

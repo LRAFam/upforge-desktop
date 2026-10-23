@@ -752,6 +752,10 @@ declare global {
         openUrl: (url: string) => Promise<{ ok: boolean }>
         /** Open an upforge.gg path in the authenticated in-app web shell */
         openWebShell: (path: string) => Promise<{ ok: boolean; error?: string }>
+        startCheckout: (
+          intent: { kind: 'plan'; tier: 'plus' | 'pro' } | { kind: 'pack' } | { kind: 'browse'; path?: string },
+          source: string,
+        ) => Promise<{ ok: boolean; opened: 'stripe' | 'pricing' | 'billing'; reason?: string }>
         refreshDashboard: () => Promise<{ ok: boolean }>
         openVodReview: (id: string, seekMs?: number) => Promise<{ ok: boolean }>
       }
