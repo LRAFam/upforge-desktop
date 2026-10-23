@@ -13,7 +13,10 @@ import {
   sanitizeOpsProperties,
   trackOpsRecordingLap,
   trackOnboardingComplete,
+  trackRecordingFailed,
 } from './funnel-events'
+
+import { ActivationError } from './activation-error-codes'
 
 describe('sanitizeOpsProperties', () => {
   it('keeps path_fallback but drops path keys and absolute path strings', () => {
@@ -50,6 +53,22 @@ describe('trackOpsRecordingLap', () => {
     const body = post.mock.calls[0]![1]
     expect(body.event).toBe('desktop_onboarding_complete')
     expect(body.properties.recording_setup_status).toBe(status)
+  })
+
+  it.each(['obs_recording_start_timeout', 'obs_recording_no_data'] as const)(
+    'posts the structured %s code even when display wording changes', (code) => {
+      const error = new ActivationError(code, 'Technical diagnostic', 'Changed customer wording')
+      trackRecordingFailed(error, 'record')
+      expect(post).toHaveBeenCalledWith('/api/funnel-events', expect.objectContaining({
+        event: 'recording_failed',
+        properties: { game: 'valorant', reason: 'Changed customer wording', failure_code: code, phase: 'record' },
+      }))
+    },
+  )
+
+  it('keeps unclassified recording failures unknown', () => {
+    trackRecordingFailed(new Error('Unrecognised failure'), 'record')
+    expect(post.mock.calls[0]![1].properties.failure_code).toBe('unknown')
   })
 
   it('posts ops_recording_lap with sanitized properties', async () => {

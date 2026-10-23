@@ -33,7 +33,7 @@ import {
 } from './obs-disconnect-guard'
 import { nextUnownedClearAction } from './obs-unowned-clear'
 import { resolveObsRecordVerifyMs, waitForObsRecordArmed } from './obs-start-verify'
-import { classifyActivationError } from './activation-error-codes'
+import { ActivationError, classifyActivationError } from './activation-error-codes'
 import {
   buildRetargetMutationFlags,
   buildSetupMutationFlags,
@@ -548,10 +548,16 @@ export class OBSRecorder {
   private async captureSetupMutationFlags(): Promise<{ allowRecreate: boolean; outputsHot: boolean }> {
     let outputActive = false
     if (this._connected) {
-      try {
-        const status = await this._obs.call('GetRecordStatus') as { outputActive?: boolean }
-        outputActive = status.outputActive === true
-      } catch { /* non-fatal */ }
+      const status = await withTimeout(
+        this._obs.call('GetRecordStatus'),
+        5000,
+        'OBS recording status timed out during capture setup',
+      )
+      // Unknown output state must not authorize rebuilding a potentially live scene.
+      if (typeof status.outputActive !== 'boolean') {
+        throw new Error('OBS recording status is missing outputActive')
+      }
+      outputActive = status.outputActive
     }
     const { allowRecreate } = buildSetupMutationFlags({
       matchOwned: this._matchOwnedRecording,
@@ -1104,7 +1110,7 @@ export class OBSRecorder {
             'technical:',
             classified.technicalMessage,
           )
-          throw new Error(classified.userMessage)
+          throw new ActivationError('obs_recording_start_timeout', technical)
         }
         log.info('[OBSRecorder] StartRecord armed — outputActive=true after', verifyMs, 'ms budget')
         this._startDiagnostics.stage = 'wait_output_progress'
@@ -1142,6 +1148,9 @@ export class OBSRecorder {
       if (this._matchOwnedRecording) await this.stop()
       this._verifyingStart = false
       if (!this._recordingFailure) this.onStatusChange?.(false, msg, 'start')
+      if (err instanceof ActivationError) {
+        throw new ActivationError(err.code, err.technicalMessage, `OBS recording failed to start: ${msg}`, { cause: err })
+      }
       throw new Error(`OBS recording failed to start: ${msg}`, { cause: err })
     }
   }
@@ -1339,7 +1348,11 @@ export class OBSRecorder {
       this._disconnectedDuringRecording = false
       this._noteRecordingStopped()
       if (this._outputPath) await this._waitForRecordingFile(this._outputPath)
-      this.onStatusChange?.(false, this._recordingFailure ?? undefined, this._verifyingStart ? 'start' : 'stop')
+      // A capture failure already sent the stopped state and its error. Successful
+      // cleanup must not report that same failure again as a separate stop error.
+      if (!this._recordingFailure) {
+        this.onStatusChange?.(false, undefined, this._verifyingStart ? 'start' : 'stop')
+      }
       log.info('[OBSRecorder] Recording stop confirmed. Output:', this._outputPath)
       return this._outputPath
     } catch (err) {

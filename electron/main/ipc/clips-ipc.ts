@@ -75,7 +75,9 @@ export function setupClipHandlers(
   }
 
   ipcMain.handle('clips:get', (_e, opts?: { game?: string; allGames?: boolean }) => {
-    const all = clipStore.getAll()
+    const all = clipStore.getAll().map(clip => ({
+      ...clip, hasLocalFile: Boolean(clip.path && fs.existsSync(clip.path)),
+    }))
     if (opts?.allGames || !opts?.game) return all
     const game = normalizeClipGame(opts.game)
     return all.filter(c => clipMatchesGame(c, game))

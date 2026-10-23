@@ -326,7 +326,7 @@
                     {{ accountBusy ? 'Saving…' : 'Save CS2 name' }}
                   </button>
                 </div>
-                <p v-if="cs2Linked" class="text-[12px] text-emerald-400 mb-4">CS2 identity saved</p>
+                <p v-if="cs2Linked" class="text-[12px] text-emerald-400 mb-4">CS2 identity saved<span v-if="cs2SteamId">: {{ cs2SteamId }}</span></p>
                 <p v-if="accountError" class="text-[12px] text-red-400 mb-4">{{ accountError }}</p>
               </template>
 
@@ -681,7 +681,7 @@
               </div>
 
               <div
-                v-if="!missionActive && selectedGame === 'valorant' && obsConnected"
+                v-if="!missionActive && selectedGame === 'valorant' && obsConnected && bonusEligible"
                 class="mb-5 rounded-xl border border-emerald-500/20 bg-emerald-500/[0.05] px-4 py-4"
               >
                 <p class="text-sm font-bold text-white">Your first Pro analysis is included</p>
@@ -765,7 +765,7 @@
                 <button
                   type="button"
                   class="btn-primary w-full"
-                  :disabled="saving"
+                  :disabled="saving || bonusLoading"
                   @click="continueToFirstMatch"
                 >
                   <svg v-if="saving" class="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
@@ -779,13 +779,12 @@
                   <template v-else>{{ firstMatchCta }}</template>
                 </button>
                 <button
-                  v-if="!recordingSetupReady"
                   type="button"
                   class="btn-ghost w-full"
                   :disabled="saving"
                   @click="handleComplete()"
                 >
-                  Open dashboard and set up later
+                  {{ recordingSetupReady ? 'Continue without the bonus' : 'Open dashboard and set up later' }}
                 </button>
                 <p v-if="completeError" class="text-[12px] text-red-400 text-center">{{ completeError }}</p>
               </div>
@@ -815,6 +814,7 @@
 
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
+import { resolveOnboardingCompletionRoute } from '../lib/onboarding-gate'
 import { useRoute, useRouter } from 'vue-router'
 import { PRIMARY_GAME_ARTWORK, isPrimaryGame, type PrimaryGame } from '../lib/games'
 import { resolveMaxValorantAccounts } from '../lib/valorant-account-cap'
@@ -871,6 +871,8 @@ const step = ref(1)
 const slideDir = ref<'slide-left' | 'slide-right'>('slide-left')
 const saving = ref(false)
 const completeError = ref('')
+const bonusEligible = ref(false)
+const bonusLoading = ref(false)
 const obsConnecting = ref(false)
 const obsConnected = ref(false)
 const guidedSetupPassed = ref(false)
@@ -1016,6 +1018,7 @@ const missionCaptureChecks = computed(() => [
   },
 ])
 const missionCaptureMessage = computed(() => {
+  if (missionCaptureReadiness.value === 'recording_unverified') return 'Recording has started, but the picture is not verified. Check the preview and confirm that it shows your game.'
   if (missionCaptureReadiness.value === 'obs_disconnected') return missionRuntime.value.obsError || 'OBS disconnected. Reconnect it before playing.'
   if (missionCaptureReadiness.value === 'preflight_required') return 'OBS is connected, but the recording safety test needs to pass before you queue.'
   if (missionCaptureReadiness.value === 'waiting_for_game') return 'OBS is ready. Open Valorant and UpForge will verify the capture before you queue.'
@@ -1098,6 +1101,7 @@ const riotRegion = ref('na')
 const riotBusy = ref(false)
 
 const cs2SteamName = ref('')
+const cs2SteamId = ref<string | null>(null)
 const faceitNickname = ref('')
 const cs2Linked = ref(false)
 
@@ -1178,7 +1182,7 @@ const recordingSetupReady = computed(() => hasVerifiedOnboardingRecording({
 const firstMatchCta = computed(() =>
   !recordingSetupReady.value
     ? (obsError.value ? 'Retry recording setup' : 'Finish recording setup')
-    : selectedGame.value === 'valorant'
+    : selectedGame.value === 'valorant' && bonusEligible.value
     ? 'Start my free Pro analysis'
     : 'Open dashboard',
 )
@@ -1197,7 +1201,7 @@ function continueToFirstMatch() {
     step.value = 4
     return
   }
-  if (selectedGame.value === 'valorant') void startBonusMission()
+  if (selectedGame.value === 'valorant' && bonusEligible.value) void startBonusMission()
   else void handleComplete()
 }
 
@@ -1269,7 +1273,19 @@ watch(step, async (s) => {
       if (!st.connected) guidedSetupPassed.value = false
     } catch { /* ignore */ }
   }
-  if (s === 5) await refreshDiscordStatus()
+  if (s === 5) {
+    await refreshDiscordStatus()
+    if (selectedGame.value === 'valorant' && !missionActive.value) {
+      bonusLoading.value = true
+      try {
+        const bonus = await window.api.auth.getOnboardingBonus()
+        bonusEligible.value = isAdmin.value || bonus.eligible
+        if (bonus.error) completeError.value = bonus.error + '. You can continue to the dashboard.'
+      } catch {
+        completeError.value = 'Could not check the free analysis. You can continue to the dashboard.'
+      } finally { bonusLoading.value = false }
+    }
+  }
 })
 
 watch(selectedGame, async () => {
@@ -1393,6 +1409,7 @@ function minimizeOnboardingOnceRecordingConfirmed(recording: boolean) {
     missionActive: missionActive.value,
     recording,
     alreadyMinimized: missionWindowMinimizedForRecording,
+    captureConfirmed: missionCaptureVerified.value,
   })) return
 
   missionWindowMinimizedForRecording = true
@@ -1552,6 +1569,7 @@ async function confirmMissionCapture() {
       onboardingMatchMission: { ...mission, captureConfirmedAt: Date.now(), captureRetryCount: 0 },
     })
     missionCaptureVerified.value = true
+    minimizeOnboardingOnceRecordingConfirmed(missionRuntime.value.recording)
     missionCaptureRetryCount.value = 0
     missionPreviewError.value = null
   } finally {
@@ -1673,6 +1691,8 @@ async function startBonusMission() {
     })
     missionActive.value = true
     await refreshMissionState()
+  } catch {
+    completeError.value = 'Could not start the free analysis setup. Please try again.'
   } finally {
     saving.value = false
   }
@@ -1837,7 +1857,18 @@ async function loadAccountState() {
     } else if (selectedGame.value === 'cs2') {
       const settings = await window.api.settings.get()
       cs2SteamName.value = settings.cs2SteamName?.trim() || ''
-      cs2Linked.value = Boolean(cs2SteamName.value)
+      cs2SteamId.value = null
+      const profile = await window.api.cs2.getProfile()
+      if (profile?.identity) {
+        cs2SteamId.value = profile.identity.steam_id
+        if (profile.identity.steam_display_name) {
+          cs2SteamName.value = profile.identity.steam_display_name
+          if (!isPreview.value && settings.cs2SteamName !== cs2SteamName.value) {
+            await window.api.settings.save({ cs2SteamName: cs2SteamName.value })
+          }
+        }
+      }
+      cs2Linked.value = Boolean(cs2SteamId.value || cs2SteamName.value)
       try {
         const faceit = await window.api.cs2.getFaceitConnection()
         if (faceit?.connected && faceit.nickname) faceitNickname.value = faceit.nickname
@@ -2128,9 +2159,7 @@ async function handleComplete(opts?: { destination?: 'dashboard' | 'analysis'; r
   if (saving.value) return
   completeError.value = ''
   if (isPreview.value) {
-    router.push(opts?.destination === 'analysis' && opts.recordingId
-      ? { path: '/vod-review', query: { id: opts.recordingId } }
-      : '/dashboard')
+    router.push(resolveOnboardingCompletionRoute(opts))
     return
   }
   saving.value = true
@@ -2151,7 +2180,7 @@ async function handleComplete(opts?: { destination?: 'dashboard' | 'analysis'; r
         game: selectedGame.value,
       },
     })
-    router.push('/dashboard')
+    router.push(resolveOnboardingCompletionRoute(opts))
   } catch (e) {
     console.error('[Onboarding] Failed to save settings:', e)
     completeError.value = 'Could not save setup. Check your connection and try again.'

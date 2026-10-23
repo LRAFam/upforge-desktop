@@ -3,7 +3,7 @@ import path from 'path'
 import { randomUUID } from 'crypto'
 import type { MatchData } from './riot-local-api'
 import { recordingPathVariants, sourcePathForCompressed, deleteLocalRecordingFiles } from './vod-compressor'
-import { recordingMatchesLinkedRiot, localMediaRoot, type LinkedRiotId } from './user-data-paths'
+import { recordingMatchesLinkedRiot, localMediaRoot, legacyGlobalRecordingsDir, userRecordingsDir, type LinkedRiotId } from './user-data-paths'
 import { healRecordingPath } from './heal-recording-paths'
 
 function recordingStemKey(filePath: string): string {
@@ -158,7 +158,7 @@ export class RecordingsStore {
   }
 
   /**
-   * Rewrite stale absolute paths after legacy → per-user migration (or folder moves).
+   * Rewrite paths only for the known legacy → current-account migration.
    * Returns how many catalog rows were updated.
    */
   healMissingPaths(searchDirs: string[]): number {
@@ -166,7 +166,7 @@ export class RecordingsStore {
     for (const rec of this.recordings) {
       if (!rec.path || rec.clipsOnly) continue
       if (fs.existsSync(rec.path)) continue
-      const fixed = healRecordingPath(rec.path, searchDirs)
+      const fixed = this.healLegacyPath(rec.path, searchDirs)
       if (!fixed) continue
       rec.path = fixed
       healed++
@@ -175,18 +175,25 @@ export class RecordingsStore {
     return healed
   }
 
+  private healLegacyPath(storedPath: string, searchDirs: string[]): string | null {
+    // A matching filename on another drive is not proof of identity or ownership.
+    if (this.userId == null || path.dirname(storedPath) !== legacyGlobalRecordingsDir()) return null
+    const destination = userRecordingsDir(this.userId)
+    if (!searchDirs.some(dir => path.normalize(dir) === destination)) return null
+    return healRecordingPath(storedPath, [destination])
+  }
+
   private load(searchDirs: string[] = []): PendingRecording[] {
     try {
       const raw = fs.readFileSync(this.filePath, 'utf-8')
       const all: PendingRecording[] = JSON.parse(raw)
 
-      // Heal before pruning — migration can move files while JSON still points at
-      // the old folder, which used to wipe pending matches from the dashboard.
+      // Repair the known migration, but preserve unavailable media and its owner.
       let healedAny = false
       if (searchDirs.length) {
         for (const r of all) {
           if (!r.path || r.clipsOnly || fs.existsSync(r.path)) continue
-          const fixed = healRecordingPath(r.path, searchDirs)
+          const fixed = this.healLegacyPath(r.path, searchDirs)
           if (fixed) {
             r.path = fixed
             healedAny = true
@@ -194,14 +201,8 @@ export class RecordingsStore {
         }
       }
 
-      const pruned = all.filter(r => {
-        if (r.clipsOnly) return true
-        if (r.path && fs.existsSync(r.path)) return true
-        if (hasCloudRecording(r)) return true
-        if (r.analysed && r.pipelineStatus === 'analysing' && r.analysisId == null) return true
-        return false
-      })
-      const deduped = this.dedupeSiblingRecordings(pruned)
+      // Missing files may live on a disconnected drive; absence is not deletion.
+      const deduped = this.dedupeSiblingRecordings(all)
       if (deduped.length !== all.length || healedAny) {
         fs.mkdirSync(path.dirname(this.filePath), { recursive: true })
         fs.writeFileSync(this.filePath, JSON.stringify(deduped, null, 2))
@@ -246,8 +247,9 @@ export class RecordingsStore {
     }
     this.recordings.unshift(recording)
     if (this.userId != null && this.recordings.length > 50) {
-      const evicted = this.recordings.slice(50).filter(rec => !rec.savedOffline)
-      this.recordings = this.recordings.filter((rec, index) => index < 50 || rec.savedOffline)
+      const protectedFromEviction = (rec: PendingRecording) => rec.savedOffline || Boolean(rec.path && !fs.existsSync(rec.path))
+      const evicted = this.recordings.slice(50).filter(rec => !protectedFromEviction(rec))
+      this.recordings = this.recordings.filter((rec, index) => index < 50 || protectedFromEviction(rec))
       for (const rec of evicted) {
         if (!isLocalOnlyRecording(rec)) continue
         if (!rec.path || !fs.existsSync(rec.path)) continue
@@ -621,8 +623,7 @@ export class RecordingsStore {
     return this.recordings
       .filter(r => !r.clipsOnly && matchesLinkedAccount(r, linkedRiot))
       .filter(r => {
-        const hasLocal = r.path ? fs.existsSync(r.path) : false
-        return hasLocal || hasCloudRecording(r) || r.analysisId != null || Boolean(r.jobId)
+        return Boolean(r.path) || hasCloudRecording(r) || r.analysisId != null || Boolean(r.jobId)
       })
       .slice()
       .sort((a, b) => (b.recordedAt ?? 0) - (a.recordedAt ?? 0))

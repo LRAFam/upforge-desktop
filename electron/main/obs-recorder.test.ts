@@ -165,6 +165,26 @@ describe('mid-match progress watchdog', () => {
     (rec as unknown as { _startProgressWatch(): void })._startProgressWatch()
   }
 
+  it('reports a lost recording once when subsequent shutdown succeeds', async () => {
+    mock.call.mockResolvedValue({ outputActive: false, outputBytes: 1000 })
+    const rec = recorder()
+    watch(rec)
+    await vi.advanceTimersByTimeAsync(20_000)
+    expect(rec.hasRecordingFailure()).toBe(true)
+    expect(rec.onStatusChange).toHaveBeenCalledTimes(1)
+    expect(rec.onStatusChange).toHaveBeenCalledWith(false, expect.stringContaining('stopped producing'), undefined)
+  })
+
+  it('still reports a distinct file-finalization failure after capture is lost', async () => {
+    mock.fileSize = 0
+    mock.call.mockResolvedValue({ outputActive: false, outputBytes: 1000 })
+    const rec = recorder()
+    watch(rec)
+    await vi.advanceTimersByTimeAsync(60_000)
+    expect(rec.onStatusChange).toHaveBeenCalledTimes(2)
+    expect(rec.onStatusChange).toHaveBeenLastCalledWith(false, expect.stringContaining('did not finalize'), 'stop')
+  })
+
   it('does not count an unchanged byte count after a missing sample as progress', async () => {
     let samples = 0
     mock.call.mockImplementation(async () => ({
@@ -284,7 +304,7 @@ describe('recording progress verification', () => {
     const rec = recorder()
     Object.assign(rec, { _matchOwnedRecording: false, _recording: false, _startedAt: null })
     vi.spyOn(rec, 'isCurrentProgramSceneGameplay').mockResolvedValue(true)
-    const check = expect(rec.start('valorant')).rejects.toThrow('not producing')
+    const check = expect(rec.start('valorant')).rejects.toMatchObject({ code: 'obs_recording_no_data', message: expect.stringContaining('not producing') })
     await vi.advanceTimersByTimeAsync(35_000)
     await check
     expect(rec.onStatusChange).not.toHaveBeenCalledWith(true)
@@ -346,7 +366,7 @@ describe('CS2 recording startup failure', () => {
     Object.assign(rec, { _matchOwnedRecording: false, _recording: false, _startedAt: null })
     vi.spyOn(rec, 'isCurrentProgramSceneGameplay').mockResolvedValue(true)
     Object.assign(rec, { _obsStudioVersion: '32.2.1', _obsVersion: '5.6.3' })
-    const check = expect(rec.start('cs2')).rejects.toThrow('did not start recording in time')
+    const check = expect(rec.start('cs2')).rejects.toMatchObject({ code: 'obs_recording_start_timeout', technicalMessage: expect.stringContaining('did not become active'), message: expect.stringContaining('did not start recording in time') })
     await vi.advanceTimersByTimeAsync(10_000)
     await check
     expect(rec.onStatusChange).toHaveBeenCalledWith(false, expect.stringContaining('did not start recording in time'), 'start')

@@ -1,4 +1,6 @@
 import { getApiBaseUrl } from './api-base'
+import { isValorantStillInLiveMatch } from './valorant-match-end'
+import { startRecordingWhenReady } from './recording-start'
 import { setupCloudStorageHandlers } from './ipc/cloud-storage-ipc'
 import { APP_VERSION } from './app-version'
 import { setupReviewNotebookHandlers } from './ipc/review-notebook-ipc'
@@ -684,7 +686,10 @@ let guestClaimDeclinedFor: number | null = null
 function captureOwnerId(): number | null {
   return activeCapture ? activeCapture.ownerId : captureOwnership.get()
 }
-const hotkeyManager = new HotkeyManager()
+const hotkeyManager = new HotkeyManager({
+  load: () => settingsManager.get().hotkeyBindings,
+  save: (hotkeyBindings) => { settingsManager.save({ hotkeyBindings }) },
+})
 const trainerBridge = new TrainerBridge(() => mainWindow)
 let settingsManager: SettingsManager
 let trackedPrimaryGame: GameId = 'valorant'
@@ -2142,9 +2147,10 @@ interface LocalClipContext {
   bookmarks: number[]
 }
 
-function clipPipelineForOwner(ownerId: number | null, context: LocalClipContext): ClipPipeline {
+function clipPipelineForOwner(ownerId: number | null, context: LocalClipContext, recordingId: string | null = null): ClipPipeline {
   return new ClipPipeline({
     clipStore: clipStore.forUser(ownerId),
+    recordingId,
     clipExtractor,
     hotkeyBookmarks: context.bookmarks,
     getRecordingStartTime: () => context.recordingStartTime,
@@ -2164,7 +2170,9 @@ async function extractKillClipsOnly(
   analysisJobId: string | null,
   game: string = trackedPrimaryGame,
 ): Promise<void> {
-  return clipPipelineForOwner(getActiveUserId(), { recordingStartTime: null, bookmarks: [] }).extractKillClipsOnly(videoPath, timeline, analysisJobId, normalizePrimaryGame(game))
+  const ownerId = getActiveUserId()
+  const recording = recordingsStore.forUser(ownerId).getAll().find(item => item.path === videoPath)
+  return clipPipelineForOwner(ownerId, { recordingStartTime: null, bookmarks: [] }, recording?.id ?? null).extractKillClipsOnly(videoPath, timeline, analysisJobId, normalizePrimaryGame(game))
 }
 
 /**
@@ -2187,7 +2195,7 @@ async function extractMatchClips(
       ? { recordingStartTime: recording.captureRecordingStartTime ?? null, bookmarks: recording.pendingClipBookmarks?.slice() ?? [] }
       : { recordingStartTime: currentRecordingStartTime, bookmarks: hotkeyBookmarks.splice(0) }
   }
-  const pipeline = clipPipelineForOwner(ownerId, context)
+  const pipeline = clipPipelineForOwner(ownerId, context, recording?.id ?? null)
   try {
     await waitUntilBackgroundWorkAllowed(matchPriorityDeps(), { logActivity })
     const complete = await pipeline.extractMatchClips(videoPath, timeline, analysisJobId, normalizePrimaryGame(game))
@@ -3288,22 +3296,6 @@ function setupGameDetection(): void {
 
   finalizeAfterObsProcessDeath = finalizeAfterObsProcessDeathImpl
 
-  /** Shared path for presence / GSI / process-exit match-end signals. */
-  async function isValorantStillInLiveMatch(): Promise<boolean> {
-    try {
-      const shippingUp = await gameDetector.isMatchProcessRunning()
-      if (!shippingUp) return false
-      const state = await riotLocalApi.getSessionState()
-      if (state?.sessionLoopState === 'INGAME') {
-        const coreActive = await riotLocalApi.isCoreGameSessionActive()
-        if (coreActive === true) return true
-      }
-      // Shipping running but presence not yet MENUS — likely still on map.
-      if (state?.sessionLoopState !== 'MENUS') return true
-    } catch { /* not live */ }
-    return false
-  }
-
   /**
    * True when Riot still shows match flow (agent select / loading / live), even if
    * Shipping.exe briefly disappears from tasklist (load restart, alt-tab flake).
@@ -3341,7 +3333,12 @@ function setupGameDetection(): void {
     if (matchHandled) return
     if (!(await obsRecorder.isCaptureActive())) return
 
-    if (game === 'valorant' && await isValorantStillInLiveMatch()) {
+    if (game === 'valorant' && await isValorantStillInLiveMatch({
+      isMatchProcessRunning: () => gameDetector.isMatchProcessRunning(),
+      getSessionState: () => riotLocalApi.getSessionState(),
+      isCoreGameSessionActive: () => riotLocalApi.isCoreGameSessionActive(),
+      isPregameSessionActive: () => riotLocalApi.isPregameSessionActive(),
+    })) {
       console.log(`[MatchEnd] Suppressing false end (${source}) — Valorant match still live`)
       logActivity('False match-end ignored — recording continues')
       riotLocalApi.clearSuppressedMatchEnd()
@@ -5197,16 +5194,15 @@ function setupGameDetection(): void {
       // Create the overlay window just before recording starts — deferred from startup
       // so it doesn't break Valorant's exclusive fullscreen before we actually need it.
       if (isInGameOverlayEnabled()) createOverlayWindow()
-      await withTimeout(
-        (async () => {
-          await ensureObsReadyOrThrow()
+      await startRecordingWhenReady({
+        ensureReady: ensureObsReadyOrThrow,
+        start: async () => {
           if (!reclaimedExistingCapture) {
             await obsRecorder.start(game, recorderConfig)
           }
-        })(),
-        OBS_RECORD_START_TIMEOUT_MS,
-        'OBS start timed out — OBS may be frozen. Restart OBS from Settings → Recording.',
-      )
+        },
+        timeoutMs: OBS_RECORD_START_TIMEOUT_MS,
+      })
       telemetry.endSector('detect_to_record_start')
       telemetry.setAudioTracks(obsRecorder.wasNoAudio() ? 0 : 1)
       telemetry.setRecordingFacts({
@@ -5260,7 +5256,7 @@ function setupGameDetection(): void {
       telemetry.setEndReason('start_failed')
       emitActiveOpsLap()
       if (game === 'valorant') {
-        trackRecordingFailed(msg, isObsUnavailableError(msg) ? 'obs' : 'record')
+        trackRecordingFailed(err instanceof Error ? err : msg, isObsUnavailableError(msg) ? 'obs' : 'record')
       }
       const unownedBlocked = /already recording/i.test(msg)
       const startVerifyFailed = /did not become active/i.test(msg)
@@ -7062,9 +7058,10 @@ async function startApp(): Promise<void> {
   })
   const hotkeyResults = hotkeyManager.registerAll()
   if (!hotkeyResults['save-clip']) {
-    log.error('[Main] F9 (save-clip) hotkey failed to register — clips cannot be bookmarked via keyboard')
-    logActivity('WARNING: F9 hotkey failed to register (may be in use by another app)')
-    reportError({ message: 'F9 (save-clip) hotkey failed to register — users cannot bookmark clips via keyboard', component: 'desktop:HotkeyManager' })
+    const binding = hotkeyManager.getBindings()['save-clip']
+    log.error(`[Main] ${binding} (save-clip) hotkey failed to register — clips cannot be bookmarked via keyboard`)
+    logActivity(`WARNING: ${binding} hotkey failed to register (may be in use by another app)`)
+    reportError({ message: `${binding} (save-clip) hotkey failed to register — users cannot bookmark clips via keyboard`, component: 'desktop:HotkeyManager' })
   }
   // Send hotkey registration status to any open window so the UI can show a warning
   const hotkeyStatus = {
@@ -7093,6 +7090,38 @@ async function startApp(): Promise<void> {
     const logGameMode = await riotLocalApi.getGameModeFromLog()
     const processRunning = await gameDetector.isMatchProcessRunning()
     return { portOpen, gameMode, logGameMode, processRunning }
+  })
+
+  // Debug PoC: save debrief-ready data for recent Valorant matches (no recording needed)
+  ipcMain.handle('debug:poc-recent-matches', async (_e, limit: number = 10) => {
+    const fsp = await import('fs/promises')
+    const started = Date.now()
+    const result = await riotLocalApi.fetchRecentMatchTimelines(limit)
+    const dir = join(app.getPath('userData'), 'poc-recent-matches')
+    await fsp.mkdir(dir, { recursive: true })
+    const summary = result.matches.map((m) => ({
+      matchId: m.matchId,
+      ok: !!m.timeline,
+      error: m.error,
+      fetchMs: m.fetchMs,
+      map: m.timeline?.map ?? null,
+      agent: m.timeline?.agent ?? null,
+      mode: m.timeline?.gameMode ?? null,
+      kills: m.timeline?.killEvents.length ?? 0,
+      rounds: m.timeline?.roundSummaries.length ?? 0,
+    }))
+    for (const m of result.matches) {
+      if (!m.timeline) continue
+      await fsp.writeFile(join(dir, `${m.matchId}.json`), JSON.stringify({
+        riot_name: m.timeline.playerName,
+        riot_tag: m.timeline.playerTag,
+        puuid: m.timeline.puuid,
+        match_data: m.timeline,
+      }))
+    }
+    const report = { ok: result.ok, reason: result.reason, totalMs: Date.now() - started, folder: dir, matches: summary }
+    await fsp.writeFile(join(dir, 'summary.json'), JSON.stringify(report, null, 2))
+    return report
   })
 
   ipcMain.handle('debug:probe-lol-lcu', async () => {

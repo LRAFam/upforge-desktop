@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { PlaybackActivityMeter } from '../../lib/playback-activity'
 import { computed, nextTick, onBeforeUnmount, ref, watch, type ComponentPublicInstance } from 'vue'
 import { useVodReview, type RecordingTimeline } from '../../composables/useVodReview'
 import { reviewEventStart, reviewVideoUrl, parseReviewTime } from '../../lib/review-media'
@@ -144,8 +145,11 @@ function setTiming(side: ComparisonSide, event: Event) {
   else sourceCorrections.value = { ...sourceCorrections.value, [sourceKeys.value[side]]: value }
 }
 function setPlayer(side: ComparisonSide, el: Element | ComponentPublicInstance | null) {
+  const player = el instanceof HTMLVideoElement ? el : null
+  // Vue updates function refs on each render; re-observing restarts resize delivery.
+  if (players[side] === player) return
   if (players[side]) markerResize.unobserve(players[side]!)
-  players[side] = el instanceof HTMLVideoElement ? el : null
+  players[side] = player
   if (players[side]) markerResize.observe(players[side]!)
 }
 function loaded(side: ComparisonSide) {
@@ -317,8 +321,18 @@ async function resumeLoop() {
   restartingLoop = false
   if (!await engine.playBoth()) message.value = 'Loop paused while footage loads. Press Play both to resume.'
 }
+const comparisonActivity = [new PlaybackActivityMeter(), new PlaybackActivityMeter()]
 function updateTime(side: ComparisonSide) {
   if (!players[side]) return
+  const video = players[side]!
+  if (comparisonActivity[side].sample({
+    key: `${new Date().toISOString().slice(0, 10)}|${video.currentSrc}`,
+    wallMs: performance.now(), mediaSeconds: video.currentTime,
+    playing: !video.paused && !video.ended && video.readyState >= 3,
+    visible: document.visibilityState === 'visible' && document.hasFocus(), seeking: video.seeking,
+  })) {
+    void window.api.productActivity.watched('comparison_watched', sources.value[side].game ?? 'unknown').catch(() => {})
+  }
   times.value[side] = players[side]!.currentTime
   if (linked.value && loopEnabled.value && loopValid.value && !restartingLoop && playing.value.some(Boolean)
     && times.value[side] - starts.value[side] >= loopOut.value) restartLoop()

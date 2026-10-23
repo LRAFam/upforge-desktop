@@ -50,6 +50,101 @@ function clip(): NewClip {
 }
 
 describe('durable logged-out media', () => {
+  it('retains unavailable footage and clips through restart and reconnect without changing ownership', () => {
+    const matches = new RecordingsStore().forUser(11)
+    const clips = new ClipStore().forUser(11)
+    const match = matches.add(recording())
+    const highlight = clips.add(clip())
+    fs.renameSync(match.path, `${match.path}.disconnected`)
+    fs.renameSync(highlight.path, `${highlight.path}.disconnected`)
+    const restartedMatches = new RecordingsStore().forUser(11)
+    const restartedClips = new ClipStore().forUser(11)
+    expect(restartedMatches.getAll()).toEqual([match])
+    expect(restartedClips.getAll()).toEqual([highlight])
+    expect(registeredLocalRecordingPaths().has(match.path)).toBe(true)
+    expect(new RecordingsStore().forUser(22).getAll()).toEqual([])
+    expect(new ClipStore().forUser(22).getAll()).toEqual([])
+    fs.renameSync(`${match.path}.disconnected`, match.path)
+    fs.renameSync(`${highlight.path}.disconnected`, highlight.path)
+    expect(new RecordingsStore().forUser(11).getAll()).toEqual([match])
+    expect(new ClipStore().forUser(11).getAll()).toEqual([highlight])
+  })
+
+  it('does not replace an unavailable custom path with another account file of the same name', () => {
+    const custom = path.join(runtime.root, 'external')
+    const other = path.join(runtime.root, 'other')
+    fs.mkdirSync(custom); fs.mkdirSync(other)
+    const original = path.join(custom, 'match.mp4')
+    fs.writeFileSync(original, 'mine')
+    fs.writeFileSync(path.join(other, 'match.mp4'), 'someone else')
+    const matches = new RecordingsStore().forUser(11)
+    const match = matches.add({ ...recording(), path: original })
+    fs.unlinkSync(original)
+    expect(matches.healMissingPaths([other])).toBe(0)
+    const restarted = new RecordingsStore()
+    restarted.setUserScope(11, [other])
+    expect(restarted.getById(match.id)?.path).toBe(original)
+  })
+
+  it('keeps unavailable media through retention and library caps', () => {
+    const matches = new RecordingsStore().forUser(11)
+    const clips = new ClipStore().forUser(11)
+    const match = matches.add({ ...recording(), savedOffline: false }, 0)
+    const highlight = clips.add(clip())
+    clips.update(highlight.id, { savedAt: 0, trigger: 'kill' })
+    fs.unlinkSync(match.path); fs.unlinkSync(highlight.path)
+    expect(prunePendingRecordingsByAge(matches, 1, null).removed).toBe(0)
+    expect(clips.pruneByAge(1)).toBe(0)
+    expect(clips.pruneKillClipsByAge(1)).toBe(0)
+    const present = mediaFile('present.mp4')
+    const recordingData = recording()
+    fs.unlinkSync(match.path)
+    for (let i = 0; i < 51; i++) matches.add({ ...recordingData, path: present, savedOffline: false })
+    const data = clip()
+    fs.unlinkSync(highlight.path)
+    for (let i = 0; i < 201; i++) clips.add({ ...data, path: present })
+    expect(matches.getById(match.id)?.id).toBe(match.id)
+    expect(clips.getById(highlight.id)?.id).toBe(highlight.id)
+  })
+
+  it('selects linked clips only by exact recording ID within the owning account', () => {
+    const clips = new ClipStore()
+    const owner = clips.forUser(11)
+    const linked = owner.add({ ...clip(), recordingId: 'recording-1' })
+    owner.add(clip()) // Same match, agent and time do not establish a parent.
+    owner.add({ ...clip(), recordingId: 'recording-2' })
+    const other = clips.forUser(22).add({ ...clip(), recordingId: 'recording-1' })
+    expect(owner.getForRecording('recording-1')).toEqual([linked])
+    expect(new ClipStore().forUser(11).getForRecording('recording-1')).toEqual([linked])
+    expect(clips.forUser(22).getForRecording('recording-1')).toEqual([other])
+    expect(owner.getForRecording('')).toEqual([])
+  })
+
+  it('does not let a disconnected clip library evict new available captures', () => {
+    const clips = new ClipStore().forUser(11)
+    const data = clip()
+    fs.unlinkSync(data.path)
+    for (let i = 0; i < 201; i++) clips.add(data)
+    const present = clips.add({ ...data, path: mediaFile('new-capture.mp4'), trigger: 'kill' })
+    expect(clips.getById(present.id)?.path).toBe(present.path)
+    expect(fs.existsSync(present.path)).toBe(true)
+    expect(new ClipStore().forUser(11).getAll()).toHaveLength(202)
+  })
+
+  it('still repairs the known legacy migration into the owning account folder', () => {
+    const legacy = path.join(runtime.root, 'recordings')
+    fs.mkdirSync(legacy)
+    const oldPath = path.join(legacy, 'legacy.mp4')
+    fs.writeFileSync(oldPath, 'video')
+    const match = new RecordingsStore().forUser(11).add({ ...recording(), path: oldPath })
+    const destination = userRecordingsDir(11)
+    fs.mkdirSync(destination, { recursive: true })
+    fs.renameSync(oldPath, path.join(destination, 'legacy.mp4'))
+    const restarted = new RecordingsStore()
+    restarted.setUserScope(11, [destination])
+    expect(restarted.getById(match.id)?.path).toBe(path.join(destination, 'legacy.mp4'))
+  })
+
   it('keeps a guest VOD, match timeline, clip, thumbnail and event offsets across restart', () => {
     const match = new RecordingsStore().add({ ...recording(), pendingClipBookmarks: [42000], captureRecordingStartTime: 10000 })
     const highlight = new ClipStore().add(clip())
@@ -149,6 +244,7 @@ describe('durable logged-out media', () => {
 
   it('finishes a guest F9 clip in the guest library after login during extraction', async () => {
     const clips = new ClipStore()
+    const match = new RecordingsStore().add(recording())
     let release!: () => void
     let began!: () => void
     const started = new Promise<void>(resolve => { began = resolve })
@@ -165,6 +261,7 @@ describe('durable logged-out media', () => {
     } as unknown as ClipExtractor
     const pipeline = new ClipPipeline({
       clipStore: clips.forUser(null), clipExtractor: extractor,
+      recordingId: match.id,
       hotkeyBookmarks: [42000], getRecordingStartTime: () => 10000,
       getClipCapture: () => ({ singleKills: true, multiKills: true, aces: true, clutches: true }),
       logActivity: vi.fn(), notifySilent: () => true, notifyMainWindow: vi.fn(),
@@ -177,11 +274,12 @@ describe('durable logged-out media', () => {
     expect(clips.getAll()).toEqual([])
     const guestClips = new ClipStore().getAll()
     expect(guestClips).toHaveLength(1)
-    expect(guestClips[0]).toMatchObject({ trigger: 'hotkey', momentOffsetMs: 32000, clipStartMs: 7000 })
+    expect(guestClips[0]).toMatchObject({ recordingId: match.id, trigger: 'hotkey', momentOffsetMs: 32000, clipStartMs: 7000 })
     expect(guestClips[0].path).toContain(localMediaRoot(null))
     expect(fs.existsSync(guestClips[0].thumbPath!)).toBe(true)
     clips.claimGuest(11)
     expect(clips.getAll()).toEqual(guestClips)
+    expect(clips.getForRecording(match.id)).toEqual(guestClips)
   })
 
   it('reports unfinished clip work when the source is temporarily unreadable', async () => {

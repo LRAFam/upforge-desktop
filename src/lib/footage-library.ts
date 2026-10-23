@@ -17,7 +17,10 @@ export function mergeFootage(local: PendingRecording[], cloud: CloudFile[]): Lib
 }
 export function footageUnavailable(rec: LibraryRecording, now = Date.now()): string | null {
   if (rec.hasLocalFile) return null
-  if (!rec.cloudFile) return null
+  if (!rec.cloudFile) {
+    if (rec.hasLocalFile === false && rec.path && !rec.archiveId && !rec.jobId && rec.analysisId == null) return 'File unavailable'
+    return null
+  }
   if (cloudRetention(rec.cloudFile.expires_at, now).state === 'expired') return 'Retention ended'
   if (rec.cloudFile.status !== 'archived') return rec.cloudFile.status === 'uploading' ? 'Uploading' : 'Upload failed'
   return null

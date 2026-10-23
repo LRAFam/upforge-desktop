@@ -123,7 +123,7 @@ const api = {
     sample: (payload: { feature: string | null; active: boolean; visit: boolean }) => ipcRenderer.invoke('product-usage:sample', payload) as Promise<void>,
   },
   productActivity: {
-    watched: (kind: 'clip_watched' | 'replay_watched', game: string) =>
+    watched: (kind: 'clip_watched' | 'replay_watched' | 'comparison_watched', game: string) =>
       ipcRenderer.invoke('product-activity:watched', { kind, game }) as Promise<{ ok: boolean }>,
   },
   funnel: {
@@ -207,6 +207,7 @@ const api = {
   debug: {
     testRiotApi: () => ipcRenderer.invoke('debug:test-riot-api'),
     probeLolLcu: () => ipcRenderer.invoke('debug:probe-lol-lcu'),
+    pocRecentMatches: (limit?: number) => ipcRenderer.invoke('debug:poc-recent-matches', limit),
     findHotkeyConflict: () => ipcRenderer.invoke('debug:find-hotkey-conflict'),
   },
   storage: {

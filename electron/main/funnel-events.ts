@@ -117,11 +117,12 @@ export function trackRecordingStarted(game = 'valorant'): void {
 }
 
 export function trackRecordingFailed(
-  reason: string,
+  error: string | Error,
   phase: 'obs' | 'capture' | 'record',
   game = 'valorant',
 ): void {
-  const classified = classifyActivationError(reason)
+  const classified = classifyActivationError(error)
+  const reason = error instanceof Error ? error.message : error
   void trackFunnelEvent('recording_failed', {
     game,
     reason: reason.slice(0, 120),

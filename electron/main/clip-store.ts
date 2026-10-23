@@ -17,6 +17,8 @@ export { resolveClipGame, clipMatchesGame } from './clip-game'
 
 export interface ClipRecord {
   id: string
+  /** Exact parent in this account's recording catalogue; absent on legacy/unlinked clips. */
+  recordingId?: string | null
   /** Path to the extracted clip MP4 on disk */
   path: string
   /** Path to thumbnail JPG on disk, if generated */
@@ -98,6 +100,7 @@ export type NewClip = Pick<ClipRecord,
   | 'weapon'
   | 'abilitySlot'
 > & {
+  recordingId?: string | null
   momentOffsetMs?: number | null
   clipStartMs?: number | null
   clipEvents?: ClipRecord['clipEvents']
@@ -149,8 +152,8 @@ export class ClipStore {
     try {
       const raw = fs.readFileSync(this.filePath, 'utf-8')
       const all: ClipRecord[] = JSON.parse(raw)
-      // Prune clips whose file no longer exists (unless uploaded to API)
-      return all.filter(c => c.apiClipId != null || fs.existsSync(c.path))
+      // A disconnected drive must not erase the catalogue or its account links.
+      return all
     } catch {
       return []
     }
@@ -165,6 +168,7 @@ export class ClipStore {
   add(data: NewClip): ClipRecord {
     const clip: ClipRecord = {
       id: randomUUID(),
+      recordingId: data.recordingId ?? null,
       path: data.path,
       thumbPath: data.thumbPath,
       trigger: data.trigger,
@@ -209,18 +213,24 @@ export class ClipStore {
   }
 
   private _enforceCap(): void {
-    while (this.clips.length > MAX_CLIPS) {
-      let lowestIdx = 0
-      let lowestScore = clipRetentionScore(this.clips[0])
-      for (let i = 1; i < this.clips.length; i++) {
+    // Offline entries do not consume the cap or force freshly captured clips out.
+    let availableCount = this.clips.filter(clip => clip.path && fs.existsSync(clip.path)).length
+    while (availableCount > MAX_CLIPS) {
+      let lowestIdx = -1
+      let lowestScore = Infinity
+      for (let i = 0; i < this.clips.length; i++) {
+        // Keep unavailable media and unfinished extraction placeholders.
+        if (!this.clips[i].path || !fs.existsSync(this.clips[i].path)) continue
         const score = clipRetentionScore(this.clips[i])
-        if (score < lowestScore || (score === lowestScore && this.clips[i].savedAt < this.clips[lowestIdx].savedAt)) {
+        if (lowestIdx < 0 || score < lowestScore || (score === lowestScore && this.clips[i].savedAt < this.clips[lowestIdx].savedAt)) {
           lowestIdx = i
           lowestScore = score
         }
       }
+      if (lowestIdx < 0) break
       const [removed] = this.clips.splice(lowestIdx, 1)
       this._deleteClipFiles(removed)
+      availableCount--
     }
   }
 
@@ -230,6 +240,12 @@ export class ClipStore {
       Object.assign(clip, patch)
       this._persist()
     }
+  }
+
+  /** Never infer transfer membership from timestamps, agents or shared match IDs. */
+  getForRecording(recordingId: string): ClipRecord[] {
+    if (!recordingId) return []
+    return this.clips.filter(clip => clip.recordingId === recordingId)
   }
 
   remove(id: string): ClipRecord | null {
@@ -277,7 +293,7 @@ export class ClipStore {
     const cutoff = Date.now() - days * 24 * 60 * 60 * 1000
     const before = this.clips.length
     this.clips = this.clips.filter(c => {
-      if (c.favorited || c.apiClipId != null || c.savedAt >= cutoff) return true
+      if (c.favorited || c.apiClipId != null || c.savedAt >= cutoff || !c.path || !fs.existsSync(c.path)) return true
       this._deleteClipFiles(c)
       return false
     })
@@ -292,7 +308,7 @@ export class ClipStore {
     const before = this.clips.length
     this.clips = this.clips.filter(c => {
       if (c.trigger !== 'kill') return true
-      if (c.favorited || c.apiClipId != null || c.savedAt >= cutoff) return true
+      if (c.favorited || c.apiClipId != null || c.savedAt >= cutoff || !c.path || !fs.existsSync(c.path)) return true
       this._deleteClipFiles(c)
       return false
     })

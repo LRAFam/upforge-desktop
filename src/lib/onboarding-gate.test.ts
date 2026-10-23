@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  resolveOnboardingCompletionRoute,
   needsDesktopOnboarding,
   resolvePostAuthRoute,
   resolveUnauthenticatedRoute,
@@ -52,4 +53,9 @@ describe('resolveUnauthenticatedRoute', () => {
   it('sends returning complete users to login', () => {
     expect(resolveUnauthenticatedRoute({ firstRun: false, onboardingComplete: true })).toBe('/login')
   })
+})
+
+it('opens the requested first report after normal onboarding completion', () => {
+  expect(resolveOnboardingCompletionRoute({ destination: 'analysis', recordingId: 'first-match' })).toEqual({ path: '/vod-review', query: { id: 'first-match' } })
+  expect(resolveOnboardingCompletionRoute()).toEqual({ path: '/dashboard' })
 })

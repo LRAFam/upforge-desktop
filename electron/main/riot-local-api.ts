@@ -30,7 +30,7 @@ import { deriveMatchScore } from './match-score'
 import { riotStatsToAcs } from './combat-score'
 import { resolvePlantLocationFromRound } from './plant-location'
 import { logPlantCoordStats } from './match-plant-telemetry'
-import { gameTimeToVideoOffsetMs, lolGameTimeToVideoOffsetMs } from './recording-sync'
+import { emptyMatchData, gameTimeToVideoOffsetMs, lolGameTimeToVideoOffsetMs } from './recording-sync'
 import {
   recoveredMatchStartAligns,
   shouldApplyMatchDetails,
@@ -1950,6 +1950,56 @@ export class RiotLocalApi {
       return null
     }
     return this._fetchMatchDetails(matchId)
+  }
+
+  /**
+   * Dev proof of concept: build debrief-ready timelines for recent matches straight
+   * from Riot history, with no recording. Uses the same conversion as uploads.
+   */
+  async fetchRecentMatchTimelines(limit: number): Promise<{
+    ok: boolean
+    reason?: string
+    matches: Array<{
+      matchId: string
+      gameStartTimeMs: number | null
+      fetchMs: number
+      timeline: MatchData | null
+      error?: string
+    }>
+  }> {
+    if (!this.accessToken || !this.entitlementsToken) await this.initAuth()
+    else { try { await this._refreshTokens() } catch { /* best-effort */ } }
+    if (!this.region && this.lockfileData) await this._refreshRegionFromClient('poc-recent')
+    if (!this.region || !this.ownPuuid || !this.accessToken || !this.entitlementsToken) {
+      return { ok: false, reason: 'riot_auth_missing — open the Riot Client and sign in', matches: [] }
+    }
+
+    const history = await this._fetchRecentMatchHistory(Math.max(1, Math.min(limit, 20)))
+    if (!history) return { ok: false, reason: 'match_history_unavailable', matches: [] }
+
+    const matches = []
+    for (const entry of history) {
+      const started = Date.now()
+      const details = await this._fetchMatchDetails(entry.matchId)
+      if (!details) {
+        matches.push({ matchId: entry.matchId, gameStartTimeMs: entry.gameStartTimeMs, fetchMs: Date.now() - started, timeline: null, error: 'match_details_unavailable' })
+        continue
+      }
+      const timeline = emptyMatchData('valorant', entry.gameStartTimeMs ?? Date.now())
+      timeline.matchId = entry.matchId
+      timeline.puuid = this.ownPuuid
+      timeline.region = this.region
+      this.populateMatchDataFromDetails(timeline, details)
+      const hasData = timeline.killEvents.length > 0 || timeline.roundSummaries.length > 0
+      matches.push({
+        matchId: entry.matchId,
+        gameStartTimeMs: entry.gameStartTimeMs,
+        fetchMs: Date.now() - started,
+        timeline: hasData ? timeline : null,
+        error: hasData ? undefined : 'conversion_empty',
+      })
+    }
+    return { ok: true, matches }
   }
 
   /**

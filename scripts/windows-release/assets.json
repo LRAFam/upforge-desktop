@@ -1,0 +1,13 @@
+{
+  "ffmpeg": {
+    "url": "https://github.com/GyanD/codexffmpeg/releases/download/7.1.1/ffmpeg-7.1.1-essentials_build.zip",
+    "sha256": "04861d3339c5ebe38b56c19a15cf2c0cc97f5de4fa8910e4d47e5e6404e4a2d4",
+    "executable": "ffmpeg-7.1.1-essentials_build/bin/ffmpeg.exe"
+  },
+  "trainer": {
+    "repository": "LRAFam/upforge-trainer",
+    "tag": "v1.11.0",
+    "asset": "upforge-trainer.exe",
+    "sha256": "9958e475e39057eeb77ab13d9f8d733e2f64c19fb7efcf73b85425bb16d58e90"
+  }
+}

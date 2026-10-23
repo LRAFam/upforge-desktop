@@ -175,6 +175,8 @@ function createVodReview() {
   const videoAspect = ref(16 / 9)
   const videoFrameSize = ref({ width: 0, height: 0 })
   let videoAreaObserver: ResizeObserver | null = null
+  let reviewDisposed = false
+  let initialSeekTimer: ReturnType<typeof setTimeout> | null = null
   
   const timeline = ref<RecordingTimeline | null>(null)
   const reviewGame = computed(() => timeline.value?.game ?? null)
@@ -1712,16 +1714,20 @@ function createVodReview() {
 
   function applyInitialSeek(seekMsOverride?: number) {
     const seekMs = seekMsOverride ?? Number(route.query.seekMs)
-    if (Number.isNaN(seekMs) || seekMs < 0) return
+    if (reviewDisposed || Number.isNaN(seekMs) || seekMs < 0) return
+    if (initialSeekTimer !== null) clearTimeout(initialSeekTimer)
+    initialSeekTimer = null
     initialSeekDone.value = true
     const prerollMs = (route.query.coachNotes === '1' || seekMsOverride != null)
       ? COACH_ANNOTATION_PRE_ROLL_SECONDS * 1000
       : 0
     const trySeek = () => {
+      initialSeekTimer = null
+      if (reviewDisposed) return
       if (videoEl.value && duration.value > 0) {
         seekToTime(Math.max(0, (seekMs - prerollMs) / 1000))
       } else {
-        setTimeout(trySeek, 200)
+        initialSeekTimer = setTimeout(trySeek, 200)
       }
     }
     trySeek()
@@ -1830,11 +1836,13 @@ function createVodReview() {
     }).catch(() => {})
   
     await loadTimeline()
+    if (reviewDisposed) return
   
     window.addEventListener('keydown', handleKeyDown)
     document.addEventListener('fullscreenchange', onFullscreenChange)
   
     nextTick(() => {
+      if (reviewDisposed) return
       updateVideoFrameSize()
       if (videoAreaEl.value) {
         videoAreaObserver = new ResizeObserver(() => updateVideoFrameSize())
@@ -1844,6 +1852,9 @@ function createVodReview() {
   })
   
   onUnmounted(() => {
+    reviewDisposed = true
+    if (initialSeekTimer !== null) clearTimeout(initialSeekTimer)
+    initialSeekTimer = null
     cloudSessionCleanups.forEach(fn => fn())
     reviewSeek.cancel()
     window.api.discord.setState('idle').catch(() => {})

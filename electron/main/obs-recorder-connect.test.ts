@@ -15,6 +15,50 @@ import { OBSRecorder } from './obs-recorder'
 afterEach(() => { vi.useRealTimers(); vi.resetAllMocks() })
 
 describe('OBS connection lifecycle', () => {
+  it('does not rebuild capture when OBS recording status cannot be read', async () => {
+    mocks.connect.mockResolvedValue({ obsWebSocketVersion: '5.7.4' })
+    mocks.disconnect.mockResolvedValue(undefined)
+    mocks.call.mockImplementation(async (request) => {
+      if (request === 'GetVersion') return { obsVersion: '32.0.1' }
+      throw new Error('Recording status unavailable')
+    })
+    mocks.setup.mockResolvedValue({ ok: true })
+    const rec = new OBSRecorder(() => ({ host: '127.0.0.1', port: 4455, password: '', replayBufferSeconds: 0, obsPreserveActiveScene: false }))
+    expect(await rec.connect()).toMatchObject({ ok: false })
+    expect(mocks.setup).not.toHaveBeenCalled()
+    expect(rec.isConnected()).toBe(false)
+  })
+
+  it('bounds a stuck recording-status request and allows a subsequent connection', async () => {
+    vi.useFakeTimers()
+    mocks.connect.mockResolvedValue({ obsWebSocketVersion: '5.7.4' })
+    mocks.disconnect.mockResolvedValue(undefined)
+    mocks.call.mockImplementation(async (request) => {
+      if (request === 'GetVersion') return { obsVersion: '32.0.1' }
+      return new Promise(() => {})
+    })
+    mocks.setup.mockResolvedValue({ ok: true })
+    const rec = new OBSRecorder(() => ({ host: '127.0.0.1', port: 4455, password: '', replayBufferSeconds: 0, obsPreserveActiveScene: false }))
+    const settled = vi.fn()
+    const result = rec.connect().then(settled)
+    await vi.advanceTimersByTimeAsync(10_000)
+    expect(settled).toHaveBeenCalledWith(expect.objectContaining({ ok: false }))
+    await result
+    expect(mocks.setup).not.toHaveBeenCalled()
+    mocks.call.mockImplementation(async request => request === 'GetVersion' ? { obsVersion: '32.0.1' } : { outputActive: false })
+    expect(await rec.connect()).toMatchObject({ ok: true })
+  })
+
+  it('rejects a missing outputActive field instead of treating it as idle', async () => {
+    mocks.connect.mockResolvedValue({ obsWebSocketVersion: '5.7.4' })
+    mocks.disconnect.mockResolvedValue(undefined)
+    mocks.call.mockImplementation(async request => request === 'GetVersion' ? { obsVersion: '32.0.1' } : {})
+    mocks.setup.mockResolvedValue({ ok: true })
+    const rec = new OBSRecorder(() => ({ host: '127.0.0.1', port: 4455, password: '', replayBufferSeconds: 0, obsPreserveActiveScene: false }))
+    expect(await rec.connect()).toMatchObject({ ok: false })
+    expect(mocks.setup).not.toHaveBeenCalled()
+  })
+
   it('does not advertise readiness or configure scenes during OBS startup', async () => {
     vi.useFakeTimers()
     mocks.connect.mockResolvedValue({ obsWebSocketVersion: '5.7.4' })

@@ -128,6 +128,15 @@ export const ACTIVATION_ERRORS: Record<string, ActivationErrorDefinition> = {
       'OBS did not start recording in time. Check OBS Output settings, then try Test Recording.',
     recoveryAction: 'test_recording',
   },
+  obs_recording_no_data: {
+    code: 'obs_recording_no_data',
+    category: 'obs',
+    stage: 'recording',
+    retryable: true,
+    userActionRequired: true,
+    userMessage: 'OBS is not producing recording data. Restart OBS before recording another match.',
+    recoveryAction: 'test_recording',
+  },
   obs_disconnected_during_recording: {
     code: 'obs_disconnected_during_recording',
     category: 'obs',
@@ -391,11 +400,24 @@ export function getActivationError(code: string): ActivationErrorDefinition {
   return ACTIVATION_ERRORS[code] ?? ACTIVATION_ERRORS.unknown
 }
 
+/** Keep machine identity separate from display wording through recording startup. */
+export class ActivationError extends Error {
+  constructor(
+    readonly code: 'obs_recording_start_timeout' | 'obs_recording_no_data',
+    readonly technicalMessage: string,
+    message: string = getActivationError(code).userMessage,
+    options?: ErrorOptions,
+  ) {
+    super(message, options)
+    this.name = 'ActivationError'
+  }
+}
+
 /** Map raw exception / OBS / pipeline messages to a stable code. */
-export function classifyActivationError(raw: string): ClassifiedActivationError {
-  const technicalMessage = (raw || '').trim()
+export function classifyActivationError(raw: string | Error): ClassifiedActivationError {
+  const technicalMessage = (raw instanceof ActivationError ? raw.technicalMessage : raw instanceof Error ? raw.message : raw || '').trim()
   const lower = technicalMessage.toLowerCase()
-  const code = matchActivationErrorCode(lower, technicalMessage)
+  const code = raw instanceof ActivationError ? raw.code : matchActivationErrorCode(lower, technicalMessage)
   const definition = getActivationError(code)
   return {
     code: definition.code as ActivationErrorCode,

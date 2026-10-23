@@ -64,7 +64,7 @@ export interface KillSpatial {
   alliesAlive?: number
   /** Ally traded this death within TRADE_AFTER_DEATH_MS. */
   traded?: boolean
-  /** Riot world coords of victim at death (for proximity trade fallback). */
+  /** Riot world coords of victim at death. */
   victimWorld?: { x: number; y: number }
   calloutResolution?: CalloutResolution
   killerCalloutResolution?: CalloutResolution

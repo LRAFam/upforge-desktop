@@ -309,8 +309,7 @@ export function prunePendingRecordingsByAge(
     if (!isLocalOnlyRecording(rec) || rec.savedOffline) continue
     if (rec.recordedAt >= cutoff) continue
     if (!fs.existsSync(rec.path)) {
-      store.remove(rec.id)
-      removed++
+      // Unavailable storage is not evidence that the user deleted this recording.
       continue
     }
 

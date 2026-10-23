@@ -496,7 +496,6 @@ const noVideoHint = computed((): string => {
                   @click="setSidePanelTab('map')"
                 >Dock to side</button>
               </div>
-              <VodPersonalReview />
           <TacticalIntelBrief
                 v-if="tacticalIntelBrief && !sidePanelOpen"
                 :brief="tacticalIntelBrief"
@@ -966,7 +965,7 @@ const noVideoHint = computed((): string => {
             :class="showInsightsPanel ? 'vod-side-tab--active' : ''"
             :aria-pressed="showInsightsPanel"
             @click="setSidePanelTab('notes')"
-          >Coach notes</button>
+          >Review</button>
           <button
             v-if="hasSpatialIntel"
             type="button"
@@ -996,6 +995,7 @@ const noVideoHint = computed((): string => {
         </div>
 
         <div v-show="showInsightsPanel" class="vod-notes-panel flex-1 min-h-0 overflow-y-auto scrollbar-hide px-4 py-4 space-y-4">
+          <VodPersonalReview />
           <TacticalIntelBrief
             v-if="tacticalIntelBrief"
             :brief="tacticalIntelBrief"
@@ -1084,8 +1084,8 @@ const noVideoHint = computed((): string => {
             v-if="!tacticalIntelBrief && !supplementalCoachingNotes.length && !coachReview?.annotations?.length"
             class="rounded-xl border border-dashed border-white/[0.08] px-3 py-8 text-center"
           >
-            <p class="text-[12px] font-medium text-gray-500">No coaching analysis yet</p>
-            <p class="mt-1.5 text-[11px] text-gray-600 leading-relaxed">Run match analysis from the dashboard to unlock structured review notes here.</p>
+            <p class="text-[12px] font-medium text-gray-500">No AI coaching yet</p>
+            <p class="mt-1.5 text-[11px] text-gray-600 leading-relaxed">Your notebook works without analysis. Run match analysis when you want AI coaching alongside your own review.</p>
           </div>
         </div>
 

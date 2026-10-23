@@ -1,3 +1,4 @@
+import { ActivationError } from './activation-error-codes'
 import { withTimeout } from './promise-timeout'
 
 export interface RecordProgress {
@@ -22,7 +23,7 @@ export async function waitForRecordingProgress(
     }
     await new Promise((resolve) => setTimeout(resolve, 500))
   }
-  throw new Error('OBS is not producing recording data. Restart OBS before recording another match.')
+  throw new ActivationError('obs_recording_no_data', 'OBS recording bytes did not advance before the progress deadline.')
 }
 
 /** StopRecord acknowledges a request; only a subsequent inactive status confirms completion. */

@@ -187,10 +187,30 @@ async function findUpForgeSceneItem(obs: OBSWebSocket): Promise<{
 /**
  * Ensure capture source is game/window scoped — upgrades legacy monitor_capture scenes.
  */
+const captureSetupQueues = new WeakMap<OBSWebSocket, Promise<void>>()
+
 export async function ensureUpForgeCapture(
   obs: OBSWebSocket,
   game: string,
   options: EnsureUpForgeCaptureOptions = {},
+): Promise<{ inputCreated: boolean; inputUpgraded: boolean; captureWindow: string }> {
+  // Connection setup, game switching, and recording startup share this source.
+  // Hold the queue across the read/remove/create sequence so they cannot race.
+  const previous = captureSetupQueues.get(obs) ?? Promise.resolve()
+  const operation = previous.then(() => ensureUpForgeCaptureSerial(obs, game, options))
+  const settled = operation.then(() => {}, () => {})
+  captureSetupQueues.set(obs, settled)
+  try {
+    return await operation
+  } finally {
+    if (captureSetupQueues.get(obs) === settled) captureSetupQueues.delete(obs)
+  }
+}
+
+async function ensureUpForgeCaptureSerial(
+  obs: OBSWebSocket,
+  game: string,
+  options: EnsureUpForgeCaptureOptions,
 ): Promise<{ inputCreated: boolean; inputUpgraded: boolean; captureWindow: string }> {
   const allowRecreate = options.allowRecreate !== false
   const captureWindow = options.windowOverride ?? await resolveObsCaptureWindow(game)

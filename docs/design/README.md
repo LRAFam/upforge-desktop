@@ -1,5 +1,7 @@
 # UpForge Desktop — design reference
 
+Storage concept: [Move footage flow v1](storage/move-footage-flow-v1.png) shows batch selection, account-specific destination, verified transfer, and completion; generation prompt saved alongside it.
+
 Saved UI mockups and generated artwork for implementation reference. **Commit these to git** so they survive across machines and chat sessions.
 
 ## Folder layout

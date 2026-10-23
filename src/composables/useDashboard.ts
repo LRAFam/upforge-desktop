@@ -39,7 +39,7 @@ import { recordingHasCloudCopy } from '../lib/recording-library'
 import { type DemoDownloadProgress, demoDownloadProgressLabel } from '../lib/demo-download-progress'
 import { recordingTimelineReady } from '../lib/recording-demo-status'
 import { canRetryRiotMatchStats } from '../lib/match-stats-retry'
-import { recordingRetryActionLabel } from '../lib/activation-retry-label'
+import { recordingRetryAction, recordingRetryActionLabel } from '../lib/activation-retry-label'
 import {
   analyseBlockedMessage,
   isAnalyseReady,
@@ -1070,7 +1070,11 @@ function createDashboard() {
       }
     }
     const user = profile.value?.user
-    if (user && !hasAnalysisQuotaRemaining(user.analysis_stats, user.tier, user.is_admin)) {
+    // Uploads reserve a credit before completion. Let presign reuse that reservation
+    // by recording ID, or enforce quota server-side if the old upload has expired.
+    const isUploadRetry = Boolean(rec?.lastAnalysisError
+      && recordingRetryAction(rec.lastAnalysisError, rec.lastFailureCode) === 'upload')
+    if (!isUploadRetry && user && !hasAnalysisQuotaRemaining(user.analysis_stats, user.tier, user.is_admin)) {
       warning.value = 'No report credits remaining. View your plan and available options on the web.'
       upgradeNeeded.value = true
       return

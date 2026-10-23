@@ -1,7 +1,13 @@
-import { globalShortcut, BrowserWindow } from 'electron'
+import { globalShortcut } from 'electron'
 import log from 'electron-log'
 
 export type HotkeyAction = 'save-clip' | 'toggle-overlay' | 'take-screenshot'
+export type HotkeyBindings = Partial<Record<HotkeyAction, string>>
+
+interface HotkeyPreferences {
+  load(): HotkeyBindings | undefined
+  save(bindings: HotkeyBindings): void
+}
 
 const DEFAULT_HOTKEYS: Record<HotkeyAction, string> = {
   'save-clip': 'F9',
@@ -12,6 +18,9 @@ const DEFAULT_HOTKEYS: Record<HotkeyAction, string> = {
 export class HotkeyManager {
   private registered: Map<HotkeyAction, string> = new Map()
   private callbacks: Map<HotkeyAction, () => void> = new Map()
+  private bindings = { ...DEFAULT_HOTKEYS }
+
+  constructor(private preferences?: HotkeyPreferences) {}
 
   on(action: HotkeyAction, callback: () => void): void {
     this.callbacks.set(action, callback)
@@ -19,10 +28,13 @@ export class HotkeyManager {
 
   /** Register all hotkeys using current (or default) bindings. Returns map of action → success. */
   registerAll(overrides: Partial<Record<HotkeyAction, string>> = {}): Record<HotkeyAction, boolean> {
+    const requested = { ...this.bindings, ...this.preferences?.load(), ...overrides }
     const results = {} as Record<HotkeyAction, boolean>
     for (const [action, defaultKey] of Object.entries(DEFAULT_HOTKEYS) as [HotkeyAction, string][]) {
-      const key = overrides[action] ?? defaultKey
+      const key = requested[action] ?? defaultKey
       results[action] = this._register(action, key)
+      // Keep a failed startup binding visible so the user can resolve that conflict.
+      this.bindings[action] = this.registered.get(action) ?? key
     }
     const failed = (Object.entries(results) as [HotkeyAction, boolean][]).filter(([, ok]) => !ok).map(([a]) => a)
     if (failed.length > 0) {
@@ -38,13 +50,13 @@ export class HotkeyManager {
     return this.registered.has(action)
   }
 
-  /** Update a single hotkey binding (unregisters old, registers new) */
+  /** Keep the old shortcut working until its replacement has registered. */
   update(action: HotkeyAction, accelerator: string): boolean {
-    const old = this.registered.get(action)
-    if (old) {
-      try { globalShortcut.unregister(old) } catch { /* ignore */ }
-    }
-    return this._register(action, accelerator)
+    if (!Object.hasOwn(DEFAULT_HOTKEYS, action)) return false
+    if (!this._register(action, accelerator)) return false
+    this.bindings[action] = accelerator
+    this.preferences?.save({ ...this.bindings })
+    return true
   }
 
   unregisterAll(): void {
@@ -54,20 +66,19 @@ export class HotkeyManager {
   }
 
   getBindings(): Record<HotkeyAction, string> {
-    return {
-      'save-clip': this.registered.get('save-clip') ?? DEFAULT_HOTKEYS['save-clip'],
-      'toggle-overlay': this.registered.get('toggle-overlay') ?? DEFAULT_HOTKEYS['toggle-overlay'],
-      'take-screenshot': this.registered.get('take-screenshot') ?? DEFAULT_HOTKEYS['take-screenshot'],
-    }
+    return { ...this.bindings }
   }
 
   private _register(action: HotkeyAction, accelerator: string): boolean {
+    const old = this.registered.get(action)
+    if (old === accelerator) return true
     try {
       const ok = globalShortcut.register(accelerator, () => {
         log.info(`[HotkeyManager] ${action} triggered (${accelerator})`)
         this.callbacks.get(action)?.()
       })
       if (ok) {
+        if (old) globalShortcut.unregister(old)
         this.registered.set(action, accelerator)
         log.info(`[HotkeyManager] Registered ${action} → ${accelerator}`)
       } else {
