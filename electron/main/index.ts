@@ -112,6 +112,7 @@ import {
   recomputeTimelineVideoOffsets,
 } from './riot-local-api'
 import { readRecentMatchReport, saveRecentMatchExports } from './recent-match-export'
+import { EMPTY_SYNC_STATE, syncMatchReports, type SyncResult, type SyncState } from './match-report-sync'
 import { decideRiotAccountSwitch } from './riot-account-switch'
 import { isModeFilteredOut, getRecordedModesForGame, recordableModesForGame, normalizeCs2GameMode } from './recorded-modes-filter'
 import { applyLiveKillStampsToTimeline } from './live-kill-stamps'
@@ -695,6 +696,8 @@ const discordRPC = new DiscordRPC(
 const riotLocalApi = new RiotLocalApi()
 const lolLiveClientApi = new LoLLiveClientApi()
 const authManager = new AuthManager()
+/** Set once IPC is ready; queues a focus sync after a match ends. */
+let scheduleFocusSyncAfterMatch: (game: string) => void = () => {}
 
 // Set up crash/error reporting now that authManager is available
 setupMainProcessErrorHandlers(authManager)
@@ -3255,6 +3258,7 @@ function setupGameDetection(): void {
     const run = async (): Promise<boolean> => {
       try {
         await handleMatchEnd(game, source)
+        scheduleFocusSyncAfterMatch(game)
         return true
       } catch (err) {
         log.error(`[MatchEnd] handleMatchEnd failed (${source}):`, err)
@@ -7111,6 +7115,52 @@ async function startApp(): Promise<void> {
     if (report) recentMatchesFolder = report.folder
     return report
   })
+
+  // ── Focus loop: send recent Riot matches (no recording needed) for checked reports ──
+  let focusSyncRunning = false
+  let lastFocusSyncAt = 0
+  async function runFocusSync(reason: string, limit = 20): Promise<SyncResult | null> {
+    const userId = getActiveUserId()
+    if (focusSyncRunning || !authManager.isAuthenticated() || userId == null) return null
+    if (reason !== 'manual' && Date.now() - lastFocusSyncAt < 2 * 60_000) return null
+    focusSyncRunning = true
+    lastFocusSyncAt = Date.now()
+    const statePath = join(app.getPath('userData'), `focus-sync-${userId}.json`)
+    try {
+      const res = await syncMatchReports({
+        fetchRecent: n => riotLocalApi.fetchRecentMatchTimelines(n),
+        post: async body => {
+          const r = await authManager.getApi().post('/api/match-report', body, { validateStatus: () => true, timeout: 120_000 })
+          return { status: r.status, data: r.data }
+        },
+        loadState: async () => {
+          try { return { ...EMPTY_SYNC_STATE, ...JSON.parse(await fs.promises.readFile(statePath, 'utf8')) } as SyncState } catch { return EMPTY_SYNC_STATE }
+        },
+        saveState: async state => { await fs.promises.writeFile(statePath, JSON.stringify(state)) },
+      }, limit)
+      log.info(`[FocusSync] ${reason}: ok=${res.ok} uploaded=${res.uploaded} skipped=${res.skipped}${res.reason ? ` reason=${res.reason}` : ''}`)
+      if (res.latest) mainWindow?.webContents.send('focus:updated', res.latest)
+      return res
+    } catch (err) {
+      log.warn('[FocusSync] failed:', err)
+      return null
+    } finally {
+      focusSyncRunning = false
+    }
+  }
+  ipcMain.handle('focus:sync', () => runFocusSync('manual'))
+  ipcMain.handle('focus:get', async () => {
+    if (!authManager.isAuthenticated()) return null
+    const r = await authManager.getApi().get('/api/focus', { validateStatus: () => true }).catch(() => null)
+    return r?.status === 200 ? r.data : null
+  })
+  // First sync shortly after start (Riot client may still be launching), then after each match.
+  setTimeout(() => { void runFocusSync('startup') }, 45_000)
+  scheduleFocusSyncAfterMatch = (game: string) => {
+    if (game !== 'valorant') return
+    // Riot needs a minute or two to publish match details after the game ends.
+    setTimeout(() => { void runFocusSync('match_end', 5) }, 120_000)
+  }
 
   ipcMain.handle('debug:probe-lol-lcu', async () => {
     return probeLolLcu({ liveClient: lolLiveClientApi })

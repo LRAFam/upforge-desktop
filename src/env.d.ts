@@ -752,6 +752,9 @@ declare global {
         openUrl: (url: string) => Promise<{ ok: boolean }>
         /** Open an upforge.gg path in the authenticated in-app web shell */
         openWebShell: (path: string) => Promise<{ ok: boolean; error?: string }>
+        getFocus: () => Promise<import('./lib/focus').FocusResponse | null>
+        syncFocus: () => Promise<{ ok: boolean; uploaded: number; skipped: number; reason?: string; latest: import('./lib/focus').FocusUpdate | null } | null>
+        onFocusUpdated: (cb: (payload: import('./lib/focus').FocusUpdate) => void) => () => void
         refreshDashboard: () => Promise<{ ok: boolean }>
         openVodReview: (id: string, seekMs?: number) => Promise<{ ok: boolean }>
       }
