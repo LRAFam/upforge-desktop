@@ -756,6 +756,9 @@ declare global {
           intent: { kind: 'plan'; tier: 'plus' | 'pro' } | { kind: 'pack' } | { kind: 'browse'; path?: string },
           source: string,
         ) => Promise<{ ok: boolean; opened: 'stripe' | 'pricing' | 'billing'; reason?: string }>
+        getFocus: () => Promise<import('./lib/focus').FocusResponse | null>
+        syncFocus: () => Promise<{ ok: boolean; uploaded: number; skipped: number; reason?: string; latest: import('./lib/focus').FocusUpdate | null } | null>
+        onFocusUpdated: (cb: (payload: import('./lib/focus').FocusUpdate) => void) => () => void
         refreshDashboard: () => Promise<{ ok: boolean }>
         openVodReview: (id: string, seekMs?: number) => Promise<{ ok: boolean }>
       }

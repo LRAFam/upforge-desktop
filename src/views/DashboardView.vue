@@ -12,6 +12,7 @@ import DashboardLiveOps from '../components/dashboard/DashboardLiveOps.vue'
 import DashboardMatchCards from '../components/dashboard/DashboardMatchCards.vue'
 import DashboardActionQueue from '../components/dashboard/DashboardActionQueue.vue'
 import DashboardDevTools from '../components/dashboard/DashboardDevTools.vue'
+import DashboardFocusCard from '../components/dashboard/DashboardFocusCard.vue'
 
 const dashboard = provideDashboard()
 
@@ -35,6 +36,7 @@ const showMatchCards = computed(() => dashboard.isValorant.value && dashboard.da
 
     <div class="home-content flex-1 min-h-0 px-5 pb-4 pt-4">
       <main class="home-main scroll-col" aria-label="Your next review">
+        <DashboardFocusCard v-if="dashboard.isValorant.value" class="flex-shrink-0" />
         <section v-if="showFirstReview" class="first-review" aria-labelledby="first-review-title">
           <h2 id="first-review-title">Start your first review</h2>
           <p>{{ dashboard.status.value.obsConnected

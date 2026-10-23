@@ -92,6 +92,13 @@ const api = {
       intent: { kind: 'plan'; tier: 'plus' | 'pro' } | { kind: 'pack' } | { kind: 'browse'; path?: string },
       source: string,
     ) => ipcRenderer.invoke('billing:start-checkout', { intent, source }),
+    getFocus: () => ipcRenderer.invoke('focus:get'),
+    syncFocus: () => ipcRenderer.invoke('focus:sync'),
+    onFocusUpdated: (cb: (payload: unknown) => void) => {
+      const listener = (_e: unknown, payload: unknown) => cb(payload)
+      ipcRenderer.on('focus:updated', listener)
+      return () => { ipcRenderer.removeListener('focus:updated', listener) }
+    },
     refreshDashboard: () => ipcRenderer.invoke('app:refresh-dashboard'),
     openVodReview: (id: string, seekMs?: number) =>
       ipcRenderer.invoke('app:open-vod-review', { id, seekMs }),
