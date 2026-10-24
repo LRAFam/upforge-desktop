@@ -757,7 +757,7 @@ declare global {
           source: string,
         ) => Promise<{ ok: boolean; opened: 'stripe' | 'pricing' | 'billing'; reason?: string }>
         getFocus: () => Promise<import('./lib/focus').FocusResponse | null>
-        syncFocus: () => Promise<{ ok: boolean; uploaded: number; skipped: number; reason?: string; latest: import('./lib/focus').FocusUpdate | null } | null>
+        syncFocus: () => Promise<import('./lib/focus').FocusSyncResult | null>
         onFocusUpdated: (cb: (payload: import('./lib/focus').FocusUpdate) => void) => () => void
         refreshDashboard: () => Promise<{ ok: boolean }>
         openVodReview: (id: string, seekMs?: number) => Promise<{ ok: boolean }>

@@ -3,17 +3,17 @@
  * The focus loop on the dashboard: one measured habit, checked automatically after each
  * match from Riot match history (no recording needed), plus the latest coach notes.
  */
-import { computed, onMounted, onUnmounted, ref } from 'vue'
-import { focusHeadline, focusSlots, focusSubline, pct, type FocusResponse, type FocusUpdate } from '../../lib/focus'
+import { computed, onMounted, onUnmounted } from 'vue'
+import { focusHeadline, focusSlots, focusSubline, focusTransitionText, pct } from '../../lib/focus'
+import { createFocusCardState } from '../../composables/useFocusCard'
 
-const data = ref<FocusResponse | null>(null)
-const latest = ref<FocusUpdate | null>(null)
-const loading = ref(true)
-const syncing = ref(false)
-const syncMessage = ref('')
+const state = createFocusCardState(window.api.app)
+const { data, loading, loadError, syncing, syncMessage, syncNow } = state
+const latest = computed(() => data.value?.latest ?? null)
 
-const focus = computed(() => latest.value?.focus ?? data.value?.focus ?? null)
+const focus = computed(() => data.value?.focus ?? null)
 const notes = computed(() => latest.value?.report?.notes ?? null)
+const transition = computed(() => focusTransitionText(latest.value))
 const slots = computed(() => (focus.value ? focusSlots(focus.value) : []))
 const trend = computed(() => {
   const key = focus.value?.metric
@@ -28,38 +28,18 @@ const EVENT_LABELS: Record<string, string> = {
 }
 const eventLabel = computed(() => EVENT_LABELS[latest.value?.focus_event ?? ''] ?? '')
 
-async function load() {
-  try {
-    data.value = await window.api.app.getFocus()
-  } finally {
-    loading.value = false
-  }
-}
-
-async function syncNow() {
-  syncing.value = true
-  syncMessage.value = ''
-  try {
-    const res = await window.api.app.syncFocus()
-    if (!res) syncMessage.value = 'Sign in to check your matches.'
-    else if (!res.ok) syncMessage.value = 'Open Valorant (the Riot Client) so UpForge can read your recent matches.'
-    else if (res.uploaded === 0) syncMessage.value = 'You\'re up to date.'
-    if (res?.latest) latest.value = res.latest
-    await load()
-  } finally {
-    syncing.value = false
-  }
-}
-
 let off: (() => void) | null = null
 onMounted(() => {
-  void load()
   off = window.api.app.onFocusUpdated(payload => {
-    latest.value = payload
-    void load()
+    state.applyUpdate(payload)
+    void state.load()
   })
+  void state.load()
 })
-onUnmounted(() => off?.())
+onUnmounted(() => {
+  off?.()
+  state.dispose()
+})
 </script>
 
 <template>
@@ -72,6 +52,7 @@ onUnmounted(() => off?.())
     <template v-if="focus">
       <h2 id="focus-title" class="focus-title">{{ focusHeadline(focus) }}</h2>
       <p class="focus-sub">{{ focusSubline(focus) }}</p>
+      <p v-if="transition" class="focus-transition">{{ transition }}</p>
 
       <ol class="focus-slots" aria-label="Next games">
         <li v-for="(s, i) in slots" :key="i" :class="`slot slot--${s}`"
@@ -89,13 +70,16 @@ onUnmounted(() => off?.())
         <span class="trend-target" :style="{ bottom: `${Math.min(100, focus.target * 100 * (focus.better === 'lower' ? 2 : 1))}%` }" />
       </div>
 
-      <div v-if="notes?.next_action" class="focus-notes">
+      <div v-if="notes?.headline || notes?.next_action" class="focus-notes">
         <p v-if="notes.headline" class="notes-headline">{{ notes.headline.text }}</p>
-        <p class="notes-next"><strong>Next game:</strong> {{ notes.next_action.text }}</p>
+        <p v-if="notes.next_action" class="notes-next"><strong>Next game:</strong> {{ notes.next_action.text }}</p>
       </div>
+      <p v-else class="focus-notes-empty">Coach notes aren’t available for this match.</p>
     </template>
 
-    <template v-else-if="!loading">
+    <h2 v-else-if="loading" id="focus-title" class="focus-title">Loading your focus…</h2>
+    <h2 v-else-if="loadError" id="focus-title" class="focus-title">Your focus is temporarily unavailable</h2>
+    <template v-else>
       <h2 id="focus-title" class="focus-title">Get your first focus, no recording needed</h2>
       <p class="focus-sub">With Valorant open, UpForge reads your recent matches, finds the habit costing you most rounds, and checks it after every game.</p>
     </template>
@@ -106,6 +90,7 @@ onUnmounted(() => off?.())
       </button>
       <span v-if="syncMessage" class="focus-msg" role="status">{{ syncMessage }}</span>
     </div>
+    <p v-if="loadError" class="focus-msg" role="alert">{{ loadError }}</p>
   </section>
 </template>
 
@@ -123,6 +108,8 @@ onUnmounted(() => off?.())
 .focus-event { font-size: 11px; color: rgb(156 163 175); }
 .focus-title { margin-top: 6px; font-size: 18px; font-weight: 900; color: #fff; line-height: 1.25; }
 .focus-sub { margin-top: 4px; font-size: 13px; color: rgb(156 163 175); }
+.focus-transition { margin-top: 6px; font-size: 12px; color: rgb(209 213 219); }
+.focus-notes-empty { margin-top: 12px; font-size: 12px; color: rgb(156 163 175); }
 .focus-slots { display: flex; gap: 8px; margin-top: 12px; }
 .slot {
   display: grid; place-items: center; width: 52px; height: 44px; border-radius: 8px;

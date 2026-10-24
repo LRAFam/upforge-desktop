@@ -112,7 +112,9 @@ import {
   recomputeTimelineVideoOffsets,
 } from './riot-local-api'
 import { readRecentMatchReport, saveRecentMatchExports } from './recent-match-export'
-import { EMPTY_SYNC_STATE, syncMatchReports, type SyncResult, type SyncState } from './match-report-sync'
+import { syncMatchReports, type SyncResult } from './match-report-sync'
+import { focusReportDiagnostic, readFocusSyncState, writeFocusSyncState } from './focus-state'
+import { hydrateFocusResponse } from '../../src/lib/focus'
 import { decideRiotAccountSwitch } from './riot-account-switch'
 import { isModeFilteredOut, getRecordedModesForGame, recordableModesForGame, normalizeCs2GameMode } from './recorded-modes-filter'
 import { applyLiveKillStampsToTimeline } from './live-kill-stamps'
@@ -7119,40 +7121,51 @@ async function startApp(): Promise<void> {
   // ── Focus loop: send recent Riot matches (no recording needed) for checked reports ──
   let focusSyncRunning = false
   let lastFocusSyncAt = 0
+  let lastFocusSyncUserId: number | null = null
   async function runFocusSync(reason: string, limit = 20): Promise<SyncResult | null> {
     const userId = getActiveUserId()
-    if (focusSyncRunning || !authManager.isAuthenticated() || userId == null) return null
-    if (reason !== 'manual' && Date.now() - lastFocusSyncAt < 2 * 60_000) return null
+    if (!authManager.isAuthenticated() || userId == null) return null
+    if (focusSyncRunning) return { ok: false, reason: 'sync_in_progress', uploaded: 0, skipped: 0, latest: null }
+    if (reason !== 'manual' && lastFocusSyncUserId === userId && Date.now() - lastFocusSyncAt < 2 * 60_000) return null
     focusSyncRunning = true
     lastFocusSyncAt = Date.now()
-    const statePath = join(app.getPath('userData'), `focus-sync-${userId}.json`)
+    lastFocusSyncUserId = userId
+    const root = app.getPath('userData')
+    const ownsSession = () => authManager.isAuthenticated() && getActiveUserId() === userId
     try {
       const res = await syncMatchReports({
         fetchRecent: n => riotLocalApi.fetchRecentMatchTimelines(n),
         post: async body => {
+          if (!ownsSession()) throw new Error('Focus account changed')
           const r = await authManager.getApi().post('/api/match-report', body, { validateStatus: () => true, timeout: 120_000 })
           return { status: r.status, data: r.data }
         },
-        loadState: async () => {
-          try { return { ...EMPTY_SYNC_STATE, ...JSON.parse(await fs.promises.readFile(statePath, 'utf8')) } as SyncState } catch { return EMPTY_SYNC_STATE }
-        },
-        saveState: async state => { await fs.promises.writeFile(statePath, JSON.stringify(state)) },
+        loadState: () => readFocusSyncState(root, userId),
+        saveState: state => writeFocusSyncState(root, userId, state),
+        onReport: update => log.info(`[FocusSync] report: ${focusReportDiagnostic(update)}`),
       }, limit)
       log.info(`[FocusSync] ${reason}: ok=${res.ok} uploaded=${res.uploaded} skipped=${res.skipped}${res.reason ? ` reason=${res.reason}` : ''}`)
+      // An in-flight response belongs to the account that started it, even after logout.
+      if (!ownsSession()) return null
       if (res.latest) mainWindow?.webContents.send('focus:updated', res.latest)
       return res
-    } catch (err) {
-      log.warn('[FocusSync] failed:', err)
-      return null
+    } catch {
+      // Axios errors can contain authorization headers; never log the raw error.
+      log.warn(`[FocusSync] ${reason}: ok=false reason=sync_failed`)
+      return ownsSession() ? { ok: false, reason: 'sync_failed', uploaded: 0, skipped: 0, latest: null } : null
     } finally {
       focusSyncRunning = false
     }
   }
   ipcMain.handle('focus:sync', () => runFocusSync('manual'))
   ipcMain.handle('focus:get', async () => {
-    if (!authManager.isAuthenticated()) return null
+    const userId = getActiveUserId()
+    if (!authManager.isAuthenticated() || userId == null) return null
     const r = await authManager.getApi().get('/api/focus', { validateStatus: () => true }).catch(() => null)
-    return r?.status === 200 ? r.data : null
+    if (r?.status !== 200 || !r.data?.success) return null
+    const cached = await readFocusSyncState(app.getPath('userData'), userId)
+    if (!authManager.isAuthenticated() || getActiveUserId() !== userId) return null
+    return hydrateFocusResponse(r.data, cached.latest ?? null)
   })
   // First sync shortly after start (Riot client may still be launching), then after each match.
   setTimeout(() => { void runFocusSync('startup') }, 45_000)

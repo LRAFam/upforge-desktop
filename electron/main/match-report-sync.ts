@@ -7,12 +7,15 @@
  */
 import type { RecentMatchFetchResult } from './recent-match-export'
 import { serializeRecentMatch } from './recent-match-export'
+import type { FocusSyncResult, FocusUpdate } from '../../src/lib/focus'
 
 export interface SyncState {
   /** Match IDs already sent (or permanently skipped). */
   synced: string[]
   /** Start time (ms) of the newest match synced; null before the first sync. */
   newestSyncedStartMs: number | null
+  /** Last live report, retained across route changes, empty syncs and restarts. */
+  latest?: FocusSyncPayload | null
 }
 
 export const EMPTY_SYNC_STATE: SyncState = { synced: [], newestSyncedStartMs: null }
@@ -45,32 +48,25 @@ export function planUploads(
   }))
 }
 
-export interface FocusSyncPayload {
-  focus: unknown
-  focus_event: string | null
-  report?: { notes?: unknown; metrics?: unknown; focus_suggestion?: unknown; notes_source?: string } | null
-  match_id: string
-}
+export type FocusSyncPayload = FocusUpdate
 
 export interface SyncDeps {
   fetchRecent: (limit: number) => Promise<RecentMatchFetchResult>
   post: (body: Record<string, unknown>) => Promise<{ status: number; data: any }>
   loadState: () => Promise<SyncState>
   saveState: (state: SyncState) => Promise<void>
+  onReport?: (update: FocusSyncPayload) => void
   serialize?: (timeline: NonNullable<RecentMatchFetchResult['matches'][number]['timeline']>, warnings: string[]) => string
 }
 
-export interface SyncResult {
-  ok: boolean
-  reason?: string
-  uploaded: number
-  skipped: number
-  latest: FocusSyncPayload | null
-}
+export type SyncResult = FocusSyncResult
 
 export async function syncMatchReports(deps: SyncDeps, limit = 20): Promise<SyncResult> {
   const fetched = await deps.fetchRecent(limit)
-  if (!fetched.ok) return { ok: false, reason: fetched.reason ?? 'fetch_failed', uploaded: 0, skipped: 0, latest: null }
+  if (!fetched.ok) {
+    const reason = fetched.reason?.startsWith('riot_auth_missing') ? 'riot_client_unavailable' : fetched.reason ?? 'fetch_failed'
+    return { ok: false, reason, uploaded: 0, skipped: 0, latest: null }
+  }
 
   const state = await deps.loadState()
   const serialize = deps.serialize ?? serializeRecentMatch
@@ -83,6 +79,8 @@ export async function syncMatchReports(deps: SyncDeps, limit = 20): Promise<Sync
   let uploaded = 0
   let skipped = 0
   let latest: FocusSyncPayload | null = null
+  let cachedLatest = state.latest ?? null
+  let reason: string | undefined
   const synced = [...state.synced]
   let newest = state.newestSyncedStartMs
   const markDone = (p: PlannedUpload) => {
@@ -97,6 +95,7 @@ export async function syncMatchReports(deps: SyncDeps, limit = 20): Promise<Sync
       matchData = JSON.parse(serialize(entry.timeline!, entry.warnings ?? [])).match_data
     } catch {
       skipped++
+      reason ??= 'invalid_match'
       markDone(p) // fails the data-quality gate: never retry this match
       continue
     }
@@ -104,22 +103,37 @@ export async function syncMatchReports(deps: SyncDeps, limit = 20): Promise<Sync
     try {
       res = await deps.post({ match_id: p.matchId, played_at_ms: p.startMs, history: p.history, match_data: matchData })
     } catch {
+      reason = 'network_error'
       break // network: retry next sync
     }
     if (res.status === 200 && res.data?.success) {
       uploaded++
       markDone(p)
       if (!p.history) {
-        latest = { focus: res.data.focus ?? null, focus_event: res.data.focus_event ?? null, report: res.data.report ?? null, match_id: p.matchId }
+        const focus = res.data.focus ?? null
+        latest = {
+          focus,
+          focus_event: res.data.focus_event ?? null,
+          report: res.data.report ? { notes: res.data.report.notes ?? null, notes_source: res.data.report.notes_source } : null,
+          match_id: p.matchId,
+          previous_focus: cachedLatest?.focus && focus
+            ? cachedLatest.focus.id !== focus.id ? cachedLatest.focus : cachedLatest.previous_focus ?? null
+            : null,
+        }
+        cachedLatest = latest
+        deps.onReport?.(latest)
       }
     } else if (res.status === 422) {
       skipped++
+      // Only retain known codes, never raw API error bodies or authorization data.
+      reason = res.data?.error === 'not_your_match' ? 'not_your_match' : reason ?? 'invalid_match'
       markDone(p) // not this player's match / invalid: never retry
     } else {
+      reason = res.status === 401 || res.status === 403 ? 'sign_in_required' : `http_${res.status}`
       break // server or AI unavailable: retry next sync
     }
   }
 
-  await deps.saveState({ synced: synced.slice(-MAX_REMEMBERED), newestSyncedStartMs: newest })
-  return { ok: true, uploaded, skipped, latest }
+  await deps.saveState({ synced: synced.slice(-MAX_REMEMBERED), newestSyncedStartMs: newest, latest: cachedLatest })
+  return { ok: !reason, ...(reason ? { reason } : {}), uploaded, skipped, latest }
 }
