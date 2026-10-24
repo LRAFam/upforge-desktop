@@ -136,8 +136,8 @@ describe('recent match timelines', () => {
     expect(t.playerKills.map(kill => kill.spatial?.victimWorld)).toEqual([{ x: 100, y: 200 }, { x: 900, y: 950 }])
     const payload = JSON.parse(serializeRecentMatch(t))
     expect(payload.respawnMode).toBe(true)
-    expect(payload.match_data.spatialSummary).toBeUndefined()
-    expect(payload.match_data.playerKills[0].spatial).toBeUndefined()
+    expect(payload.match_data.playerKills.map((kill: { spatial?: { victimWorld?: unknown } }) => kill.spatial?.victimWorld))
+      .toEqual([{ x: 100, y: 200 }, { x: 900, y: 950 }])
   })
 
   it('falls back to history timing, never the export time', async () => {
@@ -247,7 +247,30 @@ describe('saved coaching exports', () => {
     expect(data.dataQuality.capabilities.competitiveAcs).toBe('not_applicable')
   })
 
-  it('removes speculative claims in the real upload path and identifies fallback names', async () => {
+  it('keeps Riot-derived trade and death-location data in coaching uploads', async () => {
+    const { api, fetch } = setup()
+    const raw = details()
+    const k = raw.kills[0]
+    // Round 1: enemy kills the player, then an ally kills that enemy 1.5s later (a trade).
+    raw.kills[3] = { ...k, killer: 'enemy', victim: SELF, gameTime: 20_000, round: 1, roundTime: 5_000 }
+    raw.kills.push({ ...k, killer: 'ally', victim: 'enemy', gameTime: 21_500, round: 1, roundTime: 6_500 })
+    Object.assign(raw.players[0].stats, { deaths: 2 })
+    Object.assign(raw.players[1].stats, { kills: 1, deaths: 2 })
+    Object.assign(raw.players[2].stats, { kills: 2, deaths: 0 })
+    fetch.mockResolvedValue(raw)
+    const t = (await api.fetchRecentMatchTimelines(1)).matches[0].timeline!
+    const upload = prepareMatchDataForUpload(t)!
+    expect(upload.dataQuality?.status).toBe('verified_fields_only')
+    const death = upload.playerDeaths.find(d => d.round === 1)
+    expect(death?.spatial).toMatchObject({ traded: true })
+    expect(upload.spatialSummary?.events.length).toBeGreaterThan(0)
+    expect(upload.dataQuality?.capabilities.tradeAndIsolationJudgments).toBe('available')
+    expect(upload.dataQuality?.excludedFields).not.toContain('playerDeaths[].spatial')
+    const exported = JSON.parse(serializeRecentMatch(t)).match_data
+    expect(exported.playerDeaths.find((d: { round: number }) => d.round === 1).spatial).toMatchObject({ traded: true })
+  })
+
+  it('identifies fallback names in the real upload path', async () => {
     const { api, fetch } = setup()
     const raw = details()
     raw.players[1].gameName = ''
@@ -255,11 +278,9 @@ describe('saved coaching exports', () => {
     const t = (await api.fetchRecentMatchTimelines(1)).matches[0].timeline!
     const before = JSON.stringify(t)
     const upload = prepareMatchDataForUpload(t)!
-    expect(upload.spatialSummary).toBeUndefined()
-    expect([...upload.killEvents, ...upload.playerKills, ...upload.playerDeaths].every(k => !k.spatial)).toBe(true)
     expect(upload.teamSnapshot[1]).toMatchObject({ summonerName: null, nameSource: 'unavailable' })
     expect(upload.dataQuality).toMatchObject({ status: 'verified_fields_only', localNameSource: 'current_account',
-      capabilities: { tradeAndIsolationJudgments: 'excluded', populationBenchmarks: 'excluded', replayLifeState: 'partial' } })
+      capabilities: { replayLifeState: 'partial' } })
     expect(JSON.stringify(t)).toBe(before)
   })
 

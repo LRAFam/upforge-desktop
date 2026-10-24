@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { openUpgrade as startUpgrade } from '../../lib/upgrade'
 import { ref, onMounted, onBeforeUnmount } from 'vue'
 import { validReviewAccess } from '../../lib/account-usage'
 import { validSavedComparison, type SavedComparison } from '../../lib/review-notebook'
@@ -32,7 +33,7 @@ async function load() {
 const cleanups = ['session:user-changed', 'auth:session-expired'].map(event => window.api.on(event, () => { generation++; items.value = []; locked.value = false; loading.value = false; error.value = 'Your account changed. Reopen comparison.' }))
 onMounted(load)
 onBeforeUnmount(() => { generation++; cleanups.forEach(fn => fn()) })
-function plans() { void window.api.app.openUrl('https://upforge.gg/pricing') }
+function plans() { startUpgrade('vod_comparison') }
 function stamp(value: number) { return `${Math.floor(value / 60)}:${Math.floor(value % 60).toString().padStart(2, '0')}` }
 </script>
 <template>

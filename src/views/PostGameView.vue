@@ -835,6 +835,7 @@
 </template>
 
 <script setup lang="ts">
+import { openUpgrade as startUpgrade } from '../lib/upgrade'
 import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
 import { openAnalysisVodReview } from '../lib/open-vod-review'
@@ -2446,9 +2447,17 @@ async function openCoachNotesFromPostGame() {
     coachNotesOpening.value = false
   }
 }
-function openUpgrade() { window.open(upgradeUrl.value, '_blank') }
-function openPpa() { window.open('https://upforge.gg/pricing#reports', '_blank') }
-function openBundles() { window.open('https://upforge.gg/pricing#reports', '_blank') }
+function openUpgrade() {
+  // Server may suggest a specific upforge.gg page (e.g. storage); keep it inside the logged-in shell.
+  let path = '/pricing'
+  try {
+    const u = new URL(upgradeUrl.value)
+    if (u.hostname === 'upforge.gg' || u.hostname.endsWith('.upforge.gg')) path = `${u.pathname}${u.hash}` || '/pricing'
+  } catch { /* keep default */ }
+  startUpgrade(needsArchiveUpgrade.value ? 'post_game_storage' : 'post_game_quota', { kind: 'browse', path })
+}
+function openPpa() { startUpgrade('post_game_reports', { kind: 'pack' }) }
+function openBundles() { startUpgrade('post_game_reports', { kind: 'pack' }) }
 function openWebNextStep() {
   void openWebFeature(webNextStep.value.path, true)
   dismiss()

@@ -117,9 +117,8 @@ export function enforceValorantCoachingQuality(data: UploadMatchData, timeline: 
   } else issues.push('authoritative_events_missing')
   if (data.roundSummaries.length && ['kills', 'deaths', 'assists'].some(k => data.roundSummaries.reduce((n, r) => n + (r.playerStats?.[k as 'kills' | 'deaths' | 'assists'] ?? 0), 0) !== stats?.[k])) issues.push('round_totals_mismatch')
 
-  // Spatial labels, spacing/trade claims and population benchmarks are not source facts.
-  for (const event of [...data.killEvents, ...data.playerKills, ...data.playerDeaths]) delete event.spatial
-  delete data.spatialSummary
+  // Keep event.spatial and spatialSummary: trade/untraded flags and death callouts are derived from
+  // Riot kill timing and player positions (spatial/enrich.ts) and are core coaching evidence.
   for (const event of [...data.spikePlants, ...data.spikeDefuses, ...data.spikeDetonations]) {
     if (event.gameTimeMs == null) { event.EventTime = null; delete event.videoOffsetMs }
   }
@@ -150,6 +149,8 @@ export function enforceValorantCoachingQuality(data: UploadMatchData, timeline: 
   const economyMode = ['COMPETITIVE', 'UNRATED', 'SWIFTPLAY', 'PREMIER', 'CUSTOM'].includes(data.gameMode ?? '')
   const economyRounds = data.roundSummaries.filter(r => r.playerSpent != null && r.playerGold != null && r.playerLoadoutValue != null).length
   const statsRounds = data.roundSummaries.filter(r => r.playerStats != null).length
+  const deathsWithTradeFlag = data.playerDeaths.filter(d => typeof d.spatial?.traded === 'boolean').length
+  const benchmarks = [...(data.spatialSummary?.plantBenchmarks ?? []), ...(data.spatialSummary?.peekBenchmarks ?? [])]
   const capabilities: Record<string, CoachingCapability> = {
     identity: timeline.puuid && timeline.playerName && timeline.playerTag ? 'available' : 'unavailable',
     otherPlayerNames: playerNames.filter(p => !sameId(p.puuid, timeline.puuid)).every(p => p.source === 'match_record') ? 'available' : 'unavailable',
@@ -165,17 +166,21 @@ export function enforceValorantCoachingQuality(data: UploadMatchData, timeline: 
       && !data.roundSummaries.some(r => r.spikeDetonated && !data.spikeDetonations.some(d => d.round === r.roundNumber)) ? 'available' : 'partial',
     eventPositionSnapshots: data.roundReplay ? 'available' : 'unavailable',
     replayLifeState: data.roundReplay ? 'partial' : 'unavailable',
-    tradeAndIsolationJudgments: 'excluded', populationBenchmarks: 'excluded', continuousMovement: 'unavailable',
+    tradeAndIsolationJudgments: respawn ? 'not_applicable' : data.playerDeaths.length === 0 || deathsWithTradeFlag === 0 ? 'unavailable'
+      : deathsWithTradeFlag === data.playerDeaths.length ? 'available' : 'partial',
+    populationBenchmarks: benchmarks.length ? 'available' : 'unavailable',
+    continuousMovement: 'unavailable',
   }
   const quality: CoachingDataQuality = {
     policyVersion: 1, status: issues.length ? 'blocked' : 'verified_fields_only', issues, capabilities,
     localNameSource: playerNames.find(p => sameId(p.puuid, timeline.puuid))?.source ?? 'unavailable', playerNames,
-    excludedFields: ['spatialSummary', 'killEvents[].spatial', 'playerKills[].spatial', 'playerDeaths[].spatial'],
+    excludedFields: [],
     limitations: [
       'Null means unknown or not applicable; never convert it to zero.',
       'Compare performance within the same game mode; respawn total score is not competitive ACS.',
       'Player identity joins use PUUID; current-account names are not historical names. Missing names remain null.',
       'Positions are event snapshots, not continuous movement or line-of-sight evidence.',
+      'Trade flags: traded = an ally killed your killer (or an enemy near your death spot) within 3s, from Riot kill data.',
       'Replay alive is known only for the current event actor/victim; null is unknown, never dead.',
       'Ability casts are match totals, not cast times, remaining charges or evidence of utility effectiveness.',
       'Missing objective times and round ends remain unknown. Headshot percent is a share of recorded hits, not shot accuracy.',

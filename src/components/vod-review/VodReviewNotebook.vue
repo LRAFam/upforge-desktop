@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { openUpgrade as startUpgrade } from '../../lib/upgrade'
 import { onBeforeRouteLeave } from 'vue-router'
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { notebookWriteForIpc, validNotebookContext, validSavedComparison, relinkNotebook, type NotebookRelink, editNotebookNote, checkInFocus, type NotebookWrite, type FocusCheckIn, type NotebookContext, type NotebookNote, type SavedComparison } from '../../lib/review-notebook'
@@ -65,7 +66,7 @@ function open(item: SavedComparison) {
   emit('restore', item.context, 'both', item)
 }
 function newComparison() {
-  if (props.trial && (trialUsed.value || items.value.length)) { void window.api.app.openUrl('https://upforge.gg/pricing'); return }
+  if (props.trial && (trialUsed.value || items.value.length)) { startUpgrade('vod_notebook'); return }
   if (!confirmDiscard()) return
   editing.value = null; revisiting.value = null
   draftId = crypto.randomUUID()

@@ -1,3 +1,4 @@
+import { openUpgrade as startUpgrade } from '../lib/upgrade'
 import { createReviewSeek } from '../lib/review-seek'
 import { buildReviewEvents } from '../lib/review-timeline'
 import { boundedMediaTime, reviewVideoUrl, reviewEventStart, EVENT_PRE_ROLL_SECONDS, DEATH_PRE_ROLL_SECONDS } from '../lib/review-media'
@@ -1026,7 +1027,7 @@ function createVodReview() {
   }
   
   function openUpgrade() {
-    window.open('https://upforge.gg/pricing', '_blank')
+    startUpgrade('vod_review')
   }
   
   function onSpatialSelect(ev: SpatialTimelineEvent, _displayIndex: number) {

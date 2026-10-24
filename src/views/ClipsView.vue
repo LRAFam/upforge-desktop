@@ -973,6 +973,7 @@
 </template>
 
 <script setup lang="ts">
+import { openUpgrade as startUpgrade } from '../lib/upgrade'
 import StorageIndicator from '../components/shared/StorageIndicator.vue'
 import LibraryPageHeader from '../components/shared/LibraryPageHeader.vue'
 import CloudUsageNotice from '../components/shared/CloudUsageNotice.vue'
@@ -1651,7 +1652,7 @@ async function uploadAndAnalyseClip(clip: ClipRecord): Promise<void> {
 
 function openUpgrade() {
   upgradeModal.value.show = false
-  window.open('https://upforge.gg/pricing', '_blank')
+  startUpgrade('clips')
 }
 
 async function shareClip(clip: ClipRecord) {

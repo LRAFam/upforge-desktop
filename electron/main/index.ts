@@ -112,6 +112,9 @@ import {
   recomputeTimelineVideoOffsets,
 } from './riot-local-api'
 import { readRecentMatchReport, saveRecentMatchExports } from './recent-match-export'
+import { syncMatchReports, type SyncResult } from './match-report-sync'
+import { focusReportDiagnostic, readFocusSyncState, writeFocusSyncState } from './focus-state'
+import { hydrateFocusResponse } from '../../src/lib/focus'
 import { decideRiotAccountSwitch } from './riot-account-switch'
 import { isModeFilteredOut, getRecordedModesForGame, recordableModesForGame, normalizeCs2GameMode } from './recorded-modes-filter'
 import { applyLiveKillStampsToTimeline } from './live-kill-stamps'
@@ -695,6 +698,8 @@ const discordRPC = new DiscordRPC(
 const riotLocalApi = new RiotLocalApi()
 const lolLiveClientApi = new LoLLiveClientApi()
 const authManager = new AuthManager()
+/** Set once IPC is ready; queues a focus sync after a match ends. */
+let scheduleFocusSyncAfterMatch: (game: string) => void = () => {}
 
 // Set up crash/error reporting now that authManager is available
 setupMainProcessErrorHandlers(authManager)
@@ -3255,6 +3260,7 @@ function setupGameDetection(): void {
     const run = async (): Promise<boolean> => {
       try {
         await handleMatchEnd(game, source)
+        scheduleFocusSyncAfterMatch(game)
         return true
       } catch (err) {
         log.error(`[MatchEnd] handleMatchEnd failed (${source}):`, err)
@@ -7111,6 +7117,63 @@ async function startApp(): Promise<void> {
     if (report) recentMatchesFolder = report.folder
     return report
   })
+
+  // ── Focus loop: send recent Riot matches (no recording needed) for checked reports ──
+  let focusSyncRunning = false
+  let lastFocusSyncAt = 0
+  let lastFocusSyncUserId: number | null = null
+  async function runFocusSync(reason: string, limit = 20): Promise<SyncResult | null> {
+    const userId = getActiveUserId()
+    if (!authManager.isAuthenticated() || userId == null) return null
+    if (focusSyncRunning) return { ok: false, reason: 'sync_in_progress', uploaded: 0, skipped: 0, latest: null }
+    if (reason !== 'manual' && lastFocusSyncUserId === userId && Date.now() - lastFocusSyncAt < 2 * 60_000) return null
+    focusSyncRunning = true
+    lastFocusSyncAt = Date.now()
+    lastFocusSyncUserId = userId
+    const root = app.getPath('userData')
+    const ownsSession = () => authManager.isAuthenticated() && getActiveUserId() === userId
+    try {
+      const res = await syncMatchReports({
+        fetchRecent: n => riotLocalApi.fetchRecentMatchTimelines(n),
+        post: async body => {
+          if (!ownsSession()) throw new Error('Focus account changed')
+          const r = await authManager.getApi().post('/api/match-report', body, { validateStatus: () => true, timeout: 120_000 })
+          return { status: r.status, data: r.data }
+        },
+        loadState: () => readFocusSyncState(root, userId),
+        saveState: state => writeFocusSyncState(root, userId, state),
+        onReport: update => log.info(`[FocusSync] report: ${focusReportDiagnostic(update)}`),
+      }, limit)
+      log.info(`[FocusSync] ${reason}: ok=${res.ok} uploaded=${res.uploaded} skipped=${res.skipped}${res.reason ? ` reason=${res.reason}` : ''}`)
+      // An in-flight response belongs to the account that started it, even after logout.
+      if (!ownsSession()) return null
+      if (res.latest) mainWindow?.webContents.send('focus:updated', res.latest)
+      return res
+    } catch {
+      // Axios errors can contain authorization headers; never log the raw error.
+      log.warn(`[FocusSync] ${reason}: ok=false reason=sync_failed`)
+      return ownsSession() ? { ok: false, reason: 'sync_failed', uploaded: 0, skipped: 0, latest: null } : null
+    } finally {
+      focusSyncRunning = false
+    }
+  }
+  ipcMain.handle('focus:sync', () => runFocusSync('manual'))
+  ipcMain.handle('focus:get', async () => {
+    const userId = getActiveUserId()
+    if (!authManager.isAuthenticated() || userId == null) return null
+    const r = await authManager.getApi().get('/api/focus', { validateStatus: () => true }).catch(() => null)
+    if (r?.status !== 200 || !r.data?.success) return null
+    const cached = await readFocusSyncState(app.getPath('userData'), userId)
+    if (!authManager.isAuthenticated() || getActiveUserId() !== userId) return null
+    return hydrateFocusResponse(r.data, cached.latest ?? null)
+  })
+  // First sync shortly after start (Riot client may still be launching), then after each match.
+  setTimeout(() => { void runFocusSync('startup') }, 45_000)
+  scheduleFocusSyncAfterMatch = (game: string) => {
+    if (game !== 'valorant') return
+    // Riot needs a minute or two to publish match details after the game ends.
+    setTimeout(() => { void runFocusSync('match_end', 5) }, 120_000)
+  }
 
   ipcMain.handle('debug:probe-lol-lcu', async () => {
     return probeLolLcu({ liveClient: lolLiveClientApi })
