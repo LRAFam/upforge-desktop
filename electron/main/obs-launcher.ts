@@ -149,7 +149,7 @@ export async function launchObsStudio(opts: LaunchObsOptions = {}): Promise<{ ok
     for (const candidate of candidateObsPaths()) {
       if (!existsSync(candidate)) continue
       const cwd = obsExecutableWorkingDirectory(candidate)
-      log.info('[OBS Launcher] Spawning:', candidate, wsArgs.join(' '), `(cwd=${cwd})`)
+      log.info('[OBS Launcher] Spawning:', candidate, `(cwd=${cwd}, websocketPort=${port})`)
 
       let result = await spawnDetached(candidate, ['--minimize-to-tray', ...wsArgs], { cwd })
       if (!result.ok && (result.code === 'EACCES' || result.code === 'EPERM')) {

@@ -28,7 +28,7 @@
     <div class="wiz-shell dash-panel w-full max-w-xl max-h-full flex flex-col overflow-hidden relative">
       <div class="shrink-0 flex items-center justify-between gap-3 px-6 pt-5 pb-4 border-b border-white/[0.07]">
         <button
-          v-if="step > 1"
+          v-if="!initializing && step > 2 && !missionActive"
           type="button"
           class="w-8 h-8 flex items-center justify-center rounded-lg text-gray-500 hover:text-gray-200 hover:bg-white/[0.05] transition-colors"
           aria-label="Back"
@@ -42,14 +42,8 @@
         <div v-else class="w-8" />
 
         <div class="flex-1 min-w-0 px-2">
-          <div class="h-1 rounded-full bg-white/[0.06] overflow-hidden">
-            <div
-              class="h-full rounded-full bg-[#ff4655] transition-all duration-300 ease-out"
-              :style="{ width: `${(step / TOTAL_STEPS) * 100}%` }"
-            />
-          </div>
-          <p class="mt-2 text-[10px] font-bold uppercase tracking-[0.14em] text-gray-500 text-center">
-            {{ stepLabels[step - 1] }} · {{ step }} / {{ TOTAL_STEPS }}
+          <p class="text-[11px] font-bold uppercase tracking-[0.14em] text-gray-400 text-center">
+            {{ initializing ? 'Getting ready' : stepLabels[step - 1] }}
           </p>
         </div>
 
@@ -59,14 +53,18 @@
       <div class="relative min-h-0 overflow-x-hidden overflow-y-auto">
         <Transition :name="slideDir">
             <!-- 1 · Account -->
-            <div v-if="step === 1" key="step1" class="wiz-step">
+            <div v-if="initializing" key="loading" class="wiz-step" role="status">
+              <h2 class="text-[22px] font-black text-white tracking-tight">Getting your account ready</h2>
+              <p class="text-sm text-gray-400 mt-2">Checking your saved game and linked account.</p>
+            </div>
+            <div v-else-if="step === 1" key="step1" class="wiz-step">
               <template v-if="isAuthed">
                 <h2 class="text-[22px] font-black text-white tracking-tight">You’re signed in</h2>
                 <p class="text-sm text-gray-500 mt-2 mb-6">
-                  Your UpForge account is connected. Next, choose your primary game.
+                  Your UpForge account is connected.
                 </p>
-                <button type="button" class="btn-primary w-full" @click="nextStep">
-                  Continue to game
+                <button type="button" class="btn-primary w-full" @click="resumeAccountSetup">
+                  Continue
                 </button>
               </template>
               <template v-else>
@@ -326,7 +324,7 @@
                     {{ accountBusy ? 'Saving…' : 'Save CS2 name' }}
                   </button>
                 </div>
-                <p v-if="cs2Linked" class="text-[12px] text-emerald-400 mb-4">CS2 identity saved</p>
+                <p v-if="cs2Linked" class="text-[12px] text-emerald-400 mb-4">CS2 identity saved<span v-if="cs2SteamId">: {{ cs2SteamId }}</span></p>
                 <p v-if="accountError" class="text-[12px] text-red-400 mb-4">{{ accountError }}</p>
               </template>
 
@@ -398,19 +396,10 @@
                 <button
                   type="button"
                   class="btn-primary w-full"
-                  :disabled="accountBusy || accountsLoading"
+                  :disabled="accountBusy || riotBusy || accountsLoading"
                   @click="nextStep"
                 >
-                  Continue
-                </button>
-                <button
-                  v-if="!accountLinked"
-                  type="button"
-                  class="btn-ghost w-full"
-                  :disabled="accountBusy"
-                  @click="nextStep"
-                >
-                  Skip for now
+                  {{ accountLinked ? 'Continue' : 'Continue without linking' }}
                 </button>
                 <p class="text-[11px] text-gray-600 text-center">
                   Manage accounts anytime in Settings → General
@@ -418,49 +407,53 @@
               </div>
             </div>
 
-            <!-- 4 · Automatic recording setup -->
+            <!-- 4 · Automatic capture check. This is the end of required setup. -->
             <div v-else-if="step === 4" key="step4" class="wiz-step">
-              <h2 class="text-[22px] font-black text-white tracking-tight">Set up recording</h2>
+              <h2 class="text-[22px] font-black text-white tracking-tight">{{ isPreview ? 'Capture check' : obsError ? 'Recording needs attention' : recordingSetupReady ? 'Recording check passed' : 'Checking your recording' }}</h2>
               <p class="text-sm text-gray-400 mt-2 mb-5 leading-relaxed">
-                Record {{ gameCaptureLabel }} with OBS, ready to review after your match.
+                UpForge prepares OBS automatically. You can open the app while we check that it can save your matches.
               </p>
+              <div class="flex items-center justify-between gap-3 border-y border-white/[0.08] py-3 mb-5">
+                <div class="min-w-0">
+                  <p class="text-sm font-semibold text-white">{{ gameCaptureLabel }}</p>
+                  <p class="text-xs text-gray-400 mt-1 break-words">{{ accountSummary }}</p>
+                </div>
+                <button type="button" class="btn-ghost shrink-0" :disabled="obsConnecting" @click="editGame">Change</button>
+              </div>
               <div class="rounded-xl border px-4 py-4 mb-4"
-                :class="obsError ? 'border-red-400/30' : guidedSetupPassed ? 'border-emerald-400/30' : 'border-white/[0.08]'"
+                :class="obsError ? 'border-amber-400/30' : recordingSetupReady ? 'border-emerald-400/30' : 'border-white/[0.08]'"
                 :aria-busy="obsConnecting">
                 <p class="text-sm font-semibold" role="status" aria-live="polite"
-                  :class="obsError ? 'text-red-300' : guidedSetupPassed ? 'text-emerald-300' : 'text-white'">
-                  {{ obsConnecting ? guidedSetupLabel : obsError ? 'Setup needs attention' : guidedSetupPassed ? 'Local recording test passed' : 'Ready to set up' }}
+                  :class="obsError ? 'text-amber-300' : recordingSetupReady ? 'text-emerald-300' : 'text-white'">
+                  {{ isPreview ? 'Preview only' : obsConnecting ? guidedSetupLabel : obsError ? 'Recording needs attention' : recordingSetupReady ? 'OBS connected. Recording test passed.' : 'Checking OBS…' }}
                 </p>
-                <p v-if="obsError" role="alert" class="text-xs text-red-300 mt-2 leading-relaxed">{{ obsError }}</p>
-                <p v-else-if="guidedSetupPassed" class="text-xs text-gray-400 mt-2 leading-relaxed">
-                  OBS {{ guidedStudioVersion }} passed the local checks. Next, check that the preview shows your game.
+                <p v-if="obsError" role="alert" class="text-xs text-amber-200 mt-2 leading-relaxed">{{ obsError }}</p>
+                <p v-else-if="recordingSetupReady" class="text-xs text-gray-400 mt-2 leading-relaxed">
+                  OBS {{ guidedStudioVersion }} can save a recording. Check that the game picture is visible before your first match.
                 </p>
                 <p v-else-if="obsConnecting" class="text-xs text-gray-400 mt-2">
-                  Keep UpForge open while setup finishes.
+                  This runs in the background. If Windows asks, approve the OBS installation.
                 </p>
-                <ol v-else class="text-xs text-gray-400 mt-3 space-y-2 list-decimal pl-4">
-                  <li>Check OBS and install it if needed on Windows.</li>
-                  <li>Configure capture for {{ gameCaptureLabel }}.</li>
-                  <li>Make a short test recording on this device.</li>
-                </ol>
+                <button v-if="obsError" type="button" class="btn-secondary mt-4" :disabled="obsConnecting || isPreview" @click="setupRecordingAutomatically">Check again</button>
               </div>
-              <details v-if="!guidedSetupPassed" class="text-xs text-gray-400 leading-relaxed">
+              <details class="text-xs text-gray-400 leading-relaxed">
                 <summary class="cursor-pointer py-2 text-gray-300">Already use OBS?</summary>
-                <p class="mt-1">Your existing scenes stay in OBS. Setup pauses if a recording, stream or replay buffer is active. Windows may ask you to approve installation.</p>
+                <p class="mt-1">Your existing scenes stay in OBS. If a recording, stream or replay buffer is active, finish it and check again.</p>
+                <button v-if="obsError" type="button" class="text-gray-200 underline mt-3" @click="openObsDownload">Get OBS from the official website</button>
               </details>
               <p v-if="isPreview" class="text-xs text-gray-400 mt-3">This preview does not change OBS.</p>
-              <button v-if="obsError" type="button" class="btn-ghost w-full mt-3" :disabled="obsConnecting" @click="openObsDownload">
-                Download OBS
-              </button>
+              <p v-if="bonusEligible" class="text-xs text-gray-400 leading-relaxed mt-5">Your first Pro match review is included. Try it when you're ready to play; it isn't required to finish setup.</p>
+              <p v-if="!recordingSetupReady" class="text-xs text-gray-400 mt-4">Recording is not verified yet. You can check it again in Settings → Recording.</p>
+              <p v-if="completeError" role="alert" class="text-xs text-amber-200 mt-4">{{ completeError }}</p>
             </div>
 
             <!-- 5 · Ready -->
             <div v-else-if="step === 5" key="step5" class="wiz-step">
               <h2 class="text-[22px] font-black text-white tracking-tight leading-tight">
-                {{ missionActive ? missionCopy.title : (recordingSetupReady ? 'Recording test passed' : 'Recording setup incomplete') }}
+                {{ missionCopy.title }}
               </h2>
               <p class="text-sm mt-2 mb-6 leading-relaxed" :class="recordingSetupReady ? 'text-gray-500' : 'text-amber-200/80'">
-                {{ missionActive ? missionCopy.body : readyBlurb }}
+                {{ missionCopy.body }}
               </p>
 
               <div v-if="missionActive" class="space-y-4 mb-5">
@@ -680,133 +673,22 @@
                 </button>
               </div>
 
-              <div
-                v-if="!missionActive && selectedGame === 'valorant' && obsConnected"
-                class="mb-5 rounded-xl border border-emerald-500/20 bg-emerald-500/[0.05] px-4 py-4"
-              >
-                <p class="text-sm font-bold text-white">Your first Pro analysis is included</p>
-                <p class="mt-1.5 text-[11px] leading-relaxed text-gray-400">
-                  Play one supported Valorant match. UpForge will record it, match the Riot data, and build the same evidence-led report a Pro user receives.
-                </p>
-                <p class="mt-2 text-[11px] leading-relaxed text-gray-500">
-                  Reports usually take 20–30 minutes. We will email you when yours is ready. Uploads and local video processing pause during matches to protect FPS and network performance.
-                </p>
-                <div class="mt-3 grid grid-cols-3 divide-x divide-white/[0.08] border-t border-white/[0.08] pt-3">
-                  <p class="px-2 text-center text-[10px] font-semibold text-emerald-200">Full coaching report</p>
-                  <p class="px-2 text-center text-[10px] font-semibold text-emerald-200">Matched Riot stats</p>
-                  <p class="px-2 text-center text-[10px] font-semibold text-emerald-200">Evidence clips</p>
-                </div>
-              </div>
-
-              <div v-if="!missionActive" class="rounded-xl border border-white/[0.08] overflow-hidden mb-5">
-                <div
-                  v-for="(row, idx) in summaryRows"
-                  :key="row.label"
-                  class="flex items-center justify-between gap-3 px-4 py-3"
-                  :class="idx > 0 ? 'border-t border-white/[0.06]' : ''"
-                >
-                  <span class="text-[12px] text-gray-500">{{ row.label }}</span>
-                  <span
-                    class="text-[12px] font-semibold text-right"
-                    :class="row.warn ? 'text-amber-300' : 'text-white'"
-                  >
-                    {{ row.value }}
-                  </span>
-                </div>
-              </div>
-
-              <div
-                v-if="!missionActive && gameTip"
-                class="rounded-xl border border-white/[0.08] bg-white/[0.02] px-4 py-3.5 mb-5"
-              >
-                <p class="text-[12px] text-gray-400 leading-relaxed">
-                  <span class="font-semibold text-gray-200">{{ gameTip.label }}</span>
-                  {{ gameTip.body }}
-                </p>
-              </div>
-
-
-
-              <div v-if="!missionActive" class="mt-6 pt-5 border-t border-white/[0.06] space-y-2.5">
-                <p class="text-[10px] font-bold uppercase tracking-[0.14em] text-gray-500 text-center">
-                  Optional
-                </p>
-                <a
-                  :href="DISCORD_INVITE_URL"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  class="flex w-full items-center justify-center gap-2.5 rounded-[10px] bg-[#5865F2] px-4 py-2.5 text-sm font-bold text-white transition-colors hover:bg-[#4752C4]"
-                >
-                  <svg class="h-5 w-5 shrink-0" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-                    <path
-                      d="M20.317 4.37a19.791 19.791 0 0 0-4.885-1.515.074.074 0 0 0-.079.037c-.21.375-.444.864-.608 1.25a18.27 18.27 0 0 0-5.487 0 12.64 12.64 0 0 0-.617-1.25.077.077 0 0 0-.079-.037A19.736 19.736 0 0 0 3.677 4.37a.07.07 0 0 0-.032.027C.533 9.046-.32 13.58.099 18.057a.082.082 0 0 0 .031.057 19.9 19.9 0 0 0 5.993 3.03.078.078 0 0 0 .084-.028 14.09 14.09 0 0 0 1.226-1.994.076.076 0 0 0-.041-.106 13.107 13.107 0 0 1-1.872-.892.077.077 0 0 1-.008-.128a10.2 10.2 0 0 0 .372-.292.074.074 0 0 1 .077-.01c3.928 1.793 8.18 1.793 12.062 0a.074.074 0 0 1 .078.01c.12.098.246.198.373.292a.077.077 0 0 1-.006.127 12.299 12.299 0 0 1-1.873.892.077.077 0 0 0-.041.107c.36.698.772 1.362 1.225 1.993a.076.076 0 0 0 .084.028 19.839 19.839 0 0 0 6.002-3.03.077.077 0 0 0 .032-.054c.5-5.177-.838-9.674-3.549-13.66a.061.061 0 0 0-.031-.03zM8.02 15.33c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.956-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.956 2.418-2.157 2.418zm7.975 0c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.955-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.946 2.418-2.157 2.418z"
-                    />
-                  </svg>
-                  Join the UpForge Discord
-                </a>
-
-                <button
-                  v-if="!discordLinked"
-                  type="button"
-                  class="flex w-full items-center justify-center gap-2 rounded-[10px] border border-[#5865F2]/35 bg-[#5865F2]/10 px-4 py-2.5 text-xs font-semibold text-[#c9cdfb] transition-colors hover:bg-[#5865F2]/18"
-                  @click="openDiscordLink"
-                >
-                  Link Discord for notifications &amp; bot features
-                </button>
-                <p v-else class="text-[12px] text-emerald-400/90 text-center">
-                  Discord linked · still join the server above for support
-                </p>
-              </div>
             </div>
 
           </Transition>
         </div>
-              <div v-if="step === 5 && !missionActive" class="shrink-0 px-7 py-4 border-t border-white/[0.07] space-y-2">
-                <button
-                  type="button"
-                  class="btn-primary w-full"
-                  :disabled="saving"
-                  @click="continueToFirstMatch"
-                >
-                  <svg v-if="saving" class="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
-                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" />
-                    <path
-                      class="opacity-75"
-                      fill="currentColor"
-                      d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
-                    />
-                  </svg>
-                  <template v-else>{{ firstMatchCta }}</template>
-                </button>
-                <button
-                  v-if="!recordingSetupReady"
-                  type="button"
-                  class="btn-ghost w-full"
-                  :disabled="saving"
-                  @click="handleComplete()"
-                >
-                  Open dashboard and set up later
-                </button>
-                <p v-if="completeError" class="text-[12px] text-red-400 text-center">{{ completeError }}</p>
-              </div>
-        <div v-if="step === 4" class="shrink-0 px-7 py-4 border-t border-white/[0.07] space-y-2">
-          <button v-if="guidedSetupPassed" type="button" class="btn-primary w-full" @click="continueFromObs">
-            Check game capture
+        <div v-if="!initializing && step === 4" class="shrink-0 px-7 py-4 border-t border-white/[0.07] space-y-2">
+          <button type="button" class="btn-primary w-full" :disabled="saving" @click="handleComplete()">
+            {{ saving ? 'Opening…' : 'Open UpForge' }}
           </button>
-          <button v-else type="button" class="btn-primary w-full"
-            :disabled="obsConnecting || isPreview" @click="setupRecordingAutomatically">
-            {{ obsConnecting ? 'Setting up…' : obsError ? 'Retry setup' : 'Set up recording' }}
+          <button v-if="recordingSetupReady && bonusEligible" type="button" class="btn-secondary w-full"
+            :disabled="saving || bonusLoading" @click="startBonusMission">
+            Try my free match review
           </button>
-          <button v-if="!guidedSetupPassed" type="button" class="btn-ghost w-full" :disabled="obsConnecting" @click="continueFromObs">
-            Set up later
-          </button>
-          <p v-if="!guidedSetupPassed && !obsConnecting" class="text-xs text-gray-400 text-center">
-            Finish setup before your first recording. You can still explore the app.
-          </p>
         </div>
         <div v-if="step === 2" class="shrink-0 px-7 py-4 border-t border-white/[0.07]">
-          <button type="button" class="btn-primary w-full" @click="nextStep">
-            Continue
+          <button type="button" class="btn-primary w-full" :disabled="accountsLoading" @click="nextStep">
+            {{ accountsLoading ? 'Checking account…' : 'Continue' }}
           </button>
         </div>
       </div>
@@ -815,6 +697,8 @@
 
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
+import { resolveOnboardingCompletionRoute } from '../lib/onboarding-gate'
+import { resolveOnboardingStep } from '../lib/onboarding-flow'
 import { useRoute, useRouter } from 'vue-router'
 import { PRIMARY_GAME_ARTWORK, isPrimaryGame, type PrimaryGame } from '../lib/games'
 import { resolveMaxValorantAccounts } from '../lib/valorant-account-cap'
@@ -838,7 +722,6 @@ import type { PendingRecording, RecordingTimeline } from '../env'
 const DISCORD_INVITE_URL = 'https://discord.gg/MDD3WVRaEq'
 const OBS_DOWNLOAD_URL = 'https://obsproject.com/download'
 const OBS_SKIP_KEY = 'upforge_obs_onboarding_skipped'
-const TOTAL_STEPS = 5
 const CAPTURE_RETRY_SUPPORT_THRESHOLD = 3
 const VALORANT_WAITING_TIPS = [
   'Set your crosshair at head height before you expose yourself to the next angle.',
@@ -859,6 +742,7 @@ type RiotAccount = {
 const route = useRoute()
 const router = useRouter()
 const isPreview = computed(() => route.query.preview === '1')
+const initializing = ref(!isPreview.value)
 
 const email = ref('')
 const password = ref('')
@@ -871,9 +755,12 @@ const step = ref(1)
 const slideDir = ref<'slide-left' | 'slide-right'>('slide-left')
 const saving = ref(false)
 const completeError = ref('')
+const bonusEligible = ref(false)
+const bonusLoading = ref(false)
 const obsConnecting = ref(false)
 const obsConnected = ref(false)
 const guidedSetupPassed = ref(false)
+let recordingCheckInterrupted = false
 const guidedStudioVersion = ref('')
 const guidedSetupStage = ref('checking')
 const guidedSetupLabels: Record<string, string> = {
@@ -1016,6 +903,7 @@ const missionCaptureChecks = computed(() => [
   },
 ])
 const missionCaptureMessage = computed(() => {
+  if (missionCaptureReadiness.value === 'recording_unverified') return 'Recording has started, but the picture is not verified. Check the preview and confirm that it shows your game.'
   if (missionCaptureReadiness.value === 'obs_disconnected') return missionRuntime.value.obsError || 'OBS disconnected. Reconnect it before playing.'
   if (missionCaptureReadiness.value === 'preflight_required') return 'OBS is connected, but the recording safety test needs to pass before you queue.'
   if (missionCaptureReadiness.value === 'waiting_for_game') return 'OBS is ready. Open Valorant and UpForge will verify the capture before you queue.'
@@ -1098,6 +986,7 @@ const riotRegion = ref('na')
 const riotBusy = ref(false)
 
 const cs2SteamName = ref('')
+const cs2SteamId = ref<string | null>(null)
 const faceitNickname = ref('')
 const cs2Linked = ref(false)
 
@@ -1115,9 +1004,8 @@ const accountBusy = ref(false)
 const accountsLoading = ref(false)
 const accountError = ref('')
 const accountSuccess = ref('')
-const discordLinked = ref(false)
 
-const stepLabels = ['Account', 'Game', 'Link', 'Recording', 'Ready'] as const
+const stepLabels = ['Sign in', 'Your game', 'Game account', 'Capture check', 'Your first match'] as const
 
 const GAMES = [
   { id: 'valorant' as const, name: 'Valorant', img: PRIMARY_GAME_ARTWORK.valorant, desc: 'Full AI coaching and VOD analysis' },
@@ -1156,7 +1044,7 @@ const gameCaptureLabel = computed(() => {
 
 const accountStepBlurb = computed(() => {
   if (selectedGame.value === 'valorant') {
-    return 'Link the Riot ID you play on. Plus/Pro can add alts; we auto-switch when you queue on a linked account.'
+    return 'Connect the Riot ID you play on so your matches stay together.'
   }
   if (selectedGame.value === 'cs2') return 'Save your Steam/in-game name so demos and stats match the right player.'
   if (selectedGame.value === 'deadlock') return 'Connect Steam so Deadlock match history and replays sync.'
@@ -1175,67 +1063,7 @@ const recordingSetupReady = computed(() => hasVerifiedOnboardingRecording({
   testPassed: guidedSetupPassed.value,
 }))
 
-const firstMatchCta = computed(() =>
-  !recordingSetupReady.value
-    ? (obsError.value ? 'Retry recording setup' : 'Finish recording setup')
-    : selectedGame.value === 'valorant'
-    ? 'Start my free Pro analysis'
-    : 'Open dashboard',
-)
-
-const readyBlurb = computed(() => {
-  if (recordingSetupReady.value) {
-    return selectedGame.value === 'valorant'
-      ? 'The recording test passed. Next, confirm your game in the capture preview before playing your first match.'
-      : 'The recording test passed. Check that OBS captures your game before playing.'
-  }
-  return 'Recording has not been verified. Finish setup and pass the recording test before playing. You can return to setup from Settings → Recording.'
-})
-
-function continueToFirstMatch() {
-  if (!recordingSetupReady.value) {
-    step.value = 4
-    return
-  }
-  if (selectedGame.value === 'valorant') void startBonusMission()
-  else void handleComplete()
-}
-
-const gameTip = computed(() => {
-  if (selectedGame.value === 'cs2') {
-    return {
-      label: 'CS2:',
-      body: 'Enable demo recording in CS2. FACEIT link is optional but improves match stats sync.',
-    }
-  }
-  if (selectedGame.value === 'deadlock') {
-    return {
-      label: 'Deadlock:',
-      body: 'Enable replay saving in game settings so stats and clips can attach after matches.',
-    }
-  }
-  if (selectedGame.value === 'lol') {
-    return {
-      label: 'League:',
-      body: 'You can upload VODs from upforge.gg if desktop capture is not ready yet.',
-    }
-  }
-  return {
-    label: 'Valorant:',
-    body: 'Exclusive Fullscreen can block overlays. Use Windowed Fullscreen for the in-game HUD. Extra accounts live under Settings.',
-  }
-})
-
-const summaryRows = computed(() => {
-  const gameLabel =
-    selectedGame.value === 'cs2'
-      ? 'CS2'
-      : selectedGame.value === 'deadlock'
-        ? 'Deadlock'
-        : selectedGame.value === 'lol'
-          ? 'League of Legends'
-          : 'Valorant'
-
+const accountSummary = computed(() => {
   let accountValue = 'Not linked'
   if (selectedGame.value === 'valorant' && riotAccounts.value.length) {
     const active = riotAccounts.value.find((a) => a.is_active) ?? riotAccounts.value[0]
@@ -1251,29 +1079,31 @@ const summaryRows = computed(() => {
     accountValue = lolDisplayName.value || 'Linked'
   }
 
-  return [
-    { label: 'Game', value: gameLabel, warn: false },
-    { label: 'Account', value: accountValue, warn: !accountLinked.value },
-    { label: 'OBS', value: obsConnected.value ? 'Connected' : 'Not connected', warn: !obsConnected.value },
-    { label: 'Recording test', value: recordingSetupReady.value ? 'Passed' : 'Not verified', warn: !recordingSetupReady.value },
-    { label: 'Discord', value: discordLinked.value ? 'Linked' : 'Join / link', warn: !discordLinked.value },
-  ]
+  return accountValue
 })
 
 watch(step, async (s) => {
-  if (s === 3) await loadAccountState()
-  if (s === 4 || s === 5) {
-    try {
-      const st = await window.api.obs.getStatus()
-      obsConnected.value = st.connected
-      if (!st.connected) guidedSetupPassed.value = false
-    } catch { /* ignore */ }
+  if (s === 4) {
+    if (!recordingSetupReady.value) void setupRecordingAutomatically()
+    if (selectedGame.value === 'valorant' && !missionActive.value) {
+      bonusLoading.value = true
+      bonusEligible.value = false
+      try {
+        const bonus = await window.api.auth.getOnboardingBonus()
+        bonusEligible.value = isAdmin.value || bonus.eligible
+        if (bonus.error) completeError.value = bonus.error + '. You can continue to the dashboard.'
+      } catch {
+        completeError.value = 'Could not check the free analysis. You can continue to the dashboard.'
+      } finally { bonusLoading.value = false }
+    }
   }
-  if (s === 5) await refreshDiscordStatus()
 })
 
 watch(selectedGame, async () => {
   guidedSetupPassed.value = false
+  guidedStudioVersion.value = ''
+  obsError.value = ''
+  bonusEligible.value = false
   accountError.value = ''
   accountSuccess.value = ''
   if (step.value === 3) {
@@ -1289,8 +1119,6 @@ onMounted(async () => {
     const stage = args[0]
     if (typeof stage === 'string' && Object.hasOwn(guidedSetupLabels, stage)) guidedSetupStage.value = stage
   }))
-  await refreshAuthState()
-  await ensureAuthedOrStay()
   missionEventCleanups.push(window.api.on('obs:connection-changed', (...args: unknown[]) => {
     const data = args[0] as { connected?: boolean; error?: string | null } | undefined
     if (typeof data?.connected !== 'boolean') return
@@ -1298,7 +1126,13 @@ onMounted(async () => {
     // The mission is a continuation of the onboarding preflight, not a new OBS
     // session. Keep both views on the same live connection signal.
     obsConnected.value = data.connected
-    if (!data.connected) guidedSetupPassed.value = false
+    if (!data.connected) {
+      guidedSetupPassed.value = false
+      if (obsConnecting.value && ['testing', 'complete'].includes(guidedSetupStage.value)) {
+        recordingCheckInterrupted = true
+      }
+      if (!obsConnecting.value) obsError.value = 'OBS disconnected. Check again before recording your next match.'
+    }
     missionRuntime.value = {
       ...missionRuntime.value,
       obsConnected: data.connected,
@@ -1350,7 +1184,15 @@ onMounted(async () => {
     }
     minimizeOnboardingOnceRecordingConfirmed(data.recording)
   }))
-  await refreshMissionState()
+  try {
+    await refreshAuthState()
+    await ensureAuthedOrStay()
+    await refreshMissionState()
+  } catch {
+    signInError.value = 'Could not load your account. Sign in to try again.'
+  } finally {
+    initializing.value = false
+  }
   const handleVisibilityChange = () => {
     if (!document.hidden) void refreshMissionState()
   }
@@ -1393,6 +1235,7 @@ function minimizeOnboardingOnceRecordingConfirmed(recording: boolean) {
     missionActive: missionActive.value,
     recording,
     alreadyMinimized: missionWindowMinimizedForRecording,
+    captureConfirmed: missionCaptureVerified.value,
   })) return
 
   missionWindowMinimizedForRecording = true
@@ -1416,15 +1259,14 @@ async function ensureAuthedOrStay() {
       selectedGame.value = settings.onboardingMatchMission.game
       missionActive.value = true
       step.value = 5
-    } else if (!isPreview.value) {
-        step.value = Math.max(step.value, 2)
+      return
     }
     if (!isPreview.value) {
       const campaign = await window.api.auth.startOnboardingCampaign()
       if (!campaign.ok) {
         completeError.value = campaign.error
       }
-      await prefillGameFromUser()
+      await resumeAccountSetup()
     }
   }
 }
@@ -1552,6 +1394,7 @@ async function confirmMissionCapture() {
       onboardingMatchMission: { ...mission, captureConfirmedAt: Date.now(), captureRetryCount: 0 },
     })
     missionCaptureVerified.value = true
+    minimizeOnboardingOnceRecordingConfirmed(missionRuntime.value.recording)
     missionCaptureRetryCount.value = 0
     missionPreviewError.value = null
   } finally {
@@ -1614,7 +1457,8 @@ async function startBonusMission() {
 
   saving.value = true
   try {
-    const preflight = await window.api.obs.runPreflight(true)
+    // Recheck the live scene without repeating the file test that just passed.
+    const preflight = await window.api.obs.runPreflight(!recordingSetupReady.value)
     if (!preflight.ok) {
       guidedSetupPassed.value = false
       obsError.value = preflight.userMessage
@@ -1654,6 +1498,7 @@ async function startBonusMission() {
     const previousModes = [...settings.recordedModesByGame.valorant]
     const missionModes = Array.from(new Set([...previousModes, 'SWIFTPLAY']))
     await window.api.settings.save({
+      primaryGame: 'valorant',
       autoAnalyse: true,
       fullMatchRecording: true,
       recordedModes: missionModes,
@@ -1672,7 +1517,10 @@ async function startBonusMission() {
       },
     })
     missionActive.value = true
+    step.value = 5
     await refreshMissionState()
+  } catch {
+    completeError.value = 'Could not start the free analysis setup. Please try again.'
   } finally {
     saving.value = false
   }
@@ -1713,7 +1561,7 @@ async function openBonusAnalysis() {
   await handleComplete({ destination: 'analysis', recordingId: recording.id })
 }
 
-async function prefillGameFromUser() {
+async function prefillGameFromUser(): Promise<boolean> {
   const user = (await window.api.auth.getUser()) as {
     primary_game?: string | null
     game_preference?: string | null
@@ -1721,7 +1569,20 @@ async function prefillGameFromUser() {
   const raw = user?.primary_game ?? user?.game_preference
   if (isPrimaryGame(raw)) {
     selectedGame.value = raw
+    return true
   }
+  return false
+}
+
+async function resumeAccountSetup() {
+  const hasSavedGame = await prefillGameFromUser()
+  if (hasSavedGame) await loadAccountState()
+  step.value = resolveOnboardingStep({
+    authenticated: isAuthed.value,
+    hasSavedGame,
+    accountLinked: accountLinked.value,
+    activeMission: missionActive.value,
+  })
 }
 
 function openRegister() {
@@ -1741,8 +1602,7 @@ async function handleSignIn() {
         signInError.value = campaign.error
         return
       }
-      await prefillGameFromUser()
-      nextStep()
+      await resumeAccountSetup()
     } else {
       signInError.value = (result as { error?: string }).error || 'Invalid email or password.'
     }
@@ -1754,6 +1614,7 @@ async function handleSignIn() {
 }
 
 async function loadAccountState() {
+  if (isPreview.value && !window.api) return
   accountError.value = ''
   accountSuccess.value = ''
   accountsLoading.value = true
@@ -1837,7 +1698,18 @@ async function loadAccountState() {
     } else if (selectedGame.value === 'cs2') {
       const settings = await window.api.settings.get()
       cs2SteamName.value = settings.cs2SteamName?.trim() || ''
-      cs2Linked.value = Boolean(cs2SteamName.value)
+      cs2SteamId.value = null
+      const profile = await window.api.cs2.getProfile()
+      if (profile?.identity) {
+        cs2SteamId.value = profile.identity.steam_id
+        if (profile.identity.steam_display_name) {
+          cs2SteamName.value = profile.identity.steam_display_name
+          if (!isPreview.value && settings.cs2SteamName !== cs2SteamName.value) {
+            await window.api.settings.save({ cs2SteamName: cs2SteamName.value })
+          }
+        }
+      }
+      cs2Linked.value = Boolean(cs2SteamId.value || cs2SteamName.value)
       try {
         const faceit = await window.api.cs2.getFaceitConnection()
         if (faceit?.connected && faceit.nickname) faceitNickname.value = faceit.nickname
@@ -1864,16 +1736,6 @@ async function loadAccountState() {
     accountError.value = 'Could not load account status. You can continue and link in Settings.'
   } finally {
     accountsLoading.value = false
-  }
-}
-
-async function refreshDiscordStatus() {
-  try {
-    await window.api.auth.refreshUser().catch(() => null)
-    const user = (await window.api.auth.getUser()) as { discord_username?: string | null } | null
-    discordLinked.value = Boolean(user?.discord_username?.trim())
-  } catch {
-    discordLinked.value = false
   }
 }
 
@@ -1905,6 +1767,7 @@ async function linkValorant() {
     showRiotForm.value = false
     await loadAccountState()
     await window.api.app.refreshDashboard().catch(() => null)
+    if (accountLinked.value) step.value = 4
   } finally {
     riotBusy.value = false
   }
@@ -1939,6 +1802,7 @@ async function saveCs2() {
     }
     cs2Linked.value = true
     accountSuccess.value = 'CS2 name saved'
+    step.value = 4
   } catch {
     accountError.value = 'Could not save CS2 name'
   } finally {
@@ -2005,6 +1869,7 @@ async function connectDeadlock(accountId: number) {
     deadlockLinked.value = true
     steamResults.value = []
     accountSuccess.value = 'Steam connected'
+    step.value = 4
   } catch (e) {
     accountError.value = e instanceof Error ? e.message : 'Could not connect'
   } finally {
@@ -2038,6 +1903,7 @@ async function linkLol() {
     lolLinked.value = true
     lolDisplayName.value = `${lolName.value.trim()}#${lolTag.value.trim().replace(/^#/, '')}`
     accountSuccess.value = 'League account linked'
+    step.value = 4
   } finally {
     accountBusy.value = false
   }
@@ -2047,30 +1913,31 @@ function openObsDownload() {
   window.open(OBS_DOWNLOAD_URL, '_blank')
 }
 
-function openDiscordLink() {
-  void window.api.app.openWebShell('/profile#discord').catch(() => {
-    window.open('https://upforge.gg/profile#discord', '_blank')
-  })
-}
-
 async function setupRecordingAutomatically() {
   if (obsConnecting.value || isPreview.value) return
   obsConnecting.value = true
   guidedSetupPassed.value = false
+  recordingCheckInterrupted = false
   guidedSetupStage.value = 'checking'
   obsError.value = ''
+  const checkedGame = selectedGame.value
   try {
-    const result = await window.api.obs.guidedSetup(selectedGame.value)
+    const result = await window.api.obs.guidedSetup(checkedGame)
+    if (selectedGame.value !== checkedGame) return
     if (result.ok) {
-      obsConnected.value = true
+      // Do not turn a completed test into a ready state after OBS disconnected.
+      const status = await window.api.obs.getStatus()
+      obsConnected.value = status.connected
       guidedStudioVersion.value = result.studioVersion
-      guidedSetupPassed.value = true
-      clearObsSkipFlag()
+      guidedSetupPassed.value = status.connected && !recordingCheckInterrupted
+      if (guidedSetupPassed.value) clearObsSkipFlag()
+      else if (status.connected) obsError.value = 'OBS reconnected during the recording check. Check again before playing.'
+      else obsError.value = 'OBS disconnected after the recording check. Check again before playing.'
     } else {
       obsError.value = result.error
     }
   } catch {
-    obsError.value = 'Recording setup could not finish. Retry setup.'
+    obsError.value = 'Recording could not be checked. Try again before playing.'
   } finally {
     obsConnecting.value = false
   }
@@ -2102,35 +1969,35 @@ function clearObsSkipFlag() {
   } catch { /* ignore */ }
 }
 
-function continueFromObs() {
-  if (!recordingSetupReady.value) {
-    try {
-      localStorage.setItem(OBS_SKIP_KEY, '1')
-    } catch { /* ignore */ }
-  } else {
-    clearObsSkipFlag()
+async function nextStep() {
+  if (step.value === 1) {
+    if (!isAuthed.value && !isPreview.value) return
+    if (isPreview.value) step.value = 2
+    else await resumeAccountSetup()
+  } else if (step.value === 2) {
+    await loadAccountState()
+    step.value = accountLinked.value ? 4 : 3
+  } else if (step.value === 3) {
+    step.value = 4
   }
-  nextStep()
+  slideDir.value = 'slide-left'
 }
 
-function nextStep() {
-  if (step.value === 1 && !isAuthed.value && !isPreview.value) return
-  slideDir.value = 'slide-left'
-  step.value = Math.min(step.value + 1, TOTAL_STEPS)
+function editGame() {
+  slideDir.value = 'slide-right'
+  step.value = 2
 }
 
 function prevStep() {
   slideDir.value = 'slide-right'
-  step.value = Math.max(step.value - 1, 1)
+  step.value = step.value === 5 ? 4 : 2
 }
 
 async function handleComplete(opts?: { destination?: 'dashboard' | 'analysis'; recordingId?: string }) {
   if (saving.value) return
   completeError.value = ''
   if (isPreview.value) {
-    router.push(opts?.destination === 'analysis' && opts.recordingId
-      ? { path: '/vod-review', query: { id: opts.recordingId } }
-      : '/dashboard')
+    router.push(resolveOnboardingCompletionRoute(opts))
     return
   }
   saving.value = true
@@ -2141,6 +2008,10 @@ async function handleComplete(opts?: { destination?: 'dashboard' | 'analysis'; r
       return
     }
     const current = await window.api.settings.get()
+    if (recordingSetupReady.value) clearObsSkipFlag()
+    else {
+      try { localStorage.setItem(OBS_SKIP_KEY, '1') } catch { /* storage may be unavailable */ }
+    }
     await window.api.settings.save({
       onboardingComplete: true,
       onboardingRecordingVerified: recordingSetupReady.value,
@@ -2151,7 +2022,7 @@ async function handleComplete(opts?: { destination?: 'dashboard' | 'analysis'; r
         game: selectedGame.value,
       },
     })
-    router.push('/dashboard')
+    router.push(resolveOnboardingCompletionRoute(opts))
   } catch (e) {
     console.error('[Onboarding] Failed to save settings:', e)
     completeError.value = 'Could not save setup. Check your connection and try again.'
