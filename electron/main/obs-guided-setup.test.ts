@@ -1,9 +1,64 @@
 import { describe, expect, it, vi } from 'vitest'
 import { readFileSync, existsSync } from 'node:fs'
 import { OBSWebSocketError } from 'obs-websocket-js'
-import { isCompatibleObsVersion, readGuidedObsOutputs, runGuidedObsSetup, type GuidedObsSetupDependencies } from './obs-guided-setup'
+import { createGuidedObsSetupRunner, isCompatibleObsVersion, readGuidedObsOutputs, runGuidedObsSetup, type GuidedObsSetupDependencies, type GuidedObsSetupResult } from './obs-guided-setup'
 
 vi.mock('electron-log', () => ({ default: { debug: vi.fn() } }))
+
+function deferred<T>() {
+  let resolve!: (value: T) => void
+  const promise = new Promise<T>(done => { resolve = done })
+  return { promise, resolve }
+}
+
+describe('automatic recording check coordination', () => {
+  it('waits for background startup and shares one test across simultaneous callers', async () => {
+    const startup = deferred<void>()
+    const test = deferred<GuidedObsSetupResult>()
+    const run = vi.fn(async (_game: string, progress: (stage: 'testing') => void) => {
+      progress('testing')
+      return test.promise
+    })
+    const check = createGuidedObsSetupRunner(() => startup.promise, run)
+    const firstProgress = vi.fn()
+    const secondProgress = vi.fn()
+    const first = check('valorant', firstProgress)
+    const second = check('valorant', secondProgress)
+    expect(run).not.toHaveBeenCalled()
+
+    startup.resolve()
+    await Promise.resolve()
+    expect(run).toHaveBeenCalledOnce()
+    expect(firstProgress).toHaveBeenCalledWith('testing')
+    expect(secondProgress).toHaveBeenCalledWith('testing')
+    test.resolve({ ok: true, studioVersion: '32.0.1' })
+    expect(await first).toEqual(await second)
+  })
+
+  it('finishes the current check before checking a different game', async () => {
+    const firstTest = deferred<GuidedObsSetupResult>()
+    const run = vi.fn(async (game: string): Promise<GuidedObsSetupResult> => game === 'valorant'
+      ? firstTest.promise : { ok: true, studioVersion: '32.0.1' })
+    const check = createGuidedObsSetupRunner(async () => {}, run)
+    const first = check('valorant', vi.fn())
+    const second = check('cs2', vi.fn())
+    await Promise.resolve()
+    expect(run.mock.calls.map(([game]) => game)).toEqual(['valorant'])
+    firstTest.resolve({ ok: false, error: 'Recording is busy' })
+    await first
+    expect((await second).ok).toBe(true)
+    expect(run.mock.calls.map(([game]) => game)).toEqual(['valorant', 'cs2'])
+  })
+
+  it('allows a fresh retry after failure without reusing old readiness', async () => {
+    const run = vi.fn(async (): Promise<GuidedObsSetupResult> => ({ ok: true, studioVersion: '32.0.1' }))
+    run.mockRejectedValueOnce(new Error('Connection lost'))
+    const check = createGuidedObsSetupRunner(async () => {}, run)
+    expect(await check('valorant', vi.fn())).toEqual({ ok: false, error: 'Connection lost' })
+    expect((await check('valorant', vi.fn())).ok).toBe(true)
+    expect(run).toHaveBeenCalledTimes(2)
+  })
+})
 
 function fixture() {
   return {

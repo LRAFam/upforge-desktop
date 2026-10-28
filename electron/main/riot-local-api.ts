@@ -22,7 +22,7 @@ export {
   resolveEconomyArmor,
 } from './riot-lookup-tables'
 import { applySpatialEnrichment } from './spatial/enrich'
-import { normalizeQueueId } from './riot-queue-id'
+import { resolveValorantGameMode } from './riot-queue-id'
 export { normalizeQueueId } from './riot-queue-id'
 import { isCombatPlayerKill } from './is-combat-kill'
 import { parsePlayerAbilitiesFromRoundStats } from './player-abilities'
@@ -119,6 +119,8 @@ export class RiotLocalApi {
   private _consecutiveMenusPolls = 0
   /** Consecutive polls with no core-game / pregame session while we were in-match. */
   private _externalEndPolls = 0
+  /** Missing sessions only prove an end after core-game was observed for this match. */
+  private _seenCoreGameSinceStart = false
   /** Highest round count seen this match (ally+enemy) — detects stale INGAME + 0-0 in lobby. */
   private _peakRoundCount = 0
   /** Shipping.exe was seen while tracking — used when process exits before presence updates. */
@@ -240,6 +242,11 @@ export class RiotLocalApi {
     if (!scores?.length) return null
     const last = scores[scores.length - 1]!
     return last.allyScore + last.enemyScore
+  }
+
+  /** Evidence for confirming stale INGAME after a session or scored match ends. */
+  hasMatchEndSessionEvidence(): boolean {
+    return this.matchData !== null && (this._seenCoreGameSinceStart || this._peakRoundCount >= 2)
   }
 
   /** Map live-client EventTime (seconds) to absolute recording offset ms. */
@@ -782,10 +789,13 @@ export class RiotLocalApi {
     }
     if (!this.matchData.queueId && queueId) {
       this.matchData.queueId = queueId
-      const normalized = normalizeQueueId(queueId)
+    }
+    // Re-evaluate when the map arrives after the queue; Range can retain a stale queue id.
+    const normalized = resolveValorantGameMode(this.matchData.queueId, this.matchData.map)
+    if (normalized && normalized !== this.matchData.gameMode) {
       this.matchData.gameMode = normalized
       this.lastGameMode = normalized
-      console.log(`[RiotLocalApi] Queue: ${queueId} -> ${normalized}`)
+      console.log(`[RiotLocalApi] Queue: ${this.matchData.queueId ?? 'unknown'} -> ${normalized}`)
     }
 
     // If agent still unknown, try core-game REST API — throttled during overlay poll.
@@ -899,8 +909,11 @@ export class RiotLocalApi {
         : null
 
       if (coreActive === true || pregameActive === true) {
+        if (coreActive === true) this._seenCoreGameSinceStart = true
         this._externalEndPolls = 0
-      } else if (coreActive === false && pregameActive === false) {
+      } else if (coreActive === false && pregameActive === false && this._seenCoreGameSinceStart) {
+        // Range and unsupported routes may return 404 for the entire session.
+        // Absence without a previously observed live core-game is not an end.
         this._externalEndPolls++
         const required = this._peakRoundCount >= 1
           ? RiotLocalApi.EXTERNAL_END_POLLS
@@ -908,6 +921,9 @@ export class RiotLocalApi {
         if (this._externalEndPolls >= required) {
           return 'core-game and pregame sessions ended (presence may still show INGAME)'
         }
+      } else {
+        // An unavailable probe breaks the consecutive confirmed-absence streak.
+        this._externalEndPolls = 0
       }
     }
     return null
@@ -1040,6 +1056,7 @@ export class RiotLocalApi {
     this._seenIngameSinceStart = false
     this._consecutiveMenusPolls = 0
     this._externalEndPolls = 0
+    this._seenCoreGameSinceStart = false
     this._peakRoundCount = 0
     this._shippingSeen = false
     this._shippingGoneStreak = 0
@@ -1390,8 +1407,11 @@ export class RiotLocalApi {
     if (matchInfo?.queueID && !this.matchData.queueId) {
       const queueId = matchInfo.queueID as string
       this.matchData.queueId = queueId
-      this.matchData.gameMode = normalizeQueueId(queueId)
-      this.lastGameMode = this.matchData.gameMode
+    }
+    const mode = resolveValorantGameMode(this.matchData.queueId, this.matchData.map)
+    if (mode) {
+      this.matchData.gameMode = mode
+      this.lastGameMode = mode
     }
 
     const ownLower = (this.matchData.puuid ?? this.ownPuuid)?.toLowerCase()
@@ -1734,12 +1754,9 @@ export class RiotLocalApi {
 
   async getGameMode(): Promise<string | null> {
     const state = await this.getSessionState()
-    if (state?.queueId) {
-      const mode = normalizeQueueId(state.queueId)
-      this.lastGameMode = mode
-      return mode
-    }
-    return null
+    const mode = resolveValorantGameMode(state?.queueId, state?.matchMap)
+    if (mode) this.lastGameMode = mode
+    return mode
   }
 
   /**
@@ -2114,7 +2131,7 @@ export class RiotLocalApi {
       }>(`/pregame/v1/matches/${player.MatchID}`)
 
       const mapName = match?.MapID ? resolveMapName(match.MapID) : null
-      const mode = match?.QueueID ? normalizeQueueId(match.QueueID) : null
+      const mode = resolveValorantGameMode(match?.QueueID, match?.MapID)
       const lockedAllies = lockedPregamePlayers(match?.AllyTeam?.Players)
       const own = lockedAllies.find(
         (p) => p.Subject?.toLowerCase() === this.ownPuuid?.toLowerCase()

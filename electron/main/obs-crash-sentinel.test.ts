@@ -1,8 +1,10 @@
 import fs from 'fs'
 import os from 'os'
 import path from 'path'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { clearObsCrashSentinel, obsCrashSentinelPath } from './obs-crash-sentinel'
+
+vi.mock('electron-log', () => ({ default: { info: vi.fn(), warn: vi.fn() } }))
 
 const tempDirs: string[] = []
 
@@ -26,7 +28,7 @@ describe('obsCrashSentinelPath', () => {
 
   it('resolves under Application Support on macOS', () => {
     expect(obsCrashSentinelPath({ HOME: '/Users/a' }, 'darwin'))
-      .toBe('/Users/a/Library/Application Support/obs-studio/.sentinel')
+      .toBe(path.normalize('/Users/a/Library/Application Support/obs-studio/.sentinel'))
   })
 
   it('returns null when the home directory is unknown', () => {

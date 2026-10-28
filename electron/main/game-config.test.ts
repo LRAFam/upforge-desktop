@@ -44,6 +44,15 @@ describe('gameSupportsRounds', () => {
 })
 
 describe('resolveGameMode', () => {
+  it('saves Range recordings with their map-derived mode despite a stale live mode', () => {
+    expect(resolveGameMode('valorant', {
+      map: 'The Range', valorantLiveMode: 'SKIRMISH2V2', timelineMode: 'SKIRMISH2V2',
+    })).toBe('SHOOTING_RANGE')
+    expect(resolveGameMode('valorant', { map: 'The Range' })).toBe('SHOOTING_RANGE')
+    expect(resolveGameMode('valorant', { map: 'Ascent', valorantLiveMode: 'SKIRMISH2V2' })).toBe('SKIRMISH2V2')
+    expect(resolveGameMode('lol', { map: 'The Range', timelineMode: 'ARAM' })).toBe('ARAM')
+  })
+
   it('prefers the Valorant live mode, then timeline, then default', () => {
     expect(resolveGameMode('valorant', { valorantLiveMode: 'SWIFTPLAY' })).toBe('SWIFTPLAY')
     expect(resolveGameMode('valorant', { timelineMode: 'COMPETITIVE' })).toBe('COMPETITIVE')

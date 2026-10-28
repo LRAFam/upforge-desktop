@@ -5,7 +5,7 @@
  */
 import type { MatchData } from './riot-types'
 import { resolveMapName } from './riot-lookup-tables'
-import { normalizeQueueId } from './riot-queue-id'
+import { resolveValorantGameMode } from './riot-queue-id'
 
 const PRACTICE_MODES = new Set(['CUSTOM', 'SHOOTING_RANGE', 'NEWMAP'])
 
@@ -37,7 +37,7 @@ export function mapFromMatchDetails(details: Record<string, unknown>): string | 
 export function queueFromMatchDetails(details: Record<string, unknown>): string | null {
   const matchInfo = details.matchInfo as Record<string, unknown> | undefined
   const queueId = matchInfo?.queueID as string | undefined
-  return queueId ? normalizeQueueId(queueId) : null
+  return resolveValorantGameMode(queueId, matchInfo?.mapId as string | undefined)
 }
 
 export type MatchDetailsValidation = { apply: boolean; reason: string }
@@ -58,7 +58,7 @@ export function shouldApplyMatchDetails(
   matchData: MatchData,
   details: Record<string, unknown>,
 ): MatchDetailsValidation {
-  const localMode = (matchData.gameMode ?? '').toUpperCase()
+  const localMode = resolveValorantGameMode(matchData.gameMode, matchData.map) ?? ''
   const detailsMode = queueFromMatchDetails(details)
   const matchInfo = details.matchInfo as Record<string, unknown> | undefined
 
@@ -140,7 +140,7 @@ export function shouldApplyRecoveredMatchDetails(
 
 /** Skip match-history fallback when local session already looks like practice. */
 export function shouldUseMatchHistoryFallback(matchData: MatchData): boolean {
-  const mode = (matchData.gameMode ?? '').toUpperCase()
+  const mode = resolveValorantGameMode(matchData.gameMode, matchData.map) ?? ''
   if (PRACTICE_MODES.has(mode)) return false
   return true
 }

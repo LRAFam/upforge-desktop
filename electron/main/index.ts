@@ -1,4 +1,8 @@
 import { getApiBaseUrl } from './api-base'
+import { resolveValorantGameMode } from './riot-queue-id'
+import { hasValorantReturnedToMenus, isValorantStillInLiveMatch } from './valorant-match-end'
+import { startRecordingWhenReady } from './recording-start'
+import { resolveMatchEndCapture, shouldFinalizeMatchMedia } from './match-end-capture'
 import { setupCloudStorageHandlers } from './ipc/cloud-storage-ipc'
 import { APP_VERSION } from './app-version'
 import { setupReviewNotebookHandlers } from './ipc/review-notebook-ipc'
@@ -562,6 +566,7 @@ async function ensureObsReady(opts?: {
     password,
     port,
     allowProcessRestart,
+    canRestartProcess: () => canHardRecoverObs(obsWatchdogSnapshot({ processRunning: true })),
     getWindow: () => mainWindow,
     onActivity: logActivity,
   })
@@ -575,12 +580,22 @@ async function ensureObsReady(opts?: {
   return false
 }
 
+let obsStartupTask: Promise<void> = Promise.resolve()
+
 function scheduleObsProbeOnWindowLoad(win: BrowserWindow, notify: boolean): void {
-  win.webContents.once('did-finish-load', () => {
-    void ensureObsReady({ notifyOnFailure: notify }).then((ok) => {
-      if (!ok || !settingsManager) return
-      const game = normalizePrimaryGame(settingsManager.get().primaryGame)
-      void ensureObsCaptureForGame(game)
+  // Register the pending work before the renderer can ask for its capture check.
+  obsStartupTask = new Promise<void>(resolve => {
+    win.once('closed', resolve)
+    win.webContents.once('did-finish-load', () => {
+      win.removeListener('closed', resolve)
+      void (async () => {
+        const ok = await ensureObsReady({ notifyOnFailure: notify })
+        if (!ok || !settingsManager) return
+        const game = normalizePrimaryGame(settingsManager.get().primaryGame)
+        await ensureObsCaptureForGame(game)
+      })().catch(error => log.warn('[OBS] Startup capture check failed:', error)).finally(() => {
+        resolve()
+      })
     })
   })
 }
@@ -803,6 +818,7 @@ let matchHandled = false
 let deadlockSessionStartAt: number | null = null
 /** Bumped on each game-started so superseded lobby-wait loops exit cleanly. */
 let matchFlowGeneration = 0
+let pendingRecordingStart: { game: string; controller: AbortController } | null = null
 /** Prevents parallel CS2/Deadlock re-watch loops after a process restart. */
 let rearmWatchInFlight: string | null = null
 /** Serializes handleMatchEnd — prevents double upload/post-game from concurrent end signals. */
@@ -3207,6 +3223,8 @@ function setupGameDetection(): void {
 
   /** Invalidate older game-started handlers and cancel their lobby-wait loops. */
   function beginMatchFlow(): { isStale: () => boolean } {
+    pendingRecordingStart?.controller.abort()
+    pendingRecordingStart = null
     matchFlowGeneration++
     const generation = matchFlowGeneration
     matchHandled = false
@@ -3251,7 +3269,9 @@ function setupGameDetection(): void {
       console.log(`[MatchEnd] Ignoring duplicate end signal (${source})`)
       return false
     }
+    const captureNeverStarted = pendingRecordingStart?.game === game && !obsRecorder.isRecording()
     matchHandled = true
+    if (pendingRecordingStart?.game === game) pendingRecordingStart.controller.abort()
     clearOverlayPolling()
     riotLocalApi.onMatchEnded = null
     lolLiveClientApi.onMatchEnded = null
@@ -3259,7 +3279,7 @@ function setupGameDetection(): void {
 
     const run = async (): Promise<boolean> => {
       try {
-        await handleMatchEnd(game, source)
+        await handleMatchEnd(game, source, captureNeverStarted)
         scheduleFocusSyncAfterMatch(game)
         return true
       } catch (err) {
@@ -3294,22 +3314,6 @@ function setupGameDetection(): void {
   }
 
   finalizeAfterObsProcessDeath = finalizeAfterObsProcessDeathImpl
-
-  /** Shared path for presence / GSI / process-exit match-end signals. */
-  async function isValorantStillInLiveMatch(): Promise<boolean> {
-    try {
-      const shippingUp = await gameDetector.isMatchProcessRunning()
-      if (!shippingUp) return false
-      const state = await riotLocalApi.getSessionState()
-      if (state?.sessionLoopState === 'INGAME') {
-        const coreActive = await riotLocalApi.isCoreGameSessionActive()
-        if (coreActive === true) return true
-      }
-      // Shipping running but presence not yet MENUS — likely still on map.
-      if (state?.sessionLoopState !== 'MENUS') return true
-    } catch { /* not live */ }
-    return false
-  }
 
   /**
    * True when Riot still shows match flow (agent select / loading / live), even if
@@ -3346,24 +3350,37 @@ function setupGameDetection(): void {
 
   async function finishActiveMatch(game: string, source: string): Promise<void> {
     if (matchHandled) return
-    if (!(await obsRecorder.isCaptureActive())) return
+    const generation = matchFlowGeneration
+    const starting = pendingRecordingStart?.game === game
+    if (!starting && !(await obsRecorder.isCaptureActive())) return
 
-    if (game === 'valorant' && await isValorantStillInLiveMatch()) {
+    const stillLive = game === 'valorant' && await isValorantStillInLiveMatch({
+      isMatchProcessRunning: () => gameDetector.isMatchProcessRunning(),
+      getSessionState: () => riotLocalApi.getSessionState(),
+      isCoreGameSessionActive: () => riotLocalApi.isCoreGameSessionActive(),
+      isPregameSessionActive: () => riotLocalApi.isPregameSessionActive(),
+      hasMatchEndSessionEvidence: () => riotLocalApi.hasMatchEndSessionEvidence(),
+    })
+    if (generation !== matchFlowGeneration || matchHandled) return
+    if (stillLive) {
       console.log(`[MatchEnd] Suppressing false end (${source}) — Valorant match still live`)
       logActivity('False match-end ignored — recording continues')
       riotLocalApi.clearSuppressedMatchEnd()
-      riotLocalApi.onMatchEnded = () => finishActiveMatch(game, 'presence')
+      riotLocalApi.onMatchEnded = () => {
+        if (generation === matchFlowGeneration) return finishActiveMatch(game, 'presence')
+      }
       if (!obsRecorder.isRecording() && await obsRecorder.isObsOutputActive()) {
         await obsRecorder.reclaimActiveRecording()
       }
       return
     }
 
+    if (generation !== matchFlowGeneration || matchHandled) return
     const elapsedSec = currentRecordingStartTime
       ? Math.floor((Date.now() - currentRecordingStartTime) / 1000)
       : 0
     const durationLabel = elapsedSec > 0
-      ? `${Math.round(elapsedSec / 60)}m ${elapsedSec % 60}s`
+      ? `${Math.floor(elapsedSec / 60)}m ${elapsedSec % 60}s`
       : 'unknown duration'
     console.log(`[MatchEnd] ${source} — stopping recording (${elapsedSec}s captured)`)
     logActivity(`Match ended (${source}) — stopping recording (${durationLabel})`)
@@ -3500,7 +3517,7 @@ function setupGameDetection(): void {
   }
 
   let handleMatchEndRunning = false
-  async function handleMatchEnd(game: string, endSource = 'unknown'): Promise<void> {
+  async function handleMatchEnd(game: string, endSource = 'unknown', captureNeverStarted = false): Promise<void> {
     if (handleMatchEndRunning) {
       log.warn('[HandleMatchEnd] Re-entrant call blocked')
       return
@@ -3516,9 +3533,18 @@ function setupGameDetection(): void {
     const config = settingsManager?.get()
     const savePath = resolveRecordingSavePath(settingsManager?.get().savePath, ownerId)
 
+    if (!shouldFinalizeMatchMedia(captureNeverStarted, usesDemoReplay(game))) {
+      await fetchLiveClientTimeline(game, {
+        stopValorantTimeline: () => riotLocalApi.stop(),
+        stopLolTimeline: () => lolLiveClientApi.stop(),
+      })
+      logActivity('Match ended before recording started — no video to process', game)
+      return
+    }
+
     // Duration from OBS clock, or wall clock if WebSocket dropped mid-match.
-    let recordingDuration = obsRecorder.getRecordingDuration()
-    if (recordingDuration === 0 && currentRecordingStartTime) {
+    let recordingDuration = captureNeverStarted ? 0 : obsRecorder.getRecordingDuration()
+    if (!captureNeverStarted && recordingDuration === 0 && currentRecordingStartTime) {
       recordingDuration = Math.floor((Date.now() - currentRecordingStartTime) / 1000)
     }
     const matchSessionStart = currentMatchStartTime ?? currentRecordingStartTime
@@ -3536,7 +3562,10 @@ function setupGameDetection(): void {
         stopValorantTimeline: () => riotLocalApi.stop(),
         stopLolTimeline: () => lolLiveClientApi.stop(),
       }),
-      obsRecorder.stop(),
+      // A match ending before startup must not stop an onboarding-owned output.
+      captureNeverStarted
+        ? Promise.resolve(null)
+        : obsRecorder.stop(),
     ])
 
     if (obsRecorder.hasRecordingFailure() && !usesDemoReplay(game)) {
@@ -3604,17 +3633,21 @@ function setupGameDetection(): void {
       }), 'lol')
     }
 
-    const pathResolve = resolveReadyRecordingPathDetailed(
-      obsRecorder.getLastRecordingPath(),
-      savePath,
-      matchSessionStart,
-    )
-    const resolvedFile = pathResolve.file
-    const videoPath = resolvedFile?.path ?? obsRecorder.getLastRecordingPath()
-    const fileSize = resolvedFile?.sizeBytes ?? obsRecorder.getLastRecordingSize()
+    const captured = resolveMatchEndCapture(captureNeverStarted, () => {
+      const pathResolve = resolveReadyRecordingPathDetailed(obsRecorder.getLastRecordingPath(), savePath, matchSessionStart)
+      return {
+        resolvedFile: pathResolve.file,
+        videoPath: pathResolve.file?.path ?? obsRecorder.getLastRecordingPath(),
+        fileSize: pathResolve.file?.sizeBytes ?? obsRecorder.getLastRecordingSize(),
+        usedFallback: pathResolve.usedFallback,
+      }
+    })
+    const resolvedFile = captured?.resolvedFile ?? null
+    const videoPath = captured?.videoPath ?? null
+    const fileSize = captured?.fileSize ?? 0
     activeMatchTelemetry?.startSector('end_to_file_ready')
     activeMatchTelemetry?.endSector('end_to_file_ready')
-    if (pathResolve.usedFallback) {
+    if (captured?.usedFallback) {
       activeMatchTelemetry?.setPathFallback(true)
     }
 
@@ -3627,7 +3660,7 @@ function setupGameDetection(): void {
       logActivity('OBS exited — no recording file found on disk')
     }
 
-    if (await obsRecorder.isObsOutputActive()) {
+    if (!captureNeverStarted && await obsRecorder.isObsOutputActive()) {
       await new Promise((r) => setTimeout(r, 1500))
       if (await obsRecorder.isObsOutputActive() && await isObsProcessRunning()) {
         logActivity('OBS looks stuck recording. Stop recording in OBS after the match.')
@@ -3646,6 +3679,7 @@ function setupGameDetection(): void {
     const map = mapRaw ? resolveMapLabel(game, mapRaw) : null
     const agent = timeline?.agent ?? (game === 'deadlock' ? getDeadlockHero() : null) ?? null
     const gameMode = resolveGameMode(game, {
+      map,
       timelineMode: timeline?.gameMode,
       valorantLiveMode: riotLocalApi.getLastGameMode(),
     })
@@ -3671,7 +3705,7 @@ function setupGameDetection(): void {
       })
       mainWindow?.webContents.send('dashboard:refresh', { fresh: true })
     }
-    const clipsOnly = config?.fullMatchRecording === false || obsRecorder.isClipsOnlySession()
+    const clipsOnly = !captureNeverStarted && (config?.fullMatchRecording === false || obsRecorder.isClipsOnlySession())
 
     if (!canUploadCapture()) {
       const localClipContext = { recordingStartTime: currentRecordingStartTime, bookmarks: hotkeyBookmarks.splice(0) }
@@ -4394,13 +4428,17 @@ function setupGameDetection(): void {
     const config = settingsManager?.get()
     const onboardingMissionActive = config?.onboardingMatchMission?.active === true
 
-    // The onboarding mission is the user's live proof that capture works. Keep it
-    // visible; normal sessions still minimise to reduce Chromium GPU/CPU overhead.
+    // Keep unfinished setup and the capture mission visible even if the game is
+    // already open; normal sessions still minimise to reduce Chromium overhead.
     if (
-      shouldMinimizeForDetectedGame(onboardingMissionActive)
-      && mainWindow
+      mainWindow
       && !mainWindow.isDestroyed()
       && mainWindow.isVisible()
+      && shouldMinimizeForDetectedGame(
+        onboardingMissionActive,
+        config?.onboardingComplete !== true,
+        mainWindow.webContents.getURL(),
+      )
     ) {
       mainWindow.minimize()
     }
@@ -4792,10 +4830,10 @@ function setupGameDetection(): void {
             }))
           }
 
-          // Resolve game mode from presence queueId (available from queue through agent select)
-          if (state?.queueId) {
-            const { normalizeQueueId } = await import('./riot-local-api')
-            gameMode = normalizeQueueId(state.queueId)
+          // Range maps identify practice even when presence retains the previous queue.
+          const presenceMode = resolveValorantGameMode(state?.queueId, state?.matchMap)
+          if (presenceMode) {
+            gameMode = presenceMode
             modeConfident = true
           }
 
@@ -4860,9 +4898,8 @@ function setupGameDetection(): void {
               return
             }
             matchStartTime = Date.now()
-            if (state.queueId) {
-              const { normalizeQueueId } = await import('./riot-local-api')
-              gameMode = normalizeQueueId(state.queueId)
+            if (presenceMode) {
+              gameMode = presenceMode
               modeConfident = true
             } else {
               const mode = await riotLocalApi.getGameMode()
@@ -5051,10 +5088,22 @@ function setupGameDetection(): void {
       console.log('[GameDetector] Match confirmed but capture already active — skipping duplicate start')
       return
     }
-    const obsOutputActive = await obsRecorder.isObsOutputActive()
-    let reclaimedExistingCapture = false
-    if (obsOutputActive) {
-      reclaimedExistingCapture = await obsRecorder.reclaimActiveRecording()
+    const capturePreparation = await obsRecorder.prepareMatchCapture(async () => {
+      if (isStale()) return false
+      // The player can leave a short match while onboarding owns the recorder.
+      // Shipping.exe remains open in the lobby, so process presence is not enough.
+      if (game === 'valorant') return !(await hasValorantReturnedToMenus(riotLocalApi))
+      return true
+    })
+    if (abortIfStale(isStale, game)) return
+    if (capturePreparation === 'cancelled') {
+      logActivity('Match ended before recording could start — watching for the next match')
+      tray?.setToolTip(idleTooltip(game))
+      await rearmGameDetection(game, true)
+      return
+    }
+    const reclaimedExistingCapture = capturePreparation === 'reclaimed'
+    if (capturePreparation !== 'idle') {
       if (reclaimedExistingCapture) {
         console.log('[GameDetector] Reclaimed in-progress OBS recording — continuing same file')
         logActivity('Recovered in-progress recording — continuing capture')
@@ -5127,17 +5176,25 @@ function setupGameDetection(): void {
     if (game === 'valorant') trackMatchDetected('valorant')
     beginMatchPerformanceMode({ holdPostMatch: true })
 
+    if (isStale() || matchHandled) return
+    const recordingStart = { game, controller: new AbortController() }
+    pendingRecordingStart = recordingStart
+
     if (game === 'valorant') {
       riotLocalApi.cancelMenuWatch()
-      riotLocalApi.onMatchEnded = () => finishActiveMatch(game, 'presence')
+      riotLocalApi.onMatchEnded = () => {
+        if (!isStale()) return finishActiveMatch(game, 'presence')
+      }
       riotLocalApi.start(game, matchStartTime ?? undefined)
     } else if (game === 'lol') {
-      lolLiveClientApi.onMatchEnded = () => finishActiveMatch(game, 'live-client')
+      lolLiveClientApi.onMatchEnded = () => {
+        if (!isStale()) return finishActiveMatch(game, 'live-client')
+      }
       lolLiveClientApi.start(matchStartTime ?? undefined)
     } else if (usesDemoReplay(game)) {
       gsiPollTimer = setInterval(() => {
         void (async () => {
-          if (!obsRecorder.isRecording() || matchHandled) return
+          if (matchHandled || (!obsRecorder.isRecording() && pendingRecordingStart?.game !== game)) return
           const ended = game === 'deadlock'
             ? isDeadlockMatchEnded()
             : isGsiMatchEnded()
@@ -5151,6 +5208,8 @@ function setupGameDetection(): void {
       ? await gameDetector.isMatchProcessRunning()
       : await gameDetector.isGameProcessRunning(game)
     if (!reclaimedExistingCapture && !gameProcessStillRunning) {
+      recordingStart.controller.abort()
+      if (pendingRecordingStart === recordingStart) pendingRecordingStart = null
       log.warn('[GameDetector] Game process exited before recorder start — aborting')
       logActivity('Match ended before recording could start')
       tray?.setToolTip(idleTooltip(game))
@@ -5165,6 +5224,8 @@ function setupGameDetection(): void {
     // stalled match start ("Waiting for round start…") with no recording. Start at INGAME.
     if (abortIfStale(isStale, game)) return
     if (cancelled) {
+      recordingStart.controller.abort()
+      if (pendingRecordingStart === recordingStart) pendingRecordingStart = null
       logActivity('Match ended during load — recording skipped')
       tray?.setToolTip(idleTooltip(game))
       await rearmGameDetection(game, true)
@@ -5204,16 +5265,17 @@ function setupGameDetection(): void {
       // Create the overlay window just before recording starts — deferred from startup
       // so it doesn't break Valorant's exclusive fullscreen before we actually need it.
       if (isInGameOverlayEnabled()) createOverlayWindow()
-      await withTimeout(
-        (async () => {
-          await ensureObsReadyOrThrow()
+      await startRecordingWhenReady({
+        ensureReady: ensureObsReadyOrThrow,
+        start: async (signal) => {
           if (!reclaimedExistingCapture) {
-            await obsRecorder.start(game, recorderConfig)
+            await obsRecorder.start(game, recorderConfig, { signal, isCancelled: () => isStale() || matchHandled })
           }
-        })(),
-        OBS_RECORD_START_TIMEOUT_MS,
-        'OBS start timed out — OBS may be frozen. Restart OBS from Settings → Recording.',
-      )
+        },
+        timeoutMs: OBS_RECORD_START_TIMEOUT_MS,
+        signal: recordingStart.controller.signal,
+      })
+      if (recordingStart.controller.signal.aborted || isStale() || matchHandled) return
       telemetry.endSector('detect_to_record_start')
       telemetry.setAudioTracks(obsRecorder.wasNoAudio() ? 0 : 1)
       telemetry.setRecordingFacts({
@@ -5248,6 +5310,8 @@ function setupGameDetection(): void {
         sendOverlayData('overlay:data', { round: null, allyScore: null, enemyScore: null, yourCredits: null, enemyEstimate: null, recording: true })
       }
     } catch (err) {
+      // Match finalization or a newer match owns cleanup and the current UI now.
+      if (recordingStart.controller.signal.aborted || isStale() || matchHandled) return
       const msg = err instanceof Error ? err.message : String(err)
       log.error('[Main] Failed to start recording:', msg)
       reportRecordingError('start', err, { recording_context: obsRecorder.getRecordingDiagnostics() })
@@ -5307,6 +5371,8 @@ function setupGameDetection(): void {
       setTimeout(() => tray?.setToolTip(idleTooltip(game)), 10_000)
       await rearmGameDetection(game, true)
       return
+    } finally {
+      if (pendingRecordingStart === recordingStart) pendingRecordingStart = null
     }
     logActivity(`Recording started (${gameMode ?? 'unknown mode'}${obsRecorder.wasNoAudio() ? ' — no audio' : ''})`)
     const applied = obsRecorder.getOBSStatus().lastApplied
@@ -5494,6 +5560,10 @@ function setupGameDetection(): void {
     }
 
     // Skipped-match menu watch or idle — no recorder running.
+    if (pendingRecordingStart?.game === game) {
+      await finishActiveMatch(game, 'process-exit')
+      return
+    }
     const captureActive = await obsRecorder.isCaptureActive()
     if (!captureActive) {
       waitingForMatch = false
@@ -6469,6 +6539,7 @@ async function performUploadAndAnalyse(
           map,
           agent,
           gameMode: resolveGameMode(game, {
+            map,
             timelineMode: timeline?.gameMode,
             valorantLiveMode: riotLocalApi.getLastGameMode(),
           }),
@@ -6617,6 +6688,7 @@ async function startApp(): Promise<void> {
     riotLocalApi.setLinkedAccountRegion(null)
   },
   (jobId: string) => recordingsStore?.getPathByJobId(jobId) ?? null,
+  () => obsStartupTask,
   )
 
   setupClipHandlers(ipcMain, clipStore, clipExtractor, authManager, hotkeyManager, recordingsStore, settingsManager)

@@ -26,12 +26,21 @@ describe('validateReplayUploadPath', () => {
     try {
       const root = join(dir, 'replays')
       await mkdir(root)
-      const outside = join(dir, 'private.dem')
+      const outsideDir = join(dir, 'private')
+      await mkdir(outsideDir)
+      const outside = join(outsideDir, 'private.dem')
       const linked = join(root, 'linked.dem')
       await writeFile(outside, 'private')
-      await symlink(outside, linked)
+      // Junctions exercise a real escape on Windows without requiring the
+      // developer-mode or administrator privilege needed for file symlinks.
+      const windows = process.platform === 'win32'
+      await symlink(windows ? outsideDir : outside, linked, windows ? 'junction' : 'file')
       expect(validateReplayUploadPath(outside, [root]).ok).toBe(false)
-      expect(validateReplayUploadPath(linked, [root]).ok).toBe(false)
+      const escaped = windows ? join(linked, 'private.dem') : linked
+      expect(validateReplayUploadPath(escaped, [root])).toEqual({
+        ok: false,
+        error: 'Replay file is outside the approved Deadlock replay folders',
+      })
     } finally {
       await rm(dir, { recursive: true, force: true })
     }

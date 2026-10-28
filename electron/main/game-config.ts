@@ -9,6 +9,7 @@
  */
 
 import { resolveLolMapLabel } from '../../src/lib/lol-maps'
+import { resolveValorantGameMode } from './riot-queue-id'
 
 export type GameId = 'valorant' | 'cs2' | 'deadlock' | 'lol'
 
@@ -113,6 +114,8 @@ export function obsCaptureConfig(game: string | null | undefined): GameConfig['o
 }
 
 export interface ResolveGameModeOpts {
+  /** Captured map identifies Valorant practice even when its queue is stale. */
+  map?: string | null
   /** Mode captured on the match timeline (used by all games except Valorant's live path). */
   timelineMode?: string | null
   /** Valorant's live client mode from `riotLocalApi.getLastGameMode()`. */
@@ -127,7 +130,7 @@ export interface ResolveGameModeOpts {
 export function resolveGameMode(game: string | null | undefined, opts: ResolveGameModeOpts = {}): string {
   const cfg = gameConfig(game)
   if (cfg.id === 'valorant') {
-    return opts.valorantLiveMode ?? opts.timelineMode ?? cfg.defaultGameMode
+    return resolveValorantGameMode(opts.valorantLiveMode ?? opts.timelineMode, opts.map) ?? cfg.defaultGameMode
   }
   return opts.timelineMode ?? cfg.defaultGameMode
 }

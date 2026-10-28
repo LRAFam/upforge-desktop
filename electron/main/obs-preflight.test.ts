@@ -8,6 +8,8 @@ import {
   runObsTestRecording,
 } from './obs-preflight'
 
+vi.mock('electron-log', () => ({ default: { info: vi.fn(), warn: vi.fn() } }))
+
 vi.mock('./obs-installer', () => ({
   isObsInstalled: vi.fn(() => true),
 }))
@@ -138,6 +140,107 @@ describe('runObsPreflight', () => {
 })
 
 describe('runObsTestRecording', () => {
+  it('leaves an existing recording alone', async () => {
+    const obs = mockObsClient({ recordActive: true })
+    const result = await runObsTestRecording({ obs: obs as never })
+    expect(result.ok).toBe(false)
+    expect(obs.call).not.toHaveBeenCalledWith('StartRecord')
+    expect(obs.call).not.toHaveBeenCalledWith('StopRecord')
+  })
+
+  it('does not stop another recording when OBS explicitly rejects our start request', async () => {
+    const obs = { call: vi.fn(async (method: string) => {
+      if (method === 'GetRecordStatus') return { outputActive: false }
+      if (method === 'StartRecord') throw new Error('Output is already running')
+      return {}
+    }) }
+    const result = await runObsTestRecording({ obs: obs as never })
+    expect(result.ok).toBe(false)
+    expect(obs.call).not.toHaveBeenCalledWith('StopRecord')
+  })
+
+  it('does not start when the output state is missing', async () => {
+    const obs = { call: vi.fn(async () => ({})) }
+    const result = await runObsTestRecording({ obs: obs as never })
+    expect(result.ok).toBe(false)
+    expect(result.technicalMessage).toContain('missing outputActive')
+    expect(obs.call).toHaveBeenCalledTimes(1)
+  })
+
+  it('bounds a lost StartRecord reply and confirms cleanup before returning', async () => {
+    vi.useFakeTimers()
+    try {
+      let active = false
+      const obs = { call: vi.fn(async (method: string) => {
+        if (method === 'StartRecord') {
+          active = true
+          return new Promise<never>(() => {})
+        }
+        if (method === 'StopRecord') active = false
+        return { outputActive: active }
+      }) }
+      const pending = runObsTestRecording({ obs: obs as never })
+      await vi.advanceTimersByTimeAsync(5000)
+      expect(await pending).toMatchObject({ ok: false, technicalMessage: 'OBS StartRecord timed out' })
+      expect(active).toBe(false)
+      expect(obs.call).toHaveBeenCalledWith('StopRecord')
+    } finally { vi.useRealTimers() }
+  })
+
+  it('reports failed cleanup alongside the original verification error', async () => {
+    vi.useFakeTimers()
+    try {
+      let reads = 0
+      const obs = { call: vi.fn(async (method: string) => {
+        if (method === 'GetRecordStatus') {
+          reads++
+          if (reads === 2) throw new Error('Verification failed')
+          return { outputActive: reads > 1 }
+        }
+        return {}
+      }) }
+      const pending = runObsTestRecording({ obs: obs as never })
+      await vi.advanceTimersByTimeAsync(15_000)
+      const result = await pending
+      expect(result.ok).toBe(false)
+      expect(result.technicalMessage).toContain('Verification failed')
+      expect(result.technicalMessage).toContain('cleanup failed: OBS did not stop recording')
+    } finally { vi.useRealTimers() }
+  })
+
+  it('cleans up its recording when verification fails after StartRecord succeeds', async () => {
+    let active = false
+    let reads = 0
+    const obs = { call: vi.fn(async (method: string) => {
+      if (method === 'GetRecordStatus') {
+        if (++reads === 2) throw new Error('OBS status request failed')
+        return { outputActive: active }
+      }
+      if (method === 'StartRecord') active = true
+      if (method === 'StopRecord') active = false
+      return {}
+    }) }
+    const result = await runObsTestRecording({ obs: obs as never })
+    expect(result.ok).toBe(false)
+    expect(result.technicalMessage).toContain('OBS status request failed')
+    expect(active).toBe(false)
+    expect(obs.call).toHaveBeenCalledWith('StopRecord')
+  })
+
+  it('shares overlapping test recordings so the second caller cannot stop the first', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'obs-test-shared-'))
+    try {
+      const outputPath = join(dir, 'test.mkv')
+      writeFileSync(outputPath, 'recorded video')
+      const obs = mockObsClient({ outputPath })
+      const opts = { obs: obs as never, sleep: async () => {} }
+      const results = await Promise.all([runObsTestRecording(opts), runObsTestRecording(opts)])
+      expect(results.every(result => result.ok)).toBe(true)
+      expect(obs.call.mock.calls.filter(([method]) => method === 'StartRecord')).toHaveLength(1)
+      expect(obs.call.mock.calls.filter(([method]) => method === 'StopRecord')).toHaveLength(1)
+    } finally { rmSync(dir, { recursive: true, force: true }) }
+  })
+
   it.each([true, false])('requires confirmed stopped output before accepting the file (stuck=%s)', async (stuck) => {
     vi.useFakeTimers()
     const dir = mkdtempSync(join(tmpdir(), 'obs-test-stop-'))

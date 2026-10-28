@@ -150,6 +150,25 @@ export function ensureObsProfileInstalled(
       log.info('[OBS Profile] Updated WebSocket config at', wsConfigPath)
     }
 
+    const globalConfig = path.join(obsRoot, 'global.ini')
+    const userConfig = path.join(obsRoot, 'user.ini')
+    const hasExistingConfig = [globalConfig, userConfig].some(file =>
+      ['', '.bak', '.tmp'].some(suffix => fs.existsSync(file + suffix)))
+    if (!hasExistingConfig) {
+      // OBS's first-run wizard disables recording even when WebSocket connects.
+      // UpForge has supplied the profile, so a fresh install needs no wizard.
+      // New OBS versions read user.ini; older releases read global.ini. Leave
+      // existing and recovery files untouched so OBS can migrate users' settings itself.
+      // https://github.com/obsproject/obs-studio/blob/32.2.2/frontend/widgets/OBSBasic.cpp#L1173-L1182
+      // OBS constructs its output handlers from the selected profile at startup.
+      // A fresh default profile can keep its streaming output configuration even
+      // after recording settings are changed through WebSocket.
+      const initialized = `[General]\nFirstRun=true\n[Basic]\nProfile=${UPFORGE_OBS_PROFILE_NAME}\nProfileDir=${UPFORGE_OBS_PROFILE_NAME}\n`
+      fs.writeFileSync(globalConfig, initialized, { encoding: 'utf-8', flag: 'wx' })
+      fs.writeFileSync(userConfig, initialized, { encoding: 'utf-8', flag: 'wx' })
+      installed = true
+    }
+
     return {
       ok: true,
       installed,

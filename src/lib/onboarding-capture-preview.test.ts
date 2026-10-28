@@ -33,16 +33,19 @@ describe('onboarding capture preview policy', () => {
       missionActive: true,
       recording: true,
       alreadyMinimized: false,
+      captureConfirmed: true,
     })).toBe(true)
     expect(shouldMinimizeOnboardingForRecording({
       missionActive: true,
       recording: true,
       alreadyMinimized: true,
+      captureConfirmed: true,
     })).toBe(false)
     expect(shouldMinimizeOnboardingForRecording({
       missionActive: false,
       recording: true,
       alreadyMinimized: false,
+      captureConfirmed: true,
     })).toBe(false)
   })
 
@@ -69,8 +72,8 @@ describe('onboarding capture preview policy', () => {
     expect(shouldOfferOnboardingCaptureSupport(3)).toBe(true)
   })
 
-  it('stops preview work during recording and post-match processing', () => {
-    expect(shouldRequestOnboardingPreview({ ...ready, recording: true })).toBe(false)
+  it('stops preview work during verified recording and post-match processing', () => {
+    expect(shouldRequestOnboardingPreview({ ...ready, recording: true, captureConfirmed: true })).toBe(false)
     expect(shouldRequestOnboardingPreview({ ...ready, postGamePhase: 'preparing' })).toBe(false)
     expect(shouldRequestOnboardingPreview({ ...ready, postGamePhase: 'uploading' })).toBe(false)
     expect(shouldRequestOnboardingPreview({ ...ready, postGamePhase: 'analysing' })).toBe(false)
@@ -95,4 +98,9 @@ describe('onboarding capture preview policy', () => {
       completed,
     ], 1_000)).toEqual(completed)
   })
+})
+
+it('keeps unconfirmed capture visible when a player queues early', () => {
+  expect(shouldMinimizeOnboardingForRecording({ missionActive: true, recording: true, alreadyMinimized: false, captureConfirmed: false })).toBe(false)
+  expect(shouldRequestOnboardingPreview({ ...ready, recording: true, now: 30_000 })).toBe(true)
 })

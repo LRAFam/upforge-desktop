@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest'
 import {
   shouldApplyMatchDetails,
   shouldApplyRecoveredMatchDetails,
+  shouldUseMatchHistoryFallback,
+  queueFromMatchDetails,
 } from './match-details-validation'
 import type { MatchData } from './riot-types'
 
@@ -52,6 +54,16 @@ function details(gameLengthMillis: number, gameStartMillis?: number): Record<str
 }
 
 describe('shouldApplyMatchDetails', () => {
+  it('recognizes practice from the map even when the queue is stale', () => {
+    const range = timeline({ map: 'The Range', gameMode: 'SKIRMISH2V2', queueId: 'skirmish2v2' })
+    expect(shouldUseMatchHistoryFallback(range)).toBe(false)
+    expect(shouldApplyMatchDetails(range, details(18 * 60_000))).toEqual({
+      apply: false, reason: 'practice mode SHOOTING_RANGE — details queue is COMPETITIVE',
+    })
+    expect(queueFromMatchDetails({ matchInfo: { mapId: '/Game/Maps/Range/Range', queueID: 'skirmish2v2' } })).toBe('SHOOTING_RANGE')
+    expect(shouldUseMatchHistoryFallback(timeline({ gameMode: 'SKIRMISH2V2', map: 'Ascent' }))).toBe(true)
+  })
+
   it('accepts same map/mode when recording includes long load-in time', () => {
     const result = shouldApplyMatchDetails(
       timeline({

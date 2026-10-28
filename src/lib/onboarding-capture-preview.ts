@@ -32,8 +32,9 @@ export function shouldMinimizeOnboardingForRecording(input: {
   missionActive: boolean
   recording: boolean
   alreadyMinimized: boolean
+  captureConfirmed: boolean
 }): boolean {
-  return input.missionActive && input.recording && !input.alreadyMinimized
+  return input.missionActive && input.recording && input.captureConfirmed && !input.alreadyMinimized
 }
 
 export function isPostGameBusy(phase: string | null | undefined): boolean {
@@ -42,7 +43,9 @@ export function isPostGameBusy(phase: string | null | undefined): boolean {
 
 export function shouldRequestOnboardingPreview(input: OnboardingPreviewDecision): boolean {
   if (!input.missionActive || !input.valorantDetected) return false
-  if (input.recording || input.onboardingRecordingFound) return false
+  if (input.onboardingRecordingFound) return false
+  // A player who queued early still needs a picture to confirm.
+  if (input.recording && input.captureConfirmed) return false
   if (isPostGameBusy(input.postGamePhase) || input.previewInFlight) return false
   if (input.force) return true
 

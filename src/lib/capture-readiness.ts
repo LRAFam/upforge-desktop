@@ -5,6 +5,7 @@ export type CaptureReadinessPhase =
   | 'checking_capture'
   | 'capture_blocked'
   | 'safe_to_queue'
+  | 'recording_unverified'
   | 'recording'
 
 export type CaptureReadinessSignals = {
@@ -20,7 +21,7 @@ export type CaptureReadinessSignals = {
 /** Canonical capture gate shared by onboarding and future dashboard surfaces. */
 export function deriveCaptureReadiness(signals: CaptureReadinessSignals): CaptureReadinessPhase {
   if (!signals.obsConnected) return 'obs_disconnected'
-  if (signals.recording) return 'recording'
+  if (signals.recording) return signals.captureVerified && !signals.error ? 'recording' : 'recording_unverified'
   if (!signals.preflightPassed) return 'preflight_required'
   if (!signals.gameDetected) return 'waiting_for_game'
   if (!signals.captureChecked) return 'checking_capture'

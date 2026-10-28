@@ -22,6 +22,7 @@ import {
 import { resolveObsRecordVerifyMs, waitForObsRecordArmed } from './obs-start-verify'
 import { waitForRecordingStopped } from './obs-record-progress'
 import { withTimeout } from './promise-timeout'
+import { clearObsTestRecording, markObsTestRecording, withObsRecordingOperation } from './obs-recording-operation'
 
 export type ObsPreflightStepId =
   | 'obs_installed'
@@ -218,18 +219,54 @@ async function waitForRecordingFile(filePath: string, sleep: (ms: number) => Pro
   return 0
 }
 
-export async function runObsTestRecording(opts: {
+interface ObsTestRecordingOptions {
   obs: OBSWebSocket
   recordVerifyMs?: number
   recordDurationMs?: number
   sleep?: (ms: number) => Promise<void>
-}): Promise<ObsTestRecordingResult> {
+}
+
+const pendingTestRecordings = new WeakMap<OBSWebSocket, Promise<ObsTestRecordingResult>>()
+
+export function runObsTestRecording(opts: ObsTestRecordingOptions): Promise<ObsTestRecordingResult> {
+  const pending = pendingTestRecordings.get(opts.obs)
+  if (pending) return pending
+  // Settings, preflight, and onboarding can request the same check concurrently.
+  // Keep ownership until cleanup finishes, even if an IPC caller stops waiting.
+  const result = withObsRecordingOperation(opts.obs, () => runObsTestRecordingOnce(opts)).finally(() => {
+    if (pendingTestRecordings.get(opts.obs) === result) pendingTestRecordings.delete(opts.obs)
+  })
+  pendingTestRecordings.set(opts.obs, result)
+  return result
+}
+
+async function runObsTestRecordingOnce(opts: ObsTestRecordingOptions): Promise<ObsTestRecordingResult> {
   const sleep = opts.sleep ?? ((ms: number) => new Promise((r) => setTimeout(r, ms)))
   const recordDurationMs = opts.recordDurationMs ?? TEST_RECORD_DURATION_MS
   const verifyMs = opts.recordVerifyMs ?? resolveObsRecordVerifyMs()
+  let recordingMayBeActive = false
+  let ownsTestOutput = false
+  let stopAttempted = false
+
+  const stopTestRecording = async (): Promise<{ outputPath?: string }> => {
+    stopAttempted = true
+    let response: { outputPath?: string } = {}
+    try {
+      response = await withTimeout(opts.obs.call('StopRecord'), 5000, 'OBS stop request timed out. Restart OBS.')
+    } catch (err) {
+      // A lost reply does not prove shutdown failed. The live output state does.
+      log.warn('[OBS Preflight] Test stop request failed; confirming output state:', err)
+    }
+    await waitForRecordingStopped(() => opts.obs.call('GetRecordStatus'))
+    recordingMayBeActive = false
+    return response
+  }
 
   try {
-    const status = await opts.obs.call('GetRecordStatus') as { outputActive?: boolean }
+    const status = await withTimeout(opts.obs.call('GetRecordStatus'), 3000, 'OBS recording status timed out')
+    if (typeof status.outputActive !== 'boolean') {
+      throw new Error('OBS recording status is missing outputActive')
+    }
     if (status.outputActive) {
       return {
         ok: false,
@@ -238,7 +275,13 @@ export async function runObsTestRecording(opts: {
     }
 
     log.info('[OBS Preflight] Test recording — sending StartRecord')
-    await opts.obs.call('StartRecord')
+    markObsTestRecording(opts.obs)
+    ownsTestOutput = true
+    await withTimeout(opts.obs.call('StartRecord'), 5000, 'OBS StartRecord timed out', () => {
+      // A timed-out request may still have started OBS and needs cleanup.
+      recordingMayBeActive = true
+    })
+    recordingMayBeActive = true
 
     const armed = await waitForObsRecordArmed({
       getOutputActive: async () => {
@@ -250,18 +293,14 @@ export async function runObsTestRecording(opts: {
     })
 
     if (!armed.armed) {
-      try {
-        await opts.obs.call('StopRecord')
-      } catch { /* ignore */ }
       const technical = `OBS StartRecord did not become active within ${Math.round(verifyMs / 1000)}s`
-      return { ok: false, ...classifiedResult(technical) }
+      throw new Error(technical)
     }
 
     log.info('[OBS Preflight] Test recording armed — capturing for', recordDurationMs, 'ms')
     await sleep(recordDurationMs)
 
-    const stopResponse = await withTimeout(opts.obs.call('StopRecord'), 5000, 'OBS stop request timed out. Restart OBS.') as { outputPath?: string }
-    await waitForRecordingStopped(() => opts.obs.call('GetRecordStatus'))
+    const stopResponse = await stopTestRecording()
     const recordStatus = await withTimeout(opts.obs.call('GetRecordStatus'), 3000, 'OBS recording status timed out') as { outputPath?: string }
     const filePath = stopResponse.outputPath ?? recordStatus.outputPath
 
@@ -285,8 +324,19 @@ export async function runObsTestRecording(opts: {
     log.info('[OBS Preflight] Test recording passed:', filePath, `(${fileSizeBytes} bytes)`)
     return { ok: true, filePath, fileSizeBytes }
   } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err)
+    let msg = err instanceof Error ? err.message : String(err)
+    if (recordingMayBeActive && !stopAttempted) {
+      try {
+        await stopTestRecording()
+      } catch (cleanupError) {
+        const cleanupMessage = cleanupError instanceof Error ? cleanupError.message : String(cleanupError)
+        msg += ` Test recording cleanup failed: ${cleanupMessage}`
+        log.warn('[OBS Preflight] Could not confirm test recording stopped:', cleanupMessage)
+      }
+    }
     return { ok: false, ...classifiedResult(msg) }
+  } finally {
+    if (ownsTestOutput && !recordingMayBeActive) clearObsTestRecording(opts.obs)
   }
 }
 
