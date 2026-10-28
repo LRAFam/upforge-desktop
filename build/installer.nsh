@@ -5,7 +5,7 @@
 ; NOTE: nsExec::ExecToStack runs commands silently (no visible cmd.exe window).
 ; ExecWait must NOT be used here — it flashes a terminal window for every call.
 
-!define UPFORGE_MEDIA_GUARD_SCRIPT "${__FILEDIR__}/protect-install-media.ps1"
+!define UPFORGE_MEDIA_GUARD_SCRIPT "${__FILEDIR__}\protect-install-media.ps1"
 
 ; A failed/unavailable check must stop setup, never permit destructive cleanup.
 !macro _CheckUpForgeMediaAt DIRECTORY
