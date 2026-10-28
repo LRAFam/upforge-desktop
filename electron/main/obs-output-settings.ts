@@ -13,6 +13,7 @@ import type { RecorderConfig } from './recorder'
 import type { AppSettings } from './settings-manager'
 import { resolveRecordingOutput } from './recording-preset'
 import { resolveRecordingSavePath } from './user-data-paths'
+import { prepareRecordingDirectory } from './recording-save-safety'
 import { fitUpForgeCaptureToCanvas } from './obs-setup'
 
 export function buildRecorderConfig(
@@ -93,6 +94,17 @@ export async function applyObsRecordingSettings(
   const savePath = config.savePath
   const warnings: string[] = []
   const errors: string[] = []
+
+  try {
+    prepareRecordingDirectory(savePath)
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    log.error('[OBS Output] Recording directory unavailable:', error)
+    return {
+      ok: false, blocking: true, outputMode: null, outputWidth: null, outputHeight: null,
+      warnings: [message], errors: ['recording_directory'],
+    }
+  }
 
   const modeBefore = await getProfileParam(obs, 'Output', 'Mode')
   if (modeBefore === 'Advanced') {

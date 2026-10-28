@@ -124,7 +124,23 @@ describe('enrichLolTimelineForCoaching', () => {
     expect(ok).toBe(true)
     expect(timeline.lolEnrichStatus).toBe('fetched')
     expect(timeline.cs).toBe(150)
-    expect(timeline.puuid).toBe('puuid-1')
+    expect(timeline.puuid).toBeNull()
+  })
+
+  it('uses the recorded League account after the linked account changes', async () => {
+    const timeline = baseTimeline()
+    timeline.lolAccount = { gameName: 'PlayedAlt', tagLine: 'EUW', platform: 'EUW1' }
+    const api = { post: vi.fn().mockResolvedValue({ data: {
+      lolEnrichStatus: 'fetched', patch: { puuid: 'played-puuid', region: 'europe' },
+    } }) }
+    await enrichLolTimelineForCoaching(timeline, {
+      api: api as never, authUser: { lol_puuid: 'different-linked-puuid', lol_platform: 'NA1' },
+    })
+    expect(api.post).toHaveBeenCalledWith('/api/desktop/lol/match-enrich', expect.objectContaining({
+      player_identity: { game_name: 'PlayedAlt', tag_line: 'EUW', platform: 'EUW1' },
+    }))
+    expect(timeline.puuid).toBe('played-puuid')
+    expect(timeline.region).toBe('europe')
   })
 
   it('retries a history miss because Riot can publish a completed match late', async () => {

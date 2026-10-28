@@ -2,6 +2,16 @@ import { describe, expect, it } from 'vitest'
 import { resolveUploadPlayerIdentity } from './upload-player-identity'
 
 describe('resolveUploadPlayerIdentity', () => {
+  it('keeps the complete recorded League identity when another account is linked', () => {
+    expect(resolveUploadPlayerIdentity('lol', {
+      playerName: 'PlayedAlt', playerTag: 'EUW',
+    } as never, { riot_name: 'ValorantSmurf', riot_tag: 'NA1' })).toEqual({
+      riotName: 'PlayedAlt', riotTag: 'EUW',
+    })
+    expect(resolveUploadPlayerIdentity('lol', null, {
+      riot_name: 'ValorantSmurf', riot_tag: 'NA1', name: 'UpForgeUser',
+    })).toEqual({ riotName: '', riotTag: '' })
+  })
   it('uses riot id for valorant', () => {
     const identity = resolveUploadPlayerIdentity(
       'valorant',

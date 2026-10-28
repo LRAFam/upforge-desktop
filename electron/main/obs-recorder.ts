@@ -28,6 +28,7 @@ import {
   resolveObsWebSocketPassword,
 } from './obs-profile-installer'
 import { applyObsRecordingSettings, type ObsApplyResult } from './obs-output-settings'
+import { prepareRecordingDirectory } from './recording-save-safety'
 import {
   shouldKeepMatchOwnershipWhileDisconnected,
   shouldReleaseOwnershipAfterReconnect,
@@ -1064,6 +1065,14 @@ export class OBSRecorder {
     this._clipsOnlySession = config?.clipsOnly === true
 
     const saveDir = config?.savePath ?? join(app.getPath('userData'), 'recordings')
+    try {
+      prepareRecordingDirectory(saveDir)
+    } catch (error) {
+      this._lastError = error instanceof Error ? error.message : String(error)
+      log.error('[OBSRecorder] Recording directory unavailable:', error)
+      this.onStatusChange?.(false, this._lastError, 'start')
+      throw error
+    }
     const freeBytes = await getFreeDiskSpace(saveDir)
     checkCancelled()
     if (freeBytes < CRITICAL_FREE_DISK_BYTES) {

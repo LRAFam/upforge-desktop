@@ -124,7 +124,9 @@ import { isModeFilteredOut, getRecordedModesForGame, recordableModesForGame, nor
 import { applyLiveKillStampsToTimeline } from './live-kill-stamps'
 import { withTimeout } from './promise-timeout'
 import { LoLLiveClientApi } from './lol-live-client-api'
-import { probeLolLcu, resolveLolFilterMode, lolPlatformToMatchV5Region, lolLinkedPuuidFromAuth } from './lol-lcu-api'
+import type { LolCaptureContext } from './lol-account-identity'
+import { appendSupportActivity, readSupportActivity } from './support-activity-history'
+import { probeLolLcu, resolveLolFilterMode, lolLinkedPuuidFromAuth } from './lol-lcu-api'
 import {
   gameLabel,
   idleTooltip,
@@ -152,6 +154,7 @@ import {
 import {
   resolveRecordingSavePath,
   userDataRoot,
+  localMediaRoot,
   userRecordingsDir,
   legacyGlobalRecordingsDir,
 } from './user-data-paths'
@@ -1013,8 +1016,7 @@ function maybeAutoEnqueueWhenReady(recordingId: string): void {
   enqueuePostMatchAnalyse({
     recordingId: rec.id,
     videoPath: rec.path,
-    riotName: rec.riotName || user?.riot_name || '',
-    riotTag: rec.riotTag || user?.riot_tag || '',
+    ...resolveUploadPlayerIdentity(rec.game, rec.timeline, user, rec),
     game: rec.game,
     map: rec.map,
     agent: rec.agent,
@@ -1316,6 +1318,7 @@ function logActivity(message: string, explicitGame?: string): void {
   }
   log.info('[Activity]', entry.game ?? 'app', message)
   activityLog.push(entry)
+  appendSupportActivity(localMediaRoot(getActiveUserId()), entry)
   recordErrorActivity(message, entry.time)
   if (activityLog.length > MAX_LOG_ENTRIES) activityLog.shift()
   if (mainWindow && !mainWindow.isDestroyed()) {
@@ -2544,8 +2547,7 @@ function registerClipOnlySession(opts: {
     clipCount,
     matchId,
     pipelineStatus: 'pending',
-    riotName: opts.timeline?.playerName?.trim() ?? user?.riot_name ?? '',
-    riotTag: opts.timeline?.playerTag?.trim() ?? user?.riot_tag ?? '',
+    ...resolveUploadPlayerIdentity(opts.game, opts.timeline, user),
     game: opts.game,
     map: opts.map,
     agent: opts.agent,
@@ -3607,25 +3609,6 @@ function setupGameDetection(): void {
     }
 
     if (normalizePrimaryGame(game) === 'lol' && timeline) {
-      try {
-        const lcu = await probeLolLcu({ liveClient: lolLiveClientApi })
-        if (lcu.queueId != null) {
-          timeline.queueId = String(lcu.queueId)
-        }
-      } catch (err) {
-        log.warn(
-          '[HandleMatchEnd] LoL LCU queue probe failed:',
-          err instanceof Error ? err.message : err,
-        )
-      }
-      const authUser = authManager.getUser()
-      const linkedPuuid = lolLinkedPuuidFromAuth(
-        authUser as { lol_puuid?: string | null; riot_puuid?: string | null } | null,
-      )
-      if (linkedPuuid) timeline.puuid = linkedPuuid
-      const linkedRegion = lolPlatformToMatchV5Region(authUser?.lol_platform)
-      if (linkedRegion) timeline.region = linkedRegion
-
       logActivity(formatLolMatchEndActivity({
         source: endSource,
         gameId: timeline.matchId ?? null,
@@ -4511,6 +4494,7 @@ function setupGameDetection(): void {
     let gameMode: string | null = null
     let matchStartTime: number | null = null
     let modeConfident = false
+    let lolCaptureContext: LolCaptureContext | null = null
     let cancelled = false
     /** Cancel detail for activity feed (Valorant / CS2 / Deadlock / LoL). */
     let matchWaitCancelReason: string | null = null
@@ -4717,6 +4701,10 @@ function setupGameDetection(): void {
           let resolvedMode = probe.gameMode ?? 'CLASSIC'
           try {
             const lcu = await probeLolLcu({ liveClient: lolLiveClientApi })
+            lolCaptureContext = lcu.captureContext ?? null
+            if (!lolCaptureContext?.account) {
+              logActivity('League account identity unavailable from the client. This recording may need the played account linked in Settings.', 'lol')
+            }
             const fromLcu = resolveLolFilterMode({
               queueId: lcu.queueId,
               lcuGameMode: lcu.gameMode,
@@ -5187,10 +5175,10 @@ function setupGameDetection(): void {
       }
       riotLocalApi.start(game, matchStartTime ?? undefined)
     } else if (game === 'lol') {
+      lolLiveClientApi.start(matchStartTime ?? undefined, lolCaptureContext)
       lolLiveClientApi.onMatchEnded = () => {
         if (!isStale()) return finishActiveMatch(game, 'live-client')
       }
-      lolLiveClientApi.start(matchStartTime ?? undefined)
     } else if (usesDemoReplay(game)) {
       gsiPollTimer = setInterval(() => {
         void (async () => {
@@ -6533,8 +6521,7 @@ async function performUploadAndAnalyse(
         if (timeline) recomputeTimelineVideoOffsets(timeline)
         const saved = recordingsStore.add({
           path: videoPath,
-          riotName: riotName || user?.riot_name || '',
-          riotTag: riotTag || user?.riot_tag || '',
+          ...resolveUploadPlayerIdentity(game, timeline, user, { riotName, riotTag }),
           game,
           map,
           agent,
@@ -6952,7 +6939,7 @@ async function startApp(): Promise<void> {
     return formatSupportBundle({
       version: APP_VERSION,
       network,
-      activityLog: activityLog.slice(),
+      activityLog: readSupportActivity(localMediaRoot(getActiveUserId())),
       riot: riotDiag,
       lastMatch: last
         ? {
@@ -7742,8 +7729,7 @@ async function startApp(): Promise<void> {
       enqueuePostMatchAnalyse({
         recordingId: recording.id,
         videoPath: recording.path,
-        riotName: recording.riotName || user?.riot_name || '',
-        riotTag: recording.riotTag || user?.riot_tag || '',
+        ...resolveUploadPlayerIdentity(recording.game, recording.timeline, user, recording),
         game: recording.game,
         map: recording.map,
         agent: recording.agent,

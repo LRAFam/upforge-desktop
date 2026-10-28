@@ -209,6 +209,6 @@ describe('durable logged-out media', () => {
     expect(resolveRecordingSavePath(oldDefault, null)).toBe(path.join(localMediaRoot(null), 'recordings'))
     expect(resolveRecordingSavePath(oldDefault, 22)).toBe(userRecordingsDir(22))
     const custom = path.join(runtime.root, 'custom-videos')
-    expect(resolveRecordingSavePath(custom, null)).toBe(custom)
+    expect(resolveRecordingSavePath(custom, null)).toBe(path.join(custom, 'pending-local', 'recordings'))
   })
 })

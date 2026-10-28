@@ -1,5 +1,8 @@
 import { app } from 'electron'
 import path from 'path'
+import { recordingDirectoryProblem } from './recording-save-safety'
+
+let lastUnsafeSavePath: string | null = null
 
 export function userDataRoot(userId: number): string {
   return path.join(app.getPath('userData'), 'users', String(userId))
@@ -19,12 +22,8 @@ export function userRecordingsDir(userId: number): string {
   return path.join(userDataRoot(userId), 'recordings')
 }
 
-/**
- * Resolve where match recordings are written.
- * Default: per-user folder. Legacy global `userData/recordings` is not shared across accounts.
- * Custom savePath from Settings is honoured as-is (shared — power-user choice).
- */
-export function resolveRecordingSavePath(
+/** Custom savePath is a storage root. Legacy app-data paths retain their existing layout. */
+function configuredRecordingSavePath(
   settingsSavePath: string | undefined,
   userId: number | null,
 ): string {
@@ -40,7 +39,29 @@ export function resolveRecordingSavePath(
   if (!trimmed || normalized === path.normalize(legacyDefault) || isManagedAccountDirectory || isGuestDirectory) {
     return perUserDefault
   }
-  return trimmed
+  return userId != null
+    ? path.join(trimmed, 'users', String(userId), 'recordings')
+    : path.join(trimmed, 'pending-local', 'recordings')
+}
+
+export function recordingSavePathProblem(settingsSavePath: string | undefined, userId: number | null): string | null {
+  return recordingDirectoryProblem(configuredRecordingSavePath(settingsSavePath, userId))
+}
+
+/** Resolve the capture owner's folder on the selected drive, with installation-folder protection. */
+export function resolveRecordingSavePath(settingsSavePath: string | undefined, userId: number | null): string {
+  const configuredPath = configuredRecordingSavePath(settingsSavePath, userId)
+  if (recordingDirectoryProblem(configuredPath)) {
+    // Older releases allowed update-deleted folders. Protect future captures;
+    // keep the original setting and files intact for explicit recovery.
+    const perUserDefault = path.join(localMediaRoot(userId), 'recordings')
+    if (lastUnsafeSavePath !== configuredPath) {
+      console.warn(`[RecordingStorage] Unsafe save folder ${configuredPath}; new recordings will use ${perUserDefault}. Existing files were not moved.`)
+      lastUnsafeSavePath = configuredPath
+    }
+    return perUserDefault
+  }
+  return configuredPath
 }
 
 export interface LinkedRiotId {

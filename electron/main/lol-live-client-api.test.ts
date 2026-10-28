@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import {
   assignLolKillSpreeRounds,
   buildLolObjectiveEvents,
@@ -8,6 +8,7 @@ import {
   resolveLolMapName,
   type LolAllGameData,
   type LolLiveGameEvent,
+  LoLLiveClientApi,
 } from './lol-live-client-api'
 import type { KillEvent } from './riot-types'
 
@@ -53,6 +54,47 @@ const SAMPLE_SNAPSHOT: LolAllGameData = {
     gameId: 900000042,
   },
 }
+
+it('keeps the starting account after the client closes and resets it for the next match', async () => {
+  vi.useFakeTimers()
+  const api = new LoLLiveClientApi()
+  try {
+    vi.spyOn(api, 'fetchAllGameData').mockResolvedValue(SAMPLE_SNAPSHOT)
+    api.start(1000, {
+      account: { gameName: 'TestPlayer', tagLine: 'EUW', platform: 'EUW1' },
+      matchId: 'EUW1_900000042', queueId: 420,
+    })
+    const ended = vi.fn(); api.onMatchEnded = ended
+    await vi.advanceTimersByTimeAsync(1)
+    vi.mocked(api.fetchAllGameData).mockResolvedValue(null)
+    await vi.advanceTimersByTimeAsync(9000)
+    expect(ended).toHaveBeenCalledOnce()
+    const first = await api.stop()
+    expect(first).toMatchObject({ lolAccount: { gameName: 'TestPlayer', platform: 'EUW1' }, matchId: 'EUW1_900000042', queueId: '420' })
+    vi.mocked(api.fetchAllGameData).mockResolvedValue(SAMPLE_SNAPSHOT)
+    api.start(2000)
+    await vi.advanceTimersByTimeAsync(1)
+    expect((await api.stop())?.lolAccount).toBeUndefined()
+    expect(first?.lolAccount?.gameName).toBe('TestPlayer')
+  } finally { api.cancel(); vi.useRealTimers(); vi.restoreAllMocks() }
+})
+
+it('ignores a previous match poll that finishes after account switching', async () => {
+  vi.useFakeTimers()
+  const api = new LoLLiveClientApi()
+  let resolveOld!: (data: LolAllGameData) => void
+  try {
+    vi.spyOn(api, 'fetchAllGameData')
+      .mockImplementationOnce(() => new Promise((resolve) => { resolveOld = resolve }))
+      .mockResolvedValue(SAMPLE_SNAPSHOT)
+    api.start(1000)
+    api.start(2000)
+    await vi.advanceTimersByTimeAsync(1)
+    resolveOld({ ...SAMPLE_SNAPSHOT, gameData: { ...SAMPLE_SNAPSHOT.gameData!, gameId: 99 } })
+    await vi.advanceTimersByTimeAsync(1)
+    expect((await api.stop())?.matchId).toBe('900000042')
+  } finally { api.cancel(); vi.useRealTimers(); vi.restoreAllMocks() }
+})
 
 describe('normalizeLolGameMode', () => {
   it('keeps CLASSIC as Summoner\'s Rift (ranked + normals share one Live Client mode)', () => {

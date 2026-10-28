@@ -935,8 +935,15 @@ function createSettings() {
   async function changeSavePath(): Promise<void> {
     const dir = await window.api.dialog.openDirectory()
     if (dir) {
-      settings.savePath = dir
-      debouncedSave()
+      try {
+        const saved = await window.api.settings.save({ savePath: dir })
+        settings.savePath = saved.savePath
+        settings.effectiveSavePath = saved.effectiveSavePath
+        settings.recordingPathWarning = saved.recordingPathWarning
+        showSaved()
+      } catch (error) {
+        showToast(error instanceof Error ? error.message : 'Could not change the recording folder.')
+      }
     }
   }
   

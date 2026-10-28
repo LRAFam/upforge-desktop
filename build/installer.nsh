@@ -5,6 +5,42 @@
 ; NOTE: nsExec::ExecToStack runs commands silently (no visible cmd.exe window).
 ; ExecWait must NOT be used here — it flashes a terminal window for every call.
 
+!define UPFORGE_MEDIA_GUARD_SCRIPT "${__FILEDIR__}/protect-install-media.ps1"
+
+; A failed/unavailable check must stop setup, never permit destructive cleanup.
+!macro _CheckUpForgeMediaAt DIRECTORY
+  ${If} "${DIRECTORY}" != ""
+  nsExec::ExecToStack /TIMEOUT=60000 '"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$PLUGINSDIR\protect-install-media.ps1" -InstallDirectory "${DIRECTORY}\."'
+  Pop $R0
+  Pop $R1
+  ${If} $R0 != "0"
+    MessageBox MB_OK|MB_ICONEXCLAMATION "UpForge setup stopped to protect your recordings.$\r$\n$\r$\n$R1$\r$\n$\r$\nCheck ${DIRECTORY} and move any videos outside the installation folder before trying again."
+    SetErrorLevel 2
+    Quit
+  ${EndIf}
+  ${EndIf}
+!macroend
+
+!macro _ProtectUpForgeMedia
+  Push $R0
+  Push $R1
+  Push $R2
+  InitPluginsDir
+  File /oname=$PLUGINSDIR\protect-install-media.ps1 "${UPFORGE_MEDIA_GUARD_SCRIPT}"
+  ; The remembered old directory can differ from the chosen new destination.
+  ReadRegStr $R2 HKCU "${INSTALL_REGISTRY_KEY}" "InstallLocation"
+  !insertmacro _CheckUpForgeMediaAt "$R2"
+  ReadRegStr $R2 HKLM "${INSTALL_REGISTRY_KEY}" "InstallLocation"
+  !insertmacro _CheckUpForgeMediaAt "$R2"
+  ; Also cover the existing corrupted-install cleanup path below.
+  ReadRegStr $R2 HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\gg.upforge.desktop" "InstallLocation"
+  !insertmacro _CheckUpForgeMediaAt "$R2"
+  !insertmacro _CheckUpForgeMediaAt "$INSTDIR"
+  Pop $R2
+  Pop $R1
+  Pop $R0
+!macroend
+
 !macro _KillUpForge
   ; Kill by image name silently. /T terminates the whole process tree.
   ; nsExec::ExecToStack discards stdout/stderr but never shows a window.
@@ -42,7 +78,9 @@
 ; "cannot be closed, please close manually and click Retry" dialog).
 ; We kill silently — no dialog is ever shown to the user.
 !macro customCheckAppRunning
+  ; Recheck after the installation-directory picker, before old-version removal.
   !insertmacro _KillUpForge
+  !insertmacro _ProtectUpForgeMedia
 !macroend
 
 !macro customInit
@@ -53,6 +91,9 @@
   ; application files.: 2" (ERROR_FILE_NOT_FOUND). Instead we let NSIS call
   ; the old uninstaller normally — it works because all processes are killed.
   !insertmacro _KillUpForge
+  ; Check after closing the app so it cannot start a new capture after the scan.
+  ; Must precede both the OLD uninstaller and our corrupted-install deletion.
+  !insertmacro _ProtectUpForgeMedia
 
   ; Only do manual cleanup when the old uninstaller binary is genuinely missing
   ; (e.g. partial/corrupted install). This prevents the "Failed to uninstall"
@@ -105,4 +146,5 @@
 
 !macro customUninstall
   !insertmacro _KillUpForge
+  !insertmacro _ProtectUpForgeMedia
 !macroend

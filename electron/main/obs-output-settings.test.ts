@@ -1,10 +1,21 @@
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import fs from 'node:fs'
+import os from 'node:os'
+import path from 'node:path'
 
 vi.mock('electron-log', () => ({
   default: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
 }))
 
 import { applyObsRecordingSettings } from './obs-output-settings'
+
+let root: string
+let savePath: string
+beforeEach(() => {
+  root = fs.mkdtempSync(path.join(os.tmpdir(), 'upforge-obs-output-'))
+  savePath = path.join(root, 'users', '3', 'recordings')
+})
+afterEach(() => { fs.rmSync(root, { recursive: true, force: true }) })
 
 describe('applyObsRecordingSettings replay configuration', () => {
   it('writes RecRB as a boolean and never as bitrate', async () => {
@@ -24,7 +35,7 @@ describe('applyObsRecordingSettings replay configuration', () => {
       fps: 30,
       manageObsVideo: false,
       audioEnabled: true,
-      savePath: '/recordings',
+      savePath,
       captureMonitor: 'auto',
       clipsOnly: false,
     })
@@ -58,7 +69,7 @@ describe('applyObsRecordingSettings replay configuration', () => {
       fps: 30,
       manageObsVideo: false,
       audioEnabled: true,
-      savePath: '/recordings',
+      savePath,
       captureMonitor: 'auto',
       clipsOnly: false,
     })
@@ -85,7 +96,7 @@ describe('applyObsRecordingSettings replay configuration', () => {
       fps: 60,
       manageObsVideo: true,
       audioEnabled: true,
-      savePath: '/recordings',
+      savePath,
       captureMonitor: 'auto',
       clipsOnly: false,
     })
@@ -123,11 +134,35 @@ describe('applyObsRecordingSettings replay configuration', () => {
       fps: 30,
       manageObsVideo: true,
       audioEnabled: true,
-      savePath: '/recordings',
+      savePath,
       captureMonitor: 'auto',
       clipsOnly: false,
     })
 
     expect(call.mock.calls.some(([name]) => name === 'SetVideoSettings')).toBe(false)
+  })
+
+  it('creates the new profile folder before pointing OBS at it', async () => {
+    const call = vi.fn(async (name: string) => {
+      if (name === 'SetRecordDirectory') expect(fs.statSync(savePath).isDirectory()).toBe(true)
+      return { parameterValue: 'Simple' }
+    })
+    await applyObsRecordingSettings({ call } as never, {
+      quality: '720p', bitrate: 5, audioEnabled: true, savePath, captureMonitor: 'auto', manageObsVideo: false,
+    })
+    expect(fs.statSync(savePath).isDirectory()).toBe(true)
+    expect(call).toHaveBeenCalledWith('SetRecordDirectory', { recordDirectory: savePath })
+  })
+
+  it('blocks output changes when the profile folder cannot be created', async () => {
+    fs.writeFileSync(path.join(root, 'users'), 'an existing file')
+    const call = vi.fn(async () => ({ parameterValue: 'Simple' }))
+    const result = await applyObsRecordingSettings({ call } as never, {
+      quality: '720p', bitrate: 5, audioEnabled: true, savePath, captureMonitor: 'auto', manageObsVideo: false,
+    })
+    expect(result).toMatchObject({ ok: false, blocking: true, errors: ['recording_directory'] })
+    expect(result.warnings[0]).toContain('recording folder')
+    expect(call).not.toHaveBeenCalled()
+    expect(fs.readFileSync(path.join(root, 'users'), 'utf8')).toBe('an existing file')
   })
 })

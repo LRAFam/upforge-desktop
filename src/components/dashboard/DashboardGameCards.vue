@@ -37,13 +37,17 @@ const launchBusy = ref(false)
 
 type GameLinkState = 'loading' | 'linked' | 'unlinked'
 
-function riotLinked(): boolean {
-  return Boolean(profile.value?.user?.riot_name?.trim())
+function riotAccount(game: 'valorant' | 'lol'): { name: string; tag: string } | null {
+  const user = profile.value?.user
+  const name = (game === 'lol' ? user?.lol_riot_name : user?.riot_name)?.trim()
+  const tag = (game === 'lol' ? user?.lol_riot_tag : user?.riot_tag)?.trim()
+  if (!name || !tag) return null
+  return { name, tag }
 }
 
 function gameLinked(game: PrimaryGame): boolean {
   if (game === 'valorant' || game === 'lol') {
-    return riotLinked()
+    return riotAccount(game) !== null
   }
   if (game === 'cs2') {
     return Boolean(
@@ -83,10 +87,8 @@ function linkLabel(game: PrimaryGame): string {
 
 function linkedAccountLabel(game: PrimaryGame): string | null {
   if (game === 'valorant' || game === 'lol') {
-    const name = profile.value?.user?.riot_name?.trim()
-    if (!name) return null
-    const tag = profile.value?.user?.riot_tag?.trim() || 'NA1'
-    return `${name}#${tag}`
+    const account = riotAccount(game)
+    return account ? `${account.name}#${account.tag}` : null
   }
   if (game === 'cs2') {
     if (cs2FaceitConnection.value?.connected && cs2FaceitConnection.value.nickname) {

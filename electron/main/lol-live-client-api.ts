@@ -3,11 +3,11 @@
  * Separate from Valorant riot-local-api (same port, different JSON schema).
  */
 import https from 'https'
-import log from 'electron-log'
 import type { FinalPlayerStats, KillEvent, MatchData, ObjectiveEvent, ObjectiveKind } from './riot-types'
 import { resolveLolMapLabel } from '../../src/lib/lol-maps'
 import { assignKillSpreeRounds } from './kill-clip-grouping'
 import { lolGameTimeToVideoOffsetMs } from './recording-sync'
+import { applyLolCaptureContext, type LolCaptureContext } from './lol-account-identity'
 
 const LIVE_CLIENT_HOST = '127.0.0.1'
 const LIVE_CLIENT_PORT = 2999
@@ -445,8 +445,10 @@ function liveGet<T>(path: string, timeoutMs = 1_500): Promise<T> {
 }
 
 export class LoLLiveClientApi {
+  private _captureContext: LolCaptureContext | null = null
   private _pollTimer: ReturnType<typeof setInterval> | null = null
   private _active = false
+  private _generation = 0
   private _seenLive = false
   private _missedPolls = 0
   private _lastSnapshot: LolAllGameData | null = null
@@ -493,8 +495,9 @@ export class LoLLiveClientApi {
     this._recordingStartTime = ms
   }
 
-  start(matchStartTime?: number): void {
+  start(matchStartTime?: number, context: LolCaptureContext | null = null): void {
     this.cancel()
+    this._captureContext = context ? { ...context, account: context.account ? { ...context.account } : null } : null
     this._active = true
     this._seenLive = false
     this._missedPolls = 0
@@ -508,6 +511,7 @@ export class LoLLiveClientApi {
   }
 
   cancel(): void {
+    this._generation++
     this._active = false
     if (this._pollTimer) {
       clearInterval(this._pollTimer)
@@ -518,37 +522,18 @@ export class LoLLiveClientApi {
 
   async stop(): Promise<MatchData | null> {
     const wasActive = this._active
-    this.cancel()
-
-    let snapshot = this._lastSnapshot
-    if (!snapshot && wasActive) {
-      snapshot = await this.fetchAllGameData()
-    }
-    if (!snapshot || !isLolLiveMatchActive(snapshot)) {
-      if (snapshot) {
-        if (snapshot.gameData?.gameId == null) {
-          log.warn('[LoLLiveClient] stop: gameId missing from Live Client snapshot')
-        }
-        return buildMatchDataFromLolSnapshot(snapshot, {
-          recordingStartTime: this._recordingStartTime,
-          matchStartTime: this._matchStartTime,
-          gameplayStartTime: this._gameplayStartTime,
-          gameClockZeroEpoch: this._gameClockZeroEpoch,
-        })
-      }
-      return null
-    }
-
-    if (snapshot.gameData?.gameId == null) {
-      log.warn('[LoLLiveClient] stop: gameId missing from Live Client snapshot')
-    }
-
-    return buildMatchDataFromLolSnapshot(snapshot, {
+    const context = this._captureContext
+    const timing = {
       recordingStartTime: this._recordingStartTime,
       matchStartTime: this._matchStartTime,
       gameplayStartTime: this._gameplayStartTime,
       gameClockZeroEpoch: this._gameClockZeroEpoch,
-    })
+    }
+    this.cancel()
+    const generation = this._generation
+    const snapshot = this._lastSnapshot ?? (wasActive ? await this.fetchAllGameData() : null)
+    if (generation !== this._generation || !snapshot) return null
+    return applyLolCaptureContext(buildMatchDataFromLolSnapshot(snapshot, timing), context)
   }
 
   private _emitMatchEnd(): void {
@@ -561,7 +546,9 @@ export class LoLLiveClientApi {
   private async _pollOnce(): Promise<void> {
     if (!this._active) return
 
+    const generation = this._generation
     const data = await this.fetchAllGameData()
+    if (!this._active || generation !== this._generation) return
     if (!data) {
       if (this._seenLive) {
         this._missedPolls++

@@ -3,7 +3,6 @@
  */
 import type { AxiosInstance } from 'axios'
 import type { AuthUser } from './auth-manager'
-import { lolLinkedPuuidFromAuth } from './lol-lcu-api'
 import { MATCH_DETAILS_ENRICH_MAX_MS } from './match-data-quality'
 import type { FinalPlayerStats, MatchData } from './riot-types'
 
@@ -16,6 +15,8 @@ export interface LolEnrichApiResponse {
 }
 
 export interface LolEnrichPatch {
+  puuid?: string | null
+  region?: string | null
   matchId?: string | null
   lolEnrichStatus?: LolEnrichStatus
   agent?: string | null
@@ -58,6 +59,9 @@ function recordingEndMs(timeline: MatchData): number | undefined {
 
 export function applyLolEnrichPatch(timeline: MatchData, patch: LolEnrichPatch, status: LolEnrichStatus): void {
   timeline.lolEnrichStatus = status
+
+  if (status === 'fetched' && patch.puuid) timeline.puuid = patch.puuid
+  if (status === 'fetched' && patch.region) timeline.region = patch.region
 
   if (patch.matchId) timeline.matchId = patch.matchId
   if (patch.agent) timeline.agent = patch.agent
@@ -117,6 +121,15 @@ async function fetchLolEnrichOnce(
     match_id: timeline.matchId ?? undefined,
     recording_end_ms: recordingEndMs(timeline),
     queue_id: parseQueueId(timeline),
+    player_identity: timeline.lolAccount ? {
+      game_name: timeline.lolAccount.gameName,
+      tag_line: timeline.lolAccount.tagLine,
+      platform: timeline.lolAccount.platform,
+    } : undefined,
+    // Older recordings still carry the observed Riot ID. The server must check
+    // this against the dedicated League link before using that link's region.
+    recorded_player_name: timeline.playerName ?? undefined,
+    recorded_player_tag: timeline.playerTag ?? undefined,
   })
 
   return res.data
@@ -137,9 +150,6 @@ export async function enrichLolTimelineForCoaching(
     options?.onStatus?.('Cannot fetch LoL match stats. Sign in to UpForge and retry.')
     return false
   }
-
-  const linkedPuuid = lolLinkedPuuidFromAuth(options?.authUser ?? null)
-  if (linkedPuuid && !timeline.puuid) timeline.puuid = linkedPuuid
 
   const maxWaitMs = options?.maxWaitMs ?? MATCH_DETAILS_ENRICH_MAX_MS
   const delays = maxWaitMs >= 180_000

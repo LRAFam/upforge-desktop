@@ -1,6 +1,7 @@
 import { app } from 'electron'
 import fs from 'fs'
 import path from 'path'
+import { recordingDirectoryProblem } from './recording-save-safety'
 import {
   migrateOnboardingFlags,
   withOnboardingComplete,
@@ -48,6 +49,7 @@ export interface AppSettings {
   recordingBitrate: number // Mbps — derived from recordingPreset
   recordingFps: 24 | 30 | 60
   audioEnabled: boolean
+  /** Custom storage root; the capture owner's profile folder is appended at runtime. */
   savePath: string
   launchOnStartup: boolean
   autoDelete: boolean // delete recording after successful upload
@@ -354,6 +356,10 @@ export class SettingsManager {
   }
 
   save(partial: Partial<AppSettings>, opts?: { allowCreator?: boolean }): AppSettings {
+    if (partial.savePath !== undefined && partial.savePath !== this.settings.savePath) {
+      const problem = recordingDirectoryProblem(partial.savePath)
+      if (problem) throw new Error(problem)
+    }
     const allowCreator = opts?.allowCreator ?? true
     const normalizedPartial = withOnboardingComplete(partial)
     const prevByGame = this.settings.recordedModesByGame

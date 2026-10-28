@@ -13,6 +13,16 @@ export function resolveUploadPlayerIdentity(
   recording?: { riotName?: string | null; riotTag?: string | null },
   cs2SteamName?: string | null,
 ): UploadPlayerIdentity {
+  if (game === 'lol') {
+    // Use one recorded identity as a pair; never combine it with a linked alt.
+    if (timeline?.lolAccount) return {
+      riotName: timeline.lolAccount.gameName, riotTag: timeline.lolAccount.tagLine,
+    }
+    if (timeline?.playerName?.trim() && timeline.playerTag?.trim()) return {
+      riotName: timeline.playerName.trim(), riotTag: timeline.playerTag.trim(),
+    }
+    return { riotName: recording?.riotName?.trim() ?? '', riotTag: recording?.riotTag?.trim() ?? '' }
+  }
   if (game === 'valorant') {
     return {
       riotName:

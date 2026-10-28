@@ -114,6 +114,9 @@ function hasCloudRecording(rec: Pick<
 }
 
 function matchesLinkedAccount(r: PendingRecording, linkedRiot?: LinkedRiotId | null): boolean {
+  // This link is the selected Valorant account, not a cross-game identity.
+  // Other games remain isolated by the owning UpForge user's catalogue.
+  if (r.game !== 'valorant') return true
   const name = r.riotName?.trim() || r.timeline?.playerName?.trim()
   const tag = r.riotTag?.trim() || r.timeline?.playerTag?.trim()
   return recordingMatchesLinkedRiot(name, tag, linkedRiot)
@@ -613,7 +616,8 @@ export class RecordingsStore {
 
   /**
    * Full VOD library for the Recordings tab — every non-clip recording for the
-   * linked account (local, cloud-archived, or analysed), newest first. Unlike
+   * current UpForge user (local, cloud-archived, or analysed), newest first.
+   * Valorant rows additionally respect the selected Valorant account. Unlike
    * getPending() this keeps analysed matches so users can browse their whole
    * history, not just the two actionable cards on the dashboard.
    */

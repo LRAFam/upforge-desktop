@@ -1,16 +1,20 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import fs from 'node:fs'
+import os from 'node:os'
+import path from 'node:path'
 import { OBSRecorder } from './obs-recorder'
 import { waitForRecordingProgress, waitForRecordingStopped } from './obs-record-progress'
 import { runObsTestRecording } from './obs-preflight'
 import { withObsRecordingOperation } from './obs-recording-operation'
 import { startRecordingWhenReady } from './recording-start'
 import { retargetUpForgeCapture } from './obs-setup'
+import { getFreeDiskSpace } from './disk-space'
 
-const mock = vi.hoisted(() => ({ call: vi.fn(), on: vi.fn(), fileSize: 100 }))
+const mock = vi.hoisted(() => ({ call: vi.fn(), on: vi.fn(), fileSize: 100, root: '' }))
 vi.mock('obs-websocket-js', () => ({ OBSWebSocket: class { call = mock.call; on = mock.on } }))
-vi.mock('electron', () => ({ app: { getPath: () => '/tmp', getAppPath: () => '/tmp' }, nativeImage: {} }))
+vi.mock('electron', () => ({ app: { getPath: () => mock.root, getAppPath: () => mock.root }, nativeImage: {} }))
 vi.mock('electron-log', () => ({ default: { info: vi.fn(), warn: vi.fn(), error: vi.fn() } }))
-vi.mock('./disk-space', () => ({ getFreeDiskSpace: async () => Infinity, CRITICAL_FREE_DISK_BYTES: 100, WARN_FREE_DISK_BYTES: 200 }))
+vi.mock('./disk-space', () => ({ getFreeDiskSpace: vi.fn(async () => Infinity), CRITICAL_FREE_DISK_BYTES: 100, WARN_FREE_DISK_BYTES: 200 }))
 vi.mock('./obs-setup', () => ({ retargetUpForgeCapture: vi.fn(), fitUpForgeCaptureToCanvas: vi.fn() }))
 vi.mock('./game-window-finder', () => ({ resolveObsCaptureWindow: async () => 'CS2', findObsWindowString: async () => null }))
 vi.mock('fs', async (original) => ({
@@ -27,8 +31,46 @@ function recorder() {
   return rec
 }
 
-beforeEach(() => { vi.useFakeTimers(); vi.clearAllMocks(); mock.fileSize = 100 })
-afterEach(() => { vi.clearAllTimers(); vi.useRealTimers() })
+beforeEach(() => {
+  vi.useFakeTimers(); vi.clearAllMocks(); mock.fileSize = 100
+  mock.root = fs.mkdtempSync(path.join(os.tmpdir(), 'upforge-recorder-test-'))
+})
+afterEach(() => {
+  vi.clearAllTimers(); vi.useRealTimers()
+  fs.rmSync(mock.root, { recursive: true, force: true })
+})
+
+describe('profile recording directory startup', () => {
+  it('creates a fresh profile folder before checking its free space and starting capture', async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'upforge-start-directory-'))
+    const savePath = path.join(root, 'users', '3', 'recordings')
+    vi.mocked(getFreeDiskSpace).mockImplementation(async directory => fs.existsSync(directory) ? Infinity : 0)
+    let active = false
+    let bytes = 0
+    mock.call.mockImplementation(async (method) => {
+      if (method === 'GetProfileParameter') return { parameterValue: 'Simple' }
+      if (method === 'StartRecord') active = true
+      return { outputActive: active, outputBytes: bytes += 100 }
+    })
+    const rec = recorder()
+    Object.assign(rec, { _matchOwnedRecording: false, _recording: false, _startedAt: null })
+    vi.spyOn(rec, 'isCurrentProgramSceneGameplay').mockResolvedValue(true)
+    vi.spyOn(rec as unknown as { _startLiveKillPoll(): void }, '_startLiveKillPoll').mockImplementation(() => {})
+    try {
+      const starting = Promise.allSettled([rec.start('lol', {
+        quality: '720p', bitrate: 5, audioEnabled: true, savePath, captureMonitor: 'auto', manageObsVideo: false,
+      })])
+      await vi.advanceTimersByTimeAsync(1000)
+      expect(await starting).toEqual([{ status: 'fulfilled', value: undefined }])
+      expect(fs.statSync(savePath).isDirectory()).toBe(true)
+      expect(mock.call).toHaveBeenCalledWith('SetRecordDirectory', { recordDirectory: savePath })
+      expect(rec.isActivelyRecording()).toBe(true)
+    } finally {
+      vi.mocked(getFreeDiskSpace).mockResolvedValue(Infinity)
+      fs.rmSync(root, { recursive: true, force: true })
+    }
+  })
+})
 
 describe('recovered recording clock', () => {
   it('keeps a known recording origin across a reconnect', async () => {
