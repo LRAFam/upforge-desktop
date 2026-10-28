@@ -1,6 +1,6 @@
 import { getApiBaseUrl } from './api-base'
 import { resolveValorantGameMode } from './riot-queue-id'
-import { isValorantStillInLiveMatch } from './valorant-match-end'
+import { hasValorantReturnedToMenus, isValorantStillInLiveMatch } from './valorant-match-end'
 import { startRecordingWhenReady } from './recording-start'
 import { resolveMatchEndCapture, shouldFinalizeMatchMedia } from './match-end-capture'
 import { setupCloudStorageHandlers } from './ipc/cloud-storage-ipc'
@@ -5088,10 +5088,22 @@ function setupGameDetection(): void {
       console.log('[GameDetector] Match confirmed but capture already active — skipping duplicate start')
       return
     }
-    const obsOutputActive = await obsRecorder.isObsOutputActive()
-    let reclaimedExistingCapture = false
-    if (obsOutputActive) {
-      reclaimedExistingCapture = await obsRecorder.reclaimActiveRecording()
+    const capturePreparation = await obsRecorder.prepareMatchCapture(async () => {
+      if (isStale()) return false
+      // The player can leave a short match while onboarding owns the recorder.
+      // Shipping.exe remains open in the lobby, so process presence is not enough.
+      if (game === 'valorant') return !(await hasValorantReturnedToMenus(riotLocalApi))
+      return true
+    })
+    if (abortIfStale(isStale, game)) return
+    if (capturePreparation === 'cancelled') {
+      logActivity('Match ended before recording could start — watching for the next match')
+      tray?.setToolTip(idleTooltip(game))
+      await rearmGameDetection(game, true)
+      return
+    }
+    const reclaimedExistingCapture = capturePreparation === 'reclaimed'
+    if (capturePreparation !== 'idle') {
       if (reclaimedExistingCapture) {
         console.log('[GameDetector] Reclaimed in-progress OBS recording — continuing same file')
         logActivity('Recovered in-progress recording — continuing capture')

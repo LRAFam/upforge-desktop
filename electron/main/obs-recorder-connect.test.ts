@@ -15,6 +15,17 @@ import { OBSRecorder } from './obs-recorder'
 afterEach(() => { vi.useRealTimers(); vi.resetAllMocks() })
 
 describe('OBS connection lifecycle', () => {
+  it('preserves an authentication failure instead of masking it with another host probe', async () => {
+    mocks.connect
+      .mockRejectedValueOnce(new Error('Authentication failed.'))
+      .mockRejectedValueOnce(new Error('ECONNREFUSED'))
+    mocks.disconnect.mockResolvedValue(undefined)
+    const rec = new OBSRecorder(() => ({ host: '127.0.0.1', port: 4455, password: 'wrong', replayBufferSeconds: 0, obsPreserveActiveScene: false }))
+    expect(await rec.connect()).toMatchObject({ ok: false, error: expect.stringContaining('password incorrect') })
+    expect(mocks.connect).toHaveBeenCalledTimes(1)
+    expect(mocks.setup).not.toHaveBeenCalled()
+  })
+
   it('does not rebuild capture when OBS recording status cannot be read', async () => {
     mocks.connect.mockResolvedValue({ obsWebSocketVersion: '5.7.4' })
     mocks.disconnect.mockResolvedValue(undefined)

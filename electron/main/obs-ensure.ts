@@ -8,7 +8,7 @@
 
 import type { BrowserWindow } from 'electron'
 import log from 'electron-log'
-import { explainObsConnectionFailure } from './obs-connect'
+import { explainObsConnectionFailure, isObsAuthenticationFailure } from './obs-connect'
 import { broadcastObsConnection } from './obs-health'
 import { launchObsStudio, obsLaunchDelayMs, restartObsStudioElevated } from './obs-launcher'
 import { isObsProcessRunning, obsProcessSleep, terminateObsProcess } from './obs-process'
@@ -69,6 +69,7 @@ async function connectWithRetries(
     const result = await obsRecorder.connect()
     if (result.ok) return { ok: true }
     lastError = result.error
+    if (isObsAuthenticationFailure(lastError)) break
   }
   return { ok: false, error: lastError }
 }
@@ -156,7 +157,9 @@ async function ensureObsConnectedOnce(
     }
 
     // OBS process is up but WS failed — often still booting after a fresh launch.
-    const patient = await connectWithRetries(obsRecorder, [1500, 2000, 3000, 4000])
+    const patient = isObsAuthenticationFailure(existing.error)
+      ? existing
+      : await connectWithRetries(obsRecorder, [1500, 2000, 3000, 4000])
     if (patient.ok) {
       broadcastObsConnection(win(), obsRecorder)
       return { ok: true, alreadyRunning: true, processRunning: true }
@@ -166,6 +169,15 @@ async function ensureObsConnectedOnce(
     if (obsRecorder.isConnected()) {
       broadcastObsConnection(win(), obsRecorder)
       return { ok: true, alreadyConnected: true, processRunning: true }
+    }
+    // Authentication failure proves OBS is responding. It may be recording or
+    // streaming for the user; restarting it cannot safely repair our credentials.
+    if (isObsAuthenticationFailure(patient.error)) {
+      return {
+        ok: false,
+        processRunning: true,
+        error: explainObsConnectionFailure({ processRunning: true, connectError: patient.error }),
+      }
     }
     if (!canRestartProcess() || recentlyLaunchedObs()) {
       if (recentlyLaunchedObs()) {

@@ -1,5 +1,9 @@
 /** User-facing OBS WebSocket connection helpers. */
 
+export function isObsAuthenticationFailure(error: string | null | undefined): boolean {
+  return /authentication|password|401/i.test(error ?? '')
+}
+
 export function explainObsConnectionFailure(opts: {
   processRunning: boolean
   connectError?: string | null
@@ -13,7 +17,7 @@ export function explainObsConnectionFailure(opts: {
     return 'OBS is not running. Click Launch OBS + Connect, or open OBS Studio yourself first.'
   }
 
-  if (raw && /authentication|password|401/i.test(raw)) {
+  if (raw && isObsAuthenticationFailure(raw)) {
     return formatObsConnectError(raw)
   }
 
@@ -22,7 +26,7 @@ export function explainObsConnectionFailure(opts: {
 
 export function formatObsConnectError(raw: string): string {
   const msg = raw.toLowerCase()
-  if (msg.includes('authentication') || msg.includes('password') || msg.includes('401')) {
+  if (isObsAuthenticationFailure(raw)) {
     return 'WebSocket password incorrect — copy it from OBS → Tools → WebSocket Server Settings → Show Connect Info'
   }
   if (msg.includes('econnrefused') || msg.includes('connection refused') || msg.includes('connect failed')) {

@@ -18,7 +18,8 @@ vi.mock('./obs-health', () => ({
   broadcastObsConnection: vi.fn(),
 }))
 
-vi.mock('./obs-connect', () => ({
+vi.mock('./obs-connect', async (original) => ({
+  ...await original<typeof import('./obs-connect')>(),
   explainObsConnectionFailure: vi.fn(({ processRunning, connectError }: { processRunning: boolean; connectError?: string }) =>
     processRunning ? `hung:${connectError ?? ''}` : 'not-running'),
 }))
@@ -81,6 +82,28 @@ describe('ensureObsConnected', () => {
     expect(terminateObsProcess).not.toHaveBeenCalled()
     expect(launchObsStudio).not.toHaveBeenCalled()
     expect(result.ok).toBe(true)
+  })
+
+  it.each([0, 1])('leaves a responding OBS alone when authentication fails after %s retries', async (retries) => {
+    vi.mocked(isObsProcessRunning).mockResolvedValue(true)
+    vi.mocked(terminateObsProcess).mockResolvedValue({ ok: true })
+    vi.mocked(launchObsStudio).mockResolvedValue({ ok: true })
+    const error = 'WebSocket password incorrect — copy it from OBS'
+    const rec = mockRecorder({
+      connectResults: [
+        ...Array.from({ length: retries }, () => fail()),
+        ...Array.from({ length: 5 - retries }, () => fail(error)),
+        { ok: true },
+      ],
+    })
+
+    const result = await ensureObsConnected(rec as never, { password: 'wrong', port: 4455 })
+
+    expect(result).toMatchObject({ ok: false, processRunning: true })
+    expect(terminateObsProcess).not.toHaveBeenCalled()
+    expect(restartObsStudioElevated).not.toHaveBeenCalled()
+    expect(launchObsStudio).not.toHaveBeenCalled()
+    expect(rec.connect).toHaveBeenCalledTimes(retries + 1)
   })
 
   it('kills hung OBS then relaunches when process is up but WebSocket keeps failing', async () => {

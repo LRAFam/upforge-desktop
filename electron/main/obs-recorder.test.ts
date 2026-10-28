@@ -4,6 +4,7 @@ import { waitForRecordingProgress, waitForRecordingStopped } from './obs-record-
 import { runObsTestRecording } from './obs-preflight'
 import { withObsRecordingOperation } from './obs-recording-operation'
 import { startRecordingWhenReady } from './recording-start'
+import { retargetUpForgeCapture } from './obs-setup'
 
 const mock = vi.hoisted(() => ({ call: vi.fn(), on: vi.fn(), fileSize: 100 }))
 vi.mock('obs-websocket-js', () => ({ OBSWebSocket: class { call = mock.call; on = mock.on } }))
@@ -11,6 +12,7 @@ vi.mock('electron', () => ({ app: { getPath: () => '/tmp', getAppPath: () => '/t
 vi.mock('electron-log', () => ({ default: { info: vi.fn(), warn: vi.fn(), error: vi.fn() } }))
 vi.mock('./disk-space', () => ({ getFreeDiskSpace: async () => Infinity, CRITICAL_FREE_DISK_BYTES: 100, WARN_FREE_DISK_BYTES: 200 }))
 vi.mock('./obs-setup', () => ({ retargetUpForgeCapture: vi.fn(), fitUpForgeCaptureToCanvas: vi.fn() }))
+vi.mock('./game-window-finder', () => ({ resolveObsCaptureWindow: async () => 'CS2', findObsWindowString: async () => null }))
 vi.mock('fs', async (original) => ({
   ...await original<typeof import('fs')>(),
   existsSync: () => true,
@@ -252,6 +254,104 @@ describe('mid-match progress watchdog', () => {
 })
 
 describe('recording progress verification', () => {
+  it('starts a separate sustained match recording after the onboarding test completes', async () => {
+    let active = false
+    let bytes = 0
+    mock.call.mockImplementation(async (request) => {
+      if (request === 'StartRecord') active = true
+      if (request === 'StopRecord') active = false
+      return { outputActive: active, outputBytes: bytes += 100, outputDuration: 1000, outputPath: '/tmp/test.mp4' }
+    })
+    const rec = recorder()
+    Object.assign(rec, { _matchOwnedRecording: false, _recording: false, _startedAt: null })
+    vi.spyOn(rec, 'isCurrentProgramSceneGameplay').mockResolvedValue(true)
+    vi.spyOn(rec as unknown as { _startLiveKillPoll(): void }, '_startLiveKillPoll').mockImplementation(() => {})
+    const check = runObsTestRecording({ obs: rec.getObsClient(), recordDurationMs: 4000 })
+    await vi.advanceTimersByTimeAsync(1)
+    const match = (async () => {
+      expect(await rec.prepareMatchCapture()).toBe('idle')
+      await rec.start('cs2')
+    })()
+    await vi.advanceTimersByTimeAsync(1000)
+    expect(rec.isRecording()).toBe(false)
+    await vi.advanceTimersByTimeAsync(6000)
+    expect(await check).toMatchObject({ ok: true })
+    await match
+    expect(active).toBe(true)
+    expect(rec.isActivelyRecording()).toBe(true)
+    expect(mock.call.mock.calls.filter(([method]) => method === 'StartRecord')).toHaveLength(2)
+    expect(mock.call.mock.calls.filter(([method]) => method === 'StopRecord')).toHaveLength(1)
+  })
+
+  it('keeps a test with unconfirmed shutdown out of match recovery until OBS is idle', async () => {
+    let active = false
+    let bytes = 0
+    mock.call.mockImplementation(async (request) => {
+      if (request === 'StartRecord') active = true
+      return { outputActive: active, outputBytes: bytes += 100, outputDuration: 1000, outputPath: '/tmp/test.mp4' }
+    })
+    const rec = recorder()
+    Object.assign(rec, { _matchOwnedRecording: false, _recording: false, _startedAt: null })
+    vi.spyOn(rec, 'isCurrentProgramSceneGameplay').mockResolvedValue(true)
+    vi.spyOn(rec as unknown as { _startLiveKillPoll(): void }, '_startLiveKillPoll').mockImplementation(() => {})
+    const check = runObsTestRecording({ obs: rec.getObsClient(), recordDurationMs: 1 })
+    await vi.advanceTimersByTimeAsync(16_000)
+    expect(await check).toMatchObject({ ok: false })
+    expect(await rec.prepareMatchCapture()).toBe('blocked')
+    expect(await rec.isCaptureActive()).toBe(false)
+    expect(await rec.reclaimActiveRecording()).toBe(false)
+    await expect(rec.start('cs2')).rejects.toThrow('already recording')
+    active = false
+    expect(await rec.prepareMatchCapture()).toBe('idle')
+    const match = rec.start('cs2')
+    await vi.advanceTimersByTimeAsync(1000)
+    await match
+    expect(rec.isActivelyRecording()).toBe(true)
+  })
+
+  it('rechecks match presence after waiting for an onboarding recording operation', async () => {
+    const rec = recorder()
+    Object.assign(rec, { _matchOwnedRecording: false, _recording: false, _startedAt: null })
+    let release!: () => void
+    let inGame = true
+    const blocker = withObsRecordingOperation(rec.getObsClient(), () => new Promise<void>(resolve => { release = resolve }))
+    const canStart = vi.fn(async () => inGame)
+    const pending = rec.prepareMatchCapture(canStart)
+    await vi.advanceTimersByTimeAsync(1)
+    expect(canStart).not.toHaveBeenCalled()
+    inGame = false
+    release()
+    await blocker
+    expect(await pending).toBe('cancelled')
+    expect(mock.call).not.toHaveBeenCalled()
+    expect(rec.isRecording()).toBe(false)
+  })
+
+  it.each(['isCaptureActive', 'reclaimActiveRecording'] as const)('does not treat an onboarding test as a match in %s', async (method) => {
+    let active = false
+    let bytes = 0
+    mock.call.mockImplementation(async (request) => {
+      if (request === 'StartRecord') active = true
+      if (request === 'StopRecord') active = false
+      return { outputActive: active, outputBytes: bytes += 100, outputDuration: 1000, outputPath: '/tmp/test.mp4' }
+    })
+    const rec = recorder()
+    Object.assign(rec, { _matchOwnedRecording: false, _recording: false, _startedAt: null })
+    vi.spyOn(rec, 'isCurrentProgramSceneGameplay').mockResolvedValue(true)
+    const check = runObsTestRecording({ obs: rec.getObsClient(), recordDurationMs: 4000 })
+    await vi.advanceTimersByTimeAsync(1)
+    expect(active).toBe(true)
+    const changed = mock.on.mock.calls.find(([event]) => event === 'RecordStateChanged')![1]
+    changed({ outputActive: true, outputPath: '/tmp/test.mp4' })
+    expect(rec.getLastRecordingPath()).toBe('/tmp/match.mp4')
+    const match = rec[method]()
+    await vi.advanceTimersByTimeAsync(500)
+    expect(await match).toBe(false)
+    expect(rec.isRecording()).toBe(false)
+    await vi.advanceTimersByTimeAsync(6000)
+    expect(await check).toMatchObject({ ok: true })
+  })
+
   it.each([true, false])('coordinates a match start with an overlapping recording check (test first=%s)', async (testFirst) => {
     let active = false
     let bytes = 0
@@ -405,6 +505,72 @@ describe('cancelled recording startup', () => {
     vi.spyOn(rec as unknown as { _startLiveKillPoll(): void }, '_startLiveKillPoll').mockImplementation(() => {})
     return rec
   }
+
+  it('allows the next start after a permanently lost initial output-status reply', async () => {
+    const rec = idleRecorder()
+    mock.call.mockImplementationOnce(() => new Promise(() => {}))
+    const first = expect(startRecordingWhenReady({
+      ensureReady: async () => {}, start: (signal) => rec.start('cs2', undefined, { signal }), timeoutMs: 10_000,
+    })).rejects.toThrow(/timed out/)
+    await vi.advanceTimersByTimeAsync(10_000)
+    await first
+
+    const retry = startRecordingWhenReady({
+      ensureReady: async () => {}, start: (signal) => rec.start('cs2', undefined, { signal }), timeoutMs: 10_000,
+    })
+    const result = Promise.allSettled([retry])
+    await vi.advanceTimersByTimeAsync(10_000)
+    expect(await result).toEqual([{ status: 'fulfilled', value: undefined }])
+    expect(rec.isActivelyRecording()).toBe(true)
+  })
+
+  it('releases both startup and capture-setup queues after a permanently lost nested OBS reply', async () => {
+    const actual = await vi.importActual<typeof import('./obs-setup')>('./obs-setup')
+    vi.mocked(retargetUpForgeCapture).mockImplementation(actual.retargetUpForgeCapture)
+    try {
+      const rec = idleRecorder()
+      let active = false
+      let bytes = 0
+      let inputs = 0
+      mock.call.mockImplementation(async (request) => {
+        if (request === 'GetInputList') {
+          if (++inputs === 1) return new Promise(() => {})
+          return { inputs: [] }
+        }
+        if (request === 'StartRecord') active = true
+        return { outputActive: active, outputBytes: bytes += 100 }
+      })
+      const first = expect(rec.start('cs2')).rejects.toThrow('OBS GetInputList timed out')
+      await vi.advanceTimersByTimeAsync(10_000)
+      await first
+      const retry = rec.start('cs2')
+      await vi.advanceTimersByTimeAsync(10_000)
+      await retry
+      expect(inputs).toBe(2)
+      expect(rec.isActivelyRecording()).toBe(true)
+    } finally {
+      vi.mocked(retargetUpForgeCapture).mockReset()
+    }
+  })
+
+  it('cleans up a lost test-start reply when all OBS requests have a shared timeout', async () => {
+    const rec = idleRecorder()
+    let active = false
+    mock.call.mockImplementation(async (request) => {
+      if (request === 'StartRecord') {
+        active = true
+        return new Promise(() => {})
+      }
+      if (request === 'StopRecord') active = false
+      return { outputActive: active }
+    })
+    const check = runObsTestRecording({ obs: rec.getObsClient() })
+    await vi.advanceTimersByTimeAsync(6000)
+    expect(await check).toMatchObject({ ok: false, technicalMessage: 'OBS StartRecord timed out' })
+    expect(active).toBe(false)
+    expect(mock.call).toHaveBeenCalledWith('StopRecord')
+    expect(await rec.prepareMatchCapture()).toBe('idle')
+  })
 
   it('does not start after its deadline expires behind another recording operation', async () => {
     const rec = idleRecorder()

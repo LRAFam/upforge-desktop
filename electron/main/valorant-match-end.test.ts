@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { isValorantStillInLiveMatch } from './valorant-match-end'
+import { hasValorantReturnedToMenus, isValorantStillInLiveMatch } from './valorant-match-end'
 
 function probe(loop: string | null, core: boolean | null, pregame: boolean | null, observed = false) {
   return {
@@ -40,5 +40,24 @@ describe('Valorant match-end confirmation', () => {
     expect(await isValorantStillInLiveMatch(probe('MENUS', false, false))).toBe(false)
     expect(await isValorantStillInLiveMatch(probe('PREGAME', false, true))).toBe(true)
     expect(await isValorantStillInLiveMatch(probe(null, null, null))).toBe(true)
+  })
+})
+
+
+describe('hasValorantReturnedToMenus', () => {
+  it.each([
+    ['MENUS', false, false, true],
+    ['MENUS', true, false, false],
+    ['MENUS', false, true, false],
+    ['MENUS', null, false, false],
+    ['MENUS', false, null, false],
+    ['INGAME', false, false, false],
+    [null, false, false, false],
+  ] as const)('checks confirmed lobby state after recorder setup (%s, core=%s, pregame=%s)', async (loop, core, pregame, ended) => {
+    expect(await hasValorantReturnedToMenus({
+      getSessionState: async () => loop ? { sessionLoopState: loop } : null,
+      isCoreGameSessionActive: async () => core,
+      isPregameSessionActive: async () => pregame,
+    })).toBe(ended)
   })
 })

@@ -6,6 +6,19 @@ interface MatchEndProbe {
   hasMatchEndSessionEvidence(): boolean
 }
 
+/** Recheck after recorder setup without mistaking stale/unknown presence for a quit. */
+export async function hasValorantReturnedToMenus(probe: Pick<MatchEndProbe,
+  'getSessionState' | 'isCoreGameSessionActive' | 'isPregameSessionActive'
+>): Promise<boolean> {
+  try {
+    if ((await probe.getSessionState())?.sessionLoopState !== 'MENUS') return false
+    if (await probe.isCoreGameSessionActive() !== false) return false
+    return await probe.isPregameSessionActive() === false
+  } catch {
+    return false
+  }
+}
+
 /** Guard a confirmed match-end against a genuinely active game. */
 export async function isValorantStillInLiveMatch(probe: MatchEndProbe): Promise<boolean> {
   try {
