@@ -10,6 +10,8 @@ import fs from 'fs'
 import https from 'https'
 import path from 'path'
 import { LoLLiveClientApi } from './lol-live-client-api'
+import { captureLolAccount, type LolCaptureContext } from './lol-account-identity'
+export { lolPlatformToMatchV5Region } from './lol-account-identity'
 
 const tlsAgent = new https.Agent({ rejectUnauthorized: false })
 
@@ -33,6 +35,7 @@ export interface LolLcuProbeResult {
   gameMode: string | null
   mapId: number | null
   summonerName: string | null
+  captureContext?: LolCaptureContext | null
   liveClient: {
     reachable: boolean
     inMatch: boolean
@@ -210,6 +213,7 @@ function lcuGet<T>(lockfile: LolLcuLockfile, apiPath: string): Promise<T> {
 interface GameflowSession {
   phase?: string
   gameData?: {
+    gameId?: number | string
     queue?: { id?: number; name?: string }
     map?: { id?: number }
   }
@@ -233,34 +237,13 @@ export function parseGameflowSession(session: GameflowSession | null | undefined
   return { phase, queueId, mapId }
 }
 
-/** Map LoL platform routing id (EUW1, NA1, …) to Match-V5 regional cluster. */
-export function lolPlatformToMatchV5Region(platform: string | null | undefined): string | null {
-  if (!platform?.trim()) return null
-  const map: Record<string, string> = {
-    BR1: 'americas',
-    LA1: 'americas',
-    LA2: 'americas',
-    NA1: 'americas',
-    OC1: 'asia',
-    JP1: 'asia',
-    KR: 'asia',
-    EUN1: 'europe',
-    EUW1: 'europe',
-    TR1: 'europe',
-    RU: 'europe',
-  }
-  return map[platform.trim().toUpperCase()] ?? null
-}
-
 /** Linked LoL puuid when the auth payload includes it (never invented). */
 export function lolLinkedPuuidFromAuth(user: {
   lol_puuid?: string | null
   riot_puuid?: string | null
 } | null | undefined): string | null {
   const lol = user?.lol_puuid?.trim()
-  if (lol) return lol
-  const shared = user?.riot_puuid?.trim()
-  return shared || null
+  return lol || null
 }
 
 /**
@@ -318,14 +301,23 @@ export async function probeLolLcu(opts?: {
     const { gameMode, queueLabel } = normalizeLolQueueId(queueId)
 
     let summonerName: string | null = null
+    let captureContext: LolCaptureContext = { account: null, matchId: null, queueId }
+    let identityError: string | null = null
     try {
-      const summoner = await lcuGet<{ displayName?: string; gameName?: string }>(
-        lockfile,
-        '/lol-summoner/v1/current-summoner',
-      )
-      summonerName = summoner.displayName ?? summoner.gameName ?? null
+      const [summoner, platformId] = await Promise.all([
+        lcuGet<{ gameName?: string; tagLine?: string }>(lockfile, '/lol-summoner/v1/current-summoner'),
+        lcuGet<string>(lockfile, '/lol-platform-config/v1/namespaces/LoginDataPacket/platformId'),
+      ])
+      summonerName = summoner.gameName ?? null
+      const account = captureLolAccount(summoner, platformId)
+      const gameId = String(session.gameData?.gameId ?? '')
+      captureContext = {
+        account,
+        matchId: account && /^[1-9]\d*$/.test(gameId) ? `${account.platform}_${gameId}` : null,
+        queueId,
+      }
     } catch {
-      /* optional */
+      identityError = 'League account identity could not be read from the client.'
     }
 
     return {
@@ -340,8 +332,9 @@ export async function probeLolLcu(opts?: {
       gameMode,
       mapId,
       summonerName,
+      captureContext,
       liveClient,
-      error: null,
+      error: identityError,
       probedAt,
     }
   } catch (err) {

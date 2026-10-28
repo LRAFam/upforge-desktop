@@ -183,10 +183,26 @@ export function getFullStorageUsage(
   const known = store?.getKnownPaths() ?? new Set<string>()
   const orphans = listOrphanRecordingFiles(savePath, known)
 
+  // Changing the storage root only affects future captures. Count this profile's
+  // catalogued files at their original paths too, without scanning other profiles.
+  const countedPaths = new Set(recordings.files.map(filePath => path.normalize(filePath)))
+  for (const filePath of known) {
+    if (countedPaths.has(path.normalize(filePath))) continue
+    try {
+      const stat = fs.statSync(filePath)
+      if (!stat.isFile()) continue
+      recordings.bytes += stat.size
+      recordings.count++
+      countedPaths.add(path.normalize(filePath))
+    } catch { /* missing or unavailable files do not contribute disk usage */ }
+  }
+
   const legacyDir = legacyGlobalRecordingsDir()
   const legacyRecordingsBytes =
     path.normalize(legacyDir) !== path.normalize(savePath)
-      ? scanMp4Directory(legacyDir).bytes
+      ? scanMp4Directory(legacyDir).files
+        .filter(filePath => !countedPaths.has(path.normalize(filePath)))
+        .reduce((bytes, filePath) => bytes + fileSizeBytes(filePath), 0)
       : 0
 
   const clipDirs = new Set<string>()

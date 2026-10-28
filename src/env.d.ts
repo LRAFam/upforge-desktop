@@ -140,9 +140,11 @@ export interface AppSettings {
   recordingBitrate: number
   recordingFps: 24 | 30 | 60
   audioEnabled: boolean
+  /** Custom storage root; legacy default paths are resolved by the main process. */
   savePath: string
-  /** Resolved folder for the logged-in user (per-account default or custom savePath). */
+  /** Actual recordings folder for the current profile under the selected storage root. */
   effectiveSavePath?: string
+  recordingPathWarning?: string | null
   launchOnStartup: boolean
   autoDelete: boolean
   /**

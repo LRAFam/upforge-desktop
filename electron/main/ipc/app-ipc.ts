@@ -19,7 +19,8 @@ import type { OBSRecorder } from '../obs-recorder'
 import { buildRecorderConfig } from '../obs-output-settings'
 import { hasProAccess } from '../subscription'
 import { getActiveUserId } from '../user-session'
-import { resolveRecordingSavePath } from '../user-data-paths'
+import { resolveRecordingSavePath, recordingSavePathProblem } from '../user-data-paths'
+import { prepareRecordingDirectory } from '../recording-save-safety'
 import { openPathSafe } from '../shell-open'
 import { trackOnboardingComplete, trackReportOpened, trackUpgradeClicked } from '../funnel-events'
 import { startCheckout, type CheckoutIntent } from '../billing-checkout'
@@ -188,11 +189,17 @@ export function setupAppHandlers(
     return {
       ...settings,
       effectiveSavePath: resolveRecordingSavePath(settings.savePath, getActiveUserId()),
+      recordingPathWarning: recordingSavePathProblem(settings.savePath, getActiveUserId()),
     }
   })
 
   ipcMain.handle('settings:save', (_e, partial: Record<string, unknown>) => {
     const prev = settingsManager.get()
+    if (typeof partial.savePath === 'string' && partial.savePath !== prev.savePath) {
+      const problem = recordingSavePathProblem(partial.savePath, getActiveUserId())
+      if (problem) throw new Error(problem)
+      prepareRecordingDirectory(resolveRecordingSavePath(partial.savePath, getActiveUserId()))
+    }
     const allowCreator = hasProAccess(auth.getUser())
     const wantsCreator = partial.recordingPreset === 'creator'
     const result = settingsManager.save(partial as Partial<import('../settings-manager').AppSettings>, { allowCreator })
@@ -223,6 +230,8 @@ export function setupAppHandlers(
     }
     return {
       ...result,
+      effectiveSavePath: resolveRecordingSavePath(result.savePath, getActiveUserId()),
+      recordingPathWarning: recordingSavePathProblem(result.savePath, getActiveUserId()),
       creatorPresetRequiresPro: wantsCreator && !allowCreator,
     }
   })

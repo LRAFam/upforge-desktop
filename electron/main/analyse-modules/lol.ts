@@ -19,7 +19,7 @@ const TIMEOUT_MESSAGE =
 const FETCH_FAILED_MESSAGE =
   'Riot match stats could not be loaded. Wait a minute after the game ends, then tap Retry sync.'
 
-const NO_AUTH_MESSAGE = 'Link your Riot ID in Settings to load League match stats.'
+const NO_AUTH_MESSAGE = 'Could not verify the League account for this recording. For older footage, link the account you played on in Settings and retry.'
 
 function isTerminalLolEnrichStatus(status: string | undefined): boolean {
   return status === 'fetch_failed' || status === 'no_auth' || status === 'no_match_id'

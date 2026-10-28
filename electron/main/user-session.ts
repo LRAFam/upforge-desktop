@@ -11,8 +11,9 @@ import {
   readPendingJobForUser,
   setPendingJobUserScope,
 } from './upload-manager'
-import { userDataRoot, userOverlayPath, userRecordingsDir, legacyGlobalRecordingsDir } from './user-data-paths'
+import { userDataRoot, userOverlayPath, userRecordingsDir, legacyGlobalRecordingsDir, resolveRecordingSavePath } from './user-data-paths'
 import { normalizeLegacySavePath, scheduleLegacyUserDataMigration } from './legacy-migration'
+import { prepareRecordingDirectory } from './recording-save-safety'
 
 export { userDataRoot } from './user-data-paths'
 
@@ -81,23 +82,31 @@ export function activateUserSession(userId: number, deps: UserSessionDeps): void
     log.info(`[UserSession] Updated savePath → ${updatedSavePath}`)
   }
 
-  fs.mkdirSync(userRecordingsDir(userId), { recursive: true })
+  // Prepare a new profile even before OBS connects, so storage checks use an
+  // existing directory. An unavailable drive must not prevent account login.
+  let profileRecordingDir: string | undefined
+  try {
+    profileRecordingDir = resolveRecordingSavePath(deps.settingsManager.get().savePath, userId)
+    prepareRecordingDirectory(profileRecordingDir)
+  } catch (error) {
+    log.warn('[UserSession] Recording directory unavailable:', error)
+    deps.getMainWindow()?.webContents.send('app:warning', {
+      message: error instanceof Error ? error.message : String(error),
+    })
+  }
   deps.clipStore.setUserScope(userId)
   const recordingSearchDirs = [
+    profileRecordingDir,
     userRecordingsDir(userId),
     legacyGlobalRecordingsDir(),
     deps.settingsManager.get().savePath,
-  ].filter(Boolean)
+  ].filter((dir): dir is string => Boolean(dir))
   deps.recordingsStore.setUserScope(userId, recordingSearchDirs)
   setClipsMediaDir(deps.clipStore.getClipsMediaDir())
   loadUserOverlay(userId, deps.settingsManager)
 
   scheduleLegacyUserDataMigration(userId, () => {
-    const healed = deps.recordingsStore.healMissingPaths([
-      userRecordingsDir(userId),
-      legacyGlobalRecordingsDir(),
-      deps.settingsManager.get().savePath,
-    ])
+    const healed = deps.recordingsStore.forUser(userId).healMissingPaths(recordingSearchDirs)
     if (healed > 0) {
       log.info(`[UserSession] Healed ${healed} recording path(s) after migration`)
     }

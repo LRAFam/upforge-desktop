@@ -5,7 +5,12 @@ import {
   parseGameflowSession,
   parseLolLockfileContent,
   resolveLolFilterMode,
+  lolLinkedPuuidFromAuth,
 } from './lol-lcu-api'
+
+it('never treats a Valorant identity as a linked League account', () => {
+  expect(lolLinkedPuuidFromAuth({ riot_puuid: 'valorant-smurf' })).toBeNull()
+})
 
 describe('parseLolLockfileContent', () => {
   it('parses Name:PID:Port:Password:Protocol', () => {

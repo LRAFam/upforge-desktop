@@ -296,6 +296,8 @@ export interface MatchData {
   /** Measured CS2 demo statistics; null fields mean unavailable, never inferred. */
   match_stats?: import('./cs2-match-stats').Cs2MatchStats | null
   lolLocalReview?: LolLocalReview | null
+  /** League client identity captured with this recording, independent of linked accounts. */
+  lolAccount?: import('./lol-account-identity').LolAccountIdentity | null
   game: string
 
   // Identity

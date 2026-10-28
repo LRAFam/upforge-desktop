@@ -279,6 +279,11 @@ const statusItems = computed<StatusItem[]>(() => {
           <input :value="settings.effectiveSavePath ?? settings.savePath" readonly class="min-w-0 flex-1 truncate rounded-xl border border-white/[0.08] bg-white/[0.04] px-3 py-2 text-xs text-gray-400" />
           <button type="button" class="rounded-xl border border-white/[0.08] bg-white/[0.04] px-3 py-2 text-xs font-medium text-gray-300 transition-colors hover:border-white/[0.14] hover:text-white" @click="changeSavePath">Change</button>
         </div>
+        <p v-if="settings.recordingPathWarning" role="alert" class="mt-2 text-xs text-amber-300">
+          Your previous save location was inside the app installation folder. New recordings use the safe location shown above. Existing files have not been moved.
+        </p>
+        <p class="mt-1 text-xs text-gray-500">Keep recordings outside the UpForge installation folder to protect them during app updates.</p>
+        <p class="mt-1 text-xs text-gray-500">Choose a storage folder; UpForge creates a recordings folder for each profile. Existing recordings stay in their current location.</p>
       </div>
 
       <div
