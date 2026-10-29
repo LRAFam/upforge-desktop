@@ -17,6 +17,7 @@ const {
   displayGameMode,
   hasCoachFeedback,
   hasSpatialIntel,
+  isRoundBased,
   mapPosterUrl,
   matchScoreline,
   openVodTrim,
@@ -107,10 +108,10 @@ const {
             class="vod-toolbar-btn"
             :aria-pressed="!roundLogCollapsed"
             :class="roundLogCollapsed ? '' : 'vod-toolbar-btn--active'"
-            :title="roundLogCollapsed ? 'Show round log (B)' : 'Hide round log (B)'"
+            :title="`${roundLogCollapsed ? 'Show' : 'Hide'} ${isRoundBased ? 'round log' : 'match timeline'} (B)`"
             @click="roundLogCollapsed = !roundLogCollapsed"
           >
-            Rounds
+            {{ isRoundBased ? 'Rounds' : 'Timeline' }}
           </button>
           <button
             v-if="hasSpatialIntel"

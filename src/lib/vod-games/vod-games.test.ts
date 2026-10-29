@@ -69,10 +69,27 @@ describe('valorant/cs2 portrait resolution (by puuid)', () => {
 })
 
 describe('lol portrait resolution (by name)', () => {
+  it('keeps names with different Riot tags distinct and leaves ambiguous names unknown', () => {
+    const adapter = getVodAdapter('lol')
+    const lookup = buildPlayerLookup([
+      { summonerName: 'SameName#EUW', agent: 'Ahri' },
+      { summonerName: 'SameName#OTHER', agent: 'Zed' },
+    ], 'Jinx')
+    expect(adapter.portraitImageFor({ name: 'SameName#EUW' }, lookup)).toBe(getChampionImage('Ahri'))
+    expect(adapter.portraitImageFor({ name: 'SameName#OTHER' }, lookup)).toBe(getChampionImage('Zed'))
+    expect(adapter.portraitImageFor({ name: 'SameName' }, lookup)).toBe('')
+    expect(adapter.portraitImageFor({ name: 'SameName#UNKNOWN' }, lookup)).toBe('')
+  })
+
   it('uses the own champion for the local "You" player', () => {
     const adapter = getVodAdapter('lol')
     const lookup = buildPlayerLookup([], 'Jinx')
     expect(adapter.portraitImageFor({ name: 'You' }, lookup)).toBe(getChampionImage('Jinx'))
+  })
+
+  it('uses recorded identity instead of treating an opponent named You as the local player', () => {
+    const lookup = buildPlayerLookup([{ summonerName: 'You', agent: 'Zed' }], 'Jinx')
+    expect(getVodAdapter('lol').portraitImageFor({ name: 'You', isLocalPlayer: false }, lookup)).toBe(getChampionImage('Zed'))
   })
 
   it('resolves other players by tag-stripped name', () => {

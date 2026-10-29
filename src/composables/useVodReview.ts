@@ -1,3 +1,5 @@
+import type { TeamPlayerSnapshot } from '../../electron/main/riot-types'
+import { resolveScoreboardPlayer, groupScoreboardPlayers } from '../lib/vod-scoreboard'
 import { openUpgrade as startUpgrade } from '../lib/upgrade'
 import { createReviewSeek } from '../lib/review-seek'
 import { buildReviewEvents } from '../lib/review-timeline'
@@ -36,6 +38,8 @@ import { useVodPortraits } from './vod/useVodPortraits'
 interface KillEvent {
   killerName: string
   victimName: string
+  killerIsLocalPlayer?: boolean
+  victimIsLocalPlayer?: boolean
   assistants?: string[]
   weapon?: string
   abilitySlot?: 'grenade' | 'ability1' | 'ability2' | 'ultimate'
@@ -86,26 +90,13 @@ interface RoundSummary {
 }
 
 interface FinalStats {
+  summonerName?: string | null
   kills: number
   deaths: number
   assists: number
   won?: boolean
 }
 
-interface TeamPlayerSnapshot {
-  summonerName: string
-  agent: string | null
-  team: string
-  kills: number
-  deaths: number
-  assists: number
-  score: number
-  level: number
-  puuid: string | null
-  competitiveTier: number
-  competitiveTierName: string
-  abilityCasts: { grenade: number; ability1: number; ability2: number; ultimate: number } | null
-}
 
 export interface RecordingTimeline {
   archiveAnalysisState?: string
@@ -481,7 +472,7 @@ function createVodReview() {
       p => p.puuid === nameOrPuuid || p.summonerName === nameOrPuuid,
     )
     if (fromTeam) {
-      if (fromTeam.puuid === ownPuuid.value) return 'You'
+      if (isOwnScoreboardPlayer(fromTeam)) return 'You'
       return fromTeam.summonerName || fromTeam.agent || 'Teammate'
     }
     if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(nameOrPuuid)) {
@@ -506,13 +497,17 @@ function createVodReview() {
   
   const sortedTeamSnapshot = computed(() => {
     if (!timeline.value?.teamSnapshot?.length) return []
-    return [...timeline.value.teamSnapshot].sort((a, b) => b.score - a.score)
+    return [...timeline.value.teamSnapshot].sort((a, b) => (b.score ?? -1) - (a.score ?? -1))
   })
   
-  const ownTeam = computed(() => {
-    if (!ownPuuid.value || !timeline.value?.teamSnapshot) return null
-    return timeline.value.teamSnapshot.find(p => p.puuid === ownPuuid.value)?.team ?? null
-  })
+  const ownScoreboardPlayer = computed(() => resolveScoreboardPlayer(
+    sortedTeamSnapshot.value, reviewGame.value, ownPuuid.value,
+    timeline.value?.finalStats?.summonerName ?? null,
+  ))
+  function isOwnScoreboardPlayer(player: TeamPlayerSnapshot): boolean {
+    return ownScoreboardPlayer.value === player
+  }
+  const ownTeam = computed(() => ownScoreboardPlayer.value?.team ?? null)
   
   function roundOutcomeIcon(round: RoundGroup): string | null {
     return resolveRoundOutcomeIcon(round, reviewGame.value)
@@ -532,21 +527,9 @@ function createVodReview() {
     return result
   }
   
-  const scoreboardGroups = computed(() => {
-    if (!sortedTeamSnapshot.value.length) return []
-    const mePlayer = sortedTeamSnapshot.value.find(p => p.puuid === ownPuuid.value)
-    const allyTeamId = mePlayer?.team ?? null
-    const allies = allyTeamId
-      ? sortedTeamSnapshot.value.filter(p => p.team === allyTeamId)
-      : sortedTeamSnapshot.value.slice(0, Math.ceil(sortedTeamSnapshot.value.length / 2))
-    const enemies = allyTeamId
-      ? sortedTeamSnapshot.value.filter(p => p.team !== allyTeamId)
-      : sortedTeamSnapshot.value.slice(Math.ceil(sortedTeamSnapshot.value.length / 2))
-    return [
-      { isAlly: true, players: allies },
-      { isAlly: false, players: enemies },
-    ].filter(g => g.players.length > 0)
-  })
+  const scoreboardGroups = computed(() => groupScoreboardPlayers(
+    sortedTeamSnapshot.value, ownScoreboardPlayer.value,
+  ))
   
   const agentImageUrl = computed(() => {
     if (!timeline.value?.agent) return null
@@ -563,6 +546,8 @@ function createVodReview() {
   
   const displayGameMode = computed(() => {
     const mode = normalizeGameModeId(timeline.value?.gameMode)
+    // League CLASSIC includes ranked and normal games; it does not establish the queue.
+    if (timeline.value?.game === 'lol' && mode?.toUpperCase() === 'CLASSIC') return "Summoner's Rift"
     return mode ? formatGameMode(mode) : ''
   })
   
@@ -760,6 +745,7 @@ function createVodReview() {
   })
   
   const roundRecord = computed(() => {
+    if (!isRoundBased.value) return null
     const rounds = roundGroups.value
     if (!rounds.length) return null
     const wins = rounds.filter(r => r.won).length
@@ -767,6 +753,7 @@ function createVodReview() {
   })
 
   const matchScoreline = computed(() => {
+    if (!isRoundBased.value) return null
     const d = coachingDetail.value
     if (d?.ally_score != null && d?.enemy_score != null) {
       return { ally: d.ally_score, enemy: d.enemy_score }
@@ -781,6 +768,7 @@ function createVodReview() {
   })
   
   const roundSeparators = computed(() => {
+    if (!isRoundBased.value) return []
     if (!duration.value || !roundGroups.value.length) return []
     return roundGroups.value
       .filter(r => r.firstVideoOffsetMs != null && r.firstVideoOffsetMs > 0)
@@ -788,6 +776,7 @@ function createVodReview() {
   })
   
   const activeRoundNumber = computed<number | null>(() => {
+    if (!isRoundBased.value) return null
     if (!roundGroups.value.length) return null
     const timedRounds = roundGroups.value
       .filter(round => round.firstVideoOffsetMs != null)
@@ -1688,6 +1677,7 @@ function createVodReview() {
   }
   
   function applyTimelineDerivedState() {
+    ownPuuid.value = null
     if (!timeline.value) return
     const ownKill = timeline.value.kills?.find((k: KillEvent) => k.killerName === 'You')
     if (ownKill?.killerPuuid) {
@@ -2217,6 +2207,7 @@ function createVodReview() {
     router,
     savePlaybackPosition,
     scoreboardGroups,
+    isOwnScoreboardPlayer,
     scrollActiveEventIntoView,
     scrollActiveRoundIntoView,
     seekCoachAnnotation,

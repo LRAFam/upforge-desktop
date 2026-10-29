@@ -115,6 +115,17 @@ describe('normalizeLolGameMode', () => {
 })
 
 describe('isLolLiveMatchActive', () => {
+  it('does not start another recording from a completed game still exposed by the client', () => {
+    expect(isLolLiveMatchActive({ ...SAMPLE_SNAPSHOT, events: { Events: [
+      { EventID: 99, EventName: 'GameEnd', EventTime: 840, Result: 'Win' },
+    ] } })).toBe(false)
+  })
+
+  it('does not treat a loading-screen clock or invalid clock as gameplay', () => {
+    for (const gameTime of [0, -1, Infinity, NaN]) {
+      expect(isLolLiveMatchActive({ ...SAMPLE_SNAPSHOT, gameData: { ...SAMPLE_SNAPSHOT.gameData!, gameTime } })).toBe(false)
+    }
+  })
   it('returns true when players and game time are present', () => {
     expect(isLolLiveMatchActive(SAMPLE_SNAPSHOT)).toBe(true)
   })
@@ -125,6 +136,66 @@ describe('isLolLiveMatchActive', () => {
 })
 
 describe('buildMatchDataFromLolSnapshot', () => {
+  it('keeps Riot tags distinct for kills, deaths and objectives', () => {
+    const snapshot = structuredClone(SAMPLE_SNAPSHOT)
+    snapshot.allPlayers![1] = { ...snapshot.allPlayers![1]!, summonerName: 'TestPlayer', riotId: 'TestPlayer#OTHER' }
+    snapshot.events = { Events: [
+      { EventID: 1, EventName: 'ChampionKill', EventTime: 10, KillerName: 'TestPlayer#OTHER', VictimName: 'TestPlayer#EUW' },
+      { EventID: 2, EventName: 'ChampionKill', EventTime: 20, KillerName: 'TestPlayer#EUW', VictimName: 'TestPlayer#OTHER' },
+      { EventID: 3, EventName: 'ChampionKill', EventTime: 30, KillerName: 'TestPlayer', VictimName: 'EnemyMid' },
+      { EventID: 4, EventName: 'DragonKill', EventTime: 40, KillerName: 'TestPlayer#OTHER' },
+    ] }
+    const timeline = buildMatchDataFromLolSnapshot(snapshot, { recordingStartTime: 1000 })
+    expect(timeline.playerKills.map(event => event.EventID)).toEqual([2])
+    expect(timeline.playerDeaths.map(event => event.EventID)).toEqual([1])
+    expect(timeline.killEvents[2]?.killerName).toBe('TestPlayer')
+    expect(timeline.objectiveEvents?.[0]?.killerName).toBe('TestPlayer#OTHER')
+  })
+
+  it('does not substitute another Riot tag when the active account is absent', () => {
+    const snapshot = structuredClone(SAMPLE_SNAPSHOT)
+    snapshot.activePlayer!.riotId = 'TestPlayer#MISSING'
+    const timeline = buildMatchDataFromLolSnapshot(snapshot, { recordingStartTime: 1000 })
+    expect(timeline.agent).toBeNull()
+    expect(timeline.lolLocalReview).toBeNull()
+    expect(timeline.playerKills).toEqual([])
+    expect(timeline.teamSnapshot.some(player => player.isLocalPlayer)).toBe(false)
+  })
+
+  it('accepts unique legacy tagless identity but rejects an ambiguous name', () => {
+    const snapshot = structuredClone(SAMPLE_SNAPSHOT)
+    snapshot.activePlayer = { summonerName: 'testplayer' }
+    expect(buildMatchDataFromLolSnapshot(snapshot, { recordingStartTime: 1000 }).agent).toBe('Ahri')
+    snapshot.allPlayers![1] = { ...snapshot.allPlayers![1]!, summonerName: 'TestPlayer', riotId: 'TestPlayer#OTHER' }
+    expect(buildMatchDataFromLolSnapshot(snapshot, { recordingStartTime: 1000 }).agent).toBeNull()
+  })
+
+  it('does not treat an opponent literally named You as the recorded player', () => {
+    const snapshot = structuredClone(SAMPLE_SNAPSHOT)
+    snapshot.allPlayers![1]!.summonerName = 'You'
+    snapshot.events = { Events: [{ EventID: 1, EventName: 'ChampionKill', EventTime: 10,
+      KillerName: 'You', VictimName: 'TestPlayer#EUW' }] }
+    const timeline = buildMatchDataFromLolSnapshot(snapshot, { recordingStartTime: 1000 })
+    expect(timeline.playerKills).toEqual([])
+    expect(timeline.playerDeaths).toHaveLength(1)
+  })
+
+  it('captures League scoreboard identity and measured stats without inventing damage', () => {
+    const timeline = buildMatchDataFromLolSnapshot(SAMPLE_SNAPSHOT, { recordingStartTime: 1000 })
+    expect(timeline.teamSnapshot.map(p => p.isLocalPlayer)).toEqual([true, false])
+    expect(timeline.teamSnapshot[0]?.summonerName).toBe('TestPlayer#EUW')
+    expect(timeline.finalStats?.summonerName).toBe('TestPlayer#EUW')
+    expect(timeline.teamSnapshot.map(p => p.creepScore)).toEqual([120, 95])
+    expect(timeline.teamSnapshot[0]?.damageDealt).toBeNull()
+    expect(timeline.teamSnapshot[0]?.damageTaken).toBeNull()
+    expect(timeline.teamSnapshot[0]?.visionScore).toBeNull()
+  })
+
+  it('does not assign the first player when local identity is absent', () => {
+    const timeline = buildMatchDataFromLolSnapshot({ ...SAMPLE_SNAPSHOT, activePlayer: {} }, { recordingStartTime: 1000 })
+    expect(timeline.agent).toBeNull()
+    expect(timeline.teamSnapshot.some(p => p.isLocalPlayer)).toBe(false)
+  })
   it('builds lol MatchData with champion, KDA, and gameId', () => {
     const timeline = buildMatchDataFromLolSnapshot(SAMPLE_SNAPSHOT, {
       recordingStartTime: 1_700_000_000_000,

@@ -21,6 +21,8 @@ interface PortraitEventLike {
   victimName?: string | null
   killerPuuid?: string | null
   victimPuuid?: string | null
+  killerIsLocalPlayer?: boolean
+  victimIsLocalPlayer?: boolean
 }
 
 /**
@@ -42,11 +44,11 @@ export function useVodPortraits(timeline: Ref<PortraitTimelineLike | null>) {
   }
 
   function eventKillerImage(event: PortraitEventLike): string {
-    return portraitForRef({ name: event.killerName, puuid: event.killerPuuid })
+    return portraitForRef({ name: event.killerName, puuid: event.killerPuuid, isLocalPlayer: event.killerIsLocalPlayer })
   }
 
   function eventVictimImage(event: PortraitEventLike): string {
-    return portraitForRef({ name: event.victimName, puuid: event.victimPuuid })
+    return portraitForRef({ name: event.victimName, puuid: event.victimPuuid, isLocalPlayer: event.victimIsLocalPlayer })
   }
 
   /** Portrait of the "other" player: victim for a kill, killer for a death, securer for an objective. */

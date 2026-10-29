@@ -26,7 +26,7 @@ function isTerminalLolEnrichStatus(status: string | undefined): boolean {
 }
 
 /**
- * Explicit local snapshots support bounded stat coaching. Older recordings require Match-V5.
+ * Explicit local snapshots identify the player for partial video review. Older recordings require Match-V5.
  * With matchId, wait up to LOL_MATCH_V5_SYNC_MAX_MS (~12m, API-aligned). Without matchId,
  * settle sooner (MATCH_DETAILS_ENRICH_MAX_MS) then unavailable.
  */
@@ -35,7 +35,7 @@ export const lolModule: GameAnalyseModule = {
   isReady(rec: ReadinessRecording): AnalyseReadiness {
     const timeline = rec.timeline
     if (hasLolLocalReview(timeline)) {
-      return { ready: true, state: 'ready', message: 'Coaching from captured League stats. Video, rank and vision are not reviewed.', duelMomentCount: 0 }
+      return { ready: true, state: 'ready', message: 'Reviews selected gameplay clips with captured League stats. Only the selected clips are reviewed.', duelMomentCount: 0 }
     }
     const ageMs = recordingAgeMs(rec)
     const enrichWaitMs = demoSyncMaxMsForGame(rec.game)

@@ -16,6 +16,9 @@ export interface KillEvent extends GameEvent {
   EventName: 'ChampionKill'
   killerName: string
   victimName: string
+  /** League identity resolved against the captured roster, independent of display names. */
+  killerIsLocalPlayer?: boolean
+  victimIsLocalPlayer?: boolean
   assistants: string[]
   /** Milliseconds since game start — from Riot MatchDetails timeSinceGameStartMillis */
   timeSinceGameStartMillis?: number
@@ -201,6 +204,14 @@ export interface RoundSummary {
 
 /** Per-player stats snapshot for the full team — captured at match end */
 export interface TeamPlayerSnapshot {
+  /** Recorded League identity; Live Client does not provide PUUIDs. */
+  isLocalPlayer?: boolean
+  creepScore?: number | null
+  /** League damage dealt to champions, from Match-V5 totalDamageDealtToChampions. */
+  damageDealt?: number | null
+  /** League total damage taken, from Match-V5 totalDamageTaken. */
+  damageTaken?: number | null
+  visionScore?: number | null
   summonerName: string | null
   displayLabel?: string
   nameSource?: 'match_record' | 'current_account' | 'unavailable'

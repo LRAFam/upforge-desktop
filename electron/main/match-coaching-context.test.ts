@@ -31,4 +31,27 @@ describe('match-coaching-context', () => {
     expect(snap?.competitiveTierName).toBe('Gold 3')
     expect(snap?.rr).toBe(45)
   })
+
+  it('uses the captured League local-player flag when PUUIDs are missing', () => {
+    const timeline = { game: 'lol', puuid: null, teamSnapshot: [
+      { puuid: null, agent: 'Zed', team: 'CHAOS', isLocalPlayer: false },
+      { puuid: null, agent: 'Ahri', team: 'ORDER', isLocalPlayer: true },
+      { puuid: null, agent: 'Lux', team: 'ORDER', isLocalPlayer: false },
+      { puuid: null, agent: 'Jax', team: 'UNKNOWN', isLocalPlayer: false },
+    ] } as unknown as MatchData
+    expect(buildTeamComp(timeline)).toEqual({ allyAgents: ['Ahri', 'Lux'], enemyAgents: ['Zed'] })
+  })
+
+  it('leaves team context empty when the recorded player cannot be identified', () => {
+    const timeline = { game: 'lol', puuid: null, teamSnapshot: [
+      { puuid: null, agent: 'Zed', team: 'CHAOS', isLocalPlayer: false },
+      { puuid: null, agent: 'Ahri', team: 'ORDER', isLocalPlayer: false },
+    ] } as unknown as MatchData
+    expect(buildTeamComp(timeline)).toEqual({ allyAgents: [], enemyAgents: [] })
+  })
+
+  it('does not attach Valorant rank history to League coaching', () => {
+    const timeline = { game: 'lol', puuid: null, teamSnapshot: [] } as unknown as MatchData
+    expect(buildRankSnapshot(timeline, [{ rank: 'Gold 2', rr: 45, elo: 1200 }])).toBeNull()
+  })
 })

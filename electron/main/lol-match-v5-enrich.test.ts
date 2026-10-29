@@ -52,6 +52,17 @@ function baseTimeline(): MatchData {
 }
 
 describe('applyLolEnrichPatch', () => {
+  it('replaces the live roster with final measured League stats and retains it on failed sync', () => {
+    const timeline = baseTimeline()
+    const teamSnapshot = [{ summonerName: 'Recorded#EUW', agent: 'Ahri', team: 'ORDER',
+      isLocalPlayer: true, puuid: 'recorded-player', kills: 9, deaths: 3, assists: 6,
+      creepScore: 201, damageDealt: 22000, damageTaken: 17500, visionScore: 22,
+      score: null, level: 18, competitiveTier: 0, competitiveTierName: '', abilityCasts: null }]
+    applyLolEnrichPatch(timeline, { teamSnapshot }, 'fetched')
+    expect(timeline.teamSnapshot).toEqual(teamSnapshot)
+    applyLolEnrichPatch(timeline, { teamSnapshot: [] }, 'fetch_failed')
+    expect(timeline.teamSnapshot).toEqual(teamSnapshot)
+  })
   it('sets cs, vision, role, win, and lolEnrichStatus', () => {
     const timeline = baseTimeline()
     const patch: LolEnrichPatch = {

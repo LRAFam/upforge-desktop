@@ -96,7 +96,7 @@ export function validComparisonLoop(starts: [number, number], durations: [number
 }
 
 /** Agent names can repeat across teams; only a canonical player ID establishes identity. */
-export function comparisonPlayerLabel(name: string | null | undefined, puuid: string | undefined, ownPuuid: string | null, players: Array<{ puuid?: string | null; summonerName?: string; agent?: string | null }>): string {
+export function comparisonPlayerLabel(name: string | null | undefined, puuid: string | undefined, ownPuuid: string | null, players: Array<{ puuid?: string | null; summonerName?: string | null; agent?: string | null }>): string {
   if (puuid && puuid === ownPuuid) return 'You'
   const player = puuid ? players.find(p => p.puuid === puuid) : undefined
   if (player?.agent) return player.agent

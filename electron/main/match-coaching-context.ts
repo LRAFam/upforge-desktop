@@ -4,6 +4,7 @@
 import type { MatchData, RoundSummary } from './riot-types'
 import type { SkillProfileSnapshot } from '../../src/lib/skill-profile'
 import type { AppSettings } from './settings-manager'
+import { resolveScoreboardPlayer } from '../../src/lib/vod-scoreboard'
 
 export interface RankSnapshot {
   competitiveTier: number
@@ -25,19 +26,20 @@ export interface TeamComp {
 
 export function buildTeamComp(timeline: MatchData): TeamComp {
   const ownPuuid = timeline.puuid?.toLowerCase()
-  const ownRow = timeline.teamSnapshot?.find((p) => p.puuid?.toLowerCase() === ownPuuid)
-  const ownTeam = (timeline.finalStats?.team ?? ownRow?.team ?? '').toUpperCase()
+  const ownRow = timeline.game === 'lol'
+    ? resolveScoreboardPlayer(timeline.teamSnapshot ?? [], 'lol', timeline.puuid, timeline.finalStats?.summonerName ?? null)
+    : ownPuuid ? timeline.teamSnapshot?.find((p) => p.puuid?.toLowerCase() === ownPuuid) : null
+  const ownTeam = (timeline.finalStats?.team ?? ownRow?.team ?? '').trim().toUpperCase()
 
   const allyAgents: string[] = []
   const enemyAgents: string[] = []
+  if (!ownTeam || ownTeam === 'UNKNOWN') return { allyAgents, enemyAgents }
 
   for (const p of timeline.teamSnapshot ?? []) {
     if (!p.agent) continue
-    const isOwn = ownPuuid && p.puuid?.toLowerCase() === ownPuuid
-    const isAlly = ownTeam
-      ? (p.team ?? '').toUpperCase() === ownTeam
-      : !!isOwn
-    if (isAlly) allyAgents.push(p.agent)
+    const team = p.team?.trim().toUpperCase()
+    if (!team || team === 'UNKNOWN') continue
+    if (team === ownTeam) allyAgents.push(p.agent)
     else enemyAgents.push(p.agent)
   }
 
@@ -48,8 +50,10 @@ export function buildRankSnapshot(
   timeline: MatchData,
   rrHistory?: Array<{ rank: string | null; rr: number; elo: number }>,
 ): RankSnapshot | null {
+  // RR history and competitive tiers belong to Valorant, not League's rank system.
+  if (timeline.game === 'lol') return null
   const ownPuuid = timeline.puuid?.toLowerCase()
-  const own = timeline.teamSnapshot?.find((p) => p.puuid?.toLowerCase() === ownPuuid)
+  const own = ownPuuid ? timeline.teamSnapshot?.find((p) => p.puuid?.toLowerCase() === ownPuuid) : null
   const latest = rrHistory?.[0]
 
   if (!own && !latest) return null

@@ -19,6 +19,7 @@ export interface LolLiveScores {
   deaths: number
   assists: number
   creepScore: number
+  wardScore?: number
 }
 
 export interface LolLivePlayer {
@@ -93,48 +94,24 @@ function parseRiotId(riotId: string | undefined): { name: string | null; tag: st
   return { name: name || null, tag: tag || null }
 }
 
-/** Lower-cased identity token with the Riot #tag stripped. */
-function idToken(value: string | null | undefined): string {
-  return (value ?? '').split('#', 1)[0]!.trim().toLowerCase()
-}
-
-/** All lower-cased identifiers (game name, riot id, summoner name) for the local player. */
-function localPlayerIdentifiers(data: LolAllGameData, local: LolLivePlayer | null): Set<string> {
-  const ids = new Set<string>()
-  const add = (v: string | null | undefined): void => {
-    const token = idToken(v)
-    if (token) ids.add(token)
-  }
-  add(data.activePlayer?.riotId)
-  add(data.activePlayer?.summonerName)
-  add(local?.riotId)
-  add(local?.summonerName)
-  return ids
+/** Resolve Live Client's full Riot IDs and legacy tagless event names without conflating tags. */
+function findPlayerByName(players: LolLivePlayer[], value: string | undefined): LolLivePlayer | null {
+  const identity = value?.trim().toLowerCase()
+  if (!identity) return null
+  const tagged = identity.includes('#')
+  const matches = players.filter(player => [player.riotId, player.summonerName].some(name => {
+    const candidate = name?.trim().toLowerCase()
+    // Legacy tagless names are usable only when unique across this game's roster.
+    return tagged ? candidate === identity : candidate?.split('#', 1)[0] === identity
+  }))
+  return matches.length === 1 ? matches[0]! : null
 }
 
 function findLocalPlayer(data: LolAllGameData): LolLivePlayer | null {
   const active = data.activePlayer
-  const players = data.allPlayers ?? []
-  if (!players.length) return null
-
-  // Exact riotId match is the most reliable.
-  if (active?.riotId) {
-    const match = players.find((p) => p.riotId === active.riotId)
-    if (match) return match
-  }
-  if (active?.summonerName) {
-    const match = players.find((p) => p.summonerName === active.summonerName)
-    if (match) return match
-  }
-  // Fall back to matching on the #tag-stripped game name (Live Client formats vary by patch).
-  const activeToken = idToken(active?.riotId ?? active?.summonerName)
-  if (activeToken) {
-    const match = players.find(
-      (p) => idToken(p.riotId) === activeToken || idToken(p.summonerName) === activeToken,
-    )
-    if (match) return match
-  }
-  return players[0] ?? null
+  // A supplied Riot ID owns the identity. An unmatched tag must not resolve through a display name.
+  const identity = active?.riotId?.trim() ? active.riotId : active?.summonerName
+  return findPlayerByName(data.allPlayers ?? [], identity)
 }
 
 /** Exported for unit tests — normalize queue/mode label from live client. */
@@ -287,7 +264,7 @@ export function buildMatchDataFromLolSnapshot(
     deaths,
     assists,
     score: 0,
-    summonerName: local?.summonerName ?? active?.summonerName ?? null,
+    summonerName: local ? (local.riotId?.trim() ? local.riotId : local.summonerName) : null,
     agent: local?.championName ?? null,
     team: local?.team ?? null,
     level: local?.level ?? active?.level ?? 0,
@@ -297,42 +274,42 @@ export function buildMatchDataFromLolSnapshot(
     creepScore: typeof creepScore === 'number' && Number.isFinite(creepScore) ? creepScore : null,
   }
 
-  // Exact identity match (with the Riot #tag stripped) — substring matching caused
-  // false negatives/positives across Live Client patches, leaving playerKills empty.
-  const localIds = localPlayerIdentifiers(data, local)
-  const isLocal = (name: string): boolean => {
-    const token = idToken(name)
-    return token.length > 0 && localIds.has(token)
-  }
+  const isLocal = (name: string): boolean => local !== null
+    && findPlayerByName(data.allPlayers ?? [], name) === local
 
   const killEvents: KillEvent[] = []
+  const playerKills: KillEvent[] = []
+  const playerDeaths: KillEvent[] = []
   for (const evt of data.events?.Events ?? []) {
     if (evt.EventName !== 'ChampionKill') continue
     const gameTimeMs = Math.round(evt.EventTime * 1000)
     const rawKiller = evt.KillerName ?? ''
     const rawVictim = evt.VictimName ?? ''
     // Tag the local player as "You" so the VOD viewer highlights their kills/deaths.
-    killEvents.push({
+    const kill: KillEvent = {
       EventID: evt.EventID,
       EventName: 'ChampionKill',
       EventTime: evt.EventTime,
       killerName: isLocal(rawKiller) ? 'You' : rawKiller,
       victimName: isLocal(rawVictim) ? 'You' : rawVictim,
+      killerIsLocalPlayer: isLocal(rawKiller),
+      victimIsLocalPlayer: isLocal(rawVictim),
       assistants: evt.Assisters ?? [],
       timeSinceGameStartMillis: gameTimeMs,
       videoOffsetMs: lolGameTimeToVideoOffsetMs(gameTimeMs, {
         gameClockZeroEpoch,
         recordingStartTime: recordingStart,
       }),
-    })
+    }
+    killEvents.push(kill)
+    // Use identity, not the display label: an opponent can literally be named "You".
+    if (isLocal(rawKiller)) playerKills.push(kill)
+    if (isLocal(rawVictim)) playerDeaths.push(kill)
   }
 
   // LoL has no rounds — leave kill events round-free so the VOD viewer renders a
   // continuous match timeline (not fake "rounds"). The clip pipeline groups the
   // player's kills into time-proximity sprees on its own copy at extraction time.
-  const playerKills = killEvents.filter((k) => k.killerName === 'You')
-  const playerDeaths = killEvents.filter((k) => k.victimName === 'You')
-
   const objectiveEvents = buildLolObjectiveEvents(data.events?.Events ?? [], {
     isLocal,
     gameClockZeroEpoch,
@@ -379,7 +356,12 @@ export function buildMatchDataFromLolSnapshot(
     roundSummaries: [],
     finalStats,
     teamSnapshot: (data.allPlayers ?? []).map((p) => ({
-      summonerName: p.summonerName,
+      isLocalPlayer: p === local,
+      creepScore: Number.isFinite(p.scores.creepScore) ? p.scores.creepScore : null,
+      visionScore: Number.isFinite(p.scores.wardScore) ? p.scores.wardScore! : null,
+      damageDealt: null,
+      damageTaken: null,
+      summonerName: p.riotId?.trim() ? p.riotId : p.summonerName,
       agent: p.championName,
       team: p.team ?? 'UNKNOWN',
       kills: p.scores.kills,
@@ -404,8 +386,9 @@ export function buildMatchDataFromLolSnapshot(
 export function isLolLiveMatchActive(data: LolAllGameData | null | undefined): boolean {
   if (!data?.gameData) return false
   const time = data.gameData.gameTime
-  if (typeof time !== 'number' || Number.isNaN(time)) return false
-  return time >= 0 && (data.allPlayers?.length ?? 0) > 0
+  if (typeof time !== 'number' || !Number.isFinite(time) || time <= 0) return false
+  if (data.events?.Events?.some(event => event.EventName === 'GameEnd')) return false
+  return (data.allPlayers?.length ?? 0) > 0
 }
 
 function liveGet<T>(path: string, timeoutMs = 1_500): Promise<T> {

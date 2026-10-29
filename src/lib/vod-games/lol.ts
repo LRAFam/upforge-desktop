@@ -1,16 +1,16 @@
 import { getChampionImage } from '../lol'
-import { tagStripLower, type VodGameAdapter, type VodPlayerLookup, type VodPlayerRef } from './types'
+import { type VodGameAdapter, type VodPlayerLookup, type VodPlayerRef } from './types'
 
 /**
  * LoL portraits resolve by name (the Live Client event feed has no puuids):
  *  - the local player is tagged "You" -> own champion (timeline.agent)
- *  - everyone else -> champion from the team roster by tag-stripped name
+ *  - everyone else -> champion from the roster by full ID or unique tagless name
  */
 export function championPortraitByName(ref: VodPlayerRef, lookup: VodPlayerLookup): string {
-  if (ref.name === 'You') {
+  if (ref.isLocalPlayer ?? (ref.name === 'You')) {
     return lookup.ownAgent ? getChampionImage(lookup.ownAgent) || '' : ''
   }
-  const champ = ref.name ? lookup.bySummonerName.get(tagStripLower(ref.name)) ?? null : null
+  const champ = ref.name ? lookup.bySummonerName.get(ref.name.trim().toLowerCase()) ?? null : null
   return champ ? getChampionImage(champ) || '' : ''
 }
 

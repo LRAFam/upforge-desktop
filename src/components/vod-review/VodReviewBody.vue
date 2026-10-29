@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
+import VodLeagueScoreboard from './VodLeagueScoreboard.vue'
 import VodPersonalReview from './VodPersonalReview.vue'
 import VodWorkspaceDivider from './VodWorkspaceDivider.vue'
 import { useVodReview } from '../../composables/useVodReview'
@@ -84,7 +85,6 @@ const {
   onVideoPlaying,
   onVideoWaiting,
   openUpgrade,
-  ownPuuid,
   playbackError,
   playbackRefreshing,
   playbackSpeed,
@@ -104,6 +104,7 @@ const {
   spikeEventIcon,
   timeline,
   scoreboardGroups,
+  isOwnScoreboardPlayer,
   seekCoachAnnotation,
   seekCoachingEvidence,
   reportCoachingEvidence,
@@ -866,8 +867,12 @@ const noVideoHint = computed((): string => {
         </div>
 
         <!-- Team scoreboard (collapsible) -->
+        <VodLeagueScoreboard
+          v-if="showScoreboard && sortedTeamSnapshot.length && !theaterMode && timeline?.game === 'lol'"
+          :groups="scoreboardGroups" :is-own-player="isOwnScoreboardPlayer"
+        />
         <div
-          v-if="showScoreboard && sortedTeamSnapshot.length && !theaterMode"
+          v-if="showScoreboard && sortedTeamSnapshot.length && !theaterMode && timeline?.game !== 'lol'"
           class="flex-shrink-0 bg-[#1a1a1a] border-t border-white/[0.10] max-h-52 overflow-y-auto scrollbar-hide"
         >
           <!-- Column headers -->
@@ -882,14 +887,14 @@ const noVideoHint = computed((): string => {
           <template v-for="(group, gi) in scoreboardGroups" :key="gi">
             <div class="px-3 py-1 bg-white/[0.01]">
               <span class="text-[8px] font-semibold uppercase tracking-wider" :class="group.isAlly ? 'text-blue-500/70' : 'text-red-500/70'">
-                {{ group.isAlly ? 'Allies' : 'Enemies' }}
+                {{ group.label }}
               </span>
             </div>
             <div
-              v-for="p in group.players"
-              :key="p.puuid ?? p.summonerName"
+              v-for="(p, row) in group.players"
+              :key="p.puuid ?? `${gi}-${row}`"
               class="grid grid-cols-[1fr_auto_auto_auto] gap-x-2 items-center px-3 py-1.5 hover:bg-white/[0.03] transition-colors"
-              :class="{ 'bg-white/[0.025]': p.puuid === ownPuuid }"
+              :class="{ 'bg-white/[0.025]': isOwnScoreboardPlayer(p) }"
             >
               <!-- Player name + agent + rank -->
               <div class="flex items-center gap-2 min-w-0">
@@ -901,14 +906,14 @@ const noVideoHint = computed((): string => {
                     v-if="p.agent && getAgentImage(p.agent)"
                     :src="getAgentImage(p.agent)"
                     class="w-full h-full object-contain"
-                    :class="p.puuid === ownPuuid ? 'opacity-100' : 'opacity-75'"
+                    :class="isOwnScoreboardPlayer(p) ? 'opacity-100' : 'opacity-75'"
                   />
                   <div v-else class="w-full h-full bg-white/[0.05]" />
                 </div>
                 <div class="min-w-0">
-                  <p class="text-xs font-semibold truncate" :class="p.puuid === ownPuuid ? 'text-white' : 'text-gray-300'">
-                    {{ p.puuid === ownPuuid ? 'You' : p.summonerName }}
-                    <span v-if="p.puuid === ownPuuid" class="text-[8px] text-gray-600 font-normal ml-0.5">← you</span>
+                  <p class="text-xs font-semibold truncate" :class="isOwnScoreboardPlayer(p) ? 'text-white' : 'text-gray-300'">
+                    {{ isOwnScoreboardPlayer(p) ? 'You' : p.summonerName }}
+                    <span v-if="isOwnScoreboardPlayer(p)" class="text-[8px] text-gray-600 font-normal ml-0.5">← you</span>
                   </p>
                   <p v-if="p.competitiveTier > 0" class="text-[8px] tabular-nums" :style="{ color: getRankColor(p.competitiveTierName) }">
                     {{ p.competitiveTierName }}

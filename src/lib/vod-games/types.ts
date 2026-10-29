@@ -30,11 +30,13 @@ export type VodEventKind =
 export interface VodPlayerRef {
   name?: string | null
   puuid?: string | null
+  isLocalPlayer?: boolean
 }
 
 /**
  * Resolved roster used to turn a player reference into a portrait.
- * `bySummonerName` keys are tag-stripped + lower-cased (see {@link tagStripLower}).
+ * `bySummonerName` contains normalized full Riot IDs and unique tagless names.
+ * Ambiguous names map to null so a portrait never depends on roster order.
  */
 export interface VodPlayerLookup {
   byPuuid: Map<string, string | null>
@@ -88,8 +90,10 @@ export function buildPlayerLookup(
   const bySummonerName = new Map<string, string | null>()
   for (const p of roster ?? []) {
     if (p.puuid) byPuuid.set(p.puuid, p.agent ?? null)
-    const nameKey = tagStripLower(p.summonerName)
-    if (nameKey) bySummonerName.set(nameKey, p.agent ?? null)
+    const keys = new Set([p.summonerName?.trim().toLowerCase(), tagStripLower(p.summonerName)])
+    for (const nameKey of keys) {
+      if (nameKey) bySummonerName.set(nameKey, bySummonerName.has(nameKey) ? null : p.agent ?? null)
+    }
   }
   return { byPuuid, bySummonerName, ownAgent: ownAgent ?? null }
 }

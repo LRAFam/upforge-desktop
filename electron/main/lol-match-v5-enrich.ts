@@ -15,6 +15,7 @@ export interface LolEnrichApiResponse {
 }
 
 export interface LolEnrichPatch {
+  teamSnapshot?: MatchData['teamSnapshot']
   puuid?: string | null
   region?: string | null
   matchId?: string | null
@@ -59,6 +60,8 @@ function recordingEndMs(timeline: MatchData): number | undefined {
 
 export function applyLolEnrichPatch(timeline: MatchData, patch: LolEnrichPatch, status: LolEnrichStatus): void {
   timeline.lolEnrichStatus = status
+
+  if (status === 'fetched' && patch.teamSnapshot?.length) timeline.teamSnapshot = patch.teamSnapshot
 
   if (status === 'fetched' && patch.puuid) timeline.puuid = patch.puuid
   if (status === 'fetched' && patch.region) timeline.region = patch.region

@@ -73,6 +73,66 @@ describe('profile recording directory startup', () => {
 })
 
 describe('recovered recording clock', () => {
+  it('saves a pre-existing 50-minute OBS file separately before a new League match', async () => {
+    let active = true
+    let bytes = 1000
+    mock.call.mockImplementation(async (method) => {
+      if (method === 'StopRecord') { active = false; return { outputPath: '/tmp/pregame.mp4' } }
+      return { outputActive: active, outputPaused: false, outputBytes: bytes += 100,
+        outputDuration: 50 * 60_000, outputPath: '/tmp/pregame.mp4' }
+    })
+    const rec = recorder()
+    Object.assign(rec, { _matchOwnedRecording: false, _recording: false, _startedAt: null })
+    vi.spyOn(rec, 'isCurrentProgramSceneGameplay').mockResolvedValue(true)
+    const pending = rec.prepareMatchCapture(async () => true, { matchStartedAt: Date.now() - 3000 })
+    await vi.advanceTimersByTimeAsync(20_000)
+    expect(await pending).toBe('idle')
+    expect(mock.call).toHaveBeenCalledWith('StopRecord')
+    expect(rec.getRecordingStartedAt()).toBeNull()
+    expect(rec.isActivelyRecording()).toBe(false)
+    expect(mock.call).not.toHaveBeenCalledWith('StartRecord')
+  })
+
+  it('keeps an existing recording that began during the same League match', async () => {
+    let bytes = 1000
+    mock.call.mockImplementation(async () => ({ outputActive: true, outputPaused: false,
+      outputBytes: bytes += 100, outputDuration: 60_000 }))
+    const rec = recorder()
+    Object.assign(rec, { _matchOwnedRecording: false, _recording: false, _startedAt: null })
+    vi.spyOn(rec, 'isCurrentProgramSceneGameplay').mockResolvedValue(true)
+    const pending = rec.prepareMatchCapture(async () => true, { matchStartedAt: Date.now() - 120_000 })
+    await vi.advanceTimersByTimeAsync(1000)
+    expect(await pending).toBe('reclaimed')
+    expect(mock.call).not.toHaveBeenCalledWith('StopRecord')
+  })
+
+  it('does not stop an unrelated OBS scene when preparing a League match', async () => {
+    mock.call.mockResolvedValue({ outputActive: true, outputDuration: 50 * 60_000 })
+    const rec = recorder()
+    Object.assign(rec, { _matchOwnedRecording: false, _recording: false, _startedAt: null })
+    vi.spyOn(rec, 'isCurrentProgramSceneGameplay').mockResolvedValue(false)
+    expect(await rec.prepareMatchCapture(async () => true, { matchStartedAt: Date.now() })).toBe('blocked')
+    expect(mock.call).not.toHaveBeenCalledWith('StopRecord')
+  })
+
+  it('blocks a fresh match recording when the pre-match file cannot be finalized', async () => {
+    let active = true
+    let bytes = 1000
+    mock.fileSize = 0
+    mock.call.mockImplementation(async (method) => {
+      if (method === 'StopRecord') { active = false; return { outputPath: '/tmp/pregame.mp4' } }
+      return { outputActive: active, outputPaused: false, outputBytes: bytes += 100,
+        outputDuration: 50 * 60_000, outputPath: '/tmp/pregame.mp4' }
+    })
+    const rec = recorder()
+    Object.assign(rec, { _matchOwnedRecording: false, _recording: false, _startedAt: null })
+    vi.spyOn(rec, 'isCurrentProgramSceneGameplay').mockResolvedValue(true)
+    const pending = rec.prepareMatchCapture(async () => true, { matchStartedAt: Date.now() })
+    await vi.advanceTimersByTimeAsync(50_000)
+    expect(await pending).toBe('blocked')
+    expect(mock.call).not.toHaveBeenCalledWith('StartRecord')
+    expect(rec.hasRecordingFailure()).toBe(true)
+  })
   it('keeps a known recording origin across a reconnect', async () => {
     const start = Date.now() - 600_000
     let bytes = 1000

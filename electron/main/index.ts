@@ -4695,7 +4695,7 @@ function setupGameDetection(): void {
         }
 
         if (probe?.inMatch) {
-          matchStartTime = Date.now()
+          matchStartTime = Date.now() - Math.round(probe.gameTime * 1000)
           currentMatchStartTime = matchStartTime
           currentGsiMapName = probe.mapName
           let resolvedMode = probe.gameMode ?? 'CLASSIC'
@@ -5081,8 +5081,9 @@ function setupGameDetection(): void {
       // The player can leave a short match while onboarding owns the recorder.
       // Shipping.exe remains open in the lobby, so process presence is not enough.
       if (game === 'valorant') return !(await hasValorantReturnedToMenus(riotLocalApi))
+      if (game === 'lol') return (await lolLiveClientApi.probeActiveMatch())?.inMatch === true
       return true
-    })
+    }, game === 'lol' && matchStartTime !== null ? { matchStartedAt: matchStartTime } : undefined)
     if (abortIfStale(isStale, game)) return
     if (capturePreparation === 'cancelled') {
       logActivity('Match ended before recording could start — watching for the next match')

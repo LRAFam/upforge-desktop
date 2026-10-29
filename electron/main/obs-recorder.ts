@@ -679,11 +679,26 @@ export class OBSRecorder {
   }
 
   /** Wait for setup's temporary recording before deciding whether to recover a match. */
-  prepareMatchCapture(canStart: () => Promise<boolean> = async () => true): Promise<'idle' | 'reclaimed' | 'blocked' | 'cancelled'> {
+  prepareMatchCapture(
+    canStart: () => Promise<boolean> = async () => true,
+    options?: { matchStartedAt: number },
+  ): Promise<'idle' | 'reclaimed' | 'blocked' | 'cancelled'> {
     return withObsRecordingOperation(this._obs, async () => {
       if (!(await canStart())) return 'cancelled'
       if (!(await this.isObsOutputActive())) return 'idle'
-      return await this.reclaimActiveRecording() ? 'reclaimed' : 'blocked'
+      const wasMatchOwned = this._matchOwnedRecording
+      if (!(await this.reclaimActiveRecording())) return 'blocked'
+      if (!wasMatchOwned && options && Number.isFinite(options.matchStartedAt)
+        && this._startedAt !== null && this._startedAt < options.matchStartedAt - 15_000) {
+        // The gameplay scene can be selected for hours in the launcher. Preserve
+        // that file, but never label its idle lead-in as this League match.
+        // A reconnect to a recording we already own must keep its original clock.
+        const preservedPath = await this._requestStop(true)
+        if (!preservedPath) return 'blocked'
+        log.info('[OBSRecorder] Saved pre-match OBS recording separately:', preservedPath)
+        return await canStart() ? 'idle' : 'cancelled'
+      }
+      return 'reclaimed'
     })
   }
 

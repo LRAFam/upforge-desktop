@@ -12,8 +12,9 @@ export function buildReviewEvents(source: RecordingTimeline, me: string | null):
   const classified: TimelineEvent[] = (source.kills ?? [])
     .filter(k => k.videoOffsetMs != null && !isNaN(k.videoOffsetMs))
     .map(k => {
-      const isMyKill  = (me && k.killerPuuid === me) || k.killerName === 'You'
-      const isMyDeath = (me && k.victimPuuid === me) || k.victimName === 'You'
+      // Older recordings use PUUIDs / the You label. New League captures supply explicit identity.
+      const isMyKill = k.killerIsLocalPlayer ?? ((me && k.killerPuuid === me) || k.killerName === 'You')
+      const isMyDeath = k.victimIsLocalPlayer ?? ((me && k.victimPuuid === me) || k.victimName === 'You')
       const type: TimelineEvent['type'] = isMyKill ? 'kill' : isMyDeath ? 'death' : 'neutral'
       return {
         ...k,

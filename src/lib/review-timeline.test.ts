@@ -5,6 +5,13 @@ import type { RecordingTimeline } from '../composables/useVodReview'
 
 const source = (): RecordingTimeline => ({ id: 'recording-a', videoPath: '/video.mp4', map: 'Ascent', agent: 'Fade', game: 'valorant', gameMode: 'competitive', recordedAt: 1, kills: [], deaths: [], roundSummaries: [], teamSnapshot: [], finalStats: null })
 describe('shared review event construction', () => {
+  it('uses recorded League identity even when an opponent is literally named You', () => {
+    const data = { ...source(), game: 'lol', kills: [
+      { killerName: 'You', victimName: 'You', killerIsLocalPlayer: false, victimIsLocalPlayer: true, videoOffsetMs: 1000 },
+      { killerName: 'You', victimName: 'Other', killerIsLocalPlayer: false, victimIsLocalPlayer: false, videoOffsetMs: 2000 },
+    ] }
+    expect(buildReviewEvents(data, null).map(event => event.type)).toEqual(['death', 'neutral'])
+  })
   it('classifies each participant and preserves event coordinates without mutating the source', () => {
     const data = source()
     data.kills = [
