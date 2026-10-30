@@ -1,6 +1,7 @@
 <script setup lang="ts">
 /** One recording as a hairline row: map art · agent · title · result · status · actions. */
 import { computed, onMounted, ref } from 'vue'
+import { useRouter } from 'vue-router'
 import type { LibraryRecording } from '../../../lib/footage-library'
 import { footageUnavailable } from '../../../lib/footage-library'
 import { canOpenTimeline, canWatchRawRecording } from '../../../lib/recording-demo-status'
@@ -17,6 +18,13 @@ import { matchRowSummary, relativeTime, storageLine } from './match-row'
 import type { AnalysisItem } from '../../../env.d.ts'
 
 const props = defineProps<{ rec: LibraryRecording; busy: boolean; selecting: boolean; selected: boolean; hint: string | null; analysis?: AnalysisItem | null }>()
+const router = useRouter()
+/** Valorant matches with a Riot match id have a free data report. */
+const reportMatchId = computed(() => {
+  const id = (props.rec as { matchId?: string | null }).matchId
+  return props.rec.game === 'valorant' && typeof id === 'string' && /^[A-Za-z0-9_-]{1,64}$/.test(id) ? id : null
+})
+function openReport(): void { if (reportMatchId.value) router.push(`/report/${reportMatchId.value}`).catch(() => {}) }
 const emit = defineEmits<{ open: []; watch: []; continue: []; delete: []; toggle: []; prefetch: [] }>()
 
 // Cloud-only rows carry their own score from the cloud inventory (API round 7).
@@ -86,6 +94,7 @@ async function startReview() {
       <button v-if="review === 'available'" type="button" class="uf-link" :disabled="busy" @click="confirmOpen = true">Review replay</button>
       <span v-else-if="review === 'in_progress'" class="uf-t4">Replay review in progress</span>
       <button v-if="rec.analysisId != null && canWatchRawRecording(rec)" type="button" class="uf-link" @click="emit('watch')">Watch</button>
+      <button v-if="reportMatchId" type="button" class="uf-link" title="Free data report for this match" @click.stop="openReport">Report</button>
       <button type="button" class="uf-btn-secondary uf-open" :disabled="!canOpen || busy" @click="emit('open')">
         <UfIcon :name="openLabel === 'Watch' ? 'play' : 'map'" :size="15" />{{ openLabel }}
       </button>

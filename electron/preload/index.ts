@@ -94,6 +94,8 @@ const api = {
       source: string,
     ) => ipcRenderer.invoke('billing:start-checkout', { intent, source }),
     getFocus: () => ipcRenderer.invoke('focus:get'),
+    getMatchReport: (matchId: string) => ipcRenderer.invoke('match-report:get', matchId),
+    listMatchReports: (limit?: number) => ipcRenderer.invoke('match-report:list', limit),
     syncFocus: () => ipcRenderer.invoke('focus:sync'),
     onFocusUpdated: (cb: (payload: unknown) => void) => {
       const listener = (_e: unknown, payload: unknown) => cb(payload)

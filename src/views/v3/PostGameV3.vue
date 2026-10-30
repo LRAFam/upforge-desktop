@@ -45,6 +45,8 @@ const props = defineProps<{
   sendCoachName?: string | null
   /** On-screen number of the round worth reviewing (your first opening death in a lost round). */
   reviewRound?: number | null
+  /** Riot match id with a free data report (Valorant); shows "Open report". */
+  reportMatchId?: string | null
 }>()
 
 defineEmits<{
@@ -58,6 +60,7 @@ defineEmits<{
   'update:feedbackText': [value: string]
   sendToCoach: []
   reviewRound: []
+  openReport: []
 }>()
 
 const portrait = computed(() => agentPortraitUrl(props.agentArt))
@@ -123,6 +126,7 @@ const clipsLine = computed(() => {
           <p v-if="coachSub" class="uf-t4">{{ coachSub }}</p>
           <button v-if="sendCoachName" type="button" class="uf-link pg3-send" @click="$emit('sendToCoach')">Send to {{ sendCoachName }} →</button>
           <button v-if="reviewRound" type="button" class="uf-link pg3-send" :title="`You died first in round ${reviewRound} and lost it`" @click="$emit('reviewRound')">Review round {{ reviewRound }} →</button>
+          <button v-if="reportMatchId" type="button" class="uf-link pg3-send" @click="$emit('openReport')">Open match report →</button>
         </div>
         <p v-if="clipsLine" class="uf-t4 uf-rise uf-d2s">{{ clipsLine }}</p>
         <div v-if="focusStrip" class="pg3-focus uf-rise uf-d2s" :title="focusStrip.line">

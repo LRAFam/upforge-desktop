@@ -7431,6 +7431,22 @@ async function startApp(): Promise<void> {
     }
   }
   ipcMain.handle('focus:sync', () => runFocusSync('manual'))
+  // Match report (free, data-only): read the stored report for one of the player's own matches.
+  ipcMain.handle('match-report:get', async (_event, matchId: unknown) => {
+    if (typeof matchId !== 'string' || !/^[A-Za-z0-9_-]{1,64}$/.test(matchId)) return { ok: false, error: 'invalid_match' }
+    if (!authManager.isAuthenticated()) return { ok: false, error: 'signed_out' }
+    const r = await authManager.getApi().get(`/api/match-report/${matchId}`, { validateStatus: () => true }).catch(() => null)
+    if (r?.status === 404) return { ok: false, error: 'not_found' }
+    if (r?.status !== 200 || !r.data?.success) return { ok: false, error: 'unavailable' }
+    return { ok: true, report: r.data }
+  })
+  ipcMain.handle('match-report:list', async (_event, limit: unknown) => {
+    if (!authManager.isAuthenticated()) return { ok: false, error: 'signed_out' }
+    const n = Number.isInteger(limit) ? Math.min(Math.max(limit as number, 1), 50) : 20
+    const r = await authManager.getApi().get('/api/match-reports', { params: { limit: n }, validateStatus: () => true }).catch(() => null)
+    if (r?.status !== 200 || !r.data?.success) return { ok: false, error: 'unavailable' }
+    return { ok: true, reports: Array.isArray(r.data.reports) ? r.data.reports : [] }
+  })
   ipcMain.handle('focus:get', async () => {
     const userId = getActiveUserId()
     if (!authManager.isAuthenticated() || userId == null) return null

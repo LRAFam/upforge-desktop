@@ -49,6 +49,11 @@ const {
 } = useVodReview()
 
 const result = computed(() => matchResult(matchScoreline.value, timeline.value?.finalStats?.won))
+/** Valorant matches with a Riot match id have a free data report. */
+const reportMatchId = computed(() => {
+  const id = timeline.value?.matchId
+  return timeline.value?.game === 'valorant' && typeof id === 'string' && /^[A-Za-z0-9_-]{1,64}$/.test(id) ? id : null
+})
 // Deadlock recordings store `hero_<id>`; show the hero's name (or "Unknown hero"), never the key.
 const isDeadlockMatch = computed(() => timeline.value?.game === 'deadlock')
 if (isDeadlockMatch.value) void loadDeadlockHeroesOnce()
@@ -108,6 +113,7 @@ const workspaceOn = computed(() => props.workspace)
     <div class="uf-mp-bar">
       <button type="button" class="uf-link uf-mp-back" @click="back">← Back</button>
       <UfTabs :items="tabs" :model-value="tab" label="Match sections" @update:model-value="onTab" />
+      <button v-if="reportMatchId" type="button" class="uf-link" title="Free data report for this match" @click="router.push(`/report/${reportMatchId}`)">Match report</button>
       <div class="uf-mp-spacer" />
       <div class="uf-mp-tools">
         <button v-if="!theaterMode && roundGroups.length" type="button" class="uf-mp-tool" :aria-pressed="!roundLogCollapsed"
