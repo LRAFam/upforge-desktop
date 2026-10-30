@@ -54,3 +54,41 @@ Owner's model from the first 100 signups (6 long-term subscribers): when a playe
 - **Focus:** the report suggests a target (a small step past the player's own average: shares −40% or +15 points, counts −20% / +10%). "Start this focus" (Valorant, League — the games with a focus loop) starts it via the existing focus service, only when no focus is active. Deadlock/CS2 show the first focus as advice only.
 - **API (branch feat/match-report):** `GET/POST /api/starting-report/{game}`, `POST .../dismiss`, `POST .../focus`; migration `2026_10_31_110000_create_starting_reports_table`; funnel event `starting_report_generated`.
 - **Desktop:** `/starting-report/:game` screen; a "Your starting report" card at the end of onboarding (step 5, "Reading your last 10 matches…" while it's written) and on Home during the first week until hidden; "Your starting report →" on Progress. Generation is attempted at most once per game per app session.
+
+## Match-specific knowledge and real cost (context fix, 2026-10-30)
+
+**Problem.** A Reyna game on Bind by a Gold player should get the Reyna guide, the Bind guide, the Gold/Plat rank file and current-season meta. Before this fix:
+- Valorant match notes passed agent + map but **no rank** (so no rank file at all) and **no meta** (meta was premium-only and the meta row was a neutral stub).
+- League/CS2/Deadlock notes used a generic loader: every "always on" doc in name order, no CS2 map, no rank band for CS2/Deadlock, champion only from a table that has no champion rows.
+- `fetch_kb` rejected any key with a space or `&`, so **CS2 "Dust II"** and **Deadlock heroes such as "Lady Geist" and "Mo & Krill" could never load**.
+- The starting report only passed the rank.
+
+**Fix (report-ai `services/match_knowledge.py`, used by match notes, game notes and the starting report).** Match-specific entries first, then general ones; per-game caps (Valorant/League/CS2 12,000 chars, Deadlock 10,000); one game only; the player's own rank band only, and **no** band when the rank is unknown (never a guess).
+
+| Game | What a match now sends, in order |
+|---|---|
+| Valorant | agent guide → map guide → **the player's own rank band** (`iron_bronze` / `gold_plat` / `diamond_plus`, from `rankSnapshot` or their own `teamSnapshot` row) → `metas/meta_current` (new, dated, sourced) → game-mode file |
+| League | champion (official Data Dragon row via the new read-only `GET /api/knowledge-base/entities/{game}/{type}/{key}`) → role file → rank band (`lol_iron_silver` / `lol_gold_emerald` / `lol_diamond_plus`) → analysis guidelines + 3 role-relevant training docs (e.g. jungle: dragons, grubs/herald/baron, recall & tempo; support: vision…) |
+| CS2 | map guide (spaces allowed) → role if known → economy rules + buy decisions → Premier/FACEIT context → **only the player's band section** of "mistakes by skill band" (newer / mid / high from FACEIT level, Premier/CS Rating or skill group; none when unknown) |
+| Deadlock | hero guide (spaces and `&` allowed) → laning → souls & orbs → teamfights → common mistakes → ranked basics (only when a rank is known) |
+| Starting report | the most-played agent/champion/hero and role across the fetched matches, the player's rank band, Valorant meta |
+
+Tests: `tests/test_match_knowledge.py` (31: Reyna/Bind/Gold order, every rank band, Gold never gets Diamond+, unknown rank → no band, CS2 band sections, names with spaces, never another game, cap keeps match entries first), `tests/test_kb_client.py` (+2), API `KnowledgeEntityEndpointTest` (4), `ValorantMetaBundleTest` (1).
+
+**Current-season meta.** New bundle `resources/knowledge-base/valorant/reviewed-2026-10-30.json` (`metas/meta_current`, patch 13.09, Act 6) with SOURCES.md: 13.09 added Agent Hush and Warden (weapon) buffs (official summary); Summit added in 13.00; Act 6 competitive pool Abyss, Bind, Corrode, Haven, Lotus, Summit, Sunset (secondary sources, two agree). No tiers, pick or win rates. League/CS2/Deadlock already carry patch facts in their own bundles (League 26.21, CS2 1.41.9.3, Deadlock 10-14-2026), so no separate meta entry was needed.
+**Gaps found:** the Valorant KB has **no Hush agent guide and no Summit map guide** (Summit is in the competitive pool; the owner's own recent match was on Summit). Those games currently get rank + meta only.
+
+**Real cost (no live calls).** Prices verified 2026-10-30: Claude Haiku 5.5 **$0.10 / $0.50 per M tokens** (≤100K-token prompts) — the table was right; Claude Sonnet 5 **$2 / $10**, made permanent in Aug 2026 (fixed two stale comments and the generic `cost_*_per_mtok` fields, which still said $3/$15 and overstated two logs by 50%). Prompt sizes were measured by building the real prompts from fixtures with a fake client; tokens ≈ characters ÷ 4 (÷ 3.5 for the upper end), since there's no offline tokenizer. The notes model thinks before answering, so **output dominates**: the repo's recorded live measurement (8 runs, 2026-10-23) is ~$0.0016 per Valorant notes run with no knowledge.
+
+| Item (model) | Prompt chars before → after | Input tokens after | Est. $ per item |
+|---|---|---|---|
+| Valorant match notes, Reyna/Bind/Gold 2 (Haiku 5.5) | 4,837 → 14,546 | ~3,600–4,200 | **≈ $0.0019** (was ≈ $0.0016 measured); ≈ $0.004 with a retry |
+| League match notes (Haiku 5.5) | 1,567 → 13,886 | ~3,500–4,000 | **≈ $0.0018–0.002** |
+| CS2 match notes (Haiku 5.5) | 1,717 → 11,329 | ~2,800–3,200 | **≈ $0.0017–0.0019** |
+| Deadlock match notes (Haiku 5.5) | 1,422 → 11,747 | ~2,900–3,400 | **≈ $0.0017–0.0019** |
+| Starting report, once per game (Haiku 5.5) | → 8,668 (Valorant) / 11,465 (League) | ~2,200–3,300 | **≈ $0.002–0.0025** |
+| Round review writer (Sonnet 5), if given the same Valorant knowledge | +~9,700 chars | ~+2,500–2,800 | **≈ $0.020** writer (was $0.014) → **≈ $0.06 per round** with the ~$0.04 Gemini observer |
+
+The earlier "$0.0004 per match" (other games) and "$0.0007 per starting report" estimates assumed ~450–900 output tokens and no knowledge; with thinking output and the new context, **≈ $0.002 per match report** is the honest figure. Still ~500 coached matches per $1. Replace these with live numbers once notes run in production (`game_match_notes_cost`, `starting_report_cost`, match-report `cost_usd` logs).
+
+**Round review (rr-ai, not edited here):** apply the same selector — `services/match_knowledge.match_knowledge_block('valorant', agent=..., map_name=..., rank=valorant_rank_from_match(md), mode=...)` — to the writer prompt in `pipelines/valorant_round_review.py` once the trial is done.
