@@ -232,3 +232,6 @@ Checks: type-check clean; eslint clean on changed files; `npm test` 1784 passed 
 3. **P1-06 callouts and distance in the round story — done (AI).** Golden cases first: `tests/fixtures/coaching_claims/round_story_callouts.json` (2 of 3 failed before the change). `moment_context._death_place` adds "you died at <callout>" only when the zone pack resolved a polygon (`callout_polygon`/`site_polygon`; never nearest-anchor guesses) and "killer N m away (at <callout>)" from Riot world units (cm), 1–150 m only. New claim codes `death_callout`, `killer_distance` in `claim_contracts.py`.
 Checks: desktop type-check + eslint clean, `npm test` 1,803 passed; AI `pytest` 922 passed, `claim_contract` 345 passed.
 Left: no output guard yet for distances the model might invent beyond the ground truth (ground truth only states measured ones); Valorant focus-to-round deep link from Home.
+
+## Round 9
+- **Coach memory writable (rework f566d46):** "What keeps coming up" on Progress has **Mark fixed** with **Undo**, using the existing `PATCH /api/knowledge-bank/{id}/status` (statuses active/improving/resolved; manual statuses stop the coach auto-changing them). New `progress:set-habit-status` IPC validates id and status. No API change was needed. Copy doesn't promise the coach will re-flag a fixed habit, because manual statuses aren't auto-overridden.

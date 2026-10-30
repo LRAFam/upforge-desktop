@@ -87,3 +87,6 @@
 
 ## Web header dead gate (spec only — web is the user's checkout)
 `upforge-frontend/app/components/AppHeader.vue:48` shows the Squad link only for tiers `squad-4` / `squad-6`, which the API never sets (squad membership lives on `teams`, not the user tier). Fix: show the link when the user belongs to a team (e.g. a `team_id`/`team` on `/api/user`, or call `/api/teams/mine` once and cache), else hide it or link to `/team` as the plan page.
+
+## Round 9: title-bar account menu (rework 6e37934)
+- The title-bar account button opens **Linked accounts** for the current game: Valorant and League accounts with Main/Alt and **Make main** (existing `activateRiotAccount` / `lol.setMainAccount`, same plan caps, no pricing change); CS2 shows its Steam name and FACEIT nickname; Deadlock shows its Steam link. **Manage accounts** opens Settings › Account. Closes on Escape and outside click. Screenshot checked on the real account (read-only).

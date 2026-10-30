@@ -191,3 +191,8 @@ To reach 5: verify parity on a real demo; callouts and positions on the web path
 - **Flag for the AI owner:** `cs2_claude_coach.py` prompt example cites "expected 25-35% HS% for this rank" — an unsourced benchmark the model may copy.
 - **Verified:** type-check (only errors are another agent's in-progress clip files), eslint on changed files, `npm test` 1,772 passed. Not seen on screen: no CS2 recording on this Mac and switching the title-bar game writes to the real account.
 - Scores: What players see 4 → 4.5 (in-app result + deep tabs); Detect & record unchanged.
+
+## Round 9
+- **Web/FACEIT callouts (ai-fixes 680e6c3):** server demo parsing reads Valve's own place names (demoparser2 `last_place_name`) for every death and humanises them (`BombsiteA` → "A site", `LongHall` → "Long Hall"). Web and FACEIT round lines now say where the player killed or died, like the desktop. No place name → no location claim; a teammate's kill never gives the player a location; parsers without the prop fall back to no locations. Golden case `cs2_web_callouts` written first (failed on import, passes now).
+- Trades on the server path were already measured (3 s rule, round 6); the callout now also disambiguates which death a trade belongs to.
+- Note: Valve place names can differ from community callout names the desktop map zones use. Both are honest; a later pass could map Valve places to the desktop zone names per map.

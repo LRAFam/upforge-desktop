@@ -200,3 +200,8 @@ desktop. No migrations: everything new lives inside the existing `match_stats` J
 - **Not taken:** 04 focus loop / leave beta (M), 08 patch-aware (needs patch data), 06 death map (M), 10 ability-in-fight (M), 03/11 (data/$).
 - Verified as above (tests 1,772 passed). Not seen on screen (no Deadlock recording here; no game switching).
 - Scores: What players see 4.5 → 4.5 (now inside the match page too).
+
+## Round 9
+- **Ability use in fights (ai-fixes 647374f, rework c4f81b2):** when the replay has boon's `abilities` dataset (tick, hero, ability), each death records the abilities the player cast in the 8 s before it (movement and melee excluded) and the coach gets "Deaths with no ability used in the 8 s before: N of M". Without the dataset the context says it wasn't measured and the fight guard drops factual ability/cooldown claims. Golden case `deadlock_ability_claims` written first. The desktop review shows "used X, Y" or "no ability in the 8 s before" per death, and the count, only when measured.
+- Assumption to verify on a real replay: the `ability` column's values (internal names vs ids). The label helper handles both; internal names are humanised (`citadel_ability_haze_sleep_dagger` → "Haze sleep dagger"), which is readable but not the in-game name. Mapping to official names via deadlock-api assets is the next step.
+- **Lane/zone naming: skipped.** There is no verified lane geometry for the current map (City Never Sleeps changed lanes; deadlock-api assets have no lane polygons), so naming lanes from positions would be guessing. Map side vs each team's spawn (round 6) stays the only position claim.
