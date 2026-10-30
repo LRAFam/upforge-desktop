@@ -9,6 +9,7 @@ import UfButton from '../../components/v3/UfButton.vue'
 import UfSkeleton from '../../components/v3/UfSkeleton.vue'
 import { loadingLine, startingReportView, type StartingGame } from '../../lib/starting-report'
 import { useStartingReport } from '../../components/v3/starting/useStartingReport'
+import { ofN } from '../../components/v3/coach-flow/coach-visuals'
 
 const route = useRoute()
 const router = useRouter()
@@ -52,7 +53,13 @@ function back() { if (window.history.length > 1) router.back(); else void router
       <div class="sr3-cols">
         <section class="sr3-col">
           <span class="uf-label">What's costing you games</span>
-          <p v-for="(h, i) in view.habits" :key="i" class="uf-t3">{{ h }}</p>
+          <div v-for="(h, i) in view.habits" :key="i" class="sr3-habit">
+            <p class="uf-t3">{{ h }}</p>
+            <!-- One pip per match read, filled where the habit showed up. -->
+            <span v-if="ofN(h)" class="sr3-pips" role="img" :aria-label="`${ofN(h)!.x} of ${ofN(h)!.n} matches`">
+              <i v-for="k in ofN(h)!.n" :key="k" class="uf-fill" :class="{ 'is-on': k <= ofN(h)!.x }" :style="{ animationDelay: `${k * 30}ms` }" />
+            </span>
+          </div>
           <span class="uf-label sr3-gap">What you do well</span>
           <p v-for="(s, i) in view.strengths" :key="i" class="uf-t3">{{ s }}</p>
         </section>
@@ -100,6 +107,11 @@ function back() { if (window.history.length > 1) router.back(); else void router
 .sr3-cols { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr); gap: 40px; margin-top: 16px; }
 .sr3-col { display: flex; flex-direction: column; gap: 8px; }
 .sr3-gap { margin-top: 14px; }
+.sr3-habit { display: flex; flex-direction: column; gap: 6px; padding: 8px 0; border-top: 1px solid var(--uf-line); }
+.sr3-habit p { margin: 0; }
+.sr3-pips { display: flex; gap: 3px; }
+.sr3-pips i { width: 14px; height: 6px; background: var(--uf-raised); display: block; }
+.sr3-pips i.is-on { background: var(--uf-loss); }
 .sr3-row { display: flex; justify-content: space-between; gap: 16px; padding: 8px 0; border-bottom: 1px solid var(--uf-line); }
 .sr3-row dd { margin: 0; }
 .sr3-focus { display: flex; flex-direction: column; gap: 6px; padding-top: 18px; border-top: 1px solid var(--uf-line); margin-top: 8px; }

@@ -34,3 +34,21 @@ Per run: ≈ $0.06 before the round review, ≈ $0.11 with it. Clips: 10.5 MB at
   teammate positions in this match's data, not a real habit. The trade/proximity facts need a data check
   before that claim is allowed (golden case first).
 - AI review time (20–40 s per moment) now dominates; uploads are 1–3 MB per moment.
+
+## Visual redesign (2026-10-30, visual-report)
+Reusable components in `src/components/v3/coach-flow/` (pure data in `coach-visuals.ts`, tested):
+- **Report hero**: UfHeroBand (map art, agent, result, score) with the rounds line in the stats slot; rounds the coach looked at are marked.
+- **What decided it**: the fact-checked headline as the one uf-t1 sentence, up to 3 evidence lines.
+- **KeyMomentV3**: still frame from the clip at the decisive moment (ffmpeg, cached) with a Kill / Death / Trade · callout tag; plays the clip inline on Watch; minimap of everyone's position at that kill (Riot snapshot; victim from the kill event; killer → victim line); story in ≤3 lines; numbered fixes with "Watch m:ss" in round time.
+- **RoundReviewVisualV3**: round timeline (players alive per side over time, plant/defuse, your kill/death markers you can click), selected frame + strip of the frames the coach looked at, minimap at that frame, story, numbered fixes. Used on the demo and on the match page (`RoundReviewV3`, where Watch seeks the page player and there are no stills).
+- **RoundStripV3**: every round as a bar (won/lost colour, height = your buy), opening duel square, kill marks, coach-reviewed underline.
+- **NumbersV3**: K/D/A, ADR, headshot share as display numbers; opening duels split bar; rounds won by buy as bars in rows; hit regions when Riot's per-round hit rows were kept.
+- **MatchReportV3**: when the match's recording is on this PC, shows the rounds line, round strip and numbers (otherwise the plain facts list). **StartingReportV3**: habits drawn as match pips ("6 of 9 matches").
+Honesty: no snapshot → no map; no kill list for a round → no timeline; numbers say nothing rather than 0.
+
+## Demo cache ($0 replays)
+- Live runs save clips, stills and the event log per match in `userData/coach-flow-cache/<analysisId>/`; "Use cached run ($0)" replays them with the original timings and costs. The checkbox is only on when a saved run exists; otherwise the label says the run is live (about $0.11).
+- Failed or skipped steps show in plain words at the top of the screen (e.g. a 401 means the app and the local AI service were started with different keys).
+- Fixed: starting a new run used to delete the previous run's folder, which wiped the cache (`dispose()` now only deletes temp folders).
+- Seeded: 634 (Ascent, live $0.086) and 639 (Summit, live $0.199). 635 not seeded (budget).
+- Env: the app's `COACH_FLOW_AI_KEY` must equal the local AI service's `INTERNAL_API_KEY` (the app was restarted with the AI process's own key).

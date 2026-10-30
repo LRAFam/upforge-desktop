@@ -12,10 +12,12 @@ import {
 } from '../../../lib/round-review'
 import UfButton from '../UfButton.vue'
 import UfDialog from '../UfDialog.vue'
+import RoundReviewVisualV3 from '../coach-flow/RoundReviewVisualV3.vue'
 
 /** autoRound: 1-based round to offer straight away (post-game "Review round N"). */
 const props = defineProps<{ autoRound?: number | null }>()
 const { timeline, activeRoundNumber, seekToTime } = useVodReview()
+const matchData = computed(() => (timeline.value ?? null) as unknown as Record<string, unknown> | null)
 // The review uses on-screen numbering (R1 = round 1); the player's round state is 0-based.
 const shownRound = computed(() => (activeRoundNumber.value == null ? null : activeRoundNumber.value + 1))
 
@@ -106,20 +108,9 @@ const canAsk = computed(() => available.value && shownRound.value != null && !cu
         <span v-if="!isDone(r)" class="uf-t4 uf-live">Reviewing this round…</span>
         <span v-else-if="r.status === 'failed'" class="uf-t4">Couldn't review · round review returned</span>
       </div>
-      <template v-if="r.status === 'completed'">
-        <p class="uf-t2 rr3-story">{{ r.story }}</p>
-        <ol class="rr3-fixes">
-          <li v-for="(f, i) in r.fixes" :key="i" class="rr3-fix">
-            <div>
-              <p class="uf-t3">{{ f.title }}</p>
-              <p class="uf-t4">{{ f.detail }}</p>
-            </div>
-            <span class="rr3-jumps">
-              <button v-for="ms in f.evidence_ms" :key="ms" type="button" class="uf-link" @click="seekToTime(jumpSeconds(ms))">Watch {{ clockLabel(ms) }}</button>
-            </span>
-          </li>
-        </ol>
-      </template>
+      <!-- Round timeline, positions on the map and numbered fixes; Watch seeks this page's player. -->
+      <RoundReviewVisualV3 v-if="r.status === 'completed'" :review="{ round_number: r.round_number, story: r.story, fixes: r.fixes ?? [] }"
+        :match-data="matchData" @watch="ms => seekToTime(jumpSeconds(ms))" />
     </article>
 
     <UfDialog :open="confirmRound != null" title="Review this round?" @close="confirmRound = null">

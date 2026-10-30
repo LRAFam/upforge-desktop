@@ -19,6 +19,10 @@ import {
   type Cs2ReportTimeline, type DeadlockReportResponse, type LolReportResponse, type ReportGame,
 } from '../../lib/match-report-games'
 import { readCache, writeCache } from '../../lib/stale-cache'
+import UfRoundsLine from '../../components/v3/UfRoundsLine.vue'
+import RoundStripV3 from '../../components/v3/coach-flow/RoundStripV3.vue'
+import NumbersV3 from '../../components/v3/coach-flow/NumbersV3.vue'
+import { numbersView, roundCells } from '../../components/v3/coach-flow/coach-visuals'
 
 const route = useRoute()
 const router = useRouter()
@@ -91,6 +95,27 @@ async function load(): Promise<void> {
 onMounted(load)
 watch([matchId, game], load)
 
+/**
+ * Valorant: when the match's recording is on this PC, its timeline (round summaries, every kill,
+ * position snapshots) drives the visuals: rounds line, round strip and numbers. Otherwise the
+ * report keeps its plain facts list.
+ */
+const localTimeline = ref<Record<string, unknown> | null>(null)
+async function loadLocalTimeline(): Promise<void> {
+  localTimeline.value = null
+  if (game.value !== 'valorant' || !matchId.value) return
+  const id = matchId.value
+  const rows = await window.api?.recordings?.listAll?.().catch(() => []) ?? []
+  const rec = rows.find(r => r.matchId === id)
+  if (!rec) return
+  const t = await window.api?.recordings?.getTimeline?.(rec.id).catch(() => null)
+  if (id === matchId.value && t) localTimeline.value = t as unknown as Record<string, unknown>
+}
+onMounted(loadLocalTimeline)
+watch([matchId, game], loadLocalTimeline)
+const cells = computed(() => roundCells(localTimeline.value))
+const numbers = computed(() => (cells.value.length ? numbersView(localTimeline.value) : null))
+
 const notFoundText = computed(() => {
   if (needsDemo.value) return 'This report is built from the match demo. Attach or wait for the demo on the match page, then come back.'
   switch (game.value) {
@@ -139,6 +164,9 @@ function back(): void { if (window.history.length > 1) router.back(); else route
         :height="220"
       >
         <span v-if="view.score" class="uf-d2">{{ view.score }}</span>
+        <template v-if="cells.length" #stats>
+          <div class="mr3-hero-rounds"><UfRoundsLine :rounds="cells.map(c => ({ won: c.result === 'won', marked: c.marked }))" :height="22" /></div>
+        </template>
       </UfHeroBand>
 
       <div class="mr3-body uf-reveal">
@@ -157,8 +185,14 @@ function back(): void { if (window.history.length > 1) router.back(); else route
           <p v-if="view.isAlt" class="uf-t4">Played on an alt account: coached, not counted for your focus.</p>
         </section>
 
+        <section v-if="cells.length" class="mr3-visual">
+          <span class="uf-label">Your match, round by round</span>
+          <RoundStripV3 :cells="cells" />
+          <NumbersV3 v-if="numbers" :numbers="numbers" />
+        </section>
+
         <div class="mr3-cols">
-          <section class="mr3-facts">
+          <section v-if="!cells.length" class="mr3-facts">
             <span class="uf-label">The match</span>
             <dl>
               <div v-for="row in view.facts" :key="row.label" class="mr3-row">
@@ -202,6 +236,8 @@ function back(): void { if (window.history.length > 1) router.back(); else route
 .mr3-coach { display: flex; flex-direction: column; gap: 10px; max-width: 760px; }
 .mr3-evidence { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 6px; }
 .mr3-cols { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); gap: 48px; }
+.mr3-visual { display: flex; flex-direction: column; gap: 16px; }
+.mr3-hero-rounds { width: min(520px, 100%); }
 .mr3-facts dl { margin: 12px 0 0; }
 .mr3-row { display: flex; justify-content: space-between; gap: 16px; padding: 10px 0; border-top: 1px solid var(--uf-line); }
 .mr3-row dd { margin: 0; }
