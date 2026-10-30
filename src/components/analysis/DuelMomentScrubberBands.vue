@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
+import { uiV3 } from '../../lib/ui-v3'
 import {
   duelMomentScrubberBandClass,
   duelMomentScrubberMarkerClass,
@@ -41,6 +42,12 @@ const bands = computed(() => {
 </script>
 
 <template>
+<template v-if="uiV3">
+  <template v-for="band in bands" :key="band.moment.moment_id">
+    <button type="button" class="db3-band" :class="{ 'db3-band--on': activeMomentId === band.moment.moment_id }" :style="{ left: band.left + '%', width: Math.max(band.width, 0.4) + '%' }" :title="duelMomentScrubberTitle(band.moment)" :aria-label="duelMomentScrubberTitle(band.moment)" @click.stop="emit('select', band.moment)" />
+  </template>
+</template>
+<template v-else>
   <template v-for="band in bands" :key="band.moment.moment_id">
     <button
       type="button"
@@ -57,3 +64,10 @@ const bands = computed(() => {
     />
   </template>
 </template>
+</template>
+
+<style scoped>
+.db3-band { position: absolute; top: -4px; bottom: -4px; z-index: 1; padding: 0; border: 0; border-left: 1px solid var(--uf-line-2); border-right: 1px solid var(--uf-line-2); background: rgba(236, 232, 225, 0.08); cursor: pointer; }
+.db3-band:hover { background: rgba(236, 232, 225, 0.16); }
+.db3-band--on { background: rgba(236, 232, 225, 0.2); border-color: var(--uf-bone); }
+</style>

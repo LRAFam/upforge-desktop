@@ -7,6 +7,7 @@ import {
   isDemoAttachGame,
   type DemoAttachGame,
 } from '../lib/demo-attach-guide'
+import { uiV3 } from '../lib/ui-v3'
 
 const props = withDefaults(defineProps<{
   game: string
@@ -58,6 +59,34 @@ async function copyAutoexec() {
 </script>
 
 <template>
+  <div v-if="uiV3 && attachGame()" class="uf-guide">
+    <button type="button" class="uf-guide-head" :aria-expanded="expanded" @click="toggle">
+      <span class="uf-t3">{{ demoAttachGuideTitle(attachGame()!) }}</span>
+      <span class="uf-guide-chev" :class="{ 'is-open': expanded }" aria-hidden="true">
+        <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="square" stroke-width="2" d="M19 9l-7 7-7-7" /></svg>
+      </span>
+    </button>
+    <div v-if="expanded" class="uf-guide-body">
+      <ol class="uf-guide-steps">
+        <li v-for="(step, index) in demoAttachGuideSteps(attachGame()!)" :key="index" class="uf-guide-step">
+          <span class="uf-guide-n">{{ index + 1 }}</span>
+          <span>
+            <template v-for="(part, partIndex) in step.parts" :key="partIndex">
+              <strong v-if="part.emphasis">{{ part.text }}</strong>
+              <code v-else-if="part.mono">{{ part.text }}</code>
+              <span v-else>{{ part.text }}</span>
+            </template>
+          </span>
+        </li>
+      </ol>
+      <div class="uf-guide-actions">
+        <button type="button" class="uf-link" @click="openDemoFolder">Open {{ attachGame() === 'cs2' ? 'demo' : 'replays' }} folder →</button>
+        <button v-if="attachGame() === 'cs2'" type="button" class="uf-link" @click="copyAutoexec">{{ copied ? 'Copied' : 'Copy autoexec line' }}</button>
+      </div>
+      <p v-if="folderError" class="uf-dialog-warn">{{ folderError }}</p>
+    </div>
+  </div>
+<template v-else>
   <div
     v-if="attachGame()"
     class="rounded-xl border border-white/[0.08] bg-black/20 overflow-hidden"
@@ -129,4 +158,5 @@ async function copyAutoexec() {
       <p v-if="folderError" class="text-[12px] text-amber-300/90 leading-snug">{{ folderError }}</p>
     </div>
   </div>
+</template>
 </template>

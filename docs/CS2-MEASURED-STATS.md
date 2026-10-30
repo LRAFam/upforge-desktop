@@ -29,3 +29,11 @@ Desktop demo parsing now supplies optional `match_stats` with `schema_version: 1
 Desktop extraction and upload changes are included in v2.14.3. The corresponding AI service and frontend changes require separate deployments. No production report data was modified.
 
 Report 649 cannot be filled from its existing sparse submission. Its original Cache demo is required for a backfill. The locally available Anubis and Inferno demos are different matches and must not be substituted. The redesign remains a mock preview; it does not pretend those new statistics belong to report 649.
+
+## Same definitions on the web (2026-10-30)
+The AI service computes these exact stats for web uploads and FACEIT demos in
+`services/cs2_match_stats_v1.py` (a port of `calculateCs2MatchStats`, read with Python demoparser2).
+Parity is locked by `electron/main/__fixtures__/cs2-match-stats-v1-parity.json`, run by both
+`electron/main/cs2-match-stats-parity.test.ts` and the AI test `tests/test_cs2_match_stats_v1_parity.py`
+(a copy at `tests/fixtures/cs2_match_stats_v1_parity.json`). Change a definition here → regenerate the
+fixture from this code and copy it to the AI repo.

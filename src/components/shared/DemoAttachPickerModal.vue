@@ -9,6 +9,10 @@ import {
   type RecordingDemoHint,
 } from '../../lib/demo-preview-match'
 import type { RankedDemoCandidate } from '../../lib/demo-recording-match'
+import UfDialog from '../v3/UfDialog.vue'
+import UfButton from '../v3/UfButton.vue'
+import { uiV3 } from '../../lib/ui-v3'
+import { demoAssessmentTone } from '../../lib/shell-v3'
 
 type DemoPreview = NonNullable<Awaited<ReturnType<typeof window.api.recordings.previewDemo>>['preview']>
 
@@ -213,9 +217,106 @@ function rowClass(fit: RankedDemoCandidate['fit'], selected: boolean): string {
   if (fit === 'unlikely') return 'border-white/[0.06] bg-white/[0.02] opacity-70 hover:opacity-90'
   return 'border-white/[0.08] bg-white/[0.03] hover:bg-white/[0.05]'
 }
+
+const assessmentToneV3 = computed(() => demoAssessmentTone(assessment.value?.confidence))
 </script>
 
 <template>
+  <UfDialog v-if="uiV3" :open="show" :title="mapLabel" kicker="Match replay to VOD" :width="960" @close="emit('close')">
+    <p class="uf-t4" style="margin: -6px 0 0">
+      Recorded {{ recordedLabel }}<span v-if="vodHintLabel"> · your VOD: {{ vodHintLabel }}</span>
+    </p>
+    <div class="uf-picker">
+      <div class="uf-picker-col">
+        <span class="uf-label">Local replays</span>
+        <p v-if="loading" class="uf-t4" style="margin: 0; display: flex; gap: 8px; align-items: center"><span class="uf-spin" aria-hidden="true" />Scanning folders…</p>
+        <div v-else-if="!candidates.length" class="uf-picker-empty">
+          <span class="uf-t3">No replay files found yet</span>
+          <span class="uf-t4">Download the match in-game, then rescan.</span>
+        </div>
+        <div v-else class="uf-picker-list" role="radiogroup" aria-label="Local replays">
+          <button
+            v-for="demo in candidates"
+            :key="demo.path"
+            type="button"
+            role="radio"
+            :aria-checked="selectedPath === demo.path"
+            class="uf-picker-row"
+            :class="{ 'is-selected': selectedPath === demo.path, 'is-unlikely': demo.fit === 'unlikely' && selectedPath !== demo.path }"
+            @click="selectDemo(demo.path)"
+          >
+            <span class="uf-picker-radio" aria-hidden="true" />
+            <span style="min-width: 0; flex: 1; display: flex; flex-direction: column; gap: 3px">
+              <span style="display: flex; align-items: baseline; min-width: 0">
+                <span class="uf-t3 uf-picker-name">{{ demo.name }}</span>
+                <span v-if="demo.recommended" class="uf-picker-tag">Likely</span>
+              </span>
+              <span class="uf-t4">{{ demo.timingDetail }}</span>
+            </span>
+          </button>
+        </div>
+      </div>
+
+      <div class="uf-picker-col">
+        <span class="uf-label">Preview</span>
+        <p v-if="!selectedPath" class="uf-t4" style="margin: 0; padding: 32px 0; text-align: center">Select a replay to preview kills and score</p>
+        <p v-else-if="previewLoading" class="uf-t4" style="margin: 0; display: flex; gap: 8px; align-items: center"><span class="uf-spin" aria-hidden="true" />Parsing replay…</p>
+        <template v-else-if="preview?.ok">
+          <div v-if="previewWarning" style="display: flex; flex-direction: column; gap: 6px">
+            <p class="uf-dialog-warn">{{ previewWarning }}</p>
+            <button v-if="preview.identityWarning && game === 'cs2'" type="button" class="uf-link" style="align-self: flex-start" @click="openRecordingSettings">Open Settings → Recording</button>
+          </div>
+          <div style="display: flex; flex-direction: column; gap: 6px">
+            <span class="uf-t3">{{ previewMapLabel }}</span>
+            <span style="display: flex; gap: 14px; align-items: baseline; flex-wrap: wrap">
+              <span class="uf-d4">{{ preview.allyScore }}–{{ preview.enemyScore }}</span>
+              <span v-if="preview.won != null" class="uf-t3" :style="{ color: preview.won ? 'var(--uf-win)' : 'var(--uf-loss)' }">{{ preview.won ? 'Win' : 'Loss' }}</span>
+              <span v-if="preview.kills != null" class="uf-t3 uf-num">{{ preview.kills }}/{{ preview.deaths }}/{{ preview.assists }}</span>
+              <span v-if="preview.rounds" class="uf-t4">{{ preview.rounds }} rounds</span>
+            </span>
+            <span v-if="preview.playerName" class="uf-t4">Player: {{ preview.playerName }}</span>
+          </div>
+          <div v-if="assessment" class="uf-picker-section">
+            <div class="uf-picker-tone">
+              <span class="uf-banner-dot" :class="{ 'is-win': assessmentToneV3 === 'win', 'is-gold': assessmentToneV3 === 'gold' }" aria-hidden="true" />
+              <div>
+                <span class="uf-t3">{{ assessment.headline }}</span>
+                <ul v-if="assessment.details.length" class="uf-t4">
+                  <li v-for="(line, index) in assessment.details" :key="index">{{ line }}</li>
+                </ul>
+              </div>
+            </div>
+          </div>
+          <div v-if="preview.killHighlights.length" class="uf-picker-section">
+            <span class="uf-label">{{ killListTitle }}</span>
+            <ul class="uf-picker-kills">
+              <li v-for="(kill, index) in preview.killHighlights" :key="`${kill.round}-${index}`">{{ kill.label }}</li>
+            </ul>
+          </div>
+        </template>
+        <div v-else style="display: flex; flex-direction: column; gap: 8px; padding: 24px 0">
+          <p class="uf-dialog-warn">{{ previewError || preview?.error || 'Could not preview this replay' }}</p>
+          <span class="uf-t4">Try Rescan, pick another file, or set your CS2 Steam name in Settings → Recording.</span>
+          <button v-if="game === 'cs2'" type="button" class="uf-link" style="align-self: flex-start" @click="openRecordingSettings">Check CS2 Steam name in Settings → Recording</button>
+        </div>
+      </div>
+    </div>
+
+    <template #actions>
+      <div style="margin-right: auto; display: flex; flex-direction: column; gap: 10px; min-width: 0">
+        <p v-if="error" class="uf-dialog-warn" role="alert">{{ error }}</p>
+        <p v-else-if="recommended && candidates.length > 1" class="uf-t4" style="margin: 0">Flick through the list — the preview updates. Attach when the stats match what you remember.</p>
+        <div style="display: flex; gap: 20px; align-items: center">
+          <button type="button" class="uf-link" @click="emit('close')">Cancel</button>
+          <button type="button" class="uf-link" :disabled="loading" @click="loadCandidates">Rescan</button>
+          <button type="button" class="uf-link" @click="openFolder">Open folder</button>
+          <button type="button" class="uf-link" @click="browseOther">Browse…</button>
+        </div>
+      </div>
+      <UfButton variant="primary" :disabled="!selectedPath || attaching || loading || previewLoading || assessment?.confidence === 'mismatch'" @click="confirmAttach">{{ attaching ? 'Attaching…' : 'Use this replay' }}</UfButton>
+    </template>
+  </UfDialog>
+<template v-else>
   <Transition name="modal-pop">
     <div
       v-if="show"
@@ -413,6 +514,7 @@ function rowClass(fit: RankedDemoCandidate['fit'], selected: boolean): string {
       </div>
     </div>
   </Transition>
+</template>
 </template>
 
 <style scoped>

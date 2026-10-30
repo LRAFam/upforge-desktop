@@ -11,6 +11,9 @@ export interface CloudFile {
   paid_storage?: boolean
   status: 'stored' | 'archived' | 'uploading' | 'failed'
   bytes: number | null; expires_at: string | null; created_at: string
+  /** Analysed archives only (API round 7): the analysis id and its scoreboard summary when known. */
+  analysis_id?: number
+  analysis?: { won: boolean | null; rounds_won: number | null; rounds_lost: number | null; kills: number | null; deaths: number | null; assists: number | null } | null
 }
 export interface CloudPage { version: 1; game_filter?: CloudGame; items: CloudFile[]; page: number; last_page: number; total: number }
 export function validCloudPage(input: unknown): input is CloudPage {

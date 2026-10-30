@@ -38,3 +38,24 @@ describe('analysis detail contract', () => {
     expect(detail.confidence).toBeNull()
   })
 })
+
+describe('stats-only report flags', () => {
+  it('passes the API stats-only flags through to the screens', () => {
+    const detail = enrichAnalysisDetail({
+      report_type: 'degraded_telemetry',
+      coaching_source: 'telemetry_only',
+      limitations: ['No duel moment could be reviewed from the video.', 3],
+      is_degraded: true,
+      credit_returned: true,
+    })
+    expect(detail.is_degraded).toBe(true)
+    expect(detail.credit_returned).toBe(true)
+    expect(detail.report_type).toBe('degraded_telemetry')
+    expect(detail.limitations).toEqual(['No duel moment could be reviewed from the video.'])
+  })
+  it('never claims a refund the API did not confirm', () => {
+    const detail = enrichAnalysisDetail({ is_degraded: true, credit_returned: 'true' })
+    expect(detail.credit_returned).toBe(false)
+    expect(enrichAnalysisDetail({}).is_degraded).toBe(false)
+  })
+})

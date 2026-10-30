@@ -1,4 +1,10 @@
 <script setup lang="ts">
+import { computed } from 'vue'
+import UfDialog from '../v3/UfDialog.vue'
+import UfButton from '../v3/UfButton.vue'
+import { uiV3 } from '../../lib/ui-v3'
+import { formatTrimTime, nudgeTrimEnd, nudgeTrimStart, trimRangePercent, TRIM_MIN_GAP } from '../../lib/shell-v3'
+
 const props = withDefaults(defineProps<{
   show: boolean
   title?: string
@@ -41,9 +47,60 @@ function nudgeEnd(delta: number) {
   const next = Math.round(Math.max(props.startSec + 0.5, Math.min(props.duration, props.endSec + delta)) * 10) / 10
   emit('update:endSec', next)
 }
+
+// v3: same clamps as nudgeStart/nudgeEnd above, via tested helpers.
+const keep = computed(() => trimRangePercent(props.startSec, props.endSec, props.duration))
+function v3Start(delta: number) { emit('update:startSec', nudgeTrimStart(props.startSec, props.endSec, delta)) }
+function v3End(delta: number) { emit('update:endSec', nudgeTrimEnd(props.startSec, props.endSec, props.duration, delta)) }
+function onRange(which: 'start' | 'end', e: Event) {
+  const v = Number((e.target as HTMLInputElement).value)
+  if (which === 'start') emit('update:startSec', v)
+  else emit('update:endSec', v)
+}
 </script>
 
 <template>
+  <UfDialog v-if="uiV3" :open="show" :title="title" kicker="Keep the part that matters" :width="480" @close="emit('close')">
+    <p class="uf-t4" style="margin: 0">
+      Original <span class="uf-num" style="color: var(--uf-muted)">{{ formatTrimTime(duration, true) }}</span>
+      · New <span class="uf-num" style="color: var(--uf-bone)">{{ formatTrimTime(endSec - startSec, true) }}</span>
+    </p>
+    <p v-if="hint" class="uf-dialog-warn">{{ hint }}</p>
+
+    <div class="uf-trim-bar" aria-hidden="true">
+      <div class="uf-trim-keep" :style="{ left: keep.left + '%', width: keep.width + '%' }" />
+    </div>
+
+    <div class="uf-trim-row">
+      <div class="uf-trim-row-head">
+        <label class="uf-label" for="uf-trim-start">Start</label>
+        <div class="uf-trim-stepper">
+          <button type="button" aria-label="Start back 0.1 seconds" @click="v3Start(-0.1)">−</button>
+          <output class="uf-t3 uf-num" for="uf-trim-start">{{ formatTrimTime(startSec, true) }}</output>
+          <button type="button" aria-label="Start forward 0.1 seconds" @click="v3Start(0.1)">+</button>
+        </div>
+      </div>
+      <input id="uf-trim-start" class="uf-trim-range" type="range" :value="startSec" :min="0" :max="endSec - TRIM_MIN_GAP" step="0.1" @input="onRange('start', $event)" />
+    </div>
+    <div class="uf-trim-row">
+      <div class="uf-trim-row-head">
+        <label class="uf-label" for="uf-trim-end">End</label>
+        <div class="uf-trim-stepper">
+          <button type="button" aria-label="End back 0.1 seconds" @click="v3End(-0.1)">−</button>
+          <output class="uf-t3 uf-num" for="uf-trim-end">{{ formatTrimTime(endSec, true) }}</output>
+          <button type="button" aria-label="End forward 0.1 seconds" @click="v3End(0.1)">+</button>
+        </div>
+      </div>
+      <input id="uf-trim-end" class="uf-trim-range" type="range" :value="endSec" :min="startSec + TRIM_MIN_GAP" :max="duration" step="0.1" @input="onRange('end', $event)" />
+    </div>
+    <p v-if="error" class="uf-dialog-error" role="alert">{{ error }}</p>
+
+    <template #actions>
+      <button type="button" class="uf-link" style="margin-right: auto" @click="emit('close')">Cancel</button>
+      <UfButton variant="primary" :disabled="loading" @click="emit('confirm')">{{ loading ? 'Trimming…' : confirmLabel }}</UfButton>
+    </template>
+  </UfDialog>
+<template v-else>
   <Transition name="modal-pop">
     <div
       v-if="show"
@@ -151,6 +208,7 @@ function nudgeEnd(delta: number) {
       </div>
     </div>
   </Transition>
+</template>
 </template>
 
 <style scoped>

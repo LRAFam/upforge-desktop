@@ -1,4 +1,19 @@
 <template>
+  <div v-if="uiV3" class="ui-v3 uf-sp-root">
+    <img src="../assets/hero-agents.webp" alt="" class="uf-sp-art" />
+    <div class="uf-sp-wash" />
+    <div class="uf-sp-content uf-rise">
+      <img src="../assets/upforge-icon.webp" alt="UpForge" class="uf-sp-logo" />
+      <span class="uf-label">Competitive coaching platform &amp; marketplace</span>
+      <p :key="statusText" class="uf-t3 uf-sp-status" role="status">{{ statusText }}</p>
+      <div class="uf-sp-track" :aria-hidden="!showProgress">
+        <div v-if="showProgress" class="uf-sp-fill" :style="{ width: progress + '%' }" />
+        <div v-else class="uf-sp-indet" />
+      </div>
+    </div>
+    <p class="uf-t4 uf-sp-meta"><span class="uf-num">v{{ appVersion }}</span> · upforge.gg</p>
+  </div>
+  <template v-else>
   <div class="splash-root">
     <!-- Hero image background -->
     <img src="../assets/upforge-bg.webp" alt="" class="hero-img" />
@@ -62,10 +77,12 @@
       <span class="meta-copy">upforge.gg</span>
     </div>
   </div>
+  </template>
 </template>
 
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted } from 'vue'
+import { uiV3 } from '../lib/ui-v3'
 
 const appVersion = ref('')
 const statusText = ref('Checking for updates…')
@@ -505,3 +522,19 @@ onUnmounted(() => {
 .bar-fade-enter-from, .bar-fade-leave-to { opacity: 0; }
 </style>
 
+
+
+<style scoped>
+.uf-sp-root { position: fixed; inset: 0; overflow: hidden; background: var(--uf-bg); color: var(--uf-bone); font-family: var(--uf-body); }
+.uf-sp-art { position: absolute; right: -40px; bottom: 0; height: 100%; width: auto; max-width: none; object-fit: contain; object-position: right bottom; opacity: 0.55; }
+.uf-sp-wash { position: absolute; inset: 0; background: linear-gradient(90deg, var(--uf-bg) 38%, rgba(14, 17, 22, 0.55) 70%, rgba(14, 17, 22, 0.2)); }
+.uf-sp-content { position: absolute; left: 48px; right: 48px; top: 50%; transform: translateY(-50%); display: flex; flex-direction: column; align-items: flex-start; gap: 14px; max-width: 360px; }
+.uf-sp-logo { width: 72px; height: 72px; object-fit: contain; margin-bottom: 6px; }
+.uf-sp-status { margin: 10px 0 0; min-height: 20px; }
+.uf-sp-track { position: relative; width: 100%; height: 3px; background: var(--uf-line-2); overflow: hidden; }
+.uf-sp-fill { height: 100%; background: var(--uf-red); transition: width 0.3s ease; }
+.uf-sp-indet { position: absolute; top: 0; bottom: 0; width: 30%; background: var(--uf-red); animation: uf-sp-slide 1.4s ease-in-out infinite; }
+@keyframes uf-sp-slide { from { left: -30%; } to { left: 100%; } }
+.uf-sp-meta { position: absolute; left: 48px; bottom: 24px; margin: 0; }
+@media (prefers-reduced-motion: reduce) { .uf-sp-indet { animation: none; left: 0; width: 100%; opacity: 0.4; } }
+</style>

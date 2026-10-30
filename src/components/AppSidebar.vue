@@ -87,8 +87,9 @@ const developerNavItem: NavItem = {
 const visibleMainNav = computed(() => {
   const allowed = new Set(gameNavRoutes(primaryGame.value))
   const items = mainNav.filter(item => allowed.has(item.to))
-  items.push({ to: '/overstep', label: 'Overstep', icon: 'recordings', match: p => p === '/overstep' })
   if (showDeveloperNav.value || settingsDevMode.value) {
+    // Overstep is a work-in-progress game, not public yet: developer mode only.
+    items.push({ to: '/overstep', label: 'Overstep', icon: 'recordings', match: p => p === '/overstep' })
     items.push(developerNavItem)
   }
   return items

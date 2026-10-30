@@ -50,6 +50,16 @@ describe('match-coaching-context', () => {
     expect(buildTeamComp(timeline)).toEqual({ allyAgents: [], enemyAgents: [] })
   })
 
+  it('uses the newest RR snapshot (history is oldest-first)', () => {
+    const timeline = { puuid: 'me', teamSnapshot: [] } as unknown as MatchData
+    const snap = buildRankSnapshot(timeline, [
+      { rank: 'Silver 3', rr: 10, elo: 810 },
+      { rank: 'Gold 1', rr: 62, elo: 962 },
+    ])
+    expect(snap?.competitiveTierName).toBe('Gold 1')
+    expect(snap?.rr).toBe(62)
+  })
+
   it('does not attach Valorant rank history to League coaching', () => {
     const timeline = { game: 'lol', puuid: null, teamSnapshot: [] } as unknown as MatchData
     expect(buildRankSnapshot(timeline, [{ rank: 'Gold 2', rr: 45, elo: 1200 }])).toBeNull()

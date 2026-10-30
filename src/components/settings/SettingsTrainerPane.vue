@@ -2,6 +2,9 @@
 import { useSettings } from '../../composables/useSettings'
 import SettingsSection from './SettingsSection.vue'
 import SettingsToggle from './SettingsToggle.vue'
+import SettingsRow from './SettingsRow.vue'
+import CrosshairSettingsPanel from '../CrosshairSettingsPanel.vue'
+import { uiV3 } from '../../lib/ui-v3'
 
 const {
   conflictResults,
@@ -22,10 +25,115 @@ const {
   settings,
   startRebind,
 } = useSettings()
+
+const HOTKEY_ROWS = [
+  { id: 'save-clip', label: 'Bookmark clip moment', hint: 'Press during a match to save a clip', fallback: 'F9', overlayOnly: false },
+  { id: 'toggle-overlay', label: 'Toggle overlay', hint: 'Show or hide the in-game overlay', fallback: 'F10', overlayOnly: true },
+  { id: 'take-screenshot', label: 'Take screenshot', hint: 'Capture a screenshot during a match', fallback: 'F8', overlayOnly: false },
+] as const
 </script>
 
 <template>
-  <div class="space-y-4">
+  <div v-if="uiV3" class="uf-set-pane">
+    <SettingsSection title="Mouse &amp; trainer" hint="Match the aim trainer to how your mouse feels in game">
+      <SettingsRow label="Game" hint="The trainer copies this game's sensitivity scale.">
+        <select v-model="settings.trainerMouse.game" aria-label="Game" class="uf-select is-inline" @change="debouncedSave">
+          <option value="valorant">Valorant</option><option value="cs2">CS2</option><option value="apex">Apex Legends</option><option value="overwatch2">Overwatch 2</option><option value="custom">Custom</option>
+        </select>
+      </SettingsRow>
+      <div class="uf-field">
+        <span class="uf-t3">Mouse DPI</span>
+        <div class="uf-set-row">
+          <div class="uf-seg" role="group" aria-label="DPI presets">
+            <button v-for="preset in [400, 800, 1600, 3200]" :key="preset" type="button" :aria-pressed="settings.trainerMouse.dpi === preset" @click="settings.trainerMouse.dpi = preset; debouncedSave()">{{ preset }}</button>
+          </div>
+          <input v-model.number="settings.trainerMouse.dpi" type="number" min="100" max="32000" step="100" placeholder="Custom DPI" aria-label="Custom DPI" class="uf-input" style="width: 120px" @change="debouncedSave">
+        </div>
+      </div>
+      <SettingsRow label="In-game sensitivity" hint="Copy it from your game settings.">
+        <input v-model.number="settings.trainerMouse.sensitivity" type="number" min="0.01" max="20" step="0.01" aria-label="In-game sensitivity" class="uf-input is-mono" style="width: 120px" @change="debouncedSave">
+      </SettingsRow>
+      <div class="uf-field">
+        <div class="uf-usage-head">
+          <span class="uf-label">eDPI</span>
+          <span><span class="uf-d4">{{ Math.round(settings.trainerMouse.dpi * settings.trainerMouse.sensitivity) }}</span> <span class="uf-t4">{{ eDpiLabel(settings.trainerMouse.dpi * settings.trainerMouse.sensitivity) }}</span></span>
+        </div>
+        <div class="uf-meter"><span class="uf-fill" :style="{ width: Math.min(100, (settings.trainerMouse.dpi * settings.trainerMouse.sensitivity) / 30) + '%' }" /></div>
+        <p class="uf-t4">eDPI = DPI × sensitivity, so the trainer matches your in-game feel.</p>
+      </div>
+      <div class="uf-set-split">
+        <label class="uf-field"><span class="uf-t4">Horizontal FOV</span>
+          <input v-model.number="settings.trainerMouse.fov" type="number" min="60" max="120" step="1" class="uf-input" @change="debouncedSave">
+        </label>
+        <label class="uf-field"><span class="uf-t4">Polling rate</span>
+          <select v-model.number="settings.trainerMouse.pollingRate" class="uf-select" @change="debouncedSave"><option :value="125">125 Hz</option><option :value="250">250 Hz</option><option :value="500">500 Hz</option><option :value="1000">1000 Hz</option><option :value="2000">2000 Hz</option><option :value="4000">4000 Hz</option></select>
+        </label>
+      </div>
+      <SettingsRow label="Raw input" hint="Bypass OS pointer acceleration">
+        <SettingsToggle label="Raw input" :on="!!settings.trainerMouse.rawInput" @click="settings.trainerMouse.rawInput = !settings.trainerMouse.rawInput; debouncedSave()" />
+      </SettingsRow>
+      <div class="uf-field">
+        <span class="uf-t3">Movement speed</span>
+        <div class="uf-seg" role="group" aria-label="Movement speed">
+          <button v-for="preset in [{ label: 'Walk', value: 4.4 }, { label: 'Run', value: 6.75 }, { label: 'Fast', value: 9.0 }]" :key="preset.value" type="button" :aria-pressed="(settings.trainerMouse.movementSpeed ?? 6.75) === preset.value" @click="settings.trainerMouse.movementSpeed = preset.value; debouncedSave()">{{ preset.label }}</button>
+        </div>
+        <p class="uf-t4">Walk = Valorant shift-walk. Run = Valorant default. Fast = free aim feel.</p>
+      </div>
+      <div class="uf-field">
+        <div class="uf-usage-head"><span class="uf-t3">Trainer volume</span><span class="uf-t4 uf-num">{{ settings.trainerMouse.trainerVolume ?? 80 }}%</span></div>
+        <input :value="settings.trainerMouse.trainerVolume ?? 80" type="range" min="0" max="100" step="5" aria-label="Trainer volume" class="uf-range" @input="settings.trainerMouse.trainerVolume = Number(($event.target as HTMLInputElement).value); debouncedSave()">
+        <p class="uf-t4">Hit and miss sounds in the aim trainer.</p>
+      </div>
+    </SettingsSection>
+
+    <SettingsSection title="Crosshair" hint="Preview and edit your trainer crosshair">
+      <crosshair-settings-panel v-model="settings.crosshairSettings" @update:model-value="debouncedSave()" />
+    </SettingsSection>
+
+    <SettingsSection id="hotkeys" title="Shortcuts / in-game feedback" hint="How you save clips and know they were saved mid-match" :highlight-id="highlightSection">
+      <div class="uf-field">
+        <div class="uf-set-row-text">
+          <span class="uf-t3">In-game feedback</span>
+          <span v-if="inGameOverlayEnabled" class="uf-t4">Valorant blocks overlays in Exclusive Fullscreen. Use Notifications for reliable clip confirmation, or set Valorant to Windowed Fullscreen if you want the overlay HUD.</span>
+          <span v-else class="uf-t4">Overlay is temporarily off. Use Notifications — F9 confirms clips in fullscreen.</span>
+        </div>
+        <div class="uf-choices" role="radiogroup" aria-label="In-game feedback">
+          <button v-for="opt in visibleInGameFeedbackOptions" :key="opt.value" type="button" role="radio" class="uf-choice" :aria-checked="settings.inGameFeedback === opt.value" @click="setInGameFeedback(opt.value)">
+            <span class="uf-choice-text"><span class="uf-t3">{{ opt.label }}</span><span class="uf-t4">{{ opt.hint }}</span></span>
+          </button>
+        </div>
+      </div>
+      <div class="uf-set-sec-body is-rows uf-rows-top">
+        <SettingsRow label="Open or focus window" hint="Fixed system shortcut">
+          <kbd v-for="part in ['Ctrl', 'Shift', 'U']" :key="part" class="uf-kbd">{{ part }}</kbd>
+        </SettingsRow>
+        <template v-for="row in HOTKEY_ROWS" :key="row.id">
+          <div v-if="!row.overlayOnly || inGameOverlayEnabled" class="uf-set-row">
+            <div class="uf-set-row-text">
+              <p class="uf-t3">{{ row.label }}</p>
+              <p v-if="hotkeyStatus[row.id] === false" class="uf-note is-warn">Failed to register — key may be in use</p>
+              <p v-else class="uf-t4">{{ row.hint }}</p>
+              <div v-if="row.id === 'save-clip' && hotkeyStatus['save-clip'] === false"><button type="button" class="uf-link" :disabled="conflictScanning" @click="findConflict">{{ conflictScanning ? 'Scanning…' : 'Find conflicting app →' }}</button></div>
+            </div>
+            <button type="button" class="uf-keybind" :class="{ 'is-listening': rebinding === row.id }" :aria-label="`Change shortcut: ${row.label}`" @click="startRebind(row.id)">
+              <span v-if="rebinding === row.id" class="uf-live">Press a key…</span>
+              <kbd v-for="part in hotkeyParts(hotkeys[row.id] ?? row.fallback)" v-else :key="part" class="uf-kbd">{{ part }}</kbd>
+            </button>
+          </div>
+        </template>
+      </div>
+      <p v-if="rebinding" class="uf-t4">Press Escape to cancel. Changes apply immediately.</p>
+      <div v-if="conflictResults !== null" class="uf-inset">
+        <template v-if="conflictResults.found.length > 0">
+          <p class="uf-note is-warn">Conflicts detected</p>
+          <div v-for="c in conflictResults.found" :key="c.exe" class="uf-set-row-text"><p class="uf-t3">{{ c.name }}</p><p class="uf-t4">{{ c.fix }}</p></div>
+        </template>
+        <p v-else class="uf-note is-ok">No known conflicts found. Try rebinding to a different key.</p>
+        <div><button type="button" class="uf-link" @click="conflictResults = null">Dismiss</button></div>
+      </div>
+    </SettingsSection>
+  </div>
+  <div v-else class="space-y-4">
     <SettingsSection
       title="Mouse & trainer"
       hint="Aim calibration and sensitivity setup"

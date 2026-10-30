@@ -36,3 +36,10 @@ describe('topMomentClips', () => {
     expect(topMomentClips(clips, 2).map(c => c.id)).toEqual(['a', 'c'])
   })
 })
+
+describe('death clips', () => {
+  it('rank below every highlight so they never become top moments', () => {
+    const base = { id: 'a', favorited: false, overallScore: null }
+    expect(clipRank({ ...base, trigger: 'death' })).toBeLessThan(clipRank({ ...base, trigger: 'kill' }))
+  })
+})

@@ -54,7 +54,8 @@ export function buildRankSnapshot(
   if (timeline.game === 'lol') return null
   const ownPuuid = timeline.puuid?.toLowerCase()
   const own = ownPuuid ? timeline.teamSnapshot?.find((p) => p.puuid?.toLowerCase() === ownPuuid) : null
-  const latest = rrHistory?.[0]
+  // `/api/stats/rr-history` is oldest-first: the newest snapshot is the last entry.
+  const latest = rrHistory?.length ? rrHistory[rrHistory.length - 1] : undefined
 
   if (!own && !latest) return null
 

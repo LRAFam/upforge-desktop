@@ -1,0 +1,202 @@
+/*
+ * UpForge UI v3 — design tokens, type roles, buttons, motion and texture.
+ * Source of truth: docs/design/ui-v3.md (mirrors the concept board E · E1–E4).
+ * Everything is scoped under .ui-v3 so the current UI is untouched when the switch is off.
+ * Fonts are imported in main.ts (Big Shoulders Display 700/800, IBM Plex Sans 400–700).
+ */
+
+.ui-v3 {
+  /* Surfaces: one background, one raised level. Hairlines instead of boxes. */
+  --uf-chrome: #0b0e12;
+  --uf-bg: #0e1116;
+  --uf-raised: #151a21;
+  --uf-hover: #1c222b;
+  --uf-line: rgba(236, 232, 225, 0.09);
+  --uf-line-2: rgba(236, 232, 225, 0.16);
+  /* Text: warm bone, never pure white or pure grey */
+  --uf-bone: #ece8e1;
+  --uf-muted: #9aa2ad;
+  --uf-faint: #646c77;
+  /* Four colours, four meanings (validated for colour blindness on --uf-bg) */
+  --uf-red: #ff4655;      /* brand, the one action, the focus */
+  --uf-red-deep: #c4323e;
+  --uf-win: #22a99b;      /* won rounds / wins / better */
+  --uf-loss: #e8505b;     /* lost rounds / defeats / worse */
+  --uf-gold: #e8c26a;     /* best in lobby / personal best, with a star */
+  /* Game accents — one at a time, always next to the game's logo */
+  --uf-game-valorant: #ff4655;
+  --uf-game-cs2: #de9b35;
+  --uf-game-lol: #c8aa6e;
+  --uf-game-deadlock: #8ab07a;
+
+  --uf-display: 'Big Shoulders Display', 'IBM Plex Sans', sans-serif;
+  --uf-body: 'IBM Plex Sans', system-ui, sans-serif;
+
+  background: var(--uf-bg) !important;
+  color: var(--uf-bone);
+  font-family: var(--uf-body);
+}
+
+/* ---- Type roles: use only these. Nothing in between. ---- */
+.ui-v3 .uf-d1 { font: 800 136px/0.82 var(--uf-display); letter-spacing: 0.005em; font-variant-numeric: tabular-nums; }
+.ui-v3 .uf-d2 { font: 800 40px/0.9 var(--uf-display); letter-spacing: 0.01em; text-transform: uppercase; }
+.ui-v3 .uf-d3 { font: 800 36px/1 var(--uf-display); letter-spacing: 0.01em; font-variant-numeric: tabular-nums; }
+.ui-v3 .uf-d4 { font: 700 26px/1 var(--uf-display); letter-spacing: 0.02em; font-variant-numeric: tabular-nums; }
+.ui-v3 .uf-t1 { font: 600 28px/1.22 var(--uf-body); letter-spacing: -0.015em; color: var(--uf-bone); }
+.ui-v3 .uf-t2 { font: 400 16px/1.55 var(--uf-body); color: var(--uf-muted); }
+.ui-v3 .uf-t3 { font: 600 15px/1.35 var(--uf-body); color: var(--uf-bone); }
+.ui-v3 .uf-t4 { font: 400 13px/1.4 var(--uf-body); color: var(--uf-faint); }
+.ui-v3 .uf-label { font: 600 12px/1.2 var(--uf-body); letter-spacing: 0.12em; text-transform: uppercase; color: var(--uf-faint); }
+.ui-v3 .uf-num { font-variant-numeric: tabular-nums; }
+
+/* ---- Hairlines ---- */
+.ui-v3 .uf-hair { height: 1px; background: var(--uf-line); flex: none; }
+.ui-v3 .uf-hair-v { width: 1px; align-self: stretch; background: var(--uf-line); flex: none; }
+
+/* ---- Buttons: one primary per screen ---- */
+.ui-v3 .uf-btn-primary {
+  display: inline-flex; align-items: center; height: 44px; padding: 0 22px; border: 0; cursor: pointer;
+  background: var(--uf-red); transform: skewX(-8deg); color: #fff;
+}
+.ui-v3 .uf-btn-primary > span { transform: skewX(8deg); display: inline-flex; gap: 8px; align-items: center;
+  font: 800 19px/1 var(--uf-display); letter-spacing: 0.06em; text-transform: uppercase; }
+.ui-v3 .uf-btn-primary:hover { background: #ff5a68; }
+.ui-v3 .uf-btn-secondary {
+  display: inline-flex; align-items: center; gap: 8px; height: 44px; padding: 0 16px; cursor: pointer;
+  background: transparent; border: 1px solid var(--uf-line-2); color: var(--uf-bone); font: 600 14px/1 var(--uf-body);
+}
+.ui-v3 .uf-btn-secondary:hover { background: var(--uf-hover); }
+.ui-v3 .uf-link { background: none; border: 0; padding: 0; cursor: pointer; font: 600 13px/1 var(--uf-body); color: var(--uf-muted); }
+.ui-v3 .uf-link:hover { color: var(--uf-bone); }
+.ui-v3 :focus-visible { outline: 2px solid var(--uf-red); outline-offset: 2px; }
+
+/* ---- Motion: purposeful, once, fast. Only live things loop. ---- */
+@keyframes uf-rise { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+@keyframes uf-grow { from { transform: scaleY(0); } to { transform: scaleY(1); } }
+@keyframes uf-fill { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+@keyframes uf-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
+.ui-v3 .uf-rise { animation: uf-rise 0.5s cubic-bezier(0.2, 0.7, 0.2, 1) both; }
+.ui-v3 .uf-grow { transform-origin: bottom; animation: uf-grow 0.45s cubic-bezier(0.2, 0.7, 0.2, 1) both; }
+.ui-v3 .uf-fill { transform-origin: left; animation: uf-fill 0.8s cubic-bezier(0.2, 0.7, 0.2, 1) both; }
+.ui-v3 .uf-live { animation: uf-pulse 1.6s ease-in-out infinite; }
+.ui-v3 .uf-d1s { animation-delay: 0.08s; } .ui-v3 .uf-d2s { animation-delay: 0.16s; } .ui-v3 .uf-d3s { animation-delay: 0.24s; }
+.ui-v3 .uf-d4s { animation-delay: 0.32s; } .ui-v3 .uf-d5s { animation-delay: 0.4s; } .ui-v3 .uf-d6s { animation-delay: 0.5s; }
+@media (prefers-reduced-motion: reduce) {
+  .ui-v3 .uf-rise, .ui-v3 .uf-grow, .ui-v3 .uf-fill, .ui-v3 .uf-live { animation: none; }
+}
+
+/* ---- Texture: fine film grain instead of glow ---- */
+.ui-v3 .uf-grain::after {
+  content: ''; position: absolute; inset: 0; pointer-events: none; z-index: 40; opacity: 0.05; mix-blend-mode: overlay;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 0.55 0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
+}
+
+/* ---- Shell pieces owned by App.vue ---- */
+.ui-v3 .uf-btn-primary:disabled { opacity: 0.45; cursor: not-allowed; background: var(--uf-red); }
+.ui-v3 .uf-btn-secondary:disabled, .ui-v3 .uf-link:disabled { opacity: 0.45; cursor: not-allowed; }
+.ui-v3 .uf-pg-strip { height: 30px; flex: none; display: flex; align-items: center; gap: 10px; padding: 0 0 0 12px; background: var(--uf-chrome); border-bottom: 1px solid var(--uf-line); }
+.ui-v3 .uf-pg-mark { width: 16px; height: 16px; }
+.ui-v3 .uf-pg-close { width: 36px; align-self: stretch; display: flex; align-items: center; justify-content: center; background: none; border: 0; color: var(--uf-muted); cursor: pointer; }
+.ui-v3 .uf-pg-close:hover { background: var(--uf-red-deep); color: #fff; }
+
+/* ==== shell (agent-shell): banners, toast, shared dialogs. Append below this line only. ==== */
+/* Banner row: one hairline row, status dot, t4 text, link actions. */
+.ui-v3 .uf-banner { display: flex; align-items: center; gap: 12px; padding: 9px 40px; flex: none; background: var(--uf-bg); border-bottom: 1px solid var(--uf-line); font: 400 13px/1.4 var(--uf-body); color: var(--uf-muted); }
+.ui-v3 .uf-banner--top { align-items: flex-start; }
+.ui-v3 .uf-banner-dot { width: 6px; height: 6px; flex: none; background: var(--uf-faint); }
+.ui-v3 .uf-banner--top .uf-banner-dot { margin-top: 6px; }
+.ui-v3 .uf-banner-dot.is-gold { background: var(--uf-gold); }
+.ui-v3 .uf-banner-dot.is-red { background: var(--uf-red); }
+.ui-v3 .uf-banner-dot.is-win { background: var(--uf-win); }
+.ui-v3 .uf-banner-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.ui-v3 .uf-banner-text strong { color: var(--uf-bone); font-weight: 600; }
+.ui-v3 .uf-banner-main { color: var(--uf-bone); overflow: hidden; text-overflow: ellipsis; }
+.ui-v3 .uf-banner-sub { color: var(--uf-faint); }
+.ui-v3 .uf-banner-actions { display: flex; align-items: center; gap: 18px; flex: none; }
+.ui-v3 .uf-banner-link { background: none; border: 0; padding: 4px 0; cursor: pointer; font: 600 13px/1 var(--uf-body); color: var(--uf-bone); white-space: nowrap; }
+.ui-v3 .uf-banner-link:hover { text-decoration: underline; text-underline-offset: 3px; }
+.ui-v3 .uf-banner-link.is-red { color: var(--uf-red); }
+.ui-v3 .uf-banner-link:disabled { opacity: 0.45; cursor: not-allowed; text-decoration: none; }
+.ui-v3 .uf-banner-x { background: none; border: 0; padding: 4px; cursor: pointer; color: var(--uf-faint); display: inline-flex; flex: none; }
+.ui-v3 .uf-banner-x:hover { color: var(--uf-bone); }
+.ui-v3 .uf-banner-bar { width: 96px; height: 2px; background: var(--uf-line-2); flex: none; overflow: hidden; }
+.ui-v3 .uf-banner-bar > span { display: block; height: 100%; background: var(--uf-bone); transition: width 0.3s ease; }
+.ui-v3 .uf-banner-stack { flex: none; display: flex; flex-direction: column; }
+
+/* Achievement toast: square, hairline, bottom-right. The root carries .ui-v3 (it teleports to body). */
+.ui-v3.uf-toast { position: fixed; right: 24px; bottom: 24px; z-index: 300; width: 340px; background: var(--uf-raised) !important; border: 1px solid var(--uf-line-2); box-shadow: 0 18px 60px rgba(0, 0, 0, 0.55); }
+.ui-v3 .uf-toast-body { display: flex; gap: 14px; align-items: flex-start; padding: 16px 16px 14px 18px; }
+.ui-v3 .uf-toast-icon { color: var(--uf-bone); flex: none; display: inline-flex; margin-top: 2px; }
+.ui-v3 .uf-toast-timer { height: 2px; background: var(--uf-line); overflow: hidden; }
+.ui-v3 .uf-toast-timer > span { display: block; height: 100%; background: var(--uf-line-2); transform-origin: left; animation: uf-toast-timer 4s linear forwards; }
+@keyframes uf-toast-timer { from { transform: scaleX(1); } to { transform: scaleX(0); } }
+@media (prefers-reduced-motion: reduce) { .ui-v3 .uf-toast-timer > span { animation: none; } }
+
+/* Dialog internals shared by Riot link, trim and demo picker. */
+.ui-v3 .uf-riot-id { color: var(--uf-bone); font-weight: 600; }
+.ui-v3 .uf-riot-id span { color: var(--uf-faint); font-weight: 400; }
+.ui-v3 .uf-dialog-error { color: var(--uf-loss); font: 400 13px/1.4 var(--uf-body); margin: 0; }
+.ui-v3 .uf-dialog-warn { display: flex; gap: 10px; align-items: baseline; font: 400 13px/1.4 var(--uf-body); color: var(--uf-bone); margin: 0; }
+.ui-v3 .uf-dialog-warn::before { content: ''; width: 6px; height: 6px; flex: none; background: var(--uf-gold); transform: translateY(-1px); }
+
+.ui-v3 .uf-trim-bar { position: relative; height: 36px; background: var(--uf-raised); border: 1px solid var(--uf-line); }
+.ui-v3 .uf-trim-keep { position: absolute; top: 0; bottom: 0; background: rgba(255, 70, 85, 0.14); border-left: 2px solid var(--uf-red); border-right: 2px solid var(--uf-red); }
+.ui-v3 .uf-trim-row { display: flex; flex-direction: column; gap: 8px; }
+.ui-v3 .uf-trim-row-head { display: flex; align-items: center; justify-content: space-between; }
+.ui-v3 .uf-trim-stepper { display: flex; align-items: center; }
+.ui-v3 .uf-trim-stepper button { width: 28px; height: 28px; background: none; border: 1px solid var(--uf-line-2); color: var(--uf-muted); cursor: pointer; font: 600 15px/1 var(--uf-body); }
+.ui-v3 .uf-trim-stepper button:hover { background: var(--uf-hover); color: var(--uf-bone); }
+.ui-v3 .uf-trim-stepper output { width: 72px; text-align: center; }
+.ui-v3 .uf-trim-range { width: 100%; accent-color: var(--uf-red); cursor: pointer; }
+
+.ui-v3 .uf-picker { display: grid; grid-template-columns: minmax(0, 1.05fr) minmax(0, 0.95fr); margin: -18px -24px; min-height: 320px; }
+.ui-v3 .uf-picker-col { padding: 18px 24px; display: flex; flex-direction: column; gap: 12px; overflow-y: auto; max-height: min(56vh, 520px); }
+.ui-v3 .uf-picker-col + .uf-picker-col { border-left: 1px solid var(--uf-line); }
+.ui-v3 .uf-picker-list { display: flex; flex-direction: column; }
+.ui-v3 .uf-picker-row { display: flex; gap: 12px; align-items: flex-start; width: 100%; padding: 10px 12px; background: none; border: 0; border-top: 1px solid var(--uf-line); border-left: 2px solid transparent; text-align: left; cursor: pointer; color: var(--uf-bone); }
+.ui-v3 .uf-picker-row:hover { background: var(--uf-hover); }
+.ui-v3 .uf-picker-row.is-selected { background: var(--uf-raised); border-left-color: var(--uf-red); }
+.ui-v3 .uf-picker-row.is-unlikely { opacity: 0.6; }
+.ui-v3 .uf-picker-radio { width: 12px; height: 12px; margin-top: 3px; flex: none; border: 1px solid var(--uf-line-2); }
+.ui-v3 .uf-picker-row.is-selected .uf-picker-radio { border-color: var(--uf-red); background: var(--uf-red); box-shadow: inset 0 0 0 2px var(--uf-raised); }
+.ui-v3 .uf-picker-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ui-v3 .uf-picker-tag { font: 600 12px/1 var(--uf-body); letter-spacing: 0.12em; text-transform: uppercase; color: var(--uf-win); margin-left: 8px; }
+.ui-v3 .uf-picker-empty { padding: 32px 0; text-align: center; display: flex; flex-direction: column; gap: 6px; }
+.ui-v3 .uf-picker-section { display: flex; flex-direction: column; gap: 6px; padding-top: 12px; border-top: 1px solid var(--uf-line); }
+.ui-v3 .uf-picker-tone { display: flex; gap: 10px; align-items: baseline; }
+.ui-v3 .uf-picker-tone ul { margin: 6px 0 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 3px; }
+.ui-v3 .uf-picker-kills { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 3px; font: 400 13px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--uf-muted); }
+.ui-v3 .uf-spin { width: 12px; height: 12px; border: 1px solid var(--uf-line-2); border-top-color: var(--uf-bone); border-radius: 50%; animation: uf-spin 0.8s linear infinite; display: inline-block; }
+@keyframes uf-spin { to { transform: rotate(360deg); } }
+.ui-v3 .uf-dialog-actions--spread { justify-content: flex-start; }
+
+/* Demo attach guide (inline, collapsible). */
+.ui-v3 .uf-guide { border-top: 1px solid var(--uf-line); border-bottom: 1px solid var(--uf-line); }
+.ui-v3 .uf-guide-head { width: 100%; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 0; background: none; border: 0; cursor: pointer; text-align: left; color: var(--uf-bone); }
+.ui-v3 .uf-guide-head:hover .uf-t3 { text-decoration: underline; text-underline-offset: 3px; }
+.ui-v3 .uf-guide-chev { color: var(--uf-faint); transition: transform 0.2s ease; display: inline-flex; }
+.ui-v3 .uf-guide-chev.is-open { transform: rotate(180deg); }
+.ui-v3 .uf-guide-body { padding: 4px 0 16px; display: flex; flex-direction: column; gap: 14px; }
+.ui-v3 .uf-guide-steps { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 10px; }
+.ui-v3 .uf-guide-step { display: flex; gap: 14px; align-items: baseline; font: 400 15px/1.5 var(--uf-body); color: var(--uf-muted); }
+.ui-v3 .uf-guide-step strong { color: var(--uf-bone); font-weight: 600; }
+.ui-v3 .uf-guide-step code { font: 400 13px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--uf-bone); background: var(--uf-raised); padding: 1px 5px; }
+.ui-v3 .uf-guide-n { font: 700 16px/1 var(--uf-display); color: var(--uf-faint); width: 18px; flex: none; font-variant-numeric: tabular-nums; }
+.ui-v3 .uf-guide-actions { display: flex; gap: 22px; align-items: center; }
+
+/* Payment failed (settings / player card). */
+.ui-v3 .uf-pay-alert { display: flex; gap: 12px; align-items: flex-start; padding: 12px 0; border-top: 1px solid var(--uf-line); border-bottom: 1px solid var(--uf-line); }
+.ui-v3 .uf-pay-alert .uf-banner-dot { margin-top: 7px; }
+
+/* ---- Loading (lead) ----
+ * Skeletons take the exact shape of the content they stand in for, so nothing jumps.
+ * One soft pulse, no shimmer sweep. Content that replaces a skeleton fades in with .uf-reveal. */
+.ui-v3 .uf-skel { display: block; background: var(--uf-raised); border-radius: 1px; animation: uf-skel-pulse 1.6s ease-in-out infinite; }
+.ui-v3 .uf-skel-text { height: 0.8em; margin: 0.25em 0; }
+.ui-v3 .uf-reveal { animation: uf-reveal 260ms ease-out both; }
+.ui-v3 .uf-refreshing { position: relative; }
+.ui-v3 .uf-refreshing::after { content: ''; position: absolute; left: 0; right: 0; top: 0; height: 1px; background: linear-gradient(90deg, transparent, var(--uf-muted), transparent); background-size: 40% 100%; background-repeat: no-repeat; animation: uf-refresh-line 1.2s linear infinite; opacity: 0.5; }
+@keyframes uf-skel-pulse { 0%, 100% { opacity: 0.55 } 50% { opacity: 0.9 } }
+@keyframes uf-reveal { from { opacity: 0; transform: translateY(4px) } to { opacity: 1; transform: none } }
+@keyframes uf-refresh-line { from { background-position: -40% 0 } to { background-position: 140% 0 } }
+@media (prefers-reduced-motion: reduce) { .ui-v3 .uf-skel, .ui-v3 .uf-reveal, .ui-v3 .uf-refreshing::after { animation: none; } }

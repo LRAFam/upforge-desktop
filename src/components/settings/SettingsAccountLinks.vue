@@ -3,7 +3,9 @@ import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useSettings, type RiotAccountRow } from '../../composables/useSettings'
 import { gameBrand } from '../../lib/game-branding'
+import { uiV3 } from '../../lib/ui-v3'
 import type { PrimaryGame } from '../../lib/games'
+import type { LolLinkedAccount } from '../../env'
 
 const props = defineProps<{ focus?: PrimaryGame | null }>()
 const router = useRouter()
@@ -111,8 +113,82 @@ async function scrollToFocus() {
 
 onMounted(async () => {
   await reloadAccountLinks()
+  if (uiV3.value) void loadLolAccounts()
   void scrollToFocus()
 })
+
+// ── League accounts (v3): main + alts, same caps as Valorant accounts ──
+const lolAccounts = ref<LolLinkedAccount[]>([])
+const lolAccountsMax = ref<number | null>(null)
+const lolAccountsLoaded = ref(false)
+const lolAddOpen = ref(false)
+const lolActingId = ref<number | null>(null)
+const lolConfirmRemoveId = ref<number | null>(null)
+const lolAtCap = computed(() => lolAccountsMax.value != null && lolAccounts.value.length >= lolAccountsMax.value)
+const lolCapLabel = computed(() => (lolAccountsMax.value != null
+  ? `${lolAccounts.value.length} of ${lolAccountsMax.value} League ${lolAccountsMax.value === 1 ? 'account' : 'accounts'} on your plan.`
+  : 'Your main is the account the coach follows; other linked accounts are tagged Alt.'))
+
+async function loadLolAccounts() {
+  const res = await window.api.lol.listAccounts().catch(() => null)
+  if (res?.ok) {
+    lolAccounts.value = res.accounts
+    lolAccountsMax.value = res.max
+  }
+  lolAccountsLoaded.value = Boolean(res?.ok)
+}
+
+async function addLolAccount() {
+  lolError.value = ''
+  lolSuccess.value = ''
+  if (!lolName.value.trim() || !lolTag.value.trim()) {
+    lolError.value = 'Enter your Riot name and tag (e.g. Name + TAG).'
+    return
+  }
+  lolBusy.value = true
+  try {
+    const res = await window.api.lol.addAccount({ riot_name: lolName.value.trim(), riot_tag: lolTag.value.trim().replace(/^#/, ''), platform: lolPlatform.value })
+    if (!res.ok) {
+      lolError.value = res.error || 'Could not link that League account'
+      return
+    }
+    lolSuccess.value = 'League account linked.'
+    lolAddOpen.value = false
+    lolName.value = ''
+    lolTag.value = ''
+    await loadLolAccounts()
+    await reloadAccountLinks()
+  } finally {
+    lolBusy.value = false
+  }
+}
+
+async function makeLolMain(id: number) {
+  lolError.value = ''
+  lolActingId.value = id
+  try {
+    const res = await window.api.lol.setMainAccount(id)
+    if (!res.ok) { lolError.value = res.error || 'Could not change your main League account'; return }
+    await loadLolAccounts()
+    await reloadAccountLinks()
+  } finally {
+    lolActingId.value = null
+  }
+}
+
+async function removeLolAccount(id: number) {
+  lolError.value = ''
+  lolActingId.value = id
+  try {
+    const res = await window.api.lol.removeAccount(id)
+    if (!res.ok) { lolError.value = res.error || 'Could not remove that League account'; return }
+    lolConfirmRemoveId.value = null
+    await loadLolAccounts()
+    await reloadAccountLinks()
+  } finally {
+    lolActingId.value = null
+  }
+}
 
 function openRiotAddForm() {
   riotError.value = ''
@@ -350,6 +426,7 @@ async function linkLol() {
     }
     lolSuccess.value = 'League account linked.'
     lolEditing.value = false
+    if (uiV3.value) void loadLolAccounts()
     await afterLinked()
   } finally {
     lolBusy.value = false
@@ -377,7 +454,194 @@ async function unlinkLol() {
 </script>
 
 <template>
-  <div class="panel-elevated overflow-hidden">
+  <section v-if="uiV3" class="uf-set-sec uf-set-sec-gap uf-links">
+    <div class="uf-set-sec-head">
+      <p class="uf-label">Game accounts</p>
+      <p class="uf-t4">Link the accounts you play on. Your main is the account the coach follows; matches on other linked accounts are tagged Alt.</p>
+    </div>
+
+    <!-- Valorant -->
+    <div :ref="(el) => setPanelRef('valorant', el as Element | null)" class="uf-link-game" :class="{ 'is-focus': activeFocus === 'valorant' }">
+      <div class="uf-link-game-head">
+        <img :src="gameBrand('valorant').logo" alt="" class="uf-link-logo">
+        <p class="uf-t3">Valorant</p>
+        <p class="uf-t4">{{ valorantLinked ? riotAccountsCapLabel : 'Link Valorant accounts to track stats. One account is your main at a time.' }}</p>
+      </div>
+      <div v-if="valorantLinked" class="uf-link-list">
+        <div v-for="account in riotAccounts" :key="account.id" class="uf-link-acc">
+          <div class="uf-set-row">
+            <div class="uf-set-row-text">
+              <p class="uf-t3">{{ account.riot_name }}<span class="uf-link-tag">#{{ account.riot_tag }}</span>
+                <span class="uf-link-role" :class="{ 'is-main': account.is_active }">{{ account.is_active ? 'Main' : 'Alt' }}</span>
+              </p>
+              <p v-if="account.riot_region" class="uf-t4">Region {{ account.riot_region.toUpperCase() }}</p>
+            </div>
+            <div class="uf-set-ctl">
+              <button v-if="!account.is_active" type="button" class="uf-btn-secondary uf-set-btn" :disabled="riotActivatingId === account.id" @click="activateRiotAccount(account.id)">{{ riotActivatingId === account.id ? 'Setting…' : 'Make main' }}</button>
+              <button v-if="riotEditingId !== account.id" type="button" class="uf-link" title="Riot ID changed? Update the name and tag for this account." @click="startRiotEdit(account)">Update</button>
+              <template v-if="riotConfirmRemoveId === account.id">
+                <button type="button" class="uf-link uf-link-danger" :disabled="riotRemovingId === account.id" @click="removeRiotAccount(account.id)">{{ riotRemovingId === account.id ? 'Removing…' : 'Confirm remove' }}</button>
+                <button type="button" class="uf-link" @click="riotConfirmRemoveId = null">Cancel</button>
+              </template>
+              <button v-else type="button" class="uf-link uf-link-danger" :disabled="riotAccounts.length <= 1 || riotRemovingId === account.id" :title="riotAccounts.length <= 1 ? 'You must keep at least one Riot account' : undefined" @click="riotConfirmRemoveId = account.id">Remove</button>
+            </div>
+          </div>
+          <div v-if="riotEditingId === account.id" class="uf-inset uf-link-form">
+            <p class="uf-t4">Changed your Riot ID in Valorant? Update it here so recording and stats keep matching this account.</p>
+            <div class="uf-link-fields">
+              <input v-model="riotEditName" type="text" placeholder="Name" aria-label="Riot name" class="uf-input">
+              <input v-model="riotEditTag" type="text" placeholder="Tag" aria-label="Riot tag" class="uf-input">
+              <select v-model="riotEditRegion" aria-label="Region" class="uf-select"><option value="na">NA</option><option value="eu">EU</option><option value="ap">AP</option><option value="kr">KR</option><option value="latam">LATAM</option><option value="br">BR</option></select>
+            </div>
+            <p v-if="riotEditError" class="uf-note is-bad">{{ riotEditError }}</p>
+            <div class="uf-set-actions">
+              <button type="button" class="uf-btn-secondary uf-set-btn" :disabled="riotSavingId === account.id" @click="saveRiotRename(account.id)">{{ riotSavingId === account.id ? 'Saving…' : 'Save changes' }}</button>
+              <button type="button" class="uf-link" @click="cancelRiotEdit">Cancel</button>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div v-if="valorantLinked && riotAccountsAtCap" class="uf-set-row">
+        <p class="uf-note is-warn">Account limit reached on your current plan.</p>
+        <button type="button" class="uf-link" @click="openUpgrade">Upgrade →</button>
+      </div>
+      <div v-if="valorantLinked && riotAccountsCanAdd && !showRiotAddForm" class="uf-set-actions">
+        <button type="button" class="uf-btn-secondary uf-set-btn" @click="openRiotAddForm">Add account</button>
+      </div>
+      <div v-if="showRiotAddForm || !valorantLinked" class="uf-inset uf-link-form">
+        <p class="uf-t4">{{ valorantLinked ? 'Enter the Riot ID for the Valorant account you want to link.' : 'Your Riot ID from the Valorant home screen (Name#Tag).' }}</p>
+        <div class="uf-link-fields">
+          <input v-model="riotName" type="text" placeholder="Name" aria-label="Riot name" class="uf-input">
+          <input v-model="riotTag" type="text" placeholder="Tag" aria-label="Riot tag" class="uf-input">
+          <select v-model="riotRegion" aria-label="Region" class="uf-select"><option value="na">NA</option><option value="eu">EU</option><option value="ap">AP</option><option value="kr">KR</option><option value="latam">LATAM</option><option value="br">BR</option></select>
+        </div>
+        <div class="uf-set-actions">
+          <button type="button" class="uf-btn-secondary uf-set-btn" :disabled="riotBusy" @click="linkValorant">{{ riotBusy ? 'Linking…' : 'Link Riot account' }}</button>
+          <button v-if="valorantLinked" type="button" class="uf-link" @click="cancelRiotAddForm">Cancel</button>
+        </div>
+      </div>
+      <p v-if="riotError" class="uf-note is-bad">{{ riotError }}</p>
+      <p v-if="riotSuccess" class="uf-note is-ok">{{ riotSuccess }}</p>
+      <p v-if="riotActionError" class="uf-note is-bad">{{ riotActionError }}</p>
+    </div>
+
+    <!-- CS2 -->
+    <div :ref="(el) => setPanelRef('cs2', el as Element | null)" class="uf-link-game" :class="{ 'is-focus': activeFocus === 'cs2' }">
+      <div class="uf-link-game-head">
+        <img :src="gameBrand('cs2').logo" alt="" class="uf-link-logo">
+        <p class="uf-t3">CS2 <span v-if="cs2Linked" class="uf-link-role is-main">Linked</span></p>
+        <p class="uf-t4">Your Steam name must match your CS2 name so clips find your kills.</p>
+      </div>
+      <div class="uf-set-split">
+        <label class="uf-field"><span class="uf-t4">Steam / in-game name</span>
+          <input v-model="settings.cs2SteamName" type="text" placeholder="Matches your CS2 name" class="uf-input" @change="saveCs2Steam">
+        </label>
+        <label class="uf-field"><span class="uf-t4">FACEIT username (optional)</span>
+          <span class="uf-link-inline">
+            <input v-model="faceitNickname" type="text" :placeholder="cs2FaceitNickname ? `Connected: ${cs2FaceitNickname}` : 'FACEIT nickname'" class="uf-input">
+            <button type="button" class="uf-btn-secondary uf-set-btn" :disabled="faceitBusy" @click="linkFaceit">{{ faceitBusy ? '…' : 'Link FACEIT' }}</button>
+          </span>
+        </label>
+      </div>
+      <p v-if="faceitError" class="uf-note is-bad">{{ faceitError }}</p>
+      <p v-if="faceitSuccess" class="uf-note is-ok">{{ faceitSuccess }}</p>
+    </div>
+
+    <!-- Deadlock -->
+    <div :ref="(el) => setPanelRef('deadlock', el as Element | null)" class="uf-link-game" :class="{ 'is-focus': activeFocus === 'deadlock' }">
+      <div class="uf-link-game-head">
+        <img :src="gameBrand('deadlock').logo" alt="" class="uf-link-logo">
+        <p class="uf-t3">Deadlock <span v-if="deadlockLinked" class="uf-link-role is-main">Linked</span></p>
+        <p class="uf-t4">{{ deadlockLinked ? 'Steam profile connected — stats sync from match history.' : 'Search your Steam display name or paste your Steam ID.' }}</p>
+      </div>
+      <template v-if="!deadlockLinked">
+        <span class="uf-link-inline">
+          <input v-model="steamSearch" type="text" placeholder="Steam name or ID" aria-label="Steam name or ID" class="uf-input" @keydown.enter.prevent="searchDeadlock">
+          <button type="button" class="uf-btn-secondary uf-set-btn" :disabled="steamBusy" @click="searchDeadlock">{{ steamBusy ? '…' : 'Search' }}</button>
+        </span>
+        <div v-if="steamResults.length" class="uf-choices">
+          <button v-for="player in steamResults" :key="player.account_id" type="button" class="uf-choice" @click="connectDeadlock(player.account_id, player.personaname)">
+            <span class="uf-choice-text"><span class="uf-t3">{{ player.personaname }}</span></span><span class="uf-t4">Connect</span>
+          </button>
+        </div>
+      </template>
+      <p v-if="steamError" class="uf-note is-bad">{{ steamError }}</p>
+      <p v-if="steamSuccess" class="uf-note is-ok">{{ steamSuccess }}</p>
+    </div>
+
+    <!-- League of Legends -->
+    <div :ref="(el) => setPanelRef('lol', el as Element | null)" class="uf-link-game" :class="{ 'is-focus': activeFocus === 'lol' }">
+      <div class="uf-link-game-head">
+        <img :src="gameBrand('lol').logo" alt="" class="uf-link-logo">
+        <p class="uf-t3">League of Legends</p>
+        <p class="uf-t4">{{ lolAccounts.length ? lolCapLabel : 'Can be a different Riot ID than Valorant. Use the Riot ID from the League client.' }}</p>
+      </div>
+      <!-- Main + alts (needs the /api/lol-accounts endpoint; falls back to the single link below). -->
+      <template v-if="lolAccountsLoaded && lolAccounts.length">
+        <div class="uf-link-list">
+          <div v-for="account in lolAccounts" :key="account.id" class="uf-set-row">
+            <div class="uf-set-row-text">
+              <p class="uf-t3">{{ account.riot_name }}<span class="uf-link-tag">#{{ account.riot_tag }}</span>
+                <span class="uf-link-role" :class="{ 'is-main': account.is_main }">{{ account.is_main ? 'Main' : 'Alt' }}</span>
+              </p>
+              <p class="uf-t4">Server {{ account.platform }}<template v-if="!account.verified"> · checking Riot ID…</template></p>
+            </div>
+            <div class="uf-set-ctl">
+              <button v-if="!account.is_main" type="button" class="uf-btn-secondary uf-set-btn" :disabled="lolActingId === account.id" @click="makeLolMain(account.id)">{{ lolActingId === account.id ? 'Setting…' : 'Make main' }}</button>
+              <template v-if="lolConfirmRemoveId === account.id">
+                <button type="button" class="uf-link uf-link-danger" :disabled="lolActingId === account.id" @click="removeLolAccount(account.id)">{{ lolActingId === account.id ? 'Removing…' : 'Confirm remove' }}</button>
+                <button type="button" class="uf-link" @click="lolConfirmRemoveId = null">Cancel</button>
+              </template>
+              <button v-else type="button" class="uf-link uf-link-danger" @click="lolConfirmRemoveId = account.id">Remove</button>
+            </div>
+          </div>
+        </div>
+        <div v-if="lolAtCap" class="uf-set-row">
+          <p class="uf-note is-warn">League account limit reached on your current plan.</p>
+          <button type="button" class="uf-link" @click="openUpgrade">Upgrade →</button>
+        </div>
+        <div v-else-if="!lolAddOpen" class="uf-set-actions">
+          <button type="button" class="uf-btn-secondary uf-set-btn" @click="lolAddOpen = true">Add account</button>
+        </div>
+        <div v-else class="uf-inset uf-link-form">
+          <p class="uf-t4">Enter the Riot ID for the League account you want to add. Matches on it are coached and tagged Alt.</p>
+          <div class="uf-link-fields">
+            <input v-model="lolName" type="text" placeholder="Name" aria-label="League Riot name" class="uf-input">
+            <input v-model="lolTag" type="text" placeholder="Tag" aria-label="League Riot tag" class="uf-input">
+            <select v-model="lolPlatform" aria-label="Server" class="uf-select"><option v-for="p in LOL_PLATFORMS" :key="p.value" :value="p.value">{{ p.label }}</option></select>
+          </div>
+          <div class="uf-set-actions">
+            <button type="button" class="uf-btn-secondary uf-set-btn" :disabled="lolBusy" @click="addLolAccount">{{ lolBusy ? 'Linking…' : 'Link League account' }}</button>
+            <button type="button" class="uf-link" @click="lolAddOpen = false">Cancel</button>
+          </div>
+        </div>
+      </template>
+      <div v-else-if="lolLinked && !lolEditing" class="uf-set-row">
+        <div class="uf-set-row-text">
+          <p class="uf-t3">{{ user?.lol_riot_name }}<span class="uf-link-tag">#{{ user?.lol_riot_tag }}</span></p>
+          <p v-if="user?.lol_platform" class="uf-t4">Server {{ user.lol_platform }}</p>
+        </div>
+        <div class="uf-set-ctl">
+          <button type="button" class="uf-link" @click="startLolEdit">Update</button>
+          <button type="button" class="uf-link uf-link-danger" :disabled="lolUnlinking" @click="unlinkLol">{{ lolUnlinking ? '…' : 'Unlink' }}</button>
+        </div>
+      </div>
+      <div v-else class="uf-inset uf-link-form">
+        <div class="uf-link-fields">
+          <input v-model="lolName" type="text" placeholder="Name" aria-label="League Riot name" class="uf-input">
+          <input v-model="lolTag" type="text" placeholder="Tag" aria-label="League Riot tag" class="uf-input">
+          <select v-model="lolPlatform" aria-label="Server" class="uf-select"><option v-for="p in LOL_PLATFORMS" :key="p.value" :value="p.value">{{ p.label }}</option></select>
+        </div>
+        <div class="uf-set-actions">
+          <button type="button" class="uf-btn-secondary uf-set-btn" :disabled="lolBusy" @click="linkLol">{{ lolBusy ? 'Linking…' : (lolEditing ? 'Save League account' : 'Link League account') }}</button>
+          <button v-if="lolEditing" type="button" class="uf-link" @click="cancelLolEdit">Cancel</button>
+        </div>
+      </div>
+      <p v-if="lolError" class="uf-note is-bad">{{ lolError }}</p>
+      <p v-if="lolSuccess" class="uf-note is-ok">{{ lolSuccess }}</p>
+    </div>
+  </section>
+  <div v-else class="panel-elevated overflow-hidden">
     <div class="border-b border-white/[0.09] px-4 py-3">
       <p class="text-sm font-semibold text-white">Link game accounts</p>
       <p class="mt-0.5 text-xs text-gray-500">Connect here in the app. No website onboarding loop.</p>

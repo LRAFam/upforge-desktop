@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { uiV3 } from '../lib/ui-v3'
 import { ref, computed, watch, onMounted } from 'vue'
 import { resolveMapRadarUrl, toRadarDisplayNorm, fromRadarDisplayNorm } from '../lib/map-radar'
 import { cs2MapDisplayName, isCs2Map, normalizeCs2MapKey } from '../lib/cs2-maps'
@@ -577,6 +578,23 @@ defineExpose({ exportPng })
 </script>
 
 <template>
+<template v-if="uiV3">
+  <div
+    class="mm3"
+    :class="(compact || floatHud || dockHud || panelHud || dockExpanded) ? '' : 'mm3--full'"
+    :style="(compact || floatHud || dockHud || panelHud || dockExpanded) ? { width: canvasStyle.width } : undefined"
+  >
+    <canvas ref="canvasRef" class="mm3-canvas" :style="canvasStyle" @click="onClick" />
+    <div v-if="!hasMapContext" class="mm3-empty"><span class="uf-label">No spatial data for this match</span></div>
+    <div v-if="showRoundSlider && availableRounds.length > 1" class="mm3-rounds">
+      <button type="button" class="mm3-chip" :class="{ 'mm3-chip--on': roundFilter == null }" :aria-pressed="roundFilter == null" @click="emit('update:roundFilter', null)">All rounds</button>
+      <input v-if="roundFilter != null" type="range" class="mm3-range" aria-label="Round" :min="availableRounds[0]" :max="availableRounds[availableRounds.length - 1]" :value="sliderRound" @input="sliderRound = Number(($event.target as HTMLInputElement).value)">
+      <span v-if="roundFilter != null" class="uf-t3 uf-num">R{{ sliderRound + 1 }}</span>
+      <button v-else type="button" class="mm3-chip" @click="emit('update:roundFilter', availableRounds[0] ?? 0)">Filter round</button>
+    </div>
+  </div>
+</template>
+<template v-else>
   <div
     class="relative space-y-1.5"
     :class="(compact || floatHud || dockHud || panelHud || dockExpanded) ? '' : 'w-full'"
@@ -629,3 +647,16 @@ defineExpose({ exportPng })
     </div>
   </div>
 </template>
+</template>
+
+<style scoped>
+.mm3 { position: relative; display: flex; flex-direction: column; gap: 8px; }
+.mm3--full { width: 100%; }
+.mm3-canvas { display: block; max-width: 100%; margin: 0 auto; cursor: pointer; background: var(--uf-chrome); border: 1px solid var(--uf-line); }
+.mm3-empty { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; background: rgba(11, 14, 18, 0.82); }
+.mm3-rounds { display: flex; align-items: center; gap: 10px; }
+.mm3-chip { flex: none; height: 28px; padding: 0 10px; background: none; border: 1px solid var(--uf-line); color: var(--uf-muted); cursor: pointer; font: 600 12px/1 var(--uf-body); }
+.mm3-chip:hover { color: var(--uf-bone); background: var(--uf-hover); }
+.mm3-chip--on { color: var(--uf-bone); border-color: var(--uf-line-2); background: var(--uf-raised); }
+.mm3-range { flex: 1; accent-color: var(--uf-red); }
+</style>

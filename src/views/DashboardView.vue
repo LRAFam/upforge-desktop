@@ -13,8 +13,10 @@ import DashboardMatchCards from '../components/dashboard/DashboardMatchCards.vue
 import DashboardActionQueue from '../components/dashboard/DashboardActionQueue.vue'
 import DashboardDevTools from '../components/dashboard/DashboardDevTools.vue'
 import DashboardFocusCard from '../components/dashboard/DashboardFocusCard.vue'
+import HomeV3 from './v3/HomeV3.vue'
+import { uiV3 } from '../lib/ui-v3'
 
-const dashboard = provideDashboard()
+const dashboard = provideDashboard({ cacheFirst: uiV3.value })
 
 const needsAction = computed(() => dashboard.pendingRecordings.value.some(recordingNeedsUserAction))
 const showCoachHero = computed(() => dashboard.isValorant.value && !!dashboard.weeklyFocus.value)
@@ -27,7 +29,8 @@ const showMatchCards = computed(() => dashboard.isValorant.value && dashboard.da
 </script>
 
 <template>
-  <div class="h-full flex flex-col overflow-hidden dashboard-shell">
+  <HomeV3 v-if="uiV3" />
+  <div v-else class="h-full flex flex-col overflow-hidden dashboard-shell">
     <DashboardBanners />
 
     <div class="flex-shrink-0 px-5 pt-4">

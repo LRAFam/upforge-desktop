@@ -24,6 +24,10 @@ import { invalidateGameAnalysesCache, loadGameAnalyses } from '../lib/game-modul
 import { openGameAnalysis } from '../lib/open-game-analysis'
 import { fetchCoachReviewSummary, loadCoachReviewSummaries, type CoachReviewSummary } from '../lib/coach-review-cache'
 import { openAnalysisVodReview } from '../lib/open-vod-review'
+import { uiV3 } from '../lib/ui-v3'
+import { peekDetail, prefetchAnalysis } from './vod/match-prefetch'
+import { matchRouteKey, rememberMatchSummary } from './vod/match-summary'
+import { readCache, writeCache } from '../lib/stale-cache'
 import { scoreGrade, scoreLabel, scoreGradeBadgeClass } from '../lib/analysis-scoring'
 import {
   hasMomentHybridContent,
@@ -157,10 +161,18 @@ function createCoachingHistory() {
   ]
   
   async function reloadAnalyses() {
-    loading.value = true
     activeMap.value = null
+    const game = primaryGame.value
+    const cacheKey = `coaching-reviews:${game}`
+    if (uiV3.value) {
+      // Last known list draws instantly (per game); the fetch refreshes it quietly.
+      const cached = readCache<AnalysisItem[]>(cacheKey)?.value
+      allAnalyses.value = Array.isArray(cached) ? cached : []
+    }
+    loading.value = true
     try {
-      allAnalyses.value = await loadGameAnalyses(primaryGame.value, 100)
+      allAnalyses.value = await loadGameAnalyses(game, 100)
+      if (uiV3.value && game === primaryGame.value) writeCache(cacheKey, allAnalyses.value)
       const requestedId = typeof route.query.analysis === 'string'
         ? Number(route.query.analysis)
         : null
@@ -169,7 +181,8 @@ function createCoachingHistory() {
         : null
       if (requested && selectedId.value !== requested.id) await selectSession(requested)
     } catch {
-      allAnalyses.value = []
+      // v3 keeps the last known list on a failed refresh; the classic screen clears it as before.
+      if (!uiV3.value) allAnalyses.value = []
     } finally {
       loading.value = false
     }
@@ -353,9 +366,11 @@ function createCoachingHistory() {
       return
     }
     detailLoading.value = true
+    // UI v3: selecting a session also warms its match page; the pane shares that detail request.
+    if (uiV3.value && features.value.vodReviewTimeline) prefetchAnalysis(a.id)
     try {
       const [detail, coachReview] = await Promise.all([
-        window.api.analyses.getDetail(a.id).catch(() => null),
+        ((uiV3.value ? peekDetail(a.id) : undefined) ?? window.api.analyses.getDetail(a.id)).catch(() => null),
         fetchCoachReviewSummary(a.id),
       ])
       expandedDetail.value = detail
@@ -416,8 +431,36 @@ function createCoachingHistory() {
     await openGameAnalysis(primaryGame.value, a, router)
   }
   
+  /** UI v3: hover / focus on a session row warms its match page (read-only GETs). */
+  function prefetchSession(a: AnalysisItem) {
+    if (!uiV3.value || !features.value.vodReviewTimeline || ['queued', 'processing', 'pending', 'failed'].includes(a.status)) return
+    prefetchAnalysis(a.id)
+  }
+
   async function openTimeline(id: number, opts?: { coachNotes?: boolean }) {
     if (!features.value.vodReviewTimeline) return
+    if (uiV3.value) {
+      // v3: open now — the match page draws the header from this session and loads the rest itself.
+      const query: Record<string, string> = { timelineId: String(id) }
+      if (opts?.coachNotes) query.coachNotes = '1'
+      const a = allAnalyses.value.find(x => x.id === id)
+      if (a) rememberMatchSummary(matchRouteKey(query), {
+        game: (a as { game?: string }).game || primaryGame.value,
+        map: a.map ?? null,
+        agent: a.agent ?? null,
+        mode: a.game_mode ?? null,
+        ally: a.rounds_won ?? null,
+        enemy: a.rounds_lost ?? null,
+        won: a.won == null ? null : Boolean(a.won),
+        kills: a.kills ?? null,
+        deaths: a.kills == null ? null : (a.deaths ?? 0),
+        assists: a.kills == null ? null : (a.assists ?? 0),
+      })
+      prefetchAnalysis(id)
+      await router.push({ path: '/vod-review', query })
+      void window.api.funnel?.trackReportOpened?.({ analysis_id: id, source: 'desktop_vod_review' })
+      return
+    }
     timelineLoadingId.value = id
     try {
       const ok = await openAnalysisVodReview(router, id, { coachNotes: opts?.coachNotes })
@@ -441,6 +484,7 @@ function createCoachingHistory() {
   }
 
   return {
+    prefetchSession,
     RESULT_FILTERS,
     activeFilter,
     activeMap,

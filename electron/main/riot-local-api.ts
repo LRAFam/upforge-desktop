@@ -664,10 +664,21 @@ export class RiotLocalApi {
     socket.write(Buffer.concat([header, masked]))
   }
 
+  /** Called when Riot pushes an MMR change for this player (match end). */
+  private _mmrListener: (() => void) | null = null
+  setMmrChangedListener(fn: (() => void) | null): void { this._mmrListener = fn }
+
   private _handleWsEvent(event: Record<string, unknown>): void {
     if (!event) return
     const uri = (event.uri as string) ?? ''
     const data = (event.data as Record<string, unknown>) ?? {}
+    // Rank changed: Riot pushes `ares-mmr/mmr/v1/players/{puuid}` (empty payload) at match end.
+    if (uri.includes('ares-mmr/mmr/v1/players') && this._mmrListener) {
+      const own = this.ownPuuid?.toLowerCase()
+      if (!own || uri.toLowerCase().includes(own)) {
+        try { this._mmrListener() } catch { /* listener errors never break the socket */ }
+      }
+    }
     // Match end: ares-match-details event fires with matchId as payload
     if (uri.includes('ares-match-details/match-details/v1/matches')) {
       const matchId = data.payload as string
@@ -1251,6 +1262,64 @@ export class RiotLocalApi {
         req.destroy()
         resolve(null)
       })
+    })
+  }
+
+  /**
+   * The signed-in player's MMR body from Riot (`pd/mmr/v1/players/{puuid}`), the same call the game
+   * makes after each match. Read-only; returns null when the Riot client isn't available.
+   */
+  /** Own competitive-update history (last 20 competitive games), used to work out rank shields. */
+  async fetchOwnCompetitiveUpdates(): Promise<unknown | null> {
+    const res = await this.fetchOwnPd('/competitiveupdates?startIndex=0&endIndex=20&queue=competitive', 'Competitive updates')
+    return res?.raw ?? null
+  }
+
+  async fetchOwnMmr(): Promise<{ puuid: string; raw: unknown } | null> {
+    return this.fetchOwnPd('', 'MMR')
+  }
+
+  /** GET `pd/mmr/v1/players/{own puuid}{suffix}` with the client's auth headers. */
+  private async fetchOwnPd(suffix: string, label: string): Promise<{ puuid: string; raw: unknown } | null> {
+    if (!this.accessToken || !this.entitlementsToken || !this.ownPuuid) {
+      await this.initAuth().catch(() => false)
+    } else {
+      try { await this._refreshTokens() } catch { /* best-effort */ }
+    }
+    if (!this.region && this.lockfileData) await this._refreshRegionFromClient('mmr')
+    const puuid = this.ownPuuid
+    if (!this.region || !puuid || !this.accessToken || !this.entitlementsToken) return null
+    const pdHost = riotPdHostname(this.region)
+    if (!pdHost) return null
+    return new Promise((resolve) => {
+      const req = https.get(
+        {
+          hostname: pdHost,
+          port: 443,
+          family: 4,
+          path: `/mmr/v1/players/${encodeURIComponent(puuid)}${suffix}`,
+          headers: {
+            Authorization: `Bearer ${this.accessToken}`,
+            'X-Riot-Entitlements-JWT': this.entitlementsToken!,
+            'X-Riot-ClientPlatform':
+              'ew0KCSJwbGF0Zm9ybVR5cGUiOiAiUEMiLA0KCSJwbGF0Zm9ybU9TIjogIldpbmRvd3MiLA0KCSJwbGF0Zm9ybU9TVmVyc2lvbiI6ICIxMC4wLjE5MDQyLjEuMjU2LjY0Yml0IiwNCgkicGxhdGZvcm1DaGlwc2V0IjogIlVua25vd24iDQp9',
+            'X-Riot-ClientVersion': this.clientVersion,
+          },
+        },
+        (res) => {
+          let body = ''
+          res.on('data', (chunk: Buffer) => (body += chunk))
+          res.on('end', () => {
+            if (res.statusCode !== 200) {
+              console.log(`[RiotLocalApi] ${label} HTTP ${res.statusCode}`)
+              resolve(null); return
+            }
+            try { resolve({ puuid, raw: JSON.parse(body) as unknown }) } catch { resolve(null) }
+          })
+        },
+      )
+      req.on('error', (err: Error) => { console.log(`[RiotLocalApi] ${label} error: ${err.message}`); resolve(null) })
+      req.setTimeout(15000, () => { req.destroy(); resolve(null) })
     })
   }
 

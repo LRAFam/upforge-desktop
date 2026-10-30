@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { uiV3 } from '../../lib/ui-v3'
+import UfButton from '../v3/UfButton.vue'
 import { computed, ref, onBeforeUnmount } from 'vue'
 import { useVodReview } from '../../composables/useVodReview'
 const { timeline, coachingDetail } = useVodReview()
@@ -28,6 +30,27 @@ const cleanups = ['session:user-changed', 'auth:session-expired'].map(event => w
 onBeforeUnmount(() => { generation++; cleanups.forEach(fn => fn()) })
 </script>
 <template>
+<template v-if="uiV3">
+  <section class="cva3" aria-label="Cloud recording coaching">
+    <div class="cva3-row">
+      <span class="uf-label">Cloud recording</span>
+      <span v-if="active" role="status" class="uf-t4" style="color: var(--uf-bone)"><span class="uf-live cva3-dot" aria-hidden="true" />{{ state === 'queued' ? 'AI analysis queued' : 'AI analysis in progress' }}</span>
+      <span v-else-if="state === 'analysed'" class="uf-t4">AI review available in Coaching</span>
+      <span style="flex: 1" />
+      <UfButton v-if="!active && state !== 'analysed' && !confirming" variant="secondary" icon="spark" :disabled="busy || !timeline?.archiveAnalysisReady" @click="confirming=true">{{ state === 'failed' ? 'Retry AI analysis' : 'Analyse this VOD' }}</UfButton>
+      <UfButton variant="link" :disabled="busy" @click="update()">{{ busy ? 'Checking…' : 'Check coaching status' }}</UfButton>
+    </div>
+    <p v-if="!active && state !== 'analysed' && timeline?.archiveAnalysisReady === false" class="uf-t4" style="color: var(--uf-gold)">{{ timeline.archiveAnalysisMessage }}</p>
+    <p v-if="timeline?.matchDataAvailable === false" class="uf-t4" style="color: var(--uf-gold)">This archive has no saved match data. Video playback is available; event and spatial views need match data.</p>
+    <div v-if="confirming" class="cva3-row">
+      <p class="uf-t4" style="color: var(--uf-bone); margin: 0">Use your {{ timeline?.game }} match-analysis allowance? Your plan and available credits are checked before the job starts.</p>
+      <UfButton variant="primary" icon="spark" :disabled="busy" @click="update(true)">Confirm analysis</UfButton>
+      <UfButton variant="link" @click="confirming=false">Cancel</UfButton>
+    </div>
+    <p v-if="error" role="alert" class="uf-t4" style="color: var(--uf-loss)">{{ error }}</p>
+  </section>
+</template>
+<template v-else>
   <section class="border-b border-white/10 px-3 py-2 text-xs flex-shrink-0" aria-label="Cloud recording coaching">
     <div class="flex flex-wrap items-center gap-3">
       <span class="text-gray-400">Cloud recording</span>
@@ -46,3 +69,11 @@ onBeforeUnmount(() => { generation++; cleanups.forEach(fn => fn()) })
     <p v-if="error" role="alert" class="mt-2 text-amber-200">{{ error }}</p>
   </section>
 </template>
+</template>
+
+<style scoped>
+.cva3 { flex-shrink: 0; display: flex; flex-direction: column; gap: 8px; padding: 10px 24px; border-bottom: 1px solid var(--uf-line); }
+.cva3 p { margin: 0; }
+.cva3-row { display: flex; flex-wrap: wrap; align-items: center; gap: 14px; }
+.cva3-dot { display: inline-block; width: 6px; height: 6px; border-radius: 3px; background: var(--uf-red); margin-right: 8px; vertical-align: middle; }
+</style>

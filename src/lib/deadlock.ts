@@ -45,3 +45,20 @@ export function getDeadlockRankIconUrl(
   }
   return deadlockRankAsset(`rank${tier}-lg.webp`)
 }
+
+/**
+ * Display name for a Deadlock hero key. The match watcher records `hero_<id>` (the Steam cache
+ * only has the id); names come from the hero ids the stats API already sent (hero_stats,
+ * recent_matches). Never shows the raw key: unknown ids read "Unknown hero".
+ */
+export function deadlockHeroLabel(
+  key: string | null | undefined,
+  known: Array<{ hero_id?: number | null; hero_name?: string | null }> | null | undefined,
+): string {
+  if (!key) return 'Unknown hero'
+  const m = /^hero_(\d+)$/.exec(key.trim())
+  if (!m) return key
+  const id = Number(m[1])
+  const hit = (known ?? []).find(h => h.hero_id === id && typeof h.hero_name === 'string' && h.hero_name && h.hero_name !== 'Unknown')
+  return hit?.hero_name ?? 'Unknown hero'
+}

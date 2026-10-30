@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
+import { uiV3 } from '../../lib/ui-v3'
 import { pipelineStagesFromStep } from '../../lib/duel-moments'
 import PostGamePipelineIcon from '../post-game/PostGamePipelineIcon.vue'
 
@@ -24,6 +25,18 @@ function stageState(index: number): 'done' | 'active' | 'pending' {
 </script>
 
 <template>
+<template v-if="uiV3">
+  <ol class="ps3" :class="layout === 'vertical' ? 'ps3--v' : 'ps3--h'" aria-label="Analysis progress">
+    <li v-for="(stage, index) in parsed.stages" :key="stage.id" class="ps3-stage" :class="`ps3-stage--${stageState(index)}`" :aria-current="stageState(index) === 'active' ? 'step' : undefined">
+      <span class="ps3-mark uf-num" :class="{ 'uf-live': stageState(index) === 'active' }" aria-hidden="true">{{ stageState(index) === 'done' ? '✓' : String(index + 1).padStart(2, '0') }}</span>
+      <span class="ps3-text">
+        <span class="ps3-label">{{ stage.label }}</span>
+        <span class="uf-t4">{{ stage.detail }}</span>
+      </span>
+    </li>
+  </ol>
+</template>
+<template v-else>
   <!-- Vertical — compact coaching pipeline -->
   <div v-if="layout === 'vertical'" class="flow-pipeline-vertical space-y-0">
     <div
@@ -110,3 +123,21 @@ function stageState(index: number): 'done' | 'active' | 'pending' {
     </div>
   </div>
 </template>
+</template>
+
+<style scoped>
+.ps3 { list-style: none; margin: 0; padding: 0; display: flex; }
+.ps3--v { flex-direction: column; }
+.ps3--h { overflow-x: auto; gap: 0; }
+.ps3-stage { display: flex; gap: 12px; padding: 10px 0; border-top: 1px solid var(--uf-line); }
+.ps3--h .ps3-stage { flex-direction: column; gap: 6px; width: 140px; flex: none; padding: 10px 14px 10px 0; border-top: 2px solid var(--uf-line); }
+.ps3--h .ps3-stage--done { border-top-color: var(--uf-win); }
+.ps3--h .ps3-stage--active { border-top-color: var(--uf-red); }
+.ps3-mark { width: 26px; flex: none; font: 600 15px/1.1 var(--uf-body); font-variant-numeric: tabular-nums; color: var(--uf-faint); }
+.ps3-stage--done .ps3-mark { color: var(--uf-win); }
+.ps3-stage--active .ps3-mark { color: var(--uf-red); }
+.ps3-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.ps3-label { font: 600 12px/1.2 var(--uf-body); letter-spacing: 0.12em; text-transform: uppercase; color: var(--uf-muted); }
+.ps3-stage--active .ps3-label { color: var(--uf-bone); }
+.ps3-stage--pending { opacity: 0.55; }
+</style>

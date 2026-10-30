@@ -51,3 +51,11 @@ function key(event: KeyboardEvent) {
 .workspace-divider:hover, .workspace-divider.dragging { background: #33202a; color: white; }
 .workspace-divider:focus-visible { outline: 2px solid #d60838; outline-offset: -2px; }
 </style>
+
+<style scoped>
+/* UI v3: a hairline handle, red only while dragging or focused. */
+.ui-v3 .workspace-divider { width: 9px; background: var(--uf-bg); color: var(--uf-faint); border-left: 1px solid var(--uf-line); border-right: 1px solid var(--uf-line); }
+.ui-v3 .workspace-divider:hover { background: var(--uf-hover); color: var(--uf-bone); }
+.ui-v3 .workspace-divider.dragging { background: var(--uf-red); color: #fff; }
+.ui-v3 .workspace-divider:focus-visible { outline: 2px solid var(--uf-red); outline-offset: -2px; }
+</style>

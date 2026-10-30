@@ -1,5 +1,23 @@
 <template>
-  <div class="flex flex-col h-full px-4 pt-4 pb-4 gap-3">
+  <div class="flex flex-col h-full" :class="uiV3 ? 'uf-clips-v3' : 'px-4 pt-4 pb-4 gap-3'">
+    <template v-if="uiV3">
+      <MatchesTabsV3 active="clips" title="Clips" :count="`${clips.length} clips · ${showAllGames ? 'All games' : theme.shortName}`">
+        <span class="uf-t4">{{ saveClipHotkey }} bookmarks a moment in a match</span>
+        <button type="button" class="uf-link" @click="toggleAllGames">{{ showAllGames ? `${theme.shortName} only` : 'All games' }}</button>
+      </MatchesTabsV3>
+      <CloudUsageNotice kind="clips" />
+      <div class="uf-cl-filters">
+        <div class="uf-cl-row" role="group" aria-label="Clip type">
+          <UfTabs :items="v3FilterItems" :model-value="activeFilter" size="filter" label="Clip type" @update:model-value="activeFilter = $event" />
+          <span style="flex: 1" />
+          <span class="uf-cl-opt"><span class="uf-t4">Group</span><UfTabs :items="v3GroupItems" :model-value="groupMode" size="filter" label="Group clips" @update:model-value="setGroupMode" /></span>
+          <span class="uf-cl-opt"><span class="uf-t4">Sort</span><UfTabs :items="v3SortItems" :model-value="sortOrder" size="filter" label="Sort clips" @update:model-value="setSortOrder" /></span>
+        </div>
+        <p v-if="hasSessionFilter" class="uf-t4 uf-cl-note">Showing clips from this match only · <button type="button" class="uf-link" @click="clearSessionFilter">Show all clips</button></p>
+        <p v-if="!hasProAccess" class="uf-t4 uf-cl-note">Cloud uploads are 720p on Free. <button type="button" class="uf-link" @click="openUpgrade">Upgrade for HD</button></p>
+      </div>
+    </template>
+    <template v-else>
     <LibraryPageHeader title="Clips" description="Find, edit and share the moments worth keeping.">
       <span>{{ clips.length }} clips · {{ showAllGames ? 'All games' : theme.shortName }}</span>
       <div class="flex flex-wrap items-center gap-2">
@@ -97,8 +115,10 @@
       Cloud uploads are 720p on Free.
       <button type="button" class="text-red-400/90 hover:text-red-300 transition-colors" @click="openUpgrade">Upgrade for HD</button>
     </p>
+    </template>
 
     <!-- Toast notification -->
+    <template v-if="!uiV3">
     <Transition name="toast-slide">
       <div
         v-if="showToast"
@@ -116,10 +136,18 @@
         <span class="text-xs font-semibold text-white">{{ toastMessage }}</span>
       </div>
     </Transition>
+    </template>
+    <Teleport v-else to="body">
+      <Transition name="toast-slide">
+        <div v-if="showToast" class="ui-v3 uf-cl-toast" :class="toastType === 'success' ? 'uf-cl-toast-ok' : 'uf-cl-toast-bad'" role="status">
+          <span class="uf-t4">{{ toastMessage }}</span>
+        </div>
+      </Transition>
+    </Teleport>
 
     <!-- Upload error banner -->
     <div
-      v-if="uploadError"
+      v-if="uploadError && !uiV3"
       class="flex flex-shrink-0 items-center gap-2 rounded-xl border border-red-500/30 bg-red-500/10 px-3 py-2"
     >
       <svg class="h-3.5 w-3.5 flex-shrink-0 text-red-400" fill="currentColor" viewBox="0 0 20 20">
@@ -131,6 +159,108 @@
       </button>
     </div>
 
+    <template v-if="uiV3">
+      <div class="uf-cl-body">
+        <p v-if="uploadError" role="alert" class="uf-t4 uf-cl-error">{{ uploadError }} <button type="button" class="uf-link" @click="uploadError = null">Dismiss</button></p>
+        <div v-if="clips.length > 0" class="uf-cl-stats">
+          <span class="uf-t4">{{ clipStats.total }} clip{{ clipStats.total !== 1 ? 's' : '' }} · {{ clipStats.duration }} total<template v-if="clipStats.favs > 0"> · ★ {{ clipStats.favs }} favourite{{ clipStats.favs !== 1 ? 's' : '' }}</template></span>
+          <span style="flex: 1" />
+          <template v-if="bulkMode && selectedIds.size > 0">
+            <button type="button" class="uf-link" @click="selectAll">Select all</button>
+            <template v-if="confirmBulkDelete">
+              <span class="uf-t4" style="color: var(--uf-loss)">Delete {{ selectedIds.size }}?</span>
+              <button type="button" class="uf-link" style="color: var(--uf-loss)" @click="bulkDelete">Delete</button>
+              <button type="button" class="uf-link" @click="confirmBulkDelete = false">Keep</button>
+            </template>
+            <button v-else type="button" class="uf-link" @click="confirmBulkDelete = true">Delete {{ selectedIds.size }}</button>
+          </template>
+          <button type="button" class="uf-link" @click="toggleBulkMode">{{ bulkMode ? 'Cancel' : 'Select' }}</button>
+        </div>
+
+        <!-- First-ever load: placeholder tiles in the grid's real shape (16:9 thumb, title, meta). -->
+        <div v-if="clipsLoading" aria-busy="true" aria-label="Loading clips" class="uf-cl-sections">
+          <section>
+            <div class="uf-cl-head" style="cursor: default"><UfSkeleton :w="140" :h="12" /></div>
+            <div class="uf-cl-grid">
+              <div v-for="i in 6" :key="i" class="uf-cl-skel-tile">
+                <UfSkeleton h="auto" class="uf-cl-skel-thumb" />
+                <UfSkeleton w="70%" :h="15" />
+                <UfSkeleton w="40%" :h="13" />
+              </div>
+            </div>
+          </section>
+        </div>
+        <div v-else-if="clipsLoadError" role="alert" class="uf-cl-state">
+          <p class="uf-t3">{{ clipsLoadError }}</p>
+          <button type="button" class="uf-btn-secondary" @click="loadClips">Retry loading clips</button>
+        </div>
+        <div v-else-if="displayedClips.length === 0" class="uf-cl-empty">
+          <p class="uf-t1" style="margin: 0">{{ showAllGames ? 'No clips yet' : `No ${theme.shortName} clips yet` }}</p>
+          <p class="uf-t2" style="margin: 0; max-width: 560px">{{ emptyStateHint.replace(/^No .+? clips yet\. /, '') }}</p>
+        </div>
+        <div v-else class="uf-cl-sections">
+          <section v-for="(section, si) in librarySections" :key="section.key" class="uf-rise" :class="`uf-d${Math.min(si + 1, 6)}s`">
+            <button type="button" class="uf-cl-head" :aria-expanded="section.matchKey ? isMatchExpanded(section.matchKey) : true"
+              @click="section.matchKey && toggleMatchSection(section.matchKey)">
+              <span class="uf-cl-head-text">
+                <span class="uf-label">{{ section.label }}</span>
+                <span v-if="section.sublabel" class="uf-t4">{{ section.sublabel }}</span>
+              </span>
+              <span class="uf-t4">{{ section.clips.length }}</span>
+            </button>
+            <div v-if="section.matchKey && isMatchExpanded(section.matchKey)" class="uf-cl-match">
+              <div v-if="section.topMoments.length" class="uf-cl-moments">
+                <span class="uf-t4">Top moments</span>
+                <button v-for="moment in section.topMoments" :key="moment.id" type="button" class="uf-link" @click="openPlayer(moment)">
+                  {{ triggerLabel(moment.trigger) }} · {{ moment.title || defaultTitle(moment) }}
+                </button>
+              </div>
+              <div class="uf-cl-moments">
+                <button type="button" class="uf-link" @click="matchGroupForKey(section.matchKey!) && selectRoutineKillsInMatch(matchGroupForKey(section.matchKey!)!)">Select routine kills</button>
+                <button type="button" class="uf-link" @click="matchGroupForKey(section.matchKey!) && keepHighlightsInMatch(matchGroupForKey(section.matchKey!)!)">Keep highlights</button>
+                <template v-if="confirmKeepHighlightsKey === section.matchKey">
+                  <span class="uf-t4">Delete unstarred kills?</span>
+                  <button type="button" class="uf-link" style="color: var(--uf-loss)" @click="matchGroupForKey(section.matchKey!) && confirmKeepHighlightsDelete(matchGroupForKey(section.matchKey!)!)">Yes</button>
+                  <button type="button" class="uf-link" @click="confirmKeepHighlightsKey = null">No</button>
+                </template>
+                <template v-if="confirmMatchDeleteKey === section.matchKey">
+                  <span class="uf-t4" style="color: var(--uf-loss)">Delete all {{ section.clips.length }}?</span>
+                  <button type="button" class="uf-link" style="color: var(--uf-loss)" @click="matchGroupForKey(section.matchKey!) && deleteMatchClips(matchGroupForKey(section.matchKey!)!)">Delete</button>
+                  <button type="button" class="uf-link" @click="confirmMatchDeleteKey = null">Keep</button>
+                </template>
+                <button v-else type="button" class="uf-link" @click="confirmMatchDeleteKey = section.matchKey">Delete match clips</button>
+              </div>
+            </div>
+            <div v-if="!section.matchKey || isMatchExpanded(section.matchKey)" class="uf-cl-grid">
+              <ClipTileV3
+                v-for="clip in section.clips"
+                :key="clip.id"
+                :clip="clip"
+                :thumb="thumbnails[clip.id]"
+                :title="v3ClipTitle(clip)"
+                :label="triggerLabel(clip.trigger)"
+                :duration="formatDuration(clip.durationSeconds)"
+                :ago="timeAgo(clip.savedAt)"
+                :bulk="bulkMode"
+                :selected="selectedIds.has(clip.id)"
+                :uploading="uploadingClipId === clip.id"
+                :analysing="analysingClipId === clip.id"
+                :busy="!!uploadingClipId || !!analysingClipId"
+                :can-analyse="canAnalyseClip(clip)"
+                :upload-title="uploadButtonTitle"
+                @open="openPlayer(clip)"
+                @toggle="toggleSelect(clip.id)"
+                @favourite="toggleFavorite(clip)"
+                @upload="uploadClip(clip)"
+                @analyse="analyseClip(clip)"
+                @delete="deleteClip(clip.id)"
+              />
+            </div>
+          </section>
+        </div>
+      </div>
+    </template>
+    <template v-else>
     <!-- Stats bar -->
     <div v-if="clips.length > 0" class="flex items-center gap-3 text-[11px] text-gray-600 px-1 flex-shrink-0">
       <span>{{ clipStats.total }} clip{{ clipStats.total !== 1 ? 's' : '' }}</span>
@@ -589,7 +719,9 @@
         </template>
       </template>
     </div>
+    </template>
 
+    <template v-if="!uiV3">
     <div v-if="cloudReviewLoading || cloudReviewError" class="fixed bottom-6 left-1/2 z-[70] -translate-x-1/2 rounded border border-white/20 bg-[#171b23] p-4 text-sm text-white" role="status">
       {{ cloudReviewLoading ? 'Opening cloud clip…' : cloudReviewError }}
       <button v-if="cloudReviewError" class="ml-3 underline" @click="openCloudClip">Retry</button>
@@ -969,6 +1101,164 @@
         </div>
       </div>
     </Transition>
+    </template>
+    <template v-else>
+      <Teleport to="body">
+        <div v-if="cloudReviewLoading || cloudReviewError" class="ui-v3 uf-cl-toast" :class="cloudReviewError ? 'uf-cl-toast-bad' : ''" role="status">
+          <span class="uf-t4">{{ cloudReviewLoading ? 'Opening cloud clip…' : cloudReviewError }}</span>
+          <button v-if="cloudReviewError" type="button" class="uf-link" @click="openCloudClip">Retry</button>
+        </div>
+      </Teleport>
+
+      <!-- Clip player -->
+      <UfDialog
+        :open="!!playingClip"
+        :width="1120"
+        :title="playingClip ? v3ClipTitle(playingClip) : ''"
+        :kicker="playingClip?.trigger ? `${playingClip.trigger} clip · ${formatDuration(playingClip.durationSeconds)}` : 'Clip'"
+        :persistent="editingTitle || trimModal.show || !!pendingClipAnalysis || upgradeModal.show"
+        @close="closePlayer"
+      >
+        <template v-if="playingClip">
+          <div v-if="editingTitle" class="uf-cl-rename">
+            <input
+              ref="titleInputEl"
+              v-model="titleInputValue"
+              class="uf-cl-input uf-t3"
+              maxlength="80"
+              aria-label="Clip name"
+              @keydown.enter="saveTitleEdit"
+              @keydown.escape="cancelTitleEdit"
+              @blur="saveTitleEdit"
+            />
+            <button type="button" class="uf-link" @mousedown.prevent="cancelTitleEdit">Cancel</button>
+          </div>
+          <div v-if="!cloudOnly" class="uf-cl-tools">
+            <button type="button" class="uf-link" :class="playingClip.favorited ? 'uf-cl-fav' : ''" :aria-pressed="!!playingClip.favorited" @click="toggleFavorite(playingClip)">{{ playingClip.favorited ? '★ Favourite' : '☆ Favourite' }}</button>
+            <button v-if="!editingTitle" type="button" class="uf-link" @click="startTitleEdit">Rename</button>
+            <button type="button" class="uf-link" @click="copyClipPath(playingClip)">Copy file path</button>
+            <button type="button" class="uf-link" @click="revealInExplorer(playingClip)">Show in folder</button>
+            <button type="button" class="uf-link" @click="videoEl?.requestFullscreen()">Fullscreen</button>
+          </div>
+          <div v-else class="uf-cl-tools">
+            <span class="uf-t4">Cloud clip · Editing needs a downloaded copy.</span>
+            <button type="button" class="uf-link" @click="downloadCloudClip">Download clip</button>
+            <button type="button" class="uf-link" @click="videoEl?.requestFullscreen()">Fullscreen</button>
+          </div>
+          <p v-if="cloudOnly && ['queued', 'processing'].includes(playingClip.analysisStatus)" role="status" class="uf-t4 uf-cl-status"><span class="uf-cl-dot uf-live" />AI coaching {{ playingClip.analysisStatus === 'queued' ? 'queued' : 'in progress' }}. Results will appear here.</p>
+          <div class="uf-cl-stage" :style="cursorHidden ? { cursor: 'none' } : undefined" @mousemove="onPlayerMouseMove">
+            <video
+              ref="videoEl"
+              class="uf-cl-video"
+              controls
+              autoplay
+              :src="cloudOnly ? playingClip.path : toFileUrl(playingClip.path)"
+              @error="cloudOnly && (cloudReviewError = 'Playback failed. Retry to renew access to this clip.')"
+              @timeupdate="trackClipWatch"
+            />
+          </div>
+          <div class="uf-cl-keys">
+            <span class="uf-t4">Space play/pause · ← → skip 5s · F fullscreen · Esc close</span>
+            <span style="flex: 1" />
+            <span class="uf-label">Speed</span>
+            <button
+              v-for="spd in [0.5, 1, 2] as const"
+              :key="spd"
+              type="button"
+              class="uf-cl-speed"
+              :class="playbackSpeed === spd ? 'is-on' : ''"
+              :aria-pressed="playbackSpeed === spd"
+              @click="setPlaybackSpeed(spd)"
+            >{{ spd }}x</button>
+          </div>
+          <section v-if="playingClip.suggestion" class="uf-cl-coach">
+            <span class="uf-label">AI coaching</span>
+            <p class="uf-t3" style="margin: 0">{{ playingClip.suggestion }}</p>
+            <p v-if="playingClip.verdict" class="uf-t2" style="margin: 0">{{ playingClip.verdict }}</p>
+            <p v-if="playingClip.coachingTags?.length" class="uf-t4" style="margin: 0; text-transform: capitalize">{{ playingClip.coachingTags.map(t => t.replace(/_/g, ' ')).join(' · ') }}</p>
+          </section>
+        </template>
+        <template v-if="playingClip" #actions>
+          <UfButton v-if="!cloudOnly" icon="clip" @click="openTrim(playingClip)">Trim</UfButton>
+          <UfButton v-if="!cloudOnly && playingClip.uploadStatus === 'uploaded'" icon="share" @click="shareClip(playingClip)">Share</UfButton>
+          <template v-else-if="!cloudOnly">
+            <UfButton
+              variant="primary"
+              :disabled="!!uploadingClipId || !!analysingClipId"
+              :title="uploadButtonTitle"
+              @click="uploadClip(playingClip)"
+            >{{ uploadingClipId === playingClip.id ? 'Uploading…' : 'Upload' }}</UfButton>
+            <UfButton :disabled="!!uploadingClipId || !!analysingClipId" @click="uploadAndAnalyseClip(playingClip)">Upload &amp; analyse</UfButton>
+          </template>
+          <UfButton
+            v-if="playingClip.uploadStatus === 'uploaded' && canAnalyseClip(playingClip)"
+            variant="primary"
+            icon="spark"
+            :disabled="!!uploadingClipId || !!analysingClipId"
+            @click="analyseClip(playingClip)"
+          >{{ analysingClipId === playingClip.id ? 'Analysing…' : 'Analyse' }}</UfButton>
+        </template>
+      </UfDialog>
+
+      <!-- Analysis confirm -->
+      <UfDialog :open="!!pendingClipAnalysis" kicker="AI clip review" title="Analyse this clip?" :width="480" @close="pendingClipAnalysis = null">
+        <template v-if="pendingClipAnalysis">
+          <p class="uf-t2" style="margin: 0">Uses 1 AI clip review. {{ pendingClipAnalysis.limit === null ? 'Your plan has unlimited clip reviews.' : `You have ${pendingClipAnalysis.remaining} of ${pendingClipAnalysis.limit} remaining this month.` }} This does not use a full-match report.</p>
+          <p class="uf-t4" style="margin: 0">Feedback covers what is visible in this clip. It is not a full-match assessment.</p>
+        </template>
+        <template #actions>
+          <UfButton @click="pendingClipAnalysis = null">Cancel</UfButton>
+          <UfButton variant="primary" @click="confirmClipAnalysis">Use 1 clip review</UfButton>
+        </template>
+      </UfDialog>
+
+      <!-- Trim -->
+      <UfDialog :open="trimModal.show" kicker="Clip" title="Trim clip" :width="460" @close="trimModal.show = false">
+        <p class="uf-t2" style="margin: 0">Original <span class="uf-num uf-cl-strong">{{ formatDuration(trimModal.duration, true) }}</span> · New <span class="uf-num uf-cl-strong">{{ formatDuration(trimModal.endSec - trimModal.startSec, true) }}</span></p>
+        <div class="uf-cl-range" aria-hidden="true">
+          <div
+            class="uf-cl-kept"
+            :style="{
+              left: (trimModal.startSec / trimModal.duration * 100) + '%',
+              width: ((trimModal.endSec - trimModal.startSec) / trimModal.duration * 100) + '%'
+            }"
+          />
+        </div>
+        <div class="uf-cl-trim-row">
+          <span class="uf-label">Start</span>
+          <span style="flex: 1" />
+          <button type="button" class="uf-cl-step" aria-label="Start earlier by 0.1 seconds" @click="trimModal.startSec = Math.round(Math.max(0, trimModal.startSec - 0.1) * 10) / 10">−</button>
+          <span class="uf-t3 uf-num uf-cl-time">{{ formatDuration(trimModal.startSec, true) }}</span>
+          <button type="button" class="uf-cl-step" aria-label="Start later by 0.1 seconds" @click="trimModal.startSec = Math.round(Math.min(trimModal.endSec - 0.5, trimModal.startSec + 0.1) * 10) / 10">+</button>
+        </div>
+        <input v-model.number="trimModal.startSec" type="range" :min="0" :max="trimModal.endSec - 0.5" step="0.1" class="uf-cl-slider" aria-label="Trim start" />
+        <div class="uf-cl-trim-row">
+          <span class="uf-label">End</span>
+          <span style="flex: 1" />
+          <button type="button" class="uf-cl-step" aria-label="End earlier by 0.1 seconds" @click="trimModal.endSec = Math.round(Math.max(trimModal.startSec + 0.5, trimModal.endSec - 0.1) * 10) / 10">−</button>
+          <span class="uf-t3 uf-num uf-cl-time">{{ formatDuration(trimModal.endSec, true) }}</span>
+          <button type="button" class="uf-cl-step" aria-label="End later by 0.1 seconds" @click="trimModal.endSec = Math.round(Math.min(trimModal.duration, trimModal.endSec + 0.1) * 10) / 10">+</button>
+        </div>
+        <input v-model.number="trimModal.endSec" type="range" :min="trimModal.startSec + 0.5" :max="trimModal.duration" step="0.1" class="uf-cl-slider" aria-label="Trim end" />
+        <p v-if="trimModal.error" role="alert" class="uf-t4 uf-cl-error" style="margin: 0">{{ trimModal.error }}</p>
+        <template #actions>
+          <UfButton @click="trimModal.show = false">Cancel</UfButton>
+          <UfButton variant="primary" :disabled="trimModal.loading" @click="confirmTrim">{{ trimModal.loading ? 'Trimming…' : 'Trim clip' }}</UfButton>
+        </template>
+      </UfDialog>
+
+      <!-- Allowance -->
+      <UfDialog :open="upgradeModal.show" kicker="AI clip reviews" title="Check your allowance" :width="440" @close="upgradeModal.show = false">
+        <p class="uf-t2" style="margin: 0">
+          <template v-if="userTier === 'free'">{{ upgradeModal.message }}</template>
+          <template v-else>You've used all your {{ userTier }} plan analyses for this month. Resets in {{ daysUntilReset() }} day{{ daysUntilReset() === 1 ? '' : 's' }}.</template>
+        </p>
+        <template #actions>
+          <UfButton @click="upgradeModal.show = false">{{ userTier === 'free' ? 'Maybe later' : 'Dismiss' }}</UfButton>
+          <UfButton v-if="userTier === 'free'" variant="primary" @click="openUpgrade">View plans</UfButton>
+        </template>
+      </UfDialog>
+    </template>
   </div>
 </template>
 
@@ -977,6 +1267,12 @@ import { openUpgrade as startUpgrade } from '../lib/upgrade'
 import StorageIndicator from '../components/shared/StorageIndicator.vue'
 import LibraryPageHeader from '../components/shared/LibraryPageHeader.vue'
 import CloudUsageNotice from '../components/shared/CloudUsageNotice.vue'
+import MatchesTabsV3 from '../components/v3/matches/MatchesTabsV3.vue'
+import ClipTileV3 from '../components/v3/matches/ClipTileV3.vue'
+import { uiV3 } from '../lib/ui-v3'
+import UfTabs from '../components/v3/UfTabs.vue'
+import UfButton from '../components/v3/UfButton.vue'
+import UfDialog from '../components/v3/UfDialog.vue'
 import { PlaybackActivityMeter } from '../lib/playback-activity'
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
@@ -985,8 +1281,11 @@ import { loadSaveClipHotkey } from '../lib/hotkeys'
 import { usePrimaryGame } from '../composables/usePrimaryGame'
 import { useGameTheme } from '../composables/useGameTheme'
 import { primaryGameLabel } from '../lib/games'
+import { readCache, writeCache } from '../lib/stale-cache'
+import UfSkeleton from '../components/v3/UfSkeleton.vue'
 import { hasProAccess as proAccessForUser } from '../lib/subscription'
 import { formatAnalysisFailureMessage } from '../lib/analysis-failure-messages'
+import { smartClipTitle } from '../lib/ideas/smart-clip-title'
 import {
   buildClipMatchGroups,
   formatMatchGroupLabel,
@@ -1164,6 +1463,18 @@ const sortOptions = [
 const sortOrder = ref<(typeof sortOptions)[number]['value']>('newest')
 const viewMode = ref<'grid' | 'list'>('grid')
 const groupMode = ref<'match' | 'date'>('match')
+
+// UI v3 filter rows (UfTabs) — same state as the old chips.
+const v3FilterItems = computed(() => filters.value.map(f => ({ key: f.value, label: f.label })))
+const v3GroupItems = [{ key: 'match', label: 'By match' }, { key: 'date', label: 'By date' }]
+const v3SortItems = sortOptions.map(o => ({ key: o.value, label: o.label }))
+function setGroupMode(key: string) {
+  if (key === 'match' || key === 'date') groupMode.value = key
+}
+function setSortOrder(key: string) {
+  const match = sortOptions.find(o => o.value === key)
+  if (match) sortOrder.value = match.value
+}
 const collapsedMatchKeys = ref<Set<string>>(new Set())
 const confirmMatchDeleteKey = ref<string | null>(null)
 const confirmKeepHighlightsKey = ref<string | null>(null)
@@ -1442,7 +1753,14 @@ async function saveTitleEdit() {
 
 async function loadClips() {
   const request = ++clipsLoadRequest
-  clipsLoading.value = true
+  // v3: draw this game's last clip list at once; only a first-ever load shows placeholder tiles.
+  const cacheKey = showAllGames.value ? 'clips:all' : `clips:${primaryGame.value}`
+  const cached = uiV3.value ? readCache<typeof clips.value>(cacheKey) : null
+  if (cached) {
+    clips.value = cached.value
+    for (const clip of clips.value) loadThumbnail(clip.id)
+  }
+  clipsLoading.value = !cached
   clipsLoadError.value = ''
   try {
     const result = await window.api.clips.get(
@@ -1450,11 +1768,12 @@ async function loadClips() {
     )
     if (request !== clipsLoadRequest) return
     clips.value = result
+    if (uiV3.value) writeCache(cacheKey, result)
     for (const clip of clips.value) {
       loadThumbnail(clip.id)
     }
   } catch {
-    if (request === clipsLoadRequest) clipsLoadError.value = 'Could not load clips. Your files have not been removed.'
+    if (request === clipsLoadRequest && !cached) clipsLoadError.value = 'Could not load clips. Your files have not been removed.'
   } finally {
     if (request === clipsLoadRequest) clipsLoading.value = false
   }
@@ -1783,6 +2102,11 @@ function formatDuration(secs: number, precise = false): string {
   return `${m}:${Math.floor(s).toString().padStart(2, '0')}`
 }
 
+/** v3: the user's title, else a title built from what the clip measured (P6), else the old default. */
+function v3ClipTitle(clip: ClipRecord): string {
+  return clip.title || smartClipTitle(clip) || defaultTitle(clip)
+}
+
 function defaultTitle(clip: ClipRecord): string {
   const parts: string[] = []
   if (clip.trigger === 'ace') parts.push('ACE')
@@ -1876,4 +2200,52 @@ function timeAgo(ts: number): string {
   opacity: 0;
   transform: translateX(-50%) translateY(12px);
 }
+</style>
+
+<style scoped>
+.uf-clips-v3 { background: var(--uf-bg); min-height: 0; overflow: hidden; }
+.uf-cl-filters { flex: none; display: flex; flex-direction: column; gap: 10px; padding: 18px 40px 6px; }
+.uf-cl-row { display: flex; align-items: center; gap: 22px; flex-wrap: wrap; }
+.uf-cl-opt { display: inline-flex; align-items: center; gap: 14px; flex: none; }
+.uf-cl-note { margin: 0; }
+.uf-cl-body { flex: 1; min-height: 0; overflow-y: auto; padding: 8px 40px 32px; }
+.uf-cl-error { margin: 10px 0; color: var(--uf-loss); }
+.uf-cl-stats { display: flex; align-items: center; gap: 18px; padding: 10px 0 14px; border-bottom: 1px solid var(--uf-line); }
+.uf-cl-state { display: flex; flex-direction: column; gap: 10px; align-items: flex-start; padding: 40px 0; }
+.uf-cl-empty { display: flex; flex-direction: column; gap: 16px; padding: 56px 0; }
+.uf-cl-sections { display: flex; flex-direction: column; gap: 30px; padding-top: 22px; }
+.uf-cl-head { width: 100%; display: flex; justify-content: space-between; align-items: flex-end; gap: 16px; background: none; border: 0; padding: 0 0 12px; cursor: pointer; text-align: left; }
+.uf-cl-head-text { display: flex; flex-direction: column; gap: 6px; }
+.uf-cl-match { display: flex; flex-direction: column; gap: 10px; padding-bottom: 16px; }
+.uf-cl-moments { display: flex; flex-wrap: wrap; align-items: center; gap: 18px; }
+.uf-cl-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 28px 22px; }
+.uf-cl-skel-tile { display: flex; flex-direction: column; gap: 10px; }
+.uf-cl-skel-thumb { aspect-ratio: 16 / 9; }
+/* v3 dialogs + toast (teleported; slot content keeps this scope) */
+.uf-cl-toast { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); z-index: 1100; display: flex; align-items: center; gap: 14px; padding: 12px 16px; background: var(--uf-raised); border: 1px solid var(--uf-line-2); border-left: 3px solid var(--uf-line-2); pointer-events: auto; }
+.uf-cl-toast .uf-t4 { color: var(--uf-bone); }
+.uf-cl-toast-ok { border-left-color: var(--uf-win); }
+.uf-cl-toast-bad { border-left-color: var(--uf-loss); }
+.uf-cl-rename { display: flex; align-items: center; gap: 14px; }
+.uf-cl-input { flex: 1; min-width: 0; height: 36px; padding: 0 10px; background: var(--uf-raised); border: 1px solid var(--uf-line-2); border-radius: 0; color: var(--uf-bone); outline: none; }
+.uf-cl-input:focus { border-color: var(--uf-red); }
+.uf-cl-tools { display: flex; align-items: center; flex-wrap: wrap; gap: 22px; }
+.uf-cl-fav { color: var(--uf-gold); }
+.uf-cl-status { display: flex; align-items: center; gap: 8px; margin: 0; color: var(--uf-muted); }
+.uf-cl-dot { width: 6px; height: 6px; background: var(--uf-red); flex: none; }
+.uf-cl-stage { background: #000; margin: 0 -24px; }
+.uf-cl-video { display: block; width: 100%; max-height: 60vh; object-fit: contain; }
+.uf-cl-keys { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.uf-cl-speed { background: none; border: 1px solid transparent; color: var(--uf-muted); font: 600 13px/1 var(--uf-body); padding: 5px 8px; cursor: pointer; font-variant-numeric: tabular-nums; }
+.uf-cl-speed:hover { color: var(--uf-bone); }
+.uf-cl-speed.is-on { color: var(--uf-bone); border-color: var(--uf-line-2); }
+.uf-cl-coach { display: flex; flex-direction: column; gap: 8px; padding-top: 14px; border-top: 1px solid var(--uf-line); }
+.uf-cl-strong { color: var(--uf-bone); }
+.uf-cl-range { position: relative; height: 28px; background: var(--uf-raised); border: 1px solid var(--uf-line); }
+.uf-cl-kept { position: absolute; top: 0; bottom: 0; background: rgba(255, 70, 85, 0.18); border-left: 2px solid var(--uf-red); border-right: 2px solid var(--uf-red); }
+.uf-cl-trim-row { display: flex; align-items: center; gap: 8px; margin-bottom: -6px; }
+.uf-cl-step { width: 28px; height: 28px; background: none; border: 1px solid var(--uf-line-2); color: var(--uf-bone); cursor: pointer; font: 600 15px/1 var(--uf-body); }
+.uf-cl-step:hover { background: var(--uf-hover); }
+.uf-cl-time { min-width: 64px; text-align: center; }
+.uf-cl-slider { width: 100%; accent-color: var(--uf-red); cursor: pointer; }
 </style>

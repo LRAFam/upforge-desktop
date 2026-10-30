@@ -1,4 +1,93 @@
 <template>
+  <div v-if="uiV3" class="uf-pf">
+    <header class="uf-pf-head uf-rise">
+      <span class="uf-label">PC performance · Windows</span>
+      <h1 class="uf-d2" style="margin: 0">Performance</h1>
+    </header>
+
+    <section v-if="platform && platform !== 'win32'" class="uf-pf-sec">
+      <p class="uf-t2">Performance boost (process priority &amp; power plan) is Windows-only.</p>
+      <UfButton variant="link" @click="$router.push('/stats')">View your game stats &amp; coaching data</UfButton>
+    </section>
+
+    <template v-else>
+      <section class="uf-pf-hero uf-rise uf-d1s">
+        <p class="uf-t1" style="margin: 0"><span class="uf-pf-dot" :class="boosted ? 'on' : ''" />{{ boosted ? 'Boost is active.' : 'Standard mode.' }} Power plan: {{ powerPlan || '—' }}.</p>
+        <div class="uf-pf-row">
+          <UfButton v-if="!boosted" variant="primary" :disabled="loading" @click="runBoost">{{ loading ? 'Optimising…' : 'Boost performance' }}</UfButton>
+          <UfButton v-else :disabled="loading" @click="restore">Restore</UfButton>
+          <UfButton v-if="!diagnostics" :disabled="diagLoading" @click="runDiagnostics">{{ diagLoading ? 'Analysing…' : 'Run diagnostics' }}</UfButton>
+        </div>
+      </section>
+
+      <section v-if="!boosted && !results.length" class="uf-pf-sec">
+        <span class="uf-label">What gets optimised</span>
+        <div v-for="item in previewItems" :key="item.name" class="uf-pf-line">
+          <span class="uf-t3">{{ item.name }}</span>
+          <span class="uf-t4">{{ item.description }}</span>
+        </div>
+      </section>
+
+      <section v-if="results.length" class="uf-pf-sec">
+        <span class="uf-label">Results</span>
+        <div v-for="result in results" :key="result.name" class="uf-pf-line">
+          <span class="uf-t3"><span :class="result.success ? 'uf-pf-ok' : 'uf-pf-bad'">{{ result.success ? '✓' : '!' }}</span> {{ result.name }}</span>
+          <span class="uf-t4" :class="result.success ? '' : 'uf-pf-bad'">{{ result.message }}</span>
+        </div>
+        <p v-if="hasAdminFailures" class="uf-t4 uf-pf-note">Some optimisations require administrator privileges. Try running UpForge as administrator for full boost.</p>
+        <p v-if="hagsNeedsReboot" class="uf-t4 uf-pf-note">Hardware-Accelerated GPU Scheduling enabled — reboot your PC to activate it. This can give a significant FPS boost in Valorant.</p>
+      </section>
+
+      <section v-if="diagnostics" class="uf-pf-sec">
+        <div class="uf-pf-sec-head">
+          <span class="uf-label">System diagnostics</span>
+          <button type="button" class="uf-link" @click="diagnostics = null">Dismiss</button>
+        </div>
+        <p v-if="diagnostics.bottleneck !== 'unknown'" class="uf-t3" style="margin: 0">
+          {{ diagnostics.bottleneck === 'cpu' ? 'CPU bottleneck — your CPU is limiting your FPS.' :
+             diagnostics.bottleneck === 'gpu' ? 'GPU bottleneck — your GPU is the limiting factor.' :
+             'Balanced — no clear bottleneck detected.' }}
+        </p>
+        <div v-for="m in ([
+          { key: 'gpu', label: 'GPU', detail: diagnostics.gpuName || '—', value: diagnostics.gpuUsagePct, extra: diagnostics.gpuTempC > 0 ? diagnostics.gpuTempC + '°C' : '—', warn: false },
+          { key: 'cpu', label: 'CPU', detail: `${diagnostics.cpuSpeedMhz} / ${diagnostics.cpuMaxMhz} MHz`, value: diagnostics.cpuUsagePct, extra: 'Load trend', warn: false },
+          { key: 'ram', label: 'RAM', detail: `${diagnostics.ramUsedMb} / ${diagnostics.ramTotalMb} MB`, value: ramUsagePct(diagnostics), extra: `${diagnostics.ramSpeedMhz} MHz${!diagnostics.xmpEnabled ? ' — XMP may be off' : ''}`, warn: !diagnostics.xmpEnabled },
+        ] as const)" :key="m.key" class="uf-pf-stat">
+          <div class="uf-pf-stat-name"><span class="uf-label">{{ m.label }}</span><span class="uf-t4 uf-pf-trunc">{{ m.detail }}</span></div>
+          <span class="uf-d4" :class="statHigh(m.key, m.value) ? 'uf-pf-bad' : ''">{{ m.value }}%</span>
+          <div class="uf-pf-bar"><div class="uf-fill" :class="statHigh(m.key, m.value) ? 'high' : ''" :style="{ width: Math.min(100, m.value) + '%' }" /></div>
+          <svg class="uf-pf-spark" viewBox="0 0 60 20" preserveAspectRatio="none" aria-hidden="true"><polyline fill="none" stroke-width="1.5" :points="sparklinePolyline(m.key)" /></svg>
+          <span class="uf-t4 uf-pf-avg">{{ statAverage(m.key) !== null ? `avg ${statAverage(m.key)}%` : '' }}</span>
+          <span class="uf-t4 uf-pf-extra" :class="m.warn ? 'uf-pf-warn' : ''">{{ m.extra }}</span>
+        </div>
+        <p v-for="(w, i) in diagnostics.warnings" :key="i" class="uf-t4 uf-pf-note">{{ w }}</p>
+        <template v-if="diagnostics.topProcesses.length">
+          <span class="uf-label" style="margin-top: 10px">Top CPU processes</span>
+          <div v-for="proc in diagnostics.topProcesses.slice(0, 5)" :key="proc.name" class="uf-pf-proc">
+            <span class="uf-t3 uf-pf-trunc" style="flex: 1">{{ proc.name }}</span>
+            <span class="uf-t3 uf-num" :class="proc.cpuPct > 10 ? 'uf-pf-bad' : 'uf-pf-muted'">{{ proc.cpuPct.toFixed(1) }}%</span>
+            <button type="button" class="uf-link" :disabled="killingProcesses.has(proc.name)" :aria-label="`Close ${proc.name}`" @click="killProcess(proc.name)">{{ killingProcesses.has(proc.name) ? 'Closing…' : 'Kill' }}</button>
+          </div>
+        </template>
+      </section>
+
+      <section class="uf-pf-sec">
+        <span class="uf-label">Auto-close before game</span>
+        <p class="uf-t4">Apps added here are closed automatically when a game is detected starting.</p>
+        <div v-for="(proc, i) in pregameKillList" :key="proc" class="uf-pf-proc">
+          <span class="uf-t3 uf-pf-trunc" style="flex: 1">{{ proc }}</span>
+          <button type="button" class="uf-link" :aria-label="`Remove ${proc}`" @click="removeFromKillList(i)">Remove</button>
+        </div>
+        <div class="uf-pf-row">
+          <input v-model="newKillEntry" type="text" placeholder="e.g. Discord.exe" class="uf-pf-input" aria-label="App to close before a game" @keydown.enter="addToKillList" />
+          <UfButton @click="addToKillList">Add</UfButton>
+        </div>
+      </section>
+
+      <p class="uf-t4">For maximum effect, run UpForge as administrator.</p>
+    </template>
+  </div>
+  <template v-else>
   <div class="px-3 py-3 space-y-3">
 
     <!-- macOS notice -->
@@ -364,10 +453,13 @@
 
     </template>
   </div>
+  </template>
 </template>
 
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
+import { uiV3 } from '../lib/ui-v3'
+import UfButton from '../components/v3/UfButton.vue'
 
 interface OptimizationResult {
   name: string
@@ -533,6 +625,11 @@ function statValueClass(metric: PerfMetric, value: number): string {
   return 'text-red-400'
 }
 
+/** v3: true in the same band statValueClass marks red. */
+function statHigh(metric: PerfMetric, value: number): boolean {
+  return metric === 'ram' ? value > 90 : value > 80
+}
+
 function statBarClass(metric: PerfMetric, value: number): string {
   if (metric === 'ram') {
     if (value < 70) return 'bg-emerald-500'
@@ -676,3 +773,34 @@ onMounted(async () => {
 })
 </script>
 
+<style scoped>
+.uf-pf { height: 100%; overflow: auto; padding: 32px 40px 48px; background: var(--uf-bg); color: var(--uf-bone); display: flex; flex-direction: column; gap: 28px; max-width: 1100px; }
+.uf-pf p { margin: 0; }
+.uf-pf-head { display: flex; flex-direction: column; gap: 10px; }
+.uf-pf-hero { display: flex; flex-direction: column; gap: 18px; padding: 22px 0; border-top: 1px solid var(--uf-line); border-bottom: 1px solid var(--uf-line); }
+.uf-pf-dot { display: inline-block; width: 10px; height: 10px; margin: 0 12px 4px 0; background: var(--uf-faint); vertical-align: middle; }
+.uf-pf-dot.on { background: var(--uf-win); }
+.uf-pf-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.uf-pf-sec { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; }
+.uf-pf-sec > .uf-pf-line, .uf-pf-sec > .uf-pf-stat, .uf-pf-sec > .uf-pf-proc, .uf-pf-sec > .uf-pf-sec-head, .uf-pf-sec > .uf-pf-row { align-self: stretch; }
+.uf-pf-sec-head { display: flex; align-items: baseline; justify-content: space-between; }
+.uf-pf-line { display: grid; grid-template-columns: 220px minmax(0, 1fr); gap: 16px; align-items: baseline; padding: 10px 0; border-top: 1px solid var(--uf-line); }
+.uf-pf-ok { color: var(--uf-win); }
+.uf-pf-bad { color: var(--uf-loss) !important; }
+.uf-pf-muted { color: var(--uf-muted); }
+.uf-pf-warn { color: var(--uf-gold) !important; }
+.uf-pf-note { padding-left: 12px; border-left: 2px solid var(--uf-gold); color: var(--uf-muted); }
+.uf-pf-stat { display: grid; grid-template-columns: 220px 80px minmax(80px, 1fr) 60px 70px 170px; gap: 16px; align-items: center; padding: 12px 0; border-top: 1px solid var(--uf-line); }
+.uf-pf-stat-name { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.uf-pf-trunc { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.uf-pf-bar { height: 4px; background: var(--uf-raised); }
+.uf-pf-bar > div { height: 100%; background: var(--uf-bone); }
+.uf-pf-bar > div.high { background: var(--uf-loss); }
+.uf-pf-spark { width: 60px; height: 20px; stroke: var(--uf-muted); }
+.uf-pf-avg, .uf-pf-extra { white-space: nowrap; }
+.uf-pf-extra { text-align: right; }
+.uf-pf-proc { display: flex; align-items: center; gap: 16px; padding: 8px 0; border-top: 1px solid var(--uf-line); }
+.uf-pf-input { flex: 1; max-width: 360px; height: 44px; padding: 0 12px; background: var(--uf-raised); border: 1px solid var(--uf-line-2); border-radius: 0; color: var(--uf-bone); font: 400 15px/1 var(--uf-body); outline: none; }
+.uf-pf-input:focus { border-color: var(--uf-red); }
+@media (max-width: 900px) { .uf-pf-stat { grid-template-columns: 1fr 70px; } .uf-pf-bar, .uf-pf-spark, .uf-pf-avg { display: none; } .uf-pf-extra { grid-column: 1 / -1; text-align: left; } .uf-pf-line { grid-template-columns: 1fr; gap: 4px; } }
+</style>

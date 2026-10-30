@@ -77,6 +77,8 @@ export async function uploadReplayInBackground(
   auth: AuthManager,
   notifyWindow: BrowserWindow | null,
   meta?: ReplayUploadMeta,
+  /** Called once the cloud job exists (the credit is spent), so callers can link it to the recording. */
+  onJobId?: (jobId: string) => void,
 ): Promise<{ jobId?: string; status: string }> {
   const send = (channel: string, payload?: unknown) => {
     if (notifyWindow && !notifyWindow.isDestroyed()) {
@@ -104,6 +106,7 @@ export async function uploadReplayInBackground(
     })
 
     send('post-game:demo-status', { status: 'analysing', jobId })
+    try { onJobId?.(jobId) } catch (linkErr) { log.warn(`[Replay] ${game} could not link job to recording:`, linkErr) }
 
     const MAX_POLL_MS = 10 * 60 * 1000
     const pollStart = Date.now()
@@ -146,6 +149,7 @@ export async function tryAutoUploadSourceReplay(opts: {
   notifyWindow: BrowserWindow | null
   customReplayDir?: string
   meta?: ReplayUploadMeta
+  onJobId?: (jobId: string) => void
 }): Promise<void> {
   let demoPath = opts.demoPath
   if (!demoPath && opts.game === 'cs2') return
@@ -157,5 +161,5 @@ export async function tryAutoUploadSourceReplay(opts: {
   const meta = opts.meta ?? (opts.game === 'deadlock'
     ? { matchStartedAt: Math.floor(opts.matchSessionStart / 1000) }
     : undefined)
-  await uploadReplayInBackground(opts.game, demoPath, opts.auth, opts.notifyWindow, meta)
+  await uploadReplayInBackground(opts.game, demoPath, opts.auth, opts.notifyWindow, meta, opts.onJobId)
 }

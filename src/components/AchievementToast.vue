@@ -1,4 +1,19 @@
 <template>
+  <div v-if="uiV3" class="ui-v3 uf-toast uf-rise" role="status" aria-live="polite">
+    <div class="uf-toast-body">
+      <span class="uf-toast-icon" aria-hidden="true" v-html="achievement.icon" />
+      <div style="flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px">
+        <span class="uf-label" style="display: inline-flex; gap: 6px; align-items: center">
+          <UfIcon v-if="genuine" name="star" :size="12" style="color: var(--uf-gold)" />Achievement unlocked
+        </span>
+        <span class="uf-t3">{{ achievement.name }}</span>
+        <span class="uf-t4">{{ achievement.description }}</span>
+      </div>
+      <button type="button" class="uf-banner-x" aria-label="Dismiss" @click="dismiss"><UfIcon name="close" :size="14" /></button>
+    </div>
+    <div class="uf-toast-timer" aria-hidden="true"><span /></div>
+  </div>
+<template v-else>
   <div class="fixed bottom-6 left-1/2 -translate-x-1/2 z-[300] w-72">
     <div class="rounded-2xl border border-[#ff4655]/30 bg-[#0d1520] shadow-[0_16px_60px_rgba(0,0,0,0.9)] overflow-hidden">
       <!-- Top accent bar -->
@@ -36,10 +51,14 @@
     </div>
   </div>
 </template>
+</template>
 
 <script setup lang="ts">
-import { onMounted } from 'vue'
-import type { AchievementDef } from '../composables/useAchievements'
+import { computed, onMounted } from 'vue'
+import { ACHIEVEMENTS, type AchievementDef } from '../composables/useAchievements'
+import UfIcon from './v3/UfIcon.vue'
+import { uiV3 } from '../lib/ui-v3'
+import { isGenuineAchievement } from '../lib/shell-v3'
 
 const props = defineProps<{
   achievement: AchievementDef
@@ -47,6 +66,7 @@ const props = defineProps<{
 }>()
 
 const emit = defineEmits<{ dismiss: [] }>()
+const genuine = computed(() => isGenuineAchievement(props.achievement?.id, ACHIEVEMENTS))
 
 let timer: ReturnType<typeof setTimeout> | null = null
 

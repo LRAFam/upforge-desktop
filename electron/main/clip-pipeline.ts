@@ -21,6 +21,8 @@ import type { MatchData, KillEvent } from './riot-types'
 import { detectClutchRoundsForGame } from './demo-clutch'
 import type { ClipGame } from './clip-game'
 import type { ClipCaptureSettings } from './settings-manager'
+import { pickDeathClips } from './death-clips'
+import { OBJECTIVE_CLIP_AFTER_MS, OBJECTIVE_CLIP_BEFORE_MS, objectiveClipTitle, pickObjectiveClips } from './objective-clips'
 import { buildClipKills } from './kill-clip-grouping'
 import { buildClipEventsFromKills } from './live-kill-stamps'
 import type { ClipRecord } from './clip-store'
@@ -94,6 +96,99 @@ export class ClipPipeline {
   constructor(private ctx: ClipPipelineContext) {}
 
   /** Extract a clip, clamping to VOD length and accurately trimming after input seek. */
+  /**
+   * Death clips: the player's own deaths (opening deaths first), capped per match.
+   * Clip = 8 s before the death to 3 s after. Returns false if any clip failed.
+   */
+  private async extractDeathClips(args: {
+    videoPath: string
+    vodDurationMs: number | null
+    timeline: MatchData | null
+    analysisJobId: string | null
+    game: ClipGame
+    map: string | null
+    agent: string | null
+    excludeRounds: ReadonlySet<number>
+    out: string[]
+  }): Promise<boolean> {
+    const { clipStore, logActivity } = this.ctx
+    if (!this.ctx.getClipCapture().deaths || args.game !== 'valorant') return true
+    let complete = true
+    for (const { death, opening } of pickDeathClips(args.timeline, { excludeRounds: args.excludeRounds })) {
+      const offsetMs = death.videoOffsetMs!
+      const startMs = Math.max(0, offsetMs - 8_000)
+      const durationMs = 11_000
+      try {
+        const rec = clipStore.add({
+          path: '', thumbPath: null, trigger: 'death', map: args.map, agent: args.agent, durationSeconds: 11,
+          round: death.round ?? null, killCount: null, analysisJobId: args.analysisJobId, game: args.game,
+          ...clipMatchMeta(args.timeline, death),
+        })
+        const clipPath = path.join(clipStore.getClipsMediaDir(), `${rec.id}.mp4`)
+        const thumbPath = path.join(clipStore.getClipsMediaDir(), `${rec.id}_thumb.jpg`)
+        await this.safeExtract({ sourcePath: args.videoPath, startOffsetMs: startMs, durationMs, outputPath: clipPath }, args.vodDurationMs)
+        const resolvedThumb = await this.safeThumb(args.videoPath, offsetMs, startMs, thumbPath)
+        clipStore.update(rec.id, {
+          path: clipPath, thumbPath: resolvedThumb, momentOffsetMs: offsetMs, clipStartMs: startMs,
+          title: `${opening ? 'Opening death' : 'Death'}${typeof death.round === 'number' ? ` · Round ${death.round + 1}` : ''}`,
+        })
+        args.out.push(rec.id)
+      } catch (err) {
+        complete = false
+        reportClipExtractError('[ClipExtract] Death clip failed', err)
+      }
+    }
+    if (args.out.length) logActivity(`Death clips saved (${args.map ?? 'unknown map'})`)
+    return complete
+  }
+
+  /**
+   * League objective clips (Baron, Dragon, Herald, tower, inhibitor) from Live Client events,
+   * capped per match. Clip = 12 s before the take to 6 s after. Returns false if any clip failed.
+   */
+  private async extractObjectiveClips(args: {
+    videoPath: string
+    vodDurationMs: number | null
+    timeline: MatchData | null
+    analysisJobId: string | null
+    game: ClipGame
+    map: string | null
+    agent: string | null
+    out: string[]
+  }): Promise<boolean> {
+    const { clipStore, logActivity } = this.ctx
+    if (!this.ctx.getClipCapture().objectives || args.game !== 'lol') return true
+    let complete = true
+    let saved = 0
+    for (const objective of pickObjectiveClips(args.timeline)) {
+      const offsetMs = objective.videoOffsetMs!
+      const startMs = Math.max(0, offsetMs - OBJECTIVE_CLIP_BEFORE_MS)
+      const durationMs = OBJECTIVE_CLIP_BEFORE_MS + OBJECTIVE_CLIP_AFTER_MS
+      try {
+        const rec = clipStore.add({
+          path: '', thumbPath: null, trigger: 'objective', map: args.map, agent: args.agent, durationSeconds: durationMs / 1000,
+          round: null, killCount: null, analysisJobId: args.analysisJobId, game: args.game,
+          ...clipMatchMeta(args.timeline, null),
+        })
+        const clipPath = path.join(clipStore.getClipsMediaDir(), `${rec.id}.mp4`)
+        const thumbPath = path.join(clipStore.getClipsMediaDir(), `${rec.id}_thumb.jpg`)
+        await this.safeExtract({ sourcePath: args.videoPath, startOffsetMs: startMs, durationMs, outputPath: clipPath }, args.vodDurationMs)
+        const resolvedThumb = await this.safeThumb(args.videoPath, offsetMs, startMs, thumbPath)
+        clipStore.update(rec.id, {
+          path: clipPath, thumbPath: resolvedThumb, momentOffsetMs: offsetMs, clipStartMs: startMs,
+          title: objectiveClipTitle(objective),
+        })
+        args.out.push(rec.id)
+        saved++
+      } catch (err) {
+        complete = false
+        reportClipExtractError('[ClipExtract] Objective clip failed', err)
+      }
+    }
+    if (saved) logActivity(`Objective clips saved (${saved})`)
+    return complete
+  }
+
   private async safeExtract(
     opts: ExtractOptions,
     vodDurationMs: number | null,
@@ -265,6 +360,15 @@ export class ClipPipeline {
           reportClipExtractError('[ClipExtract] Kill clip failed', err)
         }
       }
+
+      if (!await this.extractDeathClips({
+        videoPath, vodDurationMs, timeline, analysisJobId, game, map, agent,
+        excludeRounds: new Set<number>(), out: extractedClipIds,
+      })) complete = false
+
+      if (!await this.extractObjectiveClips({
+        videoPath, vodDurationMs, timeline, analysisJobId, game, map, agent, out: extractedClipIds,
+      })) complete = false
 
       for (const [round, { kills: roundKills, trigger, killCount }] of combinedRounds.entries()) {
         if (trigger === 'ace' ? !capture.aces : !capture.multiKills) continue
@@ -456,6 +560,15 @@ export class ClipPipeline {
         reportClipExtractError('[LateClipExtract] Kill clip failed', err)
       }
     }
+
+    await this.extractDeathClips({
+      videoPath, vodDurationMs, timeline, analysisJobId, game, map, agent,
+      excludeRounds: new Set<number>(), out: extractedClipIds,
+    })
+
+    await this.extractObjectiveClips({
+      videoPath, vodDurationMs, timeline, analysisJobId, game, map, agent, out: extractedClipIds,
+    })
 
     for (const [round, { kills: roundKills, trigger, killCount }] of combinedRounds.entries()) {
       if (trigger === 'ace' ? !capture.aces : !capture.multiKills) continue

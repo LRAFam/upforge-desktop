@@ -8,6 +8,7 @@
 import type { RecentMatchFetchResult } from './recent-match-export'
 import { serializeRecentMatch } from './recent-match-export'
 import type { FocusSyncResult, FocusUpdate } from '../../src/lib/focus'
+import { deriveRoundFacts } from '../../src/lib/focus'
 
 export interface SyncState {
   /** Match IDs already sent (or permanently skipped). */
@@ -114,6 +115,8 @@ export async function syncMatchReports(deps: SyncDeps, limit = 20): Promise<Sync
         latest = {
           focus,
           focus_event: res.data.focus_event ?? null,
+          account: typeof res.data.account?.is_main === 'boolean' ? { is_main: res.data.account.is_main } : null,
+          rounds: deriveRoundFacts(matchData),
           report: res.data.report ? { notes: res.data.report.notes ?? null, notes_source: res.data.report.notes_source } : null,
           match_id: p.matchId,
           previous_focus: cachedLatest?.focus && focus

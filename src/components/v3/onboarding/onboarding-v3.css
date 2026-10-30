@@ -1,0 +1,82 @@
+/*
+ * UI v3 onboarding: layout of the root (rail + wizard) and the v3 step markup in OnboardingView.
+ * Scoped to .ui-v3 .ob-v3 so the old UI is unchanged when the switch is off.
+ */
+.ui-v3 .ob-v3.wiz-root { background: var(--uf-bg); padding: 0; align-items: stretch; justify-content: stretch; gap: 0; }
+
+/* Wizard column: header · scrolling step · footer with the one primary */
+.ui-v3 .ob-v3 .ob3 { flex: 0 0 min(560px, 50%); min-width: 0; height: 100%; display: flex; flex-direction: column; background: var(--uf-bg); border-left: 1px solid var(--uf-line); }
+.ui-v3 .ob-v3 .ob3-head { flex: none; display: flex; align-items: center; gap: 16px; min-height: 48px; padding: 0 32px; border-bottom: 1px solid var(--uf-line); }
+.ui-v3 .ob-v3 .ob3-preview { margin-left: auto; display: inline-flex; align-items: center; gap: 8px; white-space: nowrap; }
+.ui-v3 .ob-v3 .ob3-body { position: relative; flex: 1 1 auto; min-height: 0; overflow-x: hidden; overflow-y: auto; }
+.ui-v3 .ob-v3 .ob3-step { display: flex; flex-direction: column; gap: 16px; padding: 28px 32px 32px; }
+.ui-v3 .ob-v3 .ob3-step > .uf-t2 { margin-top: -6px; }
+.ui-v3 .ob-v3 .ob3-foot { flex: none; display: flex; flex-wrap: wrap; align-items: center; gap: 12px 16px; padding: 14px 32px; border-top: 1px solid var(--uf-line); }
+
+/* Groups, rows, inline actions */
+.ui-v3 .ob-v3 .ob3-group { display: flex; flex-direction: column; gap: 10px; }
+.ui-v3 .ob-v3 .ob3-inline { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 16px; }
+.ui-v3 .ob-v3 .ob3-nowrap { flex-wrap: nowrap; }
+.ui-v3 .ob-v3 .ob3-nowrap .ob3-input { flex: 1 1 auto; min-width: 0; }
+.ui-v3 .ob-v3 .ob3-split { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.ui-v3 .ob-v3 .ob3-rows { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; border-top: 1px solid var(--uf-line); }
+.ui-v3 .ob-v3 .ob3-row { position: relative; width: 100%; display: flex; align-items: center; gap: 14px; min-height: 56px; padding: 8px 12px 8px 16px; border: 0; border-bottom: 1px solid var(--uf-line); background: transparent; color: inherit; text-align: left; font: inherit; }
+.ui-v3 .ob-v3 .ob3-row.is-on::before { content: ''; position: absolute; left: 0; top: 0; bottom: -1px; width: 3px; background: var(--uf-red); }
+.ui-v3 .ob-v3 .ob3-row.is-pending .uf-t3 { color: var(--uf-faint); }
+.ui-v3 .ob-v3 .ob3-choice { cursor: pointer; }
+.ui-v3 .ob-v3 .ob3-choice:hover { background: var(--uf-hover); }
+.ui-v3 .ob-v3 .ob3-row-main { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.ui-v3 .ob-v3 .ob3-row-main > .uf-t4 { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ui-v3 .ob-v3 .ob3-row-main > .ob3-break { white-space: normal; overflow-wrap: anywhere; }
+.ui-v3 .ob-v3 .ob3-logo { width: 28px; height: 28px; object-fit: contain; flex: none; }
+.ui-v3 .ob-v3 .ob3-tick { display: inline-flex; color: var(--uf-red); }
+
+/* Fields */
+.ui-v3 .ob-v3 .ob3-fields { display: flex; flex-direction: column; gap: 14px; }
+.ui-v3 .ob-v3 .ob3-field { display: flex; flex-direction: column; gap: 8px; }
+.ui-v3 .ob-v3 .ob3-grid3 { display: grid; grid-template-columns: minmax(0, 1fr) 96px 104px; gap: 8px; }
+.ui-v3 .ob-v3 .ob3-input { width: 100%; height: 44px; padding: 0 14px; border-radius: 0; background: var(--uf-raised); border: 1px solid var(--uf-line-2); color: var(--uf-bone); font: 400 15px/1 var(--uf-body); outline: none; }
+.ui-v3 .ob-v3 .ob3-input:focus { outline: 2px solid var(--uf-red); outline-offset: 2px; }
+.ui-v3 .ob-v3 .ob3-input::placeholder { color: var(--uf-faint); }
+.ui-v3 .ob-v3 select.ob3-input { padding: 0 10px; }
+
+/* Status: small dot + text. ok = win, warn = gold, error = loss, live/rec pulse. */
+.ui-v3 .ob-v3 .ob3-status { display: flex; align-items: baseline; gap: 10px; }
+.ui-v3 .ob-v3 .ob3-status > .ob3-dot { transform: translateY(-1px); }
+.ui-v3 .ob-v3 .ob3-dot { display: inline-block; flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--uf-faint); }
+.ui-v3 .ob-v3 .ob3-dot.is-ok { background: var(--uf-win); }
+.ui-v3 .ob-v3 .ob3-dot.is-warn { background: var(--uf-gold); }
+.ui-v3 .ob-v3 .ob3-dot.is-error { background: var(--uf-loss); }
+.ui-v3 .ob-v3 .ob3-dot.is-live { background: var(--uf-bone); animation: uf-pulse 1.6s ease-in-out infinite; }
+.ui-v3 .ob-v3 .ob3-dot.is-rec { background: var(--uf-red); animation: uf-pulse 1.6s ease-in-out infinite; }
+.ui-v3 .ob-v3 .ob3-dot.is-idle { background: var(--uf-faint); }
+@media (prefers-reduced-motion: reduce) { .ui-v3 .ob-v3 .ob3-dot { animation: none; } }
+.ui-v3 .ob-v3 .ob3-title { display: flex; align-items: center; gap: 12px; }
+.ui-v3 .ob-v3 .ob3-title > .uf-d4 { margin-left: auto; }
+.ui-v3 .ob-v3 .ob3-red { color: var(--uf-red); }
+.ui-v3 .ob-v3 .ob3-gold { color: var(--uf-gold); }
+.ui-v3 .ob-v3 .ob3-win { color: var(--uf-win); }
+.ui-v3 .ob-v3 .ob3-faint { color: var(--uf-faint); }
+
+/* Mission: progress line, capture checks, inline result */
+.ui-v3 .ob-v3 .ob3-bar { height: 2px; background: var(--uf-line); overflow: hidden; }
+.ui-v3 .ob-v3 .ob3-bar > span { display: block; height: 100%; background: var(--uf-bone); transition: width 0.5s ease; }
+.ui-v3 .ob-v3 .ob3-checks { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); border-top: 1px solid var(--uf-line); border-bottom: 1px solid var(--uf-line); }
+.ui-v3 .ob-v3 .ob3-check { display: flex; flex-direction: column; gap: 6px; padding: 12px 12px 12px 0; }
+.ui-v3 .ob-v3 .ob3-check .ob3-status { align-items: center; }
+.ui-v3 .ob-v3 .ob3-preview-img { width: 100%; aspect-ratio: 16 / 9; object-fit: contain; background: #000; }
+.ui-v3 .ob-v3 .ob3-stats { display: flex; flex-wrap: wrap; gap: 16px 20px; padding: 12px 0; border-top: 1px solid var(--uf-line); border-bottom: 1px solid var(--uf-line); }
+.ui-v3 .ob-v3 .ob3-stats > div { display: flex; flex-direction: column; gap: 8px; }
+.ui-v3 .ob-v3 .ob3-details summary { cursor: pointer; padding: 4px 0; color: var(--uf-muted); }
+.ui-v3 .ob-v3 .ob3-details[open] { display: flex; flex-direction: column; gap: 8px; align-items: flex-start; }
+
+/* Narrow windows (the onboarding window is 720×600): rail becomes a band, the wizard takes the width */
+@media (max-width: 960px) {
+  .ui-v3 .ob-v3.wiz-root { flex-direction: column; }
+  .ui-v3 .ob-v3 .ob3 { flex: 1 1 auto; min-height: 0; height: auto; border-left: 0; }
+  .ui-v3 .ob-v3 .ob3-head, .ui-v3 .ob-v3 .ob3-foot { padding-left: max(24px, calc((100% - 560px) / 2)); padding-right: max(24px, calc((100% - 560px) / 2)); }
+  .ui-v3 .ob-v3 .ob3-step { max-width: 608px; margin: 0 auto; padding: 24px 24px 28px; }
+}
+/* Roster flow: optional "I have a coach" reminder on the last step. */
+.ui-v3 .ob-v3 .ob3-coach { display: flex; gap: 10px; align-items: center; color: var(--uf-muted); cursor: pointer; }
+.ui-v3 .ob-v3 .ob3-coach input { width: 15px; height: 15px; margin: 0; accent-color: var(--uf-bone); }

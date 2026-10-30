@@ -29,6 +29,13 @@ import TrainingVodStrip, { type VodDrill } from '../components/training/Training
 import TrainingScenarioCard from '../components/training/TrainingScenarioCard.vue'
 import TrainingLeaderboardsTab from '../components/training/TrainingLeaderboardsTab.vue'
 import TrainingLoadoutsTab from '../components/training/TrainingLoadoutsTab.vue'
+import PracticeV3 from './v3/PracticeV3.vue'
+import { uiV3 } from '../lib/ui-v3'
+import { readCache, writeCache } from '../lib/stale-cache'
+import UfButton from '../components/v3/UfButton.vue'
+import UfDialog from '../components/v3/UfDialog.vue'
+import PracticeAnalyticsV3 from '../components/v3/practice/PracticeAnalyticsV3.vue'
+import { deltaTone, hitsLabel, pct, signed, toneColor } from '../components/v3/practice/practice-session-v3'
 
 const ICON_LOCK = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" class="w-4 h-4"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>`
 const ICON_TROPHY_SM = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" class="w-4 h-4"><path d="M6 9H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h2"/><path d="M18 9h2a2 2 0 0 0 2-2V5a2 2 0 0 0-2-2h-2"/><path d="M4 22h16"/><path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22"/><path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22"/><path d="M18 2H6v7a6 6 0 0 0 12 0V2z"/></svg>`
@@ -628,6 +635,56 @@ function launchVodDrill(drill: VodDrill) {
   })
 }
 
+// ── Trainer data (history, plan, drills, insights, benchmark, AI coaching) ───
+type TrainerData = [
+  Awaited<ReturnType<typeof window.api.trainer.getHistory>>,
+  Awaited<ReturnType<typeof window.api.trainer.getPlan>>,
+  Awaited<ReturnType<typeof window.api.trainer.getCoachingDrills>>,
+  Awaited<ReturnType<typeof window.api.trainer.getCorrelation>>,
+  Awaited<ReturnType<typeof window.api.trainer.getBenchmark>>,
+  Awaited<ReturnType<typeof window.api.trainer.getAiCoaching>>,
+]
+const TRAINER_CACHE_KEY = 'practice:trainer'
+
+function fetchTrainerData(): Promise<TrainerData> {
+  return Promise.all([
+    window.api.trainer.getHistory(),
+    window.api.trainer.getPlan(),
+    window.api.trainer.getCoachingDrills(),
+    window.api.trainer.getCorrelation(),
+    window.api.trainer.getBenchmark(),
+    window.api.trainer.getAiCoaching(),
+  ])
+}
+
+function applyTrainerData([history, plan, drills, insights, benchmark, coaching]: TrainerData) {
+  apiHistory.value = history
+  sharedTrainingPlan.value = plan
+  const drillList = Array.isArray(drills) ? drills : []
+  coachingDrills.value = drillList
+  correlationInsights.value = Array.isArray(insights) ? insights : []
+  benchmarkData.value = benchmark
+  aiCoaching.value = coaching
+  // If API returned coaching drills that map to scenarios, populate Today's Drills
+  if (drillList.length > 0) {
+    const sessions = history?.sessions ?? []
+    const mapped: AssignedDrill[] = drillList
+      .slice(0, 4)
+      .map((d: CoachingDrill) => {
+        const assigned = drillToAssigned(d)
+        const progressed = applyProgressionToDrill(assignedToSessionDrill(assigned), sessions)
+        return { ...assigned, difficulty: progressed.difficulty }
+      })
+    if (mapped.length > 0) assignedDrills.value = mapped
+  }
+}
+
+// UI v3: draw the last trainer data at once and start the refresh now, not after the awaits in onMounted.
+const cachedTrainer = uiV3.value ? readCache<TrainerData>(TRAINER_CACHE_KEY) : null
+if (cachedTrainer) applyTrainerData(cachedTrainer.value)
+const earlyTrainerFetch = uiV3.value ? fetchTrainerData() : null
+earlyTrainerFetch?.catch(() => { /* surfaced where it is awaited */ })
+
 // ── IPC listener ──────────────────────────────────────────────────────────────
 let removeListener: (() => void) | null = null
 
@@ -693,37 +750,15 @@ onMounted(async () => {
   })
 
   // Fetch training history + coaching drills from API
-  loadingHistory.value = true
-  loadingAiCoaching.value = true
+  // (v3 with cached data refreshes quietly: no "Loading history…" over data already shown)
+  loadingHistory.value = !cachedTrainer
+  loadingAiCoaching.value = !cachedTrainer
+  if (cachedTrainer) startPBCarousel()
   try {
-    const [history, plan, drills, insights, benchmark, coaching] = await Promise.all([
-      window.api.trainer.getHistory(),
-      window.api.trainer.getPlan(),
-      window.api.trainer.getCoachingDrills(),
-      window.api.trainer.getCorrelation(),
-      window.api.trainer.getBenchmark(),
-      window.api.trainer.getAiCoaching(),
-    ])
-    apiHistory.value = history
-    sharedTrainingPlan.value = plan
-    const drillList = Array.isArray(drills) ? drills : []
-    coachingDrills.value = drillList
-    correlationInsights.value = Array.isArray(insights) ? insights : []
-    benchmarkData.value = benchmark
-    aiCoaching.value = coaching
-    startPBCarousel()
-    // If API returned coaching drills that map to scenarios, populate Today's Drills
-    if (drillList.length > 0) {
-      const sessions = history?.sessions ?? []
-      const mapped: AssignedDrill[] = drillList
-        .slice(0, 4)
-        .map((d: CoachingDrill) => {
-          const assigned = drillToAssigned(d)
-          const progressed = applyProgressionToDrill(assignedToSessionDrill(assigned), sessions)
-          return { ...assigned, difficulty: progressed.difficulty }
-        })
-      if (mapped.length > 0) assignedDrills.value = mapped
-    }
+    const data = await (earlyTrainerFetch ?? fetchTrainerData())
+    applyTrainerData(data)
+    if (uiV3.value) writeCache(TRAINER_CACHE_KEY, data)
+    if (!cachedTrainer) startPBCarousel()
   } finally {
     loadingHistory.value = false
     loadingAiCoaching.value = false
@@ -1348,8 +1383,121 @@ const CATEGORY_ICON: Record<string, string> = {
 </script>
 
 <template>
-  <div class="h-full text-white flex flex-col overflow-hidden relative bg-[#0a0a0a]">
+  <div class="h-full text-white flex flex-col overflow-hidden relative" :class="uiV3 ? 'uf-practice-legacy' : 'bg-[#0a0a0a]'">
 
+    <!-- ── UI v3: in-session strips + result / session dialogs (legacy markup below, unchanged) ── -->
+    <template v-if="uiV3">
+      <div v-if="drillRunning && activeDrill" class="uf-insession uf-rise" role="status">
+        <span class="uf-insession-dot uf-live" aria-hidden="true" />
+        <span class="uf-label" style="color: var(--uf-red)">In progress</span>
+        <span class="uf-t3">{{ SCENARIO_META[activeDrill.scenario]?.label ?? activeDrill.scenario }}</span>
+        <span class="uf-t4" style="text-transform: capitalize">{{ activeDrill.difficulty }} · {{ activeDrill.duration_seconds }}s</span>
+        <UfButton variant="secondary" icon="close" class="uf-insession-end" @click="stopDrill">Stop</UfButton>
+      </div>
+
+      <div v-if="structuredSessionWaiting" class="uf-insession uf-rise" role="status">
+        <span class="uf-label">Guided session · step {{ structuredSessionStepIndex + 1 }} of {{ structuredSessionPlan.length }}</span>
+        <span class="uf-t3">
+          Next: {{ SCENARIO_META[structuredSessionPlan[structuredSessionStepIndex]?.scenario ?? 'flick']?.label }}
+          <span class="uf-t4">· {{ structuredSessionPlan[structuredSessionStepIndex]?.phaseLabel }}</span>
+        </span>
+        <ol class="uf-insession-steps" aria-label="Session steps">
+          <li
+            v-for="(step, si) in structuredSessionPlan" :key="si"
+            :class="{ done: si < structuredSessionStepIndex, next: si === structuredSessionStepIndex }"
+            :title="step.phaseLabel"
+          />
+        </ol>
+        <span class="uf-t4 uf-num">Starts in {{ sessionCountdown }}s</span>
+        <span class="uf-insession-end">
+          <UfButton variant="link" @click="cancelStructuredSession">Cancel</UfButton>
+          <UfButton variant="secondary" icon="play" @click="clearSessionTimer(); launchStructuredStep(structuredSessionStepIndex)">Start now</UfButton>
+        </span>
+      </div>
+
+      <UfDialog
+        :open="showResultModal && !!lastResult"
+        kicker="Drill complete"
+        :title="lastResult ? (SCENARIO_META[lastResult.scenario]?.label ?? lastResult.scenario) : ''"
+        :width="560"
+        @close="showResultModal = false"
+      >
+        <template v-if="lastResult">
+          <div class="uf-result-hero">
+            <span class="uf-d1">{{ lastResult.score }}</span>
+            <div class="uf-result-side">
+              <span class="uf-t3">{{ scoreLabel(lastResult.score) }}</span>
+              <span v-if="scoreDelta(lastResult) !== null" class="uf-t4 uf-num" :style="{ color: toneColor(deltaTone(scoreDelta(lastResult))) }">
+                {{ signed(scoreDelta(lastResult)!) }} vs previous
+              </span>
+              <span v-if="isPB && lastResult.score > 0" class="uf-t4" style="color: var(--uf-gold)">★ Personal best</span>
+            </div>
+          </div>
+          <div class="uf-result-bar" aria-hidden="true"><span class="uf-fill" :style="{ width: pct(lastResult.score) + '%' }" /></div>
+          <dl class="uf-result-stats">
+            <div><dt class="uf-t4">Accuracy</dt><dd class="uf-d4">{{ lastResult.accuracy_pct.toFixed(1) }}%</dd></div>
+            <div class="uf-hair-v" />
+            <div><dt class="uf-t4">Time to hit</dt><dd class="uf-d4">{{ Math.round(lastResult.avg_reaction_ms) }}ms</dd></div>
+            <div class="uf-hair-v" />
+            <div><dt class="uf-t4">Hits</dt><dd class="uf-d4">{{ hitsLabel(lastResult.targets_hit, lastResult.targets_missed) }}</dd></div>
+          </dl>
+        </template>
+        <template #actions>
+          <UfButton variant="link" @click="showResultModal = false">Done</UfButton>
+          <UfButton variant="secondary" :icon="drillCardDone ? 'check' : 'share'" :disabled="drillCardExporting" @click="exportDrillCard">
+            {{ drillCardExporting ? 'Saving…' : drillCardDone ? 'Saved' : 'Share' }}
+          </UfButton>
+          <UfButton
+            v-if="lastPlayedDrill"
+            variant="primary"
+            icon="play"
+            @click="() => { const d = lastPlayedDrill!; showResultModal = false; launchDrill(d) }"
+          >Play again</UfButton>
+        </template>
+      </UfDialog>
+
+      <UfDialog
+        :open="showSessionSummary && !!sessionSummary"
+        kicker="Session complete"
+        title="Guided session"
+        :width="560"
+        @close="dismissSessionSummary"
+      >
+        <template v-if="sessionSummary">
+          <div class="uf-result-hero">
+            <span class="uf-d1">{{ sessionSummary.avgScore }}</span>
+            <div class="uf-result-side">
+              <span class="uf-t4">Session average</span>
+              <template v-if="sessionSummary.focusScore !== null">
+                <span class="uf-t3">
+                  Focus drill · {{ SCENARIO_META[sessionSummary.focusScenario ?? 'flick']?.label ?? sessionSummary.focusScenario }}
+                  <span class="uf-d4" style="margin-left: 6px">{{ sessionSummary.focusScore }}</span>
+                </span>
+                <span
+                  v-if="sessionSummary.improvementVsWarmup !== null"
+                  class="uf-t4 uf-num"
+                  :style="{ color: toneColor(deltaTone(sessionSummary.improvementVsWarmup)) }"
+                >{{ signed(sessionSummary.improvementVsWarmup) }} vs warm-up</span>
+              </template>
+            </div>
+          </div>
+          <ol class="uf-summary-steps">
+            <li v-for="(step, i) in sessionSummary.steps" :key="i">
+              <span class="uf-t4" style="width: 90px">{{ step.phaseLabel }}</span>
+              <span class="uf-t3" style="flex: 1">{{ SCENARIO_META[step.scenario]?.label }}</span>
+              <span class="uf-d4">{{ sessionSummary.results[i]?.score ?? '—' }}</span>
+            </li>
+          </ol>
+          <p v-if="sessionSummary.aimBias" class="uf-t2" style="margin: 0">{{ sessionSummary.aimBias }}</p>
+        </template>
+        <template #actions>
+          <UfButton variant="secondary" @click="dismissSessionSummary">Done</UfButton>
+          <UfButton variant="primary" icon="play" @click="dismissSessionSummary(); startStructuredSession()">Run again</UfButton>
+        </template>
+      </UfDialog>
+    </template>
+
+    <template v-else>
     <!-- ── DRILL RUNNING BANNER ──────────────────────────────────────────── -->
     <Transition name="result-in">
       <div
@@ -1601,6 +1749,36 @@ const CATEGORY_ICON: Record<string, string> = {
       </div>
     </Transition>
 
+    </template>
+
+    <!-- UI v3: header, tabs and the Train tab (other tab bodies below are shared) -->
+    <PracticeV3
+      v-if="uiV3"
+      v-model:active-tab="activeTab"
+      v-model:active-category="activeDrillCategory"
+      v-model:free-play-scenario="freePlayScenario"
+      :stats="trainingStats"
+      :session-steps="guidedSessionPreview"
+      :session-focus-reason="sharedTrainingPlan?.focus.reason ?? null"
+      :session-disabled="!sharedTrainingPlan || launching || drillRunning || structuredSessionActive"
+      :recommended="recommendedDrills"
+      :recommended-from-api="coachingDrills.length > 0"
+      :categories="DRILL_CATEGORY_FILTERS"
+      :drills="scenarioCards.map(c => ({ scenario: c.scenario, label: SCENARIO_META[c.scenario]?.label ?? c.scenario, description: SCENARIO_META[c.scenario]?.description ?? '', difficulty: c.drill.difficulty, durationSeconds: c.drill.duration_seconds, personalBest: c.pb, globalRank: c.rank, completed: c.completed }))"
+      :running-scenario="drillRunning ? activeDrill?.scenario ?? null : null"
+      :busy="launching || drillRunning"
+      :daily="{ scenarioLabel: SCENARIO_META[dailyChallenge.scenario]?.label ?? dailyChallenge.scenario, target: dailyChallenge.target, completed: dailyChallenge.completed }"
+      :free-play-options="Object.entries(SCENARIO_META).map(([key, meta]) => ({ key, label: meta.label }))"
+      :insights="correlationInsights"
+      :scenario-label="(k: string) => SCENARIO_META[k]?.label ?? k"
+      @start-session="startStructuredSession"
+      @play-recommended="(i: number) => launchVodDrill(recommendedDrills[i])"
+      @play-drill="(k: string) => launchScenarioCard(k as ScenarioKey)"
+      @play-daily="launchDrill({ scenario: dailyChallenge.scenario, difficulty: 'medium', duration_seconds: 60, weakness: 'challenge', weakness_score: 0, reason: `Daily challenge: score ${dailyChallenge.target}+` })"
+      @launch-free="launchFreePlay"
+    />
+
+    <template v-else>
     <!-- Header -->
     <header class="flex-shrink-0 px-6 pt-6 pb-2 flex flex-wrap items-start justify-between gap-4">
       <div>
@@ -1669,11 +1847,13 @@ const CATEGORY_ICON: Record<string, string> = {
       </div>
     </div>
 
-    <!-- Scrollable content -->
-    <div class="flex-1 scroll-col">
+    </template>
+
+    <!-- Scrollable content (in UI v3 the Train tab renders inside PracticeV3) -->
+    <div v-if="!uiV3 || activeTab !== 'train'" class="flex-1 scroll-col">
 
       <!-- ── TRAIN TAB ──────────────────────────────────────────────── -->
-      <template v-if="activeTab === 'train'">
+      <template v-if="activeTab === 'train' && !uiV3">
         <div class="p-4 sm:p-6 space-y-6">
           <TrainingGuidedSessionHero
             :steps="guidedSessionPreview"
@@ -1799,6 +1979,25 @@ const CATEGORY_ICON: Record<string, string> = {
         </div>
       </template>
 
+      <!-- UI v3 Analytics (legacy body below, unchanged) -->
+      <PracticeAnalyticsV3
+        v-if="uiV3 && activeTab === 'analytics'"
+        :loading="loadingHistory"
+        :history="apiHistory"
+        :benchmark="benchmarkData"
+        :drills="Object.entries(SCENARIO_META).map(([key, meta]) => ({ key, label: meta.label, description: meta.description }))"
+        :radar-keys="RADAR_SCENARIOS"
+        :radar="radarData"
+        :sparkline="buildSparkline"
+        :insights="correlationInsights"
+        :achievements="displayAchievements.map(a => ({ ...a, unlocked: isUnlocked(a.id), date: isUnlocked(a.id) ? formatAchievementDate(achievements.unlocked.value[a.id]) : '' }))"
+        :week-count="trainingStats.thisWeekCount"
+        :week-exporting="weekCardExporting"
+        :week-done="weekCardDone"
+        @share-week="exportWeeklyCard"
+      />
+
+      <template v-if="!uiV3">
       <!-- ── ANALYTICS TAB ─────────────────────────────────────────────── -->
       <template v-if="activeTab === 'analytics'">
         <div class="grid grid-cols-[340px_1fr] gap-4 p-3 items-start">
@@ -2092,6 +2291,8 @@ const CATEGORY_ICON: Record<string, string> = {
         </div><!-- end grid -->
       </template>
 
+      </template>
+
       <!-- ── LEADERBOARDS TAB ───────────────────────────────────────── -->
       <template v-if="activeTab === 'leaderboards'">
         <TrainingLeaderboardsTab />
@@ -2142,4 +2343,21 @@ const CATEGORY_ICON: Record<string, string> = {
   opacity: 0;
   transform: translateX(-12px);
 }
+/* ── UI v3 in-session strips + dialogs ─────────────────────────────────── */
+.uf-insession { flex: none; display: flex; align-items: center; gap: 14px; flex-wrap: wrap; padding: 10px 40px; background: var(--uf-chrome); border-bottom: 1px solid var(--uf-line); }
+.uf-insession-dot { width: 8px; height: 8px; background: var(--uf-red); flex: none; }
+.uf-insession-end { margin-left: auto; display: inline-flex; align-items: center; gap: 18px; }
+.uf-insession-steps { display: flex; gap: 4px; margin: 0; padding: 0; list-style: none; }
+.uf-insession-steps li { width: 18px; height: 3px; background: var(--uf-line-2); }
+.uf-insession-steps li.done { background: var(--uf-bone); }
+.uf-insession-steps li.next { background: var(--uf-red); }
+.uf-result-hero { display: flex; align-items: flex-end; gap: 22px; }
+.uf-result-side { display: flex; flex-direction: column; gap: 6px; padding-bottom: 10px; }
+.uf-result-bar { height: 3px; background: var(--uf-line); }
+.uf-result-bar > span { display: block; height: 100%; background: var(--uf-bone); }
+.uf-result-stats { display: flex; gap: 22px; margin: 0; }
+.uf-result-stats > div:not(.uf-hair-v) { display: flex; flex-direction: column-reverse; gap: 4px; }
+.uf-result-stats dd { margin: 0; }
+.uf-summary-steps { list-style: none; margin: 0; padding: 0; }
+.uf-summary-steps li { display: flex; align-items: baseline; gap: 12px; padding: 10px 0; border-top: 1px solid var(--uf-line); }
 </style>

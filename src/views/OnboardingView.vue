@@ -1,5 +1,6 @@
 <template>
-  <div class="wiz-root min-h-0 h-full flex items-center justify-center p-4">
+  <div class="wiz-root min-h-0 h-full flex items-center justify-center p-4" :class="{ 'ob-v3': uiV3 }">
+    <template v-if="!uiV3">
     <div
       v-if="isPreview"
       class="absolute top-4 left-1/2 -translate-x-1/2 z-20 flex flex-col items-center gap-1.5"
@@ -24,7 +25,505 @@
         Sign-in optional in preview · account links won&apos;t save
       </p>
     </div>
+    </template>
 
+    <OnboardingRailV3 v-if="uiV3" :step="step" :labels="stepLabels" :initializing="initializing" />
+
+    <template v-if="uiV3">
+      <section class="ob3" aria-label="Setup">
+        <header class="ob3-head">
+          <button
+            v-if="!initializing && step > 2 && !missionActive"
+            type="button"
+            class="uf-link"
+            :disabled="obsConnecting"
+            @click="prevStep"
+          >
+            ← Back
+          </button>
+          <span class="uf-label">{{ initializing ? 'Getting ready' : stepLabels[step - 1] }}</span>
+          <span v-if="isPreview" class="ob3-preview uf-t4">
+            <span class="ob3-dot is-warn" aria-hidden="true" />
+            {{ missionActive ? 'Live admin onboarding test' : 'Preview · changes not saved' }}
+            <button v-if="!missionActive" type="button" class="uf-link" @click="handleComplete()">Exit</button>
+          </span>
+        </header>
+
+        <div class="ob3-body">
+          <Transition :name="slideDir">
+            <div v-if="initializing" key="loading" class="ob3-step" role="status">
+              <h2 class="uf-t1">Getting your account ready</h2>
+              <p class="uf-t2">Checking your saved game and linked account.</p>
+            </div>
+
+            <!-- 1 · Sign in -->
+            <div v-else-if="step === 1" key="step1" class="ob3-step">
+              <template v-if="isAuthed">
+                <h2 class="uf-t1">You’re signed in</h2>
+                <p class="uf-t2">Your UpForge account is connected.</p>
+              </template>
+              <template v-else>
+                <h2 class="uf-t1">Sign in to UpForge</h2>
+                <p class="uf-t2">Use your UpForge account. New here? Create one on the website, then come back.</p>
+                <div class="ob3-fields">
+                  <label class="ob3-field">
+                    <span class="uf-label">Email</span>
+                    <input
+                      id="onboarding-email"
+                      v-model="email"
+                      type="email"
+                      placeholder="your@email.com"
+                      autocomplete="email"
+                      class="ob3-input"
+                      @keydown.enter.prevent="handleSignIn"
+                    />
+                  </label>
+                  <label class="ob3-field">
+                    <span class="uf-label">Password</span>
+                    <input
+                      id="onboarding-password"
+                      v-model="password"
+                      type="password"
+                      placeholder="••••••••"
+                      autocomplete="current-password"
+                      class="ob3-input"
+                      @keydown.enter.prevent="handleSignIn"
+                    />
+                  </label>
+                </div>
+                <p v-if="signInError" class="ob3-status uf-t4" role="alert"><span class="ob3-dot is-error" />{{ signInError }}</p>
+                <div class="ob3-inline">
+                  <button v-if="isPreview && !isAuthed" type="button" class="uf-btn-secondary" @click="nextStep">
+                    Continue without signing in
+                  </button>
+                  <button type="button" class="uf-link" @click="openRegister">New to UpForge? Create account</button>
+                </div>
+                <p v-if="isPreview" class="uf-t4">Sign-in optional in preview · account links won&apos;t save</p>
+              </template>
+            </div>
+
+            <!-- 2 · Game -->
+            <div v-else-if="step === 2" key="step2" class="ob3-step">
+              <h2 class="uf-t1">Which game do you play most?</h2>
+              <p class="uf-t2">Coaching, recording and the dashboard follow this pick. You can change it later.</p>
+              <div class="ob3-rows">
+                <button
+                  v-for="game in GAMES"
+                  :key="game.id"
+                  type="button"
+                  class="ob3-row ob3-choice"
+                  :class="{ 'is-on': selectedGame === game.id }"
+                  :aria-pressed="selectedGame === game.id"
+                  @click="selectedGame = game.id"
+                >
+                  <img :src="ONBOARDING_GAME_LOGOS[game.id]" alt="" class="ob3-logo" />
+                  <span class="ob3-row-main">
+                    <span class="uf-t3">{{ game.name }}</span>
+                    <span class="uf-t4">{{ game.desc }}</span>
+                  </span>
+                  <span v-if="selectedGame === game.id" class="ob3-tick"><UfIcon name="check" :size="18" /></span>
+                </button>
+              </div>
+            </div>
+
+            <!-- 3 · Account link -->
+            <div v-else-if="step === 3" key="step3" class="ob3-step">
+              <h2 class="uf-t1">Link your {{ gameCaptureLabel }} account</h2>
+              <p class="uf-t2">{{ accountStepBlurb }}</p>
+
+              <!-- Valorant multi-account -->
+              <template v-if="selectedGame === 'valorant'">
+                <p v-if="accountsLoading" class="ob3-status uf-t4" role="status">
+                  <span class="ob3-dot is-live" />Loading linked accounts…
+                </p>
+
+                <div v-else-if="riotAccounts.length" class="ob3-group">
+                  <p class="uf-label">Linked accounts</p>
+                  <div class="ob3-rows">
+                    <div
+                      v-for="account in riotAccounts"
+                      :key="account.id"
+                      class="ob3-row"
+                      :class="{ 'is-on': account.is_active }"
+                    >
+                      <span class="ob3-row-main">
+                        <span class="uf-t3">{{ account.riot_name }}#{{ account.riot_tag }}</span>
+                        <span class="uf-t4">
+                          <span v-if="account.is_active" class="ob3-red">Active · </span>{{ account.is_active ? 'Used for recording' : 'Linked' }}<span v-if="account.riot_region"> · {{ account.riot_region.toUpperCase() }}</span>
+                        </span>
+                      </span>
+                      <button
+                        v-if="!account.is_active && account.id > 0"
+                        type="button"
+                        class="uf-link"
+                        :disabled="riotBusy"
+                        @click="activateRiot(account.id)"
+                      >
+                        Set active
+                      </button>
+                    </div>
+                  </div>
+                  <p class="uf-t4">
+                    {{ riotAccounts.length }} of {{ riotAccountsMax }} used<span v-if="riotAccountsMax > 1">. Desktop auto-switches when you queue on a linked account.</span>
+                  </p>
+                </div>
+
+                <div v-if="!accountsLoading && showRiotForm" class="ob3-group">
+                  <p class="uf-t4">
+                    {{ riotAccounts.length ? 'Add another Riot ID (alt / smurf).' : 'Your Riot ID from the Valorant home screen (Name#Tag).' }}
+                  </p>
+                  <div class="ob3-grid3">
+                    <input v-model="riotName" type="text" placeholder="Name" aria-label="Riot name" class="ob3-input" />
+                    <input v-model="riotTag" type="text" placeholder="Tag" aria-label="Riot tag" class="ob3-input" />
+                    <select v-model="riotRegion" aria-label="Region" class="ob3-input">
+                      <option value="na">NA</option>
+                      <option value="eu">EU</option>
+                      <option value="ap">AP</option>
+                      <option value="kr">KR</option>
+                      <option value="latam">LATAM</option>
+                      <option value="br">BR</option>
+                    </select>
+                  </div>
+                  <div class="ob3-inline">
+                    <button type="button" class="uf-btn-secondary" :disabled="riotBusy" @click="linkValorant">
+                      {{ riotBusy ? 'Linking…' : riotAccounts.length ? 'Link account' : 'Link Riot account' }}
+                    </button>
+                    <button v-if="riotAccounts.length" type="button" class="uf-link" @click="showRiotForm = false">Cancel</button>
+                  </div>
+                </div>
+
+                <div v-if="!accountsLoading && !showRiotForm && riotAccountsCanAdd" class="ob3-inline">
+                  <button type="button" class="uf-btn-secondary" @click="showRiotForm = true">
+                    {{ riotAccounts.length ? 'Add another account' : 'Link Riot account' }}
+                  </button>
+                </div>
+
+                <p v-if="!accountsLoading && !showRiotForm && riotAccounts.length && !riotAccountsCanAdd" class="uf-t4">
+                  Account limit reached on your plan. Upgrade later for more Valorant accounts.
+                </p>
+
+                <p v-if="accountError" class="ob3-status uf-t4" role="alert"><span class="ob3-dot is-error" />{{ accountError }}</p>
+                <p v-if="accountSuccess" class="ob3-status uf-t4" role="status"><span class="ob3-dot is-ok" />{{ accountSuccess }}</p>
+              </template>
+
+              <!-- CS2 -->
+              <template v-else-if="selectedGame === 'cs2'">
+                <div class="ob3-fields">
+                  <label class="ob3-field">
+                    <span class="uf-label">Steam / in-game name</span>
+                    <input v-model="cs2SteamName" type="text" placeholder="Matches your CS2 name" class="ob3-input" />
+                  </label>
+                  <div class="ob3-field">
+                    <label for="ob3-faceit" class="uf-label">FACEIT (optional)</label>
+                    <div class="ob3-inline ob3-nowrap">
+                      <input id="ob3-faceit" v-model="faceitNickname" type="text" placeholder="FACEIT nickname" class="ob3-input" />
+                      <button type="button" class="uf-btn-secondary" :disabled="accountBusy" @click="linkFaceit">
+                        {{ accountBusy ? '…' : 'Link' }}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+                <div class="ob3-inline">
+                  <button type="button" class="uf-btn-secondary" :disabled="accountBusy" @click="saveCs2">
+                    {{ accountBusy ? 'Saving…' : 'Save CS2 name' }}
+                  </button>
+                </div>
+                <p v-if="cs2Linked" class="ob3-status uf-t4" role="status">
+                  <span class="ob3-dot is-ok" />CS2 identity saved<span v-if="cs2SteamId">: {{ cs2SteamId }}</span>
+                </p>
+                <p v-if="accountError" class="ob3-status uf-t4" role="alert"><span class="ob3-dot is-error" />{{ accountError }}</p>
+              </template>
+
+              <!-- Deadlock -->
+              <template v-else-if="selectedGame === 'deadlock'">
+                <p v-if="deadlockLinked" class="ob3-status uf-t3" role="status"><span class="ob3-dot is-ok" />Steam profile connected</p>
+                <template v-else>
+                  <div class="ob3-inline ob3-nowrap">
+                    <input
+                      v-model="steamSearch"
+                      type="text"
+                      placeholder="Steam name or ID"
+                      aria-label="Steam name or ID"
+                      class="ob3-input"
+                      @keydown.enter.prevent="searchDeadlock"
+                    />
+                    <button type="button" class="uf-btn-secondary" :disabled="accountBusy" @click="searchDeadlock">
+                      {{ accountBusy ? '…' : 'Search' }}
+                    </button>
+                  </div>
+                  <ul v-if="steamResults.length" class="ob3-rows">
+                    <li v-for="player in steamResults" :key="player.account_id">
+                      <button type="button" class="ob3-row ob3-choice" @click="connectDeadlock(player.account_id)">
+                        <span class="ob3-row-main uf-t3">{{ player.personaname }}</span>
+                      </button>
+                    </li>
+                  </ul>
+                </template>
+                <p v-if="accountError" class="ob3-status uf-t4" role="alert"><span class="ob3-dot is-error" />{{ accountError }}</p>
+                <p v-if="accountSuccess" class="ob3-status uf-t4" role="status"><span class="ob3-dot is-ok" />{{ accountSuccess }}</p>
+              </template>
+
+              <!-- LoL -->
+              <template v-else>
+                <p v-if="lolLinked" class="ob3-status uf-t3" role="status"><span class="ob3-dot is-ok" />{{ lolDisplayName }}</p>
+                <template v-else>
+                  <div class="ob3-grid3">
+                    <input v-model="lolName" type="text" placeholder="Name" aria-label="Riot name" class="ob3-input" />
+                    <input v-model="lolTag" type="text" placeholder="Tag" aria-label="Riot tag" class="ob3-input" />
+                    <select v-model="lolPlatform" aria-label="Platform" class="ob3-input">
+                      <option v-for="p in LOL_PLATFORMS" :key="p.value" :value="p.value">{{ p.label }}</option>
+                    </select>
+                  </div>
+                  <div class="ob3-inline">
+                    <button type="button" class="uf-btn-secondary" :disabled="accountBusy" @click="linkLol">
+                      {{ accountBusy ? 'Linking…' : 'Link League account' }}
+                    </button>
+                  </div>
+                </template>
+                <p v-if="accountError" class="ob3-status uf-t4" role="alert"><span class="ob3-dot is-error" />{{ accountError }}</p>
+                <p v-if="accountSuccess" class="ob3-status uf-t4" role="status"><span class="ob3-dot is-ok" />{{ accountSuccess }}</p>
+              </template>
+            </div>
+
+            <!-- 4 · Automatic capture check. This is the end of required setup. -->
+            <div v-else-if="step === 4" key="step4" class="ob3-step">
+              <h2 class="uf-t1">{{ isPreview ? 'Capture check' : obsError ? 'Recording needs attention' : recordingSetupReady ? 'Recording check passed' : 'Checking your recording' }}</h2>
+              <p class="uf-t2">UpForge prepares OBS automatically. You can open the app while we check that it can save your matches.</p>
+
+              <div class="ob3-rows">
+                <div class="ob3-row">
+                  <img :src="ONBOARDING_GAME_LOGOS[selectedGame]" alt="" class="ob3-logo" />
+                  <span class="ob3-row-main">
+                    <span class="uf-t3">{{ gameCaptureLabel }}</span>
+                    <span class="uf-t4 ob3-break">{{ accountSummary }}</span>
+                  </span>
+                  <button type="button" class="uf-link" :disabled="obsConnecting" @click="editGame">Change</button>
+                </div>
+              </div>
+
+              <div class="ob3-group" :aria-busy="obsConnecting">
+                <p class="ob3-status uf-t3" role="status" aria-live="polite">
+                  <span
+                    class="ob3-dot"
+                    :class="`is-${recordingCheckTone({ error: Boolean(obsError), ready: recordingSetupReady, connecting: obsConnecting })}`"
+                  />
+                  {{ isPreview ? 'Preview only' : obsConnecting ? guidedSetupLabel : obsError ? 'Recording needs attention' : recordingSetupReady ? 'OBS connected. Recording test passed.' : 'Checking OBS…' }}
+                </p>
+                <p v-if="obsError" role="alert" class="uf-t4 ob3-gold">{{ obsError }}</p>
+                <p v-else-if="recordingSetupReady" class="uf-t4">
+                  OBS {{ guidedStudioVersion }} can save a recording. Check that the game picture is visible before your first match.
+                </p>
+                <p v-else-if="obsConnecting" class="uf-t4">This runs in the background. If Windows asks, approve the OBS installation.</p>
+                <div v-if="obsError" class="ob3-inline">
+                  <button type="button" class="uf-btn-secondary" :disabled="obsConnecting || isPreview" @click="setupRecordingAutomatically">Check again</button>
+                </div>
+              </div>
+
+              <details class="ob3-details">
+                <summary class="uf-t4">Already use OBS?</summary>
+                <p class="uf-t4">Your existing scenes stay in OBS. If a recording, stream or replay buffer is active, finish it and check again.</p>
+                <button v-if="obsError" type="button" class="uf-link" @click="openObsDownload">Get OBS from the official website</button>
+              </details>
+              <p v-if="isPreview" class="uf-t4">This preview does not change OBS.</p>
+              <p v-if="bonusEligible" class="uf-t4">Your first Pro match review is included. Try it when you're ready to play; it isn't required to finish setup.</p>
+              <p v-if="!recordingSetupReady" class="uf-t4">Recording is not verified yet. You can check it again in Settings → Recording.</p>
+              <p v-if="completeError" role="alert" class="ob3-status uf-t4"><span class="ob3-dot is-error" />{{ completeError }}</p>
+            </div>
+
+            <!-- 5 · First match -->
+            <div v-else-if="step === 5" key="step5" class="ob3-step">
+              <h2 class="uf-t1 ob3-title">
+                <span v-if="missionActive" class="ob3-dot" :class="`is-${missionStageTone(missionStage)}`" aria-hidden="true" />
+                <span>{{ missionCopy.title }}</span>
+                <span v-if="missionStage === 'recording'" class="uf-d4 ob3-red">{{ missionRecordingDuration }}</span>
+              </h2>
+              <p class="uf-t2" :class="{ 'ob3-gold': !recordingSetupReady }">{{ missionCopy.body }}</p>
+              <!-- Roster flow: optional reminder; does not change the step's logic. -->
+              <label class="ob3-coach uf-t4"><input v-model="coachInviteLater" type="checkbox"> I have a coach. Remind me to join their roster.</label>
+
+              <template v-if="missionActive">
+                <p v-if="isAdmin && missionIsAdminTest" class="ob3-status uf-t4">
+                  <span class="ob3-dot is-warn" />Admin test mode. This analysis is excluded from activation analytics.
+                </p>
+
+                <!-- Upload + analysis progress -->
+                <div v-if="['processing', 'waiting_match_data', 'uploading', 'analysing'].includes(missionStage)" class="ob3-group">
+                  <div class="ob3-split">
+                    <span class="uf-label">Match progress</span>
+                    <span class="uf-t4">{{ missionElapsed || 'Starting' }}</span>
+                  </div>
+                  <div class="ob3-bar" aria-hidden="true"><span :style="{ width: `${missionProgressPercent}%` }" /></div>
+                  <div class="ob3-rows">
+                    <div v-for="row in missionProgressRows" :key="row.key" class="ob3-row" :class="{ 'is-pending': row.state === 'pending' }">
+                      <span class="ob3-dot" :class="`is-${progressRowTone(row.state)}`" aria-hidden="true" />
+                      <span class="ob3-row-main">
+                        <span class="uf-t3">{{ row.label }}</span>
+                        <span class="uf-t4">{{ row.detail }}</span>
+                      </span>
+                      <UfIcon v-if="row.state === 'complete'" name="check" :size="16" class="ob3-win" />
+                    </div>
+                  </div>
+                  <p class="uf-label">While you wait</p>
+                  <p class="uf-t2">{{ missionTip }}</p>
+                  <p class="uf-t4">
+                    You can close this screen. Processing continues safely, and we will email you when the report is ready. Starting another match pauses local upload work to protect performance.
+                  </p>
+                </div>
+
+                <!-- Capture checks -->
+                <div v-if="missionIsCaptureStage" class="ob3-group">
+                  <div class="ob3-checks">
+                    <div v-for="check in missionCaptureChecks" :key="check.label" class="ob3-check">
+                      <span class="uf-label ob3-status"><span class="ob3-dot" :class="`is-${captureCheckTone(check.state)}`" />{{ check.label }}</span>
+                      <span class="uf-t3" :class="{ 'ob3-gold': check.state === 'error', 'ob3-faint': check.state === 'pending' }">{{ check.value }}</span>
+                    </div>
+                  </div>
+                  <p class="ob3-status uf-t4">
+                    <span class="ob3-dot" :class="`is-${missionCaptureToneV3}`" />{{ missionCaptureMessage }}
+                  </p>
+                </div>
+
+                <div v-if="missionCapturePreview && missionIsCaptureStage" class="ob3-group">
+                  <img :src="missionCapturePreview" alt="Live OBS game capture preview" class="ob3-preview-img" />
+                  <div class="ob3-split">
+                    <span class="uf-t4">This is what OBS can see. The preview stays on your PC.</span>
+                    <span class="ob3-status uf-t4">
+                      <span class="ob3-dot" :class="missionCaptureVerified ? 'is-ok' : 'is-warn'" />{{ missionCaptureVerified ? 'Capture verified' : 'Capture not ready' }}
+                    </span>
+                  </div>
+                  <template v-if="!missionCaptureVerified">
+                    <p class="uf-t3">Can you see Valorant in this preview?</p>
+                    <p class="uf-t4">Confirm only if this is the picture you want UpForge to record.</p>
+                    <div class="ob3-inline">
+                      <button type="button" class="uf-btn-primary" :disabled="saving" @click="confirmMissionCapture">
+                        <span>Yes, I can see it</span>
+                      </button>
+                      <button type="button" class="uf-btn-secondary" :disabled="saving" @click="rejectMissionCapture">No, fix capture</button>
+                    </div>
+                  </template>
+                </div>
+
+                <div
+                  v-else-if="missionIsCaptureStage && (missionRuntime.currentGame === 'valorant' || missionRuntime.valorantClientOpen)"
+                  class="ob3-group"
+                >
+                  <p class="ob3-status uf-t3"><span class="ob3-dot is-warn" />UpForge cannot verify the Valorant picture yet</p>
+                  <p class="uf-t4">Bring Valorant to the foreground. Do not queue until the preview appears above.</p>
+                </div>
+
+                <div
+                  v-if="missionIsCaptureStage && (missionCaptureReadiness === 'obs_disconnected' || missionCaptureReadiness === 'capture_blocked')"
+                  class="ob3-group"
+                >
+                  <div class="ob3-inline">
+                    <button
+                      v-if="missionCaptureReadiness === 'obs_disconnected'"
+                      type="button"
+                      class="uf-btn-primary"
+                      :disabled="obsConnecting"
+                      @click="reconnectMissionObs"
+                    >
+                      <span>{{ obsConnecting ? 'Reconnecting…' : 'Reconnect OBS' }}</span>
+                    </button>
+                    <button
+                      v-if="missionCaptureReadiness === 'capture_blocked'"
+                      type="button"
+                      class="uf-btn-secondary"
+                      :disabled="saving"
+                      @click="retryMissionCapture()"
+                    >
+                      Recheck capture
+                    </button>
+                  </div>
+                  <template v-if="missionCaptureSupportNeeded">
+                    <p class="ob3-status uf-t3"><span class="ob3-dot is-warn" />OBS may need administrator access</p>
+                    <p class="uf-t4">Some Valorant setups block the OBS game hook. Restart OBS with Windows administrator access, then UpForge will reconnect automatically.</p>
+                    <div class="ob3-inline">
+                      <button type="button" class="uf-btn-secondary" :disabled="obsElevating" @click="restartMissionObsElevated">
+                        {{ obsElevating ? 'Waiting for Windows…' : 'Restart OBS as administrator' }}
+                      </button>
+                      <button type="button" class="uf-link" :disabled="obsElevating" @click="openCaptureSupport">Still black? Get help on Discord</button>
+                    </div>
+                    <p v-if="obsElevationError" class="ob3-status uf-t4" role="alert"><span class="ob3-dot is-error" />{{ obsElevationError }}</p>
+                  </template>
+                </div>
+
+                <!-- Result, inline -->
+                <div v-if="missionStage === 'ready' && missionStats" class="ob3-stats">
+                  <div>
+                    <span class="uf-label">K / D / A</span>
+                    <span class="uf-d4">{{ missionStats.kills }} / {{ missionStats.deaths }} / {{ missionStats.assists }}</span>
+                  </div>
+                  <span class="uf-hair-v" />
+                  <div>
+                    <span class="uf-label">Score</span>
+                    <span class="uf-d4">{{ missionScore ? `${missionScore.allyScore} - ${missionScore.enemyScore}` : 'n/a' }}</span>
+                  </div>
+                  <span class="uf-hair-v" />
+                  <div>
+                    <span class="uf-label">Evidence</span>
+                    <span class="uf-t3">{{ missionKills }} verified kills · {{ missionDuelClips }} duel clips</span>
+                  </div>
+                </div>
+
+                <p v-if="missionHasRiotStats" class="ob3-status uf-t4"><span class="ob3-dot is-ok" />Riot match data matched to this recording.</p>
+
+                <div class="ob3-inline">
+                  <button v-if="missionStage === 'ready'" type="button" class="uf-btn-primary" @click="openBonusAnalysis">
+                    <span>Open my Pro analysis</span>
+                  </button>
+                  <button v-else-if="missionStage === 'failed'" type="button" class="uf-btn-primary" @click="skipBonusMission">
+                    <span>Open dashboard to retry</span>
+                  </button>
+                  <button type="button" class="uf-link" @click="skipBonusMission">End free analysis setup</button>
+                </div>
+              </template>
+            </div>
+          </Transition>
+        </div>
+
+        <!-- One primary action per step -->
+        <footer v-if="!initializing && step <= 4" class="ob3-foot">
+          <template v-if="step === 1">
+            <button v-if="isAuthed" type="button" class="uf-btn-primary" @click="resumeAccountSetup">
+              <span>Continue</span>
+            </button>
+            <button v-else type="button" class="uf-btn-primary" :disabled="signInLoading" @click="handleSignIn">
+              <span>{{ signInLoading ? 'Signing in…' : 'Sign in' }}</span>
+            </button>
+          </template>
+          <button v-else-if="step === 2" type="button" class="uf-btn-primary" :disabled="accountsLoading" @click="nextStep">
+            <span>{{ accountsLoading ? 'Checking account…' : 'Continue' }}</span>
+          </button>
+          <template v-else-if="step === 3">
+            <button
+              type="button"
+              class="uf-btn-primary"
+              :disabled="accountBusy || riotBusy || accountsLoading"
+              @click="nextStep"
+            >
+              <span>{{ accountLinked ? 'Continue' : 'Continue without linking' }}</span>
+            </button>
+            <span class="uf-t4">Manage accounts anytime in Settings → General</span>
+          </template>
+          <template v-else>
+            <button type="button" class="uf-btn-primary" :disabled="saving" @click="handleComplete()">
+              <span>{{ saving ? 'Opening…' : 'Open UpForge' }}</span>
+            </button>
+            <button
+              v-if="recordingSetupReady && bonusEligible"
+              type="button"
+              class="uf-btn-secondary"
+              :disabled="saving || bonusLoading"
+              @click="startBonusMission"
+            >
+              Try my free match review
+            </button>
+          </template>
+        </footer>
+      </section>
+    </template>
+    <template v-else>
     <div class="wiz-shell dash-panel w-full max-w-xl max-h-full flex flex-col overflow-hidden relative">
       <div class="shrink-0 flex items-center justify-between gap-3 px-6 pt-5 pb-4 border-b border-white/[0.07]">
         <button
@@ -692,11 +1191,24 @@
           </button>
         </div>
       </div>
+    </template>
   </div>
 </template>
 
 <script setup lang="ts">
+import { uiV3 } from '../lib/ui-v3'
+import OnboardingRailV3 from '../components/v3/onboarding/OnboardingRailV3.vue'
+import UfIcon from '../components/v3/UfIcon.vue'
+import {
+  ONBOARDING_GAME_LOGOS,
+  captureCheckTone,
+  captureMessageTone,
+  missionStageTone,
+  progressRowTone,
+  recordingCheckTone,
+} from '../components/v3/onboarding/onboarding-status'
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
+import { readJoinCoachLater, setJoinCoachLater } from '../components/v3/roster-flow/roster-flow'
 import { resolveOnboardingCompletionRoute } from '../lib/onboarding-gate'
 import { resolveOnboardingStep } from '../lib/onboarding-flow'
 import { useRoute, useRouter } from 'vue-router'
@@ -922,6 +1434,13 @@ const missionCaptureMessageTone = computed(() =>
       : 'text-emerald-200/80',
 )
 
+const missionCaptureToneV3 = computed(() => captureMessageTone({
+  obsConnected: missionRuntime.value.obsConnected,
+  valorantInFront: missionRuntime.value.currentGame === 'valorant',
+  captureVerified: missionCaptureVerified.value,
+  obsRecording: missionRuntime.value.obsRecording,
+}))
+
 const missionCopy = computed(() => {
   const copy: Record<OnboardingMissionStage, { title: string; body: string }> = {
     ready_for_game: {
@@ -1006,6 +1525,11 @@ const accountError = ref('')
 const accountSuccess = ref('')
 
 const stepLabels = ['Sign in', 'Your game', 'Game account', 'Capture check', 'Your first match'] as const
+
+// Roster flow (UI v3): "I have a coach" reminder shown on Home until they join a roster.
+const coachInviteLater = ref(readJoinCoachLater())
+watch(coachInviteLater, (on) => setJoinCoachLater(on))
+
 
 const GAMES = [
   { id: 'valorant' as const, name: 'Valorant', img: PRIMARY_GAME_ARTWORK.valorant, desc: 'Full AI coaching and VOD analysis' },

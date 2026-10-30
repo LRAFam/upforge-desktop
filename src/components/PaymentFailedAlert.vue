@@ -1,4 +1,15 @@
 <template>
+  <div v-if="uiV3" class="uf-pay-alert" role="alert">
+    <span class="uf-banner-dot is-red" aria-hidden="true" />
+    <div style="flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px">
+      <p class="uf-t3" style="margin: 0">Payment failed</p>
+      <p class="uf-t4" style="margin: 0">We couldn't charge your card. Stripe will retry automatically — update your payment method to avoid losing access.</p>
+      <div style="padding-top: 6px">
+        <button type="button" class="uf-banner-link is-red" :disabled="loading" @click="handleFix">{{ loading ? 'Opening…' : 'Update payment method →' }}</button>
+      </div>
+    </div>
+  </div>
+<template v-else>
   <div class="rounded-xl border border-red-500/30 bg-red-500/10 p-3">
     <div class="flex items-start gap-3">
       <div class="mt-0.5 flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg bg-red-500/20">
@@ -28,10 +39,12 @@
     </div>
   </div>
 </template>
+</template>
 
 <script setup lang="ts">
 import { ref } from 'vue'
 import { openBillingPortal } from '../lib/billing'
+import { uiV3 } from '../lib/ui-v3'
 
 const emit = defineEmits<{ error: [message: string] }>()
 const loading = ref(false)

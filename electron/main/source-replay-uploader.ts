@@ -17,6 +17,8 @@ export interface SourceReplayUploadOptions {
 
 export interface SourceReplayUploadResult {
   jobId: string
+  /** The match was already analysed: no upload happened and no credit was spent; jobId is the first analysis. */
+  alreadyAnalysed?: boolean
 }
 
 const API_PREFIX: Record<SourceGame, string> = {
@@ -54,6 +56,12 @@ export class SourceReplayUploader {
     const presignResult = await this._apiPost(`${apiUrl}${prefix}/presign`, JSON.stringify(presignBody), token)
     const jobId = presignResult['job_id'] as string
     const uploadUrl = presignResult['upload_url'] as string
+
+    // The API returns the first analysis for a match that was already analysed (no charge): treat it as done.
+    if (presignResult['already_analysed'] === true && typeof jobId === 'string' && jobId) {
+      opts.onProgress(100)
+      return { jobId, alreadyAnalysed: true }
+    }
 
     await this._putToS3(uploadUrl, opts.demoPath, totalBytes, opts.onProgress)
 

@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { uiV3 } from '../../lib/ui-v3'
+import UfDialog from '../v3/UfDialog.vue'
 import { computed } from 'vue'
 import { useVodReview } from '../../composables/useVodReview'
 
@@ -13,6 +15,19 @@ const generalShortcuts = computed(() => shortcutLegend.value.filter(s => !coachS
 </script>
 
 <template>
+<template v-if="uiV3">
+  <UfDialog :open="showShortcuts" title="Keyboard shortcuts" kicker="Match review" :width="520" @close="showShortcuts = false">
+    <section v-if="coachShortcuts.length" class="ks3">
+      <span class="uf-label">Coach notes</span>
+      <div v-for="s in coachShortcuts" :key="s.key" class="ks3-row"><span class="uf-t4">{{ s.label }}</span><kbd class="ks3-key">{{ s.key }}</kbd></div>
+    </section>
+    <section class="ks3">
+      <span v-if="coachShortcuts.length" class="uf-label">Playback</span>
+      <div v-for="s in generalShortcuts" :key="s.key" class="ks3-row"><span class="uf-t4">{{ s.label }}</span><kbd class="ks3-key">{{ s.key }}</kbd></div>
+    </section>
+  </UfDialog>
+</template>
+<template v-else>
 <!-- Keyboard shortcuts overlay -->
     <Transition name="event-pop">
       <div
@@ -51,3 +66,12 @@ const generalShortcuts = computed(() => shortcutLegend.value.filter(s => !coachS
       </div>
     </Transition>
 </template>
+</template>
+
+<style scoped>
+.ks3 { display: flex; flex-direction: column; }
+.ks3 .uf-label { padding-bottom: 6px; }
+.ks3-row { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 7px 0; border-top: 1px solid var(--uf-line); }
+.ks3-row .uf-t4 { color: var(--uf-muted); }
+.ks3-key { font: 600 12px/1 var(--uf-body); color: var(--uf-bone); border: 1px solid var(--uf-line-2); padding: 4px 7px; font-variant-numeric: tabular-nums; }
+</style>

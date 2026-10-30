@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { uiV3 } from '../../lib/ui-v3'
+import UfDialog from '../v3/UfDialog.vue'
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import type { RecordingTimeline } from '../../composables/useVodReview'
 import { canWatchRawRecording } from '../../lib/recording-demo-status'
@@ -61,6 +63,23 @@ async function choose(key: string) {
 }
 </script>
 <template>
+<template v-if="uiV3">
+  <UfDialog :open="true" title="Change footage" kicker="Compare" :width="620" @close="emit('close')">
+    <p class="uf-t2" style="margin: 0">Choose another {{ game }} recording. Only this side will change.</p>
+    <label class="sp3-find"><span class="uf-label">Find footage</span><input v-model="query" type="search" placeholder="Map, agent or date"></label>
+    <p v-if="loading" role="status" class="uf-t4">Loading footage…</p>
+    <p v-if="busy" role="status" class="uf-t4">Opening recording…</p>
+    <p v-if="libraryError" role="status" class="uf-t4" style="color: var(--uf-gold)">{{ libraryError }}</p>
+    <p v-if="error" role="alert" class="uf-t4" style="color: var(--uf-loss)">{{ error }}</p>
+    <div class="sp3-list">
+      <button type="button" class="sp3-row" :disabled="busy" @click="choose('current')"><span class="uf-t3">Current review</span><span class="uf-t4">{{ current.map }} · {{ current.agent }}</span></button>
+      <button v-for="choice in filtered" :key="choice.key" type="button" class="sp3-row" :disabled="busy" @click="choose(choice.key)"><span class="uf-t3">{{ choice.label }}</span></button>
+    </div>
+    <p v-if="!loading && !filtered.length" class="uf-t4">No other matching footage found.</p>
+    <p class="uf-t4">Includes recordings on this device and up to 50 recent reviewed matches. Unavailable recordings cannot be selected.</p>
+  </UfDialog>
+</template>
+<template v-else>
   <dialog ref="dialog" class="source-backdrop" aria-labelledby="source-picker-title" @cancel.prevent="emit('close')" @click.self="emit('close')">
     <section class="source-picker">
       <header><h2 id="source-picker-title">Change footage</h2><button type="button" @click="emit('close')">Cancel</button></header>
@@ -79,10 +98,21 @@ async function choose(key: string) {
     </section>
   </dialog>
 </template>
+</template>
 <style scoped>
 .source-backdrop { position: fixed; inset: 0; width: 100vw; height: 100vh; max-width: none; max-height: none; margin: 0; border: 0; color: white; z-index: 60; background: transparent; } .source-backdrop::backdrop { background: #000b; } .source-backdrop[open] { display: grid; place-items: center; padding: 20px; }
 .source-picker { width: min(620px, 100%); max-height: 85vh; overflow: auto; background: #15181e; border: 1px solid #ffffff25; border-radius: 8px; padding: 20px; }
 header { display: flex; align-items: center; justify-content: space-between; gap: 12px; } h2 { font-size: 18px; font-weight: 700; } p,label { font-size: 12px; color: #aab2bf; margin: 12px 0; } label { display: grid; gap: 6px; }
 button,input { color: white; background: #20242c; border: 1px solid #ffffff25; border-radius: 4px; padding: 10px; font-size: 12px; }button { cursor: pointer; }button:disabled { opacity: .5; cursor: wait; }
 .source-list { display: grid; gap: 8px; margin-top: 12px; }.source-list button { text-align: left; } :is(button,input):focus-visible { outline: 2px solid #e11d48; outline-offset: 2px; }
+</style>
+
+<style scoped>
+.sp3-find { display: flex; flex-direction: column; gap: 8px; }
+.sp3-find input { background: var(--uf-chrome); border: 1px solid var(--uf-line-2); color: var(--uf-bone); font: 400 15px/1.4 var(--uf-body); padding: 10px 12px; }
+.sp3-list { display: flex; flex-direction: column; }
+.sp3-row { display: flex; justify-content: space-between; gap: 12px; text-align: left; padding: 11px 0; background: none; border: 0; border-top: 1px solid var(--uf-line); color: var(--uf-bone); cursor: pointer; }
+.sp3-row:hover { background: var(--uf-hover); }
+.sp3-row:disabled { opacity: 0.45; cursor: wait; }
+.uf-dialog-body p { margin: 0; }
 </style>

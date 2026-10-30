@@ -3,6 +3,7 @@ import { cloudBytes } from '../../lib/cloud-storage'
 import { computed, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAccountUsage } from '../../composables/useAccountUsage'
+import { uiV3 } from '../../lib/ui-v3'
 const props = defineProps<{ kind: 'clips' | 'footage' }>()
 const { usage, error, loading, load } = useAccountUsage()
 const router = useRouter()
@@ -11,8 +12,22 @@ const detailsOpen = ref(false)
 const expiry = computed(() => props.kind === 'footage' ? usage.value?.footage.next_expiry_at : null)
 const usageRoute = { path: '/cloud-storage' }
 const date = (value: string) => new Date(value).toLocaleDateString(undefined, { day: 'numeric', month: 'short' })
+const full = computed(() => usage.value?.cloud_storage?.remaining_bytes === 0)
 </script>
 <template>
+  <div v-if="uiV3" class="uf-banner" role="status">
+    <span class="uf-banner-dot" :class="{ 'is-gold': full || error }" aria-hidden="true" />
+    <p class="uf-banner-text" style="margin: 0">
+      <span v-if="error" class="uf-banner-main">{{ error }}</span>
+      <span v-else-if="usage?.cloud_storage"><strong class="uf-num">{{ cloudBytes(usage.cloud_storage.used_bytes) }}</strong> used<span v-if="usage.cloud_storage.capacity_bytes !== null"> of <span class="uf-num">{{ cloudBytes(usage.cloud_storage.capacity_bytes) }}</span></span> · shared cloud storage<span v-if="full"> · full</span></span>
+      <span v-else>{{ loading ? 'Loading cloud storage…' : 'Cloud storage allowance loading' }}</span>
+    </p>
+    <div class="uf-banner-actions">
+      <button v-if="error" type="button" class="uf-banner-link" @click="load">Retry</button>
+      <button type="button" class="uf-banner-link" @click="router.push(usageRoute)">{{ full ? 'Add or manage storage' : 'Cloud storage' }}</button>
+    </div>
+  </div>
+<template v-else>
   <div class="cloud-usage-wrap">
     <div class="cloud-usage" :class="{ full: usage?.cloud_storage?.remaining_bytes === 0 }">
       <p v-if="error">{{ error }} <button @click="load">Retry</button></p>
@@ -21,6 +36,7 @@ const date = (value: string) => new Date(value).toLocaleDateString(undefined, { 
       <button type="button" @click="router.push(usageRoute)">{{ usage?.cloud_storage?.remaining_bytes === 0 ? 'Add or manage storage' : 'Cloud storage' }}</button>
     </div>
   </div>
+</template>
 </template>
 
 <style scoped>

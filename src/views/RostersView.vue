@@ -11,7 +11,11 @@ import {
   type RosterMatchVisual,
 } from '../lib/roster-match-display'
 import { openWebFeature, WEB_BASE } from '../lib/web-explore-links'
+import { openAnalysisVodReview } from '../lib/open-vod-review'
 import { getRankIconUrl } from '../lib/valorant'
+import RostersV3 from './v3/RostersV3.vue'
+import { uiV3 } from '../lib/ui-v3'
+import { readCache, writeCache } from '../lib/stale-cache'
 
 type RosterMode = 'student' | 'coach'
 
@@ -57,6 +61,8 @@ const router = useRouter()
 const { setPendingReviewCount } = useRosterHubBadge()
 
 const loading = ref(true)
+/** UI v3: a background refresh over data already on screen (never re-shows the skeleton). */
+const refreshing = ref(false)
 const error = ref<string | null>(null)
 const isCoachAccount = ref(false)
 const mode = ref<RosterMode>('student')
@@ -174,8 +180,41 @@ function flashToast(message: string) {
   toastTimer = setTimeout(() => { toast.value = null }, 3200)
 }
 
+/** UI v3 student-side snapshot, drawn instantly on repeat visits. */
+interface RostersSnapshot {
+  isCoachAccount: boolean
+  coaches: RosterCoach[]
+  pendingReviews: HubReview[]
+  completedReviews: HubReview[]
+  actionable: ActionableMatch[]
+  stats: typeof stats.value
+}
+const ROSTERS_CACHE_KEY = 'rosters:student'
+let shownData = false
+
+function seedFromCacheV3(): boolean {
+  const hit = readCache<RostersSnapshot>(ROSTERS_CACHE_KEY)
+  if (!hit) return false
+  const s = hit.value
+  isCoachAccount.value = s.isCoachAccount
+  coaches.value = s.coaches ?? []
+  pendingReviews.value = s.pendingReviews ?? []
+  completedReviews.value = s.completedReviews ?? []
+  actionable.value = s.actionable ?? []
+  stats.value = s.stats ?? stats.value
+  studentPending.value = stats.value.pending_reviews
+  const stored = readStoredMode()
+  if (isCoachAccount.value) mode.value = stored ?? 'coach'
+  shownData = true
+  loading.value = false
+  return true
+}
+
 async function load() {
-  loading.value = true
+  // v3 keeps what's on screen during a reload and only shows the skeleton on a first-ever load.
+  const quiet = uiV3.value && shownData
+  loading.value = !quiet
+  refreshing.value = quiet
   error.value = null
   sendError.value = null
   try {
@@ -208,12 +247,26 @@ async function load() {
       setMode('student')
     }
 
+    if (uiV3.value) {
+      shownData = true
+      writeCache<RostersSnapshot>(ROSTERS_CACHE_KEY, {
+        isCoachAccount: isCoachAccount.value,
+        coaches: coaches.value,
+        pendingReviews: pendingReviews.value,
+        completedReviews: completedReviews.value,
+        actionable: actionable.value,
+        stats: stats.value,
+      })
+    }
+
     if (mode.value === 'coach' && coachPanelRef.value) {
       await coachPanelRef.value.load()
     } else {
       refreshBadge()
     }
   } catch (e) {
+    // v3: a failed background refresh keeps the data on screen.
+    if (quiet) return
     error.value = e instanceof Error ? e.message : 'Failed to load rosters'
     coaches.value = []
     pendingReviews.value = []
@@ -223,6 +276,7 @@ async function load() {
     setPendingReviewCount(0)
   } finally {
     loading.value = false
+    refreshing.value = false
   }
 }
 
@@ -279,7 +333,10 @@ function openAnalysis(row: RosterMatchVisual & { id?: number }) {
   if (!analysisId) return
   const game = row.game_type || 'valorant'
   if (game === 'valorant') {
-    router.push({ path: '/vod-review', query: { id: String(analysisId) } }).catch(() => {})
+    // ?id= is a local recording id; an analysis opens by timelineId (fixes "Recording timeline not found").
+    void openAnalysisVodReview(router, analysisId, { coachNotes: true, source: 'desktop_rosters' })
+      .then(ok => { if (!ok) void openWebFeature(`/${game}/results/${analysisId}`, true) })
+      .catch(() => {})
     return
   }
   void openWebFeature(`/${game}/results/${analysisId}`, true)
@@ -355,6 +412,8 @@ async function boot() {
   await load()
   if (mode.value === 'coach') return
   if (!isEmpty.value || error.value) return
+  // UI v3: the empty state has an in-app invite field; never open the browser on its own.
+  if (uiV3.value) return
   let alreadyOpened = false
   try {
     alreadyOpened = sessionStorage.getItem('upforge.rosters.discoveryOpened') === '1'
@@ -367,6 +426,7 @@ async function boot() {
 }
 
 onMounted(() => {
+  if (uiV3.value) seedFromCacheV3()
   void boot()
   const onFocus = () => {
     if (!loading.value) void refreshCurrent()
@@ -380,7 +440,64 @@ onMounted(() => {
 </script>
 
 <template>
-  <div class="rosters-view flex flex-1 min-h-0 flex-col overflow-hidden bg-[#111111] text-white">
+  <RostersV3
+    v-if="uiV3"
+    :mode="mode"
+    :show-mode-switch="showModeSwitch"
+    :coach-pending="coachPending"
+    :student-pending="studentPending"
+    :loading="loading"
+    :refreshing="refreshing"
+    :error="error"
+    :is-empty="isEmpty"
+    :discovery-opened="discoveryOpened"
+    :coaches="coaches"
+    :pending-reviews="pendingReviews"
+    :completed-reviews="completedReviews"
+    :actionable="actionable"
+    :stats="stats"
+    :send-error="sendError"
+    :send-block-message="sendBlockMessage"
+    :can-send-any-review="canSendAnyReview"
+    :sending-id="sendingId"
+    :toast="toast"
+    :web-host="WEB_BASE.replace('https://', '')"
+    :coach-block="coachBlock"
+    :membership-label="membershipLabel"
+    :review-subtitle="reviewSubtitle"
+    :completed-subtitle="completedSubtitle"
+    @set-mode="setMode"
+    @refresh="refreshCurrent"
+    @retry="load"
+    @discovery="openDiscovery"
+    @my-coaches="openMyCoachesWeb"
+    @open-coach="openCoachProfile"
+    @open-notes="openNotes"
+    @open-analysis="openAnalysis"
+    @send="beginSend"
+    @joined="(name: string) => { flashToast(`Joined ${name}'s roster`); void load() }"
+  >
+    <template #coach>
+      <RostersCoachPanel
+        ref="coachPanelRef"
+        :active="mode === 'coach'"
+        @loaded="onCoachLoaded"
+        @toast="flashToast"
+      />
+    </template>
+    <template #overlays>
+      <RosterSendSheet
+        :open="sendSheetOpen"
+        :match-label="sendMatchLabel"
+        :coaches="sendEligibleCoaches"
+        :preferred-coach-id="sendTarget?.available_coach_ids?.[0] ?? null"
+        :busy="sendingId != null"
+        @close="closeSendSheet"
+        @send="confirmSend"
+      />
+    </template>
+  </RostersV3>
+  <div v-else class="rosters-view flex flex-1 min-h-0 flex-col overflow-hidden bg-[#111111] text-white">
     <Transition name="toast-slide">
       <div
         v-if="toast"

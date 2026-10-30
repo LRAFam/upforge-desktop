@@ -15,6 +15,7 @@ import { getTierBadgeClass, getTierBadgeLabel, formatGameMode } from '../lib/val
 import { hasProAccess as proAccessForUser } from '../lib/subscription'
 import { BADGE_PREVIEW_ITEMS, getBadgeIconUrl, getSubscriptionIconUrl } from '../lib/rank-assets'
 import { isPaymentPastDue, openBillingPortal as requestBillingPortal } from '../lib/billing'
+import { uiV3 } from '../lib/ui-v3'
 
 export type RiotAccountRow = {
   id: number
@@ -484,7 +485,7 @@ function createSettings() {
     pregameKillList: [],
     clipRetentionDays: 0,
     clipKillRetentionDays: 0,
-    clipCapture: { singleKills: true, multiKills: true, aces: true, clutches: true },
+    clipCapture: { singleKills: true, multiKills: true, aces: true, clutches: true, deaths: true, objectives: true },
     recordingRetentionDays: 14,
     fullMatchRecording: true,
     notificationSound: true,
@@ -840,7 +841,7 @@ function createSettings() {
 
   function toggleClipCapture(key: keyof AppSettings['clipCapture']): void {
     if (!settings.clipCapture) {
-      settings.clipCapture = { singleKills: true, multiKills: true, aces: true, clutches: true }
+      settings.clipCapture = { singleKills: true, multiKills: true, aces: true, clutches: true, deaths: true, objectives: true }
     }
     settings.clipCapture[key] = !settings.clipCapture[key]
     debouncedSave()
@@ -1182,6 +1183,8 @@ function createSettings() {
       accountLinkFocus.value = linkQuery
     }
     window.addEventListener('keydown', handleKeydown)
+    // UI v3: start the slow profile request now instead of after the other awaits below.
+    const earlyProfile = uiV3.value ? window.api.profile.get().catch(() => null) : null
     try {
       const [s, savedSettings] = await Promise.all([
         window.api.app.getStatus(),
@@ -1204,6 +1207,18 @@ function createSettings() {
       devModeActive.value = savedSettings.devModeEnabled ?? false
       // Use getStatus user as base
       if (s.user) user.value = { ...(s.user as UserWithUsage) }
+      if (uiV3.value) {
+        // v3: these network checks fill in when they land; the page doesn't wait on them.
+        void window.api.auth.refreshUser()
+          .then((authUser) => { if (authUser && !ipcScope.disposed) user.value = { ...user.value, ...(authUser as UserWithUsage) } })
+          .catch(() => { /* non-critical */ })
+        if (settings.primaryGame === 'cs2') {
+          void window.api.cs2.getFaceitConnection()
+            .then((faceit) => { cs2FaceitLinked.value = !!faceit?.connected; cs2FaceitNickname.value = faceit?.nickname ?? null })
+            .catch(() => { /* optional */ })
+        }
+        if (settings.primaryGame === 'deadlock') void loadDeadlockLink()
+      } else {
       try {
         const authUser = await window.api.auth.refreshUser() as UserWithUsage | null
         if (authUser) user.value = { ...user.value, ...authUser }
@@ -1217,6 +1232,7 @@ function createSettings() {
       }
       if (settings.primaryGame === 'deadlock') {
         await loadDeadlockLink()
+      }
       }
       loadStorageUsage()
       loadHotkeyStatus()
@@ -1252,7 +1268,7 @@ function createSettings() {
     } catch { /* non-critical */ }
   
     try {
-      const prof = await window.api.profile.get()
+      const prof = earlyProfile ? await earlyProfile : await window.api.profile.get()
       if (prof?.user) {
         user.value = {
           ...user.value,

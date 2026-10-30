@@ -57,6 +57,60 @@ export interface MatchDetailsLite {
       damage: number
     }>
   }>
+  /**
+   * Per-round detail for all 10 players: where hits landed (head/body/leg) and what each player
+   * bought. Riot counts hits that landed, not shots fired, so there is no accuracy here.
+   */
+  rounds?: MatchDetailsLiteRound[]
+}
+
+export interface MatchDetailsLiteRound {
+  /** 0-based, as Riot's roundNum. */
+  round: number
+  winningTeam: string | null
+  players: Array<{
+    subject: string
+    /** Riot economy: value carried into the round, credits spent and left. Null when not reported. */
+    loadoutValue: number | null
+    spent: number | null
+    remaining: number | null
+    damage: Array<{ receiver: string; damage: number; headshots: number; bodyshots: number; legshots: number }>
+  }>
+}
+
+const finiteOrNull = (v: unknown): number | null => (typeof v === 'number' && Number.isFinite(v) ? v : null)
+const count = (v: unknown): number => (typeof v === 'number' && Number.isFinite(v) && v > 0 ? Math.round(v) : 0)
+
+/** Keep Riot's per-round hit regions and economy for every player (dropped before round 5). */
+export function slimRoundDetails(raw: Record<string, unknown> | null | undefined): MatchDetailsLiteRound[] | undefined {
+  const roundResults = raw?.roundResults as Array<Record<string, unknown>> | undefined
+  if (!Array.isArray(roundResults) || !roundResults.length) return undefined
+  const rounds = roundResults.map((r, i): MatchDetailsLiteRound => ({
+    round: typeof r.roundNum === 'number' ? r.roundNum : i,
+    winningTeam: typeof r.winningTeam === 'string' ? r.winningTeam : null,
+    players: ((r.playerStats as Array<Record<string, unknown>> | undefined) ?? [])
+      .filter(ps => typeof ps?.subject === 'string')
+      .map((ps) => {
+        const economy = ps.economy as Record<string, unknown> | undefined
+        const damage = (ps.damage as Array<Record<string, unknown>> | undefined) ?? []
+        return {
+          subject: ps.subject as string,
+          loadoutValue: finiteOrNull(economy?.loadoutValue),
+          spent: finiteOrNull(economy?.spent),
+          remaining: finiteOrNull(economy?.remaining),
+          damage: damage
+            .filter(d => typeof d?.receiver === 'string')
+            .map(d => ({
+              receiver: d.receiver as string,
+              damage: count(d.damage),
+              headshots: count(d.headshots),
+              bodyshots: count(d.bodyshots),
+              legshots: count(d.legshots),
+            })),
+        }
+      }),
+  }))
+  return rounds.some(r => r.players.length) ? rounds : undefined
 }
 
 export type UploadMatchData = Omit<MatchData, 'events' | 'matchDetails'> & {
@@ -134,6 +188,7 @@ function slimMatchDetails(raw: Record<string, unknown> | null | undefined): Matc
         roundDamage: roundDamage?.length ? roundDamage : undefined,
       }
     }),
+    rounds: slimRoundDetails(raw),
   }
 }
 

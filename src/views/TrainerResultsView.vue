@@ -6,6 +6,11 @@ import TrainingIcon from '../components/training/TrainingIcon.vue'
 import { useRouter } from 'vue-router'
 import { useTrainerResultStore } from '../stores/trainerResult'
 import type { TrainingHistory } from '../env'
+import { uiV3 } from '../lib/ui-v3'
+import { scenarioIconUrl } from '../lib/training-icons'
+import UfButton from '../components/v3/UfButton.vue'
+import UfIcon from '../components/v3/UfIcon.vue'
+import { deltaTone, hitsLabel, isBest, pct, signed, toneColor } from '../components/v3/practice/practice-session-v3'
 
 const router = useRouter()
 const store = useTrainerResultStore()
@@ -336,6 +341,158 @@ onUnmounted(() => {
 </script>
 
 <template>
+  <!-- UI v3 (legacy markup below, unchanged) -->
+  <div v-if="uiV3 && !result" class="uf-tr fixed inset-0 flex flex-col overflow-hidden">
+    <div class="uf-tr-bar">
+      <span class="uf-label">Training results</span>
+      <button type="button" aria-label="Back to training" class="uf-tr-close" @click="backToHub"><UfIcon name="close" :size="16" /></button>
+    </div>
+    <div class="uf-tr-body">
+      <div class="uf-tr-empty">
+        <p class="uf-t2" style="margin: 0">No drill result yet. Finish a drill and your score shows up here.</p>
+        <button type="button" class="uf-link" @click="backToHub">Back to Practice</button>
+      </div>
+    </div>
+  </div>
+  <div v-else-if="uiV3 && result" class="uf-tr fixed inset-0 flex flex-col overflow-hidden">
+    <div class="uf-tr-bar">
+      <span class="uf-label">Training results</span>
+      <button type="button" aria-label="Back to training" class="uf-tr-close" @click="backToHub"><UfIcon name="close" :size="16" /></button>
+    </div>
+
+    <div class="uf-tr-body" tabindex="0" role="region" aria-label="Training results">
+      <!-- Hero: the score, then the coach's sentence and the one action -->
+      <section class="uf-tr-hero">
+        <div class="uf-tr-score uf-rise">
+          <span class="uf-tr-kicker">
+            <img :src="scenarioIconUrl(result.scenario)" alt="" class="uf-tr-icon">
+            <span class="uf-t3">{{ scenarioMeta.label }}</span>
+            <span class="uf-t4">{{ formatDate(result.completed_at) }}<span v-if="store.launchConfig" style="text-transform: capitalize"> · {{ store.launchConfig.difficulty }} · {{ store.launchConfig.duration_seconds }}s</span></span>
+          </span>
+          <span class="uf-d1">{{ result.score * 10 }}</span>
+          <span class="uf-tr-score-meta">
+            <span class="uf-t4">/ 1000 · {{ scoreLabel(result.score) }}</span>
+            <span v-if="scoreDelta !== null" class="uf-t4 uf-num" :style="{ color: toneColor(deltaTone(scoreDelta)) }">{{ signed(scoreDelta) }} vs previous</span>
+            <span v-else-if="history?.by_scenario?.[result.scenario]?.sessions?.length === 0" class="uf-t4">First run with these settings</span>
+            <span v-if="isPB" class="uf-t4" style="color: var(--uf-gold)">★ New personal best</span>
+          </span>
+        </div>
+        <div class="uf-tr-coach uf-rise uf-d1s">
+          <span class="uf-label">Session feedback</span>
+          <p class="uf-t1" style="margin: 0">{{ coachingInsight[0] }}</p>
+          <p v-for="(line, i) in coachingInsight.slice(1)" :key="i" class="uf-t2" style="margin: 0">{{ line }}</p>
+          <div class="uf-tr-actions">
+            <UfButton v-if="store.launchConfig" variant="primary" icon="play" :disabled="launching" @click="playAgain">{{ launching ? 'Launching…' : 'Play again' }}</UfButton>
+            <UfButton variant="link" @click="backToHub">Back to training</UfButton>
+          </div>
+          <p v-if="launched" class="uf-t4" style="margin: 0; color: var(--uf-win)">Trainer launched. Finish the drill to see your results here.</p>
+        </div>
+      </section>
+
+      <!-- Numbers inline -->
+      <dl class="uf-tr-stats uf-rise uf-d2s">
+        <div>
+          <dt class="uf-t4">{{ tracking ? 'Time on target' : 'Accuracy' }}</dt>
+          <dd class="uf-d4">{{ result.accuracy_pct.toFixed(1) }}%</dd>
+          <span class="uf-tr-bar-in"><span class="uf-fill" :style="{ width: pct(result.accuracy_pct) + '%' }" /></span>
+        </div>
+        <div title="Average time to a successful hit. The bar uses a fixed 150–400ms reference, not a player percentile.">
+          <dt class="uf-t4">Time to hit</dt>
+          <dd class="uf-d4" :style="hasReaction ? undefined : 'color: var(--uf-faint)'">{{ hasReaction ? `${result.avg_reaction_ms}ms` : 'Not measured' }}</dd>
+          <span class="uf-tr-bar-in"><span class="uf-fill" :style="{ width: (hasReaction ? pct(reactionScore(result.avg_reaction_ms)) : 0) + '%' }" /></span>
+        </div>
+        <div>
+          <dt class="uf-t4">Consistency</dt>
+          <dd class="uf-d4" :style="hasConsistency ? undefined : 'color: var(--uf-faint)'">{{ hasConsistency ? result.consistency_score : 'Not measured' }}</dd>
+          <span class="uf-tr-bar-in"><span class="uf-fill" :style="{ width: (hasConsistency ? pct(result.consistency_score) : 0) + '%' }" /></span>
+        </div>
+        <div>
+          <dt class="uf-t4">{{ tracking ? 'Tracking samples' : 'Targets' }}</dt>
+          <dd class="uf-d4">{{ hitsLabel(result.targets_hit, result.targets_missed) }}</dd>
+        </div>
+        <div>
+          <dt class="uf-t4">{{ tracking ? 'On-target time' : 'Hits per minute' }}</dt>
+          <dd class="uf-d4">{{ tracking ? (typeof result.metadata?.on_target_seconds === 'number' ? `${result.metadata.on_target_seconds.toFixed(1)}s` : 'Not recorded') : (result.duration_seconds > 0 ? Math.round((result.targets_hit / result.duration_seconds) * 60) : 0) }}</dd>
+        </div>
+        <div>
+          <dt class="uf-t4">{{ tracking ? 'Off-target time' : 'Miss rate' }}</dt>
+          <dd class="uf-d4">{{ tracking ? (100 - result.accuracy_pct).toFixed(1) : result.targets_hit + result.targets_missed > 0 ? Math.round((result.targets_missed / (result.targets_hit + result.targets_missed)) * 100) : 0 }}%</dd>
+        </div>
+      </dl>
+
+      <div class="uf-tr-grid">
+        <div class="uf-tr-main">
+          <section class="uf-rise uf-d3s">
+            <span class="uf-label">Score trend</span>
+            <p class="uf-t4" style="margin: 8px 0 12px">
+              {{ trainingComparisonRequest(result) ? `${result.metadata?.difficulty} · ${result.duration_seconds}s · Updated scoring. Comparisons use matching settings.` : 'Legacy or incomplete settings. This score is saved separately from current comparisons.' }}
+            </p>
+            <p v-if="chartScores.length < 2" class="uf-t2" style="margin: 0">Play another run with the same difficulty and length to see a trend.</p>
+            <svg v-else :viewBox="`0 0 ${W} ${H}`" class="uf-tr-chart" role="img" :aria-label="`Score trend over ${chartScores.length} runs`">
+              <line v-for="g in gridLines" :key="g.label" :x1="PAD.left" :y1="g.y" :x2="W - PAD.right" :y2="g.y" stroke="var(--uf-line)" stroke-width="1" />
+              <text v-for="g in gridLines" :key="`t-${g.label}`" :x="PAD.left - 4" :y="g.y + 3.5" text-anchor="end" fill="var(--uf-faint)" font-size="8">{{ g.label }}</text>
+              <path :d="chartPath" fill="none" stroke="var(--uf-bone)" stroke-width="1.5" stroke-linejoin="round" />
+              <circle
+                v-for="(dot, i) in chartDots" :key="i" :cx="dot.cx" :cy="dot.cy" :r="dot.isCurrent ? 4 : 2.5"
+                :fill="dot.isCurrent ? 'var(--uf-red)' : 'var(--uf-muted)'"
+              />
+            </svg>
+          </section>
+
+          <section v-if="['head_height', 'angle_clearing', 'distance_switching'].includes(result.scenario)" class="uf-tr-block uf-rise uf-d3s">
+            <span class="uf-label">Crosshair placement</span>
+            <span class="uf-t4">Average vertical correction when the head first became visible</span>
+            <span class="uf-d3">{{ typeof result.metadata?.mean_vertical_error_deg === 'number' ? `${result.metadata.mean_vertical_error_deg.toFixed(2)}°` : 'No visible targets measured' }}</span>
+            <span class="uf-t4">Lower is better. Standing target sizes are estimated from range footage.</span>
+          </section>
+
+          <section v-if="result.heatmap?.length" class="uf-tr-block uf-rise uf-d4s">
+            <span class="uf-label">Shot map</span>
+            <div class="uf-tr-heat">
+              <canvas ref="heatmapCanvas" width="640" height="360" />
+              <span class="uf-tr-heat-key uf-t4"><i style="background: rgba(74,222,128,0.8)" />Hit <i style="background: rgba(248,113,113,0.7)" />Miss</span>
+            </div>
+          </section>
+        </div>
+
+        <aside class="uf-tr-aside uf-rise uf-d4s">
+          <section class="uf-tr-block">
+            <span class="uf-label">Your next drill</span>
+            <span class="uf-t3">{{ recommendedMeta.label }}</span>
+            <span class="uf-t4">{{ recommended.reason }}</span>
+            <UfButton variant="secondary" icon="play" :disabled="launching" @click="tryRecommended">{{ launching ? 'Launching…' : 'Start drill' }}</UfButton>
+          </section>
+          <div class="uf-hair" />
+          <section class="uf-tr-block">
+            <span class="uf-label">Top runs · this drill</span>
+            <p v-if="leaderboard.length === 0" class="uf-t4" style="margin: 0">No runs on record yet.</p>
+            <ol v-else class="uf-tr-top">
+              <li v-for="entry in leaderboard" :key="entry.rank" :class="{ current: entry.isCurrent }">
+                <span class="uf-t4 uf-num" :style="isBest(entry.rank) ? 'color: var(--uf-gold)' : undefined" style="width: 32px">{{ isBest(entry.rank) ? '★' : '' }}{{ entry.rank }}</span>
+                <span class="uf-d4">{{ entry.score * 10 }}</span>
+                <span class="uf-t4" style="margin-left: auto">{{ entry.isCurrent ? 'This run' : formatDate(entry.completed_at) }}</span>
+              </li>
+            </ol>
+          </section>
+          <div class="uf-hair" />
+          <section class="uf-tr-block">
+            <span class="uf-label">Tip</span>
+            <span class="uf-t4">
+              {{
+                result.scenario === 'flick' ? 'Keep your arm loose — flicks are shoulder, not wrist.' :
+                result.scenario === 'tracking' ? 'Match the target speed — don\'t overshoot then correct.' :
+                result.scenario === 'microadjust' ? 'Slow your mouse — this is fingertip control.' :
+                result.scenario === 'switching' ? 'Move your eyes before your mouse — predict, don\'t react.' :
+                'Pre-aim corners before committing — don\'t wide-peek.'
+              }}
+            </span>
+          </section>
+        </aside>
+      </div>
+    </div>
+  </div>
+
+  <template v-else>
   <div v-if="result" class="results-shell fixed inset-0 flex flex-col overflow-hidden select-none">
 
     <header class="results-header">
@@ -666,6 +823,7 @@ onUnmounted(() => {
     </div>
 
   </div>
+  </template>
 </template>
 
 <style scoped>
@@ -701,5 +859,47 @@ onUnmounted(() => {
     border-left: 0;
     border-top: 1px solid rgb(255 255 255 / 9%);
   }
+}
+</style>
+
+<style scoped>
+/* ── UI v3 ── */
+.uf-tr { background: var(--uf-bg); color: var(--uf-bone); font-family: var(--uf-body); z-index: 30; }
+.uf-tr-bar { height: 40px; flex: none; display: flex; align-items: center; padding-left: 40px; background: var(--uf-chrome); border-bottom: 1px solid var(--uf-line); }
+.uf-tr-close { margin-left: auto; width: 44px; align-self: stretch; display: flex; align-items: center; justify-content: center; background: none; border: 0; color: var(--uf-muted); cursor: pointer; }
+.uf-tr-close:hover { background: var(--uf-red-deep); color: #fff; }
+.uf-tr-body { flex: 1; min-height: 0; overflow-y: auto; padding: 32px 40px 40px; display: flex; flex-direction: column; gap: 32px; }
+.uf-tr-empty { display: flex; flex-direction: column; align-items: flex-start; gap: 14px; padding: 56px 0; }
+.uf-tr-hero { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 56px; align-items: end; }
+.uf-tr-score { display: flex; flex-direction: column; gap: 14px; }
+.uf-tr-kicker { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.uf-tr-icon { width: 36px; height: 36px; flex: none; }
+.uf-tr-score-meta { display: flex; gap: 16px; flex-wrap: wrap; }
+.uf-tr-coach { display: flex; flex-direction: column; gap: 12px; max-width: 760px; padding-bottom: 6px; }
+.uf-tr-actions { display: flex; align-items: center; gap: 24px; margin-top: 8px; }
+.uf-tr-stats { display: flex; margin: 0; border-top: 1px solid var(--uf-line); border-bottom: 1px solid var(--uf-line); }
+.uf-tr-stats > div { flex: 1; display: flex; flex-direction: column; gap: 6px; padding: 16px 20px; min-width: 0; }
+.uf-tr-stats > div + div { border-left: 1px solid var(--uf-line); }
+.uf-tr-stats > div:first-child { padding-left: 0; }
+.uf-tr-stats dt { order: 2; }
+.uf-tr-stats dd { margin: 0; order: 1; }
+.uf-tr-bar-in { order: 3; height: 3px; background: var(--uf-line); }
+.uf-tr-bar-in > span { display: block; height: 100%; background: var(--uf-bone); }
+.uf-tr-grid { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 40px; align-items: start; }
+.uf-tr-main { display: flex; flex-direction: column; gap: 32px; min-width: 0; }
+.uf-tr-chart { width: 100%; height: 140px; }
+.uf-tr-block { display: flex; flex-direction: column; gap: 8px; align-items: flex-start; }
+.uf-tr-heat { position: relative; width: 100%; aspect-ratio: 16 / 9; background: var(--uf-raised); border: 1px solid var(--uf-line); }
+.uf-tr-heat canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
+.uf-tr-heat-key { position: absolute; right: 10px; bottom: 8px; display: flex; gap: 8px; align-items: center; }
+.uf-tr-heat-key i { width: 8px; height: 8px; display: inline-block; }
+.uf-tr-aside { display: flex; flex-direction: column; gap: 18px; padding-left: 28px; border-left: 1px solid var(--uf-line); align-self: stretch; }
+.uf-tr-top { list-style: none; margin: 0; padding: 0; align-self: stretch; }
+.uf-tr-top li { display: flex; align-items: baseline; gap: 14px; padding: 8px 0 8px 8px; border-top: 1px solid var(--uf-line); border-left: 2px solid transparent; }
+.uf-tr-top li.current { border-left-color: var(--uf-red); background: var(--uf-raised); }
+@media (max-width: 1000px) {
+  .uf-tr-hero, .uf-tr-grid { grid-template-columns: minmax(0, 1fr); gap: 28px; }
+  .uf-tr-stats { flex-wrap: wrap; }
+  .uf-tr-aside { border-left: 0; padding-left: 0; }
 }
 </style>

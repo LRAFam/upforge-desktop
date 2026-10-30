@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import { ref } from 'vue'
+import { uiV3 } from '../../lib/ui-v3'
+import UfButton from '../v3/UfButton.vue'
 import { useRouter } from 'vue-router'
 import DemoAttachGuide from '../DemoAttachGuide.vue'
 import DemoAttachPickerModal from '../shared/DemoAttachPickerModal.vue'
@@ -37,6 +39,32 @@ function openSettings() {
 </script>
 
 <template>
+<template v-if="uiV3">
+  <aside class="vod-demo-pending dp3">
+    <div class="dp3-head">
+      <span class="uf-label">Match data</span>
+      <h2 class="uf-d4">{{ game === 'cs2' ? 'Attach your CS2 demo' : 'Match replay' }}</h2>
+      <span v-if="map" class="uf-t4" style="text-transform: uppercase">{{ cs2MapDisplayName(map) || map }}</span>
+    </div>
+    <div class="dp3-body">
+      <p class="uf-t2">You can watch your recording now. Attach the matching demo to enable AI coaching. {{ demoSyncExplainer(game) }}</p>
+      <DemoAttachGuide :game="game" default-open />
+      <div class="dp3-why">
+        <span class="uf-label">Why attach</span>
+        <p class="uf-t4">Kill timeline synced to your VOD</p>
+        <p class="uf-t4">Event markers for reviewing your fights</p>
+        <p v-if="game === 'cs2'" class="uf-t4">Set your CS2 Steam name in Recording settings</p>
+      </div>
+      <div class="dp3-actions">
+        <UfButton variant="primary" :disabled="!recordingId" @click="openPicker">Choose matching demo</UfButton>
+        <UfButton variant="link" @click="openSettings">Recording settings</UfButton>
+      </div>
+      <p v-if="statusMessage" role="status" class="uf-t4" style="color: var(--uf-win)">{{ statusMessage }}</p>
+    </div>
+    <DemoAttachPickerModal v-if="recordingId" :show="pickerOpen" :recording-id="recordingId" :game="game" :map="map" :recorded-at="recordedAt" @close="pickerOpen = false" @attached="onAttached" />
+  </aside>
+</template>
+<template v-else>
   <aside class="vod-demo-pending flex w-72 flex-shrink-0 flex-col border-r border-white/[0.08] bg-[#0c0c0c]">
     <div class="border-b border-white/[0.06] px-4 py-3">
       <p class="text-[12px] font-bold uppercase tracking-[0.08em] text-blue-300/90">Match data</p>
@@ -94,3 +122,13 @@ function openSettings() {
     />
   </aside>
 </template>
+</template>
+
+<style scoped>
+.dp3 { width: 300px; flex-shrink: 0; display: flex; flex-direction: column; border-right: 1px solid var(--uf-line); background: var(--uf-bg); }
+.dp3 p, .dp3 h2 { margin: 0; }
+.dp3-head { display: flex; flex-direction: column; gap: 8px; padding: 18px 20px 16px; border-bottom: 1px solid var(--uf-line); }
+.dp3-body { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 18px; padding: 18px 20px; }
+.dp3-why { display: flex; flex-direction: column; gap: 6px; padding-top: 14px; border-top: 1px solid var(--uf-line); }
+.dp3-actions { display: flex; flex-direction: column; align-items: flex-start; gap: 14px; }
+</style>

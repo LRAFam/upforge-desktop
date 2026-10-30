@@ -58,6 +58,12 @@ export interface AnalysisDetailEnriched {
   spatial_summary: MatchSpatialSummary | null
   skill_profile: SkillProfileSnapshot | null
   pipeline: string | null
+  /** Stats-only report flags (video couldn't be reviewed); credit_returned only when the API refunded it. */
+  report_type: string | null
+  coaching_source: string | null
+  limitations: string[]
+  is_degraded: boolean
+  credit_returned: boolean
   heatmap_insight: string | null
 }
 
@@ -219,6 +225,11 @@ export function enrichAnalysisDetail(analysis: Record<string, unknown>): Analysi
       ? analysis.pipeline
       : (typeof analysis.pipeline_type === 'string' ? analysis.pipeline_type : null),
     heatmap_insight: spatial?.heatmapInsight ?? spatial?.patterns?.[0] ?? null,
+    report_type: typeof analysis.report_type === 'string' ? analysis.report_type : null,
+    coaching_source: typeof analysis.coaching_source === 'string' ? analysis.coaching_source : null,
+    limitations: stringList(analysis.limitations),
+    is_degraded: analysis.is_degraded === true,
+    credit_returned: analysis.credit_returned === true,
   }
 }
 

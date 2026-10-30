@@ -5,7 +5,7 @@ import { isBombDeathEvent } from './spatial-bomb-death'
 /** Minimal clip fields used for highlight curation */
 export interface HighlightClipSource {
   id: string
-  trigger: 'manual' | 'kill' | 'ace' | 'multikill' | 'clutch' | 'hotkey'
+  trigger: 'manual' | 'kill' | 'death' | 'objective' | 'ace' | 'multikill' | 'clutch' | 'hotkey'
   round: number | null
   killCount: number | null
   title: string | null
@@ -77,6 +77,8 @@ function clipTitle(clip: HighlightClipSource): string {
   if (clip.trigger === 'multikill') return `${clip.killCount ?? 3}-kill round`
   if (clip.trigger === 'clutch') return 'Clutch round'
   if (clip.trigger === 'hotkey' || clip.trigger === 'manual') return clip.title ?? 'Bookmarked moment'
+  if (clip.trigger === 'death') return clip.title ?? 'Your death'
+  if (clip.trigger === 'objective') return clip.title ?? 'Objective'
   return 'Kill'
 }
 
