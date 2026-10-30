@@ -13,7 +13,9 @@ export interface DeadlockFight {
   nearby_units?: number
   deaths_total?: number; deaths_alone?: number; deaths_outnumbered?: number; deaths_enemy_side?: number; deaths_traded?: number
   team_kills?: number; kills_and_assists?: number; kill_participation_pct?: number | null
-  deaths?: Array<{ time_seconds: number; killer?: string; allies_nearby?: number; enemies_nearby?: number; alone?: boolean; outnumbered?: boolean; side?: 'own' | 'middle' | 'enemy'; traded?: boolean }>
+  /** Abilities cast in the window before each death (boon `abilities`); absent on older reviews. */
+  abilities_measured?: boolean; ability_window_seconds?: number; deaths_no_ability?: number | null
+  deaths?: Array<{ time_seconds: number; killer?: string; allies_nearby?: number; enemies_nearby?: number; alone?: boolean; outnumbered?: boolean; side?: 'own' | 'middle' | 'enemy'; traded?: boolean; abilities_used?: string[] | null }>
 }
 
 export interface DeadlockReviewDetail {
@@ -129,6 +131,7 @@ const SIDE: Record<string, string> = { own: 'your side', middle: 'middle of the 
 /** Deaths with fight context when the replay had positions; otherwise just time and killer. */
 export function deathRows(detail: DeadlockReviewDetail | null) {
   const fight = detail?.match_stats?.fight?.deaths
+  const window = detail?.match_stats?.fight?.ability_window_seconds ?? 8
   if (fight?.length) {
     return fight.map(d => ({
       at: clock(d.time_seconds),
@@ -137,6 +140,10 @@ export function deathRows(detail: DeadlockReviewDetail | null) {
         `${d.allies_nearby ?? 0} ${d.allies_nearby === 1 ? 'teammate' : 'teammates'} · ${d.enemies_nearby ?? 0} ${d.enemies_nearby === 1 ? 'enemy' : 'enemies'} nearby`,
         d.side ? SIDE[d.side] : '',
         d.traded ? 'traded' : '',
+        // Only when measured: null/absent means the replay didn't say.
+        Array.isArray(d.abilities_used)
+          ? (d.abilities_used.length ? `used ${d.abilities_used.join(', ')}` : `no ability in the ${window} s before`)
+          : '',
       ].filter(Boolean).join(' · '),
       alone: !!d.alone,
     }))
@@ -159,6 +166,9 @@ export function fightFacts(detail: DeadlockReviewDetail | null): Array<{ label: 
     out.push({ label: 'Outnumbered', value: `${f.deaths_outnumbered ?? 0} of ${total} deaths` })
     out.push({ label: 'On the enemy side', value: `${f.deaths_enemy_side ?? 0} of ${total} deaths` })
     out.push({ label: 'Traded within 10 s', value: `${f.deaths_traded ?? 0} of ${total} deaths` })
+    if (f.abilities_measured && typeof f.deaths_no_ability === 'number') {
+      out.push({ label: `No ability in the ${f.ability_window_seconds ?? 8} s before`, value: `${f.deaths_no_ability} of ${total} deaths` })
+    }
   }
   return out
 }

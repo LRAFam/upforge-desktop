@@ -83,6 +83,25 @@ describe('fight context', () => {
     expect(fightFacts({ match_stats: { kill_events: [] } })).toEqual([])
   })
 
+  it('adds abilities used before each death only when measured', () => {
+    const measured = {
+      match_stats: {
+        fight: {
+          ...detail.match_stats.fight, abilities_measured: true, ability_window_seconds: 8, deaths_no_ability: 1,
+          deaths: [
+            { ...detail.match_stats.fight.deaths[0], abilities_used: ['Sleep Dagger', 'Smoke Bomb'] },
+            { ...detail.match_stats.fight.deaths[1], abilities_used: [] },
+          ],
+        },
+      },
+    }
+    const rows = deathRows(measured)
+    expect(rows[0].context).toBe('0 teammates · 1 enemy nearby · enemy side · traded · used Sleep Dagger, Smoke Bomb')
+    expect(rows[1].context).toBe('1 teammate · 2 enemies nearby · middle of the map · no ability in the 8 s before')
+    expect(fightFacts(measured)).toContainEqual({ label: 'No ability in the 8 s before', value: '1 of 2 deaths' })
+    expect(fightFacts(detail).map(f => f.label)).not.toContain('No ability in the 8 s before')
+  })
+
   it('falls back to time and killer without positions', () => {
     const rows = deathRows({ match_stats: { kill_events: detail.match_stats.kill_events } })
     expect(rows).toEqual([{ at: '8:20', by: 'Haze', context: '', alone: false }])
