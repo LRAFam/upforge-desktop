@@ -12,6 +12,8 @@ export interface RoundReview {
   story: string | null
   fixes: RoundReviewFix[]
   error: string | null
+  /** 'not_enough_to_coach' when the round had too little to review (refunded); otherwise 'review_failed'. */
+  error_code?: 'not_enough_to_coach' | 'review_failed' | null
   created_at: string | null
 }
 export interface RoundReviewAllowance { enabled: boolean; used: number; limit: number; remaining: number; resets_at: string }
