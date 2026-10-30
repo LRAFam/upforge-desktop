@@ -72,7 +72,9 @@ export function cutWithFfmpeg(ffmpeg: string) {
       '-ss', (Math.max(0, startMs) / 1000).toFixed(3),
       '-i', url,
       '-t', (Math.max(500, endMs - startMs) / 1000).toFixed(3),
-      '-an', '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '23', '-pix_fmt', 'yuv420p',
+      // 720p at 15 fps is plenty for the reviewer (it samples at most 6 fps) and keeps uploads small.
+      '-vf', "scale=-2:'min(720,ih)',fps=15",
+      '-an', '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '26', '-pix_fmt', 'yuv420p',
       out,
     ]
     const p = spawn(ffmpeg, args, { stdio: ['ignore', 'ignore', 'pipe'] })
