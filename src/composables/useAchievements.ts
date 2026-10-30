@@ -32,6 +32,8 @@ export const ACHIEVEMENTS: AchievementDef[] = [
   { id: 'accuracy-90',      name: 'Sharpshooter',         description: 'Achieve 90%+ accuracy on any drill',             icon: ICON_CROSSHAIR, category: 'mastery' },
   { id: 'reaction-200',     name: 'Reaction King',        description: 'Average reaction time under 200ms on any drill',  icon: ICON_BOLT,      category: 'mastery' },
   { id: 'first-analysis',   name: 'Student of the Game',  description: 'Submit your first VOD for AI analysis',          icon: ICON_CPU,       category: 'coaching' },
+  { id: 'focus-streak-3',   name: 'Locked In',            description: 'Hit your focus 3 games in a row',                icon: ICON_CROSSHAIR, category: 'streak' },
+  { id: 'focus-streak-5',   name: 'Habit Formed',         description: 'Hit your focus 5 games in a row',                icon: ICON_STAR,      category: 'streak', secret: true },
 ]
 
 export function useAchievements() {

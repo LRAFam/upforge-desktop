@@ -1,11 +1,13 @@
 <script setup lang="ts">
 /** Focus column on Home: the one measured habit, its game slots and a manual "check my matches". */
-import { computed, onMounted, onUnmounted } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { focusHeadline, focusSlots, focusSubline } from '../../../lib/focus'
 import { createFocusCardState } from '../../../composables/useFocusCard'
 import type { FocusResponse, FocusUpdate } from '../../../lib/focus'
 import { readCache, writeCache } from '../../../lib/stale-cache'
 import UfSkeleton from '../UfSkeleton.vue'
+import { focusShareLine, focusStreak, focusStreakAchievements, focusStreakLine } from '../../../lib/ideas/focus-streak'
+import { useAchievements } from '../../../composables/useAchievements'
 
 const emit = defineEmits<{ latest: [FocusUpdate | null] }>()
 
@@ -22,6 +24,31 @@ const kicker = computed(() => {
   if (f.progress.status !== 'active') return `Focus · ${f.progress.status}`
   return `Focus · game ${gameIndex.value} of ${f.progress.games_required}`
 })
+
+// Focus streaks (P6): "3 games in a row on target", plus a badge through the existing achievements.
+const streak = computed(() => focusStreak(focus.value))
+const streakLine = computed(() => focusStreakLine(streak.value))
+const achievements = useAchievements()
+watch(streak, async (n) => {
+  const ids = focusStreakAchievements(n)
+  if (!ids.length) return
+  await achievements.load()
+  const fresh: string[] = []
+  for (const id of ids) if (await achievements.unlock(id)) fresh.push(id)
+  if (fresh.length) window.__ufAchievementUnlocked?.(fresh)
+})
+
+// "What I'm working on" (P6): copy the active focus as one line for LFG or Discord.
+const shareLine = computed(() => focusShareLine(focus.value))
+const copied = ref(false)
+async function copyShare() {
+  if (!shareLine.value) return
+  try {
+    await navigator.clipboard.writeText(shareLine.value)
+    copied.value = true
+    setTimeout(() => { copied.value = false }, 2000)
+  } catch { /* clipboard unavailable: the line stays visible in the title */ }
+}
 
 let off: (() => void) | null = null
 onMounted(async () => {
@@ -53,6 +80,10 @@ onUnmounted(() => {
         </li>
       </ol>
       <p class="uf-t4 hf-sub">{{ focusSubline(focus) }}</p>
+      <p v-if="streakLine" class="uf-t4 hf-streak" role="status">{{ streakLine }}</p>
+      <button v-if="shareLine" type="button" class="uf-link hf-share" :title="shareLine" @click="copyShare">
+        {{ copied ? 'Copied' : 'Copy what I\'m working on' }}
+      </button>
     </template>
     <div v-else-if="loading" class="hf-skel" role="status" aria-label="Loading your focus">
       <UfSkeleton :w="220" :h="34" />
@@ -75,6 +106,8 @@ onUnmounted(() => {
 <style scoped>
 .hf { display: flex; flex-direction: column; gap: 12px; }
 .hf-title { margin: 0; }
+.hf-streak { margin: 0; color: var(--uf-bone); font-weight: 600; }
+.hf-share { align-self: flex-start; }
 .hf-slots { display: flex; gap: 4px; margin: 0; padding: 0; list-style: none; }
 .hf-slot { flex: 1; height: 4px; background: rgba(236, 232, 225, 0.12); }
 .hf-slot > span { display: block; height: 4px; }
