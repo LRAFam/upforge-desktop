@@ -1,6 +1,15 @@
 <template>
   <Teleport to="body">
-    <Transition name="achievement-slide">
+    <Transition v-if="uiV3" name="uf-toast-out">
+      <AchievementToast
+        v-if="current"
+        :key="current.id"
+        :achievement="current"
+        :on-dismiss="nextToast"
+        @dismiss="nextToast"
+      />
+    </Transition>
+    <Transition v-else name="achievement-slide">
       <AchievementToast
         v-if="current"
         :key="current.id"
@@ -13,32 +22,28 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, onMounted, onUnmounted } from 'vue'
 import AchievementToast from './AchievementToast.vue'
-import { ACHIEVEMENTS } from '../composables/useAchievements'
+import { ACHIEVEMENTS, type AchievementDef } from '../composables/useAchievements'
+import { uiV3 } from '../lib/ui-v3'
+import { createToastQueue } from '../lib/shell-v3'
 
-const toastQueue = ref<typeof ACHIEVEMENTS>([])
-let gapTimer: ReturnType<typeof setTimeout> | null = null
-
-const current = computed(() => toastQueue.value[0] ?? null)
+// One toast at a time with a small gap. The queue ignores the second advance the toast
+// sends (it calls onDismiss and emits dismiss), which used to skip a queued achievement.
+const current = ref<AchievementDef | null>(null)
+const queue = createToastQueue<AchievementDef>({ gapMs: 400, onChange: (c) => { current.value = c } })
 
 function nextToast() {
-  toastQueue.value.shift()
-  if (toastQueue.value.length > 0) {
-    // Small gap between toasts
-    const next = toastQueue.value[0]
-    toastQueue.value.shift()
-    gapTimer = setTimeout(() => {
-      toastQueue.value.unshift(next)
-    }, 400)
-  }
+  queue.next()
 }
 
 function handleUnlocked(ids: string[]) {
+  const defs: AchievementDef[] = []
   for (const id of ids) {
     const def = ACHIEVEMENTS.find(a => a.id === id)
-    if (def) toastQueue.value.push(def)
+    if (def) defs.push(def)
   }
+  queue.push(defs)
 }
 
 declare global {
@@ -52,12 +57,15 @@ onMounted(() => {
 })
 
 onUnmounted(() => {
-  if (gapTimer) clearTimeout(gapTimer)
+  queue.dispose()
   delete window.__ufAchievementUnlocked
 })
 </script>
 
 <style scoped>
+/* v3: the toast rises in once (uf-rise on the toast); leaving is a quick fade. */
+.uf-toast-out-leave-active { transition: opacity 0.2s ease-in; }
+.uf-toast-out-leave-to { opacity: 0; }
 .achievement-slide-enter-active {
   transition: transform 0.3s ease-out, opacity 0.3s ease-out;
 }

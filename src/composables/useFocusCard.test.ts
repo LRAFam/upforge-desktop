@@ -94,3 +94,23 @@ describe('focus card lifecycle', () => {
     expect(state.syncing.value).toBe(false)
   })
 })
+
+describe('focus card cache start (UI v3)', () => {
+  it('draws the cached focus at once, without a loading state', () => {
+    const state = createFocusCardState(api(), { initial: snapshot })
+    expect(state.loading.value).toBe(false)
+    expect(state.data.value?.focus?.label).toBe('Opening deaths')
+  })
+
+  it('a failed refresh keeps the cached focus on screen', async () => {
+    const failing = { ...api(), getFocus: vi.fn().mockRejectedValue(new Error('timeout')) }
+    const state = createFocusCardState(failing, { initial: snapshot })
+    await state.load()
+    expect(state.data.value?.focus?.label).toBe('Opening deaths')
+    expect(state.loadError.value).not.toBe('')
+  })
+
+  it('without a cache it starts in the loading state, as before', () => {
+    expect(createFocusCardState(api()).loading.value).toBe(true)
+  })
+})

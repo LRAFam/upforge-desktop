@@ -12,6 +12,7 @@ export function mergeFootage(local: PendingRecording[], cloud: CloudFile[]): Lib
       agent: f.agent ?? null, gameMode: '', recordedAt: Date.parse(f.created_at), analysed: false,
       hasLocalFile: false, cloudUploaded: f.status === 'archived', cloudArchived: f.status === 'archived',
       cloudFile: f, cloudOnly: true,
+      ...(typeof f.analysis_id === 'number' && f.analysis_id > 0 ? { analysisId: f.analysis_id } : {}),
     })),
   ].sort((a,b) => b.recordedAt - a.recordedAt)
 }

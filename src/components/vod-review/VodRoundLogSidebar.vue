@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { plural } from '../../lib/plural'
+import { uiV3 } from '../../lib/ui-v3'
 import { useVodReview } from '../../composables/useVodReview'
 import { getAgentImage } from '../../lib/valorant'
 import VodTimelineEventIcon from './VodTimelineEventIcon.vue'
@@ -52,6 +54,89 @@ function opponentName(event: { type: string; killerName?: string; victimName?: s
 </script>
 
 <template>
+<template v-if="uiV3">
+  <div class="vod-round-log rl3">
+    <div class="rl3-head">
+      <div class="rl3-title">
+        <span class="uf-label">Round log</span>
+        <button type="button" class="rl3-ib" aria-label="Hide round log" title="Hide round log (B)" @click="roundLogCollapsed = true">
+          <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 20 20"><path stroke-width="1.75" d="m12.5 5.5-5 4.5 5 4.5"/></svg>
+        </button>
+      </div>
+      <p v-if="roundRecord" class="rl3-score">
+        <template v-if="matchScoreline"><span class="uf-d4">{{ matchScoreline.ally }}–{{ matchScoreline.enemy }}</span></template>
+        <template v-else><span class="uf-d4" style="color: var(--uf-win)">{{ roundRecord.wins }}</span><span class="uf-d4" style="color: var(--uf-faint)">–</span><span class="uf-d4" style="color: var(--uf-loss)">{{ roundRecord.losses }}</span></template>
+        <span class="uf-t4">{{ plural(roundRecord.total, 'round') }}</span>
+      </p>
+      <div class="rl3-filter" role="tablist" aria-label="Round log filter">
+        <button type="button" role="tab" :aria-selected="roundLogFilter === 'mine'" :class="{ on: roundLogFilter === 'mine' }" @click="roundLogFilter = 'mine'">My moments</button>
+        <button type="button" role="tab" :aria-selected="roundLogFilter === 'all'" :class="{ on: roundLogFilter === 'all' }" @click="roundLogFilter = 'all'">Full feed</button>
+      </div>
+    </div>
+
+    <div ref="sidebarEl" class="rl3-list scrollbar-hide">
+      <div
+        v-for="round in roundGroups"
+        :key="round.roundNumber"
+        class="vod-round-card rl3-round"
+        :class="{ 'rl3-round--on': activeRoundNumber === round.roundNumber, 'rl3-round--won': round.won, 'rl3-round--lost': !round.won }"
+        :data-round-anchor="round.roundNumber"
+      >
+        <div class="rl3-row">
+          <button type="button" class="rl3-num uf-num" :aria-label="`Jump to round ${round.roundNumber + 1}`" :title="`Jump to round ${round.roundNumber + 1}`" @click="seekToRound(round)">{{ round.roundNumber + 1 }}</button>
+          <button type="button" class="rl3-what" :aria-expanded="expandedRoundNumber === round.roundNumber" @click="toggleRoundExpanded(round)">
+            <span class="uf-t3">{{ roundOutcomeLabel(round) }}</span>
+            <span class="uf-t4">{{ visibleRoundEvents(round).length }} {{ roundLogFilter === 'mine' ? 'moments' : 'events' }}</span>
+          </button>
+          <img v-if="roundOutcomeIcon(round)" :src="roundOutcomeIcon(round)!" class="rl3-icon" :title="roundOutcomeLabel(round)" alt="">
+        </div>
+
+        <div v-if="visibleRoundEvents(round).length && expandedRoundNumber !== round.roundNumber" class="vod-round-moment-strip rl3-strip">
+          <button v-for="event in momentPreview(visibleRoundEvents(round))" :key="`${event.type}-${event.videoOffsetMs}-preview`" type="button" :aria-label="`Jump to ${formatMs(event.videoOffsetMs)}`" :title="`Jump to ${formatMs(event.videoOffsetMs)}`" @click.stop="seekToEvent(event)">
+            <VodTimelineEventIcon :type="event.type" :game="timeline?.game" :first-blood="event.isFirstBlood" :source-image="getEventSourceImage(event)" size="xs" />
+          </button>
+          <span v-if="extraMomentCount(visibleRoundEvents(round))" class="uf-t4 uf-num">+{{ extraMomentCount(visibleRoundEvents(round)) }}</span>
+        </div>
+
+        <div v-if="expandedRoundNumber === round.roundNumber" class="rl3-events">
+          <button
+            v-for="event in visibleRoundEvents(round)"
+            :key="`${event.type}-${event.videoOffsetMs}`"
+            type="button"
+            :data-round-event="`${round.roundNumber}-${event.videoOffsetMs}`"
+            class="vod-round-event rl3-event"
+            :class="nearEventHighlightClass(event)"
+            @click="seekToEvent(event)"
+          >
+            <VodTimelineEventIcon :type="event.type" :game="timeline?.game" :first-blood="event.isFirstBlood" :source-image="getEventSourceImage(event)" size="sm" />
+            <span class="rl3-ev-text">
+              <template v-if="isSpikeEvent(event)">
+                <span class="rl3-ev-main">{{ event.type === 'plant' ? (event.site ? `Plant ${event.site}` : 'Plant') : event.type === 'defuse' ? 'Defuse' : 'Detonate' }}</span>
+                <span v-if="event.planter || event.defuser" class="uf-t4">{{ formatPlayerLabel(event.planter || event.defuser) }}</span>
+              </template>
+              <template v-else-if="event.type === 'neutral'">
+                <span class="rl3-ev-main" style="color: var(--uf-muted)">{{ event.killerName || '?' }} → {{ event.victimName || '?' }}</span>
+              </template>
+              <template v-else>
+                <span class="rl3-ev-main" :style="{ color: event.type === 'kill' ? 'var(--uf-bone)' : 'var(--uf-muted)' }">{{ event.type === 'kill' ? 'Killed' : 'Died to' }} {{ opponentName(event) }}</span>
+                <span v-if="getKillSourceLabel(event)" class="uf-t4" style="text-transform: capitalize">{{ getKillSourceLabel(event) }}</span>
+              </template>
+            </span>
+            <img v-if="!isSpikeEvent(event) && event.type !== 'neutral' && opponentAgent(event)" :src="getAgentImage(opponentAgent(event))" class="rl3-agent" alt="">
+            <span class="uf-t4 uf-num">{{ formatMs(event.videoOffsetMs) }}</span>
+          </button>
+          <p v-if="!visibleRoundEvents(round).length" class="uf-t4" style="padding: 8px 0; margin: 0">No {{ roundLogFilter === 'mine' ? 'personal moments' : 'events' }} this round</p>
+        </div>
+      </div>
+
+      <div v-if="!roundGroups.length" class="rl3-empty">
+        <span class="uf-label">No timeline data</span>
+        <p class="uf-t4">This match has no round events yet.</p>
+      </div>
+    </div>
+  </div>
+</template>
+<template v-else>
   <div class="vod-round-log w-48 xl:w-52 flex-shrink-0 border-r border-white/[0.09] flex flex-col overflow-hidden">
     <div class="px-3 py-2.5 border-b border-white/[0.09] flex flex-col gap-2">
       <div class="flex items-center gap-2">
@@ -291,3 +376,41 @@ function opponentName(event: { type: string; killerName?: string; victimName?: s
     </div>
   </div>
 </template>
+</template>
+
+<style scoped>
+.rl3 { width: 236px; flex-shrink: 0; display: flex; flex-direction: column; overflow: hidden; border-right: 1px solid var(--uf-line); background: var(--uf-bg); }
+.rl3-head { display: flex; flex-direction: column; gap: 10px; padding: 16px 16px 12px 20px; border-bottom: 1px solid var(--uf-line); }
+.rl3-title { display: flex; align-items: center; justify-content: space-between; }
+.rl3-score { display: flex; align-items: baseline; gap: 4px; margin: 0; }
+.rl3-score .uf-t4 { margin-left: 8px; }
+.rl3-ib { width: 28px; height: 28px; display: inline-flex; align-items: center; justify-content: center; background: none; border: 0; color: var(--uf-faint); cursor: pointer; }
+.rl3-ib:hover { color: var(--uf-bone); background: var(--uf-hover); }
+.rl3-filter { display: flex; border-bottom: 1px solid var(--uf-line); }
+.rl3-filter button { flex: 1; height: 30px; background: none; border: 0; border-bottom: 2px solid transparent; margin-bottom: -1px; color: var(--uf-faint); cursor: pointer; font: 600 12px/1 var(--uf-body); letter-spacing: 0.08em; text-transform: uppercase; }
+.rl3-filter button:hover { color: var(--uf-bone); }
+.rl3-filter button.on { color: var(--uf-bone); border-bottom-color: var(--uf-red); }
+.rl3-list { flex: 1; overflow-y: auto; scroll-behavior: smooth; }
+.rl3-round { border-bottom: 1px solid var(--uf-line); box-shadow: inset 3px 0 0 transparent; }
+.rl3-round--won { box-shadow: inset 3px 0 0 rgba(34, 169, 155, 0.35); }
+.rl3-round--lost { box-shadow: inset 3px 0 0 rgba(232, 80, 91, 0.35); }
+.rl3-round--on { background: var(--uf-raised); }
+.rl3-round--on.rl3-round--won { box-shadow: inset 3px 0 0 var(--uf-win); }
+.rl3-round--on.rl3-round--lost { box-shadow: inset 3px 0 0 var(--uf-loss); }
+.rl3-row { display: flex; align-items: center; gap: 8px; padding: 8px 12px 8px 14px; }
+.rl3-num { width: 30px; height: 30px; flex: none; background: none; border: 1px solid var(--uf-line); color: var(--uf-bone); cursor: pointer; font: 600 15px/1 var(--uf-body); font-variant-numeric: tabular-nums; }
+.rl3-num:hover { border-color: var(--uf-line-2); background: var(--uf-hover); }
+.rl3-what { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; text-align: left; background: none; border: 0; padding: 0; cursor: pointer; }
+.rl3-what .uf-t3 { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rl3-icon { width: 20px; height: 20px; object-fit: contain; opacity: 0.75; flex: none; }
+.rl3-strip { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; padding: 0 12px 10px 52px; }
+.rl3-strip button { background: none; border: 0; padding: 0; cursor: pointer; }
+.rl3-events { padding: 0 0 6px; }
+.rl3-event { width: 100%; display: flex; align-items: center; gap: 8px; padding: 6px 12px 6px 18px; text-align: left; background: none; border: 0; border-top: 1px solid var(--uf-line); cursor: pointer; }
+.rl3-event:hover { background: var(--uf-hover); }
+.rl3-ev-text { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.rl3-ev-main { font: 400 13px/1.35 var(--uf-body); color: var(--uf-bone); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rl3-agent { width: 22px; height: 22px; object-fit: contain; flex: none; }
+.rl3-empty { display: flex; flex-direction: column; gap: 6px; padding: 18px 20px; }
+.rl3-empty p { margin: 0; }
+</style>

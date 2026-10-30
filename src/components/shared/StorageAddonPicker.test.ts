@@ -15,7 +15,7 @@ function picker(request: ReturnType<typeof vi.fn>) {
   const exports: any = {}
   vm.runInNewContext(code, { exports, setTimeout, clearTimeout, Date, Intl,
     window: { api: { storageAddon: { request }, on: () => () => {} } },
-    require: (id: string) => id === 'vue' ? { ...vue, onMounted() {}, onBeforeUnmount() {} } : id.endsWith('/storage-addon') ? storage : id.endsWith('/cloud-storage') ? cloud : createRequire(import.meta.url)(id),
+    require: (id: string) => id === 'vue' ? { ...vue, onMounted() {}, onBeforeUnmount() {} } : id.endsWith('/storage-addon') ? storage : id.endsWith('/cloud-storage') ? cloud : id.endsWith('/ui-v3') ? { uiV3: vue.ref(false) } : createRequire(import.meta.url)(id),
   })
   return exports.default.setup({}, { expose() {}, emit: vi.fn() })
 }

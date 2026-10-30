@@ -8,6 +8,8 @@ import SettingsTrainerPane from '../components/settings/SettingsTrainerPane.vue'
 import SettingsAppPane from '../components/settings/SettingsAppPane.vue'
 import SettingsAdvancedPane from '../components/settings/SettingsAdvancedPane.vue'
 import SettingsFooter from '../components/settings/SettingsFooter.vue'
+import SettingsV3 from './v3/SettingsV3.vue'
+import { uiV3 } from '../lib/ui-v3'
 
 const { cssVars } = useGameTheme()
 const {
@@ -24,7 +26,8 @@ const activeMeta = computed(
 </script>
 
 <template>
-  <div class="settings-shell flex h-full flex-col overflow-hidden text-white" :style="cssVars">
+  <SettingsV3 v-if="uiV3" />
+  <div v-else class="settings-shell flex h-full flex-col overflow-hidden text-white" :style="cssVars">
     <div class="flex min-h-0 flex-1 overflow-hidden">
       <nav class="flex w-[160px] flex-shrink-0 flex-col gap-0.5 border-r border-white/[0.08] bg-[#121212] px-2 py-3">
         <p class="px-2.5 pb-2 text-[10px] font-semibold uppercase tracking-[0.16em] text-gray-600">Settings</p>

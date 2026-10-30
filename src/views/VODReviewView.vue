@@ -10,6 +10,8 @@ import VodReviewComparison from '../components/vod-review/VodReviewComparison.vu
 import VodReviewShortcuts from '../components/vod-review/VodReviewShortcuts.vue'
 import CloudVodActions from '../components/vod-review/CloudVodActions.vue'
 import TrimRangeModal from '../components/shared/TrimRangeModal.vue'
+import MatchPageV3 from './v3/MatchPageV3.vue'
+import { uiV3 } from '../lib/ui-v3'
 
 const {
   comparisonActive,
@@ -79,7 +81,22 @@ function resetWorkspace() {
 </script>
 
 <template>
-  <div class="vod-review flex flex-col h-full text-white overflow-hidden">
+  <MatchPageV3
+    v-if="uiV3"
+    v-model:workspace="workspace"
+    v-model:rounds-width="roundsWidth"
+    v-model:details-width="detailsWidth"
+    :access-open="accessOpen"
+    :saved-comparison-id="savedComparisonId"
+    :active-comparison-id="activeComparisonId"
+    :trial-comparison="trialComparison"
+    @compare="openComparison"
+    @allowed="allowComparison"
+    @close-access="accessOpen = false"
+    @close-comparison="closeComparison"
+    @reset-layout="resetWorkspace"
+  />
+  <div v-else class="vod-review flex flex-col h-full text-white overflow-hidden">
     <VodReviewCommandBar v-show="!comparisonActive && !accessOpen" :can-compare="workspace && !!videoSrc && !timelineLoading && !timelineError" @compare="openComparison" :workspace="workspace" @toggle-workspace="workspace = !workspace" @reset-layout="resetWorkspace" />
 
     <CloudVodActions v-if="route.query.archiveId && !timelineLoading && !timelineError" v-show="!comparisonActive && !accessOpen" />

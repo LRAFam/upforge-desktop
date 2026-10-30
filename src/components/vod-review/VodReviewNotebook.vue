@@ -243,3 +243,24 @@ header,.note-heading,.note-actions { display:flex; align-items:center; justify-c
 .editor { margin: 12px 0; padding-block: 12px; border-block: 1px solid #ffffff25; }.editor>p,.focus-entry>p { margin-top: 8px; overflow-wrap: anywhere; }.focus-entry { padding: 10px 0; border-top: 1px solid #ffffff18; }.focus-entry button { display: block; }.note-entry button + button { margin-left: 6px; }
 .note-entry.selected { border-left: 2px solid #e11d48; padding-left: 10px; }
 </style>
+
+<style scoped>
+/* UI v3: no box, hairline sections; saving is secondary here (Play both owns red). */
+.ui-v3 .notebook { background: none; border: 0; border-radius: 0; padding: 0 0 0 16px; color: var(--uf-bone); font: 400 13px/1.5 var(--uf-body); }
+.ui-v3 .notebook h2 { font: 700 26px/1 var(--uf-display); letter-spacing: 0.02em; text-transform: uppercase; }
+.ui-v3 .notebook h3 { font: 600 15px/1.35 var(--uf-body); color: var(--uf-bone); }
+.ui-v3 .notebook .privacy { color: var(--uf-faint); font-size: 13px; }
+.ui-v3 .notebook label { color: var(--uf-faint); font: 600 12px/1.2 var(--uf-body); letter-spacing: 0.12em; text-transform: uppercase; }
+.ui-v3 .notebook :is(input, textarea, select) { border-radius: 0; background: var(--uf-chrome); border-color: var(--uf-line-2); color: var(--uf-bone); font: 400 15px/1.5 var(--uf-body); letter-spacing: 0; text-transform: none; padding: 9px 11px; }
+.ui-v3 .notebook button { border-radius: 0; border-color: var(--uf-line-2); background: transparent; color: var(--uf-bone); font: 600 13px/1 var(--uf-body); padding: 9px 12px; }
+.ui-v3 .notebook button:hover:not(:disabled) { border-color: var(--uf-line-2); background: var(--uf-hover); }
+.ui-v3 .notebook .primary { background: transparent; border-color: var(--uf-bone); min-height: 44px; }
+.ui-v3 .notebook details { border-block-color: var(--uf-line); }
+.ui-v3 .notebook summary { color: var(--uf-bone); font: 600 15px/1.35 var(--uf-body); }
+.ui-v3 .notebook .delete-action { color: var(--uf-faint); border-color: transparent; }
+.ui-v3 .notebook .delete-action:hover:not(:disabled) { color: var(--uf-loss); background: transparent; }
+.ui-v3 .notebook .editor, .ui-v3 .notebook .focus-entry, .ui-v3 .notebook .note-entry { border-color: var(--uf-line); }
+.ui-v3 .notebook .note-entry p { color: var(--uf-bone); }
+.ui-v3 .notebook .note-entry.selected { border-left-color: var(--uf-red); background: var(--uf-raised); }
+.ui-v3 .notebook .error { color: var(--uf-loss); }
+</style>

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
+import { uiV3 } from '../../lib/ui-v3'
 
 const props = withDefaults(defineProps<{
   id?: string
@@ -35,6 +36,22 @@ function scrollIntoView() {
 
 <template>
   <section
+    v-if="uiV3"
+    :id="id ? `settings-section-${id}` : undefined"
+    ref="root"
+    class="uf-set-sec"
+    :class="{ 'is-highlight': highlighted }"
+  >
+    <div class="uf-set-sec-head">
+      <p class="uf-label">{{ title }}</p>
+      <p v-if="hint" class="uf-t4">{{ hint }}</p>
+    </div>
+    <div class="uf-set-sec-body" :class="divided ? 'is-rows' : 'is-stack'">
+      <slot />
+    </div>
+  </section>
+  <section
+    v-else
     :id="id ? `settings-section-${id}` : undefined"
     ref="root"
     class="settings-section overflow-hidden rounded-md border border-white/[0.08] bg-white/[0.015]"

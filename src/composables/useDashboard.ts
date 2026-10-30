@@ -1,5 +1,6 @@
 import { openUpgrade as startUpgrade } from '../lib/upgrade'
 import { ref, computed, inject, provide, watch, onMounted, onUnmounted, type InjectionKey } from 'vue'
+import { readCache, writeCache } from '../lib/stale-cache'
 import { useRouter } from 'vue-router'
 import type { ProfileData, AnalysisItem, PendingRecording, ClipRecord, DeadlockProfileStats } from '../env.d.ts'
 import { formatGameMode, getRankIconUrl } from '../lib/valorant'
@@ -84,8 +85,23 @@ function saveHiddenAnalyses(ids: Set<number>): void {
 
 export const DASHBOARD_KEY: InjectionKey<ReturnType<typeof createDashboard>> = Symbol('dashboard')
 
-export function provideDashboard() {
-  const ctx = createDashboard()
+export interface DashboardOptions {
+  /**
+   * UI v3: draw the last known Home data instantly from the per-user cache, load sections
+   * independently, and keep cached data when a refresh fails. Off = the old dashboard, unchanged.
+   */
+  cacheFirst?: boolean
+}
+
+type HomeCache = {
+  analyses: AnalysisItem[]
+  coachingSnippets: Record<number, string>
+  trainerLastSession: { score: number; scenario: string; date: string } | null
+  trainerSessionCount: number
+}
+
+export function provideDashboard(opts: DashboardOptions = {}) {
+  const ctx = createDashboard(opts)
   provide(DASHBOARD_KEY, ctx)
   return ctx
 }
@@ -96,7 +112,8 @@ export function useDashboard() {
   return ctx
 }
 
-function createDashboard() {
+function createDashboard(opts: DashboardOptions = {}) {
+  const cacheFirst = opts.cacheFirst === true
   const router = useRouter()
   const achievements = useAchievements()
   const { primaryGame, isValorant, isCs2, isDeadlock, isLol, loadFromSettings, applyFromSettings } = usePrimaryGame()
@@ -248,6 +265,94 @@ function createDashboard() {
   const lastInsightTraining = ref(false)
   const trainerLastSession = ref<{ score: number; scenario: string; date: string } | null>(null)
   const trainerSessionCount = ref(0)
+
+  // ── UI v3 cache-first Home (inactive when cacheFirst is off) ────────────────
+  /** A background refresh is running over data already on screen. */
+  const refreshing = ref(false)
+  /** The last refresh failed; cached data stays on screen. */
+  const refreshFailed = ref(false)
+  const homeKey = (game: string) => `home:${game}`
+  let hydratedGame: string | null = null
+
+  /** Seed Home from the cache for the current game. Returns true when something was drawn. */
+  function hydrateHome(): boolean {
+    if (!cacheFirst) return false
+    const prof = readCache<ProfileData | null>('home:profile')?.value ?? null
+    if (prof && !profile.value) {
+      profile.value = prof
+      profileLoading.value = false
+      if (prof.latest_stats?.player_card_id) {
+        playerCardUrl.value = `https://media.valorant-api.com/playercards/${prof.latest_stats.player_card_id}/smallart.png`
+      }
+    }
+    const hit = readCache<HomeCache>(homeKey(primaryGame.value))?.value
+    if (!hit || !Array.isArray(hit.analyses)) return false
+    hydratedGame = primaryGame.value
+    analyses.value = hit.analyses
+    coachingSnippets.value = { ...(hit.coachingSnippets ?? {}) }
+    trainerLastSession.value = hit.trainerLastSession ?? null
+    trainerSessionCount.value = hit.trainerSessionCount ?? 0
+    analysesLoading.value = false
+    return true
+  }
+
+  function persistHome(game = primaryGame.value): void {
+    if (!cacheFirst || game !== primaryGame.value) return
+    writeCache<HomeCache>(homeKey(game), {
+      analyses: analyses.value,
+      coachingSnippets: coachingSnippets.value,
+      trainerLastSession: trainerLastSession.value,
+      trainerSessionCount: trainerSessionCount.value,
+    })
+  }
+
+  /**
+   * v3 mount: every section fills in as soon as its own call returns, instead of waiting for
+   * profile + analyses + playstyle + recordings + the auth refresh together.
+   */
+  async function mountCacheFirst(saved: { lastInsight?: typeof lastInsight.value } | null): Promise<void> {
+    if (saved?.lastInsight) lastInsight.value = saved.lastInsight
+    if (hydratedGame && hydratedGame !== primaryGame.value) {
+      // Drawn from another game's cache before settings loaded: redraw for the right game.
+      analyses.value = []
+      coachingSnippets.value = {}
+      analysesLoading.value = true
+      hydratedGame = null
+    }
+    if (!analyses.value.length) hydrateHome()
+    const game = primaryGame.value
+    refreshing.value = analyses.value.length > 0
+    const prof = window.api.profile.get().then((p) => {
+      if (!p) return
+      profile.value = p
+      if (p.latest_stats?.player_card_id) {
+        playerCardUrl.value = `https://media.valorant-api.com/playercards/${p.latest_stats.player_card_id}/smallart.png`
+      }
+      writeCache('home:profile', p)
+    }).catch(() => { refreshFailed.value = true }).finally(() => { profileLoading.value = false })
+    const recent = loadGameAnalyses(game, 10).then((rows) => {
+      if (primaryGame.value !== game) return
+      analyses.value = rows
+      refreshFailed.value = false
+      persistHome(game)
+      void loadCoachingSnippets(rows)
+    }).catch(() => { refreshFailed.value = true }).finally(() => { analysesLoading.value = false })
+    const playstyle = isValorant.value
+      ? window.api.progress.playstyleProfile().then((p) => { playstyleProfile.value = p }).catch(() => {})
+      : Promise.resolve()
+    const pending = window.api.recordings.get().then((r) => { pendingRecordings.value = r }).catch(() => {})
+    void syncAuthUserFields()
+    await Promise.allSettled([prof, recent, playstyle, pending])
+    refreshing.value = false
+  }
+
+  /** v3 "Couldn't refresh · Retry". */
+  async function retryRefresh(): Promise<void> {
+    refreshFailed.value = false
+    await refreshProfile()
+  }
+
+  hydrateHome()
   const analysisCompleteToast = ref<{
     score: number
     agent: string | null
@@ -637,19 +742,24 @@ function createDashboard() {
   async function loadAnalyses() {
     const seq = ++analysesLoadSeq
     const game = primaryGame.value
-    analysesLoading.value = true
+    // v3 keeps showing cached rows while it refreshes; the skeleton is only for "nothing yet".
+    analysesLoading.value = cacheFirst ? analyses.value.length === 0 : true
+    if (cacheFirst && analyses.value.length) refreshing.value = true
     try {
       const next = await loadGameAnalyses(game, 10)
       if (seq !== analysesLoadSeq) return
       analyses.value = next
-      coachingSnippets.value = {}
+      if (!cacheFirst) coachingSnippets.value = {}
       coachReviewByAnalysisId.value = {}
+      if (cacheFirst) { refreshFailed.value = false; persistHome(game) }
       void loadCoachingSnippets(analyses.value)
       void loadCoachReviewBadges(analyses.value)
     } catch {
       if (seq !== analysesLoadSeq) return
-      analyses.value = []
+      if (cacheFirst) refreshFailed.value = true
+      else analyses.value = []
     } finally {
+      if (cacheFirst && seq === analysesLoadSeq) refreshing.value = false
       if (seq === analysesLoadSeq) analysesLoading.value = false
     }
   }
@@ -690,6 +800,7 @@ function createDashboard() {
         ?? null
       if (snippet) coachingSnippets.value[a.id] = snippet
     }))
+    persistHome()
   }
 
   async function loadCs2Faceit() {
@@ -781,6 +892,8 @@ function createDashboard() {
   async function loadAllGameLinkStates() {
     const active = primaryGame.value
     await loadGameLinkState(active)
+    // v3 Home reads other games' data through their own screens; don't compete for the network.
+    if (cacheFirst) return
     const others = ['cs2', 'deadlock', 'lol'].filter((g) => g !== active)
     for (const g of others) void loadGameLinkState(g)
   }
@@ -1364,6 +1477,13 @@ function createDashboard() {
   watch(primaryGame, async () => {
     if (!primaryGameWatchReady.value) return
     analyses.value = []
+    if (cacheFirst) {
+      coachingSnippets.value = {}
+      trainerLastSession.value = null
+      trainerSessionCount.value = 0
+      analysesLoading.value = true
+      hydrateHome()
+    }
     await Promise.all([loadAnalyses(), loadClipCount()])
     void loadAllGameLinkStates()
     if (isValorant.value) {
@@ -1405,6 +1525,9 @@ function createDashboard() {
     const earlySettings = await window.api.settings.get().catch(() => ({ primaryGame: 'valorant' as const }))
     applyFromSettings(earlySettings)
 
+    if (cacheFirst) {
+      await mountCacheFirst(earlySettings as { lastInsight?: typeof lastInsight.value })
+    } else {
     const [prof, recent, playstyle, pending] = await Promise.all([
       window.api.profile.get().catch(() => null),
       loadGameAnalyses(primaryGame.value, 10).catch(() => [] as AnalysisItem[]),
@@ -1427,6 +1550,7 @@ function createDashboard() {
     pendingRecordings.value = pending
     analysesLoading.value = false
     void loadCoachingSnippets(recent)
+    }
 
     if (isValorant.value) {
       rrHistory.value = await window.api.stats.rrHistory().catch(() => [])
@@ -1446,6 +1570,7 @@ function createDashboard() {
         trainerLastSession.value = { score: last.score, scenario: last.scenario, date: last.completed_at }
         trainerSessionCount.value = hist.total
       }
+      persistHome()
     } catch { /* optional */ }
 
     if (isValorant.value) {
@@ -1657,6 +1782,9 @@ function createDashboard() {
   })
 
   return {
+    refreshing,
+    refreshFailed,
+    retryRefresh,
     router,
     primaryGame,
     isValorant,

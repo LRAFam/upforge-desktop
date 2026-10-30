@@ -166,7 +166,7 @@ describe('durable logged-out media', () => {
     const pipeline = new ClipPipeline({
       clipStore: clips.forUser(null), clipExtractor: extractor,
       hotkeyBookmarks: [42000], getRecordingStartTime: () => 10000,
-      getClipCapture: () => ({ singleKills: true, multiKills: true, aces: true, clutches: true }),
+      getClipCapture: () => ({ singleKills: true, multiKills: true, aces: true, clutches: true, deaths: true, objectives: true }),
       logActivity: vi.fn(), notifySilent: () => true, notifyMainWindow: vi.fn(),
     })
     const extracting = pipeline.extractMatchClips(mediaFile('source.mp4'), null, null)
@@ -189,7 +189,7 @@ describe('durable logged-out media', () => {
       clipStore: new ClipStore(),
       clipExtractor: { probeWithRetry: async () => ({ ok: false, reason: 'timeout' }) } as unknown as ClipExtractor,
       hotkeyBookmarks: [42000], getRecordingStartTime: () => 10000,
-      getClipCapture: () => ({ singleKills: true, multiKills: true, aces: true, clutches: true }),
+      getClipCapture: () => ({ singleKills: true, multiKills: true, aces: true, clutches: true, deaths: true, objectives: true }),
       logActivity: vi.fn(), notifySilent: () => true, notifyMainWindow: vi.fn(),
     })
     expect(await pipeline.extractMatchClips(mediaFile('unfinished.mp4'), null, null)).toBe(false)

@@ -1,0 +1,888 @@
+{
+ "description": "Shared parity cases for CS2 match_stats v1. Expected values are produced by the desktop calculateCs2MatchStats; the AI service port must return the same.",
+ "cases": [
+  {
+   "name": "side swap, overkill damage, utility and flashes",
+   "input": {
+    "steamId": "76561198000000001",
+    "tickRate": 64,
+    "starts": [
+     {
+      "tick": 100,
+      "is_warmup_period": false
+     },
+     {
+      "tick": 1000,
+      "is_warmup_period": false
+     }
+    ],
+    "ends": [
+     {
+      "tick": 900,
+      "winner": "CT",
+      "is_warmup_period": false
+     },
+     {
+      "tick": 1900,
+      "winner": "T",
+      "is_warmup_period": false
+     }
+    ],
+    "snapshots": [
+     {
+      "tick": 100,
+      "steamid": "76561198000000001",
+      "team_num": 3,
+      "is_alive": true,
+      "health": 100,
+      "current_equip_value": 4500
+     },
+     {
+      "tick": 100,
+      "steamid": "76561198000000002",
+      "team_num": 3,
+      "is_alive": true,
+      "health": 100,
+      "current_equip_value": 4500
+     },
+     {
+      "tick": 100,
+      "steamid": "76561198000000011",
+      "team_num": 2,
+      "is_alive": true,
+      "health": 100,
+      "current_equip_value": 4500
+     },
+     {
+      "tick": 900,
+      "steamid": "76561198000000001",
+      "team_num": 3,
+      "is_alive": true,
+      "health": 100,
+      "current_equip_value": 4500
+     },
+     {
+      "tick": 900,
+      "steamid": "76561198000000002",
+      "team_num": 3,
+      "is_alive": true,
+      "health": 100,
+      "current_equip_value": 4500
+     },
+     {
+      "tick": 900,
+      "steamid": "76561198000000011",
+      "team_num": 2,
+      "is_alive": false,
+      "health": 100,
+      "current_equip_value": 4500
+     },
+     {
+      "tick": 1000,
+      "steamid": "76561198000000001",
+      "team_num": 2,
+      "is_alive": true,
+      "health": 100,
+      "current_equip_value": 1000
+     },
+     {
+      "tick": 1000,
+      "steamid": "76561198000000002",
+      "team_num": 2,
+      "is_alive": true,
+      "health": 100,
+      "current_equip_value": 4500
+     },
+     {
+      "tick": 1000,
+      "steamid": "76561198000000011",
+      "team_num": 3,
+      "is_alive": true,
+      "health": 100,
+      "current_equip_value": 4500
+     },
+     {
+      "tick": 1900,
+      "steamid": "76561198000000001",
+      "team_num": 2,
+      "is_alive": false,
+      "health": 100,
+      "current_equip_value": 1000
+     },
+     {
+      "tick": 1900,
+      "steamid": "76561198000000002",
+      "team_num": 2,
+      "is_alive": true,
+      "health": 100,
+      "current_equip_value": 4500
+     },
+     {
+      "tick": 1900,
+      "steamid": "76561198000000011",
+      "team_num": 3,
+      "is_alive": true,
+      "health": 100,
+      "current_equip_value": 4500
+     }
+    ],
+    "deaths": [
+     {
+      "tick": 200,
+      "is_warmup_period": false,
+      "attacker_steamid": "76561198000000001",
+      "attacker_team_num": 3,
+      "user_steamid": "76561198000000011",
+      "user_team_num": 2,
+      "headshot": true,
+      "weapon": "ak47"
+     },
+     {
+      "tick": 1100,
+      "is_warmup_period": false,
+      "attacker_steamid": "76561198000000011",
+      "attacker_team_num": 3,
+      "user_steamid": "76561198000000001",
+      "user_team_num": 2,
+      "headshot": false,
+      "weapon": "ak47"
+     },
+     {
+      "tick": 1200,
+      "is_warmup_period": false,
+      "attacker_steamid": "76561198000000002",
+      "attacker_team_num": 2,
+      "user_steamid": "76561198000000011",
+      "user_team_num": 3,
+      "headshot": false,
+      "weapon": "ak47"
+     }
+    ],
+    "hurts": [
+     {
+      "tick": 150,
+      "is_warmup_period": false,
+      "attacker_steamid": "76561198000000001",
+      "user_steamid": "76561198000000011",
+      "attacker_team_num": 3,
+      "user_team_num": 2,
+      "dmg_health": 40,
+      "health": 60,
+      "weapon": "hegrenade"
+     },
+     {
+      "tick": 200,
+      "is_warmup_period": false,
+      "attacker_steamid": "76561198000000001",
+      "user_steamid": "76561198000000011",
+      "attacker_team_num": 3,
+      "user_team_num": 2,
+      "dmg_health": 160,
+      "health": 0,
+      "weapon": "ak47"
+     },
+     {
+      "tick": 1050,
+      "is_warmup_period": false,
+      "attacker_steamid": "76561198000000001",
+      "user_steamid": "76561198000000011",
+      "attacker_team_num": 2,
+      "user_team_num": 3,
+      "dmg_health": 27,
+      "health": 73,
+      "weapon": "glock"
+     }
+    ],
+    "fires": [
+     {
+      "tick": 120,
+      "is_warmup_period": false,
+      "user_steamid": "76561198000000001",
+      "weapon": "weapon_flashbang"
+     },
+     {
+      "tick": 130,
+      "is_warmup_period": false,
+      "user_steamid": "76561198000000001",
+      "weapon": "weapon_smokegrenade"
+     },
+     {
+      "tick": 1010,
+      "is_warmup_period": false,
+      "user_steamid": "76561198000000001",
+      "weapon": "weapon_molotov"
+     },
+     {
+      "tick": 1020,
+      "is_warmup_period": false,
+      "user_steamid": "76561198000000001",
+      "weapon": "weapon_ak47"
+     }
+    ],
+    "blinds": [
+     {
+      "tick": 121,
+      "is_warmup_period": false,
+      "attacker_steamid": "76561198000000001",
+      "user_steamid": "76561198000000011",
+      "attacker_team_num": 3,
+      "user_team_num": 2,
+      "blind_duration": 2.1
+     },
+     {
+      "tick": 122,
+      "is_warmup_period": false,
+      "attacker_steamid": "76561198000000001",
+      "user_steamid": "76561198000000002",
+      "attacker_team_num": 3,
+      "user_team_num": 3,
+      "blind_duration": 1
+     },
+     {
+      "tick": 123,
+      "is_warmup_period": false,
+      "attacker_steamid": "76561198000000001",
+      "user_steamid": "76561198000000011",
+      "attacker_team_num": 3,
+      "user_team_num": 2,
+      "blind_duration": 0
+     }
+    ]
+   },
+   "expected": {
+    "schema_version": 1,
+    "rounds": 2,
+    "score": "2-0",
+    "player_stats": {
+     "multi_kills": {},
+     "kills": 1,
+     "deaths": 1,
+     "assists": 0,
+     "kd_ratio": 1,
+     "adr": 63.5,
+     "headshot_pct": 100,
+     "kast_pct": 100,
+     "opening_kills": 1,
+     "opening_deaths": 1,
+     "clutches_won": 0,
+     "clutches_attempted": 0
+    },
+    "round_stats": {
+     "rounds_with_kills": 1,
+     "zero_impact_rounds": 1,
+     "ct_kd": 1,
+     "t_kd": 0
+    },
+    "utility_stats": {
+     "grenades_thrown": 3,
+     "smokes_thrown": 1,
+     "flashes_thrown": 1,
+     "molotovs_thrown": 1,
+     "he_thrown": 0,
+     "enemies_flashed": 1,
+     "teammates_flashed": 1,
+     "utility_damage": 40
+    },
+    "economy_stats": {
+     "full_buys": 1,
+     "force_buys": 0,
+     "eco_rounds": 1,
+     "avg_eq_ct": 4500,
+     "avg_eq_t": 1000,
+     "avg_saved": 2250
+    }
+   }
+  },
+  {
+   "name": "clutch, trade, multi-kill, warm-up ignored, equipment bands",
+   "input": {
+    "steamId": "76561198000000001",
+    "tickRate": 64,
+    "starts": [
+     {
+      "tick": 10,
+      "is_warmup_period": true
+     },
+     {
+      "tick": 100,
+      "is_warmup_period": false
+     },
+     {
+      "tick": 1000,
+      "is_warmup_period": false
+     },
+     {
+      "tick": 2000,
+      "is_warmup_period": false
+     }
+    ],
+    "ends": [
+     {
+      "tick": 50,
+      "winner": 3,
+      "is_warmup_period": true
+     },
+     {
+      "tick": 900,
+      "winner": 3,
+      "is_warmup_period": false
+     },
+     {
+      "tick": 1900,
+      "winner": 2,
+      "is_warmup_period": false
+     },
+     {
+      "tick": 2900,
+      "winner": "CT",
+      "is_warmup_period": false
+     }
+    ],
+    "snapshots": [
+     {
+      "tick": 100,
+      "steamid": "76561198000000001",
+      "team_num": 3,
+      "is_alive": true,
+      "health": 100,
+      "current_equip_value": 5200
+     },
+     {
+      "tick": 100,
+      "steamid": "76561198000000002",
+      "team_num": 3,
+      "is_alive": true,
+      "health": 100,
+      "current_equip_value": 4100
+     },
+     {
+      "tick": 100,
+      "steamid": "76561198000000003",
+      "team_num": 3,
+      "is_alive": true,
+      "health": 100,
+      "current_equip_value": 3900
+     },
+     {
+      "tick": 100,
+      "steamid": "76561198000000011",
+      "team_num": 2,
+      "is_alive": true,
+      "health": 100,
+      "current_equip_value": 4700
+     },
+     {
+      "tick": 100,
+      "steamid": "76561198000000012",
+      "team_num": 2,
+      "is_alive": true,
+      "health": 100,
+      "current_equip_value": 4700
+     },
+     {
+      "tick": 900,
+      "steamid": "76561198000000001",
+      "team_num": 3,
+      "is_alive": true,
+      "health": 100,
+      "current_equip_value": 5200
+     },
+     {
+      "tick": 900,
+      "steamid": "76561198000000002",
+      "team_num": 3,
+      "is_alive": true,
+      "health": 100,
+      "current_equip_value": 4100
+     },
+     {
+      "tick": 900,
+      "steamid": "76561198000000003",
+      "team_num": 3,
+      "is_alive": true,
+      "health": 100,
+      "current_equip_value": 3900
+     },
+     {
+      "tick": 900,
+      "steamid": "76561198000000011",
+      "team_num": 2,
+      "is_alive": true,
+      "health": 100,
+      "current_equip_value": 4700
+     },
+     {
+      "tick": 900,
+      "steamid": "76561198000000012",
+      "team_num": 2,
+      "is_alive": true,
+      "health": 100,
+      "current_equip_value": 4700
+     },
+     {
+      "tick": 1000,
+      "steamid": "76561198000000001",
+      "team_num": 3,
+      "is_alive": true,
+      "health": 100,
+      "current_equip_value": 2200
+     },
+     {
+      "tick": 1000,
+      "steamid": "76561198000000002",
+      "team_num": 3,
+      "is_alive": true,
+      "health": 100,
+      "current_equip_value": 4100
+     },
+     {
+      "tick": 1000,
+      "steamid": "76561198000000003",
+      "team_num": 3,
+      "is_alive": true,
+      "health": 100,
+      "current_equip_value": 3900
+     },
+     {
+      "tick": 1000,
+      "steamid": "76561198000000011",
+      "team_num": 2,
+      "is_alive": true,
+      "health": 100,
+      "current_equip_value": 4700
+     },
+     {
+      "tick": 1000,
+      "steamid": "76561198000000012",
+      "team_num": 2,
+      "is_alive": true,
+      "health": 100,
+      "current_equip_value": 4700
+     },
+     {
+      "tick": 1900,
+      "steamid": "76561198000000001",
+      "team_num": 3,
+      "is_alive": false,
+      "health": 100,
+      "current_equip_value": 5200
+     },
+     {
+      "tick": 1900,
+      "steamid": "76561198000000002",
+      "team_num": 3,
+      "is_alive": true,
+      "health": 100,
+      "current_equip_value": 4100
+     },
+     {
+      "tick": 1900,
+      "steamid": "76561198000000003",
+      "team_num": 3,
+      "is_alive": true,
+      "health": 100,
+      "current_equip_value": 3900
+     },
+     {
+      "tick": 1900,
+      "steamid": "76561198000000011",
+      "team_num": 2,
+      "is_alive": true,
+      "health": 100,
+      "current_equip_value": 4700
+     },
+     {
+      "tick": 1900,
+      "steamid": "76561198000000012",
+      "team_num": 2,
+      "is_alive": true,
+      "health": 100,
+      "current_equip_value": 4700
+     },
+     {
+      "tick": 2000,
+      "steamid": "76561198000000001",
+      "team_num": 3,
+      "is_alive": true,
+      "health": 100,
+      "current_equip_value": 800
+     },
+     {
+      "tick": 2000,
+      "steamid": "76561198000000002",
+      "team_num": 3,
+      "is_alive": true,
+      "health": 100,
+      "current_equip_value": 4100
+     },
+     {
+      "tick": 2000,
+      "steamid": "76561198000000003",
+      "team_num": 3,
+      "is_alive": true,
+      "health": 100,
+      "current_equip_value": 3900
+     },
+     {
+      "tick": 2000,
+      "steamid": "76561198000000011",
+      "team_num": 2,
+      "is_alive": true,
+      "health": 100,
+      "current_equip_value": 4700
+     },
+     {
+      "tick": 2000,
+      "steamid": "76561198000000012",
+      "team_num": 2,
+      "is_alive": true,
+      "health": 100,
+      "current_equip_value": 4700
+     },
+     {
+      "tick": 2900,
+      "steamid": "76561198000000001",
+      "team_num": 3,
+      "is_alive": true,
+      "health": 100,
+      "current_equip_value": 5200
+     },
+     {
+      "tick": 2900,
+      "steamid": "76561198000000002",
+      "team_num": 3,
+      "is_alive": true,
+      "health": 100,
+      "current_equip_value": 4100
+     },
+     {
+      "tick": 2900,
+      "steamid": "76561198000000003",
+      "team_num": 3,
+      "is_alive": true,
+      "health": 100,
+      "current_equip_value": 3900
+     },
+     {
+      "tick": 2900,
+      "steamid": "76561198000000011",
+      "team_num": 2,
+      "is_alive": true,
+      "health": 100,
+      "current_equip_value": 4700
+     },
+     {
+      "tick": 2900,
+      "steamid": "76561198000000012",
+      "team_num": 2,
+      "is_alive": true,
+      "health": 100,
+      "current_equip_value": 4700
+     }
+    ],
+    "deaths": [
+     {
+      "tick": 150,
+      "is_warmup_period": false,
+      "attacker_steamid": "76561198000000011",
+      "attacker_team_num": 2,
+      "user_steamid": "76561198000000002",
+      "user_team_num": 3,
+      "headshot": false,
+      "weapon": "ak47"
+     },
+     {
+      "tick": 160,
+      "is_warmup_period": false,
+      "attacker_steamid": "76561198000000012",
+      "attacker_team_num": 2,
+      "user_steamid": "76561198000000003",
+      "user_team_num": 3,
+      "headshot": false,
+      "weapon": "ak47"
+     },
+     {
+      "tick": 300,
+      "is_warmup_period": false,
+      "attacker_steamid": "76561198000000001",
+      "attacker_team_num": 3,
+      "user_steamid": "76561198000000011",
+      "user_team_num": 2,
+      "headshot": true,
+      "weapon": "ak47"
+     },
+     {
+      "tick": 320,
+      "is_warmup_period": false,
+      "attacker_steamid": "76561198000000001",
+      "attacker_team_num": 3,
+      "user_steamid": "76561198000000012",
+      "user_team_num": 2,
+      "headshot": false,
+      "weapon": "ak47"
+     },
+     {
+      "tick": 1100,
+      "is_warmup_period": false,
+      "attacker_steamid": "76561198000000011",
+      "attacker_team_num": 2,
+      "user_steamid": "76561198000000001",
+      "user_team_num": 3,
+      "headshot": false,
+      "weapon": "ak47"
+     },
+     {
+      "tick": 1228,
+      "is_warmup_period": false,
+      "attacker_steamid": "76561198000000002",
+      "attacker_team_num": 3,
+      "user_steamid": "76561198000000011",
+      "user_team_num": 2,
+      "headshot": false,
+      "weapon": "ak47"
+     },
+     {
+      "tick": 2100,
+      "is_warmup_period": false,
+      "attacker_steamid": "76561198000000002",
+      "attacker_team_num": 3,
+      "user_steamid": "76561198000000012",
+      "user_team_num": 2,
+      "headshot": false,
+      "weapon": "ak47",
+      "assister_steamid": "76561198000000001"
+     }
+    ],
+    "hurts": null,
+    "fires": [],
+    "blinds": []
+   },
+   "expected": {
+    "schema_version": 1,
+    "rounds": 3,
+    "score": "2-1",
+    "player_stats": {
+     "multi_kills": {
+      "2": 1
+     },
+     "kills": 2,
+     "deaths": 1,
+     "assists": 1,
+     "kd_ratio": 2,
+     "adr": null,
+     "headshot_pct": 50,
+     "kast_pct": 100,
+     "opening_kills": 0,
+     "opening_deaths": 1,
+     "clutches_won": 1,
+     "clutches_attempted": 1
+    },
+    "round_stats": {
+     "rounds_with_kills": 1,
+     "zero_impact_rounds": 1,
+     "ct_kd": 2,
+     "t_kd": null
+    },
+    "utility_stats": {
+     "grenades_thrown": 0,
+     "smokes_thrown": 0,
+     "flashes_thrown": 0,
+     "molotovs_thrown": 0,
+     "he_thrown": 0,
+     "enemies_flashed": 0,
+     "teammates_flashed": 0,
+     "utility_damage": null
+    },
+    "economy_stats": {
+     "full_buys": 1,
+     "force_buys": 1,
+     "eco_rounds": 1,
+     "avg_eq_ct": 2733.33,
+     "avg_eq_t": null,
+     "avg_saved": 3466.67
+    }
+   }
+  },
+  {
+   "name": "player dead at freeze end → unavailable",
+   "input": {
+    "steamId": "76561198000000001",
+    "tickRate": 64,
+    "starts": [
+     {
+      "tick": 100,
+      "is_warmup_period": false
+     }
+    ],
+    "ends": [
+     {
+      "tick": 900,
+      "winner": "T",
+      "is_warmup_period": false
+     }
+    ],
+    "snapshots": [
+     {
+      "tick": 100,
+      "steamid": "76561198000000001",
+      "team_num": 3,
+      "is_alive": false,
+      "health": 100,
+      "current_equip_value": 4000
+     },
+     {
+      "tick": 900,
+      "steamid": "76561198000000001",
+      "team_num": 3,
+      "is_alive": false,
+      "health": 100,
+      "current_equip_value": 0
+     }
+    ],
+    "deaths": [],
+    "hurts": [],
+    "fires": [],
+    "blinds": []
+   },
+   "expected": null
+  },
+  {
+   "name": "unknown headshot flag and team → unavailable fields",
+   "input": {
+    "steamId": "76561198000000001",
+    "tickRate": 128,
+    "starts": [
+     {
+      "tick": 100,
+      "is_warmup_period": false
+     }
+    ],
+    "ends": [
+     {
+      "tick": 900,
+      "winner": "T",
+      "is_warmup_period": false
+     }
+    ],
+    "snapshots": [
+     {
+      "tick": 100,
+      "steamid": "76561198000000001",
+      "team_num": 2,
+      "is_alive": true,
+      "health": 100,
+      "current_equip_value": 3000
+     },
+     {
+      "tick": 100,
+      "steamid": "76561198000000011",
+      "team_num": 3,
+      "is_alive": true,
+      "health": 100,
+      "current_equip_value": 4000
+     },
+     {
+      "tick": 900,
+      "steamid": "76561198000000001",
+      "team_num": 2,
+      "is_alive": true,
+      "health": 100,
+      "current_equip_value": 3000
+     },
+     {
+      "tick": 900,
+      "steamid": "76561198000000011",
+      "team_num": 3,
+      "is_alive": false,
+      "health": 100,
+      "current_equip_value": 4000
+     }
+    ],
+    "deaths": [
+     {
+      "tick": 400,
+      "is_warmup_period": false,
+      "attacker_steamid": "76561198000000001",
+      "attacker_team_num": 2,
+      "user_steamid": "76561198000000011",
+      "user_team_num": 3,
+      "weapon": "ak47"
+     },
+     {
+      "tick": 500,
+      "is_warmup_period": false,
+      "attacker_steamid": "x",
+      "attacker_team_num": 0,
+      "user_steamid": "76561198000000012",
+      "user_team_num": 3,
+      "headshot": false,
+      "weapon": "ak47"
+     }
+    ],
+    "hurts": [],
+    "fires": [
+     {
+      "tick": 300,
+      "is_warmup_period": false,
+      "user_steamid": "76561198000000001",
+      "weapon": null
+     }
+    ],
+    "blinds": [
+     {
+      "tick": 301,
+      "is_warmup_period": false,
+      "attacker_steamid": "76561198000000001",
+      "user_steamid": "76561198000000011",
+      "attacker_team_num": 2,
+      "user_team_num": 3,
+      "blind_duration": null
+     }
+    ]
+   },
+   "expected": {
+    "schema_version": 1,
+    "rounds": 1,
+    "score": "1-0",
+    "player_stats": {
+     "multi_kills": {},
+     "kills": null,
+     "deaths": 0,
+     "assists": null,
+     "kd_ratio": null,
+     "adr": 0,
+     "headshot_pct": null,
+     "kast_pct": null,
+     "opening_kills": null,
+     "opening_deaths": null,
+     "clutches_won": null,
+     "clutches_attempted": null
+    },
+    "round_stats": {
+     "rounds_with_kills": null,
+     "zero_impact_rounds": null,
+     "ct_kd": null,
+     "t_kd": null
+    },
+    "utility_stats": {
+     "grenades_thrown": null,
+     "smokes_thrown": null,
+     "flashes_thrown": null,
+     "molotovs_thrown": null,
+     "he_thrown": null,
+     "enemies_flashed": null,
+     "teammates_flashed": null,
+     "utility_damage": 0
+    },
+    "economy_stats": {
+     "full_buys": 0,
+     "force_buys": 1,
+     "eco_rounds": 0,
+     "avg_eq_ct": null,
+     "avg_eq_t": 3000,
+     "avg_saved": 3000
+    }
+   }
+  }
+ ]
+}

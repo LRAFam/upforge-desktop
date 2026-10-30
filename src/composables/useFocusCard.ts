@@ -7,9 +7,10 @@ interface FocusApi {
 }
 
 /** Each mount hydrates from the account's persisted report, rather than waiting for a new event. */
-export function createFocusCardState(api: FocusApi) {
-  const data = ref<FocusResponse | null>(null)
-  const loading = ref(true)
+export function createFocusCardState(api: FocusApi, opts: { initial?: FocusResponse | null } = {}) {
+  // `initial` (UI v3 cache) draws the last known focus at once; `loading` then stays false.
+  const data = ref<FocusResponse | null>(opts.initial ?? null)
+  const loading = ref(!opts.initial)
   const loadError = ref('')
   const syncing = ref(false)
   const syncMessage = ref('')

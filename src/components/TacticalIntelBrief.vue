@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
+import { uiV3 } from '../lib/ui-v3'
 import type { CoachingEvidence, TacticalIntelBrief } from '../lib/coaching-brief'
 import { parseCoachingEvidence, severityLabel } from '../lib/coaching-brief'
 
@@ -84,6 +85,64 @@ watch(
 </script>
 
 <template>
+<template v-if="uiV3">
+  <section v-if="hasStructuredContent || brief.improvements.length" class="vod-intel-brief tb3" :class="{ 'tb3--compact': compact }" aria-label="AI synthesis">
+    <div class="tb3-head">
+      <span class="uf-label">AI synthesis</span>
+      <span v-if="brief.severity" class="uf-label" :style="{ color: brief.severity === 'high' || brief.severity === 'critical' ? 'var(--uf-loss)' : 'var(--uf-bone)' }">· {{ severityLabel(brief.severity) }}</span>
+      <span v-else-if="brief.source === 'heatmap'" class="uf-label">· Pattern</span>
+    </div>
+    <p v-if="brief.headline" class="tb3-says">{{ brief.headline }}</p>
+
+    <div v-if="brief.evidence.length" class="tb3-ev">
+      <div v-for="(item, index) in brief.evidence" :key="`${item.roundLabel}-${item.timeLabel}-${index}`" class="tb3-ev-row">
+        <button type="button" class="tb3-ev-go" :title="`Jump to ${item.roundLabel} @ ${item.timeLabel}`" @click="emit('seekEvidence', item)">
+          <span class="tb3-stamp uf-num">{{ item.roundLabel }} · {{ item.timeLabel }}</span>
+          <span class="tb3-ev-text">{{ item.text }}</span>
+        </button>
+        <div class="tb3-flag">
+          <button type="button" class="tb3-flag-btn" :class="{ 'tb3-flag-btn--done': submittedEvidenceKey === evidenceKey(item) }" :disabled="submittedEvidenceKey === evidenceKey(item) || (feedbackStatus === 'sending' && reportTargetKey === evidenceKey(item))" @click="toggleReport(item)">{{ submittedEvidenceKey === evidenceKey(item) ? 'Correction saved' : reportTargetKey === evidenceKey(item) ? 'Cancel' : 'Flag this moment' }}</button>
+          <template v-if="reportTargetKey === evidenceKey(item)">
+            <button v-for="reason in feedbackReasons" :key="reason.id" type="button" class="tb3-reason" :disabled="feedbackStatus === 'sending'" @click="submitReport(item, reason.id)">{{ reason.label }}</button>
+          </template>
+        </div>
+        <p v-if="reportTargetKey === evidenceKey(item) && feedbackStatus === 'sending'" class="uf-t4">Saving correction…</p>
+        <p v-else-if="reportTargetKey === evidenceKey(item) && feedbackStatus === 'error'" class="uf-t4" style="color: var(--uf-loss)">Could not save this correction. Please try again.</p>
+      </div>
+    </div>
+
+    <div v-if="brief.fix" class="tb3-fix">
+      <span class="uf-label">Next step</span>
+      <p class="uf-t3">{{ brief.fix }}</p>
+    </div>
+
+    <details v-if="dedupedImprovements.length" :open="!progressive" class="tb3-more">
+      <summary><span class="uf-label">More to work on · {{ improvementRows.length }}</span><span class="brief-disclosure" aria-hidden="true">⌄</span></summary>
+      <div v-for="(row, index) in improvementRows" :key="`${index}-${row.text.slice(0, 24)}`" class="tb3-more-row">
+        <template v-if="row.parsed.evidence.length">
+          <div v-for="evidence in row.parsed.evidence" :key="evidenceKey(evidence)" class="tb3-ev-row">
+            <button type="button" class="tb3-ev-go" @click="emit('seekEvidence', evidence)">
+              <span class="tb3-stamp uf-num">{{ evidence.roundLabel }} · {{ evidence.timeLabel }}</span>
+              <span class="tb3-ev-text">{{ evidence.text }}</span>
+            </button>
+            <div class="tb3-flag">
+              <button type="button" class="tb3-flag-btn" :class="{ 'tb3-flag-btn--done': submittedEvidenceKey === evidenceKey(evidence) }" :disabled="submittedEvidenceKey === evidenceKey(evidence) || (feedbackStatus === 'sending' && reportTargetKey === evidenceKey(evidence))" @click="toggleReport(evidence)">{{ submittedEvidenceKey === evidenceKey(evidence) ? 'Saved' : reportTargetKey === evidenceKey(evidence) ? 'Cancel' : 'Flag' }}</button>
+              <template v-if="reportTargetKey === evidenceKey(evidence)">
+                <button v-for="reason in feedbackReasons" :key="reason.id" type="button" class="tb3-reason" :disabled="feedbackStatus === 'sending'" @click="submitReport(evidence, reason.id)">{{ reason.label }}</button>
+              </template>
+            </div>
+            <p v-if="reportTargetKey === evidenceKey(evidence) && feedbackStatus === 'sending'" class="uf-t4">Saving correction…</p>
+            <p v-else-if="reportTargetKey === evidenceKey(evidence) && feedbackStatus === 'error'" class="uf-t4" style="color: var(--uf-loss)">Could not save this correction. Please try again.</p>
+          </div>
+        </template>
+        <p v-else class="tb3-ev-text">{{ row.text }}</p>
+      </div>
+    </details>
+
+    <p v-if="brief.tags.length" class="uf-t4">{{ brief.tags.slice(0, 4).map(tag => tag.replace(/_/g, ' ')).join(' · ') }}</p>
+  </section>
+</template>
+<template v-else>
   <div
     v-if="hasStructuredContent || brief.improvements.length"
     class="vod-intel-brief rounded-xl border border-white/[0.08] bg-black/35 overflow-hidden"
@@ -236,6 +295,7 @@ watch(
     </div>
   </div>
 </template>
+</template>
 
 <style scoped>
 .brief-improvements { border-top: 1px solid #ffffff14; padding-top: 6px; }
@@ -244,4 +304,33 @@ watch(
 .brief-disclosure { display: inline-block; margin-left: 6px; }
 .brief-improvements[open] .brief-disclosure { transform: rotate(180deg); }
 .vod-intel-brief :is(button, summary):focus-visible { outline: 2px solid #e11d48; outline-offset: 2px; border-radius: 3px; }
+</style>
+
+<style scoped>
+.tb3 { display: flex; flex-direction: column; gap: 14px; }
+.tb3 p { margin: 0; }
+.tb3-head { display: flex; gap: 6px; align-items: baseline; }
+.tb3-says { font: 400 16px/1.45 var(--uf-body); color: var(--uf-bone); }
+.tb3--compact .tb3-says { font-size: 15px; }
+.tb3-ev { display: flex; flex-direction: column; }
+.tb3--compact .tb3-ev { max-height: 260px; overflow-y: auto; }
+.tb3-ev-row { display: flex; flex-direction: column; gap: 6px; padding: 10px 0; border-top: 1px solid var(--uf-line); }
+.tb3-ev-go { display: flex; flex-direction: column; gap: 4px; text-align: left; background: none; border: 0; padding: 0; cursor: pointer; color: inherit; }
+.tb3-stamp { font: 600 15px/1 var(--uf-body); font-variant-numeric: tabular-nums; letter-spacing: 0.02em; color: var(--uf-bone); }
+.tb3-ev-go:hover .tb3-stamp { color: var(--uf-red); }
+.tb3-ev-text { font: 400 15px/1.5 var(--uf-body); color: var(--uf-muted); }
+.tb3-ev-go:hover .tb3-ev-text { color: var(--uf-bone); }
+.tb3-flag { display: flex; flex-wrap: wrap; gap: 6px; }
+.tb3-flag-btn { background: none; border: 0; padding: 0; cursor: pointer; font: 600 12px/1.6 var(--uf-body); color: var(--uf-faint); }
+.tb3-flag-btn:hover:not(:disabled) { color: var(--uf-bone); }
+.tb3-flag-btn--done { color: var(--uf-win); }
+.tb3-reason { background: none; border: 1px solid var(--uf-line-2); padding: 5px 9px; cursor: pointer; font: 600 12px/1 var(--uf-body); color: var(--uf-bone); }
+.tb3-reason:hover:not(:disabled) { background: var(--uf-hover); }
+.tb3-reason:disabled { opacity: 0.45; }
+.tb3-fix { display: flex; flex-direction: column; gap: 6px; padding-left: 12px; border-left: 2px solid var(--uf-win); }
+.tb3-more { border-top: 1px solid var(--uf-line); padding-top: 10px; }
+.tb3-more summary { list-style: none; display: flex; justify-content: space-between; align-items: center; cursor: pointer; min-height: 32px; color: var(--uf-faint); }
+.tb3-more summary::-webkit-details-marker { display: none; }
+.tb3-more[open] .brief-disclosure { transform: rotate(180deg); }
+.tb3-more-row > .tb3-ev-text { padding: 8px 0; border-top: 1px solid var(--uf-line); }
 </style>

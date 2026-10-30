@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { uiV3 } from '../../lib/ui-v3'
+import UfButton from '../v3/UfButton.vue'
 import { openUpgrade as startUpgrade } from '../../lib/upgrade'
 import { ref, onMounted, onBeforeUnmount } from 'vue'
 import { validReviewAccess } from '../../lib/account-usage'
@@ -37,6 +39,40 @@ function plans() { startUpgrade('vod_comparison') }
 function stamp(value: number) { return `${Math.floor(value / 60)}:${Math.floor(value % 60).toString().padStart(2, '0')}` }
 </script>
 <template>
+<template v-if="uiV3">
+  <section class="ca3" aria-label="Comparison access">
+    <div class="ca3-top"><UfButton variant="link" @click="emit('close')">Back to review</UfButton><UfButton variant="link" :disabled="loading" @click="load">{{ loading ? 'Checking…' : 'Refresh access' }}</UfButton></div>
+    <p v-if="loading" role="status" class="uf-t4">Checking your account…</p>
+    <p v-if="error" role="alert" class="uf-t4" style="color: var(--uf-loss)">{{ error }}</p>
+    <template v-if="trial && !locked && !loading && !error">
+      <span class="uf-label">Side by side</span>
+      <h2 class="uf-d2">Your first comparison is free</h2>
+      <p class="uf-t2">Use your own footage, link playback, loop moments and save timestamped notes. You can reopen and edit your saved comparison afterwards.</p>
+      <div><UfButton variant="primary" icon="swap" @click="emit('allowed', undefined, true)">Try comparison</UfButton></div>
+      <p class="uf-t4">Your trial is used only when you save. Creating another comparison requires Plus or Pro. Ask AI Coach is separate.</p>
+    </template>
+    <template v-if="locked">
+      <span class="uf-label">Side by side · Plus</span>
+      <h2 class="uf-d2">Compare more moments with Plus or Pro</h2>
+      <p class="uf-t2">Review two moments side by side, link playback and save comparisons to revisit.</p>
+      <div><UfButton variant="primary" icon="trophy" @click="plans">View plans</UfButton></div>
+      <p class="uf-t4">Single-match replay, personal notes and next-match focus stay free.</p>
+      <div class="ca3-saved">
+        <span class="uf-label">Your saved comparisons</span>
+        <p class="uf-t4">Your existing work stays readable when your plan changes.</p>
+        <p v-if="savedError" role="status" class="uf-t4" style="color: var(--uf-gold)">{{ savedError }}</p>
+        <p v-else-if="!loading && !items.length" class="uf-t4">No saved comparisons.</p>
+        <details v-for="item in items" :key="item.id" class="ca3-item">
+          <summary class="uf-t3">{{ item.title }}</summary>
+          <UfButton v-if="item.id === trialId" variant="secondary" icon="swap" @click="emit('allowed', item.id, true)">Reopen your free comparison</UfButton>
+          <p v-if="item.focus" class="uf-t4">Next-match focus: {{ item.focus }}</p>
+          <article v-for="note in item.notes" :key="note.id" class="ca3-note"><p class="uf-t4" style="color: var(--uf-bone)">{{ note.text }}</p><small v-for="(moment, index) in note.context.moments" :key="index" class="uf-t4">{{ index === 0 ? 'A' : 'B' }} · {{ moment.source.label || moment.source.id }} · {{ stamp(moment.position) }} </small></article>
+        </details>
+      </div>
+    </template>
+  </section>
+</template>
+<template v-else>
   <section class="comparison-access" aria-label="Comparison access">
     <header><button type="button" @click="emit('close')">Back to review</button><button type="button" :disabled="loading" @click="load">{{ loading ? 'Checking…' : 'Refresh access' }}</button></header>
     <p v-if="loading" role="status">Checking your account…</p>
@@ -60,6 +96,18 @@ function stamp(value: number) { return `${Math.floor(value / 60)}:${Math.floor(v
     </template>
   </section>
 </template>
+</template>
 <style scoped>
 .comparison-access{overflow:auto;max-width:900px;width:100%;margin:0 auto;padding:24px;color:#d1d5db;font-size:14px}header{display:flex;justify-content:space-between;gap:12px}h2{font-size:22px;font-weight:700;color:white;margin-top:24px}h3{font-size:16px;font-weight:700;margin-top:28px}p{line-height:1.6;margin:12px 0;white-space:pre-wrap}button{padding:9px 12px;min-height:36px;border:1px solid #ffffff28;border-radius:5px}button:disabled{opacity:.5}.primary{background:#d60838;color:white}details{border-top:1px solid #ffffff20;padding:14px 0}summary{cursor:pointer}article{padding:8px 0;border-top:1px solid #ffffff12}small{color:#9ca3af}button:focus-visible,summary:focus-visible{outline:2px solid #e11d48;outline-offset:3px}
+</style>
+
+<style scoped>
+.ca3 { overflow: auto; width: 100%; max-width: 900px; margin: 0 auto; padding: 28px 40px; display: flex; flex-direction: column; gap: 14px; }
+.ca3 p { margin: 0; white-space: pre-wrap; }
+.ca3 h2 { margin: 0; }
+.ca3-top { display: flex; justify-content: space-between; gap: 12px; }
+.ca3-saved { display: flex; flex-direction: column; gap: 10px; margin-top: 18px; padding-top: 18px; border-top: 1px solid var(--uf-line); }
+.ca3-item { padding: 12px 0; border-top: 1px solid var(--uf-line); display: flex; flex-direction: column; gap: 8px; }
+.ca3-item summary { cursor: pointer; }
+.ca3-note { padding: 8px 0; border-top: 1px solid var(--uf-line); display: flex; flex-direction: column; gap: 4px; }
 </style>

@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { uiV3 } from '../../lib/ui-v3'
+
 export type StatusTone = 'ok' | 'warn' | 'bad' | 'neutral'
 
 export type StatusItem = {
@@ -21,7 +23,17 @@ const toneDot: Record<StatusTone, string> = {
 </script>
 
 <template>
-  <div class="flex flex-wrap gap-x-5 gap-y-2 border-b border-white/[0.07] pb-3">
+  <div v-if="uiV3" class="uf-strip">
+    <p
+      v-for="item in items"
+      :key="item.id"
+      class="uf-note"
+      :class="item.tone === 'ok' ? 'is-ok' : item.tone === 'warn' ? 'is-warn' : item.tone === 'bad' ? 'is-bad' : ''"
+    >
+      <span class="uf-strip-label">{{ item.label }}</span>{{ item.detail }}
+    </p>
+  </div>
+  <div v-else class="flex flex-wrap gap-x-5 gap-y-2 border-b border-white/[0.07] pb-3">
     <div v-for="item in items" :key="item.id" class="flex min-w-0 max-w-full items-center gap-2">
       <span class="h-1.5 w-1.5 flex-shrink-0 rounded-full" :class="toneDot[item.tone]" />
       <p class="min-w-0 truncate text-[11px] text-gray-400">

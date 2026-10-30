@@ -1,5 +1,55 @@
 <template>
-  <div v-if="compactPostGameUi" ref="contentRoot" class="h-auto bg-[#111111] p-3">
+  <!-- UI v3 (rework): same state and behaviour, new presentation. -->
+  <div v-if="compactPostGameUi && uiV3" ref="contentRoot" class="h-auto">
+    <PostGameV3
+      :ready="state === 'ready'"
+      :tone="compactTone"
+      :eyebrow="compactEyebrow"
+      :title="compactTitle"
+      :body="compactBody"
+      :progress="compactProgress"
+      :status="compactStatus"
+      :timing="compactTiming"
+      :primary-label="state === 'ready' && result?.analysis_id ? 'Review coaching' : state === 'ready' ? 'Open report' : 'Open UpForge'"
+      :secondary-label="state === 'ready' && result?.analysis_id && analysisUrl ? 'Web report' : null"
+      :show-expectations="['preparing', 'uploading', 'analysing'].includes(state)"
+      :score="compactScore"
+      :show-feedback="state === 'ready' && Boolean(result?.analysis_id)"
+      :feedback-rating="feedbackRating"
+      :feedback-text="feedbackText"
+      :feedback-submitting="feedbackSubmitting"
+      :feedback-submitted="feedbackSubmitted"
+      :feedback-error="feedbackError"
+      :summary="result ? {
+        result: result.match_result ?? null,
+        ally: result.ally_score ?? null,
+        enemy: result.enemy_score ?? null,
+        kills: result.kills ?? null,
+        deaths: result.deaths ?? null,
+        assists: result.assists ?? null,
+      } : null"
+      :match-name="matchHeadline"
+      :map-name="gameInfo.game === 'valorant' ? gameInfo.map : null"
+      :map-art="mapSplashUrl || null"
+      :agent-art="(gameInfo.game === 'valorant' || gameInfo.game === 'lol') && !agentImageBroken ? agentImageUrl || null : null"
+      :coach-line="focusHero?.headline ?? null"
+      :coach-sub="focusHero?.subline ?? focusHero?.recurrence ?? null"
+      :clip-count="sessionClipCount"
+      :send-coach-name="sendCoachName"
+      :review-round="gameInfo.game === 'valorant' ? reviewRoundShown : null"
+      @primary="handleCompactPrimary"
+      @secondary="viewFullAnalysis"
+      @send-to-coach="sendToCoach"
+      @review-round="openReviewRound"
+      @close="dismiss"
+      @feedback-positive="submitAnalysisFeedback('thumbs_up')"
+      @feedback-negative="selectNegativeFeedback"
+      @feedback-cancel="cancelNegativeFeedback"
+      @feedback-submit="submitAnalysisFeedback('thumbs_down')"
+      @update:feedback-text="feedbackText = $event"
+    />
+  </div>
+  <div v-else-if="compactPostGameUi" ref="contentRoot" class="h-auto bg-[#111111] p-3">
     <PostGameCompactStatus
       :tone="compactTone"
       :eyebrow="compactEyebrow"
@@ -840,6 +890,8 @@ import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
 import { openAnalysisVodReview } from '../lib/open-vod-review'
 import { getAgentImage, getAgentColor, getMapImage, getMapMinimap } from '../lib/valorant'
+import { reviewRoundFor, type ValorantTimelineLike } from '../components/v3/matchpage/valorant/valorant-match-view'
+import { roundToQuery } from '../components/v3/matchpage/valorant/round-link'
 import { analysisResultsUrl, desktopVodResultsUrl, isPrimaryGame, normalizePrimaryGame, recordingGameLabel, type PrimaryGame } from '../lib/games'
 import { cs2MapDisplayName, getCs2RadarUrl, isCs2Map } from '../lib/cs2-maps'
 import { championIconUrl } from '../lib/lol'
@@ -878,6 +930,10 @@ import { analyseDeferredTitle } from '../lib/analyse-gate'
 import { demoDownloadProgressLabel, type DemoDownloadProgress } from '../lib/demo-download-progress'
 import PostGameDuelDiagnostics from '../components/post-game/PostGameDuelDiagnostics.vue'
 import PostGameCompactStatus from '../components/post-game/PostGameCompactStatus.vue'
+import PostGameV3 from './v3/PostGameV3.vue'
+import { refreshStudentHub } from '../components/v3/roster-flow/useStudentHub'
+import { sendStateFor } from '../components/v3/roster-flow/roster-flow'
+import { uiV3 } from '../lib/ui-v3'
 import {
   pickWebNextStep,
   tierDisplayLabel,
@@ -1682,21 +1738,27 @@ const mapMinimapUrl = computed(() => gameInfo.value.map ? getMapMinimap(gameInfo
 
 const localSpatialSummary = ref<MatchSpatialSummary | null>(null)
 const localDuelManifest = ref<DuelMomentManifest[]>([])
+/** 0-based round worth reviewing from the local timeline (v3 "Review round N"); null hides the link. */
+const localReviewRound = ref<number | null>(null)
+const reviewRoundShown = computed(() => (localReviewRound.value == null ? null : localReviewRound.value + 1))
 
 async function refreshLocalTimelineMeta() {
   const id = vodRecordingId.value
   if (!id) {
     localSpatialSummary.value = null
     localDuelManifest.value = []
+    localReviewRound.value = null
     return
   }
   try {
     const tl = await window.api.recordings.getTimeline(id)
     localSpatialSummary.value = tl?.spatialSummary ?? null
     localDuelManifest.value = (tl as { duelMoments?: DuelMomentManifest[] } | null)?.duelMoments ?? []
+    localReviewRound.value = uiV3.value ? reviewRoundFor(tl as unknown as ValorantTimelineLike) : null
   } catch {
     localSpatialSummary.value = null
     localDuelManifest.value = []
+    localReviewRound.value = null
   }
 }
 
@@ -2285,6 +2347,19 @@ async function handleCompactPrimary() {
   await handoffToMain('/dashboard')
 }
 
+/** v3: open the match page at the round worth reviewing (analysis if there is one, else the recording). */
+async function openReviewRound(): Promise<void> {
+  const round = localReviewRound.value == null ? null : roundToQuery(localReviewRound.value)
+  if (!round) return
+  const analysisId = result.value?.analysis_id
+  if (analysisId) {
+    await handoffToMain({ path: '/vod-review', query: { timelineId: String(analysisId), round } })
+    return
+  }
+  const id = vodRecordingId.value
+  if (id) await handoffToMain({ path: '/vod-review', query: { id, round } })
+}
+
 async function openNativeAnalysisReview(): Promise<void> {
   const analysisId = result.value?.analysis_id
   if (!analysisId) {
@@ -2405,6 +2480,25 @@ function openFindCoaches() {
 }
 
 function dismiss() { window.close() }
+
+// ---- Roster flow (UI v3): "Send to coach" when this analysed match can go to a roster coach ----
+const sendCoachName = ref<string | null>(null)
+watch(() => [uiV3.value, state.value, result.value?.analysis_id] as const, async ([v3, s, id]) => {
+  sendCoachName.value = null
+  if (!v3 || s !== 'ready' || !id) return
+  const hub = await refreshStudentHub().catch(() => null)
+  const send = sendStateFor(hub, id)
+  if (send.kind !== 'ready') return
+  const eligible = send.coaches.filter(c => c.can_request_review !== false)
+  sendCoachName.value = eligible.length === 1 ? eligible[0].display_name : 'your coach'
+}, { immediate: true })
+
+async function sendToCoach() {
+  const id = result.value?.analysis_id
+  if (!id) return
+  // The match page opens the send sheet; sending is still a deliberate tap there.
+  await handoffToMain({ path: '/vod-review', query: { timelineId: String(id), sendToCoach: '1' } })
+}
 
 async function handoffToMain(target: string | { path: string; query?: Record<string, string> }) {
   try {

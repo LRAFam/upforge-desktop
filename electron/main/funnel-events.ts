@@ -46,6 +46,10 @@ export type FunnelEventName =
   | 'report_opened'
   | 'analysis_degraded'
   | 'ops_recording_lap'
+  // Board 11b (round 7)
+  | 'postgame_opened'
+  | 'first_match_synced'
+  | 'recording_enabled'
 
 export async function trackFunnelEvent(
   event: FunnelEventName,
@@ -192,6 +196,8 @@ export function trackRecordingSetupStarted(game = 'valorant'): void {
 
 export function trackRecordingSetupPassed(game = 'valorant'): void {
   void trackFunnelEvent('recording_setup_passed', { game })
+  // Board 11b "Recording on": the first time capture is verified (server keeps it once per user).
+  void trackFunnelEvent('recording_enabled', { game })
 }
 
 export function trackRecordingSetupFailed(reason: string, game = 'valorant'): void {
@@ -235,4 +241,14 @@ export function sanitizeOpsProperties(props: Record<string, unknown>): Record<st
 export function trackOpsRecordingLap(lap: Record<string, unknown>): void {
   const { event: _event, ...rest } = lap
   void trackFunnelEvent('ops_recording_lap', sanitizeOpsProperties(rest))
+}
+
+/** Board 11b: the post-game window showed a match (repeatable, one per match). */
+export function trackPostgameOpened(game: string): void {
+  void trackFunnelEvent('postgame_opened', { game })
+}
+
+/** Board 11b: the first free match note synced (server keeps it once per user). */
+export function trackFirstMatchSynced(uploaded: number): void {
+  if (uploaded > 0) void trackFunnelEvent('first_match_synced', { uploaded })
 }

@@ -1,4 +1,8 @@
 <script setup lang="ts">
+import UfDialog from '../v3/UfDialog.vue'
+import UfButton from '../v3/UfButton.vue'
+import { uiV3 } from '../../lib/ui-v3'
+
 const props = withDefaults(defineProps<{
   show: boolean
   name: string
@@ -23,6 +27,31 @@ const riotLabel = () => `${props.name}#${props.tag}`
 </script>
 
 <template>
+  <UfDialog
+    v-if="uiV3"
+    :open="show"
+    :title="atCap ? 'Account limit reached' : 'Link this Riot account'"
+    kicker="Before recording"
+    :width="460"
+    :persistent="linking"
+    @close="emit('close')"
+  >
+    <p class="uf-t2" style="margin: 0">
+      You are queueing as <span class="uf-riot-id">{{ name }}<span>#{{ tag }}</span></span>.
+      <template v-if="atCap">This Riot ID is not linked and you have no open slots on your plan.</template>
+      <template v-else>Link it to UpForge before recording, then re-queue.</template>
+    </p>
+    <p v-if="error" class="uf-dialog-error" role="alert">{{ error }}</p>
+    <template #actions>
+      <button type="button" class="uf-link" :disabled="linking" style="margin-right: auto" @click="emit('close')">Cancel</button>
+      <template v-if="atCap">
+        <UfButton variant="secondary" @click="emit('openSettings')">Open Settings</UfButton>
+        <UfButton variant="primary" @click="emit('upgrade')">Upgrade</UfButton>
+      </template>
+      <UfButton v-else variant="primary" :disabled="linking" @click="emit('confirm')">{{ linking ? 'Linking…' : `Link ${riotLabel()}` }}</UfButton>
+    </template>
+  </UfDialog>
+<template v-else>
   <Transition name="modal-pop">
     <div
       v-if="show"
@@ -77,4 +106,5 @@ const riotLabel = () => `${props.name}#${props.tag}`
       </div>
     </div>
   </Transition>
+</template>
 </template>

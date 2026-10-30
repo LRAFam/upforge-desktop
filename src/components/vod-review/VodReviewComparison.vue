@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, ref, watch, type ComponentPublicInstance } from 'vue'
+import { uiV3 } from '../../lib/ui-v3'
+import { formatMapLabel } from '../../lib/valorant'
 import { useVodReview, type RecordingTimeline } from '../../composables/useVodReview'
 import { reviewEventStart, reviewVideoUrl, parseReviewTime } from '../../lib/review-media'
 import { ReviewComparison, validComparisonLoop, comparisonPlayerLabel, type ComparisonSide } from '../../lib/review-comparison'
@@ -434,7 +436,8 @@ const cleanupAccount = [window.api.on('session:user-changed', () => { restoreGen
       <div class="comparison-title">
         <button type="button" class="back" @click="close">Back</button>
         <h1>Compare moments</h1>
-        <span class="match-context">{{ timeline?.map }}</span>
+        <span v-if="uiV3" class="match-context">{{ timeline?.map ? formatMapLabel(timeline.map) : '' }}</span>
+        <span v-else class="match-context">{{ timeline?.map }}</span>
       </div>
       <div class="comparison-actions">
         <button type="button" :aria-pressed="notebookOpen" @click="notebookOpen = !notebookOpen">Review tools</button>
@@ -456,7 +459,10 @@ const cleanupAccount = [window.api.on('session:user-changed', () => { restoreGen
     </header>
     <div class="comparison-toolstrip" :inert="restoring">
     <div class="transport" aria-label="Comparison playback controls">
+      <template v-if="uiV3"><button type="button" class="uf-btn-primary cmp3-play" :disabled="!controlsReady" @click="toggleBoth"><span>{{ playing.some(Boolean) ? 'Pause both' : 'Play both' }}</span></button></template>
+      <template v-else>
       <button type="button" class="primary" :disabled="!controlsReady" @click="toggleBoth">{{ playing.some(Boolean) ? 'Pause both' : 'Play both' }}</button>
+      </template>
       <button type="button" :disabled="!controlsReady" @click="backToStarts">Back to starts</button>
       <label>Volume <input v-model.number="volume" type="range" min="0" max="1" step="0.05" /></label>
     </div>
@@ -618,4 +624,63 @@ details { position: relative; } details > button { position: absolute; right: 0;
 .moment-context { margin: 0 0 8px; font-size: 11px; color: #c7d2df; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }.comparison-players { min-width: 0; }.notebook-divider, .video-divider { min-height: 100%; }
 .note-timeline { position: relative; height: 30px; margin: 0 12px; border-bottom: 1px solid #92b2d633; }.note-marker { position: absolute; top: 2px; width: 22px; height: 24px; padding: 0; transform: translateX(-50%); color: #cce3ff; border-color: #7da4cf; font-size: 10px; }.note-marker:focus-visible,.note-marker:hover { z-index: 2; }.note-marker-list { display: grid; gap: 6px; padding: 8px; max-height: 180px; overflow: auto; background: #101217; }.note-marker-list button { text-align: left; }.note-marker-list span { display: block; white-space: pre-wrap; overflow-wrap: anywhere; margin-top: 4px; }.note-marker-list strong { color: #b8cfe8; font-weight: 500; }
 .play-control,.icon-control { display: inline-flex; justify-content: center; align-items: center; width: 32px; height: 32px; padding: 6px; flex-shrink: 0; }.play-control { color: white; background: #d60838; border-color: #d60838; }.play-control svg { width: 16px; height: 16px; fill: currentColor; }.icon-control svg { width: 18px; height: 18px; }.seek-controls { display: inline-flex; gap: 0; border: 1px solid #ffffff25; border-radius: 4px; overflow: hidden; }.seek-controls button { border: 0; border-radius: 0; padding: 7px; }.seek-controls button + button { border-left: 1px solid #ffffff20; }.seek-controls:focus-within { overflow: visible; }.player-controls .playback-time { white-space: nowrap; margin-left: auto; }.player-controls .total-time { color: #8490a1; font-size: 11px; margin: 0; }.time-jump { display: flex; align-items: center; gap: 6px; margin-top: 8px; }.time-jump input { width: 100px; min-width: 0; background: #101217; border: 1px solid #ffffff25; border-radius: 4px; padding: 6px 8px; font-size: 12px; color: white; font-variant-numeric: tabular-nums; }.time-jump label { font-size: 11px; }.time-jump button { padding: 5px 9px; }.time-error { color: #ffa3b5; margin-top: 6px; }
+</style>
+
+<style scoped>
+/* UI v3: one surface, hairlines, square controls. "Play both" is the one red action. */
+.ui-v3 .comparison { background: var(--uf-bg); color: var(--uf-bone); padding: 20px 32px; font-family: var(--uf-body); }
+.ui-v3 .comparison h1 { font: 800 40px/0.9 var(--uf-display); letter-spacing: 0.01em; text-transform: uppercase; color: var(--uf-bone); }
+.ui-v3 .comparison h2 { font: 700 26px/1 var(--uf-display); letter-spacing: 0.02em; text-transform: uppercase; color: var(--uf-bone); }
+.ui-v3 .comparison :is(p, label) { font: 400 13px/1.4 var(--uf-body); color: var(--uf-faint); }
+.ui-v3 .comparison .match-context { font: 600 12px/1.2 var(--uf-body); letter-spacing: 0.12em; text-transform: uppercase; color: var(--uf-faint); }
+.ui-v3 .comparison :is(button, select, summary) { border-radius: 0; border-color: var(--uf-line-2); background: transparent; color: var(--uf-bone); font: 600 13px/1 var(--uf-body); padding: 8px 12px; }
+.ui-v3 .comparison button:hover:not(:disabled) { border-color: var(--uf-line-2); background: var(--uf-hover); }
+.ui-v3 .comparison button[aria-pressed="true"] { border-color: var(--uf-bone); background: var(--uf-raised); }
+.ui-v3 .comparison select { background: var(--uf-chrome); }
+.ui-v3 .comparison .back { border-color: transparent; color: var(--uf-muted); padding-left: 0; }
+.ui-v3 .comparison .transport .cmp3-play { height: 40px; padding: 0 18px; border: 0; background: var(--uf-red); color: #fff; }
+.ui-v3 .comparison .transport .cmp3-play:hover:not(:disabled) { background: #ff5a68; }
+.ui-v3 .comparison .transport .cmp3-play:disabled { opacity: 0.45; cursor: default; }
+.ui-v3 .comparison-header { padding-bottom: 16px; margin-bottom: 0; border-bottom: 1px solid var(--uf-line); }
+.ui-v3 .comparison-toolstrip { background: var(--uf-bg); border-bottom-color: var(--uf-line); padding: 10px 0; }
+.ui-v3 .comparison .transport input[type="number"], .ui-v3 .comparison .timing-adjustment input, .ui-v3 .comparison .time-jump input { border-radius: 0; background: var(--uf-chrome); border-color: var(--uf-line-2); color: var(--uf-bone); }
+.ui-v3 .comparison input[type="range"] { accent-color: var(--uf-red); }
+.ui-v3 .comparison .options-panel { border-radius: 0; background: var(--uf-raised); border-color: var(--uf-line-2); }
+.ui-v3 .comparison .comparison-player { border: 0; border-radius: 0; background: none; padding: 16px 16px 16px 0; }
+.ui-v3 .comparison .comparison-players { border-top: 1px solid var(--uf-line); }
+.ui-v3 .comparison .source-caption { color: var(--uf-muted); font-size: 13px; }
+.ui-v3 .comparison .moment-context { color: var(--uf-bone); font-size: 13px; }
+.ui-v3 .comparison .comparison-message { background: transparent; border-left: 2px solid var(--uf-gold); color: var(--uf-bone); }
+.ui-v3 .comparison .recovery-panel { border: 0; border-left: 2px solid var(--uf-gold); background: transparent; }
+.ui-v3 .comparison .event-timeline { border-bottom-color: var(--uf-line-2); }
+.ui-v3 .comparison .event-marker { width: 3px; height: 16px; top: 8px; border: 0; border-radius: 0; background: var(--uf-muted); }
+.ui-v3 .comparison .event-kill { background: var(--uf-win); }
+.ui-v3 .comparison .event-death { background: var(--uf-loss); }
+.ui-v3 .comparison :is(.event-plant, .event-defuse, .event-detonation) { background: var(--uf-bone); }
+.ui-v3 .comparison .event-marker.selected, .ui-v3 .comparison .event-marker:hover { outline: 2px solid var(--uf-bone); outline-offset: 2px; }
+.ui-v3 .comparison .event-playhead { background: var(--uf-red); width: 2px; }
+.ui-v3 .comparison .event-legend { color: var(--uf-faint); }
+.ui-v3 .comparison .legend-kill { color: var(--uf-win); }
+.ui-v3 .comparison .legend-death { color: var(--uf-loss); }
+.ui-v3 .comparison .legend-objective { color: var(--uf-bone); }
+.ui-v3 .comparison .note-timeline { border-bottom-color: var(--uf-line); }
+.ui-v3 .comparison .note-marker { color: var(--uf-bone); border-color: var(--uf-bone); padding: 0; font: 600 12px/1 var(--uf-body); }
+.ui-v3 .comparison .note-marker-list { background: var(--uf-raised); }
+.ui-v3 .comparison .note-marker-list strong { color: var(--uf-bone); }
+.ui-v3 .comparison .play-control { color: var(--uf-bone); background: transparent; border-color: var(--uf-bone); }
+.ui-v3 .comparison .seek-controls { border-radius: 0; border-color: var(--uf-line-2); }
+.ui-v3 .comparison .seek-controls button + button { border-left-color: var(--uf-line-2); }
+.ui-v3 .comparison .playback-time { font: 600 15px/1 var(--uf-body); color: var(--uf-bone); }
+.ui-v3 .comparison .total-time { color: var(--uf-faint); font-size: 13px; }
+.ui-v3 .comparison .time-error { color: var(--uf-loss); }
+.ui-v3 .comparison .review-side-panel nav { gap: 0; border-bottom: 1px solid var(--uf-line); margin-bottom: 12px; }
+.ui-v3 .comparison .review-side-panel nav button { border: 0; border-bottom: 2px solid transparent; height: 40px; font: 600 12px/1 var(--uf-body); letter-spacing: 0.12em; text-transform: uppercase; color: var(--uf-faint); background: none; }
+.ui-v3 .comparison .review-side-panel nav button[aria-pressed="true"] { color: var(--uf-bone); border-bottom-color: var(--uf-red); background: none; }
+.ui-v3 .comparison .comparison-title { display: grid; grid-template-columns: auto; justify-items: start; gap: 8px; }
+.ui-v3 .comparison .comparison-title .back { order: 0; }
+.ui-v3 .comparison .comparison-title .match-context { order: 1; }
+.ui-v3 .comparison .comparison-title h1 { order: 2; margin: 0; }
+.ui-v3 .comparison .event-legend :is(.legend-kill, .legend-death, .legend-objective)::before { content: ''; display: inline-block; width: 3px; height: 10px; margin-right: 5px; background: currentColor; vertical-align: -1px; }
+.ui-v3 .comparison .moment-filters { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.ui-v3 .comparison .moment-filters span { font: 400 13px/1 var(--uf-body); color: var(--uf-faint); }
 </style>

@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { uiV3 } from '../../lib/ui-v3'
+import UfButton from '../v3/UfButton.vue'
 import { useVodReview } from '../../composables/useVodReview'
 
 const {
@@ -10,6 +12,22 @@ const {
 </script>
 
 <template>
+<template v-if="uiV3">
+  <div v-if="timelineLoading" class="vr3-state" role="status">
+    <span class="uf-live vr3-dot" aria-hidden="true" />
+    <p class="uf-t2">Loading match timeline…</p>
+  </div>
+  <div v-else-if="timelineError" class="vr3-state">
+    <span class="uf-label">Couldn’t load this match</span>
+    <p class="uf-t1">This review didn’t open.</p>
+    <p class="uf-t2" style="max-width: 520px">{{ timelineError }}</p>
+    <div class="vr3-actions">
+      <UfButton variant="primary" @click="loadTimeline">Retry</UfButton>
+      <UfButton variant="secondary" @click="$router.back()">Go back</UfButton>
+    </div>
+  </div>
+</template>
+<template v-else>
 <!-- Loading -->
     <div v-if="timelineLoading" class="flex flex-1 flex-col items-center justify-center gap-3">
       <svg class="w-8 h-8 text-red-400 animate-spin" fill="none" viewBox="0 0 24 24">
@@ -36,3 +54,10 @@ const {
       </div>
     </div>
 </template>
+</template>
+
+<style scoped>
+.vr3-state { flex: 1; display: flex; flex-direction: column; align-items: flex-start; justify-content: center; gap: 14px; padding: 0 40px; }
+.vr3-dot { width: 8px; height: 8px; border-radius: 4px; background: var(--uf-red); }
+.vr3-actions { display: flex; gap: 12px; align-items: center; }
+</style>

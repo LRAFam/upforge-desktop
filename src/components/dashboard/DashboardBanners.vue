@@ -3,6 +3,8 @@ import { computed } from 'vue'
 import { useDashboard } from '../../composables/useDashboard'
 import { scoreGrade, scoreGradeBadgeClass } from '../../lib/analysis-scoring'
 import { isPaidTier } from '../../lib/web-explore-links'
+import { uiV3 } from '../../lib/ui-v3'
+import UfIcon from '../v3/UfIcon.vue'
 
 const {
   paymentPastDue,
@@ -43,6 +45,83 @@ function dismissWarning() {
 </script>
 
 <template>
+  <!-- v3: one hairline row per message. Gold dot = warning, red = payment problem, win = done. Links only. -->
+  <div v-if="uiV3" class="uf-banner-stack">
+    <div v-if="paymentPastDue" class="uf-banner" role="alert">
+      <span class="uf-banner-dot is-red" aria-hidden="true" />
+      <p class="uf-banner-text" style="margin: 0"><span class="uf-banner-main">Your last payment failed — update your card to keep your subscription active.</span></p>
+      <div class="uf-banner-actions">
+        <button type="button" class="uf-banner-link is-red" :disabled="billingPortalLoading" @click="openBillingPortal">{{ billingPortalLoading ? 'Opening…' : 'Fix payment' }}</button>
+      </div>
+    </div>
+
+    <div v-if="warning" class="uf-banner uf-banner--top" role="alert">
+      <span class="uf-banner-dot is-gold" aria-hidden="true" />
+      <div class="uf-banner-text">
+        <strong v-if="analysisFailure?.title">{{ analysisFailure.title }}</strong>
+        <span class="uf-banner-main">{{ warning }}</span>
+        <span v-if="analysisFailure?.hint" class="uf-banner-sub">{{ analysisFailure.hint }}</span>
+        <span v-if="analysisFailure?.creditRefunded" class="uf-banner-sub">Coaching credit refunded — try Analyse again when ready.</span>
+      </div>
+      <div class="uf-banner-actions">
+        <button v-if="warningAction" type="button" class="uf-banner-link" @click="goWarningAction">{{ warningAction.label }}</button>
+        <button v-if="upgradeNeeded" type="button" class="uf-banner-link" @click="userIsPaid ? openBundles() : openPpa()">View report packs</button>
+        <button v-if="upgradeNeeded && !userIsPaid" type="button" class="uf-banner-link" @click="openUpgrade">Upgrade</button>
+        <button type="button" class="uf-banner-x" aria-label="Dismiss" @click="dismissWarning"><UfIcon name="close" :size="14" /></button>
+      </div>
+    </div>
+
+    <div v-if="quotaLowWarning && !warning" class="uf-banner">
+      <span class="uf-banner-dot is-gold" aria-hidden="true" />
+      <p class="uf-banner-text" style="margin: 0"><span class="uf-banner-main">{{ quotaLowWarning }}</span></p>
+      <div class="uf-banner-actions">
+        <button type="button" class="uf-banner-link" @click="userIsPaid ? openBundles() : openPpa()">View report packs</button>
+        <button v-if="!userIsPaid" type="button" class="uf-banner-link" @click="openUpgrade">Upgrade</button>
+      </div>
+    </div>
+
+    <div v-if="analysisCompleteToast" class="uf-banner" role="status">
+      <span class="uf-banner-dot is-win" aria-hidden="true" />
+      <p class="uf-banner-text" style="margin: 0">
+        <span class="uf-banner-main">Analysis complete — scored <strong class="uf-num">{{ analysisCompleteToast.score * 10 }}</strong> <strong>{{ scoreGrade(analysisCompleteToast.score) }}</strong><span v-if="analysisCompleteToast.agent"> · {{ analysisCompleteToast.agent }}</span><span v-if="analysisCompleteToast.remaining != null && analysisCompleteToast.limit != null" class="uf-banner-sub"> · <span class="uf-num">{{ analysisCompleteToast.remaining }}</span> left</span></span>
+      </p>
+      <div class="uf-banner-actions">
+        <button v-if="analysisCompleteToast.analysisId" type="button" class="uf-banner-link" @click="openAnalysis(analysisCompleteToast.analysisId!)">View results</button>
+        <button type="button" class="uf-banner-x" aria-label="Dismiss" @click="analysisCompleteToast = null"><UfIcon name="close" :size="14" /></button>
+      </div>
+    </div>
+
+    <div v-if="archiveRetentionNudge && !warning && !quotaLowWarning" class="uf-banner">
+      <span class="uf-banner-dot" aria-hidden="true" />
+      <p class="uf-banner-text" style="margin: 0"><span class="uf-banner-main">{{ archiveRetentionNudge }}</span></p>
+      <div class="uf-banner-actions">
+        <button type="button" class="uf-banner-link" @click="openUpgrade">Upgrade</button>
+        <button type="button" class="uf-banner-x" aria-label="Dismiss" @click="dismissArchiveRetentionNudge"><UfIcon name="close" :size="14" /></button>
+      </div>
+    </div>
+
+    <div v-if="backgroundWorkBanner" class="uf-banner" role="status">
+      <span class="uf-banner-dot uf-live" aria-hidden="true" />
+      <p class="uf-banner-text" style="margin: 0"><span class="uf-banner-main">Upload continues in the background — track progress in your recent matches.</span></p>
+      <div class="uf-banner-actions"><button type="button" class="uf-banner-x" aria-label="Dismiss" @click="dismissBackgroundBanner"><UfIcon name="close" :size="14" /></button></div>
+    </div>
+
+    <div v-if="activityToast" class="uf-banner" role="status">
+      <span class="uf-banner-dot" aria-hidden="true" />
+      <p class="uf-banner-text" style="margin: 0"><span class="uf-banner-main">{{ activityToast }}</span></p>
+      <div class="uf-banner-actions"><button type="button" class="uf-banner-x" aria-label="Dismiss" @click="activityToast = null"><UfIcon name="close" :size="14" /></button></div>
+    </div>
+
+    <div v-if="showMacPreviewBanner" class="uf-banner uf-banner--top">
+      <span class="uf-banner-dot" aria-hidden="true" />
+      <div class="uf-banner-text">
+        <strong>macOS preview mode</strong>
+        <span class="uf-banner-sub">Match recording and game detection require Windows. You can still review analyses, clips, and training on Mac.</span>
+      </div>
+      <div class="uf-banner-actions"><button type="button" class="uf-banner-link" @click="dismissMacPreviewBanner">Dismiss</button></div>
+    </div>
+  </div>
+<template v-else>
   <div class="flex-shrink-0 flex flex-col items-center gap-2 px-4 pt-3 pointer-events-none">
     <Transition name="banner-slide">
       <div
@@ -210,6 +289,7 @@ function dismissWarning() {
       </div>
     </Transition>
   </div>
+</template>
 </template>
 
 <style scoped>

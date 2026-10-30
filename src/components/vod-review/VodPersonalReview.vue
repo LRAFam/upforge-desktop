@@ -166,3 +166,41 @@ summary { cursor: pointer; min-height: 32px; line-height: 1.6; font-weight: 650;
 :is(button,input,textarea,select,summary):focus-visible { outline: 2px solid #ff718e; outline-offset: 3px; }
 @media(max-width: 420px) { .personal-review { padding: 16px; } }
 </style>
+
+<style scoped>
+/* UI v3: no box, hairline sections, type roles; Save is secondary (the header owns the red action). */
+.ui-v3 .personal-review { padding: 0; border: 0; border-radius: 0; background: none; color: var(--uf-bone); font: 400 13px/1.5 var(--uf-body); }
+.ui-v3 .personal-review .review-kicker { color: var(--uf-faint); font: 600 12px/1.2 var(--uf-body); letter-spacing: 0.12em; }
+.ui-v3 .personal-review h3 { font: 700 26px/1 var(--uf-display); letter-spacing: 0.02em; text-transform: uppercase; color: var(--uf-bone); }
+.ui-v3 .personal-review .review-intro { color: var(--uf-muted); font: 400 15px/1.55 var(--uf-body); margin: 10px 0 4px; }
+.ui-v3 .personal-review button { border-radius: 0; border-color: var(--uf-line-2); background: transparent; color: var(--uf-bone); font: 600 13px/1 var(--uf-body); }
+.ui-v3 .personal-review button:hover:not(:disabled) { background: var(--uf-hover); border-color: var(--uf-line-2); }
+.ui-v3 .personal-review :is(input, textarea, select) { border-radius: 0; background: var(--uf-chrome); border-color: var(--uf-line-2); color: var(--uf-bone); font: 400 15px/1.5 var(--uf-body); }
+.ui-v3 .personal-review :is(input, textarea)::placeholder { color: var(--uf-faint); }
+.ui-v3 .personal-review .review-section { border-top-color: var(--uf-line); margin-top: 18px; padding-top: 18px; }
+.ui-v3 .personal-review .section-heading label { color: var(--uf-bone); font: 600 15px/1.35 var(--uf-body); }
+.ui-v3 .personal-review .section-number { color: var(--uf-faint); font: 600 15px/1 var(--uf-body); font-variant-numeric: tabular-nums; }
+.ui-v3 .personal-review .anchor-label { color: var(--uf-faint); font-size: 12px; letter-spacing: 0.12em; text-transform: uppercase; font-weight: 600; }
+.ui-v3 .personal-review .moment-anchor strong { font: 700 26px/1 var(--uf-display); color: var(--uf-bone); }
+.ui-v3 .personal-review .text-button { border-color: transparent; color: var(--uf-muted); text-decoration: none; }
+.ui-v3 .personal-review .text-button:hover:not(:disabled) { color: var(--uf-bone); background: transparent; }
+.ui-v3 .personal-review .reload-button { border-color: transparent; color: var(--uf-muted); }
+.ui-v3 .personal-review .field-help, .ui-v3 .personal-review .save-status, .ui-v3 .personal-review .focus-hint { color: var(--uf-faint); font-size: 13px; }
+.ui-v3 .personal-review .save-status.is-dirty { color: var(--uf-gold); }
+.ui-v3 .personal-review .primary { width: auto; min-height: 44px; padding: 0 18px; background: transparent; border-color: var(--uf-bone); color: var(--uf-bone); font: 600 15px/1 var(--uf-body); }
+.ui-v3 .personal-review .primary:hover:not(:disabled) { background: var(--uf-hover); border-color: var(--uf-bone); }
+.ui-v3 .personal-review .focus-check-in { background: var(--uf-raised); border: 0; border-left: 2px solid var(--uf-bone); border-radius: 0; }
+.ui-v3 .personal-review summary { color: var(--uf-bone); font: 600 15px/1.35 var(--uf-body); }
+.ui-v3 .personal-review .previous-focus { color: var(--uf-bone); font-size: 15px; }
+.ui-v3 .personal-review .saved-notes, .ui-v3 .personal-review .notes-empty, .ui-v3 .personal-review .saved-note { border-top-color: var(--uf-line); }
+.ui-v3 .personal-review .saved-notes summary span { color: var(--uf-faint); }
+.ui-v3 .personal-review .note-time { color: var(--uf-bone); font: 600 15px/1 var(--uf-body); font-variant-numeric: tabular-nums; padding-left: 0; }
+.ui-v3 .personal-review .delete-note { color: var(--uf-faint); border-color: transparent; }
+.ui-v3 .personal-review .delete-note:hover:not(:disabled) { color: var(--uf-loss); background: transparent; }
+.ui-v3 .personal-review .saved-note p { color: var(--uf-muted); font-size: 15px; }
+.ui-v3 .personal-review .notes-empty { color: var(--uf-faint); }
+.ui-v3 .personal-review .notes-empty strong { color: var(--uf-faint); font: 600 12px/1.2 var(--uf-body); letter-spacing: 0.12em; text-transform: uppercase; }
+.ui-v3 .personal-review .notes-empty p { font-size: 13px; }
+.ui-v3 .personal-review .review-message--error { background: transparent; border: 0; border-left: 2px solid var(--uf-loss); border-radius: 0; color: var(--uf-bone); padding: 6px 12px; }
+.ui-v3 .personal-review :is(button, input, textarea, select, summary):focus-visible { outline-color: var(--uf-red); outline-offset: 2px; }
+</style>

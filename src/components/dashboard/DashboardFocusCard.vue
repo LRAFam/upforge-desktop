@@ -26,7 +26,10 @@ const EVENT_LABELS: Record<string, string> = {
   achieved: 'Focus achieved',
   missed: 'Focus missed',
 }
-const eventLabel = computed(() => EVENT_LABELS[latest.value?.focus_event ?? ''] ?? '')
+const eventLabel = computed(() =>
+  latest.value?.account?.is_main === false
+    ? 'Alt-account game: coached, not counted for your focus'
+    : EVENT_LABELS[latest.value?.focus_event ?? ''] ?? '')
 
 let off: (() => void) | null = null
 onMounted(() => {

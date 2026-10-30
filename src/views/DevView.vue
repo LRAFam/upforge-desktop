@@ -339,7 +339,20 @@
               class="px-3 py-1.5 rounded-lg text-xs bg-white/[0.05] hover:bg-white/[0.09] text-gray-300 hover:text-white transition-colors"
               @click="findHotkeyConflicts"
             >Find Hotkey Conflicts</button>
+            <button
+              class="px-3 py-1.5 rounded-lg text-xs bg-white/[0.05] hover:bg-white/[0.09] text-gray-300 hover:text-white transition-colors"
+              :disabled="capturingMmr"
+              title="After a ranked match: saves Riot's rank response so we can check which fields it has"
+              @click="captureMmr"
+            >{{ capturingMmr ? 'Capturing…' : 'Capture Riot rank response' }}</button>
           </div>
+          <p v-if="mmrCapture" class="mt-2 text-xs select-text" :class="mmrCapture.ok ? 'text-gray-300' : 'text-amber-300'">
+            <template v-if="mmrCapture.ok">
+              Saved to {{ mmrCapture.file }}.
+              Protection-like fields: {{ mmrCapture.fields.filter(f => /protect|shield|derank|demot/i.test(f)).join(', ') || 'none found' }}.
+            </template>
+            <template v-else>{{ mmrCapture.error }}</template>
+          </p>
           <p v-if="!recentExporterReady" class="mt-2 text-xs text-amber-300">Restart UpForge after your match to load the updated PoC exporter.</p>
           <div v-if="recentMatchReport" class="mt-3 space-y-2 text-xs text-gray-300 select-text">
             <div class="flex items-center justify-between gap-3">
@@ -597,6 +610,15 @@ function unavailableMetrics(capabilities: Record<string, string>) {
     economy: 'economy', abilityCastTotals: 'ability totals', eventPositionSnapshots: 'map snapshots' }
   const missing = Object.entries(labels).filter(([key]) => capabilities[key] !== 'available').map(([, label]) => label)
   return missing.length ? `Unavailable: ${missing.join(', ')}` : 'Stats and event snapshots available'
+}
+
+const capturingMmr = ref(false)
+const mmrCapture = ref<{ ok: true; file: string; fields: string[] } | { ok: false; error: string } | null>(null)
+async function captureMmr() {
+  capturingMmr.value = true
+  try { mmrCapture.value = await window.api.stats.captureValorantMmr() }
+  catch { mmrCapture.value = { ok: false, error: 'Capture failed.' } }
+  finally { capturingMmr.value = false }
 }
 
 async function pocRecentMatches() {

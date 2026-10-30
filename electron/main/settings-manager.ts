@@ -31,6 +31,10 @@ export interface ClipCaptureSettings {
   aces: boolean
   /** Clutch rounds (1vX won). */
   clutches: boolean
+  /** Your own deaths (Valorant), opening deaths first — capped per match. */
+  deaths: boolean
+  /** League objectives (Baron, Dragon, Herald, towers) — capped per match. */
+  objectives: boolean
 }
 
 export const DEFAULT_CLIP_CAPTURE: ClipCaptureSettings = {
@@ -38,6 +42,8 @@ export const DEFAULT_CLIP_CAPTURE: ClipCaptureSettings = {
   multiKills: true,
   aces: true,
   clutches: true,
+  deaths: true,
+  objectives: true,
 }
 
 export interface AppSettings {

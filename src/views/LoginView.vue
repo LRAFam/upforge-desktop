@@ -1,5 +1,21 @@
 <template>
-  <main class="login-screen">
+  <LoginV3
+    v-if="uiV3"
+    v-model:email="email"
+    v-model:password="password"
+    :loading="loading"
+    :error="error"
+    :show-password="showPw"
+    @submit="handleLogin"
+    @toggle-password="showPw = !showPw"
+    @forgot="openForgot"
+    @signup="openSignup"
+    @help="openHelp"
+    @privacy="openPrivacy"
+    @minimize="windowMinimize"
+    @close="windowClose"
+  />
+  <main v-else class="login-screen">
     <div class="login-panel">
     <div class="login-art" aria-hidden="true" />
     <svg class="panel-outline" viewBox="0 0 1000 760" preserveAspectRatio="none" aria-hidden="true">
@@ -79,6 +95,8 @@
 import { ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { resolvePostAuthRoute } from '../lib/onboarding-gate'
+import { uiV3 } from '../lib/ui-v3'
+import LoginV3 from './v3/LoginV3.vue'
 
 const router = useRouter()
 const email = ref('')

@@ -32,6 +32,8 @@ import {
 import { isWeaponName } from '../lib/valorant-ability-images'
 import { getVodAdapter } from '../lib/vod-games'
 import { useVodPortraits } from './vod/useVodPortraits'
+import { takeArchive, takeDetail, takeTimeline } from './vod/match-prefetch'
+import { uiV3 } from '../lib/ui-v3'
 
 // Round outcome icons — game-aware via timeline-event-icons.ts
 
@@ -99,6 +101,8 @@ interface FinalStats {
 
 
 export interface RecordingTimeline {
+  /** Riot/Valve match id when known (League: Match-V5 id such as EUW1_123). */
+  matchId?: string | null
   archiveAnalysisState?: string
   archiveAnalysisReady?: boolean
   archiveAnalysisMessage?: string
@@ -184,6 +188,8 @@ function createVodReview() {
     eventOpponentImage,
   } = useVodPortraits(timeline)
   const timelineLoading = ref(true)
+  /** UI v3: coaching detail / coach review still arriving after the page is already drawn. */
+  const detailLoading = ref(false)
   const timelineError = ref<string | null>(null)
   const showShortcuts = ref(false)
   
@@ -1718,7 +1724,124 @@ function createVodReview() {
     trySeek()
   }
   
+  /** Guards the v3 background loads against a newer load (retry / another match). */
+  let loadSeq = 0
+
+  async function fetchCoachReview(detailId: number) {
+    const review = await window.api.coach.getAnalysisReview(detailId).catch(() => null)
+    if (!review?.id) return null
+    const detail = await window.api.coach.getReviewAnnotations(review.id).catch(() => null)
+    return {
+      id: review.id,
+      status: review.status,
+      student_question: review.student_question,
+      coach_perspective: detail?.coach_perspective ?? review.coach_perspective ?? null,
+      coach: review.coach,
+      annotations: detail?.annotations ?? review.annotations ?? [],
+    }
+  }
+
+  /**
+   * UI v3 load: draw the page as soon as the timeline is here; coaching detail, coach review and
+   * the playback URL load in parallel behind it. Same calls and results as the classic load.
+   */
+  async function loadTimelineV3() {
+    const seq = ++loadSeq
+    comparisonActive.value = false
+    comparisonEventShift.value = 0
+    timelineLoading.value = true
+    detailLoading.value = false
+    timelineError.value = null
+    playbackError.value = null
+    timeline.value = null
+    coachingDetail.value = null
+    coachReview.value = null
+    playbackDurationRetryDone.value = false
+    const archiveId = route.query.archiveId as string
+    const id = route.query.id as string
+    const timelineId = route.query.timelineId as string
+    const numericTimelineId = Number(timelineId)
+    try {
+      if (timelineId && pendingTimeline.value) {
+        timeline.value = pendingTimeline.value
+        pendingTimeline.value = null
+      } else if (archiveId) {
+        const result = await (takeArchive(archiveId) ?? window.api.archives.review(archiveId))
+        if (seq !== loadSeq) return
+        if (!result.ok) { timelineError.value = result.error; return }
+        timeline.value = result.timeline
+      } else if (id) {
+        recordingId.value = id
+        timeline.value = await window.api.recordings.getTimeline(id)
+        if (seq !== loadSeq) return
+        if (!timeline.value) { timelineError.value = 'Recording timeline not found.'; return }
+      } else if (timelineId && !Number.isNaN(numericTimelineId)) {
+        const data = await (takeTimeline(numericTimelineId) ?? window.api.analyses.getTimeline(numericTimelineId))
+        if (seq !== loadSeq) return
+        if (!data) { timelineError.value = 'Timeline data is not available for this match yet.'; return }
+        timeline.value = data
+      } else {
+        timelineError.value = 'No match selected — open a match from the Dashboard.'
+        return
+      }
+      videoSyncOffsetMs.value = timeline.value?.videoSyncOffsetMs ?? defaultSyncMsForGame(timeline.value?.game)
+      applyTimelineDerivedState()
+    } catch {
+      if (seq === loadSeq) timelineError.value = 'Could not load match timeline — check your connection and try again.'
+      return
+    } finally {
+      if (seq === loadSeq) timelineLoading.value = false
+    }
+
+    // Behind the drawn page: coaching detail + coach review, and the playback URL, in parallel.
+    const detailId = timeline.value?.analysisId ?? numericTimelineId
+    const hasDetail = Number.isFinite(detailId) && detailId > 0
+    const coaching = hasDetail
+      ? (async () => {
+          detailLoading.value = true
+          const [detail, review] = await Promise.all([
+            (takeDetail(detailId) ?? window.api.analyses.getDetail(detailId)).catch(() => null),
+            fetchCoachReview(detailId),
+          ])
+          if (seq !== loadSeq) return
+          coachingDetail.value = detail
+          coachReview.value = review
+          detailLoading.value = false
+          applyCoachReviewUiState()
+        })()
+      : Promise.resolve()
+    const playback = (async () => {
+      if (canRefreshCloudPlayback.value && needsCloudPlaybackRefresh(timeline.value?.videoPath)) {
+        await refreshPlaybackUrl()
+      }
+    })()
+    try {
+      await playback
+      if (seq !== loadSeq) return
+      if (route.query.coachNotes === '1') {
+        const routeSeekMs = Number(route.query.seekMs)
+        if (!Number.isNaN(routeSeekMs) && routeSeekMs >= 0) applyInitialSeek()
+        // Without a seekMs, the coach review's first note decides the seek (applyCoachReviewUiState).
+      } else {
+        applyInitialSeek()
+      }
+      await coaching
+    } catch {
+      /* playback errors surface through playbackError; coaching panels stay empty */
+    } finally {
+      if (seq === loadSeq) detailLoading.value = false
+    }
+  }
+
   async function loadTimeline() {
+    if (uiV3.value) {
+      // Resolves once the page can draw; detail and playback continue in the background.
+      const drawn = new Promise<void>(resolve => {
+        const stop = watch(timelineLoading, v => { if (!v) { stop(); resolve() } })
+      })
+      void loadTimelineV3()
+      return drawn
+    }
     comparisonActive.value = false
     comparisonEventShift.value = 0
     timelineLoading.value = true
@@ -2098,6 +2221,7 @@ function createVodReview() {
     coachReview,
     hasCoachFeedback,
     coachingDetail,
+    detailLoading,
     coachingNotes,
     currentTime,
     cursorHidden,

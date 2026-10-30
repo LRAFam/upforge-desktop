@@ -1,5 +1,25 @@
 <template>
-  <div class="h-full text-white flex flex-col overflow-hidden bg-[#111111]">
+  <ProgressV3
+    v-if="uiV3"
+    v-model:range="range"
+    :loading="loading"
+    :refreshing="refreshing"
+    :refresh-failed="refreshFailed"
+    :ranges="ranges"
+    :game-count="filteredAnalyses.length"
+    :is-valorant="primaryGame === 'valorant'"
+    :rank-history="rankHistory"
+    :win-rate="winRate"
+    :avg-score="avgScoreDisplay"
+    :avg-kda="avgKda"
+    :avg-hs="avgHs"
+    :deltas="statDeltas"
+    :recent-form="recentForm"
+    :agent-rows="agentRows"
+    :map-rows="mapRows"
+    @retry="loadStatsData"
+  />
+  <div v-else class="h-full text-white flex flex-col overflow-hidden bg-[#111111]">
 
     <!-- Toolbar -->
     <div class="flex-shrink-0 px-4 py-3 border-b border-white/[0.08]">
@@ -120,7 +140,7 @@
             <div class="flex items-center justify-between mb-1.5">
               <p class="text-[9px] font-bold uppercase tracking-[0.16em] text-gray-600">Rank progress</p>
               <p class="text-[10px] font-semibold tabular-nums" :class="rankDelta >= 0 ? 'text-green-400' : 'text-red-400'">
-                {{ rankDelta >= 0 ? '+' : '' }}{{ rankDelta }} RR
+                {{ rankDelta >= 0 ? '+' : '' }}{{ rankDelta }} rating
               </p>
             </div>
             <svg width="100%" height="44" :viewBox="`0 0 ${RANK_W} 44`" preserveAspectRatio="none" class="block">
@@ -274,7 +294,10 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
+import ProgressV3 from './v3/ProgressV3.vue'
+import { uiV3 } from '../lib/ui-v3'
+import { readCache, writeCache } from '../lib/stale-cache'
 import { useRouter } from 'vue-router'
 import type { AnalysisItem } from '../env.d.ts'
 import { useGameTheme } from '../composables/useGameTheme'
@@ -427,9 +450,14 @@ const sparkArea = computed(() => buildSparkPath(true))
 
 const RANK_W = 400
 const RANK_H = 44
-const rankPoints = computed(() => rankHistory.value.slice(-12).map(entry => entry.rr))
-const rankStartLabel = computed(() => rankHistory.value.slice(-12)[0]?.rank ?? 'Earlier')
-const rankEndLabel = computed(() => rankHistory.value.slice(-12)[rankHistory.value.slice(-12).length - 1]?.rank ?? 'Latest')
+// Plot elo (a continuous rating). RR resets to 0-100 at every tier change, so an RR line jumps
+// down on a rank-up. Snapshots without a usable elo are skipped rather than mixed with RR.
+const rankSeries = computed(() =>
+  rankHistory.value.filter(entry => Number.isFinite(entry.elo) && entry.elo > 0).slice(-12),
+)
+const rankPoints = computed(() => rankSeries.value.map(entry => entry.elo))
+const rankStartLabel = computed(() => rankSeries.value[0]?.rank ?? 'Earlier')
+const rankEndLabel = computed(() => rankSeries.value[rankSeries.value.length - 1]?.rank ?? 'Latest')
 const rankDelta = computed(() => {
   const points = rankPoints.value
   if (points.length < 2) return 0
@@ -518,12 +546,60 @@ const worstMap = computed((): BreakdownRow | null => {
 
 // ── Data load ─────────────────────────────────────────────────────────────────
 
+// ── UI v3: cache-first (last data draws at once, refresh is quiet, a failed refresh keeps it) ──
+type ProgressCache = { analyses: AnalysisItem[]; rank: typeof rankHistory.value }
+const refreshing = ref(false)
+const refreshFailed = ref(false)
+function hydrateProgress(): boolean {
+  const hit = readCache<ProgressCache>(`progress:${primaryGame.value}`)?.value
+  if (!hit || !Array.isArray(hit.analyses)) return false
+  allAnalyses.value = hit.analyses
+  rankHistory.value = Array.isArray(hit.rank) ? hit.rank : []
+  loading.value = false
+  return true
+}
+if (uiV3.value) hydrateProgress()
+// The title-bar game switch doesn't remount this view; v3 Progress reloads for the new game.
+watch(primaryGame, () => {
+  if (!uiV3.value) return
+  allAnalyses.value = []
+  rankHistory.value = []
+  loading.value = true
+  refreshFailed.value = false
+  void loadStatsDataV3()
+})
+
+async function loadStatsDataV3() {
+  const game = primaryGame.value
+  const hasData = !loading.value || hydrateProgress()
+  loading.value = !hasData
+  refreshing.value = hasData
+  try {
+    const [analyses, rrHistory] = await Promise.all([
+      loadGameAnalyses(game, 100),
+      window.api.stats.rrHistory('all').catch(() => null),
+    ])
+    if (game !== primaryGame.value) return
+    allAnalyses.value = analyses
+    if (rrHistory) rankHistory.value = rrHistory
+    refreshFailed.value = false
+    writeCache<ProgressCache>(`progress:${game}`, { analyses, rank: rankHistory.value })
+  } catch {
+    if (!hasData) { allAnalyses.value = []; rankHistory.value = [] }
+    else refreshFailed.value = true
+  } finally {
+    loading.value = false
+    refreshing.value = false
+  }
+}
+
 async function loadStatsData() {
+  if (uiV3.value) return loadStatsDataV3()
   loading.value = true
   try {
     const [analyses, rrHistory] = await Promise.all([
       loadGameAnalyses(primaryGame.value, 100),
-      window.api.stats.rrHistory().catch(() => []),
+      window.api.stats.rrHistory(uiV3.value ? 'all' : '30d').catch(() => []),
     ])
     allAnalyses.value = analyses
     rankHistory.value = rrHistory
@@ -537,7 +613,8 @@ async function loadStatsData() {
 let stopDashboardRefresh: (() => void) | null = null
 
 onMounted(async () => {
-  if (!features.value.performanceStats) {
+  // UI v3 shows per-game Progress (GameProgress) for every game; the old view stays Valorant-only.
+  if (!features.value.performanceStats && !uiV3.value) {
     await router.replace('/dashboard')
     return
   }

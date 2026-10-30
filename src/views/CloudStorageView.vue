@@ -8,6 +8,12 @@ import type { StorageAddonSnapshot } from '../lib/storage-addon'
 import { useAccountUsage } from '../composables/useAccountUsage'
 import { cloudGames, type CloudGame, cloudBytes, cloudRetention, cloudFileTitle, validCloudPage, type CloudFile, type CloudKind, type CloudSort, type CloudPage } from '../lib/cloud-storage'
 import type { PendingRecording, ClipRecord } from '../env.d.ts'
+import { uiV3 } from '../lib/ui-v3'
+import UfButton from '../components/v3/UfButton.vue'
+import UfSkeleton from '../components/v3/UfSkeleton.vue'
+import { readCache, writeCache } from '../lib/stale-cache'
+import UfTabs from '../components/v3/UfTabs.vue'
+import UfDialog from '../components/v3/UfDialog.vue'
 const router = useRouter()
 const pendingRemoval = ref<CloudFile | null>(null)
 const addon = ref<StorageAddonSnapshot | null>(null), addonVersion = ref(0), keepError = ref(''), keeping = ref('')
@@ -40,9 +46,15 @@ const queue = computed(() => [
   ...clips.value.filter(c => c.uploadStatus === 'uploading' || c.uploadStatus === 'failed').map(c => ({ id: `c:${c.id}`, title: c.title || 'Clip', status: c.uploadStatus === 'uploading' ? 'Uploading' : 'Upload failed', progress: null, path: '/clips' })),
 ])
 let lastLoaded = 0
+function cloudCacheKey() { return `cloud:${game.value}:${kind.value}:${sort.value}:${page.value}` }
 async function load() {
   const request = ++generation
   retentionNow.value = Date.now()
+  // v3: draw this filter's last page at once (rows are re-verified before use), then refresh quietly.
+  if (uiV3.value) {
+    const hit = readCache<unknown>(cloudCacheKey())
+    if (hit && validCloudPage(hit.value)) library.value = hit.value
+  }
   loading.value = true; error.value = ''
   try {
     const result = await window.api.cloudStorage.list({ game: game.value, kind: kind.value, sort: sort.value, page: page.value })
@@ -51,6 +63,7 @@ async function load() {
     if (!validCloudPage(result.data)) { error.value = 'Cloud library could not be verified. Please retry.'; return }
     if (game.value !== 'all' && result.data.game_filter !== game.value) { error.value = 'Game filtering is not available on the server yet.'; return }
     library.value = result.data
+    if (uiV3.value) writeCache(cloudCacheKey(), result.data)
     lastLoaded = Date.now()
   } catch { if (request === generation) error.value = 'Cloud library is unavailable. Please retry.' }
   finally { if (request === generation) loading.value = false }
@@ -137,6 +150,160 @@ onBeforeUnmount(() => { closePlayback(); clearTimeout(updateTimer); generation++
 </script>
 
 <template>
+  <main v-if="uiV3" class="uf-cs">
+    <header class="uf-cs-head uf-rise">
+      <div class="uf-cs-head-text">
+        <span class="uf-label">All games · account-wide</span>
+        <h1 class="uf-d2" style="margin: 0">Cloud storage</h1>
+        <p class="uf-t2" style="margin: 0">Your clips and recordings from every game, in one library.</p>
+      </div>
+      <UfButton :disabled="loading" @click="refresh">{{ loading ? 'Refreshing…' : 'Refresh' }}</UfButton>
+    </header>
+
+    <section class="uf-cs-space uf-rise uf-d1s" aria-label="Cloud capacity">
+      <p v-if="usageError" class="uf-t4" role="status">{{ usageError }} <button type="button" class="uf-link" @click="loadUsage">Retry</button></p>
+      <div v-else-if="!usage" aria-busy="true" aria-label="Loading your allowance" class="uf-cs-skel-space">
+        <UfSkeleton w="46%" :h="26" />
+        <UfSkeleton :w="160" :h="36" />
+        <UfSkeleton :h="6" />
+        <UfSkeleton w="52%" :h="13" />
+      </div>
+      <template v-else-if="usage.cloud_storage">
+        <p class="uf-t1" style="margin: 0">
+          <template v-if="usage.cloud_storage.remaining_bytes === null">No storage cap on your account. {{ cloudBytes(usage.cloud_storage.used_bytes) }} used.</template>
+          <template v-else-if="usage.cloud_storage.remaining_bytes === 0">Your cloud space is full. Add capacity or remove cloud copies to upload more.</template>
+          <template v-else>{{ cloudBytes(usage.cloud_storage.remaining_bytes) }} free for clips and recordings.</template>
+        </p>
+        <div class="uf-cs-meter">
+          <span class="uf-d3">{{ cloudBytes(usage.cloud_storage.used_bytes) }}</span>
+          <span v-if="usage.cloud_storage.capacity_bytes !== null" class="uf-t2">of {{ cloudBytes(usage.cloud_storage.capacity_bytes) }}</span>
+        </div>
+        <div v-if="usage.cloud_storage.capacity_bytes !== null" class="uf-cs-bar" role="meter" aria-label="Cloud storage used and reserved" :aria-valuenow="Math.min(usage.cloud_storage.used_bytes + usage.cloud_storage.reserved_bytes, usage.cloud_storage.capacity_bytes)" aria-valuemin="0" :aria-valuemax="Math.max(usage.cloud_storage.capacity_bytes, 1)">
+          <div class="uf-cs-bar-fill uf-fill" :class="{ full: usage.cloud_storage.remaining_bytes === 0 }" :style="{ width: `${Math.min(100, (usage.cloud_storage.used_bytes + usage.cloud_storage.reserved_bytes) / Math.max(usage.cloud_storage.capacity_bytes, 1) * 100)}%` }" />
+        </div>
+        <p class="uf-t4 uf-cs-facts"><span>{{ cloudBytes(usage.cloud_storage.included_bytes) }} included</span><span>{{ cloudBytes(usage.cloud_storage.addon_bytes) }} extra storage</span><span>{{ cloudBytes(usage.cloud_storage.reserved_bytes) }} reserved for uploads</span></p>
+        <p v-if="usage.cloud_storage.unknown_size_files" class="uf-t4 uf-cs-warn">Checking sizes for {{ usage.cloud_storage.unknown_size_files }} existing files. Uploads pause until this is complete.</p>
+      </template>
+      <p v-else class="uf-t4" role="status">Your storage allowance is being updated. Refresh to check again.</p>
+    </section>
+
+    <div class="uf-cs-layout">
+      <div class="uf-cs-main">
+        <section v-if="queue.length || queueError" class="uf-cs-sec" aria-label="Uploads on this device">
+          <span class="uf-label">On this device</span>
+          <p v-if="queueError" class="uf-t4">{{ queueError }}</p>
+          <div v-for="item in queue" :key="item.id" class="uf-cs-row">
+            <div class="uf-cs-row-text"><span class="uf-t3">{{ item.title }}</span><span class="uf-t4">{{ item.status }}<span v-if="item.progress !== null" class="uf-num"> · {{ Math.round(item.progress) }}%</span></span></div>
+            <UfButton variant="link" @click="router.push(item.path)">View {{ item.path === '/clips' ? 'clip' : 'footage' }}</UfButton>
+          </div>
+        </section>
+
+        <section v-if="pendingRemoval" class="uf-cs-notice" role="alert">
+          <div class="uf-cs-row-text"><span class="uf-t3">Remove {{ cloudFileTitle(pendingRemoval) }} from the cloud?</span><span class="uf-t4">This permanently removes the cloud video. Your local files and notebook notes stay saved.</span></div>
+          <UfButton :disabled="!!keeping" @click="keep(pendingRemoval, 'remove')">Remove cloud copy</UfButton>
+          <button type="button" class="uf-link" :disabled="!!keeping" @click="pendingRemoval=null">Cancel</button>
+        </section>
+        <p v-if="keepError" class="uf-t4 uf-cs-bad" role="alert">{{ keepError }}</p>
+
+        <section class="uf-cs-sec" aria-label="Cloud files" :aria-busy="loading">
+          <div class="uf-cs-lib-head">
+            <span class="uf-label">Saved to cloud · {{ gameLabel }}</span>
+            <span class="uf-t4 uf-num">{{ library ? `${library.total} files` : 'Clips & recordings' }}</span>
+          </div>
+          <div class="uf-cs-toolbar">
+            <UfTabs :items="filters.map(f => ({ key: f.value, label: f.label }))" :model-value="kind" size="filter" label="File type" @update:model-value="kind = $event as CloudKind" />
+            <span style="flex: 1" />
+            <label class="uf-cs-select"><span class="uf-label">Game</span><select v-model="game"><option v-for="option in cloudGames" :key="option.value" :value="option.value">{{ option.label }}</option></select></label>
+            <label class="uf-cs-select"><span class="uf-label">Sort</span><select v-model="sort"><option value="newest">Newest first</option><option value="largest">Largest first</option><option value="expiry">Expiring first</option></select></label>
+          </div>
+          <div v-if="attentionCount" class="uf-cs-notice">
+            <div class="uf-cs-row-text"><span class="uf-t3">{{ attentionCount }} {{ attentionCount === 1 ? 'file needs' : 'files need' }} a retention check</span><span class="uf-t4">On this page: expiring within 7 days or past the retention date. Open a file to check playback. Files past their retention date may be removed; your notes stay saved.</span></div>
+            <button v-if="sort !== 'expiry'" type="button" class="uf-link" @click="sort = 'expiry'">Sort by expiry</button>
+          </div>
+
+          <div v-if="loading && !library" aria-busy="true" aria-label="Loading cloud files">
+            <div v-for="i in 5" :key="i" class="uf-cs-skel-row">
+              <UfSkeleton :w="88" :h="50" />
+              <span class="uf-cs-skel-lines"><UfSkeleton w="34%" :h="15" /><UfSkeleton w="52%" :h="13" /></span>
+              <UfSkeleton :w="70" :h="15" />
+            </div>
+          </div>
+          <div v-else-if="error" class="uf-cs-empty" role="alert"><p class="uf-t2" style="margin: 0">{{ error }}</p><UfButton @click="load">Retry</UfButton></div>
+          <template v-else-if="library">
+            <div v-if="!library.items.length" class="uf-cs-empty">
+              <p class="uf-t3" style="margin: 0">No {{ kind === 'all' ? 'cloud files' : kind === 'clip' ? 'cloud clips' : 'cloud recordings' }}{{ game === 'all' ? '' : ` for ${gameLabel}` }} yet</p>
+              <p class="uf-t4" style="margin: 0">Upload from Clips or Footage to keep your gameplay available on other devices.</p>
+              <UfButton @click="router.push(kind === 'clip' ? '/clips' : '/recordings')">Open {{ kind === 'clip' ? 'Clips' : 'Footage' }}</UfButton>
+            </div>
+            <div v-for="file in library.items" :key="`${file.kind}:${file.id}`" class="uf-cs-file" :class="{ ended: retention(file.expires_at).state === 'expired' }">
+              <div class="uf-cs-thumb" aria-hidden="true">
+                <img v-if="getMapListViewImage(file.map) && !failedMapImages.has(file.map!)" class="uf-cs-map" :src="getMapListViewImage(file.map)" alt="" loading="lazy" @error="hideMapImage(file.map!)" />
+                <img v-if="getAgentImage(file.agent) && !failedAgents.has(file.agent!)" class="uf-cs-agent" :src="getAgentImage(file.agent)" alt="" loading="lazy" @error="failedAgents.add(file.agent!)" />
+                <span v-if="!(getMapListViewImage(file.map) && !failedMapImages.has(file.map!)) && !(getAgentImage(file.agent) && !failedAgents.has(file.agent!))" class="uf-label">{{ file.kind === 'clip' ? 'Clip' : 'Rec' }}</span>
+              </div>
+              <div class="uf-cs-row-text" style="flex: 1">
+                <button type="button" class="uf-cs-open uf-t3" :disabled="file.status === 'uploading'" @click="openFile(file)">{{ cloudFileTitle(file) }}</button>
+                <span class="uf-t4">{{ cloudGames.find(item => item.value === file.game)?.label || 'Game not recorded' }} · {{ file.kind === 'clip' ? 'Clip' : 'Recording' }}<span v-if="file.agent"> · {{ file.agent }}</span> · {{ date(file.created_at) }}<span v-if="file.status === 'uploading'"> · Uploading</span><span v-if="file.status === 'failed'" class="uf-cs-bad"> · Upload failed</span></span>
+              </div>
+              <div class="uf-cs-size">
+                <span class="uf-t3 uf-num" :title="file.bytes === null ? 'This older file has no verified size yet. Its size has not been counted as zero.' : undefined">{{ cloudBytes(file.bytes) }}</span>
+                <span class="uf-t4 uf-cs-ret" :class="retention(file.expires_at).state" :title="file.expires_at ? `Retention date: ${date(file.expires_at)}` : undefined">{{ file.paid_storage && addon?.usage.active ? 'Kept in paid storage' : retention(file.expires_at).label }}</span>
+              </div>
+              <div class="uf-cs-acts">
+                <button type="button" class="uf-link" :disabled="file.status === 'uploading'" @click="openFile(file)">{{ file.status === 'uploading' ? 'Uploading…' : retention(file.expires_at).state === 'expired' ? 'Recovery options' : 'Open file' }}</button>
+                <button v-if="addon?.usage.active && !file.paid_storage && ['stored','archived'].includes(file.status) && retention(file.expires_at).state !== 'expired'" type="button" class="uf-link" :disabled="!!keeping" @click="keep(file)">{{ keeping === `${file.kind}:${file.id}` ? 'Moving…' : 'Keep in paid storage' }}</button>
+                <button v-if="file.paid_storage || usage?.cloud_storage" type="button" class="uf-link" :disabled="!!keeping" @click="pendingRemoval=file">Remove cloud copy</button>
+              </div>
+            </div>
+            <footer v-if="library.total" class="uf-cs-pages">
+              <span class="uf-t4 uf-num">{{ library.total }} files · Page {{ library.page }} of {{ library.last_page }}</span>
+              <div class="uf-cs-row-btns"><UfButton :disabled="page <= 1" @click="page--">Previous</UfButton><UfButton :disabled="page >= library.last_page" @click="page++">Next</UfButton></div>
+            </footer>
+          </template>
+        </section>
+      </div>
+
+      <aside class="uf-cs-side">
+        <StorageAddonPicker :key="addonVersion" @changed="refresh" @loaded="addon=$event" />
+        <section class="uf-cs-sec">
+          <span class="uf-label">Your plan</span>
+          <p class="uf-t3" style="margin: 0">{{ full ? 'Your cloud space is full' : 'Keep more of your gameplay' }}</p>
+          <p class="uf-t4" style="margin: 0">{{ full ? 'Your upload allowance is full. Existing files keep their current retention dates. Compare plans for more upload capacity.' : 'Review your plan for more cloud capacity and recording retention.' }}</p>
+          <UfButton @click="plans">Compare plans</UfButton>
+          <p v-if="planError" class="uf-t4 uf-cs-bad" role="alert" style="margin: 0">{{ planError }}</p>
+        </section>
+        <section class="uf-cs-sec">
+          <span class="uf-label">Manage your footage</span>
+          <UfButton variant="link" @click="router.push('/recordings')">Open Footage</UfButton>
+          <UfButton variant="link" @click="router.push('/clips')">Open Clips</UfButton>
+          <p class="uf-t4" style="margin: 0">Open files here to watch or download. Use Clips for editing and Footage for match review.</p>
+        </section>
+        <section class="uf-cs-sec">
+          <span class="uf-label">How storage works</span>
+          <p class="uf-t4" style="margin: 0">One shared GB allowance for cloud clips and recordings across all games. Local files do not count. Cloud storage is used until files are removed; it does not reset each month.</p>
+          <p class="uf-t4" style="margin: 0">Files past their retention date may be removed during cleanup. Your saved notes and comparisons stay in your notebook even when footage is unavailable.</p>
+        </section>
+      </aside>
+    </div>
+
+    <UfDialog :open="!!selectedFile" kicker="Cloud file" :title="selectedFile ? cloudFileTitle(selectedFile) : ''" :width="1100" @close="closePlayback">
+      <template v-if="selectedFile">
+        <p v-if="playbackLoading" class="uf-t4" role="status" style="margin: 0">Opening cloud file…</p>
+        <div v-else-if="playbackError" role="alert" class="uf-cs-row-text">
+          <p class="uf-t2" style="margin: 0">{{ playbackError }}</p>
+          <div class="uf-cs-row-btns"><UfButton @click="openFile(selectedFile)">Check availability again</UfButton><UfButton v-if="localRecording" @click="openLocalCopy">Open local copy</UfButton></div>
+        </div>
+        <video v-else-if="playbackUrl" :key="playbackUrl" class="uf-cs-video" :src="playbackUrl" controls preload="metadata" @error="playbackError = 'Playback failed. Retry to request a fresh video link.'" />
+        <p v-if="downloadMessage" class="uf-t4" role="status" style="margin: 0">{{ downloadMessage }}</p>
+        <p class="uf-t4" style="margin: 0">Cloud playback uses your internet connection. Keep a local copy before the retention date if you need this footage later.</p>
+      </template>
+      <template #actions>
+        <UfButton @click="closePlayback">Close</UfButton>
+        <UfButton v-if="playbackUrl && !playbackError" @click="downloadFile">Download a copy</UfButton>
+      </template>
+    </UfDialog>
+  </main>
+  <template v-else>
   <main class="cloud-page">
     <header class="page-heading">
       <div class="hero-copy"><p class="eyebrow">UPFORGE / ALL GAMES</p><h1>Cloud storage</h1><p>Your clips and recordings from every game, in one library.</p><div class="hero-meta"><span>Account-wide storage</span><span>One shared allowance across games</span></div></div>
@@ -184,6 +351,7 @@ onBeforeUnmount(() => { closePlayback(); clearTimeout(updateTimer); generation++
       <button v-if="playbackUrl && !playbackError" @click="downloadFile">Download a copy</button><p v-if="downloadMessage" role="status">{{ downloadMessage }}</p><p>Cloud playback uses your internet connection. Keep a local copy before the retention date if you need this footage later.</p></div>
     </dialog>
   </main>
+  </template>
 </template>
 <style scoped>
 .cloud-page{height:100%;overflow:auto;padding:28px;color:#e7ebf0;background:#0c1015;font-size:13px}.page-heading{display:flex;align-items:center;justify-content:space-between;gap:20px;margin-bottom:24px}.page-heading h1{font-size:28px;font-weight:750;letter-spacing:-.7px;margin:3px 0 6px}.page-heading p,.fine-print{color:#929dab}.eyebrow{font-size:10px;letter-spacing:1.5px;font-weight:700;color:#adb6c4}.cloud-layout{display:grid;grid-template-columns:minmax(0,1fr) 270px;gap:20px}.main-column,.side-column{display:flex;flex-direction:column;gap:20px;min-width:0}.capacity-panel,.queue-panel,.files-panel,.plan-panel,.library-links{border:1px solid #ffffff15;background:#121820;border-radius:10px;overflow:hidden}.capacity-panel,.queue-panel,.plan-panel,.library-links,.storage-help{padding:20px}.section-heading{display:flex;justify-content:space-between;gap:12px;margin-bottom:20px}.section-heading span{font-size:11px;color:#94a0af}h2{font-weight:650;font-size:15px}.capacity-grid{display:grid;grid-template-columns:1fr 1fr;gap:25px}.capacity>div{display:flex;align-items:center;justify-content:space-between;gap:12px}.capacity strong{font-size:23px;font-variant-numeric:tabular-nums}.capacity small{font-size:14px;font-weight:400;color:#94a0af}.capacity p{font-size:11px;color:#94a0af;margin-top:5px}.capacity.full p{color:#f3ba62}progress{display:block;width:100%;height:6px;margin-top:13px;appearance:none;border:0;border-radius:4px;overflow:hidden;background:#ffffff12}progress::-webkit-progress-bar{background:#ffffff12}progress::-webkit-progress-value{background:#ed164a}progress::-moz-progress-bar{background:#ed164a}.storage-facts{display:flex;flex-wrap:wrap;gap:8px 22px;padding-top:18px;margin-top:18px;border-top:1px solid #ffffff10;color:#95a2b3;font-size:11px}.storage-facts strong{color:#dee4eb}.fine-print{font-size:11px;line-height:1.6;margin-top:13px}.file-toolbar{display:flex;justify-content:space-between;flex-wrap:wrap;gap:12px;padding:14px;border-bottom:1px solid #ffffff12}.filters{display:flex;gap:4px}.filters button{border-color:transparent;padding:7px 10px}.filters button.selected{background:#ed164a1a;border-color:#ed164a66;color:#fff}.sort{display:flex;align-items:center;gap:8px;color:#94a0af;font-size:11px}select{background:#181f29;color:#dee4eb;padding:8px;border:1px solid #ffffff22;border-radius:5px}.file-row{display:flex;gap:12px;align-items:center;padding:17px 18px;border-bottom:1px solid #ffffff09}.file-icon{width:40px;height:40px;background:#1d2834;display:grid;place-items:center;border-radius:6px;flex-shrink:0;color:#90a7bf}.file-icon svg{width:23px;height:23px}.file-description{flex:1;min-width:0}.file-description h3{font-weight:600;overflow-wrap:anywhere}.file-row p{font-size:11px;color:#8e9baa;margin-top:4px}.file-storage{text-align:right;font-size:12px;flex-shrink:0}.file-row .expiring{color:#e8b86a}.empty{text-align:center;padding:44px 22px;color:#9aa6b4;line-height:1.8}.empty h3{color:#e7ebf0}.empty button{margin-top:15px}.pagination{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:13px 16px;color:#94a0af;font-size:11px}.pagination div{display:flex;gap:6px}button{border:1px solid #ffffff24;border-radius:5px;padding:8px 12px;min-height:34px;color:#dce3ec;background:#ffffff03}button:hover:not(:disabled){background:#ffffff0b;border-color:#ffffff44}button:disabled{opacity:.4}button:focus-visible,select:focus-visible{outline:2px solid #ff3561;outline-offset:2px}.plan-panel{border-top:2px solid #ed164a}.plan-panel h2{font-size:21px;line-height:1.25;margin:12px 0}.plan-panel>p:not(.eyebrow){line-height:1.6;color:#99a7b7}.plan-panel .primary{width:100%;background:#ed164a;border-color:#ed164a;color:white;font-weight:650;margin-top:20px;min-height:40px}.library-links h2{margin-bottom:12px}.library-links button{display:flex;width:100%;justify-content:space-between;margin-top:8px}.library-links p,.storage-help p{font-size:12px;color:#94a0af;line-height:1.65;margin-top:12px}.storage-help{padding-top:0}.queue-item{display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-top:1px solid #ffffff10}.queue-item p{font-size:11px;color:#a1adbc;margin-top:4px}@media(max-width:1000px){.cloud-layout{grid-template-columns:1fr}.side-column{display:grid;grid-template-columns:1fr 1fr}.storage-help{grid-column:1/-1}}@media(max-width:600px){.cloud-page{padding:16px}.capacity-grid,.side-column{grid-template-columns:1fr}.page-heading{align-items:flex-start}.file-row{flex-wrap:wrap}.file-storage{width:100%;text-align:left;padding-left:52px}.capacity-grid{gap:20px}.page-heading h1{font-size:24px}}
@@ -203,4 +371,56 @@ onBeforeUnmount(() => { closePlayback(); clearTimeout(updateTimer); generation++
 .cloud-brand{position:absolute;right:175px;top:50%;transform:translateY(-50%);width:150px;height:auto;opacity:.7;pointer-events:none}.page-heading{min-height:160px;border-top:2px solid #ed164a}.hero-copy{max-width:65%}
 @media(max-width:900px){.cloud-brand{display:none}.hero-copy{max-width:80%}}
 @media(max-width:650px){.hero-copy{max-width:100%}.page-heading{min-height:210px}}
+</style>
+
+<style scoped>
+.uf-cs { height: 100%; overflow: auto; background: var(--uf-bg); color: var(--uf-bone); padding: 32px 40px 48px; display: flex; flex-direction: column; gap: 28px; }
+.uf-cs p { margin: 0; }
+.uf-cs-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 24px; }
+.uf-cs-head-text { display: flex; flex-direction: column; gap: 10px; }
+.uf-cs-space { display: flex; flex-direction: column; gap: 12px; padding: 22px 0; border-top: 1px solid var(--uf-line); border-bottom: 1px solid var(--uf-line); }
+.uf-cs-meter { display: flex; align-items: baseline; gap: 10px; }
+.uf-cs-bar { height: 6px; background: var(--uf-raised); max-width: 720px; }
+.uf-cs-bar-fill { height: 100%; background: var(--uf-bone); }
+.uf-cs-bar-fill.full { background: var(--uf-gold); }
+.uf-cs-facts { display: flex; flex-wrap: wrap; gap: 6px 22px; }
+.uf-cs-warn { color: var(--uf-gold); }
+.uf-cs-bad { color: var(--uf-loss) !important; }
+.uf-cs-layout { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 48px; align-items: start; }
+.uf-cs-main, .uf-cs-side { display: flex; flex-direction: column; gap: 28px; min-width: 0; }
+.uf-cs-side { padding-left: 32px; border-left: 1px solid var(--uf-line); }
+.uf-cs-sec { display: flex; flex-direction: column; align-items: flex-start; gap: 10px; }
+.uf-cs-sec > * { max-width: 100%; }
+.uf-cs-main .uf-cs-sec { align-items: stretch; }
+.uf-cs-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 10px 0; border-top: 1px solid var(--uf-line); }
+.uf-cs-skel-space { display: flex; flex-direction: column; gap: 12px; }
+.uf-cs-skel-row { display: flex; align-items: center; gap: 16px; padding: 10px 0; border-top: 1px solid var(--uf-line); }
+.uf-cs-skel-lines { flex: 1; display: flex; flex-direction: column; gap: 8px; }
+.uf-cs-row-text { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.uf-cs-row-btns { display: flex; gap: 10px; flex-wrap: wrap; }
+.uf-cs-notice { display: flex; align-items: center; gap: 18px; padding: 12px 0 12px 14px; border-left: 2px solid var(--uf-gold); }
+.uf-cs-notice > .uf-cs-row-text { flex: 1; }
+.uf-cs-lib-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.uf-cs-toolbar { display: flex; align-items: center; flex-wrap: wrap; gap: 18px; padding-bottom: 6px; border-bottom: 1px solid var(--uf-line); }
+.uf-cs-select { display: inline-flex; align-items: center; gap: 8px; }
+.uf-cs-select select { height: 32px; padding: 0 8px; background: var(--uf-raised); color: var(--uf-bone); border: 1px solid var(--uf-line-2); border-radius: 0; font: 400 13px/1 var(--uf-body); }
+.uf-cs-empty { display: flex; flex-direction: column; align-items: flex-start; gap: 10px; padding: 28px 0; }
+.uf-cs-file { display: flex; align-items: center; gap: 18px; padding: 12px 0; border-bottom: 1px solid var(--uf-line); }
+.uf-cs-file.ended { opacity: 0.7; }
+.uf-cs-thumb { position: relative; width: 112px; height: 60px; flex: none; overflow: hidden; background: var(--uf-raised); display: flex; align-items: center; justify-content: center; }
+.uf-cs-map { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; opacity: 0.55; }
+.uf-cs-agent { position: absolute; bottom: 0; left: 50%; transform: translateX(-50%); height: 100%; object-fit: contain; object-position: bottom; }
+.uf-cs-open { background: none; border: 0; padding: 0; color: var(--uf-bone); text-align: left; cursor: pointer; overflow-wrap: anywhere; }
+.uf-cs-open:hover:not(:disabled) { text-decoration: underline; }
+.uf-cs-open:disabled { cursor: default; color: var(--uf-muted); }
+.uf-cs-size { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; flex: none; min-width: 140px; }
+.uf-cs-ret.soon { color: var(--uf-gold); }
+.uf-cs-ret.expired { color: var(--uf-loss); }
+.uf-cs-acts { display: flex; flex-direction: column; align-items: flex-end; gap: 8px; flex: none; min-width: 140px; }
+.uf-cs-pages { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding-top: 14px; }
+.uf-cs-video { display: block; width: 100%; max-height: 64vh; background: #000; }
+@media (max-width: 1100px) {
+  .uf-cs-layout { grid-template-columns: 1fr; }
+  .uf-cs-side { padding-left: 0; border-left: 0; padding-top: 24px; border-top: 1px solid var(--uf-line); }
+}
 </style>

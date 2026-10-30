@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { uiV3 } from '../../lib/ui-v3'
 import { computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { useSettings } from '../../composables/useSettings'
@@ -63,6 +64,8 @@ const clipCaptureOptions = [
   { key: 'multiKills', label: 'Multi-kills (3K / 4K)', hint: 'Triple and quadra kill rounds' },
   { key: 'aces', label: 'Aces (5K)', hint: 'Full-team wipe rounds' },
   { key: 'clutches', label: 'Clutches', hint: '1vX rounds you won' },
+  { key: 'deaths', label: 'Your deaths', hint: 'Up to 4 per match, opening deaths first — see what went wrong (Valorant)' },
+  { key: 'objectives', label: 'Objectives', hint: 'Up to 4 per match: Baron, Dragon, Herald and towers (League)' },
 ] as const
 
 const statusItems = computed<StatusItem[]>(() => {
@@ -94,7 +97,147 @@ const statusItems = computed<StatusItem[]>(() => {
 </script>
 
 <template>
-  <div class="space-y-4">
+  <div v-if="uiV3" class="uf-set-pane">
+    <SettingsStatusStrip :items="statusItems" />
+    <div class="uf-set-actions"><button type="button" class="uf-link" @click="router.push({ path: '/settings', query: { tab: 'advanced', section: 'obs' } })">OBS &amp; capture setup →</button></div>
+
+    <SettingsSection id="capture" title="Capture" hint="What gets recorded, and at what quality" :highlight-id="highlightSection">
+      <div class="uf-field">
+        <span class="uf-t3">Record game modes</span>
+        <div class="uf-choices is-grid">
+          <button
+            v-for="mode in GAME_MODES"
+            :key="mode.value"
+            type="button"
+            class="uf-choice"
+            :aria-pressed="activeRecordedModes.includes(mode.value)"
+            @click="toggleMode(mode.value)"
+          >
+            <span class="uf-choice-box"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M5 13l4 4L19 7" /></svg></span>
+            <span class="uf-choice-text"><span class="uf-t3">{{ mode.label }}</span><span v-if="mode.hint" class="uf-t4">{{ mode.hint }}</span></span>
+          </button>
+        </div>
+        <p class="uf-t4">{{ modeHint }}</p>
+      </div>
+
+      <div v-if="settings.primaryGame === 'cs2'" class="uf-inset">
+        <div class="uf-set-row-text">
+          <p class="uf-t3">CS2 demo recording</p>
+          <p class="uf-t4">UpForge auto-installs demo recording when CS2 launches. Restart CS2 once after first setup. Highlight clips (3K/ace/clutch) are cut from your VOD using the demo.</p>
+        </div>
+        <label class="uf-field"><span class="uf-t4">Steam / in-game name (for clip matching)</span>
+          <input v-model="settings.cs2SteamName" type="text" placeholder="Auto-detect from Steam" class="uf-input" @change="debouncedSave()">
+          <span class="uf-t4">Only needed if clips miss your kills — must match your CS2 name.</span>
+        </label>
+        <div class="uf-field">
+          <span class="uf-t4">Demo folder</span>
+          <p class="uf-mono">{{ settings.cs2DemoDir || 'Auto-detect via Steam' }}</p>
+          <div class="uf-set-actions">
+            <button type="button" class="uf-btn-secondary uf-set-btn" :disabled="cs2Detecting" @click="detectCs2DemoDir">{{ cs2Detecting ? 'Detecting…' : 'Detect folder' }}</button>
+            <button type="button" class="uf-btn-secondary uf-set-btn" @click="browseCs2DemoDir">Browse…</button>
+            <button type="button" class="uf-link" @click="openCs2Analyze">Open web uploader →</button>
+          </div>
+        </div>
+      </div>
+      <div v-else-if="settings.primaryGame === 'deadlock'" class="uf-inset">
+        <div class="uf-set-row-text">
+          <p class="uf-t3">Deadlock recording</p>
+          <p class="uf-t4">UpForge watches Steam&apos;s local cache for match data and downloads replays from Valve when available. Use borderless windowed mode for OBS capture.</p>
+        </div>
+        <SettingsDeadlockDiagnostics />
+      </div>
+
+      <div class="uf-field">
+        <div class="uf-set-row-text"><span class="uf-t3">Recording format</span><span class="uf-t4">Preset applied to OBS when a match starts.</span></div>
+        <div class="uf-choices" role="radiogroup" aria-label="Recording format">
+          <button type="button" role="radio" class="uf-choice" :aria-checked="settings.recordingPreset === 'coaching'" @click="setRecordingPreset('coaching')">
+            <span class="uf-choice-text"><span class="uf-t3">Coaching · 720p · 5 Mbps · 30 fps</span><span class="uf-t4">Best for AI analysis and fast uploads (~1.3 GB / match)</span></span>
+          </button>
+          <button type="button" role="radio" class="uf-choice" :aria-checked="settings.recordingPreset === 'creator'" @click="setRecordingPreset('creator')">
+            <span class="uf-choice-text">
+              <span class="uf-t3">Creator · {{ settings.recordingPreset === 'creator' && settings.recordingQuality === '720p' ? '720p · 5 Mbps · 30 fps' : '1080p · 10 Mbps · 60 fps' }}</span>
+              <span class="uf-t4">{{ hasProAccess ? 'Higher quality local VODs. Resolution syncs to OBS.' : 'Pro feature. Higher quality for streaming and content creation.' }}</span>
+            </span>
+            <span v-if="!hasProAccess" class="uf-choice-tag">Pro</span>
+          </button>
+        </div>
+        <div v-if="hasProAccess && settings.recordingPreset === 'creator'" class="uf-seg" role="group" aria-label="Creator quality">
+          <button type="button" :aria-pressed="settings.recordingQuality === '720p'" @click="setCreatorQuality('720p')">720p · 30 fps</button>
+          <button type="button" :aria-pressed="settings.recordingQuality !== '720p'" @click="setCreatorQuality('1080p')">1080p · 60 fps · ~3 GB / match</button>
+        </div>
+        <p v-if="settings.recordingPreset === 'creator'" class="uf-t4">Coaching uploads are compressed automatically. Your local file stays at full quality.</p>
+      </div>
+      <SettingsRow label="Record game audio" hint="Includes in-game sound via OBS">
+        <SettingsToggle label="Record game audio" :on="!!settings.audioEnabled" @click="toggleAudio()" />
+      </SettingsRow>
+      <SettingsRow label="Record full match VODs" hint="Off = replay-buffer kill clips only. No AI match coaching without a VOD.">
+        <SettingsToggle label="Record full match VODs" :on="settings.fullMatchRecording !== false" @click="toggleFullMatchRecording()" />
+      </SettingsRow>
+    </SettingsSection>
+
+    <SettingsSection id="storage" title="Storage &amp; clips" hint="Where recordings live, how much space they use, and what gets cleaned up" :highlight-id="highlightSection">
+      <div class="uf-field">
+        <span class="uf-t3">Save location</span>
+        <span class="uf-link-inline">
+          <input :value="settings.effectiveSavePath ?? settings.savePath" readonly aria-label="Save location" class="uf-input">
+          <button type="button" class="uf-btn-secondary uf-set-btn" @click="changeSavePath">Change</button>
+        </span>
+        <p v-if="settings.recordingPathWarning" role="alert" class="uf-note is-warn">Your previous save location was inside the app installation folder. New recordings use the safe location shown above. Existing files have not been moved.</p>
+        <span class="uf-t4">Keep recordings outside the UpForge installation folder to protect them during app updates. UpForge creates a recordings folder for each profile. Existing recordings stay in their current location.</span>
+      </div>
+
+      <div class="uf-field">
+        <div class="uf-usage-head">
+          <span class="uf-t3">Storage on this PC</span>
+          <span class="uf-set-actions">
+            <button type="button" class="uf-link" @click="openRecordingsFolder">Open folder →</button>
+            <button type="button" class="uf-link" @click="router.push('/cloud-storage')">Cloud storage →</button>
+          </span>
+        </div>
+        <p class="uf-t3 uf-num" :class="diskSpaceCritical ? 'uf-tone-bad' : diskSpaceLow ? 'uf-tone-warn' : ''">{{ storageSummary }}</p>
+        <div class="uf-meter" :class="diskSpaceCritical ? 'is-bad' : diskSpaceLow ? 'is-warn' : ''"><span class="uf-fill" :style="{ width: storageUsagePercent + '%' }" /></div>
+        <div class="uf-usage-head"><span class="uf-t4">Local budget</span><span class="uf-t4 uf-num">{{ storageSoftLimitLabel }}</span></div>
+        <p v-if="storageEstimateLabel" class="uf-t4">{{ storageEstimateLabel }}</p>
+        <p v-if="diskSpaceLow" class="uf-note is-warn">Low disk space can cut recordings short. Upload pending VODs to the cloud, then remove local copies you no longer need.</p>
+        <p class="uf-t4">This is storage on your device, separate from your cloud allowance. After confirming a cloud upload, you can remove its local copy and keep reviewing from the cloud.</p>
+        <div v-if="storageBreakdown.pendingCount > 0 || storageBreakdown.cloudBackedCount > 0 || storageBreakdown.orphanCount > 0" class="uf-set-actions">
+          <button v-if="storageBreakdown.pendingCount > 0" type="button" class="uf-btn-secondary uf-set-btn" :disabled="storageBusy" @click="uploadPendingToCloud">
+            <template v-if="storageUploadProgress?.paused">Cloud backup paused — resumes after your match</template>
+            <template v-else-if="storageUploadProgress">Uploading {{ storageUploadProgress.current }}/{{ storageUploadProgress.total }}…</template>
+            <template v-else>Save {{ storageBreakdown.pendingCount }} pending to cloud ({{ formatBytes(storageBreakdown.pendingBytes) }})</template>
+          </button>
+          <button v-if="storageBreakdown.cloudBackedCount > 0" type="button" class="uf-btn-secondary uf-set-btn" :disabled="storageBusy" @click="purgeCloudBackedLocals">
+            Remove {{ storageBreakdown.cloudBackedCount }} cloud-backed local file{{ storageBreakdown.cloudBackedCount === 1 ? '' : 's' }} ({{ formatBytes(storageBreakdown.cloudBackedBytes) }})
+          </button>
+          <button v-if="storageBreakdown.orphanCount > 0" type="button" class="uf-btn-secondary uf-set-btn" :disabled="storageBusy" @click="purgeUntrackedRecordings">
+            Remove {{ storageBreakdown.orphanCount }} untracked file{{ storageBreakdown.orphanCount === 1 ? '' : 's' }} ({{ formatBytes(storageBreakdown.orphanBytes) }})
+          </button>
+        </div>
+        <p v-if="storageBreakdown.legacyDuplicateBytes > 0" class="uf-t4">Legacy duplicate recordings ({{ formatBytes(storageBreakdown.legacyDuplicateBytes) }}) are removed automatically on launch.</p>
+        <p v-if="storageMessage" class="uf-note" :class="storageMessageError ? 'is-bad' : 'is-ok'">{{ storageMessage }}</p>
+      </div>
+
+      <div class="uf-field">
+        <div class="uf-set-row-text"><span class="uf-t3">Highlight clips to capture</span><span class="uf-t4">Choose which moments UpForge auto-saves after each match. Manual hotkey clips ({{ '\u2318' }}/F9) are always saved.</span></div>
+        <div class="uf-set-sec-body is-rows uf-rows-top">
+          <SettingsRow v-for="opt in clipCaptureOptions" :key="opt.key" :label="opt.label" :hint="opt.hint">
+            <SettingsToggle :label="opt.label" :on="!!settings.clipCapture?.[opt.key]" @click.stop="toggleClipCapture(opt.key)" />
+          </SettingsRow>
+        </div>
+      </div>
+
+      <SettingsRow label="Auto-delete local clips" hint="Local-only clips older than this are deleted on startup. Favorites are kept.">
+        <select v-model.number="settings.clipRetentionDays" aria-label="Auto-delete local clips" class="uf-select is-inline" @change="debouncedSave"><option :value="0">Never (keep all clips)</option><option :value="7">After 7 days</option><option :value="14">After 14 days</option><option :value="30">After 30 days</option><option :value="60">After 60 days</option></select>
+      </SettingsRow>
+      <SettingsRow label="Auto-delete routine kill clips" hint="Removes old 1K kill clips only. Clutches, aces, multikills, bookmarks, and favorites are kept.">
+        <select v-model.number="settings.clipKillRetentionDays" aria-label="Auto-delete routine kill clips" class="uf-select is-inline" @change="debouncedSave"><option :value="0">Never</option><option :value="7">After 7 days</option><option :value="14">After 14 days</option><option :value="30">After 30 days</option></select>
+      </SettingsRow>
+      <SettingsRow label="Auto-delete local match recordings" hint="Deletes pending local VODs and untracked files in your save folder on startup. Cloud-backed recordings are not affected.">
+        <select v-model.number="settings.recordingRetentionDays" aria-label="Auto-delete local match recordings" class="uf-select is-inline" @change="debouncedSave"><option :value="0">Never (keep until uploaded or removed manually)</option><option :value="7">After 7 days (local-only, not on cloud)</option><option :value="14">After 14 days</option><option :value="30">After 30 days</option><option :value="60">After 60 days</option></select>
+      </SettingsRow>
+    </SettingsSection>
+  </div>
+  <div v-else class="space-y-4">
     <SettingsStatusStrip :items="statusItems" />
 
     <div class="-mt-1">

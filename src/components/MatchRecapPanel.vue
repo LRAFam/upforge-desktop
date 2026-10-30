@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { uiV3 } from '../lib/ui-v3'
 import { computed, ref } from 'vue'
 import {
   buildMatchHighlights,
@@ -57,6 +58,13 @@ function kindAccent(kind: MatchHighlight['kind']): string {
   return 'text-red-300 bg-red-500/10 border-red-500/25'
 }
 
+/** UI v3: highlights read as better (win), clutch neutral bone, mistakes worse (loss). */
+function v3Tone(kind: MatchHighlight['kind']): 'good' | 'neutral' | 'bad' {
+  if (kind === 'best_play' || kind === 'multikill' || kind === 'improved_moment') return 'good'
+  if (kind === 'clutch') return 'neutral'
+  return 'bad'
+}
+
 function onSelect(h: MatchHighlight) {
   if (h.videoOffsetMs != null) {
     emit('seek', Math.max(0, h.videoOffsetMs - 4000))
@@ -97,6 +105,28 @@ async function exportRecapVideo() {
 </script>
 
 <template>
+<template v-if="uiV3">
+  <section v-if="hasContent" class="mr3" aria-label="Match recap">
+    <div class="mr3-head">
+      <span class="uf-label">Match recap · {{ recap.featured.length }} moments</span>
+      <button v-if="recordingId && recap.featured.length" type="button" class="uf-link" :disabled="exporting" @click="exportRecapVideo">{{ exporting ? 'Stitching…' : exportDone ? 'Saved' : 'Export recap' }}</button>
+    </div>
+    <button v-for="item in recap.featured" :key="item.id" type="button" class="mr3-row" :class="{ 'mr3-row--go': item.videoOffsetMs != null || item.clipId }" @click="onSelect(item)">
+      <span class="mr3-kind" :class="`mr3-kind--${v3Tone(item.kind)}`">{{ highlightKindLabel(item.kind) }}</span>
+      <span class="mr3-text">
+        <span class="uf-t3">{{ item.title }}<span v-if="formatHighlightRound(item)" class="uf-t4"> · {{ formatHighlightRound(item) }}</span></span>
+        <span class="uf-t4" style="color: var(--uf-muted)">{{ item.reason }}</span>
+        <span v-if="item.benchmarkHint" class="uf-t4">{{ item.benchmarkHint }}</span>
+      </span>
+      <span v-if="item.videoOffsetMs != null || item.clipId" class="mr3-go" aria-hidden="true">▷</span>
+    </button>
+    <p v-if="recap.clutchMoments.length || recap.bestPlays.length || recap.mistakes.length" class="uf-t4 mr3-sum">
+      {{ [recap.clutchMoments.length ? `${recap.clutchMoments.length} clutch` : '', recap.bestPlays.length ? `${recap.bestPlays.length} highlights` : '', recap.mistakes.length ? `${recap.mistakes.length} to review` : ''].filter(Boolean).join(' · ') }}
+    </p>
+    <p v-if="exportError" role="alert" class="uf-t4" style="color: var(--uf-loss)">{{ exportError }}</p>
+  </section>
+</template>
+<template v-else>
   <div v-if="hasContent" class="rounded-xl border border-white/[0.10] bg-white/[0.02] overflow-hidden">
     <div class="px-3.5 py-2.5 border-b border-white/[0.07] flex items-center justify-between gap-2">
       <span class="text-[10px] font-bold uppercase tracking-widest text-gray-500">Match recap</span>
@@ -168,3 +198,21 @@ async function exportRecapVideo() {
     <p v-if="exportError" class="px-3 pb-2.5 text-[10px] text-red-400">{{ exportError }}</p>
   </div>
 </template>
+</template>
+
+<style scoped>
+.mr3 { display: flex; flex-direction: column; }
+.mr3 p { margin: 0; }
+.mr3-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding-bottom: 10px; }
+.mr3-row { display: flex; align-items: flex-start; gap: 12px; width: 100%; text-align: left; padding: 12px 0; background: none; border: 0; border-top: 1px solid var(--uf-line); cursor: default; color: inherit; }
+.mr3-row--go { cursor: pointer; }
+.mr3-row--go:hover { background: var(--uf-hover); }
+.mr3-kind { flex: none; width: 84px; padding-top: 2px; font: 600 12px/1.2 var(--uf-body); letter-spacing: 0.12em; text-transform: uppercase; color: var(--uf-faint); }
+.mr3-kind--good { color: var(--uf-win); }
+.mr3-kind--bad { color: var(--uf-loss); }
+.mr3-kind--neutral { color: var(--uf-bone); }
+.mr3-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.mr3-go { color: var(--uf-faint); padding-top: 2px; }
+.mr3-row--go:hover .mr3-go { color: var(--uf-bone); }
+.mr3-sum { padding-top: 10px; border-top: 1px solid var(--uf-line); }
+</style>

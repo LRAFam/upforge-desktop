@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { uiV3 } from '../../lib/ui-v3'
+
 defineProps<{
   label: string
   on: boolean
@@ -12,6 +14,17 @@ defineEmits<{
 
 <template>
   <button
+    v-if="uiV3"
+    type="button"
+    role="switch"
+    class="uf-switch"
+    :aria-label="label"
+    :aria-checked="on"
+    :disabled="disabled"
+    @click="$emit('click', $event)"
+  />
+  <button
+    v-else
     type="button"
     role="switch"
     :aria-label="label"

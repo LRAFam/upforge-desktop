@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { computed } from 'vue'
+import { uiV3 } from '../../lib/ui-v3'
 import VodLeagueScoreboard from './VodLeagueScoreboard.vue'
+import LolMatchCoaching from '../v3/games/LolMatchCoaching.vue'
 import VodPersonalReview from './VodPersonalReview.vue'
 import VodWorkspaceDivider from './VodWorkspaceDivider.vue'
 import { useVodReview } from '../../composables/useVodReview'
@@ -13,6 +15,7 @@ import { getAgentImage, getAbilityIcon } from '../../lib/valorant'
 import VodRoundLogSidebar from './VodRoundLogSidebar.vue'
 import VodMatchTimelineSidebar from './VodMatchTimelineSidebar.vue'
 import VodDemoPendingPanel from './VodDemoPendingPanel.vue'
+import Cs2FaceitAttach from '../v3/games/Cs2FaceitAttach.vue'
 import VodTimelineEventIcon from './VodTimelineEventIcon.vue'
 import { recordingTimelineReady, usesAsyncDemoSync } from '../../lib/recording-demo-status'
 
@@ -147,6 +150,14 @@ const {
   videoSyncOffsetMs,
 } = useVodReview()
 
+/** UI v3: markers keep their meaning with the v3 palette — kills win, deaths loss, the rest stay neutral. */
+function v3MarkerClass(kind: string) {
+  if (kind === 'round') return 'vb3-mk vb3-mk--round'
+  if (kind === 'kill') return 'vb3-mk vb3-mk--kill'
+  if (kind === 'death') return 'vb3-mk vb3-mk--death'
+  return 'vb3-mk vb3-mk--obj'
+}
+
 const showDemoPendingPanel = computed(() => {
   if (!timeline.value || !recordingId.value) return false
   if (!usesAsyncDemoSync(timeline.value.game)) return false
@@ -158,6 +169,9 @@ const showDemoPendingPanel = computed(() => {
 })
 
 const noVideoHint = computed((): string => {
+  if ((timeline.value as { devFixture?: boolean } | null)?.devFixture) {
+    return 'Dev fixture: real Bind match data with no recording attached. Events are placed by game time.'
+  }
   if (!recordingId.value) {
     return 'Recording unavailable — it may have been deleted locally or expired from cloud storage.'
   }
@@ -175,14 +189,17 @@ const noVideoHint = computed((): string => {
 <template>
   <div class="vod-workspace-body flex flex-1 min-h-0" :class="{ 'workspace-enabled': props.workspace }" :style="props.workspace ? { '--rounds-width': `${props.roundsWidth}%`, '--details-width': `${props.detailsWidth}%` } : undefined">
 <!-- Left sidebar: round log or demo-pending panel -->
-      <VodDemoPendingPanel
-        v-if="showDemoPendingPanel && !theaterMode && !roundLogCollapsed"
-        :game="timeline!.game"
-        :map="timeline!.map"
-        :recorded-at="timeline!.recordedAt"
-        :recording-id="recordingId"
-        @demo-linked="reloadTimelineFromStore"
-      />
+      <div v-if="showDemoPendingPanel && !theaterMode && !roundLogCollapsed" class="flex min-h-0 flex-col">
+        <VodDemoPendingPanel
+          :game="timeline!.game"
+          :map="timeline!.map"
+          :recorded-at="timeline!.recordedAt"
+          :recording-id="recordingId"
+          @demo-linked="reloadTimelineFromStore"
+        />
+        <!-- CS2 (v3): offer the matching FACEIT match when the demo isn't parsed yet. -->
+        <Cs2FaceitAttach v-if="uiV3 && timeline?.game === 'cs2' && recordingId" :recording-id="recordingId" :started-at-ms="timeline!.recordedAt" :map="timeline!.map" />
+      </div>
       <VodRoundLogSidebar v-else-if="!theaterMode && !roundLogCollapsed && isRoundBased" />
       <VodMatchTimelineSidebar v-else-if="!theaterMode && !roundLogCollapsed" />
 
@@ -194,6 +211,15 @@ const noVideoHint = computed((): string => {
 
       <div class="flex-1 flex flex-col min-w-0 min-h-0">
 
+<template v-if="uiV3">
+        <div v-if="hasCoachFeedback && coachReview?.status === 'completed' && !sidePanelOpen" class="vb3-banner">
+          <span class="uf-label" style="color: var(--uf-bone)">Coach feedback ready</span>
+          <span v-if="coachReview?.coach?.display_name" class="uf-t4">from {{ coachReview.coach.display_name }} · {{ coachReview?.annotations?.length ?? 0 }} timeline notes</span>
+          <span v-else class="uf-t4">{{ coachReview?.annotations?.length ?? 0 }} timeline notes</span>
+          <button type="button" class="uf-link" style="margin-left: auto" @click="setSidePanelTab('notes')">Open coach notes →</button>
+        </div>
+</template>
+<template v-else>
         <!-- Coach feedback banner -->
         <div
           v-if="hasCoachFeedback && coachReview?.status === 'completed' && !sidePanelOpen"
@@ -217,6 +243,7 @@ const noVideoHint = computed((): string => {
           </div>
         </div>
 
+</template>
         <!-- Video area -->
         <div
           ref="videoAreaEl"
@@ -335,6 +362,7 @@ const noVideoHint = computed((): string => {
           </div>
 
           <div
+            v-if="timeline?.videoPath"
             class="absolute inset-0 flex items-center justify-center pointer-events-none"
             :class="isPlaying ? 'opacity-0' : 'opacity-100'"
             style="transition: opacity 0.25s"
@@ -543,6 +571,63 @@ const noVideoHint = computed((): string => {
 
         <!-- Slim intel strip when side panel is open (desktop) — removed; intel lives in side panel -->
 
+<template v-if="uiV3">
+        <div class="vb3-transport">
+          <div class="vb3-scrub" @click="onScrubberClick" @mousemove="onScrubberHover" @mouseleave="hoverTime = null">
+            <div class="vb3-track">
+              <div v-if="activeRoundSegment && isRoundBased" class="vb3-seg" :style="{ left: activeRoundSegment.left + '%', width: activeRoundSegment.width + '%' }" />
+              <div class="vb3-progress" :style="{ width: progressPercent + '%' }" />
+              <DuelMomentScrubberBands v-if="hasDuelMoments && duration > 0" :moments="duelMoments" :duration-sec="duration" :active-moment-id="activeDuelMomentId" @select="onDuelMomentBandSelect" />
+              <template v-if="isRoundBased">
+                <div v-for="sep in roundSeparators" :key="sep.percent" class="vb3-sep" :style="{ left: sep.percent + '%' }" />
+              </template>
+              <button v-for="marker in aiCoachingMarkers" :key="marker.key" type="button" class="vb3-mk vb3-mk--ai" :style="{ left: marker.percent + '%' }" :title="`AI note: ${marker.label}`" :aria-label="`AI note: ${marker.label}`" @click.stop="seekCoachingEvidence(marker.evidence)" />
+              <button v-for="marker in coachProgressMarkers" :key="marker.key" type="button" class="vb3-mk vb3-mk--coach" :style="{ left: marker.percent + '%' }" :title="`Coach note: ${marker.label}`" :aria-label="`Coach note: ${marker.label}`" @click.stop="jumpToCoachMarker(marker)" />
+              <template v-for="marker in progressMarkers" :key="marker.key">
+                <button v-if="marker.kind !== 'round' || isRoundBased" type="button" :class="v3MarkerClass(marker.kind)" :style="{ left: marker.percent + '%' }" :title="marker.label" :aria-label="marker.label" @click.stop="jumpToMarker(marker)" />
+              </template>
+              <div v-if="hoverTime !== null" class="vb3-hover" :style="{ left: (hoverTime / duration * 100) + '%' }" />
+            </div>
+            <div class="vb3-head" :style="{ left: `${progressPercent}%` }" />
+            <div v-if="hoverTime !== null" class="vb3-tip uf-t4" :style="{ left: (hoverTime / duration * 100) + '%' }">
+              {{ formatMs(hoverTime * 1000) }}<span v-if="hoverRoundLabel"> · {{ hoverRoundLabel }}</span>
+            </div>
+          </div>
+          <div class="vb3-controls">
+            <button type="button" class="vb3-ib vb3-ib--play" :aria-label="isPlaying ? 'Pause' : 'Play'" title="Play/Pause (Space)" @click="togglePlay">
+              <svg v-if="isPlaying" width="18" height="18" fill="currentColor" viewBox="0 0 20 20"><path d="M5.75 4.5h2.75v11H5.75zM11.5 4.5h2.75v11H11.5z"/></svg>
+              <svg v-else width="18" height="18" fill="currentColor" viewBox="0 0 20 20"><path d="M6.75 4.75v10.5l8-5.25-8-5.25Z"/></svg>
+            </button>
+            <button type="button" class="vb3-ib" aria-label="Skip back 5 seconds" title="Skip back 5s (←)" @click="skip(-5)"><svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 20 20"><path stroke-linecap="square" stroke-width="1.75" d="M9.75 14.5 5.5 10l4.25-4.5m5.5 9-4.25-4.5 4.25-4.5"/></svg></button>
+            <button type="button" class="vb3-ib" aria-label="Skip forward 5 seconds" title="Skip forward 5s (→)" @click="skip(5)"><svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 20 20"><path stroke-linecap="square" stroke-width="1.75" d="m10.25 5.5 4.25 4.5-4.25 4.5m-5.5-9 4.25 4.5-4.25 4.5"/></svg></button>
+            <button type="button" class="vb3-ib" aria-label="Previous event" title="Previous event (J)" @click="seekPrevEvent"><svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 20 20"><path stroke-linecap="square" stroke-width="1.75" d="M11.75 14.5 7.5 10l4.25-4.5"/></svg></button>
+            <button type="button" class="vb3-ib" aria-label="Next event" title="Next event (L)" @click="seekNextEvent"><svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 20 20"><path stroke-linecap="square" stroke-width="1.75" d="m8.25 14.5 4.25-4.5-4.25-4.5"/></svg></button>
+            <button type="button" class="vb3-tb uf-num" title="Cycle speed ([/])" :aria-label="`Playback speed ${playbackSpeed}x`" @click="cycleSpeed">{{ playbackSpeed }}×</button>
+            <button v-if="timeline?.videoPath" type="button" class="vb3-ib" :aria-label="isMuted ? 'Unmute' : 'Mute'" :title="isMuted ? 'Unmute (V)' : 'Mute (V)'" @click="toggleMute">
+              <svg v-if="isMuted" width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-width="1.75" d="M11 5 6 9H3v6h3l5 4V5Z"/><path stroke-width="1.75" d="m22 9-6 6m0-6 6 6"/></svg>
+              <svg v-else width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-width="1.75" d="M11 5 6 9H3v6h3l5 4V5Z"/><path stroke-width="1.75" d="M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>
+            </button>
+            <span class="vb3-time uf-num">{{ formatSeconds(currentTime) }} <span style="color: var(--uf-faint)">/ {{ formatSeconds(duration, true) }}</span></span>
+            <span style="flex: 1" />
+            <span v-if="aiCoachingMarkers.length" class="vb3-key uf-t4"><i class="vb3-key-dot vb3-key-dot--ai" />AI note</span>
+            <span class="vb3-key uf-t4"><i class="vb3-key-dot vb3-key-dot--kill" />Kill</span>
+            <span class="vb3-key uf-t4"><i class="vb3-key-dot vb3-key-dot--death" />Death</span>
+            <span class="uf-hair-v" />
+            <button v-if="selectedRound && isRoundBased" type="button" class="vb3-tb" :class="{ 'vb3-tb--on': roundDetailExpanded }" :aria-expanded="roundDetailExpanded" @click="roundDetailExpanded = !roundDetailExpanded">R{{ selectedRound.roundNumber + 1 }} events <span class="uf-num" style="color: var(--uf-faint)">{{ selectedRound.events.length }}</span></button>
+            <button type="button" class="vb3-tb" :class="{ 'vb3-tb--on': showScoreboard }" :aria-pressed="showScoreboard" @click="showScoreboard = !showScoreboard">Scoreboard</button>
+            <button type="button" class="vb3-tb" @click="showShortcuts = true">Shortcuts</button>
+          </div>
+        </div>
+        <div v-if="recordingId && timeline && !theaterMode" class="vb3-sync">
+          <span class="uf-label">Event timing</span>
+          <button type="button" class="vb3-tb uf-num" title="Move all events five seconds earlier in this recording" @click="nudgeTimelineSync(-5000)">−5s</button>
+          <button type="button" class="vb3-tb uf-num" title="Move all events one second earlier" @click="nudgeTimelineSync(-1000)">−1s</button>
+          <span class="uf-t3 uf-num" style="min-width: 44px; text-align: center">{{ syncOffsetLabel }}</span>
+          <button type="button" class="vb3-tb uf-num" title="Move all events one second later" @click="nudgeTimelineSync(1000)">+1s</button>
+          <span class="uf-t4">Events late? Move them earlier. Saved for this recording.</span>
+        </div>
+</template>
+<template v-else>
         <!-- Transport deck -->
         <div class="vod-transport flex-shrink-0 border-t border-white/[0.08] bg-[#101010] px-3 py-2">
           <div class="vod-transport-inner space-y-2">
@@ -733,6 +818,7 @@ const noVideoHint = computed((): string => {
           <button type="button" class="rounded border border-white/15 px-2 py-1 text-gray-200 hover:bg-white/10" title="Move all events one second later" @click="nudgeTimelineSync(1000)">+1s</button>
           <span class="text-gray-500">Events late? Move them earlier. Saved for this recording.</span>
         </div>
+</template>
         <div
           v-if="roundDetailExpanded && selectedRound && !theaterMode && isRoundBased"
           class="flex h-[clamp(11rem,30vh,22rem)] min-h-0 flex-shrink-0 flex-col border-t border-white/[0.10] bg-[#1a1a1a]"
@@ -871,6 +957,38 @@ const noVideoHint = computed((): string => {
           v-if="showScoreboard && sortedTeamSnapshot.length && !theaterMode && timeline?.game === 'lol'"
           :groups="scoreboardGroups" :is-own-player="isOwnScoreboardPlayer"
         />
+        <LolMatchCoaching v-if="uiV3 && !theaterMode && timeline?.game === 'lol'" :match-id="timeline?.matchId ?? null" />
+<template v-if="uiV3">
+        <div v-if="showScoreboard && sortedTeamSnapshot.length && !theaterMode && timeline?.game !== 'lol'" class="vb3-board">
+          <table>
+            <thead><tr><th class="uf-label">Player</th><th class="uf-label">K / D / A</th><th class="uf-label">ACS</th><th class="uf-label">Abilities</th></tr></thead>
+            <tbody v-for="(group, gi) in scoreboardGroups" :key="gi">
+              <tr class="vb3-board-group"><td colspan="4" class="uf-label">{{ group.label }}</td></tr>
+              <tr v-for="(p, row) in group.players" :key="p.puuid ?? `${gi}-${row}`" :class="{ 'vb3-board-me': isOwnScoreboardPlayer(p) }">
+                <td>
+                  <div class="vb3-board-who">
+                    <img v-if="p.agent && getAgentImage(p.agent)" :src="getAgentImage(p.agent)" alt="" class="vb3-board-agent">
+                    <span v-else class="vb3-board-agent" />
+                    <span class="uf-t3">{{ isOwnScoreboardPlayer(p) ? 'You' : p.summonerName }}</span>
+                    <span v-if="p.competitiveTier > 0" class="uf-t4">{{ p.competitiveTierName }}</span>
+                  </div>
+                </td>
+                <td class="uf-num"><span style="color: var(--uf-bone)">{{ p.kills }}</span> / {{ p.deaths }} / {{ p.assists }}</td>
+                <td class="uf-num">{{ p.score }}</td>
+                <td>
+                  <div v-if="p.abilityCasts && p.agent" class="vb3-board-abil">
+                    <span v-for="slot in abilityCastSlots" v-show="p.abilityCasts[slot.key] > 0" :key="slot.key" :title="`${slot.label}: ${p.abilityCasts[slot.key]}`">
+                      <img v-if="getAbilityIcon(p.agent, slot.slot)" :src="getAbilityIcon(p.agent, slot.slot)" alt="">{{ p.abilityCasts[slot.key] }}
+                    </span>
+                  </div>
+                  <span v-else>—</span>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+</template>
+<template v-else>
         <div
           v-if="showScoreboard && sortedTeamSnapshot.length && !theaterMode && timeline?.game !== 'lol'"
           class="flex-shrink-0 bg-[#1a1a1a] border-t border-white/[0.10] max-h-52 overflow-y-auto scrollbar-hide"
@@ -952,6 +1070,7 @@ const noVideoHint = computed((): string => {
             </div>
           </template>
         </div>
+</template>
       </div>
 
       <VodWorkspaceDivider v-if="workspace && sidePanelOpen && !theaterMode"
@@ -963,6 +1082,17 @@ const noVideoHint = computed((): string => {
         class="vod-side-panel hidden md:flex w-[min(440px,34vw)] xl:w-[min(480px,32vw)] flex-shrink-0 flex-col min-h-0 border-l border-white/[0.09]"
         @click.stop
       >
+<template v-if="uiV3">
+        <div class="vb3-sidetabs" role="tablist" aria-label="Review panel">
+          <button type="button" role="tab" class="vb3-sidetab" :class="{ 'vb3-sidetab--on': showInsightsPanel }" :aria-selected="showInsightsPanel" @click="setSidePanelTab('notes')">Review</button>
+          <button v-if="hasSpatialIntel" type="button" role="tab" class="vb3-sidetab" :class="{ 'vb3-sidetab--on': spatialMapVisible }" :aria-selected="spatialMapVisible" @click="setSidePanelTab('map')">Map intel</button>
+          <span style="flex: 1" />
+          <button v-if="spatialMapVisible && hasSpatialIntel" type="button" class="vb3-ib" :aria-label="spatialMapLarge ? 'Standard map size' : 'Larger map'" :title="spatialMapLarge ? 'Standard map size' : 'Larger map'" @click="spatialMapLarge = !spatialMapLarge">{{ spatialMapLarge ? '−' : '+' }}</button>
+          <button type="button" class="vb3-ib" aria-label="Close panel" title="Close panel (N / M)" @click="setSidePanelTab(null)"><svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 20 20"><path stroke-width="1.75" d="m12.5 5.5-5 4.5 5 4.5"/></svg></button>
+        </div>
+
+</template>
+<template v-else>
         <div class="flex items-center gap-1.5 px-2 py-2 border-b border-white/[0.08] flex-shrink-0 bg-gradient-to-r from-red-500/[0.05] to-transparent">
           <button
             type="button"
@@ -999,6 +1129,7 @@ const noVideoHint = computed((): string => {
           </button>
         </div>
 
+</template>
         <div v-show="showInsightsPanel" class="vod-notes-panel flex-1 min-h-0 overflow-y-auto scrollbar-hide px-4 py-4 space-y-4">
           <VodPersonalReview />
           <TacticalIntelBrief
@@ -1024,6 +1155,30 @@ const noVideoHint = computed((): string => {
             @seek="seekDuelMoment"
           />
 
+<template v-if="uiV3">
+          <section v-if="coachReview?.annotations?.length || coachReview?.coach_perspective" class="vb3-coach">
+            <div class="vb3-coach-head">
+              <span class="uf-label">Human coach<template v-if="coachReview.coach?.display_name"> · {{ coachReview.coach.display_name }}</template></span>
+              <span class="uf-t4" :style="{ color: coachReview.status === 'completed' ? 'var(--uf-win)' : 'var(--uf-muted)' }">{{ coachReview.status.replace('_', ' ') }}</span>
+            </div>
+            <p v-if="coachReview.student_question" class="uf-t4">You asked: {{ coachReview.student_question }}</p>
+            <p v-if="coachReview.coach_perspective" class="uf-t3 vb3-coach-says">{{ coachReview.coach_perspective }}</p>
+            <button v-for="(note, noteIndex) in coachReview.annotations" :key="note.id" :data-coach-note="note.id" type="button" class="vb3-note" :class="{ 'vb3-note--on': activeCoachNoteId === note.id }" @click="seekCoachAnnotation(note.video_offset_ms, note.id)">
+              <span class="vb3-note-meta uf-t4"><span v-if="note.round_number != null">Round {{ note.round_number }}</span><span v-if="noteIndex < 9" class="uf-num" title="Press number key to jump">{{ noteIndex + 1 }}</span></span>
+              <span class="vb3-note-body">{{ note.body }}</span>
+            </button>
+          </section>
+          <section v-if="supplementalCoachingNotes.length" class="vb3-coach">
+            <span class="uf-label">More from the coach</span>
+            <p v-for="(note, index) in supplementalCoachingNotes" :key="`${index}-${note}`" class="vb3-note-body vb3-supp">{{ note }}</p>
+          </section>
+          <div v-if="!tacticalIntelBrief && !supplementalCoachingNotes.length && !coachReview?.annotations?.length" class="vb3-empty">
+            <span class="uf-label">No AI coaching yet</span>
+            <p class="uf-t4">Your notebook works without analysis. Run match analysis when you want AI coaching alongside your own review.</p>
+          </div>
+
+</template>
+<template v-else>
           <div
             v-if="coachReview?.annotations?.length || coachReview?.coach_perspective"
             class="rounded-lg border border-violet-500/25 bg-violet-500/[0.06] px-3 py-2.5 space-y-2.5"
@@ -1092,6 +1247,7 @@ const noVideoHint = computed((): string => {
             <p class="text-[12px] font-medium text-gray-500">No AI coaching yet</p>
             <p class="mt-1.5 text-[11px] text-gray-600 leading-relaxed">Your notebook works without analysis. Run match analysis when you want AI coaching alongside your own review.</p>
           </div>
+</template>
         </div>
 
         <div v-if="!showInsightsPanel && spatialMapVisible && hasSpatialIntel" class="vod-intel-panel flex-1 min-h-0 overflow-y-auto scrollbar-hide px-4 py-4 space-y-3">
@@ -1195,4 +1351,99 @@ const noVideoHint = computed((): string => {
   .workspace-enabled .vod-workspace-main { min-width: 580px; }
   .workspace-enabled .vod-side-panel { min-width: 240px; }
 }
+</style>
+
+<style scoped>
+/* ---------- UI v3 (only applies under .ui-v3) ---------- */
+.vb3-banner { flex-shrink: 0; display: flex; flex-wrap: wrap; align-items: baseline; gap: 12px; padding: 10px 24px; border-bottom: 1px solid var(--uf-line); border-left: 2px solid var(--uf-bone); }
+.vb3-transport { flex-shrink: 0; display: flex; flex-direction: column; gap: 10px; padding: 12px 24px 12px; background: var(--uf-chrome); border-top: 1px solid var(--uf-line); }
+.vb3-scrub { position: relative; height: 22px; display: flex; align-items: center; cursor: pointer; }
+.vb3-track { position: relative; width: 100%; height: 4px; background: var(--uf-line-2); }
+.vb3-seg { position: absolute; top: -3px; bottom: -3px; background: rgba(236, 232, 225, 0.06); pointer-events: none; }
+.vb3-progress { position: absolute; inset: 0 auto 0 0; background: var(--uf-red); pointer-events: none; }
+.vb3-sep { position: absolute; top: -5px; width: 1px; height: 14px; background: var(--uf-line-2); pointer-events: none; }
+.vb3-hover { position: absolute; top: -7px; width: 1px; height: 18px; background: var(--uf-bone); pointer-events: none; }
+.vb3-head { position: absolute; top: 50%; width: 3px; height: 18px; margin-left: -1px; transform: translateY(-50%); background: var(--uf-bone); pointer-events: none; }
+.vb3-tip { position: absolute; bottom: 100%; margin-bottom: 6px; transform: translateX(-50%); white-space: nowrap; padding: 4px 8px; background: var(--uf-chrome); border: 1px solid var(--uf-line-2); color: var(--uf-bone); pointer-events: none; font-variant-numeric: tabular-nums; }
+.vb3-mk { position: absolute; top: 50%; z-index: 2; transform: translate(-50%, -50%); padding: 0; border: 0; cursor: pointer; }
+.vb3-mk:hover { transform: translate(-50%, -50%) scaleY(1.4); }
+.vb3-mk--round { width: 2px; height: 12px; background: var(--uf-muted); }
+.vb3-mk--kill { width: 3px; height: 12px; background: var(--uf-win); }
+.vb3-mk--death { width: 3px; height: 12px; background: var(--uf-loss); }
+.vb3-mk--obj { width: 3px; height: 10px; background: var(--uf-muted); }
+.vb3-mk--ai { width: 8px; height: 8px; transform: translate(-50%, -50%) rotate(45deg); background: var(--uf-bone); }
+.vb3-mk--ai:hover { transform: translate(-50%, -50%) rotate(45deg) scale(1.3); }
+.vb3-mk--coach { width: 8px; height: 8px; background: transparent; border: 2px solid var(--uf-bone); }
+.vb3-controls { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.vb3-ib { width: 34px; height: 34px; display: inline-flex; align-items: center; justify-content: center; background: none; border: 1px solid transparent; color: var(--uf-muted); cursor: pointer; font: 600 15px/1 var(--uf-body); }
+.vb3-ib:hover { color: var(--uf-bone); background: var(--uf-hover); }
+.vb3-ib--play { color: var(--uf-bone); border-color: var(--uf-line-2); }
+.vb3-tb { height: 30px; padding: 0 10px; background: none; border: 1px solid var(--uf-line); color: var(--uf-muted); cursor: pointer; font: 600 13px/1 var(--uf-body); }
+.vb3-tb:hover { color: var(--uf-bone); background: var(--uf-hover); }
+.vb3-tb--on { color: var(--uf-bone); border-color: var(--uf-line-2); background: var(--uf-raised); }
+.vb3-time { margin-left: 10px; font: 600 15px/1 var(--uf-body); color: var(--uf-bone); }
+.vb3-key { display: inline-flex; align-items: center; gap: 6px; }
+.vb3-key-dot { display: inline-block; width: 3px; height: 10px; }
+.vb3-key-dot--kill { background: var(--uf-win); }
+.vb3-key-dot--death { background: var(--uf-loss); }
+.vb3-key-dot--ai { width: 7px; height: 7px; background: var(--uf-bone); transform: rotate(45deg); }
+.vb3-sync { flex-shrink: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding: 8px 24px; border-top: 1px solid var(--uf-line); }
+.vb3-board { flex-shrink: 0; max-height: 260px; overflow-y: auto; border-top: 1px solid var(--uf-line); padding: 0 24px 8px; }
+.vb3-board table { width: 100%; border-collapse: collapse; }
+.vb3-board th { text-align: right; padding: 10px 0 8px 16px; position: sticky; top: 0; background: var(--uf-bg); }
+.vb3-board th:first-child { text-align: left; padding-left: 0; }
+.vb3-board td { text-align: right; padding: 6px 0 6px 16px; border-top: 1px solid var(--uf-line); font: 400 13px/1.4 var(--uf-body); color: var(--uf-muted); }
+.vb3-board td:first-child { text-align: left; padding-left: 0; }
+.vb3-board-group td { padding-top: 12px; color: var(--uf-faint); }
+.vb3-board-me td { background: var(--uf-raised); }
+.vb3-board-me td:first-child { box-shadow: inset 2px 0 0 var(--uf-red); }
+.vb3-board-who { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.vb3-board-agent { width: 26px; height: 26px; object-fit: contain; flex: none; background: var(--uf-raised); }
+.vb3-board-abil { display: inline-flex; gap: 8px; justify-content: flex-end; }
+.vb3-board-abil span { display: inline-flex; align-items: center; gap: 3px; font-variant-numeric: tabular-nums; }
+.vb3-board-abil img { width: 13px; height: 13px; object-fit: contain; opacity: 0.8; }
+.vb3-sidetabs { flex-shrink: 0; display: flex; align-items: stretch; gap: 0; padding: 0 12px 0 20px; border-bottom: 1px solid var(--uf-line); background: var(--uf-chrome); }
+.vb3-sidetab { height: 44px; padding: 0 12px; background: none; border: 0; border-bottom: 2px solid transparent; color: var(--uf-faint); cursor: pointer; font: 600 12px/1 var(--uf-body); letter-spacing: 0.12em; text-transform: uppercase; }
+.vb3-sidetab:hover { color: var(--uf-bone); }
+.vb3-sidetab--on { color: var(--uf-bone); border-bottom-color: var(--uf-red); }
+.vb3-sidetabs .vb3-ib { align-self: center; }
+.vb3-coach { display: flex; flex-direction: column; gap: 10px; padding-top: 16px; border-top: 1px solid var(--uf-line); }
+.vb3-coach p { margin: 0; }
+.vb3-coach-head { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; }
+.vb3-coach-says { padding-left: 12px; border-left: 2px solid var(--uf-win); }
+.vb3-note { display: flex; flex-direction: column; gap: 4px; width: 100%; text-align: left; padding: 10px 12px; background: none; border: 0; border-top: 1px solid var(--uf-line); cursor: pointer; color: inherit; }
+.vb3-note:hover { background: var(--uf-hover); }
+.vb3-note--on { background: var(--uf-raised); box-shadow: inset 2px 0 0 var(--uf-red); }
+.vb3-note-meta { display: flex; justify-content: space-between; }
+.vb3-note-body { font: 400 15px/1.5 var(--uf-body); color: var(--uf-bone); }
+.vb3-supp { padding: 8px 0; border-top: 1px solid var(--uf-line); color: var(--uf-muted); }
+.vb3-empty { display: flex; flex-direction: column; gap: 8px; padding: 18px 0; border-top: 1px solid var(--uf-line); }
+.vb3-empty p { margin: 0; }
+
+/* Shared player chrome and panels, restyled in place for v3 (refs stay in one tree). */
+.ui-v3 .vod-workspace-body { background: var(--uf-bg); }
+.ui-v3 .vod-cinema-frame { background: #000; }
+.ui-v3 .vod-cinema-frame .rounded-lg,
+.ui-v3 .vod-cinema-frame .rounded-xl,
+.ui-v3 .vod-cinema-frame .rounded-md { border-radius: 0 !important; }
+.ui-v3 .vod-cinema-frame .backdrop-blur-sm,
+.ui-v3 .vod-cinema-frame .backdrop-blur-md { backdrop-filter: none !important; background: rgba(11, 14, 18, 0.86) !important; }
+.ui-v3 .vod-cinema-frame .rounded-full.bg-black\/50 { border-radius: 0 !important; box-shadow: none !important; }
+.ui-v3 .vod-side-panel { border-left-color: var(--uf-line) !important; background: var(--uf-bg); }
+.ui-v3 .vod-notes-panel { padding: 20px 24px !important; }
+.ui-v3 .vod-intel-panel { padding: 20px 24px !important; }
+.ui-v3 .vod-intel-panel .rounded-lg,
+.ui-v3 .vod-intel-panel .rounded-md { border-radius: 0 !important; }
+.ui-v3 .vod-intel-panel .bg-red-500\/20,
+.ui-v3 .vod-intel-panel .bg-red-500\/15,
+.ui-v3 .vod-intel-panel .bg-red-500\/22 { background: var(--uf-raised) !important; color: var(--uf-bone) !important; border-color: var(--uf-red) !important; }
+.ui-v3 .vod-workspace-main .bg-\[\#1a1a1a\],
+.ui-v3 .vod-workspace-main .bg-\[\#131313\] { background: var(--uf-bg) !important; }
+.ui-v3 .vod-workspace-main .border-white\/\[0\.10\],
+.ui-v3 .vod-workspace-main .border-white\/\[0\.08\],
+.ui-v3 .vod-workspace-main .border-white\/\[0\.07\] { border-color: var(--uf-line) !important; }
+.ui-v3 .vod-workspace-main .rounded-xl,
+.ui-v3 .vod-workspace-main .rounded-lg,
+.ui-v3 .vod-workspace-main .rounded-md,
+.ui-v3 .vod-workspace-main .rounded { border-radius: 0 !important; }
 </style>

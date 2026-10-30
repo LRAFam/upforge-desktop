@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { useSettings } from '../../composables/useSettings'
+import { uiV3 } from '../../lib/ui-v3'
 
 const {
   appVersion,
@@ -17,7 +18,23 @@ const {
 </script>
 
 <template>
-  <div class="flex-shrink-0 border-t border-white/[0.07] bg-[#121212] px-4 py-2.5">
+  <div v-if="uiV3" class="uf-set-foot">
+    <div class="uf-set-foot-row">
+      <p class="uf-t4 uf-set-foot-ver" :class="{ 'is-counting': devTapCount > 0 && devTapCount < 5 }" @click="handleVersionTap">
+        v{{ appVersion }}<span v-if="devTapCount > 0 && devTapCount < 5"> ({{ 5 - devTapCount }} more)</span>
+      </p>
+      <div class="uf-set-actions">
+        <button v-if="!isDev && updatePhase === 'ready'" type="button" class="uf-link uf-set-foot-update" @click="installUpdate">v{{ updateVersion }} ready · Restart</button>
+        <button type="button" class="uf-link" @click="openHelp">Get help</button>
+        <button type="button" class="uf-link" @click="openSite">upforge.gg</button>
+      </div>
+    </div>
+    <div v-if="devModeActive" class="uf-set-foot-row">
+      <p class="uf-note is-warn">Developer mode enabled</p>
+      <button type="button" class="uf-link" @click="disableDevMode">Disable</button>
+    </div>
+  </div>
+  <div v-else class="flex-shrink-0 border-t border-white/[0.07] bg-[#121212] px-4 py-2.5">
     <div class="flex items-center justify-between gap-3">
       <p class="cursor-default select-none text-[11px] text-gray-600" :class="{ 'text-amber-600': devTapCount > 0 && devTapCount < 5 }" @click="handleVersionTap">
         v{{ appVersion }}<span v-if="devTapCount > 0 && devTapCount < 5" class="ml-1 text-amber-600/60">({{ 5 - devTapCount }} more)</span>
