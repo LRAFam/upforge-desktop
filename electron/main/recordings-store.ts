@@ -82,6 +82,8 @@ export interface PendingRecording {
   autoAnalyseRequested?: boolean
   /** Explicit user request to analyse this recording after active match capture releases resources. */
   manualAnalyseRequested?: boolean
+  /** Cloud replay review job for a Deadlock recording, started only by the user (it costs a credit). */
+  deadlockReviewJobId?: string
   /** User deleted the local footage, so automatic Riot stats polling stays paused until Retry sync. */
   matchStatsSyncPaused?: boolean
   /** Session-only, read-only archive mounted from the production API for developer testing. */
@@ -113,6 +115,11 @@ function hasCloudRecording(rec: Pick<
   )
 }
 
+/** Deadlock job ids are server UUID-like tokens; anything else is never stored or sent back. */
+export function isDeadlockReviewJobId(jobId: unknown): jobId is string {
+  return typeof jobId === 'string' && /^[A-Za-z0-9-]{8,64}$/.test(jobId)
+}
+
 function matchesLinkedAccount(r: PendingRecording, linkedRiot?: LinkedRiotId | null): boolean {
   // This link is the selected Valorant account, not a cross-game identity.
   // Other games remain isolated by the owning UpForge user's catalogue.
@@ -120,6 +127,25 @@ function matchesLinkedAccount(r: PendingRecording, linkedRiot?: LinkedRiotId | n
   const name = r.riotName?.trim() || r.timeline?.playerName?.trim()
   const tag = r.riotTag?.trim() || r.timeline?.playerTag?.trim()
   return recordingMatchesLinkedRiot(name, tag, linkedRiot)
+}
+
+/**
+ * Main/alt role for a Valorant row against the user's linked Riot accounts.
+ * null = not Valorant, or the row has no Riot ID, or it isn't one of the user's linked accounts.
+ */
+export function riotAccountRole(
+  r: Pick<PendingRecording, 'game' | 'riotName' | 'riotTag' | 'timeline'>,
+  linked: ReadonlyArray<LinkedRiotId & { isMain: boolean }>,
+  /** League accounts (separate Riot IDs from Valorant). */
+  lolLinked: ReadonlyArray<LinkedRiotId & { isMain: boolean }> = [],
+): 'main' | 'alt' | null {
+  const accounts = r.game === 'valorant' ? linked : r.game === 'lol' ? lolLinked : null
+  if (!accounts) return null
+  const name = (r.riotName?.trim() || r.timeline?.playerName?.trim() || '').toLowerCase()
+  const tag = (r.riotTag?.trim() || r.timeline?.playerTag?.trim() || '').toLowerCase()
+  if (!name || !tag) return null
+  const hit = accounts.find(l => (l.name ?? '').toLowerCase() === name && (l.tag ?? '').toLowerCase() === tag)
+  return hit ? (hit.isMain ? 'main' : 'alt') : null
 }
 
 export class RecordingsStore {
@@ -424,6 +450,28 @@ export class RecordingsStore {
     this.persist()
   }
 
+  /** Stores (or clears) the Deadlock cloud review job. Ignores malformed ids and non-Deadlock rows. */
+  setDeadlockReviewJob(id: string, jobId: string | null): boolean {
+    const rec = this.recordings.find(r => r.id === id)
+    if (!rec || rec.game !== 'deadlock') return false
+    if (jobId !== null && !isDeadlockReviewJobId(jobId)) return false
+    rec.deadlockReviewJobId = jobId ?? undefined
+    this.persist()
+    return true
+  }
+
+  /** Deadlock only: store the resolved hero name (never a raw hero_N key). */
+  setDeadlockHero(matchId: string, heroName: string): number {
+    const name = heroName.trim()
+    if (!name || name.length > 64 || /^hero_\d+$/.test(name)) return 0
+    let n = 0
+    for (const rec of this.recordings) {
+      if (rec.game === 'deadlock' && rec.matchId === matchId && rec.agent !== name) { rec.agent = name; n++ }
+    }
+    if (n) this.persist()
+    return n
+  }
+
   setManualAnalyseRequested(id: string, requested: boolean): void {
     const rec = this.recordings.find(r => r.id === id)
     if (!rec) return
@@ -621,6 +669,22 @@ export class RecordingsStore {
    * getPending() this keeps analysed matches so users can browse their whole
    * history, not just the two actionable cards on the dashboard.
    */
+  /**
+   * Like getAll(), but Valorant rows from ANY of the user's linked Riot accounts (main + alts).
+   * Rows from Riot IDs the user hasn't linked (e.g. someone else on a shared PC) stay hidden.
+   */
+  getAllLinked(linked: ReadonlyArray<LinkedRiotId>): PendingRecording[] {
+    if (linked.length === 0) return this.getAll(null)
+    return this.recordings
+      .filter(r => !r.clipsOnly && (r.game !== 'valorant' || linked.some(l => matchesLinkedAccount(r, l))))
+      .filter(r => {
+        const hasLocal = r.path ? fs.existsSync(r.path) : false
+        return hasLocal || hasCloudRecording(r) || r.analysisId != null || Boolean(r.jobId)
+      })
+      .slice()
+      .sort((a, b) => (b.recordedAt ?? 0) - (a.recordedAt ?? 0))
+  }
+
   getAll(linkedRiot?: LinkedRiotId | null): PendingRecording[] {
     return this.recordings
       .filter(r => !r.clipsOnly && matchesLinkedAccount(r, linkedRiot))

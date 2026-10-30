@@ -12,6 +12,7 @@ import { cs2AlignedGameTimeMs, emptyMatchData, gameTimeToVideoOffsetMs, tickToMs
 import { cs2WorldToNorm, getCs2MapTransform, normalizeCs2MapKey } from './spatial/cs2-transforms'
 import { applyDemoSpatialEnrichment, resolveCs2Callout } from './spatial/demo-enrich'
 import { sanitizeDemoClientName, sanitizeDemoMapName } from './demo-text-sanitize'
+import { getKnownCs2SteamId, rememberParsedCs2SteamId, type Cs2LocalMatch } from './cs2-identity-state'
 import type { FirstBloodEvent, KillEvent, MatchData, RoundSummary, SpikeDefusedEvent, SpikeDetonatedEvent, SpikePlantedEvent } from './riot-types'
 import type { DemoHeaderPeek } from './demo-header-peek'
 
@@ -258,6 +259,17 @@ export function buildCs2TimelineFromDemo(opts: DemoTimelineOptions): MatchData |
       return name.toLowerCase() === localName.toLowerCase()
     }
 
+    // Prefer the account's saved Steam64: names change and collide, Steam IDs don't.
+    let localMatchedBy: Cs2LocalMatch = null
+    const knownSteamId = getKnownCs2SteamId()
+    const bySteam = knownSteamId ? steamToUserId.get(knownSteamId) : undefined
+    if (bySteam != null) {
+      localUserId = bySteam
+      localTeam = resolveTeam(bySteam)
+      localName = resolveName(bySteam)
+      localMatchedBy = 'steam'
+    }
+
     const headerClient = sanitizeDemoClientName(
       rowString(header, 'client_name', 'clientName'),
     )
@@ -296,12 +308,14 @@ export function buildCs2TimelineFromDemo(opts: DemoTimelineOptions): MatchData |
           localUserId = victimId
           localTeam = resolveTeam(victimId)
           localName = victimName
+          localMatchedBy = 'name'
         } else if (attackerUserId != null && (
           matchLocalByName(killerNameRaw) || matchLocalByName(headerClient)
         )) {
           localUserId = attackerUserId
           localTeam = resolveTeam(attackerUserId)
           localName = killerNameRaw
+          localMatchedBy = 'name'
         }
       }
 
@@ -390,6 +404,7 @@ export function buildCs2TimelineFromDemo(opts: DemoTimelineOptions): MatchData |
         localUserId = inferred.userId
         localTeam = inferred.team
         localName = inferred.name
+        localMatchedBy = 'inferred'
         playerKills.length = 0
         playerDeaths.length = 0
         for (const ev of killEvents) {
@@ -543,6 +558,12 @@ export function buildCs2TimelineFromDemo(opts: DemoTimelineOptions): MatchData |
     } : null
 
     const localSteamId = [...steamToUserId.entries()].find(([, id]) => id === localUserId)?.[0]
+    if (localSteamId && localName) {
+      const lower = localName.toLowerCase()
+      const sameName = [...userIdToName.values()].filter(n => n.toLowerCase() === lower).length
+      // Two different players with this name in the lobby: too ambiguous to save a Steam ID from.
+      rememberParsedCs2SteamId(localSteamId, localMatchedBy, sameName <= 1)
+    }
     if (localSteamId) {
       timeline.match_stats = extractCs2MatchStats(opts.demoPath, localSteamId, tickRate)
       const measured = timeline.match_stats?.player_stats

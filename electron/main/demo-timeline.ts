@@ -49,6 +49,14 @@ export async function buildTimelineFromDemo(opts: DemoTimelineOptions): Promise<
     return timeline
   }
 
+  if (opts.game === 'deadlock') {
+    // Deadlock replays are Source 2 (PBDEMS2); `demofile` 2.x only reads Source 1 (HL2DEMO), so a
+    // local parse can never return kills. The kill timeline comes from the cloud replay review
+    // instead (see deadlock-cloud-timeline.ts).
+    log.info('[DemoTimeline] Deadlock replay: local parse unsupported (Source 2); using the cloud review timeline')
+    return null
+  }
+
   return new Promise((resolve) => {
     const demo = new DemoFile()
     const timeline = emptyMatchData(opts.game, opts.recordingStartTime)

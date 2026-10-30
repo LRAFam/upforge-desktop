@@ -1,7 +1,7 @@
 /** Minimal clip fields for ranking / retention priority */
 export interface ClipPrioritySource {
   id: string
-  trigger: 'manual' | 'kill' | 'ace' | 'multikill' | 'clutch' | 'hotkey'
+  trigger: 'manual' | 'kill' | 'death' | 'objective' | 'ace' | 'multikill' | 'clutch' | 'hotkey'
   favorited: boolean
   overallScore: number | null
   apiClipId?: number | null
@@ -15,6 +15,10 @@ export function clipRank(clip: ClipPrioritySource): number {
   if (clip.trigger === 'clutch') return 85 + scoreBoost
   if (clip.trigger === 'multikill') return 75 + scoreBoost
   if (clip.favorited) return 70
+  // Death clips are for learning, not highlights: never ranked as a top moment.
+  if (clip.trigger === 'death') return 20
+  // Objective clips show how a fight for Baron/Dragon went; useful, but not a personal highlight.
+  if (clip.trigger === 'objective') return 40
   return 50 + scoreBoost
 }
 

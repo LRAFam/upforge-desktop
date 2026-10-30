@@ -8,7 +8,7 @@ import { clipRetentionScore } from '../../src/lib/clip-priority'
 
 export const MAX_CLIPS = 200
 
-export type ClipTrigger = 'manual' | 'kill' | 'ace' | 'multikill' | 'clutch' | 'hotkey'
+export type ClipTrigger = 'manual' | 'kill' | 'death' | 'objective' | 'ace' | 'multikill' | 'clutch' | 'hotkey'
 export type ClipUploadStatus = 'local' | 'uploading' | 'uploaded' | 'failed'
 export type ClipAnalysisStatus = 'none' | 'queued' | 'processing' | 'completed' | 'failed'
 

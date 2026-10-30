@@ -30,6 +30,17 @@ const latest: FocusUpdate = {
 }
 
 describe('account focus persistence', () => {
+  it('keeps valid round facts after restart and drops tampered ones', async () => {
+    const root = await temporaryRoot()
+    const rounds = { map: 'Bind', ally: 1, enemy: 1, rounds: [{ won: true, diedFirst: true }, { won: false, diedFirst: false }] }
+    await writeFocusSyncState(root, 4, { synced: [], newestSyncedStartMs: null, latest: { ...latest, rounds } })
+    expect((await readFocusSyncState(root, 4)).latest?.rounds).toEqual(rounds)
+    await writeFile(join(root, 'focus-sync-5.json'), JSON.stringify({ synced: [], newestSyncedStartMs: null, latest: { ...latest, rounds: { ...rounds, ally: 9 } } }))
+    const tampered = await readFocusSyncState(root, 5)
+    expect(tampered.latest?.match_id).toBe('match-a')
+    expect(tampered.latest?.rounds).toBeNull()
+  })
+
   it('retains legacy match IDs without requiring a resync or state reset', async () => {
     const root = await temporaryRoot()
     await writeFile(join(root, 'focus-sync-1.json'), JSON.stringify({ synced: ['old'], newestSyncedStartMs: 123 }))

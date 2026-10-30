@@ -35,6 +35,10 @@ export interface FocusUpdate {
   match_id: string
   focus: Focus | null
   focus_event: 'created' | 'checked' | 'achieved' | 'missed' | null
+  /** Which linked account played the match. Alt-account games are coached but never checked against the focus. */
+  account?: { is_main: boolean } | null
+  /** Round-by-round shape of the match, derived on the PC from the Riot match it uploaded. */
+  rounds?: MatchRoundFacts | null
   /** Last observed focus before a rotation; its status is not inferred. */
   previous_focus?: Focus | null
   report?: {
@@ -109,4 +113,86 @@ export function focusSubline(focus: Focus): string {
   if (p.status === 'missed') return `Hit in ${p.hits} of ${p.games_played} games. A new focus starts after your next match.`
   const left = p.hits_required - p.hits
   return `Started at ${pct(focus.baseline)}. Hit it in ${left} more of your next ${p.games_required - p.games_played} game${p.games_required - p.games_played === 1 ? '' : 's'}.`
+}
+
+
+/**
+ * "Before → since" for practice: the focus baseline against the average of the games checked
+ * since it started. Null until at least one game has been checked (no invented progress).
+ */
+export function focusBeforeAfter(focus: Focus | null | undefined): { before: string; since: string; games: number; improved: boolean } | null {
+  const values = (focus?.checks ?? []).map(c => c.value).filter(v => typeof v === 'number' && Number.isFinite(v))
+  if (!focus || !values.length || !Number.isFinite(focus.baseline)) return null
+  const avg = values.reduce((a, b) => a + b, 0) / values.length
+  const improved = focus.better === 'lower' ? avg < focus.baseline : avg > focus.baseline
+  return { before: pct(focus.baseline), since: pct(avg), games: values.length, improved }
+}
+
+/** Bounded round summary for the last synced match (won/lost and where the player died first). */
+export interface MatchRoundFacts {
+  map: string | null
+  ally: number
+  enemy: number
+  rounds: Array<{ won: boolean; diedFirst: boolean }>
+}
+
+const MAX_ROUNDS = 40
+
+/**
+ * Derive round facts from the uploaded Riot match payload (match_data). Same source the AI
+ * service uses for `first_death_rounds`. Returns null when the shape is missing or unclear,
+ * so the UI hides the section instead of guessing.
+ */
+export function deriveRoundFacts(matchData: unknown): MatchRoundFacts | null {
+  const m = matchData as {
+    map?: unknown
+    finalStats?: { team?: unknown } | null
+    finalScore?: { allyScore?: unknown; enemyScore?: unknown } | null
+    roundSummaries?: Array<{ winningTeam?: unknown; playerWasFirstBlood?: unknown }> | null
+  } | null
+  const list = Array.isArray(m?.roundSummaries) ? m!.roundSummaries! : []
+  if (!list.length || list.length > MAX_ROUNDS) return null
+  const team = typeof m?.finalStats?.team === 'string' && m.finalStats.team ? m.finalStats.team : null
+  const rounds: MatchRoundFacts['rounds'] = []
+  for (const r of list) {
+    const w = r?.winningTeam
+    if (typeof w !== 'string' || !w) return null
+    // Riot rounds name the winning team (Red/Blue); demo-derived rounds use ALLY/ENEMY.
+    if (w !== 'ALLY' && w !== 'ENEMY' && !team) return null
+    rounds.push({ won: w === 'ALLY' || (team !== null && w === team), diedFirst: r?.playerWasFirstBlood === true })
+  }
+  const won = rounds.filter(r => r.won).length
+  const ally = Number(m?.finalScore?.allyScore)
+  const enemy = Number(m?.finalScore?.enemyScore)
+  const scoreOk = Number.isInteger(ally) && Number.isInteger(enemy) && ally + enemy === rounds.length && ally === won
+  return {
+    map: typeof m?.map === 'string' && m.map ? m.map : null,
+    ally: scoreOk ? ally : won,
+    enemy: scoreOk ? enemy : rounds.length - won,
+    rounds,
+  }
+}
+
+/** Accept only a well-formed, bounded MatchRoundFacts (used when reading persisted state). */
+export function sanitizeRoundFacts(value: unknown): MatchRoundFacts | null {
+  const v = value as MatchRoundFacts | null
+  if (!v || !Array.isArray(v.rounds) || !v.rounds.length || v.rounds.length > MAX_ROUNDS) return null
+  if (!v.rounds.every(r => r && typeof r.won === 'boolean' && typeof r.diedFirst === 'boolean')) return null
+  if (!Number.isInteger(v.ally) || !Number.isInteger(v.enemy) || v.ally + v.enemy !== v.rounds.length) return null
+  return { map: typeof v.map === 'string' ? v.map.slice(0, 40) : null, ally: v.ally, enemy: v.enemy, rounds: v.rounds.map(r => ({ won: r.won, diedFirst: r.diedFirst })) }
+}
+
+/** "What decided it" — only numbers that follow directly from the round facts. */
+export function decidedStats(f: MatchRoundFacts | null | undefined): Array<{ value: string; caption: string; sub?: string; tone?: 'win' | 'loss' }> {
+  if (!f) return []
+  const df = f.rounds.filter(r => r.diedFirst)
+  if (!df.length) return []
+  const dfWon = df.filter(r => r.won).length
+  const others = f.rounds.filter(r => !r.diedFirst)
+  const othersWon = others.filter(r => r.won).length
+  const items: Array<{ value: string; caption: string; sub?: string; tone?: 'win' | 'loss' }> = [
+    { value: `${dfWon}/${df.length}`, caption: 'Rounds won after you died first', sub: `You died first in ${df.length} of ${f.rounds.length} rounds`, tone: dfWon * 2 < df.length ? 'loss' : undefined },
+  ]
+  if (others.length) items.push({ value: `${othersWon}/${others.length}`, caption: 'Rounds won when you didn’t', sub: 'Every other round this match' })
+  return items
 }

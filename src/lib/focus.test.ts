@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { focusHeadline, focusSlots, focusSubline, focusSyncMessage, focusTransitionText, hydrateFocusResponse, pct, type Focus, type FocusResponse, type FocusUpdate } from './focus'
+import { decidedStats, focusBeforeAfter, deriveRoundFacts, sanitizeRoundFacts, focusHeadline, focusSlots, focusSubline, focusSyncMessage, focusTransitionText, hydrateFocusResponse, pct, type Focus, type FocusResponse, type FocusUpdate } from './focus'
 
 const base: Focus = {
   id: 1, metric: 'opening_death_rate', label: 'Opening deaths', better: 'lower', baseline: 0.364, target: 0.22,
@@ -73,5 +73,79 @@ describe('focus sync messages', () => {
     ['sign_in_required', 'Sign in'],
   ])('explains %s instead of reporting an empty sync as up to date', (reason, message) => {
     expect(focusSyncMessage({ ok: false, reason, uploaded: 0, skipped: 0, latest: null })).toContain(message)
+  })
+})
+
+
+// Round shape of the real anonymised Bind match (upforge-frontend/tests/fixtures/valorant-match-report-bind.json).
+const BIND_ROUNDS = 'RRBBRBBBRBBBBBRRBRRBRB'.split('')
+const BIND_FIRST_DEATHS = new Set([3, 6, 7, 8, 11, 14, 20, 21])
+const bind = {
+  map: 'Bind',
+  finalStats: { team: 'Red' },
+  finalScore: { allyScore: 9, enemyScore: 13 },
+  roundSummaries: BIND_ROUNDS.map((w, i) => ({ winningTeam: w === 'R' ? 'Red' : 'Blue', playerWasFirstBlood: BIND_FIRST_DEATHS.has(i + 1) })),
+}
+
+describe('deriveRoundFacts', () => {
+  it('reads the real Bind match: 9–13, died first in 8 rounds, won 1 of them', () => {
+    const f = deriveRoundFacts(bind)!
+    expect(f).toMatchObject({ map: 'Bind', ally: 9, enemy: 13 })
+    expect(f.rounds).toHaveLength(22)
+    expect(f.rounds.filter(r => r.diedFirst)).toHaveLength(8)
+    expect(f.rounds.filter(r => r.diedFirst && r.won)).toHaveLength(1)
+    expect(f.rounds[20]).toEqual({ won: true, diedFirst: true })
+  })
+
+  it('accepts ALLY/ENEMY rounds without a team and refuses unclear shapes', () => {
+    expect(deriveRoundFacts({ roundSummaries: [{ winningTeam: 'ALLY' }, { winningTeam: 'ENEMY' }] })).toMatchObject({ ally: 1, enemy: 1 })
+    expect(deriveRoundFacts({ roundSummaries: [{ winningTeam: 'Red' }] })).toBeNull() // no team to compare with
+    expect(deriveRoundFacts({ roundSummaries: [{ winningTeam: null }], finalStats: { team: 'Red' } })).toBeNull()
+    expect(deriveRoundFacts({ roundSummaries: [] })).toBeNull()
+    expect(deriveRoundFacts(null)).toBeNull()
+  })
+
+  it('falls back to counted rounds when the final score disagrees', () => {
+    const f = deriveRoundFacts({ ...bind, finalScore: { allyScore: 13, enemyScore: 9 } })!
+    expect([f.ally, f.enemy]).toEqual([9, 13])
+  })
+})
+
+describe('decidedStats', () => {
+  it('shows only numbers that follow from the rounds', () => {
+    const items = decidedStats(deriveRoundFacts(bind))
+    expect(items[0]).toMatchObject({ value: '1/8', caption: 'Rounds won after you died first', tone: 'loss' })
+    expect(items[0].sub).toBe('You died first in 8 of 22 rounds')
+    expect(items[1]).toMatchObject({ value: '8/14' })
+  })
+
+  it('is empty when there are no facts or no first deaths', () => {
+    expect(decidedStats(null)).toEqual([])
+    expect(decidedStats({ map: null, ally: 1, enemy: 0, rounds: [{ won: true, diedFirst: false }] })).toEqual([])
+  })
+})
+
+describe('sanitizeRoundFacts', () => {
+  it('keeps valid facts and drops tampered or oversized ones', () => {
+    const f = deriveRoundFacts(bind)
+    expect(sanitizeRoundFacts(f)).toEqual(f)
+    expect(sanitizeRoundFacts({ ...f, ally: 20 })).toBeNull()
+    expect(sanitizeRoundFacts({ ...f, rounds: [{ won: 'yes', diedFirst: false }] })).toBeNull()
+    expect(sanitizeRoundFacts({ map: null, ally: 41, enemy: 0, rounds: Array(41).fill({ won: true, diedFirst: false }) })).toBeNull()
+    expect(sanitizeRoundFacts(undefined)).toBeNull()
+  })
+})
+
+describe('focusBeforeAfter', () => {
+  const base = { id: 1, metric: 'leg_hit_rate', label: 'Hits on the legs', better: 'lower' as const, baseline: 0.3, target: 0.18,
+    progress: { games_played: 2, hits: 1, games_required: 3, hits_required: 2, status: 'active' }, started_at: null, completed_at: null }
+  it('is null until a game has been checked', () => {
+    expect(focusBeforeAfter({ ...base, checks: [] })).toBeNull()
+  })
+  it('compares the baseline with the average since, respecting direction', () => {
+    const r = focusBeforeAfter({ ...base, checks: [{ match_id: 'a', value: 0.2, hit: false, played_at: null }, { match_id: 'b', value: 0.1, hit: true, played_at: null }] })
+    expect(r).toMatchObject({ games: 2, improved: true })
+    expect(r!.before).toMatch(/30/)
+    expect(r!.since).toMatch(/15/)
   })
 })

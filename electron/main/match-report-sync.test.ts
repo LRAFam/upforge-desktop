@@ -62,6 +62,26 @@ describe('syncMatchReports', () => {
     expect(h.saved()).toEqual({ synced: ['old', 'new'], newestSyncedStartMs: 300, latest: res.latest })
   })
 
+  it('carries the round shape derived from the uploaded match, and null when it is unclear', async () => {
+    const ok = () => ({ status: 200, data: { success: true, focus: null, focus_event: null, report: { notes: {} } } })
+    const h = harness(fetched([['new', 300]]), ok)
+    const res = await syncMatchReports({
+      ...h.deps,
+      serialize: () => JSON.stringify({ match_data: { puuid: 'me', finalStats: { team: 'Red' }, finalScore: { allyScore: 1, enemyScore: 1 },
+        roundSummaries: [{ winningTeam: 'Red', playerWasFirstBlood: true }, { winningTeam: 'Blue' }] } }),
+    })
+    expect(res.latest?.rounds).toEqual({ map: null, ally: 1, enemy: 1, rounds: [{ won: true, diedFirst: true }, { won: false, diedFirst: false }] })
+    const plain = await syncMatchReports(harness(fetched([['other', 400]]), ok).deps)
+    expect(plain.latest?.rounds).toBeNull() // default harness rounds have no winner
+  })
+
+  it('keeps whether the match was played on the main account or an alt', async () => {
+    const alt = () => ({ status: 200, data: { success: true, focus: null, focus_event: null, account: { is_main: false }, report: { notes: {} } } })
+    const h = harness(fetched([['new', 300]]), alt)
+    const res = await syncMatchReports(h.deps)
+    expect(res.latest).toMatchObject({ match_id: 'new', focus_event: null, account: { is_main: false } })
+  })
+
   it('skips matches the API rejects for good, and stops (to retry later) on server errors', async () => {
     const h = harness(fetched([['a', 100], ['b', 200], ['c', 300]]), (body: any) =>
       body.match_id === 'a' ? { status: 422, data: { error: 'not_your_match' } } : { status: 502, data: {} })
