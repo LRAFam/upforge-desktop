@@ -15,6 +15,7 @@ import { getFaceitLevelIconUrl } from '../../../lib/cs2'
 import { championIconUrl } from '../../../lib/lol'
 import { fmtDeadlockDuration, fmtDeadlockNW } from '../../../lib/deadlock-analyses'
 import { fmtLolKda } from '../../../lib/lol-analyses'
+import { leagueDivisionName, rankForecast } from '../../../lib/ideas/rank-forecast'
 import { lolEarlyDeaths, lolRankSentence, lolRankSeries, lolTrendSentence, lolTrends, type LolEarlyDeathRow, type LolTrendMatch } from '../../../lib/lol-progress'
 import UfSkeleton from '../UfSkeleton.vue'
 import DeadlockReviewV3 from './DeadlockReviewV3.vue'
@@ -65,6 +66,9 @@ const lolSeries = computed(() => (props.game === 'lol' ? lolRankSeries(gd.lol.ra
 const lolPoints = computed(() => stepLine(lolSeries.value.map(p => p.value), W, H, 10))
 const lolRising = computed(() => lolSeries.value.length >= 2 && lolSeries.value[lolSeries.value.length - 1].value >= lolSeries.value[0].value)
 const lolSentence = computed(() => lolRankSentence(lolSeries.value))
+// Rank pace (P6): ≥20 rank snapshots over ≥14 days and a clearly upward trend, else nothing.
+const lolForecast = computed(() => rankForecast(
+  lolSeries.value.map(s => ({ t: new Date(s.captured_at).getTime(), value: s.value })), 100, leagueDivisionName))
 const lolTrendRows = computed(() => (props.game === 'lol' ? lolTrends(gd.lol.matches as LolTrendMatch[]) : []))
 // Deaths before 14:00 from coached games' stored timelines (no extra Riot calls).
 const lolEarly = computed(() => (props.game === 'lol' ? lolEarlyDeaths(gd.lol.analyses as LolEarlyDeathRow[]) : null))
@@ -169,6 +173,7 @@ function openWeb() {
         </div>
         <template v-if="lolPoints.length">
           <p class="uf-t1">{{ lolSentence }}</p>
+          <p v-if="lolForecast" class="uf-t4" style="margin: 0; color: var(--uf-muted)">{{ lolForecast.sentence }}</p>
           <div class="gprog-chart">
             <svg :viewBox="`0 0 ${W} ${H}`" preserveAspectRatio="none" role="img" :aria-label="lolSentence">
               <line v-for="p in lolPoints" :key="p.x" :x1="p.x" :x2="p.x" :y1="H" :y2="H - 4" stroke="var(--uf-line-2)" />

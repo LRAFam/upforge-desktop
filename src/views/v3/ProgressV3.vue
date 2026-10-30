@@ -9,6 +9,7 @@ import { computed, onMounted, onUnmounted, ref } from 'vue'
 import UfStatRow from '../../components/v3/UfStatRow.vue'
 import UfRoundsLine from '../../components/v3/UfRoundsLine.vue'
 import RankJourney from '../../components/v3/progress/RankJourney.vue'
+import { rankForecast, valorantDivisionName } from '../../lib/ideas/rank-forecast'
 import RecurringHabitsV3 from '../../components/v3/progress/RecurringHabitsV3.vue'
 import { rankHistoryInRange, formatMetric, halfDelta, metricLabel, sparkline, type RankSnapshot } from '../../components/v3/progress/progress-chart'
 import type { FocusResponse } from '../../lib/focus'
@@ -126,6 +127,12 @@ const hasRank = computed(() => props.rankHistory.filter(h => Number.isFinite(h.e
 // The rank line follows the range tabs; with too few rank games in the range it shows the whole history and says so.
 const rankInRange = computed(() => rankHistoryInRange(props.rankHistory, props.range))
 const rankForChart = computed(() => rankInRange.value ?? props.rankHistory)
+// Rank pace (P6): only with ≥20 rank updates over ≥14 days and a clearly upward trend; whole history.
+const forecastSource = computed(() => props.rankHistory
+  .map(h => ({ t: new Date(h.date).getTime(), value: h.elo }))
+  .filter(p => Number.isFinite(p.t) && Number.isFinite(p.value) && p.value > 0))
+const forecastPoints = computed(() => forecastSource.value.length)
+const forecast = computed(() => rankForecast(forecastSource.value, 100, valorantDivisionName))
 </script>
 
 <template>
@@ -155,7 +162,10 @@ const rankForChart = computed(() => rankInRange.value ?? props.rankHistory)
     <template v-else>
       <div :class="{ 'uf-reveal': fromSkeleton }" class="pv3-loaded">
       <GameProgress v-if="demoGame" :key="demoGame" :game="demoGame" />
-      <RankJourney v-else-if="isValorant && hasRank" :history="rankForChart" :focus-started-at="focus?.started_at" :focus-label="focus?.label" />
+      <template v-else-if="isValorant && hasRank">
+        <RankJourney :history="rankForChart" :focus-started-at="focus?.started_at" :focus-label="focus?.label" />
+        <p v-if="forecast" class="uf-t4 pv3-forecast" :title="'Based on the trend of your last ' + forecastPoints + ' rank updates. A range, not a promise.'">{{ forecast.sentence }}</p>
+      </template>
       <section v-else class="pv3-empty">
         <span class="uf-d2">Your rank line</span>
         <p class="uf-t2">Not enough rank history yet. Play a few ranked games and your rating line starts here.</p>
@@ -255,4 +265,5 @@ const rankForChart = computed(() => rankInRange.value ?? props.rankHistory)
 .pv3-bar { position: relative; height: 24px; display: flex; align-items: center; }
 .pv3-bar > span { position: absolute; left: 0; top: 3px; bottom: 3px; opacity: 0.25; }
 .pv3-bar > b { position: relative; padding-left: 8px; }
+.pv3-forecast { margin: 8px 0 0; color: var(--uf-muted); }
 </style>
