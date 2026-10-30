@@ -237,7 +237,7 @@
                 :key="clip.id"
                 :clip="clip"
                 :thumb="thumbnails[clip.id]"
-                :title="clip.title || defaultTitle(clip)"
+                :title="v3ClipTitle(clip)"
                 :label="triggerLabel(clip.trigger)"
                 :duration="formatDuration(clip.durationSeconds)"
                 :ago="timeAgo(clip.savedAt)"
@@ -1114,7 +1114,7 @@
       <UfDialog
         :open="!!playingClip"
         :width="1120"
-        :title="playingClip ? (playingClip.title || defaultTitle(playingClip)) : ''"
+        :title="playingClip ? v3ClipTitle(playingClip) : ''"
         :kicker="playingClip?.trigger ? `${playingClip.trigger} clip · ${formatDuration(playingClip.durationSeconds)}` : 'Clip'"
         :persistent="editingTitle || trimModal.show || !!pendingClipAnalysis || upgradeModal.show"
         @close="closePlayer"
@@ -1285,6 +1285,7 @@ import { readCache, writeCache } from '../lib/stale-cache'
 import UfSkeleton from '../components/v3/UfSkeleton.vue'
 import { hasProAccess as proAccessForUser } from '../lib/subscription'
 import { formatAnalysisFailureMessage } from '../lib/analysis-failure-messages'
+import { smartClipTitle } from '../lib/ideas/smart-clip-title'
 import {
   buildClipMatchGroups,
   formatMatchGroupLabel,
@@ -2099,6 +2100,11 @@ function formatDuration(secs: number, precise = false): string {
     return `${m}:${Math.floor(s).toString().padStart(2, '0')}.${Math.round((s % 1) * 10)}`
   }
   return `${m}:${Math.floor(s).toString().padStart(2, '0')}`
+}
+
+/** v3: the user's title, else a title built from what the clip measured (P6), else the old default. */
+function v3ClipTitle(clip: ClipRecord): string {
+  return clip.title || smartClipTitle(clip) || defaultTitle(clip)
 }
 
 function defaultTitle(clip: ClipRecord): string {
