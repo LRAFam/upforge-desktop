@@ -2360,11 +2360,11 @@ async function openReviewRound(): Promise<void> {
   if (!round) return
   const analysisId = result.value?.analysis_id
   if (analysisId) {
-    await handoffToMain({ path: '/vod-review', query: { timelineId: String(analysisId), round } })
+    await handoffToMain({ path: '/vod-review', query: { timelineId: String(analysisId), round, review: '1' } })
     return
   }
   const id = vodRecordingId.value
-  if (id) await handoffToMain({ path: '/vod-review', query: { id, round } })
+  if (id) await handoffToMain({ path: '/vod-review', query: { id, round, review: '1' } })
 }
 
 async function openNativeAnalysisReview(): Promise<void> {
