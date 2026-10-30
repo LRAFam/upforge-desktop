@@ -2,7 +2,9 @@
 /**
  * Match report (v3): the free, data-only coaching page for one match. No video, no credit.
  * Headline (result, score, what decided it) · facts · focus check · coach notes · next steps.
- * Reads the stored report via match-report:get; never generates one.
+ * Valorant reads the stored report (match-report:get). League and Deadlock read facts the API
+ * computes from cached match data (match-report:get-game); CS2 reads the recording's parsed demo.
+ * Never generates an AI report.
  */
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
@@ -11,35 +13,80 @@ import UfButton from '../../components/v3/UfButton.vue'
 import UfSkeleton from '../../components/v3/UfSkeleton.vue'
 import { formatMapLabel, getAgentImage, getMapImage } from '../../lib/valorant'
 import { matchReportView, type MatchReportState } from '../../lib/match-report'
+import {
+  cs2ReportView, deadlockReportView, lolReportView,
+  type Cs2ReportTimeline, type DeadlockReportResponse, type LolReportResponse, type ReportGame,
+} from '../../lib/match-report-games'
 import { readCache, writeCache } from '../../lib/stale-cache'
 
 const route = useRoute()
 const router = useRouter()
 const matchId = computed(() => String(route.params.matchId ?? ''))
+const game = computed<ReportGame>(() => {
+  const g = route.query.game
+  return g === 'lol' || g === 'deadlock' || g === 'cs2' ? g : 'valorant'
+})
 const state = ref<MatchReportState | null>(null)
+/** CS2 only: the recording exists but its demo isn't parsed yet. */
+const needsDemo = ref(false)
+
+type Loaded = { ok: true; state: MatchReportState } | { ok: false; error: string }
+
+async function fetchReport(g: ReportGame, id: string): Promise<Loaded | null> {
+  if (g === 'cs2') {
+    const t = await window.api?.recordings?.getTimeline?.(id).catch(() => null) as Cs2ReportTimeline | null | undefined
+    if (!t) return { ok: false, error: 'not_found' }
+    const view = cs2ReportView({ ...t, id })
+    return view ? { ok: true, state: { kind: 'ready', view } } : { ok: false, error: 'needs_demo' }
+  }
+  if (g === 'lol' || g === 'deadlock') {
+    const res = await window.api?.app?.getGameMatchReport?.(g, id).catch(() => null)
+    if (!res) return null
+    if (!res.ok) return res
+    const view = g === 'lol' ? lolReportView(res.report as LolReportResponse) : deadlockReportView(res.report as DeadlockReportResponse)
+    return { ok: true, state: { kind: 'ready', view } }
+  }
+  const res = await window.api?.app?.getMatchReport?.(id).catch(() => null)
+  if (!res) return null
+  return res.ok ? { ok: true, state: { kind: 'ready', view: matchReportView(res.report) } } : res
+}
 
 async function load(): Promise<void> {
   const id = matchId.value
-  const key = `match-report:${id}`
+  const g = game.value
+  const key = `match-report:${g}:${id}`
   const cached = readCache<MatchReportState>(key)
   state.value = cached?.value ?? null
-  const res = await window.api?.app?.getMatchReport?.(id).catch(() => null)
-  if (id !== matchId.value) return
+  needsDemo.value = false
+  const res = await fetchReport(g, id)
+  if (id !== matchId.value || g !== game.value) return
   if (!res) { if (!state.value) state.value = { kind: 'error' }; return }
   if (res.ok) {
-    const next: MatchReportState = { kind: 'ready', view: matchReportView(res.report) }
-    state.value = next
-    writeCache(key, next)
+    state.value = res.state
+    writeCache(key, res.state)
   } else if (!state.value || state.value.kind !== 'ready') {
-    state.value = res.error === 'not_found' ? { kind: 'not_found' } : { kind: 'error' }
+    needsDemo.value = res.error === 'needs_demo'
+    state.value = res.error === 'not_found' || res.error === 'needs_demo' ? { kind: 'not_found' } : { kind: 'error' }
   }
 }
 onMounted(load)
-watch(matchId, load)
+watch([matchId, game], load)
+
+const notFoundText = computed(() => {
+  if (needsDemo.value) return 'This report is built from the match demo. Attach or wait for the demo on the match page, then come back.'
+  switch (game.value) {
+    case 'lol': return 'Reports are made from your Riot match data for Ranked Solo/Duo, Flex and Normal Draft games on your linked League accounts.'
+    case 'deadlock': return 'Reports are made from the match data Deadlock publishes a few minutes after the match. Link your Steam account in Settings if you haven’t.'
+    case 'cs2': return 'This recording couldn’t be found on this PC.'
+    default: return 'Reports are made from your Riot match a minute or two after it ends.'
+  }
+})
 
 const view = computed(() => (state.value?.kind === 'ready' ? state.value.view : null))
 const resultWord = computed(() => (view.value?.result === 'win' ? 'Victory' : view.value?.result === 'loss' ? 'Defeat' : 'Match'))
-const meta = computed(() => [view.value?.map ? formatMapLabel(view.value.map) : null, view.value?.agent].filter(Boolean).join(' · '))
+const meta = computed(() => view.value?.metaLine
+  ?? [view.value?.map ? formatMapLabel(view.value.map) : null, view.value?.agent].filter(Boolean).join(' · '))
+const isValorant = computed(() => (view.value?.game ?? 'valorant') === 'valorant')
 
 function practise(): void { router.push('/training').catch(() => {}) }
 function back(): void { if (window.history.length > 1) router.back(); else router.push('/dashboard').catch(() => {}) }
@@ -55,12 +102,8 @@ function back(): void { if (window.history.length > 1) router.back(); else route
 
     <div v-else-if="state.kind !== 'ready'" class="mr3-empty uf-rise">
       <span class="uf-label">Match report</span>
-      <h1 class="uf-d3">{{ state.kind === 'not_found' ? 'No report for this match yet' : 'Couldn’t load this report' }}</h1>
-      <p class="uf-t2">
-        {{ state.kind === 'not_found'
-          ? 'Reports are made from your Riot match a minute or two after it ends. Valorant only for now.'
-          : 'Check your connection and try again.' }}
-      </p>
+      <h1 class="uf-d3">{{ needsDemo ? 'This report needs the demo' : state.kind === 'not_found' ? 'No report for this match yet' : 'Couldn’t load this report' }}</h1>
+      <p class="uf-t2">{{ state.kind === 'not_found' ? notFoundText : 'Check your connection and try again.' }}</p>
       <div class="mr3-actions">
         <UfButton v-if="state.kind === 'error'" variant="primary" @click="load">Try again</UfButton>
         <UfButton variant="secondary" @click="back">Back</UfButton>
@@ -69,8 +112,8 @@ function back(): void { if (window.history.length > 1) router.back(); else route
 
     <template v-else-if="view">
       <UfHeroBand
-        :art="view.map ? getMapImage(view.map) || undefined : undefined"
-        :agent="view.agent ? getAgentImage(view.agent) || undefined : undefined"
+        :art="isValorant && view.map ? getMapImage(view.map) || undefined : undefined"
+        :agent="isValorant && view.agent ? getAgentImage(view.agent) || undefined : undefined"
         :tone="view.result ?? 'none'"
         :result="resultWord"
         :meta="meta"
@@ -83,10 +126,10 @@ function back(): void { if (window.history.length > 1) router.back(); else route
         <button type="button" class="uf-link mr3-back" @click="back">← Back</button>
 
         <section class="mr3-coach">
-          <span class="uf-label">What decided it</span>
+          <span class="uf-label">{{ view.headlineLabel ?? 'What decided it' }}</span>
           <p v-if="view.headline" class="uf-t1">{{ view.headline }}</p>
           <p v-else-if="view.notesCapped" class="uf-t2">Today’s free coach notes are used. The facts below are still yours, and notes come back tomorrow.</p>
-          <p v-else class="uf-t2">No coach note for this match. The facts below come straight from your Riot match.</p>
+          <p v-else class="uf-t2">No coach note for this match. The facts below come straight from your match data.</p>
           <p v-if="view.subline" class="uf-t2">{{ view.subline }}</p>
           <p v-if="view.isAlt" class="uf-t4">Played on an alt account: coached, not counted for your focus.</p>
         </section>

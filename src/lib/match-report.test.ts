@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { matchReportFactRows, matchReportSupported, matchReportView, type MatchReportResponse } from './match-report'
+import { matchReportFactRows, matchReportPath, matchReportSupported, matchReportView, type MatchReportResponse } from './match-report'
 
 const base: MatchReportResponse = {
   match_id: 'm-1',
@@ -56,8 +56,20 @@ describe('matchReportFactRows', () => {
 })
 
 describe('matchReportSupported', () => {
-  it('is Valorant only for now', () => {
-    expect(matchReportSupported('valorant')).toBe(true)
-    expect(matchReportSupported('lol')).toBe(false)
+  it('covers all four games', () => {
+    for (const g of ['valorant', 'lol', 'deadlock', 'cs2']) expect(matchReportSupported(g)).toBe(true)
+    expect(matchReportSupported('dota2')).toBe(false)
+  })
+})
+
+describe('matchReportPath', () => {
+  it('builds a report route per game and refuses malformed ids', () => {
+    expect(matchReportPath('valorant', 'abc-123')).toBe('/report/abc-123')
+    expect(matchReportPath('lol', 'EUW1_7123')).toBe('/report/EUW1_7123?game=lol')
+    expect(matchReportPath('lol', 'not a match')).toBeNull()
+    expect(matchReportPath('deadlock', '55012')).toBe('/report/55012?game=deadlock')
+    expect(matchReportPath('deadlock', 'hero_13')).toBeNull()
+    expect(matchReportPath('cs2', null, 'rec_1')).toBe('/report/rec_1?game=cs2')
+    expect(matchReportPath('cs2', 'x', null)).toBeNull()
   })
 })

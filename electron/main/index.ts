@@ -7440,6 +7440,17 @@ async function startApp(): Promise<void> {
     if (r?.status !== 200 || !r.data?.success) return { ok: false, error: 'unavailable' }
     return { ok: true, report: r.data }
   })
+  // League / Deadlock free data reports: facts computed by the API from data it already caches.
+  ipcMain.handle('match-report:get-game', async (_event, game: unknown, matchId: unknown) => {
+    const ok = (game === 'lol' && typeof matchId === 'string' && /^[A-Z0-9]{2,8}_\d{1,20}$/i.test(matchId))
+      || (game === 'deadlock' && typeof matchId === 'string' && /^\d{1,20}$/.test(matchId))
+    if (!ok) return { ok: false, error: 'invalid_match' }
+    if (!authManager.isAuthenticated()) return { ok: false, error: 'signed_out' }
+    const r = await authManager.getApi().get(`/api/${game}/match-report/${matchId}`, { validateStatus: () => true }).catch(() => null)
+    if (r?.status === 404) return { ok: false, error: 'not_found' }
+    if (r?.status !== 200 || !r.data?.success) return { ok: false, error: 'unavailable' }
+    return { ok: true, report: r.data }
+  })
   ipcMain.handle('match-report:list', async (_event, limit: unknown) => {
     if (!authManager.isAuthenticated()) return { ok: false, error: 'signed_out' }
     const n = Number.isInteger(limit) ? Math.min(Math.max(limit as number, 1), 50) : 20

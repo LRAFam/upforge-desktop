@@ -21,3 +21,13 @@
 ## Build (branch feat/match-report)
 - API: `GET /api/match-reports` (recent, own, main account by default) and `GET /api/match-report/{matchId}` (own only) returning the stored report.
 - Desktop: IPC `match-report:get` / `match-report:list`, `/report/:matchId` route with `MatchReportV3`, entry points above.
+
+## League, CS2 and Deadlock (report-games)
+Same screen, per-game facts; no AI, no quota, no new paid calls.
+- **League** — API `GET /api/lol/match-report/{matchId}` (`LolMatchReport`): from the cached Match-V5 match + timeline: result, team kills (as the score), K/D/A, CS (+ per minute), CS at 10:00 vs the same-role enemy, gold vs lane at 15:00, deaths before 14:00 (with killer), kill participation, damage share, vision, control wards. Main and alt accounts; alt matches never count for the focus; focus check from the League focus.
+- **Deadlock** — API `GET /api/deadlock/match-report/{matchId}` (`DeadlockMatchReport`): from deadlock-api match metadata (fields verified against Valve's `CMsgMatchMetaDataContents` protobuf): result, souls and lobby rank, souls at 10:00/20:00 vs the lobby and lane opponents (`assigned_lane`), soul orbs secured/denied (API `last_hits`/`denies`), hero damage rank, deaths before 10:00, time spent dead.
+- **CS2** — desktop only, from the recording's parsed demo (`match_stats` v1, same shaping as the match page tabs). No demo yet → "This report needs the demo".
+- **Key number + next steps** (`src/lib/match-report-games.ts`): rule-based from this match only, whole numbers, at most 3 steps, no outside benchmarks; label "The key number" (Valorant keeps "What decided it" for its fact-checked coach note).
+- **Entry points:** Matches row "Report" and match page header "Match report" for all four games (`matchReportPath`). Post-game and Home stay Valorant-only (they don't have the other games' match ids at that moment).
+- **AI notes for other games: not added.** No cheap fact-checked notes path exists for them yet (League stats coaching is a paid analysis); facts + rule-based steps instead.
+- **Deploy:** API first (two new GET routes, no migrations), then desktop.

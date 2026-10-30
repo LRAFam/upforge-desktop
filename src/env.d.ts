@@ -807,6 +807,7 @@ declare global {
         ) => Promise<{ ok: boolean; opened: 'stripe' | 'pricing' | 'billing'; reason?: string }>
         getFocus: () => Promise<import('./lib/focus').FocusResponse | null>
         getMatchReport: (matchId: string) => Promise<{ ok: true; report: import('./lib/match-report').MatchReportResponse } | { ok: false; error: string }>
+        getGameMatchReport: (game: 'lol' | 'deadlock', matchId: string) => Promise<{ ok: true; report: unknown } | { ok: false; error: string }>
         listMatchReports: (limit?: number) => Promise<{ ok: true; reports: Array<{ match_id: string; played_at: string | null; map: string | null; agent: string | null; won: boolean | null; score: { ally: number; enemy: number } | null; headline: string | null; notes_source: string | null }> } | { ok: false; error: string }>
         syncFocus: () => Promise<import('./lib/focus').FocusSyncResult | null>
         onFocusUpdated: (cb: (payload: import('./lib/focus').FocusUpdate) => void) => () => void

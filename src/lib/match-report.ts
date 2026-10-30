@@ -48,6 +48,12 @@ export interface NextStep { text: string; drillMetric: string | null }
 
 export interface MatchReportView {
   matchId: string
+  /** Which game the report is for (League, Deadlock and CS2 are built in match-report-games.ts). */
+  game?: 'valorant' | 'lol' | 'deadlock' | 'cs2'
+  /** Label above the headline: Valorant's checked coach note "decides" it; other games show a measured key number. */
+  headlineLabel?: string
+  /** Hero-band meta for games without map/agent art, e.g. "Ahri · Mid · 31:04". */
+  metaLine?: string | null
   result: 'win' | 'loss' | null
   score: string | null
   map: string | null
@@ -106,6 +112,9 @@ export function matchReportView(res: MatchReportResponse): MatchReportView {
   }
   return {
     matchId: res.match_id,
+    game: 'valorant',
+    headlineLabel: 'What decided it',
+    metaLine: null,
     result: facts?.won == null ? null : facts.won ? 'win' : 'loss',
     score: facts?.score && n(facts.score.ally) && n(facts.score.enemy) ? `${facts.score.ally}–${facts.score.enemy}` : null,
     map: facts?.map ?? null,
@@ -121,7 +130,17 @@ export function matchReportView(res: MatchReportResponse): MatchReportView {
   }
 }
 
-/** Which games have a free match report today. */
+/** Which games have a free match report today (CS2 needs its demo parsed; the page says so). */
 export function matchReportSupported(game: string | null | undefined): boolean {
-  return game === 'valorant'
+  return game === 'valorant' || game === 'lol' || game === 'deadlock' || game === 'cs2'
+}
+
+/** Report route for a match, or null when this match can't have one. CS2 reports are keyed by recording. */
+export function matchReportPath(game: string | null | undefined, matchId: string | null | undefined, recordingId?: string | null): string | null {
+  if (game === 'cs2') return recordingId && /^[A-Za-z0-9_-]{1,64}$/.test(recordingId) ? `/report/${recordingId}?game=cs2` : null
+  if (typeof matchId !== 'string') return null
+  if (game === 'valorant' && /^[A-Za-z0-9_-]{1,64}$/.test(matchId)) return `/report/${matchId}`
+  if (game === 'lol' && /^[A-Z0-9]{2,8}_\d{1,20}$/i.test(matchId)) return `/report/${matchId}?game=lol`
+  if (game === 'deadlock' && /^\d{1,20}$/.test(matchId)) return `/report/${matchId}?game=deadlock`
+  return null
 }

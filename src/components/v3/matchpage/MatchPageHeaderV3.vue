@@ -13,6 +13,7 @@ import UfIcon from '../UfIcon.vue'
 import UfRoundsLine from '../UfRoundsLine.vue'
 import UfSkeleton from '../UfSkeleton.vue'
 import { deadlockRecordingHero, loadDeadlockHeroesOnce } from '../../../lib/deadlock-hero-names'
+import { matchReportPath } from '../../../lib/match-report'
 import { coachLine, firstDeathEvent, matchResult, roundsForLine, sideTab, statsOnlyNotice, type MatchSideTab } from './match-page-v3'
 
 const props = defineProps<{ workspace: boolean; canCompare: boolean }>()
@@ -46,14 +47,13 @@ const {
   timeline,
   toggleTheaterMode,
   videoSrc,
+  recordingId,
 } = useVodReview()
 
 const result = computed(() => matchResult(matchScoreline.value, timeline.value?.finalStats?.won))
 /** Valorant matches with a Riot match id have a free data report. */
-const reportMatchId = computed(() => {
-  const id = timeline.value?.matchId
-  return timeline.value?.game === 'valorant' && typeof id === 'string' && /^[A-Za-z0-9_-]{1,64}$/.test(id) ? id : null
-})
+/** Free data report for this match (Valorant, League, Deadlock by match id; CS2 by recording). */
+const reportPath = computed(() => matchReportPath(timeline.value?.game, timeline.value?.matchId, recordingId.value))
 // Deadlock recordings store `hero_<id>`; show the hero's name (or "Unknown hero"), never the key.
 const isDeadlockMatch = computed(() => timeline.value?.game === 'deadlock')
 if (isDeadlockMatch.value) void loadDeadlockHeroesOnce()
@@ -113,7 +113,7 @@ const workspaceOn = computed(() => props.workspace)
     <div class="uf-mp-bar">
       <button type="button" class="uf-link uf-mp-back" @click="back">← Back</button>
       <UfTabs :items="tabs" :model-value="tab" label="Match sections" @update:model-value="onTab" />
-      <button v-if="reportMatchId" type="button" class="uf-link" title="Free data report for this match" @click="router.push(`/report/${reportMatchId}`)">Match report</button>
+      <button v-if="reportPath" type="button" class="uf-link" title="Free data report for this match" @click="router.push(reportPath)">Match report</button>
       <div class="uf-mp-spacer" />
       <div class="uf-mp-tools">
         <button v-if="!theaterMode && roundGroups.length" type="button" class="uf-mp-tool" :aria-pressed="!roundLogCollapsed"
