@@ -46,6 +46,8 @@ export interface DemoDeps {
   still?: (clip: string, offsetMs: number, out: string) => Promise<void>
   /** Dev cache root: clips, stills and the event log are kept per match so a replay can cost $0. */
   cacheDir?: string | null
+  /** The player's recurring Valorant habits (knowledge bank). Sent as ``playerHabits`` so a fix can link to one. */
+  habits?: () => Promise<string[] | null>
 }
 
 /** A still from a clip, sent to the screen as a data URL (no file:// access needed in dev). */
@@ -314,6 +316,9 @@ export class CoachFlowDemoRun {
     })
     if (!analysis || !this.matchData) return
 
+    // Habits are optional context: a failure never blocks coaching, and only these can be cited.
+    const habits = await (this.deps.habits?.() ?? Promise.resolve(null)).catch(() => null)
+    if (Array.isArray(habits) && habits.length) this.matchData = { ...this.matchData, playerHabits: habits.slice(0, 5) }
     const md = this.matchData
     const urlPromise = this.deps.playbackUrl(analysis).catch(() => null)
 
@@ -386,7 +391,9 @@ export class CoachFlowDemoRun {
             { match_data: JSON.stringify(md), round_number: String(m.round_number), window: JSON.stringify(m.window) },
             { clip: path },
           )
-          const r = await this.aiForm('/api/coach-flow/moment', form) as { story?: string; fixes?: unknown[] }
+          const r = await this.aiForm('/api/coach-flow/moment', form) as { story?: string; fixes?: unknown[]; hidden?: boolean }
+          // The coach couldn't ground a fix for this moment: it's settled (and metered) but not shown.
+          if (r.hidden) return { value: r, costUsd: costOf(r), detail: 'not enough to coach · not shown' }
           const fixes = r.fixes ?? []
           const videoMs = decisiveVideoMs(m.window, fixes)
           const still = await this.stillAt(path, m.window, videoMs, `still-${m.window.moment_id}`)
@@ -487,6 +494,14 @@ export class CoachFlowCachedReplay {
     for (const e of this.cached.events.filter(x => x.phase === phase)) {
       const { phase: _p, ...event } = e
       this.timers.push(setTimeout(() => this.emit(event), Math.max(0, e.at)))
+    }
+  }
+
+  /** The finished saved run at once (both phases), with no animation and nothing re-run. */
+  showFinished(): void {
+    for (const e of this.cached.events) {
+      const { phase: _p, ...event } = e
+      this.emit(event)
     }
   }
 

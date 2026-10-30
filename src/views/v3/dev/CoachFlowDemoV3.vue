@@ -5,7 +5,7 @@
  * next game). Right: every step with its time and cost. "Use cached run" replays a saved run
  * with its original timings for $0.
  */
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import UfButton from '../../../components/v3/UfButton.vue'
 import UfHeroBand from '../../../components/v3/UfHeroBand.vue'
 import UfRoundsLine from '../../../components/v3/UfRoundsLine.vue'
@@ -32,6 +32,8 @@ const tick = ref(0)
 const info = ref<{ aiUrl: string; budgetUsd: number } | null>(null)
 const error = ref<string | null>(null)
 const replayedFromCache = ref(false)
+/** The saved run is shown finished (no animation). */
+const instantView = ref(false)
 let timer: ReturnType<typeof setInterval> | null = null
 let off: (() => void) | null = null
 const clipUrls = new Map<string, string>()
@@ -53,7 +55,9 @@ const reviewedRounds = computed(() => [
 ])
 const cells = computed(() => roundCells(md.value, reviewedRounds.value))
 const numbers = computed(() => numbersView(md.value))
-const pendingMoments = computed(() => Math.max(0, (flow.value.plan?.moments.length ?? 0) - flow.value.moments.length))
+// Moments still in flight. A moment the coach couldn't ground is settled but not shown, so it leaves no placeholder.
+const pendingMoments = computed(() => Math.max(0, (flow.value.plan?.moments.length ?? 0)
+  - flow.value.steps.filter(s => s.step.startsWith('moment-') && s.state !== 'running').length))
 const snapshotFor = (round: number, videoMs: number | undefined) => (typeof videoMs === 'number' ? momentSnapshot(md.value, round, videoMs) : null)
 
 const resultWord = computed(() => (flow.value.summary?.won == null ? 'Match' : flow.value.summary.won ? 'Victory' : 'Defeat'))
@@ -76,8 +80,22 @@ async function loadClip(key: string): Promise<string | null> {
   return url
 }
 
+/** Show a saved run's finished state straight away: nothing runs, nothing animates, $0. */
+async function showSaved(): Promise<void> {
+  if (!api || !picked.value || !pickedMatch.value?.cached) return
+  flow.value = emptyFlow()
+  error.value = null
+  replayedFromCache.value = true
+  instantView.value = true
+  ran.value = true
+  running.value = false
+  startedAt.value = null
+  await api.run(picked.value, { cached: true, instant: true })
+}
+
 async function replay(): Promise<void> {
   if (!api || !picked.value) return
+  instantView.value = false
   flow.value = emptyFlow()
   for (const u of clipUrls.values()) URL.revokeObjectURL(u)
   clipUrls.clear()
@@ -116,7 +134,10 @@ onMounted(async () => {
     }
   })
   timer = setInterval(() => { tick.value++ }, 200)
+  // Open on the finished saved run (no replay, no spend); live runs only start from the button.
+  await showSaved()
 })
+watch(picked, () => { if (!running.value) void showSaved() })
 onBeforeUnmount(() => {
   off?.()
   if (timer) clearInterval(timer)
@@ -140,10 +161,11 @@ onBeforeUnmount(() => {
           <input :checked="cachedChosen" type="checkbox" :disabled="running || !pickedMatch?.cached" @change="useCache = ($event.target as HTMLInputElement).checked">
           {{ pickedMatch?.cached ? 'Use cached run ($0)' : 'No saved run yet · runs live (about $0.11)' }}
         </label>
-        <UfButton :variant="ran ? 'secondary' : 'primary'" :disabled="!picked || running" @click="replay">{{ running ? 'Replaying…' : ran ? 'Replay again' : 'Replay this match' }}</UfButton>
+        <UfButton :variant="'secondary'" :disabled="!picked || running" @click="replay">{{ running ? 'Replaying…' : cachedChosen ? 'Replay animation' : 'Run live' }}</UfButton>
       </div>
       <p v-else class="uf-t2">Only available in dev builds.</p>
     </header>
+    <p v-if="replayedFromCache && ran" class="cfd-saved uf-t4"><span class="cfd-saved-dot" aria-hidden="true" />Saved run · no new analysis · $0</p>
     <p v-if="error" class="uf-t3 cfd-err">{{ error }}</p>
 
     <div class="cfd-cols">
@@ -190,7 +212,7 @@ onBeforeUnmount(() => {
             <span class="uf-label">Moments the coach watched</span>
             <span class="uf-t4">{{ flow.moments.length }} of {{ flow.moments.length + pendingMoments }}</span>
           </div>
-          <KeyMomentV3 v-for="m in flow.moments" :key="m.step" class="uf-reveal" :moment="m"
+          <KeyMomentV3 v-for="m in flow.moments" :key="m.step" class="uf-reveal" :moment="m" :match-data="md"
             :snapshot="snapshotFor(m.round_number, m.still?.videoMs ?? m.fixes?.[0]?.evidence_ms?.[0])"
             :load-clip="m.clipKey ? () => loadClip(m.clipKey as string) : null" />
           <div v-for="n in pendingMoments" :key="`p${n}`" class="cfd-moment-skel">
@@ -275,6 +297,8 @@ onBeforeUnmount(() => {
 .cfd-cache { display: inline-flex; gap: 6px; align-items: center; cursor: pointer; }
 .cfd-cache.is-off { opacity: 0.5; cursor: default; }
 .cfd-err { color: var(--uf-loss); }
+.cfd-saved { margin: -8px 0 0; display: inline-flex; align-items: center; gap: 8px; color: var(--uf-muted); }
+.cfd-saved-dot { width: 6px; height: 6px; background: var(--uf-faint); }
 .cfd-cols { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 40px; align-items: start; }
 .cfd-player { display: flex; flex-direction: column; gap: 28px; min-width: 0; }
 .cfd-hint { margin: 0; max-width: 60ch; }

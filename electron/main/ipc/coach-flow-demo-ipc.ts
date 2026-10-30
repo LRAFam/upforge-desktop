@@ -39,8 +39,10 @@ export function setupCoachFlowDemoHandlers(ipcMain: IpcMain, auth: AuthManager, 
     if ((opts as { cached?: unknown } | null)?.cached === true) {
       const cached = await readCachedRun(cacheDir, id)
       if (!cached) return { ok: false, error: 'No cached run for this match yet' }
-      current = new CoachFlowCachedReplay(cached, emit)
-      void current.run()
+      const saved = new CoachFlowCachedReplay(cached, emit)
+      current = saved
+      if ((opts as { instant?: unknown }).instant === true) saved.showFinished()
+      else void saved.run()
       return { ok: true, cached: true }
     }
     current = new CoachFlowDemoRun({
@@ -57,6 +59,9 @@ export function setupCoachFlowDemoHandlers(ipcMain: IpcMain, auth: AuthManager, 
       ffmpeg: process.platform === 'win32' ? 'ffmpeg.exe' : 'ffmpeg',
       emit,
       cacheDir,
+      habits: async () => (await auth.fetchRecurringInsights(5))
+        ?.filter(h => h.text)
+        .map(h => (h.occurrences > 1 ? `${h.text} (flagged in ${h.occurrences} matches)` : h.text)) ?? null,
     })
     void current.run(id)
     return { ok: true }

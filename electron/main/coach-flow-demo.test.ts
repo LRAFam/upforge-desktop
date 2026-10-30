@@ -15,7 +15,8 @@ function deps(over: Partial<Parameters<typeof makeRun>[0]> = {}) {
   return makeRun(over)
 }
 
-function makeRun(over: { reviewCost?: number; noUrl?: boolean; momentCost?: number; cacheDir?: string } = {}) {
+function makeRun(over: { reviewCost?: number; noUrl?: boolean; momentCost?: number; cacheDir?: string; hiddenMoment?: boolean; habits?: string[] | null } = {}) {
+  const bodies: Record<string, unknown> = {}
   const events: FlowEvent[] = []
   const calls: string[] = []
   const fetchImpl = vi.fn(async (url: string, init: { body?: unknown }) => {
@@ -24,6 +25,7 @@ function makeRun(over: { reviewCost?: number; noUrl?: boolean; momentCost?: numb
     const json = (body: unknown) => ({ ok: true, status: 200, json: async () => body })
     if (path === '/api/match-report') return json({ notes: { headline: { text: 'You died first in 6 rounds.' } }, cost_usd: 0.002 })
     if (path === '/api/coach-flow/plan') {
+      bodies.plan = init.body
       return json({
         round: { round_number: 3, why: 'Round 3: you died first.', windows: [W('round3-overview', 1000, 20000), W('round3-1', 15000, 22000)] },
         moments: [{ round_number: 7, why: 'Round 7: lost clutch.', window: { ...W('moment-r7', 50000, 58000), round: 7 } }],
@@ -31,6 +33,7 @@ function makeRun(over: { reviewCost?: number; noUrl?: boolean; momentCost?: numb
     }
     if (path === '/api/coach-flow/moment') {
       expect(init.body).toBeInstanceOf(FormData)
+      if (over.hiddenMoment) return json({ success: false, hidden: true, error_code: 'not_enough_to_coach', cost: { total_usd: 0.03 } })
       return json({ story: 'You swung alone.', fixes: [{ title: 'Wait for the flash', evidence_ms: [55000] }], cost: { total_usd: over.momentCost ?? 0.02 } })
     }
     if (path === '/api/coach-flow/round-review') return json({ success: true, story: 'Round story.', fixes: [{ title: 'Fix 1' }, { title: 'Fix 2' }], cost: { total_usd: over.reviewCost ?? 0.05 } })
@@ -49,8 +52,9 @@ function makeRun(over: { reviewCost?: number; noUrl?: boolean; momentCost?: numb
     cut: async (_url, _s, _e, out) => { await writeFile(out, Buffer.alloc(1000)) },
     still: async (_clip, _ms, out) => { await writeFile(out, Buffer.from([0xff, 0xd8, 0xff])) },
     cacheDir: over.cacheDir ?? null,
+    habits: over.habits === undefined ? undefined : async () => over.habits ?? null,
   })
-  return { run, events, calls }
+  return { run, events, calls, bodies }
 }
 
 describe('withinBudget', () => {
@@ -71,6 +75,25 @@ describe('CoachFlowDemoRun', () => {
     expect(run.spentUsd).toBeCloseTo(0.022, 5)
     // The signed URL never reaches the screen.
     expect(JSON.stringify(events)).not.toContain('sig=secret')
+  })
+
+  it('settles a moment the coach could not ground without showing it, and still meters it', async () => {
+    const { run, events } = deps({ hiddenMoment: true })
+    await run.run(1)
+    const m = events.find(e => e.step === 'moment-1' && e.state === 'done')
+    expect(m?.payload).toBeUndefined()
+    expect(m?.detail).toContain('not shown')
+    expect(run.spentUsd).toBeCloseTo(0.032, 5)
+  })
+
+  it('sends the player habits with the match data, and coaches without them when they fail', async () => {
+    const withHabits = deps({ habits: ['Died first without a teammate near (flagged in 6 matches)'] })
+    await withHabits.run.run(1)
+    expect(String(withHabits.bodies.plan)).toContain('playerHabits')
+    const none = deps({ habits: null })
+    await none.run.run(1)
+    expect(String(none.bodies.plan)).not.toContain('playerHabits')
+    expect(none.events.some(e => e.step === 'moment-1' && e.state === 'done')).toBe(true)
   })
 
   it('reviews the round only when asked, and records its cost', async () => {
