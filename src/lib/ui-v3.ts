@@ -1,13 +1,12 @@
 import { ref } from 'vue'
 
 /**
- * UI v3 (the rework) switch. On by default in development so the new screens are visible
- * while they are built; off in production until it is turned on per user.
- * Override with localStorage `uf.uiV3` = '1' | '0'.
+ * UI v3 (the rework) switch. On by default everywhere since 2.16.0; a player can switch back to
+ * the classic design in Settings › App (stored as localStorage `uf.uiV3` = '0', '1' turns it on again).
  */
 const STORAGE_KEY = 'uf.uiV3'
 
-export function readUiV3(dev: boolean, storage: Pick<Storage, 'getItem'> | null): boolean {
+export function readUiV3(storage: Pick<Storage, 'getItem'> | null): boolean {
   try {
     const v = storage?.getItem(STORAGE_KEY)
     if (v === '1') return true
@@ -15,10 +14,10 @@ export function readUiV3(dev: boolean, storage: Pick<Storage, 'getItem'> | null)
   } catch {
     // storage blocked: fall back to the default
   }
-  return dev
+  return true
 }
 
-export const uiV3 = ref(readUiV3(import.meta.env.DEV, typeof localStorage === 'undefined' ? null : localStorage))
+export const uiV3 = ref(readUiV3(typeof localStorage === 'undefined' ? null : localStorage))
 
 export function setUiV3(on: boolean): void {
   uiV3.value = on

@@ -6,7 +6,7 @@ import SettingsCoachingBriefs from './SettingsCoachingBriefs.vue'
 import SettingsRow from './SettingsRow.vue'
 import SettingsSection from './SettingsSection.vue'
 import SettingsToggle from './SettingsToggle.vue'
-import { uiV3 } from '../../lib/ui-v3'
+import { setUiV3, uiV3 } from '../../lib/ui-v3'
 import { gameBrand } from '../../lib/game-branding'
 
 const {
@@ -142,6 +142,13 @@ function onToggle(key: (typeof toggles)[number]['key']): void {
         hint="Raises game priority, switches the power plan and closes apps you choose while you play (Windows)."
       >
         <button type="button" class="uf-link" @click="router.push('/performance')">Open →</button>
+      </SettingsRow>
+      <!-- Shown in both designs so a player can always switch back. -->
+      <SettingsRow
+        label="Use the classic design"
+        hint="Switch back to the previous look if something doesn't work for you. You can turn the new design on again here."
+      >
+        <SettingsToggle label="Use the classic design" :on="!uiV3" @click="setUiV3(!uiV3)" />
       </SettingsRow>
     </SettingsSection>
   </div>
