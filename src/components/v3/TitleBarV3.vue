@@ -3,7 +3,9 @@
  * UI v3 title bar: brand mark, game switcher (one accent at a time, always with the logo),
  * recording/OBS status and the account. Draggable; window controls on Windows only.
  */
+import { ref } from 'vue'
 import { usePrimaryGame } from '../../composables/usePrimaryGame'
+import AccountSwitcherV3 from './accounts/AccountSwitcherV3.vue'
 import { useRoute } from 'vue-router'
 import type { PrimaryGame } from '../../lib/games'
 import UfIcon from './UfIcon.vue'
@@ -21,7 +23,10 @@ defineProps<{
   obsTitle?: string
   identity?: string | null
 }>()
-defineEmits<{ minimize: []; close: []; account: [] }>()
+const emit = defineEmits<{ minimize: []; close: []; account: [] }>()
+// Account menu: the current game's linked accounts; "Manage accounts" opens Settings › Account.
+const accountOpen = ref(false)
+function manageAccounts() { accountOpen.value = false; emit('account') }
 
 const { primaryGame, setPrimaryGame } = usePrimaryGame()
 // Onboarding picks the game itself (step 2), so the switcher hides there.
@@ -49,9 +54,10 @@ const games: Array<{ id: PrimaryGame; name: string; logo: string }> = [
       <span class="uf-dot" :style="{ background: obsConnected ? 'var(--uf-win)' : 'var(--uf-gold)' }" />{{ obsConnected ? 'Recording ready' : 'OBS not connected' }}
     </span>
     <div class="uf-sep" />
-    <button type="button" class="uf-account -webkit-no-drag" @click="$emit('account')">
+    <button type="button" class="uf-account -webkit-no-drag" aria-haspopup="dialog" :aria-expanded="accountOpen" @click="accountOpen = !accountOpen">
       <UfIcon name="user" :size="16" /><span>{{ identity || 'Account' }}</span>
     </button>
+    <AccountSwitcherV3 :open="accountOpen" @close="accountOpen = false" @manage="manageAccounts" />
     <div v-if="!isMac && showWindowControls" class="uf-winctl -webkit-no-drag">
       <button type="button" aria-label="Minimise" @click="$emit('minimize')"><UfIcon name="minus" :size="14" /></button>
       <button type="button" aria-label="Close" class="is-close" @click="$emit('close')"><UfIcon name="close" :size="14" /></button>
