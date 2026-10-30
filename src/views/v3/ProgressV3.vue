@@ -16,6 +16,7 @@ import type { FocusResponse } from '../../lib/focus'
 import GameProgress from '../../components/v3/games/GameProgress.vue'
 import type { DemoGame } from '../../components/v3/games/game-data'
 import { usePrimaryGame } from '../../composables/usePrimaryGame'
+import { RouterLink } from 'vue-router'
 import { readCache, writeCache } from '../../lib/stale-cache'
 import UfSkeleton from '../../components/v3/UfSkeleton.vue'
 
@@ -161,6 +162,7 @@ const forecast = computed(() => rankForecast(forecastSource.value, 100, valorant
 
     <template v-else>
       <div :class="{ 'uf-reveal': fromSkeleton }" class="pv3-loaded">
+      <RouterLink :to="`/starting-report/${primaryGame}`" class="uf-link pv3-starting">Your starting report →</RouterLink>
       <GameProgress v-if="demoGame" :key="demoGame" :game="demoGame" />
       <template v-else-if="isValorant && hasRank">
         <RankJourney :history="rankForChart" :focus-started-at="focus?.started_at" :focus-label="focus?.label" />
@@ -266,4 +268,5 @@ const forecast = computed(() => rankForecast(forecastSource.value, 100, valorant
 .pv3-bar > span { position: absolute; left: 0; top: 3px; bottom: 3px; opacity: 0.25; }
 .pv3-bar > b { position: relative; padding-left: 8px; }
 .pv3-forecast { margin: 8px 0 0; color: var(--uf-muted); }
+.pv3-starting { align-self: flex-start; }
 </style>

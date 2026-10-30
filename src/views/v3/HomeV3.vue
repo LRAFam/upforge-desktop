@@ -20,6 +20,7 @@ import UfSkeleton from '../../components/v3/UfSkeleton.vue'
 import HomeFocusPanel from '../../components/v3/home/HomeFocusPanel.vue'
 import HomeLiveStatus from '../../components/v3/home/HomeLiveStatus.vue'
 import HomeRankStrip from '../../components/v3/home/HomeRankStrip.vue'
+import StartingReportCardV3 from '../../components/v3/starting/StartingReportCardV3.vue'
 import SessionCoachV3 from '../../components/v3/ideas/SessionCoachV3.vue'
 import DashboardBanners from '../../components/dashboard/DashboardBanners.vue'
 import GameSetup from '../../components/v3/games/GameSetup.vue'
@@ -195,6 +196,7 @@ async function runPrimary() {
           <button type="button" class="uf-link" @click="d.retryRefresh()">Retry</button>
         </p>
         <HomePregameV3 />
+        <StartingReportCardV3 :game="d.primaryGame.value" mode="home" />
         <HomeLiveStatus v-if="live" :status="live" :busy="d.stopping.value" @stop="d.stopRecording()" @open="d.router.push('/recordings')" />
         <section class="uf-rise uf-d2s home3-coach" aria-label="Coach">
           <p class="home3-coach-k"><img :src="upforgeIcon" alt="" width="16" height="16"><span class="uf-t4" style="color: var(--uf-muted)">Your coach</span></p>

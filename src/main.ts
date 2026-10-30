@@ -58,6 +58,7 @@ const router = createRouter({
     { path: '/performance', component: PerformanceView },
     { path: '/vod-review', component: VODReviewView },
     { path: '/report/:matchId', component: () => import('./views/v3/MatchReportV3.vue') },
+    { path: '/starting-report/:game', component: () => import('./views/v3/StartingReportV3.vue') },
     { path: '/training', component: TrainingHubView },
     { path: '/training/calibration', component: () => import('./views/ValorantCalibrationView.vue') },
     { path: '/trainer-results', component: TrainerResultsView },
