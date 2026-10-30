@@ -985,6 +985,14 @@ declare global {
       dialog: {
         openDirectory: () => Promise<string | null>
       }
+      /** Dev only: "Replay a real match" coach-flow demo. */
+      coachFlowDemo?: {
+        info: () => Promise<{ aiUrl: string; budgetUsd: number }>
+        list: () => Promise<Array<{ id: number; map: string | null; agent: string | null; created_at: string | null; rounds_won: number | null; rounds_lost: number | null; status: string | null }>>
+        run: (analysisId: number) => Promise<{ ok: boolean; error?: string }>
+        reviewRound: () => Promise<{ ok: boolean; error?: string }>
+        onEvent: (cb: (e: import('./lib/coach-flow-demo').FlowEvent) => void) => () => void
+      }
       dev: {
         simulateGame: (game?: string, durationMs?: number) => Promise<{ ok: boolean }>
         listProductionVods: () => Promise<

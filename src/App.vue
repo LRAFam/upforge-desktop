@@ -268,6 +268,10 @@
       >Post-game UI</button>
       <button
         class="px-2 py-0.5 text-[10px] text-yellow-400/80 hover:text-yellow-300 bg-yellow-500/10 hover:bg-yellow-500/20 rounded border border-yellow-500/20 transition-colors"
+        @click="router.push('/dev/coach-flow')"
+      >Replay a real match</button>
+      <button
+        class="px-2 py-0.5 text-[10px] text-yellow-400/80 hover:text-yellow-300 bg-yellow-500/10 hover:bg-yellow-500/20 rounded border border-yellow-500/20 transition-colors"
         @click="previewOnboarding"
       >Onboarding</button>
       <span v-if="simStatus" class="text-[10px] text-yellow-500/50 ml-1">{{ simStatus }}</span>

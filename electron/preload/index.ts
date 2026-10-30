@@ -199,6 +199,17 @@ const api = {
   dialog: {
     openDirectory: () => ipcRenderer.invoke('dialog:open-directory')
   },
+  coachFlowDemo: {
+    info: () => ipcRenderer.invoke('coach-flow-demo:info'),
+    list: () => ipcRenderer.invoke('coach-flow-demo:list'),
+    run: (analysisId: number) => ipcRenderer.invoke('coach-flow-demo:run', analysisId),
+    reviewRound: () => ipcRenderer.invoke('coach-flow-demo:review-round'),
+    onEvent: (cb: (e: unknown) => void) => {
+      const listener = (_: unknown, e: unknown) => cb(e)
+      ipcRenderer.on('coach-flow-demo:event', listener)
+      return () => { ipcRenderer.removeListener('coach-flow-demo:event', listener) }
+    },
+  },
   dev: {
     simulateGame: (game?: string, durationMs?: number) =>
       ipcRenderer.invoke('dev:simulate-game', { game, durationMs }),

@@ -343,6 +343,7 @@ import {
 import { recordingHeroLabel, resolveDeadlockRecordingHero } from './deadlock-recording-hero'
 import { linkDeadlockAutoReview } from './deadlock-auto-review-link'
 import { FaceitLinkStore, registerCs2FaceitMatchIpc } from './cs2-faceit-match'
+import { setupCoachFlowDemoHandlers } from './ipc/coach-flow-demo-ipc'
 import { registerEnemyHabitsIpc } from './ipc/enemy-habits-ipc'
 import { pregameKey, pregameQuery, sanitizePregameContext } from './pregame-view'
 import { DEEP_LINK_SCHEME, PendingDeepLink, findDeepLinkInArgv } from './deep-link'
@@ -7010,6 +7011,13 @@ async function startApp(): Promise<void> {
     return result
   })
   setupReviewNotebookHandlers(ipcMain, authManager)
+  // ── Dev only: "Replay a real match" coach-flow demo (local AI, production data read-only) ──
+  if (is.dev) {
+    setupCoachFlowDemoHandlers(ipcMain, authManager, (event) => {
+      const url = event.senderFrame?.url
+      return !!url && isTrustedRendererUrl(url)
+    })
+  }
   setupRoundReviewHandlers(ipcMain, authManager)
   // Coach marketplace (UI v3): read-only browse + my bookings
   setupMarketplaceHandlers(ipcMain, authManager)
