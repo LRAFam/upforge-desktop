@@ -39,3 +39,12 @@ describe('formatting', () => {
     expect(n.next).toBe('Hold with a teammate.')
   })
 })
+
+describe('plainFailure', () => {
+  it('turns step failures into plain words', async () => {
+    const { plainFailure } = await import('./coach-flow-demo')
+    expect(plainFailure({ label: 'Match report ready', state: 'failed', detail: 'AI /api/match-report 401' })).toMatch(/refused the app's key/)
+    expect(plainFailure({ label: 'Clips cut on this PC', state: 'failed', detail: 'ffmpeg exited 1 (playback link expired)' })).toMatch(/expired/)
+    expect(plainFailure({ label: 'Key moment 1 coached (round 3)', state: 'skipped', detail: 'budget' })).toMatch(/spending cap/)
+  })
+})

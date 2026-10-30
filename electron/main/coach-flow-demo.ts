@@ -8,7 +8,7 @@
  * seconds of video ever move. Signed URLs are never logged or sent to the renderer.
  */
 import { spawn } from 'node:child_process'
-import { mkdtemp, readFile, rm, stat } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import log from 'electron-log'
@@ -42,7 +42,17 @@ export interface DemoDeps {
   now?: () => number
   fetchImpl?: typeof fetch
   cut?: (url: string, startMs: number, endMs: number, out: string) => Promise<void>
+  /** Pull one still (jpg) from a clip at offsetMs. */
+  still?: (clip: string, offsetMs: number, out: string) => Promise<void>
+  /** Dev cache root: clips, stills and the event log are kept per match so a replay can cost $0. */
+  cacheDir?: string | null
 }
+
+/** A still from a clip, sent to the screen as a data URL (no file:// access needed in dev). */
+export interface FlowStill { src: string; videoMs: number }
+
+/** Match-data fields the screen draws from (round strip, minimap, round timeline, numbers). */
+const MATCH_FIELDS = ['map', 'agent', 'puuid', 'gameMode', 'finalScore', 'finalStats', 'roundSummaries', 'kills', 'deaths', 'killEvents', 'teamSnapshot', 'roundReplay', 'matchDetailsLite', 'recordingStartTime', 'matchStartTime'] as const
 
 interface Window {
   moment_id: string
@@ -90,6 +100,45 @@ export function cutWithFfmpeg(ffmpeg: string) {
   })
 }
 
+export function stillWithFfmpeg(ffmpeg: string) {
+  return (clip: string, offsetMs: number, out: string) => new Promise<void>((resolve, reject) => {
+    const args = ['-y', '-loglevel', 'error', '-ss', (Math.max(0, offsetMs) / 1000).toFixed(3), '-i', clip,
+      '-frames:v', '1', '-vf', 'scale=640:-2', '-q:v', '5', out]
+    const p = spawn(ffmpeg, args, { stdio: ['ignore', 'ignore', 'ignore'] })
+    const timer = setTimeout(() => p.kill('SIGKILL'), 30_000)
+    p.on('close', code => { clearTimeout(timer); code === 0 ? resolve() : reject(new Error(`ffmpeg still exited ${code}`)) })
+  })
+}
+
+async function dataUrl(path: string): Promise<string> {
+  return `data:image/jpeg;base64,${(await readFile(path)).toString('base64')}`
+}
+
+/** Where in the clip the decisive moment is: the first fix's evidence time if it lands inside the window. */
+export function decisiveVideoMs(window: { window_start_ms: number; window_end_ms: number }, fixes: unknown[]): number {
+  for (const f of fixes as Array<{ evidence_ms?: unknown }>) {
+    const ms = Array.isArray(f?.evidence_ms) ? f.evidence_ms.find((v): v is number => typeof v === 'number') : undefined
+    if (typeof ms === 'number' && ms >= window.window_start_ms && ms <= window.window_end_ms) return ms
+  }
+  return Math.round((window.window_start_ms + window.window_end_ms) / 2)
+}
+
+/** Up to `max` still times for a round: fix evidence first, then the middle of each window, in time order. */
+export function roundStillTimes(windows: Array<{ window_start_ms: number; window_end_ms: number }>, fixes: unknown[], max = 5): number[] {
+  const inside = (ms: number) => windows.some(w => ms >= w.window_start_ms && ms <= w.window_end_ms)
+  const times: number[] = []
+  for (const f of fixes as Array<{ evidence_ms?: unknown }>) {
+    for (const ms of Array.isArray(f?.evidence_ms) ? f.evidence_ms : []) {
+      if (typeof ms === 'number' && inside(ms) && !times.some(t => Math.abs(t - ms) < 1500)) times.push(ms)
+    }
+  }
+  for (const w of windows) {
+    const mid = Math.round((w.window_start_ms + w.window_end_ms) / 2)
+    if (!times.some(t => Math.abs(t - mid) < 1500)) times.push(mid)
+  }
+  return times.sort((a, b) => a - b).slice(0, max).sort((a, b) => a - b)
+}
+
 async function pool<T, R>(items: T[], limit: number, fn: (item: T) => Promise<R>): Promise<R[]> {
   const out: R[] = new Array(items.length)
   let next = 0
@@ -108,17 +157,54 @@ export class CoachFlowDemoRun {
   private t0 = 0
   private spent = 0
   private dir: string | null = null
+  /** True only for a temp folder; a cache folder is kept so the run can be replayed for $0. */
+  private ownsDir = false
   private matchData: Record<string, unknown> | null = null
   private roundPlan: { round_number: number; why: string; windows: Window[] } | null = null
   private roundClips: Record<string, string> = {}
+  private roundWindows: Window[] = []
+  private clipFiles: Record<string, string> = {}
+  private analysisId = 0
+  private readonly log: Array<FlowEvent & { phase: 'run' | 'round' }> = []
+  private phase: 'run' | 'round' = 'run'
+  private roundT0 = 0
   private readonly now: () => number
   private readonly fetchImpl: typeof fetch
   private readonly cut: NonNullable<DemoDeps['cut']>
+  private readonly still: NonNullable<DemoDeps['still']>
+  private readonly emitRaw: DemoDeps['emit']
 
-  constructor(private readonly deps: DemoDeps) {
+  constructor(private deps: DemoDeps) {
     this.now = deps.now ?? Date.now
     this.fetchImpl = deps.fetchImpl ?? fetch
     this.cut = deps.cut ?? cutWithFfmpeg(deps.ffmpeg)
+    this.still = deps.still ?? stillWithFfmpeg(deps.ffmpeg)
+    this.emitRaw = deps.emit
+    // Every event is also logged so the run can be replayed from the cache at $0.
+    this.deps = { ...deps, emit: (e) => { this.record(e); this.emitRaw(e) } }
+  }
+
+  private record(e: FlowEvent): void {
+    if (!this.deps.cacheDir) return
+    const at = this.phase === 'round' ? e.at - this.roundT0 : e.at
+    this.log.push({ ...e, at, phase: this.phase })
+  }
+
+  private async saveLog(): Promise<void> {
+    const dir = this.cacheFolder()
+    if (!dir || !this.log.length) return
+    await mkdir(dir, { recursive: true })
+    await writeFile(join(dir, 'events.json'), JSON.stringify({ analysisId: this.analysisId, savedAt: Date.now(), events: this.log, clips: Object.keys(this.clipFiles) }))
+  }
+
+  private cacheFolder(): string | null {
+    return this.deps.cacheDir && this.analysisId ? join(this.deps.cacheDir, String(this.analysisId)) : null
+  }
+
+  /** Raw bytes of a cut clip, for inline playback (the screen makes a blob URL). */
+  async clipBytes(key: string): Promise<Uint8Array | null> {
+    const path = this.clipFiles[key]
+    return path ? new Uint8Array(await readFile(path)) : null
   }
 
   get spentUsd(): number { return this.spent }
@@ -166,6 +252,18 @@ export class CoachFlowDemoRun {
     return res.json()
   }
 
+  private async stillAt(clip: string, w: Window, videoMs: number, name: string): Promise<FlowStill | null> {
+    if (!this.dir) return null
+    const out = join(this.dir, `${name}.jpg`)
+    try {
+      await this.still(clip, Math.max(0, videoMs - w.window_start_ms), out)
+      return { src: await dataUrl(out), videoMs }
+    } catch (e) {
+      log.warn(`[CoachFlowDemo] still failed: ${e instanceof Error ? e.message : String(e)}`)
+      return null
+    }
+  }
+
   private async clipForm(fields: Record<string, string>, clips: Record<string, string>): Promise<{ form: FormData; bytes: number }> {
     const form = new FormData()
     for (const [k, v] of Object.entries(fields)) form.append(k, v)
@@ -180,10 +278,12 @@ export class CoachFlowDemoRun {
 
   /** Match end → report → plan → clips → key-moment reviews. The round review waits for the player. */
   async run(analysisId: number): Promise<void> {
+    this.analysisId = analysisId
     try {
       await this.runSteps(analysisId)
     } finally {
       this.idle()
+      await this.saveLog().catch(() => {})
     }
   }
 
@@ -208,7 +308,9 @@ export class CoachFlowDemoRun {
         ally: fs.allyScore ?? null, enemy: fs.enemyScore ?? null,
         won: typeof fs.allyScore === 'number' && typeof fs.enemyScore === 'number' ? fs.allyScore > fs.enemyScore : null,
       }
-      return { value: a, payload: summary, detail: `${(md.roundSummaries as unknown[] | undefined)?.length ?? 0} rounds` }
+      const matchData: Record<string, unknown> = {}
+      for (const k of MATCH_FIELDS) if (md[k] !== undefined) matchData[k] = md[k]
+      return { value: a, payload: { ...summary, matchData }, detail: `${(md.roundSummaries as unknown[] | undefined)?.length ?? 0} rounds` }
     })
     if (!analysis || !this.matchData) return
 
@@ -245,7 +347,10 @@ export class CoachFlowDemoRun {
       return
     }
 
-    this.dir = await mkdtemp(join(tmpdir(), 'upforge-flow-'))
+    const cached = this.cacheFolder()
+    if (cached) await mkdir(cached, { recursive: true })
+    this.dir = cached ?? await mkdtemp(join(tmpdir(), 'upforge-flow-'))
+    this.ownsDir = !cached
     const dir = this.dir
     const jobs: Array<{ key: string; w: Window; target: 'moment' | 'round' }> = [
       ...plan.moments.map(m => ({ key: m.window.moment_id, w: m.window, target: 'moment' as const })),
@@ -258,12 +363,14 @@ export class CoachFlowDemoRun {
         const out = join(dir, `${j.key}.mp4`)
         await this.cut(url, j.w.window_start_ms, j.w.window_end_ms, out)
         clipPaths[j.key] = out
+        this.clipFiles[j.key] = out
         bytes += (await stat(out)).size
       })
       const secs = jobs.reduce((n, j) => n + (j.w.window_end_ms - j.w.window_start_ms), 0) / 1000
       return { value: true, detail: `${jobs.length} clips · ${Math.round(secs)} s of video · ${(bytes / 1e6).toFixed(1)} MB (instead of the full recording)` }
     })
     for (const w of plan.round?.windows ?? []) if (clipPaths[w.moment_id]) this.roundClips[`clip_${w.moment_id}`] = clipPaths[w.moment_id]
+    this.roundWindows = (plan.round?.windows ?? []).filter(w => clipPaths[w.moment_id])
 
     // Key moments: each one uploaded and coached on its own, all at once; results appear as they land.
     await Promise.all([
@@ -280,7 +387,14 @@ export class CoachFlowDemoRun {
             { clip: path },
           )
           const r = await this.aiForm('/api/coach-flow/moment', form) as { story?: string; fixes?: unknown[] }
-          return { value: r, costUsd: costOf(r), payload: { round_number: m.round_number, why: m.why, story: r.story ?? '', fixes: r.fixes ?? [] }, detail: `uploaded ${(bytes / 1e6).toFixed(1)} MB` }
+          const fixes = r.fixes ?? []
+          const videoMs = decisiveVideoMs(m.window, fixes)
+          const still = await this.stillAt(path, m.window, videoMs, `still-${m.window.moment_id}`)
+          return {
+            value: r, costUsd: costOf(r),
+            payload: { round_number: m.round_number, why: m.why, story: r.story ?? '', fixes, window: m.window, clipKey: m.window.moment_id, still },
+            detail: `uploaded ${(bytes / 1e6).toFixed(1)} MB`,
+          }
         })
       }),
     ])
@@ -301,29 +415,92 @@ export class CoachFlowDemoRun {
       this.skip('round-review', `Round ${plan.round_number} reviewed`, 'budget')
       return
     }
+    this.phase = 'round'
+    this.roundT0 = this.at()
     try {
       await this.reviewRoundStep(plan, md)
     } finally {
       this.idle()
+      await this.saveLog().catch(() => {})
     }
-    await this.dispose()
+    if (!this.cacheFolder()) await this.dispose()
   }
 
   private async reviewRoundStep(plan: { round_number: number; why: string }, md: Record<string, unknown>): Promise<void> {
     await this.step('round-review', `Round ${plan.round_number} reviewed`, async () => {
       const { form, bytes } = await this.clipForm({ match_data: JSON.stringify(md), round_number: String(plan.round_number) }, this.roundClips)
       const r = await this.aiForm('/api/coach-flow/round-review', form) as { success?: boolean; story?: string; fixes?: unknown[]; error?: string }
+      const fixes = r.fixes ?? []
+      const stills: FlowStill[] = []
+      for (const ms of roundStillTimes(this.roundWindows, fixes)) {
+        const w = this.roundWindows.find(x => ms >= x.window_start_ms && ms <= x.window_end_ms)
+        const clip = w ? this.clipFiles[w.moment_id] : undefined
+        if (!w || !clip) continue
+        const s = await this.stillAt(clip, w, ms, `round-${plan.round_number}-${ms}`)
+        if (s) stills.push(s)
+      }
       return {
         value: r,
         costUsd: costOf(r),
-        payload: { round_number: plan.round_number, why: plan.why, success: r.success !== false, story: r.story ?? '', fixes: r.fixes ?? [], error: r.error ?? null },
+        payload: {
+          round_number: plan.round_number, why: plan.why, success: r.success !== false, story: r.story ?? '', fixes, error: r.error ?? null,
+          stills, windows: this.roundWindows.map(w => ({ key: w.moment_id, start: w.window_start_ms, end: w.window_end_ms })),
+        },
         detail: `${Object.keys(this.roundClips).length} clips · uploaded ${(bytes / 1e6).toFixed(1)} MB`,
       }
     })
   }
 
   async dispose(): Promise<void> {
-    if (this.dir) await rm(this.dir, { recursive: true, force: true }).catch(() => {})
+    if (this.dir && this.ownsDir) await rm(this.dir, { recursive: true, force: true }).catch(() => {})
     this.dir = null
+  }
+}
+
+type LoggedEvent = FlowEvent & { phase: 'run' | 'round' }
+
+/** The saved event log of an earlier run, or null. */
+export async function readCachedRun(cacheDir: string, analysisId: number): Promise<{ events: LoggedEvent[]; dir: string } | null> {
+  const dir = join(cacheDir, String(analysisId))
+  try {
+    const raw = JSON.parse(await readFile(join(dir, 'events.json'), 'utf8')) as { events?: LoggedEvent[] }
+    return Array.isArray(raw.events) && raw.events.length ? { events: raw.events, dir } : null
+  } catch (e) {
+    log.warn(`[CoachFlowDemo] cached run unreadable: ${e instanceof Error ? e.message : String(e)}`)
+    return null
+  }
+}
+
+/**
+ * Replays a cached run with its original timings: same screens, same stills and clips, $0.
+ * The timeline still shows the times and costs measured when it really ran.
+ */
+export class CoachFlowCachedReplay {
+  private timers: Array<ReturnType<typeof setTimeout>> = []
+
+  constructor(
+    private readonly cached: { events: LoggedEvent[]; dir: string },
+    private readonly emit: (e: FlowEvent) => void,
+  ) {}
+
+  private play(phase: 'run' | 'round'): void {
+    for (const e of this.cached.events.filter(x => x.phase === phase)) {
+      const { phase: _p, ...event } = e
+      this.timers.push(setTimeout(() => this.emit(event), Math.max(0, e.at)))
+    }
+  }
+
+  async run(): Promise<void> { this.play('run') }
+  async reviewRound(): Promise<void> { this.play('round') }
+  get hasRoundReview(): boolean { return this.cached.events.some(e => e.phase === 'round') }
+
+  async clipBytes(key: string): Promise<Uint8Array | null> {
+    if (!/^[\w-]+$/.test(key)) return null
+    try { return new Uint8Array(await readFile(join(this.cached.dir, `${key}.mp4`))) } catch { return null }
+  }
+
+  async dispose(): Promise<void> {
+    for (const t of this.timers) clearTimeout(t)
+    this.timers = []
   }
 }

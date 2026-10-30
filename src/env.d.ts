@@ -988,8 +988,9 @@ declare global {
       /** Dev only: "Replay a real match" coach-flow demo. */
       coachFlowDemo?: {
         info: () => Promise<{ aiUrl: string; budgetUsd: number }>
-        list: () => Promise<Array<{ id: number; map: string | null; agent: string | null; created_at: string | null; rounds_won: number | null; rounds_lost: number | null; status: string | null }>>
-        run: (analysisId: number) => Promise<{ ok: boolean; error?: string }>
+        list: () => Promise<Array<{ id: number; map: string | null; agent: string | null; created_at: string | null; rounds_won: number | null; rounds_lost: number | null; status: string | null; cached?: boolean }>>
+        run: (analysisId: number, opts?: { cached?: boolean }) => Promise<{ ok: boolean; error?: string; cached?: boolean }>
+        clip: (key: string) => Promise<Uint8Array | null>
         reviewRound: () => Promise<{ ok: boolean; error?: string }>
         onEvent: (cb: (e: import('./lib/coach-flow-demo').FlowEvent) => void) => () => void
       }

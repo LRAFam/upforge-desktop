@@ -1,11 +1,12 @@
 import { describe, expect, it, vi } from 'vitest'
-import { mkdtemp, writeFile } from 'node:fs/promises'
+import { mkdtemp, readdir, writeFile } from 'node:fs/promises'
+import { existsSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 vi.mock('electron-log', () => ({ default: { info: vi.fn(), warn: vi.fn(), error: vi.fn() } }))
 
-import { CoachFlowDemoRun, ESTIMATE_USD, RUN_BUDGET_USD, withinBudget, type FlowEvent } from './coach-flow-demo'
+import { CoachFlowCachedReplay, CoachFlowDemoRun, ESTIMATE_USD, RUN_BUDGET_USD, decisiveVideoMs, readCachedRun, roundStillTimes, withinBudget, type FlowEvent } from './coach-flow-demo'
 
 const W = (id: string, s: number, e: number) => ({ moment_id: id, round: 3, window_start_ms: s, window_end_ms: e, fps: 6 })
 const MATCH = { map: 'Bind', agent: 'Jett', finalScore: { allyScore: 13, enemyScore: 10 }, roundSummaries: [{}, {}], puuid: 'me' }
@@ -14,7 +15,7 @@ function deps(over: Partial<Parameters<typeof makeRun>[0]> = {}) {
   return makeRun(over)
 }
 
-function makeRun(over: { reviewCost?: number; noUrl?: boolean; momentCost?: number } = {}) {
+function makeRun(over: { reviewCost?: number; noUrl?: boolean; momentCost?: number; cacheDir?: string } = {}) {
   const events: FlowEvent[] = []
   const calls: string[] = []
   const fetchImpl = vi.fn(async (url: string, init: { body?: unknown }) => {
@@ -46,6 +47,8 @@ function makeRun(over: { reviewCost?: number; noUrl?: boolean; momentCost?: numb
     now: () => (t += 100),
     fetchImpl: fetchImpl as unknown as typeof fetch,
     cut: async (_url, _s, _e, out) => { await writeFile(out, Buffer.alloc(1000)) },
+    still: async (_clip, _ms, out) => { await writeFile(out, Buffer.from([0xff, 0xd8, 0xff])) },
+    cacheDir: over.cacheDir ?? null,
   })
   return { run, events, calls }
 }
@@ -101,5 +104,45 @@ describe('temp dir helper', () => {
   it('can create a temp dir (sanity for the clip folder)', async () => {
     const d = await mkdtemp(join(tmpdir(), 'cfd-'))
     expect(d).toContain('cfd-')
+  })
+})
+
+describe('still times', () => {
+  it('picks the evidence time inside the window, else the middle', () => {
+    expect(decisiveVideoMs({ window_start_ms: 1000, window_end_ms: 9000 }, [{ evidence_ms: [5000] }])).toBe(5000)
+    expect(decisiveVideoMs({ window_start_ms: 1000, window_end_ms: 9000 }, [{ evidence_ms: [20000] }])).toBe(5000)
+  })
+  it('keeps evidence first, adds window middles, at most five, in time order', () => {
+    const w = [{ window_start_ms: 0, window_end_ms: 10_000 }, { window_start_ms: 20_000, window_end_ms: 30_000 }]
+    expect(roundStillTimes(w, [{ evidence_ms: [2000] }, { evidence_ms: [2500] }])).toEqual([2000, 5000, 25000])
+  })
+})
+
+describe('cache', () => {
+  it('keeps the cache folder after the run is disposed and replays it at $0', async () => {
+    const cacheDir = await mkdtemp(join(tmpdir(), 'cf-cache-'))
+    const { run } = makeRun({ cacheDir })
+    await run.run(1)
+    await run.reviewRound()
+    await run.dispose()
+    const files = await readdir(join(cacheDir, '1'))
+    expect(files).toEqual(expect.arrayContaining(['events.json', 'moment-r7.mp4']))
+    expect(existsSync(join(cacheDir, '1', 'events.json'))).toBe(true)
+
+    const cached = await readCachedRun(cacheDir, 1)
+    expect(cached?.events.some(e => e.phase === 'round' && e.step === 'round-review')).toBe(true)
+    const replayed: FlowEvent[] = []
+    vi.useFakeTimers()
+    const replay = new CoachFlowCachedReplay(cached!, e => replayed.push(e))
+    await replay.run()
+    vi.runAllTimers()
+    expect(replayed.some(e => e.step === 'moment-1' && e.state === 'done')).toBe(true)
+    expect(replayed.some(e => e.step === 'round-review')).toBe(false)
+    await replay.reviewRound()
+    vi.runAllTimers()
+    vi.useRealTimers()
+    expect(replayed.some(e => e.step === 'round-review' && e.state === 'done')).toBe(true)
+    expect(await replay.clipBytes('moment-r7')).not.toBeNull()
+    expect(await replay.clipBytes('../etc')).toBeNull()
   })
 })

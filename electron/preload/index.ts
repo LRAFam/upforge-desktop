@@ -202,7 +202,8 @@ const api = {
   coachFlowDemo: {
     info: () => ipcRenderer.invoke('coach-flow-demo:info'),
     list: () => ipcRenderer.invoke('coach-flow-demo:list'),
-    run: (analysisId: number) => ipcRenderer.invoke('coach-flow-demo:run', analysisId),
+    run: (analysisId: number, opts?: { cached?: boolean }) => ipcRenderer.invoke('coach-flow-demo:run', analysisId, opts),
+    clip: (key: string) => ipcRenderer.invoke('coach-flow-demo:clip', key) as Promise<Uint8Array | null>,
     reviewRound: () => ipcRenderer.invoke('coach-flow-demo:review-round'),
     onEvent: (cb: (e: unknown) => void) => {
       const listener = (_: unknown, e: unknown) => cb(e)
