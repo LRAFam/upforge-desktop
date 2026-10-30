@@ -5,6 +5,7 @@ import {
   deathWasTraded,
   farFromTeam,
   isUntradedDeath,
+  tradesMeasurable,
 } from './trade-flags'
 
 describe('trade flags', () => {
@@ -89,5 +90,15 @@ describe('trade flags', () => {
       },
     ]
     expect(deathWasTraded(death, kills, allies)).toBe(true)
+  })
+
+  it('treats trades as unmeasured when the kill list only has the player\'s own events', () => {
+    const ownOnly = [
+      { killerPuuid: 'enemy1', victimPuuid: 'player' },
+      { killerPuuid: 'player', victimPuuid: 'enemy2' },
+    ]
+    expect(tradesMeasurable(ownOnly, 'player', allies)).toBe(false)
+    expect(tradesMeasurable([...ownOnly, { killerPuuid: 'ally1', victimPuuid: 'enemy1' }], 'player', allies)).toBe(true)
+    expect(tradesMeasurable([{ killerPuuid: 'ally1', victimPuuid: 'enemy1' }], 'player', new Set(['player']))).toBe(false)
   })
 })

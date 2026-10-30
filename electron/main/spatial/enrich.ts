@@ -11,6 +11,7 @@ import {
   deathWasTraded,
   farFromTeam,
   isUntradedDeath,
+  tradesMeasurable,
 } from './trade-flags'
 import type {
   KillSpatial,
@@ -678,6 +679,7 @@ export function applyDeathTradeFlags(match: MatchData, allyPuids: Set<string>): 
   const roundEvents = (match.killEvents ?? []).filter(
     (ev) => typeof ev.round === 'number',
   )
+  const measurable = tradesMeasurable(roundEvents, own, allyPuids)
 
   for (const death of match.playerDeaths ?? []) {
     if (!death.spatial) continue
@@ -706,6 +708,8 @@ export function applyDeathTradeFlags(match: MatchData, allyPuids: Set<string>): 
     if (alliesAlive !== undefined) {
       death.spatial.alliesAlive = alliesAlive
     }
-    death.spatial.traded = deathWasTraded(death, roundEvents, allyPuids)
+    // Unknown, not false, when the kill list only has the player's own events.
+    if (measurable) death.spatial.traded = deathWasTraded(death, roundEvents, allyPuids)
+    else delete death.spatial.traded
   }
 }
