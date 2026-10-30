@@ -153,7 +153,7 @@ onBeforeUnmount(() => { off?.(); if (timer) clearInterval(timer) })
               <p v-if="s.detail" class="uf-t4" style="margin: 0">{{ s.detail }}</p>
             </div>
             <div class="cfd-step-num uf-num">
-              <span class="uf-t3">{{ s.state === 'running' ? 'running…' : seconds(s.at) }}</span>
+              <span class="uf-t3">{{ s.state === 'running' ? 'running…' : s.state === 'done' ? `ready at ${seconds(s.at + (s.took ?? 0))}` : s.state }}</span>
               <span v-if="s.took" class="uf-t4">took {{ seconds(s.took) }}</span>
               <span v-if="s.costUsd" class="uf-t4">{{ usd(s.costUsd) }}</span>
             </div>
