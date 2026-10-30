@@ -19,6 +19,7 @@ import UfSkeleton from '../../components/v3/UfSkeleton.vue'
 import HomeFocusPanel from '../../components/v3/home/HomeFocusPanel.vue'
 import HomeLiveStatus from '../../components/v3/home/HomeLiveStatus.vue'
 import HomeRankStrip from '../../components/v3/home/HomeRankStrip.vue'
+import SessionCoachV3 from '../../components/v3/ideas/SessionCoachV3.vue'
 import DashboardBanners from '../../components/dashboard/DashboardBanners.vue'
 import GameSetup from '../../components/v3/games/GameSetup.vue'
 import GameHomeSummary from '../../components/v3/games/GameHomeSummary.vue'
@@ -184,6 +185,7 @@ async function runPrimary() {
 
     <div class="home3-body" :class="{ 'uf-refreshing': d.refreshing.value }">
       <div class="home3-main">
+        <SessionCoachV3 v-if="d.isValorant.value" @warmup="d.router.push('/training')" />
         <p v-if="d.refreshFailed.value && !homeLoading" class="uf-t4 home3-stale" role="status">
           Couldn't refresh · showing your last data
           <button type="button" class="uf-link" @click="d.retryRefresh()">Retry</button>

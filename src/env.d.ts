@@ -1388,6 +1388,7 @@ declare global {
       stats: {
         rrHistory: (range?: '7d' | '30d' | 'all') => Promise<Array<{ id: number; date: string; rank: string | null; rr: number; elo: number }>>
         valorantRank: () => Promise<ValorantRankLive | null>
+        valorantRankedGames: () => Promise<Array<{ matchId: string; startTime: number; tierAfter: number; rrAfter: number; rrEarned: number }>>
         enemyHabits: (recordingId: string) => Promise<{ map: string; enemyKills: number; openingKills: number; rows: Array<{ callout: string; kills: number; openingKills: number }> } | null>
         refreshValorantRank: () => Promise<ValorantRankLive | null>
         captureValorantMmr: () => Promise<{ ok: true; file: string; fields: string[] } | { ok: false; error: string }>

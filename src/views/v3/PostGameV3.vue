@@ -8,6 +8,7 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import type { Focus } from '../../lib/focus'
 import UfButton from '../../components/v3/UfButton.vue'
 import UfIcon from '../../components/v3/UfIcon.vue'
+import SessionCoachV3 from '../../components/v3/ideas/SessionCoachV3.vue'
 import {
   agentPortraitUrl, kdaText, metaLine, postGameFocusStrip, progressWidth, resultTone, resultWord, scoreText, toneColor,
   type PostGameSummary, type PostGameTone,
@@ -131,6 +132,8 @@ const clipsLine = computed(() => {
             <span v-for="(p, i) in focusStrip.pips" :key="i" class="pg3-pip" :class="`is-${p}`" />
           </span>
         </div>
+        <!-- Session coach (P6): only after 2+ ranked losses in a row this session (Valorant ranked log). -->
+        <SessionCoachV3 compact class="uf-rise uf-d2s" />
       </template>
 
       <!-- In progress / saved / error -->

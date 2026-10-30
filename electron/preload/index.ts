@@ -313,6 +313,8 @@ const api = {
     /** Enemy habits for one Valorant recording (this match only, local data). */
     enemyHabits: (recordingId: string) => ipcRenderer.invoke('valorant:enemy-habits', recordingId),
     refreshValorantRank: () => ipcRenderer.invoke('valorant:refresh-rank'),
+    /** The player's logged ranked Valorant games (from the Riot client), oldest first. */
+    valorantRankedGames: () => ipcRenderer.invoke('valorant:ranked-games'),
     /** Dev builds only: save one raw Riot MMR body to userData/riot-captures. */
     captureValorantMmr: () => ipcRenderer.invoke('valorant:capture-mmr'),
     onValorantRank: (cb: (rank: unknown) => void) => {
