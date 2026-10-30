@@ -1,11 +1,11 @@
 <template>
   <div
     class="product-shell relative h-screen bg-[#111111] text-white flex flex-col overflow-hidden select-none"
-    :class="{ 'login-shell': route.path === '/login' }"
+    :class="{ 'login-shell': route.path === '/login', 'ui-v3 uf-grain': uiV3 }"
     :style="cssVars"
   >
     <!-- Subtle branded background texture -->
-    <img v-if="!isPostGameRoute && route.path !== '/login'" src="./assets/upforge-bg.webp" alt="" class="pointer-events-none absolute inset-0 z-0 h-full w-full object-cover opacity-[0.045] select-none" />
+    <img v-if="!uiV3 && !isPostGameRoute && route.path !== '/login'" src="./assets/upforge-bg.webp" alt="" class="pointer-events-none absolute inset-0 z-0 h-full w-full object-cover opacity-[0.045] select-none" />
     <Transition name="busy-bar">
       <div v-if="busyActive && route.path !== '/splash'" class="pointer-events-none absolute inset-x-0 top-0 z-50 h-[2px] bg-white/[0.04]">
         <div
@@ -16,9 +16,31 @@
       </div>
     </Transition>
 
+    <!-- Title bar (UI v3) -->
+    <TitleBarV3
+      v-if="uiV3 && showTitleBar && !isPostGameRoute"
+      :is-mac="isMac"
+      :show-window-controls="desktopApiAvailable"
+      :recording="status.recording"
+      :obs-connected="showObsStatusChip || status.recording ? obsConnected : null"
+      :obs-title="obsStatusChipTitle"
+      :identity="titleBarIdentity"
+      @minimize="minimizeWindow()"
+      @close="closeWindow()"
+      @account="router.push({ path: '/settings', query: { tab: 'account' } })"
+    />
+    <!-- Post-game window strip (UI v3): drag area + close, nothing else -->
+    <div v-else-if="uiV3 && showTitleBar && isPostGameRoute" class="drag-region uf-pg-strip" :style="isMac ? 'padding-left: 80px' : undefined">
+      <img src="./assets/upforge-icon.webp" alt="UpForge" class="uf-pg-mark">
+      <span class="uf-label">Post-game</span>
+      <div style="flex: 1" />
+      <button v-if="!isMac && desktopApiAvailable" type="button" class="uf-pg-close -webkit-no-drag" aria-label="Close" @click="closeWindow()">
+        <svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18" /></svg>
+      </button>
+    </div>
     <!-- Title bar -->
     <div
-      v-if="showTitleBar"
+      v-else-if="showTitleBar"
       class="drag-region relative flex items-center justify-between flex-shrink-0 px-3 border-b border-white/[0.09] bg-[#161616]/95 backdrop-blur-xl"
       :style="isMac ? 'height:44px; padding-left:80px' : 'height:44px'"
     >
@@ -87,6 +109,16 @@
     </div>
 
     <!-- Update banner (download progress + ready to install) -->
+    <!-- v3: one hairline row, status dot, link action (agent-shell) -->
+    <div v-if="uiV3 && route.path !== '/splash' && updateLine" class="uf-banner" role="status">
+      <span class="uf-banner-dot" :class="{ 'is-red': updateLine.tone === 'red', 'uf-live': updateLine.live }" aria-hidden="true" />
+      <p class="uf-banner-text" style="margin: 0"><span class="uf-banner-main">{{ updateLine.text }}<span v-if="updateLine.percent !== null" class="uf-num"> {{ updateLine.percent }}%</span></span></p>
+      <div class="uf-banner-actions">
+        <div v-if="appUpdatePhase === 'downloading'" class="uf-banner-bar" aria-hidden="true"><span :style="{ width: `${appUpdatePercent}%` }" /></div>
+        <button v-if="updateLine.canInstall" type="button" class="uf-banner-link is-red" @click="installUpdate">Restart now</button>
+      </div>
+    </div>
+<template v-else>
     <Transition name="update-banner">
       <div
         v-if="route.path !== '/splash' && (appUpdatePhase === 'available' || appUpdatePhase === 'downloading' || appUpdatePhase === 'ready')"
@@ -142,7 +174,19 @@
       </div>
     </Transition>
 
+</template>
+
     <!-- OBS setup banner — shown as soon as we detect OBS is not connected -->
+    <div v-if="uiV3 && showObsBanner" class="uf-banner" role="status">
+      <span class="uf-banner-dot is-gold" aria-hidden="true" />
+      <p class="uf-banner-text" style="margin: 0"><span class="uf-banner-main" :title="obsBannerMessage">{{ obsBannerMessage }}</span></p>
+      <div class="uf-banner-actions">
+        <button type="button" class="uf-banner-link" :disabled="obsConnecting" @click="launchObsFromBanner">{{ obsConnecting ? 'Starting…' : 'Launch OBS' }}</button>
+        <button type="button" class="uf-banner-link" :disabled="obsConnecting" @click="connectObsFromBanner">{{ obsConnecting ? 'Connecting…' : 'Connect' }}</button>
+        <button type="button" class="uf-banner-link" @click="openObsSettings">Settings</button>
+      </div>
+    </div>
+<template v-else>
     <Transition name="update-banner">
       <div
         v-if="showObsBanner"
@@ -173,9 +217,12 @@
       </div>
     </Transition>
 
+</template>
+
     <!-- App shell: sidebar + content (replaces top nav) -->
     <div class="relative z-10 flex flex-1 min-h-0">
-      <AppSidebar v-if="showNav" />
+      <SidebarV3 v-if="showNav && uiV3" />
+      <AppSidebar v-else-if="showNav" />
       <div class="flex flex-1 min-h-0 flex-col min-w-0">
         <main
           class="main-content flex flex-1 min-h-0 flex-col"
@@ -229,6 +276,13 @@
 </template>
 
 <script setup lang="ts">
+import TitleBarV3 from './components/v3/TitleBarV3.vue'
+import SidebarV3 from './components/v3/SidebarV3.vue'
+import { uiV3 } from './lib/ui-v3'
+import { openWebFeature } from './lib/web-explore-links'
+import { deepLinkRoute } from './lib/deep-link-route'
+import { setCacheScope } from './lib/stale-cache'
+import { updateBannerLine } from './lib/shell-v3'
 import { openUpgrade as startUpgrade } from './lib/upgrade'
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
@@ -414,6 +468,7 @@ const devNavLink = computed(() =>
 const appUpdatePhase = ref<string>('idle')
 const appUpdateVersion = ref<string | undefined>(undefined)
 const appUpdatePercent = ref(0)
+const updateLine = computed(() => updateBannerLine(appUpdatePhase.value, appUpdateVersion.value, appUpdatePercent.value))
 let statusInterval: ReturnType<typeof setInterval> | null = null
 let navBusyTimer: ReturnType<typeof setTimeout> | null = null
 let lastClipSummaryAt = 0
@@ -467,8 +522,20 @@ async function loadUserProfile() {
   userAvatarUrl.value = ''
 }
 
+/** upforge:// links: take the held action (main hands it over only when signed in) and open it. Never joins. */
+async function consumeDeepLink(): Promise<void> {
+  try {
+    const action = await window.api.deepLink?.takePending()
+    const target = deepLinkRoute(action, uiV3.value)
+    if (!target) return
+    if (target.type === 'route') await router.push(target.location).catch(() => {})
+    else await openWebFeature(target.path)
+  } catch { /* nothing held or IPC unavailable */ }
+}
+
 async function applySessionUser(userId: number | null) {
   sessionUserKey.value = userId != null ? `user-${userId}` : 'guest'
+  setCacheScope(userId)
   if (userId == null) {
     riotId.value = null
     userName.value = null
@@ -479,6 +546,7 @@ async function applySessionUser(userId: number | null) {
     hasClipIndicator.value = false
     return
   }
+  void consumeDeepLink()
   try {
     const s = await window.api.app.getStatus()
     status.value = s
@@ -518,7 +586,8 @@ router.afterEach((to) => {
 
 watch(primaryGame, () => {
   if (!showNav.value) return
-  const allowed = gameNavRoutes(primaryGame.value)
+  // UI v3 keeps Progress for every game (per-game stats). Squad stays Valorant-only as shipped; Coaches (/rosters) is in every game's nav.
+  const allowed: readonly string[] = uiV3.value ? [...gameNavRoutes(primaryGame.value), '/stats'] : gameNavRoutes(primaryGame.value)
   if (!allowed.includes(route.path)) {
     router.push('/dashboard').catch(() => {})
   }
@@ -554,6 +623,8 @@ onMounted(async () => {
   await Promise.all([loadClipSummary(), loadUserProfile(), loadFromSettings()])
   const initialUserId = (status.value as { user?: { id?: number } }).user?.id
   sessionUserKey.value = initialUserId != null ? `user-${initialUserId}` : 'guest'
+  setCacheScope(initialUserId ?? null)
+  if (initialUserId != null) void consumeDeepLink()
 
   try {
     const obs = await window.api.obs.getStatus()
@@ -635,6 +706,9 @@ onMounted(async () => {
     await loadClipSummary()
   })
   ;(window as Window & { _clipsCleanup?: () => void })._clipsCleanup = clipsCleanup
+
+  const deepLinkCleanup = api.on('deep-link:available', () => { void consumeDeepLink() })
+  ;(window as Window & { _deepLinkCleanup?: () => void })._deepLinkCleanup = deepLinkCleanup
 
   const sessionCleanup = api.on('session:user-changed', (...args: unknown[]) => {
     const payload = args[0] as { userId?: number | null } | undefined

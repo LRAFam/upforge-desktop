@@ -28,6 +28,7 @@ const api = {
     preferences: () => ipcRenderer.invoke('coaching:preferences'),
     savePreferences: (value: import('../../src/lib/coaching-preferences').CoachingPreferences) => ipcRenderer.invoke('coaching:save-preferences', value),
     pregame: () => ipcRenderer.invoke('coaching:pregame'),
+    pregameView: (ctx: unknown) => ipcRenderer.invoke('coaching:pregame-view', ctx),
     debrief: (id: string) => ipcRenderer.invoke('coaching:debrief', id),
   },
   auth: {
@@ -148,7 +149,7 @@ const api = {
   },
   recordings: {
     get: () => ipcRenderer.invoke('recordings:get'),
-    listAll: () => ipcRenderer.invoke('recordings:list-all'),
+    listAll: (opts?: { allAccounts?: boolean }) => ipcRenderer.invoke('recordings:list-all', opts),
     analyse: (id: string) => ipcRenderer.invoke('recordings:analyse', { id }),
     retryMatchStats: (id: string) => ipcRenderer.invoke('recordings:retry-match-stats', { id }),
     saveToCloud: (id: string) =>
@@ -265,6 +266,14 @@ const api = {
     sendPresence: (recording: boolean, game: string | null) => ipcRenderer.invoke('squad:send-presence', { recording, game }),
     syncPresence: () => ipcRenderer.invoke('squad:sync-presence'),
   },
+  // Coach marketplace (UI v3): read-only browse + my bookings. Booking/payment stays on the web.
+  market: {
+    listCoaches: (game?: string | null) => ipcRenderer.invoke('market:list-coaches', game ?? null),
+    getCoach: (coachId: number) => ipcRenderer.invoke('market:get-coach', coachId),
+    reviewPricing: (coachId: number) => ipcRenderer.invoke('market:review-pricing', coachId),
+    mySessions: () => ipcRenderer.invoke('market:my-sessions'),
+    myReviews: () => ipcRenderer.invoke('market:my-reviews'),
+  },
   coach: {
     getMyCoaches: () => ipcRenderer.invoke('coach:get-my-coaches'),
     requestRosterReview: (opts: {
@@ -288,12 +297,33 @@ const api = {
     }) => ipcRenderer.invoke('coach:update-roster-settings', payload),
     getReviewRequests: () => ipcRenderer.invoke('coach:get-review-requests'),
     startReview: (reviewId: number) => ipcRenderer.invoke('coach:start-review', { reviewId }),
+    // Coach notes (desktop, UI v3)
+    addAnnotation: (reviewId: number, note: { body: string; roundNumber?: number | null; videoOffsetMs?: number | null }) =>
+      ipcRenderer.invoke('coach:add-annotation', { reviewId, ...note }),
+    completeRosterReview: (reviewId: number, closingNote?: string | null) =>
+      ipcRenderer.invoke('coach:complete-roster-review', { reviewId, closingNote }),
+    // Roster flow (UI v3)
+    getPublicHub: (coachId: number) => ipcRenderer.invoke('coach:get-public-hub', { coachId }),
+    joinRoster: (coachId: number) => ipcRenderer.invoke('coach:join-roster', { coachId }),
   },
   stats: {
-    rrHistory: () => ipcRenderer.invoke('stats:rr-history')
+    rrHistory: (range?: '7d' | '30d' | 'all') => ipcRenderer.invoke('stats:rr-history', range),
+    /** Valorant rank from the Riot client (live or last seen). */
+    valorantRank: () => ipcRenderer.invoke('valorant:get-rank'),
+    /** Enemy habits for one Valorant recording (this match only, local data). */
+    enemyHabits: (recordingId: string) => ipcRenderer.invoke('valorant:enemy-habits', recordingId),
+    refreshValorantRank: () => ipcRenderer.invoke('valorant:refresh-rank'),
+    /** Dev builds only: save one raw Riot MMR body to userData/riot-captures. */
+    captureValorantMmr: () => ipcRenderer.invoke('valorant:capture-mmr'),
+    onValorantRank: (cb: (rank: unknown) => void) => {
+      const listener = (_e: unknown, rank: unknown) => cb(rank)
+      ipcRenderer.on('valorant:rank-updated', listener)
+      return () => { ipcRenderer.removeListener('valorant:rank-updated', listener) }
+    },
   },
   progress: {
-    playstyleProfile: () => ipcRenderer.invoke('progress:playstyle-profile')
+    playstyleProfile: () => ipcRenderer.invoke('progress:playstyle-profile'),
+    recurring: (limit?: number) => ipcRenderer.invoke('progress:recurring', limit),
   },
   overlay: {
     toggle: () => ipcRenderer.invoke('overlay:toggle'),
@@ -380,8 +410,14 @@ const api = {
         uploadDemo: (demoPath: string) => ipcRenderer.invoke('deadlock:upload-demo', demoPath),
         getDetectionStatus: () => ipcRenderer.invoke('deadlock:get-detection-status'),
         ensureCondebug: () => ipcRenderer.invoke('deadlock:ensure-condebug'),
+        getAnalysisDetail: (jobId: string) => ipcRenderer.invoke('deadlock:get-analysis-detail', jobId),
+        reviewReplay: (recordingId: string) => ipcRenderer.invoke('deadlock:review-replay', recordingId),
       },
   cs2: {
+    findFaceitMatch: (rec: { startedAtMs: number; endedAtMs?: number | null; map?: string | null }) => ipcRenderer.invoke('cs2:find-faceit-match', rec),
+    attachFaceitMatch: (recordingId: string, matchId: string) => ipcRenderer.invoke('cs2:attach-faceit-match', recordingId, matchId),
+    getFaceitLink: (recordingId: string) => ipcRenderer.invoke('cs2:get-faceit-link', recordingId),
+    getAnalysisDetail: (jobId: string) => ipcRenderer.invoke('cs2:get-analysis-detail', jobId),
     detectDemoDir: () => ipcRenderer.invoke('cs2:detect-demo-dir'),
     listDemos: () => ipcRenderer.invoke('cs2:list-demos'),
     openDemosFolder: () => ipcRenderer.invoke('cs2:open-demos-folder'),
@@ -401,6 +437,18 @@ const api = {
     openHistory: () => ipcRenderer.invoke('lol:open-history'),
     openResults: (analysisId: number | string) => ipcRenderer.invoke('lol:open-results', analysisId),
     openConnectRiot: () => ipcRenderer.invoke('lol:open-connect-riot'),
+    getRank: () => ipcRenderer.invoke('lol:get-rank'),
+    listAccounts: () => ipcRenderer.invoke('lol:list-accounts'),
+    addAccount: (input: { riot_name: string; riot_tag: string; platform: string }) => ipcRenderer.invoke('lol:add-account', input),
+    setMainAccount: (id: number) => ipcRenderer.invoke('lol:set-main-account', id),
+    removeAccount: (id: number) => ipcRenderer.invoke('lol:remove-account', id),
+    getFocus: () => ipcRenderer.invoke('lol:get-focus'),
+    getAnalysis: (id: number) => ipcRenderer.invoke('lol:get-analysis', id),
+    analyzeMatch: (matchId: string) => ipcRenderer.invoke('lol:analyze-match', matchId),
+  },
+  /** upforge:// links: the held action, handed over once and only to a signed-in session. */
+  deepLink: {
+    takePending: () => ipcRenderer.invoke('deep-link:take-pending'),
   },
   forgeRank: {
     prestige: () => ipcRenderer.invoke('forge-rank:prestige'),
@@ -419,6 +467,7 @@ const api = {
   on: (channel: string, callback: (...args: unknown[]) => void): (() => void) => {
     const allowed = [
       'post-game:preparing',
+      'pregame:context',
       'post-game:prep-step',
       'post-game:upload-start',
       'post-game:compress-start',
@@ -467,6 +516,7 @@ const api = {
       'app:navigate',
       'analysis:timeout',
       'auth:session-expired',
+      'deep-link:available',
       'session:user-changed',
       'riot:prompt-link',
       'clips:updated',

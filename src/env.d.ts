@@ -129,6 +129,10 @@ export interface ClipCaptureSettings {
   aces: boolean
   /** Clutch rounds (1vX won). */
   clutches: boolean
+  /** Your own deaths (Valorant), opening deaths first — capped per match. */
+  deaths?: boolean
+  /** League objective clips (Baron, Dragon, Herald, towers), capped per match. */
+  objectives?: boolean
 }
 
 export interface AppSettings {
@@ -311,6 +315,8 @@ export interface PendingRecording {
   onboardingAdminTest?: boolean
   /** Automatic Riot stats polling was paused after local footage deletion. */
   matchStatsSyncPaused?: boolean
+  /** Deadlock cloud replay review the user started for this recording. */
+  deadlockReviewJobId?: string
   /** Session-only, read-only archive mounted from the production API for developer testing. */
   productionFixture?: {
     source: 'production_archive'
@@ -366,7 +372,26 @@ export interface ProductionArchiveSummary {
   has_match_data: boolean
 }
 
+/** Valorant rank read from the Riot client (see electron/main/valorant-mmr.ts). */
+export interface ValorantRankLive {
+  puuid: string
+  tier: number
+  tierName: string
+  rr: number | null
+  lastChange: number | null
+  seasonId: string | null
+  placementsLeft: number | null
+  state: 'ranked' | 'placements' | 'unranked'
+  lastMatchId: string | null
+  fetchedAt: number
+  source: 'riot_client'
+  /** Rank shields left (0–2) when known for certain, else null. */
+  shields?: number | null
+}
+
 export interface RecordingTimeline {
+  /** Riot/Valve match id when known (League: Match-V5 id such as EUW1_123). */
+  matchId?: string | null
   id: string
   jobId?: string | null
   analysisId?: number | null
@@ -487,7 +512,7 @@ export interface ClipRecord {
   path: string
   /** Path to thumbnail JPG on disk, if generated */
   thumbPath: string | null
-  trigger: 'manual' | 'kill' | 'ace' | 'multikill' | 'clutch' | 'hotkey'
+  trigger: 'manual' | 'kill' | 'death' | 'objective' | 'ace' | 'multikill' | 'clutch' | 'hotkey'
   map: string | null
   agent: string | null
   durationSeconds: number
@@ -521,6 +546,8 @@ export interface ClipRecord {
 
 export interface AnalysisItem {
   id: number
+  /** Riot/Valve match id when the API knows it (League links stats coaching by it). */
+  match_id?: string | null
   job_id: string | null
   status: string
   map: string | null
@@ -589,8 +616,23 @@ export interface LolMatchSummary {
   game_creation: number
 }
 
+/** A linked League account (main or alt) from /api/lol-accounts. */
+export interface LolLinkedAccount {
+  id: number
+  riot_name: string
+  riot_tag: string
+  platform: string
+  is_main: boolean
+  verified: boolean
+}
+
 export interface LolAnalysisItem {
   id: number
+  /** Played on a League alt: coached, not counted for focus or trends. */
+  is_alt?: boolean
+  /** Deaths before 14:00 from the stored timeline; null when no timeline was stored. */
+  early_deaths?: number | null
+  first_death_sec?: number | null
   job_id: string | null
   match_id: string
   status: string
@@ -606,7 +648,7 @@ export interface LolAnalysisItem {
 
 export interface DeadlockProfileStats {
   current_rank: { name: string; subtier: number | null; image: string | null } | null
-  summary: { wins: number; losses: number; win_rate: number; avg_kda: string }
+  summary: { wins: number; losses: number; win_rate: number; avg_kda: string; total_matches?: number; avg_net_worth?: number; percentiles?: { kda?: number; net_worth?: number } }
   recent_matches: Array<{
     match_id: number
     match_result: number
@@ -619,6 +661,10 @@ export interface DeadlockProfileStats {
     net_worth: number
     match_duration_s: number
     start_time?: number
+    last_hits?: number
+    denies?: number
+    ranked_display_badge?: number | null
+    hero_id?: number
   }>
   hero_stats: Array<{
     hero_id: number
@@ -628,7 +674,7 @@ export interface DeadlockProfileStats {
     matches_played: number
     win_rate: number
   }>
-  mmr_history: Array<{ rank: number | null }>
+  mmr_history: Array<{ rank: number | null; start_time?: number; match_id?: number }>
   meta_insights?: Array<{
     hero_id: number
     hero_name: string
@@ -678,6 +724,7 @@ declare global {
         preferences: () => Promise<import('./lib/coaching-preferences').CoachingPreferences>
         savePreferences: (value: import('./lib/coaching-preferences').CoachingPreferences) => Promise<import('./lib/coaching-preferences').CoachingPreferences>
         pregame: () => Promise<{ discord_sent?: boolean; reason?: string }>
+        pregameView: (ctx: import('./components/v3/home/pregame-brief').PregameContext) => Promise<import('./components/v3/home/pregame-brief').PregameBriefResponse | null>
         debrief: (id: string) => Promise<{ ok?: boolean; error?: string }>
       }
       auth: {
@@ -811,7 +858,7 @@ declare global {
       }
       recordings: {
         get: () => Promise<PendingRecording[]>
-        listAll: () => Promise<PendingRecording[]>
+        listAll: (opts?: { allAccounts?: boolean }) => Promise<Array<PendingRecording & { riotAccountRole?: 'main' | 'alt' | null }>>
         analyse: (id: string) => Promise<{ ok?: boolean; error?: string }>
         retryMatchStats: (id: string) => Promise<{
           ok: boolean
@@ -1240,6 +1287,14 @@ declare global {
         sendPresence: (recording: boolean, game: string | null) => Promise<{ ok: boolean }>
         syncPresence: () => Promise<{ ok: boolean }>
       }
+      // Coach marketplace (UI v3): read-only. Shapes are validated in src/components/v3/booking/marketplace.ts.
+      market: {
+        listCoaches: (game?: string | null) => Promise<{ ok: true; coaches: unknown[] } | { ok: false; error: string }>
+        getCoach: (coachId: number) => Promise<{ ok: true; coach: Record<string, unknown> } | { ok: false; error: string }>
+        reviewPricing: (coachId: number) => Promise<Record<string, unknown> | null>
+        mySessions: () => Promise<{ ok: true; sessions: unknown[] } | { ok: false; error: string }>
+        myReviews: () => Promise<{ ok: true; reviews: unknown[] } | { ok: false; error: string }>
+      }
       coach: {
         getMyCoaches: () => Promise<Array<{
           coach_id: number
@@ -1323,11 +1378,24 @@ declare global {
         }) => Promise<{ ok: true; settings: Record<string, unknown> } | { ok: false; error: string }>
         getReviewRequests: () => Promise<Array<Record<string, unknown>>>
         startReview: (reviewId: number) => Promise<{ ok: boolean; review?: unknown; error?: string }>
+        // Coach notes (desktop, UI v3)
+        addAnnotation: (reviewId: number, note: { body: string; roundNumber?: number | null; videoOffsetMs?: number | null }) => Promise<{ ok: true; id: number | null } | { ok: false; error: string }>
+        completeRosterReview: (reviewId: number, closingNote?: string | null) => Promise<{ ok: true } | { ok: false; error: string }>
+        // Roster flow (UI v3)
+        getPublicHub: (coachId: number) => Promise<{ ok: true; coach: Record<string, unknown> } | { ok: false; error: string }>
+        joinRoster: (coachId: number) => Promise<{ ok: boolean; error?: string; coachName?: string }>
       }
       stats: {
-        rrHistory: () => Promise<Array<{ id: number; date: string; rank: string | null; rr: number; elo: number }>>
+        rrHistory: (range?: '7d' | '30d' | 'all') => Promise<Array<{ id: number; date: string; rank: string | null; rr: number; elo: number }>>
+        valorantRank: () => Promise<ValorantRankLive | null>
+        enemyHabits: (recordingId: string) => Promise<{ map: string; enemyKills: number; openingKills: number; rows: Array<{ callout: string; kills: number; openingKills: number }> } | null>
+        refreshValorantRank: () => Promise<ValorantRankLive | null>
+        captureValorantMmr: () => Promise<{ ok: true; file: string; fields: string[] } | { ok: false; error: string }>
+        onValorantRank: (cb: (rank: ValorantRankLive) => void) => () => void
       }
       progress: {
+        /** Most recurring habits from the knowledge bank; null when unavailable. */
+        recurring: (limit?: number) => Promise<import('../electron/main/auth-manager').RecurringInsight[] | null>
         playstyleProfile: () => Promise<{
           matches_tracked: number
           vods_analyzed?: number
@@ -1546,6 +1614,9 @@ declare global {
           hasReplaySalt?: boolean
           knownMatchCount?: number
         }>
+        getAnalysisDetail: (jobId: string) => Promise<{ ok: true; detail: unknown } | { ok: false; error: string }>
+        /** Starts a cloud review of this recording's replay (uses 1 analysis). Confirm with the player first. */
+        reviewReplay: (recordingId: string) => Promise<{ ok: true; jobId: string } | { ok: false; error: string }>
         ensureCondebug: () => Promise<{
           ok: boolean
           alreadyConfigured: boolean
@@ -1554,6 +1625,10 @@ declare global {
         }>
       }
       cs2: {
+        findFaceitMatch: (rec: { startedAtMs: number; endedAtMs?: number | null; map?: string | null }) => Promise<import('./components/v3/games/cs2-faceit-attach').FaceitLookup>
+        attachFaceitMatch: (recordingId: string, matchId: string) => Promise<{ ok: boolean; jobId?: string; error?: string; already?: boolean }>
+        getFaceitLink: (recordingId: string) => Promise<{ matchId: string; jobId: string; linkedAt: number } | null>
+        getAnalysisDetail: (jobId: string) => Promise<{ ok: true; analysis: unknown; source: string | null } | { ok: false; error: string }>
         detectDemoDir: () => Promise<{ dir: string | null; root: string | null }>
         listDemos: () => Promise<{
           files: Array<{ name: string; path: string; sizeBytes: number; modifiedAt: number }>
@@ -1600,6 +1675,17 @@ declare global {
         openHistory: () => Promise<{ ok: boolean }>
         openResults: (analysisId: number | string) => Promise<{ ok: boolean }>
         openConnectRiot: () => Promise<{ ok: boolean }>
+        getRank: () => Promise<import('./lib/lol-progress').LolRankPayload | null>
+        listAccounts: () => Promise<{ ok: boolean; accounts: LolLinkedAccount[]; max: number | null; error?: string }>
+        addAccount: (input: { riot_name: string; riot_tag: string; platform: string }) => Promise<{ ok: boolean; error?: string; limit?: boolean }>
+        setMainAccount: (id: number) => Promise<{ ok: boolean; error?: string }>
+        removeAccount: (id: number) => Promise<{ ok: boolean; error?: string }>
+        getFocus: () => Promise<import('./lib/focus').Focus | null>
+        getAnalysis: (id: number) => Promise<unknown>
+        analyzeMatch: (matchId: string) => Promise<{ ok: boolean; analysis_id?: number; error?: string }>
+      }
+      deepLink: {
+        takePending: () => Promise<{ kind: 'roster-join'; coachId: number } | null>
       }
       forgeRank: {
         prestige: () => Promise<{ success: boolean; forge_rank?: ForgeRankInfo; message?: string }>

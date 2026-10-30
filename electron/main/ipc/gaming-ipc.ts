@@ -9,6 +9,7 @@ import fs from 'fs'
 import path from 'path'
 import log from 'electron-log'
 import { AuthManager } from '../auth-manager'
+import { getFrontendBaseUrl } from '../api-base'
 import { GameDetector } from '../game-detector'
 import { SettingsManager } from '../settings-manager'
 import { openPathSafe } from '../shell-open'
@@ -324,27 +325,43 @@ export function setupGamingHandlers(
   })
 
   ipcMain.handle('deadlock:open-analyze', () => {
-    shell.openExternal('https://upforge.gg/deadlock/analyze')
+    shell.openExternal(`${getFrontendBaseUrl()}/deadlock/analyze`)
     return { ok: true }
   })
 
   ipcMain.handle('deadlock:open-results', (_event, jobId: string) => {
-    shell.openExternal(`https://upforge.gg/deadlock/results/${jobId}`)
+    shell.openExternal(`${getFrontendBaseUrl()}/deadlock/results/${jobId}`)
     return { ok: true }
   })
 
   ipcMain.handle('deadlock:open-dashboard', () => {
-    shell.openExternal('https://upforge.gg/deadlock')
+    shell.openExternal(`${getFrontendBaseUrl()}/deadlock`)
     return { ok: true }
   })
 
   ipcMain.handle('deadlock:open-connect-steam', () => {
-    shell.openExternal('https://upforge.gg/profile?tab=games')
+    shell.openExternal(`${getFrontendBaseUrl()}/profile?tab=games`)
     return { ok: true }
   })
 
   ipcMain.handle('deadlock:get-analyses', async (_event, limit = 10) => {
     return auth.fetchDeadlockAnalyses(limit)
+  })
+
+  // Full replay review (souls curve, items, abilities, Mid Boss, lobby, kill events) for the v3
+  // desktop view, so players don't have to leave the app. Read-only GET of the user's own analysis.
+  ipcMain.handle('deadlock:get-analysis-detail', async (_event, jobId: unknown) => {
+    if (typeof jobId !== 'string' || !/^[A-Za-z0-9-]{8,64}$/.test(jobId)) return { ok: false as const, error: 'invalid_job' }
+    if (!auth.getToken()) return { ok: false as const, error: 'not_authenticated' }
+    try {
+      const res = await auth.getApi().get(`/api/deadlock/demo/${encodeURIComponent(jobId)}`)
+      if (res.status === 202) return { ok: false as const, error: 'not_ready', status: res.data?.status ?? null }
+      return { ok: true as const, detail: res.data ?? null }
+    } catch (err: unknown) {
+      const status = (err as { status?: number; response?: { status?: number } })?.status
+        ?? (err as { response?: { status?: number } })?.response?.status
+      return { ok: false as const, error: status === 404 ? 'not_found' : 'fetch_failed' }
+    }
   })
 
   ipcMain.handle('deadlock:search-players', async (_event, query: string) => {
@@ -445,22 +462,36 @@ export function setupGamingHandlers(
   })
 
   ipcMain.handle('cs2:open-analyze', () => {
-    shell.openExternal('https://upforge.gg/cs2/analyze')
+    shell.openExternal(`${getFrontendBaseUrl()}/cs2/analyze`)
     return { ok: true }
   })
 
   ipcMain.handle('cs2:open-dashboard', () => {
-    shell.openExternal('https://upforge.gg/cs2')
+    shell.openExternal(`${getFrontendBaseUrl()}/cs2`)
     return { ok: true }
   })
 
   ipcMain.handle('cs2:open-connect-faceit', () => {
-    shell.openExternal('https://upforge.gg/profile?tab=games')
+    shell.openExternal(`${getFrontendBaseUrl()}/profile?tab=games`)
     return { ok: true }
   })
 
   ipcMain.handle('cs2:connect-faceit', async (_event, nickname: string) => {
     return auth.connectCs2Faceit(nickname)
+  })
+
+  // Round 7 (CS2): one analysed demo for the in-app result view. Read-only.
+  ipcMain.handle('cs2:get-analysis-detail', async (_event, jobId: unknown) => {
+    if (typeof jobId !== 'string' || !/^[A-Za-z0-9-]{8,64}$/.test(jobId)) return { ok: false as const, error: 'invalid_job' }
+    if (!auth.getToken()) return { ok: false as const, error: 'not_authenticated' }
+    try {
+      const res = await auth.getApi().get(`/api/cs2/analyses/${encodeURIComponent(jobId)}`)
+      return { ok: true as const, analysis: res.data?.analysis ?? null, source: res.data?.source ?? null }
+    } catch (err: unknown) {
+      const status = (err as { status?: number; response?: { status?: number } })?.status
+        ?? (err as { response?: { status?: number } })?.response?.status
+      return { ok: false as const, error: status === 404 ? 'not_found' : 'fetch_failed' }
+    }
   })
 
   ipcMain.handle('cs2:get-analyses', async (_event, limit = 10) => {
@@ -510,24 +541,46 @@ export function setupGamingHandlers(
     return auth.fetchLolRecentMatches()
   })
 
+  ipcMain.handle('lol:get-rank', () => auth.fetchLolRank())
+  // League accounts (main + alts). Changes come only from the app's own windows.
+  ipcMain.handle('lol:list-accounts', () => auth.listLolAccounts())
+  ipcMain.handle('lol:add-account', (event, input: { riot_name: string; riot_tag: string; platform: string }) => {
+    if (!event.senderFrame || !isTrustedRendererUrl(event.senderFrame.url)) return { ok: false, error: 'Untrusted request' }
+    return auth.addLolAccount(input)
+  })
+  ipcMain.handle('lol:set-main-account', (event, id: number) => {
+    if (!event.senderFrame || !isTrustedRendererUrl(event.senderFrame.url)) return { ok: false, error: 'Untrusted request' }
+    return auth.setMainLolAccount(Number(id))
+  })
+  ipcMain.handle('lol:remove-account', (event, id: number) => {
+    if (!event.senderFrame || !isTrustedRendererUrl(event.senderFrame.url)) return { ok: false, error: 'Untrusted request' }
+    return auth.removeLolAccount(Number(id))
+  })
+  ipcMain.handle('lol:get-focus', () => auth.fetchLolFocus())
+  ipcMain.handle('lol:get-analysis', (_event, id: number) => auth.fetchLolAnalysis(Number(id)))
+  ipcMain.handle('lol:analyze-match', (event, matchId: string) => {
+    // Spends an analysis: only the app's own windows may ask.
+    if (!event.senderFrame || !isTrustedRendererUrl(event.senderFrame.url)) return { ok: false, error: 'Untrusted request' }
+    return auth.analyzeLolMatch(String(matchId))
+  })
   ipcMain.handle('lol:open-analyze', () => {
-    shell.openExternal('https://upforge.gg/lol/analyze')
+    shell.openExternal(`${getFrontendBaseUrl()}/lol/analyze`)
     return { ok: true }
   })
 
   ipcMain.handle('lol:open-history', () => {
-    shell.openExternal('https://upforge.gg/lol/history')
+    shell.openExternal(`${getFrontendBaseUrl()}/lol/history`)
     return { ok: true }
   })
 
   ipcMain.handle('lol:open-results', (_event, analysisId: number | string) => {
     // Desktop LoL coaching rows live in analysis_logs, not lol_analyses.
-    shell.openExternal(`https://upforge.gg/lol/results/${analysisId}`)
+    shell.openExternal(`${getFrontendBaseUrl()}/lol/results/${analysisId}`)
     return { ok: true }
   })
 
   ipcMain.handle('lol:open-connect-riot', () => {
-    shell.openExternal('https://upforge.gg/profile?tab=games')
+    shell.openExternal(`${getFrontendBaseUrl()}/profile?tab=games`)
     return { ok: true }
   })
 

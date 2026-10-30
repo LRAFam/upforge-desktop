@@ -6,6 +6,7 @@ import { resolveMatchEndCapture, shouldFinalizeMatchMedia } from './match-end-ca
 import { setupCloudStorageHandlers } from './ipc/cloud-storage-ipc'
 import { APP_VERSION } from './app-version'
 import { setupReviewNotebookHandlers } from './ipc/review-notebook-ipc'
+import { setupMarketplaceHandlers } from './ipc/marketplace-ipc'
 import { buildTimelineFromDemo } from './demo-timeline'
 import { Cs2DemoRetrieval, cs2DemoRetrievalStatus } from './cs2-demo-retrieval'
 import { setupOverstepIntegration } from './overstep-integration'
@@ -23,6 +24,7 @@ import {
   shell,
   globalShortcut,
   dialog,
+  powerMonitor,
 } from 'electron'
 import { join } from 'path'
 import fs from 'fs'
@@ -188,6 +190,8 @@ import {
   trackSecondAnalysis,
   trackOpsRecordingLap,
   trackAnalysisDegraded,
+  trackPostgameOpened,
+  trackFirstMatchSynced,
 } from './funnel-events'
 import { collectMachineProfile } from './machine-profile'
 import { MatchTelemetrySession, type SectorName } from './match-telemetry'
@@ -211,7 +215,7 @@ import { shouldUseOnboardingBonus } from '../../src/lib/onboarding-match-mission
 import { parseMatchHighlightsFromApi } from '../../src/lib/match-highlights'
 import { extractSpatialFromAnalysisPayload } from '../../src/lib/analysis-enrichment'
 import { desktopVodResultsUrl, isPrimaryGame } from '../../src/lib/games'
-import { RecordingsStore, type ClipOnlyReason, type PendingRecording } from './recordings-store'
+import { RecordingsStore, riotAccountRole, type ClipOnlyReason, type PendingRecording } from './recordings-store'
 import { ProductionVodFixtureLibrary } from './production-vod-fixture'
 import {
   buildOrphanValorantTimeline,
@@ -240,6 +244,8 @@ import {
 } from './disk-space'
 import { runRecordingStorageMaintenance } from './storage-cleanup'
 import { setupStorageHandlers } from './ipc/storage-ipc'
+import { setupValorantRankHandlers } from './ipc/valorant-rank-ipc'
+import type { ValorantRankService } from './valorant-rank'
 import { setupRecordingsHandlers } from './ipc/recordings-ipc'
 import { buildTimelineFromReplay, tryAutoUploadSourceReplay, uploadReplayInBackground } from './post-match-replay'
 import { DiscordRPC } from './discord-rpc'
@@ -333,6 +339,12 @@ import {
   getDeadlockMatchSalts,
   getDeadlockDetectionStatus,
 } from './deadlock-match-watcher'
+import { recordingHeroLabel, resolveDeadlockRecordingHero } from './deadlock-recording-hero'
+import { linkDeadlockAutoReview } from './deadlock-auto-review-link'
+import { FaceitLinkStore, registerCs2FaceitMatchIpc } from './cs2-faceit-match'
+import { registerEnemyHabitsIpc } from './ipc/enemy-habits-ipc'
+import { pregameKey, pregameQuery, sanitizePregameContext } from './pregame-view'
+import { DEEP_LINK_SCHEME, PendingDeepLink, findDeepLinkInArgv } from './deep-link'
 import { downloadDeadlockValveReplay } from './deadlock-valve-replay'
 import { ensureCs2DemoRecordingConfig } from './cs2-steam-setup'
 import { resolveCs2LocalPlayerName } from './cs2-player-identity'
@@ -353,6 +365,14 @@ import {
 } from './late-clip-retry'
 import { downloadCs2ValveDemoForSession } from './cs2-valve-demo-downloader'
 import { clearDemoDownloadProgress, sendDemoDownloadProgress } from './demo-download-notify'
+import {
+  linkReviewTimeline, parseReviewStatus, pollDeadlockReplayReview, startDeadlockReplayReview,
+  type PollReviewDeps, type ReviewDetail,
+} from './deadlock-review'
+import { isDeadlockReviewJobId } from './recordings-store'
+import { SourceReplayUploader } from './source-replay-uploader'
+import { findLatestReplay } from './source-replay-finder'
+import { isTrustedRendererUrl } from './renderer-trust'
 // Keep sandbox sessions separate from the normal desktop account and recordings.
 if (!app.isPackaged && process.env.UPFORGE_SANDBOX_USER_DATA) {
   const api = new URL(getApiBaseUrl())
@@ -714,6 +734,8 @@ const discordRPC = new DiscordRPC(
   () => settingsManager?.get()?.discordRichPresence !== false,
 )
 const riotLocalApi = new RiotLocalApi()
+/** Live Valorant rank from the Riot client (set when IPC handlers are registered). */
+let valorantRankService: ValorantRankService | null = null
 const lolLiveClientApi = new LoLLiveClientApi()
 const authManager = new AuthManager()
 /** Set once IPC is ready; queues a focus sync after a match ends. */
@@ -1720,6 +1742,34 @@ function recordingSavePath(): string {
   return resolveRecordingSavePath(settingsManager?.get().savePath, getActiveUserId())
 }
 
+/** Every Riot account the signed-in user has linked, with the active one marked as main. */
+function linkedRiotAccountsFromAuth(): Array<{ name: string; tag: string; isMain: boolean }> {
+  const user = authManager.getUser()
+  const out = (user?.riot_accounts ?? [])
+    .filter(a => a.riot_name?.trim() && a.riot_tag?.trim())
+    .map(a => ({ name: a.riot_name, tag: a.riot_tag, isMain: !!a.is_active }))
+  const primary = linkedRiotFromAuth()
+  if (primary && !out.some(a => a.name.toLowerCase() === primary.name.toLowerCase() && a.tag.toLowerCase() === primary.tag.toLowerCase())) {
+    out.unshift({ ...primary, isMain: !out.some(a => a.isMain) })
+  }
+  return out
+}
+
+let lolAccountsFetchedAt = 0
+function linkedLolAccountsFromAuth(): Array<{ name: string; tag: string; isMain: boolean }> {
+  if (authManager.isAuthenticated() && Date.now() - lolAccountsFetchedAt > 60_000) {
+    lolAccountsFetchedAt = Date.now()
+    void authManager.listLolAccounts().catch(() => null)
+  }
+  const cached = authManager.getCachedLolAccounts().map(a => ({ name: a.riot_name, tag: a.riot_tag, isMain: a.is_main }))
+  if (cached.length) return cached
+  // Before the first list arrives (or an older API): the single League link is the main.
+  const user = authManager.getUser()
+  return user?.lol_riot_name?.trim() && user?.lol_riot_tag?.trim()
+    ? [{ name: user.lol_riot_name, tag: user.lol_riot_tag, isMain: true }]
+    : []
+}
+
 function linkedRiotFromAuth() {
   const user = authManager.getUser()
   if (!user?.riot_name?.trim() || !user?.riot_tag?.trim()) return null
@@ -2251,6 +2301,43 @@ const cs2DemoRetrieval = new Cs2DemoRetrieval({
   },
 })
 
+/** Deadlock cloud review: status / detail reads (GET only) and the deps the review flow needs. */
+async function fetchDeadlockReviewStatus(jobId: string) {
+  if (!isDeadlockReviewJobId(jobId)) return 'unknown' as const
+  try {
+    const res = await authManager.getApi().get(`/api/deadlock/demo/${encodeURIComponent(jobId)}/status`)
+    return parseReviewStatus(res.data?.status)
+  } catch { return 'unknown' as const }
+}
+async function fetchDeadlockReviewDetail(jobId: string): Promise<ReviewDetail | null> {
+  if (!isDeadlockReviewJobId(jobId)) return null
+  try {
+    const res = await authManager.getApi().get(`/api/deadlock/demo/${encodeURIComponent(jobId)}`)
+    return res.status === 200 ? (res.data as ReviewDetail) : null
+  } catch { return null }
+}
+const deadlockReviewPolls = new Set<string>()
+function deadlockReviewDeps(): PollReviewDeps {
+  return {
+    getRecording: id => recordingsStore.getById(id),
+    getStatus: fetchDeadlockReviewStatus,
+    getDetail: fetchDeadlockReviewDetail,
+    updateTimeline: (id, timeline) => recordingsStore.updateTimeline(id, timeline),
+    notify: () => mainWindow?.webContents.send('recordings:updated'),
+    sleep: ms => new Promise(r => setTimeout(r, ms)),
+    cancelled: () => !authManager.getToken(),
+  }
+}
+/** Polls one review in the background (at most one poller per recording). */
+function watchDeadlockReview(recordingId: string): void {
+  if (deadlockReviewPolls.has(recordingId)) return
+  deadlockReviewPolls.add(recordingId)
+  void pollDeadlockReplayReview(deadlockReviewDeps(), recordingId)
+    .then(result => log.info('[DeadlockReview]', recordingId, result))
+    .catch(err => log.warn('[DeadlockReview] poll failed:', err instanceof Error ? err.message : err))
+    .finally(() => deadlockReviewPolls.delete(recordingId))
+}
+
 function refreshReplayTimelineForRecording(
   recordingId: string,
   options?: { notifyActivity?: boolean },
@@ -2294,6 +2381,14 @@ async function retrieveReplayTimelineForRecording(
 
   const valid = () => scope === replayScope && recordingsStore.getById(recordingId) != null
   if (hasRichMatchData(rec.timeline)) return true
+  if (rec.game === 'deadlock' && rec.deadlockReviewJobId) {
+    // Deadlock replays are Source 2: the only real kill timeline is the user's cloud review.
+    if (await fetchDeadlockReviewStatus(rec.deadlockReviewJobId) === 'completed') {
+      return await linkReviewTimeline(deadlockReviewDeps(), rec, rec.deadlockReviewJobId) === 'linked'
+    }
+    watchDeadlockReview(recordingId)
+    return false
+  }
   const setStatus = (state: 'syncing' | 'waiting_match_data', message: string) => {
     if (rec.game !== 'cs2' || !valid()) return
     cs2DemoRetrievalStatus.set(recordingId, { state, message })
@@ -3070,6 +3165,16 @@ function shouldRequestDebrief(timeline: MatchData | null, mode: string | null | 
     || timeline.finalStats != null
 }
 
+// Board 12 · Between games: tell Home when agent select is open so it can show the read-only brief.
+let lastPregameKey = ''
+function pushPregameContext(raw: unknown): void {
+  const ctx = raw ? sanitizePregameContext(raw) : null
+  const key = pregameKey(ctx)
+  if (key === lastPregameKey) return
+  lastPregameKey = key
+  if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('pregame:context', ctx)
+}
+
 function requestPregameBrief(context?: {
   matchId?: string
   agent?: string | null
@@ -3085,7 +3190,8 @@ function requestPregameBrief(context?: {
       logActivity,
       {
         ...context,
-        rank: history[0]?.rank ?? null,
+        // Live Riot rank first; RR history is oldest-first, so its newest entry is the last one.
+        rank: valorantRankService?.current()?.tierName ?? history[history.length - 1]?.rank ?? null,
         skillFocus: skillFocus ?? null,
       },
       process.env['VITE_API_URL'],
@@ -3132,6 +3238,7 @@ function bindPostGameSessionToRecording(recording: {
     getActiveUserId(),
     recording.id,
   )
+  trackPostgameOpened(recording.game)
   sendPostGameEvent(null, 'post-game:prep-step', {
     recordingId: recording.id,
     game: recording.game,
@@ -3685,6 +3792,9 @@ function setupGameDetection(): void {
         auth: authManager,
         notifyWindow: notifyWin,
         customReplayDir: game === 'cs2' ? config?.cs2DemoDir : undefined,
+        onJobId: game === 'deadlock'
+          ? (jobId) => linkAutoDeadlockReviewJob(jobId, { matchId: getDeadlockLobbyMatchId(), sessionStart: matchSessionStart })
+          : undefined,
       })
       mainWindow?.webContents.send('dashboard:refresh', { fresh: true })
     }
@@ -3918,6 +4028,19 @@ function setupGameDetection(): void {
       ?? (mainWindow && !mainWindow.isDestroyed() ? mainWindow : null)
     const uploadTargetWindow = postGameNotifyWindow
 
+    // Deadlock: name the hero on this match's recordings once deadlock-api publishes the match (retries for ~12 min).
+    if (game === 'deadlock') {
+      const lobbyMatchId = getDeadlockLobbyMatchId()
+      if (lobbyMatchId) {
+        void resolveDeadlockRecordingHero(lobbyMatchId, { fetchMatch: (id) => authManager.fetchDeadlockMatch(id) })
+          .then((player) => {
+            const label = recordingHeroLabel(player, null)
+            if (label && captureStore.setDeadlockHero(String(lobbyMatchId), label)) mainWindow?.webContents.send('recordings:updated')
+          })
+          .catch(() => { /* best effort */ })
+      }
+    }
+
     // CS2 / Deadlock replay upload — runs asynchronously and never blocks VOD upload
     if (uploadsSourceReplay(game)) {
       if (pendingReplayPath) {
@@ -3933,6 +4056,9 @@ function setupGameDetection(): void {
           authManager,
           postGameNotifyWindow,
           replayMeta,
+          game === 'deadlock'
+            ? (jobId) => linkAutoDeadlockReviewJob(jobId, { matchId: replayMeta?.matchId ?? null, sessionStart: matchSessionStart })
+            : undefined,
         ).catch(() => { /* logged inside */ })
       } else if (postGameNotifyWindow && !postGameNotifyWindow.isDestroyed()) {
         try {
@@ -4835,6 +4961,7 @@ function setupGameDetection(): void {
           // During loading, the API skips a brief if match context is unavailable.
           if (!pregameBriefFired && state?.sessionLoopState === 'PREGAME') {
             const ctx = await riotLocalApi.getPregameContext().catch(() => null)
+            pushPregameContext(ctx)
 
             // Use QueueID from the pregame match endpoint as the definitive source
             if (ctx?.mode && !gameMode) {
@@ -4858,6 +4985,7 @@ function setupGameDetection(): void {
             // else: mode not yet known or agent not locked — keep looping, try again next tick
           }
 
+          if (state?.sessionLoopState && state.sessionLoopState !== 'PREGAME') pushPregameContext(null)
           if (!pregameBriefFired && state?.sessionLoopState === 'INGAME') {
             if (modeKnown && isCompBrief) {
               // Competitive confirmed — fire fallback brief (agent may still be unknown)
@@ -5603,6 +5731,7 @@ function setupGameDetection(): void {
               matchId: getDeadlockLobbyMatchId(),
               matchStartedAt: Math.floor(sessionStart / 1000),
             },
+            onJobId: (jobId) => linkAutoDeadlockReviewJob(jobId, { matchId: getDeadlockLobbyMatchId(), sessionStart }),
           }).then(() => {
             mainWindow?.webContents.send('dashboard:refresh', { fresh: true })
           })
@@ -5615,6 +5744,23 @@ function setupGameDetection(): void {
   })
 
   gameDetector.start()
+}
+
+/**
+ * Match-end auto-uploads of a Deadlock replay already spend a credit. Link that job to the
+ * match's recording(s) so "Review replay" is not offered (and charged) a second time.
+ */
+function linkAutoDeadlockReviewJob(jobId: string, match: { matchId?: number | null; sessionStart?: number | null }, recordingId?: string): void {
+  const store = recordingsStore.forUser(getActiveUserId())
+  const ids: string[] = []
+  const setJob = (id: string, job: string) => { const ok = store.setDeadlockReviewJob(id, job); if (ok) ids.push(id); return ok }
+  if (!(recordingId && setJob(recordingId, jobId))) {
+    linkDeadlockAutoReview({ list: () => store.getAll(null), setJob }, jobId, match)
+  }
+  if (!ids.length) { log.info('[Replay] Deadlock auto-review not linked to a recording yet', { jobId }); return }
+  mainWindow?.webContents.send('recordings:updated')
+  // Same poller as Review replay: links the replay timeline when the review finishes.
+  for (const id of ids) watchDeadlockReview(id)
 }
 
 async function handleOrphanedJobAtStartup(
@@ -6683,20 +6829,32 @@ async function startApp(): Promise<void> {
   ipcHandlersReady = true
 
   // When a second instance is launched, bring the existing window to the front.
-  app.on('second-instance', () => {
+  app.on('second-instance', (_event, argv) => {
+    // ── Deep links (Windows/Linux): the link arrives as an argument of the second launch.
+    acceptDeepLink(findDeepLinkInArgv(argv))
     focusMainWindow()
+  })
+
+  // ── Deep links: only the renderer of the main window may take the held action, and only when signed in.
+  ipcMain.handle('deep-link:take-pending', (event) => {
+    if (!mainWindow || mainWindow.isDestroyed() || event.sender !== mainWindow.webContents) return null
+    return pendingDeepLink.take(authManager.isAuthenticated())
   })
 
   stopInstanceCoordinator = startInstanceCoordinator(() => {
     focusMainWindow()
   })
 
-  // Restore auth session from keychain before creating window
+  // Restore auth session from keychain before creating window. A slow or offline launch opens with the
+  // saved user and keeps retrying; waking the PC or unlocking it retries straight away.
   try {
     await authManager.loadStoredToken()
   } catch (err) {
     log.warn('[App] Failed to restore auth token — starting unauthenticated:', err)
   }
+  const recheckSession = () => { void authManager.refreshUserNow().catch(() => false) }
+  powerMonitor.on('resume', recheckSession)
+  powerMonitor.on('unlock-screen', recheckSession)
   enforceRecordingPresetAccess()
 
   // When a 401 fires mid-session, tell the renderer to show the login screen
@@ -6753,7 +6911,9 @@ async function startApp(): Promise<void> {
       mainWindow.on('focus', () => {
         checkForUpdatesIfIdle()
         trackProductActivity('app_foreground', 'unknown')
+        void valorantRankService?.refresh('focus') // throttled to once per 2 min
       })
+      void valorantRankService?.refresh('start')
       setupGameDetection()
       scheduleObsProbeOnWindowLoad(mainWindow, true)
       // Small delay so main window is loaded before splash closes
@@ -6812,7 +6972,48 @@ async function startApp(): Promise<void> {
     if (state === 'reviewing') discordRPC.setReviewing()
     else discordRPC.setIdle()
   })
+  // Deadlock "Review replay": user-started only (uses 1 analysis); the renderer confirms first.
+  ipcMain.handle('deadlock:review-replay', async (event, recordingId: unknown) => {
+    const senderUrl = event.senderFrame?.url
+    if (!senderUrl || !isTrustedRendererUrl(senderUrl)) return { ok: false as const, error: 'Untrusted request' }
+    if (typeof recordingId !== 'string' || !recordingId) return { ok: false as const, error: 'Unknown recording' }
+    if (!authManager.getToken()) return { ok: false as const, error: 'Sign in to review replays.' }
+    const result = await startDeadlockReplayReview({
+      getRecording: id => recordingsStore.getById(id),
+      findReplay: async (rec) => {
+        const start = resolveMatchSessionStartMs(rec.timeline, rec.recordedAt)
+        const found = await findLatestReplay('deadlock', start, undefined, { pollOnce: true })
+        return found.found ? found.demoPath : null
+      },
+      upload: async (demoPath) => {
+        try {
+          const user = authManager.getUser()
+          const steamId = user?.deadlock_account_id != null
+            ? String(BigInt(user.deadlock_account_id) + BigInt('76561197960265728'))
+            : null
+          const { jobId } = await new SourceReplayUploader(authManager).upload({
+            game: 'deadlock', demoPath, steamId,
+            onProgress: (pct) => { try { event.sender.send('deadlock:upload-progress', { demoPath, pct }) } catch { /* window closed */ } },
+          })
+          return isDeadlockReviewJobId(jobId) ? { ok: true as const, jobId } : { ok: false as const, error: 'The review did not start.' }
+        } catch (err) {
+          return { ok: false as const, error: err instanceof Error ? err.message : 'Upload failed.' }
+        }
+      },
+      setJob: (id, jobId) => recordingsStore.setDeadlockReviewJob(id, jobId),
+    }, recordingId)
+    if (result.ok) {
+      mainWindow?.webContents.send('recordings:updated')
+      watchDeadlockReview(recordingId)
+    }
+    return result
+  })
   setupReviewNotebookHandlers(ipcMain, authManager)
+  // Coach marketplace (UI v3): read-only browse + my bookings
+  setupMarketplaceHandlers(ipcMain, authManager)
+  registerCs2FaceitMatchIpc(ipcMain, () => authManager.getApi(), new FaceitLinkStore(app.getPath('userData')))
+  // r7-val: enemy habits for the match page (read-only, local data).
+  registerEnemyHabitsIpc(ipcMain, (id) => recordingsStore.getById(id)?.timeline ?? null)
   setupCloudStorageHandlers(ipcMain, authManager, (file) => {
     if (file.kind === 'clip') {
       for (const clip of clipStore.getAll()) if (String(clip.apiClipId) === file.id) clipStore.update(clip.id, { apiClipId: null, uploadStatus: 'local' })
@@ -6831,6 +7032,17 @@ async function startApp(): Promise<void> {
       manual: 1, match_id: context.matchId, agent: context.agent, map: context.map,
       mode: context.mode, ally_agents: context.allyAgents.join(','), enemy_agents: context.enemyAgents.join(','),
     } })).data
+  })
+  // Read-only brief for Home during agent select (GET: never sends a DM, no AI spend).
+  ipcMain.handle('coaching:pregame-view', async (event, raw: unknown) => {
+    if (!mainWindow || event.sender !== mainWindow.webContents || !authManager.isAuthenticated()) return null
+    const ctx = sanitizePregameContext(raw)
+    if (!ctx) return null
+    try {
+      return (await authManager.getApi().get('/api/progress/pregame-brief', { params: pregameQuery(ctx), timeout: 15_000 })).data
+    } catch {
+      return null
+    }
   })
   ipcMain.handle('coaching:debrief', async (event, id: string) => {
     const ownerId = getActiveUserId()
@@ -7205,6 +7417,7 @@ async function startApp(): Promise<void> {
         onReport: update => log.info(`[FocusSync] report: ${focusReportDiagnostic(update)}`),
       }, limit)
       log.info(`[FocusSync] ${reason}: ok=${res.ok} uploaded=${res.uploaded} skipped=${res.skipped}${res.reason ? ` reason=${res.reason}` : ''}`)
+      if (res.ok) trackFirstMatchSynced(res.uploaded)
       // An in-flight response belongs to the account that started it, even after logout.
       if (!ownsSession()) return null
       if (res.latest) mainWindow?.webContents.send('focus:updated', res.latest)
@@ -7323,6 +7536,9 @@ async function startApp(): Promise<void> {
       notifyWindow: notifyWin,
       customReplayDir: context.customReplayDir,
       meta: context.meta,
+      onJobId: context.game === 'deadlock'
+        ? (jobId) => linkAutoDeadlockReviewJob(jobId, { matchId: context.meta?.matchId ?? null, sessionStart: context.matchSessionStart }, recordingId)
+        : undefined,
     })
     return { ok: true as const }
   })
@@ -7367,12 +7583,18 @@ async function startApp(): Promise<void> {
     }))
   })
 
-  ipcMain.handle('recordings:list-all', async () => {
+  ipcMain.handle('recordings:list-all', async (_e, opts?: { allAccounts?: boolean }) => {
     // The earlier dashboard scan may have run before OBS finished writing the file.
     // Re-scan when the user opens the library so interrupted finalisation self-heals.
     scanForOrphanedRecordings(true)
     prepareLegacyOrphanRecoveryRows()
-    const all = recordingsStore.getAll(linkedRiotFromAuth())
+    // UI v3 asks for every linked account (main + alts) and tags each Valorant row.
+    const linkedAccounts = linkedRiotAccountsFromAuth()
+    // League alts: tag from the cached /api/lol-accounts list (refreshed in the background, at most once a minute).
+    const linkedLolAccounts = linkedLolAccountsFromAuth()
+    const all = opts?.allAccounts === true
+      ? recordingsStore.getAllLinked(linkedAccounts)
+      : recordingsStore.getAll(linkedRiotFromAuth())
     const fixture = productionVodFixtures.getActive()
     if (fixture) all.unshift(fixture)
     for (const rec of all) {
@@ -7386,6 +7608,7 @@ async function startApp(): Promise<void> {
       ...withAnalysisReadiness(rec),
       hasLocalFile: Boolean(rec.path && fs.existsSync(rec.path)),
       cloudUploaded: Boolean(rec.jobId || rec.analysisId || rec.archiveId),
+      ...(opts?.allAccounts === true ? { riotAccountRole: riotAccountRole(rec, linkedAccounts, linkedLolAccounts) } : {}),
     }))
   })
 
@@ -7796,6 +8019,14 @@ async function startApp(): Promise<void> {
     return { ok: true as const, archiveId }
   })
 
+  valorantRankService = setupValorantRankHandlers({
+    ipcMain,
+    riot: riotLocalApi,
+    auth: authManager,
+    getWindow: () => mainWindow,
+    isDev: is.dev,
+  })
+
   setupStorageHandlers(ipcMain, {
     recordingsStore,
     authManager,
@@ -7874,6 +8105,34 @@ app.on('before-quit', () => {
   destroyOverlay()
   discordRPC.destroy()
 })
+
+// ── Deep links (upforge://) ─────────────────────────────────────────────────────────────────────────
+// Allow-listed actions only (see deep-link.ts). The action is held here until a signed-in renderer takes it.
+const pendingDeepLink = new PendingDeepLink()
+function acceptDeepLink(raw: string | null): void {
+  if (!raw) return
+  const action = pendingDeepLink.offer(raw)
+  if (!action) {
+    log.warn('[DeepLink] Ignored a link that is not on the allow-list')
+    return
+  }
+  log.info('[DeepLink] Received', action.kind)
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('deep-link:available')
+    focusMainWindow()
+  }
+}
+// macOS delivers links through open-url, possibly before the app is ready.
+app.on('open-url', (event, url) => {
+  event.preventDefault()
+  acceptDeepLink(url)
+})
+// Windows/Linux cold start: the link is in our own argv.
+acceptDeepLink(findDeepLinkInArgv(process.argv))
+// Register the handler only for installed builds, so a dev checkout never claims upforge:// on the machine.
+if (app.isPackaged && !app.isDefaultProtocolClient(DEEP_LINK_SCHEME)) {
+  try { app.setAsDefaultProtocolClient(DEEP_LINK_SCHEME) } catch (err) { log.warn('[DeepLink] Could not register protocol:', err) }
+}
 
 void (async () => {
   const role = await resolveInstanceLock()

@@ -190,12 +190,17 @@ export function setupAuthHandlers(
     return { ok: true as const }
   })
 
-  ipcMain.handle('stats:rr-history', async () => {
-    return auth.fetchRRHistory()
+  ipcMain.handle('stats:rr-history', async (_e, range?: unknown) => {
+    return auth.fetchRRHistory(range === '7d' || range === 'all' ? range : '30d')
   })
 
   ipcMain.handle('progress:playstyle-profile', async () => {
     return auth.fetchPlaystyleProfile()
+  })
+
+  // Recurring mistakes (read-only)
+  ipcMain.handle('progress:recurring', async (_e, limit?: unknown) => {
+    return auth.fetchRecurringInsights(typeof limit === 'number' ? limit : 6)
   })
 
   // ── Analyses ──────────────────────────────────────────────────────────────
@@ -446,8 +451,41 @@ export function setupAuthHandlers(
     return auth.fetchCoachReviewRequests()
   })
 
+  // Coach notes (desktop, UI v3). Strict input checks; the API also checks the coach owns the review.
+  ipcMain.handle('coach:add-annotation', async (_e, payload: { reviewId?: unknown; body?: unknown; roundNumber?: unknown; videoOffsetMs?: unknown }) => {
+    if (!auth.getToken()) return { ok: false, error: 'Sign in first.' }
+    const reviewId = Number(payload?.reviewId)
+    const body = typeof payload?.body === 'string' ? payload.body.trim() : ''
+    const round = payload?.roundNumber == null ? null : Number(payload.roundNumber)
+    const offset = payload?.videoOffsetMs == null ? null : Math.round(Number(payload.videoOffsetMs))
+    if (!Number.isInteger(reviewId) || reviewId <= 0) return { ok: false, error: 'Invalid review.' }
+    if (!body || body.length > 500) return { ok: false, error: 'A note needs 1–500 characters.' }
+    if (round !== null && (!Number.isInteger(round) || round < 1 || round > 50)) return { ok: false, error: 'Invalid round.' }
+    if (offset !== null && (!Number.isFinite(offset) || offset < 0)) return { ok: false, error: 'Invalid video time.' }
+    return auth.addCoachReviewAnnotation(reviewId, { body, roundNumber: round, videoOffsetMs: offset })
+  })
+
+  ipcMain.handle('coach:complete-roster-review', async (_e, payload: { reviewId?: unknown; closingNote?: unknown }) => {
+    if (!auth.getToken()) return { ok: false, error: 'Sign in first.' }
+    const reviewId = Number(payload?.reviewId)
+    if (!Number.isInteger(reviewId) || reviewId <= 0) return { ok: false, error: 'Invalid review.' }
+    const note = typeof payload?.closingNote === 'string' ? payload.closingNote.trim() : ''
+    if (note.length > 1000) return { ok: false, error: 'The closing note can be up to 1,000 characters.' }
+    return auth.completeCoachRosterReview(reviewId, note || null)
+  })
+
   ipcMain.handle('coach:start-review', async (_e, { reviewId }: { reviewId: number }) => {
     if (!auth.getToken()) return { ok: false, error: 'Not logged in' }
     return auth.startCoachReview(reviewId)
+  })
+
+  // Roster flow (UI v3): invite lookup + free join. Both validate the id; join needs a session.
+  ipcMain.handle('coach:get-public-hub', async (_e, { coachId }: { coachId: unknown }) => {
+    return auth.fetchCoachPublicHub(Number(coachId))
+  })
+
+  ipcMain.handle('coach:join-roster', async (_e, { coachId }: { coachId: unknown }) => {
+    if (!auth.getToken()) return { ok: false, error: 'Sign in first.' }
+    return auth.joinCoachRoster(Number(coachId))
   })
 }
