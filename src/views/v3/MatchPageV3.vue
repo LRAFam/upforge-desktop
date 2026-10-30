@@ -22,6 +22,7 @@ import SendToCoachV3 from '../../components/v3/roster-flow/SendToCoachV3.vue'
 import CoachNotesV3 from '../../components/v3/coach-notes/CoachNotesV3.vue'
 import MatchStatsDrawerV3 from '../../components/v3/matchpage/MatchStatsDrawerV3.vue'
 import EnemyHabitsV3 from '../../components/v3/matchpage/EnemyHabitsV3.vue'
+import RoundReviewV3 from '../../components/v3/matchpage/RoundReviewV3.vue'
 
 defineProps<{
   accessOpen: boolean
@@ -72,6 +73,13 @@ watch([() => route.query.round, roundGroups, duration], ([q, groups, dur]) => {
   seekToRound(g)
 }, { immediate: true })
 
+// Post-game "Review round N" adds `review=1`: offer that round's AI review straight away (1-based).
+const autoReviewRound = computed(() => {
+  if (route.query.review !== '1') return null
+  const r = roundFromQuery(route.query.round)
+  return r == null ? null : r + 1
+})
+
 // Header facts before the timeline lands: the clicked row, or the last visit to this match.
 const routeKey = computed(() => matchRouteKey(route.query))
 const summary = computed(() => recallMatchSummary(routeKey.value))
@@ -119,6 +127,8 @@ const coachMatchLabel = computed(() => {
     <!-- Valorant (r7-val): enemy habits this match, from Riot position snapshots. Renders nothing without enough data. -->
     <div v-if="!timelineLoading && !timelineError && timeline?.game === 'valorant'" v-show="!comparisonActive && !accessOpen" class="uf-mp-coachrow">
       <EnemyHabitsV3 :recording-id="timeline?.id ?? null" />
+      <!-- AI round review: hidden unless enabled (flag + API) and the match was analysed. -->
+      <RoundReviewV3 :auto-round="autoReviewRound" />
     </div>
     <CloudVodActions v-if="route.query.archiveId && !timelineLoading && !timelineError" v-show="!comparisonActive && !accessOpen" />
     <VodReviewStates v-if="timelineError && !timelineLoading" />
