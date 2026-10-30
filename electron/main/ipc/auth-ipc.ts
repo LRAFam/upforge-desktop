@@ -6,7 +6,7 @@
 import { IpcMain, BrowserWindow, shell } from 'electron'
 import log from 'electron-log'
 import { enrichAnalysisDetail } from '../../../src/lib/analysis-enrichment'
-import { AuthManager } from '../auth-manager'
+import { AuthManager, type RecurringStatus } from '../auth-manager'
 import type { MatchRecorder } from '../match-recorder'
 import { GameDetector } from '../game-detector'
 import { UploadManager } from '../upload-manager'
@@ -201,6 +201,10 @@ export function setupAuthHandlers(
   // Recurring mistakes (read-only)
   ipcMain.handle('progress:recurring', async (_e, limit?: unknown) => {
     return auth.fetchRecurringInsights(typeof limit === 'number' ? limit : 6)
+  })
+  ipcMain.handle('progress:set-habit-status', async (_e, id: unknown, status: unknown) => {
+    if (typeof id !== 'number' || typeof status !== 'string') return { ok: false, error: 'Invalid request' }
+    return auth.setRecurringInsightStatus(id, status as RecurringStatus)
   })
 
   // ── Analyses ──────────────────────────────────────────────────────────────

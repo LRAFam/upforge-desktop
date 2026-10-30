@@ -1396,6 +1396,8 @@ declare global {
       progress: {
         /** Most recurring habits from the knowledge bank; null when unavailable. */
         recurring: (limit?: number) => Promise<import('../electron/main/auth-manager').RecurringInsight[] | null>
+        /** Mark a habit fixed / improving / back to active (manual status sticks). */
+        setHabitStatus: (id: number, status: 'active' | 'improving' | 'resolved') => Promise<{ ok: boolean; error?: string }>
         playstyleProfile: () => Promise<{
           matches_tracked: number
           vods_analyzed?: number

@@ -3,11 +3,11 @@
  * "What keeps coming up": the coach's recurring habits from the knowledge bank (read-only).
  * Cache-first; whole-number counts; links to Practice. Honest empty / unavailable states.
  */
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useStaleLoad } from '../../../lib/stale-cache'
 import UfSkeleton from '../UfSkeleton.vue'
-import { recurringHabitRows, type RecurringInsightLike } from './recurring-habits'
+import { recurringHabitRows, withLocalStatuses, type RecurringInsightLike } from './recurring-habits'
 
 const router = useRouter()
 const { data, loading, refreshing, error, reload } = useStaleLoad<RecurringInsightLike[] | null>(
@@ -18,7 +18,33 @@ const { data, loading, refreshing, error, reload } = useStaleLoad<RecurringInsig
     return rows
   },
 )
-const rows = computed(() => recurringHabitRows(data.value))
+// Statuses set here before the next refresh; `undo` holds the last fixed habit so it can be put back.
+const local = ref(new Map<number, string>())
+const undo = ref<{ id: number; title: string; previous: string } | null>(null)
+const busy = ref<number | null>(null)
+const failed = ref<string | null>(null)
+const rows = computed(() => recurringHabitRows(withLocalStatuses(data.value, local.value)))
+
+async function setStatus(id: number, status: 'active' | 'improving' | 'resolved'): Promise<boolean> {
+  busy.value = id
+  failed.value = null
+  const res = await window.api?.progress?.setHabitStatus?.(id, status).catch(() => null)
+  busy.value = null
+  if (!res?.ok) { failed.value = res?.error ?? 'Could not update this habit.'; return false }
+  local.value = new Map(local.value).set(id, status)
+  return true
+}
+
+async function markFixed(id: number, title: string): Promise<void> {
+  const previous = data.value?.find(r => r.id === id)?.status ?? 'active'
+  if (await setStatus(id, 'resolved')) undo.value = { id, title, previous }
+}
+
+async function undoFixed(): Promise<void> {
+  const u = undo.value
+  if (!u) return
+  if (await setStatus(u.id, u.previous === 'improving' ? 'improving' : 'active')) undo.value = null
+}
 </script>
 
 <template>
@@ -41,14 +67,23 @@ const rows = computed(() => recurringHabitRows(data.value))
         <div class="rh3-meta">
           <span class="uf-t4">{{ r.seen }}<template v-if="r.lastSeen"> · last {{ r.lastSeen }}</template></span>
           <span v-if="r.trend" class="rh3-trend uf-t4" :class="`is-${r.trend.tone}`">{{ r.trend.label }}</span>
+          <button type="button" class="uf-link uf-t4" :disabled="busy === r.id" :aria-label="`Mark fixed: ${r.title}`" @click="markFixed(r.id, r.title)">
+            {{ busy === r.id ? 'Saving…' : 'Mark fixed' }}
+          </button>
         </div>
       </div>
     </template>
 
-    <p v-else-if="error && !data" class="uf-t2 rh3-empty">
+    <p v-if="undo" class="uf-t4 rh3-note" role="status">
+      Marked "{{ undo.title }}" as fixed.
+      <button type="button" class="uf-link" :disabled="busy === undo.id" @click="undoFixed">Undo</button>
+    </p>
+    <p v-if="failed" class="uf-t4 rh3-note" role="alert">{{ failed }}</p>
+
+    <p v-if="!loading && !rows.length && error && !data" class="uf-t2 rh3-empty">
       Couldn't load your recurring habits. <button type="button" class="uf-link" @click="reload">Retry</button>
     </p>
-    <p v-else class="uf-t2 rh3-empty">Nothing keeps coming up yet. Once your coach flags the same habit in two or more analysed matches, it shows here.</p>
+    <p v-else-if="!loading && !rows.length" class="uf-t2 rh3-empty">Nothing keeps coming up yet. Once your coach flags the same habit in two or more analysed matches, it shows here.</p>
   </section>
 </template>
 
@@ -62,5 +97,6 @@ const rows = computed(() => recurringHabitRows(data.value))
 .rh3-trend.is-better { color: var(--uf-win); }
 .rh3-trend.is-worse { color: var(--uf-loss); }
 .rh3-empty { margin: 0; }
+.rh3-note { margin: 0; }
 @container (max-width: 640px) { .rh3-row { grid-template-columns: minmax(0, 1fr); } .rh3-meta { align-items: flex-start; text-align: left; } }
 </style>

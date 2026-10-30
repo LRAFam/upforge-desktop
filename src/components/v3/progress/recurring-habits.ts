@@ -70,3 +70,9 @@ export function recurringHabitRows(rows: readonly RecurringInsightLike[] | null 
       }
     })
 }
+
+/** Apply statuses the player just set (before the next refresh), so a "fixed" habit leaves the list at once. */
+export function withLocalStatuses<T extends RecurringInsightLike>(rows: readonly T[] | null | undefined, local: ReadonlyMap<number, string>): T[] {
+  if (!rows?.length) return []
+  return rows.map(r => (local.has(r.id) ? { ...r, status: local.get(r.id) ?? r.status } : r))
+}

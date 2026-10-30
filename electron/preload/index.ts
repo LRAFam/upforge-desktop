@@ -324,6 +324,7 @@ const api = {
   progress: {
     playstyleProfile: () => ipcRenderer.invoke('progress:playstyle-profile'),
     recurring: (limit?: number) => ipcRenderer.invoke('progress:recurring', limit),
+    setHabitStatus: (id: number, status: 'active' | 'improving' | 'resolved') => ipcRenderer.invoke('progress:set-habit-status', id, status),
   },
   overlay: {
     toggle: () => ipcRenderer.invoke('overlay:toggle'),

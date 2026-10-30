@@ -133,7 +133,10 @@ function clearToken(): void {
 /** Background retries after a launch or refresh that could not reach the server (ms). */
 export const USER_REFRESH_DELAYS_MS = [10_000, 30_000, 120_000, 300_000, 900_000]
 
-/** One recurring habit from the knowledge bank (subset; read-only). */
+export const RECURRING_STATUSES = ['active', 'improving', 'resolved'] as const
+export type RecurringStatus = typeof RECURRING_STATUSES[number]
+
+/** One recurring habit from the knowledge bank (subset). */
 export interface RecurringInsight {
   id: number
   category: string | null
@@ -581,6 +584,16 @@ export class AuthManager {
       }))
     } catch {
       return null
+    }
+  }
+  /** Set a habit's status (active / improving / resolved). Manual statuses stop the coach auto-changing it. */
+  async setRecurringInsightStatus(id: number, status: RecurringStatus): Promise<{ ok: boolean; error?: string }> {
+    if (!Number.isSafeInteger(id) || id <= 0 || !RECURRING_STATUSES.includes(status)) return { ok: false, error: 'Invalid request' }
+    try {
+      await this._api.patch(`/api/knowledge-bank/${id}/status`, { status })
+      return { ok: true }
+    } catch {
+      return { ok: false, error: 'Could not update this habit.' }
     }
   }
   // ── end recurring mistakes ──

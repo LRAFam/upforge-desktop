@@ -51,3 +51,18 @@ describe('relativeDays', () => {
     expect(relativeDays('nope', NOW)).toBeNull()
   })
 })
+
+describe('withLocalStatuses', () => {
+  it('hides a habit the player just marked fixed and restores it on undo', async () => {
+    const { withLocalStatuses, recurringHabitRows } = await import('./recurring-habits')
+    const rows = [
+      { id: 1, label: 'Dies first', text: '', occurrences: 4, status: 'active', trend: null, lastSeenAt: null },
+      { id: 2, label: 'Repeeks', text: '', occurrences: 3, status: 'active', trend: null, lastSeenAt: null },
+    ]
+    const fixed = recurringHabitRows(withLocalStatuses(rows, new Map([[1, 'resolved']])))
+    expect(fixed.map(r => r.id)).toEqual([2])
+    const undone = recurringHabitRows(withLocalStatuses(rows, new Map([[1, 'active']])))
+    expect(undone.map(r => r.id)).toEqual([1, 2])
+    expect(withLocalStatuses(null, new Map())).toEqual([])
+  })
+})
