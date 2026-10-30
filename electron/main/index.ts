@@ -6,6 +6,7 @@ import { resolveMatchEndCapture, shouldFinalizeMatchMedia } from './match-end-ca
 import { setupCloudStorageHandlers } from './ipc/cloud-storage-ipc'
 import { APP_VERSION } from './app-version'
 import { setupReviewNotebookHandlers } from './ipc/review-notebook-ipc'
+import { setupRoundReviewHandlers } from './ipc/round-review-ipc'
 import { setupMarketplaceHandlers } from './ipc/marketplace-ipc'
 import { buildTimelineFromDemo } from './demo-timeline'
 import { Cs2DemoRetrieval, cs2DemoRetrievalStatus } from './cs2-demo-retrieval'
@@ -7009,6 +7010,7 @@ async function startApp(): Promise<void> {
     return result
   })
   setupReviewNotebookHandlers(ipcMain, authManager)
+  setupRoundReviewHandlers(ipcMain, authManager)
   // Coach marketplace (UI v3): read-only browse + my bookings
   setupMarketplaceHandlers(ipcMain, authManager)
   registerCs2FaceitMatchIpc(ipcMain, () => authManager.getApi(), new FaceitLinkStore(app.getPath('userData')))

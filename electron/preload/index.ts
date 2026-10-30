@@ -11,6 +11,12 @@ const api = {
   },
   personalReview: { get: (source: unknown) => ipcRenderer.invoke('personal-review:get', source), save: (document: unknown) => ipcRenderer.invoke('personal-review:save', document) },
   accountUsage: { get: () => ipcRenderer.invoke('account:usage'), buyReports: () => ipcRenderer.invoke('account:report-checkout') },
+  roundReview: {
+    allowance: () => ipcRenderer.invoke('round-review:allowance'),
+    list: (jobId: string) => ipcRenderer.invoke('round-review:list', jobId),
+    get: (jobId: string, round: number) => ipcRenderer.invoke('round-review:get', jobId, round),
+    request: (jobId: string, round: number) => ipcRenderer.invoke('round-review:request', jobId, round),
+  },
   reviewNotebook: {
     remove: (id: string, revision: number) => ipcRenderer.invoke('review-notebook:remove', id, revision),
     list: () => ipcRenderer.invoke('review-notebook:list'),

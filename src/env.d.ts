@@ -707,6 +707,12 @@ declare global {
       cloudClip: { review: (id: number, analyse?: boolean) => Promise<{ ok: true; data: import('./lib/cloud-clip-review').CloudClipReview } | { ok: false; error: string; needsUpgrade?: boolean }> }
       cloudStorage: { download: (file: { kind: 'clip' | 'recording'; id: string }) => Promise<{ ok: true } | { ok: false; error: string }>; playback: (file: { kind: 'clip' | 'recording'; id: string }) => Promise<{ ok: true; url: string } | { ok: false; error: string }>; list: (query: import('./lib/cloud-storage').CloudQuery) => Promise<{ ok: true; data: unknown } | { ok: false; error: string }> }
       accountUsage: { get: () => Promise<{ ok: true; data: unknown } | { ok: false; error: string }>; buyReports: () => Promise<import('./lib/review-notebook').NotebookResult<{ checkout_url: string }>> }
+      roundReview: {
+        allowance: () => Promise<{ ok: true; allowance: import('./lib/round-review').RoundReviewAllowance } | { ok: false; error: string; status?: number }>
+        list: (jobId: string) => Promise<{ ok: true; reviews: import('./lib/round-review').RoundReview[]; allowance: import('./lib/round-review').RoundReviewAllowance } | { ok: false; error: string; status?: number }>
+        get: (jobId: string, round: number) => Promise<{ ok: true; review: import('./lib/round-review').RoundReview } | { ok: false; error: string; status?: number }>
+        request: (jobId: string, round: number) => Promise<{ ok: true; review: import('./lib/round-review').RoundReview; charged: boolean; allowance: import('./lib/round-review').RoundReviewAllowance } | { ok: false; error: string; status?: number; allowance?: import('./lib/round-review').RoundReviewAllowance }>
+      }
       reviewNotebook: {
         remove: (id: string, revision: number) => Promise<import('./lib/review-notebook').NotebookResult<{ id: string; deleted: true }>>
         list: () => Promise<import('./lib/review-notebook').NotebookResult<{ items: import('./lib/review-notebook').SavedComparison[] }>>
