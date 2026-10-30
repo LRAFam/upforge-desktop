@@ -14,6 +14,7 @@ import UfSkeleton from '../../components/v3/UfSkeleton.vue'
 import { formatMapLabel, getAgentImage, getMapImage } from '../../lib/valorant'
 import { matchReportView, type MatchReportState } from '../../lib/match-report'
 import {
+  applyGameNotes, cs2NotesFacts, type GameNotesResult,
   cs2ReportView, deadlockReportView, lolReportView,
   type Cs2ReportTimeline, type DeadlockReportResponse, type LolReportResponse, type ReportGame,
 } from '../../lib/match-report-games'
@@ -37,18 +38,36 @@ async function fetchReport(g: ReportGame, id: string): Promise<Loaded | null> {
     const t = await window.api?.recordings?.getTimeline?.(id).catch(() => null) as Cs2ReportTimeline | null | undefined
     if (!t) return { ok: false, error: 'not_found' }
     const view = cs2ReportView({ ...t, id })
+    if (view) void loadNotes('cs2', id, cs2NotesFacts({ ...t, id }))
     return view ? { ok: true, state: { kind: 'ready', view } } : { ok: false, error: 'needs_demo' }
   }
   if (g === 'lol' || g === 'deadlock') {
     const res = await window.api?.app?.getGameMatchReport?.(g, id).catch(() => null)
     if (!res) return null
     if (!res.ok) return res
-    const view = g === 'lol' ? lolReportView(res.report as LolReportResponse) : deadlockReportView(res.report as DeadlockReportResponse)
+    const report = res.report as (LolReportResponse | DeadlockReportResponse) & GameNotesResult
+    const base = g === 'lol' ? lolReportView(report as LolReportResponse) : deadlockReportView(report as DeadlockReportResponse)
+    // Stored notes come with the report; otherwise ask for them after the facts are on screen.
+    const view = report.notes ? applyGameNotes(base, report) : base
+    if (!report.notes) void loadNotes(g, id, undefined)
     return { ok: true, state: { kind: 'ready', view } }
   }
   const res = await window.api?.app?.getMatchReport?.(id).catch(() => null)
   if (!res) return null
   return res.ok ? { ok: true, state: { kind: 'ready', view: matchReportView(res.report) } } : res
+}
+
+/** AI coach notes arrive after the facts (one call, stored by the API, shared daily cap). */
+const notesLoading = ref(false)
+async function loadNotes(g: 'lol' | 'deadlock' | 'cs2', id: string, facts: unknown): Promise<void> {
+  if (g === 'cs2' && !facts) return
+  notesLoading.value = true
+  const res = await window.api?.app?.getGameMatchNotes?.(g, id, facts).catch(() => null)
+  notesLoading.value = false
+  if (!res?.ok || id !== matchId.value || g !== game.value || state.value?.kind !== 'ready') return
+  const next = { kind: 'ready' as const, view: applyGameNotes(state.value.view, res as GameNotesResult) }
+  state.value = next
+  writeCache(`match-report:${g}:${id}`, next)
 }
 
 async function load(): Promise<void> {
@@ -131,6 +150,10 @@ function back(): void { if (window.history.length > 1) router.back(); else route
           <p v-else-if="view.notesCapped" class="uf-t2">Today’s free coach notes are used. The facts below are still yours, and notes come back tomorrow.</p>
           <p v-else class="uf-t2">No coach note for this match. The facts below come straight from your match data.</p>
           <p v-if="view.subline" class="uf-t2">{{ view.subline }}</p>
+          <ul v-if="view.evidence?.length" class="mr3-evidence">
+            <li v-for="(line, i) in view.evidence" :key="i" class="uf-t3">{{ line }}</li>
+          </ul>
+          <p v-else-if="notesLoading && !isValorant" class="uf-t4">Your coach is reading this match…</p>
           <p v-if="view.isAlt" class="uf-t4">Played on an alt account: coached, not counted for your focus.</p>
         </section>
 
@@ -177,6 +200,7 @@ function back(): void { if (window.history.length > 1) router.back(); else route
 .mr3-body { display: flex; flex-direction: column; gap: 28px; padding: 24px 40px 48px; }
 .mr3-back { align-self: flex-start; }
 .mr3-coach { display: flex; flex-direction: column; gap: 10px; max-width: 760px; }
+.mr3-evidence { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 6px; }
 .mr3-cols { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); gap: 48px; }
 .mr3-facts dl { margin: 12px 0 0; }
 .mr3-row { display: flex; justify-content: space-between; gap: 16px; padding: 10px 0; border-top: 1px solid var(--uf-line); }

@@ -67,6 +67,8 @@ export interface MatchReportView {
   focusCheck: { label: string; hit: boolean } | null
   nextSteps: NextStep[]
   isAlt: boolean
+  /** Coach evidence lines (AI notes on League, CS2 and Deadlock reports). */
+  evidence?: string[]
 }
 
 /** Coach finding → focus metric, so a next step can open the matching drills. */

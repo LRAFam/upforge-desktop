@@ -208,3 +208,48 @@ export function cs2ReportView(t: Cs2ReportTimeline): MatchReportView | null {
   if (cw != null && cw >= 1) v.positive = `You won ${plural(cw, 'clutch', 'clutches')}.`
   return v
 }
+
+// ── AI coach notes (League, CS2, Deadlock) ──────────────────────────────────
+
+export interface GameNotesClaim { finding_id?: string; text?: string }
+export interface GameNotes {
+  headline?: GameNotesClaim | null
+  subline?: GameNotesClaim | null
+  evidence?: GameNotesClaim[] | null
+  next_action?: GameNotesClaim | null
+  positive?: GameNotesClaim | null
+}
+export interface GameNotesResult { notes?: GameNotes | null; notes_source?: string | null; capped?: boolean }
+
+const claimText = (c: GameNotesClaim | null | undefined): string | null =>
+  c && typeof c.text === 'string' && c.text.trim() ? c.text.trim() : null
+
+/**
+ * Put checked AI coach notes onto a League / CS2 / Deadlock report. AI notes replace the rule-based
+ * headline and lead the next steps; capped or missing notes keep the facts-only view as it is.
+ */
+export function applyGameNotes(view: MatchReportView, res: GameNotesResult | null | undefined): MatchReportView {
+  if (!res) return view
+  const notes = res.notes ?? null
+  const fromAi = res.notes_source === 'ai' || res.notes_source === 'ai_repaired'
+  if (!notes || !fromAi) return { ...view, notesCapped: !!res.capped && !fromAi }
+  const headline = claimText(notes.headline)
+  const evidence = (notes.evidence ?? []).map(claimText).filter((t): t is string => !!t).slice(0, 3)
+  const action = claimText(notes.next_action)
+  return {
+    ...view,
+    headlineLabel: 'What decided it',
+    headline: headline ?? view.headline,
+    subline: claimText(notes.subline) ?? view.subline,
+    positive: claimText(notes.positive) ?? view.positive,
+    evidence,
+    nextSteps: action ? [{ text: action, drillMetric: null }, ...view.nextSteps].slice(0, 3) : view.nextSteps,
+    notesCapped: false,
+  }
+}
+
+/** The CS2 facts the API checks notes against (from the parsed demo only). */
+export function cs2NotesFacts(t: Cs2ReportTimeline): { map: string | null; won: boolean | null; match_stats: Cs2StatsV1 } | null {
+  if (!t.match_stats?.player_stats) return null
+  return { map: t.map ?? null, won: t.finalStats?.won ?? null, match_stats: t.match_stats }
+}

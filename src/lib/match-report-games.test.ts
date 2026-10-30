@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { cs2ReportView, deadlockReportView, lolReportView, ordinal } from './match-report-games'
+import { applyGameNotes, cs2NotesFacts, cs2ReportView, deadlockReportView, lolReportView, ordinal } from './match-report-games'
 
 describe('lolReportView', () => {
   const res = {
@@ -107,5 +107,49 @@ describe('cs2ReportView', () => {
 describe('ordinal', () => {
   it('handles teens', () => {
     expect([1, 2, 3, 4, 11, 12, 13, 21, 22].map(ordinal)).toEqual(['1st', '2nd', '3rd', '4th', '11th', '12th', '13th', '21st', '22nd'])
+  })
+})
+
+describe('applyGameNotes', () => {
+  const base = {
+    matchId: 'EUW1_1', game: 'lol' as const, headlineLabel: 'The key number', result: 'loss' as const, score: '18–27',
+    map: null, agent: null, headline: 'You were 19 CS behind at 10:00.', subline: null, positive: null,
+    notesCapped: false, facts: [], focusCheck: null, nextSteps: [{ text: 'Rule step', drillMetric: null }], isAlt: false,
+  }
+
+  it('puts checked AI notes first and keeps the rule-based steps after the coach action', () => {
+    const v = applyGameNotes(base, {
+      notes_source: 'ai',
+      notes: {
+        headline: { finding_id: 'lane', text: 'Syndra was 19 CS ahead at 10:00.' },
+        subline: { finding_id: 'early_deaths', text: 'You died 3 times before 14:00.' },
+        evidence: [{ finding_id: 'teamplay', text: 'Kill participation 56%.' }],
+        next_action: { finding_id: 'lane', text: 'Next 3 games: last-hit under tower.' },
+        positive: { finding_id: 'teamplay', text: '21 vision score.' },
+      },
+    })
+    expect(v.headlineLabel).toBe('What decided it')
+    expect(v.headline).toBe('Syndra was 19 CS ahead at 10:00.')
+    expect(v.evidence).toEqual(['Kill participation 56%.'])
+    expect(v.nextSteps.map(s => s.text)).toEqual(['Next 3 games: last-hit under tower.', 'Rule step'])
+    expect(v.notesCapped).toBe(false)
+  })
+
+  it('keeps the facts-only view when today’s notes are used up, and says so', () => {
+    const v = applyGameNotes(base, { notes_source: 'fallback', capped: true, notes: { headline: { text: 'Fallback' } } })
+    expect(v.headline).toBe(base.headline)
+    expect(v.notesCapped).toBe(true)
+  })
+
+  it('ignores a missing result', () => {
+    expect(applyGameNotes(base, null)).toBe(base)
+  })
+})
+
+describe('cs2NotesFacts', () => {
+  it('sends only parsed demo stats, and nothing without them', () => {
+    expect(cs2NotesFacts({ id: 'r', map: 'de_mirage', match_stats: null })).toBeNull()
+    const f = cs2NotesFacts({ id: 'r', map: 'de_mirage', finalStats: { won: false }, match_stats: { player_stats: { kills: 14 } } as never })
+    expect(f).toEqual({ map: 'de_mirage', won: false, match_stats: { player_stats: { kills: 14 } } })
   })
 })

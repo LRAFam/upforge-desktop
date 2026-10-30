@@ -7451,6 +7451,20 @@ async function startApp(): Promise<void> {
     if (r?.status !== 200 || !r.data?.success) return { ok: false, error: 'unavailable' }
     return { ok: true, report: r.data }
   })
+  // AI coach notes for League / Deadlock (facts recomputed by the API) and CS2 (facts from the parsed demo).
+  ipcMain.handle('match-report:game-notes', async (_event, game: unknown, matchId: unknown, facts: unknown) => {
+    const idOk = (game === 'lol' && typeof matchId === 'string' && /^[A-Z0-9]{2,8}_\d{1,20}$/i.test(matchId))
+      || (game === 'deadlock' && typeof matchId === 'string' && /^\d{1,20}$/.test(matchId))
+      || (game === 'cs2' && typeof matchId === 'string' && /^[A-Za-z0-9_.:-]{1,64}$/.test(matchId))
+    if (!idOk) return { ok: false, error: 'invalid_match' }
+    if (game === 'cs2' && (!facts || typeof facts !== 'object')) return { ok: false, error: 'invalid_facts' }
+    if (!authManager.isAuthenticated()) return { ok: false, error: 'signed_out' }
+    const r = game === 'cs2'
+      ? await authManager.getApi().post('/api/cs2/match-report/notes', { match_key: matchId, facts }, { validateStatus: () => true, timeout: 90000 }).catch(() => null)
+      : await authManager.getApi().post(`/api/${game}/match-report/${matchId}/notes`, {}, { validateStatus: () => true, timeout: 90000 }).catch(() => null)
+    if (r?.status !== 200 || !r.data?.success) return { ok: false, error: r?.status === 404 ? 'not_found' : 'unavailable' }
+    return { ok: true, notes: r.data.notes ?? null, notes_source: r.data.notes_source ?? null, capped: !!r.data.capped }
+  })
   ipcMain.handle('match-report:list', async (_event, limit: unknown) => {
     if (!authManager.isAuthenticated()) return { ok: false, error: 'signed_out' }
     const n = Number.isInteger(limit) ? Math.min(Math.max(limit as number, 1), 50) : 20
